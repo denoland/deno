@@ -1,0 +1,19 @@
+Check [WILDCARD]scoped.ts
+Check [WILDCARD]scoped.ts$6-10.ts
+running 0 tests from ./scoped.ts
+running 1 test from ./scoped.ts$6-10.ts
+[WILDCARD]/scoped.ts$6-10.ts ... FAILED ([WILDLINE])
+
+ ERRORS 
+
+[WILDCARD]/scoped.ts$6-10.ts => ./scoped.ts$6-10.ts:1:6
+error: Error: invalid doc test hashbang: #!/usr/bin/env -S deno run --allow-read --deny-read=/etc (scoped --deny-* flags aren't supported yet, either remove them or ignore the test)
+[WILDCARD]
+
+ FAILURES 
+
+[WILDCARD]/scoped.ts$6-10.ts => ./scoped.ts$6-10.ts:1:6
+
+FAILED | 0 passed | 1 failed ([WILDLINE])
+
+error: Test failed

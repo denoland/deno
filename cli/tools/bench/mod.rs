@@ -9,13 +9,13 @@ use deno_config::glob::WalkEntry;
 use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
+use deno_core::convert::FromV8;
 use deno_core::error::AnyError;
 use deno_core::error::CoreErrorKind;
 use deno_core::error::JsError;
 use deno_core::futures::StreamExt;
 use deno_core::futures::future;
 use deno_core::futures::stream;
-use deno_core::serde_v8;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
@@ -88,7 +88,7 @@ pub enum BenchEvent {
   UncaughtError(String, Box<JsError>),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, deno_core::FromV8)]
 #[serde(rename_all = "camelCase")]
 pub enum BenchResult {
   Ok(BenchStats),
@@ -115,7 +115,7 @@ pub struct BenchDescription {
   pub warmup: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, deno_core::FromV8)]
 #[serde(rename_all = "camelCase")]
 pub struct BenchStats {
   pub n: u64,
@@ -267,8 +267,7 @@ async fn bench_specifier_inner(
       .await?;
     deno_core::scope!(scope, &mut worker.js_runtime);
     let result = v8::Local::new(scope, result);
-    let result = serde_v8::from_v8::<BenchResult>(scope, result)
-      .map_err(JsErrorBox::from_err)
+    let result = BenchResult::from_v8(scope, result)
       .map_err(|e| CoreErrorKind::JsBox(e).into_box())?;
     sender
       .send(BenchEvent::Result(desc.id, result))
@@ -290,6 +289,7 @@ async fn bench_specifier_inner(
   worker
     .dispatch_process_exit_event()
     .map_err(|e| CoreErrorKind::Js(e).into_box())?;
+  worker.run_napi_ref_finalizers();
 
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.
@@ -563,14 +563,9 @@ pub async fn run_benchmarks_with_watch(
           cli_options.resolve_bench_options_for_members(&bench_flags)?;
         let watch_paths = members_with_bench_options
           .iter()
-          .filter_map(|(_, bench_options)| {
-            bench_options
-              .files
-              .include
-              .as_ref()
-              .map(|set| set.base_paths())
+          .flat_map(|(_, bench_options)| {
+            file_watcher::watch_paths_for_file_patterns(&bench_options.files)
           })
-          .flatten()
           .collect::<Vec<_>>();
         let _ = watcher_communicator.watch_paths(watch_paths);
         let collected_bench_modules = members_with_bench_options
@@ -605,17 +600,26 @@ pub async fn run_benchmarks_with_watch(
         let bench_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
           let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
-          let mut result = IndexSet::with_capacity(bench_modules.len());
-          for bench_module_specifier in bench_modules {
-            if has_graph_root_local_dependent_changed(
-              &graph,
-              bench_module_specifier,
-              &changed_paths,
-            ) {
-              result.insert(bench_module_specifier.clone());
+          // If an env file changed, reload all bench modules since any
+          // bench could depend on environment variables.
+          let env_file_changed = cli_options
+            .possible_env_file_paths_for_watch()
+            .any(|path| changed_paths.contains(&path));
+          if env_file_changed {
+            bench_modules.clone()
+          } else {
+            let mut result = IndexSet::with_capacity(bench_modules.len());
+            for bench_module_specifier in bench_modules {
+              if has_graph_root_local_dependent_changed(
+                &graph,
+                bench_module_specifier,
+                &changed_paths,
+              ) {
+                result.insert(bench_module_specifier.clone());
+              }
             }
+            result
           }
-          result
         } else {
           bench_modules.clone()
         };

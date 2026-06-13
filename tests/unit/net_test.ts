@@ -2,11 +2,14 @@
 import {
   assert,
   assertEquals,
+  assertGreaterOrEqual,
   assertRejects,
+  assertStringIncludes,
   assertThrows,
   delay,
   execCode,
   execCode2,
+  execCode3,
   tmpUnixSocketPath,
 } from "./test_util.ts";
 
@@ -33,6 +36,21 @@ Deno.test(
   {
     permissions: { net: true },
   },
+  function netTcpListenEphemeralClose() {
+    const listener = Deno.listen({ hostname: "127.0.0.1" });
+    assert(listener.addr.transport === "tcp");
+    assertEquals(listener.addr.hostname, "127.0.0.1");
+    // Ephemeral port range starts at 49152 according to RFC 6335 / IANA, but
+    // many OSes use the lower number below (old OSes also started at 1024)
+    assertGreaterOrEqual(listener.addr.port, 32768);
+    listener.close();
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
   function netUdpListenClose() {
     const socket = Deno.listenDatagram({
       hostname: "127.0.0.1",
@@ -48,8 +66,26 @@ Deno.test(
 
 Deno.test(
   {
+    permissions: { net: true },
+  },
+  function netUdpListenEphemeralClose() {
+    const socket = Deno.listenDatagram({
+      hostname: "127.0.0.1",
+      transport: "udp",
+    });
+    assert(socket.addr.transport === "udp");
+    assertEquals(socket.addr.hostname, "127.0.0.1");
+    // Ephemeral port range starts at 49152 according to RFC 6335 / IANA, but
+    // many OSes use the lower number below (old OSes also started at 1024)
+    assertGreaterOrEqual(socket.addr.port, 32768);
+    socket.close();
+  },
+);
+
+Deno.test(
+  {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   function netUnixListenClose() {
     const filePath = tmpUnixSocketPath();
@@ -66,7 +102,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   function netUnixPacketListenClose() {
     const filePath = tmpUnixSocketPath();
@@ -76,6 +112,21 @@ Deno.test(
     });
     assert(socket.addr.transport === "unixpacket");
     assertEquals(socket.addr.path, filePath);
+    socket.close();
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  function netUnixPacketAnonListenClose() {
+    const socket = Deno.listenDatagram({
+      transport: "unixpacket",
+    });
+    assert(socket.addr.transport === "unixpacket");
+    assertEquals(socket.addr.path, null);
     socket.close();
   },
 );
@@ -120,6 +171,21 @@ Deno.test(
 
 Deno.test(
   {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: false },
+  },
+  function netUnixPacketAnonListenWritePermission() {
+    const socket = Deno.listenDatagram({
+      transport: "unixpacket",
+    });
+    assert(socket.addr.transport === "unixpacket");
+    assertEquals(socket.addr.path, null);
+    socket.close();
+  },
+);
+
+Deno.test(
+  {
     permissions: { net: true },
   },
   async function netTcpCloseWhileAccept() {
@@ -136,8 +202,44 @@ Deno.test(
 
 Deno.test(
   {
+    permissions: { net: true },
+  },
+  async function netTcpListenAfterCloseWhileAcceptSettles() {
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+    const { hostname, port } = listener.addr as Deno.NetAddr;
+    const acceptPromise = listener.accept();
+    listener.close();
+    await assertRejects(
+      () => acceptPromise,
+      Deno.errors.BadResource,
+      "Listener has been closed",
+    );
+
+    const listener2 = Deno.listen({ hostname, port });
+    listener2.close();
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function netTcpListenAfterCloseWhileAsyncIteratorSettles() {
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+    const { hostname, port } = listener.addr as Deno.NetAddr;
+    const nextPromise = listener[Symbol.asyncIterator]().next();
+    listener.close();
+    assertEquals(await nextPromise, { value: undefined, done: true });
+
+    const listener2 = Deno.listen({ hostname, port });
+    listener2.close();
+  },
+);
+
+Deno.test(
+  {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function netUnixCloseWhileAccept() {
     const filePath = tmpUnixSocketPath();
@@ -181,7 +283,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function netUnixConcurrentAccept() {
     const filePath = tmpUnixSocketPath();
@@ -312,7 +414,7 @@ Deno.test({ permissions: { net: true } }, async function netTcpSetKeepAlive() {
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function netUnixDialListen() {
     const filePath = tmpUnixSocketPath();
@@ -350,12 +452,20 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function netUdpSendReceive() {
-    const alice = Deno.listenDatagram({ port: listenPort, transport: "udp" });
+    const alice = Deno.listenDatagram({
+      port: listenPort,
+      transport: "udp",
+      hostname: "127.0.0.1",
+    });
     assert(alice.addr.transport === "udp");
     assertEquals(alice.addr.port, listenPort);
     assertEquals(alice.addr.hostname, "127.0.0.1");
 
-    const bob = Deno.listenDatagram({ port: listenPort2, transport: "udp" });
+    const bob = Deno.listenDatagram({
+      port: listenPort2,
+      transport: "udp",
+      hostname: "127.0.0.1",
+    });
     assert(bob.addr.transport === "udp");
     assertEquals(bob.addr.port, listenPort2);
     assertEquals(bob.addr.hostname, "127.0.0.1");
@@ -374,6 +484,21 @@ Deno.test(
     assertEquals(3, recvd[2]);
     alice.close();
     bob.close();
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/25581
+// `Deno.listenDatagram` with no `hostname` should bind to `0.0.0.0` (matching
+// the documented default and `Deno.listen`/`Deno.serve`), not `127.0.0.1`.
+// Binding to `127.0.0.1` made it impossible to send to a network broadcast
+// address such as `10.x.x.255` (the OS rejected the send with EINVAL/EFAULT).
+Deno.test(
+  { permissions: { net: true } },
+  function netUdpDefaultHostnameIsAnyAddress() {
+    const socket = Deno.listenDatagram({ port: 0, transport: "udp" });
+    assert(socket.addr.transport === "udp");
+    assertEquals(socket.addr.hostname, "0.0.0.0");
+    socket.close();
   },
 );
 
@@ -617,7 +742,11 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function netUdpConcurrentSendReceive() {
-    const socket = Deno.listenDatagram({ port: listenPort, transport: "udp" });
+    const socket = Deno.listenDatagram({
+      port: listenPort,
+      transport: "udp",
+      hostname: "127.0.0.1",
+    });
     assert(socket.addr.transport === "udp");
     assertEquals(socket.addr.port, listenPort);
     assertEquals(socket.addr.hostname, "127.0.0.1");
@@ -644,6 +773,7 @@ Deno.test(
     const socket = Deno.listenDatagram({
       port: listenPort,
       transport: "udp",
+      hostname: "127.0.0.1",
     });
     // Panic happened on second send: BorrowMutError
     const a = socket.send(new Uint8Array(), socket.addr);
@@ -656,7 +786,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function netUnixPacketSendReceive() {
     const aliceFilePath = tmpUnixSocketPath();
@@ -693,7 +823,7 @@ Deno.test(
 
 // TODO(lucacasonato): support concurrent reads and writes on unixpacket sockets
 Deno.test(
-  { ignore: true, permissions: { read: true, write: true } },
+  { ignore: true, permissions: { read: true, write: true, net: true } },
   async function netUnixPacketConcurrentSendReceive() {
     const filePath = tmpUnixSocketPath();
     const socket = Deno.listenDatagram({
@@ -778,7 +908,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function netUnixListenCloseWhileIterating() {
     const filePath = tmpUnixSocketPath();
@@ -795,7 +925,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function netUnixPacketListenCloseWhileIterating() {
     const filePath = tmpUnixSocketPath();
@@ -937,24 +1067,61 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os !== "linux",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
-  function netUnixAbstractPathShouldNotPanic() {
-    const err = assertThrows(
-      () =>
-        Deno.listen({
-          path: "\0aaa",
-          transport: "unix",
-        }),
-      Error,
-    );
-    const errorText = err.toString();
-    if (
-      !errorText.includes("paths must not contain interior null bytes") &&
-      !errorText.includes("file name contained an unexpected NUL byte")
-    ) {
-      throw new Error("Did not contain any expected message");
-    }
+  async function netUnixAbstractPathAddr() {
+    const path = `\0deno-net-test-${crypto.randomUUID()}`;
+    const listener = Deno.listen({
+      path,
+      transport: "unix",
+    });
+    assertEquals(listener.addr.path, path);
+
+    const acceptPromise = listener.accept();
+    const conn = await Deno.connect({ path, transport: "unix" });
+    assertEquals(conn.remoteAddr.path, path);
+
+    const acceptedConn = await acceptPromise;
+    assertEquals(acceptedConn.localAddr.path, path);
+
+    conn.close();
+    acceptedConn.close();
+    listener.close();
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { read: true, write: true, net: true },
+  },
+  async function netUnixPacketAbstractPathAddr() {
+    const alicePath = `\0deno-net-test-${crypto.randomUUID()}`;
+    const alice = Deno.listenDatagram({
+      path: alicePath,
+      transport: "unixpacket",
+    });
+    assert(alice.addr.transport === "unixpacket");
+    assertEquals(alice.addr.path, alicePath);
+
+    const bobPath = `\0deno-net-test-${crypto.randomUUID()}`;
+    const bob = Deno.listenDatagram({
+      path: bobPath,
+      transport: "unixpacket",
+    });
+    assert(bob.addr.transport === "unixpacket");
+    assertEquals(bob.addr.path, bobPath);
+
+    const sent = new Uint8Array([1, 2, 3]);
+    assertEquals(await alice.send(sent, bob.addr), sent.byteLength);
+
+    const [received, remoteAddr] = await bob.receive();
+    assert(remoteAddr.transport === "unixpacket");
+    assertEquals(remoteAddr.path, alicePath);
+    assertEquals(received, sent);
+
+    alice.close();
+    bob.close();
   },
 );
 
@@ -1091,7 +1258,7 @@ Deno.test(
 
 Deno.test({
   ignore: Deno.build.os === "windows",
-  permissions: { read: true, write: true },
+  permissions: { read: true, write: true, net: true },
 }, function netUnixListenAddrAlreadyInUse() {
   const filePath = tmpUnixSocketPath();
   const listener = Deno.listen({ path: filePath, transport: "unix" });
@@ -1195,16 +1362,19 @@ Deno.test(
     const sender = Deno.listenDatagram({
       port: 4002,
       transport: "udp",
+      hostname: "127.0.0.1",
     });
     const listener1 = Deno.listenDatagram({
       port: 4000,
       transport: "udp",
       reuseAddress: true,
+      hostname: "127.0.0.1",
     });
     const listener2 = Deno.listenDatagram({
       port: 4000,
       transport: "udp",
       reuseAddress: true,
+      hostname: "127.0.0.1",
     });
 
     const sent = new Uint8Array([1, 2, 3]);
@@ -1354,5 +1524,222 @@ Deno.test(
       Deno.errors.BadResource,
     );
     // calling [Symbol.dispose] after manual close is a no-op
+  },
+);
+
+// Regression test for GHSA-rjhc-mq2r-fp9w: Unix socket connect/listen used
+// to check only filesystem permissions, letting scripts with
+// `--allow-read=/var/run/docker.sock` reach Docker without any `--allow-net`
+// grant. They now also require an `--allow-net=unix:<path>` rule (or
+// unscoped `--allow-net`).
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  function netUnixListenRequiresAllowNet() {
+    const filePath = tmpUnixSocketPath();
+    assertThrows(
+      () => Deno.listen({ path: filePath, transport: "unix" }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  async function netUnixConnectRequiresAllowNet() {
+    const filePath = tmpUnixSocketPath();
+    await assertRejects(
+      () => Deno.connect({ path: filePath, transport: "unix" }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+// Scoped form must match the exact path — a different unix path does not
+// grant access to this one.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: {
+      read: true,
+      write: true,
+      net: ["unix:/some/other/path.sock"],
+    },
+  },
+  function netUnixScopedAllowNetMatchesExactly() {
+    const filePath = tmpUnixSocketPath();
+    assertThrows(
+      () => Deno.listen({ path: filePath, transport: "unix" }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+// The datagram (unixpacket) half of the boundary must be guarded too:
+// `Deno.listenDatagram({ transport: "unixpacket" })` is denied without an
+// `--allow-net=unix:<path>` grant.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  function netUnixPacketListenRequiresAllowNet() {
+    const filePath = tmpUnixSocketPath();
+    assertThrows(
+      () => Deno.listenDatagram({ path: filePath, transport: "unixpacket" }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+// `DatagramConn.send()` checks the destination path independently of the
+// listen path. Here the socket is listened with `--allow-net` scoped to its
+// own path, but sending to a different (ungranted) path is denied. Run in a
+// subprocess (`deno run`, not `deno eval` which has implicit full permissions)
+// so the dynamic socket paths can be passed in the allow-net rule.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true, run: true },
+  },
+  async function netUnixPacketSendRequiresAllowNet() {
+    const alicePath = tmpUnixSocketPath();
+    const bobPath = tmpUnixSocketPath();
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      const alice = Deno.listenDatagram({
+        path: ${JSON.stringify(alicePath)},
+        transport: "unixpacket",
+      });
+      try {
+        await alice.send(new Uint8Array([1, 2, 3]), {
+          path: ${JSON.stringify(bobPath)},
+          transport: "unixpacket",
+        });
+        console.log("SENT");
+      } catch (e) {
+        console.log(
+          e instanceof Deno.errors.NotCapable ? "NOT_CAPABLE" : "OTHER:" + e.name,
+        );
+      } finally {
+        alice.close();
+      }
+      `,
+    );
+    const [status, output] = await execCode3(Deno.execPath(), [
+      "run",
+      "--unstable-net",
+      "--allow-read",
+      "--allow-write",
+      `--allow-net=unix:${alicePath}`,
+      scriptPath,
+    ]).finished();
+    assertEquals(status, 0);
+    assertStringIncludes(output, "NOT_CAPABLE");
+  },
+);
+
+// A `--allow-net=unix:<path>` rule scoped to the exact socket path grants both
+// listen and connect. Run in a subprocess so the dynamic socket path can be
+// passed in the allow-net rule.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true, run: true },
+  },
+  async function netUnixScopedAllowNetGrantsAccess() {
+    const socketPath = tmpUnixSocketPath();
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      const listener = Deno.listen({
+        path: ${JSON.stringify(socketPath)},
+        transport: "unix",
+      });
+      const conn = await Deno.connect({
+        path: ${JSON.stringify(socketPath)},
+        transport: "unix",
+      });
+      conn.close();
+      listener.close();
+      console.log("OK");
+      `,
+    );
+    const [status, output] = await execCode3(Deno.execPath(), [
+      "run",
+      "--allow-read",
+      "--allow-write",
+      `--allow-net=unix:${socketPath}`,
+      scriptPath,
+    ]).finished();
+    assertEquals(status, 0);
+    assertStringIncludes(output, "OK");
+  },
+);
+
+// A `unix:` rule must be an absolute path: a relative path is rejected at flag
+// parse time before the script runs.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true, run: true },
+  },
+  async function netUnixAllowNetRejectsNonAbsolutePath() {
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(scriptPath, "console.log('UNREACHABLE');");
+    const { code, stdout, stderr } = await new Deno.Command(Deno.execPath(), {
+      args: ["run", "--allow-net=unix:relative.sock", scriptPath],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    const decoder = new TextDecoder();
+    assert(code !== 0);
+    assertEquals(decoder.decode(stdout), "");
+    assertStringIncludes(decoder.decode(stderr), "invalid unix socket");
+  },
+);
+
+// A `unix:` rule is lexically normalized at parse time, so a rule spelled
+// with `..`/`.` components still matches a connect to the normalized path.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true, run: true },
+  },
+  async function netUnixScopedAllowNetNormalizesRulePath() {
+    const socketPath = tmpUnixSocketPath();
+    const parts = socketPath.split("/");
+    const base = parts.pop()!;
+    const dir = parts.pop()!;
+    const denormalizedPath = [...parts, dir, "..", dir, ".", base].join("/");
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      const listener = Deno.listen({
+        path: ${JSON.stringify(socketPath)},
+        transport: "unix",
+      });
+      listener.close();
+      console.log("OK");
+      `,
+    );
+    const [status, output] = await execCode3(Deno.execPath(), [
+      "run",
+      "--allow-read",
+      "--allow-write",
+      `--allow-net=unix:${denormalizedPath}`,
+      scriptPath,
+    ]).finished();
+    assertEquals(status, 0);
+    assertStringIncludes(output, "OK");
   },
 );

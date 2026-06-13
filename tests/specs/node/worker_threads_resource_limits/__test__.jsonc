@@ -1,0 +1,17 @@
+{
+  "tests": {
+    "resource_limits_passed": {
+      "args": "run --allow-read main.mjs",
+      "output": "main.out"
+    },
+    "resource_limits_default": {
+      "args": "run --allow-read default_main.mjs",
+      "output": "default_main.out"
+    },
+    "resource_limits_oom": {
+      "args": "run --allow-read oom_main.mjs",
+      "output": "oom_main.out",
+      "exitCode": 0
+    }
+  }
+}

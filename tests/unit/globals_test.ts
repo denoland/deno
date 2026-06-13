@@ -48,6 +48,38 @@ Deno.test(function DenoNamespaceIsNotFrozen() {
   assert(!Object.isFrozen(Deno));
 });
 
+Deno.test(function DenoNamespaceLazyPropertiesAreWritable() {
+  const deno = Deno as unknown as Record<string, unknown>;
+  const lazyProperties = [
+    "serve",
+    "serveHttp",
+    "upgradeWebSocket",
+    "Command",
+  ];
+
+  for (const name of lazyProperties) {
+    const descriptor = Object.getOwnPropertyDescriptor(Deno, name);
+    assert(descriptor);
+    try {
+      const original = deno[name];
+      assert(typeof original === "function");
+      const replacement = new Proxy(original, {});
+
+      deno[name] = replacement;
+
+      assertEquals(deno[name], replacement);
+      const replacementDescriptor = Object.getOwnPropertyDescriptor(Deno, name);
+      assert(replacementDescriptor);
+      assertEquals(replacementDescriptor.value, replacement);
+      assert(replacementDescriptor.writable);
+      assert(replacementDescriptor.enumerable);
+      assert(replacementDescriptor.configurable);
+    } finally {
+      Object.defineProperty(Deno, name, descriptor);
+    }
+  }
+});
+
 Deno.test(function webAssemblyExists() {
   assert(typeof WebAssembly.compile === "function");
 });
@@ -136,10 +168,10 @@ Deno.test(async function arrayFromAsync() {
   // Taken from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/fromAsync#examples
   // Thank you.
   const asyncIterable = (async function* () {
-    for (let i = 0; i < 5; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 10 * i));
-      yield i;
-    }
+  for (let i = 0; i < 5; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 10 * i));
+    yield i;
+  }
   })();
 
   const a = await Array.fromAsync(asyncIterable);
@@ -232,4 +264,21 @@ Deno.test(async function overwriteEventOnExternalModuleShouldNotCrash() {
   const status = await child.status;
   assert(status.success);
   await Deno.remove(tmpDir, { recursive: true });
+});
+
+Deno.test(function navigatorPlatformExists() {
+  switch (Deno.build.os) {
+    case "linux": {
+      assertEquals(navigator.platform, `Linux ${Deno.build.arch}`);
+      break;
+    }
+    case "darwin": {
+      assertEquals(navigator.platform, "MacIntel");
+      break;
+    }
+    case "windows": {
+      assertEquals(navigator.platform, "Win32");
+      break;
+    }
+  }
 });

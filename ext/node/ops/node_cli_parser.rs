@@ -5,6 +5,7 @@
 //! This module uses the node_shim crate to parse Node.js CLI arguments
 //! and translates them to Deno CLI arguments.
 
+use deno_core::ToV8;
 use deno_core::op2;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -33,17 +34,23 @@ pub use node_shim::parse_args;
 pub use node_shim::parse_node_options_env_var;
 pub use node_shim::translate_to_deno_args as translate_to_deno_args_impl;
 pub use node_shim::wrap_eval_code;
-use serde::Serialize;
 
 /// Result of translating Node.js CLI args to Deno args
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, ToV8)]
 pub struct TranslatedArgs {
   /// The Deno CLI arguments
   pub deno_args: Vec<String>,
   /// Node options that should be added to NODE_OPTIONS env var
   pub node_options: Vec<String>,
+  /// CA store configuration that should be passed to the spawned Deno process.
+  pub ca_stores: Option<Vec<String>>,
+  /// Whether the translated flags selected OpenSSL/system-only CA handling.
+  pub use_openssl_ca: bool,
   /// Whether the child process needs npm process state
   pub needs_npm_process_state: bool,
+  /// Comma-separated trace event categories from --trace-event-categories,
+  /// to be propagated via DENO_NODE_TRACE_EVENT_CATEGORIES.
+  pub trace_event_categories: Option<String>,
 }
 
 /// Translate parsed Node.js CLI arguments to Deno CLI arguments.
@@ -51,14 +58,40 @@ pub struct TranslatedArgs {
 fn translate_to_deno_args(
   parsed_args: ParseResult,
   script_in_npm_package: bool,
+  wrap_eval: bool,
 ) -> TranslatedArgs {
-  let options = TranslateOptions::for_child_process();
+  let options = if wrap_eval {
+    TranslateOptions::for_child_process()
+  } else {
+    TranslateOptions::for_shell_command()
+  };
+  let use_openssl_ca = parsed_args.options.use_openssl_ca;
+  let use_system_ca = parsed_args.options.use_system_ca;
+  let use_bundled_ca = parsed_args.options.use_bundled_ca;
   let result = translate_to_deno_args_impl(parsed_args, &options);
+  let ca_stores = if use_openssl_ca {
+    Some(vec!["system".to_string()])
+  } else {
+    match (use_system_ca, use_bundled_ca) {
+      (true, _) => Some(vec!["mozilla".to_string(), "system".to_string()]),
+      (false, true) => Some(vec!["mozilla".to_string()]),
+      (false, false) => None,
+    }
+  };
+
+  let trace_event_categories = if result.trace_event_categories.is_empty() {
+    None
+  } else {
+    Some(result.trace_event_categories)
+  };
 
   TranslatedArgs {
     deno_args: result.deno_args,
     node_options: result.node_options,
+    ca_stores,
+    use_openssl_ca,
     needs_npm_process_state: script_in_npm_package,
+    trace_event_categories,
   }
 }
 
@@ -66,24 +99,37 @@ fn translate_to_deno_args(
 /// Returns an object with deno_args, node_options, and needs_npm_process_state.
 /// Throws an error if parsing fails - this helps identify unsupported flags
 /// so they can be added to node_shim.
+///
+/// When `wrap_eval` is true, eval code is wrapped for Node.js compatibility
+/// (used for direct child_process spawning). When false, eval code is passed
+/// through as-is (used for shell command transformation).
 #[op2]
-#[serde]
 pub fn op_node_translate_cli_args(
-  #[serde] args: Vec<String>,
+  #[scoped] args: Vec<String>,
   script_in_npm_package: bool,
+  wrap_eval: bool,
 ) -> Result<TranslatedArgs, CliParserError> {
-  // If no args, return early with run -A
+  // If no args, return early with run -A -
+  // `-` tells Deno to read from stdin, matching Node.js behavior where
+  // `node` with no args reads and executes piped stdin.
   if args.is_empty() {
     return Ok(TranslatedArgs {
-      deno_args: vec!["run".to_string(), "-A".to_string()],
+      deno_args: vec!["run".to_string(), "-A".to_string(), "-".to_string()],
       node_options: vec![],
+      ca_stores: None,
+      use_openssl_ca: false,
       needs_npm_process_state: script_in_npm_package,
+      trace_event_categories: None,
     });
   }
 
   // Parse the args
   match parse_args(args.clone()) {
-    Ok(parsed) => Ok(translate_to_deno_args(parsed, script_in_npm_package)),
+    Ok(parsed) => Ok(translate_to_deno_args(
+      parsed,
+      script_in_npm_package,
+      wrap_eval,
+    )),
     Err(unknown_flags) => Err(CliParserError::ParseError {
       message: unknown_flags.join(", "),
     }),
@@ -179,8 +225,18 @@ mod tests {
   #[test]
   fn test_translate_basic_script() {
     let parsed = parse_args(svec!["script.js"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
-    assert_eq!(result.deno_args, svec!["run", "-A", "script.js"]);
+    let result = translate_to_deno_args(parsed, false, true);
+    assert_eq!(
+      result.deno_args,
+      svec![
+        "run",
+        "-A",
+        "--unstable-node-globals",
+        "--unstable-bare-node-builtins",
+        "--unstable-detect-cjs",
+        "script.js"
+      ]
+    );
     assert!(result.node_options.is_empty());
     assert!(!result.needs_npm_process_state);
   }
@@ -188,21 +244,21 @@ mod tests {
   #[test]
   fn test_translate_version() {
     let parsed = parse_args(svec!["--version"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     assert_eq!(result.deno_args, svec!["--version"]);
   }
 
   #[test]
   fn test_translate_help() {
     let parsed = parse_args(svec!["--help"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     assert_eq!(result.deno_args, svec!["--help"]);
   }
 
   #[test]
   fn test_translate_eval() {
     let parsed = parse_args(svec!["--eval", "console.log(42)"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     // Eval code should be wrapped for child_process
     assert!(result.deno_args.contains(&"eval".to_string()));
     // Note: deno eval has implicit permissions, so -A is not added
@@ -215,7 +271,7 @@ mod tests {
   #[test]
   fn test_translate_inspect() {
     let parsed = parse_args(svec!["--inspect", "script.js"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     assert!(
       result
         .deno_args
@@ -227,7 +283,7 @@ mod tests {
   #[test]
   fn test_translate_inspect_brk() {
     let parsed = parse_args(svec!["--inspect-brk", "script.js"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     assert!(
       result
         .deno_args
@@ -238,14 +294,14 @@ mod tests {
   #[test]
   fn test_translate_watch() {
     let parsed = parse_args(svec!["--watch", "script.js"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     assert!(result.deno_args.contains(&"--watch".to_string()));
   }
 
   #[test]
   fn test_translate_no_warnings() {
     let parsed = parse_args(svec!["--no-warnings", "script.js"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     assert!(result.deno_args.contains(&"--quiet".to_string()));
     assert!(result.node_options.contains(&"--no-warnings".to_string()));
   }
@@ -254,7 +310,7 @@ mod tests {
   fn test_translate_conditions() {
     let parsed =
       parse_args(svec!["--conditions", "development", "script.js"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     assert!(
       result
         .deno_args
@@ -266,7 +322,7 @@ mod tests {
   fn test_translate_conditions_equals_format() {
     // Test the --conditions=custom format (with equals sign)
     let parsed = parse_args(svec!["--conditions=custom", "script.js"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     assert!(
       result
         .deno_args
@@ -278,7 +334,7 @@ mod tests {
   fn test_translate_conditions_short_alias() {
     // Test -C custom format (short alias)
     let parsed = parse_args(svec!["-C", "custom", "script.js"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     assert!(
       result
         .deno_args
@@ -290,14 +346,14 @@ mod tests {
   fn test_translate_v8_flags() {
     let parsed =
       parse_args(svec!["--max-old-space-size=4096", "script.js"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     assert!(result.deno_args.iter().any(|a| a.contains("--v8-flags=")));
   }
 
   #[test]
   fn test_translate_repl() {
     let parsed = parse_args(svec![]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     // REPL should have empty deno_args (triggers Deno's REPL behavior)
     assert!(result.deno_args.is_empty());
   }
@@ -305,21 +361,21 @@ mod tests {
   #[test]
   fn test_translate_npm_package() {
     let parsed = parse_args(svec!["script.js"]).unwrap();
-    let result = translate_to_deno_args(parsed, true);
+    let result = translate_to_deno_args(parsed, true, true);
     assert!(result.needs_npm_process_state);
   }
 
   #[test]
   fn test_translate_run_script() {
     let parsed = parse_args(svec!["--run", "build"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     assert_eq!(result.deno_args, svec!["task", "build"]);
   }
 
   #[test]
   fn test_translate_test_runner() {
     let parsed = parse_args(svec!["--test", "test.js"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     assert!(result.deno_args.contains(&"test".to_string()));
     assert!(result.deno_args.contains(&"-A".to_string()));
     assert!(result.deno_args.contains(&"test.js".to_string()));
@@ -328,7 +384,7 @@ mod tests {
   #[test]
   fn test_translate_test_with_watch() {
     let parsed = parse_args(svec!["--test", "--watch", "test.js"]).unwrap();
-    let result = translate_to_deno_args(parsed, false);
+    let result = translate_to_deno_args(parsed, false, true);
     assert!(result.deno_args.contains(&"test".to_string()));
     assert!(result.deno_args.contains(&"--watch".to_string()));
   }

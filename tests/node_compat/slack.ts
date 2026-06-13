@@ -2,8 +2,11 @@
 // deno-lint-ignore-file no-console
 
 import { LogLevel, WebClient } from "npm:@slack/web-api@7.8.0";
-import type { MonthSummary } from "./add_day_summary_to_month_summary.ts";
-import { toJson } from "@std/streams/to-json";
+import {
+  fetchReport,
+  type MonthSummary,
+} from "./add_day_summary_to_month_summary.ts";
+import { parse as parseJsonc } from "@std/jsonc";
 
 const token = Deno.env.get("SLACK_TOKEN");
 const channel = Deno.env.get("SLACK_CHANNEL");
@@ -115,18 +118,7 @@ async function fetchFullReport(
   date: string,
   os: OSName,
 ): Promise<FullReport | undefined> {
-  try {
-    const res = await fetch(
-      `https://dl.deno.land/node-compat-test/${date}/report-${os}.json.gz`,
-    );
-    if (res.status === 404) return undefined;
-    return await toJson(
-      res.body!.pipeThrough(new DecompressionStream("gzip")),
-    ) as FullReport;
-  } catch (e) {
-    console.error(`Failed to fetch report for ${date}/${os}:`, e);
-    return undefined;
-  }
+  return await fetchReport(date, os) as FullReport | undefined;
 }
 
 type TestStatus = "pass" | "fail" | "ignore" | "missing";
@@ -175,6 +167,7 @@ type Block = { type: string; text: { type: string; text: string } } | any;
 const MAX_NEWLY_PASSING = 30;
 const MAX_NEWLY_FAILING = 30;
 const MAX_FLAKY = 20;
+const MAX_UNENABLED_PASSING = 50;
 const FLAKY_HISTORY_DAYS = 14; // + today = 15 runs
 
 async function generateThreadBlocks(
@@ -294,13 +287,14 @@ async function generateThreadBlocks(
     const sorted = [...newlyPassing.entries()].sort(([a], [b]) =>
       a.localeCompare(b)
     );
-    let text = `*Newly Passing (${sorted.length}):*\n`;
+    let text = `*Newly Passing (${sorted.length}):*\n\`\`\`\n`;
     for (const [testName, oses] of sorted.slice(0, MAX_NEWLY_PASSING)) {
-      text += `\`${testName}\` (${formatOsList(oses)})\n`;
+      text += `${testName} (${formatOsList(oses)})\n`;
     }
     if (sorted.length > MAX_NEWLY_PASSING) {
-      text += `_...and ${sorted.length - MAX_NEWLY_PASSING} more_\n`;
+      text += `...and ${sorted.length - MAX_NEWLY_PASSING} more\n`;
     }
+    text += `\`\`\``;
     blocks.push({ type: "section", text: { type: "mrkdwn", text } });
   }
 
@@ -308,13 +302,14 @@ async function generateThreadBlocks(
     const sorted = [...newlyFailing.entries()].sort(([a], [b]) =>
       a.localeCompare(b)
     );
-    let text = `*Started Failing (${sorted.length}):*\n`;
+    let text = `*Started Failing (${sorted.length}):*\n\`\`\`\n`;
     for (const [testName, oses] of sorted.slice(0, MAX_NEWLY_FAILING)) {
-      text += `\`${testName}\` (${formatOsList(oses)})\n`;
+      text += `${testName} (${formatOsList(oses)})\n`;
     }
     if (sorted.length > MAX_NEWLY_FAILING) {
-      text += `_...and ${sorted.length - MAX_NEWLY_FAILING} more_\n`;
+      text += `...and ${sorted.length - MAX_NEWLY_FAILING} more\n`;
     }
+    text += `\`\`\``;
     blocks.push({ type: "section", text: { type: "mrkdwn", text } });
   }
 
@@ -324,17 +319,18 @@ async function generateThreadBlocks(
     );
     let text = `*Flaky Tests (last ${
       FLAKY_HISTORY_DAYS + 1
-    } runs, ${sorted.length} tests):*\n`;
+    } runs, ${sorted.length} tests):*\n\`\`\`\n`;
     for (const [testName, osStats] of sorted.slice(0, MAX_FLAKY)) {
       const parts: string[] = [];
       for (const [os, stats] of osStats) {
         parts.push(`${os}: ${stats.pass}/${stats.total}`);
       }
-      text += `\`${testName}\` ${parts.join(", ")}\n`;
+      text += `${testName}  ${parts.join(", ")}\n`;
     }
     if (sorted.length > MAX_FLAKY) {
-      text += `_...and ${sorted.length - MAX_FLAKY} more_\n`;
+      text += `...and ${sorted.length - MAX_FLAKY} more\n`;
     }
+    text += `\`\`\``;
     blocks.push({ type: "section", text: { type: "mrkdwn", text } });
   }
 
@@ -344,6 +340,74 @@ async function generateThreadBlocks(
       text: { type: "mrkdwn", text: "No test status changes detected." },
     });
   }
+
+  return blocks;
+}
+
+async function generateUnabledPassingBlocks(
+  monthSummary: MonthSummary,
+): Promise<Block[] | null> {
+  const sortedReports = Object.values(monthSummary.reports).sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+  );
+  const todaySummary = sortedReports.at(-1);
+  if (!todaySummary) return null;
+
+  console.log("Checking for passing-but-not-enabled tests...");
+
+  // Read config.jsonc to get enabled test names
+  const configText = await Deno.readTextFile(
+    "tests/node_compat/config.jsonc",
+  );
+  const config = parseJsonc(configText) as { tests: Record<string, unknown> };
+  const enabledTests = new Set(Object.keys(config.tests));
+
+  // Fetch today's full reports
+  const todayReports = await fetchReportsForDate(todaySummary.date);
+
+  // Find tests passing on ALL platforms but not in config
+  const passingNotEnabled = new Map<string, OSName[]>();
+
+  const allTestNames = new Set<string>();
+  for (const os of OS_NAMES) {
+    for (const name of Object.keys(todayReports[os]?.results ?? {})) {
+      allTestNames.add(name);
+    }
+  }
+
+  for (const testName of allTestNames) {
+    if (enabledTests.has(testName)) continue;
+
+    const passingOses: OSName[] = [];
+    for (const os of OS_NAMES) {
+      if (getTestStatus(todayReports[os], testName) === "pass") {
+        passingOses.push(os);
+      }
+    }
+    if (passingOses.length > 0) {
+      passingNotEnabled.set(testName, passingOses);
+    }
+  }
+
+  if (passingNotEnabled.size === 0) return null;
+
+  // Sort: tests passing on all platforms first, then by name
+  const sorted = [...passingNotEnabled.entries()].sort(([a, aOs], [b, bOs]) => {
+    if (bOs.length !== aOs.length) return bOs.length - aOs.length;
+    return a.localeCompare(b);
+  });
+
+  const blocks: Block[] = [];
+  let text =
+    `*Passing but not enabled in config.jsonc (${sorted.length}):*\n\`\`\`\n`;
+  for (const [testName, oses] of sorted.slice(0, MAX_UNENABLED_PASSING)) {
+    text += `${testName} (${formatOsList(oses)})\n`;
+  }
+  if (sorted.length > MAX_UNENABLED_PASSING) {
+    text += `...and ${sorted.length - MAX_UNENABLED_PASSING} more\n`;
+  }
+  text += `\`\`\``;
+  blocks.push({ type: "section", text: { type: "mrkdwn", text } });
 
   return blocks;
 }
@@ -380,6 +444,27 @@ async function main() {
         }
       } catch (threadError) {
         console.error("Failed to post thread:", threadError);
+      }
+
+      // Post thread with passing-but-not-enabled tests
+      try {
+        const unenabled = await generateUnabledPassingBlocks(monthSummary);
+        if (unenabled) {
+          const unenableResult = await client.chat.postMessage({
+            token,
+            channel,
+            thread_ts: result.ts,
+            blocks: unenabled,
+            unfurl_links: false,
+            unfurl_media: false,
+          });
+          console.log("Unenabled passing thread posted:", unenableResult);
+        }
+      } catch (unenableError) {
+        console.error(
+          "Failed to post unenabled passing thread:",
+          unenableError,
+        );
       }
     }
   } catch (error) {

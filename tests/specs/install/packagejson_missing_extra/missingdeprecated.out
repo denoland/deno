@@ -11,5 +11,8 @@ Downloaded 1 package from npm
 Dependencies:
 + npm:denotest-packagejson-missing-info 0.2.5-missingdeprecated
 
-Warning The following packages are deprecated:
-┖─ npm:denotest-packagejson-missing-info@0.2.5-missingdeprecated (Use 0.5.0 or later)
+╭ Warning
+│
+│  The following packages are deprecated:
+│  npm:denotest-packagejson-missing-info@0.2.5-missingdeprecated (Use 0.5.0 or later)
+╰─

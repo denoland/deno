@@ -331,6 +331,11 @@ impl TestRun {
               filter,
               shuffle: None,
               trace_leaks: false,
+              // LSP-driven test runs intentionally disable sanitizers — the
+              // LSP UI doesn't surface op/resource leak failures usefully
+              // and they'd generate noise in the test gutter.
+              sanitize_ops: false,
+              sanitize_resources: false,
             },
           ))
         }
@@ -403,7 +408,7 @@ impl TestRun {
               }
             }
             test::TestEvent::UncaughtError(origin, error) => {
-              reporter.report_uncaught_error(&origin, &error);
+              reporter.report_uncaught_error(&origin, &error).await;
               summary.failed += 1;
               summary.uncaught_errors.push((origin, error));
             }
@@ -439,6 +444,8 @@ impl TestRun {
             }
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
+            test::TestEvent::Exit(_) => {}
+            test::TestEvent::IsolateExit(_, _) => {}
           }
         }
 
@@ -578,6 +585,11 @@ struct LspTestReporter {
   files: TestServerTests,
   tests: IndexMap<usize, LspTestDescription>,
   current_test: Option<usize>,
+  /// Counts of dynamic test registrations per `(parent_static_id, name)` for
+  /// the current run, used to assign a `name_index` that matches the static
+  /// collector's numbering when multiple tests share the same name under the
+  /// same parent. See https://github.com/denoland/deno/issues/20371.
+  dynamic_name_indices: HashMap<(Option<String>, String), u32>,
 }
 
 impl LspTestReporter {
@@ -594,7 +606,20 @@ impl LspTestReporter {
       files,
       tests: Default::default(),
       current_test: Default::default(),
+      dynamic_name_indices: HashMap::new(),
     }
+  }
+
+  fn next_dynamic_name_index(
+    &mut self,
+    parent_static_id: Option<&str>,
+    name: &str,
+  ) -> u32 {
+    let key = (parent_static_id.map(str::to_owned), name.to_string());
+    let entry = self.dynamic_name_indices.entry(key).or_insert(0);
+    let index = *entry;
+    *entry += 1;
+    index
   }
 
   fn progress(&self, message: lsp_custom::TestRunProgressMessage) {
@@ -611,6 +636,7 @@ impl LspTestReporter {
   fn report_plan(&mut self, _plan: &test::TestPlan) {}
 
   async fn report_register(&mut self, desc: &test::TestDescription) {
+    let name_index = self.next_dynamic_name_index(None, &desc.name);
     let mut files = self.files.lock().await;
     let specifier = ModuleSpecifier::parse(&desc.location.file_name).unwrap();
     let (test_module, _) = files
@@ -619,7 +645,7 @@ impl LspTestReporter {
     let Ok(uri) = url_to_uri(&test_module.specifier) else {
       return;
     };
-    let (static_id, is_new) = test_module.register_dynamic(desc);
+    let (static_id, is_new) = test_module.register_dynamic(desc, name_index);
     self.tests.insert(
       desc.id,
       LspTestDescription::TestDescription(desc.clone(), static_id.clone()),
@@ -701,7 +727,7 @@ impl LspTestReporter {
     }
   }
 
-  fn report_uncaught_error(&mut self, origin: &str, js_error: &JsError) {
+  async fn report_uncaught_error(&mut self, origin: &str, js_error: &JsError) {
     self.current_test = None;
     let err_string = format!(
       "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
@@ -720,38 +746,93 @@ impl LspTestReporter {
       actual_output: None,
       location: None,
     }];
+    let mut reported = false;
     for desc in self.tests.values().filter(|d| d.origin() == origin) {
       self.progress(lsp_custom::TestRunProgressMessage::Failed {
         test: desc.as_test_identifier(&self.tests),
         messages: messages.clone(),
         duration: None,
       });
+      reported = true;
+    }
+    if reported {
+      return;
+    }
+    // No individual test was registered for this origin at runtime. This happens
+    // when the module throws while evaluating, before (or instead of) any test
+    // runs — for example `Deno.test("")` throws "The test name can't be empty".
+    // Surface the failure against the module's statically-collected tests (which
+    // were already enqueued on the client) so the run still reports the error
+    // instead of silently completing. See
+    // https://github.com/denoland/deno/issues/17119.
+    let Ok(specifier) = ModuleSpecifier::parse(origin) else {
+      return;
+    };
+    let Ok(uri) = url_to_uri(&specifier) else {
+      return;
+    };
+    {
+      let files = self.files.lock().await;
+      if let Some((test_module, _)) = files.get(&specifier) {
+        for id in test_module
+          .defs
+          .iter()
+          .filter(|(_, d)| d.parent_id.is_none())
+          .map(|(id, _)| id.clone())
+        {
+          self.progress(lsp_custom::TestRunProgressMessage::Failed {
+            test: lsp_custom::TestIdentifier {
+              text_document: lsp::TextDocumentIdentifier { uri: uri.clone() },
+              id: Some(id),
+              step_id: None,
+            },
+            messages: messages.clone(),
+            duration: None,
+          });
+          reported = true;
+        }
+      }
+    }
+    // As a last resort (e.g. the module has no statically-collected tests),
+    // report against the module itself so the error is never dropped.
+    if !reported {
+      self.progress(lsp_custom::TestRunProgressMessage::Failed {
+        test: lsp_custom::TestIdentifier {
+          text_document: lsp::TextDocumentIdentifier { uri },
+          id: None,
+          step_id: None,
+        },
+        messages,
+        duration: None,
+      });
     }
   }
 
   async fn report_step_register(&mut self, desc: &test::TestStepDescription) {
-    let mut files = self.files.lock().await;
-    let file_name = self
-      .current_test
-      .and_then(|i| {
-        let mut root_desc = self.tests.get(&i)?;
+    let Some((parent_static_id, file_name)) =
+      self.tests.get(&desc.parent_id).and_then(|parent_desc| {
+        let parent_static_id = parent_desc.static_id().to_string();
+        let mut root_desc = parent_desc;
         while let Some(parent_id) = root_desc.parent_id() {
           root_desc = self.tests.get(&parent_id)?;
         }
-        Some(&root_desc.location().file_name)
+        Some((parent_static_id, root_desc.location().file_name.clone()))
       })
-      .unwrap_or(&desc.location.file_name);
-    let specifier = ModuleSpecifier::parse(file_name).unwrap();
+    else {
+      return;
+    };
+    let name_index =
+      self.next_dynamic_name_index(Some(&parent_static_id), &desc.name);
+    let mut files = self.files.lock().await;
+    let specifier = ModuleSpecifier::parse(&file_name).unwrap();
     let (test_module, _) = files
       .entry(specifier.clone())
       .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));
     let Ok(uri) = url_to_uri(&test_module.specifier) else {
       return;
     };
-    let (static_id, is_new) = test_module.register_step_dynamic(
-      desc,
-      self.tests.get(&desc.parent_id).unwrap().static_id(),
-    );
+    let (static_id, is_new) =
+      test_module.register_step_dynamic(desc, &parent_static_id, name_index);
     self.tests.insert(
       desc.id,
       LspTestDescription::TestStepDescription(desc.clone(), static_id.clone()),
@@ -872,6 +953,7 @@ mod tests {
       id: "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94"
         .to_string(),
       name: "test a".to_string(),
+      name_index: 0,
       range: Some(new_range(1, 5, 1, 9)),
       is_dynamic: false,
       parent_id: None,
@@ -881,6 +963,7 @@ mod tests {
       id: "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f"
         .to_string(),
       name: "test b".to_string(),
+      name_index: 0,
       range: Some(new_range(2, 5, 2, 9)),
       is_dynamic: false,
       parent_id: None,

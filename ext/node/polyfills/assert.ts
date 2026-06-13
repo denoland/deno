@@ -1,32 +1,41 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file ban-types prefer-primordials
+// deno-lint-ignore-file no-process-global
 
-import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js";
-import { inspect } from "node:util";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const { AssertionError } = core.loadExtScript(
+  "ext:deno_node/internal/assert/assertion_error.js",
+);
+const { innerOk } = core.loadExtScript(
+  "ext:deno_node/internal/assert/utils.ts",
+);
+const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
+const {
   ERR_AMBIGUOUS_ARGUMENT,
   ERR_CONSTRUCT_CALL_REQUIRED,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_RETURN_VALUE,
   ERR_MISSING_ARGS,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   isDeepEqual,
   isDeepStrictEqual,
   isPartialStrictEqual,
-} from "ext:deno_node/internal/util/comparisons.ts";
-import { primordials } from "ext:core/mod.js";
-import { CallTracker } from "ext:deno_node/internal/assert/calltracker.js";
-import { deprecate } from "node:util";
-import { isPromise, isRegExp } from "ext:deno_node/internal_binding/types.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/util/comparisons.ts");
+const { CallTracker } = core.loadExtScript(
+  "ext:deno_node/internal/assert/calltracker.js",
+);
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
+const { isPromise, isRegExp } = core.loadExtScript(
+  "ext:deno_node/internal_binding/types.ts",
+);
+const {
   validateFunction,
   validateOneOf,
-} from "ext:deno_node/internal/validators.mjs";
-import { isError } from "ext:deno_node/internal/util.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isError } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 const {
   ArrayPrototypeForEach,
@@ -34,6 +43,8 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
+  Error,
+  ErrorPrototype,
   NumberIsNaN,
   ObjectAssign,
   ObjectDefineProperty,
@@ -41,7 +52,9 @@ const {
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ReflectApply,
+  ReflectHas,
   RegExpPrototypeExec,
+  SafeArrayIterator,
   StringPrototypeIndexOf,
   StringPrototypeSlice,
   StringPrototypeSplit,
@@ -49,24 +62,11 @@ const {
   Symbol,
 } = primordials;
 
-type AssertPredicate =
-  | RegExp
-  | (new () => object)
-  | ((thrown: unknown) => boolean)
-  | object
-  | Error;
-
-type AssertOptions = {
-  diff: "full" | "simple";
-  strict: boolean;
-  skipPrototype: boolean;
-};
-
 const kOptions = Symbol("options");
 
 const NO_EXCEPTION_SENTINEL = {};
 
-function Assert(options: AssertOptions) {
+function Assert(options) {
   if (!new.target) {
     throw new ERR_CONSTRUCT_CALL_REQUIRED("Assert");
   }
@@ -102,18 +102,8 @@ function Assert(options: AssertOptions) {
 Assert.prototype.fail = fail;
 // Duplicate of the `ok` function below so we don't inherit
 // the extra assigned properties from `assert` function later on.
-Assert.prototype.ok = function (actual: unknown, message?: string | Error) {
-  if (arguments.length === 0) {
-    throw new AssertionError({
-      message: "No value argument passed to `assert.ok()`",
-      expected: true,
-      operator: "==",
-    });
-  }
-  if (actual) {
-    return;
-  }
-  equal(actual, true, message);
+Assert.prototype.ok = function ok(...args) {
+  innerOk(ok, args.length, ...new SafeArrayIterator(args));
 };
 Assert.prototype.equal = equal;
 Assert.prototype.notEqual = notEqual;
@@ -132,15 +122,8 @@ Assert.prototype.ifError = ifError;
 Assert.prototype.match = match;
 Assert.prototype.doesNotMatch = doesNotMatch;
 
-function innerFail(obj: {
-  actual?: unknown;
-  expected?: unknown;
-  message?: string | Error;
-  operator?: string;
-  stackStartFn?: Function;
-  diff?: "simple" | "full";
-}) {
-  if (obj.message instanceof Error) {
+function innerFail(obj) {
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, obj.message)) {
     throw obj.message;
   }
 
@@ -154,26 +137,15 @@ function innerFail(obj: {
   });
 }
 
-function assert(actual: unknown, message?: string | Error): asserts actual {
-  if (arguments.length === 0) {
-    throw new AssertionError({
-      message: "No value argument passed to `assert.ok()`",
-      expected: true,
-      operator: "==",
-    });
-  }
-  if (actual) {
-    return;
-  }
-
-  equal(actual, true, message);
+function assert(...args) {
+  innerOk(ok, args.length, ...new SafeArrayIterator(args));
 }
 const ok = assert;
 
 class Comparison {
-  constructor(obj: object, keys: string[], actual?: unknown) {
-    for (const key of keys) {
-      if (key in obj) {
+  constructor(obj, keys, actual) {
+    for (const key of new SafeArrayIterator(keys)) {
+      if (ReflectHas(obj, key)) {
         if (
           actual !== undefined &&
           typeof actual[key] === "string" &&
@@ -190,14 +162,16 @@ class Comparison {
 }
 
 function compareExceptionKey(
-  actual: object,
-  expected: object,
-  key: string,
-  message: string | Error | undefined,
-  keys: string[],
-  fn: () => unknown | (() => Promise<unknown>),
+  actual,
+  expected,
+  key,
+  message,
+  keys,
+  fn,
 ) {
-  if (!(key in actual) || !isDeepStrictEqual(actual[key], expected[key])) {
+  if (
+    !ReflectHas(actual, key) || !isDeepStrictEqual(actual[key], expected[key])
+  ) {
     if (!message) {
       // Create placeholder objects to create a nice output.
       const a = new Comparison(actual, keys);
@@ -227,10 +201,10 @@ function compareExceptionKey(
 }
 
 function expectedException(
-  actual: unknown,
-  expected: AssertPredicate,
-  message: string | Error | undefined,
-  fn: Function,
+  actual,
+  expected,
+  message,
+  fn,
 ) {
   let generatedMessage = false;
   let throwError = false;
@@ -266,7 +240,7 @@ function expectedException(
       const keys = ObjectKeys(expected);
       // Special handle errors to make sure the name and the message are
       // compared as well.
-      if (expected instanceof Error) {
+      if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, expected)) {
         ArrayPrototypePush(keys, "name", "message");
       } else if (keys.length === 0) {
         throw new ERR_INVALID_ARG_VALUE(
@@ -275,7 +249,7 @@ function expectedException(
           "may not be an empty object",
         );
       }
-      for (const key of keys) {
+      for (const key of new SafeArrayIterator(keys)) {
         if (
           typeof actual[key] === "string" &&
           isRegExp(expected[key]) &&
@@ -289,7 +263,10 @@ function expectedException(
     }
     // Guard instanceof against arrow functions as they don't have a prototype.
     // Check for matching Error classes.
-  } else if (expected.prototype !== undefined && actual instanceof expected) {
+  } else if (
+    expected.prototype !== undefined &&
+    ObjectPrototypeIsPrototypeOf(expected.prototype, actual)
+  ) {
     return;
   } else if (ObjectPrototypeIsPrototypeOf(Error, expected)) {
     if (!message) {
@@ -344,7 +321,7 @@ function expectedException(
   }
 }
 
-function getActual(fn: () => unknown): typeof NO_EXCEPTION_SENTINEL | unknown {
+function getActual(fn) {
   validateFunction(fn, "fn");
   try {
     fn();
@@ -354,7 +331,7 @@ function getActual(fn: () => unknown): typeof NO_EXCEPTION_SENTINEL | unknown {
   return NO_EXCEPTION_SENTINEL;
 }
 
-function checkIsPromise(obj: unknown): obj is Promise<unknown> {
+function checkIsPromise(obj) {
   // Accept native ES6 promises and promises that are implemented in a similar
   // way. Do not accept thenables that use a function as `obj` and that have no
   // `catch` handler.
@@ -365,8 +342,8 @@ function checkIsPromise(obj: unknown): obj is Promise<unknown> {
 }
 
 async function waitForActual(
-  promiseFn: (() => Promise<unknown>) | Promise<unknown>,
-): Promise<unknown> {
+  promiseFn,
+) {
   let resultPromise;
   if (typeof promiseFn === "function") {
     // Return a rejected promise if `promiseFn` throws synchronously.
@@ -398,10 +375,10 @@ async function waitForActual(
 }
 
 function expectsError(
-  stackStartFn: Function,
-  actual: unknown,
-  error: AssertPredicate | string | undefined,
-  message?: string | Error,
+  stackStartFn,
+  actual,
+  error,
+  message,
 ) {
   if (typeof error === "string") {
     if (arguments.length === 4) {
@@ -464,7 +441,7 @@ function expectsError(
   expectedException(actual, error, message, stackStartFn);
 }
 
-function hasMatchingError(actual: unknown, expected: unknown): boolean {
+function hasMatchingError(actual, expected) {
   if (typeof expected !== "function") {
     if (isRegExp(expected)) {
       const str = String(actual);
@@ -477,7 +454,10 @@ function hasMatchingError(actual: unknown, expected: unknown): boolean {
     );
   }
   // Guard instanceof against arrow functions as they don't have a prototype.
-  if (expected.prototype !== undefined && actual instanceof expected) {
+  if (
+    expected.prototype !== undefined &&
+    ObjectPrototypeIsPrototypeOf(expected.prototype, actual)
+  ) {
     return true;
   }
   if (ObjectPrototypeIsPrototypeOf(Error, expected)) {
@@ -487,10 +467,10 @@ function hasMatchingError(actual: unknown, expected: unknown): boolean {
 }
 
 function expectsNoError(
-  stackStartFn: Function,
-  actual: unknown,
-  error: AssertPredicate | string | undefined,
-  message?: string | Error,
+  stackStartFn,
+  actual,
+  error,
+  message,
 ) {
   if (actual === NO_EXCEPTION_SENTINEL) {
     return;
@@ -518,47 +498,31 @@ function expectsNoError(
 }
 
 function throws(
-  fn: () => void,
-  message?: string | Error,
-): void;
-function throws(
-  fn: () => void,
-  error?: AssertPredicate,
-  message?: string | Error,
-): void;
-function throws(
-  fn: () => void,
-  ...args: [(AssertPredicate | string)?, (string | Error)?]
+  fn,
+  ...args
 ) {
-  expectsError(throws, getActual(fn), ...args);
+  expectsError(throws, getActual(fn), ...new SafeArrayIterator(args));
 }
 
 function doesNotThrow(
-  fn: () => void,
-  message?: string | Error,
-): void;
-function doesNotThrow(
-  fn: () => void,
-  error?: AssertPredicate,
-  message?: string | Error,
-): void;
-function doesNotThrow(
-  fn: () => void,
-  ...args: [(AssertPredicate | string)?, (string | Error)?]
+  fn,
+  ...args
 ) {
-  expectsNoError(() => {}, getActual(fn), ...args);
+  expectsNoError(doesNotThrow, getActual(fn), ...new SafeArrayIterator(args));
 }
 
 function equal(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
   }
 
-  if (actual != expected && (!NumberIsNaN(actual) || !NumberIsNaN(expected))) {
+  if (
+    actual != expected && (!NumberIsNaN(actual) || !NumberIsNaN(expected))
+  ) {
     innerFail({
       actual,
       expected,
@@ -571,9 +535,9 @@ function equal(
 }
 
 function notEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -592,9 +556,9 @@ function notEqual(
 }
 
 function strictEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -613,9 +577,9 @@ function strictEqual(
 }
 
 function notStrictEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -634,9 +598,9 @@ function notStrictEqual(
 }
 
 function partialDeepStrictEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -654,9 +618,9 @@ function partialDeepStrictEqual(
 }
 
 function deepEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -675,9 +639,9 @@ function deepEqual(
 }
 
 function notDeepEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -696,9 +660,9 @@ function notDeepEqual(
 }
 
 function deepStrictEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -717,9 +681,9 @@ function deepStrictEqual(
 }
 
 function notDeepStrictEqual(
-  actual: unknown,
-  expected: unknown,
-  message?: string | Error,
+  actual,
+  expected,
+  message,
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -740,12 +704,12 @@ function notDeepStrictEqual(
 let warned = false;
 
 function fail(
-  actual?: string | Error,
-  expected?: unknown,
-  message?: string | Error,
-  operator?: string,
-  stackStartFn?: Function,
-): never {
+  actual,
+  expected,
+  message,
+  operator,
+  stackStartFn,
+) {
   const argsLen = arguments.length;
 
   let internalMessage = false;
@@ -758,7 +722,6 @@ function fail(
   } else {
     if (warned === false) {
       warned = true;
-      // deno-lint-ignore no-process-global
       process.emitWarning(
         "assert.fail() with more than one argument is deprecated. " +
           "Please use assert.strictEqual() instead or only pass a message.",
@@ -771,7 +734,7 @@ function fail(
     }
   }
 
-  if (message instanceof Error) throw message;
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, message)) throw message;
 
   // IMPORTANT: When adding new references to `this`, ensure they use optional chaining
   // (this?.[kOptions]?.diff) to handle cases where the method is destructured from an
@@ -793,10 +756,10 @@ function fail(
 }
 
 function internalMatch(
-  string: string,
-  regexp: RegExp,
-  message: string | Error | undefined,
-  fn: typeof match | typeof doesNotMatch,
+  string,
+  regexp,
+  message,
+  fn,
 ) {
   if (!isRegExp(regexp)) {
     throw new ERR_INVALID_ARG_TYPE(
@@ -810,7 +773,7 @@ function internalMatch(
     typeof string !== "string" ||
     RegExpPrototypeExec(regexp, string) !== null !== matchFn
   ) {
-    if (message instanceof Error) {
+    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, message)) {
       throw message;
     }
 
@@ -837,55 +800,42 @@ function internalMatch(
   }
 }
 
-function match(string: string, regexp: RegExp, message?: string | Error) {
+function match(string, regexp, message) {
   internalMatch(string, regexp, message, match);
 }
 
 function doesNotMatch(
-  string: string,
-  regexp: RegExp,
-  message?: string | Error,
+  string,
+  regexp,
+  message,
 ) {
   internalMatch(string, regexp, message, doesNotMatch);
 }
 
-function strict(actual: unknown, message?: string | Error): asserts actual {
-  if (arguments.length === 0) {
-    throw new AssertionError({
-      message: "No value argument passed to `assert.ok()`",
-    });
-  }
-  assert(actual, message);
+function strict(...args) {
+  innerOk(strict, args.length, ...new SafeArrayIterator(args));
 }
 
 async function rejects(
-  asyncFn: Promise<unknown> | (() => Promise<unknown>),
-  error?: AssertPredicate,
-): Promise<void>;
-async function rejects(
-  asyncFn: Promise<unknown> | (() => Promise<unknown>),
-  message?: string | Error,
-): Promise<void>;
-async function rejects(
-  asyncFn: Promise<unknown> | (() => Promise<unknown>),
-  ...args: [(AssertPredicate | string)?, (string | Error)?]
+  asyncFn,
+  ...args
 ) {
-  expectsError(rejects, await waitForActual(asyncFn), ...args);
+  expectsError(
+    rejects,
+    await waitForActual(asyncFn),
+    ...new SafeArrayIterator(args),
+  );
 }
 
 async function doesNotReject(
-  asyncFn: Promise<unknown> | (() => Promise<unknown>),
-  error?: AssertPredicate,
-): Promise<void>;
-async function doesNotReject(
-  asyncFn: Promise<unknown> | (() => Promise<unknown>),
-  message?: string | Error,
-): Promise<void>;
-async function doesNotReject(
-  asyncFn: Promise<unknown> | (() => Promise<unknown>),
-  ...args: [(AssertPredicate | string)?, (string | Error)?]
+  asyncFn,
+  ...args
 ) {
-  expectsNoError(doesNotReject, await waitForActual(asyncFn), ...args);
+  expectsNoError(
+    doesNotReject,
+    await waitForActual(asyncFn),
+    ...new SafeArrayIterator(args),
+  );
 }
 
 /**
@@ -893,8 +843,7 @@ async function doesNotReject(
  *
  * @param err
  */
-// deno-lint-ignore no-explicit-any
-function ifError(err: any) {
+function ifError(err) {
   if (err !== null && err !== undefined) {
     let message = "ifError got unwanted exception: ";
 
@@ -932,7 +881,7 @@ function ifError(err: any) {
         );
         // Filter all frames existing in err.stack.
         let newFrames = StringPrototypeSplit(newErr.stack, "\n");
-        for (const errFrame of originalFrames) {
+        for (const errFrame of new SafeArrayIterator(originalFrames)) {
           // Find the first occurrence of the frame.
           const pos = ArrayPrototypeIndexOf(newFrames, errFrame);
           if (pos !== -1) {
@@ -957,7 +906,7 @@ const CallTracker_ = deprecate(
   "DEP0173",
 );
 
-function setOwnProperty(obj: object, key: string, value: unknown) {
+function setOwnProperty(obj, key, value) {
   return ObjectDefineProperty(obj, key, {
     __proto__: null,
     configurable: true,
@@ -989,7 +938,7 @@ ArrayPrototypeForEach([
   setOwnProperty(assert, name, Assert.prototype[name]);
 });
 
-Object.assign(strict, {
+ObjectAssign(strict, {
   Assert,
   AssertionError,
   CallTracker: CallTracker_,
@@ -1007,13 +956,14 @@ Object.assign(strict, {
   notEqual: notStrictEqual,
   notStrictEqual,
   ok,
+  partialDeepStrictEqual,
   rejects,
   strict,
   strictEqual,
   throws,
 });
 
-export default Object.assign(assert, {
+const default_ = ObjectAssign(assert, {
   Assert,
   AssertionError,
   CallTracker: CallTracker_,
@@ -1038,10 +988,11 @@ export default Object.assign(assert, {
   throws,
 });
 
-export {
+return {
+  default: default_,
   Assert,
   AssertionError,
-  CallTracker_ as CallTracker,
+  CallTracker: CallTracker_,
   deepEqual,
   deepStrictEqual,
   doesNotMatch,
@@ -1062,3 +1013,4 @@ export {
   strictEqual,
   throws,
 };
+})();

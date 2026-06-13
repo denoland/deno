@@ -62,6 +62,9 @@ struct MultiTestMetaData {
   pub ignore: bool,
   #[serde(default)]
   pub variants: BTreeMap<String, JsonMap>,
+  /// Timeout in seconds for each step. Defaults to 300 (5 minutes).
+  #[serde(default)]
+  pub timeout: Option<u64>,
 }
 
 impl MultiTestMetaData {
@@ -95,6 +98,11 @@ impl MultiTestMetaData {
             envs_obj.insert(key.into(), value.clone().into());
           }
         }
+      }
+      if let Some(timeout) = multi_test_meta_data.timeout
+        && !value.contains_key("timeout")
+      {
+        value.insert("timeout".to_string(), timeout.into());
       }
       if multi_test_meta_data.ignore && !value.contains_key("ignore") {
         value.insert("ignore".to_string(), true.into());
@@ -179,6 +187,9 @@ struct MultiStepMetaData {
   pub steps: Vec<StepMetaData>,
   #[serde(default)]
   pub ignore: bool,
+  /// Timeout in seconds for each step. Defaults to 300 (5 minutes).
+  #[serde(default)]
+  pub timeout: Option<u64>,
   #[serde(default)]
   pub variants: BTreeMap<String, JsonMap>,
 }
@@ -200,9 +211,15 @@ struct SingleTestMetaData {
   pub step: StepMetaData,
   #[serde(default)]
   pub ignore: bool,
-  #[allow(dead_code)]
+  #[allow(
+    dead_code,
+    reason = "deserialized but used only in multi-step conversion"
+  )]
   #[serde(default)]
   pub variants: BTreeMap<String, JsonMap>,
+  /// Timeout in seconds for each step. Defaults to 300 (5 minutes).
+  #[serde(default)]
+  pub timeout: Option<u64>,
 }
 
 impl SingleTestMetaData {
@@ -220,6 +237,7 @@ impl SingleTestMetaData {
       steps: vec![self.step],
       ignore: self.ignore,
       variants: self.variants,
+      timeout: self.timeout,
     }
   }
 }
@@ -246,6 +264,33 @@ struct StepMetaData {
 }
 
 pub fn main() {
+  // When running from Claude Code, require a test filter (additional arg)
+  // to prevent accidentally running the entire spec test suite.
+  if std::env::var_os("CLAUDE_CODE_ENTRYPOINT").is_some() {
+    let has_arg = std::env::args().skip(1).len() > 0;
+    if !has_arg {
+      panic!(
+        "Running the entire spec test suite from Claude Code is not allowed. \
+         Please provide a test filter, e.g.: ./x test-spec my_test_name"
+      );
+    }
+  }
+
+  let ci_hash = test_util::hash::check_ci_hash("specs", |hasher| {
+    let tests = test_util::tests_path();
+    hasher
+      .hash_dir(tests.join("specs"))
+      .hash_dir(tests.join("util"))
+      .hash_dir(tests.join("testdata"))
+      .hash_dir(tests.join("registry"))
+      .hash_file(test_util::deno_exe_path())
+      .hash_file(test_util::test_server_path())
+      .hash_file(test_util::denort_exe_path());
+  });
+  if matches!(ci_hash, test_util::hash::CiHashStatus::Skip) {
+    return;
+  }
+
   let root_category =
     collect_tests_or_exit::<serde_json::Value>(CollectOptions {
       base: tests_path().join("specs").to_path_buf(),
@@ -259,8 +304,19 @@ pub fn main() {
     })
     .into_flat_category();
 
+  let root_category =
+    if let Some(shard) = test_util::test_runner::ShardConfig::from_env() {
+      test_util::test_runner::filter_to_shard(root_category, &shard)
+    } else {
+      root_category
+    };
+
   if root_category.is_empty() {
     return; // all tests filtered out
+  }
+
+  if test_util::test_runner::print_tests_if_list_flag(&root_category) {
+    return;
   }
 
   let _http_guard = test_util::http_server();
@@ -277,6 +333,9 @@ pub fn main() {
     },
     move |test| run_test(test, &flaky_test_tracker, &parallelism),
   );
+  if let test_util::hash::CiHashStatus::RunThenCommit(pending) = ci_hash {
+    pending.commit();
+  }
 }
 
 fn run_test(
@@ -416,7 +475,10 @@ fn test_context_from_metadata(
 
   if metadata.canonicalized_temp_dir {
     // not actually deprecated, we just want to discourage its use
-    #[allow(deprecated)]
+    #[allow(
+      deprecated,
+      reason = "not actually deprecated, just discouraging use"
+    )]
     {
       builder = builder.use_canonicalized_temp_dir();
     }
@@ -424,7 +486,10 @@ fn test_context_from_metadata(
   if metadata.symlinked_temp_dir {
     // not actually deprecated, we just want to discourage its use
     // because it's mostly used for testing purposes locally
-    #[allow(deprecated)]
+    #[allow(
+      deprecated,
+      reason = "not actually deprecated, just discouraging use"
+    )]
     {
       builder = builder.use_symlinked_temp_dir();
     }
@@ -548,7 +613,10 @@ fn run_step(
   };
   let command = match *NO_CAPTURE {
     // deprecated is only to prevent use, so this is fine here
-    #[allow(deprecated)]
+    #[allow(
+      deprecated,
+      reason = "not actually deprecated, just discouraging use"
+    )]
     true => command.show_output(),
     false => command,
   };
@@ -561,6 +629,10 @@ fn run_step(
         command.stdin_text(input)
       }
     }
+    None => command,
+  };
+  let command = match metadata.timeout {
+    Some(secs) => command.timeout(std::time::Duration::from_secs(secs)),
     None => command,
   };
   let output = command.run();

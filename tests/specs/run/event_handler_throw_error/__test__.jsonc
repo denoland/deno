@@ -1,0 +1,19 @@
+{
+  "tests": {
+    "throw_in_unload": {
+      "args": "run throw_in_unload.ts",
+      "output": "error: Uncaught Error: unload error\n[WILDCARD]",
+      "exitCode": 1
+    },
+    "throw_in_beforeunload": {
+      "args": "run throw_in_beforeunload.ts",
+      "output": "error: Uncaught Error: beforeunload error\n[WILDCARD]",
+      "exitCode": 1
+    },
+    "throw_in_load": {
+      "args": "run throw_in_load.ts",
+      "output": "error: Uncaught Error: load error\n[WILDCARD]",
+      "exitCode": 1
+    }
+  }
+}

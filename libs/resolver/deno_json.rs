@@ -34,6 +34,7 @@ use node_resolver::ResolutionMode;
 use once_cell::sync::OnceCell;
 #[cfg(not(feature = "sync"))]
 use once_cell::unsync::OnceCell;
+use serde::Deserialize;
 use serde::Serialize;
 use serde::Serializer;
 use serde_json::json;
@@ -46,11 +47,11 @@ use crate::factory::ConfigDiscoveryOption;
 use crate::npm::DenoInNpmPackageChecker;
 use crate::npm::NpmResolverSys;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type UrlRc = deno_maybe_sync::MaybeArc<Url>;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type CompilerOptionsRc = deno_maybe_sync::MaybeArc<CompilerOptions>;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type CompilerOptionsTypesRc =
   deno_maybe_sync::MaybeArc<Vec<(Url, Vec<String>)>>;
 
@@ -202,7 +203,10 @@ pub fn parse_compiler_options(
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "Arc needed for cloneable error sharing"
+)]
 pub type SerdeJsonErrorArc = std::sync::Arc<serde_json::Error>;
 
 #[derive(Debug, Clone, Error, JsError)]
@@ -233,7 +237,7 @@ impl JsxImportSourceConfig {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type JsxImportSourceConfigRc =
   deno_maybe_sync::MaybeArc<JsxImportSourceConfig>;
 
@@ -374,7 +378,7 @@ pub struct TranspileAndEmitOptions {
 }
 
 #[cfg(feature = "deno_ast")]
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type TranspileAndEmitOptionsRc =
   deno_maybe_sync::MaybeArc<TranspileAndEmitOptions>;
 
@@ -477,7 +481,7 @@ struct LoggedWarnings {
   folders: deno_maybe_sync::MaybeDashSet<Url>,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type LoggedWarningsRc = deno_maybe_sync::MaybeArc<LoggedWarnings>;
 
 #[derive(Default, Debug)]
@@ -508,6 +512,7 @@ struct MemoizedValues {
 pub struct CompilerOptionsOverrides {
   /// Skip transpiling in the loaders.
   pub no_transpile: bool,
+  pub force_check_js: bool,
   /// Base to use for the source map. This is useful when bundling
   /// and you want to make file urls relative.
   pub source_map_base: Option<Url>,
@@ -524,11 +529,18 @@ pub struct CompilerOptionsData {
   workspace_dir_url: Option<UrlRc>,
   memoized: MemoizedValues,
   logged_warnings: LoggedWarningsRc,
-  #[cfg_attr(not(feature = "deno_ast"), allow(unused))]
+  #[cfg_attr(
+    not(feature = "deno_ast"),
+    allow(unused, reason = "simpler to have dead code when feature isn't on")
+  )]
   overrides: CompilerOptionsOverrides,
 }
 
 impl CompilerOptionsData {
+  pub fn has_compiler_options(&self) -> bool {
+    self.sources.iter().any(|s| s.compiler_options.is_some())
+  }
+
   fn new(
     sources: Vec<CompilerOptionsSource>,
     source_kind: CompilerOptionsSourceKind,
@@ -605,6 +617,13 @@ impl CompilerOptionsData {
         if let Some(ignored) = parsed.maybe_ignored {
           result.ignored_options.push(ignored);
         }
+      }
+      if matches!(typ, CompilerOptionsType::Check { .. })
+        && self.overrides.force_check_js
+        && let Some(compiler_options) =
+          result.compiler_options.0.as_object_mut()
+      {
+        compiler_options.insert("checkJs".to_string(), true.into());
       }
       if self.source_kind != CompilerOptionsSourceKind::TsConfig {
         check_warn_compiler_options(&result, &self.logged_warnings);
@@ -775,6 +794,9 @@ impl CompilerOptionsData {
   }
 
   pub fn check_js(&self) -> bool {
+    if self.overrides.force_check_js {
+      return true;
+    }
     *self.memoized.check_js.get_or_init(|| {
       self
         .sources
@@ -960,7 +982,7 @@ impl TsConfigFileFilter {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type TsConfigFileFilterRc = deno_maybe_sync::MaybeArc<TsConfigFileFilter>;
 
 #[derive(Debug)]
@@ -1161,10 +1183,10 @@ impl<
       }
     })?;
     log::debug!("tsconfig.json file found at '{}'", path.display());
-    let value = jsonc_parser::parse_to_serde_value(&text, &Default::default())
-      .inspect_err(|e| warn(e))
-      .ok()
-      .flatten();
+    let value: Option<serde_json::Value> =
+      jsonc_parser::parse_to_serde_value(&text, &Default::default())
+        .inspect_err(|e| warn(e))
+        .ok();
     let object = value.as_ref().and_then(|v| v.as_object());
     let extends_targets = object
       .and_then(|o| o.get("extends"))
@@ -1330,6 +1352,35 @@ impl Serialize for CompilerOptionsKey {
   }
 }
 
+impl<'de> Deserialize<'de> for CompilerOptionsKey {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    let s = String::deserialize(deserializer)?;
+    if s == "workspace-root" {
+      return Ok(Self::WorkspaceConfig(None));
+    }
+    if let Some(inner) = s
+      .strip_prefix("workspace(")
+      .and_then(|s| s.strip_suffix(')'))
+    {
+      let url = Url::parse(inner).map_err(serde::de::Error::custom)?;
+      return Ok(Self::WorkspaceConfig(Some(new_rc(url))));
+    }
+    if let Some(inner) = s
+      .strip_prefix("ts-config(")
+      .and_then(|s| s.strip_suffix(')'))
+    {
+      let i = inner.parse::<usize>().map_err(serde::de::Error::custom)?;
+      return Ok(Self::TsConfig(i));
+    }
+    Err(serde::de::Error::custom(format!(
+      "invalid CompilerOptionsKey: {s}"
+    )))
+  }
+}
+
 #[derive(Debug)]
 pub struct CompilerOptionsResolver {
   workspace_configs: FolderScopedWithUnscopedMap<CompilerOptionsData>,
@@ -1420,10 +1471,7 @@ impl CompilerOptionsResolver {
 
   pub fn for_specifier(&self, specifier: &Url) -> &CompilerOptionsData {
     let workspace_data = self.workspace_configs.get_for_specifier(specifier);
-    if !workspace_data
-      .sources
-      .iter()
-      .any(|s| s.compiler_options.is_some())
+    if !workspace_data.has_compiler_options()
       && let Ok(path) = url_to_file_path(specifier)
     {
       for ts_config in &self.ts_configs {
@@ -1441,10 +1489,7 @@ impl CompilerOptionsResolver {
   ) -> (CompilerOptionsKey, &CompilerOptionsData) {
     let (scope, workspace_data) =
       self.workspace_configs.entry_for_specifier(specifier);
-    if !workspace_data
-      .sources
-      .iter()
-      .any(|s| s.compiler_options.is_some())
+    if !workspace_data.has_compiler_options()
       && let Ok(path) = url_to_file_path(specifier)
     {
       for (i, ts_config) in self.ts_configs.iter().enumerate() {
@@ -1537,19 +1582,15 @@ impl CompilerOptionsResolver {
     }
   }
 
+  /// Returns only `compilerOptions.types` entries as graph imports,
+  /// excluding tsconfig `files` entries.
   #[cfg(feature = "graph")]
-  pub fn to_graph_imports(&self) -> Vec<deno_graph::ReferrerImports> {
-    // Resolve all the imports from every config file. These can be separated
-    // them later based on the folder we're type checking.
+  pub fn to_compiler_options_types_imports(
+    &self,
+  ) -> Vec<deno_graph::ReferrerImports> {
     let mut imports_by_referrer =
       IndexMap::<_, Vec<_>>::with_capacity(self.size());
-    for (_, compiler_options_data, maybe_files) in self.entries() {
-      if let Some((referrer, files)) = maybe_files {
-        imports_by_referrer
-          .entry(referrer.as_ref())
-          .or_default()
-          .extend(files.iter().map(|f| f.relative_specifier.clone()));
-      }
+    for (_, compiler_options_data, _) in self.entries() {
       for (referrer, types) in
         compiler_options_data.compiler_options_types().as_ref()
       {
@@ -1567,6 +1608,33 @@ impl CompilerOptionsResolver {
       })
       .collect()
   }
+
+  #[cfg(feature = "graph")]
+  pub fn to_graph_imports(&self) -> Vec<deno_graph::ReferrerImports> {
+    // Start with compilerOptions.types imports, then add tsconfig files.
+    let mut imports_by_referrer = IndexMap::<Url, Vec<String>>::new();
+    for ri in self.to_compiler_options_types_imports() {
+      imports_by_referrer
+        .entry(ri.referrer)
+        .or_default()
+        .extend(ri.imports);
+    }
+    for (_, _, maybe_files) in self.entries() {
+      if let Some((referrer, files)) = maybe_files {
+        imports_by_referrer
+          .entry(referrer.as_ref().clone())
+          .or_default()
+          .extend(files.iter().map(|f| f.relative_specifier.clone()));
+      }
+    }
+    imports_by_referrer
+      .into_iter()
+      .map(|(referrer, imports)| deno_graph::ReferrerImports {
+        referrer,
+        imports,
+      })
+      .collect()
+  }
 }
 
 #[cfg(feature = "graph")]
@@ -1576,16 +1644,21 @@ impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type CompilerOptionsResolverRc =
   deno_maybe_sync::MaybeArc<CompilerOptionsResolver>;
+
+#[derive(Debug, Default)]
+struct JsxImportSourceConfigData {
+  config: Option<JsxImportSourceConfigRc>,
+  has_compiler_options: bool,
+}
 
 /// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
 /// ahead of time as needed for the graph resolver.
 #[derive(Debug, Default)]
 pub struct JsxImportSourceConfigResolver {
-  workspace_configs:
-    FolderScopedWithUnscopedMap<Option<JsxImportSourceConfigRc>>,
+  workspace_configs: FolderScopedWithUnscopedMap<JsxImportSourceConfigData>,
   ts_configs: Vec<(Option<JsxImportSourceConfigRc>, TsConfigFileFilterRc)>,
 }
 
@@ -1594,9 +1667,14 @@ impl JsxImportSourceConfigResolver {
     compiler_options_resolver: &CompilerOptionsResolver,
   ) -> Result<Self, ToMaybeJsxImportSourceConfigError> {
     Ok(Self {
-      workspace_configs: compiler_options_resolver
-        .workspace_configs
-        .try_map(|d| Ok(d.jsx_import_source_config()?.cloned()))?,
+      workspace_configs: compiler_options_resolver.workspace_configs.try_map(
+        |d| {
+          Ok(JsxImportSourceConfigData {
+            config: d.jsx_import_source_config()?.cloned(),
+            has_compiler_options: d.has_compiler_options(),
+          })
+        },
+      )?,
       ts_configs: compiler_options_resolver
         .ts_configs
         .iter()
@@ -1614,14 +1692,17 @@ impl JsxImportSourceConfigResolver {
     &self,
     specifier: &Url,
   ) -> Option<&JsxImportSourceConfigRc> {
-    if let Ok(path) = url_to_file_path(specifier) {
+    let workspace_data = self.workspace_configs.get_for_specifier(specifier);
+    if !workspace_data.has_compiler_options
+      && let Ok(path) = url_to_file_path(specifier)
+    {
       for (config, filter) in &self.ts_configs {
         if filter.includes_path(&path) {
           return config.as_ref();
         }
       }
     }
-    self.workspace_configs.get_for_specifier(specifier).as_ref()
+    workspace_data.config.as_ref()
   }
 }
 
@@ -1690,8 +1771,7 @@ fn compiler_options_to_transpile_and_emit_options(
     imports_not_used_as_values,
     jsx,
     var_decl_imports: false,
-    // todo(dsherret): support verbatim_module_syntax here properly
-    verbatim_module_syntax: false,
+    verbatim_module_syntax: options.verbatim_module_syntax,
   };
   let emit = deno_ast::EmitOptions {
     inline_sources: options.inline_sources,

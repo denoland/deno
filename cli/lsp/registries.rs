@@ -11,7 +11,6 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
-use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
 use deno_core::url::ParseError;
 use deno_core::url::Position;
@@ -22,6 +21,7 @@ use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::loader::MemoryFilesRc;
 use log::error;
 use once_cell::sync::Lazy;
+use serde::Serialize;
 use tower_lsp::lsp_types as lsp;
 
 use super::completions::IMPORT_COMMIT_CHARS;
@@ -42,6 +42,7 @@ use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::TextDecodedFile;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::http_util::HttpClientProvider;
+use crate::lsp::completions::CompletionItemData;
 use crate::sys::CliSys;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
@@ -146,6 +147,12 @@ fn get_completion_type(
   None
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentationCompletionItemData {
+  pub url: Url,
+}
+
 /// Generate a data value for a completion item that will instruct the client to
 /// resolve the completion item to obtain further information, in this case, the
 /// details/documentation endpoint for the item if it exists in the registry
@@ -155,11 +162,11 @@ fn get_data(
   base: &ModuleSpecifier,
   variable: &Key,
   value: &str,
-) -> Option<Value> {
+) -> Option<DocumentationCompletionItemData> {
   let url = registry.get_documentation_url_for_key(variable)?;
   get_endpoint(url, base, variable, Some(value))
     .ok()
-    .map(|specifier| json!({ "documentation": specifier }))
+    .map(|specifier| DocumentationCompletionItemData { url: specifier })
 }
 
 /// Generate a data value for a completion item that will instruct the client to
@@ -173,7 +180,7 @@ fn get_data_with_match(
   match_result: &MatchResult,
   variable: &Key,
   value: &str,
-) -> Option<Value> {
+) -> Option<DocumentationCompletionItemData> {
   let url = registry.get_documentation_url_for_key(variable)?;
   get_endpoint_with_match(
     variable,
@@ -184,7 +191,7 @@ fn get_data_with_match(
     Some(value),
   )
   .ok()
-  .map(|specifier| json!({ "documentation": specifier }))
+  .map(|specifier| DocumentationCompletionItemData { url: specifier })
 }
 
 /// Convert a single variable templated string into a fully qualified URL which
@@ -454,7 +461,8 @@ impl ModuleRegistry {
     let http_cache =
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
     let file_fetcher = create_cli_file_fetcher(
-      Default::default(),
+      Arc::new(deno_runtime::deno_web::BlobStore::default())
+        as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
       http_cache.clone().into(),
       http_client_provider,
       MemoryFilesRc::default(),
@@ -510,18 +518,33 @@ impl ModuleRegistry {
         }
       )
       .await;
-    // if there is an error fetching, we will cache an empty file, so that
-    // subsequent requests they are just an empty doc which will error without
-    // needing to connect to the remote URL. We will cache it for 1 week.
-    if fetch_result.is_err() {
-      let mut headers_map = HashMap::new();
-      headers_map.insert(
-        "cache-control".to_string(),
-        "max-age=604800, immutable".to_string(),
-      );
-      self.http_cache.set(specifier, headers_map, &[])?;
-    }
-    let file = TextDecodedFile::decode(fetch_result?)?;
+    let file = match fetch_result {
+      Ok(file) => file,
+      Err(err) => {
+        // The remote fetch failed (e.g. we're offline). If we previously
+        // fetched the configuration, fall back to the cached copy regardless
+        // of its freshness, so that completions keep working without a network
+        // connection.
+        if let Ok(Some(file)) =
+          self.file_fetcher.fetch_cached_remote(specifier, 10)
+          && !file.source.is_empty()
+        {
+          file
+        } else {
+          // Otherwise we cache an empty file, so that subsequent requests are
+          // just an empty doc which will error without needing to connect to
+          // the remote URL. We will cache it for 1 week.
+          let mut headers_map = HashMap::new();
+          headers_map.insert(
+            "cache-control".to_string(),
+            "max-age=604800, immutable".to_string(),
+          );
+          self.http_cache.set(specifier, headers_map, &[])?;
+          return Err(err.into());
+        }
+      }
+    };
+    let file = TextDecodedFile::decode(file)?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
     validate_config(&config)?;
     Ok(config.registries)
@@ -534,7 +557,7 @@ impl ModuleRegistry {
       return;
     };
     let origin = base_url(&origin_url);
-    #[allow(clippy::map_entry)]
+    #[allow(clippy::map_entry, reason = "less allocations")]
     // we can't use entry().or_insert_with() because we can't use async closures
     if !self.origins.contains_key(&origin) {
       let Ok(specifier) = origin_url.join(CONFIG_PATH) else {
@@ -562,7 +585,7 @@ impl ModuleRegistry {
   async fn enable_custom(&mut self, specifier: &str) -> Result<(), AnyError> {
     let specifier = Url::parse(specifier)?;
     let origin = base_url(&specifier);
-    #[allow(clippy::map_entry)]
+    #[allow(clippy::map_entry, reason = "reduces a clone")]
     if !self.origins.contains_key(&origin) {
       let configs = self.fetch_config(&specifier).await?;
       self.origins.insert(origin, configs);
@@ -823,7 +846,9 @@ impl ModuleRegistry {
                       text_edit,
                       command,
                       preselect,
-                      data,
+                      data: data.map(|data| {
+                        json!(CompletionItemData::Documentation(data))
+                      }),
                       commit_characters,
                       ..Default::default()
                     },
@@ -959,7 +984,9 @@ impl ModuleRegistry {
                         text_edit,
                         command,
                         preselect,
-                        data,
+                        data: data.map(|data| {
+                          json!(CompletionItemData::Documentation(data))
+                        }),
                         commit_characters,
                         ..Default::default()
                       },
@@ -988,15 +1015,11 @@ impl ModuleRegistry {
 
   pub async fn get_documentation(
     &self,
-    url: &str,
+    url: &Url,
   ) -> Option<lsp::Documentation> {
-    let specifier = Url::parse(url).ok()?;
     let file_fetcher = self.file_fetcher.clone();
     let file = {
-      let file = file_fetcher
-        .fetch_bypass_permissions(&specifier)
-        .await
-        .ok()?;
+      let file = file_fetcher.fetch_bypass_permissions(url).await.ok()?;
       TextDecodedFile::decode(file).ok()?
     };
     serde_json::from_str(&file.source).ok()
@@ -1280,6 +1303,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_registry_completions_origin_match() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
@@ -1337,6 +1361,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_registry_completions() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
@@ -1422,13 +1447,17 @@ mod tests {
     assert_eq!(
       completions.items[0].data,
       Some(json!({
-        "documentation": format!("http://localhost:4545/lsp/registries/doc_{}.json", completions.items[0].label),
+        "documentation": {
+          "url": format!("http://localhost:4545/lsp/registries/doc_{}.json", completions.items[0].label),
+        },
       }))
     );
 
     // testing getting the documentation
     let documentation = module_registry
-      .get_documentation("http://localhost:4545/lsp/registries/doc_a.json")
+      .get_documentation(
+        &Url::parse("http://localhost:4545/lsp/registries/doc_a.json").unwrap(),
+      )
       .await;
     assert_eq!(
       documentation,
@@ -1457,7 +1486,9 @@ mod tests {
     assert_eq!(
       completions[0].data,
       Some(json!({
-        "documentation": format!("http://localhost:4545/lsp/registries/doc_a_{}.json", completions[0].label),
+        "documentation": {
+          "url": format!("http://localhost:4545/lsp/registries/doc_a_{}.json", completions[0].label),
+        },
       }))
     );
 
@@ -1480,7 +1511,9 @@ mod tests {
     assert_eq!(
       completions[0].data,
       Some(json!({
-        "documentation": format!("http://localhost:4545/lsp/registries/doc_a_{}.json", completions[0].label),
+        "documentation": {
+          "url": format!("http://localhost:4545/lsp/registries/doc_a_{}.json", completions[0].label),
+        },
       }))
     );
 
@@ -1565,6 +1598,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_registry_completions_key_first() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
@@ -1641,6 +1675,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_registry_completions_complex() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
@@ -1684,6 +1719,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_registry_completions_import_map() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
@@ -1736,6 +1772,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_check_origin_supported() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
@@ -1749,6 +1786,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_check_origin_not_supported() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
@@ -1770,5 +1808,56 @@ mod tests {
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("EOF while parsing a value at line 1 column 0"));
+  }
+
+  #[tokio::test]
+  async fn test_registry_config_offline_fallback() {
+    // Regression test for https://github.com/denoland/deno/issues/23898: when
+    // the registry config can't be fetched (e.g. because we're offline) but it
+    // was previously cached, the cached copy should be used so that
+    // completions keep working without a network connection.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let temp_dir = TempDir::new();
+    let location = temp_dir.path().join("registries").to_path_buf();
+    // Nothing is listening on this port, so any remote fetch fails, simulating
+    // being offline.
+    let origin = "http://localhost:13899";
+    let mut module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
+
+    // A valid registry configuration we pretend was cached during a previous
+    // online session.
+    let config = r#"{
+      "version": 2,
+      "registries": [
+        {
+          "schema": "/x/:module([a-z0-9_]*)@:version?/:path*",
+          "variables": [
+            { "key": "module", "url": "/_vsc/modules/${module}" },
+            { "key": "version", "url": "/_vsc/modules/${module}/v/${{version}}" },
+            { "key": "path", "url": "/_vsc/modules/${module}/v/${{version}}/p/${path}" }
+          ]
+        }
+      ]
+    }"#;
+    let config_specifier =
+      Url::parse(&format!("{origin}{CONFIG_PATH}")).unwrap();
+    // Cache the config with a `cache-control` header that makes it immediately
+    // stale, forcing `RespectHeaders` to revalidate (which fails because the
+    // origin is unreachable).
+    let mut headers = HashMap::new();
+    headers.insert("content-type".to_string(), "application/json".to_string());
+    headers.insert("cache-control".to_string(), "max-age=0".to_string());
+    module_registry
+      .http_cache
+      .set(&config_specifier, headers, config.as_bytes())
+      .unwrap();
+
+    module_registry.enable(origin).await;
+
+    // The cached configuration should have been used despite the failed fetch.
+    assert!(module_registry.origins.contains_key(origin));
   }
 }

@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::io;
 use std::sync::Arc;
 
@@ -18,8 +19,7 @@ use super::draw_thread::DrawThread;
 
 /// Gets the console size.
 pub fn console_size() -> Option<ConsoleSize> {
-  let stderr = &deno_runtime::deno_io::STDERR_HANDLE;
-  deno_runtime::ops::tty::console_size(stderr).ok()
+  deno_runtime::ops::tty::console_size_of_stderr().ok()
 }
 
 pub fn new_console_static_text() -> ConsoleStaticText {
@@ -33,13 +33,126 @@ pub fn new_console_static_text() -> ConsoleStaticText {
   })
 }
 
+/// Strips destructive ANSI escape sequences from user output while preserving
+/// SGR (color/style) sequences. Returns `Cow::Borrowed` when no filtering needed.
+pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
+  if !input
+    .iter()
+    .any(|&b| b == 0x1b || b == 0x07 || b == 0x08 || b == b'\r')
+  {
+    return Cow::Borrowed(input);
+  }
+
+  let mut out = Vec::with_capacity(input.len());
+  let mut i = 0;
+
+  while i < input.len() {
+    match input[i] {
+      0x07 | 0x08 => i += 1,
+      // Strip standalone \r (line-overwrite), keep \r\n
+      b'\r' if i + 1 < input.len() && input[i + 1] == b'\n' => {
+        out.extend_from_slice(b"\r\n");
+        i += 2;
+      }
+      b'\r' => i += 1,
+      0x1b if i + 1 >= input.len() => i += 1,
+      0x1b => {
+        match input[i + 1] {
+          b'[' => {
+            let seq_end = skip_csi(&input[i..]);
+            // Keep SGR sequences (final byte 'm', no private marker '?'/'>'/'<')
+            let final_byte = input.get(i + seq_end - 1);
+            let has_private = input
+              .get(i + 2)
+              .is_some_and(|&b| matches!(b, b'?' | b'>' | b'<'));
+            if final_byte == Some(&b'm') && !has_private {
+              out.extend_from_slice(&input[i..i + seq_end]);
+            }
+            i += seq_end;
+          }
+          // OSC/DCS/PM/APC: string sequences terminated by BEL/ST
+          b']' | b'P' | b'^' | b'_' => i += skip_str_seq(&input[i..]),
+          // Two-byte ESC sequences (Fe/Fp/Fs)
+          0x30..=0x7E => i += 2,
+          // nF: ESC + intermediate bytes (0x20..=0x2F) + final byte
+          0x20..=0x2F => {
+            i += 2;
+            while i < input.len() && (0x20..=0x2F).contains(&input[i]) {
+              i += 1;
+            }
+            if i < input.len() && (0x30..=0x7E).contains(&input[i]) {
+              i += 1;
+            }
+          }
+          _ => i += 1,
+        }
+      }
+      b => {
+        out.push(b);
+        i += 1;
+      }
+    }
+  }
+
+  Cow::Owned(out)
+}
+
+/// Returns the length of a CSI sequence (`ESC [` params final-byte).
+fn skip_csi(data: &[u8]) -> usize {
+  let mut j = 2;
+  if j < data.len() && matches!(data[j], b'?' | b'>' | b'<') {
+    j += 1;
+  }
+  while j < data.len() && (0x30..=0x3F).contains(&data[j]) {
+    j += 1;
+  }
+  while j < data.len() && (0x20..=0x2F).contains(&data[j]) {
+    j += 1;
+  }
+  if j < data.len() && (0x40..=0x7E).contains(&data[j]) {
+    j += 1;
+  }
+  j
+}
+
+/// Skips an OSC/DCS/PM/APC string sequence terminated by BEL, ST (ESC \), or 0x9c.
+fn skip_str_seq(data: &[u8]) -> usize {
+  let mut j = 2;
+  while j < data.len() {
+    match data[j] {
+      0x07 | 0x9c => return j + 1,
+      0x1b if data.get(j + 1) == Some(&b'\\') => return j + 2,
+      _ => j += 1,
+    }
+  }
+  j
+}
+
 pub struct RawMode {
   needs_disable: bool,
+  #[cfg(windows)]
+  original_mode: Option<u32>,
 }
 
 impl RawMode {
   pub fn enable() -> io::Result<Self> {
     terminal::enable_raw_mode()?;
+
+    #[cfg(windows)]
+    {
+      // Clear ENABLE_VIRTUAL_TERMINAL_INPUT so that arrow keys and
+      // special keys are delivered as VK_* key events via
+      // ReadConsoleInput, rather than as VT escape sequences.
+      // Windows Terminal enables this flag by default, which causes
+      // crossterm to miss arrow keys, Enter, and Ctrl+C.
+      let original_mode = windows_vt_input::clear_vt_input_flag();
+      Ok(Self {
+        needs_disable: true,
+        original_mode,
+      })
+    }
+
+    #[cfg(not(windows))]
     Ok(Self {
       needs_disable: true,
     })
@@ -47,6 +160,8 @@ impl RawMode {
 
   pub fn disable(mut self) -> io::Result<()> {
     self.needs_disable = false;
+    #[cfg(windows)]
+    windows_vt_input::restore_mode(self.original_mode);
     terminal::disable_raw_mode()
   }
 }
@@ -54,7 +169,172 @@ impl RawMode {
 impl Drop for RawMode {
   fn drop(&mut self) {
     if self.needs_disable {
+      #[cfg(windows)]
+      windows_vt_input::restore_mode(self.original_mode);
       let _ = terminal::disable_raw_mode();
+    }
+  }
+}
+
+#[cfg(windows)]
+mod windows_vt_input {
+  use windows_sys::Win32::System::Console::GetConsoleMode;
+  use windows_sys::Win32::System::Console::GetStdHandle;
+  use windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
+  use windows_sys::Win32::System::Console::SetConsoleMode;
+
+  const ENABLE_VIRTUAL_TERMINAL_INPUT: u32 = 0x0200;
+
+  /// Clear ENABLE_VIRTUAL_TERMINAL_INPUT on stdin and return the
+  /// original mode so it can be restored later.
+  pub fn clear_vt_input_flag() -> Option<u32> {
+    // SAFETY: GetStdHandle/GetConsoleMode/SetConsoleMode are safe
+    // Windows API calls with valid handle constants.
+    unsafe {
+      let handle = GetStdHandle(STD_INPUT_HANDLE);
+      if handle.is_null() {
+        return None;
+      }
+      let mut mode: u32 = 0;
+      if GetConsoleMode(handle, &mut mode) == 0 {
+        return None;
+      }
+      if mode & ENABLE_VIRTUAL_TERMINAL_INPUT != 0 {
+        SetConsoleMode(handle, mode & !ENABLE_VIRTUAL_TERMINAL_INPUT);
+        Some(mode)
+      } else {
+        None // flag wasn't set, nothing to restore
+      }
+    }
+  }
+
+  pub fn restore_mode(original_mode: Option<u32>) {
+    if let Some(mode) = original_mode {
+      // SAFETY: restoring previously saved console mode.
+      unsafe {
+        let handle = GetStdHandle(STD_INPUT_HANDLE);
+        if !handle.is_null() {
+          SetConsoleMode(handle, mode);
+        }
+      }
+    }
+  }
+}
+
+/// A snapshot of the terminal mode that can be restored later.
+///
+/// This is used by `deno task` so that a child process (for example a dev
+/// server like `vite`) that switches the terminal into raw mode and is then
+/// terminated (e.g. via Ctrl+C) does not leave the user's terminal in a broken
+/// state with input echo and line editing disabled.
+///
+/// On non-Windows platforms this is a no-op: there the child process belongs to
+/// the same process group and the controlling terminal's line discipline is
+/// restored by the shell, so there's nothing for `deno` to do.
+#[derive(Clone, Copy, Default)]
+pub struct SavedTerminalMode {
+  #[cfg(windows)]
+  stdin_mode: Option<u32>,
+  #[cfg(windows)]
+  stdout_mode: Option<u32>,
+}
+
+impl SavedTerminalMode {
+  /// Captures the current terminal mode so it can be restored later.
+  pub fn capture() -> Self {
+    #[cfg(windows)]
+    {
+      Self {
+        stdin_mode: windows_console_mode::get(
+          windows_sys::Win32::System::Console::STD_INPUT_HANDLE,
+        ),
+        stdout_mode: windows_console_mode::get(
+          windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE,
+        ),
+      }
+    }
+    #[cfg(not(windows))]
+    {
+      Self {}
+    }
+  }
+
+  /// Restores the captured terminal mode. Safe to call multiple times.
+  pub fn restore(&self) {
+    #[cfg(windows)]
+    {
+      windows_console_mode::set(
+        windows_sys::Win32::System::Console::STD_INPUT_HANDLE,
+        self.stdin_mode,
+      );
+      windows_console_mode::set(
+        windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE,
+        self.stdout_mode,
+      );
+    }
+  }
+}
+
+/// Captures the terminal mode on creation and restores it on drop, acting as a
+/// backstop so the terminal is always returned to its original state once a
+/// task and all of its children have finished. See [`SavedTerminalMode`].
+pub struct TerminalModeGuard(SavedTerminalMode);
+
+impl TerminalModeGuard {
+  pub fn acquire() -> Self {
+    Self(SavedTerminalMode::capture())
+  }
+
+  /// Returns a copy of the captured mode so it can also be restored eagerly
+  /// (for example as soon as Ctrl+C is received).
+  pub fn saved(&self) -> SavedTerminalMode {
+    self.0
+  }
+}
+
+#[cfg(windows)]
+impl Drop for TerminalModeGuard {
+  fn drop(&mut self) {
+    self.0.restore();
+  }
+}
+
+#[cfg(windows)]
+mod windows_console_mode {
+  use windows_sys::Win32::System::Console::GetConsoleMode;
+  use windows_sys::Win32::System::Console::GetStdHandle;
+  use windows_sys::Win32::System::Console::STD_HANDLE;
+  use windows_sys::Win32::System::Console::SetConsoleMode;
+
+  /// Reads the console mode for the given std handle. Returns `None` when the
+  /// handle is not a console (e.g. redirected to a pipe or file), in which case
+  /// there is no mode to restore.
+  pub fn get(std_handle: STD_HANDLE) -> Option<u32> {
+    // SAFETY: GetStdHandle/GetConsoleMode are safe Windows API calls with
+    // valid handle constants.
+    unsafe {
+      let handle = GetStdHandle(std_handle);
+      if handle.is_null() {
+        return None;
+      }
+      let mut mode: u32 = 0;
+      if GetConsoleMode(handle, &mut mode) == 0 {
+        return None;
+      }
+      Some(mode)
+    }
+  }
+
+  pub fn set(std_handle: STD_HANDLE, mode: Option<u32>) {
+    let Some(mode) = mode else {
+      return;
+    };
+    // SAFETY: restoring a previously saved console mode.
+    unsafe {
+      let handle = GetStdHandle(std_handle);
+      if !handle.is_null() {
+        SetConsoleMode(handle, mode);
+      }
     }
   }
 }
@@ -136,7 +416,7 @@ pub fn confirm(options: ConfirmOptions) -> Option<bool> {
   let mut selected = default;
   loop {
     let event = crossterm::event::read().ok()?;
-    #[allow(clippy::single_match)]
+    #[allow(clippy::single_match, reason = "more extendable")]
     match event {
       crossterm::event::Event::Key(KeyEvent {
         kind: KeyEventKind::Press,
@@ -169,4 +449,180 @@ pub fn confirm(options: ConfirmOptions) -> Option<bool> {
   }
 
   None
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn terminal_mode_guard_acquire_and_drop() {
+    // Should not panic whether or not a console is attached (in CI stdin is
+    // typically redirected, so the captured mode is `None` and restoring is a
+    // no-op). On a real console it captures and restores the mode. The guard
+    // is restored when it goes out of scope at the end of this block, and the
+    // captured snapshot can be restored eagerly any number of times.
+    {
+      let guard = TerminalModeGuard::acquire();
+      let saved = guard.saved();
+      saved.restore();
+      saved.restore();
+    }
+    SavedTerminalMode::capture().restore();
+  }
+
+  #[test]
+  fn filter_destructive_ansi_plain_text() {
+    let input = b"hello world";
+    let result = filter_destructive_ansi(input);
+    assert!(matches!(result, Cow::Borrowed(_)));
+    assert_eq!(&*result, b"hello world");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_preserves_sgr_color() {
+    let input = b"\x1b[31mred\x1b[0m";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"\x1b[31mred\x1b[0m");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_preserves_complex_sgr() {
+    let input = b"\x1b[1;38;2;255;0;0mbold red\x1b[0m";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"\x1b[1;38;2;255;0;0mbold red\x1b[0m");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_clear_screen() {
+    let input = b"before\x1b[2Jafter";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"beforeafter");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_cursor_up() {
+    let input = b"line\x1b[2Aup";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"lineup");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_erase_line() {
+    let input = b"text\x1b[Kmore";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"textmore");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_cursor_position() {
+    let input = b"start\x1b[10;20Hend";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"startend");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_terminal_reset() {
+    let input = b"before\x1bcafter";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"beforeafter");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_private_mode() {
+    // Hide cursor
+    let input = b"text\x1b[?25lmore";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"textmore");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_osc_title() {
+    let input = b"before\x1b]0;evil title\x07after";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"beforeafter");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_osc_with_st() {
+    let input = b"before\x1b]0;title\x1b\\after";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"beforeafter");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_mixed_sequences() {
+    // SGR red + clear screen + text + SGR reset
+    let input = b"\x1b[31mred\x1b[2Jtext\x1b[0m";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"\x1b[31mredtext\x1b[0m");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_bel_and_bs_stripped() {
+    let input = b"hello\x07world\x08!";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"helloworld!");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_preserves_whitespace() {
+    let input = b"line1\nline2\ttab";
+    let result = filter_destructive_ansi(input);
+    assert!(matches!(result, Cow::Borrowed(_)));
+    assert_eq!(&*result, b"line1\nline2\ttab");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_standalone_cr() {
+    // Standalone \r (used by progress bars to overwrite lines) is stripped
+    let input = b"progress\roverwrite";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"progressoverwrite");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_preserves_crlf() {
+    // \r\n line endings are preserved
+    let input = b"line1\r\nline2\r\n";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"line1\r\nline2\r\n");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_alt_screen() {
+    // Alt screen on and off
+    let input = b"\x1b[?1049hcontent\x1b[?1049l";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"content");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_dcs_sequence() {
+    let input = b"before\x1bPsome data\x1b\\after";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"beforeafter");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_scroll_up() {
+    let input = b"text\x1b[3Smore";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"textmore");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_trailing_esc() {
+    let input = b"text\x1b";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"text");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_sgr_reset_bare() {
+    // Bare ESC[m is equivalent to ESC[0m
+    let input = b"\x1b[mtext";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"\x1b[mtext");
+  }
 }

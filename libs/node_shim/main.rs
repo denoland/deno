@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
+#![allow(clippy::print_stdout, reason = "CLI tool")]
+#![allow(clippy::print_stderr, reason = "CLI tool")]
+#![allow(clippy::disallowed_methods, reason = "CLI tool")]
 
 use std::env;
 use std::process::Stdio;
@@ -73,7 +74,11 @@ fn main() {
   // Execute deno with the translated arguments
   #[cfg(unix)]
   {
-    let err = exec::execvp("deno", &deno_args);
+    use std::os::unix::process::CommandExt;
+    let err = process::Command::new("deno")
+      .arg0(&deno_args[0])
+      .args(&deno_args[1..])
+      .exec();
     eprintln!("Failed to execute deno: {}", err);
     process::exit(1);
   }
@@ -117,49 +122,4 @@ fn resolve_entrypoint(entrypoint: &str) -> String {
     .expect("Failed to parse deno resolve output")
     .trim()
     .to_string()
-}
-
-#[cfg(test)]
-mod tests {
-  use node_shim::parse_args;
-
-  use super::*;
-
-  /// Macro to create a Vec<String> from string literals
-  macro_rules! svec {
-        ($($x:expr),* $(,)?) => {
-            vec![$($x.to_string()),*]
-        };
-    }
-
-  /// Test that takes a `input: ["node"]` and `expected: ["deno", "repl", "-A", "--"] `
-  macro_rules! test {
-        ($name:ident, $input:tt , $expected:tt) => {
-            #[test]
-            fn $name() {
-                let parsed_args = parse_args(svec! $input).unwrap();
-                let options = TranslateOptions::for_node_cli();
-                let result = translate_to_deno_args(parsed_args, &options);
-                assert_eq!(result.deno_args, svec! $expected);
-            }
-        };
-    }
-
-  test!(test_repl_no_args, [], ["node", "repl", "-A", "--"]);
-
-  test!(
-    test_run_script,
-    ["foo.js"],
-    [
-      "node",
-      "run",
-      "-A",
-      "--unstable-node-globals",
-      "--unstable-bare-node-builtins",
-      "--unstable-detect-cjs",
-      "--node-modules-dir=manual",
-      "--no-config",
-      "foo.js"
-    ]
-  );
 }

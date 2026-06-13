@@ -1,8 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::io::IsTerminal;
+
 use super::common;
 use super::fmt::to_relative_path_or_remote_url;
 use super::*;
+use crate::util::console::filter_destructive_ansi;
 
 pub struct PrettyTestReporter {
   parallel: bool,
@@ -49,10 +52,6 @@ impl PrettyTestReporter {
       writer: Box::new(std::io::stdout()),
       failure_format_options,
     }
-  }
-
-  pub fn with_writer(self, writer: Box<dyn std::io::Write>) -> Self {
-    Self { writer, ..self }
   }
 
   fn force_report_wait(&mut self, description: &TestDescription) {
@@ -104,6 +103,14 @@ impl PrettyTestReporter {
     self.write_output_end();
     if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_step_wait(description);
+    } else if std::io::stdout().is_terminal() {
+      write!(
+        &mut self.writer,
+        "\r{}{} ...",
+        "  ".repeat(description.level),
+        description.name
+      )
+      .ok();
     }
 
     if !self.parallel {
@@ -241,7 +248,8 @@ impl TestReporter for PrettyTestReporter {
 
     // output everything to stdout in order to prevent
     // stdout and stderr racing
-    std::io::stdout().write_all(output).ok();
+    let filtered = filter_destructive_ansi(output);
+    std::io::stdout().write_all(&filtered).ok();
   }
 
   fn report_result(
@@ -276,6 +284,26 @@ impl TestReporter for PrettyTestReporter {
     self.write_output_end();
     if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_wait(description);
+    } else if std::io::stdout().is_terminal() {
+      // We believe the cursor is right after "test name ...", but external
+      // output (e.g. from native addons writing directly to fd 1) may have
+      // moved it. Use \r to return to column 0 and re-write the test name
+      // so the result line is always intact. For normal tests this harmlessly
+      // overwrites the same bytes. Only do this on a real terminal — on pipes
+      // \r is a literal byte that would produce doubled output.
+      write!(&mut self.writer, "\r").ok();
+      if self.parallel {
+        write!(
+          &mut self.writer,
+          "{}",
+          colors::gray(format!(
+            "{} => ",
+            to_relative_path_or_remote_url(&self.cwd, &description.origin)
+          ))
+        )
+        .ok();
+      }
+      write!(&mut self.writer, "{} ...", description.name).ok();
     }
 
     let status = match result {
@@ -425,6 +453,34 @@ impl TestReporter for PrettyTestReporter {
       tests,
       test_steps,
     );
+    self.in_new_line = true;
+  }
+
+  fn report_exit(
+    &mut self,
+    exit_code: i32,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    self.write_output_end();
+    common::report_exit(
+      &mut self.writer,
+      &self.cwd,
+      exit_code,
+      tests_pending,
+      tests,
+      test_steps,
+    );
+    self.in_new_line = true;
+  }
+
+  fn report_isolate_exit(&mut self, origin: &str, exit_code: i32) {
+    self.write_output_end();
+    common::report_isolate_exit(&mut self.writer, &self.cwd, origin, exit_code);
+    if exit_code != 0 {
+      self.summary.failed += 1;
+    }
     self.in_new_line = true;
   }
 

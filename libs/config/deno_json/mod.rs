@@ -11,10 +11,11 @@ use deno_error::JsError;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_parent;
 use deno_path_util::url_to_file_path;
+use deno_semver::VersionReq;
 use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageReq;
 use import_map::ImportMapWithDiagnostics;
 use indexmap::IndexMap;
-use jsonc_parser::ParseResult;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
@@ -31,8 +32,8 @@ use url::Url;
 use crate::UrlToFilePathError;
 use crate::glob::FilePatterns;
 use crate::glob::PathOrPatternSet;
-use crate::import_map::imports_values;
-use crate::import_map::scope_values;
+use crate::import_map::imports_entries;
+use crate::import_map::scope_entries;
 use crate::import_map::value_to_dep_req;
 use crate::util::is_skippable_io_error;
 
@@ -340,6 +341,15 @@ pub enum TrailingCommas {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub enum JsonTrailingCommaKind {
+  Always,
+  Jsonc,
+  Maintain,
+  Never,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum OperatorPosition {
   Maintain,
   SameLine,
@@ -369,6 +379,16 @@ pub enum SeparatorKind {
   Comma,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub enum VueComponentCase {
+  Ignore,
+  #[serde(alias = "pascalCase", alias = "PascalCase")]
+  PascalCase,
+  #[serde(alias = "kebabCase")]
+  KebabCase,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
@@ -385,6 +405,7 @@ pub struct FmtOptionsConfig {
   pub single_body_position: Option<SingleBodyPosition>,
   pub next_control_flow_position: Option<NextControlFlowPosition>,
   pub trailing_commas: Option<TrailingCommas>,
+  pub json_trailing_commas: Option<JsonTrailingCommaKind>,
   pub operator_position: Option<OperatorPosition>,
   pub jsx_bracket_position: Option<BracketPosition>,
   pub jsx_force_new_lines_surrounding_content: Option<bool>,
@@ -392,6 +413,8 @@ pub struct FmtOptionsConfig {
   pub type_literal_separator_kind: Option<SeparatorKind>,
   pub space_around: Option<bool>,
   pub space_surrounding_properties: Option<bool>,
+  pub vue_component_case: Option<VueComponentCase>,
+  pub angular_next_control_flow_same_line: Option<bool>,
 }
 
 impl FmtOptionsConfig {
@@ -409,6 +432,7 @@ impl FmtOptionsConfig {
       && self.single_body_position.is_none()
       && self.next_control_flow_position.is_none()
       && self.trailing_commas.is_none()
+      && self.json_trailing_commas.is_none()
       && self.operator_position.is_none()
       && self.jsx_bracket_position.is_none()
       && self.jsx_force_new_lines_surrounding_content.is_none()
@@ -416,6 +440,8 @@ impl FmtOptionsConfig {
       && self.type_literal_separator_kind.is_none()
       && self.space_around.is_none()
       && self.space_surrounding_properties.is_none()
+      && self.vue_component_case.is_none()
+      && self.angular_next_control_flow_same_line.is_none()
   }
 }
 
@@ -478,6 +504,8 @@ struct SerializedFmtConfig {
   pub single_body_position: Option<SingleBodyPosition>,
   pub next_control_flow_position: Option<NextControlFlowPosition>,
   pub trailing_commas: Option<TrailingCommas>,
+  #[serde(rename = "json.trailingCommas")]
+  pub json_trailing_commas: Option<JsonTrailingCommaKind>,
   pub operator_position: Option<OperatorPosition>,
   #[serde(rename = "jsx.bracketPosition")]
   pub jsx_bracket_position: Option<BracketPosition>,
@@ -489,6 +517,8 @@ struct SerializedFmtConfig {
   pub type_literal_separator_kind: Option<SeparatorKind>,
   pub space_around: Option<bool>,
   pub space_surrounding_properties: Option<bool>,
+  pub vue_component_case: Option<VueComponentCase>,
+  pub angular_next_control_flow_same_line: Option<bool>,
   #[serde(rename = "options")]
   pub deprecated_options: FmtOptionsConfig,
   pub include: Option<Vec<String>>,
@@ -518,6 +548,7 @@ impl SerializedFmtConfig {
       single_body_position: self.single_body_position,
       next_control_flow_position: self.next_control_flow_position,
       trailing_commas: self.trailing_commas,
+      json_trailing_commas: self.json_trailing_commas,
       operator_position: self.operator_position,
       jsx_bracket_position: self.jsx_bracket_position,
       jsx_force_new_lines_surrounding_content: self
@@ -526,6 +557,9 @@ impl SerializedFmtConfig {
       type_literal_separator_kind: self.type_literal_separator_kind,
       space_around: self.space_around,
       space_surrounding_properties: self.space_surrounding_properties,
+      vue_component_case: self.vue_component_case,
+      angular_next_control_flow_same_line: self
+        .angular_next_control_flow_same_line,
     };
     if !self.deprecated_files.is_null() {
       log::warn!(
@@ -591,6 +625,10 @@ struct SerializedTestConfig {
   #[serde(rename = "files")]
   pub deprecated_files: serde_json::Value,
   pub permissions: Option<PermissionNameOrObject>,
+  #[serde(rename = "sanitizeOps")]
+  pub sanitize_ops: Option<bool>,
+  #[serde(rename = "sanitizeResources")]
+  pub sanitize_resources: Option<bool>,
 }
 
 impl SerializedTestConfig {
@@ -620,6 +658,8 @@ impl SerializedTestConfig {
         }
         None => None,
       },
+      sanitize_ops: self.sanitize_ops,
+      sanitize_resources: self.sanitize_resources,
     })
   }
 }
@@ -628,6 +668,8 @@ impl SerializedTestConfig {
 pub struct TestConfig {
   pub files: FilePatterns,
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
+  pub sanitize_ops: Option<bool>,
+  pub sanitize_resources: Option<bool>,
 }
 
 impl TestConfig {
@@ -635,6 +677,8 @@ impl TestConfig {
     Self {
       files: FilePatterns::new_with_base(base),
       permissions: None,
+      sanitize_ops: None,
+      sanitize_resources: None,
     }
   }
 }
@@ -736,9 +780,13 @@ impl BenchConfig {
 }
 
 /// `compile` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedCompileConfig {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
   pub permissions: Option<PermissionNameOrObject>,
 }
 
@@ -748,7 +796,19 @@ impl SerializedCompileConfig {
     config_file_specifier: &Url,
     permissions: &PermissionsConfig,
   ) -> Result<CompileConfig, IntoResolvedError> {
+    let config_dir = url_parent(config_file_specifier);
+    let config_dir_path = url_to_file_path(&config_dir)?;
     Ok(CompileConfig {
+      include: self
+        .include
+        .into_iter()
+        .map(|p| config_dir_path.join(&p).to_string_lossy().to_string())
+        .collect(),
+      exclude: self
+        .exclude
+        .into_iter()
+        .map(|p| config_dir_path.join(&p).to_string_lossy().to_string())
+        .collect(),
       permissions: match self.permissions {
         Some(PermissionNameOrObject::Name(name)) => {
           Some(Box::new(permissions.get(&name)?.clone()))
@@ -767,6 +827,8 @@ impl SerializedCompileConfig {
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct CompileConfig {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
 
@@ -915,19 +977,11 @@ pub enum ConfigFileReadErrorKind {
     source: std::io::Error,
   },
   #[class(type)]
-  #[error("Unable to parse config file JSON {specifier}.")]
-  Parse {
-    specifier: Url,
-    #[source]
-    source: Box<jsonc_parser::errors::ParseError>,
-  },
-  #[class(inherit)]
   #[error("Failed deserializing config file '{specifier}'.")]
   Deserialize {
     specifier: Url,
     #[source]
-    #[inherit]
-    source: serde_json::Error,
+    source: Box<jsonc_parser::errors::ParseError>,
   },
   #[class(type)]
   #[error("Config file JSON should be an object '{specifier}'.")]
@@ -938,6 +992,14 @@ pub enum ConfigFileReadErrorKind {
 #[class(type)]
 #[error("Unsupported \"nodeModulesDir\" value.")]
 pub struct NodeModulesDirParseError {
+  #[source]
+  pub source: serde_json::Error,
+}
+
+#[derive(Debug, Error, JsError)]
+#[class(type)]
+#[error("Unsupported \"nodeModulesLinker\" value.")]
+pub struct NodeModulesLinkerParseError {
   #[source]
   pub source: serde_json::Error,
 }
@@ -961,7 +1023,8 @@ impl NewestDependencyDate {
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct RawMinimumDependencyAgeConfig {
-  pub age: serde_json::Value,
+  #[serde(default)]
+  pub age: Option<serde_json::Value>,
   #[serde(default)]
   pub exclude: Vec<String>,
 }
@@ -1066,14 +1129,100 @@ impl NodeModulesDirMode {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum NodeModulesLinkerMode {
+  #[default]
+  Isolated,
+  Hoisted,
+}
+
+impl<'de> Deserialize<'de> for NodeModulesLinkerMode {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct NodeModulesLinkerModeVisitor;
+
+    impl Visitor<'_> for NodeModulesLinkerModeVisitor {
+      type Value = NodeModulesLinkerMode;
+
+      fn expecting(
+        &self,
+        formatter: &mut std::fmt::Formatter,
+      ) -> std::fmt::Result {
+        formatter.write_str(r#""isolated" or "hoisted""#)
+      }
+
+      fn visit_str<E>(self, value: &str) -> Result<NodeModulesLinkerMode, E>
+      where
+        E: de::Error,
+      {
+        match value {
+          "isolated" => Ok(NodeModulesLinkerMode::Isolated),
+          "hoisted" => Ok(NodeModulesLinkerMode::Hoisted),
+          _ => Err(de::Error::invalid_value(Unexpected::Str(value), &self)),
+        }
+      }
+    }
+
+    deserializer.deserialize_str(NodeModulesLinkerModeVisitor)
+  }
+}
+
+impl std::fmt::Display for NodeModulesLinkerMode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl NodeModulesLinkerMode {
+  pub fn as_str(self) -> &'static str {
+    match self {
+      NodeModulesLinkerMode::Isolated => "isolated",
+      NodeModulesLinkerMode::Hoisted => "hoisted",
+    }
+  }
+}
+
+/// `deploy` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
+struct SerializedDeployConfig {
+  pub org: String,
+  pub app: Option<String>,
+  #[serde(default)]
+  pub include: Option<Vec<String>>,
+  #[serde(default)]
+  pub exclude: Vec<String>,
+}
+
+impl SerializedDeployConfig {
+  pub fn into_resolved(
+    self,
+    config_file_specifier: &Url,
+  ) -> Result<DeployConfig, IntoResolvedError> {
+    let files = SerializedFilesConfig {
+      include: self.include,
+      exclude: self.exclude,
+    };
+    Ok(DeployConfig {
+      org: self.org,
+      app: self.app,
+      files: files.into_resolved(config_file_specifier)?,
+    })
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct DeployConfig {
   pub org: String,
   pub app: Option<String>,
+  pub files: FilePatterns,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
@@ -1090,12 +1239,16 @@ pub struct ConfigFileJson {
   pub exclude: Option<Value>,
   pub minimum_dependency_age: Option<Value>,
   pub node_modules_dir: Option<Value>,
+  pub node_modules_linker: Option<Value>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,
   pub permissions: Option<Value>,
   pub publish: Option<Value>,
   pub deploy: Option<Value>,
   pub allow_scripts: Option<Value>,
+
+  pub catalog: Option<IndexMap<String, String>>,
+  pub catalogs: Option<IndexMap<String, IndexMap<String, String>>>,
 
   pub name: Option<String>,
   pub version: Option<String>,
@@ -1287,7 +1440,7 @@ pub enum ToLockConfigError {
   UrlToFilePath(#[from] UrlToFilePathError),
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type ConfigFileRc = deno_maybe_sync::MaybeArc<ConfigFile>;
 
 #[derive(Clone, Debug)]
@@ -1392,43 +1545,21 @@ impl ConfigFile {
   }
 
   pub fn new(text: &str, specifier: Url) -> Result<Self, ConfigFileReadError> {
-    let jsonc = match jsonc_parser::parse_to_ast(
-      text,
-      &Default::default(),
-      &Default::default(),
-    ) {
-      Ok(ParseResult {
-        value: Some(value @ jsonc_parser::ast::Value::Object(_)),
-        ..
-      }) => Value::from(value),
-      Ok(ParseResult { value: None, .. }) => {
-        json!({})
-      }
-      Err(e) => {
-        return Err(
-          ConfigFileReadErrorKind::Parse {
-            specifier,
-            source: Box::new(e),
+    let json: Option<ConfigFileJson> =
+      jsonc_parser::parse_to_serde_value(text, &Default::default()).map_err(
+        |err| {
+          ConfigFileReadErrorKind::Deserialize {
+            specifier: specifier.clone(),
+            source: Box::new(err),
           }
-          .into_box(),
-        );
-      }
-      _ => {
-        return Err(
-          ConfigFileReadErrorKind::NotObject { specifier }.into_box(),
-        );
-      }
-    };
-    let json: ConfigFileJson =
-      serde_json::from_value(jsonc).map_err(|err| {
-        ConfigFileReadErrorKind::Deserialize {
-          specifier: specifier.clone(),
-          source: err,
-        }
-        .into_box()
-      })?;
+          .into_box()
+        },
+      )?;
 
-    Ok(Self { specifier, json })
+    Ok(Self {
+      specifier,
+      json: json.unwrap_or_default(),
+    })
   }
 
   pub fn dir_path(&self) -> PathBuf {
@@ -1537,6 +1668,16 @@ impl ConfigFile {
       value.insert("scopes".to_string(), scopes.clone());
     }
     import_map::ext::expand_import_map_value(Value::Object(value))
+  }
+
+  pub fn catalog(&self) -> Option<&IndexMap<String, String>> {
+    self.json.catalog.as_ref()
+  }
+
+  pub fn catalogs(
+    &self,
+  ) -> Option<&IndexMap<String, IndexMap<String, String>>> {
+    self.json.catalogs.as_ref()
   }
 
   pub fn is_an_import_map(&self) -> bool {
@@ -1812,7 +1953,7 @@ impl ConfigFile {
             source: error,
           })
       }
-      None => Ok(CompileConfig { permissions: None }),
+      None => Ok(CompileConfig::default()),
     }
   }
 
@@ -1899,6 +2040,8 @@ impl ConfigFile {
       None => Ok(TestConfig {
         files: self.to_exclude_files_config()?,
         permissions: None,
+        sanitize_ops: None,
+        sanitize_resources: None,
       }),
     }
   }
@@ -2117,14 +2260,26 @@ impl ConfigFile {
   pub fn to_deploy_config(
     &self,
   ) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
-    match &self.json.deploy {
+    match self.json.deploy.clone() {
       Some(config) => {
-        Ok(Some(serde_json::from_value(config.clone()).map_err(
-          |error| ToInvalidConfigError::Parse {
+        let mut exclude_patterns = self.resolve_exclude_patterns()?;
+        let mut serialized: SerializedDeployConfig =
+          serde_json::from_value(config).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "deploy",
+              source: error,
+            }
+          })?;
+        // top level excludes at the start because they're lower priority
+        exclude_patterns.extend(std::mem::take(&mut serialized.exclude));
+        serialized.exclude = exclude_patterns;
+        serialized
+          .into_resolved(&self.specifier)
+          .map(Some)
+          .map_err(|error| ToInvalidConfigError::InvalidConfig {
             config: "deploy",
             source: error,
-          },
-        )?))
+          })
       }
       None => Ok(None),
     }
@@ -2179,7 +2334,10 @@ impl ConfigFile {
             serde_json::from_value(v.clone())
               .map_err(MinimumDependencyAgeParseError::UnsupportedObject)?;
           Ok(MinimumDependencyAgeConfig {
-            age: parse_date(&obj.age, sys)?,
+            age: match &obj.age {
+              Some(age) => parse_date(age, sys)?,
+              None => None,
+            },
             exclude: obj.exclude,
           })
         }
@@ -2257,10 +2415,34 @@ impl ConfigFile {
     }
   }
 
-  pub fn dependencies(&self) -> HashSet<JsrDepPackageReq> {
-    let mut set = imports_values(self.json.imports.as_ref())
-      .chain(scope_values(self.json.scopes.as_ref()))
-      .filter_map(value_to_dep_req)
+  pub fn dependencies(
+    &self,
+    catalogs: &IndexMap<String, IndexMap<String, String>>,
+  ) -> HashSet<JsrDepPackageReq> {
+    let entry_to_dep_req = |(key, value): (&str, &str)| {
+      if let Some(catalog_name) = value.strip_prefix("catalog:") {
+        // `catalog:`/`catalog:<name>` entries resolve to the version
+        // requirement defined in the workspace root's catalog
+        let catalog_name = if catalog_name.is_empty() {
+          "default"
+        } else {
+          catalog_name
+        };
+        let name = key.strip_suffix('/').unwrap_or(key);
+        let version_req_str =
+          catalogs.get(catalog_name).and_then(|c| c.get(name))?;
+        let version_req = VersionReq::parse_from_npm(version_req_str).ok()?;
+        Some(JsrDepPackageReq::npm(PackageReq {
+          name: name.into(),
+          version_req,
+        }))
+      } else {
+        value_to_dep_req(value)
+      }
+    };
+    let mut set = imports_entries(self.json.imports.as_ref())
+      .chain(scope_entries(self.json.scopes.as_ref()))
+      .filter_map(entry_to_dep_req)
       .collect::<HashSet<_>>();
 
     if let Some(serde_json::Value::Object(compiler_options)) =
@@ -2387,13 +2569,16 @@ mod tests {
         "singleBodyPosition": "nextLine",
         "nextControlFlowPosition": "sameLine",
         "trailingCommas": "never",
+        "json.trailingCommas": "maintain",
         "operatorPosition": "maintain",
         "jsx.bracketPosition": "maintain",
         "jsx.forceNewLinesSurroundingContent": true,
         "jsx.multiLineParens": "never",
         "typeLiteral.separatorKind": "semiColon",
         "spaceAround": true,
-        "spaceSurroundingProperties": true
+        "spaceSurroundingProperties": true,
+        "vueComponentCase": "pascal-case",
+        "angularNextControlFlowSameLine": false
       },
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
@@ -2460,6 +2645,7 @@ mod tests {
           single_body_position: Some(SingleBodyPosition::NextLine),
           next_control_flow_position: Some(NextControlFlowPosition::SameLine),
           trailing_commas: Some(TrailingCommas::Never),
+          json_trailing_commas: Some(JsonTrailingCommaKind::Maintain),
           operator_position: Some(OperatorPosition::Maintain),
           jsx_bracket_position: Some(BracketPosition::Maintain),
           jsx_force_new_lines_surrounding_content: Some(true),
@@ -2467,6 +2653,8 @@ mod tests {
           type_literal_separator_kind: Some(SeparatorKind::SemiColon),
           space_around: Some(true),
           space_surrounding_properties: Some(true),
+          vue_component_case: Some(VueComponentCase::PascalCase),
+          angular_next_control_flow_same_line: Some(false),
         },
       }
     );
@@ -2681,6 +2869,74 @@ mod tests {
     let config_specifier = Url::parse("file:///deno/tsconfig.json").unwrap();
     // Emit error: config file JSON "<config_path>" should be an object
     assert!(ConfigFile::new(config_text, config_specifier,).is_err());
+  }
+
+  #[test]
+  fn test_minimum_dependency_age_config() {
+    use chrono::TimeZone;
+
+    struct TestEnv;
+
+    impl sys_traits::SystemTimeNow for TestEnv {
+      fn sys_time_now(&self) -> std::time::SystemTime {
+        let datetime =
+          chrono::Utc.with_ymd_and_hms(2025, 6, 1, 0, 0, 0).unwrap();
+        std::time::SystemTime::from(datetime)
+      }
+    }
+
+    fn parse(json: &str) -> MinimumDependencyAgeConfig {
+      let specifier = Url::parse("file:///deno/deno.json").unwrap();
+      let config_file = ConfigFile::new(json, specifier).unwrap();
+      config_file
+        .to_minimum_dependency_age_config(&TestEnv)
+        .unwrap()
+    }
+
+    // Object with only "exclude" (no "age") should be accepted. The age
+    // can be supplied via the --minimum-dependency-age flag.
+    let config =
+      parse(r#"{ "minimumDependencyAge": { "exclude": ["npm:chalk"] } }"#);
+    assert!(config.age.is_none());
+    assert_eq!(config.exclude, vec!["npm:chalk".to_string()]);
+
+    // Empty object should also be accepted.
+    let config = parse(r#"{ "minimumDependencyAge": {} }"#);
+    assert!(config.age.is_none());
+    assert!(config.exclude.is_empty());
+
+    // Explicit null for "age" is also accepted.
+    let config =
+      parse(r#"{ "minimumDependencyAge": { "age": null, "exclude": [] } }"#);
+    assert!(config.age.is_none());
+    assert!(config.exclude.is_empty());
+
+    // Object with "age" still works.
+    let config = parse(
+      r#"{ "minimumDependencyAge": { "age": 120, "exclude": ["npm:chalk"] } }"#,
+    );
+    assert!(config.age.is_some());
+    assert_eq!(config.exclude, vec!["npm:chalk".to_string()]);
+
+    // Bare value still works.
+    let config = parse(r#"{ "minimumDependencyAge": 120 }"#);
+    assert!(config.age.is_some());
+    assert!(config.exclude.is_empty());
+
+    // Unknown field still errors.
+    let specifier = Url::parse("file:///deno/deno.json").unwrap();
+    let config_file = ConfigFile::new(
+      r#"{ "minimumDependencyAge": { "unknown": 1 } }"#,
+      specifier,
+    )
+    .unwrap();
+    let err = config_file
+      .to_minimum_dependency_age_config(&TestEnv)
+      .unwrap_err();
+    assert!(matches!(
+      err,
+      MinimumDependencyAgeParseError::UnsupportedObject(_)
+    ));
   }
 
   #[test]
@@ -3061,7 +3317,9 @@ mod tests {
       ) -> std::io::Result<Cow<'static, [u8]>> {
         assert_eq!(
           path,
-          root_url().to_file_path().unwrap().join("import_map.json")
+          deno_path_util::url_to_file_path(&root_url())
+            .unwrap()
+            .join("import_map.json")
         );
         Ok(Cow::Borrowed(
           r#"{ "imports": { "@std/test": "jsr:@std/test@0.2.0" } }"#.as_bytes(),
@@ -3155,12 +3413,12 @@ mod tests {
   #[test]
   fn resolve_import_map_url_parent() {
     let config_text = r#"{ "importMap": "../import_map.json" }"#;
-    let file_path = root_url()
-      .join("sub/deno.json")
-      .unwrap()
-      .to_file_path()
-      .unwrap();
-    let config_specifier = Url::from_file_path(&file_path).unwrap();
+    let file_path = deno_path_util::url_to_file_path(
+      &root_url().join("sub/deno.json").unwrap(),
+    )
+    .unwrap();
+    let config_specifier =
+      deno_path_util::url_from_file_path(&file_path).unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     assert_eq!(
       config_file.to_import_map_path().unwrap().unwrap(),
@@ -3176,7 +3434,7 @@ mod tests {
   #[test]
   fn lock_object() {
     fn root_joined(path: &str) -> PathBuf {
-      root_url().join(path).unwrap().to_file_path().unwrap()
+      deno_path_util::url_to_file_path(&root_url().join(path).unwrap()).unwrap()
     }
     let cases = [
       (

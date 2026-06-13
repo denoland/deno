@@ -8,7 +8,6 @@ use deno_runtime::*;
 
 fn compress_decls(out_dir: &Path) {
   let decls = [
-    "lib.deno_webgpu.d.ts",
     "lib.deno.ns.d.ts",
     "lib.deno.unstable.d.ts",
     "lib.deno.window.d.ts",
@@ -21,6 +20,7 @@ fn compress_decls(out_dir: &Path) {
     "lib.deno_fetch.d.ts",
     "lib.deno_websocket.d.ts",
     "lib.deno_webstorage.d.ts",
+    "lib.deno_webgpu.d.ts",
     "lib.deno_canvas.d.ts",
     "lib.deno_crypto.d.ts",
     "lib.deno_cache.d.ts",
@@ -92,6 +92,7 @@ fn compress_decls(out_dir: &Path) {
     "lib.es2022.intl.d.ts",
     "lib.es2022.object.d.ts",
     "lib.es2022.regexp.d.ts",
+    "lib.es2022.sharedmemory.d.ts",
     "lib.es2022.string.d.ts",
     "lib.es2023.array.d.ts",
     "lib.es2023.collection.d.ts",
@@ -107,20 +108,32 @@ fn compress_decls(out_dir: &Path) {
     "lib.es2024.regexp.d.ts",
     "lib.es2024.sharedmemory.d.ts",
     "lib.es2024.string.d.ts",
+    "lib.es2025.collection.d.ts",
+    "lib.es2025.d.ts",
+    "lib.es2025.float16.d.ts",
+    "lib.es2025.full.d.ts",
+    "lib.es2025.intl.d.ts",
+    "lib.es2025.iterator.d.ts",
+    "lib.es2025.promise.d.ts",
+    "lib.es2025.regexp.d.ts",
     "lib.es5.d.ts",
     "lib.es6.d.ts",
     "lib.esnext.array.d.ts",
     "lib.esnext.collection.d.ts",
     "lib.esnext.d.ts",
+    "lib.esnext.date.d.ts",
     "lib.esnext.decorators.d.ts",
     "lib.esnext.disposable.d.ts",
     "lib.esnext.error.d.ts",
-    "lib.esnext.float16.d.ts",
     "lib.esnext.full.d.ts",
     "lib.esnext.intl.d.ts",
-    "lib.esnext.iterator.d.ts",
+    "lib.esnext.object.d.ts",
     "lib.esnext.promise.d.ts",
+    "lib.esnext.regexp.d.ts",
     "lib.esnext.sharedmemory.d.ts",
+    "lib.esnext.string.d.ts",
+    "lib.esnext.temporal.d.ts",
+    "lib.esnext.typedarrays.d.ts",
     "lib.node.d.ts",
     "lib.scripthost.d.ts",
     "lib.webworker.asynciterable.d.ts",
@@ -135,6 +148,7 @@ fn compress_decls(out_dir: &Path) {
 }
 
 fn process_node_types(out_dir: &Path) {
+  #[allow(clippy::disallowed_methods, reason = "build code")]
   let root_dir = Path::new(".").canonicalize().unwrap();
   let dts_dir = root_dir.join("tsc").join("dts");
   let node_dir = dts_dir.join("node");
@@ -155,8 +169,6 @@ fn process_node_types(out_dir: &Path) {
     Ok(())
   }
 
-  println!("cargo:rerun-if-changed={}", node_dir.display());
-
   let mut paths = Vec::new();
   visit_dirs(&node_dir, &mut |path| {
     paths.push(path.to_path_buf());
@@ -165,6 +177,12 @@ fn process_node_types(out_dir: &Path) {
 
   // Sort for deterministic builds
   paths.sort();
+
+  for path in &paths {
+    // print for each path instead of directory because
+    // the mtime cache works off files and not directories
+    println!("cargo:rerun-if-changed={}", path.display());
+  }
 
   // Compress all the files if release
   if !cfg!(debug_assertions) && std::env::var("CARGO_FEATURE_HMR").is_err() {
@@ -197,6 +215,7 @@ fn process_node_types(out_dir: &Path) {
 }
 
 fn compress_source(out_dir: &Path, file: &str) {
+  #[allow(clippy::disallowed_methods, reason = "build code")]
   let path = Path::new(file)
     .canonicalize()
     .unwrap_or_else(|_| panic!("expected file \"{file}\" to exist"));
@@ -241,6 +260,17 @@ fn compress_sources(out_dir: &Path) {
   }
 }
 
+fn emit_dts_rerun_if_changed() {
+  let dts_dir = Path::new("tsc/dts");
+  for entry in std::fs::read_dir(dts_dir).unwrap() {
+    let entry = entry.unwrap();
+    let path = entry.path();
+    if path.extension().and_then(|s| s.to_str()) == Some("ts") {
+      println!("cargo:rerun-if-changed={}", path.display());
+    }
+  }
+}
+
 fn main() {
   // Skip building from docs.rs.
   if env::var_os("DOCS_RS").is_some() {
@@ -266,6 +296,11 @@ fn main() {
 
   process_node_types(&out_dir);
 
+  // Always emit rerun-if-changed for dts files (they are included via
+  // include_str! in debug mode). Without this, cargo may use stale
+  // cached artifacts when dts files change.
+  emit_dts_rerun_if_changed();
+
   if !cfg!(debug_assertions) && std::env::var("CARGO_FEATURE_HMR").is_err() {
     compress_sources(&out_dir);
   }
@@ -282,10 +317,8 @@ fn main() {
   {
     let mut res = winres::WindowsResource::new();
     res.set_icon("deno.ico");
-    res.set_language(winapi::um::winnt::MAKELANGID(
-      winapi::um::winnt::LANG_ENGLISH,
-      winapi::um::winnt::SUBLANG_ENGLISH_US,
-    ));
+    // 0x0409 == MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US)
+    res.set_language(0x0409);
     res.compile().unwrap();
   }
 }

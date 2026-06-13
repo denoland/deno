@@ -40,7 +40,6 @@ use deno_core::futures::StreamExt;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::located_script_name;
-use deno_core::serde_v8;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
@@ -81,6 +80,7 @@ use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
@@ -129,6 +129,10 @@ pub enum TestMode {
 }
 
 impl TestMode {
+  fn union(self, other: Self) -> Self {
+    if self == other { self } else { Self::Both }
+  }
+
   /// Returns `true` if the test mode indicates that code snippet extraction is
   /// needed.
   fn needs_test_extraction(&self) -> bool {
@@ -206,6 +210,7 @@ pub(crate) struct TestContainer {
   descriptions: TestDescriptions,
   test_functions: Vec<v8::Global<v8::Function>>,
   test_hooks: TestHooks,
+  registration_phase_ended: bool,
 }
 
 #[derive(Default)]
@@ -217,13 +222,26 @@ pub(crate) struct TestHooks {
 }
 
 impl TestContainer {
+  pub fn with_registration_phase_ended() -> Self {
+    Self {
+      registration_phase_ended: true,
+      ..Default::default()
+    }
+  }
+
   pub fn register(
     &mut self,
     description: TestDescription,
     function: v8::Global<v8::Function>,
-  ) {
+  ) -> Result<(), JsErrorBox> {
+    if self.registration_phase_ended {
+      return Err(JsErrorBox::type_error(
+        "Nested Deno.test() calls are not supported. Use t.step() for nested tests.",
+      ));
+    }
     self.descriptions.tests.insert(description.id, description);
-    self.test_functions.push(function)
+    self.test_functions.push(function);
+    Ok(())
   }
 
   pub fn register_hook(
@@ -281,6 +299,7 @@ pub struct TestDescription {
   pub location: TestLocation,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
+  pub timeout_ms: Option<u32>,
 }
 
 /// May represent a failure of a test or test step.
@@ -311,14 +330,16 @@ pub struct TestFailureFormatOptions {
   pub initial_cwd: Option<Url>,
 }
 
-#[allow(clippy::derive_partial_eq_without_eq)]
+#[allow(clippy::derive_partial_eq_without_eq, reason = "not important")]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestFailure {
   JsError(Box<JsError>),
   FailedSteps(usize),
   IncompleteSteps,
+  PendingPromiseResolution,
   Leaked(Vec<String>, Vec<String>), // Details, trailer notes
+  TimedOut(u32),
   // The rest are for steps only.
   Incomplete,
   OverlapsWithSanitizers(IndexSet<String>), // Long names of overlapped tests
@@ -341,6 +362,9 @@ impl TestFailure {
       TestFailure::IncompleteSteps => Cow::Borrowed(
         "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.",
       ),
+      TestFailure::PendingPromiseResolution => Cow::Borrowed(
+        "Promise resolution is still pending but the event loop has already resolved.",
+      ),
       TestFailure::Incomplete => Cow::Borrowed(
         "Didn't complete before parent. Await step with `await t.step(...)`.",
       ),
@@ -354,6 +378,9 @@ impl TestFailure {
           write!(f, "\n{}", trailer).ok();
         }
         Cow::Owned(f)
+      }
+      TestFailure::TimedOut(ms) => {
+        Cow::Owned(format!("Test timed out after {}ms.", ms))
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
         let mut f = String::new();
@@ -382,8 +409,12 @@ impl TestFailure {
       TestFailure::IncompleteSteps => {
         "Completed while steps were still running".to_string()
       }
+      TestFailure::PendingPromiseResolution => {
+        "Promise resolution is still pending".to_string()
+      }
       TestFailure::Incomplete => "Didn't complete before parent".to_string(),
       TestFailure::Leaked(_, _) => "Leaks detected".to_string(),
+      TestFailure::TimedOut(ms) => format!("Timed out after {}ms", ms),
       TestFailure::OverlapsWithSanitizers(_) => {
         "Started test step while another test step with sanitizers was running"
           .to_string()
@@ -459,12 +490,12 @@ impl TestFailure {
   }
 }
 
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[allow(clippy::derive_partial_eq_without_eq, reason = "not important")]
+#[derive(Debug, Clone, PartialEq, deno_core::FromV8)]
 pub enum TestResult {
   Ok,
   Ignored,
+  #[from_v8(serde)]
   Failed(TestFailure),
   Cancelled,
 }
@@ -482,7 +513,7 @@ pub struct TestStepDescription {
   pub root_name: String,
 }
 
-#[allow(clippy::derive_partial_eq_without_eq)]
+#[allow(clippy::derive_partial_eq_without_eq, reason = "not important")]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestStepResult {
@@ -498,14 +529,6 @@ pub struct TestPlan {
   pub total: usize,
   pub filtered_out: usize,
   pub used_only: bool,
-}
-
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deserialize)]
-pub enum TestStdioStream {
-  Stdout,
-  Stderr,
 }
 
 #[derive(Debug)]
@@ -525,6 +548,17 @@ pub enum TestEvent {
   /// Indicates that the user has cancelled the test run with Ctrl+C and
   /// the run should be aborted.
   Sigint,
+  /// Indicates that a test called `Deno.exit()` while the exit sanitizer was
+  /// disabled (`sanitizeExit: false`). The test run should be aborted, a
+  /// message printed, and the process should exit with the given code. This
+  /// ensures that buffered output is reliably flushed before exiting, instead
+  /// of letting the test silently terminate the process.
+  Exit(i32),
+  /// Indicates that the test isolate called `Deno.exit()` outside of any test
+  /// function (top-level code, or in the `unload` event). The isolate has
+  /// been terminated; the test runner should report the exit code and
+  /// continue with any remaining specifiers instead of killing the process.
+  IsolateExit(String, i32),
   /// Used by the REPL to force a report to end without closing the worker
   /// or receiver.
   ForceEndReport,
@@ -543,6 +577,8 @@ impl TestEvent {
         | TestEvent::UncaughtError(..)
         | TestEvent::ForceEndReport
         | TestEvent::Completed
+        | TestEvent::Exit(..)
+        | TestEvent::IsolateExit(..)
     )
   }
 }
@@ -580,6 +616,8 @@ pub struct TestSpecifierOptions {
   pub shuffle: Option<u64>,
   pub filter: TestFilter,
   pub trace_leaks: bool,
+  pub sanitize_ops: bool,
+  pub sanitize_resources: bool,
 }
 
 impl TestSummary {
@@ -655,7 +693,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   reporter
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 async fn configure_main_worker(
   worker_factory: Arc<CliMainWorkerFactory>,
   specifier: &Url,
@@ -664,7 +702,7 @@ async fn configure_main_worker(
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
-  sender: UnboundedSender<jupyter_protocol::messaging::StreamContent>,
+  sender: UnboundedSender<crate::ops::jupyter::IopubMessage>,
 ) -> Result<(Option<CoverageCollector>, MainWorker), CreateCustomWorkerError> {
   let mut worker = worker_factory
     .create_custom_worker(
@@ -676,7 +714,13 @@ async fn configure_main_worker(
       vec![
         ops::testing::deno_test::init(worker_sender.sender),
         ops::lint::deno_lint_ext_for_test::init(),
-        ops::jupyter::deno_jupyter_for_test::init(sender),
+        ops::jupyter::deno_jupyter_for_test::init(
+          sender,
+          // deno test does not service stdin requests; supplying a sender keeps
+          // the extension uniform with the live kernel build but the rx end is
+          // dropped so any `op_jupyter_input` call will resolve to `None`.
+          tokio::sync::mpsc::unbounded_channel().0,
+        ),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),
@@ -687,11 +731,43 @@ async fn configure_main_worker(
     )
     .await?;
   let coverage_collector = worker.maybe_setup_coverage_collector();
+  // Store the isolate handle in OpState so that `op_test_isolate_exit` can
+  // ask V8 to terminate the isolate when user code calls `Deno.exit()`
+  // outside of any test function. Then install the default exit handler -
+  // both must be in place before user code (including preload / side
+  // modules) gets a chance to run.
+  let isolate_handle = worker.v8_isolate_handle();
+  worker
+    .op_state()
+    .borrow_mut()
+    .put(ops::testing::TestIsolateHandle(isolate_handle));
+  worker
+    .execute_script_static(
+      located_script_name!(),
+      "Deno[Deno.internal].installTestIsolateExitHandler();",
+    )
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
   if options.trace_leaks {
     worker
       .execute_script_static(
         located_script_name!(),
         "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
+      )
+      .map_err(|e| CoreErrorKind::Js(e).into_box())?;
+  }
+  if options.sanitize_ops {
+    worker
+      .execute_script_static(
+        located_script_name!(),
+        "Deno[Deno.internal].testSanitizeOps = true;",
+      )
+      .map_err(|e| CoreErrorKind::Js(e).into_box())?;
+  }
+  if options.sanitize_resources {
+    worker
+      .execute_script_static(
+        located_script_name!(),
+        "Deno[Deno.internal].testSanitizeResources = true;",
       )
       .map_err(|e| CoreErrorKind::Js(e).into_box())?;
   }
@@ -701,14 +777,30 @@ async fn configure_main_worker(
   let check_res =
     |res: Result<(), CoreError>| match res.map_err(|err| err.into_kind()) {
       Ok(()) => Ok(()),
-      Err(CoreErrorKind::Js(err)) => TestEventTracker::new(op_state.clone())
-        .uncaught_error(specifier.to_string(), err)
-        .map_err(|e| CoreErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()),
+      Err(CoreErrorKind::Js(err)) => {
+        // If the failure was caused by user code calling `Deno.exit()` at
+        // top level, the isolate-exit event has already been reported.
+        // Swallow the resulting termination error instead of double-reporting
+        // it as an uncaught error.
+        if op_state.borrow().has::<ops::testing::IsolateExitInfo>() {
+          return Ok(());
+        }
+        TestEventTracker::new(op_state.clone())
+          .uncaught_error(specifier.to_string(), err)
+          .map_err(|e| CoreErrorKind::JsBox(JsErrorBox::from_err(e)).into_box())
+      }
       Err(err) => Err(err.into_box()),
     };
 
   check_res(worker.execute_preload_modules().await)?;
+  if op_state.borrow().has::<ops::testing::IsolateExitInfo>() {
+    worker.cancel_terminate_execution();
+    return Ok((coverage_collector, worker.into_main_worker()));
+  }
   check_res(worker.execute_side_module().await)?;
+  if op_state.borrow().has::<ops::testing::IsolateExitInfo>() {
+    worker.cancel_terminate_execution();
+  }
 
   let worker = worker.into_main_worker();
 
@@ -717,7 +809,7 @@ async fn configure_main_worker(
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 pub async fn test_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions_container: PermissionsContainer,
@@ -745,7 +837,20 @@ pub async fn test_specifier(
   .await?;
   let event_tracker = TestEventTracker::new(worker.js_runtime.op_state());
 
-  match test_specifier_inner(
+  // If user code already called `Deno.exit()` during top-level evaluation in
+  // `configure_main_worker`, the isolate-exit event has already been sent.
+  // Skip the rest of the lifecycle - the isolate is terminated and there are
+  // no tests to run.
+  if worker
+    .js_runtime
+    .op_state()
+    .borrow()
+    .has::<ops::testing::IsolateExitInfo>()
+  {
+    return Ok(());
+  }
+
+  let result = test_specifier_inner(
     &mut worker,
     coverage_collector,
     specifier.clone(),
@@ -753,9 +858,27 @@ pub async fn test_specifier(
     &event_tracker,
     options,
   )
-  .await
-  {
+  .await;
+
+  // If user code called `Deno.exit()` from inside `dispatch_load_event`,
+  // `run_tests_for_worker`, or `dispatch_unload_event`, the V8 isolate was
+  // forcibly terminated and the call surfaces as a JS error. The
+  // `op_test_isolate_exit` op already queued an `IsolateExit` event with the
+  // requested exit code, so don't double-report the resulting termination as
+  // an uncaught error.
+  let isolate_exited = worker
+    .js_runtime
+    .op_state()
+    .borrow()
+    .has::<ops::testing::IsolateExitInfo>();
+  if isolate_exited {
+    // Clear V8's "terminating" flag so the worker can be cleanly dropped.
+    worker.js_runtime.v8_isolate().cancel_terminate_execution();
+  }
+
+  match result {
     Ok(()) => Ok(()),
+    Err(_) if isolate_exited => Ok(()),
     Err(TestSpecifierError::Core(err)) => match err.into_kind() {
       CoreErrorKind::Js(err) => {
         event_tracker.uncaught_error(specifier.to_string(), err)?;
@@ -824,9 +947,19 @@ async fn test_specifier_inner(
   // want to wait forever here.
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  if let Some(coverage_collector) = &mut coverage_collector {
+  // Stop coverage before waiting for external debugger sessions. Coverage owns
+  // a blocking local inspector session, so waiting first would hang forever.
+  if let Some(mut coverage_collector) = coverage_collector.take() {
     coverage_collector.stop_collecting()?;
   }
+
+  // If a debugger session is still attached (e.g. Chrome DevTools holding
+  // the connection open for an in-progress Performance recording), wait for
+  // it to disconnect before tearing down the worker. Mirrors `deno run`'s
+  // behavior; otherwise the connection is dropped mid-flight, making it
+  // impossible to profile `deno test` runs. See issue #19289.
+  worker.wait_for_inspector_session_disconnect().await?;
+
   Ok(())
 }
 
@@ -877,7 +1010,113 @@ pub enum RunTestsForWorkerErr {
   Core(#[from] CoreError),
   #[class(inherit)]
   #[error(transparent)]
-  SerdeV8(#[from] serde_v8::Error),
+  JsErrorBox(#[from] deno_error::JsErrorBox),
+}
+
+/// Single watchdog thread for an entire test specifier. Reused across all
+/// tests in the file: each test calls `arm()` before running and `disarm()`
+/// after, replacing the per-test thread spawn.
+struct TestWatchdog {
+  shared: std::sync::Arc<WatchdogShared>,
+  thread: Option<std::thread::JoinHandle<()>>,
+}
+
+struct WatchdogShared {
+  mutex: std::sync::Mutex<WatchdogState>,
+  cvar: std::sync::Condvar,
+}
+
+#[derive(PartialEq, Eq)]
+enum WatchdogState {
+  Idle,
+  Armed { deadline: Instant, fired: bool },
+  Shutdown,
+}
+
+impl TestWatchdog {
+  fn new(js_runtime: &mut deno_core::JsRuntime) -> Self {
+    let isolate_handle = js_runtime.v8_isolate().thread_safe_handle();
+    let shared = std::sync::Arc::new(WatchdogShared {
+      mutex: std::sync::Mutex::new(WatchdogState::Idle),
+      cvar: std::sync::Condvar::new(),
+    });
+    let shared_thread = shared.clone();
+    let thread = std::thread::Builder::new()
+      .name("deno-test-watchdog".to_string())
+      .spawn(move || Self::run(shared_thread, isolate_handle))
+      .expect("failed to spawn test watchdog thread");
+    Self {
+      shared,
+      thread: Some(thread),
+    }
+  }
+
+  fn run(shared: std::sync::Arc<WatchdogShared>, isolate: v8::IsolateHandle) {
+    let mut state = shared.mutex.lock().unwrap();
+    loop {
+      match *state {
+        WatchdogState::Shutdown => return,
+        WatchdogState::Idle => {
+          state = shared.cvar.wait(state).unwrap();
+        }
+        WatchdogState::Armed { fired: true, .. } => {
+          state = shared.cvar.wait(state).unwrap();
+        }
+        WatchdogState::Armed {
+          deadline,
+          fired: false,
+        } => {
+          let now = Instant::now();
+          if now >= deadline {
+            // Hold the lock across `terminate_execution` so disarm()
+            // can't call `cancel_terminate_execution` before the V8
+            // flag is actually set.
+            if let WatchdogState::Armed { ref mut fired, .. } = *state {
+              *fired = true;
+            }
+            isolate.terminate_execution();
+          } else {
+            let (s, _) =
+              shared.cvar.wait_timeout(state, deadline - now).unwrap();
+            state = s;
+          }
+        }
+      }
+    }
+  }
+
+  fn arm(&self, timeout_ms: u32) {
+    let mut state = self.shared.mutex.lock().unwrap();
+    *state = WatchdogState::Armed {
+      deadline: Instant::now() + Duration::from_millis(timeout_ms as u64),
+      fired: false,
+    };
+    self.shared.cvar.notify_all();
+  }
+
+  /// Returns true if the watchdog fired — i.e. `terminate_execution` was
+  /// called for this arming. The caller must then `cancel_terminate_execution`
+  /// before running JS again on the isolate.
+  fn disarm(&self) -> bool {
+    let mut state = self.shared.mutex.lock().unwrap();
+    let fired = matches!(*state, WatchdogState::Armed { fired: true, .. });
+    *state = WatchdogState::Idle;
+    self.shared.cvar.notify_all();
+    fired
+  }
+}
+
+impl Drop for TestWatchdog {
+  fn drop(&mut self) {
+    {
+      let mut state = self.shared.mutex.lock().unwrap();
+      *state = WatchdogState::Shutdown;
+      self.shared.cvar.notify_all();
+    }
+    if let Some(t) = self.thread.take() {
+      let _ = t.join();
+    }
+  }
 }
 
 async fn slow_test_watchdog(event_tracker: TestEventTracker, test_id: usize) {
@@ -913,22 +1152,34 @@ pub async fn run_tests_for_worker(
   let state_rc = worker.js_runtime.op_state();
 
   // Take whatever tests have been registered
-  let container =
-    std::mem::take(&mut *state_rc.borrow_mut().borrow_mut::<TestContainer>());
+  let container = std::mem::replace(
+    &mut *state_rc.borrow_mut().borrow_mut::<TestContainer>(),
+    TestContainer::with_registration_phase_ended(),
+  );
 
   let descriptions = Arc::new(container.descriptions);
-  event_tracker.register(descriptions.clone())?;
-  run_tests_for_worker_inner(
-    worker,
-    specifier,
-    descriptions,
-    container.test_functions,
-    container.test_hooks,
-    options,
-    event_tracker,
-    fail_fast_tracker,
-  )
-  .await
+  let result = async {
+    event_tracker.register(descriptions.clone())?;
+    run_tests_for_worker_inner(
+      worker,
+      specifier,
+      descriptions,
+      container.test_functions,
+      container.test_hooks,
+      options,
+      event_tracker,
+      fail_fast_tracker,
+    )
+    .await
+  }
+  .await;
+
+  // This worker can execute another discovery/run cycle (for example in REPL),
+  // so reset to a fresh container after the current run ends.
+  *state_rc.borrow_mut().borrow_mut::<TestContainer>() =
+    TestContainer::default();
+
+  result
 }
 
 fn compute_tests_to_run(
@@ -986,7 +1237,7 @@ where
   Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 async fn run_tests_for_worker_inner(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
@@ -1015,6 +1266,7 @@ async fn run_tests_for_worker_inner(
 
   let mut had_uncaught_error = false;
   let sanitizer_helper = sanitizers::create_test_sanitizer_helper(worker);
+  let watchdog = TestWatchdog::new(&mut worker.js_runtime);
 
   // Execute beforeAll hooks (FIFO order)
   call_hooks(worker, test_hooks.before_all.iter(), |core_error| {
@@ -1074,36 +1326,77 @@ async fn run_tests_for_worker_inner(
     })
     .await?;
 
-    // TODO(bartlomieju): this whole block/binding could be reworked into something better
     let result = if !before_each_hook_errored {
+      let timeout_ms = desc.timeout_ms.filter(|&t| t > 0);
+
+      if let Some(ms) = timeout_ms {
+        watchdog.arm(ms);
+      }
+
       let call = worker.js_runtime.call(&function);
 
       let slow_test_warning =
         spawn(slow_test_watchdog(event_tracker.clone(), desc.id));
 
-      let result = worker
+      let test_fut = worker
         .js_runtime
-        .with_event_loop_promise(call, PollEventLoopOptions::default())
-        .await;
-      slow_test_warning.abort();
-      let result = match result {
-        Ok(r) => r,
-        Err(error) => match error.into_kind() {
-          CoreErrorKind::Js(js_error) => {
-            event_tracker.uncaught_error(specifier.to_string(), js_error)?;
-            fail_fast_tracker.add_failure();
-            event_tracker.cancelled(desc)?;
-            had_uncaught_error = true;
-            continue;
+        .with_event_loop_promise(call, PollEventLoopOptions::default());
+
+      let raced = match timeout_ms {
+        Some(ms) => {
+          match tokio::time::timeout(Duration::from_millis(ms as u64), test_fut)
+            .await
+          {
+            Ok(r) => Ok(r),
+            Err(_elapsed) => Err(()),
           }
-          err => return Err(err.into_box().into()),
-        },
+        }
+        None => Ok(test_fut.await),
+      };
+      slow_test_warning.abort();
+
+      // `disarm()` must run before any further JS executes on the isolate —
+      // a stale `Fired` flag would kill the next test. The
+      // `cancel_terminate_execution` below clears it; do not refactor this
+      // pair apart.
+      let watchdog_fired = timeout_ms.is_some() && watchdog.disarm();
+      if watchdog_fired {
+        worker.js_runtime.v8_isolate().cancel_terminate_execution();
+      }
+
+      // Tokio fires for async hangs; the watchdog fires for sync hot loops.
+      // If the test still produced a valid result, a watchdog fire must have
+      // raced after V8 was already done — preserve the result.
+      let timed_out = match &raced {
+        Err(_) => true,
+        Ok(Ok(_)) => false,
+        Ok(Err(_)) => watchdog_fired,
       };
 
-      // Check the result before we check for leaks
-      deno_core::scope!(scope, &mut worker.js_runtime);
-      let result = v8::Local::new(scope, result);
-      serde_v8::from_v8::<TestResult>(scope, result)?
+      if timed_out {
+        TestResult::Failed(TestFailure::TimedOut(timeout_ms.unwrap_or(0)))
+      } else {
+        match raced.unwrap() {
+          Ok(r) => {
+            deno_core::scope!(scope, &mut worker.js_runtime);
+            let result = v8::Local::new(scope, r);
+            <TestResult as deno_core::FromV8>::from_v8(scope, result)?
+          }
+          Err(error) => match error.into_kind() {
+            CoreErrorKind::Js(js_error) => {
+              event_tracker.uncaught_error(specifier.to_string(), js_error)?;
+              fail_fast_tracker.add_failure();
+              event_tracker.cancelled(desc)?;
+              had_uncaught_error = true;
+              continue;
+            }
+            CoreErrorKind::PendingPromiseResolution => {
+              TestResult::Failed(TestFailure::PendingPromiseResolution)
+            }
+            err => return Err(err.into_box().into()),
+          },
+        }
+      }
     } else {
       TestResult::Ignored
     };
@@ -1133,10 +1426,10 @@ async fn run_tests_for_worker_inner(
 
     // Close idle Node.js HTTP Agent connections to prevent cross-test
     // pollution and false positive resource leak detection from pooled
-    // keepAlive connections.
+    // keepAlive connections. Defined in ext/node/polyfills/01_require.js.
     _ = worker.js_runtime.execute_script(
       located_script_name!(),
-      "Deno[Deno.internal].node?.closeIdleConnections?.()",
+      "Deno[Deno.internal].closeIdleConnections?.()",
     );
 
     // Await activity stabilization
@@ -1370,12 +1663,48 @@ pub async fn report_tests(
           &test_steps,
         );
 
-        #[allow(clippy::print_stderr)]
+        #[allow(clippy::print_stderr, reason = "force outputting on failure")]
         if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
           eprint!("Test reporter failed to flush: {}", err)
         }
-        #[allow(clippy::disallowed_methods)]
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "TODO: why is this not using deno_runtime::exit?"
+        )]
         std::process::exit(130);
+      }
+      TestEvent::Exit(exit_code) => {
+        let elapsed = start_time
+          .map(|t| Instant::now().duration_since(t))
+          .unwrap_or_default();
+        reporter.report_exit(
+          exit_code,
+          &tests_started
+            .difference(&tests_with_result)
+            .copied()
+            .collect(),
+          &tests,
+          &test_steps,
+        );
+
+        #[allow(clippy::print_stderr, reason = "force outputting on failure")]
+        if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
+          eprint!("Test reporter failed to flush: {}", err)
+        }
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "a test called Deno.exit() with the exit sanitizer disabled"
+        )]
+        std::process::exit(exit_code);
+      }
+      TestEvent::IsolateExit(origin, exit_code) => {
+        // A non-zero exit code from top-level `Deno.exit()` (or from an
+        // `unload` handler) should fail the test run. A zero exit code is
+        // treated as a clean isolate teardown.
+        if exit_code != 0 {
+          failed = true;
+        }
+        reporter.report_isolate_exit(&origin, exit_code);
       }
     }
   }
@@ -1391,15 +1720,18 @@ pub async fn report_tests(
     );
   }
 
+  // A genuine test failure takes precedence over the `only` notice: if a test
+  // failed on its own, reporting that it failed "because the \"only\" option
+  // was used" is misleading.
+  if failed {
+    return (Err(anyhow!("Test failed")), receiver);
+  }
+
   if used_only {
     return (
       Err(anyhow!("Test failed because the \"only\" option was used",)),
       receiver,
     );
-  }
-
-  if failed {
-    return (Err(anyhow!("Test failed")), receiver);
   }
 
   (Ok(()), receiver)
@@ -1536,14 +1868,29 @@ async fn fetch_specifiers_with_test_mode(
   member_patterns: impl Iterator<Item = FilePatterns>,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let mut specifiers_with_mode = member_patterns
+  let mut deduped_specifiers_with_mode: IndexMap<ModuleSpecifier, TestMode> =
+    IndexMap::new();
+  for (specifier, mode) in member_patterns
     .map(|files| {
       collect_specifiers_with_test_mode(cli_options, files.clone(), doc)
     })
     .collect::<Result<Vec<_>, _>>()?
     .into_iter()
     .flatten()
-    .collect::<Vec<_>>();
+  {
+    match deduped_specifiers_with_mode.entry(specifier) {
+      indexmap::map::Entry::Occupied(mut entry) => {
+        let merged_mode = entry.get().clone().union(mode);
+        entry.insert(merged_mode);
+      }
+      indexmap::map::Entry::Vacant(entry) => {
+        entry.insert(mode);
+      }
+    }
+  }
+
+  let mut specifiers_with_mode =
+    deduped_specifiers_with_mode.into_iter().collect::<Vec<_>>();
 
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
@@ -1643,6 +1990,8 @@ pub async fn run_tests(
         filter: TestFilter::from_flag(&workspace_test_options.filter),
         shuffle: workspace_test_options.shuffle,
         trace_leaks: workspace_test_options.trace_leaks,
+        sanitize_ops: workspace_test_options.sanitize_ops,
+        sanitize_resources: workspace_test_options.sanitize_resources,
       },
     },
   )
@@ -1691,7 +2040,10 @@ pub async fn run_tests_with_watch(
     loop {
       deno_signals::ctrl_c().await.unwrap();
       if !HAS_TEST_RUN_SIGINT_HANDLER.load(Ordering::Relaxed) {
-        #[allow(clippy::disallowed_methods)]
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "TODO: why is this not using deno_runtime::exit?"
+        )]
         std::process::exit(130);
       }
     }
@@ -1729,14 +2081,9 @@ pub async fn run_tests_with_watch(
           cli_options.resolve_test_options_for_members(&test_flags)?;
         let watch_paths = members_with_test_options
           .iter()
-          .filter_map(|(_, test_options)| {
-            test_options
-              .files
-              .include
-              .as_ref()
-              .map(|set| set.base_paths())
+          .flat_map(|(_, test_options)| {
+            file_watcher::watch_paths_for_file_patterns(&test_options.files)
           })
-          .flatten()
           .collect::<Vec<_>>();
         let _ = watcher_communicator.watch_paths(watch_paths);
         let test_modules = members_with_test_options
@@ -1763,28 +2110,65 @@ pub async fn run_tests_with_watch(
           .flatten()
           .collect::<Vec<_>>();
 
+        // Markdown (and other non-script) doc-test files cannot be parsed
+        // by the module graph, so split them out and track reloads for
+        // them by path instead of by graph dependency. With `--doc`, the
+        // collector accepts extensions like `.md` that `is_script_ext`
+        // rejects.
+        let (graph_modules, doc_only_modules): (Vec<_>, Vec<_>) =
+          test_modules.into_iter().partition(|specifier| {
+            deno_path_util::url_to_file_path(specifier)
+              .map(|p| is_script_ext(&p))
+              .unwrap_or(true)
+          });
+
         let graph = module_graph_creator
-          .create_graph(graph_kind, test_modules, NpmCachingStrategy::Eager)
+          .create_graph(graph_kind, graph_modules, NpmCachingStrategy::Eager)
           .await?;
         module_graph_creator.graph_valid(&graph)?;
-        let test_modules = &graph.roots;
+        let graph_modules = graph.roots.clone();
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
-          let mut result = IndexSet::with_capacity(test_modules.len());
           let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
-          for test_module_specifier in test_modules {
-            if has_graph_root_local_dependent_changed(
-              &graph,
-              test_module_specifier,
-              &changed_paths,
-            ) {
-              result.insert(test_module_specifier.clone());
+          // If an env file changed, reload all test modules since any
+          // test could depend on environment variables.
+          let env_file_changed = cli_options
+            .possible_env_file_paths_for_watch()
+            .any(|path| changed_paths.contains(&path));
+          if env_file_changed {
+            graph_modules
+              .into_iter()
+              .chain(doc_only_modules)
+              .collect::<IndexSet<_>>()
+          } else {
+            let mut result = IndexSet::with_capacity(
+              graph_modules.len() + doc_only_modules.len(),
+            );
+            for test_module_specifier in &graph_modules {
+              if has_graph_root_local_dependent_changed(
+                &graph,
+                test_module_specifier,
+                &changed_paths,
+              ) {
+                result.insert(test_module_specifier.clone());
+              }
             }
+            for specifier in &doc_only_modules {
+              if let Ok(path) = deno_path_util::url_to_file_path(specifier)
+                && let Ok(path) = canonicalize_path(&path)
+                && changed_paths.contains(&path)
+              {
+                result.insert(specifier.clone());
+              }
+            }
+            result
           }
-          result
         } else {
-          test_modules.clone()
+          graph_modules
+            .into_iter()
+            .chain(doc_only_modules)
+            .collect::<IndexSet<_>>()
         };
 
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
@@ -1856,6 +2240,8 @@ pub async fn run_tests_with_watch(
               filter: TestFilter::from_flag(&workspace_test_options.filter),
               shuffle: workspace_test_options.shuffle,
               trace_leaks: workspace_test_options.trace_leaks,
+              sanitize_ops: workspace_test_options.sanitize_ops,
+              sanitize_resources: workspace_test_options.sanitize_resources,
             },
           },
         )

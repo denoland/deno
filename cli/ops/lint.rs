@@ -192,8 +192,11 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
   container.token.is_cancelled()
 }
 
+#[derive(Debug, boxed_error::Boxed, deno_error::JsError)]
+pub struct LintError(pub Box<LintErrorKind>);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum LintError {
+pub enum LintErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
@@ -206,15 +209,15 @@ pub enum LintError {
 }
 
 #[op2]
-#[allow(clippy::result_large_err)]
 fn op_lint_create_serialized_ast(
   #[string] file_name: &str,
   #[string] source: String,
 ) -> Result<Uint8Array, LintError> {
   let file_text = deno_ast::strip_bom(source);
+  #[allow(clippy::disallowed_methods, reason = "ok for linting")]
   let path = std::env::current_dir()?.join(file_name);
   let specifier = ModuleSpecifier::from_file_path(&path)
-    .map_err(|_| LintError::PathParse(path))?;
+    .map_err(|_| LintErrorKind::PathParse(path))?;
   let media_type = MediaType::from_specifier(&specifier);
   let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
     specifier,

@@ -14,6 +14,8 @@ pub use dict::*;
 
 #[cfg(windows)]
 static SIGHUP: i32 = 1;
+#[cfg(windows)]
+static SIGWINCH: i32 = 28;
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -88,10 +90,77 @@ fn init() -> Handle {
 
   // SAFETY: Registering handler
   unsafe {
-    winapi::um::consoleapi::SetConsoleCtrlHandler(Some(handle), 1);
+    windows_sys::Win32::System::Console::SetConsoleCtrlHandler(Some(handle), 1);
   }
 
   Handle
+}
+
+#[cfg(windows)]
+fn start_sigwinch_polling() {
+  static STARTED: OnceLock<()> = OnceLock::new();
+  STARTED.get_or_init(|| {
+    std::thread::spawn(|| {
+      // SAFETY: Win32 calls to open CONOUT$ and poll console size
+      unsafe {
+        let conout_name: Vec<u16> =
+          "CONOUT$".encode_utf16().chain(Some(0)).collect();
+        let handle = windows_sys::Win32::Storage::FileSystem::CreateFileW(
+          conout_name.as_ptr(),
+          windows_sys::Win32::Foundation::GENERIC_READ,
+          windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ
+            | windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE,
+          std::ptr::null(),
+          windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING,
+          0,
+          std::ptr::null_mut(),
+        );
+        if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+          return;
+        }
+
+        let mut prev_cols: i32 = 0;
+        let mut prev_rows: i32 = 0;
+
+        // Read initial size
+        let mut bufinfo: windows_sys::Win32::System::Console::CONSOLE_SCREEN_BUFFER_INFO =
+          std::mem::zeroed();
+        if windows_sys::Win32::System::Console::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
+          != 0
+        {
+          prev_cols =
+            bufinfo.srWindow.Right as i32 - bufinfo.srWindow.Left as i32 + 1;
+          prev_rows =
+            bufinfo.srWindow.Bottom as i32 - bufinfo.srWindow.Top as i32 + 1;
+        }
+
+        loop {
+          windows_sys::Win32::System::Threading::Sleep(250);
+
+          let mut bufinfo: windows_sys::Win32::System::Console::CONSOLE_SCREEN_BUFFER_INFO =
+            std::mem::zeroed();
+          if windows_sys::Win32::System::Console::GetConsoleScreenBufferInfo(
+            handle,
+            &mut bufinfo,
+          ) == 0
+          {
+            continue;
+          }
+
+          let cols =
+            bufinfo.srWindow.Right as i32 - bufinfo.srWindow.Left as i32 + 1;
+          let rows =
+            bufinfo.srWindow.Bottom as i32 - bufinfo.srWindow.Top as i32 + 1;
+
+          if cols != prev_cols || rows != prev_rows {
+            prev_cols = cols;
+            prev_rows = rows;
+            handle_signal(SIGWINCH);
+          }
+        }
+      }
+    });
+  });
 }
 
 pub fn register(
@@ -124,11 +193,18 @@ pub fn register(
 
       #[cfg(unix)]
       {
-        handle.0.add_signal(signal).unwrap();
+        handle.0.add_signal(signal).map_err(|e| {
+          std::io::Error::other(format!(
+            "Failed to register signal {signal}: {e}"
+          ))
+        })?;
       }
       #[cfg(windows)]
       {
         let _ = handle;
+        if signal == SIGWINCH {
+          start_sigwinch_polling();
+        }
       }
     }
   }
@@ -169,8 +245,33 @@ pub fn run_exit() {
   }
 }
 
+pub const SIGINT: i32 = 2;
+pub const SIGTERM: i32 = 15;
+
+/// Synthetically raise a signal, triggering all registered JS handlers.
+///
+/// This does NOT use OS-level signal delivery — it directly invokes the
+/// handler functions under a mutex, making it safe to call from any async
+/// or sync context on all platforms (including Windows).
+///
+/// Returns true if any handler prevented the default behavior.
+pub fn raise(signal: i32) -> bool {
+  handle_signal(signal)
+}
+
 pub fn is_forbidden(signo: i32) -> bool {
-  FORBIDDEN.contains(&signo)
+  if FORBIDDEN.contains(&signo) {
+    return true;
+  }
+  // On Windows, signal_hook's FORBIDDEN list doesn't include SIGKILL/SIGABRT
+  // (they're Unix-specific in the crate). Add them here since listening for
+  // uncatchable/fatal signals doesn't make sense on any platform.
+  #[cfg(windows)]
+  if signo == 9 || signo == 22 {
+    // SIGKILL (9) and SIGABRT (22, Windows CRT value)
+    return true;
+  }
+  false
 }
 
 pub struct SignalStream {

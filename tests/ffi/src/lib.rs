@@ -1,9 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
-#![allow(clippy::undocumented_unsafe_blocks)]
-#![allow(non_upper_case_globals)]
+#![allow(clippy::print_stdout, reason = "FFI test output")]
+#![allow(clippy::print_stderr, reason = "FFI test output")]
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "FFI test code with simple unsafe usage"
+)]
+#![allow(non_upper_case_globals, reason = "matches FFI naming conventions")]
 
 use std::os::raw::c_void;
 use std::sync::Mutex;
@@ -151,6 +154,39 @@ pub unsafe extern "C" fn nonblocking_buffer(ptr: *const u8, len: usize) {
   }
 }
 
+/// Verify that a buffer filled with a specific byte pattern remains valid after
+/// a delay. Used to test that nonblocking FFI calls keep the backing store alive
+/// even when GC is forced via --expose-gc. Sleeps to give JS time to call gc(),
+/// then validates the buffer contents. Returns the checksum of the buffer.
+///
+/// # Safety
+///
+/// The pointer to the buffer must be valid and initialized, and the length must
+/// not be longer than the buffer's allocation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nonblocking_buffer_checksum(
+  ptr: *const u8,
+  len: usize,
+  fill_value: u8,
+) -> u64 {
+  // Sleep to give JS time to call gc() and force collection
+  sleep(Duration::from_millis(100));
+  unsafe {
+    let buf = std::slice::from_raw_parts(ptr, len);
+    let mut checksum: u64 = 0;
+    for &byte in buf {
+      // If GC freed the buffer, at least some bytes won't match fill_value
+      assert_eq!(
+        byte, fill_value,
+        "Buffer corrupted: expected 0x{fill_value:02x}, got 0x{byte:02x}. \
+         Backing store was likely freed by GC."
+      );
+      checksum += byte as u64;
+    }
+    checksum
+  }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn get_add_u32_ptr() -> *const c_void {
   add_u32 as *const c_void
@@ -192,7 +228,10 @@ pub extern "C" fn call_fn_ptr_return_u8(func: Option<extern "C" fn() -> u8>) {
   println!("u8: {}", func());
 }
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(
+  clippy::not_unsafe_ptr_arg_deref,
+  reason = "pointer is from trusted FFI callback"
+)]
 #[unsafe(no_mangle)]
 pub extern "C" fn call_fn_ptr_return_buffer(
   func: Option<extern "C" fn() -> *const u8>,
@@ -436,7 +475,10 @@ pub extern "C" fn return_isize() -> isize {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn return_f32() -> f32 {
-  #[allow(clippy::excessive_precision)]
+  #[allow(
+    clippy::excessive_precision,
+    reason = "exact f32 representation needed for test"
+  )]
   0.20298023223876953125
 }
 

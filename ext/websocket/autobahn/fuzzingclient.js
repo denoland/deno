@@ -3,14 +3,22 @@
 // deno-lint-ignore-file
 
 import { $ } from "https://deno.land/x/dax@0.31.0/mod.ts";
+import { checkCiHash } from "../../../tools/util.js";
 
 $.setPrintCommand(true);
 const pwd = new URL(".", import.meta.url).pathname;
 
+const self = Deno.execPath();
+const ciHash = await checkCiHash("autobahn", async (hasher) => {
+  await hasher.hashFile(self);
+  await hasher.hashDir(pwd);
+});
+if (ciHash.skip) {
+  Deno.exit(0);
+}
+
 const AUTOBAHN_TESTSUITE_DOCKER =
   "crossbario/autobahn-testsuite:25.10.1@sha256:519915fb568b04c9383f70a1c405ae3ff44ab9e35835b085239c258b6fac3074";
-
-const self = Deno.execPath();
 $`${self} run -A --config ${pwd}/../../../tests/config/deno.json ${pwd}/autobahn_server.js`
   .spawn();
 
@@ -50,4 +58,6 @@ console.log(
   `color: ${failedtests.length == 0 ? "green" : "red"}`,
 );
 
-Deno.exit(failedtests.length == 0 ? 0 : 1);
+const exitCode = failedtests.length == 0 ? 0 : 1;
+if (exitCode === 0) await ciHash.commit();
+Deno.exit(exitCode);

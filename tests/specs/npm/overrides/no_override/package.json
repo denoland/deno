@@ -1,0 +1,7 @@
+{
+  "name": "npm-no-overrides-test",
+  "version": "0.0.1",
+  "dependencies": {
+    "@denotest/different-nested-dep": "1.0.0"
+  }
+}

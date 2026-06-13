@@ -22,9 +22,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+(function () {
 "use strict";
 
-import { primordials } from "ext:core/mod.js";
+const { core, primordials } = __bootstrap;
 const {
   ArrayBuffer,
   MathMax,
@@ -40,10 +41,10 @@ const {
   Uint32Array,
 } = primordials;
 
-import {
-  codes as errorCodes,
+const {
+  codes: errorCodes,
   genericNodeError,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const {
   ERR_BROTLI_INVALID_PARAM,
@@ -55,26 +56,36 @@ const {
   ERR_ZSTD_INVALID_PARAM,
 } = errorCodes;
 
-import { finished, Transform } from "node:stream";
-import { deprecateInstantiation } from "ext:deno_node/internal/util.mjs";
-import {
+const { finished, Transform } = core.createLazyLoader("node:stream")();
+const { deprecateInstantiation } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
   isUint8Array,
-} from "ext:deno_node/internal/util/types.ts";
-import * as binding from "ext:deno_node/_zlib_binding.mjs";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const binding = core.loadExtScript("ext:deno_node/_zlib_binding.mjs");
 const { crc32: crc32Native } = binding;
 
-import assert from "ext:deno_node/internal/assert.mjs";
-import { Buffer, kMaxLength } from "node:buffer";
-import { ownerSymbol as owner_symbol } from "ext:deno_node/internal_binding/symbols.ts";
-import {
+const assert = core.loadExtScript(
+  "ext:deno_node/internal/assert.mjs",
+);
+const { Buffer, kMaxLength } = core.loadExtScript(
+  "ext:deno_node/internal/buffer.mjs",
+);
+const { ownerSymbol: owner_symbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
+const {
   checkRangesOrGetDefault,
   validateFiniteNumber,
   validateFunction,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import { zlib as zlibConstants } from "ext:deno_node/internal_binding/constants.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { zlib: zlibConstants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 
 const kFlushFlag = Symbol("kFlushFlag");
 const kError = Symbol("kError");
@@ -124,10 +135,10 @@ const {
   ZSTD_e_end,
 } = zlibConstants;
 
-export const constants = ObjectFreeze(zlibConstants);
+const constants = ObjectFreeze(zlibConstants);
 
 // Translation table for return codes.
-export const codes = {
+const codes = {
   Z_OK: constants.Z_OK,
   Z_STREAM_END: constants.Z_STREAM_END,
   Z_NEED_DICT: constants.Z_NEED_DICT,
@@ -489,8 +500,9 @@ function processChunkSync(self, chunk, flushFlag) {
       availInBefore, // in_len
       buffer, // out
       offset, // out_off
-      availOutBefore,
-    ); // out_len
+      availOutBefore, // out_len
+      state,
+    );
     if (error) {
       throw error;
     } else if (self[kError]) {
@@ -563,6 +575,8 @@ function processChunk(self, chunk, flushFlag, cb) {
   handle.inOff = 0;
   handle.flushFlag = flushFlag;
 
+  handle._callbackPending = true;
+
   try {
     handle.write(
       flushFlag,
@@ -571,14 +585,24 @@ function processChunk(self, chunk, flushFlag, cb) {
       handle.availInBefore, // in_len
       self._outBuffer, // out
       self._outOffset, // out_off
-      handle.availOutBefore,
-    ); // out_len
+      handle.availOutBefore, // out_len
+      self._writeState,
+    );
   } catch (err) {
     // Set appropriate error code for zstd errors
     if (err.message && err.message.includes("Src size is incorrect")) {
       err.code = "ZSTD_error_srcSize_wrong";
     }
     self.destroy(err);
+    return;
+  }
+
+  // If the native binding did not call processCallback synchronously
+  // (Zlib defers it to match Node.js where compression runs on the libuv
+  // threadpool), schedule it asynchronously. Always schedule even on error
+  // so processCallback can call cb() to unblock the Transform write chain.
+  if (handle._callbackPending) {
+    process.nextTick(processCallback.bind(handle));
   }
 }
 
@@ -587,10 +611,20 @@ function processCallback() {
   // important to null out the values once they are no longer needed since
   // `_handle` can stay in memory long after the buffer is needed.
   const handle = this;
+  handle._callbackPending = false;
   const self = this[owner_symbol];
   const state = self._writeState;
 
   if (self.destroyed) {
+    this.buffer = null;
+    this.cb();
+    return;
+  }
+
+  if (self[kError]) {
+    // An error occurred during the native write. Call cb() to unblock the
+    // Transform write chain; the error event will be emitted by the nextTick
+    // destroy scheduled in zlibOnError.
     this.buffer = null;
     this.cb();
     return;
@@ -634,6 +668,12 @@ function processCallback() {
 
     if (!streamBufferIsFull) {
       process.nextTick(() => {
+        if (self.destroyed) {
+          this.buffer = null;
+          this.cb();
+          return;
+        }
+        handle._callbackPending = true;
         this.write(
           handle.flushFlag,
           this.buffer, // in
@@ -641,14 +681,24 @@ function processCallback() {
           handle.availInBefore, // in_len
           self._outBuffer, // out
           self._outOffset, // out_off
-          self._chunkSize,
-        ); // out_len
+          self._chunkSize, // out_len
+          self._writeState,
+        );
+        if (handle._callbackPending) {
+          processCallback.call(this);
+        }
       });
     } else {
       const oldRead = self._read;
       self._read = (n) => {
         self._read = oldRead;
         process.nextTick(() => {
+          if (self.destroyed) {
+            this.buffer = null;
+            this.cb();
+            return;
+          }
+          handle._callbackPending = true;
           this.write(
             handle.flushFlag,
             this.buffer, // in
@@ -656,8 +706,12 @@ function processCallback() {
             handle.availInBefore, // in_len
             self._outBuffer, // out
             self._outOffset, // out_off
-            self._chunkSize,
-          ); // out_len
+            self._chunkSize, // out_len
+            self._writeState,
+          );
+          if (handle._callbackPending && !self[kError]) {
+            processCallback.call(this);
+          }
         });
         self._read(n);
       };
@@ -791,7 +845,6 @@ function Zlib(opts, mode) {
     level,
     memLevel,
     strategy,
-    this._writeState,
     processCallback,
     dictionary,
   );
@@ -960,7 +1013,6 @@ function Brotli(opts, mode) {
   this._writeState = new Uint32Array(2);
   const success = handle.init(
     brotliInitParamsArray,
-    this._writeState,
     processCallback,
   );
   if (!success) {
@@ -1034,7 +1086,6 @@ class Zstd extends ZlibBase {
         : -1;
     const success = handle.init(
       initParamsArray,
-      writeState,
       processCallback,
       pledgedSrcSize,
     );
@@ -1110,65 +1161,51 @@ ObjectDefineProperty(binding.Zlib.prototype, "jsref", {
   },
 });
 
-export {
-  BrotliCompress,
-  BrotliDecompress,
-  crc32,
-  Deflate,
-  DeflateRaw,
-  Gunzip,
-  Gzip,
-  Inflate,
-  InflateRaw,
-  Unzip,
-  ZstdCompress,
-  ZstdDecompress,
-};
 // Convenience methods
-export const deflate = createConvenienceMethod(Deflate, false);
-export const deflateSync = createConvenienceMethod(Deflate, true);
-export const gzip = createConvenienceMethod(Gzip, false);
-export const gzipSync = createConvenienceMethod(Gzip, true);
-export const deflateRaw = createConvenienceMethod(DeflateRaw, false);
-export const deflateRawSync = createConvenienceMethod(DeflateRaw, true);
-export const unzip = createConvenienceMethod(Unzip, false);
-export const unzipSync = createConvenienceMethod(Unzip, true);
-export const inflate = createConvenienceMethod(Inflate, false);
-export const inflateSync = createConvenienceMethod(Inflate, true);
-export const gunzip = createConvenienceMethod(Gunzip, false);
-export const gunzipSync = createConvenienceMethod(Gunzip, true);
-export const inflateRaw = createConvenienceMethod(InflateRaw, false);
-export const inflateRawSync = createConvenienceMethod(InflateRaw, true);
-export const brotliCompress = createConvenienceMethod(BrotliCompress, false);
-export const brotliCompressSync = createConvenienceMethod(BrotliCompress, true);
-export const brotliDecompress = createConvenienceMethod(
+const deflate = createConvenienceMethod(Deflate, false);
+const deflateSync = createConvenienceMethod(Deflate, true);
+const gzip = createConvenienceMethod(Gzip, false);
+const gzipSync = createConvenienceMethod(Gzip, true);
+const deflateRaw = createConvenienceMethod(DeflateRaw, false);
+const deflateRawSync = createConvenienceMethod(DeflateRaw, true);
+const unzip = createConvenienceMethod(Unzip, false);
+const unzipSync = createConvenienceMethod(Unzip, true);
+const inflate = createConvenienceMethod(Inflate, false);
+const inflateSync = createConvenienceMethod(Inflate, true);
+const gunzip = createConvenienceMethod(Gunzip, false);
+const gunzipSync = createConvenienceMethod(Gunzip, true);
+const inflateRaw = createConvenienceMethod(InflateRaw, false);
+const inflateRawSync = createConvenienceMethod(InflateRaw, true);
+const brotliCompress = createConvenienceMethod(BrotliCompress, false);
+const brotliCompressSync = createConvenienceMethod(BrotliCompress, true);
+const brotliDecompress = createConvenienceMethod(
   BrotliDecompress,
   false,
 );
-export const brotliDecompressSync = createConvenienceMethod(
+const brotliDecompressSync = createConvenienceMethod(
   BrotliDecompress,
   true,
 );
-export const zstdCompress = createConvenienceMethod(ZstdCompress, false);
-export const zstdCompressSync = createConvenienceMethod(ZstdCompress, true);
-export const zstdDecompress = createConvenienceMethod(ZstdDecompress, false);
-export const zstdDecompressSync = createConvenienceMethod(ZstdDecompress, true);
+const zstdCompress = createConvenienceMethod(ZstdCompress, false);
+const zstdCompressSync = createConvenienceMethod(ZstdCompress, true);
+const zstdDecompress = createConvenienceMethod(ZstdDecompress, false);
+const zstdDecompressSync = createConvenienceMethod(ZstdDecompress, true);
 
 // Factory methods (match Object.defineProperties behavior)
-export const createDeflate = createProperty(Deflate).value;
-export const createInflate = createProperty(Inflate).value;
-export const createDeflateRaw = createProperty(DeflateRaw).value;
-export const createInflateRaw = createProperty(InflateRaw).value;
-export const createGzip = createProperty(Gzip).value;
-export const createGunzip = createProperty(Gunzip).value;
-export const createUnzip = createProperty(Unzip).value;
-export const createBrotliCompress = createProperty(BrotliCompress).value;
-export const createBrotliDecompress = createProperty(BrotliDecompress).value;
-export const createZstdCompress = createProperty(ZstdCompress).value;
-export const createZstdDecompress = createProperty(ZstdDecompress).value;
+const createDeflate = createProperty(Deflate).value;
+const createInflate = createProperty(Inflate).value;
+const createDeflateRaw = createProperty(DeflateRaw).value;
+const createInflateRaw = createProperty(InflateRaw).value;
+const createGzip = createProperty(Gzip).value;
+const createGunzip = createProperty(Gunzip).value;
+const createUnzip = createProperty(Unzip).value;
+const createBrotliCompress = createProperty(BrotliCompress).value;
+const createBrotliDecompress = createProperty(BrotliDecompress).value;
+const createZstdCompress = createProperty(ZstdCompress).value;
+const createZstdDecompress = createProperty(ZstdDecompress).value;
 
 // Deprecated constants: export individually
-export const deprecatedConstants = {};
+const deprecatedConstants = {};
 for (const [key, value] of Object.entries(constants)) {
   if (!key.startsWith("BROTLI")) {
     deprecatedConstants[key] = value;
@@ -1231,4 +1268,5 @@ const zlib = {
   ...deprecatedConstants,
 };
 
-export default Object.freeze(zlib);
+return Object.freeze(zlib);
+})();

@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#[allow(clippy::disallowed_types)]
-use std::collections::HashSet;
+use std::ops::BitOr;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
@@ -12,15 +11,18 @@ use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 
+use super::device::DEVICE_EXTERNAL_MEMORY_SIZE;
 use super::device::GPUDevice;
+use super::queue::GPUQueue;
 use crate::Instance;
 use crate::error::GPUGenericError;
 use crate::webidl::GPUFeatureName;
-use crate::webidl::features_to_feature_names;
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]
-pub(crate) struct GPURequestAdapterOptions {
+pub struct GPURequestAdapterOptions {
+  #[webidl(default = "core".into())]
+  pub feature_level: String,
   pub power_preference: Option<GPUPowerPreference>,
   #[webidl(default = false)]
   pub force_fallback_adapter: bool,
@@ -28,7 +30,7 @@ pub(crate) struct GPURequestAdapterOptions {
 
 #[derive(WebIDL)]
 #[webidl(enum)]
-pub(crate) enum GPUPowerPreference {
+pub enum GPUPowerPreference {
   LowPower,
   HighPerformance,
 }
@@ -96,7 +98,6 @@ impl GPUAdapter {
       let features = self.instance.adapter_features(self.id);
       // Only expose WebGPU features, not wgpu native-only features
       let features = features & wgpu_types::Features::all_webgpu_mask();
-      let features = features_to_feature_names(features);
       GPUSupportedFeatures::new(scope, features)
     })
   }
@@ -116,16 +117,25 @@ impl GPUAdapter {
     scope: &mut v8::PinScope<'_, '_>,
     #[webidl] descriptor: GPUDeviceDescriptor,
   ) -> Result<v8::Global<v8::Value>, CreateDeviceError> {
-    let features = self.instance.adapter_features(self.id);
-    let supported_features = features_to_feature_names(features);
-    #[allow(clippy::disallowed_types)]
+    let supported_features = self.instance.adapter_features(self.id);
     let required_features = descriptor
       .required_features
       .iter()
-      .cloned()
-      .collect::<HashSet<_>>();
+      .map(|f| wgpu_types::Features::from(*f))
+      .fold(wgpu_types::Features::empty(), BitOr::bitor);
 
-    if !required_features.is_subset(&supported_features) {
+    // External textures are a required part of WebGPU, and `external-texture`
+    // is not a WebGPU-defined feature. `wgpu` has it behind a feature for now,
+    // because support is not complete. Allow applications to request that
+    // feature even though it is not reported as an adapter-supported feature.
+    //
+    // There is probably not anything useful that Deno applications can do with
+    // external textures, but it is useful to be able to enable it in
+    // `cts_runner`.
+    if !required_features
+      .difference(supported_features | wgpu_types::Features::EXTERNAL_TEXTURE)
+      .is_empty()
+    {
       return Err(CreateDeviceError::RequiredFeaturesNotASubset);
     }
 
@@ -146,9 +156,7 @@ impl GPUAdapter {
 
     let wgpu_descriptor = wgpu_types::DeviceDescriptor {
       label: crate::transform_label(descriptor.label.clone()),
-      required_features: super::webidl::feature_names_to_features(
-        descriptor.required_features,
-      ),
+      required_features,
       required_limits,
       experimental_features: wgpu_types::ExperimentalFeatures::disabled(),
       memory_hints: Default::default(),
@@ -162,24 +170,47 @@ impl GPUAdapter {
       None,
     )?;
 
+    // Associate external memory with the device to encourage V8 to garbage
+    // collect devices promptly.
+    scope
+      .adjust_amount_of_external_allocated_memory(DEVICE_EXTERNAL_MEMORY_SIZE);
+
     let spawner = state.borrow::<V8TaskSpawner>().clone();
     let lost_resolver = v8::PromiseResolver::new(scope).unwrap();
     let lost_promise = lost_resolver.get_promise(scope);
+    let error_handler = Rc::new(super::error::DeviceErrorHandler::new(
+      v8::Global::new(scope, lost_resolver),
+      spawner,
+    ));
+
+    // Create the queue object eagerly so that the wgpu-core queue resource
+    // gets cleaned up when the device is garbage collected, even if JS code
+    // never accesses the queue property.
+    let queue_obj = deno_core::cppgc::make_cppgc_object(
+      scope,
+      GPUQueue {
+        instance: self.instance.clone(),
+        error_handler: error_handler.clone(),
+        label: descriptor.label.clone(),
+        id: queue,
+        device,
+      },
+    );
+    let queue_obj = v8::Global::new(scope, queue_obj);
+
     let device = GPUDevice {
       instance: self.instance.clone(),
       id: device,
-      queue,
       label: descriptor.label,
-      queue_obj: SameObject::new(),
+      queue_obj,
       adapter_info: self.info.clone(),
-      error_handler: Rc::new(super::error::DeviceErrorHandler::new(
-        v8::Global::new(scope, lost_resolver),
-        spawner,
-      )),
+      error_handler,
       adapter: self.id,
+      queue,
       lost_promise: v8::Global::new(scope, lost_promise),
       limits: SameObject::new(),
       features: SameObject::new(),
+      weak: std::sync::OnceLock::new(),
       has_active_capture: std::cell::RefCell::new(false),
     };
     let device = deno_core::cppgc::make_cppgc_object(scope, device);
@@ -193,13 +224,24 @@ impl GPUAdapter {
     let null = v8::null(scope);
     set_event_target_data.call(scope, null.into(), &[device.into()]);
 
+    let finalizer = v8::Weak::with_finalizer(
+      scope,
+      device,
+      Box::new(move |isolate| {
+        isolate.adjust_amount_of_external_allocated_memory(
+          -DEVICE_EXTERNAL_MEMORY_SIZE,
+        );
+      }),
+    );
+
     // Now that the device is fully constructed, give the error handler a
-    // weak reference to it.
+    // weak reference to it, and store the finalizer weak reference.
     let device = device.cast::<v8::Value>();
-    deno_core::cppgc::try_unwrap_cppgc_object::<GPUDevice>(scope, device)
-      .unwrap()
-      .error_handler
-      .set_device(weak_device);
+    let device_ref =
+      deno_core::cppgc::try_unwrap_cppgc_object::<GPUDevice>(scope, device)
+        .unwrap();
+    device_ref.error_handler.set_device(weak_device);
+    device_ref.weak.set(finalizer).unwrap();
 
     Ok(v8::Global::new(scope, device))
   }
@@ -295,7 +337,35 @@ impl GPUSupportedLimits {
   }
 
   #[getter]
+  fn maxStorageBuffersInVertexStage(&self) -> u32 {
+    // TODO(https://github.com/gfx-rs/wgpu/issues/8748): InVertexStage limit
+    // not implemented; return the PerShaderStage limit.
+    self.0.max_storage_buffers_per_shader_stage
+  }
+
+  #[getter]
+  fn maxStorageBuffersInFragmentStage(&self) -> u32 {
+    // TODO(https://github.com/gfx-rs/wgpu/issues/8748): InFragmentStage limit
+    // not implemented; return the PerShaderStage limit.
+    self.0.max_storage_buffers_per_shader_stage
+  }
+
+  #[getter]
   fn maxStorageTexturesPerShaderStage(&self) -> u32 {
+    self.0.max_storage_textures_per_shader_stage
+  }
+
+  #[getter]
+  fn maxStorageTexturesInVertexStage(&self) -> u32 {
+    // TODO(https://github.com/gfx-rs/wgpu/issues/8748): InVertexStage limit
+    // not implemented; return the PerShaderStage limit.
+    self.0.max_storage_textures_per_shader_stage
+  }
+
+  #[getter]
+  fn maxStorageTexturesInFragmentStage(&self) -> u32 {
+    // TODO(https://github.com/gfx-rs/wgpu/issues/8748): InFragmentStage limit
+    // not implemented; return the PerShaderStage limit.
     self.0.max_storage_textures_per_shader_stage
   }
 
@@ -305,12 +375,14 @@ impl GPUSupportedLimits {
   }
 
   #[getter]
-  fn maxUniformBufferBindingSize(&self) -> u32 {
+  #[number]
+  fn maxUniformBufferBindingSize(&self) -> u64 {
     self.0.max_uniform_buffer_binding_size
   }
 
   #[getter]
-  fn maxStorageBufferBindingSize(&self) -> u32 {
+  #[number]
+  fn maxStorageBufferBindingSize(&self) -> u64 {
     self.0.max_storage_buffer_binding_size
   }
 
@@ -345,7 +417,10 @@ impl GPUSupportedLimits {
     self.0.max_vertex_buffer_array_stride
   }
 
-  // TODO(@crowlKats): support max_inter_stage_shader_variables
+  #[getter]
+  fn maxInterStageShaderVariables(&self) -> u32 {
+    self.0.max_inter_stage_shader_variables
+  }
 
   #[getter]
   fn maxColorAttachments(&self) -> u32 {
@@ -400,15 +475,14 @@ unsafe impl GarbageCollected for GPUSupportedFeatures {
 }
 
 impl GPUSupportedFeatures {
-  #[allow(clippy::disallowed_types)]
   pub fn new(
     scope: &mut v8::PinScope<'_, '_>,
-    features: HashSet<GPUFeatureName>,
+    features: wgpu_types::Features,
   ) -> Self {
     let set = v8::Set::new(scope);
 
-    for feature in features {
-      let key = v8::String::new(scope, feature.as_str()).unwrap();
+    for feature in features.iter() {
+      let key = v8::String::new(scope, feature.as_str().unwrap()).unwrap();
       set.add(scope, key.into());
     }
 
@@ -460,7 +534,7 @@ impl GPUAdapterInfo {
   #[getter]
   #[string]
   fn architecture(&self) -> &'static str {
-    "" // TODO: wgpu#2170
+    "" // TODO(https://github.com/gfx-rs/wgpu/issues/8649): implement when wgpu has architecture detection
   }
 
   #[getter]
@@ -487,7 +561,6 @@ impl GPUAdapterInfo {
 
   #[getter]
   fn is_fallback_adapter(&self) -> bool {
-    // TODO(lucacasonato): report correctly from wgpu
-    false
+    self.info.device_type == wgpu_types::DeviceType::Cpu
   }
 }

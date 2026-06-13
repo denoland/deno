@@ -100,6 +100,66 @@ pub(super) fn report_sigint(
   writeln!(writer).ok();
 }
 
+pub(super) fn report_exit(
+  writer: &mut dyn std::io::Write,
+  cwd: &Url,
+  exit_code: i32,
+  tests_pending: &HashSet<usize>,
+  tests: &IndexMap<usize, TestDescription>,
+  test_steps: &IndexMap<usize, TestStepDescription>,
+) {
+  writeln!(
+    writer,
+    "\n{} A test called Deno.exit({}) while the exit sanitizer was disabled (sanitizeExit: false). Aborting the test run.",
+    colors::yellow("warning"),
+    exit_code,
+  )
+  .ok();
+
+  if tests_pending.is_empty() {
+    writeln!(writer).ok();
+    return;
+  }
+
+  let mut formatted_pending = BTreeSet::new();
+  for id in tests_pending {
+    if let Some(desc) = tests.get(id) {
+      formatted_pending.insert(format_test_for_summary(cwd, &desc.into()));
+    }
+    if let Some(desc) = test_steps.get(id) {
+      formatted_pending
+        .insert(format_test_step_for_summary(cwd, desc, tests, test_steps));
+    }
+  }
+  writeln!(writer, "\nThe following tests were pending:\n").ok();
+  for entry in formatted_pending {
+    writeln!(writer, "{}", entry).ok();
+  }
+  writeln!(writer).ok();
+}
+
+pub(super) fn report_isolate_exit(
+  writer: &mut dyn std::io::Write,
+  cwd: &Url,
+  origin: &str,
+  exit_code: i32,
+) {
+  let location = to_relative_path_or_remote_url(cwd, origin);
+  let label = if exit_code == 0 {
+    colors::yellow("note")
+  } else {
+    colors::red("error")
+  };
+  writeln!(
+    writer,
+    "\n{} {} called `Deno.exit({})` from outside any test. The isolate was terminated; remaining test files will continue.",
+    label,
+    location,
+    exit_code,
+  )
+  .ok();
+}
+
 pub(super) fn report_summary(
   writer: &mut dyn std::io::Write,
   cwd: &Url,
@@ -108,7 +168,10 @@ pub(super) fn report_summary(
   options: &TestFailureFormatOptions,
 ) {
   if !summary.failures.is_empty() || !summary.uncaught_errors.is_empty() {
-    #[allow(clippy::type_complexity)] // Type alias doesn't look better here
+    #[allow(
+      clippy::type_complexity,
+      reason = "Type alias doesn't look better here"
+    )]
     let mut failures_by_origin: BTreeMap<
       String,
       (

@@ -1,0 +1,4 @@
+[WILDCARD]deno bump-version is experimental and subject to change[WILDCARD]
+[WILDCARD]@x/a[WILDLINE]
+[WILDCARD]@x/b[WILDLINE]
+Bumped 2 package(s).

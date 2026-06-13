@@ -13,6 +13,8 @@ pub use crate::interface::FileSystem;
 pub use crate::interface::FileSystemRc;
 pub use crate::interface::FsDirEntry;
 pub use crate::interface::FsFileType;
+pub use crate::interface::FsReadDir;
+pub use crate::interface::FsReadDirRc;
 pub use crate::interface::OpenOptions;
 pub use crate::ops::FsOpsError;
 pub use crate::ops::FsOpsErrorKind;
@@ -50,6 +52,7 @@ deno_core::extension!(deno_fs,
     op_fs_realpath_async,
     op_fs_read_dir_sync,
     op_fs_read_dir_async,
+    op_fs_read_dir_async_next,
     op_fs_rename_sync,
     op_fs_rename_async,
     op_fs_link_sync,
@@ -87,6 +90,8 @@ deno_core::extension!(deno_fs,
     op_fs_fchown_sync,
     op_fs_flock_async,
     op_fs_flock_sync,
+    op_fs_flock_try_async,
+    op_fs_flock_try_sync,
     op_fs_funlock_async,
     op_fs_funlock_sync,
     op_fs_ftruncate_sync,
@@ -95,7 +100,7 @@ deno_core::extension!(deno_fs,
     op_fs_futime_async,
 
   ],
-  esm = [ "30_fs.js" ],
+  lazy_loaded_js = [ "30_fs.js" ],
   options = {
     fs: FileSystemRc,
   },

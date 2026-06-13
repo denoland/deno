@@ -7,7 +7,7 @@ import {
   toFileUrl,
 } from "../../../tools/util.js";
 import { assert, denoBinary, ManifestTestOptions, runPy } from "./utils.ts";
-import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
+import { DOMParser } from "jsr:@b-fuze/deno-dom@0.1.56/wasm";
 
 export async function runWithTestUtil<T>(
   verbose: boolean,
@@ -90,6 +90,31 @@ export async function runSingleTest(
   reporter: (result: TestCaseResult) => void,
   inspectBrk: boolean,
   timeouts: { long: number; default: number },
+  fileTimeout = 2 * 60_000,
+): Promise<TestResult> {
+  const result = await Promise.race([
+    runSingleTestInner(url, _options, reporter, inspectBrk, timeouts),
+    new Promise<TestResult>((resolve) =>
+      setTimeout(() => {
+        resolve({
+          cases: [],
+          harnessStatus: null,
+          duration: fileTimeout,
+          status: 1,
+          stderr: `test file timed out after ${fileTimeout / 1000}s\n`,
+        });
+      }, fileTimeout)
+    ),
+  ]);
+  return result;
+}
+
+async function runSingleTestInner(
+  url: URL,
+  _options: ManifestTestOptions,
+  reporter: (result: TestCaseResult) => void,
+  inspectBrk: boolean,
+  timeouts: { long: number; default: number },
 ): Promise<TestResult> {
   const timeout = _options.timeout === "long"
     ? timeouts.long
@@ -154,10 +179,15 @@ export async function runSingleTest(
     interval = setInterval(() => {
       const passedTime = performance.now() - start;
       if (passedTime > timeout) {
-        proc.kill("SIGINT");
+        try {
+          proc.kill("SIGINT");
+        } catch {
+          // Race: proc may have terminated between the for-await loop
+          // draining stderr and `clearInterval` running in `finally`.
+        }
       }
     }, 1000);
-    for await (const line of lines) {
+    for await (const line of lines as AsyncIterable<string>) {
       if (line.startsWith("{")) {
         const data = JSON.parse(line);
         const result = { ...data, passed: data.status == 0 };

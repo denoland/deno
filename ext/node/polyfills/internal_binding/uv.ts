@@ -26,13 +26,17 @@
 //
 // See also: http://docs.libuv.org/en/v1.x/errors.html#error-constants
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { osType } from "ext:deno_node/_util/os.ts";
-import { uvTranslateSysError } from "ext:deno_node/internal_binding/_libuv_winerror.ts";
-import { primordials } from "ext:core/mod.js";
-const { Error } = primordials;
+(function () {
+const { core, primordials } = __bootstrap;
+const { osType } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { uvTranslateSysError } = core.loadExtScript(
+  "ext:deno_node/internal_binding/_libuv_winerror.ts",
+);
+const {
+  ArrayPrototypeMap,
+  Error,
+  MapPrototypeGet,
+} = primordials;
 
 // In Node these values are coming from libuv:
 // Ref: https://github.com/libuv/libuv/blob/v1.x/include/uv/errno.h
@@ -132,9 +136,10 @@ const codeToErrorWindows: ErrorMapData = [
   [-4027, ["EILSEQ", "illegal byte sequence"]],
 ];
 
-const errorToCodeWindows: CodeMapData = codeToErrorWindows.map((
-  [status, [error]],
-) => [error, status]);
+const errorToCodeWindows: CodeMapData = ArrayPrototypeMap(
+  codeToErrorWindows,
+  (entry) => [entry[1][0], entry[0]],
+);
 
 const codeToErrorDarwin: ErrorMapData = [
   [-7, ["E2BIG", "argument list too long"]],
@@ -219,9 +224,10 @@ const codeToErrorDarwin: ErrorMapData = [
   [-92, ["EILSEQ", "illegal byte sequence"]],
 ];
 
-const errorToCodeDarwin: CodeMapData = codeToErrorDarwin.map((
-  [status, [code]],
-) => [code, status]);
+const errorToCodeDarwin: CodeMapData = ArrayPrototypeMap(
+  codeToErrorDarwin,
+  (entry) => [entry[1][0], entry[0]],
+);
 
 const codeToErrorLinux: ErrorMapData = [
   [-7, ["E2BIG", "argument list too long"]],
@@ -306,9 +312,10 @@ const codeToErrorLinux: ErrorMapData = [
   [-84, ["EILSEQ", "illegal byte sequence"]],
 ];
 
-const errorToCodeLinux: CodeMapData = codeToErrorLinux.map((
-  [status, [code]],
-) => [code, status]);
+const errorToCodeLinux: CodeMapData = ArrayPrototypeMap(
+  codeToErrorLinux,
+  (entry) => [entry[1][0], entry[0]],
+);
 
 const codeToErrorFreebsd: ErrorMapData = [
   [-7, ["E2BIG", "argument list too long"]],
@@ -395,9 +402,10 @@ const codeToErrorFreebsd: ErrorMapData = [
   [-44, ["ESOCKTNOSUPPORT", "socket type not supported"]],
 ];
 
-const errorToCodeFreebsd: CodeMapData = codeToErrorFreebsd.map((
-  [status, [code]],
-) => [code, status]);
+const errorToCodeFreebsd: CodeMapData = ArrayPrototypeMap(
+  codeToErrorFreebsd,
+  (entry) => [entry[1][0], entry[0]],
+);
 
 const codeToErrorOpenBSD: ErrorMapData = [
   [-7, ["E2BIG", "argument list too long"]],
@@ -484,15 +492,20 @@ const codeToErrorOpenBSD: ErrorMapData = [
   [-44, ["ESOCKTNOSUPPORT", "socket type not supported"]],
 ];
 
-const errorToCodeOpenBSD: CodeMapData = codeToErrorOpenBSD.map((
-  [status, [code]],
-) => [code, status]);
+const errorToCodeOpenBSD: CodeMapData = ArrayPrototypeMap(
+  codeToErrorOpenBSD,
+  (entry) => [entry[1][0], entry[0]],
+);
 
 const unreachable = () => {
   throw new Error("Unreachable code");
 };
 
-export const errorMap = new Map<number, [string, string]>(
+// Must be a real Map (not SafeMap): it is returned to userland via
+// getErrorMap() / process.binding("uv").getErrorMap() and must pass
+// `instanceof Map` (SafeMap's prototype chain does not include Map).
+// deno-lint-ignore prefer-primordials
+const errorMap = new Map<number, [string, string]>(
   osType === "windows"
     ? codeToErrorWindows
     : osType === "darwin"
@@ -508,7 +521,10 @@ export const errorMap = new Map<number, [string, string]>(
     : unreachable(),
 );
 
-export const codeMap = new Map<string, number>(
+// Real Map (not SafeMap): returned to userland via getCodeMap() /
+// process.binding("uv").getCodeMap(); must pass `instanceof Map`.
+// deno-lint-ignore prefer-primordials
+const codeMap = new Map<string, number>(
   osType === "windows"
     ? errorToCodeWindows
     : osType === "darwin"
@@ -524,35 +540,38 @@ export const codeMap = new Map<string, number>(
     : unreachable(),
 );
 
-export function mapSysErrnoToUvErrno(sysErrno: number): number {
+function mapSysErrnoToUvErrno(sysErrno: number): number {
   if (osType === "windows") {
     const code = uvTranslateSysError(sysErrno);
-    return codeMap.get(code) ?? -sysErrno;
+    return MapPrototypeGet(codeMap, code) ?? -sysErrno;
   } else {
     return -sysErrno;
   }
 }
 
-export const UV_EAI_MEMORY = codeMap.get("EAI_MEMORY")!;
-export const UV_EBADF = codeMap.get("EBADF")!;
-export const UV_ECANCELED = codeMap.get("ECANCELED")!;
-export const UV_EEXIST = codeMap.get("EEXIST");
-export const UV_EINVAL = codeMap.get("EINVAL")!;
-export const UV_ENOENT = codeMap.get("ENOENT");
-export const UV_ENOTSOCK = codeMap.get("ENOTSOCK")!;
-export const UV_ETIMEDOUT = codeMap.get("ETIMEDOUT")!;
-export const UV_UNKNOWN = codeMap.get("UNKNOWN")!;
+const UV_EAI_MEMORY = MapPrototypeGet(codeMap, "EAI_MEMORY")!;
+const UV_EBADF = MapPrototypeGet(codeMap, "EBADF")!;
+const UV_ECANCELED = MapPrototypeGet(codeMap, "ECANCELED")!;
+const UV_EEXIST = MapPrototypeGet(codeMap, "EEXIST");
+const UV_EINVAL = MapPrototypeGet(codeMap, "EINVAL")!;
+const UV_ENETUNREACH = MapPrototypeGet(codeMap, "ENETUNREACH")!;
+const UV_ENOENT = MapPrototypeGet(codeMap, "ENOENT");
+const UV_ENOMEM = MapPrototypeGet(codeMap, "ENOMEM")!;
+const UV_ENOTSOCK = MapPrototypeGet(codeMap, "ENOTSOCK")!;
+const UV_ETIMEDOUT = MapPrototypeGet(codeMap, "ETIMEDOUT")!;
+const UV_UNKNOWN = MapPrototypeGet(codeMap, "UNKNOWN")!;
+const UV_EOF = MapPrototypeGet(codeMap, "EOF")!;
 
-export function errname(errno: number): string {
-  const err = errorMap.get(errno);
+function errname(errno: number): string {
+  const err = MapPrototypeGet(errorMap, errno);
   if (err) {
     return err[0];
   }
   return `UNKNOWN (${errno})`;
 }
 
-export function getErrorMessage(errno: number): string {
-  const err = errorMap.get(errno);
+function getErrorMessage(errno: number): string {
+  const err = MapPrototypeGet(errorMap, errno);
 
   if (err) {
     return err[1];
@@ -560,10 +579,33 @@ export function getErrorMessage(errno: number): string {
   return `UNKNOWN (${errno})`;
 }
 
-export function getErrorMap(): Map<number, [string, string]> {
+function getErrorMap(): Map<number, [string, string]> {
   return errorMap;
 }
 
-export function getCodeMap(): Map<string, number> {
+function getCodeMap(): Map<string, number> {
   return codeMap;
 }
+
+return {
+  errorMap,
+  codeMap,
+  mapSysErrnoToUvErrno,
+  UV_EAI_MEMORY,
+  UV_EBADF,
+  UV_ECANCELED,
+  UV_EEXIST,
+  UV_EINVAL,
+  UV_ENETUNREACH,
+  UV_ENOENT,
+  UV_ENOMEM,
+  UV_ENOTSOCK,
+  UV_ETIMEDOUT,
+  UV_UNKNOWN,
+  UV_EOF,
+  errname,
+  getErrorMessage,
+  getErrorMap,
+  getCodeMap,
+};
+})();
