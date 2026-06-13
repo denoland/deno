@@ -1875,6 +1875,9 @@ static DENO_HELP: &str = cstr!(
     <g>outdated</>     Find and update outdated dependencies
     <g>approve-scripts</> Approve npm lifecycle scripts
     <g>remove</>       Remove dependencies from the configuration file
+    <g>link</>         Link a local JSR package into the current project
+                  <p(245)>deno link ../my-local-pkg</>
+    <g>unlink</>       Remove a linked local package from the current project
     <g>publish</>      Publish the current working directory's package or workspace
     <g>why</>          Show why a package is installed
 
