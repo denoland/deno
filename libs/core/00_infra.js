@@ -147,6 +147,12 @@
     // Move old promise from ring to map
     const oldPromise = promiseRing[idx];
     if (oldPromise !== NO_PROMISE) {
+      // Keyed on the entry's own id rather than `promiseId - RING_SIZE` so it
+      // stays correct across the id counter wrapping back to 0. The one
+      // unavoidable limit: if a single promise stays pending while 2^31 more
+      // ids are dispatched its id is reused, and this set silently overwrites
+      // (loses) the older map entry. Not a regression: the old code broke far
+      // sooner, and no real workload keeps an op pending across 2^31 dispatches.
       MapPrototypeSet(promiseMap, oldPromise[2], oldPromise);
     }
 

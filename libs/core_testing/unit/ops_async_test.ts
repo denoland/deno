@@ -90,7 +90,9 @@ test(async function testPromiseIdWraparound() {
 
 // Ops that complete eagerly return a plain resolved promise with no promise
 // id attached, so ref/unref of such a promise must be a silent no-op.
-// `hasPromise(undefined)` used to read `promiseRing[NaN]` and throw.
+// `hasPromise(undefined)` reads `promiseRing[NaN]`, which would throw on the
+// `promise[2]` identity check if the sentinel comparison were strict; the
+// loose `!=` against `NO_PROMISE` keeps it a no-op.
 test(async function testRefUnrefPromiseWithoutId() {
   const eager = Promise.resolve("eager");
   Deno.core.refOpPromise(eager);
