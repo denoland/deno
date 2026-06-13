@@ -289,6 +289,9 @@ pub struct CoverageFlags {
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub r#type: CoverageType,
+  /// Minimum coverage percentage (0-100) applied to line, branch, and function
+  /// coverage. Overrides per-metric thresholds from `deno.json`.
+  pub threshold: Option<u32>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -629,6 +632,9 @@ pub struct TestFlags {
   pub no_run: bool,
   pub coverage_dir: Option<String>,
   pub coverage_raw_data_only: bool,
+  /// Minimum coverage percentage (0-100) required when `--coverage` is set.
+  /// Overrides per-metric thresholds from `deno.json`.
+  pub coverage_threshold: Option<u32>,
   pub clean: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
@@ -3284,6 +3290,15 @@ Generate html reports from lcov:
           .action(ArgAction::SetTrue),
       )
       .arg(
+        Arg::new("threshold")
+          .long("threshold")
+          .value_name("PERCENT")
+          .value_parser(value_parser!(u32))
+          .require_equals(true)
+          .help(cstr!("Fail if coverage is below this percentage (0-100), applied to line, branch, and function coverage.
+  <p(245)>Per-metric thresholds can be set in deno.json under \"coverage\": { \"thresholds\": { ... } }. The flag takes precedence.</>")),
+      )
+      .arg(
         Arg::new("files")
           .num_args(0..)
           .action(ArgAction::Append)
@@ -4894,6 +4909,16 @@ or <c>**/__tests__/**</>:
           .long("coverage-raw-data-only")
           .help("Only collect raw coverage data, without generating a report")
           .action(ArgAction::SetTrue)
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("coverage-threshold")
+          .long("coverage-threshold")
+          .value_name("PERCENT")
+          .value_parser(value_parser!(u32))
+          .require_equals(true)
+          .requires("coverage")
+          .help("Fail if coverage is below this percentage (0-100). Requires --coverage")
           .help_heading(TEST_HEADING),
       )
       .arg(
@@ -7294,6 +7319,7 @@ fn coverage_parse(
     CoverageType::Summary
   };
   let output = matches.remove_one::<String>("output");
+  let threshold = matches.remove_one::<u32>("threshold");
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
     files: FileFlags {
       include: files,
@@ -7303,6 +7329,7 @@ fn coverage_parse(
     include,
     exclude,
     r#type,
+    threshold,
   });
   Ok(())
 }
@@ -8348,6 +8375,7 @@ fn test_parse(
     doc,
     coverage_dir: matches.remove_one::<String>("coverage"),
     coverage_raw_data_only: matches.get_flag("coverage-raw-data-only"),
+    coverage_threshold: matches.remove_one::<u32>("coverage-threshold"),
     clean,
     fail_fast,
     files: FileFlags { include, ignore },
@@ -12776,6 +12804,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: Some("cov".to_string()),
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: true,
           watch: Default::default(),
           reporter: Default::default(),
@@ -12885,6 +12914,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -12931,6 +12961,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -13071,6 +13102,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -13110,6 +13142,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -13148,6 +13181,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -13188,6 +13222,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: false,
           watch: Some(WatchFlagsWithPaths {
             hmr: false,
@@ -14044,6 +14079,28 @@ mod tests {
   }
 
   #[test]
+  fn coverage_with_threshold() {
+    let r =
+      flags_from_vec(svec!["deno", "coverage", "--threshold=80", "foo.json"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Coverage(CoverageFlags {
+          files: FileFlags {
+            include: vec!["foo.json".to_string()],
+            ignore: vec![],
+          },
+          include: vec![r"^file:".to_string()],
+          exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
+          threshold: Some(80),
+          ..CoverageFlags::default()
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn coverage_with_lcov_and_out_file() {
     let r = flags_from_vec(svec![
       "deno",
@@ -14063,6 +14120,7 @@ mod tests {
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           r#type: CoverageType::Lcov,
+          threshold: None,
           output: Some(String::from("foo.lcov")),
         }),
         ..Flags::default()

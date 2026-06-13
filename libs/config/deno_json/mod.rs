@@ -779,6 +779,36 @@ impl BenchConfig {
   }
 }
 
+/// Minimum coverage percentages required for `deno coverage` and
+/// `deno test --coverage` to succeed. Modelled on Vitest's
+/// `coverage.thresholds`. A `None` value means the metric is not checked.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CoverageThresholds {
+  pub lines: Option<f64>,
+  pub branches: Option<f64>,
+  pub functions: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CoverageConfig {
+  pub thresholds: CoverageThresholds,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+struct SerializedCoverageThresholds {
+  pub lines: Option<f64>,
+  pub branches: Option<f64>,
+  pub functions: Option<f64>,
+}
+
+/// `coverage` config representation for serde.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedCoverageConfig {
+  pub thresholds: SerializedCoverageThresholds,
+}
+
 /// `compile` config representation for serde
 ///
 /// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
@@ -1234,6 +1264,7 @@ pub struct ConfigFileJson {
   pub tasks: Option<Value>,
   pub test: Option<Value>,
   pub bench: Option<Value>,
+  pub coverage: Option<Value>,
   pub compile: Option<Value>,
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
@@ -1930,6 +1961,30 @@ impl ConfigFile {
         files: self.to_exclude_files_config()?,
         permissions: None,
       }),
+    }
+  }
+
+  pub fn to_coverage_config(
+    &self,
+  ) -> Result<CoverageConfig, ToInvalidConfigError> {
+    match self.json.coverage.clone() {
+      Some(config) => {
+        let serialized: SerializedCoverageConfig =
+          serde_json::from_value(config).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "coverage",
+              source: error,
+            }
+          })?;
+        Ok(CoverageConfig {
+          thresholds: CoverageThresholds {
+            lines: serialized.thresholds.lines,
+            branches: serialized.thresholds.branches,
+            functions: serialized.thresholds.functions,
+          },
+        })
+      }
+      None => Ok(CoverageConfig::default()),
     }
   }
 
