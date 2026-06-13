@@ -2,9 +2,6 @@
 
 use aws_lc_rs::rand::SecureRandom;
 use aws_lc_rs::signature::EcdsaKeyPair;
-use deno_core::convert::Uint8Array;
-use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
 use elliptic_curve::pkcs8::EncodePrivateKey;
 use elliptic_curve::rand_core::OsRng;
 use num_traits::FromPrimitive;
@@ -12,7 +9,6 @@ use once_cell::sync::Lazy;
 use rsa::BigUint;
 use rsa::RsaPrivateKey;
 use rsa::pkcs1::EncodeRsaPrivateKey;
-use serde::Deserialize;
 
 use crate::shared::*;
 
@@ -50,43 +46,33 @@ static PUB_EXPONENT_1: Lazy<BigUint> =
 static PUB_EXPONENT_2: Lazy<BigUint> =
   Lazy::new(|| BigUint::from_u64(65537).unwrap());
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", tag = "algorithm")]
-pub enum GenerateKeyOptions {
-  #[serde(rename = "RSA", rename_all = "camelCase")]
-  Rsa {
-    modulus_length: u32,
-    #[serde(with = "serde_bytes")]
-    public_exponent: Vec<u8>,
-  },
-  #[serde(rename = "EC", rename_all = "camelCase")]
-  Ec { named_curve: EcNamedCurve },
-  #[serde(rename = "AES", rename_all = "camelCase")]
-  Aes { length: usize },
-  #[serde(rename = "HMAC", rename_all = "camelCase")]
-  Hmac {
-    hash: ShaHash,
-    length: Option<usize>,
-  },
+/// Rust-callable view of the RSA keygen path. Returns raw PKCS#1 DER
+/// bytes ready to feed [`crate::shared::RawKeyData::Private`].
+pub fn generate_rsa(
+  modulus_length: u32,
+  public_exponent: &[u8],
+) -> Result<Vec<u8>, GenerateKeyError> {
+  generate_key_rsa(modulus_length, public_exponent)
 }
 
-#[op2]
-pub async fn op_crypto_generate_key(
-  #[serde] opts: GenerateKeyOptions,
-) -> Result<Uint8Array, GenerateKeyError> {
-  let fun = || match opts {
-    GenerateKeyOptions::Rsa {
-      modulus_length,
-      public_exponent,
-    } => generate_key_rsa(modulus_length, &public_exponent),
-    GenerateKeyOptions::Ec { named_curve } => generate_key_ec(named_curve),
-    GenerateKeyOptions::Aes { length } => generate_key_aes(length),
-    GenerateKeyOptions::Hmac { hash, length } => {
-      generate_key_hmac(hash, length)
-    }
-  };
-  let buf = spawn_blocking(fun).await.unwrap()?;
-  Ok(buf.into())
+/// Rust-callable EC keygen.
+pub fn generate_ec(
+  named_curve: EcNamedCurve,
+) -> Result<Vec<u8>, GenerateKeyError> {
+  generate_key_ec(named_curve)
+}
+
+/// Rust-callable AES keygen.
+pub fn generate_aes(length: usize) -> Result<Vec<u8>, GenerateKeyError> {
+  generate_key_aes(length)
+}
+
+/// Rust-callable HMAC keygen.
+pub fn generate_hmac(
+  hash: ShaHash,
+  length: Option<usize>,
+) -> Result<Vec<u8>, GenerateKeyError> {
+  generate_key_hmac(hash, length)
 }
 
 fn generate_key_rsa(

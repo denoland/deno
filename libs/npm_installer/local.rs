@@ -236,13 +236,17 @@ impl<
 
     // 1. Check if packages changed and clean up if needed
     if self.clean_on_install {
-      let packages_hash = calculate_packages_hash(&package_partitions);
+      let root_folder_names =
+        root_package_folder_names(snapshot, &self.npm_install_deps_provider);
+      let packages_hash =
+        calculate_packages_hash(&package_partitions, &root_folder_names);
       if setup_cache.packages_changed(packages_hash) {
         cleanup_unused_packages(
           sys.as_ref(),
           &self.root_node_modules_path,
           &deno_local_registry_dir,
           &package_partitions,
+          &root_folder_names,
           &mut setup_cache,
         );
       }
@@ -1735,6 +1739,7 @@ pub(crate) fn join_package_name(
 /// This allows us to detect when npm packages have been added, removed, or changed.
 fn calculate_packages_hash(
   package_partitions: &deno_npm::resolution::NpmPackagesPartitioned,
+  root_folder_names: &BTreeSet<String>,
 ) -> u64 {
   use std::hash::Hash;
   use std::hash::Hasher;
@@ -1746,7 +1751,54 @@ fn calculate_packages_hash(
     package.id.hash(&mut hasher);
   }
 
+  // also hash the packages expected at the root of node_modules so that
+  // cleanup runs when a direct dependency is removed but stays in the
+  // resolution as a transitive dependency
+  for folder_name in root_folder_names {
+    folder_name.hash(&mut hasher);
+  }
+
   hasher.finish()
+}
+
+/// Calculates the set of package folder names that are expected to have a
+/// symlink at the root of the node_modules directory (resolved package.json
+/// and import map dependencies plus the snapshot's top level packages).
+fn root_package_folder_names(
+  snapshot: &NpmResolutionSnapshot,
+  npm_install_deps_provider: &NpmInstallDepsProvider,
+) -> BTreeSet<String> {
+  let mut folder_names = BTreeSet::new();
+  for id in snapshot.top_level_packages() {
+    if let Some(package) = snapshot.package_from_id(id) {
+      folder_names.insert(get_package_folder_id_folder_name(
+        &package.get_package_cache_folder_id(),
+      ));
+    }
+  }
+  // resolve the same way as when creating the root symlinks for
+  // package.json dependencies
+  for remote in npm_install_deps_provider.remote_pkgs() {
+    let package = match snapshot.resolve_pkg_from_pkg_req(&remote.req) {
+      Ok(package) => package,
+      _ => {
+        if remote.req.version_req.tag().is_some() {
+          continue;
+        }
+        match snapshot
+          .resolve_best_package_id(&remote.req.name, &remote.req.version_req)
+          .and_then(|id| snapshot.package_from_id(&id))
+        {
+          Some(package) => package,
+          None => continue,
+        }
+      }
+    };
+    folder_names.insert(get_package_folder_id_folder_name(
+      &package.get_package_cache_folder_id(),
+    ));
+  }
+  folder_names
 }
 
 /// Cleans up unused packages from the node_modules/.deno directory.
@@ -1756,6 +1808,7 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
   root_node_modules_dir: &Path,
   deno_local_registry_dir: &Path,
   package_partitions: &deno_npm::resolution::NpmPackagesPartitioned,
+  root_folder_names: &BTreeSet<String>,
   setup_cache: &mut LocalSetupCache<TSys>,
 ) {
   // Collect all package folder names that should exist in .deno/
@@ -1804,11 +1857,16 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
     },
   );
 
-  // Clean up root node_modules/* symlinks for packages no longer needed
+  // Clean up root node_modules/* symlinks for packages that should no longer
+  // be linked at the root. Only direct dependencies and top level packages
+  // get a root symlink, so a package that remains in the resolution solely as
+  // a transitive dependency must not stay linked at the root (#35083).
+  let root_keep_names =
+    root_folder_names.iter().cloned().collect::<HashSet<_>>();
   let _ignore = remove_unused_node_modules_symlinks(
     sys,
     root_node_modules_dir,
-    &keep_names,
+    &root_keep_names,
     &mut |name, path| {
       setup_cache.remove_root_symlink(name);
       remove_existing_entry(sys, path)

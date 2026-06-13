@@ -48,6 +48,38 @@ Deno.test(function DenoNamespaceIsNotFrozen() {
   assert(!Object.isFrozen(Deno));
 });
 
+Deno.test(function DenoNamespaceLazyPropertiesAreWritable() {
+  const deno = Deno as unknown as Record<string, unknown>;
+  const lazyProperties = [
+    "serve",
+    "serveHttp",
+    "upgradeWebSocket",
+    "Command",
+  ];
+
+  for (const name of lazyProperties) {
+    const descriptor = Object.getOwnPropertyDescriptor(Deno, name);
+    assert(descriptor);
+    try {
+      const original = deno[name];
+      assert(typeof original === "function");
+      const replacement = new Proxy(original, {});
+
+      deno[name] = replacement;
+
+      assertEquals(deno[name], replacement);
+      const replacementDescriptor = Object.getOwnPropertyDescriptor(Deno, name);
+      assert(replacementDescriptor);
+      assertEquals(replacementDescriptor.value, replacement);
+      assert(replacementDescriptor.writable);
+      assert(replacementDescriptor.enumerable);
+      assert(replacementDescriptor.configurable);
+    } finally {
+      Object.defineProperty(Deno, name, descriptor);
+    }
+  }
+});
+
 Deno.test(function webAssemblyExists() {
   assert(typeof WebAssembly.compile === "function");
 });
