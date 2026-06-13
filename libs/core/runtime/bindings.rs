@@ -243,7 +243,8 @@ pub(crate) fn externalize_sources(
   // SAFETY: We are creating `v8::OneByteConst`s here for each of the input sources. Because
   // we keep the original source alive, we can safely make a `v8::OneByteConst` from _any_
   // source type. We'll make this lifetime static elsewhere in the code so we can safely
-  // use it with v8 strings.
+  // use it with v8 strings. These setup sources are ASCII; debug builds retain V8's
+  // checked constructor for that invariant.
   unsafe {
     let mut externals: Box<[v8::OneByteConst]> = std::mem::transmute(externals);
 
@@ -253,7 +254,9 @@ pub(crate) fn externalize_sources(
     let offset = 0;
     for (index, source) in snapshot_sources.iter().enumerate() {
       externals[index + offset] =
-        FastStaticString::create_external_onebyte_const(source);
+        FastStaticString::create_external_onebyte_const_unchecked_in_release(
+          source,
+        );
     }
 
     // Next, add the non-snapshot sources. For each source file, we swap its `code`
@@ -276,12 +279,9 @@ pub(crate) fn externalize_sources(
     let offset = snapshot_sources.len();
     for (index, source) in source_iter.enumerate() {
       externals[index + offset] =
-        FastStaticString::create_external_onebyte_const(std::mem::transmute::<
-          &[u8],
-          &[u8],
-        >(
-          source.code.as_bytes(),
-        ));
+        FastStaticString::create_external_onebyte_const_unchecked_in_release(
+          std::mem::transmute::<&[u8], &[u8]>(source.code.as_bytes()),
+        );
       let ptr = &externals[index + offset] as *const v8::OneByteConst;
       let original_source = std::mem::replace(
         &mut source.code,

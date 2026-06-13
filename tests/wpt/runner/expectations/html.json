@@ -1020,7 +1020,11 @@
         "per-global.window.html": false,
         "navigator-indexed.html": true,
         "navigator-window-controls-overlay.tentative.html": false,
-        "navigator_user_agent.https.tentative.html": false,
+        "navigator_user_agent.https.tentative.html": {
+          "expectedFailures": [
+            "navigator.userAgentData returns a UserAgentMetadata object."
+          ]
+        },
         "navigator_user_agent.tentative.html": true,
         "navigatorcookies-cookieenabled-true.html": false,
         "navigatorlanguage.html": true,
