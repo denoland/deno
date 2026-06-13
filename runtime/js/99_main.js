@@ -1007,8 +1007,8 @@ function bootstrapWorkerRuntime(
     event.defineEventHandler(globalThis, "message");
     event.defineEventHandler(globalThis, "error", undefined, true);
 
-    // `Deno.exit()` is an alias to `self.close()`. Setting and exit
-    // code using an op in worker context is a no-op.
+    // `Deno.exit()` closes the worker using the internal worker close
+    // operation. Setting an exit code using an op in worker context is a no-op.
     os.setExitHandler((_exitCode) => {
       workerClose();
     });

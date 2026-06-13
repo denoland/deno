@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+mod cron;
 mod handler_impl;
 mod interface;
 pub mod local;

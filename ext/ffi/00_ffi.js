@@ -3,7 +3,7 @@
 (function () {
 const { core, internals, primordials } = __bootstrap;
 const {
-  isArrayBuffer,
+  isAnyArrayBuffer,
   isDataView,
   isTypedArray,
 } = core;
@@ -244,15 +244,19 @@ class UnsafePointer {
       } else {
         pointer = op_ffi_ptr_of(value);
       }
-    } else if (isArrayBuffer(value)) {
-      if (value.length === 0) {
-        pointer = op_ffi_ptr_of_exact(new Uint8Array(value));
+    } else if (isAnyArrayBuffer(value)) {
+      // `ArrayBuffer`/`SharedArrayBuffer` expose `byteLength`, not `length`, so
+      // wrap in a `Uint8Array` and measure that to detect the empty case (the
+      // `op`s require a view anyway).
+      const view = new Uint8Array(value);
+      if (TypedArrayPrototypeGetByteLength(view) === 0) {
+        pointer = op_ffi_ptr_of_exact(view);
       } else {
-        pointer = op_ffi_ptr_of(new Uint8Array(value));
+        pointer = op_ffi_ptr_of(view);
       }
     } else {
       throw new TypeError(
-        `Cannot access pointer: expected 'ArrayBuffer', 'ArrayBufferView' or 'UnsafeCallbackPrototype', received ${typeof value}`,
+        `Cannot access pointer: expected 'ArrayBuffer', 'SharedArrayBuffer', 'ArrayBufferView' or 'UnsafeCallbackPrototype', received ${typeof value}`,
       );
     }
     if (pointer) {

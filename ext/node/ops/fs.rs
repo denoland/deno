@@ -2742,7 +2742,7 @@ pub async fn op_node_cp_on_link(
 
       #[cfg(windows)]
       {
-        use winapi::shared::winerror::ERROR_NOT_A_REPARSE_POINT;
+        use windows_sys::Win32::Foundation::ERROR_NOT_A_REPARSE_POINT;
 
         let os_error = e.into_io_error();
         let Some(errno) = os_error.raw_os_error() else {
@@ -2992,7 +2992,7 @@ fn op_node_cp_on_link_sync(
 
       #[cfg(windows)]
       {
-        use winapi::shared::winerror::ERROR_NOT_A_REPARSE_POINT;
+        use windows_sys::Win32::Foundation::ERROR_NOT_A_REPARSE_POINT;
 
         let os_error = e.into_io_error();
         let Some(errno) = os_error.raw_os_error() else {

@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
 "use strict";
 
@@ -11,10 +9,16 @@ const {
   ArrayPrototypePush,
   ObjectAssign,
   ReflectConstruct,
+  SafeArrayIterator,
+  SafeRegExp,
   String,
   StringPrototypeReplace,
   StringPrototypeSplit,
+  SymbolAsyncIterator,
 } = primordials;
+
+const yamlEscapePattern = new SafeRegExp("\\\\", "g");
+const xmlEscapePattern = new SafeRegExp("[<>&\"']", "g");
 const {
   tapEscape,
   tapIndent,
@@ -31,11 +35,11 @@ function getTransform() {
 }
 
 function yamlEscape(value) {
-  return StringPrototypeReplace(String(value), /\\/g, "\\\\");
+  return StringPrototypeReplace(String(value), yamlEscapePattern, "\\\\");
 }
 
 function xmlEscape(value) {
-  return StringPrototypeReplace(String(value), /[<>&"']/g, (char) => {
+  return StringPrototypeReplace(String(value), xmlEscapePattern, (char) => {
     switch (char) {
       case "<":
         return "&lt;";
@@ -76,7 +80,11 @@ function reportTapDetails(nesting, data) {
   }
   if (details) {
     ArrayPrototypePush(lines, `${prefix}  error: |-\n`);
-    for (const line of StringPrototypeSplit(String(details), "\n")) {
+    for (
+      const line of new SafeArrayIterator(
+        StringPrototypeSplit(String(details), "\n"),
+      )
+    ) {
       ArrayPrototypePush(lines, `${prefix}    ${yamlEscape(line)}\n`);
     }
   }
@@ -99,7 +107,11 @@ function reportTest(status, data) {
 
 async function* tap(source) {
   yield "TAP version 13\n";
-  for await (const event of source) {
+  const tapIterator = source[SymbolAsyncIterator]();
+  while (true) {
+    // deno-lint-ignore prefer-primordials
+    const { done, value: event } = await tapIterator.next();
+    if (done) break;
     const { type, data } = event;
     switch (type) {
       case "test:plan":
@@ -135,7 +147,12 @@ async function* tap(source) {
 
 async function* dot(source) {
   let sawTests = false;
-  for await (const { type } of source) {
+  const dotIterator = source[SymbolAsyncIterator]();
+  while (true) {
+    // deno-lint-ignore prefer-primordials
+    const { done, value } = await dotIterator.next();
+    if (done) break;
+    const { type } = value;
     if (type === "test:pass") {
       sawTests = true;
       yield ".";
@@ -149,7 +166,12 @@ async function* dot(source) {
 
 async function* junit(source) {
   const testcases = [];
-  for await (const { type, data } of source) {
+  const junitIterator = source[SymbolAsyncIterator]();
+  while (true) {
+    // deno-lint-ignore prefer-primordials
+    const { done, value } = await junitIterator.next();
+    if (done) break;
+    const { type, data } = value;
     if (type !== "test:pass" && type !== "test:fail") continue;
     const name = xmlEscape(data.name ?? "<anonymous>");
     const duration = data.duration_ms === undefined
@@ -171,13 +193,13 @@ async function* junit(source) {
   yield '<?xml version="1.0" encoding="utf-8"?>\n';
   yield "<testsuites>\n";
   yield ` <testsuite tests="${testcases.length}">\n`;
-  for (const testcase of testcases) yield testcase;
+  for (const testcase of new SafeArrayIterator(testcases)) yield testcase;
   yield " </testsuite>\n";
   yield "</testsuites>\n";
 }
 
 class SpecReporter extends getTransform() {
-  constructor(options = {}) {
+  constructor(options = { __proto__: null }) {
     super(ObjectAssign({ writableObjectMode: true }, options));
   }
 
@@ -185,10 +207,13 @@ class SpecReporter extends getTransform() {
     try {
       const { type, data } = event;
       if (type === "test:pass") {
+        // deno-lint-ignore prefer-primordials
         this.push(`${tapIndent(data.nesting)}ok ${data.name}\n`);
       } else if (type === "test:fail") {
+        // deno-lint-ignore prefer-primordials
         this.push(`${tapIndent(data.nesting)}not ok ${data.name}\n`);
       } else if (type === "test:diagnostic") {
+        // deno-lint-ignore prefer-primordials
         this.push(`${tapIndent(data.nesting)}# ${data.message}\n`);
       }
       callback();
@@ -199,7 +224,7 @@ class SpecReporter extends getTransform() {
 }
 
 class LcovReporter extends getTransform() {
-  constructor(options = {}) {
+  constructor(options = { __proto__: null }) {
     super(ObjectAssign({ writableObjectMode: true }, options));
   }
 

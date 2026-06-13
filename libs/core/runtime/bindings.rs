@@ -6,6 +6,7 @@ use std::os::raw::c_void;
 use std::path::PathBuf;
 
 use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 use url::Url;
 use v8::MapFnTo;
 
@@ -28,10 +29,12 @@ use crate::error::JsStackFrame;
 use crate::error::callsite_fns;
 use crate::error::has_call_site;
 use crate::error::is_instance_of_error;
+use crate::extension_set::LoadedSource;
 use crate::extension_set::LoadedSources;
 use crate::modules::ImportAttributesKind;
 use crate::modules::ModuleImportPhase;
 use crate::modules::ModuleMap;
+use crate::modules::ModuleName;
 use crate::modules::get_requested_module_type_from_attributes;
 use crate::modules::parse_import_attributes;
 use crate::modules::synthetic_module_evaluation_steps;
@@ -178,13 +181,24 @@ pub(crate) fn create_external_references(
   references
 }
 
+/// Result of [`externalize_sources`]: the `v8::OneByteConst` backings, the
+/// original source strings they borrow from (kept alive), and the specifiers of
+/// the externalized `lazy_loaded_js` sources (parallel to the trailing
+/// `original_sources` entries).
+pub(crate) type ExternalizedSources = (
+  Box<[v8::OneByteConst]>,
+  Box<[FastString]>,
+  Box<[ModuleName]>,
+);
+
 /// Combine the snapshotted sources (which may be empty) with the loaded sources, and ensure that
 /// each of the loaded source files passed to this function has a correct `v8::OneByteConst` backing
 /// that can be used for compilation.
 pub(crate) fn externalize_sources(
   sources: &mut LoadedSources,
   snapshot_sources: Vec<&'static [u8]>,
-) -> (Box<[v8::OneByteConst]>, Box<[FastString]>) {
+  externalize_lazy_js: bool,
+) -> ExternalizedSources {
   // This is a complex method partly because we're still waiting on the `Copy` trait on v8::OneByteConst
   // to land.
 
@@ -192,13 +206,34 @@ pub(crate) fn externalize_sources(
   // Because we don't have that trait, we work around it with [usize; 3].
   const INIT_VALUE: MaybeUninit<[usize; 3]> =
     MaybeUninit::<[usize; 3]>::uninit();
-  // Size to match the actual iteration (`js + esm + lazy_esm`). `LoadedSources::len`
-  // also counts `lazy_loaded_js`, which are *not* externalized here — counting them
-  // leaves trailing uninitialized slots that later flow into V8's external_references
-  // list and shift snapshot indices, causing miscompilation of JIT'd code that
-  // references those entries.
-  let sources_count =
-    sources.js.len() + sources.esm.len() + sources.lazy_esm.len();
+  // Size to match the actual iteration below. The count must EXACTLY match the
+  // number of sources iterated (and the `source_count` recorded into the
+  // snapshot sidecar in `jsruntime`): a mismatch leaves trailing uninitialized
+  // slots that flow into V8's external_references list and shift snapshot
+  // indices, causing miscompilation of JIT'd code that references those
+  // entries. `lazy_loaded_js` is only externalized when building the snapshot
+  // (`externalize_lazy_js`); at runtime those scripts stay as static
+  // registrations and consumed ones re-link via `snapshot_sources`.
+  let sources_count = sources.js.len()
+    + sources.esm.len()
+    + sources.lazy_esm.len()
+    + if externalize_lazy_js {
+      sources.lazy_js.len()
+    } else {
+      0
+    };
+  // Record the externalized `lazy_loaded_js` specifiers in iteration order
+  // (these become the trailing entries of `original_sources`). `snapshot()`
+  // uses them to drop non-consumed scripts' bytes from the sidecar.
+  let lazy_js_specifiers: Box<[ModuleName]> = if externalize_lazy_js {
+    sources
+      .lazy_js
+      .iter()
+      .map(|s| s.specifier.try_clone().unwrap())
+      .collect()
+  } else {
+    Box::default()
+  };
   let externals =
     vec![INIT_VALUE; sources_count + snapshot_sources.len()].into_boxed_slice();
 
@@ -208,7 +243,8 @@ pub(crate) fn externalize_sources(
   // SAFETY: We are creating `v8::OneByteConst`s here for each of the input sources. Because
   // we keep the original source alive, we can safely make a `v8::OneByteConst` from _any_
   // source type. We'll make this lifetime static elsewhere in the code so we can safely
-  // use it with v8 strings.
+  // use it with v8 strings. These setup sources are ASCII; debug builds retain V8's
+  // checked constructor for that invariant.
   unsafe {
     let mut externals: Box<[v8::OneByteConst]> = std::mem::transmute(externals);
 
@@ -218,21 +254,34 @@ pub(crate) fn externalize_sources(
     let offset = 0;
     for (index, source) in snapshot_sources.iter().enumerate() {
       externals[index + offset] =
-        FastStaticString::create_external_onebyte_const(source);
+        FastStaticString::create_external_onebyte_const_unchecked_in_release(
+          source,
+        );
     }
 
     // Next, add the non-snapshot sources. For each source file, we swap its `code`
     // member to use this new external string. Note that this is only safe because
     // we keep the original source alive.
+    //
+    // Iterate `js + esm + lazy_esm` always, plus `lazy_js` only when building the
+    // snapshot. The empty slice keeps the iterator type identical in both arms.
+    let lazy_js: &mut [LoadedSource] = if externalize_lazy_js {
+      &mut sources.lazy_js
+    } else {
+      &mut []
+    };
+    let source_iter = sources
+      .js
+      .iter_mut()
+      .chain(sources.esm.iter_mut())
+      .chain(sources.lazy_esm.iter_mut())
+      .chain(lazy_js.iter_mut());
     let offset = snapshot_sources.len();
-    for (index, source) in sources.into_iter().enumerate() {
+    for (index, source) in source_iter.enumerate() {
       externals[index + offset] =
-        FastStaticString::create_external_onebyte_const(std::mem::transmute::<
-          &[u8],
-          &[u8],
-        >(
-          source.code.as_bytes(),
-        ));
+        FastStaticString::create_external_onebyte_const_unchecked_in_release(
+          std::mem::transmute::<&[u8], &[u8]>(source.code.as_bytes()),
+        );
       let ptr = &externals[index + offset] as *const v8::OneByteConst;
       let original_source = std::mem::replace(
         &mut source.code,
@@ -241,7 +290,11 @@ pub(crate) fn externalize_sources(
       original_sources.push(original_source)
     }
 
-    (externals, original_sources.into_boxed_slice())
+    (
+      externals,
+      original_sources.into_boxed_slice(),
+      lazy_js_specifiers,
+    )
   }
 }
 
@@ -481,12 +534,12 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 
   let op_ctxs = &op_ctxs[index..];
   for op_ctx in op_ctxs {
-    let mut op_fn = op_ctx_function(
-      scope,
-      op_ctx,
-      v8::ConstructorBehavior::Allow,
-      will_snapshot,
-    );
+    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
+    let mut op_fn = if will_snapshot && !op_ctx.decl.constructable {
+      op_ctx_plain_function(scope, op_ctx, constructor_behavior)
+    } else {
+      op_ctx_function(scope, op_ctx, constructor_behavior, will_snapshot)
+    };
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     // For async ops we need to set them up, by calling `Deno.core.setUpAsyncStub` -
@@ -604,8 +657,8 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
       continue;
     }
 
-    let mut op_fn =
-      op_ctx_function(scope, op_ctx, v8::ConstructorBehavior::Allow, false);
+    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
+    let mut op_fn = op_ctx_function(scope, op_ctx, constructor_behavior, false);
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     if op_ctx.decl.is_async {
@@ -620,10 +673,21 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
 }
 
 fn method_needs_fast_call_upgrade(op_ctx: &OpCtx) -> bool {
+  if op_ctx.decl.constructable {
+    return false;
+  }
   if op_ctx.metrics_enabled() {
     op_ctx.decl.fast_fn_with_metrics.is_some()
   } else {
     op_ctx.decl.fast_fn.is_some()
+  }
+}
+
+fn op_ctx_constructor_behavior(op_ctx: &OpCtx) -> v8::ConstructorBehavior {
+  if op_ctx.decl.constructable {
+    v8::ConstructorBehavior::Allow
+  } else {
+    v8::ConstructorBehavior::Throw
   }
 }
 
@@ -681,6 +745,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
 
       let tmpl = v8::FunctionTemplate::builder_raw(getter_raw)
         .data(external.into())
+        .constructor_behavior(v8::ConstructorBehavior::Throw)
         .build(scope);
       let op_fn = tmpl.get_function(scope).unwrap();
       let method_name = format!("get {}", op_ctx.decl.name_fast);
@@ -701,6 +766,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
 
       let tmpl = v8::FunctionTemplate::builder_raw(setter_raw)
         .data(external.into())
+        .constructor_behavior(v8::ConstructorBehavior::Throw)
         .length(1)
         .build(scope);
       let op_fn = tmpl.get_function(scope).unwrap();
@@ -762,6 +828,7 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   // snapshot deserialization.
   let template = if let Some(fast_function) = fast_fn
     && !will_snapshot
+    && !op_ctx.decl.constructable
   {
     builder.build_fast(scope, &[fast_function])
   } else {
@@ -782,6 +849,35 @@ fn op_ctx_function<'s, 'i>(
   let template =
     op_ctx_template(scope, op_ctx, constructor_behaviour, will_snapshot);
   let v8fn = template.get_function(scope).unwrap();
+  v8fn.set_name(v8name);
+  v8fn
+}
+
+fn op_ctx_plain_function<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  op_ctx: &OpCtx,
+  constructor_behaviour: v8::ConstructorBehavior,
+) -> v8::Local<'s, v8::Function> {
+  let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
+  let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
+  let slow_fn = if op_ctx.metrics_enabled() {
+    op_ctx.decl.slow_fn_with_metrics
+  } else {
+    op_ctx.decl.slow_fn
+  };
+
+  let v8fn = v8::Function::builder_raw(slow_fn)
+    .data(external.into())
+    .constructor_behavior(constructor_behaviour)
+    .side_effect_type(if op_ctx.decl.no_side_effects {
+      v8::SideEffectType::HasNoSideEffect
+    } else {
+      v8::SideEffectType::HasSideEffect
+    })
+    .length(op_ctx.decl.arg_count as i32)
+    .build(scope)
+    .unwrap();
+  let v8name = op_ctx.decl.name_fast.v8_string(scope).unwrap();
   v8fn.set_name(v8name);
   v8fn
 }
@@ -941,7 +1037,15 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
       if let Some(validate_import_attributes_cb) =
         &state.validate_import_attributes_cb
       {
-        (validate_import_attributes_cb)(tc_scope, &assertions);
+        // Dynamic imports don't expose a source offset, so line/column are
+        // unavailable here.
+        let context = crate::modules::ImportAttributesContext {
+          referrer: referrer_name_str.clone(),
+          specifier: specifier_str.clone(),
+          line_number: None,
+          column_number: None,
+        };
+        (validate_import_attributes_cb)(tc_scope, &assertions, &context);
       }
     }
 
@@ -1243,7 +1347,16 @@ fn import_meta_resolve(
       rv.set(resolved_val);
     }
     Err(err) => {
-      crate::error::throw_js_error_class(scope, &err);
+      // Per the HTML spec, `import.meta.resolve()` throws a `TypeError` when
+      // the specifier can't be resolved, whatever the underlying loader error
+      // class is (e.g. a URL parse error surfaces as a `URIError`). Coerce to
+      // `TypeError` to match the spec. This used to happen implicitly because
+      // `throw_js_error_class` always built a `TypeError`; now that it faithfully
+      // rebuilds the registered class, the coercion has to be explicit.
+      crate::error::throw_js_error_class(
+        scope,
+        &JsErrorBox::type_error(err.get_message().into_owned()),
+      );
     }
   };
 }
@@ -1298,10 +1411,15 @@ fn catch_dynamic_import_promise_error<'s, 'i>(
         }
         _ => v8::Exception::error(scope, message),
       };
-      let code_key = CODE.v8_string(scope).unwrap();
-      let code_value = ERR_MODULE_NOT_FOUND.v8_string(scope).unwrap();
-      let exception_obj = exception.to_object(scope).unwrap();
-      exception_obj.set(scope, code_key.into(), code_value.into());
+      // V8 module linking errors (e.g. a missing named export) are
+      // spec-defined `SyntaxError`s and must not carry a host-defined `code`.
+      // Only genuine resolution/loading failures get `ERR_MODULE_NOT_FOUND`.
+      if name.as_str() != deno_error::builtin_classes::SYNTAX_ERROR {
+        let code_key = CODE.v8_string(scope).unwrap();
+        let code_value = ERR_MODULE_NOT_FOUND.v8_string(scope).unwrap();
+        let exception_obj = exception.to_object(scope).unwrap();
+        exception_obj.set(scope, code_key.into(), code_value.into());
+      }
       scope.throw_exception(exception);
       return;
     }

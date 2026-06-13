@@ -129,6 +129,52 @@ Deno.test(
   },
 );
 
+Deno.test(async function bodyMultipartFormDataEmptyFilenameIsFile() {
+  const boundary = "AaB03x";
+  const payload = [
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="files"; filename=""',
+    "Content-Type: application/octet-stream",
+    "",
+    "",
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="files"; filename=""',
+    "Content-Type: text/plain",
+    "",
+    "file contents",
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  const body = buildBody(
+    new TextEncoder().encode(payload),
+    new Headers({
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    }),
+  );
+
+  const formData = await body.formData();
+  const files = formData.getAll("files");
+  assertEquals(files.length, 2);
+
+  const emptyFile = files[0];
+  if (!(emptyFile instanceof File)) {
+    throw new Error("Expected empty filename part to parse as a File");
+  }
+  assertEquals(emptyFile.name, "");
+  assertEquals(emptyFile.size, 0);
+  assertEquals(await emptyFile.text(), "");
+
+  const fileWithContents = files[1];
+  if (!(fileWithContents instanceof File)) {
+    throw new Error(
+      "Expected empty filename part with body to parse as a File",
+    );
+  }
+  assertEquals(fileWithContents.name, "");
+  assertEquals(fileWithContents.size, 13);
+  assertEquals(await fileWithContents.text(), "file contents");
+});
+
 Deno.test(
   { permissions: { net: true } },
   async function bodyURLEncodedFormData() {
@@ -208,6 +254,88 @@ Deno.test(
     const text = await file.text();
     assertEquals(text, "y");
     assertEquals(file.size, 1);
+  },
+);
+
+Deno.test(
+  async function bodyMultipartFormDataEmbeddedBoundaryTextInFileContent() {
+    const boundary = "AaB03x";
+    const payload = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="x.txt"',
+      "Content-Type: text/plain",
+      "",
+      `before--${boundary}after`,
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    const formData = await body.formData();
+    const file = formData.get("file");
+    assert(file instanceof File);
+    assertEquals(await file.text(), `before--${boundary}after`);
+  },
+);
+
+Deno.test(
+  async function bodyMultipartFormDataBoundaryPrefixLineInFileContent() {
+    const boundary = "AaB03x";
+    const payload = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="x.txt"',
+      "Content-Type: text/plain",
+      "",
+      "before",
+      `--${boundary}x`,
+      "after",
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    const formData = await body.formData();
+    const file = formData.get("file");
+    assert(file instanceof File);
+    assertEquals(await file.text(), `before\r\n--${boundary}x\r\nafter`);
+  },
+);
+
+Deno.test(
+  async function bodyMultipartFormDataSkipsNamelessPartAndParsesNextPart() {
+    const boundary = "AaB03x";
+    const payload = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; filename="skip.txt"',
+      "Content-Type: text/plain",
+      "",
+      "skip me",
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="field"',
+      "",
+      "value",
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    const formData = await body.formData();
+    assertEquals(formData.get("field"), "value");
   },
 );
 

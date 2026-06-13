@@ -1,0 +1,7 @@
+{
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}

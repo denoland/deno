@@ -1,12 +1,18 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-//! Discovery of npm packages that ship native (.node) addons.
+//! Discovery of npm packages that need to ship in the binary built by
+//! `deno compile --bundle`. Two complementary signals:
 //!
-//! Used by `deno compile --bundle` to decide which packages must stay
-//! external during esbuild bundling (so `require('@napi-rs/whatever')`
-//! survives) and which package directories must still be embedded in the
-//! VFS so the addon can be located at runtime.
+//! 1. Packages with `.node` native addons can't be tree-shaken into the
+//!    bundle, so we mark them for inclusion eagerly. For managed npm we
+//!    walk the resolved snapshot; for BYONM we scan the workspace
+//!    `node_modules` trees that `fill_npm_vfs` embeds.
+//! 2. Absolute paths the bundle path-rewriter pointed at — captured at
+//!    bundle time — are mapped back to their owning npm package so the
+//!    binary writer ships only what's actually reached at runtime.
 
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::ffi::OsStr;
 use std::path::Path;
@@ -86,6 +92,115 @@ pub fn find_native_addon_packages(
       Ok(find_byonm_native_addon_packages(workspace_root))
     }
   }
+}
+
+/// Compute the set of npm packages whose folders must ship in the binary
+/// produced by `deno compile --bundle`.
+///
+/// Seeds the set with:
+/// - every native-addon package (always needed; bundle can't inline a
+///   `.node` file), and
+/// - every package whose installed folder contains one of the
+///   `referenced_paths` — i.e. paths the bundle path-rewriter resolved
+///   at build time, which the compiled binary will require() at runtime.
+///
+/// Then walks each seed's dependency closure so transitive runtime
+/// requires (e.g. a CJS package's own require()s) also have their
+/// packages on disk.
+///
+/// Returns `None` for BYONM; the caller falls back to embedding all
+/// workspace `node_modules` trees.
+pub fn collect_bundle_required_packages(
+  npm_resolver: &CliNpmResolver,
+  npm_system_info: &NpmSystemInfo,
+  referenced_paths: &[PathBuf],
+) -> Result<Option<HashSet<NpmPackageId>>, AnyError> {
+  let CliNpmResolver::Managed(managed) = npm_resolver else {
+    return Ok(None);
+  };
+
+  let snapshot = managed.resolution().snapshot();
+  // Managed resolver only: `workspace_root` is unused on this path (it only
+  // matters for BYONM, which returns `None` above).
+  let native_packages =
+    find_native_addon_packages(npm_resolver, npm_system_info, None)?;
+
+  let mut folders: Vec<(NpmPackageId, PathBuf)> = Vec::new();
+  for pkg in snapshot.all_packages_for_every_system() {
+    if let Ok(folder) = managed.resolve_pkg_folder_from_pkg_id(&pkg.id)
+      && folder.exists()
+    {
+      folders.push((pkg.id.clone(), folder));
+    }
+  }
+
+  // `id` is always `Some` here: `find_native_addon_packages` only returns
+  // `None` ids for BYONM, which this function bails out of above.
+  let mut seeds: HashSet<NpmPackageId> =
+    native_packages.into_iter().filter_map(|p| p.id).collect();
+
+  // One-level reverse walk: include any package that depends on a
+  // native-addon package. NAPI-RS packages are typically split into a
+  // JS-only wrapper (e.g. `@mariozechner/clipboard`) and a set of
+  // platform-specific binary packages it loads via optional deps
+  // (`@mariozechner/clipboard-darwin-arm64`). Only the binary one has
+  // a `.node` file, so the forward closure misses the wrapper — which
+  // is the package user code actually imports. Pull it in here.
+  let native_seeds: HashSet<NpmPackageId> = seeds.iter().cloned().collect();
+  for pkg in snapshot.all_packages_for_every_system() {
+    if pkg
+      .dependencies
+      .values()
+      .any(|dep_id| native_seeds.contains(dep_id))
+    {
+      seeds.insert(pkg.id.clone());
+    }
+  }
+
+  // Map each referenced path to its owning package using longest-prefix
+  // matching, so a path inside a nested package directory is attributed
+  // to the nested one rather than its parent.
+  let mut path_owner_cache: HashMap<&PathBuf, Option<NpmPackageId>> =
+    HashMap::new();
+  for path in referenced_paths {
+    if path_owner_cache.contains_key(path) {
+      continue;
+    }
+    let mut best_match: Option<(&NpmPackageId, usize)> = None;
+    for (id, folder) in &folders {
+      let folder_str = folder.as_os_str();
+      if path.starts_with(folder) {
+        let folder_len = folder_str.len();
+        if best_match.map(|(_, len)| folder_len > len).unwrap_or(true) {
+          best_match = Some((id, folder_len));
+        }
+      }
+    }
+    let owner = best_match.map(|(id, _)| id.clone());
+    if let Some(ref id) = owner {
+      seeds.insert(id.clone());
+    }
+    path_owner_cache.insert(path, owner);
+  }
+
+  // BFS through dependency edges from each seed so runtime requires that
+  // happen inside an already-embedded package can resolve.
+  let mut closure: HashSet<NpmPackageId> = HashSet::new();
+  let mut stack: Vec<NpmPackageId> = seeds.into_iter().collect();
+  while let Some(id) = stack.pop() {
+    if !closure.insert(id.clone()) {
+      continue;
+    }
+    if let Some(pkg) = snapshot.package_from_id(&id) {
+      for dep_id in pkg.dependencies.values() {
+        if !closure.contains(dep_id) {
+          stack.push(dep_id.clone());
+        }
+      }
+    }
+  }
+
+  Ok(Some(closure))
 }
 
 /// BYONM: walk every `node_modules` directory under `workspace_root` (the

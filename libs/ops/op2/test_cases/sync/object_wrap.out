@@ -31,6 +31,7 @@ impl Foo {
                 false,
                 1usize as u8,
                 false,
+                false,
                 Self::v8_fn_ptr as _,
                 Self::slow_function_impl,
                 ::deno_core::AccessorType::None,
@@ -124,6 +125,7 @@ impl Foo {
                 false,
                 0usize as u8,
                 false,
+                false,
                 Self::v8_fn_ptr as _,
                 Self::slow_function_impl,
                 ::deno_core::AccessorType::Getter,
@@ -173,6 +175,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self) -> u32;
         }
         impl Callable for Foo {
@@ -197,6 +200,7 @@ impl Foo {
                 false,
                 false,
                 1usize as u8,
+                false,
                 false,
                 Self::v8_fn_ptr as _,
                 Self::slow_function_impl,
@@ -256,6 +260,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self, x: u32);
         }
         impl Callable for Foo {
@@ -280,6 +285,7 @@ impl Foo {
                 false,
                 false,
                 1usize as u8,
+                false,
                 false,
                 Self::v8_fn_ptr as _,
                 Self::slow_function_impl,
@@ -315,13 +321,11 @@ impl Foo {
                     &parts,
                 );
                 if args.length() < (1u8 as i32) + 0i32 {
-                    let msg = format!(
-                        "{}: {} {} required, but only {} present",
-                        "Failed to execute 'call' on 'Foo'",
-                        1u8,
-                        "argument",
-                        args.length() - 0i32,
-                    );
+                    let present = args.length() - 0i32;
+                    let mut msg = "Failed to execute 'call' on 'Foo': 1 argument required, but only "
+                        .to_string();
+                    msg.push_str(&present.to_string());
+                    msg.push_str(" present");
                     let msg = deno_core::v8::String::new(&mut scope, &msg).unwrap();
                     let exception = deno_core::v8::Exception::type_error(
                         &mut scope,
@@ -357,6 +361,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self, _v: u32);
         }
         impl Callable for Foo {
@@ -379,6 +384,7 @@ impl Foo {
                 false,
                 false,
                 0usize as u8,
+                false,
                 false,
                 Self::v8_fn_ptr as _,
                 Self::slow_function_impl,
@@ -521,6 +527,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self);
         }
         impl Callable for Foo {
@@ -543,6 +550,7 @@ impl Foo {
                 false,
                 false,
                 1usize as u8,
+                false,
                 false,
                 Self::v8_fn_ptr as _,
                 Self::slow_function_impl,
@@ -596,6 +604,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self, _args: Option<&v8::FunctionCallbackArguments>);
         }
         impl Callable for Foo {
@@ -618,6 +627,7 @@ impl Foo {
                 false,
                 false,
                 0usize as u8,
+                false,
                 false,
                 Self::v8_fn_ptr as _,
                 Self::slow_function_impl,
@@ -668,6 +678,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self);
         }
         impl Callable for Foo {
@@ -690,6 +701,7 @@ impl Foo {
                 false,
                 false,
                 0usize as u8,
+                false,
                 false,
                 Self::v8_fn_ptr as _,
                 Self::slow_function_impl,
@@ -745,6 +757,7 @@ impl Foo {
                 false,
                 0usize as u8,
                 false,
+                false,
                 Self::v8_fn_ptr as _,
                 Self::slow_function_impl,
                 ::deno_core::AccessorType::None,
@@ -794,6 +807,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self);
         }
         impl Callable for Foo {
@@ -816,6 +830,7 @@ impl Foo {
                 false,
                 false,
                 0usize as u8,
+                false,
                 false,
                 Self::v8_fn_ptr as _,
                 Self::slow_function_impl,
@@ -969,6 +984,7 @@ impl Foo {
             }
         }
         trait Callable {
+            #[allow(clippy::too_many_arguments)]
             fn call(&self);
         }
         impl Callable for Foo {
