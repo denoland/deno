@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@denotest/node-eval-lifecycle-script": "1.0.0"
+  }
+}
