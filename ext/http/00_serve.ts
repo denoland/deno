@@ -90,6 +90,7 @@ const {
   SERVE_FAST_HEADER_DEFAULT_TEXT,
   SERVE_FAST_HEADER_NONE,
   toInnerResponse,
+  wireHeaderList,
 } = core.loadExtScript("ext:deno_fetch/23_response.js");
 const {
   abortRequest,
@@ -129,6 +130,8 @@ const {
 } = core.loadExtScript("ext:deno_telemetry/util.ts");
 
 const _upgraded = Symbol("_upgraded");
+
+let legacyAbortWarned = false;
 
 function internalServerError() {
   // "Internal Server Error"
@@ -188,6 +191,7 @@ class InnerRequest {
   #upgraded;
   #urlValue;
   #completed;
+  #signalAccessed;
   request;
 
   constructor(external, context) {
@@ -195,6 +199,7 @@ class InnerRequest {
     this.#context = context;
     this.#upgraded = false;
     this.#completed = undefined;
+    this.#signalAccessed = false;
   }
 
   close(success = true) {
@@ -216,6 +221,13 @@ class InnerRequest {
       }
     }
     if (this.#context.legacyAbort) {
+      if (success && this.#signalAccessed && !legacyAbortWarned) {
+        legacyAbortWarned = true;
+        // deno-lint-ignore no-console
+        console.warn(
+          "Deno.serve: request.signal aborts on successful responses (legacy behavior, see https://github.com/denoland/deno/issues/29111). Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/runtime/reference/migrate-deprecations/",
+        );
+      }
       abortRequest(this.request);
     }
     this.#external = null;
@@ -435,6 +447,7 @@ class InnerRequest {
   }
 
   onCancel(callback) {
+    this.#signalAccessed = true;
     if (this.#external === null) {
       if (this.#context.legacyAbort) callback();
       return;
@@ -854,7 +867,7 @@ function mapToCallback(context, callback, onError) {
 
     inner = toInnerResponse(response);
     const status = inner.status;
-    const headers = inner.headerList;
+    const headers = wireHeaderList(inner);
     const respBody = inner.body;
     fastSyncResponseOrStream(
       req,
@@ -1027,7 +1040,7 @@ function mapToNativeResponseCallback(context, callback, onError) {
       inner.body,
       inner.status,
       innerRequest,
-      inner.headerList,
+      wireHeaderList(inner),
       (error) => reportResponseStreamError(onError, error),
     );
     return undefined;
@@ -1609,6 +1622,9 @@ internals.addTrailers = addTrailers;
 internals.upgradeHttpRaw = upgradeHttpRaw;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
+internals.resetLegacyAbortWarning = () => {
+  legacyAbortWarned = false;
+};
 
 function registerDeclarativeServer(exports) {
   if (!ObjectHasOwn(exports, "fetch")) return;

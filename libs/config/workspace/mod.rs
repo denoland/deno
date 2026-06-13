@@ -811,7 +811,7 @@ impl Workspace {
         deps: folder
           .deno_json
           .as_ref()
-          .map(|d| d.dependencies().into_iter().map(Dep::Req))
+          .map(|d| d.dependencies(catalogs).into_iter().map(Dep::Req))
           .into_iter()
           .flatten()
           .chain(

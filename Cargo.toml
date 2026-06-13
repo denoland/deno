@@ -352,6 +352,7 @@ dprint-plugin-json = "=0.21.3"
 dprint-plugin-jupyter = "=0.2.2"
 dprint-plugin-markdown = "=0.20.0"
 dprint-plugin-typescript = "=0.96.1"
+dunce = "1.0.5"
 env_logger = { version = "=0.11.6", default-features = false, features = ["regex"] }
 imara-diff = "=0.2.0"
 lax-css = "=0.1.4"

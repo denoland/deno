@@ -2749,6 +2749,78 @@ Deno.test(async function x448JwkExportImportRoundtrip() {
   assertEquals(bits1, bits2);
 });
 
+// X448 must derive the correct public key from a known private scalar
+// (RFC 7748 requires clamping the scalar, not reducing it mod the group
+// order). Regression test for denoland/deno#35155.
+Deno.test(async function x448DerivesCorrectPublicKey() {
+  const scalar = decodeHex(
+    "27a4354608f3bdd38f1f5af305f3e0682efe4e25808249d8fcb55927f6a9f446b8dc1d0a2c3b8cb133a5673b59a6d55ce754ec0c9a555401",
+  );
+  const expected =
+    "145d083ea7a6379dbb32dcbd8aff4c206ea5d069b75e96c6dd2a3e38f441471ac97adca641fdad66685a96f32b7c3e064635fab3cc89234e";
+
+  const subtleAny = crypto.subtle as unknown as {
+    getPublicKey(key: CryptoKey, usages: KeyUsage[]): Promise<CryptoKey>;
+  };
+
+  async function rawPublicKey(privateKey: CryptoKey): Promise<string> {
+    const publicKey = await subtleAny.getPublicKey(privateKey, []);
+    return encodeHex(
+      new Uint8Array(await crypto.subtle.exportKey("raw", publicKey)),
+    );
+  }
+
+  // Imported as PKCS#8.
+  const pkcs8Prefix = decodeHex("3046020100300506032b656f043a0438");
+  const pkcs8Bytes = new Uint8Array(pkcs8Prefix.length + scalar.length);
+  pkcs8Bytes.set(pkcs8Prefix);
+  pkcs8Bytes.set(scalar, pkcs8Prefix.length);
+  const pkcs8Key = await crypto.subtle.importKey(
+    "pkcs8",
+    pkcs8Bytes,
+    "X448",
+    true,
+    ["deriveBits"],
+  );
+  assertEquals(await rawPublicKey(pkcs8Key), expected);
+
+  // Imported as private JWK.
+  const jwkKey = await crypto.subtle.importKey(
+    "jwk",
+    {
+      kty: "OKP",
+      crv: "X448",
+      d: btoaUrlSafe(scalar),
+      x: btoaUrlSafe(decodeHex(expected)),
+      key_ops: ["deriveBits"],
+      ext: true,
+    },
+    "X448",
+    true,
+    ["deriveBits"],
+  );
+  assertEquals(await rawPublicKey(jwkKey), expected);
+});
+
+function decodeHex(s: string): Uint8Array {
+  const out = new Uint8Array(s.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(s.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+function encodeHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function btoaUrlSafe(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
 Deno.test(async function hmacSha3SignVerify() {
   for (const hash of ["SHA3-256", "SHA3-384", "SHA3-512"]) {
     const key = await crypto.subtle.generateKey(
