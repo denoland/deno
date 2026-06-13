@@ -1121,7 +1121,7 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af491d569909a7e4dee0ad7db7f5341fef5c614d5b8ec8cf765732aba3cff681"
 dependencies = [
- "unicode-width 0.1.13",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -1876,6 +1876,7 @@ dependencies = [
  "indexmap 2.12.0",
  "jsonc-parser",
  "keyring",
+ "lax-sql",
  "lazy-regex",
  "libc",
  "libsui",
@@ -1914,7 +1915,6 @@ dependencies = [
  "sha2",
  "shlex",
  "spki 0.7.3",
- "sqlformat",
  "strsim",
  "sys_traits",
  "tar",
@@ -6131,6 +6131,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "lax-core"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59154ddba1bc6fa3d3e9ef0190dbecbac0cbbdc87b8d28e4437f8ff9c70b8d24"
+dependencies = [
+ "dprint-core",
+]
+
+[[package]]
+name = "lax-sql"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68eb5374e8216c43b6a467e1613c25c5c669c46143829db3c870cf903a9c2a69"
+dependencies = [
+ "anyhow",
+ "dprint-core",
+ "lax-core",
+ "serde",
+]
+
+[[package]]
 name = "lazy-regex"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9145,16 +9166,6 @@ name = "sptr"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b9b39299b249ad65f3b7e96443bad61c02ca5cd3589f46cb6d610a0fd6c0d6a"
-
-[[package]]
-name = "sqlformat"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0d7b3e8a3b6f2ee93ac391a0f757c13790caa0147892e3545cd549dd5b54bc0"
-dependencies = [
- "unicode_categories",
- "winnow 0.6.26",
-]
 
 [[package]]
 name = "stable_deref_trait"
