@@ -574,6 +574,16 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
   op_method_decls: &[OpMethodDecl],
   methods_ctx_offset: usize,
 ) {
+  // Calling build_fast() after deserializing a snapshot that contains cppgc
+  // objects crashes (SIGABRT) on release linux-x86_64 with fat LTO due to a
+  // C++ static-initialization guard failure inside V8. Skip the fast-call
+  // upgrade entirely when cppgc class types are present in the runtime. The
+  // desktop extension is the only consumer of cppgc objects today, and its ops
+  // are all nofast anyway, so this only affects desktop compiled binaries.
+  if !op_method_decls.is_empty() {
+    return;
+  }
+
   let global = context.global(scope);
   let deno_obj = get(scope, global, DENO, "Deno");
   let deno_core_obj = get(scope, deno_obj, CORE, "Deno.core");
@@ -654,12 +664,8 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
       continue;
     }
 
-    let mut op_fn = op_ctx_function(
-      scope,
-      op_ctx,
-      v8::ConstructorBehavior::Allow,
-      false,
-    );
+    let mut op_fn =
+      op_ctx_function(scope, op_ctx, v8::ConstructorBehavior::Allow, false);
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     if op_ctx.decl.is_async {
