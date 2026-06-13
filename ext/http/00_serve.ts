@@ -90,6 +90,7 @@ const {
   SERVE_FAST_HEADER_DEFAULT_TEXT,
   SERVE_FAST_HEADER_NONE,
   toInnerResponse,
+  wireHeaderList,
 } = core.loadExtScript("ext:deno_fetch/23_response.js");
 const {
   abortRequest,
@@ -866,7 +867,7 @@ function mapToCallback(context, callback, onError) {
 
     inner = toInnerResponse(response);
     const status = inner.status;
-    const headers = inner.headerList;
+    const headers = wireHeaderList(inner);
     const respBody = inner.body;
     fastSyncResponseOrStream(
       req,
@@ -1039,7 +1040,7 @@ function mapToNativeResponseCallback(context, callback, onError) {
       inner.body,
       inner.status,
       innerRequest,
-      inner.headerList,
+      wireHeaderList(inner),
       (error) => reportResponseStreamError(onError, error),
     );
     return undefined;

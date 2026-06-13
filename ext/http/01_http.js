@@ -38,6 +38,7 @@ const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
 const {
   ResponsePrototype,
   toInnerResponse,
+  wireHeaderList,
 } = core.loadExtScript("ext:deno_fetch/23_response.js");
 const {
   abortRequest,
@@ -263,7 +264,7 @@ function createRespondWith(
         await op_http_write_headers(
           writeStreamRid,
           innerResp.status ?? 200,
-          innerResp.headerList,
+          wireHeaderList(innerResp),
           isStreamingResponseBody ? null : respBody,
         );
       } catch (error) {

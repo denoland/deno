@@ -1108,7 +1108,7 @@
       "items": {
         "type": "string"
       },
-      "description": "UNSTABLE: List of paths, file URLs, or glob patterns to folders containing JSR packages to use local versions of."
+      "description": "List of paths, file URLs, or glob patterns to folders containing JSR packages to use local versions of."
     },
     "workspace": {
       "oneOf": [
