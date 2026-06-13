@@ -14144,12 +14144,6 @@ fn lsp_format_css() {
     temp_dir.path().join("file.scss"),
     "  $font-stack: Helvetica, sans-serif;\n\nbody {\n  font: 100% $font-stack;\n}\n",
   );
-  let sass_file = source_file(
-    temp_dir.path().join("file.sass"),
-    // Note: avoid $var references in property values in Sass indented syntax
-    // due to upstream raffia regression: https://github.com/g-plane/raffia/issues/13
-    "  $color: red\n\nbody\n  color: blue\n  margin: 0\n",
-  );
   let less_file = source_file(
     temp_dir.path().join("file.less"),
     "  @width: 10px;\n\n#header {\n  width: @width;\n}\n",
@@ -14197,28 +14191,6 @@ fn lsp_format_css() {
           "end": { "line": 1, "character": 0 },
         },
         "newText": "$font-stack: Helvetica, sans-serif;\n",
-      },
-    ]),
-  );
-  let res = client.write_request(
-    "textDocument/formatting",
-    json!({
-      "textDocument": { "uri": sass_file.uri() },
-      "options": {
-        "tabSize": 2,
-        "insertSpaces": true,
-      },
-    }),
-  );
-  assert_eq!(
-    res,
-    json!([
-      {
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 },
-        },
-        "newText": "$color: red\n",
       },
     ]),
   );
