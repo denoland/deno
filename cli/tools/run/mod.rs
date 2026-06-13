@@ -459,7 +459,9 @@ fn jsx_import_source_package_name(specifier: &str) -> String {
 /// but the library isn't declared yet, install it automatically so JSX works
 /// without a manual `deno install`. The renderer peer is installed too
 /// (`react-dom` for React) so server-side rendering works out of the box.
-async fn maybe_jsx_auto_install(flags: &Arc<Flags>) -> Result<(), AnyError> {
+pub async fn maybe_jsx_auto_install(
+  flags: &Arc<Flags>,
+) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let workspace = cli_options.workspace();
