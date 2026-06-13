@@ -726,7 +726,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     ];
     for deno_json in deno_jsons.iter().flatten() {
       let deps = deno_json
-        .dependencies()
+        .dependencies(self.workspace_dir.workspace.catalogs())
         .into_iter()
         .collect::<BTreeSet<_>>();
       for dep in deps {

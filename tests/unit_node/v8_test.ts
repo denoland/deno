@@ -130,6 +130,37 @@ Deno.test({
 });
 
 Deno.test({
+  name: "Serializer keeps delegate alive across GC",
+  fn() {
+    v8.setFlagsFromString("--expose_gc");
+    const gc = runInNewContext("gc");
+
+    class HostObjectSerializer extends v8.DefaultSerializer {
+      calls = 0;
+
+      _writeHostObject(abView: unknown) {
+        this.calls++;
+        const defaultSerializer = v8.DefaultSerializer.prototype as
+          & v8.DefaultSerializer
+          & { _writeHostObject(abView: unknown): void };
+        return defaultSerializer._writeHostObject.call(this, abView);
+      }
+    }
+
+    const serializer = new HostObjectSerializer();
+    serializer.writeHeader();
+    for (let i = 0; i < 10; i++) {
+      gc();
+    }
+
+    serializer.writeValue(Buffer.from([1, 2, 3, 4]));
+    const serialized = serializer.releaseBuffer();
+    assertEquals(serializer.calls, 1);
+    assertEquals(v8.deserialize(serialized), Buffer.from([1, 2, 3, 4]));
+  },
+});
+
+Deno.test({
   name: "writeHeapSnapshot requires write permission",
   permissions: { write: false },
   fn() {

@@ -13,6 +13,7 @@ use bytes::Bytes;
 use http_body_util::Empty;
 use http_body_util::Full;
 use http_body_util::combinators::UnsyncBoxBody;
+use hyper::Method;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
@@ -119,6 +120,28 @@ async fn registry_server_handler(
   if path.starts_with("/api/scope/") {
     let body = serde_json::to_string_pretty(&json!({})).unwrap();
     let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
+    return Ok(res);
+  } else if req.method() == Method::GET
+    && let Some(rest) = path.strip_prefix("/api/scopes/")
+    && let [scope, "packages", package, "versions", version] =
+      rest.split('/').collect::<Vec<_>>().as_slice()
+  {
+    // `deno publish` probes this endpoint up front to skip already-published
+    // versions. Report "not published" (404) by default; the reserved
+    // `already-published` scope lets tests simulate an existing version.
+    if *scope == "already-published" {
+      let body = serde_json::to_string_pretty(&json!({
+        "scope": scope,
+        "package": package,
+        "version": version,
+      }))
+      .unwrap();
+      let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
+      return Ok(res);
+    }
+    let res = Response::builder()
+      .status(StatusCode::NOT_FOUND)
+      .body(UnsyncBoxBody::new(Empty::new()))?;
     return Ok(res);
   } else if path.starts_with("/api/scopes/") {
     // Allow tests to simulate a publish failure for an individual package by
