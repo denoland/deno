@@ -72,6 +72,16 @@ pub struct CoverageReport {
   output: Option<PathBuf>,
 }
 
+impl CoverageReport {
+  pub fn url(&self) -> &ModuleSpecifier {
+    &self.url
+  }
+
+  pub fn found_lines(&self) -> &[(usize, i64)] {
+    &self.found_lines
+  }
+}
+
 struct GenerateCoverageReportOptions<'a> {
   script_module_specifier: Url,
   script_media_type: MediaType,
@@ -588,15 +598,14 @@ fn filter_coverages(
     .collect::<Vec<cdp::ScriptCoverage>>()
 }
 
-pub fn cover_files(
+pub fn collect_coverage_reports(
   flags: Arc<Flags>,
   files_include: Vec<String>,
   files_ignore: Vec<String>,
   include: Vec<String>,
   exclude: Vec<String>,
   output: Option<String>,
-  reporters: &[&dyn CoverageReporter],
-) -> Result<(), AnyError> {
+) -> Result<(PathBuf, Vec<(CoverageReport, String)>), AnyError> {
   if files_include.is_empty() {
     return Err(anyhow!("No matching coverage profiles found"));
   }
@@ -765,6 +774,27 @@ pub fn cover_files(
   if file_reports.is_empty() {
     return Err(anyhow!("No covered files included in the report"));
   }
+
+  Ok((coverage_root, file_reports))
+}
+
+pub fn cover_files(
+  flags: Arc<Flags>,
+  files_include: Vec<String>,
+  files_ignore: Vec<String>,
+  include: Vec<String>,
+  exclude: Vec<String>,
+  output: Option<String>,
+  reporters: &[&dyn CoverageReporter],
+) -> Result<(), AnyError> {
+  let (coverage_root, file_reports) = collect_coverage_reports(
+    flags,
+    files_include,
+    files_ignore,
+    include,
+    exclude,
+    output,
+  )?;
 
   for reporter in reporters {
     reporter.done(&coverage_root, &file_reports);
