@@ -1,0 +1,26 @@
+{
+  // Focused reproducer for the resolver-side extends filter:
+  // libs/resolver/deno_json.rs drops `.deno/tsconfig.json` from a root
+  // tsconfig's extends chain so that the npm-compat tsconfig (which is
+  // generated for stock tsc / tsgo) doesn't pollute Deno's own checker.
+  //
+  // If the filter regresses, the generated `.deno/tsconfig.json` will be
+  // loaded by Deno's checker — its `lib: ["esnext"]`, `module: "esnext"`,
+  // and `paths` settings collide with Deno's expectations and produce
+  // type errors on plain Deno code that should check cleanly.
+  "tempDir": true,
+  "tests": {
+    "check_passes_after_install": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check ./main.ts",
+          "output": "Check [WILDCARD]main.ts\n"
+        }
+      ]
+    }
+  }
+}

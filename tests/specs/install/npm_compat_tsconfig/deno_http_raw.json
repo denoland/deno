@@ -1,0 +1,6 @@
+{
+  "nodeModulesDir": "auto",
+  "imports": {
+    "comment": "http://localhost:4545/subdir/comment.ts"
+  }
+}

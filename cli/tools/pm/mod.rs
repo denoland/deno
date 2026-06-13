@@ -1171,6 +1171,7 @@ async fn npm_install_after_modification(
       install_reporter,
       workspace,
       npm_resolver,
+      &[],
     );
   }
 
