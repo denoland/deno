@@ -2,6 +2,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
+import { assertSnapshot, snapshotRunState } from "ext:cli/40_test_snapshot.js";
 
 // TODO(mmastrac): We cannot import these from "ext:core/ops" yet
 const {
@@ -229,8 +230,13 @@ function wrapOuter(fn, desc) {
       if (desc.ignore) {
         return "ignored";
       }
-      return await fn(desc) ?? "ok";
+      const result = await fn(desc) ?? "ok";
+      if (result !== "ok" && result !== "ignored") {
+        snapshotRunState.sawFailure = true;
+      }
+      return result;
     } catch (error) {
+      snapshotRunState.sawFailure = true;
       return { failed: { jsError: core.destructureError(error) } };
     } finally {
       const state = MapPrototypeGet(testStates, desc.id);
@@ -431,6 +437,16 @@ function testInner(
 
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
+
+  // Ignored tests (and non-`only` tests in an `only` run) never execute
+  // their snapshot assertions, so their snapshots must not be treated as
+  // stale by `--update-snapshots`.
+  if (testDesc.ignore) {
+    snapshotRunState.sawIgnored = true;
+  }
+  if (testDesc.only) {
+    snapshotRunState.sawOnly = true;
+  }
 
   if (cachedOrigin == undefined) {
     cachedOrigin = op_test_get_origin();
@@ -703,7 +719,7 @@ function createTestContext(desc) {
     rootId = desc.id;
     rootName = desc.name;
   }
-  return {
+  const testContext = {
     [SymbolToStringTag]: "TestContext",
     /**
      * The current test name.
@@ -717,6 +733,18 @@ function createTestContext(desc) {
      * File Uri of the test code.
      */
     origin: desc.origin,
+    /**
+     * Asserts that `actual` matches the snapshot stored in the snapshot
+     * file. With `deno test --update-snapshots`, mismatching or missing
+     * snapshots are written to the snapshot file instead.
+     *
+     * @param actual {unknown}
+     * @param maybeOptions {string | object | undefined}
+     */
+    // deno-lint-ignore require-await
+    async assertSnapshot(actual, maybeOptions) {
+      return assertSnapshot(testContext, actual, maybeOptions);
+    },
     /**
      * @param nameOrFnOrOptions {string | TestStepDefinition | ((t: TestContext) => void | Promise<void>)}
      * @param maybeFn {((t: TestContext) => void | Promise<void>) | undefined}
@@ -759,6 +787,9 @@ function createTestContext(desc) {
         );
       }
       stepDesc.ignore ??= false;
+      if (stepDesc.ignore) {
+        snapshotRunState.sawIgnored = true;
+      }
       stepDesc.sanitizeOps ??= desc.sanitizeOps;
       stepDesc.sanitizeResources ??= desc.sanitizeResources;
       stepDesc.sanitizeExit ??= desc.sanitizeExit;
@@ -802,6 +833,7 @@ function createTestContext(desc) {
       return result == "ok";
     },
   };
+  return testContext;
 }
 
 /**

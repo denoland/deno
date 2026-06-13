@@ -195,6 +195,14 @@ impl TestFilter {
       ..Default::default()
     }
   }
+
+  /// Returns `true` when this filter may exclude some tests from running.
+  pub fn is_active(&self) -> bool {
+    self.substring.is_some()
+      || self.regex.is_some()
+      || self.include.is_some()
+      || !self.exclude.is_empty()
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
@@ -543,6 +551,9 @@ pub enum TestEvent {
   StepRegister(TestStepDescription),
   StepWait(usize),
   StepResult(usize, TestStepResult, u64),
+  /// Reports how many snapshots were updated and which were removed for a
+  /// test module after it finished running with `--update-snapshots`.
+  SnapshotSummary(TestSnapshotSummary),
   /// Indicates that this worker has completed running tests.
   Completed,
   /// Indicates that the user has cancelled the test run with Ctrl+C and
@@ -594,8 +605,18 @@ pub struct TestSummary {
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
+  pub snapshots_updated: usize,
+  pub snapshots_removed: Vec<String>,
   pub failures: Vec<(TestFailureDescription, TestFailure)>,
   pub uncaught_errors: Vec<(String, Box<JsError>)>,
+}
+
+/// Snapshot statistics for a single test module run with
+/// `--update-snapshots`, sent after all of its tests have finished.
+#[derive(Debug, Clone)]
+pub struct TestSnapshotSummary {
+  pub updated: usize,
+  pub removed: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -618,6 +639,7 @@ pub struct TestSpecifierOptions {
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
+  pub update_snapshots: bool,
 }
 
 impl TestSummary {
@@ -632,6 +654,8 @@ impl TestSummary {
       ignored_steps: 0,
       filtered_out: 0,
       measured: 0,
+      snapshots_updated: 0,
+      snapshots_removed: Vec::new(),
       failures: Vec::new(),
       uncaught_errors: Vec::new(),
     }
@@ -741,6 +765,14 @@ async fn configure_main_worker(
     .op_state()
     .borrow_mut()
     .put(ops::testing::TestIsolateHandle(isolate_handle));
+  if options.update_snapshots {
+    // Authorizes `op_test_snapshot_write` for this isolate. Only ever set
+    // from the `--update-snapshots` CLI flag, never from JS.
+    worker
+      .op_state()
+      .borrow_mut()
+      .put(ops::testing::SnapshotUpdateMode);
+  }
   worker
     .execute_script_static(
       located_script_name!(),
@@ -1173,6 +1205,31 @@ pub async fn run_tests_for_worker(
     .await
   }
   .await;
+
+  // Let the snapshot machinery write pending `t.assertSnapshot()` updates and
+  // report a summary (no-op unless running with `--update-snapshots`). Stale
+  // snapshots may only be removed when every test in the module had a chance
+  // to run its assertions: a name filter or an aborted (fail-fast) run must
+  // not cause snapshots of tests that didn't run to be treated as stale.
+  let result = if result.is_ok()
+    && !state_rc.borrow().has::<ops::testing::IsolateExitInfo>()
+  {
+    let allow_stale_removal =
+      !options.filter.is_active() && !fail_fast_tracker.should_stop();
+    worker
+      .js_runtime
+      .execute_script(
+        located_script_name!(),
+        format!(
+          "Deno[Deno.internal].flushTestSnapshots?.({})",
+          allow_stale_removal
+        ),
+      )
+      .map(|_| ())
+      .map_err(|e| RunTestsForWorkerErr::Core(CoreErrorKind::Js(e).into_box()))
+  } else {
+    result
+  };
 
   // This worker can execute another discovery/run cycle (for example in REPL),
   // so reset to a fresh container after the current run ends.
@@ -1644,6 +1701,9 @@ pub async fn report_tests(
           );
         }
       }
+      TestEvent::SnapshotSummary(summary) => {
+        reporter.report_snapshot_summary(&summary);
+      }
       TestEvent::ForceEndReport => {
         break;
       }
@@ -1992,6 +2052,7 @@ pub async fn run_tests(
         trace_leaks: workspace_test_options.trace_leaks,
         sanitize_ops: workspace_test_options.sanitize_ops,
         sanitize_resources: workspace_test_options.sanitize_resources,
+        update_snapshots: workspace_test_options.update_snapshots,
       },
     },
   )
@@ -2242,6 +2303,7 @@ pub async fn run_tests_with_watch(
               trace_leaks: workspace_test_options.trace_leaks,
               sanitize_ops: workspace_test_options.sanitize_ops,
               sanitize_resources: workspace_test_options.sanitize_resources,
+              update_snapshots: workspace_test_options.update_snapshots,
             },
           },
         )

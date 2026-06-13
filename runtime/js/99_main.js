@@ -641,6 +641,10 @@ const NOT_IMPORTED_OPS = [
   "op_test_event_exit",
   "op_test_isolate_exit",
   "op_pledge_test_permissions",
+  "op_test_snapshot_in_update_mode",
+  "op_test_snapshot_read",
+  "op_test_snapshot_write",
+  "op_test_event_snapshot_summary",
 
   // TODO(bartlomieju): used in various integration tests - figure out a way
   // to not depend on them.

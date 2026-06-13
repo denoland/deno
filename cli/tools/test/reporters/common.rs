@@ -237,6 +237,43 @@ pub(super) fn report_summary(
     }
   }
 
+  if summary.snapshots_updated > 0 {
+    writeln!(
+      writer,
+      "\n{}",
+      colors::green_bold(format!(
+        " > {} {} updated.",
+        summary.snapshots_updated,
+        if summary.snapshots_updated == 1 {
+          "snapshot"
+        } else {
+          "snapshots"
+        }
+      ))
+    )
+    .ok();
+  }
+  if !summary.snapshots_removed.is_empty() {
+    writeln!(
+      writer,
+      "\n{}",
+      colors::red_bold(format!(
+        " > {} {} removed.",
+        summary.snapshots_removed.len(),
+        if summary.snapshots_removed.len() == 1 {
+          "snapshot"
+        } else {
+          "snapshots"
+        }
+      ))
+    )
+    .ok();
+    for snapshot_name in &summary.snapshots_removed {
+      writeln!(writer, "{}", colors::red(format!("   • {}", snapshot_name)))
+        .ok();
+    }
+  }
+
   let status = if summary.has_failed() {
     colors::red("FAILED").to_string()
   } else {
