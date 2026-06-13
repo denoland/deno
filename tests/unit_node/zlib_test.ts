@@ -17,6 +17,7 @@ import {
   createDeflate,
   createGunzip,
   createGzip,
+  createInflate,
   createZstdCompress,
   createZstdDecompress,
   deflateSync,
@@ -459,4 +460,29 @@ Deno.test("zlib write does not write through a detached _writeState", () => {
     }
     assertEquals(state.buffer.byteLength, 0);
   }
+});
+
+// pngjs's `sync-inflate.js` binds directly to `inflate._handle.writeSync` and
+// invokes it with seven arguments (no per-call `_writeState`), relying on the
+// pre-#35043 contract where the result buffer was registered at init time. The
+// per-call argument is now optional so that signature keeps working (#35185).
+Deno.test("zlib writeSync accepts the pre-#35043 seven-argument signature", () => {
+  const chunk = Buffer.from([
+    0x78, 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01,
+  ]);
+  const out = Buffer.allocUnsafe(1024);
+
+  // deno-lint-ignore no-explicit-any
+  const inflate = createInflate() as any;
+
+  // Must not throw `expected typed ArrayBufferView` for the missing 8th arg.
+  inflate._handle.writeSync(
+    constants.Z_FINISH,
+    chunk,
+    0,
+    chunk.length,
+    out,
+    0,
+    out.length,
+  );
 });

@@ -434,7 +434,11 @@ impl Zlib {
     #[buffer] out: &mut [u8],
     #[smi] out_off: u32,
     #[smi] out_len: u32,
-    #[buffer] write_result: &mut [u32],
+    // Per-call result buffer added by #35043. Older callers (notably
+    // pngjs/sync-inflate) bound directly to `_handle.writeSync` and never
+    // pass it, so accept None and skip the avail_out/avail_in write-back
+    // when one isn't provided (#35185).
+    #[buffer] write_result: Option<&mut [u32]>,
   ) -> Result<(), ZlibError> {
     let err_info = {
       let mut zlib = self.inner.borrow_mut();
@@ -444,9 +448,11 @@ impl Zlib {
       zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
       zlib.do_write(flush)?;
 
-      if write_result.len() >= 2 {
-        write_result[0] = zlib.strm.avail_out;
-        write_result[1] = zlib.strm.avail_in;
+      if let Some(write_result) = write_result {
+        if write_result.len() >= 2 {
+          write_result[0] = zlib.strm.avail_out;
+          write_result[1] = zlib.strm.avail_in;
+        }
       }
       zlib.get_error_info()
     };
