@@ -130,6 +130,8 @@ const {
 
 const _upgraded = Symbol("_upgraded");
 
+let legacyAbortWarned = false;
+
 function internalServerError() {
   // "Internal Server Error"
   return new Response(
@@ -188,6 +190,7 @@ class InnerRequest {
   #upgraded;
   #urlValue;
   #completed;
+  #signalAccessed;
   request;
 
   constructor(external, context) {
@@ -195,6 +198,7 @@ class InnerRequest {
     this.#context = context;
     this.#upgraded = false;
     this.#completed = undefined;
+    this.#signalAccessed = false;
   }
 
   close(success = true) {
@@ -216,6 +220,13 @@ class InnerRequest {
       }
     }
     if (this.#context.legacyAbort) {
+      if (success && this.#signalAccessed && !legacyAbortWarned) {
+        legacyAbortWarned = true;
+        // deno-lint-ignore no-console
+        console.warn(
+          "Deno.serve: request.signal aborts on successful responses (legacy behavior, see https://github.com/denoland/deno/issues/29111). Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/runtime/reference/migrate-deprecations/",
+        );
+      }
       abortRequest(this.request);
     }
     this.#external = null;
@@ -435,6 +446,7 @@ class InnerRequest {
   }
 
   onCancel(callback) {
+    this.#signalAccessed = true;
     if (this.#external === null) {
       if (this.#context.legacyAbort) callback();
       return;
@@ -1609,6 +1621,9 @@ internals.addTrailers = addTrailers;
 internals.upgradeHttpRaw = upgradeHttpRaw;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
+internals.resetLegacyAbortWarning = () => {
+  legacyAbortWarned = false;
+};
 
 function registerDeclarativeServer(exports) {
   if (!ObjectHasOwn(exports, "fetch")) return;
