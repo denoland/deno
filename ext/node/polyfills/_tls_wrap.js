@@ -3,11 +3,51 @@
 //
 // Ported from Node.js lib/internal/tls/wrap.js
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  ArrayFrom,
+  ArrayPrototypeFind,
+  ArrayPrototypeForEach,
+  ArrayPrototypeIncludes,
+  ArrayPrototypeJoin,
+  ArrayPrototypePush,
+  ArrayPrototypeSome,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+  Error,
+  FunctionPrototypeApply,
+  FunctionPrototypeBind,
+  FunctionPrototypeCall,
+  JSONParse,
+  JSONStringify,
+  ObjectDefineProperty,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  RegExpPrototypeExec,
+  RegExpPrototypeTest,
+  SafeArrayIterator,
+  SafeRegExp,
+  String,
+  StringFromCharCode,
+  StringPrototypeCharCodeAt,
+  StringPrototypeEndsWith,
+  StringPrototypeIncludes,
+  StringPrototypeIndexOf,
+  StringPrototypeMatch,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  StringPrototypeStartsWith,
+  StringPrototypeSubstring,
+  StringPrototypeToLowerCase,
+  Symbol,
+  SymbolFor,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+} = primordials;
+const { op_get_env_no_permission_check } = core.ops;
 const {
   ArrayIsArray,
   ObjectAssign,
@@ -55,7 +95,9 @@ const {
   constants: PipeConstants,
   Pipe,
 } = core.loadExtScript("ext:deno_node/internal_binding/pipe_wrap.ts");
-const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { kEmptyObject } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
   validateFunction,
@@ -63,7 +105,7 @@ const {
   validateNumber,
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-const { isArrayBufferView } = core.loadExtScript(
+const { isArrayBufferView, isTypedArray } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
 const { op_tls_canonicalize_ipv4_address } = core.ops;
@@ -86,6 +128,24 @@ const kPendingSession = Symbol("pendingSession");
 const kRes = Symbol("res");
 const kErrorEmitted = Symbol("error-emitted");
 const noop = () => {};
+
+// Use the matching prototype getter so a forged accessor on the view can't
+// redirect us to a different ArrayBuffer / out-of-bounds region.
+function getViewBuffer(view) {
+  return isTypedArray(view)
+    ? TypedArrayPrototypeGetBuffer(view)
+    : DataViewPrototypeGetBuffer(view);
+}
+function getViewByteOffset(view) {
+  return isTypedArray(view)
+    ? TypedArrayPrototypeGetByteOffset(view)
+    : DataViewPrototypeGetByteOffset(view);
+}
+function getViewByteLength(view) {
+  return isTypedArray(view)
+    ? TypedArrayPrototypeGetByteLength(view)
+    : DataViewPrototypeGetByteLength(view);
+}
 
 let debug = debuglog("tls", (fn) => {
   debug = fn;
@@ -123,7 +183,11 @@ function toBufferLike(value) {
     return Buffer.from(value);
   }
   if (isArrayBufferView(value)) {
-    return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    return Buffer.from(
+      getViewBuffer(value),
+      getViewByteOffset(value),
+      getViewByteLength(value),
+    );
   }
   return undefined;
 }
@@ -146,7 +210,7 @@ function getContextCAValue(socket) {
 
 function setIssuerCertificate(cert, issuer) {
   if (issuer) {
-    Object.defineProperty(cert, "issuerCertificate", {
+    ObjectDefineProperty(cert, "issuerCertificate", {
       __proto__: null,
       configurable: true,
       enumerable: true,
@@ -157,11 +221,14 @@ function setIssuerCertificate(cert, issuer) {
   return cert;
 }
 
+const pemCertificatePattern = new SafeRegExp(
+  "-----BEGIN CERTIFICATE-----[\\s\\S]*?-----END CERTIFICATE-----",
+  "g",
+);
+
 function splitPEMCertificates(value) {
   const str = typeof value === "string" ? value : String(value);
-  return str.match(
-    /-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g,
-  ) ?? [];
+  return StringPrototypeMatch(str, pemCertificatePattern) ?? [];
 }
 
 function toLegacyCACertificates(ca) {
@@ -170,21 +237,21 @@ function toLegacyCACertificates(ca) {
   }
   const values = ArrayIsArray(ca) ? ca : [ca];
   const certs = [];
-  for (const value of values) {
+  for (const value of new SafeArrayIterator(values)) {
     if (typeof value === "string") {
-      for (const pem of splitPEMCertificates(value)) {
-        certs.push(new X509Certificate(pem).toLegacyObject());
+      for (const pem of new SafeArrayIterator(splitPEMCertificates(value))) {
+        ArrayPrototypePush(certs, new X509Certificate(pem).toLegacyObject());
       }
     } else {
       const input = toBufferLike(value) ?? value;
-      certs.push(new X509Certificate(input).toLegacyObject());
+      ArrayPrototypePush(certs, new X509Certificate(input).toLegacyObject());
     }
   }
   return certs;
 }
 
 function sameDistinguishedName(a, b) {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return JSONStringify(a) === JSONStringify(b);
 }
 
 function completePeerCertificateChainFromCA(lastCert, ca) {
@@ -192,12 +259,14 @@ function completePeerCertificateChainFromCA(lastCert, ca) {
   let current = lastCert;
   for (;;) {
     if (
-      !current?.issuer || sameDistinguishedName(current.subject, current.issuer)
+      !current?.issuer ||
+      sameDistinguishedName(current.subject, current.issuer)
     ) {
       return current;
     }
-    const issuer = caCerts.find((cert) =>
-      sameDistinguishedName(cert.subject, current.issuer)
+    const issuer = ArrayPrototypeFind(
+      caCerts,
+      (cert) => sameDistinguishedName(cert.subject, current.issuer),
     );
     if (!issuer) {
       return current;
@@ -327,12 +396,18 @@ function TLSSocket(socket, opts) {
   let handle;
 
   if (socket) {
-    if (socket instanceof net.Socket && socket._handle) {
+    if (
+      ObjectPrototypeIsPrototypeOf(net.Socket.prototype, socket) &&
+      socket._handle
+    ) {
       // If the handle is a native TCP or Pipe, we can attach directly.
       // For other handles (e.g. TLSWrap from another TLS connection),
       // wrap via JSStreamSocket so TLSWrap gets a JS stream interface.
       const h = socket._handle;
-      if (h instanceof TCP || h instanceof Pipe) {
+      if (
+        ObjectPrototypeIsPrototypeOf(TCP.prototype, h) ||
+        ObjectPrototypeIsPrototypeOf(Pipe.prototype, h)
+      ) {
         wrap = socket;
       } else {
         wrap = new JSStreamSocket(socket);
@@ -354,7 +429,7 @@ function TLSSocket(socket, opts) {
     validateFunction(tlsOptions.SNICallback, "options.SNICallback");
   }
 
-  net.Socket.call(this, {
+  FunctionPrototypeCall(net.Socket, this, {
     handle: this._wrapHandle(wrap, handle),
     allowHalfOpen: socket ? socket.allowHalfOpen : tlsOptions.allowHalfOpen,
     autoDestroy: true,
@@ -389,8 +464,8 @@ function TLSSocket(socket, opts) {
   // Read on next tick so the caller has a chance to setup listeners
   nextTick(initRead, this, socket);
 }
-Object.setPrototypeOf(TLSSocket.prototype, net.Socket.prototype);
-Object.setPrototypeOf(TLSSocket, net.Socket);
+ObjectSetPrototypeOf(TLSSocket.prototype, net.Socket.prototype);
+ObjectSetPrototypeOf(TLSSocket, net.Socket);
 
 // Override kReinitializeHandle so that Happy Eyeballs (autoSelectFamily)
 // re-creates the TLSWrap when falling back to a different address.
@@ -421,7 +496,9 @@ TLSSocket.prototype[kReinitializeHandle] = function (handle) {
 
   // Restore callbacks on the new TLSWrap.
   if (savedOnread) this._handle.onread = savedOnread;
-  if (savedOnhandshakedone) this._handle.onhandshakedone = savedOnhandshakedone;
+  if (savedOnhandshakedone) {
+    this._handle.onhandshakedone = savedOnhandshakedone;
+  }
   if (savedOnhandshakestart) {
     this._handle.onhandshakestart = savedOnhandshakestart;
   }
@@ -509,8 +586,8 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
 
   // Derive servername for SNI. Default to host, or the wrapped socket's host.
   let servername = options.servername ?? options.host ?? wrap?._host;
-  if (servername && servername.endsWith(".")) {
-    servername = servername.slice(0, -1);
+  if (servername && StringPrototypeEndsWith(servername, ".")) {
+    servername = StringPrototypeSlice(servername, 0, -1);
   }
 
   const res = tlsWrap.wrap(
@@ -538,7 +615,10 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
   // (which receive the TCP handle, not the TLSWrap) can find the socket.
   // If we are wrapping a net.Socket that still needs to emit its connect
   // event, keep the raw socket as owner until that event has fired.
-  if (!(wrap instanceof net.Socket && !wrap.remoteAddress)) {
+  if (
+    !(ObjectPrototypeIsPrototypeOf(net.Socket.prototype, wrap) &&
+      !wrap.remoteAddress)
+  ) {
     handle[ownerSymbol] = this;
   }
 
@@ -559,9 +639,9 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
     "setNoDelay",
     "setKeepAlive",
   ];
-  for (const method of proxyMethods) {
+  for (const method of new SafeArrayIterator(proxyMethods)) {
     if (typeof handle[method] === "function") {
-      res[method] = handle[method].bind(handle);
+      res[method] = FunctionPrototypeBind(handle[method], handle);
     }
   }
 
@@ -573,19 +653,19 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
   if (res._flushEncOut) {
     const flush = res._flushEncOut;
     for (
-      const method of [
+      const method of new SafeArrayIterator([
         "writeBuffer",
         "writeUtf8String",
         "writeAsciiString",
         "writeLatin1String",
         "writeUcs2String",
         "writev",
-      ]
+      ])
     ) {
       const orig = res[method];
       if (typeof orig === "function") {
         res[method] = function (...args) {
-          const ret = orig.apply(res, args);
+          const ret = FunctionPrototypeApply(orig, res, args);
           flush();
           return ret;
         };
@@ -601,7 +681,7 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
 };
 
 function defineHandleReading(socket, handle) {
-  Object.defineProperty(handle, "reading", {
+  ObjectDefineProperty(handle, "reading", {
     __proto__: null,
     get: () => {
       return socket[kRes].reading;
@@ -722,7 +802,7 @@ TLSSocket.prototype._init = function (socket, wrap) {
           let selectedAlpn = null;
           let keyCertCtx = null;
           if (alpnCb && alpnProtocols.length > 0) {
-            const protocols = Array.from(alpnProtocols);
+            const protocols = ArrayFrom(alpnProtocols);
             const alpnThis = {
               setKeyCert(keyCert) {
                 if (keyCert?.context) {
@@ -732,7 +812,10 @@ TLSSocket.prototype._init = function (socket, wrap) {
                 }
               },
             };
-            selectedAlpn = alpnCb.call(alpnThis, { servername, protocols });
+            selectedAlpn = FunctionPrototypeCall(alpnCb, alpnThis, {
+              servername,
+              protocols,
+            });
             if (selectedAlpn == null) {
               // Callback returned undefined/null -- reject ALPN.
               // Destroy the socket which sends a connection reset.
@@ -740,7 +823,7 @@ TLSSocket.prototype._init = function (socket, wrap) {
               return;
             }
             selectedAlpn = String(selectedAlpn);
-            if (!protocols.includes(selectedAlpn)) {
+            if (!ArrayPrototypeIncludes(protocols, selectedAlpn)) {
               owner.destroy(new ERR_TLS_ALPN_CALLBACK_INVALID_RESULT());
               return;
             }
@@ -792,7 +875,7 @@ TLSSocket.prototype._init = function (socket, wrap) {
     );
   }
 
-  if (socket instanceof net.Socket) {
+  if (ObjectPrototypeIsPrototypeOf(net.Socket.prototype, socket)) {
     this._parent = socket;
 
     this.connecting = socket.connecting || !socket._handle;
@@ -997,8 +1080,9 @@ function syntheticSessionMatches(buf, options) {
   const sessionKey = `${options.servername ?? options.host ?? ""}:${
     options.port ?? ""
   }`;
+  // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding)
   const text = buf.toString("latin1");
-  for (const prefix of SYNTHETIC_SESSION_PREFIXES) {
+  for (const prefix of new SafeArrayIterator(SYNTHETIC_SESSION_PREFIXES)) {
     if (text === prefix + sessionKey) return true;
   }
   return false;
@@ -1038,7 +1122,9 @@ TLSSocket.prototype.getCertificate = function () {
   if (!cert) {
     return this._handle ? {} : null;
   }
-  return translatePeerCertificate(new X509Certificate(cert).toLegacyObject()) ||
+  return translatePeerCertificate(
+    new X509Certificate(cert).toLegacyObject(),
+  ) ||
     {};
 };
 
@@ -1057,7 +1143,10 @@ TLSSocket.prototype.isSessionReused = function () {
 function makeSocketMethodProxy(name) {
   return function socketMethodProxy(...args) {
     if (this._handle) {
-      return this._handle[name]?.(...args);
+      const method = this._handle[name];
+      return method != null
+        ? FunctionPrototypeApply(method, this._handle, args)
+        : undefined;
     }
     return null;
   };
@@ -1082,14 +1171,22 @@ TLSSocket.prototype.getProtocol = function getProtocol() {
 TLSSocket.prototype.getFinished = function getFinished() {
   const data = this._handle?.getFinished();
   return data
-    ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+    ? Buffer.from(
+      getViewBuffer(data),
+      getViewByteOffset(data),
+      getViewByteLength(data),
+    )
     : undefined;
 };
 
 TLSSocket.prototype.getPeerFinished = function getPeerFinished() {
   const data = this._handle?.getPeerFinished();
   return data
-    ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+    ? Buffer.from(
+      getViewBuffer(data),
+      getViewByteOffset(data),
+      getViewByteLength(data),
+    )
     : undefined;
 };
 
@@ -1112,10 +1209,9 @@ TLSSocket.prototype.getX509Certificate = function getX509Certificate() {
   return cert ? new X509Certificate(cert) : undefined;
 };
 
-["enableTrace"]
-  .forEach((method) => {
-    TLSSocket.prototype[method] = makeSocketMethodProxy(method);
-  });
+ArrayPrototypeForEach(["enableTrace"], (method) => {
+  TLSSocket.prototype[method] = makeSocketMethodProxy(method);
+});
 
 // ---------------------------------------------------------------------------
 // Server
@@ -1147,6 +1243,14 @@ function onServerSocketSecure() {
         this.destroy();
         return;
       }
+    } else if (this._handle.getPeerCertificate(false) == null) {
+      // `rejectUnauthorized: false` lets the handshake complete even when
+      // the client presented no certificate. rustls only invokes the
+      // client cert verifier when a cert is actually presented, so
+      // `verifyError()` is empty in this case. Match Node's behaviour
+      // and surface "no client cert" as an authorization error rather
+      // than reporting `authorized = true`.
+      this.authorizationError = "UNABLE_TO_GET_ISSUER_CERT";
     } else {
       this.authorized = true;
     }
@@ -1183,20 +1287,22 @@ function onSocketClose(err) {
 // Patterns can be exact ("a.example.com") or wildcard ("*.test.com").
 function matchContextByServername(contexts, servername) {
   if (!servername || contexts.length === 0) return null;
-  const name = servername.toLowerCase();
+  const name = StringPrototypeToLowerCase(servername);
   for (let i = 0; i < contexts.length; i++) {
-    const [pattern, ctx] = contexts[i];
-    const pat = pattern.toLowerCase();
+    const pair = contexts[i];
+    const pattern = pair[0];
+    const ctx = pair[1];
+    const pat = StringPrototypeToLowerCase(pattern);
     if (pat === name) {
       return createSecureContext(ctx);
     }
     // Wildcard match: "*.test.com" matches "b.test.com" but not
     // "a.b.test.com" (only one level).
-    if (pat.startsWith("*.")) {
-      const suffix = pat.slice(1); // ".test.com"
+    if (StringPrototypeStartsWith(pat, "*.")) {
+      const suffix = StringPrototypeSlice(pat, 1); // ".test.com"
       if (
-        name.endsWith(suffix) &&
-        name.indexOf(".") === name.length - suffix.length
+        StringPrototypeEndsWith(name, suffix) &&
+        StringPrototypeIndexOf(name, ".") === name.length - suffix.length
       ) {
         return createSecureContext(ctx);
       }
@@ -1254,7 +1360,7 @@ function tlsConnectionListener(rawSocket) {
 }
 
 function Server(options, listener) {
-  if (!(this instanceof Server)) {
+  if (!ObjectPrototypeIsPrototypeOf(Server.prototype, this)) {
     return new Server(options, listener);
   }
 
@@ -1294,10 +1400,10 @@ function Server(options, listener) {
         options.ticketKeys,
       );
     }
-    if (options.ticketKeys.byteLength !== 48) {
+    if (getViewByteLength(options.ticketKeys) !== 48) {
       throw new ERR_INVALID_ARG_VALUE(
         "options.ticketKeys",
-        options.ticketKeys.byteLength,
+        getViewByteLength(options.ticketKeys),
         "must be exactly 48 bytes",
       );
     }
@@ -1305,9 +1411,9 @@ function Server(options, listener) {
   this._ticketKeys = options.ticketKeys == null
     ? Buffer.alloc(48)
     : Buffer.from(
-      options.ticketKeys.buffer,
-      options.ticketKeys.byteOffset,
-      options.ticketKeys.byteLength,
+      getViewBuffer(options.ticketKeys),
+      getViewByteOffset(options.ticketKeys),
+      getViewByteLength(options.ticketKeys),
     );
 
   this.setSecureContext(options);
@@ -1329,17 +1435,17 @@ function Server(options, listener) {
   }
 
   // Constructor call
-  net.Server.call(this, options, tlsConnectionListener);
+  FunctionPrototypeCall(net.Server, this, options, tlsConnectionListener);
 
   if (listener) {
     this.on("secureConnection", listener);
   }
 }
 
-Object.setPrototypeOf(Server.prototype, net.Server.prototype);
-Object.setPrototypeOf(Server, net.Server);
+ObjectSetPrototypeOf(Server.prototype, net.Server.prototype);
+ObjectSetPrototypeOf(Server, net.Server);
 
-Server.prototype[Symbol.for("nodejs.rejection")] = function (
+Server.prototype[SymbolFor("nodejs.rejection")] = function (
   err,
   event,
   sock,
@@ -1391,7 +1497,7 @@ Server.prototype.addContext = function (servername, context) {
   if (!servername) {
     throw new ERR_TLS_REQUIRED_SERVER_NAME();
   }
-  this._contexts.push([servername, context]);
+  ArrayPrototypePush(this._contexts, [servername, context]);
 };
 
 Server.prototype.getTicketKeys = function getTicketKeys() {
@@ -1406,10 +1512,14 @@ Server.prototype.setTicketKeys = function setTicketKeys(keys) {
       keys,
     );
   }
-  if (keys.byteLength !== 48) {
+  if (getViewByteLength(keys) !== 48) {
     throw new Error("Session ticket keys must be a 48-byte buffer");
   }
-  this._ticketKeys = Buffer.from(keys.buffer, keys.byteOffset, keys.byteLength);
+  this._ticketKeys = Buffer.from(
+    getViewBuffer(keys),
+    getViewByteOffset(keys),
+    getViewByteLength(keys),
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -1542,7 +1652,10 @@ function connect(...args) {
     options.singleUse = true;
   }
 
-  validateFunction(options.checkServerIdentity, "options.checkServerIdentity");
+  validateFunction(
+    options.checkServerIdentity,
+    "options.checkServerIdentity",
+  );
   validateNumber(options.minDHSize, "options.minDHSize", 1);
 
   // Reject IP addresses in servername (RFC 6066)
@@ -1612,7 +1725,8 @@ function connect(...args) {
 }
 
 function getAllowUnauthorized() {
-  return false;
+  return op_get_env_no_permission_check("NODE_TLS_REJECT_UNAUTHORIZED") ===
+    "0";
 }
 
 function createServer(options, listener) {
@@ -1623,51 +1737,61 @@ function createServer(options, listener) {
 // checkServerIdentity - certificate hostname verification
 // ---------------------------------------------------------------------------
 
-const jsonStringPattern =
-  // deno-lint-ignore no-control-regex
-  /^"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"/;
+const jsonStringPattern = new SafeRegExp(
+  '^"(?:[^"\\\\\\u0000-\\u001f]|\\\\(?:["\\\\/bfnrt]|u[0-9a-fA-F]{4}))*"',
+);
+
+const fqdnDotPattern = new SafeRegExp("[.]$");
+const upperCasePattern = new SafeRegExp("[A-Z]", "g");
+const nonAsciiPattern = new SafeRegExp("[^\\u0021-\\u007F]", "u");
 
 function splitEscapedAltNames(altNames) {
   const result = [];
   let currentToken = "";
   let offset = 0;
   while (offset !== altNames.length) {
-    const nextSep = altNames.indexOf(",", offset);
-    const nextQuote = altNames.indexOf('"', offset);
+    const nextSep = StringPrototypeIndexOf(altNames, ",", offset);
+    const nextQuote = StringPrototypeIndexOf(altNames, '"', offset);
     if (nextQuote !== -1 && (nextSep === -1 || nextQuote < nextSep)) {
-      currentToken += altNames.substring(offset, nextQuote);
-      const match = jsonStringPattern.exec(altNames.substring(nextQuote));
+      currentToken += StringPrototypeSubstring(altNames, offset, nextQuote);
+      const match = RegExpPrototypeExec(
+        jsonStringPattern,
+        StringPrototypeSubstring(altNames, nextQuote),
+      );
       if (!match) {
         const err = new Error("Invalid alt name format");
         err.code = "ERR_TLS_CERT_ALTNAME_FORMAT";
         throw err;
       }
-      currentToken += JSON.parse(match[0]);
+      currentToken += JSONParse(match[0]);
       offset = nextQuote + match[0].length;
     } else if (nextSep !== -1) {
-      currentToken += altNames.substring(offset, nextSep);
-      result.push(currentToken);
+      currentToken += StringPrototypeSubstring(altNames, offset, nextSep);
+      ArrayPrototypePush(result, currentToken);
       currentToken = "";
       offset = nextSep + 2;
     } else {
-      currentToken += altNames.substring(offset);
+      currentToken += StringPrototypeSubstring(altNames, offset);
       offset = altNames.length;
     }
   }
-  result.push(currentToken);
+  ArrayPrototypePush(result, currentToken);
   return result;
 }
 
 function unfqdn(host) {
-  return StringPrototypeReplace(host, /[.]$/, "");
+  return StringPrototypeReplace(host, fqdnDotPattern, "");
 }
 
 function toLowerCase(c) {
-  return String.fromCharCode(32 + c.charCodeAt(0));
+  return StringFromCharCode(32 + StringPrototypeCharCodeAt(c, 0));
 }
 
 function splitHost(host) {
-  return unfqdn(host).replace(/[A-Z]/g, toLowerCase).split(".");
+  return StringPrototypeSplit(
+    StringPrototypeReplace(unfqdn(host), upperCasePattern, toLowerCase),
+    ".",
+  );
 }
 
 function check(hostParts, pattern, wildcards) {
@@ -1676,10 +1800,10 @@ function check(hostParts, pattern, wildcards) {
   const patternParts = splitHost(pattern);
 
   if (hostParts.length !== patternParts.length) return false;
-  if (patternParts.includes("")) return false;
+  if (ArrayPrototypeIncludes(patternParts, "")) return false;
 
-  const isBad = (s) => /[^\u0021-\u007F]/u.test(s);
-  if (patternParts.some(isBad)) return false;
+  const isBad = (s) => RegExpPrototypeTest(nonAsciiPattern, s);
+  if (ArrayPrototypeSome(patternParts, isBad)) return false;
 
   for (let i = hostParts.length - 1; i > 0; i -= 1) {
     if (hostParts[i] !== patternParts[i]) return false;
@@ -1687,11 +1811,15 @@ function check(hostParts, pattern, wildcards) {
 
   const hostSubdomain = hostParts[0];
   const patternSubdomain = patternParts[0];
-  const patternSubdomainParts = patternSubdomain.split("*", 3);
+  const patternSubdomainParts = StringPrototypeSplit(
+    patternSubdomain,
+    "*",
+    3,
+  );
 
   if (
     patternSubdomainParts.length === 1 ||
-    patternSubdomain.includes("xn--")
+    StringPrototypeIncludes(patternSubdomain, "xn--")
   ) {
     return hostSubdomain === patternSubdomain;
   }
@@ -1700,10 +1828,11 @@ function check(hostParts, pattern, wildcards) {
   if (patternSubdomainParts.length > 2) return false;
   if (patternParts.length <= 2) return false;
 
-  const { 0: prefix, 1: suffix } = patternSubdomainParts;
+  const prefix = patternSubdomainParts[0];
+  const suffix = patternSubdomainParts[1];
   if (prefix.length + suffix.length > hostSubdomain.length) return false;
-  if (!hostSubdomain.startsWith(prefix)) return false;
-  if (!hostSubdomain.endsWith(suffix)) return false;
+  if (!StringPrototypeStartsWith(hostSubdomain, prefix)) return false;
+  if (!StringPrototypeEndsWith(hostSubdomain, suffix)) return false;
 
   return true;
 }
@@ -1717,14 +1846,17 @@ function checkServerIdentity(hostname, cert) {
   hostname = "" + hostname;
 
   if (altNames) {
-    const splitAltNames = altNames.includes('"')
+    const splitAltNames = StringPrototypeIncludes(altNames, '"')
       ? splitEscapedAltNames(altNames)
-      : altNames.split(", ");
-    splitAltNames.forEach((name) => {
-      if (name.startsWith("DNS:")) {
-        dnsNames.push(name.slice(4));
-      } else if (name.startsWith("IP Address:")) {
-        ips.push(canonicalizeIP(name.slice(11)));
+      : StringPrototypeSplit(altNames, ", ");
+    ArrayPrototypeForEach(splitAltNames, (name) => {
+      if (StringPrototypeStartsWith(name, "DNS:")) {
+        ArrayPrototypePush(dnsNames, StringPrototypeSlice(name, 4));
+      } else if (StringPrototypeStartsWith(name, "IP Address:")) {
+        ArrayPrototypePush(
+          ips,
+          canonicalizeIP(StringPrototypeSlice(name, 11)),
+        );
       }
     });
   }
@@ -1735,16 +1867,17 @@ function checkServerIdentity(hostname, cert) {
   hostname = unfqdn(hostname);
 
   if (net.isIP(hostname)) {
-    valid = ips.includes(canonicalizeIP(hostname));
+    valid = ArrayPrototypeIncludes(ips, canonicalizeIP(hostname));
     if (!valid) {
-      reason = `IP: ${hostname} is not in the cert's list: ` + ips.join(", ");
+      reason = `IP: ${hostname} is not in the cert's list: ` +
+        ArrayPrototypeJoin(ips, ", ");
     }
   } else if (dnsNames.length > 0 || subject?.CN) {
     const hostParts = splitHost(hostname);
     const wildcard = (pattern) => check(hostParts, pattern, true);
 
     if (dnsNames.length > 0) {
-      valid = dnsNames.some(wildcard);
+      valid = ArrayPrototypeSome(dnsNames, wildcard);
       if (!valid) {
         reason =
           `Host: ${hostname}. is not in the cert's altnames: ${altNames}`;
@@ -1753,7 +1886,7 @@ function checkServerIdentity(hostname, cert) {
       const cn = subject.CN;
 
       if (ArrayIsArray(cn)) {
-        valid = cn.some(wildcard);
+        valid = ArrayPrototypeSome(cn, wildcard);
       } else if (cn) {
         valid = wildcard(cn);
       }
@@ -1773,7 +1906,7 @@ function checkServerIdentity(hostname, cert) {
 
 // Order matters. Mirrors ALL_CIPHER_SUITES from rustls/src/suites.rs but
 // using openssl cipher names instead.
-const DEFAULT_CIPHERS = [
+const DEFAULT_CIPHERS = ArrayPrototypeJoin([
   // TLSv1.3 suites
   "AES256-GCM-SHA384",
   "AES128-GCM-SHA256",
@@ -1785,7 +1918,7 @@ const DEFAULT_CIPHERS = [
   "ECDHE-RSA-AES256-GCM-SHA384",
   "ECDHE-RSA-AES128-GCM-SHA256",
   "ECDHE-RSA-CHACHA20-POLY1305",
-].join(":");
+], ":");
 
 return {
   checkServerIdentity,

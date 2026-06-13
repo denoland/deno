@@ -13,6 +13,8 @@ use spki::der::Decode;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 
+use crate::key_store::CryptoKeyHandle;
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum Ed25519Error {
   #[class("DOMExceptionOperationError")]
@@ -44,10 +46,11 @@ pub fn op_crypto_generate_ed25519_keypair(
 
 #[op2(fast)]
 pub fn op_crypto_sign_ed25519(
-  #[buffer] key: &[u8],
+  #[cppgc] key: &CryptoKeyHandle,
   #[buffer] data: &[u8],
   #[buffer] signature: &mut [u8],
 ) -> bool {
+  let key = key.data().bytes();
   let pair = match Ed25519KeyPair::from_seed_unchecked(key) {
     Ok(p) => p,
     Err(_) => return false,
@@ -58,10 +61,11 @@ pub fn op_crypto_sign_ed25519(
 
 #[op2(fast)]
 pub fn op_crypto_verify_ed25519(
-  #[buffer] pubkey: &[u8],
+  #[cppgc] pubkey: &CryptoKeyHandle,
   #[buffer] data: &[u8],
   #[buffer] signature: &[u8],
 ) -> bool {
+  let pubkey = pubkey.data().bytes();
   aws_lc_rs::signature::UnparsedPublicKey::new(
     &aws_lc_rs::signature::ED25519,
     pubkey,

@@ -3450,6 +3450,11 @@ fn der_content_len(element: &[u8]) -> Option<usize> {
 /// matching. Returns an error code string if the chain cannot be built.
 /// Returns `Ok(())` if the chain reaches a trusted root, or
 /// `Err(code)` with a Node/OpenSSL error code if it does not.
+fn is_self_signed(cert_der: &[u8]) -> bool {
+  extract_issuer_and_subject(cert_der)
+    .is_some_and(|(issuer, subject)| issuer == subject)
+}
+
 fn verify_chain_structure(
   end_entity: &[u8],
   intermediates: &[rustls::pki_types::CertificateDer<'_>],
@@ -4206,14 +4211,22 @@ impl rustls::server::danger::ClientCertVerifier
 
   fn verify_client_cert(
     &self,
-    _end_entity: &rustls::pki_types::CertificateDer<'_>,
-    _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+    end_entity: &rustls::pki_types::CertificateDer<'_>,
+    intermediates: &[rustls::pki_types::CertificateDer<'_>],
     _now: rustls::pki_types::UnixTime,
   ) -> Result<rustls::server::danger::ClientCertVerified, rustls::Error> {
-    // No root CAs — we cannot verify anything.  Store an error for
-    // verifyError() and let the JS layer decide via `authorized`.
+    // No root CAs, so we cannot establish a trust chain. Match Node's
+    // OpenSSL-derived error codes: a self-signed leaf (no intermediates,
+    // subject == issuer) reports DEPTH_ZERO_SELF_SIGNED_CERT; everything
+    // else falls back to UNABLE_TO_GET_ISSUER_CERT.
+    let code =
+      if intermediates.is_empty() && is_self_signed(end_entity.as_ref()) {
+        "DEPTH_ZERO_SELF_SIGNED_CERT"
+      } else {
+        "UNABLE_TO_GET_ISSUER_CERT"
+      };
     *self.verify_error.lock().unwrap_or_else(|p| p.into_inner()) =
-      Some("UNABLE_TO_GET_ISSUER_CERT".to_string());
+      Some(code.to_string());
     Ok(rustls::server::danger::ClientCertVerified::assertion())
   }
 

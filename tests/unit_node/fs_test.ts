@@ -1950,6 +1950,42 @@ Deno.test(
   },
 );
 
+// Regression test for #30873: read_dir used to silently drop entries
+// whose file names were not valid UTF-8, which made globSync (and
+// readdirSync) invisibly skip those files. Lossy decoding via
+// to_string_lossy keeps the file in the listing (matching Node's
+// default utf8 behavior of substituting U+FFFD for invalid bytes).
+Deno.test({
+  name: "[node/fs globSync] surfaces files with non-UTF-8 names",
+  // Restricted to Linux: macOS APFS/HFS+ normalizes/rejects non-UTF-8
+  // names, and Windows file names are UTF-16. The behavior under test
+  // is platform-independent, but the fixture is only buildable on Linux.
+  ignore: Deno.build.os !== "linux",
+  permissions: { read: true, write: true, env: true, run: true },
+  async fn() {
+    const tmp = mkdtempSync(join(tmpdir(), "glob-non-utf8-"));
+    try {
+      // Create a file whose name is the single non-UTF-8 byte 0xE9.
+      // We use bash + printf so the raw byte reaches the kernel as-is;
+      // passing a Buffer path through Deno's fs APIs would lossily
+      // decode it to U+FFFD before the file was created.
+      const cmd = new Deno.Command("/bin/bash", {
+        args: ["-c", `touch "$(printf '\\xe9')"`],
+        cwd: tmp,
+      });
+      const { code } = await cmd.output();
+      assertEquals(code, 0);
+
+      const results = globSync("*", { cwd: tmp });
+      assertEquals(results.length, 1);
+      // The non-UTF-8 byte is surfaced via Unicode replacement (U+FFFD).
+      assertEquals(results[0], "�");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  },
+});
+
 Deno.test({
   name: "[node/fs] watch recursive returns relative path for nested files",
   ignore: Deno.build.os === "windows",
@@ -1988,6 +2024,50 @@ Deno.test({
       );
     } finally {
       rmSync(tmp, { recursive: true, force: true });
+    }
+  },
+});
+
+// Regression test for #34396: fs.watch on a non-existent path used to
+// throw a raw `Deno.errors.NotFound` synchronously, which left chokidar/
+// vite (and any other EventEmitter-style consumer) unable to recover from
+// transient races (e.g. an editor's atomic-save temp file getting renamed
+// away before the inotify watch is added). The error should instead be
+// delivered as a Node-style ENOENT on the watcher's 'error' event.
+Deno.test({
+  name: "[node/fs] watch surfaces NotFound as 'error' event with ENOENT",
+  async fn() {
+    const missing = join(
+      tmpdir(),
+      `deno-watch-missing-${Date.now()}-${Math.random()}`,
+    );
+
+    const { promise, resolve, reject } = Promise.withResolvers<Error>();
+    let watcher: ReturnType<typeof watch>;
+    try {
+      watcher = watch(missing, () => {});
+    } catch (e) {
+      reject(
+        new Error(
+          `watch threw synchronously instead of emitting 'error': ${e}`,
+        ),
+      );
+      return;
+    }
+    watcher.on("error", resolve);
+    const timeoutId = setTimeout(
+      () => reject(new Error("watcher never emitted 'error'")),
+      5000,
+    );
+
+    try {
+      const err = await promise as NodeJS.ErrnoException;
+      assertEquals(err.code, "ENOENT");
+      assertEquals(err.syscall, "watch");
+      assertEquals(err.path, missing);
+    } finally {
+      clearTimeout(timeoutId);
+      watcher.close();
     }
   },
 });

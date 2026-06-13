@@ -1,9 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assert, assertEquals, assertStringIncludes } from "./test_util.ts";
+import { fromFileUrl } from "@std/path";
 
-const testdataPath =
-  new URL("../testdata/inspector/", import.meta.url).pathname;
+const testdataPath = fromFileUrl(
+  new URL("../testdata/inspector/", import.meta.url),
+);
 
 interface CDPMessage {
   id?: number;
@@ -746,6 +748,74 @@ Deno.test("inspector_profile", async () => {
   }
 });
 
+// Regression test for https://github.com/denoland/deno/issues/21620: an idle
+// process (one that only awaits timers) must report its wait time as the
+// "(idle)" node in a CPU profile, not as "(program)"/"Scripting" which made
+// DevTools show ~100% CPU usage for a process doing nothing. This relies on
+// the event loop telling V8's CPU profiler it is idle (Isolate::SetIdle)
+// whenever it parks waiting for external events.
+Deno.test("inspector_profile_idle", async () => {
+  const script = `${testdataPath}/idle.js`;
+  // Use --inspect (not --inspect-brk) so the program runs straight into its
+  // idle loop, matching how the issue is reproduced (`deno run --inspect`).
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect=0", script],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Profiler.enable" },
+      {
+        id: 3,
+        method: "Profiler.setSamplingInterval",
+        params: { interval: 100 },
+      },
+      { id: 4, method: "Profiler.start", params: {} },
+    ]);
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+    await tester.expectResponse(4);
+
+    // Let the (idle) process run for a while so plenty of idle samples land.
+    await new Promise((r) => setTimeout(r, 1000));
+
+    tester.send({ id: 5, method: "Profiler.stop", params: {} });
+    const profileResult = await tester.expectResponse(5);
+    const result = profileResult.result as Record<string, unknown>;
+    const profile = result.profile as {
+      nodes: Array<
+        { hitCount?: number; callFrame: { functionName: string } }
+      >;
+    };
+
+    const hitsFor = (name: string) =>
+      profile.nodes
+        .filter((n) => n.callFrame.functionName === name)
+        .reduce((sum, n) => sum + (n.hitCount ?? 0), 0);
+
+    const idleHits = hitsFor("(idle)");
+    const programHits = hitsFor("(program)");
+
+    // The wait time must be attributed to "(idle)", not "(program)". Without the
+    // SetIdle notification these samples all land in "(program)".
+    assert(
+      idleHits > 0,
+      `Expected idle samples in profile, got idle=${idleHits} program=${programHits}`,
+    );
+    assert(
+      idleHits > programHits,
+      `Expected idle samples to dominate, got idle=${idleHits} program=${programHits}`,
+    );
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
+});
+
 Deno.test("inspector_multiple_workers", async () => {
   const script = `${testdataPath}/multi_worker_main.js`;
   const tester = await InspectorTester.create(
@@ -848,6 +918,58 @@ Deno.test("inspector_worker_target_discovery", async () => {
       }
     }
     assert(foundWorkerTarget, "Should find a worker target");
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
+});
+
+// Regression test for https://github.com/denoland/deno/issues/34291
+// vscode-js-debug calls NodeWorker.enable before the user script runs, so
+// any Worker constructor fires *after* NodeWorker.enable has been processed.
+// Previously these later workers were not announced — NodeWorker.enable
+// only walked existing workers, and the new-worker registration path only
+// emitted Target.* events. Now NodeWorker.attachedToWorker fires for both.
+Deno.test("inspector_node_worker_attached_after_enable", async () => {
+  const script = `${testdataPath}/worker_main.js`;
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-brk=0", script],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "NodeWorker.enable",
+        params: { waitForDebuggerOnStart: false },
+      },
+      { id: 4, method: "Runtime.runIfWaitingForDebugger" },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+    await tester.expectResponse(4);
+    await tester.expectNotification("Runtime.executionContextCreated");
+    await tester.expectNotification("Debugger.paused");
+
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    const attached = await tester.expectNotification(
+      "NodeWorker.attachedToWorker",
+    );
+    const params = attached.params as Record<string, unknown>;
+    assert(params.sessionId, "attachedToWorker should include sessionId");
+    const workerInfo = params.workerInfo as Record<string, unknown>;
+    assert(workerInfo, "attachedToWorker should include workerInfo");
+    assertEquals(workerInfo.type, "node_worker");
   } finally {
     await tester.close();
     tester.kill();
@@ -1165,6 +1287,138 @@ Deno.test("inspector_break_on_first_line_in_test", async () => {
   }
 });
 
+// Regression test for https://github.com/denoland/deno/issues/19289.
+// `deno test --inspect-brk` must wait for an attached debugger that opted into
+// `NodeRuntime.notifyWhenWaitingForDisconnect` (as Chrome DevTools does)
+// before exiting; otherwise an in-progress Performance recording is dropped
+// the moment the test finishes.
+async function assertTestWaitsForDebuggerDisconnect(args: string[]) {
+  const tester = await InspectorTester.create(
+    args,
+    {
+      notificationFilter: ignoreScriptParsed,
+      env: { NO_COLOR: "1" },
+    },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "NodeRuntime.notifyWhenWaitingForDisconnect",
+        params: { enabled: true },
+      },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2, {
+      prefixMatch: '{"id":2,"result":{"debuggerId":',
+    });
+    await tester.expectResponse(3);
+    await tester.expectNotification("Runtime.executionContextCreated");
+
+    tester.send({ id: 4, method: "Runtime.runIfWaitingForDebugger" });
+    await tester.expectResponse(4);
+    await tester.expectNotification("Debugger.paused");
+
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    // The test must run to completion. Before the fix the process would
+    // race past the inspector wait and exit before the runtime emitted
+    // `Runtime.executionContextDestroyed`, leaving the websocket dangling.
+    const line1 = await tester.nextStdoutLine();
+    assert(
+      line1.includes("running 1 test from"),
+      `Expected test start, got: ${line1}`,
+    );
+    const line2 = await tester.nextStdoutLine();
+    assert(line2.includes("basic test ... ok"), `Expected ok, got: ${line2}`);
+
+    // The runtime should now be parked waiting for us to disconnect. Wait
+    // for the context-destroyed notification; proof that the wait kicked
+    // in, since on the buggy path the process would exit instead.
+    await tester.expectNotification("Runtime.executionContextDestroyed");
+
+    // Closing the socket signals the debugger has disconnected; the runtime
+    // should now exit cleanly with code 0.
+    await tester.close();
+    const status = await tester.waitForExit();
+    assertEquals(status.code, 0);
+  } finally {
+    tester.kill();
+    await tester.waitForExit();
+  }
+}
+
+Deno.test("inspector_test_waits_for_debugger_disconnect", async () => {
+  if (Deno.build.os === "windows") return;
+
+  const script = `${testdataPath}/inspector_test.js`;
+  await assertTestWaitsForDebuggerDisconnect([
+    "test",
+    "-A",
+    "--inspect-brk=0",
+    script,
+  ]);
+});
+
+Deno.test("inspector_test_coverage_does_not_block_shutdown", async () => {
+  const coverageDir = await Deno.makeTempDir();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  try {
+    const script = `${testdataPath}/inspector_test.js`;
+
+    // `--coverage` uses a local blocking inspector session internally. It is
+    // mutually exclusive with `--inspect-brk`, but it still exercises the
+    // shutdown ordering that must stop coverage before waiting for inspector
+    // sessions to disconnect.
+    const child = new Deno.Command(Deno.execPath(), {
+      args: ["test", "-A", `--coverage=${coverageDir}`, script],
+      stdout: "piped",
+      stderr: "piped",
+      env: { NO_COLOR: "1" },
+    }).spawn();
+
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // Process may have exited between the timeout firing and kill.
+      }
+    }, 10_000);
+
+    const output = await child.output();
+    const stdout = new TextDecoder().decode(output.stdout);
+    const stderr = new TextDecoder().decode(output.stderr);
+    assert(
+      !timedOut,
+      `deno test --coverage did not exit cleanly.\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+    );
+    assertEquals(output.code, 0, `stdout:\n${stdout}\nstderr:\n${stderr}`);
+    assertStringIncludes(stdout, "basic test ... ok");
+    const coverageFiles = [];
+    for await (const entry of Deno.readDir(coverageDir)) {
+      if (entry.isFile) coverageFiles.push(entry.name);
+    }
+    assert(
+      coverageFiles.length > 0,
+      `Expected coverage output.\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+    );
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+    await Deno.remove(coverageDir, { recursive: true });
+  }
+});
+
 Deno.test("inspector_with_ts_files", async () => {
   const script = `${testdataPath}/test.ts`;
 
@@ -1416,4 +1670,135 @@ Deno.test("inspector_node_runtime_api_url", async () => {
     expectedUrl,
     "inspector.url() should return the same URL as stderr",
   );
+});
+
+// Regression test for https://github.com/denoland/deno/issues/30176.
+// `console.group(label)` must emit a paired `log` event so Chrome DevTools
+// renders the label inside the group container; otherwise the group appears
+// empty and the visible nesting drifts out of alignment with the CLI.
+Deno.test("inspector_console_group_emits_label_log", async () => {
+  const script = `${testdataPath}/inspector_group.js`;
+  // `--inspect-wait` keeps the script paused until the inspector calls
+  // `Runtime.runIfWaitingForDebugger`. Avoid `--inspect-brk` here: that mode
+  // also pauses on the first line and would require an extra
+  // `Debugger.resume` round-trip, which races with this test's expectations.
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-wait=0", script],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+    ]);
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectNotification("Runtime.executionContextCreated");
+
+    tester.send({ id: 3, method: "Runtime.runIfWaitingForDebugger" });
+    await tester.expectResponse(3);
+
+    // Sentinel "done" log marks the end of the script-emitted console events.
+    const events: Array<{ type: string; arg: string | undefined }> = [];
+    while (true) {
+      const msg = await tester.expectNotification("Runtime.consoleAPICalled");
+      // deno-lint-ignore no-explicit-any
+      const params = msg.params as any;
+      const arg = params.args?.[0]?.value;
+      events.push({ type: params.type, arg });
+      if (params.type === "log" && arg === "done") break;
+    }
+
+    assertEquals(events, [
+      { type: "startGroup", arg: "test1" },
+      { type: "log", arg: "test1" },
+      { type: "startGroup", arg: "test2" },
+      { type: "log", arg: "test2" },
+      { type: "endGroup", arg: "console.groupEnd" },
+      { type: "endGroup", arg: "console.groupEnd" },
+      { type: "log", arg: "done" },
+    ]);
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
+});
+
+// Regression test for https://github.com/denoland/deno/issues/18513
+// Piping a file stream to a WritableStream internally releases the writer,
+// rejecting its ready/closed promises. Those rejections are handled, so a
+// debugger with "pause on uncaught exceptions" enabled must not break on them.
+Deno.test("inspector_no_pause_on_handled_stream_rejection", async () => {
+  const script = `${testdataPath}/pipe_file_to_writable.js`;
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-brk=0", script],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "Debugger.setPauseOnExceptions",
+        params: { state: "uncaught" },
+      },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+    await tester.expectNotification("Runtime.executionContextCreated");
+
+    tester.send({ id: 4, method: "Runtime.runIfWaitingForDebugger" });
+    await tester.expectResponse(4);
+
+    // First pause is the --inspect-brk break on the first line.
+    const firstPause = await tester.expectNotification("Debugger.paused");
+    assert(
+      // deno-lint-ignore no-explicit-any
+      (firstPause.params as any)?.reason !== "exception" &&
+        // deno-lint-ignore no-explicit-any
+        (firstPause.params as any)?.reason !== "promiseRejection",
+      "first pause should be the inspect-brk break, not an exception",
+    );
+
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    // Releasing the writer and reader during pipeTo rejects their internal
+    // ready/closed promises, but those rejections are handled. With
+    // "pause on uncaught exceptions" enabled the debugger must not break on
+    // them. If it regresses, a Debugger.paused (reason "promiseRejection")
+    // arrives here instead of the script running to completion.
+    let unexpectedPause: CDPMessage | undefined;
+    try {
+      unexpectedPause = await tester.expectNotification("Debugger.paused", {
+        timeout: 5_000,
+      });
+    } catch {
+      // No second pause within the window — this is the expected outcome.
+    }
+    if (unexpectedPause) {
+      // deno-lint-ignore no-explicit-any
+      const params = unexpectedPause.params as any;
+      throw new Error(
+        `debugger paused unexpectedly on a handled rejection: reason=${params?.reason} ${
+          params?.data?.description ?? ""
+        }`,
+      );
+    }
+
+    const scriptOutput = await tester.nextStdoutLine();
+    assertEquals(scriptOutput, "done");
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
 });

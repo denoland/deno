@@ -1841,6 +1841,16 @@ class ERR_INVALID_PROTOCOL extends NodeTypeError {
     );
   }
 }
+class ERR_PROXY_INVALID_CONFIG extends NodeError {
+  constructor(reason: string) {
+    super("ERR_PROXY_INVALID_CONFIG", reason);
+  }
+}
+class ERR_PROXY_TUNNEL extends NodeError {
+  constructor(reason: string) {
+    super("ERR_PROXY_TUNNEL", reason);
+  }
+}
 class ERR_INVALID_REPL_EVAL_CONFIG extends NodeTypeError {
   constructor() {
     super(
@@ -3475,6 +3485,8 @@ return {
   ERR_INVALID_PACKAGE_TARGET,
   ERR_INVALID_PERFORMANCE_MARK,
   ERR_INVALID_PROTOCOL,
+  ERR_PROXY_INVALID_CONFIG,
+  ERR_PROXY_TUNNEL,
   ERR_INVALID_REPL_EVAL_CONFIG,
   ERR_INVALID_REPL_INPUT,
   ERR_INVALID_RETURN_PROPERTY,
@@ -3792,6 +3804,8 @@ return {
     ERR_INVALID_PACKAGE_TARGET,
     ERR_INVALID_PERFORMANCE_MARK,
     ERR_INVALID_PROTOCOL,
+    ERR_PROXY_INVALID_CONFIG,
+    ERR_PROXY_TUNNEL,
     ERR_INVALID_REPL_EVAL_CONFIG,
     ERR_INVALID_REPL_INPUT,
     ERR_INVALID_RETURN_PROPERTY,

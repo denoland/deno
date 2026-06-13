@@ -306,6 +306,46 @@ Deno.test({
   assert(seenBye);
 });
 
+// https://github.com/denoland/deno/issues/19283
+Deno.test({
+  sanitizeOps: false,
+  sanitizeResources: false,
+}, async function websocketUrlCredentialsAsBasicAuth() {
+  const deferred = Promise.withResolvers<void>();
+  const ac = new AbortController();
+  const listeningDeferred = Promise.withResolvers<void>();
+
+  let seenAuth: string | null = null;
+  const server = Deno.serve({
+    handler: (req) => {
+      seenAuth = req.headers.get("authorization");
+      if (seenAuth !== "Basic " + btoa("user:p@ss")) {
+        return new Response("unauthorized", { status: 401 });
+      }
+      const { response, socket } = Deno.upgradeWebSocket(req);
+      socket.onopen = () => socket.close();
+      socket.onclose = () => ac.abort();
+      return response;
+    },
+    signal: ac.signal,
+    onListen: () => listeningDeferred.resolve(),
+    hostname: "localhost",
+    port: servePort,
+  });
+
+  await listeningDeferred.promise;
+
+  // Percent-encoded userinfo (p%40ss decodes to p@ss).
+  const ws = new WebSocket(`ws://user:p%40ss@localhost:${servePort}/`);
+  // Credentials are stripped from the URL exposed via `url`.
+  assertEquals(ws.url, serveUrl);
+  ws.onerror = () => fail();
+  ws.onclose = () => deferred.resolve();
+
+  await Promise.all([deferred.promise, server.finished]);
+  assertEquals(seenAuth, "Basic " + btoa("user:p@ss"));
+});
+
 Deno.test(
   { sanitizeOps: false },
   function websocketConstructorWithPrototypePollution() {
@@ -328,7 +368,10 @@ Deno.test(
   },
 );
 
-Deno.test(async function websocketTlsSocketWorks() {
+Deno.test({
+  sanitizeOps: false,
+  sanitizeResources: false,
+}, async function websocketTlsSocketWorks() {
   const cert = await Deno.readTextFile("tests/testdata/tls/localhost.crt");
   const key = await Deno.readTextFile("tests/testdata/tls/localhost.key");
 

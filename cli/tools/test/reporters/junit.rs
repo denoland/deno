@@ -204,6 +204,25 @@ impl TestReporter for JunitTestReporter {
     }
   }
 
+  fn report_exit(
+    &mut self,
+    _exit_code: i32,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    _test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    for id in tests_pending {
+      if let Some(description) = tests.get(id) {
+        self.report_result(description, &TestResult::Cancelled, 0)
+      }
+    }
+  }
+
+  fn report_isolate_exit(&mut self, _origin: &str, _exit_code: i32) {
+    // JUnit reporters are file-oriented; we surface the isolate exit via the
+    // overall test run failure status rather than emitting a synthetic case.
+  }
+
   fn report_completed(&mut self) {
     // TODO(mmastrac): This reporter does not handle stdout/stderr yet, and when we do, we may need to redirect
     // pre-and-post-test output somewhere.
