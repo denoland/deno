@@ -26,10 +26,11 @@ use deno_core::webidl::WebIdlError;
 use deno_core::webidl::WebIdlErrorKind;
 use deno_core::webidl::try_convert_sequence_with_policy;
 
-use crate::css_value::CSSValueError;
-use crate::css_value::ParserInput;
-use crate::css_value::Transform;
-use crate::css_value::TransformListParser;
+use crate::css::error::CSSParseError;
+use crate::css::error::css_parse_error_to_string;
+use crate::css::transform::ParserInput;
+use crate::css::transform::Transform;
+use crate::css::transform::TransformListParser;
 use crate::f64::maximum;
 use crate::f64::minimum;
 
@@ -100,19 +101,9 @@ pub enum GeometryError {
   FailedToParse(String),
 }
 
-impl<'i> From<CSSValueError<'i>> for GeometryError {
-  fn from(error: CSSValueError) -> Self {
-    use cssparser::BasicParseErrorKind;
-    use cssparser::ParseErrorKind;
-
-    // Suppress Debug output for cssparser::Token
-    let message: String = match error.kind {
-      ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(_)) => {
-        "unexpected token".into()
-      }
-      _ => format!("{}", error),
-    };
-    GeometryError::FailedToParse(message)
+impl<'i> From<CSSParseError<'i>> for GeometryError {
+  fn from(error: CSSParseError<'i>) -> Self {
+    GeometryError::FailedToParse(css_parse_error_to_string(error))
   }
 }
 

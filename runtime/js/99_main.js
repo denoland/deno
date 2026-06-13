@@ -107,12 +107,13 @@ import {
   windowOrWorkerGlobalScope,
 } from "ext:runtime/98_global_scope_shared.js";
 import {
+  unstableForWorkerGlobalScope,
+  workerRuntimeGlobalProperties,
+} from "ext:runtime/98_global_scope_worker.js";
+import {
   mainRuntimeGlobalProperties,
   memoizeLazy,
 } from "ext:runtime/98_global_scope_window.js";
-import {
-  workerRuntimeGlobalProperties,
-} from "ext:runtime/98_global_scope_worker.js";
 const { SymbolMetadata } = core.loadExtScript("ext:deno_web/00_infra.js");
 // Telemetry (~2000 LOC, ~70 KB of bytecode + V8 heap) is only needed when an
 // OTEL config flag is set, but it was being loaded unconditionally at snapshot
@@ -628,6 +629,21 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures) {
     const featureId = featureIds[i];
     if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
       const props = unstableForWindowOrWorkerGlobalScope[featureId];
+      core.defineGlobalProperties(globalThis, { ...props });
+    }
+  }
+}
+
+function exposeUnstableFeaturesForWorkerGlobalScope(unstableFeatures) {
+  const featureIds = ArrayPrototypeMap(
+    ObjectKeys(unstableForWorkerGlobalScope),
+    (k) => k | 0,
+  );
+
+  for (let i = 0; i < featureIds.length; i++) {
+    const featureId = featureIds[i];
+    if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
+      const props = unstableForWorkerGlobalScope[featureId];
       core.defineGlobalProperties(globalThis, { ...props });
     }
   }
@@ -1188,6 +1204,7 @@ function bootstrapWorkerRuntime(
       );
     }
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
+    exposeUnstableFeaturesForWorkerGlobalScope(unstableFeatures);
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
     bootstrapOtel(otelConfig);

@@ -3,35 +3,15 @@
 use std::f64;
 use std::ops;
 
-use cssparser::ParseError;
-use cssparser::Parser;
+pub use cssparser::Parser;
 pub use cssparser::ParserInput;
 use cssparser::Token;
 use cssparser::match_ignore_ascii_case;
 
+use crate::css::error::CSSCustomError;
+use crate::css::error::CSSParseError;
 use crate::f64::maximum;
 use crate::f64::minimum;
-
-pub type CSSValueError<'i> = ParseError<'i, CSSValueCustomError>;
-
-#[derive(Debug, thiserror::Error)]
-#[cfg_attr(test, derive(PartialEq))]
-pub enum CSSValueCustomError {
-  #[error("unexpected numeric type")]
-  UnexpectedNumericType,
-  #[error(
-    "contains relative <length> values that cannot be resolved at parse time"
-  )]
-  ContainsRelativeLengthValues,
-  #[error("contains {0} calculations that cannot be resolved at parse time")]
-  ContainPercentAndDimensionCalculations(&'static str),
-  #[error("cannot add or subtract different numeric types")]
-  NumericTypeMismatch,
-  #[error("the dimension of the calculation result is incorrect")]
-  InvalidDimension,
-  #[error("contains invalid function: {0}")]
-  InvalidFunction(String),
-}
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -296,29 +276,29 @@ impl From<Resolution> for NumericValue {
 
 impl NumericValue {
   #[inline]
-  pub fn expect_number(self) -> Result<f64, CSSValueCustomError> {
+  pub fn expect_number(self) -> Result<f64, CSSCustomError> {
     match self {
       NumericValue::Zero => Ok(0.0),
       NumericValue::Number(number) => Ok(number),
-      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+      _ => Err(CSSCustomError::UnexpectedNumericType),
     }
   }
 
   #[inline]
-  pub fn expect_percent(self) -> Result<f64, CSSValueCustomError> {
+  pub fn expect_percent(self) -> Result<f64, CSSCustomError> {
     match self {
       NumericValue::Percent(percent) => Ok(percent),
-      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+      _ => Err(CSSCustomError::UnexpectedNumericType),
     }
   }
 
   #[inline]
-  pub fn expect_number_or_percent(self) -> Result<f64, CSSValueCustomError> {
+  pub fn expect_number_or_percent(self) -> Result<f64, CSSCustomError> {
     match self {
       NumericValue::Zero => Ok(0.0),
       NumericValue::Number(number) => Ok(number),
       NumericValue::Percent(percent) => Ok(percent),
-      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+      _ => Err(CSSCustomError::UnexpectedNumericType),
     }
   }
 
@@ -326,67 +306,64 @@ impl NumericValue {
   pub fn expect_length(
     self,
     allow_zero: bool,
-  ) -> Result<Length, CSSValueCustomError> {
+  ) -> Result<Length, CSSCustomError> {
     match self {
       NumericValue::Zero => {
         if allow_zero {
           Ok(Length::from_pixels(0.0))
         } else {
-          Err(CSSValueCustomError::UnexpectedNumericType)
+          Err(CSSCustomError::UnexpectedNumericType)
         }
       }
       NumericValue::Length(length) => Ok(length),
-      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+      _ => Err(CSSCustomError::UnexpectedNumericType),
     }
   }
 
   #[inline]
-  pub fn expect_angle(
-    self,
-    allow_zero: bool,
-  ) -> Result<Angle, CSSValueCustomError> {
+  pub fn expect_angle(self, allow_zero: bool) -> Result<Angle, CSSCustomError> {
     match self {
       NumericValue::Zero => {
         if allow_zero {
           Ok(Angle::from_degrees(0.0))
         } else {
-          Err(CSSValueCustomError::UnexpectedNumericType)
+          Err(CSSCustomError::UnexpectedNumericType)
         }
       }
       NumericValue::Angle(angle) => Ok(angle),
-      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+      _ => Err(CSSCustomError::UnexpectedNumericType),
     }
   }
 
   #[inline]
-  pub fn expect_time(self) -> Result<Time, CSSValueCustomError> {
+  pub fn expect_time(self) -> Result<Time, CSSCustomError> {
     match self {
       NumericValue::Time(time) => Ok(time),
-      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+      _ => Err(CSSCustomError::UnexpectedNumericType),
     }
   }
 
   #[inline]
-  pub fn expect_frequency(self) -> Result<Frequency, CSSValueCustomError> {
+  pub fn expect_frequency(self) -> Result<Frequency, CSSCustomError> {
     match self {
       NumericValue::Frequency(frequency) => Ok(frequency),
-      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+      _ => Err(CSSCustomError::UnexpectedNumericType),
     }
   }
 
   #[inline]
-  pub fn expect_resolution(self) -> Result<Resolution, CSSValueCustomError> {
+  pub fn expect_resolution(self) -> Result<Resolution, CSSCustomError> {
     match self {
       NumericValue::Resolution(resolution) => Ok(resolution),
-      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+      _ => Err(CSSCustomError::UnexpectedNumericType),
     }
   }
 
   #[inline]
-  pub fn expect_flex(self) -> Result<f64, CSSValueCustomError> {
+  pub fn expect_flex(self) -> Result<f64, CSSCustomError> {
     match self {
       NumericValue::Flex(flex) => Ok(flex),
-      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+      _ => Err(CSSCustomError::UnexpectedNumericType),
     }
   }
 }
@@ -538,7 +515,7 @@ impl From<NumericValue> for MathValue {
 }
 
 impl TryFrom<MathValue> for NumericValue {
-  type Error = CSSValueCustomError;
+  type Error = CSSCustomError;
 
   fn try_from(math: MathValue) -> Result<Self, Self::Error> {
     let value = math.value;
@@ -559,7 +536,7 @@ impl TryFrom<MathValue> for NumericValue {
     } else if math.is_flex() {
       Ok(NumericValue::Flex(value))
     } else {
-      Err(CSSValueCustomError::InvalidDimension)
+      Err(CSSCustomError::InvalidDimension)
     }
   }
 }
@@ -587,34 +564,47 @@ impl MathValue {
     is_flex: FLEX,
   }
 
-  fn dimension_mismatch_error(&self, other: &MathValue) -> CSSValueCustomError {
+  fn dimension_mismatch_error(&self, other: &MathValue) -> CSSCustomError {
     if self.is_percent() || other.is_percent() {
       if self.is_length() || other.is_length() {
-        return CSSValueCustomError::ContainPercentAndDimensionCalculations(
+        return CSSCustomError::ContainPercentAndDimensionCalculations(
           "<length-percentage>",
         );
       } else if self.is_angle() || other.is_angle() {
-        return CSSValueCustomError::ContainPercentAndDimensionCalculations(
+        return CSSCustomError::ContainPercentAndDimensionCalculations(
           "<angle-percentage>",
         );
       } else if self.is_time() || other.is_time() {
-        return CSSValueCustomError::ContainPercentAndDimensionCalculations(
+        return CSSCustomError::ContainPercentAndDimensionCalculations(
           "<time-percentage>",
         );
       } else if self.is_frequency() || other.is_frequency() {
-        return CSSValueCustomError::ContainPercentAndDimensionCalculations(
+        return CSSCustomError::ContainPercentAndDimensionCalculations(
           "<frequency-percentage>",
         );
       }
     }
-    CSSValueCustomError::NumericTypeMismatch
+    CSSCustomError::NumericTypeMismatch
+  }
+
+  /// Convert a percent value to an absolute length in pixels using the given base.
+  /// Returns self unchanged if not a percent.
+  fn resolve_percent_as_length(self, base: f64) -> Self {
+    if self.is_percent() {
+      MathValue {
+        value: self.value * base,
+        dimension: Dimension::LENGTH,
+      }
+    } else {
+      self
+    }
   }
 
   #[inline]
   fn try_add_assign(
     &mut self,
     other: &MathValue,
-  ) -> Result<(), CSSValueCustomError> {
+  ) -> Result<(), CSSCustomError> {
     if self.dimension != other.dimension {
       return Err(self.dimension_mismatch_error(other));
     }
@@ -626,7 +616,7 @@ impl MathValue {
   fn try_sub_assign(
     &mut self,
     other: &MathValue,
-  ) -> Result<(), CSSValueCustomError> {
+  ) -> Result<(), CSSCustomError> {
     if self.dimension != other.dimension {
       return Err(self.dimension_mismatch_error(other));
     }
@@ -635,65 +625,65 @@ impl MathValue {
   }
 
   #[inline]
-  fn expect_number(self) -> Result<f64, CSSValueCustomError> {
+  fn expect_number(self) -> Result<f64, CSSCustomError> {
     if !self.is_number() {
-      return Err(CSSValueCustomError::UnexpectedNumericType);
+      return Err(CSSCustomError::UnexpectedNumericType);
     }
     Ok(self.value)
   }
 
   #[inline]
-  fn expect_percent(self) -> Result<f64, CSSValueCustomError> {
+  fn expect_percent(self) -> Result<f64, CSSCustomError> {
     if !self.is_percent() {
-      return Err(CSSValueCustomError::UnexpectedNumericType);
+      return Err(CSSCustomError::UnexpectedNumericType);
     }
     Ok(self.value)
   }
 
   #[inline]
-  fn expect_length(self) -> Result<Length, CSSValueCustomError> {
+  fn expect_length(self) -> Result<Length, CSSCustomError> {
     if !self.is_length() {
-      return Err(CSSValueCustomError::UnexpectedNumericType);
+      return Err(CSSCustomError::UnexpectedNumericType);
     }
     Ok(Length::from_pixels(self.value))
   }
 
   #[inline]
-  fn expect_angle(self) -> Result<Angle, CSSValueCustomError> {
+  fn expect_angle(self) -> Result<Angle, CSSCustomError> {
     if !self.is_angle() {
-      return Err(CSSValueCustomError::UnexpectedNumericType);
+      return Err(CSSCustomError::UnexpectedNumericType);
     }
     Ok(Angle::from_degrees(self.value))
   }
 
   #[inline]
-  fn expect_time(self) -> Result<Time, CSSValueCustomError> {
+  fn expect_time(self) -> Result<Time, CSSCustomError> {
     if !self.is_time() {
-      return Err(CSSValueCustomError::UnexpectedNumericType);
+      return Err(CSSCustomError::UnexpectedNumericType);
     }
     Ok(Time::from_seconds(self.value))
   }
 
   #[inline]
-  fn expect_frequency(self) -> Result<Frequency, CSSValueCustomError> {
+  fn expect_frequency(self) -> Result<Frequency, CSSCustomError> {
     if !self.is_frequency() {
-      return Err(CSSValueCustomError::UnexpectedNumericType);
+      return Err(CSSCustomError::UnexpectedNumericType);
     }
     Ok(Frequency::from_hertz(self.value))
   }
 
   #[inline]
-  fn expect_resolution(self) -> Result<Resolution, CSSValueCustomError> {
+  fn expect_resolution(self) -> Result<Resolution, CSSCustomError> {
     if !self.is_resolution() {
-      return Err(CSSValueCustomError::UnexpectedNumericType);
+      return Err(CSSCustomError::UnexpectedNumericType);
     }
     Ok(Resolution::from_dot_per_pixels(self.value))
   }
 
   #[inline]
-  fn expect_flex(self) -> Result<f64, CSSValueCustomError> {
+  fn expect_flex(self) -> Result<f64, CSSCustomError> {
     if !self.is_flex() {
-      return Err(CSSValueCustomError::UnexpectedNumericType);
+      return Err(CSSCustomError::UnexpectedNumericType);
     }
     Ok(self.value)
   }
@@ -746,7 +736,7 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_numeric(self) -> Result<NumericValue, CSSValueCustomError> {
+  fn expect_numeric(self) -> Result<NumericValue, CSSCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => Ok(numeric),
       NumericAccumulator::Math(math) => math.try_into(),
@@ -754,7 +744,7 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_number(self) -> Result<f64, CSSValueCustomError> {
+  fn expect_number(self) -> Result<f64, CSSCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => numeric.expect_number(),
       NumericAccumulator::Math(math) => math.expect_number(),
@@ -762,7 +752,7 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_percent(self) -> Result<f64, CSSValueCustomError> {
+  fn expect_percent(self) -> Result<f64, CSSCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => numeric.expect_percent(),
       NumericAccumulator::Math(math) => math.expect_percent(),
@@ -770,10 +760,7 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_length(
-    self,
-    allow_zero: bool,
-  ) -> Result<Length, CSSValueCustomError> {
+  fn expect_length(self, allow_zero: bool) -> Result<Length, CSSCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => numeric.expect_length(allow_zero),
       NumericAccumulator::Math(math) => math.expect_length(),
@@ -781,10 +768,7 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_angle(
-    self,
-    allow_zero: bool,
-  ) -> Result<Angle, CSSValueCustomError> {
+  fn expect_angle(self, allow_zero: bool) -> Result<Angle, CSSCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => numeric.expect_angle(allow_zero),
       NumericAccumulator::Math(math) => math.expect_angle(),
@@ -792,7 +776,7 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_time(self) -> Result<Time, CSSValueCustomError> {
+  fn expect_time(self) -> Result<Time, CSSCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => numeric.expect_time(),
       NumericAccumulator::Math(math) => math.expect_time(),
@@ -800,7 +784,7 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_frequency(self) -> Result<Frequency, CSSValueCustomError> {
+  fn expect_frequency(self) -> Result<Frequency, CSSCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => numeric.expect_frequency(),
       NumericAccumulator::Math(math) => math.expect_frequency(),
@@ -808,7 +792,7 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_resolution(self) -> Result<Resolution, CSSValueCustomError> {
+  fn expect_resolution(self) -> Result<Resolution, CSSCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => numeric.expect_resolution(),
       NumericAccumulator::Math(math) => math.expect_resolution(),
@@ -816,7 +800,7 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_flex(self) -> Result<f64, CSSValueCustomError> {
+  fn expect_flex(self) -> Result<f64, CSSCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => numeric.expect_flex(),
       NumericAccumulator::Math(math) => math.expect_flex(),
@@ -824,14 +808,25 @@ impl NumericAccumulator {
   }
 }
 
+#[derive(Default)]
+pub struct ParseOptions {
+  /// Base font size in pixels for resolving em/rem and percentage values.
+  /// When `None`, em/rem tokens yield `ContainsRelativeLengthValues`.
+  pub em_base: Option<f64>,
+}
+
 #[derive(Debug)]
 struct ParseState {
   function_depth: u8,
+  em_base: Option<f64>,
 }
 
 impl ParseState {
-  fn new() -> Self {
-    Self { function_depth: 0 }
+  fn new(opts: ParseOptions) -> Self {
+    Self {
+      function_depth: 0,
+      em_base: opts.em_base,
+    }
   }
 }
 
@@ -919,8 +914,9 @@ macro_rules! from_raw {
 impl NumericValue {
   pub fn parse<'i, 't>(
     input: &mut Parser<'i, 't>,
-  ) -> Result<Self, ParseError<'i, CSSValueCustomError>> {
-    let result = Self::parse_inner(input, &mut ParseState::new())?;
+    opts: ParseOptions,
+  ) -> Result<Self, CSSParseError<'i>> {
+    let result = Self::parse_inner(input, &mut ParseState::new(opts))?;
     match result.expect_numeric() {
       Ok(numeric) => Ok(numeric),
       Err(error) => Err(input.new_custom_error(error)),
@@ -930,7 +926,7 @@ impl NumericValue {
   fn parse_inner<'i, 't>(
     input: &mut Parser<'i, 't>,
     state: &mut ParseState,
-  ) -> Result<NumericAccumulator, ParseError<'i, CSSValueCustomError>> {
+  ) -> Result<NumericAccumulator, CSSParseError<'i>> {
     let token = input.next()?;
     match token {
       Token::Number { value, .. } => {
@@ -956,12 +952,20 @@ impl NumericValue {
           "pt" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Pt }).into()),
           "px" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Px }).into()),
           // https://www.w3.org/TR/css-values-4/#relative-lengths
-          "em" | "rem" | "ex" | "rex" | "cap" | "rcap" | "ch" | "rch" | "ic" | "ric" | "lh" | "rlh" |
+          // em/rem can be resolved when em_base is provided
+          "em" | "rem" => {
+            if let Some(base) = state.em_base {
+              Ok(NumericValue::Length(Length::from_pixels(value * base)).into())
+            } else {
+              Err(input.new_custom_error(CSSCustomError::ContainsRelativeLengthValues))
+            }
+          },
+          "ex" | "rex" | "cap" | "rcap" | "ch" | "rch" | "ic" | "ric" | "lh" | "rlh" |
           "vw" | "svw" | "lvw" | "dvw" | "vh" | "svh" | "lvh" | "dvh" | "vi" | "svi" | "lvi" | "dvi" |
           "vb" | "svb" | "lvb" | "dvb" | "vmin" | "svmin" | "lvmin" | "dvmin" | "vmax" | "svmax" | "lvmax" | "dvmax" |
           // https://www.w3.org/TR/css-contain-3/#container-lengths
           "cqw" | "cqh" | "cqi" | "cqb" | "cqmin" | "cqmax"
-          => Err(input.new_custom_error(CSSValueCustomError::ContainsRelativeLengthValues)),
+          => Err(input.new_custom_error(CSSCustomError::ContainsRelativeLengthValues)),
           // https://www.w3.org/TR/css-values-4/#angles
           "deg" => Ok(NumericValue::Angle(Angle { value, unit: AngleUnit::Deg }).into()),
           "grad" => Ok(NumericValue::Angle(Angle { value, unit: AngleUnit::Grad }).into()),
@@ -1180,7 +1184,7 @@ impl NumericValue {
                 NumericValue::Angle(angle) => {
                   NumericValue::Number(angle.to_radians().sin()).into()
                 }
-                _ => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
+                _ => return Err(arguments.new_custom_error(CSSCustomError::UnexpectedNumericType)),
               };
               Ok(result)
             })
@@ -1198,7 +1202,7 @@ impl NumericValue {
                 NumericValue::Angle(angle) => {
                   NumericValue::Number(angle.to_radians().cos()).into()
                 }
-                _ => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
+                _ => return Err(arguments.new_custom_error(CSSCustomError::UnexpectedNumericType)),
               };
               Ok(result)
             })
@@ -1216,7 +1220,7 @@ impl NumericValue {
                 NumericValue::Angle(angle) => {
                   NumericValue::Number(angle.to_radians().tan()).into()
                 }
-                _ => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
+                _ => return Err(arguments.new_custom_error(CSSCustomError::UnexpectedNumericType)),
               };
               Ok(result)
             })
@@ -1430,7 +1434,7 @@ impl NumericValue {
           },
           _ => {
             let name = name.to_string();
-            return Err(input.new_custom_error(CSSValueCustomError::InvalidFunction(name)))
+            return Err(input.new_custom_error(CSSCustomError::InvalidFunction(name)))
           },
         };
         state.function_depth -= 1;
@@ -1476,7 +1480,7 @@ impl NumericValue {
   fn parse_additive_expression<'i, 't>(
     input: &mut Parser<'i, 't>,
     state: &mut ParseState,
-  ) -> Result<NumericAccumulator, ParseError<'i, CSSValueCustomError>> {
+  ) -> Result<NumericAccumulator, CSSParseError<'i>> {
     let mut lhs = Self::parse_multiplicative_expression(input, state)?;
 
     while !input.is_exhausted() {
@@ -1489,7 +1493,14 @@ impl NumericValue {
             input.expect_whitespace()?;
             let rhs = Self::parse_multiplicative_expression(input, state)?;
             let mut left = lhs.into_math();
-            let right = rhs.into_math();
+            let mut right = rhs.into_math();
+            if let Some(base) = state.em_base {
+              if left.is_length() && right.is_percent() {
+                right = right.resolve_percent_as_length(base);
+              } else if left.is_percent() && right.is_length() {
+                left = left.resolve_percent_as_length(base);
+              }
+            }
             if let Err(error) = left.try_add_assign(&right) {
               return Err(input.new_custom_error(error));
             }
@@ -1499,7 +1510,14 @@ impl NumericValue {
             input.expect_whitespace()?;
             let rhs = Self::parse_multiplicative_expression(input, state)?;
             let mut left = lhs.into_math();
-            let right = rhs.into_math();
+            let mut right = rhs.into_math();
+            if let Some(base) = state.em_base {
+              if left.is_length() && right.is_percent() {
+                right = right.resolve_percent_as_length(base);
+              } else if left.is_percent() && right.is_length() {
+                left = left.resolve_percent_as_length(base);
+              }
+            }
             if let Err(error) = left.try_sub_assign(&right) {
               return Err(input.new_custom_error(error));
             }
@@ -1522,7 +1540,7 @@ impl NumericValue {
   fn parse_multiplicative_expression<'i, 't>(
     input: &mut Parser<'i, 't>,
     state: &mut ParseState,
-  ) -> Result<NumericAccumulator, ParseError<'i, CSSValueCustomError>> {
+  ) -> Result<NumericAccumulator, CSSParseError<'i>> {
     let mut lhs = Self::parse_inner(input, state)?;
 
     while !input.is_exhausted() {
@@ -1566,7 +1584,7 @@ mod tests {
   fn zero() {
     let mut input = ParserInput::new("0.0");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Zero));
   }
 
@@ -1574,7 +1592,7 @@ mod tests {
   fn number() {
     let mut input = ParserInput::new("42");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(42.0)));
   }
 
@@ -1582,7 +1600,7 @@ mod tests {
   fn percent() {
     let mut input = ParserInput::new("50%");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Percent(0.5)));
   }
 
@@ -1590,7 +1608,7 @@ mod tests {
   fn length() {
     let mut input = ParserInput::new("-1cm");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Length(length)) = result else {
       panic!("expect length: {:?}", result);
     };
@@ -1608,7 +1626,7 @@ mod tests {
   fn angle() {
     let mut input = ParserInput::new("180deg");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Angle(angle)) = result else {
       panic!("expect angle: {:?}", result);
     };
@@ -1627,7 +1645,7 @@ mod tests {
   fn time() {
     let mut input = ParserInput::new("3s");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Time(time)) = result else {
       panic!("expect time: {:?}", result);
     };
@@ -1645,7 +1663,7 @@ mod tests {
   fn frequency() {
     let mut input = ParserInput::new("3hz");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Frequency(frequency)) = result else {
       panic!("expect frequency: {:?}", result);
     };
@@ -1663,7 +1681,7 @@ mod tests {
   fn resolution() {
     let mut input = ParserInput::new("3dppx");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Resolution(resolution)) = result else {
       panic!("expect resolution: {:?}", result);
     };
@@ -1681,7 +1699,7 @@ mod tests {
   fn flex() {
     let mut input = ParserInput::new("1fr");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Flex(1.0)));
   }
 
@@ -1689,7 +1707,7 @@ mod tests {
   fn calc_zero() {
     let mut input = ParserInput::new("calc(0)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(0.0)));
   }
 
@@ -1697,7 +1715,7 @@ mod tests {
   fn calc_const_e() {
     let mut input = ParserInput::new("calc(e)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(f64::consts::E)));
   }
 
@@ -1705,7 +1723,7 @@ mod tests {
   fn calc_const_pi() {
     let mut input = ParserInput::new("calc(pi)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(f64::consts::PI)));
   }
 
@@ -1713,7 +1731,7 @@ mod tests {
   fn calc_const_infinity() {
     let mut input = ParserInput::new("calc(infinity)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(f64::INFINITY)));
   }
 
@@ -1721,7 +1739,7 @@ mod tests {
   fn calc_const_neg_infinity() {
     let mut input = ParserInput::new("calc(-infinity)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(f64::NEG_INFINITY)));
   }
 
@@ -1729,7 +1747,7 @@ mod tests {
   fn calc_const_nan() {
     let mut input = ParserInput::new("calc(nan)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -1740,7 +1758,7 @@ mod tests {
   fn calc() {
     let mut input = ParserInput::new("calc(1px + 2 * 3px)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
       Ok(NumericValue::Length(Length {
@@ -1754,7 +1772,7 @@ mod tests {
   fn calc_parenthesis() {
     let mut input = ParserInput::new("calc((1px + 2px) * 3)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
       Ok(NumericValue::Length(Length {
@@ -1768,7 +1786,7 @@ mod tests {
   fn calc_failed_by_whitespace() {
     let mut input = ParserInput::new("calc(1+2)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert!(result.is_err_and(|error| matches!(
       error.kind,
       ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(_))
@@ -1779,16 +1797,16 @@ mod tests {
   fn calc_failed_by_type_mismatch() {
     let mut input = ParserInput::new("calc(1px + 2deg)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert!(result.is_err_and(|error| error.kind
-      == ParseErrorKind::Custom(CSSValueCustomError::NumericTypeMismatch)));
+      == ParseErrorKind::Custom(CSSCustomError::NumericTypeMismatch)));
   }
 
   #[test]
   fn calc_dimension() {
     let mut input = ParserInput::new("calc(1px * 1deg * 1% / 1deg / 1%)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
       Ok(NumericValue::Length(Length {
@@ -1802,7 +1820,7 @@ mod tests {
   fn calc_zero_dimension() {
     let mut input = ParserInput::new("calc(2px / 1px)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(2.0)));
   }
 
@@ -1810,16 +1828,16 @@ mod tests {
   fn calc_failed_by_dimension() {
     let mut input = ParserInput::new("calc(1px * 1deg * 1% / 1deg)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert!(result.is_err_and(|error| error.kind
-      == ParseErrorKind::Custom(CSSValueCustomError::InvalidDimension)));
+      == ParseErrorKind::Custom(CSSCustomError::InvalidDimension)));
   }
 
   #[test]
   fn min() {
     let mut input = ParserInput::new("min(-1, 1 - 3, 3)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(-2.0)));
   }
 
@@ -1827,7 +1845,7 @@ mod tests {
   fn min_nan() {
     let mut input = ParserInput::new("min(-1, nan, 3)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -1838,7 +1856,7 @@ mod tests {
   fn min_length() {
     let mut input = ParserInput::new("min(-1px, 1px - 3px, 3px)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
       Ok(NumericValue::Length(Length {
@@ -1852,7 +1870,7 @@ mod tests {
   fn max() {
     let mut input = ParserInput::new("max(-1, 1 - 3, 3)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(3.0)));
   }
 
@@ -1860,7 +1878,7 @@ mod tests {
   fn max_nan() {
     let mut input = ParserInput::new("max(-1, nan, 3)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -1871,7 +1889,7 @@ mod tests {
   fn max_length() {
     let mut input = ParserInput::new("max(-1px, 1px - 3px, 3px)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
       Ok(NumericValue::Length(Length {
@@ -1885,7 +1903,7 @@ mod tests {
   fn clamp() {
     let mut input = ParserInput::new("clamp(-1, 1 - 3, 3)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(-1.0)));
   }
 
@@ -1893,7 +1911,7 @@ mod tests {
   fn clamp_none() {
     let mut input = ParserInput::new("clamp(none, 1 - 3, 3)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(-2.0)));
   }
 
@@ -1901,7 +1919,7 @@ mod tests {
   fn clamp_nan() {
     let mut input = ParserInput::new("clamp(-1, nan, 3)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -1912,7 +1930,7 @@ mod tests {
   fn clamp_length() {
     let mut input = ParserInput::new("clamp(-1px, 1px - 3px, 3px)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
       Ok(NumericValue::Length(Length {
@@ -1926,7 +1944,7 @@ mod tests {
   fn round() {
     let mut input = ParserInput::new("round(1.5)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(2.0)));
   }
 
@@ -1934,7 +1952,7 @@ mod tests {
   fn round_with_interval() {
     let mut input = ParserInput::new("round(1, 2)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(2.0)));
   }
 
@@ -1942,7 +1960,7 @@ mod tests {
   fn round_with_strategy() {
     let mut input = ParserInput::new("round(to-zero, 2.5, 5)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(0.0)));
   }
 
@@ -1950,7 +1968,7 @@ mod tests {
   fn round_with_interval_infinity() {
     let mut input = ParserInput::new("round(down, 1, infinity)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(0.0)));
   }
 
@@ -1958,7 +1976,7 @@ mod tests {
   fn round_nan() {
     let mut input = ParserInput::new("round(up, nan, 3)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -1969,7 +1987,7 @@ mod tests {
   fn round_length() {
     let mut input = ParserInput::new("round(-1.5px)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
       Ok(NumericValue::Length(Length {
@@ -1983,7 +2001,7 @@ mod tests {
   fn modulo() {
     let mut input = ParserInput::new("mod(-3, 2)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(1.0)));
   }
 
@@ -1991,7 +2009,7 @@ mod tests {
   fn modulo_zero() {
     let mut input = ParserInput::new("mod(2, 0)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2002,7 +2020,7 @@ mod tests {
   fn modulo_length() {
     let mut input = ParserInput::new("mod(3px, 2px)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
       Ok(NumericValue::Length(Length {
@@ -2016,7 +2034,7 @@ mod tests {
   fn rem() {
     let mut input = ParserInput::new("rem(-3, 2)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(-1.0)));
   }
 
@@ -2024,7 +2042,7 @@ mod tests {
   fn rem_zero() {
     let mut input = ParserInput::new("rem(2, 0)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2035,7 +2053,7 @@ mod tests {
   fn rem_length() {
     let mut input = ParserInput::new("mod(3px, 2px)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
       Ok(NumericValue::Length(Length {
@@ -2049,7 +2067,7 @@ mod tests {
   fn sin() {
     let mut input = ParserInput::new("sin(pi / 2)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2060,7 +2078,7 @@ mod tests {
   fn sin_angle() {
     let mut input = ParserInput::new("sin(90deg)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2071,7 +2089,7 @@ mod tests {
   fn cos() {
     let mut input = ParserInput::new("cos(pi)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2082,7 +2100,7 @@ mod tests {
   fn cos_angle() {
     let mut input = ParserInput::new("cos(180deg)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2093,7 +2111,7 @@ mod tests {
   fn tan() {
     let mut input = ParserInput::new("tan(pi / 4)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2104,7 +2122,7 @@ mod tests {
   fn tan_angle() {
     let mut input = ParserInput::new("tan(45deg)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2115,7 +2133,7 @@ mod tests {
   fn asin() {
     let mut input = ParserInput::new("asin(-1)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Angle(angle)) = result else {
       panic!("expect angle: {:?}", result);
     };
@@ -2126,7 +2144,7 @@ mod tests {
   fn acos() {
     let mut input = ParserInput::new("acos(-1)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Angle(angle)) = result else {
       panic!("expect angle: {:?}", result);
     };
@@ -2137,7 +2155,7 @@ mod tests {
   fn atan() {
     let mut input = ParserInput::new("atan(-1)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Angle(angle)) = result else {
       panic!("expect angle: {:?}", result);
     };
@@ -2148,7 +2166,7 @@ mod tests {
   fn atan2() {
     let mut input = ParserInput::new("atan2(1, -1)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Angle(angle)) = result else {
       panic!("expect angle: {:?}", result);
     };
@@ -2159,7 +2177,7 @@ mod tests {
   fn atan2_length() {
     let mut input = ParserInput::new("atan2(1px, -1px)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Angle(angle)) = result else {
       panic!("expect angle: {:?}", result);
     };
@@ -2170,7 +2188,7 @@ mod tests {
   fn pow() {
     let mut input = ParserInput::new("pow(2, 3)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2181,7 +2199,7 @@ mod tests {
   fn sqrt() {
     let mut input = ParserInput::new("sqrt(4)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2192,7 +2210,7 @@ mod tests {
   fn hypot() {
     let mut input = ParserInput::new("hypot(3, 4, 12)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2203,7 +2221,7 @@ mod tests {
   fn hypot_length() {
     let mut input = ParserInput::new("hypot(3px, 4px, 12px)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Length(length)) = result else {
       panic!("expect length: {:?}", result);
     };
@@ -2214,7 +2232,7 @@ mod tests {
   fn log() {
     let mut input = ParserInput::new("log(10)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2225,7 +2243,7 @@ mod tests {
   fn log_multi_args() {
     let mut input = ParserInput::new("log(8, 2)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2236,7 +2254,7 @@ mod tests {
   fn exp() {
     let mut input = ParserInput::new("exp(2)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2247,7 +2265,7 @@ mod tests {
   fn abs() {
     let mut input = ParserInput::new("abs(-3)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(3.0)));
   }
 
@@ -2255,7 +2273,7 @@ mod tests {
   fn abs_length() {
     let mut input = ParserInput::new("abs(-3px)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
       Ok(NumericValue::Length(Length {
@@ -2269,7 +2287,7 @@ mod tests {
   fn sign() {
     let mut input = ParserInput::new("sign(-2)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(-1.0)));
   }
 
@@ -2277,7 +2295,7 @@ mod tests {
   fn sign_zero() {
     let mut input = ParserInput::new("sign(0)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2289,7 +2307,7 @@ mod tests {
   fn sign_neg_zero() {
     let mut input = ParserInput::new("sign(-0)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
@@ -2301,341 +2319,7 @@ mod tests {
   fn sign_length() {
     let mut input = ParserInput::new("sign(-2px)");
     let mut parser = Parser::new(&mut input);
-    let result = NumericValue::parse(&mut parser);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(-1.0)));
-  }
-}
-
-// Currently, combined units such as <length-percentage> are not supported
-// https://www.w3.org/TR/css-transforms-1/#transform-functions
-// https://drafts.csswg.org/css-transforms-2/#transform-functions
-#[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub enum Transform {
-  Translate(Length, Option<Length>),
-  TranslateX(Length),
-  TranslateY(Length),
-  TranslateZ(Length),
-  Translate3d(Length, Length, Length),
-  Scale(f64, Option<f64>),
-  ScaleX(f64),
-  ScaleY(f64),
-  ScaleZ(f64),
-  Scale3d(f64, f64, f64),
-  Rotate(Angle),
-  RotateX(Angle),
-  RotateY(Angle),
-  RotateZ(Angle),
-  Rotate3d(f64, f64, f64, Angle),
-  Skew(Angle, Option<Angle>),
-  SkewX(Angle),
-  SkewY(Angle),
-  Perspective(Option<Length>),
-  Matrix([f64; 6]),
-  Matrix3d([f64; 16]),
-}
-
-impl Transform {
-  fn parse<'i, 't>(
-    input: &mut Parser<'i, 't>,
-  ) -> Result<Self, ParseError<'i, CSSValueCustomError>> {
-    let name = input.expect_function()?;
-    match_ignore_ascii_case! { &name,
-      "translate" => {
-        input.parse_nested_block(|arguments| {
-          let x = NumericValue::parse(arguments)?;
-          let x = try_extract!(x, expect_length(true), arguments);
-          let y = if !arguments.is_exhausted() {
-            arguments.expect_comma()?;
-            let value = NumericValue::parse(arguments)?;
-            let value = try_extract!(value, expect_length(true), arguments);
-            arguments.expect_exhausted()?;
-            Some(value)
-          } else { None };
-          Ok(Transform::Translate(x, y))
-        })
-      },
-      "translatex" => {
-        input.parse_nested_block(|arguments| {
-          let value = NumericValue::parse(arguments)?;
-          let value = try_extract!(value, expect_length(true), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::TranslateX(value))
-        })
-      },
-      "translatey" => {
-        input.parse_nested_block(|arguments| {
-          let value = NumericValue::parse(arguments)?;
-          let value = try_extract!(value, expect_length(true), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::TranslateY(value))
-        })
-      },
-      "translatez" => {
-        input.parse_nested_block(|arguments| {
-          let value = NumericValue::parse(arguments)?;
-          let value = try_extract!(value, expect_length(true), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::TranslateZ(value))
-        })
-      },
-      "translate3d" => {
-        input.parse_nested_block(|arguments| {
-          let x = NumericValue::parse(arguments)?;
-          let x = try_extract!(x, expect_length(true), arguments);
-          arguments.expect_comma()?;
-          let y = NumericValue::parse(arguments)?;
-          let y = try_extract!(y, expect_length(true), arguments);
-          arguments.expect_comma()?;
-          let z = NumericValue::parse(arguments)?;
-          let z = try_extract!(z, expect_length(true), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::Translate3d(x, y, z))
-        })
-      },
-      "scale" => {
-        input.parse_nested_block(|arguments| {
-          let x = NumericValue::parse(arguments)?;
-          let x = try_extract!(x, expect_number_or_percent(), arguments);
-          let y = if !arguments.is_exhausted() {
-            arguments.expect_comma()?;
-            let value = NumericValue::parse(arguments)?;
-            let value = try_extract!(value, expect_number_or_percent(), arguments);
-            arguments.expect_exhausted()?;
-            Some(value)
-          } else { None };
-          Ok(Transform::Scale(x, y))
-        })
-      },
-      "scalex" => {
-        input.parse_nested_block(|arguments| {
-          let value = NumericValue::parse(arguments)?;
-          let value = try_extract!(value, expect_number_or_percent(), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::ScaleX(value))
-        })
-      },
-      "scaley" => {
-        input.parse_nested_block(|arguments| {
-          let value = NumericValue::parse(arguments)?;
-          let value = try_extract!(value, expect_number_or_percent(), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::ScaleY(value))
-        })
-      },
-      "scalez" => {
-        input.parse_nested_block(|arguments| {
-          let value = NumericValue::parse(arguments)?;
-          let value = try_extract!(value, expect_number_or_percent(), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::ScaleZ(value))
-        })
-      },
-      "scale3d" => {
-        input.parse_nested_block(|arguments| {
-          let x = NumericValue::parse(arguments)?;
-          let x = try_extract!(x, expect_number_or_percent(), arguments);
-          arguments.expect_comma()?;
-          let y = NumericValue::parse(arguments)?;
-          let y = try_extract!(y, expect_number_or_percent(), arguments);
-          arguments.expect_comma()?;
-          let z = NumericValue::parse(arguments)?;
-          let z = try_extract!(z, expect_number_or_percent(), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::Scale3d(x, y, z))
-        })
-      },
-      "rotate" => {
-        input.parse_nested_block(|arguments| {
-          let value = NumericValue::parse(arguments)?;
-          let value = try_extract!(value, expect_angle(true), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::Rotate(value))
-        })
-      },
-      "rotatex" => {
-        input.parse_nested_block(|arguments| {
-          let value = NumericValue::parse(arguments)?;
-          let value = try_extract!(value, expect_angle(true), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::RotateX(value))
-        })
-      },
-      "rotatey" => {
-        input.parse_nested_block(|arguments| {
-          let value = NumericValue::parse(arguments)?;
-          let value = try_extract!(value, expect_angle(true), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::RotateY(value))
-        })
-      },
-      "rotatez" => {
-        input.parse_nested_block(|arguments| {
-          let value = NumericValue::parse(arguments)?;
-          let value = try_extract!(value, expect_angle(true), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::RotateZ(value))
-        })
-      },
-      "rotate3d" => {
-        input.parse_nested_block(|arguments| {
-          let x = NumericValue::parse(arguments)?;
-          let x = try_extract!(x, expect_number(), arguments);
-          arguments.expect_comma()?;
-          let y = NumericValue::parse(arguments)?;
-          let y = try_extract!(y, expect_number(), arguments);
-          arguments.expect_comma()?;
-          let z = NumericValue::parse(arguments)?;
-          let z = try_extract!(z, expect_number(), arguments);
-          arguments.expect_comma()?;
-          let a = NumericValue::parse(arguments)?;
-          let a = try_extract!(a, expect_angle(true), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::Rotate3d(x, y, z, a))
-        })
-      },
-      "skew" => {
-        input.parse_nested_block(|arguments| {
-          let x = NumericValue::parse(arguments)?;
-          let x = try_extract!(x, expect_angle(true), arguments);
-          let y = if !arguments.is_exhausted() {
-            arguments.expect_comma()?;
-            let value = NumericValue::parse(arguments)?;
-            let value = try_extract!(value, expect_angle(true), arguments);
-            arguments.expect_exhausted()?;
-            Some(value)
-          } else { None };
-          Ok(Transform::Skew(x, y))
-        })
-      },
-      "skewx" => {
-        input.parse_nested_block(|arguments| {
-          let value = NumericValue::parse(arguments)?;
-          let value = try_extract!(value, expect_angle(true), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::SkewX(value))
-        })
-      },
-      "skewy" => {
-        input.parse_nested_block(|arguments| {
-          let value = NumericValue::parse(arguments)?;
-          let value = try_extract!(value, expect_angle(true), arguments);
-          arguments.expect_exhausted()?;
-          Ok(Transform::SkewY(value))
-        })
-      },
-      "perspective" => {
-        input.parse_nested_block(|arguments| {
-          let value = {
-            let start = arguments.state();
-            if arguments.expect_ident_matching("none").is_ok() {
-              None
-            } else {
-              arguments.reset(&start);
-              let value = NumericValue::parse(arguments)?;
-              let value = try_extract!(value, expect_length(true), arguments);
-              Some(value)
-            }
-          };
-          arguments.expect_exhausted()?;
-          Ok(Transform::Perspective(value))
-        })
-      },
-      "matrix" => {
-        input.parse_nested_block(|arguments| {
-          let mut result = [0.0; 6];
-          for (i, slot) in result.iter_mut().enumerate() {
-            if i != 0 {
-              arguments.expect_comma()?;
-            }
-            let value = NumericValue::parse(arguments)?;
-            let number = try_extract!(value, expect_number(), arguments);
-            *slot = number;
-          }
-          arguments.expect_exhausted()?;
-          Ok(Transform::Matrix(result))
-        })
-      },
-      "matrix3d" => {
-        input.parse_nested_block(|arguments| {
-          let mut result = [0.0; 16];
-          for (i, slot) in result.iter_mut().enumerate() {
-            if i != 0 {
-              arguments.expect_comma()?;
-            }
-            let value = NumericValue::parse(arguments)?;
-            let number = try_extract!(value, expect_number(), arguments);
-            *slot = number;
-          }
-          arguments.expect_exhausted()?;
-          Ok(Transform::Matrix3d(result))
-        })
-      },
-      _ => {
-        let name = name.to_string();
-        Err(input.new_custom_error(CSSValueCustomError::InvalidFunction(name)))
-      },
-    }
-  }
-}
-
-pub struct TransformListParser<'i, 't> {
-  parser: Parser<'i, 't>,
-  has_function: bool,
-  finished: bool,
-}
-
-impl<'i: 't, 't> TransformListParser<'i, 't> {
-  pub fn new(input: &'t mut ParserInput<'i>) -> Self {
-    Self {
-      parser: Parser::new(input),
-      has_function: false,
-      finished: false,
-    }
-  }
-}
-
-impl<'i, 't> Iterator for TransformListParser<'i, 't> {
-  type Item = Result<Transform, ParseError<'i, CSSValueCustomError>>;
-
-  fn next(&mut self) -> Option<Self::Item> {
-    if self.finished {
-      return None;
-    }
-
-    let input = &mut self.parser;
-    if input.is_exhausted() {
-      self.finished = true;
-      if self.has_function {
-        return None;
-      } else {
-        let token = match input.next_including_whitespace_and_comments() {
-          Ok(token) => token.clone(),
-          Err(e) => return Some(Err(e.into())),
-        };
-        return Some(Err(input.new_unexpected_token_error(token)));
-      }
-    }
-
-    if !self.has_function {
-      let start = input.state();
-      if input.expect_ident_matching("none").is_ok() {
-        self.finished = true;
-        match input.expect_exhausted() {
-          Ok(_) => return None,
-          Err(error) => return Some(Err(error.into())),
-        }
-      } else {
-        input.reset(&start);
-      }
-    }
-
-    let result = Transform::parse(input);
-    if result.is_ok() {
-      self.has_function = true;
-    } else {
-      self.finished = true;
-    }
-    Some(result)
   }
 }
