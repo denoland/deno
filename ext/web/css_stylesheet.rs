@@ -200,7 +200,12 @@ impl CSSStyleSheet {
     *self.text.borrow_mut() = strip_import_rules(&text);
   }
 
-  #[required(1)]
+  // Intentionally not `#[required(1)]`: `replace` returns a promise, and WebIDL
+  // requires the "not enough arguments" `TypeError` of a promise-returning
+  // operation to be turned into a rejected promise rather than thrown
+  // synchronously. The argument count is checked manually below so the missing
+  // and invalid argument cases both reject. (`replaceSync` keeps
+  // `#[required(1)]` since it does throw synchronously.)
   fn replace<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
@@ -208,8 +213,19 @@ impl CSSStyleSheet {
   ) -> v8::Local<'a, v8::Promise> {
     let resolver = v8::PromiseResolver::new(scope).unwrap();
     let promise = resolver.get_promise(scope);
-    // `#[required(1)]` ensures `args` has at least 1 entry.
-    let args = args.expect("replace requires arguments");
+    let num_args = args.map(|args| args.length()).unwrap_or(0);
+    if num_args < 1 {
+      // Match the message `#[required(1)]` would have produced.
+      let msg = format!(
+        "Failed to execute 'replace' on 'CSSStyleSheet': 1 argument required, but only {} present",
+        num_args,
+      );
+      let msg = v8::String::new(scope, &msg).unwrap();
+      let exception = v8::Exception::type_error(scope, msg);
+      resolver.reject(scope, exception);
+      return promise;
+    }
+    let args = args.expect("checked above that an argument is present");
     match String::convert(
       scope,
       args.get(0),
