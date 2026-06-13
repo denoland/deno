@@ -6325,7 +6325,7 @@ Read more: http://deno.com/blog/v1.38
 - fix(ext/ffi): use anybuffer for op_ffi_ptr_of (#20820)
 - fix(ext/formdata): support multiple headers in FormData (#20801)
 - fix(ext/http): Deno.Server should not be thenable (#20723)
-- fix(ext/kv): send queue wake messages accross different kv instances (#20465)
+- fix(ext/kv): send queue wake messages across different kv instances (#20465)
 - fix(ext/node): don't call undefined nextTick fn (#20724)
 - fix(ext/node): fix TypeError in Buffer.from with base64url encoding. (#20705)
 - fix(ext/node): implement uv.errname (#20785)
