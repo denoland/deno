@@ -212,6 +212,73 @@ classes use exactly this pattern).
   `runtime/js/98_global_scope_shared.js`, and given a `lib.deno_dom.d.ts`
   under `cli/tsc/dts/` (referenced from the appropriate `lib.deno.*.d.ts`).
 
+### 3.5 Lazy loading vs cppgc — the key tension ⚠️
+
+**This is the most important architectural constraint and it does partially
+clash with the cppgc model.** "Lazy loaded" means two different things in Deno,
+and only one of them works with native cppgc classes today:
+
+| What | Can it be deferred for a cppgc class? |
+|---|---|
+| **JS module evaluation** (`lazy_loaded_esm` / `lazy_loaded_js`, the per-interface JS prototype-decoration code, global wiring) | **Yes** — deferred until first import. Canvas/WebGPU do exactly this. |
+| **The native V8 class itself** (the `FunctionTemplate` / constructor / prototype for each `objects = [...]` entry) | **No** — set up **eagerly** and **baked into the startup snapshot**, regardless of `lazy_init()` or `lazy_loaded_esm`. |
+
+Why: the `objects = [...]` entries are turned into `FunctionTemplate`s in
+`initialize_deno_core_ops_bindings` (`libs/core/runtime/bindings.rs:444-533`),
+which runs at context creation for **every** extension's method decls — lazy or
+not — and installs each constructor into `Deno.core.ops` so it's importable from
+`ext:core/ops` immediately. `lazy_init()` only flips `needs_lazy_init`
+(`libs/core/extensions.rs:610-619`), which defers the extension's `op_state_fn`
+and JS module eval — **not** the template setup. Worse, `for_warmup()`
+(`libs/core/extensions.rs:701-726`) **clears the JS files but keeps `objects`**
+when generating the snapshot, so the cppgc `FunctionTemplate`s and their external
+references are deserialized at *every* process startup. There is no
+"deregister/defer external references at runtime" with V8 snapshots, so a class
+declared in `objects` is a permanent, always-on cost.
+
+**Practical consequence:** canvas (3 classes) and WebGPU (~20) pay this happily.
+But a naive full DOM has **100+ interfaces** (`HTMLDivElement`,
+`HTMLAnchorElement`, … one per element). Putting all of those in `objects = [...]`
+would bloat the snapshot, startup deserialization, and per-process memory for
+*every* `deno run`, even `deno eval "1+1"` — which directly conflicts with both
+your lazy-loading requirement and Deno's startup-time priorities. By contrast,
+`deno-dom`/`jsdom` are pure userland: **zero** cost until imported.
+
+**This reframes the design. Three ways to reconcile native cppgc with lazy:**
+
+1. **Keep the native class count tiny (recommended).** Make only the core node
+   hierarchy native cppgc classes — `Node`, `Element`, `CharacterData`, `Text`,
+   `Comment`, `Document`, `DocumentFragment`, `Attr`, `DocumentType`, plus
+   `DOMParser` (~10-15 classes, comparable to WebGPU's eager footprint). Do
+   **not** make a native class per HTML element. Per-element interfaces
+   (`HTMLDivElement` et al.) are almost entirely *reflected attributes* — model
+   every element as a native `HTMLElement` differentiated by tag name, and define
+   the specialized subclasses as thin **JS** classes that `extends HTMLElement`,
+   created in the **lazily-loaded ESM**. This keeps the always-on native cost
+   bounded while the bulk of the surface stays genuinely lazy.
+
+2. **Hybrid: native tree core + lazy JS API (deno-dom-shaped, but tree stays
+   native).** Expose a very small number of cppgc objects (even just `Document`
+   owning the node store, or an opaque `DomNode`) and put most of the
+   per-interface DOM API in lazily-loaded JS over native ops. Minimizes eager
+   native footprint at some cost to "everything is native" purity — but the
+   perf-critical tree/parse stays in Rust.
+
+3. **Add deno_core support for deferred native-class templates.** Make
+   `initialize_deno_core_ops_bindings` able to install a class's
+   `FunctionTemplate` on first access rather than eagerly (external references
+   can still be registered/validated at snapshot time — they're cheap function
+   pointers; the deferral is of the template object + `Deno.core.ops` entry).
+   This is the only path to *truly* zero-cost-until-used native classes, but it's
+   a **deno_core change that does not exist today** and is the larger lift.
+
+**Bottom line on the clash:** native cppgc DOM classes **cannot today be made
+zero-cost-until-imported** the way a userland module is; their V8 templates are
+eagerly snapshotted. They *can* have all their JS behavior lazy-loaded. So the
+realistic answer is **Option 1 (or 2)** — minimize the eager native class count
+to ~a dozen and lazy-load everything else in JS — unless there's appetite for the
+deno_core work in Option 3.
+
 ## 4. Two viable native architectures
 
 ### Option A — "node lives in cppgc" (the requested design)
@@ -334,6 +401,10 @@ mutable, spec-compliant DOM — and a design template for ours.
 
 ## 7. Suggested phasing (if it proceeds)
 
+0. **Decide the lazy strategy first (see §3.5).** Settle on a small fixed set of
+   native cppgc classes (~10-15: the core node hierarchy + `DOMParser`) and
+   commit to per-element interfaces being lazy JS subclasses. Measure the
+   snapshot-size / startup delta of that set early — this gates everything.
 1. **Spike:** `ext/dom` with cppgc `Node`/`Document`/`Element`/`Text`/`Comment`,
    manual tree construction (`createElement`/`appendChild`/`textContent`), no
    parser. Prove `trace()` soundness with stress tests + `--v8-flags` GC
@@ -360,12 +431,20 @@ mutable, spec-compliant DOM — and a design template for ours.
   native GC-managed objects (Option A), avoiding deno-dom's serialize/rebuild
   and jsdom's JS-object-graph overhead — potentially the fastest server DOM
   available while staying spec-compliant.
+- **Lazy loading partially clashes with cppgc (§3.5).** A native cppgc class's
+  V8 template is eagerly baked into the startup snapshot — it can't be made
+  zero-cost-until-imported the way a userland module (deno-dom/jsdom) is; only
+  its *JS behavior* can be lazy-loaded. The fix is to **keep the native class
+  count small (~a dozen core nodes) and push per-element interfaces into
+  lazily-loaded JS subclasses**, accepting a bounded always-on cost — or do the
+  larger deno_core work to defer native-class template instantiation.
 - The **dominant cost/risk is not plumbing but DOM semantics**: GC-tracing
   soundness across mutation, the HTML parsing/serialization algorithms,
   EventTarget integration, live collections, and the sheer WebIDL surface.
-- A **realistic v1** = parse + tree + mutation + serialization + selectors +
-  reflected attributes, behind `--unstable-dom`, validated by WPT, with CSSOM /
-  MutationObserver / ranges / XML explicitly deferred.
+- A **realistic v1** = a small native node core + lazy JS interface layer; parse
+  + tree + mutation + serialization + selectors + reflected attributes, behind
+  `--unstable-dom`, validated by WPT, with CSSOM / MutationObserver / ranges /
+  XML explicitly deferred.
 
 ### Key file references
 
