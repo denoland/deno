@@ -1955,6 +1955,33 @@ fn lsp_inferred_type() {
   assert!(text.len() > 500, "{text}");
   assert_eq!(res["range"], json!(file.range_of("inferred")));
 
+  let code_actions = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": file.identifier(),
+      "range": file.range_of("inferred"),
+      "context": {
+        "diagnostics": [],
+        "only": ["refactor.extract.inferredType"],
+      }
+    }),
+  );
+  assert_eq!(
+    code_actions,
+    json!([{
+      "title": "Copy inferred type",
+      "kind": "refactor.extract.inferredType",
+      "command": {
+        "title": "Copy inferred type",
+        "command": "deno.inferredType",
+        "arguments": [{
+          "textDocument": file.identifier(),
+          "position": file.range_of("inferred").start,
+        }, res],
+      },
+    }])
+  );
+
   client.shutdown();
 }
 
