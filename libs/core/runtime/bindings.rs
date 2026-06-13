@@ -576,10 +576,9 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
 ) {
   // Calling build_fast() after deserializing a snapshot that contains cppgc
   // objects crashes (SIGABRT) on release linux-x86_64 with fat LTO due to a
-  // C++ static-initialization guard failure inside V8. Skip the fast-call
-  // upgrade entirely when cppgc class types are present in the runtime. The
-  // desktop extension is the only consumer of cppgc objects today, and its ops
-  // are all nofast anyway, so this only affects desktop compiled binaries.
+  // C++ static-initialization guard failure inside V8. When any extension
+  // registers cppgc class method ops (op_method_decls non-empty), skip the
+  // entire fast-call upgrade to avoid triggering the recursive GCInfo init.
   if !op_method_decls.is_empty() {
     return;
   }

@@ -1551,11 +1551,7 @@ pub async fn run_with_options(
     is_inspecting: options.is_inspecting,
     is_standalone: true,
     auto_serve: options.auto_serve,
-    // Must stay false: skip_op_registration=true skips initialize_deno_core_ops_bindings,
-    // leaving snapshotted cppgc templates (BrowserWindow/Dock/Tray/Notification) without
-    // their GCInfo pre-initialized; on release linux-x86_64 with fat LTO this produces
-    // a __cxa_guard_acquire recursive-init SIGABRT at first startup.
-    skip_op_registration: false,
+    skip_op_registration: true,
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)
       .ok()
