@@ -25,6 +25,7 @@ use deno_runtime::deno_tls::load_certs;
 use deno_runtime::deno_tls::load_private_keys;
 use http::HeaderMap;
 use http::StatusCode;
+use http::header::CONTENT_ENCODING;
 use http::header::CONTENT_LENGTH;
 use http::header::HeaderName;
 use http::header::HeaderValue;
@@ -463,9 +464,12 @@ pub async fn get_response_body_with_progress(
   if let Some(progress_guard) = progress_guard {
     let mut total_size = response.body().size_hint().exact();
     if total_size.is_none() {
+      // `Content-Length` describes the encoded body, so it can't be used as
+      // the progress total when the body was transparently decompressed.
       total_size = response
         .headers()
         .get(CONTENT_LENGTH)
+        .filter(|_| !response.headers().contains_key(CONTENT_ENCODING))
         .and_then(|val| val.to_str().ok())
         .and_then(|s| s.parse::<u64>().ok());
     }
