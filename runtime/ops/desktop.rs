@@ -602,7 +602,6 @@ impl BrowserWindow {
   }
 
   #[getter]
-  #[nofast]
   fn window_id(&self) -> u32 {
     self.window_id
   }
@@ -622,7 +621,6 @@ impl BrowserWindow {
     self.api.set_title(self.window_id, title);
   }
 
-  #[nofast]
   fn get_size(&self) -> (i32, i32) {
     self.api.get_window_size(self.window_id)
   }
@@ -632,7 +630,6 @@ impl BrowserWindow {
     self.api.set_window_size(self.window_id, width, height);
   }
 
-  #[nofast]
   fn get_position(&self) -> (i32, i32) {
     self.api.get_window_position(self.window_id)
   }
@@ -707,7 +704,6 @@ impl BrowserWindow {
     self.api.navigate(self.window_id, url);
   }
 
-  #[nofast]
   fn open_devtools(
     &self,
     #[serde] options: Option<OpenDevtoolsOptions>,
@@ -750,12 +746,10 @@ impl BrowserWindow {
     Ok(ExecuteJsResult(result))
   }
 
-  #[nofast]
   fn set_application_menu(&self, #[serde] menu: Vec<MenuItem>) {
     self.api.set_application_menu(self.window_id, menu);
   }
 
-  #[nofast]
   fn show_context_menu(
     &self,
     #[smi] x: i32,
@@ -765,7 +759,6 @@ impl BrowserWindow {
     self.api.show_context_menu(self.window_id, x, y, menu);
   }
 
-  #[nofast]
   fn get_native_window(
     &self,
     state: &OpState,
@@ -1383,7 +1376,6 @@ impl Dock {
     self.api.bounce_dock(critical);
   }
 
-  #[nofast]
   fn set_menu(&self, #[serde] menu: Option<Vec<MenuItem>>) {
     self.api.set_dock_menu(menu);
   }
@@ -1443,7 +1435,6 @@ impl Tray {
   }
 
   #[getter]
-  #[nofast]
   fn tray_id(&self) -> u32 {
     self.tray_id
   }
@@ -1453,23 +1444,19 @@ impl Tray {
     self.api.set_tray_icon(self.tray_id, png_bytes);
   }
 
-  #[nofast]
   fn set_icon_dark(&self, #[buffer] png_bytes: Option<&[u8]>) {
     self.api.set_tray_icon_dark(self.tray_id, png_bytes);
   }
 
-  #[nofast]
   fn set_tooltip(&self, #[string] text: Option<String>) {
     self.api.set_tray_tooltip(self.tray_id, text.as_deref());
   }
 
-  #[nofast]
   fn set_menu(&self, #[serde] menu: Option<Vec<MenuItem>>) {
     self.api.set_tray_menu(self.tray_id, menu);
   }
 
   #[serde]
-  #[nofast]
   fn get_bounds(&self) -> Option<TrayBounds> {
     self
       .api
@@ -1610,62 +1597,53 @@ impl Notification {
   }
 
   #[getter]
-  #[nofast]
   fn notification_id(&self) -> u32 {
     self.notification_id
   }
 
   #[getter]
-  #[nofast]
   #[string]
   fn title(&self) -> String {
     self.title.clone()
   }
 
   #[getter]
-  #[nofast]
   #[string]
   fn body(&self) -> String {
     self.body.clone()
   }
 
   #[getter]
-  #[nofast]
   #[string]
   fn icon(&self) -> String {
     self.icon.clone()
   }
 
   #[getter]
-  #[nofast]
   #[string]
   fn tag(&self) -> String {
     self.tag.clone()
   }
 
   #[getter]
-  #[nofast]
   #[string]
   fn dir(&self) -> String {
     self.dir.clone()
   }
 
   #[getter]
-  #[nofast]
   #[string]
   fn lang(&self) -> String {
     self.lang.clone()
   }
 
   #[getter]
-  #[nofast]
   #[string]
   fn badge(&self) -> String {
     self.badge.clone()
   }
 
   #[getter]
-  #[nofast]
   fn silent<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
@@ -1677,13 +1655,11 @@ impl Notification {
   }
 
   #[getter]
-  #[nofast]
   fn require_interaction(&self) -> bool {
     self.require_interaction
   }
 
   #[getter]
-  #[nofast]
   fn data(&self) -> v8::Global<v8::Value> {
     self.data.clone()
   }
