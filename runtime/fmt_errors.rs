@@ -3,6 +3,8 @@
 use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::sync::LazyLock;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use color_print::cformat;
 use color_print::cstr;
@@ -10,6 +12,14 @@ use deno_core::error::JsError;
 use deno_core::error::format_frame;
 use deno_core::url::Url;
 use deno_terminal::colors;
+
+/// Set to `true` when user code assigns to `Object.prototype.__proto__` while
+/// the accessor is disabled (the default, unless `--unstable-unsafe-proto`).
+/// The assignment itself stays a silent no-op so fragile packages keep working
+/// (see denoland/deno#34730 / #34772, where throwing broke Playwright); this
+/// flag only lets the uncaught-error formatter nudge toward the escape hatch.
+/// Written by `op_proto_set_attempted`, read by `get_suggestions_for_terminal_errors`.
+pub static PROTO_SET_ATTEMPTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone)]
 struct ErrorReference<'a> {
@@ -352,6 +362,23 @@ fn format_js_error_inner(
 }
 
 fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
+  let mut suggestions = get_message_suggestions(e);
+  // If the program assigned to the (disabled by default) `__proto__` accessor
+  // and then crashed, the two are frequently related, so point at the escape
+  // hatch. This is intentionally a soft nudge appended to any uncaught error
+  // rather than a hard failure at assignment time, which broke real packages.
+  if PROTO_SET_ATTEMPTED.load(Ordering::Relaxed) {
+    suggestions.push(FixSuggestion::info(cstr!(
+      "This program assigned to <u>Object.prototype.__proto__</>, which Deno disables by default."
+    )));
+    suggestions.push(FixSuggestion::hint(cstr!(
+      "If this caused the error, run again with <u>--unstable-unsafe-proto</> to restore it."
+    )));
+  }
+  suggestions
+}
+
+fn get_message_suggestions(e: &JsError) -> Vec<FixSuggestion<'_>> {
   if let Some(msg) = &e.message {
     if msg.contains("module is not defined")
       || msg.contains("exports is not defined")
