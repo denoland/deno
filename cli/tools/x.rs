@@ -477,6 +477,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
         &flags,
         reload,
         command_flags.yes,
+        &command_flags.ignore_scripts,
         &factory.deno_dir()?.root,
       )
       .await?;
@@ -551,6 +552,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
         &flags,
         reload,
         command_flags.yes,
+        &command_flags.ignore_scripts,
         &factory.deno_dir()?.root,
       )
       .await?;
@@ -591,9 +593,14 @@ async fn autoinstall_package(
   old_flags: &Flags,
   reload: bool,
   yes: bool,
+  ignore_scripts: &PackagesAllowedScripts,
   deno_dir: &Path,
 ) -> Result<(Arc<Flags>, CliFactory), AnyError> {
-  fn make_new_flags(old_flags: &Flags, temp_dir: &Path) -> Arc<Flags> {
+  fn make_new_flags(
+    old_flags: &Flags,
+    temp_dir: &Path,
+    ignore_scripts: &PackagesAllowedScripts,
+  ) -> Arc<Flags> {
     let mut new_flags = (*old_flags).clone();
     new_flags.node_modules_dir =
       Some(deno_config::deno_json::NodeModulesDirMode::Auto);
@@ -602,7 +609,23 @@ async fn autoinstall_package(
     new_flags.config_flag = crate::args::ConfigFlag::Path(
       temp_dir.join("deno.json").to_string_lossy().into_owned(),
     );
-    new_flags.allow_scripts = PackagesAllowedScripts::All;
+    match ignore_scripts {
+      PackagesAllowedScripts::All => {
+        new_flags.allow_scripts = PackagesAllowedScripts::None;
+        new_flags.deny_scripts.clear();
+      }
+      PackagesAllowedScripts::Some(package_reqs) => {
+        if matches!(old_flags.allow_scripts, PackagesAllowedScripts::None) {
+          new_flags.allow_scripts = PackagesAllowedScripts::All;
+        }
+        new_flags.deny_scripts = package_reqs.clone();
+      }
+      PackagesAllowedScripts::None => {
+        if matches!(old_flags.allow_scripts, PackagesAllowedScripts::None) {
+          new_flags.allow_scripts = PackagesAllowedScripts::All;
+        }
+      }
+    };
 
     log::debug!("new_flags: {:?}", new_flags);
 
@@ -615,7 +638,7 @@ async fn autoinstall_package(
     deno_dir,
   )?;
 
-  let new_flags = make_new_flags(old_flags, temp_dir.path());
+  let new_flags = make_new_flags(old_flags, temp_dir.path(), ignore_scripts);
   let new_factory = CliFactory::from_flags(new_flags.clone());
 
   match temp_dir {

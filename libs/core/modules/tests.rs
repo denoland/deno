@@ -25,6 +25,7 @@ use tokio::task::LocalSet;
 use url::Url;
 
 use crate::FastString;
+use crate::ImportAttributesContext;
 use crate::ModuleCodeString;
 use crate::ModuleSource;
 use crate::ModuleSpecifier;
@@ -948,6 +949,7 @@ fn test_validate_import_attributes_callback() {
   fn validate_import_attributes(
     scope: &mut v8::PinScope,
     assertions: &HashMap<String, String>,
+    _context: &ImportAttributesContext,
   ) {
     for (key, value) in assertions {
       let msg = if key != "type" {
@@ -1036,6 +1038,7 @@ fn test_validate_import_attributes_callback2() {
   fn validate_import_attrs(
     scope: &mut v8::PinScope,
     _attrs: &HashMap<String, String>,
+    _context: &ImportAttributesContext,
   ) {
     let msg = v8::String::new(scope, "boom!").unwrap();
     let ex = v8::Exception::type_error(scope, msg);

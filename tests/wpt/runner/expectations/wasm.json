@@ -190,13 +190,23 @@
       "broadcastchannel-success.html": false,
       "cross-origin-module-sharing-fails.html": false,
       "identity-not-preserved.html": false,
-      "no-transferring.html": false,
+      "no-transferring.html": {
+        "expectedFailures": [
+          "Trying to transfer a WebAssembly.Module to this window throws"
+        ]
+      },
       "serialization-via-history.html": false,
       "share-module-cross-origin-fails.sub.html": false,
       "window-domain-success.sub.html": false,
-      "window-messagechannel-success.html": false,
+      "window-messagechannel-success.html": true,
       "window-similar-but-cross-origin-success.sub.html": false,
-      "window-simple-success.html": false
+      "window-simple-success.html": {
+        "expectedFailures": [
+          "postMessaging to a same-origin iframe allows them to instantiate",
+          "postMessaging to a same-origin deeply-nested iframe allows them to instantiate",
+          "postMessaging to a same-origin opened window allows them to instantiate"
+        ]
+      }
     },
     "arraybuffer": {
       "transfer.window.html": false

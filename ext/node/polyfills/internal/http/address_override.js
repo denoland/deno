@@ -16,13 +16,25 @@
 // connection to the server's connection listener via a lightweight
 // Duplex wrapper around the Deno.Conn.
 
-// deno-lint-ignore-file prefer-primordials
-
-import { core } from "ext:core/mod.js";
-import { op_http_serve_address_override } from "ext:core/ops";
+import { core, primordials } from "ext:core/mod.js";
+import {
+  op_http_notify_serving,
+  op_http_serve_address_override,
+} from "ext:core/ops";
 
 import { Buffer } from "node:buffer";
 import { Duplex } from "node:stream";
+
+const {
+  Error,
+  FunctionPrototypeCall,
+  Number,
+  Promise,
+  PromisePrototypeThen,
+  Symbol,
+  SymbolAsyncIterator,
+  Uint8Array,
+} = primordials;
 
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { listen: denoListen } = core.loadExtScript("ext:deno_net/01_net.js");
@@ -41,14 +53,19 @@ const KIND_TUNNEL = 4;
 // no override or it has already been consumed by an earlier server.
 function peekOverride() {
   if (addressOverrideConsumed) return null;
-  const [kind, host, port, duplicate] = op_http_serve_address_override();
+  const result = op_http_serve_address_override();
+  const kind = result[0];
   if (kind === KIND_NONE) return null;
-  return { kind, host, port, duplicate };
+  return { kind, host: result[1], port: result[2], duplicate: result[3] };
 }
 
 // Mark the override as consumed. Subsequent servers see no override.
 function consumeOverride() {
   addressOverrideConsumed = true;
+}
+
+function notifyAddressOverrideServing() {
+  op_http_notify_serving();
 }
 
 // Translate an override record into the argument for denoListen().
@@ -81,6 +98,7 @@ class OverrideSocket extends Duplex {
   #timeoutMsecs = 0;
   #timeoutTimer = null;
   // Node's HTTP server uses these directly.
+  isDenoServeAddressOverride = true;
   _paused = false;
   server = null;
   parser = null;
@@ -130,6 +148,7 @@ class OverrideSocket extends Duplex {
           return;
         }
         if (n === null) {
+          // deno-lint-ignore prefer-primordials
           this.push(null);
           return;
         }
@@ -138,6 +157,7 @@ class OverrideSocket extends Duplex {
         // Copy into a Buffer so the caller owns it independently of
         // our reusable read buffer.
         const chunk = Buffer.from(this.#readBuf.subarray(0, n));
+        // deno-lint-ignore prefer-primordials
         if (!this.push(chunk)) {
           // Backpressure: wait until _read() is called before reading
           // more from the connection.
@@ -166,14 +186,18 @@ class OverrideSocket extends Duplex {
       : chunk;
     // Any outgoing byte resets the idle timer too, matching net.Socket.
     this.#armTimer();
-    this.#conn.write(bytes).then(() => callback(), callback);
+    PromisePrototypeThen(this.#conn.write(bytes), () => callback(), callback);
   }
 
   _final(callback) {
     try {
       // Allow the other side to finish reading while we finish writing.
       if (this.#conn.closeWrite) {
-        this.#conn.closeWrite().then(() => callback(), callback);
+        PromisePrototypeThen(
+          this.#conn.closeWrite(),
+          () => callback(),
+          callback,
+        );
         return;
       }
     } catch (_) {
@@ -255,10 +279,15 @@ function startOverrideListener(server, override, connectionListener) {
   }
 
   server[kOverrideListener] = denoListener;
+  notifyAddressOverrideServing();
 
   (async () => {
     try {
-      for await (const conn of denoListener) {
+      const it = denoListener[SymbolAsyncIterator]();
+      while (true) {
+        // deno-lint-ignore prefer-primordials
+        const { done, value: conn } = await it.next();
+        if (done) break;
         if (server[kOverrideClosed]) {
           try {
             conn.close();
@@ -268,7 +297,7 @@ function startOverrideListener(server, override, connectionListener) {
           break;
         }
         const socket = new OverrideSocket(conn);
-        connectionListener.call(server, socket);
+        FunctionPrototypeCall(connectionListener, server, socket);
       }
     } catch (err) {
       // Ignore BadResource on close.
@@ -317,4 +346,8 @@ function applyAddressOverride() {
   return { mode: "override-only", override };
 }
 
-export { applyAddressOverride, startOverrideListener };
+export {
+  applyAddressOverride,
+  notifyAddressOverrideServing,
+  startOverrideListener,
+};

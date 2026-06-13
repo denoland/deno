@@ -54,6 +54,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
+use deno_runtime::deno_web::BlobStoreTrait;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use node_resolver::NodeConditionOptions;
 use node_resolver::NodeResolverOptions;
@@ -296,7 +297,7 @@ impl<T> Deferred<T> {
 
 #[derive(Default)]
 struct CliFactoryServices {
-  blob_store: Deferred<Arc<BlobStore>>,
+  blob_store: Deferred<Arc<dyn BlobStoreTrait>>,
   caches: Deferred<Arc<Caches>>,
   cli_options: Deferred<Arc<CliOptions>>,
   code_cache: Deferred<Arc<CodeCache>>,
@@ -425,8 +426,11 @@ impl CliFactory {
     })
   }
 
-  pub fn blob_store(&self) -> &Arc<BlobStore> {
-    self.services.blob_store.get_or_init(Default::default)
+  pub fn blob_store(&self) -> &Arc<dyn BlobStoreTrait> {
+    self
+      .services
+      .blob_store
+      .get_or_init(|| BlobStore::default_arc())
   }
 
   pub fn bin_name_resolver(&self) -> Result<BinNameResolver<'_>, AnyError> {
@@ -1157,11 +1161,14 @@ impl CliFactory {
     let fs = self.fs();
     let node_resolver = self.node_resolver().await?;
     let npm_resolver = self.npm_resolver().await?;
-    let maybe_file_watcher_communicator = if cli_options.has_hmr() {
-      Some(self.watcher_communicator.clone().unwrap())
-    } else {
-      None
-    };
+    // Provide the watcher communicator whenever running under the file watcher,
+    // not just for HMR. `CliMainWorker::run()` uses its presence to detect that
+    // it is under a watcher and route `Deno.exit()` through isolate termination
+    // instead of `std::process::exit()`, which keeps `deno serve --watch` (which
+    // goes through `run()` rather than `run_for_watcher`) alive across exits.
+    // HMR-specific behaviour is gated separately on `create_hmr_runner`. See
+    // issue #7590.
+    let maybe_file_watcher_communicator = self.watcher_communicator.clone();
     let pkg_json_resolver = self.pkg_json_resolver()?;
     let module_loader_factory = self.create_module_loader_factory().await?;
     self.maybe_start_inspector_server()?;
@@ -1250,7 +1257,7 @@ impl CliFactory {
       unsafely_ignore_certificate_errors: cli_options
         .unsafely_ignore_certificate_errors()
         .clone(),
-      node_ipc_init: cli_options.node_ipc_init()?,
+      node_ipc_init: cli_options.node_ipc_init(&self.sys())?,
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
       otel_config: cli_options.otel_config(),

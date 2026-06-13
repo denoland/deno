@@ -95,9 +95,10 @@ pub enum NApiError {
   #[error(
     "Cannot load native addon at {}: it links directly against the Node.js \
      binary (node.exe) and relies on the V8 C++ ABI, Node.js internals and/or \
-     libuv exported by that executable, none of which Deno provides. Only \
-     Node-API (N-API) addons are supported. The addon must be rebuilt as an \
-     N-API addon to run on Deno (and on any host other than node.exe).",
+     libuv exported by that executable, none of which Deno provides. An addon \
+     can use Node-API (N-API) and still be unsupported when it has a regular \
+     import of node.exe. The addon must be rebuilt to avoid linking directly \
+     against node.exe, for example by using delay-loaded node.exe imports.",
     .0.display()
   )]
   UnsupportedNodeBinaryAddon(PathBuf),

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.187.0"
+version = "0.189.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -38,6 +38,7 @@ deno_process.workspace = true
 deno_resolver.workspace = true
 deno_tls.workspace = true
 deno_whoami.workspace = true
+faster-hex.workspace = true
 filetime.workspace = true
 hdrhistogram.workspace = true
 idna.workspace = true
@@ -50,9 +51,7 @@ node_resolver.workspace = true
 node_shim.workspace = true
 rand.workspace = true
 rustls-tokio-stream.workspace = true
-# Pinned to the same major rustls 0.23.x uses internally so we can downcast
-# `rustls::CertificateError::Other` payloads to `webpki::Error`.
-rustls-webpki = "0.103"
+rustls-webpki.workspace = true
 serde.workspace = true
 smallvec.workspace = true
 socket2.workspace = true
