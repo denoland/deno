@@ -52,6 +52,7 @@ const {
   ArrayPrototypePush,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
+  PromisePrototype,
   PromisePrototypeCatch,
   PromiseResolve,
   SafeArrayIterator,
@@ -563,12 +564,37 @@ function trySetServeFastStaticResponse(
   }
 }
 
+// Report an error that was thrown while a streaming response body was being
+// drained. The response status/headers are already on the wire at this point,
+// so the value returned from `onError` can no longer be used; we route the
+// error through the handler purely so it is observed (the default handler logs
+// a stack trace) instead of being silently swallowed.
+function reportResponseStreamError(onError, error) {
+  let result;
+  try {
+    result = onError(error);
+  } catch (e) {
+    internals.log("error", "Exception in onError while handling exception", e);
+    return;
+  }
+  if (ObjectPrototypeIsPrototypeOf(PromisePrototype, result)) {
+    PromisePrototypeThen(result, undefined, (e) => {
+      internals.log(
+        "error",
+        "Exception in onError while handling exception",
+        e,
+      );
+    });
+  }
+}
+
 function fastSyncResponseOrStream(
   req,
   respBody,
   status,
   innerRequest: InnerRequest,
   headers,
+  onError,
 ) {
   if (respBody === null || respBody === undefined) {
     // Don't set the body
@@ -662,7 +688,13 @@ function fastSyncResponseOrStream(
     rid = resourceBacking.rid;
     autoClose = resourceBacking.autoClose;
   } else {
-    rid = resourceForReadableStream(stream);
+    // The response headers/status have already been committed by the time the
+    // body stream starts producing chunks, so an error thrown while draining
+    // the stream (e.g. inside a `TransformStream` transformer) can no longer
+    // change the response. Report it through the server's error handler so it
+    // is not silently swallowed and a stack trace implicating the faulty
+    // callback is surfaced. See https://github.com/denoland/deno/issues/19867.
+    rid = resourceForReadableStream(stream, undefined, onError);
     autoClose = true;
   }
   PromisePrototypeThen(
@@ -831,6 +863,7 @@ function mapToCallback(context, callback, onError) {
       status,
       innerRequest,
       headers,
+      (error) => reportResponseStreamError(onError, error),
     );
   };
 
@@ -996,6 +1029,7 @@ function mapToNativeResponseCallback(context, callback, onError) {
       inner.status,
       innerRequest,
       wireHeaderList(inner),
+      (error) => reportResponseStreamError(onError, error),
     );
     return undefined;
   }

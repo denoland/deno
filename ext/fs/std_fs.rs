@@ -11,6 +11,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Mutex;
 
 use deno_core::unsync::spawn_blocking;
 use deno_io::StdFileResourceInner;
@@ -19,6 +20,7 @@ use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 use deno_io::fs::FsStatFs;
+use deno_maybe_sync::new_rc;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
 
@@ -26,6 +28,8 @@ use crate::FileSystem;
 use crate::OpenOptions;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
+use crate::interface::FsReadDir;
+use crate::interface::FsReadDirRc;
 
 #[derive(Debug, Default, Clone)]
 pub struct RealFs;
@@ -262,8 +266,10 @@ impl FileSystem for RealFs {
   async fn read_dir_async(
     &self,
     path: CheckedPathBuf,
-  ) -> FsResult<Vec<FsDirEntry>> {
-    spawn_blocking(move || read_dir(&path)).await?
+  ) -> FsResult<FsReadDirRc> {
+    Ok(new_rc(RealFsReadDir(Mutex::new(
+      tokio::fs::read_dir(path).await?,
+    ))))
   }
 
   fn rename_sync(
@@ -1153,6 +1159,44 @@ fn read_dir(path: &Path) -> FsResult<Vec<FsDirEntry>> {
     .collect();
 
   Ok(entries)
+}
+
+#[derive(Debug)]
+struct RealFsReadDir(Mutex<tokio::fs::ReadDir>);
+
+#[async_trait::async_trait(?Send)]
+impl FsReadDir for RealFsReadDir {
+  #[allow(
+    clippy::await_holding_lock,
+    reason = "tokio::fs::ReadDir requires mutable access across next_entry().await"
+  )]
+  async fn next(&self) -> FsResult<Option<FsDirEntry>> {
+    let mut read_dir = self.0.try_lock().map_err(|_| FsError::FileBusy)?;
+    let Some(entry) = read_dir.next_entry().await? else {
+      return Ok(None);
+    };
+    Ok(Some(fs_dir_entry_from_tokio(entry).await))
+  }
+}
+
+async fn fs_dir_entry_from_tokio(entry: tokio::fs::DirEntry) -> FsDirEntry {
+  let name = entry.file_name().to_string_lossy().into_owned();
+  let metadata = entry.file_type().await;
+  macro_rules! method_or_false {
+    ($method:ident) => {
+      if let Ok(metadata) = &metadata {
+        metadata.$method()
+      } else {
+        false
+      }
+    };
+  }
+  FsDirEntry {
+    name,
+    is_file: method_or_false!(is_file),
+    is_directory: method_or_false!(is_dir),
+    is_symlink: method_or_false!(is_symlink),
+  }
 }
 
 #[cfg(not(windows))]
