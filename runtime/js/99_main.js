@@ -17,6 +17,7 @@ import {
   op_internal_log,
   op_main_module,
   op_ppid,
+  op_proto_set_attempted,
   op_set_format_exception_callback,
   op_snapshot_options,
   op_worker_close,
@@ -39,7 +40,9 @@ const {
   ObjectDefineProperty,
   ObjectGetOwnPropertyDescriptors,
   ObjectHasOwn,
+  ObjectIsExtensible,
   ObjectKeys,
+  ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
@@ -718,6 +721,56 @@ const executionModes = {
   jupyter: 8,
 };
 
+let protoSetRecorded = false;
+
+// By default Deno disables the `Object.prototype.__proto__` accessor for
+// security reasons (it enables prototype pollution), see
+// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+//
+// Historically this was done with `delete Object.prototype.__proto__`, which
+// makes `obj.__proto__` reads return `undefined` and writes silently create a
+// useless own property. Making the accessor *throw* instead would surface those
+// silent bugs, but it broke real packages such as Playwright (see
+// denoland/deno#34730 / #34772), so we keep the silent behavior.
+//
+// Instead of deleting we install an accessor that reproduces the deleted
+// semantics exactly (read -> `undefined`, write -> own data property, prototype
+// unchanged) but additionally records the first write. When the program later
+// crashes, the uncaught-error formatter (runtime/fmt_errors.rs) reads that flag
+// and suggests `--unstable-unsafe-proto`. The `__proto__` key in object
+// literals (e.g. `{ __proto__: null }`) is separate syntax and is unaffected.
+function disableProtoAccessor() {
+  ObjectDefineProperty(ObjectPrototype, "__proto__", {
+    __proto__: null,
+    configurable: true,
+    enumerable: false,
+    // Distinct getter/setter function objects: the native accessor uses
+    // separate functions and WPT asserts accessor get/set are unique.
+    get: function __proto__() {
+      return undefined;
+    },
+    set: function __proto__(value) {
+      if (!protoSetRecorded) {
+        protoSetRecorded = true;
+        op_proto_set_attempted();
+      }
+      // Reproduce the previous `delete` behavior: a bare assignment created a
+      // normal own data property. Skip non-extensible receivers, where that
+      // assignment was a silent no-op in sloppy mode (and a throw in strict
+      // mode); keeping it silent here matches the "stay silent" goal above.
+      if (ObjectIsExtensible(this)) {
+        ObjectDefineProperty(this, "__proto__", {
+          __proto__: null,
+          value,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+      }
+    },
+  });
+}
+
 function bootstrapMainRuntime(runtimeOptions, warmup = false) {
   if (!warmup) {
     if (hasBootstrapped) {
@@ -910,9 +963,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     }
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
-      // Removes the `__proto__` for security reasons.
-      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-      delete Object.prototype.__proto__;
+      disableProtoAccessor();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -1042,9 +1093,7 @@ function bootstrapWorkerRuntime(
     delete finalDenoNs.mainModule;
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
-      // Removes the `__proto__` for security reasons.
-      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-      delete Object.prototype.__proto__;
+      disableProtoAccessor();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
