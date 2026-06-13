@@ -1,0 +1,6 @@
+main [Function: OffscreenCanvasRenderingContext2D]
+main undefined
+main OffscreenCanvasRenderingContext2D {[WILDCARD]}
+worker [Function: OffscreenCanvasRenderingContext2D]
+worker FontFaceSet {[WILDCARD]}
+worker OffscreenCanvasRenderingContext2D {[WILDCARD]}
