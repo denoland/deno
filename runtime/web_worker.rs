@@ -1,11 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt;
-use std::future::Future;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -25,17 +22,9 @@ use deno_core::FromV8;
 use deno_core::JsRuntime;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
-use deno_core::ModuleLoadOptions;
-use deno_core::ModuleLoadReferrer;
-use deno_core::ModuleLoadResponse;
 use deno_core::ModuleLoader;
-use deno_core::ModuleResolveResponse;
-use deno_core::ModuleSource;
-use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
-use deno_core::ModuleType;
 use deno_core::PollEventLoopOptions;
-use deno_core::RequestedModuleType;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::ToV8;
@@ -51,7 +40,6 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::v8;
 use deno_cron::CronHandlerImpl;
-use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
@@ -64,7 +52,6 @@ use deno_process::NpmProcessStateProviderRc;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
-use deno_web::Blob;
 use deno_web::BlobStoreTrait;
 use deno_web::InMemoryBroadcastChannel;
 use deno_web::JsMessageData;
@@ -91,220 +78,6 @@ use crate::worker::MEMORY_TRIM_HANDLER_ENABLED;
 use crate::worker::SIGUSR2_RX;
 use crate::worker::create_op_metrics;
 use crate::worker::create_validate_import_attributes_callback;
-
-type ModuleLoaderError = JsErrorBox;
-
-struct CapturedBlobModuleLoader {
-  inner: Rc<dyn ModuleLoader>,
-  main_module: ModuleSpecifier,
-  blob: Arc<Blob>,
-}
-
-fn module_type_from_media_and_requested_type(
-  media_type: deno_media_type::MediaType,
-  requested_module_type: &RequestedModuleType,
-) -> ModuleType {
-  match requested_module_type {
-    RequestedModuleType::Text => ModuleType::Text,
-    RequestedModuleType::Bytes => ModuleType::Bytes,
-    RequestedModuleType::None
-    | RequestedModuleType::Other(_)
-    | RequestedModuleType::Json => match media_type {
-      deno_media_type::MediaType::Json => ModuleType::Json,
-      deno_media_type::MediaType::Wasm => ModuleType::Wasm,
-      _ => ModuleType::JavaScript,
-    },
-  }
-}
-
-impl CapturedBlobModuleLoader {
-  async fn read_blob_text(
-    specifier: &ModuleSpecifier,
-    blob: &Blob,
-  ) -> Result<String, ModuleLoaderError> {
-    let bytes = blob.read_all().await;
-    let (_, maybe_charset) =
-      deno_media_type::resolve_media_type_and_charset_from_content_type(
-        specifier,
-        Some(&blob.media_type),
-      );
-    let charset = maybe_charset.unwrap_or_else(|| {
-      deno_media_type::encoding::detect_charset(specifier, &bytes)
-    });
-    deno_media_type::encoding::decode_owned_source(charset, bytes)
-      .map_err(|err| JsErrorBox::type_error(err.to_string()))
-  }
-
-  async fn load_captured_blob(
-    specifier: ModuleSpecifier,
-    blob: Arc<Blob>,
-    requested_module_type: RequestedModuleType,
-  ) -> Result<ModuleSource, ModuleLoaderError> {
-    let bytes = blob.read_all().await;
-    let (media_type, maybe_charset) =
-      deno_media_type::resolve_media_type_and_charset_from_content_type(
-        &specifier,
-        Some(&blob.media_type),
-      );
-    let module_type = module_type_from_media_and_requested_type(
-      media_type,
-      &requested_module_type,
-    );
-    let code = match module_type {
-      ModuleType::Bytes | ModuleType::Wasm => {
-        ModuleSourceCode::Bytes(bytes.into_boxed_slice().into())
-      }
-      _ => {
-        let charset = maybe_charset.unwrap_or_else(|| {
-          deno_media_type::encoding::detect_charset(&specifier, &bytes)
-        });
-        let text =
-          deno_media_type::encoding::decode_owned_source(charset, bytes)
-            .map_err(|err| JsErrorBox::type_error(err.to_string()))?;
-        ModuleSourceCode::String(text.into())
-      }
-    };
-    Ok(ModuleSource::new(module_type, code, &specifier, None))
-  }
-}
-
-impl ModuleLoader for CapturedBlobModuleLoader {
-  fn resolve(
-    &self,
-    specifier: &str,
-    referrer: &str,
-    kind: deno_core::ResolutionKind,
-  ) -> ModuleResolveResponse {
-    self.inner.resolve(specifier, referrer, kind)
-  }
-
-  fn resolve_with_scope(
-    &self,
-    scope: &mut v8::PinScope,
-    specifier: &str,
-    referrer: &str,
-    kind: deno_core::ResolutionKind,
-  ) -> ModuleResolveResponse {
-    self
-      .inner
-      .resolve_with_scope(scope, specifier, referrer, kind)
-  }
-
-  fn pump_event_loop_during_load(&self) -> bool {
-    self.inner.pump_event_loop_during_load()
-  }
-
-  fn import_meta_resolve(
-    &self,
-    specifier: &str,
-    referrer: &str,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    self.inner.import_meta_resolve(specifier, referrer)
-  }
-
-  fn load(
-    &self,
-    module_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleLoadReferrer>,
-    options: ModuleLoadOptions,
-  ) -> ModuleLoadResponse {
-    if module_specifier == &self.main_module {
-      return ModuleLoadResponse::Async(Box::pin(Self::load_captured_blob(
-        module_specifier.clone(),
-        self.blob.clone(),
-        options.requested_module_type,
-      )));
-    }
-    self.inner.load(module_specifier, maybe_referrer, options)
-  }
-
-  fn should_load_synthetic_esm(&self, specifier: &str) -> bool {
-    self.inner.should_load_synthetic_esm(specifier)
-  }
-
-  fn prepare_load(
-    &self,
-    module_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<String>,
-    maybe_content: Option<String>,
-    options: ModuleLoadOptions,
-  ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
-    if module_specifier == &self.main_module && maybe_content.is_none() {
-      let inner = self.inner.clone();
-      let module_specifier = module_specifier.clone();
-      let blob = self.blob.clone();
-      return Box::pin(async move {
-        let source = Self::read_blob_text(&module_specifier, &blob).await?;
-        inner
-          .prepare_load(
-            &module_specifier,
-            maybe_referrer,
-            Some(source),
-            options,
-          )
-          .await
-      });
-    }
-    self.inner.prepare_load(
-      module_specifier,
-      maybe_referrer,
-      maybe_content,
-      options,
-    )
-  }
-
-  fn finish_load(&self) {
-    self.inner.finish_load()
-  }
-
-  fn code_cache_ready(
-    &self,
-    module_specifier: ModuleSpecifier,
-    hash: u64,
-    code_cache: &[u8],
-  ) -> Pin<Box<dyn Future<Output = ()>>> {
-    self
-      .inner
-      .code_cache_ready(module_specifier, hash, code_cache)
-  }
-
-  fn purge_and_prevent_code_cache(&self, module_specifier: &str) {
-    self.inner.purge_and_prevent_code_cache(module_specifier)
-  }
-
-  fn get_source_map(&self, file_name: &str) -> Option<Cow<'_, [u8]>> {
-    self.inner.get_source_map(file_name)
-  }
-
-  fn load_external_source_map(
-    &self,
-    source_map_url: &str,
-  ) -> Option<Cow<'_, [u8]>> {
-    self.inner.load_external_source_map(source_map_url)
-  }
-
-  fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
-    self.inner.source_map_source_exists(source_url)
-  }
-
-  fn get_source_mapped_source_line(
-    &self,
-    file_name: &str,
-    line_number: usize,
-  ) -> Option<String> {
-    self
-      .inner
-      .get_source_mapped_source_line(file_name, line_number)
-  }
-
-  fn get_host_defined_options<'s, 'i>(
-    &self,
-    scope: &mut v8::PinScope<'s, 'i>,
-    name: &str,
-  ) -> Option<v8::Local<'s, v8::Data>> {
-    self.inner.get_host_defined_options(scope, name)
-  }
-}
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -620,7 +393,6 @@ pub struct WebWorkerOptions {
   pub trace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
-  pub maybe_main_module_blob: Option<Arc<Blob>>,
   pub maybe_coverage_dir: Option<PathBuf>,
   pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub enable_raw_imports: bool,
@@ -835,17 +607,8 @@ impl WebWorker {
     // Get our op metrics
     let op_metrics_factory_fn = create_op_metrics(options.trace_ops);
 
-    let module_loader = match options.maybe_main_module_blob.take() {
-      Some(blob) => Rc::new(CapturedBlobModuleLoader {
-        inner: services.module_loader,
-        main_module: options.main_module.clone(),
-        blob,
-      }) as Rc<dyn ModuleLoader>,
-      None => services.module_loader,
-    };
-
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(module_loader),
+      module_loader: Some(services.module_loader),
       startup_snapshot: options.startup_snapshot,
       residual_lazy_js_sources: options.residual_lazy_js_sources,
       residual_lazy_esm_sources: options.residual_lazy_esm_sources,
