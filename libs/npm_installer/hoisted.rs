@@ -646,6 +646,19 @@ impl<
                 &self.root_node_modules_path,
                 &id.nv,
               ) else {
+                // The resolved version isn't placed anywhere in the hoisted
+                // layout (a version-conflict corner case where no package pins
+                // this exact version), so there's nothing to link it to. Skip
+                // it rather than fail, but log it: the member will resolve this
+                // dependency via the hoisted top-level version instead, which
+                // may differ from the version it declared. See
+                // https://github.com/denoland/deno/pull/34970.
+                log::debug!(
+                  "workspace member {} dependency {} ({}) is not present in the hoisted layout; skipping its node_modules link",
+                  workspace_pkg.nv,
+                  alias,
+                  id.nv,
+                );
                 continue;
               };
               (alias, target_path)
