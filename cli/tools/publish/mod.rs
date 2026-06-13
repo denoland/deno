@@ -901,7 +901,12 @@ async fn perform_publish(
     }
 
     let Some(result) = futures.next().await else {
-      // done, ensure no circular dependency
+      // Done. This `?` is reached with packages still pending only when a
+      // package failed above and its dependents stayed blocked (we don't
+      // `finish_package` a failure). That's safe and won't swallow the
+      // collected errors: `ensure_no_pending` runs the cycle check on the
+      // static package graph, so blocked-but-acyclic dependents return `Ok` and
+      // a genuine circular dependency still surfaces here.
       publish_order_graph.ensure_no_pending()?;
       break;
     };
@@ -919,6 +924,27 @@ async fn perform_publish(
   if errors.is_empty() {
     Ok(())
   } else {
+    // Any packages still left in `prepared_package_by_name` were never
+    // attempted because they depended (directly or transitively) on a package
+    // that failed to publish, so their dependency version never became
+    // available. Surface them so the skip isn't silent.
+    if !prepared_package_by_name.is_empty() {
+      let mut skipped = prepared_package_by_name
+        .values()
+        .map(|p| p.display_name())
+        .collect::<Vec<_>>();
+      skipped.sort();
+      log::warn!(
+        "{} Skipped publishing {} package(s) that depended on a package that failed to publish:\n{}",
+        colors::yellow("Warning"),
+        skipped.len(),
+        skipped
+          .iter()
+          .map(|name| format!("  {}", name))
+          .collect::<Vec<_>>()
+          .join("\n"),
+      );
+    }
     Err(combine_publish_errors(errors))
   }
 }
