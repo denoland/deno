@@ -5,6 +5,8 @@
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::ops::Index;
+use std::ops::IndexMut;
 use std::ptr;
 use std::rc::Rc;
 
@@ -23,14 +25,6 @@ use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 use deno_core::webidl::WebIdlErrorKind;
 use deno_core::webidl::try_convert_sequence_with_policy;
-use nalgebra::Matrix3;
-use nalgebra::Matrix4;
-use nalgebra::Matrix4x2;
-use nalgebra::Matrix4x3;
-use nalgebra::Rotation3;
-use nalgebra::UnitVector3;
-use nalgebra::Vector3;
-use nalgebra::Vector4;
 
 use crate::css_value::CSSValueError;
 use crate::css_value::ParserInput;
@@ -122,6 +116,392 @@ impl<'i> From<CSSValueError<'i>> for GeometryError {
   }
 }
 
+#[derive(Clone, Copy)]
+struct Vector4 {
+  x: f64,
+  y: f64,
+  z: f64,
+  w: f64,
+}
+
+impl Vector4 {
+  #[inline]
+  fn new(x: f64, y: f64, z: f64, w: f64) -> Self {
+    Self { x, y, z, w }
+  }
+
+  #[inline]
+  fn zeros() -> Self {
+    Self::new(0.0, 0.0, 0.0, 0.0)
+  }
+}
+
+#[derive(Clone)]
+struct Matrix4 {
+  data: [f64; 16],
+}
+
+impl Matrix4 {
+  #[inline]
+  #[rustfmt::skip]
+  fn new(
+    m11: f64, m21: f64, m31: f64, m41: f64,
+    m12: f64, m22: f64, m32: f64, m42: f64,
+    m13: f64, m23: f64, m33: f64, m43: f64,
+    m14: f64, m24: f64, m34: f64, m44: f64,
+  ) -> Self {
+    Self {
+      data: [
+        m11, m12, m13, m14,
+        m21, m22, m23, m24,
+        m31, m32, m33, m34,
+        m41, m42, m43, m44,
+      ],
+    }
+  }
+
+  #[inline]
+  fn from_column_slice(slice: &[f64; 16]) -> Self {
+    Self { data: *slice }
+  }
+
+  #[inline]
+  fn identity() -> Self {
+    let mut matrix = Self { data: [0.0; 16] };
+    matrix.fill_diagonal(1.0);
+    matrix
+  }
+
+  #[inline]
+  fn iter(&self) -> std::slice::Iter<'_, f64> {
+    self.data.iter()
+  }
+
+  #[inline]
+  fn as_slice(&self) -> &[f64] {
+    &self.data
+  }
+
+  #[inline]
+  fn fill(&mut self, value: f64) {
+    self.data.fill(value);
+  }
+
+  #[inline]
+  fn fill_diagonal(&mut self, value: f64) {
+    self[(0, 0)] = value;
+    self[(1, 1)] = value;
+    self[(2, 2)] = value;
+    self[(3, 3)] = value;
+  }
+
+  #[inline]
+  fn prepend_translation_mut(&mut self, tx: f64, ty: f64, tz: f64) {
+    let x = self[(0, 0)] * tx + self[(0, 1)] * ty + self[(0, 2)] * tz;
+    let y = self[(1, 0)] * tx + self[(1, 1)] * ty + self[(1, 2)] * tz;
+    let z = self[(2, 0)] * tx + self[(2, 1)] * ty + self[(2, 2)] * tz;
+    let w = self[(3, 0)] * tx + self[(3, 1)] * ty + self[(3, 2)] * tz;
+    self[(0, 3)] += x;
+    self[(1, 3)] += y;
+    self[(2, 3)] += z;
+    self[(3, 3)] += w;
+  }
+
+  #[inline]
+  fn prepend_nonuniform_scaling_mut(&mut self, sx: f64, sy: f64, sz: f64) {
+    self.scale_column(0, sx);
+    self.scale_column(1, sy);
+    self.scale_column(2, sz);
+  }
+
+  #[inline]
+  fn scale_column(&mut self, col: usize, scale: f64) {
+    for row in 0..4 {
+      self[(row, col)] *= scale;
+    }
+  }
+
+  #[inline]
+  fn neg_column(&mut self, col: usize) {
+    self.scale_column(col, -1.0);
+  }
+
+  #[inline]
+  fn multiply(lhs: &Self, rhs: &Self) -> Self {
+    let mut out = Self { data: [0.0; 16] };
+    for col in 0..4 {
+      for row in 0..4 {
+        out[(row, col)] = lhs[(row, 0)] * rhs[(0, col)]
+          + lhs[(row, 1)] * rhs[(1, col)]
+          + lhs[(row, 2)] * rhs[(2, col)]
+          + lhs[(row, 3)] * rhs[(3, col)];
+      }
+    }
+    out
+  }
+
+  #[inline]
+  fn multiply_vector(&self, rhs: &Vector4) -> Vector4 {
+    Vector4::new(
+      self[(0, 0)] * rhs.x
+        + self[(0, 1)] * rhs.y
+        + self[(0, 2)] * rhs.z
+        + self[(0, 3)] * rhs.w,
+      self[(1, 0)] * rhs.x
+        + self[(1, 1)] * rhs.y
+        + self[(1, 2)] * rhs.z
+        + self[(1, 3)] * rhs.w,
+      self[(2, 0)] * rhs.x
+        + self[(2, 1)] * rhs.y
+        + self[(2, 2)] * rhs.z
+        + self[(2, 3)] * rhs.w,
+      self[(3, 0)] * rhs.x
+        + self[(3, 1)] * rhs.y
+        + self[(3, 2)] * rhs.z
+        + self[(3, 3)] * rhs.w,
+    )
+  }
+
+  #[inline]
+  fn post_multiply_first3(&mut self, rhs: &Self) {
+    let lhs = self.clone();
+    for col in 0..3 {
+      for row in 0..4 {
+        self[(row, col)] = lhs[(row, 0)] * rhs[(0, col)]
+          + lhs[(row, 1)] * rhs[(1, col)]
+          + lhs[(row, 2)] * rhs[(2, col)]
+          + lhs[(row, 3)] * rhs[(3, col)];
+      }
+    }
+  }
+
+  #[inline]
+  fn post_skew_mut(&mut self, x: f64, y: f64) {
+    let lhs = self.clone();
+    let tan_x = x.tan();
+    let tan_y = y.tan();
+    for row in 0..4 {
+      self[(row, 0)] = lhs[(row, 0)] + lhs[(row, 1)] * tan_y;
+      self[(row, 1)] = lhs[(row, 0)] * tan_x + lhs[(row, 1)];
+    }
+  }
+
+  #[inline]
+  fn post_perspective_mut(&mut self, d: f64) {
+    let lhs = self.clone();
+    for row in 0..4 {
+      self[(row, 2)] = lhs[(row, 2)] - lhs[(row, 3)] / d;
+      self[(row, 3)] = lhs[(row, 3)];
+    }
+  }
+
+  #[inline]
+  fn try_inverse_mut(&mut self) -> bool {
+    let m = self.data;
+
+    let cofactor00 =
+      m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15]
+        + m[9] * m[7] * m[14]
+        + m[13] * m[6] * m[11]
+        - m[13] * m[7] * m[10];
+
+    let cofactor01 =
+      -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15]
+        - m[8] * m[7] * m[14]
+        - m[12] * m[6] * m[11]
+        + m[12] * m[7] * m[10];
+
+    let cofactor02 =
+      m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15]
+        + m[8] * m[7] * m[13]
+        + m[12] * m[5] * m[11]
+        - m[12] * m[7] * m[9];
+
+    let cofactor03 =
+      -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14]
+        - m[8] * m[6] * m[13]
+        - m[12] * m[5] * m[10]
+        + m[12] * m[6] * m[9];
+
+    let det = m[0] * cofactor00
+      + m[1] * cofactor01
+      + m[2] * cofactor02
+      + m[3] * cofactor03;
+
+    if det == 0.0 {
+      return false;
+    }
+
+    self[(0, 0)] = cofactor00;
+
+    self[(1, 0)] =
+      -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15]
+        - m[9] * m[3] * m[14]
+        - m[13] * m[2] * m[11]
+        + m[13] * m[3] * m[10];
+
+    self[(2, 0)] =
+      m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15]
+        + m[5] * m[3] * m[14]
+        + m[13] * m[2] * m[7]
+        - m[13] * m[3] * m[6];
+
+    self[(3, 0)] =
+      -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11]
+        - m[5] * m[3] * m[10]
+        - m[9] * m[2] * m[7]
+        + m[9] * m[3] * m[6];
+
+    self[(0, 1)] = cofactor01;
+
+    self[(1, 1)] =
+      m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15]
+        + m[8] * m[3] * m[14]
+        + m[12] * m[2] * m[11]
+        - m[12] * m[3] * m[10];
+
+    self[(2, 1)] =
+      -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15]
+        - m[4] * m[3] * m[14]
+        - m[12] * m[2] * m[7]
+        + m[12] * m[3] * m[6];
+
+    self[(3, 1)] =
+      m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11]
+        + m[4] * m[3] * m[10]
+        + m[8] * m[2] * m[7]
+        - m[8] * m[3] * m[6];
+
+    self[(0, 2)] = cofactor02;
+
+    self[(1, 2)] =
+      -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15]
+        - m[8] * m[3] * m[13]
+        - m[12] * m[1] * m[11]
+        + m[12] * m[3] * m[9];
+
+    self[(2, 2)] =
+      m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15]
+        + m[4] * m[3] * m[13]
+        + m[12] * m[1] * m[7]
+        - m[12] * m[3] * m[5];
+
+    self[(0, 3)] = cofactor03;
+
+    self[(3, 2)] =
+      -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11]
+        - m[4] * m[3] * m[9]
+        - m[8] * m[1] * m[7]
+        + m[8] * m[3] * m[5];
+
+    self[(1, 3)] =
+      m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14]
+        + m[8] * m[2] * m[13]
+        + m[12] * m[1] * m[10]
+        - m[12] * m[2] * m[9];
+
+    self[(2, 3)] =
+      -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14]
+        - m[4] * m[2] * m[13]
+        - m[12] * m[1] * m[6]
+        + m[12] * m[2] * m[5];
+
+    self[(3, 3)] =
+      m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10]
+        + m[4] * m[2] * m[9]
+        + m[8] * m[1] * m[6]
+        - m[8] * m[2] * m[5];
+
+    let inv_det = 1.0 / det;
+    for col in 0..4 {
+      for row in 0..4 {
+        self[(row, col)] *= inv_det;
+      }
+    }
+    true
+  }
+}
+
+impl Index<usize> for Matrix4 {
+  type Output = f64;
+
+  #[inline]
+  fn index(&self, index: usize) -> &Self::Output {
+    &self.data[index]
+  }
+}
+
+impl IndexMut<usize> for Matrix4 {
+  #[inline]
+  fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+    &mut self.data[index]
+  }
+}
+
+impl Index<(usize, usize)> for Matrix4 {
+  type Output = f64;
+
+  #[inline]
+  fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+    &self.data[col * 4 + row]
+  }
+}
+
+impl IndexMut<(usize, usize)> for Matrix4 {
+  #[inline]
+  fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut Self::Output {
+    &mut self.data[col * 4 + row]
+  }
+}
+
+#[inline]
+#[rustfmt::skip]
+fn rotation_from_euler_angles(roll: f64, pitch: f64, yaw: f64) -> Matrix4 {
+  let (sr, cr) = roll.sin_cos();
+  let (sp, cp) = pitch.sin_cos();
+  let (sy, cy) = yaw.sin_cos();
+  Matrix4::new(
+    cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr, 0.0,
+    sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr, 0.0,
+        -sp,                         cp * sr,                         cp * cr, 0.0,
+        0.0,                             0.0,                             0.0, 1.0,
+  )
+}
+
+#[inline]
+#[rustfmt::skip]
+fn rotation_from_axis_angle(x: f64, y: f64, z: f64, angle: f64) -> Matrix4 {
+  if angle == 0.0 {
+    return Matrix4::identity();
+  }
+
+  let length = (x * x + y * y + z * z).sqrt();
+  let inv_length = 1.0 / length;
+  let x = x * inv_length;
+  let y = y * inv_length;
+  let z = z * inv_length;
+  let (sin, cos) = angle.sin_cos();
+  let one_m_cos = 1.0 - cos;
+  Matrix4::new(
+    x * x + (1.0 - x * x) * cos,
+    x * y * one_m_cos - z * sin,
+    x * z * one_m_cos + y * sin,
+    0.0,
+    x * y * one_m_cos + z * sin,
+    y * y + (1.0 - y * y) * cos,
+    y * z * one_m_cos - x * sin,
+    0.0,
+    x * z * one_m_cos - y * sin,
+    y * z * one_m_cos + x * sin,
+    z * z + (1.0 - z * z) * cos,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+  )
+}
+
 #[derive(WebIDL, Debug)]
 #[webidl(dictionary)]
 pub struct DOMPointInit {
@@ -138,7 +518,7 @@ pub struct DOMPointInit {
 #[derive(CppgcBase)]
 #[repr(C)]
 pub struct DOMPointReadOnly {
-  inner: RefCell<Vector4<f64>>,
+  inner: RefCell<Vector4>,
 }
 
 // SAFETY: we're sure `DOMPointReadOnly` can be GCed
@@ -874,7 +1254,7 @@ pub struct DOMMatrixInit {
 #[derive(CppgcBase, Clone)]
 #[repr(C)]
 pub struct DOMMatrixReadOnly {
-  inner: RefCell<Matrix4<f64>>,
+  inner: RefCell<Matrix4>,
   is_2d: Cell<bool>,
 }
 
@@ -1128,8 +1508,7 @@ impl DOMMatrixReadOnly {
   fn translate_self_inner(&self, tx: f64, ty: f64, tz: f64) {
     let mut inner = self.inner.borrow_mut();
     let is_2d = self.is_2d.get();
-    let shift = Vector3::new(tx, ty, tz);
-    inner.prepend_translation_mut(&shift);
+    inner.prepend_translation_mut(tx, ty, tz);
     self.is_2d.set(is_2d && tz == 0.0);
   }
 
@@ -1137,8 +1516,7 @@ impl DOMMatrixReadOnly {
   fn scale_without_origin_self_inner(&self, sx: f64, sy: f64, sz: f64) {
     let mut inner = self.inner.borrow_mut();
     let is_2d = self.is_2d.get();
-    let scaling = Vector3::new(sx, sy, sz);
-    inner.prepend_nonuniform_scaling_mut(&scaling);
+    inner.prepend_nonuniform_scaling_mut(sx, sy, sz);
     self.is_2d.set(is_2d && sz == 1.0);
   }
 
@@ -1154,12 +1532,9 @@ impl DOMMatrixReadOnly {
   ) {
     let mut inner = self.inner.borrow_mut();
     let is_2d = self.is_2d.get();
-    let scaling = Vector3::new(sx, sy, sz);
-    let mut shift = Vector3::new(origin_x, origin_y, origin_z);
-    inner.prepend_translation_mut(&shift);
-    inner.prepend_nonuniform_scaling_mut(&scaling);
-    shift.neg_mut();
-    inner.prepend_translation_mut(&shift);
+    inner.prepend_translation_mut(origin_x, origin_y, origin_z);
+    inner.prepend_nonuniform_scaling_mut(sx, sy, sz);
+    inner.prepend_translation_mut(-origin_x, -origin_y, -origin_z);
     self.is_2d.set(is_2d && sz == 1.0 && origin_z == 0.0);
   }
 
@@ -1167,13 +1542,8 @@ impl DOMMatrixReadOnly {
   fn rotate_self_inner(&self, roll: f64, pitch: f64, yaw: f64) {
     let mut inner = self.inner.borrow_mut();
     let is_2d = self.is_2d.get();
-    let rotation =
-      Rotation3::from_euler_angles(roll, pitch, yaw).to_homogeneous();
-    let mut result = Matrix4x3::zeros();
-    inner.mul_to(&rotation.fixed_view::<4, 3>(0, 0), &mut result);
-    inner.set_column(0, &result.column(0));
-    inner.set_column(1, &result.column(1));
-    inner.set_column(2, &result.column(2));
+    let rotation = rotation_from_euler_angles(roll, pitch, yaw);
+    inner.post_multiply_first3(&rotation);
     self.is_2d.set(is_2d && roll == 0.0 && pitch == 0.0);
   }
 
@@ -1183,13 +1553,8 @@ impl DOMMatrixReadOnly {
       return;
     }
     let mut inner = self.inner.borrow_mut();
-    let rotation = Rotation3::from_axis_angle(&Vector3::z_axis(), y.atan2(x))
-      .to_homogeneous();
-    let mut result = Matrix4x3::zeros();
-    inner.mul_to(&rotation.fixed_view::<4, 3>(0, 0), &mut result);
-    inner.set_column(0, &result.column(0));
-    inner.set_column(1, &result.column(1));
-    inner.set_column(2, &result.column(2));
+    let rotation = rotation_from_axis_angle(0.0, 0.0, 1.0, y.atan2(x));
+    inner.post_multiply_first3(&rotation);
   }
 
   #[inline]
@@ -1199,27 +1564,15 @@ impl DOMMatrixReadOnly {
     }
     let mut inner = self.inner.borrow_mut();
     let is_2d = self.is_2d.get();
-    let rotation = Rotation3::from_axis_angle(
-      &UnitVector3::new_normalize(Vector3::new(x, y, z)),
-      angle,
-    )
-    .to_homogeneous();
-    let mut result = Matrix4x3::zeros();
-    inner.mul_to(&rotation.fixed_view::<4, 3>(0, 0), &mut result);
-    inner.set_column(0, &result.column(0));
-    inner.set_column(1, &result.column(1));
-    inner.set_column(2, &result.column(2));
+    let rotation = rotation_from_axis_angle(x, y, z, angle);
+    inner.post_multiply_first3(&rotation);
     self.is_2d.set(is_2d && x == 0.0 && y == 0.0);
   }
 
   #[inline]
   fn skew_self_inner(&self, x: f64, y: f64) {
     let mut inner = self.inner.borrow_mut();
-    let skew = Matrix4x2::new(1.0, x.tan(), y.tan(), 1.0, 0.0, 0.0, 0.0, 0.0);
-    let mut result = Matrix4x2::zeros();
-    inner.mul_to(&skew, &mut result);
-    inner.set_column(0, &result.column(0));
-    inner.set_column(1, &result.column(1));
+    inner.post_skew_mut(x, y);
   }
 
   #[inline]
@@ -1228,12 +1581,7 @@ impl DOMMatrixReadOnly {
       return;
     }
     let mut inner = self.inner.borrow_mut();
-    let perspective =
-      Matrix4x2::new(0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0 / d, 1.0);
-    let mut result = Matrix4x2::zeros();
-    inner.mul_to(&perspective, &mut result);
-    inner.set_column(2, &result.column(0));
-    inner.set_column(3, &result.column(1));
+    inner.post_perspective_mut(d);
     self.is_2d.set(false);
   }
 
@@ -1248,20 +1596,20 @@ impl DOMMatrixReadOnly {
     let rhs_inner = rhs.inner.borrow();
     let rhs_is_2d = rhs.is_2d.get();
     let mut out_inner = self.inner.borrow_mut();
-    lhs_inner.mul_to(&rhs_inner, &mut out_inner);
+    *out_inner = Matrix4::multiply(&lhs_inner, &rhs_inner);
     self.is_2d.set(lhs_is_2d && rhs_is_2d);
   }
 
   #[inline]
   fn flip_x_inner(&self) {
     let mut inner = self.inner.borrow_mut();
-    inner.column_mut(0).neg_mut();
+    inner.neg_column(0);
   }
 
   #[inline]
   fn flip_y_inner(&self) {
     let mut inner = self.inner.borrow_mut();
-    inner.column_mut(1).neg_mut();
+    inner.neg_column(1);
   }
 
   #[inline]
@@ -1274,28 +1622,25 @@ impl DOMMatrixReadOnly {
       return;
     }
     if is_2d {
-      let mut matrix3 = Matrix3::new(
-        inner[INDEX_A],
-        inner[INDEX_C],
-        inner[INDEX_E],
-        inner[INDEX_B],
-        inner[INDEX_D],
-        inner[INDEX_F],
-        0.0,
-        0.0,
-        1.0,
-      );
-      if !matrix3.try_inverse_mut() {
+      let a = inner[INDEX_A];
+      let b = inner[INDEX_B];
+      let c = inner[INDEX_C];
+      let d = inner[INDEX_D];
+      let e = inner[INDEX_E];
+      let f = inner[INDEX_F];
+      let determinant = a * d - b * c;
+      if determinant == 0.0 {
         inner.fill(f64::NAN);
         self.is_2d.set(false);
         return;
       }
-      inner[INDEX_A] = matrix3[0];
-      inner[INDEX_B] = matrix3[1];
-      inner[INDEX_C] = matrix3[3];
-      inner[INDEX_D] = matrix3[4];
-      inner[INDEX_E] = matrix3[6];
-      inner[INDEX_F] = matrix3[7];
+      let inv_det = 1.0 / determinant;
+      inner[INDEX_A] = d * inv_det;
+      inner[INDEX_B] = -b * inv_det;
+      inner[INDEX_C] = -c * inv_det;
+      inner[INDEX_D] = a * inv_det;
+      inner[INDEX_E] = (c * f - d * e) * inv_det;
+      inner[INDEX_F] = (b * e - a * f) * inv_det;
     } else if !inner.try_inverse_mut() {
       inner.fill(f64::NAN);
     }
@@ -1434,11 +1779,7 @@ impl DOMMatrixReadOnly {
 
   #[inline]
   fn is_finite_inner(&self) -> bool {
-    self
-      .inner
-      .borrow()
-      .into_iter()
-      .all(|&item| item.is_finite())
+    self.inner.borrow().iter().all(|&item| item.is_finite())
   }
 
   fn exec_css_transform(
@@ -2651,7 +2992,7 @@ fn matrix_transform_point(
   let inner = matrix.inner.borrow();
   let point = point.inner.borrow();
   let mut result = out.inner.borrow_mut();
-  inner.mul_to(&point, &mut result);
+  *result = inner.multiply_vector(&point);
 }
 
 #[op2]
@@ -2734,5 +3075,330 @@ pub fn op_geometry_matrix_set_matrix_value<'a>(
     matrix.base.inner.swap(&result.inner);
     matrix.base.is_2d.swap(&result.is_2d);
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  //! Differential tests for the hand-rolled matrix math that replaced
+  //! `nalgebra` (see #34771). Each production routine is checked against an
+  //! independent reference implementation written here (a different algorithm,
+  //! not just a copy), so a transposed index or flipped sign in the production
+  //! code fails the test. Matrices are stored column-major: element `(row,
+  //! col)` lives at index `col * 4 + row`, matching `Matrix4`.
+
+  use approx::assert_relative_eq;
+
+  use super::Matrix4;
+  use super::Vector4;
+  use super::rotation_from_axis_angle;
+  use super::rotation_from_euler_angles;
+
+  /// Deterministic SplitMix64 PRNG so the test is reproducible without pulling
+  /// in `rand`.
+  struct Rng(u64);
+
+  impl Rng {
+    fn next_u64(&mut self) -> u64 {
+      self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+      let mut z = self.0;
+      z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+      z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+      z ^ (z >> 31)
+    }
+
+    /// Uniform `f64` in `[lo, hi)`.
+    fn range(&mut self, lo: f64, hi: f64) -> f64 {
+      let u = (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64;
+      lo + (hi - lo) * u
+    }
+
+    fn matrix(&mut self, lo: f64, hi: f64) -> [f64; 16] {
+      let mut m = [0.0; 16];
+      for v in &mut m {
+        *v = self.range(lo, hi);
+      }
+      m
+    }
+  }
+
+  #[inline]
+  fn at(m: &[f64; 16], row: usize, col: usize) -> f64 {
+    m[col * 4 + row]
+  }
+
+  /// Naive triple-loop matrix product, `lhs * rhs`, independent of
+  /// `Matrix4::multiply`'s indexing.
+  fn ref_mul(lhs: &[f64; 16], rhs: &[f64; 16]) -> [f64; 16] {
+    let mut out = [0.0; 16];
+    for col in 0..4 {
+      for row in 0..4 {
+        let mut sum = 0.0;
+        for k in 0..4 {
+          sum += at(lhs, row, k) * at(rhs, k, col);
+        }
+        out[col * 4 + row] = sum;
+      }
+    }
+    out
+  }
+
+  /// 4x4 inverse via Gauss-Jordan elimination with partial pivoting. This is a
+  /// completely different algorithm from the production adjugate/cofactor
+  /// expansion, so agreement between the two is strong evidence of
+  /// correctness. Returns the inverse plus the smallest pivot magnitude
+  /// encountered (a cheap conditioning proxy used to skip ill-conditioned
+  /// samples).
+  #[allow(
+    clippy::needless_range_loop,
+    reason = "elimination mutates one row while reading another; iterator borrows can't express it"
+  )]
+  fn ref_inverse(m: &[f64; 16]) -> Option<([f64; 16], f64)> {
+    // Augmented [A | I], row-major working storage.
+    let mut a = [[0.0f64; 8]; 4];
+    for row in 0..4 {
+      for col in 0..4 {
+        a[row][col] = at(m, row, col);
+      }
+      a[row][4 + row] = 1.0;
+    }
+
+    let mut min_pivot = f64::INFINITY;
+    for col in 0..4 {
+      // Partial pivot: pick the row at or below `col` with the largest
+      // magnitude in this column.
+      let mut pivot_row = col;
+      for row in (col + 1)..4 {
+        if a[row][col].abs() > a[pivot_row][col].abs() {
+          pivot_row = row;
+        }
+      }
+      let pivot = a[pivot_row][col];
+      if pivot == 0.0 {
+        return None;
+      }
+      min_pivot = min_pivot.min(pivot.abs());
+      a.swap(col, pivot_row);
+
+      let inv_pivot = 1.0 / a[col][col];
+      for v in &mut a[col] {
+        *v *= inv_pivot;
+      }
+      for row in 0..4 {
+        if row == col {
+          continue;
+        }
+        let factor = a[row][col];
+        if factor == 0.0 {
+          continue;
+        }
+        for k in 0..8 {
+          a[row][k] -= factor * a[col][k];
+        }
+      }
+    }
+
+    let mut inv = [0.0; 16];
+    for row in 0..4 {
+      for col in 0..4 {
+        inv[col * 4 + row] = a[row][4 + col];
+      }
+    }
+    Some((inv, min_pivot))
+  }
+
+  /// Homogeneous 4x4 from a 3x3 rotation given as `r[row][col]`.
+  fn homogeneous(r: [[f64; 3]; 3]) -> [f64; 16] {
+    let mut m = [0.0; 16];
+    for row in 0..3 {
+      for col in 0..3 {
+        m[col * 4 + row] = r[row][col];
+      }
+    }
+    m[15] = 1.0;
+    m
+  }
+
+  fn rot_x(a: f64) -> [f64; 16] {
+    let (s, c) = a.sin_cos();
+    homogeneous([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]])
+  }
+
+  fn rot_y(a: f64) -> [f64; 16] {
+    let (s, c) = a.sin_cos();
+    homogeneous([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
+  }
+
+  fn rot_z(a: f64) -> [f64; 16] {
+    let (s, c) = a.sin_cos();
+    homogeneous([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+  }
+
+  fn assert_matrix_eq(actual: &[f64], expected: &[f64], max_relative: f64) {
+    for (i, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
+      assert!(
+        approx::relative_eq!(a, e, max_relative = max_relative, epsilon = 1e-9),
+        "mismatch at index {i} (row {}, col {}): {a} != {e}",
+        i % 4,
+        i / 4,
+      );
+    }
+  }
+
+  #[test]
+  fn multiply_matches_reference() {
+    let mut rng = Rng(0x1234_5678);
+    for _ in 0..2000 {
+      let a = rng.matrix(-5.0, 5.0);
+      let b = rng.matrix(-5.0, 5.0);
+      let got = Matrix4::multiply(
+        &Matrix4::from_column_slice(&a),
+        &Matrix4::from_column_slice(&b),
+      );
+      assert_matrix_eq(got.as_slice(), &ref_mul(&a, &b), 1e-12);
+    }
+  }
+
+  #[test]
+  fn multiply_vector_matches_reference() {
+    let mut rng = Rng(0xC0FF_EE42);
+    for _ in 0..2000 {
+      let m = rng.matrix(-5.0, 5.0);
+      let v = [
+        rng.range(-5.0, 5.0),
+        rng.range(-5.0, 5.0),
+        rng.range(-5.0, 5.0),
+        rng.range(-5.0, 5.0),
+      ];
+      let got = Matrix4::from_column_slice(&m)
+        .multiply_vector(&Vector4::new(v[0], v[1], v[2], v[3]));
+      let expected = [
+        at(&m, 0, 0) * v[0]
+          + at(&m, 0, 1) * v[1]
+          + at(&m, 0, 2) * v[2]
+          + at(&m, 0, 3) * v[3],
+        at(&m, 1, 0) * v[0]
+          + at(&m, 1, 1) * v[1]
+          + at(&m, 1, 2) * v[2]
+          + at(&m, 1, 3) * v[3],
+        at(&m, 2, 0) * v[0]
+          + at(&m, 2, 1) * v[1]
+          + at(&m, 2, 2) * v[2]
+          + at(&m, 2, 3) * v[3],
+        at(&m, 3, 0) * v[0]
+          + at(&m, 3, 1) * v[1]
+          + at(&m, 3, 2) * v[2]
+          + at(&m, 3, 3) * v[3],
+      ];
+      for (a, e) in [got.x, got.y, got.z, got.w].iter().zip(expected.iter()) {
+        assert_relative_eq!(a, e, max_relative = 1e-12, epsilon = 1e-9);
+      }
+    }
+  }
+
+  #[test]
+  fn inverse_matches_gauss_jordan_and_round_trips() {
+    let mut rng = Rng(0xDEAD_BEEF);
+    let identity = Matrix4::identity();
+    let mut well_conditioned = 0;
+    for _ in 0..5000 {
+      let m = rng.matrix(-1.0, 1.0);
+      let Some((ref_inv, min_pivot)) = ref_inverse(&m) else {
+        continue;
+      };
+      // Skip ill-conditioned matrices: with a tiny pivot the two algorithms
+      // legitimately diverge in the last digits, which says nothing about
+      // correctness.
+      if min_pivot < 1e-3 {
+        continue;
+      }
+      well_conditioned += 1;
+
+      let mut prod = Matrix4::from_column_slice(&m);
+      assert!(
+        prod.try_inverse_mut(),
+        "production inverse failed on a matrix the reference inverted"
+      );
+
+      // Cross-check against the independent Gauss-Jordan result.
+      assert_matrix_eq(prod.as_slice(), &ref_inv, 1e-6);
+
+      // Invariant: M * M^-1 == I.
+      let round_trip =
+        Matrix4::multiply(&Matrix4::from_column_slice(&m), &prod);
+      assert_matrix_eq(round_trip.as_slice(), identity.as_slice(), 1e-6);
+    }
+    // Make sure the conditioning filter didn't skip ~everything.
+    assert!(
+      well_conditioned > 500,
+      "only {well_conditioned} well-conditioned samples; filter too strict"
+    );
+  }
+
+  #[test]
+  fn singular_matrix_is_not_inverted() {
+    // Column 3 == column 1, so the matrix is rank-deficient.
+    let mut singular = Matrix4::identity();
+    for row in 0..4 {
+      singular[(row, 3)] = singular[(row, 1)];
+    }
+    assert!(!singular.try_inverse_mut());
+  }
+
+  #[test]
+  fn euler_matches_composed_axis_rotations() {
+    let mut rng = Rng(0x00C0_1DEE);
+    for _ in 0..2000 {
+      let roll = rng.range(-3.2, 3.2);
+      let pitch = rng.range(-3.2, 3.2);
+      let yaw = rng.range(-3.2, 3.2);
+      // Production composition is R = Rz(yaw) * Ry(pitch) * Rx(roll).
+      let expected =
+        ref_mul(&ref_mul(&rot_z(yaw), &rot_y(pitch)), &rot_x(roll));
+      let got = rotation_from_euler_angles(roll, pitch, yaw);
+      assert_matrix_eq(got.as_slice(), &expected, 1e-12);
+    }
+  }
+
+  #[test]
+  fn axis_angle_matches_quaternion() {
+    let mut rng = Rng(0xFACE_F00D);
+    for _ in 0..2000 {
+      let mut x = rng.range(-1.0, 1.0);
+      let mut y = rng.range(-1.0, 1.0);
+      let mut z = rng.range(-1.0, 1.0);
+      let len = (x * x + y * y + z * z).sqrt();
+      if len < 1e-3 {
+        continue; // degenerate axis
+      }
+      x /= len;
+      y /= len;
+      z /= len;
+      let angle = rng.range(-3.2, 3.2);
+
+      // Independent reference: build the rotation from a unit quaternion.
+      let (s, c) = (angle / 2.0).sin_cos();
+      let (qw, qx, qy, qz) = (c, s * x, s * y, s * z);
+      let expected = homogeneous([
+        [
+          1.0 - 2.0 * (qy * qy + qz * qz),
+          2.0 * (qx * qy - qz * qw),
+          2.0 * (qx * qz + qy * qw),
+        ],
+        [
+          2.0 * (qx * qy + qz * qw),
+          1.0 - 2.0 * (qx * qx + qz * qz),
+          2.0 * (qy * qz - qx * qw),
+        ],
+        [
+          2.0 * (qx * qz - qy * qw),
+          2.0 * (qy * qz + qx * qw),
+          1.0 - 2.0 * (qx * qx + qy * qy),
+        ],
+      ]);
+
+      let got = rotation_from_axis_angle(x, y, z, angle);
+      assert_matrix_eq(got.as_slice(), &expected, 1e-9);
+    }
   }
 }

@@ -20,29 +20,44 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
 const { core, primordials } = __bootstrap;
 const {
+  ArrayPrototypeIndexOf,
+  ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypeFilter,
+  ArrayPrototypePop,
   ArrayPrototypePush,
   ArrayPrototypeShift,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
   ArrayPrototypeUnshift,
+  Boolean,
   Error,
   ErrorCaptureStackTrace,
-  FunctionPrototypeCall,
+  ErrorPrototype,
   FunctionPrototypeApply,
+  FunctionPrototypeBind,
+  FunctionPrototypeCall,
+  MathMin,
+  NumberMAX_SAFE_INTEGER,
   ObjectCreate,
+  ObjectDefineProperties,
   ObjectDefineProperty,
   ObjectEntries,
   ObjectGetPrototypeOf,
+  ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  Promise,
+  PromiseReject,
+  PromiseResolve,
   ReflectOwnKeys,
+  SafeArrayIterator,
   SafeMap,
   SafeSet,
+  String,
+  StringPrototypeSplit,
   Symbol,
   SymbolFor,
   SymbolAsyncIterator,
@@ -55,7 +70,9 @@ const kEvents = Symbol("kEvents");
 const { inspect } = core.loadExtScript(
   "ext:deno_node/internal/util/inspect.mjs",
 );
-const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { kEmptyObject } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const {
   AbortError,
   ERR_INVALID_ARG_TYPE,
@@ -116,6 +133,7 @@ const captureRejectionSymbol = kRejection;
 const errorMonitor = kErrorMonitor;
 
 ObjectDefineProperty(EventEmitter, "captureRejections", {
+  __proto__: null,
   get() {
     return EventEmitter.prototype[kCapture];
   },
@@ -129,6 +147,7 @@ ObjectDefineProperty(EventEmitter, "captureRejections", {
 
 // The default for captureRejections is false
 ObjectDefineProperty(EventEmitter.prototype, kCapture, {
+  __proto__: null,
   value: false,
   writable: true,
   enumerable: false,
@@ -147,6 +166,7 @@ function checkListener(listener) {
 }
 
 ObjectDefineProperty(EventEmitter, "defaultMaxListeners", {
+  __proto__: null,
   enumerable: true,
   get: function () {
     return defaultMaxListeners;
@@ -157,14 +177,17 @@ ObjectDefineProperty(EventEmitter, "defaultMaxListeners", {
   },
 });
 
-Object.defineProperties(EventEmitter, {
+ObjectDefineProperties(EventEmitter, {
+  __proto__: null,
   kMaxEventTargetListeners: {
+    __proto__: null,
     value: kMaxEventTargetListeners,
     enumerable: false,
     configurable: false,
     writable: false,
   },
   kMaxEventTargetListenersWarned: {
+    __proto__: null,
     value: kMaxEventTargetListenersWarned,
     enumerable: false,
     configurable: false,
@@ -188,7 +211,7 @@ function setMaxListeners(
   } else {
     for (let i = 0; i < eventTargets.length; i++) {
       const target = eventTargets[i];
-      if (target instanceof EventTarget) {
+      if (ObjectPrototypeIsPrototypeOf(EventTarget.prototype, target)) {
         target[kMaxEventTargetListeners] = n;
         target[kMaxEventTargetListenersWarned] = false;
       } else if (typeof target.setMaxListeners === "function") {
@@ -249,7 +272,7 @@ function addCatch(that, promise, type, args) {
 
 function emitUnhandledRejectionOrErr(ee, err, type, args) {
   if (typeof ee[kRejection] === "function") {
-    ee[kRejection](err, type, ...args);
+    ee[kRejection](err, type, ...new SafeArrayIterator(args));
   } else {
     // We have to disable the capture rejections mechanism, otherwise
     // we might end up in an infinite loop.
@@ -291,10 +314,12 @@ function getMaxListeners(emitterOrTarget) {
     typeof emitterOrTarget?.[kMaxEventTargetListeners] === "number"
   ) {
     return emitterOrTarget[kMaxEventTargetListeners] ?? defaultMaxListeners;
-  } else if (emitterOrTarget instanceof AbortSignal) {
+  } else if (
+    ObjectPrototypeIsPrototypeOf(AbortSignal.prototype, emitterOrTarget)
+  ) {
     return 0; // default for AbortController if not set by EventTarget prototype.
   } else if (
-    emitterOrTarget instanceof EventTarget
+    ObjectPrototypeIsPrototypeOf(EventTarget.prototype, emitterOrTarget)
   ) {
     return defaultMaxListeners;
   }
@@ -326,12 +351,12 @@ EventEmitter.prototype.getMaxListeners = function getMaxListeners() {
 function identicalSequenceRange(a, b) {
   for (let i = 0; i < a.length - 3; i++) {
     // Find the first entry of b that matches the current entry of a.
-    const pos = b.indexOf(a[i]);
+    const pos = ArrayPrototypeIndexOf(b, a[i]);
     if (pos !== -1) {
       const rest = b.length - pos;
       if (rest > 3) {
         let len = 1;
-        const maxLen = Math.min(a.length - i, rest);
+        const maxLen = MathMin(a.length - i, rest);
         // Count the number of consecutive entries.
         while (maxLen > len && a[i + len] === b[pos + len]) {
           len++;
@@ -359,19 +384,26 @@ function enhanceStackTrace(err, own) {
   }
   const sep = `\nEmitted 'error' event${ctorInfo} at:\n`;
 
-  const errStack = err.stack.split("\n").slice(1);
-  const ownStack = own.stack.split("\n").slice(1);
+  const errStack = ArrayPrototypeSlice(
+    StringPrototypeSplit(err.stack, "\n"),
+    1,
+  );
+  const ownStack = ArrayPrototypeSlice(
+    StringPrototypeSplit(own.stack, "\n"),
+    1,
+  );
 
   const { 0: len, 1: off } = identicalSequenceRange(ownStack, errStack);
   if (len > 0) {
-    ownStack.splice(
+    ArrayPrototypeSplice(
+      ownStack,
       off + 1,
       len - 2,
       "    [... lines matching original stack trace ...]",
     );
   }
 
-  return err.stack + sep + ownStack.join("\n");
+  return err.stack + sep + ArrayPrototypeJoin(ownStack, "\n");
 }
 
 /**
@@ -387,7 +419,7 @@ EventEmitter.prototype.emit = function emit(type, ...args) {
   const events = this._events;
   if (events !== undefined) {
     if (doError && events[kErrorMonitor] !== undefined) {
-      this.emit(kErrorMonitor, ...args);
+      this.emit(kErrorMonitor, ...new SafeArrayIterator(args));
     }
     doError = doError && events.error === undefined;
   } else if (!doError) {
@@ -400,7 +432,7 @@ EventEmitter.prototype.emit = function emit(type, ...args) {
     if (args.length > 0) {
       er = args[0];
     }
-    if (er instanceof Error) {
+    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, er)) {
       try {
         const capture = {};
         ErrorCaptureStackTrace(capture, EventEmitter.prototype.emit);
@@ -522,6 +554,7 @@ function _addListener(target, type, listener, prepend) {
       w.emitter = target;
       w.type = type;
       w.count = existing.length;
+      // deno-lint-ignore no-process-global
       process.emitWarning(w);
     }
   }
@@ -568,7 +601,7 @@ function onceWrapper() {
 
 function _onceWrap(target, type, listener) {
   const state = { fired: false, wrapFn: undefined, target, type, listener };
-  const wrapped = onceWrapper.bind(state);
+  const wrapped = FunctionPrototypeBind(onceWrapper, state);
   wrapped.listener = listener;
   state.wrapFn = wrapped;
   return wrapped;
@@ -676,7 +709,9 @@ EventEmitter.prototype.off = EventEmitter.prototype.removeListener;
  * @param {string | symbol} [type]
  * @returns {EventEmitter}
  */
-EventEmitter.prototype.removeAllListeners = function removeAllListeners(type) {
+EventEmitter.prototype.removeAllListeners = function removeAllListeners(
+  type,
+) {
   const events = this._events;
   if (events === undefined) {
     return this;
@@ -699,7 +734,7 @@ EventEmitter.prototype.removeAllListeners = function removeAllListeners(type) {
 
   // Emit removeListener for all listeners on all events
   if (arguments.length === 0) {
-    for (const key of ReflectOwnKeys(events)) {
+    for (const key of new SafeArrayIterator(ReflectOwnKeys(events))) {
       if (key === "removeListener") continue;
       this.removeAllListeners(key);
     }
@@ -817,7 +852,7 @@ function listenerCount(emitter, type) {
   if (typeof emitter.listenerCount === "function") {
     return emitter.listenerCount(type);
   }
-  if (emitter instanceof EventTarget) {
+  if (ObjectPrototypeIsPrototypeOf(EventTarget.prototype, emitter)) {
     return getEventListeners(emitter, type).length;
   }
   return FunctionPrototypeCall(_listenerCount, emitter, type);
@@ -847,7 +882,7 @@ function arrayClone(arr) {
     case 6:
       return [arr[0], arr[1], arr[2], arr[3], arr[4], arr[5]];
   }
-  return arr.slice();
+  return ArrayPrototypeSlice(arr);
 }
 
 function unwrapListeners(arr) {
@@ -873,7 +908,7 @@ function getEventListeners(emitterOrTarget, type) {
   if (typeof emitterOrTarget.listeners === "function") {
     return emitterOrTarget.listeners(type);
   }
-  if (emitterOrTarget instanceof EventTarget) {
+  if (ObjectPrototypeIsPrototypeOf(EventTarget.prototype, emitterOrTarget)) {
     return emitterOrTarget[eventTargetData]?.listeners?.[type]?.map((
       listener,
     ) => listener.callback) || [];
@@ -991,9 +1026,9 @@ const kEventsGetter = {
       ArrayPrototypeMap(
         ArrayPrototypeFilter(
           ObjectEntries(data.listeners),
-          ([_, listeners]) => listeners.length > 0,
+          (entry) => entry[1].length > 0,
         ),
-        ([key, listeners]) => [key, new SafeSet(listeners)],
+        (entry) => [entry[0], new SafeSet(entry[1])],
       ),
     );
   },
@@ -1024,7 +1059,7 @@ function on(emitter, event, options = kEmptyObject) {
 
   // Support both highWaterMark and highWatermark for backward compatibility
   const highWatermark = options.highWaterMark ?? options.highWatermark ??
-    Number.MAX_SAFE_INTEGER;
+    NumberMAX_SAFE_INTEGER;
   validateInteger(highWatermark, "options.highWaterMark", 1);
   const lowWatermark = options.lowWaterMark ?? options.lowWatermark ?? 1;
   validateInteger(lowWatermark, "options.lowWaterMark", 1);
@@ -1046,14 +1081,14 @@ function on(emitter, event, options = kEmptyObject) {
           emitter.resume();
           paused = false;
         }
-        return Promise.resolve(createIterResult(value, false));
+        return PromiseResolve(createIterResult(value, false));
       }
 
       // Then we error, if an error happened
       // This happens one time if at all, because after 'error'
       // we stop listening
       if (error) {
-        const p = Promise.reject(error);
+        const p = PromiseReject(error);
         // Only the first element errors
         error = null;
         return p;
@@ -1073,7 +1108,7 @@ function on(emitter, event, options = kEmptyObject) {
     },
 
     throw(err) {
-      if (!err || !(err instanceof Error)) {
+      if (!err || !ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)) {
         throw new ERR_INVALID_ARG_TYPE(
           "EventEmitter.AsyncIterator",
           "Error",
@@ -1166,7 +1201,7 @@ function on(emitter, event, options = kEmptyObject) {
       ArrayPrototypeShift(unconsumedPromises).resolve(doneResult);
     }
 
-    return Promise.resolve(doneResult);
+    return PromiseResolve(doneResult);
   }
 }
 
@@ -1180,7 +1215,7 @@ function listenersController() {
     },
     removeAll() {
       while (listeners.length > 0) {
-        const entry = listeners.pop();
+        const entry = ArrayPrototypePop(listeners);
         eventTargetAgnosticRemoveListener(entry[0], entry[1], entry[2]);
       }
     },

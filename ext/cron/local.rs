@@ -24,6 +24,7 @@ use crate::CronHandle;
 use crate::CronHandler;
 use crate::CronNextResult;
 use crate::CronSpec;
+use crate::cron::Schedule;
 
 const MAX_CRONS: usize = 100;
 const DISPATCH_CONCURRENCY_LIMIT: usize = 50;
@@ -214,7 +215,7 @@ impl CronHandler for LocalCronHandler {
     // Validate schedule expression.
     spec
       .cron_schedule
-      .parse::<saffron::Cron>()
+      .parse::<Schedule>()
       .map_err(|_| CronError::InvalidCron)?;
 
     // Validate backoff_schedule.
@@ -330,7 +331,7 @@ fn compute_next_deadline(cron_expression: &str) -> Result<u64, CronError> {
   }
 
   let cron = cron_expression
-    .parse::<saffron::Cron>()
+    .parse::<Schedule>()
     .map_err(|_| CronError::InvalidCron)?;
   let Some(next_deadline) = cron.next_after(now) else {
     return Err(CronError::InvalidCron);

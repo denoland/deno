@@ -375,13 +375,25 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
           media_type,
         }))
       }
-      Some(CodeOrDeferredEmit::Cjs { .. }) => {
+      Some(CodeOrDeferredEmit::Cjs {
+        specifier,
+        media_type,
+        source,
+      }) => {
+        let transpile_result = self.emitter.maybe_emit_source_sync(
+          specifier,
+          media_type,
+          ModuleKind::Cjs,
+          source,
+        )?;
+
         self.parsed_source_cache.free(specifier);
 
-        // todo(dsherret): to make this work, we should probably just
-        // rely on the CJS export cache. At the moment this is hard because
-        // cjs export analysis is only async
-        Ok(None)
+        Ok(Some(LoadedModule {
+          source: LoadedModuleSource::ArcStr(transpile_result),
+          specifier: Cow::Borrowed(specifier),
+          media_type,
+        }))
       }
       Some(CodeOrDeferredEmit::ExternalAsset { .. }) | None => Ok(None),
     }
@@ -550,6 +562,13 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
       .node_code_translator
       .translate_cjs_to_esm(specifier, Some(Cow::Borrowed(js_source.as_ref())))
       .await?;
+    // Apply load-time security mitigations for known React Server Components
+    // CVEs to the translated source. Opt in via `DENO_PATCH_REACT_CVE`.
+    let text = if crate::is_react_cve_patch_enabled(&self.sys) {
+      crate::patch_react_cves(specifier.as_str(), text)
+    } else {
+      text
+    };
     // at this point, we no longer need the parsed source in memory, so free it
     self.parsed_source_cache.free(specifier);
     Ok(match text {

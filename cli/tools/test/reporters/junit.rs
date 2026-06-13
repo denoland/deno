@@ -218,6 +218,11 @@ impl TestReporter for JunitTestReporter {
     }
   }
 
+  fn report_isolate_exit(&mut self, _origin: &str, _exit_code: i32) {
+    // JUnit reporters are file-oriented; we surface the isolate exit via the
+    // overall test run failure status rather than emitting a synthetic case.
+  }
+
   fn report_completed(&mut self) {
     // TODO(mmastrac): This reporter does not handle stdout/stderr yet, and when we do, we may need to redirect
     // pre-and-post-test output somewhere.

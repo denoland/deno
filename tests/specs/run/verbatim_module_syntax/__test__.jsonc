@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "tests": {
+    "verbatim_on_preserves_value_imports": {
+      "args": "run main.ts",
+      "output": "verbatim_on.out"
+    },
+    "verbatim_off_elides_unused_value_imports": {
+      "args": "run --config off.json main.ts",
+      "output": "verbatim_off.out"
+    }
+  }
+}

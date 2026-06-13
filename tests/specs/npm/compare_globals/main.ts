@@ -1,5 +1,6 @@
 /// <reference types="npm:@types/node" />
 
+import { writeFile } from "node:fs";
 import * as globals from "npm:@denotest/globals";
 console.log(globals.global === globals.globalThis);
 console.log(globals.globalThis === globalThis);
@@ -43,6 +44,28 @@ type _TestResponseInitHasStatus = AssertTrue<
 
 const controller = new AbortController();
 controller.abort("reason"); // in the NodeJS declaration it doesn't have a reason
+
+// Regression test for https://github.com/denoland/deno/issues/19527
+// The `AbortSignal` produced by Deno's `AbortController` must be assignable
+// to the `AbortSignal` parameter of `@types/node` APIs. Historically Deno
+// kept its own `AbortController`/`AbortSignal` in a separate Node-only
+// global table; that caused TS2300/TS2320 duplicate-identifier errors and
+// callers to see two incompatible `AbortSignal` types here.
+const _issue19527 = () =>
+  writeFile(
+    "file.txt",
+    "content",
+    { signal: controller.signal },
+    (_err) => {},
+  );
+// `AbortSignal` must remain an `EventTarget` subtype. The original issue
+// hit TS2320 because `interface AbortSignal extends EventTarget` was being
+// declared by both Deno and `@types/node`, with conflicting `dispatchEvent`
+// signatures.
+const _signalIsEventTarget: EventTarget = controller.signal;
+// `AbortSignal.timeout` is a Deno-provided static. It must still resolve to
+// `AbortSignal` (not a `@types/node` shadow type) once both libs are loaded.
+const _signalTimeoutTypeCheck: AbortSignal = AbortSignal.timeout(0);
 
 // Some globals are not the same between Node and Deno.
 console.log("setTimeout 1", globalThis.setTimeout === globals.getSetTimeout());

@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-read --unstable-worker-options parent.ts",
+  "output": "parent.ts.out"
+}

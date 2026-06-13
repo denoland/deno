@@ -4,9 +4,11 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt;
 use std::fs;
 use std::future::Future;
 use std::ops::Range;
+use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -42,10 +44,7 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::Lazy;
-use serde::Serialize;
 use tower_lsp::lsp_types as lsp;
-use weak_table::PtrWeakKeyHashMap;
-use weak_table::WeakValueHashMap;
 
 use super::cache::LspCache;
 use super::cache::calculate_fs_version_at_path;
@@ -61,6 +60,7 @@ use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
 use super::urls::normalize_uri;
 use super::urls::uri_is_file_like;
+use super::urls::uri_is_in_memory;
 use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
@@ -206,8 +206,8 @@ fn data_url_to_uri(url: &Url) -> Option<Uri> {
   Some(uri)
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, deno_core::ToV8)]
+#[to_v8(untagged)]
 pub enum DocumentText {
   Static(&'static str),
   Arc(Arc<str>),
@@ -935,6 +935,16 @@ pub struct DocumentModule {
   pub types_dependency: Option<Arc<TypesDependency>>,
   pub navigation_tree: tokio::sync::OnceCell<Arc<NavigationTree>>,
   pub semantic_tokens_full: tokio::sync::OnceCell<lsp::SemanticTokens>,
+  /// Cached lint diagnostics. These only depend on this module's own contents
+  /// (not on other files), so they can be computed once per module instance
+  /// and reused until the document changes. A new `DocumentModule` is created
+  /// whenever the document content or the lint configuration changes, which
+  /// naturally invalidates this cache.
+  pub lint_diagnostics: once_cell::sync::OnceCell<Arc<Vec<lsp::Diagnostic>>>,
+  /// Cached `deno doc --lint` diagnostics. Like lint diagnostics, these are
+  /// derived solely from this module's own contents (a single-module graph),
+  /// so they're cached per module instance.
+  pub doc_diagnostics: once_cell::sync::OnceCell<Arc<Vec<lsp::Diagnostic>>>,
   text_info_cell: once_cell::sync::OnceCell<SourceTextInfo>,
   test_module_fut: Option<TestModuleFut>,
 }
@@ -1010,6 +1020,8 @@ impl DocumentModule {
       types_dependency,
       navigation_tree: Default::default(),
       semantic_tokens_full: Default::default(),
+      lint_diagnostics: Default::default(),
+      doc_diagnostics: Default::default(),
       text_info_cell: Default::default(),
       test_module_fut,
     }
@@ -1056,18 +1068,113 @@ impl DocumentModule {
 
 type DepInfoByScope = BTreeMap<Option<Arc<Url>>, Arc<ScopeDepInfo>>;
 
+struct WeakKeyDocumentMap<T> {
+  entries: HashMap<usize, (Weak<T>, Arc<DocumentModule>)>,
+}
+
+impl<T> Default for WeakKeyDocumentMap<T> {
+  fn default() -> Self {
+    Self {
+      entries: Default::default(),
+    }
+  }
+}
+
+impl<T> fmt::Debug for WeakKeyDocumentMap<T> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("WeakKeyDocumentMap")
+      .field("len", &self.entries.len())
+      .finish()
+  }
+}
+
+impl<T> WeakKeyDocumentMap<T> {
+  fn get(&self, document: &Arc<T>) -> Option<Arc<DocumentModule>> {
+    let (document_weak, module) = self.entries.get(&Self::key(document))?;
+    let document_strong = document_weak.upgrade()?;
+    Arc::ptr_eq(&document_strong, document).then(|| module.clone())
+  }
+
+  fn values(&self) -> impl Iterator<Item = Arc<DocumentModule>> + '_ {
+    self.entries.values().filter_map(|(document, module)| {
+      document.upgrade().map(|_| module.clone())
+    })
+  }
+
+  fn insert(
+    &mut self,
+    document: Arc<T>,
+    module: Arc<DocumentModule>,
+  ) -> Option<Arc<DocumentModule>> {
+    self.remove_expired();
+    self
+      .entries
+      .insert(Self::key(&document), (Arc::downgrade(&document), module))
+      .map(|(_, module)| module)
+  }
+
+  fn remove_expired(&mut self) {
+    self
+      .entries
+      .retain(|_, (document, _)| document.strong_count() > 0);
+  }
+
+  fn key(document: &Arc<T>) -> usize {
+    Arc::as_ptr(document) as usize
+  }
+}
+
+#[derive(Default)]
+struct WeakValueDocumentMap {
+  entries: HashMap<Arc<Url>, Weak<DocumentModule>>,
+}
+
+impl fmt::Debug for WeakValueDocumentMap {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("WeakValueDocumentMap")
+      .field("len", &self.entries.len())
+      .finish()
+  }
+}
+
+impl WeakValueDocumentMap {
+  fn contains_key(&self, specifier: &Url) -> bool {
+    self
+      .entries
+      .get(specifier)
+      .and_then(|module| module.upgrade())
+      .is_some()
+  }
+
+  fn insert(
+    &mut self,
+    specifier: Arc<Url>,
+    module: Arc<DocumentModule>,
+  ) -> Option<Arc<DocumentModule>> {
+    self.remove_expired();
+    self
+      .entries
+      .insert(specifier, Arc::downgrade(&module))
+      .and_then(|module| module.upgrade())
+  }
+
+  fn remove_expired(&mut self) {
+    self.entries.retain(|_, module| module.strong_count() > 0);
+  }
+}
+
 #[derive(Debug, Default)]
 struct WeakDocumentModuleMap {
-  open: RwLock<PtrWeakKeyHashMap<Weak<OpenDocument>, Arc<DocumentModule>>>,
-  server: RwLock<PtrWeakKeyHashMap<Weak<ServerDocument>, Arc<DocumentModule>>>,
-  by_specifier: RwLock<WeakValueHashMap<Arc<Url>, Weak<DocumentModule>>>,
+  open: RwLock<WeakKeyDocumentMap<OpenDocument>>,
+  server: RwLock<WeakKeyDocumentMap<ServerDocument>>,
+  by_specifier: RwLock<WeakValueDocumentMap>,
 }
 
 impl WeakDocumentModuleMap {
   fn get(&self, document: &Document) -> Option<Arc<DocumentModule>> {
     match document {
-      Document::Open(d) => self.open.read().get(d).cloned(),
-      Document::Server(d) => self.server.read().get(d).cloned(),
+      Document::Open(d) => self.open.read().get(d),
+      Document::Server(d) => self.server.read().get(d),
     }
   }
 
@@ -1080,8 +1187,7 @@ impl WeakDocumentModuleMap {
       .open
       .read()
       .values()
-      .cloned()
-      .chain(self.server.read().values().cloned())
+      .chain(self.server.read().values())
       .collect()
   }
 
@@ -1303,14 +1409,34 @@ impl DocumentModules {
       || self.resolver.in_node_modules(&specifier)
       || self.cache.in_global_cache_directory(&specifier)
     {
-      let key = compiler_options_key?;
-      let value = self
-        .compiler_options_resolver
-        .for_key(key)
-        .expect("Key should be in sync with resolver.");
-      (key, value)
+      // Dependency files get their compiler options key from their referrer,
+      // passed in here when reached through resolution. If we don't have one
+      // (e.g. the document was opened directly in the editor), use the key
+      // previously assigned to it if any, or infer one from its path. See
+      // https://github.com/denoland/deno/issues/35170.
+      let key = compiler_options_key.cloned().or_else(|| {
+        let (assigned_scope, assigned_key) =
+          self.assigned_scopes.read().get(document.uri())?.clone();
+        (assigned_scope.as_deref() == scope).then_some(assigned_key)
+      });
+      match key {
+        Some(key) => {
+          let value = self
+            .compiler_options_resolver
+            .for_key(&key)
+            .expect("Key should be in sync with resolver.");
+          (key, value)
+        }
+        None if scheme == "file" => {
+          let (key, value) = self
+            .compiler_options_resolver
+            .entry_for_specifier(&specifier);
+          (key.clone(), value)
+        }
+        None => return None,
+      }
     } else {
-      self.compiler_options_resolver.entry_for_specifier(
+      let (key, value) = self.compiler_options_resolver.entry_for_specifier(
         if scheme != "file"
           && let Some(scope) = scope
         {
@@ -1318,12 +1444,13 @@ impl DocumentModules {
         } else {
           &specifier
         },
-      )
+      );
+      (key.clone(), value)
     };
     let module = Arc::new(DocumentModule::new(
       document,
       specifier,
-      compiler_options_key.clone(),
+      compiler_options_key,
       compiler_options_data,
       scope.cloned().map(Arc::new),
       &self.resolver,
@@ -1531,7 +1658,18 @@ impl DocumentModules {
   pub fn primary_scope(&self, uri: &Uri) -> Option<Option<&Arc<Url>>> {
     let url = uri_to_url(uri);
     if url.scheme() == "file" && !self.cache.in_global_cache_directory(&url) {
-      let scope = self.config.tree.scope_for_specifier(&url);
+      let mut scope = self.config.tree.scope_for_specifier(&url);
+      // In-memory documents (untitled files and unsaved notebook cells) convert
+      // to a `file:` URL at the filesystem root, which matches no workspace
+      // scope. Associate them with the workspace root so its config (import
+      // map, compiler options) applies — matching the behavior once the
+      // document is saved into the workspace. See denoland/deno#22628.
+      if scope.is_none()
+        && uri_is_in_memory(uri)
+        && let Some(root_url) = self.config.root_url()
+      {
+        scope = self.config.tree.scope_for_specifier(root_url);
+      }
       return Some(scope);
     }
     None
@@ -1946,7 +2084,7 @@ impl IndexValid {
 }
 
 type ModuleResult = Result<deno_graph::JsModule, deno_graph::ModuleGraphError>;
-type ParsedSourceResult = Result<ParsedSource, deno_ast::ParseDiagnostic>;
+type ParsedSourceResult = Result<ParsedSource, Arc<JsErrorBox>>;
 type TestModuleFut =
   Shared<Pin<Box<dyn Future<Output = Option<Arc<TestModule>>> + Send>>>;
 
@@ -2095,14 +2233,43 @@ fn parse_source(
   text: Arc<str>,
   media_type: MediaType,
 ) -> ParsedSourceResult {
-  deno_ast::parse_program(deno_ast::ParseParams {
-    specifier,
-    text,
-    media_type,
-    capture_tokens: true,
-    scope_analysis: true,
-    maybe_syntax: None,
-  })
+  let specifier_for_error = specifier.clone();
+  let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+    deno_ast::parse_program(deno_ast::ParseParams {
+      specifier,
+      text,
+      media_type,
+      capture_tokens: true,
+      scope_analysis: true,
+      maybe_syntax: None,
+    })
+  }));
+  match result {
+    Ok(result) => {
+      result.map_err(|diagnostic| Arc::new(JsErrorBox::from_err(diagnostic)))
+    }
+    Err(error) => {
+      let error = panic_payload_to_string(&error);
+      lsp_warn!(
+        "Failed to parse \"{}\" due to parser panic: {}",
+        specifier_for_error,
+        error,
+      );
+      Err(Arc::new(JsErrorBox::generic(format!(
+        "The parser panicked while parsing this module: {error}"
+      ))))
+    }
+  }
+}
+
+fn panic_payload_to_string(error: &(dyn std::any::Any + Send)) -> String {
+  if let Some(message) = error.downcast_ref::<String>() {
+    message.clone()
+  } else if let Some(message) = error.downcast_ref::<&'static str>() {
+    message.to_string()
+  } else {
+    "unknown parser panic".to_string()
+  }
 }
 
 fn analyze_module(
@@ -2154,7 +2321,7 @@ fn analyze_module(
         deno_graph::ModuleErrorKind::Parse {
           specifier,
           mtime: None,
-          diagnostic: Arc::new(JsErrorBox::from_err(diagnostic.clone())),
+          diagnostic: diagnostic.clone(),
         }
         .into_box(),
       )),
@@ -2290,6 +2457,24 @@ console.log(b);
 console.log(b, "hello deno");
 "#
     );
+  }
+
+  #[test]
+  fn test_parse_invalid_tsx_with_jsx_pragmas_does_not_panic() {
+    let specifier = ModuleSpecifier::parse("file:///index.tsx").unwrap();
+    let result = parse_source(
+      specifier,
+      r#"/** @jsxRuntime automatic */ /** @jsxImportSource npm:preact */
+
+const Counter = () => {
+  const [count
+  <button>{count}</button>
+}
+"#
+      .into(),
+      MediaType::Tsx,
+    );
+    assert!(result.is_err());
   }
 
   #[tokio::test]

@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::env;
 use std::ffi::OsString;
@@ -179,6 +180,21 @@ impl<'a> BytesAppendable<'a> for &'a SpecifierStoreForSerialization<'a> {
       builder.append(specifier_str.as_ref());
       builder.append(*id);
     }
+  }
+}
+
+/// Given a canonical npm package folder (e.g.
+/// `<.deno>/<id>/node_modules/@scope/name`), walk up to the enclosing
+/// `node_modules/` directory. Embedding from there picks up sibling
+/// symlinks the deno linker creates for direct dependencies, which the
+/// canonical folder itself doesn't contain.
+fn pkg_folder_node_modules_root(folder: &Path) -> Option<&Path> {
+  let mut current = folder.parent()?;
+  loop {
+    if current.file_name() == Some(std::ffi::OsStr::new("node_modules")) {
+      return Some(current);
+    }
+    current = current.parent()?;
   }
 }
 
@@ -394,40 +410,66 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     for path in exclude_paths {
       vfs.add_exclude_path(path);
     }
+    // Embed the workspace package.json files so the standalone binary's node
+    // resolver can read their "exports" (and other) fields at runtime. Without
+    // this, resolving a workspace member by its package name falls back to
+    // legacy `index.js` resolution instead of honoring the package's exports.
+    for pkg_json in self.cli_options.workspace().package_jsons() {
+      vfs.add_path(&pkg_json.path)?;
+    }
     let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);
-    let npm_snapshot = match &self.npm_resolver {
-      CliNpmResolver::Managed(managed) => {
-        if graph.modules().any(|m| m.npm().is_some()) {
-          let snapshot = managed.resolution().snapshot();
-          let snapshot = if self.cli_options.unstable_npm_lazy_caching() {
-            let reqs = graph
-              .specifiers()
-              .filter_map(|(s, _)| {
-                NpmPackageReqReference::from_specifier(s)
-                  .ok()
-                  .map(|req_ref| req_ref.into_inner().req)
-              })
-              .collect::<Vec<_>>();
-            snapshot.subset(&reqs)
-          } else {
-            snapshot
-          }
-          .as_valid_serialized_for_system(&self.npm_system_info);
-          if !snapshot.as_serialized().packages.is_empty() {
-            self
-              .fill_npm_vfs(&mut vfs, Some(&snapshot), &progress_bar)
-              .context("Building npm vfs.")?;
-            Some(snapshot)
+    // With --bundle the JS graph is self-contained, so the whole npm tree
+    // is intentionally left out of the binary. The exception is packages
+    // that ship native (.node) addons: the package JS is still bundled, but
+    // its `.node` file imports stay external (`external = ["*.node"]` in
+    // compile.rs) so the addon loader resolves them against the embedded VFS
+    // at runtime. For that to work the package's installed folder, plus the
+    // closure of its dependencies, must be embedded in the VFS.
+    let npm_snapshot = if compile_flags.bundle {
+      self
+        .fill_bundle_native_addon_vfs(&mut vfs, &progress_bar)
+        .context("Embedding native addon packages.")?
+    } else {
+      match &self.npm_resolver {
+        CliNpmResolver::Managed(managed) => {
+          if graph.modules().any(|m| m.npm().is_some()) {
+            let snapshot = managed.resolution().snapshot();
+            // When the user opts in (or via the existing unstable lazy-caching
+            // path), prune the resolution snapshot to packages reachable from
+            // npm specifiers in the graph. Otherwise embed the full snapshot
+            // so non-statically-analyzable dynamic imports keep working.
+            let snapshot = if compile_flags.exclude_unused_npm
+              || self.cli_options.unstable_npm_lazy_caching()
+            {
+              let reqs = graph
+                .specifiers()
+                .filter_map(|(s, _)| {
+                  NpmPackageReqReference::from_specifier(s)
+                    .ok()
+                    .map(|req_ref| req_ref.into_inner().req)
+                })
+                .collect::<Vec<_>>();
+              snapshot.subset(&reqs)
+            } else {
+              snapshot
+            }
+            .as_valid_serialized_for_system(&self.npm_system_info);
+            if !snapshot.as_serialized().packages.is_empty() {
+              self
+                .fill_npm_vfs(&mut vfs, Some(&snapshot), &progress_bar)
+                .context("Building npm vfs.")?;
+              Some(snapshot)
+            } else {
+              None
+            }
           } else {
             None
           }
-        } else {
+        }
+        CliNpmResolver::Byonm(_) => {
+          self.fill_npm_vfs(&mut vfs, None, &progress_bar)?;
           None
         }
-      }
-      CliNpmResolver::Byonm(_) => {
-        self.fill_npm_vfs(&mut vfs, None, &progress_bar)?;
-        None
       }
     };
     for include_file in include_paths {
@@ -925,6 +967,105 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .await
   }
 
+  /// Decide what to embed for `deno compile --bundle`. The bundle is
+  /// always shipped; this controls the npm portion. We need it when
+  /// either the CJS-from-ESM wrapper pointed at on-disk paths during
+  /// rewriting, or the resolved tree has a native (`.node`) addon — in
+  /// both cases the compiled binary will do node-module resolution at
+  /// runtime. Pure-ESM bundles with no native addons skip this and ship
+  /// nothing npm-related.
+  ///
+  /// When embedding is needed, we ship only the packages actually
+  /// reached: the rewriter recorded every absolute path it pointed at,
+  /// and we map each path back to its owning npm package and walk that
+  /// closure. The full resolution snapshot still goes in the metadata
+  /// so denort can resolve packages by name at runtime.
+  fn fill_bundle_native_addon_vfs(
+    &self,
+    builder: &mut VfsBuilder,
+    progress_bar: &ProgressBar,
+  ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
+    let needs_for_cjs_wrapper =
+      self.cli_options.compile_bundle_embed_node_modules();
+    let referenced_paths = self.cli_options.compile_bundle_referenced_paths();
+    // For BYONM the addon scan walks the workspace `node_modules` trees, so
+    // it needs the workspace root (managed npm ignores it).
+    let workspace_root = self
+      .cli_options
+      .workspace()
+      .root_dir_url()
+      .to_file_path()
+      .ok();
+    let needs_for_native_addons = !needs_for_cjs_wrapper
+      && !super::native_addons::find_native_addon_packages(
+        self.npm_resolver,
+        &self.npm_system_info,
+        workspace_root.as_deref(),
+      )?
+      .is_empty();
+    if !needs_for_cjs_wrapper && !needs_for_native_addons {
+      return Ok(None);
+    }
+
+    match self.npm_resolver {
+      CliNpmResolver::Managed(managed) => {
+        let snapshot = managed
+          .resolution()
+          .snapshot()
+          .as_valid_serialized_for_system(&self.npm_system_info);
+        if snapshot.as_serialized().packages.is_empty() {
+          return Ok(None);
+        }
+        // `collect_bundle_required_packages` only returns `None` for BYONM,
+        // which is handled by the `CliNpmResolver::Byonm` arm below, so a
+        // managed resolver always yields `Some` here.
+        let Some(needed_ids) =
+          super::native_addons::collect_bundle_required_packages(
+            self.npm_resolver,
+            &self.npm_system_info,
+            referenced_paths,
+          )?
+        else {
+          unreachable!(
+            "collect_bundle_required_packages returns None only for BYONM"
+          );
+        };
+        let progress =
+          progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
+        progress.set_total_size(needed_ids.len() as u64);
+        // Dedup the set of `<deno-cache>/<id>/node_modules/` directories we
+        // add: a single id's node_modules dir contains the canonical package
+        // folder plus sibling symlinks to its direct deps. Going one level up
+        // from the canonical folder picks both up so node-module resolution at
+        // runtime can follow the symlink chain (e.g. the NAPI-RS
+        // platform-specific sibling package).
+        let mut embedded_roots: std::collections::HashSet<PathBuf> =
+          std::collections::HashSet::new();
+        let mut done: u64 = 0;
+        for id in &needed_ids {
+          if let Ok(folder) = managed.resolve_pkg_folder_from_pkg_id(id)
+            && folder.exists()
+          {
+            let root_to_add =
+              pkg_folder_node_modules_root(&folder).unwrap_or(folder.as_path());
+            if embedded_roots.insert(root_to_add.to_path_buf()) {
+              builder.add_dir_recursive(root_to_add).with_context(|| {
+                format!("Embedding npm package at '{}'", root_to_add.display())
+              })?;
+            }
+          }
+          done += 1;
+          progress.set_position(done);
+        }
+        Ok(Some(snapshot))
+      }
+      CliNpmResolver::Byonm(_) => {
+        self.fill_npm_vfs(builder, None, progress_bar)?;
+        Ok(None)
+      }
+    }
+  }
+
   fn fill_npm_vfs(
     &self,
     builder: &mut VfsBuilder,
@@ -982,9 +1123,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       CliNpmResolver::Byonm(_) => {
         maybe_warn_different_system(&self.npm_system_info);
-        for pkg_json in self.cli_options.workspace().package_jsons() {
-          builder.add_path(&pkg_json.path)?;
-        }
         let _progress =
           progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
         // traverse and add all the node_modules directories in the workspace
@@ -1038,29 +1176,54 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         // that will be used by denort when loading the npm cache. This avoids us exposing
         // the user's private registry information and means we don't have to bother
         // serializing all the different registry config into the binary.
+        //
+        // A registry url may include a sub-path (e.g.
+        // `http://mirrors.example.com/npm/`), in which case the on-disk cache
+        // layout is `<global_cache>/<host>/<sub>/<pkg>/...` rather than
+        // `<global_cache>/<host>/<pkg>/...`. Walk to each known registry's
+        // package root before flattening so packages always end up directly
+        // under `localhost/`.
+        let known_registries_dirnames: Vec<String> =
+          npm_resolver.known_registries_dirnames().to_vec();
+        let mut localhost_entries: IndexMap<String, VfsEntry> = IndexMap::new();
+        let mut registry_top_segments: HashSet<String> = HashSet::new();
+        for registry_dirname in &known_registries_dirnames {
+          if let Some(first) = registry_dirname.split('/').next()
+            && !first.is_empty()
+          {
+            registry_top_segments.insert(first.to_string());
+          }
+          let registry_path = global_cache_root_path.join(registry_dirname);
+          let Some(registry_dir) = vfs.get_dir_mut(&registry_path) else {
+            continue;
+          };
+          for entry in registry_dir.entries.take_inner() {
+            log::debug!("Flattening {} into node_modules", entry.name());
+            if let Some(existing) =
+              localhost_entries.insert(entry.name().to_string(), entry)
+            {
+              panic!(
+                "Unhandled scenario where a duplicate entry was found: {:?}",
+                existing
+              );
+            }
+          }
+        }
+
         let Some(root_dir) = vfs.get_dir_mut(global_cache_root_path) else {
           return vfs.build();
         };
 
         root_dir.name = DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME.to_string();
         let mut new_entries = Vec::with_capacity(root_dir.entries.len());
-        let mut localhost_entries = IndexMap::new();
         for entry in root_dir.entries.take_inner() {
-          match entry {
-            VfsEntry::Dir(mut dir) => {
-              for entry in dir.entries.take_inner() {
-                log::debug!("Flattening {} into node_modules", entry.name());
-                if let Some(existing) =
-                  localhost_entries.insert(entry.name().to_string(), entry)
-                {
-                  panic!(
-                    "Unhandled scenario where a duplicate entry was found: {:?}",
-                    existing
-                  );
-                }
-              }
+          match &entry {
+            VfsEntry::Dir(dir) if registry_top_segments.contains(&dir.name) => {
+              // The packages under this registry host dir have already been
+              // flattened into `localhost_entries`. Drop the (now empty)
+              // intermediate directory tree so it isn't embedded twice.
             }
-            VfsEntry::File(_) | VfsEntry::Symlink(_) => {
+            _ => {
               new_entries.push(entry);
             }
           }

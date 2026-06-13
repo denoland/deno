@@ -1,1 +1,1 @@
-console.log(require);
+console.log(typeof require);

@@ -25,6 +25,7 @@ use tokio::task::LocalSet;
 use url::Url;
 
 use crate::FastString;
+use crate::ImportAttributesContext;
 use crate::ModuleCodeString;
 use crate::ModuleSource;
 use crate::ModuleSpecifier;
@@ -948,6 +949,7 @@ fn test_validate_import_attributes_callback() {
   fn validate_import_attributes(
     scope: &mut v8::PinScope,
     assertions: &HashMap<String, String>,
+    _context: &ImportAttributesContext,
   ) {
     for (key, value) in assertions {
       let msg = if key != "type" {
@@ -1036,6 +1038,7 @@ fn test_validate_import_attributes_callback2() {
   fn validate_import_attrs(
     scope: &mut v8::PinScope,
     _attrs: &HashMap<String, String>,
+    _context: &ImportAttributesContext,
   ) {
     let msg = v8::String::new(scope, "boom!").unwrap();
     let ex = v8::Exception::type_error(scope, msg);
@@ -2313,6 +2316,96 @@ fn test_load_with_code_cache() {
     keys.sort();
     assert_eq!(keys, vec!["file:///a.js", "file:///b.js",]);
   }
+}
+
+// Regression test for https://github.com/denoland/deno/issues/31766.
+//
+// JSON modules do not produce a V8 code cache, so even when the loader
+// provides `SourceCodeCacheInfo` for one, `code_cache_ready` must never be
+// invoked for it. The `deno compile` runtime relies on this: it counts every
+// code cache request and only serializes its cache once a matching number of
+// `code_cache_ready` callbacks fire, so a JSON (or Wasm) module that requested
+// a cache but never produced one would otherwise stall serialization forever.
+#[test]
+fn test_code_cache_not_created_for_json_module() {
+  struct JsonCodeCacheLoader {
+    code_cache_ready_calls: Arc<Mutex<Vec<String>>>,
+  }
+
+  impl ModuleLoader for JsonCodeCacheLoader {
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &str,
+      _kind: ResolutionKind,
+    ) -> ModuleResolveResponse {
+      Ok(resolve_import(specifier, referrer).unwrap())
+    }
+
+    fn load(
+      &self,
+      module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<&ModuleLoadReferrer>,
+      _options: ModuleLoadOptions,
+    ) -> ModuleLoadResponse {
+      let (module_type, code) = if module_specifier.as_str().ends_with(".json")
+      {
+        (ModuleType::Json, FastString::from_static("{}"))
+      } else {
+        (
+          ModuleType::JavaScript,
+          FastString::from_static(
+            "import \"./data.json\" with { type: \"json\" };",
+          ),
+        )
+      };
+      // Provide code cache info (with no cached data, forcing creation) for
+      // *every* module, including the JSON one.
+      ModuleLoadResponse::Sync(Ok(ModuleSource::new(
+        module_type,
+        ModuleSourceCode::String(code),
+        module_specifier,
+        Some(SourceCodeCacheInfo {
+          hash: 0,
+          data: None,
+        }),
+      )))
+    }
+
+    fn code_cache_ready(
+      &self,
+      module_specifier: ModuleSpecifier,
+      _hash: u64,
+      _code_cache: &[u8],
+    ) -> Pin<Box<dyn Future<Output = ()>>> {
+      self
+        .code_cache_ready_calls
+        .lock()
+        .push(module_specifier.to_string());
+      async {}.boxed_local()
+    }
+  }
+
+  let code_cache_ready_calls = Arc::new(Mutex::new(Vec::new()));
+  let loader = Rc::new(JsonCodeCacheLoader {
+    code_cache_ready_calls: code_cache_ready_calls.clone(),
+  });
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+  let spec = resolve_url("file:///main.js").unwrap();
+  let id =
+    futures::executor::block_on(runtime.load_main_es_module(&spec)).unwrap();
+
+  #[allow(clippy::let_underscore_future, reason = "test code")]
+  let _ = runtime.mod_evaluate(id);
+  futures::executor::block_on(runtime.run_event_loop(Default::default()))
+    .unwrap();
+
+  // `code_cache_ready` must fire for the JS module, but not for the JSON one.
+  let calls = code_cache_ready_calls.lock();
+  assert_eq!(calls.to_vec(), vec!["file:///main.js".to_string()]);
 }
 
 #[test]

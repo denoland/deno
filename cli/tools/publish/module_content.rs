@@ -89,6 +89,9 @@ impl<TSys: ModuleContentProviderSys> ModuleContentProvider<TSys> {
           | MediaType::Tsx => {
             // continue
           }
+          MediaType::Wasm => {
+            return self.unfurl_wasm(specifier, &data, diagnostics_collector);
+          }
           MediaType::SourceMap
           | MediaType::Unknown
           | MediaType::Html
@@ -97,7 +100,6 @@ impl<TSys: ModuleContentProviderSys> ModuleContentProvider<TSys> {
           | MediaType::Json
           | MediaType::Jsonc
           | MediaType::Json5
-          | MediaType::Wasm
           | MediaType::Css => {
             // not unfurlable data
             return Ok(data.into_owned());
@@ -147,6 +149,38 @@ impl<TSys: ModuleContentProviderSys> ModuleContentProvider<TSys> {
       deno_ast::apply_text_changes(text_info.text_str(), text_changes);
 
     Ok(rewritten_text.into_bytes())
+  }
+
+  /// Unfurls the module specifiers found in the import section of a Wasm
+  /// module. See [`super::wasm::unfurl_wasm`].
+  fn unfurl_wasm(
+    &self,
+    specifier: &Url,
+    data: &[u8],
+    diagnostics_collector: &PublishDiagnosticsCollector,
+  ) -> Result<Vec<u8>, AnyError> {
+    log::debug!("Unfurling {}", specifier);
+    let mut reporter = |diagnostic| {
+      diagnostics_collector
+        .push(PublishDiagnostic::SpecifierUnfurl(diagnostic));
+    };
+    // Wasm modules are binary, so there is no source text to point diagnostics
+    // at. Use an empty text info with a zeroed range so any diagnostics report
+    // the referrer without a (meaningless) code frame.
+    let text_info = SourceTextInfo::from_string(String::new());
+    let zeroed_range = deno_graph::PositionRange::zeroed();
+    super::wasm::unfurl_wasm(data, &mut |module_specifier| {
+      self
+        .specifier_unfurler
+        .unfurl_specifier_reporting_diagnostic(
+          specifier,
+          module_specifier,
+          ResolutionKind::Execution,
+          &text_info,
+          PositionOrSourceRangeRef::PositionRange(&zeroed_range),
+          &mut reporter,
+        )
+    })
   }
 
   fn add_jsx_text_changes(
@@ -420,6 +454,110 @@ mod test {
         ),
       ),
     ]).await;
+  }
+
+  #[tokio::test]
+  async fn test_module_content_wasm() {
+    let in_memory_sys = InMemorySys::default();
+    in_memory_sys.fs_create_dir_all(get_path("/")).unwrap();
+    in_memory_sys
+      .fs_write(
+        get_path("/deno.json"),
+        r#"{
+          "name": "@scope/pkg",
+          "version": "1.0.0",
+          "exports": "./main.wasm",
+          "nodeModulesDir": "manual",
+          "imports": {
+            "@std/foo": "jsr:@std/foo@1",
+            "chalk": "npm:chalk@5"
+          }
+        }"#,
+      )
+      .unwrap();
+
+    // A Wasm module importing a bare specifier (mapped via the import map), an
+    // npm specifier (mapped via the import map) and a relative specifier (left
+    // as-is).
+    let wasm = build_wasm_with_imports(&["@std/foo", "chalk", "./other.js"]);
+    in_memory_sys
+      .fs_write(get_path("/main.wasm"), &wasm)
+      .unwrap();
+
+    let provider = module_content_provider(in_memory_sys).await;
+    let path = get_path("/main.wasm");
+    let bytes = provider
+      .resolve_content_maybe_unfurling(
+        &ModuleGraph::new(deno_graph::GraphKind::All),
+        &Default::default(),
+        &path,
+        &url_from_file_path(&path).unwrap(),
+      )
+      .unwrap();
+
+    assert_eq!(
+      wasm_import_modules(&bytes),
+      vec![
+        "jsr:@std/foo@1".to_string(),
+        "npm:chalk@5".to_string(),
+        "./other.js".to_string(),
+      ]
+    );
+  }
+
+  fn build_wasm_with_imports(modules: &[&str]) -> Vec<u8> {
+    fn write_var_u32(mut value: u32, output: &mut Vec<u8>) {
+      loop {
+        let mut byte = (value & 0x7f) as u8;
+        value >>= 7;
+        if value != 0 {
+          byte |= 0x80;
+        }
+        output.push(byte);
+        if value == 0 {
+          break;
+        }
+      }
+    }
+
+    fn write_wasm_string(value: &str, output: &mut Vec<u8>) {
+      write_var_u32(value.len() as u32, output);
+      output.extend_from_slice(value.as_bytes());
+    }
+
+    fn section(id: u8, body: &[u8], output: &mut Vec<u8>) {
+      output.push(id);
+      write_var_u32(body.len() as u32, output);
+      output.extend_from_slice(body);
+    }
+
+    let mut wasm = b"\0asm\x01\0\0\0".to_vec();
+
+    let types = [0x01, 0x60, 0x00, 0x00];
+    section(1, &types, &mut wasm);
+
+    let mut imports = Vec::new();
+    write_var_u32(modules.len() as u32, &mut imports);
+    for (i, module) in modules.iter().enumerate() {
+      write_wasm_string(module, &mut imports);
+      write_wasm_string(&format!("import_{i}"), &mut imports);
+      imports.extend_from_slice(&[0x00, 0x00]);
+    }
+    section(2, &imports, &mut wasm);
+
+    wasm
+  }
+
+  fn wasm_import_modules(bytes: &[u8]) -> Vec<String> {
+    let mut modules = Vec::new();
+    for payload in wasmparser::Parser::new(0).parse_all(bytes) {
+      if let wasmparser::Payload::ImportSection(reader) = payload.unwrap() {
+        for import in reader.into_imports() {
+          modules.push(import.unwrap().module.to_string());
+        }
+      }
+    }
+    modules
   }
 
   fn get_path(path: &str) -> PathBuf {
