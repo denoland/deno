@@ -290,23 +290,14 @@ impl SubtleCrypto {
     let key =
       run_import_key(scope, format, &algorithm, data, extractable, &usages)?;
     // Spec step: private/secret keys with empty usages -> SyntaxError.
-    // Fail closed: if the freshly-imported `key` is somehow not a cppgc
-    // CryptoKey (an internal invariant violation -- `run_import_key`
-    // always returns a make_crypto_key result), surface a `TypeError`
-    // rather than silently skipping the check.
     let key_type = deno_core::cppgc::try_unwrap_cppgc_object::<
       crate::crypto_key::CryptoKey,
     >(scope, key.into())
-    .map(|p| p.key_type())
-    .ok_or_else(|| {
-      CryptoError::Other(deno_error::JsErrorBox::type_error(
-        "internal: imported key is not a CryptoKey",
-      ))
-    })?;
+    .map(|p| p.key_type());
     if matches!(
       key_type,
-      crate::crypto_key::CryptoKeyType::Private
-        | crate::crypto_key::CryptoKeyType::Secret
+      Some(crate::crypto_key::CryptoKeyType::Private)
+        | Some(crate::crypto_key::CryptoKeyType::Secret)
     ) && usages.is_empty()
     {
       return Err(CryptoError::Other(deno_error::JsErrorBox::new(

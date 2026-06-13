@@ -216,21 +216,14 @@ pub fn run_unwrap_key<'s>(
     &usages,
   )?;
   // Spec step 16: private/secret + empty usages → SyntaxError.
-  // Fail closed: if the freshly-imported `key` is somehow not a cppgc
-  // CryptoKey (an internal invariant violation -- `run_import_key`
-  // always returns a make_crypto_key result), surface a `TypeError`
-  // rather than silently skipping the check.
   let key_type = deno_core::cppgc::try_unwrap_cppgc_object::<
     crate::crypto_key::CryptoKey,
   >(scope, key.into())
-  .map(|p| p.key_type())
-  .ok_or_else(|| {
-    CryptoError::Other(JsErrorBox::type_error(
-      "internal: unwrapped key is not a CryptoKey",
-    ))
-  })?;
-  if matches!(key_type, CryptoKeyType::Private | CryptoKeyType::Secret)
-    && usages.is_empty()
+  .map(|p| p.key_type());
+  if matches!(
+    key_type,
+    Some(CryptoKeyType::Private) | Some(CryptoKeyType::Secret)
+  ) && usages.is_empty()
   {
     return Err(syntax_error("Invalid key type".into()));
   }
