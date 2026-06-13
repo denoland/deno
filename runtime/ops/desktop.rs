@@ -885,7 +885,7 @@ fn dylib_magic_ok(bytes: &[u8]) -> bool {
   clippy::disallowed_methods,
   reason = "privileged auto-update op writes the live dylib outside any user's sandbox by design"
 )]
-#[op2(fast)]
+#[op2(nofast)]
 pub fn op_desktop_apply_patch(
   state: &mut OpState,
   #[buffer] patch_bytes: &[u8],
@@ -1005,7 +1005,7 @@ fn verify_ed25519_b64(
 /// Verify an Ed25519 signature over `message` using the base64-encoded
 /// 32-byte public key and base64-encoded 64-byte signature. Used by the JS
 /// auto-update path to validate `latest.json` before fetching any patch.
-#[op2(fast)]
+#[op2(nofast)]
 pub fn op_desktop_verify_ed25519(
   #[string] public_key_b64: &str,
   #[string] signature_b64: &str,
@@ -1034,7 +1034,7 @@ async fn op_desktop_recv_event(
   clippy::disallowed_methods,
   reason = "privileged auto-update sentinel write next to the dylib, outside any user sandbox"
 )]
-#[op2(fast)]
+#[op2(nofast)]
 pub fn op_desktop_confirm_update(state: &mut OpState) {
   if let Some(s) = state.try_borrow::<AutoUpdateState>() {
     let ext = s
@@ -1060,7 +1060,7 @@ fn op_desktop_resolve_bind_call(
   }
 }
 
-#[op2(fast)]
+#[op2(nofast)]
 fn op_desktop_reject_bind_call(
   state: &mut OpState,
   #[smi] call_id: u32,
@@ -1073,7 +1073,7 @@ fn op_desktop_reject_bind_call(
   }
 }
 
-#[op2(fast)]
+#[op2(nofast)]
 pub fn op_desktop_init(
   state: &mut OpState,
   scope: &mut v8::PinScope<'_, '_>,
@@ -1086,7 +1086,7 @@ pub fn op_desktop_init(
   });
 }
 
-#[op2(fast)]
+#[op2(nofast)]
 fn op_desktop_alert(
   state: &mut OpState,
   #[string] title: &str,
@@ -1215,7 +1215,7 @@ pub fn send_error_report(url: &str, body: &str) {
   }
 }
 
-#[op2(fast)]
+#[op2(nofast)]
 fn op_desktop_send_error_report(
   state: &mut OpState,
   #[string] url: &str,
@@ -1232,7 +1232,7 @@ fn op_desktop_send_error_report(
   send_error_report(url, body);
 }
 
-#[op2(fast)]
+#[op2(nofast)]
 fn op_desktop_confirm(state: &mut OpState, #[string] message: &str) -> bool {
   // Sync op: web `confirm()` returns a boolean, not a Promise. The
   // backend's `confirm` blocks the calling thread inside the platform's
@@ -2217,7 +2217,7 @@ mod tests {
   // The op_desktop_resolve_bind_call / op_desktop_reject_bind_call ops
   // both reduce to map.remove(&call_id).map(|tx| tx.send(...)). We
   // exercise the underlying state machine directly here — the ops
-  // themselves are #[op2(fast)] wrappers and aren't callable from a
+  // themselves are #[op2(nofast)] wrappers and aren't callable from a
   // unit test, but the bug surface is the map manipulation, not the
   // tiny op2 wrapper.
 
