@@ -309,7 +309,6 @@ fn format_markdown(
           | "jsonc"
           | "css"
           | "scss"
-          | "sass"
           | "less"
           | "html"
           | "svelte"
@@ -337,7 +336,7 @@ fn format_markdown(
             json_config.line_width = line_width;
             dprint_plugin_json::format_text(&fake_filename, text, &json_config)
           }
-          "css" | "scss" | "sass" | "less" => {
+          "css" | "scss" | "less" => {
             format_css(&fake_filename, text, fmt_options)
           }
           "html" | "svg" | "xml" => {
@@ -402,27 +401,6 @@ pub fn format_css(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
-  // the indented Sass syntax is not supported by lax-css and is still
-  // formatted with malva
-  if file_path.extension().and_then(|e| e.to_str()) == Some("sass") {
-    warn!(
-      "{} formatting .sass files is deprecated and will be removed in a future release. Consider migrating to the SCSS syntax.",
-      colors::yellow("Warning"),
-    );
-    let formatted_str = malva::format_text(
-      file_text,
-      malva::Syntax::Sass,
-      &get_resolved_malva_config(fmt_options),
-    )
-    .map_err(AnyError::from)?;
-
-    return Ok(if formatted_str == file_text {
-      None
-    } else {
-      Some(formatted_str)
-    });
-  }
-
   lax_css::format_text(
     file_path,
     file_text,
@@ -505,13 +483,6 @@ pub fn format_html(
               },
             )
           }
-        }
-        "sass" => {
-          let mut malva_config = get_resolved_malva_config(fmt_options);
-          malva_config.layout.print_width = hints.print_width;
-          malva::format_text(text, malva::Syntax::Sass, &malva_config)
-            .map(Cow::from)
-            .map_err(AnyError::from)
         }
         "json" | "jsonc" => {
           let mut json_config = get_resolved_json_config(fmt_options);
@@ -798,9 +769,7 @@ pub fn format_file(
       format_markdown(&file.text, fmt_options, unstable_options)?
     }
     "json" | "jsonc" => format_json(file_path, &file.text, fmt_options)?,
-    "css" | "scss" | "sass" | "less" => {
-      format_css(file_path, &file.text, fmt_options)?
-    }
+    "css" | "scss" | "less" => format_css(file_path, &file.text, fmt_options)?,
     "html" | "xml" | "svg" => {
       format_html(file_path, &file.text, fmt_options, unstable_options)?
     }
@@ -1524,62 +1493,6 @@ fn get_resolved_json_config(
   builder.build()
 }
 
-fn get_resolved_malva_config(
-  options: &FmtOptionsConfig,
-) -> malva::config::FormatOptions {
-  use malva::config::*;
-
-  let layout_options = LayoutOptions {
-    print_width: options.line_width.unwrap_or(80) as usize,
-    use_tabs: options.use_tabs.unwrap_or_default(),
-    indent_width: options.indent_width.unwrap_or(2) as usize,
-    line_break: LineBreak::Lf,
-  };
-
-  let language_options = LanguageOptions {
-    align_comments: true,
-    hex_case: HexCase::Lower,
-    hex_color_length: None,
-    quotes: if let Some(true) = options.single_quote {
-      Quotes::PreferSingle
-    } else {
-      Quotes::PreferDouble
-    },
-    operator_linebreak: OperatorLineBreak::Before,
-    block_selector_linebreak: BlockSelectorLineBreak::Consistent,
-    omit_number_leading_zero: false,
-    trailing_comma: true,
-    format_comments: false,
-    linebreak_in_pseudo_parens: true,
-    declaration_order: None,
-    single_line_block_threshold: None,
-    keyframe_selector_notation: None,
-    attr_value_quotes: AttrValueQuotes::Always,
-    attr_selector_quotes: None,
-    prefer_single_line: false,
-    selectors_prefer_single_line: None,
-    function_args_prefer_single_line: None,
-    sass_content_at_rule_prefer_single_line: None,
-    sass_include_at_rule_prefer_single_line: None,
-    sass_map_prefer_single_line: None,
-    sass_module_config_prefer_single_line: None,
-    sass_params_prefer_single_line: None,
-    less_import_options_prefer_single_line: None,
-    less_mixin_args_prefer_single_line: None,
-    less_mixin_params_prefer_single_line: None,
-    single_line_top_level_declarations: false,
-    selector_override_comment_directive: "deno-fmt-selector-override".into(),
-    ignore_comment_directive: "deno-fmt-ignore".into(),
-    ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
-    declaration_order_group_by: DeclarationOrderGroupBy::NonDeclaration,
-  };
-
-  FormatOptions {
-    layout: layout_options,
-    language: language_options,
-  }
-}
-
 fn get_resolved_markup_fmt_config(
   options: &FmtOptionsConfig,
 ) -> markup_fmt::config::FormatOptions {
@@ -1822,7 +1735,6 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "jsonc"
         | "css"
         | "scss"
-        | "sass"
         | "less"
         | "html"
         | "svelte"
@@ -1883,8 +1795,8 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.Css")));
     assert!(is_supported_ext_fmt(Path::new("foo.scss")));
     assert!(is_supported_ext_fmt(Path::new("foo.SCSS")));
-    assert!(is_supported_ext_fmt(Path::new("foo.sass")));
-    assert!(is_supported_ext_fmt(Path::new("foo.Sass")));
+    assert!(!is_supported_ext_fmt(Path::new("foo.sass")));
+    assert!(!is_supported_ext_fmt(Path::new("foo.Sass")));
     assert!(is_supported_ext_fmt(Path::new("foo.less")));
     assert!(is_supported_ext_fmt(Path::new("foo.LeSS")));
     assert!(is_supported_ext_fmt(Path::new("foo.html")));

@@ -134,7 +134,6 @@ libz-sys.workspace = true
 locked-tripwire = "0.1.1"
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
-malva.workspace = true
 markup_fmt.workspace = true
 memchr.workspace = true
 notify.workspace = true
