@@ -756,8 +756,9 @@ function disableProtoAccessor() {
       }
       // Reproduce the previous `delete` behavior: a bare assignment created a
       // normal own data property. Skip non-extensible receivers, where that
-      // assignment was a silent no-op (sloppy mode) rather than a throw.
-      if (ObjectIsExtensible(this) || ObjectHasOwn(this, "__proto__")) {
+      // assignment was a silent no-op in sloppy mode (and a throw in strict
+      // mode); keeping it silent here matches the "stay silent" goal above.
+      if (ObjectIsExtensible(this)) {
         ObjectDefineProperty(this, "__proto__", {
           __proto__: null,
           value,
