@@ -3386,9 +3386,10 @@ pub fn translate_to_deno_args(
       deno_args.push(format!("--v8-flags={}", parsed_args.v8_args.join(",")));
     }
 
-    // Add conditions and inspector flags for eval
+    // Add conditions, inspector, and preload flags for eval
     add_conditions(deno_args, env_opts);
     add_inspector_flags(deno_args, env_opts);
+    add_preload_flags(deno_args, env_opts);
 
     // Get the eval code from either the explicit eval_string or the first remaining arg (for -p)
     let raw_eval_code = eval_string_for_print
@@ -3595,6 +3596,27 @@ fn add_common_flags(
 
   // Add inspector flags
   add_inspector_flags(deno_args, env_opts);
+
+  // Forward `--require`/`--import` preload modules.
+  add_preload_flags(deno_args, env_opts);
+}
+
+/// Emit Deno preload flags for Node's `--require`/`-r` (CommonJS) and
+/// `--import` (ES module) preload modules. `deno run`, `deno eval`, and
+/// `deno test` all accept `--require` and `--import` (the latter an alias of
+/// `--preload`), so these can be forwarded on every translated path.
+fn add_preload_flags(
+  deno_args: &mut Vec<String>,
+  env_opts: &EnvironmentOptions,
+) {
+  for module in &env_opts.preload_cjs_modules {
+    deno_args.push("--require".to_string());
+    deno_args.push(module.clone());
+  }
+  for module in &env_opts.preload_esm_modules {
+    deno_args.push("--import".to_string());
+    deno_args.push(module.clone());
+  }
 }
 
 fn add_conditions(deno_args: &mut Vec<String>, env_opts: &EnvironmentOptions) {
@@ -4609,6 +4631,98 @@ mod tests {
       result.options.per_isolate.per_env.preload_esm_modules,
       svec!["./a.js", "./b.js"]
     );
+  }
+
+  // Returns true if `needle` appears as a contiguous run inside `haystack`.
+  fn contains_seq(haystack: &[String], needle: &[&str]) -> bool {
+    haystack.windows(needle.len()).any(|w| w == needle)
+  }
+
+  #[test]
+  fn test_translate_require_to_deno_run() {
+    // `node --require ./setup.js script.js` -> `deno run ... --require ./setup.js script.js`
+    let parsed =
+      parse_args(svec!["--require", "./setup.js", "script.js"]).unwrap();
+    let result = translate_to_deno_args(parsed, &TranslateOptions::default());
+    assert!(
+      contains_seq(&result.deno_args, &["--require", "./setup.js"]),
+      "expected --require to be forwarded, got: {:?}",
+      result.deno_args
+    );
+    // the script must still come last
+    assert_eq!(
+      result.deno_args.last().map(String::as_str),
+      Some("script.js")
+    );
+  }
+
+  #[test]
+  fn test_translate_short_r_to_deno_run() {
+    let parsed = parse_args(svec!["-r", "./setup.js", "script.js"]).unwrap();
+    let result = translate_to_deno_args(parsed, &TranslateOptions::default());
+    assert!(
+      contains_seq(&result.deno_args, &["--require", "./setup.js"]),
+      "expected -r to be forwarded as --require, got: {:?}",
+      result.deno_args
+    );
+  }
+
+  #[test]
+  fn test_translate_import_to_deno_run() {
+    // `node --import ./register.js script.js` -> `deno run ... --import ./register.js script.js`
+    let parsed =
+      parse_args(svec!["--import", "./register.js", "script.js"]).unwrap();
+    let result = translate_to_deno_args(parsed, &TranslateOptions::default());
+    assert!(
+      contains_seq(&result.deno_args, &["--import", "./register.js"]),
+      "expected --import to be forwarded, got: {:?}",
+      result.deno_args
+    );
+  }
+
+  #[test]
+  fn test_translate_multiple_require_and_import_preserve_order() {
+    let parsed = parse_args(svec![
+      "--require",
+      "./a.cjs",
+      "--import",
+      "./b.mjs",
+      "--require",
+      "./c.cjs",
+      "script.js"
+    ])
+    .unwrap();
+    let result = translate_to_deno_args(parsed, &TranslateOptions::default());
+    // both --require values, in order
+    let requires: Vec<&String> = result
+      .deno_args
+      .iter()
+      .enumerate()
+      .filter(|(i, a)| {
+        *a == "--require" && result.deno_args.get(i + 1).is_some()
+      })
+      .map(|(i, _)| &result.deno_args[i + 1])
+      .collect();
+    assert_eq!(requires, vec!["./a.cjs", "./c.cjs"]);
+    assert!(contains_seq(&result.deno_args, &["--import", "./b.mjs"]));
+  }
+
+  #[test]
+  fn test_translate_require_with_eval() {
+    // `node --require ./setup.js -e "code"` -> `deno eval --require ./setup.js code`
+    let parsed =
+      parse_args(svec!["--require", "./setup.js", "-e", "1 + 1"]).unwrap();
+    let result = translate_to_deno_args(parsed, &TranslateOptions::default());
+    assert_eq!(result.deno_args.first().map(String::as_str), Some("eval"));
+    assert!(
+      contains_seq(&result.deno_args, &["--require", "./setup.js"]),
+      "expected --require to be forwarded to deno eval, got: {:?}",
+      result.deno_args
+    );
+    // the preload flag must precede the eval code
+    let require_idx = result.deno_args.iter().position(|a| a == "--require");
+    let code_idx = result.deno_args.iter().position(|a| a == "1 + 1");
+    assert!(require_idx < code_idx, "got: {:?}", result.deno_args);
   }
 
   // ==================== Watch Mode Tests ====================
