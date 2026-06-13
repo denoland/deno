@@ -22,7 +22,6 @@ use std::sync::atomic::Ordering;
 use async_trait::async_trait;
 use deno_ast::ParsedSource;
 use deno_config::deno_json::NewLineKind;
-use deno_config::deno_json::VueComponentCase as DenoVueComponentCase;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::Context;
@@ -32,7 +31,6 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
-use deno_core::url::Url;
 use log::debug;
 use log::info;
 use log::warn;
@@ -369,10 +367,7 @@ fn format_markdown(
                 text: text.to_string(),
                 config: &codeblock_config,
                 external_formatter: Some(
-                  &create_external_formatter_for_typescript(
-                    unstable_options,
-                    fmt_options,
-                  ),
+                  &create_external_formatter_for_typescript(unstable_options),
                 ),
               },
             )
@@ -534,7 +529,6 @@ fn format_markup_embedded(
           config: &typescript_config,
           external_formatter: Some(&create_external_formatter_for_typescript(
             unstable_options,
-            fmt_options,
           )),
         },
       )
@@ -546,7 +540,6 @@ fn format_markup_embedded(
 /// A function for formatting embedded code blocks in JavaScript and TypeScript.
 fn create_external_formatter_for_typescript(
   unstable_options: &UnstableFmtOptions,
-  fmt_options: &FmtOptionsConfig,
 ) -> impl Fn(
   &str,
   String,
@@ -872,7 +865,6 @@ pub fn format_file(
           config: &config,
           external_formatter: Some(&create_external_formatter_for_typescript(
             unstable_options,
-            fmt_options,
           )),
         },
       )?
@@ -897,10 +889,7 @@ pub fn format_parsed_source(
   dprint_plugin_typescript::format_parsed_source(
     parsed_source,
     &get_resolved_typescript_config(fmt_options),
-    Some(&create_external_formatter_for_typescript(
-      unstable_options,
-      fmt_options,
-    )),
+    Some(&create_external_formatter_for_typescript(unstable_options)),
   )
 }
 
