@@ -52,6 +52,7 @@ const {
   ArrayPrototypePush,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
+  PromisePrototype,
   PromisePrototypeCatch,
   PromiseResolve,
   SafeArrayIterator,
@@ -129,6 +130,8 @@ const {
 
 const _upgraded = Symbol("_upgraded");
 
+let legacyAbortWarned = false;
+
 function internalServerError() {
   // "Internal Server Error"
   return new Response(
@@ -187,6 +190,7 @@ class InnerRequest {
   #upgraded;
   #urlValue;
   #completed;
+  #signalAccessed;
   request;
 
   constructor(external, context) {
@@ -194,6 +198,7 @@ class InnerRequest {
     this.#context = context;
     this.#upgraded = false;
     this.#completed = undefined;
+    this.#signalAccessed = false;
   }
 
   close(success = true) {
@@ -215,6 +220,13 @@ class InnerRequest {
       }
     }
     if (this.#context.legacyAbort) {
+      if (success && this.#signalAccessed && !legacyAbortWarned) {
+        legacyAbortWarned = true;
+        // deno-lint-ignore no-console
+        console.warn(
+          "Deno.serve: request.signal aborts on successful responses (legacy behavior, see https://github.com/denoland/deno/issues/29111). Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/runtime/reference/migrate-deprecations/",
+        );
+      }
       abortRequest(this.request);
     }
     this.#external = null;
@@ -434,6 +446,7 @@ class InnerRequest {
   }
 
   onCancel(callback) {
+    this.#signalAccessed = true;
     if (this.#external === null) {
       if (this.#context.legacyAbort) callback();
       return;
@@ -562,12 +575,37 @@ function trySetServeFastStaticResponse(
   }
 }
 
+// Report an error that was thrown while a streaming response body was being
+// drained. The response status/headers are already on the wire at this point,
+// so the value returned from `onError` can no longer be used; we route the
+// error through the handler purely so it is observed (the default handler logs
+// a stack trace) instead of being silently swallowed.
+function reportResponseStreamError(onError, error) {
+  let result;
+  try {
+    result = onError(error);
+  } catch (e) {
+    internals.log("error", "Exception in onError while handling exception", e);
+    return;
+  }
+  if (ObjectPrototypeIsPrototypeOf(PromisePrototype, result)) {
+    PromisePrototypeThen(result, undefined, (e) => {
+      internals.log(
+        "error",
+        "Exception in onError while handling exception",
+        e,
+      );
+    });
+  }
+}
+
 function fastSyncResponseOrStream(
   req,
   respBody,
   status,
   innerRequest: InnerRequest,
   headers,
+  onError,
 ) {
   if (respBody === null || respBody === undefined) {
     // Don't set the body
@@ -661,7 +699,13 @@ function fastSyncResponseOrStream(
     rid = resourceBacking.rid;
     autoClose = resourceBacking.autoClose;
   } else {
-    rid = resourceForReadableStream(stream);
+    // The response headers/status have already been committed by the time the
+    // body stream starts producing chunks, so an error thrown while draining
+    // the stream (e.g. inside a `TransformStream` transformer) can no longer
+    // change the response. Report it through the server's error handler so it
+    // is not silently swallowed and a stack trace implicating the faulty
+    // callback is surfaced. See https://github.com/denoland/deno/issues/19867.
+    rid = resourceForReadableStream(stream, undefined, onError);
     autoClose = true;
   }
   PromisePrototypeThen(
@@ -830,6 +874,7 @@ function mapToCallback(context, callback, onError) {
       status,
       innerRequest,
       headers,
+      (error) => reportResponseStreamError(onError, error),
     );
   };
 
@@ -995,6 +1040,7 @@ function mapToNativeResponseCallback(context, callback, onError) {
       inner.status,
       innerRequest,
       inner.headerList,
+      (error) => reportResponseStreamError(onError, error),
     );
     return undefined;
   }
@@ -1575,6 +1621,9 @@ internals.addTrailers = addTrailers;
 internals.upgradeHttpRaw = upgradeHttpRaw;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
+internals.resetLegacyAbortWarning = () => {
+  legacyAbortWarned = false;
+};
 
 function registerDeclarativeServer(exports) {
   if (!ObjectHasOwn(exports, "fetch")) return;

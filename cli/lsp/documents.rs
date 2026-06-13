@@ -1434,14 +1434,34 @@ impl DocumentModules {
       || self.resolver.in_node_modules(&specifier)
       || self.cache.in_global_cache_directory(&specifier)
     {
-      let key = compiler_options_key?;
-      let value = self
-        .compiler_options_resolver
-        .for_key(key)
-        .expect("Key should be in sync with resolver.");
-      (key, value)
+      // Dependency files get their compiler options key from their referrer,
+      // passed in here when reached through resolution. If we don't have one
+      // (e.g. the document was opened directly in the editor), use the key
+      // previously assigned to it if any, or infer one from its path. See
+      // https://github.com/denoland/deno/issues/35170.
+      let key = compiler_options_key.cloned().or_else(|| {
+        let (assigned_scope, assigned_key) =
+          self.assigned_scopes.read().get(document.uri())?.clone();
+        (assigned_scope.as_deref() == scope).then_some(assigned_key)
+      });
+      match key {
+        Some(key) => {
+          let value = self
+            .compiler_options_resolver
+            .for_key(&key)
+            .expect("Key should be in sync with resolver.");
+          (key, value)
+        }
+        None if scheme == "file" => {
+          let (key, value) = self
+            .compiler_options_resolver
+            .entry_for_specifier(&specifier);
+          (key.clone(), value)
+        }
+        None => return None,
+      }
     } else {
-      self.compiler_options_resolver.entry_for_specifier(
+      let (key, value) = self.compiler_options_resolver.entry_for_specifier(
         if scheme != "file"
           && let Some(scope) = scope
         {
@@ -1449,12 +1469,13 @@ impl DocumentModules {
         } else {
           &specifier
         },
-      )
+      );
+      (key.clone(), value)
     };
     let module = Arc::new(DocumentModule::new(
       document,
       specifier,
-      compiler_options_key.clone(),
+      compiler_options_key,
       compiler_options_data,
       scope.cloned().map(Arc::new),
       &self.resolver,

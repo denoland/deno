@@ -1666,6 +1666,42 @@ mod permissions {
   }
 
   #[test(flaky)]
+  fn prompt_esc_cancel_pty() {
+    TestContext::default()
+      .new_command()
+      .args_vec(["run", "--quiet", "run/prompt_esc_cancel.ts"])
+      .with_pty(|mut console| {
+        console.expect("Cancel me default");
+        console.write_raw("\x1b"); // Esc
+        console.expect("answer=null");
+        console.expect("after prompt");
+      });
+  }
+
+  #[test(flaky)]
+  fn prompt_esc_cancel_eval_pty() {
+    TestContext::default()
+      .new_command()
+      .args_vec([
+        "eval",
+        r#"try {
+          const answer = prompt();
+          console.log(answer === null ? "answer=null" : answer);
+          console.log("asdf");
+        } catch (error) {
+          console.error(error);
+          Deno.exit(1);
+        }"#,
+      ])
+      .with_pty(|mut console| {
+        console.expect("Prompt");
+        console.write_raw("\x1b"); // Esc
+        console.expect("answer=null");
+        console.expect("asdf");
+      });
+  }
+
+  #[test(flaky)]
   fn _066_prompt() {
     TestContext::default()
       .new_command()
