@@ -95,7 +95,7 @@ async fn compile_inner(
   };
 
   let _framework_entrypoint_file = if let Some(dir) = source_dir {
-    if let Some(detection) = super::framework::detect_framework(&dir)? {
+    if let Some(detection) = super::framework::detect_framework(&dir, false)? {
       log::info!("Detected {} framework", detection.name);
       // Run the framework's build step if needed.
       if let Some(build_cmd) = &detection.build_command {

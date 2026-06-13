@@ -218,7 +218,7 @@ async fn compile_desktop(
   // framework detection is single-sourced and can't drift between the two.
   let detection_cwd = cli_options.initial_cwd().to_path_buf();
   let detected_framework = if desktop_flags.source_file == "." {
-    super::framework::detect_framework(&detection_cwd)?
+    super::framework::detect_framework(&detection_cwd, desktop_flags.hmr)?
   } else {
     None
   };
@@ -600,6 +600,15 @@ async fn run_desktop_hmr(
   // reloads they didn't request).
   if desktop_flags.hmr {
     cmd.env("DENO_DESKTOP_HMR", &source_abs);
+    // For a detected framework, HMR is owned by the framework's own dev
+    // server (over websocket) — the entrypoint runs e.g. `next dev`.
+    // DENO_DESKTOP_DEV tells rt_desktop to skip Deno's V8-level HMR and to
+    // restore the CWD to the source dir so the dev server watches the real
+    // project files. Without it, rt_desktop would try (and fail) to hot-swap
+    // the framework's npm entrypoint, which isn't where the app code lives.
+    if framework.is_some() {
+      cmd.env("DENO_DESKTOP_DEV", "1");
+    }
   }
 
   // Wire up the unified DevTools multiplexer when --inspect is set.

@@ -79,14 +79,20 @@ pub fn find_framework_favicon(
 /// 1. Config-file based detection (highest priority)
 /// 2. Package.json dependency-based detection
 /// 3. deno.json import-based detection
+///
+/// When `dev` is true, frameworks that support it generate a dev-server
+/// entrypoint (with hot module reloading) instead of the production one.
+/// Frameworks without a dev variant fall back to their production
+/// entrypoint regardless of `dev`.
 pub fn detect_framework(
   dir: &Path,
+  dev: bool,
 ) -> Result<Option<FrameworkDetection>, AnyError> {
   // --- Config-file based detection (highest priority) ---
 
   // Next.js: next.config.{js,mjs,ts}
   if has_config_file(dir, "next.config") {
-    return Ok(Some(detect_nextjs(dir)?));
+    return Ok(Some(detect_nextjs(dir, dev)?));
   }
 
   // Fresh: fresh.gen.ts or _fresh/
@@ -164,8 +170,52 @@ fn deno_task_build() -> Vec<String> {
   vec![deno_exe(), "task".into(), "build".into()]
 }
 
-fn detect_nextjs(dir: &Path) -> Result<FrameworkDetection, AnyError> {
+fn detect_nextjs(
+  dir: &Path,
+  dev: bool,
+) -> Result<FrameworkDetection, AnyError> {
   let version = detect_package_version(dir, "next").unwrap_or(15);
+  if dev {
+    // Dev mode (`deno desktop --hmr`): run `next dev` so Next provides its
+    // own hot module reloading over websocket. The desktop runtime restores
+    // the CWD to the source directory (see DENO_DESKTOP_DEV in rt_desktop),
+    // so `next dev` reads project files and writes its `.next` build cache
+    // there — nothing needs to be embedded in the binary's VFS, and there is
+    // no build step to run up front.
+    //
+    // `nextDev(options, portSource, directory)`: `"default"` for portSource
+    // lets Next retry ports, and `Deno.cwd()` points it at the real source
+    // dir rather than the (empty) VFS root. The DENO_SERVE_ADDRESS override
+    // redirects Next's HTTP server onto the port the webview navigates to.
+    //
+    // hostname must be `127.0.0.1`: the desktop webview always loads from
+    // `http://127.0.0.1:<port>`, and Next 16's dev-resource cross-origin
+    // guard only allows requests whose host is `localhost`, an
+    // `allowedDevOrigins` entry, or the configured hostname. With `0.0.0.0`
+    // the `/_next/webpack-hmr` websocket is blocked and HMR silently stops
+    // working even though the page renders.
+    let entrypoint = format!(
+      r#"// @ts-nocheck
+import {{ nextDev }} from "npm:next@^{version}/dist/cli/next-dev.js";
+globalThis.addEventListener("unhandledrejection", (e) => {{
+  console.error("[entrypoint] Unhandled rejection:", e.reason);
+  if (e.reason?.stack) console.error("[entrypoint] Stack:", e.reason.stack);
+}});
+// Guard: skip for forked workers (child_process.fork sets NODE_CHANNEL_FD).
+// Workers use override_main_module to run their target script directly.
+if (!Deno.env.get("NODE_CHANNEL_FD")) {{
+  await nextDev({{ hostname: "127.0.0.1" }}, "default", Deno.cwd());
+}}
+"#,
+    );
+    return Ok(FrameworkDetection {
+      name: "Next.js",
+      entrypoint_code: entrypoint,
+      // Dev server builds on the fly from the source CWD; nothing to embed.
+      include_paths: vec![],
+      build_command: None,
+    });
+  }
   let entrypoint = format!(
     r#"// @ts-nocheck
 import {{ nextStart }} from "npm:next@^{version}/dist/cli/next-start.js";
@@ -481,7 +531,7 @@ mod tests {
   #[test]
   fn no_framework_empty_dir() {
     let dir = setup_dir();
-    let result = detect_framework(dir.path()).unwrap();
+    let result = detect_framework(dir.path(), false).unwrap();
     assert!(result.is_none());
   }
 
@@ -496,7 +546,7 @@ mod tests {
       r#"{"dependencies":{"next":"^15.0.0"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Next.js");
     assert_eq!(det.include_paths, vec![".next"]);
     assert!(det.entrypoint_code.contains("next@^15"));
@@ -507,11 +557,32 @@ mod tests {
   }
 
   #[test]
+  fn nextjs_dev_uses_next_dev() {
+    let dir = setup_dir();
+    fs::write(dir.path().join("next.config.js"), "").unwrap();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"dependencies":{"next":"^16.0.0"}}"#,
+    )
+    .unwrap();
+    let det = detect_framework(dir.path(), true).unwrap().unwrap();
+    assert_eq!(det.name, "Next.js");
+    // Dev mode runs `next dev`, not `next start`.
+    assert!(det.entrypoint_code.contains("nextDev"));
+    assert!(det.entrypoint_code.contains("next-dev.js"));
+    assert!(!det.entrypoint_code.contains("nextStart"));
+    // Dev server builds on the fly from the source CWD — nothing to embed,
+    // no up-front build step.
+    assert!(det.include_paths.is_empty());
+    assert!(det.build_command.is_none());
+  }
+
+  #[test]
   fn nextjs_always_builds() {
     let dir = setup_dir();
     fs::write(dir.path().join("next.config.js"), "").unwrap();
     fs::create_dir(dir.path().join(".next")).unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Next.js");
     assert!(det.build_command.is_some());
   }
@@ -520,7 +591,7 @@ mod tests {
   fn detects_nextjs_with_config_mjs() {
     let dir = setup_dir();
     fs::write(dir.path().join("next.config.mjs"), "").unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Next.js");
   }
 
@@ -528,7 +599,7 @@ mod tests {
   fn detects_nextjs_with_config_ts() {
     let dir = setup_dir();
     fs::write(dir.path().join("next.config.ts"), "").unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Next.js");
   }
 
@@ -541,7 +612,7 @@ mod tests {
       r#"{"dependencies":{"next":"^14.2.3"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert!(det.entrypoint_code.contains("next@^14"));
   }
 
@@ -550,7 +621,7 @@ mod tests {
     let dir = setup_dir();
     fs::write(dir.path().join("next.config.js"), "").unwrap();
     // no package.json
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert!(det.entrypoint_code.contains("next@^15"));
   }
 
@@ -558,7 +629,7 @@ mod tests {
   fn detects_fresh_gen_ts() {
     let dir = setup_dir();
     fs::write(dir.path().join("fresh.gen.ts"), "").unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Fresh");
     assert!(det.include_paths.is_empty());
     // no _fresh/server.js => Fresh 1.x
@@ -570,7 +641,7 @@ mod tests {
     let dir = setup_dir();
     fs::create_dir_all(dir.path().join("_fresh")).unwrap();
     fs::write(dir.path().join("_fresh/server.js"), "").unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Fresh");
     assert!(det.entrypoint_code.contains("_fresh/server.js"));
     let cmd = det.build_command.unwrap();
@@ -581,7 +652,7 @@ mod tests {
   fn fresh1_has_no_build_command() {
     let dir = setup_dir();
     fs::write(dir.path().join("fresh.gen.ts"), "").unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Fresh");
     assert!(det.build_command.is_none());
   }
@@ -597,7 +668,7 @@ mod tests {
       r#"{"tasks":{"start":"deno run -A main.ts"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Fresh");
     // Fresh 1.x uses main.ts, not _fresh/server.js
     assert!(det.entrypoint_code.contains("main.ts"));
@@ -613,7 +684,7 @@ mod tests {
       r#"{"imports":{"@fresh/core":"jsr:@fresh/core@^2"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Fresh");
     // Should be Fresh 2 because @fresh/core is in imports
     assert!(det.entrypoint_code.contains("_fresh/server.js"));
@@ -624,7 +695,7 @@ mod tests {
   fn detects_astro() {
     let dir = setup_dir();
     fs::write(dir.path().join("astro.config.mjs"), "").unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Astro");
     assert!(det.entrypoint_code.contains("dist/server/entry.mjs"));
     assert_eq!(det.include_paths, vec!["dist"]);
@@ -637,7 +708,7 @@ mod tests {
   fn detects_nuxt() {
     let dir = setup_dir();
     fs::write(dir.path().join("nuxt.config.ts"), "").unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Nuxt");
     assert_eq!(det.include_paths, vec![".output"]);
     let cmd = det.build_command.unwrap();
@@ -650,7 +721,7 @@ mod tests {
     fs::write(dir.path().join("nuxt.config.ts"), "").unwrap();
     fs::create_dir_all(dir.path().join(".output/server")).unwrap();
     fs::write(dir.path().join(".output/server/index.ts"), "").unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert!(det.entrypoint_code.contains("index.ts"));
   }
 
@@ -660,7 +731,7 @@ mod tests {
     fs::write(dir.path().join("svelte.config.js"), "").unwrap();
     fs::create_dir_all(dir.path().join(".deno-deploy")).unwrap();
     fs::write(dir.path().join(".deno-deploy/server.ts"), "").unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "SvelteKit");
     assert!(det.entrypoint_code.contains(".deno-deploy/server.ts"));
     assert_eq!(det.include_paths, vec![".deno-deploy"]);
@@ -674,7 +745,7 @@ mod tests {
     fs::write(dir.path().join("svelte.config.ts"), "").unwrap();
     fs::create_dir_all(dir.path().join(".output/server")).unwrap();
     fs::write(dir.path().join(".output/server/index.mjs"), "").unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "SvelteKit");
     assert_eq!(det.include_paths, vec![".output"]);
     assert!(det.build_command.is_some());
@@ -689,7 +760,7 @@ mod tests {
       "import adapter from 'svelte-adapter-deno';\nexport default { kit: { adapter: adapter() } };\n",
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "SvelteKit");
     assert!(det.entrypoint_code.contains("build/index.js"));
     assert_eq!(det.include_paths, vec!["build/client"]);
@@ -705,7 +776,7 @@ mod tests {
     fs::create_dir_all(dir.path().join("build/prerendered")).unwrap();
     fs::write(dir.path().join("build/index.js"), "").unwrap();
     fs::write(dir.path().join("build/handler.js"), "").unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "SvelteKit");
     assert!(det.entrypoint_code.contains("build/index.js"));
     assert_eq!(det.include_paths, vec!["build/client", "build/prerendered"]);
@@ -720,7 +791,7 @@ mod tests {
       "// uses a nitro-based adapter\nexport default { kit: {} };\n",
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "SvelteKit");
     assert_eq!(det.include_paths, vec![".output"]);
   }
@@ -736,7 +807,7 @@ mod tests {
       "import adapter from '@sveltejs/adapter-vercel';\nexport default { kit: { adapter: adapter() } };\n",
     )
     .unwrap();
-    assert!(detect_framework(dir.path()).unwrap().is_none());
+    assert!(detect_framework(dir.path(), false).unwrap().is_none());
   }
 
   // --- Package.json dependency-based detection ---
@@ -749,7 +820,7 @@ mod tests {
       r#"{"dependencies":{"@remix-run/react":"^2.0.0"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Remix");
     assert_eq!(det.include_paths, vec!["build"]);
     let cmd = det.build_command.unwrap();
@@ -764,7 +835,7 @@ mod tests {
       r#"{"devDependencies":{"@remix-run/dev":"^2.0.0"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Remix");
   }
 
@@ -776,7 +847,7 @@ mod tests {
       r#"{"dependencies":{"@solidjs/start":"^1.0.0"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "SolidStart");
     assert_eq!(det.include_paths, vec![".output"]);
     let cmd = det.build_command.unwrap();
@@ -791,7 +862,7 @@ mod tests {
       r#"{"dependencies":{"@tanstack/react-start":"^1.0.0"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "TanStack Start");
   }
 
@@ -803,7 +874,7 @@ mod tests {
       r#"{"dependencies":{"@tanstack/solid-start":"^1.0.0"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "TanStack Start");
   }
 
@@ -814,7 +885,7 @@ mod tests {
     let dir = setup_dir();
     fs::write(dir.path().join("vite.config.js"), "").unwrap();
     fs::write(dir.path().join("server.js"), "").unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Vite");
     assert!(det.entrypoint_code.contains("server.js"));
     assert_eq!(det.include_paths, vec!["dist"]);
@@ -827,7 +898,7 @@ mod tests {
     let dir = setup_dir();
     fs::write(dir.path().join("vite.config.ts"), "").unwrap();
     fs::write(dir.path().join("server.ts"), "").unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Vite");
     assert!(det.entrypoint_code.contains("server.ts"));
   }
@@ -837,7 +908,7 @@ mod tests {
     let dir = setup_dir();
     fs::write(dir.path().join("vite.config.js"), "").unwrap();
     // no server.js/ts/mjs
-    let result = detect_framework(dir.path()).unwrap();
+    let result = detect_framework(dir.path(), false).unwrap();
     assert!(result.is_none());
   }
 
@@ -851,7 +922,7 @@ mod tests {
       r#"{"imports":{"fresh":"jsr:@fresh/core"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Fresh");
   }
 
@@ -863,7 +934,7 @@ mod tests {
       r#"{"imports":{"@fresh/core":"jsr:@fresh/core@^2"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Fresh");
   }
 
@@ -875,7 +946,7 @@ mod tests {
       r#"{"imports":{"fresh":"jsr:@fresh/core"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Fresh");
   }
 
@@ -888,7 +959,7 @@ mod tests {
       "{\n  // This is a comment\n  \"imports\": {\n    \"fresh\": \"jsr:@fresh/core\"\n  }\n}\n",
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Fresh");
   }
 
@@ -904,7 +975,7 @@ mod tests {
       r#"{"dependencies":{"@remix-run/react":"^2.0.0"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Next.js");
   }
 
@@ -918,7 +989,7 @@ mod tests {
       r#"{"dependencies":{"@solidjs/start":"^1.0.0"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "SolidStart");
   }
 
@@ -931,7 +1002,7 @@ mod tests {
       r#"{"imports":{"fresh":"jsr:@fresh/core"}}"#,
     )
     .unwrap();
-    let det = detect_framework(dir.path()).unwrap().unwrap();
+    let det = detect_framework(dir.path(), false).unwrap().unwrap();
     assert_eq!(det.name, "Astro");
   }
 

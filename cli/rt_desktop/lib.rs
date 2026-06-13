@@ -1124,25 +1124,39 @@ laufey::main!(|| {
   // forks child/worker processes, they re-execute this dylib. Detect
   // forked workers and run them headless (no Laufey window).
   //
-  // A forked worker is recognized by the *combination* of:
-  //   1. argv shaped like `<exe> run [flags…] script.js …` (i.e.
+  // A forked worker is recognized by any of:
+  //   1. A standalone (compiled) `child_process.fork()`: the parent passes
+  //      the target module via the internal `DENO_INTERNAL_CHILD_ENTRYPOINT`
+  //      env var (see ext/node/polyfills/child_process.ts) — there is no
+  //      `run` subcommand for a compiled binary — together with the
+  //      `NODE_CHANNEL_FD` that every fork() wires up for IPC. This is the
+  //      desktop case: the dylib is a standalone binary, so a framework dev
+  //      server (e.g. `next dev`, which forks its HTTP server into a child)
+  //      lands here. Without it the child would boot the full windowed
+  //      runtime and crash creating a second CEF window.
+  //   2. argv shaped like `<exe> run [flags…] script.js …` (i.e.
   //      `extract_fork_script_path` returns `Some`), OR
-  //   2. argv shaped like `<exe> run …` *and* one of the worker env
+  //   3. argv shaped like `<exe> run …` *and* one of the worker env
   //      vars set by the parent dev server (NODE_CHANNEL_FD,
   //      NEXT_PRIVATE_WORKER).
   //
   // The bare env-var check used to be enough, but a user shell that
   // already had NODE_CHANNEL_FD set (e.g. running inside another forked
   // process, Jest, pnpm) would silently take the headless path and
-  // never show a window. Requiring the `run` argv shape rules that out:
-  // the Laufey backend never invokes us with `run` as argv[1].
+  // never show a window. Requiring either the internal fork marker or the
+  // `run` argv shape rules that out: the Laufey backend never sets
+  // `DENO_INTERNAL_CHILD_ENTRYPOINT` nor invokes us with `run` as argv[1].
   let args: Vec<_> = env::args_os().collect();
   let argv_run = args
     .get(1)
     .and_then(|a| a.to_str())
     .map(|s| s == "run")
     .unwrap_or(false);
-  let is_worker = extract_fork_script_path(&args).is_some()
+  let is_standalone_fork = env::var("DENO_INTERNAL_CHILD_ENTRYPOINT")
+    .is_ok_and(|v| !v.is_empty())
+    && env::var("NODE_CHANNEL_FD").is_ok();
+  let is_worker = is_standalone_fork
+    || extract_fork_script_path(&args).is_some()
     || (argv_run
       && (env::var("NODE_CHANNEL_FD").is_ok()
         || env::var("NEXT_PRIVATE_WORKER").is_ok()));
