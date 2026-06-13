@@ -418,6 +418,7 @@ fn get_resolved_lax_css_config(
     new_line_kind: dprint_core::configuration::NewLineKind::LineFeed,
     ignore_node_comment_text: "deno-fmt-ignore".to_string(),
     ignore_file_comment_text: "deno-fmt-ignore-file".to_string(),
+    single_line: false,
   }
 }
 
@@ -470,19 +471,17 @@ pub fn format_html(
       let path = file_path.with_file_name(file_name);
       match hints.ext {
         "css" | "scss" | "less" => {
-          if hints.attr {
-            // style attribute contents are kept as written
-            Ok(Cow::from(text))
-          } else {
-            let mut lax_css_config = get_resolved_lax_css_config(fmt_options);
-            lax_css_config.line_width = hints.print_width as u32;
-            lax_css::format_text(&path, text, &lax_css_config).map(
-              |formatted| match formatted {
-                Some(formatted) => Cow::from(formatted),
-                None => Cow::from(text),
-              },
-            )
-          }
+          let mut lax_css_config = get_resolved_lax_css_config(fmt_options);
+          lax_css_config.line_width = hints.print_width as u32;
+          // inline style="" attributes cannot contain line breaks, so format
+          // them on a single line, normalizing whitespace without wrapping
+          lax_css_config.single_line = hints.attr;
+          lax_css::format_text(&path, text, &lax_css_config).map(|formatted| {
+            match formatted {
+              Some(formatted) => Cow::from(formatted),
+              None => Cow::from(text),
+            }
+          })
         }
         "json" | "jsonc" => {
           let mut json_config = get_resolved_json_config(fmt_options);
@@ -636,6 +635,7 @@ fn format_embedded_css(
     new_line_kind: dprint_core::configuration::NewLineKind::LineFeed,
     ignore_node_comment_text: "deno-fmt-ignore".to_string(),
     ignore_file_comment_text: "deno-fmt-ignore-file".to_string(),
+    single_line: false,
   };
   let Some(formatted) =
     lax_css::format_text(Path::new("embedded.css"), text, &lax_css_config)?
