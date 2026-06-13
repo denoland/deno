@@ -676,6 +676,14 @@ function styleText(format, text, options) {
         stream,
       );
     }
+    // Node's util.styleText returns the text unchanged when the target stream
+    // is not a TTY, so callers can pass any writable and only get color when
+    // the destination would render it.
+    if (
+      stream !== undefined && stream !== null && !stream.isTTY
+    ) {
+      return text;
+    }
   }
 
   const formatArray = ArrayIsArray(format) ? format : [format];
