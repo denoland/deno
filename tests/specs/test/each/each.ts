@@ -40,3 +40,22 @@ Deno.test.each([["a"], ["b"]])(
     assertEquals(typeof s, "string");
   },
 );
+
+// `%d`/`%i` truncate toward zero, `%f` keeps the decimal part, and `%%` is a
+// literal percent sign. Each token consumes one positional value in order.
+Deno.test.each([[3.9, 7.2, 2.5]])(
+  "trunc %d, int %i, float %f, pct %%",
+  (a, b, c) => {
+    assertEquals(a + b + c, 13.6);
+  },
+);
+
+// `%j` JSON-encodes the case value (object cases are passed as one argument).
+Deno.test.each([{ k: 1 }])("json %j", (obj) => {
+  assertEquals(obj.k, 1);
+});
+
+// `%o`/`%O` also JSON-encode, consuming positional values in order.
+Deno.test.each([[{ k: 2 }, { m: 3 }]])("object %o and %O", (x, y) => {
+  assertEquals(x.k + y.m, 5);
+});
