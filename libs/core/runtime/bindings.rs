@@ -654,8 +654,12 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
       continue;
     }
 
-    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
-    let mut op_fn = op_ctx_function(scope, op_ctx, constructor_behavior, false);
+    let mut op_fn = op_ctx_function(
+      scope,
+      op_ctx,
+      v8::ConstructorBehavior::Allow,
+      false,
+    );
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     if op_ctx.decl.is_async {
