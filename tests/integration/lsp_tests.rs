@@ -1955,6 +1955,18 @@ fn lsp_inferred_type() {
   assert!(text.len() > 500, "{text}");
   assert_eq!(res["range"], json!(file.range_of("inferred")));
 
+  let command_res = client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.inferredType",
+      "arguments": [{
+        "textDocument": file.identifier(),
+        "position": file.range_of("inferred").start,
+      }],
+    }),
+  );
+  assert_eq!(command_res, res);
+
   let code_actions = client.write_request(
     "textDocument/codeAction",
     json!({
