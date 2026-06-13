@@ -149,6 +149,8 @@ fn io_error_to_uv(err: &std::io::Error) -> i32 {
     #[cfg(windows)]
     Some(code) if code == libc::EINVAL || code == 10022 => uv_compat::UV_EINVAL,
     #[cfg(windows)]
+    Some(10049) => uv_compat::UV_EADDRNOTAVAIL,
+    #[cfg(windows)]
     Some(10040) => -4065,
     Some(code @ (40 | 90)) => -code,
     Some(code) => -code,
