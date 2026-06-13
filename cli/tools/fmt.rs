@@ -692,64 +692,55 @@ fn format_embedded_sql(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
 ) -> deno_core::anyhow::Result<Option<String>> {
-  Ok(Some(format_sql_text(
-    text,
+  let sql_config = get_resolved_lax_sql_config(
+    config.line_width,
     config.use_tabs,
     config.indent_width,
-  )))
+  );
+  let Some(formatted) =
+    lax_sql::format_text(Path::new("embedded.sql"), text, &sql_config)?
+  else {
+    return Ok(None);
+  };
+  let formatted = formatted.trim_end_matches('\n');
+  Ok(if formatted == text {
+    None
+  } else {
+    Some(formatted.to_string())
+  })
 }
 
-fn format_sql_text(text: &str, use_tabs: bool, indent_width: u8) -> String {
-  let mut text = sqlformat::format(
-    text,
-    &sqlformat::QueryParams::None,
-    &sqlformat::FormatOptions {
-      ignore_case_convert: None,
-      indent: if use_tabs {
-        sqlformat::Indent::Tabs
-      } else {
-        sqlformat::Indent::Spaces(indent_width)
-      },
-      // leave one blank line between queries.
-      lines_between_queries: 2,
-      uppercase: Some(true),
-    },
-  );
-  // Add single new line to the end of text.
-  text.push('\n');
-  text
+fn get_resolved_lax_sql_config(
+  line_width: u32,
+  use_tabs: bool,
+  indent_width: u8,
+) -> lax_sql::configuration::Configuration {
+  lax_sql::configuration::Configuration {
+    line_width,
+    use_tabs,
+    indent_width,
+    new_line_kind: dprint_core::configuration::NewLineKind::LineFeed,
+    // matches the previous sqlformat behavior of uppercasing keywords
+    keyword_case: lax_sql::configuration::KeywordCase::Upper,
+    clause_style: lax_sql::configuration::ClauseStyle::Fill,
+    ignore_node_comment_text: "deno-fmt-ignore".to_string(),
+    ignore_file_comment_text: "deno-fmt-ignore-file".to_string(),
+  }
 }
 
 pub fn format_sql(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
-  let ignore_file = file_text
-    .lines()
-    .take_while(|line| line.starts_with("--"))
-    .any(|line| {
-      line
-        .strip_prefix("--")
-        .unwrap()
-        .trim()
-        .starts_with("deno-fmt-ignore-file")
-    });
-
-  if ignore_file {
-    return Ok(None);
-  }
-
-  let formatted_str = format_sql_text(
+  lax_sql::format_text(
+    Path::new("file.sql"),
     file_text,
-    fmt_options.use_tabs.unwrap_or_default(),
-    fmt_options.indent_width.unwrap_or(2),
-  );
-
-  Ok(if formatted_str == file_text {
-    None
-  } else {
-    Some(formatted_str)
-  })
+    &get_resolved_lax_sql_config(
+      fmt_options.line_width.unwrap_or(80),
+      fmt_options.use_tabs.unwrap_or_default(),
+      fmt_options.indent_width.unwrap_or(2),
+    ),
+  )
 }
 
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, IPYNB or SQL file.

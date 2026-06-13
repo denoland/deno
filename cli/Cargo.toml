@@ -128,6 +128,7 @@ indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
 keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native", "vendored"] }
 lax-css.workspace = true
+lax-sql.workspace = true
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
@@ -159,7 +160,6 @@ serde_repr.workspace = true
 sha2.workspace = true
 shlex.workspace = true
 spki = { workspace = true, features = ["pem"] }
-sqlformat.workspace = true
 strsim.workspace = true
 sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "serde_json", "real", "strip_unc", "winapi"] }
 tar.workspace = true
