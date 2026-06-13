@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-read unstable_canvas2d.js",
+  "output": "unstable_canvas2d.disabled.out"
+}

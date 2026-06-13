@@ -97,6 +97,10 @@ fn run_test(test: &CollectedTest) -> TestResult {
     deno = deno.arg("--unstable-bundle");
   }
 
+  if test.name.ends_with("::canvas2d_test") {
+    deno = deno.arg("--unstable-canvas2d");
+  }
+
   if test.name.ends_with("::cron_test") {
     deno = deno.arg("--unstable-cron");
   }
