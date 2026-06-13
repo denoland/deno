@@ -50,23 +50,18 @@ pub fn human_download_size(byte_count: u64, total_bytes: u64) -> String {
 /// A function that converts an elapsed [`Duration`] to a string that
 /// represents a human readable version of that time.
 ///
-/// Durations under a millisecond are rendered with fractional millisecond
-/// precision (e.g. `0.5ms`, `0.052ms`) so that very fast operations aren't
-/// reported as `0ms`.
+/// Durations under a millisecond are rendered in microseconds (`µs`) or
+/// nanoseconds (`ns`) so that very fast operations aren't reported as `0ms`.
 pub fn human_elapsed(elapsed: Duration) -> String {
-  let millis = elapsed.as_millis();
-  if millis == 0 {
-    let micros = elapsed.as_micros();
-    if micros == 0 {
-      return "0ms".to_string();
-    }
-    // `micros` is in `1..1000` here. Render it as fractional milliseconds,
-    // trimming trailing zeros so e.g. `523µs` -> `0.523ms`, `50µs` -> `0.05ms`
-    // and `500µs` -> `0.5ms`.
-    let fraction = format!("{micros:03}");
-    return format!("0.{}ms", fraction.trim_end_matches('0'));
+  let nanos = elapsed.as_nanos();
+  if nanos < 1_000 {
+    return format!("{nanos}ns");
   }
-  human_elapsed_with_ms_limit(millis, 1_000)
+  let micros = elapsed.as_micros();
+  if micros < 1_000 {
+    return format!("{micros}µs");
+  }
+  human_elapsed_with_ms_limit(elapsed.as_millis(), 1_000)
 }
 
 pub fn human_elapsed_with_ms_limit(elapsed: u128, ms_limit: u128) -> String {
@@ -166,14 +161,13 @@ mod tests {
 
   #[test]
   fn test_human_elapsed_sub_millisecond() {
-    assert_eq!(human_elapsed(Duration::ZERO), "0ms");
-    assert_eq!(human_elapsed(Duration::from_nanos(500)), "0ms");
-    assert_eq!(human_elapsed(Duration::from_micros(1)), "0.001ms");
-    assert_eq!(human_elapsed(Duration::from_micros(5)), "0.005ms");
-    assert_eq!(human_elapsed(Duration::from_micros(50)), "0.05ms");
-    assert_eq!(human_elapsed(Duration::from_micros(100)), "0.1ms");
-    assert_eq!(human_elapsed(Duration::from_micros(523)), "0.523ms");
-    assert_eq!(human_elapsed(Duration::from_micros(500)), "0.5ms");
-    assert_eq!(human_elapsed(Duration::from_micros(999)), "0.999ms");
+    assert_eq!(human_elapsed(Duration::ZERO), "0ns");
+    assert_eq!(human_elapsed(Duration::from_nanos(23)), "23ns");
+    assert_eq!(human_elapsed(Duration::from_nanos(999)), "999ns");
+    assert_eq!(human_elapsed(Duration::from_nanos(1000)), "1µs");
+    assert_eq!(human_elapsed(Duration::from_micros(86)), "86µs");
+    assert_eq!(human_elapsed(Duration::from_nanos(86_500)), "86µs");
+    assert_eq!(human_elapsed(Duration::from_micros(999)), "999µs");
+    assert_eq!(human_elapsed(Duration::from_micros(1000)), "1ms");
   }
 }
