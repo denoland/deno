@@ -143,13 +143,15 @@ impl UDP {
 }
 
 const UV_UNKNOWN: i32 = -4094;
+#[cfg(windows)]
+const UV_EADDRNOTAVAIL: i32 = -4090;
 
 fn io_error_to_uv(err: &std::io::Error) -> i32 {
   match err.raw_os_error() {
     #[cfg(windows)]
     Some(code) if code == libc::EINVAL || code == 10022 => uv_compat::UV_EINVAL,
     #[cfg(windows)]
-    Some(10049) => uv_compat::UV_EADDRNOTAVAIL,
+    Some(10049) => UV_EADDRNOTAVAIL,
     #[cfg(windows)]
     Some(10040) => -4065,
     Some(code @ (40 | 90)) => -code,
