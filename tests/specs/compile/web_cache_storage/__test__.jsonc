@@ -1,7 +1,9 @@
 {
   "tempDir": true,
-  // Enabling the cache requires a resolvable app-data dir; redirect it into
-  // the temp dir to keep the run hermetic.
+  // The `caches` API is only enabled once a storage key resolves, which in a
+  // compiled binary requires a resolvable app-data dir; redirect it into the
+  // temp dir so this test controls whether the cache is available. (The cache
+  // contents themselves live under the system temp dir, not the app-data dir.)
   "envs": {
     "HOME": "$PWD",
     "USERPROFILE": "$PWD",

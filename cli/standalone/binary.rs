@@ -208,20 +208,49 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 }
 
 /// Validate a user-provided `--app-name`. The name becomes a single directory
-/// component under the platform's app data directory at runtime, so reject
-/// anything empty, `.`/`..`, or containing a path separator to keep storage
-/// from escaping or colliding with that directory. Done here so the user gets
-/// a clear compile-time error instead of a surprising store location.
+/// component under the platform's app data directory at runtime. Because a
+/// binary can be cross-compiled, validate against the union of what every
+/// target OS allows so the baked identity resolves to one unambiguous
+/// directory component everywhere, rather than escaping the directory or
+/// failing on the target's filesystem. Done here so the user gets a clear
+/// compile-time error instead of a surprising (or unusable) store location.
 fn validate_app_name(app_name: &str) -> Result<(), AnyError> {
-  if app_name.is_empty()
-    || app_name == "."
-    || app_name == ".."
-    || app_name.contains(['/', '\\'])
+  // Windows reserved device names, matched case-insensitively against the
+  // portion before the first `.` (so `nul`, `NUL`, and `nul.txt` all match).
+  const RESERVED_NAMES: [&str; 22] = [
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6",
+    "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6",
+    "lpt7", "lpt8", "lpt9",
+  ];
+
+  let reason = if app_name.is_empty() {
+    Some("must not be empty")
+  } else if app_name == "." || app_name == ".." {
+    Some("must not be `.` or `..`")
+  } else if app_name
+    // `/` and `\` are path separators; `<>:"|?*` are reserved on Windows;
+    // control characters are rejected by the filesystem.
+    .contains(|c: char| {
+      matches!(c, '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*')
+        || c.is_control()
+    })
   {
-    bail!(
-      "Invalid `--app-name` value {:?}: must not be empty, `.`, `..`, or contain path separators.",
-      app_name,
-    );
+    Some("must not contain path separators or any of `<>:\"|?*`")
+  } else if app_name.ends_with('.') || app_name.ends_with(' ') {
+    // Windows silently strips trailing dots and spaces, which would change the
+    // identity out from under the user.
+    Some("must not end with a `.` or a space")
+  } else if {
+    let stem = app_name.split('.').next().unwrap_or(app_name);
+    RESERVED_NAMES.iter().any(|n| stem.eq_ignore_ascii_case(n))
+  } {
+    Some("must not be a reserved device name (e.g. `CON`, `NUL`, `COM1`)")
+  } else {
+    None
+  };
+
+  if let Some(reason) = reason {
+    bail!("Invalid `--app-name` value {:?}: {}.", app_name, reason);
   }
   Ok(())
 }

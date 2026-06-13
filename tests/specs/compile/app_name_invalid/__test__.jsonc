@@ -31,6 +31,45 @@
       ],
       "output": "error.out",
       "exitCode": 1
+    },
+    "reserved_char": {
+      "args": [
+        "compile",
+        "-A",
+        "--app-name",
+        "foo:bar",
+        "--output",
+        "out",
+        "main.ts"
+      ],
+      "output": "error.out",
+      "exitCode": 1
+    },
+    "trailing_dot": {
+      "args": [
+        "compile",
+        "-A",
+        "--app-name",
+        "foo.",
+        "--output",
+        "out",
+        "main.ts"
+      ],
+      "output": "error.out",
+      "exitCode": 1
+    },
+    "reserved_name": {
+      "args": [
+        "compile",
+        "-A",
+        "--app-name",
+        "nul",
+        "--output",
+        "out",
+        "main.ts"
+      ],
+      "output": "error.out",
+      "exitCode": 1
     }
   }
 }

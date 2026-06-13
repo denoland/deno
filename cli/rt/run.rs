@@ -1428,6 +1428,10 @@ pub async fn run(
   // later renamed. Recompiling with a different `--output`/`--app-name` starts
   // a fresh store. If we can't resolve a data directory we leave both pieces
   // unset and keep the in-memory fallback.
+  //
+  // `metadata.app_name` is always set by binaries this version produces; the
+  // fallback to the executable file stem only matters for binaries compiled
+  // before the field existed.
   let app_name = metadata.app_name.unwrap_or_else(|| {
     std::env::current_exe()
       .ok()
