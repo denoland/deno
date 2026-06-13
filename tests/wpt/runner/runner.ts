@@ -140,6 +140,7 @@ async function runSingleTestInner(
       "run",
       "-A",
       "--unstable-webgpu",
+      "--unstable-canvas2d",
       "--unstable-net",
       "--v8-flags=--expose-gc",
     ];
@@ -224,6 +225,24 @@ function getShim(test: string): string {
 
   shim.push("globalThis.window = globalThis;");
 
+  // Give canvas tests that run on the main thread a minimal `document` so
+  // that testharness.js selects the window test environment and
+  // `document.fonts` works. `parent` stops the window traversal of
+  // testharness.js, and the matching `load` event is dispatched at the end
+  // of the bundle (see generateBundle).
+  if (test.includes("/html/canvas/")) {
+    shim.push(`
+      globalThis.parent = globalThis;
+      if (globalThis.document === undefined) {
+        globalThis.document = {
+          fonts: Deno.fonts,
+          // testharness.js looks for <meta name=timeout> elements.
+          getElementsByTagName: () => [],
+        };
+      }
+    `);
+  }
+
   if (test.includes("streams/transferable")) {
     shim.push(`
       {
@@ -289,6 +308,15 @@ async function generateBundle(location: URL): Promise<string> {
       scriptContents.push([url.href, shim]);
       scriptContents.push([url.href, script.textContent]);
     }
+  }
+
+  // The window test environment of testharness.js waits for the `load`
+  // event before it considers the test files complete.
+  if (location.pathname.includes("/html/canvas/")) {
+    scriptContents.push([
+      new URL("#load", location).href,
+      "globalThis.dispatchEvent(new Event('load'));",
+    ]);
   }
 
   return scriptContents.map(([url, contents]) => `
