@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "tests": {
     "format": {
       "args": "fmt -",
