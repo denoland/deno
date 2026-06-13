@@ -10,6 +10,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_runtime::UnconfiguredRuntime;
+use tokio_util::sync::CancellationToken;
 
 use super::run::check_permission_before_script;
 use super::run::maybe_npm_install;
@@ -109,32 +110,42 @@ async fn do_serve(
     c => c,
   };
 
-  let main = deno_core::unsync::spawn(async move { worker.run().await });
+  // If this future is dropped before completing (e.g. the file watcher
+  // restarting on a file change), the guard cancels the token so the worker
+  // threads shut down instead of continuing to serve the old code.
+  let shutdown_token = CancellationToken::new();
+  let _shutdown_guard = shutdown_token.clone().drop_guard();
 
   let mut channels = Vec::with_capacity(worker_count);
   for i in 0..worker_count {
     let worker_factory = worker_factory.clone();
     let main_module = main_module.clone();
+    let shutdown_token = shutdown_token.clone();
     let (tx, rx) = tokio::sync::oneshot::channel();
     channels.push(rx);
     std::thread::Builder::new()
       .name(format!("serve-worker-{}", i + 1))
       .spawn(move || {
         deno_runtime::tokio_util::create_and_run_current_thread(async move {
-          let result = run_worker(i, worker_factory, main_module, hmr).await;
+          let result = tokio::select! {
+            result = run_worker(i, worker_factory, main_module, hmr) => result,
+            _ = shutdown_token.cancelled() => Ok(0),
+          };
           let _ = tx.send(result);
         });
       })?;
   }
 
+  // Poll the main worker directly instead of spawning it so that dropping
+  // this future cancels it as well.
   let (main_result, worker_results) = tokio::try_join!(
-    main.map_err(AnyError::from),
+    worker.run().map_err(AnyError::from),
     deno_core::futures::future::try_join_all(
       channels.into_iter().map(|r| r.map_err(AnyError::from))
     )
   )?;
 
-  let mut exit_code = main_result?;
+  let mut exit_code = main_result;
   for res in worker_results {
     let ret = res?;
     if ret != 0 && exit_code == 0 {

@@ -1599,7 +1599,8 @@ declare namespace Deno {
    *
    * If no exit code is supplied then Deno will exit with return code of `0`.
    *
-   * In worker contexts this is an alias to `self.close();`.
+   * In worker contexts this closes the current worker using Deno's internal
+   * worker close operation. It does not call the current `self.close` property.
    *
    * ```ts
    * Deno.exit(5);

@@ -593,6 +593,7 @@ async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
     headerList: resp.headers,
     status: resp.status,
     body: null,
+    bodyDecoded: resp.bodyDecoded,
     statusMessage: resp.statusText,
     type: "basic",
     url() {
