@@ -27,6 +27,11 @@
       "cwd": "redirect",
       "args": "run -A main.mjs",
       "output": "redirect/main.out"
+    },
+    "resolve_cache_bust": {
+      "cwd": "resolve_cache_bust",
+      "args": "run -A main.mjs",
+      "output": "resolve_cache_bust/main.out"
     }
   }
 }
