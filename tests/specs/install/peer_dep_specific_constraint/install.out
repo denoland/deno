@@ -1,6 +1,7 @@
 Download http://localhost:4260/@denotest%2fadd
 Download http://localhost:4260/@denotest%2fpeer-dep-specific-constraint
-Warning The following peer dependency issues were found:
+Warning The following peer dependency issues were found.
+  To resolve, pin the affected package(s) under "overrides" in your package.json (https://docs.npmjs.com/cli/v10/configuring-npm/package-json#overrides):
 └─┬ @denotest/peer-dep-specific-constraint@1.0.0
   └── peer @denotest/add@0.5: resolved to 1.0.0
 

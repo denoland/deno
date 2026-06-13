@@ -410,7 +410,8 @@ fn peer_dep_diagnostics_to_display_tree(
   // now output it
   let mut root_node = DisplayTreeNode {
     text: format!(
-      "{} The following peer dependency issues were found:",
+      "{} The following peer dependency issues were found.\n\
+        To resolve, pin the affected package(s) under \"overrides\" in your package.json (https://docs.npmjs.com/cli/v10/configuring-npm/package-json#overrides):",
       colors::yellow("Warning")
     ),
     children: Vec::new(),
