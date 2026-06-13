@@ -4866,7 +4866,7 @@ Deno.test("Deno.HttpServer is not thenable", async () => {
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { run: true, read: true, write: true },
+    permissions: { run: true, read: true, write: true, net: true },
   },
   async function httpServerUnixDomainSocket() {
     const { promise, resolve } = Promise.withResolvers<Deno.UnixAddr>();
