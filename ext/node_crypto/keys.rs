@@ -6,16 +6,25 @@ use std::cell::RefCell;
 use base64::Engine;
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
+use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
-use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
+use digest::Digest;
+use digest::FixedOutputReset;
 use ed25519_dalek::pkcs8::BitStringRef;
 use elliptic_curve::JwkEcKey;
+use hmac::Hmac;
+use hmac::Mac;
 use num_bigint::BigInt;
 use num_traits::FromPrimitive as _;
+use p12::AlgorithmIdentifier as Pkcs12AlgorithmIdentifier;
+use p12::CertBag as Pkcs12CertBag;
+use p12::ContentInfo as Pkcs12ContentInfo;
 use p12::PFX as Pkcs12;
+use p12::SafeBag as Pkcs12SafeBag;
+use p12::SafeBagKind as Pkcs12SafeBagKind;
 use pkcs8::DecodePrivateKey as _;
 use pkcs8::Document;
 use pkcs8::EncodePrivateKey as _;
@@ -805,6 +814,96 @@ pub enum AsymmetricPublicKeyError {
   UnsupportedPrivateKeyOid,
 }
 
+trait RsaPublicKeyExt: Sized {
+  /// Parse `RSAPublicKey` DER (`SEQUENCE { INTEGER n, INTEGER e }`) the way
+  /// Node/OpenSSL do, treating the INTEGER payloads as unsigned. This accepts
+  /// moduli that omit the leading `0x00` byte strict DER requires for positive
+  /// values with the high bit set, which the `rsa` crate rejects as malformed.
+  /// The length encoding is still validated as strict DER; only the
+  /// signed/unsigned interpretation of the integer payload is relaxed.
+  ///
+  /// Returns `None` for input malformed by any other rule. Intended as a
+  /// fallback once the strict parser has already rejected the input:
+  ///
+  /// ```ignore
+  /// RsaPublicKey::from_pkcs1_der(der)
+  ///   .or_else(|err| RsaPublicKey::from_pkcs1_der_lenient(der).ok_or(err))
+  /// ```
+  fn from_pkcs1_der_lenient(der: &[u8]) -> Option<Self>;
+}
+
+impl RsaPublicKeyExt for RsaPublicKey {
+  fn from_pkcs1_der_lenient(der: &[u8]) -> Option<Self> {
+    let mut pos = 0;
+    let sequence_end = read_der_tag_and_len(der, &mut pos, 0x30)?;
+    if sequence_end != der.len() {
+      return None;
+    }
+
+    let n = read_lenient_positive_integer(der, &mut pos, sequence_end)?;
+    let e = read_lenient_positive_integer(der, &mut pos, sequence_end)?;
+    if pos != sequence_end {
+      return None;
+    }
+
+    RsaPublicKey::new(n, e).ok()
+  }
+}
+
+fn read_lenient_positive_integer(
+  der: &[u8],
+  pos: &mut usize,
+  limit: usize,
+) -> Option<rsa::BigUint> {
+  let end = read_der_tag_and_len(der, pos, 0x02)?;
+  if end > limit || end == *pos {
+    return None;
+  }
+
+  let payload = &der[*pos..end];
+  *pos = end;
+  // Reject all-zero payloads: a valid RSA modulus or public exponent is
+  // strictly positive, and BigUint::from_bytes_be(&[]) would produce 0.
+  let first_non_zero = payload.iter().position(|&byte| byte != 0)?;
+  Some(rsa::BigUint::from_bytes_be(&payload[first_non_zero..]))
+}
+
+fn read_der_tag_and_len(der: &[u8], pos: &mut usize, tag: u8) -> Option<usize> {
+  if der.get(*pos) != Some(&tag) {
+    return None;
+  }
+  *pos += 1;
+
+  let len_byte = *der.get(*pos)?;
+  *pos += 1;
+
+  let len = if len_byte & 0x80 == 0 {
+    usize::from(len_byte)
+  } else {
+    let len_len = usize::from(len_byte & 0x7f);
+    if len_len == 0 || len_len > std::mem::size_of::<usize>() {
+      return None;
+    }
+
+    let len_bytes = der.get(*pos..pos.checked_add(len_len)?)?;
+    if len_bytes.first() == Some(&0) {
+      return None;
+    }
+
+    *pos += len_len;
+    let mut len = 0usize;
+    for &byte in len_bytes {
+      len = len.checked_shl(8)?.checked_add(usize::from(byte))?;
+    }
+    if len < 128 {
+      return None;
+    }
+    len
+  };
+
+  pos.checked_add(len).filter(|&end| end <= der.len())
+}
+
 /// Parse an EC private key from SEC1 DER bytes using the named curve OID.
 /// The curve OID is required — inferring from key length is unreliable
 /// (e.g. P-256 and secp256k1 both use 32-byte keys).
@@ -1542,16 +1641,24 @@ impl KeyObjectHandle {
 
     let public_key = match spki.algorithm.oid {
       RSA_ENCRYPTION_OID => {
-        let public_key = RsaPublicKey::from_pkcs1_der(
-          spki.subject_public_key.as_bytes().unwrap(),
-        )?;
+        let der = spki
+          .subject_public_key
+          .as_bytes()
+          .ok_or(AsymmetricPublicKeyError::InvalidSpkiPublicKey)?;
+        let public_key = RsaPublicKey::from_pkcs1_der(der).or_else(|err| {
+          RsaPublicKey::from_pkcs1_der_lenient(der).ok_or(err)
+        })?;
         AsymmetricPublicKey::Rsa(public_key)
       }
       RSASSA_PSS_OID => {
         let details = parse_rsa_pss_params(spki.algorithm.parameters)?;
-        let public_key = RsaPublicKey::from_pkcs1_der(
-          spki.subject_public_key.as_bytes().unwrap(),
-        )?;
+        let der = spki
+          .subject_public_key
+          .as_bytes()
+          .ok_or(AsymmetricPublicKeyError::InvalidSpkiPublicKey)?;
+        let public_key = RsaPublicKey::from_pkcs1_der(der).or_else(|err| {
+          RsaPublicKey::from_pkcs1_der_lenient(der).ok_or(err)
+        })?;
         AsymmetricPublicKey::RsaPss(RsaPssPublicKey {
           key: public_key,
           details,
@@ -2614,33 +2721,29 @@ pub fn op_node_get_asymmetric_key_type(
   }
 }
 
-#[derive(serde::Serialize)]
-#[serde(untagged)]
+#[derive(ToV8)]
+#[to_v8(untagged)]
 pub enum AsymmetricKeyDetails {
-  #[serde(rename_all = "camelCase")]
   Rsa {
     modulus_length: usize,
-    public_exponent: V8BigInt,
+    public_exponent: deno_core::convert::BigInt,
   },
-  #[serde(rename_all = "camelCase")]
   RsaPss {
     modulus_length: usize,
-    public_exponent: V8BigInt,
+    public_exponent: deno_core::convert::BigInt,
     hash_algorithm: &'static str,
     mgf1_hash_algorithm: &'static str,
     salt_length: u32,
   },
-  #[serde(rename = "rsaPss", rename_all = "camelCase")]
+  #[to_v8(rename = "rsaPss")]
   RsaPssBasic {
     modulus_length: usize,
-    public_exponent: V8BigInt,
+    public_exponent: deno_core::convert::BigInt,
   },
-  #[serde(rename_all = "camelCase")]
   Dsa {
     modulus_length: usize,
     divisor_length: usize,
   },
-  #[serde(rename_all = "camelCase")]
   Ec {
     named_curve: &'static str,
   },
@@ -2652,7 +2755,6 @@ pub enum AsymmetricKeyDetails {
 }
 
 #[op2]
-#[serde]
 pub fn op_node_get_asymmetric_key_details(
   #[cppgc] handle: &KeyObjectHandle,
 ) -> Result<AsymmetricKeyDetails, JsErrorBox> {
@@ -2664,7 +2766,7 @@ pub fn op_node_get_asymmetric_key_details(
           BigInt::from_bytes_be(num_bigint::Sign::Plus, &key.e().to_bytes_be());
         Ok(AsymmetricKeyDetails::Rsa {
           modulus_length,
-          public_exponent: V8BigInt::from(public_exponent),
+          public_exponent: public_exponent.into(),
         })
       }
       AsymmetricPrivateKey::RsaPss(key) => {
@@ -2673,7 +2775,7 @@ pub fn op_node_get_asymmetric_key_details(
           num_bigint::Sign::Plus,
           &key.key.e().to_bytes_be(),
         );
-        let public_exponent = V8BigInt::from(public_exponent);
+        let public_exponent = public_exponent.into();
         let details = match key.details {
           Some(details) => AsymmetricKeyDetails::RsaPss {
             modulus_length,
@@ -2721,7 +2823,7 @@ pub fn op_node_get_asymmetric_key_details(
           BigInt::from_bytes_be(num_bigint::Sign::Plus, &key.e().to_bytes_be());
         Ok(AsymmetricKeyDetails::Rsa {
           modulus_length,
-          public_exponent: V8BigInt::from(public_exponent),
+          public_exponent: public_exponent.into(),
         })
       }
       AsymmetricPublicKey::RsaPss(key) => {
@@ -2730,7 +2832,7 @@ pub fn op_node_get_asymmetric_key_details(
           num_bigint::Sign::Plus,
           &key.key.e().to_bytes_be(),
         );
-        let public_exponent = V8BigInt::from(public_exponent);
+        let public_exponent = public_exponent.into();
         let details = match key.details {
           Some(details) => AsymmetricKeyDetails::RsaPss {
             modulus_length,
@@ -4156,27 +4258,497 @@ pub fn op_node_derive_public_key_from_private_key(
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum PfxValidationError {
+pub enum PfxLoadError {
   #[class(generic)]
   #[error("not enough data")]
   NotEnoughData,
   #[class(generic)]
   #[error("mac verify failure")]
   MacVerifyFailure,
+  #[class(generic)]
+  #[error("PFX contains no usable certificate")]
+  NoCert,
+  #[class(generic)]
+  #[error("PFX contains no usable private key")]
+  NoKey,
+  #[class(generic)]
+  #[error(
+    "failed to decrypt PFX private key (wrong passphrase or unsupported encryption)"
+  )]
+  KeyDecryptFailed,
+  #[class(generic)]
+  #[error("failed to encode PFX contents: {0}")]
+  Encode(String),
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadPfxResult {
+  pub cert: String,
+  pub key: String,
+  pub ca: Vec<String>,
+}
+
+fn der_to_pem(label: &str, der: &[u8]) -> String {
+  use base64::engine::general_purpose::STANDARD;
+  let body = STANDARD.encode(der);
+  let mut out = String::with_capacity(body.len() + 64);
+  out.push_str("-----BEGIN ");
+  out.push_str(label);
+  out.push_str("-----\n");
+  for chunk in body.as_bytes().chunks(64) {
+    // SAFETY: base64 output is ASCII.
+    out.push_str(std::str::from_utf8(chunk).unwrap());
+    out.push('\n');
+  }
+  out.push_str("-----END ");
+  out.push_str(label);
+  out.push_str("-----\n");
+  out
+}
+
+// Cap on the PBKDF iteration count for any PFX-controlled KDF — the
+// PKCS#12 MAC PBKDF and any PBES2/PBKDF2 inside a SafeContents or shrouded
+// key bag envelope. An attacker who controls the PFX bytes also controls
+// the iteration count (a u32, up to ~4 billion), which would otherwise tie
+// up CPU for tens of seconds per call. Matches the limit Mozilla NSS uses
+// for the MAC KDF; well above any realistic legitimate value — OpenSSL
+// defaults to 2048 on creation, and hardened producers rarely go beyond
+// ~100k. OpenSSL itself doesn't cap here, but Node trusts the caller's
+// PFX; in Deno the PFX often comes from untrusted input (e.g. server
+// config), so capping is defensive.
+const PFX_PBKDF_ITERATIONS_CAP: u64 = 600_000;
+
+// Cap on the working-set memory of a PFX-controlled scrypt KDF. PBES2 also
+// permits scrypt (RFC 7914), whose cost is attacker-controlled the same way
+// as a PBKDF2 iteration count but is memory-hard rather than iteration-hard,
+// so the iteration cap above does not bound it. scrypt's working set is
+// `128 * N * r` bytes; cap it at 1 GiB so a crafted PFX cannot force a
+// multi-gigabyte allocation. OpenSSL/Node never emit scrypt for PKCS#12
+// (this is well above any value a legitimate producer would use — the
+// OWASP-recommended N=2^17, r=8 needs ~128 MiB), but pkcs5 will decrypt it,
+// so the bound is defensive.
+const PFX_SCRYPT_MEMORY_CAP: u128 = 1 << 30;
+
 #[op2]
-pub fn op_node_validate_pfx(
+#[serde]
+pub fn op_node_load_pfx(
   #[buffer] pfx: &[u8],
   #[string] passphrase: Option<String>,
-) -> Result<(), PfxValidationError> {
-  let parsed =
-    Pkcs12::parse(pfx).map_err(|_| PfxValidationError::NotEnoughData)?;
+) -> Result<LoadPfxResult, PfxLoadError> {
+  let parsed = Pkcs12::parse(pfx).map_err(|_| PfxLoadError::NotEnoughData)?;
   let password = passphrase.as_deref().unwrap_or("");
-  if !parsed.verify_mac(password) {
-    return Err(PfxValidationError::MacVerifyFailure);
+  let bmp_password = bmp_string(password);
+  // If a MAC is present, verify it. Absent MACs are accepted (matches
+  // OpenSSL/Node behaviour).
+  if let Some(mac_data) = &parsed.mac_data {
+    let iterations = u64::from(mac_data.iterations);
+    if iterations > PFX_PBKDF_ITERATIONS_CAP {
+      return Err(PfxLoadError::MacVerifyFailure);
+    }
+    let data = parsed
+      .auth_safe
+      .data(&bmp_password)
+      .ok_or(PfxLoadError::MacVerifyFailure)?;
+    let ok = verify_pkcs12_mac(
+      &mac_data.mac.digest_algorithm,
+      &mac_data.mac.digest,
+      &mac_data.salt,
+      iterations,
+      &data,
+      &bmp_password,
+    )
+    .ok_or(PfxLoadError::MacVerifyFailure)?;
+    if !ok {
+      return Err(PfxLoadError::MacVerifyFailure);
+    }
   }
-  Ok(())
+
+  let safe_bags = pfx_safe_bags(&parsed, password, &bmp_password)?;
+
+  let mut cert_ders: Vec<Vec<u8>> = Vec::new();
+  let mut key_ders: Vec<Vec<u8>> = Vec::new();
+  for bag in &safe_bags {
+    match &bag.bag {
+      Pkcs12SafeBagKind::CertBag(Pkcs12CertBag::X509(der)) => {
+        cert_ders.push(der.clone());
+      }
+      Pkcs12SafeBagKind::Pkcs8ShroudedKeyBag(epki) => {
+        let der = decrypt_pfx_blob(
+          &epki.encryption_algorithm,
+          &epki.encrypted_data,
+          password,
+          &bmp_password,
+        )
+        .ok_or(PfxLoadError::KeyDecryptFailed)?;
+        key_ders.push(der);
+      }
+      // Unencrypted KeyBags and other bag kinds are ignored, matching the
+      // upstream `p12` behaviour this replaces: `SafeBagKind::get_key` only
+      // extracts `Pkcs8ShroudedKeyBag`, and an unencrypted PKCS#8 KeyBag
+      // parses as `OtherBagKind`. TLS PFX bundles always shroud the key, so
+      // this is not a shape we need to support.
+      _ => {}
+    }
+  }
+
+  if cert_ders.is_empty() {
+    return Err(PfxLoadError::NoCert);
+  }
+  if key_ders.is_empty() {
+    return Err(PfxLoadError::NoKey);
+  }
+
+  // The first cert bag is taken as the leaf; any additional bags are
+  // returned as CA/chain certificates.
+  let mut iter = cert_ders.into_iter();
+  let leaf = iter.next().unwrap();
+  let cert = der_to_pem("CERTIFICATE", &leaf);
+  let ca: Vec<String> =
+    iter.map(|der| der_to_pem("CERTIFICATE", &der)).collect();
+
+  // Shrouded key bags decrypt to PKCS#8 DER.
+  let key = der_to_pem("PRIVATE KEY", &key_ders[0]);
+
+  Ok(LoadPfxResult { cert, key, ca })
+}
+
+// PBES2 OID (id-PBES2) arcs from RFC 8018, compared against the parsed
+// algorithm OID directly so we do not allocate a fresh `ObjectIdentifier`
+// for every bag.
+const PBES2_OID_ARCS: [u64; 7] = [1, 2, 840, 113_549, 1, 5, 13];
+
+// Decrypt a PFX blob (the SafeContents body of an EncryptedData ContentInfo,
+// or the EncryptedPrivateKeyInfo body of a shrouded key bag), dispatching
+// by algorithm:
+//
+// - PKCS#12 PBE (RC2-40 / 3DES with SHA-1 KDF): the only schemes the `p12`
+//   crate handles natively. These take the password as a BMPString.
+// - PBES2 (PBKDF2 + AES-CBC, and the other PBES2-supported ciphers): the
+//   shape every modern `openssl pkcs12 -export` invocation emits. Handled
+//   here via `pkcs8::pkcs5::EncryptionScheme`. PBES2 within PKCS#12 takes
+//   the password as raw UTF-8 (no BMPString conversion); this matches
+//   what OpenSSL and Node accept.
+fn decrypt_pfx_blob(
+  alg: &Pkcs12AlgorithmIdentifier,
+  ciphertext: &[u8],
+  utf8_password: &str,
+  bmp_password: &[u8],
+) -> Option<Vec<u8>> {
+  match alg {
+    Pkcs12AlgorithmIdentifier::PbewithSHAAnd40BitRC2CBC(params)
+    | Pkcs12AlgorithmIdentifier::PbeWithSHAAnd3KeyTripleDESCBC(params) => {
+      // The legacy PKCS#12 PBE iteration count is attacker-controlled too
+      // (`Pkcs12PbeParams::iterations`), and `p12::decrypt_pbe` does not cap
+      // it; apply the same cap as the MAC and PBES2 paths.
+      if params.iterations > PFX_PBKDF_ITERATIONS_CAP {
+        return None;
+      }
+      alg.decrypt_pbe(ciphertext, bmp_password)
+    }
+    Pkcs12AlgorithmIdentifier::OtherAlg(other)
+      if other.algorithm_type.components().as_slice()
+        == PBES2_OID_ARCS.as_slice() =>
+    {
+      // `p12` keeps `OtherAlg` as a partial parse (just the raw params
+      // bytes), so round-trip the whole AlgorithmIdentifier back to DER to
+      // let the pkcs8/pkcs5 crate parse the PBES2 parameters.
+      let alg_der = yasna::construct_der(|w| alg.write(w));
+      let scheme = pkcs8::pkcs5::EncryptionScheme::from_der(&alg_der).ok()?;
+      // Apply the same PBKDF iteration cap used for the MAC. The PBKDF2
+      // iteration count here is attacker-controlled in the same way
+      // (parsed straight out of the PFX bytes), and
+      // `pkcs8::pkcs5::EncryptionScheme::decrypt` does not cap on its own.
+      if let Some(pbkdf2) = scheme.pbes2().and_then(|p| p.kdf.pbkdf2())
+        && u64::from(pbkdf2.iteration_count) > PFX_PBKDF_ITERATIONS_CAP
+      {
+        return None;
+      }
+      // PBES2 may also use a scrypt KDF, which the iteration cap above does
+      // not cover; bound its working-set memory (`128 * N * r`) instead.
+      if let Some(scrypt) = scheme.pbes2().and_then(|p| p.kdf.scrypt()) {
+        let working_set = u128::from(scrypt.cost_parameter)
+          .saturating_mul(u128::from(scrypt.block_size))
+          .saturating_mul(128);
+        if working_set > PFX_SCRYPT_MEMORY_CAP {
+          return None;
+        }
+      }
+      scheme.decrypt(utf8_password.as_bytes(), ciphertext).ok()
+    }
+    _ => None,
+  }
+}
+
+// Walk a PFX and return the flat list of SafeBags, decrypting EncryptedData
+// envelopes along the way. This is a reimplementation of `p12::PFX::bags`
+// that adds PBES2 support; the p12 crate only handles the legacy PKCS#12
+// PBE algorithms (RC2-40 and 3DES with the SHA-1 KDF). Without PBES2 we
+// cannot read PFX files produced by `openssl pkcs12 -export` on OpenSSL 3,
+// which is the default shape Node also produces and consumes.
+fn pfx_safe_bags(
+  parsed: &Pkcs12,
+  utf8_password: &str,
+  bmp_password: &[u8],
+) -> Result<Vec<Pkcs12SafeBag>, PfxLoadError> {
+  let outer = pfx_content_data(&parsed.auth_safe, utf8_password, bmp_password)?;
+  let safe_contents: Vec<Pkcs12ContentInfo> = yasna::parse_der(&outer, |r| {
+    r.collect_sequence_of(Pkcs12ContentInfo::parse)
+  })
+  .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+  let mut bags: Vec<Pkcs12SafeBag> = Vec::new();
+  for content in &safe_contents {
+    let bytes = pfx_content_data(content, utf8_password, bmp_password)?;
+    let parsed: Vec<Pkcs12SafeBag> =
+      yasna::parse_der(&bytes, |r| r.collect_sequence_of(Pkcs12SafeBag::parse))
+        .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+    bags.extend(parsed);
+  }
+  Ok(bags)
+}
+
+fn pfx_content_data(
+  ci: &Pkcs12ContentInfo,
+  utf8_password: &str,
+  bmp_password: &[u8],
+) -> Result<Vec<u8>, PfxLoadError> {
+  match ci {
+    Pkcs12ContentInfo::Data(d) => Ok(d.clone()),
+    Pkcs12ContentInfo::EncryptedData(e) => decrypt_pfx_blob(
+      &e.encrypted_content_info.content_encryption_algorithm,
+      &e.encrypted_content_info.encrypted_content,
+      utf8_password,
+      bmp_password,
+    )
+    .ok_or_else(|| {
+      // A `None` here is either a wrong passphrase or an algorithm pkcs5
+      // cannot decrypt; we cannot tell which apart, so report both rather
+      // than blaming the algorithm (which misleads on the common case of a
+      // bad passphrase against an encrypted cert bag).
+      PfxLoadError::Encode(
+        "failed to decrypt PFX contents (wrong passphrase or unsupported encryption)"
+          .into(),
+      )
+    }),
+    Pkcs12ContentInfo::OtherContext(_) => {
+      Err(PfxLoadError::Encode("unsupported PFX content info".into()))
+    }
+  }
+}
+
+// Convert a UTF-8 password to the PKCS#12 BMPString form (RFC 7292
+// section B.1): each character is encoded as UTF-16BE, followed by a
+// U+0000 terminator.
+fn bmp_string(s: &str) -> Vec<u8> {
+  let utf16: Vec<u16> = s.encode_utf16().collect();
+  let mut bytes = Vec::with_capacity(utf16.len() * 2 + 2);
+  for c in utf16 {
+    bytes.extend_from_slice(&c.to_be_bytes());
+  }
+  bytes.extend_from_slice(&[0x00, 0x00]);
+  bytes
+}
+
+// PKCS#12 password-based key derivation, generic over a Digest. Implements
+// the algorithm from RFC 7292 Appendix B.2:
+//   https://www.rfc-editor.org/rfc/rfc7292#appendix-B.2
+//
+// `v` is the hash function's block size in bytes (64 for SHA-1, SHA-224,
+// SHA-256; 128 for SHA-384, SHA-512, SHA-512/224, SHA-512/256). `id` is
+// the diversifier (1 = encryption key, 2 = IV, 3 = MAC key). `size` is
+// the number of output bytes desired.
+fn pkcs12_pbkdf<D: Digest + FixedOutputReset>(
+  pass: &[u8],
+  salt: &[u8],
+  iterations: u64,
+  id: u8,
+  size: usize,
+  v: usize,
+) -> Vec<u8> {
+  // u = hash output size in bytes.
+  let u = <D as Digest>::output_size();
+  // Step 1: D = id repeated v bytes.
+  let d = vec![id; v];
+  // Steps 2 & 3: S and P are the salt / password padded to a multiple of
+  // v bytes by cyclic repetition. Empty inputs contribute an empty string.
+  let s: Vec<u8> = if salt.is_empty() {
+    Vec::new()
+  } else {
+    salt
+      .iter()
+      .cycle()
+      .take(v * salt.len().div_ceil(v))
+      .copied()
+      .collect()
+  };
+  let p: Vec<u8> = if pass.is_empty() {
+    Vec::new()
+  } else {
+    pass
+      .iter()
+      .cycle()
+      .take(v * pass.len().div_ceil(v))
+      .copied()
+      .collect()
+  };
+  // Step 4: I = S || P.
+  let mut i: Vec<u8> = Vec::with_capacity(s.len() + p.len());
+  i.extend_from_slice(&s);
+  i.extend_from_slice(&p);
+  // Step 5: c = ceil(size / u).
+  let c = size.div_ceil(u);
+  let mut out: Vec<u8> = Vec::with_capacity(c * u);
+  let mut hasher = D::new();
+  for _ in 0..c {
+    // Step 6a: Ai = H^iterations(D || I).
+    Digest::update(&mut hasher, &d);
+    Digest::update(&mut hasher, &i);
+    let mut ai = hasher.finalize_reset().to_vec();
+    for _ in 1..iterations {
+      Digest::update(&mut hasher, &ai);
+      ai = hasher.finalize_reset().to_vec();
+    }
+    // Step 7 (partial): A = A || Ai.
+    out.extend_from_slice(&ai);
+    if i.is_empty() {
+      continue;
+    }
+    // Step 6b: B = Ai repeated cyclically to v bytes.
+    let b: Vec<u8> = ai.iter().cycle().take(v).copied().collect();
+    // Step 6c: treating I as v-byte blocks, set each block to
+    // (block + B + 1) mod 2^(8v). Big-endian add with carry.
+    for chunk in i.chunks_mut(v) {
+      let mut carry: u16 = 1;
+      for j in (0..v).rev() {
+        let sum = chunk[j] as u16 + b[j] as u16 + carry;
+        chunk[j] = (sum & 0xff) as u8;
+        carry = sum >> 8;
+      }
+    }
+  }
+  // Step 8: take the first `size` bytes of A.
+  out.truncate(size);
+  out
+}
+
+fn pkcs12_hmac<D>(key: &[u8], data: &[u8]) -> Vec<u8>
+where
+  D: Digest
+    + digest::core_api::CoreProxy
+    + FixedOutputReset
+    + digest::core_api::BlockSizeUser,
+  <D as digest::core_api::CoreProxy>::Core: digest::core_api::BufferKindUser<
+      BufferKind = digest::block_buffer::Eager,
+    > + digest::core_api::FixedOutputCore
+    + digest::HashMarker
+    + Default
+    + Clone,
+  <<D as digest::core_api::CoreProxy>::Core as digest::core_api::BlockSizeUser>::BlockSize: digest::typenum::IsLess<digest::typenum::U256>,
+  digest::typenum::Le<<<D as digest::core_api::CoreProxy>::Core as digest::core_api::BlockSizeUser>::BlockSize, digest::typenum::U256>: digest::typenum::NonZero,
+{
+  let mut mac = <Hmac<D> as Mac>::new_from_slice(key).unwrap();
+  Mac::update(&mut mac, data);
+  mac.finalize().into_bytes().to_vec()
+}
+
+// OID identifiers in components.
+const OID_SHA1: &[u64] = &[1, 3, 14, 3, 2, 26];
+const OID_SHA224: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 4];
+const OID_SHA256: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 1];
+const OID_SHA384: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 2];
+const OID_SHA512: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 3];
+const OID_SHA512_224: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 5];
+const OID_SHA512_256: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 6];
+
+enum Pkcs12MacAlgorithm {
+  Sha1,
+  Sha224,
+  Sha256,
+  Sha384,
+  Sha512,
+  Sha512_224,
+  Sha512_256,
+}
+
+fn pkcs12_mac_algorithm(
+  algorithm: &Pkcs12AlgorithmIdentifier,
+) -> Option<Pkcs12MacAlgorithm> {
+  let oid = match algorithm {
+    Pkcs12AlgorithmIdentifier::Sha1 => return Some(Pkcs12MacAlgorithm::Sha1),
+    Pkcs12AlgorithmIdentifier::OtherAlg(other) => {
+      other.algorithm_type.components().as_slice()
+    }
+    _ => return None,
+  };
+  if oid == OID_SHA1 {
+    Some(Pkcs12MacAlgorithm::Sha1)
+  } else if oid == OID_SHA224 {
+    Some(Pkcs12MacAlgorithm::Sha224)
+  } else if oid == OID_SHA256 {
+    Some(Pkcs12MacAlgorithm::Sha256)
+  } else if oid == OID_SHA384 {
+    Some(Pkcs12MacAlgorithm::Sha384)
+  } else if oid == OID_SHA512 {
+    Some(Pkcs12MacAlgorithm::Sha512)
+  } else if oid == OID_SHA512_224 {
+    Some(Pkcs12MacAlgorithm::Sha512_224)
+  } else if oid == OID_SHA512_256 {
+    Some(Pkcs12MacAlgorithm::Sha512_256)
+  } else {
+    None
+  }
+}
+
+fn verify_pkcs12_mac(
+  algorithm: &Pkcs12AlgorithmIdentifier,
+  expected: &[u8],
+  salt: &[u8],
+  iterations: u64,
+  data: &[u8],
+  password: &[u8],
+) -> Option<bool> {
+  let mac_alg = pkcs12_mac_algorithm(algorithm)?;
+  let computed = match mac_alg {
+    Pkcs12MacAlgorithm::Sha1 => {
+      let key =
+        pkcs12_pbkdf::<sha1::Sha1>(password, salt, iterations, 3, 20, 64);
+      pkcs12_hmac::<sha1::Sha1>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha224 => {
+      let key =
+        pkcs12_pbkdf::<sha2::Sha224>(password, salt, iterations, 3, 28, 64);
+      pkcs12_hmac::<sha2::Sha224>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha256 => {
+      let key =
+        pkcs12_pbkdf::<sha2::Sha256>(password, salt, iterations, 3, 32, 64);
+      pkcs12_hmac::<sha2::Sha256>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha384 => {
+      let key =
+        pkcs12_pbkdf::<sha2::Sha384>(password, salt, iterations, 3, 48, 128);
+      pkcs12_hmac::<sha2::Sha384>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha512 => {
+      let key =
+        pkcs12_pbkdf::<sha2::Sha512>(password, salt, iterations, 3, 64, 128);
+      pkcs12_hmac::<sha2::Sha512>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha512_224 => {
+      let key = pkcs12_pbkdf::<sha2::Sha512_224>(
+        password, salt, iterations, 3, 28, 128,
+      );
+      pkcs12_hmac::<sha2::Sha512_224>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha512_256 => {
+      let key = pkcs12_pbkdf::<sha2::Sha512_256>(
+        password, salt, iterations, 3, 32, 128,
+      );
+      pkcs12_hmac::<sha2::Sha512_256>(&key, data)
+    }
+  };
+  use subtle::ConstantTimeEq;
+  Some(bool::from(computed.ct_eq(expected)))
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -4203,4 +4775,87 @@ pub fn op_node_validate_crl(
       .map_err(|_| CrlValidationError::ParseFailed)?;
   }
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // Cross-check our generic implementation of the PKCS#12 PBKDF
+  // (RFC 7292 Appendix B.2) against test vectors computed with an
+  // independent reference implementation.
+
+  // SHA-1 vector lifted from the `p12` crate's own test suite, which
+  // matches output produced by Bouncy Castle.
+  #[test]
+  fn pkcs12_pbkdf_sha1() {
+    let pass = bmp_string("");
+    assert_eq!(pass, vec![0, 0]);
+    let salt: [u8; 8] = [0x9a, 0xf4, 0x70, 0x29, 0x58, 0xa8, 0xe9, 0x5c];
+    let got = pkcs12_pbkdf::<sha1::Sha1>(&pass, &salt, 2048, 1, 24, 64);
+    let expected: [u8; 24] = [
+      0xc2, 0x29, 0x4a, 0xa6, 0xd0, 0x29, 0x30, 0xeb, 0x5c, 0xe9, 0xc3, 0x29,
+      0xec, 0xcb, 0x9a, 0xee, 0x1c, 0xb1, 0x36, 0xba, 0xea, 0x74, 0x65, 0x57,
+    ];
+    assert_eq!(got, expected);
+  }
+
+  // SHA-256 / SHA-384 / SHA-512 vectors were generated by porting the
+  // RFC 7292 B.2 pseudocode to Python and feeding the same inputs.
+  #[test]
+  fn pkcs12_pbkdf_sha256() {
+    let pass = bmp_string("secret");
+    let salt: [u8; 8] = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef];
+    let got = pkcs12_pbkdf::<sha2::Sha256>(&pass, &salt, 1000, 3, 32, 64);
+    let expected: [u8; 32] = [
+      0x7f, 0xe1, 0x91, 0x75, 0x7d, 0xca, 0xf1, 0xed, 0x6a, 0x29, 0x77, 0xb9,
+      0xb9, 0x15, 0x3f, 0x60, 0x82, 0xaf, 0x0b, 0xda, 0xfd, 0x09, 0x35, 0x2d,
+      0xcd, 0xaa, 0x96, 0x7f, 0x57, 0x17, 0x82, 0xb0,
+    ];
+    assert_eq!(got, expected);
+  }
+
+  #[test]
+  fn pkcs12_pbkdf_sha384() {
+    let pass = bmp_string("secret");
+    let salt: [u8; 8] = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef];
+    let got = pkcs12_pbkdf::<sha2::Sha384>(&pass, &salt, 1000, 3, 48, 128);
+    let expected: [u8; 48] = [
+      0x6a, 0x59, 0x71, 0x72, 0x05, 0x22, 0x76, 0x31, 0x21, 0xf4, 0x9a, 0x1d,
+      0x5c, 0x04, 0x10, 0xa1, 0xdb, 0x42, 0x0b, 0xe4, 0x96, 0x6d, 0xc5, 0x2f,
+      0x51, 0x91, 0x9d, 0x91, 0x15, 0x2d, 0x60, 0x2d, 0x31, 0x1c, 0x4c, 0xb0,
+      0x8d, 0x99, 0x83, 0xad, 0xaf, 0x68, 0xff, 0x5d, 0xdd, 0x69, 0x0b, 0x87,
+    ];
+    assert_eq!(got, expected);
+  }
+
+  #[test]
+  fn pkcs12_pbkdf_sha512() {
+    let pass = bmp_string("secret");
+    let salt: [u8; 8] = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef];
+    let got = pkcs12_pbkdf::<sha2::Sha512>(&pass, &salt, 1000, 3, 64, 128);
+    let expected: [u8; 64] = [
+      0x3e, 0x5c, 0x5d, 0xb5, 0xf5, 0xe3, 0xd0, 0xc2, 0x23, 0x2e, 0xbf, 0xbb,
+      0x86, 0x08, 0x23, 0x7a, 0x2b, 0x0a, 0xf6, 0x00, 0x30, 0xe6, 0xa0, 0x08,
+      0x2a, 0xbe, 0x7c, 0x19, 0x3f, 0x52, 0x5e, 0x98, 0x97, 0x6f, 0xb2, 0xbb,
+      0x1c, 0x88, 0xc3, 0xc6, 0xf8, 0xb5, 0x64, 0x91, 0x74, 0x3f, 0xc5, 0x04,
+      0xfb, 0x3d, 0xd9, 0x10, 0xf4, 0xf9, 0x5e, 0xf6, 0x99, 0xc2, 0x48, 0x15,
+      0xf1, 0x3e, 0xc1, 0x74,
+    ];
+    assert_eq!(got, expected);
+  }
+
+  #[test]
+  fn bmp_string_basic() {
+    assert_eq!(bmp_string(""), vec![0x00, 0x00]);
+    // "Beavis" — every code unit becomes two big-endian bytes, then a
+    // U+0000 terminator.
+    assert_eq!(
+      bmp_string("Beavis"),
+      vec![
+        0x00, 0x42, 0x00, 0x65, 0x00, 0x61, 0x00, 0x76, 0x00, 0x69, 0x00, 0x73,
+        0x00, 0x00,
+      ],
+    );
+  }
 }

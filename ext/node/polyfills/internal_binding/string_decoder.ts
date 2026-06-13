@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { Encodings } = core.loadExtScript(
   "ext:deno_node/internal_binding/_node.ts",
 );

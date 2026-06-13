@@ -1,0 +1,47 @@
+{
+  "tempDir": true,
+  "tests": {
+    "no_lockfile": {
+      "args": "ci",
+      "output": "no_lockfile.out",
+      "exitCode": 1
+    },
+    "happy_path": {
+      "steps": [{
+        "args": [
+          "eval",
+          "import fs from 'node:fs'; fs.writeFileSync('deno.json', JSON.stringify({ imports: { 'esm-basic': 'npm:@denotest/esm-basic' }, nodeModulesDir: 'auto' }))"
+        ],
+        "output": ""
+      }, {
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "ci",
+        "output": "happy_path.out"
+      }]
+    },
+    "stale_lockfile_errors": {
+      "steps": [{
+        "args": [
+          "eval",
+          "import fs from 'node:fs'; fs.writeFileSync('deno.json', JSON.stringify({ imports: { 'esm-basic': 'npm:@denotest/esm-basic' }, nodeModulesDir: 'auto' }))"
+        ],
+        "output": ""
+      }, {
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": [
+          "eval",
+          "import fs from 'node:fs'; fs.writeFileSync('deno.json', JSON.stringify({ imports: { 'esm-basic': 'npm:@denotest/esm-basic', 'bin': 'npm:@denotest/bin' }, nodeModulesDir: 'auto' }))"
+        ],
+        "output": ""
+      }, {
+        "args": "ci",
+        "output": "stale_lockfile.out",
+        "exitCode": 1
+      }]
+    }
+  }
+}

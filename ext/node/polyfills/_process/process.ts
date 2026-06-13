@@ -4,7 +4,7 @@
 // The following are all the process APIs that don't depend on the stream module
 // They have to be split this way to prevent a circular dependency
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   Error,
   ObjectGetOwnPropertyNames,
@@ -208,7 +208,7 @@ const env:
  * Keep in sync with `NODE_VERSION` in `cli/lib/version.rs`, which is
  * used to enforce package.json `engines.node` constraints.
  */
-const version = "v24.2.0";
+const version = "v24.15.0";
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions
@@ -219,7 +219,7 @@ const version = "v24.2.0";
  * with some packages. Value of `v8` field is still taken from `Deno.version`.
  */
 const versions = {
-  node: "24.2.0",
+  node: "24.15.0",
   uv: "1.43.0",
   zlib: "1.2.11",
   brotli: "1.0.9",

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_core"
-version = "0.400.0"
+version = "0.404.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,7 +14,7 @@ description = "A modern JavaScript/TypeScript runtime built with V8, Rust, and T
 path = "lib.rs"
 
 [features]
-default = ["include_icu_data", "v8_use_custom_libcxx", "reactor-tokio"]
+default = ["v8_use_custom_libcxx", "reactor-tokio"]
 reactor-tokio = []
 include_icu_data = ["deno_core_icudata"]
 v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
@@ -45,6 +45,7 @@ futures.workspace = true
 indexmap.workspace = true
 inventory = "0.3.21"
 libc.workspace = true
+num-bigint.workspace = true
 parking_lot.workspace = true
 percent-encoding.workspace = true
 pin-project.workspace = true
@@ -68,7 +69,6 @@ windows-sys.workspace = true
 bencher.workspace = true
 criterion.workspace = true
 deno_ast.workspace = true
-fastrand.workspace = true
 paste.workspace = true
 pretty_assertions.workspace = true
 rstest.workspace = true

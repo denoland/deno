@@ -3,11 +3,15 @@
 //
 // Ported from Node.js lib/internal/js_stream_socket.js
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  Array,
+  FunctionPrototypeCall,
+  MapPrototypeGet,
+  Symbol,
+  SymbolFor,
+} = primordials;
 
 const lazyNet = core.createLazyLoader("node:net");
 const lazyTimers = core.createLazyLoader("node:timers");
@@ -36,7 +40,7 @@ const kPendingClose = Symbol("kPendingClose");
 // Mark JS stream handles so TLSWrap can detect them.
 // Use Symbol.for so tls_wrap.ts can access it without importing
 // (avoids circular dependency).
-const kJSStreamHandle = Symbol.for("kJSStreamHandle");
+const kJSStreamHandle = SymbolFor("kJSStreamHandle");
 
 function isClosing() {
   return this[kOwner].isClosing();
@@ -48,7 +52,7 @@ function onreadstop() {
   return this[kOwner].readStop();
 }
 
-const kOwner = Symbol.for("kJSStreamOwner");
+const kOwner = SymbolFor("kJSStreamOwner");
 
 /* This class serves as a wrapper for when the Rust TLS layer wants access
  * to a standard JS stream. For example, TLS or HTTP2 do not operate on
@@ -87,6 +91,7 @@ class JSStreamSocket extends lazyNet().Socket {
       // Write methods - delegate to owner.doWrite which writes to the
       // underlying stream and triggers req.oncomplete via finishWrite.
       writeBuffer(req, data) {
+        // deno-lint-ignore prefer-primordials
         const len = data.byteLength ?? data.length ?? 0;
         streamBaseState[kBytesWritten] = len;
         streamBaseState[kLastWriteWasAsync] = 1;
@@ -98,6 +103,7 @@ class JSStreamSocket extends lazyNet().Socket {
         if (allBuffers) {
           bufs = chunks;
           for (let i = 0; i < bufs.length; i++) {
+            // deno-lint-ignore prefer-primordials
             total += bufs[i].byteLength ?? bufs[i].length ?? 0;
           }
         } else {
@@ -109,6 +115,7 @@ class JSStreamSocket extends lazyNet().Socket {
               ? Buffer.from(chunk, enc)
               : chunk;
             bufs[i >> 1] = buf;
+            // deno-lint-ignore prefer-primordials
             total += buf.byteLength ?? buf.length ?? 0;
           }
         }
@@ -138,15 +145,22 @@ class JSStreamSocket extends lazyNet().Socket {
       // the TLS engine instead.
       readBuffer(chunk) {
         if (!handle.onread) return;
+        // deno-lint-ignore prefer-primordials
         const len = chunk.byteLength ?? chunk.length ?? 0;
         if (len === 0) return;
+        // deno-lint-ignore prefer-primordials
         streamBaseState[kArrayBufferOffset] = chunk.byteOffset ?? 0;
         streamBaseState[kReadBytesOrError] = len;
-        handle.onread.call(handle, chunk, len);
+        FunctionPrototypeCall(handle.onread, handle, chunk, len);
       },
       emitEOF() {
         if (!handle.onread) return;
-        handle.onread.call(handle, null, codeMap.get("EOF"));
+        FunctionPrototypeCall(
+          handle.onread,
+          handle,
+          null,
+          MapPrototypeGet(codeMap, "EOF"),
+        );
       },
       reading: false,
     };
@@ -267,7 +281,8 @@ class JSStreamSocket extends lazyNet().Socket {
 
       let errCode = 0;
       if (err) {
-        errCode = codeMap.get(err.code) || codeMap.get("EPIPE");
+        errCode = MapPrototypeGet(codeMap, err.code) ||
+          MapPrototypeGet(codeMap, "EPIPE");
       }
 
       lazyTimers().setImmediate(() => {

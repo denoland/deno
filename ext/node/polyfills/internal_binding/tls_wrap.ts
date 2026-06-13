@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { PipeWrap, TLSWrap } = core.ops;
 const { kReadBytesOrError, streamBaseState } = core.loadExtScript(
   "ext:deno_node/internal_binding/stream_wrap.ts",

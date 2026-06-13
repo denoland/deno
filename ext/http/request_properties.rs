@@ -33,6 +33,8 @@ pub struct HttpConnectionProperties {
   pub peer_port: Option<u32>,
   pub local_port: Option<u32>,
   pub stream_type: NetworkStreamType,
+  pub scheme: &'static str,
+  pub fallback_host: Rc<str>,
 }
 
 pub struct HttpRequestProperties<'a> {
@@ -193,12 +195,16 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
     };
     let local_port = listen_properties.local_port;
     let stream_type = listen_properties.stream_type;
+    let scheme = listen_properties.scheme;
+    let fallback_host = Rc::from(listen_properties.fallback_host.as_str());
 
     HttpConnectionProperties {
       peer_address,
       peer_port,
       local_port,
       stream_type,
+      scheme,
+      fallback_host,
     }
   }
 

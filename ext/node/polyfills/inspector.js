@@ -1,10 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   op_base64_encode_from_buffer,
   op_get_extras_binding_object,
@@ -41,24 +39,30 @@ const {
 const process = lazyProcess().default;
 
 function isLoopback(host) {
-  const hostLower = host.toLowerCase();
+  const hostLower = StringPrototypeToLowerCase(host);
 
   return (
     hostLower === "localhost" ||
-    hostLower.startsWith("127.") ||
+    StringPrototypeStartsWith(hostLower, "127.") ||
     hostLower === "[::1]" ||
     hostLower === "[0:0:0:0:0:0:0:1]"
   );
 }
 
 const {
+  ArrayBufferPrototype,
   ArrayPrototypePush,
   ArrayPrototypeShift,
   ObjectAssign,
+  ObjectPrototypeIsPrototypeOf,
   SymbolDispose,
   JSONParse,
   JSONStringify,
   SafeMap,
+  SafeMapIterator,
+  StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
+  TypeError,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
@@ -69,7 +73,11 @@ function encodeNetworkData(data) {
   if (typeof data === "string") {
     // Encode UTF-8 string as base64.
     const buf = core.encode(data);
-    return op_base64_encode_from_buffer(buf, 0, buf.byteLength);
+    return op_base64_encode_from_buffer(
+      buf,
+      0,
+      TypedArrayPrototypeGetByteLength(buf),
+    );
   }
   if (TypedArrayPrototypeGetSymbolToStringTag(data) === "Uint8Array") {
     return op_base64_encode_from_buffer(
@@ -78,9 +86,13 @@ function encodeNetworkData(data) {
       TypedArrayPrototypeGetByteLength(data),
     );
   }
-  if (data instanceof ArrayBuffer) {
+  if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
     const view = new Uint8Array(data);
-    return op_base64_encode_from_buffer(view, 0, view.byteLength);
+    return op_base64_encode_from_buffer(
+      view,
+      0,
+      TypedArrayPrototypeGetByteLength(view),
+    );
   }
   throw new TypeError(
     "Expected data to be a string, Buffer, Uint8Array, or ArrayBuffer",
@@ -200,7 +212,9 @@ class Session extends EventEmitter {
     }
     op_inspector_disconnect(this.#connection);
     this.#connection = null;
-    for (const callback of this.#messageCallbacks.values()) {
+    for (
+      const { 1: callback } of new SafeMapIterator(this.#messageCallbacks)
+    ) {
       process.nextTick(callback, new ERR_INSPECTOR_CLOSED());
     }
     this.#messageCallbacks.clear();

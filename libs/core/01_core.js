@@ -9,6 +9,8 @@
     ErrorCaptureStackTrace,
     FunctionPrototypeBind,
     ObjectAssign,
+    ObjectDefineProperties,
+    ObjectDefineProperty,
     ObjectFreeze,
     ObjectFromEntries,
     ObjectKeys,
@@ -60,6 +62,7 @@
     op_drain_pending_rejections,
     op_lazy_load_esm,
     op_load_ext_script,
+    op_set_captured_bootstrap,
     op_memory_usage,
     op_op_names,
     op_print,
@@ -681,6 +684,7 @@
   const {
     op_close: close,
     op_try_close: tryClose,
+    op_cancel_read: cancelRead,
     op_read: read,
     op_read_all: readAll,
     op_write: write,
@@ -841,50 +845,79 @@
     };
   }
 
-  function propWritableLazyLoaded(getter, loadFn) {
-    let valueIsSet = false;
-    let value;
+  // Marker symbol identifying a lazy-loaded property descriptor. The property
+  // name is filled in by `defineGlobalProperties` at install time so the
+  // setter can mimic data-property [[Set]] semantics (define an own data
+  // property on the receiver) instead of mutating a closure shared across all
+  // receivers - see denoland/deno#34403.
+  const lazyNameSym = Symbol("lazyName");
 
-    return {
+  function propWritableLazyLoaded(getter, loadFn) {
+    const desc = {
       get() {
-        const loadedValue = loadFn();
-        if (valueIsSet) {
-          return value;
-        } else {
-          return getter(loadedValue);
-        }
+        return getter(loadFn());
       },
       set(v) {
-        loadFn();
-        valueIsSet = true;
-        value = v;
+        ObjectDefineProperty(this, desc[lazyNameSym], {
+          value: v,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
       },
       enumerable: true,
       configurable: true,
+      [lazyNameSym]: undefined,
     };
+    return desc;
   }
 
   function propNonEnumerableLazyLoaded(getter, loadFn) {
-    let valueIsSet = false;
-    let value;
-
-    return {
+    const desc = {
       get() {
-        const loadedValue = loadFn();
-        if (valueIsSet) {
-          return value;
-        } else {
-          return getter(loadedValue);
-        }
+        return getter(loadFn());
       },
       set(v) {
-        loadFn();
-        valueIsSet = true;
-        value = v;
+        const name = desc[lazyNameSym];
+        // Match OrdinarySetWithOwnDescriptor semantics for an inherited
+        // writable data property: a direct set on the holder updates the
+        // value in place (preserving enumerable: false), while an inherited
+        // set creates a new enumerable own data property on the receiver.
+        if (ObjectHasOwn(this, name)) {
+          ObjectDefineProperty(this, name, {
+            value: v,
+            writable: true,
+            enumerable: false,
+            configurable: true,
+          });
+        } else {
+          ObjectDefineProperty(this, name, {
+            value: v,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+          });
+        }
       },
       enumerable: false,
       configurable: true,
+      [lazyNameSym]: undefined,
     };
+    return desc;
+  }
+
+  // Like `Object.defineProperties`, but also stamps the property name into any
+  // lazy-loaded descriptors so their setters can target the correct receiver.
+  function defineGlobalProperties(target, props) {
+    const keys = ObjectKeys(props);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const desc = props[key];
+      if (desc !== null && typeof desc === "object" && lazyNameSym in desc) {
+        desc[lazyNameSym] = key;
+      }
+    }
+    ObjectDefineProperties(target, props);
   }
 
   function createLazyLoader(specifier) {
@@ -900,6 +933,21 @@
 
   const loadedScripts = { __proto__: null };
 
+  // Note: the Rust side of `op_load_ext_script` (in `libs/core/modules/map.rs`)
+  // temporarily reinstalls a captured snapshot-time view of `__bootstrap`
+  // on `globalThis` for the duration of each script evaluation if
+  // `__bootstrap` isn't already on the global. Every `lazy_loaded_js`
+  // polyfill's IIFE preamble destructures `globalThis.__bootstrap` and
+  // `__bootstrap.core.ops`, but at runtime (`runtime/js/99_main.js`) the
+  // harness deletes `globalThis.__bootstrap` and `removeImportedOps()`
+  // strips most entries out of `Deno.core.ops`. The captured view (a
+  // shallow clone of `core.ops` immune to `removeImportedOps`) is
+  // registered via `op_set_captured_bootstrap` at the end of this IIFE.
+  // Doing the install in Rust means the `synthetic_esm` dispatch path
+  // (which calls `load_ext_script` directly without going through this
+  // wrapper) gets the same treatment without leaving `__bootstrap`
+  // permanently on the global (where user code can observe it via
+  // `Object.keys`).
   function loadExtScript(specifier) {
     if (specifier in loadedScripts) {
       return loadedScripts[specifier];
@@ -911,6 +959,7 @@
 
   const getAsyncContext = getContinuationPreservedEmbedderData;
   const setAsyncContext = setContinuationPreservedEmbedderData;
+  const kNoAsyncContextRestore = Symbol("Deno.core.noAsyncContextRestore");
 
   function scopeAsyncContext(ctx) {
     const old = getAsyncContext();
@@ -930,6 +979,24 @@
 
     enter(value) {
       const previousContextMapping = getAsyncContext();
+      this.#enterWithPreviousContext(value, previousContextMapping);
+      return previousContextMapping;
+    }
+
+    enterIfActive(value) {
+      const previousContextMapping = getAsyncContext();
+      if (
+        previousContextMapping === null ||
+        previousContextMapping === undefined ||
+        ObjectKeys(previousContextMapping).length === 0
+      ) {
+        return kNoAsyncContextRestore;
+      }
+      this.#enterWithPreviousContext(value, previousContextMapping);
+      return previousContextMapping;
+    }
+
+    #enterWithPreviousContext(value, previousContextMapping) {
       const entry = { id: this.#id };
       const asyncContextMapping = {
         __proto__: null,
@@ -938,7 +1005,6 @@
       };
       this.#data.set(entry, value);
       setAsyncContext(asyncContextMapping);
-      return previousContextMapping;
     }
 
     get() {
@@ -997,6 +1063,7 @@
     consoleStringify,
     close,
     tryClose,
+    cancelRead,
     read,
     readAll,
     write,
@@ -1183,6 +1250,7 @@
     propGetterOnly,
     propWritableLazyLoaded,
     propNonEnumerableLazyLoaded,
+    defineGlobalProperties,
     createLazyLoader,
     loadExtScript,
     createCancelHandle: () => op_cancel_handle(),
@@ -1190,12 +1258,29 @@
     setAsyncContext,
     scopeAsyncContext,
     AsyncVariable,
+    kNoAsyncContextRestore,
   });
 
   const internals = {};
   ObjectAssign(globalThis.__bootstrap, { core, internals });
   ObjectAssign(globalThis.Deno, { core });
   ObjectFreeze(globalThis.__bootstrap.core);
+
+  // Build the snapshot-time view of __bootstrap and hand it off to Rust.
+  // The Rust `load_ext_script` (libs/core/modules/map.rs) temporarily
+  // installs this on `globalThis.__bootstrap` for each script evaluation
+  // when the live `__bootstrap` has already been deleted (i.e. after
+  // runtime bootstrap). See the comment above `loadExtScript` earlier in
+  // this file for context.
+  const capturedCore = ObjectAssign({ __proto__: null }, core);
+  capturedCore.ops = ObjectAssign({ __proto__: null }, core.ops);
+  const capturedBootstrap = {
+    __proto__: null,
+    primordials: globalThis.__bootstrap.primordials,
+    core: capturedCore,
+    internals,
+  };
+  op_set_captured_bootstrap(capturedBootstrap);
 
   // Direct bindings on `globalThis`
   ObjectAssign(globalThis, { queueMicrotask });

@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 // deno-lint-ignore camelcase
 const async_wrap = core.loadExtScript(
   "ext:deno_node/internal_binding/async_wrap.ts",
@@ -21,10 +21,13 @@ const {
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   FunctionPrototypeApply,
+  ObjectKeys,
   Symbol,
 } = primordials;
 const {
   AsyncVariable,
+  getAsyncContext,
+  kNoAsyncContextRestore,
   setAsyncContext,
 } = core;
 
@@ -109,6 +112,31 @@ function enterAsyncResource(resource: any): any {
 // deno-lint-ignore no-explicit-any
 function exitAsyncResource(previousContext: any): void {
   setAsyncContext(previousContext);
+}
+
+// deno-lint-ignore no-explicit-any
+function enterAsyncResourceIfActive(resource: any): any {
+  if (active_hooks.array.length > 0) {
+    return executionResourceVariable.enter(resource);
+  }
+  return executionResourceVariable.enterIfActive(resource);
+}
+
+// deno-lint-ignore no-explicit-any
+function exitAsyncResourceIfActive(previousContext: any): void {
+  if (previousContext !== kNoAsyncContextRestore) {
+    setAsyncContext(previousContext);
+    return;
+  }
+
+  const currentContext = getAsyncContext();
+  if (
+    currentContext !== null &&
+    currentContext !== undefined &&
+    ObjectKeys(currentContext).length > 0
+  ) {
+    setAsyncContext(undefined);
+  }
 }
 
 // Emit functions that work with the internal hook system
@@ -495,6 +523,8 @@ return {
   executionAsyncResource,
   enterAsyncResource,
   exitAsyncResource,
+  enterAsyncResourceIfActive,
+  exitAsyncResourceIfActive,
   emitBefore,
   emitAfter,
   emitDestroy,

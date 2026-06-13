@@ -1,0 +1,24 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile --bundle --no-check --output out entry.mjs",
+    "output": "compile.out"
+  }, {
+    "if": "unix",
+    "commandName": "./out",
+    "args": [],
+    "output": "run.out",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "args": "compile --bundle --no-check --output out.exe entry.mjs",
+    "output": "compile.out"
+  }, {
+    "if": "windows",
+    "commandName": "./out.exe",
+    "args": [],
+    "output": "run.out",
+    "exitCode": 0
+  }]
+}

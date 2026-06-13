@@ -44,6 +44,7 @@ macro_rules! builtin_ops {
 builtin_ops! {
   op_close,
   op_try_close,
+  op_cancel_read,
   op_print,
   op_resources,
   op_wasm_streaming_feed,
@@ -109,6 +110,7 @@ builtin_ops! {
   ops_builtin_v8::op_unref_op,
   ops_builtin_v8::op_lazy_load_esm,
   ops_builtin_v8::op_load_ext_script,
+  ops_builtin_v8::op_set_captured_bootstrap,
   ops_builtin_v8::op_run_microtasks,
   ops_builtin_v8::op_drain_pending_rejections,
   ops_builtin_v8::op_compile_function,
@@ -213,6 +215,15 @@ pub fn op_close(
 pub fn op_try_close(state: Rc<RefCell<OpState>>, #[smi] rid: ResourceId) {
   if let Ok(resource) = state.borrow_mut().resource_table.take_any(rid) {
     resource.close();
+  }
+}
+
+/// Cancel pending read operations for a resource without removing it from the
+/// resource table.
+#[op2(fast)]
+pub fn op_cancel_read(state: Rc<RefCell<OpState>>, #[smi] rid: ResourceId) {
+  if let Ok(resource) = state.borrow().resource_table.get_any(rid) {
+    resource.cancel_read_ops();
   }
 }
 

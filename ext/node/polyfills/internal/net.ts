@@ -21,7 +21,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { uvException } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { writeBuffer } = core.loadExtScript(

@@ -14,6 +14,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -21,7 +22,11 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
+use deno_npm::NpmPackageExtraInfo;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmPackageIdPeerDependencies;
 use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmResolutionPackageSystemInfo;
 use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_cache::NpmCache;
@@ -61,6 +66,7 @@ use crate::local::LocalNpmInstallSys;
 use crate::local::LocalNpmPackageInstallerOptions;
 use crate::local::SyncResolutionWithFsError;
 use crate::local::join_package_name;
+use crate::package_json::InstallWorkspacePkgDep;
 use crate::package_json::NpmInstallDepsProvider;
 use crate::process_state::NpmProcessState;
 
@@ -68,12 +74,18 @@ use crate::process_state::NpmProcessState;
 struct HoistedLayout<'a> {
   /// Packages that go to `node_modules/<name>/`.
   top_level: HashMap<&'a StackString, &'a NpmResolutionPackage>,
-  /// Packages that must be nested: parent's `node_modules/<dep_name>/`.
+  /// Packages that must be nested: `<parent_path>/node_modules/<dep>/`,
+  /// where `parent_path` is relative to the root `node_modules/` dir and
+  /// may itself include `.../node_modules/<name>` segments for parents
+  /// that are themselves nested.
   nested: Vec<NestedPackage<'a>>,
 }
 
 struct NestedPackage<'a> {
-  parent: &'a NpmResolutionPackage,
+  /// Path of the parent relative to the root `node_modules/` directory.
+  /// For a top-level parent this is just `<name>`; for a nested parent
+  /// it is `<ancestor>/node_modules/.../node_modules/<name>`.
+  parent_path: PathBuf,
   #[allow(dead_code, reason = "used for future nested package resolution")]
   dep_name: &'a StackString,
   dep: &'a NpmResolutionPackage,
@@ -88,6 +100,26 @@ fn compute_hoisted_layout<'a>(
   packages: &'a [NpmResolutionPackage],
   system_info: &NpmSystemInfo,
 ) -> HoistedLayout<'a> {
+  // Versions explicitly required by the root/workspace package.json(s).
+  // These take priority when picking what to hoist, matching npm: a
+  // version listed in package.json wins over a (possibly higher) version
+  // pulled in only transitively.
+  let mut root_version_for_name: HashMap<&StackString, &PackageNv> =
+    HashMap::new();
+  for root_nv in snapshot.package_reqs().values() {
+    root_version_for_name
+      .entry(&root_nv.name)
+      .and_modify(|existing| {
+        // Multiple workspace members directly require the same package
+        // at different versions. Tie-break by higher version so the
+        // result is deterministic; the loser gets nested.
+        if root_nv.cmp(existing) == Ordering::Greater {
+          *existing = root_nv;
+        }
+      })
+      .or_insert(root_nv);
+  }
+
   // Count how many packages depend on each (name, version) pair
   let mut version_dependents: HashMap<&PackageNv, usize> = HashMap::new();
 
@@ -98,12 +130,22 @@ fn compute_hoisted_layout<'a>(
     }
   }
 
-  // For each package name, find the version with the most dependents
+  // For each package name, pick the version to hoist. A version
+  // required directly by the root/workspace always wins; otherwise we
+  // fall back to "most depended on, then highest version".
   let mut best_version_for_name: HashMap<&StackString, &NpmResolutionPackage> =
     HashMap::new();
 
   for package in packages {
-    match best_version_for_name.get(&package.id.nv.name) {
+    let name = &package.id.nv.name;
+    if let Some(root_nv) = root_version_for_name.get(name) {
+      if package.id.nv == **root_nv {
+        best_version_for_name.insert(name, package);
+      }
+      // Any other version of a root-required name will be nested.
+      continue;
+    }
+    match best_version_for_name.get(name) {
       Some(current_best) => {
         let current_count = version_dependents
           .get(&current_best.id.nv)
@@ -115,39 +157,114 @@ fn compute_hoisted_layout<'a>(
           || (new_count == current_count
             && package.id.nv.cmp(&current_best.id.nv) == Ordering::Greater)
         {
-          best_version_for_name.insert(&package.id.nv.name, package);
+          best_version_for_name.insert(name, package);
         }
       }
       None => {
-        best_version_for_name.insert(&package.id.nv.name, package);
+        best_version_for_name.insert(name, package);
       }
     }
   }
 
-  // Determine which deps need to be nested
+  // Walk the dependency tree breadth-first starting from the top-level
+  // (hoisted) packages so that when a transitive package is itself
+  // nested, its own conflicting deps get placed under the actual
+  // nested location rather than under the top-level package that
+  // happens to share the same name.
+  //
+  // For example with root deps `schema-utils@4` + `terser-webpack-plugin`:
+  //   * `schema-utils@4` and `ajv@8` hoist to the top level.
+  //   * `terser-webpack-plugin` transitively pulls `schema-utils@3`,
+  //     which nests at `terser-webpack-plugin/node_modules/schema-utils`.
+  //   * `schema-utils@3` needs `ajv@6`. The previous flat algorithm
+  //     placed it at `node_modules/schema-utils/node_modules/ajv`,
+  //     shadowing the top-level `ajv@8` for the hoisted `schema-utils@4`.
+  //     With the BFS below it lands at
+  //     `node_modules/terser-webpack-plugin/node_modules/schema-utils/node_modules/ajv`.
   let mut nested = Vec::new();
+  // Each queue entry carries the parent's path (relative to the root
+  // `node_modules/`), the parent package, and the chain of ancestor
+  // packages whose `node_modules/<name>` segments lie on `parent_path`
+  // — these are the candidates Node's resolver walks up to.
+  let mut queue: VecDeque<(
+    PathBuf,
+    &NpmResolutionPackage,
+    Vec<&NpmResolutionPackage>,
+  )> = VecDeque::new();
+  // `(parent_path, parent_nv)` we've already expanded — avoids
+  // re-emitting the same edges when multiple paths reach the same
+  // (path, package) pair.
+  let mut visited: HashSet<(PathBuf, &PackageNv)> = HashSet::new();
 
-  for package in packages {
-    for (dep_name, dep_id) in &package.dependencies {
+  for (name, package) in &best_version_for_name {
+    queue.push_back((PathBuf::from(name.as_str()), package, Vec::new()));
+  }
+
+  while let Some((parent_path, parent, parent_ancestors)) = queue.pop_front() {
+    if !visited.insert((parent_path.clone(), &parent.id.nv)) {
+      continue;
+    }
+    for (dep_name, dep_id) in &parent.dependencies {
       let dep = snapshot.package_from_id(dep_id).unwrap();
 
-      if package.optional_dependencies.contains(dep_name)
+      if parent.optional_dependencies.contains(dep_name)
         && !dep.system.matches_system(system_info)
       {
         continue;
       }
 
-      if let Some(hoisted) = best_version_for_name.get(&dep.id.nv.name)
-        && hoisted.id.nv == dep.id.nv
-      {
-        continue; // This version is hoisted, no nesting needed
+      // Self-loop: parent depends on something at its own nv. Nesting
+      // at `parent_path/node_modules/<name>` would just be a copy of
+      // parent under itself.
+      if parent.id.nv == dep.id.nv {
+        continue;
       }
 
+      // Simulate Node's directory walk-up from `parent`'s dir: it
+      // binds the nearest `<ancestor>/node_modules/<dep.name>`, which
+      // exists iff that ancestor has a *non-hoisted* dep with that
+      // name (hoisted versions live at the root, not in the
+      // ancestor's own node_modules). Match by name, not by nv — two
+      // different versions of the same name on one path each shadow
+      // further-up copies.
+      //
+      // If walk-up already finds `dep.id.nv`, no nesting is needed.
+      // This subsumes the simple "hoisted at root" case, breaks
+      // dependency cycles, and avoids redundant deeper nestings.
+      let hoisted_for_name =
+        best_version_for_name.get(&dep.id.nv.name).map(|p| &p.id.nv);
+      let walkup_target = parent_ancestors
+        .iter()
+        .rev()
+        .find_map(|ancestor| {
+          ancestor.dependencies.values().find_map(|aid| {
+            let apkg = snapshot.package_from_id(aid).unwrap();
+            if apkg.id.nv.name == dep.id.nv.name
+              && hoisted_for_name != Some(&apkg.id.nv)
+            {
+              Some(&apkg.id.nv)
+            } else {
+              None
+            }
+          })
+        })
+        .or(hoisted_for_name);
+
+      if walkup_target == Some(&dep.id.nv) {
+        continue;
+      }
+
+      let dep_path = parent_path
+        .join("node_modules")
+        .join(dep.id.nv.name.as_str());
       nested.push(NestedPackage {
-        parent: package,
+        parent_path: parent_path.clone(),
         dep_name,
         dep,
       });
+      let mut dep_ancestors = parent_ancestors.clone();
+      dep_ancestors.push(parent);
+      queue.push_back((dep_path, dep, dep_ancestors));
     }
   }
 
@@ -233,8 +350,17 @@ impl<
     &self,
     snapshot: &NpmResolutionSnapshot,
   ) -> Result<(), SyncResolutionWithFsError> {
-    if snapshot.is_empty()
+    let has_no_packages = snapshot.is_empty()
       && self.npm_install_deps_provider.local_pkgs().is_empty()
+      && !self
+        .npm_install_deps_provider
+        .workspace_pkgs()
+        .iter()
+        .any(|pkg| !pkg.scripts.is_empty());
+    let deno_marker_dir = self.root_node_modules_path.join(".deno");
+    if has_no_packages
+      && (!self.clean_on_install
+        || !self.sys.fs_exists_no_err(&deno_marker_dir))
     {
       return Ok(());
     }
@@ -249,7 +375,6 @@ impl<
     sys.fs_create_dir_all(&self.root_node_modules_path)?;
 
     // Use a marker directory for the lock file (reuse .deno for compatibility)
-    let deno_marker_dir = self.root_node_modules_path.join(".deno");
     sys.fs_create_dir_all(&deno_marker_dir)?;
 
     let bin_node_modules_dir_path = self.root_node_modules_path.join(".bin");
@@ -282,6 +407,8 @@ impl<
     }
 
     // 2. Clone all packages from cache into their hoisted positions
+    let workspace_lifecycle_packages =
+      self.resolve_workspace_lifecycle_packages(snapshot)?;
     let mut cache_futures = FuturesUnordered::new();
     let bin_entries = Rc::new(RefCell::new(BinEntries::new(sys)));
     let lifecycle_scripts = Rc::new(RefCell::new(LifecycleScripts::new(
@@ -304,6 +431,16 @@ impl<
       self.npm_package_extra_info_provider.clone(),
     ));
 
+    // Map a package to the workspace member directory that declares it as a
+    // direct dependency, so its lifecycle scripts run with `INIT_CWD` pointing
+    // at that member rather than the workspace root.
+    let lifecycle_script_init_cwds: Rc<HashMap<NpmPackageId, Vec<PathBuf>>> =
+      Rc::new(crate::lifecycle_scripts::member_dep_init_cwds(
+        &self.npm_install_deps_provider,
+        snapshot,
+        self.root_node_modules_path.parent(),
+      ));
+
     // Clone top-level (hoisted) packages
     for package in layout.top_level.values() {
       let package_path = join_package_name(
@@ -315,6 +452,7 @@ impl<
         packages_with_deprecation_warnings.clone();
       let extra_info_provider = extra_info_provider.clone();
       let lifecycle_scripts = lifecycle_scripts.clone();
+      let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
       let bin_entries_to_setup = bin_entries.clone();
       let install_reporter = self.install_reporter.clone();
 
@@ -329,6 +467,7 @@ impl<
               extra_info_provider,
               bin_entries_to_setup,
               lifecycle_scripts,
+              lifecycle_script_init_cwds,
               packages_with_deprecation_warnings,
             )
             .boxed_local(),
@@ -343,10 +482,7 @@ impl<
 
     // 3. Clone nested packages (version conflicts)
     for nested in &layout.nested {
-      let parent_path = join_package_name(
-        Cow::Borrowed(&self.root_node_modules_path),
-        &nested.parent.id.nv.name,
-      );
+      let parent_path = self.root_node_modules_path.join(&nested.parent_path);
       let nested_node_modules = parent_path.join("node_modules");
       sys.fs_create_dir_all(&nested_node_modules)?;
       let package_path = join_package_name(
@@ -358,6 +494,7 @@ impl<
         packages_with_deprecation_warnings.clone();
       let extra_info_provider = extra_info_provider.clone();
       let lifecycle_scripts = lifecycle_scripts.clone();
+      let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
       let bin_entries_to_setup = bin_entries.clone();
       let install_reporter = self.install_reporter.clone();
 
@@ -372,6 +509,7 @@ impl<
               extra_info_provider,
               bin_entries_to_setup,
               lifecycle_scripts,
+              lifecycle_script_init_cwds,
               packages_with_deprecation_warnings,
             )
             .boxed_local(),
@@ -411,6 +549,7 @@ impl<
     while let Some(result) = cache_futures.next().await {
       result?;
     }
+    drop(cache_futures);
 
     // 5. Set up bin entries
     {
@@ -455,6 +594,18 @@ impl<
       }
     }
 
+    for package in &workspace_lifecycle_packages {
+      lifecycle_scripts.borrow_mut().add(
+        &package.package,
+        &NpmPackageExtraInfo {
+          scripts: package.scripts.clone(),
+          ..Default::default()
+        },
+        Cow::Borrowed(&package.package_path),
+        Vec::new(),
+      );
+    }
+
     // Deprecation warnings
     {
       let packages_with_deprecation_warnings =
@@ -494,7 +645,7 @@ impl<
     }
 
     // Lifecycle scripts
-    let lifecycle_scripts = std::mem::replace(
+    let lifecycle_scripts_to_run = std::mem::replace(
       &mut *lifecycle_scripts.borrow_mut(),
       LifecycleScripts::new(
         sys.as_ref(),
@@ -504,10 +655,16 @@ impl<
         },
       ),
     );
-    lifecycle_scripts.warn_not_run_scripts()?;
+    drop(lifecycle_scripts);
+    lifecycle_scripts_to_run.warn_not_run_scripts()?;
 
-    let packages_with_scripts = lifecycle_scripts.packages_with_scripts();
+    let packages_with_scripts =
+      lifecycle_scripts_to_run.packages_with_scripts();
     if !packages_with_scripts.is_empty() {
+      let additional_packages = workspace_lifecycle_packages
+        .iter()
+        .map(|package| &package.package)
+        .collect::<Vec<_>>();
       let process_state = NpmProcessState::new_local(
         snapshot.as_valid_serialized(),
         &self.root_node_modules_path,
@@ -524,6 +681,7 @@ impl<
           on_ran_pkg_scripts: &|_pkg| Ok(()),
           snapshot,
           system_packages: &package_partitions.packages,
+          additional_packages: &additional_packages,
           packages_with_scripts,
           extra_info_provider: &extra_info_provider,
         })
@@ -535,6 +693,68 @@ impl<
     drop(pb_clear_guard);
 
     Ok(())
+  }
+
+  fn resolve_workspace_lifecycle_packages(
+    &self,
+    snapshot: &NpmResolutionSnapshot,
+  ) -> Result<Vec<WorkspaceLifecyclePackage>, JsErrorBox> {
+    let workspace_pkgs = self.npm_install_deps_provider.workspace_pkgs();
+    let workspace_pkg_ids = workspace_pkgs
+      .iter()
+      .map(|pkg| {
+        (
+          pkg.nv.clone(),
+          NpmPackageId {
+            nv: pkg.nv.clone(),
+            peer_dependencies: NpmPackageIdPeerDependencies::from([]),
+          },
+        )
+      })
+      .collect::<HashMap<_, _>>();
+    let mut packages = Vec::with_capacity(workspace_pkgs.len());
+    for workspace_pkg in workspace_pkgs {
+      let mut dependencies = HashMap::with_capacity(workspace_pkg.deps.len());
+      for dep in &workspace_pkg.deps {
+        match dep {
+          InstallWorkspacePkgDep::Remote { alias, req } => {
+            if let Some(id) = resolve_remote_pkg_id(snapshot, req) {
+              dependencies.insert(alias.clone(), id);
+            }
+          }
+          InstallWorkspacePkgDep::Workspace { alias, nv } => {
+            if let Some(id) = workspace_pkg_ids.get(nv) {
+              dependencies.insert(alias.clone(), id.clone());
+            }
+          }
+        }
+      }
+      let id = workspace_pkg_ids
+        .get(&workspace_pkg.nv)
+        .expect("workspace package id should exist")
+        .clone();
+      packages.push(WorkspaceLifecyclePackage {
+        package: NpmResolutionPackage {
+          id,
+          copy_index: 0,
+          system: NpmResolutionPackageSystemInfo::default(),
+          dist: None,
+          dependencies,
+          optional_dependencies: Default::default(),
+          optional_peer_dependencies: Default::default(),
+          extra: Some(NpmPackageExtraInfo {
+            scripts: workspace_pkg.scripts.clone(),
+            ..Default::default()
+          }),
+          is_deprecated: false,
+          has_bin: false,
+          has_scripts: !workspace_pkg.scripts.is_empty(),
+        },
+        package_path: workspace_pkg.target_dir.clone(),
+        scripts: workspace_pkg.scripts.clone(),
+      });
+    }
+    Ok(packages)
   }
 
   #[allow(
@@ -550,6 +770,7 @@ impl<
     extra_info_provider: Arc<CachedNpmPackageExtraInfoProvider>,
     bin_entries_to_setup: Rc<RefCell<BinEntries<'a, impl LocalNpmInstallSys>>>,
     lifecycle_scripts: Rc<RefCell<LifecycleScripts<'a, impl FsMetadata>>>,
+    lifecycle_script_init_cwds: Rc<HashMap<NpmPackageId, Vec<PathBuf>>>,
     packages_with_deprecation_warnings: Arc<Mutex<Vec<(PackageNv, String)>>>,
   ) -> Result<(), JsErrorBox> {
     self
@@ -620,9 +841,16 @@ impl<
     }
 
     if package.has_scripts {
-      lifecycle_scripts
-        .borrow_mut()
-        .add(package, &extra, package_path.into());
+      let init_cwds = lifecycle_script_init_cwds
+        .get(&package.id)
+        .cloned()
+        .unwrap_or_default();
+      lifecycle_scripts.borrow_mut().add(
+        package,
+        &extra,
+        package_path.into(),
+        init_cwds,
+      );
     }
 
     if package.is_deprecated
@@ -638,6 +866,23 @@ impl<
   }
 }
 
+struct WorkspaceLifecyclePackage {
+  package: NpmResolutionPackage,
+  package_path: PathBuf,
+  scripts: HashMap<deno_semver::SmallStackString, String>,
+}
+
+fn resolve_remote_pkg_id(
+  snapshot: &NpmResolutionSnapshot,
+  req: &deno_semver::package::PackageReq,
+) -> Option<NpmPackageId> {
+  match snapshot.resolve_pkg_from_pkg_req(req) {
+    Ok(pkg) => Some(pkg.id.clone()),
+    Err(_) if req.version_req.tag().is_some() => None,
+    Err(_) => snapshot.resolve_best_package_id(&req.name, &req.version_req),
+  }
+}
+
 fn cleanup_hoisted_packages(
   sys: &impl LocalNpmInstallSys,
   root_node_modules_path: &Path,
@@ -645,6 +890,18 @@ fn cleanup_hoisted_packages(
 ) {
   let expected_names: HashSet<&str> =
     layout.top_level.keys().map(|k| k.as_str()).collect();
+
+  fn remove_unexpected_package(
+    sys: &impl LocalNpmInstallSys,
+    path: &Path,
+    name: &str,
+    expected_names: &HashSet<&str>,
+  ) {
+    if expected_names.contains(name) {
+      return;
+    }
+    let _ = sys.fs_remove_dir_all(path);
+  }
 
   if let Ok(entries) = sys.fs_read_dir(root_node_modules_path) {
     for entry in entries.flatten() {
@@ -655,12 +912,33 @@ fn cleanup_hoisted_packages(
       {
         continue;
       }
-      // Skip scoped packages for now (they start with @)
       if name_str.starts_with('@') {
+        let scope_path = root_node_modules_path.join(&*name_str);
+        let Ok(scope_entries) = sys.fs_read_dir(&scope_path) else {
+          continue;
+        };
+        for scope_entry in scope_entries.flatten() {
+          let package_name = scope_entry.file_name();
+          let package_name = package_name.to_string_lossy();
+          let full_name = format!("{name_str}/{package_name}");
+          remove_unexpected_package(
+            sys,
+            &scope_entry.path(),
+            &full_name,
+            &expected_names,
+          );
+        }
+        if sys
+          .fs_read_dir(&scope_path)
+          .map(|mut entries| entries.next().is_none())
+          .unwrap_or(false)
+        {
+          let _ = sys.fs_remove_dir(&scope_path);
+        }
         continue;
       }
       let path = root_node_modules_path.join(&*name_str);
-      let _ = sys.fs_remove_dir_all(&path);
+      remove_unexpected_package(sys, &path, &name_str, &expected_names);
     }
   }
 }

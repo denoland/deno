@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_napi"
-version = "0.178.0"
+version = "0.182.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,6 +22,7 @@ libc.workspace = true
 libloading.workspace = true
 log.workspace = true
 napi_sym.workspace = true
+object.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(windows)'.dependencies]

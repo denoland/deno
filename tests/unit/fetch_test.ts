@@ -61,9 +61,7 @@ function findClosedPortInRange(
 }
 
 Deno.test(
-  // TODO(bartlomieju): reenable this test
-  // https://github.com/denoland/deno/issues/18350
-  { ignore: Deno.build.os === "windows", permissions: { net: true } },
+  { permissions: { net: true } },
   async function fetchConnectionError() {
     const port = findClosedPortInRange(4000, 9999);
     await assertRejects(
@@ -72,6 +70,31 @@ Deno.test(
       },
       TypeError,
       "client error (Connect)",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchBadPortBlocked() {
+    // Ports on the Fetch Standard "bad ports" list must be rejected with a
+    // network error before any TCP connection is attempted.
+    // https://fetch.spec.whatwg.org/#bad-port
+    await assertRejects(
+      async () => {
+        await fetch("http://localhost:6000");
+      },
+      TypeError,
+      "Requests to port 6000 are blocked",
+    );
+    // The block applies to HTTP(S) schemes, so https bad ports are rejected
+    // before any TLS handshake too.
+    await assertRejects(
+      async () => {
+        await fetch("https://localhost:6000");
+      },
+      TypeError,
+      "Requests to port 6000 are blocked",
     );
   },
 );
@@ -1906,9 +1929,7 @@ Deno.test(
 );
 
 Deno.test(
-  // TODO(bartlomieju): reenable this test
-  // https://github.com/denoland/deno/issues/18350
-  { ignore: Deno.build.os === "windows", permissions: { net: true } },
+  { permissions: { net: true } },
   async function fetchWithInvalidContentLength(): Promise<
     void
   > {
@@ -2046,6 +2067,17 @@ Deno.test(
     assertEquals(req2.headers.get("x-foo"), "bar");
   },
 );
+
+Deno.test(function requestConstructorDoesNotNormalizePatchMethod() {
+  assertEquals(
+    new Request("https://example.com", { method: "patch" }).method,
+    "patch",
+  );
+  assertEquals(
+    new Request("https://example.com", { method: "PATCH" }).method,
+    "PATCH",
+  );
+});
 
 Deno.test(
   // TODO(bartlomieju): reenable this test
@@ -2294,6 +2326,32 @@ Deno.test(
     const resp2 = await fetch("http://localhost/not-found", { client });
     assertEquals(resp2.status, 404);
     assertEquals(await resp2.text(), "Not found");
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/29281
+// A server advertising `Content-Encoding: gzip` (or br) while returning an
+// empty body should not fail decompression with "unexpected end of file".
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchEmptyBodyWithContentEncoding() {
+    for (const encoding of ["gzip", "br"]) {
+      const ac = new AbortController();
+      const server = Deno.serve(
+        { port: listenPort, signal: ac.signal, onListen() {} },
+        () =>
+          new Response(new Uint8Array(), {
+            headers: { "content-encoding": encoding },
+          }),
+      );
+      try {
+        const resp = await fetch(`http://localhost:${listenPort}/`);
+        assertEquals(await resp.text(), "");
+      } finally {
+        ac.abort();
+        await server.finished;
+      }
+    }
   },
 );
 

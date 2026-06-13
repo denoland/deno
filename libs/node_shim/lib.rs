@@ -78,6 +78,10 @@ pub struct DebugOptions {
   pub inspect_publish_uid_string: String,
   pub inspect_publish_uid: InspectPublishUid,
   pub host_port: HostPort,
+  /// True when `--inspect-port` was explicitly passed. Used to make
+  /// `process.debugPort` reflect the requested port even when the
+  /// inspector itself was not enabled, matching Node's behavior.
+  pub inspect_port_explicit: bool,
 }
 
 impl Default for DebugOptions {
@@ -92,6 +96,7 @@ impl Default for DebugOptions {
       inspect_publish_uid_string: "stderr,http".to_string(),
       inspect_publish_uid: InspectPublishUid::default(),
       host_port: HostPort::default(),
+      inspect_port_explicit: false,
     }
   }
 }
@@ -622,6 +627,7 @@ pub struct PerProcessOptions {
   pub use_openssl_ca: bool,
   pub use_system_ca: bool,
   pub use_bundled_ca: bool,
+  pub use_env_proxy: bool,
   pub enable_fips_crypto: bool,
   pub force_fips_crypto: bool,
   pub openssl_legacy_provider: bool,
@@ -666,6 +672,7 @@ impl Default for PerProcessOptions {
       use_openssl_ca: false,
       use_system_ca: false,
       use_bundled_ca: false,
+      use_env_proxy: false,
       enable_fips_crypto: false,
       force_fips_crypto: false,
       openssl_legacy_provider: false,
@@ -2154,6 +2161,13 @@ impl OptionsParser {
       false,
     );
     self.add_option(
+      "--use-env-proxy",
+      "use HTTP_PROXY, HTTPS_PROXY, and NO_PROXY for HTTP requests",
+      OptionType::Boolean,
+      OptionEnvvarSettings::AllowedInEnvvar,
+      false,
+    );
+    self.add_option(
       "--node-memory-debug",
       "Run with extra debug checks for memory leaks in Node.js itself",
       OptionType::NoOp,
@@ -2533,6 +2547,7 @@ impl OptionsParser {
       "--use-openssl-ca" => options.use_openssl_ca = value,
       "--use-system-ca" => options.use_system_ca = value,
       "--use-bundled-ca" => options.use_bundled_ca = value,
+      "--use-env-proxy" => options.use_env_proxy = value,
       "[ssl_openssl_cert_store]" => options.ssl_openssl_cert_store = value,
       "--enable-fips" => options.enable_fips_crypto = value,
       "--force-fips" => options.force_fips_crypto = value,
@@ -2764,12 +2779,19 @@ impl OptionsParser {
     value: HostPort,
   ) {
     match name {
-      "--inspect-port" => options
-        .per_isolate
-        .per_env
-        .debug_options
-        .host_port
-        .update(&value),
+      "--inspect-port" => {
+        options
+          .per_isolate
+          .per_env
+          .debug_options
+          .host_port
+          .update(&value);
+        options
+          .per_isolate
+          .per_env
+          .debug_options
+          .inspect_port_explicit = true;
+      }
       _ => {
         // Unknown host port option
       }
@@ -3174,6 +3196,9 @@ pub struct TranslatedArgs {
   pub node_options: Vec<String>,
   /// Whether to set DENO_TLS_CA_STORE=system
   pub use_system_ca: bool,
+  /// Comma-separated trace event categories from --trace-event-categories,
+  /// propagated to the spawned process via DENO_NODE_TRACE_EVENT_CATEGORIES.
+  pub trace_event_categories: String,
 }
 
 /// Wraps eval code for Node.js compatibility.
@@ -3258,6 +3283,12 @@ pub fn translate_to_deno_args(
   let env_opts = &opts.per_isolate.per_env;
 
   add_tls_node_options(node_options, env_opts);
+
+  // Forward --trace-event-categories regardless of subcommand path. Set here
+  // so it survives early-returning translations (`-e`, `--test`, REPL, etc.).
+  if !opts.trace_event_categories.is_empty() {
+    result.trace_event_categories = opts.trace_event_categories.clone();
+  }
 
   // Check for system CA usage
   if opts.use_system_ca || opts.use_openssl_ca {
@@ -3363,10 +3394,28 @@ pub fn translate_to_deno_args(
     let raw_eval_code = eval_string_for_print
       .as_ref()
       .unwrap_or(&env_opts.eval_string);
+
+    // When `--inspect-port=N` is passed without `--inspect[-brk|-wait]`,
+    // Node updates `process.debugPort` to N but does not start the
+    // inspector. Deno doesn't carry `--inspect-port` as a runtime flag,
+    // so emit an equivalent assignment as part of the eval code.
+    let raw_eval_code_owned;
+    let raw_eval_code: &str = if env_opts.debug_options.inspect_port_explicit
+      && !env_opts.debug_options.inspector_enabled
+    {
+      raw_eval_code_owned = format!(
+        "process.debugPort = {}; {}",
+        env_opts.debug_options.host_port.port, raw_eval_code
+      );
+      raw_eval_code_owned.as_str()
+    } else {
+      raw_eval_code.as_str()
+    };
+
     let eval_code = if options.wrap_eval_code {
       wrap_eval_code(raw_eval_code)
     } else {
-      raw_eval_code.clone()
+      raw_eval_code.to_string()
     };
     deno_args.push(eval_code);
 
@@ -3461,17 +3510,18 @@ pub fn translate_to_deno_args(
     node_options.push("--pending-deprecation".to_string());
   }
 
-  // Forward --require/--import modules to Deno's run subcommand so that
-  // child_process.spawnSync(process.execPath, ['-r', wrapper, main])
-  // (the pattern Node.js compat tests use) actually preloads the wrapper
-  // before evaluating the main script.
-  for module in &env_opts.preload_cjs_modules {
-    deno_args.push("--require".to_string());
-    deno_args.push(module.clone());
+  // Forward Node's --test-reporter so node:test in the spawned child can
+  // detect it and emit the corresponding output format. Deno's own CLI does
+  // not consume the flag (its TAP/spec output differs from Node's), so the
+  // value rides along through NODE_OPTIONS for the polyfill to pick up.
+  for reporter in &env_opts.test_reporter {
+    node_options.push(format!("--test-reporter={}", reporter));
   }
-  for module in &env_opts.preload_esm_modules {
-    deno_args.push("--import".to_string());
-    deno_args.push(module.clone());
+  for pattern in &env_opts.test_name_pattern {
+    node_options.push(format!("--test-name-pattern={}", pattern));
+  }
+  for pattern in &env_opts.test_skip_pattern {
+    node_options.push(format!("--test-skip-pattern={}", pattern));
   }
 
   // Add the script and remaining args
@@ -4767,6 +4817,45 @@ mod tests {
         .host_port
         .port,
       0
+    );
+  }
+
+  #[test]
+  fn test_translate_inspect_port_injects_debug_port_for_print() {
+    // `--inspect-port=N` without `--inspect[-brk|-wait]` should make
+    // `process.debugPort` equal N — matching Node — even though Deno
+    // has no equivalent runtime flag. The translator injects the
+    // assignment into the eval code used by `-p`/`-e`.
+    let parsed =
+      parse_args(svec!["--inspect-port=0", "-p", "process.debugPort"]).unwrap();
+    let result = translate_to_deno_args(parsed, &TranslateOptions::default());
+    let eval_arg = result
+      .deno_args
+      .iter()
+      .find(|a| a.contains("process.debugPort"))
+      .expect("expected an eval arg referencing process.debugPort");
+    assert!(
+      eval_arg.contains("process.debugPort = 0"),
+      "expected process.debugPort assignment in eval arg, got: {eval_arg}"
+    );
+  }
+
+  #[test]
+  fn test_translate_inspect_port_does_not_inject_when_inspector_enabled() {
+    // When `--inspect` is also set, `process.debugPort` is updated by
+    // the inspector itself; we should not inject an assignment.
+    let parsed =
+      parse_args(svec!["--inspect=localhost:0", "-p", "process.debugPort"])
+        .unwrap();
+    let result = translate_to_deno_args(parsed, &TranslateOptions::default());
+    let eval_arg = result
+      .deno_args
+      .iter()
+      .find(|a| a.contains("process.debugPort"))
+      .expect("expected an eval arg referencing process.debugPort");
+    assert!(
+      !eval_arg.contains("process.debugPort ="),
+      "should not inject debugPort assignment, got: {eval_arg}"
     );
   }
 

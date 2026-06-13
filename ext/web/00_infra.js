@@ -7,7 +7,7 @@
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   op_base64_decode,
   op_base64_decode_into,

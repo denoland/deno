@@ -31,6 +31,7 @@ mod local;
 pub use global::uninstall;
 use local::CategorizedInstalledDeps;
 use local::categorize_installed_npm_deps;
+pub use local::ci_command;
 
 #[derive(Default)]
 pub struct InstallStats {

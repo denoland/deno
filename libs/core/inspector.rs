@@ -140,7 +140,7 @@ fn extend_capped(target: &mut Vec<u8>, bytes: &[u8]) {
 /// Charset string matching Node's `request_charset == "utf-8"` check
 /// in `network_agent.cc`. Anything else is treated as binary.
 fn is_utf8_charset(charset: Option<&str>) -> bool {
-  charset == Some("utf-8")
+  charset.is_some_and(|c| c.eq_ignore_ascii_case("utf-8"))
 }
 
 fn encode_b64(bytes: &[u8]) -> String {
@@ -622,6 +622,19 @@ impl JsRuntimeInspectorState {
                       "params": {
                         "sessionId": ts.session_id,
                         "targetInfo": ts.target_info(true),
+                        "waitingForDebugger": false
+                      }
+                    }),
+                  ));
+                }
+
+                if self.nodeworker_enabled.get() {
+                  (main_session.state.send)(InspectorMsg::notification(
+                    json!({
+                      "method": "NodeWorker.attachedToWorker",
+                      "params": {
+                        "sessionId": ts.session_id,
+                        "workerInfo": ts.worker_info(),
                         "waitingForDebugger": false
                       }
                     }),
@@ -2028,5 +2041,15 @@ impl LocalInspectorSession {
 
     let stringified_msg = serde_json::to_string(&message).unwrap();
     self.dispatch(stringified_msg);
+  }
+}
+
+impl Drop for LocalInspectorSession {
+  fn drop(&mut self) {
+    let mut sessions = self.sessions.borrow_mut();
+    sessions.local.remove(&self.session_id);
+    if sessions.main_session_id == Some(self.session_id) {
+      sessions.main_session_id = sessions.local.keys().next().copied();
+    }
   }
 }
