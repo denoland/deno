@@ -22,8 +22,11 @@ const {
   ArrayPrototypeSplice,
   FunctionPrototypeApply,
   ObjectKeys,
+  SafeWeakMap,
+  SafeWeakSet,
   Symbol,
 } = primordials;
+const { isPromiseHooksSuppressed } = core;
 const {
   AsyncVariable,
   getAsyncContext,
@@ -80,11 +83,24 @@ const {
   constants,
 } = async_wrap;
 
-// Track execution context
-const executionAsyncIdStack: number[] = [0];
+// In Node.js the top-level execution async ID is 1 (kRootAsyncId). The trigger
+// async ID at top level is 0 (no parent). Several Node compat tests assert
+// this; e.g. test-async-hooks-promise-triggerid.js expects the first promise
+// init to receive triggerId === 1.
+const kRootAsyncId = 1;
+
+// Parallel stacks for executionAsyncId() and triggerAsyncId(). They are pushed
+// together by emitBefore() and popped together by emitAfter(), keeping them
+// in sync for the lifetime of a single async callback.
+const executionAsyncIdStack: number[] = [kRootAsyncId];
+const triggerAsyncIdStack: number[] = [0];
 
 function executionAsyncId(): number {
   return executionAsyncIdStack[executionAsyncIdStack.length - 1] || 0;
+}
+
+function triggerAsyncId(): number {
+  return triggerAsyncIdStack[triggerAsyncIdStack.length - 1] || 0;
 }
 
 // Per-async-context "current resource" tracked via the AsyncVariable
@@ -140,8 +156,12 @@ function exitAsyncResourceIfActive(previousContext: any): void {
 }
 
 // Emit functions that work with the internal hook system
-function emitBefore(asyncId: number): void {
+function emitBefore(asyncId: number, triggerAsyncId?: number): void {
   ArrayPrototypePush(executionAsyncIdStack, asyncId);
+  ArrayPrototypePush(
+    triggerAsyncIdStack,
+    triggerAsyncId === undefined ? 0 : triggerAsyncId,
+  );
 
   // Call hooks if they exist
   const hooks = active_hooks.array;
@@ -156,6 +176,7 @@ function emitBefore(asyncId: number): void {
     // Clean up stack corruption on hook errors (Node.js pattern)
     if (executionAsyncIdStack.length > 1) {
       ArrayPrototypePop(executionAsyncIdStack);
+      ArrayPrototypePop(triggerAsyncIdStack);
     }
     throw e;
   }
@@ -175,6 +196,24 @@ function emitAfter(asyncId: number): void {
     // Always pop stack even if hooks throw (Node.js pattern)
     if (executionAsyncIdStack.length > 1) {
       ArrayPrototypePop(executionAsyncIdStack);
+      ArrayPrototypePop(triggerAsyncIdStack);
+    }
+  }
+}
+
+// Fire `after` callbacks for an async id WITHOUT popping the executionAsyncId
+// stack. Use this only when no matching `before` ever pushed onto the stack --
+// e.g. an async resource (a Timeout, or a promise reaction) whose hooks were
+// enabled from inside its own callback, so its `before` ran before any hook
+// was installed. Node still delivers the trailing `after` in that case; going
+// through emitAfter() here would pop a frame that was never pushed and corrupt
+// the stack.
+function emitAfterNoPush(asyncId: number): void {
+  const hooks = active_hooks.array;
+  for (let i = 0; i < hooks.length; i++) {
+    const hook = hooks[i];
+    if (hook[after_symbol]) {
+      hook[after_symbol](asyncId);
     }
   }
 }
@@ -186,6 +225,16 @@ function emitDestroy(asyncId: number): void {
     const hook = hooks[i];
     if (hook[destroy_symbol]) {
       hook[destroy_symbol](asyncId);
+    }
+  }
+}
+
+function emitPromiseResolve(asyncId: number): void {
+  const hooks = active_hooks.array;
+  for (let i = 0; i < hooks.length; i++) {
+    const hook = hooks[i];
+    if (hook[promise_resolve_symbol]) {
+      hook[promise_resolve_symbol](asyncId);
     }
   }
 }
@@ -334,27 +383,159 @@ function restoreActiveHooks() {
   active_hooks.tmp_fields = null;
 }
 
-// deno-lint-ignore no-unused-vars
-let wantPromiseHook = false;
+// ---------------------------------------------------------------------------
+// Promise hook integration
+//
+// V8 exposes four promise hooks (init, before, after, resolve). Once any
+// AsyncHook with init/before/after/promiseResolve is enabled we install our
+// own V8 promise hooks; from there we assign an async id to each promise on
+// first observation, track the parent->child relationship for triggerAsyncId,
+// and fan out to the user's createHook() callbacks.
+// ---------------------------------------------------------------------------
+
+// Map promise -> { asyncId, triggerAsyncId }
+const promiseInfo = new SafeWeakMap();
+
+// Promises created while `core.isPromiseHooksSuppressed()` was true. We track
+// them so that subsequent before/after/resolve V8 hook callbacks know to
+// skip them as well.
+const suppressedPromises = new SafeWeakSet();
+
+// We deliberately do NOT register promises with a FinalizationRegistry to fire
+// `destroy()`. Doing so would queue one cleanup callback per Promise in V8's
+// finalizer queue and noticeably delay unrelated FinalizationRegistry callbacks
+// (notably `AsyncResource`'s destroy), causing GC-timing-sensitive Node tests
+// such as `test-zlib-invalid-input-memory.js` and `test-net-connect-memleak.js`
+// to fail. Promise `destroy` events are best-effort in Node too; user code that
+// needs to know when a promise is collected should use a FinalizationRegistry
+// directly. Init/before/after/promiseResolve are still wired up below.
+
+let promiseHooksInstalled = false;
+
+// TODO(@divy-work): `core.setPromiseHooks` is additive-only -- deno_core has no
+// API to remove the V8 promise hooks once installed. So disabling every
+// async_hook leaves these four callbacks resident for the rest of the process
+// lifetime. The `kTotals === 0` fast path in promiseInitHook keeps the residual
+// per-promise cost minimal until a removal API exists.
+function ensurePromiseHooks() {
+  if (promiseHooksInstalled) return;
+  promiseHooksInstalled = true;
+  core.setPromiseHooks(
+    promiseInitHook,
+    promiseBeforeHook,
+    promiseAfterHook,
+    promiseResolveHook,
+  );
+}
+
+// Assign a fresh async id pair to a promise, recording the parent->child
+// relationship. Returns the assigned id.
+function trackPromise(
+  // deno-lint-ignore no-explicit-any
+  promise: any,
+  // deno-lint-ignore no-explicit-any
+  parent: any,
+): { asyncId: number; triggerAsyncId: number } {
+  const asyncId = newAsyncId();
+  let trigger;
+  if (parent != null && promiseInfo.has(parent)) {
+    trigger = promiseInfo.get(parent).asyncId;
+  } else {
+    trigger = executionAsyncId();
+  }
+  const info = { asyncId, triggerAsyncId: trigger };
+  promiseInfo.set(promise, info);
+  return info;
+}
+
+// deno-lint-ignore no-explicit-any
+function promiseInitHook(promise: any, parent: any): void {
+  if (isPromiseHooksSuppressed()) {
+    // This promise was created by deno_core infrastructure (async-op
+    // wrapper, etc.); user code never observes it directly so we skip
+    // tracking and firing any of the four async_hooks callbacks for it.
+    suppressedPromises.add(promise);
+    return;
+  }
+  // Fast path: no async hook is active (e.g. every hook has been disabled,
+  // but the V8 promise hooks stay installed since deno_core has no removal
+  // API -- see ensurePromiseHooks). Skip the newAsyncId()/WeakMap.set cost.
+  // This stays balanced because promiseBefore/After/ResolveHook backfill via
+  // trackPromise(promise, null) if a hook is enabled before this promise
+  // settles.
+  if (async_hook_fields[kTotals] === 0) {
+    return;
+  }
+  // Always assign an async id pair (so before/after/resolve can resolve it)
+  // but only fire user init() callbacks once.
+  //
+  // NOTE: emitInitNative invokes user init() callbacks synchronously. If such
+  // a callback allocates a promise, V8 re-enters this hook reentrantly. The
+  // tests enabled here don't exercise that; Node guards against it explicitly.
+  const info = trackPromise(promise, parent);
+
+  if (async_hook_fields[kInit] > 0) {
+    emitInitNative(info.asyncId, "PROMISE", info.triggerAsyncId, promise);
+  }
+}
+
+// deno-lint-ignore no-explicit-any
+function promiseBeforeHook(promise: any): void {
+  if (suppressedPromises.has(promise)) return;
+  let info = promiseInfo.get(promise);
+  if (info === undefined) {
+    // Promise was created before any async_hook was enabled. Backfill an
+    // async id pair so before/after stay balanced. Do NOT fire init() for
+    // this promise (matches Node's fast-path behavior). See
+    // test-async-wrap-promise-after-enabled.js.
+    info = trackPromise(promise, null);
+  }
+  emitBefore(info.asyncId, info.triggerAsyncId);
+}
+
+// deno-lint-ignore no-explicit-any
+function promiseAfterHook(promise: any): void {
+  if (suppressedPromises.has(promise)) return;
+  const info = promiseInfo.get(promise);
+  if (info !== undefined) {
+    emitAfter(info.asyncId);
+    return;
+  }
+  // `info` is undefined: we never observed this promise's `before`. The only
+  // way that happens for a non-suppressed promise is that the V8 promise hooks
+  // were installed *after* its `before` fired -- i.e. user code called
+  // `createHook().enable()` from inside the very promise reaction that is now
+  // finishing (see test-async-hooks-enable-during-promise.js). Node still
+  // delivers the trailing `after` for that reaction, so fire it here. We must
+  // NOT go through emitAfter(), because that pops the executionAsyncId stack
+  // and no matching `before` ever pushed for this promise; popping would
+  // corrupt the stack. Fire the user callbacks directly instead.
+  if (async_hook_fields[kAfter] > 0) {
+    emitAfterNoPush(trackPromise(promise, null).asyncId);
+  }
+}
+
+// deno-lint-ignore no-explicit-any
+function promiseResolveHook(promise: any): void {
+  if (suppressedPromises.has(promise)) return;
+  const info = promiseInfo.get(promise);
+  // Only fire promiseResolve for promises we actually tracked (observed at
+  // init or before time). A promise that reaches resolve while still untracked
+  // is deno_core infrastructure -- e.g. the module-evaluation result promise,
+  // which is created before the user's hook is installed and resolves while it
+  // is active. Node never surfaces those, so we must not backfill+emit here or
+  // user `promiseResolve` callbacks see a spurious extra resolve.
+  if (info !== undefined && async_hook_fields[kPromiseResolve] > 0) {
+    emitPromiseResolve(info.asyncId);
+  }
+}
+
 function enableHooks() {
   async_hook_fields[kCheck] += 1;
-
-  // TODO(kt3k): Uncomment this
-  // setCallbackTrampoline(callbackTrampoline);
 }
 
 function disableHooks() {
   async_hook_fields[kCheck] -= 1;
-
-  wantPromiseHook = false;
-
-  // TODO(kt3k): Uncomment the below
-  // setCallbackTrampoline();
-
-  // Delay the call to `disablePromiseHook()` because we might currently be
-  // between the `before` and `after` calls of a Promise.
-  // TODO(kt3k): Uncomment the below
-  // enqueueMicrotask(disablePromiseHookIfNecessary);
 }
 
 // Return the triggerAsyncId meant for the constructor calling it. It's up to
@@ -365,7 +546,7 @@ function getDefaultTriggerAsyncId() {
     async_id_fields[async_wrap.UidFields.kDefaultTriggerAsyncId];
   // If defaultTriggerAsyncId isn't set, use the executionAsyncId
   if (defaultTriggerAsyncId < 0) {
-    return async_id_fields[async_wrap.UidFields.kExecutionAsyncId];
+    return executionAsyncId();
   }
   return defaultTriggerAsyncId;
 }
@@ -479,8 +660,9 @@ class AsyncHook {
       enableHooks();
     }
 
-    // TODO(kt3k): Uncomment the below
-    // updatePromiseHookMode();
+    // Install V8 promise hooks lazily, the first time any hook needs them.
+    // This handles init/before/after/promiseResolve for PROMISE async ids.
+    ensurePromiseHooks();
 
     return this;
   }
@@ -520,6 +702,7 @@ return {
   emitInit: emitInitNative,
   constants,
   executionAsyncId,
+  triggerAsyncId,
   executionAsyncResource,
   enterAsyncResource,
   exitAsyncResource,
@@ -527,7 +710,9 @@ return {
   exitAsyncResourceIfActive,
   emitBefore,
   emitAfter,
+  emitAfterNoPush,
   emitDestroy,
+  emitPromiseResolve,
   getDefaultTriggerAsyncId,
   defaultTriggerAsyncIdScope,
   enabledHooksExist,

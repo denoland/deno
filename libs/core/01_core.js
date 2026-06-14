@@ -32,6 +32,8 @@
     hasPromise,
     promiseIdSymbol,
     registerErrorClass,
+    incPromiseHooksSuppressed,
+    decPromiseHooksSuppressed,
   } = window.Deno.core;
   const {
     __setLeakTracingEnabled,
@@ -356,7 +358,6 @@
   function processTicksAndRejections() {
     let tock;
     do {
-      // deno-lint-ignore no-cond-assign
       while ((tock = queue.shift()) !== null) {
         const oldContext = getAsyncContext();
         setAsyncContext(tock.snapshot);
@@ -925,7 +926,14 @@
 
     return function lazyLoad() {
       if (!value) {
-        value = op_lazy_load_esm(specifier);
+        // See `loadExtScript` above - same reason: the synthetic-ESM
+        // evaluation step builds a v8 Promise that user code never sees.
+        incPromiseHooksSuppressed();
+        try {
+          value = op_lazy_load_esm(specifier);
+        } finally {
+          decPromiseHooksSuppressed();
+        }
       }
       return value;
     };
@@ -952,7 +960,20 @@
     if (specifier in loadedScripts) {
       return loadedScripts[specifier];
     }
-    const result = op_load_ext_script(specifier);
+    // The lazy synthetic-ESM path on the Rust side creates a v8 Promise
+    // (PromiseResolver::new + resolve-immediately) so that V8 has something
+    // to return from a synthetic module's evaluation step. That promise
+    // never escapes deno_core and should be invisible to user-installed
+    // async_hooks promise hooks. Suppress around the op call so any
+    // promises (and their immediate before/after/resolve V8 hook
+    // callbacks for the same scheduler turn) are skipped.
+    incPromiseHooksSuppressed();
+    let result;
+    try {
+      result = op_load_ext_script(specifier);
+    } finally {
+      decPromiseHooksSuppressed();
+    }
     loadedScripts[specifier] = result;
     return result;
   }

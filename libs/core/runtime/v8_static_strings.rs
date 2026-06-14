@@ -29,6 +29,8 @@ v8_static_strings!(
   EVENT_LOOP_TICK = "__eventLoopTick",
   DRAIN_NEXT_TICK_AND_MACROTASKS = "__drainNextTickAndMacrotasks",
   HANDLE_REJECTIONS = "__handleRejections",
+  INC_PROMISE_HOOKS_SUPPRESSED = "incPromiseHooksSuppressed",
+  DEC_PROMISE_HOOKS_SUPPRESSED = "decPromiseHooksSuppressed",
   SET_TICK_INFO = "__setTickInfo",
   SET_IMMEDIATE_INFO = "__setImmediateInfo",
   RUN_IMMEDIATE_CALLBACKS = "runImmediateCallbacks",

@@ -33,6 +33,7 @@ const {
 } = primordials;
 const {
   emitAfter,
+  emitAfterNoPush,
   emitBefore,
   emitDestroy,
   emitInit,
@@ -160,10 +161,11 @@ Timeout.prototype[createTimer] = function () {
   const asyncContext = getAsyncContext();
   const asyncId = this._asyncId;
   const triggerAsyncId = this._triggerAsyncId;
-  // Fast path: when no async_hooks are registered, the emit* calls are
-  // pure overhead (array push/pop + empty-array iteration). Keep the
-  // outer closure (ALS context must still propagate) but elide the
-  // hook machinery.
+  // Whether async_hooks were enabled when this timer was *created*. We still
+  // re-check `enabledHooksExist()` at fire time below, because a hook can be
+  // enabled (or disabled) between creation and the callback running -- e.g.
+  // test-async-hooks-enable-before-promise-resolve.js enables a hook from
+  // inside the very setTimeout callback and expects its trailing `after`.
   let cb;
   function invokeCallback() {
     const wasRepeat = self._repeat;
@@ -196,36 +198,41 @@ Timeout.prototype[createTimer] = function () {
     }
     return ret;
   }
-  if (enabledHooksExist()) {
-    cb = function () {
-      const oldContext = getAsyncContext();
-      try {
-        setAsyncContext(asyncContext);
+  cb = function () {
+    const oldContext = getAsyncContext();
+    try {
+      setAsyncContext(asyncContext);
+      // Decide at fire time, not creation time: a hook may have been enabled
+      // or disabled since this timer was scheduled.
+      const beforeEmitted = enabledHooksExist();
+      if (beforeEmitted) {
         emitBefore(asyncId, triggerAsyncId, self);
-        const ret = invokeCallback();
-        // Only emit after/destroy on success. On error, the domain's
-        // uncaught exception handler manages the stack cleanup.
+      }
+      const ret = invokeCallback();
+      // Only emit after/destroy on success. On error, the domain's uncaught
+      // exception handler manages the stack cleanup.
+      if (beforeEmitted) {
+        // We pushed onto the executionAsyncId stack via emitBefore, so we must
+        // always pop via emitAfter to keep it balanced -- even if the callback
+        // disabled every hook in the meantime.
         emitAfter(asyncId);
-        if (!self._repeat && !self._asyncDestroyed) {
-          self._asyncDestroyed = true;
-          emitDestroy(asyncId);
-        }
-        return ret;
-      } finally {
-        setAsyncContext(oldContext);
+      } else if (enabledHooksExist()) {
+        // A hook was enabled from inside the callback. `before` never ran, so
+        // nothing was pushed; deliver the trailing `after` without popping.
+        emitAfterNoPush(asyncId);
       }
-    };
-  } else {
-    cb = function () {
-      const oldContext = getAsyncContext();
-      try {
-        setAsyncContext(asyncContext);
-        return invokeCallback();
-      } finally {
-        setAsyncContext(oldContext);
+      if (
+        (beforeEmitted || enabledHooksExist()) &&
+        !self._repeat && !self._asyncDestroyed
+      ) {
+        self._asyncDestroyed = true;
+        emitDestroy(asyncId);
       }
-    };
-  }
+      return ret;
+    } finally {
+      setAsyncContext(oldContext);
+    }
+  };
   const timer = createTimer_(
     cb,
     this._idleTimeout,
