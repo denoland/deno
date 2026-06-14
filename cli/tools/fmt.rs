@@ -22,7 +22,6 @@ use std::sync::atomic::Ordering;
 use async_trait::async_trait;
 use deno_ast::ParsedSource;
 use deno_config::deno_json::NewLineKind;
-use deno_config::deno_json::VueComponentCase as DenoVueComponentCase;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::Context;
@@ -32,7 +31,6 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
-use deno_core::url::Url;
 use log::debug;
 use log::info;
 use log::warn;
@@ -368,10 +366,7 @@ fn format_markdown(
                 text: text.to_string(),
                 config: &codeblock_config,
                 external_formatter: Some(
-                  &create_external_formatter_for_typescript(
-                    unstable_options,
-                    fmt_options,
-                  ),
+                  &create_external_formatter_for_typescript(unstable_options),
                 ),
               },
             )
@@ -458,137 +453,99 @@ pub fn format_html(
   fmt_options: &FmtOptionsConfig,
   unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
-  let format_result = markup_fmt::format_text(
-    file_text,
-    markup_fmt::detect_language(file_path)
-      .unwrap_or(markup_fmt::Language::Html),
-    &get_resolved_markup_fmt_config(fmt_options),
-    |text, hints| {
-      let mut file_name =
-        file_path.file_name().expect("missing file name").to_owned();
-      file_name.push(".");
-      file_name.push(hints.ext);
-      let path = file_path.with_file_name(file_name);
-      match hints.ext {
-        "css" | "scss" | "less" => {
-          let mut lax_css_config = get_resolved_lax_css_config(fmt_options);
-          lax_css_config.line_width = hints.print_width as u32;
-          // inline style="" attributes cannot contain line breaks, so format
-          // them on a single line, normalizing whitespace without wrapping
-          lax_css_config.single_line = hints.attr;
-          lax_css::format_text(&path, text, &lax_css_config).map(|formatted| {
-            match formatted {
-              Some(formatted) => Cow::from(formatted),
-              None => Cow::from(text),
-            }
-          })
-        }
-        "json" | "jsonc" => {
-          let mut json_config = get_resolved_json_config(fmt_options);
-          json_config.line_width = hints.print_width as u32;
-          dprint_plugin_json::format_text(&path, text, &json_config).map(
-            |formatted| {
-              if let Some(formatted) = formatted {
-                Cow::from(formatted)
-              } else {
-                Cow::from(text)
-              }
-            },
-          )
-        }
-        ext if ext.starts_with("markup-fmt-jinja-") => {
-          // Jinja/Nunjucks expressions may contain non-JS syntax (e.g.
-          // filters such as `|>`), so preserve the original text instead
-          // of passing it through the TypeScript formatter.
-          // Ref: https://github.com/g-plane/markup_fmt/blob/v0.27.0/src/ctx.rs
-          Ok(Cow::from(text))
-        }
-        _ => {
-          let mut typescript_config_builder =
-            get_typescript_config_builder(fmt_options);
-          typescript_config_builder.file_indent_level(hints.indent_level);
-          let mut typescript_config = typescript_config_builder.build();
-          typescript_config.line_width = hints.print_width as u32;
-          dprint_plugin_typescript::format_text(
-            dprint_plugin_typescript::FormatTextOptions {
-              path: &path,
-              extension: None,
-              text: text.to_string(),
-              config: &typescript_config,
-              external_formatter: Some(
-                &create_external_formatter_for_typescript(
-                  unstable_options,
-                  fmt_options,
-                ),
-              ),
-            },
-          )
-          .map(|formatted| {
-            if let Some(formatted) = formatted {
-              Cow::from(formatted)
-            } else {
-              Cow::from(text)
-            }
-          })
-        }
-      }
-    },
+  let config = get_resolved_lax_markup_config(fmt_options);
+  let external = move |lang: &str, text: &str, print_width: u32| {
+    format_markup_embedded(
+      lang,
+      text,
+      print_width,
+      file_path,
+      fmt_options,
+      unstable_options,
+    )
+  };
+  lax_markup::format_text_with_external(
+    file_path, file_text, &config, &external,
   )
-  .map_err(|error| match error {
-    markup_fmt::FormatError::Syntax(error) => {
-      fn inner(
-        error: &markup_fmt::SyntaxError,
-        file_path: &Path,
-      ) -> Option<String> {
-        let url = Url::from_file_path(file_path).ok()?;
+}
 
-        let error_msg = format!(
-          "Syntax error ({}) at {}:{}:{}\n",
-          error.kind,
-          url.as_str(),
-          error.line,
-          error.column
-        );
-        Some(error_msg)
-      }
-
-      if let Some(error_msg) = inner(&error, file_path) {
-        AnyError::msg(error_msg)
-      } else {
-        AnyError::from(error)
-      }
-    }
-    markup_fmt::FormatError::External(errors) => {
-      let last = errors.len() - 1;
-      AnyError::msg(
-        errors
-          .into_iter()
-          .enumerate()
-          .map(|(i, error)| {
-            if i == last {
-              format!("{error}")
-            } else {
-              format!("{error}\n\n")
-            }
-          })
-          .collect::<String>(),
+/// Formats the contents of style and script elements in markup. The language
+/// comes from the element's `lang` or `type` attribute when present, or is
+/// `css`/`js` by element kind. Unknown languages are kept verbatim.
+fn format_markup_embedded(
+  lang: &str,
+  text: &str,
+  print_width: u32,
+  file_path: &Path,
+  fmt_options: &FmtOptionsConfig,
+  unstable_options: &UnstableFmtOptions,
+) -> Result<Option<String>, AnyError> {
+  let lang = lang.to_ascii_lowercase();
+  match lang.as_str() {
+    "css" | "scss" | "less" | "text/css" => {
+      let ext = match lang.as_str() {
+        "scss" => "scss",
+        "less" => "less",
+        _ => "css",
+      };
+      let mut lax_css_config = get_resolved_lax_css_config(fmt_options);
+      lax_css_config.line_width = print_width;
+      lax_css::format_text(
+        &file_path.with_extension(ext),
+        text,
+        &lax_css_config,
       )
     }
-  });
-
-  let formatted_str = format_result?;
-
-  Ok(if formatted_str == file_text {
-    None
-  } else {
-    Some(formatted_str)
-  })
+    "json"
+    | "jsonc"
+    | "application/json"
+    | "application/ld+json"
+    | "importmap" => {
+      let mut json_config = get_resolved_json_config(fmt_options);
+      json_config.line_width = print_width;
+      let path = file_path.with_extension("json");
+      dprint_plugin_json::format_text(&path, text, &json_config)
+    }
+    "js"
+    | "jsx"
+    | "ts"
+    | "tsx"
+    | "mjs"
+    | "mts"
+    | "javascript"
+    | "typescript"
+    | "module"
+    | "text/javascript"
+    | "application/javascript" => {
+      let ext = match lang.as_str() {
+        "ts" | "typescript" | "mts" => "ts",
+        "tsx" => "tsx",
+        "jsx" => "jsx",
+        _ => "js",
+      };
+      let path = file_path.with_extension(ext);
+      let mut typescript_config =
+        get_typescript_config_builder(fmt_options).build();
+      typescript_config.line_width = print_width;
+      dprint_plugin_typescript::format_text(
+        dprint_plugin_typescript::FormatTextOptions {
+          path: &path,
+          extension: Some(ext),
+          text: text.to_string(),
+          config: &typescript_config,
+          external_formatter: Some(&create_external_formatter_for_typescript(
+            unstable_options,
+          )),
+        },
+      )
+    }
+    _ => Ok(None),
+  }
 }
 
 /// A function for formatting embedded code blocks in JavaScript and TypeScript.
 fn create_external_formatter_for_typescript(
   unstable_options: &UnstableFmtOptions,
-  fmt_options: &FmtOptionsConfig,
 ) -> impl Fn(
   &str,
   String,
@@ -596,12 +553,9 @@ fn create_external_formatter_for_typescript(
 ) -> deno_core::anyhow::Result<Option<String>>
 + use<> {
   let unstable_sql = unstable_options.sql;
-  let markup_lang_opts = embedded_markup_language_options(fmt_options);
   move |lang, text, config| match lang {
     "css" => format_embedded_css(&text, config),
-    "html" | "xml" | "svg" => {
-      format_embedded_html(lang, &text, config, &markup_lang_opts)
-    }
+    "html" | "xml" | "svg" => format_embedded_html(lang, &text, config),
     "sql" => {
       if unstable_sql {
         format_embedded_sql(&text, config)
@@ -652,39 +606,77 @@ fn format_embedded_css(
 
 /// Formats the embedded HTML code blocks in JavaScript and TypeScript.
 fn format_embedded_html(
-  lang: &str,
+  _lang: &str,
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
-  lang_opts: &markup_fmt::config::LanguageOptions,
 ) -> deno_core::anyhow::Result<Option<String>> {
-  use markup_fmt::config;
-
-  let language = match lang {
-    "xml" | "svg" => markup_fmt::Language::Xml,
-    _ => markup_fmt::Language::Html,
+  let markup_config = lax_markup::configuration::Configuration {
+    line_width: config.line_width,
+    use_tabs: config.use_tabs,
+    indent_width: config.indent_width,
+    new_line_kind: dprint_core::configuration::NewLineKind::LineFeed,
+    ignore_node_comment_text: "deno-fmt-ignore".to_string(),
+    ignore_file_comment_text: "deno-fmt-ignore-file".to_string(),
   };
-
-  let options = config::FormatOptions {
-    layout: config::LayoutOptions {
-      indent_width: config.indent_width as usize,
-      use_tabs: config.use_tabs,
-      print_width: config.line_width as usize,
-      line_break: match config.new_line_kind {
-        dprint_core::configuration::NewLineKind::LineFeed => {
-          config::LineBreak::Lf
-        }
-        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed => {
-          config::LineBreak::Crlf
-        }
-        _ => config::LineBreak::Lf,
-      },
-    },
-    language: lang_opts.clone(),
+  // code inside markup that is itself inside a tagged template is kept as
+  // written
+  let external = |_: &str, _: &str, _: u32| Ok(None);
+  // the typescript formatter reindents the template contents when it embeds
+  // the result, so the text must be dedented first to make the round trip a
+  // fixed point
+  let dedented = dedent_embedded(text);
+  let Some(formatted) = lax_markup::format_text_with_external(
+    Path::new("embedded.html"),
+    &dedented,
+    &markup_config,
+    &external,
+  )?
+  else {
+    return Ok(if dedented == text {
+      None
+    } else {
+      Some(dedented)
+    });
   };
-  let text = markup_fmt::format_text(text, language, &options, |code, _| {
-    Ok::<_, deno_core::anyhow::Error>(code.into())
-  })?;
-  Ok(Some(text.to_string()))
+  let formatted = formatted.trim_end_matches('\n');
+  Ok(if formatted == text {
+    None
+  } else {
+    Some(formatted.to_string())
+  })
+}
+
+/// Strips the longest common leading whitespace prefix from every non empty
+/// line.
+fn dedent_embedded(text: &str) -> String {
+  let mut common: Option<&str> = None;
+  for line in text.split('\n') {
+    if line.trim().is_empty() {
+      continue;
+    }
+    let leading = &line[..line.len() - line.trim_start().len()];
+    common = Some(match common {
+      None => leading,
+      Some(prev) => {
+        let len = prev
+          .as_bytes()
+          .iter()
+          .zip(leading.as_bytes())
+          .take_while(|(a, b)| a == b)
+          .count();
+        &prev[..len]
+      }
+    });
+  }
+  let common = common.unwrap_or("");
+  if common.is_empty() {
+    return text.to_string();
+  }
+  text
+    .split('\n')
+    .map(|line| line.strip_prefix(common).unwrap_or(line))
+    .collect::<Vec<_>>()
+    .join("\n")
 }
 
 /// Formats the embedded SQL code blocks in JavaScript and TypeScript.
@@ -799,7 +791,6 @@ pub fn format_file(
           config: &config,
           external_formatter: Some(&create_external_formatter_for_typescript(
             unstable_options,
-            fmt_options,
           )),
         },
       )?
@@ -824,10 +815,7 @@ pub fn format_parsed_source(
   dprint_plugin_typescript::format_parsed_source(
     parsed_source,
     &get_resolved_typescript_config(fmt_options),
-    Some(&create_external_formatter_for_typescript(
-      unstable_options,
-      fmt_options,
-    )),
+    Some(&create_external_formatter_for_typescript(unstable_options)),
   )
 }
 
@@ -1484,116 +1472,17 @@ fn get_resolved_json_config(
   builder.build()
 }
 
-fn get_resolved_markup_fmt_config(
+fn get_resolved_lax_markup_config(
   options: &FmtOptionsConfig,
-) -> markup_fmt::config::FormatOptions {
-  use markup_fmt::config::*;
-
-  let layout_options = LayoutOptions {
-    print_width: options.line_width.unwrap_or(80) as usize,
+) -> lax_markup::configuration::Configuration {
+  lax_markup::configuration::Configuration {
+    line_width: options.line_width.unwrap_or(80),
     use_tabs: options.use_tabs.unwrap_or_default(),
-    indent_width: options.indent_width.unwrap_or(2) as usize,
-    line_break: LineBreak::Lf,
-  };
-
-  // Start from the shared embedded defaults, then override for
-  // top-level component file formatting (script/style indent, Svelte
-  // shorthand, dprint script formatter).
-  let language_options = LanguageOptions {
-    script_formatter: Some(markup_fmt::config::ScriptFormatter::Dprint),
-    script_indent: true,
-    vue_script_indent: Some(false),
-    style_indent: true,
-    vue_style_indent: Some(false),
-    svelte_attr_shorthand: Some(true),
-    svelte_directive_shorthand: Some(true),
-    astro_attr_shorthand: Some(true),
-    ..embedded_markup_language_options(options)
-  };
-
-  FormatOptions {
-    layout: layout_options,
-    language: language_options,
+    indent_width: options.indent_width.unwrap_or(2),
+    new_line_kind: dprint_core::configuration::NewLineKind::LineFeed,
+    ignore_node_comment_text: "deno-fmt-ignore".to_string(),
+    ignore_file_comment_text: "deno-fmt-ignore-file".to_string(),
   }
-}
-
-/// Build `LanguageOptions` for embedded HTML/XML/SVG formatting (inside
-/// JS/TS tagged templates). Shares the vue/angular config resolution
-/// with `get_resolved_markup_fmt_config` to avoid duplication.
-fn embedded_markup_language_options(
-  options: &FmtOptionsConfig,
-) -> markup_fmt::config::LanguageOptions {
-  use markup_fmt::config::*;
-  LanguageOptions {
-    quotes: Quotes::Double,
-    format_comments: false,
-    script_indent: false,
-    html_script_indent: None,
-    vue_script_indent: None,
-    svelte_script_indent: None,
-    astro_script_indent: None,
-    style_indent: false,
-    html_style_indent: None,
-    vue_style_indent: None,
-    svelte_style_indent: None,
-    astro_style_indent: None,
-    closing_bracket_same_line: false,
-    closing_tag_line_break_for_empty: ClosingTagLineBreakForEmpty::Fit,
-    max_attrs_per_line: None,
-    prefer_attrs_single_line: false,
-    single_attr_same_line: false,
-    html_normal_self_closing: None,
-    html_void_self_closing: None,
-    component_self_closing: None,
-    svg_self_closing: None,
-    mathml_self_closing: None,
-    whitespace_sensitivity: WhitespaceSensitivity::Css,
-    component_whitespace_sensitivity: None,
-    doctype_keyword_case: DoctypeKeywordCase::Upper,
-    v_bind_style: None,
-    v_on_style: None,
-    v_for_delimiter_style: None,
-    v_slot_style: None,
-    component_v_slot_style: None,
-    default_v_slot_style: None,
-    named_v_slot_style: None,
-    vue_component_case: resolved_vue_component_case(options),
-    v_bind_same_name_short_hand: None,
-    angular_next_control_flow_same_line:
-      resolved_angular_next_control_flow_same_line(options),
-    strict_svelte_attr: false,
-    svelte_attr_shorthand: None,
-    svelte_directive_shorthand: None,
-    astro_attr_shorthand: None,
-    script_formatter: None,
-    ignore_comment_directive: "deno-fmt-ignore".into(),
-    ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
-  }
-}
-
-fn resolved_vue_component_case(
-  options: &FmtOptionsConfig,
-) -> markup_fmt::config::VueComponentCase {
-  match options
-    .vue_component_case
-    .unwrap_or(DenoVueComponentCase::Ignore)
-  {
-    DenoVueComponentCase::Ignore => {
-      markup_fmt::config::VueComponentCase::Ignore
-    }
-    DenoVueComponentCase::PascalCase => {
-      markup_fmt::config::VueComponentCase::PascalCase
-    }
-    DenoVueComponentCase::KebabCase => {
-      markup_fmt::config::VueComponentCase::KebabCase
-    }
-  }
-}
-
-fn resolved_angular_next_control_flow_same_line(
-  options: &FmtOptionsConfig,
-) -> bool {
-  options.angular_next_control_flow_same_line.unwrap_or(true)
 }
 
 fn get_resolved_yaml_config(
