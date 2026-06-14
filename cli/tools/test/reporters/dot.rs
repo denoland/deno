@@ -154,6 +154,12 @@ impl TestReporter for DotTestReporter {
     common::discard_step_results(&mut self.pending_step_tally, description.id);
   }
 
+  fn report_repeat(&mut self, description: &TestDescription, _repetition: u32) {
+    // Drop the previous repetition's step results so each step is counted once,
+    // not once per repetition.
+    common::discard_step_results(&mut self.pending_step_tally, description.id);
+  }
+
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>) {
     self.summary.failed += 1;
     self

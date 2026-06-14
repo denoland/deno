@@ -441,7 +441,7 @@ impl TestRun {
                 );
               }
             }
-            test::TestEvent::Retry(..) => {
+            test::TestEvent::Retry(..) | test::TestEvent::Repeat(..) => {
               // Informational only; the test's terminal result is reported via
               // `TestEvent::Result`.
             }

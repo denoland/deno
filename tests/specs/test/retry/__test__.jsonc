@@ -26,6 +26,11 @@
       "exitCode": 0,
       "output": "retry_steps.out"
     },
+    "repeats_steps": {
+      "args": "test --quiet repeats_steps.ts",
+      "exitCode": 0,
+      "output": "repeats_steps.out"
+    },
     "cli_retry_flag": {
       "args": "test --quiet --retry=2 cli_retry_flag.ts",
       "exitCode": 0,

@@ -62,6 +62,17 @@ impl PrettyTestReporter {
     }
   }
 
+  /// Drops the step state buffered for a test that is about to re-run (a retry
+  /// attempt or a new repetition): the pending tally so the previous run's
+  /// steps aren't counted, and any unflushed step output so it doesn't leak
+  /// into the next run.
+  fn discard_buffered_steps(&mut self, root_id: usize) {
+    common::discard_step_results(&mut self.pending_step_tally, root_id);
+    self
+      .child_results_buffer
+      .retain(|_, steps| !steps.values().any(|(d, _, _)| d.root_id == root_id));
+  }
+
   fn force_report_wait(&mut self, description: &TestDescription) {
     if !self.in_new_line {
       writeln!(&mut self.writer).ok();
@@ -355,7 +366,7 @@ impl TestReporter for PrettyTestReporter {
   ) {
     self.retried_tests.insert(description.id);
     // Drop the failed attempt's step results so they don't count.
-    common::discard_step_results(&mut self.pending_step_tally, description.id);
+    self.discard_buffered_steps(description.id);
 
     if self.repl {
       return;
@@ -375,6 +386,12 @@ impl TestReporter for PrettyTestReporter {
     .ok();
     self.in_new_line = true;
     self.scope_test_id = None;
+  }
+
+  fn report_repeat(&mut self, description: &TestDescription, _repetition: u32) {
+    // Drop the previous repetition's step results so each step is counted once,
+    // not once per repetition.
+    self.discard_buffered_steps(description.id);
   }
 
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>) {

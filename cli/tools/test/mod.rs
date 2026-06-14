@@ -549,6 +549,10 @@ pub enum TestEvent {
   /// test id, the zero-based attempt index that failed, and the failure. This
   /// is informational only and does not count toward the test's final result.
   Retry(usize, u32, TestFailure),
+  /// A test is starting a fresh repetition (`repeats` option). Carries the test
+  /// id and the one-based repetition index. Lets the reporter drop the previous
+  /// repetition's step results so they aren't tallied more than once.
+  Repeat(usize, u32),
   UncaughtError(String, Box<JsError>),
   StepRegister(TestStepDescription),
   StepWait(usize),
@@ -583,6 +587,7 @@ impl TestEvent {
       TestEvent::Plan(..)
         | TestEvent::Result(..)
         | TestEvent::Retry(..)
+        | TestEvent::Repeat(..)
         | TestEvent::StepWait(..)
         | TestEvent::StepResult(..)
         | TestEvent::UncaughtError(..)
@@ -1434,7 +1439,12 @@ async fn run_tests_for_worker_inner(
 
     // `repeats` requires every repetition to pass; `retry` allows each
     // repetition up to `1 + retry` attempts and passes on the first success.
-    'repetitions: for _repetition in 0..=repeats {
+    'repetitions: for repetition in 0..=repeats {
+      // Signal the start of a fresh repetition so the reporter discards the
+      // previous repetition's step results instead of tallying them again.
+      if repetition > 0 {
+        event_tracker.repeat(desc, repetition)?;
+      }
       let mut repetition_result = TestResult::Ok;
 
       'attempts: for attempt in 0..=retry {
@@ -1750,6 +1760,11 @@ pub async fn report_tests(
         // Informational only: a retried attempt does not produce a terminal
         // result and is intentionally not gated by `tests_with_result`.
         reporter.report_retry(tests.get(&id).unwrap(), attempt, &failure);
+      }
+      TestEvent::Repeat(id, repetition) => {
+        // Informational only: a repetition boundary lets the reporter drop the
+        // previous repetition's step state before the next one runs.
+        reporter.report_repeat(tests.get(&id).unwrap(), repetition);
       }
       TestEvent::UncaughtError(origin, error) => {
         failed = true;
@@ -2507,6 +2522,14 @@ impl TestEventTracker {
     failure: TestFailure,
   ) -> Result<(), ChannelClosedError> {
     self.send_event(TestEvent::Retry(desc.id, attempt, failure))
+  }
+
+  fn repeat(
+    &self,
+    desc: &TestDescription,
+    repetition: u32,
+  ) -> Result<(), ChannelClosedError> {
+    self.send_event(TestEvent::Repeat(desc.id, repetition))
   }
 
   pub(crate) fn force_end_report(&self) -> Result<(), ChannelClosedError> {
