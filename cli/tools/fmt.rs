@@ -493,8 +493,7 @@ fn format_markup_embedded(
     | "jsonc"
     | "application/json"
     | "application/ld+json"
-    | "importmap"
-    | "speculationrules" => {
+    | "importmap" => {
       let mut json_config = get_resolved_json_config(fmt_options);
       json_config.line_width = print_width;
       let path = file_path.with_extension("json");
