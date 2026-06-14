@@ -309,16 +309,14 @@ impl JupyterReplSession {
           .v8_isolate()
           .cancel_terminate_execution();
 
-        self.repl_session.track_source_maps = true;
-
+        // Use the source-map-tracking wrapper so stack frames in any
+        // thrown error can be remapped from transpiled JS back to the
+        // user's TypeScript. The wrapper owns set+await+clear and pins
+        // the user's original `line` as the echoed source.
         let result = self
           .repl_session
-          .evaluate_line_with_object_wrapping(&line)
+          .evaluate_line_with_source_map_tracking(&line)
           .await;
-        // Drop the request flag so a follow-up call without it (eg. an
-        // implicit retry path) doesn't accidentally enable source-map
-        // tracking on a non-Jupyter call.
-        self.repl_session.track_source_maps = false;
 
         let outcome = match result {
           Ok(r) => {
@@ -373,18 +371,6 @@ impl JupyterReplSession {
           )
           .await;
         let _ = resp_tx.send(result);
-      }
-      JupyterReplRequest::CallFunctionOnArgs {
-        function_declaration,
-        args,
-        resp_tx,
-      } => {
-        let result = self
-          .repl_session
-          .call_function_on_args(function_declaration, &args)
-          .await;
-        let _ = resp_tx
-          .send(result.map(|r| serde_json::to_value(r).unwrap_or_default()));
       }
       JupyterReplRequest::CallFunctionOn {
         arg0,

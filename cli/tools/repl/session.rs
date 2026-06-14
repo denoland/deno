@@ -191,15 +191,15 @@ pub struct ReplSession {
   decorators: deno_ast::DecoratorsTranspileOption,
   /// While set, each `evaluate_ts_expression` call produces a source map
   /// for the transpiled code and stores it in `source_maps` under the key
-  /// V8 uses for evaluated scripts (`<anonymous>`). Jupyter cells set this
-  /// before evaluating and clear it afterwards so the stack trace
-  /// line/column numbers can be mapped back to the user's TypeScript via
-  /// `apply_source_map_to_stack`. The flag is intentionally *not* self-
-  /// clearing — `evaluate_line_with_object_wrapping` may re-call
+  /// V8 uses for evaluated scripts (`<anonymous>`). Always toggled via
+  /// `evaluate_line_with_source_map_tracking` so the set+await+clear
+  /// pair lives in one method (no caller can forget to flip it back).
+  /// Intentionally not self-clearing on the inner method —
+  /// `evaluate_line_with_object_wrapping` may re-call
   /// `evaluate_ts_expression` with a `( … )` retry wrapper, and that
   /// retry needs source-map tracking too so the map matches whichever
   /// source actually ran.
-  pub track_source_maps: bool,
+  track_source_maps: bool,
   source_maps: HashMap<String, Arc<deno_core::sourcemap::SourceMap>>,
   /// Cached cell source per `source_maps` key. Populated alongside
   /// `source_maps` so `apply_source_map_to_stack` can echo the user's
@@ -646,6 +646,31 @@ impl ReplSession {
       self.test_event_receiver = Some(report_tests_handle.await.unwrap().1);
     }
 
+    result
+  }
+
+  /// Like `evaluate_line_with_object_wrapping`, but the transpiled JS is
+  /// emitted with a source map and the parsed map is stashed under the
+  /// `<anonymous>` key so `apply_source_map_to_stack` can remap stack
+  /// frames back to the user's TypeScript. After the await we re-pin the
+  /// user's original `line` as the echoed source — `( … )` retry wrappers
+  /// would otherwise leave the wrapped form in `cell_sources`, bleeding
+  /// parens into the snippet. Wrapping inserts no newlines, so the line
+  /// numbers stay aligned. Set+await+clear is consolidated here so the
+  /// flag can never leak out into non-Jupyter callers (and an early
+  /// return from the inner call still resets it before returning).
+  pub async fn evaluate_line_with_source_map_tracking(
+    &mut self,
+    line: &str,
+  ) -> Result<TsEvaluateResponse, AnyError> {
+    self.track_source_maps = true;
+    let result = self.evaluate_line_with_object_wrapping(line).await;
+    self.track_source_maps = false;
+    if self.source_maps.contains_key("<anonymous>") {
+      self
+        .cell_sources
+        .insert("<anonymous>".to_string(), Arc::from(line));
+    }
     result
   }
 
