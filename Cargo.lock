@@ -2654,6 +2654,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_mcp"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+]
+
+[[package]]
 name = "deno_media_type"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3177,6 +3184,7 @@ dependencies = [
  "deno_inspector_server",
  "deno_io",
  "deno_kv",
+ "deno_mcp",
  "deno_napi",
  "deno_net",
  "deno_node",

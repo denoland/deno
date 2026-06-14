@@ -507,6 +507,181 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Options for creating a {@linkcode Deno.McpServer}.
+   *
+   * @category MCP
+   * @experimental
+   */
+  export interface McpServerOptions {
+    /** The server name reported to clients during the initialize
+     * handshake. */
+    name: string;
+    /** The server version reported to clients during the initialize
+     * handshake. */
+    version: string;
+    /** Optional usage instructions surfaced to the client (and typically to
+     * the model) after initialization. */
+    instructions?: string;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Definition of an MCP tool, as reported by `tools/list`.
+   *
+   * @category MCP
+   * @experimental
+   */
+  export interface McpToolDefinition {
+    /** Optional human-readable title of the tool. */
+    title?: string;
+    /** Description of what the tool does. Used by models to decide when to
+     * call the tool. */
+    description?: string;
+    /** JSON schema describing the tool input. Defaults to
+     * `{ "type": "object" }`. */
+    inputSchema?: Record<string, unknown>;
+    /** JSON schema describing the structured output of the tool. */
+    outputSchema?: Record<string, unknown>;
+    /** Optional tool annotations (e.g. `readOnlyHint`). */
+    annotations?: Record<string, unknown>;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Metadata of an MCP resource, as reported by `resources/list`.
+   *
+   * @category MCP
+   * @experimental
+   */
+  export interface McpResourceMetadata {
+    /** Resource name. Defaults to the resource URI. */
+    name?: string;
+    /** Optional human-readable title of the resource. */
+    title?: string;
+    /** Description of the resource. */
+    description?: string;
+    /** MIME type of the resource contents. */
+    mimeType?: string;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Definition of an MCP prompt, as reported by `prompts/list`.
+   *
+   * @category MCP
+   * @experimental
+   */
+  export interface McpPromptDefinition {
+    /** Optional human-readable title of the prompt. */
+    title?: string;
+    /** Description of the prompt. */
+    description?: string;
+    /** Arguments accepted by the prompt. */
+    arguments?: {
+      name: string;
+      description?: string;
+      required?: boolean;
+    }[];
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A Model Context Protocol (MCP) server. Register tools, resources and
+   * prompts, then serve them over the stdio transport with
+   * {@linkcode Deno.McpServer.serve}, or over the streamable HTTP transport
+   * by passing {@linkcode Deno.McpServer.fetch} to {@linkcode Deno.serve}.
+   *
+   * ```ts
+   * const server = new Deno.McpServer({
+   *   name: "calculator",
+   *   version: "1.0.0",
+   * });
+   *
+   * server.tool("add", {
+   *   description: "Add two numbers",
+   *   inputSchema: {
+   *     type: "object",
+   *     properties: { a: { type: "number" }, b: { type: "number" } },
+   *     required: ["a", "b"],
+   *   },
+   * }, ({ a, b }: { a: number; b: number }) => `${a + b}`);
+   *
+   * await server.serve();
+   * ```
+   *
+   * @category MCP
+   * @experimental
+   */
+  export class McpServer {
+    constructor(options: McpServerOptions);
+
+    /** Register a tool. The handler receives the tool call arguments and may
+     * return a string, a JSON-serializable value (reported as structured
+     * content), or a full MCP `CallToolResult` object. Errors thrown by the
+     * handler are reported to the client as tool execution errors. */
+    tool(
+      name: string,
+      definition: McpToolDefinition,
+      // deno-lint-ignore no-explicit-any
+      handler: (args: any) => unknown | Promise<unknown>,
+    ): this;
+    /** Register a tool without a definition. */
+    // deno-lint-ignore no-explicit-any
+    tool(
+      name: string,
+      handler: (args: any) => unknown | Promise<unknown>,
+    ): this;
+
+    /** Register a resource. The handler may return a string, a
+     * `Uint8Array` (reported as a base64 blob), or a full MCP
+     * `ReadResourceResult` object. */
+    resource(
+      uri: string,
+      metadata: McpResourceMetadata,
+      handler: (uri: string) => unknown | Promise<unknown>,
+    ): this;
+    /** Register a resource without metadata. */
+    resource(
+      uri: string,
+      handler: (uri: string) => unknown | Promise<unknown>,
+    ): this;
+
+    /** Register a prompt. The handler receives the prompt arguments and may
+     * return a string (used as a single user message), an array of messages,
+     * or a full MCP `GetPromptResult` object. */
+    prompt(
+      name: string,
+      definition: McpPromptDefinition,
+      // deno-lint-ignore no-explicit-any
+      handler: (args: any) => unknown | Promise<unknown>,
+    ): this;
+    /** Register a prompt without a definition. */
+    // deno-lint-ignore no-explicit-any
+    prompt(
+      name: string,
+      handler: (args: any) => unknown | Promise<unknown>,
+    ): this;
+
+    /** Serve the MCP server over the stdio transport (newline-delimited
+     * JSON-RPC messages on stdin/stdout). Resolves when stdin is closed.
+     *
+     * Note: when using the stdio transport nothing else may write to stdout;
+     * use `console.error` for logging. */
+    serve(options?: { transport?: "stdio" }): Promise<void>;
+
+    /** Handler for the streamable HTTP transport. Pass it to
+     * {@linkcode Deno.serve}:
+     *
+     * ```ts
+     * const server = new Deno.McpServer({ name: "demo", version: "1.0.0" });
+     * Deno.serve(server.fetch);
+     * ```
+     */
+    fetch: (request: Request) => Promise<Response>;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A key to be persisted in a {@linkcode Deno.Kv}. A key is a sequence
    * of {@linkcode Deno.KvKeyPart}s.
    *

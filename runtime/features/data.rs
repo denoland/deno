@@ -95,6 +95,13 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     env_var: Some("DENO_UNSTABLE_LOCKFILE_V5"),
   },
   UnstableFeatureDescription {
+    name: "mcp",
+    help_text: "Enable unstable `Deno.McpServer` API",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Runtime,
+    env_var: None,
+  },
+  UnstableFeatureDescription {
     name: "net",
     help_text: "enable unstable net APIs",
     show_in_help: true,

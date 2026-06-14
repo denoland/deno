@@ -75,6 +75,7 @@ pub fn create_runtime_snapshot(
     deno_cron::deno_cron::init(Box::new(
       deno_cron::local::LocalCronHandler::new(),
     )),
+    deno_mcp::deno_mcp::lazy_init(),
     deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),

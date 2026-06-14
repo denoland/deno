@@ -597,6 +597,7 @@ impl MainWorker {
           )),
           deno_kv::KvConfig::builder().build(),
         ),
+        deno_mcp::deno_mcp::args(),
         deno_napi::deno_napi::args(
           services.deno_rt_native_addon_loader.clone(),
         ),
@@ -1146,6 +1147,7 @@ fn common_extensions<
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::lazy_init(),
     deno_cron::deno_cron::init(Box::new(CronHandlerImpl::create_from_env())),
+    deno_mcp::deno_mcp::lazy_init(),
     deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),
