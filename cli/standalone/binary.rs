@@ -256,6 +256,26 @@ fn validate_app_name(app_name: &str) -> Result<(), AnyError> {
   Ok(())
 }
 
+/// Resolve the stable app identity baked into a compiled binary: an explicit
+/// `--app-name`, otherwise the output file name (minus any `.exe` extension).
+/// The derived default is held to the same rules as an explicit flag, since it
+/// becomes a single directory component at runtime (possibly on a different
+/// target OS when cross-compiling); otherwise an output name like `aux` or one
+/// with a trailing dot would silently break persistent storage on the target.
+fn resolve_app_name(
+  compile_flags: &CompileFlags,
+  display_output_filename: &str,
+) -> Result<String, AnyError> {
+  let app_name = compile_flags.app_name.clone().unwrap_or_else(|| {
+    display_output_filename
+      .strip_suffix(".exe")
+      .unwrap_or(display_output_filename)
+      .to_string()
+  });
+  validate_app_name(&app_name)?;
+  Ok(app_name)
+}
+
 pub struct WriteBinOptions<'a> {
   pub writer: File,
   pub display_output_filename: &'a str,
@@ -335,9 +355,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         );
       }
     }
-    if let Some(app_name) = &options.compile_flags.app_name {
-      validate_app_name(app_name)?;
-    }
+    // Validate the resolved app name (explicit `--app-name` or the default
+    // derived from the output file name) before writing the binary.
+    resolve_app_name(options.compile_flags, options.display_output_filename)?;
     self.write_standalone_binary(options, original_binary).await
   }
 
@@ -965,13 +985,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       // `Deno.openKv()`, `localStorage`, `caches`) persists to a per-app
       // directory at runtime. Prefer an explicit `--app-name`, otherwise derive
       // it from the output file name (minus any `.exe` extension). Resolving
-      // here keeps the identity stable even if the binary is later renamed.
-      app_name: Some(compile_flags.app_name.clone().unwrap_or_else(|| {
-        display_output_filename
-          .strip_suffix(".exe")
-          .unwrap_or(display_output_filename)
-          .to_string()
-      })),
+      // here keeps the identity stable even if the binary is later renamed. The
+      // name is already validated in `write_bin` (via `resolve_app_name`).
+      app_name: Some(resolve_app_name(compile_flags, display_output_filename)?),
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(

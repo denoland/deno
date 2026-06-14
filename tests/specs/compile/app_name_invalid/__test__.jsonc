@@ -70,6 +70,14 @@
       ],
       "output": "error.out",
       "exitCode": 1
+    },
+    // The app name defaults to the output file name, so the same validation
+    // must apply when `--app-name` is omitted (e.g. cross-compiling with an
+    // output name that is invalid on the target OS).
+    "default_from_output": {
+      "args": ["compile", "-A", "--output", "nul", "main.ts"],
+      "output": "error.out",
+      "exitCode": 1
     }
   }
 }
