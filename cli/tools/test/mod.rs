@@ -2040,6 +2040,12 @@ async fn filter_specifiers_by_changed(
   // Build a graph over the script test modules so we can walk each test's
   // dependencies. Doc-only (e.g. markdown) modules aren't part of the graph and
   // are matched by path instead.
+  //
+  // Note: this graph is built solely to resolve the affected set; the downstream
+  // typecheck/run path builds its own graph again. That's the same shape watch
+  // mode uses, where the cost is amortized across reruns; for a one-shot
+  // `--changed`/`--related` run it's an extra graph build we accept for now to
+  // keep the filtering self-contained.
   let graph_kind = cli_options.type_check_mode().as_graph_kind();
   let module_graph_creator = factory.module_graph_creator().await?;
   let graph_roots = specifiers_with_mode

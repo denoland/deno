@@ -4936,7 +4936,7 @@ or <c>**/__tests__/**</>:
         Arg::new("related")
           .long("related")
           .help("Run only test modules that depend on the given source files")
-          .num_args(1..)
+          .num_args(1)
           .require_equals(true)
           .action(ArgAction::Append)
           .value_hint(ValueHint::AnyPath)
