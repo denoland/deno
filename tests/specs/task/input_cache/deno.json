@@ -1,0 +1,17 @@
+{
+  "tasks": {
+    "build": {
+      "command": "deno run src/in.ts",
+      "files": ["src/**/*.ts"]
+    },
+    "with_env": {
+      "command": "deno run src/in.ts",
+      "files": ["src/**/*.ts"],
+      "env": ["MY_VAR"]
+    },
+    "no_inputs": {
+      "command": "deno run src/in.ts",
+      "files": ["does-not-exist/**/*.ts"]
+    }
+  }
+}

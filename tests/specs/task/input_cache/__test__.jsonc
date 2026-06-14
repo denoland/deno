@@ -1,0 +1,112 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Changing the contents of an input file invalidates the cache; an
+    // unchanged re-run hits.
+    "content_change": {
+      "steps": [
+        {
+          "args": "task build",
+          "output": "first.out"
+        },
+        {
+          "args": "task build",
+          "output": "cached.out"
+        },
+        {
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('src/in.ts', 'console.log(2)')"
+          ],
+          "output": ""
+        },
+        {
+          "args": "task build",
+          "output": "changed.out"
+        },
+        {
+          "args": "task build",
+          "output": "cached.out"
+        }
+      ]
+    },
+    // Arguments appended on the CLI are part of the fingerprint: re-running
+    // with the same args hits, but different args miss and run again.
+    "args_are_fingerprinted": {
+      "steps": [
+        {
+          "args": "task build foo",
+          "output": "Task build deno run src/in.ts 'foo'\n1\n"
+        },
+        {
+          "args": "task build foo",
+          "output": "Task build deno run src/in.ts 'foo' (cached, inputs unchanged)\n"
+        },
+        {
+          "args": "task build bar",
+          "output": "Task build deno run src/in.ts 'bar'\n1\n"
+        },
+        {
+          "args": "task build bar",
+          "output": "Task build deno run src/in.ts 'bar' (cached, inputs unchanged)\n"
+        }
+      ]
+    },
+    // A listed env var's value is part of the fingerprint: same value hits,
+    // a changed value misses.
+    "env_is_fingerprinted": {
+      "steps": [
+        {
+          "args": "task with_env",
+          "envs": { "MY_VAR": "a" },
+          "output": "Task with_env deno run src/in.ts\n1\n"
+        },
+        {
+          "args": "task with_env",
+          "envs": { "MY_VAR": "a" },
+          "output": "Task with_env deno run src/in.ts (cached, inputs unchanged)\n"
+        },
+        {
+          "args": "task with_env",
+          "envs": { "MY_VAR": "b" },
+          "output": "Task with_env deno run src/in.ts\n1\n"
+        }
+      ]
+    },
+    // Changing the command itself invalidates the cache even when inputs are
+    // untouched.
+    "command_change_invalidates": {
+      "steps": [
+        {
+          "args": "task build",
+          "output": "first.out"
+        },
+        {
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('deno.json', JSON.stringify({tasks:{build:{command:'deno run -q src/in.ts',files:['src/**/*.ts']}}}))"
+          ],
+          "output": ""
+        },
+        {
+          "args": "task build",
+          "output": "Task build deno run -q src/in.ts\n1\n"
+        }
+      ]
+    },
+    // An input glob that matches nothing is treated as non-cacheable, so the
+    // task runs on every invocation instead of always hitting.
+    "glob_matching_nothing_never_caches": {
+      "steps": [
+        {
+          "args": "task no_inputs",
+          "output": "Task no_inputs deno run src/in.ts\n1\n"
+        },
+        {
+          "args": "task no_inputs",
+          "output": "Task no_inputs deno run src/in.ts\n1\n"
+        }
+      ]
+    }
+  }
+}

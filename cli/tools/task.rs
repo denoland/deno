@@ -187,6 +187,8 @@ pub async fn execute_script(
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let progress_bar = factory.text_only_progress_bar();
+  let task_cache =
+    crate::tools::task_cache::TaskCache::new(&factory.deno_dir()?.root);
   let mut env_vars = task_runner::real_env_vars();
 
   if flags.tunnel {
@@ -210,6 +212,7 @@ pub async fn execute_script(
     cli_options,
     maybe_lockfile,
     concurrency: no_of_concurrent_tasks.into(),
+    task_cache: &task_cache,
   };
 
   let kill_signal = KillSignal::default();
@@ -225,6 +228,9 @@ pub async fn execute_script(
             command: Some(task_flags.task.as_ref().unwrap().to_string()),
             dependencies: vec![],
             description: None,
+            files: Vec::new(),
+            output: Vec::new(),
+            env: Vec::new(),
           },
           kill_signal,
           cli_options.argv(),
@@ -374,6 +380,7 @@ struct TaskRunner<'a> {
   cli_options: &'a CliOptions,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   concurrency: usize,
+  task_cache: &'a crate::tools::task_cache::TaskCache,
 }
 
 impl<'a> TaskRunner<'a> {
@@ -661,20 +668,62 @@ impl<'a> TaskRunner<'a> {
       &node_modules_bin_dirs,
     )?;
 
-    self
+    // Input-based cache: if the task declares `files`, hash inputs +
+    // command + listed env values and skip on match.
+    let env_snapshot: std::collections::BTreeMap<String, String> = self
+      .env_vars
+      .iter()
+      .filter_map(|(k, v)| {
+        Some((k.to_str()?.to_string(), v.to_str()?.to_string()))
+      })
+      .collect();
+    let cache_key = crate::tools::task_cache::TaskCacheKey {
+      package_name,
+      task_name,
+      cwd: &cwd,
+      command,
+      argv,
+      files: &definition.files,
+      env_names: &definition.env,
+      env: &env_snapshot,
+    };
+    let pending_fingerprint = match self.task_cache.lookup(&cache_key) {
+      crate::tools::task_cache::CacheLookup::Hit => {
+        self.output_task(
+          task_name,
+          package_name,
+          &format!(
+            "{} (cached, inputs unchanged)",
+            colors::gray(task_runner::get_script_with_args(command, argv))
+          ),
+        );
+        return Ok(0);
+      }
+      crate::tools::task_cache::CacheLookup::Miss(fp) => Some(fp),
+      crate::tools::task_cache::CacheLookup::NotCacheable => None,
+    };
+
+    let exit_code = self
       .run_single(RunSingleOptions {
         task_name,
         package_name,
         label_name,
         script: command,
-        cwd,
+        cwd: cwd.clone(),
         custom_commands,
         node_modules_bin_dirs,
         kill_signal,
         argv,
         parallel_info,
       })
-      .await
+      .await?;
+
+    if exit_code == 0
+      && let Some(fp) = pending_fingerprint
+    {
+      self.task_cache.store(&cache_key, fp);
+    }
+    Ok(exit_code)
   }
 
   #[allow(
@@ -1126,6 +1175,9 @@ fn get_available_tasks(
             command: Some(script.to_string()),
             dependencies: vec![],
             description: None,
+            files: Vec::new(),
+            output: Vec::new(),
+            env: Vec::new(),
           },
         });
       }
