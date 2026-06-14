@@ -794,8 +794,6 @@ fn ensure_no_import_assertion(
 
 #[cfg(test)]
 mod tests {
-  use std::sync::Arc;
-
   use super::*;
 
   fn parse(specifier: &str, text: &str) -> ParsedSource {
@@ -803,7 +801,7 @@ mod tests {
     deno_ast::parse_module(deno_ast::ParseParams {
       media_type: MediaType::from_specifier(&specifier),
       specifier,
-      text: Arc::from(text),
+      text: text.into(),
       capture_tokens: false,
       scope_analysis: false,
       maybe_syntax: None,
