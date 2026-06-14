@@ -36,7 +36,6 @@ unicode-normalization.workspace = true
 urlpattern.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 vello.workspace = true
-vello_api.workspace = true
 vello_cpu.workspace = true
 
 [dev-dependencies]

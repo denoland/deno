@@ -156,7 +156,6 @@ deno_core::extension!(deno_web,
     font::op_fontdb_add,
     font::op_fontdb_remove,
     font::op_parse_css_font_query,
-    canvas2d::op_canvas2d_init,
   ],
   objects = [
     css_stylesheet::CSSRule,

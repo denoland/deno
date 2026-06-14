@@ -3655,7 +3655,6 @@ dependencies = [
  "urlpattern",
  "uuid",
  "vello",
- "vello_api",
  "vello_cpu",
 ]
 
@@ -11583,17 +11582,6 @@ dependencies = [
  "vello_encoding",
  "vello_shaders",
  "wgpu",
-]
-
-[[package]]
-name = "vello_api"
-version = "0.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5088cd0113bc5332c753f24503825e3bc93e26c7883c9dc3ad9637bb62c4634"
-dependencies = [
- "bytemuck",
- "peniko",
- "png 0.18.1",
 ]
 
 [[package]]
