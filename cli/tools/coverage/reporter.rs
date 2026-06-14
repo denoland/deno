@@ -206,8 +206,11 @@ impl CoverageReporter for SummaryCoverageReporter {
     // When the reports can't be reduced to a common file-system root (e.g. on
     // Windows when coverage spans multiple drive letters), `collect_summary`
     // returns an empty map without the "" root entry. There is nothing to
-    // print in that case, so bail out instead of panicking.
+    // print in that case, so warn and bail out instead of panicking.
     let Some(root_stats) = summary.get("") else {
+      log::warn!(
+        "Skipping coverage summary: reports span multiple file-system roots"
+      );
       return;
     };
 
@@ -216,6 +219,10 @@ impl CoverageReporter for SummaryCoverageReporter {
       .filter(|(_, stats)| stats.file_text.is_some())
       .collect::<Vec<_>>();
     entries.sort_by_key(|(node, _)| node.to_owned());
+    // `entries` is always non-empty here: reaching this point means the summary
+    // has a "" root, which only happens when `collect_summary` resolved a common
+    // root from non-empty `file_reports`, and each report inserts a leaf entry
+    // with `file_text: Some(..)`. `unwrap_or(0)` is just defense-in-depth.
     let node_max = entries
       .iter()
       .map(|(node, _)| node.len())
