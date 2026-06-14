@@ -451,7 +451,18 @@ converters.ByteString = (V, prefix, context, opts) => {
 
 converters.USVString = (V, prefix, context, opts) => {
   const S = converters.DOMString(V, prefix, context, opts);
-  return StringPrototypeToWellFormed(S);
+  // Fast path: a string with no UTF-16 surrogate code units (the
+  // overwhelmingly common case for URL parameters, request bodies, etc.)
+  // is well-formed by construction, so it's safe to skip the
+  // `StringPrototypeToWellFormed` V8 call. Pre-scanning for any
+  // surrogate is cheaper than the builtin's full pair-validation pass.
+  for (let i = 0; i < S.length; i++) {
+    const c = StringPrototypeCharCodeAt(S, i);
+    if (c >= 0xD800 && c <= 0xDFFF) {
+      return StringPrototypeToWellFormed(S);
+    }
+  }
+  return S;
 };
 
 converters.object = (V, prefix, context, _opts) => {
