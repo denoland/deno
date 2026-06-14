@@ -16,18 +16,18 @@ pub struct GpuRenderer {
   renderer: Mutex<vello::Renderer>,
 }
 
-/// Hybrid software backend — uses a wgpu software adapter with vello's CPU path.
+/// Hybrid software backend — runs vello's GPU compute pipeline on a wgpu
+/// software adapter (not a CPU rasterizer; the GPU shaders are emulated).
 ///
 /// This requires wgpu to be available and find a software adapter.
 /// On macOS, Metal has no software fallback, so this path is effectively
 /// Windows-only (WARP) or Linux with lavapipe/llvmpipe.
-///
-/// TODO(petamoriken): Replace HybridRenderer (wgpu software adapter) with
-/// vello_hybrid::Renderer once vello_hybrid stabilizes and supports
-/// vello_api::Scene as input.
 pub struct HybridRenderer {
   device: wgpu::Device,
   queue: wgpu::Queue,
+  // TODO(petamoriken): Replace this software-adapter approach with the dedicated
+  // `vello_hybrid::Renderer` (a sparse-strips renderer that offloads work to the
+  // GPU) once it stabilizes.
   renderer: Mutex<vello::Renderer>,
 }
 
@@ -142,7 +142,9 @@ pub fn render_scene_to_texture_view(
 }
 
 /// Renders a vello Scene to RGBA8 bytes.
-/// Only valid for `Gpu` and `Hybrid` backends; call `render_scene_cpu` for `Cpu`.
+/// Only valid for `Gpu` and `Hybrid` backends; the `Cpu` backend renders
+/// directly via `vello_cpu::RenderContext::render_to_buffer` (see the
+/// `DrawingBackend::VelloCpu` arm in `canvas2d.rs`).
 pub fn render_scene(
   backend: &DenoCanvasBackend,
   scene: &vello::Scene,

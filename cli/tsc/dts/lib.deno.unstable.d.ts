@@ -4652,6 +4652,17 @@ declare namespace Deno {
     export {}; // only export exports
   }
 
+  /**
+   * The global set of loaded fonts, equivalent to `document.fonts` in browsers.
+   *
+   * Use `Deno.fonts.add(face)` to register a `FontFace` so it is available
+   * for Canvas 2D text rendering.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   * @category Canvas 2D
+   */
+  export const fonts: FontFaceSet;
+
   export {}; // only export exports
 }
 
