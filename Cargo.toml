@@ -98,7 +98,7 @@ deno_lint = "=0.84.1"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_path_util = "=0.6.4"
-deno_semver = "=0.10.0"
+deno_semver = "=0.10.1"
 deno_task_shell = "=0.33.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }

@@ -33,6 +33,7 @@ use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_config::workspace::WorkspaceLintConfig;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -1646,7 +1647,14 @@ pub fn config_to_deno_graph_workspace_member(
     None => bail!("Missing 'name' field in config file."),
   };
   let version = match &config.json.version {
-    Some(name) => Some(deno_semver::Version::parse_standard(name)?),
+    Some(version) => Some(
+      deno_semver::Version::parse_standard(version).with_context(|| {
+        format!(
+          "Failed to parse version '{}' in config file '{}'",
+          version, config.specifier
+        )
+      })?,
+    ),
     None => None,
   };
   Ok(deno_graph::WorkspaceMember {
@@ -1984,6 +1992,37 @@ mod test {
     assert!(reg_url.as_str().ends_with('/'));
     let reg_api_url = jsr_api_url();
     assert!(reg_api_url.as_str().ends_with('/'));
+  }
+
+  #[test]
+  fn config_to_deno_graph_workspace_member_invalid_version_error() {
+    let config_text = r#"{
+      "name": "@test/foo",
+      "version": "1.0",
+      "exports": "./mod.ts"
+    }"#;
+    let config_specifier =
+      Url::parse("file:///workspace/foo/deno.jsonc").unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+
+    let error =
+      config_to_deno_graph_workspace_member(&config_file).unwrap_err();
+    let error_text = format!("{:#}", error);
+    assert!(
+      error_text.contains(
+        "Failed to parse version '1.0' in config file \
+         'file:///workspace/foo/deno.jsonc'"
+      ),
+      "{error_text}"
+    );
+    assert!(error_text.contains("Invalid version"), "{error_text}");
+    assert!(
+      error_text.contains(
+        "Missing patch version. Versions must be in the form \
+         MAJOR.MINOR.PATCH (ex. 1.0.0)."
+      ),
+      "{error_text}"
+    );
   }
 
   #[test]
