@@ -207,6 +207,75 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
     || libsui::utils::is_macho(&data)
 }
 
+/// Validate a user-provided `--app-name`. The name becomes a single directory
+/// component under the platform's app data directory at runtime. Because a
+/// binary can be cross-compiled, validate against the union of what every
+/// target OS allows so the baked identity resolves to one unambiguous
+/// directory component everywhere, rather than escaping the directory or
+/// failing on the target's filesystem. Done here so the user gets a clear
+/// compile-time error instead of a surprising (or unusable) store location.
+fn validate_app_name(app_name: &str) -> Result<(), AnyError> {
+  const RESERVED_NAMES: [&str; 22] = [
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6",
+    "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6",
+    "lpt7", "lpt8", "lpt9",
+  ];
+
+  // Windows reserved device names match case-insensitively against the portion
+  // before the first `.` (so `nul`, `NUL`, and `nul.txt` all match).
+  let stem = app_name.split('.').next().unwrap_or(app_name);
+  let is_reserved_name =
+    RESERVED_NAMES.iter().any(|n| stem.eq_ignore_ascii_case(n));
+
+  let reason = if app_name.is_empty() {
+    Some("must not be empty")
+  } else if app_name == "." || app_name == ".." {
+    Some("must not be `.` or `..`")
+  } else if app_name
+    // `/` and `\` are path separators; `<>:"|?*` are reserved on Windows;
+    // control characters are rejected by the filesystem.
+    .contains(|c: char| {
+      matches!(c, '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*')
+        || c.is_control()
+    })
+  {
+    Some("must not contain path separators or any of `<>:\"|?*`")
+  } else if app_name.ends_with('.') || app_name.ends_with(' ') {
+    // Windows silently strips trailing dots and spaces, which would change the
+    // identity out from under the user.
+    Some("must not end with a `.` or a space")
+  } else if is_reserved_name {
+    Some("must not be a reserved device name (e.g. `CON`, `NUL`, `COM1`)")
+  } else {
+    None
+  };
+
+  if let Some(reason) = reason {
+    bail!("Invalid `--app-name` value {:?}: {}.", app_name, reason);
+  }
+  Ok(())
+}
+
+/// Resolve the stable app identity baked into a compiled binary: an explicit
+/// `--app-name`, otherwise the output file name (minus any `.exe` extension).
+/// The derived default is held to the same rules as an explicit flag, since it
+/// becomes a single directory component at runtime (possibly on a different
+/// target OS when cross-compiling); otherwise an output name like `aux` or one
+/// with a trailing dot would silently break persistent storage on the target.
+fn resolve_app_name(
+  compile_flags: &CompileFlags,
+  display_output_filename: &str,
+) -> Result<String, AnyError> {
+  let app_name = compile_flags.app_name.clone().unwrap_or_else(|| {
+    display_output_filename
+      .strip_suffix(".exe")
+      .unwrap_or(display_output_filename)
+      .to_string()
+  });
+  validate_app_name(&app_name)?;
+  Ok(app_name)
+}
+
 pub struct WriteBinOptions<'a> {
   pub writer: File,
   pub display_output_filename: &'a str,
@@ -286,6 +355,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         );
       }
     }
+    // Validate the resolved app name (explicit `--app-name` or the default
+    // derived from the output file name) before writing the binary.
+    resolve_app_name(options.compile_flags, options.display_output_filename)?;
     self.write_standalone_binary(options, original_binary).await
   }
 
@@ -909,6 +981,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       } else {
         None
       },
+      // Bake in a stable app identity so origin-bound storage (default
+      // `Deno.openKv()`, `localStorage`, `caches`) persists to a per-app
+      // directory at runtime. Prefer an explicit `--app-name`, otherwise derive
+      // it from the output file name (minus any `.exe` extension). Resolving
+      // here keeps the identity stable even if the binary is later renamed. The
+      // name is already validated in `write_bin` (via `resolve_app_name`).
+      app_name: Some(resolve_app_name(compile_flags, display_output_filename)?),
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(

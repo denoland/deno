@@ -1416,6 +1416,40 @@ pub async fn run(
     }
     checker
   });
+  // Resolve a persistent, per-app data directory so origin-bound storage such
+  // as the default `Deno.openKv()`, `localStorage` and `caches` persists to
+  // disk instead of silently falling back to an in-memory database. A compiled
+  // binary is a standalone app, so we store under the platform's app data
+  // directory (`%LOCALAPPDATA%`, `~/Library/Application Support`,
+  // `$XDG_DATA_HOME`) keyed by the app name, rather than polluting `DENO_DIR`.
+  //
+  // The app name is baked in at compile time (`--app-name`, otherwise the
+  // output file name), so it is stable across runs and even if the binary is
+  // later renamed. Recompiling with a different `--output`/`--app-name` starts
+  // a fresh store. If we can't resolve a data directory we leave both pieces
+  // unset and keep the in-memory fallback.
+  //
+  // `metadata.app_name` is always set by binaries this version produces; the
+  // fallback to the executable file stem only matters for binaries compiled
+  // before the field existed.
+  let app_name = metadata.app_name.unwrap_or_else(|| {
+    std::env::current_exe()
+      .ok()
+      .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+      .unwrap_or_else(|| "deno-compile".to_string())
+  });
+  // `--app-name` is validated at compile time (see `validate_app_name`), so it
+  // is safe to use directly as a single directory component here.
+  let origin_data_folder_path =
+    crate::binary::get_data_local_dir().map(|dir| dir.join(&app_name));
+  // Only enable persistent storage when we resolved a data directory. The
+  // storage key resolver must stay empty otherwise, because the worker unwraps
+  // `origin_data_folder_path` whenever the key resolves to a value.
+  let storage_key_resolver = if origin_data_folder_path.is_some() {
+    StorageKeyResolver::from_compile_app_name(&app_name)
+  } else {
+    StorageKeyResolver::empty()
+  };
   let lib_main_worker_options = LibMainWorkerOptions {
     argv: metadata.argv,
     log_level: WorkerLogLevel::Info,
@@ -1436,7 +1470,7 @@ pub async fn run(
     node_debug: std::env::var("NODE_DEBUG").ok(),
     node_cluster_unique_id: std::env::var("NODE_UNIQUE_ID").ok(),
     node_cluster_sched_policy: std::env::var("NODE_CLUSTER_SCHED_POLICY").ok(),
-    origin_data_folder_path: None,
+    origin_data_folder_path,
     seed: metadata.seed,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
@@ -1464,7 +1498,7 @@ pub async fn run(
     create_npm_process_state_provider(&npm_resolver),
     pkg_json_resolver,
     root_cert_store_provider,
-    StorageKeyResolver::empty(),
+    storage_key_resolver,
     sys.clone(),
     lib_main_worker_options,
     Default::default(),

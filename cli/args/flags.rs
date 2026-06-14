@@ -228,6 +228,10 @@ pub struct CompileFlags {
   /// Bundle the entrypoint with esbuild before embedding it, instead of
   /// shipping the entire node_modules tree. Experimental.
   pub bundle: bool,
+  /// Stable identity for the compiled app. Determines where origin-bound
+  /// storage (default `Deno.openKv()`, `localStorage`, `caches`) is persisted.
+  /// Defaults to the output file name when not set.
+  pub app_name: Option<String>,
   /// Minify the bundle. Only meaningful with `bundle: true`.
   pub minify: bool,
   /// Prune the embedded managed npm snapshot to only those packages reachable
@@ -3135,6 +3139,16 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .help(cstr!("<y>Experimental.</> Bundle the entrypoint with esbuild before embedding, instead of shipping the whole node_modules tree.
   <p(245)>Produces a smaller binary with faster startup, at the cost of dropping dynamic require/import patterns that can't be statically traced.</>"))
           .action(ArgAction::SetTrue)
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("app-name")
+          .long("app-name")
+          .help(cstr!("Stable identity for the compiled app.
+  <p(245)>Determines where origin-bound storage such as the default `Deno.openKv()`,
+  `localStorage` and `caches` is persisted (under the platform's app data directory).
+  Defaults to the output file name. Set this to keep storage stable across renames.</>"))
+          .value_parser(value_parser!(String))
           .help_heading(COMPILE_HEADING),
       )
       .arg(
@@ -7161,6 +7175,7 @@ fn compile_parse(
   let eszip = matches.get_flag("eszip-internal-do-not-use");
   let self_extracting = matches.get_flag("self-extracting");
   let bundle = matches.get_flag("bundle");
+  let app_name = matches.remove_one::<String>("app-name");
   let minify = matches.get_flag("minify");
   let exclude_unused_npm = matches.get_flag("exclude-unused-npm");
   let include = matches
@@ -7188,6 +7203,7 @@ fn compile_parse(
     eszip,
     self_extracting,
     bundle,
+    app_name,
     minify,
     exclude_unused_npm,
   });
@@ -13926,6 +13942,7 @@ mod tests {
           eszip: false,
           self_extracting: false,
           bundle: false,
+          app_name: None,
           minify: false,
           exclude_unused_npm: false,
         }),
@@ -13965,6 +13982,7 @@ mod tests {
           eszip: false,
           self_extracting: false,
           bundle: false,
+          app_name: None,
           minify: false,
           exclude_unused_npm: false,
         }),
@@ -13996,6 +14014,7 @@ mod tests {
           eszip: false,
           self_extracting: false,
           bundle: false,
+          app_name: None,
           minify: false,
           exclude_unused_npm: false,
         }),
@@ -16695,6 +16714,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
           eszip: false,
           self_extracting: false,
           bundle: false,
+          app_name: None,
           minify: false,
           exclude_unused_npm: false,
         }),
