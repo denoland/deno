@@ -549,7 +549,7 @@ pub async fn add(
 
   let initial_cwd = cli_factory.cli_options()?.initial_cwd().to_path_buf();
   for entry_text in add_flags.packages.iter() {
-    if let Some(hint) = link_hint_for_spec(&initial_cwd, entry_text, cmd_name) {
+    if let Some(hint) = link_hint_for_spec(&initial_cwd, entry_text) {
       bail!("{hint}");
     }
     let req = AddRmPackageReq::parse(
@@ -1191,11 +1191,7 @@ async fn npm_install_after_modification(
 /// If the user-supplied `spec` looks like a path to a local JSR package
 /// directory (relative or absolute, currently exists, and contains a
 /// `deno.json`(c)), return a message suggesting `deno link` instead.
-fn link_hint_for_spec(
-  cwd: &Path,
-  spec: &str,
-  cmd_name: AddCommandName,
-) -> Option<String> {
+fn link_hint_for_spec(cwd: &Path, spec: &str) -> Option<String> {
   // Skip anything with a registry prefix.
   if spec.contains(':') {
     return None;
@@ -1223,7 +1219,6 @@ fn link_hint_for_spec(
   if !has_config {
     return None;
   }
-  let _ = cmd_name; // hint always recommends `deno link`, regardless of caller
   Some(format!(
     "'{}' looks like a local package directory. Did you mean `{}`?",
     spec,
