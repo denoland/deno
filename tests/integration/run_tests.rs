@@ -1075,6 +1075,37 @@ fn should_not_panic_on_no_stderr() {
   output.unwrap();
 }
 
+#[cfg(windows)]
+#[test]
+fn deno_kill_sends_console_ctrl_events() {
+  use std::os::windows::process::CommandExt;
+
+  // Deno.kill(0, ...) delivers CTRL_BREAK and CTRL_C events to every
+  // process attached to the console, so give the process a console of its
+  // own to keep the events away from the test runner.
+  const CREATE_NEW_CONSOLE: u32 = 0x00000010;
+
+  let output = Command::new(util::deno_exe_path())
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--allow-run")
+    .arg("run/kill_console_events.ts")
+    .creation_flags(CREATE_NEW_CONSOLE)
+    .stdin(Stdio::null())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .output()
+    .unwrap();
+
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  assert!(
+    output.status.success(),
+    "stdout: {stdout}, stderr: {stderr}"
+  );
+  assert_contains!(stdout, "received SIGBREAK and SIGINT");
+}
+
 #[cfg(not(windows))]
 #[test]
 fn should_not_panic_on_undefined_home_environment_variable() {

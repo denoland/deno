@@ -205,6 +205,19 @@ pub fn register(
         if signal == SIGWINCH {
           start_sigwinch_polling();
         }
+        if signal == SIGINT {
+          // A process created with CREATE_NEW_PROCESS_GROUP starts with
+          // CTRL+C processing disabled, and the setting is inherited by
+          // child processes. In that state the system never invokes
+          // console control handlers for CTRL_C_EVENT (CTRL_BREAK_EVENT
+          // is unaffected), so a SIGINT listener would never fire. The
+          // GitHub Actions runner is one such parent. Passing NULL and
+          // FALSE restores normal CTRL+C processing.
+          // SAFETY: Win32 call with a null handler routine.
+          unsafe {
+            windows_sys::Win32::System::Console::SetConsoleCtrlHandler(None, 0);
+          }
+        }
       }
     }
   }
