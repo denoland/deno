@@ -791,3 +791,84 @@ fn ensure_no_import_assertion(
 
   Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+  use std::sync::Arc;
+
+  use super::*;
+
+  fn parse(specifier: &str, text: &str) -> ParsedSource {
+    let specifier = Url::parse(specifier).unwrap();
+    deno_ast::parse_module(deno_ast::ParseParams {
+      media_type: MediaType::from_specifier(&specifier),
+      specifier,
+      text: Arc::from(text),
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })
+    .unwrap()
+  }
+
+  // Plain TypeScript is stripped in place: the output keeps the same number of
+  // lines and the runtime token stays on its original line. This is the core
+  // guarantee that makes the profiler's (un-source-mapped) line numbers match
+  // the source. See denoland/deno#25349.
+  #[test]
+  fn line_preserving_strip_preserves_lines() {
+    let src = parse(
+      "file:///mod.ts",
+      concat!(
+        "interface Foo {\n",
+        "  a: number;\n",
+        "  b: string;\n",
+        "}\n",
+        "type Bar = Foo | null;\n",
+        "export function target(x: number): number {\n",
+        "  return x * 2;\n",
+        "}\n",
+      ),
+    );
+    let stripped = maybe_line_preserving_strip(&src).unwrap();
+    // Same number of lines as the source.
+    assert_eq!(stripped.lines().count(), src.text().lines().count());
+    // `target` is declared on line 6 of the source (1-based) and must remain
+    // there after stripping.
+    let line_of = |text: &str, needle: &str| {
+      text.lines().position(|l| l.contains(needle)).unwrap()
+    };
+    assert_eq!(
+      line_of(&stripped, "function target"),
+      line_of(src.text(), "function target"),
+    );
+    // The type-only constructs are gone.
+    assert!(!stripped.contains("interface"));
+    assert!(!stripped.contains("type Bar"));
+  }
+
+  // JSX still needs a real transform, so it must fall back to the full
+  // transpile rather than being stripped.
+  #[test]
+  fn line_preserving_strip_skips_jsx() {
+    let src = parse("file:///mod.tsx", "export const el = <div>{1}</div>;\n");
+    assert!(maybe_line_preserving_strip(&src).is_none());
+  }
+
+  // TypeScript constructs that aren't pure type annotations (enums, namespaces)
+  // can't be handled by stripping alone, so they must fall back too.
+  #[test]
+  fn line_preserving_strip_skips_non_strippable_ts() {
+    for src in [
+      "enum E { A, B }\n",
+      "namespace N { export const x = 1; }\n",
+      "class C { constructor(public x: number) {} }\n",
+    ] {
+      let parsed = parse("file:///mod.ts", src);
+      assert!(
+        maybe_line_preserving_strip(&parsed).is_none(),
+        "expected fallback for: {src}",
+      );
+    }
+  }
+}
