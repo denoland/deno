@@ -5,12 +5,14 @@ use super::*;
 mod common;
 mod compound;
 mod dot;
+mod json;
 mod junit;
 mod pretty;
 mod tap;
 
 pub use compound::CompoundTestReporter;
 pub use dot::DotTestReporter;
+pub use json::JsonTestReporter;
 pub use junit::JunitTestReporter;
 pub use pretty::PrettyTestReporter;
 pub use tap::TapTestReporter;

@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "tests": {
+    "basic": {
+      "args": "test --quiet --reporter=json basic.ts",
+      "exitCode": 1,
+      "output": "basic.out"
+    }
+  }
+}

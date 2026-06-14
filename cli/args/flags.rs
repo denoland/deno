@@ -621,6 +621,7 @@ pub enum TestReporterConfig {
   Dot,
   Junit,
   Tap,
+  Json,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -4952,7 +4953,7 @@ or <c>**/__tests__/**</>:
         Arg::new("reporter")
           .long("reporter")
           .help("Select reporter to use. Default to 'pretty'")
-          .value_parser(["pretty", "dot", "junit", "tap"])
+          .value_parser(["pretty", "dot", "junit", "tap", "json"])
           .help_heading(TEST_HEADING)
       )
       .arg(
@@ -8349,13 +8350,19 @@ fn test_parse(
         "junit" => TestReporterConfig::Junit,
         "dot" => TestReporterConfig::Dot,
         "tap" => TestReporterConfig::Tap,
+        "json" => TestReporterConfig::Json,
         _ => unreachable!(),
       }
     } else {
       TestReporterConfig::Pretty
     };
 
-  if matches!(reporter, TestReporterConfig::Dot | TestReporterConfig::Tap) {
+  if matches!(
+    reporter,
+    TestReporterConfig::Dot
+      | TestReporterConfig::Tap
+      | TestReporterConfig::Json
+  ) {
     flags.log_level = Some(Level::Error);
   }
 
