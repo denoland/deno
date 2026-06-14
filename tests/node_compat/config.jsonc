@@ -135,7 +135,6 @@
     "es-module/test-typescript-commonjs.mjs": {},
     "es-module/test-typescript-eval.mjs": {},
     "es-module/test-typescript-module.mjs": {},
-    "es-module/test-typescript-transform.mjs": {},
     "es-module/test-typescript.mjs": {},
     "es-module/test-vm-compile-function-lineoffset.js": {},
     "es-module/test-vm-source-text-module-leak.js": {},
@@ -193,10 +192,6 @@
     "parallel/test-als-defaultvalue.js": {},
     "parallel/test-arm-math-illegal-instruction.js": {},
     "parallel/test-assert-async.js": {},
-    "parallel/test-assert-calltracker-calls.js": {},
-    "parallel/test-assert-calltracker-getCalls.js": {},
-    "parallel/test-assert-calltracker-report.js": {},
-    "parallel/test-assert-calltracker-verify.js": {},
     "parallel/test-assert-checktag.js": {
       "ignore": true,
       "reason": "globalThis is now deeply equal to a plain object copy because Node.js timers are used as default globals, eliminating the proxy-based timer function difference that previously made them unequal"
@@ -206,7 +201,6 @@
     "parallel/test-assert-deep-with-error.js": {},
     "parallel/test-assert-deep.js": {},
     "parallel/test-assert-esm-cjs-message-verify.js": {},
-    "parallel/test-assert-fail-deprecation.js": {},
     "parallel/test-assert-fail.js": {},
     "parallel/test-assert-first-line.js": {},
     "parallel/test-assert-if-error.js": {},
@@ -628,9 +622,7 @@
     },
     "parallel/test-compile-cache-typescript-commonjs.js": {},
     "parallel/test-compile-cache-typescript-esm.js": {},
-    "parallel/test-compile-cache-typescript-strip-miss.js": {},
     "parallel/test-compile-cache-typescript-strip-sourcemaps.js": {},
-    "parallel/test-compile-cache-typescript-transform.js": {},
     "parallel/test-console-assign-undefined.js": {},
     "parallel/test-console-async-write-error.js": {},
     "parallel/test-console-formatTime.js": {},
@@ -672,7 +664,6 @@
     "parallel/test-crypto-dh-odd-key.js": {},
     "parallel/test-crypto-dh-padding.js": {},
     "parallel/test-crypto-dh-shared.js": {},
-    "parallel/test-crypto-dh-stateless-async.js": {},
     "parallel/test-crypto-dh-stateless.js": {},
     "parallel/test-crypto-dh.js": {},
     "parallel/test-crypto-domain.js": {},
@@ -713,9 +704,7 @@
     "parallel/test-crypto-keygen-async-named-elliptic-curve-encrypted-p256.js": {},
     "parallel/test-crypto-keygen-async-rsa.js": {},
     "parallel/test-crypto-keygen-bit-length.js": {},
-    "parallel/test-crypto-keygen-deprecation.js": {},
     "parallel/test-crypto-keygen-dh-classic.js": {},
-    "parallel/test-crypto-keygen-duplicate-deprecated-option.js": {},
     "parallel/test-crypto-keygen-eddsa.js": {},
     "parallel/test-crypto-pbkdf2.js": {},
     "parallel/test-crypto-pqc-key-objects-ml-dsa.js": {},
@@ -937,7 +926,6 @@
     "parallel/test-dgram-connect.js": {},
     "parallel/test-dgram-createSocket-type.js": {},
     "parallel/test-dgram-custom-lookup.js": {},
-    "parallel/test-dgram-deprecation-error.js": {},
     "parallel/test-dgram-error-message-address.js": {},
     "parallel/test-dgram-implicit-bind.js": {},
     "parallel/test-dgram-ipv6only.js": {},
@@ -2343,10 +2331,6 @@
       "ignore": true,
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
     },
-    "parallel/test-internal-encoding-binding.js": {
-      "ignore": true,
-      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
-    },
     "parallel/test-internal-error-original-names.js": {
       "ignore": true,
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
@@ -2390,10 +2374,6 @@
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
     },
     "parallel/test-internal-util-assertCrypto.js": {
-      "ignore": true,
-      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
-    },
-    "parallel/test-internal-util-classwrapper.js": {
       "ignore": true,
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
     },
@@ -2630,10 +2610,6 @@
       "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
     },
     "parallel/test-node-output-sourcemaps.mjs": {
-      "ignore": true,
-      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
-    },
-    "parallel/test-node-output-v8-warning.mjs": {
       "ignore": true,
       "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
     },
@@ -3310,7 +3286,6 @@
     "parallel/test-sqlite-config.js": {},
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
-    "parallel/test-sqlite-database-sync-dispose.js": {},
     "parallel/test-sqlite-database-sync.js": {},
     "parallel/test-sqlite-limits.js": {},
     "parallel/test-sqlite-named-parameters.js": {},
@@ -3352,7 +3327,6 @@
     "parallel/test-stdout-stderr-write.js": {},
     "parallel/test-stdout-to-file.js": {},
     "parallel/test-stream-add-abort-signal.js": {},
-    "parallel/test-stream-aliases-legacy.js": {},
     "parallel/test-stream-auto-destroy.js": {},
     "parallel/test-stream-await-drain-writers-in-synchronously-recursion-write.js": {},
     "parallel/test-stream-backpressure.js": {},
@@ -3360,7 +3334,6 @@
     "parallel/test-stream-big-packet.js": {},
     "parallel/test-stream-big-push.js": {},
     "parallel/test-stream-catch-rejections.js": {},
-    "parallel/test-stream-compose-operator.js": {},
     "parallel/test-stream-compose.js": {},
     "parallel/test-stream-construct.js": {},
     "parallel/test-stream-consumers.js": {},
@@ -3911,11 +3884,6 @@
     "parallel/test-vm-util-lazy-properties.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-warn-sigprof.js": {},
-    "parallel/test-warn-stream-duplex-deprecation.js": {},
-    "parallel/test-warn-stream-passthrough-deprecation.js": {},
-    "parallel/test-warn-stream-readable-deprecation.js": {},
-    "parallel/test-warn-stream-transform-deprecation.js": {},
-    "parallel/test-warn-stream-writable-deprecation.js": {},
     "parallel/test-warn-tls-common-deprecation.js": {},
     "parallel/test-warn-tls-wrap-deprecation.js": {},
     "parallel/test-wasm.mjs": {},
@@ -4438,10 +4406,6 @@
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
     },
     "test-runner/test-output-tap-escape.mjs": {},
-    "test-runner/test-output-tap-reporter.mjs": {
-      "exitCode": 1,
-      "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
-    },
     "test-runner/test-output-typescript-coverage.mjs": {},
     "test-runner/test-run-watch-cwd-isolation-none.mjs": {},
     "test-runner/test-run-watch-cwd-isolation-process.mjs": {},
@@ -5099,11 +5063,6 @@
       "linux": false,
       "darwin": false,
       "reason": "Expected values to be strictly equal"
-    },
-    "parallel/test-process-execve-abort.js": {
-      "linux": false,
-      "darwin": false,
-      "reason": "process.execve is not a function"
     },
     "parallel/test-process-execve-on-exit.js": {
       "linux": false,
