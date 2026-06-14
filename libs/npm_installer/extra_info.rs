@@ -178,6 +178,9 @@ impl NpmPackageExtraInfoProvider {
       deprecated: version_info.deprecated.clone(),
       bin: version_info.bin.clone(),
       scripts: version_info.scripts.clone(),
+      // libc is not present in the abbreviated registry packument; it is only
+      // read from the package's package.json on disk.
+      libc: Vec::new(),
     })
   }
 

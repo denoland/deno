@@ -859,22 +859,27 @@ impl DenoSubcommand {
           "aarch64-apple-darwin" => NpmSystemInfo {
             os: "darwin".into(),
             cpu: "arm64".into(),
+            libc: "".into(),
           },
           "aarch64-unknown-linux-gnu" => NpmSystemInfo {
             os: "linux".into(),
             cpu: "arm64".into(),
+            libc: "glibc".into(),
           },
           "x86_64-apple-darwin" => NpmSystemInfo {
             os: "darwin".into(),
             cpu: "x64".into(),
+            libc: "".into(),
           },
           "x86_64-unknown-linux-gnu" => NpmSystemInfo {
             os: "linux".into(),
             cpu: "x64".into(),
+            libc: "glibc".into(),
           },
           "x86_64-pc-windows-msvc" => NpmSystemInfo {
             os: "win32".into(),
             cpu: "x64".into(),
+            libc: "".into(),
           },
           value => {
             log::warn!(
@@ -893,9 +898,17 @@ impl DenoSubcommand {
         NpmInstallTargetFlags { os, arch },
       )) => {
         let default = Self::npm_system_info_from_env();
+        // When `--os` is given explicitly this is a cross-install, so default
+        // the libc to the target os's default (glibc on linux). Otherwise it's
+        // a host install and we use the detected host libc.
+        let libc = match os.as_deref() {
+          Some(os) => deno_npm::libc_for_os(os).into(),
+          None => default.libc.clone(),
+        };
         NpmSystemInfo {
           os: os.as_deref().unwrap_or(&default.os).into(),
           cpu: arch.as_deref().unwrap_or(&default.cpu).into(),
+          libc,
         }
       }
       _ => Self::npm_system_info_from_env(),
@@ -15879,6 +15892,7 @@ mod tests {
       NpmSystemInfo {
         os: "linux".into(),
         cpu: "arm64".into(),
+        libc: "".into(),
       }
     );
   }
