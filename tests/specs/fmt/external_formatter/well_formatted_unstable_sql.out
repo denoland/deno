@@ -27,7 +27,7 @@ cssString = css`
   border: 1px red solid;
   background-color: red;
   border-radius: 4px;
-  ${OTHER_STYLES};
+  ${OTHER_STYLES}
 `;
 
 nestedCssString = tw`
@@ -48,10 +48,8 @@ htmlString = html`
 `;
 
 query = sql`
-  SELECT
-    ${table}.${field}
-  FROM
-    ${table};
+  SELECT ${table}.${field}
+  FROM ${table};
 `;
 
 icon = svg`

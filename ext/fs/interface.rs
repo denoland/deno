@@ -141,8 +141,15 @@ pub struct FsDirEntry {
   pub is_symlink: bool,
 }
 
+#[async_trait::async_trait(?Send)]
+pub trait FsReadDir: std::fmt::Debug + MaybeSend + MaybeSync {
+  async fn next(&self) -> FsResult<Option<FsDirEntry>>;
+}
+
 #[allow(clippy::disallowed_types, reason = "definition")]
 pub type FileSystemRc = deno_maybe_sync::MaybeArc<dyn FileSystem>;
+#[allow(clippy::disallowed_types, reason = "definition")]
+pub type FsReadDirRc = deno_maybe_sync::MaybeArc<dyn FsReadDir>;
 
 #[async_trait::async_trait(?Send)]
 pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
@@ -259,10 +266,8 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   async fn realpath_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf>;
 
   fn read_dir_sync(&self, path: &CheckedPath) -> FsResult<Vec<FsDirEntry>>;
-  async fn read_dir_async(
-    &self,
-    path: CheckedPathBuf,
-  ) -> FsResult<Vec<FsDirEntry>>;
+  async fn read_dir_async(&self, path: CheckedPathBuf)
+  -> FsResult<FsReadDirRc>;
 
   fn rename_sync(
     &self,

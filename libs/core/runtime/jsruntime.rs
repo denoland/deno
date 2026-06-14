@@ -1590,6 +1590,7 @@ impl JsRuntime {
       drain_next_tick_and_macrotasks_cb,
       handle_rejections_cb,
       build_custom_error_cb,
+      error_constructors,
       run_immediate_callbacks_cb,
       wasm_instance_fn,
     ) = {
@@ -1626,6 +1627,12 @@ impl JsRuntime {
         core_obj,
         BUILD_CUSTOM_ERROR,
         "Deno.core.buildCustomError",
+      );
+      let error_constructors: v8::Local<v8::Object> = bindings::get(
+        scope,
+        core_obj,
+        ERROR_CONSTRUCTORS,
+        "Deno.core.errorConstructors",
       );
       let run_immediate_callbacks_cb: v8::Local<v8::Function> = bindings::get(
         scope,
@@ -1796,6 +1803,7 @@ impl JsRuntime {
         v8::Global::new(scope, drain_next_tick_and_macrotasks_cb),
         v8::Global::new(scope, handle_rejections_cb),
         v8::Global::new(scope, build_custom_error_cb),
+        v8::Global::new(scope, error_constructors),
         v8::Global::new(scope, run_immediate_callbacks_cb),
         wasm_instance_fn.map(|f| v8::Global::new(scope, f)),
       )
@@ -1820,6 +1828,11 @@ impl JsRuntime {
       .js_build_custom_error_cb
       .borrow_mut()
       .replace(build_custom_error_cb);
+    state_rc
+      .exception_state
+      .js_error_constructors
+      .borrow_mut()
+      .replace(error_constructors);
     state_rc
       .run_immediate_callbacks_cb
       .borrow_mut()

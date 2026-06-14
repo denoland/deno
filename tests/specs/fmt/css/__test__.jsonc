@@ -8,6 +8,10 @@
     "well_formatted": {
       "args": "fmt --check well_formatted.css",
       "output": "Checked 1 file\n"
+    },
+    "preserved_syntax": {
+      "args": "fmt --check preserved_syntax.css",
+      "output": "Checked 1 file\n"
     }
   }
 }

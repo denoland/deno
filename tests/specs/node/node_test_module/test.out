@@ -131,8 +131,23 @@ large timeout async test is ok ... ok ([WILDLINE])
 large timeout callback test is ok ... ok ([WILDLINE])
 successful thenable ... ok ([WILDLINE])
 rejected thenable ... FAILED ([WILDLINE])
-unfinished test with uncaughtException ...
-[WILDCARD] ERRORS [WILDCARD] FAILURES [WILDCARD]
-FAILED | 42 passed (23 steps) | 18 failed (12 steps) | 7 ignored ([WILDLINE])
+unfinished test with uncaughtException ... FAILED ([WILDLINE])
+unfinished test with unhandledRejection ... FAILED ([WILDLINE])
+[WILDCARD] ERRORS [WILDCARD]
+rejected thenable => ./test.js:455:1
+error: "custom error"
 
-error: Promise resolution is still pending but the event loop has already resolved
+unfinished test with uncaughtException => ./test.js:466:1
+error: Promise resolution is still pending but the event loop has already resolved.
+
+unfinished test with unhandledRejection => ./test.js:474:1
+error: Promise resolution is still pending but the event loop has already resolved.
+
+[WILDCARD] FAILURES [WILDCARD]
+rejected thenable => ./test.js:455:1
+unfinished test with uncaughtException => ./test.js:466:1
+unfinished test with unhandledRejection => ./test.js:474:1
+
+FAILED | 42 passed (23 steps) | 20 failed (12 steps) | 7 ignored ([WILDLINE])
+
+error: Test failed

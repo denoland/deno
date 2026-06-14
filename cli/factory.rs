@@ -1257,7 +1257,7 @@ impl CliFactory {
       unsafely_ignore_certificate_errors: cli_options
         .unsafely_ignore_certificate_errors()
         .clone(),
-      node_ipc_init: cli_options.node_ipc_init()?,
+      node_ipc_init: cli_options.node_ipc_init(&self.sys())?,
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
       otel_config: cli_options.otel_config(),
@@ -1390,7 +1390,6 @@ impl CliFactory {
               .workspace_external_import_map_loader()?
               .clone(),
           })),
-          bare_node_builtins: options.unstable_bare_node_builtins(),
           unstable_sloppy_imports: options.unstable_sloppy_imports(),
           on_mapped_resolution_diagnostic: Some(Arc::new(
             on_resolve_diagnostic,
