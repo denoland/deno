@@ -490,7 +490,11 @@ fn format_markup_embedded(
       };
       let mut lax_css_config = get_resolved_lax_css_config(fmt_options);
       lax_css_config.line_width = print_width;
-      lax_css::format_text(&file_path.with_extension(ext), text, &lax_css_config)
+      lax_css::format_text(
+        &file_path.with_extension(ext),
+        text,
+        &lax_css_config,
+      )
     }
     "json"
     | "jsonc"
