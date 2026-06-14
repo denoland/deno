@@ -377,39 +377,97 @@ impl ShellCommand for DenoCommand {
 
 pub struct NodeCommand;
 
+fn should_defer_node_command_to_real_node(
+  node_args: &[String],
+  parsed: &node_shim::ParseResult,
+) -> bool {
+  let Some(first_arg) = node_args.first() else {
+    return true;
+  };
+  if !first_arg.starts_with('-') {
+    return false;
+  }
+
+  let opts = &parsed.options;
+  let env_opts = &opts.per_isolate.per_env;
+
+  // The old task runner deferred all flag-first `node ...` commands to a real
+  // node binary. Keep doing that except for the task/lifecycle-script cases
+  // this shim explicitly supports without node on PATH.
+  env_opts.preload_cjs_modules.is_empty()
+    && env_opts.preload_esm_modules.is_empty()
+    && !env_opts.has_eval_string
+    && !env_opts.print_eval
+    && !env_opts.test_runner
+    && opts.run.is_empty()
+}
+
 impl ShellCommand for NodeCommand {
   fn execute(
     &self,
     context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
-    // continue to use Node if the first argument is a flag
-    // or there are no arguments provided for some reason
-    if context.args.is_empty()
-      || ({
-        let first_arg = context.args[0].to_string_lossy();
-        first_arg.starts_with('-') // has a flag
-      })
-    {
+    // Parse the `node ...` invocation with the shared `node_shim` crate — the
+    // same parser/translation Deno uses when `child_process` spawns `node` — so
+    // npm lifecycle scripts (and `deno task`) can run `node -e`/`-p`,
+    // `node --require`, plain `node <script>`, etc. without a real `node` binary
+    // on `PATH`.
+    //
+    // See https://github.com/denoland/deno/issues/24916.
+    let node_args = context
+      .args
+      .iter()
+      .map(|arg| arg.to_string_lossy().into_owned())
+      .collect::<Vec<_>>();
+    let Ok(parsed) = node_shim::parse_args(node_args.clone()) else {
+      // Unsupported flag: defer to the real `node` binary.
+      return ExecutableCommand::new("node".to_string(), PathBuf::from("node"))
+        .execute(context);
+    };
+    if should_defer_node_command_to_real_node(&node_args, &parsed) {
       return ExecutableCommand::new("node".to_string(), PathBuf::from("node"))
         .execute(context);
     }
 
-    let mut args: Vec<OsString> = Vec::with_capacity(7 + context.args.len());
-    args.extend([
-      "run".into(),
-      "-A".into(),
-      "--unstable-bare-node-builtins".into(),
-      "--unstable-detect-cjs".into(),
-      "--unstable-sloppy-imports".into(),
-      "--unstable-unsafe-proto".into(),
-    ]);
-    args.extend(context.args);
+    let translated = node_shim::translate_to_deno_args(
+      parsed,
+      &node_shim::TranslateOptions::for_task_command(),
+    );
+    // node_shim returns empty args for the REPL (`node` with no script); defer
+    // to the real `node` binary there too, preserving the previous behavior.
+    if translated.deno_args.is_empty() {
+      return ExecutableCommand::new("node".to_string(), PathBuf::from("node"))
+        .execute(context);
+    }
 
     let mut state = context.state;
     state.apply_env_var(
       OsStr::new(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME),
       OsStr::new("1"),
     );
+    // Forward any Node options node_shim couldn't express as Deno flags (e.g.
+    // `--no-warnings`) through `NODE_OPTIONS`, appending to any existing value
+    // just like `child_process` does.
+    if !translated.node_options.is_empty() {
+      let node_options_name = OsStr::new("NODE_OPTIONS");
+      let mut node_options = state
+        .get_var(node_options_name)
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_default();
+      for opt in &translated.node_options {
+        if !node_options.is_empty() {
+          node_options.push(' ');
+        }
+        node_options.push_str(opt);
+      }
+      state.apply_env_var(node_options_name, OsStr::new(&node_options));
+    }
+
+    let new_args = translated
+      .deno_args
+      .into_iter()
+      .map(OsString::from)
+      .collect::<Vec<_>>();
     ExecutableCommand::new(
       "deno".to_string(),
       std::env::current_exe()
@@ -417,7 +475,7 @@ impl ShellCommand for NodeCommand {
         .unwrap(),
     )
     .execute(ShellCommandContext {
-      args,
+      args: new_args,
       state,
       ..context
     })
@@ -767,5 +825,40 @@ mod test {
       let argv: Vec<String> = argv.iter().map(|s| s.to_string()).collect();
       assert_eq!(get_script_with_args("echo", &argv), *expected);
     }
+  }
+
+  fn node_command_defer_for(args: &[&str]) -> bool {
+    let node_args = args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>();
+    let parsed = node_shim::parse_args(node_args.clone()).unwrap();
+    should_defer_node_command_to_real_node(&node_args, &parsed)
+  }
+
+  #[test]
+  fn node_command_defers_flag_first_commands_to_real_node() {
+    assert!(node_command_defer_for(&["--version"]));
+    assert!(node_command_defer_for(&["--check", "script.js"]));
+    assert!(node_command_defer_for(&["--inspect-brk", "script.js"]));
+    // Unknown options parse as potential V8 flags in node_shim, but the task
+    // shim must still defer them to real node unless they accompany a supported
+    // task/lifecycle-script shape such as `node -e`.
+    assert!(node_command_defer_for(&[
+      "--unknown-option-that-does-not-exist",
+    ]));
+  }
+
+  #[test]
+  fn node_command_translates_supported_task_shapes() {
+    assert!(!node_command_defer_for(&["script.js"]));
+    assert!(!node_command_defer_for(&["-e", "require('node:fs')"]));
+    assert!(!node_command_defer_for(&[
+      "--no-warnings",
+      "-e",
+      "require('node:fs')",
+    ]));
+    assert!(!node_command_defer_for(&[
+      "--require",
+      "./helper.cjs",
+      "script.js",
+    ]));
   }
 }

@@ -638,6 +638,22 @@ impl<
     specifier: &Url,
     options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
+    // Explicit graph file overrides are used for synthetic in-memory sources
+    // such as `deno eval`'s `$deno$eval.*`. Let them win before npm package
+    // externalization below, because these URLs can intentionally sit under a
+    // `node_modules` cwd while not existing as physical package files.
+    if let Some(overrides) = &self.file_content_overrides
+      && let Some(content) = overrides.get(specifier)
+    {
+      return std::future::ready(Ok(Some(LoadResponse::Module {
+        content: content.clone(),
+        mtime: None,
+        maybe_headers: self.file_header_overrides.get(specifier).cloned(),
+        specifier: specifier.clone(),
+      })))
+      .boxed_local();
+    }
+
     let specifier = if specifier.scheme() == "file"
       && specifier.path().contains("/node_modules/")
     {
@@ -676,18 +692,6 @@ impl<
         },
       ))));
     }
-    if let Some(overrides) = &self.file_content_overrides
-      && let Some(content) = overrides.get(&specifier)
-    {
-      return std::future::ready(Ok(Some(LoadResponse::Module {
-        content: content.clone(),
-        mtime: None,
-        maybe_headers: self.file_header_overrides.get(&specifier).cloned(),
-        specifier: specifier.into_owned(),
-      })))
-      .boxed_local();
-    }
-
     self.load_or_cache(
       LoadStrategy {
         file_fetcher: self.file_fetcher.clone(),
@@ -959,6 +963,41 @@ mod test {
         assert_eq!(&*loaded_content, b"console.log('hello')");
         assert!(mtime.is_none());
         assert!(maybe_headers.is_none());
+      }
+      other => panic!("expected Module response, got {:?}", other),
+    }
+  }
+
+  #[test]
+  fn file_content_overrides_load_returns_node_modules_content() {
+    let cwd = get_cwd();
+    let sys = InMemorySys::new_with_cwd(&cwd);
+    let mut loader = create_test_loader(sys);
+
+    let specifier = deno_path_util::url_from_file_path(
+      &cwd.join(
+        "project/node_modules/.deno/package@1.0.0/node_modules/package/$deno$eval.cjs",
+      ),
+    )
+    .unwrap();
+    let content = b"require('./mod.cjs')".as_slice().into();
+    let mut overrides = HashMap::new();
+    overrides.insert(specifier.clone(), content);
+    loader.set_file_content_overrides(overrides);
+
+    let mut pool = futures::executor::LocalPool::new();
+    let result = pool
+      .run_until(loader.load(&specifier, load_options()))
+      .unwrap();
+
+    match result {
+      Some(LoadResponse::Module {
+        content: loaded_content,
+        specifier: loaded_specifier,
+        ..
+      }) => {
+        assert_eq!(loaded_specifier, specifier);
+        assert_eq!(&*loaded_content, b"require('./mod.cjs')");
       }
       other => panic!("expected Module response, got {:?}", other),
     }
