@@ -95,7 +95,6 @@ const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 type LookupOneOptions = any;
 const {
   constants: TCPConstants,
-  setupListenWrap,
   TCP,
   TCPConnectWrap,
 } = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
@@ -103,7 +102,6 @@ const {
   constants: PipeConstants,
   Pipe,
   PipeConnectWrap,
-  setupListenWrap: setupPipeListenWrap,
 } = core.loadExtScript("ext:deno_node/internal_binding/pipe_wrap.ts");
 const { ShutdownWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/stream_wrap.ts",
@@ -2661,15 +2659,6 @@ function _setupListenHandle(
   this[asyncIdSymbol] = _getNewAsyncId(this._handle);
   this._handle.onconnection = _onconnection;
   this._handle[ownerSymbol] = this;
-
-  // For TCP and Pipe handles, wrap the onconnection callback to create
-  // client handles and call uv_accept before forwarding to
-  // _onconnection(status, clientHandle).
-  if (ObjectPrototypeIsPrototypeOf(TCP.prototype, this._handle)) {
-    setupListenWrap(this._handle);
-  } else if (ObjectPrototypeIsPrototypeOf(Pipe.prototype, this._handle)) {
-    setupPipeListenWrap(this._handle);
-  }
 
   // Use a backlog of 512 entries. We pass 511 to the listen() call because
   // the kernel does: backlogsize = roundup_pow_of_two(backlogsize + 1);

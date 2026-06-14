@@ -1,24 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 (function () {
-const { core } = __bootstrap;
-const { Encodings } = core.loadExtScript(
-  "ext:deno_node/internal_binding/_node.ts",
-);
-
-const encodings = [];
-encodings[Encodings.ASCII] = "ascii";
-encodings[Encodings.BASE64] = "base64";
-encodings[Encodings.BASE64URL] = "base64url";
-encodings[Encodings.BUFFER] = "buffer";
-encodings[Encodings.HEX] = "hex";
-encodings[Encodings.LATIN1] = "latin1";
-encodings[Encodings.UCS2] = "utf16le";
-encodings[Encodings.UTF8] = "utf8";
-
-const _defaultExport = { encodings };
-
-return {
-  encodings,
-  default: _defaultExport,
-};
+const { op_node_internal_binding_string_decoder } = __bootstrap.core.ops;
+return op_node_internal_binding_string_decoder();
 })();

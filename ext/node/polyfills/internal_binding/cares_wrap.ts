@@ -27,18 +27,12 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const {
-  ArrayPrototypeFilter,
-  ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypePush,
-  ArrayPrototypeReverse,
-  ArrayPrototypeSort,
   Error,
   MathMin,
   MathPow,
-  Number,
   NumberParseInt,
-  NumberPrototypeToString,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   SafeArrayIterator,
@@ -49,28 +43,24 @@ const {
   SetPrototypeClear,
   SetPrototypeDelete,
   SetPrototypeHas,
-  StringPrototypeIncludes,
-  StringPrototypePadStart,
   StringPrototypeReplace,
-  StringPrototypeSplit,
 } = primordials;
 const {
   op_dns_resolve,
   op_net_get_ips_from_perm_token,
   op_net_get_system_dns_servers,
+  op_node_dns_reverse_name,
+  op_node_dns_sort_lookup_addresses,
   op_node_getaddrinfo,
   op_node_getnameinfo,
+  GetAddrInfoReqWrap,
+  GetNameInfoReqWrap,
+  QueryReqWrap,
+  ChannelWrap: NativeChannelWrap,
 } = core.ops;
-const { isIPv4, isIPv6 } = core.loadExtScript(
-  "ext:deno_node/internal/net.ts",
-);
 const { codeMap } = core.loadExtScript(
   "ext:deno_node/internal_binding/uv.ts",
 );
-const {
-  AsyncWrap,
-  providerType,
-} = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
 const { ares_strerror } = core.loadExtScript(
   "ext:deno_node/internal_binding/ares.ts",
 );
@@ -92,31 +82,30 @@ const DNS_ORDER_VERBATIM = 0;
 const DNS_ORDER_IPV4_FIRST = 1;
 const DNS_ORDER_IPV6_FIRST = 2;
 
-class GetAddrInfoReqWrap extends AsyncWrap {
-  family!: number;
-  hostname!: string;
-  port: number | undefined;
+type NativeGetAddrInfoReqWrap = InstanceType<typeof GetAddrInfoReqWrap>;
+type NativeGetNameInfoReqWrap = InstanceType<typeof GetNameInfoReqWrap>;
+type NativeQueryReqWrap = InstanceType<typeof QueryReqWrap>;
 
-  callback!: (
+interface GetAddrInfoReqWrapInstance extends NativeGetAddrInfoReqWrap {
+  family: number;
+  hostname: string;
+  port: number | undefined;
+  callback: (
     err: ErrnoException | null,
     addressOrAddresses?: string | LookupAddress[] | null,
     family?: number,
   ) => void;
-  resolve!: (addressOrAddresses: LookupAddress | LookupAddress[]) => void;
-  reject!: (err: ErrnoException | null) => void;
-  oncomplete!: (
+  resolve: (addressOrAddresses: LookupAddress | LookupAddress[]) => void;
+  reject: (err: ErrnoException | null) => void;
+  oncomplete: (
     err: number | null,
     addresses: string[],
     netPermToken: object | undefined,
   ) => void;
-
-  constructor() {
-    super(providerType.GETADDRINFOREQWRAP);
-  }
 }
 
 function getaddrinfo(
-  req: GetAddrInfoReqWrap,
+  req: GetAddrInfoReqWrapInstance,
   hostname: string,
   family: number,
   _hints: number,
@@ -161,33 +150,7 @@ function getaddrinfo(
       }
     }
 
-    // REF: https://github.com/nodejs/node/blob/0e157b6cd8694424ea9d8a1c1854fd1d08cbb064/src/cares_wrap.cc#L1739
-    if (order === DNS_ORDER_IPV4_FIRST) {
-      ArrayPrototypeSort(addresses, (a: string, b: string): number => {
-        if (isIPv4(a)) {
-          return -1;
-        } else if (isIPv4(b)) {
-          return 1;
-        }
-
-        return 0;
-      });
-    } else if (order === DNS_ORDER_IPV6_FIRST) {
-      ArrayPrototypeSort(addresses, (a: string, b: string): number => {
-        if (isIPv6(a)) {
-          return -1;
-        } else if (isIPv6(b)) {
-          return 1;
-        }
-        return 0;
-      });
-    }
-
-    if (family === 4) {
-      addresses = ArrayPrototypeFilter(addresses, (addr) => isIPv4(addr));
-    } else if (family === 6) {
-      addresses = ArrayPrototypeFilter(addresses, (addr) => isIPv6(addr));
-    }
+    addresses = op_node_dns_sort_lookup_addresses(addresses, family, order);
 
     req.oncomplete(error, addresses, netPermToken);
   })();
@@ -195,30 +158,25 @@ function getaddrinfo(
   return 0;
 }
 
-class GetNameInfoReqWrap extends AsyncWrap {
-  address!: string;
-  port!: number;
-
+interface GetNameInfoReqWrapInstance extends NativeGetNameInfoReqWrap {
+  address: string;
+  port: number;
   callback?: (
     err: ErrnoException | null,
     hostname?: string,
     service?: string,
   ) => void;
-  resolve!: (result: { hostname: string; service: string }) => void;
-  reject!: (err: ErrnoException | null) => void;
-  oncomplete!: (
+  resolve: (result: { hostname: string; service: string }) => void;
+  reject: (err: ErrnoException | null) => void;
+  oncomplete: (
     err: Error | null,
     hostname?: string,
     service?: string,
   ) => void;
-
-  constructor() {
-    super(providerType.GETNAMEINFOREQWRAP);
-  }
 }
 
 function getnameinfo(
-  req: GetNameInfoReqWrap,
+  req: GetNameInfoReqWrapInstance,
   address: string,
   port: number,
 ): number {
@@ -233,45 +191,40 @@ function getnameinfo(
   return 0;
 }
 
-class QueryReqWrap extends AsyncWrap {
-  bindingName!: string;
-  hostname!: string;
-  ttl!: boolean;
-
-  callback!: (
+interface QueryReqWrapInstance extends NativeQueryReqWrap {
+  bindingName: string;
+  hostname: string;
+  ttl: boolean;
+  callback: (
     err: ErrnoException | null,
     // deno-lint-ignore no-explicit-any
     records?: any,
   ) => void;
   // deno-lint-ignore no-explicit-any
-  resolve!: (records: any) => void;
-  reject!: (err: ErrnoException | null) => void;
-  oncomplete!: (
+  resolve: (records: any) => void;
+  reject: (err: ErrnoException | null) => void;
+  oncomplete: (
     err: number,
     // deno-lint-ignore no-explicit-any
     records: any,
     ttls?: number[],
   ) => void;
-
-  constructor() {
-    super(providerType.QUERYWRAP);
-  }
 }
 
 interface ChannelWrapQuery {
-  queryAny(req: QueryReqWrap, name: string): number;
-  queryA(req: QueryReqWrap, name: string): number;
-  queryAaaa(req: QueryReqWrap, name: string): number;
-  queryCaa(req: QueryReqWrap, name: string): number;
-  queryCname(req: QueryReqWrap, name: string): number;
-  queryMx(req: QueryReqWrap, name: string): number;
-  queryNs(req: QueryReqWrap, name: string): number;
-  queryTxt(req: QueryReqWrap, name: string): number;
-  querySrv(req: QueryReqWrap, name: string): number;
-  queryPtr(req: QueryReqWrap, name: string): number;
-  queryNaptr(req: QueryReqWrap, name: string): number;
-  querySoa(req: QueryReqWrap, name: string): number;
-  getHostByAddr(req: QueryReqWrap, name: string): number;
+  queryAny(req: QueryReqWrapInstance, name: string): number;
+  queryA(req: QueryReqWrapInstance, name: string): number;
+  queryAaaa(req: QueryReqWrapInstance, name: string): number;
+  queryCaa(req: QueryReqWrapInstance, name: string): number;
+  queryCname(req: QueryReqWrapInstance, name: string): number;
+  queryMx(req: QueryReqWrapInstance, name: string): number;
+  queryNs(req: QueryReqWrapInstance, name: string): number;
+  queryTxt(req: QueryReqWrapInstance, name: string): number;
+  querySrv(req: QueryReqWrapInstance, name: string): number;
+  queryPtr(req: QueryReqWrapInstance, name: string): number;
+  queryNaptr(req: QueryReqWrapInstance, name: string): number;
+  querySoa(req: QueryReqWrapInstance, name: string): number;
+  getHostByAddr(req: QueryReqWrapInstance, name: string): number;
 }
 
 const trailingDotRegExp = new SafeRegExp(/\.$/);
@@ -291,16 +244,16 @@ function getSystemDnsServers(): [string, number][] {
   return systemDnsServers;
 }
 
-class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
+class ChannelWrap extends NativeChannelWrap implements ChannelWrapQuery {
   #servers: [string, number][] | null = null;
   #timeout: number;
   #tries: number;
   #maxTimeout: number;
-  #pendingQueries: Set<QueryReqWrap> = new SafeSet();
+  #pendingQueries: Set<QueryReqWrapInstance> = new SafeSet();
   #cancelRids: Set<number> = new SafeSet();
 
   constructor(timeout: number, tries: number, maxTimeout: number) {
-    super(providerType.DNSCHANNEL);
+    super();
 
     this.#timeout = timeout;
     this.#tries = tries;
@@ -427,7 +380,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return { code: codeMap.get("UNKNOWN")!, ret: [] };
   }
 
-  queryAny(req: QueryReqWrap, name: string): number {
+  queryAny(req: QueryReqWrapInstance, name: string): number {
     SetPrototypeAdd(this.#pendingQueries, req);
 
     PromisePrototypeThen(
@@ -534,7 +487,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  queryA(req: QueryReqWrap, name: string): number {
+  queryA(req: QueryReqWrapInstance, name: string): number {
     SetPrototypeAdd(this.#pendingQueries, req);
 
     PromisePrototypeThen(this.#query(name, "A", req.ttl), ({ code, ret }) => {
@@ -558,7 +511,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  queryAaaa(req: QueryReqWrap, name: string): number {
+  queryAaaa(req: QueryReqWrapInstance, name: string): number {
     SetPrototypeAdd(this.#pendingQueries, req);
 
     PromisePrototypeThen(
@@ -585,7 +538,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  queryCaa(req: QueryReqWrap, name: string): number {
+  queryCaa(req: QueryReqWrapInstance, name: string): number {
     SetPrototypeAdd(this.#pendingQueries, req);
 
     PromisePrototypeThen(this.#query(name, "CAA"), ({ code, ret }) => {
@@ -606,7 +559,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  queryCname(req: QueryReqWrap, name: string): number {
+  queryCname(req: QueryReqWrapInstance, name: string): number {
     SetPrototypeAdd(this.#pendingQueries, req);
 
     PromisePrototypeThen(this.#query(name, "CNAME"), ({ code, ret }) => {
@@ -619,7 +572,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  queryMx(req: QueryReqWrap, name: string): number {
+  queryMx(req: QueryReqWrapInstance, name: string): number {
     SetPrototypeAdd(this.#pendingQueries, req);
 
     PromisePrototypeThen(this.#query(name, "MX"), ({ code, ret }) => {
@@ -640,7 +593,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  queryNaptr(req: QueryReqWrap, name: string): number {
+  queryNaptr(req: QueryReqWrapInstance, name: string): number {
     SetPrototypeAdd(this.#pendingQueries, req);
 
     PromisePrototypeThen(this.#query(name, "NAPTR"), ({ code, ret }) => {
@@ -665,7 +618,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  queryNs(req: QueryReqWrap, name: string): number {
+  queryNs(req: QueryReqWrapInstance, name: string): number {
     SetPrototypeAdd(this.#pendingQueries, req);
 
     PromisePrototypeThen(this.#query(name, "NS"), ({ code, ret }) => {
@@ -683,7 +636,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  queryPtr(req: QueryReqWrap, name: string): number {
+  queryPtr(req: QueryReqWrapInstance, name: string): number {
     SetPrototypeAdd(this.#pendingQueries, req);
 
     PromisePrototypeThen(this.#query(name, "PTR"), ({ code, ret }) => {
@@ -701,7 +654,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  querySoa(req: QueryReqWrap, name: string): number {
+  querySoa(req: QueryReqWrapInstance, name: string): number {
     SetPrototypeAdd(this.#pendingQueries, req);
 
     PromisePrototypeThen(this.#query(name, "SOA"), ({ code, ret }) => {
@@ -731,7 +684,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  querySrv(req: QueryReqWrap, name: string): number {
+  querySrv(req: QueryReqWrapInstance, name: string): number {
     SetPrototypeAdd(this.#pendingQueries, req);
 
     PromisePrototypeThen(this.#query(name, "SRV"), ({ code, ret }) => {
@@ -754,7 +707,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  queryTxt(req: QueryReqWrap, name: string): number {
+  queryTxt(req: QueryReqWrapInstance, name: string): number {
     SetPrototypeAdd(this.#pendingQueries, req);
 
     PromisePrototypeThen(this.#query(name, "TXT"), ({ code, ret }) => {
@@ -767,75 +720,28 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  getHostByAddr(req: QueryReqWrap, name: string): number {
-    let reverseName: string;
-
-    if (isIPv4(name)) {
-      const octets = StringPrototypeSplit(name, ".");
-      reverseName = ArrayPrototypeJoin(ArrayPrototypeReverse(octets), ".") +
-        ".in-addr.arpa";
-    } else if (isIPv6(name)) {
-      // Expand the IPv6 address to full form
-      const parts = StringPrototypeSplit(name, ":");
-      const expanded: string[] = [];
-      let emptyFound = false;
-      for (const part of new SafeArrayIterator(parts)) {
-        if (part === "" && !emptyFound) {
-          emptyFound = true;
-          const missing = 8 -
-            ArrayPrototypeFilter(parts, (p) => p !== "").length;
-          for (let j = 0; j < missing; j++) {
-            ArrayPrototypePush(expanded, "0000");
-          }
-        } else if (part !== "" && StringPrototypeIncludes(part, ".")) {
-          // IPv4-mapped IPv6 (e.g. ::ffff:1.2.3.4) - convert dotted
-          // quad to two 16-bit hex groups
-          const octets = ArrayPrototypeMap(
-            StringPrototypeSplit(part, "."),
-            Number,
-          );
-          ArrayPrototypePush(
-            expanded,
-            StringPrototypePadStart(
-              NumberPrototypeToString((octets[0] << 8) | octets[1], 16),
-              4,
-              "0",
-            ),
-          );
-          ArrayPrototypePush(
-            expanded,
-            StringPrototypePadStart(
-              NumberPrototypeToString((octets[2] << 8) | octets[3], 16),
-              4,
-              "0",
-            ),
-          );
-        } else if (part !== "") {
-          ArrayPrototypePush(expanded, StringPrototypePadStart(part, 4, "0"));
-        }
-      }
-      const fullHex = ArrayPrototypeJoin(expanded, "");
-      reverseName = ArrayPrototypeJoin(
-        ArrayPrototypeReverse(StringPrototypeSplit(fullHex, "")),
-        ".",
-      ) + ".ip6.arpa";
-    } else {
-      req.oncomplete(codeMap.get("EINVAL")!, []);
+  getHostByAddr(req: QueryReqWrapInstance, name: string): number {
+    const { code, name: reverseName } = op_node_dns_reverse_name(name);
+    if (code !== 0) {
+      req.oncomplete(code, []);
       return 0;
     }
 
     SetPrototypeAdd(this.#pendingQueries, req);
 
-    PromisePrototypeThen(this.#query(reverseName, "PTR"), ({ code, ret }) => {
-      if (!SetPrototypeHas(this.#pendingQueries, req)) return;
-      SetPrototypeDelete(this.#pendingQueries, req);
+    PromisePrototypeThen(
+      this.#query(reverseName!, "PTR"),
+      ({ code, ret }) => {
+        if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+        SetPrototypeDelete(this.#pendingQueries, req);
 
-      const records = ArrayPrototypeMap(
-        ret as string[],
-        (record) => fqdnToHostname(record),
-      );
-      req.oncomplete(code, records);
-    });
+        const records = ArrayPrototypeMap(
+          ret as string[],
+          (record) => fqdnToHostname(record),
+        );
+        req.oncomplete(code, records);
+      },
+    );
 
     return 0;
   }
@@ -896,7 +802,7 @@ function strerror(code: number) {
     : ares_strerror(code);
 }
 
-return {
+const binding = {
   DNS_ORDER_VERBATIM,
   DNS_ORDER_IPV4_FIRST,
   DNS_ORDER_IPV6_FIRST,
@@ -919,4 +825,5 @@ return {
     strerror,
   },
 };
+return binding;
 })();

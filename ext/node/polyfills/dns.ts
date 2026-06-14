@@ -22,6 +22,9 @@
 
 (function () {
 const { core, primordials } = __bootstrap;
+const lazyBindingMod = core.createLazyLoader(
+  "ext:deno_node/internal_binding/mod.ts",
+);
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { customPromisifyArgs } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
@@ -66,12 +69,12 @@ const {
   AI_ALL: ALL,
   AI_V4MAPPED: V4MAPPED,
 } = core.loadExtScript("ext:deno_node/internal_binding/ares.ts");
+const cares = lazyBindingMod().getBinding("cares_wrap");
 const {
-  default: cares,
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
-} = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
+} = cares;
 const { domainToASCII } = core.loadExtScript(
   "ext:deno_node/internal/idna.ts",
 );

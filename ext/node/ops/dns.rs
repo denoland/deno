@@ -2,19 +2,137 @@
 
 use std::cell::RefCell;
 use std::net::IpAddr;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::rc::Rc;
 #[cfg(target_family = "windows")]
 use std::sync::OnceLock;
 
+use deno_core::CppgcBase;
+use deno_core::CppgcInherits;
+use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::op2;
+use deno_core::serde::Serialize;
 use deno_core::unsync::spawn_blocking;
+use deno_core::uv_compat;
 use deno_error::JsError;
 use deno_net::ops::NetPermToken;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
 use socket2::SockAddr;
+
+use crate::ops::handle_wrap::AsyncWrap;
+use crate::ops::handle_wrap::ProviderType;
+
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(AsyncWrap)]
+#[repr(C)]
+pub struct GetAddrInfoReqWrap {
+  base: AsyncWrap,
+}
+
+// SAFETY: GetAddrInfoReqWrap is a CppGC object whose fields are traced by AsyncWrap.
+unsafe impl GarbageCollected for GetAddrInfoReqWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GetAddrInfoReqWrap"
+  }
+
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+}
+
+#[op2(base, inherit = AsyncWrap)]
+impl GetAddrInfoReqWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> GetAddrInfoReqWrap {
+    GetAddrInfoReqWrap {
+      base: AsyncWrap::create(state, ProviderType::GetAddrInfoReqWrap as i32),
+    }
+  }
+}
+
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(AsyncWrap)]
+#[repr(C)]
+pub struct GetNameInfoReqWrap {
+  base: AsyncWrap,
+}
+
+// SAFETY: GetNameInfoReqWrap is a CppGC object whose fields are traced by AsyncWrap.
+unsafe impl GarbageCollected for GetNameInfoReqWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GetNameInfoReqWrap"
+  }
+
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+}
+
+#[op2(base, inherit = AsyncWrap)]
+impl GetNameInfoReqWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> GetNameInfoReqWrap {
+    GetNameInfoReqWrap {
+      base: AsyncWrap::create(state, ProviderType::GetNameInfoReqWrap as i32),
+    }
+  }
+}
+
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(AsyncWrap)]
+#[repr(C)]
+pub struct QueryReqWrap {
+  base: AsyncWrap,
+}
+
+// SAFETY: QueryReqWrap is a CppGC object whose fields are traced by AsyncWrap.
+unsafe impl GarbageCollected for QueryReqWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"QueryReqWrap"
+  }
+
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+}
+
+#[op2(base, inherit = AsyncWrap)]
+impl QueryReqWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> QueryReqWrap {
+    QueryReqWrap {
+      base: AsyncWrap::create(state, ProviderType::QueryWrap as i32),
+    }
+  }
+}
+
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(AsyncWrap)]
+#[repr(C)]
+pub struct ChannelWrap {
+  base: AsyncWrap,
+}
+
+// SAFETY: ChannelWrap is a CppGC object whose fields are traced by AsyncWrap.
+unsafe impl GarbageCollected for ChannelWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ChannelWrap"
+  }
+
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+}
+
+#[op2(base, inherit = AsyncWrap)]
+impl ChannelWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> ChannelWrap {
+    ChannelWrap {
+      base: AsyncWrap::create(state, ProviderType::DnsChannel as i32),
+    }
+  }
+}
 
 #[derive(Debug, thiserror::Error, JsError)]
 pub enum DnsError {
@@ -42,6 +160,76 @@ pub enum DnsError {
   #[class(generic)]
   #[error("Unsupported platform.")]
   UnsupportedPlatform,
+}
+
+#[derive(Serialize)]
+pub struct ReverseNameResult {
+  pub code: i32,
+  pub name: Option<String>,
+}
+
+#[op2]
+#[serde]
+pub fn op_node_dns_reverse_name(#[string] name: &str) -> ReverseNameResult {
+  if let Ok(addr) = name.parse::<Ipv4Addr>() {
+    let octets = addr.octets();
+    return ReverseNameResult {
+      code: 0,
+      name: Some(format!(
+        "{}.{}.{}.{}.in-addr.arpa",
+        octets[3], octets[2], octets[1], octets[0]
+      )),
+    };
+  }
+
+  if let Ok(addr) = name.parse::<Ipv6Addr>() {
+    let hex = format!("{:032x}", u128::from(addr));
+    let mut reverse = String::with_capacity("ip6.arpa".len() + 64);
+    for ch in hex.chars().rev() {
+      reverse.push(ch);
+      reverse.push('.');
+    }
+    reverse.push_str("ip6.arpa");
+    return ReverseNameResult {
+      code: 0,
+      name: Some(reverse),
+    };
+  }
+
+  ReverseNameResult {
+    code: uv_compat::UV_EINVAL,
+    name: None,
+  }
+}
+
+fn is_ipv4_address(address: &str) -> bool {
+  matches!(address.parse::<IpAddr>(), Ok(IpAddr::V4(_)))
+}
+
+fn is_ipv6_address(address: &str) -> bool {
+  matches!(address.parse::<IpAddr>(), Ok(IpAddr::V6(_)))
+}
+
+#[op2]
+#[serde]
+pub fn op_node_dns_sort_lookup_addresses(
+  #[serde] mut addresses: Vec<String>,
+  #[smi] family: i32,
+  #[smi] order: i32,
+) -> Vec<String> {
+  match order {
+    1 => addresses.sort_by_key(|address| !is_ipv4_address(address)),
+    2 => addresses.sort_by_key(|address| !is_ipv6_address(address)),
+    _ => {}
+  }
+
+  match family {
+    4 => addresses.retain(|address| is_ipv4_address(address)),
+    6 => addresses.retain(|address| is_ipv6_address(address)),
+    _ => {}
+  }
+
+  addresses
 }
 
 impl DnsError {

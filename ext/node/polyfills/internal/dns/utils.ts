@@ -22,6 +22,9 @@
 
 (function () {
 const { core, primordials } = __bootstrap;
+const lazyBindingMod = core.createLazyLoader(
+  "ext:deno_node/internal_binding/mod.ts",
+);
 const {
   ArrayPrototypeForEach,
   ArrayPrototypeJoin,
@@ -47,7 +50,7 @@ const {
   DNS_ORDER_IPV6_FIRST,
   DNS_ORDER_VERBATIM,
   strerror,
-} = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
+} = lazyBindingMod().getBinding("cares_wrap");
 const {
   ERR_DNS_SET_SERVERS_FAILED,
   ERR_INVALID_ARG_VALUE,
@@ -420,10 +423,10 @@ class Resolver {
   }
 }
 
-let defaultResolver = new Resolver();
+let defaultResolver: Resolver | undefined;
 
 function getDefaultResolver(): Resolver {
-  return defaultResolver;
+  return defaultResolver ??= new Resolver();
 }
 
 function setDefaultResolver<T extends Resolver>(resolver: T) {
