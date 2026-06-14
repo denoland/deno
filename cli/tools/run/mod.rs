@@ -25,6 +25,7 @@ use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
 
 pub mod hmr;
+mod wasi;
 
 pub fn check_permission_before_script(flags: &Flags) {
   if !flags.has_permission() && flags.has_permission_in_argv() {
@@ -213,6 +214,11 @@ pub async fn run_script(
   {
     return Ok(exit_code);
   }
+
+  // Prototype: run a WASI command `.wasm` file directly by swapping in a
+  // synthesized `node:wasi` bootstrap module as the entry point.
+  let wasi_bootstrap = wasi::maybe_wasi_command_entry(&factory, main_module)?;
+  let main_module = wasi_bootstrap.as_ref().unwrap_or(main_module);
 
   let worker_factory = factory
     .create_cli_main_worker_factory_with_roots(roots)
