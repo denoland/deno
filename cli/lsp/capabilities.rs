@@ -5,11 +5,20 @@
 //! language server, which helps determine what messages are sent from the
 //! client.
 //!
+use std::sync::LazyLock;
+
 use deno_core::serde_json::json;
 use tower_lsp::lsp_types::*;
 
 use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::semantic_tokens::get_legend;
+
+pub static INFERRED_TYPE_CODE_ACTION_KIND: LazyLock<CodeActionKind> =
+  LazyLock::new(|| {
+    [CodeActionKind::REFACTOR_EXTRACT.as_str(), "inferredType"]
+      .join(".")
+      .into()
+  });
 
 fn code_action_capabilities(
   client_capabilities: &ClientCapabilities,
@@ -23,6 +32,7 @@ fn code_action_capabilities(
       let mut code_action_kinds = vec![
         CodeActionKind::QUICKFIX,
         CodeActionKind::REFACTOR,
+        INFERRED_TYPE_CODE_ACTION_KIND.clone(),
         CodeActionKind::SOURCE_ORGANIZE_IMPORTS,
       ];
       code_action_kinds.extend(
@@ -164,6 +174,7 @@ pub fn server_capabilities(
     execute_command_provider: Some(ExecuteCommandOptions {
       commands: vec![
         "deno.cache".to_string(),
+        "deno.inferredType".to_string(),
         "deno.reloadImportRegistries".to_string(),
       ],
       ..Default::default()
