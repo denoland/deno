@@ -286,6 +286,9 @@ pub enum CoverageType {
 pub struct CoverageFlags {
   pub files: FileFlags,
   pub output: Option<String>,
+  /// Globs selecting which source files to report. When set, files matching a
+  /// glob that were never loaded during the run are reported as 0% covered.
+  /// When empty, only files loaded during the run are reported.
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub r#type: CoverageType,
@@ -3209,9 +3212,10 @@ Collect a coverage profile with deno test:
 Print a report to stdout:
   <p(245)>deno coverage cov_profile</>
 
-Include urls that start with the file schema and exclude files ending with <c>test.ts</> and <c>test.js</>,
-for an url to match it must match the include pattern and not match the exclude pattern:
-  <p(245)>deno coverage --include=\"^file:\" --exclude=\"test\\.(ts|js)\" cov_profile</>
+Report all source files under <c>src/</> (including ones never loaded, shown as 0% covered),
+excluding files ending with <c>test.ts</> and <c>test.js</>. The <c>--include</> value is a glob;
+<c>--exclude</> is a regex matched against the file url:
+  <p(245)>deno coverage --include=\"src/**\" --exclude=\"test\\.(ts|js)\" cov_profile</>
 
 Write a report using the lcov format:
   <p(245)>deno coverage --lcov --output=cov.lcov cov_profile/</>
@@ -3238,10 +3242,11 @@ Generate html reports from lcov:
           .long("include")
           .num_args(1..)
           .action(ArgAction::Append)
-          .value_name("regex")
+          .value_name("glob")
           .require_equals(true)
-          .default_value(r"^file:")
-          .help("Include source files in the report"),
+          .help(cstr!("Include source files in the report, matched by glob.
+  <p(245)>Files matching the glob that were never loaded during the run are reported as 0% covered.
+  When omitted, only files loaded during the run are reported.</>")),
       )
       .arg(
         Arg::new("exclude")
@@ -14034,7 +14039,6 @@ mod tests {
             include: vec!["foo.json".to_string()],
             ignore: vec![],
           },
-          include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           ..CoverageFlags::default()
         }),
@@ -14060,10 +14064,10 @@ mod tests {
             include: vec!["foo.json".to_string()],
             ignore: vec![],
           },
-          include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           r#type: CoverageType::Lcov,
           output: Some(String::from("foo.lcov")),
+          ..CoverageFlags::default()
         }),
         ..Flags::default()
       }
@@ -14081,7 +14085,6 @@ mod tests {
             include: vec!["coverage".to_string()],
             ignore: vec![],
           },
-          include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           ..CoverageFlags::default()
         }),
