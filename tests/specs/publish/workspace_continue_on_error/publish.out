@@ -14,13 +14,13 @@ Check [WILDLINE]
 Publishing @foo/a@1.0.0 ...
 Publishing @foo/publish-fails@1.0.0 ...
 Publishing @foo/publish-fails2@1.0.0 ...
-[UNORDERED_END]
 Successfully published @foo/a@1.0.0
 Visit http://127.0.0.1:4250/@foo/a@1.0.0 for details
+[UNORDERED_END]
 error: Failed to publish 2 packages:
 [UNORDERED_START]
 
-* Failed to publish @foo/publish-fails@1.0.0: Failed to publish @foo/publish-fails at 1.0.0: Simulated publish failure
+* Failed to publish @foo/publish-fails@1.0.0: Simulated publish failure
 
-* Failed to publish @foo/publish-fails2@1.0.0: Failed to publish @foo/publish-fails2 at 1.0.0: Simulated publish failure
+* Failed to publish @foo/publish-fails2@1.0.0: Simulated publish failure
 [UNORDERED_END]

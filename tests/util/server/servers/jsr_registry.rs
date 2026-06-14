@@ -147,6 +147,11 @@ async fn registry_server_handler(
     // Allow tests to simulate a publish failure for an individual package by
     // naming the package "publish-fails" (or "publish-fails<n>"), used to
     // exercise that publishing a workspace keeps going after a package fails.
+    //
+    // Consumers of this simulation (rename these fixtures and this match
+    // together):
+    //   - tests/specs/publish/workspace_continue_on_error
+    //   - tests/specs/publish/workspace_continue_blocked_dependent
     let body = if path.contains("/packages/publish-fails") {
       serde_json::to_string_pretty(&json!({
         "id": "sdfwqer-sffg-qwerasdf",

@@ -14,4 +14,4 @@ Warning Skipped publishing 1 package(s) that depended on a package that failed t
 error: Failed to publish @foo/publish-fails@1.0.0
 
 Caused by:
-    Failed to publish @foo/publish-fails at 1.0.0: Simulated publish failure
+    Simulated publish failure

@@ -1092,14 +1092,9 @@ async fn publish_package(
       );
       task
     }
-    Err(err) => {
-      return Err(err).with_context(|| {
-        format!(
-          "Failed to publish @{}/{} at {}",
-          package.scope, package.package, package.version
-        )
-      });
-    }
+    // The caller wraps every failure with a "Failed to publish <name>@<version>"
+    // context, so inner messages here avoid repeating that prefix.
+    Err(err) => return Err(err.into()),
   };
 
   let interval = std::time::Duration::from_secs(2);
@@ -1126,14 +1121,9 @@ async fn publish_package(
   }
 
   if let Some(error) = task.error {
-    bail!(
-      "{} @{}/{} at {}: {}",
-      colors::red("Failed to publish"),
-      package.scope,
-      package.package,
-      package.version,
-      error.message
-    );
+    // The caller adds the "Failed to publish <name>@<version>" context, so only
+    // surface the registry's error message here to avoid a doubled prefix.
+    bail!("{}", error.message);
   }
 
   let enable_provenance = std::env::var("DISABLE_JSR_PROVENANCE").is_err()
