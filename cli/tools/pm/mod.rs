@@ -41,15 +41,17 @@ mod cache_deps;
 pub(crate) mod deps;
 pub(crate) mod interactive_picker;
 mod outdated;
+mod why;
 
 pub use approve_scripts::approve_scripts;
 pub use audit::audit;
 pub use cache_deps::CacheTopLevelDepsOptions;
 pub use cache_deps::cache_top_level_deps;
 pub use outdated::outdated;
+pub use why::why;
 
 #[derive(Debug, Copy, Clone, Hash)]
-enum ConfigKind {
+pub(crate) enum ConfigKind {
   DenoJson,
   PackageJson,
 }
@@ -119,6 +121,41 @@ impl ConfigUpdater {
     }
 
     None
+  }
+
+  /// Looks up a property by key path without marking the file as modified.
+  fn get_existing_property(&self, key_path: &KeyPath) -> Option<CstObjectProp> {
+    let mut current_node = self.root_object.clone();
+    for (i, part) in key_path.parts.iter().enumerate() {
+      let s = part.as_str();
+      if i < key_path.parts.len().saturating_sub(1) {
+        current_node = current_node.object_value(s)?;
+      } else {
+        return current_node.get(s);
+      }
+    }
+    None
+  }
+
+  /// Updates a catalog entry's bare version requirement. `key_paths` lists
+  /// candidate locations (e.g. top-level `catalog` vs `workspaces.catalog` in
+  /// package.json); the first one that exists is updated. Returns whether an
+  /// entry was found and updated.
+  fn update_catalog_entry(
+    &mut self,
+    key_paths: &[KeyPath],
+    new_value: &str,
+  ) -> bool {
+    for key_path in key_paths {
+      if let Some(property) = self.get_existing_property(key_path) {
+        property.set_value(jsonc_parser::cst::CstInputValue::String(
+          new_value.to_string(),
+        ));
+        self.modified = true;
+        return true;
+      }
+    }
+    false
   }
 
   fn add(&mut self, selected: SelectedPackage, dev: bool) {
@@ -343,14 +380,46 @@ impl std::fmt::Display for AddCommandName {
   }
 }
 
+fn create_package_json(
+  flags: &Arc<Flags>,
+  options: &CliOptions,
+) -> Result<CliFactory, AnyError> {
+  std::fs::write(options.initial_cwd().join("package.json"), "{}\n")
+    .context("Failed to create package.json file")?;
+  log::info!("Created package.json configuration file.");
+  let factory = CliFactory::from_flags(flags.clone());
+  Ok(factory)
+}
+
 fn load_configs(
   flags: &Arc<Flags>,
   has_jsr_specifiers: impl FnOnce() -> bool,
+  force_package_json: bool,
 ) -> Result<(CliFactory, Option<ConfigUpdater>, Option<ConfigUpdater>), AnyError>
 {
   let cli_factory = CliFactory::from_flags(flags.clone());
   let options = cli_factory.cli_options()?;
   let start_dir = &options.start_dir;
+
+  if force_package_json {
+    let npm_config = match start_dir.member_pkg_json() {
+      Some(pkg_json) => Some(ConfigUpdater::new(
+        ConfigKind::PackageJson,
+        pkg_json.path.clone(),
+      )?),
+      None => {
+        let pkg_json_path = options.initial_cwd().join("package.json");
+        let factory = create_package_json(flags, options)?;
+        return Ok((
+          factory,
+          Some(ConfigUpdater::new(ConfigKind::PackageJson, pkg_json_path)?),
+          None,
+        ));
+      }
+    };
+    return Ok((cli_factory, npm_config, None));
+  }
+
   let npm_config = match start_dir.member_pkg_json() {
     Some(pkg_json) => Some(ConfigUpdater::new(
       ConfigKind::PackageJson,
@@ -374,10 +443,12 @@ fn load_configs(
     _ => {
       let factory = create_deno_json(flags, options)?;
       let options = factory.cli_options()?.clone();
-      let deno_json = options
-        .start_dir
-        .member_or_root_deno_json()
-        .expect("Just created deno.json");
+      let Some(deno_json) = options.start_dir.member_or_root_deno_json() else {
+        bail!(
+          "Failed to discover the newly created deno.json at \"{}\". This can happen when the current directory is inside a node_modules directory.",
+          options.initial_cwd().join("deno.json").display(),
+        );
+      };
       (
         factory,
         Some(ConfigUpdater::new(
@@ -405,10 +476,12 @@ pub async fn add(
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
   let save_exact = add_flags.save_exact;
-  let (cli_factory, mut npm_config, mut deno_config) =
-    load_configs(&flags, || {
-      add_flags.packages.iter().any(|s| s.starts_with("jsr:"))
-    })?;
+  let force_package_json = add_flags.package_json;
+  let (cli_factory, mut npm_config, mut deno_config) = load_configs(
+    &flags,
+    || add_flags.packages.iter().any(|s| s.starts_with("jsr:")),
+    force_package_json,
+  )?;
 
   if let Some(deno) = &deno_config
     && deno.obj().get("importMap").is_some()
@@ -442,7 +515,7 @@ pub async fn add(
   let http_client = cli_factory.http_client_provider();
   let deps_http_cache = cli_factory.global_http_cache()?;
   let deps_file_fetcher = create_cli_file_fetcher(
-    Default::default(),
+    deno_runtime::deno_web::BlobStore::default_arc(),
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     cli_factory.memory_files().clone(),
@@ -480,6 +553,9 @@ pub async fn add(
 
     match req {
       Ok(add_req) => package_reqs.push(add_req),
+      // Currently unreachable: default_registry is always Some (defaults to Npm),
+      // so parse() always resolves a prefix. Kept as a safety fallback in case
+      // the API is called with None from elsewhere.
       Err(package_req) => {
         if jsr_resolver
           .req_to_nv(&package_req)
@@ -581,7 +657,11 @@ pub async fn add(
       selected_package.selected_version
     );
 
-    if selected_package.package_name.starts_with("npm:") && prefer_npm_config {
+    if force_package_json {
+      npm_config.as_mut().unwrap().add(selected_package, dev);
+    } else if selected_package.package_name.starts_with("npm:")
+      && prefer_npm_config
+    {
       if let Some(npm) = &mut npm_config {
         npm.add(selected_package, dev);
       } else {
@@ -720,45 +800,63 @@ async fn find_package_and_select_version_for_req(
     };
     let prefixed_name = format!("{}:{}", T::SPECIFIER_PREFIX, req.name);
     let help_if_found_in_fallback = S::HELP;
-    let nv = match main_resolver.req_to_nv(req).await {
-      Ok(Some(nv)) => nv,
-      Ok(None) => {
-        if fallback_resolver
-          .req_to_nv(req)
-          .await
-          .ok()
-          .flatten()
-          .is_some()
-        {
-          // it's in the other registry
-          return Ok(PackageAndVersion::NotFound {
-            package: prefixed_name,
-            help: Some(help_if_found_in_fallback),
-            package_req: req.clone(),
-          });
-        }
-
-        return Ok(PackageAndVersion::NotFound {
-          package: prefixed_name,
-          help: None,
-          package_req: req.clone(),
-        });
+    // JSR has no dist-tags, so a tag can't go through req_to_nv
+    // (VersionReq::matches panics on a tag). "@latest" is conventionally
+    // understood as "the newest version", so resolve it to the latest
+    // published version; reject any other tag rather than silently treating
+    // it as latest. npm resolves dist-tags natively via its registry, so this
+    // only applies to JSR.
+    let maybe_nv = if matches!(
+      &add_package_req.value,
+      AddRmPackageReqValue::Jsr(_)
+    ) && let Some(tag) = req.version_req.tag()
+    {
+      if tag != "latest" {
+        bail!(
+          "{} does not support the tag '{tag}'. JSR has no dist-tags; use '@latest' or a version requirement instead.",
+          prefixed_name,
+        );
       }
-      Err(err) => {
-        if req.version_req.version_text() == "*"
-          && let Some(pre_release_version) =
-            main_resolver.latest_version(&req.name).await
-        {
-          return Ok(PackageAndVersion::NotFound {
-            package: prefixed_name,
-            package_req: req.clone(),
-            help: Some(NotFoundHelp::PreReleaseVersion(
-              pre_release_version.clone(),
-            )),
-          });
+      main_resolver
+        .latest_version(&req.name)
+        .await
+        .map(|version| PackageNv {
+          name: req.name.clone(),
+          version,
+        })
+    } else {
+      match main_resolver.req_to_nv(req).await {
+        Ok(maybe_nv) => maybe_nv,
+        Err(err) => {
+          if req.version_req.version_text() == "*"
+            && let Some(pre_release_version) =
+              main_resolver.latest_version(&req.name).await
+          {
+            return Ok(PackageAndVersion::NotFound {
+              package: prefixed_name,
+              package_req: req.clone(),
+              help: Some(NotFoundHelp::PreReleaseVersion(
+                pre_release_version.clone(),
+              )),
+            });
+          }
+          return Err(err);
         }
-        return Err(err);
       }
+    };
+    let Some(nv) = maybe_nv else {
+      // Not in the primary registry; point at the other one if it's there.
+      let help = fallback_resolver
+        .req_to_nv(req)
+        .await
+        .ok()
+        .flatten()
+        .map(|_| help_if_found_in_fallback);
+      return Ok(PackageAndVersion::NotFound {
+        package: prefixed_name,
+        help,
+        package_req: req.clone(),
+      });
     };
     let range_symbol = if req.version_req.version_text().starts_with('~') {
       "~"
@@ -846,7 +944,6 @@ impl AddRmPackageReq {
     }
 
     let (maybe_prefix, entry_text) = parse_prefix(entry_text);
-    let maybe_prefix = maybe_prefix.or(default_prefix);
     let (prefix, maybe_alias, entry_text) = match maybe_prefix {
       Some(prefix) => (prefix, None, entry_text),
       None => match parse_alias(entry_text) {
@@ -863,24 +960,52 @@ impl AddRmPackageReq {
             entry_text,
           )
         }
-        None => return Ok(Err(PackageReq::from_str(entry_text)?)),
+        None => match default_prefix {
+          Some(prefix) => (prefix, None, entry_text),
+          None => return Ok(Err(PackageReq::from_str(entry_text)?)),
+        },
       },
     };
 
+    // The reference parsers use the strict specifier version grammar, which
+    // only accepts `^`, `~`, exact versions and tags. On the command line we
+    // also accept the full npm range grammar (`>=4`, `>=4 <5`, `^4 || 5`,
+    // `1 - 2`, etc) by falling back to loose parsing. `deno add` resolves the
+    // requirement to a concrete version before writing it, so what ends up in
+    // the config (and in `npm:`/`jsr:` specifiers in code) still uses the
+    // strict grammar.
     match prefix {
       Prefix::Jsr => {
-        let req_ref =
-          JsrPackageReqReference::from_str(&format!("jsr:{}", entry_text))?;
-        let package_req = req_ref.into_inner().req;
+        let package_req = match JsrPackageReqReference::from_str(&format!(
+          "jsr:{}",
+          entry_text
+        )) {
+          Ok(req_ref) => req_ref.into_inner().req,
+          // If loose parsing also fails the input is genuinely malformed, so
+          // surface the original strict error, which carries the more helpful
+          // diagnostic (e.g. the "did you mean" subpath suggestion).
+          Err(err) => {
+            PackageReq::from_str_loose(entry_text).map_err(|_| err)?
+          }
+        };
         Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
           value: AddRmPackageReqValue::Jsr(package_req),
         }))
       }
       Prefix::Npm => {
-        let req_ref =
-          NpmPackageReqReference::from_str(&format!("npm:{}", entry_text))?;
-        let package_req = req_ref.into_inner().req;
+        let package_req = match NpmPackageReqReference::from_str(&format!(
+          "npm:{}",
+          entry_text
+        )) {
+          Ok(req_ref) => req_ref.into_inner().req,
+          // If loose parsing also fails the input is genuinely malformed, so
+          // surface the original strict error, which carries the more helpful
+          // diagnostic (e.g. the "did you mean" subpath suggestion).
+          Err(err) => {
+            PackageReq::from_str_loose(entry_text).map_err(|_| err)?
+          }
+        };
         Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
           value: AddRmPackageReqValue::Npm(package_req),
@@ -894,9 +1019,15 @@ pub async fn remove(
   flags: Arc<Flags>,
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
-  let (_, npm_config, deno_config) = load_configs(&flags, || false)?;
+  let force_package_json = remove_flags.package_json;
+  let (_, npm_config, deno_config) =
+    load_configs(&flags, || false, force_package_json)?;
 
-  let mut configs = [npm_config, deno_config];
+  let mut configs = if force_package_json {
+    [npm_config, None]
+  } else {
+    [npm_config, deno_config]
+  };
 
   let mut removed_packages = vec![];
 
@@ -948,6 +1079,70 @@ pub async fn remove(
   Ok(())
 }
 
+pub(crate) async fn create_dep_manager_and_resolvers(
+  factory: &CliFactory,
+) -> Result<(deps::DepManager, Arc<crate::jsr::JsrFetchResolver>), AnyError> {
+  let cli_options = factory.cli_options()?;
+  let workspace = cli_options.workspace();
+  let http_client = factory.http_client_provider();
+  let deps_http_cache = factory.global_http_cache()?;
+  let file_fetcher = create_cli_file_fetcher(
+    deno_runtime::deno_web::BlobStore::default_arc(),
+    GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
+    http_client.clone(),
+    factory.memory_files().clone(),
+    factory.sys(),
+    CreateCliFileFetcherOptions {
+      allow_remote: true,
+      cache_setting: CacheSetting::RespectHeaders,
+      download_log_level: log::Level::Trace,
+      progress_bar: None,
+    },
+  );
+  let file_fetcher = Arc::new(file_fetcher);
+  let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
+    file_fetcher.clone(),
+    factory.npmrc()?.clone(),
+    factory.npm_version_resolver()?.clone(),
+  ));
+  let jsr_fetch_resolver = Arc::new(JsrFetchResolver::new(
+    file_fetcher.clone(),
+    factory.jsr_version_resolver()?.clone(),
+  ));
+
+  let args = deps::DepManagerArgs {
+    module_load_preparer: factory.module_load_preparer().await?.clone(),
+    jsr_fetch_resolver: jsr_fetch_resolver.clone(),
+    npm_fetch_resolver,
+    npm_resolver: factory.npm_resolver().await?.clone(),
+    npm_installer: factory.npm_installer().await?.clone(),
+    npm_version_resolver: factory.npm_version_resolver()?.clone(),
+    progress_bar: factory.text_only_progress_bar().clone(),
+    permissions_container: factory.root_permissions_container()?.clone(),
+    main_module_graph_container: factory
+      .main_module_graph_container()
+      .await?
+      .clone(),
+    lockfile: factory.maybe_lockfile().await?.cloned(),
+  };
+
+  let filter_fn = |_alias: Option<&str>,
+                   _req: &deno_semver::package::PackageReq,
+                   _: deps::DepKind| true;
+
+  let deps = if cli_options.start_dir.has_deno_or_pkg_json() {
+    deps::DepManager::from_workspace_dir(
+      &cli_options.start_dir,
+      filter_fn,
+      args,
+    )?
+  } else {
+    deps::DepManager::from_workspace(workspace, filter_fn, args)?
+  };
+
+  Ok((deps, jsr_fetch_resolver))
+}
+
 async fn npm_install_after_modification(
   flags: Arc<Flags>,
   // explicitly provided to prevent redownloading
@@ -993,14 +1188,18 @@ mod test {
   fn jsr_pkg_req(alias: &str, req: &str) -> AddRmPackageReq {
     AddRmPackageReq {
       alias: alias.into(),
-      value: AddRmPackageReqValue::Jsr(PackageReq::from_str(req).unwrap()),
+      value: AddRmPackageReqValue::Jsr(
+        PackageReq::from_str_loose(req).unwrap(),
+      ),
     }
   }
 
   fn npm_pkg_req(alias: &str, req: &str) -> AddRmPackageReq {
     AddRmPackageReq {
       alias: alias.into(),
-      value: AddRmPackageReqValue::Npm(PackageReq::from_str(req).unwrap()),
+      value: AddRmPackageReqValue::Npm(
+        PackageReq::from_str_loose(req).unwrap(),
+      ),
     }
   }
 
@@ -1027,6 +1226,49 @@ mod test {
       (("jsr:foo", Some(Prefix::Jsr)), jsr_pkg_req("foo", "foo")),
       (("npm:foo", Some(Prefix::Jsr)), npm_pkg_req("foo", "foo@*")),
       (("jsr:foo", Some(Prefix::Npm)), jsr_pkg_req("foo", "foo")),
+      // Alias with explicit prefix still works when default is set
+      (
+        ("my-alias@npm:foo", Some(Prefix::Npm)),
+        npm_pkg_req("my-alias", "foo@*"),
+      ),
+      (
+        ("my-alias@jsr:foo", Some(Prefix::Npm)),
+        jsr_pkg_req("my-alias", "foo"),
+      ),
+      // Unprefixed without alias defaults to npm
+      (
+        ("chalk", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@*"),
+      ),
+      (
+        ("@scope/pkg", Some(Prefix::Npm)),
+        npm_pkg_req("@scope/pkg", "@scope/pkg@*"),
+      ),
+      // npm range syntax is accepted on the command line (issue #26587)
+      (
+        ("npm:chalk@>=4", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@>=4"),
+      ),
+      (
+        ("npm:chalk@>=4 <5", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@>=4 <5"),
+      ),
+      (
+        ("npm:chalk@^4 || 5", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@^4 || 5"),
+      ),
+      (
+        ("npm:chalk@1 - 2", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@1 - 2"),
+      ),
+      (
+        ("alias@npm:chalk@>=4 <5", Some(Prefix::Npm)),
+        npm_pkg_req("alias", "chalk@>=4 <5"),
+      ),
+      (
+        ("jsr:@std/path@>=1.0.0", Some(Prefix::Jsr)),
+        jsr_pkg_req("@std/path", "@std/path@>=1.0.0"),
+      ),
     ];
 
     for ((input, maybe_prefix), expected) in cases {

@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::SystemTime;
 
@@ -27,13 +28,17 @@ use deno_lib::standalone::virtual_fs::VirtualFile;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_fs::FsFileType;
+use deno_runtime::deno_fs::FsReadDir;
+use deno_runtime::deno_fs::FsReadDirRc;
 use deno_runtime::deno_fs::OpenOptions;
 use deno_runtime::deno_fs::RealFs;
+use deno_runtime::deno_fs::sync::new_rc;
 use deno_runtime::deno_io;
 use deno_runtime::deno_io::fs::File as DenoFile;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
+use deno_runtime::deno_io::fs::FsStatFs;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoader;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_runtime::deno_permissions::CheckedPath;
@@ -139,8 +144,24 @@ impl FileSystem for DenoRtSys {
   }
 
   fn chdir(&self, path: &CheckedPath) -> FsResult<()> {
-    self.error_if_in_vfs(path)?;
-    RealFs.chdir(path)
+    if self.is_vfs_path(path) {
+      // The process working directory can't actually be changed to a path
+      // inside the embedded virtual file system, but applications (e.g.
+      // Next.js standalone builds) commonly chdir into their own directory.
+      // Verify the target exists and is a directory in the VFS and treat the
+      // change as a no-op rather than failing with NotSupported. Note that
+      // Deno.cwd() still reports the previous (real) working directory.
+      if self.vfs.stat(path)?.as_fs_stat().is_directory {
+        Ok(())
+      } else {
+        Err(FsError::Io(std::io::Error::new(
+          ErrorKind::NotADirectory,
+          "Not a directory",
+        )))
+      }
+    } else {
+      RealFs.chdir(path)
+    }
   }
 
   fn umask(&self, mask: Option<u32>) -> FsResult<u32> {
@@ -383,6 +404,33 @@ impl FileSystem for DenoRtSys {
     }
   }
 
+  fn statfs_sync(
+    &self,
+    path: &CheckedPath,
+    bigint: bool,
+  ) -> FsResult<FsStatFs> {
+    if self.is_vfs_path(path) {
+      // the entry must exist within the embedded read-only file system
+      self.vfs.stat(path)?;
+      Ok(vfs_statfs())
+    } else {
+      RealFs.statfs_sync(path, bigint)
+    }
+  }
+  async fn statfs_async(
+    &self,
+    path: CheckedPathBuf,
+    bigint: bool,
+  ) -> FsResult<FsStatFs> {
+    if self.is_vfs_path(&path) {
+      // the entry must exist within the embedded read-only file system
+      self.vfs.stat(&path)?;
+      Ok(vfs_statfs())
+    } else {
+      RealFs.statfs_async(path, bigint).await
+    }
+  }
+
   fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
     if self.is_vfs_path(path) {
       Ok(self.vfs.canonicalize(path)?)
@@ -408,9 +456,11 @@ impl FileSystem for DenoRtSys {
   async fn read_dir_async(
     &self,
     path: CheckedPathBuf,
-  ) -> FsResult<Vec<FsDirEntry>> {
+  ) -> FsResult<FsReadDirRc> {
     if self.is_vfs_path(&path) {
-      Ok(self.vfs.read_dir(&path)?)
+      Ok(new_rc(VfsReadDir(Mutex::new(
+        self.vfs.read_dir(&path)?.into_iter(),
+      ))))
     } else {
       RealFs.read_dir_async(path).await
     }
@@ -554,6 +604,16 @@ impl FileSystem for DenoRtSys {
   }
 }
 
+#[derive(Debug)]
+struct VfsReadDir(Mutex<std::vec::IntoIter<FsDirEntry>>);
+
+#[async_trait::async_trait(?Send)]
+impl FsReadDir for VfsReadDir {
+  async fn next(&self) -> FsResult<Option<FsDirEntry>> {
+    Ok(self.0.try_lock().map_err(|_| FsError::FileBusy)?.next())
+  }
+}
+
 impl sys_traits::BaseFsHardLink for DenoRtSys {
   #[inline]
   fn base_fs_hard_link(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -666,6 +726,14 @@ impl sys_traits::FsMetadataValue for FileBackedVfsMetadata {
   }
 }
 
+/// `statfs` result for a path within the embedded read-only file system.
+///
+/// There is no real backing device, so this reports an empty read-only file
+/// system (no free space) rather than failing or leaking host disk stats.
+fn vfs_statfs() -> FsStatFs {
+  FsStatFs::default()
+}
+
 fn not_supported(name: &str) -> std::io::Error {
   std::io::Error::new(
     ErrorKind::Unsupported,
@@ -679,8 +747,7 @@ fn not_supported(name: &str) -> std::io::Error {
 impl sys_traits::FsDirEntry for FileBackedVfsDirEntry {
   type Metadata = BoxedFsMetadataValue;
 
-  #[allow(mismatched_lifetime_syntaxes)]
-  fn file_name(&self) -> Cow<std::ffi::OsStr> {
+  fn file_name(&self) -> Cow<'_, std::ffi::OsStr> {
     Cow::Borrowed(self.metadata.name.as_ref())
   }
 
@@ -712,7 +779,10 @@ impl sys_traits::BaseFsReadDir for DenoRtSys {
         entries.map(|entry| Ok(BoxedFsDirEntry::new(entry))),
       ))
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok because we're implementing the sys"
+      )]
       sys_traits::impls::RealSys.fs_read_dir_boxed(path)
     }
   }
@@ -740,7 +810,10 @@ impl sys_traits::BaseFsMetadata for DenoRtSys {
     if self.is_vfs_path(path) {
       Ok(BoxedFsMetadataValue::new(self.vfs.stat(path)?))
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok because we're implementing the sys"
+      )]
       sys_traits::impls::RealSys.fs_metadata_boxed(path)
     }
   }
@@ -753,7 +826,10 @@ impl sys_traits::BaseFsMetadata for DenoRtSys {
     if self.is_vfs_path(path) {
       Ok(BoxedFsMetadataValue::new(self.vfs.lstat(path)?))
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok because we're implementing the sys"
+      )]
       sys_traits::impls::RealSys.fs_symlink_metadata_boxed(path)
     }
   }
@@ -774,7 +850,10 @@ impl sys_traits::BaseFsCopy for DenoRtSys {
         &CheckedPath::unsafe_new(Cow::Borrowed(to)),
       )
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_types,
+        reason = "ok because we're implementing the sys"
+      )]
       sys_traits::impls::RealSys.fs_copy(from, to)
     }
   }
@@ -1018,7 +1097,10 @@ impl sys_traits::BaseFsOpen for DenoRtSys {
     if self.is_vfs_path(path) {
       Ok(FsFileAdapter::Vfs(self.vfs.open_file(path)?))
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok because we're implementing the sys"
+      )]
       Ok(FsFileAdapter::Real(
         sys_traits::impls::RealSys.base_fs_open(path, options)?,
       ))
@@ -1044,7 +1126,10 @@ impl sys_traits::BaseFsSymlinkDir for DenoRtSys {
 impl sys_traits::SystemRandom for DenoRtSys {
   #[inline]
   fn sys_random(&self, buf: &mut [u8]) -> std::io::Result<()> {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.sys_random(buf)
   }
 }
@@ -1052,7 +1137,10 @@ impl sys_traits::SystemRandom for DenoRtSys {
 impl sys_traits::SystemTimeNow for DenoRtSys {
   #[inline]
   fn sys_time_now(&self) -> SystemTime {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_types,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.sys_time_now()
   }
 }
@@ -1060,7 +1148,10 @@ impl sys_traits::SystemTimeNow for DenoRtSys {
 impl sys_traits::ThreadSleep for DenoRtSys {
   #[inline]
   fn thread_sleep(&self, dur: Duration) {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.thread_sleep(dur)
   }
 }
@@ -1068,8 +1159,10 @@ impl sys_traits::ThreadSleep for DenoRtSys {
 impl sys_traits::EnvCurrentDir for DenoRtSys {
   #[inline]
   fn env_current_dir(&self) -> std::io::Result<PathBuf> {
-    // ok because we're implementing the fs
-    #[allow(clippy::disallowed_types, clippy::disallowed_methods)]
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.env_current_dir()
   }
 }
@@ -1077,7 +1170,10 @@ impl sys_traits::EnvCurrentDir for DenoRtSys {
 impl sys_traits::EnvHomeDir for DenoRtSys {
   #[inline]
   fn env_home_dir(&self) -> Option<PathBuf> {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.env_home_dir()
   }
 }
@@ -1087,7 +1183,10 @@ impl sys_traits::BaseEnvVar for DenoRtSys {
     &self,
     key: &std::ffi::OsStr,
   ) -> Option<std::ffi::OsString> {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.base_env_var_os(key)
   }
 }
@@ -1261,6 +1360,15 @@ impl FileBackedVfsFile {
     self.vfs.read_file(&self.file, read_pos, buf)
   }
 
+  fn metadata(&self) -> FileBackedVfsMetadata {
+    FileBackedVfsMetadata {
+      name: self.file.name.clone(),
+      file_type: sys_traits::FileType::File,
+      len: self.file.offset.len,
+      mtime: self.file.mtime,
+    }
+  }
+
   fn read_to_end(&self) -> FsResult<Cow<'static, [u8]>> {
     let read_pos = {
       let mut pos = self.pos.borrow_mut();
@@ -1376,10 +1484,10 @@ impl deno_io::fs::File for FileBackedVfsFile {
   }
 
   fn stat_sync(self: Rc<Self>) -> FsResult<FsStat> {
-    Err(FsError::NotSupported)
+    Ok(self.metadata().as_fs_stat())
   }
   async fn stat_async(self: Rc<Self>) -> FsResult<FsStat> {
-    Err(FsError::NotSupported)
+    Ok(self.metadata().as_fs_stat())
   }
 
   fn lock_sync(self: Rc<Self>, _exclusive: bool) -> FsResult<()> {
@@ -1433,6 +1541,34 @@ impl deno_io::fs::File for FileBackedVfsFile {
   fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
     Err(FsError::NotSupported)
   }
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self
+      .vfs
+      .read_file(&self.file, position, buf)
+      .map_err(FsError::Io)
+  }
+  async fn read_at_async(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)> {
+    let nread = self
+      .vfs
+      .read_file(&self.file, position, &mut buf)
+      .map_err(FsError::Io)?;
+    Ok((nread, buf))
+  }
+  fn write_at_sync(
+    self: Rc<Self>,
+    _buf: &[u8],
+    _position: u64,
+  ) -> FsResult<usize> {
+    Err(FsError::NotSupported)
+  }
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     None
   }
@@ -1479,6 +1615,17 @@ impl FileBackedVfsMetadata {
 
   pub fn as_fs_stat(&self) -> FsStat {
     // to use lower overhead, use mtime instead of all time params
+    //
+    // VFS files are always readable. Directories also get execute (traverse).
+    // Symlinks get 0o777 per Unix convention (target permissions matter).
+    // This ensures node:fs access() checks succeed for embedded files.
+    let mode = if self.file_type == sys_traits::FileType::Dir {
+      0o555 // r-xr-xr-x
+    } else if self.file_type == sys_traits::FileType::Symlink {
+      0o777 // rwxrwxrwx (conventional for symlinks)
+    } else {
+      0o444 // r--r--r--
+    };
     FsStat {
       is_directory: self.file_type == sys_traits::FileType::Dir,
       is_file: self.file_type == sys_traits::FileType::File,
@@ -1491,7 +1638,7 @@ impl FileBackedVfsMetadata {
       size: self.len,
       dev: 0,
       ino: None,
-      mode: 0,
+      mode,
       nlink: None,
       uid: 0,
       gid: 0,

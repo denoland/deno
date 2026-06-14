@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "tests": {
+    "import_meta_resolve_extension_rewrite": {
+      "steps": [{
+        "args": "pack",
+        "output": "[WILDCARD]✓[WILDCARD]test-import-meta-resolve-1.0.0.tgz[WILDCARD]"
+      }, {
+        "if": "unix",
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "tar -xzf test-import-meta-resolve-1.0.0.tgz && grep -q 'import.meta.resolve(\"./helper.js\")' package/mod.js && echo 'rewritten: true' || echo 'rewritten: false'; grep -q 'import.meta.resolve(\"./helper.ts\")' package/mod.js && echo 'has-ts: true' || echo 'has-ts: false'"
+        ],
+        "output": "rewritten: true\nhas-ts: false\n"
+      }]
+    }
+  }
+}

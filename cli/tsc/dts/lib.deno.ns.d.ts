@@ -831,13 +831,23 @@ declare namespace Deno {
      * not await. This helps in preventing logic errors and memory leaks
      * in the application code.
      *
-     * @default {true} */
+     * Can also be enabled globally with the `--sanitize-ops` CLI flag,
+     * the `DENO_TEST_SANITIZE_OPS=1` environment variable, or the
+     * `test.sanitizeOps` option in `deno.json`. Can be set per-module
+     * with {@linkcode Deno.test.sanitizer}.
+     *
+     * @default {false} */
     sanitizeOps?: boolean;
     /** Ensure the test step does not "leak" resources - like open files or
      * network connections - by ensuring the open resources at the start of the
      * test match the open resources at the end of the test.
      *
-     * @default {true} */
+     * Can also be enabled globally with the `--sanitize-resources` CLI flag,
+     * the `DENO_TEST_SANITIZE_RESOURCES=1` environment variable, or the
+     * `test.sanitizeResources` option in `deno.json`. Can be set per-module
+     * with {@linkcode Deno.test.sanitizer}.
+     *
+     * @default {false} */
     sanitizeResources?: boolean;
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to {@linkcode Deno.exit}.
@@ -852,6 +862,13 @@ declare namespace Deno {
      *
      * @default {"inherit"} */
     permissions?: PermissionOptions;
+    /** Maximum duration in milliseconds that the test is allowed to run
+     * before being marked as a failed test. Both asynchronous hangs and
+     * synchronous hot loops are caught.
+     *
+     * If unset or `0`, the test runs without a deadline.
+     */
+    timeout?: number;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -1080,97 +1097,48 @@ declare namespace Deno {
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
 
-    /** Shorthand property for ignoring a particular test case.
+    /** Register a parameterized group of tests, one per case in `cases`.
+     *
+     * Returns a function that takes a name template and a test function. For
+     * each case the name template is interpolated and the test function is
+     * called with the case's value(s) followed by the {@linkcode TestContext}.
+     *
+     * Array cases are spread as positional arguments; object (or primitive)
+     * cases are passed as a single argument.
+     *
+     * The name template supports `printf`-style tokens that consume the case's
+     * values in order (`%s`, `%d`/`%i`, `%f`, `%j`, `%o`/`%O`), `%#` for the
+     * zero-based case index, and `%%` for a literal `%`. For object cases,
+     * `$key` (and `$key.nested`) interpolates the corresponding property.
+     *
+     * ```ts
+     * import { assertEquals } from "jsr:@std/assert";
+     *
+     * Deno.test.each([
+     *   [1, 1, 2],
+     *   [1, 2, 3],
+     *   [2, 1, 3],
+     * ])("add(%i, %i) = %i", (a, b, expected) => {
+     *   assertEquals(a + b, expected);
+     * });
+     *
+     * Deno.test.each([
+     *   { a: 1, b: 1, sum: 2 },
+     *   { a: 1, b: 2, sum: 3 },
+     * ])("$a + $b = $sum", ({ a, b, sum }) => {
+     *   assertEquals(a + b, sum);
+     * });
+     * ```
      *
      * @category Testing
      */
-    ignore(t: Omit<TestDefinition, "ignore">): void;
+    each: TestEach;
 
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(name: string, fn: (t: TestContext) => void | Promise<void>): void;
+    /** Shorthand property for ignoring a particular test case. */
+    ignore: TestIgnore;
 
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(fn: (t: TestContext) => void | Promise<void>): void;
-
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(
-      name: string,
-      options: Omit<TestDefinition, "fn" | "name" | "ignore">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(
-      options: Omit<TestDefinition, "fn" | "name" | "ignore">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(
-      options: Omit<TestDefinition, "fn" | "ignore">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(t: Omit<TestDefinition, "only">): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(name: string, fn: (t: TestContext) => void | Promise<void>): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(fn: (t: TestContext) => void | Promise<void>): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(
-      name: string,
-      options: Omit<TestDefinition, "fn" | "name" | "only">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(
-      options: Omit<TestDefinition, "fn" | "name" | "only">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(
-      options: Omit<TestDefinition, "fn" | "only">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
+    /** Shorthand property for focusing a particular test case. */
+    only: TestOnly;
 
     /** Register a function to be called before all tests in the current scope.
      *
@@ -1243,6 +1211,136 @@ declare namespace Deno {
      * @category Testing
      */
     afterAll(fn: () => void | Promise<void>): void;
+
+    /** Configure sanitizers at the module level. This overrides CLI flags and
+     * config file settings, but can still be overridden per-test via
+     * `sanitizeOps` / `sanitizeResources` in test options.
+     *
+     * Should be called at the top of the module, before any `Deno.test()`
+     * registrations — each call sets the defaults that subsequently registered
+     * tests inherit, so tests registered before the call use the previous
+     * defaults.
+     *
+     * ```ts
+     * // Enable both sanitizers for all tests in this file
+     * Deno.test.sanitizer({ ops: true, resources: true });
+     *
+     * Deno.test("my test", () => {
+     *   // This test will have ops and resources sanitizers enabled
+     * });
+     *
+     * Deno.test({
+     *   name: "override per-test",
+     *   sanitizeOps: false,
+     *   fn() {
+     *     // This test opts out of ops sanitizer
+     *   },
+     * });
+     * ```
+     *
+     * @category Testing
+     */
+    sanitizer(options: {
+      /** Enable or disable the ops sanitizer for all tests in this module. */
+      ops?: boolean;
+      /** Enable or disable the resources sanitizer for all tests in this module. */
+      resources?: boolean;
+    }): void;
+  }
+
+  /** Register a parameterized group of tests. See {@linkcode DenoTest.each}.
+   *
+   * The first overload handles array cases (their values are spread as
+   * positional arguments); the second handles object or primitive cases (each
+   * passed as a single argument followed by the {@linkcode TestContext}).
+   *
+   * The {@linkcode TestContext} is also passed as the final argument to array
+   * case functions at runtime, but is not reflected in their parameter types so
+   * that the case values stay correctly typed.
+   *
+   * @category Testing
+   */
+  export interface TestEach {
+    <const T extends readonly unknown[]>(
+      cases: readonly T[],
+    ): {
+      (
+        name: string,
+        fn: (...args: [...T]) => void | Promise<void>,
+      ): void;
+      (
+        name: string,
+        options: Omit<TestDefinition, "fn" | "name">,
+        fn: (...args: [...T]) => void | Promise<void>,
+      ): void;
+    };
+    <const T>(
+      cases: readonly T[],
+    ): {
+      (
+        name: string,
+        fn: (value: T, t: TestContext) => void | Promise<void>,
+      ): void;
+      (
+        name: string,
+        options: Omit<TestDefinition, "fn" | "name">,
+        fn: (value: T, t: TestContext) => void | Promise<void>,
+      ): void;
+    };
+  }
+
+  /** Shorthand property for ignoring a particular test case. See
+   * {@linkcode DenoTest.ignore}.
+   *
+   * @category Testing
+   */
+  export interface TestIgnore {
+    (t: Omit<TestDefinition, "ignore">): void;
+    (name: string, fn: (t: TestContext) => void | Promise<void>): void;
+    (fn: (t: TestContext) => void | Promise<void>): void;
+    (
+      name: string,
+      options: Omit<TestDefinition, "fn" | "name" | "ignore">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    (
+      options: Omit<TestDefinition, "fn" | "name" | "ignore">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    (
+      options: Omit<TestDefinition, "fn" | "ignore">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    /** Register a parameterized group of ignored tests. See
+     * {@linkcode DenoTest.each}. */
+    each: TestEach;
+  }
+
+  /** Shorthand property for focusing a particular test case. See
+   * {@linkcode DenoTest.only}.
+   *
+   * @category Testing
+   */
+  export interface TestOnly {
+    (t: Omit<TestDefinition, "only">): void;
+    (name: string, fn: (t: TestContext) => void | Promise<void>): void;
+    (fn: (t: TestContext) => void | Promise<void>): void;
+    (
+      name: string,
+      options: Omit<TestDefinition, "fn" | "name" | "only">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    (
+      options: Omit<TestDefinition, "fn" | "name" | "only">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    (
+      options: Omit<TestDefinition, "fn" | "only">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    /** Register a parameterized group of focused tests. See
+     * {@linkcode DenoTest.each}. */
+    each: TestEach;
   }
 
   /**
@@ -1547,7 +1645,8 @@ declare namespace Deno {
    *
    * If no exit code is supplied then Deno will exit with return code of `0`.
    *
-   * In worker contexts this is an alias to `self.close();`.
+   * In worker contexts this closes the current worker using Deno's internal
+   * worker close operation. It does not call the current `self.close` property.
    *
    * ```ts
    * Deno.exit(5);
@@ -1883,6 +1982,11 @@ declare namespace Deno {
      *   console.log(decoder.decode(chunk));
      * }
      * ```
+     *
+     * Note that the readable stream *takes ownership of the file*: reading the
+     * stream to completion (or cancelling it) closes the file automatically, so
+     * you should not close the file yourself while the stream is still being
+     * consumed.
      */
     readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
     /** A {@linkcode WritableStream} instance to write the contents of the
@@ -1898,6 +2002,10 @@ declare namespace Deno {
      *   await writer.write(encoder.encode(item));
      * }
      * ```
+     *
+     * Note that the writable stream *takes ownership of the file*: closing or
+     * aborting the stream closes the file automatically, so you should not
+     * close the file yourself while the stream is still in use.
      */
     readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
     /** Write the contents of the array buffer (`p`) to the file.
@@ -2294,6 +2402,10 @@ declare namespace Deno {
    * system. It's not a reflection of how many characters will fit within the
    * console window, but can be used as part of that calculation.
    *
+   * Throws if none of stdin, stdout, or stderr is connected to a terminal
+   * (e.g. all are piped or redirected). Use {@linkcode Deno.stdout.isTerminal}
+   * to check before calling.
+   *
    * @category I/O
    */
   export function consoleSize(): {
@@ -2639,7 +2751,8 @@ declare namespace Deno {
    * await Deno.mkdir("restricted_access_dir", { mode: 0o700 });
    * ```
    *
-   * Defaults to throwing error if the directory already exists.
+   * Throws if the directory already exists, unless `recursive` is set to
+   * `true`.
    *
    * Requires `allow-write` permission.
    *
@@ -2659,7 +2772,8 @@ declare namespace Deno {
    * Deno.mkdirSync("restricted_access_dir", { mode: 0o700 });
    * ```
    *
-   * Defaults to throwing error if the directory already exists.
+   * Throws if the directory already exists, unless `recursive` is set to
+   * `true`.
    *
    * Requires `allow-write` permission.
    *
@@ -3694,8 +3808,8 @@ declare namespace Deno {
    * );
    * ```
    *
-   * _Note_: On Windows only `"SIGINT"` (CTRL+C) and `"SIGBREAK"` (CTRL+Break)
-   * are supported.
+   * _Note_: On Windows only `"SIGINT"` (CTRL+C), `"SIGBREAK"` (CTRL+Break),
+   * `"SIGTERM"`, `"SIGQUIT"`, `"SIGHUP"`, and `"SIGWINCH"` are supported.
    *
    * @category Runtime
    */
@@ -3712,8 +3826,8 @@ declare namespace Deno {
    * Deno.removeSignalListener("SIGTERM", listener);
    * ```
    *
-   * _Note_: On Windows only `"SIGINT"` (CTRL+C) and `"SIGBREAK"` (CTRL+Break)
-   * are supported.
+   * _Note_: On Windows only `"SIGINT"` (CTRL+C), `"SIGBREAK"` (CTRL+Break),
+   * `"SIGTERM"`, `"SIGQUIT"`, `"SIGHUP"`, and `"SIGWINCH"` are supported.
    *
    * @category Runtime
    */
@@ -4364,7 +4478,8 @@ declare namespace Deno {
       | "homedir"
       | "statfs"
       | "getPriority"
-      | "setPriority";
+      | "setPriority"
+      | "ca";
   }
 
   /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls
@@ -4758,7 +4873,12 @@ declare namespace Deno {
    * await Deno.symlink("old/name", "new/name");
    * ```
    *
-   * Requires full `allow-read` and `allow-write` permissions.
+   * Requires `allow-read` and `allow-write` permissions granted *without* a
+   * path scope (i.e. `--allow-read --allow-write`, not
+   * `--allow-read=./dir --allow-write=./dir`). A symlink's target may be a
+   * relative, absolute, or not-yet-existing path that is only resolved when the
+   * link is later traversed, so it cannot be checked against a path-scoped
+   * allow-list at creation time. Path-scoped grants are therefore rejected.
    *
    * @tags allow-read, allow-write
    * @category File System
@@ -4779,7 +4899,12 @@ declare namespace Deno {
    * Deno.symlinkSync("old/name", "new/name");
    * ```
    *
-   * Requires full `allow-read` and `allow-write` permissions.
+   * Requires `allow-read` and `allow-write` permissions granted *without* a
+   * path scope (i.e. `--allow-read --allow-write`, not
+   * `--allow-read=./dir --allow-write=./dir`). A symlink's target may be a
+   * relative, absolute, or not-yet-existing path that is only resolved when the
+   * link is later traversed, so it cannot be checked against a path-scoped
+   * allow-list at creation time. Path-scoped grants are therefore rejected.
    *
    * @tags allow-read, allow-write
    * @category File System
@@ -4880,6 +5005,33 @@ declare namespace Deno {
      * The unit is seconds, with a default of 30.
      * Set to `0` to disable timeouts. */
     idleTimeout?: number;
+    /** A `node:net` `Socket` from a `node:http` server's `"upgrade"` event.
+     * When provided, the WebSocket upgrade is performed over this existing
+     * TCP connection instead of through `Deno.serve`'s built-in upgrade
+     * mechanism. The 101 Switching Protocols response is written
+     * automatically.
+     *
+     * ```ts ignore
+     * import http from "node:http";
+     *
+     * const server = http.createServer();
+     * server.on("upgrade", (req, socket, head) => {
+     *   const { socket: ws } = Deno.upgradeWebSocket(
+     *     new Request(`http://${req.headers.host}/`, {
+     *       headers: req.headers as HeadersInit,
+     *     }),
+     *     { socket: socket as import("node:net").Socket, head },
+     *   );
+     *   ws.onmessage = (e) => ws.send(e.data);
+     * });
+     * ```
+     */
+    socket?: import("node:net").Socket;
+    /** Extra bytes already buffered by the HTTP parser that arrived with
+     * the upgrade request headers. This is the `head` `Buffer` from the
+     * `node:http` server's `"upgrade"` event and must be forwarded so
+     * those bytes are not lost. */
+    head?: Uint8Array;
   }
 
   /**
@@ -5319,14 +5471,14 @@ declare namespace Deno {
    *
    * @category Runtime
    */
-  export function refTimer(id: number): void;
+  export function refTimer(id: number | NodeJS.Timeout): void;
 
   /**
    * Make the timer of the given `id` not block the event loop from finishing.
    *
    * @category Runtime
    */
-  export function unrefTimer(id: number): void;
+  export function unrefTimer(id: number | NodeJS.Timeout): void;
 
   /**
    * Returns the user id of the process on POSIX platforms. Returns null on Windows.
@@ -5933,7 +6085,7 @@ declare namespace Deno {
    * @category FFI
    */
   export type ToNativeType<T extends NativeType = NativeType> = T extends
-    NativeStructType ? BufferSource
+    NativeStructType ? AllowSharedBufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
       : T extends NativeU16Enum<infer U> ? U
@@ -5949,7 +6101,7 @@ declare namespace Deno {
     : T extends NativeFunctionType
       ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
       : PointerValue
-    : T extends NativeBufferType ? BufferSource | null
+    : T extends NativeBufferType ? AllowSharedBufferSource | null
     : never;
 
   /** Type conversion for unsafe callback return types.
@@ -5958,7 +6110,7 @@ declare namespace Deno {
    */
   export type ToNativeResultType<
     T extends NativeResultType = NativeResultType,
-  > = T extends NativeStructType ? BufferSource
+  > = T extends NativeStructType ? AllowSharedBufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
       : T extends NativeU16Enum<infer U> ? U
@@ -5974,7 +6126,7 @@ declare namespace Deno {
     : T extends NativeFunctionType
       ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
       : PointerValue
-    : T extends NativeBufferType ? BufferSource | null
+    : T extends NativeBufferType ? AllowSharedBufferSource | null
     : T extends NativeVoidType ? void
     : never;
 
@@ -6179,7 +6331,7 @@ declare namespace Deno {
     static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
     static of<T = unknown>(
-      value: Deno.UnsafeCallback | BufferSource,
+      value: Deno.UnsafeCallback | AllowSharedBufferSource,
     ): PointerValue<T>;
     /** Return a new pointer offset from the original by `offset` bytes. */
     static offset<T = unknown>(
@@ -6263,7 +6415,7 @@ declare namespace Deno {
      * Length is determined from the typed array's `byteLength`.
      *
      * Also takes optional byte offset from the pointer. */
-    copyInto(destination: BufferSource, offset?: number): void;
+    copyInto(destination: AllowSharedBufferSource, offset?: number): void;
     /** Copies the memory of the specified pointer into a typed array.
      *
      * Length is determined from the typed array's `byteLength`.
@@ -6271,7 +6423,7 @@ declare namespace Deno {
      * Also takes optional byte offset from the pointer. */
     static copyInto(
       pointer: PointerObject,
-      destination: BufferSource,
+      destination: AllowSharedBufferSource,
       offset?: number,
     ): void;
   }

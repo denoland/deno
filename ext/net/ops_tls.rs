@@ -462,7 +462,7 @@ pub async fn op_net_connect_tls(
   }
   .map_err(|_| NetError::InvalidHostname(addr.hostname.clone()))?;
 
-  // Use Happy Eyeballs for connection
+  // Resolve all addresses for Happy Eyeballs.
   let options = options.unwrap_or_default();
   let addrs: Vec<_> = resolve_addr(&addr.hostname, addr.port).await?.collect();
 
@@ -470,7 +470,25 @@ pub async fn op_net_connect_tls(
     return Err(NetError::NoResolvedAddress);
   }
 
-  // Use Happy Eyeballs if enabled and multiple addresses available
+  // Post-resolution deny check: verify none of the resolved IPs are denied.
+  // This prevents bypassing IP-literal deny rules via numeric hostname
+  // aliases (e.g. 2130706433 -> 127.0.0.1). All candidate addresses are
+  // checked because Happy Eyeballs may connect to any of them.
+  {
+    let mut state_ = state.borrow_mut();
+    let permissions = state_.borrow_mut::<PermissionsContainer>();
+    for addr in &addrs {
+      permissions.check_net_resolved(
+        &addr.ip(),
+        addr.port(),
+        "Deno.connectTls()",
+      )?;
+    }
+  }
+
+  // Use Happy Eyeballs if enabled and multiple addresses available.
+  // Note: the TLS connect op has no abort resource, so no cancel handle is
+  // available here (matches the pre-Happy-Eyeballs behavior).
   let tcp_stream = if options.auto_select_family && addrs.len() > 1 {
     let attempt_delay = std::time::Duration::from_millis(
       options.auto_select_family_attempt_delay,
@@ -547,6 +565,13 @@ pub fn op_net_listen_tls(
   let bind_addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or(NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(
+      &bind_addr.ip(),
+      bind_addr.port(),
+      "Deno.listenTls()",
+    )?;
 
   let tcp_listener = if args.load_balanced {
     TcpListener::bind_load_balanced(bind_addr, args.tcp_backlog)

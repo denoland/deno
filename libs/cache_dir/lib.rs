@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![deny(clippy::disallowed_methods)]
+
 mod cache;
 mod common;
 mod deno_dir;
@@ -22,6 +24,7 @@ pub use cache::GlobalToLocalCopy;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
 pub use cache::HttpCacheRc;
+pub use cache::NOT_FOUND_CACHE_HEADER;
 pub use cache::SerializedCachedUrlMetadata;
 pub use cache::url_to_filename;
 pub use common::HeadersMap;

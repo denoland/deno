@@ -164,6 +164,12 @@ pub enum CoreErrorKind {
   PendingPromiseResolution,
   #[class(generic)]
   #[error(
+    "Module evaluation is still pending after multiple event loop iterations, \
+     but no stalled top-level await was found. This is a bug in Deno."
+  )]
+  ModuleEvaluationDeadlock,
+  #[class(generic)]
+  #[error(
     "Cannot evaluate dynamically imported module, because JavaScript execution has been terminated"
   )]
   EvaluateDynamicImportedModule,
@@ -248,16 +254,122 @@ impl From<v8::DataError> for CoreError {
   }
 }
 
+/// Single-pass V8 string → Rust string via `write_utf8_into` (uses ValueView
+/// internally). Replaces the two-pass `to_rust_string_lossy` which does a
+/// `utf8_length` pre-scan before writing.
+#[inline]
+fn v8_to_rust_string(s: &v8::String, scope: &mut v8::Isolate) -> String {
+  let mut buf = String::new();
+  s.write_utf8_into(scope, &mut buf);
+  buf
+}
+
 pub fn throw_js_error_class(
   scope: &mut v8::PinScope,
   error: &dyn JsErrorClass,
 ) {
-  let exception = js_class_and_message_to_exception(
-    scope,
-    &error.get_class(),
-    &error.get_message(),
-  );
+  let exception = build_js_error_class_exception(scope, error);
   scope.throw_exception(exception);
+}
+
+/// Builds a JS exception for `error` using only native V8 APIs, without
+/// re-entering JavaScript.
+///
+/// This mirrors what the JS `Deno.core.buildCustomError` callback does
+/// (restoring the registered error class so `instanceof` holds, and attaching
+/// the additional properties), but never invokes user-reachable JS. That makes
+/// it safe to call from inside a V8 fast call, where re-entering JS is
+/// forbidden: the callback could run an attacker-controlled prototype setter
+/// that detaches an `ArrayBuffer` argument out from under the JIT, a
+/// use-after-free (GHSA-p4r3-6jgx-4cj5).
+///
+/// Reading data properties off the cached `errorConstructors` map and calling
+/// `SetPrototype` / `CreateDataProperty` / `DefineOwnProperty` never execute
+/// user JS, so the fast-call contract is upheld.
+fn build_js_error_class_exception<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  error: &dyn JsErrorClass,
+) -> v8::Local<'s, v8::Value> {
+  let class = error.get_class();
+  let message = v8::String::new(scope, &error.get_message()).unwrap();
+  let exception = v8::Exception::error(scope, message);
+
+  // `v8::Exception::error` always produces an object, but be defensive.
+  let Ok(exception_obj) = TryInto::<v8::Local<v8::Object>>::try_into(exception)
+  else {
+    return exception;
+  };
+
+  // Restore the exact registered error class (e.g. `RangeError`,
+  // `Deno.errors.NotFound`) by re-parenting the prototype, so that
+  // `err instanceof Deno.errors.NotFound` holds. We never call the class
+  // constructor (that would run JS); we only borrow its `.prototype`.
+  let constructors = JsRealm::exception_state_from_scope(scope)
+    .js_error_constructors
+    .borrow()
+    .clone();
+  if let Some(constructors) = constructors {
+    let constructors = v8::Local::new(scope, constructors);
+    let class_key = v8::String::new(scope, &class).unwrap();
+    if let Some(ctor) = constructors.get(scope, class_key.into())
+      && let Ok(ctor) = TryInto::<v8::Local<v8::Object>>::try_into(ctor)
+    {
+      let prototype_key = v8::String::new(scope, "prototype").unwrap();
+      if let Some(prototype) = ctor.get(scope, prototype_key.into())
+        && prototype.is_object()
+      {
+        exception_obj.set_prototype(scope, prototype);
+      }
+    }
+  }
+
+  // Set `name` explicitly. The registered classes assign `this.name` in their
+  // constructor (an own property), which the prototype swap above does not
+  // reproduce since we never run the constructor. The registration key matches
+  // that assigned name, so using the class here mirrors `new ErrorClass(...)`.
+  let name_key = v8::String::new(scope, "name").unwrap();
+  let class_value = v8::String::new(scope, &class).unwrap();
+  exception_obj.create_data_property(
+    scope,
+    name_key.into(),
+    class_value.into(),
+  );
+
+  // Copy the additional properties (e.g. `code`) and record their keys under
+  // the same symbol `buildCustomError` uses, so the error round-trips back to
+  // Rust via `JsError::from_v8_exception`.
+  let mut added_keys = vec![];
+  for (key, value) in error.get_additional_properties() {
+    let key = v8::String::new(scope, &key).unwrap();
+    // Match `buildCustomError`: don't clobber a property the class defines.
+    if exception_obj.has(scope, key.into()) == Some(true) {
+      continue;
+    }
+    let value = match value {
+      PropertyValue::String(value) => {
+        v8::String::new(scope, &value).unwrap().into()
+      }
+      PropertyValue::Number(value) => v8::Number::new(scope, value).into(),
+    };
+    exception_obj.create_data_property(scope, key.into(), value);
+    added_keys.push(v8::Local::<v8::Value>::from(key));
+  }
+  if !added_keys.is_empty() {
+    let keys_array = v8::Array::new_with_elements(scope, &added_keys);
+    let symbol_name =
+      v8::String::new(scope, "errorAdditionalPropertyKeys").unwrap();
+    let symbol = v8::Symbol::for_key(scope, symbol_name);
+    exception_obj.define_own_property(
+      scope,
+      symbol.into(),
+      keys_array.into(),
+      v8::PropertyAttribute::READ_ONLY
+        | v8::PropertyAttribute::DONT_ENUM
+        | v8::PropertyAttribute::DONT_DELETE,
+    );
+  }
+
+  exception
 }
 
 fn js_class_and_message_to_exception<'s, 'i>(
@@ -323,19 +435,14 @@ pub fn to_v8_error<'s, 'i>(
   match maybe_exception {
     Some(exception) => exception,
     None => {
-      let mut msg =
-        "Custom error class must have a builder registered".to_string();
+      // The JS error builder callback failed. This can happen when the
+      // stack is exhausted (e.g. Maximum call stack size exceeded) and
+      // the callback itself throws. Fall back to a plain V8 error
+      // instead of panicking.
       if tc_scope.has_caught() {
-        let e = tc_scope.exception().unwrap();
-        // If the builder threw a bare `null`/`undefined`, propagate the
-        // original message instead of panicking on an opaque "Uncaught null".
-        if e.is_null_or_undefined() {
-          return message.into();
-        }
-        let js_error = JsError::from_v8_exception(tc_scope, e);
-        msg = format!("{}: {}", msg, js_error.exception_message);
+        tc_scope.reset();
       }
-      panic!("{}", msg);
+      message.into()
     }
   }
 }
@@ -375,7 +482,15 @@ pub(crate) fn call_site_evals_key<'s, 'i>(
 /// the one defined here, that adds source map support and colorful formatting.
 /// When updating this struct, also update errors_are_equal_without_cause() in
 /// fmt_error.rs.
-#[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(
+  Debug,
+  PartialEq,
+  Clone,
+  serde::Deserialize,
+  serde::Serialize,
+  deno_ops::FromV8,
+  deno_ops::ToV8,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct JsError {
   pub name: Option<String>,
@@ -428,7 +543,16 @@ impl JsErrorClass for JsError {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(
+  Debug,
+  Eq,
+  PartialEq,
+  Clone,
+  serde::Deserialize,
+  serde::Serialize,
+  deno_ops::FromV8,
+  deno_ops::ToV8,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct JsStackFrame {
   pub type_name: Option<String>,
@@ -441,6 +565,7 @@ pub struct JsStackFrame {
   // Warning! isToplevel has inconsistent snake<>camel case, "typo" originates in v8:
   // https://source.chromium.org/search?q=isToplevel&sq=&ss=chromium%2Fchromium%2Fsrc:v8%2F
   #[serde(rename = "isToplevel")]
+  #[v8(rename = "isToplevel")]
   pub is_top_level: Option<bool>,
   pub is_eval: bool,
   pub is_native: bool,
@@ -664,7 +789,7 @@ impl JsStackFrame {
   ) -> Option<Self> {
     let f = message.get_script_resource_name(scope)?;
     let f: v8::Local<v8::String> = f.try_into().ok()?;
-    let f = f.to_rust_string_lossy(scope);
+    let f = v8_to_rust_string(&f, scope);
     let l = message.get_line_number(scope)? as i64;
     // V8's column numbers are 0-based, we want 1-based.
     let c = message.get_start_column() as i64 + 1;
@@ -790,7 +915,7 @@ impl JsError {
     // handles below.
     v8::scope!(let scope, scope);
 
-    let exception_message = msg.get(scope).to_rust_string_lossy(scope);
+    let exception_message = v8_to_rust_string(&msg.get(scope), scope);
 
     // Convert them into Vec<JsStackFrame>
     let mut frames: Vec<JsStackFrame> = vec![];
@@ -807,6 +932,7 @@ impl JsError {
         if let (Some(file_name), Some(line_number)) =
           (&frame.file_name, frame.line_number)
           && !file_name.trim_start_matches('[').starts_with("ext:")
+          && !file_name.starts_with("node:")
         {
           source_line = source_mapper.get_source_line(file_name, line_number);
           source_line_frame_index = Some(i);
@@ -850,9 +976,9 @@ impl JsError {
       let this = v8::undefined(scope).into();
       let formatted = format_exception_cb.call(scope, this, &[exception]);
       if let Some(formatted) = formatted
-        && formatted.is_string()
+        && let Ok(formatted) = formatted.try_cast::<v8::String>()
       {
-        exception_message = Some(formatted.to_rust_string_lossy(scope));
+        exception_message = Some(v8_to_rust_string(&formatted, scope));
       }
     }
 
@@ -893,7 +1019,7 @@ impl JsError {
       let stack = get_property(scope, exception, v8_static_strings::STACK);
       let stack: Option<v8::Local<v8::String>> =
         stack.and_then(|s| s.try_into().ok());
-      let stack = stack.map(|s| s.to_rust_string_lossy(scope));
+      let stack = stack.map(|s| v8_to_rust_string(&s, scope));
 
       // Read an array of structured frames from error.#callSiteEvals.
       let frames_v8 = {
@@ -915,13 +1041,17 @@ impl JsError {
             let Some(stack_frame) =
               JsStackFrame::from_callsite_object(tc_scope, callsite)
             else {
-              let message = tc_scope
-                .exception()
-                .expect(
-                  "JsStackFrame::from_callsite_object raised an exception",
-                )
-                .to_rust_string_lossy(tc_scope);
-              #[allow(clippy::print_stderr)]
+              let exc = tc_scope.exception().expect(
+                "JsStackFrame::from_callsite_object raised an exception",
+              );
+              let message = match exc.to_string(tc_scope) {
+                Some(s) => v8_to_rust_string(&s, tc_scope),
+                None => String::new(),
+              };
+              #[allow(
+                clippy::print_stderr,
+                reason = "intentional warning output"
+              )]
               {
                 eprintln!(
                   "warning: Failed to create JsStackFrame from callsite object: {message}. This is a bug in deno"
@@ -954,6 +1084,7 @@ impl JsError {
           if let (Some(file_name), Some(line_number)) =
             (&frame.file_name, frame.line_number)
             && !file_name.trim_start_matches('[').starts_with("ext:")
+            && !file_name.starts_with("node:")
           {
             source_line = source_mapper.get_source_line(file_name, line_number);
             source_line_frame_index = Some(i);
@@ -999,12 +1130,18 @@ impl JsError {
           let Some(key) = arr.get_index(scope, i) else {
             continue;
           };
-          let key_name = key.to_rust_string_lossy(scope);
+          let key_name = match key.to_string(scope) {
+            Some(s) => v8_to_rust_string(&s, scope),
+            None => continue,
+          };
 
           let Some(val) = exception.get(scope, key) else {
             continue;
           };
-          let val_str = val.to_rust_string_lossy(scope);
+          let val_str = match val.to_string(scope) {
+            Some(s) => v8_to_rust_string(&s, scope),
+            None => continue,
+          };
           out.push((key_name, val_str));
         }
 
@@ -1027,7 +1164,7 @@ impl JsError {
       }
     } else {
       let exception_message = exception_message
-        .unwrap_or_else(|| msg.get(scope).to_rust_string_lossy(scope));
+        .unwrap_or_else(|| v8_to_rust_string(&msg.get(scope), scope));
       // The exception is not a JS Error object.
       // Get the message given by V8::Exception::create_message(), and provide
       // empty frames.
@@ -1122,7 +1259,8 @@ pub(crate) fn is_aggregate_error<'s, 'i>(
         Some(constructor) => {
           let ctor = constructor.to_object(scope).unwrap();
           get_property(scope, ctor, v8_static_strings::NAME)
-            .map(|v| v.to_rust_string_lossy(scope))
+            .and_then(|v| v.to_string(scope))
+            .map(|s| v8_to_rust_string(&s, scope))
         }
         None => return false,
       };
@@ -1313,7 +1451,7 @@ pub(crate) fn exception_to_err_result<'s, 'i, T>(
   Err(exception_to_err(scope, exception, in_promise, clear_error))
 }
 
-pub(crate) fn exception_to_err<'s, 'i>(
+pub fn exception_to_err<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   exception: v8::Local<'s, v8::Value>,
   mut in_promise: bool,
@@ -1469,10 +1607,8 @@ macro_rules! make_callsite_fn {
 fn maybe_to_path_str(string: &str) -> Option<String> {
   if string.starts_with("file://") {
     Some(
-      Url::parse(string)
-        .unwrap()
-        .to_file_path()
-        .unwrap()
+      deno_path_util::url_to_file_path(&Url::parse(string).ok()?)
+        .ok()?
         .to_string_lossy()
         .into_owned(),
     )
@@ -1712,7 +1848,10 @@ pub mod callsite_fns {
     let orig_file_name_line_col =
       fmt_file_line_col(&orig_file_name, orig_line_number, orig_column_number);
     let mapped = source_mapped_call_site_info(scope, this)?;
-    let mapped_file_name = mapped.file_name(scope).to_rust_string_lossy(scope);
+    let mapped_file_name = match mapped.file_name(scope).to_string(scope) {
+      Some(s) => v8_to_rust_string(&s, scope),
+      None => String::new(),
+    };
     let mapped_line_num = mapped
       .line_number(scope)
       .try_cast::<v8::Number>()
@@ -1936,11 +2075,13 @@ pub fn format_stack_trace<'s, 'i>(
     // Write out the error name + message, if any
     let msg = get_property(scope, obj, v8_static_strings::MESSAGE)
       .filter(|v| !v.is_undefined())
-      .map(|v| v.to_rust_string_lossy(scope))
+      .and_then(|v| v.to_string(scope))
+      .map(|s| v8_to_rust_string(&s, scope))
       .unwrap_or_default();
     let name = get_property(scope, obj, v8_static_strings::NAME)
       .filter(|v| !v.is_undefined())
-      .map(|v| v.to_rust_string_lossy(scope))
+      .and_then(|v| v.to_string(scope))
+      .map(|s| v8_to_rust_string(&s, scope))
       .unwrap_or_else(|| GENERIC_ERROR.to_string());
 
     match (!msg.is_empty(), !name.is_empty()) {
@@ -1958,11 +2099,14 @@ pub fn format_stack_trace<'s, 'i>(
 
     let Some(frame) = JsStackFrame::from_callsite_object(tc_scope, callsite)
     else {
-      let message = tc_scope
+      let exc = tc_scope
         .exception()
-        .expect("JsStackFrame::from_callsite_object raised an exception")
-        .to_rust_string_lossy(tc_scope);
-      #[allow(clippy::print_stderr)]
+        .expect("JsStackFrame::from_callsite_object raised an exception");
+      let message = match exc.to_string(tc_scope) {
+        Some(s) => v8_to_rust_string(&s, tc_scope),
+        None => String::new(),
+      };
+      #[allow(clippy::print_stderr, reason = "intentional warning output")]
       {
         eprintln!(
           "warning: Failed to create JsStackFrame from callsite object: {message}; Result so far: {result}. This is a bug in deno"
@@ -2216,6 +2360,48 @@ pub fn throw_error_one_byte<'s, 'i>(
   scope.throw_exception(exc);
 }
 
+/// Throw a Node-flavoured `ERR_INVALID_THIS` `TypeError` -- a plain
+/// `TypeError` whose `code` own-property is `"ERR_INVALID_THIS"`. The op2
+/// macro uses this to report cppgc brand-check failures so that the thrown
+/// error matches the `webidl.assertBranded` shape expected by web platform
+/// and Node compat tests.
+pub fn throw_invalid_this_error_one_byte_info(
+  info: &v8::FunctionCallbackInfo,
+  message: &str,
+) {
+  v8::callback_scope!(unsafe scope, info);
+  throw_invalid_this_error_one_byte(scope, message);
+}
+
+pub fn throw_invalid_this_error_one_byte<'s, 'i>(
+  scope: &mut v8::PinCallbackScope<'s, 'i>,
+  message: &str,
+) {
+  let msg = deno_core::v8::String::new_from_one_byte(
+    scope,
+    message.as_bytes(),
+    deno_core::v8::NewStringType::Normal,
+  )
+  .unwrap();
+  let exc = deno_core::v8::Exception::type_error(scope, msg);
+  if let Some(exc_obj) = exc.to_object(scope) {
+    let code_key = deno_core::v8::String::new_from_one_byte(
+      scope,
+      b"code",
+      deno_core::v8::NewStringType::Normal,
+    )
+    .unwrap();
+    let code_val = deno_core::v8::String::new_from_one_byte(
+      scope,
+      b"ERR_INVALID_THIS",
+      deno_core::v8::NewStringType::Normal,
+    )
+    .unwrap();
+    exc_obj.set(scope, code_key.into(), code_val.into());
+  }
+  scope.throw_exception(exc);
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -2396,5 +2582,149 @@ mod tests {
       .expect("should fall back to message string");
 
     assert_eq!(value.to_rust_string_lossy(scope), expected_message);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_to_v8_error_handles_stack_overflow_in_builder() {
+    let mut runtime = JsRuntime::new(Default::default());
+
+    deno_core::scope!(scope, runtime);
+
+    // Simulate the error builder throwing RangeError (as happens during
+    // stack overflow when the builder callback itself exceeds the call
+    // stack limit).
+    let throw_range_error_fn: v8::Local<v8::Function> = JsRuntime::eval(
+      scope,
+      "(function () { throw new RangeError('Maximum call stack size exceeded'); })",
+    )
+    .unwrap();
+
+    let exception_state = JsRealm::exception_state_from_scope(scope);
+    exception_state
+      .js_build_custom_error_cb
+      .borrow_mut()
+      .replace(v8::Global::new(scope, throw_range_error_fn));
+
+    let err = CoreErrorKind::TLA;
+    let expected_message = err.get_message();
+
+    // Should not panic, should fall back to the message string
+    let value = to_v8_error(scope, &err);
+    let value: v8::Local<v8::String> = value
+      .try_into()
+      .expect("should fall back to message string");
+
+    assert_eq!(value.to_rust_string_lossy(scope), expected_message);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_v8_roundtrip_preserves_shape() {
+    use crate::convert::FromV8;
+    use crate::convert::ToV8;
+
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let frame = JsStackFrame {
+      type_name: Some("Foo".to_string()),
+      function_name: Some("bar".to_string()),
+      method_name: None,
+      file_name: Some("file:///a.ts".to_string()),
+      line_number: Some(10),
+      column_number: Some(5),
+      eval_origin: None,
+      is_top_level: Some(true),
+      is_eval: false,
+      is_native: false,
+      is_constructor: false,
+      is_async: false,
+      is_promise_all: false,
+      is_wasm: false,
+      promise_index: None,
+    };
+    let cause = JsError {
+      name: Some("Error".to_string()),
+      message: Some("inner".to_string()),
+      stack: None,
+      cause: None,
+      exception_message: "Error: inner".to_string(),
+      frames: vec![],
+      source_line: None,
+      source_line_frame_index: None,
+      aggregated: None,
+      additional_properties: vec![],
+    };
+    let err = JsError {
+      name: Some("TypeError".to_string()),
+      message: Some("boom".to_string()),
+      stack: Some(
+        "TypeError: boom\n    at Foo.bar (file:///a.ts:10:5)".to_string(),
+      ),
+      cause: Some(Box::new(cause)),
+      exception_message: "TypeError: boom".to_string(),
+      frames: vec![frame],
+      source_line: Some("throw new TypeError('boom');".to_string()),
+      source_line_frame_index: Some(0),
+      aggregated: None,
+      additional_properties: vec![("code".to_string(), "X1".to_string())],
+    };
+
+    let v = err.clone().to_v8(scope).unwrap();
+
+    // Lock in JS-visible field names: serde-emitted shape (camelCase, with
+    // the `isToplevel` quirk preserved) must match what the derive emits.
+    let obj = v8::Local::<v8::Object>::try_from(v).expect("object");
+    let expected_keys = [
+      "name",
+      "message",
+      "stack",
+      "cause",
+      "exceptionMessage",
+      "frames",
+      "sourceLine",
+      "sourceLineFrameIndex",
+      "aggregated",
+      "additionalProperties",
+    ];
+    for key in expected_keys {
+      let key_v = v8::String::new(scope, key).unwrap();
+      assert!(
+        obj.has(scope, key_v.into()).unwrap(),
+        "JsError v8 shape missing key {key}",
+      );
+    }
+
+    let frames_key = v8::String::new(scope, "frames").unwrap();
+    let frames_v = obj.get(scope, frames_key.into()).unwrap();
+    let frames = v8::Local::<v8::Array>::try_from(frames_v).unwrap();
+    let frame0 = frames.get_index(scope, 0).unwrap();
+    let frame0 = v8::Local::<v8::Object>::try_from(frame0).unwrap();
+    let frame_keys = [
+      "typeName",
+      "functionName",
+      "fileName",
+      "lineNumber",
+      "columnNumber",
+      // serde rename for the v8 "typo"; must be `isToplevel`, not `isTopLevel`.
+      "isToplevel",
+      "isEval",
+      "isNative",
+      "isConstructor",
+      "isAsync",
+      "isPromiseAll",
+      "isWasm",
+    ];
+    for key in frame_keys {
+      let key_v = v8::String::new(scope, key).unwrap();
+      assert!(
+        frame0.has(scope, key_v.into()).unwrap(),
+        "JsStackFrame v8 shape missing key {key}",
+      );
+    }
+
+    let back = JsError::from_v8(scope, v).unwrap();
+    assert_eq!(err, back);
   }
 }

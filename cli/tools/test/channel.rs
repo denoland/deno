@@ -436,8 +436,8 @@ impl TestEventSender {
   }
 }
 
-#[allow(clippy::print_stdout)]
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stdout, reason = "test code")]
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use deno_core::unsync::spawn;
@@ -619,7 +619,7 @@ mod tests {
           };
           assert_eq!(text, expected_text);
         } else {
-          let TestEvent::Result(index, TestResult::Ok, 0) = message else {
+          let TestEvent::Result(index, TestResult::Ok, _) = message else {
             panic!("Incorrect message: {message:?}");
           };
           assert_eq!(index, i / 2);
@@ -638,7 +638,7 @@ mod tests {
             .unwrap();
           worker
             .sender
-            .send(TestEvent::Result(i, TestResult::Ok, 0))
+            .send(TestEvent::Result(i, TestResult::Ok, Duration::default()))
             .unwrap();
         }
         eprintln!("Sent all messages");
@@ -656,7 +656,7 @@ mod tests {
       worker.stderr.write_all(b"hello").unwrap();
       worker
         .sender
-        .send(TestEvent::Result(0, TestResult::Ok, 0))
+        .send(TestEvent::Result(0, TestResult::Ok, Duration::default()))
         .unwrap();
       drop(worker);
       let (_, message) = receiver.recv().await.unwrap();

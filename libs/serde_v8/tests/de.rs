@@ -52,7 +52,10 @@ macro_rules! decheck {
   ($fn_name:ident, $t:ty, $src:expr_2021, $x:ident, $check:expr_2021) => {
     #[test]
     fn $fn_name() {
-      #[allow(clippy::bool_assert_comparison)]
+      #[allow(
+        clippy::bool_assert_comparison,
+        reason = "explicit comparison improves clarity in tests"
+      )]
       dedo($src, |scope, v| {
         let rt = serde_v8::from_v8(scope, v);
         assert!(rt.is_ok(), "from_v8(\"{}\"): {:?}", $src, rt.err());
@@ -73,7 +76,11 @@ macro_rules! defail {
   ($fn_name:ident, $t:ty, $src:expr_2021, $failcase:expr_2021) => {
     #[test]
     fn $fn_name() {
-      #[allow(clippy::bool_assert_comparison, clippy::redundant_closure_call)]
+      #[allow(
+        clippy::bool_assert_comparison,
+        clippy::redundant_closure_call,
+        reason = "macro-generated test code"
+      )]
       dedo($src, |scope, v| {
         let rt: serde_v8::Result<$t> = serde_v8::from_v8(scope, v);
         let rtstr = format!("{:?}", rt);
@@ -615,3 +622,62 @@ detest!(
   "-170141183460469231731687303715884105728n",
   num_bigint::BigInt::from(-170141183460469231731687303715884105728i128).into()
 );
+
+// Recursion limit: deeply nested input must error, not overflow the stack.
+//
+// Builds nesting with a flat loop so the JS stack stays O(1); the depth is far
+// past serde_v8's recursion limit. Before the limit existed this overflowed the
+// Rust stack and aborted the process; now it must return an error.
+fn build_nested(scope: &mut v8::PinScope, code: &str) -> bool {
+  let v = js_exec(scope, code);
+  let res: serde_v8::Result<serde_json::Value> = serde_v8::from_v8(scope, v);
+  matches!(res, Err(Error::RecursionLimitExceeded))
+}
+
+#[test]
+fn de_deeply_nested_object_errors() {
+  dedo("({})", |scope, _| {
+    assert!(build_nested(
+      scope,
+      r#"(() => {
+        let obj = {};
+        let cur = obj;
+        for (let i = 0; i < 100000; i++) { cur.x = {}; cur = cur.x; }
+        return obj;
+      })()"#,
+    ));
+  });
+}
+
+#[test]
+fn de_deeply_nested_array_errors() {
+  dedo("({})", |scope, _| {
+    assert!(build_nested(
+      scope,
+      r#"(() => {
+        let arr = [];
+        let cur = arr;
+        for (let i = 0; i < 100000; i++) { const next = []; cur.push(next); cur = next; }
+        return arr;
+      })()"#,
+    ));
+  });
+}
+
+// Nesting within the limit must still deserialize successfully.
+#[test]
+fn de_shallow_nesting_ok() {
+  dedo("({})", |scope, _| {
+    let v = js_exec(
+      scope,
+      r#"(() => {
+        let obj = {};
+        let cur = obj;
+        for (let i = 0; i < 64; i++) { cur.x = {}; cur = cur.x; }
+        return obj;
+      })()"#,
+    );
+    let res: serde_v8::Result<serde_json::Value> = serde_v8::from_v8(scope, v);
+    assert!(res.is_ok(), "shallow nesting should deserialize: {res:?}");
+  });
+}

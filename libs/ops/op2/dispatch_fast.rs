@@ -181,7 +181,7 @@ impl FastSignature {
   }
 }
 
-#[allow(unused)]
+#[allow(unused, reason = "some variants unused in deno_core")]
 #[derive(Debug, Default, PartialEq, Clone)]
 pub(crate) enum V8FastCallType {
   #[default]
@@ -281,7 +281,7 @@ impl V8FastCallType {
 }
 
 // TODO(mmastrac): see note about index_in below
-#[allow(clippy::explicit_counter_loop)]
+#[allow(clippy::explicit_counter_loop, reason = "bad code?")]
 pub(crate) fn get_fast_signature(
   signature: &ParsedSignature,
 ) -> Result<Option<FastSignature>, V8SignatureMappingError> {
@@ -364,6 +364,24 @@ fn throw_type_error(
   })
 }
 
+/// Same as [`throw_type_error`] but produces a Node-style `TypeError` whose
+/// `code` property is `"ERR_INVALID_THIS"`. Used for the fast-path cppgc
+/// `&self` brand-check so the thrown error matches `webidl.assertBranded`.
+fn throw_invalid_this_type_error(
+  generator_state: &mut GeneratorState,
+  message: impl std::fmt::Display,
+) -> TokenStream {
+  let create_scope = create_scope(generator_state);
+  let message = format!("{message}");
+  quote!({
+    let scope = ::std::pin::pin!(#create_scope);
+    let mut scope = scope.init();
+    deno_core::_ops::throw_invalid_this_error_one_byte(&mut scope, #message);
+    // SAFETY: All fast return types have zero as a valid value
+    return unsafe { std::mem::zeroed() };
+  })
+}
+
 /// Sheds the error in a `Result<T, E>` as an early return, leaving just the `T` and requesting
 /// that v8 re-call the slow function to throw the error.
 pub(crate) fn generate_fast_result_early_exit(
@@ -377,11 +395,16 @@ pub(crate) fn generate_fast_result_early_exit(
       Err(err) => {
         let scope = ::std::pin::pin!(#create_scope);
         let mut scope = scope.init();
-        let exception = deno_core::error::to_v8_error(
-          &mut scope,
-          &err,
-        );
-        scope.throw_exception(exception);
+        // Build and throw the exception using only native V8 APIs. Calling
+        // `to_v8_error` here would synchronously invoke the JS
+        // `Deno.core.buildCustomError` callback, which can execute
+        // attacker-controlled JS (e.g. a setter on an error prototype's
+        // `name`) *inside* the fast call. That JS can detach an `ArrayBuffer`
+        // argument, leaving the JIT to write through a now-stale backing-store
+        // pointer once the fast call returns (use-after-free,
+        // GHSA-p4r3-6jgx-4cj5). The V8 fast-call contract forbids re-entering
+        // JS, so the error must be constructed without it.
+        deno_core::error::throw_js_error_class(&mut scope, &err);
         // SAFETY: All fast return types have zero as a valid value
         return unsafe { std::mem::zeroed() };
       }
@@ -518,7 +541,7 @@ pub(crate) fn generate_dispatch_fast(
 
   let with_self = if generator_state.needs_self {
     generator_state.needs_fast_isolate = true;
-    let throw_exception = throw_type_error(
+    let throw_exception = throw_invalid_this_type_error(
       generator_state,
       format!("expected {}", &generator_state.self_ty),
     );
@@ -669,7 +692,6 @@ fn fast_api_typed_array_to_buffer(
   })
 }
 
-#[allow(clippy::too_many_arguments)]
 fn map_v8_fastcall_arg_to_arg(
   generator_state: &mut GeneratorState,
   arg_ident: &Ident,
@@ -753,16 +775,18 @@ fn map_v8_fastcall_arg_to_arg(
     }
     Arg::Ref(RefType::Ref, Special::Isolate) => {
       *needs_fast_api_callback_options = true;
+      // The `isolate` field on `FastApiCallbackOptions` is `pub(crate)` in
+      // the `v8` crate, so we go through the public `isolate_unchecked`
+      // accessor — otherwise the macro expansion fails to compile in any
+      // crate outside of `v8` itself with E0616.
       gs_quote!(generator_state(fast_api_callback_options) => {
-        let #arg_ident = unsafe { deno_core::v8::Isolate::from_raw_isolate_ptr(#fast_api_callback_options.isolate) };
-        let #arg_ident = &#arg_ident;
+        let #arg_ident = unsafe { #fast_api_callback_options.isolate_unchecked() };
       })
     }
     Arg::Ref(RefType::Mut, Special::Isolate) => {
       *needs_fast_api_callback_options = true;
       gs_quote!(generator_state(fast_api_callback_options) => {
-        let mut #arg_ident = unsafe { deno_core::v8::Isolate::from_raw_isolate_ptr(#fast_api_callback_options.isolate) };
-        let #arg_ident = &mut #arg_ident;
+        let #arg_ident = unsafe { #fast_api_callback_options.isolate_unchecked_mut() };
       })
     }
     Arg::Ref(RefType::Ref, Special::OpState) => {

@@ -40,6 +40,13 @@ impl GlobalToLocalCopy {
   }
 }
 
+/// Synthetic header stored on cache entries that record a 404 response
+/// from the remote server. This allows treating "not found" as cached
+/// information instead of re-requesting the URL on every process start.
+/// Similar to how redirects are stored as body-less entries distinguished
+/// by their "location" header.
+pub const NOT_FOUND_CACHE_HEADER: &str = "x-deno-not-found";
+
 #[derive(Debug, Error, JsError)]
 #[class(type)]
 #[error("Integrity check failed for {}\n\nActual: {}\nExpected: {}", .url, .actual, .expected)]
@@ -160,7 +167,7 @@ pub struct HttpCacheItemKey<'a> {
   pub(super) file_path: Option<PathBuf>,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "arc wrapper type")]
 pub type HttpCacheRc = deno_maybe_sync::MaybeArc<dyn HttpCache>;
 
 pub trait HttpCache: MaybeSend + MaybeSync + std::fmt::Debug {

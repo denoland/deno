@@ -1,0 +1,12 @@
+Defined in file:///[WILDLINE]
+
+function getValue(): number
+
+Defined in file:///[WILDLINE]
+
+function setValue(val: number): void
+
+Defined in file:///[WILDLINE]
+
+const url: string
+

@@ -1,0 +1,4 @@
+@std/crypto@1.1.0
+  jsr:@std/crypto@1
+  jsr:@oak/oak@17 > @oak/commons@1.0.1 > @std/crypto@1.1.0
+

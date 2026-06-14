@@ -21,8 +21,7 @@
       },
       "expected-self-properties.worker.html": {
         "expectedFailures": [
-          "existence of XMLHttpRequest",
-          "existence of SharedWorker"
+          "existence of XMLHttpRequest"
         ]
       },
       "unexpected-self-properties.worker.html": true,
@@ -34,9 +33,9 @@
           "Test invalid script URL."
         ]
       },
-      "ctor-1.html": false,
-      "ctor-null.html": false,
-      "ctor-undefined.html": false,
+      "ctor-1.html": true,
+      "ctor-null.html": true,
+      "ctor-undefined.html": true,
       "terminate.html": true,
       "use-base-url.html": false,
       "same-origin.html": {
@@ -77,7 +76,7 @@
   "examples": {
     "general.any.worker.html": true,
     "general.worker.html": true,
-    "fetch_tests_from_worker.html": false
+    "fetch_tests_from_worker.html": true
   },
   "importscripts_mime.any.worker.html": {
     "expectedFailures": [
@@ -113,7 +112,7 @@
         "redirect-module.html": false,
         "redirect.html": false,
         "setting-members.html": true,
-        "worker-separate-file.html": false
+        "worker-separate-file.html": true
       },
       "self.any.worker.html": true,
       "close": {
@@ -464,8 +463,8 @@
   "Worker-timeout-increasing-order.html": true,
   "WorkerGlobalScope-close.html": false,
   "WorkerGlobalScope_requestAnimationFrame.worker.html": false,
-  "WorkerNavigator_userAgentData.http.html": true,
-  "WorkerNavigator_userAgentData.https.html": false,
+  "WorkerNavigator_userAgentData.http.html": false,
+  "WorkerNavigator_userAgentData.https.html": true,
   "WorkerPerformanceNow.html": true,
   "abrupt-completion.html": false,
   "baseurl": {
@@ -483,11 +482,7 @@
       "indexedDB is present"
     ]
   },
-  "dedicated-worker-from-blob-url.window.html": {
-    "expectedFailures": [
-      "Creating a dedicated worker from a blob URL works immediately before revoking."
-    ]
-  },
+  "dedicated-worker-from-blob-url.window.html": false,
   "dedicated-worker-parse-error-failure.html": false,
   "multi-globals": {
     "url-parsing.html": false
@@ -511,6 +506,5 @@
   "shared-worker-parse-error-failure.html": false,
   "shared-worker-partitioned-cookies.tentative.https.html": false,
   "shared-worker-partitioned.tentative.html": false,
-  "worker-request-animation-frame.html": false,
-  "WorkerNavigator_userAgentData.https.tentative.html": false
+  "worker-request-animation-frame.html": false
 }

@@ -125,6 +125,41 @@ impl EditorHelper {
   }
 
   fn evaluate_expression(&self, expr: &str) -> Option<cdp::EvaluateResponse> {
+    // First evaluate with side-effect protection so that pressing <Tab> never
+    // runs code with observable side effects.
+    let response = self.post_evaluate(expr, true)?;
+
+    // Some globals are exposed through lazily-loaded getters whose bytecode
+    // calls native ops the first time they are accessed (e.g. `navigator.gpu`
+    // loads the webgpu extension). V8's side-effect analysis is static, so it
+    // flags such getters as side-effecting and aborts the evaluation, leaving
+    // completion with nothing to inspect. Completion expressions are always
+    // plain member-access chains -- the expression extractor treats `(`, `[`,
+    // etc. as word boundaries -- so the only possible side effect here is a
+    // property getter. Retry once without the protection so completion still
+    // works for these. See https://github.com/denoland/deno/issues/24917
+    let response = if response
+      .exception_details
+      .as_ref()
+      .is_some_and(is_side_effect_error)
+    {
+      self.post_evaluate(expr, false)?
+    } else {
+      response
+    };
+
+    if response.exception_details.is_some() {
+      None
+    } else {
+      Some(response)
+    }
+  }
+
+  fn post_evaluate(
+    &self,
+    expr: &str,
+    throw_on_side_effect: bool,
+  ) -> Option<cdp::EvaluateResponse> {
     let evaluate_response = self
       .sync_sender
       .post_message(
@@ -139,7 +174,7 @@ impl EditorHelper {
           generate_preview: None,
           user_gesture: None,
           await_promise: None,
-          throw_on_side_effect: Some(true),
+          throw_on_side_effect: Some(throw_on_side_effect),
           timeout: Some(200),
           disable_breaks: None,
           repl_mode: None,
@@ -148,15 +183,19 @@ impl EditorHelper {
         }),
       )
       .ok()?;
-    let evaluate_response: cdp::EvaluateResponse =
-      serde_json::from_value(evaluate_response).ok()?;
-
-    if evaluate_response.exception_details.is_some() {
-      None
-    } else {
-      Some(evaluate_response)
-    }
+    serde_json::from_value(evaluate_response).ok()
   }
+}
+
+/// V8 aborts evaluations that look side-effecting (under `throwOnSideEffect`)
+/// with `EvalError: Possible side-effect in debug-evaluate`.
+fn is_side_effect_error(details: &cdp::ExceptionDetails) -> bool {
+  details.text.contains("side-effect")
+    || details
+      .exception
+      .as_ref()
+      .and_then(|ex| ex.description.as_deref())
+      .is_some_and(|desc| desc.contains("side-effect"))
 }
 
 fn is_word_boundary(c: char) -> bool {
@@ -169,15 +208,8 @@ fn is_word_boundary(c: char) -> bool {
 
 fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
   let start = line[..cursor_pos].rfind(is_word_boundary).unwrap_or(0);
-  let end = line[cursor_pos..]
-    .rfind(is_word_boundary)
-    .map(|i| cursor_pos + i)
-    .unwrap_or(cursor_pos);
-
-  let word = &line[start..end];
-  let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
-
-  (word.strip_suffix(is_word_boundary).unwrap_or(word)) as _
+  let word = &line[start..cursor_pos];
+  word.strip_prefix(is_word_boundary).unwrap_or(word)
 }
 
 impl Completer for EditorHelper {
@@ -189,15 +221,6 @@ impl Completer for EditorHelper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let lsp_completions = self.sync_sender.lsp_completions(line, pos);
-    if !lsp_completions.is_empty() {
-      // assumes all lsp completions have the same start position
-      return Ok((
-        lsp_completions[0].range.start,
-        lsp_completions.into_iter().map(|c| c.new_text).collect(),
-      ));
-    }
-
     let expr = get_expr_from_line_at_pos(line, pos);
 
     // check if the expression is in the form `obj.prop`
@@ -245,6 +268,9 @@ fn validate(input: &str) -> ValidationResult {
   let mut div_token_count_on_current_line = 0;
   let mut last_line_index = 0;
   let mut queued_validation_error = None;
+  // Whether the last (non-comment) token was a `.`, which means a member
+  // access is still missing its property and more input should be read.
+  let mut ends_with_dot = false;
   let tokens = deno_ast::lex(input, deno_ast::MediaType::TypeScript)
     .into_iter()
     .filter_map(|item| match item.inner {
@@ -262,6 +288,7 @@ fn validate(input: &str) -> ValidationResult {
         return error;
       }
     }
+    ends_with_dot = matches!(token, Token::Dot);
     match token {
       Token::BinOp(BinOpToken::Div) | Token::AssignOp(AssignOp::DivAssign) => {
         // it's too complicated to write code to detect regular expression literals
@@ -312,11 +339,176 @@ fn validate(input: &str) -> ValidationResult {
 
   if let Some(error) = queued_validation_error {
     error
-  } else if !stack.is_empty() || in_template {
+  } else if !stack.is_empty() || in_template || ends_with_dot {
+    // A trailing `.` means the user broke a method chain across lines (e.g.
+    // `foo.\n  bar()`), so keep reading input instead of evaluating the
+    // incomplete member access. See https://github.com/denoland/deno/issues/16335
     ValidationResult::Incomplete
   } else {
     ValidationResult::Valid(None)
   }
+}
+
+/// Scan a regex literal starting at the opening `/` located at `start` and
+/// return the byte index just past its closing `/` and flags, or `None` if the
+/// text isn't a well-formed single-line regex literal.
+///
+/// `deno_ast::lex` runs the lexer without the parser, so it never reads regex
+/// literals itself — they come back as a division operator followed by however
+/// the rest of the pattern happens to tokenize (often a stray string literal
+/// when the pattern contains quotes). We rescan them by hand to highlight them
+/// correctly.
+fn find_regex_literal_end(line: &str, start: usize) -> Option<usize> {
+  let mut chars = line[start + 1..].char_indices();
+  let mut in_class = false;
+  let mut end = None;
+  while let Some((rel, c)) = chars.next() {
+    match c {
+      // Skip the escaped character.
+      '\\' => {
+        chars.next();
+      }
+      // Regex literals can't span multiple lines.
+      '\n' | '\r' => return None,
+      '[' => in_class = true,
+      ']' => in_class = false,
+      '/' if !in_class => {
+        // `start + 1` skips the opening `/`, `+ rel` is the offset of the
+        // closing `/` within the remainder, `+ 1` moves just past it.
+        end = Some(start + 1 + rel + 1);
+        break;
+      }
+      _ => {}
+    }
+  }
+  let mut end = end?;
+  // Consume trailing flags (e.g. the `gi` in `/foo/gi`).
+  while let Some(c) = line[end..].chars().next() {
+    if c.is_ascii_alphabetic() {
+      end += c.len_utf8();
+    } else {
+      break;
+    }
+  }
+  Some(end)
+}
+
+/// Apply ANSI color codes to a single line of REPL input for syntax
+/// highlighting.
+fn highlight_line(line: &str) -> String {
+  let mut out_line = String::from(line);
+  let items = deno_ast::lex(line, deno_ast::MediaType::TypeScript);
+  // Whether a `/` at the current position would begin a regex literal rather
+  // than act as a division operator. This mirrors the "before expression"
+  // heuristic the parser uses to disambiguate the two. It starts `true` because
+  // a `/` at the very beginning of the input always starts a regex.
+  //
+  // Like a standalone SWC lexer, this is knowingly imperfect after `)` and
+  // `++`/`--`: `if (x) /re/.test(y)` renders as division and `x++ /2/` looks
+  // like a regex. Both are harmless for highlighting and not worth tracking
+  // full expression context to fix.
+  let mut regex_allowed = true;
+  // Byte offset (in `line`) up to which the input has already been consumed by
+  // a detected regex literal; tokens starting before it should be skipped.
+  let mut skip_until = 0;
+
+  for (index, item) in items.iter().enumerate() {
+    let start = item.range.start;
+    let end = item.range.end;
+    if start < skip_until {
+      // This token is part of a regex literal that was already colored.
+      continue;
+    }
+    // Adding color adds more bytes to the string,
+    // so an offset is needed to stop spans falling out of sync.
+    let offset = out_line.len() - line.len();
+
+    // A regex literal is reported by the lexer as a division operator (`/` or
+    // `/=`); detect and color the whole literal in one piece.
+    if regex_allowed
+      && let deno_ast::TokenOrComment::Token(
+        Token::BinOp(BinOpToken::Div) | Token::AssignOp(AssignOp::DivAssign),
+      ) = &item.inner
+      && let Some(regex_end) = find_regex_literal_end(line, start)
+    {
+      out_line.replace_range(
+        start + offset..regex_end + offset,
+        &colors::red(&line[start..regex_end]).to_string(),
+      );
+      skip_until = regex_end;
+      regex_allowed = false;
+      continue;
+    }
+
+    out_line.replace_range(
+      start + offset..end + offset,
+      &match &item.inner {
+        deno_ast::TokenOrComment::Token(token) => {
+          let colored = match token {
+            Token::Str { .. } | Token::Template { .. } | Token::BackQuote => {
+              colors::green(&line[start..end]).to_string()
+            }
+            // Dead arm today: `deno_ast::lex` runs without parser context so it
+            // never emits `Token::Regex` (regexes arrive as a `Div`/`DivAssign`
+            // handled above). Kept in case the lexer ever gains that context.
+            Token::Regex(_, _) => colors::red(&line[start..end]).to_string(),
+            Token::Num { .. } | Token::BigInt { .. } => {
+              colors::yellow(&line[start..end]).to_string()
+            }
+            Token::Word(word) => match word {
+              Word::True | Word::False | Word::Null => {
+                colors::yellow(&line[start..end]).to_string()
+              }
+              Word::Keyword(_) => colors::cyan(&line[start..end]).to_string(),
+              Word::Ident(ident) => {
+                match ident.as_ref() {
+                  "undefined" => colors::gray(&line[start..end]).to_string(),
+                  "Infinity" | "NaN" => {
+                    colors::yellow(&line[start..end]).to_string()
+                  }
+                  "async" | "of" => colors::cyan(&line[start..end]).to_string(),
+                  _ => {
+                    let next = items.get(index + 1).map(|item| &item.inner);
+                    if matches!(
+                      next,
+                      Some(deno_ast::TokenOrComment::Token(Token::LParen))
+                    ) {
+                      // We're looking for something that looks like a function
+                      // We use a simple heuristic: 'ident' followed by 'LParen'
+                      colors::intense_blue(&line[start..end]).to_string()
+                    } else if ident.as_ref() == "from"
+                      && matches!(
+                        next,
+                        Some(deno_ast::TokenOrComment::Token(
+                          Token::Str { .. }
+                        ))
+                      )
+                    {
+                      // When ident 'from' is followed by a string literal, highlight it
+                      // E.g. "export * from 'something'" or "import a from 'something'"
+                      colors::cyan(&line[start..end]).to_string()
+                    } else {
+                      line[start..end].to_string()
+                    }
+                  }
+                }
+              }
+            },
+            _ => line[start..end].to_string(),
+          };
+          // Track whether the next `/` should be treated as a regex literal.
+          regex_allowed = token.kind().before_expr();
+          colored
+        }
+        deno_ast::TokenOrComment::Comment { .. } => {
+          // Comments don't affect whether a following `/` starts a regex.
+          colors::gray(&line[start..end]).to_string()
+        }
+      },
+    );
+  }
+
+  out_line
 }
 
 impl Highlighter for EditorHelper {
@@ -346,77 +538,7 @@ impl Highlighter for EditorHelper {
   }
 
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
-    let mut out_line = String::from(line);
-
-    let mut lexed_items = deno_ast::lex(line, deno_ast::MediaType::TypeScript)
-      .into_iter()
-      .peekable();
-    while let Some(item) = lexed_items.next() {
-      // Adding color adds more bytes to the string,
-      // so an offset is needed to stop spans falling out of sync.
-      let offset = out_line.len() - line.len();
-      let range = item.range;
-
-      out_line.replace_range(
-        range.start + offset..range.end + offset,
-        &match item.inner {
-          deno_ast::TokenOrComment::Token(token) => match token {
-            Token::Str { .. } | Token::Template { .. } | Token::BackQuote => {
-              colors::green(&line[range]).to_string()
-            }
-            Token::Regex(_, _) => colors::red(&line[range]).to_string(),
-            Token::Num { .. } | Token::BigInt { .. } => {
-              colors::yellow(&line[range]).to_string()
-            }
-            Token::Word(word) => match word {
-              Word::True | Word::False | Word::Null => {
-                colors::yellow(&line[range]).to_string()
-              }
-              Word::Keyword(_) => colors::cyan(&line[range]).to_string(),
-              Word::Ident(ident) => {
-                match ident.as_ref() {
-                  "undefined" => colors::gray(&line[range]).to_string(),
-                  "Infinity" | "NaN" => {
-                    colors::yellow(&line[range]).to_string()
-                  }
-                  "async" | "of" => colors::cyan(&line[range]).to_string(),
-                  _ => {
-                    let next = lexed_items.peek().map(|item| &item.inner);
-                    if matches!(
-                      next,
-                      Some(deno_ast::TokenOrComment::Token(Token::LParen))
-                    ) {
-                      // We're looking for something that looks like a function
-                      // We use a simple heuristic: 'ident' followed by 'LParen'
-                      colors::intense_blue(&line[range]).to_string()
-                    } else if ident.as_ref() == "from"
-                      && matches!(
-                        next,
-                        Some(deno_ast::TokenOrComment::Token(
-                          Token::Str { .. }
-                        ))
-                      )
-                    {
-                      // When ident 'from' is followed by a string literal, highlight it
-                      // E.g. "export * from 'something'" or "import a from 'something'"
-                      colors::cyan(&line[range]).to_string()
-                    } else {
-                      line[range].to_string()
-                    }
-                  }
-                }
-              }
-            },
-            _ => line[range].to_string(),
-          },
-          deno_ast::TokenOrComment::Comment { .. } => {
-            colors::gray(&line[range]).to_string()
-          }
-        },
-      );
-    }
-
-    out_line.into()
+    highlight_line(line).into()
   }
 }
 
@@ -577,5 +699,94 @@ let left = test( arr.slice( 0 , arr.length/2 ) )"#;
   fn validate_regex_looking_code() {
     let code = r#"/testing/;"#;
     assert!(matches!(validate(code), ValidationResult::Valid(_)));
+  }
+
+  #[test]
+  fn find_regex_literal_end_basic() {
+    use super::find_regex_literal_end;
+    // Simple regex with flags.
+    assert_eq!(find_regex_literal_end("/foo/gi", 0), Some(7));
+    // Closing `/` inside a character class doesn't end the regex.
+    assert_eq!(find_regex_literal_end("/[a/b]/", 0), Some(7));
+    // Escaped `/` doesn't end the regex.
+    assert_eq!(find_regex_literal_end(r"/a\/b/", 0), Some(6));
+    // The regex from denoland/deno#20751 (quotes in the pattern).
+    let re = r##"/https?:\/\/deno.land\/(?:std\@?[^\'\"]*|x\/[^\/\"\']*?\@?[^\'\"]*)/"##;
+    assert_eq!(find_regex_literal_end(re, 0), Some(re.len()));
+    // Not a regex: no closing slash.
+    assert_eq!(find_regex_literal_end("/foo", 0), None);
+    // Not a regex: spans a newline.
+    assert_eq!(find_regex_literal_end("/foo\n/", 0), None);
+    // `/=`-style regex (lexed as a `DivAssign` whose pattern starts with `=`).
+    assert_eq!(find_regex_literal_end("/=foo/", 0), Some(6));
+  }
+
+  #[test]
+  fn highlight_regex_literal_is_one_unit() {
+    use super::highlight_line;
+
+    // The SGR sequence `colors::red` wraps its content in. Asserting against
+    // these fixed bytes — rather than re-deriving them via `colors::red`, which
+    // reads the same global color flag `highlight_line` does — keeps the
+    // negative assertions reliable even if another test toggles that global:
+    // with color off, `colors::red("/ b /")` would return the bare string,
+    // which *is* contained in the division output and would flake.
+    fn red(s: &str) -> String {
+      format!("\u{1b}[31m{s}\u{1b}[0m")
+    }
+
+    // `highlight_line` only emits color codes when the global color flag is on.
+    // Save and restore it so we neither assume its prior value nor leak our
+    // change to tests that run afterwards.
+    let prev = deno_terminal::colors::use_color();
+    deno_terminal::colors::set_use_color(true);
+
+    // A regex containing quotes used to leak a green string literal mid-regex;
+    // now the whole literal is colored red as a single unit.
+    let re =
+      r##"/https?:\/\/deno.land\/(?:std\@?[^\'\"]*|x\/[^\'\"]*?\@?[^\'\"]*)/"##;
+    assert!(highlight_line(re).contains(&red(re)));
+
+    // A bare regex at the start of a line is highlighted.
+    assert!(highlight_line("/foo/g").contains(&red("/foo/g")));
+
+    // A regex in expression position (after `=`) is highlighted.
+    assert!(highlight_line("const re = /foo/;").contains(&red("/foo/")));
+
+    // A regex in keyword position (after `return`) is highlighted.
+    assert!(highlight_line("return /foo/").contains(&red("/foo/")));
+
+    // Division is NOT treated as a regex.
+    assert!(!highlight_line("a / b / c").contains(&red("/ b /")));
+
+    // A `/=` following a value stays a division-assignment, not a regex.
+    assert!(!highlight_line("x /= 2").contains(&red("/= 2")));
+
+    deno_terminal::colors::set_use_color(prev);
+  }
+
+  #[test]
+  fn validate_trailing_dot_is_incomplete() {
+    // A method chain broken right after the `.` should keep reading input
+    // instead of being evaluated as an incomplete member access.
+    assert!(matches!(
+      validate("[1, 2, 3]."),
+      ValidationResult::Incomplete
+    ));
+    assert!(matches!(
+      validate("(await Promise.all([])).\n"),
+      ValidationResult::Incomplete
+    ));
+    // Once the property name is supplied the input is complete again.
+    assert!(matches!(
+      validate("[1, 2, 3].\nmap(x => x)"),
+      ValidationResult::Valid(_)
+    ));
+  }
+
+  #[test]
+  fn validate_dot_inside_number_is_valid() {
+    // `5.` is a valid number literal, not a trailing member access.
+    assert!(matches!(validate("5."), ValidationResult::Valid(_)));
   }
 }

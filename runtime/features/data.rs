@@ -2,7 +2,7 @@
 
 // NOTE(bartlomieju): some fields are marked as never read, even though they are
 // actually used in the CLI.
-#![allow(dead_code)]
+#![allow(dead_code, reason = "fields are used in the CLI crate")]
 
 use crate::structs::UnstableFeatureKind;
 
@@ -20,7 +20,7 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   UnstableFeatureDescription {
     name: "bare-node-builtins",
     help_text: "Enable unstable bare node builtins feature",
-    show_in_help: true,
+    show_in_help: false,
     kind: UnstableFeatureKind::Cli,
     env_var: Some("DENO_UNSTABLE_BARE_NODE_BUILTINS"),
   },
@@ -138,7 +138,7 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   },
   UnstableFeatureDescription {
     name: "raw-imports",
-    help_text: "Enable unstable 'bytes' and 'text' imports.",
+    help_text: "Enable unstable 'bytes' imports.",
     show_in_help: true,
     kind: UnstableFeatureKind::Runtime,
     env_var: Some("DENO_UNSTABLE_RAW_IMPORTS"),

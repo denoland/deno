@@ -40,6 +40,7 @@ use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
 use deno_resolver::file_fetcher::GraphLoaderReporterRc;
 use deno_resolver::graph::EnhanceGraphErrorMode;
 use deno_resolver::graph::EnhancedGraphError;
+use deno_resolver::graph::NpmTypesResolutionMode;
 use deno_resolver::graph::enhance_graph_error;
 use deno_resolver::graph::enhanced_integrity_error_message;
 use deno_resolver::graph::format_deno_graph_error;
@@ -53,6 +54,7 @@ use sys_traits::FsMetadata;
 
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
+use crate::args::DenoSubcommand;
 use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
 use crate::cache;
@@ -285,23 +287,6 @@ pub struct ResolutionErrorRef<'a> {
 pub fn resolution_error_for_tsc_diagnostic(
   error: &ResolutionError,
 ) -> Option<ResolutionErrorRef<'_>> {
-  fn is_module_not_found_code(code: NodeJsErrorCode) -> bool {
-    match code {
-      NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
-      | NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
-      | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
-      | NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
-      | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
-      | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
-      | NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
-      | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
-      | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED => false,
-      NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-      | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
-      | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE => true,
-    }
-  }
-
   match error {
     ResolutionError::InvalidDowngrade { .. }
     | ResolutionError::InvalidJsrHttpsTypesImport { .. }
@@ -352,17 +337,30 @@ pub fn resolution_error_for_tsc_diagnostic(
               })
             }
           }
-        } else {
-          let is_module_not_found_error =
-            downcast_ref_deno_resolve_error(error)
-              .and_then(|err| err.maybe_node_code())
-              .map(is_module_not_found_code)
-              .unwrap_or(false);
-          is_module_not_found_error.then(|| ResolutionErrorRef {
+        } else if let Some(err) = downcast_ref_deno_resolve_error(error) {
+          let use_module_not_found_error = match err.maybe_node_code()? {
+            NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
+            | NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
+            | NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
+            | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
+            | NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH => return None,
+            // use generic "Cannot find module" message
+            NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => true,
+            // use the original error message
+            NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
+            | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+            | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+            | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
+            | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED => false,
+          };
+          Some(ResolutionErrorRef {
             specifier,
             range,
-            is_module_not_found: true,
+            is_module_not_found: use_module_not_found_error,
           })
+        } else {
+          None
         }
       }
     },
@@ -415,6 +413,10 @@ impl ModuleGraphCreator {
       module_graph_builder,
       type_checker,
     }
+  }
+
+  pub fn module_graph_builder(&self) -> &Arc<ModuleGraphBuilder> {
+    &self.module_graph_builder
   }
 
   pub async fn create_graph(
@@ -525,7 +527,30 @@ impl ModuleGraphCreator {
     if self.options.type_check_mode().is_true()
       && !graph_has_external_remote(&graph)
     {
-      self.type_check_graph(graph.clone())?;
+      // Include compilerOptions.types imports for type checking so that
+      // ambient type declarations (e.g. Vite's import.meta.hot) are
+      // available, but do not include them in the publish graph itself.
+      let types_imports = self
+        .module_graph_builder
+        .resolve_compiler_options_types_imports(deno_graph::GraphKind::All);
+      if !types_imports.is_empty() {
+        let mut type_check_graph = graph.clone();
+        self
+          .module_graph_builder
+          .build_graph_with_npm_resolution(
+            &mut type_check_graph,
+            BuildGraphRequest::Roots(vec![], types_imports),
+            BuildGraphWithNpmOptions {
+              is_dynamic: false,
+              loader: Some(&publish_loader),
+              npm_caching: self.options.default_npm_caching_strategy(),
+            },
+          )
+          .await?;
+        self.type_check_graph(type_check_graph)?;
+      } else {
+        self.type_check_graph(graph.clone())?;
+      }
     }
 
     if options.build_fast_check_graph {
@@ -540,6 +565,7 @@ impl ModuleGraphCreator {
           workspace_fast_check: WorkspaceFastCheckOption::Enabled(
             &fast_check_workspace_members,
           ),
+          fast_check_dts: false,
         },
       )?;
     }
@@ -603,7 +629,6 @@ impl ModuleGraphCreator {
     self.module_graph_builder.graph_valid(graph)
   }
 
-  #[allow(clippy::result_large_err)]
   fn type_check_graph(
     &self,
     graph: ModuleGraph,
@@ -624,6 +649,8 @@ pub struct BuildFastCheckGraphOptions<'a> {
   /// Whether to do fast check on workspace members. This
   /// is mostly only useful when publishing.
   pub workspace_fast_check: deno_graph::WorkspaceFastCheckOption<'a>,
+  /// Whether to generate .d.ts files during fast check.
+  pub fast_check_dts: bool,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -686,7 +713,7 @@ pub struct ModuleGraphBuilder {
 }
 
 impl ModuleGraphBuilder {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     caches: Arc<cache::Caches>,
     cjs_tracker: Arc<CliCjsTracker>,
@@ -762,7 +789,7 @@ impl ModuleGraphBuilder {
     request: BuildGraphRequest,
     options: BuildGraphWithNpmOptions<'_>,
   ) -> Result<(), BuildGraphWithNpmResolutionError> {
-    #[allow(clippy::large_enum_variant)]
+    #[allow(clippy::large_enum_variant, reason = "not important")]
     enum LoaderRef<'a> {
       Borrowed(&'a dyn Loader),
       Owned(CliDenoGraphLoader),
@@ -792,14 +819,21 @@ impl ModuleGraphBuilder {
     let graph_resolver = self.resolver.as_graph_resolver(
       self.cjs_tracker.as_ref(),
       &jsx_import_source_config_resolver,
+      None,
+      // When type checking, an npm package that has no type declarations
+      // (e.g. a "bring your own node_modules" dependency without bundled
+      // types and without a corresponding `@types` package) should be
+      // treated as untyped rather than producing a hard "Failed resolving
+      // types" error. Falling back to the execution entrypoint matches the
+      // behaviour of the managed npm resolver. See:
+      // https://github.com/denoland/deno/issues/23507
+      NpmTypesResolutionMode::FallbackToExecution,
     );
     let maybe_reporter = self.maybe_reporter.as_deref();
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
-    self
-      .build_graph_with_npm_resolution_and_build_options(
-        graph,
-        request,
-        loader.as_loader(),
+
+    macro_rules! build_options {
+      ($npm_resolver:expr, $resolver:expr) => {
         deno_graph::BuildOptions {
           skip_dynamic_deps: self.cli_options.unstable_lazy_dynamic_imports()
             && graph.graph_kind() == GraphKind::CodeOnly,
@@ -812,18 +846,54 @@ impl ModuleGraphBuilder {
           jsr_version_resolver: Cow::Borrowed(
             self.jsr_version_resolver.as_ref(),
           ),
-          npm_resolver: Some(self.npm_graph_resolver.as_ref()),
+          npm_resolver: $npm_resolver,
           module_analyzer: &analyzer,
           module_info_cacher: self.module_info_cache.as_ref(),
           reporter: maybe_reporter,
-          resolver: Some(&graph_resolver),
+          resolver: Some($resolver),
           locker: locker.as_mut().map(|l| l as _),
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
-          unstable_text_imports: self.cli_options.unstable_raw_imports(),
-        },
+          unstable_text_imports: true,
+          unstable_css_imports: self.cli_options.unstable_raw_imports(),
+        }
+      };
+    }
+
+    self
+      .build_graph_with_npm_resolution_and_build_options(
+        graph,
+        request,
+        loader.as_loader(),
+        build_options!(Some(self.npm_graph_resolver.as_ref()), &graph_resolver),
         options.npm_caching,
       )
       .await?;
+
+    if self.analyze_npm_sources() {
+      let has_npm_specifier = graph
+        .modules()
+        .any(|m| matches!(m, deno_graph::Module::Npm(_)))
+        || graph.roots.iter().any(|r| r.scheme() == "npm");
+      if has_npm_specifier {
+        // go through the graph and resolve npm: modules to real js modules
+        let cloned_graph = graph.clone();
+        let graph_resolver = self.resolver.as_graph_resolver(
+          self.cjs_tracker.as_ref(),
+          &jsx_import_source_config_resolver,
+          Some(&cloned_graph),
+          NpmTypesResolutionMode::FallbackToExecution,
+        );
+
+        graph
+          .build_npm_packages(
+            self.cli_options.start_dir.dir_url(),
+            deno_graph::source::ResolutionKind::Types,
+            loader.as_loader(),
+            build_options!(None, &graph_resolver),
+          )
+          .await;
+      }
+    }
 
     Ok(())
   }
@@ -870,6 +940,7 @@ impl ModuleGraphBuilder {
       BuildGraphRequest::Roots(roots, imports) => {
         if roots.iter().any(|r| r.scheme() == "npm")
           && self.npm_resolver.is_byonm()
+          && !self.analyze_npm_sources()
         {
           return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
         }
@@ -947,13 +1018,15 @@ impl ModuleGraphBuilder {
     let graph_resolver = self.resolver.as_graph_resolver(
       self.cjs_tracker.as_ref(),
       &jsx_import_source_config_resolver,
+      None,
+      NpmTypesResolutionMode::Strict,
     );
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
         es_parser: Some(&parser),
         fast_check_cache: fast_check_cache.as_ref().map(|c| c as _),
-        fast_check_dts: false,
+        fast_check_dts: options.fast_check_dts,
         jsr_url_provider: &CliJsrUrlProvider,
         resolver: Some(&graph_resolver),
         workspace_fast_check: options.workspace_fast_check,
@@ -984,8 +1057,14 @@ impl ModuleGraphBuilder {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
         permissions: Some(permissions),
         reporter: self.load_reporter.clone(),
+        include_npm_sources: self.analyze_npm_sources(),
       },
     )
+  }
+
+  fn analyze_npm_sources(&self) -> bool {
+    // only analyze npm packages with deno_graph for deno doc
+    matches!(self.cli_options.sub_command(), DenoSubcommand::Doc(_))
   }
 
   /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -1027,6 +1106,19 @@ impl ModuleGraphBuilder {
         allow_unknown_jsr_exports,
       },
     )
+  }
+
+  fn resolve_compiler_options_types_imports(
+    &self,
+    graph_kind: GraphKind,
+  ) -> Vec<deno_graph::ReferrerImports> {
+    if graph_kind.include_types() {
+      self
+        .compiler_options_resolver
+        .to_compiler_options_types_imports()
+    } else {
+      Vec::new()
+    }
   }
 
   fn maybe_resolve_ts_config_imports(

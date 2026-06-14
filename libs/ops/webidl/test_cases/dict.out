@@ -44,8 +44,11 @@ impl<'a> ::deno_core::webidl::WebIdlConverter<'a> for Dict {
                     __prefix.clone(),
                     ::deno_core::webidl::ContextFn::new_borrowed(
                         &|| {
-                            format!("'{}' of '{}' ({})", "a", "Dict", __context.call())
-                                .into()
+                            let mut __context_msg = "'a' of 'Dict'".to_string();
+                            __context_msg.push_str(" (");
+                            __context_msg.push_str(&__context.call());
+                            __context_msg.push(')');
+                            __context_msg.into()
                         },
                     ),
                     &Default::default(),
@@ -81,8 +84,11 @@ impl<'a> ::deno_core::webidl::WebIdlConverter<'a> for Dict {
                     __prefix.clone(),
                     ::deno_core::webidl::ContextFn::new_borrowed(
                         &|| {
-                            format!("'{}' of '{}' ({})", "b", "Dict", __context.call())
-                                .into()
+                            let mut __context_msg = "'b' of 'Dict'".to_string();
+                            __context_msg.push_str(" (");
+                            __context_msg.push_str(&__context.call());
+                            __context_msg.push(')');
+                            __context_msg.into()
                         },
                     ),
                     &{
@@ -129,8 +135,11 @@ impl<'a> ::deno_core::webidl::WebIdlConverter<'a> for Dict {
                     __prefix.clone(),
                     ::deno_core::webidl::ContextFn::new_borrowed(
                         &|| {
-                            format!("'{}' of '{}' ({})", "c", "Dict", __context.call())
-                                .into()
+                            let mut __context_msg = "'c' of 'Dict'".to_string();
+                            __context_msg.push_str(" (");
+                            __context_msg.push_str(&__context.call());
+                            __context_msg.push(')');
+                            __context_msg.into()
                         },
                     ),
                     &Default::default(),
@@ -157,8 +166,11 @@ impl<'a> ::deno_core::webidl::WebIdlConverter<'a> for Dict {
                     __prefix.clone(),
                     ::deno_core::webidl::ContextFn::new_borrowed(
                         &|| {
-                            format!("'{}' of '{}' ({})", "e", "Dict", __context.call())
-                                .into()
+                            let mut __context_msg = "'e' of 'Dict'".to_string();
+                            __context_msg.push_str(" (");
+                            __context_msg.push_str(&__context.call());
+                            __context_msg.push(')');
+                            __context_msg.into()
                         },
                     ),
                     &Default::default(),
@@ -197,8 +209,11 @@ impl<'a> ::deno_core::webidl::WebIdlConverter<'a> for Dict {
                     __prefix.clone(),
                     ::deno_core::webidl::ContextFn::new_borrowed(
                         &|| {
-                            format!("'{}' of '{}' ({})", "f", "Dict", __context.call())
-                                .into()
+                            let mut __context_msg = "'f' of 'Dict'".to_string();
+                            __context_msg.push_str(" (");
+                            __context_msg.push_str(&__context.call());
+                            __context_msg.push(')');
+                            __context_msg.into()
                         },
                     ),
                     &Default::default(),

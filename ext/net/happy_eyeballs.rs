@@ -45,6 +45,10 @@ pub async fn connect_happy_eyeballs(
 
   let addrs = interleave_addresses(addrs);
   let mut attempted_addresses = Vec::new();
+  // When every attempt fails, we surface the error from the last attempt to
+  // fail (chronologically), not necessarily the most actionable one. This
+  // matches Node's `net.connect()` behavior, which reports the error of the
+  // final failed attempt.
   let mut last_error = IoError::other("Failed to connect to any address");
 
   let mut pending = FuturesUnordered::new();

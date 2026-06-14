@@ -23,7 +23,7 @@ pub struct TapTestReporter {
   failure_format_options: TestFailureFormatOptions,
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "test reporter")]
 impl TapTestReporter {
   pub fn new(
     cwd: Url,
@@ -121,7 +121,7 @@ impl TapTestReporter {
   }
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "test reporter")]
 impl TestReporter for TapTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 
@@ -147,14 +147,19 @@ impl TestReporter for TapTestReporter {
     std::io::stdout().flush().ok();
   }
 
-  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
+  fn report_slow(
+    &mut self,
+    _description: &TestDescription,
+    _elapsed: Duration,
+  ) {
+  }
   fn report_output(&mut self, _output: &[u8]) {}
 
   fn report_result(
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    _elapsed: u64,
+    _elapsed: Duration,
   ) {
     if self.is_concurrent {
       let results = self.step_results.remove(&description.id);
@@ -202,7 +207,7 @@ impl TestReporter for TapTestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    _elapsed: u64,
+    _elapsed: Duration,
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
@@ -243,6 +248,33 @@ impl TestReporter for TapTestReporter {
       tests_pending,
       tests,
       test_steps,
+    );
+  }
+
+  fn report_exit(
+    &mut self,
+    exit_code: i32,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    println!("Bail out! Deno.exit({}) called.", exit_code);
+    common::report_exit(
+      &mut std::io::stdout(),
+      &self.cwd,
+      exit_code,
+      tests_pending,
+      tests,
+      test_steps,
+    );
+  }
+
+  fn report_isolate_exit(&mut self, origin: &str, exit_code: i32) {
+    common::report_isolate_exit(
+      &mut std::io::stdout(),
+      &self.cwd,
+      origin,
+      exit_code,
     );
   }
 

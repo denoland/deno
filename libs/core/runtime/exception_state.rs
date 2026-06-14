@@ -13,7 +13,7 @@ pub(crate) struct ExceptionState {
   // flimsy. Try to poll it similarly to `pending_promise_rejections`.
   dispatched_exception: Cell<Option<v8::Global<v8::Value>>>,
   dispatched_exception_is_promise: Cell<bool>,
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "complex type is necessary here")]
   pub(crate) pending_promise_rejections: RefCell<
     VecDeque<(
       v8::Global<v8::Promise>,
@@ -25,6 +25,11 @@ pub(crate) struct ExceptionState {
     RefCell<VecDeque<(v8::Global<v8::Promise>, v8::Global<v8::Value>)>>,
   pub(crate) js_build_custom_error_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
+  /// Map of registered error class name to its constructor (the JS
+  /// `Deno.core.errorConstructors` object). Used to natively rebuild an
+  /// exception with the correct prototype without re-entering JS, e.g. from a
+  /// V8 fast call. See [`crate::error::throw_js_error_class`].
+  pub(crate) js_error_constructors: RefCell<Option<v8::Global<v8::Object>>>,
   pub(crate) js_handled_promise_rejection_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_format_exception_cb: RefCell<Option<v8::Global<v8::Function>>>,
@@ -39,6 +44,7 @@ impl ExceptionState {
   pub(crate) fn prepare_to_destroy(&self) {
     // TODO(mmastrac): we can probably move this to Drop eventually
     self.js_build_custom_error_cb.borrow_mut().take();
+    self.js_error_constructors.borrow_mut().take();
     self.js_handled_promise_rejection_cb.borrow_mut().take();
     self.js_format_exception_cb.borrow_mut().take();
     self.pending_promise_rejections.borrow_mut().clear();

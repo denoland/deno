@@ -40,7 +40,7 @@ pub enum ExtensionFileSourceCode {
   Computed(Arc<str>),
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "needed to match on deprecated variants")]
 impl std::fmt::Debug for ExtensionFileSourceCode {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match *self {
@@ -59,6 +59,7 @@ impl std::fmt::Debug for ExtensionFileSourceCode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExtensionSourceType {
   LazyEsm,
+  LazyJs,
   Js,
   Esm,
 }
@@ -72,7 +73,7 @@ pub struct ExtensionFileSource {
 
 impl ExtensionFileSource {
   pub const fn new(specifier: &'static str, code: FastStaticString) -> Self {
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "constructing deprecated variant internally")]
     Self {
       specifier,
       code: ExtensionFileSourceCode::IncludedInBinary(code),
@@ -81,7 +82,7 @@ impl ExtensionFileSource {
   }
 
   pub const fn new_computed(specifier: &'static str, code: Arc<str>) -> Self {
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "constructing deprecated variant internally")]
     Self {
       specifier,
       code: ExtensionFileSourceCode::Computed(code),
@@ -93,7 +94,7 @@ impl ExtensionFileSource {
     specifier: &'static str,
     path: &'static str,
   ) -> Self {
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "constructing deprecated variant internally")]
     Self {
       specifier,
       code: ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path),
@@ -105,7 +106,7 @@ impl ExtensionFileSource {
     specifier: &'static str,
     code: FastStaticString,
   ) -> Self {
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "constructing deprecated variant internally")]
     Self {
       specifier,
       code: ExtensionFileSourceCode::LoadedFromMemoryDuringSnapshot(code),
@@ -113,12 +114,29 @@ impl ExtensionFileSource {
     }
   }
 
+  /// Whether this source's bytes are reachable at runtime without an external
+  /// table (e.g. from a snapshot build's residual sources). True for inline
+  /// or compile-time embedded sources, false for paths that were only valid
+  /// on the build machine.
+  pub fn is_runtime_loadable(&self) -> bool {
+    #[allow(
+      deprecated,
+      reason = "matching deprecated variant we still inspect"
+    )]
+    match &self.code {
+      ExtensionFileSourceCode::IncludedInBinary(_)
+      | ExtensionFileSourceCode::LoadedFromMemoryDuringSnapshot(_)
+      | ExtensionFileSourceCode::Computed(_) => true,
+      ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(_) => false,
+    }
+  }
+
   fn find_non_ascii(s: &str) -> String {
     s.chars().filter(|c| !c.is_ascii()).collect::<String>()
   }
 
-  #[allow(deprecated)]
   pub fn load(&self) -> Result<ModuleCodeString, std::io::Error> {
+    #[allow(deprecated, reason = "needed to match on deprecated variants")]
     match &self.code {
       ExtensionFileSourceCode::LoadedFromMemoryDuringSnapshot(code)
       | ExtensionFileSourceCode::IncludedInBinary(code) => {
@@ -131,6 +149,10 @@ impl ExtensionFileSource {
         Ok(IntoModuleCodeString::into_module_code(*code))
       }
       ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) => {
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "load extensions from real fs"
+        )]
         let s = std::fs::read_to_string(path)?;
         debug_assert!(
           s.is_ascii(),
@@ -154,6 +176,15 @@ impl ExtensionFileSource {
 }
 
 pub type OpFnRef = v8::FunctionCallback;
+/// Function pointer type for the slow op implementation that returns a status code.
+///
+/// Status codes:
+/// - `0`: op completed synchronously without error.
+/// - `1`: op completed with an error/exception.
+/// - `2`: async op was deferred; completion/error metrics will be emitted later.
+///
+/// Sync ops only return `0` or `1`. Async ops may return `0`, `1`, or `2`.
+pub type SlowFnImplRef = fn(*const v8::FunctionCallbackInfo) -> usize;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn FnOnce(&mut OpState);
 /// Trait implemented by all generated ops.
@@ -204,8 +235,12 @@ pub struct OpDecl {
   pub accessor_type: AccessorType,
   pub arg_count: u8,
   pub no_side_effects: bool,
+  pub constructable: bool,
   /// The slow dispatch call. If metrics are disabled, the `v8::Function` is created with this callback.
   pub(crate) slow_fn: OpFnRef,
+  /// The slow dispatch implementation, returning a status code. Used by the shared
+  /// metrics wrapper to call the op and check success/error.
+  pub(crate) slow_fn_impl: SlowFnImplRef,
   /// The slow dispatch call with metrics enabled. If metrics are enabled, the `v8::Function` is created with this callback.
   pub(crate) slow_fn_with_metrics: OpFnRef,
   /// The fast dispatch call. If metrics are disabled, the `v8::Function`'s fastcall is created with this callback.
@@ -219,7 +254,7 @@ pub struct OpDecl {
 impl OpDecl {
   /// For use by internal op implementation only.
   #[doc(hidden)]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   pub const fn new_internal_op2(
     name: (&'static str, FastStaticString),
     is_async: bool,
@@ -227,14 +262,15 @@ impl OpDecl {
     symbol_for: bool,
     arg_count: u8,
     no_side_effects: bool,
+    constructable: bool,
     slow_fn: OpFnRef,
-    slow_fn_with_metrics: OpFnRef,
+    slow_fn_impl: SlowFnImplRef,
     accessor_type: AccessorType,
     fast_fn: Option<CFunction>,
     fast_fn_with_metrics: Option<CFunction>,
     metadata: OpMetadata,
   ) -> Self {
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "constructing deprecated fields internally")]
     Self {
       name: name.0,
       name_fast: name.1,
@@ -243,8 +279,10 @@ impl OpDecl {
       symbol_for,
       arg_count,
       no_side_effects,
+      constructable,
       slow_fn,
-      slow_fn_with_metrics,
+      slow_fn_impl,
+      slow_fn_with_metrics: crate::ops_metrics::slow_metrics_dispatch,
       accessor_type,
       fast_fn,
       fast_fn_with_metrics,
@@ -276,6 +314,7 @@ impl OpDecl {
   /// `OpDecl`.
   pub const fn with_implementation_from(mut self, from: &Self) -> Self {
     self.slow_fn = from.slow_fn;
+    self.slow_fn_impl = from.slow_fn_impl;
     self.slow_fn_with_metrics = from.slow_fn_with_metrics;
     self.fast_fn = from.fast_fn;
     self.fast_fn_with_metrics = from.fast_fn_with_metrics;
@@ -396,6 +435,13 @@ macro_rules! or {
 ///  * esm: a comma-separated list of ESM module filenames (see [`include_js_files`]), eg: `esm = [ dir "dir", "my_file.js" ]`
 ///  * lazy_loaded_esm: a comma-separated list of ESM module filenames (see [`include_js_files`]), that will be included in
 ///    the produced binary, but not automatically evaluated. Eg: `lazy_loaded_esm = [ dir "dir", "my_file.js" ]`
+///  * lazy_loaded_js: a comma-separated list of JS script filenames that will be included in
+///    the produced binary, but not automatically evaluated. Loaded on demand via `Deno.core.loadExtScript()`.
+///    Eg: `lazy_loaded_js = [ dir "dir", "my_file.js" ]`
+///  * synthetic_esm: a comma-separated list of `"module_specifier" = "backing_script_specifier"` pairs.
+///    Imports of `module_specifier` resolve to a synthetic ESM module whose exports are derived from
+///    the exports object returned by the IIFE in `backing_script_specifier` (which must be declared
+///    in `lazy_loaded_js`). Eg: `synthetic_esm = [ "node:zlib" = "ext:deno_node/zlib.js" ]`
 ///  * js: a comma-separated list of JS filenames (see [`include_js_files`]), eg: `js = [ dir "dir", "my_file.js" ]`
 ///  * config: a structure-like definition for configuration parameters which will be required when initializing this extension, eg: `config = { my_param: Option<usize> }`
 ///  * middleware: an [`OpDecl`] middleware function with the signature `fn (OpDecl) -> OpDecl`
@@ -416,6 +462,8 @@ macro_rules! extension {
     $(, esm_entry_point = $esm_entry_point:expr_2021 )?
     $(, esm = [ $($esm:tt)* ] )?
     $(, lazy_loaded_esm = [ $($lazy_loaded_esm:tt)* ] )?
+    $(, lazy_loaded_js = [ $($lazy_loaded_js:tt)* ] )?
+    $(, synthetic_esm = [ $( $synthetic_esm_module:literal = $synthetic_esm_backing:literal ),* $(,)? ] )?
     $(, js = [ $($js:tt)* ] )?
     $(, options = { $( $options_id:ident : $options_type:ty ),* $(,)? } )?
     $(, middleware = $middleware_fn:expr_2021 )?
@@ -442,13 +490,13 @@ macro_rules! extension {
     /// });
     /// ```
     ///
-    #[allow(non_camel_case_types)]
+    #[allow(non_camel_case_types, reason = "matches extension naming convention")]
     pub struct $name {
     }
 
     impl $name {
       fn ext $( <  $( $param : $type + 'static ),+ > )?() -> $crate::Extension {
-        #[allow(unused_imports)]
+        #[allow(unused_imports, reason = "used when ops are specified")]
         use $crate::Op;
         $crate::Extension {
           // Computed at compile-time, may be modified at runtime with `Cow`:
@@ -467,6 +515,16 @@ macro_rules! extension {
           lazy_loaded_esm_files: {
             const JS: &'static [$crate::ExtensionFileSource] = &$crate::include_lazy_loaded_js_files!( $name $($($lazy_loaded_esm)*)? );
             ::std::borrow::Cow::Borrowed(JS)
+          },
+          lazy_loaded_js_files: {
+            const JS: &'static [$crate::ExtensionFileSource] = &$crate::include_lazy_loaded_js_files!( $name $($($lazy_loaded_js)*)? );
+            ::std::borrow::Cow::Borrowed(JS)
+          },
+          synthetic_esm_modules: {
+            const MAPPINGS: &'static [(&'static str, &'static str)] = &[
+              $($(($synthetic_esm_module, $synthetic_esm_backing)),*)?
+            ];
+            ::std::borrow::Cow::Borrowed(MAPPINGS)
           },
           esm_entry_point: {
             const V: ::std::option::Option<&'static ::std::primitive::str> = $crate::or!($(::std::option::Option::Some($esm_entry_point))?, ::std::option::Option::None);
@@ -492,7 +550,7 @@ macro_rules! extension {
 
       // If ops were specified, add those ops to the extension.
       #[inline(always)]
-      #[allow(unused_variables)]
+      #[allow(unused_variables, reason = "ext may be unused depending on macro expansion")]
       fn with_ops_fn $( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::Extension)
       $( where $( $bound : $bound_type ),+ )?
       {
@@ -502,7 +560,7 @@ macro_rules! extension {
 
       // Includes the state and middleware functions, if defined.
       #[inline(always)]
-      #[allow(unused_variables)]
+      #[allow(unused_variables, reason = "ext may be unused depending on macro expansion")]
       fn with_middleware $( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::Extension)
       {
         $(
@@ -519,8 +577,8 @@ macro_rules! extension {
       }
 
       #[inline(always)]
-      #[allow(unused_variables)]
-      #[allow(clippy::redundant_closure_call)]
+      #[allow(unused_variables, reason = "ext may be unused depending on macro expansion")]
+      #[allow(clippy::redundant_closure_call, reason = "generated by macro")]
       fn with_customizer(ext: &mut $crate::Extension) {
         $( ($customizer_fn)(ext); )?
       }
@@ -529,7 +587,7 @@ macro_rules! extension {
       ///
       /// # Returns
       /// an Extension object that can be used during instantiation of a JsRuntime
-      #[allow(dead_code)]
+      #[allow(dead_code, reason = "generated by macro, may not be called")]
       pub fn init $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension
       $( where $( $bound : $bound_type ),+ )?
       {
@@ -548,7 +606,7 @@ macro_rules! extension {
       ///
       /// # Returns
       /// an Extension object that can be used during instantiation of a JsRuntime
-      #[allow(dead_code)]
+      #[allow(dead_code, reason = "generated by macro, may not be called")]
       pub fn lazy_init $( <  $( $param : $type + 'static ),+ > )? () -> $crate::Extension
       $( where $( $bound : $bound_type ),+ )?
       {
@@ -562,7 +620,7 @@ macro_rules! extension {
 
       /// Create an `ExtensionArguments` value which must be passed to
       /// `JsRuntime::lazy_init_extensions`.
-      #[allow(dead_code, unused_mut)]
+      #[allow(dead_code, unused_mut, reason = "generated by macro, may not be called")]
       pub fn args $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::ExtensionArguments
       $( where $( $bound : $bound_type ),+ )?
       {
@@ -621,6 +679,13 @@ pub struct Extension {
   pub js_files: Cow<'static, [ExtensionFileSource]>,
   pub esm_files: Cow<'static, [ExtensionFileSource]>,
   pub lazy_loaded_esm_files: Cow<'static, [ExtensionFileSource]>,
+  pub lazy_loaded_js_files: Cow<'static, [ExtensionFileSource]>,
+  /// `(module_specifier, backing_script_specifier)` pairs. At extension
+  /// init, each pair is registered so that imports of `module_specifier`
+  /// resolve to a synthetic ESM module built from the exports object
+  /// returned by the IIFE in `backing_script_specifier` (which must be
+  /// declared in `lazy_loaded_js_files`).
+  pub synthetic_esm_modules: Cow<'static, [(&'static str, &'static str)]>,
   pub esm_entry_point: Option<&'static str>,
   pub ops: Cow<'static, [OpDecl]>,
   pub objects: Cow<'static, [OpMethodDecl]>,
@@ -647,6 +712,8 @@ impl Extension {
       js_files: Cow::Borrowed(&[]),
       esm_files: Cow::Borrowed(&[]),
       lazy_loaded_esm_files: Cow::Borrowed(&[]),
+      lazy_loaded_js_files: Cow::Borrowed(&[]),
+      synthetic_esm_modules: Cow::Borrowed(&[]),
       esm_entry_point: None,
       ops: self.ops.clone(),
       objects: self.objects.clone(),
@@ -666,6 +733,8 @@ impl Default for Extension {
       js_files: Cow::Borrowed(&[]),
       esm_files: Cow::Borrowed(&[]),
       lazy_loaded_esm_files: Cow::Borrowed(&[]),
+      lazy_loaded_js_files: Cow::Borrowed(&[]),
+      synthetic_esm_modules: Cow::Borrowed(&[]),
       esm_entry_point: None,
       ops: Cow::Borrowed(&[]),
       objects: Cow::Borrowed(&[]),
@@ -874,7 +943,7 @@ macro_rules! include_lazy_loaded_js_files {
     $(with_specifier $s2:literal)?
     $(= $config:tt)?
   ),* $(,)?) => {
-    $crate::__extension_include_js_files_inner!(mode=included, name=$name, dir=$crate::__extension_root_dir!($($dir)?), $([
+    $crate::__extension_include_js_files_inner!(mode=loaded, name=$name, dir=$crate::__extension_root_dir!($($dir)?), $([
       // These entries will be parsed in __extension_include_js_files_inner
       $s1 $(with_specifier $s2)? $(= $config)?
     ]),*)
@@ -896,22 +965,11 @@ macro_rules! include_js_files_doctest {
   };
 }
 
-/// When `#[cfg(not(feature = "include_js_files_for_snapshotting"))]` matches, ie: the `include_js_files_for_snapshotting`
-/// feature is not set, we want all JS files to be included.
-///
-/// Maps `(...)` to `(mode=included, ...)`
-#[cfg(not(feature = "include_js_files_for_snapshotting"))]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __extension_include_js_files_detect {
-  ($($rest:tt)*) => { $crate::__extension_include_js_files_inner!(mode=included, $($rest)*) };
-}
-
-/// When `#[cfg(feature = "include_js_files_for_snapshotting")]` matches, ie: the `include_js_files_for_snapshotting`
-/// feature is set, we want the pathnames for the JS files to be included and not the file contents.
-///
-/// Maps `(...)` to `(mode=loaded, ...)`
-#[cfg(feature = "include_js_files_for_snapshotting")]
+/// Source files declared on an extension are recorded by absolute path; their
+/// bytes are read from disk during snapshot creation and never embedded in the
+/// final binary. With a startup snapshot, the source is reachable via the
+/// snapshot bytes (for `esm`/`js`) or the residual lazy table emitted by the
+/// snapshot build (for `lazy_loaded_*`).
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __extension_include_js_files_detect {

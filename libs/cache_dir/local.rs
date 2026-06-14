@@ -38,6 +38,7 @@ use crate::SerializedCachedUrlMetadata;
 use crate::cache::CacheEntry;
 use crate::cache::CacheReadFileError;
 use crate::cache::GlobalToLocalCopy;
+use crate::cache::NOT_FOUND_CACHE_HEADER;
 use crate::global::GlobalHttpCacheRc;
 
 #[sys_traits::auto_impl]
@@ -91,8 +92,6 @@ impl<TSys: LocalHttpCacheSys> LocalLspHttpCache<TSys> {
     }
   }
 
-  // Url::from_file_path is not available in wasm, so add this cfg
-  #[cfg(any(unix, windows, target_os = "redox", target_os = "wasi"))]
   pub fn get_file_url(&self, url: &Url) -> Option<Url> {
     let sub_path = {
       let data = self.cache.manifest.data.read();
@@ -102,7 +101,7 @@ impl<TSys: LocalHttpCacheSys> LocalLspHttpCache<TSys> {
     };
     let path = sub_path.as_path_from_root(&self.cache.path);
     if self.cache.env().fs_is_file_no_err(&path) {
-      Url::from_file_path(path).ok()
+      deno_path_util::url_from_file_path(&path).ok()
     } else {
       None
     }
@@ -225,7 +224,7 @@ impl<TSys: LocalHttpCacheSys> HttpCache for LocalLspHttpCache<TSys> {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "arc wrapper type")]
 pub type LocalHttpCacheRc<TSys> =
   deno_maybe_sync::MaybeArc<LocalHttpCache<TSys>>;
 
@@ -308,8 +307,9 @@ impl<TSys: LocalHttpCacheSys> LocalHttpCache<TSys> {
     url: &Url,
   ) -> std::io::Result<Option<PathBuf>> {
     if let Some(headers) = self.get_url_headers(url)? {
-      let is_redirect = headers.contains_key("location");
-      if is_redirect {
+      let is_content_less = headers.contains_key("location")
+        || headers.contains_key(NOT_FOUND_CACHE_HEADER);
+      if is_content_less {
         return Ok(None);
       }
 
@@ -420,10 +420,12 @@ impl<TSys: LocalHttpCacheSys> HttpCache for LocalHttpCache<TSys> {
     headers: HeadersMap,
     content: &[u8],
   ) -> std::io::Result<()> {
-    let is_redirect = headers.contains_key("location");
+    // redirects and cached 404s have no content on disk
+    let is_content_less = headers.contains_key("location")
+      || headers.contains_key(NOT_FOUND_CACHE_HEADER);
     let sub_path = url_to_local_sub_path(url, headers_content_type(&headers))?;
 
-    if !is_redirect {
+    if !is_content_less {
       let content =
         self.transform_content_on_copy_to_local(url, Cow::Borrowed(content));
       // Cache content
@@ -451,9 +453,10 @@ impl<TSys: LocalHttpCacheSys> HttpCache for LocalHttpCache<TSys> {
     let maybe_headers = self.get_url_headers(key.url)?;
     match maybe_headers {
       Some(headers) => {
-        let is_redirect = headers.contains_key("location");
-        let bytes: Cow<'static, [u8]> = if is_redirect {
-          // return back an empty file for redirect
+        let is_content_less = headers.contains_key("location")
+          || headers.contains_key(NOT_FOUND_CACHE_HEADER);
+        let bytes: Cow<'static, [u8]> = if is_content_less {
+          // return back an empty file for redirects and cached 404s
           Cow::Borrowed(&[])
         } else {
           // if it's not a redirect, then it should have a file path
@@ -821,10 +824,11 @@ impl<
 
     let mut headers_subset = BTreeMap::new();
 
-    const HEADER_KEYS_TO_KEEP: [&str; 4] = [
+    const HEADER_KEYS_TO_KEEP: [&str; 5] = [
       // keep alphabetical for cleanliness in the output
       "content-type",
       "location",
+      NOT_FOUND_CACHE_HEADER,
       "x-deno-warning",
       "x-typescript-types",
     ];
@@ -922,6 +926,7 @@ mod manifest {
   use url::Url;
 
   use super::LocalCacheSubPath;
+  use super::NOT_FOUND_CACHE_HEADER;
   use super::url_to_local_sub_path;
 
   #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -978,7 +983,10 @@ mod manifest {
             .modules
             .iter()
             .filter_map(|(url, module)| {
-              if module.headers.contains_key("location") {
+              // redirects and cached 404s have no local file
+              if module.headers.contains_key("location")
+                || module.headers.contains_key(NOT_FOUND_CACHE_HEADER)
+              {
                 return None;
               }
               url_to_local_sub_path(url, module.content_type_header())

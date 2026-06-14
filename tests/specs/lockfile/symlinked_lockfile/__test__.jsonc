@@ -1,0 +1,22 @@
+// Regression test for https://github.com/denoland/deno/issues/28153
+//
+// When `deno.lock` is a symlink, updating the lockfile (e.g. via `deno add`)
+// must write through the symlink to its target, like the deno.json/package.json
+// writes do, rather than replacing the symlink with a new regular file.
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run -A setup.js",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "add npm:@denotest/add@1",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run -A verify.js",
+      "output": "verify.out"
+    }
+  ]
+}

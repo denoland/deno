@@ -176,52 +176,39 @@ pub(crate) fn generate_dispatch_slow(
     quote!()
   };
 
-  Ok(
-    gs_quote!(generator_state(opctx, info, slow_function, slow_function_metrics) => {
-      fn slow_function_impl<'s>(#info: &'s deno_core::v8::FunctionCallbackInfo) -> usize {
-        #[cfg(debug_assertions)]
-        let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(&<Self as deno_core::_ops::Op>::DECL);
+  let with_parts = if generator_state.needs_parts {
+    with_parts(generator_state)
+  } else {
+    quote!()
+  };
 
-        #with_scope
-        #with_retval
-        #with_args
-        #with_validate
-        #with_required_check
-        #with_opctx
-        #with_self
-        #with_isolate
-        #with_opstate
-        #with_stack_trace
-        #with_js_runtime_state
+  Ok(gs_quote!(generator_state(info, slow_function) => {
+    fn slow_function_impl<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) -> usize {
+      let #info: &'s _ = unsafe { &*#info };
+      #[cfg(debug_assertions)]
+      let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(&<Self as deno_core::_ops::Op>::DECL);
 
-        #output;
-        return 0;
-      }
+      #with_parts
+      #with_scope
+      #with_retval
+      #with_args
+      #with_validate
+      #with_required_check
+      #with_opctx
+      #with_self
+      #with_isolate
+      #with_opstate
+      #with_stack_trace
+      #with_js_runtime_state
 
-      extern "C" fn #slow_function<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) {
-        let info: &'s _ = unsafe { &*#info };
-        Self::slow_function_impl(info);
-      }
+      #output;
+      return 0;
+    }
 
-      extern "C" fn #slow_function_metrics<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) {
-        let info: &'s _ = unsafe { &*#info };
-        let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(info);
-
-        let #opctx: &'s _ = unsafe {
-          &*(deno_core::v8::Local::<deno_core::v8::External>::cast_unchecked(args.data()).value()
-              as *const deno_core::_ops::OpCtx)
-        };
-
-        deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Dispatched);
-        let res = Self::slow_function_impl(info);
-        if res == 0 {
-          deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Completed);
-        } else {
-          deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Error);
-        }
-      }
-    }),
-  )
+    extern "C" fn #slow_function(#info: *const deno_core::v8::FunctionCallbackInfo) {
+      Self::slow_function_impl(#info);
+    }
+  }))
 }
 
 pub(crate) fn with_isolate(
@@ -237,6 +224,22 @@ pub(crate) fn with_isolate(
 pub(crate) fn with_scope(generator_state: &mut GeneratorState) -> TokenStream {
   gs_quote!(generator_state(info, scope) =>
     (let #scope = ::std::pin::pin!(unsafe { deno_core::v8::CallbackScope::new(#info) }); let mut scope = scope.init();)
+  )
+}
+
+/// Emit `let parts = info.get_parts();` once before the per-helper
+/// destructuring. The single shim returns the isolate, return value,
+/// callback data, and argument length together so the retval/args
+/// helpers can avoid the equivalent separate FFI calls.
+///
+/// `CallbackScope::new` keeps taking `info` directly: its trait impl for
+/// `&'s FunctionCallbackInfoParts<'s>` requires the outer borrow to live for
+/// `'s`, which a stack-local `parts` can't satisfy. Using `info` (already a
+/// `&'s FunctionCallbackInfo`) avoids that constraint without changing the
+/// number of FFI calls.
+pub(crate) fn with_parts(generator_state: &mut GeneratorState) -> TokenStream {
+  gs_quote!(generator_state(info, parts) =>
+    (let #parts: deno_core::v8::FunctionCallbackInfoParts<'s> = #info.get_parts();)
   )
 }
 
@@ -259,16 +262,18 @@ pub(crate) fn with_stack_trace(
 }
 
 pub(crate) fn with_retval(generator_state: &mut GeneratorState) -> TokenStream {
-  gs_quote!(generator_state(retval, info) =>
-    (let mut #retval = deno_core::v8::ReturnValue::from_function_callback_info(#info);)
+  generator_state.needs_parts = true;
+  gs_quote!(generator_state(retval, parts) =>
+    (let mut #retval = #parts.return_value;)
   )
 }
 
 pub(crate) fn with_fn_args(
   generator_state: &mut GeneratorState,
 ) -> TokenStream {
-  gs_quote!(generator_state(info, fn_args) =>
-    (let #fn_args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(#info);)
+  generator_state.needs_parts = true;
+  gs_quote!(generator_state(info, parts, fn_args) =>
+    (let #fn_args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info_parts(#info, &#parts);)
   )
 }
 
@@ -301,18 +306,19 @@ pub(crate) fn with_required_check(
   };
 
   let prefix = get_prefix(generator_state);
+  let message_prefix = format!(
+    "{}: {} {} required, but only ",
+    prefix, required, arguments_lit
+  );
 
   let async_offset = if is_async { 1 } else { 0 };
 
   gs_quote!(generator_state(fn_args, scope) =>
     (if #fn_args.length() < (#required as i32) + #async_offset {
-      let msg = format!(
-        "{}: {} {} required, but only {} present",
-        #prefix,
-        #required,
-        #arguments_lit,
-        #fn_args.length() - #async_offset
-      );
+      let present = #fn_args.length() - #async_offset;
+      let mut msg = #message_prefix.to_string();
+      msg.push_str(&present.to_string());
+      msg.push_str(" present");
       let msg = deno_core::v8::String::new(&mut #scope, &msg).unwrap();
       let exception = deno_core::v8::Exception::type_error(&mut #scope, msg.into());
       #scope.throw_exception(exception);
@@ -355,7 +361,7 @@ pub(crate) fn with_self(
 ) -> TokenStream {
   generator_state.needs_opctx = true;
   generator_state.needs_scope = true;
-  let throw_exception = throw_type_error(
+  let throw_exception = throw_invalid_this_type_error(
     generator_state,
     format!("expected {}", &generator_state.self_ty),
   );
@@ -1285,6 +1291,22 @@ fn throw_type_error(
 
   gs_quote!(generator_state(info) => {
     deno_core::_ops::throw_error_one_byte_info(&#info, #message);
+    return 1;
+  })
+}
+
+/// Generates code to throw a Node-compat `TypeError` whose `code` property
+/// is `"ERR_INVALID_THIS"`. Used by the cppgc self-check (brand check)
+/// generators so that calling a method on a wrong-`this` receiver matches
+/// the shape that `webidl.assertBranded` produces in JS.
+fn throw_invalid_this_type_error(
+  generator_state: &mut GeneratorState,
+  message: String,
+) -> TokenStream {
+  debug_assert!(message.is_ascii() && message.len() < 1024);
+
+  gs_quote!(generator_state(info) => {
+    deno_core::_ops::throw_invalid_this_error_one_byte_info(&#info, #message);
     return 1;
   })
 }

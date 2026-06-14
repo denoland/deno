@@ -65,7 +65,11 @@ impl DiffieHellman {
     let private_key = PrivateKey::new(G::EXPONENT_SIZE / 8);
 
     let generator = BigUint::from_usize(G::GENERATOR).unwrap();
-    let modulus = BigUint::from_slice(G::MODULUS);
+    // MODULUS arrays are stored as big-endian u32 words (matching RFCs).
+    // Convert to big-endian bytes for correct BigUint construction.
+    let modulus_bytes: Vec<u8> =
+      G::MODULUS.iter().flat_map(|x| x.to_be_bytes()).collect();
+    let modulus = BigUint::from_bytes_be(&modulus_bytes);
 
     let public_key = private_key.compute_public_key(&generator, &modulus);
 

@@ -39,6 +39,9 @@ fn main() {
   if category.is_empty() {
     return; // no tests to run for the filter
   }
+  if test_util::test_runner::print_tests_if_list_flag(&category) {
+    return;
+  }
   let parallelism = Parallelism::default();
   let flaky_test_tracker = Arc::new(FlakyTestTracker::default());
   let _g = util::http_server();

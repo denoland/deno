@@ -62,7 +62,7 @@ pub struct TlsHandshakeInfo {
     Option<Vec<rustls::pki_types::CertificateDer<'static>>>,
 }
 
-#[derive(Debug, FromV8, ToV8, Deserialize, Serialize)]
+#[derive(Debug, FromV8, ToV8)]
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
@@ -249,7 +249,6 @@ pub async fn op_net_accept_tcp(
 }
 
 #[op2]
-#[serde]
 pub async fn op_net_recv_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -288,6 +287,17 @@ pub async fn op_net_send_udp(
     .await?
     .next()
     .ok_or(NetError::NoResolvedAddress)?;
+
+  {
+    state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(
+        &addr.ip(),
+        addr.port(),
+        "Deno.DatagramConn.send()",
+      )?;
+  }
 
   let resource = state
     .borrow_mut()
@@ -544,6 +554,22 @@ pub async fn op_net_connect_tcp_inner(
     return Err(NetError::NoResolvedAddress);
   }
 
+  // Post-resolution deny check: verify none of the resolved IPs are denied.
+  // This prevents bypassing IP-literal deny rules via numeric hostname
+  // aliases (e.g. 2130706433 → 127.0.0.1). All candidate addresses are
+  // checked because Happy Eyeballs may connect to any of them.
+  {
+    let mut state_ = state.borrow_mut();
+    let permissions = state_.borrow_mut::<PermissionsContainer>();
+    for addr in &addrs {
+      permissions.check_net_resolved(
+        &addr.ip(),
+        addr.port(),
+        "Deno.connect()",
+      )?;
+    }
+  }
+
   let cancel_handle = resource_abort_id.and_then(|rid| {
     state
       .borrow_mut()
@@ -628,6 +654,9 @@ pub fn op_net_listen_tcp(
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(&addr.ip(), addr.port(), "Deno.listen()")?;
 
   let listener = if load_balanced {
     TcpListener::bind_load_balanced(addr, tcp_backlog)
@@ -653,6 +682,9 @@ fn net_listen_udp(
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(&addr.ip(), addr.port(), "Deno.listenDatagram()")?;
 
   let domain = if addr.is_ipv4() {
     Domain::IPV4
@@ -774,8 +806,7 @@ pub async fn op_net_connect_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_net_connect_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -816,8 +847,7 @@ pub fn op_net_listen_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_net_listen_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -865,8 +895,7 @@ pub async fn op_net_accept_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_net_accept_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -914,8 +943,8 @@ pub async fn op_net_accept_tunnel(
   Ok((rid, local_addr.into(), remote_addr.into()))
 }
 
-#[derive(Serialize, Eq, PartialEq, Debug)]
-#[serde(untagged)]
+#[derive(ToV8, Eq, PartialEq, Debug)]
+#[to_v8(untagged)]
 pub enum DnsRecordData {
   A(String),
   Aaaa(String),
@@ -960,8 +989,11 @@ pub enum DnsRecordData {
 
 #[derive(ToV8, Eq, PartialEq, Debug)]
 pub struct DnsRecordWithTtl {
-  #[to_v8(serde)]
   pub data: DnsRecordData,
+  /// Record type name, populated for ANY queries to distinguish
+  /// untagged string variants (A vs AAAA vs NS vs PTR vs CNAME).
+  #[to_v8(serde)]
+  pub record_type: Option<String>,
   pub ttl: u32,
 }
 
@@ -999,7 +1031,7 @@ pub async fn op_dns_resolve(
     cancel_rid,
   } = args;
 
-  let (config, opts) = if let Some(name_server) =
+  let (config, mut opts) = if let Some(name_server) =
     options.as_ref().and_then(|o| o.name_server.as_ref())
   {
     let group = NameServerConfigGroup::from_ips_clear(
@@ -1017,6 +1049,14 @@ pub async fn op_dns_resolve(
   } else {
     system_conf::read_system_conf()?
   };
+
+  // When a cancel handle is provided, use a short resolver timeout so
+  // that hickory's background connection tasks clean up quickly after
+  // cancellation (they are not aborted by the cancel handle itself).
+  if cancel_rid.is_some() {
+    opts.timeout = std::time::Duration::from_secs(1);
+    opts.attempts = 1;
+  }
 
   {
     let mut s = state.borrow_mut();
@@ -1083,15 +1123,43 @@ pub async fn op_dns_resolve(
     .records()
     .iter()
     .filter_map(|rec| {
-      let r = format_rdata(record_type)(rec.data()).transpose();
+      let is_any = record_type == RecordType::ANY;
+      // For ANY queries, use each record's actual type for formatting
+      let effective_type = if is_any {
+        rec.record_type()
+      } else {
+        record_type
+      };
+      let r = format_rdata(effective_type)(rec.data()).transpose();
       r.map(|maybe_data| {
         maybe_data.map(|data| DnsRecordWithTtl {
           data,
+          record_type: if is_any {
+            Some(effective_type.to_string())
+          } else {
+            None
+          },
           ttl: rec.ttl(),
         })
       })
     })
     .collect::<Result<Vec<DnsRecordWithTtl>, NetError>>()
+}
+
+#[op2]
+#[serde]
+pub fn op_net_get_system_dns_servers() -> Result<Vec<(String, u16)>, NetError> {
+  let (config, _opts) = system_conf::read_system_conf()
+    .unwrap_or_else(|_| (ResolverConfig::default(), ResolverOpts::default()));
+  let servers = config
+    .name_servers()
+    .iter()
+    .map(|ns| {
+      let addr = ns.socket_addr;
+      (addr.ip().to_string(), addr.port())
+    })
+    .collect();
+  Ok(servers)
 }
 
 #[op2(fast)]
@@ -1435,7 +1503,10 @@ mod tests {
     check_sockopt(String::from("127.0.0.1:4146"), set_keepalive, test_fn).await;
   }
 
-  #[allow(clippy::type_complexity)]
+  #[allow(
+    clippy::type_complexity,
+    reason = "set_sockopt_fn isn't that complex"
+  )]
   async fn check_sockopt(
     addr: String,
     set_sockopt_fn: Box<dyn Fn(&mut OpState, u32)>,

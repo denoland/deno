@@ -72,6 +72,9 @@ pub fn op_pipe_create(op_state: &mut OpState) -> (ResourceId, ResourceId) {
   (rid1, rid2)
 }
 
+#[op2(constructable, fast)]
+pub fn op_constructable_test() {}
+
 struct FileResource {
   handle: deno_core::ResourceHandle,
 }
@@ -128,6 +131,10 @@ pub async fn op_file_open(
 
 #[op2]
 #[string]
+#[allow(
+  clippy::disallowed_methods,
+  reason = "test runner needs direct fs/url access"
+)]
 pub fn op_path_to_url(#[string] path: &str) -> Result<String, std::io::Error> {
   let path = std::path::absolute(path)?;
   let url = url::Url::from_file_path(path).unwrap();

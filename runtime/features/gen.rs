@@ -11,7 +11,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     name: "bare-node-builtins",
     flag_name: "unstable-bare-node-builtins",
     help_text: "Enable unstable bare node builtins feature",
-    show_in_help: true,
+    show_in_help: false,
     id: 0,
     kind: UnstableFeatureKind::Cli,
   },
@@ -154,7 +154,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
   UnstableFeatureDefinition {
     name: "raw-imports",
     flag_name: "unstable-raw-imports",
-    help_text: "Enable unstable 'bytes' and 'text' imports.",
+    help_text: "Enable unstable 'bytes' imports.",
     show_in_help: true,
     id: 18,
     kind: UnstableFeatureKind::Runtime,
