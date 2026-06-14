@@ -166,15 +166,43 @@ impl NpmInstallDepsProvider {
         // should inline their import map to get this behaviour
         if let Some(serde_json::Value::Object(obj)) = &deno_json.json.imports {
           let mut pkg_pkgs = Vec::with_capacity(obj.len());
-          for (_alias, value) in obj {
+          for (alias, value) in obj {
             let serde_json::Value::String(specifier) = value else {
               continue;
             };
-            let Ok(npm_req_ref) = NpmPackageReqReference::from_str(specifier)
-            else {
-              continue;
+            let pkg_req = if let Some(catalog_name) =
+              specifier.strip_prefix("catalog:")
+            {
+              // `catalog:`/`catalog:<name>` entries resolve to the version
+              // requirement defined in the workspace root's catalog
+              let catalog_name = if catalog_name.is_empty() {
+                "default"
+              } else {
+                catalog_name
+              };
+              let name = alias.strip_suffix('/').unwrap_or(alias);
+              let Some(version_req_str) = workspace
+                .catalogs()
+                .get(catalog_name)
+                .and_then(|catalog| catalog.get(name))
+              else {
+                continue;
+              };
+              let Ok(version_req) = VersionReq::parse_from_npm(version_req_str)
+              else {
+                continue;
+              };
+              PackageReq {
+                name: PackageName::from_str(name),
+                version_req,
+              }
+            } else {
+              let Ok(npm_req_ref) = NpmPackageReqReference::from_str(specifier)
+              else {
+                continue;
+              };
+              npm_req_ref.into_inner().req
             };
-            let pkg_req = npm_req_ref.into_inner().req;
 
             if skip_types && pkg_req.name.starts_with("@types/") {
               continue;

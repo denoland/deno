@@ -5,6 +5,7 @@
 import { assertIsError, assertMatch, assertRejects } from "@std/assert";
 import { Buffer, type Reader } from "@std/io";
 import { delay } from "@std/async/delay";
+import * as http2 from "node:http2";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -30,6 +31,7 @@ const {
   serveHttpOnListener,
   serveHttpOnConnection,
   getCachedAbortSignal,
+  resetLegacyAbortWarning,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
@@ -1172,6 +1174,42 @@ createUrlTest(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServerHttp2RequestUrl() {
+    const url = Promise.withResolvers<string>();
+    const listening = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      handler: (request: Request) => {
+        url.resolve(request.url);
+        return new Response("");
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listening.resolve),
+      onError: createOnErrorCb(ac),
+    });
+    await listening.promise;
+
+    const conn = await Deno.connect({ port: servePort });
+    await writeHttp2ClientPreface(conn);
+    await writeHttp2Headers(conn, [
+      [":method", "GET"],
+      [":path", "/path?query=1"],
+      [":scheme", "http"],
+      [":authority", "deno.land:1234"],
+    ], true);
+
+    assertEquals(await url.promise, "http://deno.land:1234/path?query=1");
+
+    conn.close();
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServerGetRequestBody() {
     const deferred = Promise.withResolvers<void>();
     const ac = new AbortController();
@@ -1205,6 +1243,45 @@ Deno.test(
 
     conn.close();
     await deferred.promise;
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerHttp2RequestTextBody() {
+    const requestBody = Promise.withResolvers<string>();
+    const listening = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      handler: async (request: Request) => {
+        requestBody.resolve(await request.text());
+        return new Response("");
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listening.resolve),
+      onError: createOnErrorCb(ac),
+    });
+    await listening.promise;
+
+    const conn = await Deno.connect({ port: servePort });
+    const body = new TextEncoder().encode("hello from h2");
+    await writeHttp2ClientPreface(conn);
+    await writeHttp2Headers(conn, [
+      [":method", "POST"],
+      [":path", "/"],
+      [":scheme", "http"],
+      [":authority", `localhost:${servePort}`],
+      ["content-length", `${body.length}`],
+    ], false);
+    await writeHttp2Data(conn, body, true);
+
+    assertEquals(await requestBody.promise, "hello from h2");
+
+    conn.close();
     ac.abort();
     await server.finished;
   },
@@ -2280,6 +2357,135 @@ Deno.test(
   },
 );
 
+type SplitHeaderResult = {
+  cookieGet: string | null;
+  cookieIter: string | undefined;
+  xTestGet: string | null;
+  xTestIter: string | undefined;
+};
+
+const expectedSplitHeaderResult = {
+  cookieGet: "a=1; b=2",
+  cookieIter: "a=1; b=2",
+  xTestGet: "one, two",
+  xTestIter: "one, two",
+} as const;
+
+function readSplitHeaders(req: Request): SplitHeaderResult {
+  const iterHeaders = new Map(req.headers);
+  return {
+    cookieGet: req.headers.get("cookie"),
+    cookieIter: iterHeaders.get("cookie"),
+    xTestGet: req.headers.get("x-test"),
+    xTestIter: iterHeaders.get("x-test"),
+  };
+}
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerHttp1SplitHeaderConcatenation() {
+    const ac = new AbortController();
+    const listening = Promise.withResolvers<void>();
+    const headers = Promise.withResolvers<SplitHeaderResult>();
+
+    await using server = Deno.serve({
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listening.resolve),
+      handler: (req) => {
+        headers.resolve(readSplitHeaders(req));
+        return new Response("ok");
+      },
+    });
+    await listening.promise;
+
+    const conn = await Deno.connect({ port: servePort });
+    const encoder = new TextEncoder();
+    await writeAll(
+      conn,
+      encoder.encode(
+        `GET / HTTP/1.1\r\nHost: localhost:${servePort}\r\nCookie: a=1\r\nCookie: b=2\r\nX-Test: one\r\nX-Test: two\r\nConnection: close\r\n\r\n`,
+      ),
+    );
+
+    assertEquals(await headers.promise, expectedSplitHeaderResult);
+
+    conn.close();
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerHttp2SplitHeaderConcatenation() {
+    const ac = new AbortController();
+    const listening = Promise.withResolvers<void>();
+    const headers = Promise.withResolvers<SplitHeaderResult>();
+
+    await using server = Deno.serve({
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listening.resolve),
+      handler: (req) => {
+        headers.resolve(readSplitHeaders(req));
+        return new Response("ok");
+      },
+    });
+    await listening.promise;
+
+    const conn = await Deno.connect({ port: servePort });
+    const encoder = new TextEncoder();
+
+    await writeAll(conn, encoder.encode("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"));
+    await writeAll(conn, new Uint8Array([0, 0, 0, 4, 0, 0, 0, 0, 0]));
+
+    const literalHeader = (name: string, value: string): number[] => {
+      const encodedName = encoder.encode(name);
+      const encodedValue = encoder.encode(value);
+      return [
+        0x00,
+        encodedName.length,
+        ...encodedName,
+        encodedValue.length,
+        ...encodedValue,
+      ];
+    };
+    const block = [
+      ...literalHeader(":method", "GET"),
+      ...literalHeader(":path", "/"),
+      ...literalHeader(":scheme", "http"),
+      ...literalHeader(":authority", `localhost:${servePort}`),
+      ...literalHeader("cookie", "a=1"),
+      ...literalHeader("cookie", "b=2"),
+      ...literalHeader("x-test", "one"),
+      ...literalHeader("x-test", "two"),
+    ];
+    const len = block.length;
+    await writeAll(
+      conn,
+      new Uint8Array([
+        (len >> 16) & 0xff,
+        (len >> 8) & 0xff,
+        len & 0xff,
+        0x01, // HEADERS
+        0x05, // END_STREAM | END_HEADERS
+        0,
+        0,
+        0,
+        1,
+        ...block,
+      ]),
+    );
+
+    assertEquals(await headers.promise, expectedSplitHeaderResult);
+
+    conn.close();
+    ac.abort();
+    await server.finished;
+  },
+);
+
 // https://github.com/denoland/deno/issues/12741
 // https://github.com/denoland/deno/pull/12746
 // https://github.com/denoland/deno/pull/12798
@@ -3053,12 +3259,26 @@ const compressionTestCases = [
     length: 1024,
     in: { "Accept-Encoding": "gzip, deflate, br" },
     out: { "Content-Type": "text/plain" },
-    expect: "gzip",
+    expect: "br",
   },
   {
     name: "CompressibleType3",
     length: 1024,
     in: { "Accept-Encoding": "br" },
+    out: { "Content-Type": "text/plain" },
+    expect: "br",
+  },
+  {
+    name: "CompressibleTypeChrome",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip, deflate, br, zstd" },
+    out: { "Content-Type": "text/plain" },
+    expect: "br",
+  },
+  {
+    name: "CompressibleTypeUnsupportedToken",
+    length: 1024,
+    in: { "Accept-Encoding": "br, compress" },
     out: { "Content-Type": "text/plain" },
     expect: "br",
   },
@@ -3149,10 +3369,15 @@ for (const testCase of compressionTestCases) {
               testCase.out["Content-Encoding"] || null,
             );
           } else if (testCase.expect == "gzip" || testCase.expect == "br") {
-            // Note the fetch will transparently decompress this response, BUT we can detect that a response
-            // was compressed by the lack of a content length.
+            // The fetch will transparently decompress this response. Per the
+            // fetch spec the `content-encoding` header stays visible;
+            // `content-length` is absent because the server streams the
+            // compressed body with chunked transfer encoding.
             assertEquals(body.byteLength, testCase.length);
-            assertEquals(resp.headers.get("content-encoding"), null);
+            assertEquals(
+              resp.headers.get("content-encoding"),
+              testCase.expect,
+            );
             assertEquals(resp.headers.get("content-length"), null);
           }
         } finally {
@@ -3163,6 +3388,62 @@ for (const testCase of compressionTestCases) {
     }[name],
   );
 }
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerHttp2Compression() {
+    const body = "a".repeat(1000);
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      handler: () => {
+        return new Response(body, {
+          headers: { "content-type": "text/plain" },
+        });
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+    const client = http2.connect(`http://localhost:${servePort}`);
+    try {
+      const req = client.request({
+        ":path": "/",
+        "accept-encoding": "br",
+      });
+      let headers: http2.IncomingHttpHeaders | undefined;
+      let compressedLength = 0;
+      req.on("response", (responseHeaders) => {
+        headers = responseHeaders;
+      });
+      req.on("data", (chunk) => {
+        compressedLength += chunk.length;
+      });
+
+      req.end();
+      await new Promise<void>((resolve, reject) => {
+        req.on("end", resolve);
+        req.on("error", reject);
+        client.on("error", reject);
+      });
+
+      assert(headers);
+      assertEquals(Number(headers[":status"]), 200);
+      assertEquals(headers["content-encoding"], "br");
+      assertEquals(headers["vary"], "Accept-Encoding");
+      assertEquals(headers["content-length"], `${compressedLength}`);
+      assert(compressedLength < body.length);
+    } finally {
+      client.close();
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
 
 Deno.test(
   { permissions: { net: true, write: true, read: true } },
@@ -3827,6 +4108,73 @@ async function writeAll(conn: Deno.Conn, bytes: Uint8Array): Promise<void> {
   while (written < bytes.length) {
     written += await conn.write(bytes.subarray(written));
   }
+}
+
+function http2LiteralHeader(name: string, value: string): number[] {
+  const encoder = new TextEncoder();
+  const encodedName = encoder.encode(name);
+  const encodedValue = encoder.encode(value);
+  return [
+    0x00,
+    encodedName.length,
+    ...encodedName,
+    encodedValue.length,
+    ...encodedValue,
+  ];
+}
+
+function http2Frame(
+  type: number,
+  flags: number,
+  streamId: number,
+  payload: number[] | Uint8Array,
+): Uint8Array {
+  const length = payload.length;
+  return new Uint8Array([
+    (length >> 16) & 0xff,
+    (length >> 8) & 0xff,
+    length & 0xff,
+    type,
+    flags,
+    (streamId >> 24) & 0x7f,
+    (streamId >> 16) & 0xff,
+    (streamId >> 8) & 0xff,
+    streamId & 0xff,
+    ...payload,
+  ]);
+}
+
+async function writeHttp2ClientPreface(conn: Deno.Conn): Promise<void> {
+  const encoder = new TextEncoder();
+  await writeAll(conn, encoder.encode("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"));
+  await writeAll(conn, http2Frame(0x04, 0, 0, [])); // SETTINGS
+}
+
+async function writeHttp2Headers(
+  conn: Deno.Conn,
+  headers: [string, string][],
+  endStream: boolean,
+): Promise<void> {
+  const block = headers.flatMap(([name, value]) =>
+    http2LiteralHeader(name, value)
+  );
+  await writeAll(
+    conn,
+    http2Frame(
+      0x01,
+      endStream ? 0x05 : 0x04, // END_STREAM? | END_HEADERS
+      1,
+      block,
+    ),
+  );
+}
+
+async function writeHttp2Data(
+  conn: Deno.Conn,
+  bytes: Uint8Array,
+  endStream: boolean,
+): Promise<void> {
+  await writeAll(conn, http2Frame(0x00, endStream ? 0x01 : 0, 1, bytes));
 }
 
 async function readAtLeast(
@@ -4524,7 +4872,7 @@ Deno.test("Deno.HttpServer is not thenable", async () => {
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { run: true, read: true, write: true },
+    permissions: { run: true, read: true, write: true, net: true },
   },
   async function httpServerUnixDomainSocket() {
     const { promise, resolve } = Promise.withResolvers<Deno.UnixAddr>();
@@ -5089,5 +5437,106 @@ Deno.test(
     await serverWebSocketClosed.promise;
     ac.abort();
     await server.finished;
+  },
+);
+
+async function captureLegacyAbortWarnings(
+  fn: () => Promise<void>,
+): Promise<string[]> {
+  resetLegacyAbortWarning();
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    if (typeof args[0] === "string" && args[0].includes("request.signal")) {
+      warnings.push(args[0]);
+      return;
+    }
+    originalWarn(...args);
+  };
+  try {
+    await fn();
+  } finally {
+    console.warn = originalWarn;
+    resetLegacyAbortWarning();
+  }
+  return warnings;
+}
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerLegacyAbortWarningFiresOnce() {
+    const warnings = await captureLegacyAbortWarnings(async () => {
+      const { finished, shutdown } = await makeServer((req) => {
+        req.signal.addEventListener("abort", () => {});
+        return new Response("ok");
+      });
+      for (let i = 0; i < 3; i++) {
+        await (await fetch(`http://localhost:${servePort}`)).text();
+      }
+      await shutdown();
+      await finished;
+    });
+    assertEquals(warnings.length, 1);
+    assertStringIncludes(warnings[0], "request.signal");
+    assertStringIncludes(warnings[0], "--unstable-no-legacy-abort");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerLegacyAbortWarningSkipsWhenSignalUntouched() {
+    const warnings = await captureLegacyAbortWarnings(async () => {
+      const { finished, shutdown } = await makeServer(() => {
+        return new Response("ok");
+      });
+      for (let i = 0; i < 3; i++) {
+        await (await fetch(`http://localhost:${servePort}`)).text();
+      }
+      await shutdown();
+      await finished;
+    });
+    assertEquals(warnings.length, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, run: true, read: true } },
+  async function httpServerLegacyAbortWarningSilentUnderUnstableFlag() {
+    const subprocessPort = servePort + 1;
+    const code = `
+      const originalWarn = console.warn;
+      let warned = false;
+      console.warn = (...args) => {
+        if (typeof args[0] === "string" && args[0].includes("request.signal")) {
+          warned = true;
+        }
+        originalWarn(...args);
+      };
+      const { promise, resolve } = Promise.withResolvers();
+      const server = Deno.serve({
+        port: ${subprocessPort},
+        handler: (req) => {
+          req.signal.addEventListener("abort", () => {});
+          return new Response("ok");
+        },
+        onListen: resolve,
+      });
+      await promise;
+      for (let i = 0; i < 3; i++) {
+        await (await fetch("http://localhost:${subprocessPort}")).text();
+      }
+      console.log(warned ? "WARNED" : "QUIET");
+      await server.shutdown();
+    `;
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "--unstable-no-legacy-abort", code],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code: exitCode, stdout } = await command.output();
+    const output = new TextDecoder().decode(stdout);
+    assertEquals(exitCode, 0);
+    assertStringIncludes(output, "QUIET");
+    assert(!output.includes("WARNED"));
   },
 );

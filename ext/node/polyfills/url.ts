@@ -51,6 +51,11 @@ const {
   StringPrototypeSplit,
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeSubarray,
+  Uint8Array,
   decodeURIComponent,
 } = primordials;
 const {
@@ -107,6 +112,11 @@ const {
   domainToUnicode: idnaToUnicode,
 } = core.loadExtScript("ext:deno_node/internal/idna.ts");
 const { isWindows, osType } = core.loadExtScript("ext:deno_node/_util/os.ts");
+let _Buffer;
+function lazyBuffer() {
+  return _Buffer ??=
+    core.loadExtScript("ext:deno_node/internal/buffer.mjs").Buffer;
+}
 const { encodeStr, hexTable } = core.loadExtScript(
   "ext:deno_node/internal/querystring.ts",
 );
@@ -1370,6 +1380,116 @@ function fileURLToPath(path: string | URL): string {
   return isWindows ? getPathFromURLWin(path) : getPathFromURLPosix(path);
 }
 
+// https://url.spec.whatwg.org/#percent-decode
+function isHexCharByte(byte: number): boolean {
+  // 0-9 A-F a-f
+  return (byte >= 0x30 && byte <= 0x39) || (byte >= 0x41 && byte <= 0x46) ||
+    (byte >= 0x61 && byte <= 0x66);
+}
+
+function hexByteToNumber(byte: number): number {
+  return (
+    // 0-9
+    byte >= 0x30 && byte <= 0x39
+      ? (byte - 48)
+      // Convert to uppercase: ((byte & 0xDF) - 65) + 10
+      : ((byte & 0xDF) - 55)
+  );
+}
+
+// Decodes a percent-encoded byte sequence to raw bytes without interpreting
+// the result as UTF-8. https://url.spec.whatwg.org/#percent-decode
+function percentDecode(input: Uint8Array): Uint8Array {
+  const length = input.length;
+  const output = new Uint8Array(length);
+  let j = 0;
+  for (let i = 0; i < length; ++i) {
+    const byte = input[i];
+    if (byte !== 0x25) {
+      output[j++] = byte;
+    } else if (
+      byte === 0x25 &&
+      !(isHexCharByte(input[i + 1]) && isHexCharByte(input[i + 2]))
+    ) {
+      output[j++] = 0x25;
+    } else {
+      output[j++] = (hexByteToNumber(input[i + 1]) << 4) |
+        hexByteToNumber(input[i + 2]);
+      i += 2;
+    }
+  }
+  return length === j ? output : TypedArrayPrototypeSubarray(output, 0, j);
+}
+
+/**
+ * Like `fileURLToPath`, but returns the path as a `Buffer` of raw bytes
+ * obtained by percent-decoding the URL without interpreting the result as
+ * UTF-8. This allows recovering paths that contain non-Unicode byte sequences.
+ * @see Tested in `parallel/test-fileurltopathbuffer.js`.
+ */
+function fileURLToPathBuffer(
+  path: string | URL,
+  options: { windows?: boolean } = { __proto__: null },
+) {
+  const windows = options?.windows;
+  if (typeof path === "string") path = new URL(path);
+  else if (!ObjectPrototypeIsPrototypeOf(URL.prototype, path)) {
+    throw new ERR_INVALID_ARG_TYPE("path", ["string", "URL"], path);
+  }
+  if (path.protocol !== "file:") {
+    throw new ERR_INVALID_URL_SCHEME("file");
+  }
+  return (windows ?? isWindows)
+    ? getPathBufferFromURLWin(path)
+    : getPathBufferFromURLPosix(path);
+}
+
+function getPathBufferFromURLPosix(url: URL) {
+  if (url.hostname !== "") {
+    throw new ERR_INVALID_FILE_URL_HOST(osType);
+  }
+  const Buffer = lazyBuffer();
+  const u8 = percentDecode(Buffer.from(url.pathname, "utf8"));
+  return Buffer.from(
+    TypedArrayPrototypeGetBuffer(u8),
+    TypedArrayPrototypeGetByteOffset(u8),
+    TypedArrayPrototypeGetByteLength(u8),
+  );
+}
+
+function getPathBufferFromURLWin(url: URL) {
+  const Buffer = lazyBuffer();
+  const hostname = url.hostname;
+  const pathname = StringPrototypeReplace(
+    url.pathname,
+    forwardSlashRegEx,
+    "\\",
+  );
+  const u8 = percentDecode(Buffer.from(pathname, "utf8"));
+  const decodedPathname = Buffer.from(
+    TypedArrayPrototypeGetBuffer(u8),
+    TypedArrayPrototypeGetByteOffset(u8),
+    TypedArrayPrototypeGetByteLength(u8),
+  );
+  if (hostname !== "") {
+    const prefix = Buffer.from("\\\\", "ascii");
+    const domain = Buffer.from(domainToUnicode(hostname), "utf8");
+    // `concat` is a `node:buffer` static method on `Buffer`
+    // deno-lint-ignore prefer-primordials
+    return Buffer.concat([prefix, domain, decodedPathname]);
+  }
+  const letter = decodedPathname[1] | 0x20;
+  const sep = decodedPathname[2];
+  if (
+    letter < CHAR_LOWERCASE_A ||
+    letter > CHAR_LOWERCASE_Z || // a..z A..Z
+    sep !== 0x3a // :
+  ) {
+    throw new ERR_INVALID_FILE_URL_PATH("must be absolute", url);
+  }
+  return TypedArrayPrototypeSubarray(decodedPathname, 1);
+}
+
 function getPathFromURLWin(url: URL): string {
   const hostname = url.hostname;
   let pathname = url.pathname;
@@ -1580,6 +1700,7 @@ return {
   domainToASCII,
   domainToUnicode,
   fileURLToPath,
+  fileURLToPathBuffer,
   pathToFileURL,
 };
 })();

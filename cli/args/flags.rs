@@ -1646,6 +1646,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "DENO_CONDITIONS",
+    description: "Comma-separated list of custom conditions to resolve npm package\nexports and imports with. Equivalent to using the --conditions flag.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_COVERAGE_DIR",
     description: "Set the directory for collecting code coverage profiles.\nEquivalent to using the --coverage flag.",
     example: None,
@@ -1659,6 +1664,11 @@ static ENV_VARS: &[EnvVar] = &[
     name: "DENO_INSTALL_ROOT",
     description: "Set deno install's output directory",
     example: Some("(defaults to $HOME/.deno/bin)"),
+  },
+  EnvVar {
+    name: "DENO_JOBS",
+    description: "Number of parallel workers used for the --parallel flag with the test\nsubcommand. Defaults to the number of available CPUs.",
+    example: None,
   },
   EnvVar {
     name: "DENO_KV_DB_MODE",
@@ -1683,6 +1693,11 @@ static ENV_VARS: &[EnvVar] = &[
   EnvVar {
     name: "DENO_NO_PACKAGE_JSON",
     description: "Disables auto-resolution of package.json.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_NO_PROMPT",
+    description: "Set to disable permission prompts on access\n(alternative to passing --no-prompt on invocation).",
     example: None,
   },
   EnvVar {
@@ -1722,6 +1737,11 @@ static ENV_VARS: &[EnvVar] = &[
   EnvVar {
     name: "DENO_USE_CGROUPS",
     description: "Use cgroups to determine V8 memory limit.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_V8_FLAGS",
+    description: "Set V8 command line options. Equivalent to using the --v8-flags flag;\nflags passed via --v8-flags are appended after these.",
     example: None,
   },
   EnvVar {
@@ -2480,6 +2500,8 @@ Or multiple dependencies at once:
       )
       .arg(add_dev_arg())
       .arg(allow_scripts_arg())
+      .arg(allow_import_arg())
+      .arg(deny_import_arg())
       .args(lock_args())
       .arg(lockfile_only_arg())
       .args(default_registry_args())
@@ -3478,7 +3500,7 @@ Supported file types are:
   <p(245)>JavaScript, TypeScript, Markdown, JSON(C) and Jupyter Notebooks</>
 
 Supported file types which are behind corresponding unstable flags (see formatting options):
-  <p(245)>HTML, CSS, SCSS, SASS, LESS, YAML, Svelte, Vue, Astro and Angular</>
+  <p(245)>HTML, CSS, SCSS, LESS, YAML, Svelte, Vue, Astro and Angular</>
 
 Format stdin and write to stdout:
   <p(245)>cat file.ts | deno fmt -</>
@@ -3521,7 +3543,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .help("Set content type of the supplied file")
           .value_parser([
             "ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs", "md", "json", "jsonc", "css", "scss",
-            "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
+            "less", "html", "svelte", "vue", "astro", "yml", "yaml",
             "ipynb", "sql", "vto", "njk"
           ])
           .help_heading(FMT_HEADING).requires("files"),
@@ -3610,7 +3632,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       .arg(
         Arg::new("unstable-css")
           .long("unstable-css")
-          .help("Enable formatting CSS, SCSS, Sass and Less files")
+          .help("Enable formatting CSS, SCSS and Less files")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue)
           .help_heading(FMT_HEADING)
@@ -5455,8 +5477,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                             Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>
                                              <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
-  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                             <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
+  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary. A Unix domain socket can be scoped with <p(245)>unix:<<absolute-path></>.
+                                             <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"  |  --allow-net="unix:/var/run/docker.sock"</>
   <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>     Allow access to environment variables. Optionally specify accessible environment variables.
                                              <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"</>
   <g>-S, --allow-sys[=<<API_NAME>...]</>          Allow access to OS information. Optionally allow specific APIs by function name.
@@ -6860,6 +6882,7 @@ fn add_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   allow_scripts_arg_parse(flags, matches)?;
+  allow_and_deny_import_parse(flags, matches)?;
   lock_args_parse(flags, matches);
   env_file_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
@@ -7027,6 +7050,11 @@ fn bundle_parse(
   let output = matches.remove_one::<String>("output");
   let outdir = matches.remove_one::<String>("outdir");
   compile_args_without_check_parse(flags, matches)?;
+  // `bundle_subcommand` advertises `--check`, but the parser dropped the
+  // value so `flags.type_check_mode` stayed at its default (`None`),
+  // which made the bundle silently skip type-checking even with
+  // `--check=all` (denoland/deno#30159).
+  check_arg_parse(flags, matches);
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   allow_and_deny_import_parse(flags, matches)?;
   env_file_arg_parse(flags, matches);
@@ -9086,8 +9114,6 @@ fn unstable_args_parse(
   }
 
   // TODO(bartlomieju): this should be factored out since these are configured via UNSTABLE_FEATURES
-  flags.unstable_config.bare_node_builtins =
-    matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.lazy_dynamic_imports =
     matches.get_flag("unstable-lazy-dynamic-imports");
@@ -15450,6 +15476,33 @@ mod tests {
         );
       }
     }
+
+    {
+      let r = flags_from_vec(svec![
+        "deno",
+        "add",
+        "--allow-import=example.com",
+        "@david/which"
+      ]);
+      assert_eq!(
+        r.unwrap(),
+        Flags {
+          subcommand: DenoSubcommand::Add(AddFlags {
+            packages: svec!["@david/which"],
+            dev: false,
+            default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
+            save_exact: false,
+            package_json: false,
+          }),
+          permissions: PermissionFlags {
+            allow_import: Some(svec!["example.com"]),
+            ..Default::default()
+          },
+          ..Flags::default()
+        }
+      );
+    }
   }
 
   #[test]
@@ -15978,7 +16031,6 @@ mod tests {
           force: false,
         }),
         unstable_config: UnstableConfig {
-          bare_node_builtins: true,
           sloppy_imports: false,
           features: svec!["bare-node-builtins", "ffi", "worker-options"],
           ..Default::default()
