@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "include_glob": {
+      "args": "test --include=src/**/*.test.ts",
+      "exitCode": 0,
+      "output": "include.out"
+    },
+    "positional_overrides_include": {
+      "args": "test --include=src/**/*.test.ts other/b.test.ts",
+      "exitCode": 0,
+      "output": "positional.out"
+    }
+  }
+}

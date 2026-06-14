@@ -632,6 +632,7 @@ pub struct TestFlags {
   pub clean: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
+  pub include: Vec<String>,
   pub parallel: bool,
   pub permit_no_files: bool,
   pub filter: Option<String>,
@@ -4908,6 +4909,15 @@ or <c>**/__tests__/**</>:
         parallel_arg("test modules")
       )
       .arg(
+        Arg::new("include")
+          .long("include")
+          .help("Glob pattern(s) used to discover test files. Overridden by positional file arguments when those are provided.")
+          .num_args(1..)
+          .action(ArgAction::Append)
+          .require_equals(true)
+          .value_hint(ValueHint::AnyPath),
+      )
+      .arg(
         Arg::new("files")
           .help("List of file names to run")
           .num_args(0..)
@@ -8322,6 +8332,11 @@ fn test_parse(
     _ => Vec::new(),
   };
 
+  let cli_include = match matches.remove_many::<String>("include") {
+    Some(f) => f.collect(),
+    None => Vec::new(),
+  };
+
   let junit_path = matches.remove_one::<String>("junit-path");
 
   let reporter =
@@ -8351,6 +8366,7 @@ fn test_parse(
     clean,
     fail_fast,
     files: FileFlags { include, ignore },
+    include: cli_include,
     filter,
     shuffle,
     permit_no_files: permit_no_files_parse(matches),
@@ -12777,6 +12793,7 @@ mod tests {
           coverage_dir: Some("cov".to_string()),
           coverage_raw_data_only: false,
           clean: true,
+          include: vec![],
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
@@ -12886,6 +12903,7 @@ mod tests {
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
+          include: vec![],
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
@@ -12932,6 +12950,7 @@ mod tests {
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
+          include: vec![],
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
@@ -13072,6 +13091,7 @@ mod tests {
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
+          include: vec![],
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
@@ -13085,6 +13105,47 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn test_include() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "test",
+      "--include=src/**/*.test.ts",
+      "--include=integration/**/*.test.ts"
+    ]);
+    match r.unwrap().subcommand {
+      DenoSubcommand::Test(test_flags) => {
+        assert_eq!(
+          test_flags.include,
+          vec![
+            "src/**/*.test.ts".to_string(),
+            "integration/**/*.test.ts".to_string()
+          ]
+        );
+        // No positional file arguments were provided.
+        assert_eq!(test_flags.files.include, Vec::<String>::new());
+      }
+      _ => unreachable!(),
+    }
+
+    // Positional file arguments are kept separate from `--include` so that the
+    // precedence logic in `resolve_test_options_for_members` can choose between
+    // them.
+    let r = flags_from_vec(svec![
+      "deno",
+      "test",
+      "--include=src/**/*.test.ts",
+      "foo.test.ts"
+    ]);
+    match r.unwrap().subcommand {
+      DenoSubcommand::Test(test_flags) => {
+        assert_eq!(test_flags.include, vec!["src/**/*.test.ts".to_string()]);
+        assert_eq!(test_flags.files.include, vec!["foo.test.ts".to_string()]);
+      }
+      _ => unreachable!(),
+    }
   }
 
   #[test]
@@ -13111,6 +13172,7 @@ mod tests {
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
+          include: vec![],
           watch: Some(Default::default()),
           reporter: Default::default(),
           junit_path: None,
@@ -13149,6 +13211,7 @@ mod tests {
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
+          include: vec![],
           watch: Some(Default::default()),
           reporter: Default::default(),
           junit_path: None,
@@ -13189,6 +13252,7 @@ mod tests {
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
+          include: vec![],
           watch: Some(WatchFlagsWithPaths {
             hmr: false,
             no_clear_screen: true,

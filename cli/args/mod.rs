@@ -1020,8 +1020,19 @@ impl CliOptions {
     &self,
     test_flags: &TestFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, TestOptions)>, AnyError> {
-    let cli_arg_patterns =
-      test_flags.files.as_file_patterns(self.initial_cwd())?;
+    // Positional file arguments take precedence over the `--include` flag,
+    // which in turn takes precedence over the `test.include` config / default
+    // glob. `as_file_patterns` treats an empty include as "no override".
+    let include = if test_flags.files.include.is_empty() {
+      test_flags.include.clone()
+    } else {
+      test_flags.files.include.clone()
+    };
+    let cli_arg_patterns = FileFlags {
+      include,
+      ignore: test_flags.files.ignore.clone(),
+    }
+    .as_file_patterns(self.initial_cwd())?;
     let workspace_dir_configs = self
       .workspace()
       .resolve_test_config_for_members(&cli_arg_patterns)?;
