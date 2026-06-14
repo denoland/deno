@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -29,6 +30,7 @@ use super::definitions::TestModule;
 use super::lsp_custom;
 use super::server::TestServerTests;
 use crate::args::DenoSubcommand;
+use crate::args::Flags;
 use crate::args::flags_from_vec;
 use crate::args::parallelism_count;
 use crate::factory::CliFactory;
@@ -39,6 +41,7 @@ use crate::lsp::logging::lsp_log;
 use crate::lsp::urls::uri_parse_unencoded;
 use crate::lsp::urls::uri_to_url;
 use crate::lsp::urls::url_to_uri;
+use crate::tools::coverage::collect_coverage_reports;
 use crate::tools::test;
 use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestFailure;
@@ -227,12 +230,21 @@ impl TestRun {
     client: &Client,
     maybe_root_uri: Option<&ModuleSpecifier>,
   ) -> Result<(), AnyError> {
-    let args = self.get_args();
+    let coverage_dir = if self.kind == lsp_custom::TestRunKind::Coverage {
+      Some(
+        tempfile::Builder::new()
+          .prefix("deno_lsp_coverage_")
+          .tempdir()?,
+      )
+    } else {
+      None
+    };
+    let args = self.get_args(coverage_dir.as_ref().map(|dir| dir.path()));
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
     let flags = Arc::new(flags_from_vec(
       args.into_iter().map(|s| From::from(s.as_ref())).collect(),
     )?);
-    let factory = CliFactory::from_flags(flags);
+    let factory = CliFactory::from_flags(flags.clone());
     let cli_options = factory.cli_options()?;
     let permission_desc_parser = factory.permission_desc_parser()?;
     let main_graph_container = factory.main_module_graph_container().await?;
@@ -473,12 +485,76 @@ impl TestRun {
       join_result??;
     }
 
-    result??;
+    let test_result = result?;
+
+    if let Some(coverage_dir) = coverage_dir.as_ref() {
+      if let Err(err) = self
+        .send_coverage_notification(client, flags, coverage_dir.path())
+        .await
+      {
+        lsp_log!("Failed to collect test coverage: {err:#}");
+      }
+    }
+
+    test_result?;
 
     Ok(())
   }
 
-  fn get_args(&self) -> Vec<Cow<'_, str>> {
+  async fn send_coverage_notification(
+    &self,
+    client: &Client,
+    flags: Arc<Flags>,
+    coverage_dir: &Path,
+  ) -> Result<(), AnyError> {
+    let coverage_dir = coverage_dir.to_string_lossy().into_owned();
+    let (_, reports) = spawn_blocking(move || {
+      collect_coverage_reports(
+        flags,
+        vec![coverage_dir],
+        vec![],
+        vec![],
+        vec![],
+        None,
+      )
+    })
+    .await??;
+    let files = reports
+      .into_iter()
+      .filter_map(|(report, _)| {
+        let uri = url_to_uri(report.url()).ok()?;
+        let lines = report
+          .found_lines()
+          .iter()
+          .filter_map(|(line, count)| {
+            Some(lsp_custom::TestCoverageLine {
+              line: u32::try_from(*line).ok()?,
+              count: u32::try_from((*count).max(0)).ok()?,
+            })
+          })
+          .collect::<Vec<_>>();
+
+        if lines.is_empty() {
+          None
+        } else {
+          Some(lsp_custom::TestCoverageFile {
+            text_document: lsp::TextDocumentIdentifier { uri },
+            lines,
+          })
+        }
+      })
+      .collect::<Vec<_>>();
+
+    if !files.is_empty() {
+      client.send_test_notification(TestingNotification::Coverage(
+        lsp_custom::TestCoverageNotificationParams { id: self.id, files },
+      ));
+    }
+
+    Ok(())
+  }
+
+  fn get_args(&self, coverage_dir: Option<&Path>) -> Vec<Cow<'_, str>> {
     let mut args = vec![Cow::Borrowed("deno"), Cow::Borrowed("test")];
     args.extend(
       self
@@ -489,6 +565,13 @@ impl TestRun {
         .map(|s| Cow::Borrowed(s.as_str())),
     );
     args.push(Cow::Borrowed("--trace-leaks"));
+    if let Some(coverage_dir) = coverage_dir {
+      args.push(Cow::Owned(format!(
+        "--coverage={}",
+        coverage_dir.to_string_lossy()
+      )));
+      args.push(Cow::Borrowed("--coverage-raw-data-only"));
+    }
     for unstable_feature in self.workspace_settings.unstable.as_deref() {
       let flag = format!("--unstable-{unstable_feature}");
       if !args.contains(&Cow::Borrowed(&flag)) {

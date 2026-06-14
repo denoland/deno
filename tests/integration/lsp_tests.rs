@@ -16155,6 +16155,117 @@ Deno.test("test", async (testContext) => {
 }
 
 #[test(timeout = 300)]
+fn lsp_testing_api_coverage() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  let mod_contents = r#"export const value = "covered";
+export function check(input: string) {
+  if (input === "covered") {
+    return true;
+  }
+  return false;
+}
+"#;
+  let contents = r#"import { check, value } from "./mod.ts";
+
+Deno.test("coverage", () => {
+  if (!check(value)) {
+    throw new Error("unexpected");
+  }
+});
+"#;
+  temp_dir.write("./mod.ts", mod_contents);
+  temp_dir.write("./test.ts", contents);
+  temp_dir.write("./deno.jsonc", "{}");
+  let uri = url_to_uri(&temp_dir.url().join("test.ts").unwrap()).unwrap();
+  let mod_uri = url_to_uri(&temp_dir.url().join("mod.ts").unwrap()).unwrap();
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+    },
+  }));
+
+  client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": contents,
+    }
+  }));
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.text_document.uri.as_str(), uri.as_str());
+  assert_eq!(params.tests.len(), 1);
+
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 2,
+      "kind": "coverage",
+    }),
+  );
+  assert_eq!(res.enqueued.len(), 1);
+
+  loop {
+    let notification =
+      client.read_notification_with_method::<Value>("deno/testRunProgress");
+    let notification = notification.unwrap();
+    let message_type = notification
+      .as_object()
+      .unwrap()
+      .get("message")
+      .unwrap()
+      .as_object()
+      .unwrap()
+      .get("type")
+      .unwrap()
+      .as_str()
+      .unwrap();
+    if message_type == "end" {
+      break;
+    }
+  }
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testCoverage");
+  let notification = notification.unwrap();
+  assert_eq!(notification.get("id"), Some(&json!(2)));
+  let files = notification
+    .get("files")
+    .and_then(|value| value.as_array())
+    .unwrap();
+  let file = files
+    .iter()
+    .find(|file| {
+      file.get("textDocument").and_then(|value| value.get("uri"))
+        == Some(&json!(mod_uri))
+    })
+    .unwrap();
+  let lines = file
+    .get("lines")
+    .and_then(|value| value.as_array())
+    .unwrap();
+  assert!(!lines.is_empty());
+  assert!(lines.iter().any(|line| {
+    line
+      .get("count")
+      .and_then(|value| value.as_u64())
+      .unwrap_or_default()
+      > 0
+  }));
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_testing_api_failure() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
