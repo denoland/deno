@@ -134,6 +134,7 @@ pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
 pub use crate::module_specifier::resolve_import;
 pub use crate::module_specifier::resolve_url;
+pub use crate::modules::CustomModuleEvaluationCb;
 pub use crate::modules::CustomModuleEvaluationKind;
 pub use crate::modules::ExtCodeCache;
 pub use crate::modules::FsModuleLoader;
