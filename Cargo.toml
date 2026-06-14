@@ -355,9 +355,9 @@ dprint-plugin-typescript = "=0.96.1"
 dunce = "1.0.5"
 env_logger = { version = "=0.11.6", default-features = false, features = ["regex"] }
 imara-diff = "=0.2.0"
+lax-css = "=0.2.4"
 lax-sql = "=0.2.1"
 libsui = "0.12.6"
-malva = "=0.15.2"
 markup_fmt = "=0.27.3"
 object = { version = "0.36.3", default-features = false, features = ["read_core", "pe"] }
 open = "5.0.1"
