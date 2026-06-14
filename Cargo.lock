@@ -2382,7 +2382,7 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.200.0"
-source = "git+https://github.com/denoland/deno_doc.git?rev=f50339c4e0f60e34331f9da70dc533f4d3122886#f50339c4e0f60e34331f9da70dc533f4d3122886"
+source = "git+https://github.com/denoland/deno_doc.git?rev=ad415b63bbe4cbb9d3fc4011df2de8e321efda90#ad415b63bbe4cbb9d3fc4011df2de8e321efda90"
 dependencies = [
  "anyhow",
  "cfg-if",
