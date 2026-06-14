@@ -1,0 +1,24 @@
+Check [WILDCARD]main.ts
+Check [WILDCARD]main.ts$5-9.ts
+Check [WILDCARD]main.ts$13-17.ts
+running 0 tests from ./main.ts
+running 1 test from ./main.ts$5-9.ts
+[WILDCARD]/main.ts$5-9.ts ... FAILED ([WILDLINE])
+running 1 test from ./main.ts$13-17.ts
+[WILDCARD]/main.ts$13-17.ts ... ok ([WILDLINE])
+
+ ERRORS 
+
+[WILDCARD]/main.ts$5-9.ts => ./main.ts$5-9.ts:1:6
+error: NotCapable: Requires env access, run again with the --allow-env flag
+    Deno.env.toObject();
+             ^
+[WILDCARD]
+
+ FAILURES 
+
+[WILDCARD]/main.ts$5-9.ts => ./main.ts$5-9.ts:1:6
+
+FAILED | 1 passed | 1 failed ([WILDLINE])
+
+error: Test failed

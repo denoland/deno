@@ -80,7 +80,6 @@ use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
-use http::header::TRANSFER_ENCODING;
 use http::header::USER_AGENT;
 use http_body_util::BodyDataStream;
 use http_body_util::BodyExt;
@@ -708,6 +707,11 @@ pub struct FetchResponse {
   pub url: String,
   pub response_rid: ResourceId,
   pub content_length: Option<u64>,
+  /// Whether the body was transparently decompressed, in which case the
+  /// `content-encoding`/`content-length`/`transfer-encoding` entries in
+  /// `headers` describe the encoded wire body, not the body behind
+  /// `response_rid`.
+  pub body_decoded: bool,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.
   /// In the tuple, the first element is an error message and the second one is
@@ -761,6 +765,7 @@ pub async fn op_fetch_send(
   }
 
   let content_length = hyper::body::Body::size_hint(res.body()).exact();
+  let body_decoded = res.extensions().get::<BodyDecoded>().is_some();
 
   let response_rid = state
     .borrow_mut()
@@ -774,6 +779,7 @@ pub async fn op_fetch_send(
     url,
     response_rid,
     content_length,
+    body_decoded,
     error: None,
   })
 }
@@ -1316,7 +1322,7 @@ where
 }
 
 fn decompress_response(
-  mut resp: http::Response<Incoming>,
+  resp: http::Response<Incoming>,
   skip_decompression: bool,
 ) -> http::Response<ResBody> {
   if skip_decompression {
@@ -1332,7 +1338,7 @@ fn decompress_response(
     .and_then(|v| v.parse::<u64>().ok())
     == Some(0);
   if is_empty {
-    resp.headers_mut().remove(CONTENT_ENCODING);
+    return resp.map(box_raw_body);
   }
 
   match resp
@@ -1365,14 +1371,23 @@ enum DecodeKind {
   Brotli,
 }
 
+/// Marker inserted into the response extensions when the body was
+/// transparently decompressed, so consumers know the `Content-Encoding`,
+/// `Content-Length` and `Transfer-Encoding` headers describe the encoded
+/// wire body rather than the body in the response.
+#[derive(Clone, Copy)]
+pub struct BodyDecoded;
+
 fn decode_response(
   resp: http::Response<Incoming>,
   kind: DecodeKind,
 ) -> http::Response<ResBody> {
+  // Per the fetch spec, handling content codings only decodes the body; the
+  // header list keeps `Content-Encoding` and `Content-Length` as received
+  // (the latter describes the encoded body, not the decoded one). See
+  // https://github.com/denoland/deno/issues/20548.
   let (mut parts, body) = resp.into_parts();
-  parts.headers.remove(CONTENT_ENCODING);
-  parts.headers.remove(CONTENT_LENGTH);
-  parts.headers.remove(TRANSFER_ENCODING);
+  parts.extensions.insert(BodyDecoded);
 
   let stream = BodyDataStream::new(
     body.map_err(|err| std::io::Error::other(err.to_string())),
