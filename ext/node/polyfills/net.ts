@@ -112,6 +112,9 @@ const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const { ADDRCONFIG, lookup: dnsLookup } = core.createLazyLoader("node:dns")()
   .default;
+const { kPermTokenSink } = core.loadExtScript(
+  "ext:deno_node/internal_binding/cares_wrap.ts",
+);
 const {
   codeMap,
   UV_ECANCELED,
@@ -1100,6 +1103,11 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   debug("connect: find host", host);
   debug("connect: dns options", dnsOpts);
   self._host = host;
+  // Only the built-in DNS lookup is trusted to install a NetPermToken on the
+  // handle (so `--allow-net=<host>` keeps authorizing the IPs Deno resolved
+  // for it). A custom `lookup` returns arbitrary IPs, so its result is checked
+  // against the literal IP with no hostname substitution (GHSA-fhjh-jqv7-m238).
+  const usingDefaultLookup = options.lookup === undefined;
   const lookup = options.lookup || dnsLookup;
   const getLookupDnsOpts = () => {
     if (options.lookup === undefined) {
@@ -1133,6 +1141,7 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
         localAddress,
         localPort,
         autoSelectFamilyAttemptTimeout,
+        usingDefaultLookup,
       );
     });
 
@@ -1140,66 +1149,73 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   }
 
   defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
-    lookup(
-      host,
-      getLookupDnsOpts(),
-      function emitLookup(
-        err: ErrnoException | null,
-        ip: string,
-        addressType: number,
-        netPermToken,
+    function emitLookup(
+      err: ErrnoException | null,
+      ip: string,
+      addressType: number,
+      netPermToken,
+    ) {
+      // Store the permission token from the built-in DNS lookup so connect()
+      // checks permissions against the original hostname instead of the
+      // resolved IP. Only honored on the default-lookup path; a custom lookup
+      // never installs a token (its IPs are checked literally).
+      if (
+        usingDefaultLookup && netPermToken && self._handle?.setNetPermToken
       ) {
-        // Store the permission token from DNS lookup so connect() checks
-        // permissions against the original hostname instead of the resolved IP.
-        if (netPermToken && self._handle?.setNetPermToken) {
-          self._handle.setNetPermToken(netPermToken);
-        }
-        self.emit("lookup", err, ip, addressType, host);
+        self._handle.setNetPermToken(netPermToken);
+      }
+      self.emit("lookup", err, ip, addressType, host);
 
-        // It's possible we were destroyed while looking this up.
-        // XXX it would be great if we could cancel the promise returned by
-        // the look up.
-        if (!self.connecting) {
-          return;
-        }
+      // It's possible we were destroyed while looking this up.
+      // XXX it would be great if we could cancel the promise returned by
+      // the look up.
+      if (!self.connecting) {
+        return;
+      }
 
-        if (err) {
-          // net.createConnection() creates a net.Socket object and immediately
-          // calls net.Socket.connect() on it (that's us). There are no event
-          // listeners registered yet so defer the error event to the next tick.
-          nextTick(_connectErrorNT, self, err);
-        } else if (!isIP(ip)) {
-          err = new ERR_INVALID_IP_ADDRESS(ip);
+      if (err) {
+        // net.createConnection() creates a net.Socket object and immediately
+        // calls net.Socket.connect() on it (that's us). There are no event
+        // listeners registered yet so defer the error event to the next tick.
+        nextTick(_connectErrorNT, self, err);
+      } else if (!isIP(ip)) {
+        err = new ERR_INVALID_IP_ADDRESS(ip);
 
-          nextTick(_connectErrorNT, self, err);
-        } else if (addressType !== 4 && addressType !== 6) {
-          err = new ERR_INVALID_ADDRESS_FAMILY(
-            `${addressType}`,
-            options.host!,
-            options.port,
-          );
+        nextTick(_connectErrorNT, self, err);
+      } else if (addressType !== 4 && addressType !== 6) {
+        err = new ERR_INVALID_ADDRESS_FAMILY(
+          `${addressType}`,
+          options.host!,
+          options.port,
+        );
 
-          nextTick(_connectErrorNT, self, err);
-        } else {
-          self._unrefTimer();
+        nextTick(_connectErrorNT, self, err);
+      } else {
+        self._unrefTimer();
 
-          defaultTriggerAsyncIdScope(self[asyncIdSymbol], nextTick, () => {
-            if (self.connecting) {
-              defaultTriggerAsyncIdScope(
-                self[asyncIdSymbol],
-                _internalConnect,
-                self,
-                ip,
-                port,
-                addressType,
-                localAddress,
-                localPort,
-              );
-            }
-          });
-        }
-      },
-    );
+        defaultTriggerAsyncIdScope(self[asyncIdSymbol], nextTick, () => {
+          if (self.connecting) {
+            defaultTriggerAsyncIdScope(
+              self[asyncIdSymbol],
+              _internalConnect,
+              self,
+              ip,
+              port,
+              addressType,
+              localAddress,
+              localPort,
+            );
+          }
+        });
+      }
+    }
+
+    // Tag the trusted callback so the built-in dns.lookup hands it the
+    // NetPermToken; user-supplied lookups never receive it.
+    if (usingDefaultLookup) {
+      emitLookup[kPermTokenSink] = true;
+    }
+    lookup(host, getLookupDnsOpts(), emitLookup);
   });
 }
 
@@ -1214,141 +1230,146 @@ function _lookupAndConnectMultiple(
   localAddress: string,
   localPort: number,
   timeout: number | undefined,
+  usingDefaultLookup: boolean,
 ) {
-  defaultTriggerAsyncIdScope(self[asyncIdSymbol], function emitLookup() {
-    lookup(
-      host,
-      dnsopts,
-      function emitLookup(err, addresses, _, netPermToken) {
-        if (netPermToken && self._handle?.setNetPermToken) {
-          self._handle.setNetPermToken(netPermToken);
-        }
+  defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
+    function emitLookup(err, addresses, _, netPermToken) {
+      // Only the built-in lookup installs a token (see _lookupAndConnect).
+      if (
+        usingDefaultLookup && netPermToken && self._handle?.setNetPermToken
+      ) {
+        self._handle.setNetPermToken(netPermToken);
+      }
+      // It's possible we were destroyed while looking this up.
+      // XXX it would be great if we could cancel the promise returned by
+      // the look up.
+      if (!self.connecting) {
+        return;
+      } else if (err) {
+        self.emit("lookup", err, undefined, undefined, host);
+
+        // net.createConnection() creates a net.Socket object and immediately
+        // calls net.Socket.connect() on it (that's us). There are no event
+        // listeners registered yet so defer the error event to the next tick.
+        nextTick(_connectErrorNT, self, err);
+        return;
+      }
+
+      // Filter addresses by only keeping the one which are either IPv4 or IPV6.
+      // The first valid address determines which group has preference on the
+      // alternate family sorting which happens later.
+      const validAddresses = [[], []];
+      const validIps = [[], []];
+      let destinations;
+      for (let i = 0, l = addresses.length; i < l; i++) {
+        const address = addresses[i];
+        const { address: ip, family: addressType } = address;
+        self.emit("lookup", err, ip, addressType, host);
         // It's possible we were destroyed while looking this up.
-        // XXX it would be great if we could cancel the promise returned by
-        // the look up.
         if (!self.connecting) {
           return;
-        } else if (err) {
-          self.emit("lookup", err, undefined, undefined, host);
+        }
+        if (isIP(ip) && (addressType === 4 || addressType === 6)) {
+          destinations ||= addressType === 6 ? { 6: 0, 4: 1 } : { 4: 0, 6: 1 };
 
-          // net.createConnection() creates a net.Socket object and immediately
-          // calls net.Socket.connect() on it (that's us). There are no event
-          // listeners registered yet so defer the error event to the next tick.
+          const destination = destinations[addressType];
+
+          // Only try an address once
+          if (!ArrayPrototypeIncludes(validIps[destination], ip)) {
+            ArrayPrototypePush(validAddresses[destination], address);
+            ArrayPrototypePush(validIps[destination], ip);
+          }
+        }
+      }
+
+      // When no AAAA or A records are available, fail on the first one
+      if (!validAddresses[0].length && !validAddresses[1].length) {
+        const { address: firstIp, family: firstAddressType } = addresses[0];
+
+        if (!isIP(firstIp)) {
+          err = new ERR_INVALID_IP_ADDRESS(firstIp);
           nextTick(_connectErrorNT, self, err);
-          return;
-        }
-
-        // Filter addresses by only keeping the one which are either IPv4 or IPV6.
-        // The first valid address determines which group has preference on the
-        // alternate family sorting which happens later.
-        const validAddresses = [[], []];
-        const validIps = [[], []];
-        let destinations;
-        for (let i = 0, l = addresses.length; i < l; i++) {
-          const address = addresses[i];
-          const { address: ip, family: addressType } = address;
-          self.emit("lookup", err, ip, addressType, host);
-          // It's possible we were destroyed while looking this up.
-          if (!self.connecting) {
-            return;
-          }
-          if (isIP(ip) && (addressType === 4 || addressType === 6)) {
-            destinations ||= addressType === 6
-              ? { 6: 0, 4: 1 }
-              : { 4: 0, 6: 1 };
-
-            const destination = destinations[addressType];
-
-            // Only try an address once
-            if (!ArrayPrototypeIncludes(validIps[destination], ip)) {
-              ArrayPrototypePush(validAddresses[destination], address);
-              ArrayPrototypePush(validIps[destination], ip);
-            }
-          }
-        }
-
-        // When no AAAA or A records are available, fail on the first one
-        if (!validAddresses[0].length && !validAddresses[1].length) {
-          const { address: firstIp, family: firstAddressType } = addresses[0];
-
-          if (!isIP(firstIp)) {
-            err = new ERR_INVALID_IP_ADDRESS(firstIp);
-            nextTick(_connectErrorNT, self, err);
-          } else if (firstAddressType !== 4 && firstAddressType !== 6) {
-            err = new ERR_INVALID_ADDRESS_FAMILY(
-              firstAddressType,
-              options.host,
-              options.port,
-            );
-            nextTick(_connectErrorNT, self, err);
-          }
-
-          return;
-        }
-
-        // Sort addresses alternating families
-        const toAttempt = [];
-        for (
-          let i = 0,
-            l = MathMax(validAddresses[0].length, validAddresses[1].length);
-          i < l;
-          i++
-        ) {
-          if (ObjectHasOwn(validAddresses[0], i)) {
-            ArrayPrototypePush(toAttempt, validAddresses[0][i]);
-          }
-          if (ObjectHasOwn(validAddresses[1], i)) {
-            ArrayPrototypePush(toAttempt, validAddresses[1][i]);
-          }
-        }
-
-        if (toAttempt.length === 1) {
-          debug(
-            "connect/multiple: only one address found, switching back to single connection",
+        } else if (firstAddressType !== 4 && firstAddressType !== 6) {
+          err = new ERR_INVALID_ADDRESS_FAMILY(
+            firstAddressType,
+            options.host,
+            options.port,
           );
-          const { address: ip, family: addressType } = toAttempt[0];
-
-          self._unrefTimer();
-          defaultTriggerAsyncIdScope(
-            self[asyncIdSymbol],
-            _internalConnect,
-            self,
-            ip,
-            port,
-            addressType,
-            localAddress,
-            localPort,
-          );
-
-          return;
+          nextTick(_connectErrorNT, self, err);
         }
 
-        self.autoSelectFamilyAttemptedAddresses = [];
+        return;
+      }
+
+      // Sort addresses alternating families
+      const toAttempt = [];
+      for (
+        let i = 0,
+          l = MathMax(validAddresses[0].length, validAddresses[1].length);
+        i < l;
+        i++
+      ) {
+        if (ObjectHasOwn(validAddresses[0], i)) {
+          ArrayPrototypePush(toAttempt, validAddresses[0][i]);
+        }
+        if (ObjectHasOwn(validAddresses[1], i)) {
+          ArrayPrototypePush(toAttempt, validAddresses[1][i]);
+        }
+      }
+
+      if (toAttempt.length === 1) {
         debug(
-          "connect/multiple: will try the following addresses",
-          toAttempt,
+          "connect/multiple: only one address found, switching back to single connection",
         );
-
-        const context = {
-          socket: self,
-          addresses: toAttempt,
-          current: 0,
-          port,
-          localPort,
-          flags: 0,
-          timeout,
-          [kTimeout]: null,
-          errors: [],
-        };
+        const { address: ip, family: addressType } = toAttempt[0];
 
         self._unrefTimer();
         defaultTriggerAsyncIdScope(
           self[asyncIdSymbol],
-          _internalConnectMultiple,
-          context,
+          _internalConnect,
+          self,
+          ip,
+          port,
+          addressType,
+          localAddress,
+          localPort,
         );
-      },
-    );
+
+        return;
+      }
+
+      self.autoSelectFamilyAttemptedAddresses = [];
+      debug(
+        "connect/multiple: will try the following addresses",
+        toAttempt,
+      );
+
+      const context = {
+        socket: self,
+        addresses: toAttempt,
+        current: 0,
+        port,
+        localPort,
+        flags: 0,
+        timeout,
+        [kTimeout]: null,
+        errors: [],
+      };
+
+      self._unrefTimer();
+      defaultTriggerAsyncIdScope(
+        self[asyncIdSymbol],
+        _internalConnectMultiple,
+        context,
+      );
+    }
+
+    // Tag the trusted callback so the built-in dns.lookup hands it the
+    // NetPermToken; user-supplied lookups never receive it.
+    if (usingDefaultLookup) {
+      emitLookup[kPermTokenSink] = true;
+    }
+    lookup(host, dnsopts, emitLookup);
   });
 }
 

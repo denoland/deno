@@ -166,6 +166,15 @@ unsafe extern "C" fn connect_cb(req: *mut UvConnect, status: i32) {
 
 // -- TCPWrap struct --
 
+/// Permission token data captured from a `node:dns.lookup()` call, kept so
+/// `connect()` can decide whether to check permissions against the original
+/// hostname. We store the resolved IP set, not just the hostname, so the
+/// hostname is only honored for an address that lookup actually resolved.
+struct NetPermTokenInfo {
+  hostname: String,
+  resolved_ips: Vec<String>,
+}
+
 #[derive(CppgcInherits)]
 #[cppgc_inherits_from(LibUvStreamWrap)]
 #[repr(C)]
@@ -174,8 +183,9 @@ pub struct TCPWrap {
   handle: Cell<Option<OwnedPtr<UvTcp>>>,
   socket_type: Cell<SocketType>,
   /// Permission token from DNS lookup. When set, connect() checks
-  /// permissions against the original hostname instead of the resolved IP.
-  net_perm_hostname: RefCell<Option<String>>,
+  /// permissions against the original hostname, but only for an address
+  /// that is among the token's resolved IPs.
+  net_perm_token: RefCell<Option<NetPermTokenInfo>>,
 }
 
 // SAFETY: TCPWrap is a cppgc-managed object; the GC traces it via the base field.
@@ -233,7 +243,7 @@ impl TCPWrap {
         base,
         handle: Cell::new(Some(tcp)),
         socket_type: Cell::new(socket_type),
-        net_perm_hostname: RefCell::new(None),
+        net_perm_token: RefCell::new(None),
       }
     } else {
       // Error path - create with null handle
@@ -262,7 +272,7 @@ impl TCPWrap {
         ),
         handle: Cell::new(None),
         socket_type: Cell::new(socket_type),
-        net_perm_hostname: RefCell::new(None),
+        net_perm_token: RefCell::new(None),
       }
     }
   }
@@ -297,6 +307,22 @@ impl TCPWrap {
   /// to the TCP stream for encrypted I/O.
   pub fn stream_ptr(&self) -> *mut UvStream {
     self.base.stream_ptr()
+  }
+
+  /// Decide which host to check `--allow-net` against when connecting to
+  /// `address`. If a `node:dns.lookup()` token was installed and `address`
+  /// is one of the IPs that lookup resolved, the original hostname is used
+  /// (so e.g. `--allow-net=example.com` authorizes example.com's real IPs).
+  /// Otherwise the literal `address` is checked. This prevents a token
+  /// obtained for one host from being grafted onto an unrelated IP via a
+  /// custom `lookup` callback, and mirrors `op_net_connect_tcp`.
+  fn net_perm_check_host(&self, address: &str) -> String {
+    match &*self.net_perm_token.borrow() {
+      Some(token) if token.resolved_ips.iter().any(|ip| ip == address) => {
+        token.hostname.clone()
+      }
+      _ => address.to_string(),
+    }
   }
 
   fn bind_inner(
@@ -650,12 +676,17 @@ impl TCPWrap {
     unsafe { uv_compat::uv_tcp_reset(tcp) }
   }
 
-  /// Store the original hostname from DNS lookup for permission checks.
-  /// When set, connect() checks permissions against this hostname
-  /// instead of the resolved IP, matching Node.js netPermToken behavior.
+  /// Store the DNS-lookup permission token for later permission checks.
+  /// We keep both the original hostname and the set of IPs that lookup
+  /// resolved, so connect() can check against the hostname only for an
+  /// address the token actually resolved (see `net_perm_check_host`),
+  /// matching Node.js netPermToken behavior.
   #[nofast]
   fn set_net_perm_token(&self, #[cppgc] token: &deno_net::ops::NetPermToken) {
-    *self.net_perm_hostname.borrow_mut() = Some(token.hostname.clone());
+    *self.net_perm_token.borrow_mut() = Some(NetPermTokenInfo {
+      hostname: token.hostname.clone(),
+      resolved_ips: token.resolved_ips.clone(),
+    });
   }
 
   /// Connect to an address. Takes (req, address, port) where req is a
@@ -670,12 +701,9 @@ impl TCPWrap {
     scope: &mut v8::PinScope,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
     // If a hostname was stored from DNS lookup, check permissions against
-    // the original hostname instead of the resolved IP address.
-    let check_host = self
-      .net_perm_hostname
-      .borrow()
-      .clone()
-      .unwrap_or_else(|| address.to_string());
+    // the original hostname instead of the resolved IP address, but only
+    // when `address` is one of the token's resolved IPs.
+    let check_host = self.net_perm_check_host(address);
     state.borrow_mut::<PermissionsContainer>().check_net(
       &(check_host.as_str(), Some(port as u16)),
       "node:net.connect()",
@@ -743,11 +771,7 @@ impl TCPWrap {
     #[smi] port: i32,
     scope: &mut v8::PinScope,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
-    let check_host = self
-      .net_perm_hostname
-      .borrow()
-      .clone()
-      .unwrap_or_else(|| address.to_string());
+    let check_host = self.net_perm_check_host(address);
     state.borrow_mut::<PermissionsContainer>().check_net(
       &(check_host.as_str(), Some(port as u16)),
       "node:net.connect()",
