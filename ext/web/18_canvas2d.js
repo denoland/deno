@@ -3,12 +3,11 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const {
-  OffscreenCanvasRenderingContext2D,
-  op_canvas2d_init,
   op_fontdb_add,
   op_fontdb_load,
   op_fontdb_remove,
   op_parse_css_font_query,
+  OffscreenCanvasRenderingContext2D,
   TextMetrics,
 } = core.ops;
 
@@ -67,8 +66,6 @@ const { DOMException } = core.loadExtScript(
 const { markNotSerializable } = core.loadExtScript(
   "ext:deno_web/13_message_port.js",
 );
-
-op_canvas2d_init();
 
 const CSS_FONT_STYLE_VALUES = new SafeSet(["normal", "italic", "oblique"]);
 const CSS_FONT_STRETCH_VALUES = new SafeSet([
@@ -1197,6 +1194,19 @@ ObjectDefineProperty(
             "font",
             "textAlign",
             "textBaseline",
+            "globalCompositeOperation",
+            "filter",
+            "imageSmoothingEnabled",
+            "imageSmoothingQuality",
+            "lineWidth",
+            "lineCap",
+            "lineJoin",
+            "miterLimit",
+            "lineDashOffset",
+            "shadowBlur",
+            "shadowColor",
+            "shadowOffsetX",
+            "shadowOffsetY",
           ],
         }),
         inspectOptions,

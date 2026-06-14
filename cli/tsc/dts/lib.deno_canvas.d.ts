@@ -194,9 +194,12 @@ declare var ImageBitmap: {
 };
 
 /** @category Canvas */
-type OffscreenRenderingContextId = "bitmaprenderer" | "webgpu";
+type OffscreenRenderingContextId = "2d" | "bitmaprenderer" | "webgpu";
 /** @category Canvas */
-type OffscreenRenderingContext = ImageBitmapRenderingContext | GPUCanvasContext;
+type OffscreenRenderingContext =
+  | OffscreenCanvasRenderingContext2D
+  | ImageBitmapRenderingContext
+  | GPUCanvasContext;
 
 /** @category Canvas */
 interface ImageEncodeOptions {

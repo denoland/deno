@@ -109,20 +109,51 @@ pub enum TextBaseline {
   Bottom,
 }
 
-// TODO(petamoriken): `DrawingBackend` is a temporary abstraction until vello_api
-// stabilizes. The intended final form is:
+#[derive(Clone, Copy, Default)]
+pub enum ImageSmoothingQuality {
+  #[default]
+  Low,
+  Medium,
+  High,
+}
+
+#[derive(Clone, Copy, Default)]
+pub enum LineCap {
+  #[default]
+  Butt,
+  Round,
+  Square,
+}
+
+#[derive(Clone, Copy, Default)]
+pub enum LineJoin {
+  Round,
+  Bevel,
+  #[default]
+  Miter,
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum Canvas2DError {
+  #[class(type)]
+  #[error("Illegal constructor")]
+  IllegalConstructor,
+  #[class("DOMExceptionNotSupportedError")]
+  #[error("OffscreenCanvasRenderingContext2D.{0}() is not yet implemented")]
+  NotSupported(&'static str),
+}
+
+// `DrawingBackend` abstracts over two unrelated vello renderer families that do
+// not share a scene type today:
 //
-//   vello_api::Scene ──► vello::Renderer       (Gpu / Hybrid)
-//                   └──► vello_cpu::RenderContext (Cpu)
+//   vello::Scene             -> vello::Renderer  (Gpu / Hybrid; GPU compute via wgpu)
+//   vello_cpu::RenderContext -> vello_cpu        (Cpu; pure software, no wgpu)
 //
-// Once vello and vello_cpu both expose a `vello_api::Scene` interface,
-// `DrawingBackend` can be removed and `OffscreenCanvasRenderingContext2D` can hold a
-// single `vello_api::Scene` directly.
-//
-// Blockers:
-// - vello_cpu `api` feature (bridges vello_api::Scene) not yet available
-// - vello does not yet accept vello_api::Scene as input
-// - vello_api 0.0.7 does not support glyph_run (text rendering)
+// The sparse-strips renderers (vello_cpu / vello_hybrid) share a common
+// experimental `vello_api::Scene` interface, but it lacks glyph/text rendering,
+// and the GPU-compute `vello` crate does not use it at all. Once `vello_api`
+// stabilizes with text support, the Cpu and Hybrid backends could be unified
+// behind a single `vello_api::Scene`; revisit `DrawingBackend` then.
 pub enum DrawingBackend {
   // Shared by Gpu and Hybrid
   Vello(vello::Scene),
@@ -175,6 +206,22 @@ pub struct OffscreenCanvasRenderingContext2D {
   pub text_baseline: Cell<TextBaseline>,
   pub lang: RefCell<String>,
 
+  // TODO(petamoriken): stored-only state. These are tracked to satisfy the API
+  // surface but are not yet applied during rendering.
+  pub global_composite_operation: RefCell<String>,
+  pub filter: RefCell<String>,
+  pub image_smoothing_enabled: Cell<bool>,
+  pub image_smoothing_quality: Cell<ImageSmoothingQuality>,
+  pub line_width: Cell<f64>,
+  pub line_cap: Cell<LineCap>,
+  pub line_join: Cell<LineJoin>,
+  pub miter_limit: Cell<f64>,
+  pub line_dash_offset: Cell<f64>,
+  pub shadow_blur: Cell<f64>,
+  pub shadow_color: RefCell<String>,
+  pub shadow_offset_x: Cell<f64>,
+  pub shadow_offset_y: Cell<f64>,
+
   pub settings: Canvas2DSettings,
 }
 
@@ -191,8 +238,8 @@ unsafe impl GarbageCollected for OffscreenCanvasRenderingContext2D {
 impl OffscreenCanvasRenderingContext2D {
   #[constructor]
   #[cppgc]
-  fn new() -> Result<OffscreenCanvasRenderingContext2D, JsErrorBox> {
-    Err(JsErrorBox::type_error("Illegal constructor"))
+  fn new() -> Result<OffscreenCanvasRenderingContext2D, Canvas2DError> {
+    Err(Canvas2DError::IllegalConstructor)
   }
 
   #[getter]
@@ -572,6 +619,407 @@ impl OffscreenCanvasRenderingContext2D {
       self.text_align.get(),
       &self.font_system,
     )
+  }
+
+  // TODO(petamoriken): the following accessors only store their values; they are
+  // not yet honored during rendering.
+  #[getter]
+  #[string]
+  fn global_composite_operation(&self) -> String {
+    self.global_composite_operation.borrow().clone()
+  }
+
+  #[setter]
+  fn global_composite_operation(&self, #[webidl] value: String) {
+    if matches!(
+      value.as_str(),
+      "color"
+        | "color-burn"
+        | "color-dodge"
+        | "copy"
+        | "darken"
+        | "destination-atop"
+        | "destination-in"
+        | "destination-out"
+        | "destination-over"
+        | "difference"
+        | "exclusion"
+        | "hard-light"
+        | "hue"
+        | "lighten"
+        | "lighter"
+        | "luminosity"
+        | "multiply"
+        | "overlay"
+        | "saturation"
+        | "screen"
+        | "soft-light"
+        | "source-atop"
+        | "source-in"
+        | "source-out"
+        | "source-over"
+        | "xor"
+    ) {
+      *self.global_composite_operation.borrow_mut() = value;
+    }
+  }
+
+  #[getter]
+  #[string]
+  fn filter(&self) -> String {
+    self.filter.borrow().clone()
+  }
+
+  #[setter]
+  fn filter(&self, #[webidl] value: String) {
+    *self.filter.borrow_mut() = value;
+  }
+
+  #[getter]
+  fn image_smoothing_enabled(&self) -> bool {
+    self.image_smoothing_enabled.get()
+  }
+
+  #[setter]
+  fn image_smoothing_enabled(&self, #[webidl] value: bool) {
+    self.image_smoothing_enabled.set(value);
+  }
+
+  #[getter]
+  #[string]
+  fn image_smoothing_quality(&self) -> &'static str {
+    match self.image_smoothing_quality.get() {
+      ImageSmoothingQuality::Low => "low",
+      ImageSmoothingQuality::Medium => "medium",
+      ImageSmoothingQuality::High => "high",
+    }
+  }
+
+  #[setter]
+  fn image_smoothing_quality(&self, #[webidl] value: String) {
+    self.image_smoothing_quality.set(match value.as_str() {
+      "low" => ImageSmoothingQuality::Low,
+      "medium" => ImageSmoothingQuality::Medium,
+      "high" => ImageSmoothingQuality::High,
+      _ => return,
+    });
+  }
+
+  #[getter]
+  fn line_width(&self) -> f64 {
+    self.line_width.get()
+  }
+
+  #[setter]
+  fn line_width(&self, #[webidl] value: f64) {
+    if value.is_finite() && value > 0.0 {
+      self.line_width.set(value);
+    }
+  }
+
+  #[getter]
+  #[string]
+  fn line_cap(&self) -> &'static str {
+    match self.line_cap.get() {
+      LineCap::Butt => "butt",
+      LineCap::Round => "round",
+      LineCap::Square => "square",
+    }
+  }
+
+  #[setter]
+  fn line_cap(&self, #[webidl] value: String) {
+    self.line_cap.set(match value.as_str() {
+      "butt" => LineCap::Butt,
+      "round" => LineCap::Round,
+      "square" => LineCap::Square,
+      _ => return,
+    });
+  }
+
+  #[getter]
+  #[string]
+  fn line_join(&self) -> &'static str {
+    match self.line_join.get() {
+      LineJoin::Round => "round",
+      LineJoin::Bevel => "bevel",
+      LineJoin::Miter => "miter",
+    }
+  }
+
+  #[setter]
+  fn line_join(&self, #[webidl] value: String) {
+    self.line_join.set(match value.as_str() {
+      "round" => LineJoin::Round,
+      "bevel" => LineJoin::Bevel,
+      "miter" => LineJoin::Miter,
+      _ => return,
+    });
+  }
+
+  #[getter]
+  fn miter_limit(&self) -> f64 {
+    self.miter_limit.get()
+  }
+
+  #[setter]
+  fn miter_limit(&self, #[webidl] value: f64) {
+    if value.is_finite() && value > 0.0 {
+      self.miter_limit.set(value);
+    }
+  }
+
+  #[getter]
+  fn line_dash_offset(&self) -> f64 {
+    self.line_dash_offset.get()
+  }
+
+  #[setter]
+  fn line_dash_offset(&self, #[webidl] value: f64) {
+    if value.is_finite() {
+      self.line_dash_offset.set(value);
+    }
+  }
+
+  #[getter]
+  fn shadow_blur(&self) -> f64 {
+    self.shadow_blur.get()
+  }
+
+  #[setter]
+  fn shadow_blur(&self, #[webidl] value: f64) {
+    if value.is_finite() && value >= 0.0 {
+      self.shadow_blur.set(value);
+    }
+  }
+
+  #[getter]
+  #[string]
+  fn shadow_color(&self) -> String {
+    self.shadow_color.borrow().clone()
+  }
+
+  #[setter]
+  fn shadow_color(&self, #[webidl] value: String) {
+    if parse_css_color(&value).is_ok() {
+      *self.shadow_color.borrow_mut() = value;
+    }
+  }
+
+  #[getter]
+  fn shadow_offset_x(&self) -> f64 {
+    self.shadow_offset_x.get()
+  }
+
+  #[setter]
+  fn shadow_offset_x(&self, #[webidl] value: f64) {
+    if value.is_finite() {
+      self.shadow_offset_x.set(value);
+    }
+  }
+
+  #[getter]
+  fn shadow_offset_y(&self) -> f64 {
+    self.shadow_offset_y.get()
+  }
+
+  #[setter]
+  fn shadow_offset_y(&self, #[webidl] value: f64) {
+    if value.is_finite() {
+      self.shadow_offset_y.set(value);
+    }
+  }
+
+  // TODO(petamoriken): the following methods are not yet implemented and throw a
+  // NotSupportedError. Replace each stub body with a real implementation.
+  #[fast]
+  fn save(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("save"))
+  }
+
+  #[fast]
+  fn restore(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("restore"))
+  }
+
+  #[fast]
+  fn reset(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("reset"))
+  }
+
+  #[fast]
+  fn is_context_lost(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("isContextLost"))
+  }
+
+  #[fast]
+  fn stroke_rect(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("strokeRect"))
+  }
+
+  #[fast]
+  fn begin_path(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("beginPath"))
+  }
+
+  #[fast]
+  fn close_path(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("closePath"))
+  }
+
+  #[fast]
+  fn move_to(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("moveTo"))
+  }
+
+  #[fast]
+  fn line_to(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("lineTo"))
+  }
+
+  #[fast]
+  fn bezier_curve_to(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("bezierCurveTo"))
+  }
+
+  #[fast]
+  fn quadratic_curve_to(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("quadraticCurveTo"))
+  }
+
+  #[fast]
+  fn arc(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("arc"))
+  }
+
+  #[fast]
+  fn arc_to(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("arcTo"))
+  }
+
+  #[fast]
+  fn ellipse(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("ellipse"))
+  }
+
+  #[fast]
+  fn rect(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("rect"))
+  }
+
+  #[fast]
+  fn round_rect(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("roundRect"))
+  }
+
+  #[fast]
+  fn fill(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("fill"))
+  }
+
+  #[fast]
+  fn stroke(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("stroke"))
+  }
+
+  #[fast]
+  fn clip(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("clip"))
+  }
+
+  #[fast]
+  fn is_point_in_path(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("isPointInPath"))
+  }
+
+  #[fast]
+  fn is_point_in_stroke(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("isPointInStroke"))
+  }
+
+  #[fast]
+  fn get_transform(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("getTransform"))
+  }
+
+  #[fast]
+  fn set_transform(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("setTransform"))
+  }
+
+  #[fast]
+  fn reset_transform(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("resetTransform"))
+  }
+
+  #[fast]
+  fn transform(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("transform"))
+  }
+
+  #[fast]
+  fn scale(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("scale"))
+  }
+
+  #[fast]
+  fn rotate(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("rotate"))
+  }
+
+  #[fast]
+  fn translate(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("translate"))
+  }
+
+  #[fast]
+  fn create_linear_gradient(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("createLinearGradient"))
+  }
+
+  #[fast]
+  fn create_radial_gradient(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("createRadialGradient"))
+  }
+
+  #[fast]
+  fn create_conic_gradient(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("createConicGradient"))
+  }
+
+  #[fast]
+  fn create_pattern(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("createPattern"))
+  }
+
+  #[fast]
+  fn draw_image(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("drawImage"))
+  }
+
+  #[fast]
+  fn create_image_data(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("createImageData"))
+  }
+
+  #[fast]
+  fn get_image_data(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("getImageData"))
+  }
+
+  #[fast]
+  fn put_image_data(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("putImageData"))
+  }
+
+  #[fast]
+  fn get_line_dash(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("getLineDash"))
+  }
+
+  #[fast]
+  fn set_line_dash(&self) -> Result<(), Canvas2DError> {
+    Err(Canvas2DError::NotSupported("setLineDash"))
   }
 }
 
@@ -1109,6 +1557,19 @@ pub fn create_context<'s>(
     lang: RefCell::new(String::from("inherit")),
     text_align: Cell::new(TextAlign::default()),
     text_baseline: Cell::new(TextBaseline::default()),
+    global_composite_operation: RefCell::new(String::from("source-over")),
+    filter: RefCell::new(String::from("none")),
+    image_smoothing_enabled: Cell::new(true),
+    image_smoothing_quality: Cell::new(ImageSmoothingQuality::default()),
+    line_width: Cell::new(1.0),
+    line_cap: Cell::new(LineCap::default()),
+    line_join: Cell::new(LineJoin::default()),
+    miter_limit: Cell::new(10.0),
+    line_dash_offset: Cell::new(0.0),
+    shadow_blur: Cell::new(0.0),
+    shadow_color: RefCell::new(String::from("rgba(0, 0, 0, 0)")),
+    shadow_offset_x: Cell::new(0.0),
+    shadow_offset_y: Cell::new(0.0),
     settings,
   };
 
