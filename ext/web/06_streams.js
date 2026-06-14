@@ -1133,14 +1133,35 @@ const _isUnref = Symbol("isUnref");
  * compatible with fast-path resource-backed streams.
  *
  * @param {number} rid The resource ID to read from.
- * @param constructor A class that extends ReadableStream.
+ * @param optionsOrConstructor Options for resource closure, or a class that extends ReadableStream.
  * @returns {ReadableStream<Uint8Array>}
  */
-function readableStreamForRidUnrefable(rid, constructor = ReadableStream) {
+function readableStreamForRidUnrefable(
+  rid,
+  optionsOrConstructor = ReadableStream,
+) {
+  let autoClose = true;
+  let closeOnCancel = true;
+  let constructor = ReadableStream;
+  if (typeof optionsOrConstructor === "function") {
+    constructor = optionsOrConstructor;
+  } else {
+    autoClose = optionsOrConstructor.autoClose ?? true;
+    closeOnCancel = optionsOrConstructor.closeOnCancel ?? autoClose;
+    constructor = optionsOrConstructor.readableStreamConstructor ??
+      ReadableStream;
+  }
+  if (typeof optionsOrConstructor === "boolean") {
+    autoClose = optionsOrConstructor;
+    closeOnCancel = optionsOrConstructor;
+  }
   const stream = new constructor(_brand);
   stream[promiseSymbol] = undefined;
   stream[_isUnref] = false;
-  stream[_resourceBackingUnrefable] = { rid, autoClose: true };
+  stream[_resourceBackingUnrefable] = { rid, autoClose };
+  const tryClose = () => {
+    if (autoClose) core.tryClose(rid);
+  };
   const underlyingSource = {
     type: "bytes",
     async pull(controller) {
@@ -1152,7 +1173,7 @@ function readableStreamForRidUnrefable(rid, constructor = ReadableStream) {
         const bytesRead = await promise;
         stream[promiseSymbol] = undefined;
         if (bytesRead === 0) {
-          core.tryClose(rid);
+          tryClose();
           controller.close();
           controller.byobRequest.respond(0);
         } else {
@@ -1160,11 +1181,14 @@ function readableStreamForRidUnrefable(rid, constructor = ReadableStream) {
         }
       } catch (e) {
         controller.error(annotateResourceStreamError(e));
-        core.tryClose(rid);
+        tryClose();
       }
     },
     cancel() {
-      core.tryClose(rid);
+      if (stream[promiseSymbol] !== undefined) {
+        core.unrefOpPromise(stream[promiseSymbol]);
+      }
+      if (closeOnCancel) core.tryClose(rid);
     },
     autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
   };
