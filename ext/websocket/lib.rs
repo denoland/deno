@@ -604,10 +604,20 @@ impl ServerWebSocket {
     }
   }
 
-  /// Initiate a server-side graceful shutdown of this websocket. Sends a
-  /// `Close(1001 Going Away)` frame in the background and then cancels the
-  /// pending [`op_ws_next_event`] read so the JS event loop observes the
-  /// close and drops the resource.
+  /// Initiate a server-side graceful shutdown of this websocket. Cancels the
+  /// pending [`op_ws_next_event`] read immediately so the JS event loop
+  /// observes the close and drops the resource, and spawns a best-effort
+  /// background task that writes a `Close(1001 Going Away)` frame on the
+  /// write half. The spawned task keeps its own `Rc<Self>`, so the write
+  /// half stays alive long enough to flush on cooperative peers.
+  ///
+  /// The read is cancelled *concurrently* with the write rather than after
+  /// it: if the peer stops draining and our TCP send buffer fills,
+  /// `write_frame` blocks indefinitely. Awaiting it before cancelling would
+  /// hang `Deno.serve` shutdown (the resource never drops → the
+  /// `HttpServerState` poll-complete future never fires). Cancelling first
+  /// lets the resource drain even on a stuck peer; the close frame still
+  /// goes out when (and if) the write unblocks.
   ///
   /// If the socket is already in the middle of the close handshake (because
   /// JS called `socket.close()` via [`op_ws_close`]) we skip the duplicate
@@ -617,11 +627,10 @@ impl ServerWebSocket {
   /// Safe to call multiple times.
   pub fn server_shutdown(self: &Rc<Self>) {
     let already_closing = self.closed.replace(true);
-    let cancel = self.read_cancel.clone();
     if already_closing {
       // JS already sent its own Close frame (or another shutdown is already
       // in flight). Just unblock the pending read so the resource can drop.
-      cancel.cancel();
+      self.read_cancel.cancel();
       return;
     }
     let ws = self.clone();
@@ -630,8 +639,8 @@ impl ServerWebSocket {
       const GOING_AWAY: &[u8] = b"Server shutting down";
       let frame = Frame::close(1001, GOING_AWAY);
       let _ = ws.write_frame(lock, frame).await;
-      cancel.cancel();
     });
+    self.read_cancel.cancel();
   }
 
   /// Forcefully tear down this websocket without waiting on the write half.
