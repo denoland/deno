@@ -11,6 +11,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::serde_json;
 use deno_path_util::url_to_file_path;
 use deno_semver::StackString;
 use deno_semver::Version;
@@ -28,7 +29,9 @@ use jsonc_parser::json;
 use crate::args::AddFlags;
 use crate::args::CliOptions;
 use crate::args::Flags;
+use crate::args::LinkFlags;
 use crate::args::RemoveFlags;
+use crate::args::UnlinkFlags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
@@ -544,7 +547,11 @@ pub async fn add(
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
+  let initial_cwd = cli_factory.cli_options()?.initial_cwd().to_path_buf();
   for entry_text in add_flags.packages.iter() {
+    if let Some(hint) = link_hint_for_spec(&initial_cwd, entry_text) {
+      bail!("{hint}");
+    }
     let req = AddRmPackageReq::parse(
       entry_text,
       add_flags.default_registry.map(|r| r.into()),
@@ -1179,6 +1186,324 @@ async fn npm_install_after_modification(
   }
 
   Ok(cli_factory)
+}
+
+/// If the user-supplied `spec` looks like a path to a local JSR package
+/// directory (relative or absolute, currently exists, and contains a
+/// `deno.json`(c)), return a message suggesting `deno link` instead.
+fn link_hint_for_spec(cwd: &Path, spec: &str) -> Option<String> {
+  // Skip anything with a registry prefix.
+  if spec.contains(':') {
+    return None;
+  }
+  // Only treat path-shaped inputs as candidates: `.` / `..` / contains a
+  // separator. This avoids false positives on bare package names like `foo`.
+  let looks_pathy = spec == "."
+    || spec == ".."
+    || spec.starts_with("./")
+    || spec.starts_with("../")
+    || spec.starts_with(".\\")
+    || spec.starts_with("..\\")
+    || spec.contains('/')
+    || spec.contains('\\')
+    || Path::new(spec).is_absolute();
+  if !looks_pathy {
+    return None;
+  }
+  let abs = resolve_link_path(cwd, spec);
+  if !abs.is_dir() {
+    return None;
+  }
+  let has_config =
+    abs.join("deno.json").exists() || abs.join("deno.jsonc").exists();
+  if !has_config {
+    return None;
+  }
+  Some(format!(
+    "'{}' looks like a local package directory. Did you mean `{}`?",
+    spec,
+    crate::colors::yellow(format!("deno link {spec}"))
+  ))
+}
+
+/// Convert a `Path` into the string form we store in the `"links"` array.
+///
+/// Always uses forward slashes (the `"links"` field is treated as a portable
+/// relative path), and strips a leading `./`.
+fn path_to_link_string(path: &Path) -> String {
+  let s = path
+    .to_string_lossy()
+    .replace(std::path::MAIN_SEPARATOR, "/");
+  s.strip_prefix("./").map(|s| s.to_string()).unwrap_or(s)
+}
+
+/// Read the `"name"` field from a deno.json(c) in the given directory.
+fn read_link_target_name(dir: &Path) -> Option<String> {
+  for filename in ["deno.json", "deno.jsonc"] {
+    let path = dir.join(filename);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+      continue;
+    };
+    let parsed = jsonc_parser::parse_to_serde_value::<serde_json::Value>(
+      &text,
+      &Default::default(),
+    );
+    if let Ok(v) = parsed
+      && let Some(name) = v.get("name").and_then(|n| n.as_str())
+    {
+      return Some(name.to_string());
+    }
+  }
+  None
+}
+
+/// Resolve a user-supplied path to an absolute, normalized form, relative to
+/// `cwd` when not already absolute.
+fn resolve_link_path(cwd: &Path, raw: &str) -> PathBuf {
+  let candidate = Path::new(raw);
+  let abs = if candidate.is_absolute() {
+    candidate.to_path_buf()
+  } else {
+    cwd.join(candidate)
+  };
+  deno_path_util::normalize_path(std::borrow::Cow::Owned(abs)).into_owned()
+}
+
+fn load_deno_config_for_link(
+  flags: &Arc<Flags>,
+) -> Result<(CliFactory, ConfigUpdater), AnyError> {
+  // Always force creation of deno.json if missing; the `"links"` field lives
+  // there. We achieve this by claiming jsr specifiers are present, which makes
+  // `load_configs` materialise a deno.json when one isn't found.
+  let (cli_factory, _npm_config, deno_config) =
+    load_configs(flags, || true, false)?;
+  let deno_config = deno_config.ok_or_else(|| {
+    deno_core::anyhow::anyhow!("Could not load or create deno.json")
+  })?;
+  Ok((cli_factory, deno_config))
+}
+
+pub async fn link(
+  flags: Arc<Flags>,
+  link_flags: LinkFlags,
+) -> Result<(), AnyError> {
+  let (cli_factory, mut deno_config) = load_deno_config_for_link(&flags)?;
+  let cwd = cli_factory.cli_options()?.initial_cwd().to_path_buf();
+  let config_dir = deno_config
+    .path
+    .parent()
+    .ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "Could not determine directory of '{}'",
+        deno_config.path.display()
+      )
+    })?
+    .to_path_buf();
+
+  // Validate every path and compute the relative form we'll store, along with
+  // the linked package's JSR name (needed to make it importable by name).
+  let mut resolved = Vec::with_capacity(link_flags.paths.len());
+  for raw_path in &link_flags.paths {
+    let abs = resolve_link_path(&cwd, raw_path);
+    if !abs.exists() {
+      bail!("Cannot link '{}': directory does not exist", raw_path);
+    }
+    if !abs.is_dir() {
+      bail!("Cannot link '{}': not a directory", raw_path);
+    }
+    let has_config =
+      abs.join("deno.json").exists() || abs.join("deno.jsonc").exists();
+    if !has_config {
+      bail!(
+        "Cannot link '{}': no deno.json found in directory. \
+         A linked package must contain a deno.json with a \"name\" field.",
+        raw_path
+      );
+    }
+    let Some(name) = read_link_target_name(&abs) else {
+      bail!(
+        "Cannot link '{}': its deno.json has no \"name\" field. \
+         A linked package must declare a JSR-style \"name\" to be importable.",
+        raw_path
+      );
+    };
+    let rel = pathdiff::diff_paths(&abs, &config_dir).unwrap_or(abs);
+    resolved.push((raw_path.clone(), path_to_link_string(&rel), name));
+  }
+
+  // The "links" array patches a jsr: dependency to the local copy, but the
+  // package still has to be a dependency to be importable by name. Add an
+  // `imports` entry mapping the package name to its jsr: specifier so that
+  // `deno link ./pkg` makes the package usable without further edits.
+  let imports = deno_config.root_object.object_value_or_set("imports");
+  let links_arr = deno_config.root_object.array_value_or_set("links");
+  let existing: Vec<String> = links_arr
+    .elements()
+    .iter()
+    .filter_map(|el| el.as_string_lit())
+    .filter_map(|s| s.decoded_value().ok())
+    .collect();
+
+  let mut changed = false;
+  for (display, rel_str, name) in &resolved {
+    if imports.get(name).is_none() {
+      let index = imports.properties().len();
+      imports.insert(index, name, json!(format!("jsr:{name}")));
+      changed = true;
+    }
+    if existing.contains(rel_str) {
+      log::info!("{} is already linked", crate::colors::yellow(display));
+      continue;
+    }
+    links_arr.append(jsonc_parser::cst::CstInputValue::String(rel_str.clone()));
+    log::info!(
+      "Link {} {}",
+      crate::colors::green(display),
+      crate::colors::gray(format!("({})", rel_str))
+    );
+    changed = true;
+  }
+
+  if changed {
+    deno_config.modified = true;
+    deno_config.commit()?;
+    npm_install_after_modification(
+      flags,
+      None,
+      CacheTopLevelDepsOptions {
+        lockfile_only: link_flags.lockfile_only,
+      },
+    )
+    .await?;
+  }
+
+  Ok(())
+}
+
+pub async fn unlink(
+  flags: Arc<Flags>,
+  unlink_flags: UnlinkFlags,
+) -> Result<(), AnyError> {
+  let (cli_factory, mut deno_config) = load_deno_config_for_link(&flags)?;
+  // Resolve path arguments relative to the cwd, matching how `link()` resolves
+  // them, so `deno unlink ../pkg` finds an entry created by `deno link ../pkg`
+  // from the same directory regardless of where the deno.json lives.
+  let cwd = cli_factory.cli_options()?.initial_cwd().to_path_buf();
+  let config_dir = deno_config
+    .path
+    .parent()
+    .ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "Could not determine directory of '{}'",
+        deno_config.path.display()
+      )
+    })?
+    .to_path_buf();
+
+  let Some(links_arr) = deno_config.root_object.array_value("links") else {
+    bail!(
+      "No \"links\" entries found in '{}'",
+      deno_config.display_path()
+    );
+  };
+
+  let mut removed = Vec::new();
+  // JSR names of the packages we unlink, so we can also drop the matching
+  // `imports` entry that `deno link` added.
+  let mut unlinked_names = Vec::new();
+  for arg in &unlink_flags.names_or_paths {
+    let mut matched = false;
+    // Snapshot of current elements (each iteration may mutate the array).
+    let elements = links_arr.elements();
+    for element in elements {
+      let Some(lit) = element.as_string_lit() else {
+        continue;
+      };
+      let Ok(value) = lit.decoded_value() else {
+        continue;
+      };
+
+      let entry_dir = config_dir.join(&value);
+      let entry_dir =
+        deno_path_util::normalize_path(std::borrow::Cow::Owned(entry_dir))
+          .into_owned();
+      let target_name = read_link_target_name(&entry_dir);
+
+      // Match by literal entry, by resolved path, or by JSR name.
+      let is_match = value == *arg
+        || entry_dir == resolve_link_path(&cwd, arg)
+        || target_name.as_deref() == Some(arg.as_str());
+
+      if is_match {
+        element.remove();
+        removed.push(arg.clone());
+        // Prefer the name read from the target; fall back to the arg when the
+        // user unlinked by name and the target dir is already gone.
+        if let Some(name) = target_name {
+          unlinked_names.push(name);
+        } else if arg.starts_with('@') {
+          unlinked_names.push(arg.clone());
+        }
+        matched = true;
+        break;
+      }
+    }
+    if !matched {
+      log::warn!("No linked package matched '{}'", arg);
+    }
+  }
+
+  if removed.is_empty() {
+    log::info!("No packages were unlinked");
+    return Ok(());
+  }
+
+  // If the "links" array is now empty, remove the property entirely.
+  if links_arr.elements().is_empty()
+    && let Some(prop) = deno_config.root_object.get("links")
+  {
+    prop.remove();
+  }
+
+  // Drop the `imports` entries that `deno link` added, but only when they still
+  // point at the `jsr:<name>` specifier we created, so user-customized mappings
+  // are left untouched.
+  if let Some(imports) = deno_config.root_object.object_value("imports") {
+    for name in &unlinked_names {
+      let Some(prop) = imports.get(name) else {
+        continue;
+      };
+      let is_jsr_default = prop
+        .value()
+        .and_then(|v| v.as_string_lit())
+        .and_then(|s| s.decoded_value().ok())
+        .map(|v| v == format!("jsr:{name}"))
+        .unwrap_or(false);
+      if is_jsr_default {
+        // Only drop our own entry; leave the `imports` object in place (even if
+        // it becomes empty) so unlink cleanly reverses what link added.
+        prop.remove();
+      }
+    }
+  }
+
+  for name in &removed {
+    log::info!("Unlink {}", crate::colors::green(name));
+  }
+
+  deno_config.modified = true;
+  deno_config.commit()?;
+
+  npm_install_after_modification(
+    flags,
+    None,
+    CacheTopLevelDepsOptions {
+      lockfile_only: unlink_flags.lockfile_only,
+    },
+  )
+  .await?;
+
+  Ok(())
 }
 
 #[cfg(test)]

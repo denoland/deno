@@ -151,6 +151,18 @@ pub struct RemoveFlags {
   pub package_json: bool,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LinkFlags {
+  pub paths: Vec<String>,
+  pub lockfile_only: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct UnlinkFlags {
+  pub names_or_paths: Vec<String>,
+  pub lockfile_only: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct VersionFlags {
   pub increment: Option<VersionIncrement>,
@@ -751,6 +763,8 @@ pub enum DenoSubcommand {
   JSONReference(JSONReferenceFlags),
   Jupyter(JupyterFlags),
   Uninstall(UninstallFlags),
+  Link(LinkFlags),
+  Unlink(UnlinkFlags),
   Lsp,
   Lint(LintFlags),
   Repl(ReplFlags),
@@ -1861,6 +1875,9 @@ static DENO_HELP: &str = cstr!(
     <g>outdated</>     Find and update outdated dependencies
     <g>approve-scripts</> Approve npm lifecycle scripts
     <g>remove</>       Remove dependencies from the configuration file
+    <g>link</>         Link a local JSR package into the current project
+                  <p(245)>deno link ../my-local-pkg</>
+    <g>unlink</>       Remove a linked local package from the current project
     <g>publish</>      Publish the current working directory's package or workspace
     <g>why</>          Show why a package is installed
 
@@ -2139,6 +2156,8 @@ pub fn flags_from_vec_with_initial_cwd(
         "init" => init_parse(&mut flags, &mut m)?,
         "info" => info_parse(&mut flags, &mut m)?,
         "install" => install_parse(&mut flags, &mut m, app)?,
+        "link" => link_parse(&mut flags, &mut m)?,
+        "unlink" => unlink_parse(&mut flags, &mut m)?,
         "ci" => ci_parse(&mut flags, &mut m)?,
         "json_reference" => json_reference_parse(&mut flags, &mut m, app),
         "jupyter" => jupyter_parse(&mut flags, &mut m),
@@ -2419,6 +2438,8 @@ pub fn clap_root() -> Command {
         .subcommand(approve_scripts_subcommand())
         .subcommand(uninstall_subcommand())
         .subcommand(outdated_subcommand())
+        .subcommand(link_subcommand())
+        .subcommand(unlink_subcommand())
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
         .subcommand(publish_subcommand())
@@ -2691,6 +2712,68 @@ You can remove multiple dependencies at once:
       .args(lock_args())
       .arg(lockfile_only_arg())
       .arg(package_json_arg())
+  })
+}
+
+fn link_subcommand() -> Command {
+  command(
+    "link",
+    cstr!(
+      "Link a local JSR package into the current project for development.
+
+  <p(245)>deno link ../my-local-pkg</>
+
+Each path must be a directory containing a deno.json with a JSR-style \"name\" field.
+The path is appended to the \"links\" array in the nearest deno.json, and modules
+imported by that package's name resolve to the local copy instead of the registry.
+
+To stop using the local copy:
+  <p(245)>deno unlink ../my-local-pkg</>
+  <p(245)>deno unlink @scope/name</>
+"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("paths")
+          .help("Paths to local package directories to link")
+          .required_unless_present("help")
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+      .args(lock_args())
+      .arg(lockfile_only_arg())
+  })
+}
+
+fn unlink_subcommand() -> Command {
+  command(
+    "unlink",
+    cstr!(
+      "Remove a linked local package from the current project.
+
+  <p(245)>deno unlink ../my-local-pkg</>
+  <p(245)>deno unlink @scope/name</>
+
+Accepts either a path that matches an existing entry in the \"links\" array,
+or the JSR-style name of a linked package.
+"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("names_or_paths")
+          .help("Linked package names or paths to remove")
+          .required_unless_present("help")
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+      .args(lock_args())
+      .arg(lockfile_only_arg())
   })
 }
 
@@ -6916,6 +6999,33 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     lockfile_only: matches.get_flag("lockfile-only"),
     package_json: matches.get_flag("package-json"),
   });
+}
+
+fn link_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  lock_args_parse(flags, matches);
+  flags.subcommand = DenoSubcommand::Link(LinkFlags {
+    paths: matches.remove_many::<String>("paths").unwrap().collect(),
+    lockfile_only: matches.get_flag("lockfile-only"),
+  });
+  Ok(())
+}
+
+fn unlink_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  lock_args_parse(flags, matches);
+  flags.subcommand = DenoSubcommand::Unlink(UnlinkFlags {
+    names_or_paths: matches
+      .remove_many::<String>("names_or_paths")
+      .unwrap()
+      .collect(),
+    lockfile_only: matches.get_flag("lockfile-only"),
+  });
+  Ok(())
 }
 
 fn bump_version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
