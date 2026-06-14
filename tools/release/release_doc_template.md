@@ -108,7 +108,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
       https://github.com/denoland/deno_docker/actions/workflows/version_bump.yml
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a `$VERSION` tag (_without_ `v` prefix).
-- [ ] This will trigger a publish CI run. Verify that it completes sucessfully.
+- [ ] This will trigger a publish CI run. Verify that it completes successfully.
 
 ## Updating `deno_pypi`
 
@@ -117,7 +117,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 - [ ] This will open a PR. Review and merge it.
 - [ ] Run the release workflow:
       https://github.com/denoland/deno_pypi/actions/workflows/release.yml
-- [ ] This will trigger a publish CI run. Verify that it completes sucessfully
+- [ ] This will trigger a publish CI run. Verify that it completes successfully
       and new version is available at https://pypi.org/project/deno/.
 
 ## Update MDN
