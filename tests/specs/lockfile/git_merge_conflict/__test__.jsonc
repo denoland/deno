@@ -1,13 +1,37 @@
 {
   "tempDir": true,
-  "steps": [{
-    // The pre-seeded deno.lock contains git merge conflict markers. Caching
-    // should resolve them automatically (union of both sides) and rewrite the
-    // lockfile without markers.
-    "args": "install --entrypoint main.ts",
-    "output": "[WILDCARD]"
-  }, {
-    "args": "task --quiet cat deno.lock",
-    "output": "lock.out"
-  }]
+  "tests": {
+    "resolves_on_install": {
+      "steps": [{
+        // The pre-seeded deno.lock contains git merge conflict markers.
+        // Installing should resolve them automatically (union of both sides)
+        // and rewrite the lockfile without markers.
+        "args": "install --entrypoint main.ts",
+        "output": "[WILDCARD]"
+      }, {
+        // Read with a raw `cat` so the rewrite is attributable to `install`
+        // and not to `deno task` loading the lockfile itself.
+        "commandName": "cat",
+        "args": "deno.lock",
+        "output": "lock.out"
+      }]
+    },
+    "frozen_refuses_to_rewrite": {
+      "steps": [{
+        // Under --frozen the resolved conflict surfaces through the existing
+        // changed-lockfile check: installing refuses rather than silently
+        // rewriting the lockfile.
+        "args": "install --entrypoint --frozen main.ts",
+        "output": "frozen.out",
+        "exitCode": 1
+      }, {
+        // The on-disk lockfile is left untouched, conflict markers and all.
+        // Read it with a raw `cat` (not `deno task`) so that reading does not
+        // itself load and rewrite the lockfile.
+        "commandName": "cat",
+        "args": "deno.lock",
+        "output": "frozen_lock.out"
+      }]
+    }
+  }
 }
