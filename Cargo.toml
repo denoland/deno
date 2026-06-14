@@ -91,7 +91,7 @@ repository = "https://github.com/denoland/deno"
 [workspace.dependencies]
 deno_ast = { version = "=0.53.2", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
-deno_doc = { git = "https://github.com/denoland/deno_doc.git", rev = "f50339c4e0f60e34331f9da70dc533f4d3122886" }
+deno_doc = { git = "https://github.com/denoland/deno_doc.git", rev = "ad415b63bbe4cbb9d3fc4011df2de8e321efda90" }
 deno_error = "=0.7.1"
 deno_graph = { version = "=0.109.0", default-features = false }
 deno_lint = "=0.84.1"
