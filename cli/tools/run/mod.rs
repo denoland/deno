@@ -176,6 +176,10 @@ pub async fn run_script(
     return run_with_watch(mode, flags, watch_flags).boxed_local().await;
   }
 
+  // If JSX is configured with an npm import source (e.g. React) that isn't
+  // installed yet, install it now so the factory created below resolves it.
+  maybe_jsx_auto_install(&flags).await?;
+
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line
   let factory = CliFactory::from_flags(flags.clone());
@@ -432,6 +436,91 @@ pub async fn eval_command(
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
+}
+
+/// Strip an `npm:` prefix, a version requirement, and any subpath from a JSX
+/// import source specifier to get the bare package name.
+/// e.g. `npm:react@^19/jsx-runtime` -> `react`, `preact` -> `preact`.
+fn jsx_import_source_package_name(specifier: &str) -> String {
+  let s = specifier.strip_prefix("npm:").unwrap_or(specifier);
+  // Keep a leading scope (`@scope/name`); split off any deeper subpath.
+  let (scope, rest) = if let Some(rest) = s.strip_prefix('@') {
+    ("@", rest)
+  } else {
+    ("", s)
+  };
+  let base = rest.split('/').next().unwrap_or(rest);
+  // Drop a version requirement (`name@^19` -> `name`).
+  let base = base.split('@').next().unwrap_or(base);
+  format!("{scope}{base}")
+}
+
+/// When JSX is configured with an `npm:` import source (most commonly React)
+/// but the library isn't declared yet, install it automatically so JSX works
+/// without a manual `deno install`. The renderer peer is installed too
+/// (`react-dom` for React) so server-side rendering works out of the box.
+pub async fn maybe_jsx_auto_install(
+  flags: &Arc<Flags>,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags.clone());
+  let cli_options = factory.cli_options()?;
+  let workspace = cli_options.workspace();
+  let Some(root) = workspace.root_deno_json() else {
+    return Ok(());
+  };
+
+  // Resolve the JSX import source the project is configured to use.
+  let resolver = factory.compiler_options_resolver()?;
+  let data = resolver.for_specifier(&root.specifier);
+  let Some(jsx_config) = data.jsx_import_source_config().ok().flatten() else {
+    return Ok(());
+  };
+  let Some(import_source) = jsx_config.import_source.as_ref() else {
+    return Ok(());
+  };
+  let package = jsx_import_source_package_name(&import_source.specifier);
+
+  // Only auto-install JSX libraries we know how to set up.
+  let packages: Vec<String> = match package.as_str() {
+    "react" => vec!["npm:react".to_string(), "npm:react-dom".to_string()],
+    "preact" => vec!["npm:preact".to_string()],
+    _ => return Ok(()),
+  };
+
+  // Skip if the import source is already declared in a deno.json.
+  let already_declared = workspace.deno_jsons().any(|c| {
+    c.json
+      .imports
+      .as_ref()
+      .and_then(|i| i.as_object())
+      .is_some_and(|imports| imports.contains_key(&package))
+  });
+  if already_declared {
+    return Ok(());
+  }
+
+  log::info!(
+    "{} auto-installing JSX dependencies ({})",
+    crate::colors::green("JSX"),
+    packages.join(", "),
+  );
+
+  let add_flags = crate::args::AddFlags {
+    packages,
+    dev: false,
+    default_registry: None,
+    lockfile_only: false,
+    save_exact: false,
+    package_json: false,
+  };
+  crate::tools::pm::add(
+    flags.clone(),
+    add_flags,
+    crate::tools::pm::AddCommandName::Add,
+  )
+  .await?;
+
+  Ok(())
 }
 
 pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {

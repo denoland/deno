@@ -237,6 +237,19 @@ impl JsxImportSourceConfig {
   }
 }
 
+/// Reserved URL scheme for the in-binary JSX bridge. When JSX is used without a
+/// configured `jsxImportSource`, Deno defaults the import source to a sentinel
+/// using this scheme (see [`DENO_JSX_DEFAULT_IMPORT_SOURCE`]). The CLI's graph
+/// loader intercepts this scheme and returns an embedded Preact bridge instead
+/// of going to the network, so `deno run foo.tsx` works with zero config. A
+/// reserved scheme (not `npm:`) is used so it never triggers an npm registry
+/// version lookup for a package that doesn't exist.
+pub const DENO_JSX_SCHEME: &str = "deno-jsx";
+
+/// The default `jsxImportSource` used when JSX is enabled but no import source
+/// has been configured. Resolves to the in-binary Preact bridge.
+pub const DENO_JSX_DEFAULT_IMPORT_SOURCE: &str = "deno-jsx:preact";
+
 #[allow(clippy::disallowed_types, reason = "definition")]
 pub type JsxImportSourceConfigRc =
   deno_maybe_sync::MaybeArc<JsxImportSourceConfig>;
@@ -306,7 +319,8 @@ pub fn get_base_compiler_options_for_emit(
       "inlineSourceMap": false,
       "inlineSources": false,
       "sourceMap": false,
-      "jsx": "react",
+      "jsx": "react-jsx",
+      "jsxImportSource": DENO_JSX_DEFAULT_IMPORT_SOURCE,
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
       "module": "NodeNext",
@@ -319,7 +333,8 @@ pub fn get_base_compiler_options_for_emit(
       "emitDecoratorMetadata": false,
       "experimentalDecorators": false,
       "incremental": true,
-      "jsx": "react",
+      "jsx": "react-jsx",
+      "jsxImportSource": DENO_JSX_DEFAULT_IMPORT_SOURCE,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
       "inlineSources": true,
@@ -357,7 +372,8 @@ pub fn get_base_compiler_options_for_emit(
       "inlineSourceMap": true,
       "inlineSources": true,
       "sourceMap": false,
-      "jsx": "react",
+      "jsx": "react-jsx",
+      "jsxImportSource": DENO_JSX_DEFAULT_IMPORT_SOURCE,
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
       "module": "NodeNext",
@@ -687,9 +703,13 @@ impl CompilerOptionsData {
   {
     let result = self.memoized.jsx_import_source_config.get_or_init(|| {
       let jsx = self.sources.iter().rev().find_map(|s| Some((s.compiler_options.as_ref()?.0.as_object()?.get("jsx")?.as_str()?, &s.specifier)));
+      // `None` (no `jsx` configured at all) is treated as the automatic
+      // runtime so that bare `.tsx` files work out of the box. The base emit
+      // compiler options default `jsx` to `react-jsx` to match (see
+      // `get_base_compiler_options_for_emit`).
       let is_jsx_automatic = matches!(
         jsx,
-        Some(("react-jsx" | "preserve" | "react-jsxdev" | "precompile", _)),
+        Some(("react-jsx" | "preserve" | "react-jsxdev" | "precompile", _)) | None,
       );
       let import_source = self.sources.iter().rev().find_map(|s| {
         Some(JsxImportSourceSpecifierConfig {
@@ -700,9 +720,12 @@ impl CompilerOptionsData {
         if !is_jsx_automatic {
           return None;
         }
+        // Default to the in-binary Preact bridge so JSX works with zero
+        // configuration. An explicit `jsxImportSource` (e.g. `react`) always
+        // takes precedence over this.
         Some(JsxImportSourceSpecifierConfig {
-          base: self.sources.last()?.specifier.as_ref().clone(),
-          specifier: "react".to_string()
+          base: self.workspace_dir_or_source_url()?.as_ref().clone(),
+          specifier: DENO_JSX_DEFAULT_IMPORT_SOURCE.to_string()
         })
       });
       let import_source_types = self.sources.iter().rev().find_map(|s| {
@@ -712,9 +735,9 @@ impl CompilerOptionsData {
         })
       }).or_else(|| import_source.clone());
       let module = match jsx {
-        Some(("react-jsx" | "preserve", _)) => "jsx-runtime".to_string(),
+        Some(("react-jsx" | "preserve", _)) | None => "jsx-runtime".to_string(),
         Some(("react-jsxdev", _)) => "jsx-dev-runtime".to_string(),
-        Some(("react", _)) | None => {
+        Some(("react", _)) => {
           if let Some(import_source) = &import_source {
             return Err(
               ToMaybeJsxImportSourceConfigError::InvalidJsxImportSourceValue(

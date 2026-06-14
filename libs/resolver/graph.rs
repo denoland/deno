@@ -592,6 +592,19 @@ impl<
     referrer_range: &deno_graph::Range,
     resolution_kind: deno_graph::source::ResolutionKind,
   ) -> Result<Url, ResolveError> {
+    // The default JSX import source resolves to a reserved `deno-jsx:` sentinel
+    // (e.g. `deno-jsx:preact/jsx-runtime`) that is served by the in-binary JSX
+    // bridge loader rather than the network. Pass it through verbatim so the
+    // loader can intercept it by scheme.
+    if raw_specifier.starts_with(crate::deno_json::DENO_JSX_SCHEME)
+      && raw_specifier[crate::deno_json::DENO_JSX_SCHEME.len()..]
+        .starts_with(':')
+    {
+      return Url::parse(raw_specifier).map_err(|err| {
+        ResolveError::Other(deno_error::JsErrorBox::generic(err.to_string()))
+      });
+    }
+
     let resolution_mode = referrer_range
       .resolution_mode
       .map(node_resolver::ResolutionMode::from_deno_graph)

@@ -31,6 +31,11 @@ pub async fn serve(
 ) -> Result<i32, AnyError> {
   check_permission_before_script(&flags);
 
+  // If JSX is configured with an npm import source (e.g. React) that isn't
+  // installed yet, install it now so the factory created below resolves it.
+  // Zero-config JSX uses the in-binary Preact bridge and needs no install.
+  super::run::maybe_jsx_auto_install(&flags).await?;
+
   if let Some(watch_flags) = serve_flags.watch {
     return serve_with_watch(
       flags,
