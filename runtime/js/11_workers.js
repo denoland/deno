@@ -45,6 +45,7 @@ const {
   deserializeJsMessageData,
   MessagePortPrototype,
   serializeJsMessageData,
+  serializeMessageData,
 } = core.loadExtScript("ext:deno_web/13_message_port.js");
 const { DOMException } = core.loadExtScript(
   "ext:deno_web/01_dom_exception.js",
@@ -297,7 +298,7 @@ class Worker extends EventTarget {
     ) {
       op_host_post_message_raw(
         this.#id,
-        core.serialize(message, undefined, (err) => {
+        serializeMessageData(message, (err) => {
           throw new DOMException(err, "DataCloneError");
         }),
       );

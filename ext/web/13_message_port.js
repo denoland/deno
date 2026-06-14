@@ -20,9 +20,11 @@ const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypePush,
+  Float64Array,
   ObjectDefineProperty,
   ObjectFreeze,
   ObjectHasOwn,
+  ObjectIs,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromiseResolve,
@@ -32,8 +34,11 @@ const {
   Symbol,
   SymbolFor,
   SymbolIterator,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeSet,
   TypeError,
   TypeErrorPrototype,
+  Uint8Array,
 } = primordials;
 const {
   InterruptedPrototype,
@@ -267,7 +272,7 @@ class MessagePort extends _MessagePortBase {
       }
       op_message_port_post_message_raw(
         this[_id],
-        core.serialize(message, undefined, serializeErrorCb),
+        serializeMessageData(message, serializeErrorCb),
       );
       return;
     }
@@ -555,11 +560,7 @@ function resolveTransferableResource(type) {
 function deserializeJsMessageData(messageData) {
   // Fast path: no transferables (most common case)
   if (messageData.transferables.length === 0) {
-    const deserializers = core.getCloneableDeserializers();
-    const data = deserializers
-      ? core.deserialize(messageData.data, { deserializers })
-      : core.deserialize(messageData.data);
-    return [data, emptyTransferables];
+    return [deserializeMessageData(messageData.data), emptyTransferables];
   }
 
   /** @type {object[]} */
@@ -641,6 +642,138 @@ const serializeErrorCb = (err) => {
   throw new DOMException(err, "DataCloneError");
 };
 
+// --- Primitive structured-clone fast path -------------------------------
+//
+// For the common no-transferables case where the payload is a primitive
+// (undefined / null / boolean / number), V8's ValueSerializer +
+// ValueDeserializer round-trip (two builtin op calls into C++, plus a buffer
+// allocation) dominates the cost of moving the message. This is exactly the
+// latency-bound worker_threads ping-pong pattern.
+//
+// Instead, primitives are encoded with a tiny self-describing byte layout and
+// decoded back in pure JS with no serializer involved. The first byte is a
+// sentinel (FAST_MARKER, 0xFE). V8's structured-clone format always begins
+// with 0xFF (kVersionTag, written by ValueSerializer::WriteHeader), so the two
+// encodings can never be confused: any buffer whose first byte isn't 0xFE is a
+// regular V8 stream and goes through `core.deserialize` unchanged.
+//
+// Strings and bigints intentionally fall back to V8 (they would require an
+// encode/decode op round-trip of their own, defeating the purpose). Objects,
+// functions and symbols are not fast primitives either.
+const FAST_MARKER = 0xFE;
+const FAST_UNDEFINED = 0;
+const FAST_NULL = 1;
+const FAST_FALSE = 2;
+const FAST_TRUE = 3;
+const FAST_INT32 = 4;
+const FAST_DOUBLE = 5;
+
+// Scratch union buffer used to read/write the raw bytes of an f64. Sender and
+// receiver always run on the same machine, so native byte order is consistent
+// across the channel; we never need an explicit endianness conversion. Access
+// is fully synchronous (no `await` between write and read), so a single shared
+// instance is safe.
+const fastF64 = new Float64Array(1);
+const fastF64Bytes = new Uint8Array(TypedArrayPrototypeGetBuffer(fastF64));
+
+function fastTag(tag) {
+  const b = new Uint8Array(2);
+  b[0] = FAST_MARKER;
+  b[1] = tag;
+  return b;
+}
+
+// Returns a `Uint8Array` encoding `value`, or `undefined` if `value` is not a
+// fast-path primitive (and so must go through V8's ValueSerializer).
+function fastSerialize(value) {
+  if (value === null) return fastTag(FAST_NULL);
+  switch (typeof value) {
+    case "undefined":
+      return fastTag(FAST_UNDEFINED);
+    case "boolean":
+      return fastTag(value ? FAST_TRUE : FAST_FALSE);
+    case "number": {
+      // Encode as int32 when it round-trips exactly (excluding -0, whose sign
+      // must be preserved). Everything else (incl. -0, NaN, +/-Infinity, any
+      // non-integer) goes through the f64 path.
+      if ((value | 0) === value && !ObjectIs(value, -0)) {
+        const b = new Uint8Array(6);
+        b[0] = FAST_MARKER;
+        b[1] = FAST_INT32;
+        b[2] = value & 0xFF;
+        b[3] = (value >>> 8) & 0xFF;
+        b[4] = (value >>> 16) & 0xFF;
+        b[5] = (value >>> 24) & 0xFF;
+        return b;
+      }
+      const b = new Uint8Array(10);
+      b[0] = FAST_MARKER;
+      b[1] = FAST_DOUBLE;
+      fastF64[0] = value;
+      TypedArrayPrototypeSet(b, fastF64Bytes, 2);
+      return b;
+    }
+    default:
+      return undefined;
+  }
+}
+
+// Decodes a buffer previously produced by `fastSerialize`. Only call this when
+// `buffer[0] === FAST_MARKER`.
+function fastDeserialize(buffer) {
+  switch (buffer[1]) {
+    case FAST_UNDEFINED:
+      return undefined;
+    case FAST_NULL:
+      return null;
+    case FAST_FALSE:
+      return false;
+    case FAST_TRUE:
+      return true;
+    case FAST_INT32:
+      // Bitwise OR yields a signed 32-bit integer, restoring negatives.
+      return buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) |
+        (buffer[5] << 24);
+    case FAST_DOUBLE:
+      fastF64Bytes[0] = buffer[2];
+      fastF64Bytes[1] = buffer[3];
+      fastF64Bytes[2] = buffer[4];
+      fastF64Bytes[3] = buffer[5];
+      fastF64Bytes[4] = buffer[6];
+      fastF64Bytes[5] = buffer[7];
+      fastF64Bytes[6] = buffer[8];
+      fastF64Bytes[7] = buffer[9];
+      return fastF64[0];
+    default:
+      throw new TypeError("Invalid fast message encoding");
+  }
+}
+
+// Serialize a message payload (no transferables) to a buffer, taking the
+// primitive fast path when possible. `errorCallback` is forwarded to
+// `core.serialize` for the slow path (primitives never error).
+function serializeMessageData(value, errorCallback) {
+  const fast = fastSerialize(value);
+  if (fast !== undefined) return fast;
+  return core.serialize(value, undefined, errorCallback);
+}
+
+// Deserialize a message payload buffer (no transferables), taking the
+// primitive fast path when the buffer carries the fast-path sentinel.
+// `useDeserializers` (default true) controls whether the registered
+// host-object deserializers are applied on the V8 slow path; callers that
+// want host objects in the stream to throw (Node cross-thread messaging) pass
+// `false`. Primitives carry no host objects, so the flag is irrelevant to the
+// fast path.
+function deserializeMessageData(buffer, useDeserializers = true) {
+  if (buffer[0] === FAST_MARKER) return fastDeserialize(buffer);
+  if (!useDeserializers) return core.deserialize(buffer);
+  const deserializers = core.getCloneableDeserializers();
+  return deserializers
+    ? core.deserialize(buffer, { deserializers })
+    : core.deserialize(buffer);
+}
+
 function serializeJsMessageData(data, transferables) {
   const { isDetachedBuffer } = core.loadExtScript("ext:deno_web/06_streams.js");
 
@@ -655,9 +788,8 @@ function serializeJsMessageData(data, transferables) {
 
   // Fast path: no transferables (most common case)
   if (transferables.length === 0) {
-    const serializedData = core.serialize(data, undefined, serializeErrorCb);
     return {
-      data: serializedData,
+      data: serializeMessageData(data, serializeErrorCb),
       transferables: emptySerializedTransferables,
     };
   }
@@ -894,6 +1026,7 @@ function structuredClone(value, options) {
 
 return {
   deserializeJsMessageData,
+  deserializeMessageData,
   markAsUncloneable,
   markNotSerializable,
   MessageChannel,
@@ -916,6 +1049,7 @@ return {
   },
   refMessagePort,
   serializeJsMessageData,
+  serializeMessageData,
   structuredClone,
   unrefParentPort,
 };
