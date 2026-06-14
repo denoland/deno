@@ -558,6 +558,12 @@ pub fn op_fetch(
       });
 
       let mut con_len = None;
+      // Whether the request body is a stream framed with our own
+      // `Content-Length` (see below). In that case a caller-supplied
+      // `Transfer-Encoding` must be dropped, otherwise the request would carry
+      // both framings — the classic CL+TE request-smuggling shape. Unlike
+      // fixed-size bodies, hyper does not reconcile this conflict for streams.
+      let mut streamed_with_con_len = false;
       let body = if has_body {
         match (data, resource) {
           (Some(data), _) => {
@@ -571,6 +577,7 @@ pub fn op_fetch(
             match resource.size_hint() {
               (body_size, Some(n)) if body_size == n && body_size > 0 => {
                 con_len = Some(body_size);
+                streamed_with_con_len = true;
                 ReqBody::streaming(ResourceToBodyAdapter::new(resource))
               }
               // The stream's size is unknown. If the caller provided a
@@ -580,6 +587,7 @@ pub fn op_fetch(
               _ => match content_length_header {
                 Some(len) => {
                   con_len = Some(len);
+                  streamed_with_con_len = true;
                   ReqBody::streaming(ContentLengthEnforcingBody::new(
                     ResourceToBodyAdapter::new(resource),
                     len,
@@ -620,7 +628,10 @@ pub fn op_fetch(
         let name = HeaderName::from_bytes(&key)?;
         let v = HeaderValue::from_bytes(&value)?;
 
-        if (name != HOST || allow_host) && name != CONTENT_LENGTH {
+        if (name != HOST || allow_host)
+          && name != CONTENT_LENGTH
+          && !(streamed_with_con_len && name == TRANSFER_ENCODING)
+        {
           request.headers_mut().append(name, v);
         }
       }
