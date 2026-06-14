@@ -7,6 +7,7 @@ mod proxy;
 mod tests;
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
@@ -47,7 +48,6 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
-use deno_core::futures::stream::Peekable;
 use deno_core::op2;
 use deno_core::url;
 use deno_core::url::Url;
@@ -156,6 +156,7 @@ deno_core::extension!(deno_fetch,
   ops = [
     op_fetch,
     op_fetch_send,
+    op_fetch_response_closed,
     op_utf8_to_byte_string,
     op_fetch_custom_client,
     op_fetch_promise_is_settled,
@@ -679,6 +680,23 @@ pub async fn op_fetch_send(
   })
 }
 
+/// Resolves when the response body finishes and rejects (`TypeError`) when the
+/// connection errors. Lets `reader.closed`/`read()` settle on a network error
+/// even when the consumer isn't actively reading the body.
+/// See https://github.com/denoland/deno/issues/16246.
+#[op2]
+pub async fn op_fetch_response_closed(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(), JsErrorBox> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<FetchResponseResource>(rid)
+    .map_err(JsErrorBox::from_err)?;
+  resource.closed().await
+}
+
 type CancelableResponseResult =
   Result<Result<http::Response<ResBody>, FetchError>, Canceled>;
 
@@ -708,22 +726,200 @@ impl Resource for FetchCancelHandle {
 type BytesStream =
   Pin<Box<dyn Stream<Item = Result<bytes::Bytes, std::io::Error>> + Unpin>>;
 
+/// Terminal status of a response body once its underlying stream has ended,
+/// either cleanly (`Ok`) or with a network error (`Err(message)`).
+type BodyTerminal = Result<(), String>;
+
+/// State shared between the background reader task (which is the sole consumer
+/// of the raw body stream), the `read` op and the `closed` op.
+///
+/// Deno's fetch response body is consumed lazily: the underlying network stream
+/// is only polled when there is read demand. A hyper connection error, however,
+/// is only observed *while reading the body*, so when the consumer only awaits
+/// `reader.closed` (or stops after the first chunk) the error would never be
+/// noticed and `closed` would hang. To fix that, a background task proactively
+/// drives the body stream and records its terminal status here.
+/// See https://github.com/denoland/deno/issues/16246.
+#[derive(Clone)]
+struct BodyReaderShared {
+  /// Set once the body stream ends (EOF or error).
+  terminal: Rc<RefCell<Option<BodyTerminal>>>,
+  /// Partial chunk left over from a previous `read` that requested fewer bytes
+  /// than were available.
+  leftover: Rc<RefCell<Option<Bytes>>>,
+  /// Number of chunks the background task has committed to the channel that
+  /// have not yet been consumed by `read`. Incremented *before* send and
+  /// decremented *after* recv so it never undercounts: overcounting merely
+  /// delays an error `closed` (safe), while undercounting could let `closed`
+  /// error the stream while buffered data is still pending.
+  buffered: Rc<Cell<usize>>,
+  /// Set the first time the consumer issues a `read`. Distinguishes a consumer
+  /// that drains the body from one that only awaits `reader.closed`.
+  has_read: Rc<Cell<bool>>,
+  /// Notified whenever `terminal` or `buffered` changes so a pending `closed`
+  /// re-checks `settled_terminal`.
+  notify: Rc<tokio::sync::Notify>,
+}
+
+impl BodyReaderShared {
+  /// The terminal status, if `closed` can settle now.
+  ///
+  /// A clean termination settles immediately even if buffered data is still
+  /// pending (future reads will serve it); settling promptly lets the watcher
+  /// op release its reference to the JS stream so an unconsumed response can be
+  /// garbage-collected.
+  ///
+  /// An *error* terminal settles either:
+  /// - immediately, if the consumer never issued a `read` (`!has_read`): there
+  ///   is no buffered data anyone is waiting to drain, and the resource-backed
+  ///   stream has a high-water-mark of 0 so nothing would ever pull it; gating
+  ///   on `buffered` here is what would deadlock `await reader.closed` (#16246),
+  ///   or
+  /// - once all buffered data has been consumed, if the consumer *is* reading,
+  ///   so a chunk received just before the connection errored is still
+  ///   delivered to the reader before the stream is errored.
+  fn settled_terminal(&self) -> Option<BodyTerminal> {
+    let terminal = self.terminal.borrow();
+    let result = terminal.as_ref()?;
+    match result {
+      Ok(()) => Some(Ok(())),
+      Err(_)
+        if !self.has_read.get()
+          || (self.buffered.get() == 0 && self.leftover.borrow().is_none()) =>
+      {
+        Some(result.clone())
+      }
+      Err(_) => None,
+    }
+  }
+}
+
+pub struct BodyReader {
+  /// Receives chunks proactively read by the background task.
+  rx: tokio::sync::mpsc::Receiver<Bytes>,
+  shared: BodyReaderShared,
+  /// Background task driving the body stream. Aborted when this `BodyReader`
+  /// (and thus the owning resource) is dropped.
+  task: Option<deno_core::unsync::JoinHandle<()>>,
+}
+
+impl Drop for BodyReader {
+  fn drop(&mut self) {
+    if let Some(task) = &self.task {
+      task.abort();
+    }
+    // The resource is being torn down (e.g. the body was cancelled/aborted
+    // before it finished). Force any `closed` waiter to complete so that the
+    // `op_fetch_response_closed` op doesn't leak: mark a clean termination if
+    // none was recorded and drop any pending/buffered data.
+    if self.shared.terminal.borrow().is_none() {
+      *self.shared.terminal.borrow_mut() = Some(Ok(()));
+    }
+    self.shared.buffered.set(0);
+    *self.shared.leftover.borrow_mut() = None;
+    self.shared.notify.notify_one();
+  }
+}
+
+impl BodyReader {
+  fn spawn(mut stream: BytesStream) -> BodyReader {
+    // A bounded channel of capacity 1 gives backpressure while still allowing a
+    // single chunk of read-ahead, which is what lets the background task notice
+    // a connection error promptly without buffering the whole body.
+    let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(1);
+    let shared = BodyReaderShared {
+      terminal: Rc::new(RefCell::new(None)),
+      leftover: Rc::new(RefCell::new(None)),
+      buffered: Rc::new(Cell::new(0)),
+      has_read: Rc::new(Cell::new(false)),
+      notify: Rc::new(tokio::sync::Notify::new()),
+    };
+    let task = {
+      let shared = shared.clone();
+      deno_core::unsync::spawn(async move {
+        loop {
+          match stream.next().await {
+            Some(Ok(chunk)) => {
+              if chunk.is_empty() {
+                continue;
+              }
+              // Reserve a buffer slot before sending so an error `closed`
+              // never observes an empty buffer while this chunk is still in
+              // flight.
+              shared.buffered.set(shared.buffered.get() + 1);
+              if tx.send(chunk).await.is_err() {
+                // The receiver was dropped (resource closed); stop reading.
+                shared.buffered.set(shared.buffered.get().saturating_sub(1));
+                return;
+              }
+            }
+            Some(Err(err)) => {
+              *shared.terminal.borrow_mut() = Some(Err(err.to_string()));
+              shared.notify.notify_one();
+              return;
+            }
+            None => {
+              *shared.terminal.borrow_mut() = Some(Ok(()));
+              shared.notify.notify_one();
+              return;
+            }
+          }
+        }
+      })
+    };
+    BodyReader {
+      rx,
+      shared,
+      task: Some(task),
+    }
+  }
+}
+
 pub enum FetchResponseReader {
   Start(http::Response<ResBody>),
-  BodyReader(Peekable<BytesStream>),
+  BodyReader(BodyReader),
 }
 
 impl Default for FetchResponseReader {
   fn default() -> Self {
-    let stream: BytesStream = Box::pin(deno_core::futures::stream::empty());
-    Self::BodyReader(stream.peekable())
+    // A terminated reader: the sender half is dropped immediately so reads
+    // observe EOF and `terminal` reports a clean close. Only used as a
+    // transient placeholder for `mem::take`.
+    let (_tx, rx) = tokio::sync::mpsc::channel::<Bytes>(1);
+    let shared = BodyReaderShared {
+      terminal: Rc::new(RefCell::new(Some(Ok(())))),
+      leftover: Rc::new(RefCell::new(None)),
+      buffered: Rc::new(Cell::new(0)),
+      has_read: Rc::new(Cell::new(false)),
+      notify: Rc::new(tokio::sync::Notify::new()),
+    };
+    Self::BodyReader(BodyReader {
+      rx,
+      shared,
+      task: None,
+    })
   }
 }
-#[derive(Debug)]
+
 pub struct FetchResponseResource {
   pub response_reader: AsyncRefCell<FetchResponseReader>,
   pub cancel: CancelHandle,
   pub size: Option<u64>,
+  /// Handles to the background reader's shared state, mirrored here so the
+  /// `closed` op can observe termination without contending for the
+  /// `response_reader` borrow that `read` holds across `recv().await`.
+  /// `None` until the body reader has been initialized.
+  shared: RefCell<Option<BodyReaderShared>>,
+}
+
+impl std::fmt::Debug for FetchResponseResource {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    // The body reader holds non-`Debug` handles (a task join handle, channel
+    // and `Notify`), so only the cheap, always-available fields are shown.
+    f.debug_struct("FetchResponseResource")
+      .field("size", &self.size)
+      .finish_non_exhaustive()
+  }
 }
 
 impl FetchResponseResource {
@@ -732,6 +928,7 @@ impl FetchResponseResource {
       response_reader: AsyncRefCell::new(FetchResponseReader::Start(response)),
       cancel: CancelHandle::default(),
       size,
+      shared: RefCell::new(None),
     }
   }
 
@@ -740,6 +937,66 @@ impl FetchResponseResource {
     match reader {
       FetchResponseReader::Start(resp) => Ok(hyper::upgrade::on(resp).await?),
       _ => unreachable!(),
+    }
+  }
+
+  /// Lazily start the background reader task, converting `Start` into
+  /// `BodyReader`. Idempotent and cheap once initialized (no async borrow).
+  async fn ensure_body_reader(self: Rc<Self>) {
+    if self.shared.borrow().is_some() {
+      return;
+    }
+    let mut reader =
+      RcRef::map(&self, |r| &r.response_reader).borrow_mut().await;
+    if let FetchResponseReader::BodyReader(pipe) = &*reader {
+      // Initialized by a racing caller between our check and borrow.
+      *self.shared.borrow_mut() = Some(pipe.shared.clone());
+      return;
+    }
+    let FetchResponseReader::Start(resp) = std::mem::take(&mut *reader) else {
+      return;
+    };
+    let stream: BytesStream = Box::pin(
+      resp
+        .into_body()
+        .into_data_stream()
+        .map(|r| r.map_err(std::io::Error::other)),
+    );
+    let body_reader = BodyReader::spawn(stream);
+    *self.shared.borrow_mut() = Some(body_reader.shared.clone());
+    *reader = FetchResponseReader::BodyReader(body_reader);
+  }
+
+  /// Resolves when the body stream finishes cleanly and rejects (with a
+  /// `TypeError`) when it errors, even if the consumer never reads the body.
+  ///
+  /// The op is kept ref'd (it is a normal async op) so the event loop stays
+  /// alive while a consumer is awaiting `reader.closed` — whether or not it has
+  /// already read a prefix — until the body terminates. A consumer that reads
+  /// part of a streaming response and then abandons it without
+  /// `cancel()`/`releaseLock()` therefore keeps the connection's watcher alive
+  /// until the peer closes, mirroring Node, where an abandoned HTTP response
+  /// keeps its socket ref'd until destroyed.
+  pub async fn closed(self: Rc<Self>) -> Result<(), JsErrorBox> {
+    self.clone().ensure_body_reader().await;
+    let shared = self
+      .shared
+      .borrow()
+      .clone()
+      .expect("body reader is initialized by ensure_body_reader");
+    // Release the resource handle so this op does not keep the resource (and
+    // its background task) alive. The op completes either when the body
+    // terminates (set by the background task) or when the resource is torn
+    // down (set by `BodyReader::drop`).
+    drop(self);
+    loop {
+      if let Some(result) = shared.settled_terminal() {
+        return match result {
+          Ok(()) => Ok(()),
+          Err(err) => Err(JsErrorBox::type_error(err)),
+        };
+      }
+      shared.notify.notified().await;
     }
   }
 }
@@ -751,53 +1008,69 @@ impl Resource for FetchResponseResource {
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     Box::pin(async move {
-      let mut reader =
-        RcRef::map(&self, |r| &r.response_reader).borrow_mut().await;
+      self.clone().ensure_body_reader().await;
 
-      let body = loop {
-        match &mut *reader {
-          FetchResponseReader::BodyReader(reader) => break reader,
-          FetchResponseReader::Start(_) => {}
-        }
-
-        match std::mem::take(&mut *reader) {
-          FetchResponseReader::Start(resp) => {
-            let stream: BytesStream = Box::pin(
-              resp
-                .into_body()
-                .into_data_stream()
-                .map(|r| r.map_err(std::io::Error::other)),
-            );
-            *reader = FetchResponseReader::BodyReader(stream.peekable());
-          }
-          FetchResponseReader::BodyReader(_) => unreachable!(),
-        }
-      };
+      let cancel_handle = RcRef::map(self.clone(), |r| &r.cancel);
       let fut = async move {
-        let mut reader = Pin::new(body);
-        loop {
-          match reader.as_mut().peek_mut().await {
-            Some(Ok(chunk)) if !chunk.is_empty() => {
-              let len = min(limit, chunk.len());
-              let chunk = chunk.split_to(len);
-              break Ok(chunk.into());
+        let mut reader =
+          RcRef::map(&self, |r| &r.response_reader).borrow_mut().await;
+        let pipe = match &mut *reader {
+          FetchResponseReader::BodyReader(pipe) => pipe,
+          // `ensure_body_reader` guarantees the `BodyReader` variant.
+          FetchResponseReader::Start(_) => unreachable!(),
+        };
+
+        // Mark the body as actively read so an error `closed` waits for the
+        // buffered chunk to be drained here before the stream is errored.
+        pipe.shared.has_read.set(true);
+
+        // Serve any leftover from a previous partial read first.
+        {
+          let mut leftover = pipe.shared.leftover.borrow_mut();
+          if let Some(buf) = leftover.as_mut() {
+            let len = min(limit, buf.len());
+            let head = buf.split_to(len);
+            let drained = buf.is_empty();
+            if drained {
+              *leftover = None;
             }
-            // This unwrap is safe because `peek_mut()` returned `Some`, and thus
-            // currently has a peeked value that can be synchronously returned
-            // from `next()`.
-            //
-            // The future returned from `next()` is always ready, so we can
-            // safely call `await` on it without creating a race condition.
-            Some(_) => match reader.as_mut().next().await.unwrap() {
-              Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => break Err(JsErrorBox::type_error(err.to_string())),
-            },
-            None => break Ok(BufView::empty()),
+            drop(leftover);
+            if drained {
+              // Wake a pending error `closed` in case draining the leftover
+              // just emptied the buffer and opened the gate.
+              pipe.shared.notify.notify_one();
+            }
+            return Ok(BufView::from(head));
+          }
+        }
+
+        match pipe.rx.recv().await {
+          Some(mut chunk) => {
+            pipe
+              .shared
+              .buffered
+              .set(pipe.shared.buffered.get().saturating_sub(1));
+            let len = min(limit, chunk.len());
+            let head = chunk.split_to(len);
+            if !chunk.is_empty() {
+              *pipe.shared.leftover.borrow_mut() = Some(chunk);
+            }
+            // Wake a pending error `closed` so it re-checks the gate now that a
+            // buffered chunk has been consumed.
+            pipe.shared.notify.notify_one();
+            Ok(BufView::from(head))
+          }
+          None => {
+            // The channel closed: the body has terminated. Surface a body
+            // error here so a pending `read()` rejects too.
+            match &*pipe.shared.terminal.borrow() {
+              Some(Err(err)) => Err(JsErrorBox::type_error(err.clone())),
+              _ => Ok(BufView::empty()),
+            }
           }
         }
       };
 
-      let cancel_handle = RcRef::map(self, |r| &r.cancel);
       fut
         .try_or_cancel(cancel_handle)
         .await

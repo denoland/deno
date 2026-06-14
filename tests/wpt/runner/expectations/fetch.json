@@ -577,7 +577,7 @@
           "Empty string integrity for opaque response"
         ]
       },
-      "error-after-response.any.worker.html": false,
+      "error-after-response.any.worker.html": true,
       "keepalive.any.html": {
         "expectedFailures": [
           "[keepalive] simple GET request on 'load' [no payload]; setting up",
@@ -740,7 +740,7 @@
       },
       "request-referrer.any.html": false,
       "request-referrer.any.worker.html": false,
-      "error-after-response.any.html": false,
+      "error-after-response.any.html": true,
       "mode-no-cors.sub.any.html": {
         "ignore": true
       },
