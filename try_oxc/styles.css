@@ -1,0 +1,109 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  background: #f5f5f5;
+  color: #333;
+  line-height: 1.6;
+}
+main {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+h1 {
+  margin-bottom: 1.5rem;
+  font-size: 2rem;
+  color: #1a1a2e;
+}
+.search {
+  margin-bottom: 1rem;
+}
+.search input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: border-color 0.2s;
+}
+.search input:focus {
+  outline: none;
+  border-color: #4a90d9;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+}
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
+  cursor: pointer;
+}
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+.card.selected {
+  border: 2px solid #4a90d9;
+}
+.card h3 {
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+}
+.email {
+  color: #666;
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.badge-admin {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.badge-user {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.badge-guest {
+  background: #f3f4f6;
+  color: #374151;
+}
+button {
+  margin-top: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+button:hover {
+  background: #dc2626;
+}
+.spinner {
+  text-align: center;
+  padding: 3rem;
+  font-size: 1.2rem;
+  color: #666;
+}
