@@ -151,11 +151,30 @@ impl ActiveWebSockets {
   }
 
   /// Mark the server as shutting down and tear down every websocket whose
-  /// `Rc` is still alive. Idempotent — only the first call takes effect, so
-  /// a later forceful shutdown will not downgrade a graceful one (but does
-  /// still re-apply forced shutdown to any sockets that survived).
+  /// `Rc` is still alive.
+  ///
+  /// One-way transition: `None` → `Graceful` → `Forced`. A later graceful
+  /// call will never downgrade an already-forced shutdown back to graceful
+  /// (which would otherwise put new race-upgraded sockets back onto the
+  /// graceful path that can block on a stuck Close-frame write). A graceful
+  /// → forced upgrade re-iterates the registry so any websockets still
+  /// hanging on a stuck graceful write get their read cancelled
+  /// synchronously.
   pub(crate) fn begin_shutdown(&self, mode: WsShutdownMode) {
-    self.shutting_down.set(Some(mode));
+    let effective = match (self.shutting_down.get(), mode) {
+      // First call records the mode.
+      (None, m) => m,
+      // Upgrade graceful → forced and re-apply to survivors.
+      (Some(WsShutdownMode::Graceful), WsShutdownMode::Forced) => {
+        WsShutdownMode::Forced
+      }
+      // Already forced, or redundant graceful-after-graceful /
+      // graceful-after-forced — nothing to do. New websockets upgraded
+      // after this point are still caught by `register` via the existing
+      // `shutting_down` state.
+      (Some(_), _) => return,
+    };
+    self.shutting_down.set(Some(effective));
     for ws in self
       .entries
       .borrow()
@@ -163,7 +182,7 @@ impl ActiveWebSockets {
       .filter_map(|w| w.upgrade())
       .collect::<Vec<_>>()
     {
-      apply_shutdown(&ws, mode);
+      apply_shutdown(&ws, effective);
     }
   }
 }

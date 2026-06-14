@@ -1949,6 +1949,116 @@ Deno.test(
   },
 );
 
+// Gap from PR review: `begin_shutdown` used to overwrite an already-recorded
+// `Forced` mode with `Graceful` when both `signal.abort()` and
+// `server.shutdown()` are called. The user-visible failure is that a websocket
+// upgraded during the small window between the abort and the graceful
+// shutdown would be put back onto the graceful path (whose Close-frame write
+// could hang). Calling abort + shutdown back-to-back must still drain
+// cleanly and not regress the abort path.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketAbortThenShutdownNoHang() {
+    const wsOpen = Promise.withResolvers<void>();
+    const wsClose = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler: (request) => {
+        const { response, socket } = Deno.upgradeWebSocket(request);
+        socket.onopen = () => wsOpen.resolve();
+        socket.onclose = () => wsClose.resolve();
+        return response;
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+    });
+
+    await listeningDeferred.promise;
+
+    const clientClose = Promise.withResolvers<void>();
+    const ws = new WebSocket(`ws://localhost:${servePort}`);
+    ws.onclose = () => clientClose.resolve();
+    await wsOpen.promise;
+
+    ac.abort();
+    // Calling shutdown after abort previously overwrote the registry's
+    // recorded mode (`Forced` → `Graceful`). Now it must be a no-op for
+    // the mode and not put open websockets back onto the graceful path.
+    await server.shutdown();
+
+    await wsClose.promise;
+    await clientClose.promise;
+    await server.finished;
+  },
+);
+
+// Gap from PR review: graceful `server_shutdown` used to await the
+// Close-frame write before cancelling the read. If the peer stops draining
+// and the TCP send buffer fills, the write blocks indefinitely — the cancel
+// is never reached, the pending `op_ws_next_event` read never returns, the
+// lifetime guard is never dropped, and `await server.shutdown()` hangs
+// forever. With the fix the read is cancelled concurrently with the write,
+// so shutdown drains even when the peer wedges.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketShutdownWithStuckPeer() {
+    const wsOpen = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    let serverSocket: WebSocket | undefined;
+    const server = Deno.serve({
+      handler: (request) => {
+        const { response, socket } = Deno.upgradeWebSocket(request);
+        serverSocket = socket;
+        socket.binaryType = "arraybuffer";
+        socket.onopen = () => {
+          // Pump enough data to overflow the kernel TCP send buffer on
+          // any reasonable OS/CI configuration. The peer never reads, so
+          // the writes back up and any subsequent write (including the
+          // Close-frame write spawned by `server_shutdown`) cannot
+          // complete.
+          const chunk = new Uint8Array(64 * 1024);
+          for (let i = 0; i < 256; i++) socket.send(chunk);
+          wsOpen.resolve();
+        };
+        return response;
+      },
+      port: servePort,
+      onListen: onListen(listeningDeferred.resolve),
+    });
+
+    await listeningDeferred.promise;
+
+    // Raw TCP client: do the WS upgrade then never read. We pin the
+    // received handshake bytes in a single read so the test doesn't
+    // accidentally drain enough to keep the server-side writes flowing.
+    const conn = await Deno.connect({ port: servePort });
+    const key = "dGhlIHNhbXBsZSBub25jZQ==";
+    const handshake =
+      `GET / HTTP/1.1\r\nHost: localhost:${servePort}\r\nUpgrade: websocket\r\n` +
+      `Connection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\n` +
+      `Sec-WebSocket-Version: 13\r\n\r\n`;
+    await conn.write(new TextEncoder().encode(handshake));
+    const responseBuf = new Uint8Array(256);
+    await conn.read(responseBuf);
+
+    await wsOpen.promise;
+
+    // Without the cancel-concurrent-with-write fix, this would hang
+    // forever because the spawned Close-frame write is queued behind the
+    // server's stuck data writes (or blocks on a full TCP buffer
+    // itself), so the cancel after it is never reached.
+    await server.shutdown();
+
+    try {
+      conn.close();
+    } catch { /* already closed */ }
+    await server.finished;
+    void serverSocket;
+  },
+);
+
 // Gap from PR review: a websocket that has already started its own close
 // handshake from the server side (handler called `socket.close()`) must
 // not block graceful `server.shutdown()` if the peer never sends the
