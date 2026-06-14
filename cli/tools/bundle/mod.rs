@@ -1620,6 +1620,7 @@ impl DenoPluginHandler {
           allow_unknown_media_types: true,
           skip_graph_roots_validation: true,
           file_content_overrides: Default::default(),
+          file_header_overrides: Default::default(),
         },
       )
       .await?;

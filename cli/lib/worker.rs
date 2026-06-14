@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use boxed_error::Boxed;
 use deno_bundle_runtime::BundleProvider;
+use deno_core::ModuleSpecifier;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
 use deno_node::ops::ipc::ChildIpcSerialization;
@@ -40,6 +41,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::deno_web::Blob;
 use deno_runtime::deno_web::BlobStoreTrait;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
@@ -75,6 +77,7 @@ pub trait ModuleLoaderFactory: Send + Sync {
     &self,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
+    maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult;
 }
 
@@ -347,6 +350,10 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       } = shared.module_loader_factory.create_for_worker(
         args.parent_permissions.clone(),
         args.permissions.clone(),
+        args
+          .maybe_main_module_blob
+          .clone()
+          .map(|blob| (args.main_module.clone(), blob)),
       );
       let create_web_worker_cb =
         shared.create_web_worker_callback(stdio.clone());
