@@ -9,11 +9,13 @@ use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_terminal::colors;
+use serde::Serialize;
 
 use super::CacheTopLevelDepsOptions;
 use super::deps::Dep;
@@ -24,6 +26,7 @@ use super::deps::DepManagerArgs;
 use super::deps::PackageLatestVersion;
 use crate::args::Flags;
 use crate::args::OutdatedFlags;
+use crate::args::OutdatedOutputFmt;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
@@ -38,10 +41,17 @@ use crate::npm::PackageInfoLoadError;
 type SkippedPackages =
   std::collections::BTreeMap<(DepKind, StackString), Arc<PackageInfoLoadError>>;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+// Note: the field order is load-bearing. The derived `Ord` (used to sort the
+// output) orders by these fields in declaration order, and the existing table
+// output depends on it, so don't reorder them. `kind` serializes as "npm"/"jsr"
+// (see `DepKind`'s `rename_all`); `semver_compatible` is the latest version
+// satisfying the current semver requirement, exposed as "update" to match the
+// table column.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 struct OutdatedPackage {
   kind: DepKind,
   latest: String,
+  #[serde(rename = "update")]
   semver_compatible: String,
   current: String,
   name: StackString,
@@ -134,6 +144,7 @@ fn print_suggestion(compatible: bool) {
 fn print_outdated(
   deps: &mut DepManager,
   compatible: bool,
+  output_fmt: OutdatedOutputFmt,
 ) -> Result<(), AnyError> {
   let mut outdated = Vec::new();
   let mut seen = std::collections::BTreeSet::new();
@@ -179,17 +190,35 @@ fn print_outdated(
     }
   }
 
-  if !outdated.is_empty() {
-    outdated.sort();
-    print_outdated_table(&outdated);
+  outdated.sort();
+
+  match output_fmt {
+    OutdatedOutputFmt::Json => {
+      // Always emit a valid JSON array (an empty array when nothing is
+      // outdated) so consumers can parse the output unconditionally.
+      print_outdated_json(&outdated)?;
+    }
+    OutdatedOutputFmt::Table => {
+      if !outdated.is_empty() {
+        print_outdated_table(&outdated);
+      }
+    }
   }
 
   print_skipped_warning(&skipped);
 
-  if !outdated.is_empty() {
+  // The suggestion is human-oriented guidance; don't print it in JSON mode.
+  if !outdated.is_empty() && matches!(output_fmt, OutdatedOutputFmt::Table) {
     print_suggestion(compatible);
   }
 
+  Ok(())
+}
+
+#[allow(clippy::print_stdout, reason = "print method")]
+fn print_outdated_json(packages: &[OutdatedPackage]) -> Result<(), AnyError> {
+  let json = serde_json::to_string_pretty(packages)?;
+  println!("{json}");
   Ok(())
 }
 
@@ -338,8 +367,11 @@ pub async fn outdated(
       )
       .await?;
     }
-    crate::args::OutdatedKind::PrintOutdated { compatible } => {
-      print_outdated(&mut deps, compatible)?;
+    crate::args::OutdatedKind::PrintOutdated {
+      compatible,
+      output_fmt,
+    } => {
+      print_outdated(&mut deps, compatible, output_fmt)?;
     }
   }
 

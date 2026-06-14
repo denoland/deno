@@ -1,0 +1,44 @@
+[
+  {
+    "kind": "jsr",
+    "latest": "1.0.0",
+    "update": "0.2.0",
+    "current": "0.2.0",
+    "name": "@denotest/multiple-exports"
+  },
+  {
+    "kind": "jsr",
+    "latest": "1.0.0",
+    "update": "0.2.0",
+    "current": "0.2.0",
+    "name": "@denotest/subtract"
+  },
+  {
+    "kind": "jsr",
+    "latest": "1.0.0",
+    "update": "0.2.1",
+    "current": "0.2.0",
+    "name": "@denotest/add"
+  },
+  {
+    "kind": "npm",
+    "latest": "0.2.0",
+    "update": "0.1.1",
+    "current": "0.1.0",
+    "name": "@denotest/has-patch-versions"
+  },
+  {
+    "kind": "npm",
+    "latest": "1.0.0",
+    "update": "0.6.0",
+    "current": "0.6.0",
+    "name": "@denotest/bin"
+  },
+  {
+    "kind": "npm",
+    "latest": "2.0.0",
+    "update": "1.0.0",
+    "current": "1.0.0",
+    "name": "@denotest/breaking-change-between-versions"
+  }
+]

@@ -804,6 +804,12 @@ impl DenoSubcommand {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OutdatedOutputFmt {
+  Table,
+  Json,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutdatedKind {
   Update {
     latest: bool,
@@ -812,6 +818,7 @@ pub enum OutdatedKind {
   },
   PrintOutdated {
     compatible: bool,
+    output_fmt: OutdatedOutputFmt,
   },
 }
 
@@ -4185,6 +4192,13 @@ Specific version requirements to update to can be specified:
           .action(ArgAction::SetTrue)
           .help("Update dependency versions"),
       )
+      .arg(
+        Arg::new("json")
+          .long("json")
+          .action(ArgAction::SetTrue)
+          .conflicts_with("update")
+          .help("Output outdated dependencies in JSON format"),
+      )
   })
 }
 
@@ -6974,7 +6988,16 @@ fn outdated_parse(
     }
   } else {
     let compatible = matches.get_flag("compatible");
-    OutdatedKind::PrintOutdated { compatible }
+    let json = matches.get_flag("json");
+    let output_fmt = if json {
+      OutdatedOutputFmt::Json
+    } else {
+      OutdatedOutputFmt::Table
+    };
+    OutdatedKind::PrintOutdated {
+      compatible,
+      output_fmt,
+    }
   };
   flags.subcommand = DenoSubcommand::Outdated(OutdatedFlags {
     filters,
@@ -16195,7 +16218,21 @@ Usage: deno lint [OPTIONS] [files]...\n"
         svec![],
         OutdatedFlags {
           filters: vec![],
-          kind: OutdatedKind::PrintOutdated { compatible: false },
+          kind: OutdatedKind::PrintOutdated {
+            compatible: false,
+            output_fmt: OutdatedOutputFmt::Table,
+          },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--json"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::PrintOutdated {
+            compatible: false,
+            output_fmt: OutdatedOutputFmt::Json,
+          },
           recursive: false,
         },
       ),
@@ -16203,7 +16240,10 @@ Usage: deno lint [OPTIONS] [files]...\n"
         svec!["--recursive"],
         OutdatedFlags {
           filters: vec![],
-          kind: OutdatedKind::PrintOutdated { compatible: false },
+          kind: OutdatedKind::PrintOutdated {
+            compatible: false,
+            output_fmt: OutdatedOutputFmt::Table,
+          },
           recursive: true,
         },
       ),
@@ -16211,7 +16251,10 @@ Usage: deno lint [OPTIONS] [files]...\n"
         svec!["--recursive", "--compatible"],
         OutdatedFlags {
           filters: vec![],
-          kind: OutdatedKind::PrintOutdated { compatible: true },
+          kind: OutdatedKind::PrintOutdated {
+            compatible: true,
+            output_fmt: OutdatedOutputFmt::Table,
+          },
           recursive: true,
         },
       ),
@@ -16279,7 +16322,10 @@ Usage: deno lint [OPTIONS] [files]...\n"
         svec!["--latest"],
         OutdatedFlags {
           filters: svec![],
-          kind: OutdatedKind::PrintOutdated { compatible: false },
+          kind: OutdatedKind::PrintOutdated {
+            compatible: false,
+            output_fmt: OutdatedOutputFmt::Table,
+          },
           recursive: false,
         },
       ),
