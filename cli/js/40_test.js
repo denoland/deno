@@ -17,19 +17,28 @@ const {
   op_test_isolate_exit,
 } = core.ops;
 const {
+  ArrayIsArray,
   ArrayPrototypeFilter,
   ArrayPrototypePush,
   DateNow,
   Error,
+  FunctionPrototypeApply,
+  JSONStringify,
   Map,
+  MathTrunc,
+  Number,
   NumberIsFinite,
   NumberIsInteger,
   NumberIsNaN,
   MapPrototypeGet,
   MapPrototypeSet,
   SafeArrayIterator,
+  SafeRegExp,
+  String,
   StringPrototypeLastIndexOf,
+  StringPrototypeReplace,
   StringPrototypeSlice,
+  StringPrototypeSplit,
   SymbolFor,
   SymbolToStringTag,
   TypeError,
@@ -520,6 +529,137 @@ test.sanitizer = function (options) {
     moduleSanitizeResources = options.resources;
   }
 };
+
+// Matches a `printf`-style token (`%s`, `%d`, `%i`, `%f`, `%j`, `%o`, `%O`,
+// `%#`, `%%`) or a `$`-prefixed object path (`$foo`, `$foo.bar`) inside a
+// `Deno.test.each()` name template.
+const EACH_NAME_TOKEN = new SafeRegExp(
+  "%[sdifjoO#%]|\\$[\\w$]+(?:\\.[\\w$]+)*",
+  "g",
+);
+
+// Stringify a value for interpolation into a generated test name. Strings are
+// inserted verbatim; everything else is JSON-encoded (falling back to `String`
+// for values JSON can't represent, such as `bigint` or circular objects).
+function eachStringify(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    const json = JSONStringify(value);
+    return json === undefined ? String(value) : json;
+  } catch {
+    return String(value);
+  }
+}
+
+// Resolve a dotted `$`-path (e.g. `foo.bar`) against an object row.
+function eachResolvePath(row, path) {
+  const parts = StringPrototypeSplit(path, ".");
+  let current = row;
+  for (const part of new SafeArrayIterator(parts)) {
+    if (current === null || current === undefined) {
+      return undefined;
+    }
+    current = current[part];
+  }
+  return current;
+}
+
+// Build the name for a single `Deno.test.each()` case by interpolating the
+// template against the case's row and its zero-based index.
+function formatEachName(template, row, index) {
+  if (typeof template !== "string") {
+    throw new TypeError("Deno.test.each: test name must be a string");
+  }
+  const isArray = ArrayIsArray(row);
+  const positional = isArray ? row : [row];
+  let argIndex = 0;
+  return StringPrototypeReplace(template, EACH_NAME_TOKEN, (token) => {
+    if (token === "%%") {
+      return "%";
+    }
+    if (token === "%#") {
+      return String(index);
+    }
+    if (token[0] === "$") {
+      const value = eachResolvePath(row, StringPrototypeSlice(token, 1));
+      return eachStringify(value);
+    }
+    const value = positional[argIndex++];
+    switch (token) {
+      case "%s":
+        return String(value);
+      case "%d":
+      case "%i": {
+        const n = Number(value);
+        return NumberIsNaN(n) ? "NaN" : String(MathTrunc(n));
+      }
+      case "%f":
+        return String(Number(value));
+      case "%j":
+        return eachStringify(value);
+      case "%o":
+      case "%O":
+        return eachStringify(value);
+      default:
+        return token;
+    }
+  });
+}
+
+// Create a `Deno.test.each()` (and `.only.each`/`.ignore.each`) implementation
+// bound to the given test registration `overrides`.
+function createEach(overrides) {
+  return function each(cases) {
+    if (!ArrayIsArray(cases)) {
+      throw new TypeError(
+        "Deno.test.each: expected an array of test cases",
+      );
+    }
+    return function (name, optionsOrFn, maybeFn) {
+      let options;
+      let fn;
+      if (typeof optionsOrFn === "function") {
+        fn = optionsOrFn;
+      } else {
+        options = optionsOrFn;
+        fn = maybeFn;
+      }
+      if (typeof fn !== "function") {
+        throw new TypeError("Deno.test.each: missing test function");
+      }
+
+      // Report all generated tests at the user's `.each(...)(...)` call site
+      // rather than inside this function.
+      const callSite = core.currentUserCallSite();
+      const location =
+        `${callSite.fileName}:${callSite.lineNumber}:${callSite.columnNumber}`;
+
+      let index = 0;
+      for (const row of new SafeArrayIterator(cases)) {
+        const caseName = formatEachName(name, row, index);
+        const args = ArrayIsArray(row) ? row : [row];
+        const caseFn = (t) =>
+          FunctionPrototypeApply(fn, undefined, [
+            ...new SafeArrayIterator(args),
+            t,
+          ]);
+        caseFn[TEST_LOCATION_SYMBOL] = location;
+        if (options === undefined) {
+          testInner(caseName, caseFn, undefined, overrides);
+        } else {
+          testInner(caseName, options, caseFn, overrides);
+        }
+        index++;
+      }
+    };
+  };
+}
+
+test.each = createEach({ __proto__: null });
+test.only.each = createEach({ only: true });
+test.ignore.each = createEach({ ignore: true });
 
 function getFullName(desc) {
   if ("parent" in desc) {

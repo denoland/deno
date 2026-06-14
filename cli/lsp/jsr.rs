@@ -96,6 +96,7 @@ impl JsrCacheResolver {
           )]
           .into_iter()
           .collect(),
+          latest: Some(nv.version.clone()),
         })),
       );
       info_by_nv.insert(nv.clone(), Some(version_info));

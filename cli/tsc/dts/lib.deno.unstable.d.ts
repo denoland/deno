@@ -359,6 +359,20 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Unstable options which can be set when opening a `unixpacket` datagram
+   * listener via {@linkcode Deno.listenDatagram}.
+   *
+   * @category Network
+   * @experimental
+   */
+  export interface UnixListenDatagramOptions {
+    /** A path to the Unix Socket. When omitted the socket is left unbound, so
+     * it can be used to send messages but cannot receive them. */
+    path?: string;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Listen announces on the local transport address.
    *
    * ```ts
@@ -368,14 +382,16 @@ declare namespace Deno {
    * });
    * ```
    *
-   * Requires `allow-read` and `allow-write` permission.
+   * Requires `allow-read`, `allow-write` and `allow-net` permission. The
+   * `allow-net` grant may be scoped to the socket path with
+   * `--allow-net=unix:<absolute-path>`.
    *
-   * @tags allow-read, allow-write
+   * @tags allow-read, allow-write, allow-net
    * @category Network
    * @experimental
    */
   export function listenDatagram(
-    options: UnixListenOptions & { transport: "unixpacket" },
+    options: UnixListenDatagramOptions & { transport: "unixpacket" },
   ): DatagramConn;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -4955,3 +4971,60 @@ interface Uint8ArrayConstructor {
    */
   fromHex(string: string): Uint8Array<ArrayBuffer>;
 }
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * A single CSS rule of a {@linkcode CSSStyleSheet}, as returned from its
+ * `cssRules` property. Available only when the `--unstable-raw-imports` flag
+ * is enabled.
+ *
+ * Note: `cssText` is the verbatim text of one top-level rule of the style
+ * sheet; Deno does not implement a full CSS object model.
+ *
+ * @category Platform
+ * @experimental
+ */
+interface CSSRule {
+  readonly cssText: string;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @category Platform
+ * @experimental
+ */
+declare var CSSRule: {
+  readonly prototype: CSSRule;
+  new (): never;
+};
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * A style sheet backing a CSS module script. This is what a
+ * `import sheet from "./styles.css" with { type: "css" }` import evaluates
+ * to. Available only when the `--unstable-raw-imports` flag is enabled.
+ *
+ * Deno has no DOM, so a sheet can't be adopted anywhere; the implementation
+ * is backed by the raw CSS text.
+ *
+ * Note: `cssRules` returns a frozen array of {@linkcode CSSRule} instead of a
+ * live `CSSRuleList`.
+ *
+ * @category Platform
+ * @experimental
+ */
+interface CSSStyleSheet {
+  readonly cssRules: readonly CSSRule[];
+  replace(text: string): Promise<CSSStyleSheet>;
+  replaceSync(text: string): void;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @category Platform
+ * @experimental
+ */
+declare var CSSStyleSheet: {
+  readonly prototype: CSSStyleSheet;
+  new (): CSSStyleSheet;
+};

@@ -54,6 +54,7 @@ impl Encoding {
 }
 
 /// Select the encoding with the largest qval or the first with qval ~= 1
+#[cfg(test)]
 pub fn preferred(
   encodings: impl Iterator<Item = Result<(Option<Encoding>, f32), EncodingError>>,
 ) -> Result<Option<Encoding>, EncodingError> {
@@ -97,6 +98,14 @@ pub fn encodings_iter_http_1(
     .iter()
     .map(|hval| hval.to_str().map_err(|_| EncodingError::InvalidEncoding));
   encodings_iter_inner(iter)
+}
+
+/// Parse a set of Accept-Encoding header values into an iterator containing
+/// tuples of options containing encodings and their corresponding q-values.
+pub fn encodings_iter_str<'s>(
+  headers: impl Iterator<Item = &'s str> + 's,
+) -> impl Iterator<Item = Result<(Option<Encoding>, f32), EncodingError>> + 's {
+  encodings_iter_inner(headers.map(Ok))
 }
 
 /// Parse a set of HTTP headers into an iterator containing tuples of options containing encodings and their corresponding q-values.
