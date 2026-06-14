@@ -554,7 +554,7 @@ pub fn spawn(options: &SpawnOptions) -> Result<ChildProcess, std::io::Error> {
     // Inherit cwd
     #[allow(
       clippy::disallowed_methods,
-      reason = "use real, consider making with with a virtual cwd in future"
+      reason = "use real, consider making with a virtual cwd in future"
     )]
     let cwd = std::env::current_dir()?;
     WCString::new(cwd)
