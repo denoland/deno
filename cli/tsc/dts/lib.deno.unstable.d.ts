@@ -4971,3 +4971,60 @@ interface Uint8ArrayConstructor {
    */
   fromHex(string: string): Uint8Array<ArrayBuffer>;
 }
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * A single CSS rule of a {@linkcode CSSStyleSheet}, as returned from its
+ * `cssRules` property. Available only when the `--unstable-raw-imports` flag
+ * is enabled.
+ *
+ * Note: `cssText` is the verbatim text of one top-level rule of the style
+ * sheet; Deno does not implement a full CSS object model.
+ *
+ * @category Platform
+ * @experimental
+ */
+interface CSSRule {
+  readonly cssText: string;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @category Platform
+ * @experimental
+ */
+declare var CSSRule: {
+  readonly prototype: CSSRule;
+  new (): never;
+};
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * A style sheet backing a CSS module script. This is what a
+ * `import sheet from "./styles.css" with { type: "css" }` import evaluates
+ * to. Available only when the `--unstable-raw-imports` flag is enabled.
+ *
+ * Deno has no DOM, so a sheet can't be adopted anywhere; the implementation
+ * is backed by the raw CSS text.
+ *
+ * Note: `cssRules` returns a frozen array of {@linkcode CSSRule} instead of a
+ * live `CSSRuleList`.
+ *
+ * @category Platform
+ * @experimental
+ */
+interface CSSStyleSheet {
+  readonly cssRules: readonly CSSRule[];
+  replace(text: string): Promise<CSSStyleSheet>;
+  replaceSync(text: string): void;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @category Platform
+ * @experimental
+ */
+declare var CSSStyleSheet: {
+  readonly prototype: CSSStyleSheet;
+  new (): CSSStyleSheet;
+};

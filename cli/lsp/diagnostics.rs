@@ -631,6 +631,7 @@ fn compute_document_doc_diagnostics(
       resolver: None,
       unstable_bytes_imports: false,
       unstable_text_imports: false,
+      unstable_css_imports: false,
     },
   ));
   if token.is_cancelled() {

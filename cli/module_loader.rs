@@ -908,6 +908,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     let module_type = match requested_module_type {
       RequestedModuleType::Text => ModuleType::Text,
       RequestedModuleType::Bytes => ModuleType::Bytes,
+      RequestedModuleType::Other(kind) => ModuleType::Other(kind.clone()),
       RequestedModuleType::None => {
         match file.resolve_media_type_and_charset().0 {
           MediaType::Wasm => ModuleType::Wasm,
@@ -1401,7 +1402,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     if matches!(
       options.requested_module_type,
-      RequestedModuleType::Text | RequestedModuleType::Bytes
+      RequestedModuleType::Text
+        | RequestedModuleType::Bytes
+        | RequestedModuleType::Other(_)
     ) {
       // Text/Bytes imports skip graph preparation, so the file watcher's
       // graph reporter never sees them. For dynamic imports, register the

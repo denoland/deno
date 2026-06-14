@@ -1,0 +1,6 @@
+true
+.a { color: green; }
+.b { color: yellow; }
+.a { color: blue; }
+1 .c { color: red; }
+0
