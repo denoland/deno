@@ -3576,7 +3576,7 @@ Supported file types are:
   <p(245)>JavaScript, TypeScript, Markdown, JSON(C) and Jupyter Notebooks</>
 
 Supported file types which are behind corresponding unstable flags (see formatting options):
-  <p(245)>HTML, CSS, SCSS, SASS, LESS, YAML, Svelte, Vue, Astro and Angular</>
+  <p(245)>HTML, CSS, SCSS, LESS, YAML, Svelte, Vue, Astro and Angular</>
 
 Format stdin and write to stdout:
   <p(245)>cat file.ts | deno fmt -</>
@@ -3619,7 +3619,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .help("Set content type of the supplied file")
           .value_parser([
             "ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs", "md", "json", "jsonc", "css", "scss",
-            "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
+            "less", "html", "svelte", "vue", "astro", "yml", "yaml",
             "ipynb", "sql", "vto", "njk"
           ])
           .help_heading(FMT_HEADING).requires("files"),
@@ -3708,7 +3708,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       .arg(
         Arg::new("unstable-css")
           .long("unstable-css")
-          .help("Enable formatting CSS, SCSS, Sass and Less files")
+          .help("Enable formatting CSS, SCSS and Less files")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue)
           .help_heading(FMT_HEADING)
@@ -9216,8 +9216,6 @@ fn unstable_args_parse(
   }
 
   // TODO(bartlomieju): this should be factored out since these are configured via UNSTABLE_FEATURES
-  flags.unstable_config.bare_node_builtins =
-    matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.lazy_dynamic_imports =
     matches.get_flag("unstable-lazy-dynamic-imports");
@@ -16135,7 +16133,6 @@ mod tests {
           force: false,
         }),
         unstable_config: UnstableConfig {
-          bare_node_builtins: true,
           sloppy_imports: false,
           features: svec!["bare-node-builtins", "ffi", "worker-options"],
           ..Default::default()

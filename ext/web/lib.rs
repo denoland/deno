@@ -5,6 +5,7 @@ mod blob;
 mod broadcast_channel;
 mod compression;
 mod console;
+mod css_stylesheet;
 mod css_value;
 mod f64;
 mod geometry;
@@ -21,6 +22,7 @@ use std::sync::Arc;
 
 pub use blob::BlobError;
 pub use compression::CompressionError;
+pub use css_stylesheet::create_css_style_sheet;
 use deno_core::U16String;
 use deno_core::convert::ByteString;
 use deno_core::convert::Uint8Array;
@@ -129,6 +131,8 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_recv,
   ],
   objects = [
+    css_stylesheet::CSSRule,
+    css_stylesheet::CSSStyleSheet,
     geometry::DOMPointReadOnly,
     geometry::DOMPoint,
     geometry::DOMRectReadOnly,
@@ -165,6 +169,7 @@ deno_core::extension!(deno_web,
     "15_performance.js",
     "16_image_data.js",
     "17_geometry.js",
+    "18_css_stylesheet.js",
   ],
   options = {
     blob_store: Arc<dyn BlobStoreTrait>,

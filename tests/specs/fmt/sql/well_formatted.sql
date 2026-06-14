@@ -1,4 +1,2 @@
-SELECT
-  *
-FROM
-  foo;
+SELECT *
+FROM foo;
