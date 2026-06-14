@@ -1926,7 +1926,13 @@ fn lsp_inferred_type() {
   let temp_dir = context.temp_dir();
   let file = temp_dir.source_file(
     "file.ts",
-    r#"const inferred = {
+    r#"type Box<T> = { value: T; next?: Box<T> };
+const simple = 42;
+const unioned = Math.random() > 0.5
+  ? { kind: "a" as const, value: 1 }
+  : { kind: "b" as const, value: "two" };
+const generic = new Map<string, Promise<Array<Box<number | string>>>>();
+const inferred = {
   alpha: { value: "alpha", nested: { count: 1, enabled: true } },
   beta: { value: "beta", nested: { count: 2, enabled: false } },
   gamma: { value: "gamma", nested: { count: 3, enabled: true } },
@@ -1941,6 +1947,30 @@ fn lsp_inferred_type() {
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open_file(&file);
+  let mut assert_inferred_type_contains = |name: &str, expected: &[&str]| {
+    let res = client.write_request(
+      "deno/inferredType",
+      json!({
+        "textDocument": file.identifier(),
+        "position": file.range_of(name).start,
+      }),
+    );
+    let text = res["text"].as_str().unwrap();
+    for expected in expected {
+      assert!(text.contains(expected), "{text}");
+    }
+    assert_eq!(res["range"], json!(file.range_of(name)));
+  };
+  assert_inferred_type_contains("simple", &["const simple: 42"]);
+  assert_inferred_type_contains(
+    "unioned",
+    &["const unioned:", "kind: \"a\"", "kind: \"b\"", "|"],
+  );
+  assert_inferred_type_contains(
+    "generic",
+    &["const generic:", "Map<string", "Promise", "Box"],
+  );
+
   let res = client.write_request(
     "deno/inferredType",
     json!({
