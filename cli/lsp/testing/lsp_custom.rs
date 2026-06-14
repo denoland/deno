@@ -186,3 +186,59 @@ impl lsp::notification::Notification for TestRunProgressNotification {
 
   const METHOD: &'static str = "deno/testRunProgress";
 }
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TestCoverageLine {
+  /// Zero-based line number matching LSP positions.
+  pub line: u32,
+  /// Number of times this line was executed.
+  pub count: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TestCoverageBranch {
+  /// Zero-based line number of the branch point.
+  pub line: u32,
+  /// Zero-based branch index (e.g., 0 for if, 1 for else).
+  pub branch: u32,
+  /// Number of times this branch was taken.
+  pub count: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TestCoverageFile {
+  /// The text document this coverage data relates to.
+  pub text_document: lsp::TextDocumentIdentifier,
+  /// Line-level coverage data.
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  #[serde(default)]
+  pub lines: Vec<TestCoverageLine>,
+  /// Branch-level coverage data.
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  #[serde(default)]
+  pub branches: Vec<TestCoverageBranch>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TestCoverageNotificationParams {
+  /// The ID of the test run this coverage data belongs to.
+  pub id: u32,
+  /// Coverage data for each file.
+  pub files: Vec<TestCoverageFile>,
+}
+
+/// Notification sent from the server to the client when test coverage
+/// data is available after a test run with coverage enabled.
+///
+/// This notification is sent after `deno/testRunProgress` with `End` message
+/// when the test run was initiated with `kind: "coverage"`.
+pub enum TestCoverageNotification {}
+
+impl lsp::notification::Notification for TestCoverageNotification {
+  type Params = TestCoverageNotificationParams;
+
+  const METHOD: &'static str = "deno/testCoverage";
+}
