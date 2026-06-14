@@ -6147,9 +6147,9 @@ dependencies = [
 
 [[package]]
 name = "lax-markup"
-version = "0.2.4"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e23f8e122fcad9fc31e0360af5e7f64f37ea5c83e687c190a6730827e900d9f0"
+checksum = "57349e8fdb68f5fd322a16ec4311e1ecbc7d0b3419a9efb089bba3c45011a553"
 dependencies = [
  "anyhow",
  "dprint-core",
