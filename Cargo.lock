@@ -6141,9 +6141,9 @@ dependencies = [
 
 [[package]]
 name = "lax-css"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "342c68036d51d71c91a7f5e68437b8ce124edec6bb2c668c1b615d4c33d5cd9e"
+checksum = "03894b80c51cf9a758f8bbecdc1b74a36032ce4624cf2a3b0f2ed378e2627b01"
 dependencies = [
  "anyhow",
  "dprint-core",
