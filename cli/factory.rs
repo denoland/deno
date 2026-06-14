@@ -1415,6 +1415,11 @@ impl CliFactory {
             deno_resolver::loader::AllowJsonImports::WithAttribute
           },
           require_modules: options.require_modules()?,
+          // Preserve original line/column numbers when emitting under the
+          // inspector so the Chrome DevTools performance profiler (which does
+          // not apply source maps to its flame graph) reports locations that
+          // match the source. See denoland/deno#25349.
+          line_preserving_emit: options.is_inspecting(),
         },
       )))
     })

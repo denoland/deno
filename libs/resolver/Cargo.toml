@@ -33,7 +33,7 @@ boxed_error.workspace = true
 capacity_builder.workspace = true
 chrono.workspace = true
 dashmap = { workspace = true, optional = true }
-deno_ast = { workspace = true, features = ["cjs"], optional = true }
+deno_ast = { workspace = true, features = ["cjs", "type_strip"], optional = true }
 deno_cache_dir.workspace = true
 deno_config.workspace = true
 deno_error.workspace = true
