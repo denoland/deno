@@ -271,6 +271,31 @@ Deno.test("[util] styleText() with array of formats", () => {
   assertEquals(colored, "\x1b[31m\x1b[32merror\x1b[39m\x1b[39m");
 });
 
+Deno.test("[util] styleText() respects stream.isTTY", () => {
+  const streamTTY = { write() {}, isTTY: true };
+  const streamNoTTY = { write() {}, isTTY: false };
+
+  assertEquals(
+    util.styleText("bgYellow", "TTY", { stream: streamTTY }),
+    "\x1b[43mTTY\x1b[49m",
+  );
+  assertEquals(
+    util.styleText("bgYellow", "No TTY", { stream: streamNoTTY }),
+    "No TTY",
+  );
+});
+
+Deno.test("[util] styleText() with validateStream: false bypasses isTTY check", () => {
+  const streamNoTTY = { write() {}, isTTY: false };
+  assertEquals(
+    util.styleText("bgYellow", "forced", {
+      stream: streamNoTTY,
+      validateStream: false,
+    }),
+    "\x1b[43mforced\x1b[49m",
+  );
+});
+
 Deno.test("[util] stripVTControlCharacters() removes OSC 8 hyperlinks", () => {
   // OSC 8 hyperlink with ESC \ (ST) terminator
   const input =
