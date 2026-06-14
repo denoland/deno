@@ -48,6 +48,7 @@ use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
 use sys_traits::FsWrite;
 use sys_traits::PathsInErrorsExt;
+use sys_traits::SysWithPathsInErrors;
 
 use crate::BinEntries;
 use crate::CachedNpmPackageExtraInfoProvider;
@@ -942,52 +943,75 @@ impl<
           &member_node_modules,
           &keep_aliases,
         );
-        if workspace_pkg.deps.is_empty() {
-          continue;
-        }
-        let member_key = workspace_pkg.target_dir.to_string_lossy();
-        let mut dep_cache = setup_cache.with_dep(&member_key);
-        let mut created_dir = false;
-        for dep in &workspace_pkg.deps {
-          let (alias, target_path, cache_target) = match dep {
-            InstallWorkspacePkgDep::Remote { alias, req } => {
-              let Some(id) = resolve_remote_pkg_id(snapshot, req) else {
-                continue;
-              };
-              let package = snapshot.package_from_id(&id).unwrap();
-              let target_folder_name = get_package_folder_id_folder_name(
-                &package.get_package_cache_folder_id(),
-              );
-              let local_registry_package_path = join_package_name(
-                Cow::Owned(
-                  deno_local_registry_dir
-                    .join(&target_folder_name)
-                    .join("node_modules"),
-                ),
-                &package.id.nv.name,
-              );
-              (alias, local_registry_package_path, target_folder_name)
+        // The member's direct npm dependencies that ship executables, gathered
+        // while linking so their bins can be set up in the member's `.bin` once
+        // every alias link exists.
+        let mut bin_deps: Vec<MemberBinDep> = Vec::new();
+        if !workspace_pkg.deps.is_empty() {
+          let member_key = workspace_pkg.target_dir.to_string_lossy();
+          let mut dep_cache = setup_cache.with_dep(&member_key);
+          let mut created_dir = false;
+          for dep in &workspace_pkg.deps {
+            let (alias, target_path, cache_target) = match dep {
+              InstallWorkspacePkgDep::Remote { alias, req } => {
+                let Some(id) = resolve_remote_pkg_id(snapshot, req) else {
+                  continue;
+                };
+                let package = snapshot.package_from_id(&id).unwrap();
+                let target_folder_name = get_package_folder_id_folder_name(
+                  &package.get_package_cache_folder_id(),
+                );
+                let local_registry_package_path = join_package_name(
+                  Cow::Owned(
+                    deno_local_registry_dir
+                      .join(&target_folder_name)
+                      .join("node_modules"),
+                  ),
+                  &package.id.nv.name,
+                );
+                if package.has_bin {
+                  // Collected before the dep-cache short-circuit below so a
+                  // dependency whose link is already current still contributes
+                  // its bins (the alias link exists either way).
+                  bin_deps.push(MemberBinDep {
+                    package,
+                    read_path: local_registry_package_path.clone(),
+                    link_path: member_node_modules.join(alias.as_str()),
+                  });
+                }
+                (alias, local_registry_package_path, target_folder_name)
+              }
+              InstallWorkspacePkgDep::Workspace { alias, nv } => {
+                let Some(target_dir) = workspace_member_dirs.get(nv) else {
+                  continue;
+                };
+                (alias, target_dir.to_path_buf(), nv.to_string())
+              }
+            };
+            if !dep_cache.insert(alias, &cache_target) {
+              continue;
             }
-            InstallWorkspacePkgDep::Workspace { alias, nv } => {
-              let Some(target_dir) = workspace_member_dirs.get(nv) else {
-                continue;
-              };
-              (alias, target_dir.to_path_buf(), nv.to_string())
+            if !created_dir {
+              sys.fs_create_dir_all(&member_node_modules)?;
+              created_dir = true;
             }
-          };
-          if !dep_cache.insert(alias, &cache_target) {
-            continue;
+            symlink_package_dir(
+              sys.as_ref(),
+              &target_path,
+              &member_node_modules.join(alias.as_str()),
+            )?;
           }
-          if !created_dir {
-            sys.fs_create_dir_all(&member_node_modules)?;
-            created_dir = true;
-          }
-          symlink_package_dir(
-            sys.as_ref(),
-            &target_path,
-            &member_node_modules.join(alias.as_str()),
-          )?;
         }
+        // Populate (and prune) the member's `node_modules/.bin`. Runs even when
+        // the member has no dependencies so a dropped last bin is cleaned up.
+        setup_member_bin_entries(
+          sys,
+          snapshot,
+          &extra_info_provider,
+          &member_node_modules,
+          &bin_deps,
+        )
+        .await?;
       }
     }
 
@@ -1706,6 +1730,85 @@ pub(crate) fn remove_stale_member_symlinks<TSys: LocalNpmInstallSys>(
       let _ignore = remove_existing_entry(sys, &entry_path);
     }
   }
+}
+
+/// A workspace member's direct dependency that may contribute executables to
+/// the member's `node_modules/.bin`.
+pub(crate) struct MemberBinDep<'a> {
+  /// The resolved npm package, used for its `bin` metadata.
+  pub package: &'a NpmResolutionPackage,
+  /// Where the package's `package.json` is read from: its real location in the
+  /// layout (the `.deno` store path for the isolated linker, or the hoisted
+  /// package directory for the hoisted linker).
+  pub read_path: PathBuf,
+  /// The member's own link to the package
+  /// (`<member>/node_modules/<alias>`). The generated shim points here so a
+  /// tool invoked as `node_modules/.bin/<tool>` from within the member resolves
+  /// the member's copy.
+  pub link_path: PathBuf,
+}
+
+/// Sets up (and prunes) a workspace member's `node_modules/.bin`, mirroring how
+/// npm and pnpm populate each member's local `.bin` so tools invoked as
+/// `node_modules/.bin/<tool>` from within the member (for example `eslint`,
+/// `svelte-check`, or `astro`) resolve the member's own dependencies.
+///
+/// Any pre-existing entries are cleared first so an executable from a
+/// dependency the member dropped stops resolving. This mirrors how the root
+/// `.bin` is rebuilt, and it is the per-member counterpart that the
+/// symlink-only [`remove_stale_member_symlinks`] cannot provide: on Windows the
+/// shims are plain files (`<tool>`, `<tool>.cmd`, `<tool>.ps1`) rather than
+/// symlinks.
+///
+/// Sibling workspace members are not npm packages and so are not included in
+/// `bin_deps`; their executables are not linked into a member's `.bin` yet.
+pub(crate) async fn setup_member_bin_entries<'a, TSys: LocalNpmInstallSys>(
+  sys: SysWithPathsInErrors<'a, TSys>,
+  snapshot: &'a NpmResolutionSnapshot,
+  extra_info_provider: &CachedNpmPackageExtraInfoProvider,
+  member_node_modules: &Path,
+  bin_deps: &[MemberBinDep<'a>],
+) -> Result<(), SyncResolutionWithFsError> {
+  let member_bin_dir = member_node_modules.join(".bin");
+  // Clear any existing `.bin` entries before re-creating them so executables
+  // from dropped dependencies don't linger. Runs unconditionally (even with no
+  // bins to add) so a member that dropped its last bin dependency is cleaned up
+  // too. A member's `.bin` is small, so rebuilding it each install is cheap.
+  if let Ok(entries) = sys.fs_read_dir(&member_bin_dir) {
+    for entry in entries.flatten() {
+      let Ok(file_type) = entry.file_type() else {
+        continue;
+      };
+      if file_type.is_file() {
+        let _ignore = sys.fs_remove_file(entry.path());
+      } else {
+        let _ignore = sys.fs_remove_dir_all(entry.path());
+      }
+    }
+  }
+
+  let mut bin_entries = BinEntries::new(sys);
+  for dep in bin_deps {
+    if !dep.package.has_bin {
+      continue;
+    }
+    // Cached from the root setup that ran earlier, so this is a map lookup
+    // rather than a disk read in the common case.
+    let extra = extra_info_provider
+      .get_package_extra_info(
+        &dep.package.id.nv,
+        &dep.read_path,
+        ExpectedExtraInfo::from_package(dep.package),
+      )
+      .await
+      .map_err(SyncResolutionWithFsError::Other)?;
+    bin_entries.add(dep.package, &extra, dep.link_path.clone());
+  }
+  // Ignore setup failures here: every package linked into a member is also
+  // linked at the root, whose `.bin` setup already reports a missing entrypoint
+  // or a not-yet-run lifecycle script. Warning again per member would be noise.
+  bin_entries.finish(snapshot, &member_bin_dir, |_outcome| {})?;
+  Ok(())
 }
 
 /// Runs `create`, and if it fails because something already exists at `path`,
