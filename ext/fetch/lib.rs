@@ -80,6 +80,7 @@ use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
+use http::header::TRANSFER_ENCODING;
 use http::header::USER_AGENT;
 use http_body_util::BodyDataStream;
 use http_body_util::BodyExt;
