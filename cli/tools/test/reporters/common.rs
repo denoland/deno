@@ -283,12 +283,18 @@ pub(super) fn report_summary(
     write!(summary_result, " | {} filtered out", summary.filtered_out).ok();
   };
 
+  // The summary is a whole-suite aggregate, so it stays at millisecond
+  // granularity. Sub-millisecond precision here would be noise and would make
+  // the output non-deterministic for fast or empty runs.
   writeln!(
     writer,
     "\n{} | {} {}",
     status,
     summary_result,
-    colors::gray(format!("({})", display::human_elapsed(*elapsed))),
+    colors::gray(format!(
+      "({})",
+      display::human_elapsed_with_ms_limit(elapsed.as_millis(), 1_000)
+    )),
   )
   .ok();
 }

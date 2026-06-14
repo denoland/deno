@@ -52,8 +52,15 @@ pub fn human_download_size(byte_count: u64, total_bytes: u64) -> String {
 ///
 /// Durations under a millisecond are rendered in microseconds (`µs`) or
 /// nanoseconds (`ns`) so that very fast operations aren't reported as `0ms`.
+///
+/// A zero duration is reported as `0ms` rather than `0ns`, since it represents
+/// "no measured time" (e.g. a cancelled or ignored test that never ran) rather
+/// than a sub-nanosecond measurement.
 pub fn human_elapsed(elapsed: Duration) -> String {
   let nanos = elapsed.as_nanos();
+  if nanos == 0 {
+    return "0ms".to_string();
+  }
   if nanos < 1_000 {
     return format!("{nanos}ns");
   }
@@ -161,7 +168,7 @@ mod tests {
 
   #[test]
   fn test_human_elapsed_sub_millisecond() {
-    assert_eq!(human_elapsed(Duration::ZERO), "0ns");
+    assert_eq!(human_elapsed(Duration::ZERO), "0ms");
     assert_eq!(human_elapsed(Duration::from_nanos(23)), "23ns");
     assert_eq!(human_elapsed(Duration::from_nanos(999)), "999ns");
     assert_eq!(human_elapsed(Duration::from_nanos(1000)), "1µs");
