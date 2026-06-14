@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "auto_provision": {
+      "args": "run -A main.ts",
+      "envs": {
+        // trust the test root CA that signs the mock ACME CA's certificates
+        "DENO_CERT": "../../../testdata/tls/RootCA.pem"
+      },
+      "output": "main.out",
+      "exitCode": 0
+    }
+  }
+}

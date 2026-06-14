@@ -310,7 +310,7 @@ fn ensure_test_server_built() {
   }
 }
 
-pub const TEST_SERVERS_COUNT: usize = 38;
+pub const TEST_SERVERS_COUNT: usize = 39;
 
 #[derive(Default)]
 struct HttpServerCount {

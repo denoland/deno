@@ -5621,6 +5621,59 @@ declare namespace Deno {
      *
      * @default {511} */
     tcpBacklog?: number;
+
+    /** Automatically provision and renew a TLS certificate for the given
+     * domains using the ACME protocol (RFC 8555).
+     *
+     * When set, the server terminates TLS using a certificate obtained from
+     * the configured ACME certificate authority (Let's Encrypt by default).
+     * Domain validation is performed with the `http-01` challenge, which
+     * requires the challenge port (port 80 by default) to be reachable from
+     * the certificate authority.
+     *
+     * @experimental **UNSTABLE**: New API, yet to be vetted.
+     */
+    acme?: ServeAcmeOptions;
+  }
+
+  /**
+   * Options for automatic TLS certificate provisioning via ACME (RFC 8555),
+   * used by the `acme` option of {@linkcode ServeTcpOptions}.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeAcmeOptions {
+    /** The domain names to obtain a certificate for. The certificate is
+     * issued with all names as subject alternative names. */
+    domains: string[];
+
+    /** The URL of the ACME directory of the certificate authority.
+     *
+     * @default {"https://acme-v02.api.letsencrypt.org/directory"} */
+    directoryUrl?: string;
+
+    /** Contact email address(es) for the ACME account. */
+    contact?: string | string[];
+
+    /** Directory where the account key and issued certificates are cached.
+     * If not provided, certificates are kept in memory only and a new
+     * certificate is requested on every start. */
+    cacheDir?: string;
+
+    /** The port the `http-01` challenge server listens on while a
+     * certificate order is in flight. Certificate authorities validate
+     * `http-01` challenges on port 80; only change this when something in
+     * front of the server (eg. a load balancer) remaps ports.
+     *
+     * @default {80} */
+    challengePort?: number;
+
+    /** The hostname the `http-01` challenge server binds to.
+     *
+     * @default {"0.0.0.0"} */
+    challengeHostname?: string;
   }
 
   /**

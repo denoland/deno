@@ -38,6 +38,7 @@ use sha2::Digest;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
+mod acme;
 mod grpc;
 mod hyper_utils;
 mod jsr_registry;
@@ -89,6 +90,9 @@ const WS_HANG_PORT: u16 = 4264;
 const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
+// Mock ACME certificate authority; `http-01` challenges are validated
+// against port `acme::ACME_CHALLENGE_PORT` (4271).
+const ACME_PORT: u16 = 4270;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -154,6 +158,8 @@ pub async fn run_all_servers() {
   let node_js_mirror_server_fut =
     nodejs_org_mirror::nodejs_org_mirror(NODEJS_ORG_MIRROR_SERVER_PORT);
 
+  let acme_server_fut = acme::acme_server(ACME_PORT);
+
   let mut futures = vec![
     redirect_server_fut.boxed_local(),
     ws_server_fut.boxed_local(),
@@ -181,6 +187,7 @@ pub async fn run_all_servers() {
     registry_server_fut.boxed_local(),
     provenance_mock_server_fut.boxed_local(),
     node_js_mirror_server_fut.boxed_local(),
+    acme_server_fut.boxed_local(),
   ];
   futures.extend(npm_registry_server_futs);
   futures.extend(private_npm_registry_1_server_futs);
