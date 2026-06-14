@@ -615,6 +615,12 @@ impl LockfileContent {
   /// version is kept and the normal resolution pass validates it against the
   /// manifest afterwards. The `workspace` section is recomputed from the
   /// manifests by `set_workspace_config`, so "ours" is kept as-is.
+  ///
+  /// By design, a same-key/different-value collision in an identity-keyed
+  /// section (for example two branches recording a different integrity hash
+  /// for the same `name@version` or `url`) is treated as spurious and "ours"
+  /// is kept via `or_insert`; such a divergence is not expected in normal
+  /// operation and is not surfaced as a conflict.
   fn merge_conflict_sides(mut ours: Self, theirs: Self) -> Self {
     for (req, version) in theirs.packages.specifiers {
       match ours.packages.specifiers.entry(req) {
@@ -1491,6 +1497,123 @@ mod tests {
     let err = new_lockfile(NewLockfileOptions {
       file_path: PathBuf::from("/foo"),
       content: "{ not valid json",
+      overwrite: false,
+    })
+    .unwrap_err();
+    assert!(matches!(err.source, LockfileErrorReason::ParseError(_)));
+  }
+
+  #[test]
+  fn resolves_git_merge_conflict_unions_identity_sections() {
+    // Conflicts in the identity-keyed `jsr`, `redirects`, and `remote`
+    // sections. Each side adds a distinct entry; every conflict here is
+    // spurious and should be unioned.
+    let content = r#"{
+  "version": "5",
+  "jsr": {
+<<<<<<< HEAD
+    "@std/assert@1.0.10": { "integrity": "sha512-aaa" }
+=======
+    "@std/path@1.0.0": { "integrity": "sha512-bbb" }
+>>>>>>> branch
+  },
+  "redirects": {
+<<<<<<< HEAD
+    "https://deno.land/std/assert/mod.ts": "https://deno.land/std@1.0.0/assert/mod.ts"
+=======
+    "https://deno.land/std/path/mod.ts": "https://deno.land/std@1.0.0/path/mod.ts"
+>>>>>>> branch
+  },
+  "remote": {
+<<<<<<< HEAD
+    "https://deno.land/std@1.0.0/assert/mod.ts": "aaa"
+=======
+    "https://deno.land/std@1.0.0/path/mod.ts": "bbb"
+>>>>>>> branch
+  }
+}"#;
+
+    let lockfile = new_lockfile(NewLockfileOptions {
+      file_path: PathBuf::from("/foo"),
+      content,
+      overwrite: false,
+    })
+    .unwrap();
+
+    assert!(lockfile.has_content_changed);
+
+    let jsr = &lockfile.content.packages.jsr;
+    assert_eq!(jsr.len(), 2);
+    assert!(
+      jsr.contains_key(&PackageNv::from_str("@std/assert@1.0.10").unwrap())
+    );
+    assert!(jsr.contains_key(&PackageNv::from_str("@std/path@1.0.0").unwrap()));
+
+    let redirects = &lockfile.content.redirects;
+    assert_eq!(redirects.len(), 2);
+    assert!(redirects.contains_key("https://deno.land/std/assert/mod.ts"));
+    assert!(redirects.contains_key("https://deno.land/std/path/mod.ts"));
+
+    let remote = &lockfile.content.remote;
+    assert_eq!(remote.len(), 2);
+    assert!(remote.contains_key("https://deno.land/std@1.0.0/assert/mod.ts"));
+    assert!(remote.contains_key("https://deno.land/std@1.0.0/path/mod.ts"));
+  }
+
+  #[test]
+  fn resolves_git_merge_conflict_with_diff3_base() {
+    // A diff3-style conflict (`merge.conflictStyle = diff3`) carries a base
+    // section between `|||||||` and `=======`. That base is the common
+    // ancestor and must be discarded; only "ours" and "theirs" are unioned.
+    let content = r#"{
+  "version": "5",
+  "remote": {
+<<<<<<< HEAD
+    "https://deno.land/std@1.0.0/a.ts": "aaa"
+||||||| base
+    "https://deno.land/std@0.9.0/a.ts": "ccc"
+=======
+    "https://deno.land/std@1.0.0/b.ts": "bbb"
+>>>>>>> branch
+  }
+}"#;
+
+    let lockfile = new_lockfile(NewLockfileOptions {
+      file_path: PathBuf::from("/foo"),
+      content,
+      overwrite: false,
+    })
+    .unwrap();
+
+    assert!(lockfile.has_content_changed);
+
+    let remote = &lockfile.content.remote;
+    // The base entry is dropped; only the two sides survive.
+    assert_eq!(remote.len(), 2);
+    assert!(remote.contains_key("https://deno.land/std@1.0.0/a.ts"));
+    assert!(remote.contains_key("https://deno.land/std@1.0.0/b.ts"));
+    assert!(!remote.contains_key("https://deno.land/std@0.9.0/a.ts"));
+  }
+
+  #[test]
+  fn corrupt_conflict_side_falls_back_to_parse_error() {
+    // Conflict markers are present, but one reconstructed side is not valid
+    // JSON on its own. This is corrupt beyond a plain merge conflict, so the
+    // original parse error is surfaced rather than guessing at a merge.
+    let content = r#"{
+  "version": "5",
+  "remote": {
+<<<<<<< HEAD
+    "https://deno.land/std@1.0.0/a.ts": "aaa"
+=======
+    this side is not valid json
+>>>>>>> branch
+  }
+}"#;
+
+    let err = new_lockfile(NewLockfileOptions {
+      file_path: PathBuf::from("/foo"),
+      content,
       overwrite: false,
     })
     .unwrap_err();

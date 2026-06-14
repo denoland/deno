@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [{
+    // The pre-seeded deno.lock contains git merge conflict markers. Caching
+    // should resolve them automatically (union of both sides) and rewrite the
+    // lockfile without markers.
+    "args": "install --entrypoint main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "task --quiet cat deno.lock",
+    "output": "lock.out"
+  }]
+}
