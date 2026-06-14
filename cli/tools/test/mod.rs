@@ -537,12 +537,12 @@ pub enum TestEvent {
   Plan(TestPlan),
   Wait(usize),
   Output(Vec<u8>),
-  Slow(usize, u64),
-  Result(usize, TestResult, u64),
+  Slow(usize, Duration),
+  Result(usize, TestResult, Duration),
   UncaughtError(String, Box<JsError>),
   StepRegister(TestStepDescription),
   StepWait(usize),
-  StepResult(usize, TestStepResult, u64),
+  StepResult(usize, TestStepResult, Duration),
   /// Indicates that this worker has completed running tests.
   Completed,
   /// Indicates that the user has cancelled the test run with Ctrl+C and
@@ -2311,7 +2311,7 @@ impl TestEventTracker {
     test_id: usize,
     duration: Duration,
   ) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Slow(test_id, duration.as_millis() as _))
+    self.send_event(TestEvent::Slow(test_id, duration))
   }
 
   fn wait(&self, desc: &TestDescription) -> Result<(), ChannelClosedError> {
@@ -2319,14 +2319,22 @@ impl TestEventTracker {
   }
 
   fn ignored(&self, desc: &TestDescription) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Result(desc.id, TestResult::Ignored, 0))
+    self.send_event(TestEvent::Result(
+      desc.id,
+      TestResult::Ignored,
+      Duration::default(),
+    ))
   }
 
   fn cancelled(
     &self,
     desc: &TestDescription,
   ) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Result(desc.id, TestResult::Cancelled, 0))
+    self.send_event(TestEvent::Result(
+      desc.id,
+      TestResult::Cancelled,
+      Duration::default(),
+    ))
   }
 
   fn register(
@@ -2358,11 +2366,7 @@ impl TestEventTracker {
     test_result: TestResult,
     duration: Duration,
   ) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Result(
-      desc.id,
-      test_result,
-      duration.as_millis() as u64,
-    ))
+    self.send_event(TestEvent::Result(desc.id, test_result, duration))
   }
 
   pub(crate) fn force_end_report(&self) -> Result<(), ChannelClosedError> {
