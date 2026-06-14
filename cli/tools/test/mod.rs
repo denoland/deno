@@ -1907,6 +1907,179 @@ async fn fetch_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
+/// Returns whether the specifier points at a file the module graph can parse
+/// (i.e. a script, not a markdown doc-test file). Mirrors the partition used in
+/// watch mode.
+fn is_script_specifier(specifier: &ModuleSpecifier) -> bool {
+  deno_path_util::url_to_file_path(specifier)
+    .map(|p| is_script_ext(&p))
+    .unwrap_or(true)
+}
+
+/// Run `git` in `cwd`, returning stdout on success.
+fn run_git(cwd: &Path, args: &[&str]) -> Result<String, AnyError> {
+  let output = std::process::Command::new("git")
+    .current_dir(cwd)
+    .args(args)
+    .output();
+  let output = match output {
+    Ok(output) => output,
+    Err(err) => {
+      return Err(anyhow!(
+        "Failed to run `git {}` for `--changed`: {err}. Is git installed and on PATH?",
+        args.join(" ")
+      ));
+    }
+  };
+  if !output.status.success() {
+    return Err(anyhow!(
+      "`git {}` failed: {}",
+      args.join(" "),
+      String::from_utf8_lossy(&output.stderr).trim()
+    ));
+  }
+  Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Collect the set of files changed in git, as absolute paths.
+///
+/// Without a `base` this is the working-tree diff (staged, unstaged and
+/// untracked). With a `base` git ref it additionally includes committed changes
+/// since the merge-base of `base` and `HEAD` (the `base...HEAD` three-dot form),
+/// matching the behavior of Vitest and Jest.
+fn changed_files_from_git(
+  cwd: &Path,
+  base: Option<&str>,
+) -> Result<Vec<PathBuf>, AnyError> {
+  // Resolve the repository root so git's repo-relative paths can be made
+  // absolute.
+  let repo_root = run_git(cwd, &["rev-parse", "--show-toplevel"])
+    .map_err(|err| anyhow!("`--changed` requires a git repository: {err}"))?;
+  let repo_root = PathBuf::from(repo_root.trim());
+
+  let mut commands: Vec<Vec<&str>> = vec![
+    // staged changes
+    vec!["diff", "--cached", "--name-only"],
+    // unstaged + untracked changes (respecting .gitignore)
+    vec!["ls-files", "--other", "--modified", "--exclude-standard"],
+  ];
+  let range;
+  if let Some(base) = base {
+    // committed changes since the merge-base of `base` and HEAD
+    range = format!("{base}...HEAD");
+    commands.push(vec!["diff", "--name-only", &range]);
+  }
+
+  let mut files = Vec::new();
+  for args in &commands {
+    let stdout = run_git(cwd, args)?;
+    for line in stdout.lines() {
+      let line = line.trim();
+      if !line.is_empty() {
+        files.push(repo_root.join(line));
+      }
+    }
+  }
+  Ok(files)
+}
+
+/// Resolve the set of changed/related file paths requested via `--changed` and
+/// `--related`, canonicalized so they line up with the module graph's paths.
+///
+/// Returns `None` when neither flag was passed (no filtering).
+fn collect_changed_paths(
+  cli_options: &CliOptions,
+  changed: &Option<Option<String>>,
+  related: &[String],
+) -> Result<Option<HashSet<PathBuf>>, AnyError> {
+  if changed.is_none() && related.is_empty() {
+    return Ok(None);
+  }
+
+  let cwd = cli_options.initial_cwd();
+  let mut raw_paths: Vec<PathBuf> = Vec::new();
+
+  if let Some(base) = changed {
+    raw_paths.extend(changed_files_from_git(cwd, base.as_deref())?);
+  }
+  for file in related {
+    raw_paths.push(cwd.join(file));
+  }
+
+  // Canonicalize so paths match the graph's canonicalized module paths. Deleted
+  // files can't be canonicalized and are simply dropped.
+  let mut result = HashSet::with_capacity(raw_paths.len());
+  for path in raw_paths {
+    if let Ok(path) = canonicalize_path(&path) {
+      result.insert(path);
+    }
+  }
+  Ok(Some(result))
+}
+
+/// Filter `specifiers_with_mode` down to the test modules affected by
+/// `changed_paths`, using the module graph to find dependents.
+///
+/// A module is kept when it is itself a changed/related file, or when any of its
+/// local dependencies changed. As an escape hatch, if a `.env` file changed
+/// (which any test could read) nothing is filtered out.
+async fn filter_specifiers_by_changed(
+  factory: &CliFactory,
+  cli_options: &CliOptions,
+  specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
+  changed_paths: HashSet<PathBuf>,
+) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
+  // If an env file changed, any test could be affected; don't filter.
+  let env_file_changed = cli_options
+    .possible_env_file_paths_for_watch()
+    .any(|path| changed_paths.contains(&path));
+  if env_file_changed {
+    return Ok(specifiers_with_mode);
+  }
+
+  // Build a graph over the script test modules so we can walk each test's
+  // dependencies. Doc-only (e.g. markdown) modules aren't part of the graph and
+  // are matched by path instead.
+  //
+  // Note: this graph is built solely to resolve the affected set; the downstream
+  // typecheck/run path builds its own graph again. That's the same shape watch
+  // mode uses, where the cost is amortized across reruns; for a one-shot
+  // `--changed`/`--related` run it's an extra graph build we accept for now to
+  // keep the filtering self-contained.
+  let graph_kind = cli_options.type_check_mode().as_graph_kind();
+  let module_graph_creator = factory.module_graph_creator().await?;
+  let graph_roots = specifiers_with_mode
+    .iter()
+    .filter(|(specifier, _)| is_script_specifier(specifier))
+    .map(|(specifier, _)| specifier.clone())
+    .collect::<Vec<_>>();
+  let graph = module_graph_creator
+    .create_graph(graph_kind, graph_roots, NpmCachingStrategy::Eager)
+    .await?;
+  module_graph_creator.graph_valid(&graph)?;
+
+  let result = specifiers_with_mode
+    .into_iter()
+    .filter(|(specifier, _)| {
+      // Always keep a module that is itself a changed/related file.
+      if let Ok(path) = deno_path_util::url_to_file_path(specifier)
+        && let Ok(path) = canonicalize_path(&path)
+        && changed_paths.contains(&path)
+      {
+        return true;
+      }
+      // Keep a script module if any of its local dependencies changed.
+      is_script_specifier(specifier)
+        && has_graph_root_local_dependent_changed(
+          &graph,
+          specifier,
+          &changed_paths,
+        )
+    })
+    .collect();
+  Ok(result)
+}
+
 pub async fn run_tests(
   flags: Arc<Flags>,
   test_flags: TestFlags,
@@ -1928,9 +2101,37 @@ pub async fn run_tests(
   )
   .await?;
 
-  if !workspace_test_options.permit_no_files && specifiers_with_mode.is_empty()
+  let is_changed_filter =
+    test_flags.changed.is_some() || !test_flags.related.is_empty();
+
+  if !workspace_test_options.permit_no_files
+    && !is_changed_filter
+    && specifiers_with_mode.is_empty()
   {
     return Err(anyhow!("No test modules found"));
+  }
+
+  // Filter down to test modules affected by `--changed` / `--related`.
+  let specifiers_with_mode = match collect_changed_paths(
+    cli_options,
+    &test_flags.changed,
+    &test_flags.related,
+  )? {
+    None => specifiers_with_mode,
+    Some(changed_paths) => {
+      filter_specifiers_by_changed(
+        &factory,
+        cli_options,
+        specifiers_with_mode,
+        changed_paths,
+      )
+      .await?
+    }
+  };
+
+  if is_changed_filter && specifiers_with_mode.is_empty() {
+    log::info!("No test modules were affected by the given changes");
+    return Ok(());
   }
 
   let doc_tests = get_doc_tests(&specifiers_with_mode, file_fetcher).await?;
