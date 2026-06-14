@@ -59,6 +59,51 @@ impl Clone for TlsKey {
   }
 }
 
+/// The relevant parts of a TLS ClientHello, passed to a `TlsKeyResolver`
+/// callback so it can pick a certificate per connection.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TlsClientHelloInfo {
+  pub sni: String,
+  /// The ALPN protocols offered by the client, in order of preference.
+  pub alpn: Vec<Vec<u8>>,
+}
+
+impl TlsClientHelloInfo {
+  /// Key used for caching resolutions. Connections with the same SNI but a
+  /// different ALPN offer resolve independently, since the resolver may
+  /// answer them differently (eg. TLS-ALPN-01 challenge handshakes).
+  fn cache_key(&self) -> String {
+    let mut key = self.sni.clone();
+    for proto in &self.alpn {
+      key.push('\u{0}');
+      key.push_str(&String::from_utf8_lossy(proto));
+    }
+    key
+  }
+}
+
+/// The result of a `TlsKeyResolver` lookup.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ResolvedTlsKey {
+  pub key: TlsKey,
+  /// When set, overrides the listener's ALPN protocols for this
+  /// resolution (eg. `acme-tls/1` for a TLS-ALPN-01 challenge handshake).
+  pub alpn: Option<Vec<Vec<u8>>>,
+  /// When `false`, this resolution is not cached and the next handshake
+  /// with the same ClientHello triggers a fresh lookup.
+  pub cache: bool,
+}
+
+impl Clone for ResolvedTlsKey {
+  fn clone(&self) -> Self {
+    Self {
+      key: self.key.clone(),
+      alpn: self.alpn.clone(),
+      cache: self.cache,
+    }
+  }
+}
+
 #[derive(Clone, Debug, Default)]
 pub enum TlsKeys {
   // TODO(mmastrac): We need Option<&T> for cppgc -- this is a workaround
@@ -112,16 +157,21 @@ impl From<Option<TlsKey>> for TlsKeys {
 }
 
 enum TlsKeyState {
-  Resolving(broadcast::Receiver<Result<TlsKey, ErrorType>>),
-  Resolved(Result<TlsKey, ErrorType>),
+  Resolving(broadcast::Receiver<Result<ResolvedTlsKey, ErrorType>>),
+  Resolved(Result<ResolvedTlsKey, ErrorType>),
 }
 
+type TlsKeyCache = Rc<RefCell<HashMap<String, TlsKeyState>>>;
+
+type ResolutionRequest = (
+  String,
+  TlsClientHelloInfo,
+  broadcast::Sender<Result<ResolvedTlsKey, ErrorType>>,
+);
+
 struct TlsKeyResolverInner {
-  resolution_tx: mpsc::UnboundedSender<(
-    String,
-    broadcast::Sender<Result<TlsKey, ErrorType>>,
-  )>,
-  cache: RefCell<HashMap<String, TlsKeyState>>,
+  resolution_tx: mpsc::UnboundedSender<ResolutionRequest>,
+  cache: TlsKeyCache,
 }
 
 #[derive(Clone)]
@@ -132,16 +182,16 @@ pub struct TlsKeyResolver {
 impl TlsKeyResolver {
   async fn resolve_internal(
     &self,
-    sni: String,
+    hello: TlsClientHelloInfo,
     alpn: Vec<Vec<u8>>,
   ) -> Result<Arc<ServerConfig>, TlsKeyError> {
-    let key = self.resolve(sni).await?;
+    let resolved = self.resolve(hello).await?;
 
     let mut tls_config = ServerConfig::builder()
       .with_no_client_auth()
-      .with_single_cert(key.0, key.1.clone_key())?;
+      .with_single_cert(resolved.key.0, resolved.key.1.clone_key())?;
     tls_config.key_log = get_ssl_key_log();
-    tls_config.alpn_protocols = alpn;
+    tls_config.alpn_protocols = resolved.alpn.unwrap_or(alpn);
     Ok(tls_config.into())
   }
 
@@ -155,16 +205,22 @@ impl TlsKeyResolver {
     // required to be wrapped in an Arc. To fix this, we spawn a task in our current runtime
     // to respond to the requests.
     spawn(async move {
-      while let Some((sni, txr)) = rx.recv().await {
-        _ = txr.send(self.resolve_internal(sni, alpn.clone()).await);
+      while let Some((hello, txr)) = rx.recv().await {
+        _ = txr.send(self.resolve_internal(hello, alpn.clone()).await);
       }
     });
 
     Arc::new(move |hello| {
-      // Take ownership of the SNI information
-      let sni = hello.server_name().unwrap_or_default().to_owned();
+      // Take ownership of the ClientHello information
+      let info = TlsClientHelloInfo {
+        sni: hello.server_name().unwrap_or_default().to_owned(),
+        alpn: hello
+          .alpn()
+          .map(|protos| protos.map(|p| p.to_vec()).collect())
+          .unwrap_or_default(),
+      };
       let (txr, rxr) = tokio::sync::oneshot::channel::<_>();
-      _ = tx.send((sni, txr));
+      _ = tx.send((info, txr));
       rxr
         .map(|res| match res {
           Err(e) => Err(std::io::Error::new(ErrorKind::InvalidData, e)),
@@ -184,33 +240,40 @@ impl Debug for TlsKeyResolver {
 
 pub fn new_resolver() -> (TlsKeyResolver, TlsKeyLookup) {
   let (resolution_tx, resolution_rx) = mpsc::unbounded_channel();
+  let cache = TlsKeyCache::default();
   (
     TlsKeyResolver {
       inner: Rc::new(TlsKeyResolverInner {
         resolution_tx,
-        cache: Default::default(),
+        cache: cache.clone(),
       }),
     },
     TlsKeyLookup {
       resolution_rx: RefCell::new(resolution_rx),
       pending: Default::default(),
+      cache,
     },
   )
 }
 
 impl TlsKeyResolver {
-  /// Resolve the certificate and key for a given host. This immediately spawns a task in the
-  /// background and is therefore cancellation-safe.
+  /// Resolve the certificate and key for a given ClientHello. This immediately spawns a task
+  /// in the background and is therefore cancellation-safe.
   pub fn resolve(
     &self,
-    sni: String,
-  ) -> impl Future<Output = Result<TlsKey, TlsKeyError>> + use<> {
+    hello: TlsClientHelloInfo,
+  ) -> impl Future<Output = Result<ResolvedTlsKey, TlsKeyError>> + use<> {
+    let cache_key = hello.cache_key();
     let mut cache = self.inner.cache.borrow_mut();
-    let mut recv = match cache.get(&sni) {
+    let mut recv = match cache.get(&cache_key) {
       None => {
         let (tx, rx) = broadcast::channel(1);
-        cache.insert(sni.clone(), TlsKeyState::Resolving(rx.resubscribe()));
-        _ = self.inner.resolution_tx.send((sni.clone(), tx));
+        cache
+          .insert(cache_key.clone(), TlsKeyState::Resolving(rx.resubscribe()));
+        _ = self
+          .inner
+          .resolution_tx
+          .send((cache_key.clone(), hello, tx));
         rx
       }
       Some(TlsKeyState::Resolving(recv)) => recv.resubscribe(),
@@ -225,9 +288,19 @@ impl TlsKeyResolver {
     let handle = spawn(async move {
       let res = recv.recv().await?;
       let mut cache = inner.cache.borrow_mut();
-      match cache.get(&sni) {
+      let cacheable = match &res {
+        Ok(resolved) => resolved.cache,
+        Err(_) => true,
+      };
+      match cache.get(&cache_key) {
         None | Some(TlsKeyState::Resolving(..)) => {
-          cache.insert(sni, TlsKeyState::Resolved(res.clone()));
+          if cacheable {
+            cache.insert(cache_key, TlsKeyState::Resolved(res.clone()));
+          } else {
+            // The resolver opted out of caching this result: forget the
+            // in-flight state so the next handshake resolves freshly.
+            cache.remove(&cache_key);
+          }
         }
         Some(TlsKeyState::Resolved(..)) => {
           // Someone beat us to it
@@ -240,15 +313,11 @@ impl TlsKeyResolver {
 }
 
 pub struct TlsKeyLookup {
-  #[allow(clippy::type_complexity, reason = "complex type is necessary here")]
-  resolution_rx: RefCell<
-    mpsc::UnboundedReceiver<(
-      String,
-      broadcast::Sender<Result<TlsKey, ErrorType>>,
-    )>,
+  resolution_rx: RefCell<mpsc::UnboundedReceiver<ResolutionRequest>>,
+  pending: RefCell<
+    HashMap<String, broadcast::Sender<Result<ResolvedTlsKey, ErrorType>>>,
   >,
-  pending:
-    RefCell<HashMap<String, broadcast::Sender<Result<TlsKey, ErrorType>>>>,
+  cache: TlsKeyCache,
 }
 
 // SAFETY: we're sure `TlsKeyLookup` can be GCed
@@ -263,24 +332,38 @@ unsafe impl deno_core::GarbageCollected for TlsKeyLookup {
 impl TlsKeyLookup {
   /// Multiple `poll` calls are safe, but this method is not starvation-safe. Generally
   /// only one `poll`er should be active at any time.
-  pub async fn poll(&self) -> Option<String> {
+  ///
+  /// Returns an opaque resolution id (pass it back to [`Self::resolve`])
+  /// and the ClientHello information.
+  pub async fn poll(&self) -> Option<(String, TlsClientHelloInfo)> {
     match poll_fn(|cx| self.resolution_rx.borrow_mut().poll_recv(cx)).await {
-      Some((sni, sender)) => {
-        self.pending.borrow_mut().insert(sni.clone(), sender);
-        Some(sni)
+      Some((id, hello, sender)) => {
+        self.pending.borrow_mut().insert(id.clone(), sender);
+        Some((id, hello))
       }
       _ => None,
     }
   }
 
   /// Resolve a previously polled item.
-  pub fn resolve(&self, sni: String, res: Result<TlsKey, String>) {
+  pub fn resolve(&self, id: String, res: Result<ResolvedTlsKey, String>) {
     _ = self
       .pending
       .borrow_mut()
-      .remove(&sni)
+      .remove(&id)
       .unwrap()
       .send(res.map_err(|e| Arc::new(e.into_boxed_str())));
+  }
+
+  /// Remove all cached resolutions for the given SNI hostname (regardless
+  /// of the ALPN offer), causing the next TLS handshake for that hostname
+  /// to trigger a fresh lookup. Used to swap certificates without
+  /// restarting the listener (eg. ACME renewal).
+  pub fn invalidate(&self, sni: &str) {
+    self
+      .cache
+      .borrow_mut()
+      .retain(|key, _| key.split('\u{0}').next() != Some(sni));
   }
 }
 
@@ -305,17 +388,32 @@ pub mod tests {
     TlsKey(vec![cert], prikey)
   }
 
+  fn resolved_key_for_test(sni: &str) -> ResolvedTlsKey {
+    ResolvedTlsKey {
+      key: tls_key_for_test(sni),
+      alpn: None,
+      cache: true,
+    }
+  }
+
+  fn hello(sni: &str) -> TlsClientHelloInfo {
+    TlsClientHelloInfo {
+      sni: sni.to_owned(),
+      alpn: vec![],
+    }
+  }
+
   #[tokio::test]
   async fn test_resolve_once() {
     let (resolver, lookup) = new_resolver();
     let task = spawn(async move {
-      while let Some(sni) = lookup.poll().await {
-        lookup.resolve(sni.clone(), Ok(tls_key_for_test(&sni)));
+      while let Some((id, hello)) = lookup.poll().await {
+        lookup.resolve(id, Ok(resolved_key_for_test(&hello.sni)));
       }
     });
 
-    let key = resolver.resolve("example1.com".to_owned()).await.unwrap();
-    assert_eq!(tls_key_for_test("example1.com"), key);
+    let key = resolver.resolve(hello("example1.com")).await.unwrap();
+    assert_eq!(resolved_key_for_test("example1.com"), key);
     drop(resolver);
 
     task.await.unwrap();
@@ -325,18 +423,18 @@ pub mod tests {
   async fn test_resolve_concurrent() {
     let (resolver, lookup) = new_resolver();
     let task = spawn(async move {
-      while let Some(sni) = lookup.poll().await {
-        lookup.resolve(sni.clone(), Ok(tls_key_for_test(&sni)));
+      while let Some((id, hello)) = lookup.poll().await {
+        lookup.resolve(id, Ok(resolved_key_for_test(&hello.sni)));
       }
     });
 
-    let f1 = resolver.resolve("example1.com".to_owned());
-    let f2 = resolver.resolve("example1.com".to_owned());
+    let f1 = resolver.resolve(hello("example1.com"));
+    let f2 = resolver.resolve(hello("example1.com"));
 
     let key = f1.await.unwrap();
-    assert_eq!(tls_key_for_test("example1.com"), key);
+    assert_eq!(resolved_key_for_test("example1.com"), key);
     let key = f2.await.unwrap();
-    assert_eq!(tls_key_for_test("example1.com"), key);
+    assert_eq!(resolved_key_for_test("example1.com"), key);
     drop(resolver);
 
     task.await.unwrap();
@@ -346,20 +444,80 @@ pub mod tests {
   async fn test_resolve_multiple_concurrent() {
     let (resolver, lookup) = new_resolver();
     let task = spawn(async move {
-      while let Some(sni) = lookup.poll().await {
-        lookup.resolve(sni.clone(), Ok(tls_key_for_test(&sni)));
+      while let Some((id, hello)) = lookup.poll().await {
+        lookup.resolve(id, Ok(resolved_key_for_test(&hello.sni)));
       }
     });
 
-    let f1 = resolver.resolve("example1.com".to_owned());
-    let f2 = resolver.resolve("example2.com".to_owned());
+    let f1 = resolver.resolve(hello("example1.com"));
+    let f2 = resolver.resolve(hello("example2.com"));
 
     let key = f1.await.unwrap();
-    assert_eq!(tls_key_for_test("example1.com"), key);
+    assert_eq!(resolved_key_for_test("example1.com"), key);
     let key = f2.await.unwrap();
-    assert_eq!(tls_key_for_test("example2.com"), key);
+    assert_eq!(resolved_key_for_test("example2.com"), key);
     drop(resolver);
 
     task.await.unwrap();
+  }
+
+  #[tokio::test]
+  async fn test_resolve_alpn_no_cache() {
+    let (resolver, lookup) = new_resolver();
+    let task = spawn(async move {
+      let mut count = 0;
+      while let Some((id, hello)) = lookup.poll().await {
+        count += 1;
+        let acme = hello.alpn == vec![b"acme-tls/1".to_vec()];
+        lookup.resolve(
+          id,
+          Ok(ResolvedTlsKey {
+            key: tls_key_for_test(&hello.sni),
+            alpn: acme.then(|| vec![b"acme-tls/1".to_vec()]),
+            cache: !acme,
+          }),
+        );
+      }
+      count
+    });
+
+    let acme_hello = TlsClientHelloInfo {
+      sni: "example1.com".to_owned(),
+      alpn: vec![b"acme-tls/1".to_vec()],
+    };
+
+    // A regular handshake is cached; the second resolve doesn't hit the
+    // lookup queue.
+    let key = resolver.resolve(hello("example1.com")).await.unwrap();
+    assert_eq!(key.alpn, None);
+    resolver.resolve(hello("example1.com")).await.unwrap();
+
+    // `cache: false` resolutions resolve freshly every time.
+    let key = resolver.resolve(acme_hello.clone()).await.unwrap();
+    assert_eq!(key.alpn, Some(vec![b"acme-tls/1".to_vec()]));
+    resolver.resolve(acme_hello).await.unwrap();
+
+    drop(resolver);
+    assert_eq!(task.await.unwrap(), 3);
+  }
+
+  #[tokio::test]
+  async fn test_invalidate() {
+    let (resolver, lookup) = new_resolver();
+
+    let f1 = resolver.resolve(hello("example1.com"));
+    let (id, _) = lookup.poll().await.unwrap();
+    lookup.resolve(id, Ok(resolved_key_for_test("example1.com")));
+    f1.await.unwrap();
+
+    lookup.invalidate("example1.com");
+
+    // Invalidation dropped the cached resolution, so this hits the lookup
+    // queue again.
+    let f2 = resolver.resolve(hello("example1.com"));
+    let (id, hello_info) = lookup.poll().await.unwrap();
+    assert_eq!(hello_info.sni, "example1.com");
+    lookup.resolve(id, Ok(resolved_key_for_test("example1.com")));
+    f2.await.unwrap();
   }
 }

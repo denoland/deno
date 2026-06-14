@@ -28,6 +28,7 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
+use deno_tls::ResolvedTlsKey;
 use deno_tls::ServerConfigProvider;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
@@ -279,34 +280,63 @@ pub fn op_tls_cert_resolver_create<'s>(
   v8::Array::new_with_elements(scope, &[resolver.into(), lookup.into()])
 }
 
+/// Returns `(resolutionId, sni, alpnProtocols)` for the next TLS handshake
+/// waiting on a certificate, or `null` when the listener is gone.
 #[op2]
-#[string]
+#[serde]
 pub async fn op_tls_cert_resolver_poll(
   #[cppgc] lookup: &TlsKeyLookup,
-) -> Option<String> {
-  lookup.poll().await
+) -> Option<(String, String, Vec<String>)> {
+  let (id, hello) = lookup.poll().await?;
+  Some((
+    id,
+    hello.sni,
+    hello
+      .alpn
+      .iter()
+      .map(|p| String::from_utf8_lossy(p).into_owned())
+      .collect(),
+  ))
 }
 
-#[op2(fast)]
+#[op2]
 pub fn op_tls_cert_resolver_resolve(
   #[cppgc] lookup: &TlsKeyLookup,
-  #[string] sni: String,
+  #[string] id: String,
   #[cppgc] key: &TlsKeysHolder,
+  #[serde] alpn: Option<Vec<String>>,
+  cache: bool,
 ) -> Result<(), NetError> {
   let TlsKeys::Static(key) = key.take() else {
     return Err(NetError::UnexpectedKeyType);
   };
-  lookup.resolve(sni, Ok(key));
+  lookup.resolve(
+    id,
+    Ok(ResolvedTlsKey {
+      key,
+      alpn: alpn
+        .map(|protos| protos.into_iter().map(String::into_bytes).collect()),
+      cache,
+    }),
+  );
   Ok(())
 }
 
 #[op2(fast)]
 pub fn op_tls_cert_resolver_resolve_error(
   #[cppgc] lookup: &TlsKeyLookup,
-  #[string] sni: String,
+  #[string] id: String,
   #[string] error: String,
 ) {
-  lookup.resolve(sni, Err(error))
+  lookup.resolve(id, Err(error))
+}
+
+#[op2(fast)]
+pub fn op_tls_cert_resolver_invalidate(
+  #[cppgc] lookup: &TlsKeyLookup,
+  #[string] sni: String,
+) {
+  lookup.invalidate(&sni)
 }
 
 #[op2(stack_trace)]
