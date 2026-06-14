@@ -1,0 +1,25 @@
+Check [WILDCARD]main.ts
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="deno test" tests="4" failures="0" errors="0" time="[WILDCARD]">
+    <testsuite name="./main.ts" tests="4" disabled="0" errors="0" failures="0">
+        <testcase name="captures stdout and stderr" classname="./main.ts" time="[WILDCARD]" line="1" col="6">
+            <system-out>log line
+</system-out>
+            <system-err>error line
+</system-err>
+        </testcase>
+        <testcase name="attributes output to steps" classname="./main.ts" time="[WILDCARD]" line="6" col="6">
+            <system-out>before step
+after step
+</system-out>
+        </testcase>
+        <testcase name="no output" classname="./main.ts" time="[WILDCARD]" line="15" col="6">
+        </testcase>
+        <testcase name="attributes output to steps &gt; inner step" classname="./main.ts" time="[WILDCARD]" line="8" col="11">
+            <system-out>inside step
+</system-out>
+            <system-err>step error
+</system-err>
+        </testcase>
+    </testsuite>
+</testsuites>
