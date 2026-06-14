@@ -521,11 +521,21 @@ async fn emit_bundle_declarations(
   Ok(())
 }
 
-/// Convert a source file path to its corresponding .d.ts path.
+/// Convert a source file path to its corresponding declaration file path.
+///
+/// Mirrors TSC's declaration emit: `.mts`/`.mjs` sources produce `.d.mts`,
+/// `.cts`/`.cjs` produce `.d.cts`, and everything else produces `.d.ts`. Using
+/// the wrong extension here would make the rolled-up output reference a
+/// declaration file that was never emitted.
 fn to_dts_path(source_path: &Path) -> PathBuf {
   let stem = source_path.file_stem().unwrap_or_default();
   let parent = source_path.parent().unwrap_or(Path::new(""));
-  parent.join(format!("{}.d.ts", stem.to_string_lossy()))
+  let dts_ext = match source_path.extension().and_then(|e| e.to_str()) {
+    Some("mts" | "mjs") => "d.mts",
+    Some("cts" | "cjs") => "d.cts",
+    _ => "d.ts",
+  };
+  parent.join(format!("{}.{}", stem.to_string_lossy(), dts_ext))
 }
 
 /// Join multi-line `export { ... } from "..."` and `import type { ... } from "..."`
@@ -564,6 +574,17 @@ fn join_multiline_statements(content: &str) -> String {
   }
 
   result.join("\n")
+}
+
+/// Warn that a relative re-export could not be inlined, so the rolled-up
+/// declaration file keeps a dangling `from "./..."` reference.
+fn warn_dangling_reexport(reexport_path: &str, source_path: &Path) {
+  log::warn!(
+    "{} could not inline re-exported declarations from {:?} in {}; the generated .d.ts will keep a dangling relative reference",
+    deno_terminal::colors::yellow("warning:"),
+    reexport_path,
+    source_path.display(),
+  );
 }
 
 /// Flatten a .d.ts file by resolving all `export ... from "..."` re-exports,
@@ -624,8 +645,10 @@ fn flatten_declarations(
         // The re-export line is replaced by the inlined content
         continue;
       }
-      // If we can't find the referenced file, keep the line as-is
-      // (it might be an external package reference)
+      // A relative re-export whose declaration file was not emitted. Keeping
+      // the line leaves a dangling `from "./..."` in the supposedly
+      // self-contained output, so warn rather than silently shipping it.
+      warn_dangling_reexport(&from_path, entry_source_path);
     }
 
     // Drop an `import ... from "./relative"` whose target is inlined into the
@@ -781,6 +804,9 @@ fn inline_declarations(
         }
         continue;
       }
+      // A relative re-export whose declaration file was not emitted; warn so a
+      // dangling reference in the output does not pass by unnoticed.
+      warn_dangling_reexport(&from_path, source_path);
     }
 
     // Strip `import type ... from "./relative"` / `import { ... } from

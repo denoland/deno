@@ -24,6 +24,18 @@
           "output": "ok\n"
         }
       ]
+    },
+    "wildcard_and_mts": {
+      "steps": [
+        {
+          "args": "bundle --output=barrel_out.js --declaration barrel_entry.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --no-lock --no-config --allow-read check_barrel.ts barrel_out.d.ts",
+          "output": "ok\n"
+        }
+      ]
     }
   }
 }
