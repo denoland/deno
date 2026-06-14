@@ -169,6 +169,12 @@ pub async fn install_global(
       npmrc: npmrc.clone(),
       npm_package_info_provider,
     };
+    // Flatten dependencies from the entrypoint's closest package.json into the
+    // copied config's import map. Entries from an explicit `--config` import
+    // map and from workspace members take precedence.
+    let mut extra_imports = workspace_member_imports.clone();
+    extra_imports
+      .extend(package_json_dep_import_entries(&name_and_url.module_url));
     setup_config_dir(
       &name_and_url,
       &flags,
@@ -176,7 +182,7 @@ pub async fn install_global(
       &installation_dir,
       Some(&jsr_lockfile_fetcher),
       install_flags_global.force,
-      &workspace_member_imports,
+      &extra_imports,
     )
     .await?;
 
@@ -419,7 +425,7 @@ async fn setup_config_dir(
   installation_dir: &Path,
   jsr_lockfile_fetcher: Option<&JsrLockfileFetcher<'_>>,
   force: bool,
-  workspace_member_imports: &[(String, String)],
+  extra_imports: &[(String, String)],
 ) -> Result<(), AnyError> {
   fn resolve_implicit_node_modules_dir(
     flags: &Flags,
@@ -495,14 +501,15 @@ async fn setup_config_dir(
   if let Some(original_config_url) = &original_config_url {
     rewrite_relative_import_map_paths(&config_obj, original_config_url);
   }
-  // Flatten workspace members into the import map. The `workspace` field is
-  // stripped below to stop discovery, which would otherwise break resolution of
-  // bare specifiers that point at member packages. Existing import map entries
-  // win, matching the runtime precedence of the import map over workspace
-  // members.
-  if !workspace_member_imports.is_empty() {
+  // Flatten workspace members and package.json dependencies into the import
+  // map. The `workspace` field is stripped below to stop discovery and the
+  // entrypoint's package.json isn't visible from the config dir, which would
+  // otherwise break resolution of bare specifiers that point at member
+  // packages or package.json dependencies. Existing import map entries win,
+  // matching the runtime precedence of the import map.
+  if !extra_imports.is_empty() {
     let imports = config_obj.object_value_or_set("imports");
-    for (specifier, target) in workspace_member_imports {
+    for (specifier, target) in extra_imports {
       if imports.get(specifier).is_none() {
         imports.append(specifier, CstInputValue::String(target.clone()));
       }
@@ -613,6 +620,84 @@ fn workspace_member_import_entries(
     }
   }
   entries
+}
+
+/// Builds import map entries for the dependencies declared in the closest
+/// package.json to a local file entrypoint.
+///
+/// `deno install -g` copies the supplied config (or an empty one) into a
+/// per-binary directory and the installed command runs with that config, so
+/// dependencies declared in the project's package.json are not visible to it.
+/// Flatten them into the copied config's import map (e.g. `"@std/log":
+/// "npm:@jsr/std__log@^0.224.9"`, plus a trailing-slash entry for subpath
+/// imports) so bare specifiers keep resolving the same way they do when
+/// running the entrypoint directly. See
+/// https://github.com/denoland/deno/issues/26412.
+fn package_json_dep_import_entries(module_url: &Url) -> Vec<(String, String)> {
+  use deno_package_json::PackageJsonDepValue;
+
+  let Ok(file_path) = deno_path_util::url_to_file_path(module_url) else {
+    return Vec::new();
+  };
+  let sys = crate::sys::CliSys::default();
+  let mut maybe_dir = file_path.parent();
+  while let Some(dir) = maybe_dir {
+    let pkg_json = match deno_package_json::PackageJson::load_from_path(
+      &sys,
+      None,
+      &dir.join("package.json"),
+    ) {
+      Ok(Some(pkg_json)) => pkg_json,
+      Ok(None) => {
+        maybe_dir = dir.parent();
+        continue;
+      }
+      Err(err) => {
+        log::warn!(
+          "{} Ignoring package.json for the installed command: {:#}",
+          crate::colors::yellow("Warning"),
+          err
+        );
+        return Vec::new();
+      }
+    };
+    let deps = pkg_json.resolve_local_package_json_deps();
+    let mut entries = Vec::new();
+    for (alias, dep) in
+      deps.dependencies.iter().chain(deps.dev_dependencies.iter())
+    {
+      match dep {
+        Ok(PackageJsonDepValue::Req(req)) => {
+          // The trailing-slash entry uses the `npm:/pkg@req/` form because
+          // `npm:pkg@req/` is an opaque-path URL that subpaths cannot be
+          // URL-joined onto.
+          entries.push((
+            format!("{}/", alias),
+            format!("npm:/{}@{}/", req.name, req.version_req.version_text()),
+          ));
+          entries.push((
+            alias.to_string(),
+            format!("npm:{}@{}", req.name, req.version_req.version_text()),
+          ));
+        }
+        Ok(
+          PackageJsonDepValue::File(_)
+          | PackageJsonDepValue::Workspace { .. }
+          | PackageJsonDepValue::Catalog(_),
+        )
+        | Err(_) => {
+          log::warn!(
+            "{} Ignoring \"{}\" from '{}' because only npm and jsr dependencies are supported by the installed command.",
+            crate::colors::yellow("Warning"),
+            alias,
+            pkg_json.path.display(),
+          );
+        }
+      }
+    }
+    return entries;
+  }
+  Vec::new()
 }
 
 /// Rewrites `./` and `../` paths inside `imports` and `scopes` to absolute
