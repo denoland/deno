@@ -279,6 +279,11 @@ fn op_create_worker(
   let worker_id = WorkerId::new();
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
+  // Synchronously capture the root blob for module workers so a racing
+  // `URL.revokeObjectURL` after `new Worker(blobUrl)` can't make the root
+  // module load fail (see #26142). Classic (non-module) blob workers are
+  // intentionally out of scope here: they still resolve the blob from the
+  // store at load time and so remain subject to the revoke race.
   let maybe_main_module_blob = if !args.has_source_code
     && matches!(worker_type, WorkerThreadType::Module)
     && module_specifier.scheme() == "blob"
