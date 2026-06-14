@@ -11,6 +11,7 @@
 //! key lookup can handle closing one end of the pair, in which case they will just
 //! attempt to clean up the associated resources.
 
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -72,18 +73,17 @@ impl TlsClientHelloInfo {
   /// Key used for caching resolutions. Connections with the same SNI but a
   /// different ALPN offer resolve independently, since the resolver may
   /// answer them differently (eg. TLS-ALPN-01 challenge handshakes).
-  fn cache_key(&self) -> String {
-    let mut key = self.sni.clone();
-    for proto in &self.alpn {
-      key.push('\u{0}');
-      key.push_str(&String::from_utf8_lossy(proto));
-    }
-    key
+  ///
+  /// The ALPN values are client-controlled arbitrary bytes, so the key keeps
+  /// them as-is (a `Vec<Vec<u8>>`) rather than lossily decoding to a string,
+  /// which would let two distinct offers collide.
+  fn cache_key(&self) -> CacheKey {
+    (self.sni.clone(), self.alpn.clone())
   }
 }
 
 /// The result of a `TlsKeyResolver` lookup.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedTlsKey {
   pub key: TlsKey,
   /// When set, overrides the listener's ALPN protocols for this
@@ -92,16 +92,6 @@ pub struct ResolvedTlsKey {
   /// When `false`, this resolution is not cached and the next handshake
   /// with the same ClientHello triggers a fresh lookup.
   pub cache: bool,
-}
-
-impl Clone for ResolvedTlsKey {
-  fn clone(&self) -> Self {
-    Self {
-      key: self.key.clone(),
-      alpn: self.alpn.clone(),
-      cache: self.cache,
-    }
-  }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -161,7 +151,12 @@ enum TlsKeyState {
   Resolved(Result<ResolvedTlsKey, ErrorType>),
 }
 
-type TlsKeyCache = Rc<RefCell<HashMap<String, TlsKeyState>>>;
+/// Cache key for a resolution: the SNI hostname together with the client's
+/// ALPN offer. The ALPN values are kept as raw bytes so distinct offers
+/// never collide.
+type CacheKey = (String, Vec<Vec<u8>>);
+
+type TlsKeyCache = Rc<RefCell<HashMap<CacheKey, TlsKeyState>>>;
 
 type ResolutionRequest = (
   String,
@@ -172,6 +167,10 @@ type ResolutionRequest = (
 struct TlsKeyResolverInner {
   resolution_tx: mpsc::UnboundedSender<ResolutionRequest>,
   cache: TlsKeyCache,
+  // Monotonic counter for the opaque resolution id handed to the lookup side
+  // (and round-tripped through JS). Decoupled from the cache key so the id
+  // stays a collision-free string regardless of the (arbitrary-byte) ALPN.
+  next_id: Cell<u64>,
 }
 
 #[derive(Clone)]
@@ -246,6 +245,7 @@ pub fn new_resolver() -> (TlsKeyResolver, TlsKeyLookup) {
       inner: Rc::new(TlsKeyResolverInner {
         resolution_tx,
         cache: cache.clone(),
+        next_id: Cell::new(0),
       }),
     },
     TlsKeyLookup {
@@ -270,10 +270,9 @@ impl TlsKeyResolver {
         let (tx, rx) = broadcast::channel(1);
         cache
           .insert(cache_key.clone(), TlsKeyState::Resolving(rx.resubscribe()));
-        _ = self
-          .inner
-          .resolution_tx
-          .send((cache_key.clone(), hello, tx));
+        let id = self.inner.next_id.get();
+        self.inner.next_id.set(id.wrapping_add(1));
+        _ = self.inner.resolution_tx.send((id.to_string(), hello, tx));
         rx
       }
       Some(TlsKeyState::Resolving(recv)) => recv.resubscribe(),
@@ -290,7 +289,10 @@ impl TlsKeyResolver {
       let mut cache = inner.cache.borrow_mut();
       let cacheable = match &res {
         Ok(resolved) => resolved.cache,
-        Err(_) => true,
+        // Never cache errors: otherwise a peer varying SNI/ALPN could grow
+        // the cache without bound with failed resolutions, and a transient
+        // failure would be sticky. The next handshake retries instead.
+        Err(_) => false,
       };
       match cache.get(&cache_key) {
         None | Some(TlsKeyState::Resolving(..)) => {
@@ -363,7 +365,7 @@ impl TlsKeyLookup {
     self
       .cache
       .borrow_mut()
-      .retain(|key, _| key.split('\u{0}').next() != Some(sni));
+      .retain(|(key_sni, _), _| key_sni != sni);
   }
 }
 
@@ -499,6 +501,33 @@ pub mod tests {
 
     drop(resolver);
     assert_eq!(task.await.unwrap(), 3);
+  }
+
+  #[tokio::test]
+  async fn test_errors_are_not_cached() {
+    let (resolver, lookup) = new_resolver();
+    let task = spawn(async move {
+      let mut count = 0;
+      while let Some((id, hello)) = lookup.poll().await {
+        count += 1;
+        // Fail the first resolution, succeed afterwards.
+        if count == 1 {
+          lookup.resolve(id, Err("boom".to_owned()));
+        } else {
+          lookup.resolve(id, Ok(resolved_key_for_test(&hello.sni)));
+        }
+      }
+      count
+    });
+
+    // The first resolution errors and must not be cached.
+    assert!(resolver.resolve(hello("example1.com")).await.is_err());
+    // The next handshake hits the lookup queue again and succeeds.
+    let key = resolver.resolve(hello("example1.com")).await.unwrap();
+    assert_eq!(resolved_key_for_test("example1.com"), key);
+
+    drop(resolver);
+    assert_eq!(task.await.unwrap(), 2);
   }
 
   #[tokio::test]

@@ -235,6 +235,10 @@ const serverNameSymbol = SymbolFor("unstableServerName");
 // Maps a resolver callback to a function that drops cached resolutions for
 // a given SNI hostname, so the next handshake re-invokes the callback. Used
 // to swap certificates without restarting the listener (eg. ACME renewal).
+//
+// Keyed by the callback function, so reusing one callback across multiple
+// `listenTls` calls keeps only the last listener's invalidator. Each listener
+// should use its own callback if it needs independent invalidation.
 const tlsKeyResolverInvalidators = new SafeWeakMap();
 
 function createTlsKeyResolver(callback) {
@@ -255,6 +259,14 @@ function createTlsKeyResolver(callback) {
         // and/or the client's ALPN offer (eg. respond to an `acme-tls/1`
         // TLS-ALPN-01 challenge handshake with a one-shot challenge cert
         // by returning `alpnProtocols: ["acme-tls/1"], noCache: true`).
+        //
+        // Resolutions are cached per (SNI, ALPN offer) pair, so a resolver
+        // that only cares about the hostname is still invoked once per
+        // distinct ALPN offer for that hostname (eg. a browser offering
+        // ["h2","http/1.1"] and `curl --http1.1` offering ["http/1.1"]
+        // resolve separately). Returning `noCache: true` opts a resolution
+        // out of caching entirely.
+        ObjectFreeze(alpnProtocols);
         const key = await callback(sni, ObjectFreeze({ alpnProtocols }));
         if (!hasTlsKeyPairOptions(key)) {
           op_tls_cert_resolver_resolve_error(lookup, id, "Invalid key");
