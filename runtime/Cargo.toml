@@ -58,6 +58,7 @@ deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_process.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
+deno_s3.workspace = true
 deno_signals.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true

@@ -41,6 +41,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_cron::deno_cron::init(Box::new(
       deno_cron::local::LocalCronHandler::new(),
     )),
+    deno_s3::deno_s3::init(),
     deno_napi::deno_napi::init(None),
     deno_http::deno_http::init(deno_http::Options::default()),
     deno_io::deno_io::init(Some(Default::default())),

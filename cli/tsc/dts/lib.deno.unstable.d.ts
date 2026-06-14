@@ -507,6 +507,350 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Options for creating a {@linkcode Deno.S3Client}, or per-call overrides.
+   *
+   * Credentials and most options fall back to environment variables
+   * (`S3_ACCESS_KEY_ID`/`AWS_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`/
+   * `AWS_SECRET_ACCESS_KEY`, `S3_SESSION_TOKEN`/`AWS_SESSION_TOKEN`,
+   * `S3_REGION`/`AWS_REGION`/`AWS_DEFAULT_REGION`, `S3_BUCKET`/`AWS_BUCKET`,
+   * `S3_ENDPOINT`/`AWS_ENDPOINT`). When no credentials are available,
+   * requests are sent unsigned (anonymous access).
+   *
+   * @category S3
+   * @experimental
+   */
+  export interface S3Options {
+    /** Access key ID. Falls back to `S3_ACCESS_KEY_ID` or
+     * `AWS_ACCESS_KEY_ID`. */
+    accessKeyId?: string;
+    /** Secret access key. Falls back to `S3_SECRET_ACCESS_KEY` or
+     * `AWS_SECRET_ACCESS_KEY`. */
+    secretAccessKey?: string;
+    /** Session token for temporary credentials. Falls back to
+     * `S3_SESSION_TOKEN` or `AWS_SESSION_TOKEN`. */
+    sessionToken?: string;
+    /** Region. Falls back to `S3_REGION`, `AWS_REGION` or
+     * `AWS_DEFAULT_REGION`, then `"us-east-1"`. */
+    region?: string;
+    /** Default bucket for paths that are not `s3://bucket/key` URLs. Falls
+     * back to `S3_BUCKET` or `AWS_BUCKET`. */
+    bucket?: string;
+    /** Endpoint URL. Falls back to `S3_ENDPOINT` or `AWS_ENDPOINT`, then
+     * `https://s3.<region>.amazonaws.com`. Use this for S3-compatible
+     * services like MinIO or Cloudflare R2. */
+    endpoint?: string;
+    /** Use virtual hosted-style requests (`https://bucket.endpoint/key`)
+     * instead of path-style (`https://endpoint/bucket/key`).
+     *
+     * @default {false} */
+    virtualHostedStyle?: boolean;
+    /** Default canned ACL applied to writes (e.g. `"public-read"`). */
+    acl?: string;
+    /** Default storage class applied to writes (e.g. `"STANDARD_IA"`). */
+    storageClass?: string;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Options for writing an object to S3.
+   *
+   * @category S3
+   * @experimental
+   */
+  export interface S3WriteOptions {
+    /** Bucket override for this call. */
+    bucket?: string;
+    /** MIME type stored as the object's `Content-Type`.
+     *
+     * @default {"application/octet-stream"} */
+    type?: string;
+    /** Canned ACL for this write (e.g. `"public-read"`). */
+    acl?: string;
+    /** Storage class for this write (e.g. `"STANDARD_IA"`). */
+    storageClass?: string;
+    /** Part size in bytes for multipart (streaming) uploads. Clamped to the
+     * valid S3 range (5 MiB to 5 GiB).
+     *
+     * @default {5242880} */
+    partSize?: number;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Metadata about an object, as returned by {@linkcode Deno.S3File.stat}.
+   *
+   * @category S3
+   * @experimental
+   */
+  export interface S3Stat {
+    /** Size of the object in bytes. */
+    size: number;
+    /** Entity tag of the object. */
+    etag?: string;
+    /** Time the object was last modified. */
+    lastModified?: Date;
+    /** MIME type of the object. */
+    type: string;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Options for presigning an object URL.
+   *
+   * @category S3
+   * @experimental
+   */
+  export interface S3PresignOptions {
+    /** HTTP method the URL is valid for.
+     *
+     * @default {"GET"} */
+    method?: "GET" | "PUT" | "DELETE" | "HEAD";
+    /** Number of seconds the URL stays valid, up to 604800 (7 days).
+     *
+     * @default {86400} */
+    expiresIn?: number;
+    /** Canned ACL signed into the URL. */
+    acl?: string;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Options for listing objects in a bucket.
+   *
+   * @category S3
+   * @experimental
+   */
+  export interface S3ListOptions {
+    /** Bucket override for this call. */
+    bucket?: string;
+    /** Only list keys starting with this prefix. */
+    prefix?: string;
+    /** Group keys by this delimiter (commonly `"/"`). */
+    delimiter?: string;
+    /** Maximum number of keys to return (the server caps this at 1000). */
+    maxKeys?: number;
+    /** Continuation token from a previous truncated listing. */
+    continuationToken?: string;
+    /** Start listing after this key. */
+    startAfter?: string;
+    /** Include object owner information in results. */
+    fetchOwner?: boolean;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Result of {@linkcode Deno.S3Client.list}.
+   *
+   * @category S3
+   * @experimental
+   */
+  export interface S3ListResult {
+    /** The bucket that was listed. */
+    name?: string;
+    prefix?: string;
+    delimiter?: string;
+    startAfter?: string;
+    /** Whether the listing was truncated; pass `nextContinuationToken` to
+     * a follow-up call to continue. */
+    isTruncated: boolean;
+    keyCount: number;
+    maxKeys?: number;
+    continuationToken?: string;
+    nextContinuationToken?: string;
+    contents?: {
+      key?: string;
+      lastModified?: string;
+      eTag?: string;
+      size: number;
+      storageClass?: string;
+    }[];
+    commonPrefixes?: { prefix?: string }[];
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * An incremental writer for an S3 object, returned by
+   * {@linkcode Deno.S3File.writer}. Buffers written data and uploads it
+   * using multipart uploads once it exceeds the configured part size.
+   *
+   * @category S3
+   * @experimental
+   */
+  export interface S3Writer {
+    /** Append a chunk to the object being written. Resolves with the size of
+     * the chunk in bytes once it has been accepted (and any full parts have
+     * been uploaded). */
+    write(
+      chunk: string | ArrayBuffer | ArrayBufferView,
+    ): Promise<number>;
+    /** Upload any complete buffered parts. */
+    flush(): Promise<void>;
+    /** Finish the upload and resolve with the total number of bytes
+     * written. */
+    end(): Promise<number>;
+    /** Abort the upload, discarding buffered data and any uploaded parts. */
+    abort(): Promise<void>;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A lazy reference to an object in a bucket, created with
+   * {@linkcode Deno.S3Client.file}. No network requests are made until one
+   * of its methods is called.
+   *
+   * ```ts
+   * const s3 = new Deno.S3Client({ bucket: "my-bucket" });
+   * const file = s3.file("folder/data.json");
+   * if (await file.exists()) {
+   *   const data = await file.json();
+   * }
+   * await file.write("hello", { type: "text/plain" });
+   * ```
+   *
+   * @category S3
+   * @experimental
+   */
+  export class S3File {
+    private constructor();
+
+    /** The bucket this file belongs to. */
+    readonly bucket: string;
+    /** The object key. */
+    readonly key: string;
+    /** The MIME type used for writes. */
+    readonly type: string;
+
+    /** Read the object as an `ArrayBuffer`. */
+    arrayBuffer(): Promise<ArrayBuffer>;
+    /** Read the object as a `Uint8Array`. */
+    bytes(): Promise<Uint8Array>;
+    /** Read the object as a string. */
+    text(): Promise<string>;
+    /** Read the object and parse it as JSON. */
+    // deno-lint-ignore no-explicit-any
+    json(): Promise<any>;
+    /** Stream the object's contents. The request starts on first read. */
+    stream(): ReadableStream<Uint8Array>;
+
+    /** Create a new `S3File` restricted to a byte range of this object.
+     * Reads use HTTP range requests. Negative offsets are not supported. */
+    slice(start?: number, end?: number): S3File;
+
+    /** Whether the object exists. */
+    exists(): Promise<boolean>;
+    /** Read the object's metadata without downloading it. */
+    stat(): Promise<S3Stat>;
+    /** The object's size in bytes. */
+    size(): Promise<number>;
+
+    /** Upload data to this object. Resolves with the number of bytes
+     * written. Streams are uploaded using multipart uploads. */
+    write(
+      data:
+        | string
+        | ArrayBuffer
+        | ArrayBufferView
+        | Blob
+        | ReadableStream<Uint8Array>
+        | S3File,
+      options?: S3WriteOptions,
+    ): Promise<number>;
+    /** Create an incremental {@linkcode Deno.S3Writer} for this object. */
+    writer(options?: S3WriteOptions): S3Writer;
+
+    /** Delete the object. */
+    delete(): Promise<void>;
+    /** Alias for {@linkcode Deno.S3File.delete}. */
+    unlink(): Promise<void>;
+
+    /** Generate a presigned URL for this object. */
+    presign(options?: S3PresignOptions): Promise<string>;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A client for S3-compatible object storage (AWS S3, MinIO, Cloudflare
+   * R2, Backblaze B2, and others). Requests are authenticated with AWS
+   * Signature Version 4 and sent with `fetch`, so `--allow-net` is required
+   * (and `--allow-env` when configuration comes from environment
+   * variables).
+   *
+   * ```ts
+   * const s3 = new Deno.S3Client({
+   *   region: "us-east-1",
+   *   bucket: "my-bucket",
+   *   accessKeyId: "...",
+   *   secretAccessKey: "...",
+   * });
+   * await s3.write("hello.txt", "hello world");
+   * console.log(await s3.file("hello.txt").text());
+   * ```
+   *
+   * Paths can also be full `s3://bucket/key` URLs, which override the
+   * configured bucket.
+   *
+   * @category S3
+   * @experimental
+   */
+  export class S3Client {
+    constructor(options?: S3Options);
+
+    /** Create a lazy {@linkcode Deno.S3File} reference to an object. */
+    file(path: string, options?: { bucket?: string; type?: string }): S3File;
+
+    /** Upload data to an object. Resolves with the number of bytes
+     * written. Streams are uploaded using multipart uploads. */
+    write(
+      path: string,
+      data:
+        | string
+        | ArrayBuffer
+        | ArrayBufferView
+        | Blob
+        | ReadableStream<Uint8Array>
+        | S3File,
+      options?: S3WriteOptions,
+    ): Promise<number>;
+
+    /** Delete an object. */
+    delete(path: string, options?: { bucket?: string }): Promise<void>;
+    /** Alias for {@linkcode Deno.S3Client.delete}. */
+    unlink(path: string, options?: { bucket?: string }): Promise<void>;
+
+    /** Whether an object exists. */
+    exists(path: string, options?: { bucket?: string }): Promise<boolean>;
+    /** Read an object's metadata without downloading it. */
+    stat(path: string, options?: { bucket?: string }): Promise<S3Stat>;
+    /** An object's size in bytes. */
+    size(path: string, options?: { bucket?: string }): Promise<number>;
+
+    /** Generate a presigned URL for an object. */
+    presign(
+      path: string,
+      options?: S3PresignOptions & { bucket?: string },
+    ): Promise<string>;
+
+    /** List objects in the bucket (`ListObjectsV2`). */
+    list(options?: S3ListOptions): Promise<S3ListResult>;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A default {@linkcode Deno.S3Client} configured entirely from
+   * environment variables.
+   *
+   * ```ts
+   * // with S3_BUCKET and credentials set in the environment:
+   * await Deno.s3.write("hello.txt", "hello world");
+   * ```
+   *
+   * @category S3
+   * @experimental
+   */
+  export const s3: S3Client;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A key to be persisted in a {@linkcode Deno.Kv}. A key is a sequence
    * of {@linkcode Deno.KvKeyPart}s.
    *
