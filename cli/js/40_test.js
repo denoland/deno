@@ -225,6 +225,12 @@ function assertExit(fn, isTest, sanitizeExit) {
 
 function wrapOuter(fn, desc) {
   return async function outerWrapped() {
+    const state = MapPrototypeGet(testStates, desc.id);
+    // A test may be invoked more than once when `retry`/`repeats` are set.
+    // Reset any state left over from a previous invocation so steps can run
+    // again and stale children aren't reported as incomplete.
+    state.children = [];
+    state.completed = false;
     try {
       if (desc.ignore) {
         return "ignored";
@@ -233,7 +239,6 @@ function wrapOuter(fn, desc) {
     } catch (error) {
       return { failed: { jsError: core.destructureError(error) } };
     } finally {
-      const state = MapPrototypeGet(testStates, desc.id);
       for (const childDesc of state.children) {
         stepReportResult(childDesc, { failed: "incomplete" }, 0);
       }
@@ -325,6 +330,24 @@ function encodeTimeout(value) {
   return value;
 }
 
+// Validates the `retry`/`repeats` test options, which are non-negative integer
+// counts passed to the runner as u32 values (0 means the option is unset).
+function encodeCount(value, label) {
+  if (value === undefined || value === null) return 0;
+  if (
+    typeof value !== "number" || NumberIsNaN(value) ||
+    !NumberIsFinite(value) || !NumberIsInteger(value) || value < 0
+  ) {
+    throw new TypeError(`Test ${label} must be a non-negative integer`);
+  }
+  if (value > TIMEOUT_MAX) {
+    throw new TypeError(
+      `Test ${label} out of range (must be between 0 and 2147483647)`,
+    );
+  }
+  return value;
+}
+
 // As long as we're using one isolate per test, we can cache the origin since it won't change
 let cachedOrigin = undefined;
 
@@ -355,6 +378,8 @@ function testInner(
     sanitizeExit: true,
     permissions: null,
     timeout: undefined,
+    retry: 0,
+    repeats: 0,
   };
 
   if (typeof nameOrFnOrOptions === "string") {
@@ -456,6 +481,8 @@ function testInner(
     registerTestIdRetBufU8,
     testDesc.sanitizeOnly ?? true,
     encodeTimeout(testDesc.timeout),
+    encodeCount(testDesc.retry, "retry"),
+    encodeCount(testDesc.repeats, "repeats"),
   );
   testDesc.id = registerTestIdRetBuf[0];
   testDesc.origin = cachedOrigin;
