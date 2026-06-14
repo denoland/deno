@@ -1,7 +1,7 @@
 <template>
   <!-- Basic double brace expressions -->
   <div class="basic" :style="{ width: a + b + 'px', height: '1px' }">
-    {{a+b}}
+    {{ a + b }}
   </div>
 
   <!-- Complex expressions with extra whitespace -->
@@ -18,11 +18,11 @@
   >
     <!-- Nested expressions -->
     <span :style="{ fontSize:12+(width/10)+'px' }">
-      Content: {{items.length}} items
+      Content: {{ items.length }} items
     </span>
 
     <!-- Complex object access -->
-    <p>User: {{user.name}} ({{user.age}} years old)</p>
+    <p>User: {{ user.name }} ({{ user.age }} years old)</p>
 
     <!-- Array methods -->
     <ul>
@@ -31,7 +31,7 @@
         :key="item"
         :style="{ padding:item*2+'px' }"
       >
-        {{item}}
+        {{ item }}
       </li>
     </ul>
 
@@ -54,7 +54,7 @@
 
   <!-- Mixed single brace and double brace -->
   <div :class="{ active:active }">
-    Mixed: {{color}} - {{ width }}px
+    Mixed: {{ color }} - {{ width }}px
   </div>
 
   <!-- Template literals in attributes -->
