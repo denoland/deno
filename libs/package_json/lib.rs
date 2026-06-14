@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use boxed_error::Boxed;
 use deno_error::JsError;
 use deno_semver::StackString;
+use deno_semver::Version;
 use deno_semver::VersionReq;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
@@ -45,6 +46,25 @@ pub trait PackageJsonCache {
 pub enum PackageJsonBins {
   Directory(PathBuf),
   Bins(BTreeMap<String, PathBuf>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EngineMismatchKind {
+  /// The current runtime version does not satisfy the declared range.
+  Unsatisfied,
+  /// The declared range itself failed to parse as an npm version requirement.
+  InvalidRequirement,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineMismatch {
+  /// The engine key from the `engines` object (e.g. "node" or "deno").
+  pub engine: String,
+  /// The version requirement string as written in package.json.
+  pub required: String,
+  /// The version of the engine as reported by the current runtime.
+  pub actual: String,
+  pub kind: EngineMismatchKind,
 }
 
 /// The value of the `sideEffects` field in a `package.json`.
@@ -385,6 +405,8 @@ pub struct PackageJson {
   pub os: Option<Vec<String>>,
   pub cpu: Option<Vec<String>>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub engines: Option<IndexMap<String, String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub overrides: Option<Map<String, Value>>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub catalog: Option<IndexMap<String, String>>,
@@ -464,6 +486,7 @@ impl PackageJson {
         workspaces: None,
         os: None,
         cpu: None,
+        engines: None,
         overrides: None,
         catalog: None,
         catalogs: None,
@@ -664,6 +687,7 @@ impl PackageJson {
       };
     let os = package_json.remove("os").and_then(parse_string_array);
     let cpu = package_json.remove("cpu").and_then(parse_string_array);
+    let engines = package_json.remove("engines").and_then(parse_string_map);
     let overrides = package_json.remove("overrides").and_then(map_object);
     let side_effects =
       package_json.remove("sideEffects").and_then(|v| match v {
@@ -721,6 +745,7 @@ impl PackageJson {
       workspaces,
       os,
       cpu,
+      engines,
       overrides,
       catalog,
       catalogs,
@@ -758,6 +783,61 @@ impl PackageJson {
         dev_dependencies: get_map(self.dev_dependencies.as_ref()),
       })
     })
+  }
+
+  /// Check the `engines` field of this package.json against the given runtime
+  /// versions. Returns one entry per declared engine that is either
+  /// unsatisfied or has an unparseable version requirement.
+  ///
+  /// Only the `node` and `deno` keys are checked. Other entries (`npm`,
+  /// `yarn`, `pnpm`, ...) are intentionally ignored — Deno cannot reason
+  /// about external package manager versions.
+  pub fn check_engines(
+    &self,
+    deno_version: &str,
+    node_version: &str,
+  ) -> Vec<EngineMismatch> {
+    let Some(engines) = self.engines.as_ref() else {
+      return Vec::new();
+    };
+    let mut mismatches = Vec::new();
+    for (engine, version_req) in engines {
+      let actual = match engine.as_str() {
+        "node" => node_version,
+        "deno" => deno_version,
+        _ => continue,
+      };
+      let parsed_req = match VersionReq::parse_from_npm(version_req) {
+        // `parse_from_npm` accepts bare dist-tags (e.g. "next"). Those don't
+        // make sense for an engine constraint, so flag them as invalid
+        // instead of letting `matches` panic later on.
+        Ok(req) if req.tag().is_none() => req,
+        _ => {
+          mismatches.push(EngineMismatch {
+            engine: engine.clone(),
+            required: version_req.clone(),
+            actual: actual.to_string(),
+            kind: EngineMismatchKind::InvalidRequirement,
+          });
+          continue;
+        }
+      };
+      let parsed_actual = match Version::parse_from_npm(
+        actual.strip_prefix('v').unwrap_or(actual),
+      ) {
+        Ok(v) => v,
+        Err(_) => continue,
+      };
+      if !parsed_req.matches(&parsed_actual) {
+        mismatches.push(EngineMismatch {
+          engine: engine.clone(),
+          required: version_req.clone(),
+          actual: actual.to_string(),
+          kind: EngineMismatchKind::Unsatisfied,
+        });
+      }
+    }
+    mismatches
   }
 
   pub fn resolve_default_bin_name(
@@ -1303,6 +1383,10 @@ mod test {
           "optional": true
         }
       },
+      "engines": {
+        "node": ">=18",
+        "deno": "^2"
+      },
     });
     let package_json = PackageJson::load_from_value(
       PathBuf::from("/package.json"),
@@ -1328,6 +1412,65 @@ mod test {
       ),
       Err(PackageJsonLoadError::InvalidExports)
     ));
+  }
+
+  #[test]
+  fn test_engines_parsing_and_check() {
+    let json_value = serde_json::json!({
+      "engines": {
+        "node": ">=18.0.0",
+        "deno": "^2.0.0",
+        "npm": ">=9",
+      },
+    });
+    let pj =
+      PackageJson::load_from_value(PathBuf::from("/package.json"), json_value)
+        .unwrap();
+    let engines = pj.engines.as_ref().unwrap();
+    assert_eq!(engines.get("node").unwrap(), ">=18.0.0");
+    assert_eq!(engines.get("deno").unwrap(), "^2.0.0");
+    assert_eq!(engines.get("npm").unwrap(), ">=9");
+
+    // satisfied for both engines we look at
+    let mismatches = pj.check_engines("2.1.0", "20.0.0");
+    assert!(
+      mismatches.is_empty(),
+      "expected no mismatches: {mismatches:?}"
+    );
+
+    // node too old; deno still satisfied; npm is ignored
+    let mismatches = pj.check_engines("2.1.0", "16.0.0");
+    assert_eq!(mismatches.len(), 1);
+    assert_eq!(mismatches[0].engine, "node");
+    assert_eq!(mismatches[0].kind, EngineMismatchKind::Unsatisfied);
+    assert_eq!(mismatches[0].required, ">=18.0.0");
+    assert_eq!(mismatches[0].actual, "16.0.0");
+
+    // tolerate a leading `v` on the runtime version (matches
+    // `process.version` format)
+    let mismatches = pj.check_engines("2.1.0", "v20.0.0");
+    assert!(mismatches.is_empty());
+
+    // unparseable range surfaces as InvalidRequirement, doesn't panic
+    let pj = PackageJson::load_from_value(
+      PathBuf::from("/package.json"),
+      serde_json::json!({
+        "engines": { "deno": "not-a-range" },
+      }),
+    )
+    .unwrap();
+    let mismatches = pj.check_engines("2.0.0", "20.0.0");
+    assert_eq!(mismatches.len(), 1);
+    assert_eq!(mismatches[0].kind, EngineMismatchKind::InvalidRequirement);
+
+    // absent engines field → no mismatches
+    let pj = PackageJson::load_from_value(
+      PathBuf::from("/package.json"),
+      serde_json::json!({ "name": "x" }),
+    )
+    .unwrap();
+    assert!(pj.engines.is_none());
+    assert!(pj.check_engines("2.0.0", "20.0.0").is_empty());
   }
 
   #[test]

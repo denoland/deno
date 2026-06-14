@@ -204,6 +204,9 @@ const env:
  * some packages are checking it for compatibility. Previously
  * it pointed to Deno version, but that led to incompability
  * with some packages.
+ *
+ * Keep in sync with `NODE_VERSION` in `cli/lib/version.rs`, which is
+ * used to enforce package.json `engines.node` constraints.
  */
 const version = "v24.15.0";
 

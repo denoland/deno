@@ -16,6 +16,13 @@ pub fn otel_runtime_config() -> OtelRuntimeConfig {
 const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");
 const TYPESCRIPT: &str = "6.0.3";
 pub const DENO_VERSION: &str = env!("DENO_VERSION");
+
+/// The Node.js version that Deno reports through `process.version` /
+/// `process.versions.node`.
+///
+/// Keep in sync with `version` and `versions.node` in
+/// `ext/node/polyfills/_process/process.ts`.
+pub const NODE_VERSION: &str = "24.2.0";
 // TODO(bartlomieju): ideally we could remove this const.
 const IS_CANARY: bool = option_env!("DENO_CANARY").is_some();
 // TODO(bartlomieju): this is temporary, to allow Homebrew to cut RC releases as well
