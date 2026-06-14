@@ -58,12 +58,8 @@ let a: number;
 ```
 
 ```sql
-SELECT
-  *,
-  biz,
-  buz
-FROM
-  baz;
+SELECT *, biz, buz
+FROM baz;
 ```
 
 ```sql
