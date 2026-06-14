@@ -16336,6 +16336,155 @@ fn lsp_testing_api_empty_test_name() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/28797.
+// When deno.json declares a `test` task with `--env-file=...`, the LSP test
+// runner should load that env file too — otherwise tests that read env vars at
+// module load throw before any test runs and VSCode reports "The test run did
+// not record any output".
+#[test(timeout = 300)]
+fn lsp_testing_api_inherits_test_task_env_file() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "./deno.json",
+    json!({
+      "tasks": {
+        "test": "deno test --env-file=.env.test -A",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("./.env.test", "MY_SECRET=from_env_file\n");
+  let file = temp_dir.source_file(
+    "test.ts",
+    r#"
+      const secret = Deno.env.get("MY_SECRET");
+      if (!secret) throw new Error("MY_SECRET is not set");
+      Deno.test("uses env", () => {});
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  client.read_notification_with_method::<Value>("deno/testModule");
+  client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  let mut passed = false;
+  loop {
+    let notification = client
+      .read_notification_with_method::<Value>("deno/testRunProgress")
+      .unwrap();
+    let message = notification
+      .as_object()
+      .unwrap()
+      .get("message")
+      .unwrap()
+      .as_object()
+      .unwrap();
+    let kind = message.get("type").and_then(|v| v.as_str());
+    if kind == Some("passed") {
+      passed = true;
+    }
+    if kind == Some("end") {
+      break;
+    }
+  }
+  assert!(
+    passed,
+    "test should pass: --env-file from deno.json `test` task should be honored",
+  );
+  client.shutdown();
+}
+
+// Documents the shared-process env limitation discussed in
+// https://github.com/denoland/deno/pull/34905#discussion_r3382566541.
+// LSP-driven test runs load task env files into the long-lived LSP process
+// environment, so two scopes setting the same key cannot both observe their
+// own value in the same run.
+#[test(timeout = 300)]
+fn lsp_testing_api_test_task_env_file_conflicting_scopes_first_wins() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  for (dir, value) in [("a", "value_a"), ("b", "value_b")] {
+    temp_dir.write(
+      format!("./{dir}/deno.json"),
+      json!({
+        "tasks": {
+          "test": "deno test --env-file=.env.test -A",
+        },
+      })
+      .to_string(),
+    );
+    temp_dir.write(
+      format!("./{dir}/.env.test"),
+      format!("DENO_LSP_TEST_SHARED_ENV={value}\n"),
+    );
+    temp_dir.write(
+      format!("./{dir}/test.ts"),
+      format!(
+        r#"
+          Deno.test("uses env {dir}", () => {{
+            if (Deno.env.get("DENO_LSP_TEST_SHARED_ENV") !== "{value}") {{
+              throw new Error("wrong env value");
+            }}
+          }});
+        "#
+      ),
+    );
+  }
+
+  let file_a = source_file(
+    temp_dir.path().join("./a/test.ts"),
+    temp_dir.read_to_string("./a/test.ts"),
+  );
+  let file_b = source_file(
+    temp_dir.path().join("./b/test.ts"),
+    temp_dir.read_to_string("./b/test.ts"),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file_a);
+  client.did_open_file(&file_b);
+  client.read_notification_with_method::<Value>("deno/testModule");
+  client.read_notification_with_method::<Value>("deno/testModule");
+  client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+
+  let mut passed = 0;
+  let mut failed = 0;
+  loop {
+    let notification = client
+      .read_notification_with_method::<Value>("deno/testRunProgress")
+      .unwrap();
+    let message = notification
+      .as_object()
+      .unwrap()
+      .get("message")
+      .unwrap()
+      .as_object()
+      .unwrap();
+    match message.get("type").and_then(|v| v.as_str()) {
+      Some("passed") => passed += 1,
+      Some("failed") => failed += 1,
+      Some("end") => break,
+      _ => {}
+    }
+  }
+  assert_eq!(passed, 1);
+  assert_eq!(failed, 1);
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_testing_api_describe_it_failure() {
   let context = TestContextBuilder::new()
