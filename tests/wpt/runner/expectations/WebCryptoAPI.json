@@ -1762,8 +1762,8 @@
     "successes_X448.tentative.https.any.worker.html": true,
     "successes_chacha20_poly1305.tentative.https.any.html": true,
     "successes_chacha20_poly1305.tentative.https.any.worker.html": true,
-    "successes_kmac.tentative.https.any.html": false,
-    "successes_kmac.tentative.https.any.worker.html": false
+    "successes_kmac.tentative.https.any.html": true,
+    "successes_kmac.tentative.https.any.worker.html": true
   },
   "historical.any.html": false,
   "historical.any.worker.html": false,
@@ -2070,8 +2070,8 @@
     "Argon2_importKey.tentative.https.any.worker.html": true,
     "ChaCha20-Poly1305_importKey.tentative.https.any.html": true,
     "ChaCha20-Poly1305_importKey.tentative.https.any.worker.html": true,
-    "KMAC_importKey.tentative.https.any.html": false,
-    "KMAC_importKey.tentative.https.any.worker.html": false,
+    "KMAC_importKey.tentative.https.any.html": true,
+    "KMAC_importKey.tentative.https.any.worker.html": true,
     "ML-DSA_importKey.tentative.https.any.html": true,
     "ML-DSA_importKey.tentative.https.any.worker.html": true,
     "ML-KEM_importKey.tentative.https.any.html": true,
