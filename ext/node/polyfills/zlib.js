@@ -752,6 +752,42 @@ function _close(engine) {
   engine._handle = null;
 }
 
+// The native write/writeSync ops take the write-state buffer (where the
+// post-write avail_out/avail_in values are stored) as a per-write argument
+// rather than caching a pointer to it, so that detaching the buffer is a
+// harmless no-op instead of a dangling write. Our own call sites always pass
+// it, but some npm packages (e.g. pngjs's sync inflate) call the low-level
+// `_handle.write()` / `_handle.writeSync()` directly using Node's binding
+// signature, which omits that trailing argument. Wrap the handle so those
+// external callers transparently get the stream's `_writeState` injected.
+function setupHandleWriteState(handle, writeState) {
+  const nativeWrite = handle.write;
+  const nativeWriteSync = handle.writeSync;
+  const wrap = (native) =>
+    function (flush, input, inOff, inLen, out, outOff, outLen, state) {
+      return ReflectApply(native, this, [
+        flush,
+        input,
+        inOff,
+        inLen,
+        out,
+        outOff,
+        outLen,
+        state === undefined ? writeState : state,
+      ]);
+    };
+  ObjectDefineProperty(handle, "write", {
+    value: wrap(nativeWrite),
+    writable: true,
+    configurable: true,
+  });
+  ObjectDefineProperty(handle, "writeSync", {
+    value: wrap(nativeWriteSync),
+    writable: true,
+    configurable: true,
+  });
+}
+
 const zlibDefaultOpts = {
   flush: Z_NO_FLUSH,
   finishFlush: Z_FINISH,
@@ -840,6 +876,7 @@ function Zlib(opts, mode) {
   // to come up with a good solution that doesn't break our internal API,
   // and with it all supported npm versions at the time of writing.
   this._writeState = new Uint32Array(2);
+  setupHandleWriteState(handle, this._writeState);
   handle.init(
     windowBits,
     level,
@@ -1011,6 +1048,7 @@ function Brotli(opts, mode) {
     : new binding.BrotliEncoder(mode);
 
   this._writeState = new Uint32Array(2);
+  setupHandleWriteState(handle, this._writeState);
   const success = handle.init(
     brotliInitParamsArray,
     processCallback,
@@ -1079,6 +1117,7 @@ class Zstd extends ZlibBase {
       : new binding.ZstdDecompress(mode);
 
     const writeState = new Uint32Array(2);
+    setupHandleWriteState(handle, writeState);
     // pledgedSrcSize is only used for compression, use -1 to indicate "not set"
     const pledgedSrcSize =
       mode === ZSTD_COMPRESS && opts?.pledgedSrcSize != null
