@@ -826,7 +826,6 @@ pub struct OutdatedFlags {
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ListFlags {
-  pub json: bool,
   pub recursive: bool,
   pub depth: u16,
   pub prod: bool,
@@ -1871,6 +1870,7 @@ static DENO_HELP: &str = cstr!(
                   <p(245)>deno ci  |  deno ci --prod</>
     <g>uninstall</>    Uninstalls a dependency or an executable script in the installation root's bin directory
     <g>outdated</>     Find and update outdated dependencies
+    <g>list</>         List the dependencies declared in deno.json / package.json
     <g>approve-scripts</> Approve npm lifecycle scripts
     <g>remove</>       Remove dependencies from the configuration file
     <g>publish</>      Publish the current working directory's package or workspace
@@ -4227,9 +4227,8 @@ Filter by name (wildcards allowed, negate with a leading '!'):
   <p(245)>deno list \"@std/*\"</>
   <p(245)>deno list \"react*\" \"!react-dom\"</>
 
-Include all workspace members, or output as JSON:
+Include all workspace members:
   <p(245)>deno list --recursive</>
-  <p(245)>deno list --json</>
 
 Unlike <p(245)>deno info</>, which walks the module graph from an entrypoint, this lists the
 packages a project declares as dependencies, similar to <p(245)>npm ls</> / <p(245)>pnpm list</>."),
@@ -4267,12 +4266,6 @@ packages a project declares as dependencies, similar to <p(245)>npm ls</> / <p(2
           .long("dev")
           .action(ArgAction::SetTrue)
           .help("Only list development dependencies"),
-      )
-      .arg(
-        Arg::new("json")
-          .long("json")
-          .action(ArgAction::SetTrue)
-          .help("Output the list as JSON"),
       )
       .arg(
         Arg::new("recursive")
@@ -7092,7 +7085,6 @@ fn list_parse(
     None => vec![],
   };
   flags.subcommand = DenoSubcommand::List(ListFlags {
-    json: matches.get_flag("json"),
     recursive: matches.get_flag("recursive"),
     depth: matches.remove_one::<u16>("depth").unwrap_or(0),
     prod: matches.get_flag("prod"),
@@ -16430,9 +16422,8 @@ Usage: deno lint [OPTIONS] [files]...\n"
     let cases = [
       (svec![], ListFlags::default()),
       (
-        svec!["--json", "--recursive"],
+        svec!["--recursive"],
         ListFlags {
-          json: true,
           recursive: true,
           ..Default::default()
         },

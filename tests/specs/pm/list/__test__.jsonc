@@ -7,28 +7,22 @@
         { "args": "list", "output": "flat.out" }
       ]
     },
-    "json": {
-      "steps": [
-        { "args": "install", "output": "[WILDCARD]" },
-        { "args": "list --json", "output": "json.out" }
-      ]
-    },
     "prod": {
       "steps": [
         { "args": "install", "output": "[WILDCARD]" },
-        { "args": "list --prod --json", "output": "prod.out" }
+        { "args": "list --prod", "output": "prod.out" }
       ]
     },
     "dev": {
       "steps": [
         { "args": "install", "output": "[WILDCARD]" },
-        { "args": "list --dev --json", "output": "dev.out" }
+        { "args": "list --dev", "output": "dev.out" }
       ]
     },
     "filter": {
       "steps": [
         { "args": "install", "output": "[WILDCARD]" },
-        { "args": "list --json *esm-basic", "output": "filter.out" }
+        { "args": "list *esm-basic", "output": "filter.out" }
       ]
     },
     "depth": {

@@ -1,8 +1,5 @@
-[
-  {
-    "kind": "npm",
-    "name": "@denotest/esm-import-cjs-default",
-    "required": "[WILDLINE]
-    "resolved": "[WILDLINE]
-  }
-]
+┌[WILDLINE]
+│ [WILDLINE]
+├[WILDLINE]
+│ npm:@denotest/esm-import-cjs-default [WILDLINE]
+└[WILDLINE]

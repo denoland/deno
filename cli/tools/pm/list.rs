@@ -7,7 +7,6 @@ use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_semver::package::PackageKind;
 use deno_semver::package::PackageReq;
 use deno_terminal::colors;
@@ -150,17 +149,6 @@ impl Root {
 // Flat output (default, --depth 0)
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Serialize)]
-struct ListedPackage {
-  #[serde(skip_serializing_if = "Option::is_none")]
-  alias: Option<String>,
-  kind: &'static str,
-  name: String,
-  required: String,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  resolved: Option<String>,
-}
-
 #[allow(clippy::print_stdout, reason = "list output")]
 fn print_flat_table(roots: &[Root]) {
   const HEADINGS: &[&str] = &["Package", "Required", "Resolved"];
@@ -198,19 +186,6 @@ fn print_flat_table(roots: &[Root]) {
     );
   }
   println!("└{}┴{}┴{}┘", fills[0], fills[1], fills[2]);
-}
-
-fn flat_json(roots: &[Root]) -> Vec<ListedPackage> {
-  roots
-    .iter()
-    .map(|r| ListedPackage {
-      alias: r.alias.clone(),
-      kind: r.kind.scheme(),
-      name: r.name.clone(),
-      required: r.required.clone(),
-      resolved: r.resolved.clone(),
-    })
-    .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -282,70 +257,6 @@ fn print_tree(roots: &[Root], graph: &DepGraph, max_depth: u16) {
       }
     }
   }
-}
-
-fn tree_json(
-  roots: &[Root],
-  graph: &DepGraph,
-  max_depth: u16,
-) -> serde_json::Value {
-  fn node(
-    id: &PkgId,
-    graph: &DepGraph,
-    depth: u16,
-    max_depth: u16,
-    on_path: &mut Vec<PkgId>,
-  ) -> serde_json::Value {
-    let (name, version) = split_name_version(strip_peer_suffix(&id.1));
-    let mut obj = serde_json::Map::new();
-    obj.insert("kind".into(), scheme(id.0).into());
-    obj.insert("name".into(), name.into());
-    obj.insert("version".into(), version.into());
-    if depth < max_depth {
-      let mut children: Vec<&PkgId> = graph.children(id).iter().collect();
-      children.sort();
-      children.dedup();
-      children.retain(|c| !on_path.contains(c));
-      let mut deps: Vec<serde_json::Value> = Vec::with_capacity(children.len());
-      for c in children {
-        on_path.push(c.clone());
-        deps.push(node(c, graph, depth + 1, max_depth, on_path));
-        on_path.pop();
-      }
-      if !deps.is_empty() {
-        obj.insert("dependencies".into(), deps.into());
-      }
-    }
-    serde_json::Value::Object(obj)
-  }
-
-  let arr: Vec<serde_json::Value> = roots
-    .iter()
-    .map(|root| {
-      let mut obj = serde_json::Map::new();
-      if let Some(alias) = &root.alias {
-        obj.insert("alias".into(), alias.clone().into());
-      }
-      obj.insert("kind".into(), root.kind.scheme().into());
-      obj.insert("name".into(), root.name.clone().into());
-      obj.insert("required".into(), root.required.clone().into());
-      if let Some(resolved) = &root.resolved {
-        obj.insert("resolved".into(), resolved.clone().into());
-        let name_version = format!("{}@{}", root.name, resolved);
-        if let Some(id) = graph.root_id(root.kind, &name_version) {
-          let mut on_path = vec![id.clone()];
-          if let serde_json::Value::Object(child) =
-            node(&id, graph, 0, max_depth, &mut on_path)
-            && let Some(deps) = child.get("dependencies")
-          {
-            obj.insert("dependencies".into(), deps.clone());
-          }
-        }
-      }
-      serde_json::Value::Object(obj)
-    })
-    .collect();
-  serde_json::Value::Array(arr)
 }
 
 // ---------------------------------------------------------------------------
@@ -462,14 +373,7 @@ pub async fn list(
   });
 
   if roots.is_empty() {
-    if list_flags.json {
-      #[allow(clippy::print_stdout, reason = "list output")]
-      {
-        println!("[]");
-      }
-    } else {
-      log::info!("No matching dependencies.");
-    }
+    log::info!("No matching dependencies.");
     return Ok(());
   }
 
@@ -483,27 +387,11 @@ pub async fn list(
       }
       None => DepGraph::from_lockfile_content(&Default::default()),
     };
-
-    if list_flags.json {
-      #[allow(clippy::print_stdout, reason = "list output")]
-      {
-        let value = tree_json(&roots, &graph, list_flags.depth);
-        println!("{}", serde_json::to_string_pretty(&value)?);
-      }
-    } else {
-      print_tree(&roots, &graph, list_flags.depth);
-    }
+    print_tree(&roots, &graph, list_flags.depth);
     return Ok(());
   }
 
-  if list_flags.json {
-    #[allow(clippy::print_stdout, reason = "list output")]
-    {
-      println!("{}", serde_json::to_string_pretty(&flat_json(&roots))?);
-    }
-  } else {
-    print_flat_table(&roots);
-  }
+  print_flat_table(&roots);
 
   Ok(())
 }
