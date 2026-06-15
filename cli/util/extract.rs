@@ -597,6 +597,7 @@ impl ExportCollector {
   fn to_import_specifiers(
     &self,
     symbols_to_exclude: &rustc_hash::FxHashSet<Atom>,
+    symbols_to_include: &rustc_hash::FxHashSet<Atom>,
   ) -> Vec<ast::ImportSpecifier> {
     let mut import_specifiers = vec![];
 
@@ -604,6 +605,7 @@ impl ExportCollector {
       // If the default export conflicts with a named export, a named one
       // takes precedence.
       if !symbols_to_exclude.contains(default_export)
+        && symbols_to_include.contains(default_export)
         && !self.named_exports.contains(default_export)
       {
         import_specifiers.push(ast::ImportSpecifier::Default(
@@ -621,7 +623,9 @@ impl ExportCollector {
     }
 
     for named_export in &self.named_exports {
-      if symbols_to_exclude.contains(named_export) {
+      if symbols_to_exclude.contains(named_export)
+        || !symbols_to_include.contains(named_export)
+      {
         continue;
       }
 
@@ -641,6 +645,20 @@ impl ExportCollector {
     }
 
     import_specifiers
+  }
+}
+
+#[derive(Default)]
+struct UnresolvedIdentCollector {
+  unresolved_context: deno_ast::swc::common::SyntaxContext,
+  atoms: rustc_hash::FxHashSet<Atom>,
+}
+
+impl Visit for UnresolvedIdentCollector {
+  fn visit_ident(&mut self, ident: &ast::Ident) {
+    if ident.ctxt == self.unresolved_context {
+      self.atoms.insert(ident.sym.clone());
+    }
   }
 }
 
@@ -930,6 +948,13 @@ fn generate_pseudo_file(
     &parsed.program_ref(),
     parsed.top_level_context(),
   );
+  let mut unresolved_ident_collector = UnresolvedIdentCollector {
+    unresolved_context: parsed.unresolved_context(),
+    ..Default::default()
+  };
+  parsed
+    .program_ref()
+    .visit_with(&mut unresolved_ident_collector);
 
   let transformed =
     parsed
@@ -940,6 +965,7 @@ fn generate_pseudo_file(
         base_file_specifier,
         exports_from_base: exports,
         atoms_to_be_excluded_from_import: top_level_atoms,
+        atoms_to_be_included_from_import: unresolved_ident_collector.atoms,
         wrap_kind,
         shebang,
       }));
@@ -965,6 +991,7 @@ struct Transform<'a> {
   base_file_specifier: &'a ModuleSpecifier,
   exports_from_base: &'a ExportCollector,
   atoms_to_be_excluded_from_import: rustc_hash::FxHashSet<Atom>,
+  atoms_to_be_included_from_import: rustc_hash::FxHashSet<Atom>,
   wrap_kind: WrapKind,
   shebang: Option<&'a Shebang>,
 }
@@ -1032,9 +1059,10 @@ impl VisitMut for Transform<'_> {
         let mut transformed_items = vec![];
         transformed_items
           .extend(module_decls.into_iter().map(ast::ModuleItem::ModuleDecl));
-        let import_specifiers = self
-          .exports_from_base
-          .to_import_specifiers(&self.atoms_to_be_excluded_from_import);
+        let import_specifiers = self.exports_from_base.to_import_specifiers(
+          &self.atoms_to_be_excluded_from_import,
+          &self.atoms_to_be_included_from_import,
+        );
         if !import_specifiers.is_empty() {
           transformed_items.push(ast::ModuleItem::ModuleDecl(
             ast::ModuleDecl::Import(ast::ImportDecl {
@@ -1070,9 +1098,10 @@ impl VisitMut for Transform<'_> {
       ast::Program::Script(script) => {
         let mut transformed_items = vec![];
 
-        let import_specifiers = self
-          .exports_from_base
-          .to_import_specifiers(&self.atoms_to_be_excluded_from_import);
+        let import_specifiers = self.exports_from_base.to_import_specifiers(
+          &self.atoms_to_be_excluded_from_import,
+          &self.atoms_to_be_included_from_import,
+        );
         if !import_specifiers.is_empty() {
           transformed_items.push(ast::ModuleItem::ModuleDecl(
             ast::ModuleDecl::Import(ast::ImportDecl {
@@ -1381,7 +1410,7 @@ export default class Bar {}
           specifier: "file:///main.ts",
         },
         expected: vec![Expected {
-          source: r#"import Bar, { foo } from "file:///main.ts";
+          source: r#"import { foo } from "file:///main.ts";
 Deno.test("file:///main.ts$3-6.ts", async ()=>{
     foo();
 });
@@ -1502,7 +1531,7 @@ export * from "./other.ts";
         },
         expected: vec![
           Expected {
-            source: r#"import MyClass, { foo } from "file:///main.ts";
+            source: r#"import MyClass from "file:///main.ts";
 Deno.test("file:///main.ts$5-8.js", async ()=>{
     const cls = new MyClass();
 });
@@ -1511,7 +1540,7 @@ Deno.test("file:///main.ts$5-8.js", async ()=>{
             media_type: MediaType::JavaScript,
           },
           Expected {
-            source: r#"import MyClass, { foo } from "file:///main.ts";
+            source: r#"import { foo } from "file:///main.ts";
 Deno.test("file:///main.ts$13-16.ts", async ()=>{
     foo();
 });
@@ -1538,7 +1567,7 @@ export default TWO;
           specifier: "file:///main.ts",
         },
         expected: vec![Expected {
-          source: r#"import TWO, { ONE, foo } from "file:///main.ts";
+          source: r#"import { foo } from "file:///main.ts";
 Deno.test("file:///main.ts$3-6.ts", async ()=>{
     foo();
 });
@@ -1789,6 +1818,39 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
 });
 "#,
           specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // https://github.com/denoland/deno/issues/26900
+      // Do not inject exports that the snippet does not reference. Otherwise,
+      // projects with `noUnusedLocals` fail on imports generated by Deno.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * import { randomNonce } from "@test/csp/value";
+ *
+ * randomNonce();
+ * ```
+ */
+export function formatNonceValue(n: string): string {
+  return n;
+}
+
+export function randomNonce(): string {
+  return crypto.randomUUID();
+}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { randomNonce } from "@test/csp/value";
+Deno.test("file:///main.ts$3-8.ts", async ()=>{
+    randomNonce();
+});
+"#,
+          specifier: "file:///main.ts$3-8.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -2133,6 +2195,9 @@ foo();
           source: r#"
 /**
  * ```ts
+ * const foo: Foo = "foo";
+ * const bar: Bar = { x: 1 };
+ * new Quux();
  * useFoo();
  * ```
  */
@@ -2145,11 +2210,16 @@ export class Quux {}
         },
         expected: vec![Expected {
           source: r#"import { type Bar, type Foo, Quux, useFoo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-6.ts", async ()=>{
+Deno.test("file:///main.ts$3-9.ts", async ()=>{
+    const foo: Foo = "foo";
+    const bar: Bar = {
+        x: 1
+    };
+    new Quux();
     useFoo();
 });
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts$3-9.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -2163,6 +2233,7 @@ Deno.test("file:///main.ts$3-6.ts", async ()=>{
           source: r#"
 /**
  * ```ts
+ * console.log(Foo);
  * doSomething();
  * ```
  */
@@ -2174,11 +2245,12 @@ export const Foo = 1;
         },
         expected: vec![Expected {
           source: r#"import { Foo, doSomething } from "file:///main.ts";
-Deno.test("file:///main.ts$3-6.ts", async ()=>{
+Deno.test("file:///main.ts$3-7.ts", async ()=>{
+    console.log(Foo);
     doSomething();
 });
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts$3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
