@@ -12,6 +12,12 @@ use deno_permissions::PermissionsContainer;
 // `--deny-net`. Enforce `--allow-net` for the request target here, mirroring
 // the target check fetch() performs, before the connection to the proxy is
 // established.
+//
+// This fails closed: a denied or unparseable target propagates its error,
+// matching check_net_url() in fetch(). Targets node:http rejects on its own
+// (invalid header characters such as CR/LF, which would also fail check_net's
+// host parser) are filtered out before this op is called, so they surface as
+// ERR_INVALID_CHAR rather than being masked here.
 #[op2(fast, stack_trace)]
 pub fn op_node_http_check_proxy_net(
   state: &mut OpState,
@@ -19,15 +25,7 @@ pub fn op_node_http_check_proxy_net(
   port: u16,
   #[string] api_name: &str,
 ) -> Result<(), PermissionCheckError> {
-  match state
+  state
     .borrow_mut::<PermissionsContainer>()
     .check_net(&(hostname, Some(port)), api_name)
-  {
-    // A malformed target host (e.g. invalid characters) cannot be a reachable
-    // destination, so it should not surface here as a permission/parse error.
-    // Let the request proceed and have node:http's own validation reject it
-    // with the proper error (ERR_INVALID_CHAR) instead of masking it.
-    Err(PermissionCheckError::HostParse(_)) => Ok(()),
-    result => result,
-  }
 }

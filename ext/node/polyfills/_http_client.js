@@ -64,6 +64,7 @@ const { kEmptyObject, once } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
 import {
+  _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,
   freeParser,
   HTTPParser,
@@ -531,15 +532,26 @@ function ClientRequest(input, options, cb) {
     // A proxied request connects only to the proxy, so the target host would
     // otherwise never be permission-checked. Enforce --allow-net for the
     // target here, matching fetch(), before routing through the proxy.
-    // `port` may be a string (or contain invalid characters, which a later
-    // header check rejects with ERR_INVALID_CHAR); coerce to a number so the
-    // op's u16 argument conversion never throws and masks that error.
-    const targetPort = NumberParseInt(port, 10);
-    op_node_http_check_proxy_net(
-      host,
-      NumberIsFinite(targetPort) ? targetPort : 0,
-      protocol === "https:" ? "node:https.request()" : "node:http.request()",
-    );
+    //
+    // A host or port carrying invalid header characters (e.g. CR/LF) is not a
+    // reachable target: node:http rejects it with ERR_INVALID_CHAR while
+    // building the request. Skip the permission check for those so the op does
+    // not pre-empt that error with a parse/permission failure. Every other
+    // target is permission-checked and a denial fails closed, like fetch().
+    if (
+      !checkInvalidHeaderChar(host) && !checkInvalidHeaderChar(String(port))
+    ) {
+      // `port` may be a numeric string; coerce and clamp to the op's u16 range
+      // so the argument conversion never throws.
+      const targetPort = NumberParseInt(port, 10);
+      op_node_http_check_proxy_net(
+        host,
+        NumberIsFinite(targetPort) && targetPort >= 0 && targetPort <= 65535
+          ? targetPort
+          : 0,
+        protocol === "https:" ? "node:https.request()" : "node:http.request()",
+      );
+    }
     this[kProxy] = proxyEntry;
     this[kProxyTargetHost] = host;
     this[kProxyTargetPort] = port;
