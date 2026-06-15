@@ -14,7 +14,12 @@ const loadEncoding = () =>
 const console = core.loadExtScript("ext:deno_web/01_console.js");
 const worker = core.loadExtScript("ext:runtime/11_workers.js");
 const performance = core.loadExtScript("ext:deno_web/15_performance.js");
-const loadCrypto = () => core.loadExtScript("ext:deno_crypto/00_crypto.js");
+// crypto is installed eagerly: evaluating 00_crypto.js at startup runs its
+// `registerCloneableResource("CryptoKey", ...)` side effect, which workers need
+// to deserialize a CryptoKey transferred via postMessage/workerData. The impl
+// is a thin cppgc port, so eager eval is cheap. `crypto.crypto` itself is a
+// getter that mints the cppgc Crypto instance lazily (see propGetterOnly below).
+const crypto = core.loadExtScript("ext:deno_crypto/00_crypto.js");
 const url = core.loadExtScript("ext:deno_web/00_url.js");
 const loadUrlPattern = () =>
   core.loadExtScript("ext:deno_web/01_urlpattern.js");
@@ -122,7 +127,7 @@ const windowOrWorkerGlobalScope = {
     (s) => s.CountQueuingStrategy,
     lazyStreams,
   ),
-  CryptoKey: core.propNonEnumerableLazyLoaded((m) => m.CryptoKey, loadCrypto),
+  CryptoKey: core.propNonEnumerable(crypto.CryptoKey),
   CustomEvent: core.propNonEnumerable(event.CustomEvent),
   DecompressionStream: core.propNonEnumerableLazyLoaded(
     (c) => c.DecompressionStream,
@@ -294,12 +299,9 @@ const windowOrWorkerGlobalScope = {
   console: core.propNonEnumerable(
     new console.Console((msg, level) => core.print(msg, level > 1)),
   ),
-  crypto: core.propWritableLazyLoaded((m) => m.crypto, loadCrypto),
-  Crypto: core.propNonEnumerableLazyLoaded((m) => m.Crypto, loadCrypto),
-  SubtleCrypto: core.propNonEnumerableLazyLoaded(
-    (m) => m.SubtleCrypto,
-    loadCrypto,
-  ),
+  crypto: core.propGetterOnly(() => crypto.crypto),
+  Crypto: core.propNonEnumerable(crypto.Crypto),
+  SubtleCrypto: core.propNonEnumerable(crypto.SubtleCrypto),
   // `fetch` is installed as a plain data descriptor whose value is a lazy
   // wrapper function (not an accessor descriptor). node:test's `mock.method`
   // reads `descriptor.value` and rejects accessor descriptors as
