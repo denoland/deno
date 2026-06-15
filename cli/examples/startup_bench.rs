@@ -77,7 +77,8 @@ fn bootstrap_once() -> MainWorker {
       ),
       blob_store: std::sync::Arc::new(
         deno_runtime::deno_web::BlobStore::default(),
-      ) as std::sync::Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
+      )
+        as std::sync::Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
       broadcast_channel: Default::default(),
       feature_checker: Default::default(),
       node_services: Default::default(),
