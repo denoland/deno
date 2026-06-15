@@ -64,6 +64,11 @@ impl DepGraph {
     let mut npm_by_base: HashMap<String, String> = HashMap::new();
 
     for (key, info) in content.npm.iter() {
+      // When several lockfile entries share a base `name@version` but differ
+      // only by peer suffix, we keep the first one. A declared root maps to a
+      // single node, so the tree shows that node's peer resolution; this only
+      // matters for the rare case of the same package present with distinct
+      // peer sets.
       npm_by_base
         .entry(strip_peer_suffix(key).to_string())
         .or_insert_with(|| key.to_string());
@@ -159,6 +164,8 @@ fn print_flat_table(roots: &[Root]) {
   };
   let resolved_of = |r: &Root| r.resolved.clone().unwrap_or("-".into());
 
+  // Column widths use byte length. Package names, versions and requirements
+  // are ASCII, so this matches display width here.
   let mut w = [HEADINGS[0].len(), HEADINGS[1].len(), HEADINGS[2].len()];
   for r in roots {
     w[0] = w[0].max(name_of(r).len());
