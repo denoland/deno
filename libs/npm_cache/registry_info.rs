@@ -377,14 +377,6 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     self.0.memory_cache.lock().clear();
   }
 
-  /// Whether only cached registry data may be used (the `--cached-only`
-  /// setting). In this mode fetching missing registry metadata is an error, so
-  /// callers should avoid triggering a re-resolution when the lockfile already
-  /// satisfies the requirements.
-  pub fn is_cached_only(&self) -> bool {
-    *self.0.cache.cache_setting() == NpmCacheSetting::Only
-  }
-
   pub async fn maybe_package_info(
     &self,
     name: &str,
