@@ -6743,6 +6743,12 @@ impl CommandExt for Command {
         arg = arg.alias("sloppy-imports");
       }
 
+      // The original flag name was annoyingly long; surface the shorter form
+      // in help/usage while keeping the old name as a hidden alias.
+      if feature.flag_name == "unstable-unsafe-proto" {
+        arg = arg.long("unsafe-proto").alias("unstable-unsafe-proto");
+      }
+
       arg = arg.long_help(long_help_val);
       cmd = cmd.arg(arg);
     }

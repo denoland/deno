@@ -33,7 +33,7 @@ const RUN_ARGS: &[&str] = &[
   "run",
   "-A",
   "--quiet",
-  "--unstable-unsafe-proto",
+  "--unsafe-proto",
   "--unstable-bare-node-builtins",
 ];
 
@@ -41,7 +41,7 @@ const TEST_ARGS: &[&str] = &[
   "test",
   "-A",
   "--quiet",
-  "--unstable-unsafe-proto",
+  "--unsafe-proto",
   "--unstable-bare-node-builtins",
   "--no-check",
   "--unstable-detect-cjs",

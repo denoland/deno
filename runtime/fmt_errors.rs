@@ -14,7 +14,7 @@ use deno_core::url::Url;
 use deno_terminal::colors;
 
 /// Set to `true` when user code assigns to `Object.prototype.__proto__` while
-/// the accessor is disabled (the default, unless `--unstable-unsafe-proto`).
+/// the accessor is disabled (the default, unless `--unsafe-proto`).
 /// The assignment itself stays a silent no-op so fragile packages keep working
 /// (see denoland/deno#34730 / #34772, where throwing broke Playwright); this
 /// flag only lets the uncaught-error formatter nudge toward the escape hatch.
@@ -395,7 +395,7 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
   if let Some(info) = info {
     suggestions.push(FixSuggestion::info(info));
     suggestions.push(FixSuggestion::hint(cstr!(
-      "If this caused the error, run again with <u>--unstable-unsafe-proto</> to restore it."
+      "If this caused the error, run again with <u>--unsafe-proto</> to restore it."
     )));
   }
   suggestions

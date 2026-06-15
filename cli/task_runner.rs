@@ -401,7 +401,7 @@ impl ShellCommand for NodeCommand {
       "--unstable-bare-node-builtins".into(),
       "--unstable-detect-cjs".into(),
       "--unstable-sloppy-imports".into(),
-      "--unstable-unsafe-proto".into(),
+      "--unsafe-proto".into(),
     ]);
     args.extend(context.args);
 

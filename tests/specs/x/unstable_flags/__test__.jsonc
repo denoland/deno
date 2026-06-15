@@ -6,6 +6,10 @@
       "output": "without_flag.out"
     },
     "with_flag": {
+      "args": "x -y --unsafe-proto npm:@denotest/unsafe-proto-bin",
+      "output": "with_flag.out"
+    },
+    "with_old_flag_name": {
       "args": "x -y --unstable-unsafe-proto npm:@denotest/unsafe-proto-bin",
       "output": "with_flag.out"
     },

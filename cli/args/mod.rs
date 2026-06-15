@@ -1452,7 +1452,7 @@ impl CliOptions {
     unstable_features
   }
 
-  /// Returns unstable feature flags as CLI arguments (e.g., "--unstable-unsafe-proto").
+  /// Returns unstable feature flags as CLI arguments (e.g., "--unstable-bundle").
   /// This includes features from both CLI flags and config file. Features that
   /// are only valid in `deno.json` (e.g. `fmt-component`, `fmt-sql`) and don't
   /// have a registered CLI flag are filtered out, otherwise child processes

@@ -11,6 +11,11 @@
       "output": "throw_only.out"
     },
     "no_suggestion_with_unsafe_proto_flag": {
+      "args": "run --unsafe-proto set_and_throw.js",
+      "exitCode": 1,
+      "output": "set_and_throw_unsafe.out"
+    },
+    "old_flag_name_still_works": {
       "args": "run --unstable-unsafe-proto set_and_throw.js",
       "exitCode": 1,
       "output": "set_and_throw_unsafe.out"

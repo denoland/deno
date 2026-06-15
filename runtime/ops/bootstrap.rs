@@ -168,7 +168,7 @@ pub fn op_bootstrap_is_from_unconfigured_runtime(state: &mut OpState) -> bool {
 // Called (at most once) from the disabled `Object.prototype.__proto__` setter
 // in 99_main.js when user code assigns to `__proto__`. Records a process-global
 // flag so that, if the program later crashes, the uncaught-error formatter can
-// suggest `--unstable-unsafe-proto`. See `crate::fmt_errors::PROTO_SET_ATTEMPTED`.
+// suggest `--unsafe-proto`. See `crate::fmt_errors::PROTO_SET_ATTEMPTED`.
 #[op2(fast)]
 pub fn op_proto_set_attempted() {
   crate::fmt_errors::PROTO_SET_ATTEMPTED

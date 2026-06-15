@@ -751,7 +751,7 @@ let protoGetRecorded = false;
 // semantics exactly (read -> `undefined`, write -> own data property, prototype
 // unchanged) but additionally records the first read and the first write. When
 // the program later crashes, the uncaught-error formatter (runtime/fmt_errors.rs)
-// reads those flags and suggests `--unstable-unsafe-proto`. A write surfaces
+// reads those flags and suggests `--unsafe-proto`. A write surfaces
 // downstream so any later crash triggers the nudge; a read crashes at the
 // access site, so the formatter additionally requires `__proto__` on the
 // failing line before nudging. The `__proto__` key in object literals (e.g.
