@@ -10882,7 +10882,7 @@ interface CompressionStream extends GenericTransformStream {
     /** The **`readable`** read-only property of the CompressionStream interface returns a ReadableStream that emits compressed data as Uint8Array chunks. */
     readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
     /** The **`writable`** read-only property of the CompressionStream interface returns a WritableStream that accepts uncompressed data to be compressed, in the form of ArrayBuffer, TypedArray, or DataView chunks. */
-    readonly writable: WritableStream<BufferSource>;
+    readonly writable: WritableStream<AllowSharedBufferSource>;
 }
 
 declare var CompressionStream: {
@@ -12366,7 +12366,7 @@ interface DecompressionStream extends GenericTransformStream {
     /** The **`readable`** read-only property of the DecompressionStream interface returns a ReadableStream that emits decompressed data as Uint8Array chunks. */
     readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
     /** The **`writable`** read-only property of the DecompressionStream interface returns a WritableStream that accepts compressed data to be decompressed, in the form of ArrayBuffer, TypedArray, or DataView chunks. */
-    readonly writable: WritableStream<BufferSource>;
+    readonly writable: WritableStream<AllowSharedBufferSource>;
 }
 
 declare var DecompressionStream: {
