@@ -10,6 +10,7 @@ import { stripAnsiCode } from "@std/fmt/colors";
 import * as util from "node:util";
 import utilDefault from "node:util";
 import { Buffer } from "node:buffer";
+import process from "node:process";
 
 Deno.test({
   name: "[util] format",
@@ -291,6 +292,26 @@ Deno.test("[util] styleText() respects stream.isTTY", () => {
   });
   assertEquals(plainText, "No TTY");
   assertEquals(greenText, "\x1b[32mNo TTY\x1b[39m");
+});
+
+Deno.test("[util] styleText() falls back to process.stdout when no stream given", () => {
+  const orig = process.env.FORCE_COLOR;
+  try {
+    process.env.FORCE_COLOR = "0";
+    assertEquals(util.styleText("red", "no stream"), "no stream");
+
+    process.env.FORCE_COLOR = "1";
+    assertEquals(
+      util.styleText("red", "no stream"),
+      "\x1b[31mno stream\x1b[39m",
+    );
+  } finally {
+    if (orig === undefined) {
+      delete process.env.FORCE_COLOR;
+    } else {
+      process.env.FORCE_COLOR = orig;
+    }
+  }
 });
 
 Deno.test("[util] stripVTControlCharacters() removes OSC 8 hyperlinks", () => {
