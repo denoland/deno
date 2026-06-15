@@ -24,14 +24,6 @@
 // - https://github.com/nodejs/node/blob/master/src/node_symbols.cc
 
 (function () {
-const { primordials } = __bootstrap;
-const { Symbol } = primordials;
-
-const asyncIdSymbol: unique symbol = Symbol("asyncIdSymbol");
-const ownerSymbol: unique symbol = Symbol("ownerSymbol");
-
-return {
-  asyncIdSymbol,
-  ownerSymbol,
-};
+const { op_node_internal_binding_symbols } = __bootstrap.core.ops;
+return op_node_internal_binding_symbols();
 })();

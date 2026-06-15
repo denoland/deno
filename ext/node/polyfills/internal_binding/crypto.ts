@@ -2,20 +2,6 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, primordials } = __bootstrap;
-const { timingSafeEqual } = core.loadExtScript(
-  "ext:deno_node/internal_binding/_timingSafeEqual.ts",
-);
-
-const { Error } = primordials;
-
-function getFipsCrypto(): boolean {
-  return false;
-}
-
-function setFipsCrypto(_fips: boolean) {
-  throw new Error("FIPS mode is not supported in Deno.");
-}
-
-return { timingSafeEqual, getFipsCrypto, setFipsCrypto };
+const { op_node_internal_binding_crypto } = __bootstrap.core.ops;
+return op_node_internal_binding_crypto();
 })();

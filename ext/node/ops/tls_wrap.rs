@@ -45,6 +45,8 @@ use deno_core::uv_compat::uv_buf_t;
 use deno_core::uv_compat::uv_stream_t;
 use deno_core::uv_compat::uv_write_t;
 use deno_core::v8;
+use deno_core::v8::ExternalReference;
+use deno_core::v8::MapFnTo;
 use deno_core::v8_static_strings;
 use deno_node_crypto::x509::Certificate;
 use deno_node_crypto::x509::CertificateObject;
@@ -1941,6 +1943,728 @@ impl TLSWrap {
 
     0
   }
+}
+
+fn string<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: &str,
+) -> v8::Local<'s, v8::String> {
+  v8::String::new(scope, value).unwrap()
+}
+
+fn set_value(
+  scope: &mut v8::PinScope,
+  obj: v8::Local<v8::Object>,
+  name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  let key = string(scope, name);
+  obj.set(scope, key.into(), value);
+}
+
+fn get_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  name: &str,
+) -> Option<v8::Local<'s, v8::Value>> {
+  let key = string(scope, name);
+  obj.get(scope, key.into())
+}
+
+fn get_function<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  name: &str,
+) -> Option<v8::Local<'s, v8::Function>> {
+  get_value(scope, obj, name)
+    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+}
+
+fn call_method<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  name: &str,
+  args: &[v8::Local<v8::Value>],
+) -> Option<v8::Local<'s, v8::Value>> {
+  let function = get_function(scope, obj, name)?;
+  function.call(scope, obj.into(), args)
+}
+
+fn callback_data_object<'s>(
+  args: &v8::FunctionCallbackArguments<'s>,
+) -> Option<v8::Local<'s, v8::Object>> {
+  v8::Local::<v8::Object>::try_from(args.data()).ok()
+}
+
+fn callback_data_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: &v8::FunctionCallbackArguments<'s>,
+  name: &str,
+) -> Option<v8::Local<'s, v8::Value>> {
+  let data = callback_data_object(args)?;
+  get_value(scope, data, name)
+}
+
+fn callback_data_function<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: &v8::FunctionCallbackArguments<'s>,
+  name: &str,
+) -> Option<v8::Local<'s, v8::Function>> {
+  callback_data_value(scope, args, name)
+    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+}
+
+fn callback_data_tls_wrap<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: &v8::FunctionCallbackArguments<'s>,
+) -> Option<v8::Local<'s, v8::Object>> {
+  callback_data_value(scope, args, "res")
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+}
+
+fn throw_error(scope: &mut v8::PinScope, message: &str) {
+  let message = string(scope, message);
+  let exception = v8::Exception::error(scope, message);
+  scope.throw_exception(exception);
+}
+
+fn create_error<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  message: &str,
+) -> v8::Local<'s, v8::Object> {
+  let message = string(scope, message);
+  let error = v8::Exception::error(scope, message);
+  v8::Local::<v8::Object>::try_from(error).unwrap()
+}
+
+fn data_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  values: &[(&str, v8::Local<'s, v8::Value>)],
+) -> v8::Local<'s, v8::Object> {
+  let obj = v8::Object::new(scope);
+  for (key, value) in values {
+    set_value(scope, obj, key, *value);
+  }
+  obj
+}
+
+fn function_with_data<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback: impl MapFnTo<v8::FunctionCallback>,
+  data: v8::Local<'s, v8::Object>,
+) -> v8::Local<'s, v8::Function> {
+  v8::Function::builder(callback)
+    .data(data.into())
+    .build(scope)
+    .unwrap()
+}
+
+fn call_tls_method<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  tls_wrap: v8::Local<'s, v8::Object>,
+  name: &str,
+  args: &[v8::Local<v8::Value>],
+) -> Option<v8::Local<'s, v8::Value>> {
+  call_method(scope, tls_wrap, name, args)
+}
+
+fn attach_native_handle<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  tls_wrap: v8::Local<'s, v8::Object>,
+  native_handle: v8::Local<'s, v8::Object>,
+  pipe_wrap: v8::Local<'s, v8::Object>,
+  stream_base_state: v8::Local<'s, v8::Value>,
+) -> bool {
+  let method = if native_handle
+    .cast::<v8::Value>()
+    .instance_of(scope, pipe_wrap)
+    .unwrap_or(false)
+  {
+    "attachPipe"
+  } else {
+    "attach"
+  };
+  let Some(result) =
+    call_tls_method(scope, tls_wrap, method, &[native_handle.into()])
+  else {
+    return false;
+  };
+  let attach_result = result.int32_value(scope).unwrap_or(-1);
+  if attach_result != 0 {
+    throw_error(scope, &format!("TLS wrap attach failed: {attach_result}"));
+    return false;
+  }
+
+  install_native_onread(scope, tls_wrap, native_handle, stream_base_state);
+  set_value(scope, tls_wrap, "_nativeTcpHandle", native_handle.into());
+  true
+}
+
+fn install_native_onread<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  tls_wrap: v8::Local<'s, v8::Object>,
+  native_handle: v8::Local<'s, v8::Object>,
+  stream_base_state: v8::Local<'s, v8::Value>,
+) {
+  let data = data_object(
+    scope,
+    &[
+      ("res", tls_wrap.into()),
+      ("streamBaseState", stream_base_state),
+    ],
+  );
+  let onread = function_with_data(scope, native_onread_callback, data);
+  set_value(scope, native_handle, "onread", onread.into());
+}
+
+fn js_stream_owner<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  native_handle: v8::Local<'s, v8::Object>,
+) -> Option<v8::Local<'s, v8::Object>> {
+  let owner_symbol_name = string(scope, "kJSStreamOwner");
+  let owner_symbol = v8::Symbol::for_key(scope, owner_symbol_name);
+  native_handle
+    .get(scope, owner_symbol.into())
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+}
+
+fn is_js_stream_handle(
+  scope: &mut v8::PinScope,
+  native_handle: v8::Local<v8::Object>,
+) -> bool {
+  let handle_symbol_name = string(scope, "kJSStreamHandle");
+  let handle_symbol = v8::Symbol::for_key(scope, handle_symbol_name);
+  native_handle
+    .get(scope, handle_symbol.into())
+    .map(|value| value.boolean_value(scope))
+    .unwrap_or(false)
+}
+
+fn value_byte_length<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'s, v8::Value>,
+) -> usize {
+  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
+    return view.byte_length();
+  }
+  if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
+    return buffer.byte_length();
+  }
+  let Ok(obj) = v8::Local::<v8::Object>::try_from(value) else {
+    return 0;
+  };
+  get_value(scope, obj, "byteLength")
+    .and_then(|value| value.uint32_value(scope))
+    .unwrap_or(0) as usize
+}
+
+fn empty_uint8_array<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Uint8Array> {
+  let buffer = v8::ArrayBuffer::new(scope, 0);
+  v8::Uint8Array::new(scope, buffer, 0, 0).unwrap()
+}
+
+fn uint8_array_from_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'s, v8::Value>,
+) -> Option<v8::Local<'s, v8::Object>> {
+  let global = scope.get_current_context().global(scope);
+  let ctor = get_function(scope, global, "Uint8Array")?;
+  ctor.new_instance(scope, &[value])
+}
+
+fn call_pump<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  data: v8::Local<'s, v8::Object>,
+) {
+  let Some(pump) = get_function(scope, data, "pump") else {
+    return;
+  };
+  let undefined = v8::undefined(scope).into();
+  pump.call(scope, undefined, &[]);
+}
+
+fn setup_js_stream<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  tls_wrap: v8::Local<'s, v8::Object>,
+  native_handle: v8::Local<'s, v8::Object>,
+) -> bool {
+  let Some(result) = call_tls_method(scope, tls_wrap, "attachJsStream", &[])
+  else {
+    return false;
+  };
+  let attach_result = result.int32_value(scope).unwrap_or(-1);
+  if attach_result != 0 {
+    throw_error(
+      scope,
+      &format!("TLS wrap attach (JS stream) failed: {attach_result}"),
+    );
+    return false;
+  }
+
+  let Some(owner) = js_stream_owner(scope, native_handle) else {
+    return true;
+  };
+
+  let data = data_object(
+    scope,
+    &[
+      ("res", tls_wrap.into()),
+      ("nativeHandle", native_handle.into()),
+      ("jsStreamOwner", owner.into()),
+      ("flushPending", v8::Boolean::new(scope, false).into()),
+      ("writeInFlight", v8::Boolean::new(scope, false).into()),
+    ],
+  );
+  let pump = function_with_data(scope, js_stream_pump_callback, data);
+  set_value(scope, data, "pump", pump.into());
+  let flush = function_with_data(scope, js_stream_flush_callback, data);
+  set_value(scope, data, "flush", flush.into());
+  set_value(scope, tls_wrap, "_flushEncOut", flush.into());
+
+  let read_buffer =
+    function_with_data(scope, js_stream_read_buffer_callback, data);
+  set_value(scope, native_handle, "readBuffer", read_buffer.into());
+  let emit_eof = function_with_data(scope, js_stream_emit_eof_callback, data);
+  set_value(scope, native_handle, "emitEOF", emit_eof.into());
+  true
+}
+
+fn native_onread_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let Some(tls_wrap) = callback_data_tls_wrap(scope, &args) else {
+    return;
+  };
+  let Some(state_value) = callback_data_value(scope, &args, "streamBaseState")
+  else {
+    return;
+  };
+  let Ok(state) = v8::Local::<v8::Int32Array>::try_from(state_value) else {
+    return;
+  };
+  let Some(buffer) = state.buffer(scope) else {
+    return;
+  };
+  let Some(data) = buffer.data() else {
+    return;
+  };
+  let values =
+    unsafe { std::slice::from_raw_parts(data.as_ptr() as *const i32, 1) };
+  let nread = values[0];
+  let native_handle = args.this();
+  if nread > 0 && args.length() > 0 {
+    let buf = args.get(0);
+    if buf.is_array_buffer() {
+      let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(buf) else {
+        return;
+      };
+      let len = nread as usize;
+      let Some(view) = v8::Uint8Array::new(scope, buffer, 0, len) else {
+        return;
+      };
+      call_tls_method(scope, tls_wrap, "receive", &[view.into()]);
+    } else if let Ok(view) = v8::Local::<v8::Uint8Array>::try_from(buf) {
+      let Some(buffer) = view.buffer(scope) else {
+        return;
+      };
+      let len = nread as usize;
+      let Some(view) =
+        v8::Uint8Array::new(scope, buffer, view.byte_offset(), len)
+      else {
+        return;
+      };
+      call_tls_method(scope, tls_wrap, "receive", &[view.into()]);
+    }
+  } else if nread < 0 {
+    call_method(scope, native_handle, "readStop", &[]);
+    call_method(scope, native_handle, "unref", &[]);
+    call_tls_method(scope, tls_wrap, "emitEof", &[]);
+  }
+}
+
+fn attach_native_handle_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let Some(tls_wrap) = callback_data_tls_wrap(scope, &args) else {
+    return;
+  };
+  let Some(pipe_wrap) = callback_data_value(scope, &args, "PipeWrap")
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+  else {
+    return;
+  };
+  let Some(stream_base_state) =
+    callback_data_value(scope, &args, "streamBaseState")
+  else {
+    return;
+  };
+  let native_handle = args.get(0);
+  let Ok(native_handle) = v8::Local::<v8::Object>::try_from(native_handle)
+  else {
+    return;
+  };
+  attach_native_handle(
+    scope,
+    tls_wrap,
+    native_handle,
+    pipe_wrap,
+    stream_base_state,
+  );
+}
+
+fn install_native_onread_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let Some(tls_wrap) = callback_data_tls_wrap(scope, &args) else {
+    return;
+  };
+  let native_handle = args.get(0);
+  let Ok(native_handle) = v8::Local::<v8::Object>::try_from(native_handle)
+  else {
+    return;
+  };
+  let Some(stream_base_state) =
+    callback_data_value(scope, &args, "streamBaseState")
+  else {
+    return;
+  };
+  install_native_onread(scope, tls_wrap, native_handle, stream_base_state);
+}
+
+fn js_stream_pump_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let Some(data) = callback_data_object(&args) else {
+    return;
+  };
+  let write_in_flight = get_value(scope, data, "writeInFlight")
+    .map(|value| value.boolean_value(scope))
+    .unwrap_or(false);
+  if write_in_flight {
+    return;
+  }
+  let Some(owner) = get_value(scope, data, "jsStreamOwner")
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+  else {
+    return;
+  };
+  let Some(stream) = get_value(scope, owner, "stream")
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+  else {
+    return;
+  };
+  let Some(tls_wrap) = get_value(scope, data, "res")
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+  else {
+    return;
+  };
+
+  let mut enc_data = call_tls_method(scope, tls_wrap, "drainEncOut", &[]);
+  let mut data_len = enc_data
+    .map(|value| value_byte_length(scope, value))
+    .unwrap_or(0);
+  if data_len == 0 {
+    let empty = empty_uint8_array(scope);
+    call_tls_method(scope, tls_wrap, "readBuffer", &[empty.into()]);
+    enc_data = call_tls_method(scope, tls_wrap, "drainEncOut", &[]);
+    data_len = enc_data
+      .map(|value| value_byte_length(scope, value))
+      .unwrap_or(0);
+    if data_len == 0 {
+      return;
+    }
+  }
+
+  let Some(enc_data) = enc_data else {
+    return;
+  };
+  let Some(data_for_write) = uint8_array_from_value(scope, enc_data) else {
+    return;
+  };
+  set_value(
+    scope,
+    data,
+    "writeInFlight",
+    v8::Boolean::new(scope, true).into(),
+  );
+  let write_done =
+    function_with_data(scope, js_stream_write_done_callback, data);
+  call_method(
+    scope,
+    stream,
+    "write",
+    &[data_for_write.into(), write_done.into()],
+  );
+}
+
+fn js_stream_flush_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let Some(data) = callback_data_object(&args) else {
+    return;
+  };
+  let flush_pending = get_value(scope, data, "flushPending")
+    .map(|value| value.boolean_value(scope))
+    .unwrap_or(false);
+  if flush_pending {
+    return;
+  }
+  set_value(
+    scope,
+    data,
+    "flushPending",
+    v8::Boolean::new(scope, true).into(),
+  );
+  let global = scope.get_current_context().global(scope);
+  let Some(promise_ctor) = get_value(scope, global, "Promise")
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+  else {
+    return;
+  };
+  let Some(resolve) = get_function(scope, promise_ctor, "resolve") else {
+    return;
+  };
+  let Some(promise) = resolve
+    .call(scope, promise_ctor.into(), &[])
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+  else {
+    return;
+  };
+  let callback = function_with_data(scope, js_stream_flush_then_callback, data);
+  call_method(scope, promise, "then", &[callback.into()]);
+}
+
+fn js_stream_flush_then_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let Some(data) = callback_data_object(&args) else {
+    return;
+  };
+  set_value(
+    scope,
+    data,
+    "flushPending",
+    v8::Boolean::new(scope, false).into(),
+  );
+  call_pump(scope, data);
+}
+
+fn js_stream_write_done_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let Some(data) = callback_data_object(&args) else {
+    return;
+  };
+  set_value(
+    scope,
+    data,
+    "writeInFlight",
+    v8::Boolean::new(scope, false).into(),
+  );
+  call_pump(scope, data);
+}
+
+fn js_stream_read_buffer_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let Some(tls_wrap) = callback_data_tls_wrap(scope, &args) else {
+    return;
+  };
+  let Some(flush) = callback_data_function(scope, &args, "flush") else {
+    return;
+  };
+  let chunk = args.get(0);
+  call_tls_method(scope, tls_wrap, "readBuffer", &[chunk]);
+  let undefined = v8::undefined(scope).into();
+  flush.call(scope, undefined, &[]);
+}
+
+fn js_stream_emit_eof_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let Some(tls_wrap) = callback_data_tls_wrap(scope, &args) else {
+    return;
+  };
+  let Some(flush) = callback_data_function(scope, &args, "flush") else {
+    return;
+  };
+  call_tls_method(scope, tls_wrap, "emitEof", &[]);
+  let undefined = v8::undefined(scope).into();
+  flush.call(scope, undefined, &[]);
+}
+
+fn tls_wrap_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  mut rv: v8::ReturnValue<'s>,
+) {
+  let Some(data) = callback_data_object(&args) else {
+    return;
+  };
+  let Some(tls_wrap_ctor) = get_value(scope, data, "TLSWrap")
+    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+  else {
+    return;
+  };
+  let Some(pipe_wrap) = get_value(scope, data, "PipeWrap")
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+  else {
+    return;
+  };
+  let Some(stream_base_state) = get_value(scope, data, "streamBaseState")
+  else {
+    return;
+  };
+  let handle = args.get(0);
+  let Ok(native_handle) = v8::Local::<v8::Object>::try_from(handle) else {
+    return;
+  };
+  let context = args.get(1);
+  let is_server = args.get(2).boolean_value(scope);
+  let kind = if is_server { 1 } else { 0 };
+  let wrap_args = [
+    v8::Integer::new(scope, kind).into(),
+    v8::Integer::new(scope, 0).into(),
+  ];
+  let Some(tls_wrap) = tls_wrap_ctor.new_instance(scope, &wrap_args) else {
+    return;
+  };
+
+  let init_result = if is_server {
+    call_tls_method(scope, tls_wrap, "initServerTls", &[context])
+  } else {
+    let servername = if args.length() > 3 {
+      args.get(3)
+    } else {
+      string(scope, "").into()
+    };
+    call_tls_method(scope, tls_wrap, "initClientTls", &[servername, context])
+  };
+  let init_result = init_result
+    .and_then(|value| value.int32_value(scope))
+    .unwrap_or(-1);
+  if init_result != 0 {
+    let error = create_error(scope, "unsupported protocol");
+    let code = string(scope, "ERR_SSL_UNSUPPORTED_PROTOCOL");
+    set_value(scope, error, "code", code.into());
+    set_value(scope, tls_wrap, "_initError", error.into());
+    rv.set(tls_wrap.into());
+    return;
+  }
+
+  let data = data_object(
+    scope,
+    &[
+      ("res", tls_wrap.into()),
+      ("PipeWrap", pipe_wrap.into()),
+      ("streamBaseState", stream_base_state),
+    ],
+  );
+  let attach = function_with_data(scope, attach_native_handle_callback, data);
+  set_value(scope, tls_wrap, "_attachNativeHandle", attach.into());
+  let install = function_with_data(scope, install_native_onread_callback, data);
+  set_value(scope, tls_wrap, "_installNativeOnread", install.into());
+
+  if is_js_stream_handle(scope, native_handle) {
+    if !setup_js_stream(scope, tls_wrap, native_handle) {
+      return;
+    }
+  } else if !attach_native_handle(
+    scope,
+    tls_wrap,
+    native_handle,
+    pipe_wrap,
+    stream_base_state,
+  ) {
+    return;
+  }
+
+  call_tls_method(scope, tls_wrap, "setHandle", &[tls_wrap.into()]);
+  rv.set(tls_wrap.into());
+}
+
+pub(crate) fn internal_binding_external_references() -> [ExternalReference; 10]
+{
+  [
+    ExternalReference {
+      function: tls_wrap_callback.map_fn_to(),
+    },
+    ExternalReference {
+      function: native_onread_callback.map_fn_to(),
+    },
+    ExternalReference {
+      function: attach_native_handle_callback.map_fn_to(),
+    },
+    ExternalReference {
+      function: install_native_onread_callback.map_fn_to(),
+    },
+    ExternalReference {
+      function: js_stream_pump_callback.map_fn_to(),
+    },
+    ExternalReference {
+      function: js_stream_flush_callback.map_fn_to(),
+    },
+    ExternalReference {
+      function: js_stream_flush_then_callback.map_fn_to(),
+    },
+    ExternalReference {
+      function: js_stream_write_done_callback.map_fn_to(),
+    },
+    ExternalReference {
+      function: js_stream_read_buffer_callback.map_fn_to(),
+    },
+    ExternalReference {
+      function: js_stream_emit_eof_callback.map_fn_to(),
+    },
+  ]
+}
+
+#[op2]
+pub fn op_node_internal_binding_tls_wrap<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  tls_wrap: v8::Local<'s, v8::Value>,
+  pipe_wrap: v8::Local<'s, v8::Value>,
+  stream_base_state: v8::Local<'s, v8::Value>,
+) -> v8::Local<'s, v8::Object> {
+  let data = data_object(
+    scope,
+    &[
+      ("TLSWrap", tls_wrap),
+      ("PipeWrap", pipe_wrap),
+      ("streamBaseState", stream_base_state),
+    ],
+  );
+  let wrap = function_with_data(scope, tls_wrap_callback, data);
+
+  let default = v8::Object::new(scope);
+  set_value(scope, default, "TLSWrap", tls_wrap);
+  set_value(scope, default, "wrap", wrap.into());
+
+  let obj = v8::Object::new(scope);
+  set_value(scope, obj, "TLSWrap", tls_wrap);
+  set_value(scope, obj, "wrap", wrap.into());
+  set_value(scope, obj, "default", default.into());
+  obj
 }
 
 #[op2(inherit = LibUvStreamWrap)]

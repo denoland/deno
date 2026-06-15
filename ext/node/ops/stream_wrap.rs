@@ -31,7 +31,6 @@ use deno_core::v8;
 use crate::ops::handle_wrap::AsyncWrap;
 use crate::ops::handle_wrap::GlobalHandle;
 use crate::ops::handle_wrap::HandleWrap;
-use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap_state::ReadCallbackKey;
 use crate::ops::stream_wrap_state::ReadCallbackRegistry;
@@ -139,7 +138,6 @@ enum StreamBaseStateFields {
 #[repr(C)]
 pub struct WriteWrap {
   base: AsyncWrap,
-  req: OwnedPtr<uv_write_t>,
 }
 
 // SAFETY: WriteWrap is a cppgc-managed object; it holds no GC-traced references beyond its base.
@@ -155,12 +153,16 @@ impl WriteWrap {
   pub fn new(op_state: &mut OpState) -> Self {
     Self {
       base: AsyncWrap::create(op_state, ProviderType::WriteWrap as i32),
-      req: OwnedPtr::from_box(Box::new(uv_compat::new_write())),
     }
   }
+}
 
-  pub fn req_ptr(&mut self) -> *mut uv_write_t {
-    self.req.as_mut_ptr()
+#[op2(base, inherit = AsyncWrap)]
+impl WriteWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> WriteWrap {
+    WriteWrap::new(state)
   }
 }
 
@@ -173,7 +175,6 @@ impl WriteWrap {
 #[repr(C)]
 pub struct ShutdownWrap {
   base: AsyncWrap,
-  req: OwnedPtr<uv_shutdown_t>,
 }
 
 // SAFETY: ShutdownWrap is a cppgc-managed object; it holds no GC-traced references beyond its base.
@@ -189,13 +190,82 @@ impl ShutdownWrap {
   pub fn new(op_state: &mut OpState) -> Self {
     Self {
       base: AsyncWrap::create(op_state, ProviderType::ShutdownWrap as i32),
-      req: OwnedPtr::from_box(Box::new(uv_compat::new_shutdown())),
     }
   }
+}
 
-  pub fn req_ptr(&mut self) -> *mut uv_shutdown_t {
-    self.req.as_mut_ptr()
+#[op2(base, inherit = AsyncWrap)]
+impl ShutdownWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> ShutdownWrap {
+    ShutdownWrap::new(state)
   }
+}
+
+fn set_value(
+  scope: &mut v8::PinScope,
+  obj: v8::Local<v8::Object>,
+  name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  obj.set(scope, key.into(), value);
+}
+
+fn create_int32_array<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  length: usize,
+) -> v8::Local<'s, v8::Int32Array> {
+  let array_buffer = v8::ArrayBuffer::new(scope, length * 4);
+  v8::Int32Array::new(scope, array_buffer, 0, length).unwrap()
+}
+
+#[op2]
+pub fn op_node_internal_binding_stream_wrap<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  write_wrap: v8::Local<'s, v8::Value>,
+  shutdown_wrap: v8::Local<'s, v8::Value>,
+) -> v8::Local<'s, v8::Object> {
+  let obj = v8::Object::new(scope);
+  set_value(scope, obj, "WriteWrap", write_wrap);
+  set_value(scope, obj, "ShutdownWrap", shutdown_wrap);
+  set_value(
+    scope,
+    obj,
+    "kReadBytesOrError",
+    v8::Integer::new(scope, StreamBaseStateFields::ReadBytesOrError as i32)
+      .into(),
+  );
+  set_value(
+    scope,
+    obj,
+    "kArrayBufferOffset",
+    v8::Integer::new(scope, StreamBaseStateFields::ArrayBufferOffset as i32)
+      .into(),
+  );
+  set_value(
+    scope,
+    obj,
+    "kBytesWritten",
+    v8::Integer::new(scope, StreamBaseStateFields::BytesWritten as i32).into(),
+  );
+  set_value(
+    scope,
+    obj,
+    "kLastWriteWasAsync",
+    v8::Integer::new(scope, StreamBaseStateFields::LastWriteWasAsync as i32)
+      .into(),
+  );
+  set_value(
+    scope,
+    obj,
+    "kNumStreamBaseStateFields",
+    v8::Integer::new(scope, 4).into(),
+  );
+  let stream_base_state = create_int32_array(scope, 5);
+  set_value(scope, obj, "streamBaseState", stream_base_state.into());
+  obj
 }
 
 // ---------------------------------------------------------------------------

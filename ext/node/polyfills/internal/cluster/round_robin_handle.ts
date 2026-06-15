@@ -21,13 +21,7 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/cluster/linkedlist.ts");
 const {
   constants: TCPConstants,
-  setupListenWrap: setupTCPListenWrap,
-  TCP,
 } = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
-const {
-  Pipe,
-  setupListenWrap: setupPipeListenWrap,
-} = core.loadExtScript("ext:deno_node/internal_binding/pipe_wrap.ts");
 
 const { ArrayIsArray, Boolean, SafeMap } = primordials;
 
@@ -67,17 +61,8 @@ function RoundRobinHandle(
   }
   this.server.once("listening", () => {
     this.handle = this.server._handle;
-    // Replace the listen-wrap that net.Server set up: it captures the
-    // onconnection at wrap time, so just assigning a new onconnection
-    // (as Node does) would skip our accept-wrap step in Deno's TCP/Pipe
-    // bindings. Re-run setupListenWrap with the new user callback.
     this.handle.onconnection = (err: number, handle: any) =>
       this.distribute(err, handle);
-    if (this.handle instanceof TCP) {
-      setupTCPListenWrap(this.handle);
-    } else if (this.handle instanceof Pipe) {
-      setupPipeListenWrap(this.handle);
-    }
     this.server._handle = null;
     this.server = null;
   });

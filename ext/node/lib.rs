@@ -200,6 +200,7 @@ deno_core::extension!(deno_node,
 
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
+    ops::blocklist::op_node_internal_binding_block_list,
 
     ops::blocklist::op_blocklist_new,
     ops::blocklist::op_blocklist_add_address,
@@ -217,6 +218,8 @@ deno_core::extension!(deno_node,
     ops::buffer::op_node_encoding_slice,
     ops::dns::op_node_getaddrinfo,
     ops::dns::op_node_getnameinfo,
+    ops::dns::op_node_dns_reverse_name,
+    ops::dns::op_node_dns_sort_lookup_addresses,
     ops::fs::op_node_fs_exists_sync,
     ops::fs::op_node_fs_exists,
     ops::fs::op_node_lchmod_sync,
@@ -234,6 +237,7 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_statfs_sync,
     ops::fs::op_node_statfs,
     ops::fs::op_node_create_pipe,
+    ops::pipe_wrap::op_node_internal_binding_pipe_wrap,
     ops::fs::op_node_fd_set_blocking,
     ops::fs::op_node_fs_close,
     ops::fs::op_node_fs_read_sync,
@@ -241,6 +245,8 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_fs_write_sync,
     ops::fs::op_node_fs_write_deferred,
     ops::fs::op_node_fs_seek_sync,
+    ops::fs::op_node_file_write_buffer,
+    ops::llhttp::binding::op_node_internal_binding_http_parser,
     ops::fs::op_node_fs_seek,
     ops::fs::op_node_fs_fstat_sync,
     ops::fs::op_node_fs_fstat,
@@ -320,15 +326,43 @@ deno_core::extension!(deno_node,
     ops::idna::op_node_idna_punycode_to_unicode,
     ops::idna::op_node_idna_punycode_decode,
     ops::idna::op_node_idna_punycode_encode,
+    ops::buffer::op_node_internal_binding_buffer,
+    ops::internal_binding::op_node_internal_binding_ares,
+    ops::internal_binding::op_node_internal_binding_encodings,
+    ops::internal_binding::op_node_internal_binding_handle_wrap,
+    ops::internal_binding::op_node_internal_binding_inspector,
+    ops::internal_binding::op_node_internal_binding_libuv_winerror,
+    ops::internal_binding::op_node_internal_binding_string_decoder,
+    ops::internal_binding::op_node_internal_binding_symbols,
+    ops::internal_binding::op_node_internal_binding_tty_wrap,
+    ops::internal_binding::op_node_internal_binding_types,
+    ops::internal_binding::op_node_ares_strerror,
+    ops::internal_binding_async_wrap::op_node_internal_binding_async_wrap,
+    ops::internal_binding_constants::op_node_internal_binding_constants,
+    ops::internal_binding_crypto::op_node_crypto_get_fips,
+    ops::internal_binding_crypto::op_node_crypto_set_fips,
+    ops::internal_binding_crypto::op_node_crypto_timing_safe_equal,
+    ops::internal_binding_crypto::op_node_internal_binding_crypto,
+    ops::internal_binding_crypto::op_node_internal_binding_timing_safe_equal,
+    ops::internal_binding_node_options::op_node_options_get_exec_argv_options,
+    ops::internal_binding_node_options::op_node_options_get_options<TSys>,
+    ops::internal_binding_node_options::op_node_options_set_exec_argv,
+    ops::internal_binding_utils::op_node_internal_binding_utils,
+    ops::internal_binding_uv::op_node_internal_binding_uv,
+    ops::internal_binding_uv::op_node_uv_errname,
+    ops::internal_binding_uv::op_node_uv_get_code_map,
+    ops::internal_binding_uv::op_node_uv_get_error_map,
+    ops::internal_binding_uv::op_node_uv_get_error_message,
+    ops::internal_binding_uv::op_node_uv_map_sys_errno_to_uv_errno,
+    ops::util::op_node_internal_binding_util,
     ops::zlib::op_zlib_crc32,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
     ops::http2::op_http2_callbacks,
+    ops::http2::op_node_internal_binding_http2,
     // Keep the HTTP/2 error-string op wired so `internal/test/binding`
     // can mirror Node's `internalBinding('http2').nghttp2ErrorString()`
-    // in node_compat tests; the JS side also exposes `respond` /
-    // `pushPromise` shims on `Http2Stream` so tests can monkey-patch the
-    // prototype to inject NGHTTP2 error codes.
+    // in node_compat tests.
     ops::http2::op_http2_error_string,
     ops::http2::op_http2_http_state,
     ops::os::op_node_os_get_priority,
@@ -425,7 +459,10 @@ deno_core::extension!(deno_node,
     ops::udp::op_node_udp_recv,
     ops::udp::op_node_udp_fd_for_ipc,
     ops::udp::op_node_udp_open,
+    ops::tcp_wrap::op_node_internal_binding_tcp_wrap,
+    ops::stream_wrap::op_node_internal_binding_stream_wrap,
     ops::stream_wrap::op_stream_base_register_state,
+    ops::tls_wrap::op_node_internal_binding_tls_wrap,
     ops::tty_wrap::op_tty_check_fd_permission,
   ],
   objects = [
@@ -433,7 +470,13 @@ deno_core::extension!(deno_node,
     ops::perf_hooks::BaseHistogram,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
+    ops::dns::GetAddrInfoReqWrap,
+    ops::dns::GetNameInfoReqWrap,
+    ops::dns::QueryReqWrap,
+    ops::dns::ChannelWrap,
     ops::wasi::WasiContext,
+    ops::stream_wrap::WriteWrap,
+    ops::stream_wrap::ShutdownWrap,
     ops::stream_wrap::LibUvStreamWrap,
     ops::tty_wrap::TTY,
     ops::zlib::BrotliDecoder,
@@ -441,8 +484,12 @@ deno_core::extension!(deno_node,
     ops::zlib::Zlib,
     ops::zlib::ZstdCompress,
     ops::zlib::ZstdDecompress,
+    ops::tcp_wrap::TCPConnectWrap,
     ops::tcp_wrap::TCPWrap,
+    ops::pipe_wrap::PipeConnectWrap,
     ops::pipe_wrap::PipeWrap,
+    ops::udp::SendWrap,
+    ops::udp::UDP,
     ops::tls_wrap::TLSWrap,
     ops::llhttp::binding::HTTPParser,
     ops::http2::Http2Session,
@@ -614,7 +661,6 @@ deno_core::extension!(deno_node,
     "_process/process.ts",
     "_util/_util_callbackify.js",
     "_zlib_binding.mjs",
-    "internal_binding/_listen.ts",
     "internal_binding/_node.ts",
     "internal_binding/_utils.ts",
     "internal_binding/ares.ts",
@@ -772,6 +818,7 @@ deno_core::extension!(deno_node,
   state = |state, options| {
     state.put(options.fs.clone());
     state.put(ops::module_hooks::LoaderHookRegistry::default());
+    state.put(ops::internal_binding_node_options::NodeOptionsState::default());
 
     if let Some(init) = &options.maybe_init {
       state.put(init.sys.clone());
@@ -876,6 +923,33 @@ deno_core::extension!(deno_node,
     ];
 
     ext.external_references.to_mut().extend(external_references);
+    ext.external_references.to_mut().extend(
+      ops::internal_binding_crypto::external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::util::external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::buffer::external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::blocklist::internal_binding_external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::internal_binding_utils::external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::internal_binding_async_wrap::external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::http2::internal_binding_external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::tls_wrap::internal_binding_external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::llhttp::binding::internal_binding_external_references(),
+    );
   },
 );
 

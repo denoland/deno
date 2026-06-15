@@ -21,7 +21,6 @@ export const EXPECTED_VIOLATIONS: Record<string, number> = {
   "ext/node/polyfills/internal/process/report.ts": 6,
   "ext/node/polyfills/path/_win32.ts": 5,
   "ext/node/polyfills/_process/process.ts": 5,
-  "ext/node/polyfills/internal_binding/udp_wrap.ts": 4,
   "ext/node/polyfills/_process/streams.mjs": 4,
   "ext/node/polyfills/internal/errors.ts": 3,
   "ext/node/polyfills/_fs/_fs_lstat.ts": 4,
@@ -36,7 +35,6 @@ export const EXPECTED_VIOLATIONS: Record<string, number> = {
   "ext/node/polyfills/internal/util/colors.ts": 1,
   "ext/node/polyfills/internal/options.ts": 1,
   "ext/node/polyfills/internal/assert/assertion_error.js": 1,
-  "ext/node/polyfills/internal_binding/node_options.ts": 1,
   "ext/node/polyfills/_fs/cp/cp.ts": 1,
   "ext/node/polyfills/_fs/_fs_lutimes.ts": 1,
 };

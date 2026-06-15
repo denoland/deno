@@ -22,6 +22,9 @@
 
 (function () {
 const { core, primordials } = __bootstrap;
+const lazyBindingMod = core.createLazyLoader(
+  "ext:deno_node/internal_binding/mod.ts",
+);
 const {
   ArrayPrototypeMap,
   FunctionPrototypeBind,
@@ -56,12 +59,12 @@ const {
   ERR_MISSING_ARGS,
   handleDnsError,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const cares = lazyBindingMod().getBinding("cares_wrap");
 const {
-  default: cares,
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
-} = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
+} = cares;
 const { domainToASCII } = core.loadExtScript(
   "ext:deno_node/internal/idna.ts",
 );

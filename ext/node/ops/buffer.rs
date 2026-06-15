@@ -3,6 +3,8 @@
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::ExternalReference;
+use deno_core::v8::MapFnTo;
 use deno_core::v8_static_strings;
 use deno_error::JsErrorBox;
 
@@ -480,4 +482,344 @@ fn parse_array_index(
     return Err(BufferError::OutOfRange);
   }
   Ok(arg as usize)
+}
+
+fn set_value(
+  scope: &mut v8::PinScope,
+  obj: v8::Local<v8::Object>,
+  name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  obj.set(scope, key.into(), value);
+}
+
+fn set_function(
+  scope: &mut v8::PinScope,
+  obj: v8::Local<v8::Object>,
+  export_name: &str,
+  function: v8::Local<v8::Function>,
+) {
+  let name = v8::String::new(scope, export_name).unwrap();
+  function.set_name(name);
+  set_value(scope, obj, export_name, function.into());
+}
+
+fn throw_error(scope: &mut v8::PinScope, message: &str) {
+  let message = v8::String::new(scope, message).unwrap();
+  let exception = v8::Exception::error(scope, message);
+  scope.throw_exception(exception);
+}
+
+fn throw_type_error(scope: &mut v8::PinScope, message: &str) {
+  let message = v8::String::new(scope, message).unwrap();
+  let exception = v8::Exception::type_error(scope, message);
+  scope.throw_exception(exception);
+}
+
+fn view_bytes(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  name: &str,
+) -> Option<Vec<u8>> {
+  if !value.is_array_buffer_view() {
+    throw_type_error(scope, &format!("{name} must be an ArrayBufferView"));
+    return None;
+  }
+  let view = v8::Local::<v8::ArrayBufferView>::try_from(value).unwrap();
+  let mut bytes = vec![0; view.byte_length()];
+  let copied = view.copy_contents(&mut bytes);
+  debug_assert_eq!(copied, bytes.len());
+  Some(bytes)
+}
+
+fn index_of_needle(
+  source: &[u8],
+  needle: &[u8],
+  mut start: i64,
+  step: usize,
+) -> i64 {
+  let source_len = source.len() as i64;
+  if start >= source_len {
+    return -1;
+  }
+  if start < 0 {
+    start = 0.max(source_len + start);
+  }
+  let start = start as usize;
+  if needle.is_empty() {
+    return start as i64;
+  }
+  if needle.len() > source.len() {
+    return -1;
+  }
+  let first = needle[0];
+  let mut i = start;
+  while i < source.len() {
+    if source[i] == first
+      && i + needle.len() <= source.len()
+      && source[i..i + needle.len()] == *needle
+    {
+      return i as i64;
+    }
+    i += step;
+  }
+  -1
+}
+
+fn slice_end(len: usize, end: i64) -> usize {
+  if end < 0 {
+    (len as i64 + end).max(0) as usize
+  } else {
+    (end as usize).min(len)
+  }
+}
+
+fn find_last_index(target: &[u8], needle: &[u8], mut offset: i64) -> i64 {
+  let target_len = target.len();
+  let needle_len = needle.len();
+  if offset > target_len as i64 {
+    offset = target_len as i64;
+  }
+  let searchable_len = slice_end(target_len, offset + needle_len as i64);
+  if needle_len == 0 {
+    return searchable_len as i64;
+  }
+  if needle_len > searchable_len {
+    return -1;
+  }
+  for index in (0..=searchable_len - needle_len).rev() {
+    if target[index..index + needle_len] == *needle {
+      return index as i64;
+    }
+  }
+  -1
+}
+
+fn index_of_buffer_from_bytes(
+  target: &[u8],
+  needle: &[u8],
+  mut byte_offset: i64,
+  encoding: i32,
+  forward: bool,
+) -> i64 {
+  let target_len = target.len() as i64;
+  if encoding == 3 && (needle.len() < 2 || target.len() < 2) {
+    return -1;
+  }
+  if !forward {
+    if byte_offset < 0 {
+      byte_offset += target_len;
+    }
+    if needle.is_empty() {
+      return if byte_offset <= target_len {
+        byte_offset
+      } else {
+        target_len
+      };
+    }
+    return find_last_index(target, needle, byte_offset);
+  }
+  if needle.is_empty() {
+    return if byte_offset <= target_len {
+      byte_offset
+    } else {
+      target_len
+    };
+  }
+  index_of_needle(
+    target,
+    needle,
+    byte_offset,
+    if encoding == 3 { 2 } else { 1 },
+  )
+}
+
+fn index_of_buffer_callback(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let encoding = args.get(3).int32_value(scope).unwrap_or(-1);
+  if !(0..=7).contains(&encoding) {
+    throw_error(scope, &format!("Unknown encoding code {encoding}"));
+    return;
+  }
+  let target = match view_bytes(scope, args.get(0), "targetBuffer") {
+    Some(target) => target,
+    None => return,
+  };
+  let needle = match view_bytes(scope, args.get(1), "buffer") {
+    Some(needle) => needle,
+    None => return,
+  };
+  let byte_offset = args.get(2).integer_value(scope).unwrap_or(0);
+  let forward = args.get(4).is_true();
+  let index = index_of_buffer_from_bytes(
+    &target,
+    &needle,
+    byte_offset,
+    encoding,
+    forward,
+  );
+  rv.set(v8::Number::new(scope, index as f64).into());
+}
+
+fn index_of_number_callback(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let target = match view_bytes(scope, args.get(0), "targetBuffer") {
+    Some(target) => target,
+    None => return,
+  };
+  let number = args.get(1).uint32_value(scope).unwrap_or(0);
+  let byte_offset = args.get(2).integer_value(scope).unwrap_or(0);
+  let forward = args.get(3).is_true();
+  let needle = [number as u8];
+  let index =
+    index_of_buffer_from_bytes(&target, &needle, byte_offset, 1, forward);
+  rv.set(v8::Number::new(scope, index as f64).into());
+}
+
+fn index_of_needle_callback(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let source = match view_bytes(scope, args.get(0), "source") {
+    Some(source) => source,
+    None => return,
+  };
+  let needle = match view_bytes(scope, args.get(1), "needle") {
+    Some(needle) => needle,
+    None => return,
+  };
+  let start = args.get(2).integer_value(scope).unwrap_or(0);
+  let step = args.get(3).uint32_value(scope).unwrap_or(1).max(1) as usize;
+  let index = index_of_needle(&source, &needle, start, step);
+  rv.set(v8::Number::new(scope, index as f64).into());
+}
+
+fn fill_callback(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let buffer_value = args.get(0);
+  if !buffer_value.is_array_buffer_view() {
+    throw_type_error(scope, "buffer must be an ArrayBufferView");
+    return;
+  }
+  let buffer =
+    v8::Local::<v8::ArrayBufferView>::try_from(buffer_value).unwrap();
+  let len = buffer.byte_length();
+  let start = match parse_array_index(scope, args.get(2), 0) {
+    Ok(start) => start.min(len),
+    Err(err) => {
+      let exception = deno_core::error::to_v8_error(scope, &err);
+      scope.throw_exception(exception);
+      return;
+    }
+  };
+  let end = match parse_array_index(scope, args.get(3), len) {
+    Ok(end) => end.min(len),
+    Err(err) => {
+      let exception = deno_core::error::to_v8_error(scope, &err);
+      scope.throw_exception(exception);
+      return;
+    }
+  };
+  if end <= start {
+    rv.set(buffer_value);
+    return;
+  }
+
+  let value = args.get(1);
+  let pattern = if value.is_array_buffer_view() {
+    view_bytes(scope, value, "value").unwrap_or_default()
+  } else if value.is_string() {
+    value
+      .to_string(scope)
+      .unwrap()
+      .to_rust_string_lossy(scope)
+      .into_bytes()
+  } else {
+    vec![value.uint32_value(scope).unwrap_or(0) as u8]
+  };
+  if pattern.is_empty() {
+    rv.set(buffer_value);
+    return;
+  }
+
+  // SAFETY: V8 gives a pointer to the ArrayBufferView data including its byte
+  // offset. The write range is clamped to the same view's byte length.
+  let data =
+    unsafe { std::slice::from_raw_parts_mut(buffer.data().cast::<u8>(), len) };
+  for (index, slot) in data[start..end].iter_mut().enumerate() {
+    *slot = pattern[index % pattern.len()];
+  }
+  rv.set(buffer_value);
+}
+
+pub(crate) fn external_references() -> [ExternalReference; 4] {
+  [
+    INDEX_OF_BUFFER_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    INDEX_OF_NUMBER_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    INDEX_OF_NEEDLE_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    FILL_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+  ]
+}
+
+thread_local! {
+  static INDEX_OF_BUFFER_CALLBACK: v8::FunctionCallback = index_of_buffer_callback.map_fn_to();
+  static INDEX_OF_NUMBER_CALLBACK: v8::FunctionCallback = index_of_number_callback.map_fn_to();
+  static INDEX_OF_NEEDLE_CALLBACK: v8::FunctionCallback = index_of_needle_callback.map_fn_to();
+  static FILL_CALLBACK: v8::FunctionCallback = fill_callback.map_fn_to();
+}
+
+fn function_from_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback: v8::FunctionCallback,
+) -> v8::Local<'s, v8::Function> {
+  v8::FunctionTemplate::new_raw(scope, callback)
+    .get_function(scope)
+    .unwrap()
+}
+
+#[op2]
+pub fn op_node_internal_binding_buffer<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Object> {
+  let obj = v8::Object::new(scope);
+  let index_of_buffer = INDEX_OF_BUFFER_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
+  set_function(scope, obj, "indexOfBuffer", index_of_buffer);
+  let index_of_number = INDEX_OF_NUMBER_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
+  set_function(scope, obj, "indexOfNumber", index_of_number);
+  let fill =
+    FILL_CALLBACK.with(|callback| function_from_callback(scope, *callback));
+  set_function(scope, obj, "fill", fill);
+  let index_of_needle = INDEX_OF_NEEDLE_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
+  set_function(scope, obj, "indexOfNeedle", index_of_needle);
+
+  let default_obj = v8::Object::new(scope);
+  for name in ["indexOfBuffer", "indexOfNumber"] {
+    let key = v8::String::new(scope, name).unwrap();
+    let value = obj.get(scope, key.into()).unwrap();
+    set_value(scope, default_obj, name, value);
+  }
+  set_value(scope, obj, "default", default_obj.into());
+  obj
 }
