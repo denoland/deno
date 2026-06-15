@@ -2232,6 +2232,9 @@ ObjectAssign(exportsObj, {
   threadId: 0,
   workerData: null,
   isMainThread: true,
+  // Deno has no internal Node worker threads (e.g. module loader threads),
+  // so this is always false in the main thread and user-created workers.
+  isInternalThread: false,
   // Main-thread default ({}). `__initWorkerThreads` overwrites it (with the
   // worker's resolved limits in a worker). Under node-defer, if that init never
   // runs for a worker_threads-only main program, this default still satisfies

@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
-const hasUnsafeProto = Object.hasOwn(Object.prototype, "__proto__");
+// Detect by behavior, not presence: Deno keeps the `__proto__` accessor
+// installed even when disabled (so it can capture assignments), so reading it
+// is what actually distinguishes the modes — disabled returns `undefined`.
+const hasUnsafeProto = ({}).__proto__ !== undefined;
 if (hasUnsafeProto) {
   console.log("unsafe proto enabled");
 } else {
