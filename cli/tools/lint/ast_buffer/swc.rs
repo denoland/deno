@@ -2150,7 +2150,7 @@ fn serialize_class_member(
               .map(|deco| serialize_decorator(ctx, deco))
               .collect::<Vec<_>>();
 
-            let paramter = match &prop.param {
+            let parameter = match &prop.param {
               TsParamPropParam::Ident(binding_ident) => {
                 serialize_binding_ident(ctx, binding_ident, None)
               }
@@ -2165,7 +2165,7 @@ fn serialize_class_member(
               prop.readonly,
               a11y,
               decorators,
-              paramter,
+              parameter,
             )
           }
           ParamOrTsParamProp::Param(param) => {
