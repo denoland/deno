@@ -1056,7 +1056,8 @@ impl OffscreenCanvasRenderingContext2D {
 
     // wordSpacing is not supported by cosmic-text, so the advance of each
     // word separator is widened manually by shifting the following glyphs.
-    let word_spacing_px = fstate.word_spacing.to_pixels(fstate.size);
+    let word_spacing_px =
+      fstate.word_spacing.resolve_to_pixels(fstate.size as f64) as f32;
     let separator_indices = word_separator_indices(text, word_spacing_px);
     let word_offset = |glyph_start: usize| -> f32 {
       word_spacing_px
@@ -1369,7 +1370,8 @@ fn build_text_attrs(fstate: &FontState) -> Attrs<'_> {
     .stretch(fstate.stretch);
 
   // cosmic-text letter spacing is specified in em units.
-  let letter_spacing_px = fstate.letter_spacing.to_pixels(fstate.size);
+  let letter_spacing_px =
+    fstate.letter_spacing.resolve_to_pixels(fstate.size as f64) as f32;
   if letter_spacing_px != 0.0 && fstate.size > 0.0 {
     attrs = attrs.letter_spacing(letter_spacing_px / fstate.size);
   }
@@ -1448,7 +1450,8 @@ fn compute_text_metrics(
   buf.set_text(text, &attrs, Shaping::Advanced, None);
   buf.shape_until_scroll(&mut fs, false);
 
-  let word_spacing_px = fstate.word_spacing.to_pixels(fstate.size);
+  let word_spacing_px =
+    fstate.word_spacing.resolve_to_pixels(fstate.size as f64) as f32;
   let separator_count = word_separator_indices(text, word_spacing_px).len();
 
   let mut width = 0.0f64;
