@@ -581,6 +581,10 @@ pub struct DatabaseSync {
   // Non-zero while a user-defined callback is on the stack; close() refuses
   // to free the connection in that state to avoid a SQLite VDBE use-after-free.
   callback_depth: Rc<Cell<usize>>,
+  // Whether ATTACH DATABASE is held disabled because the process lacks full
+  // permissions for the database path. Used to stop the `limits.attach` setter
+  // from raising the cap and bypassing the boundary.
+  disable_attach: Rc<Cell<bool>>,
 }
 
 struct CallbackDepthGuard {
@@ -668,8 +672,16 @@ fn coerce_limit_value(
 fn apply_initial_limits(
   conn: &rusqlite::Connection,
   options: &DatabaseSyncOptions,
+  disable_attach: bool,
 ) -> Result<(), SqliteError> {
   for (idx, &(_js_name, limit)) in LIMIT_MAPPING.iter().enumerate() {
+    // When the process lacks full permissions for the database path, the
+    // attach limit is a security cap held at 0: ATTACH DATABASE can reach
+    // files outside the database path, so it must not be raised through the
+    // user-controlled `limits.attach` option.
+    if disable_attach && matches!(limit, Limit::SQLITE_LIMIT_ATTACHED) {
+      continue;
+    }
     if let Some(value) = options.initial_limits[idx] {
       conn.set_limit(limit, value)?;
     }
@@ -677,11 +689,15 @@ fn apply_initial_limits(
   Ok(())
 }
 
+// Returns the open connection together with `disable_attach`: whether the
+// process lacks full permissions for the database path and so ATTACH DATABASE
+// is held disabled. Callers store this so the `limits.attach` setter cannot
+// later raise the cap and bypass the boundary.
 fn open_db(
   state: &mut OpState,
   location: &str,
   options: &DatabaseSyncOptions,
-) -> Result<rusqlite::Connection, SqliteError> {
+) -> Result<(rusqlite::Connection, bool), SqliteError> {
   let perms = state.borrow::<PermissionsContainer>();
   let disable_attach = perms
     .check_has_all_permissions(Path::new(location))
@@ -714,9 +730,9 @@ fn open_db(
       options.is_defensive_mode,
     ));
 
-    apply_initial_limits(&conn, options)?;
+    apply_initial_limits(&conn, options, disable_attach)?;
 
-    return Ok(conn);
+    return Ok((conn, disable_attach));
   }
 
   let location = perms
@@ -760,9 +776,9 @@ fn open_db(
       options.is_defensive_mode,
     ));
 
-    apply_initial_limits(&conn, options)?;
+    apply_initial_limits(&conn, options, disable_attach)?;
 
-    return Ok(conn);
+    return Ok((conn, disable_attach));
   }
 
   let conn = rusqlite::Connection::open(location)?;
@@ -788,9 +804,9 @@ fn open_db(
     options.is_defensive_mode,
   ));
 
-  apply_initial_limits(&conn, options)?;
+  apply_initial_limits(&conn, options, disable_attach)?;
 
-  Ok(conn)
+  Ok((conn, disable_attach))
 }
 
 fn is_open(
@@ -825,8 +841,10 @@ impl DatabaseSync {
     #[string] location: String,
     #[scoped] options: DatabaseSyncOptions,
   ) -> Result<DatabaseSync, SqliteError> {
+    let mut disable_attach = false;
     let db = if options.open {
-      let db = open_db(state, &location, &options)?;
+      let (db, da) = open_db(state, &location, &options)?;
+      disable_attach = da;
 
       if options.enable_foreign_key_constraints {
         db.execute("PRAGMA foreign_keys = ON", [])?;
@@ -857,6 +875,7 @@ impl DatabaseSync {
       ignore_next_sqlite_error: Rc::new(Cell::new(false)),
       authorizer_data: Rc::new(RefCell::new(None)),
       callback_depth: Rc::new(Cell::new(0)),
+      disable_attach: Rc::new(Cell::new(disable_attach)),
     })
   }
 
@@ -872,7 +891,7 @@ impl DatabaseSync {
       return Err(SqliteError::AlreadyOpen);
     }
 
-    let db = open_db(state, &self.location, &self.options)?;
+    let (db, disable_attach) = open_db(state, &self.location, &self.options)?;
     if self.options.enable_foreign_key_constraints {
       db.execute("PRAGMA foreign_keys = ON", [])?;
     } else {
@@ -891,6 +910,7 @@ impl DatabaseSync {
     );
 
     *self.conn.borrow_mut() = Some(db);
+    self.disable_attach.set(disable_attach);
 
     Ok(())
   }
@@ -1749,7 +1769,10 @@ impl DatabaseSync {
     if self.conn.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
-    Ok(DatabaseSyncLimits::create(Rc::clone(&self.conn)))
+    Ok(DatabaseSyncLimits::create(
+      Rc::clone(&self.conn),
+      self.disable_attach.get(),
+    ))
   }
 
   #[fast]
@@ -2931,6 +2954,10 @@ fn throw_type_error_with_code(
 /// This is returned by DatabaseSync.limits getter.
 pub struct DatabaseSyncLimits {
   conn: Rc<RefCell<Option<rusqlite::Connection>>>,
+  // When true, ATTACH DATABASE is held disabled for this connection because the
+  // process lacks full permissions for the database path. The `attach` setter
+  // refuses to raise the cap above 0 in that state.
+  disable_attach: bool,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -2943,8 +2970,14 @@ unsafe impl GarbageCollected for DatabaseSyncLimits {
 }
 
 impl DatabaseSyncLimits {
-  fn create(conn: Rc<RefCell<Option<rusqlite::Connection>>>) -> Self {
-    Self { conn }
+  fn create(
+    conn: Rc<RefCell<Option<rusqlite::Connection>>>,
+    disable_attach: bool,
+  ) -> Self {
+    Self {
+      conn,
+      disable_attach,
+    }
   }
 
   fn get_limit(&self, limit: Limit) -> Result<i32, SqliteError> {
@@ -3114,6 +3147,21 @@ impl DatabaseSyncLimits {
     scope: &mut v8::PinScope<'_, '_>,
     value: v8::Local<v8::Value>,
   ) -> Result<(), SqliteError> {
+    // ATTACH DATABASE is held disabled for processes without full permissions
+    // for the database path. Refuse to raise the cap above 0 so the limit
+    // setter cannot re-enable attach and bypass that boundary. A value of 0
+    // (keeping it disabled) is allowed and falls through to the normal setter.
+    if self.disable_attach
+      && matches!(coerce_limit_value(scope, value), Ok(v) if v > 0)
+    {
+      throw_type_error_with_code(
+        scope,
+        "Cannot raise the \"attach\" limit: ATTACH DATABASE is disabled \
+         without full permissions for the database path.",
+        "ERR_ACCESS_DENIED",
+      );
+      return Ok(());
+    }
     self.set_limit_value(scope, Limit::SQLITE_LIMIT_ATTACHED, value)
   }
 
