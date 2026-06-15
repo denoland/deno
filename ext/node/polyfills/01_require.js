@@ -3236,18 +3236,17 @@ export function register(_specifier, _parentUrl, _options) {
  * @returns {{ deregister: () => void }}
  */
 export function registerHooks(hooks) {
-  if (typeof hooks !== "object" || hooks === null) {
-    throw new internalErrors.ERR_INVALID_ARG_TYPE("hooks", "object", hooks);
+  const { resolve, load } = hooks;
+  if (resolve) {
+    internalValidators.validateFunction(resolve, "hooks.resolve");
   }
-  if (hooks.resolve) {
-    internalValidators.validateFunction(hooks.resolve, "hooks.resolve");
+  if (load) {
+    internalValidators.validateFunction(load, "hooks.load");
   }
-  if (hooks.load) {
-    internalValidators.validateFunction(hooks.load, "hooks.load");
-  }
-  const resolve = typeof hooks.resolve === "function" ? hooks.resolve : null;
-  const load = typeof hooks.load === "function" ? hooks.load : null;
-  const entry = { resolve, load };
+  const entry = {
+    resolve: typeof resolve === "function" ? resolve : null,
+    load: typeof load === "function" ? load : null,
+  };
   ArrayPrototypePush(hookEntries, entry);
 
   // Activate ESM hooks in Rust module loader
