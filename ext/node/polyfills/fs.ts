@@ -251,11 +251,14 @@ const {
   MapPrototypeSet,
   MathMin,
   ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
+  ReflectApply,
   RegExpPrototype,
   RegExpPrototypeTest,
   SafeMap,
@@ -294,10 +297,23 @@ function stat(
 // throwIfNoEntry is false and the path is missing).
 const stat = callbackifyOpt(op_node_fs_stat);
 
+// Wrap a sync op in a thin JS function carrying `name`, so the function shows
+// up in stack traces as `at <name> (ext:deno_node/fs.ts:...)`. node's `fs.*`
+// are JS functions, and a missing frame is confusing to debug (see
+// tests/specs/node/error_stack_internal_frames). The extra forwarder frame is
+// intentional; correctness/debuggability over shaving one call.
+function syncOp<T extends (...args: any[]) => any>(name: string, op: T): T {
+  return {
+    [name](...args: any[]) {
+      return ReflectApply(op, undefined, args);
+    },
+  }[name] as T;
+}
+
 // Direct op binding: the op extracts bigint/throwIfNoEntry from options,
 // validates the path, and returns the cppgc Stats (or undefined when
 // throwIfNoEntry is false and the path is missing).
-const statSync = op_node_fs_stat_sync as {
+const statSync = syncOp("statSync", op_node_fs_stat_sync) as {
   (path: string | Buffer | URL): Stats;
   (
     path: string | Buffer | URL,
@@ -329,7 +345,7 @@ const fstat = callbackifyOpt(op_node_fs_fstat_stats);
 
 // Direct op binding: the op validates the fd, extracts bigint from options,
 // reads the stats, and node-formats errors (syscall "fstat").
-const fstatSync = op_node_fs_fstat_stats_sync;
+const fstatSync = syncOp("fstatSync", op_node_fs_fstat_stats_sync);
 
 // The op extracts bigint/throwIfNoEntry from options, validates the path
 // (async(eager_throw)), and resolves the Stats (or undefined when
@@ -337,7 +353,7 @@ const fstatSync = op_node_fs_fstat_stats_sync;
 const lstat = callbackifyOpt(op_node_fs_lstat);
 
 // Direct op binding (see lstat).
-const lstatSync = op_node_fs_lstat_sync;
+const lstatSync = syncOp("lstatSync", op_node_fs_lstat_sync);
 
 // -- realpath --
 
@@ -433,7 +449,7 @@ interface ReadVResult {
 
 // Direct op binding: a missing/non-number position reads from the current
 // file position.
-const readvSync = op_node_fs_readv_sync as (
+const readvSync = syncOp("readvSync", op_node_fs_readv_sync) as (
   fd: number,
   buffers: readonly ArrayBufferView[],
   position?: number | null,
@@ -864,7 +880,10 @@ function readFilePromise(
 // Direct op binding: the op validates path + options (flag, encoding), reads
 // all bytes, and returns them already encoded, throwing final node errors. A
 // numeric first arg is an already-open fd (read directly, no open).
-const readFileSync = op_node_fs_read_file_path_sync as {
+const readFileSync = syncOp(
+  "readFileSync",
+  op_node_fs_read_file_path_sync,
+) as {
   (path: string | URL | number, opt: TextOptionsArgument): string;
   (path: string | URL | number, opt?: BinaryOptionsArgument): Buffer;
   (path: string | URL | number, opt?: FileOptionsArgument): string | Buffer;
@@ -893,7 +912,7 @@ const readlinkPromise = promisify(readlink) as (
 
 // Direct op binding: the op validates path + encoding and returns the link
 // target already encoded.
-const readlinkSync = op_node_fs_read_link_sync as (
+const readlinkSync = syncOp("readlinkSync", op_node_fs_read_link_sync) as (
   path: string | Buffer | URL,
   opt?: ReadlinkOptions,
 ) => string | Uint8Array;
@@ -933,7 +952,7 @@ const access = callbackifyOpt(op_node_fs_access, 1) as (
   callback?: CallbackWithError,
 ) => void;
 
-const accessSync = op_node_fs_access_sync;
+const accessSync = syncOp("accessSync", op_node_fs_access_sync);
 
 // Common case (no AbortSignal, no custom iterable): the op applies node's
 // appendFile option handling (default flag "a") and runs the open/write/close
@@ -972,7 +991,10 @@ function appendFile(
 
 // Direct op binding: writeFileSync with node's appendFile option handling
 // (default flag "a") done natively, throwing the final node error.
-const appendFileSync = op_node_fs_append_file_sync as (
+const appendFileSync = syncOp(
+  "appendFileSync",
+  op_node_fs_append_file_sync,
+) as (
   path: string | number | URL,
   data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
@@ -980,11 +1002,11 @@ const appendFileSync = op_node_fs_append_file_sync as (
 
 const chmod = callbackify(op_node_fs_chmod, 2);
 
-const chmodSync = op_node_fs_chmod_sync;
+const chmodSync = syncOp("chmodSync", op_node_fs_chmod_sync);
 
 const chown = callbackify(op_node_fs_chown, 3);
 
-const chownSync = op_node_fs_chown_sync;
+const chownSync = syncOp("chownSync", op_node_fs_chown_sync);
 
 function defaultCloseCallback(err: Error | null) {
   if (err !== null) throw err;
@@ -996,27 +1018,27 @@ function defaultCloseCallback(err: Error | null) {
 // error).
 const close = callbackify(op_node_fs_close_async, 1, defaultCloseCallback);
 
-const closeSync = op_node_fs_close;
+const closeSync = syncOp("closeSync", op_node_fs_close);
 
 const fchown = callbackify(op_node_fs_fchown, 3);
 
 const fchmod = callbackify(op_node_fs_fchmod, 2);
 
-const fchownSync = op_node_fs_fchown_sync;
+const fchownSync = syncOp("fchownSync", op_node_fs_fchown_sync);
 
 // The op validates fd (typeof number) + len (validateInteger, default 0) and
 // truncates; callbackifyOpt(.., 1) treats the optional 2nd arg as len-or-cb.
 const ftruncate = callbackifyOpt(op_node_fs_ftruncate, 1);
 
-const ftruncateSync = op_node_fs_ftruncate_sync;
+const ftruncateSync = syncOp("ftruncateSync", op_node_fs_ftruncate_sync);
 
 const futimes = callbackify(op_node_fs_futimes, 3);
 
-const fchmodSync = op_node_fs_fchmod_sync;
+const fchmodSync = syncOp("fchmodSync", op_node_fs_fchmod_sync);
 
 const fdatasync = callbackify(op_node_fs_fdatasync, 1);
 
-const futimesSync = op_node_fs_futimes_sync;
+const futimesSync = syncOp("futimesSync", op_node_fs_futimes_sync);
 
 const lchmod = !isMacOS ? undefined : callbackify(op_node_lchmod, 2);
 
@@ -1029,7 +1051,7 @@ const lchmodSync:
 
 const lchown = callbackify(op_node_lchown, 3);
 
-const fdatasyncSync = op_node_fs_fdatasync_sync;
+const fdatasyncSync = syncOp("fdatasyncSync", op_node_fs_fdatasync_sync);
 
 const fsync = callbackify(op_node_fs_fsync, 1);
 
@@ -1041,25 +1063,25 @@ const lchownSync = op_node_lchown_sync as (
   gid: number,
 ) => void;
 
-const fsyncSync = op_node_fs_fsync_sync;
+const fsyncSync = syncOp("fsyncSync", op_node_fs_fsync_sync);
 
 const link = callbackify(op_node_fs_link, 2);
 
 // Direct op binding: the op validates both paths (existingPath/newPath arg
 // names like node) and node-formats errors (syscall "link").
-const linkSync = op_node_fs_link_sync as (
+const linkSync = syncOp("linkSync", op_node_fs_link_sync) as (
   existingPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
 ) => void;
 
 const unlink = callbackify(op_node_fs_remove, 1);
-const unlinkSync = op_node_fs_remove_sync;
+const unlinkSync = syncOp("unlinkSync", op_node_fs_remove_sync);
 
 const rename = callbackify(op_node_fs_rename, 2);
 
 // Direct op binding: the op validates both paths (oldPath/newPath arg names
 // like node) and node-formats errors (syscall "rename").
-const renameSync = op_node_fs_rename_sync as (
+const renameSync = syncOp("renameSync", op_node_fs_rename_sync) as (
   oldPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
 ) => void;
@@ -1082,7 +1104,7 @@ const rm = callbackifyOpt(op_node_fs_rm, 1) as {
   (path: string | URL, options: rmOptions, callback: rmCallback): void;
 };
 
-const rmSync = op_node_fs_rm_sync;
+const rmSync = syncOp("rmSync", op_node_fs_rm_sync);
 
 type rmdirOptions = {
   maxRetries?: number;
@@ -1124,7 +1146,7 @@ const mkdir = callbackifyOpt(op_node_fs_mkdir);
 
 // Direct op binding: the op validates path + options, creates the dir(s), and
 // returns the first created path (recursive) or undefined.
-const mkdirSync = op_node_fs_mkdir_sync as (
+const mkdirSync = syncOp("mkdirSync", op_node_fs_mkdir_sync) as (
   path: string | URL,
   options?: MkdirOptions,
 ) => string | undefined;
@@ -1907,7 +1929,7 @@ async function cpPromise(
 // binding); the op's eager validation covers all three, and COPYFILE_EXCL /
 // the FICLONE hints are handled natively.
 const copyFile = callbackifyOpt(op_node_fs_copy_file, 2);
-const copyFileSync = op_node_fs_copy_file_sync;
+const copyFileSync = syncOp("copyFileSync", op_node_fs_copy_file_sync);
 
 // node's lutimes validates the callback (positionally, like symlink) before
 // the path/times, which the op then validates eagerly.
@@ -2003,7 +2025,7 @@ type WriteOptions = {
 // options-object form, offset/length/position defaults, validation, string
 // encoding via `Buffer.from` + `validateEncoding`) lives in the native op, so
 // `writeSync(fd, buffer, offsetOrOptions?, length?, position?)` is just the op.
-const writeSync = op_node_fs_write_v_sync as (
+const writeSync = syncOp("writeSync", op_node_fs_write_v_sync) as (
   fd: number,
   buffer: ArrayBufferView | string,
   offsetOrOptions?: number | WriteOptions | null,
@@ -2086,7 +2108,7 @@ const writev = callbackifyWrite(op_node_fs_writev) as (
  */
 // Direct op binding: the op validates + gathers + writes, returning the bytes
 // written.
-const writevSync = op_node_fs_writev_sync as (
+const writevSync = syncOp("writevSync", op_node_fs_writev_sync) as (
   fd: number,
   buffers: ArrayBufferView[],
   position?: number | null,
@@ -2226,7 +2248,7 @@ function writeFile(
 // (string -> encoded bytes; only string or ArrayBufferView are accepted,
 // matching node's sync variant), opens (path case), optionally chmods, writes
 // all bytes, and closes, throwing the final node error.
-const writeFileSync = op_node_fs_write_file_sync as (
+const writeFileSync = syncOp("writeFileSync", op_node_fs_write_file_sync) as (
   pathOrRid: string | number | URL,
   data: WriteFileSyncData,
   options?: Encodings | WriteFileOptions,
@@ -2292,13 +2314,13 @@ function _checkAborted(signal?: AbortSignal) {
 // 2nd arg as len-or-cb.
 const truncate = callbackifyOpt(op_node_fs_truncate, 1);
 
-const truncateSync = op_node_fs_truncate_sync;
+const truncateSync = syncOp("truncateSync", op_node_fs_truncate_sync);
 
 // -- utimes --
 
 const utimes = callbackify(op_node_fs_utime, 3);
 
-const utimesSync = op_node_fs_utime_sync;
+const utimesSync = syncOp("utimesSync", op_node_fs_utime_sync);
 
 // -- symlink --
 
@@ -2315,7 +2337,7 @@ const symlink = callbackifyOpt(op_node_fs_symlink, 2, true);
 
 // Direct op binding: the op validates target/path/type and does the Windows
 // dir/file autodetect (see symlink above).
-const symlinkSync = op_node_fs_symlink_sync as (
+const symlinkSync = syncOp("symlinkSync", op_node_fs_symlink_sync) as (
   target: string | Buffer | URL,
   path: string | Buffer | URL,
   type?: SymlinkType,
@@ -2860,7 +2882,7 @@ const DeprecatedStats = deprecate(
   "DEP0180",
 );
 
-return {
+const fsExports = {
   // For tests
   _toUnixTimestamp,
   access,
@@ -3001,4 +3023,29 @@ return {
   writev,
   writevSync,
 };
+
+// The `callbackify()`-produced wrappers (fs.access, fs.close, ...) are anonymous
+// closures, but node's `fs.*` functions are named (code and tests read `.name`).
+// Name each anonymous function after its export key. Iterate descriptors rather
+// than reading the values so the lazy stream/promise getters above are not
+// triggered. This loop runs at snapshot-build time, so it costs nothing at
+// runtime.
+const fsExportKeys = ObjectKeys(fsExports);
+for (let i = 0; i < fsExportKeys.length; i++) {
+  const key = fsExportKeys[i];
+  const desc = ObjectGetOwnPropertyDescriptor(fsExports, key);
+  if (
+    desc !== undefined &&
+    typeof desc.value === "function" &&
+    desc.value.name === ""
+  ) {
+    ObjectDefineProperty(desc.value, "name", {
+      __proto__: null,
+      value: key,
+      configurable: true,
+    });
+  }
+}
+
+return fsExports;
 })();

@@ -20,6 +20,7 @@ const fn op_handlescope() -> ::deno_core::_ops::OpDecl {
             None,
             None,
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );

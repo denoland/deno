@@ -5666,7 +5666,7 @@ pub fn op_node_fs_chmod_sync(
     Some("node:fs.chmodSync"),
   )?;
   let fs = state.borrow::<FileSystemRc>();
-  fs.chmod_sync(&checked, mode)
+  fs.chmod_sync(&checked, mode as _)
     .map_err(|e| node_fs_err(e, "chmod", &path))?;
   Ok(())
 }
@@ -5693,7 +5693,7 @@ pub fn op_node_fs_chmod(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    fs.chmod_async(checked, mode)
+    fs.chmod_async(checked, mode as _)
       .await
       .map_err(|e| node_fs_err(e, "chmod", &path))?;
     Ok(())
@@ -8469,15 +8469,15 @@ pub async fn op_node_cp_on_link(
         let errno = errno as u32;
         if errno != ERROR_NOT_A_REPARSE_POINT {
           return Err(
-            NodeFsError {
-              os_errno: errno as _,
-              context: NodeFsErrorContext {
+            NodeFsError::new(
+              errno as i32,
+              NodeFsErrorContext {
                 path: Some(resolved_src),
                 dest: Some(dest),
                 syscall: Some("symlink".into()),
                 ..Default::default()
               },
-            }
+            )
             .into(),
           );
         }
@@ -8719,15 +8719,15 @@ fn op_node_cp_on_link_sync(
         let errno = errno as u32;
         if errno != ERROR_NOT_A_REPARSE_POINT {
           return Err(
-            NodeFsError {
-              os_errno: errno as _,
-              context: NodeFsErrorContext {
+            NodeFsError::new(
+              errno as i32,
+              NodeFsErrorContext {
                 path: Some(resolved_src),
                 dest: Some(dest.to_string()),
                 syscall: Some("symlink".into()),
                 ..Default::default()
               },
-            }
+            )
             .into(),
           );
         }
