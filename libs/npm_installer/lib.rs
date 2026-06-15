@@ -461,8 +461,12 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     }
 
     // check if something needs resolving before bothering to load all
-    // the package information (which is slow)
-    if !self.npm_resolution.is_pending()
+    // the package information (which is slow). As in the resolver fast path,
+    // when offline (`--cached-only`) prefer the existing resolution over a
+    // re-resolution that would need registry metadata not in the cache, even
+    // if the lockfile was flagged as changed for a non-npm reason.
+    if (!self.npm_resolution.is_pending()
+      || self.npm_resolution_installer.is_cached_only())
       && pkg_json_remote_pkgs.iter().all(|pkg| {
         self
           .npm_resolution
