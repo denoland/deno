@@ -156,7 +156,61 @@ enum TlsKeyState {
 /// never collide.
 type CacheKey = (String, Vec<Vec<u8>>);
 
-type TlsKeyCache = Rc<RefCell<HashMap<CacheKey, TlsKeyState>>>;
+/// Upper bound on the number of cached resolutions. Both halves of the cache
+/// key (SNI and ALPN offer) are partly client-controlled, so without a bound a
+/// peer varying them could grow the cache without limit. Errors are never
+/// cached (see [`TlsKeyResolver::resolve`]), so only successful resolutions
+/// count toward this; when the cache is full the oldest entry is evicted and a
+/// later handshake for it simply re-resolves.
+const MAX_CACHED_RESOLUTIONS: usize = 1024;
+
+struct CacheEntry {
+  state: TlsKeyState,
+  /// Insertion-order stamp, used to evict the oldest entry when the cache is
+  /// full.
+  seq: u64,
+}
+
+/// A size-bounded cache of TLS key resolutions, keyed by [`CacheKey`].
+#[derive(Default)]
+struct BoundedTlsKeyCache {
+  entries: HashMap<CacheKey, CacheEntry>,
+  next_seq: u64,
+}
+
+impl BoundedTlsKeyCache {
+  fn get(&self, key: &CacheKey) -> Option<&TlsKeyState> {
+    self.entries.get(key).map(|entry| &entry.state)
+  }
+
+  fn insert(&mut self, key: CacheKey, state: TlsKeyState) {
+    // Evict the oldest entry if inserting a new key would exceed the bound.
+    if self.entries.len() >= MAX_CACHED_RESOLUTIONS
+      && !self.entries.contains_key(&key)
+      && let Some(oldest) = self
+        .entries
+        .iter()
+        .min_by_key(|(_, entry)| entry.seq)
+        .map(|(oldest_key, _)| oldest_key.clone())
+    {
+      self.entries.remove(&oldest);
+    }
+    let seq = self.next_seq;
+    self.next_seq = self.next_seq.wrapping_add(1);
+    self.entries.insert(key, CacheEntry { state, seq });
+  }
+
+  fn remove(&mut self, key: &CacheKey) {
+    self.entries.remove(key);
+  }
+
+  /// Remove all entries whose SNI matches `sni`, regardless of ALPN offer.
+  fn retain_sni(&mut self, sni: &str) {
+    self.entries.retain(|(key_sni, _), _| key_sni != sni);
+  }
+}
+
+type TlsKeyCache = Rc<RefCell<BoundedTlsKeyCache>>;
 
 type ResolutionRequest = (
   String,
@@ -362,10 +416,7 @@ impl TlsKeyLookup {
   /// to trigger a fresh lookup. Used to swap certificates without
   /// restarting the listener (eg. ACME renewal).
   pub fn invalidate(&self, sni: &str) {
-    self
-      .cache
-      .borrow_mut()
-      .retain(|(key_sni, _), _| key_sni != sni);
+    self.cache.borrow_mut().retain_sni(sni);
   }
 }
 
@@ -528,6 +579,36 @@ pub mod tests {
 
     drop(resolver);
     assert_eq!(task.await.unwrap(), 2);
+  }
+
+  #[tokio::test]
+  async fn test_cache_is_bounded() {
+    let (resolver, lookup) = new_resolver();
+    // Reuse a single loaded cert for every resolution; only the cache key
+    // (the SNI) varies, so each resolve adds a distinct cache entry.
+    let resolved = resolved_key_for_test("example1.com");
+    let task = spawn(async move {
+      while let Some((id, _hello)) = lookup.poll().await {
+        lookup.resolve(id, Ok(resolved.clone()));
+      }
+    });
+
+    // Resolve more distinct SNIs than the cache can hold.
+    for i in 0..(MAX_CACHED_RESOLUTIONS + 50) {
+      resolver
+        .resolve(hello(&format!("example{i}.com")))
+        .await
+        .unwrap();
+    }
+
+    // The cache stays bounded; older entries were evicted.
+    assert_eq!(
+      resolver.inner.cache.borrow().entries.len(),
+      MAX_CACHED_RESOLUTIONS
+    );
+
+    drop(resolver);
+    task.await.unwrap();
   }
 
   #[tokio::test]
