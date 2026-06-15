@@ -112,3 +112,40 @@ Deno.test(
     );
   },
 );
+
+// truncate does not follow a terminal symlink: the permission check is done
+// no-follow, so a symlink at an allowed path must not be usable to zero out a
+// file it points to. The open uses O_NOFOLLOW and fails on a symlink target.
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function truncateSyncDoesNotFollowSymlink() {
+    const dir = Deno.makeTempDirSync();
+    const target = dir + "/target.txt";
+    const link = dir + "/link.txt";
+    Deno.writeFileSync(target, new Uint8Array([1, 2, 3, 4, 5]));
+    Deno.symlinkSync(target, link);
+
+    assertThrows(() => Deno.truncateSync(link, 0));
+    assertEquals(Deno.readFileSync(target).byteLength, 5);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function truncateDoesNotFollowSymlink() {
+    const dir = Deno.makeTempDirSync();
+    const target = dir + "/target.txt";
+    const link = dir + "/link.txt";
+    await Deno.writeFile(target, new Uint8Array([1, 2, 3, 4, 5]));
+    await Deno.symlink(target, link);
+
+    await assertRejects(() => Deno.truncate(link, 0));
+    assertEquals((await Deno.readFile(target)).byteLength, 5);
+  },
+);
