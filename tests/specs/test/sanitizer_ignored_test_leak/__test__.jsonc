@@ -4,6 +4,10 @@
       "args": "test --allow-net=127.0.0.1 --sanitize-ops --sanitize-resources --trace-leaks main.ts",
       "output": "main.out"
     },
+    "ignored_timer_firing_during_later_test": {
+      "args": "test --sanitize-ops --sanitize-resources --trace-leaks issue_22927.ts",
+      "output": "issue_22927.out"
+    },
     "genuine_leak_still_detected": {
       "args": "test --sanitize-ops --sanitize-resources --trace-leaks genuine_leak.ts",
       "exitCode": 1,
