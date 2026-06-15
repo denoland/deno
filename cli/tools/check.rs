@@ -6,6 +6,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
+use deno_ast::swc::ast;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_terminal::colors;
@@ -261,23 +264,48 @@ fn has_exact_ambient_module_declaration(
   path: &Path,
   ambient_module_names: &HashSet<String>,
 ) -> bool {
+  struct AmbientModuleVisitor<'a> {
+    ambient_module_names: &'a HashSet<String>,
+    found: bool,
+  }
+
+  impl Visit for AmbientModuleVisitor<'_> {
+    fn visit_ts_module_decl(&mut self, ts_module_decl: &ast::TsModuleDecl) {
+      if self.found {
+        return;
+      }
+      if ts_module_decl.declare
+        && let ast::TsModuleName::Str(module_name) = &ts_module_decl.id
+        && let Some(module_name) = module_name.value.as_str()
+        && self.ambient_module_names.contains(module_name)
+      {
+        self.found = true;
+        return;
+      }
+      ts_module_decl.visit_children_with(self);
+    }
+  }
+
   let Ok(source) = std::fs::read_to_string(path) else {
     return false;
   };
-  for marker in ["declare module \"", "declare module '"] {
-    let quote = marker.as_bytes()[marker.len() - 1] as char;
-    let mut source = source.as_str();
-    while let Some(index) = source.find(marker) {
-      source = &source[index + marker.len()..];
-      let Some(end_index) = source.find(quote) else {
-        break;
-      };
-      let module_name = &source[..end_index];
-      if ambient_module_names.contains(module_name) {
-        return true;
-      }
-      source = &source[end_index + quote.len_utf8()..];
-    }
-  }
-  false
+  let Ok(specifier) = specifier_from_file_path(path) else {
+    return false;
+  };
+  let Ok(parsed_source) = deno_ast::parse_module(deno_ast::ParseParams {
+    specifier,
+    text: source.into(),
+    media_type: MediaType::from_path(path),
+    capture_tokens: false,
+    scope_analysis: false,
+    maybe_syntax: None,
+  }) else {
+    return false;
+  };
+  let mut visitor = AmbientModuleVisitor {
+    ambient_module_names,
+    found: false,
+  };
+  parsed_source.program().visit_with(&mut visitor);
+  visitor.found
 }
