@@ -75,7 +75,9 @@ fn bootstrap_once() -> MainWorker {
         permission_desc_parser,
         Permissions::none_without_prompt(),
       ),
-      blob_store: Default::default(),
+      blob_store: std::sync::Arc::new(
+        deno_runtime::deno_web::BlobStore::default(),
+      ) as std::sync::Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
       broadcast_channel: Default::default(),
       feature_checker: Default::default(),
       node_services: Default::default(),
