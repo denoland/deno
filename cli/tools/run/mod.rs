@@ -329,13 +329,13 @@ async fn run_with_watch(
           )
           .await?;
 
-        if watch_flags.hmr {
-          worker.run().await?;
+        let exit_code = if watch_flags.hmr {
+          worker.run().await?
         } else {
-          worker.run_for_watcher().await?;
-        }
+          worker.run_for_watcher().await?
+        };
 
-        Ok(())
+        Ok(exit_code)
       })
     },
   )

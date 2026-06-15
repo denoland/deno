@@ -45,6 +45,7 @@ const {
   op_fs_open_async,
   op_fs_open_sync,
   op_fs_read_dir_async,
+  op_fs_read_dir_async_next,
   op_fs_read_dir_sync,
   op_fs_read_file_async,
   op_fs_read_file_sync,
@@ -220,15 +221,52 @@ function readDirSync(path) {
 }
 
 function readDir(path) {
-  const array = op_fs_read_dir_async(
-    pathFromURL(path),
-  );
+  const pathString = pathFromURL(path);
   return {
-    async *[SymbolAsyncIterator]() {
-      const dir = await array;
-      for (let i = 0; i < dir.length; ++i) {
-        yield dir[i];
+    [SymbolAsyncIterator]() {
+      let rid;
+      let ridPromise;
+      let finished = false;
+      async function getRid() {
+        if (ridPromise === undefined) {
+          ridPromise = op_fs_read_dir_async(pathString);
+        }
+        rid = await ridPromise;
+        return rid;
       }
+      return {
+        async next() {
+          if (finished) {
+            return { value: undefined, done: true };
+          }
+          if (rid === undefined) {
+            await getRid();
+          }
+          const value = await op_fs_read_dir_async_next(rid);
+          if (value === null) {
+            finished = true;
+            core.close(rid);
+            return { value: undefined, done: true };
+          }
+          return { value, done: false };
+        },
+        async return(value) {
+          if (finished) {
+            return { value, done: true };
+          }
+          finished = true;
+          if (ridPromise !== undefined) {
+            if (rid === undefined) {
+              await getRid();
+            }
+            core.close(rid);
+          }
+          return { value, done: true };
+        },
+        [SymbolAsyncIterator]() {
+          return this;
+        },
+      };
     },
   };
 }

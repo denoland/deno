@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt;
 use std::fs;
 use std::future::Future;
 use std::ops::Range;
@@ -44,8 +45,6 @@ use node_resolver::ResolutionMode;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::Lazy;
 use tower_lsp::lsp_types as lsp;
-use weak_table::PtrWeakKeyHashMap;
-use weak_table::WeakValueHashMap;
 
 use super::cache::LspCache;
 use super::cache::calculate_fs_version_at_path;
@@ -69,6 +68,7 @@ use crate::graph_util::CliJsrUrlProvider;
 use crate::lsp::compiler_options::LspCompilerOptionsData;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::tsc::BYTES_IMPORT_SOURCE;
+use crate::tsc::CSS_IMPORT_SOURCE;
 use crate::tsc::RawImportKind;
 use crate::tsc::TEXT_IMPORT_SOURCE;
 
@@ -273,6 +273,9 @@ static TEXT_IMPORT_SOURCE_LINE_INDEX: Lazy<Arc<LineIndex>> =
 static BYTES_IMPORT_SOURCE_LINE_INDEX: Lazy<Arc<LineIndex>> =
   Lazy::new(|| Arc::new(LineIndex::new(BYTES_IMPORT_SOURCE)));
 
+static CSS_IMPORT_SOURCE_LINE_INDEX: Lazy<Arc<LineIndex>> =
+  Lazy::new(|| Arc::new(LineIndex::new(CSS_IMPORT_SOURCE)));
+
 #[derive(Debug)]
 pub struct ServerDocument {
   pub uri: Arc<Uri>,
@@ -405,6 +408,19 @@ impl ServerDocument {
         },
       });
     }
+    if uri
+      .as_str()
+      .strip_prefix("deno:/css-import-types/")
+      .and_then(|s| s.strip_suffix(".ts"))
+      .is_some()
+    {
+      return Some(ServerDocument {
+        uri: Arc::new(uri.clone()),
+        kind: ServerDocumentKind::RawImportTypes {
+          kind: RawImportKind::Css,
+        },
+      });
+    }
     None
   }
 
@@ -436,6 +452,10 @@ impl ServerDocument {
         kind: RawImportKind::Bytes,
         ..
       } => DocumentText::Static(BYTES_IMPORT_SOURCE),
+      ServerDocumentKind::RawImportTypes {
+        kind: RawImportKind::Css,
+        ..
+      } => DocumentText::Static(CSS_IMPORT_SOURCE),
     }
   }
 
@@ -453,6 +473,10 @@ impl ServerDocument {
         kind: RawImportKind::Bytes,
         ..
       } => &BYTES_IMPORT_SOURCE_LINE_INDEX,
+      ServerDocumentKind::RawImportTypes {
+        kind: RawImportKind::Css,
+        ..
+      } => &CSS_IMPORT_SOURCE_LINE_INDEX,
     }
   }
 
@@ -936,6 +960,16 @@ pub struct DocumentModule {
   pub types_dependency: Option<Arc<TypesDependency>>,
   pub navigation_tree: tokio::sync::OnceCell<Arc<NavigationTree>>,
   pub semantic_tokens_full: tokio::sync::OnceCell<lsp::SemanticTokens>,
+  /// Cached lint diagnostics. These only depend on this module's own contents
+  /// (not on other files), so they can be computed once per module instance
+  /// and reused until the document changes. A new `DocumentModule` is created
+  /// whenever the document content or the lint configuration changes, which
+  /// naturally invalidates this cache.
+  pub lint_diagnostics: once_cell::sync::OnceCell<Arc<Vec<lsp::Diagnostic>>>,
+  /// Cached `deno doc --lint` diagnostics. Like lint diagnostics, these are
+  /// derived solely from this module's own contents (a single-module graph),
+  /// so they're cached per module instance.
+  pub doc_diagnostics: once_cell::sync::OnceCell<Arc<Vec<lsp::Diagnostic>>>,
   text_info_cell: once_cell::sync::OnceCell<SourceTextInfo>,
   test_module_fut: Option<TestModuleFut>,
 }
@@ -1011,6 +1045,8 @@ impl DocumentModule {
       types_dependency,
       navigation_tree: Default::default(),
       semantic_tokens_full: Default::default(),
+      lint_diagnostics: Default::default(),
+      doc_diagnostics: Default::default(),
       text_info_cell: Default::default(),
       test_module_fut,
     }
@@ -1057,18 +1093,113 @@ impl DocumentModule {
 
 type DepInfoByScope = BTreeMap<Option<Arc<Url>>, Arc<ScopeDepInfo>>;
 
+struct WeakKeyDocumentMap<T> {
+  entries: HashMap<usize, (Weak<T>, Arc<DocumentModule>)>,
+}
+
+impl<T> Default for WeakKeyDocumentMap<T> {
+  fn default() -> Self {
+    Self {
+      entries: Default::default(),
+    }
+  }
+}
+
+impl<T> fmt::Debug for WeakKeyDocumentMap<T> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("WeakKeyDocumentMap")
+      .field("len", &self.entries.len())
+      .finish()
+  }
+}
+
+impl<T> WeakKeyDocumentMap<T> {
+  fn get(&self, document: &Arc<T>) -> Option<Arc<DocumentModule>> {
+    let (document_weak, module) = self.entries.get(&Self::key(document))?;
+    let document_strong = document_weak.upgrade()?;
+    Arc::ptr_eq(&document_strong, document).then(|| module.clone())
+  }
+
+  fn values(&self) -> impl Iterator<Item = Arc<DocumentModule>> + '_ {
+    self.entries.values().filter_map(|(document, module)| {
+      document.upgrade().map(|_| module.clone())
+    })
+  }
+
+  fn insert(
+    &mut self,
+    document: Arc<T>,
+    module: Arc<DocumentModule>,
+  ) -> Option<Arc<DocumentModule>> {
+    self.remove_expired();
+    self
+      .entries
+      .insert(Self::key(&document), (Arc::downgrade(&document), module))
+      .map(|(_, module)| module)
+  }
+
+  fn remove_expired(&mut self) {
+    self
+      .entries
+      .retain(|_, (document, _)| document.strong_count() > 0);
+  }
+
+  fn key(document: &Arc<T>) -> usize {
+    Arc::as_ptr(document) as usize
+  }
+}
+
+#[derive(Default)]
+struct WeakValueDocumentMap {
+  entries: HashMap<Arc<Url>, Weak<DocumentModule>>,
+}
+
+impl fmt::Debug for WeakValueDocumentMap {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("WeakValueDocumentMap")
+      .field("len", &self.entries.len())
+      .finish()
+  }
+}
+
+impl WeakValueDocumentMap {
+  fn contains_key(&self, specifier: &Url) -> bool {
+    self
+      .entries
+      .get(specifier)
+      .and_then(|module| module.upgrade())
+      .is_some()
+  }
+
+  fn insert(
+    &mut self,
+    specifier: Arc<Url>,
+    module: Arc<DocumentModule>,
+  ) -> Option<Arc<DocumentModule>> {
+    self.remove_expired();
+    self
+      .entries
+      .insert(specifier, Arc::downgrade(&module))
+      .and_then(|module| module.upgrade())
+  }
+
+  fn remove_expired(&mut self) {
+    self.entries.retain(|_, module| module.strong_count() > 0);
+  }
+}
+
 #[derive(Debug, Default)]
 struct WeakDocumentModuleMap {
-  open: RwLock<PtrWeakKeyHashMap<Weak<OpenDocument>, Arc<DocumentModule>>>,
-  server: RwLock<PtrWeakKeyHashMap<Weak<ServerDocument>, Arc<DocumentModule>>>,
-  by_specifier: RwLock<WeakValueHashMap<Arc<Url>, Weak<DocumentModule>>>,
+  open: RwLock<WeakKeyDocumentMap<OpenDocument>>,
+  server: RwLock<WeakKeyDocumentMap<ServerDocument>>,
+  by_specifier: RwLock<WeakValueDocumentMap>,
 }
 
 impl WeakDocumentModuleMap {
   fn get(&self, document: &Document) -> Option<Arc<DocumentModule>> {
     match document {
-      Document::Open(d) => self.open.read().get(d).cloned(),
-      Document::Server(d) => self.server.read().get(d).cloned(),
+      Document::Open(d) => self.open.read().get(d),
+      Document::Server(d) => self.server.read().get(d),
     }
   }
 
@@ -1081,8 +1212,7 @@ impl WeakDocumentModuleMap {
       .open
       .read()
       .values()
-      .cloned()
-      .chain(self.server.read().values().cloned())
+      .chain(self.server.read().values())
       .collect()
   }
 
@@ -1304,14 +1434,34 @@ impl DocumentModules {
       || self.resolver.in_node_modules(&specifier)
       || self.cache.in_global_cache_directory(&specifier)
     {
-      let key = compiler_options_key?;
-      let value = self
-        .compiler_options_resolver
-        .for_key(key)
-        .expect("Key should be in sync with resolver.");
-      (key, value)
+      // Dependency files get their compiler options key from their referrer,
+      // passed in here when reached through resolution. If we don't have one
+      // (e.g. the document was opened directly in the editor), use the key
+      // previously assigned to it if any, or infer one from its path. See
+      // https://github.com/denoland/deno/issues/35170.
+      let key = compiler_options_key.cloned().or_else(|| {
+        let (assigned_scope, assigned_key) =
+          self.assigned_scopes.read().get(document.uri())?.clone();
+        (assigned_scope.as_deref() == scope).then_some(assigned_key)
+      });
+      match key {
+        Some(key) => {
+          let value = self
+            .compiler_options_resolver
+            .for_key(&key)
+            .expect("Key should be in sync with resolver.");
+          (key, value)
+        }
+        None if scheme == "file" => {
+          let (key, value) = self
+            .compiler_options_resolver
+            .entry_for_specifier(&specifier);
+          (key.clone(), value)
+        }
+        None => return None,
+      }
     } else {
-      self.compiler_options_resolver.entry_for_specifier(
+      let (key, value) = self.compiler_options_resolver.entry_for_specifier(
         if scheme != "file"
           && let Some(scope) = scope
         {
@@ -1319,12 +1469,13 @@ impl DocumentModules {
         } else {
           &specifier
         },
-      )
+      );
+      (key.clone(), value)
     };
     let module = Arc::new(DocumentModule::new(
       document,
       specifier,
-      compiler_options_key.clone(),
+      compiler_options_key,
       compiler_options_data,
       scope.cloned().map(Arc::new),
       &self.resolver,
@@ -1843,7 +1994,6 @@ pub enum LanguageId {
   Html,
   Css,
   Scss,
-  Sass,
   Less,
   Yaml,
   Sql,
@@ -1868,7 +2018,6 @@ impl LanguageId {
       LanguageId::Html => Some("html"),
       LanguageId::Css => Some("css"),
       LanguageId::Scss => Some("scss"),
-      LanguageId::Sass => Some("sass"),
       LanguageId::Less => Some("less"),
       LanguageId::Yaml => Some("yaml"),
       LanguageId::Sql => Some("sql"),
@@ -1892,7 +2041,6 @@ impl LanguageId {
       LanguageId::Html => Some("text/html"),
       LanguageId::Css => Some("text/css"),
       LanguageId::Scss => None,
-      LanguageId::Sass => None,
       LanguageId::Less => None,
       LanguageId::Yaml => Some("application/yaml"),
       LanguageId::Sql => None,
@@ -1928,7 +2076,6 @@ impl FromStr for LanguageId {
       "html" => Ok(Self::Html),
       "css" => Ok(Self::Css),
       "scss" => Ok(Self::Scss),
-      "sass" => Ok(Self::Sass),
       "less" => Ok(Self::Less),
       "yaml" => Ok(Self::Yaml),
       "sql" => Ok(Self::Sql),

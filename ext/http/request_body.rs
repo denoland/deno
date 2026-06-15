@@ -114,7 +114,21 @@ impl Body for BufferedIncoming {
   }
 
   fn size_hint(&self) -> SizeHint {
-    self.inner.size_hint()
+    let pending_len = self.pending.len() as u64;
+    if pending_len == 0 {
+      return self.inner.size_hint();
+    }
+
+    // Hyper's inner body only reports bytes it has not yielded yet. Include
+    // frames buffered by `try_take_full` so downstream fetch() sees the full
+    // request length when falling back to the streaming path.
+    let inner_hint = self.inner.size_hint();
+    let mut hint = SizeHint::new();
+    hint.set_lower(inner_hint.lower().saturating_add(pending_len));
+    if let Some(upper) = inner_hint.upper() {
+      hint.set_upper(upper.saturating_add(pending_len));
+    }
+    hint
   }
 
   fn is_end_stream(&self) -> bool {

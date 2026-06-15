@@ -3811,8 +3811,12 @@ fn napi_resolve_deferred(
 
   let success = resolver.resolve(scope, result.unwrap()).unwrap_or(false);
 
-  // Restore policy
-  scope.set_microtasks_policy(v8::MicrotasksPolicy::Auto);
+  // Restore policy. The runtime runs with the Explicit microtask policy (see
+  // `deno_core` isolate setup); microtasks are drained deliberately on event
+  // loop turns. This used to restore `Auto` (V8's old isolate default), which
+  // permanently flipped the whole isolate to Auto and let V8 auto-drain
+  // microtasks mid-callback - the trigger for #33924.
+  scope.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
 
   if success {
     napi_ok

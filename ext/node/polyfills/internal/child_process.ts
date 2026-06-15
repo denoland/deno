@@ -26,9 +26,12 @@ const {
   RegExpPrototypeExec,
   RegExpPrototypeTest,
   SafeArrayIterator,
+  SafeMap,
+  SafeMapIterator,
   SafePromiseAll,
   SafeRegExp,
   SafeSet,
+  SafeWeakMap,
   String,
   StringPrototypeEndsWith,
   StringPrototypeIndexOf,
@@ -160,6 +163,7 @@ const pipePrefixRe = new SafeRegExp("^\\s*\\|\\s*");
 const shellVarMatchRe = new SafeRegExp(
   '^(?:"\\$\\{([^}]+)\\}"|"\\$([A-Za-z_][A-Za-z0-9_]*)"|\\$\\{([^}]+)\\}|\\$([A-Za-z_][A-Za-z0-9_]*))',
 );
+const shellCompoundOperatorRe = new SafeRegExp("^(.*?)\\s*(&&|\\|\\||;)\\s*");
 
 function mapValues(
   record,
@@ -213,6 +217,8 @@ function stdioStringToArray(
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
 const kCanDisconnect = Symbol("_canDisconnect");
+const kChildStdioUsedAsInput = Symbol("childStdioUsedAsInput");
+const childStdioStreamsByFd = new SafeMap();
 let emittedShellDeprecation = false;
 
 // We only want to emit a close event for the child process when all of
@@ -233,6 +239,9 @@ function flushStdio(subprocess) {
   for (let i = 0; i < stdio.length; i++) {
     const stream = stdio[i];
     if (!stream || !stream.readable) {
+      continue;
+    }
+    if (stream[kChildStdioUsedAsInput]) {
       continue;
     }
     stream.resume();
@@ -561,6 +570,7 @@ class ChildProcess extends EventEmitter {
           writable: false,
           readable: true,
         });
+        registerChildStdioStream(this.stdout);
         this.stdout.on("close", () => {
           maybeClose(this);
         });
@@ -575,6 +585,7 @@ class ChildProcess extends EventEmitter {
           writable: false,
           readable: true,
         });
+        registerChildStdioStream(this.stderr);
         this.stderr.on("close", () => {
           maybeClose(this);
         });
@@ -601,6 +612,7 @@ class ChildProcess extends EventEmitter {
               handle: pipe,
             },
           );
+          registerChildStdioStream(this.stdio[fd]);
           this.stdio[fd]?.on("close", () => {
             maybeClose(this);
           });
@@ -729,50 +741,67 @@ class ChildProcess extends EventEmitter {
         childProcessSpawnChannel.error.publish({ process: this, error: e });
       }
 
-      // Set up stdio streams even when spawn fails (Node.js creates pipes
-      // before the OS spawn call, so they exist regardless of spawn outcome).
-      if (stdin === "pipe") {
-        this.stdin = new Writable({
-          write(_chunk, _enc, cb) {
-            cb(new Error("spawn failed"));
-          },
-        });
-      }
-      if (stdout === "pipe") {
-        this.stdout = new Readable({ read() {} });
-        this[kClosesNeeded]++;
-        this.stdout.on("close", () => {
-          maybeClose(this);
-        });
-      }
-      if (stderr === "pipe") {
-        this.stderr = new Readable({ read() {} });
-        this[kClosesNeeded]++;
-        this.stderr.on("close", () => {
-          maybeClose(this);
-        });
-      }
+      // When spawn fails due to EMFILE/ENFILE, the OS couldn't create pipes
+      // so stdio must remain undefined (matching Node.js behavior).
+      const isResourceError = e && (e.code === "EMFILE" || e.code === "ENFILE");
 
-      this.stdio[0] = this.stdin;
-      this.stdio[1] = this.stdout;
-      this.stdio[2] = this.stderr;
+      if (isResourceError) {
+        // deno-lint-ignore no-explicit-any
+        (this as any).stdin = undefined;
+        // deno-lint-ignore no-explicit-any
+        (this as any).stdout = undefined;
+        // deno-lint-ignore no-explicit-any
+        (this as any).stderr = undefined;
+        // deno-lint-ignore no-explicit-any
+        (this as any).stdio = undefined;
+      } else {
+        // Set up stdio streams even when spawn fails (Node.js creates pipes
+        // before the OS spawn call, so they exist regardless of spawn outcome).
+        if (stdin === "pipe") {
+          this.stdin = new Writable({
+            write(_chunk, _enc, cb) {
+              cb(new Error("spawn failed"));
+            },
+          });
+        }
+        if (stdout === "pipe") {
+          this.stdout = new Readable({ read() {} });
+          this[kClosesNeeded]++;
+          this.stdout.on("close", () => {
+            maybeClose(this);
+          });
+        }
+        if (stderr === "pipe") {
+          this.stderr = new Readable({ read() {} });
+          this[kClosesNeeded]++;
+          this.stderr.on("close", () => {
+            maybeClose(this);
+          });
+        }
+
+        this.stdio[0] = this.stdin;
+        this.stdio[1] = this.stdout;
+        this.stdio[2] = this.stderr;
+      }
 
       this.#_handleError(e);
 
-      // Destroy stdio streams and emit close (matching Node.js behavior
-      // where failed spawns still trigger 'close' but not 'exit').
-      nextTick(() => {
-        if (this.stdout) {
-          this.stdout.destroy();
-        }
-        if (this.stderr) {
-          this.stderr.destroy();
-        }
-        if (this.stdin) {
-          this.stdin.destroy();
-        }
-        maybeClose(this);
-      });
+      if (!isResourceError) {
+        // Destroy stdio streams and emit close (matching Node.js behavior
+        // where failed spawns still trigger 'close' but not 'exit').
+        nextTick(() => {
+          if (this.stdout) {
+            this.stdout.destroy();
+          }
+          if (this.stderr) {
+            this.stderr.destroy();
+          }
+          if (this.stdin) {
+            this.stdin.destroy();
+          }
+          maybeClose(this);
+        });
+      }
     }
   }
 
@@ -813,6 +842,10 @@ class ChildProcess extends EventEmitter {
           const alreadyClosed =
             ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err2) ||
             ObjectPrototypeIsPrototypeOf(
+              Deno.errors.NotFound.prototype,
+              err2,
+            ) ||
+            ObjectPrototypeIsPrototypeOf(
               Deno.errors.PermissionDenied.prototype,
               err2,
             );
@@ -824,6 +857,10 @@ class ChildProcess extends EventEmitter {
       } else {
         const alreadyClosed =
           ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err) ||
+          ObjectPrototypeIsPrototypeOf(
+            Deno.errors.NotFound.prototype,
+            err,
+          ) ||
           ObjectPrototypeIsPrototypeOf(
             Deno.errors.PermissionDenied.prototype,
             err,
@@ -909,6 +946,29 @@ function streamHandleFd(stream) {
   return -1;
 }
 
+function registerChildStdioStream(stream) {
+  const fd = streamHandleFd(stream);
+  if (fd < 0) {
+    return;
+  }
+
+  childStdioStreamsByFd.set(fd, stream);
+  stream.on("close", () => {
+    if (childStdioStreamsByFd.get(fd) === stream) {
+      childStdioStreamsByFd.delete(fd);
+    }
+  });
+}
+
+function markChildStdioUsedAsInput(fd) {
+  const stream = childStdioStreamsByFd.get(fd);
+  if (stream) {
+    stream[kChildStdioUsedAsInput] = true;
+    stream.pause();
+    stream._handle?.readStop?.();
+  }
+}
+
 function toDenoStdio(
   pipe,
 ) {
@@ -921,6 +981,9 @@ function toDenoStdio(
     // another child's stdin shares the underlying OS pipe.
     const fd = streamHandleFd(pipe);
     if (fd >= 0) {
+      pipe[kChildStdioUsedAsInput] = true;
+      pipe.pause();
+      pipe._handle?.readStop?.();
       return fd;
     }
     // For streams without a usable fd, create a pipe and set up JS-level
@@ -928,6 +991,7 @@ function toDenoStdio(
     return "piped";
   }
   if (typeof pipe === "number") {
+    markChildStdioUsedAsInput(pipe);
     return pipe;
   }
   switch (pipe) {
@@ -1358,6 +1422,11 @@ function normalizeSpawnArguments(
 }
 
 function waitForReadableToClose(readable) {
+  if (readable[kChildStdioUsedAsInput]) {
+    const closePromise = waitForStreamToClose(readable);
+    readable.destroy();
+    return closePromise;
+  }
   readable.resume(); // Ensure buffered data will be consumed.
   return waitForStreamToClose(readable);
 }
@@ -1468,6 +1537,26 @@ function transformDenoShellCommand(
   }
 
   if (!startsWithDeno) {
+    // The command doesn't start with deno, but it may contain a deno
+    // invocation after a shell compound operator (&&, ||, ;).
+    // Split on the first operator and try to transform the remainder.
+    // NOTE: This regex doesn't handle quoted strings, so an operator
+    // inside quotes (e.g. `echo "foo && bar"`) would be matched.
+    // This is safe because if no real `deno` invocation follows, the
+    // `transformedRest !== rest` guard returns the original command.
+    const operatorMatch = StringPrototypeMatch(
+      command,
+      shellCompoundOperatorRe,
+    );
+    if (operatorMatch) {
+      const prefix = operatorMatch[1];
+      const operator = operatorMatch[2];
+      const rest = StringPrototypeSlice(command, operatorMatch[0].length);
+      const transformedRest = transformDenoShellCommand(rest, env, isCmdExe);
+      if (transformedRest !== rest) {
+        return prefix + " " + operator + " " + transformedRest;
+      }
+    }
     return command;
   }
 
@@ -1877,13 +1966,18 @@ function spawnSync(
       input: input_,
       timeout,
       killSignal,
+      maxBuffer,
     });
 
     const status = output.signal ? null : output.code;
     let stdout = output.stdout ? Buffer.from(output.stdout) : null;
     let stderr = output.stderr ? Buffer.from(output.stderr) : null;
 
+    // Defensive: if Rust didn't kill on overflow (e.g. maxBuffer was
+    // unlimited but the JS layer somehow still has a longer buffer), fall
+    // back to the post-hoc length check.
     if (
+      output.killedByMaxBuffer ||
       (stdout && stdout.length > maxBuffer) ||
       (stderr && stderr.length > maxBuffer)
     ) {
@@ -1902,11 +1996,13 @@ function spawnSync(
     }
 
     result.pid = output.pid;
-    // When killed by timeout, report the killSignal (matching Node.js behavior).
-    // On Windows there are no real Unix signals, but Node still reports the
-    // configured killSignal so callers can detect the timeout.
-    result.status = output.killedByTimeout ? null : status;
-    result.signal = output.killedByTimeout
+    // When killed by timeout or maxBuffer, report the killSignal (matching
+    // Node.js behavior). On Windows there are no real Unix signals, but
+    // Node still reports the configured killSignal so callers can detect
+    // why the child was terminated.
+    const killedByDeno = output.killedByTimeout || output.killedByMaxBuffer;
+    result.status = killedByDeno ? null : status;
+    result.signal = killedByDeno
       ? _resolveKillSignalName(killSignal)
       : output.signal;
     result.stdout = stdout;
@@ -2001,6 +2097,154 @@ const IPC_HANDLE_NET_SERVER = "net.Server";
 // (SharedHandle). Mirrors Node's `handleConversion["net.Native"]`.
 const IPC_HANDLE_NET_NATIVE = "net.Native";
 const IPC_HANDLE_DGRAM_SOCKET = "dgram.Socket";
+const NODE_SOCKET_GET_COUNT = "NODE_SOCKET_GET_COUNT";
+const NODE_SOCKET_COUNT = "NODE_SOCKET_COUNT";
+const NODE_SOCKET_NOTIFY_CLOSE = "NODE_SOCKET_NOTIFY_CLOSE";
+const NODE_SOCKET_CLOSE_ACK = "NODE_SOCKET_CLOSE_ACK";
+
+let nextSocketListKey = 0;
+const socketListsByChild = new SafeWeakMap();
+
+class SocketListSend extends EventEmitter {
+  constructor(child, server) {
+    super();
+    this.child = child;
+    this.key = `socket-list:${++nextSocketListKey}`;
+    this.callbacks = new SafeMap();
+    this.closeCallbacks = new SafeMap();
+    this.seq = 0;
+    this.closed = false;
+    this.onInternalMessage = (message) => {
+      if (!message || message.key !== this.key) {
+        return;
+      }
+      if (message.cmd === NODE_SOCKET_COUNT) {
+        const cb = this.callbacks.get(message.id);
+        if (cb) {
+          this.callbacks.delete(message.id);
+          cb(null, message.count);
+        }
+      } else if (message.cmd === NODE_SOCKET_CLOSE_ACK) {
+        const cb = this.closeCallbacks.get(message.id);
+        if (cb) {
+          this.closeCallbacks.delete(message.id);
+          cb();
+        }
+      }
+    };
+    child.on("internalMessage", this.onInternalMessage);
+    // Flush on both `exit` and `disconnect`: the IPC channel can close while
+    // the child process keeps running, which leaves in-flight requests with no
+    // peer to answer. Either event means no further replies will arrive, so we
+    // resolve pending getConnections()/close() callers rather than hang.
+    this.onClose = () => this._flush();
+    child.once("exit", this.onClose);
+    child.once("disconnect", this.onClose);
+    server._setupWorker(this);
+  }
+
+  _flush() {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    this.child.removeListener("internalMessage", this.onInternalMessage);
+    this.child.removeListener("exit", this.onClose);
+    this.child.removeListener("disconnect", this.onClose);
+    for (const { 1: cb } of new SafeMapIterator(this.callbacks)) {
+      cb(null, 0);
+    }
+    this.callbacks.clear();
+    for (const { 1: cb } of new SafeMapIterator(this.closeCallbacks)) {
+      cb();
+    }
+    this.closeCallbacks.clear();
+    this.emit("exit", this);
+  }
+
+  getConnections(cb) {
+    if (this.closed || !this.child.connected) {
+      nextTick(cb, null, 0);
+      return;
+    }
+    const id = ++this.seq;
+    this.callbacks.set(id, cb);
+    this.child.send(
+      { cmd: NODE_SOCKET_GET_COUNT, key: this.key, id },
+      (err) => {
+        if (err && this.callbacks.delete(id)) {
+          cb(err);
+        }
+      },
+    );
+  }
+
+  close(cb) {
+    if (this.closed || !this.child.connected) {
+      nextTick(cb);
+      return;
+    }
+    const id = ++this.seq;
+    this.closeCallbacks.set(id, cb);
+    this.child.send(
+      { cmd: NODE_SOCKET_NOTIFY_CLOSE, key: this.key, id },
+      (err) => {
+        if (err && this.closeCallbacks.delete(id)) {
+          cb();
+        }
+      },
+    );
+  }
+}
+
+class SocketListReceive {
+  constructor() {
+    this.sockets = new SafeSet();
+    this.closeCallbacks = [];
+  }
+
+  add(socket) {
+    this.sockets.add(socket);
+    socket.once("close", () => {
+      this.sockets.delete(socket);
+      this._maybeClose();
+    });
+  }
+
+  getConnections() {
+    return this.sockets.size;
+  }
+
+  close(cb) {
+    ArrayPrototypePush(this.closeCallbacks, cb);
+    this._maybeClose();
+  }
+
+  _maybeClose() {
+    if (this.sockets.size !== 0) {
+      return;
+    }
+    const callbacks = this.closeCallbacks;
+    this.closeCallbacks = [];
+    for (const cb of new SafeArrayIterator(callbacks)) {
+      nextTick(cb);
+    }
+  }
+}
+
+function getSocketListSend(child, server) {
+  let socketLists = socketListsByChild.get(child);
+  if (!socketLists) {
+    socketLists = new SafeWeakMap();
+    socketListsByChild.set(child, socketLists);
+  }
+  let socketList = socketLists.get(server);
+  if (!socketList) {
+    socketList = new SocketListSend(child, server);
+    socketLists.set(server, socketList);
+  }
+  return socketList;
+}
 
 function rawFdFromTcpHandle(tcpHandle) {
   if (typeof tcpHandle.fdForIpc !== "function") {
@@ -2013,22 +2257,43 @@ function rawFdFromTcpHandle(tcpHandle) {
   return rawFd;
 }
 
-function getIpcHandleInfo(handle, options) {
+function getIpcHandleInfo(handle, options, target) {
   const { Socket } = lazyNet();
   const { Server: NetServer } = lazyNet();
   const { Socket: DgramSocket } = lazyDgram();
   if (ObjectPrototypeIsPrototypeOf(Socket.prototype, handle)) {
-    if (!ObjectPrototypeIsPrototypeOf(TCP.prototype, handle._handle)) {
+    const inner = handle._handle;
+    // Match Node's handleConversion["net.Socket"].send, which returns the
+    // socket's native handle. A socket without an underlying handle (e.g.
+    // already destroyed) yields null; Node then strips the handle and sends
+    // the message alone instead of throwing.
+    if (!inner) {
+      return null;
+    }
+    const isTcp = ObjectPrototypeIsPrototypeOf(TCP.prototype, inner);
+    const isPipe = ObjectPrototypeIsPrototypeOf(Pipe.prototype, inner);
+    if (!isTcp && !isPipe) {
       notImplemented("ChildProcess.send with non-TCP net.Socket handle");
     }
+    const closeAfterSend = options.keepOpen !== true;
+    const message = {
+      cmd: "NODE_HANDLE",
+      type: IPC_HANDLE_NET_SOCKET,
+      // Distinguishes the wrap type the receiver should reconstruct.
+      nativeKind: isTcp ? "tcp" : "pipe",
+      msg: undefined,
+    };
+    if (
+      closeAfterSend &&
+      handle.server &&
+      typeof handle.server._setupWorker === "function"
+    ) {
+      message.socketListKey = getSocketListSend(target, handle.server).key;
+    }
     return {
-      rawFd: rawFdFromTcpHandle(handle._handle),
-      message: {
-        cmd: "NODE_HANDLE",
-        type: IPC_HANDLE_NET_SOCKET,
-        msg: undefined,
-      },
-      closeAfterSend: options.keepOpen !== true,
+      rawFd: rawFdFromTcpHandle(inner),
+      message,
+      closeAfterSend,
       close() {
         handle.parser = null;
         handle._httpMessage = null;
@@ -2038,14 +2303,26 @@ function getIpcHandleInfo(handle, options) {
   }
 
   if (ObjectPrototypeIsPrototypeOf(NetServer.prototype, handle)) {
-    if (!ObjectPrototypeIsPrototypeOf(TCP.prototype, handle._handle)) {
+    const inner = handle._handle;
+    // Match Node's handleConversion["net.Server"].send, which returns
+    // server._handle. A server that hasn't started listening (or was
+    // already closed) has a null handle; Node then strips the handle and
+    // sends the message alone instead of throwing.
+    if (!inner) {
+      return null;
+    }
+    const isTcp = ObjectPrototypeIsPrototypeOf(TCP.prototype, inner);
+    const isPipe = ObjectPrototypeIsPrototypeOf(Pipe.prototype, inner);
+    if (!isTcp && !isPipe) {
       notImplemented("ChildProcess.send with non-TCP net.Server handle");
     }
     return {
-      rawFd: rawFdFromTcpHandle(handle._handle),
+      rawFd: rawFdFromTcpHandle(inner),
       message: {
         cmd: "NODE_HANDLE",
         type: IPC_HANDLE_NET_SERVER,
+        // Distinguishes the wrap type the receiver should reconstruct.
+        nativeKind: isTcp ? "tcp" : "pipe",
         msg: undefined,
       },
       // Match Node's handleConversion["net.Server"].postSend, which calls
@@ -2120,25 +2397,29 @@ function createIpcHandle(message, rawFd) {
   const { Server: NetServer } = lazyNet();
   const { Socket: DgramSocket } = lazyDgram();
   if (message.type === IPC_HANDLE_NET_SOCKET) {
-    const tcp = new TCP(tcpSocketType.SOCKET);
-    const err = tcp.open(rawFd);
+    const inner = message.nativeKind === "pipe"
+      ? new Pipe(socketType.SOCKET)
+      : new TCP(tcpSocketType.SOCKET);
+    const err = inner.open(rawFd);
     if (err !== 0) {
       throw errnoException(codeMap.get(err), "open");
     }
     try {
       return new Socket({
-        handle: tcp,
+        handle: inner,
         readable: true,
         writable: true,
       });
     } catch (err) {
-      tcp.close();
+      inner.close();
       throw err;
     }
   }
   if (message.type === IPC_HANDLE_NET_SERVER) {
-    const tcp = new TCP(tcpSocketType.SERVER);
-    const err = tcp.open(rawFd);
+    const inner = message.nativeKind === "pipe"
+      ? new Pipe(socketType.SERVER)
+      : new TCP(tcpSocketType.SERVER);
+    const err = inner.open(rawFd);
     if (err !== 0) {
       throw errnoException(codeMap.get(err), "open");
     }
@@ -2148,10 +2429,10 @@ function createIpcHandle(message, rawFd) {
     // detects an already-listening fd and skips the bind/listen syscalls.
     const server = new NetServer();
     try {
-      server.listen(tcp);
+      server.listen(inner);
       return server;
     } catch (err) {
-      tcp.close();
+      inner.close();
       throw err;
     }
   }
@@ -2236,6 +2517,7 @@ function setupChannel(
   // sends (handle or plain message) are queued on it to preserve ordering.
   let pendingHandleInfo = null;
   let handleQueue = null;
+  const receivedSocketLists = new SafeMap();
 
   function sendHandleAck() {
     const queueOk = [true];
@@ -2261,6 +2543,61 @@ function setupChannel(
         enqueueOrDispatch(item.message, item.handleInfo, item.callback);
       }
     }
+  }
+
+  function sendInternalMessage(message) {
+    const queueOk = [true];
+    control.refCounted();
+    PromisePrototypeThen(
+      writeFn(ipc, message, NO_RAW_FD, queueOk),
+      () => control.unrefCounted(),
+      () => control.unrefCounted(),
+    );
+  }
+
+  function getReceivedSocketList(key) {
+    let socketList = receivedSocketLists.get(key);
+    if (!socketList) {
+      socketList = new SocketListReceive();
+      receivedSocketLists.set(key, socketList);
+    }
+    return socketList;
+  }
+
+  function handleSocketListMessage(message) {
+    if (message.cmd === NODE_SOCKET_GET_COUNT) {
+      const socketList = receivedSocketLists.get(message.key);
+      sendInternalMessage({
+        cmd: NODE_SOCKET_COUNT,
+        key: message.key,
+        id: message.id,
+        count: socketList ? socketList.getConnections() : 0,
+      });
+      return true;
+    }
+    if (message.cmd === NODE_SOCKET_NOTIFY_CLOSE) {
+      const socketList = receivedSocketLists.get(message.key);
+      const sendAck = () =>
+        sendInternalMessage({
+          cmd: NODE_SOCKET_CLOSE_ACK,
+          key: message.key,
+          id: message.id,
+        });
+      if (socketList) {
+        // The parent only sends NOTIFY_CLOSE when its server is closing, so no
+        // further sockets will be registered under this key. Drop the entry
+        // once it drains, otherwise a long-lived child accumulates one
+        // SocketListReceive per server it has ever received sockets from.
+        socketList.close(() => {
+          receivedSocketLists.delete(message.key);
+          sendAck();
+        });
+      } else {
+        sendAck();
+      }
+      return true;
+    }
+    return false;
   }
 
   // Release any handles we're still holding open when the channel goes away.
@@ -2406,10 +2743,18 @@ function setupChannel(
             // Acknowledge receipt so the sender can close its local copy.
             sendHandleAck();
             const handle = createIpcHandle(msg, rawFd);
+            if (
+              msg.socketListKey &&
+              ObjectPrototypeIsPrototypeOf(Socket.prototype, handle)
+            ) {
+              getReceivedSocketList(msg.socketListKey).add(handle);
+            }
             nextTick(handleMessage, msg.msg, handle);
             continue;
           } else if (cmd === "HANDLE_ACK") {
             onHandleAck();
+            continue;
+          } else if (handleSocketListMessage(msg)) {
             continue;
           } else {
             // TODO(nathanwhit): if we want to support deno-node IPC interop,
@@ -2426,12 +2771,16 @@ function setupChannel(
         nextTick(handleMessage, msg, undefined);
       }
     } catch (err) {
+      // All of these mean the IPC channel went away while we were reading it.
+      // ConnectionReset in particular shows up on Linux when the peer exits
+      // with data still buffered: instead of a clean EOF the kernel delivers a
+      // RST, surfacing here as ECONNRESET. Node treats an IPC channel teardown
+      // as a disconnect, never as a process `error`, so we follow suit and tear
+      // down cleanly instead of emitting an uncaught error.
       if (
-        ObjectPrototypeIsPrototypeOf(
-          Deno.errors.Interrupted.prototype,
-          err,
-        ) ||
-        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, err)
+        ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, err) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, err) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.ConnectionReset.prototype, err)
       ) {
         // Channel torn down from under us; release any handles awaiting an
         // ACK that will now never arrive so they don't keep us alive.
@@ -2552,8 +2901,13 @@ function setupChannel(
     // socket's destruction.
     let handleInfo = null;
     if (handle !== undefined) {
-      handleInfo = getIpcHandleInfo(handle, options);
-      handleInfo.message.msg = message;
+      handleInfo = getIpcHandleInfo(handle, options, target);
+      // `getIpcHandleInfo` returns null when the handle has no underlying
+      // native handle (e.g. a server that never started listening). Match
+      // Node, which strips the handle and sends the plain message instead.
+      if (handleInfo !== null) {
+        handleInfo.message.msg = message;
+      }
     }
 
     return enqueueOrDispatch(message, handleInfo, callback);

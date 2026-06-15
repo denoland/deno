@@ -58,8 +58,8 @@ use self::local::LocalNpmPackageInstallerOptions;
 pub use self::local::LocalSetupCache;
 pub use self::local::node_modules_package_actual_dir_to_name;
 pub use self::local::remove_unused_node_modules_symlinks;
+use self::package_json::EnsurePackageJsonDepsError;
 use self::package_json::NpmInstallDepsProvider;
-use self::package_json::PackageJsonDepValueParseWithLocationError;
 use self::resolution::AddPkgReqsResult;
 use self::resolution::NpmResolutionInstaller;
 use self::resolution::NpmResolutionInstallerSys;
@@ -408,12 +408,12 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 
   pub fn ensure_no_pkg_json_dep_errors(
     &self,
-  ) -> Result<(), Box<PackageJsonDepValueParseWithLocationError>> {
+  ) -> Result<(), EnsurePackageJsonDepsError> {
     for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
       match err.source.as_kind() {
         deno_package_json::PackageJsonDepValueParseErrorKind::JsrRequiresScope { .. } |
         deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq { .. } => {
-          return Err(Box::new(err.clone()));
+          return Err(Box::new(err.clone()).into());
         }
         deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
           ..
@@ -428,6 +428,16 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           )
         }
       }
+    }
+    // A `workspace:<range>` whose member version doesn't satisfy the range is
+    // always a hard error, the same way `deno run` rejects it during
+    // resolution.
+    if let Some(err) = self
+      .npm_install_deps_provider
+      .workspace_member_version_errors()
+      .first()
+    {
+      return Err(Box::new(err.clone()).into());
     }
     Ok(())
   }
@@ -451,8 +461,12 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     }
 
     // check if something needs resolving before bothering to load all
-    // the package information (which is slow)
-    if !self.npm_resolution.is_pending()
+    // the package information (which is slow). As in the resolver fast path,
+    // when offline (`--cached-only`) prefer the existing resolution over a
+    // re-resolution that would need registry metadata not in the cache, even
+    // if the lockfile was flagged as changed for a non-npm reason.
+    if (!self.npm_resolution.is_pending()
+      || self.npm_resolution_installer.is_cached_only())
       && pkg_json_remote_pkgs.iter().all(|pkg| {
         self
           .npm_resolution

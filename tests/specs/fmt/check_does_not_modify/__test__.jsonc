@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "tests": {
+    "check_reports_diff_without_modifying_file": {
+      "steps": [
+        {
+          "args": "fmt --check unformatted.ts",
+          "output": "check.out",
+          "exitCode": 1
+        },
+        {
+          "args": "fmt --check unformatted.ts",
+          "output": "check.out",
+          "exitCode": 1
+        }
+      ]
+    }
+  }
+}

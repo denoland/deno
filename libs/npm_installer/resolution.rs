@@ -116,6 +116,11 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     self.registry_info_provider.package_info(package_name).await
   }
 
+  /// Whether only cached registry data may be used (`--cached-only`).
+  pub fn is_cached_only(&self) -> bool {
+    self.registry_info_provider.is_cached_only()
+  }
+
   /// Run a resolution install if the npm snapshot is in a pending state
   /// due to a config file change.
   pub async fn install_if_pending(&self) -> Result<(), NpmResolutionError> {
@@ -159,7 +164,17 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     package_reqs: &[PackageReq],
   ) -> deno_npm::resolution::AddPkgReqsResult {
     let snapshot = self.resolution.snapshot();
-    if !self.resolution.is_pending()
+    // Skip npm resolution when the lockfile snapshot already resolves every
+    // requirement and either the lockfile is unchanged, or we are offline
+    // (`--cached-only`). The offline case is important: a lockfile can be
+    // flagged as changed for reasons unrelated to npm — most notably a `links`
+    // section that older deno versions did not write and is re-derived from the
+    // workspace config on load. Re-resolving then would need to fetch registry
+    // metadata that an offline cache does not contain, failing the run even
+    // though the lockfile's npm section is already complete. Online, the
+    // re-resolution still runs so the lockfile is brought up to date.
+    if (!self.resolution.is_pending()
+      || self.registry_info_provider.is_cached_only())
       && package_reqs
         .iter()
         .all(|req| snapshot.package_reqs().contains_key(req))
@@ -216,11 +231,33 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
 
     self.registry_info_provider.clear_memory_cache();
 
-    if !result.unmet_peer_diagnostics.is_empty()
-      && log::log_enabled!(log::Level::Warn)
-    {
-      let root_node =
-        peer_dep_diagnostics_to_display_tree(&result.unmet_peer_diagnostics);
+    // Suppress peer dependency warnings for packages that the user has
+    // explicitly overridden in the root package.json "overrides" field. An
+    // override is an authoritative resolution directive, so a peer mismatch
+    // against an overridden version is intentional and shouldn't be reported.
+    // See https://github.com/denoland/deno/issues/32801.
+    let overrides = &self.npm_version_resolver.overrides;
+    // Only allocate when there are overrides to filter against; otherwise
+    // display the diagnostics directly without copying them.
+    let filtered: Vec<UnmetPeerDepDiagnostic>;
+    let diagnostics: &[UnmetPeerDepDiagnostic] = if overrides.is_empty() {
+      &result.unmet_peer_diagnostics
+    } else {
+      filtered = result
+        .unmet_peer_diagnostics
+        .iter()
+        .filter(|d| {
+          overrides
+            .get_override_for(&d.dependency.name, Some(&d.resolved))
+            .is_none()
+        })
+        .cloned()
+        .collect();
+      &filtered
+    };
+
+    if !diagnostics.is_empty() && log::log_enabled!(log::Level::Warn) {
+      let root_node = peer_dep_diagnostics_to_display_tree(diagnostics);
       let mut text = String::new();
       _ = root_node.print(&mut text);
       log::warn!("{}", text);

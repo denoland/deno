@@ -14,6 +14,9 @@ import {
   // for `import.meta.filename` and `import.meta.dirname` that Deno
   // provides.
   register,
+  // @ts-ignore Our internal @types/node is at v18.16.19 which predates
+  // this change.
+  runMain,
   SourceMap,
   stripTypeScriptTypes,
   syncBuiltinESMExports,
@@ -105,6 +108,12 @@ Deno.test("[node/module isBuiltin] recognizes node builtins", () => {
 // https://github.com/denoland/deno/issues/22731
 Deno.test("[node/module builtinModules] has 'module' in builtins", () => {
   assert(builtinModules.includes("module"));
+});
+
+// https://github.com/denoland/deno/issues/34812
+Deno.test("[node/module runMain] is exposed as a named export", () => {
+  assertEquals(typeof runMain, "function");
+  assertEquals(runMain, Module.runMain);
 });
 
 // https://github.com/denoland/deno/issues/18666
@@ -243,18 +252,20 @@ Deno.test("[node/module stripTypeScriptTypes] rejects unsupported strip-only syn
   );
 });
 
-// Regression test: tsx and other tools probe `Module.register` (the default
-// export of `node:module`) to decide whether the host supports module loader
-// hooks. Make sure both `Module.register` and `Module.registerHooks` are
-// attached as static methods so `import M from "node:module"; M.register`
-// resolves to the stub instead of `undefined`.
-Deno.test("[node/module] Module.register and Module.registerHooks are exposed", () => {
+// Regression test for https://github.com/denoland/deno/issues/34868.
+// We don't implement the out-of-thread `module.register()` loader (it's a
+// no-op stub), so `Module.register` must NOT be exposed as a static. Tools
+// like Playwright and tsx feature-probe `import M from "node:module";
+// M.register`; when it's present they set up an ESM loader and wait on a
+// `MessagePort` handshake that our stub never answers, hanging silently.
+// With it absent they fall back to a path that works: Playwright skips the
+// loader and tsx uses `Module.registerHooks` (which we do implement) now
+// that the emulated Node version (>= 24.11.1) clears tsx's feature gate.
+Deno.test("[node/module] Module.register is not exposed, registerHooks is", () => {
   // @ts-ignore Not in our bundled @types/node yet.
-  assertEquals(typeof Module.register, "function");
+  assertEquals(Module.register, undefined);
   // @ts-ignore Not in our bundled @types/node yet.
   assertEquals(typeof Module.registerHooks, "function");
-  // @ts-ignore Stub returns undefined.
-  assertEquals(Module.register("foo"), undefined);
 });
 
 Deno.test("[node/module syncBuiltinESMExports] is exposed", () => {

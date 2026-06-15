@@ -60,7 +60,11 @@ const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const tls = lazyTls().default;
 const net = lazyNet();
 const http = lazyHttp();
-const { applyAddressOverride, startOverrideListener } = lazyAddressOverride();
+const {
+  applyAddressOverride,
+  notifyAddressOverrideServing,
+  startOverrideListener,
+} = lazyAddressOverride();
 const { _connectionListener, ClientRequest, ServerImpl: HttpServer } = http;
 
 function getExtraCACertificates() {
@@ -151,6 +155,7 @@ Server.prototype.listen = function listen(this: any, ...args: any[]) {
       }
       const rewritten: any[] = [{ host: applied.host, port: applied.port }];
       if (cb) ArrayPrototypePush(rewritten, cb);
+      this.once("listening", notifyAddressOverrideServing);
       return FunctionPrototypeApply(
         net.Server.prototype.listen,
         this,

@@ -191,6 +191,45 @@ async function hmacSign(key, parts) {
     .join("");
 }
 
+// Verifies the HMAC-SHA256 signature a peer sent against the signed frames.
+// Returns true when the signature is valid, or when no key is configured
+// (matching `hmacSign`, which emits an empty signature in that case).
+//
+// Incoming messages that fail this check must be dropped: the kernel runs with
+// full permissions, so without signature verification any local process able
+// to reach the kernel's (loopback) TCP ports could inject an `execute_request`
+// and run arbitrary code. The Jupyter wire protocol requires this check.
+async function hmacVerify(key, parts, sig) {
+  if (!key || key.length === 0) return true;
+  // The signature travels as a lowercase hex string; decode it to bytes.
+  if (typeof sig !== "string" || sig.length === 0 || sig.length % 2 !== 0) {
+    return false;
+  }
+  const sigBytes = new Uint8Array(sig.length / 2);
+  for (let i = 0; i < sigBytes.length; i++) {
+    const byte = Number.parseInt(sig.slice(i * 2, i * 2 + 2), 16);
+    if (Number.isNaN(byte)) return false;
+    sigBytes[i] = byte;
+  }
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    ENC.encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const combined = new Uint8Array(
+    parts.reduce((acc, p) => acc + p.length, 0),
+  );
+  let offset = 0;
+  for (const p of parts) {
+    combined.set(p, offset);
+    offset += p.length;
+  }
+  // crypto.subtle.verify performs the comparison without leaking timing.
+  return await crypto.subtle.verify("HMAC", cryptoKey, sigBytes, combined);
+}
+
 function makeHeader(session, msgType) {
   return JSON.stringify({
     msg_id: crypto.randomUUID(),
@@ -258,13 +297,26 @@ function decodeMsg(frames) {
 
   const identities = frames.slice(0, delimIdx);
   const sig = DEC.decode(frames[delimIdx + 1]);
+  // The raw bytes of the four frames the signature is computed over. Kept so
+  // the signature can be verified against exactly what was received, rather
+  // than a re-serialization that might differ byte-for-byte.
+  const signedParts = frames.slice(delimIdx + 2, delimIdx + 6);
   const header = JSON.parse(DEC.decode(frames[delimIdx + 2]));
   const parentHeader = JSON.parse(DEC.decode(frames[delimIdx + 3]));
   const metadata = JSON.parse(DEC.decode(frames[delimIdx + 4]));
   const content = JSON.parse(DEC.decode(frames[delimIdx + 5]));
   const buffers = frames.slice(delimIdx + 6);
 
-  return { identities, sig, header, parentHeader, metadata, content, buffers };
+  return {
+    identities,
+    sig,
+    signedParts,
+    header,
+    parentHeader,
+    metadata,
+    content,
+    buffers,
+  };
 }
 
 // --- ZMTP socket helpers -------------------------------------------------------
@@ -806,6 +858,10 @@ async function startJupyterKernel() {
 
   async function handleShellMessage(socket, peerId, frames) {
     const msg = decodeMsg(frames);
+    if (!(await hmacVerify(key, msg.signedParts, msg.sig))) {
+      // Drop messages whose HMAC signature doesn't match the connection key.
+      return;
+    }
     const msgType = msg.header?.msg_type;
     const parentHeader = msg.header;
 
@@ -831,7 +887,12 @@ async function startJupyterKernel() {
         await socket.send(peerId, replyFrames);
       } else if (msgType === "complete_request") {
         const userCode = msg.content?.code || "";
-        const cursorPos = msg.content?.cursor_pos || userCode.length;
+        // `cursor_pos` is in Unicode codepoints; convert to a UTF-16 index for
+        // JS string slicing (a 0 cursor means the start of the cell, so use
+        // `??` rather than `||`).
+        const cursorPosCp = msg.content?.cursor_pos ??
+          utf16ToCodePointIndex(userCode, userCode.length);
+        const cursorPos = codePointToUtf16Index(userCode, cursorPosCp);
         const expr = getExprFromLineAtPos(userCode, cursorPos);
 
         let completions = [];
@@ -862,8 +923,10 @@ async function startJupyterKernel() {
           {
             status: "ok",
             matches: completions,
-            cursor_start: cursorStart,
-            cursor_end: cursorPos,
+            // Report cursor positions back in codepoints, as the frontend
+            // expects.
+            cursor_start: utf16ToCodePointIndex(userCode, cursorStart),
+            cursor_end: cursorPosCp,
             metadata: {},
           },
           parentHeader,
@@ -948,6 +1011,10 @@ async function startJupyterKernel() {
 
   async function handleControlMessage(socket, peerId, frames) {
     const msg = decodeMsg(frames);
+    if (!(await hmacVerify(key, msg.signedParts, msg.sig))) {
+      // Drop messages whose HMAC signature doesn't match the connection key.
+      return;
+    }
     const msgType = msg.header?.msg_type;
     const parentHeader = msg.header;
 
@@ -1028,6 +1095,32 @@ async function startJupyterKernel() {
     return sub.slice(start);
   }
 
+  // Jupyter's `cursor_pos` is measured in Unicode codepoints, but JS strings
+  // are indexed by UTF-16 code units. Convert a codepoint offset into the
+  // equivalent UTF-16 index so slicing lands on a valid boundary even when the
+  // code contains multi-byte / astral characters (see denoland/deno#22771).
+  function codePointToUtf16Index(str, cpOffset) {
+    let utf16 = 0;
+    let cp = 0;
+    while (cp < cpOffset && utf16 < str.length) {
+      utf16 += str.codePointAt(utf16) > 0xffff ? 2 : 1;
+      cp++;
+    }
+    return utf16;
+  }
+
+  // Inverse of codePointToUtf16Index: convert a UTF-16 index back to a codepoint
+  // offset, used when reporting `cursor_start`/`cursor_end` to the frontend.
+  function utf16ToCodePointIndex(str, utf16Offset) {
+    let utf16 = 0;
+    let cp = 0;
+    while (utf16 < utf16Offset && utf16 < str.length) {
+      utf16 += str.codePointAt(utf16) > 0xffff ? 2 : 1;
+      cp++;
+    }
+    return cp;
+  }
+
   // Services REPL-originated input_request messages: send them to the
   // frontend over the stdin ROUTER and forward the input_reply value back
   // through the response channel parked in op_state.
@@ -1077,6 +1170,13 @@ async function startJupyterKernel() {
       const { frames } = await stdin.recv();
       try {
         const reply = decodeMsg(frames);
+        if (!(await hmacVerify(key, reply.signedParts, reply.sig))) {
+          // Ignore an input_reply whose HMAC signature doesn't verify and keep
+          // waiting for a valid one, so a forged frame can't cancel a
+          // legitimate input prompt. This matches the shell/control paths,
+          // which drop bad messages and stay alive.
+          continue;
+        }
         if (reply.header?.msg_type === "input_reply") {
           const raw = reply.content?.value;
           return typeof raw === "string" ? raw : null;

@@ -1,0 +1,13 @@
+{
+  "name": "@denotest/esm-package-no-default-export-types",
+  "version": "1.0.0",
+  "main": "index.js",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs",
+      "require": "./index.js",
+      "default": "./index.js"
+    }
+  }
+}

@@ -346,6 +346,96 @@ Deno.test(
   },
 );
 
+// Regression test for https://github.com/denoland/deno/issues/11373
+// A burst of concurrent file writes must not be silently lost: every file
+// written below must show up in at least one event, unless the loss is
+// explicitly reported via a `rescan`-flagged event.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsBurstDeliversAllEvents() {
+    const testDir = await makeTempDir();
+    using watcher = Deno.watchFs(testDir);
+
+    const fileCount = 100;
+    // Match events by file name: on macOS the events report canonicalized
+    // paths (/private/var/...) while makeTempDir returns /var/... paths.
+    const remaining = new Set<string>();
+    for (let i = 0; i < fileCount; i++) {
+      remaining.add(`file${i}.txt`);
+    }
+
+    // Escape hatch so the iteration below can't hang the test forever if
+    // events do get lost.
+    const deadline = setTimeout(() => watcher.close(), 20_000);
+    let sawRescan = false;
+    const collectPromise = (async () => {
+      for await (const event of watcher) {
+        if (event.flag === "rescan") {
+          sawRescan = true;
+          break;
+        }
+        for (const path of event.paths) {
+          const name = path.replaceAll("\\", "/").split("/").pop()!;
+          remaining.delete(name);
+        }
+        if (remaining.size === 0) break;
+      }
+    })();
+
+    await Promise.all(
+      [...remaining].map((name) =>
+        Deno.writeTextFile(`${testDir}/${name}`, "content")
+      ),
+    );
+
+    await collectPromise;
+    clearTimeout(deadline);
+    assert(
+      remaining.size === 0 || sawRescan,
+      `events for ${remaining.size}/${fileCount} files were silently lost`,
+    );
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/11373
+// When events arrive faster than the consumer drains them and the internal
+// queue overflows, the loss must be reported with a `rescan`-flagged event
+// instead of being silent.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsQueueOverflowEmitsRescan() {
+    const testDir = await makeTempDir();
+    using watcher = Deno.watchFs(testDir);
+
+    // Produce more events than the internal queue can hold (1024 entries,
+    // see FS_EVENT_QUEUE_CAPACITY in runtime/ops/fs_events.rs) while the
+    // consumer is not yet polling.
+    for (let i = 0; i < 1500; i++) {
+      Deno.writeFileSync(`${testDir}/file${i}.txt`, new Uint8Array([1]));
+    }
+    // Give the watcher backend time to process (and overflow on) the burst
+    // before we start consuming.
+    await delay(3000);
+
+    // Escape hatch so the iteration below can't hang the test forever if
+    // the rescan event never arrives.
+    const deadline = setTimeout(() => watcher.close(), 20_000);
+    // Don't require the rescan to be the *first* event: on a slow runner the
+    // backend may not have overflowed the queue yet when polling starts, in
+    // which case some regular events are delivered before the overflow
+    // happens and is reported.
+    let sawRescan = false;
+    for await (const event of watcher) {
+      if (event.flag === "rescan") {
+        sawRescan = true;
+        break;
+      }
+    }
+    clearTimeout(deadline);
+    assert(sawRescan, "expected a rescan event after the queue overflowed");
+  },
+);
+
 // On macOS, FSEvents does not reliably emit remove events for individually
 // watched files. The previous implementation masked this by forwarding
 // unrelated events for any non-existent file to all watchers (the bug
@@ -408,6 +498,48 @@ Deno.test(
         );
       }
       if (event.kind === "create" || event.kind === "modify") {
+        assert(event.paths[0].includes("real.txt"));
+        break;
+      }
+    }
+  },
+);
+
+// Deletions inside an ignored directory must be suppressed (the removed-path
+// matching also has to consult the ignore set), while a deletion outside the
+// ignored directory still surfaces.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsIgnoreRemove() {
+    const testDir = await makeTempDir();
+    const ignoredDir = testDir + "/ignored";
+    Deno.mkdirSync(ignoredDir);
+
+    // Both files exist before watching starts so the only events come from
+    // the removals below.
+    const ignoredFile = ignoredDir + "/skip.txt";
+    const realFile = testDir + "/real.txt";
+    Deno.writeFileSync(ignoredFile, new Uint8Array([1, 2, 3]));
+    Deno.writeFileSync(realFile, new Uint8Array([1, 2, 3]));
+    await delay(100);
+
+    using watcher = Deno.watchFs(testDir, { ignore: [ignoredDir] });
+
+    // A removal inside the ignored directory must never surface.
+    await Deno.remove(ignoredFile);
+
+    // A removal outside the ignored directory is what we expect to observe.
+    await delay(100);
+    await Deno.remove(realFile);
+
+    for await (const event of watcher) {
+      for (const path of event.paths) {
+        assert(
+          !path.includes("ignored"),
+          `Received event for an ignored path: ${path}`,
+        );
+      }
+      if (event.kind === "remove") {
         assert(event.paths[0].includes("real.txt"));
         break;
       }
