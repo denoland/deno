@@ -81,7 +81,7 @@ fn int8_array<'s>(
   v8::Int8Array::new(scope, array_buffer, 0, len).unwrap()
 }
 
-fn simdutf_base64_decode(input: &[u8]) -> Option<Vec<u8>> {
+pub(crate) fn simdutf_base64_decode(input: &[u8]) -> Option<Vec<u8>> {
   use v8::simdutf;
 
   let max_len = simdutf::maximal_binary_length_from_base64(input);
@@ -103,7 +103,7 @@ fn simdutf_base64_decode(input: &[u8]) -> Option<Vec<u8>> {
   }
 }
 
-fn base64_clean(input: &str) -> String {
+pub(crate) fn base64_clean(input: &str) -> String {
   let trimmed = if let Some(eq_index) = input.find('=') {
     input[..eq_index].trim_start()
   } else {
@@ -137,6 +137,52 @@ fn base64_clean(input: &str) -> String {
   }
 }
 
+pub(crate) fn ascii_to_bytes(str: &str) -> Vec<u8> {
+  str.encode_utf16().map(|c| c as u8).collect()
+}
+
+pub(crate) fn base64_to_bytes(str: &str) -> Option<Vec<u8>> {
+  simdutf_base64_decode(str.as_bytes()).or_else(|| {
+    let standard = str.replace('-', "+").replace('_', "/");
+    let cleaned = base64_clean(&standard);
+    simdutf_base64_decode(cleaned.as_bytes())
+  })
+}
+
+pub(crate) fn base64_url_to_bytes(str: &str) -> Option<Vec<u8>> {
+  let cleaned = base64_clean(str);
+  let standard = cleaned.replace('-', "+").replace('_', "/");
+  simdutf_base64_decode(standard.as_bytes())
+}
+
+pub(crate) fn hex_to_bytes(str: &str) -> Vec<u8> {
+  let code_units = str.encode_utf16().collect::<Vec<_>>();
+  let length = code_units.len() >> 1;
+  let mut bytes = Vec::with_capacity(length);
+  for i in 0..length {
+    let a = UNHEX_TABLE[(code_units[i * 2] & 0xff) as usize];
+    let b = UNHEX_TABLE[(code_units[i * 2 + 1] & 0xff) as usize];
+    if a == -1 || b == -1 {
+      break;
+    }
+    bytes.push(((a << 4) | b) as u8);
+  }
+  bytes
+}
+
+pub(crate) fn utf16le_to_bytes(
+  str: &str,
+  max_length: Option<usize>,
+) -> Vec<u8> {
+  let length = max_length.unwrap_or_else(|| str.encode_utf16().count() * 2);
+  let mut bytes = Vec::with_capacity(length);
+  for code_unit in str.encode_utf16().take(length / 2) {
+    bytes.push(code_unit as u8);
+    bytes.push((code_unit >> 8) as u8);
+  }
+  bytes
+}
+
 fn ascii_to_bytes_callback(
   scope: &mut v8::PinScope,
   args: v8::FunctionCallbackArguments,
@@ -146,7 +192,7 @@ fn ascii_to_bytes_callback(
     throw_type_error(scope, "str must be a string");
     return;
   };
-  let bytes = str.encode_utf16().map(|c| c as u8).collect::<Vec<_>>();
+  let bytes = ascii_to_bytes(&str);
   let bytes = uint8_array(scope, bytes);
   rv.set(bytes.into());
 }
@@ -160,11 +206,7 @@ fn base64_to_bytes_callback(
     throw_type_error(scope, "str must be a string");
     return;
   };
-  let bytes = simdutf_base64_decode(str.as_bytes()).or_else(|| {
-    let standard = str.replace('-', "+").replace('_', "/");
-    let cleaned = base64_clean(&standard);
-    simdutf_base64_decode(cleaned.as_bytes())
-  });
+  let bytes = base64_to_bytes(&str);
   let Some(bytes) = bytes else {
     throw_error(scope, "Failed to decode base64");
     return;
@@ -182,9 +224,7 @@ fn base64_url_to_bytes_callback(
     throw_type_error(scope, "str must be a string");
     return;
   };
-  let cleaned = base64_clean(&str);
-  let standard = cleaned.replace('-', "+").replace('_', "/");
-  let Some(bytes) = simdutf_base64_decode(standard.as_bytes()) else {
+  let Some(bytes) = base64_url_to_bytes(&str) else {
     throw_error(scope, "Failed to decode base64url");
     return;
   };
@@ -201,17 +241,7 @@ fn hex_to_bytes_callback(
     throw_type_error(scope, "str must be a string");
     return;
   };
-  let code_units = str.encode_utf16().collect::<Vec<_>>();
-  let length = code_units.len() >> 1;
-  let mut bytes = Vec::with_capacity(length);
-  for i in 0..length {
-    let a = UNHEX_TABLE[(code_units[i * 2] & 0xff) as usize];
-    let b = UNHEX_TABLE[(code_units[i * 2 + 1] & 0xff) as usize];
-    if a == -1 || b == -1 {
-      break;
-    }
-    bytes.push(((a << 4) | b) as u8);
-  }
+  let bytes = hex_to_bytes(&str);
   let bytes = uint8_array(scope, bytes);
   rv.set(bytes.into());
 }
@@ -231,11 +261,7 @@ fn utf16le_to_bytes_callback(
     let units = units.uint32_value(scope).unwrap_or(0) as usize;
     length = length.min((units >> 1) * 2);
   }
-  let mut bytes = Vec::with_capacity(length);
-  for code_unit in str.encode_utf16().take(length / 2) {
-    bytes.push(code_unit as u8);
-    bytes.push((code_unit >> 8) as u8);
-  }
+  let bytes = utf16le_to_bytes(&str, Some(length));
   let bytes = uint8_array(scope, bytes);
   rv.set(bytes.into());
 }

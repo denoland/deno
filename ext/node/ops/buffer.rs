@@ -8,21 +8,11 @@ use deno_core::v8::MapFnTo;
 use deno_core::v8_static_strings;
 use deno_error::JsErrorBox;
 
-const UNHEX_TABLE: [i8; 256] = {
-  let mut table = [-1; 256];
-  let mut i = 0;
-  while i < 10 {
-    table[b'0' as usize + i] = i as i8;
-    i += 1;
-  }
-  i = 0;
-  while i < 6 {
-    table[b'A' as usize + i] = (10 + i) as i8;
-    table[b'a' as usize + i] = (10 + i) as i8;
-    i += 1;
-  }
-  table
-};
+use crate::ops::internal_binding_utils::ascii_to_bytes;
+use crate::ops::internal_binding_utils::base64_to_bytes;
+use crate::ops::internal_binding_utils::base64_url_to_bytes;
+use crate::ops::internal_binding_utils::hex_to_bytes;
+use crate::ops::internal_binding_utils::utf16le_to_bytes;
 
 #[op2(fast)]
 pub fn op_mark_as_untransferable(
@@ -582,77 +572,6 @@ fn parse_fill_encoding(
   }
 }
 
-fn simdutf_base64_decode(input: &[u8]) -> Option<Vec<u8>> {
-  use v8::simdutf;
-
-  let max_len = simdutf::maximal_binary_length_from_base64(input);
-  let mut output = vec![0; max_len];
-  // SAFETY: `output` is allocated to simdutf's reported maximum decoded length.
-  let result = unsafe {
-    simdutf::base64_to_binary(
-      input,
-      &mut output,
-      simdutf::Base64Options::Default,
-      simdutf::LastChunkHandling::Loose,
-    )
-  };
-  if result.is_ok() {
-    output.truncate(result.count);
-    Some(output)
-  } else {
-    None
-  }
-}
-
-fn base64_clean(input: &str) -> String {
-  let trimmed = if let Some(eq_index) = input.find('=') {
-    input[..eq_index].trim_start()
-  } else {
-    input.trim()
-  };
-  let mut cleaned = String::with_capacity(trimmed.len() + 2);
-  for ch in trimmed.chars() {
-    if matches!(ch, '+' | '/' | '-' | '_') || ch.is_ascii_alphanumeric() {
-      cleaned.push(ch);
-    }
-  }
-  let len = cleaned.len();
-  if len < 2 {
-    return String::new();
-  }
-  match len % 4 {
-    0 => cleaned,
-    1 => {
-      cleaned.pop();
-      cleaned
-    }
-    2 => {
-      cleaned.push_str("==");
-      cleaned
-    }
-    3 => {
-      cleaned.push('=');
-      cleaned
-    }
-    _ => unreachable!(),
-  }
-}
-
-fn hex_to_bytes(str: &str) -> Vec<u8> {
-  let code_units = str.encode_utf16().collect::<Vec<_>>();
-  let length = code_units.len() >> 1;
-  let mut bytes = Vec::with_capacity(length);
-  for i in 0..length {
-    let a = UNHEX_TABLE[(code_units[i * 2] & 0xff) as usize];
-    let b = UNHEX_TABLE[(code_units[i * 2 + 1] & 0xff) as usize];
-    if a == -1 || b == -1 {
-      break;
-    }
-    bytes.push(((a << 4) | b) as u8);
-  }
-  bytes
-}
-
 fn string_fill_pattern(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
@@ -661,30 +580,11 @@ fn string_fill_pattern(
   let str = value.to_string(scope)?.to_rust_string_lossy(scope);
   match encoding {
     FillEncoding::Utf8 => Some(str.into_bytes()),
-    FillEncoding::Latin1 => {
-      Some(str.encode_utf16().map(|code| code as u8).collect())
-    }
-    FillEncoding::Ucs2 => {
-      let mut bytes = Vec::with_capacity(str.encode_utf16().count() * 2);
-      for code_unit in str.encode_utf16() {
-        bytes.push(code_unit as u8);
-        bytes.push((code_unit >> 8) as u8);
-      }
-      Some(bytes)
-    }
+    FillEncoding::Latin1 => Some(ascii_to_bytes(&str)),
+    FillEncoding::Ucs2 => Some(utf16le_to_bytes(&str, None)),
     FillEncoding::Hex => Some(hex_to_bytes(&str)),
-    FillEncoding::Base64 => {
-      simdutf_base64_decode(str.as_bytes()).or_else(|| {
-        let standard = str.replace('-', "+").replace('_', "/");
-        let cleaned = base64_clean(&standard);
-        simdutf_base64_decode(cleaned.as_bytes())
-      })
-    }
-    FillEncoding::Base64Url => {
-      let cleaned = base64_clean(&str);
-      let standard = cleaned.replace('-', "+").replace('_', "/");
-      simdutf_base64_decode(standard.as_bytes())
-    }
+    FillEncoding::Base64 => base64_to_bytes(&str),
+    FillEncoding::Base64Url => base64_url_to_bytes(&str),
   }
 }
 
