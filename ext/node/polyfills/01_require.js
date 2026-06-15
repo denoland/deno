@@ -3414,6 +3414,15 @@ function initialize(args) {
 
 globalThis.nodeBootstrap = initialize;
 
+// node-defer: `initialize()` is the only place that sets
+// `usesLocalNodeModulesDir`, but it does not auto-run when node:module is
+// loaded lazily (see below). Apply the node_modules-dir mode from the stashed
+// bootstrap args at module-eval so `require.resolve(x, { paths })` and the
+// bare-specifier resolution fallback behave the same as in the eager path.
+if (!initialized && internals.__nodeBootstrapArgs?.usesLocalNodeModulesDir) {
+  usesLocalNodeModulesDir = true;
+}
+
 // node-defer: node:process's own deferred trigger runs the process half of
 // the bootstrap (`__bootstrapNodeProcess`) on first node:* use. The other
 // half of `initialize` (worker_threads alias, IPC, cluster, console<->process
