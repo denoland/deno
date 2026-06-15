@@ -271,6 +271,22 @@ Deno.test("[util] styleText() with array of formats", () => {
   assertEquals(colored, "\x1b[31m\x1b[32merror\x1b[39m\x1b[39m");
 });
 
+Deno.test("[util] styleText() respects stream.isTTY", () => {
+  const streamTTY = { write() {}, isTTY: true } as unknown as NodeJS.WritableStream;
+  const streamNoTTY = { write() {}, isTTY: false } as unknown as NodeJS.WritableStream;
+
+  const redText = util.styleText("red", "TTY", { stream: streamTTY });
+  assertEquals(redText, "\x1b[31mTTY\x1b[39m");
+
+  const plainText = util.styleText("blue", "No TTY", { stream: streamNoTTY });
+  const greenText = util.styleText("green", "No TTY", {
+    stream: streamNoTTY,
+    validateStream: false,
+  });
+  assertEquals(plainText, "No TTY");
+  assertEquals(greenText, "\x1b[32mNo TTY\x1b[39m");
+});
+
 Deno.test("[util] stripVTControlCharacters() removes OSC 8 hyperlinks", () => {
   // OSC 8 hyperlink with ESC \ (ST) terminator
   const input =
