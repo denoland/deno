@@ -2219,6 +2219,9 @@ ObjectAssign(exportsObj, {
   threadId: 0,
   workerData: null,
   isMainThread: true,
+  // Deno has no internal Node worker threads (e.g. module loader threads),
+  // so this is always false in the main thread and user-created workers.
+  isInternalThread: false,
   resourceLimits: undefined,
   threadName: "",
   markAsUncloneable,
