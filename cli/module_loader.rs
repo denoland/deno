@@ -150,6 +150,8 @@ pub struct PrepareModuleLoadOptions<'a> {
   pub permissions: PermissionsContainer,
   pub ext_overwrite: Option<&'a String>,
   pub allow_unknown_media_types: bool,
+  pub extra_imports: Vec<deno_graph::ReferrerImports>,
+  pub extra_type_roots: Vec<ModuleSpecifier>,
   /// Whether to skip validating the graph roots. This is useful
   /// for when you want to defer doing this until later (ex. get the
   /// graph back, reload some specifiers in it, then do graph validation).
@@ -192,6 +194,8 @@ impl ModuleLoadPreparer {
       permissions,
       ext_overwrite,
       allow_unknown_media_types,
+      extra_imports,
+      extra_type_roots,
       skip_graph_roots_validation,
       file_content_overrides,
     } = options;
@@ -226,18 +230,33 @@ impl ModuleLoadPreparer {
     log::debug!("Building module graph.");
     let has_type_checked = !graph.roots.is_empty();
 
-    self
-      .module_graph_builder
-      .build_graph_roots_with_npm_resolution(
-        graph,
-        roots.to_vec(),
-        BuildGraphWithNpmOptions {
-          is_dynamic,
-          loader: Some(&loader),
-          npm_caching: self.options.default_npm_caching_strategy(),
-        },
-      )
-      .await?;
+    if extra_imports.is_empty() {
+      self
+        .module_graph_builder
+        .build_graph_roots_with_npm_resolution(
+          graph,
+          roots.to_vec(),
+          BuildGraphWithNpmOptions {
+            is_dynamic,
+            loader: Some(&loader),
+            npm_caching: self.options.default_npm_caching_strategy(),
+          },
+        )
+        .await?;
+    } else {
+      self
+        .module_graph_builder
+        .build_graph_with_npm_resolution(
+          graph,
+          BuildGraphRequest::Roots(roots.to_vec(), extra_imports),
+          BuildGraphWithNpmOptions {
+            is_dynamic,
+            loader: Some(&loader),
+            npm_caching: self.options.default_npm_caching_strategy(),
+          },
+        )
+        .await?;
+    }
 
     if !skip_graph_roots_validation {
       self.graph_roots_valid(graph, roots, allow_unknown_media_types, false)?;
@@ -258,6 +277,7 @@ impl ModuleLoadPreparer {
           lib,
           reload: self.options.reload_flag(),
           type_check_mode: self.options.type_check_mode(),
+          extra_type_roots,
         },
       )?;
     }
@@ -668,6 +688,8 @@ impl<TGraphContainer: ModuleGraphContainer>
           permissions: permissions.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: false,
+          extra_imports: Vec::new(),
+          extra_type_roots: Vec::new(),
           skip_graph_roots_validation: true,
           file_content_overrides: HashMap::new(),
         },
@@ -1492,6 +1514,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               permissions: permissions.clone(),
               ext_overwrite: None,
               allow_unknown_media_types: false,
+              extra_imports: Vec::new(),
+              extra_type_roots: Vec::new(),
               skip_graph_roots_validation: is_dynamic,
               file_content_overrides: file_overrides,
             },

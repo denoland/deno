@@ -640,6 +640,7 @@ impl ModuleGraphCreator {
         lib: self.options.ts_type_lib_window(),
         reload: self.options.reload_flag(),
         type_check_mode: self.options.type_check_mode(),
+        extra_type_roots: Vec::new(),
       },
     )
   }

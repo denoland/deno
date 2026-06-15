@@ -453,6 +453,7 @@ impl PublishPreparer {
             lib: self.cli_options.ts_type_lib_window(),
             reload: self.cli_options.reload_flag(),
             type_check_mode: self.cli_options.type_check_mode(),
+            extra_type_roots: Vec::new(),
           },
         )?;
         // ignore unused (type) parameter diagnostics that may occur due to fast

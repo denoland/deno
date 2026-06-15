@@ -52,6 +52,8 @@ pub struct MainModuleGraphContainer {
 pub struct CheckSpecifiersOptions<'a> {
   pub ext_overwrite: Option<&'a String>,
   pub allow_unknown_media_types: bool,
+  pub extra_imports: Vec<deno_graph::ReferrerImports>,
+  pub extra_type_roots: Vec<deno_ast::ModuleSpecifier>,
 }
 
 pub struct CollectSpecifiersOptions {
@@ -94,6 +96,8 @@ impl MainModuleGraphContainer {
           permissions: self.root_permissions.clone(),
           ext_overwrite: options.ext_overwrite,
           allow_unknown_media_types: options.allow_unknown_media_types,
+          extra_imports: options.extra_imports,
+          extra_type_roots: options.extra_type_roots,
           skip_graph_roots_validation: false,
           file_content_overrides: Default::default(),
         },

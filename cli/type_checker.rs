@@ -108,6 +108,9 @@ pub struct CheckOptions {
   pub reload: bool,
   /// Mode to type check with.
   pub type_check_mode: TypeCheckMode,
+  /// Extra declaration modules to include in the TypeScript program without
+  /// treating them as user-provided check roots.
+  pub extra_type_roots: Vec<ModuleSpecifier>,
 }
 
 pub struct TypeChecker {
@@ -319,7 +322,7 @@ impl TypeChecker {
 
     // split the roots by what we can send to the ts compiler all at once
     let grouped_roots =
-      self.group_roots_by_compiler_options(&graph, options.lib)?;
+      self.group_roots_by_compiler_options(&graph, options.lib, &options)?;
 
     Ok(DiagnosticsByFolderIterator(
       DiagnosticsByFolderIteratorInner::Real(DiagnosticsByFolderRealIterator {
@@ -360,6 +363,7 @@ impl TypeChecker {
     &'a self,
     graph: &ModuleGraph,
     lib: TsTypeLib,
+    options: &CheckOptions,
   ) -> Result<Vec<CheckGroup<'a>>, CheckError> {
     let group_count = self.compiler_options_resolver.size();
     let mut imports_for_specifier = HashMap::with_capacity(group_count);
@@ -378,6 +382,15 @@ impl TypeChecker {
           ))
         })
         .clone();
+      let imports = if options.extra_type_roots.is_empty() {
+        imports
+      } else {
+        let mut imports = (*imports).clone();
+        imports.extend(options.extra_type_roots.iter().cloned());
+        imports.sort();
+        imports.dedup();
+        Rc::new(imports)
+      };
       let group_key = (compiler_options, imports.clone());
       let group = groups_by_key.entry(group_key).or_insert_with(|| {
         let dir = self.cli_options.workspace().resolve_member_dir(root);

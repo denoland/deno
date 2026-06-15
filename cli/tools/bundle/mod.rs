@@ -2058,6 +2058,8 @@ impl DenoPluginHandler {
           permissions: self.permissions.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: true,
+          extra_imports: Vec::new(),
+          extra_type_roots: Vec::new(),
           skip_graph_roots_validation: true,
           file_content_overrides: Default::default(),
         },

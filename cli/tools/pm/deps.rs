@@ -815,6 +815,8 @@ impl DepManager {
           permissions: self.permissions_container.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: true,
+          extra_imports: Vec::new(),
+          extra_type_roots: Vec::new(),
           skip_graph_roots_validation: false,
           file_content_overrides: Default::default(),
         },
