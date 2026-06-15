@@ -150,15 +150,18 @@ async fn start_connect(
   addr: SocketAddr,
   cancel_handle: Option<Rc<CancelHandle>>,
 ) -> Result<(TcpStream, SocketAddr), IoError> {
-  let stream = if let Some(cancel) = cancel_handle {
-    TcpStream::connect(addr)
-      .or_cancel(&cancel)
-      .await
-      .map_err(|_| {
+  let stream = match cancel_handle {
+    Some(cancel) => {
+      // `or_cancel` yields a nested `Result<Result<TcpStream, IoError>, _>`:
+      // the outer layer reports cancellation, the inner one the connect
+      // itself. Unwrap them on separate lines so the two `?` read clearly.
+      let connect = TcpStream::connect(addr).or_cancel(&cancel).await;
+      let connect = connect.map_err(|_| {
         IoError::new(ErrorKind::Interrupted, "Connection cancelled")
-      })??
-  } else {
-    TcpStream::connect(addr).await?
+      })?;
+      connect?
+    }
+    None => TcpStream::connect(addr).await?,
   };
   Ok((stream, addr))
 }
