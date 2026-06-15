@@ -3,6 +3,8 @@
 use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::sync::LazyLock;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use color_print::cformat;
 use color_print::cstr;
@@ -10,6 +12,24 @@ use deno_core::error::JsError;
 use deno_core::error::format_frame;
 use deno_core::url::Url;
 use deno_terminal::colors;
+
+/// Set to `true` when user code assigns to `Object.prototype.__proto__` while
+/// the accessor is disabled (the default, unless `--unstable-unsafe-proto`).
+/// The assignment itself stays a silent no-op so fragile packages keep working
+/// (see denoland/deno#34730 / #34772, where throwing broke Playwright); this
+/// flag only lets the uncaught-error formatter nudge toward the escape hatch.
+/// Written by `op_proto_set_attempted`, read by `get_suggestions_for_terminal_errors`.
+pub static PROTO_SET_ATTEMPTED: AtomicBool = AtomicBool::new(false);
+
+/// Set to `true` when user code reads `Object.prototype.__proto__` while the
+/// accessor is disabled (the read returns `undefined`). Unlike a write, a read
+/// crashes right at the access site (e.g. `who.__proto__.constructor` throws on
+/// the same line), so on its own a read flag is too noisy to nudge on: programs
+/// routinely probe `__proto__` for feature detection without anything going
+/// wrong. The error formatter therefore only suggests the escape hatch when
+/// this flag is set *and* the crashing error mentions `__proto__`.
+/// Written by `op_proto_get_attempted`, read by `get_suggestions_for_terminal_errors`.
+pub static PROTO_GET_ATTEMPTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone)]
 struct ErrorReference<'a> {
@@ -352,6 +372,46 @@ fn format_js_error_inner(
 }
 
 fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
+  let mut suggestions = get_message_suggestions(e);
+  // A `__proto__` *write* silently no-ops and the breakage surfaces downstream
+  // at an unrelated-looking line, so any later crash is reason enough to point
+  // at the escape hatch. A `__proto__` *read* instead returns `undefined` and
+  // blows up right at the access site, so we only nudge when `__proto__` is on
+  // the crashing line/message, to avoid bothering programs that merely probed
+  // `__proto__` once (feature detection) and then crashed for another reason.
+  let info = if PROTO_SET_ATTEMPTED.load(Ordering::Relaxed) {
+    Some(cstr!(
+      "This program assigned to <u>Object.prototype.__proto__</>, which Deno disables by default."
+    ))
+  } else if PROTO_GET_ATTEMPTED.load(Ordering::Relaxed)
+    && error_mentions_proto(e)
+  {
+    Some(cstr!(
+      "This program read <u>Object.prototype.__proto__</>, which Deno disables by default (it returns <i>undefined</>)."
+    ))
+  } else {
+    None
+  };
+  if let Some(info) = info {
+    suggestions.push(FixSuggestion::info(info));
+    suggestions.push(FixSuggestion::hint(cstr!(
+      "If this caused the error, run again with <u>--unstable-unsafe-proto</> to restore it."
+    )));
+  }
+  suggestions
+}
+
+fn error_mentions_proto(e: &JsError) -> bool {
+  e.source_line
+    .as_deref()
+    .is_some_and(|l| l.contains("__proto__"))
+    || e
+      .message
+      .as_deref()
+      .is_some_and(|m| m.contains("__proto__"))
+}
+
+fn get_message_suggestions(e: &JsError) -> Vec<FixSuggestion<'_>> {
   if let Some(msg) = &e.message {
     if msg.contains("module is not defined")
       || msg.contains("exports is not defined")
