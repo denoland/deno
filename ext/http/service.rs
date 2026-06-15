@@ -175,13 +175,16 @@ impl ActiveWebSockets {
       (Some(_), _) => return,
     };
     self.shutting_down.set(Some(effective));
-    for ws in self
+    // Bind first: `for ... in self.entries.borrow().values()...collect()`
+    // would hold the `Ref` across the loop body, blocking any re-entry into
+    // the registry from `apply_shutdown`.
+    let live: Vec<Rc<deno_websocket::ServerWebSocket>> = self
       .entries
       .borrow()
       .values()
       .filter_map(|w| w.upgrade())
-      .collect::<Vec<_>>()
-    {
+      .collect();
+    for ws in live {
       apply_shutdown(&ws, effective);
     }
   }
