@@ -5,11 +5,12 @@
     "myvar": "myval",
     "nested": { "inner": 42 },
     "list": ["first", "second"],
-    "flag": true
+    "flag": true,
+    "empty": null
   },
   "scripts": {
     "preenv": "echo pre_lifecycle_event:$npm_lifecycle_event",
-    "env": "echo name:$npm_package_name && echo version:$npm_package_version && echo config_myvar:$npm_package_config_myvar && echo config_nested_inner:$npm_package_config_nested_inner && echo config_list_0:$npm_package_config_list_0 && echo config_list_1:$npm_package_config_list_1 && echo config_flag:$npm_package_config_flag && echo lifecycle_event:$npm_lifecycle_event && echo has_package_json:$npm_package_json",
+    "env": "echo name:$npm_package_name && echo version:$npm_package_version && echo config_myvar:$npm_package_config_myvar && echo config_nested_inner:$npm_package_config_nested_inner && echo config_list_0:$npm_package_config_list_0 && echo config_list_1:$npm_package_config_list_1 && echo config_flag:$npm_package_config_flag && deno eval \"console.log('config_empty_set:' + Deno.env.has('npm_package_config_empty') + ',value:[' + Deno.env.get('npm_package_config_empty') + ']')\" && echo lifecycle_event:$npm_lifecycle_event && echo has_package_json:$npm_package_json",
     "postenv": "echo post_lifecycle_event:$npm_lifecycle_event"
   }
 }

@@ -1049,7 +1049,8 @@ fn npm_package_env_vars(
 
 /// Recursively flatten a package.json `config` value into env vars, matching
 /// npm: nested object/array keys are joined with `_` (arrays use numeric
-/// indices) and scalar leaves are stringified. Null leaves are skipped.
+/// indices) and scalar leaves are stringified. Null leaves are set to an empty
+/// string (matching npm).
 fn flatten_config_env_var(
   env_vars: &mut HashMap<OsString, OsString>,
   prefix: &str,
@@ -1075,7 +1076,9 @@ fn flatten_config_env_var(
     Value::Bool(b) => {
       env_vars.insert(OsString::from(prefix), OsString::from(b.to_string()));
     }
-    Value::Null => {}
+    Value::Null => {
+      env_vars.insert(OsString::from(prefix), OsString::new());
+    }
   }
 }
 
