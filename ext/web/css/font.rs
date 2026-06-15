@@ -6,6 +6,7 @@ use cssparser::match_ignore_ascii_case;
 
 use super::error::CSSCustomError;
 use super::error::CSSParseError;
+use super::value::Length;
 use super::value::NumericValue;
 use super::value::ParseOptions;
 use super::value::Parser;
@@ -56,129 +57,29 @@ pub enum TextRendering {
   GeometricPrecision,
 }
 
-/// Length units accepted for `letterSpacing` / `wordSpacing`.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum SpacingUnit {
-  Px,
-  Cm,
-  Mm,
-  Q,
-  In,
-  Pc,
-  Pt,
-  Em,
-  Rem,
-  Ex,
-  Ch,
-  Ic,
-}
-
-impl SpacingUnit {
-  fn from_css(unit: &str) -> Option<Self> {
-    match_ignore_ascii_case! { unit,
-      "px" => Some(Self::Px),
-      "cm" => Some(Self::Cm),
-      "mm" => Some(Self::Mm),
-      "q" => Some(Self::Q),
-      "in" => Some(Self::In),
-      "pc" => Some(Self::Pc),
-      "pt" => Some(Self::Pt),
-      "em" => Some(Self::Em),
-      "rem" => Some(Self::Rem),
-      "ex" => Some(Self::Ex),
-      "ch" => Some(Self::Ch),
-      "ic" => Some(Self::Ic),
-      _ => None,
-    }
-  }
-
-  fn to_css_str(self) -> &'static str {
-    match self {
-      Self::Px => "px",
-      Self::Cm => "cm",
-      Self::Mm => "mm",
-      Self::Q => "q",
-      Self::In => "in",
-      Self::Pc => "pc",
-      Self::Pt => "pt",
-      Self::Em => "em",
-      Self::Rem => "rem",
-      Self::Ex => "ex",
-      Self::Ch => "ch",
-      Self::Ic => "ic",
-    }
-  }
-}
-
-/// A CSS `<length>` for `letterSpacing` / `wordSpacing`, kept in its original
-/// unit so that font-relative values follow later font size changes.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Spacing {
-  pub value: f32,
-  pub unit: SpacingUnit,
-}
-
-impl Default for Spacing {
-  fn default() -> Self {
-    Self {
-      value: 0.0,
-      unit: SpacingUnit::Px,
-    }
-  }
-}
-
-impl Spacing {
-  pub fn to_css_string(&self) -> String {
-    format!("{}{}", self.value, self.unit.to_css_str())
-  }
-
-  /// Resolves the spacing to pixels against the given font size.
-  /// ex/ch/ic have no exact mapping without font metrics; common
-  /// approximations are used instead.
-  pub fn to_pixels(&self, font_size: f32) -> f32 {
-    const INCH_TO_PX: f32 = 96.0;
-    const INCH_TO_CM: f32 = 2.54;
-    let value = self.value;
-    match self.unit {
-      SpacingUnit::Px => value,
-      SpacingUnit::Cm => value * (INCH_TO_PX / INCH_TO_CM),
-      SpacingUnit::Mm => value * (INCH_TO_PX / INCH_TO_CM / 10.0),
-      SpacingUnit::Q => value * (INCH_TO_PX / INCH_TO_CM / 40.0),
-      SpacingUnit::In => value * INCH_TO_PX,
-      SpacingUnit::Pc => value * (INCH_TO_PX / 6.0),
-      SpacingUnit::Pt => value * (INCH_TO_PX / 72.0),
-      SpacingUnit::Em => value * font_size,
-      SpacingUnit::Rem => value * 16.0,
-      SpacingUnit::Ex => value * 0.5 * font_size,
-      SpacingUnit::Ch => value * 0.5 * font_size,
-      SpacingUnit::Ic => value * font_size,
-    }
-  }
-}
-
 /// Parses a CSS `<length>` value for `letterSpacing` / `wordSpacing`.
+///
+/// Font-relative units are kept in their original unit (resolved lazily against
+/// the current font size via [`Length::resolve_to_pixels`]) so they follow
+/// later font size changes. Inside math functions (e.g. `calc()`) font-relative
+/// units are folded to pixels against the default em base at parse time.
 /// Returns `None` for invalid or unsupported values.
-pub fn parse_css_spacing(s: &str) -> Option<Spacing> {
+pub fn parse_css_spacing(s: &str) -> Option<Length> {
   let mut input = ParserInput::new(s.trim());
   let mut parser = Parser::new(&mut input);
-  let spacing = match parser.next().ok()?.clone() {
-    // The literal `0` is a valid <length>.
-    Token::Number { value, .. } => {
-      if value != 0.0 {
-        return None;
-      }
-      Spacing::default()
-    }
-    Token::Dimension { value, unit, .. } if value.is_finite() => Spacing {
-      value,
-      unit: SpacingUnit::from_css(&unit)?,
+  let value = NumericValue::parse(
+    &mut parser,
+    ParseOptions {
+      em_base: Some(EM_BASE_PX),
     },
-    _ => return None,
-  };
+  )
+  .ok()?;
+  // The literal `0` is a valid <length>; everything else must be a length.
+  let length = value.expect_length(true).ok()?;
   if !parser.is_exhausted() {
     return None;
   }
-  Some(spacing)
+  Some(length)
 }
 
 #[derive(Clone, Debug)]
@@ -193,9 +94,9 @@ pub struct FontState {
   pub font_kerning: FontKerning,
   pub font_variant_caps: FontVariantCaps,
   /// CSS letter-spacing value (default `0px`).
-  pub letter_spacing: Spacing,
+  pub letter_spacing: Length,
   /// CSS word-spacing value (default `0px`).
-  pub word_spacing: Spacing,
+  pub word_spacing: Length,
   pub text_rendering: TextRendering,
 }
 
@@ -211,8 +112,8 @@ impl Default for FontState {
       direction: TextDirection::default(),
       font_kerning: FontKerning::default(),
       font_variant_caps: FontVariantCaps::default(),
-      letter_spacing: Spacing::default(),
-      word_spacing: Spacing::default(),
+      letter_spacing: Length::zero(),
+      word_spacing: Length::zero(),
       text_rendering: TextRendering::default(),
     }
   }
@@ -455,7 +356,7 @@ fn parse_css_font_inner<'i, 't>(
     })
     .ok()?;
   let size = match size_value {
-    NumericValue::Length(l) => l.to_pixels() as f32,
+    NumericValue::Length(l) => l.resolve_to_pixels(EM_BASE_PX) as f32,
     NumericValue::Percent(p) => (p * EM_BASE_PX) as f32,
     NumericValue::Zero => 0.0f32,
     _ => return None,
@@ -476,7 +377,7 @@ fn parse_css_font_inner<'i, 't>(
       )?;
       match lh_value {
         NumericValue::Number(n) => Ok((n * EM_BASE_PX) as f32),
-        NumericValue::Length(l) => Ok(l.to_pixels() as f32),
+        NumericValue::Length(l) => Ok(l.resolve_to_pixels(EM_BASE_PX) as f32),
         NumericValue::Percent(pct) => Ok((pct * EM_BASE_PX) as f32),
         NumericValue::Zero => Ok(0.0f32),
         _ => Err(p.new_custom_error(CSSCustomError::UnexpectedNumericType)),
@@ -749,20 +650,31 @@ mod tests {
   fn spacing_parse_and_serialize() {
     let s = parse_css_spacing("3px").unwrap();
     assert_eq!(s.to_css_string(), "3px");
-    assert_eq!(s.to_pixels(10.0), 3.0);
+    assert_eq!(s.resolve_to_pixels(10.0), 3.0);
 
     let s = parse_css_spacing("1EX").unwrap();
     assert_eq!(s.to_css_string(), "1ex");
+    assert_eq!(s.resolve_to_pixels(20.0), 10.0);
 
     let s = parse_css_spacing("1em").unwrap();
     assert_eq!(s.to_css_string(), "1em");
-    assert_eq!(s.to_pixels(20.0), 20.0);
+    assert_eq!(s.resolve_to_pixels(20.0), 20.0);
+
+    // `rem` resolves against the fixed 16px root font size, not `font_size`.
+    let s = parse_css_spacing("1rem").unwrap();
+    assert_eq!(s.to_css_string(), "1rem");
+    assert_eq!(s.resolve_to_pixels(20.0), 16.0);
 
     let s = parse_css_spacing("-0.1cm").unwrap();
     assert_eq!(s.to_css_string(), "-0.1cm");
 
     let s = parse_css_spacing("0").unwrap();
     assert_eq!(s.to_css_string(), "0px");
+
+    // CSS math functions are supported; font-relative units inside them are
+    // folded against the default em base (10px) at parse time.
+    let s = parse_css_spacing("calc(1em + 2px)").unwrap();
+    assert_eq!(s.resolve_to_pixels(20.0), 12.0);
 
     assert!(parse_css_spacing("5").is_none());
     assert!(parse_css_spacing("0s").is_none());

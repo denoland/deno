@@ -13,17 +13,17 @@ use crate::css::error::CSSParseError;
 use crate::f64::maximum;
 use crate::f64::minimum;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Length {
   value: f64,
   unit: LengthUnit,
 }
 
-// Currently, only Absolute Length Units are supported
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
 enum LengthUnit {
+  // https://www.w3.org/TR/css-values-4/#absolute-lengths
   Cm,
   Mm,
   Q,
@@ -31,14 +31,50 @@ enum LengthUnit {
   Pc,
   Pt,
   Px,
+  // https://www.w3.org/TR/css-values-4/#font-relative-lengths
+  Em,
+  Rem,
+  Ex,
+  Ch,
+  Ic,
+}
+
+impl LengthUnit {
+  #[inline]
+  fn is_absolute(self) -> bool {
+    matches!(
+      self,
+      Self::Cm | Self::Mm | Self::Q | Self::In | Self::Pc | Self::Pt | Self::Px
+    )
+  }
+
+  fn to_css_str(self) -> &'static str {
+    match self {
+      Self::Cm => "cm",
+      Self::Mm => "mm",
+      Self::Q => "q",
+      Self::In => "in",
+      Self::Pc => "pc",
+      Self::Pt => "pt",
+      Self::Px => "px",
+      Self::Em => "em",
+      Self::Rem => "rem",
+      Self::Ex => "ex",
+      Self::Ch => "ch",
+      Self::Ic => "ic",
+    }
+  }
 }
 
 impl Length {
   const INCH_TO_PX: f64 = 96.0;
   const INCH_TO_CM: f64 = 2.54;
+  // `rem` resolves against the root font size, which is fixed at 16px in
+  // OffscreenCanvas (no DOM root is available).
+  const ROOT_FONT_SIZE_PX: f64 = 16.0;
 
   #[inline]
-  fn from_pixels(value: f64) -> Self {
+  pub(crate) fn from_pixels(value: f64) -> Self {
     Self {
       value,
       unit: LengthUnit::Px,
@@ -46,7 +82,11 @@ impl Length {
   }
 
   #[inline]
-  pub fn to_pixels(&self) -> f64 {
+  pub(crate) fn zero() -> Self {
+    Self::from_pixels(0.0)
+  }
+
+  fn resolve(&self, font_size: f64) -> f64 {
     let value = self.value;
     match self.unit {
       LengthUnit::Cm => value * (Self::INCH_TO_PX / Self::INCH_TO_CM),
@@ -56,7 +96,37 @@ impl Length {
       LengthUnit::Pc => value * (Self::INCH_TO_PX / 6.0),
       LengthUnit::Pt => value * (Self::INCH_TO_PX / 72.0),
       LengthUnit::Px => value,
+      // Font-relative units. `ex`/`ch` use the common 0.5em approximation
+      // since the actual x-height / advance measure is not tracked here.
+      LengthUnit::Em => value * font_size,
+      LengthUnit::Rem => value * Self::ROOT_FONT_SIZE_PX,
+      LengthUnit::Ex => value * 0.5 * font_size,
+      LengthUnit::Ch => value * 0.5 * font_size,
+      LengthUnit::Ic => value * font_size,
     }
+  }
+
+  /// Resolves an absolute `<length>` to pixels. Only valid for absolute units;
+  /// font-relative units never reach here (they are rejected at parse time in
+  /// contexts that call this, e.g. transforms).
+  #[inline]
+  pub fn to_pixels(&self) -> f64 {
+    debug_assert!(self.unit.is_absolute());
+    self.resolve(0.0)
+  }
+
+  /// Resolves a `<length>` to pixels, resolving font-relative units against the
+  /// given `font_size` (and `rem` against the fixed root font size).
+  #[inline]
+  pub fn resolve_to_pixels(&self, font_size: f64) -> f64 {
+    self.resolve(font_size)
+  }
+
+  pub fn to_css_string(&self) -> String {
+    // CSS numeric literals are parsed at f32 precision (cssparser), so format
+    // the value as f32 to avoid f32->f64 widening noise (e.g. `-0.1` becoming
+    // `-0.10000000149011612`).
+    format!("{}{}", self.value as f32, self.unit.to_css_str())
   }
 }
 
@@ -951,16 +1021,32 @@ impl NumericValue {
           "pc" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Pc }).into()),
           "pt" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Pt }).into()),
           "px" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Px }).into()),
-          // https://www.w3.org/TR/css-values-4/#relative-lengths
-          // em/rem can be resolved when em_base is provided
-          "em" | "rem" => {
-            if let Some(base) = state.em_base {
-              Ok(NumericValue::Length(Length::from_pixels(value * base)).into())
+          // https://www.w3.org/TR/css-values-4/#font-relative-lengths
+          // Font-relative units are only accepted when em_base is provided
+          // (font / spacing contexts). At the top level they are kept in their
+          // original unit so they can be resolved lazily against the actual
+          // font size; inside math functions they must be folded to pixels so
+          // the dimension arithmetic stays in pixels.
+          "em" | "rem" | "ex" | "ch" | "ic" => {
+            let Some(base) = state.em_base else {
+              return Err(input.new_custom_error(CSSCustomError::ContainsRelativeLengthValues));
+            };
+            let unit = match_ignore_ascii_case! { &unit,
+              "em" => LengthUnit::Em,
+              "rem" => LengthUnit::Rem,
+              "ex" => LengthUnit::Ex,
+              "ch" => LengthUnit::Ch,
+              "ic" => LengthUnit::Ic,
+              _ => unreachable!(),
+            };
+            let length = Length { value, unit };
+            if state.function_depth == 0 {
+              Ok(NumericValue::Length(length).into())
             } else {
-              Err(input.new_custom_error(CSSCustomError::ContainsRelativeLengthValues))
+              Ok(NumericValue::Length(Length::from_pixels(length.resolve_to_pixels(base))).into())
             }
           },
-          "ex" | "rex" | "cap" | "rcap" | "ch" | "rch" | "ic" | "ric" | "lh" | "rlh" |
+          "rex" | "cap" | "rcap" | "rch" | "ric" | "lh" | "rlh" |
           "vw" | "svw" | "lvw" | "dvw" | "vh" | "svh" | "lvh" | "dvh" | "vi" | "svi" | "lvi" | "dvi" |
           "vb" | "svb" | "lvb" | "dvb" | "vmin" | "svmin" | "lvmin" | "dvmin" | "vmax" | "svmax" | "lvmax" | "dvmax" |
           // https://www.w3.org/TR/css-contain-3/#container-lengths
