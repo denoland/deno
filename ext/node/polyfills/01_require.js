@@ -404,6 +404,19 @@ const lazyNodeModules = {
   "perf_hooks": () => core.loadExtScript("ext:deno_node/perf_hooks.js").default,
   "querystring": () =>
     core.loadExtScript("ext:deno_node/querystring.js").default,
+  "inspector": () => core.loadExtScript("ext:deno_node/inspector.js"),
+  "inspector/promises": () =>
+    core.loadExtScript("ext:deno_node/inspector/promises.js"),
+  "_stream_duplex": () =>
+    core.loadExtScript("ext:deno_node/internal/streams/duplex.js").default,
+  "_stream_passthrough": () =>
+    core.loadExtScript("ext:deno_node/internal/streams/passthrough.js").default,
+  "_stream_readable": () =>
+    core.loadExtScript("ext:deno_node/internal/streams/readable.js").default,
+  "_stream_transform": () =>
+    core.loadExtScript("ext:deno_node/internal/streams/transform.js").default,
+  "_stream_writable": () =>
+    core.loadExtScript("ext:deno_node/internal/streams/writable.js").default,
 };
 
 function defineLazyNativeModule(name, loader) {
