@@ -1,11 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// Mirrors Node's internal/util/colors.shouldColorize.
-// Kept in a standalone module so both internal/util.mjs and
-// internal/util/inspect.mjs can import it without introducing a circular
-// dependency (errors.ts imports inspect.mjs, so inspect.mjs cannot import
-// anything that transitively depends on errors.ts).
-
 (function () {
 const { primordials } = __bootstrap;
 const { String } = primordials;
