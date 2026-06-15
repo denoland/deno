@@ -1107,10 +1107,13 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   // handle (so `--allow-net=<host>` keeps authorizing the IPs Deno resolved
   // for it). A custom `lookup` returns arbitrary IPs, so its result is checked
   // against the literal IP with no hostname substitution (GHSA-fhjh-jqv7-m238).
-  const usingDefaultLookup = options.lookup === undefined;
+  // This must stay in sync with the `lookup` selection below: any falsy
+  // `options.lookup` falls back to the built-in resolver, so it is also the
+  // default-lookup path for token purposes.
   const lookup = options.lookup || dnsLookup;
+  const usingDefaultLookup = lookup === dnsLookup;
   const getLookupDnsOpts = () => {
-    if (options.lookup === undefined) {
+    if (usingDefaultLookup) {
       return { ...dnsOpts, port };
     }
     return {
