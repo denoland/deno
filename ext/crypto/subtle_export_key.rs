@@ -284,6 +284,9 @@ pub fn run(
       export_akp_mlkem(format, &key)
     }
     "ML-DSA-44" | "ML-DSA-65" | "ML-DSA-87" => export_akp_mldsa(format, &key),
+    _ if crate::slhdsa::variant_from_name(&key.algorithm_name).is_some() => {
+      export_akp_slh_dsa(format, &key)
+    }
     other => Err(not_supported(format!(
       "Unrecognized algorithm name: {other}"
     ))),
@@ -868,6 +871,74 @@ fn export_akp_mldsa(
     }
     _ => Err(not_supported(format!(
       "Unsupported key format for ML-DSA: {format:?}"
+    ))),
+  }
+}
+
+fn export_akp_slh_dsa(
+  format: KeyFormat,
+  key: &SubtleKey,
+) -> Result<ExportKeyOutput, CryptoError> {
+  let variant = crate::slhdsa::variant_from_name(&key.algorithm_name)
+    .ok_or_else(|| op_error("Unknown SLH-DSA variant".into()))?;
+  match format {
+    KeyFormat::RawPublic => {
+      if key.key_type != CryptoKeyType::Public {
+        return Err(invalid_access(
+          "'raw-public' is only valid for public keys",
+        ));
+      }
+      Ok(ExportKeyOutput::Bytes(key.raw.bytes().to_vec()))
+    }
+    KeyFormat::RawPrivate => {
+      if key.key_type != CryptoKeyType::Private {
+        return Err(invalid_access(
+          "'raw-private' is only valid for private keys",
+        ));
+      }
+      Ok(ExportKeyOutput::Bytes(
+        key.raw.expanded_private_key().to_vec(),
+      ))
+    }
+    KeyFormat::Spki => {
+      if key.key_type != CryptoKeyType::Public {
+        return Err(invalid_access("'spki' is only valid for public keys"));
+      }
+      let bytes = crate::slhdsa::export_spki(variant, key.raw.bytes())
+        .map_err(|e| op_error(e.to_string()))?;
+      Ok(ExportKeyOutput::Bytes(bytes))
+    }
+    KeyFormat::Pkcs8 => {
+      if key.key_type != CryptoKeyType::Private {
+        return Err(invalid_access("'pkcs8' is only valid for private keys"));
+      }
+      let bytes =
+        crate::slhdsa::export_pkcs8(variant, key.raw.expanded_private_key())
+          .map_err(|e| op_error(e.to_string()))?;
+      Ok(ExportKeyOutput::Bytes(bytes))
+    }
+    KeyFormat::Jwk => {
+      let mut jwk = JsonWebKey {
+        kty: "AKP",
+        alg: Some(key.algorithm_name.clone()),
+        ext: key.extractable,
+        key_ops: key.usages.clone(),
+        ..Default::default()
+      };
+      if key.key_type == CryptoKeyType::Private {
+        let private_key = key.raw.expanded_private_key();
+        let public_key =
+          crate::slhdsa::public_from_private(variant, private_key)
+            .map_err(|e| op_error(e.to_string()))?;
+        jwk.pub_field = Some(b64_url(&public_key));
+        jwk.priv_field = Some(b64_url(private_key));
+      } else {
+        jwk.pub_field = Some(b64_url(key.raw.bytes()));
+      }
+      Ok(ExportKeyOutput::Jwk(Box::new(jwk)))
+    }
+    _ => Err(not_supported(format!(
+      "Unsupported key format for SLH-DSA: {format:?}"
     ))),
   }
 }

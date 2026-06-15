@@ -30,6 +30,7 @@ ecdsa.workspace = true
 ed448-goldilocks = { workspace = true }
 elliptic-curve = { workspace = true, features = ["std", "pem", "arithmetic"] }
 fips203 = { workspace = true, features = ["ml-kem-512", "ml-kem-768", "ml-kem-1024"] }
+fips205.workspace = true
 hmac.workspace = true
 num-traits.workspace = true
 ocb3.workspace = true

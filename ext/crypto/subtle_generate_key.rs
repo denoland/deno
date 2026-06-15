@@ -73,6 +73,7 @@ pub enum GenerateKeyAlgorithm {
   X448,
   MlKem(crate::mlkem::MlKemVariant),
   MlDsa(u8, String),
+  SlhDsa(crate::slhdsa::SlhDsaVariantId),
   /// Captured for any algorithm name not registered under `generateKey`.
   /// Deferring the error to [`run`] lets us reject with `NotSupportedError`
   /// (the WebCrypto spec's `normalizeAlgorithm` outcome) rather than the
@@ -189,6 +190,9 @@ impl<'a> WebIdlConverter<'a> for GenerateKeyAlgorithm {
       "ML-DSA-44" => Self::MlDsa(0, canonical),
       "ML-DSA-65" => Self::MlDsa(1, canonical),
       "ML-DSA-87" => Self::MlDsa(2, canonical),
+      _ if let Some(variant) = crate::slhdsa::variant_from_name(&canonical) => {
+        Self::SlhDsa(variant)
+      }
       _ => Self::Unknown(canonical),
     })
   }
@@ -570,6 +574,25 @@ pub async fn run(
         priv_raw: RawKeyData::SeededPrivate {
           seed: Some(seed.into_boxed_slice()),
           private_key: res.private_key.into_boxed_slice(),
+        },
+        extractable,
+      })
+    }
+    GenerateKeyAlgorithm::SlhDsa(variant) => {
+      check_usages(&usages, &["sign", "verify"])?;
+      let (public_key, private_key) = crate::slhdsa::generate(variant)
+        .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))?;
+      let alg = AlgorithmDict::new(crate::slhdsa::params(variant).name);
+      let pub_us = filter_usages(&usages, &["verify"]);
+      let priv_us = filter_usages(&usages, &["sign"]);
+      Ok(GenerateKeyOutput::Pair {
+        algorithm: alg,
+        pub_usages: pub_us,
+        priv_usages: priv_us,
+        pub_raw: RawKeyData::Raw(public_key.into_boxed_slice()),
+        priv_raw: RawKeyData::SeededPrivate {
+          seed: None,
+          private_key: private_key.into_boxed_slice(),
         },
         extractable,
       })

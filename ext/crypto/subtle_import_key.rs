@@ -326,6 +326,9 @@ pub fn run<'s>(
     "ML-DSA-44" | "ML-DSA-65" | "ML-DSA-87" => {
       import_key_ml_dsa(scope, name, format, key_data, extractable, usages)
     }
+    _ if crate::slhdsa::variant_from_name(name).is_some() => {
+      import_key_slh_dsa(scope, name, format, key_data, extractable, usages)
+    }
     // Spec: any algorithm not recognized for `importKey` triggers
     // `normalizeAlgorithm` to throw `NotSupportedError: Unrecognized
     // algorithm name`. node_compat test-crypto-key-objects-to-crypto-key.js
@@ -900,6 +903,119 @@ fn import_key_ml_dsa<'s>(
       }
     }
     _ => Err(not_supported("Unsupported key format for ML-DSA".into())),
+  }
+}
+
+fn import_key_slh_dsa<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  name: &str,
+  format: KeyFormat,
+  key_data: ImportKeyData,
+  extractable: bool,
+  usages: &[String],
+) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+  let variant = crate::slhdsa::variant_from_name(name).unwrap();
+  let params = crate::slhdsa::params(variant);
+  let allowed_usages: Vec<&str> = filter_usages(usages, ALL_USAGES);
+  let make_public = |scope: &mut v8::PinScope<'s, '_>,
+                     bytes: Vec<u8>|
+   -> v8::Local<'s, v8::Object> {
+    make_crypto_key(
+      scope,
+      CryptoKeyType::Public,
+      extractable,
+      &allowed_usages,
+      AlgorithmDict::new(name),
+      RawKeyData::Raw(bytes.into_boxed_slice()),
+    )
+  };
+  let make_private = |scope: &mut v8::PinScope<'s, '_>,
+                      private_key: Vec<u8>|
+   -> v8::Local<'s, v8::Object> {
+    make_crypto_key(
+      scope,
+      CryptoKeyType::Private,
+      extractable,
+      &allowed_usages,
+      AlgorithmDict::new(name),
+      RawKeyData::SeededPrivate {
+        seed: None,
+        private_key: private_key.into_boxed_slice(),
+      },
+    )
+  };
+  match (format, key_data) {
+    (KeyFormat::RawPublic, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &["verify"])?;
+      if b.len() != params.public_key_len {
+        return Err(data_error("Invalid key data".into()));
+      }
+      Ok(make_public(scope, b))
+    }
+    (KeyFormat::RawPrivate, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &["sign"])?;
+      if b.len() != params.private_key_len {
+        return Err(data_error("Invalid key data".into()));
+      }
+      crate::slhdsa::public_from_private(variant, &b)
+        .map_err(|_| data_error("Invalid key data".into()))?;
+      Ok(make_private(scope, b))
+    }
+    (KeyFormat::Spki, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &["verify"])?;
+      let public_key = crate::slhdsa::import_spki(variant, &b)
+        .map_err(|_| data_error("Invalid key data".into()))?;
+      Ok(make_public(scope, public_key))
+    }
+    (KeyFormat::Pkcs8, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &["sign"])?;
+      let private_key = crate::slhdsa::import_pkcs8(variant, &b)
+        .map_err(|_| data_error("Invalid key data".into()))?;
+      Ok(make_private(scope, private_key))
+    }
+    (KeyFormat::Jwk, ImportKeyData::Jwk(jwk_g)) => {
+      let jwk = v8::Local::new(scope, &jwk_g);
+      let wants_private = read_string_member(scope, jwk, b"priv").is_some();
+      let expected: &[&str] = if wants_private {
+        &["sign"]
+      } else {
+        &["verify"]
+      };
+      check_usages_subset(usages, expected)?;
+      validate_jwk_akp(scope, jwk, name, "sig", usages, extractable)?;
+      if wants_private {
+        let priv_s = read_string_member(scope, jwk, b"priv").unwrap();
+        let private_key = BASE64_URL_SAFE_NO_PAD
+          .decode(priv_s.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid private key data".into()))?;
+        if private_key.len() != params.private_key_len {
+          return Err(data_error("Invalid private key data".into()));
+        }
+        let expected_public =
+          crate::slhdsa::public_from_private(variant, &private_key)
+            .map_err(|_| data_error("Invalid private key data".into()))?;
+        let pub_s = read_string_member(scope, jwk, b"pub")
+          .ok_or_else(|| data_error("Invalid public key data".into()))?;
+        let public_key = BASE64_URL_SAFE_NO_PAD
+          .decode(pub_s.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid public key data".into()))?;
+        if public_key != expected_public {
+          return Err(data_error("Invalid public key data".into()));
+        }
+        Ok(make_private(scope, private_key))
+      } else {
+        let pub_s = read_string_member(scope, jwk, b"pub")
+          .ok_or_else(|| data_error("Invalid public key data".into()))?;
+        let public_key = BASE64_URL_SAFE_NO_PAD
+          .decode(pub_s.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid public key data".into()))?;
+        if public_key.len() != params.public_key_len {
+          return Err(data_error("Invalid public key data".into()));
+        }
+        Ok(make_public(scope, public_key))
+      }
+    }
+    _ => Err(not_supported("Unsupported key format for SLH-DSA".into())),
   }
 }
 

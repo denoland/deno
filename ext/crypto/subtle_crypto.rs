@@ -684,7 +684,7 @@ fn supports_params_valid<'s>(
   match registered_op {
     "digest" => match upper.as_str() {
       "CSHAKE128" | "CSHAKE256" | "TURBOSHAKE128" | "TURBOSHAKE256"
-      | "KT128" | "KANGAROOTWELVE" => {
+      | "KT128" | "KT256" | "KANGAROOTWELVE" => {
         let Some(l) = read_u32_member(scope, obj, b"outputLength") else {
           return true;
         };
