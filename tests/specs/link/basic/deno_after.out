@@ -1,6 +1,4 @@
 {
-  "imports": {
-    "@local/greet": "jsr:@local/greet"
-  },
+  "imports": {},
   "links": ["pkg"]
 }
