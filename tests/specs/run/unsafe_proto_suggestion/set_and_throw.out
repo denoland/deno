@@ -4,4 +4,4 @@ throw new Error("boom");
     at [WILDCARD]set_and_throw.js:7:7
 
     info: This program assigned to Object.prototype.__proto__, which Deno disables by default.
-    hint: If this caused the error, run again with --unstable-unsafe-proto to restore it.
+    hint: If this caused the error, run again with --unsafe-proto to restore it.
