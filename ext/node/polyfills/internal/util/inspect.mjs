@@ -661,6 +661,17 @@ function styleText(format, text, options) {
   const validateStream = options?.validateStream ?? true;
   validateBoolean(validateStream, "options.validateStream");
 
+  // Validate format before any early-return so ERR_INVALID_ARG_VALUE always
+  // throws regardless of TTY state. Matches Node's argument-validation order.
+  const formatArray = ArrayIsArray(format) ? format : [format];
+  for (let i = 0; i < formatArray.length; i++) {
+    const key = formatArray[i];
+    if (key === "none") continue;
+    if (inspect.colors[key] == null) {
+      validateOneOf(key, "format", ObjectKeys(inspect.colors));
+    }
+  }
+
   if (validateStream) {
     const stream = options?.stream;
     if (stream !== undefined && stream !== null) {
@@ -688,8 +699,6 @@ function styleText(format, text, options) {
     }
   }
 
-  const formatArray = ArrayIsArray(format) ? format : [format];
-
   let openCodes = "";
   let closeCodes = "";
   let processedText = text;
@@ -699,9 +708,6 @@ function styleText(format, text, options) {
     if (key === "none") continue;
 
     const formatCodes = inspect.colors[key];
-    if (formatCodes == null) {
-      validateOneOf(key, "format", ObjectKeys(inspect.colors));
-    }
     const openNum = formatCodes[0];
     const closeNum = formatCodes[1];
     const openSeq = kStyleTextEscape + openNum + kStyleTextEscapeEnd;
