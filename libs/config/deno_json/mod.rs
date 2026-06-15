@@ -11,7 +11,9 @@ use deno_error::JsError;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_parent;
 use deno_path_util::url_to_file_path;
+use deno_semver::VersionReq;
 use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageReq;
 use import_map::ImportMapWithDiagnostics;
 use indexmap::IndexMap;
 use serde::Deserialize;
@@ -30,8 +32,8 @@ use url::Url;
 use crate::UrlToFilePathError;
 use crate::glob::FilePatterns;
 use crate::glob::PathOrPatternSet;
-use crate::import_map::imports_values;
-use crate::import_map::scope_values;
+use crate::import_map::imports_entries;
+use crate::import_map::scope_entries;
 use crate::import_map::value_to_dep_req;
 use crate::util::is_skippable_io_error;
 
@@ -339,6 +341,15 @@ pub enum TrailingCommas {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub enum JsonTrailingCommaKind {
+  Always,
+  Jsonc,
+  Maintain,
+  Never,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum OperatorPosition {
   Maintain,
   SameLine,
@@ -394,6 +405,7 @@ pub struct FmtOptionsConfig {
   pub single_body_position: Option<SingleBodyPosition>,
   pub next_control_flow_position: Option<NextControlFlowPosition>,
   pub trailing_commas: Option<TrailingCommas>,
+  pub json_trailing_commas: Option<JsonTrailingCommaKind>,
   pub operator_position: Option<OperatorPosition>,
   pub jsx_bracket_position: Option<BracketPosition>,
   pub jsx_force_new_lines_surrounding_content: Option<bool>,
@@ -422,6 +434,7 @@ impl FmtOptionsConfig {
       && self.single_body_position.is_none()
       && self.next_control_flow_position.is_none()
       && self.trailing_commas.is_none()
+      && self.json_trailing_commas.is_none()
       && self.operator_position.is_none()
       && self.jsx_bracket_position.is_none()
       && self.jsx_force_new_lines_surrounding_content.is_none()
@@ -495,6 +508,8 @@ struct SerializedFmtConfig {
   pub single_body_position: Option<SingleBodyPosition>,
   pub next_control_flow_position: Option<NextControlFlowPosition>,
   pub trailing_commas: Option<TrailingCommas>,
+  #[serde(rename = "json.trailingCommas")]
+  pub json_trailing_commas: Option<JsonTrailingCommaKind>,
   pub operator_position: Option<OperatorPosition>,
   #[serde(rename = "jsx.bracketPosition")]
   pub jsx_bracket_position: Option<BracketPosition>,
@@ -539,6 +554,7 @@ impl SerializedFmtConfig {
       single_body_position: self.single_body_position,
       next_control_flow_position: self.next_control_flow_position,
       trailing_commas: self.trailing_commas,
+      json_trailing_commas: self.json_trailing_commas,
       operator_position: self.operator_position,
       jsx_bracket_position: self.jsx_bracket_position,
       jsx_force_new_lines_surrounding_content: self
@@ -2407,10 +2423,34 @@ impl ConfigFile {
     }
   }
 
-  pub fn dependencies(&self) -> HashSet<JsrDepPackageReq> {
-    let mut set = imports_values(self.json.imports.as_ref())
-      .chain(scope_values(self.json.scopes.as_ref()))
-      .filter_map(value_to_dep_req)
+  pub fn dependencies(
+    &self,
+    catalogs: &IndexMap<String, IndexMap<String, String>>,
+  ) -> HashSet<JsrDepPackageReq> {
+    let entry_to_dep_req = |(key, value): (&str, &str)| {
+      if let Some(catalog_name) = value.strip_prefix("catalog:") {
+        // `catalog:`/`catalog:<name>` entries resolve to the version
+        // requirement defined in the workspace root's catalog
+        let catalog_name = if catalog_name.is_empty() {
+          "default"
+        } else {
+          catalog_name
+        };
+        let name = key.strip_suffix('/').unwrap_or(key);
+        let version_req_str =
+          catalogs.get(catalog_name).and_then(|c| c.get(name))?;
+        let version_req = VersionReq::parse_from_npm(version_req_str).ok()?;
+        Some(JsrDepPackageReq::npm(PackageReq {
+          name: name.into(),
+          version_req,
+        }))
+      } else {
+        value_to_dep_req(value)
+      }
+    };
+    let mut set = imports_entries(self.json.imports.as_ref())
+      .chain(scope_entries(self.json.scopes.as_ref()))
+      .filter_map(entry_to_dep_req)
       .collect::<HashSet<_>>();
 
     if let Some(serde_json::Value::Object(compiler_options)) =
@@ -2537,6 +2577,7 @@ mod tests {
         "singleBodyPosition": "nextLine",
         "nextControlFlowPosition": "sameLine",
         "trailingCommas": "never",
+        "json.trailingCommas": "maintain",
         "operatorPosition": "maintain",
         "jsx.bracketPosition": "maintain",
         "jsx.forceNewLinesSurroundingContent": true,
@@ -2614,6 +2655,7 @@ mod tests {
           single_body_position: Some(SingleBodyPosition::NextLine),
           next_control_flow_position: Some(NextControlFlowPosition::SameLine),
           trailing_commas: Some(TrailingCommas::Never),
+          json_trailing_commas: Some(JsonTrailingCommaKind::Maintain),
           operator_position: Some(OperatorPosition::Maintain),
           jsx_bracket_position: Some(BracketPosition::Maintain),
           jsx_force_new_lines_surrounding_content: Some(true),

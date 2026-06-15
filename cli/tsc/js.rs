@@ -235,7 +235,14 @@ fn op_emit_inner(state: &mut OpState, args: EmitArgs) -> bool {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "internal:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
-    name if name.ends_with(".d.ts") || name.ends_with(".d.ts.map") => {
+    name
+      if name.ends_with(".d.ts")
+        || name.ends_with(".d.ts.map")
+        || name.ends_with(".d.mts")
+        || name.ends_with(".d.mts.map")
+        || name.ends_with(".d.cts")
+        || name.ends_with(".d.cts.map") =>
+    {
       if state.capture_emitted_files {
         state.emitted_files.insert(args.file_name, args.data);
       }

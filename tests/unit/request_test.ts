@@ -98,6 +98,7 @@ Deno.test(function requestInitProperties() {
     integrity: "sha256-abc",
     keepalive: true,
     mode: "no-cors",
+    priority: "high",
     referrer: "http://example.com/",
     referrerPolicy: "no-referrer",
   });
@@ -108,6 +109,13 @@ Deno.test(function requestInitProperties() {
   assertEquals(req.mode, "no-cors");
   assertEquals(req.referrer, "http://example.com/");
   assertEquals(req.referrerPolicy, "no-referrer");
+});
+
+Deno.test(function requestInvalidPriorityThrows() {
+  assertThrows(
+    () => new Request("http://foo/", { priority: "bogus" as RequestPriority }),
+    TypeError,
+  );
 });
 
 Deno.test(function requestReferrerEmptyString() {
@@ -148,6 +156,7 @@ Deno.test(function requestPropertiesInheritedFromRequest() {
     integrity: "sha256-abc",
     keepalive: true,
     mode: "no-cors",
+    priority: "low",
     referrer: "http://example.com/",
     referrerPolicy: "origin",
   });
@@ -168,6 +177,7 @@ Deno.test(function requestCloneCopiesAllProperties() {
     integrity: "sha384-xyz",
     keepalive: true,
     mode: "cors",
+    priority: "high",
     referrer: "http://example.com/",
     referrerPolicy: "strict-origin",
   });

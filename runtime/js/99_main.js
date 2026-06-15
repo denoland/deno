@@ -422,7 +422,7 @@ core.registerErrorBuilder(
 core.registerErrorBuilder(
   "DOMExceptionNotSupportedError",
   function DOMExceptionNotSupportedError(msg) {
-    return new DOMException(msg, "NotSupported");
+    return new DOMException(msg, "NotSupportedError");
   },
 );
 core.registerErrorBuilder(
@@ -465,6 +465,18 @@ core.registerErrorBuilder(
   "DOMExceptionIndexSizeError",
   function DOMExceptionIndexSizeError(msg) {
     return new DOMException(msg, "IndexSizeError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionTypeMismatchError",
+  function DOMExceptionTypeMismatchError(msg) {
+    return new DOMException(msg, "TypeMismatchError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionInvalidAccessError",
+  function DOMExceptionInvalidAccessError(msg) {
+    return new DOMException(msg, "InvalidAccessError");
   },
 );
 
@@ -1007,8 +1019,8 @@ function bootstrapWorkerRuntime(
     event.defineEventHandler(globalThis, "message");
     event.defineEventHandler(globalThis, "error", undefined, true);
 
-    // `Deno.exit()` is an alias to `self.close()`. Setting and exit
-    // code using an op in worker context is a no-op.
+    // `Deno.exit()` closes the worker using the internal worker close
+    // operation. Setting an exit code using an op in worker context is a no-op.
     os.setExitHandler((_exitCode) => {
       workerClose();
     });

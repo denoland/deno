@@ -788,3 +788,139 @@ Deno.test("ReadableStreamBYOBRequest.view is a Uint8Array", async () => {
   assertEquals(result.value!.byteLength, 1);
   assertEquals(result.value![0], 42);
 });
+
+// https://github.com/denoland/deno/issues/22381
+// Resource-backed writable streams (e.g. `Deno.connect().writable`,
+// `Deno.open().writable`) should accept any ArrayBuffer / ArrayBufferView,
+// not only Uint8Array.
+Deno.test(
+  { permissions: { net: true } },
+  async function writableStreamForRidAcceptsAnyArrayBufferView() {
+    const listener = Deno.listen({ port: 0, hostname: "127.0.0.1" });
+    const port = (listener.addr as Deno.NetAddr).port;
+
+    const serverConnPromise = (async () => {
+      const conn = await listener.accept();
+      const chunks: Uint8Array[] = [];
+      const buf = new Uint8Array(64);
+      while (true) {
+        const n = await conn.read(buf);
+        if (n === null) break;
+        chunks.push(buf.slice(0, n));
+      }
+      conn.close();
+      let total = 0;
+      for (const c of chunks) total += c.byteLength;
+      const out = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) {
+        out.set(c, off);
+        off += c.byteLength;
+      }
+      return out;
+    })();
+
+    const client = await Deno.connect({ hostname: "127.0.0.1", port });
+    const writer = client.writable.getWriter();
+
+    // Uint8Array (existing behavior)
+    await writer.write(new Uint8Array([0x01]));
+    // Other typed-array views — all backed by raw bytes 0x02..
+    const u16 = new Uint16Array(1);
+    new Uint8Array(u16.buffer).set([0x02, 0x03]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(u16 as any);
+    const u32 = new Uint32Array(1);
+    new Uint8Array(u32.buffer).set([0x04, 0x05, 0x06, 0x07]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(u32 as any);
+    const big = new BigUint64Array(1);
+    new Uint8Array(big.buffer).set([
+      0x08,
+      0x09,
+      0x0a,
+      0x0b,
+      0x0c,
+      0x0d,
+      0x0e,
+      0x0f,
+    ]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(big as any);
+    // Bare ArrayBuffer
+    const ab = new ArrayBuffer(2);
+    new Uint8Array(ab).set([0x10, 0x11]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(ab as any);
+    // DataView with non-zero byteOffset
+    const backing = new ArrayBuffer(8);
+    new Uint8Array(backing).set([
+      0xaa,
+      0xbb,
+      0x20,
+      0x21,
+      0x22,
+      0xcc,
+      0xdd,
+      0xee,
+    ]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(new DataView(backing, 2, 3) as any);
+    await writer.close();
+
+    const got = await serverConnPromise;
+    listener.close();
+    assertEquals(
+      got,
+      new Uint8Array([
+        0x01,
+        0x02,
+        0x03,
+        0x04,
+        0x05,
+        0x06,
+        0x07,
+        0x08,
+        0x09,
+        0x0a,
+        0x0b,
+        0x0c,
+        0x0d,
+        0x0e,
+        0x0f,
+        0x10,
+        0x11,
+        0x20,
+        0x21,
+        0x22,
+      ]),
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function writableStreamForRidRejectsNonBufferChunk() {
+    const listener = Deno.listen({ port: 0, hostname: "127.0.0.1" });
+    const port = (listener.addr as Deno.NetAddr).port;
+    const acceptPromise = (async () => {
+      const conn = await listener.accept();
+      const buf = new Uint8Array(16);
+      while ((await conn.read(buf)) !== null) { /* drain */ }
+      conn.close();
+    })();
+
+    const client = await Deno.connect({ hostname: "127.0.0.1", port });
+    const writer = client.writable.getWriter();
+    await assertRejects(
+      // deno-lint-ignore no-explicit-any
+      () => writer.write("not a buffer" as any),
+      TypeError,
+      "ArrayBuffer or ArrayBufferView",
+    );
+    // The failed write closes the underlying connection via the sink's
+    // controller-error path, so the server's read returns null.
+    await acceptPromise;
+    listener.close();
+  },
+);

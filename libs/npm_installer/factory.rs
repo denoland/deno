@@ -216,9 +216,13 @@ impl<
         },
         denied: match &args.allowed {
           PackagesAllowedScripts::All | PackagesAllowedScripts::Some(_) => {
-            vec![]
+            args.denied.clone()
           }
-          PackagesAllowedScripts::None => jsr_deps_to_reqs(allow_scripts.deny),
+          PackagesAllowedScripts::None => {
+            let mut denied = jsr_deps_to_reqs(allow_scripts.deny);
+            denied.extend(args.denied.clone());
+            denied
+          }
         },
         initial_cwd: args.initial_cwd.clone(),
         root_dir: args.root_dir.clone(),

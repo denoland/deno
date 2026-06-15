@@ -63,7 +63,8 @@ pub async fn install_global(
   let deps_http_cache = factory.global_http_cache()?;
   let create_deps_file_fetcher = |download_log_level: log::Level| {
     Arc::new(create_cli_file_fetcher(
-      Default::default(),
+      Arc::new(deno_runtime::deno_web::BlobStore::default())
+        as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
       deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
       http_client.clone(),
       factory.memory_files().clone(),
@@ -92,6 +93,17 @@ pub async fn install_global(
     return Box::pin(install_global_compiled(flags, install_flags_global))
       .await;
   }
+
+  // When an explicit config is supplied, capture its workspace members so they
+  // can be flattened into the copied config's import map. The `workspace` field
+  // itself is dropped from the copy (it can't be discovered from the install
+  // dir), which would otherwise break resolution of member packages.
+  let workspace_member_imports =
+    if matches!(flags.config_flag, ConfigFlag::Path(_)) {
+      workspace_member_import_entries(cli_options.workspace())
+    } else {
+      Vec::new()
+    };
 
   // Validate every entry and default unprefixed bare package names to the npm
   // registry (matching `deno add` and local `deno install`) before installing
@@ -160,9 +172,11 @@ pub async fn install_global(
     setup_config_dir(
       &name_and_url,
       &flags,
+      cli_options.initial_cwd(),
       &installation_dir,
       Some(&jsr_lockfile_fetcher),
       install_flags_global.force,
+      &workspace_member_imports,
     )
     .await?;
 
@@ -375,6 +389,7 @@ async fn install_global_compiled(
     self_extracting: false,
     bundle: false,
     minify: false,
+    exclude_unused_npm: false,
   };
 
   let mut new_flags = flags.as_ref().clone();
@@ -400,9 +415,11 @@ async fn install_global_compiled(
 async fn setup_config_dir(
   bin_name_and_url: &BinaryNameAndUrl,
   flags: &Flags,
+  cwd: &Path,
   installation_dir: &Path,
   jsr_lockfile_fetcher: Option<&JsrLockfileFetcher<'_>>,
   force: bool,
+  workspace_member_imports: &[(String, String)],
 ) -> Result<(), AnyError> {
   fn resolve_implicit_node_modules_dir(
     flags: &Flags,
@@ -478,6 +495,19 @@ async fn setup_config_dir(
   if let Some(original_config_url) = &original_config_url {
     rewrite_relative_import_map_paths(&config_obj, original_config_url);
   }
+  // Flatten workspace members into the import map. The `workspace` field is
+  // stripped below to stop discovery, which would otherwise break resolution of
+  // bare specifiers that point at member packages. Existing import map entries
+  // win, matching the runtime precedence of the import map over workspace
+  // members.
+  if !workspace_member_imports.is_empty() {
+    let imports = config_obj.object_value_or_set("imports");
+    for (specifier, target) in workspace_member_imports {
+      if imports.get(specifier).is_none() {
+        imports.append(specifier, CstInputValue::String(target.clone()));
+      }
+    }
+  }
   config_obj.append("workspace", CstInputValue::Array(Vec::new())); // stop workspace discovery
   if config_obj.get("nodeModulesDir").is_none()
     && let Some(mode) =
@@ -515,6 +545,13 @@ async fn setup_config_dir(
 
   // create cloned flags to run cache_top_level_deps
   let mut new_flags = flags.clone();
+  // Pre-resolve cwd-relative paths against the user's original cwd before
+  // switching `initial_cwd` to the generated install dir, otherwise they'd
+  // be re-resolved against `dir` and point at non-existent files.
+  if let Some(import_map_path) = &flags.import_map_path {
+    new_flags.import_map_path =
+      Some(resolve_url_or_path(import_map_path, cwd)?.to_string());
+  }
   new_flags.initial_cwd = Some(dir.clone());
   new_flags.node_modules_dir = flags.node_modules_dir;
   new_flags.internal.root_node_modules_dir_override =
@@ -539,6 +576,43 @@ async fn setup_config_dir(
   .await?;
 
   Ok(())
+}
+
+/// Builds import map entries for each workspace member package so the copied
+/// config keeps resolving `@scope/member` specifiers after the `workspace`
+/// field is stripped.
+///
+/// `deno install -g -c deno.json` copies the workspace root config into a
+/// per-binary directory and removes the `workspace` field to stop workspace
+/// discovery. Without this, bare specifiers that point at workspace members
+/// (e.g. `import { x } from "@scope/member"`) can no longer be resolved. Each
+/// member's exports are flattened into absolute `file://` specifiers anchored
+/// at the member directory so the installed binary resolves them exactly as it
+/// would when invoked from the original workspace. See
+/// https://github.com/denoland/deno/issues/32057.
+///
+/// Only `deno.json` members (those with a `name` and `exports`) are flattened,
+/// since they are the ones resolved through the import map. `package.json`
+/// members resolve via `node_modules`, which is unaffected by stripping the
+/// `workspace` field, so they don't need an entry here.
+fn workspace_member_import_entries(
+  workspace: &deno_config::workspace::Workspace,
+) -> Vec<(String, String)> {
+  let mut entries = Vec::new();
+  for pkg in workspace.resolver_jsr_pkgs() {
+    for (export_key, sub_path) in &pkg.exports {
+      // "." -> "@scope/name", "./sub" -> "@scope/name/sub"
+      let specifier = format!(
+        "{}{}",
+        pkg.name,
+        export_key.strip_prefix('.').unwrap_or(export_key)
+      );
+      if let Ok(target) = pkg.base.join(sub_path) {
+        entries.push((specifier, target.to_string()));
+      }
+    }
+  }
+  entries
 }
 
 /// Rewrites `./` and `../` paths inside `imports` and `scopes` to absolute
@@ -1342,9 +1416,11 @@ mod tests {
     super::setup_config_dir(
       &binary_name_and_url,
       flags,
+      &cwd,
       &installation_dir,
       None,
       install_flags_global.force,
+      &[],
     )
     .await
     .unwrap();

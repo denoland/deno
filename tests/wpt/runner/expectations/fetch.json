@@ -219,18 +219,8 @@
           "RequestCache \"reload\" mode does store the response in the cache even if a previous response is already stored with Last-Modified and fresh response"
         ]
       },
-      "request-init-priority.any.html": {
-        "expectedFailures": [
-          "new Request() throws a TypeError if any of RequestInit's members' values are invalid",
-          "fetch() with an invalid priority returns a rejected promise with a TypeError"
-        ]
-      },
-      "request-init-priority.any.worker.html": {
-        "expectedFailures": [
-          "new Request() throws a TypeError if any of RequestInit's members' values are invalid",
-          "fetch() with an invalid priority returns a rejected promise with a TypeError"
-        ]
-      },
+      "request-init-priority.any.html": true,
+      "request-init-priority.any.worker.html": true,
       "request-keepalive.any.html": {
         "expectedFailures": [
           "keepalive flag with stream body"
@@ -767,9 +757,9 @@
       },
       "block-mime-as-script.html": false,
       "request-referrer-redirected-worker.html": false,
-      "url-parsing.sub.html?encoding=utf8": false,
-      "url-parsing.sub.html?encoding=windows-1252": false,
-      "url-parsing.sub.html?encoding=x-cp1251": false,
+      "url-parsing.sub.html?encoding=utf8": true,
+      "url-parsing.sub.html?encoding=windows-1252": true,
+      "url-parsing.sub.html?encoding=x-cp1251": true,
       "gc.any.html": true,
       "gc.any.worker.html": true
     },
@@ -2242,7 +2232,13 @@
       "element-video.https.sub.html": false,
       "element-video.sub.html": false,
       "fetch.https.sub.html": false,
-      "fetch.sub.html": false,
+      "fetch.sub.html": {
+        "expectedFailures": [
+          "sec-fetch-site - HTTPS downgrade (header not sent), no init",
+          "sec-fetch-site - HTTPS upgrade, no init",
+          "sec-fetch-site - HTTPS downgrade-upgrade, no init"
+        ]
+      },
       "form-submission.https.sub.html": false,
       "form-submission.sub.html": false,
       "header-link.https.sub.html": false,
@@ -2251,7 +2247,13 @@
       "header-refresh.https.optional.sub.html": false,
       "header-refresh.optional.sub.html": false,
       "script-module-import-dynamic.https.sub.html": false,
-      "script-module-import-dynamic.sub.html": false,
+      "script-module-import-dynamic.sub.html": {
+        "expectedFailures": [
+          "sec-fetch-site - HTTPS downgrade (header not sent)",
+          "sec-fetch-site - HTTPS upgrade",
+          "sec-fetch-site - HTTPS downgrade-upgrade"
+        ]
+      },
       "script-module-import-static.https.sub.html": false,
       "script-module-import-static.sub.html": false,
       "svg-image.https.sub.html": false,
@@ -2261,7 +2263,7 @@
       "window-location.https.sub.html": false,
       "window-location.sub.html": false,
       "worker-dedicated-constructor.https.sub.html": false,
-      "worker-dedicated-constructor.sub.html": false,
+      "worker-dedicated-constructor.sub.html": true,
       "worker-dedicated-importscripts.https.sub.html": false,
       "worker-dedicated-importscripts.sub.html": false,
       "script-json-module-import-static.https.sub.html": false,
@@ -2412,7 +2414,7 @@
       "unknown-mime-type.sub.any.worker.html": true,
       "compressed-image-sniffing.sub.html": false,
       "img-mime-types-coverage.tentative.sub.html": false,
-      "script-unlabeled.sub.html": false,
+      "script-unlabeled.sub.html": true,
       "script-utf16-without-bom-hint-charset.sub.html": false,
       "status.sub.html": false
     }
@@ -2483,12 +2485,12 @@
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&#10;&lt;b\">",
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&lt;&#10;b\">",
           "\\n      <img id=\"dangling\" src=\"/images/green-1x1.png?img=\\n        &lt;\\n        &#10;b\\n      \">\\n    ",
-          "Fetch: /images/gre\\ten-1x1.png?img=<",
-          "Fetch: /images/gre\\ren-1x1.png?img=<",
-          "Fetch: /images/green-1x1.png?<\\r=block",
+          "Fetch: /images/gre\\nen-1x1.png?img=<",
           "Fetch: /images/green-1x1.png?<\\n=block",
-          "Fetch: /images/green-1x1.png?<\\t=block",
-          "Fetch: /images/gre\\nen-1x1.png?img=<"
+          "Fetch: /images/green-1x1.png?<\\r=block",
+          "Fetch: /images/gre\\ren-1x1.png?img=<",
+          "Fetch: /images/gre\\ten-1x1.png?img=<",
+          "Fetch: /images/green-1x1.png?<\\t=block"
         ],
         "flaky": true
       },
@@ -2601,7 +2603,7 @@
     "script-html-js-polyglot.sub.html": false,
     "script-html-via-cross-origin-blob-url.sub.html": false,
     "script-js-mislabeled-as-html-nosniff.sub.html": false,
-    "script-js-mislabeled-as-html.sub.html": false,
+    "script-js-mislabeled-as-html.sub.html": true,
     "script-resource-with-json-parser-breaker.tentative.sub.html": false,
     "script-resource-with-nonsniffable-types.tentative.sub.html": false,
     "style-css-mislabeled-as-html-nosniff.sub.html": false,

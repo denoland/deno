@@ -209,6 +209,31 @@ async fn private_npm_registry2_handler(
 async fn private_npm_registry3_handler(
   req: Request<hyper::body::Incoming>,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  // Packages whose name contains "gitlab" simulate a self-hosted GitLab npm
+  // registry: it only serves package metadata to requests that identify as an
+  // npm client (via the `Accept: application/vnd.npm.install-v1+json` header)
+  // and otherwise redirects to the public npm registry, which doesn't have the
+  // private package and 404s. This reproduces the behaviour from
+  // https://github.com/denoland/deno/issues/31924 where `deno outdated` dropped
+  // the package because it fetched metadata with `Accept: */*`.
+  let uri_path = req.uri().path();
+  let is_metadata = !uri_path.ends_with(".tgz");
+  if is_metadata
+    && uri_path.contains("gitlab")
+    && !wants_abbreviated(req.headers())
+  {
+    return Response::builder()
+      .status(StatusCode::FOUND)
+      .header(
+        http::header::LOCATION,
+        format!(
+          "http://localhost:{}{uri_path}",
+          crate::consts::PUBLIC_NPM_REGISTRY_PORT
+        ),
+      )
+      .body(empty_body())
+      .map_err(|e| e.into());
+  }
   // No auth for this registry
   handle_req_for_registry(req, &npm::PRIVATE_TEST_NPM_REGISTRY_3).await
 }
