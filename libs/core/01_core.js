@@ -855,17 +855,7 @@
   function propWritableLazyLoaded(getter, loadFn) {
     const desc = {
       get() {
-        // Self-replace with a writable data property -- see the matching
-        // comment in propNonEnumerableLazyLoaded for why we memoize on the
-        // receiver instead of letting every read re-run the getter.
-        const value = getter(loadFn());
-        ObjectDefineProperty(this, desc[lazyNameSym], {
-          value,
-          writable: true,
-          enumerable: true,
-          configurable: true,
-        });
-        return value;
+        return getter(loadFn());
       },
       set(v) {
         ObjectDefineProperty(this, desc[lazyNameSym], {
@@ -885,22 +875,7 @@
   function propNonEnumerableLazyLoaded(getter, loadFn) {
     const desc = {
       get() {
-        // Self-replace: install the resolved value as an own data property
-        // on the receiver so subsequent reads bypass the getter and -- more
-        // importantly -- return the same identity. Some `getter`s construct
-        // a fresh instance (e.g. `new m.Console(...)`), and without self-
-        // replacement each access of `globalThis.console` would return a
-        // different object, breaking `core.wrapConsole(globalThis.console,
-        // core.v8Console)` (the wrapped methods patch one instance while the
-        // next reader sees an un-patched one).
-        const value = getter(loadFn());
-        ObjectDefineProperty(this, desc[lazyNameSym], {
-          value,
-          writable: false,
-          enumerable: false,
-          configurable: true,
-        });
-        return value;
+        return getter(loadFn());
       },
       set(v) {
         const name = desc[lazyNameSym];

@@ -141,7 +141,13 @@ function Timeout(callback, after, args, isRepeat, isRefed, isSystem) {
     writable: true,
   });
   this[kRefed] = isRefed;
-  this[kSystem] = !!isSystem;
+  // Non-enumerable: this is a runtime-internal marker and must not leak into
+  // `util.inspect(timer)` output (node has no such property).
+  ObjectDefineProperty(this, kSystem, {
+    __proto__: null,
+    value: !!isSystem,
+    writable: true,
+  });
 
   const asyncId = nextAsyncId();
   const triggerAsyncId = executionAsyncId();
