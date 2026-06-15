@@ -134,6 +134,7 @@ pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
 pub use crate::module_specifier::resolve_import;
 pub use crate::module_specifier::resolve_url;
+pub use crate::modules::CustomModuleEvaluationCb;
 pub use crate::modules::CustomModuleEvaluationKind;
 pub use crate::modules::ExtCodeCache;
 pub use crate::modules::FsModuleLoader;
@@ -221,6 +222,8 @@ pub mod _ops {
   pub use super::error::throw_error_js_error_class;
   pub use super::error::throw_error_one_byte;
   pub use super::error::throw_error_one_byte_info;
+  pub use super::error::throw_invalid_this_error_one_byte;
+  pub use super::error::throw_invalid_this_error_one_byte_info;
   pub use super::extensions::Op;
   pub use super::extensions::OpDecl;
   pub use super::extensions::OpMethodDecl;

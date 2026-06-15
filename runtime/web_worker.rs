@@ -640,7 +640,9 @@ impl WebWorker {
       is_main: false,
       worker_id: Some(options.worker_id.0),
       wait_for_inspector_disconnect_callback: None,
-      custom_module_evaluation_cb: None,
+      custom_module_evaluation_cb: Some(
+        crate::worker::create_custom_module_evaluation_callback(),
+      ),
       eval_context_code_cache_cbs: None,
     });
 

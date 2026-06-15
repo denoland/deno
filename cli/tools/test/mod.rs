@@ -337,6 +337,7 @@ pub enum TestFailure {
   JsError(Box<JsError>),
   FailedSteps(usize),
   IncompleteSteps,
+  PendingPromiseResolution,
   Leaked(Vec<String>, Vec<String>), // Details, trailer notes
   TimedOut(u32),
   // The rest are for steps only.
@@ -360,6 +361,9 @@ impl TestFailure {
       }
       TestFailure::IncompleteSteps => Cow::Borrowed(
         "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.",
+      ),
+      TestFailure::PendingPromiseResolution => Cow::Borrowed(
+        "Promise resolution is still pending but the event loop has already resolved.",
       ),
       TestFailure::Incomplete => Cow::Borrowed(
         "Didn't complete before parent. Await step with `await t.step(...)`.",
@@ -404,6 +408,9 @@ impl TestFailure {
       TestFailure::FailedSteps(n) => format!("{n} test steps failed"),
       TestFailure::IncompleteSteps => {
         "Completed while steps were still running".to_string()
+      }
+      TestFailure::PendingPromiseResolution => {
+        "Promise resolution is still pending".to_string()
       }
       TestFailure::Incomplete => "Didn't complete before parent".to_string(),
       TestFailure::Leaked(_, _) => "Leaks detected".to_string(),
@@ -530,12 +537,12 @@ pub enum TestEvent {
   Plan(TestPlan),
   Wait(usize),
   Output(Vec<u8>),
-  Slow(usize, u64),
-  Result(usize, TestResult, u64),
+  Slow(usize, Duration),
+  Result(usize, TestResult, Duration),
   UncaughtError(String, Box<JsError>),
   StepRegister(TestStepDescription),
   StepWait(usize),
-  StepResult(usize, TestStepResult, u64),
+  StepResult(usize, TestStepResult, Duration),
   /// Indicates that this worker has completed running tests.
   Completed,
   /// Indicates that the user has cancelled the test run with Ctrl+C and
@@ -1382,6 +1389,9 @@ async fn run_tests_for_worker_inner(
               event_tracker.cancelled(desc)?;
               had_uncaught_error = true;
               continue;
+            }
+            CoreErrorKind::PendingPromiseResolution => {
+              TestResult::Failed(TestFailure::PendingPromiseResolution)
             }
             err => return Err(err.into_box().into()),
           },
@@ -2301,7 +2311,7 @@ impl TestEventTracker {
     test_id: usize,
     duration: Duration,
   ) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Slow(test_id, duration.as_millis() as _))
+    self.send_event(TestEvent::Slow(test_id, duration))
   }
 
   fn wait(&self, desc: &TestDescription) -> Result<(), ChannelClosedError> {
@@ -2309,14 +2319,22 @@ impl TestEventTracker {
   }
 
   fn ignored(&self, desc: &TestDescription) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Result(desc.id, TestResult::Ignored, 0))
+    self.send_event(TestEvent::Result(
+      desc.id,
+      TestResult::Ignored,
+      Duration::default(),
+    ))
   }
 
   fn cancelled(
     &self,
     desc: &TestDescription,
   ) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Result(desc.id, TestResult::Cancelled, 0))
+    self.send_event(TestEvent::Result(
+      desc.id,
+      TestResult::Cancelled,
+      Duration::default(),
+    ))
   }
 
   fn register(
@@ -2348,11 +2366,7 @@ impl TestEventTracker {
     test_result: TestResult,
     duration: Duration,
   ) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Result(
-      desc.id,
-      test_result,
-      duration.as_millis() as u64,
-    ))
+    self.send_event(TestEvent::Result(desc.id, test_result, duration))
   }
 
   pub(crate) fn force_end_report(&self) -> Result<(), ChannelClosedError> {

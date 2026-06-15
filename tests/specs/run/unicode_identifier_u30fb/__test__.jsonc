@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "run": {
+      "args": "run main.ts",
+      "output": "main.out"
+    },
+    "check": {
+      "args": "check main.ts",
+      "output": "check.out"
+    }
+  }
+}

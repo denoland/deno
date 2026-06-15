@@ -67,6 +67,11 @@ impl LoaderHookRegistry {
     id
   }
 
+  /// Whether a `registerHooks` resolve hook is currently installed.
+  pub fn resolve_active(&self) -> bool {
+    self.resolve_callback.borrow().is_some()
+  }
+
   /// Install the default-resolution callback used by the JS hook chain when
   /// the terminal `nextResolve` is reached. The embedder is expected to
   /// provide a function that performs the same resolution as a normal
