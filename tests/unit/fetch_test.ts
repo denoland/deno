@@ -2378,7 +2378,9 @@ Deno.test(
 // An `--allow-net=unix:<path>` rule scoped to the exact socket path grants the
 // Unix proxy access. Run in a subprocess so the dynamic socket path can be
 // passed in the allow-net rule. The temp dir is canonicalized up front so the
-// resolved socket path matches the rule exactly.
+// resolved socket path matches the rule exactly. The `localhost` grant is also
+// required: routing through the Unix proxy still issues `fetch()` against the
+// request URL, whose host (`localhost`) goes through the normal net check.
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
@@ -2407,7 +2409,7 @@ Deno.test(
       "run",
       "--allow-read",
       "--allow-write",
-      `--allow-net=unix:${socketPath}`,
+      `--allow-net=unix:${socketPath},localhost`,
       scriptPath,
     ]).finished();
     assertEquals(status, 0);
