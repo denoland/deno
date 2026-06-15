@@ -61,6 +61,7 @@ mod mldsa;
 mod mlkem;
 mod node_interop;
 mod shared;
+mod slhdsa;
 mod subtle_crypto;
 mod subtle_decrypt;
 mod subtle_derive_bits;

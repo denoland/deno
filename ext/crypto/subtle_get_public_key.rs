@@ -4,7 +4,7 @@
 //!
 //! Per the WICG modern-algos spec, derives the matching public key of a
 //! private CryptoKey for asymmetric algorithms (RSA-*, ECDSA, ECDH,
-//! Ed25519, X25519, X448, ML-DSA, ML-KEM). For ML-KEM the public key is
+//! Ed25519, X25519, X448, ML-DSA, ML-KEM, SLH-DSA). For ML-KEM the public key is
 //! recovered from the expanded decapsulation key bytes; for ML-DSA the
 //! key pair is re-derived from the seed (always present in the seeded
 //! private key material). For RSA/EC keys the path round-trips through
@@ -45,6 +45,7 @@ pub fn run<'s>(
     "RSASSA-PKCS1-v1_5" | "RSA-PSS" | "RSA-OAEP" | "ECDSA" | "ECDH"
     | "Ed25519" | "X25519" | "X448" | "ML-DSA-44" | "ML-DSA-65"
     | "ML-DSA-87" | "ML-KEM-512" | "ML-KEM-768" | "ML-KEM-1024" => {}
+    _ if crate::slhdsa::variant_from_name(algorithm_name).is_some() => {}
     other => {
       return Err(not_supported(format!(
         "getPublicKey() is not supported for {other}"
@@ -106,6 +107,25 @@ pub fn run<'s>(
         &usages_strs,
         AlgorithmDict::new(algorithm_name),
         RawKeyData::Raw(derived.public_key.into_boxed_slice()),
+      ))
+    }
+    _ if let Some(variant) =
+      crate::slhdsa::variant_from_name(algorithm_name) =>
+    {
+      validate_public_key_usages(&usages, &["verify"])?;
+      let public_key = crate::slhdsa::public_from_private(
+        variant,
+        key.raw.expanded_private_key(),
+      )
+      .map_err(|_| op_error("Failed to derive public key".into()))?;
+      let usages_strs: Vec<&str> = usages.iter().map(String::as_str).collect();
+      Ok(make_crypto_key(
+        scope,
+        CryptoKeyType::Public,
+        true,
+        &usages_strs,
+        AlgorithmDict::new(algorithm_name),
+        RawKeyData::Raw(public_key.into_boxed_slice()),
       ))
     }
     "RSASSA-PKCS1-v1_5" | "RSA-PSS" | "RSA-OAEP" => {

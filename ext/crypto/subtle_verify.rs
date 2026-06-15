@@ -44,9 +44,18 @@ pub enum SubtleVerifyParams {
     hash: String,
   },
   Hmac,
+  Kmac {
+    name: &'static str,
+    output_length: u32,
+    customization: Option<Vec<u8>>,
+  },
   Ed25519,
   MlDsa {
     variant: u8,
+    context: Option<Vec<u8>>,
+  },
+  SlhDsa {
+    variant: crate::slhdsa::SlhDsaVariantId,
     context: Option<Vec<u8>>,
   },
   Unknown(String),
@@ -59,12 +68,14 @@ impl SubtleVerifyParams {
       Self::RsaPss { .. } => "RSA-PSS",
       Self::Ecdsa { .. } => "ECDSA",
       Self::Hmac => "HMAC",
+      Self::Kmac { name, .. } => name,
       Self::Ed25519 => "Ed25519",
       Self::MlDsa { variant, .. } => match variant {
         0 => "ML-DSA-44",
         1 => "ML-DSA-65",
         _ => "ML-DSA-87",
       },
+      Self::SlhDsa { variant, .. } => crate::slhdsa::params(*variant).name,
       Self::Unknown(n) => n,
     }
   }
@@ -107,6 +118,29 @@ impl<'a> WebIdlConverter<'a> for SubtleVerifyParams {
         Ok(Self::Ecdsa { hash })
       }
       "HMAC" => Ok(Self::Hmac),
+      "KMAC128" | "KMAC256" => {
+        let obj =
+          maybe_obj.ok_or_else(|| missing_dict(prefix.clone(), &context))?;
+        let output_length = read_required_u32(
+          scope,
+          obj,
+          "outputLength",
+          prefix.clone(),
+          &context,
+        )?;
+        let customization = read_optional_buffer_source(
+          scope,
+          obj,
+          "customization",
+          prefix.clone(),
+          &context,
+        )?;
+        Ok(Self::Kmac {
+          name: canonical,
+          output_length,
+          customization,
+        })
+      }
       "Ed25519" => Ok(Self::Ed25519),
       "ML-DSA-44" | "ML-DSA-65" | "ML-DSA-87" => {
         let variant = match canonical {
@@ -129,6 +163,22 @@ impl<'a> WebIdlConverter<'a> for SubtleVerifyParams {
           context: context_bytes,
         })
       }
+      _ if let Some(variant) = crate::slhdsa::variant_from_name(canonical) => {
+        let context_bytes = match maybe_obj {
+          Some(o) => read_optional_buffer_source(
+            scope,
+            o,
+            "context",
+            prefix.clone(),
+            &context,
+          )?,
+          None => None,
+        };
+        Ok(Self::SlhDsa {
+          variant,
+          context: context_bytes,
+        })
+      }
       _ => unreachable!(),
     }
   }
@@ -140,10 +190,24 @@ fn canonical_verify_name(name: &str) -> Option<&'static str> {
     "RSA-PSS",
     "ECDSA",
     "HMAC",
+    "KMAC128",
+    "KMAC256",
     "Ed25519",
     "ML-DSA-44",
     "ML-DSA-65",
     "ML-DSA-87",
+    "SLH-DSA-SHA2-128s",
+    "SLH-DSA-SHA2-128f",
+    "SLH-DSA-SHA2-192s",
+    "SLH-DSA-SHA2-192f",
+    "SLH-DSA-SHA2-256s",
+    "SLH-DSA-SHA2-256f",
+    "SLH-DSA-SHAKE-128s",
+    "SLH-DSA-SHAKE-128f",
+    "SLH-DSA-SHAKE-192s",
+    "SLH-DSA-SHAKE-192f",
+    "SLH-DSA-SHAKE-256s",
+    "SLH-DSA-SHAKE-256f",
   ];
   NAMES.iter().copied().find(|n| n.eq_ignore_ascii_case(name))
 }
@@ -258,6 +322,19 @@ pub fn run(
       );
       verify_key_sync(key_data, args, &data)
     }
+    SubtleVerifyParams::Kmac {
+      output_length,
+      customization,
+      ..
+    } => {
+      let computed = crate::subtle_sign::run_kmac(
+        &key,
+        &data,
+        output_length,
+        customization,
+      )?;
+      Ok(constant_time_eq(&computed, &signature))
+    }
     SubtleVerifyParams::Ed25519 => {
       if key.key_type != CryptoKeyType::Public {
         return Err(invalid_access("Key type not supported".to_string()));
@@ -276,10 +353,33 @@ pub fn run(
         context.as_deref(),
       ))
     }
+    SubtleVerifyParams::SlhDsa { variant, context } => {
+      if key.key_type != CryptoKeyType::Public {
+        return Err(invalid_access("Key type not supported".to_string()));
+      }
+      Ok(crate::slhdsa::verify(
+        variant,
+        key.raw.bytes(),
+        &data,
+        &signature,
+        context.as_deref(),
+      ))
+    }
     SubtleVerifyParams::Unknown(name) => Err(not_supported(format!(
       "Algorithm '{name}' is not supported"
     ))),
   }
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+  if a.len() != b.len() {
+    return false;
+  }
+  let mut diff = 0u8;
+  for (&x, &y) in a.iter().zip(b) {
+    diff |= x ^ y;
+  }
+  diff == 0
 }
 
 fn sha_to_crypto_hash(h: ShaHash) -> CryptoHash {
