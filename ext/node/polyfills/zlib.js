@@ -89,6 +89,11 @@ const { zlib: zlibConstants } = core.loadExtScript(
 
 const kFlushFlag = Symbol("kFlushFlag");
 const kError = Symbol("kError");
+// Hold the unwrapped native write/writeSync methods so our own call sites can
+// invoke them directly, bypassing the arity-compat wrapper (see
+// `setupHandleWriteState`).
+const kNativeWrite = Symbol("kNativeWrite");
+const kNativeWriteSync = Symbol("kNativeWriteSync");
 
 const {
   // Zlib flush levels
@@ -493,7 +498,7 @@ function processChunkSync(self, chunk, flushFlag) {
   }
 
   while (true) {
-    handle.writeSync(
+    handle[kNativeWriteSync](
       flushFlag,
       chunk, // in
       inOff, // in_off
@@ -578,7 +583,7 @@ function processChunk(self, chunk, flushFlag, cb) {
   handle._callbackPending = true;
 
   try {
-    handle.write(
+    handle[kNativeWrite](
       flushFlag,
       chunk, // in
       0, // in_off
@@ -674,7 +679,7 @@ function processCallback() {
           return;
         }
         handle._callbackPending = true;
-        this.write(
+        this[kNativeWrite](
           handle.flushFlag,
           this.buffer, // in
           handle.inOff, // in_off
@@ -699,7 +704,7 @@ function processCallback() {
             return;
           }
           handle._callbackPending = true;
-          this.write(
+          this[kNativeWrite](
             handle.flushFlag,
             this.buffer, // in
             handle.inOff, // in_off
@@ -760,9 +765,15 @@ function _close(engine) {
 // `_handle.write()` / `_handle.writeSync()` directly using Node's binding
 // signature, which omits that trailing argument. Wrap the handle so those
 // external callers transparently get the stream's `_writeState` injected.
+//
+// Our own call sites always pass the buffer, so they invoke the stashed native
+// methods (`handle[kNativeWrite]` / `handle[kNativeWriteSync]`) directly to skip
+// the wrapper's per-write frame and argument array on every chunk.
 function setupHandleWriteState(handle, writeState) {
   const nativeWrite = handle.write;
   const nativeWriteSync = handle.writeSync;
+  handle[kNativeWrite] = nativeWrite;
+  handle[kNativeWriteSync] = nativeWriteSync;
   const wrap = (native) =>
     function (flush, input, inOff, inLen, out, outOff, outLen, state) {
       return ReflectApply(native, this, [
