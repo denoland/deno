@@ -263,12 +263,14 @@ Deno.test("[util] aborted() drops pending promise when resource is GCed", async 
 });
 
 Deno.test("[util] styleText()", () => {
-  const redText = util.styleText("red", "error");
+  const redText = util.styleText("red", "error", { validateStream: false });
   assertEquals(redText, "\x1B[31merror\x1B[39m");
 });
 
 Deno.test("[util] styleText() with array of formats", () => {
-  const colored = util.styleText(["red", "green"], "error");
+  const colored = util.styleText(["red", "green"], "error", {
+    validateStream: false,
+  });
   assertEquals(colored, "\x1b[31m\x1b[32merror\x1b[39m\x1b[39m");
 });
 
