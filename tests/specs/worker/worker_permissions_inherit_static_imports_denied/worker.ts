@@ -4,5 +4,7 @@
 // remote module must still be denied under `import: false`.
 import { printHello } from "http://localhost:4545/subdir/print_hello.ts";
 
-console.log("FAIL: import:false worker imported a module the parent had not loaded");
+console.log(
+  "FAIL: import:false worker imported a module the parent had not loaded",
+);
 printHello();
