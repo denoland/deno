@@ -53,7 +53,7 @@ pub use outdated::outdated;
 pub use why::why;
 
 #[derive(Debug, Copy, Clone, Hash)]
-enum ConfigKind {
+pub(crate) enum ConfigKind {
   DenoJson,
   PackageJson,
 }
@@ -123,6 +123,41 @@ impl ConfigUpdater {
     }
 
     None
+  }
+
+  /// Looks up a property by key path without marking the file as modified.
+  fn get_existing_property(&self, key_path: &KeyPath) -> Option<CstObjectProp> {
+    let mut current_node = self.root_object.clone();
+    for (i, part) in key_path.parts.iter().enumerate() {
+      let s = part.as_str();
+      if i < key_path.parts.len().saturating_sub(1) {
+        current_node = current_node.object_value(s)?;
+      } else {
+        return current_node.get(s);
+      }
+    }
+    None
+  }
+
+  /// Updates a catalog entry's bare version requirement. `key_paths` lists
+  /// candidate locations (e.g. top-level `catalog` vs `workspaces.catalog` in
+  /// package.json); the first one that exists is updated. Returns whether an
+  /// entry was found and updated.
+  fn update_catalog_entry(
+    &mut self,
+    key_paths: &[KeyPath],
+    new_value: &str,
+  ) -> bool {
+    for key_path in key_paths {
+      if let Some(property) = self.get_existing_property(key_path) {
+        property.set_value(jsonc_parser::cst::CstInputValue::String(
+          new_value.to_string(),
+        ));
+        self.modified = true;
+        return true;
+      }
+    }
+    false
   }
 
   fn add(&mut self, selected: SelectedPackage, dev: bool) {
@@ -482,7 +517,7 @@ pub async fn add(
   let http_client = cli_factory.http_client_provider();
   let deps_http_cache = cli_factory.global_http_cache()?;
   let deps_file_fetcher = create_cli_file_fetcher(
-    Default::default(),
+    deno_runtime::deno_web::BlobStore::default_arc(),
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     cli_factory.memory_files().clone(),
@@ -1054,7 +1089,7 @@ pub(crate) async fn create_dep_manager_and_resolvers(
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
   let file_fetcher = create_cli_file_fetcher(
-    Default::default(),
+    deno_runtime::deno_web::BlobStore::default_arc(),
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     factory.memory_files().clone(),

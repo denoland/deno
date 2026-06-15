@@ -8,11 +8,13 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::net::ToSocketAddrs;
+use std::rc::Rc;
 
 use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UvConnect;
@@ -169,7 +171,7 @@ unsafe extern "C" fn connect_cb(req: *mut UvConnect, status: i32) {
 #[repr(C)]
 pub struct TCPWrap {
   base: LibUvStreamWrap,
-  handle: Option<OwnedPtr<UvTcp>>,
+  handle: Cell<Option<OwnedPtr<UvTcp>>>,
   socket_type: Cell<SocketType>,
   /// Permission token from DNS lookup. When set, connect() checks
   /// permissions against the original hostname instead of the resolved IP.
@@ -229,7 +231,7 @@ impl TCPWrap {
 
       Self {
         base,
-        handle: Some(tcp),
+        handle: Cell::new(Some(tcp)),
         socket_type: Cell::new(socket_type),
         net_perm_hostname: RefCell::new(None),
       }
@@ -258,7 +260,7 @@ impl TCPWrap {
           -1,
           std::ptr::null(),
         ),
-        handle: None,
+        handle: Cell::new(None),
         socket_type: Cell::new(socket_type),
         net_perm_hostname: RefCell::new(None),
       }
@@ -266,8 +268,27 @@ impl TCPWrap {
   }
 
   fn tcp_ptr(&self) -> *mut UvTcp {
-    match &self.handle {
-      Some(h) => h.as_mut_ptr(),
+    // Briefly take the `OwnedPtr` out of the cell to read its raw address, then
+    // put it straight back so ownership is unchanged.
+    match self.handle.take() {
+      Some(h) => {
+        let ptr = h.as_mut_ptr();
+        self.handle.set(Some(h));
+        ptr
+      }
+      None => std::ptr::null_mut(),
+    }
+  }
+
+  /// Detach the underlying TCP handle, transferring ownership of the `UvTcp`
+  /// allocation to the caller. After this the `TCPWrap` no longer owns or
+  /// frees the handle, so exactly one owner (the caller) remains responsible
+  /// for freeing it. Returns null if the handle was already detached or never
+  /// allocated.
+  pub fn detach(&self) -> *mut UvTcp {
+    self.base.detach_stream();
+    match self.handle.take() {
+      Some(h) => h.into_raw(),
       None => std::ptr::null_mut(),
     }
   }
@@ -343,9 +364,18 @@ impl TCPWrap {
   }
 
   #[fast]
-  fn open(&self, #[smi] fd: i32) -> i32 {
+  fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
     if fd < 0 {
       return uv_compat::UV_EBADF;
+    }
+    // Refuse to adopt a descriptor Deno already tracks. Stdio (0-2) is
+    // pre-registered and may be re-opened; any other fd already in the
+    // FdTable is rejected, matching `PipeWrap::open`.
+    {
+      let fd_table = state.borrow::<deno_io::FdTable>();
+      if fd_table.contains(fd) && !(0..=2).contains(&fd) {
+        return -libc::EEXIST;
+      }
     }
     let tcp = self.tcp_ptr();
     if tcp.is_null() {
@@ -353,12 +383,22 @@ impl TCPWrap {
     }
     // SAFETY: tcp handle is valid (null-checked above); fd is validated above.
     // Platform-specific non-blocking setup and uv_tcp_open are safe with valid args.
-    unsafe {
+    let ret = unsafe {
       #[cfg(unix)]
       {
         let flags = libc::fcntl(fd, libc::F_GETFL);
         if flags != -1 {
           libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+        // Match Node: a wrap constructed with `new TCP(SERVER)` opens the
+        // fd as a listener; `new TCP(SOCKET)` as a connected stream. Node's
+        // libuv layer doesn't autodetect; it uses the wrap's intent to
+        // decide how to register the fd, then `listen()` on a listening fd
+        // is a no-op at the kernel level.
+        if self.socket_type.get() == SocketType::Server {
+          uv_compat::uv_tcp_open_listener(tcp, fd)
+        } else {
+          uv_compat::uv_tcp_open(tcp, fd)
         }
       }
       #[cfg(windows)]
@@ -367,18 +407,47 @@ impl TCPWrap {
         use windows_sys::Win32::Networking::WinSock::ioctlsocket;
         let mut nonblocking: u32 = 1;
         ioctlsocket(fd as usize, FIONBIO, &mut nonblocking);
+        uv_compat::uv_tcp_open(tcp, fd)
       }
-      // Match Node: a wrap constructed with `new TCP(SERVER)` opens the
-      // fd as a listener; `new TCP(SOCKET)` as a connected stream. Node's
-      // libuv layer doesn't autodetect — it uses the wrap's intent to
-      // decide how to register the fd, then `listen()` on a listening fd
-      // is a no-op at the kernel level.
-      #[cfg(unix)]
-      if self.socket_type.get() == SocketType::Server {
-        return uv_compat::uv_tcp_open_listener(tcp, fd);
-      }
-      uv_compat::uv_tcp_open(tcp, fd)
+    };
+    // Track the adopted fd so it can't be re-adopted by another wrap and is
+    // dropped from the FdTable on close.
+    if ret == 0 {
+      state.borrow_mut::<deno_io::FdTable>().register_uv_owned(fd);
+      self.base.set_fd(fd);
     }
+    ret
+  }
+
+  /// Override the base close to drop the `FdTable` entry registered by
+  /// `open()` before `uv_close` frees the fd. A no-op for sockets that were
+  /// never adopted via `open()`; their fd stays -1.
+  #[reentrant]
+  fn close(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[scoped] cb: Option<v8::Global<v8::Function>>,
+  ) -> Result<(), ResourceError> {
+    let fd = self.base.get_fd();
+    if fd >= 0 {
+      op_state
+        .borrow_mut()
+        .borrow_mut::<deno_io::FdTable>()
+        .remove(fd);
+      // Clear the cached fd so the removal is one-shot. `close_handle()`
+      // guards against double frees of the libuv handle, but a second
+      // `close()` would still re-run this TCP-specific removal and could
+      // drop an unrelated FdTable entry if the OS has since reused the fd
+      // number.
+      self.base.set_fd(-1);
+    }
+    self.base.clear_js_handle();
+    self
+      .base
+      .handle_wrap()
+      .close_handle(op_state, this, scope, cb)
   }
 
   #[fast]

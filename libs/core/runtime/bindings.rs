@@ -6,6 +6,7 @@ use std::os::raw::c_void;
 use std::path::PathBuf;
 
 use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 use url::Url;
 use v8::MapFnTo;
 
@@ -242,7 +243,8 @@ pub(crate) fn externalize_sources(
   // SAFETY: We are creating `v8::OneByteConst`s here for each of the input sources. Because
   // we keep the original source alive, we can safely make a `v8::OneByteConst` from _any_
   // source type. We'll make this lifetime static elsewhere in the code so we can safely
-  // use it with v8 strings.
+  // use it with v8 strings. These setup sources are ASCII; debug builds retain V8's
+  // checked constructor for that invariant.
   unsafe {
     let mut externals: Box<[v8::OneByteConst]> = std::mem::transmute(externals);
 
@@ -252,7 +254,9 @@ pub(crate) fn externalize_sources(
     let offset = 0;
     for (index, source) in snapshot_sources.iter().enumerate() {
       externals[index + offset] =
-        FastStaticString::create_external_onebyte_const(source);
+        FastStaticString::create_external_onebyte_const_unchecked_in_release(
+          source,
+        );
     }
 
     // Next, add the non-snapshot sources. For each source file, we swap its `code`
@@ -275,12 +279,9 @@ pub(crate) fn externalize_sources(
     let offset = snapshot_sources.len();
     for (index, source) in source_iter.enumerate() {
       externals[index + offset] =
-        FastStaticString::create_external_onebyte_const(std::mem::transmute::<
-          &[u8],
-          &[u8],
-        >(
-          source.code.as_bytes(),
-        ));
+        FastStaticString::create_external_onebyte_const_unchecked_in_release(
+          std::mem::transmute::<&[u8], &[u8]>(source.code.as_bytes()),
+        );
       let ptr = &externals[index + offset] as *const v8::OneByteConst;
       let original_source = std::mem::replace(
         &mut source.code,
@@ -533,12 +534,12 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 
   let op_ctxs = &op_ctxs[index..];
   for op_ctx in op_ctxs {
-    let mut op_fn = op_ctx_function(
-      scope,
-      op_ctx,
-      v8::ConstructorBehavior::Allow,
-      will_snapshot,
-    );
+    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
+    let mut op_fn = if will_snapshot && !op_ctx.decl.constructable {
+      op_ctx_plain_function(scope, op_ctx, constructor_behavior)
+    } else {
+      op_ctx_function(scope, op_ctx, constructor_behavior, will_snapshot)
+    };
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     // For async ops we need to set them up, by calling `Deno.core.setUpAsyncStub` -
@@ -656,8 +657,8 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
       continue;
     }
 
-    let mut op_fn =
-      op_ctx_function(scope, op_ctx, v8::ConstructorBehavior::Allow, false);
+    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
+    let mut op_fn = op_ctx_function(scope, op_ctx, constructor_behavior, false);
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     if op_ctx.decl.is_async {
@@ -672,10 +673,21 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
 }
 
 fn method_needs_fast_call_upgrade(op_ctx: &OpCtx) -> bool {
+  if op_ctx.decl.constructable {
+    return false;
+  }
   if op_ctx.metrics_enabled() {
     op_ctx.decl.fast_fn_with_metrics.is_some()
   } else {
     op_ctx.decl.fast_fn.is_some()
+  }
+}
+
+fn op_ctx_constructor_behavior(op_ctx: &OpCtx) -> v8::ConstructorBehavior {
+  if op_ctx.decl.constructable {
+    v8::ConstructorBehavior::Allow
+  } else {
+    v8::ConstructorBehavior::Throw
   }
 }
 
@@ -733,6 +745,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
 
       let tmpl = v8::FunctionTemplate::builder_raw(getter_raw)
         .data(external.into())
+        .constructor_behavior(v8::ConstructorBehavior::Throw)
         .build(scope);
       let op_fn = tmpl.get_function(scope).unwrap();
       let method_name = format!("get {}", op_ctx.decl.name_fast);
@@ -753,6 +766,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
 
       let tmpl = v8::FunctionTemplate::builder_raw(setter_raw)
         .data(external.into())
+        .constructor_behavior(v8::ConstructorBehavior::Throw)
         .length(1)
         .build(scope);
       let op_fn = tmpl.get_function(scope).unwrap();
@@ -814,6 +828,7 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   // snapshot deserialization.
   let template = if let Some(fast_function) = fast_fn
     && !will_snapshot
+    && !op_ctx.decl.constructable
   {
     builder.build_fast(scope, &[fast_function])
   } else {
@@ -834,6 +849,35 @@ fn op_ctx_function<'s, 'i>(
   let template =
     op_ctx_template(scope, op_ctx, constructor_behaviour, will_snapshot);
   let v8fn = template.get_function(scope).unwrap();
+  v8fn.set_name(v8name);
+  v8fn
+}
+
+fn op_ctx_plain_function<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  op_ctx: &OpCtx,
+  constructor_behaviour: v8::ConstructorBehavior,
+) -> v8::Local<'s, v8::Function> {
+  let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
+  let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
+  let slow_fn = if op_ctx.metrics_enabled() {
+    op_ctx.decl.slow_fn_with_metrics
+  } else {
+    op_ctx.decl.slow_fn
+  };
+
+  let v8fn = v8::Function::builder_raw(slow_fn)
+    .data(external.into())
+    .constructor_behavior(constructor_behaviour)
+    .side_effect_type(if op_ctx.decl.no_side_effects {
+      v8::SideEffectType::HasNoSideEffect
+    } else {
+      v8::SideEffectType::HasSideEffect
+    })
+    .length(op_ctx.decl.arg_count as i32)
+    .build(scope)
+    .unwrap();
+  let v8name = op_ctx.decl.name_fast.v8_string(scope).unwrap();
   v8fn.set_name(v8name);
   v8fn
 }
@@ -1303,7 +1347,16 @@ fn import_meta_resolve(
       rv.set(resolved_val);
     }
     Err(err) => {
-      crate::error::throw_js_error_class(scope, &err);
+      // Per the HTML spec, `import.meta.resolve()` throws a `TypeError` when
+      // the specifier can't be resolved, whatever the underlying loader error
+      // class is (e.g. a URL parse error surfaces as a `URIError`). Coerce to
+      // `TypeError` to match the spec. This used to happen implicitly because
+      // `throw_js_error_class` always built a `TypeError`; now that it faithfully
+      // rebuilds the registered class, the coercion has to be explicit.
+      crate::error::throw_js_error_class(
+        scope,
+        &JsErrorBox::type_error(err.get_message().into_owned()),
+      );
     }
   };
 }

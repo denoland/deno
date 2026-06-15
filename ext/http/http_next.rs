@@ -542,6 +542,41 @@ impl RawRequestHeaders {
     Some(&self.bytes[header.value_start..header.value_start + header.value_len])
   }
 
+  /// Removes all headers with the given (lowercase) name, returning the
+  /// value of the first removed header.
+  fn remove(&mut self, name: &[u8]) -> Option<Vec<u8>> {
+    let mut value = None;
+    let mut i = 0;
+    while i < self.entries.len() {
+      let header = &self.entries[i];
+      let header_name =
+        &self.bytes[header.name_start..header.name_start + header.name_len];
+      if header_name.eq_ignore_ascii_case(name) {
+        if value.is_none() {
+          value = Some(
+            self.bytes
+              [header.value_start..header.value_start + header.value_len]
+              .to_vec(),
+          );
+        }
+        self.entries.remove(i);
+        if let Some(index) = self.host_index
+          && index > i
+        {
+          self.host_index = Some(index - 1);
+        }
+        if let Some(index) = self.authorization_index
+          && index > i
+        {
+          self.authorization_index = Some(index - 1);
+        }
+      } else {
+        i += 1;
+      }
+    }
+    value
+  }
+
   fn get_joined(&self, name: &[u8], separator: &[u8]) -> Option<Vec<u8>> {
     let mut out = None::<Vec<u8>>;
     for header in self.iter() {
@@ -621,6 +656,14 @@ fn split_authority(authority: &str) -> (&str, Option<u16>) {
   (address, Some(port))
 }
 
+fn request_header_value_separator(name: &[u8]) -> &'static [u8] {
+  if name.eq_ignore_ascii_case(COOKIE.as_ref()) {
+    b"; "
+  } else {
+    b", "
+  }
+}
+
 fn raw_request_header_to_v8<'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
   headers: &RawRequestHeaders,
@@ -637,11 +680,7 @@ fn raw_request_header_to_v8<'scope>(
     .unwrap()
     .into();
   }
-  let separator = if name.eq_ignore_ascii_case(b"cookie") {
-    b"; ".as_slice()
-  } else {
-    b", ".as_slice()
-  };
+  let separator = request_header_value_separator(name);
   let mut first = None::<&[u8]>;
   let mut out = None::<Vec<u8>>;
   for header in headers.iter() {
@@ -698,6 +737,18 @@ enum RawResponseBody {
   Stream(ResponseBytesInner),
 }
 
+fn preferred_supported_compression(
+  encodings: impl Iterator<
+    Item = Result<(Option<Encoding>, f32), fly_accept_encoding::EncodingError>,
+  >,
+) -> Compression {
+  match super::preferred_supported_encoding(encodings) {
+    Encoding::Brotli => Compression::Brotli,
+    Encoding::Gzip => Compression::GZip,
+    _ => Compression::None,
+  }
+}
+
 fn raw_request_compression(headers: &RawRequestHeaders) -> Compression {
   let Some(accept_encoding) = headers.get_joined(b"accept-encoding", b", ")
   else {
@@ -716,20 +767,63 @@ fn raw_request_compression(headers: &RawRequestHeaders) -> Compression {
   }
 
   let accepted =
-    fly_accept_encoding::encodings_iter_str(std::iter::once(accept_encoding))
-      .filter(|r| {
-        matches!(
-          r,
-          Ok((
-            Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
-            _
-          ))
-        )
-      });
-  match fly_accept_encoding::preferred(accepted) {
-    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
-    Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
-    _ => Compression::None,
+    fly_accept_encoding::encodings_iter_str(std::iter::once(accept_encoding));
+  preferred_supported_compression(accepted)
+}
+
+#[cfg(test)]
+mod compression_tests {
+  use super::*;
+
+  fn compression_for(accept_encoding: &str) -> Compression {
+    let accepted =
+      fly_accept_encoding::encodings_iter_str(std::iter::once(accept_encoding));
+    preferred_supported_compression(accepted)
+  }
+
+  #[test]
+  fn compression_prefers_brotli_over_gzip_when_equal() {
+    assert!(matches!(
+      compression_for("gzip, deflate, br, zstd"),
+      Compression::Brotli
+    ));
+    assert!(matches!(
+      compression_for("zstd, gzip, deflate, br"),
+      Compression::Brotli
+    ));
+    assert!(matches!(
+      compression_for("gzip;q=1.0, br;q=1.0"),
+      Compression::Brotli
+    ));
+  }
+
+  #[test]
+  fn compression_respects_higher_qval() {
+    assert!(matches!(
+      compression_for("gzip;q=1.0, br;q=0.9, zstd;q=1.0"),
+      Compression::GZip
+    ));
+    assert!(matches!(
+      compression_for("gzip;q=0.5, br;q=0.9"),
+      Compression::Brotli
+    ));
+    assert!(matches!(
+      compression_for("identity;q=1.0, gzip;q=0.9, br;q=0.9"),
+      Compression::None
+    ));
+  }
+
+  #[test]
+  fn compression_ignores_unsupported_or_invalid_tokens() {
+    assert!(matches!(
+      compression_for("br, compress"),
+      Compression::Brotli
+    ));
+    assert!(matches!(compression_for("gzip, br;q=2"), Compression::GZip));
+    assert!(matches!(
+      compression_for("compress, x-gzip"),
+      Compression::None
+    ));
   }
 }
 
@@ -975,6 +1069,7 @@ enum RawRequestBody {
 
 struct RawHttpRecordInner {
   request_info: HttpConnectionProperties,
+  client_addr: Option<Vec<u8>>,
   method: RawMethod,
   path: String,
   headers: RawRequestHeaders,
@@ -1003,11 +1098,16 @@ impl RawHttpRecord {
     request_info: HttpConnectionProperties,
     method: RawMethod,
     path: String,
-    headers: RawRequestHeaders,
+    mut headers: RawRequestHeaders,
     request_body: Option<RawRequestBody>,
     upgrade: Option<Rc<RawUpgrade>>,
     request_size: u64,
   ) -> Rc<Self> {
+    let client_addr = if crate::service::trust_proxy_headers() {
+      headers.remove(b"x-deno-client-address")
+    } else {
+      None
+    };
     let otel_info = deno_telemetry::OTEL_GLOBALS
       .get()
       .filter(|o| o.has_metrics())
@@ -1022,6 +1122,7 @@ impl RawHttpRecord {
       });
     Rc::new(Self(RefCell::new(RawHttpRecordInner {
       request_info,
+      client_addr,
       method,
       path,
       headers,
@@ -1099,7 +1200,12 @@ impl RawHttpRecord {
         if inner.request_cancelled {
           return Poll::Ready(true);
         }
-        if inner.response_ready {
+        // Resolve only once the response body has been fully written, not
+        // when the response is merely dispatched: in legacy-abort mode the
+        // JS side aborts `Request.signal` as soon as this future resolves,
+        // which would tear down anything tied to the signal (e.g. a proxied
+        // `fetch` whose body is still streaming as the response).
+        if inner.response_body_finished {
           return Poll::Ready(false);
         }
         inner.request_cancel_waker = Some(cx.waker().clone());
@@ -1272,6 +1378,9 @@ impl RawHttpRecord {
     if let Some(waker) = inner.response_body_waker.take() {
       waker.wake();
     }
+    if let Some(waker) = inner.request_cancel_waker.take() {
+      waker.wake();
+    }
   }
 
   fn add_otel_response_size(&self, size: usize) {
@@ -1340,7 +1449,12 @@ impl RawHttpRecordCancelGuard {
   }
 
   fn disarm(&mut self) {
-    self.0 = None;
+    if let Some(record) = self.0.take() {
+      // The response (including its body, if any) has been written. Mark the
+      // body finished so `request_cancelled()` resolves; flat-response paths
+      // don't go through `RawResponseBodyFinishGuard`.
+      record.finish_response_body(false);
+    }
   }
 }
 
@@ -1994,14 +2108,25 @@ fn raw_request_remote_addr<'scope>(
   http: &RawHttpRecord,
 ) -> v8::Local<'scope, v8::Array> {
   let inner = http.0.borrow();
+  let (peer_ip, peer_port) = match &inner.client_addr {
+    Some(client_addr) => {
+      let addr: std::net::SocketAddr =
+        std::str::from_utf8(client_addr).unwrap().parse().unwrap();
+      (Rc::from(format!("{}", addr.ip())), Some(addr.port() as u32))
+    }
+    _ => (
+      inner.request_info.peer_address.clone(),
+      inner.request_info.peer_port,
+    ),
+  };
   let peer_ip: v8::Local<v8::Value> = v8::String::new_from_utf8(
     scope,
-    inner.request_info.peer_address.as_bytes(),
+    peer_ip.as_bytes(),
     v8::NewStringType::Normal,
   )
   .unwrap()
   .into();
-  let peer_port: v8::Local<v8::Value> = match inner.request_info.peer_port {
+  let peer_port: v8::Local<v8::Value> = match peer_port {
     Some(port) => v8::Number::new(scope, port.into()).into(),
     None => v8::undefined(scope).into(),
   };
@@ -2068,6 +2193,7 @@ pub fn op_http_get_request_header<'scope>(
       let Ok(name) = HeaderName::from_bytes(&name) else {
         return v8::null(scope).into();
       };
+      let separator = request_header_value_separator(name.as_ref());
       let request_parts = http.request_parts();
       let mut values = request_parts.headers.get_all(name).iter();
       let Some(first) = values.next() else {
@@ -2082,12 +2208,14 @@ pub fn op_http_get_request_header<'scope>(
         .unwrap()
         .into();
       };
-      let mut value = Vec::with_capacity(first.as_bytes().len() + 2);
+      let mut value = Vec::with_capacity(
+        first.as_bytes().len() + separator.len() + next.as_bytes().len(),
+      );
       value.extend_from_slice(first.as_bytes());
-      value.extend_from_slice(b", ");
+      value.extend_from_slice(separator);
       value.extend_from_slice(next.as_bytes());
       for next in values {
-        value.extend_from_slice(b", ");
+        value.extend_from_slice(separator);
         value.extend_from_slice(next.as_bytes());
       }
       v8::String::new_from_one_byte(scope, &value, v8::NewStringType::Normal)
@@ -2155,7 +2283,9 @@ pub fn op_http_get_request_headers<'scope>(
       vec.push(
         v8::String::new_from_one_byte(
           scope,
-          cookies.join(b"; ".as_slice()).as_ref(),
+          cookies
+            .join(request_header_value_separator(COOKIE.as_ref()))
+            .as_ref(),
           v8::NewStringType::Normal,
         )
         .unwrap()
@@ -2208,8 +2338,6 @@ pub fn op_http_get_request_headers<'scope>(
   // semicolons.
   // TODO(mmastrac): This should probably happen on the JS side on-demand
   if let Some(cookies) = cookies {
-    let cookie_sep = "; ".as_bytes();
-
     vec.push(
       v8::String::new_external_onebyte_static(scope, COOKIE.as_ref())
         .unwrap()
@@ -2218,7 +2346,9 @@ pub fn op_http_get_request_headers<'scope>(
     vec.push(
       v8::String::new_from_one_byte(
         scope,
-        cookies.join(cookie_sep).as_ref(),
+        cookies
+          .join(request_header_value_separator(COOKIE.as_ref()))
+          .as_ref(),
         v8::NewStringType::Normal,
       )
       .unwrap()
@@ -2436,21 +2566,8 @@ fn is_request_compressible(
   }
 
   // Fall back to the expensive parser
-  let accepted =
-    fly_accept_encoding::encodings_iter_http_1(headers).filter(|r| {
-      matches!(
-        r,
-        Ok((
-          Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
-          _
-        ))
-      )
-    });
-  match fly_accept_encoding::preferred(accepted) {
-    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
-    Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
-    _ => Compression::None,
-  }
+  let accepted = fly_accept_encoding::encodings_iter_http_1(headers);
+  preferred_supported_compression(accepted)
 }
 
 fn is_response_compressible(headers: &HeaderMap) -> bool {
@@ -3788,6 +3905,9 @@ where
     .await?;
     match event {
       RawResponseBodyEvent::PeerClosed => {
+        // The client went away mid-response; treat it as a cancellation so
+        // `Request.signal` aborts, like the hyper path does.
+        finish.record.cancel_request();
         abort_raw_response_body(&mut body);
         finish.finish(false);
         return Ok(());
@@ -3924,6 +4044,9 @@ where
     .await?;
     match event {
       RawResponseBodyEvent::PeerClosed => {
+        // The client went away mid-response; treat it as a cancellation so
+        // `Request.signal` aborts, like the hyper path does.
+        finish.record.cancel_request();
         abort_raw_response_body(&mut body);
         finish.finish(false);
         return Ok(());

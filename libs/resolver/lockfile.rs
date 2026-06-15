@@ -310,7 +310,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
-          PackageJsonDepValue::Workspace(_) => None,
+          PackageJsonDepValue::Workspace { .. } => None,
           PackageJsonDepValue::Catalog(catalog_name) => {
             let catalog = catalogs.get(catalog_name.as_str())?;
             let version_req_str = catalog.get(alias.as_str())?;
@@ -367,7 +367,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           root_folder
             .deno_json
             .as_deref()
-            .map(|d| d.dependencies())
+            .map(|d| d.dependencies(workspace.catalogs()))
             .unwrap_or_default()
         },
       },
@@ -396,7 +396,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                 dependencies: folder
                   .deno_json
                   .as_deref()
-                  .map(|d| d.dependencies())
+                  .map(|d| d.dependencies(workspace.catalogs()))
                   .unwrap_or_default(),
               };
               if config.package_json_deps.is_empty()
@@ -426,7 +426,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                     }
                     // not supported
                     PackageJsonDepValue::File(_)
-                    | PackageJsonDepValue::Workspace(_)
+                    | PackageJsonDepValue::Workspace { .. }
                     | PackageJsonDepValue::Catalog(_) => None,
                   })
                   .collect()
@@ -474,7 +474,8 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           })
           .unwrap();
           let value = deno_lockfile::LockfileLinkContent {
-            dependencies: deno_json.dependencies(),
+            // not this workspace's catalogs, so don't resolve against them
+            dependencies: deno_json.dependencies(&Default::default()),
             optional_dependencies: Default::default(),
             peer_dependencies: Default::default(),
             peer_dependencies_meta: Default::default(),

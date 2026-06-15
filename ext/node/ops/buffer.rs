@@ -178,8 +178,12 @@ pub fn op_node_buffer_compare_offset(
   )
 }
 
+// Threshold for falling back to V8's internal string copy allocation
+// instead of creating an ExternalString to reduce GC finalizer overhead.
+const ZERO_COPY_THRESHOLD: usize = 1024;
+
 #[op2(reentrant)]
-pub fn op_node_decode<'a>(
+pub fn op_node_encoding_slice<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   buf: v8::Local<v8::ArrayBufferView>,
   start: v8::Local<v8::Value>,
@@ -204,11 +208,15 @@ pub fn op_node_decode<'a>(
     return Err(JsErrorBox::from_err(BufferError::OutOfRange));
   }
 
+  if end == start {
+    return Ok(v8::String::empty(scope));
+  }
+
   let buffer = &buf[start..end];
 
   match encoding {
     0 => {
-      // utf-8
+      // utf8Slice
       if buffer.len() <= 256 && buffer.is_ascii() {
         v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
       } else {
@@ -227,12 +235,207 @@ pub fn op_node_decode<'a>(
       }
     }
     1 => {
-      // latin1
+      // latin1Slice
       v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
+    }
+    2 => {
+      // asciiSlice
+      if buffer.len() > v8::String::MAX_LENGTH {
+        // String too long
+        None
+      } else if buffer.len() > ZERO_COPY_THRESHOLD {
+        let ascii_bytes = mask_ascii_fast(buffer);
+        // `ascii_bytes` is already a copied clone
+        // (not a zero‑copy reference to the ArrayBufferView),
+        // so we can zero‑copy create a V8 string from it.
+        v8::String::new_external_onebyte(scope, ascii_bytes.into_boxed_slice())
+      } else if buffer.is_ascii() {
+        // A copy is required to prevent subsequent ArrayBufferView modifications
+        // from altering the immutable string.
+        // Cannot zero-copy create a V8 string here.
+        v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
+      } else {
+        let ascii_bytes = mask_ascii_fast(buffer);
+        // Copy bytes to a string
+        v8::String::new_from_one_byte(
+          scope,
+          &ascii_bytes,
+          v8::NewStringType::Normal,
+        )
+      }
+    }
+    3 => {
+      // ucs2Slice
+      decode_utf16le_from_bytes(scope, buffer)
+    }
+    4 => {
+      // hexSlice
+      if buffer.len() > (v8::String::MAX_LENGTH / 2) {
+        // String too long
+        None
+      } else {
+        let target_len = buffer.len() * 2;
+        let mut hex_bytes = vec![0u8; target_len];
+        // infallible: output is exactly 2x input
+        faster_hex::hex_encode(buffer, &mut hex_bytes).unwrap();
+        if target_len <= ZERO_COPY_THRESHOLD {
+          // Copy bytes to a string
+          v8::String::new_from_one_byte(
+            scope,
+            &hex_bytes,
+            v8::NewStringType::Normal,
+          )
+        } else {
+          // Create a V8 string with zero-copy
+          v8::String::new_external_onebyte(scope, hex_bytes.into_boxed_slice())
+        }
+      }
     }
     _ => return Err(JsErrorBox::from_err(BufferError::InvalidType)),
   }
   .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
+}
+
+#[inline(always)]
+fn mask_ascii_fast(bytes: &[u8]) -> Vec<u8> {
+  const CHUNK_SIZE: usize = std::mem::size_of::<usize>();
+  const MASK: usize = usize::from_ne_bytes([0x7F; CHUNK_SIZE]);
+
+  let len = bytes.len();
+  let mut ascii_bytes = Vec::<u8>::with_capacity(len);
+
+  let src = bytes.as_ptr();
+  let dst = ascii_bytes.as_mut_ptr();
+
+  // SAFETY:
+  // 1. Bounds & Capacity:
+  //    - `src` is valid for `len` bytes.
+  //    - `dst` has an allocated capacity of `len` bytes.
+  //    - If `len >= CHUNK_SIZE`: `i < limit` implies
+  //      `i + CHUNK_SIZE < len`. The out-of-loop block at `limit`
+  //      accesses exactly the last `CHUNK_SIZE` bytes.
+  //    - If `len < CHUNK_SIZE`: The `for` loop bounds are `0..len`.
+  //    Therefore, all pointer arithmetic stays within valid bounds.
+  // 2. Alignment:
+  //    `read_unaligned` and `write_unaligned` are used for `usize`
+  //    accesses, preventing UB from potentially unaligned pointers.
+  // 3. Initialization:
+  //    Every byte from `0` to `len` in `dst` is guaranteed to be
+  //    written before `set_len(len)` is called. Overlapping writes
+  //    are idempotent and safe.
+  unsafe {
+    if len >= CHUNK_SIZE {
+      let limit = len - CHUNK_SIZE;
+      let mut i: usize = 0;
+      while i < limit {
+        let tmp = src.add(i).cast::<usize>().read_unaligned();
+        dst.add(i).cast::<usize>().write_unaligned(tmp & MASK);
+        i += CHUNK_SIZE;
+      }
+      let tmp = src.add(limit).cast::<usize>().read_unaligned();
+      dst.add(limit).cast::<usize>().write_unaligned(tmp & MASK);
+    } else {
+      for i in 0..len {
+        dst.add(i).write(src.add(i).read() & 0x7F);
+      }
+    }
+
+    ascii_bytes.set_len(len);
+  }
+
+  ascii_bytes
+}
+
+#[inline(always)]
+fn decode_utf16le_from_bytes<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  bytes: &[u8],
+) -> Option<v8::Local<'a, v8::String>> {
+  // UTF-16 must be a multiple of 2 bytes. Discard any trailing odd byte.
+  let len = bytes.len() & !1;
+  let target_len = len / 2;
+
+  if target_len > v8::String::MAX_LENGTH {
+    // String too long
+    return None;
+  }
+
+  let buf = &bytes[..len];
+
+  #[cfg(target_endian = "little")]
+  {
+    // Attempt a zero-copy cast to &[u16]
+    // SAFETY:
+    // `u16` has no invalid bit patterns. Reinterpreting
+    // any initialized `u8` pairs as `u16` is safe.
+    let (prefix, u16_slice, suffix) = unsafe { buf.align_to::<u16>() };
+
+    if prefix.is_empty() && suffix.is_empty() {
+      // Fast path: Memory is perfectly 2-byte aligned.
+      // A copy is required to prevent subsequent ArrayBufferView modifications
+      // from altering the immutable string.
+      // Cannot zero-copy create a V8 string here.
+      v8::String::new_from_two_byte(scope, u16_slice, v8::NewStringType::Normal)
+    } else {
+      // Slow path: Unaligned memory (rare in V8, but must be handled).
+      // Use uninitialized memory to avoid Vec's memset(0) overhead.
+      let mut u16_data = Vec::<u16>::with_capacity(target_len);
+
+      // SAFETY:
+      // 1. `buf` is valid for reads of `len` bytes.
+      // 2. `u16_data` has a capacity of `target_len`
+      //    `u16`s (exactly `len` bytes), so writing
+      //    `len` bytes is within bounds.
+      // 3. Source and destination do not overlap.
+      // 4. `copy_nonoverlapping` fully initializes
+      //    the memory, making `set_len` safe.
+      unsafe {
+        // Memcpy the data byte-by-byte into the newly allocated Vec memory.
+        std::ptr::copy_nonoverlapping(
+          buf.as_ptr(),
+          u16_data.as_mut_ptr().cast::<u8>(),
+          len,
+        );
+        // Manually set the length.
+        u16_data.set_len(target_len);
+      }
+
+      // `u16_data` is already a copied clone
+      // (not a zero‑copy reference to the ArrayBufferView),
+      // so we can zero‑copy create a V8 string from it.
+      if len <= ZERO_COPY_THRESHOLD {
+        // Copy bytes to a string
+        v8::String::new_from_two_byte(
+          scope,
+          &u16_data,
+          v8::NewStringType::Normal,
+        )
+      } else {
+        // Create a V8 string with zero-copy
+        v8::String::new_external_twobyte(scope, u16_data.into_boxed_slice())
+      }
+    }
+  }
+
+  // Fallback for big-endian architectures (uncommon environments).
+  #[cfg(target_endian = "big")]
+  {
+    let u16_data = buf
+      .chunks_exact(2)
+      .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+      .collect();
+
+    // `u16_data` is already a copied clone
+    // (not a zero‑copy reference to the ArrayBufferView),
+    // so we can zero‑copy create a V8 string from it.
+    if len <= ZERO_COPY_THRESHOLD {
+      // Copy bytes to a string
+      v8::String::new_from_two_byte(scope, &u16_data, v8::NewStringType::Normal)
+    } else {
+      // Create a V8 string with zero-copy
+      v8::String::new_external_twobyte(scope, u16_data.into_boxed_slice())
+    }
+  }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
