@@ -1,0 +1,26 @@
+{
+  "tests": {
+    // The proxy host (127.0.0.1:9457) is granted, but the request target
+    // (127.0.0.1:9458) is not. node:http must permission-check the target and
+    // refuse, even though the socket only connects to the proxy. Before the
+    // fix the target was never checked, so --allow-net=<proxy> alone reached it.
+    "target_not_granted_is_blocked": {
+      "args": "run --allow-net=127.0.0.1:9457 main.mjs",
+      "envs": {
+        "NODE_USE_ENV_PROXY": "1",
+        "HTTP_PROXY": "http://127.0.0.1:9457"
+      },
+      "output": "blocked.out"
+    },
+    // When both the proxy and the target are granted, the proxied request
+    // succeeds, so the new target check does not regress the allowed path.
+    "target_granted_succeeds": {
+      "args": "run --allow-net=127.0.0.1:9457,127.0.0.1:9458 main.mjs",
+      "envs": {
+        "NODE_USE_ENV_PROXY": "1",
+        "HTTP_PROXY": "http://127.0.0.1:9457"
+      },
+      "output": "ok.out"
+    }
+  }
+}

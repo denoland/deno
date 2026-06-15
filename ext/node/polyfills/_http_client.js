@@ -25,6 +25,7 @@
 // deno-lint-ignore-file no-this-alias no-inner-declarations
 
 import { core, internals, primordials } from "ext:core/mod.js";
+import { op_node_http_check_proxy_net } from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeIndexOf,
@@ -526,6 +527,14 @@ function ClientRequest(input, options, cb) {
     port,
   );
   if (proxyEntry) {
+    // A proxied request connects only to the proxy, so the target host would
+    // otherwise never be permission-checked. Enforce --allow-net for the
+    // target here, matching fetch(), before routing through the proxy.
+    op_node_http_check_proxy_net(
+      host,
+      port,
+      protocol === "https:" ? "node:https.request()" : "node:http.request()",
+    );
     this[kProxy] = proxyEntry;
     this[kProxyTargetHost] = host;
     this[kProxyTargetPort] = port;
