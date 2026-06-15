@@ -185,6 +185,30 @@ let debug = debuglog("net", (fn) => {
 const kLastWriteQueueSize = Symbol("lastWriteQueueSize");
 const kBytesRead = Symbol("kBytesRead");
 const kBytesWritten = Symbol("kBytesWritten");
+// Holds the async context (AsyncLocalStorage / async_hooks) snapshot captured
+// when a connect request or listening handle is set up. The native libuv
+// callbacks in tcp_wrap/pipe_wrap invoke the completion callbacks directly,
+// outside of any microtask or nextTick, so the snapshot has to be captured at
+// registration time and restored before dispatching. Otherwise
+// `AsyncLocalStorage.getStore()` returns `undefined` inside `connect` and
+// `connection` handlers. See https://github.com/denoland/deno/issues/35154.
+const kAsyncContext = Symbol("kAsyncContext");
+
+// Runs `run` with the async context snapshot that was active when the
+// operation was initiated, restoring the previous context afterwards.
+function _runInAsyncContext(snapshot: any, run: () => void) {
+  if (snapshot === undefined) {
+    run();
+    return;
+  }
+  const prior = core.getAsyncContext();
+  core.setAsyncContext(snapshot);
+  try {
+    run();
+  } finally {
+    core.setAsyncContext(prior);
+  }
+}
 
 const DEFAULT_IPV4_ADDR = "0.0.0.0";
 const DEFAULT_IPV6_ADDR = "::";
@@ -463,6 +487,19 @@ function _normalizeArgs(args: unknown[]): NormalizedArgs {
 }
 
 function _afterConnect(
+  status: number,
+  handle: any,
+  req: PipeConnectWrap | TCPConnectWrap,
+  readable: boolean,
+  writable: boolean,
+) {
+  _runInAsyncContext(
+    handle?.[kAsyncContext],
+    () => _afterConnectImpl(status, handle, req, readable, writable),
+  );
+}
+
+function _afterConnectImpl(
   status: number,
   handle: any,
   req: PipeConnectWrap | TCPConnectWrap,
@@ -1619,6 +1656,11 @@ Socket.prototype.connect = function (...args) {
     _initSocketHandle(this);
   }
 
+  // Capture the async context now, while we are still running synchronously
+  // inside the caller's context. The DNS lookup that precedes the actual
+  // connect is async and would otherwise drop it before `_afterConnect` runs.
+  this._handle[kAsyncContext] = core.getAsyncContext();
+
   if (cb !== null) {
     this.once("connect", cb);
   }
@@ -2570,6 +2612,15 @@ function _emitListeningNT(server: Server) {
 function _onconnection(this: any, err: number, clientHandle?: Handle) {
   // deno-lint-ignore no-this-alias
   const handle = this;
+  _runInAsyncContext(
+    handle[kAsyncContext],
+    () => FunctionPrototypeCall(_onconnectionImpl, handle, err, clientHandle),
+  );
+}
+
+function _onconnectionImpl(this: any, err: number, clientHandle?: Handle) {
+  // deno-lint-ignore no-this-alias
+  const handle = this;
   const self = handle[ownerSymbol];
 
   debug("onconnection");
@@ -2684,6 +2735,7 @@ function _setupListenHandle(
 
   this[asyncIdSymbol] = _getNewAsyncId(this._handle);
   this._handle.onconnection = _onconnection;
+  this._handle[kAsyncContext] = core.getAsyncContext();
   this._handle[ownerSymbol] = this;
 
   // For TCP and Pipe handles, wrap the onconnection callback to create
