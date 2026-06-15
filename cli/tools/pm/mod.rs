@@ -1214,11 +1214,12 @@ fn link_hint_for_spec(cwd: &Path, spec: &str) -> Option<String> {
   if !abs.is_dir() {
     return None;
   }
-  let has_config =
-    abs.join("deno.json").exists() || abs.join("deno.jsonc").exists();
-  if !has_config {
-    return None;
-  }
+  // Only hint when the directory is actually linkable. `deno link` requires
+  // the target's deno.json(c) to exist *and* declare a "name", so check the
+  // same condition here. Otherwise the hint dead-ends: `deno add ./pkg` ->
+  // "Did you mean `deno link ./pkg`?" -> `deno link ./pkg` -> "its deno.json
+  // has no name field".
+  read_link_target_name(&abs)?;
   Some(format!(
     "'{}' looks like a local package directory. Did you mean `{}`?",
     spec,
@@ -1271,15 +1272,32 @@ fn resolve_link_path(cwd: &Path, raw: &str) -> PathBuf {
 
 fn load_deno_config_for_link(
   flags: &Arc<Flags>,
+  create_if_missing: bool,
 ) -> Result<(CliFactory, ConfigUpdater), AnyError> {
-  // Always force creation of deno.json if missing; the `"links"` field lives
-  // there. We achieve this by claiming jsr specifiers are present, which makes
-  // `load_configs` materialise a deno.json when one isn't found.
-  let (cli_factory, _npm_config, deno_config) =
-    load_configs(flags, || true, false)?;
-  let deno_config = deno_config.ok_or_else(|| {
-    deno_core::anyhow::anyhow!("Could not load or create deno.json")
-  })?;
+  if create_if_missing {
+    // For `link`, force creation of deno.json if missing; the `"links"` field
+    // lives there. We achieve this by claiming jsr specifiers are present,
+    // which makes `load_configs` materialise a deno.json when one isn't found.
+    let (cli_factory, _npm_config, deno_config) =
+      load_configs(flags, || true, false)?;
+    let deno_config = deno_config.ok_or_else(|| {
+      deno_core::anyhow::anyhow!("Could not load or create deno.json")
+    })?;
+    return Ok((cli_factory, deno_config));
+  }
+
+  // For `unlink`, never create a deno.json: if there isn't one, there's
+  // nothing to unlink. Load only an existing config so a failed unlink can't
+  // leave an empty deno.json behind.
+  let cli_factory = CliFactory::from_flags(flags.clone());
+  let options = cli_factory.cli_options()?;
+  let deno_config = match options.start_dir.member_deno_json() {
+    Some(deno_json) => ConfigUpdater::new(
+      ConfigKind::DenoJson,
+      url_to_file_path(&deno_json.specifier)?,
+    )?,
+    None => bail!("No deno.json found; there are no linked packages to unlink"),
+  };
   Ok((cli_factory, deno_config))
 }
 
@@ -1287,7 +1305,7 @@ pub async fn link(
   flags: Arc<Flags>,
   link_flags: LinkFlags,
 ) -> Result<(), AnyError> {
-  let (cli_factory, mut deno_config) = load_deno_config_for_link(&flags)?;
+  let (cli_factory, mut deno_config) = load_deno_config_for_link(&flags, true)?;
   let cwd = cli_factory.cli_options()?.initial_cwd().to_path_buf();
   let config_dir = deno_config
     .path
@@ -1376,7 +1394,8 @@ pub async fn unlink(
   flags: Arc<Flags>,
   unlink_flags: UnlinkFlags,
 ) -> Result<(), AnyError> {
-  let (cli_factory, mut deno_config) = load_deno_config_for_link(&flags)?;
+  let (cli_factory, mut deno_config) =
+    load_deno_config_for_link(&flags, false)?;
   // Resolve path arguments relative to the cwd, matching how `link()` resolves
   // them, so `deno unlink ../pkg` finds an entry created by `deno link ../pkg`
   // from the same directory regardless of where the deno.json lives.
@@ -1436,8 +1455,16 @@ pub async fn unlink(
   }
 
   if removed.is_empty() {
-    log::info!("No packages were unlinked");
-    return Ok(());
+    // Nothing matched any argument. Fail (exit 1) rather than reporting
+    // success, so a typo'd name or path is detectable from scripts and CI.
+    bail!(
+      "No linked packages matched the given {}",
+      if unlink_flags.names_or_paths.len() == 1 {
+        "name or path"
+      } else {
+        "names or paths"
+      }
+    );
   }
 
   // If the "links" array is now empty, remove the property entirely.
