@@ -7,10 +7,11 @@ const event = core.loadExtScript("ext:deno_web/02_event.js");
 const loadBase64 = () => core.loadExtScript("ext:deno_web/05_base64.js");
 const loadEncoding = () =>
   core.loadExtScript("ext:deno_web/08_text_encoding.js");
-// console is lazy: see propNonEnumerableLazyLoaded for the self-replacing
-// getter that keeps `globalThis.console` identity-stable so `wrapConsole`
-// (run for `--inspect`) patches the same instance the program sees.
-const loadConsole = () => core.loadExtScript("ext:deno_web/01_console.js");
+// console is installed eagerly (its impl is a thin cppgc port) so the global
+// stays a writable, identity-stable instance: `wrapConsole` (--inspect) patches
+// the same object the program sees, and the serve-worker path in 99_main.js can
+// reassign `console` to add a per-worker log prefix.
+const console = core.loadExtScript("ext:deno_web/01_console.js");
 const worker = core.loadExtScript("ext:runtime/11_workers.js");
 const performance = core.loadExtScript("ext:deno_web/15_performance.js");
 const loadCrypto = () => core.loadExtScript("ext:deno_crypto/00_crypto.js");
@@ -290,9 +291,8 @@ const windowOrWorkerGlobalScope = {
     (c) => c.Cache,
     lazyCache,
   ),
-  console: core.propNonEnumerableLazyLoaded(
-    (m) => new m.Console((msg, level) => core.print(msg, level > 1)),
-    loadConsole,
+  console: core.propNonEnumerable(
+    new console.Console((msg, level) => core.print(msg, level > 1)),
   ),
   crypto: core.propWritableLazyLoaded((m) => m.crypto, loadCrypto),
   Crypto: core.propNonEnumerableLazyLoaded((m) => m.Crypto, loadCrypto),
