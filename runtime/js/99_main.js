@@ -17,6 +17,7 @@ import {
   op_internal_log,
   op_main_module,
   op_ppid,
+  op_proto_get_attempted,
   op_proto_set_attempted,
   op_set_format_exception_callback,
   op_snapshot_options,
@@ -722,6 +723,7 @@ const executionModes = {
 };
 
 let protoSetRecorded = false;
+let protoGetRecorded = false;
 
 // By default Deno disables the `Object.prototype.__proto__` accessor for
 // security reasons (it enables prototype pollution), see
@@ -735,10 +737,13 @@ let protoSetRecorded = false;
 //
 // Instead of deleting we install an accessor that reproduces the deleted
 // semantics exactly (read -> `undefined`, write -> own data property, prototype
-// unchanged) but additionally records the first write. When the program later
-// crashes, the uncaught-error formatter (runtime/fmt_errors.rs) reads that flag
-// and suggests `--unstable-unsafe-proto`. The `__proto__` key in object
-// literals (e.g. `{ __proto__: null }`) is separate syntax and is unaffected.
+// unchanged) but additionally records the first read and the first write. When
+// the program later crashes, the uncaught-error formatter (runtime/fmt_errors.rs)
+// reads those flags and suggests `--unstable-unsafe-proto`. A write surfaces
+// downstream so any later crash triggers the nudge; a read crashes at the
+// access site, so the formatter additionally requires `__proto__` on the
+// failing line before nudging. The `__proto__` key in object literals (e.g.
+// `{ __proto__: null }`) is separate syntax and is unaffected.
 function disableProtoAccessor() {
   ObjectDefineProperty(ObjectPrototype, "__proto__", {
     __proto__: null,
@@ -747,6 +752,10 @@ function disableProtoAccessor() {
     // Distinct getter/setter function objects: the native accessor uses
     // separate functions and WPT asserts accessor get/set are unique.
     get: function __proto__() {
+      if (!protoGetRecorded) {
+        protoGetRecorded = true;
+        op_proto_get_attempted();
+      }
       return undefined;
     },
     set: function __proto__(value) {
