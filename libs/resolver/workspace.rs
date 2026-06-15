@@ -1454,12 +1454,15 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         );
       }
 
-      // 2.1. Try to resolve the bare specifier to a workspace member.
-      // Linked packages are not resolved here — using a linked package
-      // requires a `jsr:` specifier or an import map entry, otherwise the
-      // bare specifier would resolve even when no JSR or import map
-      // declaration exists.
-      for member in self.jsr_pkgs.iter().filter(|p| !p.is_link) {
+      // 2.1. Try to resolve the bare specifier to a workspace member or a
+      // linked package. Linked packages resolve by bare name just like
+      // workspace members do: a link is effectively a workspace member that
+      // lives outside the workspace tree (a sibling directory, an absolute
+      // path, or a private package not published to any registry). This is
+      // also what lets a linked package's own files import a sibling linked
+      // package by bare name. Workspace members come first in `jsr_pkgs`, so
+      // they take precedence over a link with the same name.
+      for member in self.jsr_pkgs.iter() {
         if let Some(path) = specifier.strip_prefix(&member.name)
           && (path.is_empty() || path.starts_with('/'))
         {
@@ -3429,16 +3432,20 @@ mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     let resolver = create_resolver(&workspace_dir);
     let root = url_from_directory_path(&root_dir()).unwrap();
-    // Linked packages do not resolve via bare specifier — a `jsr:` specifier
-    // or an import map entry is required.
-    let err = resolver
+    // Linked packages resolve via bare specifier, just like workspace members.
+    match resolver
       .resolve(
         "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
-      .unwrap_err();
-    assert!(err.is_unmapped_bare_specifier());
+      .unwrap()
+    {
+      MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
+        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
+      }
+      _ => unreachable!(),
+    }
     // matching version
     match resolver
       .resolve(
@@ -3503,16 +3510,20 @@ mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     let resolver = create_resolver(&workspace_dir);
     let root = url_from_directory_path(&root_dir()).unwrap();
-    // Linked packages do not resolve via bare specifier — a `jsr:` specifier
-    // or an import map entry is required.
-    let err = resolver
+    // Linked packages resolve via bare specifier, just like workspace members.
+    match resolver
       .resolve(
         "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
-      .unwrap_err();
-    assert!(err.is_unmapped_bare_specifier());
+      .unwrap()
+    {
+      MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
+        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
+      }
+      _ => unreachable!(),
+    }
     // always resolves, no matter what version
     match resolver
       .resolve(
