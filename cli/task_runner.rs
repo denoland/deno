@@ -393,7 +393,9 @@ fn should_defer_node_command_to_real_node(
 
   // The old task runner deferred all flag-first `node ...` commands to a real
   // node binary. Keep doing that except for the task/lifecycle-script cases
-  // this shim explicitly supports without node on PATH.
+  // this shim explicitly supports without node on PATH. This is intentionally
+  // conservative: benign flag-first script invocations not listed here still
+  // fall back to real node rather than trying to claim full Node CLI coverage.
   env_opts.preload_cjs_modules.is_empty()
     && env_opts.preload_esm_modules.is_empty()
     && !env_opts.has_eval_string
