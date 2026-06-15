@@ -1612,12 +1612,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "css_dataset"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25670139e591f1c2869eb8d0d977028f8d05e859132b4c874ecd02a00d3c9174"
-
-[[package]]
 name = "cssparser"
 version = "0.36.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1877,6 +1871,7 @@ dependencies = [
  "jsonc-parser",
  "keyring",
  "lax-css",
+ "lax-markup",
  "lax-sql",
  "lazy-regex",
  "libc",
@@ -1885,7 +1880,6 @@ dependencies = [
  "locked-tripwire",
  "log",
  "ls-types",
- "markup_fmt",
  "memchr",
  "nix 0.30.1",
  "node_resolver",
@@ -3434,6 +3428,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.12",
  "tokio",
+ "unicode-normalization",
  "urlpattern",
  "uuid",
 ]
@@ -6152,6 +6147,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "lax-markup"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57349e8fdb68f5fd322a16ec4311e1ecbc7d0b3419a9efb089bba3c45011a553"
+dependencies = [
+ "anyhow",
+ "dprint-core",
+ "lax-core",
+ "serde",
+]
+
+[[package]]
 name = "lax-sql"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6465,21 +6472,6 @@ name = "macro_rules_attribute-proc_macro"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "670fdfda89751bc4a84ac13eaa63e205cf0fd22b4c9a5fbfa085b63c1f1d3a30"
-
-[[package]]
-name = "markup_fmt"
-version = "0.27.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83b53ac34c9d6498632dcca4ad4542b1aef7c605d1d19037207910c4efe060a9"
-dependencies = [
- "aho-corasick",
- "anyhow",
- "css_dataset",
- "itertools 0.14.0",
- "memchr",
- "regex",
- "tiny_pretty 0.4.2",
-]
 
 [[package]]
 name = "match_cfg"
@@ -7721,7 +7713,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dda9a64ee7296e82d1e0f4389383e6a7d8e6e2487d8391f7d028c131395fd376"
 dependencies = [
  "rowan",
- "tiny_pretty 0.2.0",
+ "tiny_pretty",
  "yaml_parser",
 ]
 
@@ -10054,12 +10046,6 @@ name = "tiny_pretty"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b3f46f0549180b9c6f7f76270903f1a06867c43a03998b99dce81aa1760c3b2"
-
-[[package]]
-name = "tiny_pretty"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c6f118a569adc26e8a9a377130f181a461770225e588c73a00c8636b8680b6c"
 
 [[package]]
 name = "tinystr"
