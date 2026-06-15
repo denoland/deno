@@ -1259,7 +1259,19 @@ fn symlink(
 }
 
 fn truncate(path: &Path, len: u64) -> FsResult<()> {
-  let file = fs::OpenOptions::new().write(true).open(path)?;
+  let mut open_options = fs::OpenOptions::new();
+  open_options.write(true);
+  // The permission check for truncate is performed no-follow (against the
+  // named path, without canonicalization). Refuse to follow a terminal symlink
+  // here so a writable symlink inside an allowed scope cannot be used to zero
+  // out a file it points to outside that scope. O_NOFOLLOW makes the open fail
+  // with ELOOP when the final component is a symlink.
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::OpenOptionsExt;
+    open_options.custom_flags(libc::O_NOFOLLOW);
+  }
+  let file = open_options.open(path)?;
   file.set_len(len)?;
   Ok(())
 }
