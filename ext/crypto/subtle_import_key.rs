@@ -275,11 +275,8 @@ pub fn run<'s>(
       extractable,
       usages,
     ),
-    "HKDF" => {
-      import_key_kdf(scope, "HKDF", format, key_data, extractable, usages)
-    }
-    "PBKDF2" => {
-      import_key_kdf(scope, "PBKDF2", format, key_data, extractable, usages)
+    "HKDF" | "PBKDF2" | "Argon2i" | "Argon2d" | "Argon2id" => {
+      import_key_kdf(scope, name, format, key_data, extractable, usages)
     }
     "Ed25519" => import_key_okp(
       scope,
@@ -1641,6 +1638,9 @@ fn import_key_kdf<'s>(
     _ => return Err(not_supported("Not implemented".into())),
   };
   check_usages_subset(usages, &["deriveKey", "deriveBits"])?;
+  if usages.is_empty() {
+    return Err(syntax_error("Invalid key usage".into()));
+  }
   let allowed_usages: Vec<&str> = filter_usages(usages, ALL_USAGES);
   // Per spec, HKDF/PBKDF2 imported keys must not be extractable. The JS
   // caller's `extractable` argument is ignored.

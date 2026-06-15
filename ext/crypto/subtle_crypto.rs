@@ -656,7 +656,13 @@ fn supports_params_valid<'s>(
 
   // HKDF / PBKDF2 length constraint applies regardless of whether the
   // algorithm argument was a string or a dictionary.
-  if registered_op == "deriveBits" && (upper == "HKDF" || upper == "PBKDF2") {
+  if registered_op == "deriveBits"
+    && (upper == "HKDF"
+      || upper == "PBKDF2"
+      || upper == "ARGON2I"
+      || upper == "ARGON2D"
+      || upper == "ARGON2ID")
+  {
     let Some(l) = length else { return false };
     if l == 0 || !l.is_multiple_of(8) {
       return false;
@@ -776,6 +782,27 @@ fn supports_params_valid<'s>(
           return true;
         };
         l != 0 && l.is_multiple_of(8)
+      }
+      _ => true,
+    },
+    "deriveBits" => match upper.as_str() {
+      "ARGON2I" | "ARGON2D" | "ARGON2ID" => {
+        if let Some(memory) = read_u32_member(scope, obj, b"memory")
+          && memory == 0
+        {
+          return false;
+        }
+        if let Some(passes) = read_u32_member(scope, obj, b"passes")
+          && passes == 0
+        {
+          return false;
+        }
+        if let Some(parallelism) = read_u32_member(scope, obj, b"parallelism")
+          && parallelism == 0
+        {
+          return false;
+        }
+        true
       }
       _ => true,
     },

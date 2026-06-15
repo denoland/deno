@@ -128,6 +128,9 @@ impl Operation {
         ("KMAC256", Some("KmacImportParams")),
         ("HKDF", None),
         ("PBKDF2", None),
+        ("Argon2i", None),
+        ("Argon2d", None),
+        ("Argon2id", None),
         ("AES-CTR", None),
         ("AES-CBC", None),
         ("AES-GCM", None),
@@ -157,6 +160,9 @@ impl Operation {
       DeriveBits => &[
         ("HKDF", Some("HkdfParams")),
         ("PBKDF2", Some("Pbkdf2Params")),
+        ("Argon2i", Some("Argon2Params")),
+        ("Argon2d", Some("Argon2Params")),
+        ("Argon2id", Some("Argon2Params")),
         ("ECDH", Some("EcdhKeyDeriveParams")),
         ("X25519", Some("EcdhKeyDeriveParams")),
         ("X448", Some("EcdhKeyDeriveParams")),
@@ -352,7 +358,7 @@ pub fn compute_key_length(
       }
       Ok(Some(l))
     }
-    "HKDF" | "PBKDF2" => Ok(None),
+    "HKDF" | "PBKDF2" | "Argon2i" | "Argon2d" | "Argon2id" => Ok(None),
     _ => Err(GetKeyLengthError::Unreachable),
   }
 }

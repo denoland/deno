@@ -2981,6 +2981,152 @@ Deno.test(async function kmacSignVerifyAndJwkRoundTrip() {
   assert(await crypto.subtle.verify(params, imported, sig, data));
 });
 
+Deno.test(async function argon2DeriveBitsRfcVectors() {
+  const password = new Uint8Array(32).fill(0x01);
+  const nonce = new Uint8Array(16).fill(0x02);
+  const secretValue = new Uint8Array(8).fill(0x03);
+  const associatedData = new Uint8Array(12).fill(0x04);
+  const vectors = [
+    {
+      name: "Argon2d",
+      expected: [
+        0x51,
+        0x2b,
+        0x39,
+        0x1b,
+        0x6f,
+        0x11,
+        0x62,
+        0x97,
+        0x53,
+        0x71,
+        0xd3,
+        0x09,
+        0x19,
+        0x73,
+        0x42,
+        0x94,
+        0xf8,
+        0x68,
+        0xe3,
+        0xbe,
+        0x39,
+        0x84,
+        0xf3,
+        0xc1,
+        0xa1,
+        0x3a,
+        0x4d,
+        0xb9,
+        0xfa,
+        0xbe,
+        0x4a,
+        0xcb,
+      ],
+    },
+    {
+      name: "Argon2i",
+      expected: [
+        0xc8,
+        0x14,
+        0xd9,
+        0xd1,
+        0xdc,
+        0x7f,
+        0x37,
+        0xaa,
+        0x13,
+        0xf0,
+        0xd7,
+        0x7f,
+        0x24,
+        0x94,
+        0xbd,
+        0xa1,
+        0xc8,
+        0xde,
+        0x6b,
+        0x01,
+        0x6d,
+        0xd3,
+        0x88,
+        0xd2,
+        0x99,
+        0x52,
+        0xa4,
+        0xc4,
+        0x67,
+        0x2b,
+        0x6c,
+        0xe8,
+      ],
+    },
+    {
+      name: "Argon2id",
+      expected: [
+        0x0d,
+        0x64,
+        0x0d,
+        0xf5,
+        0x8d,
+        0x78,
+        0x76,
+        0x6c,
+        0x08,
+        0xc0,
+        0x37,
+        0xa3,
+        0x4a,
+        0x8b,
+        0x53,
+        0xc9,
+        0xd0,
+        0x1e,
+        0xf0,
+        0x45,
+        0x2d,
+        0x75,
+        0xb6,
+        0x5e,
+        0xb5,
+        0x25,
+        0x20,
+        0xe9,
+        0x6b,
+        0x01,
+        0xe6,
+        0x59,
+      ],
+    },
+  ];
+
+  for (const vector of vectors) {
+    const key = await subtleAny.importKey(
+      "raw-secret",
+      password,
+      vector.name,
+      false,
+      ["deriveBits"],
+    );
+    const derived = new Uint8Array(
+      await crypto.subtle.deriveBits(
+        {
+          name: vector.name,
+          memory: 32,
+          passes: 3,
+          parallelism: 4,
+          nonce,
+          secretValue,
+          associatedData,
+        } as AnyAlg,
+        key,
+        256,
+      ),
+    );
+    assertEquals(derived, new Uint8Array(vector.expected));
+  }
+});
+
 Deno.test(async function shakeFamilyRequiresOutputLength() {
   // The modern WebCrypto algorithms spec renamed the output length dictionary
   // member from `length` to `outputLength`. Passing the legacy `length` member
@@ -3726,6 +3872,17 @@ Deno.test(function subtleCryptoSupportsModernAlgorithms() {
   assert(supports("verify", { name: "KMAC256", outputLength: 512 }));
   assert(supports("importKey", { name: "KMAC256", length: 256 }));
   assert(supports("exportKey", "KMAC128"));
+  assert(supports("importKey", "Argon2id"));
+  assert(supports("deriveBits", "Argon2id", 256));
+  assert(
+    supports("deriveBits", {
+      name: "Argon2id",
+      memory: 32,
+      passes: 3,
+      parallelism: 4,
+      nonce: new Uint8Array(16),
+    }, 256),
+  );
 });
 
 Deno.test(function subtleCryptoSupportsRejectsUnknown() {

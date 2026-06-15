@@ -564,8 +564,7 @@ fn run_xof(
   );
   let is_kangaroo = matches!(
     algorithm,
-    SubtleDigestXof::Kt128 { .. }
-      | SubtleDigestXof::KangarooTwelve { .. }
+    SubtleDigestXof::Kt128 { .. } | SubtleDigestXof::KangarooTwelve { .. }
   );
   if (is_turbo || is_kangaroo) && output_length == 0 {
     return Err(CryptoError::InvalidXofParameters);

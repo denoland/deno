@@ -294,8 +294,12 @@ pub fn run(
       customization,
       ..
     } => {
-      let computed =
-        crate::subtle_sign::run_kmac(&key, &data, output_length, customization)?;
+      let computed = crate::subtle_sign::run_kmac(
+        &key,
+        &data,
+        output_length,
+        customization,
+      )?;
       Ok(constant_time_eq(&computed, &signature))
     }
     SubtleVerifyParams::Ed25519 => {
