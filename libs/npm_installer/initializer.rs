@@ -21,8 +21,7 @@ pub enum NpmResolverManagedSnapshotOption<TSys: LockfileSys> {
   ResolveFromLockfile {
     lockfile: Arc<LockfileLock<TSys>>,
     /// Whether to dedupe equivalent peer-dep variants when loading the
-    /// snapshot. Safe to enable on any path — it's an in-memory
-    /// normalization. See
+    /// snapshot. Should be true only on install paths — see
     /// [`deno_npm::resolution::SnapshotFromLockfileParams`].
     dedup_equivalent_peer_variants: bool,
   },

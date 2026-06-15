@@ -657,21 +657,15 @@ impl CliFactory {
             | DenoSubcommand::X { .. }
             | DenoSubcommand::BumpVersion { .. } => false,
           },
-          // Always merge equivalent peer-dep variants when loading the
-          // snapshot from a lockfile. This is an in-memory normalization
-          // that collapses `NpmPackageId`s which differ only in
-          // peer-dependency cycle-unrolling depth (the encoding changed
-          // between releases, e.g. 2.7 -> 2.8). Without it, a complete
-          // lockfile written by an older deno is treated as not satisfying
-          // the requirements and the whole npm graph is re-resolved against
-          // the registry, which fails under `--cached-only` (offline
-          // isolates booting from an immutable, pre-baked `DENO_DIR`). See
-          // denoland/deno#26427 for the original install-path dedup. This is
-          // safe on `deno run`: the dedup only affects the in-memory
-          // resolution snapshot and does not rewrite the user's lockfile
-          // unless a real resolution runs (which the dedup is precisely what
-          // avoids for an already-satisfied lockfile).
-          dedup_lockfile_peer_variants: true,
+          dedup_lockfile_peer_variants: matches!(
+            cli_options.sub_command(),
+            DenoSubcommand::Add { .. }
+              | DenoSubcommand::ApproveScripts { .. }
+              | DenoSubcommand::Remove { .. }
+              | DenoSubcommand::Cache { .. }
+              | DenoSubcommand::Ci { .. }
+              | DenoSubcommand::Install(InstallFlags::Local(_, _)),
+          ),
           cache_setting: NpmCacheSetting::from_cache_setting(
             &cli_options.cache_setting(),
           ),

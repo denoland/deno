@@ -1001,12 +1001,8 @@ pub struct SnapshotFromLockfileParams<'a> {
   /// If true, merge equivalent peer-dep variants that differ only in
   /// cycle-unrolling depth (see
   /// [`SerializedNpmResolutionSnapshot::dedup_equivalent_peer_variants`]).
-  /// This is a purely in-memory normalization of the loaded snapshot; it
-  /// does not by itself rewrite the lockfile. It is safe to enable on the
-  /// `deno run` path: it lets lockfiles written by an older deno (whose
-  /// peer-dep id encoding differs) still satisfy the requirements, so the
-  /// graph isn't needlessly re-resolved against the registry (which would
-  /// fail under `--cached-only`).
+  /// Should only be set on install paths — `deno run` must not silently
+  /// rewrite the user's lockfile.
   pub dedup_equivalent_peer_variants: bool,
 }
 
@@ -1172,14 +1168,8 @@ pub fn snapshot_from_lockfile(
     // unrolling depth. Merge them so install produces a single physical
     // copy per nv (matches pnpm) — preserving class identity for
     // libraries that rely on decorator metadata (NestJS DI). See
-    // deno#26427.
-    //
-    // This also lets a lockfile written by an older deno (whose peer-dep
-    // encoding differs from the current one) still satisfy the
-    // requirements, so `deno run` doesn't re-resolve the whole graph
-    // against the registry — which would fail offline under
-    // `--cached-only`. The merge is in-memory only and doesn't rewrite the
-    // lockfile unless a real resolution subsequently runs.
+    // deno#26427. Gated to install paths so `deno run` doesn't rewrite
+    // the user's lockfile out from under them.
     snapshot.dedup_equivalent_peer_variants();
   }
   let snapshot = snapshot.into_valid()?;
@@ -1954,103 +1944,5 @@ mod tests {
       .find(|p| p.id.nv.name.as_str() == "zod")
       .expect("should find zod package");
     assert!(zod_pkg.dist.is_some());
-  }
-
-  // Regression test for offline `--cached-only` isolates booting from a
-  // lockfile written by an older deno: the peer-dep id encoding changed
-  // (cycle unrolling depth), so a complete older lockfile contains
-  // redundant peer variants of the same name+version. Loading it on the
-  // run path with `dedup_equivalent_peer_variants: true` must collapse the
-  // variants so the requirement still resolves and the snapshot stays
-  // valid — otherwise deno treats the lockfile as stale and re-resolves
-  // against the registry, which fails under `--cached-only`. See the
-  // denoland/deno-private#77 investigation and deno#26427.
-  #[tokio::test]
-  async fn test_snapshot_from_lockfile_dedups_old_peer_encoding() {
-    let api = TestNpmRegistryApi::default();
-    // A lockfile in the older encoding: the root specifier points at an
-    // over-unrolled id (`core@1.0.0_pe@1.0.0`) and both `core` and `pe`
-    // carry a redundant deeper-unrolled variant whose effective deps are
-    // identical to the canonical entry.
-    let content = r#"{
-      "version": "5",
-      "specifiers": {
-        "npm:core@1": "1.0.0_pe@1.0.0"
-      },
-      "npm": {
-        "core@1.0.0": {
-          "dependencies": ["pe@1.0.0"]
-        },
-        "core@1.0.0_pe@1.0.0": {
-          "dependencies": ["pe@1.0.0_core@1.0.0"]
-        },
-        "pe@1.0.0": {},
-        "pe@1.0.0_core@1.0.0": {}
-      }
-    }"#;
-
-    let make_lockfile = || async {
-      Lockfile::new(
-        NewLockfileOptions {
-          file_path: PathBuf::from("/deno.lock"),
-          content,
-          overwrite: false,
-        },
-        &api,
-      )
-      .await
-      .unwrap()
-    };
-
-    // Without dedup the redundant variants survive: 4 packages and the
-    // root resolves to the over-unrolled id.
-    let lockfile = make_lockfile().await;
-    let snapshot = snapshot_from_lockfile(SnapshotFromLockfileParams {
-      lockfile: &lockfile,
-      link_packages: &Default::default(),
-      default_tarball_url: &TestDefaultTarballUrlProvider,
-      dedup_equivalent_peer_variants: false,
-    })
-    .unwrap();
-    assert_eq!(snapshot.as_serialized().packages.len(), 4);
-    assert_eq!(
-      snapshot
-        .as_serialized()
-        .root_packages
-        .get(&PackageReq::from_str("core@1").unwrap())
-        .unwrap()
-        .as_serialized()
-        .as_str(),
-      "core@1.0.0_pe@1.0.0"
-    );
-
-    // With dedup (the run path after the fix) the variants collapse to a
-    // single canonical copy per nv and the root resolves to the canonical
-    // id, so the requirement is satisfied from the lockfile alone.
-    let lockfile = make_lockfile().await;
-    let snapshot = snapshot_from_lockfile(SnapshotFromLockfileParams {
-      lockfile: &lockfile,
-      link_packages: &Default::default(),
-      default_tarball_url: &TestDefaultTarballUrlProvider,
-      dedup_equivalent_peer_variants: true,
-    })
-    .unwrap();
-    let serialized = snapshot.as_serialized();
-    let mut ids: Vec<_> = serialized
-      .packages
-      .iter()
-      .map(|p| p.id.as_serialized().to_string())
-      .collect();
-    ids.sort();
-    assert_eq!(ids, vec!["core@1.0.0".to_string(), "pe@1.0.0".to_string()]);
-    assert_eq!(
-      serialized
-        .root_packages
-        .get(&PackageReq::from_str("core@1").unwrap())
-        .unwrap()
-        .as_serialized()
-        .as_str(),
-      "core@1.0.0"
-    );
   }
 }
