@@ -54,6 +54,7 @@ deno_web.workspace = true
 deno_webidl.workspace = true
 fast-socks5.workspace = true
 rustls.workspace = true
+sys_traits = { workspace = true, features = ["libc", "real", "winapi"] }
 
 [[bench]]
 name = "headers_methods"

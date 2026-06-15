@@ -242,6 +242,25 @@ fn check_resolved(
     })
 }
 
+/// Extracts the connection host (with IPv6 brackets stripped) and the
+/// effective destination port from a `Uri`, defaulting the port from the
+/// scheme. Returns `None` if the `Uri` has no host.
+fn bare_host_and_port(uri: &Uri) -> Option<(&str, u16)> {
+  let host = uri.host()?;
+  let port = uri.port_u16().unwrap_or_else(|| {
+    if uri.scheme() == Some(&Scheme::HTTPS) {
+      443
+    } else {
+      80
+    }
+  });
+  let bare_host = host
+    .strip_prefix('[')
+    .and_then(|h| h.strip_suffix(']'))
+    .unwrap_or(host);
+  Some((bare_host, port))
+}
+
 impl Service<Uri> for PermissionedHttpConnector {
   type Response = TokioIo<TcpStream>;
   type Error = BoxError;
@@ -263,22 +282,12 @@ impl Service<Uri> for PermissionedHttpConnector {
         return connector.call(uri).await.map_err(Into::into);
       };
 
-      let host = uri.host().ok_or_else(|| -> BoxError {
-        io::Error::new(io::ErrorKind::InvalidInput, "missing host in URI")
-          .into()
-      })?;
-      let port = uri.port_u16().unwrap_or_else(|| {
-        if uri.scheme() == Some(&Scheme::HTTPS) {
-          443
-        } else {
-          80
-        }
-      });
-
-      let bare_host = host
-        .strip_prefix('[')
-        .and_then(|h| h.strip_suffix(']'))
-        .unwrap_or(host);
+      let Some((bare_host, port)) = bare_host_and_port(&uri) else {
+        return Err(
+          io::Error::new(io::ErrorKind::InvalidInput, "missing host in URI")
+            .into(),
+        );
+      };
       if let Ok(ip) = bare_host.parse::<IpAddr>() {
         // IP literal: `HttpConnector` connects to it directly without
         // consulting the resolver.
@@ -304,6 +313,57 @@ impl Service<Uri> for PermissionedHttpConnector {
       let mut connector =
         this.http_connector(Resolver::custom(Arc::new(PreResolved(addrs))));
       connector.call(uri).await.map_err(Into::into)
+    })
+  }
+}
+
+/// Lets a connector run a best-effort net-deny check against a destination
+/// `Uri` without opening a connection to it.
+///
+/// Used by the proxy connector: when a request is routed through a proxy, the
+/// deny check the connector would otherwise run sees the connection to the
+/// *proxy*, not the destination, so an IP-level `--deny-net` rule would only be
+/// enforced against the destination's pre-resolution hostname. This resolves
+/// the destination and checks every resolved address too.
+///
+/// It is best-effort: a proxy may be able to reach a host this process cannot
+/// resolve locally, so a resolution failure here is not fatal. The connection
+/// to the proxy itself is still checked separately.
+pub trait CheckDst {
+  fn check_dst(
+    &self,
+    uri: Uri,
+  ) -> Pin<Box<dyn Future<Output = Result<(), BoxError>> + Send>>;
+}
+
+impl CheckDst for PermissionedHttpConnector {
+  fn check_dst(
+    &self,
+    uri: Uri,
+  ) -> Pin<Box<dyn Future<Output = Result<(), BoxError>> + Send>> {
+    let this = self.clone();
+    Box::pin(async move {
+      let Some(permissions) = &this.permissions else {
+        return Ok(());
+      };
+      let Some((bare_host, port)) = bare_host_and_port(&uri) else {
+        return Ok(());
+      };
+      if let Ok(ip) = bare_host.parse::<IpAddr>() {
+        return check_resolved(permissions, &ip, port);
+      }
+      let Ok(name) = Name::from_str(bare_host) else {
+        return Ok(());
+      };
+      // Best-effort: if the destination can't be resolved locally, let the
+      // proxy handle it rather than failing the request.
+      let Ok(addrs) = this.resolver.clone().call(name).await else {
+        return Ok(());
+      };
+      for addr in addrs {
+        check_resolved(permissions, &addr.ip(), port)?;
+      }
+      Ok(())
     })
   }
 }
