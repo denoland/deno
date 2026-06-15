@@ -258,3 +258,50 @@ Deno.test(async function asyncLocalStoragePreservedInStreamFinished() {
 
   await promise;
 });
+
+// Regression test for https://github.com/denoland/deno/issues/35154. The
+// native libuv callbacks for node:net connect/accept invoke their completion
+// callbacks directly, so the async context that was active when the operation
+// was started has to be captured and restored, otherwise it is lost inside the
+// `connect` and `connection` handlers.
+Deno.test(async function asyncLocalStoragePreservedInNetCallbacks() {
+  const net = await import("node:net");
+  const als = new AsyncLocalStorage();
+  const observed: { serverConnection: unknown; clientConnect: unknown } = {
+    serverConnection: null,
+    clientConnect: null,
+  };
+
+  await new Promise<void>((resolve, reject) => {
+    als.run("server-context", () => {
+      const server = net.createServer((socket) => {
+        observed.serverConnection = als.getStore() ?? null;
+        socket.end("ok");
+        server.close();
+      });
+
+      server.once("error", reject);
+      server.listen(0, () => {
+        const addr = server.address()!;
+        const port = typeof addr === "string" ? addr : addr.port;
+
+        als.run("client-context", () => {
+          const client = net.connect(port, () => {
+            observed.clientConnect = als.getStore() ?? null;
+          });
+
+          client.once("error", reject);
+          client.once("data", () => {
+            client.destroy();
+            resolve();
+          });
+        });
+      });
+    });
+  });
+
+  assertEquals(observed, {
+    serverConnection: "server-context",
+    clientConnect: "client-context",
+  });
+});
