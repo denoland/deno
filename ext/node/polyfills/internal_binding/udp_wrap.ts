@@ -40,7 +40,10 @@ const { ownerSymbol } = core.loadExtScript(
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 
 type MessageType = string | Uint8Array | Buffer | DataView;
-type SendWrapInstance = InstanceType<typeof SendWrap>;
+type SendWrapInstance = InstanceType<typeof SendWrap> & {
+  callback?: (error: Error | null, bytes?: number) => void;
+  oncomplete: (err: number | null, sent?: number) => void;
+};
 
 const AF_INET = 2;
 const AF_INET6 = 10;
@@ -233,13 +236,27 @@ class UDP extends NativeUDP {
       this._remotePort(),
     );
     if (hasCallback) {
-      PromisePrototypeThen(promise, ({ err, sent }) => {
-        try {
-          req.oncomplete(err, sent);
-        } catch {
-          // swallow callback errors
-        }
-      });
+      PromisePrototypeThen(
+        promise,
+        ({ err, sent }) => {
+          try {
+            if (err && typeof err !== "number") {
+              req.callback?.(err);
+            } else {
+              req.oncomplete(err, sent);
+            }
+          } catch {
+            // swallow callback errors
+          }
+        },
+        (err) => {
+          try {
+            req.callback?.(err);
+          } catch {
+            // swallow callback errors
+          }
+        },
+      );
     }
 
     return 0;

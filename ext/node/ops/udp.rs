@@ -154,7 +154,6 @@ fn io_error_to_uv(err: &std::io::Error) -> i32 {
     Some(10049) => UV_EADDRNOTAVAIL,
     #[cfg(windows)]
     Some(10040) => -4065,
-    Some(code @ (40 | 90)) => -code,
     Some(code) => -code,
     None => uv_compat::UV_EINVAL,
   }
@@ -1464,6 +1463,18 @@ pub struct SendResult {
   pub sent: usize,
 }
 
+fn send_error_to_result(
+  err: NodeUdpError,
+) -> Result<SendResult, deno_permissions::PermissionCheckError> {
+  match err {
+    NodeUdpError::Permission(err) => Err(err),
+    err => Ok(SendResult {
+      err: Some(udp_error_to_uv(&err)),
+      sent: 0,
+    }),
+  }
+}
+
 #[op2]
 #[serde]
 pub fn op_node_udp_send<'a>(
@@ -1474,23 +1485,18 @@ pub fn op_node_udp_send<'a>(
   #[smi] count: u32,
   #[string] hostname: String,
   #[smi] port: u16,
-) -> impl Future<Output = SendResult> + use<> {
+) -> impl Future<Output = Result<SendResult, deno_permissions::PermissionCheckError>>
++ use<> {
   let payload = udp_send_buffers_to_vec(scope, bufs, count);
   async move {
     match payload {
       Ok(payload) => {
         match node_udp_send(state, rid, payload, hostname, port).await {
-          Ok(sent) => SendResult { err: None, sent },
-          Err(err) => SendResult {
-            err: Some(udp_error_to_uv(&err)),
-            sent: 0,
-          },
+          Ok(sent) => Ok(SendResult { err: None, sent }),
+          Err(err) => send_error_to_result(err),
         }
       }
-      Err(err) => SendResult {
-        err: Some(udp_error_to_uv(&err)),
-        sent: 0,
-      },
+      Err(err) => send_error_to_result(err),
     }
   }
 }

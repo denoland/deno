@@ -2249,11 +2249,18 @@ fn native_onread_callback<'s>(
   let Some(buffer) = state.buffer(scope) else {
     return;
   };
+  if state.byte_length() < std::mem::size_of::<i32>() {
+    return;
+  }
   let Some(data) = buffer.data() else {
     return;
   };
-  let values =
-    unsafe { std::slice::from_raw_parts(data.as_ptr() as *const i32, 1) };
+  let values = unsafe {
+    std::slice::from_raw_parts(
+      data.as_ptr().add(state.byte_offset()) as *const i32,
+      1,
+    )
+  };
   let nread = values[0];
   let native_handle = args.this();
   if nread > 0 && args.length() > 0 {

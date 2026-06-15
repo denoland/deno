@@ -168,9 +168,14 @@ pub struct ReverseNameResult {
   pub name: Option<String>,
 }
 
-#[op2]
-#[serde]
-pub fn op_node_dns_reverse_name(#[string] name: &str) -> ReverseNameResult {
+fn address_without_scope(address: &str) -> &str {
+  address
+    .split_once('%')
+    .map_or(address, |(address, _)| address)
+}
+
+fn reverse_name(name: &str) -> ReverseNameResult {
+  let name = address_without_scope(name);
   if let Ok(addr) = name.parse::<Ipv4Addr>() {
     let octets = addr.octets();
     return ReverseNameResult {
@@ -202,20 +207,26 @@ pub fn op_node_dns_reverse_name(#[string] name: &str) -> ReverseNameResult {
   }
 }
 
+#[op2]
+#[serde]
+pub fn op_node_dns_reverse_name(#[string] name: &str) -> ReverseNameResult {
+  reverse_name(name)
+}
+
 fn is_ipv4_address(address: &str) -> bool {
+  let address = address_without_scope(address);
   matches!(address.parse::<IpAddr>(), Ok(IpAddr::V4(_)))
 }
 
 fn is_ipv6_address(address: &str) -> bool {
+  let address = address_without_scope(address);
   matches!(address.parse::<IpAddr>(), Ok(IpAddr::V6(_)))
 }
 
-#[op2]
-#[serde]
-pub fn op_node_dns_sort_lookup_addresses(
-  #[serde] mut addresses: Vec<String>,
-  #[smi] family: i32,
-  #[smi] order: i32,
+fn sort_lookup_addresses(
+  mut addresses: Vec<String>,
+  family: i32,
+  order: i32,
 ) -> Vec<String> {
   match order {
     1 => addresses.sort_by_key(|address| !is_ipv4_address(address)),
@@ -230,6 +241,36 @@ pub fn op_node_dns_sort_lookup_addresses(
   }
 
   addresses
+}
+
+#[op2]
+#[serde]
+pub fn op_node_dns_sort_lookup_addresses(
+  #[serde] addresses: Vec<String>,
+  #[smi] family: i32,
+  #[smi] order: i32,
+) -> Vec<String> {
+  sort_lookup_addresses(addresses, family, order)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn scoped_ipv6_addresses_are_classified_as_ipv6() {
+    assert!(is_ipv6_address("fe80::1%eth0"));
+    assert!(!is_ipv4_address("fe80::1%eth0"));
+
+    let mut addresses =
+      vec!["192.0.2.1".to_string(), "fe80::1%eth0".to_string()];
+    addresses = sort_lookup_addresses(addresses, 6, 0);
+    assert_eq!(addresses, vec!["fe80::1%eth0"]);
+
+    let result = reverse_name("fe80::1%eth0");
+    assert_eq!(result.code, 0);
+    assert!(result.name.as_deref().unwrap().ends_with(".ip6.arpa"));
+  }
 }
 
 impl DnsError {
