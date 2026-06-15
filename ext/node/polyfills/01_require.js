@@ -3239,10 +3239,10 @@ export function registerHooks(hooks) {
   if (typeof hooks !== "object" || hooks === null) {
     throw new internalErrors.ERR_INVALID_ARG_TYPE("hooks", "object", hooks);
   }
-  if (hooks.resolve !== undefined) {
+  if (hooks.resolve) {
     internalValidators.validateFunction(hooks.resolve, "hooks.resolve");
   }
-  if (hooks.load !== undefined) {
+  if (hooks.load) {
     internalValidators.validateFunction(hooks.load, "hooks.load");
   }
   const resolve = typeof hooks.resolve === "function" ? hooks.resolve : null;

@@ -17,3 +17,8 @@ try {
 } catch (e) {
   console.log("threw:", e.code);
 }
+
+// A falsy hook value (e.g. `null`) is treated as absent, not an error,
+// matching Node.js.
+registerHooks({ resolve: null }).deregister();
+console.log("ok null");
