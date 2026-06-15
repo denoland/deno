@@ -46,7 +46,7 @@ use deno_permissions::PermissionsContainer;
 use deno_process::NpmProcessStateProviderRc;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
-use deno_web::BlobStore;
+use deno_web::BlobStoreTrait;
 use deno_web::InMemoryBroadcastChannel;
 use log::debug;
 use node_resolver::InNpmPackageChecker;
@@ -98,10 +98,12 @@ pub fn create_validate_import_attributes_callback(
 ) -> deno_core::ValidateImportAttributesCb {
   Box::new(
     move |scope: &mut v8::PinScope<'_, '_>,
-          attributes: &HashMap<String, String>| {
+          attributes: &HashMap<String, String>,
+          context: &deno_core::ImportAttributesContext| {
       let valid_attribute = |kind: &str| {
         matches!(kind, "json" | "text")
-          || (enable_raw_imports.load(Ordering::Relaxed) && kind == "bytes")
+          || (enable_raw_imports.load(Ordering::Relaxed)
+            && matches!(kind, "bytes" | "css"))
       };
       for (key, value) in attributes {
         let msg = if key != "type" {
@@ -116,11 +118,39 @@ pub fn create_validate_import_attributes_callback(
           continue;
         };
 
+        let msg = format!("{msg}{}", context.format_location());
         let message = v8::String::new(scope, &msg).unwrap();
         let exception = v8::Exception::type_error(scope, message);
         scope.throw_exception(exception);
         return;
       }
+    },
+  )
+}
+
+/// Evaluates custom module types that aren't built into deno_core. Currently
+/// only `with { type: "css" }` imports (gated on `--unstable-raw-imports` by
+/// `create_validate_import_attributes_callback`), which evaluate to a
+/// `CSSStyleSheet` containing the source text.
+pub fn create_custom_module_evaluation_callback()
+-> deno_core::CustomModuleEvaluationCb {
+  Box::new(
+    |scope, module_type, _module_name, code| match &*module_type {
+      "css" => {
+        let code = match code {
+          deno_core::ModuleSourceCode::String(code) => code.as_str().to_owned(),
+          deno_core::ModuleSourceCode::Bytes(bytes) => {
+            String::from_utf8_lossy(bytes.as_bytes()).into_owned()
+          }
+        };
+        let sheet: v8::Local<v8::Value> =
+          deno_web::create_css_style_sheet(scope, code).into();
+        let sheet = v8::Global::new(scope, sheet);
+        Ok(deno_core::CustomModuleEvaluationKind::Synthetic(sheet))
+      }
+      _ => Err(deno_error::JsErrorBox::generic(format!(
+        "Importing \"{module_type}\" modules is not supported"
+      ))),
     },
   )
 }
@@ -171,7 +201,7 @@ pub struct WorkerServiceOptions<
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TExtNodeSys: ExtNodeSys,
 > {
-  pub blob_store: Arc<BlobStore>,
+  pub blob_store: Arc<dyn BlobStoreTrait>,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   pub feature_checker: Arc<FeatureChecker>,
@@ -941,6 +971,34 @@ impl MainWorker {
       .await
   }
 
+  /// If a debugger session is attached and would otherwise be dropped on
+  /// shutdown (a legacy blocking session, or one that opted into
+  /// `NodeRuntime.notifyWhenWaitingForDisconnect` (e.g. Chrome DevTools)),
+  /// block until it disconnects. Returns immediately when no such session
+  /// is attached.
+  ///
+  /// This mirrors the wait the `deno run` event loop performs at the end of
+  /// execution and is meant for tools like `deno test` / `deno bench` whose
+  /// normal shutdown polls the event loop with a zero-duration timeout and
+  /// would otherwise exit while a debugger is still attached.
+  pub async fn wait_for_inspector_session_disconnect(
+    &mut self,
+  ) -> Result<(), CoreError> {
+    let sessions_state = self.js_runtime.inspector().sessions_state();
+    if sessions_state.has_active
+      && (sessions_state.has_blocking
+        || sessions_state.has_nonblocking_wait_for_disconnect)
+    {
+      self
+        .js_runtime
+        .run_event_loop(PollEventLoopOptions {
+          wait_for_inspector: true,
+        })
+        .await?;
+    }
+    Ok(())
+  }
+
   /// Return exit code set by the executed code (either in main worker
   /// or one of child web workers).
   pub fn exit_code(&self) -> i32 {
@@ -1194,7 +1252,9 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
       .then(create_permissions_stack_trace_callback),
     extension_code_cache: None,
     v8_platform: None,
-    custom_module_evaluation_cb: None,
+    custom_module_evaluation_cb: Some(
+      create_custom_module_evaluation_callback(),
+    ),
     eval_context_code_cache_cbs: None,
   });
 

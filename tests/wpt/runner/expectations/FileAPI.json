@@ -74,8 +74,8 @@
     "filereader_abort.any.worker.html": true,
     "filereader_error.any.html": true,
     "filereader_error.any.worker.html": true,
-    "filereader_events.any.html": false,
-    "filereader_events.any.worker.html": false,
+    "filereader_events.any.html": true,
+    "filereader_events.any.worker.html": true,
     "filereader_readAsArrayBuffer.any.html": true,
     "filereader_readAsArrayBuffer.any.worker.html": true,
     "filereader_readAsBinaryString.any.html": true,
@@ -190,7 +190,6 @@
       "FileReader interface: existence and properties of interface object"
     ]
   },
-  "unicode.html": true,
   "BlobURL": {
     "cross-partition-navigation.https.html": false,
     "cross-partition-worker-creation.https.html": false,

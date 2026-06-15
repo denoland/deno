@@ -196,25 +196,29 @@ jobs:
         run: |-
           EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
           pnpm install -g --ignore-scripts deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
-          ACTUAL="$(node "$PNPM_HOME/global/5/node_modules/deno/bin.cjs" -v)"
+          ACTUAL="$(deno -v)"
           echo "$ACTUAL"
           [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
           pnpm uninstall -g deno
-      - name: Allow pnpm build scripts
-        run: 'pnpm config set --global onlyBuiltDependencies ''["*"]'''
       - name: Test pnpm local install deno (with postinstall)
         run: |-
           TEST_DIR="${{ runner.temp }}/pnpm-test"
           mkdir -p "$TEST_DIR"
           cd "$TEST_DIR"
           npm init -y
+          printf 'allowBuilds:\n  deno: true\n' > pnpm-workspace.yaml
           EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
           pnpm install deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
-          ACTUAL="$(pnpm exec deno -v)"
+          # `pnpm exec` may print lockfile verification messages to stdout before
+          # the command output, so only compare against the last line
+          ACTUAL="$(pnpm exec deno -v | tail -n 1)"
           echo "$ACTUAL"
           [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
       - name: Test pnpm global install deno (with postinstall)
         run: |-
+          GLOBAL_DIR="$(pnpm root -g)"
+          mkdir -p "$GLOBAL_DIR"
+          printf 'allowBuilds:\n  deno: true\n' > "$GLOBAL_DIR/pnpm-workspace.yaml"
           EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
           pnpm install -g deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
           ACTUAL="$(deno -v)"

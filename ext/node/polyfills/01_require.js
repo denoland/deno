@@ -14,6 +14,7 @@ import {
   op_module_hooks_respond_load,
   op_napi_open,
   op_node_has_child_ipc_pipe,
+  op_node_strip_typescript_types,
   op_require_as_file_path,
   op_require_break_on_next_statement,
   op_require_can_parse_as_esm,
@@ -80,6 +81,7 @@ const {
   StringPrototypeSlice,
   StringPrototypeSplit,
   StringPrototypeStartsWith,
+  SyntaxError,
   TypeError,
 } = primordials;
 
@@ -87,21 +89,9 @@ const _httpAgent = core.createLazyLoader("node:_http_agent");
 const _httpCommon = core.createLazyLoader("node:_http_common");
 const _httpOutgoing = core.createLazyLoader("node:_http_outgoing");
 const _httpServer = core.createLazyLoader("node:_http_server");
-const _streamDuplex = core.loadExtScript(
-  "ext:deno_node/internal/streams/duplex.js",
-).default;
-const _streamPassthrough = core.loadExtScript(
-  "ext:deno_node/internal/streams/passthrough.js",
-).default;
-const _streamReadable = core.loadExtScript(
-  "ext:deno_node/internal/streams/readable.js",
-).default;
-const _streamTransform = core.loadExtScript(
-  "ext:deno_node/internal/streams/transform.js",
-).default;
-const _streamWritable = core.loadExtScript(
-  "ext:deno_node/internal/streams/writable.js",
-).default;
+// Heavy stream class definitions. Lazified - only loaded if a script
+// actually `require('_stream_*')` or pulls them transitively via
+// `node:stream` after our lazy stdio refactor.
 // _tls_common, _tls_wrap are lazy-loaded via `lazyNodeModules` below: their
 // scripts extend net.Socket at module body, which pulls node:net (and then
 // node:stream) into the snapshot.
@@ -145,10 +135,6 @@ const fs = core.loadExtScript("ext:deno_node/fs.ts");
 // http/http2/https are lazy-loaded via `lazyNodeModules` below: their script
 // bodies eagerly chain into the entire node:_http_* / node:net / node:stream
 // graph, so running them at snapshot time defeats lazifying _http_*.
-const inspector = core.loadExtScript("ext:deno_node/inspector.js");
-const inspectorPromises = core.loadExtScript(
-  "ext:deno_node/inspector/promises.js",
-);
 const internalAssertMyersDiff = core.loadExtScript(
   "ext:deno_node/internal/assert/myers_diff.js",
 );
@@ -265,18 +251,6 @@ const internalUtilInspect = core.loadExtScript(
 const internalValidators = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-const internalWebstreamsAdapters = core.loadExtScript(
-  "ext:deno_node/internal/webstreams/adapters.js",
-);
-const internalWebstreamsReadableStream = core.loadExtScript(
-  "ext:deno_node/internal/webstreams/readablestream.js",
-);
-const internalWebstreamsUtil = core.loadExtScript(
-  "ext:deno_node/internal/webstreams/util.js",
-);
-const internalWorkerJsTransferable = core.loadExtScript(
-  "ext:deno_node/internal/worker/js_transferable.js",
-);
 const internalConsole = core.loadExtScript(
   "ext:deno_node/internal/console/constructor.mjs",
 ).default;
@@ -318,8 +292,8 @@ const timersPromises = core.loadExtScript(
 );
 const tls = core.createLazyLoader("node:tls");
 const url = core.loadExtScript("ext:deno_node/url.ts");
-const utilTypes = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 const util = core.loadExtScript("ext:deno_node/util.ts");
+const utilTypes = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 const vm = core.loadExtScript("ext:deno_node/vm.js").default;
 // worker_threads must stay eager: it registers `internals.__initWorkerThreads`
 // / `internals.__isWorkerThread`, which the node process bootstrap calls
@@ -347,6 +321,17 @@ const builtinModules = [];
 // Use `() => createLazyLoader("...")().default` for `lazy_loaded_esm` entries
 // and `() => loadExtScript("...")` for `lazy_loaded_js` entries.
 const lazyNodeModules = {
+  // Lazy so the WHATWG-streams adapter graph (stream/web -> deno_web
+  // 06_streams, ~1.8MB of snapshot heap) is only loaded when something
+  // actually requires these internals, not eagerly at node:module init.
+  "internal/worker/js_transferable": () =>
+    core.loadExtScript("ext:deno_node/internal/worker/js_transferable.js"),
+  "internal/webstreams/adapters": () =>
+    core.loadExtScript("ext:deno_node/internal/webstreams/adapters.js"),
+  "internal/webstreams/readablestream": () =>
+    core.loadExtScript("ext:deno_node/internal/webstreams/readablestream.js"),
+  "internal/webstreams/util": () =>
+    core.loadExtScript("ext:deno_node/internal/webstreams/util.js"),
   "_http_agent": () => _httpAgent().default,
   "_http_common": () => _httpCommon().default,
   "_http_outgoing": () => _httpOutgoing().default,
@@ -376,6 +361,8 @@ const lazyNodeModules = {
   "internal/repl": () => internalRepl().default,
   "fs/promises": () =>
     core.loadExtScript("ext:deno_node/fs/promises.ts").fsPromises,
+  "test/reporters": () =>
+    core.loadExtScript("ext:deno_node/test/reporters.ts").default,
   "assert/strict": () => assertStrict().default,
   "internal/event_target": () => internalEventTarget().default,
   "internal/fs/utils": () => internalFsUtils().default,
@@ -441,11 +428,6 @@ function defineLazyNativeModule(name, loader) {
 // NOTE(bartlomieju): keep this list in sync with `ext/node/lib.rs`
 function setupBuiltinModules() {
   const nodeModules = {
-    "_stream_duplex": _streamDuplex,
-    "_stream_passthrough": _streamPassthrough,
-    "_stream_readable": _streamReadable,
-    "_stream_transform": _streamTransform,
-    "_stream_writable": _streamWritable,
     assert,
     "async_hooks": asyncHooks,
     buffer,
@@ -458,8 +440,6 @@ function setupBuiltinModules() {
     domain,
     events,
     fs,
-    inspector,
-    "inspector/promises": inspectorPromises,
     "internal/assert/myers_diff": internalAssertMyersDiff.default,
     "internal/async_hooks": internalAsyncHooks,
     "internal/console/constructor": internalConsole,
@@ -494,10 +474,6 @@ function setupBuiltinModules() {
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     "internal/validators": internalValidators,
-    "internal/webstreams/adapters": internalWebstreamsAdapters,
-    "internal/webstreams/readablestream": internalWebstreamsReadableStream,
-    "internal/webstreams/util": internalWebstreamsUtil,
-    "internal/worker/js_transferable": internalWorkerJsTransferable,
     module: Module,
     os,
     "path/posix": pathPosix,
@@ -527,6 +503,7 @@ function setupBuiltinModules() {
   const schemelessBlockList = new SafeSet([
     "sqlite",
     "test",
+    "test/reporters",
   ]);
   function registerName(name) {
     // `internal/*` modules are only exposed under --expose-internals, so
@@ -824,7 +801,12 @@ function esmResolveHookCallback(specifier, referrer) {
 }
 
 // ESM load hook chain: runs hooks in LIFO order.
-// Returns { source } if hooks provided source, or null for fallthrough.
+// Returns `null` when no load hooks are registered, otherwise
+// `{ result, effectiveUrl }` where `result` is the hook chain's return value
+// and `effectiveUrl` is the URL the chain ultimately delegated to via
+// `nextLoad(newUrl)`: used by the load loop when falling through to Rust
+// default loading so the source comes from the URL the user redirected to,
+// not the original.
 function executeEsmLoadHookChain(fileUrl, context) {
   const loadHooks = [];
   for (let i = hookEntries.length - 1; i >= 0; i--) {
@@ -836,14 +818,18 @@ function executeEsmLoadHookChain(fileUrl, context) {
 
   let index = 0;
   let currentContext = context;
+  let effectiveUrl = fileUrl;
 
   function nextLoad(loadUrl, ctx) {
+    effectiveUrl = loadUrl;
     if (ctx !== undefined && ctx !== null) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= loadHooks.length) {
-      // End of chain - perform default load so user hooks calling
-      // nextLoad() receive the actual source they can transform.
+      // End of chain. Synthesize a default load result so user hooks
+      // that call `await nextLoad(...)` observe a real `source` they
+      // can transform (matches Node, where `defaultLoad` returns the
+      // on-disk source).
       if (StringPrototypeStartsWith(loadUrl, "node:")) {
         return { source: null, format: "builtin", shortCircuit: true };
       }
@@ -856,10 +842,11 @@ function executeEsmLoadHookChain(fileUrl, context) {
             shortCircuit: true,
           };
         } catch {
-          // Any synchronous read failure (file absent from disk because it's
+          // Any sync read failure (file absent from disk because it's
           // embedded in a compiled binary's eszip, permission errors,
-          // transient IO) falls through to Rust default loading, which will
-          // surface a clearer error if the module truly cannot be loaded.
+          // transient IO) falls through to Rust default loading via
+          // the load loop, which surfaces a clearer error if the
+          // module truly cannot be loaded.
           return { source: null, shortCircuit: true };
         }
       }
@@ -882,7 +869,8 @@ function executeEsmLoadHookChain(fileUrl, context) {
     return result;
   }
 
-  return nextLoad(fileUrl, context);
+  const result = nextLoad(fileUrl, context);
+  return { result, effectiveUrl };
 }
 
 function _startEsmLoadLoop() {
@@ -901,19 +889,24 @@ function _startEsmLoadLoop() {
         importAttributes: { __proto__: null },
       };
       try {
-        const result = executeEsmLoadHookChain(fileUrl, context);
+        const chainResult = executeEsmLoadHookChain(fileUrl, context);
+        const result = chainResult?.result ?? null;
+        const effectiveUrl = chainResult?.effectiveUrl ?? null;
         if (result?.format === "builtin") {
-          op_module_hooks_respond_load(id, null, "builtin", null);
+          op_module_hooks_respond_load(id, null, "builtin", null, null);
         } else if (result !== null && result.source != null) {
           const source = loadHookSourceToString(result.source);
           const format = result.format || null;
-          op_module_hooks_respond_load(id, source, format, null);
+          op_module_hooks_respond_load(id, source, format, null, null);
         } else {
-          // Fallthrough: tell Rust to use default loading
-          op_module_hooks_respond_load(id, null, null, null);
+          // Fallthrough: tell Rust to use default loading. Pass the URL the
+          // hook chain ultimately delegated to (may differ from the original
+          // when a hook called `nextLoad(newUrl)`) so source is fetched from
+          // there while the module keeps the original URL as its identity.
+          op_module_hooks_respond_load(id, null, null, null, effectiveUrl);
         }
       } catch (e) {
-        op_module_hooks_respond_load(id, null, null, String(e));
+        op_module_hooks_respond_load(id, null, null, String(e), null);
       }
     }
   })();
@@ -1419,6 +1412,25 @@ Module._resolveLookupPaths = function (request, parent) {
 };
 
 Module._load = function (request, parent, isMain) {
+  // A `node:`-prefixed `require()` of a specifier that isn't a user-requirable
+  // builtin throws ERR_UNKNOWN_BUILTIN_MODULE. This covers unknown ids and
+  // `internal/*` modules (Node only exposes those under `--expose-internals`).
+  // `require.resolve()` goes through `_resolveFilename` directly and instead
+  // reports MODULE_NOT_FOUND, so this check lives here rather than there.
+  if (
+    typeof request === "string" &&
+    StringPrototypeStartsWith(request, "node:") &&
+    !(hookEntries.length > 0 && !insideResolveHook)
+  ) {
+    const id = StringPrototypeSlice(request, 5);
+    if (
+      !(id in nativeModuleExports) ||
+      StringPrototypeStartsWith(id, "internal/")
+    ) {
+      throw new internalErrors.ERR_UNKNOWN_BUILTIN_MODULE(request);
+    }
+  }
+
   let relResolveCacheIdentifier;
   if (parent) {
     // Fast path for (lazy loaded) modules in the same directory. The indirect
@@ -1719,6 +1731,9 @@ Module._resolveFilename = function (
     if (hookEntries.length > 0 && !insideResolveHook) {
       return request;
     }
+    // `require.resolve("node:unknown")` reports MODULE_NOT_FOUND, unlike
+    // `require("node:unknown")` which throws ERR_UNKNOWN_BUILTIN_MODULE from
+    // `Module._load`.
     const err = new Error(`Cannot find module '${request}'`);
     err.code = "MODULE_NOT_FOUND";
     throw err;
@@ -2346,6 +2361,7 @@ function makeRequireFunction(mod) {
 // - C:/foo/...
 // - C:\foo\...
 const RE_START_OF_ABS_PATH = /^([/\\]|[a-zA-Z]:[/\\])/;
+const RE_URL_SCHEME = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
 
 function isAbsolute(filenameOrUrl) {
   return RE_START_OF_ABS_PATH.test(filenameOrUrl);
@@ -2393,7 +2409,7 @@ function isBuiltin(moduleName) {
 
   if (StringPrototypeStartsWith(moduleName, "node:")) {
     moduleName = StringPrototypeSlice(moduleName, 5);
-  } else if (moduleName === "test") {
+  } else if (moduleName === "test" || moduleName === "test/reporters") {
     // test is only a builtin if it has the "node:" scheme
     // see https://github.com/nodejs/node/blob/73025c4dec042e344eeea7912ed39f7b7c4a3991/test/parallel/test-module-isBuiltin.js#L14
     return false;
@@ -2428,15 +2444,153 @@ Module.isBuiltin = isBuiltin;
 
 Module.createRequire = createRequire;
 
+function packageNameFromBareSpecifier(specifier) {
+  if (
+    op_require_is_request_relative(specifier) ||
+    isAbsolute(specifier) ||
+    RegExpPrototypeTest(RE_URL_SCHEME, specifier)
+  ) {
+    return null;
+  }
+
+  const parts = StringPrototypeSplit(specifier, "/");
+  if (parts[0] === "") {
+    return null;
+  }
+  if (StringPrototypeStartsWith(parts[0], "@")) {
+    if (parts.length < 2 || parts[1] === "") {
+      return specifier;
+    }
+    return `${parts[0]}/${parts[1]}`;
+  }
+  return parts[0];
+}
+
+function findClosestPackageJSON(filePath) {
+  let currentPath = stat(filePath) === 1 ? filePath : pathDirname(filePath);
+
+  while (true) {
+    const packageJsonPath = pathResolve(currentPath, "package.json");
+    if (op_require_read_package_scope(packageJsonPath)) {
+      return toRealPath(packageJsonPath);
+    }
+
+    const parentPath = pathDirname(currentPath);
+    if (parentPath === currentPath) {
+      return undefined;
+    }
+    currentPath = parentPath;
+  }
+}
+
+function basePathFromFileURLOrPath(base) {
+  if (base instanceof URL) {
+    if (base.protocol !== "file:") {
+      throw new internalErrors.ERR_INVALID_URL_SCHEME("file");
+    }
+    return op_require_as_file_path(base.href);
+  }
+  if (typeof base !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("base", "string", base);
+  }
+  if (StringPrototypeStartsWith(base, "file:")) {
+    return op_require_as_file_path(base);
+  }
+  return base;
+}
+
+function findPackageJSONForBareSpecifier(packageName, base) {
+  if (base === undefined) {
+    return undefined;
+  }
+
+  const basePath = basePathFromFileURLOrPath(base);
+  const baseDir = stat(basePath) === 1 ? basePath : pathDirname(basePath);
+  const parent = new Module("", null);
+  parent.filename = pathResolve(baseDir, "$deno$find_package_json.js");
+  parent.paths = Module._nodeModulePaths(baseDir);
+  const lookupPaths = Module._resolveLookupPaths(packageName, parent);
+
+  if (lookupPaths === null) {
+    return undefined;
+  }
+
+  for (let i = 0; i < lookupPaths.length; i++) {
+    const lookupPath = lookupPaths[i];
+    const candidatePackageJsonPaths = [
+      pathResolve(lookupPath, packageName, "package.json"),
+      pathResolve(lookupPath, "package.json"),
+    ];
+    for (let j = 0; j < candidatePackageJsonPaths.length; j++) {
+      const packageJsonPath = candidatePackageJsonPaths[j];
+      if (op_require_read_package_scope(packageJsonPath)) {
+        return toRealPath(packageJsonPath);
+      }
+    }
+  }
+  return undefined;
+}
+
+function pathFromResolvedFileUrl(resolved) {
+  if (!StringPrototypeStartsWith(resolved, "file:")) {
+    throw new internalErrors.ERR_INVALID_URL_SCHEME("file");
+  }
+  return op_require_as_file_path(resolved);
+}
+
+function resolveSpecifierForPackageJSON(specifier, base) {
+  if (specifier instanceof URL) {
+    return specifier.href;
+  }
+  specifier = String(specifier);
+  if (StringPrototypeStartsWith(specifier, "file:")) {
+    return specifier;
+  }
+  if (RegExpPrototypeTest(RE_URL_SCHEME, specifier)) {
+    return specifier;
+  }
+
+  let parentURL = "data:";
+  if (base !== undefined) {
+    if (base instanceof URL) {
+      parentURL = base.href;
+    } else if (typeof base === "string") {
+      parentURL = base;
+    } else {
+      throw new internalErrors.ERR_INVALID_ARG_TYPE("base", "string", base);
+    }
+  }
+  return op_module_default_resolve(specifier, parentURL);
+}
+
+function findPackageJSON(specifier, base = undefined) {
+  const specifierString = specifier instanceof URL
+    ? specifier.href
+    : String(specifier);
+  const packageName = packageNameFromBareSpecifier(specifierString);
+  if (packageName !== null) {
+    const packageJsonPath = findPackageJSONForBareSpecifier(packageName, base);
+    if (packageJsonPath !== undefined) {
+      return packageJsonPath;
+    }
+  }
+
+  const resolved = resolveSpecifierForPackageJSON(specifier, base);
+  const filePath = pathFromResolvedFileUrl(resolved);
+  return findClosestPackageJSON(filePath);
+}
+
+Module.findPackageJSON = findPackageJSON;
+
 Module._initPaths = function () {
   const paths = op_require_init_paths();
   modulePaths = paths;
   Module.globalPaths = ArrayPrototypeSlice(modulePaths);
 };
 
-Module.syncBuiltinESMExports = function syncBuiltinESMExports() {
-  throw new Error("not implemented");
-};
+function syncBuiltinESMExports() {}
+
+Module.syncBuiltinESMExports = syncBuiltinESMExports;
 
 // Mostly used by tools like ts-node.
 Module.runMain = function () {
@@ -2479,6 +2633,11 @@ deprecatedNativeModules._stream_transform = [
 deprecatedNativeModules._stream_writable = [
   "The _stream_writable module is deprecated. Use `node:stream` instead.",
   "DEP0193",
+];
+deprecatedNativeModules.punycode = [
+  "The `punycode` module is deprecated. Please use a userland " +
+  "alternative instead.",
+  "DEP0040",
 ];
 
 const emittedNativeModuleDeprecations = new SafeSet();
@@ -3018,6 +3177,81 @@ Module.findSourceMap = findSourceMap;
 Module.SourceMap = SourceMap;
 
 /**
+ * @param {string} code
+ * @param {{ mode?: "strip" | "transform", sourceMap?: boolean, sourceUrl?: string }} [options]
+ * @returns {string}
+ */
+export function stripTypeScriptTypes(code, options = undefined) {
+  if (typeof code !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("code", "string", code);
+  }
+  if (
+    options !== undefined &&
+    (typeof options !== "object" || options === null)
+  ) {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("options", "object", options);
+  }
+
+  const mode = options?.mode ?? "strip";
+  if (mode !== "strip" && mode !== "transform") {
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "options.mode",
+      mode,
+      "must be one of: 'strip', 'transform'",
+    );
+  }
+
+  if (
+    options?.sourceMap !== undefined &&
+    typeof options.sourceMap !== "boolean"
+  ) {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "options.sourceMap",
+      "boolean",
+      options.sourceMap,
+    );
+  }
+  if (
+    options?.sourceUrl !== undefined &&
+    typeof options.sourceUrl !== "string"
+  ) {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "options.sourceUrl",
+      "string",
+      options.sourceUrl,
+    );
+  }
+
+  const sourceMap = options?.sourceMap === true;
+  if (mode === "strip" && sourceMap) {
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "options.sourceMap",
+      sourceMap,
+      "must be one of: false, undefined",
+    );
+  }
+
+  let result;
+  try {
+    result = op_node_strip_typescript_types(code, mode, sourceMap);
+  } catch (err) {
+    if (mode === "strip") {
+      const syntaxError = new SyntaxError(err.message);
+      syntaxError.code = "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX";
+      throw syntaxError;
+    }
+    throw err;
+  }
+
+  if (!sourceMap && options?.sourceUrl !== undefined) {
+    result += `\n\n//# sourceURL=${options.sourceUrl}`;
+  }
+  return result;
+}
+
+Module.stripTypeScriptTypes = stripTypeScriptTypes;
+
+/**
  * @param {string | URL} _specifier
  * @param {string | URL} _parentUrl
  * @param {{ parentURL: string | URL, data: any, transferList: any[] }} [_options]
@@ -3067,7 +3301,6 @@ export function registerHooks(hooks) {
 }
 
 Module.registerHooks = registerHooks;
-Module.register = register;
 
 let initialized = false;
 
@@ -3206,10 +3439,12 @@ internals.closeIdleConnections = closeIdleConnections;
 export {
   builtinModules,
   createRequire,
+  findPackageJSON,
   getBuiltinModule,
   isBuiltin,
   Module,
   SourceMap,
+  syncBuiltinESMExports,
 };
 export const _cache = Module._cache;
 export const _extensions = Module._extensions;
@@ -3223,5 +3458,6 @@ export const _resolveFilename = Module._resolveFilename;
 export const _resolveLookupPaths = Module._resolveLookupPaths;
 export const _stat = Module._stat;
 export const globalPaths = Module.globalPaths;
+export const runMain = Module.runMain;
 
 export default Module;

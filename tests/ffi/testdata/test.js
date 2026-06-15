@@ -388,6 +388,33 @@ assertEquals(isNullBufferDeopt(externalOneBuffer), false, "isNullBufferDeopt(ext
 assertNotEquals(Deno.UnsafePointer.of(externalZeroBuffer), null, "Deno.UnsafePointer.of(externalZeroBuffer) === null");
 assertNotEquals(Deno.UnsafePointer.of(externalOneBuffer), null, "Deno.UnsafePointer.of(externalOneBuffer) === null");
 
+// ==== SharedArrayBuffer TESTS ====
+// `SharedArrayBuffer`-backed buffers go through the same `buffer` marshalling
+// path as `ArrayBuffer`-backed ones when passed to a real symbol.
+const sabBuffer = new Uint8Array(new SharedArrayBuffer(8));
+assertEquals(isNullBuffer(sabBuffer), false, "isNullBuffer(sabBuffer) !== false");
+assertEquals(
+  isNullBufferDeopt(sabBuffer),
+  false,
+  "isNullBufferDeopt(sabBuffer) !== false",
+);
+assertNotEquals(
+  Deno.UnsafePointer.of(sabBuffer),
+  null,
+  "Deno.UnsafePointer.of(sabBuffer) === null",
+);
+// A bare `SharedArrayBuffer` is also accepted by `UnsafePointer.of`.
+assertNotEquals(
+  Deno.UnsafePointer.of(new SharedArrayBuffer(8)),
+  null,
+  "Deno.UnsafePointer.of(new SharedArrayBuffer(8)) === null",
+);
+assertEquals(
+  Deno.UnsafePointer.of(new SharedArrayBuffer(0)),
+  null,
+  "Deno.UnsafePointer.of(new SharedArrayBuffer(0)) !== null",
+);
+
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
 const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
   parameters: ["u32", "u32"],
@@ -574,7 +601,9 @@ testOptimized(
     255, 65535, 4294967295, 4294967296n, 123.456, 789.876, -1n, -2, -3, -4, -1000n, 1000n,
     12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910
   ),
-  // apple silicon can't handle more than 8 args in fast calls: https://issues.chromium.org/issues/42203110
+  // V8 disables fast api for >8 args on Apple silicon (crbug.com/v8/13171).
+  // Deno's trampoline now produces a correctly-aligned wrapper on Apple
+  // silicon, so when V8 relaxes the guard this skip can be removed.
   process.platform === 'darwin' && process.arch === 'arm64' ? null : "log_many_parameters",
 );
 
@@ -597,7 +626,9 @@ function addManyU16Fast(a, b, c, d, e, f, g, h, i, j, k, l, m) {
 testOptimized(
   addManyU16Fast,
   () => addManyU16Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
-  // apple silicon can't handle more than 8 args in fast calls: https://issues.chromium.org/issues/42203110
+  // V8 disables fast api for >8 args on Apple silicon (crbug.com/v8/13171).
+  // Deno's trampoline now produces a correctly-aligned wrapper on Apple
+  // silicon, so when V8 relaxes the guard this skip can be removed.
   process.platform === 'darwin' && process.arch === 'arm64' ? null : "add_many_u16",
 );
 

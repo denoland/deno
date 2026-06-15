@@ -1,0 +1,5 @@
+[WILDCARD]invalid peer certificate: UnknownIssuer[WILDCARD]
+    info: The TLS certificate could not be verified against Deno's trusted certificate authorities.
+    hint: If the certificate is trusted by your operating system (for example, issued
+          by mkcert or a corporate proxy), run again with DENO_TLS_CA_STORE=mozilla,system.
+    hint: Otherwise pass --unsafely-ignore-certificate-errors to bypass verification (insecure).

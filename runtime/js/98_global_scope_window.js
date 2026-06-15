@@ -20,6 +20,10 @@ const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const globalInterfaces = core.loadExtScript(
   "ext:deno_web/04_global_interfaces.js",
 );
+import {
+  NavigatorUAData,
+  navigatorUAData,
+} from "ext:runtime/97_navigator_user_agent_data.js";
 // `localStorage`, `sessionStorage`, `Storage`, `alert`/`confirm`/`prompt`,
 // and `navigator.gpu` are rarely accessed on the cold-start path. Their
 // implementations come from `lazy_loaded_js` polyfills that we don't want
@@ -94,6 +98,7 @@ class Navigator {
           "language",
           "languages",
           "platform",
+          "userAgentData",
         ],
       }),
       inspectOptions,
@@ -177,6 +182,15 @@ ObjectDefineProperties(Navigator.prototype, {
       return platform();
     },
   },
+  userAgentData: {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, NavigatorPrototype);
+      return navigatorUAData;
+    },
+  },
 });
 const NavigatorPrototype = Navigator.prototype;
 
@@ -187,6 +201,7 @@ const mainRuntimeGlobalProperties = {
   self: core.propGetterOnly(() => globalThis),
   Navigator: core.propNonEnumerable(Navigator),
   navigator: core.propGetterOnly(() => navigator),
+  NavigatorUAData: core.propNonEnumerable(NavigatorUAData),
   alert: core.propWritableLazyLoaded((p) => p.alert, lazyPrompt),
   confirm: core.propWritableLazyLoaded((p) => p.confirm, lazyPrompt),
   prompt: core.propWritableLazyLoaded((p) => p.prompt, lazyPrompt),

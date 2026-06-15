@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "cache --allow-import http://localhost:4545/skypack/swagger-client?dts",
+      "output": "first.out"
+    },
+    {
+      "args": "cache --allow-import http://localhost:4545/skypack/swagger-client?dts",
+      "output": "second.out"
+    }
+  ]
+}

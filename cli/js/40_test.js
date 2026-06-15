@@ -8,26 +8,37 @@ const {
   op_register_test_step,
   op_register_test,
   op_register_test_hook,
+  op_test_event_exit,
   op_test_event_step_result_failed,
   op_test_event_step_result_ignored,
   op_test_event_step_result_ok,
   op_test_event_step_wait,
   op_test_get_origin,
+  op_test_isolate_exit,
 } = core.ops;
 const {
+  ArrayIsArray,
   ArrayPrototypeFilter,
   ArrayPrototypePush,
   DateNow,
   Error,
+  FunctionPrototypeApply,
+  JSONStringify,
   Map,
+  MathTrunc,
+  Number,
   NumberIsFinite,
   NumberIsInteger,
   NumberIsNaN,
   MapPrototypeGet,
   MapPrototypeSet,
   SafeArrayIterator,
+  SafeRegExp,
+  String,
   StringPrototypeLastIndexOf,
+  StringPrototypeReplace,
   StringPrototypeSlice,
+  StringPrototypeSplit,
   SymbolFor,
   SymbolToStringTag,
   TypeError,
@@ -132,11 +143,52 @@ function parseTestLocation(str) {
   };
 }
 
-// Wrap test function in additional assertion that makes sure
-// that the test case does not accidentally exit prematurely.
-function assertExit(fn, isTest) {
+// Default exit handler installed at the start of every test isolate (see
+// `installTestIsolateExitHandler` below). When user code calls `Deno.exit()`
+// outside of any test function - at module top level, in an `unload` event,
+// or from async work that escaped a test - we don't want to kill the deno
+// process. Instead we record the exit code, notify the reporter, and ask V8
+// to terminate the isolate so the test runner can move on to the next file.
+//
+// `defaultExitHandler` is also what `assertExit` restores when a per-test
+// handler finishes, so that `Deno.exit()` after a test (e.g., in an unload
+// listener) is still routed to the isolate-exit path.
+let defaultExitHandler = null;
+
+function installTestIsolateExitHandler() {
+  defaultExitHandler = (exitCode) => {
+    op_test_isolate_exit(exitCode);
+    // `op_test_isolate_exit` asks V8 to terminate execution; the throw here
+    // is a defense-in-depth so the current call stack is unwound even if V8
+    // doesn't check the termination flag before some intermediate frame
+    // catches the (uncatchable) termination exception. Either way, the test
+    // runner detects the isolate-exit via `IsolateExitInfo` in `OpState`.
+    throw new Error(`Deno.exit(${exitCode}) called outside of a test`);
+  };
+  setExitHandler(defaultExitHandler);
+}
+
+// Wrap test function in additional assertion that handles a test case trying
+// to exit the process prematurely.
+//
+// When `sanitizeExit` is enabled (the default), any attempt to exit fails the
+// current test (and a non-zero exit code set during the test fails it too),
+// allowing the remaining tests to keep running.
+//
+// When `sanitizeExit` is disabled, the user has opted out of failing the test,
+// but we still don't want a test to silently terminate the process without a
+// message and - more importantly - without reliably flushing buffered output.
+// Instead we abort the whole test run: the reporter prints a message, flushes
+// all output, and then exits the process with the requested code.
+function assertExit(fn, isTest, sanitizeExit) {
   return async function exitSanitizer(...params) {
     setExitHandler((exitCode) => {
+      if (!sanitizeExit) {
+        // Hand the exit off to the test runner. This never returns - the
+        // process is terminated once the reporter has flushed its output.
+        op_test_event_exit(exitCode);
+        return;
+      }
       throw new Error(
         `${
           isTest ? "Test case" : "Bench"
@@ -146,22 +198,27 @@ function assertExit(fn, isTest) {
 
     try {
       const innerResult = await fn(...new SafeArrayIterator(params));
-      const exitCode = DenoNs.exitCode;
-      if (exitCode !== 0) {
-        // Reset the code to allow other tests to run...
-        DenoNs.exitCode = 0;
-        // ...and fail the current test.
-        throw new Error(
-          `${
-            isTest ? "Test case" : "Bench"
-          } finished with exit code set to ${exitCode}`,
-        );
+      if (sanitizeExit) {
+        const exitCode = DenoNs.exitCode;
+        if (exitCode !== 0) {
+          // Reset the code to allow other tests to run...
+          DenoNs.exitCode = 0;
+          // ...and fail the current test.
+          throw new Error(
+            `${
+              isTest ? "Test case" : "Bench"
+            } finished with exit code set to ${exitCode}`,
+          );
+        }
       }
       if (innerResult) {
         return innerResult;
       }
     } finally {
-      setExitHandler(null);
+      // Restore the isolate-level default handler so that a subsequent
+      // top-level `Deno.exit()` (e.g., in an `unload` listener) is routed
+      // back into the test runner instead of falling through to `op_exit`.
+      setExitHandler(defaultExitHandler);
     }
   };
 }
@@ -473,6 +530,137 @@ test.sanitizer = function (options) {
   }
 };
 
+// Matches a `printf`-style token (`%s`, `%d`, `%i`, `%f`, `%j`, `%o`, `%O`,
+// `%#`, `%%`) or a `$`-prefixed object path (`$foo`, `$foo.bar`) inside a
+// `Deno.test.each()` name template.
+const EACH_NAME_TOKEN = new SafeRegExp(
+  "%[sdifjoO#%]|\\$[\\w$]+(?:\\.[\\w$]+)*",
+  "g",
+);
+
+// Stringify a value for interpolation into a generated test name. Strings are
+// inserted verbatim; everything else is JSON-encoded (falling back to `String`
+// for values JSON can't represent, such as `bigint` or circular objects).
+function eachStringify(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    const json = JSONStringify(value);
+    return json === undefined ? String(value) : json;
+  } catch {
+    return String(value);
+  }
+}
+
+// Resolve a dotted `$`-path (e.g. `foo.bar`) against an object row.
+function eachResolvePath(row, path) {
+  const parts = StringPrototypeSplit(path, ".");
+  let current = row;
+  for (const part of new SafeArrayIterator(parts)) {
+    if (current === null || current === undefined) {
+      return undefined;
+    }
+    current = current[part];
+  }
+  return current;
+}
+
+// Build the name for a single `Deno.test.each()` case by interpolating the
+// template against the case's row and its zero-based index.
+function formatEachName(template, row, index) {
+  if (typeof template !== "string") {
+    throw new TypeError("Deno.test.each: test name must be a string");
+  }
+  const isArray = ArrayIsArray(row);
+  const positional = isArray ? row : [row];
+  let argIndex = 0;
+  return StringPrototypeReplace(template, EACH_NAME_TOKEN, (token) => {
+    if (token === "%%") {
+      return "%";
+    }
+    if (token === "%#") {
+      return String(index);
+    }
+    if (token[0] === "$") {
+      const value = eachResolvePath(row, StringPrototypeSlice(token, 1));
+      return eachStringify(value);
+    }
+    const value = positional[argIndex++];
+    switch (token) {
+      case "%s":
+        return String(value);
+      case "%d":
+      case "%i": {
+        const n = Number(value);
+        return NumberIsNaN(n) ? "NaN" : String(MathTrunc(n));
+      }
+      case "%f":
+        return String(Number(value));
+      case "%j":
+        return eachStringify(value);
+      case "%o":
+      case "%O":
+        return eachStringify(value);
+      default:
+        return token;
+    }
+  });
+}
+
+// Create a `Deno.test.each()` (and `.only.each`/`.ignore.each`) implementation
+// bound to the given test registration `overrides`.
+function createEach(overrides) {
+  return function each(cases) {
+    if (!ArrayIsArray(cases)) {
+      throw new TypeError(
+        "Deno.test.each: expected an array of test cases",
+      );
+    }
+    return function (name, optionsOrFn, maybeFn) {
+      let options;
+      let fn;
+      if (typeof optionsOrFn === "function") {
+        fn = optionsOrFn;
+      } else {
+        options = optionsOrFn;
+        fn = maybeFn;
+      }
+      if (typeof fn !== "function") {
+        throw new TypeError("Deno.test.each: missing test function");
+      }
+
+      // Report all generated tests at the user's `.each(...)(...)` call site
+      // rather than inside this function.
+      const callSite = core.currentUserCallSite();
+      const location =
+        `${callSite.fileName}:${callSite.lineNumber}:${callSite.columnNumber}`;
+
+      let index = 0;
+      for (const row of new SafeArrayIterator(cases)) {
+        const caseName = formatEachName(name, row, index);
+        const args = ArrayIsArray(row) ? row : [row];
+        const caseFn = (t) =>
+          FunctionPrototypeApply(fn, undefined, [
+            ...new SafeArrayIterator(args),
+            t,
+          ]);
+        caseFn[TEST_LOCATION_SYMBOL] = location;
+        if (options === undefined) {
+          testInner(caseName, caseFn, undefined, overrides);
+        } else {
+          testInner(caseName, options, caseFn, overrides);
+        }
+        index++;
+      }
+    };
+  };
+}
+
+test.each = createEach({ __proto__: null });
+test.only.each = createEach({ only: true });
+test.ignore.each = createEach({ ignore: true });
+
 function getFullName(desc) {
   if ("parent" in desc) {
     return `${getFullName(desc.parent)} ... ${desc.name}`;
@@ -625,9 +813,8 @@ function createTestContext(desc) {
  */
 function wrapTest(desc) {
   let testFn = wrapInner(desc.fn);
-  if (desc.sanitizeExit) {
-    testFn = assertExit(testFn, true);
-  }
+  // Always install the exit handler - its behavior depends on `sanitizeExit`.
+  testFn = assertExit(testFn, true, desc.sanitizeExit);
   if (!("parent" in desc) && desc.permissions) {
     testFn = withPermissions(testFn, desc.permissions);
   }
@@ -635,3 +822,5 @@ function wrapTest(desc) {
 }
 
 globalThis.Deno.test = test;
+globalThis.Deno[globalThis.Deno.internal].installTestIsolateExitHandler =
+  installTestIsolateExitHandler;

@@ -578,6 +578,28 @@ pub struct DatabaseSync {
   location: String,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
   authorizer_data: Rc<RefCell<Option<*mut AuthorizerData>>>,
+  // Non-zero while a user-defined callback is on the stack; close() refuses
+  // to free the connection in that state to avoid a SQLite VDBE use-after-free.
+  callback_depth: Rc<Cell<usize>>,
+}
+
+struct CallbackDepthGuard {
+  depth: Rc<Cell<usize>>,
+}
+
+impl CallbackDepthGuard {
+  fn new(depth: &Rc<Cell<usize>>) -> Self {
+    depth.set(depth.get().saturating_add(1));
+    Self {
+      depth: Rc::clone(depth),
+    }
+  }
+}
+
+impl Drop for CallbackDepthGuard {
+  fn drop(&mut self) {
+    self.depth.set(self.depth.get().saturating_sub(1));
+  }
 }
 
 // SAFETY: we're sure this can be GCed
@@ -834,6 +856,7 @@ impl DatabaseSync {
       options,
       ignore_next_sqlite_error: Rc::new(Cell::new(false)),
       authorizer_data: Rc::new(RefCell::new(None)),
+      callback_depth: Rc::new(Cell::new(0)),
     })
   }
 
@@ -881,6 +904,12 @@ impl DatabaseSync {
       return Err(SqliteError::AlreadyClosed);
     }
 
+    // Refuse to close while a user-defined callback is on the SQLite stack —
+    // freeing the in-flight statement would be a VDBE use-after-free.
+    if self.callback_depth.get() > 0 {
+      return Err(SqliteError::ActiveCallback);
+    }
+
     // Finalize all prepared statements
     for stmt in self.statements.borrow_mut().drain(..) {
       match stmt.get() {
@@ -900,7 +929,7 @@ impl DatabaseSync {
       if let Some(data_ptr) = authorizer_data.take() {
         // SAFETY: data_ptr was allocated in authorizer setup.
         unsafe {
-          free_authorizer_data(data_ptr);
+          release_authorizer_data(data_ptr);
         }
       }
     }
@@ -915,6 +944,7 @@ impl DatabaseSync {
   //
   // This method is a wrapper around sqlite3_exec().
   #[fast]
+  #[reentrant]
   #[validate(is_open)]
   #[undefined]
   fn exec(
@@ -939,6 +969,7 @@ impl DatabaseSync {
   // Compiles an SQL statement into a prepared statement.
   //
   // This method is a wrapper around `sqlite3_prepare_v2()`.
+  #[reentrant]
   #[validate(is_open)]
   #[cppgc]
   fn prepare(
@@ -1213,6 +1244,7 @@ impl DatabaseSync {
       context,
       use_big_int_arguments,
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
+      callback_depth: Rc::clone(&self.callback_depth),
     });
     let data_ptr = Box::into_raw(data);
 
@@ -1384,6 +1416,9 @@ impl DatabaseSync {
     // SAFETY: lifetime of the connection is guaranteed by reference
     // counting.
     let raw_handle = unsafe { db.handle() };
+
+    // Block close() while filter/onConflict callbacks may be on the stack.
+    let _apply_depth_guard = CallbackDepthGuard::new(&self.callback_depth);
 
     // SAFETY: `changeset` points to a valid memory location and its
     // length is correct. `ctx` is stack allocated and its lifetime is
@@ -1619,16 +1654,6 @@ impl DatabaseSync {
     // SAFETY: lifetime of the connection is guaranteed by reference counting.
     let raw_handle = unsafe { conn.handle() };
 
-    {
-      let mut authorizer_data = self.authorizer_data.borrow_mut();
-      if let Some(old_data_ptr) = authorizer_data.take() {
-        // SAFETY: data_ptr was allocated in authorizer setup.
-        unsafe {
-          free_authorizer_data(old_data_ptr);
-        }
-      }
-    }
-
     if callback.is_null() {
       // SAFETY: `raw_handle` is a valid database handle.
       let result = unsafe {
@@ -1639,6 +1664,14 @@ impl DatabaseSync {
         )
       };
       check_error_code(result, raw_handle)?;
+
+      let mut authorizer_data = self.authorizer_data.borrow_mut();
+      if let Some(old_data_ptr) = authorizer_data.take() {
+        // SAFETY: data_ptr was allocated in authorizer setup.
+        unsafe {
+          release_authorizer_data(old_data_ptr);
+        }
+      }
       return Ok(());
     }
 
@@ -1659,6 +1692,9 @@ impl DatabaseSync {
       callback: callback_global,
       context: context_global,
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
+      callback_depth: Rc::clone(&self.callback_depth),
+      active_callbacks: Cell::new(0),
+      free_after_callback: Cell::new(false),
     });
     let data_ptr = Box::into_raw(data);
 
@@ -1681,7 +1717,13 @@ impl DatabaseSync {
       check_error_code(result, raw_handle)?;
     }
 
-    *self.authorizer_data.borrow_mut() = Some(data_ptr);
+    let mut authorizer_data = self.authorizer_data.borrow_mut();
+    if let Some(old_data_ptr) = authorizer_data.replace(data_ptr) {
+      // SAFETY: data_ptr was allocated in authorizer setup.
+      unsafe {
+        release_authorizer_data(old_data_ptr);
+      }
+    }
 
     Ok(())
   }
@@ -1787,6 +1829,7 @@ impl DatabaseSync {
       inverse_fn,
       final_fn,
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
+      callback_depth: Rc::clone(&self.callback_depth),
     });
 
     let custom_aggregate_ptr = Box::into_raw(custom_aggregate);
@@ -2100,6 +2143,7 @@ struct CustomAggregate {
   inverse_fn: Option<NonNull<v8::Function>>,
   final_fn: Option<NonNull<v8::Function>>,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
+  callback_depth: Rc<Cell<usize>>,
 }
 
 enum AggregateStepKind {
@@ -2174,6 +2218,8 @@ unsafe fn custom_aggregate_step_base(
     }
 
     let data = &*data_ptr;
+    // Block close() from freeing the in-flight statement under the VDBE.
+    let _depth_guard = CallbackDepthGuard::new(&data.callback_depth);
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
 
@@ -2278,6 +2324,8 @@ unsafe fn custom_aggregate_value_base(
     }
 
     let data = &*data_ptr;
+    // Block close() from freeing the in-flight statement under the VDBE.
+    let _depth_guard = CallbackDepthGuard::new(&data.callback_depth);
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
 
@@ -2406,12 +2454,58 @@ struct CustomFunctionData {
   context: NonNull<v8::Context>,
   use_big_int_arguments: bool,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
+  callback_depth: Rc<Cell<usize>>,
 }
 
 struct AuthorizerData {
   callback: NonNull<v8::Function>,
   context: NonNull<v8::Context>,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
+  callback_depth: Rc<Cell<usize>>,
+  // authorizer_callback holds shared references across reentrant JS calls.
+  // Mutable callback-lifetime state must use interior mutability so reentrant
+  // release/drop paths never create an aliasing &mut AuthorizerData.
+  active_callbacks: Cell<usize>,
+  free_after_callback: Cell<bool>,
+}
+
+struct AuthorizerCallbackGuard {
+  data_ptr: *mut AuthorizerData,
+  callback_depth: Rc<Cell<usize>>,
+}
+
+impl AuthorizerCallbackGuard {
+  unsafe fn new(data_ptr: *mut AuthorizerData) -> Self {
+    // SAFETY: caller guarantees `data_ptr` points to valid AuthorizerData.
+    let data = unsafe { &*data_ptr };
+    data
+      .active_callbacks
+      .set(data.active_callbacks.get().saturating_add(1));
+    data
+      .callback_depth
+      .set(data.callback_depth.get().saturating_add(1));
+    Self {
+      data_ptr,
+      callback_depth: Rc::clone(&data.callback_depth),
+    }
+  }
+}
+
+impl Drop for AuthorizerCallbackGuard {
+  fn drop(&mut self) {
+    // SAFETY: AuthorizerData cannot be freed while active_callbacks is non-zero.
+    unsafe {
+      let data = &*self.data_ptr;
+      let active_callbacks = data.active_callbacks.get().saturating_sub(1);
+      data.active_callbacks.set(active_callbacks);
+      self
+        .callback_depth
+        .set(self.callback_depth.get().saturating_sub(1));
+      if active_callbacks == 0 && data.free_after_callback.get() {
+        free_authorizer_data(self.data_ptr);
+      }
+    }
+  }
 }
 
 unsafe extern "C" fn custom_function_handler(
@@ -2432,6 +2526,8 @@ unsafe extern "C" fn custom_function_handler(
     }
 
     let data = &*data_ptr;
+    // Block close() from freeing the in-flight statement under the VDBE.
+    let _depth_guard = CallbackDepthGuard::new(&data.callback_depth);
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
 
@@ -2684,6 +2780,7 @@ unsafe extern "C" fn authorizer_callback(
       return libsqlite3_sys::SQLITE_DENY;
     }
 
+    let _callback_guard = AuthorizerCallbackGuard::new(data_ptr);
     let data = &*data_ptr;
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
@@ -2777,6 +2874,22 @@ unsafe fn free_authorizer_data(data_ptr: *mut AuthorizerData) {
 
     let _ = v8::Global::from_raw(scope, data.callback);
     let _ = v8::Global::from_raw(scope, data.context);
+  }
+}
+
+unsafe fn release_authorizer_data(data_ptr: *mut AuthorizerData) {
+  if data_ptr.is_null() {
+    return;
+  }
+
+  // SAFETY: `data_ptr` is a valid pointer to AuthorizerData.
+  unsafe {
+    let data = &*data_ptr;
+    if data.active_callbacks.get() > 0 {
+      data.free_after_callback.set(true);
+    } else {
+      free_authorizer_data(data_ptr);
+    }
   }
 }
 

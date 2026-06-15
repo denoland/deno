@@ -597,12 +597,15 @@ pub static BYTES_IMPORT_SOURCE: &str =
   "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n";
 pub static TEXT_IMPORT_SOURCE: &str =
   "const data: string;\nexport default data;\n";
+pub static CSS_IMPORT_SOURCE: &str =
+  "const sheet: CSSStyleSheet;\nexport default sheet;\n";
 
 pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
   let raw_import = get_specifier_raw_import(specifier)?;
   let source = match raw_import {
     RawImportKind::Bytes => BYTES_IMPORT_SOURCE,
     RawImportKind::Text => TEXT_IMPORT_SOURCE,
+    RawImportKind::Css => CSS_IMPORT_SOURCE,
   };
   Some(source)
 }
@@ -611,6 +614,7 @@ pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
 pub enum RawImportKind {
   Bytes,
   Text,
+  Css,
 }
 
 /// We store the raw import kind in the fragment of the Url
@@ -629,6 +633,8 @@ fn get_specifier_raw_import(specifier: &Url) -> Option<RawImportKind> {
     Some(RawImportKind::Text)
   } else if remaining.starts_with("bytes") {
     Some(RawImportKind::Bytes)
+  } else if remaining.starts_with("css") {
+    Some(RawImportKind::Css)
   } else {
     None
   }
@@ -1300,6 +1306,15 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
     .collect()
   });
 
+// Names of globals that `@types/node` redeclares but that Deno already
+// declares natively (typically in `lib.deno.web.d.ts`). When the TypeScript
+// fork merges `@types/node` into the global symbol table, declarations for
+// these names are dropped so the user-visible global remains Deno's.
+//
+// This keeps `new AbortController().signal` assignable to the `AbortSignal`
+// parameters of `node:fs`, `node:timers/promises`, etc., and avoids the
+// `TS2300` / `TS2320` duplicate-identifier diagnostics reported in
+// https://github.com/denoland/deno/issues/19527.
 pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "AbortController",
   "AbortSignal",
@@ -1352,7 +1367,9 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "ReadableStreamDefaultReader",
   "ReadonlyArray",
   "Request",
+  "RequestInit",
   "Response",
+  "ResponseInit",
   "Storage",
   "SubtleCrypto",
   "TextDecoder",
@@ -1376,7 +1393,5 @@ pub static NODE_ONLY_GLOBALS: &[&str] = &[
   "crypto",
   "gc",
   "localStorage",
-  "RequestInit",
-  "ResponseInit",
   "sessionStorage",
 ];

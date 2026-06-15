@@ -444,7 +444,7 @@ core.registerErrorBuilder(
 core.registerErrorBuilder(
   "DOMExceptionNotSupportedError",
   function DOMExceptionNotSupportedError(msg) {
-    return new DOMException(msg, "NotSupported");
+    return new DOMException(msg, "NotSupportedError");
   },
 );
 core.registerErrorBuilder(
@@ -481,6 +481,24 @@ core.registerErrorBuilder(
   "DOMExceptionSyntaxError",
   function DOMExceptionSyntaxError(msg) {
     return new DOMException(msg, "SyntaxError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionIndexSizeError",
+  function DOMExceptionIndexSizeError(msg) {
+    return new DOMException(msg, "IndexSizeError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionTypeMismatchError",
+  function DOMExceptionTypeMismatchError(msg) {
+    return new DOMException(msg, "TypeMismatchError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionInvalidAccessError",
+  function DOMExceptionInvalidAccessError(msg) {
+    return new DOMException(msg, "InvalidAccessError");
   },
 );
 
@@ -600,11 +618,25 @@ const NOT_IMPORTED_OPS = [
   "op_register_bench",
   "op_bench_get_origin",
 
-  // Related to `Deno.jupyter` API
+  // Related to `Deno.jupyter` REPL API
   "op_jupyter_broadcast",
   "op_jupyter_input",
   "op_jupyter_create_png_from_texture",
   "op_jupyter_get_buffer",
+  // Related to the Jupyter ZMQ kernel worker
+  "op_jupyter_get_connection_info",
+  "op_jupyter_repl_evaluate",
+  "op_jupyter_repl_get_properties",
+  "op_jupyter_repl_global_lexical_scope_names",
+  "op_jupyter_repl_call_function_on_args",
+  "op_jupyter_repl_call_function_on",
+  "op_jupyter_repl_interrupt",
+  "op_jupyter_repl_cancel_interrupt",
+  "op_jupyter_recv_iopub",
+  "op_jupyter_recv_input",
+  "op_jupyter_send_input_reply",
+  "op_jupyter_deno_version",
+  "op_jupyter_typescript_version",
   // Used in jupyter API
   "op_base64_encode",
 
@@ -628,6 +660,8 @@ const NOT_IMPORTED_OPS = [
   "op_register_test_hook",
   "op_register_test",
   "op_test_get_origin",
+  "op_test_event_exit",
+  "op_test_isolate_exit",
   "op_pledge_test_permissions",
 
   // TODO(bartlomieju): used in various integration tests - figure out a way
@@ -1038,8 +1072,8 @@ function bootstrapWorkerRuntime(
     event.defineEventHandler(globalThis, "message");
     event.defineEventHandler(globalThis, "error", undefined, true);
 
-    // `Deno.exit()` is an alias to `self.close()`. Setting and exit
-    // code using an op in worker context is a no-op.
+    // `Deno.exit()` closes the worker using the internal worker close
+    // operation. Setting an exit code using an op in worker context is a no-op.
     os.setExitHandler((_exitCode) => {
       workerClose();
     });

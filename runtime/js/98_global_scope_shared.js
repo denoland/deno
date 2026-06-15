@@ -64,7 +64,6 @@ const {
   QuotaExceededError,
 } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
-const loadImageData = () => core.loadExtScript("ext:deno_web/16_image_data.js");
 // node:process is loaded lazily so its closure isn't pulled into the snapshot
 // build; the `process` global is installed via `propWritableLazyLoaded` below.
 const lazyProcessMod = core.createLazyLoader("node:process");
@@ -82,7 +81,14 @@ import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
 const loadCanvas = core.createLazyLoader("ext:deno_canvas/01_canvas.js");
-const loadGeometry = core.createLazyLoader("ext:deno_web/geometry.js");
+let _imageDataMod;
+const loadImageData = () =>
+  _imageDataMod ??
+    (_imageDataMod = core.loadExtScript("ext:deno_web/16_image_data.js"));
+let _geometryMod;
+const loadGeometry = () =>
+  _geometryMod ??
+    (_geometryMod = core.loadExtScript("ext:deno_web/17_geometry.js"));
 const loadWebSocket = core.createLazyLoader(
   "ext:deno_websocket/01_websocket.js",
 );
@@ -529,5 +535,22 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
   setTimeout: core.propWritable(nodeSetTimeout),
 };
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
+
+let _cssStyleSheetMod;
+const loadCssStyleSheet = () =>
+  _cssStyleSheetMod ??
+    (_cssStyleSheetMod = core.loadExtScript(
+      "ext:deno_web/18_css_stylesheet.js",
+    ));
+unstableForWindowOrWorkerGlobalScope[unstableIds.rawImports] = {
+  CSSRule: core.propNonEnumerableLazyLoaded(
+    (css) => css.CSSRule,
+    loadCssStyleSheet,
+  ),
+  CSSStyleSheet: core.propNonEnumerableLazyLoaded(
+    (css) => css.CSSStyleSheet,
+    loadCssStyleSheet,
+  ),
+};
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };

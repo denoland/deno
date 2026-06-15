@@ -566,7 +566,7 @@ impl UvLoopInner {
       // The Arc keeps the waker allocation alive across the handle's
       // destruction, so the atomic load is always safe.
       let mut tcp_ready: VecDeque<Arc<waker::TcpHandleWaker>> =
-        std::mem::take(&mut *self.shared.ready_tcp.borrow_mut());
+        std::mem::take(&mut *self.shared.ready_tcp.lock().unwrap());
       while let Some(handle_waker) = tcp_ready.pop_front() {
         handle_waker.reset_queued();
         let ptr = handle_waker.live_ptr();
@@ -586,7 +586,7 @@ impl UvLoopInner {
 
       // --- pipe ---
       let mut pipe_ready: VecDeque<Arc<waker::PipeHandleWaker>> =
-        std::mem::take(&mut *self.shared.ready_pipe.borrow_mut());
+        std::mem::take(&mut *self.shared.ready_pipe.lock().unwrap());
       while let Some(handle_waker) = pipe_ready.pop_front() {
         handle_waker.reset_queued();
         let ptr = handle_waker.live_ptr();
@@ -606,7 +606,7 @@ impl UvLoopInner {
 
       // --- TTY ---
       let mut tty_ready: VecDeque<Arc<waker::TtyHandleWaker>> =
-        std::mem::take(&mut *self.shared.ready_tty.borrow_mut());
+        std::mem::take(&mut *self.shared.ready_tty.lock().unwrap());
       while let Some(handle_waker) = tty_ready.pop_front() {
         handle_waker.reset_queued();
         let ptr = handle_waker.live_ptr();

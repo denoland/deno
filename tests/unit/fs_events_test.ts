@@ -136,6 +136,22 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, write: true } },
+  async function watchFsCloseIsIdempotent() {
+    const testDir = await makeTempDir();
+    const watcher = Deno.watchFs(testDir);
+    const iterator = watcher[Symbol.asyncIterator]();
+
+    watcher.close();
+    watcher.close();
+
+    assertEquals(await iterator.next(), { value: undefined, done: true });
+    assertEquals(await iterator.return!(), { value: undefined, done: true });
+    assertEquals(await iterator.next(), { value: undefined, done: true });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
   async function watchFsExplicitResourceManagement() {
     let res;
     {
@@ -255,6 +271,168 @@ Deno.test(
     } finally {
       Deno.chdir(originalCwd);
     }
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/27742
+// Closing a `Deno.FsWatcher` and creating a new one for the same path must
+// not produce duplicate events on the new watcher. Before the fix, the
+// shared `RecommendedWatcher` never had paths unwatched on close, so on
+// Windows each closed-then-recreated watcher left behind another
+// `ReadDirectoryChangesW` registration, causing N-fold duplicate events.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsCloseAndRecreateNoDuplicates() {
+    const testDir = await makeTempDir();
+
+    async function openClose() {
+      const w = Deno.watchFs(testDir);
+      const closer = setTimeout(() => w.close(), 100);
+      for await (const _ of w) {
+        // drain
+      }
+      clearTimeout(closer);
+    }
+
+    // Open and close three watchers in sequence.
+    await openClose();
+    await openClose();
+    await openClose();
+
+    // Now open a fourth watcher and trigger a single fs event. We must
+    // only see events for that single change reach us once per real event.
+    using watcher = Deno.watchFs(testDir);
+
+    const target = testDir + "/probe.txt";
+    const writePromise = (async () => {
+      // Give the watcher a moment to settle before producing the event.
+      await delay(100);
+      Deno.writeFileSync(target, new Uint8Array([1, 2, 3]));
+    })();
+
+    // Collect events for a brief window after the write. Any event we
+    // observe must match a real change to probe.txt; we then count how
+    // many times each (kind, path) tuple appears. Filesystems legitimately
+    // emit at most a couple of events for a single write (`create` plus
+    // an optional `modify`), so seeing the same tuple 3+ times means the
+    // bug is still present.
+    const seen = new Map<string, number>();
+    const collectPromise = (async () => {
+      const start = Date.now();
+      for await (const event of watcher) {
+        if (event.paths.some((p) => p.endsWith("probe.txt"))) {
+          const key = `${event.kind}:${event.paths.join(",")}`;
+          seen.set(key, (seen.get(key) ?? 0) + 1);
+        }
+        if (Date.now() - start > 500) break;
+      }
+    })();
+
+    await writePromise;
+    // Wait long enough to receive any duplicates the buggy implementation
+    // would emit.
+    await delay(600);
+    watcher.close();
+    await collectPromise;
+
+    for (const [key, count] of seen) {
+      assert(
+        count <= 2,
+        `event "${key}" was emitted ${count} times; expected at most 2 ` +
+          `(create + optional modify). This indicates a leaked watch from ` +
+          `a previously-closed Deno.FsWatcher.`,
+      );
+    }
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/11373
+// A burst of concurrent file writes must not be silently lost: every file
+// written below must show up in at least one event, unless the loss is
+// explicitly reported via a `rescan`-flagged event.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsBurstDeliversAllEvents() {
+    const testDir = await makeTempDir();
+    using watcher = Deno.watchFs(testDir);
+
+    const fileCount = 100;
+    // Match events by file name: on macOS the events report canonicalized
+    // paths (/private/var/...) while makeTempDir returns /var/... paths.
+    const remaining = new Set<string>();
+    for (let i = 0; i < fileCount; i++) {
+      remaining.add(`file${i}.txt`);
+    }
+
+    // Escape hatch so the iteration below can't hang the test forever if
+    // events do get lost.
+    const deadline = setTimeout(() => watcher.close(), 20_000);
+    let sawRescan = false;
+    const collectPromise = (async () => {
+      for await (const event of watcher) {
+        if (event.flag === "rescan") {
+          sawRescan = true;
+          break;
+        }
+        for (const path of event.paths) {
+          const name = path.replaceAll("\\", "/").split("/").pop()!;
+          remaining.delete(name);
+        }
+        if (remaining.size === 0) break;
+      }
+    })();
+
+    await Promise.all(
+      [...remaining].map((name) =>
+        Deno.writeTextFile(`${testDir}/${name}`, "content")
+      ),
+    );
+
+    await collectPromise;
+    clearTimeout(deadline);
+    assert(
+      remaining.size === 0 || sawRescan,
+      `events for ${remaining.size}/${fileCount} files were silently lost`,
+    );
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/11373
+// When events arrive faster than the consumer drains them and the internal
+// queue overflows, the loss must be reported with a `rescan`-flagged event
+// instead of being silent.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsQueueOverflowEmitsRescan() {
+    const testDir = await makeTempDir();
+    using watcher = Deno.watchFs(testDir);
+
+    // Produce more events than the internal queue can hold (1024 entries,
+    // see FS_EVENT_QUEUE_CAPACITY in runtime/ops/fs_events.rs) while the
+    // consumer is not yet polling.
+    for (let i = 0; i < 1500; i++) {
+      Deno.writeFileSync(`${testDir}/file${i}.txt`, new Uint8Array([1]));
+    }
+    // Give the watcher backend time to process (and overflow on) the burst
+    // before we start consuming.
+    await delay(3000);
+
+    // Escape hatch so the iteration below can't hang the test forever if
+    // the rescan event never arrives.
+    const deadline = setTimeout(() => watcher.close(), 20_000);
+    // Don't require the rescan to be the *first* event: on a slow runner the
+    // backend may not have overflowed the queue yet when polling starts, in
+    // which case some regular events are delivered before the overflow
+    // happens and is reported.
+    let sawRescan = false;
+    for await (const event of watcher) {
+      if (event.flag === "rescan") {
+        sawRescan = true;
+        break;
+      }
+    }
+    clearTimeout(deadline);
+    assert(sawRescan, "expected a rescan event after the queue overflowed");
   },
 );
 

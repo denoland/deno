@@ -13,6 +13,7 @@ use deno_graph::JsrPackageReqNotFoundError;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_resolver::npm::version_req_matches_including_pre;
 use deno_semver::Version;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -166,7 +167,10 @@ pub async fn cache_top_level_deps(
               continue;
             };
             let version_req = &req_ref.req().version_req;
-            if version_req.tag().is_none() && version_req.matches(&version) {
+            // match prereleases too: a workspace member is provided explicitly
+            // by the user, so e.g. `0.40.0-pre` should still resolve to it
+            // instead of being fetched from the registry.
+            if version_req_matches_including_pre(version_req, &version) {
               // if version req matches the workspace package's version, use that
               // (so it doesn't need to be installed)
               continue;

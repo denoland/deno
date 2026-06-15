@@ -63,7 +63,8 @@ pub async fn install_global(
   let deps_http_cache = factory.global_http_cache()?;
   let create_deps_file_fetcher = |download_log_level: log::Level| {
     Arc::new(create_cli_file_fetcher(
-      Default::default(),
+      Arc::new(deno_runtime::deno_web::BlobStore::default())
+        as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
       deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
       http_client.clone(),
       factory.memory_files().clone(),
@@ -92,6 +93,17 @@ pub async fn install_global(
     return Box::pin(install_global_compiled(flags, install_flags_global))
       .await;
   }
+
+  // When an explicit config is supplied, capture its workspace members so they
+  // can be flattened into the copied config's import map. The `workspace` field
+  // itself is dropped from the copy (it can't be discovered from the install
+  // dir), which would otherwise break resolution of member packages.
+  let workspace_member_imports =
+    if matches!(flags.config_flag, ConfigFlag::Path(_)) {
+      workspace_member_import_entries(cli_options.workspace())
+    } else {
+      Vec::new()
+    };
 
   // Validate every entry and default unprefixed bare package names to the npm
   // registry (matching `deno add` and local `deno install`) before installing
@@ -160,9 +172,11 @@ pub async fn install_global(
     setup_config_dir(
       &name_and_url,
       &flags,
+      cli_options.initial_cwd(),
       &installation_dir,
       Some(&jsr_lockfile_fetcher),
       install_flags_global.force,
+      &workspace_member_imports,
     )
     .await?;
 
@@ -366,12 +380,16 @@ async fn install_global_compiled(
     output: Some(output.clone()),
     args: install_flags_global.args,
     target: None,
+    watch: None,
     no_terminal: false,
     icon: None,
     include: vec![],
     exclude: vec![],
     eszip: false,
     self_extracting: false,
+    bundle: false,
+    minify: false,
+    exclude_unused_npm: false,
   };
 
   let mut new_flags = flags.as_ref().clone();
@@ -397,9 +415,11 @@ async fn install_global_compiled(
 async fn setup_config_dir(
   bin_name_and_url: &BinaryNameAndUrl,
   flags: &Flags,
+  cwd: &Path,
   installation_dir: &Path,
   jsr_lockfile_fetcher: Option<&JsrLockfileFetcher<'_>>,
   force: bool,
+  workspace_member_imports: &[(String, String)],
 ) -> Result<(), AnyError> {
   fn resolve_implicit_node_modules_dir(
     flags: &Flags,
@@ -434,12 +454,16 @@ async fn setup_config_dir(
     }
   }
 
-  let config_text = if let ConfigFlag::Path(config_path) = &flags.config_flag {
-    fs::read_to_string(config_path)
-      .with_context(|| format!("error reading {config_path}"))?
-  } else {
-    "{}\n".to_string()
-  };
+  let (config_text, original_config_url) =
+    if let ConfigFlag::Path(config_path) = &flags.config_flag {
+      let text = fs::read_to_string(config_path)
+        .with_context(|| format!("error reading {config_path}"))?;
+      let cwd = resolve_cwd(flags.initial_cwd.as_deref())?;
+      let url = resolve_url_or_path(config_path, &cwd)?;
+      (text, Some(url))
+    } else {
+      ("{}\n".to_string(), None)
+    };
   let config =
     jsonc_parser::cst::CstRootNode::parse(&config_text, &Default::default())?;
   let config_obj = config.object_value_or_set();
@@ -461,6 +485,28 @@ async fn setup_config_dir(
       "{} \"workspace\" field in the specified config file will be ignored.",
       crate::colors::yellow("Warning"),
     );
+  }
+  // The copied config lives at `<installation_dir>/.<name>/deno.json`, so any
+  // relative `./` / `../` paths in `imports` / `scopes` would resolve against
+  // that new location instead of the original config dir, breaking module
+  // resolution at runtime. Rewrite them to absolute `file://` URLs anchored to
+  // the original config so the installed binary keeps importing the same
+  // modules it would have when invoked directly.
+  if let Some(original_config_url) = &original_config_url {
+    rewrite_relative_import_map_paths(&config_obj, original_config_url);
+  }
+  // Flatten workspace members into the import map. The `workspace` field is
+  // stripped below to stop discovery, which would otherwise break resolution of
+  // bare specifiers that point at member packages. Existing import map entries
+  // win, matching the runtime precedence of the import map over workspace
+  // members.
+  if !workspace_member_imports.is_empty() {
+    let imports = config_obj.object_value_or_set("imports");
+    for (specifier, target) in workspace_member_imports {
+      if imports.get(specifier).is_none() {
+        imports.append(specifier, CstInputValue::String(target.clone()));
+      }
+    }
   }
   config_obj.append("workspace", CstInputValue::Array(Vec::new())); // stop workspace discovery
   if config_obj.get("nodeModulesDir").is_none()
@@ -499,6 +545,13 @@ async fn setup_config_dir(
 
   // create cloned flags to run cache_top_level_deps
   let mut new_flags = flags.clone();
+  // Pre-resolve cwd-relative paths against the user's original cwd before
+  // switching `initial_cwd` to the generated install dir, otherwise they'd
+  // be re-resolved against `dir` and point at non-existent files.
+  if let Some(import_map_path) = &flags.import_map_path {
+    new_flags.import_map_path =
+      Some(resolve_url_or_path(import_map_path, cwd)?.to_string());
+  }
   new_flags.initial_cwd = Some(dir.clone());
   new_flags.node_modules_dir = flags.node_modules_dir;
   new_flags.internal.root_node_modules_dir_override =
@@ -523,6 +576,123 @@ async fn setup_config_dir(
   .await?;
 
   Ok(())
+}
+
+/// Builds import map entries for each workspace member package so the copied
+/// config keeps resolving `@scope/member` specifiers after the `workspace`
+/// field is stripped.
+///
+/// `deno install -g -c deno.json` copies the workspace root config into a
+/// per-binary directory and removes the `workspace` field to stop workspace
+/// discovery. Without this, bare specifiers that point at workspace members
+/// (e.g. `import { x } from "@scope/member"`) can no longer be resolved. Each
+/// member's exports are flattened into absolute `file://` specifiers anchored
+/// at the member directory so the installed binary resolves them exactly as it
+/// would when invoked from the original workspace. See
+/// https://github.com/denoland/deno/issues/32057.
+///
+/// Only `deno.json` members (those with a `name` and `exports`) are flattened,
+/// since they are the ones resolved through the import map. `package.json`
+/// members resolve via `node_modules`, which is unaffected by stripping the
+/// `workspace` field, so they don't need an entry here.
+fn workspace_member_import_entries(
+  workspace: &deno_config::workspace::Workspace,
+) -> Vec<(String, String)> {
+  let mut entries = Vec::new();
+  for pkg in workspace.resolver_jsr_pkgs() {
+    for (export_key, sub_path) in &pkg.exports {
+      // "." -> "@scope/name", "./sub" -> "@scope/name/sub"
+      let specifier = format!(
+        "{}{}",
+        pkg.name,
+        export_key.strip_prefix('.').unwrap_or(export_key)
+      );
+      if let Ok(target) = pkg.base.join(sub_path) {
+        entries.push((specifier, target.to_string()));
+      }
+    }
+  }
+  entries
+}
+
+/// Rewrites `./` and `../` paths inside `imports` and `scopes` to absolute
+/// `file://` URLs anchored to the original config file's location.
+///
+/// `deno install -g -c deno.json` copies the supplied config into a per-binary
+/// directory. Relative specifiers / scope prefixes get resolved relative to
+/// that new directory by `deno_config`, so without rewriting them they end up
+/// pointing at non-existent paths under the install dir. See
+/// https://github.com/denoland/deno/issues/20390.
+fn rewrite_relative_import_map_paths(
+  config_obj: &jsonc_parser::cst::CstObject,
+  original_config_url: &Url,
+) {
+  fn rewrite_to_absolute(value: &str, base: &Url) -> Option<String> {
+    if value.starts_with("./") || value.starts_with("../") {
+      base.join(value).ok().map(|u| u.to_string())
+    } else {
+      None
+    }
+  }
+
+  fn rewrite_string_key(name: &jsonc_parser::cst::ObjectPropName, base: &Url) {
+    if let jsonc_parser::cst::ObjectPropName::String(key_lit) = name
+      && let Ok(current_key) = key_lit.decoded_value()
+      && let Some(new_key) = rewrite_to_absolute(&current_key, base)
+    {
+      key_lit.set_raw_value(format!(
+        "\"{}\"",
+        new_key.replace('\\', "\\\\").replace('"', "\\\"")
+      ));
+    }
+  }
+
+  fn rewrite_specifier_map(map_obj: &jsonc_parser::cst::CstObject, base: &Url) {
+    for prop in map_obj.properties() {
+      // Rewrite the key if it's a `./` / `../` path. `normalize_specifier_key`
+      // joins URL-like keys with the base URL, so keys would also drift to the
+      // install dir without rewriting.
+      if let Some(name) = prop.name() {
+        rewrite_string_key(&name, base);
+      }
+      let Some(value_node) = prop.value() else {
+        continue;
+      };
+      let Some(string_lit) = value_node.as_string_lit() else {
+        continue;
+      };
+      let Ok(current) = string_lit.decoded_value() else {
+        continue;
+      };
+      if let Some(rewritten) = rewrite_to_absolute(&current, base) {
+        prop.set_value(jsonc_parser::cst::CstInputValue::String(rewritten));
+      }
+    }
+  }
+
+  if let Some(prop) = config_obj.get("imports")
+    && let Some(obj) = prop.object_value()
+  {
+    rewrite_specifier_map(&obj, original_config_url);
+  }
+
+  if let Some(prop) = config_obj.get("scopes")
+    && let Some(scopes_obj) = prop.object_value()
+  {
+    for scope_prop in scopes_obj.properties() {
+      // Rewrite the scope prefix key if it's a relative path. Scope prefixes
+      // are joined with the config base URL via `Url::join` in
+      // `import_map::parse_scopes_map_json`, so after copying the config the
+      // same prefix would resolve against the install dir.
+      if let Some(name) = scope_prop.name() {
+        rewrite_string_key(&name, original_config_url);
+      }
+      // Recurse into the per-scope imports object.
+      if let Some(inner_obj) = scope_prop.object_value() {
+        rewrite_specifier_map(&inner_obj, original_config_url);
+      }
+    }
+  }
 }
 
 /// After packages are installed (including postinstall scripts), check if the
@@ -1246,9 +1416,11 @@ mod tests {
     super::setup_config_dir(
       &binary_name_and_url,
       flags,
+      &cwd,
       &installation_dir,
       None,
       install_flags_global.force,
+      &[],
     )
     .await
     .unwrap();
