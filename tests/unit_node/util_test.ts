@@ -272,8 +272,14 @@ Deno.test("[util] styleText() with array of formats", () => {
 });
 
 Deno.test("[util] styleText() respects stream.isTTY", () => {
-  const streamTTY = { write() {}, isTTY: true } as unknown as NodeJS.WritableStream;
-  const streamNoTTY = { write() {}, isTTY: false } as unknown as NodeJS.WritableStream;
+  const streamTTY = {
+    write() {},
+    isTTY: true,
+  } as unknown as NodeJS.WritableStream;
+  const streamNoTTY = {
+    write() {},
+    isTTY: false,
+  } as unknown as NodeJS.WritableStream;
 
   const redText = util.styleText("red", "TTY", { stream: streamTTY });
   assertEquals(redText, "\x1b[31mTTY\x1b[39m");
