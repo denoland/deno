@@ -1769,17 +1769,11 @@
   "historical.any.worker.html": false,
   "idlharness.https.any.html": {
     "expectedFailures": [
-      "Crypto interface: existence and properties of interface object",
-      "CryptoKey interface: existence and properties of interface object",
-      "SubtleCrypto interface: existence and properties of interface object",
       "Window interface: attribute crypto"
     ]
   },
   "idlharness.https.any.worker.html": {
     "expectedFailures": [
-      "Crypto interface: existence and properties of interface object",
-      "CryptoKey interface: existence and properties of interface object",
-      "SubtleCrypto interface: existence and properties of interface object",
       "WorkerGlobalScope interface: attribute crypto"
     ]
   },
