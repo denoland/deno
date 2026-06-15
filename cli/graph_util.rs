@@ -997,7 +997,13 @@ impl ModuleGraphBuilder {
     if let Some(npm_installer) = &self.npm_installer {
       let diagnostics = npm_installer.take_unmet_peer_diagnostics();
       if !diagnostics.is_empty() && log::log_enabled!(log::Level::Warn) {
-        let importers = self.npm_peer_dep_importers(graph);
+        // Only the top-level package of each diagnostic (its outermost
+        // ancestor) is annotated, so restrict the graph walk to those.
+        let wanted: HashSet<String> = diagnostics
+          .iter()
+          .filter_map(|d| d.ancestors.last().map(|nv| nv.to_string()))
+          .collect();
+        let importers = self.npm_peer_dep_importers(graph, &wanted);
         log::warn!(
           "{}",
           format_unmet_peer_dep_warning(&diagnostics, &importers)
@@ -1010,10 +1016,12 @@ impl ModuleGraphBuilder {
 
   /// Builds a map from a top-level npm package (`name@version`) to the user
   /// modules that import it, used to annotate peer dependency warnings with the
-  /// source of a transitively introduced package.
+  /// source of a transitively introduced package. Only packages in `wanted`
+  /// are resolved, to avoid a full sweep of the graph.
   fn npm_peer_dep_importers(
     &self,
     graph: &ModuleGraph,
+    wanted: &HashSet<String>,
   ) -> HashMap<String, Vec<String>> {
     let Some(managed) = self.npm_resolver.as_managed() else {
       return HashMap::new();
@@ -1033,7 +1041,11 @@ impl ModuleGraphBuilder {
           else {
             continue;
           };
-          let entry = importers.entry(id.nv.to_string()).or_default();
+          let nv = id.nv.to_string();
+          if !wanted.contains(&nv) {
+            continue;
+          }
+          let entry = importers.entry(nv).or_default();
           let referrer = referrer.to_string();
           if !entry.contains(&referrer) {
             entry.push(referrer);
