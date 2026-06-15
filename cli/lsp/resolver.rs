@@ -1146,6 +1146,7 @@ impl<'a> ResolverFactory<'a> {
           lifecycle_scripts: Arc::new(LifecycleScriptsConfig::default()),
           system_info: NpmSystemInfo::default(),
           workspace_link_packages: link_packages,
+          workspace_patch_packages: Default::default(),
         },
       ));
       self.set_npm_installer(npm_installer);

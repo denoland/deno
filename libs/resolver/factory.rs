@@ -91,6 +91,7 @@ use crate::workspace::FsCacheOptions;
 use crate::workspace::PackageJsonDepResolution;
 use crate::workspace::SloppyImportsOptions;
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
+use crate::workspace::WorkspaceNpmPatchPackagesRc;
 use crate::workspace::WorkspaceResolver;
 
 // todo(https://github.com/rust-lang/rust/issues/109737): remove once_cell after get_or_try_init is stabilized
@@ -255,6 +256,7 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   workspace_external_import_map_loader:
     Deferred<WorkspaceExternalImportMapLoaderRc<TSys>>,
   workspace_npm_link_packages: Deferred<WorkspaceNpmLinkPackagesRc>,
+  workspace_npm_patch_packages: Deferred<WorkspaceNpmPatchPackagesRc>,
   initial_cwd: PathBuf,
   options: WorkspaceFactoryOptions,
 }
@@ -281,6 +283,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       workspace_directory: Default::default(),
       workspace_external_import_map_loader: Default::default(),
       workspace_npm_link_packages: Default::default(),
+      workspace_npm_patch_packages: Default::default(),
       initial_cwd,
       options,
     }
@@ -691,6 +694,27 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           Ok(npm_packages)
         }
       })
+  }
+
+  pub fn workspace_npm_patch_packages(
+    &self,
+  ) -> Result<&WorkspaceNpmPatchPackagesRc, anyhow::Error> {
+    self.workspace_npm_patch_packages.get_or_try_init(|| {
+      let workspace_dir = self.workspace_directory()?;
+      let patch_packages = WorkspaceNpmPatchPackagesRc::from_workspace(
+        workspace_dir.workspace.as_ref(),
+      );
+      if !patch_packages.0.is_empty()
+        && !matches!(
+          self.node_modules_dir_mode()?,
+          NodeModulesDirMode::Auto | NodeModulesDirMode::Manual
+        )
+      {
+        bail!("\"patchedDependencies\" requires using a node_modules directory. Ensure you have a package.json or set the \"nodeModulesDir\" option to \"auto\" or \"manual\" in your workspace root deno.json.")
+      } else {
+        Ok(patch_packages)
+      }
+    })
   }
 
   fn has_flag_env_var(&self, name: &str) -> bool {

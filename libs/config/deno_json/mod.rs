@@ -871,6 +871,19 @@ pub struct WorkspaceConfig {
 #[error("Failed to parse \"link\" configuration.")]
 pub struct LinkConfigParseError(#[source] serde_json::Error);
 
+#[derive(Debug, Error, JsError)]
+#[class(type)]
+pub enum PatchedDependenciesParseError {
+  #[error(
+    "Failed to parse \"patchedDependencies\" key \"{key}\": expected a \"<name>@<version>\" specifier."
+  )]
+  InvalidKey {
+    key: String,
+    #[source]
+    source: deno_semver::package::PackageNvParseError,
+  },
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TaskDefinition {
   pub command: Option<String>,
@@ -1256,6 +1269,10 @@ pub struct ConfigFileJson {
   pub links: Option<Value>,
   #[serde(rename = "patch")]
   pub(crate) deprecated_patch: Option<Value>,
+  /// Maps `<name>@<version>` to a path to a unified diff (`.patch`) file that
+  /// is applied to the extracted npm package on install. Mirrors the
+  /// `patchedDependencies` field in pnpm/bun.
+  pub patched_dependencies: Option<IndexMap<String, String>>,
   #[serde(rename = "workspaces")]
   pub(crate) deprecated_workspaces: Option<Vec<String>>,
   pub exports: Option<Value>,
@@ -2107,6 +2124,33 @@ impl ConfigFile {
       },
       None => Ok(None),
     }
+  }
+
+  /// Parses the `patchedDependencies` field, resolving each patch path
+  /// relative to this config file's directory and each key into a
+  /// `<name>@<version>` package identifier.
+  pub fn to_patched_dependencies_config(
+    &self,
+  ) -> Result<
+    BTreeMap<deno_semver::package::PackageNv, PathBuf>,
+    PatchedDependenciesParseError,
+  > {
+    let Some(entries) = self.json.patched_dependencies.as_ref() else {
+      return Ok(Default::default());
+    };
+    let dir_path = self.dir_path();
+    let mut result = BTreeMap::new();
+    for (key, patch_path) in entries {
+      let nv =
+        deno_semver::package::PackageNv::from_str(key).map_err(|source| {
+          PatchedDependenciesParseError::InvalidKey {
+            key: key.clone(),
+            source,
+          }
+        })?;
+      result.insert(nv, dir_path.join(patch_path));
+    }
+    Ok(result)
   }
 
   pub fn to_workspace_config(

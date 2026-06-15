@@ -372,6 +372,8 @@ impl<
           let registry_info_provider = self.registry_info_provider()?;
           let workspace_npm_link_packages =
             workspace_factory.workspace_npm_link_packages()?;
+          let workspace_npm_patch_packages =
+            workspace_factory.workspace_npm_patch_packages()?;
           Ok(Arc::new(NpmInstaller::new(
             self.install_reporter.clone(),
             self.lifecycle_scripts_executor.clone(),
@@ -398,6 +400,7 @@ impl<
               lifecycle_scripts: self.lifecycle_scripts_config()?.clone(),
               system_info: self.resolver_factory.npm_system_info().clone(),
               workspace_link_packages: workspace_npm_link_packages.clone(),
+              workspace_patch_packages: workspace_npm_patch_packages.clone(),
             },
           )))
         }

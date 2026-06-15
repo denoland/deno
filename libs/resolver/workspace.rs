@@ -1849,6 +1849,29 @@ pub struct WorkspaceNpmLinkPackagesRc(
   pub std::sync::Arc<HashMap<PackageName, Vec<NpmPackageVersionInfo>>>,
 );
 
+/// Maps a `<name>@<version>` npm package to the absolute path of a unified
+/// diff that should be applied to the package after extraction. Populated from
+/// the `patchedDependencies` field of the workspace root `deno.json`.
+#[allow(clippy::disallowed_types, reason = "wraps Arc directly as the Rc type")]
+#[derive(Debug, Clone, Default)]
+pub struct WorkspaceNpmPatchPackagesRc(
+  pub std::sync::Arc<BTreeMap<deno_semver::package::PackageNv, PathBuf>>,
+);
+
+impl WorkspaceNpmPatchPackagesRc {
+  pub fn from_workspace(workspace: &Workspace) -> Self {
+    let patches = workspace.patched_packages().unwrap_or_else(|err| {
+      log::warn!(
+        "{} Ignoring \"patchedDependencies\": {}",
+        colors::yellow("Warning"),
+        err,
+      );
+      Default::default()
+    });
+    Self(deno_maybe_sync::new_arc(patches))
+  }
+}
+
 impl WorkspaceNpmLinkPackagesRc {
   pub fn from_workspace(workspace: &Workspace) -> Self {
     let mut entries: HashMap<PackageName, Vec<NpmPackageVersionInfo>> =
