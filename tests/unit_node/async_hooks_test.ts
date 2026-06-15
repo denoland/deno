@@ -282,11 +282,10 @@ Deno.test(async function asyncLocalStoragePreservedInNetCallbacks() {
 
       server.once("error", reject);
       server.listen(0, () => {
-        const addr = server.address()!;
-        const port = typeof addr === "string" ? addr : addr.port;
+        const { port } = server.address() as { port: number };
 
         als.run("client-context", () => {
-          const client = net.connect(port, () => {
+          const client = net.connect({ port }, () => {
             observed.clientConnect = als.getStore() ?? null;
           });
 
