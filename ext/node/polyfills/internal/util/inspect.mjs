@@ -660,21 +660,27 @@ function styleText(format, text, options) {
 
   if (validateStream) {
     const stream = options?.stream;
-    if (
-      stream !== undefined && stream !== null &&
+    if (stream !== undefined && stream !== null) {
       // Match Node's lib/util.js: bail when `stream` is not a Readable/
       // Writable/Node Stream. Approximate the duck-type used in those checks.
-      !(typeof stream === "object" && (
-        typeof stream.read === "function" ||
-        typeof stream.write === "function" ||
-        typeof stream.pipe === "function"
-      ))
-    ) {
-      throw new codes.ERR_INVALID_ARG_TYPE(
-        "stream",
-        ["ReadableStream", "WritableStream", "Stream"],
-        stream,
-      );
+      if (
+        !(typeof stream === "object" && (
+          typeof stream.read === "function" ||
+          typeof stream.write === "function" ||
+          typeof stream.pipe === "function"
+        ))
+      ) {
+        throw new codes.ERR_INVALID_ARG_TYPE(
+          "stream",
+          ["ReadableStream", "WritableStream", "Stream"],
+          stream,
+        );
+      }
+
+      // Match Node returning unstyled text if stream is not a TTY
+      if (!stream.isTTY) {
+        return text;
+      }
     }
   }
 
