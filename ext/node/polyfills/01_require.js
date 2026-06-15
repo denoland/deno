@@ -3374,33 +3374,6 @@ function initialize(args) {
       nativeModuleExports["console"],
       nativeModuleExports["process"],
     );
-    // Pre-enable any trace event categories requested via the spawning
-    // process's --trace-event-categories flag (propagated as an env var by
-    // child_process). This must run in every isolate, including workers,
-    // so that node.async_hooks tracing covers worker threads too.
-    const traceCategoriesEnv = op_get_env_no_permission_check(
-      "DENO_NODE_TRACE_EVENT_CATEGORIES",
-    );
-    if (traceCategoriesEnv) {
-      const traceEvents = core.loadExtScript("ext:deno_node/trace_events.ts");
-      const categories = traceCategoriesEnv.split(",").filter((c) =>
-        c.length > 0
-      );
-      if (categories.length > 0) {
-        // Surface the flag through process.execArgv so test fixtures that
-        // probe it (e.g. node's test-trace-events-api) see the same shape
-        // they would in Node.
-        const proc = nativeModuleExports["process"];
-        if (proc && Array.isArray(proc.execArgv)) {
-          proc.execArgv.push("--trace-event-categories", traceCategoriesEnv);
-        }
-        try {
-          traceEvents.createTracing({ categories }).enable();
-        } catch {
-          // Invalid categories must not block startup.
-        }
-      }
-    }
   } else {
     internals.__bootstrapNodeProcess(
       undefined,
@@ -3422,6 +3395,43 @@ globalThis.nodeBootstrap = initialize;
 if (!initialized && internals.__nodeBootstrapArgs?.usesLocalNodeModulesDir) {
   usesLocalNodeModulesDir = true;
 }
+
+// Pre-enable any trace event categories requested via the spawning process's
+// --trace-event-categories flag (propagated as an env var by child_process).
+// Runs at module-eval (not inside `initialize`, which doesn't auto-run under
+// node-defer) so node.async_hooks tracing works in every isolate, including
+// worker threads. No-ops unless tracing was explicitly requested, so it never
+// forces node:process to load for ordinary programs.
+let traceEventsPreEnabled = false;
+function preEnableTraceEvents() {
+  if (traceEventsPreEnabled) {
+    return;
+  }
+  traceEventsPreEnabled = true;
+  const traceCategoriesEnv = op_get_env_no_permission_check(
+    "DENO_NODE_TRACE_EVENT_CATEGORIES",
+  );
+  if (!traceCategoriesEnv) {
+    return;
+  }
+  const categories = traceCategoriesEnv.split(",").filter((c) => c.length > 0);
+  if (categories.length === 0) {
+    return;
+  }
+  const traceEvents = core.loadExtScript("ext:deno_node/trace_events.ts");
+  // Surface the flag through process.execArgv so test fixtures that probe it
+  // (e.g. node's test-trace-events-api) see the same shape they would in Node.
+  const proc = nativeModuleExports["process"];
+  if (proc && Array.isArray(proc.execArgv)) {
+    proc.execArgv.push("--trace-event-categories", traceCategoriesEnv);
+  }
+  try {
+    traceEvents.createTracing({ categories }).enable();
+  } catch {
+    // Invalid categories must not block startup.
+  }
+}
+preEnableTraceEvents();
 
 // node-defer: node:process's own deferred trigger runs the process half of
 // the bootstrap (`__bootstrapNodeProcess`) on first node:* use. The other
