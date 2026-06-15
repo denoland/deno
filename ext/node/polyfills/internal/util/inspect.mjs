@@ -61,6 +61,9 @@ const {
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
+const { shouldColorize } = core.loadExtScript(
+  "ext:deno_node/internal/util/colorize.mjs",
+);
 const {
   colors,
   createStylizeWithColor,
@@ -676,11 +679,12 @@ function styleText(format, text, options) {
           stream,
         );
       }
-
-      // Match Node returning unstyled text if stream is not a TTY
-      if (!stream.isTTY) {
-        return text;
-      }
+    }
+    // Match Node defaulting stream to process.stdout: when no stream is
+    // provided the colorize check still runs against stdout.
+    const effectiveStream = stream ?? globalThis.process?.stdout;
+    if (!shouldColorize(effectiveStream)) {
+      return text;
     }
   }
 
