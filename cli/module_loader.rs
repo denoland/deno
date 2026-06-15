@@ -892,6 +892,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     let module_type = match requested_module_type {
       RequestedModuleType::Text => ModuleType::Text,
       RequestedModuleType::Bytes => ModuleType::Bytes,
+      RequestedModuleType::Other(kind) => ModuleType::Other(kind.clone()),
       RequestedModuleType::None => {
         match file.resolve_media_type_and_charset().0 {
           MediaType::Wasm => ModuleType::Wasm,
@@ -1318,6 +1319,21 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     deno_core::ModuleLoadResponse::Async(
       async move {
+        // A `registerHooks` resolve hook may have rewritten this specifier
+        // to a URL the initial graph preparation never saw (e.g. appended a
+        // fragment for cache busting), so prepare it on demand.
+        if inner.hook_registry.resolve_active()
+          && !matches!(
+            options.requested_module_type,
+            RequestedModuleType::Text | RequestedModuleType::Bytes
+          )
+          && !inner.shared.in_npm_pkg_checker.in_npm_package(&specifier)
+          && inner.graph_container.graph().get(&specifier).is_none()
+        {
+          inner
+            .prepare_hooked_specifier(&specifier, options.is_dynamic_import)
+            .await;
+        }
         inner
           .load_inner(
             &specifier,
@@ -1370,7 +1386,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     if matches!(
       options.requested_module_type,
-      RequestedModuleType::Text | RequestedModuleType::Bytes
+      RequestedModuleType::Text
+        | RequestedModuleType::Bytes
+        | RequestedModuleType::Other(_)
     ) {
       // Text/Bytes imports skip graph preparation, so the file watcher's
       // graph reporter never sees them. For dynamic imports, register the

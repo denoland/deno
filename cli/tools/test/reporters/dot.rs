@@ -100,14 +100,19 @@ impl TestReporter for DotTestReporter {
     std::io::stdout().flush().ok();
   }
 
-  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
+  fn report_slow(
+    &mut self,
+    _description: &TestDescription,
+    _elapsed: Duration,
+  ) {
+  }
   fn report_output(&mut self, _output: &[u8]) {}
 
   fn report_result(
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    _elapsed: u64,
+    _elapsed: Duration,
   ) {
     match &result {
       TestResult::Ok => {
@@ -156,7 +161,7 @@ impl TestReporter for DotTestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    _elapsed: u64,
+    _elapsed: Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {

@@ -5745,6 +5745,18 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           module.media_type,
           scope.as_deref(),
         ));
+        // The auto-import alias hides `node_modules/.deno` from tsc, but
+        // requests for open documents (diagnostics, hover, etc.) use the
+        // unaliased name. Include it as a root too so they don't fail with
+        // "Could not find source file". See
+        // https://github.com/denoland/deno/issues/35170.
+        if is_open {
+          script_names.insert(
+            state
+              .specifier_map
+              .denormalize(&module.specifier, module.media_type),
+          );
+        }
       }
     }
   }

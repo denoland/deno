@@ -854,6 +854,7 @@ impl ModuleGraphBuilder {
           locker: locker.as_mut().map(|l| l as _),
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
           unstable_text_imports: true,
+          unstable_css_imports: self.cli_options.unstable_raw_imports(),
         }
       };
     }

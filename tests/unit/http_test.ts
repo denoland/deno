@@ -1334,7 +1334,7 @@ function tmpUnixSocketPath(): string {
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function httpServerOnUnixSocket() {
     const filePath = tmpUnixSocketPath();
@@ -2386,7 +2386,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function httpServerWithoutExclusiveAccessToUnixSocket() {
     const filePath = tmpUnixSocketPath();

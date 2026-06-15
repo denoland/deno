@@ -321,6 +321,7 @@ async fn deno_run_serve_with_unix_socket_from_env() {
     .arg("run")
     .arg(format!("--allow-read={}", sock.display()))
     .arg(format!("--allow-write={}", sock.display()))
+    .arg(format!("--allow-net=unix:{}", sock.display()))
     .arg("./serve/run_serve.ts")
     .env("DENO_SERVE_ADDRESS", format!("unix:{}", sock.display()))
     .stderr_piped()
