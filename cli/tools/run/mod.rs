@@ -215,9 +215,10 @@ pub async fn run_script(
     return Ok(exit_code);
   }
 
-  // Prototype: run a WASI command `.wasm` file directly by swapping in a
-  // synthesized `node:wasi` bootstrap module as the entry point.
-  let wasi_bootstrap = wasi::maybe_wasi_command_entry(&factory, main_module)?;
+  // Run a WASI command `.wasm` file directly (under `--unstable-wasi`) by
+  // swapping in a synthesized `node:wasi` bootstrap module as the entry point.
+  let wasi_bootstrap =
+    wasi::maybe_wasi_command_entry(&flags, &factory, main_module)?;
   let main_module = wasi_bootstrap.as_ref().unwrap_or(main_module);
 
   let worker_factory = factory

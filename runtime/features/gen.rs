@@ -208,11 +208,19 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
+    name: "wasi",
+    flag_name: "unstable-wasi",
+    help_text: "Enable running WASI command `.wasm` files directly with `deno run`",
+    show_in_help: true,
+    id: 25,
+    kind: UnstableFeatureKind::Cli,
+  },
+  UnstableFeatureDefinition {
     name: "webgpu",
     flag_name: "unstable-webgpu",
     help_text: "Enable unstable WebGPU APIs",
     show_in_help: true,
-    id: 25,
+    id: 26,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -220,7 +228,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-worker-options",
     help_text: "Enable unstable Web Worker APIs",
     show_in_help: true,
-    id: 26,
+    id: 27,
     kind: UnstableFeatureKind::Runtime,
   },
 ];

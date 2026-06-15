@@ -1,4 +1,13 @@
 {
-  "args": "run hello.wasm",
-  "output": "hello.out"
+  "tests": {
+    "command": {
+      "args": "run --unstable-wasi hello.wasm",
+      "output": "hello.out"
+    },
+    "without_flag": {
+      "args": "run hello.wasm",
+      "output": "without_flag.out",
+      "exitCode": 1
+    }
+  }
 }

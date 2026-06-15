@@ -179,6 +179,13 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     env_var: None,
   },
   UnstableFeatureDescription {
+    name: "wasi",
+    help_text: "Enable running WASI command `.wasm` files directly with `deno run`",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Cli,
+    env_var: None,
+  },
+  UnstableFeatureDescription {
     name: "webgpu",
     help_text: "Enable unstable WebGPU APIs",
     show_in_help: true,
