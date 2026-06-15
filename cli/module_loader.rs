@@ -1516,7 +1516,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       // permissions while the graph is built.
       if inner.is_worker && !options.is_dynamic_import {
         let graph = graph_container.graph();
-        let parent_graph = inner
+        let main_graph = inner
           .inherit_static_imports
           .then(|| inner.shared.main_module_graph_container.graph());
         for module in graph.modules() {
@@ -1527,10 +1527,10 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               .permissions
               .check_specifier(specifier, CheckSpecifierKind::Static)
           {
-            let inherited_from_parent = parent_graph
+            let inherited_from_main = main_graph
               .as_ref()
               .is_some_and(|graph| graph.get(specifier).is_some());
-            if !inherited_from_parent {
+            if !inherited_from_main {
               return Err(JsErrorBox::from_err(err));
             }
           }
