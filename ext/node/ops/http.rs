@@ -19,8 +19,15 @@ pub fn op_node_http_check_proxy_net(
   port: u16,
   #[string] api_name: &str,
 ) -> Result<(), PermissionCheckError> {
-  state
+  match state
     .borrow_mut::<PermissionsContainer>()
-    .check_net(&(hostname, Some(port)), api_name)?;
-  Ok(())
+    .check_net(&(hostname, Some(port)), api_name)
+  {
+    // A malformed target host (e.g. invalid characters) cannot be a reachable
+    // destination, so it should not surface here as a permission/parse error.
+    // Let the request proceed and have node:http's own validation reject it
+    // with the proper error (ERR_INVALID_CHAR) instead of masking it.
+    Err(PermissionCheckError::HostParse(_)) => Ok(()),
+    result => result,
+  }
 }
