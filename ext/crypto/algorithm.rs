@@ -65,6 +65,8 @@ impl Operation {
         ("cSHAKE256", Some("CShakeParams")),
         ("TurboSHAKE128", Some("TurboShakeParams")),
         ("TurboSHAKE256", Some("TurboShakeParams")),
+        ("KT128", Some("KangarooTwelveParams")),
+        ("KangarooTwelve", Some("KangarooTwelveParams")),
       ],
       GenerateKey => &[
         ("RSASSA-PKCS1-v1_5", Some("RsaHashedKeyGenParams")),
@@ -78,6 +80,8 @@ impl Operation {
         ("AES-OCB", Some("AesKeyGenParams")),
         ("AES-KW", Some("AesKeyGenParams")),
         ("HMAC", Some("HmacKeyGenParams")),
+        ("KMAC128", Some("KmacKeyGenParams")),
+        ("KMAC256", Some("KmacKeyGenParams")),
         ("ChaCha20-Poly1305", None),
         ("X25519", None),
         ("X448", None),
@@ -94,6 +98,8 @@ impl Operation {
         ("RSA-PSS", Some("RsaPssParams")),
         ("ECDSA", Some("EcdsaParams")),
         ("HMAC", None),
+        ("KMAC128", Some("KmacParams")),
+        ("KMAC256", Some("KmacParams")),
         ("Ed25519", None),
         ("ML-DSA-44", Some("MlDsaParams")),
         ("ML-DSA-65", Some("MlDsaParams")),
@@ -104,6 +110,8 @@ impl Operation {
         ("RSA-PSS", Some("RsaPssParams")),
         ("ECDSA", Some("EcdsaParams")),
         ("HMAC", None),
+        ("KMAC128", Some("KmacParams")),
+        ("KMAC256", Some("KmacParams")),
         ("Ed25519", None),
         ("ML-DSA-44", Some("MlDsaParams")),
         ("ML-DSA-65", Some("MlDsaParams")),
@@ -116,6 +124,8 @@ impl Operation {
         ("ECDSA", Some("EcKeyImportParams")),
         ("ECDH", Some("EcKeyImportParams")),
         ("HMAC", Some("HmacImportParams")),
+        ("KMAC128", Some("KmacImportParams")),
+        ("KMAC256", Some("KmacImportParams")),
         ("HKDF", None),
         ("PBKDF2", None),
         ("AES-CTR", None),
@@ -173,6 +183,8 @@ impl Operation {
         ("AES-GCM", Some("AesDerivedKeyParams")),
         ("AES-KW", Some("AesDerivedKeyParams")),
         ("HMAC", Some("HmacImportParams")),
+        ("KMAC128", Some("KmacImportParams")),
+        ("KMAC256", Some("KmacImportParams")),
         ("ChaCha20-Poly1305", None),
         ("HKDF", None),
         ("PBKDF2", None),
@@ -285,6 +297,9 @@ pub enum GetKeyLengthError {
   #[error("Invalid length: {0}")]
   HmacInvalidLength(u32),
   #[class(type)]
+  #[error("Invalid KMAC length: {0}")]
+  KmacInvalidLength(u32),
+  #[class(type)]
   #[error("Unreachable")]
   Unreachable,
 }
@@ -330,6 +345,13 @@ pub fn compute_key_length(
       }
     }
     "ChaCha20-Poly1305" => Ok(Some(256)),
+    "KMAC128" | "KMAC256" => {
+      let l = length.unwrap_or(if name == "KMAC128" { 128 } else { 256 });
+      if l == 0 || !l.is_multiple_of(8) {
+        return Err(GetKeyLengthError::KmacInvalidLength(l));
+      }
+      Ok(Some(l))
+    }
     "HKDF" | "PBKDF2" => Ok(None),
     _ => Err(GetKeyLengthError::Unreachable),
   }

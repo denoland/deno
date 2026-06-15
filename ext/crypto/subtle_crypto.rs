@@ -676,6 +676,16 @@ fn supports_params_valid<'s>(
   }
 
   match registered_op {
+    "digest" => match upper.as_str() {
+      "CSHAKE128" | "CSHAKE256" | "TURBOSHAKE128" | "TURBOSHAKE256"
+      | "KT128" | "KANGAROOTWELVE" => {
+        let Some(l) = read_u32_member(scope, obj, b"outputLength") else {
+          return true;
+        };
+        l != 0 && l.is_multiple_of(8)
+      }
+      _ => true,
+    },
     "encrypt" | "decrypt" => match upper.as_str() {
       "AES-CBC" => {
         if let Some(n) = read_buffer_source_byte_length(scope, obj, b"iv")
@@ -742,6 +752,14 @@ fn supports_params_valid<'s>(
         }
         true
       }
+      "KMAC128" | "KMAC256" => {
+        if let Some(l) = read_u32_member(scope, obj, b"length")
+          && (l == 0 || !l.is_multiple_of(8))
+        {
+          return false;
+        }
+        true
+      }
       "ECDSA" | "ECDH" => {
         if let Some(curve) = read_string_member(scope, obj, b"namedCurve")
           && !matches!(curve.as_str(), "P-256" | "P-384" | "P-521")
@@ -749,6 +767,15 @@ fn supports_params_valid<'s>(
           return false;
         }
         true
+      }
+      _ => true,
+    },
+    "sign" | "verify" => match upper.as_str() {
+      "KMAC128" | "KMAC256" => {
+        let Some(l) = read_u32_member(scope, obj, b"outputLength") else {
+          return true;
+        };
+        l != 0 && l.is_multiple_of(8)
       }
       _ => true,
     },

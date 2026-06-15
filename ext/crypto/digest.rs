@@ -15,6 +15,7 @@ use deno_core::webidl::WebIdlError;
 use deno_core::webidl::WebIdlErrorKind;
 use deno_error::JsErrorBox;
 use serde::Deserialize;
+use tiny_keccak::Hasher;
 
 use crate::CryptoError;
 use crate::key::CryptoHash;
@@ -52,6 +53,18 @@ pub enum SubtleDigestXof {
   TurboShake256 {
     output_length: u32,
     domain_separation: Option<u8>,
+  },
+  #[serde(rename = "KT128", rename_all = "camelCase")]
+  Kt128 {
+    output_length: u32,
+    #[serde(with = "serde_bytes", default)]
+    customization: Option<Vec<u8>>,
+  },
+  #[serde(rename = "KangarooTwelve", rename_all = "camelCase")]
+  KangarooTwelve {
+    output_length: u32,
+    #[serde(with = "serde_bytes", default)]
+    customization: Option<Vec<u8>>,
   },
 }
 
@@ -120,7 +133,8 @@ impl<'a> WebIdlConverter<'a> for DigestAlgorithm {
       "SHA3-256" => Ok(Self::Sha(CryptoHash::Sha3_256)),
       "SHA3-384" => Ok(Self::Sha(CryptoHash::Sha3_384)),
       "SHA3-512" => Ok(Self::Sha(CryptoHash::Sha3_512)),
-      "cSHAKE128" | "cSHAKE256" | "TurboSHAKE128" | "TurboSHAKE256" => {
+      "cSHAKE128" | "cSHAKE256" | "TurboSHAKE128" | "TurboSHAKE256"
+      | "KT128" | "KangarooTwelve" => {
         let obj = maybe_obj.ok_or_else(|| {
           WebIdlError::other(
             prefix.clone(),
@@ -157,6 +171,8 @@ fn canonical_digest_name(name: &str) -> Option<&'static str> {
     "cSHAKE256",
     "TurboSHAKE128",
     "TurboSHAKE256",
+    "KT128",
+    "KangarooTwelve",
   ];
   NAMES
     .iter()
@@ -270,6 +286,26 @@ fn parse_xof_dict<'a, 'b>(
         scope,
         obj,
         "domainSeparation",
+        prefix.clone(),
+        &context,
+      )?,
+    }),
+    "KT128" => Ok(SubtleDigestXof::Kt128 {
+      output_length,
+      customization: read_optional_buffer(
+        scope,
+        obj,
+        "customization",
+        prefix.clone(),
+        &context,
+      )?,
+    }),
+    "KangarooTwelve" => Ok(SubtleDigestXof::KangarooTwelve {
+      output_length,
+      customization: read_optional_buffer(
+        scope,
+        obj,
+        "customization",
         prefix.clone(),
         &context,
       )?,
@@ -514,7 +550,9 @@ fn run_xof(
     SubtleDigestXof::CShake128 { output_length, .. }
     | SubtleDigestXof::CShake256 { output_length, .. }
     | SubtleDigestXof::TurboShake128 { output_length, .. }
-    | SubtleDigestXof::TurboShake256 { output_length, .. } => *output_length,
+    | SubtleDigestXof::TurboShake256 { output_length, .. }
+    | SubtleDigestXof::Kt128 { output_length, .. }
+    | SubtleDigestXof::KangarooTwelve { output_length, .. } => *output_length,
   };
   if !output_length.is_multiple_of(8) {
     return Err(CryptoError::InvalidXofParameters);
@@ -524,7 +562,12 @@ fn run_xof(
     SubtleDigestXof::TurboShake128 { .. }
       | SubtleDigestXof::TurboShake256 { .. }
   );
-  if is_turbo && output_length == 0 {
+  let is_kangaroo = matches!(
+    algorithm,
+    SubtleDigestXof::Kt128 { .. }
+      | SubtleDigestXof::KangarooTwelve { .. }
+  );
+  if (is_turbo || is_kangaroo) && output_length == 0 {
     return Err(CryptoError::InvalidXofParameters);
   }
   if let SubtleDigestXof::TurboShake128 {
@@ -586,6 +629,13 @@ fn run_xof(
       let mut h: sha3::TurboShake256 = CoreWrapper::from_core(core);
       h.update(data);
       h.finalize_xof().read(&mut out);
+    }
+    SubtleDigestXof::Kt128 { customization, .. }
+    | SubtleDigestXof::KangarooTwelve { customization, .. } => {
+      let mut h =
+        tiny_keccak::KangarooTwelve::new(customization.unwrap_or_default());
+      h.update(data);
+      h.finalize(&mut out);
     }
   }
 

@@ -63,6 +63,10 @@ pub enum GenerateKeyAlgorithm {
     hash: String,
     length: Option<u32>,
   },
+  Kmac {
+    name: String,
+    length: Option<u32>,
+  },
   ChaCha20Poly1305,
   Ed25519,
   X25519,
@@ -163,6 +167,15 @@ impl<'a> WebIdlConverter<'a> for GenerateKeyAlgorithm {
         let length = read_u32_member(scope, *o, b"length");
         Self::Hmac {
           hash: hash_name,
+          length,
+        }
+      }
+      "KMAC128" | "KMAC256" => {
+        let length = obj
+          .as_ref()
+          .and_then(|o| read_u32_member(scope, **o, b"length"));
+        Self::Kmac {
+          name: canonical,
           length,
         }
       }
@@ -423,6 +436,23 @@ pub async fn run(
         algorithm_name: "HMAC".to_string(),
         length: Some(length_bits),
         hash_name: Some(hash_name.to_string()),
+        bytes,
+        usages,
+        extractable,
+      })
+    }
+    GenerateKeyAlgorithm::Kmac { name, length } => {
+      check_usages(&usages, &["sign", "verify"])?;
+      let length = length.unwrap_or(if name == "KMAC128" { 128 } else { 256 });
+      if length == 0 || !length.is_multiple_of(8) {
+        return Err(op_error("Invalid length".into()));
+      }
+      let mut bytes = vec![0u8; (length / 8) as usize];
+      crate::rand::thread_rng().fill(&mut bytes[..]);
+      Ok(GenerateKeyOutput::Symmetric {
+        algorithm_name: name,
+        length: Some(length),
+        hash_name: None,
         bytes,
         usages,
         extractable,

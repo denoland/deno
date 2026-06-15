@@ -46,6 +46,7 @@ sha3.workspace = true
 signature.workspace = true
 spki.workspace = true
 thiserror.workspace = true
+tiny-keccak = { workspace = true, features = ["k12", "kmac"] }
 tokio.workspace = true
 uuid.workspace = true
 x25519-dalek.workspace = true

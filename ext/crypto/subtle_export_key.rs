@@ -270,6 +270,7 @@ pub fn run(
   }
   match key.algorithm_name.as_str() {
     "HMAC" => export_symmetric(format, &key, SymKind::Hmac),
+    "KMAC128" | "KMAC256" => export_symmetric(format, &key, SymKind::Kmac),
     "AES-CTR" | "AES-CBC" | "AES-GCM" | "AES-OCB" | "AES-KW" => {
       export_symmetric(format, &key, SymKind::Aes)
     }
@@ -293,6 +294,7 @@ pub fn run(
 enum SymKind {
   Aes,
   Hmac,
+  Kmac,
   ChaCha,
 }
 
@@ -366,6 +368,11 @@ fn jwk_alg_for_symmetric(
         .to_string(),
       )
     }
+    SymKind::Kmac => match key.algorithm_name.as_str() {
+      "KMAC128" => Ok("K128".to_string()),
+      "KMAC256" => Ok("K256".to_string()),
+      other => Err(not_supported(format!("Unsupported KMAC variant: {other}"))),
+    },
   }
 }
 

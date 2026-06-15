@@ -50,6 +50,11 @@ pub enum SubtleSignParams {
     hash: String,
   },
   Hmac,
+  Kmac {
+    name: &'static str,
+    output_length: u32,
+    customization: Option<Vec<u8>>,
+  },
   Ed25519,
   MlDsa {
     variant: u8,
@@ -65,6 +70,7 @@ impl SubtleSignParams {
       Self::RsaPss { .. } => "RSA-PSS",
       Self::Ecdsa { .. } => "ECDSA",
       Self::Hmac => "HMAC",
+      Self::Kmac { name, .. } => name,
       Self::Ed25519 => "Ed25519",
       Self::MlDsa { variant, .. } => match variant {
         0 => "ML-DSA-44",
@@ -113,6 +119,29 @@ impl<'a> WebIdlConverter<'a> for SubtleSignParams {
         Ok(Self::Ecdsa { hash })
       }
       "HMAC" => Ok(Self::Hmac),
+      "KMAC128" | "KMAC256" => {
+        let obj =
+          maybe_obj.ok_or_else(|| missing_dict(prefix.clone(), &context))?;
+        let output_length = read_required_u32(
+          scope,
+          obj,
+          "outputLength",
+          prefix.clone(),
+          &context,
+        )?;
+        let customization = read_optional_buffer_source(
+          scope,
+          obj,
+          "customization",
+          prefix.clone(),
+          &context,
+        )?;
+        Ok(Self::Kmac {
+          name: canonical,
+          output_length,
+          customization,
+        })
+      }
       "Ed25519" => Ok(Self::Ed25519),
       "ML-DSA-44" | "ML-DSA-65" | "ML-DSA-87" => {
         let variant = match canonical {
@@ -146,6 +175,8 @@ fn canonical_sign_name(name: &str) -> Option<&'static str> {
     "RSA-PSS",
     "ECDSA",
     "HMAC",
+    "KMAC128",
+    "KMAC256",
     "Ed25519",
     "ML-DSA-44",
     "ML-DSA-65",
@@ -434,6 +465,11 @@ pub fn run(
       );
       sign_key_sync(key_data, args, &data)
     }
+    SubtleSignParams::Kmac {
+      output_length,
+      customization,
+      ..
+    } => run_kmac(&key, &data, output_length, customization),
     SubtleSignParams::Ed25519 => {
       if key.key_type != CryptoKeyType::Private {
         return Err(invalid_access("Key type not supported".to_string()));
@@ -461,6 +497,34 @@ pub fn run(
       "Algorithm '{name}' is not supported"
     ))),
   }
+}
+
+pub(crate) fn run_kmac(
+  key: &SubtleKey,
+  data: &[u8],
+  output_length_bits: u32,
+  customization: Option<Vec<u8>>,
+) -> Result<Vec<u8>, CryptoError> {
+  if key.key_type != CryptoKeyType::Secret {
+    return Err(invalid_access("Key type not supported".to_string()));
+  }
+  if output_length_bits == 0 || !output_length_bits.is_multiple_of(8) {
+    return Err(op_error("Invalid KMAC outputLength".to_string()));
+  }
+  let customization = customization.unwrap_or_default();
+  let mut mac = match key.algorithm_name.as_str() {
+    "KMAC128" => tiny_keccak::Kmac::v128(key.raw.bytes(), &customization),
+    "KMAC256" => tiny_keccak::Kmac::v256(key.raw.bytes(), &customization),
+    _ => {
+      return Err(invalid_access(
+        "KMAC operation does not match key algorithm".to_string(),
+      ));
+    }
+  };
+  tiny_keccak::Hasher::update(&mut mac, data);
+  let mut out = vec![0u8; (output_length_bits / 8) as usize];
+  tiny_keccak::Hasher::finalize(mac, &mut out);
+  Ok(out)
 }
 
 fn sha_to_crypto_hash(h: ShaHash) -> CryptoHash {

@@ -266,6 +266,15 @@ pub fn run<'s>(
       extractable,
       usages,
     ),
+    "KMAC128" | "KMAC256" => import_key_kmac(
+      scope,
+      name,
+      algorithm.length,
+      format,
+      key_data,
+      extractable,
+      usages,
+    ),
     "HKDF" => {
       import_key_kdf(scope, "HKDF", format, key_data, extractable, usages)
     }
@@ -1537,6 +1546,82 @@ fn import_key_hmac<'s>(
       .with_length(length)
       .with_hash(hash_name),
     RawKeyData::Secret(data.into_boxed_slice()),
+  ))
+}
+
+fn import_key_kmac<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  name: &str,
+  length: Option<u32>,
+  format: KeyFormat,
+  key_data: ImportKeyData,
+  extractable: bool,
+  usages: &[String],
+) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+  check_usages_subset(usages, &["sign", "verify"])?;
+  let data = match (format, key_data) {
+    (KeyFormat::RawSecret | KeyFormat::Raw, ImportKeyData::Buffer(b)) => b,
+    (KeyFormat::Jwk, ImportKeyData::Jwk(jwk_g)) => {
+      let jwk = v8::Local::new(scope, &jwk_g);
+      if read_string_member(scope, jwk, b"kty").as_deref() != Some("oct") {
+        return Err(data_error("Invalid key type".into()));
+      }
+      let expected_alg = if name == "KMAC128" { "K128" } else { "K256" };
+      if let Some(alg) = read_string_member(scope, jwk, b"alg")
+        && alg != expected_alg
+      {
+        return Err(data_error("Invalid JWK alg".into()));
+      }
+      if !usages.is_empty()
+        && let Some(use_) = read_string_member(scope, jwk, b"use")
+        && use_ != "sig"
+      {
+        return Err(data_error("Invalid JWK use".into()));
+      }
+      if let Some(key_ops) = read_string_array_member(scope, jwk, b"key_ops") {
+        for u in &key_ops {
+          if !ALL_USAGES.contains(&u.as_str()) {
+            return Err(data_error("Invalid JWK key_ops".into()));
+          }
+        }
+        for u in usages {
+          if !key_ops.iter().any(|k| k == u) {
+            return Err(data_error("Invalid JWK key_ops".into()));
+          }
+        }
+      }
+      if read_bool_member(scope, jwk, b"ext") == Some(false) && extractable {
+        return Err(data_error("Invalid JWK ext".into()));
+      }
+      let k = read_string_member(scope, jwk, b"k")
+        .ok_or_else(|| data_error("Missing JWK key data".into()))?;
+      BASE64_JWK_FORGIVING
+        .decode(k)
+        .map_err(|_| data_error("Invalid JWK key data".into()))?
+    }
+    _ => return Err(not_supported("Unsupported key format for KMAC".into())),
+  };
+  let data_len_bits = (data.len() * 8) as u32;
+  let length = if let Some(length) = length {
+    if length > data_len_bits || length <= data_len_bits.saturating_sub(8) {
+      return Err(data_error("Invalid KMAC key length".into()));
+    }
+    length
+  } else {
+    data_len_bits
+  };
+  if length == 0 || !length.is_multiple_of(8) {
+    return Err(data_error("Invalid KMAC key length".into()));
+  }
+  let bytes = data[..(length / 8) as usize].to_vec();
+  let allowed_usages: Vec<&str> = filter_usages(usages, ALL_USAGES);
+  Ok(make_crypto_key(
+    scope,
+    CryptoKeyType::Secret,
+    extractable,
+    &allowed_usages,
+    AlgorithmDict::new(name).with_length(length),
+    RawKeyData::Secret(bytes.into_boxed_slice()),
   ))
 }
 

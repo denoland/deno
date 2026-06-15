@@ -379,7 +379,7 @@ Deno.test(async function generateImportHmacJwk() {
   assertEquals(exportedKey.key_ops, ["sign"]);
   assertEquals(exportedKey.ext, true);
   assert(typeof exportedKey.k == "string");
-  assertEquals(exportedKey.k.length, 171);
+  assertEquals(exportedKey.k!.length, 171);
 });
 
 // 2048-bits publicExponent=65537
@@ -2908,6 +2908,79 @@ Deno.test(async function turboShakeDigest() {
   assert(differs);
 });
 
+Deno.test(async function kangarooTwelveDigest() {
+  const data = new TextEncoder().encode("hello");
+  const kt = new Uint8Array(
+    await crypto.subtle.digest(
+      { name: "KT128", outputLength: 256 } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(kt.length, 32);
+
+  const alias = new Uint8Array(
+    await crypto.subtle.digest(
+      { name: "KangarooTwelve", outputLength: 256 } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(alias, kt);
+
+  const customized = new Uint8Array(
+    await crypto.subtle.digest(
+      {
+        name: "KT128",
+        outputLength: 256,
+        customization: new TextEncoder().encode("Deno"),
+      } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(customized.length, kt.length);
+  assertNotEquals(customized, kt);
+});
+
+Deno.test(async function kmacSignVerifyAndJwkRoundTrip() {
+  const data = new TextEncoder().encode("modern algorithms");
+  const params = {
+    name: "KMAC128",
+    outputLength: 256,
+    customization: new TextEncoder().encode("Deno"),
+  } as AnyAlg;
+  const key = await crypto.subtle.generateKey(
+    { name: "KMAC128", length: 128 } as AnyAlg,
+    true,
+    ["sign", "verify"],
+  ) as unknown as CryptoKey;
+  assertEquals(key.algorithm as AnyAlg, { name: "KMAC128", length: 128 });
+
+  const sig = await crypto.subtle.sign(params, key, data);
+  assertEquals(sig.byteLength, 32);
+  assert(await crypto.subtle.verify(params, key, sig, data));
+  assertEquals(
+    await crypto.subtle.verify(
+      params,
+      key,
+      sig,
+      new TextEncoder().encode("changed"),
+    ),
+    false,
+  );
+
+  const jwk = await crypto.subtle.exportKey("jwk", key);
+  assertEquals(jwk.kty, "oct");
+  assertEquals(jwk.alg, "K128");
+  assertEquals(jwk.key_ops, ["sign", "verify"]);
+  const imported = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "KMAC128", length: 128 } as AnyAlg,
+    true,
+    ["sign", "verify"],
+  );
+  assert(await crypto.subtle.verify(params, imported, sig, data));
+});
+
 Deno.test(async function shakeFamilyRequiresOutputLength() {
   // The modern WebCrypto algorithms spec renamed the output length dictionary
   // member from `length` to `outputLength`. Passing the legacy `length` member
@@ -2919,6 +2992,7 @@ Deno.test(async function shakeFamilyRequiresOutputLength() {
     "cSHAKE256",
     "TurboSHAKE128",
     "TurboSHAKE256",
+    "KT128",
   ];
   for (const name of names) {
     await assertRejects(
@@ -3644,6 +3718,14 @@ Deno.test(function subtleCryptoSupportsModernAlgorithms() {
   assert(
     supports("digest", { name: "TurboSHAKE128", outputLength: 256 }),
   );
+  assert(
+    supports("digest", { name: "KT128", outputLength: 256 }),
+  );
+  assert(supports("generateKey", { name: "KMAC128", length: 128 }));
+  assert(supports("sign", { name: "KMAC128", outputLength: 256 }));
+  assert(supports("verify", { name: "KMAC256", outputLength: 512 }));
+  assert(supports("importKey", { name: "KMAC256", length: 256 }));
+  assert(supports("exportKey", "KMAC128"));
 });
 
 Deno.test(function subtleCryptoSupportsRejectsUnknown() {
