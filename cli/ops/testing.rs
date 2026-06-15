@@ -2,6 +2,7 @@
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -231,7 +232,11 @@ fn op_test_event_step_result_ok(
 ) {
   let sender = state.borrow_mut::<TestEventSender>();
   sender
-    .send(TestEvent::StepResult(id, TestStepResult::Ok, duration))
+    .send(TestEvent::StepResult(
+      id,
+      TestStepResult::Ok,
+      Duration::from_millis(duration),
+    ))
     .ok();
 }
 
@@ -243,7 +248,11 @@ fn op_test_event_step_result_ignored(
 ) {
   let sender = state.borrow_mut::<TestEventSender>();
   sender
-    .send(TestEvent::StepResult(id, TestStepResult::Ignored, duration))
+    .send(TestEvent::StepResult(
+      id,
+      TestStepResult::Ignored,
+      Duration::from_millis(duration),
+    ))
     .ok();
 }
 
@@ -259,7 +268,7 @@ fn op_test_event_step_result_failed(
     .send(TestEvent::StepResult(
       id,
       TestStepResult::Failed(failure),
-      duration,
+      Duration::from_millis(duration),
     ))
     .ok();
 }

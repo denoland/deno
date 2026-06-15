@@ -364,6 +364,24 @@ fn throw_type_error(
   })
 }
 
+/// Same as [`throw_type_error`] but produces a Node-style `TypeError` whose
+/// `code` property is `"ERR_INVALID_THIS"`. Used for the fast-path cppgc
+/// `&self` brand-check so the thrown error matches `webidl.assertBranded`.
+fn throw_invalid_this_type_error(
+  generator_state: &mut GeneratorState,
+  message: impl std::fmt::Display,
+) -> TokenStream {
+  let create_scope = create_scope(generator_state);
+  let message = format!("{message}");
+  quote!({
+    let scope = ::std::pin::pin!(#create_scope);
+    let mut scope = scope.init();
+    deno_core::_ops::throw_invalid_this_error_one_byte(&mut scope, #message);
+    // SAFETY: All fast return types have zero as a valid value
+    return unsafe { std::mem::zeroed() };
+  })
+}
+
 /// Sheds the error in a `Result<T, E>` as an early return, leaving just the `T` and requesting
 /// that v8 re-call the slow function to throw the error.
 pub(crate) fn generate_fast_result_early_exit(
@@ -523,7 +541,7 @@ pub(crate) fn generate_dispatch_fast(
 
   let with_self = if generator_state.needs_self {
     generator_state.needs_fast_isolate = true;
-    let throw_exception = throw_type_error(
+    let throw_exception = throw_invalid_this_type_error(
       generator_state,
       format!("expected {}", &generator_state.self_ty),
     );

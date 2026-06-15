@@ -265,7 +265,11 @@ const windowOrWorkerGlobalScope = {
   console: core.propNonEnumerable(
     new console.Console((msg, level) => core.print(msg, level > 1)),
   ),
-  crypto: core.propReadOnly(crypto.crypto),
+  // `crypto.crypto` is a getter that mints the cppgc-wrapped `Crypto`
+  // instance on first access (see `getCryptoSingleton` in
+  // `ext/crypto/00_crypto.js`). Use `propGetterOnly` so the cppgc allocation
+  // is deferred to runtime instead of running at snapshot-build time.
+  crypto: core.propGetterOnly(() => crypto.crypto),
   Crypto: core.propNonEnumerable(crypto.Crypto),
   SubtleCrypto: core.propNonEnumerable(crypto.SubtleCrypto),
   // `fetch` is installed as a plain data descriptor whose value is a lazy
@@ -503,5 +507,22 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
   setTimeout: core.propWritable(nodeSetTimeout),
 };
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
+
+let _cssStyleSheetMod;
+const loadCssStyleSheet = () =>
+  _cssStyleSheetMod ??
+    (_cssStyleSheetMod = core.loadExtScript(
+      "ext:deno_web/18_css_stylesheet.js",
+    ));
+unstableForWindowOrWorkerGlobalScope[unstableIds.rawImports] = {
+  CSSRule: core.propNonEnumerableLazyLoaded(
+    (css) => css.CSSRule,
+    loadCssStyleSheet,
+  ),
+  CSSStyleSheet: core.propNonEnumerableLazyLoaded(
+    (css) => css.CSSStyleSheet,
+    loadCssStyleSheet,
+  ),
+};
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };

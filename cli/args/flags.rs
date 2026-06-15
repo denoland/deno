@@ -724,6 +724,7 @@ pub struct BundleFlags {
   pub sourcemap: Option<SourceMapType>,
   pub platform: BundlePlatform,
   pub watch: bool,
+  pub declaration: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2900,6 +2901,12 @@ If no output file is given, the output is written to standard output:
           .value_parser(clap::builder::ValueParser::new(platform_parser))
           .default_value("deno"),
       )
+      .arg(
+        Arg::new("declaration")
+          .long("declaration")
+          .help("Generate .d.ts declaration files alongside the bundle")
+          .action(ArgAction::SetTrue),
+      )
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
       .arg(deny_import_arg())
@@ -3493,7 +3500,7 @@ Supported file types are:
   <p(245)>JavaScript, TypeScript, Markdown, JSON(C) and Jupyter Notebooks</>
 
 Supported file types which are behind corresponding unstable flags (see formatting options):
-  <p(245)>HTML, CSS, SCSS, SASS, LESS, YAML, Svelte, Vue, Astro and Angular</>
+  <p(245)>HTML, CSS, SCSS, LESS, YAML, Svelte, Vue, Astro and Angular</>
 
 Format stdin and write to stdout:
   <p(245)>cat file.ts | deno fmt -</>
@@ -3536,7 +3543,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .help("Set content type of the supplied file")
           .value_parser([
             "ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs", "md", "json", "jsonc", "css", "scss",
-            "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
+            "less", "html", "svelte", "vue", "astro", "yml", "yaml",
             "ipynb", "sql", "vto", "njk"
           ])
           .help_heading(FMT_HEADING).requires("files"),
@@ -3625,7 +3632,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       .arg(
         Arg::new("unstable-css")
           .long("unstable-css")
-          .help("Enable formatting CSS, SCSS, Sass and Less files")
+          .help("Enable formatting CSS, SCSS and Less files")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue)
           .help_heading(FMT_HEADING)
@@ -5470,8 +5477,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                             Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>
                                              <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
-  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                             <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
+  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary. A Unix domain socket can be scoped with <p(245)>unix:<<absolute-path></>.
+                                             <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"  |  --allow-net="unix:/var/run/docker.sock"</>
   <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>     Allow access to environment variables. Optionally specify accessible environment variables.
                                              <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"</>
   <g>-S, --allow-sys[=<<API_NAME>...]</>          Allow access to OS information. Optionally allow specific APIs by function name.
@@ -6736,6 +6743,12 @@ impl CommandExt for Command {
         arg = arg.alias("sloppy-imports");
       }
 
+      // `--unsafe-proto` is a stable shorthand for `--unstable-unsafe-proto`;
+      // it enables the same behavior without being spelled as an unstable flag.
+      if feature.flag_name == "unstable-unsafe-proto" {
+        arg = arg.alias("unsafe-proto");
+      }
+
       arg = arg.long_help(long_help_val);
       cmd = cmd.arg(arg);
     }
@@ -7068,6 +7081,7 @@ fn bundle_parse(
     inline_imports: matches.get_flag("inline-imports"),
     platform: matches.remove_one::<BundlePlatform>("platform").unwrap(),
     sourcemap: matches.remove_one::<SourceMapType>("sourcemap"),
+    declaration: matches.get_flag("declaration"),
   });
   Ok(())
 }
@@ -9106,8 +9120,6 @@ fn unstable_args_parse(
   }
 
   // TODO(bartlomieju): this should be factored out since these are configured via UNSTABLE_FEATURES
-  flags.unstable_config.bare_node_builtins =
-    matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.lazy_dynamic_imports =
     matches.get_flag("unstable-lazy-dynamic-imports");
@@ -16025,7 +16037,6 @@ mod tests {
           force: false,
         }),
         unstable_config: UnstableConfig {
-          bare_node_builtins: true,
           sloppy_imports: false,
           features: svec!["bare-node-builtins", "ffi", "worker-options"],
           ..Default::default()

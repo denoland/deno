@@ -102,7 +102,8 @@ pub fn create_validate_import_attributes_callback(
           context: &deno_core::ImportAttributesContext| {
       let valid_attribute = |kind: &str| {
         matches!(kind, "json" | "text")
-          || (enable_raw_imports.load(Ordering::Relaxed) && kind == "bytes")
+          || (enable_raw_imports.load(Ordering::Relaxed)
+            && matches!(kind, "bytes" | "css"))
       };
       for (key, value) in attributes {
         let msg = if key != "type" {
@@ -123,6 +124,33 @@ pub fn create_validate_import_attributes_callback(
         scope.throw_exception(exception);
         return;
       }
+    },
+  )
+}
+
+/// Evaluates custom module types that aren't built into deno_core. Currently
+/// only `with { type: "css" }` imports (gated on `--unstable-raw-imports` by
+/// `create_validate_import_attributes_callback`), which evaluate to a
+/// `CSSStyleSheet` containing the source text.
+pub fn create_custom_module_evaluation_callback()
+-> deno_core::CustomModuleEvaluationCb {
+  Box::new(
+    |scope, module_type, _module_name, code| match &*module_type {
+      "css" => {
+        let code = match code {
+          deno_core::ModuleSourceCode::String(code) => code.as_str().to_owned(),
+          deno_core::ModuleSourceCode::Bytes(bytes) => {
+            String::from_utf8_lossy(bytes.as_bytes()).into_owned()
+          }
+        };
+        let sheet: v8::Local<v8::Value> =
+          deno_web::create_css_style_sheet(scope, code).into();
+        let sheet = v8::Global::new(scope, sheet);
+        Ok(deno_core::CustomModuleEvaluationKind::Synthetic(sheet))
+      }
+      _ => Err(deno_error::JsErrorBox::generic(format!(
+        "Importing \"{module_type}\" modules is not supported"
+      ))),
     },
   )
 }
@@ -1202,7 +1230,9 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
       .then(create_permissions_stack_trace_callback),
     extension_code_cache: None,
     v8_platform: None,
-    custom_module_evaluation_cb: None,
+    custom_module_evaluation_cb: Some(
+      create_custom_module_evaluation_callback(),
+    ),
     eval_context_code_cache_cbs: None,
   });
 

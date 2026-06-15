@@ -361,7 +361,7 @@ pub(crate) fn with_self(
 ) -> TokenStream {
   generator_state.needs_opctx = true;
   generator_state.needs_scope = true;
-  let throw_exception = throw_type_error(
+  let throw_exception = throw_invalid_this_type_error(
     generator_state,
     format!("expected {}", &generator_state.self_ty),
   );
@@ -1291,6 +1291,22 @@ fn throw_type_error(
 
   gs_quote!(generator_state(info) => {
     deno_core::_ops::throw_error_one_byte_info(&#info, #message);
+    return 1;
+  })
+}
+
+/// Generates code to throw a Node-compat `TypeError` whose `code` property
+/// is `"ERR_INVALID_THIS"`. Used by the cppgc self-check (brand check)
+/// generators so that calling a method on a wrong-`this` receiver matches
+/// the shape that `webidl.assertBranded` produces in JS.
+fn throw_invalid_this_type_error(
+  generator_state: &mut GeneratorState,
+  message: String,
+) -> TokenStream {
+  debug_assert!(message.is_ascii() && message.len() < 1024);
+
+  gs_quote!(generator_state(info) => {
+    deno_core::_ops::throw_invalid_this_error_one_byte_info(&#info, #message);
     return 1;
   })
 }

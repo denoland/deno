@@ -2,7 +2,6 @@
 
 use aws_lc_rs::kem;
 use deno_core::convert::Uint8Array;
-use deno_core::op2;
 use fips203::traits::KeyGen;
 use fips203::traits::SerDes;
 use rsa::pkcs8;
@@ -15,8 +14,6 @@ use spki::der::TagNumber;
 use spki::der::asn1::BitString;
 use spki::der::asn1::ContextSpecific;
 use spki::der::asn1::OctetStringRef;
-
-use crate::key_store::CryptoKeyHandle;
 
 // FIPS 203 OIDs (NIST 2.16.840.1.101.3.4.4.{1,2,3}).
 pub const ML_KEM_512_OID: const_oid::ObjectIdentifier =
@@ -53,7 +50,7 @@ pub enum MlKemVariant {
 }
 
 impl MlKemVariant {
-  fn algorithm(self) -> &'static kem::Algorithm<kem::AlgorithmId> {
+  pub fn algorithm(self) -> &'static kem::Algorithm<kem::AlgorithmId> {
     match self {
       MlKemVariant::MlKem512 => &kem::ML_KEM_512,
       MlKemVariant::MlKem768 => &kem::ML_KEM_768,
@@ -97,6 +94,14 @@ impl MlKemVariant {
     }
   }
 
+  pub fn ciphertext_size(self) -> usize {
+    match self {
+      MlKemVariant::MlKem512 => 768,
+      MlKemVariant::MlKem768 => 1088,
+      MlKemVariant::MlKem1024 => 1568,
+    }
+  }
+
   /// Offset of the embedded encapsulation key inside the FIPS 203 §7.1
   /// expanded decapsulation key (`dk_PKE || ek || H(ek) || z`), where
   /// `dk_PKE` is `K * 384` bytes.
@@ -107,6 +112,14 @@ impl MlKemVariant {
       MlKemVariant::MlKem1024 => 4,
     };
     k * 384
+  }
+
+  /// `public_from_expanded` re-exported for [`crate::subtle_export_key`].
+  pub(crate) fn public_from_expanded_for_subtle(
+    self,
+    expanded: &[u8],
+  ) -> Result<Vec<u8>, MlKemError> {
+    self.public_from_expanded(expanded)
   }
 
   /// Extract the encapsulation (public) key bytes embedded in an expanded
@@ -162,79 +175,26 @@ impl MlKemVariant {
   }
 }
 
-#[derive(deno_core::ToV8)]
-pub struct MlKemEncapsulationOutput {
-  pub ciphertext: Uint8Array,
-  pub shared_secret: Uint8Array,
-}
-
-/// Derived from a FIPS 203 seed: the expanded decapsulation key together with
-/// the encapsulation key.
-#[derive(deno_core::ToV8)]
-pub struct MlKemSeedKeys {
-  pub private_key: Uint8Array,
-  pub public_key: Uint8Array,
-}
-
-/// Derive the expanded ML-KEM decapsulation key and its encapsulation key from
-/// a 64-byte FIPS 203 seed (`d || z`). Used by `generateKey`, `importKey`
-/// (`raw-seed`/`jwk`) and seed-form PKCS#8 import.
-#[op2]
-pub fn op_crypto_ml_kem_from_seed(
-  #[serde] variant: MlKemVariant,
-  #[buffer] seed: &[u8],
-) -> Result<MlKemSeedKeys, MlKemError> {
+/// Rust-side callable view of [`op_crypto_ml_kem_from_seed`] for the
+/// `SubtleCrypto.importKey` dispatcher.
+pub fn from_seed(
+  variant: MlKemVariant,
+  seed: &[u8],
+) -> Result<MlKemSeedBytes, MlKemError> {
   let (private_key, public_key) = variant.expand_seed(seed)?;
-  Ok(MlKemSeedKeys {
-    private_key: private_key.into(),
-    public_key: public_key.into(),
+  Ok(MlKemSeedBytes {
+    private_key,
+    public_key,
   })
 }
 
-/// Encapsulate to an ML-KEM encapsulation key, returning ciphertext and
-/// shared secret.
-#[op2]
-pub fn op_crypto_ml_kem_encapsulate(
-  #[serde] variant: MlKemVariant,
-  #[cppgc] key: &CryptoKeyHandle,
-) -> Result<MlKemEncapsulationOutput, MlKemError> {
-  let public_key = key.data().bytes();
-  let alg = variant.algorithm();
-  let ek = kem::EncapsulationKey::new(alg, public_key)
-    .map_err(|_| MlKemError::InvalidKeyData)?;
-  let (ciphertext, shared_secret) =
-    ek.encapsulate().map_err(|_| MlKemError::OperationFailed)?;
-  Ok(MlKemEncapsulationOutput {
-    ciphertext: ciphertext.as_ref().to_vec().into(),
-    shared_secret: shared_secret.as_ref().to_vec().into(),
-  })
+pub struct MlKemSeedBytes {
+  pub private_key: Vec<u8>,
+  pub public_key: Vec<u8>,
 }
 
-/// Decapsulate an ML-KEM ciphertext, returning the shared secret.
-#[op2]
-pub fn op_crypto_ml_kem_decapsulate(
-  #[serde] variant: MlKemVariant,
-  #[cppgc] key: &CryptoKeyHandle,
-  #[buffer] ciphertext: &[u8],
-) -> Result<Uint8Array, MlKemError> {
-  let private_key = key.data().expanded_private_key();
-  let alg = variant.algorithm();
-  let dk = kem::DecapsulationKey::new(alg, private_key)
-    .map_err(|_| MlKemError::InvalidKeyData)?;
-  let ct = kem::Ciphertext::from(ciphertext);
-  let shared_secret = dk
-    .decapsulate(ct)
-    .map_err(|_| MlKemError::OperationFailed)?;
-  Ok(shared_secret.as_ref().to_vec().into())
-}
-
-/// Import a SubjectPublicKeyInfo (SPKI) encoded ML-KEM encapsulation key.
-/// The OID inside the SPKI determines the variant; the JS layer is expected
-/// to validate it matches the requested algorithm.
-#[op2]
-pub fn op_crypto_ml_kem_import_spki(
-  #[buffer] data: &[u8],
-) -> Result<MlKemSpkiImport, MlKemError> {
+/// Rust-side callable view of [`op_crypto_ml_kem_import_spki`].
+pub fn import_spki(data: &[u8]) -> Result<MlKemSpkiBytes, MlKemError> {
   let info = spki::SubjectPublicKeyInfoRef::try_from(data)
     .map_err(|_| MlKemError::InvalidKeyData)?;
   let variant = MlKemVariant::from_oid(&info.algorithm.oid)
@@ -249,39 +209,43 @@ pub fn op_crypto_ml_kem_import_spki(
   if public_key.len() != variant.public_key_size() {
     return Err(MlKemError::InvalidKeyData);
   }
-  // Validate by constructing an EncapsulationKey.
   kem::EncapsulationKey::new(variant.algorithm(), public_key)
     .map_err(|_| MlKemError::InvalidKeyData)?;
-  Ok(MlKemSpkiImport {
+  Ok(MlKemSpkiBytes {
     variant,
-    public_key: public_key.to_vec().into(),
+    public_key: public_key.to_vec(),
   })
 }
 
-#[derive(deno_core::ToV8)]
-pub struct MlKemSpkiImport {
-  #[to_v8(serde)]
+pub struct MlKemSpkiBytes {
   pub variant: MlKemVariant,
-  pub public_key: Uint8Array,
+  pub public_key: Vec<u8>,
 }
 
-/// Import a PKCS#8 encoded ML-KEM decapsulation key.
-///
-/// Per the WICG Modern Algorithms spec and the
-/// `ML-KEM-PrivateKey` CHOICE of `draft-ietf-lamps-kyber-certificates`, the
-/// `privateKey` field is one of:
-///   - `seed [0] OCTET STRING (SIZE(64))` — the required form, also emitted by
-///     [`op_crypto_ml_kem_export_pkcs8`] and OpenSSL 3.5.
-///   - `both SEQUENCE { OCTET STRING seed, OCTET STRING expandedKey }` —
-///     optional; the seed must expand to exactly `expandedKey`
-///     (`DataError` on mismatch).
-///   - `expandedKey OCTET STRING` — explicitly rejected with
-///     `NotSupportedError`.
-#[op2]
-pub fn op_crypto_ml_kem_import_pkcs8(
-  #[buffer] data: &[u8],
-) -> Result<MlKemPkcs8Import, MlKemError> {
-  import_pkcs8(data)
+/// Rust-side callable view of [`op_crypto_ml_kem_import_pkcs8`]. Returns
+/// the same `(seed, private_key, public_key)` triple but as plain
+/// `Vec<u8>` for use by the Rust-native importKey dispatcher.
+pub fn import_pkcs8_native(data: &[u8]) -> Result<MlKemPkcs8Bytes, MlKemError> {
+  let res = import_pkcs8(data)?;
+  Ok(MlKemPkcs8Bytes {
+    variant: res.variant,
+    seed: res.seed.as_ref().to_vec(),
+    private_key: res.private_key.as_ref().to_vec(),
+  })
+}
+
+pub struct MlKemPkcs8Bytes {
+  pub variant: MlKemVariant,
+  pub seed: Vec<u8>,
+  pub private_key: Vec<u8>,
+}
+
+/// Rust-side callable view of [`op_crypto_ml_kem_validate_public_key`].
+pub fn validate_public_key(variant: MlKemVariant, public_key: &[u8]) -> bool {
+  if public_key.len() != variant.public_key_size() {
+    return false;
+  }
+  kem::EncapsulationKey::new(variant.algorithm(), public_key).is_ok()
 }
 
 fn import_pkcs8(data: &[u8]) -> Result<MlKemPkcs8Import, MlKemError> {
@@ -410,12 +374,10 @@ pub struct MlKemPkcs8Import {
   pub public_key: Uint8Array,
 }
 
-/// Export the encapsulation key as SubjectPublicKeyInfo (SPKI).
-#[op2]
-pub fn op_crypto_ml_kem_export_spki(
-  #[serde] variant: MlKemVariant,
-  #[buffer] public_key: &[u8],
-) -> Result<Uint8Array, MlKemError> {
+pub(crate) fn ml_kem_export_spki(
+  variant: MlKemVariant,
+  public_key: &[u8],
+) -> Result<Vec<u8>, MlKemError> {
   if public_key.len() != variant.public_key_size() {
     return Err(MlKemError::InvalidKeyData);
   }
@@ -427,25 +389,14 @@ pub fn op_crypto_ml_kem_export_spki(
     subject_public_key: BitString::from_bytes(public_key)
       .map_err(|_| MlKemError::OperationFailed)?,
   };
-  Ok(
-    info
-      .to_der()
-      .map_err(|_| MlKemError::OperationFailed)?
-      .into(),
-  )
+  info.to_der().map_err(|_| MlKemError::OperationFailed)
 }
 
-/// Export the decapsulation key as PKCS#8 PrivateKeyInfo in the standard
-/// seed-only form (`[0] IMPLICIT OCTET STRING` holding the 64-byte `d || z`
-/// seed), per [draft-ietf-lamps-kyber-certificates]. Requires the seed, so a
-/// key imported from the legacy expanded form (which has no recoverable seed)
-/// cannot be re-exported as PKCS#8.
-#[op2]
-pub fn op_crypto_ml_kem_export_pkcs8(
-  #[serde] variant: MlKemVariant,
-  #[buffer] seed: &[u8],
-) -> Result<Uint8Array, MlKemError> {
-  Ok(encode_pkcs8_seed(variant, seed)?.into())
+pub(crate) fn ml_kem_export_pkcs8(
+  variant: MlKemVariant,
+  seed: &[u8],
+) -> Result<Vec<u8>, MlKemError> {
+  encode_pkcs8_seed(variant, seed)
 }
 
 /// Encode a 64-byte seed as a PKCS#8 PrivateKeyInfo whose `privateKey` is the
@@ -485,28 +436,12 @@ fn encode_pkcs8_seed(
   Ok(buf)
 }
 
-/// Derive the encapsulation key (public key) bytes from a decapsulation key.
-/// Used by `getPublicKey()` on ML-KEM keys.
-#[op2]
-pub fn op_crypto_ml_kem_get_public_key(
-  #[serde] variant: MlKemVariant,
-  #[cppgc] key: &CryptoKeyHandle,
-) -> Result<Uint8Array, MlKemError> {
-  let private_key = key.data().expanded_private_key();
-  let public_key = variant.public_from_expanded(private_key)?;
-  Ok(public_key.into())
-}
-
-/// Validate an ML-KEM public key has the right size for the variant.
-#[op2]
-pub fn op_crypto_ml_kem_validate_public_key(
-  #[serde] variant: MlKemVariant,
-  #[buffer] public_key: &[u8],
-) -> bool {
-  if public_key.len() != variant.public_key_size() {
-    return false;
-  }
-  kem::EncapsulationKey::new(variant.algorithm(), public_key).is_ok()
+/// Rust-side callable view of [`op_crypto_ml_kem_get_public_key`].
+pub fn public_from_expanded(
+  variant: MlKemVariant,
+  expanded_private_key: &[u8],
+) -> Result<Vec<u8>, MlKemError> {
+  variant.public_from_expanded(expanded_private_key)
 }
 
 #[cfg(test)]
