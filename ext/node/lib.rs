@@ -577,6 +577,7 @@ deno_core::extension!(deno_node,
   ],
   lazy_loaded_js = [
     dir "polyfills",
+    "02_register_cloneable.js",
     "cluster.ts",
     "console.ts",
     "constants.ts",

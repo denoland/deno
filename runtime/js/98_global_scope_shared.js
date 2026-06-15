@@ -20,6 +20,10 @@ const performance = core.loadExtScript("ext:deno_web/15_performance.js");
 // is a thin cppgc port, so eager eval is cheap. `crypto.crypto` itself is a
 // getter that mints the cppgc Crypto instance lazily (see propGetterOnly below).
 const crypto = core.loadExtScript("ext:deno_crypto/00_crypto.js");
+// Eagerly register node host-object structured-clone deserializers (crypto
+// keys, histograms) so workers can resurrect them before the (deferred) node
+// modules load. The deserialization impls stay lazy. See the module comment.
+core.loadExtScript("ext:deno_node/02_register_cloneable.js");
 const url = core.loadExtScript("ext:deno_web/00_url.js");
 const loadUrlPattern = () =>
   core.loadExtScript("ext:deno_web/01_urlpattern.js");
