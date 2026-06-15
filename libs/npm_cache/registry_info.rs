@@ -237,7 +237,11 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     let downloader = self.clone();
     let name = name.to_string();
     async move {
-      let maybe_file_cached = if (downloader.cache.cache_setting().should_use_for_npm_package(&name) && !downloader.force_reload_flag.is_raised())
+      let should_use_file_cache =
+        downloader.cache.cache_setting().should_use_for_npm_package(&name);
+      let force_reload_package =
+        !should_use_file_cache || downloader.force_reload_flag.is_raised();
+      let maybe_file_cached = if (should_use_file_cache && !downloader.force_reload_flag.is_raised())
         // if this has been previously reloaded, then try loading from the file system cache
         || downloader.previously_loaded_packages.lock().contains(&name)
       {
@@ -278,6 +282,11 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       let (maybe_etag, maybe_cached_info) = match maybe_file_cached {
         Some(cached_info) => (cached_info.etag, Some(cached_info.info)),
         None => (None, None)
+      };
+      let maybe_etag = if force_reload_package {
+        None
+      } else {
+        maybe_etag
       };
 
       let response = downloader
@@ -441,4 +450,109 @@ pub fn get_package_url(npmrc: &ResolvedNpmRc, name: &str) -> Url {
     // to match npm.
     .join(&name.to_string().replace("%2F", "%2f"))
     .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+  use std::sync::Arc;
+
+  use deno_cache_dir::npm::NpmCacheDir;
+  use deno_npmrc::NpmRc;
+  use deno_npmrc::NpmRegistryUrl;
+  use parking_lot::Mutex;
+  use sys_traits::FsCreateDirAll;
+  use sys_traits::impls::InMemorySys;
+
+  use super::*;
+  use crate::DownloadError;
+  use crate::NpmCacheHttpClientBytesResponse;
+
+  #[derive(Debug)]
+  struct RecordingHttpClient {
+    etags: Mutex<Vec<Option<String>>>,
+  }
+
+  #[async_trait(?Send)]
+  impl NpmCacheHttpClient for RecordingHttpClient {
+    async fn download_with_retries_on_any_tokio_runtime(
+      &self,
+      _url: Url,
+      _maybe_auth: Option<String>,
+      maybe_etag: Option<String>,
+      _maybe_registry_config: Option<&deno_npmrc::RegistryConfig>,
+    ) -> Result<NpmCacheHttpClientResponse, DownloadError> {
+      self.etags.lock().push(maybe_etag);
+      Ok(NpmCacheHttpClientResponse::Bytes(
+        NpmCacheHttpClientBytesResponse {
+          bytes: package_info_bytes("package"),
+          etag: Some("fresh-etag".to_string()),
+        },
+      ))
+    }
+  }
+
+  fn package_info_bytes(name: &str) -> Vec<u8> {
+    format!(r#"{{"name":"{name}","versions":{{}},"dist-tags":{{}}}}"#)
+      .into_bytes()
+  }
+
+  fn package_info(name: &str) -> NpmPackageInfo {
+    serde_json::from_slice(&package_info_bytes(name)).unwrap()
+  }
+
+  #[tokio::test]
+  async fn force_reload_does_not_send_cached_etag() {
+    let sys = InMemorySys::default();
+    let root_dir = if cfg!(windows) {
+      std::path::PathBuf::from("C:\\cache")
+    } else {
+      std::path::PathBuf::from("/cache")
+    };
+    sys.fs_create_dir_all(&root_dir).unwrap();
+
+    let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
+    let npmrc = Arc::new(
+      NpmRc::parse(&sys, "")
+        .unwrap()
+        .as_resolved(&NpmRegistryUrl {
+          url: registry_url.clone(),
+          from_env: false,
+        })
+        .unwrap(),
+    );
+    let cache = Arc::new(NpmCache::new(
+      Arc::new(NpmCacheDir::new(&sys, root_dir, vec![registry_url.clone()])),
+      sys,
+      NpmCacheSetting::Use,
+      npmrc.clone(),
+    ));
+    cache
+      .save_package_info(
+        "package",
+        &SerializedCachedPackageInfo {
+          info: package_info("package"),
+          etag: Some("stale-etag".to_string()),
+        },
+      )
+      .unwrap();
+
+    let http_client = Arc::new(RecordingHttpClient {
+      etags: Default::default(),
+    });
+    let provider = RegistryInfoProvider::new(
+      cache,
+      http_client.clone(),
+      npmrc,
+      NpmPackumentFormat::Abbreviated,
+    );
+
+    assert!(provider.mark_force_reload());
+    provider
+      .maybe_package_info("package")
+      .await
+      .unwrap()
+      .unwrap();
+
+    assert_eq!(&*http_client.etags.lock(), &[None]);
+  }
 }
