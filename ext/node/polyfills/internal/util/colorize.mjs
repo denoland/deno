@@ -16,8 +16,8 @@ const { String } = primordials;
 // `stream.getColorDepth()` (matching Node's tty.WriteStream.getColorDepth)
 // or under FORCE_COLOR; a non-TTY plain stream stays at `false`, while a
 // fake stream with `isTTY=true` and no `getColorDepth` returns `true`.
-function _shouldColorize(stream) {
-  const env = process.env || {};
+function shouldColorize(stream) {
+  const env = globalThis.process.env || {};
   if (env.FORCE_COLOR !== undefined) {
     const v = String(env.FORCE_COLOR);
     if (v === "0" || v === "false") return false;
