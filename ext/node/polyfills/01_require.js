@@ -3239,15 +3239,14 @@ export function registerHooks(hooks) {
   if (typeof hooks !== "object" || hooks === null) {
     throw new internalErrors.ERR_INVALID_ARG_TYPE("hooks", "object", hooks);
   }
+  if (hooks.resolve !== undefined) {
+    internalValidators.validateFunction(hooks.resolve, "hooks.resolve");
+  }
+  if (hooks.load !== undefined) {
+    internalValidators.validateFunction(hooks.load, "hooks.load");
+  }
   const resolve = typeof hooks.resolve === "function" ? hooks.resolve : null;
   const load = typeof hooks.load === "function" ? hooks.load : null;
-  if (resolve === null && load === null) {
-    throw new internalErrors.ERR_INVALID_ARG_VALUE(
-      "hooks",
-      hooks,
-      "must contain at least one of 'resolve' or 'load'",
-    );
-  }
   const entry = { resolve, load };
   ArrayPrototypePush(hookEntries, entry);
 
