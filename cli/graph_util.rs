@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -31,6 +32,7 @@ use deno_graph::source::Loader;
 use deno_graph::source::ResolveError;
 use deno_lib::util::result::downcast_ref_deno_resolve_error;
 use deno_npm_installer::PackageCaching;
+use deno_npm_installer::format_unmet_peer_dep_warning;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cache::ParsedSourceCache;
@@ -48,6 +50,7 @@ use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::SmallStackString;
 use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMapErrorKind;
 use node_resolver::errors::NodeJsErrorCode;
 use sys_traits::FsMetadata;
@@ -988,7 +991,57 @@ impl ModuleGraphBuilder {
       }
     }
 
+    // Report any unmet peer dependency issues found during npm resolution. This
+    // is done here, after the graph is built, so the warning can point at the
+    // user modules that import the offending packages.
+    if let Some(npm_installer) = &self.npm_installer {
+      let diagnostics = npm_installer.take_unmet_peer_diagnostics();
+      if !diagnostics.is_empty() && log::log_enabled!(log::Level::Warn) {
+        let importers = self.npm_peer_dep_importers(graph);
+        log::warn!(
+          "{}",
+          format_unmet_peer_dep_warning(&diagnostics, &importers)
+        );
+      }
+    }
+
     Ok(())
+  }
+
+  /// Builds a map from a top-level npm package (`name@version`) to the user
+  /// modules that import it, used to annotate peer dependency warnings with the
+  /// source of a transitively introduced package.
+  fn npm_peer_dep_importers(
+    &self,
+    graph: &ModuleGraph,
+  ) -> HashMap<String, Vec<String>> {
+    let Some(managed) = self.npm_resolver.as_managed() else {
+      return HashMap::new();
+    };
+    let mut importers: HashMap<String, Vec<String>> = HashMap::new();
+    for module in graph.modules() {
+      let referrer = module.specifier();
+      for dep in module.dependencies().values() {
+        for specifier in [dep.get_code(), dep.get_type()].into_iter().flatten()
+        {
+          let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier)
+          else {
+            continue;
+          };
+          let Ok(id) =
+            managed.resolve_pkg_id_from_deno_module_req(npm_ref.req())
+          else {
+            continue;
+          };
+          let entry = importers.entry(id.nv.to_string()).or_default();
+          let referrer = referrer.to_string();
+          if !entry.contains(&referrer) {
+            entry.push(referrer);
+          }
+        }
+      }
+    }
+    importers
   }
 
   pub fn build_fast_check_graph(
