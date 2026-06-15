@@ -548,6 +548,7 @@ pub(crate) async fn handle_request<F>(
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   dispatch: F,
   legacy_abort: bool,
+  automatic_compression: bool,
 ) -> Result<Response, hyper::Error>
 where
   F: FnOnce(Rc<HttpRecord>),
@@ -601,6 +602,7 @@ where
       server_state,
       otel_info,
       legacy_abort,
+      automatic_compression,
     ),
     HttpRecord::cancel,
   );
@@ -646,6 +648,7 @@ struct HttpRecordInner {
   finished: bool,
   needs_close_after_finish: bool,
   legacy_abort: bool,
+  automatic_compression: bool,
   otel_info: Option<OtelInfo>,
   client_addr: Option<http::HeaderValue>,
 }
@@ -686,6 +689,7 @@ impl HttpRecord {
     server_state: SignallingRc<HttpServerState>,
     otel_info: Option<OtelInfo>,
     legacy_abort: bool,
+    automatic_compression: bool,
   ) -> Rc<Self> {
     let (mut request_parts, request_body) = request.into_parts();
     let client_addr = if trust_proxy_headers() {
@@ -694,26 +698,7 @@ impl HttpRecord {
       None
     };
     let request_body = Some(BufferedIncoming::new(request_body).into());
-    Self::new_from_parts(
-      request_parts,
-      request_info,
-      server_state,
-      request_body,
-      otel_info,
-      client_addr,
-      legacy_abort,
-    )
-  }
 
-  fn new_from_parts(
-    request_parts: Parts,
-    request_info: HttpConnectionProperties,
-    server_state: SignallingRc<HttpServerState>,
-    request_body: Option<RequestBodyState>,
-    otel_info: Option<OtelInfo>,
-    client_addr: Option<http::HeaderValue>,
-    legacy_abort: bool,
-  ) -> Rc<Self> {
     let (mut response_parts, _) = http::Response::new(()).into_parts();
     let record = match server_state.borrow_mut().pool.pop() {
       Some((record, headers)) => {
@@ -750,6 +735,7 @@ impl HttpRecord {
       been_dropped: false,
       finished: false,
       legacy_abort,
+      automatic_compression,
       needs_close_after_finish: false,
       otel_info,
       client_addr,
@@ -976,6 +962,10 @@ impl HttpRecord {
   /// Get a reference to the request parts.
   pub fn request_parts(&self) -> Ref<'_, Parts> {
     Ref::map(self.self_ref(), |inner| &inner.request_parts)
+  }
+
+  pub fn automatic_compression(&self) -> bool {
+    self.self_ref().automatic_compression
   }
 
   /// Resolves when response head is ready.
@@ -1291,6 +1281,7 @@ mod tests {
         move |record| {
           tx.try_send(record).unwrap();
         },
+        true,
         true,
       )
     });

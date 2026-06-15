@@ -1789,6 +1789,11 @@ static ENV_VARS: &[EnvVar] = &[
     ),
   },
   EnvVar {
+    name: "DENO_SERVE_AUTOMATIC_COMPRESSION",
+    description: "Set to 0 or false to disable automatic response body compression in Deno.serve by default.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_AUTO_SERVE",
     description: "If the entrypoint contains export default { fetch }, `deno run`\nbehaves like `deno serve`.",
     example: None,
