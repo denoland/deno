@@ -1414,9 +1414,6 @@ pub fn op_node_open(
   let open_options = options;
 
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     let file = fs
       .open_async(path, open_options)
       .await
@@ -1601,9 +1598,6 @@ pub fn op_node_statfs(
     .check_sys("statfs", "node:fs.statfs")?;
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     Ok(StatFs::from_fs(
       fs.statfs_async(checked, bigint)
         .await
@@ -1662,9 +1656,6 @@ pub fn op_node_lutimes(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     fs.lutime_async(checked, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
       .await
       .map_err(|e| node_fs_err(e, "utime", &path))?;
@@ -1715,9 +1706,6 @@ pub fn op_node_lchown(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     fs.lchown_async(checked, Some(uid), Some(gid))
       .await
       .map_err(|e| node_fs_err(e, "lchown", &path))?;
@@ -1764,9 +1752,6 @@ pub fn op_node_lchmod(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     fs.lchmod_async(checked, mode)
       .await
       .map_err(|e| node_fs_err(e, "lchmod", &path))?;
@@ -1905,9 +1890,6 @@ pub fn op_node_mkdtemp(
     )
   };
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     // https://github.com/nodejs/node/blob/2ea31e53c61463727c002c2d862615081940f355/deps/uv/src/unix/os390-syscalls.c#L409
     for _ in 0..libc::TMP_MAX {
       let candidate = temp_path_append_suffix(&prefix);
@@ -2025,9 +2007,6 @@ pub fn op_node_rmdir(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     fs.rmdir_async(checked)
       .await
       .map_err(|e| node_fs_err(e, "rmdir", &path))?;
@@ -2199,9 +2178,10 @@ pub fn op_node_fs_close(
 }
 
 // `async(eager_throw)`: node's `close` validates the fd synchronously
-// (getValidatedFd) but runs the close + callback asynchronously. Validate
-// eagerly, then `yield_now` so the close (and any EBADF) lands on the callback,
-// matching node's async timing without the JS `queueMicrotask` wrapper.
+// (getValidatedFd) but runs the close + callback asynchronously. The fd is
+// validated in the eager prologue (synchronous throw); the close itself -- and
+// any EBADF -- is deferred to the event loop by `eager_throw`'s scheduling, so
+// it lands on the callback like node, without a JS `queueMicrotask` wrapper.
 #[op2(async(eager_throw))]
 pub fn op_node_fs_close_async(
   scope: &mut v8::PinScope<'_, '_>,
@@ -2209,10 +2189,7 @@ pub fn op_node_fs_close_async(
   fd: v8::Local<v8::Value>,
 ) -> Result<impl Future<Output = Result<(), FsError>> + use<>, FsError> {
   let fd = validate_fd_value(scope, fd)?;
-  Ok(async move {
-    tokio::task::yield_now().await;
-    do_close(&mut state.borrow_mut(), fd)
-  })
+  Ok(async move { do_close(&mut state.borrow_mut(), fd) })
 }
 
 /// Positioned read: if position >= 0, uses pread to read without moving the
@@ -3248,12 +3225,7 @@ pub fn op_node_fs_write_v(
     true,
   )?;
   let file = file_for_fd(state, fd).map_err(|_| ebadf_node("write"));
-  Ok(async move {
-    // Yield once so EBADF/write errors reject (callback) instead of
-    // completing on the eager poll (which eager_throw rethrows sync).
-    tokio::task::yield_now().await;
-    write_with_position(file?, &bytes, position)
-  })
+  Ok(async move { write_with_position(file?, &bytes, position) })
 }
 
 // Validates readv/writev's (fd, buffers, position) like node: fd must be a
@@ -3364,9 +3336,6 @@ pub fn op_node_fs_writev<'a>(
     Some(file_for_fd(state, fd).map_err(|_| ebadf_node("write")))
   };
   Ok(async move {
-    // Yield once so EBADF/write errors reject (callback) instead of
-    // completing on the eager poll (which eager_throw rethrows sync).
-    tokio::task::yield_now().await;
     match file {
       None => Ok(0),
       Some(file) => write_with_position(file?, &combined, position),
@@ -3586,9 +3555,6 @@ fn write_file_async_impl(
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(with_cancel_handle(
     async move {
-      // Yield once so I/O errors reject (callback) instead of completing
-      // on the eager poll, which async(eager_throw) rethrows synchronously.
-      tokio::task::yield_now().await;
       let file = match target {
         Target::Fd(file) => file?,
         Target::Path(path, checked) => {
@@ -3729,9 +3695,6 @@ pub fn op_node_fs_truncate(
     )?
     .into_owned();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     let file = fs
       .open_async(checked, options)
       .await
@@ -4389,9 +4352,6 @@ pub fn op_node_fs_stat(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     match fs.stat_async(checked).await {
       Ok(s) => Ok(MaybeStats(Some(Stats::build(s, bigint)))),
       Err(e)
@@ -4457,9 +4417,6 @@ pub fn op_node_fs_lstat(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     match fs.lstat_async(checked).await {
       Ok(s) => Ok(MaybeStats(Some(Stats::build(s, bigint)))),
       Err(e)
@@ -4512,7 +4469,6 @@ pub fn op_node_fs_fstat_stats(
   let fd = validate_fd_value(scope, fd)?;
   let bigint = parse_bigint_option(scope, options);
   Ok(async move {
-    tokio::task::yield_now().await;
     let file =
       file_for_fd(&state.borrow(), fd).map_err(|_| ebadf_node("fstat"))?;
     match file.stat_async().await {
@@ -5161,9 +5117,6 @@ pub fn op_node_fs_mkdir(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     match fs.mkdir_async(checked, recursive, Some(mode)).await {
       Ok(()) => Ok(first_non_existent),
       Err(e) => {
@@ -5218,9 +5171,6 @@ pub fn op_node_fs_remove(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     fs.remove_async(checked, false)
       .await
       .map_err(|e| node_fs_err(e, "unlink", &path))?;
@@ -5379,14 +5329,6 @@ pub fn op_node_fs_rm(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
-    // node's `rm` reports validateRmOptions' lstat ENOENT / ERR_FS_EISDIR via
-    // the callback. `lstat_async` can resolve on the eager first poll (e.g. a
-    // missing path), which `eager_throw` would rethrow synchronously — yield
-    // once so those errors reject (callback) like node.
-    tokio::task::yield_now().await;
     match fs.lstat_async(checked.clone()).await {
       Ok(stat) => {
         if stat.is_directory && !recursive {
@@ -5467,9 +5409,6 @@ pub fn op_node_fs_rename(
     )
   };
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     fs.rename_async(old, new)
       .await
       .map_err(|e| node_fs_err_dest(e, "rename", &oldpath, &newpath))?;
@@ -5538,9 +5477,6 @@ pub fn op_node_fs_realpath(
   };
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     let resolved = fs
       .realpath_async(checked)
       .await
@@ -5606,9 +5542,6 @@ pub fn op_node_fs_read_link(
   };
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     let target = fs
       .read_link_async(checked)
       .await
@@ -5702,9 +5635,6 @@ pub fn op_node_fs_access(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     let stat = fs
       .lstat_async(checked)
       .await
@@ -5763,9 +5693,6 @@ pub fn op_node_fs_chmod(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     fs.chmod_async(checked, mode)
       .await
       .map_err(|e| node_fs_err(e, "chmod", &path))?;
@@ -5818,9 +5745,6 @@ pub fn op_node_fs_chown(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     fs.chown_async(checked, Some(uid), Some(gid))
       .await
       .map_err(|e| node_fs_err(e, "chown", &path))?;
@@ -5882,9 +5806,6 @@ pub fn op_node_fs_link(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     fs.link_async(old, new)
       .await
       .map_err(|e| node_fs_err_dest(e, "link", &oldpath, &newpath))?;
@@ -6008,9 +5929,6 @@ pub fn op_node_fs_symlink(
     None => resolve_symlink_kind(&fs, &target, &path),
   };
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     let target_p = CheckedPathBuf::unsafe_new(PathBuf::from(&target));
     let path_p = CheckedPathBuf::unsafe_new(PathBuf::from(&path));
     fs.symlink_async(target_p, path_p, file_type)
@@ -6123,9 +6041,6 @@ pub fn op_node_fs_copy_file(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     if mode & COPYFILE_EXCL != 0
       && fs.lstat_async(old.clone()).await.is_ok()
       && fs.lstat_async(new.clone()).await.is_ok()
@@ -6189,9 +6104,6 @@ pub fn op_node_fs_utime(
     .into_owned();
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     fs.utime_async(checked, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
       .await
       .map_err(|e| node_fs_err(e, "utime", &path))?;
@@ -6556,7 +6468,6 @@ pub fn op_node_fs_ftruncate(
       .max(0) as u64
   };
   Ok(async move {
-    tokio::task::yield_now().await;
     let file =
       file_for_fd(&state.borrow(), fd).map_err(|_| ebadf_node("ftruncate"))?;
     file.truncate_async(len).await?;
@@ -6579,9 +6490,10 @@ pub fn op_node_fs_fsync_sync(
 
 // `async(eager_throw)`: node validates `fd` synchronously (validateInt32 ->
 // ERR_OUT_OF_RANGE) but delivers EBADF for a valid-but-closed fd via the
-// callback. So validate the fd in the eager prologue, then `yield_now` before
-// looking the fd up so the EBADF rejects (callback) instead of being rethrown
-// synchronously on the eager first poll.
+// callback. So validate the fd in the eager prologue (synchronous throw) and
+// look the fd up inside the future, whose result -- including EBADF -- is
+// deferred to the event loop by `eager_throw`'s scheduling and so rejects
+// (callback) instead of being rethrown synchronously.
 #[op2(async(eager_throw))]
 pub fn op_node_fs_fsync(
   scope: &mut v8::PinScope<'_, '_>,
@@ -6590,7 +6502,6 @@ pub fn op_node_fs_fsync(
 ) -> Result<impl Future<Output = Result<(), FsError>> + use<>, FsError> {
   let fd = validate_fd_value(scope, fd)?;
   Ok(async move {
-    tokio::task::yield_now().await;
     let file =
       file_for_fd(&state.borrow(), fd).map_err(|_| ebadf_node("fsync"))?;
     file.sync_async().await?;
@@ -6620,7 +6531,6 @@ pub fn op_node_fs_fdatasync(
 ) -> Result<impl Future<Output = Result<(), FsError>> + use<>, FsError> {
   let fd = validate_fd_value(scope, fd)?;
   Ok(async move {
-    tokio::task::yield_now().await;
     let file =
       file_for_fd(&state.borrow(), fd).map_err(|_| ebadf_node("fdatasync"))?;
     file.datasync_async().await?;
@@ -6663,9 +6573,6 @@ pub fn op_node_fs_futimes(
   // Deferred so a bad fd surfaces as EBADF via the callback, like node.
   let file = file_for_fd(state, fd).map_err(|_| ebadf_node("futime"));
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     file?
       .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
       .await
@@ -6701,9 +6608,6 @@ pub fn op_node_fs_fchmod(
   // Deferred so a bad fd surfaces as EBADF via the callback, like node.
   let file = file_for_fd(state, fd).map_err(|_| ebadf_node("fchmod"));
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     file?
       .chmod_async(mode)
       .await
@@ -6743,9 +6647,6 @@ pub fn op_node_fs_fchown(
   // Deferred so a bad fd surfaces as EBADF via the callback, like node.
   let file = file_for_fd(state, fd).map_err(|_| ebadf_node("fchown"));
   Ok(async move {
-    // Yield once so I/O errors reject (callback) instead of completing
-    // on the eager poll, which async(eager_throw) rethrows synchronously.
-    tokio::task::yield_now().await;
     file?
       .chown_async(Some(uid), Some(gid))
       .await
@@ -6908,9 +6809,6 @@ pub fn op_node_fs_read_file_path(
   let fs = state.borrow::<FileSystemRc>().clone();
   Ok(with_cancel_handle(
     async move {
-      // Yield once so I/O errors reject (callback) instead of completing
-      // on the eager poll, which async(eager_throw) rethrows synchronously.
-      tokio::task::yield_now().await;
       // Open + fstat run synchronously on the runtime thread (as the
       // pre-port op_fs_read_file_async did), leaving the read as the
       // single blocking-pool round-trip; the extra hops dominated
@@ -6956,9 +6854,6 @@ pub fn op_node_fs_read_file(
   // fstats the fd first to size the buffer, hence syscall "fstat".
   let file = file_for_fd(state, fd).map_err(|_| ebadf_node("fstat"));
   Ok(async move {
-    // Yield once so a bad-fd error rejects instead of completing on the
-    // eager poll (which eager_throw rethrows synchronously).
-    tokio::task::yield_now().await;
     let file = file?;
     // Sync fstat on the runtime thread: a pooled stat round-trip costs
     // more than the syscall.
@@ -7114,9 +7009,6 @@ pub fn op_node_fs_readv<'a>(
     )
   };
   Ok(async move {
-    // Yield once so EBADF/read errors reject (callback) instead of
-    // completing on the eager poll (which eager_throw rethrows sync).
-    tokio::task::yield_now().await;
     let Some(file) = file else {
       return Ok(0);
     };
