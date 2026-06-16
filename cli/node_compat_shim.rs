@@ -353,4 +353,41 @@ mod tests {
     assert!(!is_truthy("false"));
     assert!(!is_truthy(""));
   }
+
+  #[test]
+  fn create_shim_round_trip() {
+    // Exercises create_shim + shim_is_valid on every platform. On Windows this
+    // is the only coverage of the hardlink/copy path, which the unix-only spec
+    // tests can't reach.
+    let base = std::env::temp_dir()
+      .join(format!("deno_node_shim_test_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+
+    // Stand-in for the deno binary the shim points back at. Keep it in the same
+    // directory tree as the shim so a Windows hardlink stays on one volume.
+    let fake_exe = base.join(if cfg!(windows) { "deno.exe" } else { "deno" });
+    std::fs::write(&fake_exe, b"binary").unwrap();
+
+    let shim_dir = base.join(SHIM_DIR_NAME);
+    std::fs::create_dir_all(&shim_dir).unwrap();
+    let shim_name = if cfg!(windows) { "node.exe" } else { "node" };
+    let shim_path = shim_dir.join(shim_name);
+
+    // Fresh creation, then idempotent recreation over an existing shim: both
+    // must yield a shim that validates against the target.
+    for _ in 0..2 {
+      create_shim(&shim_path, &fake_exe).unwrap();
+      assert!(shim_path.exists());
+      assert!(shim_is_valid(&shim_path, &fake_exe));
+    }
+
+    // A shim pointing at a different binary must be reported invalid (this is
+    // what triggers recreation after a deno upgrade).
+    let other_exe = base.join("other");
+    std::fs::write(&other_exe, b"binary").unwrap();
+    assert!(!shim_is_valid(&shim_path, &other_exe));
+
+    let _ = std::fs::remove_dir_all(&base);
+  }
 }
