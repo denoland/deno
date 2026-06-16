@@ -14,7 +14,9 @@
 //! The original sources are the OpenTelemetry JS `@opentelemetry/core` and
 //! `@opentelemetry/api` packages (Apache-2.0).
 
+use deno_core::GarbageCollected;
 use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use serde::Deserialize;
 use serde::Serialize;
@@ -234,7 +236,7 @@ impl OrderedMap {
 /// The JavaScript implementation reduced over the reversed list of members into
 /// a `Map` (so later members win and the map is in reversed order), then, if
 /// more than 32 members remained, reversed and truncated back to the first 32.
-pub fn tracestate_parse(raw: &str) -> Vec<(String, String)> {
+fn tracestate_parse(raw: &str) -> Vec<(String, String)> {
   if utf16_len(raw) > MAX_TRACE_STATE_LEN {
     return Vec::new();
   }
@@ -258,6 +260,124 @@ pub fn tracestate_parse(raw: &str) -> Vec<(String, String)> {
   }
 
   map.entries
+}
+
+/// `Map.delete` + `Map.set` moves an existing key to the end, which we
+/// replicate by removing any existing entry and pushing the new one. Returns a
+/// fresh `Vec` (the JS `set` cloned the internal `Map`).
+fn tracestate_set(
+  entries: &[(String, String)],
+  key: String,
+  value: String,
+) -> Vec<(String, String)> {
+  let mut entries: Vec<(String, String)> =
+    entries.iter().filter(|(k, _)| *k != key).cloned().collect();
+  entries.push((key, value));
+  entries
+}
+
+fn tracestate_unset(
+  entries: &[(String, String)],
+  key: &str,
+) -> Vec<(String, String)> {
+  entries.iter().filter(|(k, _)| k != key).cloned().collect()
+}
+
+fn tracestate_get<'a>(
+  entries: &'a [(String, String)],
+  key: &str,
+) -> Option<&'a str> {
+  entries
+    .iter()
+    .find(|(k, _)| k == key)
+    .map(|(_, v)| v.as_str())
+}
+
+/// Members are stored in the same insertion order as the JS `Map`
+/// (members reversed so the last-seen value wins); serialize walks them in
+/// reverse to restore the original left-to-right header order, mirroring the
+/// `_keys()` reversal in the JS code.
+fn tracestate_serialize(entries: &[(String, String)]) -> String {
+  let mut out = String::new();
+  for (key, value) in entries.iter().rev() {
+    if !out.is_empty() {
+      out.push(LIST_MEMBERS_SEPARATOR);
+    }
+    out.push_str(key);
+    out.push(LIST_MEMBER_KEY_VALUE_SPLITTER);
+    out.push_str(value);
+  }
+  out
+}
+
+/// Rust-backed implementation of the W3C `TraceState`, replacing the
+/// `TraceStateClass` that previously lived in `telemetry.ts`.
+///
+/// Instances are immutable: `set`/`unset` return a new `OtelTraceState` (the
+/// JS implementation cloned its internal `Map` for the same reason), so no
+/// interior mutability is required.
+pub struct OtelTraceState {
+  entries: Vec<(String, String)>,
+}
+
+// SAFETY: we're sure this can be GCed (it holds only owned `String`s).
+unsafe impl GarbageCollected for OtelTraceState {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelTraceState"
+  }
+}
+
+#[op2]
+impl OtelTraceState {
+  #[constructor]
+  #[cppgc]
+  fn new(#[string] raw_trace_state: Option<String>) -> OtelTraceState {
+    let entries = match raw_trace_state {
+      // Matches `if (rawTraceState) this._parse(...)` — empty strings are
+      // falsy in JS and were never parsed.
+      Some(raw) if !raw.is_empty() => tracestate_parse(&raw),
+      _ => Vec::new(),
+    };
+    OtelTraceState { entries }
+  }
+
+  #[cppgc]
+  fn set(
+    &self,
+    #[string] key: String,
+    #[string] value: String,
+  ) -> OtelTraceState {
+    OtelTraceState {
+      entries: tracestate_set(&self.entries, key, value),
+    }
+  }
+
+  #[cppgc]
+  fn unset(&self, #[string] key: String) -> OtelTraceState {
+    OtelTraceState {
+      entries: tracestate_unset(&self.entries, &key),
+    }
+  }
+
+  // Returns the string value or `undefined` (not `null`) to match the
+  // `Map.prototype.get` semantics that `@opentelemetry/api` consumers expect.
+  fn get<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    #[string] key: String,
+  ) -> v8::Local<'s, v8::Value> {
+    match tracestate_get(&self.entries, &key) {
+      Some(value) => v8::String::new(scope, value).unwrap().into(),
+      None => v8::undefined(scope).into(),
+    }
+  }
+
+  #[string]
+  fn serialize(&self) -> String {
+    tracestate_serialize(&self.entries)
+  }
 }
 
 // === Baggage ================================================================
@@ -445,14 +565,6 @@ pub fn op_otel_span_context_valid(
 
 #[op2]
 #[serde]
-pub fn op_otel_tracestate_parse(
-  #[string] raw: String,
-) -> Vec<(String, String)> {
-  tracestate_parse(&raw)
-}
-
-#[op2]
-#[serde]
 pub fn op_otel_baggage_parse(
   #[string] header: String,
 ) -> Result<Vec<JsBaggageEntry>, JsErrorBox> {
@@ -594,6 +706,58 @@ mod tests {
     // First 32 in original order are kept.
     assert_eq!(entries[0].0, "k0");
     assert_eq!(entries[31].0, "k31");
+  }
+
+  #[test]
+  fn tracestate_object_serialize_round_trip() {
+    // Stored reversed (last wins), serialize restores left-to-right order.
+    let entries = tracestate_parse("foo=1,bar=2");
+    assert_eq!(tracestate_serialize(&entries), "foo=1,bar=2");
+  }
+
+  #[test]
+  fn tracestate_object_empty() {
+    assert_eq!(tracestate_serialize(&[]), "");
+  }
+
+  #[test]
+  fn tracestate_object_set_appends_to_front_of_header() {
+    // `set` inserts at the end of the internal (reversed) storage, so the new
+    // member appears first in the serialized header, matching the JS behavior.
+    let entries =
+      tracestate_set(&tracestate_parse("foo=1"), "bar".into(), "2".into());
+    assert_eq!(tracestate_serialize(&entries), "bar=2,foo=1");
+  }
+
+  #[test]
+  fn tracestate_object_set_existing_key_moves_it() {
+    // Re-setting an existing key deletes and re-adds it (moving it to the end
+    // of the internal storage), exactly like `Map.delete` + `Map.set`.
+    let entries = tracestate_set(
+      &tracestate_parse("foo=1,bar=2"),
+      "foo".into(),
+      "9".into(),
+    );
+    assert_eq!(tracestate_serialize(&entries), "foo=9,bar=2");
+  }
+
+  #[test]
+  fn tracestate_object_unset_and_get() {
+    let parsed = tracestate_parse("foo=1,bar=2");
+    assert_eq!(tracestate_get(&parsed, "foo"), Some("1"));
+    assert_eq!(tracestate_get(&parsed, "missing"), None);
+    let entries = tracestate_unset(&parsed, "foo");
+    assert_eq!(tracestate_serialize(&entries), "bar=2");
+    assert_eq!(tracestate_get(&entries, "foo"), None);
+  }
+
+  #[test]
+  fn tracestate_object_clone_is_independent() {
+    // `set`/`unset` must not mutate the receiver (the JS code cloned its Map).
+    let base = tracestate_parse("foo=1");
+    let derived = tracestate_set(&base, "bar".into(), "2".into());
+    assert_eq!(tracestate_serialize(&base), "foo=1");
+    assert_eq!(tracestate_serialize(&derived), "bar=2,foo=1");
   }
 
   #[test]
