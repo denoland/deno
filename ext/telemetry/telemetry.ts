@@ -27,6 +27,7 @@ const {
   op_otel_span_attribute2,
   op_otel_span_attribute3,
   op_otel_span_update_name,
+  OtelBaggage,
   OtelMeter,
   OtelTracer,
   OtelTraceState,
@@ -46,10 +47,8 @@ const {
   DatePrototype,
   DatePrototypeGetTime,
   Error,
-  MapPrototypeEntries,
   Number,
   NumberPrototypeToString,
-  ObjectAssign,
   ObjectDefineProperty,
   ObjectEntries,
   ObjectKeys,
@@ -58,7 +57,6 @@ const {
   ReflectApply,
   SafeArrayIterator,
   SafeMap,
-  SafeMapIterator,
   SafePromiseAll,
   SafeSet,
   SafeWeakSet,
@@ -1468,58 +1466,19 @@ function baggageEntryMetadataFromString(
   };
 }
 
-class BaggageImpl implements Baggage {
-  #entries: Map<string, BaggageEntry>;
+// Rust-backed `Baggage` implementation (see ext/telemetry/propagation.rs).
+// Entry storage, the immutable set/remove/clear semantics and the entry copies
+// returned by `getEntry`/`getAllEntries` all live in Rust; the metadata value
+// is held (and traced) as-is so its identity and `toString()` are preserved.
+// This is just the cppgc object's type.
+interface OtelBaggage extends Baggage {
+  // deno-lint-ignore no-misused-new
+  new (entries?: [string, BaggageEntry][]): OtelBaggage;
 
-  constructor(entries?: Map<string, BaggageEntry>) {
-    this.#entries = new SafeMap();
-    // The `SafeMap` constructor that takes an iterable doesn't work for non Array iterables correctly.
-    if (entries) {
-      for (const { 0: key, 1: entry } of new SafeMapIterator(entries)) {
-        this.#entries.set(key, ObjectAssign({}, entry));
-      }
-    }
-  }
-
-  getEntry(key: string): BaggageEntry | undefined {
-    const entry = this.#entries.get(key);
-    if (!entry) {
-      return undefined;
-    }
-
-    return ObjectAssign({}, entry);
-  }
-
-  getAllEntries(): [string, BaggageEntry][] {
-    return ArrayPrototypeMap(
-      ArrayFrom(MapPrototypeEntries(this.#entries)),
-      (entry) => [entry[0], entry[1]],
-    );
-  }
-
-  setEntry(key: string, entry: BaggageEntry): BaggageImpl {
-    const newBaggage = new BaggageImpl(this.#entries);
-    newBaggage.#entries.set(key, entry);
-    return newBaggage;
-  }
-
-  removeEntry(key: string): BaggageImpl {
-    const newBaggage = new BaggageImpl(this.#entries);
-    newBaggage.#entries.delete(key);
-    return newBaggage;
-  }
-
-  removeEntries(...keys: string[]): BaggageImpl {
-    const newBaggage = new BaggageImpl(this.#entries);
-    for (const key of new SafeArrayIterator(keys)) {
-      newBaggage.#entries.delete(key);
-    }
-    return newBaggage;
-  }
-
-  clear(): BaggageImpl {
-    return new BaggageImpl();
-  }
+  setEntry(key: string, entry: BaggageEntry): OtelBaggage;
+  removeEntry(key: string): OtelBaggage;
+  removeEntries(...key: string[]): OtelBaggage;
+  clear(): OtelBaggage;
 }
 
 const BAGGAGE_KEY = SymbolFor("OpenTelemetry Baggage Key");
@@ -1558,16 +1517,18 @@ class W3CBaggagePropagator implements TextMapPropagator {
     // Parsing, percent-decoding and de-duplication is performed in Rust.
     const entries = op_otel_baggage_parse(baggageString);
     if (entries.length === 0) return context;
-    const map = new SafeMap<string, BaggageEntry>();
+    // Build `[key, { value, metadata? }]` pairs (the same shape
+    // `getAllEntries` returns) for the Rust-backed baggage constructor.
+    const pairs: [string, BaggageEntry][] = [];
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
       const baggageEntry: BaggageEntry = { value: entry.value };
       if (entry.metadata != null) {
         baggageEntry.metadata = baggageEntryMetadataFromString(entry.metadata);
       }
-      map.set(entry.key, baggageEntry);
+      ArrayPrototypePush(pairs, [entry.key, baggageEntry]);
     }
-    return context.setValue(BAGGAGE_KEY, new BaggageImpl(map));
+    return context.setValue(BAGGAGE_KEY, new OtelBaggage(pairs));
   }
 
   fields(): string[] {
