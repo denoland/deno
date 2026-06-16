@@ -44,6 +44,15 @@ pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 
+/// The Node.js version that Deno emulates. This is the single source of truth
+/// for the value reported through `process.version` / `process.versions.node`
+/// (via `op_node_version`, consumed by `_process/process.ts`) and the value the
+/// CLI compares against when checking package.json `engines.node` constraints
+/// (re-exported as `deno_lib::version::NODE_VERSION`).
+///
+/// When bumping the emulated Node version, change it here only.
+pub const NODE_VERSION: &str = "26.3.0";
+
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
 }

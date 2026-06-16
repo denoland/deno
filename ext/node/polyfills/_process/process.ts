@@ -200,15 +200,18 @@ const env:
 /**
  * https://nodejs.org/api/process.html#process_process_version
  *
- * This value is hard coded to latest stable release of Node, as
- * some packages are checking it for compatibility. Previously
- * it pointed to Deno version, but that led to incompability
- * with some packages.
+ * This value tracks a stable release of Node, as some packages are
+ * checking it for compatibility. Previously it pointed to Deno version,
+ * but that led to incompability with some packages.
  *
- * Keep in sync with `NODE_VERSION` in `cli/lib/version.rs`, which is
- * used to enforce package.json `engines.node` constraints.
+ * The `__NODE_VERSION__` token is substituted at snapshot build time with
+ * `NODE_VERSION` from `ext/node/lib.rs` (see `maybe_transpile_source` in
+ * `runtime/transpile.rs`). That Rust constant is the single source of truth,
+ * shared with the engines check in `cli/lib/version.rs`, so the reported
+ * version can never drift from it.
  */
-const version = "v26.3.0";
+const nodeVersion = "__NODE_VERSION__";
+const version = `v${nodeVersion}`;
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions
@@ -219,7 +222,7 @@ const version = "v26.3.0";
  * with some packages. Value of `v8` field is still taken from `Deno.version`.
  */
 const versions = {
-  node: "26.3.0",
+  node: nodeVersion,
   uv: "1.52.1",
   zlib: "1.3.1-e00f703",
   brotli: "1.2.0",
