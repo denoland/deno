@@ -1233,7 +1233,7 @@ declare module "util" {
      *
      * The full list of formats can be found in [modifiers](https://nodejs.org/docs/latest-v24.x/api/util.html#modifiers).
      * @param format A text format or an Array of text formats defined in `util.inspect.colors`.
-     * @param text The text to to be formatted.
+     * @param text The text to be formatted.
      * @since v20.12.0
      */
     export function styleText(
