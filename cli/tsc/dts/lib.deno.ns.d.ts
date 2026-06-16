@@ -869,6 +869,24 @@ declare namespace Deno {
      * If unset or `0`, the test runs without a deadline.
      */
     timeout?: number;
+    /** Number of times to re-run the test if it fails. The test is considered
+     * to have passed if any attempt passes. Useful for tolerating flaky tests.
+     *
+     * When set, this takes precedence over the `--retry` flag, including an
+     * explicit `0` which opts the test out of a flag-provided default.
+     *
+     * @default {0} */
+    retry?: number;
+    /** Number of additional times to run the test. Every repetition must pass
+     * for the test to pass. Useful for surfacing flaky tests. When combined
+     * with {@linkcode TestDefinition.retry}, each repetition may itself be
+     * retried.
+     *
+     * When set, this takes precedence over the `--repeats` flag, including an
+     * explicit `0` which opts the test out of a flag-provided default.
+     *
+     * @default {0} */
+    repeats?: number;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -1097,97 +1115,48 @@ declare namespace Deno {
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
 
-    /** Shorthand property for ignoring a particular test case.
+    /** Register a parameterized group of tests, one per case in `cases`.
+     *
+     * Returns a function that takes a name template and a test function. For
+     * each case the name template is interpolated and the test function is
+     * called with the case's value(s) followed by the {@linkcode TestContext}.
+     *
+     * Array cases are spread as positional arguments; object (or primitive)
+     * cases are passed as a single argument.
+     *
+     * The name template supports `printf`-style tokens that consume the case's
+     * values in order (`%s`, `%d`/`%i`, `%f`, `%j`, `%o`/`%O`), `%#` for the
+     * zero-based case index, and `%%` for a literal `%`. For object cases,
+     * `$key` (and `$key.nested`) interpolates the corresponding property.
+     *
+     * ```ts
+     * import { assertEquals } from "jsr:@std/assert";
+     *
+     * Deno.test.each([
+     *   [1, 1, 2],
+     *   [1, 2, 3],
+     *   [2, 1, 3],
+     * ])("add(%i, %i) = %i", (a, b, expected) => {
+     *   assertEquals(a + b, expected);
+     * });
+     *
+     * Deno.test.each([
+     *   { a: 1, b: 1, sum: 2 },
+     *   { a: 1, b: 2, sum: 3 },
+     * ])("$a + $b = $sum", ({ a, b, sum }) => {
+     *   assertEquals(a + b, sum);
+     * });
+     * ```
      *
      * @category Testing
      */
-    ignore(t: Omit<TestDefinition, "ignore">): void;
+    each: TestEach;
 
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(name: string, fn: (t: TestContext) => void | Promise<void>): void;
+    /** Shorthand property for ignoring a particular test case. */
+    ignore: TestIgnore;
 
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(fn: (t: TestContext) => void | Promise<void>): void;
-
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(
-      name: string,
-      options: Omit<TestDefinition, "fn" | "name" | "ignore">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(
-      options: Omit<TestDefinition, "fn" | "name" | "ignore">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(
-      options: Omit<TestDefinition, "fn" | "ignore">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(t: Omit<TestDefinition, "only">): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(name: string, fn: (t: TestContext) => void | Promise<void>): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(fn: (t: TestContext) => void | Promise<void>): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(
-      name: string,
-      options: Omit<TestDefinition, "fn" | "name" | "only">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(
-      options: Omit<TestDefinition, "fn" | "name" | "only">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(
-      options: Omit<TestDefinition, "fn" | "only">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
+    /** Shorthand property for focusing a particular test case. */
+    only: TestOnly;
 
     /** Register a function to be called before all tests in the current scope.
      *
@@ -1295,6 +1264,101 @@ declare namespace Deno {
       /** Enable or disable the resources sanitizer for all tests in this module. */
       resources?: boolean;
     }): void;
+  }
+
+  /** Register a parameterized group of tests. See {@linkcode DenoTest.each}.
+   *
+   * The first overload handles array cases (their values are spread as
+   * positional arguments); the second handles object or primitive cases (each
+   * passed as a single argument followed by the {@linkcode TestContext}).
+   *
+   * The {@linkcode TestContext} is also passed as the final argument to array
+   * case functions at runtime, but is not reflected in their parameter types so
+   * that the case values stay correctly typed.
+   *
+   * @category Testing
+   */
+  export interface TestEach {
+    <const T extends readonly unknown[]>(
+      cases: readonly T[],
+    ): {
+      (
+        name: string,
+        fn: (...args: [...T]) => void | Promise<void>,
+      ): void;
+      (
+        name: string,
+        options: Omit<TestDefinition, "fn" | "name">,
+        fn: (...args: [...T]) => void | Promise<void>,
+      ): void;
+    };
+    <const T>(
+      cases: readonly T[],
+    ): {
+      (
+        name: string,
+        fn: (value: T, t: TestContext) => void | Promise<void>,
+      ): void;
+      (
+        name: string,
+        options: Omit<TestDefinition, "fn" | "name">,
+        fn: (value: T, t: TestContext) => void | Promise<void>,
+      ): void;
+    };
+  }
+
+  /** Shorthand property for ignoring a particular test case. See
+   * {@linkcode DenoTest.ignore}.
+   *
+   * @category Testing
+   */
+  export interface TestIgnore {
+    (t: Omit<TestDefinition, "ignore">): void;
+    (name: string, fn: (t: TestContext) => void | Promise<void>): void;
+    (fn: (t: TestContext) => void | Promise<void>): void;
+    (
+      name: string,
+      options: Omit<TestDefinition, "fn" | "name" | "ignore">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    (
+      options: Omit<TestDefinition, "fn" | "name" | "ignore">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    (
+      options: Omit<TestDefinition, "fn" | "ignore">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    /** Register a parameterized group of ignored tests. See
+     * {@linkcode DenoTest.each}. */
+    each: TestEach;
+  }
+
+  /** Shorthand property for focusing a particular test case. See
+   * {@linkcode DenoTest.only}.
+   *
+   * @category Testing
+   */
+  export interface TestOnly {
+    (t: Omit<TestDefinition, "only">): void;
+    (name: string, fn: (t: TestContext) => void | Promise<void>): void;
+    (fn: (t: TestContext) => void | Promise<void>): void;
+    (
+      name: string,
+      options: Omit<TestDefinition, "fn" | "name" | "only">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    (
+      options: Omit<TestDefinition, "fn" | "name" | "only">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    (
+      options: Omit<TestDefinition, "fn" | "only">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    /** Register a parameterized group of focused tests. See
+     * {@linkcode DenoTest.each}. */
+    each: TestEach;
   }
 
   /**
@@ -1599,7 +1663,8 @@ declare namespace Deno {
    *
    * If no exit code is supplied then Deno will exit with return code of `0`.
    *
-   * In worker contexts this is an alias to `self.close();`.
+   * In worker contexts this closes the current worker using Deno's internal
+   * worker close operation. It does not call the current `self.close` property.
    *
    * ```ts
    * Deno.exit(5);
@@ -1935,6 +2000,11 @@ declare namespace Deno {
      *   console.log(decoder.decode(chunk));
      * }
      * ```
+     *
+     * Note that the readable stream *takes ownership of the file*: reading the
+     * stream to completion (or cancelling it) closes the file automatically, so
+     * you should not close the file yourself while the stream is still being
+     * consumed.
      */
     readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
     /** A {@linkcode WritableStream} instance to write the contents of the
@@ -1950,6 +2020,10 @@ declare namespace Deno {
      *   await writer.write(encoder.encode(item));
      * }
      * ```
+     *
+     * Note that the writable stream *takes ownership of the file*: closing or
+     * aborting the stream closes the file automatically, so you should not
+     * close the file yourself while the stream is still in use.
      */
     readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
     /** Write the contents of the array buffer (`p`) to the file.
@@ -3675,6 +3749,17 @@ declare namespace Deno {
    * }
    * ```
    *
+   * The `ignore` option can be used to filter out events for one or more paths.
+   * A path matches when it is, or is contained within, an ignored path, so
+   * ignoring a directory ignores everything beneath it. Relative paths are
+   * resolved against the current working directory. Ignored paths still
+   * require `allow-read` permission, the same as the watched paths.
+   *
+   * ```ts
+   * // Watch the project but skip the `.git` directory and `build` output.
+   * const watcher = Deno.watchFs(".", { ignore: [".git", "build"] });
+   * ```
+   *
    * Call `watcher.close()` to stop watching.
    *
    * ```ts
@@ -3696,7 +3781,7 @@ declare namespace Deno {
    */
   export function watchFs(
     paths: string | string[],
-    options?: { recursive: boolean },
+    options?: { recursive?: boolean; ignore?: string | string[] },
   ): FsWatcher;
 
   /** Operating signals which can be listened for or sent to sub-processes. What
@@ -4817,7 +4902,12 @@ declare namespace Deno {
    * await Deno.symlink("old/name", "new/name");
    * ```
    *
-   * Requires full `allow-read` and `allow-write` permissions.
+   * Requires `allow-read` and `allow-write` permissions granted *without* a
+   * path scope (i.e. `--allow-read --allow-write`, not
+   * `--allow-read=./dir --allow-write=./dir`). A symlink's target may be a
+   * relative, absolute, or not-yet-existing path that is only resolved when the
+   * link is later traversed, so it cannot be checked against a path-scoped
+   * allow-list at creation time. Path-scoped grants are therefore rejected.
    *
    * @tags allow-read, allow-write
    * @category File System
@@ -4838,7 +4928,12 @@ declare namespace Deno {
    * Deno.symlinkSync("old/name", "new/name");
    * ```
    *
-   * Requires full `allow-read` and `allow-write` permissions.
+   * Requires `allow-read` and `allow-write` permissions granted *without* a
+   * path scope (i.e. `--allow-read --allow-write`, not
+   * `--allow-read=./dir --allow-write=./dir`). A symlink's target may be a
+   * relative, absolute, or not-yet-existing path that is only resolved when the
+   * link is later traversed, so it cannot be checked against a path-scoped
+   * allow-list at creation time. Path-scoped grants are therefore rejected.
    *
    * @tags allow-read, allow-write
    * @category File System
@@ -6019,7 +6114,7 @@ declare namespace Deno {
    * @category FFI
    */
   export type ToNativeType<T extends NativeType = NativeType> = T extends
-    NativeStructType ? BufferSource
+    NativeStructType ? AllowSharedBufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
       : T extends NativeU16Enum<infer U> ? U
@@ -6035,7 +6130,7 @@ declare namespace Deno {
     : T extends NativeFunctionType
       ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
       : PointerValue
-    : T extends NativeBufferType ? BufferSource | null
+    : T extends NativeBufferType ? AllowSharedBufferSource | null
     : never;
 
   /** Type conversion for unsafe callback return types.
@@ -6044,7 +6139,7 @@ declare namespace Deno {
    */
   export type ToNativeResultType<
     T extends NativeResultType = NativeResultType,
-  > = T extends NativeStructType ? BufferSource
+  > = T extends NativeStructType ? AllowSharedBufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
       : T extends NativeU16Enum<infer U> ? U
@@ -6060,7 +6155,7 @@ declare namespace Deno {
     : T extends NativeFunctionType
       ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
       : PointerValue
-    : T extends NativeBufferType ? BufferSource | null
+    : T extends NativeBufferType ? AllowSharedBufferSource | null
     : T extends NativeVoidType ? void
     : never;
 
@@ -6265,7 +6360,7 @@ declare namespace Deno {
     static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
     static of<T = unknown>(
-      value: Deno.UnsafeCallback | BufferSource,
+      value: Deno.UnsafeCallback | AllowSharedBufferSource,
     ): PointerValue<T>;
     /** Return a new pointer offset from the original by `offset` bytes. */
     static offset<T = unknown>(
@@ -6349,7 +6444,7 @@ declare namespace Deno {
      * Length is determined from the typed array's `byteLength`.
      *
      * Also takes optional byte offset from the pointer. */
-    copyInto(destination: BufferSource, offset?: number): void;
+    copyInto(destination: AllowSharedBufferSource, offset?: number): void;
     /** Copies the memory of the specified pointer into a typed array.
      *
      * Length is determined from the typed array's `byteLength`.
@@ -6357,7 +6452,7 @@ declare namespace Deno {
      * Also takes optional byte offset from the pointer. */
     static copyInto(
       pointer: PointerObject,
-      destination: BufferSource,
+      destination: AllowSharedBufferSource,
       offset?: number,
     ): void;
   }

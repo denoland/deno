@@ -329,6 +329,8 @@ pub fn get_base_compiler_options_for_emit(
         (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::TsConfig) => vec!["deno.window", "deno.unstable", "dom", "node"],
         (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::DenoJson) => vec!["deno.worker", "deno.unstable", "node"],
         (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom", "node"],
+        (TsTypeLib::DenoDesktop, CompilerOptionsSourceKind::DenoJson) => vec!["deno.desktop", "deno.unstable", "node"],
+        (TsTypeLib::DenoDesktop, CompilerOptionsSourceKind::TsConfig) => vec!["deno.desktop", "deno.unstable", "dom", "node"],
       },
       "module": "NodeNext",
       "moduleDetection": "force",
@@ -490,6 +492,8 @@ struct MemoizedValues {
     OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
   deno_worker_check_compiler_options:
     OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
+  deno_desktop_check_compiler_options:
+    OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
   emit_compiler_options:
     OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
   #[cfg(feature = "deno_ast")]
@@ -537,6 +541,10 @@ pub struct CompilerOptionsData {
 }
 
 impl CompilerOptionsData {
+  pub fn has_compiler_options(&self) -> bool {
+    self.sources.iter().any(|s| s.compiler_options.is_some())
+  }
+
   fn new(
     sources: Vec<CompilerOptionsSource>,
     source_kind: CompilerOptionsSourceKind,
@@ -579,6 +587,9 @@ impl CompilerOptionsData {
       CompilerOptionsType::Check {
         lib: TsTypeLib::DenoWorker,
       } => &self.memoized.deno_worker_check_compiler_options,
+      CompilerOptionsType::Check {
+        lib: TsTypeLib::DenoDesktop,
+      } => &self.memoized.deno_desktop_check_compiler_options,
       CompilerOptionsType::Emit => &self.memoized.emit_compiler_options,
     };
     let result = cell.get_or_init(|| {
@@ -1467,10 +1478,7 @@ impl CompilerOptionsResolver {
 
   pub fn for_specifier(&self, specifier: &Url) -> &CompilerOptionsData {
     let workspace_data = self.workspace_configs.get_for_specifier(specifier);
-    if !workspace_data
-      .sources
-      .iter()
-      .any(|s| s.compiler_options.is_some())
+    if !workspace_data.has_compiler_options()
       && let Ok(path) = url_to_file_path(specifier)
     {
       for ts_config in &self.ts_configs {
@@ -1488,10 +1496,7 @@ impl CompilerOptionsResolver {
   ) -> (CompilerOptionsKey, &CompilerOptionsData) {
     let (scope, workspace_data) =
       self.workspace_configs.entry_for_specifier(specifier);
-    if !workspace_data
-      .sources
-      .iter()
-      .any(|s| s.compiler_options.is_some())
+    if !workspace_data.has_compiler_options()
       && let Ok(path) = url_to_file_path(specifier)
     {
       for (i, ts_config) in self.ts_configs.iter().enumerate() {
@@ -1650,12 +1655,17 @@ impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
 pub type CompilerOptionsResolverRc =
   deno_maybe_sync::MaybeArc<CompilerOptionsResolver>;
 
+#[derive(Debug, Default)]
+struct JsxImportSourceConfigData {
+  config: Option<JsxImportSourceConfigRc>,
+  has_compiler_options: bool,
+}
+
 /// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
 /// ahead of time as needed for the graph resolver.
 #[derive(Debug, Default)]
 pub struct JsxImportSourceConfigResolver {
-  workspace_configs:
-    FolderScopedWithUnscopedMap<Option<JsxImportSourceConfigRc>>,
+  workspace_configs: FolderScopedWithUnscopedMap<JsxImportSourceConfigData>,
   ts_configs: Vec<(Option<JsxImportSourceConfigRc>, TsConfigFileFilterRc)>,
 }
 
@@ -1664,9 +1674,14 @@ impl JsxImportSourceConfigResolver {
     compiler_options_resolver: &CompilerOptionsResolver,
   ) -> Result<Self, ToMaybeJsxImportSourceConfigError> {
     Ok(Self {
-      workspace_configs: compiler_options_resolver
-        .workspace_configs
-        .try_map(|d| Ok(d.jsx_import_source_config()?.cloned()))?,
+      workspace_configs: compiler_options_resolver.workspace_configs.try_map(
+        |d| {
+          Ok(JsxImportSourceConfigData {
+            config: d.jsx_import_source_config()?.cloned(),
+            has_compiler_options: d.has_compiler_options(),
+          })
+        },
+      )?,
       ts_configs: compiler_options_resolver
         .ts_configs
         .iter()
@@ -1684,14 +1699,17 @@ impl JsxImportSourceConfigResolver {
     &self,
     specifier: &Url,
   ) -> Option<&JsxImportSourceConfigRc> {
-    if let Ok(path) = url_to_file_path(specifier) {
+    let workspace_data = self.workspace_configs.get_for_specifier(specifier);
+    if !workspace_data.has_compiler_options
+      && let Ok(path) = url_to_file_path(specifier)
+    {
       for (config, filter) in &self.ts_configs {
         if filter.includes_path(&path) {
           return config.as_ref();
         }
       }
     }
-    self.workspace_configs.get_for_specifier(specifier).as_ref()
+    workspace_data.config.as_ref()
   }
 }
 

@@ -123,13 +123,34 @@ pub async fn publish(
     }
   }
 
+  // Bail out early if the version is already published, before doing the
+  // expensive type checking and tarball preparation. Already-published
+  // versions are skipped with a warning (rather than erroring) so that
+  // re-running `deno publish` after a partial or concurrent publish still
+  // succeeds, matching the idempotent behavior of the publish step itself.
+  if !publish_flags.dry_run {
+    publish_configs = filter_out_published_packages(
+      &cli_factory.http_client_provider().get_or_create()?,
+      jsr_api_url(),
+      publish_configs,
+    )
+    .await?;
+
+    if publish_configs.is_empty() {
+      log::info!(
+        "{} All packages are already published",
+        colors::green("Success"),
+      );
+      return Ok(());
+    }
+  }
+
   let specifier_unfurler = SpecifierUnfurler::new(
     cli_factory.node_resolver().await?.clone(),
     cli_factory.npm_req_resolver().await?.clone(),
     cli_factory.pkg_json_resolver()?.clone(),
     cli_factory.cli_options().unwrap().start_dir.clone(),
     cli_factory.workspace_resolver().await?.clone(),
-    cli_options.unstable_bare_node_builtins(),
   );
 
   let diagnostics_collector = PublishDiagnosticsCollector::default();
@@ -203,6 +224,51 @@ pub async fn publish(
   .await?;
 
   Ok(())
+}
+
+/// Queries the registry for each package's version concurrently and returns the
+/// subset of configs whose versions are not yet published. Already-published
+/// versions are reported with a warning and dropped from the returned list.
+async fn filter_out_published_packages(
+  client: &HttpClient,
+  registry_api_url: &Url,
+  publish_configs: Vec<JsrPackageConfig>,
+) -> Result<Vec<JsrPackageConfig>, AnyError> {
+  let checks = publish_configs.iter().map(|config| async move {
+    let Some(version) = config.config_file.json.version.as_deref() else {
+      // a missing version is reported with a better error later on
+      return Ok::<bool, AnyError>(false);
+    };
+    let Ok((scope, package)) = registry::parse_package_name(&config.name)
+    else {
+      // an invalid package name is reported with a better error later on
+      return Ok(false);
+    };
+    registry::check_version_exists(
+      client,
+      registry_api_url,
+      scope,
+      package,
+      version,
+    )
+    .await
+  });
+  let results = deno_core::futures::future::join_all(checks).await;
+
+  let mut remaining = Vec::with_capacity(publish_configs.len());
+  for (config, already_published) in publish_configs.into_iter().zip(results) {
+    if already_published? {
+      log::info!(
+        "{} {}@{}",
+        colors::yellow("Warning: Skipping, already published"),
+        config.name,
+        config.config_file.json.version.as_deref().unwrap_or(""),
+      );
+    } else {
+      remaining.push(config);
+    }
+  }
+  Ok(remaining)
 }
 
 struct PreparedPublishPackage {
@@ -389,8 +455,8 @@ impl PublishPreparer {
             type_check_mode: self.cli_options.type_check_mode(),
           },
         )?;
-        // ignore unused parameter diagnostics that may occur due to fast check
-        // not having function body implementations
+        // ignore unused (type) parameter diagnostics that may occur due to fast
+        // check not having function body implementations
         for result in diagnostics_by_folder.by_ref() {
           let check_diagnostics = result?;
           let check_diagnostics =
@@ -427,12 +493,7 @@ impl PublishPreparer {
         deno_json.specifier
       )
     })?;
-    let Some(name_no_at) = package.name.strip_prefix('@') else {
-      bail!("Invalid package name, use '@<scope_name>/<package_name> format");
-    };
-    let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
-      bail!("Invalid package name, use '@<scope_name>/<package_name> format");
-    };
+    let (scope, name_no_scope) = registry::parse_package_name(&package.name)?;
     let file_patterns = package.member_dir.to_publish_config()?.files;
 
     let tarball = deno_core::unsync::spawn_blocking({
@@ -925,13 +986,12 @@ async fn publish_package(
     package.version
   );
 
-  let url = format!(
-    "{}scopes/{}/packages/{}/versions/{}?config=/{}",
+  let url = registry::get_package_version_api_url(
     registry_api_url,
-    package.scope,
-    package.package,
-    package.version,
-    package.config
+    &package.scope,
+    &package.package,
+    &package.version,
+    Some(&format!("config=/{}", package.config)),
   );
 
   let body = deno_fetch::ReqBody::full(package.tarball.bytes.clone());
@@ -1031,11 +1091,27 @@ async fn publish_package(
       package.scope, package.package, package.version
     ))?;
 
-    let resp = http_client.get(meta_url)?.send().await?;
+    let resp = http_client
+      .get(meta_url.clone())?
+      .send()
+      .await
+      .with_context(|| {
+        format!("Failed to fetch package manifest from {meta_url}")
+      })?;
+    let status = resp.status();
     let meta_bytes = resp.collect().await?.to_bytes();
 
     if std::env::var("DISABLE_JSR_MANIFEST_VERIFICATION_FOR_TESTING").is_err() {
-      verify_version_manifest(&meta_bytes, &package)?;
+      if !status.is_success() {
+        bail!(
+          "Failed to fetch package manifest from {meta_url}: status {status}\n\n{}",
+          response_body_snippet(&meta_bytes),
+        );
+      }
+
+      verify_version_manifest(&meta_bytes, &package).with_context(|| {
+        format!("Failed to verify package manifest from {meta_url}")
+      })?;
     }
 
     let subject = provenance::Subject {
@@ -1187,11 +1263,35 @@ struct VersionManifest {
   exports: HashMap<String, String>,
 }
 
+/// Returns a truncated, lossy UTF-8 rendering of a response body for use in
+/// error messages, so that a non-JSON response (e.g. an HTML error page) is
+/// diagnosable instead of surfacing as an opaque deserialization error.
+fn response_body_snippet(bytes: &[u8]) -> String {
+  const MAX_LEN: usize = 512;
+  let text = String::from_utf8_lossy(bytes);
+  let text = text.trim();
+  if text.len() > MAX_LEN {
+    let mut end = MAX_LEN;
+    while !text.is_char_boundary(end) {
+      end -= 1;
+    }
+    format!("{}... (truncated)", &text[..end])
+  } else {
+    text.to_string()
+  }
+}
+
 fn verify_version_manifest(
   meta_bytes: &[u8],
   package: &PreparedPublishPackage,
 ) -> Result<(), AnyError> {
-  let manifest = serde_json::from_slice::<VersionManifest>(meta_bytes)?;
+  let manifest = serde_json::from_slice::<VersionManifest>(meta_bytes)
+    .with_context(|| {
+      format!(
+        "Failed to parse package manifest as JSON. Response body:\n\n{}",
+        response_body_snippet(meta_bytes),
+      )
+    })?;
   // Check that nothing was removed from the manifest.
   if manifest.manifest.len() != package.tarball.files.len() {
     bail!(

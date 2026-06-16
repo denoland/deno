@@ -21,13 +21,8 @@ use aws_lc_rs::aead::UnboundKey;
 use ctr::Ctr32BE;
 use ctr::Ctr64BE;
 use ctr::Ctr128BE;
-use deno_core::JsBuffer;
-use deno_core::convert::Uint8Array;
-use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
 use rand::rngs::OsRng;
 use rsa::pkcs1::DecodeRsaPublicKey;
-use serde::Deserialize;
 use sha1::Sha1;
 use sha2::Sha256;
 use sha2::Sha384;
@@ -37,63 +32,6 @@ use sha3::Sha3_384;
 use sha3::Sha3_512;
 
 use crate::shared::*;
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EncryptOptions {
-  key: V8RawKeyData,
-  #[serde(flatten)]
-  algorithm: EncryptAlgorithm,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", tag = "algorithm")]
-pub enum EncryptAlgorithm {
-  #[serde(rename = "RSA-OAEP")]
-  RsaOaep {
-    hash: ShaHash,
-    #[serde(with = "serde_bytes")]
-    label: Vec<u8>,
-  },
-  #[serde(rename = "AES-CBC", rename_all = "camelCase")]
-  AesCbc {
-    #[serde(with = "serde_bytes")]
-    iv: Vec<u8>,
-    length: usize,
-  },
-  #[serde(rename = "AES-GCM", rename_all = "camelCase")]
-  AesGcm {
-    #[serde(with = "serde_bytes")]
-    iv: Vec<u8>,
-    #[serde(with = "serde_bytes")]
-    additional_data: Option<Vec<u8>>,
-    length: usize,
-    tag_length: usize,
-  },
-  #[serde(rename = "AES-OCB", rename_all = "camelCase")]
-  AesOcb {
-    #[serde(with = "serde_bytes")]
-    iv: Vec<u8>,
-    #[serde(with = "serde_bytes")]
-    additional_data: Option<Vec<u8>>,
-    length: usize,
-    tag_length: usize,
-  },
-  #[serde(rename = "AES-CTR", rename_all = "camelCase")]
-  AesCtr {
-    #[serde(with = "serde_bytes")]
-    counter: Vec<u8>,
-    ctr_length: usize,
-    key_length: usize,
-  },
-  #[serde(rename = "ChaCha20-Poly1305", rename_all = "camelCase")]
-  ChaCha20Poly1305 {
-    #[serde(with = "serde_bytes")]
-    nonce: Vec<u8>,
-    #[serde(with = "serde_bytes")]
-    additional_data: Option<Vec<u8>>,
-  },
-}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum EncryptError {
@@ -113,6 +51,9 @@ pub enum EncryptError {
   #[class(type)]
   #[error("iv length not equal to 12 or 16")]
   InvalidIvLength,
+  #[class("DOMExceptionOperationError")]
+  #[error("invalid tag length")]
+  InvalidTagLength,
   #[class(type)]
   #[error("invalid ChaCha20-Poly1305 nonce length: expected 12 bytes")]
   InvalidChaChaNonceLength,
@@ -130,47 +71,8 @@ pub enum EncryptError {
   Failed,
 }
 
-#[op2]
-pub async fn op_crypto_encrypt(
-  #[serde] opts: EncryptOptions,
-  #[buffer] data: JsBuffer,
-) -> Result<Uint8Array, EncryptError> {
-  let key = opts.key;
-  let fun = move || match opts.algorithm {
-    EncryptAlgorithm::RsaOaep { hash, label } => {
-      encrypt_rsa_oaep(key, hash, label, &data)
-    }
-    EncryptAlgorithm::AesCbc { iv, length } => {
-      encrypt_aes_cbc(key, length, iv, &data)
-    }
-    EncryptAlgorithm::AesGcm {
-      iv,
-      additional_data,
-      length,
-      tag_length,
-    } => encrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
-    EncryptAlgorithm::AesOcb {
-      iv,
-      additional_data,
-      length,
-      tag_length,
-    } => encrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
-    EncryptAlgorithm::AesCtr {
-      counter,
-      ctr_length,
-      key_length,
-    } => encrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
-    EncryptAlgorithm::ChaCha20Poly1305 {
-      nonce,
-      additional_data,
-    } => encrypt_chacha20_poly1305(key, &nonce, additional_data, &data),
-  };
-  let buf = spawn_blocking(fun).await.unwrap()?;
-  Ok(buf.into())
-}
-
-fn encrypt_rsa_oaep(
-  key: V8RawKeyData,
+pub(crate) fn encrypt_rsa_oaep(
+  key: &RawKeyData,
   hash: ShaHash,
   label: Vec<u8>,
   data: &[u8],
@@ -224,8 +126,8 @@ fn encrypt_rsa_oaep(
   Ok(encrypted)
 }
 
-fn encrypt_aes_cbc(
-  key: V8RawKeyData,
+pub(crate) fn encrypt_aes_cbc(
+  key: &RawKeyData,
   length: usize,
   iv: Vec<u8>,
   data: &[u8],
@@ -297,8 +199,8 @@ fn encrypt_aes_gcm_general<N: ArrayLength<u8>>(
   Ok(tag)
 }
 
-fn encrypt_aes_gcm(
-  key: V8RawKeyData,
+pub(crate) fn encrypt_aes_gcm(
+  key: &RawKeyData,
   length: usize,
   tag_length: usize,
   iv: Vec<u8>,
@@ -338,8 +240,8 @@ fn encrypt_aes_gcm(
   Ok(ciphertext)
 }
 
-fn encrypt_aes_ocb(
-  key: V8RawKeyData,
+pub(crate) fn encrypt_aes_ocb(
+  key: &RawKeyData,
   length: usize,
   tag_length: usize,
   iv: Vec<u8>,
@@ -347,6 +249,17 @@ fn encrypt_aes_ocb(
   data: &[u8],
 ) -> Result<Vec<u8>, EncryptError> {
   use aes_gcm::aead::generic_array::GenericArray;
+  use aes_gcm::aead::generic_array::typenum::U6;
+  use aes_gcm::aead::generic_array::typenum::U7;
+  use aes_gcm::aead::generic_array::typenum::U8;
+  use aes_gcm::aead::generic_array::typenum::U9;
+  use aes_gcm::aead::generic_array::typenum::U10;
+  use aes_gcm::aead::generic_array::typenum::U11;
+  use aes_gcm::aead::generic_array::typenum::U12;
+  use aes_gcm::aead::generic_array::typenum::U13;
+  use aes_gcm::aead::generic_array::typenum::U14;
+  use aes_gcm::aead::generic_array::typenum::U15;
+  use aes_gcm::aead::generic_array::typenum::U16;
   use ocb3::Ocb3;
   use ocb3::aead::AeadInPlace as Ocb3AeadInPlace;
   use ocb3::aead::KeyInit as Ocb3KeyInit;
@@ -356,50 +269,90 @@ fn encrypt_aes_ocb(
 
   let mut ciphertext = data.to_vec();
 
-  // OCB supports nonce sizes from 1 to 15 bytes (recommended: 12 bytes)
-  if iv.is_empty() || iv.len() > 15 {
+  // The WICG spec permits a 64-, 96- or 128-bit tag for AES-OCB. The `ocb3`
+  // crate's TagSize is a compile-time type parameter, so map each permitted
+  // length to its typenum (U8/U12/U16). Anything else is an OperationError.
+  let tag_size = match tag_length {
+    64 => OcbTagSize::U8,
+    96 => OcbTagSize::U12,
+    128 => OcbTagSize::U16,
+    _ => return Err(EncryptError::InvalidTagLength),
+  };
+
+  // RFC 7253 permits nonces up to 15 bytes; the `ocb3` crate supports 6..=15.
+  // The NonceSize is a compile-time type parameter, so dispatch the runtime
+  // length to the matching typenum. Lengths outside 6..=15 are unsupported.
+  if iv.len() < 6 || iv.len() > 15 {
     return Err(EncryptError::InvalidIvLength);
   }
 
-  let nonce = GenericArray::from_slice(&iv);
+  // For a concrete (cipher, nonce, tag) triple the `ocb3` sealed NonceSizes /
+  // TagSizes bounds are satisfied automatically; encrypt in place and return
+  // the detached tag (already exactly `$tag` bytes long, no truncation).
+  macro_rules! ocb_encrypt {
+    ($aes:ty, $nonce:ty, $tag:ty) => {{
+      let cipher = Ocb3::<$aes, $nonce, $tag>::new_from_slice(key)
+        .map_err(|_| EncryptError::Failed)?;
+      let nonce = GenericArray::<u8, $nonce>::from_slice(&iv);
+      cipher
+        .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
+        .map_err(|_| EncryptError::Failed)?
+        .to_vec()
+    }};
+  }
+  macro_rules! ocb_encrypt_for_tag {
+    ($nonce:ty, $tag:ty) => {
+      match length {
+        128 => ocb_encrypt!(aes::Aes128, $nonce, $tag),
+        192 => ocb_encrypt!(aes::Aes192, $nonce, $tag),
+        256 => ocb_encrypt!(aes::Aes256, $nonce, $tag),
+        _ => return Err(EncryptError::InvalidLength),
+      }
+    };
+  }
+  macro_rules! ocb_encrypt_for_key {
+    ($nonce:ty) => {
+      match tag_size {
+        OcbTagSize::U8 => ocb_encrypt_for_tag!($nonce, U8),
+        OcbTagSize::U12 => ocb_encrypt_for_tag!($nonce, U12),
+        OcbTagSize::U16 => ocb_encrypt_for_tag!($nonce, U16),
+      }
+    };
+  }
 
-  let tag = match length {
-    128 => {
-      let cipher = Ocb3::<aes::Aes128>::new_from_slice(key)
-        .map_err(|_| EncryptError::Failed)?;
-      cipher
-        .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
-        .map_err(|_| EncryptError::Failed)?
-    }
-    192 => {
-      let cipher = Ocb3::<aes::Aes192>::new_from_slice(key)
-        .map_err(|_| EncryptError::Failed)?;
-      cipher
-        .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
-        .map_err(|_| EncryptError::Failed)?
-    }
-    256 => {
-      let cipher = Ocb3::<aes::Aes256>::new_from_slice(key)
-        .map_err(|_| EncryptError::Failed)?;
-      cipher
-        .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
-        .map_err(|_| EncryptError::Failed)?
-    }
-    _ => return Err(EncryptError::InvalidLength),
+  let tag = match iv.len() {
+    6 => ocb_encrypt_for_key!(U6),
+    7 => ocb_encrypt_for_key!(U7),
+    8 => ocb_encrypt_for_key!(U8),
+    9 => ocb_encrypt_for_key!(U9),
+    10 => ocb_encrypt_for_key!(U10),
+    11 => ocb_encrypt_for_key!(U11),
+    12 => ocb_encrypt_for_key!(U12),
+    13 => ocb_encrypt_for_key!(U13),
+    14 => ocb_encrypt_for_key!(U14),
+    15 => ocb_encrypt_for_key!(U15),
+    _ => return Err(EncryptError::InvalidIvLength),
   };
 
-  // Truncate tag to the specified tag length
-  // OCB tag is 16 bytes by default
-  let tag = &tag[..(tag_length / 8)];
-
+  // The detached tag is already `tag_length / 8` bytes (TagSize), so no
+  // truncation is required.
   // C | T
-  ciphertext.extend_from_slice(tag);
+  ciphertext.extend_from_slice(&tag);
 
   Ok(ciphertext)
 }
 
-fn encrypt_chacha20_poly1305(
-  key: V8RawKeyData,
+/// The AES-OCB tag sizes permitted by the WICG WebCrypto extension, mapping
+/// each WICG `tagLength` to the `ocb3` TagSize typenum used at instantiation.
+#[derive(Clone, Copy)]
+enum OcbTagSize {
+  U8,
+  U12,
+  U16,
+}
+
+pub(crate) fn encrypt_chacha20_poly1305(
+  key: &RawKeyData,
   nonce: &[u8],
   additional_data: Option<Vec<u8>>,
   data: &[u8],
@@ -449,8 +402,8 @@ where
   Ok(ciphertext)
 }
 
-fn encrypt_aes_ctr(
-  key: V8RawKeyData,
+pub(crate) fn encrypt_aes_ctr(
+  key: &RawKeyData,
   key_length: usize,
   counter: &[u8],
   ctr_length: usize,

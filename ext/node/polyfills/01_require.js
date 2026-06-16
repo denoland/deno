@@ -780,7 +780,12 @@ function esmResolveHookCallback(specifier, referrer) {
 }
 
 // ESM load hook chain: runs hooks in LIFO order.
-// Returns { source } if hooks provided source, or null for fallthrough.
+// Returns `null` when no load hooks are registered, otherwise
+// `{ result, effectiveUrl }` where `result` is the hook chain's return value
+// and `effectiveUrl` is the URL the chain ultimately delegated to via
+// `nextLoad(newUrl)`: used by the load loop when falling through to Rust
+// default loading so the source comes from the URL the user redirected to,
+// not the original.
 function executeEsmLoadHookChain(fileUrl, context) {
   const loadHooks = [];
   for (let i = hookEntries.length - 1; i >= 0; i--) {
@@ -792,14 +797,18 @@ function executeEsmLoadHookChain(fileUrl, context) {
 
   let index = 0;
   let currentContext = context;
+  let effectiveUrl = fileUrl;
 
   function nextLoad(loadUrl, ctx) {
+    effectiveUrl = loadUrl;
     if (ctx !== undefined && ctx !== null) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= loadHooks.length) {
-      // End of chain - perform default load so user hooks calling
-      // nextLoad() receive the actual source they can transform.
+      // End of chain. Synthesize a default load result so user hooks
+      // that call `await nextLoad(...)` observe a real `source` they
+      // can transform (matches Node, where `defaultLoad` returns the
+      // on-disk source).
       if (StringPrototypeStartsWith(loadUrl, "node:")) {
         return { source: null, format: "builtin", shortCircuit: true };
       }
@@ -812,10 +821,11 @@ function executeEsmLoadHookChain(fileUrl, context) {
             shortCircuit: true,
           };
         } catch {
-          // Any synchronous read failure (file absent from disk because it's
+          // Any sync read failure (file absent from disk because it's
           // embedded in a compiled binary's eszip, permission errors,
-          // transient IO) falls through to Rust default loading, which will
-          // surface a clearer error if the module truly cannot be loaded.
+          // transient IO) falls through to Rust default loading via
+          // the load loop, which surfaces a clearer error if the
+          // module truly cannot be loaded.
           return { source: null, shortCircuit: true };
         }
       }
@@ -838,7 +848,8 @@ function executeEsmLoadHookChain(fileUrl, context) {
     return result;
   }
 
-  return nextLoad(fileUrl, context);
+  const result = nextLoad(fileUrl, context);
+  return { result, effectiveUrl };
 }
 
 function _startEsmLoadLoop() {
@@ -857,19 +868,24 @@ function _startEsmLoadLoop() {
         importAttributes: { __proto__: null },
       };
       try {
-        const result = executeEsmLoadHookChain(fileUrl, context);
+        const chainResult = executeEsmLoadHookChain(fileUrl, context);
+        const result = chainResult?.result ?? null;
+        const effectiveUrl = chainResult?.effectiveUrl ?? null;
         if (result?.format === "builtin") {
-          op_module_hooks_respond_load(id, null, "builtin", null);
+          op_module_hooks_respond_load(id, null, "builtin", null, null);
         } else if (result !== null && result.source != null) {
           const source = loadHookSourceToString(result.source);
           const format = result.format || null;
-          op_module_hooks_respond_load(id, source, format, null);
+          op_module_hooks_respond_load(id, source, format, null, null);
         } else {
-          // Fallthrough: tell Rust to use default loading
-          op_module_hooks_respond_load(id, null, null, null);
+          // Fallthrough: tell Rust to use default loading. Pass the URL the
+          // hook chain ultimately delegated to (may differ from the original
+          // when a hook called `nextLoad(newUrl)`) so source is fetched from
+          // there while the module keeps the original URL as its identity.
+          op_module_hooks_respond_load(id, null, null, null, effectiveUrl);
         }
       } catch (e) {
-        op_module_hooks_respond_load(id, null, null, String(e));
+        op_module_hooks_respond_load(id, null, null, String(e), null);
       }
     }
   })();
@@ -1375,6 +1391,25 @@ Module._resolveLookupPaths = function (request, parent) {
 };
 
 Module._load = function (request, parent, isMain) {
+  // A `node:`-prefixed `require()` of a specifier that isn't a user-requirable
+  // builtin throws ERR_UNKNOWN_BUILTIN_MODULE. This covers unknown ids and
+  // `internal/*` modules (Node only exposes those under `--expose-internals`).
+  // `require.resolve()` goes through `_resolveFilename` directly and instead
+  // reports MODULE_NOT_FOUND, so this check lives here rather than there.
+  if (
+    typeof request === "string" &&
+    StringPrototypeStartsWith(request, "node:") &&
+    !(hookEntries.length > 0 && !insideResolveHook)
+  ) {
+    const id = StringPrototypeSlice(request, 5);
+    if (
+      !(id in nativeModuleExports) ||
+      StringPrototypeStartsWith(id, "internal/")
+    ) {
+      throw new internalErrors.ERR_UNKNOWN_BUILTIN_MODULE(request);
+    }
+  }
+
   let relResolveCacheIdentifier;
   if (parent) {
     // Fast path for (lazy loaded) modules in the same directory. The indirect
@@ -1675,6 +1710,9 @@ Module._resolveFilename = function (
     if (hookEntries.length > 0 && !insideResolveHook) {
       return request;
     }
+    // `require.resolve("node:unknown")` reports MODULE_NOT_FOUND, unlike
+    // `require("node:unknown")` which throws ERR_UNKNOWN_BUILTIN_MODULE from
+    // `Module._load`.
     const err = new Error(`Cannot find module '${request}'`);
     err.code = "MODULE_NOT_FOUND";
     throw err;
@@ -3211,19 +3249,17 @@ export function register(_specifier, _parentUrl, _options) {
  * @returns {{ deregister: () => void }}
  */
 export function registerHooks(hooks) {
-  if (typeof hooks !== "object" || hooks === null) {
-    throw new internalErrors.ERR_INVALID_ARG_TYPE("hooks", "object", hooks);
+  const { resolve, load } = hooks;
+  if (resolve) {
+    internalValidators.validateFunction(resolve, "hooks.resolve");
   }
-  const resolve = typeof hooks.resolve === "function" ? hooks.resolve : null;
-  const load = typeof hooks.load === "function" ? hooks.load : null;
-  if (resolve === null && load === null) {
-    throw new internalErrors.ERR_INVALID_ARG_VALUE(
-      "hooks",
-      hooks,
-      "must contain at least one of 'resolve' or 'load'",
-    );
+  if (load) {
+    internalValidators.validateFunction(load, "hooks.load");
   }
-  const entry = { resolve, load };
+  const entry = {
+    resolve: typeof resolve === "function" ? resolve : null,
+    load: typeof load === "function" ? load : null,
+  };
   ArrayPrototypePush(hookEntries, entry);
 
   // Activate ESM hooks in Rust module loader
@@ -3242,7 +3278,6 @@ export function registerHooks(hooks) {
 }
 
 Module.registerHooks = registerHooks;
-Module.register = register;
 
 let initialized = false;
 
@@ -3390,5 +3425,6 @@ export const _resolveFilename = Module._resolveFilename;
 export const _resolveLookupPaths = Module._resolveLookupPaths;
 export const _stat = Module._stat;
 export const globalPaths = Module.globalPaths;
+export const runMain = Module.runMain;
 
 export default Module;

@@ -147,14 +147,19 @@ impl TestReporter for TapTestReporter {
     std::io::stdout().flush().ok();
   }
 
-  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
+  fn report_slow(
+    &mut self,
+    _description: &TestDescription,
+    _elapsed: Duration,
+  ) {
+  }
   fn report_output(&mut self, _output: &[u8]) {}
 
   fn report_result(
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    _elapsed: u64,
+    _elapsed: Duration,
   ) {
     if self.is_concurrent {
       let results = self.step_results.remove(&description.id);
@@ -202,7 +207,7 @@ impl TestReporter for TapTestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    _elapsed: u64,
+    _elapsed: Duration,
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {

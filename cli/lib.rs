@@ -138,6 +138,12 @@ async fn run_subcommand(
     DenoSubcommand::Remove(remove_flags) => spawn_subcommand(async {
       tools::pm::remove(Arc::new(flags), remove_flags).await
     }),
+    DenoSubcommand::Link(link_flags) => spawn_subcommand(async {
+      tools::pm::link(Arc::new(flags), link_flags).await
+    }),
+    DenoSubcommand::Unlink(unlink_flags) => spawn_subcommand(async {
+      tools::pm::unlink(Arc::new(flags), unlink_flags).await
+    }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       let flags = Arc::new(flags);
       if bench_flags.watch.is_some() {
@@ -184,6 +190,9 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       tools::compile::compile(flags, compile_flags).await
+    }),
+    DenoSubcommand::Desktop(desktop_flags) => spawn_subcommand(async {
+      Box::pin(tools::desktop::desktop(flags, desktop_flags)).await
     }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async move {
       let reporter =
@@ -369,6 +378,10 @@ async fn run_subcommand(
                       clap::error::ErrorKind::InvalidSubcommand,
                     )
                     .with_cmd(&cmd);
+                  error.insert(
+                    clap::error::ContextKind::InvalidSubcommand,
+                    clap::error::ContextValue::String(run_flags.script.clone()),
+                  );
                   error.insert(
                     clap::error::ContextKind::SuggestedSubcommand,
                     clap::error::ContextValue::Strings(suggestions),
@@ -682,13 +695,35 @@ fn maybe_setup_permission_broker() {
 }
 
 #[inline(always)]
+pub(crate) fn boot_phase(label: &str) {
+  use std::sync::OnceLock;
+  use std::time::Instant;
+  static START: OnceLock<Instant> = OnceLock::new();
+  static ENABLED: OnceLock<bool> = OnceLock::new();
+  let start = START.get_or_init(Instant::now);
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "diagnostic env var; startup profiling only"
+  )]
+  let enabled =
+    *ENABLED.get_or_init(|| std::env::var_os("DENO_STARTUP_PHASES").is_some());
+  if enabled {
+    #[allow(clippy::print_stderr, reason = "diagnostic")]
+    {
+      eprintln!("[boot] {label:>28}  {:?}", start.elapsed());
+    }
+  }
+}
+
 pub fn main() {
+  boot_phase("main start");
   #[cfg(feature = "dhat-heap")]
   let profiler = dhat::Profiler::new_heap();
 
   setup_panic_hook();
 
   init_logging(None, None);
+  boot_phase("after panic+logging");
 
   util::unix::raise_fd_limit();
   util::windows::ensure_stdio_open();
@@ -704,9 +739,11 @@ pub fn main() {
 
   maybe_setup_permission_broker();
 
+  boot_phase("before aws_lc install");
   rustls::crypto::aws_lc_rs::default_provider()
     .install_default()
     .unwrap();
+  boot_phase("after aws_lc install");
 
   let args: Vec<_> = env::args_os().collect();
   let future = async move {
@@ -758,6 +795,7 @@ pub fn main() {
     if waited_unconfigured_runtime.is_none() {
       init_v8(&flags);
     }
+    boot_phase("after init_v8");
 
     (
       run_subcommand(flags, waited_unconfigured_runtime, roots).await,
@@ -789,12 +827,17 @@ async fn resolve_flags_and_init(
     deno_runtime::exit(0);
   }
 
+  boot_phase("before clap parse");
   let mut flags =
     match flags_from_vec_with_initial_cwd(args, initial_cwd.clone()) {
-      Ok(flags) => flags,
+      Ok(flags) => {
+        boot_phase("after clap parse");
+        flags
+      }
       Err(err @ clap::Error { .. })
         if err.kind() == clap::error::ErrorKind::DisplayVersion =>
       {
+        boot_phase("clap parse (version exit)");
         // Ignore results to avoid BrokenPipe errors.
         let _ = err.print();
         deno_runtime::exit(0);

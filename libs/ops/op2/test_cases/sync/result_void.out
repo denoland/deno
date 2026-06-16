@@ -13,6 +13,7 @@ pub const fn op_void_with_result() -> ::deno_core::_ops::OpDecl {
             false,
             0usize as u8,
             false,
+            false,
             Self::v8_fn_ptr as _,
             Self::slow_function_impl,
             ::deno_core::AccessorType::None,
@@ -105,8 +106,7 @@ pub const fn op_void_with_result() -> ::deno_core::_ops::OpDecl {
                         fast_api_callback_options) }
                     );
                     let mut scope = scope.init();
-                    let exception = deno_core::error::to_v8_error(&mut scope, &err);
-                    scope.throw_exception(exception);
+                    deno_core::error::throw_js_error_class(&mut scope, &err);
                     return unsafe { std::mem::zeroed() };
                 }
             };

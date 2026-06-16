@@ -1,11 +1,28 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials no-explicit-any
+// deno-lint-ignore-file no-explicit-any
 
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  ArrayBufferPrototypeGetByteLength,
+  ArrayIsArray,
+  ArrayPrototypeFind,
+  ArrayPrototypeIncludes,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+  Error,
+  ObjectPrototypeIsPrototypeOf,
+  String,
+  StringPrototypeIncludes,
+  TypeError,
+  TypeErrorPrototype,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+} = primordials;
 const {
   op_node_dh_check,
   op_node_dh_compute_secret,
@@ -23,6 +40,7 @@ const {
 const {
   isAnyArrayBuffer,
   isArrayBufferView,
+  isTypedArray,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 const {
   ERR_CRYPTO_ECDH_INVALID_FORMAT,
@@ -52,6 +70,26 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
 
 const DH_GENERATOR = 2;
+
+// Returns the { buffer, byteOffset, byteLength } of an ArrayBufferView, using
+// the correct primordial getters depending on whether it is a TypedArray or
+// DataView.
+function getViewParts(
+  view: ArrayBufferView,
+): { ab: ArrayBufferLike; off: number; len: number } {
+  if (isTypedArray(view)) {
+    return {
+      ab: TypedArrayPrototypeGetBuffer(view as any),
+      off: TypedArrayPrototypeGetByteOffset(view as any),
+      len: TypedArrayPrototypeGetByteLength(view as any),
+    };
+  }
+  return {
+    ab: DataViewPrototypeGetBuffer(view as any),
+    off: DataViewPrototypeGetByteOffset(view as any),
+    len: DataViewPrototypeGetByteLength(view as any),
+  };
+}
 
 function DiffieHellman(
   sizeOrKey: number | string | ArrayBufferView,
@@ -90,7 +128,14 @@ class DiffieHellmanImpl {
     ) {
       throw new ERR_INVALID_ARG_TYPE(
         "sizeOrKey",
-        ["number", "string", "ArrayBuffer", "Buffer", "TypedArray", "DataView"],
+        [
+          "number",
+          "string",
+          "ArrayBuffer",
+          "Buffer",
+          "TypedArray",
+          "DataView",
+        ],
         sizeOrKey,
       );
     }
@@ -115,13 +160,16 @@ class DiffieHellmanImpl {
 
     if (typeof sizeOrKey !== "number") {
       if (isArrayBufferView(sizeOrKey) || isAnyArrayBuffer(sizeOrKey)) {
-        this.#prime = Buffer.from(
-          isAnyArrayBuffer(sizeOrKey) ? sizeOrKey : sizeOrKey.buffer,
-          isArrayBufferView(sizeOrKey) ? sizeOrKey.byteOffset : 0,
-          isArrayBufferView(sizeOrKey)
-            ? sizeOrKey.byteLength
-            : (sizeOrKey as ArrayBuffer).byteLength,
-        );
+        if (isArrayBufferView(sizeOrKey)) {
+          const parts = getViewParts(sizeOrKey as ArrayBufferView);
+          this.#prime = Buffer.from(parts.ab, parts.off, parts.len);
+        } else {
+          this.#prime = Buffer.from(
+            sizeOrKey,
+            0,
+            ArrayBufferPrototypeGetByteLength(sizeOrKey as ArrayBuffer),
+          );
+        }
       } else {
         this.#prime = toBuf(sizeOrKey as string, keyEncoding as string);
       }
@@ -136,7 +184,9 @@ class DiffieHellmanImpl {
       }
 
       this.#prime = Buffer.from(
-        op_node_gen_prime(this.#primeLength, false, null, null).buffer,
+        TypedArrayPrototypeGetBuffer(
+          op_node_gen_prime(this.#primeLength, false, null, null),
+        ),
       );
     }
 
@@ -163,10 +213,19 @@ class DiffieHellmanImpl {
     } else if (typeof generator === "string") {
       generator = toBuf(generator, genEncoding as string);
       this.#generator = generator;
-    } else if (!isArrayBufferView(generator) && !isAnyArrayBuffer(generator)) {
+    } else if (
+      !isArrayBufferView(generator) && !isAnyArrayBuffer(generator)
+    ) {
       throw new ERR_INVALID_ARG_TYPE(
         "generator",
-        ["number", "string", "ArrayBuffer", "Buffer", "TypedArray", "DataView"],
+        [
+          "number",
+          "string",
+          "ArrayBuffer",
+          "Buffer",
+          "TypedArray",
+          "DataView",
+        ],
         generator,
       );
     } else {
@@ -218,7 +277,7 @@ class DiffieHellmanImpl {
     );
 
     // Zero-pad the shared secret to the length of the prime, per RFC 4346
-    let secretBuf = Buffer.from(sharedSecret.buffer);
+    let secretBuf = Buffer.from(TypedArrayPrototypeGetBuffer(sharedSecret));
     const primeLen = this.#prime.length;
     if (secretBuf.length < primeLen) {
       const padded = Buffer.alloc(primeLen);
@@ -230,6 +289,7 @@ class DiffieHellmanImpl {
       return secretBuf;
     }
 
+    // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
     return secretBuf.toString(outputEncoding);
   }
 
@@ -248,17 +308,17 @@ class DiffieHellmanImpl {
         this.#privateKey,
         this.#generator,
       );
-      this.#publicKey = Buffer.from(publicKey.buffer);
+      this.#publicKey = Buffer.from(TypedArrayPrototypeGetBuffer(publicKey));
       this.#publicKeyNeedsUpdate = false;
     } else {
       // Generate both keys
-      const [privateKey, publicKey] = op_node_dh_keys_generate_and_export(
+      const keys = op_node_dh_keys_generate_and_export(
         this.#prime,
         this.#primeLength ?? 0,
         generator,
       );
-      this.#privateKey = Buffer.from(privateKey.buffer);
-      this.#publicKey = Buffer.from(publicKey.buffer);
+      this.#privateKey = Buffer.from(TypedArrayPrototypeGetBuffer(keys[0]));
+      this.#publicKey = Buffer.from(TypedArrayPrototypeGetBuffer(keys[1]));
       this.#publicKeyNeedsUpdate = false;
     }
 
@@ -267,6 +327,7 @@ class DiffieHellmanImpl {
 
   getGenerator(encoding?: any): Buffer | string {
     if (encoding !== undefined && encoding != "buffer") {
+      // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
       return this.#generator.toString(encoding);
     }
 
@@ -275,6 +336,7 @@ class DiffieHellmanImpl {
 
   getPrime(encoding?: any): Buffer | string {
     if (encoding !== undefined && encoding != "buffer") {
+      // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
       return this.#prime.toString(encoding);
     }
 
@@ -283,6 +345,7 @@ class DiffieHellmanImpl {
 
   getPrivateKey(encoding?: any): Buffer | string {
     if (encoding !== undefined && encoding != "buffer") {
+      // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
       return this.#privateKey.toString(encoding);
     }
 
@@ -291,6 +354,7 @@ class DiffieHellmanImpl {
 
   getPublicKey(encoding?: any): Buffer | string {
     if (encoding !== undefined && encoding != "buffer") {
+      // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
       return this.#publicKey.toString(encoding);
     }
 
@@ -1228,7 +1292,7 @@ class DiffieHellmanGroupImpl {
   #diffiehellman: DiffieHellmanImpl;
 
   constructor(name: string) {
-    if (!DH_GROUP_NAMES.includes(name)) {
+    if (!ArrayPrototypeIncludes(DH_GROUP_NAMES, name)) {
       throw new ERR_CRYPTO_UNKNOWN_DH_GROUP();
     }
     const words = DH_GROUPS[name].prime;
@@ -1300,6 +1364,7 @@ function ecdhEncode(
   if (encoding === undefined || encoding === "buffer") {
     return buffer;
   }
+  // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
   return buffer.toString(encoding);
 }
 
@@ -1311,7 +1376,7 @@ class ECDHImpl {
   constructor(curve: string) {
     validateString(curve, "curve");
 
-    const c = ellipticCurves.find((x) => x.name == curve);
+    const c = ArrayPrototypeFind(ellipticCurves, (x) => x.name == curve);
     if (c == undefined) {
       throw new Error("invalid curve");
     }
@@ -1348,7 +1413,10 @@ class ECDHImpl {
         op_node_ecdh_encode_pubkey(curve, buf, compress),
       );
     } catch (e) {
-      if (e instanceof TypeError && e.message === "Unsupported curve") {
+      if (
+        ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e) &&
+        (e as Error).message === "Unsupported curve"
+      ) {
         throw new TypeError("Invalid EC curve name");
       }
       throw new Error("Failed to convert Buffer to EC_POINT");
@@ -1366,6 +1434,7 @@ class ECDHImpl {
     }
 
     if (outputEncoding && outputEncoding !== "buffer") {
+      // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
       return result.toString(outputEncoding);
     }
     return result;
@@ -1380,13 +1449,13 @@ class ECDHImpl {
       throw new ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY();
     }
 
-    const otherBuf = typeof otherPublicKey === "string"
-      ? Buffer.from(otherPublicKey, inputEncoding)
-      : Buffer.from(
-        otherPublicKey.buffer,
-        otherPublicKey.byteOffset,
-        otherPublicKey.byteLength,
-      );
+    let otherBuf: Buffer;
+    if (typeof otherPublicKey === "string") {
+      otherBuf = Buffer.from(otherPublicKey, inputEncoding);
+    } else {
+      const parts = getViewParts(otherPublicKey);
+      otherBuf = Buffer.from(parts.ab, parts.off, parts.len);
+    }
 
     const secretBuf = Buffer.alloc(this.#curve.sharedSecretSize);
 
@@ -1476,13 +1545,13 @@ class ECDHImpl {
     privateKey: ArrayBufferView | string,
     encoding?: any,
   ): Buffer | string {
-    const privbuf = typeof privateKey === "string"
-      ? Buffer.from(privateKey, encoding)
-      : Buffer.from(
-        privateKey.buffer,
-        privateKey.byteOffset,
-        privateKey.byteLength,
-      );
+    let privbuf: Buffer;
+    if (typeof privateKey === "string") {
+      privbuf = Buffer.from(privateKey, encoding);
+    } else {
+      const parts = getViewParts(privateKey);
+      privbuf = Buffer.from(parts.ab, parts.off, parts.len);
+    }
 
     if (!op_node_ecdh_validate_private_key(this.#curve.name, privbuf)) {
       throw new Error("Private key is not valid for specified curve");
@@ -1501,13 +1570,13 @@ class ECDHImpl {
     publicKey: ArrayBufferView | string,
     encoding?: any,
   ): void {
-    const pubbuf = typeof publicKey === "string"
-      ? Buffer.from(publicKey, encoding)
-      : Buffer.from(
-        publicKey.buffer,
-        publicKey.byteOffset,
-        publicKey.byteLength,
-      );
+    let pubbuf: Buffer;
+    if (typeof publicKey === "string") {
+      pubbuf = Buffer.from(publicKey, encoding);
+    } else {
+      const parts = getViewParts(publicKey);
+      pubbuf = Buffer.from(parts.ab, parts.off, parts.len);
+    }
     if (!op_node_ecdh_validate_public_key(this.#curve.name, pubbuf)) {
       throw new Error("Failed to convert Buffer to EC_POINT");
     }
@@ -1532,7 +1601,9 @@ function statelessDH(
 
   const privType = privateKeyObject.asymmetricKeyType;
   const pubType = publicKeyObject.asymmetricKeyType;
-  if (privType !== undefined && pubType !== undefined && privType !== pubType) {
+  if (
+    privType !== undefined && pubType !== undefined && privType !== pubType
+  ) {
     throw new ERR_CRYPTO_INCOMPATIBLE_KEY(
       "key types for Diffie-Hellman",
       `${privType} and ${pubType}`,
@@ -1545,9 +1616,13 @@ function statelessDH(
   } catch (err) {
     const e = err as Error & { code?: string };
     if (e && typeof e.message === "string") {
-      if (e.message.includes("mismatching domain parameters")) {
+      if (
+        StringPrototypeIncludes(e.message, "mismatching domain parameters")
+      ) {
         e.code = "ERR_OSSL_MISMATCHING_DOMAIN_PARAMETERS";
-      } else if (e.message.includes("failed during derivation")) {
+      } else if (
+        StringPrototypeIncludes(e.message, "failed during derivation")
+      ) {
         e.code = "ERR_OSSL_FAILED_DURING_DERIVATION";
       }
     }
@@ -1566,7 +1641,7 @@ function diffieHellman(
     throw new ERR_INVALID_ARG_TYPE("callback", "function", callback);
   }
   if (
-    typeof options !== "object" || options === null || Array.isArray(options)
+    typeof options !== "object" || options === null || ArrayIsArray(options)
   ) {
     throw new ERR_INVALID_ARG_TYPE("options", "object", options);
   }

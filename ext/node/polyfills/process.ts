@@ -1,9 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { core, internals, primordials } from "ext:core/mod.js";
 // Installs `internals.__inspectorNetwork` so ext/fetch (and other
 // extensions) can emit Network.* CDP events without requiring user code
@@ -149,16 +146,42 @@ const lazyLoadUtil = core.createLazyLoader<typeof utilModule>(
 
 const {
   ArrayIsArray,
+  ArrayPrototypeConcat,
+  ArrayPrototypeFind,
+  BigInt,
+  Error,
+  ErrorCaptureStackTrace,
+  ErrorPrototype,
+  Float64Array,
   FunctionPrototypeBind,
+  FunctionPrototypeCall,
+  MathFloor,
+  Number,
+  NumberIsFinite,
+  NumberIsInteger,
   NumberMAX_SAFE_INTEGER,
+  NumberPrototypeToFixed,
   ObjectCreate,
   ObjectDefineProperty,
+  ObjectEntries,
+  ObjectFreeze,
+  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  Proxy,
+  RangeError,
+  ReflectApply,
   ReflectGet,
   ReflectGetOwnPropertyDescriptor,
   ReflectGetPrototypeOf,
   ReflectHas,
   ReflectOwnKeys,
+  SafeArrayIterator,
+  SafeMap,
+  SafeWeakMap,
+  SafeWeakSet,
+  String,
+  StringPrototypeStartsWith,
+  SymbolToStringTag,
 } = primordials;
 
 export const argv: string[] = ["", ""];
@@ -231,7 +254,8 @@ function addReadOnlyProcessAlias(
   const value = getOptionValue(option);
 
   if (value) {
-    Object.defineProperty(process, name, {
+    ObjectDefineProperty(process, name, {
+      __proto__: null,
       writable: false,
       configurable: true,
       enumerable,
@@ -343,8 +367,7 @@ function createWarningObject(
     warningErr.detail = detail;
   }
 
-  // @ts-ignore this function is not available in lib.dom.d.ts
-  Error.captureStackTrace(warningErr, ctor || process.emitWarning);
+  ErrorCaptureStackTrace(warningErr, ctor || process.emitWarning);
 
   return warningErr;
 }
@@ -367,7 +390,7 @@ export function emitWarning(
 ) {
   let detail;
 
-  if (type !== null && typeof type === "object" && !Array.isArray(type)) {
+  if (type !== null && typeof type === "object" && !ArrayIsArray(type)) {
     ctor = type.ctor;
     code = type.code;
 
@@ -395,7 +418,7 @@ export function emitWarning(
 
   if (typeof warning === "string") {
     warning = createWarningObject(warning, type as string, code, ctor, detail);
-  } else if (!(warning instanceof Error)) {
+  } else if (!ObjectPrototypeIsPrototypeOf(ErrorPrototype, warning)) {
     throw new ERR_INVALID_ARG_TYPE("warning", ["Error", "string"], warning);
   }
 
@@ -420,8 +443,8 @@ export function emitWarning(
 
 export function hrtime(time?: [number, number]): [number, number] {
   const milli = performance.now();
-  const sec = Math.floor(milli / 1000);
-  const nano = Math.floor(milli * 1_000_000 - sec * 1_000_000_000);
+  const sec = MathFloor(milli / 1000);
+  const nano = MathFloor(milli * 1_000_000 - sec * 1_000_000_000);
   if (!time) {
     return [sec, nano];
   }
@@ -431,7 +454,8 @@ export function hrtime(time?: [number, number]): [number, number] {
   if (time.length !== 2) {
     throw new ERR_OUT_OF_RANGE("time", 2, time.length);
   }
-  const [prevSec, prevNano] = time;
+  const prevSec = time[0];
+  const prevNano = time[1];
   let diffSec = sec - prevSec;
   let diffNano = nano - prevNano;
   if (diffNano < 0) {
@@ -442,7 +466,9 @@ export function hrtime(time?: [number, number]): [number, number] {
 }
 
 hrtime.bigint = function (): bigint {
-  const [sec, nano] = hrtime();
+  const t = hrtime();
+  const sec = t[0];
+  const nano = t[1];
   return BigInt(sec) * 1_000_000_000n + BigInt(nano);
 };
 
@@ -484,9 +510,10 @@ function _kill(pid: number, sig: number): number {
   if (sig === 0) {
     return maybeMapErrno(op_node_process_kill(pid, 0));
   }
-  const maybeSignal = Object.entries(constants.os.signals).find((
-    [_, numericCode],
-  ) => numericCode === sig);
+  const maybeSignal = ArrayPrototypeFind(
+    ObjectEntries(constants.os.signals),
+    (entry) => entry[1] === sig,
+  );
 
   if (!maybeSignal) {
     return uv.codeMap.get("EINVAL");
@@ -511,7 +538,7 @@ export function kill(pid: number, sig: string | number = "SIGTERM") {
   if (typeof sig === "number") {
     err = process._kill(pid, sig);
   } else {
-    if (sig in constants.os.signals) {
+    if (ReflectHas(constants.os.signals, sig)) {
       // @ts-ignore Index previously checked
       err = process._kill(pid, constants.os.signals[sig]);
     } else {
@@ -573,7 +600,7 @@ const ALLOWED_FLAGS = buildAllowedFlags();
 // unhandled-rejection fallback below uses this set to skip emitting
 // 'uncaughtExceptionMonitor' / 'uncaughtException' a second time.
 // deno-lint-ignore no-explicit-any
-const _dispatchedFatalErrors = new WeakSet<any>();
+const _dispatchedFatalErrors = new SafeWeakSet<any>();
 internals._dispatchedFatalErrors = _dispatchedFatalErrors;
 
 // deno-lint-ignore no-explicit-any
@@ -603,16 +630,18 @@ export let execPath: string = "";
 // CreateProcessObject in src/node_process_object.cc).
 // deno-lint-ignore no-explicit-any
 const Process = function process(this: any) {
-  // deno-lint-ignore no-explicit-any
-  if (!(this instanceof Process)) return new (Process as any)();
+  if (!ObjectPrototypeIsPrototypeOf(Process.prototype, this)) {
+    // deno-lint-ignore no-explicit-any
+    return new (Process as any)();
+  }
 
-  EventEmitter.call(this);
+  FunctionPrototypeCall(EventEmitter, this);
 };
-Process.prototype = Object.create(EventEmitter.prototype);
+Process.prototype = ObjectCreate(EventEmitter.prototype);
 // Point the prototype's `constructor` at the real class with the same
 // descriptor Node uses (writable, non-enumerable, configurable) so
 // `process instanceof process.constructor` is true.
-Object.defineProperty(Process.prototype, "constructor", {
+ObjectDefineProperty(Process.prototype, "constructor", {
   __proto__: null,
   value: Process,
   writable: true,
@@ -624,7 +653,7 @@ Object.defineProperty(Process.prototype, "constructor", {
 // Node.js calls signal listeners with the signal name as the first argument,
 // but Deno.addSignalListener calls them with no arguments.
 type SignalListener = (...args: string[]) => void;
-const _signalListenerWrappers = new WeakMap<
+const _signalListenerWrappers = new SafeWeakMap<
   SignalListener,
   Map<string, SignalListener>
 >();
@@ -635,7 +664,7 @@ function _wrapSignalListener(
 ): SignalListener {
   let wrappersByEvent = _signalListenerWrappers.get(listener);
   if (!wrappersByEvent) {
-    wrappersByEvent = new Map();
+    wrappersByEvent = new SafeMap();
     _signalListenerWrappers.set(listener, wrappersByEvent);
   }
   let wrapper = wrappersByEvent.get(event);
@@ -692,7 +721,7 @@ Process.prototype.on = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && StringPrototypeStartsWith(event, "SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
@@ -703,14 +732,14 @@ Process.prototype.on = function (
     ) {
       // TODO(#26331): Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
-      EventEmitter.prototype.on.call(this, event, listener);
+      FunctionPrototypeCall(EventEmitter.prototype.on, this, event, listener);
       Deno.addSignalListener(
         event as Deno.Signal,
         _wrapSignalListener(event, listener),
       );
     }
   } else {
-    EventEmitter.prototype.on.call(this, event, listener);
+    FunctionPrototypeCall(EventEmitter.prototype.on, this, event, listener);
   }
 
   return this;
@@ -723,7 +752,7 @@ Process.prototype.off = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && StringPrototypeStartsWith(event, "SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (
@@ -737,7 +766,7 @@ Process.prototype.off = function (
       // wrapper with a `.listener` property pointing to the original. We need
       // to pass the wrapper (not the original) to Deno.removeSignalListener.
       const registered = _findSignalListener(this, event, listener);
-      EventEmitter.prototype.off.call(this, event, listener);
+      FunctionPrototypeCall(EventEmitter.prototype.off, this, event, listener);
       const unwrapped = _unwrapSignalListener(event, registered ?? listener);
       Deno.removeSignalListener(
         event as Deno.Signal,
@@ -745,7 +774,7 @@ Process.prototype.off = function (
       );
     }
   } else {
-    EventEmitter.prototype.off.call(this, event, listener);
+    FunctionPrototypeCall(EventEmitter.prototype.off, this, event, listener);
   }
 
   return this;
@@ -758,7 +787,11 @@ Process.prototype.emit = function (
   // deno-lint-ignore no-explicit-any
   ...args: any[]
 ): boolean {
-  return EventEmitter.prototype.emit.call(this, event, ...args);
+  return ReflectApply(
+    EventEmitter.prototype.emit,
+    this,
+    ArrayPrototypeConcat([event], args),
+  );
 };
 
 Process.prototype.prependListener = function (
@@ -768,18 +801,28 @@ Process.prototype.prependListener = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && StringPrototypeStartsWith(event, "SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else {
-      EventEmitter.prototype.prependListener.call(this, event, listener);
+      FunctionPrototypeCall(
+        EventEmitter.prototype.prependListener,
+        this,
+        event,
+        listener,
+      );
       Deno.addSignalListener(
         event as Deno.Signal,
         _wrapSignalListener(event, listener),
       );
     }
   } else {
-    EventEmitter.prototype.prependListener.call(this, event, listener);
+    FunctionPrototypeCall(
+      EventEmitter.prototype.prependListener,
+      this,
+      event,
+      listener,
+    );
   }
 
   return this;
@@ -813,18 +856,27 @@ Process.prototype.removeAllListeners = function (
     // unregister their Deno signal listeners before clearing.
     const events = this._events;
     if (events !== undefined) {
-      for (const key of Object.keys(events)) {
-        if (typeof key === "string" && key.startsWith("SIG")) {
+      const keys = ObjectKeys(events);
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        if (typeof key === "string" && StringPrototypeStartsWith(key, "SIG")) {
           _removeAllSignalListeners(this, key);
         }
       }
     }
-    return EventEmitter.prototype.removeAllListeners.call(this);
+    return FunctionPrototypeCall(
+      EventEmitter.prototype.removeAllListeners,
+      this,
+    );
   }
-  if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && StringPrototypeStartsWith(event, "SIG")) {
     _removeAllSignalListeners(this, event);
   }
-  return EventEmitter.prototype.removeAllListeners.call(this, event);
+  return FunctionPrototypeCall(
+    EventEmitter.prototype.removeAllListeners,
+    this,
+    event,
+  );
 };
 
 function _removeAllSignalListeners(
@@ -908,7 +960,8 @@ stdout = makeStreamDelegate("stdout");
 stderr = makeStreamDelegate("stderr");
 
 /** https://nodejs.org/api/process.html#processrelease */
-Object.defineProperty(process, "release", {
+ObjectDefineProperty(process, "release", {
+  __proto__: null,
   get() {
     return {
       name: "node",
@@ -921,21 +974,24 @@ Object.defineProperty(process, "release", {
 });
 
 /** https://nodejs.org/api/process.html#process_process_arch */
-Object.defineProperty(process, "arch", {
+ObjectDefineProperty(process, "arch", {
+  __proto__: null,
   get() {
     return arch;
   },
   configurable: true,
 });
 
-Object.defineProperty(process, "report", {
+ObjectDefineProperty(process, "report", {
+  __proto__: null,
   get() {
     return report;
   },
 });
 
 let processTitle: string | undefined;
-Object.defineProperty(process, "title", {
+ObjectDefineProperty(process, "title", {
+  __proto__: null,
   get() {
     if (processTitle == null) {
       return String(execPath);
@@ -954,7 +1010,8 @@ Object.defineProperty(process, "title", {
  */
 process.argv = argv;
 
-Object.defineProperty(process, "argv0", {
+ObjectDefineProperty(process, "argv0", {
+  __proto__: null,
   get() {
     return argv0;
   },
@@ -971,7 +1028,8 @@ Object.defineProperty(process, "argv0", {
 // Node's default inspector port (kDefaultInspectorPort in src/node_options.h).
 let _debugPort = 9229;
 let _debugPortWasSet = false;
-Object.defineProperty(process, "debugPort", {
+ObjectDefineProperty(process, "debugPort", {
+  __proto__: null,
   get() {
     // When the inspector is running, report the actual bound port so
     // `--inspect=...:0` reflects the ephemeral port chosen at bind
@@ -1030,7 +1088,8 @@ process.chdir = chdir;
 
 /** https://nodejs.org/api/process.html#processconfig */
 let _configCache: Record<string, unknown> | undefined;
-Object.defineProperty(process, "config", {
+ObjectDefineProperty(process, "config", {
+  __proto__: null,
   get() {
     if (_configCache === undefined) {
       // Internal escape hatch for the node_compat test runner: allows a
@@ -1045,11 +1104,11 @@ Object.defineProperty(process, "config", {
       } catch {
         // Permission denied or no env access; leave forceSharedOpenssl false.
       }
-      _configCache = Object.freeze({
-        target_defaults: Object.freeze({
+      _configCache = ObjectFreeze({
+        target_defaults: ObjectFreeze({
           default_configuration: "Release",
         }),
-        variables: Object.freeze({
+        variables: ObjectFreeze({
           // Match Node's lib/internal/process/per_thread.js process.config:
           // `node_module_version` is an integer ABI version exposed for native
           // addons. Mirror process.versions.modules so a single source of truth
@@ -1057,6 +1116,13 @@ Object.defineProperty(process, "config", {
           "node_module_version": Number(versions.modules),
           "llvm_version": "0.0",
           "enable_lto": "false",
+          // Node 26's bundled common.gypi gates LTO settings on these two
+          // variables. node-gyp materializes process.config into config.gypi,
+          // so they must be defined or `gyp` fails to evaluate the conditions
+          // (e.g. "name 'enable_thin_lto' is not defined") when building native
+          // addons against Node >= 26 headers.
+          "enable_thin_lto": "false",
+          "lto_jobs": "",
           "host_arch": arch,
           ...(forceSharedOpenssl ? { "node_shared_openssl": 1 } : {}),
         }),
@@ -1098,7 +1164,7 @@ process.openStdin = () => {
 // `aws-iot-device-sdk-v2` that depend on it
 // https://github.com/denoland/deno/issues/30115
 process._rawDebug = (...args: unknown[]) => {
-  core.print(`${format(...args)}\n`, true);
+  core.print(`${format(...new SafeArrayIterator(args))}\n`, true);
 };
 
 process.getActiveResourcesInfo = getActiveResourcesInfo;
@@ -1155,7 +1221,8 @@ process._fatalException = function (err: any, fromPromise?: boolean) {
 };
 
 /** https://nodejs.org/api/process.html#processexitcode_1 */
-Object.defineProperty(process, "exitCode", {
+ObjectDefineProperty(process, "exitCode", {
+  __proto__: null,
   get() {
     return ProcessExitCode;
   },
@@ -1164,14 +1231,14 @@ Object.defineProperty(process, "exitCode", {
     if (code == null) {
       parsedCode = 0;
     } else if (typeof code === "number") {
-      if (!Number.isInteger(code)) {
+      if (!NumberIsInteger(code)) {
         throw new ERR_OUT_OF_RANGE("code", "an integer", code);
       }
       parsedCode = code;
     } else if (typeof code === "string") {
       if (
-        code === "" || !Number.isFinite(Number(code)) ||
-        !Number.isInteger(Number(code))
+        code === "" || !NumberIsFinite(Number(code)) ||
+        !NumberIsInteger(Number(code))
       ) {
         throw new ERR_INVALID_ARG_TYPE("code", "integer", code);
       }
@@ -1194,21 +1261,24 @@ process.nextTick = _nextTick;
 process.dlopen = dlopen;
 
 /** https://nodejs.org/api/process.html#process_process_pid */
-Object.defineProperty(process, "pid", {
+ObjectDefineProperty(process, "pid", {
+  __proto__: null,
   get() {
     return pid;
   },
 });
 
 /** https://nodejs.org/api/process.html#processppid */
-Object.defineProperty(process, "ppid", {
+ObjectDefineProperty(process, "ppid", {
+  __proto__: null,
   get() {
     return Deno.ppid;
   },
 });
 
 /** https://nodejs.org/api/process.html#process_process_platform */
-Object.defineProperty(process, "platform", {
+ObjectDefineProperty(process, "platform", {
+  __proto__: null,
   get() {
     return platform;
   },
@@ -1226,7 +1296,8 @@ process.setSourceMapsEnabled = (val: boolean) => {
 };
 
 // Source maps are always enabled in Deno.
-Object.defineProperty(process, "sourceMapsEnabled", {
+ObjectDefineProperty(process, "sourceMapsEnabled", {
+  __proto__: null,
   get() {
     return true; // Source maps are always enabled in Deno.
   },
@@ -1343,7 +1414,8 @@ process.loadEnvFile = loadEnvFile;
 
 /** https://nodejs.org/api/process.html#processexecpath */
 
-Object.defineProperty(process, "execPath", {
+ObjectDefineProperty(process, "execPath", {
+  __proto__: null,
   get() {
     return String(execPath);
   },
@@ -1354,11 +1426,12 @@ Object.defineProperty(process, "execPath", {
 
 /** https://nodejs.org/api/process.html#processuptime */
 process.uptime = () => {
-  return Number((performance.now() / 1000).toFixed(9));
+  return Number(NumberPrototypeToFixed(performance.now() / 1000, 9));
 };
 
 /** https://nodejs.org/api/process.html#processallowednodeenvironmentflags */
-Object.defineProperty(process, "allowedNodeEnvironmentFlags", {
+ObjectDefineProperty(process, "allowedNodeEnvironmentFlags", {
+  __proto__: null,
   get() {
     return ALLOWED_FLAGS;
   },
@@ -1416,7 +1489,8 @@ if (isWindows) {
   delete process.getgroups;
 }
 
-Object.defineProperty(process, Symbol.toStringTag, {
+ObjectDefineProperty(process, SymbolToStringTag, {
+  __proto__: null,
   enumerable: false,
   writable: true,
   configurable: false,
@@ -1555,7 +1629,7 @@ function synchronizeListeners() {
 
         // If the rejection reason is not an Error, wrap it in an
         // ERR_UNHANDLED_REJECTION error, matching Node.js behavior.
-        if (!(reason instanceof Error)) {
+        if (!ObjectPrototypeIsPrototypeOf(ErrorPrototype, reason)) {
           const message = "This error originated either by throwing " +
             "inside of an async function without a catch block, or by rejecting a " +
             "promise which was not handled with .catch(). The promise rejected with the" +
@@ -1565,7 +1639,8 @@ function synchronizeListeners() {
           (err as any).code = "ERR_UNHANDLED_REJECTION";
           // deno-lint-ignore no-explicit-any
           (err as any).reason = event.reason;
-          Object.defineProperty(err, "name", {
+          ObjectDefineProperty(err, "name", {
+            __proto__: null,
             value: "UnhandledPromiseRejection",
             writable: true,
             configurable: true,
@@ -1724,8 +1799,10 @@ internals.__bootstrapNodeProcess = function (
       argv[i + 2] = args[i];
     }
 
-    for (const [key, value] of Object.entries(denoVersions)) {
-      versions[key] = value;
+    const denoVersionEntries = ObjectEntries(denoVersions);
+    for (let i = 0; i < denoVersionEntries.length; i++) {
+      const entry = denoVersionEntries[i];
+      versions[entry[0]] = entry[1];
     }
 
     enableNextTick();
@@ -1793,7 +1870,8 @@ internals.__bootstrapNodeProcess = function (
         "setgroups",
         "initgroups",
       ];
-      for (const fn of disabledFns) {
+      for (let i = 0; i < disabledFns.length; i++) {
+        const fn = disabledFns[i];
         const stub = function () {
           throw new ERR_WORKER_UNSUPPORTED_OPERATION(
             `process.${fn}()`,
@@ -1803,13 +1881,15 @@ internals.__bootstrapNodeProcess = function (
         process[fn] = stub;
       }
 
-      Object.defineProperty(process, "channel", {
+      ObjectDefineProperty(process, "channel", {
+        __proto__: null,
         get() {
           throw new ERR_WORKER_UNSUPPORTED_OPERATION("process.channel");
         },
         configurable: true,
       });
-      Object.defineProperty(process, "connected", {
+      ObjectDefineProperty(process, "connected", {
+        __proto__: null,
         get() {
           throw new ERR_WORKER_UNSUPPORTED_OPERATION("process.connected");
         },

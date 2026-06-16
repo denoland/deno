@@ -32,6 +32,16 @@ impl<T> OwnedPtr<T> {
     self.0
   }
 
+  /// Release ownership of the heap allocation, returning the raw pointer
+  /// without running `OwnedPtr`'s `Drop`. The caller becomes responsible for
+  /// freeing the memory (e.g. via `Box::from_raw`). Used when ownership of the
+  /// underlying libuv handle is transferred to another object.
+  pub fn into_raw(self) -> *mut T {
+    let ptr = self.0;
+    std::mem::forget(self);
+    ptr
+  }
+
   pub fn as_ptr(&self) -> *const T {
     self.0
   }
@@ -298,7 +308,7 @@ enum State {
 /// pointer is valid as long as the handle has not been closed via `uv_close`.
 /// This mirrors Node's approach where `HandleWrap` stores a `uv_handle_t*`
 /// that becomes null after close.
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub enum Handle {
   Old(ResourceId),
   New(*const uv_handle_t),
@@ -309,7 +319,7 @@ pub enum Handle {
 #[repr(C)]
 pub struct HandleWrap {
   base: AsyncWrap,
-  handle: Option<Handle>,
+  handle: Cell<Option<Handle>>,
   state: Rc<Cell<State>>,
 }
 
@@ -326,9 +336,17 @@ impl HandleWrap {
   pub(crate) fn create(base: AsyncWrap, handle: Option<Handle>) -> Self {
     Self {
       base,
-      handle,
+      handle: Cell::new(handle),
       state: Rc::new(Cell::new(State::Initialized)),
     }
+  }
+
+  /// Forget the native libuv handle without closing it. Used when ownership of
+  /// the handle is transferred to another object (e.g. an `Http2Session`
+  /// consuming a `TCPWrap` stream) so this wrap no longer tries to close or
+  /// free a handle it no longer owns.
+  pub(crate) fn clear_handle(&self) {
+    self.handle.set(None);
   }
 
   pub(crate) fn is_alive(&self) -> bool {
@@ -377,7 +395,7 @@ impl HandleWrap {
 
     // Close the native libuv handle if we have one, so it gets removed
     // from the event loop and stops keeping the process alive.
-    if let Some(Handle::New(handle)) = self.handle {
+    if let Some(Handle::New(handle)) = self.handle.get() {
       // SAFETY: handle was initialized by the corresponding uv_*_init and
       // is still valid (state == Initialized).
       unsafe {
@@ -392,11 +410,11 @@ impl HandleWrap {
   }
 
   pub(crate) fn has_ref_handle(&self, state: &mut OpState) -> bool {
-    if let Some(handle) = &self.handle {
+    if let Some(handle) = self.handle.get() {
       return match handle {
-        Handle::Old(resource_id) => state.has_ref(*resource_id),
+        Handle::Old(resource_id) => state.has_ref(resource_id),
         // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
-        Handle::New(handle) => unsafe { uv_compat::uv_has_ref(*handle) != 0 },
+        Handle::New(handle) => unsafe { uv_compat::uv_has_ref(handle) != 0 },
       };
     }
 
@@ -405,10 +423,10 @@ impl HandleWrap {
 
   pub(crate) fn ref_handle(&self, state: &mut OpState) {
     if self.is_alive()
-      && let Some(handle) = &self.handle
+      && let Some(handle) = self.handle.get()
     {
       match handle {
-        Handle::Old(resource_id) => state.uv_ref(*resource_id),
+        Handle::Old(resource_id) => state.uv_ref(resource_id),
         // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
         Handle::New(handle) => unsafe { uv_compat::uv_ref(handle.cast_mut()) },
       }
@@ -417,10 +435,10 @@ impl HandleWrap {
 
   pub(crate) fn unref_handle(&self, state: &mut OpState) {
     if self.is_alive()
-      && let Some(handle) = &self.handle
+      && let Some(handle) = self.handle.get()
     {
       match handle {
-        Handle::Old(resource_id) => state.uv_unref(*resource_id),
+        Handle::Old(resource_id) => state.uv_unref(resource_id),
         // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
         Handle::New(handle) => unsafe {
           uv_compat::uv_unref(handle.cast_mut())
