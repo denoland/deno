@@ -1042,15 +1042,25 @@ impl JsError {
       // when the user overrides `.stack` with a custom getter (e.g. Effect,
       // fiber runtimes) or assigns a plain string. In that case the structured
       // frames are not authoritative, so we mark the stack as custom and let
-      // formatters preserve the `.stack` string. We only do this for multi-line
-      // stacks, to avoid treating a bare "Name: message" string as a stack.
+      // formatters preserve the `.stack` string.
+      //
+      // V8's default `.stack` for a frame-less error is exactly its
+      // "name: message" string (and `message` may itself be multi-line). We
+      // only treat the stack as custom when it carries content beyond that
+      // header, so a multi-line *message* isn't mistaken for a stack.
+      let default_stack = if message_prop.is_empty() {
+        name.clone()
+      } else if name.is_empty() {
+        message_prop.clone()
+      } else {
+        format!("{name}: {message_prop}")
+      };
       let has_structured_frames =
         frames_v8.map(|a| a.length() > 0).unwrap_or(false);
       let stack_is_custom = !has_structured_frames
-        && stack
-          .as_ref()
-          .map(|s| s.lines().take(2).count() > 1)
-          .unwrap_or(false);
+        && stack.as_ref().is_some_and(|s| {
+          s.lines().count() > 1 && s.trim_end() != default_stack.trim_end()
+        });
 
       // Convert them into Vec<JsStackFrame>
       let mut frames: Vec<JsStackFrame> = match frames_v8 {
