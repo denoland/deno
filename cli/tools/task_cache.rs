@@ -93,8 +93,12 @@ impl TaskCache {
   fn entry_path(&self, key: &TaskCacheKey<'_>) -> PathBuf {
     // Hash the identity (package + task name + cwd) so we don't have to
     // worry about path-unsafe characters and so workspace members with
-    // identical task names don't collide.
-    let mut hasher = FastInsecureHasher::new_deno_versioned();
+    // identical task names don't collide. The filename is deliberately
+    // *not* version-sensitive: a Deno upgrade should reuse (and overwrite)
+    // the same entry, not orphan it under a new name and leak the old one.
+    // Version sensitivity lives in the fingerprint contents instead, so an
+    // upgrade simply produces a miss and the entry is rewritten in place.
+    let mut hasher = FastInsecureHasher::new_without_deno_version();
     hasher.write_str(key.package_name.unwrap_or(""));
     hasher.write_u8(0);
     hasher.write_str(key.task_name);
@@ -121,8 +125,17 @@ pub struct TaskCacheKey<'a> {
 }
 
 fn compute_fingerprint(key: &TaskCacheKey<'_>) -> Option<u64> {
+  // `new_deno_versioned` folds the Deno version into the fingerprint, so an
+  // upgrade invalidates every entry. Mix in the target OS and architecture
+  // too: a task's output can legitimately differ across platforms even when
+  // its inputs are byte-for-byte identical, so a cache shared across targets
+  // (e.g. a synced DENO_DIR) must not hit across them.
   let mut hasher = FastInsecureHasher::new_deno_versioned();
   hasher.write_str("deno-task-cache-v1");
+  hasher.write_str(std::env::consts::OS);
+  hasher.write_u8(0);
+  hasher.write_str(std::env::consts::ARCH);
+  hasher.write_u8(0);
   hasher.write_str(key.command);
   // Appended CLI args materially change what runs, so fold them into the
   // fingerprint. Length-prefix to keep the boundaries unambiguous.
@@ -165,6 +178,10 @@ fn compute_fingerprint(key: &TaskCacheKey<'_>) -> Option<u64> {
     // the task runs normally.
     return None;
   }
+  // TODO(bartlomieju): this reads every input fully into memory and rehashes
+  // its contents on each run. For large input trees an mtime+size fast path
+  // (only re-reading files whose stat changed) would be a worthwhile
+  // follow-up.
   for path in &files {
     let rel = path.strip_prefix(key.cwd).unwrap_or(path);
     hasher.write(rel.as_os_str().as_encoded_bytes());
