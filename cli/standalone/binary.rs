@@ -341,10 +341,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     };
     let temp_dir = tempfile::TempDir::new()?;
     let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
-      exe_name: "denort",
+      exe_name: if target.contains("windows") {
+        "denort.exe"
+      } else {
+        "denort"
+      },
       archive_name: &binary_name,
       archive_data: &archive_data,
-      is_windows: target.contains("windows"),
       dest_path: temp_dir.path(),
     })?;
     let base_binary = read_file(&base_binary_path)?;
@@ -409,7 +412,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       exe_name: &lib_name,
       archive_name: &binary_name,
       archive_data: &archive_data,
-      is_windows: target.contains("windows"),
       dest_path: temp_dir.path(),
     })?;
     let base_binary = read_file(&base_binary_path)?;
