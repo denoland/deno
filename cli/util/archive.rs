@@ -72,10 +72,11 @@ fn unzip(
 }
 
 pub struct UnpackArgs<'a> {
+  /// The full file name of the file expected to be produced by unpacking the
+  /// archive (e.g. `deno`, `deno.exe`, `libdenort.dylib`).
   pub exe_name: &'a str,
   pub archive_name: &'a str,
   pub archive_data: &'a [u8],
-  pub is_windows: bool,
   pub dest_path: &'a Path,
 }
 
@@ -84,12 +85,10 @@ pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
     exe_name,
     archive_name,
     archive_data,
-    is_windows,
     dest_path,
   } = args;
-  let exe_ext = if is_windows { "exe" } else { "" };
   let archive_path = dest_path.join(exe_name).with_extension("zip");
-  let exe_path = dest_path.join(exe_name).with_extension(exe_ext);
+  let exe_path = dest_path.join(exe_name);
   assert!(!exe_path.exists());
 
   let archive_ext = Path::new(archive_name)
