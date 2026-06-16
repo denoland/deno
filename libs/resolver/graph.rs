@@ -401,6 +401,51 @@ impl<
     )
   }
 
+  /// Best-effort resolution of a bare specifier against the managed npm
+  /// snapshot, regardless of whether the referrer's `package.json` declares
+  /// it.
+  ///
+  /// `deno compile --bundle` follows `new Worker(new URL(...))` and similar
+  /// references into modules that can live outside the entrypoint's package
+  /// scope (e.g. a worker authored in a sibling source tree, pulled in
+  /// alongside a `dist/`-rooted entrypoint). A bare npm import from such a
+  /// referrer can fail to map even though the package is installed and
+  /// resolves fine elsewhere in the same build. This lets the bundler fall
+  /// back to the snapshot by package name, matching Node/Bun's "find it in a
+  /// reachable node_modules" behavior.
+  ///
+  /// Known limitation: the specifier carries no version constraint, so this
+  /// resolves `name@*`. If the build's snapshot holds more than one version
+  /// of the package, the snapshot picks one by name alone, which may not be
+  /// the version the referrer's own `node_modules` tree would select. Node
+  /// and Bun resolve to the nearest reachable version; this does not. For the
+  /// common single-version case the result is identical.
+  ///
+  /// Returns `None` when npm resolution isn't managed or the package isn't
+  /// present in the snapshot.
+  pub fn resolve_bare_specifier_in_npm_snapshot(
+    &self,
+    raw_specifier: &str,
+    maybe_referrer: Option<&Url>,
+    resolution_mode: node_resolver::ResolutionMode,
+    resolution_kind: node_resolver::NodeResolutionKind,
+  ) -> Option<Url> {
+    let req_ref =
+      NpmPackageReqReference::from_str(&format!("npm:{raw_specifier}")).ok()?;
+    // Bail unless npm resolution is managed; `resolve_managed_npm_req_ref`
+    // unwraps these and would otherwise panic.
+    let node_and_npm_resolver = self.resolver.node_and_npm_resolver.as_ref()?;
+    node_and_npm_resolver.npm_resolver.as_managed()?;
+    self
+      .resolve_managed_npm_req_ref(
+        &req_ref,
+        maybe_referrer,
+        resolution_mode,
+        resolution_kind,
+      )
+      .ok()
+  }
+
   pub fn resolve(
     &self,
     raw_specifier: &str,
@@ -854,7 +899,7 @@ pub fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
 fn enhanced_unsupported_import_attribute(err: &ModuleError) -> Option<String> {
   match err.as_kind() {
     ModuleErrorKind::UnsupportedImportAttributeType { kind, .. }
-      if kind == "bytes" =>
+      if kind == "bytes" || kind == "css" =>
     {
       let mut text = format_deno_graph_error(err);
       text.push_str(&format!(

@@ -9,6 +9,7 @@ import {
 } from "@std/assert";
 import { fromFileUrl, relative, SEPARATOR } from "@std/path";
 import * as workerThreads from "node:worker_threads";
+import { isInternalThread } from "node:worker_threads";
 import { EventEmitter, once } from "node:events";
 import process from "node:process";
 
@@ -29,6 +30,17 @@ Deno.test({
   name: "[node/worker_threads] isMainThread",
   fn() {
     assertEquals(workerThreads.isMainThread, true);
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] isInternalThread",
+  fn() {
+    // Both the named export and the property on the module object must
+    // resolve, and be false in the main thread (Deno has no internal
+    // Node worker threads). Regression test for #35149.
+    assertEquals(isInternalThread, false);
+    assertEquals(workerThreads.isInternalThread, false);
   },
 });
 

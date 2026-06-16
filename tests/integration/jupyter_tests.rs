@@ -24,7 +24,6 @@ use uuid::Uuid;
 
 use crate::jupyter_client::DealerSocket;
 use crate::jupyter_client::ReqSocket;
-use crate::jupyter_client::RouterSocket;
 use crate::jupyter_client::SubSocket;
 
 /// Jupyter connection file format
@@ -196,6 +195,22 @@ impl JupyterMsg {
       ..Default::default()
     }
   }
+
+  // Computes the HMAC-SHA256 signature over the four signed frames, exactly as
+  // `to_frames` serializes them, and stores it as a lowercase hex string.
+  fn sign(&mut self, key: &str) {
+    use hmac::Hmac;
+    use hmac::Mac;
+    use sha2::Sha256;
+
+    let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).unwrap();
+    mac.update(&serde_json::to_vec(&self.header).unwrap());
+    mac.update(self.parent_header.to_string().as_bytes());
+    mac.update(self.metadata.to_string().as_bytes());
+    mac.update(self.content.to_string().as_bytes());
+    let digest = mac.finalize().into_bytes();
+    self.signature = digest.iter().map(|b| format!("{b:02x}")).collect();
+  }
 }
 
 #[derive(Clone)]
@@ -206,7 +221,7 @@ struct JupyterClient {
   control: Arc<Mutex<DealerSocket>>,
   shell: Arc<Mutex<DealerSocket>>,
   io_pub: Arc<Mutex<SubSocket>>,
-  stdin: Arc<Mutex<RouterSocket>>,
+  stdin: Arc<Mutex<DealerSocket>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -236,7 +251,7 @@ impl JupyterClient {
       async { DealerSocket::connect(&ctrl_addr).await.unwrap() },
       async { DealerSocket::connect(&shell_addr).await.unwrap() },
       async { SubSocket::connect(&iopub_addr).await.unwrap() },
-      async { RouterSocket::connect(&stdin_addr).await.unwrap() },
+      async { DealerSocket::connect(&stdin_addr).await.unwrap() },
     );
 
     Self {
@@ -278,8 +293,17 @@ impl JupyterClient {
     content: Value,
   ) -> Result<JupyterMsg> {
     let msg = JupyterMsg::new(self.session, msg_type, content);
-    let frames = msg.to_frames();
-    let bytes_frames: Vec<Bytes> = frames;
+    self.send_msg(channel, &msg).await?;
+    Ok(msg)
+  }
+
+  // Sends a pre-built message verbatim, so tests can control the signature.
+  async fn send_msg(
+    &self,
+    channel: JupyterChannel,
+    msg: &JupyterMsg,
+  ) -> Result<()> {
+    let bytes_frames: Vec<Bytes> = msg.to_frames();
     match channel {
       Control => {
         self
@@ -307,7 +331,7 @@ impl JupyterClient {
       }
       IoPub => panic!("Cannot send over IOPub"),
     }
-    Ok(msg)
+    Ok(())
   }
 
   async fn recv(&self, channel: JupyterChannel) -> Result<JupyterMsg> {
@@ -398,8 +422,15 @@ async fn server_ready(conn: &ConnectionSpec) -> bool {
 }
 
 async fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
+  setup_server_with_key("").await
+}
+
+async fn setup_server_with_key(
+  key: &str,
+) -> (TestContext, ConnectionSpec, JupyterServerProcess) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let (mut conn, mut listeners) = ConnectionSpec::new();
+  conn.key = key.into();
   let conn_file = context.temp_dir().path().join("connection.json");
   conn_file.write_json(&conn);
 
@@ -433,6 +464,7 @@ async fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
     }
 
     (conn, listeners) = ConnectionSpec::new();
+    conn.key = key.into();
     conn_file.write_json(&conn);
     drop(listeners);
     process = start_process(&conn_file);
@@ -562,6 +594,116 @@ async fn jupyter_execute_request() -> Result<()> {
       "text": "asdf\n",
     }),
   );
+
+  Ok(())
+}
+
+// Regression test for denoland/deno#22771: a `complete_request` whose code
+// contains multi-byte (e.g. Korean) characters must not crash the kernel. The
+// old Rust kernel sliced the cell text using the codepoint-based `cursor_pos`
+// as a byte index and panicked ("byte index N is not a char boundary").
+#[test]
+async fn jupyter_complete_request_multibyte() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  // The exact shape from the issue: a Korean character earlier in the cell and
+  // an identifier prefix at the very end where the cursor sits.
+  let code = "function getLunchPlace(me) {\n  '서';\n}\n\nge";
+  let cursor_pos = code.chars().count() as i64;
+  client
+    .send(
+      Shell,
+      "complete_request",
+      json!({ "code": code, "cursor_pos": cursor_pos }),
+    )
+    .await?;
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "complete_reply");
+  // Cursor positions are reported in codepoints, not bytes/UTF-16 units.
+  assert_json_subset(
+    reply.content.clone(),
+    json!({
+      "status": "ok",
+      "cursor_end": cursor_pos,
+    }),
+  );
+
+  Ok(())
+}
+
+// Regression test for cursor_pos handling with astral (non-BMP) characters.
+// `cursor_pos` is measured in Unicode codepoints, while JS strings are indexed
+// by UTF-16 code units, so the kernel must translate between the two for both
+// slicing the completion target and reporting `cursor_start`/`cursor_end`.
+#[test]
+async fn jupyter_complete_request_astral_cursor() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  // `"😀"; cons` — the emoji is a single codepoint but two UTF-16 units.
+  let code = "\"😀\"; cons";
+  let cursor_pos = code.chars().count() as i64; // 9 codepoints
+  client
+    .send(
+      Shell,
+      "complete_request",
+      json!({ "code": code, "cursor_pos": cursor_pos }),
+    )
+    .await?;
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "complete_reply");
+  // The completion target is "cons", which starts at codepoint offset 5
+  // (the emoji counts as one codepoint, not two). Before the fix the kernel
+  // sliced with the codepoint cursor as a UTF-16 index and reported
+  // cursor_start == 6.
+  assert_json_subset(
+    reply.content.clone(),
+    json!({
+      "status": "ok",
+      "cursor_start": 5,
+      "cursor_end": cursor_pos,
+    }),
+  );
+
+  Ok(())
+}
+
+// Regression test for the HMAC signature verification of incoming messages.
+// When a connection key is configured, the kernel must reject `execute_request`s
+// whose signature doesn't verify (otherwise any local process able to reach the
+// kernel's TCP ports could run arbitrary code), and accept correctly-signed
+// ones.
+#[test]
+async fn jupyter_rejects_invalid_hmac_signature() -> Result<()> {
+  const KEY: &str = "super-secret-connection-key";
+  let (_ctx, conn, _process) = setup_server_with_key(KEY).await;
+  let client = JupyterClient::new(&conn).await;
+  client.io_subscribe("").await?;
+  client.send_heartbeat(b"ping").await?;
+  let _ = client.recv_heartbeat().await?;
+
+  let content = json!({
+    "silent": false,
+    "store_history": false,
+    "code": "1 + 1",
+  });
+
+  // A request carrying a bogus signature (the attacker doesn't know the key)
+  // must be dropped: the kernel should not send back any execute_reply.
+  let mut forged =
+    JupyterMsg::new(client.session, "execute_request", content.clone());
+  forged.signature = "00".repeat(32); // valid hex, wrong HMAC
+  client.send_msg(Shell, &forged).await?;
+  let dropped = timeout(Duration::from_secs(3), client.recv(Shell)).await;
+  assert!(
+    dropped.is_err(),
+    "kernel must not reply to a request with an invalid HMAC signature, got: {dropped:#?}"
+  );
+
+  // A correctly-signed request from a peer that knows the key is processed.
+  let mut signed = JupyterMsg::new(client.session, "execute_request", content);
+  signed.sign(KEY);
+  client.send_msg(Shell, &signed).await?;
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_json_subset(reply.content, json!({ "status": "ok" }));
 
   Ok(())
 }

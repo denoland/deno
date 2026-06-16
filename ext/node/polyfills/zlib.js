@@ -89,6 +89,11 @@ const { zlib: zlibConstants } = core.loadExtScript(
 
 const kFlushFlag = Symbol("kFlushFlag");
 const kError = Symbol("kError");
+// Hold the unwrapped native write/writeSync methods so our own call sites can
+// invoke them directly, bypassing the arity-compat wrapper (see
+// `setupHandleWriteState`).
+const kNativeWrite = Symbol("kNativeWrite");
+const kNativeWriteSync = Symbol("kNativeWriteSync");
 
 const {
   // Zlib flush levels
@@ -493,15 +498,16 @@ function processChunkSync(self, chunk, flushFlag) {
   }
 
   while (true) {
-    handle.writeSync(
+    handle[kNativeWriteSync](
       flushFlag,
       chunk, // in
       inOff, // in_off
       availInBefore, // in_len
       buffer, // out
       offset, // out_off
-      availOutBefore,
-    ); // out_len
+      availOutBefore, // out_len
+      state,
+    );
     if (error) {
       throw error;
     } else if (self[kError]) {
@@ -577,15 +583,16 @@ function processChunk(self, chunk, flushFlag, cb) {
   handle._callbackPending = true;
 
   try {
-    handle.write(
+    handle[kNativeWrite](
       flushFlag,
       chunk, // in
       0, // in_off
       handle.availInBefore, // in_len
       self._outBuffer, // out
       self._outOffset, // out_off
-      handle.availOutBefore,
-    ); // out_len
+      handle.availOutBefore, // out_len
+      self._writeState,
+    );
   } catch (err) {
     // Set appropriate error code for zstd errors
     if (err.message && err.message.includes("Src size is incorrect")) {
@@ -672,15 +679,16 @@ function processCallback() {
           return;
         }
         handle._callbackPending = true;
-        this.write(
+        this[kNativeWrite](
           handle.flushFlag,
           this.buffer, // in
           handle.inOff, // in_off
           handle.availInBefore, // in_len
           self._outBuffer, // out
           self._outOffset, // out_off
-          self._chunkSize,
-        ); // out_len
+          self._chunkSize, // out_len
+          self._writeState,
+        );
         if (handle._callbackPending) {
           processCallback.call(this);
         }
@@ -696,15 +704,16 @@ function processCallback() {
             return;
           }
           handle._callbackPending = true;
-          this.write(
+          this[kNativeWrite](
             handle.flushFlag,
             this.buffer, // in
             handle.inOff, // in_off
             handle.availInBefore, // in_len
             self._outBuffer, // out
             self._outOffset, // out_off
-            self._chunkSize,
-          ); // out_len
+            self._chunkSize, // out_len
+            self._writeState,
+          );
           if (handle._callbackPending && !self[kError]) {
             processCallback.call(this);
           }
@@ -746,6 +755,48 @@ function _close(engine) {
   // Caller may invoke .close after a zlib error (which will null _handle)
   engine._handle?.close();
   engine._handle = null;
+}
+
+// The native write/writeSync ops take the write-state buffer (where the
+// post-write avail_out/avail_in values are stored) as a per-write argument
+// rather than caching a pointer to it, so that detaching the buffer is a
+// harmless no-op instead of a dangling write. Our own call sites always pass
+// it, but some npm packages (e.g. pngjs's sync inflate) call the low-level
+// `_handle.write()` / `_handle.writeSync()` directly using Node's binding
+// signature, which omits that trailing argument. Wrap the handle so those
+// external callers transparently get the stream's `_writeState` injected.
+//
+// Our own call sites always pass the buffer, so they invoke the stashed native
+// methods (`handle[kNativeWrite]` / `handle[kNativeWriteSync]`) directly to skip
+// the wrapper's per-write frame and argument array on every chunk.
+function setupHandleWriteState(handle, writeState) {
+  const nativeWrite = handle.write;
+  const nativeWriteSync = handle.writeSync;
+  handle[kNativeWrite] = nativeWrite;
+  handle[kNativeWriteSync] = nativeWriteSync;
+  const wrap = (native) =>
+    function (flush, input, inOff, inLen, out, outOff, outLen, state) {
+      return ReflectApply(native, this, [
+        flush,
+        input,
+        inOff,
+        inLen,
+        out,
+        outOff,
+        outLen,
+        state === undefined ? writeState : state,
+      ]);
+    };
+  ObjectDefineProperty(handle, "write", {
+    value: wrap(nativeWrite),
+    writable: true,
+    configurable: true,
+  });
+  ObjectDefineProperty(handle, "writeSync", {
+    value: wrap(nativeWriteSync),
+    writable: true,
+    configurable: true,
+  });
 }
 
 const zlibDefaultOpts = {
@@ -836,12 +887,12 @@ function Zlib(opts, mode) {
   // to come up with a good solution that doesn't break our internal API,
   // and with it all supported npm versions at the time of writing.
   this._writeState = new Uint32Array(2);
+  setupHandleWriteState(handle, this._writeState);
   handle.init(
     windowBits,
     level,
     memLevel,
     strategy,
-    this._writeState,
     processCallback,
     dictionary,
   );
@@ -1008,9 +1059,9 @@ function Brotli(opts, mode) {
     : new binding.BrotliEncoder(mode);
 
   this._writeState = new Uint32Array(2);
+  setupHandleWriteState(handle, this._writeState);
   const success = handle.init(
     brotliInitParamsArray,
-    this._writeState,
     processCallback,
   );
   if (!success) {
@@ -1077,6 +1128,7 @@ class Zstd extends ZlibBase {
       : new binding.ZstdDecompress(mode);
 
     const writeState = new Uint32Array(2);
+    setupHandleWriteState(handle, writeState);
     // pledgedSrcSize is only used for compression, use -1 to indicate "not set"
     const pledgedSrcSize =
       mode === ZSTD_COMPRESS && opts?.pledgedSrcSize != null
@@ -1084,7 +1136,6 @@ class Zstd extends ZlibBase {
         : -1;
     const success = handle.init(
       initParamsArray,
-      writeState,
       processCallback,
       pledgedSrcSize,
     );

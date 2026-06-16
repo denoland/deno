@@ -21,8 +21,13 @@ class FsWatcher {
   #closed = false;
 
   constructor(paths, options) {
-    const { recursive } = options;
-    this.#rid = op_fs_events_open(recursive, paths);
+    // `recursive` defaults to true even when other options are provided, so
+    // `watchFs(path, { ignore })` keeps watching subdirectories.
+    const { recursive = true, ignore } = options;
+    const ignorePaths = ignore === undefined
+      ? []
+      : (ArrayIsArray(ignore) ? ignore : [ignore]);
+    this.#rid = op_fs_events_open(recursive, ignorePaths, paths);
   }
 
   unref() {

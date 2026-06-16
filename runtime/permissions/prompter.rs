@@ -43,6 +43,9 @@ type DefaultPrompter = DeniedPrompter;
 static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
   Lazy::new(|| Mutex::new(Box::new(DefaultPrompter::default())));
 
+static TERMINAL_INPUT_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> =
+  std::sync::OnceLock::new();
+
 static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
   Lazy::new(|| Mutex::new(None));
 
@@ -86,6 +89,18 @@ pub fn set_prompt_callbacks(
 
 pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
   *PERMISSION_PROMPTER.lock() = prompter;
+}
+
+/// Guards direct reads from the process terminal input.
+///
+/// Permission prompts also read from stdin directly. Holding this lock around
+/// other terminal reads prevents permission prompts from racing with
+/// user-space interactive prompts and consuming or flushing their input.
+pub fn lock_terminal_input() -> std::sync::MutexGuard<'static, ()> {
+  TERMINAL_INPUT_LOCK
+    .get_or_init(Default::default)
+    .lock()
+    .unwrap_or_else(|err| err.into_inner())
 }
 
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
@@ -293,6 +308,54 @@ fn clear_n_lines(stderr_lock: &mut std::io::StderrLock, n: usize) {
   write!(stderr_lock, "\x1B[{n}A\x1B[0J").unwrap();
 }
 
+/// Returns true if stdin's terminal line discipline has been put into raw
+/// mode by something else in this process — for example a Node.js library
+/// calling `process.stdin.setRawMode(true)`.
+///
+/// When that has happened our line-oriented `read_line()` prompt loop would
+/// hang forever (Enter delivers `\r` rather than `\n`, and ECHO is off so the
+/// user can't see they're typing), so we bail out instead.
+///
+/// We require *both* canonical input and echo to be disabled, matching what
+/// `setRaw`/`setRawMode` actually does (see `runtime/ops/tty.rs`). Clearing
+/// canonical mode alone does not trigger the hang as long as newlines are
+/// still delivered, and treating that as raw would misfire on setups that
+/// disable only canonical mode (such as the test PTY harness).
+#[cfg(unix)]
+fn stdin_is_raw_mode() -> bool {
+  // SAFETY: tcgetattr on a possibly-invalid fd 0 returns -1; on any failure we
+  // conservatively report not-raw.
+  unsafe {
+    let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
+    if libc::tcgetattr(libc::STDIN_FILENO, termios.as_mut_ptr()) != 0 {
+      return false;
+    }
+    let termios = termios.assume_init();
+    termios.c_lflag & (libc::ICANON | libc::ECHO) == 0
+  }
+}
+
+#[cfg(all(not(unix), not(target_arch = "wasm32")))]
+fn stdin_is_raw_mode() -> bool {
+  use windows_sys::Win32::System::Console::ENABLE_ECHO_INPUT;
+  use windows_sys::Win32::System::Console::ENABLE_LINE_INPUT;
+  use windows_sys::Win32::System::Console::GetConsoleMode;
+  use windows_sys::Win32::System::Console::GetStdHandle;
+  use windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
+
+  // SAFETY: winapi calls. GetConsoleMode returns 0 (FALSE) for non-console
+  // handles (e.g. when stdin is a pipe), in which case we conservatively
+  // return false.
+  unsafe {
+    let handle = GetStdHandle(STD_INPUT_HANDLE);
+    let mut mode = 0u32;
+    if GetConsoleMode(handle, &mut mode) == 0 {
+      return false;
+    }
+    mode & (ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT) == 0
+  }
+}
+
 #[cfg(unix)]
 fn get_stdin_metadata() -> std::io::Result<std::fs::Metadata> {
   use std::os::fd::FromRawFd;
@@ -336,6 +399,26 @@ impl PermissionPrompter for TtyPrompter {
       return PromptResponse::Deny;
     };
 
+    // If stdin has been put into raw mode (e.g. a Node.js library has called
+    // `process.stdin.setRawMode(true)`) our line-oriented prompt loop would
+    // hang forever waiting for a `\n` that the terminal will never deliver,
+    // and the user wouldn't see what they're typing either. Bail out with a
+    // clear message so the program doesn't appear to freeze.
+    #[allow(clippy::print_stderr, reason = "actually want to print")]
+    if stdin_is_raw_mode() {
+      // Escape the message/name since they can contain user-controlled strings
+      // (env var names, file paths) that could otherwise spoof the terminal.
+      eprintln!(
+        "❌ Cannot prompt for {}: stdin is in raw mode (a library has likely called setRawMode).",
+        escape_control_characters(message)
+      );
+      eprintln!(
+        "❌ Run again with --allow-{} to grant the permission up front, or with -A to allow all permissions.",
+        escape_control_characters(name)
+      );
+      return PromptResponse::Deny;
+    }
+
     #[allow(clippy::print_stderr, reason = "actually want to print")]
     if message.len() > MAX_PERMISSION_PROMPT_LENGTH {
       eprintln!(
@@ -354,6 +437,8 @@ impl PermissionPrompter for TtyPrompter {
 
     #[cfg(unix)]
     let metadata_before = get_stdin_metadata().unwrap();
+
+    let terminal_input_guard = lock_terminal_input();
 
     // Lock stdio streams, so no other output is written while the prompt is
     // displayed.
@@ -499,6 +584,7 @@ impl PermissionPrompter for TtyPrompter {
     drop(stdout_lock);
     drop(stderr_lock);
     drop(stdin_lock);
+    drop(terminal_input_guard);
 
     // Ensure that stdin has not changed from the beginning to the end of the prompt. We consider
     // it sufficient to check a subset of stat calls. We do not consider the likelihood of a stdin

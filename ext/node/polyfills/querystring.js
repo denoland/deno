@@ -1,10 +1,20 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  Array,
+  ArrayIsArray,
+  Int8Array,
+  MathAbs,
+  NumberIsFinite,
+  ObjectCreate,
+  ObjectKeys,
+  String,
+  StringPrototypeCharCodeAt,
+  StringPrototypeSlice,
+  decodeURIComponent,
+} = primordials;
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { encodeStr, hexTable } = core.loadExtScript(
   "ext:deno_node/internal/querystring.ts",
@@ -51,7 +61,7 @@ const isHexTable = new Int8Array([
 function charCodes(str) {
   const ret = new Array(str.length);
   for (let i = 0; i < str.length; ++i) {
-    ret[i] = str.charCodeAt(i);
+    ret[i] = StringPrototypeCharCodeAt(str, i);
   }
   return ret;
 }
@@ -101,9 +111,9 @@ function parse(
   str,
   sep = "&",
   eq = "=",
-  { decodeURIComponent, maxKeys = 1000 } = {},
+  { decodeURIComponent, maxKeys = 1000 } = { __proto__: null },
 ) {
-  const obj = Object.create(null);
+  const obj = ObjectCreate(null);
 
   if (typeof str !== "string" || str.length === 0) {
     return obj;
@@ -141,7 +151,7 @@ function parse(
   const plusChar = customDecode ? "%20" : " ";
   let encodeCheck = 0;
   for (let i = 0; i < str.length; ++i) {
-    const code = str.charCodeAt(i);
+    const code = StringPrototypeCharCodeAt(str, i);
 
     // Try matching key/value pair separator (e.g. '&')
     if (code === sepCodes[sepIdx]) {
@@ -152,7 +162,7 @@ function parse(
           // We didn't find the (entire) key/value separator
           if (lastPos < end) {
             // Treat the substring as part of the key instead of the value
-            key += str.slice(lastPos, end);
+            key += StringPrototypeSlice(str, lastPos, end);
           } else if (key.length === 0) {
             // We saw an empty substring between separators
             if (--pairs === 0) {
@@ -163,7 +173,7 @@ function parse(
             continue;
           }
         } else if (lastPos < end) {
-          value += str.slice(lastPos, end);
+          value += StringPrototypeSlice(str, lastPos, end);
         }
 
         addKeyVal(obj, key, value, keyEncoded, valEncoded, decode);
@@ -185,7 +195,7 @@ function parse(
             // Key/value separator match!
             const end = i - eqIdx + 1;
             if (lastPos < end) {
-              key += str.slice(lastPos, end);
+              key += StringPrototypeSlice(str, lastPos, end);
             }
             encodeCheck = 0;
             lastPos = i + 1;
@@ -213,7 +223,7 @@ function parse(
         }
         if (code === 43 /* + */) {
           if (lastPos < i) {
-            key += str.slice(lastPos, i);
+            key += StringPrototypeSlice(str, lastPos, i);
           }
           key += plusChar;
           lastPos = i + 1;
@@ -222,7 +232,7 @@ function parse(
       }
       if (code === 43 /* + */) {
         if (lastPos < i) {
-          value += str.slice(lastPos, i);
+          value += StringPrototypeSlice(str, lastPos, i);
         }
         value += plusChar;
         lastPos = i + 1;
@@ -247,9 +257,9 @@ function parse(
   // Deal with any leftover key or value data
   if (lastPos < str.length) {
     if (eqIdx < eqLen) {
-      key += str.slice(lastPos);
+      key += StringPrototypeSlice(str, lastPos);
     } else if (sepIdx < sepLen) {
-      value += str.slice(lastPos);
+      value += StringPrototypeSlice(str, lastPos);
     }
   } else if (eqIdx === 0 && key.length === 0) {
     // We ended on an empty substring
@@ -285,7 +295,7 @@ function stringifyPrimitive(v) {
   if (typeof v === "string") {
     return v;
   }
-  if (typeof v === "number" && isFinite(v)) {
+  if (typeof v === "number" && NumberIsFinite(v)) {
     return "" + v;
   }
   if (typeof v === "bigint") {
@@ -308,10 +318,10 @@ function encodeStringified(v, encode) {
   if (typeof v === "string") {
     return (v.length ? encode(v) : "");
   }
-  if (typeof v === "number" && isFinite(v)) {
+  if (typeof v === "number" && NumberIsFinite(v)) {
     // Values >= 1e21 automatically switch to scientific notation which requires
     // escaping due to the inclusion of a '+' in the output
-    return (Math.abs(v) < 1e21 ? "" + v : encode("" + v));
+    return (MathAbs(v) < 1e21 ? "" + v : encode("" + v));
   }
   if (typeof v === "bigint") {
     return "" + v;
@@ -344,7 +354,7 @@ function stringify(
   const convert = options ? encodeStringifiedCustom : encodeStringified;
 
   if (obj !== null && typeof obj === "object") {
-    const keys = Object.keys(obj);
+    const keys = ObjectKeys(obj);
     const len = keys.length;
     let fields = "";
     for (let i = 0; i < len; ++i) {
@@ -353,7 +363,7 @@ function stringify(
       let ks = convert(k, encode);
       ks += eq;
 
-      if (Array.isArray(v)) {
+      if (ArrayIsArray(v)) {
         const vlen = v.length;
         if (vlen === 0) continue;
         if (fields) {
@@ -394,20 +404,20 @@ function unescapeBuffer(s, decodeSpaces = false) {
   // Flag to know if some hex chars have been decoded
   let hasHex = false;
   while (index < s.length) {
-    currentChar = s.charCodeAt(index);
+    currentChar = StringPrototypeCharCodeAt(s, index);
     if (currentChar === 43 /* '+' */ && decodeSpaces) {
       out[outIndex++] = 32; // ' '
       index++;
       continue;
     }
     if (currentChar === 37 /* '%' */ && index < maxLength) {
-      currentChar = s.charCodeAt(++index);
+      currentChar = StringPrototypeCharCodeAt(s, ++index);
       hexHigh = unhexTable[currentChar];
       if (!(hexHigh >= 0)) {
         out[outIndex++] = 37; // '%'
         continue;
       } else {
-        nextChar = s.charCodeAt(++index);
+        nextChar = StringPrototypeCharCodeAt(s, ++index);
         hexLow = unhexTable[nextChar];
         if (!(hexLow >= 0)) {
           out[outIndex++] = 37; // '%'
@@ -421,6 +431,7 @@ function unescapeBuffer(s, decodeSpaces = false) {
     out[outIndex++] = currentChar;
     index++;
   }
+  // deno-lint-ignore prefer-primordials -- `out` is a Node Buffer; Buffer.prototype.slice is not Uint8Array.prototype.slice
   return hasHex ? out.slice(0, outIndex) : out;
 }
 
@@ -428,6 +439,7 @@ function qsUnescape(s) {
   try {
     return decodeURIComponent(s);
   } catch {
+    // deno-lint-ignore prefer-primordials -- `unescapeBuffer` returns a Node Buffer; Buffer.prototype.toString is not String/Object toString
     return unescapeBuffer(s).toString();
   }
 }

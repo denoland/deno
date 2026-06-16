@@ -15,14 +15,53 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
+use std::time::Instant;
 
 use deno_error::JsErrorBox;
 use futures::FutureExt;
+use futures::StreamExt;
 use futures::task::AtomicWaker;
 use smallvec::SmallVec;
+
+fn startup_phases_enabled() -> bool {
+  static ENABLED: OnceLock<bool> = OnceLock::new();
+  *ENABLED.get_or_init(|| {
+    // Diagnostic env var — only consulted once per process. Bypassing
+    // `sys_traits` here is intentional: the snapshot/runtime layers don't
+    // thread an `EnvProvider` through this code path, and this opt-in
+    // tracing is only useful when running an actual `deno` binary anyway.
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "diagnostic env var; not part of the sys_traits surface"
+    )]
+    let v = std::env::var_os("DENO_STARTUP_PHASES");
+    v.is_some_and(|v| !v.is_empty() && v != "0")
+  })
+}
+
+#[inline]
+fn startup_phase_begin() -> Option<Instant> {
+  if startup_phases_enabled() {
+    Some(Instant::now())
+  } else {
+    None
+  }
+}
+
+#[inline]
+fn startup_phase_end(t: Option<Instant>, label: &str) {
+  if let Some(start) = t {
+    let elapsed = start.elapsed();
+    #[allow(clippy::print_stderr, reason = "diagnostic")]
+    {
+      eprintln!("[startup] {label:>32}  {elapsed:?}");
+    }
+  }
+}
 
 use super::SnapshotStoreDataStore;
 use super::SnapshottedData;
@@ -77,7 +116,9 @@ use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
 use crate::modules::ModuleName;
 use crate::modules::RequestedModuleType;
+use crate::modules::SideModuleKind;
 use crate::modules::ValidateImportAttributesCb;
+use crate::modules::recursive_load::RecursiveModuleLoad;
 use crate::modules::script_origin;
 use crate::ops_metrics::OpMetricsFactoryFn;
 use crate::ops_metrics::dispatch_metrics_async;
@@ -107,6 +148,14 @@ pub type ExtensionTranspiler =
 pub(crate) struct IsolateAllocations {
   pub(crate) externalized_sources: Box<[v8::OneByteConst]>,
   pub(crate) original_sources: Box<[FastString]>,
+  /// Specifiers of the externalized `lazy_loaded_js` sources, parallel to the
+  /// trailing entries of `original_sources` (only populated when building a
+  /// snapshot). Used at serialize time to drop the bytes of *non-consumed*
+  /// lazy scripts from the snapshot sidecar — their external-reference slots
+  /// must stay (for index alignment) but nothing references them, so storing
+  /// empty bytes avoids duplicating residual sources (which the binary already
+  /// ships via the residual table).
+  pub(crate) lazy_js_specifiers: Box<[ModuleName]>,
   pub(crate) near_heap_limit_callback_data:
     Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
 }
@@ -678,11 +727,13 @@ impl JsRuntime {
   /// Only constructor, configuration is done through `options`.
   /// Returns an error if the runtime cannot be initialized.
   pub fn try_new(mut options: RuntimeOptions) -> Result<JsRuntime, CoreError> {
+    let _t0 = startup_phase_begin();
     setup::init_v8(
       options.v8_platform.take(),
       cfg!(test),
       options.unsafe_expose_natives_and_gc(),
     );
+    startup_phase_end(_t0, "init_v8");
     JsRuntime::new_inner(options, false)
   }
 
@@ -724,19 +775,27 @@ impl JsRuntime {
     mut options: RuntimeOptions,
     will_snapshot: bool,
   ) -> Result<JsRuntime, CoreError> {
+    let _phase_total = startup_phase_begin();
     let init_mode = InitMode::from_options(&options);
     let mut extensions = std::mem::take(&mut options.extensions);
     let mut isolate_allocations = IsolateAllocations::default();
+
+    // `lazy_loaded_js` sources are externalized (and pre-wrapped) only when
+    // building the snapshot, so consumed scripts bake in as clean external
+    // sources. At runtime they stay as static registrations.
+    let externalize_lazy_js = will_snapshot;
 
     let enable_stack_trace_in_ops =
       options.maybe_op_stack_trace_callback.is_some();
 
     // First let's create an `OpState` and contribute to it from extensions...
+    let _phase = startup_phase_begin();
     let mut op_state = OpState::new(options.maybe_op_stack_trace_callback);
     let unrefed_ops = op_state.unrefed_ops.clone();
 
     let lazy_extensions =
       extension_set::setup_op_state(&mut op_state, &mut extensions);
+    startup_phase_end(_phase, "setup_op_state");
 
     // Load the sources and source maps
     let mut files_loaded = Vec::with_capacity(128);
@@ -746,20 +805,25 @@ impl JsRuntime {
 
     let mut source_mapper = SourceMapper::new(loader.clone());
 
+    let _phase = startup_phase_begin();
     let (maybe_startup_snapshot, mut sidecar_data) = options
       .startup_snapshot
       .take()
       .map(snapshot::deconstruct)
       .unzip();
+    startup_phase_end(_phase, "snapshot::deconstruct");
 
+    let _phase = startup_phase_begin();
     let mut sources = extension_set::into_sources_and_source_maps(
       options.extension_transpiler.as_deref(),
       &extensions,
       sidecar_data.as_ref().map(|s| &*s.snapshot_data.extensions),
+      externalize_lazy_js,
       |source| {
         mark_as_loaded_from_fs_during_snapshot(&mut files_loaded, &source.code)
       },
     )?;
+    startup_phase_end(_phase, "into_sources_and_source_maps");
 
     for loaded_source in sources
       .js
@@ -837,14 +901,23 @@ impl JsRuntime {
       additional_references,
     ) = extension_set::get_middlewares_and_external_refs(&mut extensions);
 
-    // Capture the extension, op and source counts. `source_count` mirrors the
-    // number of `v8::OneByteConst` external strings produced by
-    // [`bindings::externalize_sources`] (which iterates `js + esm + lazy_esm`
-    // — `lazy_loaded_js` scripts are not externalized as module sources).
+    // Capture the extension, op and source counts. `source_count` MUST mirror
+    // the number of `v8::OneByteConst` external strings produced by
+    // [`bindings::externalize_sources`] for the same `will_snapshot` value:
+    // `js + esm + lazy_esm`, plus `lazy_loaded_js` only when building the
+    // snapshot (where those scripts are externalized so consumed ones bake into
+    // the snapshot as clean external sources). At runtime `lazy_loaded_js` is
+    // not externalized here.
     let extensions = extensions.iter().map(|e| e.name).collect();
     let op_count = op_ctxs.len();
-    let source_count =
-      sources.js.len() + sources.esm.len() + sources.lazy_esm.len();
+    let source_count = sources.js.len()
+      + sources.esm.len()
+      + sources.lazy_esm.len()
+      + if externalize_lazy_js {
+        sources.lazy_js.len()
+      } else {
+        0
+      };
     let addl_refs_count = additional_references.len();
 
     let ops_in_snapshot = sidecar_data
@@ -863,7 +936,12 @@ impl JsRuntime {
     (
       isolate_allocations.externalized_sources,
       isolate_allocations.original_sources,
-    ) = bindings::externalize_sources(&mut sources, snapshot_sources);
+      isolate_allocations.lazy_js_specifiers,
+    ) = bindings::externalize_sources(
+      &mut sources,
+      snapshot_sources,
+      externalize_lazy_js,
+    );
 
     let external_references = bindings::create_external_references(
       &op_ctxs,
@@ -874,12 +952,14 @@ impl JsRuntime {
     );
 
     let has_snapshot = maybe_startup_snapshot.is_some();
+    let _phase = startup_phase_begin();
     let mut isolate = setup::create_isolate(
       will_snapshot,
       options.create_params.take(),
       maybe_startup_snapshot,
       external_references.into(),
     );
+    startup_phase_end(_phase, "create_isolate (v8 snapshot deser)");
 
     let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
 
@@ -930,6 +1010,7 @@ impl JsRuntime {
     op_state.borrow_mut().put(spawner);
 
     // ...and with `ContextState` available we can set up V8 context...
+    let _phase = startup_phase_begin();
     let mut snapshotted_data = None;
     let main_context = {
       v8::scope!(let scope, &mut isolate);
@@ -940,22 +1021,27 @@ impl JsRuntime {
         .borrow_mut()
         .replace(v8::Global::new(scope, cppgc_template));
 
+      let _p_ctx = startup_phase_begin();
       let context = create_context(
         scope,
         &global_template_middleware,
         &global_object_middlewares,
         has_snapshot,
       );
+      startup_phase_end(_p_ctx, "  V8 Context::from_snapshot");
 
       // Get module map data from the snapshot
       if let Some(raw_data) = sidecar_data {
+        let _p_ld = startup_phase_begin();
         snapshotted_data = Some(snapshot::load_snapshotted_data_from_snapshot(
           scope, context, raw_data,
         ));
+        startup_phase_end(_p_ld, "  load_data loop (get_context_data x N)");
       }
 
       v8::Global::new(scope, context)
     };
+    startup_phase_end(_phase, "create_context+load_data");
 
     let main_realm = {
       v8::scope_with_context!(context_scope, &mut isolate, &main_context);
@@ -970,6 +1056,7 @@ impl JsRuntime {
 
       // ...followed by creation of `Deno.core` namespace, as well as internal
       // infrastructure to provide JavaScript bindings for ops...
+      let _phase = startup_phase_begin();
       if init_mode == InitMode::New {
         bindings::initialize_deno_core_namespace(scope, context, init_mode);
         bindings::initialize_primordials_and_infra(scope)?;
@@ -999,6 +1086,7 @@ impl JsRuntime {
           methods_ctx_offset,
         );
       }
+      startup_phase_end(_phase, "ops_bindings (fast call upgrade)");
 
       // SAFETY: Initialize the context state slot.
       unsafe {
@@ -1031,6 +1119,7 @@ impl JsRuntime {
         will_snapshot,
       ));
 
+      let _phase = startup_phase_begin();
       if let Some((snapshotted_data, mut data_store)) = snapshotted_data {
         *exception_state.js_handled_promise_rejection_cb.borrow_mut() =
           snapshotted_data
@@ -1061,6 +1150,7 @@ impl JsRuntime {
           mapper.add_ext_source_map(ModuleName::from_static(key), map.into());
         }
       }
+      startup_phase_end(_phase, "load module map from snapshot");
 
       if context_state.ext_import_meta_proto.borrow().is_none() {
         let null = v8::null(scope);
@@ -1137,19 +1227,25 @@ impl JsRuntime {
       //   }
       // ) {
       if init_mode == InitMode::New {
+        let _phase = startup_phase_begin();
         js_runtime
           .execute_virtual_ops_module(context_global, module_map.clone());
+        startup_phase_end(_phase, "execute_virtual_ops_module");
       }
 
       if init_mode == InitMode::New {
+        let _phase = startup_phase_begin();
         js_runtime.execute_builtin_sources(
           &realm,
           &module_map,
           &mut files_loaded,
         )?;
+        startup_phase_end(_phase, "execute_builtin_sources");
       }
 
+      let _phase = startup_phase_begin();
       js_runtime.store_js_callbacks(&realm, will_snapshot);
+      startup_phase_end(_phase, "store_js_callbacks");
 
       // Register residual `lazy_loaded_*` sources from the snapshot bundle.
       // These are the files that were declared on extensions but were not
@@ -1170,13 +1266,17 @@ impl JsRuntime {
         );
       }
 
+      let _phase = startup_phase_begin();
       js_runtime.init_extension_js(
         &realm,
         &module_map,
         sources,
         options.extension_code_cache,
       )?;
+      startup_phase_end(_phase, "init_extension_js");
     }
+
+    startup_phase_end(_phase_total, "TOTAL JsRuntime::new_inner");
 
     if will_snapshot {
       js_runtime.files_loaded_from_fs_during_snapshot = files_loaded;
@@ -1559,6 +1659,7 @@ impl JsRuntime {
       drain_next_tick_and_macrotasks_cb,
       handle_rejections_cb,
       build_custom_error_cb,
+      error_constructors,
       run_immediate_callbacks_cb,
       wasm_instance_fn,
     ) = {
@@ -1595,6 +1696,12 @@ impl JsRuntime {
         core_obj,
         BUILD_CUSTOM_ERROR,
         "Deno.core.buildCustomError",
+      );
+      let error_constructors: v8::Local<v8::Object> = bindings::get(
+        scope,
+        core_obj,
+        ERROR_CONSTRUCTORS,
+        "Deno.core.errorConstructors",
       );
       let run_immediate_callbacks_cb: v8::Local<v8::Function> = bindings::get(
         scope,
@@ -1765,6 +1872,7 @@ impl JsRuntime {
         v8::Global::new(scope, drain_next_tick_and_macrotasks_cb),
         v8::Global::new(scope, handle_rejections_cb),
         v8::Global::new(scope, build_custom_error_cb),
+        v8::Global::new(scope, error_constructors),
         v8::Global::new(scope, run_immediate_callbacks_cb),
         wasm_instance_fn.map(|f| v8::Global::new(scope, f)),
       )
@@ -1789,6 +1897,11 @@ impl JsRuntime {
       .js_build_custom_error_cb
       .borrow_mut()
       .replace(build_custom_error_cb);
+    state_rc
+      .exception_state
+      .js_error_constructors
+      .borrow_mut()
+      .replace(error_constructors);
     state_rc
       .run_immediate_callbacks_cb
       .borrow_mut()
@@ -2241,14 +2354,34 @@ impl JsRuntime {
     cx: &mut Context,
     poll_options: PollEventLoopOptions,
   ) -> Poll<Result<(), CoreError>> {
+    let has_inspector = self.inner.state.has_inspector.get();
+
     // SAFETY: We know this isolate is valid and non-null at this time
     let mut isolate =
       unsafe { v8::Isolate::from_raw_isolate_ptr(self.v8_isolate_ptr()) };
-    v8::scope!(let isolate_scope, &mut isolate);
-    let context =
-      v8::Local::new(isolate_scope, self.inner.main_realm.context());
-    let mut scope = v8::ContextScope::new(isolate_scope, context);
-    self.poll_event_loop_inner(cx, &mut scope, poll_options)
+
+    let result = {
+      v8::scope!(let isolate_scope, &mut isolate);
+      let context =
+        v8::Local::new(isolate_scope, self.inner.main_realm.context());
+      let mut scope = v8::ContextScope::new(isolate_scope, context);
+      self.poll_event_loop_inner(cx, &mut scope, poll_options)
+    };
+
+    // Tell V8's CPU profiler whether we're about to go idle. When the event
+    // loop has no immediate work it returns `Poll::Pending` and the task parks
+    // until an external event (timer, I/O) wakes it. Marking the isolate idle
+    // makes the profiler attribute that wait to the `(idle)` node instead of
+    // `(program)`, which otherwise makes an idle process look like it is using
+    // 100% CPU in DevTools (https://github.com/denoland/deno/issues/21620).
+    //
+    // This must happen *after* the `v8::ContextScope` above is dropped: tearing
+    // the scope down calls `Isolate::Exit`, which restores the VM state that was
+    // saved on entry and would clobber the idle state if we set it any earlier.
+    if has_inspector {
+      isolate.set_idle(result.is_pending());
+    }
+    result
   }
 
   /// Phase-based event loop tick, loosely following libuv's architecture:
@@ -2725,9 +2858,29 @@ impl JsRuntimeForSnapshot {
     self.inner.prepare_for_cleanup();
     let original_sources =
       std::mem::take(&mut self.0.allocations.original_sources);
+    let lazy_js_specifiers =
+      std::mem::take(&mut self.0.allocations.lazy_js_specifiers);
+    // `lazy_loaded_js` sources are externalized for the snapshot (so consumed
+    // scripts bake in as clean external strings), but only the *consumed* ones
+    // are actually referenced by snapshotted code. Non-consumed (residual)
+    // scripts are already shipped via the residual table, so persisting their
+    // bytes here would duplicate them. Store empty bytes for those slots — the
+    // external-reference index is preserved (nothing references it), avoiding
+    // the duplication.
+    let consumed: std::collections::HashSet<String> =
+      self.consumed_lazy_specifiers().into_iter().collect();
+    let lazy_js_start = original_sources.len() - lazy_js_specifiers.len();
     let external_strings = original_sources
       .iter()
-      .map(|s| s.as_str().as_bytes())
+      .enumerate()
+      .map(|(i, s)| {
+        if i >= lazy_js_start
+          && !consumed.contains(lazy_js_specifiers[i - lazy_js_start].as_str())
+        {
+          return &[][..];
+        }
+        s.as_str().as_bytes()
+      })
       .collect();
     let realm = JsRealm::clone(&self.inner.main_realm);
 
@@ -3013,15 +3166,8 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: impl IntoModuleCodeString,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
     self
-      .inner
-      .main_realm
-      .load_main_es_module_from_code(
-        isolate,
-        specifier,
-        Some(code.into_module_code()),
-      )
+      .drive_es_module_load(true, specifier, Some(code.into_module_code()))
       .await
   }
 
@@ -3037,12 +3183,7 @@ impl JsRuntime {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
-    self
-      .inner
-      .main_realm
-      .load_main_es_module_from_code(isolate, specifier, None)
-      .await
+    self.drive_es_module_load(true, specifier, None).await
   }
 
   /// Asynchronously load specified ES module and all of its dependencies from the
@@ -3063,15 +3204,8 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: impl IntoModuleCodeString,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
     self
-      .inner
-      .main_realm
-      .load_side_es_module_from_code(
-        isolate,
-        specifier.to_string(),
-        Some(code.into_module_code()),
-      )
+      .drive_es_module_load(false, specifier, Some(code.into_module_code()))
       .await
   }
 
@@ -3087,12 +3221,106 @@ impl JsRuntime {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
-    self
-      .inner
-      .main_realm
-      .load_side_es_module_from_code(isolate, specifier.to_string(), None)
-      .await
+    self.drive_es_module_load(false, specifier, None).await
+  }
+
+  /// Drive a recursive ES module load to completion while concurrently
+  /// pumping the event loop. The event loop pumping is required so that
+  /// JavaScript-side `module.registerHooks()` load hooks (which run as an
+  /// async polling task) can respond to load requests from the recursive
+  /// load. Without it, static module loads that go through hook bridges
+  /// would deadlock.
+  async fn drive_es_module_load(
+    &mut self,
+    is_main: bool,
+    specifier: &ModuleSpecifier,
+    code: Option<ModuleCodeString>,
+  ) -> Result<ModuleId, CoreError> {
+    let realm = JsRealm::clone(&self.inner.main_realm);
+    let module_map_rc = realm.0.module_map();
+
+    // Only pump the V8 event loop alongside the load when the loader resolves
+    // modules through asynchronous JavaScript (e.g. Node
+    // `module.registerHooks()` load hooks). For ordinary loads pumping is
+    // unnecessary and would run unrelated event-loop work mid-load, so the
+    // load is driven on its own instead.
+    let pump_event_loop =
+      module_map_rc.loader.borrow().pump_event_loop_during_load();
+
+    if let Some(code) = code {
+      jsrealm::context_scope!(scope, &realm, self.v8_isolate());
+      module_map_rc
+        .new_es_module(
+          scope,
+          is_main,
+          specifier.to_string().into(),
+          code,
+          false,
+          None,
+        )
+        .map_err(|e| e.into_error(scope, false, false))?;
+    }
+
+    let mut load = if is_main {
+      RecursiveModuleLoad::main(specifier.to_string(), module_map_rc.clone())
+        .await?
+    } else {
+      RecursiveModuleLoad::side(
+        specifier.to_string(),
+        module_map_rc.clone(),
+        SideModuleKind::Async,
+        None,
+      )
+      .await?
+    };
+
+    loop {
+      // Drive the recursive load, optionally pumping the V8 event loop
+      // concurrently. Pumping is what lets JavaScript-side module hooks
+      // (`module.registerHooks()`) respond to load requests issued by the
+      // recursive load via the async hook bridge; for ordinary loads it is
+      // skipped so unrelated event-loop work doesn't run mid-load.
+      let next_step = poll_fn(|cx| {
+        if let Poll::Ready(t) = load.poll_next_unpin(cx) {
+          return Poll::Ready(Ok::<_, CoreError>(t));
+        }
+        if !pump_event_loop {
+          return Poll::Pending;
+        }
+        match self.poll_event_loop(cx, PollEventLoopOptions::default()) {
+          Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+          Poll::Ready(Ok(())) | Poll::Pending => {}
+        }
+        // After polling the event loop, the recursive load may have new
+        // results ready (e.g. a hook callback responded). Re-poll.
+        match load.poll_next_unpin(cx) {
+          Poll::Ready(t) => Poll::Ready(Ok(t)),
+          Poll::Pending => Poll::Pending,
+        }
+      })
+      .await?;
+
+      let Some(load_result) = next_step else { break };
+      let (request, source) = load_result?;
+
+      jsrealm::context_scope!(scope, &realm, self.v8_isolate());
+      load
+        .register_and_recurse(scope, &request, source)
+        .map_err(|e| e.into_error(scope, false, false))?;
+    }
+
+    let root_id = load.root_module_id().expect("Root module should be loaded");
+
+    jsrealm::context_scope!(scope, &realm, self.v8_isolate());
+    realm.instantiate_module(scope, root_id).map_err(|e| {
+      let exception = v8::Local::new(scope, e);
+      CoreErrorKind::Js(crate::error::exception_to_err(
+        scope, exception, false, false,
+      ))
+      .into_box()
+    })?;
+
+    Ok(root_id)
   }
 
   /// Load and evaluate an ES module provided the specifier and source code.

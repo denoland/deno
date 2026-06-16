@@ -214,7 +214,9 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
       MediaType::Dts => {
         // dts files are always determined based on the package.json because
         // they contain imports/exports even when considered CJS
-        self.check_based_on_pkg_json(specifier).unwrap_or(ResolutionMode::Import)
+        self
+          .check_based_on_pkg_json(specifier)
+          .unwrap_or(ResolutionMode::Import)
       }
       MediaType::Wasm |
       MediaType::Json => ResolutionMode::Import,

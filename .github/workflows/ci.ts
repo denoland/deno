@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 115;
+const cacheVersion = 117;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -701,9 +701,18 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               `shasum -a 256 deno > deno-${buildItem.arch}-unknown-linux-gnu.sha256sum`,
               `zip -r deno-${buildItem.arch}-unknown-linux-gnu.zip deno`,
               `shasum -a 256 deno-${buildItem.arch}-unknown-linux-gnu.zip > deno-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
-              "strip ./denort",
+              // denort is the `deno compile` base binary: libsui rewrites its
+              // ELF to embed user code, and that rewrite drops `.relr.dyn`
+              // relative relocations when the symbol table is gone, producing a
+              // compiled binary whose C++ static-init guards deadlock
+              // (`__cxa_guard_acquire failed to acquire mutex`). Keep .symtab
+              // (strip only debug info) so the relocations survive.
+              "strip --strip-debug ./denort",
               `zip -r denort-${buildItem.arch}-unknown-linux-gnu.zip denort`,
               `shasum -a 256 denort-${buildItem.arch}-unknown-linux-gnu.zip > denort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
+              "strip ./libdenort.so",
+              `zip -r libdenort-${buildItem.arch}-unknown-linux-gnu.zip libdenort.so`,
+              `shasum -a 256 libdenort-${buildItem.arch}-unknown-linux-gnu.zip > libdenort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
               "./deno types > lib.deno.d.ts",
             ],
           },
@@ -739,6 +748,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "strip -x -S ./denort",
               `zip -r denort-${buildItem.arch}-apple-darwin.zip denort`,
               `shasum -a 256 denort-${buildItem.arch}-apple-darwin.zip > denort-${buildItem.arch}-apple-darwin.zip.sha256sum`,
+              "strip -x -S ./libdenort.dylib",
+              `zip -r libdenort-${buildItem.arch}-apple-darwin.zip libdenort.dylib`,
+              `shasum -a 256 libdenort-${buildItem.arch}-apple-darwin.zip > libdenort-${buildItem.arch}-apple-darwin.zip.sha256sum`,
             ],
           },
           {
@@ -796,6 +808,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               `Get-FileHash target/release/deno-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
               `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${buildItem.arch}-pc-windows-msvc.zip`,
               `Get-FileHash target/release/denort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip`,
+              `Get-FileHash target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
               `target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${buildItem.arch}-pc-windows-msvc.symcache`,
             ],
           },
@@ -864,6 +878,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             ],
           }),
         );
+        const packagesToBuild = ["deno", "denort", "test_server"]
+          .map((name) => `-p ${name}`).join(" ");
         const binsToBuild = ["deno", "denort", "test_server"]
           .map((name) => `--bin ${name}`).join(" ");
         const cargoBuildReleaseStep = step
@@ -872,6 +888,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           )
           .dependsOn(
             installLldStep,
+            installDenoStep,
             restoreCacheStep,
             installRustStep,
             sysRootStep,
@@ -884,11 +901,28 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             },
             {
               name: "Build release",
+              env: {
+                DENO_SNAPSHOT_MINIFY_SOURCES: "1",
+              },
               run: [
                 // output fs space before and after building
                 "df -h",
-                `cargo build --release --locked ${binsToBuild} --features=panic-trace`,
+                `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
+                // Build the desktop runtime shared library (libdenort cdylib) for
+                // laufey-based desktop apps. Separate invocation because the
+                // panic-trace feature only applies to the deno/denort binaries.
+                "cargo build --release --locked -p denort_desktop",
                 "df -h",
+              ],
+            },
+            {
+              name: "Check release snapshot flags",
+              if: isLinux,
+              run: [
+                "if strings target/release/deno | grep -F -- '--no-lazy --no-lazy-eval --no-lazy-streaming'; then",
+                '  echo "release deno binary contains eager snapshot flags"',
+                "  exit 1",
+                "fi",
               ],
             },
             {
@@ -922,7 +956,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             {
               name: "Build debug",
               if: isDebug,
-              run: `cargo build --locked ${binsToBuild} --features=panic-trace`,
+              run:
+                `cargo build --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
               env: { CARGO_PROFILE_DEV_DEBUG: 0 },
             },
             cargoBuildReleaseStep,
@@ -993,31 +1028,43 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "target/release/deno-x86_64-pc-windows-msvc.sha256sum",
                 "target/release/denort-x86_64-pc-windows-msvc.zip",
                 "target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum",
+                "target/release/libdenort-x86_64-pc-windows-msvc.zip",
+                "target/release/libdenort-x86_64-pc-windows-msvc.zip.sha256sum",
                 "target/release/deno-aarch64-pc-windows-msvc.zip",
                 "target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum",
                 "target/release/deno-aarch64-pc-windows-msvc.sha256sum",
                 "target/release/denort-aarch64-pc-windows-msvc.zip",
                 "target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum",
+                "target/release/libdenort-aarch64-pc-windows-msvc.zip",
+                "target/release/libdenort-aarch64-pc-windows-msvc.zip.sha256sum",
                 "target/release/deno-x86_64-unknown-linux-gnu.zip",
                 "target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum",
                 "target/release/deno-x86_64-unknown-linux-gnu.sha256sum",
                 "target/release/denort-x86_64-unknown-linux-gnu.zip",
                 "target/release/denort-x86_64-unknown-linux-gnu.zip.sha256sum",
+                "target/release/libdenort-x86_64-unknown-linux-gnu.zip",
+                "target/release/libdenort-x86_64-unknown-linux-gnu.zip.sha256sum",
                 "target/release/deno-x86_64-apple-darwin.zip",
                 "target/release/deno-x86_64-apple-darwin.zip.sha256sum",
                 "target/release/deno-x86_64-apple-darwin.sha256sum",
                 "target/release/denort-x86_64-apple-darwin.zip",
                 "target/release/denort-x86_64-apple-darwin.zip.sha256sum",
+                "target/release/libdenort-x86_64-apple-darwin.zip",
+                "target/release/libdenort-x86_64-apple-darwin.zip.sha256sum",
                 "target/release/deno-aarch64-unknown-linux-gnu.zip",
                 "target/release/deno-aarch64-unknown-linux-gnu.zip.sha256sum",
                 "target/release/deno-aarch64-unknown-linux-gnu.sha256sum",
                 "target/release/denort-aarch64-unknown-linux-gnu.zip",
                 "target/release/denort-aarch64-unknown-linux-gnu.zip.sha256sum",
+                "target/release/libdenort-aarch64-unknown-linux-gnu.zip",
+                "target/release/libdenort-aarch64-unknown-linux-gnu.zip.sha256sum",
                 "target/release/deno-aarch64-apple-darwin.zip",
                 "target/release/deno-aarch64-apple-darwin.zip.sha256sum",
                 "target/release/deno-aarch64-apple-darwin.sha256sum",
                 "target/release/denort-aarch64-apple-darwin.zip",
                 "target/release/denort-aarch64-apple-darwin.zip.sha256sum",
+                "target/release/libdenort-aarch64-apple-darwin.zip",
+                "target/release/libdenort-aarch64-apple-darwin.zip.sha256sum",
                 "target/release/deno_src.tar.gz",
                 "target/release/lib.deno.d.ts",
                 "target/release/deno-*.bsdiff",
@@ -1461,6 +1508,9 @@ const benchJob = job(
         // we could optimize this to not need this.
         {
           name: "Build deno",
+          env: {
+            DENO_SNAPSHOT_MINIFY_SOURCES: "1",
+          },
           run: "cargo build --release -p deno",
         },
         {

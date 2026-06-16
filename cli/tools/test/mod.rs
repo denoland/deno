@@ -80,6 +80,7 @@ use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
@@ -336,6 +337,7 @@ pub enum TestFailure {
   JsError(Box<JsError>),
   FailedSteps(usize),
   IncompleteSteps,
+  PendingPromiseResolution,
   Leaked(Vec<String>, Vec<String>), // Details, trailer notes
   TimedOut(u32),
   // The rest are for steps only.
@@ -359,6 +361,9 @@ impl TestFailure {
       }
       TestFailure::IncompleteSteps => Cow::Borrowed(
         "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.",
+      ),
+      TestFailure::PendingPromiseResolution => Cow::Borrowed(
+        "Promise resolution is still pending but the event loop has already resolved.",
       ),
       TestFailure::Incomplete => Cow::Borrowed(
         "Didn't complete before parent. Await step with `await t.step(...)`.",
@@ -403,6 +408,9 @@ impl TestFailure {
       TestFailure::FailedSteps(n) => format!("{n} test steps failed"),
       TestFailure::IncompleteSteps => {
         "Completed while steps were still running".to_string()
+      }
+      TestFailure::PendingPromiseResolution => {
+        "Promise resolution is still pending".to_string()
       }
       TestFailure::Incomplete => "Didn't complete before parent".to_string(),
       TestFailure::Leaked(_, _) => "Leaks detected".to_string(),
@@ -529,12 +537,12 @@ pub enum TestEvent {
   Plan(TestPlan),
   Wait(usize),
   Output(Vec<u8>),
-  Slow(usize, u64),
-  Result(usize, TestResult, u64),
+  Slow(usize, Duration),
+  Result(usize, TestResult, Duration),
   UncaughtError(String, Box<JsError>),
   StepRegister(TestStepDescription),
   StepWait(usize),
-  StepResult(usize, TestStepResult, u64),
+  StepResult(usize, TestStepResult, Duration),
   /// Indicates that this worker has completed running tests.
   Completed,
   /// Indicates that the user has cancelled the test run with Ctrl+C and
@@ -601,6 +609,9 @@ struct TestSpecifiersOptions {
   reporter: TestReporterConfig,
   junit_path: Option<String>,
   hide_stacktraces: bool,
+  /// `(index, count)` with a 1-based index, from `--shard`. Selects a subset
+  /// of test files so a run can be split across machines.
+  shard: Option<(usize, usize)>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1382,6 +1393,9 @@ async fn run_tests_for_worker_inner(
               had_uncaught_error = true;
               continue;
             }
+            CoreErrorKind::PendingPromiseResolution => {
+              TestResult::Failed(TestFailure::PendingPromiseResolution)
+            }
             err => return Err(err.into_box().into()),
           },
         }
@@ -1470,6 +1484,24 @@ async fn run_tests_for_worker_inner(
 static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 
 /// Test a collection of specifiers with test modes concurrently.
+/// Selects the test files belonging to shard `index` of `count` (1-based).
+/// The files are sorted for a stable order, then split into `count`
+/// consecutive, balanced groups. Assumes `1 <= index <= count` (validated at
+/// flag-parse time).
+fn shard_specifiers(
+  mut specifiers: Vec<ModuleSpecifier>,
+  index: usize,
+  count: usize,
+) -> Vec<ModuleSpecifier> {
+  specifiers.sort();
+  let total = specifiers.len();
+  // Balanced split: shard i covers [total*(i-1)/count, total*i/count). This
+  // partitions every file into exactly one shard with sizes differing by <= 1.
+  let start = total * (index - 1) / count;
+  let end = total * index / count;
+  specifiers.into_iter().take(end).skip(start).collect()
+}
+
 async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   cli_options: &Arc<CliOptions>,
@@ -1479,6 +1511,14 @@ async fn test_specifiers(
   require_modules: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
+  // Select this shard's files first (on a stable sorted order) so the split is
+  // deterministic across machines regardless of any later shuffling.
+  let specifiers = if let Some((index, count)) = options.shard {
+    shard_specifiers(specifiers, index, count)
+  } else {
+    specifiers
+  };
+
   let specifiers = if let Some(seed) = options.specifier.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers = specifiers;
@@ -1709,15 +1749,18 @@ pub async fn report_tests(
     );
   }
 
+  // A genuine test failure takes precedence over the `only` notice: if a test
+  // failed on its own, reporting that it failed "because the \"only\" option
+  // was used" is misleading.
+  if failed {
+    return (Err(anyhow!("Test failed")), receiver);
+  }
+
   if used_only {
     return (
       Err(anyhow!("Test failed because the \"only\" option was used",)),
       receiver,
     );
-  }
-
-  if failed {
-    return (Err(anyhow!("Test failed")), receiver);
   }
 
   (Ok(()), receiver)
@@ -1972,6 +2015,7 @@ pub async fn run_tests(
       reporter: workspace_test_options.reporter,
       junit_path: workspace_test_options.junit_path,
       hide_stacktraces: workspace_test_options.hide_stacktraces,
+      shard: workspace_test_options.shard,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&workspace_test_options.filter),
         shuffle: workspace_test_options.shuffle,
@@ -2067,14 +2111,9 @@ pub async fn run_tests_with_watch(
           cli_options.resolve_test_options_for_members(&test_flags)?;
         let watch_paths = members_with_test_options
           .iter()
-          .filter_map(|(_, test_options)| {
-            test_options
-              .files
-              .include
-              .as_ref()
-              .map(|set| set.base_paths())
+          .flat_map(|(_, test_options)| {
+            file_watcher::watch_paths_for_file_patterns(&test_options.files)
           })
-          .flatten()
           .collect::<Vec<_>>();
         let _ = watcher_communicator.watch_paths(watch_paths);
         let test_modules = members_with_test_options
@@ -2101,11 +2140,23 @@ pub async fn run_tests_with_watch(
           .flatten()
           .collect::<Vec<_>>();
 
+        // Markdown (and other non-script) doc-test files cannot be parsed
+        // by the module graph, so split them out and track reloads for
+        // them by path instead of by graph dependency. With `--doc`, the
+        // collector accepts extensions like `.md` that `is_script_ext`
+        // rejects.
+        let (graph_modules, doc_only_modules): (Vec<_>, Vec<_>) =
+          test_modules.into_iter().partition(|specifier| {
+            deno_path_util::url_to_file_path(specifier)
+              .map(|p| is_script_ext(&p))
+              .unwrap_or(true)
+          });
+
         let graph = module_graph_creator
-          .create_graph(graph_kind, test_modules, NpmCachingStrategy::Eager)
+          .create_graph(graph_kind, graph_modules, NpmCachingStrategy::Eager)
           .await?;
         module_graph_creator.graph_valid(&graph)?;
-        let test_modules = &graph.roots;
+        let graph_modules = graph.roots.clone();
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
@@ -2116,10 +2167,15 @@ pub async fn run_tests_with_watch(
             .possible_env_file_paths_for_watch()
             .any(|path| changed_paths.contains(&path));
           if env_file_changed {
-            test_modules.clone()
+            graph_modules
+              .into_iter()
+              .chain(doc_only_modules)
+              .collect::<IndexSet<_>>()
           } else {
-            let mut result = IndexSet::with_capacity(test_modules.len());
-            for test_module_specifier in test_modules {
+            let mut result = IndexSet::with_capacity(
+              graph_modules.len() + doc_only_modules.len(),
+            );
+            for test_module_specifier in &graph_modules {
               if has_graph_root_local_dependent_changed(
                 &graph,
                 test_module_specifier,
@@ -2128,10 +2184,21 @@ pub async fn run_tests_with_watch(
                 result.insert(test_module_specifier.clone());
               }
             }
+            for specifier in &doc_only_modules {
+              if let Ok(path) = deno_path_util::url_to_file_path(specifier)
+                && let Ok(path) = canonicalize_path(&path)
+                && changed_paths.contains(&path)
+              {
+                result.insert(specifier.clone());
+              }
+            }
             result
           }
         } else {
-          test_modules.clone()
+          graph_modules
+            .into_iter()
+            .chain(doc_only_modules)
+            .collect::<IndexSet<_>>()
         };
 
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
@@ -2199,6 +2266,7 @@ pub async fn run_tests_with_watch(
             reporter: workspace_test_options.reporter,
             junit_path: workspace_test_options.junit_path,
             hide_stacktraces: workspace_test_options.hide_stacktraces,
+            shard: workspace_test_options.shard,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&workspace_test_options.filter),
               shuffle: workspace_test_options.shuffle,
@@ -2274,7 +2342,7 @@ impl TestEventTracker {
     test_id: usize,
     duration: Duration,
   ) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Slow(test_id, duration.as_millis() as _))
+    self.send_event(TestEvent::Slow(test_id, duration))
   }
 
   fn wait(&self, desc: &TestDescription) -> Result<(), ChannelClosedError> {
@@ -2282,14 +2350,22 @@ impl TestEventTracker {
   }
 
   fn ignored(&self, desc: &TestDescription) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Result(desc.id, TestResult::Ignored, 0))
+    self.send_event(TestEvent::Result(
+      desc.id,
+      TestResult::Ignored,
+      Duration::default(),
+    ))
   }
 
   fn cancelled(
     &self,
     desc: &TestDescription,
   ) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Result(desc.id, TestResult::Cancelled, 0))
+    self.send_event(TestEvent::Result(
+      desc.id,
+      TestResult::Cancelled,
+      Duration::default(),
+    ))
   }
 
   fn register(
@@ -2321,11 +2397,7 @@ impl TestEventTracker {
     test_result: TestResult,
     duration: Duration,
   ) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Result(
-      desc.id,
-      test_result,
-      duration.as_millis() as u64,
-    ))
+    self.send_event(TestEvent::Result(desc.id, test_result, duration))
   }
 
   pub(crate) fn force_end_report(&self) -> Result<(), ChannelClosedError> {
