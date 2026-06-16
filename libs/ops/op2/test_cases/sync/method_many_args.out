@@ -161,7 +161,7 @@ impl Big {
                             fast_api_callback_options) }
                         );
                         let mut scope = scope.init();
-                        deno_core::_ops::throw_error_one_byte(
+                        deno_core::_ops::throw_invalid_this_error_one_byte(
                             &mut scope,
                             "expected Big",
                         );
@@ -204,7 +204,10 @@ impl Big {
                 let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<
                     Big,
                 >(&mut scope, args.this().into()) else {
-                    deno_core::_ops::throw_error_one_byte_info(&info, "expected Big");
+                    deno_core::_ops::throw_invalid_this_error_one_byte_info(
+                        &info,
+                        "expected Big",
+                    );
                     return 1;
                 };
                 let self_ = unsafe { self_.as_ref() };

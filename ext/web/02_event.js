@@ -6,7 +6,7 @@
 // and impossible logic branches based on what Deno currently supports.
 
 (function () {
-const { core, primordials } = __bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
@@ -1696,6 +1696,9 @@ function reportError(error) {
   webidl.requiredArguments(arguments.length, 1, prefix);
   reportException(error);
 }
+
+internals.defineEventHandler = defineEventHandler;
+internals.setEventTargetData = setEventTargetData;
 
 return {
   CloseEvent,

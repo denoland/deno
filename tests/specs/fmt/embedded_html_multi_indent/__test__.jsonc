@@ -4,7 +4,7 @@
     "stdin": {
       "args": "fmt -",
       "input": "console.log(html`<a><svg viewBox=\"0 0 16 16\" width=\"20\" height=\"20\" fill=\"currentColor\">\n  <path d=\"\" />\n</svg></a>`);\n",
-      "output": "console.log(html`\n  <a><svg viewBox=\"0 0 16 16\" width=\"20\" height=\"20\" fill=\"currentColor\">\n      <path d=\"\" />\n    </svg></a>\n`);\n"
+      "output": "console.log(\n  html`<a><svg viewBox=\"0 0 16 16\" width=\"20\" height=\"20\" fill=\"currentColor\">\n  <path d=\"\" />\n</svg></a>`,\n);\n"
     }
   }
 }

@@ -7,7 +7,7 @@
 /// <reference path="../../core/internal.d.ts" />
 
 (function () {
-const { core, primordials } = __bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   isArrayBuffer,
   isDataView,
@@ -1527,6 +1527,8 @@ function setlikeObjectWrap(objPrototype, readonly) {
     });
   }
 }
+
+internals.webidlBrand = brand;
 
 return {
   assertBranded,
