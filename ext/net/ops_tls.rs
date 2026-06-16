@@ -470,14 +470,24 @@ pub async fn op_net_connect_tls(
     return Err(NetError::NoResolvedAddress);
   }
 
-  // Post-resolution deny check: verify none of the resolved IPs are denied.
-  // This prevents bypassing IP-literal deny rules via numeric hostname
-  // aliases (e.g. 2130706433 -> 127.0.0.1). All candidate addresses are
-  // checked because Happy Eyeballs may connect to any of them.
+  // Happy Eyeballs races every resolved candidate, so it may connect to any of
+  // them; the non-racing path only ever connects to `addrs[0]`.
+  let use_happy_eyeballs = options.auto_select_family && addrs.len() > 1;
+
+  // Post-resolution deny check: verify the IPs we may actually connect to are
+  // not denied. This prevents bypassing IP-literal deny rules via numeric
+  // hostname aliases (e.g. 2130706433 -> 127.0.0.1). Only the candidates we may
+  // attempt are checked: all of them when Happy Eyeballs races them, otherwise
+  // just the single address that will be used.
   {
     let mut state_ = state.borrow_mut();
     let permissions = state_.borrow_mut::<PermissionsContainer>();
-    for addr in &addrs {
+    let checked = if use_happy_eyeballs {
+      &addrs[..]
+    } else {
+      &addrs[..1]
+    };
+    for addr in checked {
       permissions.check_net_resolved(
         &addr.ip(),
         addr.port(),
@@ -489,7 +499,7 @@ pub async fn op_net_connect_tls(
   // Use Happy Eyeballs if enabled and multiple addresses available.
   // Note: the TLS connect op has no abort resource, so no cancel handle is
   // available here (matches the pre-Happy-Eyeballs behavior).
-  let tcp_stream = if options.auto_select_family && addrs.len() > 1 {
+  let tcp_stream = if use_happy_eyeballs {
     let attempt_delay = std::time::Duration::from_millis(
       options.auto_select_family_attempt_delay,
     );
