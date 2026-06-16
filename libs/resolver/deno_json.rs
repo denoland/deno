@@ -539,6 +539,10 @@ pub struct CompilerOptionsData {
 }
 
 impl CompilerOptionsData {
+  pub fn has_compiler_options(&self) -> bool {
+    self.sources.iter().any(|s| s.compiler_options.is_some())
+  }
+
   fn new(
     sources: Vec<CompilerOptionsSource>,
     source_kind: CompilerOptionsSourceKind,
@@ -1488,10 +1492,7 @@ impl CompilerOptionsResolver {
 
   pub fn for_specifier(&self, specifier: &Url) -> &CompilerOptionsData {
     let workspace_data = self.workspace_configs.get_for_specifier(specifier);
-    if !workspace_data
-      .sources
-      .iter()
-      .any(|s| s.compiler_options.is_some())
+    if !workspace_data.has_compiler_options()
       && let Ok(path) = url_to_file_path(specifier)
     {
       for ts_config in &self.ts_configs {
@@ -1509,10 +1510,7 @@ impl CompilerOptionsResolver {
   ) -> (CompilerOptionsKey, &CompilerOptionsData) {
     let (scope, workspace_data) =
       self.workspace_configs.entry_for_specifier(specifier);
-    if !workspace_data
-      .sources
-      .iter()
-      .any(|s| s.compiler_options.is_some())
+    if !workspace_data.has_compiler_options()
       && let Ok(path) = url_to_file_path(specifier)
     {
       for (i, ts_config) in self.ts_configs.iter().enumerate() {
@@ -1682,12 +1680,17 @@ impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
 pub type CompilerOptionsResolverRc =
   deno_maybe_sync::MaybeArc<CompilerOptionsResolver>;
 
+#[derive(Debug, Default)]
+struct JsxImportSourceConfigData {
+  config: Option<JsxImportSourceConfigRc>,
+  has_compiler_options: bool,
+}
+
 /// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
 /// ahead of time as needed for the graph resolver.
 #[derive(Debug, Default)]
 pub struct JsxImportSourceConfigResolver {
-  workspace_configs:
-    FolderScopedWithUnscopedMap<Option<JsxImportSourceConfigRc>>,
+  workspace_configs: FolderScopedWithUnscopedMap<JsxImportSourceConfigData>,
   ts_configs: Vec<(Option<JsxImportSourceConfigRc>, TsConfigFileFilterRc)>,
 }
 
@@ -1696,9 +1699,14 @@ impl JsxImportSourceConfigResolver {
     compiler_options_resolver: &CompilerOptionsResolver,
   ) -> Result<Self, ToMaybeJsxImportSourceConfigError> {
     Ok(Self {
-      workspace_configs: compiler_options_resolver
-        .workspace_configs
-        .try_map(|d| Ok(d.jsx_import_source_config()?.cloned()))?,
+      workspace_configs: compiler_options_resolver.workspace_configs.try_map(
+        |d| {
+          Ok(JsxImportSourceConfigData {
+            config: d.jsx_import_source_config()?.cloned(),
+            has_compiler_options: d.has_compiler_options(),
+          })
+        },
+      )?,
       ts_configs: compiler_options_resolver
         .ts_configs
         .iter()
@@ -1716,14 +1724,17 @@ impl JsxImportSourceConfigResolver {
     &self,
     specifier: &Url,
   ) -> Option<&JsxImportSourceConfigRc> {
-    if let Ok(path) = url_to_file_path(specifier) {
+    let workspace_data = self.workspace_configs.get_for_specifier(specifier);
+    if !workspace_data.has_compiler_options
+      && let Ok(path) = url_to_file_path(specifier)
+    {
       for (config, filter) in &self.ts_configs {
         if filter.includes_path(&path) {
           return config.as_ref();
         }
       }
     }
-    self.workspace_configs.get_for_specifier(specifier).as_ref()
+    workspace_data.config.as_ref()
   }
 }
 
@@ -1792,8 +1803,7 @@ fn compiler_options_to_transpile_and_emit_options(
     imports_not_used_as_values,
     jsx,
     var_decl_imports: false,
-    // todo(dsherret): support verbatim_module_syntax here properly
-    verbatim_module_syntax: false,
+    verbatim_module_syntax: options.verbatim_module_syntax,
   };
   let emit = deno_ast::EmitOptions {
     inline_sources: options.inline_sources,

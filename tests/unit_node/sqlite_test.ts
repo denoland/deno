@@ -12,6 +12,10 @@ import { writeFileSync } from "node:fs";
 
 const tempDir = Deno.makeTempDirSync();
 
+type DatabaseSyncWithAuthorizer = DatabaseSync & {
+  setAuthorizer(callback: (() => number) | null): void;
+};
+
 const populate = (db: DatabaseSync, rows: number) => {
   db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
   let values = "";
@@ -1212,6 +1216,21 @@ Deno.test("[node/sqlite] StatementSync alive while iterator", () => {
   }
 });
 
+Deno.test("[node/sqlite] detached iterator callbacks keep state alive", async () => {
+  const command = new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--quiet",
+      "--v8-flags=--expose-gc",
+      "tests/unit_node/testdata/sqlite_iterate_detached_gc.ts",
+    ],
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const { code, stderr } = await command.output();
+  assertEquals(code, 0, new TextDecoder().decode(stderr));
+});
+
 Deno.test("sql.run inserts data", () => {
   using db = new DatabaseSync(":memory:");
   // @ts-expect-error createTagStore is a valid method
@@ -1419,3 +1438,219 @@ Deno.test("createTagStore uses default capacity when not specified", () => {
   const sql = db.createTagStore();
   assertStrictEquals(sql.capacity, 1000);
 });
+
+// Regression test for denoland/orchid#330: closing the database from inside a
+// user-defined aggregate step callback used to free the in-flight statement
+// and connection while SQLite was still executing on the VDBE stack — a
+// native use-after-free. The close call must now throw instead of crashing,
+// and the connection must remain usable after the failed close.
+Deno.test(
+  "[node/sqlite] DatabaseSync.close from aggregate step throws instead of crashing",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE t(x); INSERT INTO t VALUES (1),(2),(3),(4),(5)");
+
+    const closeErrors: unknown[] = [];
+    db.aggregate("sum_with_close", {
+      start: 0,
+      step(acc, x) {
+        try {
+          db.close();
+        } catch (e) {
+          closeErrors.push(e);
+        }
+        return (acc as number) + (x as number);
+      },
+    });
+
+    // The SELECT runs to completion because the in-step error was caught,
+    // and the aggregate accumulates normally — no crash.
+    const result = db.prepare("SELECT sum_with_close(x) AS s FROM t").get() as {
+      s: number;
+    };
+    assertStrictEquals(result.s, 15);
+
+    nodeAssert.ok(
+      closeErrors.length > 0,
+      "expected db.close() inside step to throw at least once",
+    );
+    for (const err of closeErrors) {
+      nodeAssert.ok(err instanceof Error);
+      assertStrictEquals(
+        (err as { code?: string }).code,
+        "ERR_INVALID_STATE",
+      );
+    }
+
+    // Connection must still be usable after the refused close.
+    assertStrictEquals(db.isOpen, true);
+    db.close();
+  },
+);
+
+Deno.test(
+  "[node/sqlite] DatabaseSync.close from scalar function throws instead of corrupting state",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE t(x); INSERT INTO t VALUES (1),(2),(3)");
+
+    const closeErrors: unknown[] = [];
+    db.function("touch", (x) => {
+      try {
+        db.close();
+      } catch (e) {
+        closeErrors.push(e);
+      }
+      return x;
+    });
+
+    const rows = db.prepare("SELECT touch(x) AS v FROM t ORDER BY x").all();
+    assertEquals(rows, [
+      { v: 1, __proto__: null },
+      { v: 2, __proto__: null },
+      { v: 3, __proto__: null },
+    ]);
+
+    nodeAssert.ok(
+      closeErrors.length > 0,
+      "expected db.close() inside scalar callback to throw",
+    );
+    for (const err of closeErrors) {
+      assertStrictEquals(
+        (err as { code?: string }).code,
+        "ERR_INVALID_STATE",
+      );
+    }
+
+    assertStrictEquals(db.isOpen, true);
+    db.close();
+  },
+);
+
+Deno.test(
+  "[node/sqlite] DatabaseSync.setAuthorizer can clear itself before throwing",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    const authorizerDb = db as DatabaseSyncWithAuthorizer;
+    let calls = 0;
+
+    authorizerDb.setAuthorizer(() => {
+      calls++;
+      authorizerDb.setAuthorizer(null);
+      throw new Error("authorizer failed");
+    });
+
+    assertThrows(() => db.prepare("SELECT 1").get(), Error);
+    assertStrictEquals(calls, 1);
+
+    assertEquals(db.prepare("SELECT 1 AS value").get(), {
+      value: 1,
+      __proto__: null,
+    });
+
+    db.close();
+  },
+);
+
+Deno.test(
+  "[node/sqlite] DatabaseSync.setAuthorizer keeps current callback on invalid replacement",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    const authorizerDb = db as DatabaseSyncWithAuthorizer;
+    let calls = 0;
+
+    authorizerDb.setAuthorizer(() => {
+      calls++;
+      return 0;
+    });
+
+    assertThrows(
+      () => {
+        (db as unknown as { setAuthorizer(callback: unknown): void })
+          .setAuthorizer(123);
+      },
+      TypeError,
+      'The "callback" argument must be a function or null.',
+    );
+
+    assertEquals(db.prepare("SELECT 1 AS value").get(), {
+      value: 1,
+      __proto__: null,
+    });
+    nodeAssert.ok(calls > 0, "expected the original authorizer to run");
+
+    db.close();
+  },
+);
+
+Deno.test(
+  "[node/sqlite] DatabaseSync.setAuthorizer can replace itself while active",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    const authorizerDb = db as DatabaseSyncWithAuthorizer;
+    let oldCalls = 0;
+    let newCalls = 0;
+
+    authorizerDb.setAuthorizer(() => {
+      oldCalls++;
+      if (oldCalls === 1) {
+        authorizerDb.setAuthorizer(() => {
+          newCalls++;
+          return 0;
+        });
+      }
+      return 0;
+    });
+
+    assertEquals(db.prepare("SELECT 1 AS value").get(), {
+      value: 1,
+      __proto__: null,
+    });
+    nodeAssert.ok(oldCalls > 0, "expected the original authorizer to run");
+
+    assertEquals(db.prepare("SELECT 2 AS value").get(), {
+      value: 2,
+      __proto__: null,
+    });
+    nodeAssert.ok(newCalls > 0, "expected the replacement authorizer to run");
+
+    db.close();
+  },
+);
+
+Deno.test(
+  "[node/sqlite] DatabaseSync.close from authorizer throws instead of corrupting state",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    const authorizerDb = db as DatabaseSyncWithAuthorizer;
+    const closeErrors: unknown[] = [];
+
+    authorizerDb.setAuthorizer(() => {
+      try {
+        db.close();
+      } catch (e) {
+        closeErrors.push(e);
+      }
+      return 0;
+    });
+
+    assertEquals(db.prepare("SELECT 1 AS value").get(), {
+      value: 1,
+      __proto__: null,
+    });
+
+    nodeAssert.ok(
+      closeErrors.length > 0,
+      "expected db.close() inside authorizer to throw",
+    );
+    for (const err of closeErrors) {
+      assertStrictEquals(
+        (err as { code?: string }).code,
+        "ERR_INVALID_STATE",
+      );
+    }
+
+    assertStrictEquals(db.isOpen, true);
+    db.close();
+  },
+);

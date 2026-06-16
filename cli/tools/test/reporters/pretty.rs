@@ -19,8 +19,10 @@ pub struct PrettyTestReporter {
   did_have_user_output: bool,
   started_tests: bool,
   ended_tests: bool,
-  child_results_buffer:
-    HashMap<usize, IndexMap<usize, (TestStepDescription, TestStepResult, u64)>>,
+  child_results_buffer: HashMap<
+    usize,
+    IndexMap<usize, (TestStepDescription, TestStepResult, Duration)>,
+  >,
   summary: TestSummary,
   writer: Box<dyn std::io::Write>,
   failure_format_options: TestFailureFormatOptions,
@@ -52,10 +54,6 @@ impl PrettyTestReporter {
       writer: Box::new(std::io::stdout()),
       failure_format_options,
     }
-  }
-
-  pub fn with_writer(self, writer: Box<dyn std::io::Write>) -> Self {
-    Self { writer, ..self }
   }
 
   fn force_report_wait(&mut self, description: &TestDescription) {
@@ -102,7 +100,7 @@ impl PrettyTestReporter {
     &mut self,
     description: &TestStepDescription,
     result: &TestStepResult,
-    elapsed: u64,
+    elapsed: Duration,
   ) {
     self.write_output_end();
     if self.in_new_line || self.scope_test_id != Some(description.id) {
@@ -145,7 +143,7 @@ impl PrettyTestReporter {
       write!(
         &mut self.writer,
         " {}",
-        colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+        colors::gray(format!("({})", display::human_elapsed(elapsed)))
       )
       .ok();
     }
@@ -212,14 +210,14 @@ impl TestReporter for PrettyTestReporter {
     self.started_tests = true;
   }
 
-  fn report_slow(&mut self, description: &TestDescription, elapsed: u64) {
+  fn report_slow(&mut self, description: &TestDescription, elapsed: Duration) {
     writeln!(
       &mut self.writer,
       "{}",
       colors::yellow_bold(format!(
         "'{}' has been running for over {}",
         description.name,
-        colors::gray(format!("({})", display::human_elapsed(elapsed.into()))),
+        colors::gray(format!("({})", display::human_elapsed(elapsed))),
       ))
     )
     .ok();
@@ -260,7 +258,7 @@ impl TestReporter for PrettyTestReporter {
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    elapsed: u64,
+    elapsed: Duration,
   ) {
     match &result {
       TestResult::Ok => {
@@ -325,7 +323,7 @@ impl TestReporter for PrettyTestReporter {
     writeln!(
       &mut self.writer,
       " {}",
-      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+      colors::gray(format!("({})", display::human_elapsed(elapsed)))
     )
     .ok();
     self.in_new_line = true;
@@ -365,7 +363,7 @@ impl TestReporter for PrettyTestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    elapsed: u64,
+    elapsed: Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
@@ -457,6 +455,34 @@ impl TestReporter for PrettyTestReporter {
       tests,
       test_steps,
     );
+    self.in_new_line = true;
+  }
+
+  fn report_exit(
+    &mut self,
+    exit_code: i32,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    self.write_output_end();
+    common::report_exit(
+      &mut self.writer,
+      &self.cwd,
+      exit_code,
+      tests_pending,
+      tests,
+      test_steps,
+    );
+    self.in_new_line = true;
+  }
+
+  fn report_isolate_exit(&mut self, origin: &str, exit_code: i32) {
+    self.write_output_end();
+    common::report_isolate_exit(&mut self.writer, &self.cwd, origin, exit_code);
+    if exit_code != 0 {
+      self.summary.failed += 1;
+    }
     self.in_new_line = true;
   }
 

@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 113;
+const cacheVersion = 117;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -176,6 +176,7 @@ RUSTFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
+  -C link-arg=-Wl,--icf=safe
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -194,6 +195,7 @@ RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
+  -C link-arg=-Wl,--icf=safe
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -862,6 +864,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             ],
           }),
         );
+        const packagesToBuild = ["deno", "denort", "test_server"]
+          .map((name) => `-p ${name}`).join(" ");
         const binsToBuild = ["deno", "denort", "test_server"]
           .map((name) => `--bin ${name}`).join(" ");
         const cargoBuildReleaseStep = step
@@ -885,8 +889,18 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               run: [
                 // output fs space before and after building
                 "df -h",
-                `cargo build --release --locked ${binsToBuild} --features=panic-trace`,
+                `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
                 "df -h",
+              ],
+            },
+            {
+              name: "Check release snapshot flags",
+              if: isLinux,
+              run: [
+                "if strings target/release/deno | grep -F -- '--no-lazy --no-lazy-eval --no-lazy-streaming'; then",
+                '  echo "release deno binary contains eager snapshot flags"',
+                "  exit 1",
+                "fi",
               ],
             },
             {
@@ -920,7 +934,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             {
               name: "Build debug",
               if: isDebug,
-              run: `cargo build --locked ${binsToBuild} --features=panic-trace`,
+              run:
+                `cargo build --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
               env: { CARGO_PROFILE_DEV_DEBUG: 0 },
             },
             cargoBuildReleaseStep,

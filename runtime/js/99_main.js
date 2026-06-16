@@ -17,6 +17,8 @@ import {
   op_internal_log,
   op_main_module,
   op_ppid,
+  op_proto_get_attempted,
+  op_proto_set_attempted,
   op_set_format_exception_callback,
   op_snapshot_options,
   op_worker_close,
@@ -37,8 +39,11 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptors,
   ObjectHasOwn,
+  ObjectIsExtensible,
   ObjectKeys,
+  ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
@@ -52,9 +57,13 @@ const {
 const {
   isNativeError,
 } = core;
-const { registerDeclarativeServer } = core.loadExtScript(
-  "ext:deno_http/00_serve.ts",
-);
+// Deno.serve (00_serve.ts) chains through 23_request/23_response/22_body
+// into the 208 KB web-streams polyfill. Only loaded if `deno serve` / a
+// declarative server export is actually used.
+let _serveMod;
+const lazyServeMod = () =>
+  _serveMod ??
+    (_serveMod = core.loadExtScript("ext:deno_http/00_serve.ts"));
 const event = core.loadExtScript("ext:deno_web/02_event.js");
 const location = core.loadExtScript("ext:deno_web/12_location.js");
 const version = core.loadExtScript("ext:runtime/01_version.ts");
@@ -69,7 +78,13 @@ const {
 } = core.loadExtScript("ext:deno_web/01_console.js");
 const performance = core.loadExtScript("ext:deno_web/15_performance.js");
 const url = core.loadExtScript("ext:deno_web/00_url.js");
-const fetch = core.loadExtScript("ext:deno_fetch/26_fetch.js");
+// 26_fetch pulls 22_body -> 06_streams (208 KB). The only thing 99_main
+// needs from it at bootstrap is the wasm-streaming callback registration -
+// wrap that so the actual module loads on first WebAssembly streaming use.
+let _fetchMod;
+const lazyFetchMod = () =>
+  _fetchMod ??
+    (_fetchMod = core.loadExtScript("ext:deno_fetch/26_fetch.js"));
 const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
 import {
   denoNs,
@@ -411,7 +426,7 @@ core.registerErrorBuilder(
 core.registerErrorBuilder(
   "DOMExceptionNotSupportedError",
   function DOMExceptionNotSupportedError(msg) {
-    return new DOMException(msg, "NotSupported");
+    return new DOMException(msg, "NotSupportedError");
   },
 );
 core.registerErrorBuilder(
@@ -450,6 +465,24 @@ core.registerErrorBuilder(
     return new DOMException(msg, "SyntaxError");
   },
 );
+core.registerErrorBuilder(
+  "DOMExceptionIndexSizeError",
+  function DOMExceptionIndexSizeError(msg) {
+    return new DOMException(msg, "IndexSizeError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionTypeMismatchError",
+  function DOMExceptionTypeMismatchError(msg) {
+    return new DOMException(msg, "TypeMismatchError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionInvalidAccessError",
+  function DOMExceptionInvalidAccessError(msg) {
+    return new DOMException(msg, "InvalidAccessError");
+  },
+);
 
 function runtimeStart(
   denoVersion,
@@ -457,7 +490,10 @@ function runtimeStart(
   tsVersion,
   target,
 ) {
-  core.setWasmStreamingCallback(fetch.handleWasmStreaming);
+  core.setWasmStreamingCallback(function wasmStreamingCallback(source, rid) {
+    const handleWasmStreaming = lazyFetchMod().handleWasmStreaming;
+    return handleWasmStreaming(source, rid);
+  });
   core.setReportExceptionCallback(event.reportException);
   op_set_format_exception_callback(formatException);
   version.setVersions(
@@ -534,7 +570,7 @@ function dispatchUnloadEvent() {
 
 let hasBootstrapped = false;
 // Set up global properties shared by main and worker runtime.
-ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+core.defineGlobalProperties(globalThis, windowOrWorkerGlobalScope);
 
 // Set up global properties shared by main and worker runtime that are exposed
 // by unstable features if those are enabled.
@@ -550,7 +586,7 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures) {
     const featureId = featureIds[i];
     if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
       const props = unstableForWindowOrWorkerGlobalScope[featureId];
-      ObjectDefineProperties(globalThis, { ...props });
+      core.defineGlobalProperties(globalThis, { ...props });
     }
   }
 }
@@ -564,11 +600,25 @@ const NOT_IMPORTED_OPS = [
   "op_register_bench",
   "op_bench_get_origin",
 
-  // Related to `Deno.jupyter` API
+  // Related to `Deno.jupyter` REPL API
   "op_jupyter_broadcast",
   "op_jupyter_input",
   "op_jupyter_create_png_from_texture",
   "op_jupyter_get_buffer",
+  // Related to the Jupyter ZMQ kernel worker
+  "op_jupyter_get_connection_info",
+  "op_jupyter_repl_evaluate",
+  "op_jupyter_repl_get_properties",
+  "op_jupyter_repl_global_lexical_scope_names",
+  "op_jupyter_repl_call_function_on_args",
+  "op_jupyter_repl_call_function_on",
+  "op_jupyter_repl_interrupt",
+  "op_jupyter_repl_cancel_interrupt",
+  "op_jupyter_recv_iopub",
+  "op_jupyter_recv_input",
+  "op_jupyter_send_input_reply",
+  "op_jupyter_deno_version",
+  "op_jupyter_typescript_version",
   // Used in jupyter API
   "op_base64_encode",
 
@@ -592,6 +642,8 @@ const NOT_IMPORTED_OPS = [
   "op_register_test_hook",
   "op_register_test",
   "op_test_get_origin",
+  "op_test_event_exit",
+  "op_test_isolate_exit",
   "op_pledge_test_permissions",
 
   // TODO(bartlomieju): used in various integration tests - figure out a way
@@ -620,23 +672,30 @@ function removeImportedOps() {
 // methods should be left there.
 ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
-const finalDenoNs = {
-  internal: internalSymbol,
-  [internalSymbol]: internals,
-  ...denoNs,
-  // Deno.test, Deno.bench, Deno.lint are noops here, but kept for compatibility; so
-  // that they don't cause errors when used outside of `deno test`/`deno bench`/`deno lint`
-  // contexts.
-  test: () => {},
-  bench: () => {},
-  lint: {
-    runPlugin: () => {
-      throw new Error(
-        "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
-      );
+// Build finalDenoNs without spreading denoNs: spread invokes every getter,
+// including the lazy ones (Deno.serve / Deno.run / etc.) that intentionally
+// avoid loading 06_streams / 22_body / 40_process at snapshot time. Use
+// ObjectDefineProperties + getOwnPropertyDescriptors to preserve the lazy
+// descriptors.
+const finalDenoNs = ObjectDefineProperties(
+  {
+    internal: internalSymbol,
+    [internalSymbol]: internals,
+    // Deno.test, Deno.bench, Deno.lint are noops here, but kept for
+    // compatibility; so that they don't cause errors when used outside of
+    // `deno test`/`deno bench`/`deno lint` contexts.
+    test: () => {},
+    bench: () => {},
+    lint: {
+      runPlugin: () => {
+        throw new Error(
+          "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
+        );
+      },
     },
   },
-};
+  ObjectGetOwnPropertyDescriptors(denoNs),
+);
 
 ObjectDefineProperties(finalDenoNs, {
   pid: core.propGetterOnly(opPid),
@@ -674,6 +733,64 @@ const executionModes = {
   serve: 7,
   jupyter: 8,
 };
+
+let protoSetRecorded = false;
+let protoGetRecorded = false;
+
+// By default Deno disables the `Object.prototype.__proto__` accessor for
+// security reasons (it enables prototype pollution), see
+// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+//
+// Historically this was done with `delete Object.prototype.__proto__`, which
+// makes `obj.__proto__` reads return `undefined` and writes silently create a
+// useless own property. Making the accessor *throw* instead would surface those
+// silent bugs, but it broke real packages such as Playwright (see
+// denoland/deno#34730 / #34772), so we keep the silent behavior.
+//
+// Instead of deleting we install an accessor that reproduces the deleted
+// semantics exactly (read -> `undefined`, write -> own data property, prototype
+// unchanged) but additionally records the first read and the first write. When
+// the program later crashes, the uncaught-error formatter (runtime/fmt_errors.rs)
+// reads those flags and suggests `--unstable-unsafe-proto`. A write surfaces
+// downstream so any later crash triggers the nudge; a read crashes at the
+// access site, so the formatter additionally requires `__proto__` on the
+// failing line before nudging. The `__proto__` key in object literals (e.g.
+// `{ __proto__: null }`) is separate syntax and is unaffected.
+function disableProtoAccessor() {
+  ObjectDefineProperty(ObjectPrototype, "__proto__", {
+    __proto__: null,
+    configurable: true,
+    enumerable: false,
+    // Distinct getter/setter function objects: the native accessor uses
+    // separate functions and WPT asserts accessor get/set are unique.
+    get: function __proto__() {
+      if (!protoGetRecorded) {
+        protoGetRecorded = true;
+        op_proto_get_attempted();
+      }
+      return undefined;
+    },
+    set: function __proto__(value) {
+      if (!protoSetRecorded) {
+        protoSetRecorded = true;
+        op_proto_set_attempted();
+      }
+      // Reproduce the previous `delete` behavior: a bare assignment created a
+      // normal own data property. Skip non-extensible receivers, where that
+      // assignment was a silent no-op in sloppy mode (and a throw in strict
+      // mode); keeping it silent here matches the "stay silent" goal above.
+      if (ObjectIsExtensible(this)) {
+        ObjectDefineProperty(this, "__proto__", {
+          __proto__: null,
+          value,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+      }
+    },
+  });
+}
 
 function bootstrapMainRuntime(runtimeOptions, warmup = false) {
   if (!warmup) {
@@ -732,7 +849,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       core.addMainModuleHandler((main) => {
         if (ObjectHasOwn(main, "default")) {
           try {
-            serve = registerDeclarativeServer(main.default);
+            serve = lazyServeMod().registerDeclarativeServer(main.default);
           } catch (e) {
             if (mode === executionModes.serve || autoServe) {
               throw e;
@@ -784,7 +901,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
-    // Remove bootstrapping data from the global scope
+    // Remove bootstrapping data from the global scope. Lazy-loaded IIFE
+    // scripts (`ext:.../*.js`) and the synthetic_esm backing-script path
+    // both read `globalThis.__bootstrap.core.ops` at module body; the
+    // Rust `load_ext_script` reinstalls a captured snapshot view of
+    // `__bootstrap` for the duration of each script's evaluation (see
+    // `BootstrapInstallGuard` in `libs/core/modules/map.rs`).
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
     hasBootstrapped = true;
@@ -852,13 +974,17 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];
-      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+      const unstable = denoNsUnstableById[id];
+      if (unstable) {
+        ObjectDefineProperties(
+          finalDenoNs,
+          ObjectGetOwnPropertyDescriptors(unstable),
+        );
+      }
     }
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
-      // Removes the `__proto__` for security reasons.
-      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-      delete Object.prototype.__proto__;
+      disableProtoAccessor();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -915,7 +1041,12 @@ function bootstrapWorkerRuntime(
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
-    // Remove bootstrapping data from the global scope
+    // Remove bootstrapping data from the global scope. Lazy-loaded IIFE
+    // scripts (`ext:.../*.js`) and the synthetic_esm backing-script path
+    // both read `globalThis.__bootstrap.core.ops` at module body; the
+    // Rust `load_ext_script` reinstalls a captured snapshot view of
+    // `__bootstrap` for the duration of each script's evaluation (see
+    // `BootstrapInstallGuard` in `libs/core/modules/map.rs`).
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
     hasBootstrapped = true;
@@ -948,8 +1079,8 @@ function bootstrapWorkerRuntime(
     event.defineEventHandler(globalThis, "message");
     event.defineEventHandler(globalThis, "error", undefined, true);
 
-    // `Deno.exit()` is an alias to `self.close()`. Setting and exit
-    // code using an op in worker context is a no-op.
+    // `Deno.exit()` closes the worker using the internal worker close
+    // operation. Setting an exit code using an op in worker context is a no-op.
     os.setExitHandler((_exitCode) => {
       workerClose();
     });
@@ -969,7 +1100,13 @@ function bootstrapWorkerRuntime(
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];
-      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+      const unstable = denoNsUnstableById[id];
+      if (unstable) {
+        ObjectDefineProperties(
+          finalDenoNs,
+          ObjectGetOwnPropertyDescriptors(unstable),
+        );
+      }
     }
 
     // Not available in workers
@@ -977,9 +1114,7 @@ function bootstrapWorkerRuntime(
     delete finalDenoNs.mainModule;
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
-      // Removes the `__proto__` for security reasons.
-      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-      delete Object.prototype.__proto__;
+      disableProtoAccessor();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -1046,4 +1181,9 @@ bootstrapWorkerRuntime(
   undefined,
   true,
 );
-nodeBootstrap({ warmup: true });
+// Skip warmup. The warmup branch creates placeholder stdin/stdout/stderr
+// streams that the runtime bootstrap (__bootstrapNodeProcess(warmup=false))
+// then unconditionally overwrites with fresh TTYWriteStream instances, so
+// the only observable effect of warmup was pulling node:stream and friends
+// into the snapshot via createWritableStdioStream/initStdin.
+// nodeBootstrap({ warmup: true });

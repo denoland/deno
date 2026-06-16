@@ -100,14 +100,19 @@ impl TestReporter for DotTestReporter {
     std::io::stdout().flush().ok();
   }
 
-  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
+  fn report_slow(
+    &mut self,
+    _description: &TestDescription,
+    _elapsed: Duration,
+  ) {
+  }
   fn report_output(&mut self, _output: &[u8]) {}
 
   fn report_result(
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    _elapsed: u64,
+    _elapsed: Duration,
   ) {
     match &result {
       TestResult::Ok => {
@@ -156,7 +161,7 @@ impl TestReporter for DotTestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    _elapsed: u64,
+    _elapsed: Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
@@ -213,6 +218,35 @@ impl TestReporter for DotTestReporter {
       tests,
       test_steps,
     );
+  }
+
+  fn report_exit(
+    &mut self,
+    exit_code: i32,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    common::report_exit(
+      &mut std::io::stdout(),
+      &self.cwd,
+      exit_code,
+      tests_pending,
+      tests,
+      test_steps,
+    );
+  }
+
+  fn report_isolate_exit(&mut self, origin: &str, exit_code: i32) {
+    common::report_isolate_exit(
+      &mut std::io::stdout(),
+      &self.cwd,
+      origin,
+      exit_code,
+    );
+    if exit_code != 0 {
+      self.summary.failed += 1;
+    }
   }
 
   fn report_completed(&mut self) {}

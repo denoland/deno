@@ -443,12 +443,12 @@ function enableJupyter() {
     return op_jupyter_input(prompt, password);
   }
 
-  async function broadcast(
+  function broadcast(
     msgType,
     content,
     { metadata = { __proto__: null }, buffers = [] } = { __proto__: null },
   ) {
-    await op_jupyter_broadcast(msgType, content, metadata, buffers);
+    op_jupyter_broadcast(msgType, content, metadata, buffers);
   }
 
   async function broadcastResult(executionCount, result) {
@@ -462,6 +462,9 @@ function enableJupyter() {
         execution_count: executionCount,
         data,
         metadata: {},
+        // nbclient reads `content.get("transient", {}).get("display_id")`,
+        // which crashes if `transient` is serialized as null instead of `{}`.
+        transient: {},
       });
     } catch (err) {
       if (err instanceof Error) {

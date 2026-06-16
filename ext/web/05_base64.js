@@ -7,7 +7,7 @@
 /// <reference lib="esnext" />
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_base64_atob, op_base64_btoa } = core.ops;
 const {
   ObjectPrototypeIsPrototypeOf,

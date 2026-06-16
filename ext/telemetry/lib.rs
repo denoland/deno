@@ -28,6 +28,7 @@ use std::time::SystemTime;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
@@ -391,7 +392,12 @@ impl DenoPeriodicReader {
     let interval = sys
       .env_var(METRIC_EXPORT_INTERVAL_NAME)
       .ok()
-      .and_then(|v| v.parse().map(Duration::from_millis).ok())
+      .and_then(|v| {
+        v.parse()
+          .map(Duration::from_millis)
+          .ok()
+          .filter(|d| !d.is_zero())
+      })
       .unwrap_or(DEFAULT_INTERVAL);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(256);
@@ -944,6 +950,9 @@ pub struct OtelGlobals {
   pub id_generator: DenoIdGenerator,
   pub meter_provider: SdkMeterProvider,
   pub builtin_instrumentation_scope: InstrumentationScope,
+  pub span_event_count_limit: usize,
+  pub span_attribute_count_limit: usize,
+  pub sampler: Sampler,
   pub config: OtelConfig,
 }
 
@@ -954,6 +963,190 @@ impl OtelGlobals {
 
   pub fn has_metrics(&self) -> bool {
     self.config.metrics_enabled
+  }
+}
+
+/// Default maximum number of events per span, per the OpenTelemetry SDK spec
+/// for `OTEL_SPAN_EVENT_COUNT_LIMIT`.
+const DEFAULT_SPAN_EVENT_COUNT_LIMIT: usize = 128;
+
+/// Resolve the span event count limit from `OTEL_SPAN_EVENT_COUNT_LIMIT`,
+/// falling back to the spec default of 128.
+///
+/// See <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#span-limits>
+fn span_event_count_limit_from_env(sys: &impl TelemetrySys) -> usize {
+  sys
+    .env_var("OTEL_SPAN_EVENT_COUNT_LIMIT")
+    .ok()
+    .and_then(|v| v.trim().parse::<usize>().ok())
+    .unwrap_or(DEFAULT_SPAN_EVENT_COUNT_LIMIT)
+}
+
+/// The effective span event count limit from the initialized globals, falling
+/// back to the spec default if telemetry is not yet initialized.
+fn span_event_count_limit() -> usize {
+  OTEL_GLOBALS
+    .get()
+    .map(|g| g.span_event_count_limit)
+    .unwrap_or(DEFAULT_SPAN_EVENT_COUNT_LIMIT)
+}
+
+/// Default maximum number of attributes per span (and per span event / link),
+/// as defined by the OpenTelemetry SDK spec for `OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`
+/// (and `OTEL_ATTRIBUTE_COUNT_LIMIT`).
+const DEFAULT_ATTRIBUTE_COUNT_LIMIT: usize = 128;
+
+/// Resolve the span attribute count limit from the environment, honoring
+/// `OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT` and falling back to the general
+/// `OTEL_ATTRIBUTE_COUNT_LIMIT`, then to the spec default of 128.
+///
+/// See <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#attribute-limits>
+fn span_attribute_count_limit_from_env(sys: &impl TelemetrySys) -> usize {
+  [
+    "OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT",
+    "OTEL_ATTRIBUTE_COUNT_LIMIT",
+  ]
+  .into_iter()
+  .find_map(|name| {
+    sys
+      .env_var(name)
+      .ok()
+      .and_then(|v| v.trim().parse::<usize>().ok())
+  })
+  .unwrap_or(DEFAULT_ATTRIBUTE_COUNT_LIMIT)
+}
+
+/// The effective span attribute count limit from the initialized globals,
+/// falling back to the spec default if telemetry is not yet initialized.
+fn attribute_count_limit() -> usize {
+  OTEL_GLOBALS
+    .get()
+    .map(|g| g.span_attribute_count_limit)
+    .unwrap_or(DEFAULT_ATTRIBUTE_COUNT_LIMIT)
+}
+
+/// Head-based trace sampler configured via the `OTEL_TRACES_SAMPLER` and
+/// `OTEL_TRACES_SAMPLER_ARG` environment variables.
+///
+/// See <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration>
+#[derive(Debug, Clone, Copy)]
+pub struct Sampler {
+  /// When set, the sampling decision of a valid parent span takes precedence
+  /// over `root` (the `parentbased_*` variants).
+  parent_based: bool,
+  /// The sampler consulted when there is no parent (or `parent_based` is
+  /// false).
+  root: RootSampler,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum RootSampler {
+  AlwaysOn,
+  AlwaysOff,
+  TraceIdRatio(f64),
+}
+
+impl Default for Sampler {
+  fn default() -> Self {
+    // When `OTEL_TRACES_SAMPLER` is unset, preserve Deno's historical behavior
+    // of recording and sampling every span.
+    Sampler {
+      parent_based: false,
+      root: RootSampler::AlwaysOn,
+    }
+  }
+}
+
+impl Sampler {
+  fn from_env(
+    sys: &impl TelemetrySys,
+  ) -> Result<Self, deno_core::anyhow::Error> {
+    let Ok(value) = sys.env_var("OTEL_TRACES_SAMPLER") else {
+      return Ok(Self::default());
+    };
+    let value = value.trim();
+    if value.is_empty() {
+      return Ok(Self::default());
+    }
+    // `OTEL_TRACES_SAMPLER_ARG` is the sampling probability for the
+    // `traceidratio` samplers, in the range [0, 1]. It defaults to 1.0 and is
+    // ignored by the other samplers.
+    let ratio = || -> f64 {
+      sys
+        .env_var("OTEL_TRACES_SAMPLER_ARG")
+        .ok()
+        .and_then(|s| s.trim().parse::<f64>().ok())
+        .unwrap_or(1.0)
+        .clamp(0.0, 1.0)
+    };
+    let sampler = match value {
+      "always_on" => Sampler {
+        parent_based: false,
+        root: RootSampler::AlwaysOn,
+      },
+      "always_off" => Sampler {
+        parent_based: false,
+        root: RootSampler::AlwaysOff,
+      },
+      "traceidratio" => Sampler {
+        parent_based: false,
+        root: RootSampler::TraceIdRatio(ratio()),
+      },
+      "parentbased_always_on" => Sampler {
+        parent_based: true,
+        root: RootSampler::AlwaysOn,
+      },
+      "parentbased_always_off" => Sampler {
+        parent_based: true,
+        root: RootSampler::AlwaysOff,
+      },
+      "parentbased_traceidratio" => Sampler {
+        parent_based: true,
+        root: RootSampler::TraceIdRatio(ratio()),
+      },
+      other => {
+        return Err(deno_core::anyhow::anyhow!(
+          "Env var OTEL_TRACES_SAMPLER specifies an unsupported sampler: {}",
+          other
+        ));
+      }
+    };
+    Ok(sampler)
+  }
+
+  /// Returns whether a span with the given `trace_id` should be sampled
+  /// (recorded and exported), given its `parent` span context if any.
+  fn should_sample(
+    &self,
+    parent: Option<&SpanContext>,
+    trace_id: TraceId,
+  ) -> bool {
+    let parent_decision = parent.and_then(|parent| {
+      (self.parent_based && parent.is_valid()).then(|| parent.is_sampled())
+    });
+    if let Some(sampled) = parent_decision {
+      return sampled;
+    }
+    match self.root {
+      RootSampler::AlwaysOn => true,
+      RootSampler::AlwaysOff => false,
+      RootSampler::TraceIdRatio(ratio) => {
+        if ratio >= 1.0 {
+          return true;
+        }
+        if ratio <= 0.0 {
+          return false;
+        }
+        // Matches the opentelemetry-rust `TraceIdRatioBased` sampler: derive a
+        // deterministic value in [0, 2^63) from the lower 64 bits of the trace
+        // id and keep the span when it falls below the probability bound.
+        let bytes = trace_id.to_bytes();
+        let low = u64::from_be_bytes(bytes[8..16].try_into().unwrap());
+        let value = low >> 1;
+        let bound = (ratio * (1u64 << 63) as f64) as u64;
+        value < bound
+      }
+    }
   }
 }
 
@@ -1141,6 +1334,10 @@ pub fn init(
     DenoIdGenerator::random()
   };
 
+  let span_event_count_limit = span_event_count_limit_from_env(sys);
+  let span_attribute_count_limit = span_attribute_count_limit_from_env(sys);
+  let sampler = Sampler::from_env(sys)?;
+
   OTEL_GLOBALS
     .set(OtelGlobals {
       log_processor,
@@ -1148,6 +1345,9 @@ pub fn init(
       id_generator,
       meter_provider,
       builtin_instrumentation_scope,
+      span_event_count_limit,
+      span_attribute_count_limit,
+      sampler,
       config,
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
@@ -1454,16 +1654,17 @@ macro_rules! attr_raw {
 }
 
 macro_rules! attr {
-  ($scope:ident, $attributes:expr $(=> $dropped_attributes_count:expr)?, $name:expr, $value:expr) => {
-    let attr = attr_raw!($scope, $name, $value);
-    if let Some(kv) = attr {
+  ($scope:ident, $attributes:expr => $dropped_attributes_count:expr, $limit:expr, $name:expr, $value:expr) => {
+    // Enforce the configured per-element attribute count limit
+    // (`OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`): once the limit is reached, further
+    // attributes are dropped and counted, matching the OpenTelemetry SDK spec.
+    if $attributes.len() >= $limit {
+      $dropped_attributes_count += 1;
+    } else if let Some(kv) = attr_raw!($scope, $name, $value) {
       $attributes.push(kv);
+    } else {
+      $dropped_attributes_count += 1;
     }
-    $(
-      else {
-        $dropped_attributes_count += 1;
-      }
-    )?
   };
 }
 
@@ -1725,37 +1926,54 @@ impl OtelTracer {
     start_time: Option<f64>,
     #[smi] attribute_count: usize,
   ) -> Result<OtelSpan, JsErrorBox> {
-    let OtelGlobals { id_generator, .. } = OTEL_GLOBALS
+    let OtelGlobals {
+      id_generator,
+      sampler,
+      ..
+    } = OTEL_GLOBALS
       .get()
       .ok_or_else(|| JsErrorBox::generic("otel not initialized"))?;
-    let span_context;
     let parent_span_id;
+    let trace_id;
+    let trace_state;
+    let parent_span_context;
     match parent {
       Some(parent) => {
         let parent = parent.0.borrow();
-        let parent_span_context = match &**parent {
+        let ctx = match &**parent {
           OtelSpanState::Recording(span) => &span.span_context,
           OtelSpanState::Done(span_context) => span_context,
         };
-        span_context = SpanContext::new(
-          parent_span_context.trace_id(),
-          id_generator.new_span_id(),
-          TraceFlags::SAMPLED,
-          false,
-          parent_span_context.trace_state().clone(),
-        );
-        parent_span_id = parent_span_context.span_id();
+        trace_id = ctx.trace_id();
+        trace_state = ctx.trace_state().clone();
+        parent_span_id = ctx.span_id();
+        parent_span_context = Some(ctx.clone());
       }
       None => {
-        span_context = SpanContext::new(
-          id_generator.new_trace_id(),
-          id_generator.new_span_id(),
-          TraceFlags::SAMPLED,
-          false,
-          TraceState::NONE,
-        );
+        trace_id = id_generator.new_trace_id();
+        trace_state = TraceState::NONE;
         parent_span_id = SpanId::INVALID;
+        parent_span_context = None;
       }
+    }
+    let sampled = sampler.should_sample(parent_span_context.as_ref(), trace_id);
+    let span_context = SpanContext::new(
+      trace_id,
+      id_generator.new_span_id(),
+      if sampled {
+        TraceFlags::SAMPLED
+      } else {
+        TraceFlags::default()
+      },
+      false,
+      trace_state,
+    );
+    if !sampled {
+      // The span is not sampled: keep its context for propagation, but do not
+      // record or export it.
+      return Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+        OtelSpanState::Done(span_context),
+      )))));
     }
     let name = owned_string(
       scope,
@@ -1803,6 +2021,7 @@ impl OtelTracer {
     scope: &mut v8::PinScope<'s, '_>,
     parent_trace_id: v8::Local<'s, v8::Value>,
     parent_span_id: v8::Local<'s, v8::Value>,
+    #[smi] parent_trace_flags: u8,
     name: v8::Local<'s, v8::Value>,
     #[smi] span_kind: u8,
     start_time: Option<f64>,
@@ -1816,16 +2035,39 @@ impl OtelTracer {
     if parent_span_id == SpanId::INVALID {
       return Err(JsErrorBox::generic("invalid span id"));
     };
-    let OtelGlobals { id_generator, .. } = OTEL_GLOBALS
+    let OtelGlobals {
+      id_generator,
+      sampler,
+      ..
+    } = OTEL_GLOBALS
       .get()
       .ok_or_else(|| JsErrorBox::generic("otel not initialized"))?;
+    // Reconstruct the remote parent context so `parentbased_*` samplers honor
+    // the upstream sampling decision carried in the propagated trace flags.
+    let parent_context = SpanContext::new(
+      parent_trace_id,
+      parent_span_id,
+      TraceFlags::new(parent_trace_flags),
+      true,
+      TraceState::NONE,
+    );
+    let sampled = sampler.should_sample(Some(&parent_context), parent_trace_id);
     let span_context = SpanContext::new(
       parent_trace_id,
       id_generator.new_span_id(),
-      TraceFlags::SAMPLED,
+      if sampled {
+        TraceFlags::SAMPLED
+      } else {
+        TraceFlags::default()
+      },
       false,
       TraceState::NONE,
     );
+    if !sampled {
+      return Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+        OtelSpanState::Done(span_context),
+      )))));
+    }
     let name = owned_string(
       scope,
       name
@@ -1867,8 +2109,7 @@ impl OtelTracer {
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 struct JsSpanContext {
   trace_id: Box<str>,
   span_id: Box<str>,
@@ -1915,7 +2156,6 @@ impl OtelSpan {
     Err(OtelSpanCannotBeConstructedError)
   }
 
-  #[serde]
   fn span_context(&self) -> JsSpanContext {
     let state = self.0.borrow();
     let span_context = match &**state {
@@ -1959,10 +2199,17 @@ impl OtelSpan {
         .checked_add(Duration::from_secs_f64(start_time / 1000.0))
         .unwrap()
     };
+    let limit = span_event_count_limit();
     let mut state = self.0.borrow_mut();
     let OtelSpanState::Recording(span) = &mut **state else {
       return;
     };
+    // Enforce OTEL_SPAN_EVENT_COUNT_LIMIT: once the limit is reached, drop
+    // further events and count them in droppedEventsCount.
+    if span.events.events.len() >= limit {
+      span.events.dropped_count += 1;
+      return;
+    }
     span
       .events
       .events
@@ -2044,6 +2291,7 @@ fn op_otel_span_attribute1<'s>(
   else {
     return;
   };
+  let limit = attribute_count_limit();
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
     let Some((attributes, dropped_attributes_count)) =
@@ -2051,7 +2299,7 @@ fn op_otel_span_attribute1<'s>(
     else {
       return;
     };
-    attr!(scope, attributes => *dropped_attributes_count, key, value);
+    attr!(scope, attributes => *dropped_attributes_count, limit, key, value);
   }
 }
 
@@ -2070,6 +2318,7 @@ fn op_otel_span_attribute2<'s>(
   else {
     return;
   };
+  let limit = attribute_count_limit();
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
     let Some((attributes, dropped_attributes_count)) =
@@ -2077,8 +2326,8 @@ fn op_otel_span_attribute2<'s>(
     else {
       return;
     };
-    attr!(scope, attributes => *dropped_attributes_count, key1, value1);
-    attr!(scope, attributes => *dropped_attributes_count, key2, value2);
+    attr!(scope, attributes => *dropped_attributes_count, limit, key1, value1);
+    attr!(scope, attributes => *dropped_attributes_count, limit, key2, value2);
   }
 }
 
@@ -2100,6 +2349,7 @@ fn op_otel_span_attribute3<'s>(
   else {
     return;
   };
+  let limit = attribute_count_limit();
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
     let Some((attributes, dropped_attributes_count)) =
@@ -2107,9 +2357,9 @@ fn op_otel_span_attribute3<'s>(
     else {
       return;
     };
-    attr!(scope, attributes => *dropped_attributes_count, key1, value1);
-    attr!(scope, attributes => *dropped_attributes_count, key2, value2);
-    attr!(scope, attributes => *dropped_attributes_count, key3, value3);
+    attr!(scope, attributes => *dropped_attributes_count, limit, key1, value1);
+    attr!(scope, attributes => *dropped_attributes_count, limit, key2, value2);
+    attr!(scope, attributes => *dropped_attributes_count, limit, key3, value3);
   }
 }
 
@@ -2276,7 +2526,7 @@ impl OtelMeter {
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
-    #[serde] boundaries: Option<Vec<f64>>,
+    #[scoped] boundaries: Option<Vec<f64>>,
   ) -> Result<Instrument, JsErrorBox> {
     let name = owned_string(
       scope,

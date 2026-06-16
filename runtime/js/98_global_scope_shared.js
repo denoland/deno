@@ -1,30 +1,57 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const { SafeArrayIterator } = primordials;
 
 const event = core.loadExtScript("ext:deno_web/02_event.js");
 const base64 = core.loadExtScript("ext:deno_web/05_base64.js");
 const encoding = core.loadExtScript("ext:deno_web/08_text_encoding.js");
 const console = core.loadExtScript("ext:deno_web/01_console.js");
-const caches = core.loadExtScript("ext:deno_cache/01_cache.js");
-const compression = core.loadExtScript("ext:deno_web/14_compression.js");
 const worker = core.loadExtScript("ext:runtime/11_workers.js");
 const performance = core.loadExtScript("ext:deno_web/15_performance.js");
 const crypto = core.loadExtScript("ext:deno_crypto/00_crypto.js");
 const url = core.loadExtScript("ext:deno_web/00_url.js");
 const urlPattern = core.loadExtScript("ext:deno_web/01_urlpattern.js");
 const headers = core.loadExtScript("ext:deno_fetch/20_headers.js");
-const streams = core.loadExtScript("ext:deno_web/06_streams.js");
+// 06_streams.js is the 208 KB web-streams polyfill. Defer until a global
+// stream class (ReadableStream/WritableStream/TransformStream/etc.) is
+// accessed.
+let _streamsMod;
+const lazyStreams = () =>
+  _streamsMod ??
+    (_streamsMod = core.loadExtScript("ext:deno_web/06_streams.js"));
+// caches/CacheStorage/Cache transitively pulls 06_streams via 22_body.
+let _cacheMod;
+const lazyCache = () =>
+  _cacheMod ??
+    (_cacheMod = core.loadExtScript("ext:deno_cache/01_cache.js"));
+// CompressionStream/DecompressionStream pull TransformStream from 06_streams.
+let _compressionMod;
+const lazyCompression = () =>
+  _compressionMod ??
+    (_compressionMod = core.loadExtScript("ext:deno_web/14_compression.js"));
+// Request/Response/fetch/EventSource each chain through 22_body -> 06_streams.
+let _requestMod;
+const lazyRequest = () =>
+  _requestMod ??
+    (_requestMod = core.loadExtScript("ext:deno_fetch/23_request.js"));
+let _responseMod;
+const lazyResponse = () =>
+  _responseMod ??
+    (_responseMod = core.loadExtScript("ext:deno_fetch/23_response.js"));
+let _fetchMod;
+const lazyFetch = () =>
+  _fetchMod ?? (_fetchMod = core.loadExtScript("ext:deno_fetch/26_fetch.js"));
+let _eventSourceMod;
+const lazyEventSource = () =>
+  _eventSourceMod ??
+    (_eventSourceMod = core.loadExtScript("ext:deno_fetch/27_eventsource.js"));
 const fileReader = core.loadExtScript("ext:deno_web/10_filereader.js");
 const broadcastChannel = core.loadExtScript(
   "ext:deno_web/01_broadcast_channel.js",
 );
 const file = core.loadExtScript("ext:deno_web/09_file.js");
 const formData = core.loadExtScript("ext:deno_fetch/21_formdata.js");
-const request = core.loadExtScript("ext:deno_fetch/23_request.js");
-const response = core.loadExtScript("ext:deno_fetch/23_response.js");
-const fetch = core.loadExtScript("ext:deno_fetch/26_fetch.js");
-const eventSource = core.loadExtScript("ext:deno_fetch/27_eventsource.js");
 const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const {
@@ -32,7 +59,6 @@ const {
   QuotaExceededError,
 } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
-const imageData = core.loadExtScript("ext:deno_web/16_image_data.js");
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import {
@@ -48,7 +74,14 @@ import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
 const loadCanvas = core.createLazyLoader("ext:deno_canvas/01_canvas.js");
-const loadGeometry = core.createLazyLoader("ext:deno_web/geometry.js");
+let _imageDataMod;
+const loadImageData = () =>
+  _imageDataMod ??
+    (_imageDataMod = core.loadExtScript("ext:deno_web/16_image_data.js"));
+let _geometryMod;
+const loadGeometry = () =>
+  _geometryMod ??
+    (_geometryMod = core.loadExtScript("ext:deno_web/17_geometry.js"));
 const loadWebSocket = core.createLazyLoader(
   "ext:deno_websocket/01_websocket.js",
 );
@@ -65,17 +98,25 @@ const windowOrWorkerGlobalScope = {
   AbortSignal: core.propNonEnumerable(abortSignal.AbortSignal),
   Blob: core.propNonEnumerable(file.Blob),
   BroadcastChannel: core.propNonEnumerable(broadcastChannel.BroadcastChannel),
-  ByteLengthQueuingStrategy: core.propNonEnumerable(
-    streams.ByteLengthQueuingStrategy,
+  ByteLengthQueuingStrategy: core.propNonEnumerableLazyLoaded(
+    (s) => s.ByteLengthQueuingStrategy,
+    lazyStreams,
   ),
   CloseEvent: core.propNonEnumerable(event.CloseEvent),
-  CompressionStream: core.propNonEnumerable(compression.CompressionStream),
-  CountQueuingStrategy: core.propNonEnumerable(
-    streams.CountQueuingStrategy,
+  CompressionStream: core.propNonEnumerableLazyLoaded(
+    (c) => c.CompressionStream,
+    lazyCompression,
+  ),
+  CountQueuingStrategy: core.propNonEnumerableLazyLoaded(
+    (s) => s.CountQueuingStrategy,
+    lazyStreams,
   ),
   CryptoKey: core.propNonEnumerable(crypto.CryptoKey),
   CustomEvent: core.propNonEnumerable(event.CustomEvent),
-  DecompressionStream: core.propNonEnumerable(compression.DecompressionStream),
+  DecompressionStream: core.propNonEnumerableLazyLoaded(
+    (c) => c.DecompressionStream,
+    lazyCompression,
+  ),
   DOMException: core.propNonEnumerable(DOMException),
   QuotaExceededError: core.propNonEnumerable(QuotaExceededError),
   DOMMatrix: core.propNonEnumerableLazyLoaded(
@@ -113,7 +154,10 @@ const windowOrWorkerGlobalScope = {
   FileReader: core.propNonEnumerable(fileReader.FileReader),
   FormData: core.propNonEnumerable(formData.FormData),
   Headers: core.propNonEnumerable(headers.Headers),
-  ImageData: core.propNonEnumerable(imageData.ImageData),
+  ImageData: core.propNonEnumerableLazyLoaded(
+    (imageData) => imageData.ImageData,
+    loadImageData,
+  ),
   ImageBitmap: core.propNonEnumerableLazyLoaded(
     (image) => image.ImageBitmap,
     loadImage,
@@ -129,17 +173,30 @@ const windowOrWorkerGlobalScope = {
   ),
   PromiseRejectionEvent: core.propNonEnumerable(event.PromiseRejectionEvent),
   ProgressEvent: core.propNonEnumerable(event.ProgressEvent),
-  ReadableStream: core.propNonEnumerable(streams.ReadableStream),
-  ReadableStreamDefaultReader: core.propNonEnumerable(
-    streams.ReadableStreamDefaultReader,
+  ReadableStream: core.propNonEnumerableLazyLoaded(
+    (s) => s.ReadableStream,
+    lazyStreams,
   ),
-  Request: core.propNonEnumerable(request.Request),
-  Response: core.propNonEnumerable(response.Response),
+  ReadableStreamDefaultReader: core.propNonEnumerableLazyLoaded(
+    (s) => s.ReadableStreamDefaultReader,
+    lazyStreams,
+  ),
+  Request: core.propNonEnumerableLazyLoaded(
+    (r) => r.Request,
+    lazyRequest,
+  ),
+  Response: core.propNonEnumerableLazyLoaded(
+    (r) => r.Response,
+    lazyResponse,
+  ),
   TextDecoder: core.propNonEnumerable(encoding.TextDecoder),
   TextEncoder: core.propNonEnumerable(encoding.TextEncoder),
   TextDecoderStream: core.propNonEnumerable(encoding.TextDecoderStream),
   TextEncoderStream: core.propNonEnumerable(encoding.TextEncoderStream),
-  TransformStream: core.propNonEnumerable(streams.TransformStream),
+  TransformStream: core.propNonEnumerableLazyLoaded(
+    (s) => s.TransformStream,
+    lazyStreams,
+  ),
   URL: core.propNonEnumerable(url.URL),
   URLPattern: core.propNonEnumerable(urlPattern.URLPattern),
   URLSearchParams: core.propNonEnumerable(url.URLSearchParams),
@@ -150,27 +207,37 @@ const windowOrWorkerGlobalScope = {
   MessageChannel: core.propNonEnumerable(messagePort.MessageChannel),
   MessagePort: core.propNonEnumerable(messagePort.MessagePort),
   Worker: core.propNonEnumerable(worker.Worker),
-  WritableStream: core.propNonEnumerable(streams.WritableStream),
-  WritableStreamDefaultWriter: core.propNonEnumerable(
-    streams.WritableStreamDefaultWriter,
+  WritableStream: core.propNonEnumerableLazyLoaded(
+    (s) => s.WritableStream,
+    lazyStreams,
   ),
-  WritableStreamDefaultController: core.propNonEnumerable(
-    streams.WritableStreamDefaultController,
+  WritableStreamDefaultWriter: core.propNonEnumerableLazyLoaded(
+    (s) => s.WritableStreamDefaultWriter,
+    lazyStreams,
   ),
-  ReadableByteStreamController: core.propNonEnumerable(
-    streams.ReadableByteStreamController,
+  WritableStreamDefaultController: core.propNonEnumerableLazyLoaded(
+    (s) => s.WritableStreamDefaultController,
+    lazyStreams,
   ),
-  ReadableStreamBYOBReader: core.propNonEnumerable(
-    streams.ReadableStreamBYOBReader,
+  ReadableByteStreamController: core.propNonEnumerableLazyLoaded(
+    (s) => s.ReadableByteStreamController,
+    lazyStreams,
   ),
-  ReadableStreamBYOBRequest: core.propNonEnumerable(
-    streams.ReadableStreamBYOBRequest,
+  ReadableStreamBYOBReader: core.propNonEnumerableLazyLoaded(
+    (s) => s.ReadableStreamBYOBReader,
+    lazyStreams,
   ),
-  ReadableStreamDefaultController: core.propNonEnumerable(
-    streams.ReadableStreamDefaultController,
+  ReadableStreamBYOBRequest: core.propNonEnumerableLazyLoaded(
+    (s) => s.ReadableStreamBYOBRequest,
+    lazyStreams,
   ),
-  TransformStreamDefaultController: core.propNonEnumerable(
-    streams.TransformStreamDefaultController,
+  ReadableStreamDefaultController: core.propNonEnumerableLazyLoaded(
+    (s) => s.ReadableStreamDefaultController,
+    lazyStreams,
+  ),
+  TransformStreamDefaultController: core.propNonEnumerableLazyLoaded(
+    (s) => s.TransformStreamDefaultController,
+    lazyStreams,
   ),
   atob: core.propWritable(base64.atob),
   btoa: core.propWritable(base64.btoa),
@@ -183,18 +250,40 @@ const windowOrWorkerGlobalScope = {
   caches: {
     enumerable: true,
     configurable: true,
-    get: caches.cacheStorage,
+    get() {
+      return lazyCache().cacheStorage();
+    },
   },
-  CacheStorage: core.propNonEnumerable(caches.CacheStorage),
-  Cache: core.propNonEnumerable(caches.Cache),
+  CacheStorage: core.propNonEnumerableLazyLoaded(
+    (c) => c.CacheStorage,
+    lazyCache,
+  ),
+  Cache: core.propNonEnumerableLazyLoaded(
+    (c) => c.Cache,
+    lazyCache,
+  ),
   console: core.propNonEnumerable(
     new console.Console((msg, level) => core.print(msg, level > 1)),
   ),
-  crypto: core.propReadOnly(crypto.crypto),
+  // `crypto.crypto` is a getter that mints the cppgc-wrapped `Crypto`
+  // instance on first access (see `getCryptoSingleton` in
+  // `ext/crypto/00_crypto.js`). Use `propGetterOnly` so the cppgc allocation
+  // is deferred to runtime instead of running at snapshot-build time.
+  crypto: core.propGetterOnly(() => crypto.crypto),
   Crypto: core.propNonEnumerable(crypto.Crypto),
   SubtleCrypto: core.propNonEnumerable(crypto.SubtleCrypto),
-  fetch: core.propWritable(fetch.fetch),
-  EventSource: core.propWritable(eventSource.EventSource),
+  // `fetch` is installed as a plain data descriptor whose value is a lazy
+  // wrapper function (not an accessor descriptor). node:test's `mock.method`
+  // reads `descriptor.value` and rejects accessor descriptors as
+  // non-mockable. The wrapper forwards to the real implementation, lazily
+  // loading 26_fetch on first call.
+  fetch: core.propWritable(function fetch(...args) {
+    return lazyFetch().fetch(...new SafeArrayIterator(args));
+  }),
+  EventSource: core.propWritableLazyLoaded(
+    (e) => e.EventSource,
+    lazyEventSource,
+  ),
   performance: core.propWritable(performance.performance),
   process: core.propWritable(process),
   setImmediate: core.propWritable(setImmediate),
@@ -418,5 +507,22 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
   setTimeout: core.propWritable(nodeSetTimeout),
 };
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
+
+let _cssStyleSheetMod;
+const loadCssStyleSheet = () =>
+  _cssStyleSheetMod ??
+    (_cssStyleSheetMod = core.loadExtScript(
+      "ext:deno_web/18_css_stylesheet.js",
+    ));
+unstableForWindowOrWorkerGlobalScope[unstableIds.rawImports] = {
+  CSSRule: core.propNonEnumerableLazyLoaded(
+    (css) => css.CSSRule,
+    loadCssStyleSheet,
+  ),
+  CSSStyleSheet: core.propNonEnumerableLazyLoaded(
+    (css) => css.CSSStyleSheet,
+    loadCssStyleSheet,
+  ),
+};
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };

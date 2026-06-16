@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::Duration;
 use std::time::SystemTime;
 
 use boxed_error::Boxed;
@@ -35,6 +36,7 @@ use crate::CacheReadFileError;
 use crate::Checksum;
 use crate::ChecksumIntegrityError;
 use crate::cache::HttpCacheRc;
+use crate::cache::NOT_FOUND_CACHE_HEADER;
 use crate::common::HeadersMap;
 
 mod auth_tokens;
@@ -48,6 +50,15 @@ pub use http::HeaderMap;
 pub use http::HeaderName;
 pub use http::HeaderValue;
 pub use http::StatusCode;
+
+/// How long a cached 404 response is considered fresh. Within this window
+/// a previously seen "not found" is served from the cache instead of
+/// re-requesting the URL on every process start (see
+/// https://github.com/denoland/deno/issues/25404). The TTL is intentionally
+/// short so that resources appearing on the remote server (e.g. a newly
+/// published package version that is still propagating) are picked up
+/// without requiring `--reload`.
+const NOT_FOUND_CACHE_TTL: Duration = Duration::from_secs(15 * 60);
 
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -386,6 +397,9 @@ pub enum FetchCachedErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   TooManyRedirects(TooManyRedirectsError),
+  #[class("NotFound")]
+  #[error("Import '{0}' failed, not found.")]
+  NotFound(Url),
   #[class(inherit)]
   #[error(transparent)]
   ChecksumIntegrity(#[from] ChecksumIntegrityError),
@@ -428,6 +442,9 @@ struct FetchCachedNoFollowError(pub Box<FetchCachedNoFollowErrorKind>);
 
 #[derive(Debug, Error, JsError)]
 enum FetchCachedNoFollowErrorKind {
+  #[class("NotFound")]
+  #[error("Import '{0}' failed, not found.")]
+  NotFound(Url),
   #[class(inherit)]
   #[error(transparent)]
   ChecksumIntegrity(ChecksumIntegrityError),
@@ -442,6 +459,9 @@ enum FetchCachedNoFollowErrorKind {
 impl From<FetchCachedNoFollowError> for FetchCachedError {
   fn from(err: FetchCachedNoFollowError) -> Self {
     match err.into_kind() {
+      FetchCachedNoFollowErrorKind::NotFound(url) => {
+        FetchCachedErrorKind::NotFound(url).into_box()
+      }
       FetchCachedNoFollowErrorKind::ChecksumIntegrity(err) => err.into(),
       FetchCachedNoFollowErrorKind::CacheRead(err) => err.into(),
       FetchCachedNoFollowErrorKind::RedirectResolution(err) => err.into(),
@@ -452,6 +472,9 @@ impl From<FetchCachedNoFollowError> for FetchCachedError {
 impl From<FetchCachedNoFollowError> for FetchNoFollowError {
   fn from(err: FetchCachedNoFollowError) -> Self {
     match err.into_kind() {
+      FetchCachedNoFollowErrorKind::NotFound(url) => {
+        FetchNoFollowErrorKind::NotFound(url).into_box()
+      }
       FetchCachedNoFollowErrorKind::ChecksumIntegrity(err) => err.into(),
       FetchCachedNoFollowErrorKind::CacheRead(err) => err.into(),
       FetchCachedNoFollowErrorKind::RedirectResolution(err) => err.into(),
@@ -575,15 +598,23 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
 
     let mut url = Cow::Borrowed(url);
     for _ in 0..=redirect_limit {
-      match self.fetch_cached_no_follow(&url, None)? {
-        Some(FileOrRedirect::File(file)) => {
+      match self.fetch_cached_no_follow(&url, None) {
+        Ok(Some(FileOrRedirect::File(file))) => {
           return Ok(Some(file));
         }
-        Some(FileOrRedirect::Redirect(redirect_url)) => {
+        Ok(Some(FileOrRedirect::Redirect(redirect_url))) => {
           url = Cow::Owned(redirect_url);
         }
-        None => {
+        Ok(None) => {
           return Ok(None);
+        }
+        Err(err) => {
+          if matches!(err.as_kind(), FetchCachedNoFollowErrorKind::NotFound(_))
+          {
+            // a cached 404 means there is no usable cached file
+            return Ok(None);
+          }
+          return Err(err.into());
         }
       }
     }
@@ -690,6 +721,18 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
         })?;
     match self.http_cache.get(&cache_key, maybe_checksum) {
       Ok(Some(entry)) => {
+        if entry.metadata.headers.contains_key(NOT_FOUND_CACHE_HEADER) {
+          let download_time = entry
+            .metadata
+            .time
+            .map(|secs| SystemTime::UNIX_EPOCH + Duration::from_secs(secs));
+          return if self.is_not_found_entry_fresh(download_time) {
+            Err(FetchCachedNoFollowErrorKind::NotFound(url.clone()).into_box())
+          } else {
+            // expired, treat as a cache miss so the URL is re-requested
+            Ok(None)
+          };
+        }
         Ok(Some(FileOrRedirect::from_deno_cache_entry(url, entry)?))
       }
       Ok(None) => Ok(None),
@@ -703,6 +746,25 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
       Err(CacheReadFileError::ChecksumIntegrity(err)) => {
         Err(FetchCachedNoFollowErrorKind::ChecksumIntegrity(*err).into_box())
       }
+    }
+  }
+
+  /// Returns if a cached 404 entry downloaded at the provided time is
+  /// still within [`NOT_FOUND_CACHE_TTL`] and may be served from the cache.
+  fn is_not_found_entry_fresh(
+    &self,
+    download_time: Option<SystemTime>,
+  ) -> bool {
+    let Some(download_time) = download_time else {
+      // no download time stored (ex. the vendor folder), so
+      // treat the entry as expired in order to re-request the URL
+      return false;
+    };
+    match self.sys.sys_time_now().duration_since(download_time) {
+      Ok(elapsed) => elapsed < NOT_FOUND_CACHE_TTL,
+      // the download time is in the future (clock changed), so
+      // consider the entry fresh
+      Err(_) => true,
     }
   }
 
@@ -824,6 +886,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
       });
 
     let maybe_auth_token = self.auth_tokens.get(url);
+    let is_authenticated = maybe_auth.is_some() || maybe_auth_token.is_some();
     match self
       .send_request(SendRequestArgs {
         url,
@@ -836,6 +899,23 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
       })
       .await?
     {
+      SendRequestResponse::NotFound => {
+        // Cache the 404 so subsequent processes don't re-request the URL
+        // until the entry expires (see NOT_FOUND_CACHE_TTL). Skip this for
+        // authenticated requests because a 404 may then depend on the
+        // provided credentials (ex. private registries respond with 404
+        // for unauthorized requests).
+        if !is_authenticated {
+          let headers = HashMap::from([(
+            NOT_FOUND_CACHE_HEADER.to_string(),
+            "404".to_string(),
+          )]);
+          if let Err(err) = self.http_cache.set(url, headers, &[]) {
+            debug!("Failed caching 404 for '{}': {:#}", url, err);
+          }
+        }
+        Err(FetchNoFollowErrorKind::NotFound(url.clone()).into_box())
+      }
       SendRequestResponse::NotModified => {
         let (cache_entry, _) = maybe_etag_cache_entry.unwrap();
         FileOrRedirect::from_deno_cache_entry(url, cache_entry).map_err(|err| {
@@ -983,9 +1063,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
           }
           .into_box(),
         ),
-        SendError::NotFound => {
-          Err(FetchNoFollowErrorKind::NotFound(args.url.clone()).into_box())
-        }
+        SendError::NotFound => Ok(SendRequestResponse::NotFound),
         SendError::StatusCode(status_code) => Err(
           FetchNoFollowErrorKind::ClientError {
             url: args.url.clone(),
@@ -1254,10 +1332,53 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     // the bytes were verified when initially downloading the data
     // from the remote server. This is to prevent loading the data into
     // memory.
-    if self.0.http_cache.contains(url) {
-      Ok(Some(CachedOrRedirect::Cached))
+    let cache_key =
+      self.0.http_cache.cache_item_key(url).map_err(|source| {
+        CacheReadError {
+          url: url.clone(),
+          source,
+        }
+      })?;
+    let Some(headers) =
+      self
+        .0
+        .http_cache
+        .read_headers(&cache_key)
+        .map_err(|source| CacheReadError {
+          url: url.clone(),
+          source,
+        })?
+    else {
+      return Ok(None);
+    };
+    if headers.contains_key(NOT_FOUND_CACHE_HEADER) {
+      let download_time = self
+        .0
+        .http_cache
+        .read_download_time(&cache_key)
+        .map_err(|source| CacheReadError {
+          url: url.clone(),
+          source,
+        })?;
+      return if self.0.is_not_found_entry_fresh(download_time) {
+        Err(FetchCachedNoFollowErrorKind::NotFound(url.clone()).into_box())
+      } else {
+        // expired, treat as a cache miss so the URL is re-requested
+        Ok(None)
+      };
+    }
+    if let Some(redirect_to) = headers.get("location") {
+      let redirect =
+        url
+          .join(redirect_to)
+          .map_err(|source| RedirectResolutionError {
+            url: url.clone(),
+            location: redirect_to.clone(),
+            source,
+          })?;
+      Ok(Some(CachedOrRedirect::Redirect(redirect)))
     } else {
-      Ok(None)
+      Ok(Some(CachedOrRedirect::Cached))
     }
   }
 
@@ -1286,6 +1407,10 @@ fn response_headers_to_headers_map(response_headers: HeaderMap) -> HeadersMap {
   // todo(dsherret): change to consume to avoid allocations
   for key in response_headers.keys() {
     let key_str = key.to_string();
+    if key_str == NOT_FOUND_CACHE_HEADER {
+      // reserved for internal use, never store it from a real response
+      continue;
+    }
     let values = response_headers.get_all(key);
     // todo(dsherret): this seems very strange storing them comma separated
     // like this... what happens if a value contains a comma?
@@ -1366,6 +1491,7 @@ struct SendRequestArgs<'a> {
 #[derive(Debug, Eq, PartialEq)]
 enum SendRequestResponse {
   Code(Vec<u8>, HeadersMap),
+  NotFound,
   NotModified,
   Redirect(Url, HeadersMap),
 }
