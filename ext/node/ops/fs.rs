@@ -171,6 +171,21 @@ fn ebadf_node(syscall: &str) -> FsError {
   )
 }
 
+// node's Windows `fs__write` (deps/uv/src/win/fs.c) remaps a write that fails
+// with ERROR_ACCESS_DENIED to ERROR_INVALID_FLAGS -> UV_EBADF, so writing to a
+// read-only fd reports EBADF (not EPERM/EACCES). Substitute the io error before
+// the usual node mapping to match. No-op on Unix, where the kernel already
+// returns EBADF for a write to an O_RDONLY fd.
+fn remap_write_access_denied(e: deno_io::fs::FsError) -> deno_io::fs::FsError {
+  #[cfg(windows)]
+  if e.kind() == std::io::ErrorKind::PermissionDenied {
+    return deno_io::fs::FsError::Io(std::io::Error::from_raw_os_error(
+      EBADF_ERRNO,
+    ));
+  }
+  e
+}
+
 /// Get the File trait object for an OS file descriptor from FdTable.
 fn file_for_fd(
   state: &OpState,
@@ -2522,7 +2537,7 @@ fn write_with_position(
       let nwritten = file
         .clone()
         .write_at_sync(&buf[total..], position as u64 + total as u64)
-        .map_err(|e| fd_syscall_err(e, "write"))?;
+        .map_err(|e| fd_syscall_err(remap_write_access_denied(e), "write"))?;
       total += nwritten;
     }
     Ok(total as u32)
@@ -2532,7 +2547,7 @@ fn write_with_position(
       let nwritten = file
         .clone()
         .write_sync(&buf[total..])
-        .map_err(|e| fd_syscall_err(e, "write"))?;
+        .map_err(|e| fd_syscall_err(remap_write_access_denied(e), "write"))?;
       total += nwritten;
     }
     Ok(total as u32)
@@ -3418,7 +3433,7 @@ fn write_all_node(
   while total < buf.len() {
     let nwritten = file.clone().write_sync(&buf[total..]).map_err(|e| {
       map_fs_error_to_node_fs_error(
-        e,
+        remap_write_access_denied(e),
         NodeFsErrorContext {
           syscall: Some("write".into()),
           ..Default::default()
@@ -5081,7 +5096,15 @@ fn fix_mkdir_error(fs: &FileSystemRc, err: FsError, path: &str) -> FsError {
   if nfe.code != "EEXIST" {
     return err;
   }
-  let mut cursor = resolve_abs(fs, path);
+  // The target itself already existing as a non-directory is EEXIST (node's
+  // recursive mkdir reports the original error), NOT ENOTDIR. ENOTDIR only
+  // applies when a non-directory *ancestor* component blocks traversal, so
+  // start the walk at the parent and skip the target path.
+  let target = resolve_abs(fs, path);
+  let mut cursor = match target.parent() {
+    Some(parent) if parent != target => parent.to_path_buf(),
+    _ => return err,
+  };
   loop {
     let checked = CheckedPath::unsafe_new(Cow::Borrowed(cursor.as_path()));
     match fs.stat_sync(&checked) {

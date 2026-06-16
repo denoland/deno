@@ -821,27 +821,30 @@ fn node_event_type(kind: &str) -> &'static str {
   }
 }
 
-// `path.relative()` reduced to what fs.watch needs: both inputs are absolute
-// and normalized, so a failed strip_prefix walks up with `..` segments.
-fn relative_filename(from: &Path, to: &Path) -> String {
-  if let Ok(stripped) = to.strip_prefix(from) {
-    return stripped.to_string_lossy().into_owned();
+// Strips Windows verbatim (`\\?\`) / UNC prefixes so a canonicalized base
+// (`\\?\D:\x`, from `Path::canonicalize`) compares equal to notify's plain
+// event paths (`D:\x\y`). No-op on non-Windows.
+fn strip_verbatim_prefix(p: &Path) -> Cow<'_, Path> {
+  #[cfg(windows)]
+  if let Some(s) = p.as_os_str().to_str() {
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+      return Cow::Owned(PathBuf::from(format!(r"\\{rest}")));
+    }
+    if let Some(rest) = s.strip_prefix(r"\\?\") {
+      return Cow::Owned(PathBuf::from(rest));
+    }
   }
-  let from_comps: Vec<_> = from.components().collect();
-  let to_comps: Vec<_> = to.components().collect();
-  let common = from_comps
-    .iter()
-    .zip(to_comps.iter())
-    .take_while(|(a, b)| a == b)
-    .count();
-  let mut parts: Vec<String> =
-    vec![String::from(".."); from_comps.len() - common];
-  parts.extend(
-    to_comps[common..]
-      .iter()
-      .map(|c| c.as_os_str().to_string_lossy().into_owned()),
-  );
-  parts.join(std::path::MAIN_SEPARATOR_STR)
+  Cow::Borrowed(p)
+}
+
+// Relative path from `base` to `to`, or `None` if `to` is not under `base`
+// (after normalizing away Windows verbatim prefixes).
+fn relative_under(base: &Path, to: &Path) -> Option<String> {
+  let base = strip_verbatim_prefix(base);
+  let to = strip_verbatim_prefix(to);
+  to.strip_prefix(base.as_ref())
+    .ok()
+    .map(|p| p.to_string_lossy().into_owned())
 }
 
 /// `[eventType, filename]` for an fs.watch "change" emission, or `null` once
@@ -900,9 +903,25 @@ async fn op_node_fs_watch_poll(
           continue;
         };
         // node reports the path relative to the watch root for recursive
-        // watches, just the basename for non-recursive ones.
+        // watches, just the basename for non-recursive ones. notify reports
+        // canonical paths on macOS (relativize against the symlink-resolved
+        // root) but the original watched path on Windows (relativize against
+        // that); try both, then fall back to the basename rather than emitting
+        // a `..`-walk garbage path.
         let filename = if resource.recursive {
-          relative_filename(&resource.resolved_path, event_path)
+          relative_under(&resource.resolved_path, event_path)
+            .or_else(|| {
+              relative_under(
+                &normalize_watch_path(PathBuf::from(&resource.path)),
+                event_path,
+              )
+            })
+            .unwrap_or_else(|| {
+              event_path
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_default()
+            })
         } else {
           event_path
             .file_name()
