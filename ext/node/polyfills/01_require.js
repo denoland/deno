@@ -371,6 +371,17 @@ const lazyNodeModules = {
   "internal/child_process": () =>
     core.loadExtScript("ext:deno_node/internal/child_process.ts").default,
   "stream/web": () => core.loadExtScript("ext:deno_node/stream/web.js"),
+  "internal/js_stream_socket": () =>
+    core.loadExtScript("ext:deno_node/internal/js_stream_socket.js").default,
+  "internal/net": () => core.loadExtScript("ext:deno_node/internal/net.ts"),
+  "internal/tty": () =>
+    core.createLazyLoader("ext:deno_node/internal/tty.js")(),
+  "net": () => core.createLazyLoader("node:net")().default,
+  // `process` must lazy-resolve to the real `node:process` default export
+  // (the proxy at the top of this file is for internal use only). When
+  // `getBuiltinModule('process')` is called we want the actual singleton so
+  // strict-equality against the global `process` holds.
+  "process": () => core.createLazyLoader("node:process")().default,
   // node:stream/net/tty closure - lazy now that process.stdout/stderr/stdin
   // are lazy getters (see process.ts). These are the biggest node snapshot
   // chunk, so keeping them out of the eager heap is the main startup win.
@@ -379,34 +390,23 @@ const lazyNodeModules = {
     core.loadExtScript("ext:deno_node/stream/consumers.js"),
   "stream/promises": () =>
     core.createLazyLoader("node:stream/promises")().default,
-  "net": () => core.createLazyLoader("node:net")().default,
   "tty": () => core.createLazyLoader("node:tty")().default,
-  // `process` must lazy-resolve to the real `node:process` default export
-  // (the proxy at the top of this file is for internal use only). When
-  // `getBuiltinModule('process')` is called we want the actual singleton so
-  // strict-equality against the global `process` holds.
-  "process": () => core.createLazyLoader("node:process")().default,
-  "internal/net": () => core.loadExtScript("ext:deno_node/internal/net.ts"),
-  "internal/js_stream_socket": () =>
-    core.loadExtScript("ext:deno_node/internal/js_stream_socket.js").default,
-  "internal/tty": () =>
-    core.createLazyLoader("ext:deno_node/internal/tty.js")(),
   // Rarely needed on the cold-start path; keeping these out of the eager
   // `nodeModules` map keeps their bodies (and transitive `loadExtScript`
   // closure) out of the snapshot heap, so they aren't deserialized at every
   // startup. Match the previous `.default`/no-`.default` shape exactly.
-  "sqlite": () => core.loadExtScript("ext:deno_node/sqlite.ts"),
-  "test": () => core.loadExtScript("ext:deno_node/testing.ts").default,
-  "wasi": () => core.loadExtScript("ext:deno_node/wasi.ts").default,
-  "v8": () => core.loadExtScript("ext:deno_node/v8.ts"),
-  "trace_events": () =>
-    core.loadExtScript("ext:deno_node/trace_events.ts").default,
-  "perf_hooks": () => core.loadExtScript("ext:deno_node/perf_hooks.js").default,
-  "querystring": () =>
-    core.loadExtScript("ext:deno_node/querystring.js").default,
   "inspector": () => core.loadExtScript("ext:deno_node/inspector.js"),
   "inspector/promises": () =>
     core.loadExtScript("ext:deno_node/inspector/promises.js"),
+  "perf_hooks": () => core.loadExtScript("ext:deno_node/perf_hooks.js").default,
+  "querystring": () =>
+    core.loadExtScript("ext:deno_node/querystring.js").default,
+  "sqlite": () => core.loadExtScript("ext:deno_node/sqlite.ts"),
+  "test": () => core.loadExtScript("ext:deno_node/testing.ts").default,
+  "trace_events": () =>
+    core.loadExtScript("ext:deno_node/trace_events.ts").default,
+  "v8": () => core.loadExtScript("ext:deno_node/v8.ts"),
+  "wasi": () => core.loadExtScript("ext:deno_node/wasi.ts").default,
   "_stream_duplex": () =>
     core.loadExtScript("ext:deno_node/internal/streams/duplex.js").default,
   "_stream_passthrough": () =>

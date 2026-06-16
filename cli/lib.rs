@@ -690,12 +690,15 @@ pub(crate) fn boot_phase(label: &str) {
   use std::sync::OnceLock;
   use std::time::Instant;
   static START: OnceLock<Instant> = OnceLock::new();
+  static ENABLED: OnceLock<bool> = OnceLock::new();
   let start = START.get_or_init(Instant::now);
   #[allow(
     clippy::disallowed_methods,
     reason = "diagnostic env var; startup profiling only"
   )]
-  if std::env::var_os("DENO_STARTUP_PHASES").is_some() {
+  let enabled =
+    *ENABLED.get_or_init(|| std::env::var_os("DENO_STARTUP_PHASES").is_some());
+  if enabled {
     #[allow(clippy::print_stderr, reason = "diagnostic")]
     {
       eprintln!("[boot] {label:>28}  {:?}", start.elapsed());
