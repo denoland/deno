@@ -107,6 +107,7 @@ mod console_exporter;
 mod grpc_exporter;
 mod propagation;
 
+use propagation::OtelBaggage;
 use propagation::OtelTraceState;
 use propagation::op_otel_baggage_parse;
 use propagation::op_otel_baggage_serialize;
@@ -141,7 +142,7 @@ deno_core::extension!(
     op_otel_baggage_parse,
     op_otel_baggage_serialize,
   ],
-  objects = [OtelTracer, OtelMeter, OtelSpan, OtelTraceState],
+  objects = [OtelTracer, OtelMeter, OtelSpan, OtelTraceState, OtelBaggage],
   lazy_loaded_js = ["telemetry.ts", "util.ts"],
 );
 
