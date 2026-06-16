@@ -6,6 +6,7 @@ members = [
   "cli",
   "cli/lib",
   "cli/rt",
+  "cli/rt_desktop",
   "cli/snapshot",
   "ext/bundle",
   "ext/cache",
@@ -103,7 +104,7 @@ deno_task_shell = "=0.33.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-v8 = { version = "149.3.0", default-features = false, features = ["simdutf"] }
+v8 = { version = "149.4.0", default-features = false, features = ["simdutf"] }
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -185,6 +186,8 @@ async-stream = "0.3"
 async-trait = "0.1.73"
 aws-lc-rs = { version = "1.16.3" }
 aws-lc-sys = { version = "0.40.0", features = ["prebuilt-nasm"] }
+backhand = { version = "0.25.1", default-features = false, features = ["xz"] }
+base32 = "=0.5.1"
 base64 = "0.22.1"
 bencher = "0.1"
 bincode = "1"
@@ -268,6 +271,9 @@ prettyplease = "0.2.31"
 proc-macro2 = "1.0"
 proptest = "1"
 prost = "0.13"
+prost-build = "0.13"
+qbsdiff = "1.4"
+quick-junit = "0.3.5"
 quinn = { version = "0.11.8", default-features = false }
 rand = "=0.8.5"
 rayon = "1.11.0"
@@ -359,7 +365,9 @@ imara-diff = "=0.2.0"
 lax-css = "=0.2.4"
 lax-markup = "=0.2.5"
 lax-sql = "=0.2.1"
-libsui = "0.12.6"
+libsui = "=0.15.0"
+malva = "=0.15.2"
+markup_fmt = "=0.27.3"
 object = { version = "0.36.3", default-features = false, features = ["read_core", "pe"] }
 open = "5.0.1"
 pathdiff = "0.2.1"
