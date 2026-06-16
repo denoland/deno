@@ -18,6 +18,11 @@ const {
   op_otel_metric_record2,
   op_otel_metric_record3,
   op_otel_metric_wait_to_observe,
+  op_otel_baggage_parse,
+  op_otel_baggage_serialize,
+  op_otel_parse_traceparent,
+  op_otel_span_context_valid,
+  op_otel_tracestate_parse,
   op_otel_span_add_link,
   op_otel_span_attribute1,
   op_otel_span_attribute2,
@@ -33,23 +38,18 @@ const {
   ArrayIsArray,
   ArrayPrototypeConcat,
   ArrayPrototypeFilter,
-  ArrayPrototypeForEach,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeReduce,
   ArrayPrototypeReverse,
-  ArrayPrototypeShift,
   ArrayPrototypeSlice,
   DatePrototype,
   DatePrototypeGetTime,
-  decodeURIComponent,
-  encodeURIComponent,
   Error,
   MapPrototypeEntries,
   MapPrototypeKeys,
   Number,
-  NumberParseInt,
   NumberPrototypeToString,
   ObjectAssign,
   ObjectDefineProperty,
@@ -62,14 +62,8 @@ const {
   SafeMap,
   SafeMapIterator,
   SafePromiseAll,
-  SafeRegExp,
   SafeSet,
   SafeWeakSet,
-  StringPrototypeIndexOf,
-  StringPrototypeSlice,
-  StringPrototypeSplit,
-  StringPrototypeSubstring,
-  StringPrototypeTrim,
   SymbolFor,
   TypeError,
 } = primordials;
@@ -1246,29 +1240,12 @@ function otelLog(message: string, level: number) {
  * limitations under the License.
  */
 
+// The trace-context version we emit when injecting `traceparent`. Parsing,
+// validation and trace-state/baggage (de)serialization now live in Rust ops
+// (see ext/telemetry/propagation.rs).
 const VERSION = "00";
-const VERSION_PART = "(?!ff)[\\da-f]{2}";
-const TRACE_ID_PART = "(?![0]{32})[\\da-f]{32}";
-const PARENT_ID_PART = "(?![0]{16})[\\da-f]{16}";
-const FLAGS_PART = "[\\da-f]{2}";
-const TRACE_PARENT_REGEX = new SafeRegExp(
-  `^\\s?(${VERSION_PART})-(${TRACE_ID_PART})-(${PARENT_ID_PART})-(${FLAGS_PART})(-.*)?\\s?$`,
-);
-const VALID_TRACEID_REGEX = new SafeRegExp("^([0-9a-f]{32})$", "i");
-const VALID_SPANID_REGEX = new SafeRegExp("^[0-9a-f]{16}$", "i");
-const MAX_TRACE_STATE_ITEMS = 32;
-const MAX_TRACE_STATE_LEN = 512;
 const LIST_MEMBERS_SEPARATOR = ",";
 const LIST_MEMBER_KEY_VALUE_SPLITTER = "=";
-const VALID_KEY_CHAR_RANGE = "[_0-9a-z-*/]";
-const VALID_KEY = `[a-z]${VALID_KEY_CHAR_RANGE}{0,255}`;
-const VALID_VENDOR_KEY =
-  `[a-z0-9]${VALID_KEY_CHAR_RANGE}{0,240}@[a-z]${VALID_KEY_CHAR_RANGE}{0,13}`;
-const VALID_KEY_REGEX = new SafeRegExp(
-  `^(?:${VALID_KEY}|${VALID_VENDOR_KEY})$`,
-);
-const VALID_VALUE_BASE_REGEX = new SafeRegExp("^[ -~]{0,255}[!-~]$");
-const INVALID_VALUE_COMMA_EQUAL_REGEX = new SafeRegExp(",|=");
 
 const TRACE_PARENT_HEADER = "traceparent";
 const TRACE_STATE_HEADER = "tracestate";
@@ -1279,13 +1256,8 @@ const INVALID_SPAN_CONTEXT: SpanContext = {
   spanId: INVALID_SPANID,
   traceFlags: 0,
 };
-const BAGGAGE_KEY_PAIR_SEPARATOR = "=";
-const BAGGAGE_PROPERTIES_SEPARATOR = ";";
 const BAGGAGE_ITEMS_SEPARATOR = ",";
 const BAGGAGE_HEADER = "baggage";
-const BAGGAGE_MAX_NAME_VALUE_PAIRS = 180;
-const BAGGAGE_MAX_PER_NAME_VALUE_PAIRS = 4096;
-const BAGGAGE_MAX_TOTAL_LENGTH = 8192;
 
 class NonRecordingSpan implements Span {
   constructor(
@@ -1341,19 +1313,10 @@ const otelPropagators = {
 };
 
 function parseTraceParent(traceParent: string): SpanContext | null {
-  const match = TRACE_PARENT_REGEX.exec(traceParent);
-  if (!match) return null;
-
-  // According to the specification the implementation should be compatible
-  // with future versions. If there are more parts, we only reject it if it's using version 00
-  // See https://www.w3.org/TR/trace-context/#versioning-of-traceparent
-  if (match[1] === "00" && match[5]) return null;
-
-  return {
-    traceId: match[2],
-    spanId: match[3],
-    traceFlags: NumberParseInt(match[4], 16),
-  };
+  // Parsing and validation (including the version/future-version rules) is
+  // performed in Rust. The op returns `{ traceId, spanId, traceFlags }` or
+  // null.
+  return op_otel_parse_traceparent(traceParent);
 }
 
 // deno-lint-ignore no-explicit-any
@@ -1388,29 +1351,9 @@ function isTracingSuppressed(context: Context): boolean {
   ) === true;
 }
 
-function isValidTraceId(traceId: string): boolean {
-  return VALID_TRACEID_REGEX.test(traceId) && traceId !== INVALID_TRACEID;
-}
-
-function isValidSpanId(spanId: string): boolean {
-  return VALID_SPANID_REGEX.test(spanId) && spanId !== INVALID_SPANID;
-}
-
 function isSpanContextValid(spanContext: SpanContext): boolean {
-  return (
-    isValidTraceId(spanContext.traceId) && isValidSpanId(spanContext.spanId)
-  );
-}
-
-function validateKey(key: string): boolean {
-  return VALID_KEY_REGEX.test(key);
-}
-
-function validateValue(value: string): boolean {
-  return (
-    VALID_VALUE_BASE_REGEX.test(value) &&
-    !INVALID_VALUE_COMMA_EQUAL_REGEX.test(value)
-  );
+  // Trace id / span id validation is performed in Rust.
+  return op_otel_span_context_valid(spanContext.traceId, spanContext.spanId);
 }
 
 class TraceStateClass implements TraceState {
@@ -1453,41 +1396,10 @@ class TraceStateClass implements TraceState {
   }
 
   private _parse(rawTraceState: string) {
-    if (rawTraceState.length > MAX_TRACE_STATE_LEN) return;
-    this._internalState = ArrayPrototypeReduce(
-      ArrayPrototypeReverse(
-        StringPrototypeSplit(rawTraceState, LIST_MEMBERS_SEPARATOR),
-      ),
-      (agg: Map<string, string>, part: string) => {
-        const listMember = StringPrototypeTrim(part); // Optional Whitespace (OWS) handling
-        const i = StringPrototypeIndexOf(
-          listMember,
-          LIST_MEMBER_KEY_VALUE_SPLITTER,
-        );
-        if (i !== -1) {
-          const key = StringPrototypeSlice(listMember, 0, i);
-          const value = StringPrototypeSlice(listMember, i + 1, part.length);
-          if (validateKey(key) && validateValue(value)) {
-            agg.set(key, value);
-          }
-        }
-        return agg;
-      },
-      new SafeMap(),
-    );
-
-    // Because of the reverse() requirement, trunc must be done after map is created
-    if (this._internalState.size > MAX_TRACE_STATE_ITEMS) {
-      this._internalState = new SafeMap(
-        ArrayPrototypeSlice(
-          ArrayPrototypeReverse(
-            ArrayFrom(MapPrototypeEntries(this._internalState)),
-          ),
-          0,
-          MAX_TRACE_STATE_ITEMS,
-        ),
-      );
-    }
+    // Parsing, member validation, OWS handling and truncation to the maximum
+    // number of items is performed in Rust. The op returns the validated
+    // members in the internal storage order (see propagation.rs).
+    this._internalState = new SafeMap(op_otel_tracestate_parse(rawTraceState));
   }
 
   private _keys(): string[] {
@@ -1572,12 +1484,6 @@ interface BaggageEntry {
   metadata?: BaggageEntryMetadata;
 }
 
-interface ParsedBaggageKeyValue {
-  key: string;
-  value: string;
-  metadata: BaggageEntryMetadata | undefined;
-}
-
 interface Baggage {
   getEntry(key: string): BaggageEntry | undefined;
   getAllEntries(): [string, BaggageEntry][];
@@ -1600,64 +1506,6 @@ function baggageEntryMetadataFromString(
       return str;
     },
   };
-}
-
-function serializeKeyPairs(keyPairs: string[]): string {
-  return ArrayPrototypeReduce(keyPairs, (hValue: string, current: string) => {
-    const value = `${hValue}${
-      hValue !== "" ? BAGGAGE_ITEMS_SEPARATOR : ""
-    }${current}`;
-    return value.length > BAGGAGE_MAX_TOTAL_LENGTH ? hValue : value;
-  }, "");
-}
-
-function getKeyPairs(baggage: Baggage): string[] {
-  return ArrayPrototypeMap(baggage.getAllEntries(), (baggageEntry) => {
-    let entry = `${encodeURIComponent(baggageEntry[0])}=${
-      encodeURIComponent(baggageEntry[1].value)
-    }`;
-
-    // include opaque metadata if provided
-    // NOTE: we intentionally don't URI-encode the metadata - that responsibility falls on the metadata implementation
-    if (baggageEntry[1].metadata !== undefined) {
-      entry += BAGGAGE_PROPERTIES_SEPARATOR +
-        // deno-lint-ignore prefer-primordials
-        baggageEntry[1].metadata.toString();
-    }
-
-    return entry;
-  });
-}
-
-function parsePairKeyValue(
-  entry: string,
-): ParsedBaggageKeyValue | undefined {
-  const valueProps = StringPrototypeSplit(entry, BAGGAGE_PROPERTIES_SEPARATOR);
-  if (valueProps.length <= 0) return;
-  const keyPairPart = ArrayPrototypeShift(valueProps);
-  if (!keyPairPart) return;
-  const separatorIndex = StringPrototypeIndexOf(
-    keyPairPart,
-    BAGGAGE_KEY_PAIR_SEPARATOR,
-  );
-  if (separatorIndex <= 0) return;
-  const key = decodeURIComponent(
-    StringPrototypeTrim(
-      StringPrototypeSubstring(keyPairPart, 0, separatorIndex),
-    ),
-  );
-  const value = decodeURIComponent(
-    StringPrototypeTrim(
-      StringPrototypeSubstring(keyPairPart, separatorIndex + 1),
-    ),
-  );
-  let metadata;
-  if (valueProps.length > 0) {
-    metadata = baggageEntryMetadataFromString(
-      ArrayPrototypeJoin(valueProps, BAGGAGE_PROPERTIES_SEPARATOR),
-    );
-  }
-  return { key, value, metadata };
 }
 
 class BaggageImpl implements Baggage {
@@ -1722,14 +1570,20 @@ class W3CBaggagePropagator implements TextMapPropagator {
       | Baggage
       | undefined;
     if (!baggage || isTracingSuppressed(context)) return;
-    const keyPairs = ArrayPrototypeSlice(
-      ArrayPrototypeFilter(getKeyPairs(baggage), (pair: string) => {
-        return pair.length <= BAGGAGE_MAX_PER_NAME_VALUE_PAIRS;
+    // Percent-encoding, per-pair / total length limits and the maximum number
+    // of members are all enforced by the Rust op.
+    const entries = ArrayPrototypeMap(
+      baggage.getAllEntries(),
+      (baggageEntry) => ({
+        key: baggageEntry[0],
+        value: baggageEntry[1].value,
+        metadata: baggageEntry[1].metadata !== undefined
+          // deno-lint-ignore prefer-primordials
+          ? baggageEntry[1].metadata.toString()
+          : undefined,
       }),
-      0,
-      BAGGAGE_MAX_NAME_VALUE_PAIRS,
     );
-    const headerValue = serializeKeyPairs(keyPairs);
+    const headerValue = op_otel_baggage_serialize(entries);
     if (headerValue.length > 0) {
       setter.set(carrier, BAGGAGE_HEADER, headerValue);
     }
@@ -1741,26 +1595,19 @@ class W3CBaggagePropagator implements TextMapPropagator {
       ? ArrayPrototypeJoin(headerValue, BAGGAGE_ITEMS_SEPARATOR)
       : headerValue;
     if (!baggageString) return context;
-    const baggage: Record<string, BaggageEntry> = {};
-    const pairs = StringPrototypeSplit(baggageString, BAGGAGE_ITEMS_SEPARATOR);
-    ArrayPrototypeForEach(pairs, (entry) => {
-      const keyPair = parsePairKeyValue(entry);
-      if (keyPair) {
-        const baggageEntry: BaggageEntry = { value: keyPair.value };
-        if (keyPair.metadata) {
-          baggageEntry.metadata = keyPair.metadata;
-        }
-        baggage[keyPair.key] = baggageEntry;
+    // Parsing, percent-decoding and de-duplication is performed in Rust.
+    const entries = op_otel_baggage_parse(baggageString);
+    if (entries.length === 0) return context;
+    const map = new SafeMap<string, BaggageEntry>();
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const baggageEntry: BaggageEntry = { value: entry.value };
+      if (entry.metadata != null) {
+        baggageEntry.metadata = baggageEntryMetadataFromString(entry.metadata);
       }
-    });
-    if (ObjectEntries(baggage).length === 0) {
-      return context;
+      map.set(entry.key, baggageEntry);
     }
-
-    return context.setValue(
-      BAGGAGE_KEY,
-      new BaggageImpl(new SafeMap(ObjectEntries(baggage))),
-    );
+    return context.setValue(BAGGAGE_KEY, new BaggageImpl(map));
   }
 
   fields(): string[] {
