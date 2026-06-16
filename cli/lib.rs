@@ -1022,7 +1022,6 @@ fn wait_for_start(
     use tokio::io::AsyncWrite;
     use tokio::io::AsyncWriteExt;
     use tokio::io::BufReader;
-    use tokio::net::TcpListener;
     use tokio::net::UnixSocket;
     #[cfg(any(
       target_os = "android",
@@ -1061,12 +1060,6 @@ fn wait_for_start(
       Box<dyn AsyncRead + Unpin>,
       Box<dyn AsyncWrite + Send + Unpin>,
     ) = match addr.split_once(':') {
-      Some(("tcp", addr)) => {
-        let listener = TcpListener::bind(addr).await?;
-        let (stream, _) = listener.accept().await?;
-        let (rx, tx) = stream.into_split();
-        (Box::new(rx), Box::new(tx))
-      }
       Some(("unix", path)) => {
         let socket = UnixSocket::new_stream()?;
         socket.bind(path)?;
