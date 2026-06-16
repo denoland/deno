@@ -25,6 +25,17 @@ Deno.test("napi create_buffer_copy", function () {
   assertEquals(buf[4], 50);
 });
 
+Deno.test("napi create_buffer_from_arraybuffer", function () {
+  const buf = lib.test_create_buffer_from_arraybuffer();
+  assertEquals(buf instanceof Buffer, true);
+  // Views bytes [2, 6) of an ArrayBuffer filled with 0..8.
+  assertEquals(buf.length, 4);
+  assertEquals(buf[0], 2);
+  assertEquals(buf[1], 3);
+  assertEquals(buf[2], 4);
+  assertEquals(buf[3], 5);
+});
+
 Deno.test("napi get_buffer_info", function () {
   const len = lib.test_get_buffer_info();
   assertEquals(len, 3);

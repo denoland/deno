@@ -48,6 +48,41 @@ extern "C" fn test_create_buffer_copy(
   result
 }
 
+/// Test node_api_create_buffer_from_arraybuffer: creates a Buffer that views a
+/// slice of an existing ArrayBuffer.
+extern "C" fn test_create_buffer_from_arraybuffer(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  // Create an ArrayBuffer and fill it with 0..8.
+  let mut ab_data: *mut std::ffi::c_void = ptr::null_mut();
+  let mut arraybuffer: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_arraybuffer(
+    env,
+    8,
+    &mut ab_data,
+    &mut arraybuffer
+  ));
+  unsafe {
+    let slice = std::slice::from_raw_parts_mut(ab_data as *mut u8, 8);
+    for (i, byte) in slice.iter_mut().enumerate() {
+      *byte = i as u8;
+    }
+  }
+
+  // View bytes [2, 6) of the ArrayBuffer as a Buffer.
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(node_api_create_buffer_from_arraybuffer(
+    env,
+    arraybuffer,
+    2,
+    4,
+    &mut result
+  ));
+
+  result
+}
+
 /// Test napi_get_buffer_info: retrieves data pointer and length.
 extern "C" fn test_get_buffer_info(
   env: napi_env,
@@ -107,6 +142,11 @@ pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_create_buffer", test_create_buffer),
     napi_new_property!(env, "test_create_buffer_copy", test_create_buffer_copy),
+    napi_new_property!(
+      env,
+      "test_create_buffer_from_arraybuffer",
+      test_create_buffer_from_arraybuffer
+    ),
     napi_new_property!(env, "test_get_buffer_info", test_get_buffer_info),
     napi_new_property!(env, "test_is_buffer_check", test_is_buffer),
   ];

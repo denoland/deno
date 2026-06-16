@@ -225,7 +225,7 @@ const versions = {
   nghttp2: "1.69.0",
   // `napi` reflects the N-API version Deno actually implements, not Node's.
   // It must match NAPI_VERSION in ext/napi/js_native_api.rs.
-  napi: "9",
+  napi: "10",
   llhttp: "9.4.1",
   openssl: "3.5.6",
   cldr: "48.0",
