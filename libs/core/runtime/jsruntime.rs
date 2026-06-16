@@ -1032,21 +1032,6 @@ impl JsRuntime {
 
       // Get module map data from the snapshot
       if let Some(raw_data) = sidecar_data {
-        if startup_phases_enabled() {
-          let d = &raw_data.snapshot_data;
-          #[allow(clippy::print_stderr, reason = "diagnostic")]
-          {
-            eprintln!(
-              "[startup]   snapshot counts: context_data_items={} op_count={} source_count={} addl_refs={} external_strings={} ext_source_maps={}",
-              raw_data.data_count,
-              d.op_count,
-              d.source_count,
-              d.addl_refs_count,
-              d.external_strings.len(),
-              d.ext_source_maps.len(),
-            );
-          }
-        }
         let _p_ld = startup_phase_begin();
         snapshotted_data = Some(snapshot::load_snapshotted_data_from_snapshot(
           scope, context, raw_data,
