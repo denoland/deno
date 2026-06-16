@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assert, assertEquals, loadTestLibrary } from "./common.js";
+import process from "node:process";
 
 const lib = loadTestLibrary();
 
@@ -27,8 +28,10 @@ Deno.test("napi run_script", function () {
 });
 
 Deno.test("napi get_node_version", function () {
-  const major = lib.test_get_node_version();
-  assert(major >= 1);
+  // napi_get_node_version() must report the same emulated Node version as
+  // process.versions.node (both derive from the single source of truth).
+  const version = lib.test_get_node_version();
+  assertEquals(version, process.versions.node);
 });
 
 Deno.test("napi get_last_error_info", function () {
