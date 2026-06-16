@@ -22,7 +22,6 @@ const {
   op_otel_baggage_serialize,
   op_otel_parse_traceparent,
   op_otel_span_context_valid,
-  op_otel_tracestate_parse,
   op_otel_span_add_link,
   op_otel_span_attribute1,
   op_otel_span_attribute2,
@@ -30,6 +29,7 @@ const {
   op_otel_span_update_name,
   OtelMeter,
   OtelTracer,
+  OtelTraceState,
 } = core.ops;
 const { Console } = core.loadExtScript("ext:deno_web/01_console.js");
 
@@ -42,13 +42,11 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeReduce,
-  ArrayPrototypeReverse,
   ArrayPrototypeSlice,
   DatePrototype,
   DatePrototypeGetTime,
   Error,
   MapPrototypeEntries,
-  MapPrototypeKeys,
   Number,
   NumberPrototypeToString,
   ObjectAssign,
@@ -89,6 +87,19 @@ interface TraceState {
   unset(key: string): TraceState;
   get(key: string): string | undefined;
   serialize(): string;
+}
+
+// Rust-backed `TraceState` implementation (see ext/telemetry/propagation.rs).
+// Parsing, validation, member storage, clone/set/unset semantics and
+// serialization all live in Rust; this is just the cppgc object's type.
+interface OtelTraceState extends TraceState {
+  __key: "traceState";
+
+  // deno-lint-ignore no-misused-new
+  new (rawTraceState?: string): OtelTraceState;
+
+  set(key: string, value: string): OtelTraceState;
+  unset(key: string): OtelTraceState;
 }
 
 interface SpanContext {
@@ -1241,11 +1252,9 @@ function otelLog(message: string, level: number) {
  */
 
 // The trace-context version we emit when injecting `traceparent`. Parsing,
-// validation and trace-state/baggage (de)serialization now live in Rust ops
-// (see ext/telemetry/propagation.rs).
+// validation, the `TraceState` object and trace-state/baggage (de)serialization
+// now live in Rust (see ext/telemetry/propagation.rs).
 const VERSION = "00";
-const LIST_MEMBERS_SEPARATOR = ",";
-const LIST_MEMBER_KEY_VALUE_SPLITTER = "=";
 
 const TRACE_PARENT_HEADER = "traceparent";
 const TRACE_STATE_HEADER = "tracestate";
@@ -1356,65 +1365,6 @@ function isSpanContextValid(spanContext: SpanContext): boolean {
   return op_otel_span_context_valid(spanContext.traceId, spanContext.spanId);
 }
 
-class TraceStateClass implements TraceState {
-  private _internalState: Map<string, string> = new SafeMap();
-
-  constructor(rawTraceState?: string) {
-    if (rawTraceState) this._parse(rawTraceState);
-  }
-
-  set(key: string, value: string): TraceStateClass {
-    const traceState = this._clone();
-    if (traceState._internalState.has(key)) {
-      traceState._internalState.delete(key);
-    }
-    traceState._internalState.set(key, value);
-    return traceState;
-  }
-
-  unset(key: string): TraceStateClass {
-    const traceState = this._clone();
-    traceState._internalState.delete(key);
-    return traceState;
-  }
-
-  get(key: string): string | undefined {
-    return this._internalState.get(key);
-  }
-
-  serialize(): string {
-    return ArrayPrototypeJoin(
-      ArrayPrototypeReduce(this._keys(), (agg: string[], key) => {
-        ArrayPrototypePush(
-          agg,
-          key + LIST_MEMBER_KEY_VALUE_SPLITTER + this.get(key),
-        );
-        return agg;
-      }, []),
-      LIST_MEMBERS_SEPARATOR,
-    );
-  }
-
-  private _parse(rawTraceState: string) {
-    // Parsing, member validation, OWS handling and truncation to the maximum
-    // number of items is performed in Rust. The op returns the validated
-    // members in the internal storage order (see propagation.rs).
-    this._internalState = new SafeMap(op_otel_tracestate_parse(rawTraceState));
-  }
-
-  private _keys(): string[] {
-    return ArrayPrototypeReverse(
-      ArrayFrom(MapPrototypeKeys(this._internalState)),
-    );
-  }
-
-  private _clone(): TraceStateClass {
-    const traceState = new TraceStateClass();
-    traceState._internalState = new SafeMap(this._internalState);
-    return traceState;
-  }
-}
-
 class W3CTraceContextPropagator implements TextMapPropagator {
   inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
     const spanContext = (context.getValue(SPAN_KEY) as Span | undefined)
@@ -1461,7 +1411,7 @@ class W3CTraceContextPropagator implements TextMapPropagator {
       const state = ArrayIsArray(traceStateHeader)
         ? ArrayPrototypeJoin(traceStateHeader, ",")
         : traceStateHeader;
-      spanContext.traceState = new TraceStateClass(
+      spanContext.traceState = new OtelTraceState(
         typeof state === "string" ? state : undefined,
       );
     }
