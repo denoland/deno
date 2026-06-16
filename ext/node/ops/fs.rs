@@ -861,6 +861,31 @@ fn is_url(
       .unwrap_or(false)
 }
 
+// Replicates `decodeURIComponent`'s validation, which node's `fileURLToPath`
+// runs on the URL pathname: percent-decode `%XX` to bytes (a `%` not followed by
+// two hex digits is malformed) and require the result to be valid UTF-8. Returns
+// `Err` (caller throws `URIError`, like node's "URI malformed") otherwise.
+fn decode_uri_component_checked(s: &str) -> Result<(), ()> {
+  let bytes = s.as_bytes();
+  let mut out = Vec::with_capacity(bytes.len());
+  let mut i = 0;
+  while i < bytes.len() {
+    if bytes[i] == b'%' {
+      if i + 2 >= bytes.len() {
+        return Err(());
+      }
+      let hi = (bytes[i + 1] as char).to_digit(16).ok_or(())?;
+      let lo = (bytes[i + 2] as char).to_digit(16).ok_or(())?;
+      out.push((hi * 16 + lo) as u8);
+      i += 3;
+    } else {
+      out.push(bytes[i]);
+      i += 1;
+    }
+  }
+  std::str::from_utf8(&out).map(|_| ()).map_err(|_| ())
+}
+
 fn url_to_path(
   scope: &mut v8::PinScope<'_, '_>,
   value: v8::Local<v8::Value>,
@@ -901,6 +926,19 @@ fn url_to_path(
         class: deno_error::builtin_classes::TYPE_ERROR,
         code: "ERR_INVALID_FILE_URL_PATH",
         message: format!("File URL path {suffix}"),
+      }
+      .into(),
+    );
+  }
+  // node's `fileURLToPath` decodes the pathname with `decodeURIComponent`, which
+  // throws `URIError` if the percent-encoded bytes aren't valid UTF-8 (e.g. a
+  // Shift_JIS path). Validate before handing off to the lossy path conversion.
+  if decode_uri_component_checked(url_path).is_err() {
+    return Err(
+      NodeArgError {
+        class: "URIError",
+        code: "ERR_INVALID_URI",
+        message: "URI malformed".to_string(),
       }
       .into(),
     );
@@ -1158,20 +1196,26 @@ fn now_unix_secs() -> f64 {
     .unwrap_or(0.0)
 }
 
-// Splits a fractional-seconds timestamp into (seconds, nanoseconds), matching
-// the JS `unixTimeToSecNsec` (millisecond-resolution truncation).
+// Splits a fractional-seconds timestamp into (seconds, nanoseconds) at
+// millisecond resolution (matching the JS `unixTimeToSecNsec`). Uses floored
+// (euclidean) division so the nanosecond remainder is always in `[0, 1e9)`
+// for negative (pre-epoch) timestamps too -- e.g. -40.691s is (-41, 309_000_000),
+// not (-40, -691_000_000) which would saturate to (-40, 0) and lose the sign.
 fn unix_time_to_sec_nsec(value: f64) -> (i64, u32) {
-  let seconds = value.trunc();
-  let nanoseconds = ((value * 1e3).trunc() - (seconds * 1e3)).trunc() * 1e6;
-  (seconds as i64, nanoseconds as u32)
+  let total_ms = (value * 1e3).trunc() as i64;
+  let seconds = total_ms.div_euclid(1_000);
+  let nanoseconds = (total_ms.rem_euclid(1_000) as u32) * 1_000_000;
+  (seconds, nanoseconds)
 }
 
 // Splits a fractional-seconds timestamp into (seconds, nanoseconds) at full
-// nanosecond resolution, matching the JS `futimes`/`futimesSync` math.
+// nanosecond resolution, matching the JS `futimes`/`futimesSync` math. Floored
+// division keeps the nanosecond remainder in `[0, 1e9)` for negative timestamps.
 fn time_to_sec_nsec_full(value: f64) -> (i64, u32) {
-  let seconds = value.trunc();
-  let nanoseconds = ((value - seconds) * 1e9).trunc();
-  (seconds as i64, nanoseconds as u32)
+  let total_ns = (value * 1e9).trunc() as i64;
+  let seconds = total_ns.div_euclid(1_000_000_000);
+  let nanoseconds = total_ns.rem_euclid(1_000_000_000) as u32;
+  (seconds, nanoseconds)
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -3011,11 +3055,23 @@ fn check_decoded_string_length(
   const MAX: usize = v8::String::MAX_LENGTH;
   let units = match enc {
     BufEnc::Utf8 => {
+      // The UTF-16 length is always <= the byte length, so anything that fits
+      // in MAX bytes is fine. Past that we must determine the unit count, but
+      // (like node, which leans on simdutf) avoid decoding char-by-char in the
+      // common cases: pure ASCII maps 1 byte -> 1 unit (use the SIMD-optimized
+      // std `is_ascii`), and even all-3-byte input yields >= len/3 units. Only
+      // genuinely mixed non-ASCII input between MAX and 3*MAX bytes needs the
+      // exact (slow) decode.
       if bytes.len() <= MAX {
         return Ok(());
       }
-      let decoded = String::from_utf8_lossy(bytes);
-      decoded.chars().map(char::len_utf16).sum()
+      if bytes.is_ascii() || bytes.len() / 3 > MAX {
+        return Err(err_string_too_long().into());
+      }
+      String::from_utf8_lossy(bytes)
+        .chars()
+        .map(char::len_utf16)
+        .sum()
     }
     BufEnc::Latin1 | BufEnc::Ascii => bytes.len(),
     BufEnc::Ucs2 => bytes.len() / 2,
@@ -6830,7 +6886,9 @@ pub fn op_node_fs_read_file_path(
         .read_all_async()
         .await
         .map_err(|e| node_fs_err(e, "open", &path))?;
-      MaybeEncodedBytes::with_proto(buf.to_vec(), enc, proto)
+      // `into_owned()` avoids re-copying an already-owned read buffer (a large
+      // file would otherwise be duplicated just to hand it to ToV8).
+      MaybeEncodedBytes::with_proto(buf.into_owned(), enc, proto)
     },
     cancel,
   ))
@@ -8161,14 +8219,14 @@ fn set_dest_timestamps_and_mode(
   })?;
 
   if let (Some(atime), Some(mtime)) = (src_stat.atime, src_stat.mtime) {
-    // FsStat stores times as milliseconds since the Unix epoch.
-    // utime_async expects split values: whole seconds + nanoseconds remainder.
-    let atime_secs = (atime / 1000) as i64;
-    // Remaining milliseconds are converted to nanoseconds.
-    let atime_nanos = ((atime % 1000) * 1_000_000) as u32;
-    let mtime_secs = (mtime / 1000) as i64;
-    // Same conversion for mtime: ms remainder -> ns.
-    let mtime_nanos = ((mtime % 1000) * 1_000_000) as u32;
+    // FsStat stores times as signed milliseconds since the Unix epoch.
+    // utime_sync expects split values: whole seconds + nanoseconds remainder.
+    // Floored (euclidean) division keeps the ns remainder in [0, 1e9) for
+    // pre-epoch (negative) source times.
+    let atime_secs = atime.div_euclid(1000);
+    let atime_nanos = (atime.rem_euclid(1000) as u32) * 1_000_000;
+    let mtime_secs = mtime.div_euclid(1000);
+    let mtime_nanos = (mtime.rem_euclid(1000) as u32) * 1_000_000;
     fs.utime_sync(dest_path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
       .map_err(|err| {
         map_fs_error_to_node_fs_error(

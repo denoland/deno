@@ -117,10 +117,11 @@ pub struct FsStat {
   pub is_symlink: bool,
   pub size: u64,
 
-  pub mtime: Option<u64>,
-  pub atime: Option<u64>,
-  pub birthtime: Option<u64>,
-  pub ctime: Option<u64>,
+  // Milliseconds since the Unix epoch; signed so pre-epoch times stay negative.
+  pub mtime: Option<i64>,
+  pub atime: Option<i64>,
+  pub birthtime: Option<i64>,
+  pub ctime: Option<i64>,
 
   pub dev: u64,
   pub ino: Option<u64>,
@@ -198,23 +199,23 @@ impl FsStat {
     }
 
     #[inline(always)]
-    fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Option<u64> {
+    fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Option<i64> {
       match maybe_time {
-        Ok(time) => Some(
-          time
-            .duration_since(UNIX_EPOCH)
-            .map(|t| t.as_millis() as u64)
-            .unwrap_or_else(|err| err.duration().as_millis() as u64),
-        ),
+        // Signed: times before the Unix epoch are negative (`duration_since`
+        // errors for those, and the error carries the absolute duration).
+        Ok(time) => Some(match time.duration_since(UNIX_EPOCH) {
+          Ok(t) => t.as_millis() as i64,
+          Err(err) => -(err.duration().as_millis() as i64),
+        }),
         Err(_) => None,
       }
     }
 
     #[inline(always)]
-    fn get_ctime(ctime_or_0: i64) -> Option<u64> {
+    fn get_ctime(ctime_or_0: i64) -> Option<i64> {
       if ctime_or_0 > 0 {
         // ctime return seconds since epoch, but we need milliseconds
-        return Some(ctime_or_0 as u64 * 1000);
+        return Some(ctime_or_0 * 1000);
       }
 
       None
