@@ -109,9 +109,11 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     env_var: None,
   },
   UnstableFeatureDescription {
+    // Deprecated: Node.js `setTimeout`/`setInterval` globals are now the
+    // default, so this flag is a no-op kept only for backwards compatibility.
     name: "node-globals",
-    help_text: "Prefer Node.js globals over Deno globals - currently this refers to `setTimeout` and `setInterval` APIs.",
-    show_in_help: true,
+    help_text: "Deprecated. Node.js `setTimeout` and `setInterval` globals are now always enabled, so this flag has no effect.",
+    show_in_help: false,
     kind: UnstableFeatureKind::Runtime,
     env_var: None,
   },
