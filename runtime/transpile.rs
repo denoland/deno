@@ -37,36 +37,12 @@ pub fn maybe_transpile_and_minify_source(
   maybe_transpile_source_inner(name, source, true)
 }
 
-/// The `node:process` polyfill carries a `__NODE_VERSION__` placeholder so the
-/// reported `process.version` / `process.versions.node` stays bound to the
-/// single source of truth in `deno_node::NODE_VERSION` instead of duplicating
-/// the literal. Substitute it here, at snapshot build time, so the value is
-/// baked into the snapshot and no runtime work is needed.
-fn maybe_substitute_node_version(
-  name: &str,
-  source: ModuleCodeString,
-) -> ModuleCodeString {
-  const TOKEN: &str = "__NODE_VERSION__";
-  if !name.ends_with("deno_node/_process/process.ts") {
-    return source;
-  }
-  debug_assert!(
-    source.as_str().contains(TOKEN),
-    "expected `{TOKEN}` placeholder in {name}"
-  );
-  source
-    .as_str()
-    .replace(TOKEN, deno_node::NODE_VERSION)
-    .into()
-}
-
 fn maybe_transpile_source_inner(
   name: ModuleName,
   source: ModuleCodeString,
   minify: bool,
 ) -> Result<(ModuleCodeString, Option<SourceMapData>), JsErrorBox> {
   let name_string = name.to_string();
-  let source = maybe_substitute_node_version(&name_string, source);
   // Always transpile `node:` built-in modules, since they might be TypeScript.
   let media_type = if name.starts_with("node:") {
     MediaType::TypeScript
