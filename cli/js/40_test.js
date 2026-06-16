@@ -334,10 +334,8 @@ function encodeTimeout(value) {
 // counts passed to the runner as u32 values (0 means the option is unset).
 function encodeCount(value, label) {
   if (value === undefined || value === null) return 0;
-  if (
-    typeof value !== "number" || NumberIsNaN(value) ||
-    !NumberIsFinite(value) || !NumberIsInteger(value) || value < 0
-  ) {
+  // `NumberIsInteger` already rejects NaN and +/-Infinity.
+  if (typeof value !== "number" || !NumberIsInteger(value) || value < 0) {
     throw new TypeError(`Test ${label} must be a non-negative integer`);
   }
   if (value > TIMEOUT_MAX) {

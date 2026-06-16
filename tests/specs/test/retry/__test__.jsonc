@@ -36,10 +36,30 @@
       "exitCode": 0,
       "output": "cli_retry_flag.out"
     },
+    "repeats_flag": {
+      "args": "test --quiet --repeats=2 repeats_flag.ts",
+      "exitCode": 1,
+      "output": "repeats_flag.out"
+    },
+    "flag_override": {
+      "args": "test --quiet --retry=5 flag_override.ts",
+      "exitCode": 1,
+      "output": "flag_override.out"
+    },
+    "retry_repeats": {
+      "args": "test --quiet retry_repeats.ts",
+      "exitCode": 0,
+      "output": "retry_repeats.out"
+    },
     "validation_negative": {
       "args": "test --quiet validation_negative.ts",
       "exitCode": 1,
       "output": "validation_negative.out"
+    },
+    "validation_repeats_negative": {
+      "args": "test --quiet validation_repeats_negative.ts",
+      "exitCode": 1,
+      "output": "validation_repeats_negative.out"
     }
   }
 }
