@@ -23,13 +23,20 @@ deno_core.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
 deno_lib.workspace = true
+deno_net.workspace = true
 deno_runtime.workspace = true
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
 denort = { path = "../rt" }
-laufey = "0.3.2"
+# Local checkout: the in-process scheme handler transport requires laufey API
+# version 26 (register_scheme_handler), unreleased as of laufey 0.3.2.
+laufey = { path = "../../../wef/capi" }
 libsui.workspace = true
 
+bytes.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 log = { workspace = true, features = ["serde"] }
 raw-window-handle.workspace = true
 rustls.workspace = true

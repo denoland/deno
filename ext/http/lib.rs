@@ -1899,6 +1899,15 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
       }
     }
     Some(("tunnel", _)) => (4, String::new(), 0, duplicate),
+    Some(("memory", name)) => {
+      // In-process byte channel. `name` identifies the listener; the peer
+      // (e.g. the desktop runtime) connects to it by the same name.
+      if name.is_empty() {
+        log::error!("DENO_SERVE_ADDRESS: empty memory name");
+        return (0, String::new(), 0, duplicate);
+      }
+      (5, name.to_string(), 0, duplicate)
+    }
     Some((_, _)) | None => {
       log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
       (0, String::new(), 0, false)

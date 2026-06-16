@@ -3,12 +3,12 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
+use deno_core::error::ResourceError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ResourceTable;
-use deno_core::error::ResourceError;
 use deno_error::JsErrorBox;
 
 use crate::io::TcpStreamResource;
@@ -469,6 +469,16 @@ network_stream!(
     crate::tunnel::OwnedReadHalf,
     crate::tunnel::OwnedWriteHalf,
   ],
+  [
+    Memory,
+    memory,
+    crate::memory::MemoryStream,
+    crate::memory::MemoryListener,
+    crate::memory::MemoryAddr,
+    crate::io::MemoryStreamResource,
+    tokio::io::ReadHalf<crate::memory::MemoryStream>,
+    tokio::io::WriteHalf<crate::memory::MemoryStream>,
+  ],
   #[cfg(windows)]
   [
     WindowsPipe,
@@ -489,6 +499,7 @@ pub enum NetworkStreamAddress {
   #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   Vsock(tokio_vsock::VsockAddr),
   Tunnel(crate::tunnel::TunnelAddr),
+  Memory(crate::memory::MemoryAddr),
   #[cfg(windows)]
   WindowsPipe(crate::win_pipe::WindowsPipeAddr),
 }
@@ -519,6 +530,12 @@ impl From<crate::tunnel::TunnelAddr> for NetworkStreamAddress {
   }
 }
 
+impl From<crate::memory::MemoryAddr> for NetworkStreamAddress {
+  fn from(value: crate::memory::MemoryAddr) -> Self {
+    NetworkStreamAddress::Memory(value)
+  }
+}
+
 #[cfg(windows)]
 impl From<crate::win_pipe::WindowsPipeAddr> for NetworkStreamAddress {
   fn from(value: crate::win_pipe::WindowsPipeAddr) -> Self {
@@ -545,6 +562,12 @@ pub enum TakeNetworkStreamError {
   #[class("Busy")]
   #[error("Tunnel socket is currently in use")]
   TunnelBusy,
+  #[class("Busy")]
+  #[error("Memory stream is currently in use")]
+  MemoryBusy,
+  #[class(generic)]
+  #[error("Cannot reunite halves from different streams")]
+  ReuniteMemory,
   #[cfg(windows)]
   #[class("Busy")]
   #[error("Windows named pipe is currently in use")]
@@ -628,6 +651,19 @@ pub fn take_network_stream_resource(
       .map_err(|_| TakeNetworkStreamError::TunnelBusy)?;
     let stream = resource.into_inner();
     return Ok(NetworkStream::Tunnel(stream));
+  }
+
+  if let Ok(resource_rc) =
+    resource_table.take::<crate::io::MemoryStreamResource>(stream_rid)
+  {
+    let resource = Rc::try_unwrap(resource_rc)
+      .map_err(|_| TakeNetworkStreamError::MemoryBusy)?;
+    let (read_half, write_half) = resource.into_inner();
+    if !read_half.is_pair_of(&write_half) {
+      return Err(TakeNetworkStreamError::ReuniteMemory);
+    }
+    let memory_stream = read_half.unsplit(write_half);
+    return Ok(NetworkStream::Memory(memory_stream));
   }
 
   #[cfg(windows)]

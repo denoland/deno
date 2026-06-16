@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
+use deno_core::futures::TryFutureExt;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -10,7 +11,6 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
-use deno_core::futures::TryFutureExt;
 use deno_error::JsErrorBox;
 use socket2::SockRef;
 use tokio::io::AsyncRead;
@@ -205,7 +205,28 @@ impl Resource for UnixStreamResource {
   }
 }
 
-#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
+pub type MemoryStreamResource = FullDuplexResource<
+  tokio::io::ReadHalf<crate::memory::MemoryStream>,
+  tokio::io::WriteHalf<crate::memory::MemoryStream>,
+>;
+
+impl Resource for MemoryStreamResource {
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
+
+  fn name(&self) -> Cow<'_, str> {
+    "memoryStream".into()
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel_read_ops();
+  }
+}
+
 pub type VsockStreamResource =
   FullDuplexResource<tokio_vsock::OwnedReadHalf, tokio_vsock::OwnedWriteHalf>;
 
