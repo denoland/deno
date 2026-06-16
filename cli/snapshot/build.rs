@@ -9,6 +9,7 @@ fn main() {
   #[allow(clippy::print_stdout, reason = "build script output")]
   {
     println!("cargo:rerun-if-env-changed=DENO_SNAPSHOT_IMPORT_GRAPH");
+    println!("cargo:rerun-if-env-changed=DENO_SNAPSHOT_MINIFY_SOURCES");
   }
   #[cfg(not(feature = "disable"))]
   {
@@ -51,6 +52,8 @@ fn create_cli_snapshot(
   let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
   let residual_sources_dir = out_dir.join("residual_sources");
   std::fs::create_dir_all(&residual_sources_dir).unwrap();
+  let minify_sources =
+    std::env::var_os("DENO_SNAPSHOT_MINIFY_SOURCES").is_some();
 
   let mut residual_js: Vec<(&str, std::path::PathBuf)> = Vec::new();
   let mut residual_esm: Vec<(&str, std::path::PathBuf)> = Vec::new();
@@ -73,11 +76,21 @@ fn create_cli_snapshot(
       &residual_sources_dir,
       &file.specifier,
       &file.path,
+      minify_sources,
     );
-    let entry = (file.specifier.as_str(), transpiled_path);
     match file.kind {
-      LazyExtensionFileKind::Js => residual_js.push(entry),
-      LazyExtensionFileKind::Esm => residual_esm.push(entry),
+      LazyExtensionFileKind::Js => {
+        // `lazy_loaded_js` (loadExtScript) sources are evaluated as the body of
+        // a `compile_function` call: `"use strict"; return (<IIFE>);`. Doing
+        // that wrap here at build time means the runtime loads the source as a
+        // `&'static` external string (via `include_str!`), avoiding a per-script
+        // owned source copy in the V8 heap. See `load_ext_script`.
+        wrap_residual_js_source(&transpiled_path);
+        residual_js.push((file.specifier.as_str(), transpiled_path));
+      }
+      LazyExtensionFileKind::Esm => {
+        residual_esm.push((file.specifier.as_str(), transpiled_path));
+      }
     }
   }
 
@@ -100,9 +113,11 @@ fn transpile_residual_source(
   out_dir: &std::path::Path,
   specifier: &str,
   src_path: &std::path::Path,
+  minify: bool,
 ) -> std::path::PathBuf {
   use deno_runtime::deno_core::ModuleCodeString;
   use deno_runtime::deno_core::ModuleName;
+  use deno_runtime::transpile::maybe_transpile_and_minify_source;
   use deno_runtime::transpile::maybe_transpile_source;
 
   let source = std::fs::read_to_string(src_path).unwrap_or_else(|e| {
@@ -111,10 +126,13 @@ fn transpile_residual_source(
       src_path.display()
     )
   });
-  let (transpiled, _source_map) = maybe_transpile_source(
-    ModuleName::from(specifier.to_string()),
-    ModuleCodeString::from(source),
-  )
+  let name = ModuleName::from(specifier.to_string());
+  let source = ModuleCodeString::from(source);
+  let (transpiled, _source_map) = if minify {
+    maybe_transpile_and_minify_source(name, source)
+  } else {
+    maybe_transpile_source(name, source)
+  }
   .unwrap_or_else(|e| {
     panic!("failed to transpile residual lazy source {specifier}: {e}")
   });
@@ -128,6 +146,14 @@ fn transpile_residual_source(
   let out_path = out_dir.join(format!("{sanitized}.js"));
   std::fs::write(&out_path, transpiled.as_bytes()).unwrap();
   out_path
+}
+
+#[cfg(not(feature = "disable"))]
+fn wrap_residual_js_source(path: &std::path::Path) {
+  use deno_runtime::deno_core::wrap_lazy_ext_script;
+  let source = std::fs::read_to_string(path).unwrap();
+  let wrapped = wrap_lazy_ext_script(&source);
+  std::fs::write(path, wrapped.as_bytes()).unwrap();
 }
 
 #[cfg(not(feature = "disable"))]

@@ -183,7 +183,7 @@ fn set_process_title(title: &str) {
   let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
   // SAFETY: FFI call, wide is null-terminated
   unsafe {
-    winapi::um::wincon::SetConsoleTitleW(wide.as_ptr());
+    windows_sys::Win32::System::Console::SetConsoleTitleW(wide.as_ptr());
   }
 }
 

@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -31,6 +32,7 @@ use deno_graph::source::Loader;
 use deno_graph::source::ResolveError;
 use deno_lib::util::result::downcast_ref_deno_resolve_error;
 use deno_npm_installer::PackageCaching;
+use deno_npm_installer::format_unmet_peer_dep_warning;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cache::ParsedSourceCache;
@@ -48,6 +50,7 @@ use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::SmallStackString;
 use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMapErrorKind;
 use node_resolver::errors::NodeJsErrorCode;
 use sys_traits::FsMetadata;
@@ -820,7 +823,14 @@ impl ModuleGraphBuilder {
       self.cjs_tracker.as_ref(),
       &jsx_import_source_config_resolver,
       None,
-      NpmTypesResolutionMode::Strict,
+      // When type checking, an npm package that has no type declarations
+      // (e.g. a "bring your own node_modules" dependency without bundled
+      // types and without a corresponding `@types` package) should be
+      // treated as untyped rather than producing a hard "Failed resolving
+      // types" error. Falling back to the execution entrypoint matches the
+      // behaviour of the managed npm resolver. See:
+      // https://github.com/denoland/deno/issues/23507
+      NpmTypesResolutionMode::FallbackToExecution,
     );
     let maybe_reporter = self.maybe_reporter.as_deref();
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
@@ -847,6 +857,7 @@ impl ModuleGraphBuilder {
           locker: locker.as_mut().map(|l| l as _),
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
           unstable_text_imports: true,
+          unstable_css_imports: self.cli_options.unstable_raw_imports(),
         }
       };
     }
@@ -981,7 +992,69 @@ impl ModuleGraphBuilder {
       }
     }
 
+    // Report any unmet peer dependency issues found during npm resolution. This
+    // is done here, after the graph is built, so the warning can point at the
+    // user modules that import the offending packages.
+    if let Some(npm_installer) = &self.npm_installer {
+      let diagnostics = npm_installer.take_unmet_peer_diagnostics();
+      if !diagnostics.is_empty() && log::log_enabled!(log::Level::Warn) {
+        // Only the top-level package of each diagnostic (its outermost
+        // ancestor) is annotated, so restrict the graph walk to those.
+        let wanted: HashSet<String> = diagnostics
+          .iter()
+          .filter_map(|d| d.ancestors.last().map(|nv| nv.to_string()))
+          .collect();
+        let importers = self.npm_peer_dep_importers(graph, &wanted);
+        log::warn!(
+          "{}",
+          format_unmet_peer_dep_warning(&diagnostics, &importers)
+        );
+      }
+    }
+
     Ok(())
+  }
+
+  /// Builds a map from a top-level npm package (`name@version`) to the user
+  /// modules that import it, used to annotate peer dependency warnings with the
+  /// source of a transitively introduced package. Only packages in `wanted`
+  /// are resolved, to avoid a full sweep of the graph.
+  fn npm_peer_dep_importers(
+    &self,
+    graph: &ModuleGraph,
+    wanted: &HashSet<String>,
+  ) -> HashMap<String, Vec<String>> {
+    let Some(managed) = self.npm_resolver.as_managed() else {
+      return HashMap::new();
+    };
+    let mut importers: HashMap<String, Vec<String>> = HashMap::new();
+    for module in graph.modules() {
+      let referrer = module.specifier();
+      for dep in module.dependencies().values() {
+        for specifier in [dep.get_code(), dep.get_type()].into_iter().flatten()
+        {
+          let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier)
+          else {
+            continue;
+          };
+          let Ok(id) =
+            managed.resolve_pkg_id_from_deno_module_req(npm_ref.req())
+          else {
+            continue;
+          };
+          let nv = id.nv.to_string();
+          if !wanted.contains(&nv) {
+            continue;
+          }
+          let entry = importers.entry(nv).or_default();
+          let referrer = referrer.to_string();
+          if !entry.contains(&referrer) {
+            entry.push(referrer);
+          }
+        }
+      }
+    }
+    importers
   }
 
   pub fn build_fast_check_graph(

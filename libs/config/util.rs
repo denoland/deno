@@ -9,22 +9,18 @@ use crate::deno_json::NewestDependencyDate;
 pub fn is_skippable_io_error(e: &std::io::Error) -> bool {
   use std::io::ErrorKind::*;
 
-  // skip over invalid filenames on windows
-  const ERROR_INVALID_NAME: i32 = 123;
-  if cfg!(windows) && e.raw_os_error() == Some(ERROR_INVALID_NAME) {
-    return true;
-  }
-
-  match e.kind() {
-    InvalidInput | PermissionDenied | NotFound => {
-      // ok keep going
-      true
-    }
-    _ => {
-      const NOT_A_DIRECTORY: i32 = 20;
-      cfg!(unix) && e.raw_os_error() == Some(NOT_A_DIRECTORY)
-    }
-  }
+  // Match `ErrorKind` directly (rather than raw errno values gated by `cfg!`)
+  // so config-file auto-discovery behaves identically on every OS — see
+  // denoland/deno#17428.
+  matches!(
+    e.kind(),
+    InvalidInput
+      | InvalidFilename
+      | PermissionDenied
+      | NotFound
+      | NotADirectory
+      | IsADirectory
+  )
 }
 
 #[derive(Debug, Error)]
@@ -310,6 +306,44 @@ mod tests {
   fn is_skippable_io_error_win_invalid_filename() {
     let error = std::io::Error::from_raw_os_error(123);
     assert!(super::is_skippable_io_error(&error));
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn is_skippable_io_error_unix_enotdir() {
+    let error = std::io::Error::from_raw_os_error(20);
+    assert!(super::is_skippable_io_error(&error));
+  }
+
+  #[test]
+  fn is_skippable_io_error_kinds() {
+    use std::io::Error;
+    use std::io::ErrorKind;
+
+    // these should be skipped on every platform so config discovery walks
+    // past non-directory parent components, permission-denied folders, and
+    // missing files identically on windows and unix
+    for kind in [
+      ErrorKind::InvalidInput,
+      ErrorKind::InvalidFilename,
+      ErrorKind::PermissionDenied,
+      ErrorKind::NotFound,
+      ErrorKind::NotADirectory,
+      ErrorKind::IsADirectory,
+    ] {
+      assert!(
+        super::is_skippable_io_error(&Error::from(kind)),
+        "expected {kind:?} to be skippable"
+      );
+    }
+
+    // sanity check: unrelated kinds are not skipped
+    assert!(!super::is_skippable_io_error(&Error::from(
+      ErrorKind::ConnectionRefused,
+    )));
+    assert!(!super::is_skippable_io_error(&Error::from(
+      ErrorKind::UnexpectedEof,
+    )));
   }
 
   #[test]

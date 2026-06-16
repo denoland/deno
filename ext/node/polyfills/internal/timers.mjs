@@ -58,6 +58,7 @@ const TIMEOUT_MAX = 2 ** 31 - 1;
 const kDestroy = Symbol("destroy");
 const kTimerId = Symbol("timerId");
 const kTimeout = Symbol("timeout");
+const kSuspended = Symbol("suspended");
 const kRefed = core.kRefed;
 const createTimer = Symbol("createTimer");
 
@@ -130,6 +131,11 @@ function Timeout(callback, after, args, isRepeat, isRefed) {
   this._timerArgs = args;
   this._repeat = isRepeat;
   this._destroyed = false;
+  ObjectDefineProperty(this, kSuspended, {
+    __proto__: null,
+    value: false,
+    writable: true,
+  });
   this[kRefed] = isRefed;
 
   const asyncId = nextAsyncId();
@@ -240,8 +246,9 @@ Timeout.prototype[createTimer] = function () {
 };
 
 Timeout.prototype[kDestroy] = function () {
-  if (!this._destroyed) {
+  if (!this._destroyed || this[kSuspended]) {
     this._destroyed = true;
+    this[kSuspended] = false;
     this._idleTimeout = -1;
     this._idleStart = DateNow();
     this._onTimeout = null;
@@ -276,6 +283,7 @@ Timeout.prototype.refresh = function () {
     // nulled by kDestroy or _onTimeout explicitly cleared).
     if (this._onTimeout !== null) {
       this._destroyed = false;
+      this[kSuspended] = false;
       this[kTimerId] = this[createTimer]();
     }
   } else {
@@ -351,6 +359,16 @@ function getTimerDuration(msecs, name) {
 function setUnrefTimeout(callback, timeout, ...args) {
   validateFunction(callback, "callback");
   return new Timeout(callback, timeout, args, false, false);
+}
+
+function suspendTimeout(timeout) {
+  if (timeout !== null && timeout !== undefined && !timeout._destroyed) {
+    timeout._destroyed = true;
+    timeout[kSuspended] = true;
+    timeout._idleStart = DateNow();
+    cancelTimer_(timeout._timer);
+    MapPrototypeDelete(activeTimers, timeout[kTimerId]);
+  }
 }
 
 // Re-export immediate queue and runImmediates from core for consumers
@@ -436,6 +454,7 @@ return {
   Timeout,
   getTimerDuration,
   setUnrefTimeout,
+  suspendTimeout,
   immediateQueue,
   runImmediates,
   Immediate,

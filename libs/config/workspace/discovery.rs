@@ -11,6 +11,7 @@ use deno_maybe_sync::new_rc;
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonLoadError;
 use deno_package_json::PackageJsonRc;
+use deno_path_util::normalize_path;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_parent;
@@ -36,6 +37,7 @@ use crate::deno_json::ConfigFile;
 use crate::deno_json::ConfigFileRc;
 use crate::glob::FileCollector;
 use crate::glob::FilePatterns;
+use crate::glob::PathGlobMatch;
 use crate::glob::PathOrPattern;
 use crate::glob::PathOrPatternSet;
 use crate::glob::is_glob_pattern;
@@ -359,9 +361,10 @@ fn discover_workspace_config_files_for_single_dir<
             config_folder.deno_json().map(|d| d.as_ref()),
             opts.maybe_vendor_override.as_ref(),
           );
-          let links = resolve_link_config_folders(
+          let links = resolve_link_config_folders_with_auto(
             sys,
             &config_folder,
+            &Default::default(),
             load_config_folder,
           )?;
           return Ok(ConfigFileDiscovery::Workspace {
@@ -500,8 +503,12 @@ fn discover_workspace_config_files_for_single_dir<
       config_folder.deno_json().map(|d| d.as_ref()),
       opts.maybe_vendor_override.as_ref(),
     );
-    let link =
-      resolve_link_config_folders(sys, &config_folder, load_config_folder)?;
+    let link = resolve_link_config_folders_with_auto(
+      sys,
+      &config_folder,
+      &Default::default(),
+      load_config_folder,
+    )?;
     let workspace = new_rc(Workspace::new(
       config_folder,
       Default::default(),
@@ -545,9 +552,10 @@ fn handle_workspace_folder_with_members<
     &mut found_config_folders,
     load_config_folder,
   )?;
-  let links = resolve_link_config_folders(
+  let links = resolve_link_config_folders_with_auto(
     sys,
     &raw_root_workspace.root,
+    &raw_root_workspace.members,
     load_config_folder,
   )?;
   let root_workspace = new_rc(Workspace::new(
@@ -583,22 +591,35 @@ fn handle_workspace_with_members<TSys: FsRead + FsMetadata + FsReadDir>(
     .root_deno_json()
     .map(|d| d.json.workspace.is_some())
     .unwrap_or(false);
-  // if the root was an npm workspace that doesn't have the start config
-  // as a member then only resolve the start config
-  if !is_root_deno_json_workspace
-    && let Some(first_config_folder) = &first_config_folder_url
+  // If the start config folder is not a member of the discovered workspace,
+  // discard the parent workspace and resolve just the start config standalone.
+  // For npm workspaces this is silent backwards-compatible behavior; for deno
+  // workspaces with an explicit "workspace" property we warn so the user knows
+  // the parent config was ignored.
+  if let Some(first_config_folder) = &first_config_folder_url
     && !root_workspace
       .config_folders
       .contains_key(*first_config_folder)
     && let Some(config_folder) =
       found_config_folders.remove(first_config_folder)
   {
+    if is_root_deno_json_workspace {
+      log::warn!(
+        "Warning: config file {} is not a member of the workspace at {}. Ignoring the parent workspace config.",
+        config_folder_config_specifier(&config_folder),
+        root_workspace.root_dir_url(),
+      );
+    }
     let maybe_vendor_dir = resolve_vendor_dir(
       config_folder.deno_json().map(|d| d.as_ref()),
       opts.maybe_vendor_override.as_ref(),
     );
-    let links =
-      resolve_link_config_folders(sys, &config_folder, load_config_folder)?;
+    let links = resolve_link_config_folders_with_auto(
+      sys,
+      &config_folder,
+      &Default::default(),
+      load_config_folder,
+    )?;
     let workspace = new_rc(Workspace::new(
       config_folder,
       Default::default(),
@@ -835,7 +856,23 @@ fn resolve_workspace_for_config_folder<
         );
       }
       validate_member_url_is_descendant(&member_dir_url)?;
-      let member_config_folder = find_member_config_folder(&member_dir_url)?;
+      let member_config_folder =
+        match find_member_config_folder(&member_dir_url) {
+          Ok(folder) => folder,
+          Err(err) => match err.into_kind() {
+            ResolveWorkspaceMemberErrorKind::NotFound { dir_url }
+              if !member_dir_exists(sys, &dir_url) =>
+            {
+              log::warn!(
+                "Workspace member \"{}\" not found at {}. Skipping.",
+                raw_member,
+                dir_url,
+              );
+              continue;
+            }
+            other => return Err(other.into_box().into()),
+          },
+        };
       let previous_member = final_members
         .insert(new_rc(member_dir_url.clone()), member_config_folder);
       if previous_member.is_some() {
@@ -869,15 +906,16 @@ fn resolve_workspace_for_config_folder<
       IndexSet::with_capacity(path_members.len() + pkg_json_paths.len());
     for path_member in path_members {
       let member_dir_url = resolve_member_url(path_member)?;
-      member_dir_urls.insert(member_dir_url);
+      member_dir_urls.insert((path_member.clone(), member_dir_url));
     }
     for pkg_json_path in pkg_json_paths {
-      let member_dir_url =
-        url_from_directory_path(pkg_json_path.parent().unwrap())?;
-      member_dir_urls.insert(member_dir_url);
+      let member_dir = pkg_json_path.parent().unwrap();
+      let member_dir_url = url_from_directory_path(member_dir)?;
+      member_dir_urls
+        .insert((member_dir.to_string_lossy().into_owned(), member_dir_url));
     }
 
-    for member_dir_url in member_dir_urls {
+    for (raw_member, member_dir_url) in member_dir_urls {
       if member_dir_url == root_config_file_directory_url {
         continue; // ignore self references
       }
@@ -885,21 +923,31 @@ fn resolve_workspace_for_config_folder<
       let member_config_folder =
         match find_member_config_folder(&member_dir_url) {
           Ok(config_folder) => config_folder,
-          Err(err) => {
-            return Err(
-              match err.into_kind() {
-                ResolveWorkspaceMemberErrorKind::NotFound { dir_url } => {
-                  // enhance the error to say we didn't find a package.json
-                  ResolveWorkspaceMemberErrorKind::NotFoundPackageJson {
-                    dir_url,
-                  }
-                  .into_box()
+          Err(err) => match err.into_kind() {
+            ResolveWorkspaceMemberErrorKind::NotFound { dir_url }
+              if !member_dir_exists(sys, &dir_url) =>
+            {
+              log::warn!(
+                "Workspace member \"{}\" not found at {}. Skipping.",
+                raw_member,
+                dir_url,
+              );
+              continue;
+            }
+            ResolveWorkspaceMemberErrorKind::NotFound { dir_url } => {
+              // dir exists but neither deno.json nor package.json — for
+              // an npm workspace member, surface this as the more specific
+              // "package.json not found" error.
+              return Err(
+                ResolveWorkspaceMemberErrorKind::NotFoundPackageJson {
+                  dir_url,
                 }
-                err => err.into_box(),
-              }
-              .into(),
-            );
-          }
+                .into_box()
+                .into(),
+              );
+            }
+            other => return Err(other.into_box().into()),
+          },
         };
       if member_config_folder.pkg_json().is_none() {
         return Err(
@@ -923,6 +971,13 @@ fn resolve_workspace_for_config_folder<
   })
 }
 
+fn member_dir_exists<TSys: FsMetadata>(sys: &TSys, dir_url: &Url) -> bool {
+  let Ok(path) = url_to_file_path(dir_url) else {
+    return false;
+  };
+  sys.fs_is_dir_no_err(&path)
+}
+
 fn resolve_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
   sys: &TSys,
   root_config_folder: &ConfigFolder,
@@ -944,7 +999,7 @@ fn resolve_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
       if (!cfg!(windows) && link.starts_with('/')
         || cfg!(windows) && link.chars().any(|c| c == '\\'))
         && let Ok(value) =
-          deno_path_util::url_from_file_path(Path::new(link.as_ref()))
+          deno_path_util::url_from_directory_path(Path::new(link.as_ref()))
       {
         return Ok(value);
       }
@@ -958,9 +1013,30 @@ fn resolve_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
         })?;
       Ok(link_dir_url)
     };
+  let (pattern_links, path_links): (Vec<_>, Vec<_>) = link_members
+    .iter()
+    .partition(|link| link_has_glob_chars(link));
+  let mut link_dir_urls = Vec::with_capacity(link_members.len());
+  for raw_member in path_links {
+    link_dir_urls.push((raw_member.clone(), resolve_link_dir_url(raw_member)?));
+  }
+  if !pattern_links.is_empty() {
+    let pattern_link_dir_urls = collect_link_config_folders(
+      sys,
+      pattern_links,
+      &root_config_file_directory_url,
+      &workspace_deno_json.dir_path(),
+    )
+    .map_err(|(link, err)| WorkspaceDiscoverErrorKind::ResolveLink {
+      base: root_config_file_directory_url.clone(),
+      link,
+      source: err.into_box(),
+    })?;
+    link_dir_urls.extend(pattern_link_dir_urls);
+  }
+
   let mut final_config_folders = BTreeMap::new();
-  for raw_member in &link_members {
-    let link_dir_url = resolve_link_dir_url(raw_member)?;
+  for (raw_member, link_dir_url) in link_dir_urls {
     let link_configs = resolve_link_member_config_folders(
       sys,
       &link_dir_url,
@@ -990,6 +1066,139 @@ fn resolve_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
   }
 
   Ok(final_config_folders)
+}
+
+#[allow(
+  clippy::result_large_err,
+  reason = "ResolveWorkspaceLinkErrorKind is large by design"
+)]
+fn collect_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
+  sys: &TSys,
+  raw_links: Vec<&String>,
+  root_config_file_directory_url: &Url,
+  root_config_file_directory_path: &Path,
+) -> Result<Vec<(String, Url)>, (String, ResolveWorkspaceLinkErrorKind)> {
+  let pattern_entries = raw_links
+    .into_iter()
+    .flat_map(|raw_link| {
+      ["deno.json", "deno.jsonc", "package.json"]
+        .into_iter()
+        .map(move |config_file_name| (raw_link, config_file_name))
+    })
+    .map(|(raw_link, config_file_name)| {
+      let link =
+        format!("{}{}", ensure_trailing_slash(raw_link), config_file_name);
+      link_to_path_or_pattern(
+        &link,
+        raw_link,
+        root_config_file_directory_url,
+        root_config_file_directory_path,
+      )
+      .map(|pattern| (raw_link.clone(), pattern))
+      .map_err(|err| (raw_link.clone(), err))
+    })
+    .collect::<Result<Vec<_>, _>>()?;
+  let patterns = pattern_entries
+    .iter()
+    .map(|(_, pattern)| pattern.clone())
+    .collect::<Vec<_>>();
+  let config_paths = FileCollector::new(|_| true)
+    .ignore_git_folder()
+    .ignore_node_modules()
+    .collect_file_patterns(
+      sys,
+      &FilePatterns {
+        base: root_config_file_directory_path.to_path_buf(),
+        include: Some(PathOrPatternSet::new(patterns)),
+        exclude: PathOrPatternSet::new(Vec::new()),
+      },
+    );
+  let mut link_dir_urls = Vec::with_capacity(config_paths.len());
+  for config_path in config_paths {
+    let raw_link = pattern_entries
+      .iter()
+      .find_map(|(raw_link, pattern)| {
+        match pattern.matches_path(&config_path) {
+          PathGlobMatch::Matched => Some(raw_link.clone()),
+          PathGlobMatch::MatchedNegated | PathGlobMatch::NotMatched => None,
+        }
+      })
+      .unwrap_or_else(|| config_path.display().to_string());
+    if let Some(link_dir_path) = config_path.parent() {
+      let link_dir_url =
+        url_from_directory_path(link_dir_path).map_err(|err| {
+          (raw_link.clone(), ResolveWorkspaceLinkErrorKind::from(err))
+        })?;
+      link_dir_urls.push((raw_link, link_dir_url));
+    }
+  }
+  Ok(link_dir_urls)
+}
+
+#[allow(
+  clippy::result_large_err,
+  reason = "ResolveWorkspaceLinkErrorKind is large by design"
+)]
+fn link_to_path_or_pattern(
+  link: &str,
+  raw_link: &str,
+  root_config_file_directory_url: &Url,
+  root_config_file_directory_path: &Path,
+) -> Result<PathOrPattern, ResolveWorkspaceLinkErrorKind> {
+  if link.starts_with("file://") {
+    let url =
+      Url::parse(link).map_err(ResolveWorkspaceLinkErrorKind::InvalidLink)?;
+    let path = url_to_file_path(&url)?;
+    PathOrPattern::new(&path.to_string_lossy()).map_err(|source| {
+      ResolveWorkspaceLinkErrorKind::LinkToPattern {
+        base: root_config_file_directory_url.clone(),
+        link: raw_link.to_string(),
+        source,
+      }
+    })
+  } else if Path::new(link).is_absolute() {
+    PathOrPattern::new(link).map_err(|source| {
+      ResolveWorkspaceLinkErrorKind::LinkToPattern {
+        base: root_config_file_directory_url.clone(),
+        link: raw_link.to_string(),
+        source,
+      }
+    })
+  } else {
+    let (is_negated, link) = match link.strip_prefix('!') {
+      Some(link) => (true, link),
+      None => (false, link),
+    };
+    let has_glob_chars = link.chars().any(|c| matches!(c, '*' | '?'));
+    let link_path =
+      normalize_path(Cow::Owned(root_config_file_directory_path.join(link)));
+    if is_negated && !has_glob_chars {
+      return Ok(PathOrPattern::NegatedPath(link_path.into_owned()));
+    }
+    let link = if is_negated {
+      Cow::Owned(format!("!{}", link_path.to_string_lossy()))
+    } else {
+      link_path.to_string_lossy()
+    };
+    PathOrPattern::new(&link).map_err(|source| {
+      ResolveWorkspaceLinkErrorKind::LinkToPattern {
+        base: root_config_file_directory_url.clone(),
+        link: raw_link.to_string(),
+        source,
+      }
+    })
+  }
+}
+
+fn link_has_glob_chars(link: &str) -> bool {
+  if link.starts_with("http://")
+    || link.starts_with("https://")
+    || link.starts_with("npm:")
+    || link.starts_with("jsr:")
+  {
+    return false;
+  }
+  link.chars().any(|c| matches!(c, '*' | '?')) || link.starts_with('!')
 }
 
 fn resolve_link_member_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
@@ -1058,6 +1267,208 @@ fn resolve_link_member_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
       config_folder,
     )]))
   }
+}
+
+/// Resolves links from a config folder and then additionally auto-discovers
+/// external packages that are referenced by relative/absolute path in import
+/// maps, registering them so that bare specifier imports made *from* those
+/// external modules resolve against their own import map (issue #26764).
+fn resolve_link_config_folders_with_auto<
+  TSys: FsRead + FsMetadata + FsReadDir,
+>(
+  sys: &TSys,
+  root_config_folder: &ConfigFolder,
+  members: &BTreeMap<UrlRc, ConfigFolder>,
+  load_config_folder: impl Fn(
+    &Path,
+  ) -> Result<Option<ConfigFolder>, ConfigReadError>,
+) -> Result<BTreeMap<UrlRc, ConfigFolder>, WorkspaceDiscoverError> {
+  let mut links =
+    resolve_link_config_folders(sys, root_config_folder, &load_config_folder)?;
+  resolve_auto_link_config_folders(
+    sys,
+    root_config_folder,
+    members,
+    &mut links,
+    &load_config_folder,
+  );
+  Ok(links)
+}
+
+/// Walks path-style import map entries to a fixpoint and registers the
+/// governing `deno.json` of each external file as an (implicit) link, so its
+/// `imports`/`scopes` become a referrer-scoped entry in the synthetic import
+/// map. This is equivalent to the user manually listing those directories in
+/// the `links` field, but discovered automatically.
+fn resolve_auto_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
+  sys: &TSys,
+  root_config_folder: &ConfigFolder,
+  members: &BTreeMap<UrlRc, ConfigFolder>,
+  links: &mut BTreeMap<UrlRc, ConfigFolder>,
+  load_config_folder: &impl Fn(
+    &Path,
+  ) -> Result<Option<ConfigFolder>, ConfigReadError>,
+) {
+  // dirs that are already known and must not be (re)discovered as links: the
+  // workspace root, its members, and explicit links.
+  let mut visited: HashSet<Url> = HashSet::new();
+  visited.insert(root_config_folder.folder_url());
+  for key in members.keys().chain(links.keys()) {
+    visited.insert((**key).clone());
+  }
+
+  // worklist of (import map dir, path-style import map values) still to scan
+  let mut worklist: Vec<(Url, Vec<String>)> = Vec::new();
+  enqueue_import_path_values(sys, root_config_folder, &mut worklist);
+  for folder in members.values().chain(links.values()) {
+    enqueue_import_path_values(sys, folder, &mut worklist);
+  }
+
+  while let Some((base_dir, values)) = worklist.pop() {
+    for value in values {
+      let Some(target_url) = import_value_target_url(&base_dir, &value) else {
+        continue;
+      };
+      let Some(governing_dir) =
+        find_governing_config_dir(&target_url, load_config_folder)
+      else {
+        continue;
+      };
+      if visited.contains(&governing_dir) {
+        continue;
+      }
+      // expand via the same logic explicit links use, so a referenced
+      // workspace member pulls in its sibling packages too
+      let expanded = match resolve_link_member_config_folders(
+        sys,
+        &governing_dir,
+        load_config_folder,
+      ) {
+        Ok(folders) => folders,
+        Err(err) => {
+          // not resolvable as a linkable package; skip and don't retry
+          log::debug!(
+            "Skipping auto-linked import map dir {}: {:#}",
+            governing_dir,
+            err
+          );
+          visited.insert(governing_dir);
+          continue;
+        }
+      };
+      for (dir_url, folder) in expanded {
+        if visited.insert((*dir_url).clone()) {
+          enqueue_import_path_values(sys, &folder, &mut worklist);
+          links.insert(dir_url, folder);
+        }
+      }
+    }
+  }
+}
+
+fn enqueue_import_path_values<TSys: FsRead>(
+  sys: &TSys,
+  folder: &ConfigFolder,
+  worklist: &mut Vec<(Url, Vec<String>)>,
+) {
+  let Some(deno_json) = folder.deno_json() else {
+    return;
+  };
+  // Resolve the import map, following an external `importMap` file if present.
+  // Path entries resolve against the import map's own location: the deno.json
+  // for inline maps, or the external file's directory otherwise.
+  let map_value = match deno_json.to_import_map_value(sys) {
+    Ok(Some((specifier, value))) => (url_parent(&specifier), value),
+    Ok(None) => return,
+    Err(err) => {
+      log::debug!(
+        "Skipping auto-link discovery for {}: {:#}",
+        deno_json.specifier,
+        err
+      );
+      return;
+    }
+  };
+  let (base_dir, value) = map_value;
+  let values = collect_import_path_values(&value);
+  if !values.is_empty() {
+    worklist.push((base_dir, values));
+  }
+}
+
+/// Collects the path-style string values from an import map value's `imports`
+/// and `scopes` maps.
+fn collect_import_path_values(value: &serde_json::Value) -> Vec<String> {
+  fn collect_from_map(
+    map: &serde_json::Map<String, serde_json::Value>,
+    out: &mut Vec<String>,
+  ) {
+    for value in map.values() {
+      if let Some(s) = value.as_str() {
+        out.push(s.to_string());
+      }
+    }
+  }
+
+  let mut out = Vec::new();
+  let serde_json::Value::Object(obj) = value else {
+    return out;
+  };
+  if let Some(serde_json::Value::Object(imports)) = obj.get("imports") {
+    collect_from_map(imports, &mut out);
+  }
+  if let Some(serde_json::Value::Object(scopes)) = obj.get("scopes") {
+    for scope_value in scopes.values() {
+      if let serde_json::Value::Object(scope_imports) = scope_value {
+        collect_from_map(scope_imports, &mut out);
+      }
+    }
+  }
+  out
+}
+
+/// Resolves an import map value to a target URL when it points at a path on
+/// disk. Returns `None` for bare specifiers and non-file schemes (npm:, jsr:,
+/// http(s):, node:, data:, ...).
+fn import_value_target_url(base_dir: &Url, value: &str) -> Option<Url> {
+  if value.starts_with("./")
+    || value.starts_with("../")
+    || value.starts_with('/')
+  {
+    base_dir.join(value).ok()
+  } else if value.starts_with("file:") {
+    Url::parse(value).ok()
+  } else if cfg!(windows) && value.contains('\\') {
+    // a Windows absolute path like `C:\pkg\mod.ts`; mirror the backslash
+    // handling that `resolve_link_dir_url` applies to explicit links
+    url_from_file_path(Path::new(value)).ok()
+  } else {
+    None
+  }
+}
+
+/// Finds the directory of the nearest `deno.json` that governs `target_url`,
+/// walking up from the target's directory.
+fn find_governing_config_dir(
+  target_url: &Url,
+  load_config_folder: &impl Fn(
+    &Path,
+  ) -> Result<Option<ConfigFolder>, ConfigReadError>,
+) -> Option<Url> {
+  let target_path = url_to_file_path(target_url).ok()?;
+  let start_dir = if target_url.path().ends_with('/') {
+    target_path
+  } else {
+    target_path.parent()?.to_path_buf()
+  };
+  for ancestor in start_dir.ancestors() {
+    if let Ok(Some(folder)) = load_config_folder(ancestor)
+      && folder.deno_json().is_some()
+    {
+      return Some(folder.folder_url());
+    }
+  }
+  None
 }
 
 fn resolve_vendor_dir(

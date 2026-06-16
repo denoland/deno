@@ -59,7 +59,6 @@ const {
   QuotaExceededError,
 } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
-const imageData = core.loadExtScript("ext:deno_web/16_image_data.js");
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import {
@@ -75,7 +74,14 @@ import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
 const loadCanvas = core.createLazyLoader("ext:deno_canvas/01_canvas.js");
-const loadGeometry = core.createLazyLoader("ext:deno_web/geometry.js");
+let _imageDataMod;
+const loadImageData = () =>
+  _imageDataMod ??
+    (_imageDataMod = core.loadExtScript("ext:deno_web/16_image_data.js"));
+let _geometryMod;
+const loadGeometry = () =>
+  _geometryMod ??
+    (_geometryMod = core.loadExtScript("ext:deno_web/17_geometry.js"));
 const loadWebSocket = core.createLazyLoader(
   "ext:deno_websocket/01_websocket.js",
 );
@@ -148,7 +154,10 @@ const windowOrWorkerGlobalScope = {
   FileReader: core.propNonEnumerable(fileReader.FileReader),
   FormData: core.propNonEnumerable(formData.FormData),
   Headers: core.propNonEnumerable(headers.Headers),
-  ImageData: core.propNonEnumerable(imageData.ImageData),
+  ImageData: core.propNonEnumerableLazyLoaded(
+    (imageData) => imageData.ImageData,
+    loadImageData,
+  ),
   ImageBitmap: core.propNonEnumerableLazyLoaded(
     (image) => image.ImageBitmap,
     loadImage,
@@ -256,7 +265,11 @@ const windowOrWorkerGlobalScope = {
   console: core.propNonEnumerable(
     new console.Console((msg, level) => core.print(msg, level > 1)),
   ),
-  crypto: core.propReadOnly(crypto.crypto),
+  // `crypto.crypto` is a getter that mints the cppgc-wrapped `Crypto`
+  // instance on first access (see `getCryptoSingleton` in
+  // `ext/crypto/00_crypto.js`). Use `propGetterOnly` so the cppgc allocation
+  // is deferred to runtime instead of running at snapshot-build time.
+  crypto: core.propGetterOnly(() => crypto.crypto),
   Crypto: core.propNonEnumerable(crypto.Crypto),
   SubtleCrypto: core.propNonEnumerable(crypto.SubtleCrypto),
   // `fetch` is installed as a plain data descriptor whose value is a lazy
@@ -494,5 +507,22 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
   setTimeout: core.propWritable(nodeSetTimeout),
 };
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
+
+let _cssStyleSheetMod;
+const loadCssStyleSheet = () =>
+  _cssStyleSheetMod ??
+    (_cssStyleSheetMod = core.loadExtScript(
+      "ext:deno_web/18_css_stylesheet.js",
+    ));
+unstableForWindowOrWorkerGlobalScope[unstableIds.rawImports] = {
+  CSSRule: core.propNonEnumerableLazyLoaded(
+    (css) => css.CSSRule,
+    loadCssStyleSheet,
+  ),
+  CSSStyleSheet: core.propNonEnumerableLazyLoaded(
+    (css) => css.CSSStyleSheet,
+    loadCssStyleSheet,
+  ),
+};
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };

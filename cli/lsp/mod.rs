@@ -30,6 +30,7 @@ mod registries;
 mod resolver;
 mod search;
 mod semantic_tokens;
+mod test_code_actions;
 mod testing;
 mod text;
 mod trace;

@@ -1,0 +1,11 @@
+{
+  "name": "basic-npm-monorepo",
+  "version": "1.0.0",
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "dependencies": {
+    "main-project": "*",
+    "pkg-a": "*",
+    "pkg-b": "*"
+  }
+}

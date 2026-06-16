@@ -20,12 +20,30 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
 (function () {
 "use strict";
 
+const { primordials } = __bootstrap;
+const {
+  ArrayPrototypeSlice,
+  ArrayPrototypeSort,
+  RegExpPrototypeExec,
+  RegExpPrototypeTest,
+  SafeRegExp,
+  StringFromCharCode,
+  StringPrototypeCharCodeAt,
+  StringPrototypeCodePointAt,
+  StringPrototypeSlice,
+  StringPrototypeToLowerCase,
+  Symbol,
+} = primordials;
+
 const kUTF16SurrogateThreshold = 0x10000; // 2 ** 16
+
+const kFunctionKeyCodeRe = new SafeRegExp("^(\\d\\d?)(;(\\d))?([~^$])$");
+const kOtherKeyCodeRe = new SafeRegExp("^((\\d;)?(\\d))?([A-Za-z])$");
+const kAlphaNumericRe = new SafeRegExp("^[0-9A-Za-z]$");
+const kUpperCaseRe = new SafeRegExp("^[A-Z]$");
 const kEscape = "\x1b";
 const kSubstringSearch = Symbol("kSubstringSearch");
 
@@ -56,8 +74,8 @@ function charLengthLeft(str, i) {
   }
   if (
     (i > 1 &&
-      str.codePointAt(i - 2) >= kUTF16SurrogateThreshold) ||
-    str.codePointAt(i - 1) >= kUTF16SurrogateThreshold
+      StringPrototypeCodePointAt(str, i - 2) >= kUTF16SurrogateThreshold) ||
+    StringPrototypeCodePointAt(str, i - 1) >= kUTF16SurrogateThreshold
   ) {
     return 2;
   }
@@ -70,7 +88,7 @@ function charLengthAt(str, i) {
     // moving to the right.
     return 1;
   }
-  return str.codePointAt(i) >= kUTF16SurrogateThreshold ? 2 : 1;
+  return StringPrototypeCodePointAt(str, i) >= kUTF16SurrogateThreshold ? 2 : 1;
 }
 
 /*
@@ -200,14 +218,14 @@ function* emitKeys(stream) {
          * We buffered enough data, now trying to extract code
          * and modifier from it
          */
-        const cmd = s.slice(cmdStart);
+        const cmd = StringPrototypeSlice(s, cmdStart);
         let match;
 
-        if ((match = cmd.match(/^(\d\d?)(;(\d))?([~^$])$/))) {
+        if ((match = RegExpPrototypeExec(kFunctionKeyCodeRe, cmd))) {
           code += match[1] + match[4];
           modifier = (match[3] || 1) - 1;
         } else if (
-          (match = cmd.match(/^((\d;)?(\d))?([A-Za-z])$/))
+          (match = RegExpPrototypeExec(kOtherKeyCodeRe, cmd))
         ) {
           code += match[4];
           modifier = (match[3] || 1) - 1;
@@ -529,14 +547,14 @@ function* emitKeys(stream) {
       key.meta = escaped;
     } else if (!escaped && ch <= "\x1a") {
       // ctrl+letter
-      key.name = String.fromCharCode(
-        ch.charCodeAt() + "a".charCodeAt() - 1,
+      key.name = StringFromCharCode(
+        StringPrototypeCharCodeAt(ch) + StringPrototypeCharCodeAt("a") - 1,
       );
       key.ctrl = true;
-    } else if (/^[0-9A-Za-z]$/.test(ch)) {
+    } else if (RegExpPrototypeTest(kAlphaNumericRe, ch)) {
       // Letter, number, shift+letter
-      key.name = ch.toLowerCase();
-      key.shift = /^[A-Z]$/.test(ch);
+      key.name = StringPrototypeToLowerCase(ch);
+      key.shift = RegExpPrototypeTest(kUpperCaseRe, ch);
       key.meta = escaped;
     } else if (escaped) {
       // Escape sequence timeout
@@ -562,12 +580,12 @@ function commonPrefix(strings) {
   if (strings.length === 1) {
     return strings[0];
   }
-  const sorted = strings.slice().sort();
+  const sorted = ArrayPrototypeSort(ArrayPrototypeSlice(strings));
   const min = sorted[0];
   const max = sorted[sorted.length - 1];
   for (let i = 0; i < min.length; i++) {
     if (min[i] !== max[i]) {
-      return min.slice(0, i);
+      return StringPrototypeSlice(min, 0, i);
     }
   }
   return min;
