@@ -178,16 +178,12 @@ pub async fn run_script(
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line
-  crate::boot_phase("run_script start");
   let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
-  crate::boot_phase("after cli_options");
   let deno_dir = factory.deno_dir()?;
   let http_client = factory.http_client_provider();
   let workspace_resolver = factory.workspace_resolver().await?;
-  crate::boot_phase("after workspace_resolver");
   let node_resolver = factory.node_resolver().await?;
-  crate::boot_phase("after node_resolver");
   // Run a background task that checks for available upgrades or output
   // if an earlier run of this background task found a new version of Deno.
   #[cfg(feature = "upgrade")]
@@ -212,8 +208,6 @@ pub async fn run_script(
 
   maybe_npm_install(&factory).await?;
 
-  crate::boot_phase("after resolve main_module");
-
   if let Some(exit_code) =
     try_run_npm_bin_executable(&factory, &flags, main_module).await?
   {
@@ -223,7 +217,6 @@ pub async fn run_script(
   let worker_factory = factory
     .create_cli_main_worker_factory_with_roots(roots)
     .await?;
-  crate::boot_phase("after worker_factory");
   let mut worker = worker_factory
     .create_main_worker_with_unconfigured_runtime(
       mode,
@@ -234,13 +227,11 @@ pub async fn run_script(
     )
     .await
     .inspect_err(|e| deno_telemetry::report_event("boot_failure", e))?;
-  crate::boot_phase("after create_main_worker");
 
   let exit_code = worker
     .run()
     .await
     .inspect_err(|e| deno_telemetry::report_event("uncaught_exception", e))?;
-  crate::boot_phase("after worker.run (exit)");
   Ok(exit_code)
 }
 
