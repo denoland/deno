@@ -20,6 +20,12 @@
         "DENO_DISABLE_NODE_SHIM": "1"
       },
       "output": "spawn_node_disabled.out"
+    },
+    // A real `node` already on PATH must never be shadowed by the shim.
+    "real_node_not_shadowed": {
+      "if": "unix",
+      "args": "run -A real_node_not_shadowed.mjs",
+      "output": "real_node_not_shadowed.out"
     }
   }
 }

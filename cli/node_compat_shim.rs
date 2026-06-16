@@ -34,13 +34,30 @@ const ACTIVE_ENV_VAR: &str = "DENO_NODE_SHIM_ACTIVE";
 const SHIM_DIR_NAME: &str = "node_compat_bin";
 
 fn is_truthy(value: &str) -> bool {
-  matches!(value, "1" | "true" | "TRUE" | "True")
+  matches!(
+    value.to_ascii_lowercase().as_str(),
+    "1" | "true" | "yes" | "on"
+  )
 }
 
 fn env_disabled() -> bool {
   std::env::var(DISABLE_ENV_VAR)
     .map(|v| is_truthy(&v))
     .unwrap_or(false)
+}
+
+/// Whether a subcommand can execute user code that might spawn a native `node`
+/// child process. Used to keep the `node` PATH scan (in [`ensure_node_on_path`])
+/// off the cold-start path of commands like `fmt`/`lint`/`check`/`lsp` that
+/// never spawn one.
+pub fn subcommand_may_spawn_node(
+  subcommand: &crate::args::DenoSubcommand,
+) -> bool {
+  use crate::args::DenoSubcommand::*;
+  matches!(
+    subcommand,
+    Run(_) | Task(_) | Test(_) | Bench(_) | Eval(_) | Repl(_) | Serve(_)
+  )
 }
 
 /// Returns whether `arg0`'s file name is exactly `node` (or `node.exe` on
@@ -72,6 +89,11 @@ pub fn maybe_rewrite_node_arg0(args: Vec<OsString>) -> Vec<OsString> {
     return args;
   };
   if !is_node_arg0(arg0) {
+    return args;
+  }
+  // Respect the opt-out: a stale `node` shim left on PATH from a previous run
+  // should pass through unchanged when the feature is disabled.
+  if env_disabled() {
     return args;
   }
 
@@ -106,26 +128,13 @@ pub fn maybe_rewrite_node_arg0(args: Vec<OsString>) -> Vec<OsString> {
   let mut deno_args = result.deno_args;
 
   // Resolve the entrypoint for the run path the same way the standalone shim
-  // does, sharing a single implementation.
-  if deno_args.len() >= 3 && deno_args.get(1).map(|s| s.as_str()) == Some("run")
-  {
-    let entrypoint_idx = deno_args
-      .iter()
-      .enumerate()
-      .skip(2)
-      .find(|(_, arg)| !arg.starts_with('-'))
-      .map(|(i, _)| i);
-    if let Some(idx) = entrypoint_idx {
-      #[allow(
-        clippy::disallowed_methods,
-        reason = "resolving the node shim exe"
-      )]
-      let current_exe =
-        std::env::current_exe().unwrap_or_else(|_| PathBuf::from("deno"));
-      deno_args[idx] =
-        node_shim::resolve_entrypoint(&current_exe, &deno_args[idx]);
-    }
-  }
+  // does, sharing a single implementation. `current_exe` resolves to the real
+  // deno binary (not the `node` symlink), so the resolution subprocess runs as
+  // plain `deno eval` without re-entering arg0 dispatch.
+  #[allow(clippy::disallowed_methods, reason = "resolving the node shim exe")]
+  let current_exe =
+    std::env::current_exe().unwrap_or_else(|_| PathBuf::from("deno"));
+  node_shim::resolve_run_entrypoint(&current_exe, &mut deno_args);
 
   // `deno_args[0]` is the program-name slot ("node") that deno's flag parser
   // skips; `deno_args[1..]` carry the real subcommand. Returning `deno_args`
@@ -231,13 +240,22 @@ fn shim_is_valid(shim_path: &Path, current_exe: &Path) -> bool {
 
 #[cfg(unix)]
 fn create_shim(shim_path: &Path, current_exe: &Path) -> std::io::Result<()> {
-  match std::os::unix::fs::symlink(current_exe, shim_path) {
+  // Symlink to a unique temp name first, then atomically `rename` it into
+  // place. This keeps a valid `node` visible at all times, so two concurrent
+  // deno invocations (e.g. editor + terminal) can't race into a window where
+  // the shim is momentarily missing.
+  let tmp_path =
+    shim_path.with_extension(format!("tmp-{}", std::process::id()));
+  // A leftover temp file from a crashed previous run would make `symlink`
+  // fail with AlreadyExists; clear it first.
+  let _ = std::fs::remove_file(&tmp_path);
+  std::os::unix::fs::symlink(current_exe, &tmp_path)?;
+  match std::fs::rename(&tmp_path, shim_path) {
     Ok(()) => Ok(()),
-    Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-      std::fs::remove_file(shim_path)?;
-      std::os::unix::fs::symlink(current_exe, shim_path)
+    Err(err) => {
+      let _ = std::fs::remove_file(&tmp_path);
+      Err(err)
     }
-    Err(err) => Err(err),
   }
 }
 
@@ -326,7 +344,13 @@ mod tests {
   fn truthy_values() {
     assert!(is_truthy("1"));
     assert!(is_truthy("true"));
+    assert!(is_truthy("TRUE"));
+    assert!(is_truthy("True"));
+    assert!(is_truthy("tRuE"));
+    assert!(is_truthy("yes"));
+    assert!(is_truthy("on"));
     assert!(!is_truthy("0"));
+    assert!(!is_truthy("false"));
     assert!(!is_truthy(""));
   }
 }

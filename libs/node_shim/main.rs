@@ -48,23 +48,10 @@ fn main() {
   let mut deno_args = result.deno_args;
 
   // Handle entrypoint resolution for run commands
-  if deno_args.len() >= 3 && deno_args.get(1) == Some(&"run".to_string()) {
-    // Find the entrypoint (first non-flag arg after "run")
-    let mut entrypoint_idx = None;
-    for (i, arg) in deno_args.iter().enumerate().skip(2) {
-      if !arg.starts_with('-') && !arg.starts_with("--") {
-        entrypoint_idx = Some(i);
-        break;
-      }
-    }
-
-    if let Some(idx) = entrypoint_idx {
-      let entrypoint = &deno_args[idx];
-      let resolved =
-        node_shim::resolve_entrypoint(std::path::Path::new("deno"), entrypoint);
-      deno_args[idx] = resolved;
-    }
-  }
+  node_shim::resolve_run_entrypoint(
+    std::path::Path::new("deno"),
+    &mut deno_args,
+  );
 
   if std::env::var("NODE_SHIM_DEBUG").is_ok() {
     eprintln!("deno {:?}", deno_args);

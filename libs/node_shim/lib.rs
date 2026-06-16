@@ -3310,6 +3310,31 @@ pub fn resolve_entrypoint(
     .to_string()
 }
 
+/// For a translated `deno run ...` argv, resolve the entrypoint argument in
+/// place using [`resolve_entrypoint`].
+///
+/// No-op unless `deno_args` is a `run` invocation with an entrypoint (the first
+/// non-flag argument after `run`). Shared by the standalone shim binary and the
+/// in-process arg0 dispatch so the entrypoint-finding logic lives in one place.
+pub fn resolve_run_entrypoint(
+  deno_exe: &std::path::Path,
+  deno_args: &mut [String],
+) {
+  if deno_args.len() < 3 || deno_args.get(1).map(|s| s.as_str()) != Some("run")
+  {
+    return;
+  }
+  let entrypoint_idx = deno_args
+    .iter()
+    .enumerate()
+    .skip(2)
+    .find(|(_, arg)| !arg.starts_with('-'))
+    .map(|(i, _)| i);
+  if let Some(idx) = entrypoint_idx {
+    deno_args[idx] = resolve_entrypoint(deno_exe, &deno_args[idx]);
+  }
+}
+
 /// Translate parsed Node.js CLI arguments to Deno CLI arguments.
 pub fn translate_to_deno_args(
   parsed_args: ParseResult,

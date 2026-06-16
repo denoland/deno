@@ -826,6 +826,33 @@ async fn resolve_flags_and_init(
   }
 
   let sys = crate::sys::CliSys::default();
+
+  // Best-effort: make a `node` available on PATH (pointing back at this binary)
+  // when no real Node.js is installed, so child processes that spawn `node`
+  // natively (e.g. Next.js Turbopack) can find one. Must run before any threads
+  // spawn since it mutates PATH (the tunnel below can spawn threads), and only
+  // for subcommands that execute user code, so unrelated commands (`fmt`,
+  // `lint`, `check`, `lsp`, ...) don't pay for the `node` PATH scan on startup.
+  if node_compat_shim::subcommand_may_spawn_node(&flags.subcommand) {
+    match deno_cache_dir::resolve_deno_dir(
+      &sys,
+      deno_cache_dir::ResolveDenoDirOptions {
+        maybe_initial_cwd: initial_cwd.as_deref(),
+        maybe_custom_root: None,
+      },
+    ) {
+      Ok(deno_dir_root) => {
+        if let Err(err) = node_compat_shim::ensure_node_on_path(&deno_dir_root)
+        {
+          log::debug!("node compat shim setup failed (best-effort): {err}");
+        }
+      }
+      Err(err) => {
+        log::debug!("could not resolve DENO_DIR for node compat shim: {err}");
+      }
+    }
+  }
+
   if deno_lib::args::has_flag_env_var(&sys, "DENO_CONNECTED") {
     flags.tunnel = true;
   }
@@ -841,27 +868,6 @@ async fn resolve_flags_and_init(
     // SAFETY: We're doing this before any threads are created.
     unsafe {
       std::env::set_var("DENO_CONNECTED", "1");
-    }
-  }
-
-  // Best-effort: make a `node` available on PATH (pointing back at this binary)
-  // when no real Node.js is installed, so child processes that spawn `node`
-  // natively (e.g. Next.js Turbopack) can find one. Must run before threads
-  // spawn since it mutates PATH.
-  match deno_cache_dir::resolve_deno_dir(
-    &sys,
-    deno_cache_dir::ResolveDenoDirOptions {
-      maybe_initial_cwd: initial_cwd.as_deref(),
-      maybe_custom_root: None,
-    },
-  ) {
-    Ok(deno_dir_root) => {
-      if let Err(err) = node_compat_shim::ensure_node_on_path(&deno_dir_root) {
-        log::debug!("node compat shim setup failed (best-effort): {err}");
-      }
-    }
-    Err(err) => {
-      log::debug!("could not resolve DENO_DIR for node compat shim: {err}");
     }
   }
 
