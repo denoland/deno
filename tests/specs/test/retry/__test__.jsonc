@@ -46,6 +46,11 @@
       "exitCode": 1,
       "output": "flag_override.out"
     },
+    "flag_optout": {
+      "args": "test --quiet --retry=5 flag_optout.ts",
+      "exitCode": 1,
+      "output": "flag_optout.out"
+    },
     "retry_repeats": {
       "args": "test --quiet retry_repeats.ts",
       "exitCode": 0,

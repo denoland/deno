@@ -129,8 +129,8 @@ fn op_register_test(
   #[buffer] ret_buf: &mut [u8],
   sanitize_only: bool,
   #[smi] timeout_ms: u32,
-  #[smi] retry: u32,
-  #[smi] repeats: u32,
+  #[smi] retry: Option<u32>,
+  #[smi] repeats: Option<u32>,
 ) -> Result<(), JsErrorBox> {
   if ret_buf.len() != 4 {
     return Err(JsErrorBox::type_error(format!(

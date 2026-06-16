@@ -330,10 +330,11 @@ function encodeTimeout(value) {
   return value;
 }
 
-// Validates the `retry`/`repeats` test options, which are non-negative integer
-// counts passed to the runner as u32 values (0 means the option is unset).
+// Validates the `retry`/`repeats` test options. Returns `null` when the option
+// is unset so the runner can distinguish "inherit the flag default" from an
+// explicit `0` (which opts out and takes precedence over the flag).
 function encodeCount(value, label) {
-  if (value === undefined || value === null) return 0;
+  if (value === undefined || value === null) return null;
   // `NumberIsInteger` already rejects NaN and +/-Infinity.
   if (typeof value !== "number" || !NumberIsInteger(value) || value < 0) {
     throw new TypeError(`Test ${label} must be a non-negative integer`);
@@ -376,8 +377,8 @@ function testInner(
     sanitizeExit: true,
     permissions: null,
     timeout: undefined,
-    retry: 0,
-    repeats: 0,
+    retry: undefined,
+    repeats: undefined,
   };
 
   if (typeof nameOrFnOrOptions === "string") {

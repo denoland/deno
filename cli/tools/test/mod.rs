@@ -300,12 +300,16 @@ pub struct TestDescription {
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
   pub timeout_ms: Option<u32>,
-  /// Number of times to re-run the test if it fails. The test passes if any
-  /// attempt passes (0 means no retries).
-  pub retry: u32,
-  /// Number of additional times to repeat the test. Every repetition must pass
-  /// for the test to pass (0 means run once).
-  pub repeats: u32,
+  /// Per-test `retry` option: number of times to re-run the test if it fails
+  /// (the test passes if any attempt passes). `None` means the test did not set
+  /// the option and inherits the `--retry` flag default; `Some(0)` is an
+  /// explicit opt-out that takes precedence over the flag.
+  pub retry: Option<u32>,
+  /// Per-test `repeats` option: number of additional times to repeat the test
+  /// (every repetition must pass). `None` means the test did not set the option
+  /// and inherits the `--repeats` flag default; `Some(0)` is an explicit
+  /// opt-out that takes precedence over the flag.
+  pub repeats: Option<u32>,
 }
 
 /// May represent a failure of a test or test step.
@@ -1422,18 +1426,11 @@ async fn run_tests_for_worker_inner(
     event_tracker.wait(desc)?;
 
     let timeout_ms = desc.timeout_ms.filter(|&t| t > 0);
-    // A test's own `retry`/`repeats` option takes precedence; otherwise fall
-    // back to the `--retry`/`--repeats` flag defaults.
-    let retry = if desc.retry > 0 {
-      desc.retry
-    } else {
-      options.retry
-    };
-    let repeats = if desc.repeats > 0 {
-      desc.repeats
-    } else {
-      options.repeats
-    };
+    // A test's own `retry`/`repeats` option takes precedence (including an
+    // explicit `0` to opt out); otherwise fall back to the `--retry`/`--repeats`
+    // flag defaults.
+    let retry = desc.retry.unwrap_or(options.retry);
+    let repeats = desc.repeats.unwrap_or(options.repeats);
     let earlier = Instant::now();
 
     // The terminal result of the test once all repetitions/attempts settle.
