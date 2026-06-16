@@ -174,7 +174,6 @@ pub fn server_capabilities(
     execute_command_provider: Some(ExecuteCommandOptions {
       commands: vec![
         "deno.cache".to_string(),
-        "deno.inferredType".to_string(),
         "deno.reloadImportRegistries".to_string(),
       ],
       ..Default::default()
