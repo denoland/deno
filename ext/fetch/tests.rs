@@ -218,8 +218,15 @@ async fn test_fetch_decompresses_gzip_response_and_sets_accept_encoding() {
     captured_accept_encoding.lock().await.as_ref().unwrap(),
     HeaderValue::from_static("gzip,br")
   );
-  assert_eq!(resp.headers().get(CONTENT_ENCODING), None);
-  assert_eq!(resp.headers().get(CONTENT_LENGTH), None);
+  // Leading/trailing whitespace around the field value is trimmed on parse.
+  assert_eq!(
+    resp.headers().get(CONTENT_ENCODING).unwrap(),
+    HeaderValue::from_static("GZip")
+  );
+  assert_eq!(
+    resp.headers().get(CONTENT_LENGTH).unwrap(),
+    HeaderValue::from_static("37")
+  );
   let body = resp.collect().await.unwrap().to_bytes();
   assert_eq!(body, "hello from server");
 }
@@ -246,8 +253,14 @@ async fn test_fetch_decompresses_br_response_and_preserves_accept_encoding() {
     captured_accept_encoding.lock().await.as_ref().unwrap(),
     HeaderValue::from_static("gzip")
   );
-  assert_eq!(resp.headers().get(CONTENT_ENCODING), None);
-  assert_eq!(resp.headers().get(CONTENT_LENGTH), None);
+  assert_eq!(
+    resp.headers().get(CONTENT_ENCODING).unwrap(),
+    HeaderValue::from_static("Br")
+  );
+  assert_eq!(
+    resp.headers().get(CONTENT_LENGTH).unwrap(),
+    HeaderValue::from_static("14")
+  );
   let body = resp.collect().await.unwrap().to_bytes();
   assert_eq!(body, "hello from server");
 }
@@ -274,7 +287,10 @@ async fn test_fetch_empty_body_with_content_encoding_skips_decompression() {
       captured_accept_encoding.lock().await.as_ref().unwrap(),
       HeaderValue::from_static("gzip,br")
     );
-    assert_eq!(resp.headers().get(CONTENT_ENCODING), None);
+    assert_eq!(
+      resp.headers().get(CONTENT_ENCODING).unwrap(),
+      &HeaderValue::from_str(encoding).unwrap()
+    );
     assert_eq!(
       resp.headers().get(CONTENT_LENGTH).unwrap(),
       HeaderValue::from_static("0")
@@ -285,7 +301,7 @@ async fn test_fetch_empty_body_with_content_encoding_skips_decompression() {
 }
 
 #[tokio::test]
-async fn test_fetch_strips_transfer_encoding_after_decompression() {
+async fn test_fetch_preserves_headers_after_chunked_decompression() {
   let captured_accept_encoding = Arc::new(Mutex::new(None));
   let src_addr =
     create_chunked_gzip_http_server(captured_accept_encoding.clone()).await;
@@ -301,9 +317,15 @@ async fn test_fetch_strips_transfer_encoding_after_decompression() {
     captured_accept_encoding.lock().await.as_deref().unwrap(),
     "gzip,br"
   );
-  assert_eq!(resp.headers().get(CONTENT_ENCODING), None);
+  assert_eq!(
+    resp.headers().get(CONTENT_ENCODING).unwrap(),
+    HeaderValue::from_static("gzip")
+  );
   assert_eq!(resp.headers().get(CONTENT_LENGTH), None);
-  assert_eq!(resp.headers().get(TRANSFER_ENCODING), None);
+  assert_eq!(
+    resp.headers().get(TRANSFER_ENCODING).unwrap(),
+    HeaderValue::from_static("chunked")
+  );
   let body = resp.collect().await.unwrap().to_bytes();
   assert_eq!(body, "hello from server");
 }

@@ -232,16 +232,23 @@ pub fn op_v8_get_heap_code_statistics(
 }
 
 pub struct Serializer<'a> {
+  delegate_state: Rc<SerializerDelegateState>,
   inner: v8::ValueSerializer<'a>,
 }
 
+struct SerializerDelegateState {
+  obj: v8::TracedReference<v8::Object>,
+}
+
 pub struct SerializerDelegate {
-  obj: v8::Global<v8::Object>,
+  state: Rc<SerializerDelegateState>,
 }
 
 // SAFETY: we're sure this can be GCed
 unsafe impl v8::cppgc::GarbageCollected for Serializer<'_> {
-  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+  fn trace(&self, visitor: &mut deno_core::v8::cppgc::Visitor) {
+    visitor.trace(&self.delegate_state.obj);
+  }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Serializer"
@@ -253,7 +260,7 @@ impl SerializerDelegate {
     &self,
     scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::Object> {
-    v8::Local::new(scope, &self.obj)
+    self.state.obj.get(scope).unwrap()
   }
 }
 
@@ -340,10 +347,19 @@ pub fn op_v8_new_serializer(
   scope: &mut v8::PinScope<'_, '_>,
   obj: v8::Local<v8::Object>,
 ) -> Serializer<'static> {
-  let obj = v8::Global::new(scope, obj);
-  let inner =
-    v8::ValueSerializer::new(scope, Box::new(SerializerDelegate { obj }));
-  Serializer { inner }
+  let delegate_state = Rc::new(SerializerDelegateState {
+    obj: v8::TracedReference::new(scope, obj),
+  });
+  let inner = v8::ValueSerializer::new(
+    scope,
+    Box::new(SerializerDelegate {
+      state: delegate_state.clone(),
+    }),
+  );
+  Serializer {
+    inner,
+    delegate_state,
+  }
 }
 
 #[op2(fast)]

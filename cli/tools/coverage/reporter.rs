@@ -203,18 +203,31 @@ impl CoverageReporter for SummaryCoverageReporter {
     file_reports: &[(CoverageReport, String)],
   ) {
     let summary = self.collect_summary(file_reports);
-    let root_stats = summary.get("").unwrap();
+    // When the reports can't be reduced to a common file-system root (e.g. on
+    // Windows when coverage spans multiple drive letters), `collect_summary`
+    // returns an empty map without the "" root entry. There is nothing to
+    // print in that case, so warn and bail out instead of panicking.
+    let Some(root_stats) = summary.get("") else {
+      log::warn!(
+        "Skipping coverage summary: reports span multiple file-system roots"
+      );
+      return;
+    };
 
     let mut entries = summary
       .iter()
       .filter(|(_, stats)| stats.file_text.is_some())
       .collect::<Vec<_>>();
     entries.sort_by_key(|(node, _)| node.to_owned());
+    // `entries` is always non-empty here: reaching this point means the summary
+    // has a "" root, which only happens when `collect_summary` resolved a common
+    // root from non-empty `file_reports`, and each report inserts a leaf entry
+    // with `file_text: Some(..)`. `unwrap_or(0)` is just defense-in-depth.
     let node_max = entries
       .iter()
       .map(|(node, _)| node.len())
       .max()
-      .unwrap()
+      .unwrap_or(0)
       .max("All files".len());
 
     let header = format!(
@@ -804,5 +817,35 @@ impl HtmlCoverageReporter {
     }
 
     breadcrumbs_html.into_iter().collect::<Vec<_>>().join(" / ")
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // Regression test for https://github.com/denoland/deno/issues/30924.
+  //
+  // When the reports cannot be reduced to a common file-system root (e.g. on
+  // Windows when coverage spans multiple drive letters), `collect_summary`
+  // returns an empty map without the "" root entry. The summary reporter used
+  // to `unwrap()` that entry and panic. It should instead skip the summary
+  // gracefully.
+  #[test]
+  fn summary_reporter_does_not_panic_without_common_root() {
+    let report = CoverageReport {
+      // A non-`file:` URL has no file-system path, so `find_root` cannot
+      // produce a usable root and `collect_summary` returns an empty map.
+      url: Url::parse("https://example.com/main.ts").unwrap(),
+      named_functions: Vec::new(),
+      branches: Vec::new(),
+      found_lines: vec![(0, 1)],
+      output: None,
+    };
+    let file_reports = vec![(report, "console.log(1);".to_string())];
+
+    let reporter = SummaryCoverageReporter::new();
+    // Must not panic.
+    reporter.done(Path::new("coverage"), &file_reports);
   }
 }

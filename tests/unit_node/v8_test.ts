@@ -72,6 +72,32 @@ Deno.test({
   },
 });
 
+// https://github.com/denoland/deno/issues/35113
+Deno.test({
+  name: "serialize emits wire format version 15 for Node.js interop",
+  fn() {
+    const values = [
+      { a: 1 },
+      "string",
+      123n,
+      new Uint8Array([1, 2, 3]),
+      new Map([["a", new ArrayBuffer(16)]]),
+    ];
+    for (const value of values) {
+      const s = v8.serialize(value);
+      assertEquals(s[0], 0xFF);
+      assertEquals(s[1], 0x0F);
+      assertEquals(v8.deserialize(s), value);
+    }
+
+    // A serializer without a header is left untouched.
+    const ser = new v8.Serializer();
+    ser.writeUint32(42);
+    const raw = ser.releaseBuffer();
+    assertEquals(raw[0], 42);
+  },
+});
+
 Deno.test({
   name: "Deserializer keeps delegate alive across GC",
   fn() {
@@ -100,6 +126,37 @@ Deno.test({
     const value = deserializer.readValue();
     assertEquals(value, Buffer.from([1, 2, 3, 4]));
     assertEquals(deserializer.calls, 1);
+  },
+});
+
+Deno.test({
+  name: "Serializer keeps delegate alive across GC",
+  fn() {
+    v8.setFlagsFromString("--expose_gc");
+    const gc = runInNewContext("gc");
+
+    class HostObjectSerializer extends v8.DefaultSerializer {
+      calls = 0;
+
+      _writeHostObject(abView: unknown) {
+        this.calls++;
+        const defaultSerializer = v8.DefaultSerializer.prototype as
+          & v8.DefaultSerializer
+          & { _writeHostObject(abView: unknown): void };
+        return defaultSerializer._writeHostObject.call(this, abView);
+      }
+    }
+
+    const serializer = new HostObjectSerializer();
+    serializer.writeHeader();
+    for (let i = 0; i < 10; i++) {
+      gc();
+    }
+
+    serializer.writeValue(Buffer.from([1, 2, 3, 4]));
+    const serialized = serializer.releaseBuffer();
+    assertEquals(serializer.calls, 1);
+    assertEquals(v8.deserialize(serialized), Buffer.from([1, 2, 3, 4]));
   },
 });
 
