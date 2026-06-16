@@ -833,6 +833,197 @@ pub struct CompileConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+struct SerializedDesktopIconEntry {
+  pub path: String,
+  pub size: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(untagged)]
+enum SerializedDesktopIconValue {
+  Single(String),
+  Set(Vec<SerializedDesktopIconEntry>),
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopIconsConfig {
+  pub macos: Option<SerializedDesktopIconValue>,
+  pub windows: Option<SerializedDesktopIconValue>,
+  pub linux: Option<SerializedDesktopIconValue>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopAppConfig {
+  pub name: Option<String>,
+  pub icons: Option<SerializedDesktopIconsConfig>,
+  /// Bundle/application identifier in reverse-DNS form (e.g.
+  /// `com.acme.foo`). Used as the macOS `CFBundleIdentifier`, the Linux
+  /// `.desktop` file identifier, and (eventually) the Windows
+  /// AppUserModelID. Optional; when omitted a synthetic
+  /// `com.deno.desktop.<slug>` is generated from the app name.
+  pub identifier: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopOutputConfig {
+  pub macos: Option<String>,
+  pub windows: Option<String>,
+  pub linux: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopReleaseConfig {
+  #[serde(rename = "baseUrl")]
+  pub base_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+struct SerializedDesktopErrorReportingConfig {
+  pub url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopMacOSConfig {
+  /// Codesigning identity passed to `codesign --sign`. Typically
+  /// `Developer ID Application: Acme, Inc. (TEAMID)` for distribution,
+  /// or `-` for an ad-hoc signature (still required on Apple Silicon to
+  /// launch unsigned binaries).
+  #[serde(rename = "codesignIdentity")]
+  pub codesign_identity: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopConfig {
+  pub app: Option<SerializedDesktopAppConfig>,
+  pub backend: Option<String>,
+  pub output: Option<SerializedDesktopOutputConfig>,
+  pub release: Option<SerializedDesktopReleaseConfig>,
+  #[serde(rename = "errorReporting")]
+  pub error_reporting: Option<SerializedDesktopErrorReportingConfig>,
+  pub macos: Option<SerializedDesktopMacOSConfig>,
+}
+
+impl SerializedDesktopConfig {
+  pub fn into_resolved(self) -> DesktopConfig {
+    DesktopConfig {
+      app: self.app.map(|a| DesktopAppConfig {
+        name: a.name,
+        identifier: a.identifier,
+        icons: a.icons.map(|i| {
+          fn resolve_icon_value(
+            v: SerializedDesktopIconValue,
+          ) -> DesktopIconValue {
+            match v {
+              SerializedDesktopIconValue::Single(s) => {
+                DesktopIconValue::Single(s)
+              }
+              SerializedDesktopIconValue::Set(entries) => {
+                DesktopIconValue::Set(
+                  entries
+                    .into_iter()
+                    .map(|e| DesktopIconEntry {
+                      path: e.path,
+                      size: e.size,
+                    })
+                    .collect(),
+                )
+              }
+            }
+          }
+          DesktopIconsConfig {
+            macos: i.macos.map(resolve_icon_value),
+            windows: i.windows.map(resolve_icon_value),
+            linux: i.linux.map(resolve_icon_value),
+          }
+        }),
+      }),
+      backend: self.backend,
+      output: self.output.map(|o| DesktopOutputConfig {
+        macos: o.macos,
+        windows: o.windows,
+        linux: o.linux,
+      }),
+      release: self.release.map(|r| DesktopReleaseConfig {
+        base_url: r.base_url,
+      }),
+      error_reporting: self
+        .error_reporting
+        .map(|e| DesktopErrorReportingConfig { url: e.url }),
+      macos: self.macos.map(|m| DesktopMacOSConfig {
+        codesign_identity: m.codesign_identity,
+      }),
+    }
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DesktopIconEntry {
+  pub path: String,
+  pub size: u32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DesktopIconValue {
+  /// A single icon file (`.icns`, `.ico`, or `.png`).
+  Single(String),
+  /// Multiple PNGs at specific sizes.
+  Set(Vec<DesktopIconEntry>),
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopIconsConfig {
+  pub macos: Option<DesktopIconValue>,
+  pub windows: Option<DesktopIconValue>,
+  pub linux: Option<DesktopIconValue>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopAppConfig {
+  pub name: Option<String>,
+  pub identifier: Option<String>,
+  pub icons: Option<DesktopIconsConfig>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopOutputConfig {
+  pub macos: Option<String>,
+  pub windows: Option<String>,
+  pub linux: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopReleaseConfig {
+  pub base_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopErrorReportingConfig {
+  pub url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopMacOSConfig {
+  pub codesign_identity: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopConfig {
+  pub app: Option<DesktopAppConfig>,
+  pub backend: Option<String>,
+  pub output: Option<DesktopOutputConfig>,
+  pub release: Option<DesktopReleaseConfig>,
+  pub error_reporting: Option<DesktopErrorReportingConfig>,
+  pub macos: Option<DesktopMacOSConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum LockConfig {
   Bool(bool),
@@ -1235,6 +1426,7 @@ pub struct ConfigFileJson {
   pub test: Option<Value>,
   pub bench: Option<Value>,
   pub compile: Option<Value>,
+  pub desktop: Option<Value>,
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
   pub minimum_dependency_age: Option<Value>,
@@ -1954,6 +2146,24 @@ impl ConfigFile {
           })
       }
       None => Ok(CompileConfig::default()),
+    }
+  }
+
+  pub fn to_desktop_config(
+    &self,
+  ) -> Result<DesktopConfig, ToInvalidConfigError> {
+    match self.json.desktop.clone() {
+      Some(config) => {
+        let serialized: SerializedDesktopConfig =
+          serde_json::from_value(config).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "desktop",
+              source: error,
+            }
+          })?;
+        Ok(serialized.into_resolved())
+      }
+      None => Ok(DesktopConfig::default()),
     }
   }
 

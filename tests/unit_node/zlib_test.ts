@@ -17,6 +17,7 @@ import {
   createDeflate,
   createGunzip,
   createGzip,
+  createInflate,
   createZstdCompress,
   createZstdDecompress,
   deflateSync,
@@ -459,4 +460,36 @@ Deno.test("zlib write does not write through a detached _writeState", () => {
     }
     assertEquals(state.buffer.byteLength, 0);
   }
+});
+
+// Some npm packages (e.g. pngjs's synchronous inflate) call the low-level
+// `_handle.writeSync()` directly using Node's binding signature, which omits
+// the trailing write-state buffer argument and instead reads the result back
+// from the stream's `_writeState`. Moving the result buffer to a per-write
+// argument must not break that calling convention: the handle injects the
+// stream's `_writeState` when the caller leaves it out.
+Deno.test("zlib writeSync works with the Node 7-argument signature", () => {
+  // zlib stream of an empty payload, decoded with the low-level handle.
+  const input = Buffer.from([0x78, 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01]);
+  const output = Buffer.allocUnsafe(1024);
+  // deno-lint-ignore no-explicit-any
+  const stream = createInflate() as any;
+  const state = stream._writeState;
+  state[0] = 0xffffffff;
+  state[1] = 0xffffffff;
+  // Note: only seven arguments, no trailing write-state buffer.
+  stream._handle.writeSync(
+    constants.Z_FINISH,
+    input,
+    0,
+    input.length,
+    output,
+    0,
+    output.length,
+  );
+  // The avail_out/avail_in pair was written back into `_writeState`.
+  assert(state[0] !== 0xffffffff, "avail_out was not written");
+  assert(state[1] !== 0xffffffff, "avail_in was not written");
+  assert(state[0] <= output.length, "avail_out out of range");
+  assert(state[1] <= input.length, "avail_in out of range");
 });

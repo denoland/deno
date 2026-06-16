@@ -558,6 +558,55 @@ fn napi_create_buffer_copy<'s>(
 }
 
 #[napi_sym]
+fn node_api_create_buffer_from_arraybuffer<'s>(
+  env: &'s mut Env,
+  arraybuffer: napi_value<'s>,
+  byte_offset: usize,
+  byte_length: usize,
+  result: *mut napi_value<'s>,
+) -> napi_status {
+  // Raw handle for last-error bookkeeping on the paths below where `env` is
+  // still borrowed by the callback scope.
+  let env_ptr: *mut Env = &mut *env;
+
+  check_arg!(env, result);
+
+  // `arraybuffer` must be an ArrayBuffer.
+  let Some(ab) =
+    arraybuffer.and_then(|v| v8::Local::<v8::ArrayBuffer>::try_from(v).ok())
+  else {
+    return napi_set_last_error(env, napi_invalid_arg);
+  };
+
+  // The requested [byte_offset, byte_offset + byte_length) range must lie
+  // within the bounds of the ArrayBuffer.
+  let in_bounds = byte_offset
+    .checked_add(byte_length)
+    .is_some_and(|end| end <= ab.byte_length());
+  if !in_bounds {
+    return napi_set_last_error(env, napi_invalid_arg);
+  }
+
+  v8::callback_scope!(unsafe scope, env.context());
+
+  let create_buffer = v8::Local::new(scope, &env.create_buffer);
+  let recv = v8::null(scope).into();
+  let offset = v8::Number::new(scope, byte_offset as f64).into();
+  let length = v8::Number::new(scope, byte_length as f64).into();
+  let Some(buffer) =
+    create_buffer.call(scope, recv, &[ab.into(), offset, length])
+  else {
+    return napi_set_last_error(env_ptr, napi_generic_failure);
+  };
+
+  unsafe {
+    *result = buffer.into();
+  }
+
+  napi_clear_last_error(env_ptr)
+}
+
+#[napi_sym]
 fn napi_is_buffer(
   env: *mut Env,
   value: napi_value,
