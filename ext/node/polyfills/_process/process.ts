@@ -225,7 +225,7 @@ const versions = {
   nghttp2: "1.69.0",
   // `napi` reflects the N-API version Deno actually implements, not Node's.
   // It must match NAPI_VERSION in ext/napi/js_native_api.rs.
-  napi: "9",
+  napi: "10",
   llhttp: "9.4.1",
   // `openssl` is intentionally NOT bumped to Node's value. Deno's crypto/TLS
   // stack does not ship OpenSSL 3.5 behavior (e.g. no ML-DSA/ML-KEM, different
