@@ -202,6 +202,7 @@ pub struct WorkspaceTestOptions {
   pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
+  pub shard: Option<(usize, usize)>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
@@ -234,6 +235,7 @@ impl WorkspaceTestOptions {
       filter: test_flags.filter.clone(),
       no_run: test_flags.no_run,
       shuffle: test_flags.shuffle,
+      shard: test_flags.shard,
       trace_leaks: test_flags.trace_leaks,
       sanitize_ops: test_flags.sanitize_ops
         || std::env::var("DENO_TEST_SANITIZE_OPS").ok().as_deref() == Some("1")

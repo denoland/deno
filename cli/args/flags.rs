@@ -636,6 +636,9 @@ pub struct TestFlags {
   pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
+  /// Run only a subset of test files, as `(index, count)` with a 1-based
+  /// index. Used to split a run across machines, e.g. `--shard=2/3`.
+  pub shard: Option<(usize, usize)>,
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
@@ -4793,6 +4796,26 @@ fn complete_available_tasks() -> Vec<CompletionCandidate> {
   }
 }
 
+/// Parses a `--shard` value of the form `<index>/<count>` (1-based index).
+fn parse_test_shard(value: &str) -> Result<(usize, usize), String> {
+  let (index, count) = value.split_once('/').ok_or_else(|| {
+    format!("expected format <index>/<count>, but got '{value}'")
+  })?;
+  let index: usize = index
+    .parse()
+    .map_err(|_| format!("invalid shard index '{index}'"))?;
+  let count: usize = count
+    .parse()
+    .map_err(|_| format!("invalid shard count '{count}'"))?;
+  if count == 0 {
+    return Err("shard count must be greater than 0".to_string());
+  }
+  if index == 0 || index > count {
+    return Err(format!("shard index must be between 1 and {count}"));
+  }
+  Ok((index, count))
+}
+
 fn test_subcommand() -> Command {
   command("test",
       cstr!("Run tests using Deno's built-in test runner.
@@ -4880,6 +4903,16 @@ or <c>**/__tests__/**</>:
           .num_args(0..=1)
           .require_equals(true)
           .value_parser(value_parser!(u64))
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("shard")
+          .long("shard")
+          .value_name("INDEX/COUNT")
+          .help(cstr!("Run only the test files for shard INDEX of COUNT, e.g. --shard=2/3.
+  <p(245)>The discovered test files are sorted and split into COUNT consecutive groups; INDEX is 1-based. Useful for splitting a run across machines.</>"))
+          .require_equals(true)
+          .value_parser(parse_test_shard)
           .help_heading(TEST_HEADING),
       )
       .arg(
@@ -8367,6 +8400,7 @@ fn test_parse(
     files: FileFlags { include, ignore },
     filter,
     shuffle,
+    shard: matches.remove_one::<(usize, usize)>("shard"),
     permit_no_files: permit_no_files_parse(matches),
     parallel: matches.get_flag("parallel"),
     trace_leaks,
@@ -12784,6 +12818,7 @@ mod tests {
             ignore: vec![],
           },
           shuffle: None,
+          shard: None,
           parallel: false,
           trace_leaks: true,
           sanitize_ops: false,
@@ -12889,6 +12924,7 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -12935,6 +12971,7 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -13075,6 +13112,7 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: Some(1),
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -13102,6 +13140,25 @@ mod tests {
   }
 
   #[test]
+  fn test_shard() {
+    let r = flags_from_vec(svec!["deno", "test", "--shard=2/3"]);
+    let flags = r.unwrap();
+    assert!(matches!(
+      flags.subcommand,
+      DenoSubcommand::Test(TestFlags {
+        shard: Some((2, 3)),
+        ..
+      })
+    ));
+
+    // Invalid shard values are rejected at parse time.
+    assert!(flags_from_vec(svec!["deno", "test", "--shard=3/2"]).is_err());
+    assert!(flags_from_vec(svec!["deno", "test", "--shard=0/2"]).is_err());
+    assert!(flags_from_vec(svec!["deno", "test", "--shard=1/0"]).is_err());
+    assert!(flags_from_vec(svec!["deno", "test", "--shard=foo"]).is_err());
+  }
+
+  #[test]
   fn test_watch() {
     let r = flags_from_vec(svec!["deno", "test", "--watch"]);
     assert_eq!(
@@ -13114,6 +13171,7 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -13152,6 +13210,7 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          shard: None,
           files: FileFlags {
             include: vec!["./".to_string()],
             ignore: vec![],
@@ -13192,6 +13251,7 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
