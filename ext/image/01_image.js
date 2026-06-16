@@ -248,7 +248,7 @@ function createImageBitmap(
       } else {
         return PromiseReject(
           new DOMException(
-            `The the MIME type ${mimeTypeString} of source image is not a supported format\n
+            `The MIME type ${mimeTypeString} of source image is not a supported format\n
 info: The following MIME types are supported.
 docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n`,
             "InvalidStateError",
