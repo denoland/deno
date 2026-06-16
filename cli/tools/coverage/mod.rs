@@ -555,6 +555,7 @@ fn collect_coverages(
 fn collect_uncovered_files(
   include_patterns: &FilePatterns,
   cli_options: &CliOptions,
+  initial_cwd: &Path,
   covered_specifiers: &HashSet<ModuleSpecifier>,
 ) -> Vec<ModuleSpecifier> {
   let paths = FileCollector::new(|e| {
@@ -570,7 +571,14 @@ fn collect_uncovered_files(
 
   paths
     .into_iter()
-    .filter_map(|path| Url::from_file_path(&path).ok())
+    // Resolve through the same function used to build `covered_specifiers`
+    // (see `cover_files`) so the two sides share one canonical form; otherwise
+    // a loaded file could slip past the dedup below and be re-synthesized as a
+    // 0% duplicate.
+    .filter_map(|path| {
+      deno_path_util::resolve_url_or_path(&path.to_string_lossy(), initial_cwd)
+        .ok()
+    })
     .filter(|url| !covered_specifiers.contains(url))
     .collect()
 }
@@ -581,16 +589,21 @@ fn filter_coverages(
   exclude: Vec<String>,
   in_npm_pkg_checker: &DenoInNpmPackageChecker,
   link_dir_urls: &[String],
-) -> Vec<cdp::ScriptCoverage> {
-  let exclude: Vec<Regex> =
-    exclude.iter().map(|e| Regex::new(e).unwrap()).collect();
+) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
+  let exclude: Vec<Regex> = exclude
+    .iter()
+    .map(|e| {
+      Regex::new(e)
+        .with_context(|| format!("Invalid --exclude regular expression: {e}"))
+    })
+    .collect::<Result<_, _>>()?;
 
   // Matches virtual file paths for doc testing
   // e.g. file:///path/to/mod.ts$23-29.ts
   let doc_test_re =
     Regex::new(r"\$\d+-\d+\.(js|mjs|cjs|jsx|ts|mts|cts|tsx)$").unwrap();
 
-  coverages
+  let coverages = coverages
     .into_iter()
     .filter(|e| {
       let is_internal = e.url.starts_with("ext:")
@@ -626,7 +639,9 @@ fn filter_coverages(
 
       is_included && !is_excluded && !is_internal
     })
-    .collect::<Vec<cdp::ScriptCoverage>>()
+    .collect::<Vec<cdp::ScriptCoverage>>();
+
+  Ok(coverages)
 }
 
 /// Builds a coverage report for a source file that was never loaded during the
@@ -657,6 +672,14 @@ fn synthesize_uncovered_report(
       maybe_source_map,
       output,
     })?;
+
+  // The file was never loaded, so nothing executed: every executable line is
+  // missed (count 0). In the no-source-map (plain JS) path the line pipeline
+  // marks comment/blank lines as count 1 (ignored), which would otherwise count
+  // them as covered and inflate the line % of a file that never ran. Drop them
+  // so only executable lines remain. For the source-map (TS) path these lines
+  // were already excluded, so this is a no-op there.
+  coverage_report.found_lines.retain(|(_, count)| *count == 0);
 
   // Nothing executable (all comments/blank, or a coverage-ignore-file
   // directive): skip the file entirely, matching the covered path.
@@ -703,6 +726,14 @@ fn prop_name_string(key: &ast::PropName) -> Option<String> {
 /// all uncovered. Used to give a never-loaded file accurate Function % and
 /// Branch % denominators (the percentages are 0% regardless of the exact
 /// counts, since nothing executed).
+///
+/// This is an approximation of the function/branch set V8 would have reported
+/// had the file actually loaded, not an exact reproduction of it. The per-file
+/// result is always 0% so the divergence is harmless there, but it does shift
+/// the aggregate "All files" counts. Known gaps versus V8: functions assigned
+/// to object-literal properties or array elements, computed method/property
+/// names, constructors, and default-exported anonymous functions are not
+/// counted. Treat a mismatch with V8's counts as expected, not a bug.
 struct UncoveredCollector<'a> {
   text_info: &'a deno_ast::SourceTextInfo,
   named_functions: Vec<FunctionCoverageItem>,
@@ -878,7 +909,7 @@ pub fn cover_files(
     exclude.clone(),
     in_npm_pkg_checker,
     &link_dir_urls,
-  );
+  )?;
   if script_coverages.is_empty() {
     return Err(anyhow!("No covered files included in the report"));
   }
@@ -1024,6 +1055,7 @@ pub fn cover_files(
     let uncovered = collect_uncovered_files(
       include_patterns,
       cli_options,
+      initial_cwd,
       &covered_specifiers,
     );
     // Reuse the regular filtering so excluded/test/npm files are dropped.
@@ -1040,7 +1072,7 @@ pub fn cover_files(
       exclude,
       in_npm_pkg_checker,
       &link_dir_urls,
-    );
+    )?;
 
     for stub in uncovered {
       let module_specifier =

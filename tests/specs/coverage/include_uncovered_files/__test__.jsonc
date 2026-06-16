@@ -13,17 +13,26 @@
       "exitCode": 0
     },
     {
-      // With an --include glob, sub.ts is reported at 0% even though it was
-      // never loaded by the test run.
-      "args": "coverage ./cov --include=*.ts",
+      // With --include globs, never-loaded source files are reported at 0%
+      // even though the test run never loaded them: sub.ts (has a branch),
+      // double.ts (arrow-in-var function), and helper.js (plain JS, no
+      // transpile). comments.ts has nothing executable and is skipped.
+      "args": "coverage ./cov --include=*.ts --include=*.js",
       "output": "include.out",
       "exitCode": 0
     },
     {
-      // The lcov output carries the synthesized 0% records for sub.ts.
-      "args": "coverage ./cov --include=*.ts --lcov",
+      // The lcov output carries the synthesized 0% records for the never-loaded
+      // files.
+      "args": "coverage ./cov --include=*.ts --include=*.js --lcov",
       "output": "include_lcov.out",
       "exitCode": 0
+    },
+    {
+      // An invalid --exclude regex is a clean error, not a panic.
+      "args": "coverage ./cov --include=*.ts --exclude=[",
+      "output": "invalid_exclude.out",
+      "exitCode": 1
     }
   ]
 }
