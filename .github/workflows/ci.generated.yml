@@ -4168,7 +4168,7 @@ jobs:
           shasum -a 256 deno > deno-x86_64-unknown-linux-gnu.sha256sum
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
           shasum -a 256 deno-x86_64-unknown-linux-gnu.zip > deno-x86_64-unknown-linux-gnu.zip.sha256sum
-          strip ./denort
+          strip --strip-debug ./denort
           zip -r denort-x86_64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-x86_64-unknown-linux-gnu.zip > denort-x86_64-unknown-linux-gnu.zip.sha256sum
           strip ./libdenort.so
@@ -6128,7 +6128,7 @@ jobs:
           shasum -a 256 deno > deno-aarch64-unknown-linux-gnu.sha256sum
           zip -r deno-aarch64-unknown-linux-gnu.zip deno
           shasum -a 256 deno-aarch64-unknown-linux-gnu.zip > deno-aarch64-unknown-linux-gnu.zip.sha256sum
-          strip ./denort
+          strip --strip-debug ./denort
           zip -r denort-aarch64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-aarch64-unknown-linux-gnu.zip > denort-aarch64-unknown-linux-gnu.zip.sha256sum
           strip ./libdenort.so

@@ -701,7 +701,13 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               `shasum -a 256 deno > deno-${buildItem.arch}-unknown-linux-gnu.sha256sum`,
               `zip -r deno-${buildItem.arch}-unknown-linux-gnu.zip deno`,
               `shasum -a 256 deno-${buildItem.arch}-unknown-linux-gnu.zip > deno-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
-              "strip ./denort",
+              // denort is the `deno compile` base binary: libsui rewrites its
+              // ELF to embed user code, and that rewrite drops `.relr.dyn`
+              // relative relocations when the symbol table is gone, producing a
+              // compiled binary whose C++ static-init guards deadlock
+              // (`__cxa_guard_acquire failed to acquire mutex`). Keep .symtab
+              // (strip only debug info) so the relocations survive.
+              "strip --strip-debug ./denort",
               `zip -r denort-${buildItem.arch}-unknown-linux-gnu.zip denort`,
               `shasum -a 256 denort-${buildItem.arch}-unknown-linux-gnu.zip > denort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
               "strip ./libdenort.so",
