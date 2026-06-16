@@ -43,6 +43,37 @@
       // With -L debug, fmt notes that it found and is using the .editorconfig.
       "args": "fmt --check -L debug indent_size_4.ts",
       "output": "[WILDCARD]Found .editorconfig at [WILDLINE].editorconfig and using it[WILDCARD]Checked 1 file[WILDCARD]"
+    },
+    "cache_invalidated_on_editorconfig_change": {
+      // The incremental cache folds the .editorconfig-resolved options into
+      // its per-file hash. Editing .editorconfig must invalidate the cached
+      // "already formatted" result even though the file body is unchanged,
+      // so a later --check re-evaluates the file instead of returning a
+      // stale pass. file.ts is indented with 4 spaces.
+      "steps": [
+        {
+          // indent_size=4 matches the file, so --check passes and records it
+          // as formatted in the incremental cache.
+          "args": "fmt --check cache_invalidation/file.ts",
+          "output": "Checked 1 file\n"
+        },
+        {
+          // Flip the .editorconfig to indent_size=2 without touching file.ts.
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('cache_invalidation/.editorconfig', 'root = true\\n[*.ts]\\nindent_size = 2\\n')"
+          ],
+          "output": ""
+        },
+        {
+          // If the cache ignored .editorconfig it would return the stale pass;
+          // instead the folded hash changed, so the 4-space file is
+          // re-evaluated and fails the 2-space check.
+          "args": "fmt --check cache_invalidation/file.ts",
+          "output": "[WILDCARD]Found 1 not formatted file in 1 file\n",
+          "exitCode": 1
+        }
+      ]
     }
   }
 }

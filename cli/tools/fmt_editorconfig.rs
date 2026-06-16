@@ -21,7 +21,7 @@ use regex::Regex;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EditorConfigProperties {
   pub indent_style: Option<IndentStyle>,
-  pub indent_size: Option<u8>,
+  pub indent_size: Option<IndentSize>,
   pub tab_width: Option<u8>,
   pub max_line_length: Option<u32>,
   pub end_of_line: Option<EndOfLine>,
@@ -31,6 +31,15 @@ pub struct EditorConfigProperties {
 pub enum IndentStyle {
   Space,
   Tab,
+}
+
+/// Resolved value of `indent_size`. Per the editorconfig spec, the
+/// literal `indent_size = tab` means "use `tab_width`" regardless of
+/// `indent_style`, so it is tracked distinctly from a numeric width.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndentSize {
+  Width(u8),
+  UseTabWidth,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,16 +61,20 @@ impl EditorConfigProperties {
     }
 
     if cfg.indent_width.is_none() {
-      // Per the editorconfig spec, when indent_style is "tab" and
-      // indent_size is not set, indent_size defaults to tab_width.
-      // For "space" or unset indent_style, indent_size is taken as-is.
-      let indent = self.indent_size.or(
-        if matches!(self.indent_style, Some(IndentStyle::Tab)) {
+      // Per the editorconfig spec:
+      //   * `indent_size = tab` resolves to `tab_width` regardless of
+      //     `indent_style`.
+      //   * when `indent_size` is unset and `indent_style = tab`,
+      //     `indent_size` defaults to `tab_width`.
+      // For a numeric `indent_size` the value is taken as-is.
+      let indent = match self.indent_size {
+        Some(IndentSize::Width(n)) => Some(n),
+        Some(IndentSize::UseTabWidth) => self.tab_width,
+        None if matches!(self.indent_style, Some(IndentStyle::Tab)) => {
           self.tab_width
-        } else {
-          None
-        },
-      );
+        }
+        None => None,
+      };
       if let Some(n) = indent {
         cfg.indent_width = Some(n);
       }
@@ -113,7 +126,7 @@ struct Section {
 #[derive(Debug, Clone, Default)]
 struct SectionProperties {
   indent_style: Option<IndentStyle>,
-  indent_size: Option<u8>,
+  indent_size: Option<IndentSize>,
   tab_width: Option<u8>,
   max_line_length: Option<u32>,
   end_of_line: Option<EndOfLine>,
@@ -301,10 +314,10 @@ fn parse(contents: &str) -> ParsedFile {
       "indent_size" => {
         // "tab" means use tab_width; otherwise parse as integer,
         // clamping out-of-range values rather than dropping them.
-        if !value.eq_ignore_ascii_case("tab")
-          && let Some(n) = parse_saturating_u8(value)
-        {
-          props.indent_size = Some(n);
+        if value.eq_ignore_ascii_case("tab") {
+          props.indent_size = Some(IndentSize::UseTabWidth);
+        } else if let Some(n) = parse_saturating_u8(value) {
+          props.indent_size = Some(IndentSize::Width(n));
         }
       }
       "tab_width" => {
@@ -411,17 +424,17 @@ fn glob_to_regex_depth(
     out.push_str("(?:.*/)?");
   }
   let pattern = pattern.strip_prefix('/').unwrap_or(pattern);
-  let bytes: Vec<char> = pattern.chars().collect();
+  let chars: Vec<char> = pattern.chars().collect();
   let mut i = 0;
-  while i < bytes.len() {
-    let c = bytes[i];
+  while i < chars.len() {
+    let c = chars[i];
     match c {
       '*' => {
-        if i + 1 < bytes.len() && bytes[i + 1] == '*' {
+        if i + 1 < chars.len() && chars[i + 1] == '*' {
           // Treat `**/` as zero or more path components so that
           // `**/foo.ts` also matches `foo.ts` at the root, matching
           // gitignore-style user expectations.
-          if i + 2 < bytes.len() && bytes[i + 2] == '/' {
+          if i + 2 < chars.len() && chars[i + 2] == '/' {
             out.push_str("(?:[^/]*/)*");
             i += 3;
             continue;
@@ -438,8 +451,8 @@ fn glob_to_regex_depth(
         // Find matching '}'.
         let mut brace_depth = 1;
         let mut j = i + 1;
-        while j < bytes.len() && brace_depth > 0 {
-          match bytes[j] {
+        while j < chars.len() && brace_depth > 0 {
+          match chars[j] {
             '{' => brace_depth += 1,
             '}' => {
               brace_depth -= 1;
@@ -452,7 +465,7 @@ fn glob_to_regex_depth(
           j += 1;
         }
         if brace_depth == 0 {
-          let group: String = bytes[i + 1..j].iter().collect();
+          let group: String = chars[i + 1..j].iter().collect();
           // Numeric range {n..m}. Bounds are parsed as integers, so
           // leading zeros are ignored and numbers are emitted in their
           // natural decimal form, matching the editorconfig reference.
@@ -514,21 +527,21 @@ fn glob_to_regex_depth(
         // Character class; pass through, but translate `[!...]` -> `[^...]`.
         let mut j = i + 1;
         let mut negate = false;
-        if j < bytes.len() && (bytes[j] == '!' || bytes[j] == '^') {
+        if j < chars.len() && (chars[j] == '!' || chars[j] == '^') {
           negate = true;
           j += 1;
         }
-        let mut chars = Vec::new();
-        while j < bytes.len() && bytes[j] != ']' {
-          chars.push(bytes[j]);
+        let mut class_chars = Vec::new();
+        while j < chars.len() && chars[j] != ']' {
+          class_chars.push(chars[j]);
           j += 1;
         }
-        if j < bytes.len() {
+        if j < chars.len() {
           out.push('[');
           if negate {
             out.push('^');
           }
-          for ch in chars {
+          for ch in class_chars {
             // Inside a char class, escape `\`, `]`, `^`.
             match ch {
               '\\' | ']' => {
@@ -637,11 +650,17 @@ indent_size = 4
       f.sections[0].properties.indent_style,
       Some(IndentStyle::Space)
     );
-    assert_eq!(f.sections[0].properties.indent_size, Some(2));
+    assert_eq!(
+      f.sections[0].properties.indent_size,
+      Some(IndentSize::Width(2))
+    );
     let s1_re = f.sections[1].regex.as_ref().unwrap();
     assert!(s1_re.is_match("a.py"));
     assert!(!s1_re.is_match("a.ts"));
-    assert_eq!(f.sections[1].properties.indent_size, Some(4));
+    assert_eq!(
+      f.sections[1].properties.indent_size,
+      Some(IndentSize::Width(4))
+    );
   }
 
   #[test]
@@ -672,7 +691,10 @@ indent_size = 2 ; inline
 ",
     );
     assert!(f.root);
-    assert_eq!(f.sections[0].properties.indent_size, Some(2));
+    assert_eq!(
+      f.sections[0].properties.indent_size,
+      Some(IndentSize::Width(2))
+    );
   }
 
   #[test]
@@ -816,7 +838,10 @@ max_line_length = off
   #[test]
   fn indent_size_overflow_clamped() {
     let f = parse_str("[*]\nindent_size = 1000\n");
-    assert_eq!(f.sections[0].properties.indent_size, Some(255));
+    assert_eq!(
+      f.sections[0].properties.indent_size,
+      Some(IndentSize::Width(255))
+    );
   }
 
   #[test]
@@ -847,12 +872,34 @@ max_line_length = off
     };
     let props = EditorConfigProperties {
       indent_style: Some(IndentStyle::Tab),
-      indent_size: Some(8),
+      indent_size: Some(IndentSize::Width(8)),
       ..Default::default()
     };
     props.apply_to(&mut cfg);
     assert_eq!(cfg.use_tabs, Some(false));
     assert_eq!(cfg.indent_width, Some(2));
+  }
+
+  #[test]
+  fn apply_indent_size_tab_uses_tab_width_without_indent_style() {
+    // Per the spec, `indent_size = tab` resolves to `tab_width` even when
+    // `indent_style` is not set.
+    let mut cfg = FmtOptionsConfig::default();
+    let props = EditorConfigProperties {
+      indent_size: Some(IndentSize::UseTabWidth),
+      tab_width: Some(4),
+      ..Default::default()
+    };
+    props.apply_to(&mut cfg);
+    assert_eq!(cfg.indent_width, Some(4));
+  }
+
+  #[test]
+  fn parses_indent_size_tab() {
+    let f = parse_str("[*]\nindent_size = tab\ntab_width = 4\n");
+    let p = &f.sections[0].properties;
+    assert_eq!(p.indent_size, Some(IndentSize::UseTabWidth));
+    assert_eq!(p.tab_width, Some(4));
   }
 
   #[test]
