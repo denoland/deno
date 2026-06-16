@@ -451,7 +451,7 @@ class Socket extends EventEmitter {
       // across a "cluster" of Node processes to take advantage of multi-core
       // systems.
       //
-      // Though Deno has has a Worker capability from which we could simulate this,
+      // Though Deno has a Worker capability from which we could simulate this,
       // for now we assert that we are _always_ on the primary process.
 
       const type = guessHandleType(fd);
@@ -512,7 +512,7 @@ class Socket extends EventEmitter {
       // across a "cluster" of Node processes to take advantage of multi-core
       // systems.
       //
-      // Though Deno has has a Worker capability from which we could simulate this,
+      // Though Deno has a Worker capability from which we could simulate this,
       // for now we assert that we are _always_ on the primary process.
 
       if (!state.handle) {
