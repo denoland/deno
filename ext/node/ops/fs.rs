@@ -2180,8 +2180,11 @@ pub fn op_node_fs_close(
 // `async(eager_throw)`: node's `close` validates the fd synchronously
 // (getValidatedFd) but runs the close + callback asynchronously. The fd is
 // validated in the eager prologue (synchronous throw); the close itself -- and
-// any EBADF -- is deferred to the event loop by `eager_throw`'s scheduling, so
-// it lands on the callback like node, without a JS `queueMicrotask` wrapper.
+// any EBADF -- is deferred to the event loop by `eager_throw`'s (lazy) scheduling,
+// so it lands on the callback like node, without a JS `queueMicrotask` wrapper.
+// Lazy (the eager_throw default) matters here: `do_close` removes the fd from the
+// table, so it must NOT run on the call -- otherwise a same-tick close of that fd
+// sees it already gone and rejects with EBADF.
 #[op2(async(eager_throw))]
 pub fn op_node_fs_close_async(
   scope: &mut v8::PinScope<'_, '_>,
@@ -3204,7 +3207,11 @@ fn string_to_flags(
 // eager prologue (so bad args throw at the call site like Node), then writes on
 // the event loop. The callback (in whatever trailing slot) is handled in JS,
 // which re-attaches the original buffer/string to the completion callback.
-#[op2(async(eager_throw), stack_trace)]
+// `deferred` (not the eager_throw default of lazy) so the write is eager-polled:
+// it must hit the file before a subsequent synchronous `writeSync` to match
+// node's ordering. `nofast` keeps it slow-only as it was before `deferred` made
+// it fast-eligible.
+#[op2(async(deferred), async(eager_throw), nofast, stack_trace)]
 #[smi]
 pub fn op_node_fs_write_v(
   scope: &mut v8::PinScope<'_, '_>,
@@ -3315,8 +3322,10 @@ pub fn op_node_fs_writev_sync<'a>(
 
 // `fs.writev(fd, buffers, position)`: async analogue of writevSync. Validates
 // + gathers in the sync prologue (eager_throw, so bad args throw at the call
-// site like node), then writes on the event loop.
-#[op2(async(eager_throw), stack_trace)]
+// site like node), then writes on the event loop. `deferred` (not the eager_throw
+// default of lazy) so the write is eager-polled, matching node's ordering vs a
+// later writeSync; `nofast` keeps it slow-only as before.
+#[op2(async(deferred), async(eager_throw), nofast, stack_trace)]
 #[smi]
 pub fn op_node_fs_writev<'a>(
   scope: &mut v8::PinScope<'a, '_>,
