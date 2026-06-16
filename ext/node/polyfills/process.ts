@@ -1116,6 +1116,13 @@ ObjectDefineProperty(process, "config", {
           "node_module_version": Number(versions.modules),
           "llvm_version": "0.0",
           "enable_lto": "false",
+          // Node 26's bundled common.gypi gates LTO settings on these two
+          // variables. node-gyp materializes process.config into config.gypi,
+          // so they must be defined or `gyp` fails to evaluate the conditions
+          // (e.g. "name 'enable_thin_lto' is not defined") when building native
+          // addons against Node >= 26 headers.
+          "enable_thin_lto": "false",
+          "lto_jobs": "",
           "host_arch": arch,
           ...(forceSharedOpenssl ? { "node_shared_openssl": 1 } : {}),
         }),
