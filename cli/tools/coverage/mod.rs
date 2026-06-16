@@ -945,8 +945,16 @@ pub fn cover_files(
   // Loads a file's original source plus the source actually executed at
   // runtime (transpiled for TS) and its source map. Returns `None` when the
   // file can't be loaded so the caller can skip it.
-  let load_file =
-    |module_specifier: &ModuleSpecifier| -> Result<Option<LoadedSource>, AnyError> {
+  //
+  // `never_loaded` distinguishes the two callers: a file that produced a
+  // coverage record was loaded during the run, so its transpiled emit is in
+  // the cache and a cache miss means the source changed after coverage was
+  // collected (stale cache) — that file is skipped. A never-loaded file
+  // (synthesized as uncovered) has no cached emit by definition, so it is
+  // transpiled on demand instead.
+  let load_file = |module_specifier: &ModuleSpecifier,
+                   never_loaded: bool|
+   -> Result<Option<LoadedSource>, AnyError> {
     let file = match file_fetcher.get_cached_source_or_local(module_specifier) {
       Ok(Some(file)) => TextDecodedFile::decode(file)?,
       Ok(None) => {
@@ -982,18 +990,39 @@ pub fn cover_files(
         let module_kind = ModuleKind::from_is_cjs(
           cjs_tracker.is_maybe_cjs(&file.specifier, file.media_type)?,
         );
-        // Transpile on demand: a never-loaded file (synthesized as uncovered)
-        // has no cached emit, so we can't rely on the emit cache here.
-        Some(
-          emitter
-            .maybe_emit_source_sync(
-              &file.specifier,
-              file.media_type,
-              module_kind,
-              &file.source,
-            )?
-            .to_string(),
-        )
+        if never_loaded {
+          // No cached emit exists for a file that was never loaded, so
+          // transpile it on demand.
+          Some(
+            emitter
+              .maybe_emit_source_sync(
+                &file.specifier,
+                file.media_type,
+                module_kind,
+                &file.source,
+              )?
+              .to_string(),
+          )
+        } else {
+          // The file was loaded during the run, so its transpiled emit should
+          // be cached. A miss means the source was modified after coverage was
+          // collected; skip it rather than mapping the recorded coverage onto a
+          // freshly transpiled file that no longer matches.
+          match emitter.maybe_cached_emit(
+            &file.specifier,
+            module_kind,
+            &file.source,
+          )? {
+            Some(code) => Some(code),
+            None => {
+              log::warn!(
+                "Missing transpiled source code for: \"{}\" (was it deleted after coverage was collected?). Skipping.",
+                file.specifier,
+              );
+              return Ok(None);
+            }
+          }
+        }
       }
       MediaType::SourceMap => {
         unreachable!()
@@ -1023,7 +1052,7 @@ pub fn cover_files(
     covered_specifiers.insert(module_specifier.clone());
 
     let Some((media_type, original_source, runtime_code, source_map)) =
-      load_file(&module_specifier)?
+      load_file(&module_specifier, false)?
     else {
       continue;
     };
@@ -1078,7 +1107,7 @@ pub fn cover_files(
       let module_specifier =
         deno_path_util::resolve_url_or_path(&stub.url, initial_cwd)?;
       let Some((media_type, original_source, runtime_code, source_map)) =
-        load_file(&module_specifier)?
+        load_file(&module_specifier, true)?
       else {
         continue;
       };
