@@ -1,0 +1,7 @@
+Check [WILDCARD]bar_type_error.ts
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+const value: string = foo;
+      ~~~~~
+    at [WILDCARD]bar_type_error.ts:3:7
+
+error: Type checking failed.

@@ -1,4 +1,13 @@
 {
-  "args": "check bar.ts",
-  "output": "bar.out"
+  "steps": [
+    {
+      "args": "check bar.ts",
+      "output": "bar.out"
+    },
+    {
+      "args": "check bar_type_error.ts",
+      "output": "bar_type_error.out",
+      "exitCode": 1
+    }
+  ]
 }
