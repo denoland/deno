@@ -728,7 +728,7 @@ impl<'a> TaskRunner<'a> {
     if exit_code == 0
       && let Some(fp) = pending_fingerprint
     {
-      self.task_cache.store(&cache_key, fp);
+      self.task_cache.store(&cache_key, &fp);
     }
     Ok(exit_code)
   }

@@ -8,10 +8,25 @@
 //! listed in `env`. If a previous run wrote a matching fingerprint to
 //! disk, the task is skipped.
 //!
+//! The fingerprint is split in two so the common "nothing changed" case
+//! avoids reading file contents at all:
+//!
+//! - a *static* hash over everything that isn't a file (command, appended
+//!   argv, listed env values, and the platform/version salt), and
+//! - a *content* hash over the input file set (relative paths + contents).
+//!
+//! Each entry also records a per-input stat snapshot (size + mtime). On
+//! lookup, if the static hash and every input's size+mtime match the stored
+//! manifest, the contents cannot have changed and we hit without reading
+//! them. Only when a stat drifts do we fall back to rehashing contents,
+//! which also tells a real edit from an mtime-only touch (e.g. a `git`
+//! checkout that rewrote timestamps).
+//!
 //! This is the first pass: no output restoration, no dependency
-//! fingerprint propagation, no remote cache. The on-disk format is a
-//! single hex-encoded `u64` per task; that lets us evolve the schema
-//! later without migrating anything.
+//! fingerprint propagation, no remote cache. The on-disk format is a small
+//! JSON manifest per task; an unrecognized or older payload simply fails to
+//! parse and is treated as a miss, so the schema can evolve without
+//! migration.
 //!
 //! Caveats of this first pass (see the deferred-work list on the PR):
 //!
@@ -29,11 +44,15 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::UNIX_EPOCH;
 
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
+use deno_core::serde_json;
 use deno_lib::util::hash::FastInsecureHasher;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::sys::CliSys;
 
@@ -45,9 +64,15 @@ pub enum CacheLookup {
   /// The task is eligible for caching but no stored fingerprint matches.
   /// Caller should run the task and then call [`TaskCache::store`] with
   /// the returned fingerprint.
-  Miss(u64),
+  Miss(Fingerprint),
   /// The task does not opt in to caching (no `files` declared).
   NotCacheable,
+}
+
+/// A freshly computed fingerprint plus the input stat snapshot it was
+/// derived from, ready to be persisted after a successful run.
+pub struct Fingerprint {
+  manifest: CacheManifest,
 }
 
 pub struct TaskCache {
@@ -67,25 +92,68 @@ impl TaskCache {
     if key.files.is_empty() {
       return CacheLookup::NotCacheable;
     }
-    let Some(fingerprint) = compute_fingerprint(key) else {
+    let Some(inputs) = collect_inputs(key) else {
       return CacheLookup::NotCacheable;
     };
-    match std::fs::read_to_string(self.entry_path(key)) {
-      Ok(stored) if stored.trim() == format!("{:016x}", fingerprint) => {
-        CacheLookup::Hit
-      }
-      _ => CacheLookup::Miss(fingerprint),
+    let static_hash = compute_static_hash(key);
+    let stats: Vec<FileStat> = inputs.iter().map(|i| i.stat.clone()).collect();
+
+    let stored = std::fs::read_to_string(self.entry_path(key))
+      .ok()
+      .and_then(|s| serde_json::from_str::<CacheManifest>(&s).ok());
+
+    // Fast path: the static inputs and every file's size+mtime match the
+    // stored manifest, so the contents cannot have changed. Skip reading
+    // them.
+    if let Some(stored) = &stored
+      && stored.static_hash == static_hash
+      && stored.files == stats
+    {
+      return CacheLookup::Hit;
     }
+
+    // Slow path: something drifted. Read contents to tell a real edit from
+    // a mtime-only touch.
+    let content_hash = compute_content_hash(key, &inputs);
+    let manifest = CacheManifest {
+      static_hash,
+      content_hash,
+      files: stats,
+    };
+
+    if let Some(stored) = &stored
+      && stored.static_hash == static_hash
+      && stored.content_hash == content_hash
+    {
+      // Contents are identical; only stat metadata moved. Refresh the
+      // manifest so the next run takes the fast path again, and skip the
+      // task.
+      self.write_manifest(key, &manifest);
+      return CacheLookup::Hit;
+    }
+
+    CacheLookup::Miss(Fingerprint { manifest })
   }
 
   /// Persist a fingerprint for a successfully completed task.
-  pub fn store(&self, key: &TaskCacheKey<'_>, fingerprint: u64) {
+  pub fn store(&self, key: &TaskCacheKey<'_>, fingerprint: &Fingerprint) {
+    self.write_manifest(key, &fingerprint.manifest);
+  }
+
+  fn write_manifest(&self, key: &TaskCacheKey<'_>, manifest: &CacheManifest) {
     if let Err(err) = std::fs::create_dir_all(&self.dir) {
       log::debug!("failed to create task cache dir: {err}");
       return;
     }
+    let json = match serde_json::to_string(manifest) {
+      Ok(json) => json,
+      Err(err) => {
+        log::debug!("failed to serialize task cache entry: {err}");
+        return;
+      }
+    };
     let path = self.entry_path(key);
-    if let Err(err) = std::fs::write(&path, format!("{:016x}\n", fingerprint)) {
+    if let Err(err) = std::fs::write(&path, json) {
       log::debug!("failed to write task cache entry {}: {err}", path.display());
     }
   }
@@ -124,14 +192,93 @@ pub struct TaskCacheKey<'a> {
   pub env: &'a BTreeMap<String, String>,
 }
 
-fn compute_fingerprint(key: &TaskCacheKey<'_>) -> Option<u64> {
-  // `new_deno_versioned` folds the Deno version into the fingerprint, so an
-  // upgrade invalidates every entry. Mix in the target OS and architecture
-  // too: a task's output can legitimately differ across platforms even when
-  // its inputs are byte-for-byte identical, so a cache shared across targets
+/// On-disk cache entry for a single task.
+#[derive(Serialize, Deserialize)]
+struct CacheManifest {
+  /// Hash of everything that isn't an input file: the command, appended
+  /// argv, listed env values, and the platform/version salt.
+  static_hash: u64,
+  /// Hash of the input file set (relative paths + contents).
+  content_hash: u64,
+  /// Per-input stat snapshot, enabling the size+mtime fast path that skips
+  /// re-reading contents when nothing has changed.
+  files: Vec<FileStat>,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+struct FileStat {
+  /// Path relative to the task's cwd.
+  path: String,
+  size: u64,
+  /// Nanoseconds since the Unix epoch; 0 when the platform or filesystem
+  /// does not report a modification time.
+  mtime: u64,
+}
+
+/// A matching input file together with its stat snapshot.
+struct InputFile {
+  abs_path: PathBuf,
+  stat: FileStat,
+}
+
+/// Resolve the input globs, returning the matching files (sorted) and their
+/// stat snapshots. Returns `None` when caching does not apply: either the
+/// patterns are invalid or the globs match nothing (almost certainly a
+/// config error, which would otherwise silently make the cache always hit).
+fn collect_inputs(key: &TaskCacheKey<'_>) -> Option<Vec<InputFile>> {
+  let patterns = build_file_patterns(key.cwd, key.files)?;
+  let mut files = FileCollector::new(|_| true)
+    .ignore_git_folder()
+    .ignore_node_modules()
+    .collect_file_patterns(&CliSys::default(), &patterns);
+  files.sort();
+  if files.is_empty() {
+    return None;
+  }
+  Some(
+    files
+      .into_iter()
+      .map(|abs_path| {
+        let rel = abs_path
+          .strip_prefix(key.cwd)
+          .unwrap_or(&abs_path)
+          .to_string_lossy()
+          .into_owned();
+        let (size, mtime) = match std::fs::metadata(&abs_path) {
+          Ok(meta) => {
+            let mtime = meta
+              .modified()
+              .ok()
+              .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+              .map(|d| d.as_nanos() as u64)
+              .unwrap_or(0);
+            (meta.len(), mtime)
+          }
+          Err(_) => (0, 0),
+        };
+        InputFile {
+          abs_path,
+          stat: FileStat {
+            path: rel,
+            size,
+            mtime,
+          },
+        }
+      })
+      .collect(),
+  )
+}
+
+/// Hash everything that isn't an input file's contents: the command, the
+/// appended CLI args, the listed env values, and a platform/version salt.
+fn compute_static_hash(key: &TaskCacheKey<'_>) -> u64 {
+  // `new_deno_versioned` folds the Deno version in, so an upgrade
+  // invalidates every entry. Mix in the target OS and architecture too: a
+  // task's output can legitimately differ across platforms even when its
+  // inputs are byte-for-byte identical, so a cache shared across targets
   // (e.g. a synced DENO_DIR) must not hit across them.
   let mut hasher = FastInsecureHasher::new_deno_versioned();
-  hasher.write_str("deno-task-cache-v1");
+  hasher.write_str("deno-task-cache-static-v1");
   hasher.write_str(std::env::consts::OS);
   hasher.write_u8(0);
   hasher.write_str(std::env::consts::ARCH);
@@ -164,29 +311,22 @@ fn compute_fingerprint(key: &TaskCacheKey<'_>) -> Option<u64> {
     }
   }
 
-  // Resolve file globs relative to the task's cwd and hash matching files
-  // in sorted order, mixing both the relative path and the contents.
-  let patterns = build_file_patterns(key.cwd, key.files)?;
-  let mut files = FileCollector::new(|_| true)
-    .ignore_git_folder()
-    .ignore_node_modules()
-    .collect_file_patterns(&CliSys::default(), &patterns);
-  files.sort();
-  if files.is_empty() {
-    // An input glob that matches nothing is almost certainly a config
-    // error and would silently make the cache always hit. Bail out so
-    // the task runs normally.
-    return None;
-  }
-  // TODO(bartlomieju): this reads every input fully into memory and rehashes
-  // its contents on each run. For large input trees an mtime+size fast path
-  // (only re-reading files whose stat changed) would be a worthwhile
-  // follow-up.
-  for path in &files {
-    let rel = path.strip_prefix(key.cwd).unwrap_or(path);
+  hasher.finish()
+}
+
+/// Hash the input file set: each file's relative path mixed with its
+/// contents, in the sorted order produced by [`collect_inputs`].
+fn compute_content_hash(key: &TaskCacheKey<'_>, inputs: &[InputFile]) -> u64 {
+  let mut hasher = FastInsecureHasher::new_deno_versioned();
+  hasher.write_str("deno-task-cache-content-v1");
+  for input in inputs {
+    let rel = input
+      .abs_path
+      .strip_prefix(key.cwd)
+      .unwrap_or(&input.abs_path);
     hasher.write(rel.as_os_str().as_encoded_bytes());
     hasher.write_u8(0);
-    match std::fs::read(path) {
+    match std::fs::read(&input.abs_path) {
       Ok(bytes) => {
         hasher.write_u8(1);
         hasher.write(&bytes);
@@ -196,8 +336,7 @@ fn compute_fingerprint(key: &TaskCacheKey<'_>) -> Option<u64> {
       }
     }
   }
-
-  Some(hasher.finish())
+  hasher.finish()
 }
 
 fn build_file_patterns(cwd: &Path, entries: &[String]) -> Option<FilePatterns> {
