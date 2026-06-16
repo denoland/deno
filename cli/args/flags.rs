@@ -2017,6 +2017,44 @@ pub fn flags_from_vec_with_initial_cwd(
   } else {
     args
   };
+  // Fast path: `deno run <file> [script args...]` with no deno-level flags.
+  // Building the full clap command tree (clap_root) costs ~5.5ms cold /
+  // ~0.86ms warm at startup; for the overwhelmingly common bare-run case we
+  // skip it entirely. Any deno flag (anything starting with `-` before the
+  // script) falls through to the full parser, preserving exact behavior.
+  // Config-file discovery still happens downstream in CliOptions, so this only
+  // skips argument parsing, not resolution.
+  if args.len() >= 3
+    && args[1] == "run"
+    && args[2] != "-"
+    && args[2].as_encoded_bytes().first() != Some(&b'-')
+    && let Some(script) = args[2].to_str()
+  {
+    let argv = args[3..]
+      .iter()
+      .map(|a| a.to_string_lossy().into_owned())
+      .collect::<Vec<_>>();
+    let mut flags = Flags {
+      subcommand: DenoSubcommand::Run(RunFlags {
+        script: script.to_string(),
+        watch: None,
+        bare: false,
+        coverage_dir: None,
+        print_task_list: false,
+      }),
+      argv,
+      // `flags.code_cache_enabled = !matches.get_flag("no-code-cache")` in
+      // the full `run_parse`; without any flags before the script that
+      // resolves to `true`. Match it here so downstream code-cache checks
+      // behave identically.
+      code_cache_enabled: true,
+      ..Default::default()
+    };
+    // NODE_OPTIONS / DENO_COMPAT etc. are handled here too, matching the
+    // tail of `flags_from_vec` after clap parsing.
+    apply_node_options(&mut flags);
+    return Ok(flags);
+  }
   let mut app = clap_root();
   let mut matches =
     app
