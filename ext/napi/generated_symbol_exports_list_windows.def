@@ -122,6 +122,7 @@ EXPORTS
   napi_delete_property
   napi_instanceof
   napi_create_buffer_copy
+  node_api_create_buffer_from_arraybuffer
   napi_delete_element
   napi_object_seal
   napi_queue_async_work

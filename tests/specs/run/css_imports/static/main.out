@@ -1,0 +1,8 @@
+true
+3
+@import "other.css";
+/* a comment with braces {} and a "quote */
+body { color: red; }
+@media (max-width: 600px) {
+  .foo { display: none; }
+}

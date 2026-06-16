@@ -11,14 +11,8 @@ use aws_lc_rs::unstable::signature::ML_DSA_87_SIGNING;
 use aws_lc_rs::unstable::signature::PqdsaKeyPair;
 use aws_lc_rs::unstable::signature::PqdsaSigningAlgorithm;
 use aws_lc_rs::unstable::signature::PqdsaVerificationAlgorithm;
-use deno_core::ToJsBuffer;
-use deno_core::convert::Uint8Array;
-use deno_core::op2;
-use serde::Serialize;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
-
-use crate::key_store::CryptoKeyHandle;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum MlDsaError {
@@ -104,27 +98,10 @@ fn params(variant: u8) -> Result<MlDsaParams, MlDsaError> {
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MlDsaKeys {
-  private_key: ToJsBuffer,
-  public_key: ToJsBuffer,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MlDsaImportedKeys {
-  private_key: ToJsBuffer,
-  public_key: ToJsBuffer,
-  seed: Option<ToJsBuffer>,
-}
-
-#[op2]
-#[serde]
-pub fn op_crypto_mldsa_from_seed(
+pub(crate) fn mldsa_from_seed(
   variant: u8,
-  #[buffer] seed: &[u8],
-) -> Result<MlDsaKeys, MlDsaError> {
+  seed: &[u8],
+) -> Result<(Vec<u8>, Vec<u8>), MlDsaError> {
   let p = params(variant)?;
   let key_pair = PqdsaKeyPair::from_seed(p.signing, seed)
     .map_err(|_| MlDsaError::InvalidKeyData)?;
@@ -133,62 +110,7 @@ pub fn op_crypto_mldsa_from_seed(
     .as_raw_bytes_vec()
     .map_err(|_| MlDsaError::FailedExport)?;
   let public_key = key_pair.public_key().as_ref().to_vec();
-  Ok(MlDsaKeys {
-    private_key: private_key.into(),
-    public_key: public_key.into(),
-  })
-}
-
-#[op2]
-#[serde]
-pub fn op_crypto_mldsa_from_pkcs8(
-  variant: u8,
-  #[buffer] pkcs8: &[u8],
-) -> Result<MlDsaImportedKeys, MlDsaError> {
-  let p = params(variant)?;
-
-  // Classify the inner `ML-DSA-PrivateKey` CHOICE before handing the DER to
-  // aws-lc, so we can return the spec-mandated error types:
-  //   - expanded-key-only         -> NotSupportedError
-  //   - both, seed mismatch        -> DataError
-  //   - seed-only / consistent both -> ok
-  match classify_pkcs8_inner(pkcs8) {
-    // The expanded-key-only form is explicitly unsupported.
-    Some(Pkcs8Inner::Expanded) => {
-      return Err(MlDsaError::UnsupportedPkcs8Format);
-    }
-    // For the `both` form, the seed must regenerate exactly the expanded key.
-    Some(Pkcs8Inner::Both { seed, expanded }) => {
-      let derived = PqdsaKeyPair::from_seed(p.signing, &seed)
-        .ok()
-        .and_then(|kp| kp.private_key().as_raw_bytes_vec().ok());
-      match derived {
-        Some(d) if d == expanded => {}
-        _ => return Err(MlDsaError::InvalidKeyData),
-      }
-    }
-    // Seed-only (or an inner shape we don't classify) falls through to the
-    // aws-lc parse below, which is authoritative for validity.
-    Some(Pkcs8Inner::Seed(_)) | None => {}
-  }
-
-  let key_pair = PqdsaKeyPair::from_pkcs8(p.signing, pkcs8)
-    .map_err(|_| MlDsaError::InvalidKeyData)?;
-  let private_key = key_pair
-    .private_key()
-    .as_raw_bytes_vec()
-    .map_err(|_| MlDsaError::FailedExport)?;
-  let public_key = key_pair.public_key().as_ref().to_vec();
-  // Best-effort: extract the seed from the inner OCTET STRING when the
-  // PKCS#8 uses the Case 1 (`[0] OCTET STRING { seed }`) encoding from
-  // draft-ietf-lamps-dilithium-certificates (the form aws-lc itself
-  // emits). Case 2 (expanded only) leaves seed = None.
-  let seed = extract_seed_from_pkcs8(pkcs8).map(Into::into);
-  Ok(MlDsaImportedKeys {
-    private_key: private_key.into(),
-    public_key: public_key.into(),
-    seed,
-  })
+  Ok((private_key, public_key))
 }
 
 /// The recognised shapes of the `ML-DSA-PrivateKey` CHOICE inside a PKCS#8
@@ -305,11 +227,74 @@ fn parse_tlv(buf: &[u8], tag: u8) -> Option<(&[u8], &[u8])> {
   Some((&body_start[..len], &body_start[len..]))
 }
 
-#[op2]
-pub fn op_crypto_mldsa_from_spki(
+/// Rust-side callable view of [`op_crypto_mldsa_from_seed`].
+pub fn from_seed(
   variant: u8,
-  #[buffer] spki: &[u8],
-) -> Result<Uint8Array, MlDsaError> {
+  seed: &[u8],
+) -> Result<MlDsaSeedBytes, MlDsaError> {
+  let (private_key, public_key) = mldsa_from_seed(variant, seed)?;
+  Ok(MlDsaSeedBytes {
+    private_key,
+    public_key,
+  })
+}
+
+pub struct MlDsaSeedBytes {
+  pub private_key: Vec<u8>,
+  pub public_key: Vec<u8>,
+}
+
+/// Rust-side callable view of [`op_crypto_mldsa_from_pkcs8`]; returns the
+/// triple as plain `Vec<u8>` for use by the Rust-native importKey
+/// dispatcher (no `Uint8Array` allocation through deno_core).
+pub fn from_pkcs8_native(
+  variant: u8,
+  pkcs8: &[u8],
+) -> Result<MlDsaPkcs8Bytes, MlDsaError> {
+  let p = params(variant)?;
+  match classify_pkcs8_inner(pkcs8) {
+    Some(Pkcs8Inner::Expanded) => {
+      return Err(MlDsaError::UnsupportedPkcs8Format);
+    }
+    Some(Pkcs8Inner::Both { seed, expanded }) => {
+      let derived = PqdsaKeyPair::from_seed(p.signing, &seed)
+        .ok()
+        .and_then(|kp| kp.private_key().as_raw_bytes_vec().ok());
+      match derived {
+        Some(d) if d == expanded => {}
+        _ => return Err(MlDsaError::InvalidKeyData),
+      }
+    }
+    Some(Pkcs8Inner::Seed(_)) | None => {}
+  }
+  let key_pair = PqdsaKeyPair::from_pkcs8(p.signing, pkcs8)
+    .map_err(|_| MlDsaError::InvalidKeyData)?;
+  let private_key = key_pair
+    .private_key()
+    .as_raw_bytes_vec()
+    .map_err(|_| MlDsaError::FailedExport)?;
+  let public_key = key_pair.public_key().as_ref().to_vec();
+  let seed = extract_seed_from_pkcs8(pkcs8);
+  Ok(MlDsaPkcs8Bytes {
+    private_key,
+    public_key,
+    seed,
+  })
+}
+
+pub struct MlDsaPkcs8Bytes {
+  pub private_key: Vec<u8>,
+  #[allow(
+    dead_code,
+    reason = "exposed via the from_pkcs8 helper for the JS importKey \
+              path that's still being slimmed"
+  )]
+  pub public_key: Vec<u8>,
+  pub seed: Option<Vec<u8>>,
+}
+
+/// Rust-side callable view of [`op_crypto_mldsa_from_spki`].
+pub fn from_spki(variant: u8, spki: &[u8]) -> Result<Vec<u8>, MlDsaError> {
   let p = params(variant)?;
   let pk_info = spki::SubjectPublicKeyInfoRef::try_from(spki)
     .map_err(|_| MlDsaError::InvalidKeyData)?;
@@ -323,7 +308,7 @@ pub fn op_crypto_mldsa_from_spki(
   if raw.len() != p.pub_key_len {
     return Err(MlDsaError::InvalidKeyData);
   }
-  Ok(raw.to_vec().into())
+  Ok(raw.to_vec())
 }
 
 /// PKCS#8 v1 export for ML-DSA encodes the seed-only form
@@ -332,23 +317,21 @@ pub fn op_crypto_mldsa_from_spki(
 /// implements. The seed is therefore required; a key whose seed has
 /// been discarded (e.g. one imported from a `raw-private` expanded key)
 /// cannot be re-exported as PKCS#8.
-#[op2]
-pub fn op_crypto_mldsa_export_pkcs8(
+pub(crate) fn mldsa_export_pkcs8(
   variant: u8,
-  #[buffer] seed: &[u8],
-) -> Result<Uint8Array, MlDsaError> {
+  seed: &[u8],
+) -> Result<Vec<u8>, MlDsaError> {
   let p = params(variant)?;
   let key_pair = PqdsaKeyPair::from_seed(p.signing, seed)
     .map_err(|_| MlDsaError::InvalidKeyData)?;
   let pkcs8 = key_pair.to_pkcs8().map_err(|_| MlDsaError::FailedExport)?;
-  Ok(pkcs8.as_ref().to_vec().into())
+  Ok(pkcs8.as_ref().to_vec())
 }
 
-#[op2]
-pub fn op_crypto_mldsa_export_spki(
+pub(crate) fn mldsa_export_spki(
   variant: u8,
-  #[buffer] public_key_bytes: &[u8],
-) -> Result<Uint8Array, MlDsaError> {
+  public_key_bytes: &[u8],
+) -> Result<Vec<u8>, MlDsaError> {
   let p = params(variant)?;
   if public_key_bytes.len() != p.pub_key_len {
     return Err(MlDsaError::InvalidKeyData);
@@ -360,22 +343,20 @@ pub fn op_crypto_mldsa_export_spki(
     },
     subject_public_key: BitString::from_bytes(public_key_bytes)?,
   };
-  let der = key_info.to_der().map_err(|_| MlDsaError::FailedExport)?;
-  Ok(der.into())
+  key_info.to_der().map_err(|_| MlDsaError::FailedExport)
 }
 
-#[op2]
-pub fn op_crypto_sign_mldsa(
+/// ML-DSA sign. `private_key_bytes` is the FIPS 204 expanded private
+/// key (`d || z` for raw-seed imports), and `context` is the optional
+/// FIPS 204 §5.2 application context byte string (only `None` or empty
+/// is currently accepted). Called from [`crate::subtle_sign::run`].
+pub(crate) fn mldsa_sign(
   variant: u8,
-  #[cppgc] key: &CryptoKeyHandle,
-  #[buffer] data: &[u8],
-  #[buffer] context: Option<&[u8]>,
-) -> Result<Uint8Array, MlDsaError> {
-  let private_key_bytes = key.data().expanded_private_key();
+  private_key_bytes: &[u8],
+  data: &[u8],
+  context: Option<&[u8]>,
+) -> Result<Vec<u8>, MlDsaError> {
   let p = params(variant)?;
-  // aws-lc-rs 1.16 does not expose a way to set the FIPS 204 §5.2 context
-  // parameter for ML-DSA. The empty context is signed by default; reject
-  // non-empty contexts until the underlying API supports them.
   if context.is_some_and(|c| !c.is_empty()) {
     return Err(MlDsaError::ContextNotSupported);
   }
@@ -386,23 +367,22 @@ pub fn op_crypto_sign_mldsa(
   key_pair
     .sign(data, &mut signature)
     .map_err(|_| MlDsaError::SigningFailed)?;
-  Ok(signature.into())
+  Ok(signature)
 }
 
-#[op2]
-pub fn op_crypto_verify_mldsa(
+/// ML-DSA verify. `public_key_bytes` is the raw FIPS 204 public key.
+/// Matches the sign-side limitation that only empty `context` is
+/// accepted. Called from [`crate::subtle_verify::run`].
+pub(crate) fn mldsa_verify(
   variant: u8,
-  #[cppgc] key: &CryptoKeyHandle,
-  #[buffer] data: &[u8],
-  #[buffer] signature: &[u8],
-  #[buffer] context: Option<&[u8]>,
+  public_key_bytes: &[u8],
+  data: &[u8],
+  signature: &[u8],
+  context: Option<&[u8]>,
 ) -> bool {
-  let public_key_bytes = key.data().bytes();
   let Ok(p) = params(variant) else {
     return false;
   };
-  // Match the limitation in op_crypto_sign_mldsa: only empty context is
-  // currently supported.
   if context.is_some_and(|c| !c.is_empty()) {
     return false;
   }

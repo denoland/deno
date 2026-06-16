@@ -608,6 +608,8 @@ impl CliFactory {
             DenoSubcommand::Add { .. }
             | DenoSubcommand::ApproveScripts { .. }
             | DenoSubcommand::Remove { .. }
+            | DenoSubcommand::Link { .. }
+            | DenoSubcommand::Unlink { .. }
             | DenoSubcommand::Cache { .. }
             | DenoSubcommand::Ci { .. }
             | DenoSubcommand::Uninstall { .. } => true,
@@ -629,6 +631,7 @@ impl CliFactory {
             | DenoSubcommand::Clean { .. }
             | DenoSubcommand::Compile { .. }
             | DenoSubcommand::Completions { .. }
+            | DenoSubcommand::Desktop { .. }
             | DenoSubcommand::Coverage { .. }
             | DenoSubcommand::Deploy { .. }
             | DenoSubcommand::Doc { .. }
@@ -657,15 +660,21 @@ impl CliFactory {
             | DenoSubcommand::X { .. }
             | DenoSubcommand::BumpVersion { .. } => false,
           },
-          dedup_lockfile_peer_variants: matches!(
-            cli_options.sub_command(),
-            DenoSubcommand::Add { .. }
-              | DenoSubcommand::ApproveScripts { .. }
-              | DenoSubcommand::Remove { .. }
-              | DenoSubcommand::Cache { .. }
-              | DenoSubcommand::Ci { .. }
-              | DenoSubcommand::Install(InstallFlags::Local(_, _)),
-          ),
+          // Always merge equivalent peer-dep variants when loading the
+          // snapshot from a lockfile. This is an in-memory normalization
+          // that collapses `NpmPackageId`s which differ only in
+          // peer-dependency cycle-unrolling depth (the encoding changed
+          // between releases, e.g. 2.7 -> 2.8). Without it, a complete
+          // lockfile written by an older deno is treated as not satisfying
+          // the requirements and the whole npm graph is re-resolved against
+          // the registry, which fails under `--cached-only` (offline
+          // isolates booting from an immutable, pre-baked `DENO_DIR`). See
+          // denoland/deno#26427 for the original install-path dedup. This is
+          // safe on `deno run`: the dedup only affects the in-memory
+          // resolution snapshot and does not rewrite the user's lockfile
+          // unless a real resolution runs (which the dedup is precisely what
+          // avoids for an already-satisfied lockfile).
+          dedup_lockfile_peer_variants: true,
           cache_setting: NpmCacheSetting::from_cache_setting(
             &cli_options.cache_setting(),
           ),
@@ -1043,6 +1052,7 @@ impl CliFactory {
 
   pub async fn create_compile_binary_writer(
     &self,
+    is_desktop: bool,
   ) -> Result<DenoCompileBinaryWriter<'_>, AnyError> {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
@@ -1056,6 +1066,7 @@ impl CliFactory {
       self.npm_resolver().await?,
       self.workspace_resolver().await?.as_ref(),
       cli_options.npm_system_info(),
+      is_desktop,
     ))
   }
 
@@ -1266,6 +1277,7 @@ impl CliFactory {
       residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
       residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
       enable_raw_imports: cli_options.unstable_raw_imports(),
+      close_on_idle: true,
       maybe_initial_cwd: Some(deno_path_util::url_from_directory_path(
         cli_options.initial_cwd(),
       )?),
@@ -1390,7 +1402,6 @@ impl CliFactory {
               .workspace_external_import_map_loader()?
               .clone(),
           })),
-          bare_node_builtins: options.unstable_bare_node_builtins(),
           unstable_sloppy_imports: options.unstable_sloppy_imports(),
           on_mapped_resolution_diagnostic: Some(Arc::new(
             on_resolve_diagnostic,
@@ -1459,8 +1470,10 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Clean(_)
         | DenoSubcommand::Init(_)
         | DenoSubcommand::Install(_)
+        | DenoSubcommand::Link(_)
         | DenoSubcommand::Outdated(_)
         | DenoSubcommand::Remove(_)
+        | DenoSubcommand::Unlink(_)
         | DenoSubcommand::Uninstall(_)
         | DenoSubcommand::ApproveScripts(_)
     ),

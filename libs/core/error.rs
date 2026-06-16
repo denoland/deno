@@ -2360,6 +2360,48 @@ pub fn throw_error_one_byte<'s, 'i>(
   scope.throw_exception(exc);
 }
 
+/// Throw a Node-flavoured `ERR_INVALID_THIS` `TypeError` -- a plain
+/// `TypeError` whose `code` own-property is `"ERR_INVALID_THIS"`. The op2
+/// macro uses this to report cppgc brand-check failures so that the thrown
+/// error matches the `webidl.assertBranded` shape expected by web platform
+/// and Node compat tests.
+pub fn throw_invalid_this_error_one_byte_info(
+  info: &v8::FunctionCallbackInfo,
+  message: &str,
+) {
+  v8::callback_scope!(unsafe scope, info);
+  throw_invalid_this_error_one_byte(scope, message);
+}
+
+pub fn throw_invalid_this_error_one_byte<'s, 'i>(
+  scope: &mut v8::PinCallbackScope<'s, 'i>,
+  message: &str,
+) {
+  let msg = deno_core::v8::String::new_from_one_byte(
+    scope,
+    message.as_bytes(),
+    deno_core::v8::NewStringType::Normal,
+  )
+  .unwrap();
+  let exc = deno_core::v8::Exception::type_error(scope, msg);
+  if let Some(exc_obj) = exc.to_object(scope) {
+    let code_key = deno_core::v8::String::new_from_one_byte(
+      scope,
+      b"code",
+      deno_core::v8::NewStringType::Normal,
+    )
+    .unwrap();
+    let code_val = deno_core::v8::String::new_from_one_byte(
+      scope,
+      b"ERR_INVALID_THIS",
+      deno_core::v8::NewStringType::Normal,
+    )
+    .unwrap();
+    exc_obj.set(scope, code_key.into(), code_val.into());
+  }
+  scope.throw_exception(exc);
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
