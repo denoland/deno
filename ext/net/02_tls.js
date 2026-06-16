@@ -62,6 +62,8 @@ async function connectTls({
   cert = undefined,
   key = undefined,
   unsafelyDisableHostnameVerification = false,
+  autoSelectFamily = true,
+  autoSelectFamilyAttemptDelay = 250,
 }) {
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
@@ -79,6 +81,7 @@ async function connectTls({
     { hostname, port },
     { caCerts, alpnProtocols, serverName, unsafelyDisableHostnameVerification },
     keyPair,
+    { autoSelectFamily, autoSelectFamilyAttemptDelay },
   );
   localAddr.transport = "tcp";
   remoteAddr.transport = "tcp";
@@ -160,7 +163,7 @@ function loadTlsKeyPair(api, {
 }
 
 function listenTls({
-  port,
+  port = 0,
   hostname = "0.0.0.0",
   transport = "tcp",
   alpnProtocols = undefined,
@@ -170,7 +173,7 @@ function listenTls({
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
-  port = validatePort(port);
+  port = validatePort(port, true);
 
   if (!hasTlsKeyPairOptions(arguments[0])) {
     throw new TypeError(

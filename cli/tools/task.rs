@@ -25,6 +25,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::stream::futures_unordered;
+use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_npm_installer::PackageCaching;
 use deno_path_util::normalize_path;
@@ -368,6 +369,10 @@ struct RunSingleOptions<'a> {
   kill_signal: KillSignal,
   argv: &'a [String],
   parallel_info: Option<ParallelInfo>,
+  /// Extra environment variables to set for this script in addition to the
+  /// runner's base env vars. Used for the npm lifecycle vars (`npm_package_*`,
+  /// `npm_lifecycle_*`) when running package.json scripts.
+  extra_env_vars: HashMap<OsString, OsString>,
 }
 
 struct TaskRunner<'a> {
@@ -715,6 +720,8 @@ impl<'a> TaskRunner<'a> {
         kill_signal,
         argv,
         parallel_info,
+        // npm lifecycle env vars are only set for package.json scripts.
+        extra_env_vars: HashMap::new(),
       })
       .await?;
 
@@ -765,8 +772,32 @@ impl<'a> TaskRunner<'a> {
       &node_modules_bin_dirs,
     )?;
 
+    // npm sets a number of `npm_package_*` lifecycle env vars when running a
+    // package.json script. Build them from the script's package.json so that
+    // `deno task` matches npm's behavior (see #35251).
+    let base_npm_env_vars = self
+      .cli_options
+      .workspace()
+      .config_folders()
+      .get(dir_url)
+      .and_then(|folder| folder.pkg_json.as_ref())
+      .map(|pkg_json| npm_package_env_vars(pkg_json))
+      .unwrap_or_default();
+
     for task_name in &task_names {
       if let Some(script) = scripts.get(task_name) {
+        let mut extra_env_vars = base_npm_env_vars.clone();
+        // `npm_lifecycle_event` is the name of the script currently running
+        // (the pre/post-prefixed name), and `npm_lifecycle_script` is its
+        // command.
+        extra_env_vars.insert(
+          OsString::from("npm_lifecycle_event"),
+          OsString::from(task_name),
+        );
+        extra_env_vars.insert(
+          OsString::from("npm_lifecycle_script"),
+          OsString::from(script),
+        );
         let exit_code = self
           .run_single(RunSingleOptions {
             task_name,
@@ -779,6 +810,7 @@ impl<'a> TaskRunner<'a> {
             kill_signal: kill_signal.clone(),
             argv,
             parallel_info,
+            extra_env_vars,
           })
           .await?;
         if exit_code > 0 {
@@ -805,6 +837,7 @@ impl<'a> TaskRunner<'a> {
       kill_signal,
       argv,
       parallel_info,
+      extra_env_vars,
     } = opts;
 
     self.output_task(
@@ -834,11 +867,19 @@ impl<'a> TaskRunner<'a> {
       (None, vec![])
     };
 
+    let env_vars = if extra_env_vars.is_empty() {
+      self.env_vars.clone()
+    } else {
+      let mut env_vars = self.env_vars.clone();
+      env_vars.extend(extra_env_vars);
+      env_vars
+    };
+
     let exit_code = task_runner::run_task(task_runner::RunTaskOptions {
       task_name,
       script,
       cwd,
-      env_vars: self.env_vars.clone(),
+      env_vars,
       custom_commands,
       init_cwd: self.cli_options.initial_cwd(),
       argv,
@@ -1020,6 +1061,74 @@ fn matches_package(
   }
 
   false
+}
+
+/// Build the `npm_package_*` env vars that npm sets when running a
+/// package.json script (`npm_package_name`, `npm_package_version`,
+/// `npm_package_json`, and flattened `npm_package_config_*`). The
+/// `npm_lifecycle_*` vars are set per-script by the caller.
+fn npm_package_env_vars(
+  pkg_json: &deno_package_json::PackageJson,
+) -> HashMap<OsString, OsString> {
+  let mut env_vars = HashMap::new();
+  if let Some(name) = &pkg_json.name {
+    env_vars.insert(OsString::from("npm_package_name"), OsString::from(name));
+  }
+  if let Some(version) = &pkg_json.version {
+    env_vars.insert(
+      OsString::from("npm_package_version"),
+      OsString::from(version),
+    );
+  }
+  env_vars.insert(
+    OsString::from("npm_package_json"),
+    pkg_json.path.clone().into_os_string(),
+  );
+  if let Some(config) = &pkg_json.config {
+    for (key, value) in config {
+      flatten_config_env_var(
+        &mut env_vars,
+        &format!("npm_package_config_{key}"),
+        value,
+      );
+    }
+  }
+  env_vars
+}
+
+/// Recursively flatten a package.json `config` value into env vars, matching
+/// npm: nested object/array keys are joined with `_` (arrays use numeric
+/// indices) and scalar leaves are stringified. Null leaves are set to an empty
+/// string (matching npm).
+fn flatten_config_env_var(
+  env_vars: &mut HashMap<OsString, OsString>,
+  prefix: &str,
+  value: &Value,
+) {
+  match value {
+    Value::Object(map) => {
+      for (key, value) in map {
+        flatten_config_env_var(env_vars, &format!("{prefix}_{key}"), value);
+      }
+    }
+    Value::Array(arr) => {
+      for (index, value) in arr.iter().enumerate() {
+        flatten_config_env_var(env_vars, &format!("{prefix}_{index}"), value);
+      }
+    }
+    Value::String(s) => {
+      env_vars.insert(OsString::from(prefix), OsString::from(s));
+    }
+    Value::Number(n) => {
+      env_vars.insert(OsString::from(prefix), OsString::from(n.to_string()));
+    }
+    Value::Bool(b) => {
+      env_vars.insert(OsString::from(prefix), OsString::from(b.to_string()));
+    }
+    Value::Null => {
+      env_vars.insert(OsString::from(prefix), OsString::new());
+    }
+  }
 }
 
 fn workspace_folder_dir_name(folder_url: &Url) -> Option<&str> {

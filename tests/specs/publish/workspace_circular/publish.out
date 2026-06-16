@@ -1,0 +1,3 @@
+Publishing a workspace...
+[WILDCARD]
+error: Circular package dependency detected: @foo/bar -> @foo/foo -> @foo/bar

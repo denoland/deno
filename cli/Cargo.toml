@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.8.2"
+version = "2.8.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -52,6 +52,7 @@ serde_json.workspace = true
 zstd.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 deno_error.workspace = true
+sha2.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
 winres.workspace = true
@@ -92,6 +93,7 @@ node_shim.workspace = true
 anstream.workspace = true
 async-trait.workspace = true
 aws-lc-rs.workspace = true
+backhand.workspace = true
 base64.workspace = true
 bincode.workspace = true
 boxed_error.workspace = true
@@ -115,6 +117,7 @@ dprint-plugin-markdown.workspace = true
 dprint-plugin-typescript.workspace = true
 esbuild_client = { version = "0.7.1", features = ["serde"] }
 faster-hex.workspace = true
+fastwebsockets.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
 fluent-uri.workspace = true
@@ -122,19 +125,22 @@ glob.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 imara-diff.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
 keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native", "vendored"] }
+lax-css.workspace = true
+lax-markup.workspace = true
+lax-sql.workspace = true
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
 locked-tripwire = "0.1.1"
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
-malva.workspace = true
-markup_fmt.workspace = true
 memchr.workspace = true
 notify.workspace = true
 once_cell.workspace = true
@@ -147,6 +153,7 @@ p256.workspace = true
 pathdiff.workspace = true
 percent-encoding.workspace = true
 phf.workspace = true
+plist = "1"
 pretty_yaml.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
@@ -159,7 +166,6 @@ serde_repr.workspace = true
 sha2.workspace = true
 shlex.workspace = true
 spki = { workspace = true, features = ["pem"] }
-sqlformat.workspace = true
 strsim.workspace = true
 sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "serde_json", "real", "strip_unc", "winapi"] }
 tar.workspace = true
