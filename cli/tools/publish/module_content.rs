@@ -628,7 +628,6 @@ mod test {
         .unwrap()
         .clone(),
       resolver_factory.workspace_resolver().await.unwrap().clone(),
-      true,
     );
     ModuleContentProvider::new(
       Arc::new(ParsedSourceCache::default()),

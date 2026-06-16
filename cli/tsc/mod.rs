@@ -598,12 +598,15 @@ pub static BYTES_IMPORT_SOURCE: &str =
   "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n";
 pub static TEXT_IMPORT_SOURCE: &str =
   "const data: string;\nexport default data;\n";
+pub static CSS_IMPORT_SOURCE: &str =
+  "const sheet: CSSStyleSheet;\nexport default sheet;\n";
 
 pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
   let raw_import = get_specifier_raw_import(specifier)?;
   let source = match raw_import {
     RawImportKind::Bytes => BYTES_IMPORT_SOURCE,
     RawImportKind::Text => TEXT_IMPORT_SOURCE,
+    RawImportKind::Css => CSS_IMPORT_SOURCE,
   };
   Some(source)
 }
@@ -612,6 +615,7 @@ pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
 pub enum RawImportKind {
   Bytes,
   Text,
+  Css,
 }
 
 /// We store the raw import kind in the fragment of the Url
@@ -630,6 +634,8 @@ fn get_specifier_raw_import(specifier: &Url) -> Option<RawImportKind> {
     Some(RawImportKind::Text)
   } else if remaining.starts_with("bytes") {
     Some(RawImportKind::Bytes)
+  } else if remaining.starts_with("css") {
+    Some(RawImportKind::Css)
   } else {
     None
   }

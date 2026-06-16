@@ -138,6 +138,12 @@ async fn run_subcommand(
     DenoSubcommand::Remove(remove_flags) => spawn_subcommand(async {
       tools::pm::remove(Arc::new(flags), remove_flags).await
     }),
+    DenoSubcommand::Link(link_flags) => spawn_subcommand(async {
+      tools::pm::link(Arc::new(flags), link_flags).await
+    }),
+    DenoSubcommand::Unlink(unlink_flags) => spawn_subcommand(async {
+      tools::pm::unlink(Arc::new(flags), unlink_flags).await
+    }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       let flags = Arc::new(flags);
       if bench_flags.watch.is_some() {

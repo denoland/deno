@@ -11,7 +11,9 @@ use deno_error::JsError;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_parent;
 use deno_path_util::url_to_file_path;
+use deno_semver::VersionReq;
 use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageReq;
 use import_map::ImportMapWithDiagnostics;
 use indexmap::IndexMap;
 use serde::Deserialize;
@@ -30,8 +32,8 @@ use url::Url;
 use crate::UrlToFilePathError;
 use crate::glob::FilePatterns;
 use crate::glob::PathOrPatternSet;
-use crate::import_map::imports_values;
-use crate::import_map::scope_values;
+use crate::import_map::imports_entries;
+use crate::import_map::scope_entries;
 use crate::import_map::value_to_dep_req;
 use crate::util::is_skippable_io_error;
 
@@ -2623,10 +2625,34 @@ impl ConfigFile {
     }
   }
 
-  pub fn dependencies(&self) -> HashSet<JsrDepPackageReq> {
-    let mut set = imports_values(self.json.imports.as_ref())
-      .chain(scope_values(self.json.scopes.as_ref()))
-      .filter_map(value_to_dep_req)
+  pub fn dependencies(
+    &self,
+    catalogs: &IndexMap<String, IndexMap<String, String>>,
+  ) -> HashSet<JsrDepPackageReq> {
+    let entry_to_dep_req = |(key, value): (&str, &str)| {
+      if let Some(catalog_name) = value.strip_prefix("catalog:") {
+        // `catalog:`/`catalog:<name>` entries resolve to the version
+        // requirement defined in the workspace root's catalog
+        let catalog_name = if catalog_name.is_empty() {
+          "default"
+        } else {
+          catalog_name
+        };
+        let name = key.strip_suffix('/').unwrap_or(key);
+        let version_req_str =
+          catalogs.get(catalog_name).and_then(|c| c.get(name))?;
+        let version_req = VersionReq::parse_from_npm(version_req_str).ok()?;
+        Some(JsrDepPackageReq::npm(PackageReq {
+          name: name.into(),
+          version_req,
+        }))
+      } else {
+        value_to_dep_req(value)
+      }
+    };
+    let mut set = imports_entries(self.json.imports.as_ref())
+      .chain(scope_entries(self.json.scopes.as_ref()))
+      .filter_map(entry_to_dep_req)
       .collect::<HashSet<_>>();
 
     if let Some(serde_json::Value::Object(compiler_options)) =

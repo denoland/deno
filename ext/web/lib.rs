@@ -5,6 +5,7 @@ mod blob;
 mod broadcast_channel;
 mod compression;
 mod console;
+mod css_stylesheet;
 mod css_value;
 mod f64;
 mod geometry;
@@ -21,6 +22,7 @@ use std::sync::Arc;
 
 pub use blob::BlobError;
 pub use compression::CompressionError;
+pub use css_stylesheet::create_css_style_sheet;
 use deno_core::U16String;
 use deno_core::convert::ByteString;
 use deno_core::convert::Uint8Array;
@@ -120,6 +122,15 @@ deno_core::extension!(deno_web,
     urlpattern::op_urlpattern_parse,
     urlpattern::op_urlpattern_process_match_input,
     console::op_preview_entries,
+    console::op_console_inspect,
+    console::op_console_inspect_args,
+    console::op_console_format_value,
+    console::op_console_quote_string,
+    console::op_console_parse_css,
+    console::op_console_parse_css_color,
+    console::op_console_css_to_ansi,
+    console::op_console_get_string_width,
+    console::op_console_strip_vt,
     broadcast_channel::op_broadcast_subscribe,
     broadcast_channel::op_broadcast_unsubscribe,
     broadcast_channel::op_broadcast_serialize,
@@ -129,6 +140,8 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_recv,
   ],
   objects = [
+    css_stylesheet::CSSRule,
+    css_stylesheet::CSSStyleSheet,
     geometry::DOMPointReadOnly,
     geometry::DOMPoint,
     geometry::DOMRectReadOnly,
@@ -137,6 +150,7 @@ deno_core::extension!(deno_web,
     geometry::DOMMatrixReadOnly,
     geometry::DOMMatrix,
     image_data::ImageData,
+    console::Console,
   ],
   lazy_loaded_esm = [
     "webtransport.js",
@@ -165,6 +179,7 @@ deno_core::extension!(deno_web,
     "15_performance.js",
     "16_image_data.js",
     "17_geometry.js",
+    "18_css_stylesheet.js",
   ],
   options = {
     blob_store: Arc<dyn BlobStoreTrait>,

@@ -473,6 +473,18 @@ impl NetPermToken {
   pub fn includes(&self, addr: &str) -> bool {
     self.resolved_ips.iter().any(|ip| ip == addr)
   }
+
+  /// Returns the host that `--allow-net` should be checked against for a
+  /// connection to `address`: the token's original hostname when `address` is
+  /// one of the IPs this token resolved, otherwise the literal `address`. This
+  /// keeps the hostname from being grafted onto an unrelated IP.
+  pub fn check_host<'a>(&'a self, address: &'a str) -> &'a str {
+    if self.includes(address) {
+      &self.hostname
+    } else {
+      address
+    }
+  }
 }
 
 #[op2]
@@ -504,8 +516,8 @@ pub async fn op_net_connect_tcp_inner(
     // If token exists and the address matches to its resolved ips,
     // then we can check net permission against token.hostname, instead of addr.hostname
     let hostname_to_check = match net_perm_token {
-      Some(token) if token.includes(&addr.hostname) => token.hostname.clone(),
-      _ => addr.hostname.clone(),
+      Some(token) => token.check_host(&addr.hostname).to_string(),
+      None => addr.hostname.clone(),
     };
     state_
       .borrow_mut::<PermissionsContainer>()

@@ -151,6 +151,18 @@ pub struct RemoveFlags {
   pub package_json: bool,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LinkFlags {
+  pub paths: Vec<String>,
+  pub lockfile_only: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct UnlinkFlags {
+  pub names_or_paths: Vec<String>,
+  pub lockfile_only: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct VersionFlags {
   pub increment: Option<VersionIncrement>,
@@ -677,6 +689,9 @@ pub struct TestFlags {
   pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
+  /// Run only a subset of test files, as `(index, count)` with a 1-based
+  /// index. Used to split a run across machines, e.g. `--shard=2/3`.
+  pub shard: Option<(usize, usize)>,
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
@@ -765,6 +780,7 @@ pub struct BundleFlags {
   pub sourcemap: Option<SourceMapType>,
   pub platform: BundlePlatform,
   pub watch: bool,
+  pub declaration: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -793,6 +809,8 @@ pub enum DenoSubcommand {
   JSONReference(JSONReferenceFlags),
   Jupyter(JupyterFlags),
   Uninstall(UninstallFlags),
+  Link(LinkFlags),
+  Unlink(UnlinkFlags),
   Lsp,
   Lint(LintFlags),
   Repl(ReplFlags),
@@ -1913,6 +1931,9 @@ static DENO_HELP: &str = cstr!(
     <g>outdated</>     Find and update outdated dependencies
     <g>approve-scripts</> Approve npm lifecycle scripts
     <g>remove</>       Remove dependencies from the configuration file
+    <g>link</>         Link a local JSR package into the current project
+                  <p(245)>deno link ../my-local-pkg</>
+    <g>unlink</>       Remove a linked local package from the current project
     <g>publish</>      Publish the current working directory's package or workspace
     <g>why</>          Show why a package is installed
 
@@ -2192,6 +2213,8 @@ pub fn flags_from_vec_with_initial_cwd(
         "init" => init_parse(&mut flags, &mut m)?,
         "info" => info_parse(&mut flags, &mut m)?,
         "install" => install_parse(&mut flags, &mut m, app)?,
+        "link" => link_parse(&mut flags, &mut m)?,
+        "unlink" => unlink_parse(&mut flags, &mut m)?,
         "ci" => ci_parse(&mut flags, &mut m)?,
         "json_reference" => json_reference_parse(&mut flags, &mut m, app),
         "jupyter" => jupyter_parse(&mut flags, &mut m),
@@ -2474,6 +2497,8 @@ pub fn clap_root() -> Command {
         .subcommand(approve_scripts_subcommand())
         .subcommand(uninstall_subcommand())
         .subcommand(outdated_subcommand())
+        .subcommand(link_subcommand())
+        .subcommand(unlink_subcommand())
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
         .subcommand(publish_subcommand())
@@ -2749,6 +2774,68 @@ You can remove multiple dependencies at once:
   })
 }
 
+fn link_subcommand() -> Command {
+  command(
+    "link",
+    cstr!(
+      "Link a local JSR package into the current project for development.
+
+  <p(245)>deno link ../my-local-pkg</>
+
+Each path must be a directory containing a deno.json with a JSR-style \"name\" field.
+The path is appended to the \"links\" array in the nearest deno.json, and modules
+imported by that package's name resolve to the local copy instead of the registry.
+
+To stop using the local copy:
+  <p(245)>deno unlink ../my-local-pkg</>
+  <p(245)>deno unlink @scope/name</>
+"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("paths")
+          .help("Paths to local package directories to link")
+          .required_unless_present("help")
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+      .args(lock_args())
+      .arg(lockfile_only_arg())
+  })
+}
+
+fn unlink_subcommand() -> Command {
+  command(
+    "unlink",
+    cstr!(
+      "Remove a linked local package from the current project.
+
+  <p(245)>deno unlink ../my-local-pkg</>
+  <p(245)>deno unlink @scope/name</>
+
+Accepts either a path that matches an existing entry in the \"links\" array,
+or the JSR-style name of a linked package.
+"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("names_or_paths")
+          .help("Linked package names or paths to remove")
+          .required_unless_present("help")
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+      .args(lock_args())
+      .arg(lockfile_only_arg())
+  })
+}
+
 fn bench_subcommand() -> Command {
   command(
     "bench",
@@ -2954,6 +3041,12 @@ If no output file is given, the output is written to standard output:
           .num_args(1)
           .value_parser(clap::builder::ValueParser::new(platform_parser))
           .default_value("deno"),
+      )
+      .arg(
+        Arg::new("declaration")
+          .long("declaration")
+          .help("Generate .d.ts declaration files alongside the bundle")
+          .action(ArgAction::SetTrue),
       )
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
@@ -3665,7 +3758,7 @@ Supported file types are:
   <p(245)>JavaScript, TypeScript, Markdown, JSON(C) and Jupyter Notebooks</>
 
 Supported file types which are behind corresponding unstable flags (see formatting options):
-  <p(245)>HTML, CSS, SCSS, SASS, LESS, YAML, Svelte, Vue, Astro and Angular</>
+  <p(245)>HTML, CSS, SCSS, LESS, YAML, Svelte, Vue, Astro and Angular</>
 
 Format stdin and write to stdout:
   <p(245)>cat file.ts | deno fmt -</>
@@ -3708,7 +3801,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .help("Set content type of the supplied file")
           .value_parser([
             "ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs", "md", "json", "jsonc", "css", "scss",
-            "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
+            "less", "html", "svelte", "vue", "astro", "yml", "yaml",
             "ipynb", "sql", "vto", "njk"
           ])
           .help_heading(FMT_HEADING).requires("files"),
@@ -3797,7 +3890,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       .arg(
         Arg::new("unstable-css")
           .long("unstable-css")
-          .help("Enable formatting CSS, SCSS, Sass and Less files")
+          .help("Enable formatting CSS, SCSS and Less files")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue)
           .help_heading(FMT_HEADING)
@@ -4958,6 +5051,26 @@ fn complete_available_tasks() -> Vec<CompletionCandidate> {
   }
 }
 
+/// Parses a `--shard` value of the form `<index>/<count>` (1-based index).
+fn parse_test_shard(value: &str) -> Result<(usize, usize), String> {
+  let (index, count) = value.split_once('/').ok_or_else(|| {
+    format!("expected format <index>/<count>, but got '{value}'")
+  })?;
+  let index: usize = index
+    .parse()
+    .map_err(|_| format!("invalid shard index '{index}'"))?;
+  let count: usize = count
+    .parse()
+    .map_err(|_| format!("invalid shard count '{count}'"))?;
+  if count == 0 {
+    return Err("shard count must be greater than 0".to_string());
+  }
+  if index == 0 || index > count {
+    return Err(format!("shard index must be between 1 and {count}"));
+  }
+  Ok((index, count))
+}
+
 fn test_subcommand() -> Command {
   command("test",
       cstr!("Run tests using Deno's built-in test runner.
@@ -5045,6 +5158,16 @@ or <c>**/__tests__/**</>:
           .num_args(0..=1)
           .require_equals(true)
           .value_parser(value_parser!(u64))
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("shard")
+          .long("shard")
+          .value_name("INDEX/COUNT")
+          .help(cstr!("Run only the test files for shard INDEX of COUNT, e.g. --shard=2/3.
+  <p(245)>The discovered test files are sorted and split into COUNT consecutive groups; INDEX is 1-based. Useful for splitting a run across machines.</>"))
+          .require_equals(true)
+          .value_parser(parse_test_shard)
           .help_heading(TEST_HEADING),
       )
       .arg(
@@ -5642,8 +5765,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                             Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>
                                              <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
-  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                             <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
+  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary. A Unix domain socket can be scoped with <p(245)>unix:<<absolute-path></>.
+                                             <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"  |  --allow-net="unix:/var/run/docker.sock"</>
   <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>     Allow access to environment variables. Optionally specify accessible environment variables.
                                              <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"</>
   <g>-S, --allow-sys[=<<API_NAME>...]</>          Allow access to OS information. Optionally allow specific APIs by function name.
@@ -6908,6 +7031,12 @@ impl CommandExt for Command {
         arg = arg.alias("sloppy-imports");
       }
 
+      // `--unsafe-proto` is a stable shorthand for `--unstable-unsafe-proto`;
+      // it enables the same behavior without being spelled as an unstable flag.
+      if feature.flag_name == "unstable-unsafe-proto" {
+        arg = arg.alias("unsafe-proto");
+      }
+
       arg = arg.long_help(long_help_val);
       cmd = cmd.arg(arg);
     }
@@ -7090,6 +7219,33 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
+fn link_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  lock_args_parse(flags, matches);
+  flags.subcommand = DenoSubcommand::Link(LinkFlags {
+    paths: matches.remove_many::<String>("paths").unwrap().collect(),
+    lockfile_only: matches.get_flag("lockfile-only"),
+  });
+  Ok(())
+}
+
+fn unlink_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  lock_args_parse(flags, matches);
+  flags.subcommand = DenoSubcommand::Unlink(UnlinkFlags {
+    names_or_paths: matches
+      .remove_many::<String>("names_or_paths")
+      .unwrap()
+      .collect(),
+    lockfile_only: matches.get_flag("lockfile-only"),
+  });
+  Ok(())
+}
+
 fn bump_version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let increment =
     matches
@@ -7240,6 +7396,7 @@ fn bundle_parse(
     inline_imports: matches.get_flag("inline-imports"),
     platform: matches.remove_one::<BundlePlatform>("platform").unwrap(),
     sourcemap: matches.remove_one::<SourceMapType>("sourcemap"),
+    declaration: matches.get_flag("declaration"),
   });
   Ok(())
 }
@@ -8587,6 +8744,7 @@ fn test_parse(
     files: FileFlags { include, ignore },
     filter,
     shuffle,
+    shard: matches.remove_one::<(usize, usize)>("shard"),
     permit_no_files: permit_no_files_parse(matches),
     parallel: matches.get_flag("parallel"),
     trace_leaks,
@@ -9340,8 +9498,6 @@ fn unstable_args_parse(
   }
 
   // TODO(bartlomieju): this should be factored out since these are configured via UNSTABLE_FEATURES
-  flags.unstable_config.bare_node_builtins =
-    matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.lazy_dynamic_imports =
     matches.get_flag("unstable-lazy-dynamic-imports");
@@ -13006,6 +13162,7 @@ mod tests {
             ignore: vec![],
           },
           shuffle: None,
+          shard: None,
           parallel: false,
           trace_leaks: true,
           sanitize_ops: false,
@@ -13111,6 +13268,7 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -13157,6 +13315,7 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -13297,6 +13456,7 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: Some(1),
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -13324,6 +13484,25 @@ mod tests {
   }
 
   #[test]
+  fn test_shard() {
+    let r = flags_from_vec(svec!["deno", "test", "--shard=2/3"]);
+    let flags = r.unwrap();
+    assert!(matches!(
+      flags.subcommand,
+      DenoSubcommand::Test(TestFlags {
+        shard: Some((2, 3)),
+        ..
+      })
+    ));
+
+    // Invalid shard values are rejected at parse time.
+    assert!(flags_from_vec(svec!["deno", "test", "--shard=3/2"]).is_err());
+    assert!(flags_from_vec(svec!["deno", "test", "--shard=0/2"]).is_err());
+    assert!(flags_from_vec(svec!["deno", "test", "--shard=1/0"]).is_err());
+    assert!(flags_from_vec(svec!["deno", "test", "--shard=foo"]).is_err());
+  }
+
+  #[test]
   fn test_watch() {
     let r = flags_from_vec(svec!["deno", "test", "--watch"]);
     assert_eq!(
@@ -13336,6 +13515,7 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -13374,6 +13554,7 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          shard: None,
           files: FileFlags {
             include: vec!["./".to_string()],
             ignore: vec![],
@@ -13414,6 +13595,7 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -16259,7 +16441,6 @@ mod tests {
           force: false,
         }),
         unstable_config: UnstableConfig {
-          bare_node_builtins: true,
           sloppy_imports: false,
           features: svec!["bare-node-builtins", "ffi", "worker-options"],
           ..Default::default()

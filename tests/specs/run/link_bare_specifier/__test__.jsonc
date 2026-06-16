@@ -1,10 +1,9 @@
 {
   "tempDir": true,
   "tests": {
-    "bare_specifier_rejected": {
+    "bare_specifier_resolves": {
       "args": "run bare.ts",
-      "output": "bare.out",
-      "exitCode": 1
+      "output": "bare.out"
     },
     "jsr_specifier_resolves": {
       "args": "run jsr_prefix.ts",
