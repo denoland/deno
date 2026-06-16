@@ -28,7 +28,6 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
-use deno_tls::ResolvedTlsKey;
 use deno_tls::ServerConfigProvider;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
@@ -269,8 +268,10 @@ pub fn op_tls_key_static(
 
 #[op2]
 pub fn op_tls_cert_resolver_create<'s>(
+  state: &OpState,
   scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Array> {
+  super::check_unstable(state, "Deno.listenTls({ resolveCertificate })");
   let (resolver, lookup) = new_resolver();
   let resolver = deno_core::cppgc::make_cppgc_object(
     scope,
@@ -280,45 +281,51 @@ pub fn op_tls_cert_resolver_create<'s>(
   v8::Array::new_with_elements(scope, &[resolver.into(), lookup.into()])
 }
 
-/// Returns `(resolutionId, sni, alpnProtocols)` for the next TLS handshake
-/// waiting on a certificate, or `null` when the listener is gone.
+/// The parts of a client's TLS ClientHello surfaced to a `resolveCertificate`
+/// callback. The numeric fields are raw IANA TLS code points.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientHelloInfo {
+  alpn_protocols: Vec<String>,
+  cipher_suites: Vec<u16>,
+  signature_schemes: Vec<u16>,
+  supported_groups: Vec<u16>,
+}
+
+/// Returns `(resolutionId, serverName, clientHello)` for the next TLS
+/// handshake waiting on a certificate, or `null` when the listener is gone.
 #[op2]
 #[serde]
 pub async fn op_tls_cert_resolver_poll(
   #[cppgc] lookup: &TlsKeyLookup,
-) -> Option<(String, String, Vec<String>)> {
+) -> Option<(String, String, ClientHelloInfo)> {
   let (id, hello) = lookup.poll().await?;
   Some((
     id,
     hello.sni,
-    hello
-      .alpn
-      .iter()
-      .map(|p| String::from_utf8_lossy(p).into_owned())
-      .collect(),
+    ClientHelloInfo {
+      alpn_protocols: hello
+        .alpn
+        .iter()
+        .map(|p| String::from_utf8_lossy(p).into_owned())
+        .collect(),
+      cipher_suites: hello.cipher_suites,
+      signature_schemes: hello.signature_schemes,
+      supported_groups: hello.supported_groups,
+    },
   ))
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_tls_cert_resolver_resolve(
   #[cppgc] lookup: &TlsKeyLookup,
   #[string] id: String,
   #[cppgc] key: &TlsKeysHolder,
-  #[serde] alpn: Option<Vec<String>>,
-  cache: bool,
 ) -> Result<(), NetError> {
   let TlsKeys::Static(key) = key.take() else {
     return Err(NetError::UnexpectedKeyType);
   };
-  lookup.resolve(
-    id,
-    Ok(ResolvedTlsKey {
-      key,
-      alpn: alpn
-        .map(|protos| protos.into_iter().map(String::into_bytes).collect()),
-      cache,
-    }),
-  );
+  lookup.resolve(id, Ok(key));
   Ok(())
 }
 
@@ -329,14 +336,6 @@ pub fn op_tls_cert_resolver_resolve_error(
   #[string] error: String,
 ) {
   lookup.resolve(id, Err(error))
-}
-
-#[op2(fast)]
-pub fn op_tls_cert_resolver_invalidate(
-  #[cppgc] lookup: &TlsKeyLookup,
-  #[string] sni: String,
-) {
-  lookup.invalidate(&sni)
 }
 
 #[op2(stack_trace)]

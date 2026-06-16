@@ -8,7 +8,6 @@ const {
   op_net_connect_tls,
   op_net_listen_tls,
   op_tls_cert_resolver_create,
-  op_tls_cert_resolver_invalidate,
   op_tls_cert_resolver_poll,
   op_tls_cert_resolver_resolve,
   op_tls_cert_resolver_resolve_error,
@@ -21,7 +20,6 @@ const {
 const {
   ObjectDefineProperty,
   ObjectFreeze,
-  SafeWeakMap,
   TypeError,
   Symbol,
   SymbolFor,
@@ -116,11 +114,8 @@ class TlsListener extends Listener {
  * interfaces.
  */
 function hasTlsKeyPairOptions(options) {
-  // TODO(mmastrac): remove this temporary symbol when the API lands
-  if (options[resolverSymbol] !== undefined) {
-    return true;
-  }
-  return (options.cert !== undefined || options.key !== undefined);
+  return (options.cert !== undefined || options.key !== undefined ||
+    options.resolveCertificate !== undefined);
 }
 
 /**
@@ -131,10 +126,15 @@ function loadTlsKeyPair(api, {
   keyFormat,
   cert,
   key,
+  resolveCertificate,
 }) {
-  // TODO(mmastrac): remove this temporary symbol when the API lands
-  if (arguments[1][resolverSymbol] !== undefined) {
-    return createTlsKeyResolver(arguments[1][resolverSymbol]);
+  if (resolveCertificate !== undefined) {
+    if (typeof resolveCertificate !== "function") {
+      throw new TypeError(
+        `If \`resolveCertificate\` is specified, it must be a function for \`${api}\``,
+      );
+    }
+    return createTlsKeyResolver(resolveCertificate);
   }
 
   // Check for "pem" format
@@ -229,56 +229,36 @@ function startTlsInternal(
   return new TlsConn(rid, remoteAddr, localAddr);
 }
 
-const resolverSymbol = SymbolFor("unstableSniResolver");
 const serverNameSymbol = SymbolFor("unstableServerName");
 
-// Maps a resolver callback to a function that drops cached resolutions for
-// a given SNI hostname, so the next handshake re-invokes the callback. Used
-// to swap certificates without restarting the listener (eg. ACME renewal).
-//
-// Keyed by the callback function, so reusing one callback across multiple
-// `listenTls` calls keeps only the last listener's invalidator. Each listener
-// should use its own callback if it needs independent invalidation.
-const tlsKeyResolverInvalidators = new SafeWeakMap();
-
+// Drives a `resolveCertificate` callback: polls the native lookup queue for
+// pending TLS handshakes, invokes the user callback with the requested server
+// name (SNI) and the client's ClientHello, and feeds the resulting
+// certificate/key pair back. Resolutions are cached by server name on the
+// native side, so the callback is invoked once per distinct name.
 function createTlsKeyResolver(callback) {
   const { 0: resolver, 1: lookup } = op_tls_cert_resolver_create();
-  tlsKeyResolverInvalidators.set(
-    callback,
-    (sni) => op_tls_cert_resolver_invalidate(lookup, sni),
-  );
   (async () => {
     while (true) {
       const polled = await op_tls_cert_resolver_poll(lookup);
       if (polled === null || polled === undefined) {
         break;
       }
-      const { 0: id, 1: sni, 2: alpnProtocols } = polled;
+      const { 0: id, 1: serverName, 2: clientHello } = polled;
       try {
-        // The callback may pick a certificate based on the SNI hostname
-        // and/or the client's ALPN offer (eg. respond to an `acme-tls/1`
-        // TLS-ALPN-01 challenge handshake with a one-shot challenge cert
-        // by returning `alpnProtocols: ["acme-tls/1"], noCache: true`).
-        //
-        // Resolutions are cached per (SNI, ALPN offer) pair, so a resolver
-        // that only cares about the hostname is still invoked once per
-        // distinct ALPN offer for that hostname (eg. a browser offering
-        // ["h2","http/1.1"] and `curl --http1.1` offering ["http/1.1"]
-        // resolve separately). Returning `noCache: true` opts a resolution
-        // out of caching entirely.
-        ObjectFreeze(alpnProtocols);
-        const key = await callback(sni, ObjectFreeze({ alpnProtocols }));
-        if (!hasTlsKeyPairOptions(key)) {
-          op_tls_cert_resolver_resolve_error(lookup, id, "Invalid key");
-        } else {
-          const resolved = loadTlsKeyPair("Deno.listenTls", key);
-          op_tls_cert_resolver_resolve(
+        const keyPair = await callback(serverName, ObjectFreeze(clientHello));
+        if (
+          keyPair === null || typeof keyPair !== "object" ||
+          keyPair.cert === undefined || keyPair.key === undefined
+        ) {
+          op_tls_cert_resolver_resolve_error(
             lookup,
             id,
-            resolved,
-            key.alpnProtocols ?? null,
-            key.noCache !== true,
+            "`resolveCertificate` must return an object with `cert` and `key`",
           );
+        } else {
+          const resolved = loadTlsKeyPair("Deno.listenTls", keyPair);
+          op_tls_cert_resolver_resolve(lookup, id, resolved);
         }
       } catch (e) {
         op_tls_cert_resolver_resolve_error(lookup, id, e.message);
@@ -288,10 +268,7 @@ function createTlsKeyResolver(callback) {
   return resolver;
 }
 
-internals.resolverSymbol = resolverSymbol;
 internals.serverNameSymbol = serverNameSymbol;
-internals.createTlsKeyResolver = createTlsKeyResolver;
-internals.tlsKeyResolverInvalidators = tlsKeyResolverInvalidators;
 internals.getPeerCertificate = _getPeerCertificate;
 
 return {

@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, assertRejects } from "./test_util.ts";
-const { resolverSymbol, serverNameSymbol, tlsKeyResolverInvalidators } =
+const { serverNameSymbol } =
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
   Deno[Deno.internal];
 
@@ -18,16 +18,14 @@ Deno.test(
       "server-2": { cert: certEcc, key: keyEcc },
       "fail-server-3": { cert: "(invalid)", key: "(bad)" },
     };
-    const opts: unknown = {
+    const listener = Deno.listenTls({
       hostname: "localhost",
       port: 0,
-      [resolverSymbol]: (sni: string) => {
-        sniRequests.push(sni);
-        return keys[sni]!;
+      resolveCertificate(serverName) {
+        sniRequests.push(serverName);
+        return keys[serverName]!;
       },
-    };
-    // @ts-ignore Trust me
-    const listener = Deno.listenTls(opts);
+    });
 
     for (
       const server of ["server-1", "server-2", "fail-server-3", "fail-server-4"]
@@ -61,72 +59,53 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true, read: true } },
-  async function listenResolverAlpn() {
-    const resolutions: [string, string[]][] = [];
-    const opts: unknown = {
+  async function listenResolverClientHello() {
+    let clientHello: Deno.TlsClientHello | undefined;
+    const listener = Deno.listenTls({
       hostname: "localhost",
       port: 0,
-      [resolverSymbol]: (sni: string, info: { alpnProtocols: string[] }) => {
-        resolutions.push([sni, info.alpnProtocols]);
-        if (info.alpnProtocols.includes("acme-tls/1")) {
-          // TLS-ALPN-01 style: per-connection ALPN override, never cached
-          return { cert, key, alpnProtocols: ["acme-tls/1"], noCache: true };
-        }
+      resolveCertificate(_serverName, hello) {
+        clientHello = hello;
         return { cert, key };
       },
-    };
-    // @ts-ignore Trust me
-    const listener = Deno.listenTls(opts);
+    });
 
-    async function connect(alpnProtocols?: string[]): Promise<string | null> {
-      const conn = await Deno.connectTls({
-        hostname: "localhost",
-        [serverNameSymbol]: "server-1",
-        port: listener.addr.port,
-        alpnProtocols,
-      } as Deno.ConnectTlsOptions);
-      const serverConn = await listener.accept();
-      const { 0: info } = await Promise.all([
-        conn.handshake(),
-        serverConn.handshake(),
-      ]);
-      conn.close();
-      serverConn.close();
-      return info.alpnProtocol;
-    }
-
-    // Regular handshakes share a single cached resolution.
-    assertEquals(await connect(), null);
-    assertEquals(await connect(), null);
-    // The resolver overrides ALPN per connection and opts out of caching,
-    // so every challenge handshake resolves freshly.
-    assertEquals(await connect(["acme-tls/1"]), "acme-tls/1");
-    assertEquals(await connect(["acme-tls/1"]), "acme-tls/1");
-
-    assertEquals(resolutions, [
-      ["server-1", []],
-      ["server-1", ["acme-tls/1"]],
-      ["server-1", ["acme-tls/1"]],
-    ]);
+    const conn = await Deno.connectTls({
+      hostname: "localhost",
+      [serverNameSymbol]: "server-1",
+      port: listener.addr.port,
+      alpnProtocols: ["h2", "http/1.1"],
+    } as Deno.ConnectTlsOptions);
+    const serverConn = await listener.accept();
+    await Promise.all([conn.handshake(), serverConn.handshake()]);
+    conn.close();
+    serverConn.close();
     listener.close();
+
+    // The ClientHello carries the client's offer: the ALPN list it sent and
+    // the raw IANA code points it advertised.
+    assertEquals(clientHello!.alpnProtocols, ["h2", "http/1.1"]);
+    assertEquals(clientHello!.cipherSuites.length > 0, true);
+    assertEquals(clientHello!.signatureSchemes.length > 0, true);
+    assertEquals(clientHello!.supportedGroups.length > 0, true);
+    for (const code of clientHello!.cipherSuites) {
+      assertEquals(typeof code, "number");
+    }
   },
 );
 
 Deno.test(
   { permissions: { net: true, read: true } },
-  async function listenResolverInvalidate() {
+  async function listenResolverCachedByName() {
     let calls = 0;
-    const resolve = (_sni: string) => {
-      calls++;
-      return { cert, key };
-    };
-    const opts: unknown = {
+    const listener = Deno.listenTls({
       hostname: "localhost",
       port: 0,
-      [resolverSymbol]: resolve,
-    };
-    // @ts-ignore Trust me
-    const listener = Deno.listenTls(opts);
+      resolveCertificate() {
+        calls++;
+        return { cert, key };
+      },
+    });
 
     async function connect() {
       const conn = await Deno.connectTls({
@@ -140,15 +119,46 @@ Deno.test(
       serverConn.close();
     }
 
+    // Resolutions are cached by server name, so connecting twice with the
+    // same name only invokes the callback once.
     await connect();
     await connect();
     assertEquals(calls, 1);
-
-    const invalidate = tlsKeyResolverInvalidators.get(resolve);
-    invalidate("server-1");
-
-    await connect();
-    assertEquals(calls, 2);
     listener.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
+  async function serveResolver() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<number>();
+    const serverNames: string[] = [];
+
+    const server = Deno.serve({
+      hostname: "localhost",
+      port: 0,
+      signal: ac.signal,
+      onListen: ({ port }) => resolve(port),
+      resolveCertificate(serverName) {
+        serverNames.push(serverName);
+        return { cert, key };
+      },
+    }, () => new Response("Hello SNI"));
+
+    const port = await promise;
+    const caCert = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({ caCerts: [caCert] });
+    const resp = await fetch(`https://localhost:${port}/`, {
+      client,
+      headers: { "connection": "close" },
+    });
+    assertEquals(await resp.text(), "Hello SNI");
+
+    client.close();
+    ac.abort();
+    await server.finished;
+
+    assertEquals(serverNames, ["localhost"]);
   },
 );

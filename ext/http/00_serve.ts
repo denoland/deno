@@ -1375,13 +1375,16 @@ function serveInner(options, handler) {
 
   let listener;
   if (wantsHttps) {
-    if (!options.cert || !options.key) {
+    if (options.resolveCertificate !== undefined) {
+      listenOpts.resolveCertificate = options.resolveCertificate;
+    } else if (options.cert && options.key) {
+      listenOpts.cert = options.cert;
+      listenOpts.key = options.key;
+    } else {
       throw new TypeError(
-        "Both 'cert' and 'key' must be provided to enable HTTPS",
+        "Both 'cert' and 'key' (or 'resolveCertificate') must be provided to enable HTTPS",
       );
     }
-    listenOpts.cert = options.cert;
-    listenOpts.key = options.key;
     listenOpts.alpnProtocols = ["h2", "http/1.1"];
     listener = listenTls(listenOpts);
     listenOpts.port = listener.addr.port;
