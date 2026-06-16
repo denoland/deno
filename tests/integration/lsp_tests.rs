@@ -17106,7 +17106,7 @@ fn lsp_node_modules_dir() {
   client.initialize_default();
   let file_url = temp_dir.url().join("file.ts").unwrap();
   let file_uri = url_to_uri(&file_url).unwrap();
-  client.did_open(json!({
+  let _initial_diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": file_uri,
       "languageId": "typescript",
