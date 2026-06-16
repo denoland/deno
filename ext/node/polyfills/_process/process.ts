@@ -227,7 +227,12 @@ const versions = {
   // It must match NAPI_VERSION in ext/napi/js_native_api.rs.
   napi: "9",
   llhttp: "9.4.1",
-  openssl: "3.5.6",
+  // `openssl` is intentionally NOT bumped to Node's value. Deno's crypto/TLS
+  // stack does not ship OpenSSL 3.5 behavior (e.g. no ML-DSA/ML-KEM, different
+  // TLS alert strings), and npm packages and Node's own test suite feature
+  // detect via `hasOpenSSL()` on this field. Reporting >= 3.2/3.5 here makes
+  // them take code paths Deno cannot satisfy.
+  openssl: "3.0.7+quic",
   cldr: "48.0",
   icu: "78.3",
   tz: "2026b",
