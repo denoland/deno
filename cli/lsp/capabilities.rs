@@ -12,6 +12,7 @@ use tower_lsp::lsp_types::*;
 
 use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::semantic_tokens::get_legend;
+use crate::lsp::lsp_custom::INFERRED_TYPE_COMMAND;
 
 pub static INFERRED_TYPE_CODE_ACTION_KIND: LazyLock<CodeActionKind> =
   LazyLock::new(|| {
@@ -174,6 +175,7 @@ pub fn server_capabilities(
     execute_command_provider: Some(ExecuteCommandOptions {
       commands: vec![
         "deno.cache".to_string(),
+        INFERRED_TYPE_COMMAND.to_string(),
         "deno.reloadImportRegistries".to_string(),
       ],
       ..Default::default()
