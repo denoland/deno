@@ -79,6 +79,23 @@ pub struct UnpackArgs<'a> {
   pub dest_path: &'a Path,
 }
 
+/// Resolve the file name of the executable (or dynamic library) that unpacking
+/// the archive is expected to produce.
+///
+/// `exe_name` may already include an extension — for example `libdenort.dylib`
+/// for the desktop runtime — in which case it is used verbatim. A bare name
+/// like `deno` or `denort` gets the platform executable extension applied
+/// (`.exe` on Windows, none elsewhere).
+fn unpacked_exe_name(exe_name: &str, is_windows: bool) -> PathBuf {
+  if Path::new(exe_name).extension().is_some() {
+    PathBuf::from(exe_name)
+  } else if is_windows {
+    Path::new(exe_name).with_extension("exe")
+  } else {
+    PathBuf::from(exe_name)
+  }
+}
+
 pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
   let UnpackArgs {
     exe_name,
@@ -87,9 +104,8 @@ pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
     is_windows,
     dest_path,
   } = args;
-  let exe_ext = if is_windows { "exe" } else { "" };
   let archive_path = dest_path.join(exe_name).with_extension("zip");
-  let exe_path = dest_path.join(exe_name).with_extension(exe_ext);
+  let exe_path = dest_path.join(unpacked_exe_name(exe_name, is_windows));
   assert!(!exe_path.exists());
 
   let archive_ext = Path::new(archive_name)
@@ -115,4 +131,36 @@ pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
 
   assert!(exe_path.exists());
   Ok(exe_path)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn unpacked_exe_name_bare() {
+    // Bare names get the platform executable extension.
+    assert_eq!(unpacked_exe_name("deno", false), PathBuf::from("deno"));
+    assert_eq!(unpacked_exe_name("deno", true), PathBuf::from("deno.exe"));
+    assert_eq!(unpacked_exe_name("denort", false), PathBuf::from("denort"));
+    assert_eq!(unpacked_exe_name("denort", true), PathBuf::from("denort.exe"));
+  }
+
+  #[test]
+  fn unpacked_exe_name_with_extension() {
+    // Names that already carry an extension (the desktop runtime dylib) are
+    // used verbatim — the extension must not be stripped or replaced.
+    assert_eq!(
+      unpacked_exe_name("libdenort.dylib", false),
+      PathBuf::from("libdenort.dylib"),
+    );
+    assert_eq!(
+      unpacked_exe_name("libdenort.so", false),
+      PathBuf::from("libdenort.so"),
+    );
+    assert_eq!(
+      unpacked_exe_name("denort.dll", true),
+      PathBuf::from("denort.dll"),
+    );
+  }
 }
