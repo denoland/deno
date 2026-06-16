@@ -5,7 +5,7 @@
     // refuse, even though the socket only connects to the proxy. Before the
     // fix the target was never checked, so --allow-net=<proxy> alone reached it.
     "target_not_granted_is_blocked": {
-      "args": "run --allow-net=127.0.0.1:9457 main.mjs",
+      "args": "run --allow-net=127.0.0.1:9457 main.mjs 9457 9458",
       "envs": {
         "NODE_USE_ENV_PROXY": "1",
         "HTTP_PROXY": "http://127.0.0.1:9457"
@@ -15,12 +15,31 @@
     // When both the proxy and the target are granted, the proxied request
     // succeeds, so the new target check does not regress the allowed path.
     "target_granted_succeeds": {
-      "args": "run --allow-net=127.0.0.1:9457,127.0.0.1:9458 main.mjs",
+      "args": "run --allow-net=127.0.0.1:9460,127.0.0.1:9461 main.mjs 9460 9461",
       "envs": {
         "NODE_USE_ENV_PROXY": "1",
-        "HTTP_PROXY": "http://127.0.0.1:9457"
+        "HTTP_PROXY": "http://127.0.0.1:9460"
       },
       "output": "ok.out"
+    },
+    // The proxy is allowed (allow-all), but the target is explicitly denied.
+    // --deny-net takes precedence, so the proxied request to the target must be
+    // refused even though the proxy itself is reachable.
+    "target_denied_is_blocked": {
+      "args": "run --allow-net --deny-net=127.0.0.1:9463 main.mjs 9462 9463",
+      "envs": {
+        "NODE_USE_ENV_PROXY": "1",
+        "HTTP_PROXY": "http://127.0.0.1:9462"
+      },
+      "output": "blocked.out"
+    },
+    // A caller must not bypass the target check by supplying the internal
+    // `_proxy` option directly. With no env proxy configured, the request sets
+    // `_proxy` to the granted proxy while the target is not granted; the
+    // runtime strips the caller-supplied field, so the target stays unreachable.
+    "proxy_option_cannot_bypass_target_check": {
+      "args": "run --allow-net=127.0.0.1:9464 proxy_option_bypass.mjs 9464 9465",
+      "output": "blocked.out"
     }
   }
 }

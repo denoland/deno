@@ -4,12 +4,16 @@
 //
 // The proxy here answers directly rather than forwarding (forwarding would loop
 // since the proxy's own request would be re-routed through the global proxy).
-// The "blocked" case never reaches the proxy: the target check throws first.
+// The "blocked" cases never reach the proxy: the target check throws first.
+//
+// Proxy and target ports are taken from argv so each test case can use a
+// distinct pair and avoid rebinding the same port across runs.
 
 import http from "node:http";
 
-const PROXY_PORT = 9457;
-const TARGET = "http://127.0.0.1:9458/test";
+const PROXY_PORT = Number(Deno.args[0] ?? 9457);
+const TARGET_PORT = Number(Deno.args[1] ?? 9458);
+const TARGET = `http://127.0.0.1:${TARGET_PORT}/test`;
 
 const proxy = http.createServer((_req, res) => res.end("hello from origin"));
 await new Promise((resolve) => proxy.listen(PROXY_PORT, "127.0.0.1", resolve));

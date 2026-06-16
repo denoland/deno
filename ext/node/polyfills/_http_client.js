@@ -510,6 +510,17 @@ function ClientRequest(input, options, cb) {
 
   const optsWithoutSignal = { __proto__: null, ...options };
 
+  // The `_proxy*` fields are internal transport details set only by the proxy
+  // selection below. A caller must not be able to supply them directly: doing
+  // so would route the request through an arbitrary proxy while bypassing the
+  // target permission check that the proxy branch performs. Strip any that came
+  // in via `options` so only the values computed here are honored.
+  delete optsWithoutSignal._proxy;
+  delete optsWithoutSignal._proxyTargetHost;
+  delete optsWithoutSignal._proxyTargetPort;
+  delete optsWithoutSignal._proxyProtocol;
+  delete optsWithoutSignal._proxyUseProxyConnection;
+
   const port = optsWithoutSignal.port = options.port || defaultPort || 80;
   const host = optsWithoutSignal.host =
     validateHost(options.hostname, "hostname") ||
