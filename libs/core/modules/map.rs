@@ -3439,6 +3439,11 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
       // from the dependency's instance when the dependency is itself a Wasm
       // module, so that mutable globals stay direct references between Wasm
       // modules. The JS binding only carries the unwrapped snapshot value.
+      //
+      // Limitation: for a circular Wasm<->Wasm mutable-global import the
+      // dependency may not be evaluated yet when this `.get()` runs, so it
+      // returns `undefined` and we fall back to the snapshot number, which
+      // fails instantiation with a `LinkError`. Node.js has the same gap.
       for (i, (_, import_info)) in aggregated_imports.iter().enumerate() {
         if import_info.has_global_import {
           builder.append("const wasmExports_");
