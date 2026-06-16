@@ -31,7 +31,7 @@ impl TestReporter for CompoundTestReporter {
     }
   }
 
-  fn report_slow(&mut self, description: &TestDescription, elapsed: u64) {
+  fn report_slow(&mut self, description: &TestDescription, elapsed: Duration) {
     for reporter in &mut self.test_reporters {
       reporter.report_slow(description, elapsed);
     }
@@ -47,7 +47,7 @@ impl TestReporter for CompoundTestReporter {
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    elapsed: u64,
+    elapsed: Duration,
   ) {
     for reporter in &mut self.test_reporters {
       reporter.report_result(description, result, elapsed);
@@ -93,7 +93,7 @@ impl TestReporter for CompoundTestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    elapsed: u64,
+    elapsed: Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {

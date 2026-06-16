@@ -10,6 +10,8 @@
 
 use std::borrow::Cow;
 
+use argon2::Argon2;
+use argon2::ParamsBuilder;
 use deno_core::v8;
 use deno_core::webidl::ContextFn;
 use deno_core::webidl::WebIdlConverter;
@@ -45,6 +47,15 @@ pub enum SubtleDeriveBitsParams {
     salt: Vec<u8>,
     info: Vec<u8>,
   },
+  Argon2 {
+    name: &'static str,
+    memory: u32,
+    passes: u32,
+    parallelism: u32,
+    nonce: Vec<u8>,
+    secret_value: Option<Vec<u8>>,
+    associated_data: Option<Vec<u8>>,
+  },
   Ecdh {
     public: Box<SubtleKey>,
   },
@@ -62,6 +73,7 @@ impl SubtleDeriveBitsParams {
     match self {
       Self::Pbkdf2 { .. } => "PBKDF2",
       Self::Hkdf { .. } => "HKDF",
+      Self::Argon2 { name, .. } => name,
       Self::Ecdh { .. } => "ECDH",
       Self::X25519 { .. } => "X25519",
       Self::X448 { .. } => "X448",
@@ -145,6 +157,49 @@ impl<'a> WebIdlConverter<'a> for SubtleDeriveBitsParams {
           info,
         })
       }
+      "Argon2i" | "Argon2d" | "Argon2id" => {
+        let memory =
+          read_required_u32(scope, obj, "memory", prefix.clone(), &context)?;
+        let passes =
+          read_required_u32(scope, obj, "passes", prefix.clone(), &context)?;
+        let parallelism = read_required_u32(
+          scope,
+          obj,
+          "parallelism",
+          prefix.clone(),
+          &context,
+        )?;
+        let nonce = read_required_buffer_source(
+          scope,
+          obj,
+          "nonce",
+          prefix.clone(),
+          &context,
+        )?;
+        let secret_value = read_optional_buffer_source(
+          scope,
+          obj,
+          "secretValue",
+          prefix.clone(),
+          &context,
+        )?;
+        let associated_data = read_optional_buffer_source(
+          scope,
+          obj,
+          "associatedData",
+          prefix.clone(),
+          &context,
+        )?;
+        Ok(Self::Argon2 {
+          name: canonical,
+          memory,
+          passes,
+          parallelism,
+          nonce,
+          secret_value,
+          associated_data,
+        })
+      }
       "ECDH" => {
         let public = read_required_public_key(
           scope,
@@ -187,7 +242,10 @@ impl<'a> WebIdlConverter<'a> for SubtleDeriveBitsParams {
 }
 
 fn canonical_derive_name(name: &str) -> Option<&'static str> {
-  const NAMES: &[&str] = &["PBKDF2", "HKDF", "ECDH", "X25519", "X448"];
+  const NAMES: &[&str] = &[
+    "PBKDF2", "HKDF", "Argon2i", "Argon2d", "Argon2id", "ECDH", "X25519",
+    "X448",
+  ];
   NAMES.iter().copied().find(|n| n.eq_ignore_ascii_case(name))
 }
 
@@ -434,6 +492,56 @@ pub fn run(
         Some(info),
         Some(salt),
       )
+    }
+    SubtleDeriveBitsParams::Argon2 {
+      name,
+      memory,
+      passes,
+      parallelism,
+      nonce,
+      secret_value,
+      associated_data,
+    } => {
+      let length =
+        length_u32.ok_or_else(|| op_error("Invalid length".to_string()))?;
+      if length == 0 || length % 8 != 0 {
+        return Err(op_error("Invalid length".to_string()));
+      }
+      let mut builder = ParamsBuilder::new();
+      builder
+        .m_cost(memory)
+        .t_cost(passes)
+        .p_cost(parallelism)
+        .output_len((length / 8) as usize);
+      if let Some(associated_data) = associated_data {
+        let data = argon2::AssociatedData::new(&associated_data)
+          .map_err(|_| op_error("Invalid associatedData".to_string()))?;
+        builder.data(data);
+      }
+      let params = builder
+        .build()
+        .map_err(|_| op_error("Invalid Argon2 parameters".to_string()))?;
+      let algorithm = match name {
+        "Argon2i" => argon2::Algorithm::Argon2i,
+        "Argon2d" => argon2::Algorithm::Argon2d,
+        "Argon2id" => argon2::Algorithm::Argon2id,
+        _ => unreachable!(),
+      };
+      let argon2 = match secret_value.as_deref() {
+        Some(secret_value) => Argon2::new_with_secret(
+          secret_value,
+          algorithm,
+          argon2::Version::V0x13,
+          params,
+        )
+        .map_err(|_| op_error("Invalid secretValue".to_string()))?,
+        None => Argon2::new(algorithm, argon2::Version::V0x13, params),
+      };
+      let mut out = vec![0; (length / 8) as usize];
+      argon2
+        .hash_password_into(key.raw.bytes(), &nonce, &mut out)
+        .map_err(|_| op_error("Argon2 derivation failed".to_string()))?;
+      Ok(out)
     }
     SubtleDeriveBitsParams::Ecdh { public } => {
       if key.key_type != CryptoKeyType::Private {

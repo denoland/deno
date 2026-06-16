@@ -204,6 +204,7 @@ pub struct WorkspaceTestOptions {
   pub shuffle: Option<u64>,
   pub retry: u32,
   pub repeats: u32,
+  pub shard: Option<(usize, usize)>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
@@ -238,6 +239,7 @@ impl WorkspaceTestOptions {
       shuffle: test_flags.shuffle,
       retry: test_flags.retry,
       repeats: test_flags.repeats,
+      shard: test_flags.shard,
       trace_leaks: test_flags.trace_leaks,
       sanitize_ops: test_flags.sanitize_ops
         || std::env::var("DENO_TEST_SANITIZE_OPS").ok().as_deref() == Some("1")

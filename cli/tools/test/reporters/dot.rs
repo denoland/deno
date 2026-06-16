@@ -104,14 +104,19 @@ impl TestReporter for DotTestReporter {
     std::io::stdout().flush().ok();
   }
 
-  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
+  fn report_slow(
+    &mut self,
+    _description: &TestDescription,
+    _elapsed: Duration,
+  ) {
+  }
   fn report_output(&mut self, _output: &[u8]) {}
 
   fn report_result(
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    _elapsed: u64,
+    _elapsed: Duration,
   ) {
     common::commit_step_results(
       &mut self.pending_step_tally,
@@ -185,7 +190,7 @@ impl TestReporter for DotTestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    _elapsed: u64,
+    _elapsed: Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {

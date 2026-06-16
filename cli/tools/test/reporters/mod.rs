@@ -19,13 +19,13 @@ pub trait TestReporter {
   fn report_register(&mut self, description: &TestDescription);
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
-  fn report_slow(&mut self, description: &TestDescription, elapsed: u64);
+  fn report_slow(&mut self, description: &TestDescription, elapsed: Duration);
   fn report_output(&mut self, output: &[u8]);
   fn report_result(
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    elapsed: u64,
+    elapsed: Duration,
   );
   /// Called when a test attempt failed but will be retried (`retry` option).
   /// `attempt` is the zero-based index of the attempt that failed. This is
@@ -55,7 +55,7 @@ pub trait TestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    elapsed: u64,
+    elapsed: Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   );

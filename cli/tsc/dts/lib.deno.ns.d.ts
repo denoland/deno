@@ -3743,6 +3743,17 @@ declare namespace Deno {
    * }
    * ```
    *
+   * The `ignore` option can be used to filter out events for one or more paths.
+   * A path matches when it is, or is contained within, an ignored path, so
+   * ignoring a directory ignores everything beneath it. Relative paths are
+   * resolved against the current working directory. Ignored paths still
+   * require `allow-read` permission, the same as the watched paths.
+   *
+   * ```ts
+   * // Watch the project but skip the `.git` directory and `build` output.
+   * const watcher = Deno.watchFs(".", { ignore: [".git", "build"] });
+   * ```
+   *
    * Call `watcher.close()` to stop watching.
    *
    * ```ts
@@ -3764,7 +3775,7 @@ declare namespace Deno {
    */
   export function watchFs(
     paths: string | string[],
-    options?: { recursive: boolean },
+    options?: { recursive?: boolean; ignore?: string | string[] },
   ): FsWatcher;
 
   /** Operating signals which can be listened for or sent to sub-processes. What

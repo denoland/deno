@@ -19,8 +19,10 @@ pub struct PrettyTestReporter {
   did_have_user_output: bool,
   started_tests: bool,
   ended_tests: bool,
-  child_results_buffer:
-    HashMap<usize, IndexMap<usize, (TestStepDescription, TestStepResult, u64)>>,
+  child_results_buffer: HashMap<
+    usize,
+    IndexMap<usize, (TestStepDescription, TestStepResult, Duration)>,
+  >,
   /// Ids of tests that have been retried at least once, used to count flaky
   /// tests (those that ultimately passed after a retry).
   retried_tests: HashSet<usize>,
@@ -117,7 +119,7 @@ impl PrettyTestReporter {
     &mut self,
     description: &TestStepDescription,
     result: &TestStepResult,
-    elapsed: u64,
+    elapsed: Duration,
   ) {
     self.write_output_end();
     if self.in_new_line || self.scope_test_id != Some(description.id) {
@@ -160,7 +162,7 @@ impl PrettyTestReporter {
       write!(
         &mut self.writer,
         " {}",
-        colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+        colors::gray(format!("({})", display::human_elapsed(elapsed)))
       )
       .ok();
     }
@@ -227,14 +229,14 @@ impl TestReporter for PrettyTestReporter {
     self.started_tests = true;
   }
 
-  fn report_slow(&mut self, description: &TestDescription, elapsed: u64) {
+  fn report_slow(&mut self, description: &TestDescription, elapsed: Duration) {
     writeln!(
       &mut self.writer,
       "{}",
       colors::yellow_bold(format!(
         "'{}' has been running for over {}",
         description.name,
-        colors::gray(format!("({})", display::human_elapsed(elapsed.into()))),
+        colors::gray(format!("({})", display::human_elapsed(elapsed))),
       ))
     )
     .ok();
@@ -275,7 +277,7 @@ impl TestReporter for PrettyTestReporter {
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    elapsed: u64,
+    elapsed: Duration,
   ) {
     // Commit step results from the final attempt now that the test's fate is
     // known (results from any retried attempt were already discarded).
@@ -351,7 +353,7 @@ impl TestReporter for PrettyTestReporter {
     writeln!(
       &mut self.writer,
       " {}",
-      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+      colors::gray(format!("({})", display::human_elapsed(elapsed)))
     )
     .ok();
     self.in_new_line = true;
@@ -427,7 +429,7 @@ impl TestReporter for PrettyTestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    elapsed: u64,
+    elapsed: Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
