@@ -545,6 +545,261 @@ pub fn baggage_serialize(entries: &[JsBaggageEntry]) -> String {
   header
 }
 
+// === Baggage object (Rust-backed `Baggage`) =================================
+
+/// A single baggage entry. `value` is owned by Rust; `metadata` is the original
+/// JavaScript `BaggageEntryMetadata` value (an object with a `toString()`),
+/// kept as a traced reference so its identity and behavior are preserved for
+/// `@opentelemetry/api` consumers. We deliberately do not stringify it early.
+struct StoredEntry {
+  key: String,
+  value: String,
+  metadata: Option<v8::TracedReference<v8::Value>>,
+}
+
+/// Rust-backed implementation of the W3C `Baggage`, replacing the `BaggageImpl`
+/// that previously lived in `telemetry.ts`.
+///
+/// Like the JS original, instances are immutable: `setEntry`/`removeEntry`/
+/// `removeEntries`/`clear` each return a brand new `OtelBaggage` and never
+/// mutate the receiver, so no interior mutability is required.
+pub struct OtelBaggage {
+  entries: Vec<StoredEntry>,
+}
+
+// SAFETY: every stored `v8` reference (the per-entry metadata) is traced.
+unsafe impl GarbageCollected for OtelBaggage {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    for entry in &self.entries {
+      if let Some(metadata) = &entry.metadata {
+        visitor.trace(metadata);
+      }
+    }
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelBaggage"
+  }
+}
+
+/// Read the `metadata` JavaScript value into a traced reference, treating
+/// `null`/`undefined`/absent as "no metadata" (the JS code only set the
+/// property when it was present).
+fn read_metadata<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+) -> Option<v8::TracedReference<v8::Value>> {
+  let key = v8::String::new(scope, "metadata")?;
+  match obj.get(scope, key.into()) {
+    Some(value) if !value.is_null_or_undefined() => {
+      Some(v8::TracedReference::new(scope, value))
+    }
+    _ => None,
+  }
+}
+
+/// Read a `{ value, metadata? }` JavaScript entry object into a `StoredEntry`.
+fn read_stored_entry<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  key: String,
+  entry: v8::Local<'s, v8::Value>,
+) -> StoredEntry {
+  let Ok(obj) = v8::Local::<v8::Object>::try_from(entry) else {
+    return StoredEntry {
+      key,
+      value: String::new(),
+      metadata: None,
+    };
+  };
+  let value = v8::String::new(scope, "value")
+    .and_then(|k| obj.get(scope, k.into()))
+    .filter(|v| !v.is_null_or_undefined())
+    .map(|v| v.to_rust_string_lossy(scope))
+    .unwrap_or_default();
+  let metadata = read_metadata(scope, obj);
+  StoredEntry {
+    key,
+    value,
+    metadata,
+  }
+}
+
+/// Build a fresh `{ value, metadata? }` JavaScript object for an entry. A new
+/// object is returned each call (matching the JS `ObjectAssign({}, entry)`
+/// copy), while `metadata` keeps the original object identity.
+fn make_entry_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  entry: &StoredEntry,
+) -> v8::Local<'s, v8::Object> {
+  let obj = v8::Object::new(scope);
+  if let Some(key) = v8::String::new(scope, "value") {
+    let value = v8::String::new(scope, &entry.value).unwrap();
+    obj.set(scope, key.into(), value.into());
+  }
+  if let Some(metadata) = &entry.metadata
+    && let Some(local) = metadata.get(scope)
+    && let Some(key) = v8::String::new(scope, "metadata")
+  {
+    obj.set(scope, key.into(), local);
+  }
+  obj
+}
+
+/// Clone a metadata reference (a traced reference cannot be cloned without a
+/// scope, since a fresh `TracedReference` must be created from the live value).
+fn clone_metadata<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  metadata: &Option<v8::TracedReference<v8::Value>>,
+) -> Option<v8::TracedReference<v8::Value>> {
+  metadata
+    .as_ref()
+    .and_then(|m| m.get(scope))
+    .map(|local| v8::TracedReference::new(scope, local))
+}
+
+/// Deep-clone the entry list, used when deriving a new immutable baggage.
+fn clone_entries<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  entries: &[StoredEntry],
+) -> Vec<StoredEntry> {
+  entries
+    .iter()
+    .map(|e| StoredEntry {
+      key: e.key.clone(),
+      value: e.value.clone(),
+      metadata: clone_metadata(scope, &e.metadata),
+    })
+    .collect()
+}
+
+/// Insert or update an entry with `Map.prototype.set` semantics: re-setting an
+/// existing key updates its value/metadata in place (keeping its position),
+/// otherwise the entry is appended.
+fn upsert(entries: &mut Vec<StoredEntry>, entry: StoredEntry) {
+  if let Some(existing) = entries.iter_mut().find(|e| e.key == entry.key) {
+    existing.value = entry.value;
+    existing.metadata = entry.metadata;
+  } else {
+    entries.push(entry);
+  }
+}
+
+#[op2]
+impl OtelBaggage {
+  // Constructed from an optional array of `[key, { value, metadata? }]` pairs
+  // (the same shape `getAllEntries` produces), mirroring the JS constructor
+  // that took a `Map<string, BaggageEntry>` and copied each entry.
+  #[constructor]
+  #[cppgc]
+  fn new<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    entries: Option<v8::Local<'s, v8::Value>>,
+  ) -> OtelBaggage {
+    let mut stored: Vec<StoredEntry> = Vec::new();
+    if let Some(entries) = entries
+      && let Ok(arr) = v8::Local::<v8::Array>::try_from(entries)
+    {
+      for i in 0..arr.length() {
+        let Some(pair) = arr.get_index(scope, i) else {
+          continue;
+        };
+        let Ok(pair) = v8::Local::<v8::Array>::try_from(pair) else {
+          continue;
+        };
+        let Some(key) = pair.get_index(scope, 0) else {
+          continue;
+        };
+        let Some(entry) = pair.get_index(scope, 1) else {
+          continue;
+        };
+        let key = key.to_rust_string_lossy(scope);
+        upsert(&mut stored, read_stored_entry(scope, key, entry));
+      }
+    }
+    OtelBaggage { entries: stored }
+  }
+
+  // Returns a fresh `{ value, metadata? }` object copy, or `undefined`, matching
+  // the `ObjectAssign({}, entry)` copy the JS code returned.
+  fn get_entry<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    #[string] key: String,
+  ) -> v8::Local<'s, v8::Value> {
+    match self.entries.iter().find(|e| e.key == key) {
+      Some(entry) => make_entry_object(scope, entry).into(),
+      None => v8::undefined(scope).into(),
+    }
+  }
+
+  // Returns `[[key, { value, metadata? }], ...]` preserving insertion order.
+  fn get_all_entries<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> v8::Local<'s, v8::Array> {
+    let pairs: Vec<v8::Local<v8::Value>> = self
+      .entries
+      .iter()
+      .map(|entry| {
+        let key = v8::String::new(scope, &entry.key).unwrap().into();
+        let value = make_entry_object(scope, entry).into();
+        v8::Array::new_with_elements(scope, &[key, value]).into()
+      })
+      .collect();
+    v8::Array::new_with_elements(scope, &pairs)
+  }
+
+  // Returns a new baggage with `key` set, leaving the receiver untouched.
+  #[cppgc]
+  fn set_entry<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    #[string] key: String,
+    entry: v8::Local<'s, v8::Value>,
+  ) -> OtelBaggage {
+    let mut entries = clone_entries(scope, &self.entries);
+    upsert(&mut entries, read_stored_entry(scope, key, entry));
+    OtelBaggage { entries }
+  }
+
+  // Returns a new baggage without `key`, leaving the receiver untouched.
+  #[cppgc]
+  fn remove_entry<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    #[string] key: String,
+  ) -> OtelBaggage {
+    let mut entries = clone_entries(scope, &self.entries);
+    entries.retain(|e| e.key != key);
+    OtelBaggage { entries }
+  }
+
+  // Returns a new baggage without any of the given keys.
+  #[cppgc]
+  fn remove_entries<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    #[varargs] keys: Option<&v8::FunctionCallbackArguments<'s>>,
+  ) -> OtelBaggage {
+    let mut entries = clone_entries(scope, &self.entries);
+    if let Some(keys) = keys {
+      let keys: Vec<String> = (0..keys.length())
+        .map(|i| keys.get(i).to_rust_string_lossy(scope))
+        .collect();
+      entries.retain(|e| !keys.contains(&e.key));
+    }
+    OtelBaggage { entries }
+  }
+
+  // Returns a new empty baggage.
+  #[cppgc]
+  fn clear(&self) -> OtelBaggage {
+    OtelBaggage {
+      entries: Vec::new(),
+    }
+  }
+}
+
 // === Ops ====================================================================
 
 #[op2]
@@ -796,6 +1051,27 @@ mod tests {
   #[test]
   fn baggage_malformed_percent() {
     assert!(baggage_parse("key=%zz").is_err());
+  }
+
+  #[test]
+  fn baggage_upsert_map_semantics() {
+    // `upsert` mirrors `Map.prototype.set`: a new key is appended, while
+    // re-setting an existing key updates its value in place (keeping order).
+    let mut entries: Vec<StoredEntry> = Vec::new();
+    let mk = |k: &str, v: &str| StoredEntry {
+      key: k.to_string(),
+      value: v.to_string(),
+      metadata: None,
+    };
+    upsert(&mut entries, mk("a", "1"));
+    upsert(&mut entries, mk("b", "2"));
+    upsert(&mut entries, mk("a", "3"));
+    let snapshot: Vec<(&str, &str)> = entries
+      .iter()
+      .map(|e| (e.key.as_str(), e.value.as_str()))
+      .collect();
+    // `a` keeps its leading position but takes the new value.
+    assert_eq!(snapshot, vec![("a", "3"), ("b", "2")]);
   }
 
   #[test]
