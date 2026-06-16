@@ -80,6 +80,49 @@ extern "C" fn test_create_buffer_from_arraybuffer(
     &mut result
   ));
 
+  // Mutate the ArrayBuffer's backing store *after* creating the Buffer. The
+  // Buffer must be a view over the same memory (not a copy), so the change
+  // has to be visible through it. The byte at ArrayBuffer index 2 is index 0
+  // of the [2, 6) view.
+  unsafe {
+    *(ab_data as *mut u8).add(2) = 0xFF;
+  }
+
+  result
+}
+
+/// Test node_api_create_buffer_from_arraybuffer rejects invalid arguments with
+/// napi_invalid_arg (a non-ArrayBuffer value and an out-of-range view).
+extern "C" fn test_create_buffer_from_arraybuffer_invalid(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut arraybuffer: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_arraybuffer(
+    env,
+    8,
+    ptr::null_mut(),
+    &mut arraybuffer
+  ));
+
+  // [4, 4 + 8) = [4, 12) runs past the 8-byte ArrayBuffer.
+  let mut out: napi_value = ptr::null_mut();
+  let oob = unsafe {
+    node_api_create_buffer_from_arraybuffer(env, arraybuffer, 4, 8, &mut out)
+  };
+  assert_eq!(oob, napi_sys::Status::napi_invalid_arg);
+
+  // A non-ArrayBuffer argument (a plain object) must be rejected too.
+  let mut object: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_object(env, &mut object));
+  let mut out2: napi_value = ptr::null_mut();
+  let wrong_type = unsafe {
+    node_api_create_buffer_from_arraybuffer(env, object, 0, 1, &mut out2)
+  };
+  assert_eq!(wrong_type, napi_sys::Status::napi_invalid_arg);
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, true, &mut result));
   result
 }
 
@@ -146,6 +189,11 @@ pub fn init(env: napi_env, exports: napi_value) {
       env,
       "test_create_buffer_from_arraybuffer",
       test_create_buffer_from_arraybuffer
+    ),
+    napi_new_property!(
+      env,
+      "test_create_buffer_from_arraybuffer_invalid",
+      test_create_buffer_from_arraybuffer_invalid
     ),
     napi_new_property!(env, "test_get_buffer_info", test_get_buffer_info),
     napi_new_property!(env, "test_is_buffer_check", test_is_buffer),

@@ -565,6 +565,10 @@ fn node_api_create_buffer_from_arraybuffer<'s>(
   byte_length: usize,
   result: *mut napi_value<'s>,
 ) -> napi_status {
+  // Raw handle for last-error bookkeeping on the paths below where `env` is
+  // still borrowed by the callback scope.
+  let env_ptr: *mut Env = &mut *env;
+
   check_arg!(env, result);
 
   // `arraybuffer` must be an ArrayBuffer.
@@ -592,14 +596,14 @@ fn node_api_create_buffer_from_arraybuffer<'s>(
   let Some(buffer) =
     create_buffer.call(scope, recv, &[ab.into(), offset, length])
   else {
-    return napi_generic_failure;
+    return napi_set_last_error(env_ptr, napi_generic_failure);
   };
 
   unsafe {
     *result = buffer.into();
   }
 
-  napi_ok
+  napi_clear_last_error(env_ptr)
 }
 
 #[napi_sym]
