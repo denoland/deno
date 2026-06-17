@@ -3736,31 +3736,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
     } else if params.command == "deno.reloadImportRegistries" {
       *self.did_change_batch_queue.borrow_mut() = None;
       self.inner.write().await.reload_import_registries().await
-    } else if params.command == INFERRED_TYPE_COMMAND {
-      #[derive(Deserialize)]
-      struct Arguments(
-        lsp_custom::InferredTypeParams,
-        #[serde(default)] Option<lsp_custom::InferredTypeResponse>,
-      );
-      let Arguments(params, cached_response) =
-        serde_json::from_value(json!(params.arguments))
-          .map_err(|err| LspError::invalid_params(err.to_string()))?;
-      Ok(Some(
-        serde_json::to_value(if let Some(response) = cached_response {
-          Some(response)
-        } else {
-          self
-            .inner
-            .read()
-            .await
-            .inferred_type(params, &_token)
-            .await?
-        })
-        .map_err(|err| {
-          error!("Failed to serialize inferred_type response: {:#}", err);
-          LspError::internal_error()
-        })?,
-      ))
     } else {
       Ok(None)
     }
