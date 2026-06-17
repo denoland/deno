@@ -400,9 +400,12 @@ function h2ShadowServer(server) {
     // The target server's listeners were written for node:http requests:
     // hide the HTTP/2 pseudo-headers (frameworks commonly copy req.headers
     // into a web Headers object, which rejects ":"-prefixed names) and
-    // synthesize the host header an HTTP/1.1 request would carry. The
-    // internal headers object is left untouched -- req.method / req.url
-    // read the pseudo-headers from it.
+    // synthesize the host header an HTTP/1.1 request would carry. Hiding
+    // them from the public `req.headers` view below is safe because
+    // Http2ServerRequest.method / .url read `:method` / `:path` straight
+    // from the internal kHeaders object (see internal/http2/compat.js), not
+    // through the `headers` getter we override -- so the internal object is
+    // left untouched and those accessors keep working.
     const headers = req.headers;
     // Note: a plain Object.prototype-backed object and settable
     // properties, matching the http1 IncomingMessage the listener was
@@ -410,7 +413,22 @@ function h2ShadowServer(server) {
     // req.headers.hasOwnProperty()).
     let headersView = {};
     for (const name in headers) {
-      if (name[0] !== ":") headersView[name] = headers[name];
+      if (name[0] === ":") continue;
+      if (name === "__proto__") {
+        // `headersView[name] = ...` would hit Object.prototype's `__proto__`
+        // setter and silently drop the header, leaving it present in
+        // rawHeaders but missing from headers. Define a real own property so
+        // the two views stay consistent.
+        ObjectDefineProperty(headersView, name, {
+          __proto__: null,
+          value: headers[name],
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+      } else {
+        headersView[name] = headers[name];
+      }
     }
     if (
       headersView.host === undefined && headers[":authority"] !== undefined
