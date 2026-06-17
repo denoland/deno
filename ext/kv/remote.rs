@@ -179,6 +179,7 @@ impl DatabaseHandler for RemoteDbHandler {
         ca_certs: vec![],
         proxy: options.proxy.clone(),
         dns_resolver: Default::default(),
+        permissions: None,
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
           .clone(),
