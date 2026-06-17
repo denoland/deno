@@ -13,8 +13,7 @@ const {
   op_otel_metric_wait_to_observe,
   op_otel_span_add_link,
   op_otel_span_attribute1,
-  op_otel_span_attribute2,
-  op_otel_span_attribute3,
+  op_otel_span_attributes,
   op_otel_span_update_name,
   OtelMeter,
   OtelTracer,
@@ -34,7 +33,6 @@ const {
   Error,
   NumberPrototypeToString,
   ObjectDefineProperty,
-  ObjectEntries,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ObjectValues,
@@ -240,52 +238,6 @@ enum SpanAttributesLocation {
   LINK = 2,
 }
 
-function spanAddAttributes(
-  span: OtelSpan,
-  attributesLocation: SpanAttributesLocation,
-  attributesTarget: number,
-  attributes: Attributes,
-) {
-  const attributeKvs = ObjectEntries(attributes);
-  let i = 0;
-  while (i < attributeKvs.length) {
-    if (i + 2 < attributeKvs.length) {
-      op_otel_span_attribute3(
-        span,
-        attributesLocation,
-        attributesTarget,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
-        attributeKvs[i + 1][0],
-        attributeKvs[i + 1][1],
-        attributeKvs[i + 2][0],
-        attributeKvs[i + 2][1],
-      );
-      i += 3;
-    } else if (i + 1 < attributeKvs.length) {
-      op_otel_span_attribute2(
-        span,
-        attributesLocation,
-        attributesTarget,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
-        attributeKvs[i + 1][0],
-        attributeKvs[i + 1][1],
-      );
-      i += 2;
-    } else {
-      op_otel_span_attribute1(
-        span,
-        attributesLocation,
-        attributesTarget,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
-      );
-      i += 1;
-    }
-  }
-}
-
 interface TracerOptions {
   schemaUrl?: string;
 }
@@ -457,8 +409,8 @@ class Span {
       name,
       startTimeMs ?? NaN,
     );
-    if (attributes && attributesTarget !== 0) {
-      spanAddAttributes(
+    if (attributes) {
+      op_otel_span_attributes(
         this.#otelSpan,
         SpanAttributesLocation.EVENT,
         attributesTarget,
@@ -478,8 +430,8 @@ class Span {
       link.context.isRemote ?? false,
       link.droppedAttributesCount ?? 0,
     );
-    if (link.attributes && attributesTarget !== 0) {
-      spanAddAttributes(
+    if (link.attributes) {
+      op_otel_span_attributes(
         this.#otelSpan,
         SpanAttributesLocation.LINK,
         attributesTarget,
@@ -547,10 +499,9 @@ class Span {
 
   setAttributes(attributes: Attributes): this {
     if (!this.#otelSpan) return this;
-    spanAddAttributes(
+    op_otel_span_attributes(
       this.#otelSpan,
       SpanAttributesLocation.SELF,
-      0,
       attributes,
     );
     return this;

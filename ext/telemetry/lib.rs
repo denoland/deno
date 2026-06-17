@@ -120,8 +120,7 @@ deno_core::extension!(
     op_otel_log,
     op_otel_log_foreign,
     op_otel_span_attribute1,
-    op_otel_span_attribute2,
-    op_otel_span_attribute3,
+    op_otel_span_attributes,
     op_otel_span_add_link,
     op_otel_span_update_name,
     op_otel_metric_record,
@@ -2462,101 +2461,84 @@ fn op_otel_span_attribute1<'s>(
   }
 }
 
-#[op2(fast, reentrant)]
-fn op_otel_span_attribute2<'s>(
+/// Add every own, enumerable, string-keyed property of `attributes` to the span
+/// (or its last event/link, depending on `location`).
+///
+/// This replaces the previous JS `spanAddAttributes` batching loop that
+/// dispatched through `op_otel_span_attribute1/2/3`. It mirrors the previous
+/// `ObjectEntries(attributes)` iteration order and reuses `attr_raw!` for value
+/// conversion, so filtering and the per-element attribute count limit behave
+/// exactly as before.
+#[op2(fast)]
+fn op_otel_span_attributes<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
   #[smi] location: u32,
-  #[smi] target: u32,
-  key1: v8::Local<'s, v8::Value>,
-  value1: v8::Local<'s, v8::Value>,
-  key2: v8::Local<'s, v8::Value>,
-  value2: v8::Local<'s, v8::Value>,
+  attributes: v8::Local<'s, v8::Value>,
 ) {
   let Some(span) =
     deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
   else {
     return;
   };
-  let limit = attribute_count_limit();
-  let value_length_limit = attribute_value_length_limit();
-  if should_parse_span_attribute(&span, location, target, limit) {
-    let attr = attr_raw!(scope, key1, value1);
-    push_span_attribute(
-      &span,
-      location,
-      target,
-      limit,
-      value_length_limit,
-      attr,
-    );
+  let Ok(object) = attributes.try_cast::<v8::Object>() else {
+    return;
+  };
+  let Some(names) = object.get_own_property_names(
+    scope,
+    v8::GetPropertyNamesArgs {
+      mode: v8::KeyCollectionMode::OwnOnly,
+      property_filter: v8::PropertyFilter::ONLY_ENUMERABLE
+        | v8::PropertyFilter::SKIP_SYMBOLS,
+      index_filter: v8::IndexFilter::IncludeIndices,
+      key_conversion: v8::KeyConversionMode::ConvertToString,
+    },
+  ) else {
+    return;
+  };
+  let len = names.length();
+  if len == 0 {
+    return;
   }
-  if should_parse_span_attribute(&span, location, target, limit) {
-    let attr = attr_raw!(scope, key2, value2);
-    push_span_attribute(
-      &span,
-      location,
-      target,
-      limit,
-      value_length_limit,
-      attr,
-    );
+  // Read and convert keys/values before borrowing the span state. This matches
+  // the previous flow where JS `ObjectEntries` extracted the entries (running
+  // any property getters) before the attribute ops ran, and avoids re-entrant
+  // borrows if a getter touches the span. `None` marks an unconvertible value,
+  // which still counts toward `dropped_attributes_count` below.
+  let mut converted: Vec<Option<KeyValue>> = Vec::with_capacity(len as usize);
+  for i in 0..len {
+    let Some(key) = names.get_index(scope, i) else {
+      converted.push(None);
+      continue;
+    };
+    let Some(value) = object.get(scope, key) else {
+      converted.push(None);
+      continue;
+    };
+    converted.push(attr_raw!(scope, key, value));
   }
-}
 
-#[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast, reentrant)]
-fn op_otel_span_attribute3<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  span: v8::Local<'_, v8::Value>,
-  #[smi] location: u32,
-  #[smi] target: u32,
-  key1: v8::Local<'s, v8::Value>,
-  value1: v8::Local<'s, v8::Value>,
-  key2: v8::Local<'s, v8::Value>,
-  value2: v8::Local<'s, v8::Value>,
-  key3: v8::Local<'s, v8::Value>,
-  value3: v8::Local<'s, v8::Value>,
-) {
-  let Some(span) =
-    deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
-  else {
-    return;
-  };
   let limit = attribute_count_limit();
   let value_length_limit = attribute_value_length_limit();
-  if should_parse_span_attribute(&span, location, target, limit) {
-    let attr = attr_raw!(scope, key1, value1);
-    push_span_attribute(
-      &span,
-      location,
-      target,
-      limit,
-      value_length_limit,
-      attr,
-    );
-  }
-  if should_parse_span_attribute(&span, location, target, limit) {
-    let attr = attr_raw!(scope, key2, value2);
-    push_span_attribute(
-      &span,
-      location,
-      target,
-      limit,
-      value_length_limit,
-      attr,
-    );
-  }
-  if should_parse_span_attribute(&span, location, target, limit) {
-    let attr = attr_raw!(scope, key3, value3);
-    push_span_attribute(
-      &span,
-      location,
-      target,
-      limit,
-      value_length_limit,
-      attr,
-    );
+  let mut state = span.0.borrow_mut();
+  if let OtelSpanState::Recording(span) = &mut **state {
+    let Some((attributes, dropped_attributes_count)) =
+      span_attributes(span, location)
+    else {
+      return;
+    };
+    for kv in converted {
+      if attributes.len() >= limit {
+        *dropped_attributes_count += 1;
+      } else if let Some(mut kv) = kv {
+        // Enforce `OTEL_(SPAN_)ATTRIBUTE_VALUE_LENGTH_LIMIT`: string values (and
+        // string-array elements) longer than the limit are truncated.
+        truncate_attr_value(&mut kv.value, value_length_limit);
+        attributes.push(kv);
+      } else {
+        *dropped_attributes_count += 1;
+      }
+    }
   }
 }
 
