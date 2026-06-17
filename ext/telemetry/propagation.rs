@@ -14,9 +14,11 @@
 //! The original sources are the OpenTelemetry JS `@opentelemetry/core` and
 //! `@opentelemetry/api` packages (Apache-2.0).
 
+use deno_core::FastStaticString;
 use deno_core::GarbageCollected;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8_static_strings;
 use deno_error::JsErrorBox;
 use serde::Deserialize;
 use serde::Serialize;
@@ -935,12 +937,8 @@ impl OtelContext {
 
 // === W3C propagators (Rust-backed `TextMapPropagator`s) ======================
 
-// Header names and the trace-context version we emit. These mirror the
-// constants that previously lived in `telemetry.ts`.
+// The trace-context version we emit.
 const VERSION: &str = "00";
-const TRACE_PARENT_HEADER: &str = "traceparent";
-const TRACE_STATE_HEADER: &str = "tracestate";
-const BAGGAGE_HEADER: &str = "baggage";
 
 // `@opentelemetry/api` context keys (created with `Symbol.for`, so the global
 // symbol registry is shared with the JavaScript `SymbolFor(...)` calls).
@@ -949,6 +947,40 @@ const SUPPRESS_TRACING_KEY: &str =
   "OpenTelemetry SDK Context Key SUPPRESS_TRACING";
 const BAGGAGE_KEY: &str = "OpenTelemetry Baggage Key";
 
+// Constant header names, method names and property keys used on the hot
+// inject/extract paths. `FastStaticString` builds these as external one-byte
+// V8 strings that V8 caches by resource pointer, so reusing them across calls
+// avoids the per-call heap allocation + UTF-8 copy that `v8::String::new`
+// performs. The originating JS kept all of these as monomorphic, JIT-cached
+// literals; this restores equivalent string reuse in the Rust port.
+v8_static_strings! {
+  TRACEPARENT_HEADER = "traceparent",
+  TRACESTATE_HEADER = "tracestate",
+  BAGGAGE_HEADER = "baggage",
+  GET = "get",
+  SET = "set",
+  GET_VALUE = "getValue",
+  SET_VALUE = "setValue",
+  SPAN_CONTEXT = "spanContext",
+  SERIALIZE = "serialize",
+  GET_ALL_ENTRIES = "getAllEntries",
+  TO_STRING = "toString",
+  INJECT = "inject",
+  EXTRACT = "extract",
+  FIELDS_NAME = "fields",
+  WARN = "warn",
+  CONSTRUCTOR = "constructor",
+  NAME = "name",
+  CONSOLE = "console",
+  TRACE_ID = "traceId",
+  SPAN_ID = "spanId",
+  TRACE_FLAGS = "traceFlags",
+  IS_REMOTE = "isRemote",
+  TRACE_STATE = "traceState",
+  VALUE = "value",
+  METADATA = "metadata",
+}
+
 fn v8_str<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   s: &str,
@@ -956,8 +988,18 @@ fn v8_str<'s>(
   v8::String::new(scope, s).unwrap()
 }
 
+/// A cached constant V8 string (see [`v8_static_strings`]).
+fn cstr<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  s: FastStaticString,
+) -> v8::Local<'s, v8::String> {
+  s.v8_string(scope).unwrap()
+}
+
 /// `Symbol.for(key)` — the same global symbol the JS code obtained via
-/// `SymbolFor(key)`.
+/// `SymbolFor(key)`. Used once per propagator (at construction) to seed the
+/// cached symbols below; the hot paths reuse those cached references via
+/// [`resolve_symbol`] instead of re-hitting the global registry.
 fn symbol_for<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   key: &str,
@@ -966,16 +1008,30 @@ fn symbol_for<'s>(
   v8::Symbol::for_key(scope, desc)
 }
 
+/// Return the cached `Symbol.for(key)` reference, falling back to a fresh
+/// registry lookup only if it was somehow collected (it can't be in practice —
+/// the global symbol registry keeps it alive and the propagator traces it).
+fn resolve_symbol<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  cached: &v8::TracedReference<v8::Symbol>,
+  key: &str,
+) -> v8::Local<'s, v8::Symbol> {
+  match cached.get(scope) {
+    Some(symbol) => symbol,
+    None => symbol_for(scope, key),
+  }
+}
+
 /// `recv[name](...args)`. Returns `None` if `name` is not callable or the call
 /// throws (leaving the exception pending so V8 propagates it once we return).
 fn call_method<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   recv: v8::Local<'s, v8::Value>,
-  name: &str,
+  name: FastStaticString,
   args: &[v8::Local<'s, v8::Value>],
 ) -> Option<v8::Local<'s, v8::Value>> {
   let obj = recv.to_object(scope)?;
-  let key = v8_str(scope, name);
+  let key = cstr(scope, name);
   let func = obj.get(scope, key.into())?;
   let func = v8::Local::<v8::Function>::try_from(func).ok()?;
   func.call(scope, recv, args)
@@ -985,10 +1041,10 @@ fn call_method<'s>(
 fn get_prop<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   obj: v8::Local<'s, v8::Value>,
-  name: &str,
+  name: FastStaticString,
 ) -> Option<v8::Local<'s, v8::Value>> {
   let obj = obj.to_object(scope)?;
-  let key = v8_str(scope, name);
+  let key = cstr(scope, name);
   obj.get(scope, key.into())
 }
 
@@ -997,7 +1053,7 @@ fn get_prop<'s>(
 fn get_string_prop<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   obj: v8::Local<'s, v8::Value>,
-  name: &str,
+  name: FastStaticString,
 ) -> Option<String> {
   let v = get_prop(scope, obj, name)?;
   if v.is_null_or_undefined() {
@@ -1028,13 +1084,13 @@ fn join_array<'s>(
 }
 
 /// `context.getValue(SUPPRESS_TRACING) === true`. `None` means the `getValue`
-/// call threw.
+/// call threw. The (cached) suppress-tracing symbol is passed in by the caller.
 fn is_tracing_suppressed<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   context: v8::Local<'s, v8::Value>,
+  suppress_key: v8::Local<'s, v8::Symbol>,
 ) -> Option<bool> {
-  let key = symbol_for(scope, SUPPRESS_TRACING_KEY);
-  let value = call_method(scope, context, "getValue", &[key.into()])?;
+  let value = call_method(scope, context, GET_VALUE, &[suppress_key.into()])?;
   Some(value.is_true())
 }
 
@@ -1047,12 +1103,19 @@ fn is_tracing_suppressed<'s>(
 /// Rust on extraction.
 pub struct OtelW3CTraceContextPropagator {
   non_recording_span: v8::TracedReference<v8::Value>,
+  // Cached `Symbol.for(...)` references so the hot paths don't re-hit the
+  // global symbol registry on every inject/extract.
+  span_key: v8::TracedReference<v8::Symbol>,
+  suppress_key: v8::TracedReference<v8::Symbol>,
 }
 
-// SAFETY: the stored `NonRecordingSpan` constructor reference is traced.
+// SAFETY: the stored `NonRecordingSpan` constructor and cached symbols are
+// traced.
 unsafe impl GarbageCollected for OtelW3CTraceContextPropagator {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     visitor.trace(&self.non_recording_span);
+    visitor.trace(&self.span_key);
+    visitor.trace(&self.suppress_key);
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -1068,8 +1131,12 @@ impl OtelW3CTraceContextPropagator {
     scope: &mut v8::PinScope<'s, '_>,
     non_recording_span: v8::Local<'s, v8::Value>,
   ) -> OtelW3CTraceContextPropagator {
+    let span_key = symbol_for(scope, SPAN_KEY);
+    let suppress_key = symbol_for(scope, SUPPRESS_TRACING_KEY);
     OtelW3CTraceContextPropagator {
       non_recording_span: v8::TracedReference::new(scope, non_recording_span),
+      span_key: v8::TracedReference::new(scope, span_key),
+      suppress_key: v8::TracedReference::new(scope, suppress_key),
     }
   }
 
@@ -1082,32 +1149,33 @@ impl OtelW3CTraceContextPropagator {
     carrier: v8::Local<'s, v8::Value>,
     setter: v8::Local<'s, v8::Value>,
   ) {
-    let span_key = symbol_for(scope, SPAN_KEY);
-    let Some(span) =
-      call_method(scope, context, "getValue", &[span_key.into()])
+    let span_key = resolve_symbol(scope, &self.span_key, SPAN_KEY);
+    let Some(span) = call_method(scope, context, GET_VALUE, &[span_key.into()])
     else {
       return;
     };
     if span.is_null_or_undefined() {
       return;
     }
-    let Some(span_context) = call_method(scope, span, "spanContext", &[])
-    else {
+    let Some(span_context) = call_method(scope, span, SPAN_CONTEXT, &[]) else {
       return;
     };
     if span_context.is_null_or_undefined() {
       return;
     }
-    let Some(suppressed) = is_tracing_suppressed(scope, context) else {
+    let suppress_key =
+      resolve_symbol(scope, &self.suppress_key, SUPPRESS_TRACING_KEY);
+    let Some(suppressed) = is_tracing_suppressed(scope, context, suppress_key)
+    else {
       return;
     };
     if suppressed {
       return;
     }
-    let Some(trace_id) = get_string_prop(scope, span_context, "traceId") else {
+    let Some(trace_id) = get_string_prop(scope, span_context, TRACE_ID) else {
       return;
     };
-    let Some(span_id) = get_string_prop(scope, span_context, "spanId") else {
+    let Some(span_id) = get_string_prop(scope, span_context, SPAN_ID) else {
       return;
     };
     if !(is_valid_trace_id(&trace_id) && is_valid_span_id(&span_id)) {
@@ -1115,30 +1183,30 @@ impl OtelW3CTraceContextPropagator {
     }
 
     // `Number(spanContext.traceFlags || 0).toString(16)`, prefixed with "0".
-    let trace_flags = get_prop(scope, span_context, "traceFlags")
+    let trace_flags = get_prop(scope, span_context, TRACE_FLAGS)
       .and_then(|v| v.number_value(scope))
       .filter(|f| !f.is_nan())
       .unwrap_or(0.0) as i64;
     let trace_parent =
       format!("{VERSION}-{trace_id}-{span_id}-0{trace_flags:x}");
 
-    let header = v8_str(scope, TRACE_PARENT_HEADER).into();
+    let header = cstr(scope, TRACEPARENT_HEADER).into();
     let value = v8_str(scope, &trace_parent).into();
-    if call_method(scope, setter, "set", &[carrier, header, value]).is_none() {
+    if call_method(scope, setter, SET, &[carrier, header, value]).is_none() {
       return;
     }
 
-    if let Some(trace_state) = get_prop(scope, span_context, "traceState")
+    if let Some(trace_state) = get_prop(scope, span_context, TRACE_STATE)
       && !trace_state.is_null_or_undefined()
     {
-      let Some(serialized) = call_method(scope, trace_state, "serialize", &[])
+      let Some(serialized) = call_method(scope, trace_state, SERIALIZE, &[])
       else {
         return;
       };
       let serialized = serialized.to_rust_string_lossy(scope);
-      let header = v8_str(scope, TRACE_STATE_HEADER).into();
+      let header = cstr(scope, TRACESTATE_HEADER).into();
       let value = v8_str(scope, &serialized).into();
-      call_method(scope, setter, "set", &[carrier, header, value]);
+      call_method(scope, setter, SET, &[carrier, header, value]);
     }
   }
 
@@ -1150,9 +1218,9 @@ impl OtelW3CTraceContextPropagator {
     carrier: v8::Local<'s, v8::Value>,
     getter: v8::Local<'s, v8::Value>,
   ) -> v8::Local<'s, v8::Value> {
-    let header = v8_str(scope, TRACE_PARENT_HEADER).into();
+    let header = cstr(scope, TRACEPARENT_HEADER).into();
     let Some(trace_parent_header) =
-      call_method(scope, getter, "get", &[carrier, header])
+      call_method(scope, getter, GET, &[carrier, header])
     else {
       return context;
     };
@@ -1177,16 +1245,16 @@ impl OtelW3CTraceContextPropagator {
     };
 
     let span_context = v8::Object::new(scope);
-    set_string(scope, span_context, "traceId", &parsed.trace_id);
-    set_string(scope, span_context, "spanId", &parsed.span_id);
+    set_string(scope, span_context, TRACE_ID, &parsed.trace_id);
+    set_string(scope, span_context, SPAN_ID, &parsed.span_id);
     let trace_flags = v8::Integer::new(scope, parsed.trace_flags as i32);
-    set_value(scope, span_context, "traceFlags", trace_flags.into());
+    set_value(scope, span_context, TRACE_FLAGS, trace_flags.into());
     let is_remote = v8::Boolean::new(scope, true);
-    set_value(scope, span_context, "isRemote", is_remote.into());
+    set_value(scope, span_context, IS_REMOTE, is_remote.into());
 
-    let header = v8_str(scope, TRACE_STATE_HEADER).into();
+    let header = cstr(scope, TRACESTATE_HEADER).into();
     let Some(trace_state_header) =
-      call_method(scope, getter, "get", &[carrier, header])
+      call_method(scope, getter, GET, &[carrier, header])
     else {
       return context;
     };
@@ -1204,7 +1272,7 @@ impl OtelW3CTraceContextPropagator {
       };
       let trace_state =
         deno_core::cppgc::make_cppgc_object(scope, OtelTraceState { entries });
-      set_value(scope, span_context, "traceState", trace_state.into());
+      set_value(scope, span_context, TRACE_STATE, trace_state.into());
     }
 
     let Some(ctor) = self.non_recording_span.get(scope) else {
@@ -1217,8 +1285,8 @@ impl OtelW3CTraceContextPropagator {
       return context;
     };
 
-    let span_key = symbol_for(scope, SPAN_KEY);
-    call_method(scope, context, "setValue", &[span_key.into(), span.into()])
+    let span_key = resolve_symbol(scope, &self.span_key, SPAN_KEY);
+    call_method(scope, context, SET_VALUE, &[span_key.into(), span.into()])
       .unwrap_or(context)
   }
 
@@ -1227,8 +1295,8 @@ impl OtelW3CTraceContextPropagator {
     scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::Array> {
     let elements = [
-      v8_str(scope, TRACE_PARENT_HEADER).into(),
-      v8_str(scope, TRACE_STATE_HEADER).into(),
+      cstr(scope, TRACEPARENT_HEADER).into(),
+      cstr(scope, TRACESTATE_HEADER).into(),
     ];
     v8::Array::new_with_elements(scope, &elements)
   }
@@ -1237,17 +1305,17 @@ impl OtelW3CTraceContextPropagator {
 fn set_value<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   obj: v8::Local<'s, v8::Object>,
-  key: &str,
+  key: FastStaticString,
   value: v8::Local<'s, v8::Value>,
 ) {
-  let key = v8_str(scope, key);
+  let key = cstr(scope, key);
   obj.set(scope, key.into(), value);
 }
 
 fn set_string<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   obj: v8::Local<'s, v8::Object>,
-  key: &str,
+  key: FastStaticString,
   value: &str,
 ) {
   let value = v8_str(scope, value).into();
@@ -1264,12 +1332,18 @@ fn set_string<'s>(
 /// preserved), so it is passed in and called from Rust on extraction.
 pub struct OtelW3CBaggagePropagator {
   metadata_from_string: v8::TracedReference<v8::Value>,
+  // Cached `Symbol.for(...)` references (see the trace-context propagator).
+  baggage_key: v8::TracedReference<v8::Symbol>,
+  suppress_key: v8::TracedReference<v8::Symbol>,
 }
 
-// SAFETY: the stored `baggageEntryMetadataFromString` reference is traced.
+// SAFETY: the stored `baggageEntryMetadataFromString` reference and the cached
+// symbols are traced.
 unsafe impl GarbageCollected for OtelW3CBaggagePropagator {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     visitor.trace(&self.metadata_from_string);
+    visitor.trace(&self.baggage_key);
+    visitor.trace(&self.suppress_key);
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -1285,11 +1359,15 @@ impl OtelW3CBaggagePropagator {
     scope: &mut v8::PinScope<'s, '_>,
     metadata_from_string: v8::Local<'s, v8::Value>,
   ) -> OtelW3CBaggagePropagator {
+    let baggage_key = symbol_for(scope, BAGGAGE_KEY);
+    let suppress_key = symbol_for(scope, SUPPRESS_TRACING_KEY);
     OtelW3CBaggagePropagator {
       metadata_from_string: v8::TracedReference::new(
         scope,
         metadata_from_string,
       ),
+      baggage_key: v8::TracedReference::new(scope, baggage_key),
+      suppress_key: v8::TracedReference::new(scope, suppress_key),
     }
   }
 
@@ -1302,23 +1380,26 @@ impl OtelW3CBaggagePropagator {
     carrier: v8::Local<'s, v8::Value>,
     setter: v8::Local<'s, v8::Value>,
   ) {
-    let baggage_key = symbol_for(scope, BAGGAGE_KEY);
+    let baggage_key = resolve_symbol(scope, &self.baggage_key, BAGGAGE_KEY);
     let Some(baggage) =
-      call_method(scope, context, "getValue", &[baggage_key.into()])
+      call_method(scope, context, GET_VALUE, &[baggage_key.into()])
     else {
       return;
     };
     if !baggage.boolean_value(scope) {
       return;
     }
-    let Some(suppressed) = is_tracing_suppressed(scope, context) else {
+    let suppress_key =
+      resolve_symbol(scope, &self.suppress_key, SUPPRESS_TRACING_KEY);
+    let Some(suppressed) = is_tracing_suppressed(scope, context, suppress_key)
+    else {
       return;
     };
     if suppressed {
       return;
     }
 
-    let Some(all_entries) = call_method(scope, baggage, "getAllEntries", &[])
+    let Some(all_entries) = call_method(scope, baggage, GET_ALL_ENTRIES, &[])
     else {
       return;
     };
@@ -1341,10 +1422,10 @@ impl OtelW3CBaggagePropagator {
         return;
       };
       let key = key.to_rust_string_lossy(scope);
-      let value = get_string_prop(scope, entry, "value").unwrap_or_default();
-      let metadata = match get_prop(scope, entry, "metadata") {
+      let value = get_string_prop(scope, entry, VALUE).unwrap_or_default();
+      let metadata = match get_prop(scope, entry, METADATA) {
         Some(metadata) if !metadata.is_undefined() => {
-          let Some(s) = call_method(scope, metadata, "toString", &[]) else {
+          let Some(s) = call_method(scope, metadata, TO_STRING, &[]) else {
             return;
           };
           Some(s.to_rust_string_lossy(scope))
@@ -1360,9 +1441,9 @@ impl OtelW3CBaggagePropagator {
 
     let header_value = baggage_serialize(&entries);
     if !header_value.is_empty() {
-      let header = v8_str(scope, BAGGAGE_HEADER).into();
+      let header = cstr(scope, BAGGAGE_HEADER).into();
       let value = v8_str(scope, &header_value).into();
-      call_method(scope, setter, "set", &[carrier, header, value]);
+      call_method(scope, setter, SET, &[carrier, header, value]);
     }
   }
 
@@ -1374,9 +1455,9 @@ impl OtelW3CBaggagePropagator {
     carrier: v8::Local<'s, v8::Value>,
     getter: v8::Local<'s, v8::Value>,
   ) -> Result<v8::Local<'s, v8::Value>, JsErrorBox> {
-    let header = v8_str(scope, BAGGAGE_HEADER).into();
+    let header = cstr(scope, BAGGAGE_HEADER).into();
     let Some(header_value) =
-      call_method(scope, getter, "get", &[carrier, header])
+      call_method(scope, getter, GET, &[carrier, header])
     else {
       return Ok(context);
     };
@@ -1414,12 +1495,12 @@ impl OtelW3CBaggagePropagator {
     let baggage =
       deno_core::cppgc::make_cppgc_object(scope, OtelBaggage { entries });
 
-    let baggage_key = symbol_for(scope, BAGGAGE_KEY);
+    let baggage_key = resolve_symbol(scope, &self.baggage_key, BAGGAGE_KEY);
     Ok(
       call_method(
         scope,
         context,
-        "setValue",
+        SET_VALUE,
         &[baggage_key.into(), baggage.into()],
       )
       .unwrap_or(context),
@@ -1430,7 +1511,7 @@ impl OtelW3CBaggagePropagator {
     &self,
     scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::Array> {
-    let elements = [v8_str(scope, BAGGAGE_HEADER).into()];
+    let elements = [cstr(scope, BAGGAGE_HEADER).into()];
     v8::Array::new_with_elements(scope, &elements)
   }
 }
@@ -1499,7 +1580,7 @@ impl OtelCompositePropagator {
         stored.push(v8::TracedReference::new(scope, propagator));
         // Union of each propagator's `fields()`, de-duplicated in order.
         if let Some(fields_value) =
-          call_method(scope, propagator, "fields", &[])
+          call_method(scope, propagator, FIELDS_NAME, &[])
           && let Ok(fields_arr) = v8::Local::<v8::Array>::try_from(fields_value)
         {
           for j in 0..fields_arr.length() {
@@ -1533,7 +1614,7 @@ impl OtelCompositePropagator {
         continue;
       };
       v8::tc_scope!(tc, scope);
-      if call_method(tc, propagator, "inject", &[context, carrier, setter])
+      if call_method(tc, propagator, INJECT, &[context, carrier, setter])
         .is_none()
         && tc.has_caught()
       {
@@ -1558,7 +1639,7 @@ impl OtelCompositePropagator {
         continue;
       };
       v8::tc_scope!(tc, scope);
-      match call_method(tc, propagator, "extract", &[ctx, carrier, getter]) {
+      match call_method(tc, propagator, EXTRACT, &[ctx, carrier, getter]) {
         Some(result) => ctx = result,
         None => {
           if tc.has_caught() {
@@ -1592,13 +1673,13 @@ fn warn_failed<'s>(
   verb: &str,
   error: v8::Local<'s, v8::Value>,
 ) {
-  let name = get_prop(scope, propagator, "constructor")
-    .and_then(|ctor| get_string_prop(scope, ctor, "name"))
+  let name = get_prop(scope, propagator, CONSTRUCTOR)
+    .and_then(|ctor| get_string_prop(scope, ctor, NAME))
     .unwrap_or_default();
   let message = v8_str(scope, &format!("Failed to {verb} with {name}.")).into();
   let global = scope.get_current_context().global(scope);
-  if let Some(console) = get_prop(scope, global.into(), "console") {
-    call_method(scope, console, "warn", &[message, error]);
+  if let Some(console) = get_prop(scope, global.into(), CONSOLE) {
+    call_method(scope, console, WARN, &[message, error]);
   }
 }
 
