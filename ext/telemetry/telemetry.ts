@@ -11,9 +11,12 @@ const {
   op_otel_metric_observation_done,
   op_otel_metric_record,
   op_otel_metric_wait_to_observe,
+  op_otel_span_add_event,
   op_otel_span_add_link,
   op_otel_span_attribute1,
   op_otel_span_attributes,
+  op_otel_span_end,
+  op_otel_span_record_exception,
   op_otel_span_update_name,
   OtelMeter,
   OtelTracer,
@@ -31,7 +34,6 @@ const {
   DatePrototype,
   DatePrototypeGetTime,
   Error,
-  NumberPrototypeToString,
   ObjectDefineProperty,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
@@ -154,11 +156,6 @@ function hrToMs(hr: [number, number]): number {
   return (hr[0] * 1e3 + hr[1] / 1e6);
 }
 
-function isTimeInput(input: unknown): input is TimeInput {
-  return typeof input === "number" ||
-    (input && (ArrayIsArray(input) || isDate(input)));
-}
-
 function timeInputToMs(input?: TimeInput): number | undefined {
   if (input === undefined) return;
   if (ArrayIsArray(input)) {
@@ -224,12 +221,7 @@ interface OtelSpan {
 
   spanContext(): SpanContext;
   setStatus(status: SpanStatusCode, errorDescription: string): void;
-  addEvent(
-    name: string,
-    startTime: number,
-  ): void;
   dropEvent(): void;
-  end(endTime: number): void;
 }
 
 enum SpanAttributesLocation {
@@ -398,46 +390,18 @@ class Span {
     startTime?: TimeInput,
   ): this {
     if (!this.#otelSpan) return this;
-    let attributes: Attributes | undefined;
-    if (isTimeInput(attributesOrStartTime)) {
-      startTime = attributesOrStartTime;
-    } else {
-      attributes = attributesOrStartTime;
-    }
-    const startTimeMs = timeInputToMs(startTime);
-
-    this.#otelSpan.addEvent(
+    op_otel_span_add_event(
+      this.#otelSpan,
       name,
-      startTimeMs ?? NaN,
+      attributesOrStartTime,
+      startTime,
     );
-    if (attributes) {
-      op_otel_span_attributes(
-        this.#otelSpan,
-        SpanAttributesLocation.LAST_EVENT,
-        attributes,
-      );
-    }
     return this;
   }
 
   addLink(link: Link): this {
     if (!this.#otelSpan) return this;
-    const valid = op_otel_span_add_link(
-      this.#otelSpan,
-      link.context.traceId,
-      link.context.spanId,
-      link.context.traceFlags,
-      link.context.isRemote ?? false,
-      link.droppedAttributesCount ?? 0,
-    );
-    if (link.attributes) {
-      op_otel_span_attributes(
-        this.#otelSpan,
-        SpanAttributesLocation.LAST_LINK,
-        link.attributes,
-      );
-    }
-    if (!valid) return this;
+    op_otel_span_add_link(this.#otelSpan, link);
     return this;
   }
 
@@ -449,7 +413,8 @@ class Span {
   }
 
   end(endTime?: TimeInput): void {
-    this.#otelSpan?.end(timeInputToMs(endTime) || NaN);
+    if (!this.#otelSpan) return;
+    op_otel_span_end(this.#otelSpan, endTime);
   }
 
   isRecording(): boolean {
@@ -457,32 +422,8 @@ class Span {
   }
 
   recordException(exception: string | Exception, time?: TimeInput): void {
-    if (typeof exception === "string") {
-      this.addEvent("exception", {
-        "exception.message": exception,
-      }, time);
-      return;
-    }
-    const attributes: Attributes = {};
-
-    if (exception.code) {
-      if (typeof exception.code === "number") {
-        attributes["exception.type"] = NumberPrototypeToString(exception.code);
-      } else {
-        attributes["exception.type"] = exception.code;
-      }
-    } else if (exception.name) {
-      attributes["exception.type"] = exception.name;
-    }
-
-    if (exception.message) {
-      attributes["exception.message"] = exception.message;
-    }
-    if (exception.stack) {
-      attributes["exception.stacktrace"] = exception.stack;
-    }
-
-    this.addEvent("exception", attributes, time);
+    if (!this.#otelSpan) return;
+    op_otel_span_record_exception(this.#otelSpan, exception, time);
   }
 
   setAttribute(key: string, value: AttributeValue): this {
