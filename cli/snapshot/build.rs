@@ -10,12 +10,28 @@ fn main() {
   {
     println!("cargo:rerun-if-env-changed=DENO_SNAPSHOT_IMPORT_GRAPH");
     println!("cargo:rerun-if-env-changed=DENO_SNAPSHOT_MINIFY_SOURCES");
+    println!(
+      "cargo:rerun-if-env-changed=DENO_SNAPSHOT_OPTIMIZER_SOURCE_MAP_DIR"
+    );
   }
   #[cfg(not(feature = "disable"))]
   {
     let o = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
     let residual_path = o.join("EXTENSION_RESIDUAL_SOURCES.rs");
+    let source_map_dir =
+      std::env::var_os("DENO_SNAPSHOT_OPTIMIZER_SOURCE_MAP_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| o.join("snapshot_optimizer_source_maps"));
+    let _ = std::fs::remove_dir_all(&source_map_dir);
+    // SAFETY: this build script sets the process-local path before creating
+    // the snapshot. Snapshot source transpilation only reads this value.
+    unsafe {
+      std::env::set_var(
+        "DENO_SNAPSHOT_OPTIMIZER_SOURCE_MAP_DIR",
+        &source_map_dir,
+      );
+    }
     create_cli_snapshot(cli_snapshot_path, residual_path);
   }
 }

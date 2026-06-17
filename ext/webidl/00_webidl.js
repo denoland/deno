@@ -53,7 +53,6 @@ const {
   ObjectDefineProperty,
   ObjectFreeze,
   ObjectGetOwnPropertyDescriptor,
-  ObjectGetOwnPropertyDescriptors,
   ObjectGetPrototypeOf,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
@@ -1398,14 +1397,15 @@ function configureInterface(interface_) {
 }
 
 function configureProperties(obj) {
-  const descriptors = ObjectGetOwnPropertyDescriptors(obj);
-  for (const key in descriptors) {
-    if (!ObjectHasOwn(descriptors, key)) {
+  const keys = ReflectOwnKeys(obj);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (typeof key !== "string") {
       continue;
     }
     if (key === "constructor") continue;
     if (key === "prototype") continue;
-    const descriptor = descriptors[key];
+    const descriptor = ObjectGetOwnPropertyDescriptor(obj, key);
     if (
       ReflectHas(descriptor, "value") &&
       typeof descriptor.value === "function"

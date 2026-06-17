@@ -2,7 +2,7 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 (function () {
 const { core, primordials } = __bootstrap;
-const { ObjectCreate, queueMicrotask, SymbolDispose } = primordials;
+const { queueMicrotask, SymbolDispose } = primordials;
 const { validateAbortSignal, validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
@@ -43,7 +43,8 @@ function addAbortListener(signal, listener) {
 
 const _defaultExport = { addAbortListener };
 
-const namespaceExport = ObjectCreate(_defaultExport);
-namespaceExport.default = _defaultExport;
-return namespaceExport;
+return {
+  addAbortListener,
+  default: _defaultExport,
+};
 })();

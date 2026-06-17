@@ -372,13 +372,10 @@ export namespace core {
   function propReadOnly(value: unknown): PropertyDescriptor;
   function propGetterOnly(value: unknown): PropertyDescriptor;
 
-  function propWritableLazyLoaded<T>(
-    getter: (loadedValue: T) => unknown,
+  function propLazyLoadedByKey<T>(
+    key: string,
     loadFn: LazyLoader<T>,
-  ): PropertyDescriptor;
-  function propNonEnumerableLazyLoaded<T>(
-    getter: (loadedValue: T) => unknown,
-    loadFn: LazyLoader<T>,
+    enumerable: boolean,
   ): PropertyDescriptor;
 
   function defineGlobalProperties(

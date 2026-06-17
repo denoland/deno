@@ -276,24 +276,34 @@ const denoNs = {
 };
 
 core.defineGlobalProperties(denoNs, {
-  Process: core.propLazyLoadedByKey("Process", lazyProcess, true),
-  run: core.propLazyLoadedByKey("run", lazyProcess, true),
-  serveHttp: core.propLazyLoadedByKey("serveHttp", lazyHttp, true),
-  serve: core.propLazyLoadedByKey("serve", lazyServe, true),
-  upgradeWebSocket: core.propLazyLoadedByKey(
-    "upgradeWebSocket",
-    lazyWebsocket,
-    true,
-  ),
-  kill: core.propLazyLoadedByKey("kill", lazyProcess, true),
-  Command: core.propLazyLoadedByKey("Command", lazyProcess, true),
-  ChildProcess: core.propLazyLoadedByKey("ChildProcess", lazyProcess, true),
-  spawn: core.propLazyLoadedByKey("spawn", lazyProcess, true),
-  spawnAndWait: core.propLazyLoadedByKey("spawnAndWait", lazyProcess, true),
-  spawnAndWaitSync: core.propLazyLoadedByKey(
-    "spawnAndWaitSync",
+  Process: core.propWritableLazyLoaded(
+    (process) => process.Process,
     lazyProcess,
-    true,
+  ),
+  run: core.propWritableLazyLoaded((process) => process.run, lazyProcess),
+  serveHttp: core.propWritableLazyLoaded((http) => http.serveHttp, lazyHttp),
+  serve: core.propWritableLazyLoaded((serve) => serve.serve, lazyServe),
+  upgradeWebSocket: core.propWritableLazyLoaded(
+    (websocket) => websocket.upgradeWebSocket,
+    lazyWebsocket,
+  ),
+  kill: core.propWritableLazyLoaded((process) => process.kill, lazyProcess),
+  Command: core.propWritableLazyLoaded(
+    (process) => process.Command,
+    lazyProcess,
+  ),
+  ChildProcess: core.propWritableLazyLoaded(
+    (process) => process.ChildProcess,
+    lazyProcess,
+  ),
+  spawn: core.propWritableLazyLoaded((process) => process.spawn, lazyProcess),
+  spawnAndWait: core.propWritableLazyLoaded(
+    (process) => process.spawnAndWait,
+    lazyProcess,
+  ),
+  spawnAndWaitSync: core.propWritableLazyLoaded(
+    (process) => process.spawnAndWaitSync,
+    lazyProcess,
   ),
 });
 
@@ -337,26 +347,26 @@ denoNsUnstableById[unstableIds.net] = {
 };
 
 core.defineGlobalProperties(denoNsUnstableById[unstableIds.net], {
-  connectQuic: core.propLazyLoadedByKey("connectQuic", loadQuic, true),
-  QuicEndpoint: core.propLazyLoadedByKey("QuicEndpoint", loadQuic, true),
-  QuicBidirectionalStream: core.propLazyLoadedByKey(
-    "QuicBidirectionalStream",
+  connectQuic: core.propWritableLazyLoaded((q) => q.connectQuic, loadQuic),
+  QuicEndpoint: core.propWritableLazyLoaded((q) => q.QuicEndpoint, loadQuic),
+  QuicBidirectionalStream: core.propWritableLazyLoaded(
+    (q) => q.QuicBidirectionalStream,
     loadQuic,
-    true,
   ),
-  QuicConn: core.propLazyLoadedByKey("QuicConn", loadQuic, true),
-  QuicListener: core.propLazyLoadedByKey("QuicListener", loadQuic, true),
-  QuicReceiveStream: core.propLazyLoadedByKey(
-    "QuicReceiveStream",
+  QuicConn: core.propWritableLazyLoaded((q) => q.QuicConn, loadQuic),
+  QuicListener: core.propWritableLazyLoaded((q) => q.QuicListener, loadQuic),
+  QuicReceiveStream: core.propWritableLazyLoaded(
+    (q) => q.QuicReceiveStream,
     loadQuic,
-    true,
   ),
-  QuicSendStream: core.propLazyLoadedByKey("QuicSendStream", loadQuic, true),
-  QuicIncoming: core.propLazyLoadedByKey("QuicIncoming", loadQuic, true),
-  upgradeWebTransport: core.propLazyLoadedByKey(
-    "upgradeWebTransport",
+  QuicSendStream: core.propWritableLazyLoaded(
+    (q) => q.QuicSendStream,
+    loadQuic,
+  ),
+  QuicIncoming: core.propWritableLazyLoaded((q) => q.QuicIncoming, loadQuic),
+  upgradeWebTransport: core.propWritableLazyLoaded(
+    (wt) => wt.upgradeWebTransport,
     loadWebTransport,
-    true,
   ),
 });
 
@@ -368,10 +378,7 @@ denoNsUnstableById[unstableIds.webgpu] = {
   },
 };
 core.defineGlobalProperties(denoNsUnstableById[unstableIds.webgpu], {
-  webgpu: core.propWritableLazyLoaded(
-    (webgpu) => webgpu.denoNsWebGPU,
-    loadWebGPU,
-  ),
+  webgpu: core.propLazyLoadedByKey("denoNsWebGPU", loadWebGPU, true),
 });
 
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }

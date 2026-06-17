@@ -41,6 +41,8 @@ pub mod permissions;
 #[cfg(feature = "snapshot")]
 pub mod snapshot;
 pub mod snapshot_info;
+#[cfg(feature = "transpile")]
+mod snapshot_optimizer;
 pub mod tokio_util;
 #[cfg(feature = "transpile")]
 pub mod transpile;

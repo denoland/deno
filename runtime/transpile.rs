@@ -67,6 +67,8 @@ fn maybe_transpile_source_inner(
 ) -> Result<(ModuleCodeString, Option<SourceMapData>), JsErrorBox> {
   let name_string = name.to_string();
   let source = maybe_substitute_node_version(&name_string, source);
+  let source =
+    crate::snapshot_optimizer::maybe_optimize_source(&name_string, source);
   // Always transpile `node:` built-in modules, since they might be TypeScript.
   let media_type = if name.starts_with("node:") {
     MediaType::TypeScript
@@ -99,6 +101,8 @@ fn maybe_transpile_source_inner(
     maybe_syntax: None,
   })
   .map_err(|e| JsErrorBox::from_err(JsParseDiagnostic(e)))?;
+  let emit_build_source_maps =
+    crate::snapshot_optimizer::source_map_output_dir().is_some();
   let transpiled_source = parsed
     .transpile(
       &deno_ast::TranspileOptions {
@@ -109,6 +113,8 @@ fn maybe_transpile_source_inner(
       &deno_ast::EmitOptions {
         source_map: if cfg!(debug_assertions) {
           SourceMapOption::Separate
+        } else if emit_build_source_maps {
+          SourceMapOption::Separate
         } else {
           SourceMapOption::None
         },
@@ -118,9 +124,21 @@ fn maybe_transpile_source_inner(
     .map_err(|e| JsErrorBox::from_err(JsTranspileError(e)))?
     .into_source();
 
-  let maybe_source_map: Option<SourceMapData> = transpiled_source
-    .source_map
-    .map(|sm| sm.into_bytes().into());
+  let source_map = transpiled_source.source_map;
+  if let Some(source_map) = &source_map
+    && emit_build_source_maps
+  {
+    crate::snapshot_optimizer::write_build_source_map(
+      "transpile",
+      &name_string,
+      source_map.as_bytes(),
+    );
+  }
+  let maybe_source_map: Option<SourceMapData> = if cfg!(debug_assertions) {
+    source_map.map(|sm| sm.into_bytes().into())
+  } else {
+    None
+  };
   let source_text = transpiled_source.text;
   if minify {
     let source_text = minify_source_with_rolldown(&name_string, &source_text)?;

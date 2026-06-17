@@ -5,7 +5,6 @@
 
 const { core, primordials } = __bootstrap;
 const {
-  ObjectCreate,
   ArrayPrototypeJoin,
   ArrayPrototypePush,
   ObjectAssign,
@@ -257,7 +256,12 @@ const defaultExport = {
   tap,
 };
 
-const namespaceExport = ObjectCreate(defaultExport);
-namespaceExport.default = defaultExport;
-return namespaceExport;
+return {
+  dot,
+  junit,
+  lcov,
+  spec,
+  tap,
+  default: defaultExport,
+};
 })();

@@ -88,6 +88,7 @@ rustyline = { workspace = true, features = ["custom-bindings"] }
 same-file.workspace = true
 serde.workspace = true
 sha2.workspace = true
+sourcemap.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

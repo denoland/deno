@@ -3,7 +3,6 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const {
-  ObjectCreate,
   Date,
   DatePrototypeToUTCString,
   DatePrototypeGetMilliseconds,
@@ -36,7 +35,10 @@ const _defaultExport = {
   kNeedDrain,
 };
 
-const namespaceExport = ObjectCreate(_defaultExport);
-namespaceExport.default = _defaultExport;
-return namespaceExport;
+return {
+  utcDate,
+  kOutHeaders,
+  kNeedDrain,
+  default: _defaultExport,
+};
 })();

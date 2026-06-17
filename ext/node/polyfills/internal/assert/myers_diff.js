@@ -8,7 +8,6 @@ const { ERR_OUT_OF_RANGE } = core.loadExtScript(
 const colors = core.loadExtScript("ext:deno_node/internal/util/colors.ts");
 
 const {
-  ObjectCreate,
   ArrayPrototypePush,
   Int32Array,
   StringPrototypeEndsWith,
@@ -205,7 +204,10 @@ function printMyersDiff(diff, operator) {
 
 const _defaultExport = { myersDiff, printMyersDiff, printSimpleMyersDiff };
 
-const namespaceExport = ObjectCreate(_defaultExport);
-namespaceExport.default = _defaultExport;
-return namespaceExport;
+return {
+  myersDiff,
+  printMyersDiff,
+  printSimpleMyersDiff,
+  default: _defaultExport,
+};
 })();
