@@ -248,7 +248,7 @@ fn no_snaps_included(test_name: &str, extension: &str) {
     .new_command()
     .args_vec(vec![
       "coverage".to_string(),
-      "--include=no_snaps_included.ts".to_string(),
+      "--include=coverage/no_snaps_included/no_snaps_included.ts".to_string(),
       "--detailed".to_string(),
       format!("{}/", tempdir),
     ])
@@ -373,7 +373,7 @@ fn no_transpiled_lines() {
     .new_command()
     .args_vec(vec![
       "coverage".to_string(),
-      "--include=no_transpiled_lines/index.ts".to_string(),
+      "--include=coverage/no_transpiled_lines/index.ts".to_string(),
       "--detailed".to_string(),
       format!("{}/", tempdir),
     ])
@@ -389,7 +389,7 @@ fn no_transpiled_lines() {
     .args_vec(vec![
       "coverage".to_string(),
       "--lcov".to_string(),
-      "--include=no_transpiled_lines/index.ts".to_string(),
+      "--include=coverage/no_transpiled_lines/index.ts".to_string(),
       format!("{}/", tempdir),
     ])
     .run();

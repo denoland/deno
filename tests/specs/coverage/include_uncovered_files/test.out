@@ -1,0 +1,12 @@
+Check [WILDCARD]add_test.ts
+running 1 test from ./add_test.ts
+add() ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed ([WILDCARD])
+
+| File      | Branch % | Function % | Line % |
+| --------- | -------- | ---------- | ------ |
+| add.ts    |    100.0 |      100.0 |  100.0 |
+| All files |    100.0 |      100.0 |  100.0 |
+Lcov coverage report has been generated at file://[WILDCARD]/cov/lcov.info
+HTML coverage report has been generated at file://[WILDCARD]/cov/html/index.html
