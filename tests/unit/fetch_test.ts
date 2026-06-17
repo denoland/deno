@@ -9,7 +9,9 @@ import {
   assertStringIncludes,
   assertThrows,
   delay,
+  execCode3,
   fail,
+  tmpUnixSocketPath,
   unimplemented,
 } from "./test_util.ts";
 import { Buffer } from "@std/io/buffer";
@@ -2326,6 +2328,92 @@ Deno.test(
     const resp2 = await fetch("http://localhost/not-found", { client });
     assertEquals(resp2.status, 404);
     assertEquals(await resp2.text(), "Not found");
+  },
+);
+
+// A Unix-socket proxy is an outbound network primitive, so it requires an
+// `--allow-net=unix:<path>` rule in addition to filesystem access on the
+// socket path. Filesystem read/write alone must not let a custom client route
+// fetch traffic to a local Unix socket.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  function fetchUnixProxyRequiresAllowNet() {
+    const socketPath = tmpUnixSocketPath();
+    assertThrows(
+      () =>
+        Deno.createHttpClient({
+          proxy: { transport: "unix", path: socketPath },
+        }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+// The scoped form must match the exact path: an `--allow-net=unix:<path>` rule
+// for a different socket does not grant the Unix proxy access to this one.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: {
+      read: true,
+      write: true,
+      net: ["unix:/some/other/path.sock"],
+    },
+  },
+  function fetchUnixProxyScopedAllowNetMatchesExactly() {
+    const socketPath = tmpUnixSocketPath();
+    assertThrows(
+      () =>
+        Deno.createHttpClient({
+          proxy: { transport: "unix", path: socketPath },
+        }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+// An `--allow-net=unix:<path>` rule scoped to the exact socket path grants the
+// Unix proxy access. Run in a subprocess so the dynamic socket path can be
+// passed in the allow-net rule. The temp dir is canonicalized up front so the
+// resolved socket path matches the rule exactly. The `localhost` grant is also
+// required: routing through the Unix proxy still issues `fetch()` against the
+// request URL, whose host (`localhost`) goes through the normal net check.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true, run: true },
+  },
+  async function fetchUnixProxyScopedAllowNetGrantsAccess() {
+    const folder = Deno.realPathSync(Deno.makeTempDirSync());
+    const socketPath = `${folder}/socket`;
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      await using _server = Deno.serve({
+        path: ${JSON.stringify(socketPath)},
+        transport: "unix",
+        onListen: () => {},
+      }, () => new Response("OK"));
+      using client = Deno.createHttpClient({
+        proxy: { transport: "unix", path: ${JSON.stringify(socketPath)} },
+      });
+      const resp = await fetch("http://localhost/", { client });
+      console.log(await resp.text());
+      `,
+    );
+    const [status, output] = await execCode3(Deno.execPath(), [
+      "run",
+      "--allow-read",
+      "--allow-write",
+      `--allow-net=unix:${socketPath},localhost`,
+      scriptPath,
+    ]).finished();
+    assertEquals(status, 0);
+    assertStringIncludes(output, "OK");
   },
 );
 

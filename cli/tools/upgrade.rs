@@ -1138,10 +1138,9 @@ pub async fn upgrade(
     );
 
     archive::unpack_into_dir(archive::UnpackArgs {
-      exe_name: "deno",
+      exe_name: if cfg!(windows) { "deno.exe" } else { "deno" },
       archive_name: &ARCHIVE_NAME,
       archive_data: &archive_data,
-      is_windows: cfg!(windows),
       dest_path: temp_dir.path(),
     })
     .context("failed to extract archive")?

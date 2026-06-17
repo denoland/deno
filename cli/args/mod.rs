@@ -202,6 +202,9 @@ pub struct WorkspaceTestOptions {
   pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
+  pub retry: u32,
+  pub repeats: u32,
+  pub shard: Option<(usize, usize)>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
@@ -234,6 +237,9 @@ impl WorkspaceTestOptions {
       filter: test_flags.filter.clone(),
       no_run: test_flags.no_run,
       shuffle: test_flags.shuffle,
+      retry: test_flags.retry,
+      repeats: test_flags.repeats,
+      shard: test_flags.shard,
       trace_leaks: test_flags.trace_leaks,
       sanitize_ops: test_flags.sanitize_ops
         || std::env::var("DENO_TEST_SANITIZE_OPS").ok().as_deref() == Some("1")
@@ -614,7 +620,11 @@ impl CliOptions {
   }
 
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
-    TsTypeLib::DenoWindow
+    if self.flags.internal.is_desktop {
+      TsTypeLib::DenoDesktop
+    } else {
+      TsTypeLib::DenoWindow
+    }
   }
 
   pub fn ts_type_lib_worker(&self) -> TsTypeLib {
@@ -803,6 +813,12 @@ impl CliOptions {
           DenoSubcommand::Compile(compile_flags) => {
             resolve_url_or_path_normalized(
               &compile_flags.source_file,
+              self.initial_cwd(),
+            )?
+          }
+          DenoSubcommand::Desktop(desktop_flags) => {
+            resolve_url_or_path_normalized(
+              &desktop_flags.source_file,
               self.initial_cwd(),
             )?
           }
@@ -1207,7 +1223,9 @@ impl CliOptions {
       if name.is_empty() {
         let maybe_subcommand_permissions = match &self.flags.subcommand {
           DenoSubcommand::Bench(_) => dir.to_bench_permissions_config()?,
-          DenoSubcommand::Compile(_) => dir.to_compile_permissions_config()?,
+          DenoSubcommand::Compile(_) | DenoSubcommand::Desktop(_) => {
+            dir.to_compile_permissions_config()?
+          }
           DenoSubcommand::Test(_) => dir.to_test_permissions_config()?,
           _ => None,
         };
@@ -1227,7 +1245,7 @@ impl CliOptions {
             .to_bench_permissions_config()?
             .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Bench", &permissions.base)),
-          DenoSubcommand::Compile(_) => dir
+          DenoSubcommand::Compile(_) | DenoSubcommand::Desktop(_) => dir
             .to_compile_permissions_config()?
             .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Compile", &permissions.base)),

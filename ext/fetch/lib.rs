@@ -878,6 +878,13 @@ pub fn op_fetch_custom_client(
             Some("Deno.createHttpClient()"),
           )?
           .into_path();
+        // Unix sockets are an outbound network primitive, so a Unix proxy
+        // requires an `--allow-net=unix:<path>` rule in addition to the
+        // filesystem check above, mirroring the direct Unix socket ops.
+        permissions.check_net_unix_socket(
+          &resolved_path,
+          Some("Deno.createHttpClient()"),
+        )?;
         if path != resolved_path {
           *original_path = resolved_path.to_string_lossy().into_owned();
         }

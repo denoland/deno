@@ -53,6 +53,24 @@ pub enum SubtleDigestXof {
     output_length: u32,
     domain_separation: Option<u8>,
   },
+  #[serde(rename = "KT128", rename_all = "camelCase")]
+  Kt128 {
+    output_length: u32,
+    #[serde(with = "serde_bytes", default)]
+    customization: Option<Vec<u8>>,
+  },
+  #[serde(rename = "KT256", rename_all = "camelCase")]
+  Kt256 {
+    output_length: u32,
+    #[serde(with = "serde_bytes", default)]
+    customization: Option<Vec<u8>>,
+  },
+  #[serde(rename = "KangarooTwelve", rename_all = "camelCase")]
+  KangarooTwelve {
+    output_length: u32,
+    #[serde(with = "serde_bytes", default)]
+    customization: Option<Vec<u8>>,
+  },
 }
 
 /// The `WebIdlConverter` for `AlgorithmIdentifier`-restricted-to-digest,
@@ -120,7 +138,8 @@ impl<'a> WebIdlConverter<'a> for DigestAlgorithm {
       "SHA3-256" => Ok(Self::Sha(CryptoHash::Sha3_256)),
       "SHA3-384" => Ok(Self::Sha(CryptoHash::Sha3_384)),
       "SHA3-512" => Ok(Self::Sha(CryptoHash::Sha3_512)),
-      "cSHAKE128" | "cSHAKE256" | "TurboSHAKE128" | "TurboSHAKE256" => {
+      "cSHAKE128" | "cSHAKE256" | "TurboSHAKE128" | "TurboSHAKE256"
+      | "KT128" | "KT256" | "KangarooTwelve" => {
         let obj = maybe_obj.ok_or_else(|| {
           WebIdlError::other(
             prefix.clone(),
@@ -157,6 +176,9 @@ fn canonical_digest_name(name: &str) -> Option<&'static str> {
     "cSHAKE256",
     "TurboSHAKE128",
     "TurboSHAKE256",
+    "KT128",
+    "KT256",
+    "KangarooTwelve",
   ];
   NAMES
     .iter()
@@ -270,6 +292,36 @@ fn parse_xof_dict<'a, 'b>(
         scope,
         obj,
         "domainSeparation",
+        prefix.clone(),
+        &context,
+      )?,
+    }),
+    "KT128" => Ok(SubtleDigestXof::Kt128 {
+      output_length,
+      customization: read_optional_buffer(
+        scope,
+        obj,
+        "customization",
+        prefix.clone(),
+        &context,
+      )?,
+    }),
+    "KT256" => Ok(SubtleDigestXof::Kt256 {
+      output_length,
+      customization: read_optional_buffer(
+        scope,
+        obj,
+        "customization",
+        prefix.clone(),
+        &context,
+      )?,
+    }),
+    "KangarooTwelve" => Ok(SubtleDigestXof::KangarooTwelve {
+      output_length,
+      customization: read_optional_buffer(
+        scope,
+        obj,
+        "customization",
         prefix.clone(),
         &context,
       )?,
@@ -514,7 +566,10 @@ fn run_xof(
     SubtleDigestXof::CShake128 { output_length, .. }
     | SubtleDigestXof::CShake256 { output_length, .. }
     | SubtleDigestXof::TurboShake128 { output_length, .. }
-    | SubtleDigestXof::TurboShake256 { output_length, .. } => *output_length,
+    | SubtleDigestXof::TurboShake256 { output_length, .. }
+    | SubtleDigestXof::Kt128 { output_length, .. }
+    | SubtleDigestXof::Kt256 { output_length, .. }
+    | SubtleDigestXof::KangarooTwelve { output_length, .. } => *output_length,
   };
   if !output_length.is_multiple_of(8) {
     return Err(CryptoError::InvalidXofParameters);
@@ -524,7 +579,13 @@ fn run_xof(
     SubtleDigestXof::TurboShake128 { .. }
       | SubtleDigestXof::TurboShake256 { .. }
   );
-  if is_turbo && output_length == 0 {
+  let is_kangaroo = matches!(
+    algorithm,
+    SubtleDigestXof::Kt128 { .. }
+      | SubtleDigestXof::Kt256 { .. }
+      | SubtleDigestXof::KangarooTwelve { .. }
+  );
+  if (is_turbo || is_kangaroo) && output_length == 0 {
     return Err(CryptoError::InvalidXofParameters);
   }
   if let SubtleDigestXof::TurboShake128 {
@@ -587,7 +648,157 @@ fn run_xof(
       h.update(data);
       h.finalize_xof().read(&mut out);
     }
+    SubtleDigestXof::Kt128 { customization, .. }
+    | SubtleDigestXof::KangarooTwelve { customization, .. } => {
+      kangaroo_twelve_128(
+        data,
+        customization.as_deref().unwrap_or(&[]),
+        &mut out,
+      );
+    }
+    SubtleDigestXof::Kt256 { customization, .. } => {
+      kangaroo_twelve_256(
+        data,
+        customization.as_deref().unwrap_or(&[]),
+        &mut out,
+      );
+    }
   }
 
   Ok(out)
+}
+
+const KT_CHUNK_SIZE: usize = 8192;
+
+fn encode_len(mut len: usize) -> Vec<u8> {
+  if len == 0 {
+    return vec![0];
+  }
+  let mut bytes = Vec::new();
+  while len > 0 {
+    bytes.push((len & 0xff) as u8);
+    len >>= 8;
+  }
+  bytes.reverse();
+  bytes.push(bytes.len() as u8);
+  bytes
+}
+
+fn kangaroo_twelve_128(data: &[u8], customization: &[u8], out: &mut [u8]) {
+  use tiny_keccak::Hasher;
+
+  let mut h = tiny_keccak::KangarooTwelve::new(customization);
+  h.update(data);
+  h.finalize(out);
+}
+
+fn kangaroo_twelve_256(data: &[u8], customization: &[u8], out: &mut [u8]) {
+  kangaroo_twelve_turbo::<136>(data, customization, out);
+}
+
+fn kangaroo_twelve_turbo<const RATE: usize>(
+  data: &[u8],
+  customization: &[u8],
+  out: &mut [u8],
+) {
+  let mut input = Vec::with_capacity(data.len() + customization.len() + 9);
+  input.extend_from_slice(data);
+  input.extend_from_slice(customization);
+  input.extend_from_slice(&encode_len(customization.len()));
+
+  if input.len() <= KT_CHUNK_SIZE {
+    let mut h = TurboShakeNode::<RATE>::new(0x07);
+    h.update(&input);
+    h.squeeze(out);
+    return;
+  }
+
+  let cv_len = if RATE == 168 { 32 } else { 64 };
+  let mut h = TurboShakeNode::<RATE>::new(0x06);
+  h.update(&input[..KT_CHUNK_SIZE]);
+  h.update(&[0x03, 0, 0, 0, 0, 0, 0, 0]);
+
+  let mut chunks = 0usize;
+  let mut tail = &input[KT_CHUNK_SIZE..];
+  while !tail.is_empty() {
+    let take = tail.len().min(KT_CHUNK_SIZE);
+    let mut inner = TurboShakeNode::<RATE>::new(0x0b);
+    inner.update(&tail[..take]);
+    let mut cv = vec![0u8; cv_len];
+    inner.squeeze(&mut cv);
+    h.update(&cv);
+    chunks += 1;
+    tail = &tail[take..];
+  }
+
+  h.update(&encode_len(chunks));
+  h.update(&[0xff, 0xff]);
+  h.squeeze(out);
+}
+
+struct TurboShakeNode<const RATE: usize> {
+  state: [u64; 25],
+  offset: usize,
+  delim: u8,
+  squeezing: bool,
+}
+
+impl<const RATE: usize> TurboShakeNode<RATE> {
+  fn new(delim: u8) -> Self {
+    Self {
+      state: [0; 25],
+      offset: 0,
+      delim,
+      squeezing: false,
+    }
+  }
+
+  fn update(&mut self, mut input: &[u8]) {
+    debug_assert!(!self.squeezing);
+    while !input.is_empty() {
+      let take = input.len().min(RATE - self.offset);
+      xor_into_state(&mut self.state, self.offset, &input[..take]);
+      self.offset += take;
+      input = &input[take..];
+      if self.offset == RATE {
+        tiny_keccak::keccakp(&mut self.state);
+        self.offset = 0;
+      }
+    }
+  }
+
+  fn squeeze(&mut self, mut out: &mut [u8]) {
+    if !self.squeezing {
+      xor_into_state(&mut self.state, self.offset, &[self.delim]);
+      xor_into_state(&mut self.state, RATE - 1, &[0x80]);
+      tiny_keccak::keccakp(&mut self.state);
+      self.offset = 0;
+      self.squeezing = true;
+    }
+
+    while !out.is_empty() {
+      if self.offset == RATE {
+        tiny_keccak::keccakp(&mut self.state);
+        self.offset = 0;
+      }
+      let take = out.len().min(RATE - self.offset);
+      copy_from_state(&self.state, self.offset, &mut out[..take]);
+      self.offset += take;
+      out = &mut out[take..];
+    }
+  }
+}
+
+fn xor_into_state(state: &mut [u64; 25], offset: usize, bytes: &[u8]) {
+  for (i, byte) in bytes.iter().copied().enumerate() {
+    let pos = offset + i;
+    state[pos / 8] ^= (byte as u64) << ((pos % 8) * 8);
+  }
+}
+
+fn copy_from_state(state: &[u64; 25], offset: usize, out: &mut [u8]) {
+  for (i, byte) in out.iter_mut().enumerate() {
+    let pos = offset + i;
+    *byte = (state[pos / 8] >> ((pos % 8) * 8)) as u8;
+  }
 }
