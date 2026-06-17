@@ -1612,6 +1612,11 @@ pub enum ToInvalidConfigError {
     #[inherit]
     source: serde_json::Error,
   },
+  #[class(type)]
+  #[error(
+    "Invalid \"coverage\" configuration: \"thresholds.{metric}\" must be between 0 and 100, but got {value}"
+  )]
+  CoverageThresholdOutOfRange { metric: &'static str, value: f64 },
 }
 
 #[derive(Debug, Error, JsError)]
@@ -2168,11 +2173,20 @@ impl ConfigFile {
               source: error,
             }
           })?;
+        let validate = |metric: &'static str, value: Option<f64>| match value {
+          Some(value) if !(0.0..=100.0).contains(&value) => {
+            Err(ToInvalidConfigError::CoverageThresholdOutOfRange {
+              metric,
+              value,
+            })
+          }
+          _ => Ok(value),
+        };
         Ok(CoverageConfig {
           thresholds: CoverageThresholds {
-            lines: serialized.thresholds.lines,
-            branches: serialized.thresholds.branches,
-            functions: serialized.thresholds.functions,
+            lines: validate("lines", serialized.thresholds.lines)?,
+            branches: validate("branches", serialized.thresholds.branches)?,
+            functions: validate("functions", serialized.thresholds.functions)?,
           },
         })
       }

@@ -787,41 +787,24 @@ pub fn cover_files(
 }
 
 /// Computes the aggregate line, branch, and function coverage percentages
-/// across all reported files. A metric with no measurable items counts as 100%.
+/// across all reported files. A metric with no measurable items counts as 100%
+/// (e.g. a `branches` threshold passes vacuously for files that have no
+/// branches). Reuses the same accumulation and percentage helpers as the
+/// summary reporter so the checked numbers match the printed ones.
 fn aggregate_coverage_percentages(
   file_reports: &[(CoverageReport, String)],
 ) -> (f64, f64, f64) {
-  let (mut line_hit, mut line_miss) = (0usize, 0usize);
-  let (mut branch_hit, mut branch_miss) = (0usize, 0usize);
-  let (mut fn_hit, mut fn_miss) = (0usize, 0usize);
+  let mut stats = reporter::CoverageStats::default();
   for (report, _) in file_reports {
-    line_hit += report.found_lines.iter().filter(|(_, c)| *c > 0).count();
-    line_miss += report.found_lines.iter().filter(|(_, c)| *c == 0).count();
-    branch_hit += report.branches.iter().filter(|b| b.is_hit).count();
-    branch_miss += report.branches.iter().filter(|b| !b.is_hit).count();
-    fn_hit += report
-      .named_functions
-      .iter()
-      .filter(|f| f.execution_count > 0)
-      .count();
-    fn_miss += report
-      .named_functions
-      .iter()
-      .filter(|f| f.execution_count == 0)
-      .count();
+    stats.add_report(report);
   }
   let percent = |hit: usize, miss: usize| -> f64 {
-    let total = hit + miss;
-    if total == 0 {
-      100.0
-    } else {
-      (hit as f64 / total as f64) * 100.0
-    }
+    util::calc_coverage_display_info(hit, miss).1 as f64
   };
   (
-    percent(line_hit, line_miss),
-    percent(branch_hit, branch_miss),
-    percent(fn_hit, fn_miss),
+    percent(stats.line_hit, stats.line_miss),
+    percent(stats.branch_hit, stats.branch_miss),
+    percent(stats.fn_hit, stats.fn_miss),
   )
 }
 
@@ -844,6 +827,9 @@ fn check_coverage_thresholds(
     if let Some(threshold) = threshold
       && actual < threshold
     {
+      // Floor the displayed value to two decimals so a near-miss like 89.999%
+      // doesn't render as "90.00% is below the threshold of 90.00%".
+      let actual = (actual * 100.0).floor() / 100.0;
       failures.push(format!(
         "  - {name} coverage {actual:.2}% is below the threshold of {threshold:.2}%"
       ));

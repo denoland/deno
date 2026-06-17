@@ -3598,7 +3598,7 @@ Generate html reports from lcov:
         Arg::new("threshold")
           .long("threshold")
           .value_name("PERCENT")
-          .value_parser(value_parser!(u32))
+          .value_parser(value_parser!(u32).range(0..=100))
           .require_equals(true)
           .help(cstr!("Fail if coverage is below this percentage (0-100), applied to line, branch, and function coverage.
   <p(245)>Per-metric thresholds can be set in deno.json under \"coverage\": { \"thresholds\": { ... } }. The flag takes precedence.</>")),
@@ -5266,7 +5266,7 @@ or <c>**/__tests__/**</>:
         Arg::new("coverage-threshold")
           .long("coverage-threshold")
           .value_name("PERCENT")
-          .value_parser(value_parser!(u32))
+          .value_parser(value_parser!(u32).range(0..=100))
           .require_equals(true)
           .requires("coverage")
           .help("Fail if coverage is below this percentage (0-100). Requires --coverage")
@@ -13607,6 +13607,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -14630,6 +14631,14 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn coverage_threshold_out_of_range() {
+    // Percentages above 100 are rejected by the value parser.
+    let r =
+      flags_from_vec(svec!["deno", "coverage", "--threshold=150", "foo.json"]);
+    assert!(r.is_err());
   }
 
   #[test]

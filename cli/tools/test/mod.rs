@@ -2178,6 +2178,10 @@ pub async fn run_tests(
   }
 
   if let Some(ref coverage) = test_flags.coverage_dir {
+    // A malformed `coverage` config is a user error and must fail the command.
+    // The best-effort error handling below only logs report-generation errors,
+    // so surface an invalid config as a hard error before generating reports.
+    cli_options.resolve_coverage_thresholds()?;
     let reporters: [&dyn reporter::CoverageReporter; 3] = [
       &reporter::SummaryCoverageReporter::new(),
       &reporter::LcovCoverageReporter::new(),
