@@ -11,7 +11,7 @@ const child = new Deno.Command(Deno.execPath(), {
   env: {
     DENO_SERVE_ADDRESS: `duplicate,tcp:127.0.0.1:${OVERRIDE_PORT}`,
   },
-  cwd: new URL(".", import.meta.url).pathname,
+  cwd: import.meta.dirname,
   stdout: "piped",
   stderr: "inherit",
 }).spawn();
