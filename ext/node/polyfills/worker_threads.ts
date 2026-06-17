@@ -21,6 +21,8 @@ const {
   op_node_worker_thread_register,
   op_node_worker_thread_set_listener_count,
   op_worker_get_resource_limits,
+  op_worker_thread_cpu_profile_start,
+  op_worker_thread_cpu_profile_stop,
   op_worker_threads_filename,
 } = core.ops;
 const {
@@ -55,6 +57,7 @@ const {
 const {
   validateArray,
   validateInteger,
+  validateNumber,
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
@@ -91,6 +94,8 @@ const {
   FunctionPrototypeApply,
   FunctionPrototypeBind,
   FunctionPrototypeCall,
+  JSONParse,
+  MathFloor,
   NumberIsFinite,
   NumberIsNaN,
   ObjectAssign,
@@ -198,6 +203,16 @@ function isWorkerStdoutMsg(data: unknown): data is WorkerStdioMsg {
     (data as { "type": unknown })["type"] === "WORKER_STDOUT";
 }
 
+// Internal control messages backing `worker.startCpuProfile()`. They piggyback
+// on the regular worker message channel and are intercepted on both ends, so
+// they are never surfaced to user `message` listeners.
+function messageType(data: unknown): unknown {
+  if (typeof data === "object" && data !== null && ObjectHasOwn(data, "type")) {
+    return (data as { "type": unknown })["type"];
+  }
+  return undefined;
+}
+
 // Flags that are valid Node.js environment flags but not allowed in workers
 // because they affect per-process state.
 const workerDisallowedFlags = new SafeSet([
@@ -254,6 +269,77 @@ interface WorkerOptions {
   name?: string;
 }
 
+// See Node's internal/v8/cpu_profiler.js.
+const kMicrosPerMilli = 1000;
+const kMaxSamplingIntervalUs = 0x7FFFFFFF;
+const kMaxSamplingIntervalMs = kMaxSamplingIntervalUs / kMicrosPerMilli;
+const kMaxSamplesUnlimited = 0xFFFFFFFF;
+
+// Normalize the options bag accepted by `worker.startCpuProfile()` into the
+// `{ samplingIntervalMicros, maxSamples }` shape the worker-side op expects.
+// `sampleInterval` is given in milliseconds; `samplingIntervalMicros` of 0
+// means "use V8's default interval".
+function normalizeCpuProfileOptions(options = { __proto__: null }) {
+  validateObject(options, "options");
+  const { sampleInterval, maxBufferSize } = options;
+
+  let samplingIntervalMicros = 0;
+  if (sampleInterval !== undefined) {
+    validateNumber(
+      sampleInterval,
+      "options.sampleInterval",
+      0,
+      kMaxSamplingIntervalMs,
+    );
+    samplingIntervalMicros = MathFloor(sampleInterval * kMicrosPerMilli);
+    if (sampleInterval > 0 && samplingIntervalMicros === 0) {
+      samplingIntervalMicros = 1;
+    }
+  }
+
+  let maxSamples = kMaxSamplesUnlimited;
+  if (maxBufferSize !== undefined) {
+    validateNumber(
+      maxBufferSize,
+      "options.maxBufferSize",
+      1,
+      kMaxSamplesUnlimited,
+    );
+    maxSamples = MathFloor(maxBufferSize);
+  }
+
+  return { samplingIntervalMicros, maxSamples };
+}
+
+// Symbol-keyed method on NodeWorker so CPUProfileHandle can ask its worker to
+// stop a profile without exposing a public method.
+const kStopCpuProfile = Symbol("kStopCpuProfile");
+
+// https://nodejs.org/api/worker_threads.html#workerstartcpuprofileoptions
+// Returned by `worker.startCpuProfile()`; `stop()` resolves with the V8 CPU
+// profile object.
+class CPUProfileHandle {
+  #worker;
+  #id;
+  #promise = null;
+
+  constructor(worker, id) {
+    this.#worker = worker;
+    this.#id = id;
+  }
+
+  stop() {
+    if (this.#promise) {
+      return this.#promise;
+    }
+    return this.#promise = this.#worker[kStopCpuProfile](this.#id);
+  }
+
+  async [SymbolAsyncDispose]() {
+    await this.stop();
+  }
+}
+
 const privateWorkerRef = Symbol("privateWorkerRef");
 class NodeWorker extends EventEmitter {
   #id = 0;
@@ -264,6 +350,10 @@ class NodeWorker extends EventEmitter {
   #messageLoopPromise = undefined;
   #workerOnline = false;
   #exited = false;
+  // Pending `startCpuProfile`/`stop` requests, keyed by a monotonic request id
+  // that is echoed back in the worker's reply.
+  #cpuProfileRequestId = 0;
+  #pendingCpuProfileRequests = new SafeMap();
   // "RUNNING" | "CLOSED" | "TERMINATED"
   // "TERMINATED" means that any controls or messages received will be
   // discarded. "CLOSED" means that we have received a control
@@ -723,8 +813,36 @@ class NodeWorker extends EventEmitter {
         this.stderr,
         message.data,
       );
+    } else if (this.#handleCpuProfileReply(message)) {
+      // Internal CPU profiling reply; resolved against a pending request and
+      // not surfaced as a user `message`.
     } else {
       this.emit("message", message);
+    }
+    return true;
+  }
+
+  // Resolve/reject the pending `startCpuProfile`/`stop` promise for a worker
+  // reply. Returns true if `message` was such a reply.
+  #handleCpuProfileReply(message): boolean {
+    const type = messageType(message);
+    if (
+      type !== "WORKER_CPU_PROFILE_STARTED" &&
+      type !== "WORKER_CPU_PROFILE_RESULT"
+    ) {
+      return false;
+    }
+    const pending = this.#pendingCpuProfileRequests.get(message.requestId);
+    if (pending === undefined) {
+      return true;
+    }
+    this.#pendingCpuProfileRequests.delete(message.requestId);
+    if (message.error !== undefined) {
+      pending.reject(new Error(message.error));
+    } else if (type === "WORKER_CPU_PROFILE_STARTED") {
+      pending.resolve(message.profileId);
+    } else {
+      pending.resolve(JSONParse(message.profile));
     }
     return true;
   }
@@ -873,6 +991,49 @@ class NodeWorker extends EventEmitter {
       });
     }
     return PromiseResolve({ user, system });
+  }
+
+  // https://nodejs.org/api/worker_threads.html#workerstartcpuprofileoptions
+  startCpuProfile(options?: unknown) {
+    if (this.#status !== "RUNNING") {
+      return PromiseReject(new ERR_WORKER_NOT_RUNNING());
+    }
+    let normalized;
+    try {
+      normalized = normalizeCpuProfileOptions(options);
+    } catch (err) {
+      return PromiseReject(err);
+    }
+    const requestId = ++this.#cpuProfileRequestId;
+    const promise = new Promise((resolve, reject) => {
+      this.#pendingCpuProfileRequests.set(requestId, { resolve, reject });
+    });
+    this.postMessage({
+      type: "WORKER_CPU_PROFILE_START",
+      requestId,
+      samplingIntervalMicros: normalized.samplingIntervalMicros,
+      maxSamples: normalized.maxSamples,
+    });
+    return PromisePrototypeThen(
+      promise,
+      (profileId) => new CPUProfileHandle(this, profileId),
+    );
+  }
+
+  [kStopCpuProfile](profileId) {
+    if (this.#status !== "RUNNING") {
+      return PromiseReject(new ERR_WORKER_NOT_RUNNING());
+    }
+    const requestId = ++this.#cpuProfileRequestId;
+    const promise = new Promise((resolve, reject) => {
+      this.#pendingCpuProfileRequests.set(requestId, { resolve, reject });
+    });
+    this.postMessage({
+      type: "WORKER_CPU_PROFILE_STOP",
+      requestId,
+      profileId,
+    });
+    return promise;
   }
 
   // https://nodejs.org/api/worker_threads.html#workerthreadname
@@ -1168,6 +1329,53 @@ internals.__initWorkerThreads = (
           };
           parentPort.addEventListener("message", stdinHandler);
         }
+
+        // Intercept CPU profiling control messages from the parent
+        // (`worker.startCpuProfile()` / `handle.stop()`). Registered before
+        // user code runs so these never reach user `message` listeners.
+        const cpuProfileHandler = (ev) => {
+          const msg = ev.data;
+          const type = messageType(msg);
+          if (type === "WORKER_CPU_PROFILE_START") {
+            ev.stopImmediatePropagation();
+            let profileId;
+            let error;
+            try {
+              profileId = op_worker_thread_cpu_profile_start(
+                msg.samplingIntervalMicros,
+                msg.maxSamples,
+              );
+            } catch (err) {
+              error = err?.message ?? String(err);
+            }
+            parentPort.postMessage({
+              type: "WORKER_CPU_PROFILE_STARTED",
+              requestId: msg.requestId,
+              profileId,
+              error,
+            });
+          } else if (type === "WORKER_CPU_PROFILE_STOP") {
+            ev.stopImmediatePropagation();
+            PromisePrototypeThen(
+              op_worker_thread_cpu_profile_stop(msg.profileId),
+              (profile) => {
+                parentPort.postMessage({
+                  type: "WORKER_CPU_PROFILE_RESULT",
+                  requestId: msg.requestId,
+                  profile,
+                });
+              },
+              (err) => {
+                parentPort.postMessage({
+                  type: "WORKER_CPU_PROFILE_RESULT",
+                  requestId: msg.requestId,
+                  error: err?.message ?? String(err),
+                });
+              },
+            );
+          }
+        };
+        parentPort.addEventListener("message", cpuProfileHandler);
 
         // Forward stdout writes to the parent so worker.stdout
         // is readable from the host side.
