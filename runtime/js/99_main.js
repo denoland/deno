@@ -834,6 +834,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       16: autoServe,
       17: nodeClusterUniqueId,
       18: nodeClusterSchedPolicy,
+      19: disableOffscreenCanvas,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -950,6 +951,9 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       close: core.propWritable(windowClose),
       closed: core.propGetterOnly(() => windowIsClosing),
     });
+    if (disableOffscreenCanvas) {
+      delete globalThis.OffscreenCanvas;
+    }
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
@@ -1050,6 +1054,7 @@ function bootstrapWorkerRuntime(
       15: standalone,
       17: nodeClusterUniqueId,
       18: nodeClusterSchedPolicy,
+      19: disableOffscreenCanvas,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -1080,6 +1085,9 @@ function bootstrapWorkerRuntime(
       close: core.propNonEnumerable(workerClose),
       postMessage: core.propWritable(postMessage),
     });
+    if (disableOffscreenCanvas) {
+      delete globalThis.OffscreenCanvas;
+    }
     if (enableTestingFeaturesFlag) {
       ObjectDefineProperty(
         globalThis,
