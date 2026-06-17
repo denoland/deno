@@ -1817,8 +1817,18 @@ fn apply_bsdiff_patch(
 ) -> Result<Vec<u8>, AnyError> {
   let decoded;
   let raw_patch = if patch_data.starts_with(&ZSTD_MAGIC) {
-    decoded = zstd::bulk::decompress(patch_data, MAX_PATCH_SIZE)
+    // Stream the decompression so the output buffer grows incrementally
+    // instead of pre-allocating MAX_PATCH_SIZE up front (which OOMs on
+    // low-memory devices). `.take(MAX_PATCH_SIZE)` keeps the anti-DoS cap.
+    use std::io::Read;
+    let decoder = zstd::stream::Decoder::new(patch_data)
       .context("failed to zstd-decompress delta patch")?;
+    let mut buf = Vec::new();
+    decoder
+      .take(MAX_PATCH_SIZE as u64)
+      .read_to_end(&mut buf)
+      .context("failed to zstd-decompress delta patch")?;
+    decoded = buf;
     decoded.as_slice()
   } else {
     patch_data
@@ -3353,6 +3363,27 @@ mod test {
       wrapped.starts_with(&ZSTD_MAGIC),
       "zstd-compressed patch should start with the zstd magic number"
     );
+
+    let result = apply_bsdiff_patch(old_data, &wrapped).unwrap();
+    assert_eq!(result, new_data);
+  }
+
+  #[test]
+  fn test_apply_bsdiff_patch_zstd_streamed() {
+    // Regression for the OOM in #34809: a zstd frame written by a streaming
+    // encoder carries no content-size header, so the decoder cannot know the
+    // output size ahead of time. The fix decompresses incrementally instead of
+    // pre-allocating MAX_PATCH_SIZE, so this must still round-trip.
+    use std::io::Write;
+    let old_data = b"Hello, World!";
+    let new_data = b"Hello, Deno!";
+    let mut raw_patch = Vec::new();
+    bsdiff::diff(old_data, new_data, &mut raw_patch).unwrap();
+
+    let mut encoder = zstd::stream::Encoder::new(Vec::new(), 19).unwrap();
+    encoder.write_all(&raw_patch).unwrap();
+    let wrapped = encoder.finish().unwrap();
+    assert!(wrapped.starts_with(&ZSTD_MAGIC));
 
     let result = apply_bsdiff_patch(old_data, &wrapped).unwrap();
     assert_eq!(result, new_data);
