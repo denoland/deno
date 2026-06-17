@@ -2184,7 +2184,7 @@ mod deprecated {
       }
     }
 
-    // SIGBREAK (21) and SIGINT with pid 0 are delivered as console control
+    // SIGBREAK and SIGINT with pid 0 are delivered as console control
     // events. CTRL_BREAK_EVENT can target a process group: a pid of 0
     // signals every process attached to the current console, while a
     // positive pid signals the process group with that id (its leader must
@@ -2193,8 +2193,8 @@ mod deprecated {
     // SIGINT with a positive pid terminates the process below, matching
     // libuv behavior.
     let ctrl_event = match signo {
-      21 => Some(CTRL_BREAK_EVENT),
-      2 if pid == 0 => Some(CTRL_C_EVENT),
+      deno_signals::SIGBREAK => Some(CTRL_BREAK_EVENT),
+      deno_signals::SIGINT if pid == 0 => Some(CTRL_C_EVENT),
       _ => None,
     };
     if let Some(event) = ctrl_event {

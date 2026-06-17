@@ -213,6 +213,11 @@ pub fn register(
           // is unaffected), so a SIGINT listener would never fire. The
           // GitHub Actions runner is one such parent. Passing NULL and
           // FALSE restores normal CTRL+C processing.
+          //
+          // This restore is deliberately permanent and is not undone in
+          // `unregister`: once CTRL+C processing is re-enabled it stays
+          // enabled for the lifetime of the process, even if it was
+          // inherited disabled via CREATE_NEW_PROCESS_GROUP.
           // SAFETY: Win32 call with a null handler routine.
           unsafe {
             windows_sys::Win32::System::Console::SetConsoleCtrlHandler(None, 0);
@@ -260,6 +265,8 @@ pub fn run_exit() {
 
 pub const SIGINT: i32 = 2;
 pub const SIGTERM: i32 = 15;
+// Windows SIGBREAK; on other platforms this signal number is unused.
+pub const SIGBREAK: i32 = 21;
 
 /// Synthetically raise a signal, triggering all registered JS handlers.
 ///

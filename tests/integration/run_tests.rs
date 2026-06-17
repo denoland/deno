@@ -1083,6 +1083,12 @@ fn deno_kill_sends_console_ctrl_events() {
   // Deno.kill(0, ...) delivers CTRL_BREAK and CTRL_C events to every
   // process attached to the console, so give the process a console of its
   // own to keep the events away from the test runner.
+  //
+  // This only exercises the console-wide (pid 0) path. The process-group
+  // path (a positive pid whose leader was spawned with
+  // CREATE_NEW_PROCESS_GROUP) is intentionally out of scope here: it is
+  // hard to drive reliably from a headless CI runner without risking the
+  // very test instability that prompted the original revert.
   const CREATE_NEW_CONSOLE: u32 = 0x00000010;
 
   let output = Command::new(util::deno_exe_path())
