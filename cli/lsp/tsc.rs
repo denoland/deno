@@ -5517,6 +5517,59 @@ struct ScriptNames {
   by_notebook_uri: BTreeMap<Arc<Uri>, IndexSet<String>>,
 }
 
+fn insert_root_module_script_names(
+  state: &State,
+  script_names: &mut IndexSet<String>,
+  module: &DocumentModule,
+  scope: Option<&ModuleSpecifier>,
+  is_open: bool,
+) {
+  let types_entry = (|| {
+    let types_specifier = module
+      .types_dependency
+      .as_ref()?
+      .dependency
+      .maybe_specifier()?;
+    state.state_snapshot.document_modules.resolve_dependency(
+      types_specifier,
+      &module.specifier,
+      module.resolution_mode,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )
+  })();
+  // If there is a types dep, use that as the root instead. But if the doc
+  // is open, include both as roots.
+  if let Some((types_specifier, types_media_type, _)) = &types_entry {
+    script_names.insert(denormalize_with_auto_import_alias(
+      state,
+      types_specifier,
+      *types_media_type,
+      scope,
+    ));
+  }
+  if types_entry.is_none() || is_open {
+    script_names.insert(denormalize_with_auto_import_alias(
+      state,
+      &module.specifier,
+      module.media_type,
+      scope,
+    ));
+    // The auto-import alias hides `node_modules/.deno` from tsc, but
+    // requests for open documents (diagnostics, hover, etc.) use the
+    // unaliased name. Include it as a root too so they don't fail with
+    // "Could not find source file". See
+    // https://github.com/denoland/deno/issues/35170.
+    if is_open {
+      script_names.insert(
+        state
+          .specifier_map
+          .denormalize(&module.specifier, module.media_type),
+      );
+    }
+  }
+}
+
 #[op2]
 #[serde]
 fn op_script_names(state: &mut OpState) -> ScriptNames {
@@ -5653,6 +5706,30 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         ));
       }
     }
+    for specifier in compiler_options_data.ts_config_roots.iter() {
+      let scope = state
+        .state_snapshot
+        .config
+        .tree
+        .scope_for_specifier(specifier)
+        .cloned();
+      let Some(module) =
+        state.state_snapshot.document_modules.module_for_specifier(
+          specifier,
+          scope.as_deref(),
+          Some(compiler_options_key),
+        )
+      else {
+        continue;
+      };
+      insert_root_module_script_names(
+        state,
+        script_names,
+        &module,
+        scope.as_deref(),
+        false,
+      );
+    }
   }
 
   // roots for notebook scopes
@@ -5709,43 +5786,17 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     .into_iter()
   {
     for module in modules {
-      let is_open = module.open_data.is_some();
-      let types_entry = (|| {
-        let types_specifier = module
-          .types_dependency
-          .as_ref()?
-          .dependency
-          .maybe_specifier()?;
-        state.state_snapshot.document_modules.resolve_dependency(
-          types_specifier,
-          &module.specifier,
-          module.resolution_mode,
-          module.scope.as_deref(),
-          Some(&module.compiler_options_key),
-        )
-      })();
       let script_names = result
         .by_compiler_options_key
         .entry(module.compiler_options_key.clone())
         .or_default();
-      // If there is a types dep, use that as the root instead. But if the doc
-      // is open, include both as roots.
-      if let Some((types_specifier, types_media_type, _)) = &types_entry {
-        script_names.insert(denormalize_with_auto_import_alias(
-          state,
-          types_specifier,
-          *types_media_type,
-          scope.as_deref(),
-        ));
-      }
-      if types_entry.is_none() || is_open {
-        script_names.insert(denormalize_with_auto_import_alias(
-          state,
-          &module.specifier,
-          module.media_type,
-          scope.as_deref(),
-        ));
-      }
+      insert_root_module_script_names(
+        state,
+        script_names,
+        &module,
+        scope.as_deref(),
+        module.open_data.is_some(),
+      );
     }
   }
 
@@ -6709,7 +6760,7 @@ mod tests {
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
-      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver, None));
     resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
     let linter_resolver = Arc::new(LspLinterResolver::new(
       &config,

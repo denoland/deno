@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.264.0"
+version = "0.265.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,6 +17,7 @@ path = "lib.rs"
 aes.workspace = true
 aes-gcm.workspace = true
 aes-kw = { workspace = true, features = ["alloc"] }
+argon2.workspace = true
 aws-lc-rs = { workspace = true, features = ["unstable"] }
 base64.workspace = true
 cbc.workspace = true
@@ -29,6 +30,7 @@ ecdsa.workspace = true
 ed448-goldilocks = { workspace = true }
 elliptic-curve = { workspace = true, features = ["std", "pem", "arithmetic"] }
 fips203 = { workspace = true, features = ["ml-kem-512", "ml-kem-768", "ml-kem-1024"] }
+fips205.workspace = true
 hmac.workspace = true
 num-traits.workspace = true
 ocb3.workspace = true
@@ -46,6 +48,7 @@ sha3.workspace = true
 signature.workspace = true
 spki.workspace = true
 thiserror.workspace = true
+tiny-keccak = { workspace = true, features = ["k12", "kmac"] }
 tokio.workspace = true
 uuid.workspace = true
 x25519-dalek.workspace = true

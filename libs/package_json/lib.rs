@@ -381,6 +381,8 @@ pub struct PackageJson {
   pub optional_dependencies: Option<IndexMap<String, String>>,
   pub directories: Option<Map<String, Value>>,
   pub scripts: Option<IndexMap<String, String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub config: Option<Map<String, Value>>,
   pub workspaces: Option<Vec<String>>,
   pub os: Option<Vec<String>>,
   pub cpu: Option<Vec<String>>,
@@ -461,6 +463,7 @@ impl PackageJson {
         optional_dependencies: None,
         directories: None,
         scripts: None,
+        config: None,
         workspaces: None,
         os: None,
         cpu: None,
@@ -611,6 +614,7 @@ impl PackageJson {
       package_json.remove("directories").and_then(map_object);
     let scripts: Option<IndexMap<String, String>> =
       package_json.remove("scripts").and_then(parse_string_map);
+    let config = package_json.remove("config").and_then(map_object);
 
     // Ignore unknown types for forwards compatibility
     let typ = if let Some(t) = type_val {
@@ -718,6 +722,7 @@ impl PackageJson {
       optional_dependencies,
       directories,
       scripts,
+      config,
       workspaces,
       os,
       cpu,

@@ -44,6 +44,19 @@ fn pty_multiline() {
 }
 
 #[test(flaky)]
+fn pty_multiline_dot_chain() {
+  // Breaking a method chain right after a `.` should continue reading input
+  // instead of throwing a parse error.
+  // https://github.com/denoland/deno/issues/16335
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("[1, 2, 3].\nmap(x => x * 2)");
+    console.expect("[ 2, 4, 6 ]");
+    console.write_line("(await Promise.resolve([4, 5, 6])).\nmap(x => x + 1)");
+    console.expect("[ 5, 6, 7 ]");
+  });
+}
+
+#[test(flaky)]
 fn pty_null() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("null");

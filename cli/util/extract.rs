@@ -118,23 +118,147 @@ fn extract_files_from_fenced_blocks(
   source: &str,
   media_type: MediaType,
 ) -> Result<Vec<TestOrSnippet>, AnyError> {
-  // The pattern matches code blocks as well as anything in HTML comment syntax,
-  // but it stores the latter without any capturing groups. This way, a simple
-  // check can be done to see if a block is inside a comment (and skip typechecking)
-  // or not by checking for the presence of capturing groups in the matches.
-  let blocks_regex = lazy_regex::regex!(
-    r"(?m)<!--[\S\s]*?-->|^[ \t]*(?P<blockquote>(?:>[ \t]?)*)```(?P<attributes>[^\r\n]*)\r?\n(?P<body>[\S\s]*?)^[ \t]*(?:>[ \t]?)*```"
-  );
   let lines_regex = lazy_regex::regex!(r"(((#!+).*)|(?:# ?)?(.*))");
 
-  extract_files_from_regex_blocks(
-    specifier,
-    source,
-    media_type,
-    /* file line index */ 0,
-    blocks_regex,
-    lines_regex,
+  Ok(
+    extract_markdown_fenced_blocks(source)
+      .into_iter()
+      .filter_map(|block| {
+        let file_media_type =
+          media_type_from_fence_attributes(block.attributes, media_type)?;
+        extract_file_from_block(
+          specifier,
+          file_media_type,
+          /* file line index */ 0,
+          block.line_offset,
+          block.line_count,
+          block.body,
+          block.is_markdown_blockquote,
+          lines_regex,
+        )
+      })
+      .collect(),
   )
+}
+
+struct MarkdownFence<'a> {
+  attributes: &'a str,
+  body: &'a str,
+  line_offset: usize,
+  line_count: usize,
+  is_markdown_blockquote: bool,
+}
+
+fn extract_markdown_fenced_blocks(source: &str) -> Vec<MarkdownFence<'_>> {
+  let mut lines = Vec::new();
+  let mut offset = 0;
+  for line in source.split_inclusive('\n') {
+    let line_start = offset;
+    offset += line.len();
+    let line = line.strip_suffix('\n').unwrap_or(line);
+    let line = line.strip_suffix('\r').unwrap_or(line);
+    lines.push((line_start, line));
+  }
+  if offset < source.len() {
+    lines.push((offset, &source[offset..]));
+  }
+
+  let mut blocks = Vec::new();
+  let mut line_index = 0;
+  let mut in_html_comment = false;
+  while line_index < lines.len() {
+    if in_html_comment {
+      if lines[line_index].1.contains("-->") {
+        in_html_comment = false;
+      }
+      line_index += 1;
+      continue;
+    }
+    let line = lines[line_index].1.trim_start_matches([' ', '\t']);
+    if line.starts_with("<!--") {
+      if !line.contains("-->") {
+        in_html_comment = true;
+      }
+      line_index += 1;
+      continue;
+    }
+
+    let Some(opening) = parse_markdown_fence_opening(lines[line_index].1)
+    else {
+      line_index += 1;
+      continue;
+    };
+
+    let mut closing_line_index = line_index + 1;
+    while closing_line_index < lines.len() {
+      if is_markdown_fence_closing(
+        lines[closing_line_index].1,
+        opening.tick_count,
+      ) {
+        let body_start = lines
+          .get(line_index + 1)
+          .map(|(offset, _)| *offset)
+          .unwrap_or(source.len());
+        let body_end = lines[closing_line_index].0;
+        blocks.push(MarkdownFence {
+          attributes: opening.attributes,
+          body: &source[body_start..body_end],
+          line_offset: line_index,
+          line_count: closing_line_index - line_index + 1,
+          is_markdown_blockquote: opening.is_markdown_blockquote,
+        });
+        line_index = closing_line_index + 1;
+        break;
+      }
+      closing_line_index += 1;
+    }
+
+    if closing_line_index == lines.len() {
+      line_index += 1;
+    }
+  }
+
+  blocks
+}
+
+struct MarkdownFenceOpening<'a> {
+  attributes: &'a str,
+  tick_count: usize,
+  is_markdown_blockquote: bool,
+}
+
+fn parse_markdown_fence_opening(
+  line: &str,
+) -> Option<MarkdownFenceOpening<'_>> {
+  let (line, is_markdown_blockquote) = strip_markdown_fence_prefix(line);
+  let tick_count = line.bytes().take_while(|b| *b == b'`').count();
+  if tick_count < 3 {
+    return None;
+  }
+  Some(MarkdownFenceOpening {
+    attributes: &line[tick_count..],
+    tick_count,
+    is_markdown_blockquote,
+  })
+}
+
+fn is_markdown_fence_closing(line: &str, opening_tick_count: usize) -> bool {
+  let (line, _) = strip_markdown_fence_prefix(line);
+  let tick_count = line.bytes().take_while(|b| *b == b'`').count();
+  tick_count >= opening_tick_count
+    && line[tick_count..].bytes().all(|b| b == b' ' || b == b'\t')
+}
+
+fn strip_markdown_fence_prefix(line: &str) -> (&str, bool) {
+  let mut line = line.trim_start_matches([' ', '\t']);
+  let mut is_markdown_blockquote = false;
+  while let Some(after_marker) = line.strip_prefix('>') {
+    is_markdown_blockquote = true;
+    line = after_marker
+      .strip_prefix([' ', '\t'])
+      .unwrap_or(after_marker);
+  }
+  (line, is_markdown_blockquote)
 }
 
 fn extract_files_from_source_comments(
@@ -190,8 +314,6 @@ fn extract_files_from_regex_blocks(
   blocks_regex: &Regex,
   lines_regex: &Regex,
 ) -> Result<Vec<TestOrSnippet>, AnyError> {
-  let tests_regex = lazy_regex::regex!(r"(?m)^\s*Deno\.test\(");
-
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
@@ -204,27 +326,8 @@ fn extract_files_from_regex_blocks(
         .name("attributes")
         .map(|attributes| attributes.as_str().split(' ').collect());
 
-      let file_media_type = if let Some(attributes) = maybe_attributes {
-        if attributes.contains(&"ignore") {
-          return None;
-        }
-
-        match attributes.first() {
-          Some(&"js") => MediaType::JavaScript,
-          Some(&"javascript") => MediaType::JavaScript,
-          Some(&"mjs") => MediaType::Mjs,
-          Some(&"cjs") => MediaType::Cjs,
-          Some(&"jsx") => MediaType::Jsx,
-          Some(&"ts") => MediaType::TypeScript,
-          Some(&"typescript") => MediaType::TypeScript,
-          Some(&"mts") => MediaType::Mts,
-          Some(&"cts") => MediaType::Cts,
-          Some(&"tsx") => MediaType::Tsx,
-          _ => MediaType::Unknown,
-        }
-      } else {
-        media_type
-      };
+      let file_media_type =
+        media_type_from_attributes(maybe_attributes, media_type)?;
 
       if file_media_type == MediaType::Unknown {
         return None;
@@ -238,60 +341,126 @@ fn extract_files_from_regex_blocks(
       let line_count = block.get(0).unwrap().as_str().split('\n').count();
 
       let body = block.name("body").unwrap();
-      let text = body.as_str();
-
-      // TODO(caspervonb) generate an inline source map
-      let mut file_source = String::new();
-      let mut shebang = None;
-      let mut is_first_line = true;
-      for line in text.lines() {
-        let line = if is_markdown_blockquote {
-          strip_markdown_blockquote_marker(line)
-        } else {
-          line
-        };
-        let Some(line) = lines_regex.captures(line) else {
-          continue;
-        };
-        let text = line.get(1).or_else(|| line.get(3)).unwrap().as_str();
-        // Strip shebang from the very first line to forward it to `Deno.test`.
-        if is_first_line && text.starts_with("#!") {
-          shebang = Some(parse_shebang(text));
-          is_first_line = false;
-          continue;
-        }
-        is_first_line = false;
-        writeln!(file_source, "{}", text).unwrap();
-      }
-
-      let file_specifier = ModuleSpecifier::parse(&format!(
-        "{}${}-{}",
+      extract_file_from_block(
         specifier,
-        file_line_index + line_offset + 1,
-        file_line_index + line_offset + line_count + 1,
-      ))
-      .unwrap();
-      let file_specifier =
-        mapped_specifier_for_tsc(&file_specifier, file_media_type)
-          .map(|s| ModuleSpecifier::parse(&s).unwrap())
-          .unwrap_or(file_specifier);
-      let has_deno_test = tests_regex.is_match(&file_source);
-      let file = File {
-        url: file_specifier,
-        mtime: None,
-        maybe_headers: None,
-        source: file_source.into_bytes().into(),
-        loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
-      };
-      Some(TestOrSnippet {
-        file,
-        has_deno_test,
-        shebang,
-      })
+        file_media_type,
+        file_line_index,
+        line_offset,
+        line_count,
+        body.as_str(),
+        is_markdown_blockquote,
+        lines_regex,
+      )
     })
     .collect();
 
   Ok(files)
+}
+
+fn media_type_from_fence_attributes(
+  attributes: &str,
+  fallback_media_type: MediaType,
+) -> Option<MediaType> {
+  media_type_from_attributes(
+    Some(attributes.split(' ').collect()),
+    fallback_media_type,
+  )
+}
+
+fn media_type_from_attributes(
+  maybe_attributes: Option<Vec<&str>>,
+  fallback_media_type: MediaType,
+) -> Option<MediaType> {
+  let Some(attributes) = maybe_attributes else {
+    return Some(fallback_media_type);
+  };
+  if attributes.contains(&"ignore") {
+    return None;
+  }
+
+  Some(match attributes.first() {
+    Some(&"js") => MediaType::JavaScript,
+    Some(&"javascript") => MediaType::JavaScript,
+    Some(&"mjs") => MediaType::Mjs,
+    Some(&"cjs") => MediaType::Cjs,
+    Some(&"jsx") => MediaType::Jsx,
+    Some(&"ts") => MediaType::TypeScript,
+    Some(&"typescript") => MediaType::TypeScript,
+    Some(&"mts") => MediaType::Mts,
+    Some(&"cts") => MediaType::Cts,
+    Some(&"tsx") => MediaType::Tsx,
+    _ => MediaType::Unknown,
+  })
+}
+
+#[allow(
+  clippy::too_many_arguments,
+  reason = "Keeps source location metadata explicit for both markdown and JSDoc extraction callers."
+)]
+fn extract_file_from_block(
+  specifier: &ModuleSpecifier,
+  file_media_type: MediaType,
+  file_line_index: usize,
+  line_offset: usize,
+  line_count: usize,
+  text: &str,
+  is_markdown_blockquote: bool,
+  lines_regex: &Regex,
+) -> Option<TestOrSnippet> {
+  let tests_regex = lazy_regex::regex!(r"(?m)^\s*Deno\.test\(");
+
+  if file_media_type == MediaType::Unknown {
+    return None;
+  }
+
+  // TODO(caspervonb) generate an inline source map
+  let mut file_source = String::new();
+  let mut shebang = None;
+  let mut is_first_line = true;
+  for line in text.lines() {
+    let line = if is_markdown_blockquote {
+      strip_markdown_blockquote_marker(line)
+    } else {
+      line
+    };
+    let Some(line) = lines_regex.captures(line) else {
+      continue;
+    };
+    let text = line.get(1).or_else(|| line.get(3)).unwrap().as_str();
+    // Strip shebang from the very first line to forward it to `Deno.test`.
+    if is_first_line && text.starts_with("#!") {
+      shebang = Some(parse_shebang(text));
+      is_first_line = false;
+      continue;
+    }
+    is_first_line = false;
+    writeln!(file_source, "{}", text).unwrap();
+  }
+
+  let file_specifier = ModuleSpecifier::parse(&format!(
+    "{}${}-{}",
+    specifier,
+    file_line_index + line_offset + 1,
+    file_line_index + line_offset + line_count + 1,
+  ))
+  .unwrap();
+  let file_specifier =
+    mapped_specifier_for_tsc(&file_specifier, file_media_type)
+      .map(|s| ModuleSpecifier::parse(&s).unwrap())
+      .unwrap_or(file_specifier);
+  let has_deno_test = tests_regex.is_match(&file_source);
+  let file = File {
+    url: file_specifier,
+    mtime: None,
+    maybe_headers: None,
+    source: file_source.into_bytes().into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
+  };
+  Some(TestOrSnippet {
+    file,
+    has_deno_test,
+    shebang,
+  })
 }
 
 fn strip_markdown_blockquote_marker(line: &str) -> &str {
@@ -1508,6 +1677,44 @@ Deno.test("file:///README.md$6-12.js", async ()=>{
 "#,
           specifier: "file:///README.md$6-12.js",
           media_type: MediaType::JavaScript,
+        }],
+      },
+      // https://github.com/denoland/deno/issues/11640
+      Test {
+        input: Input {
+          source: r#"
+````
+```ts
+````
+
+
+````
+```ts
+##
+````
+"#,
+          specifier: "file:///README.md",
+        },
+        expected: vec![],
+      },
+      Test {
+        input: Input {
+          source: r#"
+# Header
+
+````ts
+console.log("ts");
+````
+"#,
+          specifier: "file:///README.md",
+        },
+        expected: vec![Expected {
+          source: r#"Deno.test("file:///README.md$4-7.ts", async ()=>{
+    console.log("ts");
+});
+"#,
+          specifier: "file:///README.md$4-7.ts",
+          media_type: MediaType::TypeScript,
         }],
       },
       // https://github.com/denoland/deno/issues/24164
