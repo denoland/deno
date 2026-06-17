@@ -272,41 +272,53 @@ fn format_js_error_inner(
     s.push_str(&aggregated_message);
   }
 
-  let column_number = js_error
-    .source_line_frame_index
-    .and_then(|i| js_error.frames.get(i).unwrap().column_number);
-  s.push_str(&format_maybe_source_line(
-    if include_source_code {
-      js_error.source_line.as_deref()
-    } else {
-      None
-    },
-    column_number,
-    true,
-    0,
-  ));
-
-  let at_dimmed = Cow::Owned(colors::dimmed_gray("at ").to_string());
-  let at_normal = Cow::Borrowed("at ");
-  for frame in &js_error.frames {
-    let is_ext = stack_frame_is_ext(frame);
-    if filter_frames
-      && is_ext
-      && let Some(fn_name) = &frame.function_name
-      && (fn_name.starts_with("__node_internal_")
-        || fn_name == "eventLoopTick"
-        || fn_name == "denoErrorToNodeError"
-        || fn_name == "__drainNextTickAndMacrotasks")
-    {
-      continue;
+  if js_error.stack_is_custom {
+    // The error carries a custom `.stack` (e.g. from Effect or fiber runtimes)
+    // that our structured frames don't capture. Preserve it, matching Node.js.
+    // The first line of `.stack` is the "Name: message" header, which we
+    // already rendered as `exception_message`, so skip it and emit the rest.
+    if let Some(stack) = &js_error.stack {
+      for line in stack.lines().skip(1) {
+        write!(s, "\n{line}").unwrap();
+      }
     }
-    write!(
-      s,
-      "\n    {}{}",
-      if is_ext { &at_dimmed } else { &at_normal },
-      format_frame::<AnsiColors>(frame, initial_cwd)
-    )
-    .unwrap();
+  } else {
+    let column_number = js_error
+      .source_line_frame_index
+      .and_then(|i| js_error.frames.get(i).unwrap().column_number);
+    s.push_str(&format_maybe_source_line(
+      if include_source_code {
+        js_error.source_line.as_deref()
+      } else {
+        None
+      },
+      column_number,
+      true,
+      0,
+    ));
+
+    let at_dimmed = Cow::Owned(colors::dimmed_gray("at ").to_string());
+    let at_normal = Cow::Borrowed("at ");
+    for frame in &js_error.frames {
+      let is_ext = stack_frame_is_ext(frame);
+      if filter_frames
+        && is_ext
+        && let Some(fn_name) = &frame.function_name
+        && (fn_name.starts_with("__node_internal_")
+          || fn_name == "eventLoopTick"
+          || fn_name == "denoErrorToNodeError"
+          || fn_name == "__drainNextTickAndMacrotasks")
+      {
+        continue;
+      }
+      write!(
+        s,
+        "\n    {}{}",
+        if is_ext { &at_dimmed } else { &at_normal },
+        format_frame::<AnsiColors>(frame, initial_cwd)
+      )
+      .unwrap();
+    }
   }
   if let Some(cause) = &js_error.cause {
     let is_caused_by_circular = circular
