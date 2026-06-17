@@ -99,11 +99,18 @@ pub struct NpmResolutionInstaller<
   maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
   update_queue: TaskQueue,
   unmet_peer_diagnostics: Mutex<UnmetPeerDiagnosticsState>,
+  /// Whether git dependencies are allowed (`--allow-git`). When false, a git
+  /// dependency encountered during resolution aborts the install.
+  allow_git: bool,
 }
 
 impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
   NpmResolutionInstaller<TNpmCacheHttpClient, TSys>
 {
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "installer wires together many independent collaborators"
+  )]
   pub fn new(
     has_js_execution_started_flag: HasJsExecutionStartedFlagRc,
     npm_version_resolver: NpmVersionResolverRc,
@@ -113,6 +120,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
     resolution: Arc<NpmResolutionCell>,
     maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
+    allow_git: bool,
   ) -> Self {
     Self {
       has_js_execution_started_flag,
@@ -123,6 +131,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       maybe_lockfile,
       update_queue: Default::default(),
       unmet_peer_diagnostics: Default::default(),
+      allow_git,
     }
   }
 
@@ -227,6 +236,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
           package_reqs,
           should_dedup,
           version_resolver: &self.npm_version_resolver,
+          allow_git: self.allow_git,
         },
         self.reporter.as_deref(),
       )
@@ -247,6 +257,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
               package_reqs,
               should_dedup,
               version_resolver: &self.npm_version_resolver,
+              allow_git: self.allow_git,
             },
             self.reporter.as_deref(),
           )

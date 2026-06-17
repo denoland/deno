@@ -283,6 +283,7 @@ impl PackageJsonDepValue {
 /// - `git+http(s)://host/...`, `git+ssh://...`, `git+file://...`
 /// - `github:owner/repo`, `gitlab:owner/repo`, `bitbucket:owner/repo`
 /// - `gist:<id>`
+/// - the bare GitHub shorthand `owner/repo` (defaults to `github.com`)
 pub fn parse_git_dep(value: &str) -> Option<PackageJsonDepGit> {
   let (url_part, committish) = match value.split_once('#') {
     Some((url, c)) if !c.is_empty() => (url, Some(c.to_string())),
@@ -304,11 +305,38 @@ pub fn parse_git_dep(value: &str) -> Option<PackageJsonDepGit> {
     format!("https://bitbucket.org/{}.git", rest)
   } else if let Some(rest) = url_part.strip_prefix("gist:") {
     format!("https://gist.github.com/{}.git", rest)
+  } else if let Some((owner, repo)) = parse_github_shorthand(url_part) {
+    // Bare `owner/repo`, which npm-package-arg resolves to GitHub.
+    format!("https://github.com/{}/{}.git", owner, repo)
   } else {
     return None;
   };
 
   Some(PackageJsonDepGit { url, committish })
+}
+
+/// Parses npm's bare GitHub shorthand `owner/repo` (the committish, if any,
+/// must already be stripped). Returns `None` for anything that isn't a plain
+/// `owner/repo` pair — protocols, scoped names (`@scope/pkg`), relative or
+/// absolute paths, and version ranges all fail to match so they can be handled
+/// by their dedicated branches instead.
+pub fn parse_github_shorthand(value: &str) -> Option<(&str, &str)> {
+  if value.is_empty()
+    || value.starts_with('.')
+    || value.starts_with('/')
+    || value.starts_with('~')
+    || value.starts_with('@')
+    || value.contains(':')
+    || value.contains(char::is_whitespace)
+  {
+    return None;
+  }
+  let (owner, repo) = value.split_once('/')?;
+  // Require exactly one slash with both halves present.
+  if owner.is_empty() || repo.is_empty() || repo.contains('/') {
+    return None;
+  }
+  Some((owner, repo))
 }
 
 /// Parses the part after `workspace:` in a package.json dependency.
@@ -1363,6 +1391,18 @@ mod test {
         None,
       ),
       ("gist:abc123", "https://gist.github.com/abc123.git", None),
+      // bare GitHub shorthand
+      ("foo/bar", "https://github.com/foo/bar.git", None),
+      (
+        "foo/bar#semver:^1.2.3",
+        "https://github.com/foo/bar.git",
+        Some("semver:^1.2.3"),
+      ),
+      (
+        "user/repo#main",
+        "https://github.com/user/repo.git",
+        Some("main"),
+      ),
     ];
     for (input, want_url, want_committish) in cases {
       let got = parse_git_dep(input)
@@ -1377,6 +1417,14 @@ mod test {
     assert!(parse_git_dep("^1.0.0").is_none());
     assert!(parse_git_dep("https://example.com/foo.tgz").is_none());
     assert!(parse_git_dep("file:./local").is_none());
+    // not GitHub shorthands
+    assert!(parse_git_dep("1.x").is_none());
+    assert!(parse_git_dep("@scope/pkg").is_none());
+    assert!(parse_git_dep("./foo/bar").is_none());
+    assert!(parse_git_dep("../foo/bar").is_none());
+    assert!(parse_git_dep("/abs/path").is_none());
+    assert!(parse_git_dep("foo/bar/baz").is_none());
+    assert!(parse_git_dep("workspace:*").is_none());
   }
 
   #[test]

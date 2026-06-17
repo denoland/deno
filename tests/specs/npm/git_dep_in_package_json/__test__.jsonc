@@ -1,0 +1,18 @@
+{
+  // A git dependency declared directly in a package.json is opt-in too: like
+  // npm v12, `deno install` aborts unless `--allow-git` is passed. With the
+  // flag the git dependency is skipped (clone-and-install is a follow-up) and
+  // the remaining npm dependencies install normally.
+  "tempDir": true,
+  "tests": {
+    "denied_by_default": {
+      "args": "install",
+      "output": "denied.out",
+      "exitCode": 1
+    },
+    "allowed_with_flag": {
+      "args": "install --allow-git",
+      "output": "allowed.out"
+    }
+  }
+}

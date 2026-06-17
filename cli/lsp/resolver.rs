@@ -1125,6 +1125,9 @@ impl<'a> ResolverFactory<'a> {
         None,
         self.services.npm_resolution.clone(),
         maybe_lockfile.clone(),
+        // the LSP is best-effort: skip git deps rather than surfacing
+        // resolution errors for them.
+        true,
       ));
       let npm_installer = Arc::new(CliNpmInstaller::new(
         None,

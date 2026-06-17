@@ -115,6 +115,17 @@ impl WorkspaceMemberVersionNotSatisfiedError {
   }
 }
 
+/// A git dependency was declared in a `package.json` but `--allow-git` was not
+/// passed. Like npm v12, git dependencies are opt-in for supply-chain safety.
+#[derive(Debug, Error, Clone)]
+#[error(
+  "Cannot install git dependency '{alias}' because the --allow-git flag was not provided. Pass --allow-git to allow installing git dependencies.\n    at {location}"
+)]
+pub struct GitDependencyNotAllowedError {
+  pub location: Url,
+  pub alias: StackString,
+}
+
 /// An error surfaced while reconciling a package.json's dependencies against
 /// the workspace before installing.
 #[derive(Debug, Error, Clone)]
@@ -125,6 +136,8 @@ pub enum EnsurePackageJsonDepsError {
   WorkspaceMemberVersionNotSatisfied(
     #[from] Box<WorkspaceMemberVersionNotSatisfiedError>,
   ),
+  #[error(transparent)]
+  GitDependencyNotAllowed(#[from] Box<GitDependencyNotAllowedError>),
 }
 
 #[derive(Debug, Default)]
@@ -136,6 +149,7 @@ pub struct NpmInstallDepsProvider {
   workspace_pkgs: Vec<InstallWorkspacePkg>,
   pkg_json_dep_errors: Vec<PackageJsonDepValueParseWithLocationError>,
   workspace_member_version_errors: Vec<WorkspaceMemberVersionNotSatisfiedError>,
+  git_dep_not_allowed_errors: Vec<GitDependencyNotAllowedError>,
 }
 
 fn package_json_to_lifecycle_nv(
@@ -171,6 +185,7 @@ impl NpmInstallDepsProvider {
     workspace: &Arc<Workspace>,
     production: bool,
     skip_types: bool,
+    allow_git: bool,
   ) -> Self {
     // todo(dsherret): estimate capacity?
     let mut local_pkgs = Vec::new();
@@ -180,6 +195,7 @@ impl NpmInstallDepsProvider {
     let mut workspace_pkgs = Vec::new();
     let mut pkg_json_dep_errors = Vec::new();
     let mut workspace_member_version_errors = Vec::new();
+    let mut git_dep_not_allowed_errors = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
 
     for (folder_url, folder) in workspace.config_folders() {
@@ -375,6 +391,16 @@ impl NpmInstallDepsProvider {
               }
             }
             PackageJsonDepValue::Git(git) => {
+              // Git dependencies are opt-in (npm v12 parity): without
+              // `--allow-git`, a declared git dependency is a hard error
+              // rather than being silently dropped.
+              if !allow_git {
+                git_dep_not_allowed_errors.push(GitDependencyNotAllowedError {
+                  location: pkg_json.specifier(),
+                  alias: alias.clone(),
+                });
+                continue;
+              }
               git_pkgs.push(InstallGitPkg {
                 alias: alias.clone(),
                 base_dir: pkg_json.dir_path().to_path_buf(),
@@ -472,6 +498,7 @@ impl NpmInstallDepsProvider {
     patch_pkgs.shrink_to_fit();
     git_pkgs.shrink_to_fit();
     workspace_pkgs.shrink_to_fit();
+    git_dep_not_allowed_errors.shrink_to_fit();
     Self {
       remote_pkgs,
       local_pkgs,
@@ -480,6 +507,7 @@ impl NpmInstallDepsProvider {
       workspace_pkgs,
       pkg_json_dep_errors,
       workspace_member_version_errors,
+      git_dep_not_allowed_errors,
     }
   }
 
@@ -513,5 +541,9 @@ impl NpmInstallDepsProvider {
     &self,
   ) -> &[WorkspaceMemberVersionNotSatisfiedError] {
     &self.workspace_member_version_errors
+  }
+
+  pub fn git_dep_not_allowed_errors(&self) -> &[GitDependencyNotAllowedError] {
+    &self.git_dep_not_allowed_errors
   }
 }

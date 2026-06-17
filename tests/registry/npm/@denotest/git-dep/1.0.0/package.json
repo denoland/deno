@@ -6,6 +6,7 @@
   "dependencies": {
     "libsignal": "git+https://github.com/example/libsignal-node.git",
     "axios-fetch-adapter": "github:example/axios-fetch-adapter#v1.0.0",
-    "internal-tool": "git://internal.example.com/tool.git"
+    "internal-tool": "git://internal.example.com/tool.git",
+    "fetch-adapter": "example/fetch-adapter#main"
   }
 }

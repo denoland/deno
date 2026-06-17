@@ -1,0 +1,8 @@
+{
+  "name": "git-dep-direct",
+  "version": "1.0.0",
+  "dependencies": {
+    "@denotest/esm-basic": "1.0.0",
+    "my-git-dep": "github:example/my-git-dep#main"
+  }
+}

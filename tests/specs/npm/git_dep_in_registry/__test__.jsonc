@@ -2,9 +2,21 @@
   // Regression test for https://github.com/denoland/deno/issues/17679 and
   // https://github.com/denoland/deno/issues/18478 — npm packages whose
   // transitive dependencies use git or git+https specifiers (including the
-  // github:/gitlab:/bitbucket:/gist: shorthands) should not cause a
-  // resolution error. The git dep itself is silently skipped, mirroring how
-  // transitive file: / link: dependencies are handled.
-  "args": "run main.ts",
-  "output": "main.out"
+  // github:/gitlab:/bitbucket:/gist: shorthands and the bare `owner/repo`
+  // form) must not abort resolution with a version parse error.
+  //
+  // Mirroring npm v12, a transitive git dependency requires the `--allow-git`
+  // opt-in: without it the install is aborted with a clear error, and with it
+  // the git dependency is silently skipped (like transitive file:/link: deps).
+  "tests": {
+    "denied_by_default": {
+      "args": "run main.ts",
+      "output": "denied.out",
+      "exitCode": 1
+    },
+    "allowed_with_flag": {
+      "args": "run --allow-git main.ts",
+      "output": "main.out"
+    }
+  }
 }

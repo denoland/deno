@@ -63,6 +63,10 @@ pub struct NpmInstallerFactoryOptions {
   pub production: bool,
   /// Exclude @types/* packages from installation.
   pub skip_types: bool,
+  /// Whether git dependencies are allowed (`--allow-git`). When false, a git
+  /// dependency (direct or transitive) aborts the install instead of being
+  /// skipped.
+  pub allow_git: bool,
   /// Resolves the npm resolution snapshot from the environment.
   pub resolve_npm_resolution_snapshot: ResolveNpmResolutionSnapshotFn,
 }
@@ -341,6 +345,7 @@ impl<
             .map(|r| r.clone() as Arc<dyn deno_npm::resolution::Reporter>),
           self.resolver_factory.npm_resolution().clone(),
           self.maybe_lockfile().await?.cloned(),
+          self.options.allow_git,
         )))
       })
       .await
@@ -380,6 +385,7 @@ impl<
               &workspace_factory.workspace_directory()?.workspace,
               self.options.production,
               self.options.skip_types,
+              self.options.allow_git,
             )),
             registry_info_provider.clone(),
             self.resolver_factory.npm_resolution().clone(),

@@ -1058,12 +1058,13 @@ impl DepEntryCache {
     &mut self,
     nv: &Rc<PackageNv>,
     version_info: &NpmPackageVersionInfo,
+    allow_git: bool,
   ) -> Result<Rc<Vec<NpmDependencyEntry>>, Box<NpmDependencyEntryError>> {
     debug_assert_eq!(nv.version, version_info.version);
     if let Some(deps) = self.0.get(nv) {
       return Ok(deps.clone());
     }
-    let mut deps = version_info.dependencies_as_entries(&nv.name)?;
+    let mut deps = version_info.dependencies_as_entries(&nv.name, allow_git)?;
     // Ensure name alphabetical and then version descending
     // so these are resolved in that order
     deps.sort();
@@ -1079,6 +1080,9 @@ impl DepEntryCache {
 
 pub struct GraphDependencyResolverOptions {
   pub should_dedup: bool,
+  /// When false, encountering a git dependency aborts resolution rather than
+  /// silently skipping it (npm `--allow-git` parity).
+  pub allow_git: bool,
 }
 
 pub struct GraphDependencyResolver<'a, TNpmRegistryApi: NpmRegistryApi> {
@@ -1090,6 +1094,9 @@ pub struct GraphDependencyResolver<'a, TNpmRegistryApi: NpmRegistryApi> {
   dep_entry_cache: DepEntryCache,
   reporter: Option<&'a dyn Reporter>,
   should_dedup: bool,
+  /// When false, encountering a git dependency aborts resolution rather than
+  /// silently skipping it (npm `--allow-git` parity).
+  allow_git: bool,
   /// The initial overrides from the root package.json.
   /// Used when creating root-level GraphPaths.
   initial_overrides: Rc<NpmOverrides>,
@@ -1136,6 +1143,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       dep_entry_cache: Default::default(),
       reporter,
       should_dedup: options.should_dedup,
+      allow_git: options.allow_git,
       initial_overrides: Rc::new((*version_resolver.overrides).clone()),
       visited_requeue: HashSet::new(),
       node_id_mappings: HashMap::new(),
@@ -1391,7 +1399,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     let has_deps = if let Some(deps) = self.dep_entry_cache.get(&pkg_nv) {
       !deps.is_empty()
     } else {
-      let deps = self.dep_entry_cache.store(&pkg_nv, info)?;
+      let deps = self.dep_entry_cache.store(&pkg_nv, info, self.allow_git)?;
       !deps.is_empty()
     };
 
@@ -2606,7 +2614,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           let version_info = package_info
             .version_info(&nv, &self.version_resolver.link_packages)
             .map_err(NpmPackageVersionResolutionError::VersionNotFound)?;
-          let child_deps = self.dep_entry_cache.store(&nv, version_info)?;
+          let child_deps =
+            self
+              .dep_entry_cache
+              .store(&nv, version_info, self.allow_git)?;
 
           if child_deps.is_empty() {
             self.graph.borrow_node_mut(path.node_id()).no_peers = true;
@@ -3065,7 +3076,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         let version_info = package_info
           .version_info(&nv, &self.version_resolver.link_packages)
           .map_err(NpmPackageVersionResolutionError::VersionNotFound)?;
-        let deps = self.dep_entry_cache.store(&nv, version_info)?;
+        let deps =
+          self
+            .dep_entry_cache
+            .store(&nv, version_info, self.allow_git)?;
         pending_dep_entries.push_back((node_id, deps));
       }
 
@@ -7953,6 +7967,9 @@ mod test {
       None,
       GraphDependencyResolverOptions {
         should_dedup: !options.skip_dedup,
+        // git deps are exercised separately in registry.rs tests; keep the
+        // resolver graph tests on the skip-when-allowed path.
+        allow_git: true,
       },
     );
 
@@ -8195,7 +8212,6 @@ mod test {
       "shared@1.0.0 should be consolidated away"
     );
   }
-
 
   // === npm overrides integration tests ===
 

@@ -315,6 +315,9 @@ pub struct AddPkgReqsOptions<'a> {
   /// but is recommended for most other actions as it will create a smaller npm
   /// dependency graph.
   pub should_dedup: bool,
+  /// When false, encountering a git dependency aborts resolution rather than
+  /// silently skipping it (npm `--allow-git` parity).
+  pub allow_git: bool,
 }
 
 #[derive(Debug)]
@@ -453,6 +456,7 @@ impl NpmResolutionSnapshot {
       reporter,
       GraphDependencyResolverOptions {
         should_dedup: options.should_dedup,
+        allow_git: options.allow_git,
       },
     );
 

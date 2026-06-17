@@ -467,6 +467,15 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     {
       return Err(Box::new(err.clone()).into());
     }
+    // A git dependency declared without `--allow-git` is a hard error (npm v12
+    // parity).
+    if let Some(err) = self
+      .npm_install_deps_provider
+      .git_dep_not_allowed_errors()
+      .first()
+    {
+      return Err(Box::new(err.clone()).into());
+    }
     Ok(())
   }
 

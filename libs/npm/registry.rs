@@ -138,10 +138,12 @@ To work around this, you can use a package.json and install the dependencies via
   #[error("Unsupported local dependency: {specifier}")]
   LocalDependency { specifier: String },
   /// A git dependency (e.g. `git+https://...`, `github:owner/repo`).
-  /// Transitive git dependencies are silently skipped today; user-declared
-  /// git dependencies in the top-level package.json are handled separately
-  /// by the installer.
-  #[error("Unsupported git dependency: {specifier}")]
+  /// Git dependencies are only resolved when `--allow-git` is passed;
+  /// otherwise this error is surfaced and aborts the install. When
+  /// `--allow-git` is set the transitive entry is skipped instead.
+  #[error(
+    "Cannot resolve git dependency '{specifier}' because the --allow-git flag was not provided. Pass --allow-git to allow installing git dependencies."
+  )]
   GitDependency { specifier: String },
 }
 
@@ -274,6 +276,9 @@ impl NpmPackageVersionInfo {
     &self,
     // name of the package used to improve error messages
     package_name: &str,
+    // when false, an encountered git dependency aborts resolution instead of
+    // being silently skipped (npm `--allow-git` parity)
+    allow_git: bool,
   ) -> Result<Vec<NpmDependencyEntry>, Box<NpmDependencyEntryError>> {
     fn parse_dep_entry_inner(
       (key, value): (&StackString, &StackString),
@@ -295,11 +300,19 @@ impl NpmPackageVersionInfo {
       parent_nv: (&str, &Version),
       key_value: (&StackString, &StackString),
       kind: NpmDependencyEntryKind,
+      allow_git: bool,
     ) -> Result<Option<NpmDependencyEntry>, Box<NpmDependencyEntryError>> {
       match parse_dep_entry_inner(key_value, kind) {
         Ok(entry) => Ok(Some(entry)),
         Err(NpmDependencyEntryErrorSource::LocalDependency { .. }) => Ok(None),
-        Err(NpmDependencyEntryErrorSource::GitDependency { .. }) => Ok(None),
+        // A transitive git dependency is only skipped when the user opted in
+        // with `--allow-git`; otherwise the error propagates and aborts the
+        // install (npm v12 parity).
+        Err(NpmDependencyEntryErrorSource::GitDependency { .. })
+          if allow_git =>
+        {
+          Ok(None)
+        }
         Err(source) => Err(Box::new(NpmDependencyEntryError {
           parent_nv: PackageNv {
             name: parent_nv.0.into(),
@@ -350,12 +363,13 @@ impl NpmPackageVersionInfo {
         true => NpmDependencyEntryKind::OptionalPeer,
         false => NpmDependencyEntryKind::Peer,
       };
-      if let Some(entry) = parse_dep_entry(nv, entry, kind)? {
+      if let Some(entry) = parse_dep_entry(nv, entry, kind, allow_git)? {
         result.insert(entry.bare_specifier.clone(), entry);
       }
     }
     for entry in normalized_dependencies.iter() {
-      let entry = parse_dep_entry(nv, entry, NpmDependencyEntryKind::Dep)?;
+      let entry =
+        parse_dep_entry(nv, entry, NpmDependencyEntryKind::Dep, allow_git)?;
       if let Some(entry) = entry {
         // people may define a dependency as a peer dependency as well,
         // so in those cases, attempt to resolve as a peer dependency,
@@ -415,8 +429,8 @@ fn parse_dep_entry_name_and_raw_version<'a>(
 /// Whether the given dependency specifier names a git source.
 ///
 /// Recognizes the npm-package-arg syntax for git deps: `git:`, `git+http(s):`,
-/// `git+ssh:`, `git+file:`, plus the host shorthands `github:`, `gitlab:`,
-/// `bitbucket:`, and `gist:`.
+/// `git+ssh:`, `git+file:`, the host shorthands `github:`, `gitlab:`,
+/// `bitbucket:`, and `gist:`, plus the bare GitHub shorthand `owner/repo`.
 pub fn is_git_specifier(specifier: &str) -> bool {
   specifier.starts_with("git:")
     || specifier.starts_with("git+")
@@ -424,6 +438,33 @@ pub fn is_git_specifier(specifier: &str) -> bool {
     || specifier.starts_with("gitlab:")
     || specifier.starts_with("bitbucket:")
     || specifier.starts_with("gist:")
+    || is_github_shorthand(specifier)
+}
+
+/// Whether `specifier` is npm's bare GitHub shorthand `owner/repo`
+/// (optionally with a `#<committish>`), e.g. `denoland/deno` or
+/// `denoland/deno#main`. Mirrors `deno_package_json::parse_github_shorthand`.
+fn is_github_shorthand(specifier: &str) -> bool {
+  let value = specifier
+    .split_once('#')
+    .map(|(url, _)| url)
+    .unwrap_or(specifier);
+  if value.is_empty()
+    || value.starts_with('.')
+    || value.starts_with('/')
+    || value.starts_with('~')
+    || value.starts_with('@')
+    || value.contains(':')
+    || value.contains(char::is_whitespace)
+  {
+    return false;
+  }
+  match value.split_once('/') {
+    Some((owner, repo)) => {
+      !owner.is_empty() && !repo.is_empty() && !repo.contains('/')
+    }
+    None => false,
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1476,7 +1517,7 @@ mod test {
       dependencies: HashMap::from([("a".into(), specifier.into())]),
       ..Default::default()
     };
-    let err = deps.dependencies_as_entries("pkg-name").unwrap_err();
+    let err = deps.dependencies_as_entries("pkg-name", true).unwrap_err();
     match err.source {
       NpmDependencyEntryErrorSource::RemoteDependency {
         specifier: err_specifier,
@@ -1496,6 +1537,9 @@ mod test {
       "gitlab:example/example",
       "bitbucket:example/example",
       "gist:abc123",
+      // bare GitHub shorthand
+      "example/example",
+      "example/example#main",
     ] {
       let err = parse_dep_entry_name_and_raw_version(
         &StackString::from("test"),
@@ -1509,15 +1553,26 @@ mod test {
         _ => unreachable!(),
       }
     }
+
+    // these look superficially similar but are not git shorthands
+    for specifier in ["^1.0.0", "1.x", "npm:foo@1", "@scope/pkg", "./local"] {
+      assert!(
+        !is_git_specifier(specifier),
+        "{specifier} should not be a git specifier"
+      );
+    }
   }
 
   #[test]
-  fn git_deps_as_entries_are_skipped() {
+  fn git_deps_as_entries_are_skipped_when_allowed() {
     for specifier in [
       "git+https://github.com/adiwajshing/libsignal-node.git",
       "github:ecadlabs/axios-fetch-adapter",
       "git://github.com/example/example",
       "git+ssh://git@github.com/example/example.git#main",
+      // bare GitHub shorthand
+      "adiwajshing/libsignal-node",
+      "ecadlabs/axios-fetch-adapter#main",
     ] {
       let deps = NpmPackageVersionInfo {
         dependencies: HashMap::from([
@@ -1526,10 +1581,17 @@ mod test {
         ]),
         ..Default::default()
       };
-      let entries = deps.dependencies_as_entries("pkg-name").unwrap();
-      // The git dependency should be skipped, only "a" remains.
+      // With --allow-git, the git dependency is skipped, only "a" remains.
+      let entries = deps.dependencies_as_entries("pkg-name", true).unwrap();
       assert_eq!(entries.len(), 1);
       assert_eq!(entries[0].bare_specifier.as_str(), "a");
+
+      // Without --allow-git, resolving the git dependency aborts.
+      let err = deps.dependencies_as_entries("pkg-name", false).unwrap_err();
+      assert!(matches!(
+        err.source,
+        NpmDependencyEntryErrorSource::GitDependency { .. }
+      ));
     }
   }
 
@@ -1565,7 +1627,7 @@ mod test {
         ]),
         ..Default::default()
       };
-      let entries = deps.dependencies_as_entries("pkg-name").unwrap();
+      let entries = deps.dependencies_as_entries("pkg-name", true).unwrap();
       // The local dependency should be skipped, only "a" remains
       assert_eq!(entries.len(), 1);
       assert_eq!(entries[0].bare_specifier.as_str(), "a");

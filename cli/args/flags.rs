@@ -1158,6 +1158,9 @@ pub struct Flags {
   pub permissions: PermissionFlags,
   pub allow_scripts: PackagesAllowedScripts,
   pub deny_scripts: Vec<PackageReq>,
+  /// Allow installing npm git dependencies (direct or transitive). When false,
+  /// encountering a git dependency aborts the install (npm v12 parity).
+  pub allow_git: bool,
   pub permission_set: Option<String>,
   pub eszip: bool,
   pub node_conditions: Vec<String>,
@@ -2625,6 +2628,7 @@ Or multiple dependencies at once:
       )
       .arg(add_dev_arg())
       .arg(allow_scripts_arg())
+      .arg(allow_git_arg())
       .arg(allow_import_arg())
       .arg(deny_import_arg())
       .args(lock_args())
@@ -3095,6 +3099,7 @@ If no output file is given, the output is written to standard output:
           .action(ArgAction::SetTrue),
       )
       .arg(allow_scripts_arg())
+      .arg(allow_git_arg())
       .arg(allow_import_arg())
       .arg(deny_import_arg())
   })
@@ -3124,6 +3129,7 @@ Future runs of this module will trigger no downloads or compilation unless --rel
           .value_hint(ValueHint::FilePath),
       )
       .arg(allow_scripts_arg())
+      .arg(allow_git_arg())
       .arg(allow_import_arg())
       .arg(deny_import_arg())
       .arg(env_file_arg())
@@ -4181,6 +4187,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
       permission_args(runtime_args(cmd, false, true, false), Some("global"))
         .arg(check_arg(true))
         .arg(allow_scripts_arg())
+        .arg(allow_git_arg())
         .arg(
           Arg::new("cmd")
             .required_if_eq("global", "true")
@@ -6232,7 +6239,7 @@ fn runtime_args(
     app
   };
   let app = if include_allow_scripts {
-    app.arg(allow_scripts_arg())
+    app.arg(allow_scripts_arg()).arg(allow_git_arg())
   } else {
     app
   };
@@ -7039,6 +7046,16 @@ fn allow_scripts_arg() -> Arg {
   <p(245)>Note: Scripts will only be executed when using a node_modules directory (`--node-modules-dir`)</>"))
 }
 
+fn allow_git_arg() -> Arg {
+  Arg::new("allow-git")
+    .long("allow-git")
+    .action(ArgAction::SetTrue)
+    .help(cstr!(
+      "Allow installing npm git dependencies (direct or transitive)
+  <p(245)>Git dependencies are not installed unless this flag is passed, mirroring npm. This closes a code-execution path where a git dependency's own configuration can override tools used during install.</>"
+    ))
+}
+
 fn ignore_scripts_arg() -> Arg {
   Arg::new("ignore-scripts")
     .long("ignore-scripts")
@@ -7164,6 +7181,12 @@ fn allow_scripts_arg_parse(
   Ok(())
 }
 
+fn allow_git_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if matches.get_flag("allow-git") {
+    flags.allow_git = true;
+  }
+}
+
 fn ignore_scripts_arg_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<PackagesAllowedScripts> {
@@ -7257,6 +7280,7 @@ fn add_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   allow_scripts_arg_parse(flags, matches)?;
+  allow_git_arg_parse(flags, matches);
   allow_and_deny_import_parse(flags, matches)?;
   lock_args_parse(flags, matches);
   env_file_arg_parse(flags, matches);
@@ -7489,6 +7513,7 @@ fn cache_parse(
   compile_args_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   allow_scripts_arg_parse(flags, matches)?;
+  allow_git_arg_parse(flags, matches);
   allow_and_deny_import_parse(flags, matches)?;
   env_file_arg_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
@@ -8110,6 +8135,7 @@ fn install_parse(
 
   let global = matches.get_flag("global");
   allow_scripts_arg_parse(flags, matches)?;
+  allow_git_arg_parse(flags, matches);
   if global {
     let root = matches.remove_one::<String>("root");
     let force = matches.get_flag("force");
@@ -9287,6 +9313,7 @@ fn runtime_args_parse(
   }
   if include_allow_scripts {
     allow_scripts_arg_parse(flags, matches)?;
+    allow_git_arg_parse(flags, matches);
   }
   location_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
@@ -16221,6 +16248,24 @@ mod tests {
           );
         }
       }
+    }
+  }
+
+  #[test]
+  fn allow_git() {
+    // off by default
+    let flags = flags_from_vec(svec!["deno", "install"]).unwrap();
+    assert!(!flags.allow_git);
+
+    // opt-in on the install-family commands
+    for args in [
+      svec!["deno", "install", "--allow-git"],
+      svec!["deno", "add", "--allow-git", "npm:foo"],
+      svec!["deno", "cache", "--allow-git", "script.ts"],
+      svec!["deno", "run", "--allow-git", "script.ts"],
+    ] {
+      let flags = flags_from_vec(args.clone()).unwrap();
+      assert!(flags.allow_git, "expected allow_git for {args:?}");
     }
   }
 

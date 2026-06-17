@@ -702,6 +702,7 @@ impl CliFactory {
             DenoSubcommand::Ci(f) => f.skip_types,
             _ => false,
           },
+          allow_git: self.flags.allow_git,
           resolve_npm_resolution_snapshot: Box::new(|| {
             deno_lib::args::resolve_npm_resolution_snapshot(&CliSys::default())
           }),

@@ -1358,6 +1358,8 @@ impl WorkspaceConfigData {
         lifecycle_scripts_config: LifecycleScriptsConfig::default(),
         production: false,
         skip_types: false,
+        // the LSP is best-effort: skip git deps rather than erroring on them.
+        allow_git: true,
         resolve_npm_resolution_snapshot: Box::new(|| Ok(None)),
       },
     );
