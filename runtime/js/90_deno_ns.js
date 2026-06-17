@@ -51,10 +51,7 @@ function lazyProcess() {
 const signals = core.loadExtScript("ext:deno_os/40_signals.js");
 const tty = core.loadExtScript("ext:runtime/40_tty.js");
 // Deno.Kv is a niche API and pulls 06_streams. Defer.
-let _kvImpl;
-function lazyKv() {
-  return _kvImpl ?? (_kvImpl = core.loadExtScript("ext:deno_kv/01_db.ts"));
-}
+const lazyKv = core.createLazyLoader("ext:deno_kv/01_db.ts");
 const cron = core.loadExtScript("ext:deno_cron/01_cron.ts");
 const surface = core.loadExtScript("ext:deno_canvas/02_surface.js");
 const telemetry = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
