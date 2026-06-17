@@ -7106,13 +7106,12 @@ mod tests {
         .is_err()
     );
     // Same host on listen is not denied — directional rules don't bleed
-    // across directions.
-    assert!(
-      perms
-        .check_net_listen(&("evil.example.com", None), "api()")
-        .is_err() // Still err because listen has no allow; but reason is
-                  // "no allow" not "deny" — verified by ensuring a non-denied
-                  // listen target also errs the same way (no allow either).
+    // across directions. Querying the listen side returns `Prompt` (no allow,
+    // not denied) rather than the `Denied` it would be if the connect-deny
+    // had bled across.
+    assert_eq!(
+      perms.query_net_listen(Some("evil.example.com")).unwrap(),
+      PermissionState::Prompt
     );
   }
 
