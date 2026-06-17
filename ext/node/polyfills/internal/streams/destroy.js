@@ -33,6 +33,7 @@ const {
 "use strict";
 
 const {
+  ObjectCreate,
   Symbol,
 } = primordials;
 
@@ -368,12 +369,7 @@ const _defaultExport2 = {
   errorOrDestroy,
 };
 
-return {
-  construct,
-  destroyer,
-  destroy,
-  undestroy,
-  errorOrDestroy,
-  default: _defaultExport2,
-};
+const namespaceExport = ObjectCreate(_defaultExport2);
+namespaceExport.default = _defaultExport2;
+return namespaceExport;
 })();

@@ -5,6 +5,7 @@ const { ERR_INVALID_URI } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
 const {
+  ObjectCreate,
   Array,
   Int8Array,
   NumberPrototypeToString,
@@ -106,10 +107,7 @@ const _defaultExport = {
   isHexTable,
 };
 
-return {
-  encodeStr,
-  hexTable,
-  isHexTable,
-  default: _defaultExport,
-};
+const namespaceExport = ObjectCreate(_defaultExport);
+namespaceExport.default = _defaultExport;
+return namespaceExport;
 })();

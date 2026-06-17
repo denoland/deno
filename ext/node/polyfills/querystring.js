@@ -492,14 +492,7 @@ const QS = {
   unescapeBuffer,
 };
 
-return {
-  default: QS,
-  parse,
-  stringify,
-  decode,
-  encode,
-  unescape,
-  escape,
-  unescapeBuffer,
-};
+const namespaceExport = ObjectCreate(QS);
+namespaceExport.default = QS;
+return namespaceExport;
 })();

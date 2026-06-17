@@ -28,6 +28,7 @@ const lazyLoadGlob = core.createLazyLoader(
 );
 
 const {
+  ObjectCreate,
   ArrayPrototypeIncludes,
   ArrayPrototypeJoin,
   ArrayPrototypePop,
@@ -1212,22 +1213,7 @@ const _default = {
   matchesGlob,
 };
 
-return {
-  sep,
-  delimiter,
-  resolve,
-  normalize,
-  isAbsolute,
-  join,
-  relative,
-  toNamespacedPath,
-  dirname,
-  basename,
-  extname,
-  format,
-  parse,
-  _makeLong,
-  matchesGlob,
-  default: _default,
-};
+const namespaceExport = ObjectCreate(_default);
+namespaceExport.default = _default;
+return namespaceExport;
 })();

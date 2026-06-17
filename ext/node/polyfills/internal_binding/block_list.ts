@@ -8,6 +8,9 @@
 // address tuple into a SocketAddress without re-running validation.
 
 (function () {
+const { primordials } = __bootstrap;
+const { ObjectCreate } = primordials;
+
 // Match POSIX values for AF_INET / AF_INET6 on Linux. The exact values are
 // not observable through the public API, only through this internal binding.
 const AF_INET = 2;
@@ -49,8 +52,7 @@ const exports = {
   SocketAddress,
 };
 
-return {
-  ...exports,
-  default: exports,
-};
+const namespaceExport = ObjectCreate(exports);
+namespaceExport.default = exports;
+return namespaceExport;
 })();

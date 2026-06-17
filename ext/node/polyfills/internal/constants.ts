@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const { ObjectCreate } = primordials;
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 
 // Alphabet chars.
@@ -104,51 +105,7 @@ const _defaultExport = {
   EOL,
 };
 
-return {
-  CHAR_UPPERCASE_A,
-  CHAR_LOWERCASE_A,
-  CHAR_UPPERCASE_Z,
-  CHAR_LOWERCASE_Z,
-  CHAR_UPPERCASE_C,
-  CHAR_LOWERCASE_B,
-  CHAR_LOWERCASE_E,
-  CHAR_LOWERCASE_N,
-  CHAR_DOT,
-  CHAR_FORWARD_SLASH,
-  CHAR_BACKWARD_SLASH,
-  CHAR_VERTICAL_LINE,
-  CHAR_COLON,
-  CHAR_QUESTION_MARK,
-  CHAR_UNDERSCORE,
-  CHAR_LINE_FEED,
-  CHAR_CARRIAGE_RETURN,
-  CHAR_TAB,
-  CHAR_FORM_FEED,
-  CHAR_EXCLAMATION_MARK,
-  CHAR_HASH,
-  CHAR_SPACE,
-  CHAR_NO_BREAK_SPACE,
-  CHAR_ZERO_WIDTH_NOBREAK_SPACE,
-  CHAR_LEFT_SQUARE_BRACKET,
-  CHAR_RIGHT_SQUARE_BRACKET,
-  CHAR_LEFT_ANGLE_BRACKET,
-  CHAR_RIGHT_ANGLE_BRACKET,
-  CHAR_LEFT_CURLY_BRACKET,
-  CHAR_RIGHT_CURLY_BRACKET,
-  CHAR_HYPHEN_MINUS,
-  CHAR_PLUS,
-  CHAR_DOUBLE_QUOTE,
-  CHAR_SINGLE_QUOTE,
-  CHAR_PERCENT,
-  CHAR_SEMICOLON,
-  CHAR_CIRCUMFLEX_ACCENT,
-  CHAR_GRAVE_ACCENT,
-  CHAR_AT,
-  CHAR_AMPERSAND,
-  CHAR_EQUAL,
-  CHAR_0,
-  CHAR_9,
-  EOL,
-  default: _defaultExport,
-};
+const namespaceExport = ObjectCreate(_defaultExport);
+namespaceExport.default = _defaultExport;
+return namespaceExport;
 })();

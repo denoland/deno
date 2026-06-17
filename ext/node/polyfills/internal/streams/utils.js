@@ -5,6 +5,7 @@ const { core, primordials } = __bootstrap;
 "use strict";
 
 const {
+  ObjectCreate,
   Symbol,
   SymbolAsyncIterator,
   SymbolFor,
@@ -375,52 +376,7 @@ const _defaultExport1 = {
   kEnded,
 };
 
-return {
-  isClosed,
-  isDestroyed,
-  isDisturbed,
-  isDuplexNodeStream,
-  isErrored,
-  isFinished,
-  isIterable,
-  isNodeStream,
-  isReadable,
-  isReadableEnded,
-  isReadableErrored,
-  isReadableFinished,
-  isReadableNodeStream,
-  isReadableStream,
-  isServerRequest,
-  isServerResponse,
-  isTransformStream,
-  isWebStream,
-  isWritable,
-  isWritableEnded,
-  isWritableErrored,
-  isWritableFinished,
-  isWritableNodeStream,
-  isWritableStream,
-  kAutoDestroy,
-  kClosed,
-  kCloseEmitted,
-  kConstructed,
-  kControllerErrorFunction,
-  kDestroyed,
-  kEmitClose,
-  kEnded,
-  kEnding,
-  kErrored,
-  kErrorEmitted,
-  kIsClosedPromise,
-  kIsDestroyed,
-  kIsDisturbed,
-  kIsErrored,
-  kIsReadable,
-  kIsWritable,
-  kObjectMode,
-  kOnConstructed,
-  kState,
-  willEmitClose,
-  default: _defaultExport1,
-};
+const namespaceExport = ObjectCreate(_defaultExport1);
+namespaceExport.default = _defaultExport1;
+return namespaceExport;
 })();

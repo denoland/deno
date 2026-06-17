@@ -25,6 +25,7 @@
 
 const { primordials } = __bootstrap;
 const {
+  ObjectCreate,
   ArrayPrototypeSlice,
   ArrayPrototypeSort,
   RegExpPrototypeExec,
@@ -600,13 +601,7 @@ const _defaultExport = {
   kSubstringSearch,
 };
 
-return {
-  CSI,
-  charLengthLeft,
-  charLengthAt,
-  emitKeys,
-  commonPrefix,
-  kSubstringSearch,
-  default: _defaultExport,
-};
+const namespaceExport = ObjectCreate(_defaultExport);
+namespaceExport.default = _defaultExport;
+return namespaceExport;
 })();

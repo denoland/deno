@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const { ObjectCreate } = primordials;
 const { PipeWrap, TLSWrap } = core.ops;
 const { kReadBytesOrError, streamBaseState } = core.loadExtScript(
   "ext:deno_node/internal_binding/stream_wrap.ts",
@@ -174,9 +175,7 @@ function wrap(
 
 const _defaultExport = { TLSWrap, wrap };
 
-return {
-  TLSWrap,
-  wrap,
-  default: _defaultExport,
-};
+const namespaceExport = ObjectCreate(_defaultExport);
+namespaceExport.default = _defaultExport;
+return namespaceExport;
 })();
