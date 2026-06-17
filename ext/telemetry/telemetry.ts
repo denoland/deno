@@ -7,16 +7,9 @@ const {
   op_otel_enable_isolate_metrics,
   op_otel_log,
   op_otel_log_foreign,
-  op_otel_metric_attribute3,
-  op_otel_metric_observable_record0,
-  op_otel_metric_observable_record1,
-  op_otel_metric_observable_record2,
-  op_otel_metric_observable_record3,
+  op_otel_metric_observable_record,
   op_otel_metric_observation_done,
-  op_otel_metric_record0,
-  op_otel_metric_record1,
-  op_otel_metric_record2,
-  op_otel_metric_record3,
+  op_otel_metric_record,
   op_otel_metric_wait_to_observe,
   op_otel_span_add_link,
   op_otel_span_attribute1,
@@ -902,55 +895,8 @@ function record(
   attributes?: MetricAttributes,
 ) {
   if (instrument === null) return;
-  if (attributes === undefined) {
-    op_otel_metric_record0(instrument, value);
-  } else {
-    const attrs = ObjectEntries(attributes);
-    if (attrs.length === 0) {
-      op_otel_metric_record0(instrument, value);
-    }
-    let i = 0;
-    while (i < attrs.length) {
-      const remaining = attrs.length - i;
-      if (remaining > 3) {
-        op_otel_metric_attribute3(
-          attrs.length,
-          attrs[i][0],
-          attrs[i][1],
-          attrs[i + 1][0],
-          attrs[i + 1][1],
-          attrs[i + 2][0],
-          attrs[i + 2][1],
-        );
-        i += 3;
-      } else if (remaining === 3) {
-        op_otel_metric_record3(
-          instrument,
-          value,
-          attrs[i][0],
-          attrs[i][1],
-          attrs[i + 1][0],
-          attrs[i + 1][1],
-          attrs[i + 2][0],
-          attrs[i + 2][1],
-        );
-        i += 3;
-      } else if (remaining === 2) {
-        op_otel_metric_record2(
-          instrument,
-          value,
-          attrs[i][0],
-          attrs[i][1],
-          attrs[i + 1][0],
-          attrs[i + 1][1],
-        );
-        i += 2;
-      } else if (remaining === 1) {
-        op_otel_metric_record1(instrument, value, attrs[i][0], attrs[i][1]);
-        i += 1;
-      }
-    }
-  }
+  // Attribute iteration, conversion, and dispatch happen in Rust.
+  op_otel_metric_record(instrument, value, attributes);
 }
 
 function recordObservable(
@@ -959,60 +905,8 @@ function recordObservable(
   attributes?: MetricAttributes,
 ) {
   if (instrument === null) return;
-  if (attributes === undefined) {
-    op_otel_metric_observable_record0(instrument, value);
-  } else {
-    const attrs = ObjectEntries(attributes);
-    if (attrs.length === 0) {
-      op_otel_metric_observable_record0(instrument, value);
-    }
-    let i = 0;
-    while (i < attrs.length) {
-      const remaining = attrs.length - i;
-      if (remaining > 3) {
-        op_otel_metric_attribute3(
-          attrs.length,
-          attrs[i][0],
-          attrs[i][1],
-          attrs[i + 1][0],
-          attrs[i + 1][1],
-          attrs[i + 2][0],
-          attrs[i + 2][1],
-        );
-        i += 3;
-      } else if (remaining === 3) {
-        op_otel_metric_observable_record3(
-          instrument,
-          value,
-          attrs[i][0],
-          attrs[i][1],
-          attrs[i + 1][0],
-          attrs[i + 1][1],
-          attrs[i + 2][0],
-          attrs[i + 2][1],
-        );
-        i += 3;
-      } else if (remaining === 2) {
-        op_otel_metric_observable_record2(
-          instrument,
-          value,
-          attrs[i][0],
-          attrs[i][1],
-          attrs[i + 1][0],
-          attrs[i + 1][1],
-        );
-        i += 2;
-      } else if (remaining === 1) {
-        op_otel_metric_observable_record1(
-          instrument,
-          value,
-          attrs[i][0],
-          attrs[i][1],
-        );
-        i += 1;
-      }
-    }
-  }
+  // Attribute iteration, conversion, and dispatch happen in Rust.
+  op_otel_metric_observable_record(instrument, value, attributes);
 }
 
 class Counter {

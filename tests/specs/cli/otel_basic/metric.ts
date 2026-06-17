@@ -83,6 +83,22 @@ histogram.record(1, attributes);
 
 counter.add(1, { a: "b", c: "d", e: "f", g: "h" });
 
+// Negative values must throw for (regular) counters. This throws before any
+// recording happens, so it does not emit a metric.
+{
+  let message: string | undefined;
+  try {
+    counter.add(-1);
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  if (message !== "Counter can only be incremented") {
+    throw new Error(
+      `expected counter.add(-1) to throw, got: ${message}`,
+    );
+  }
+}
+
 const timer = setTimeout(() => {}, 100000);
 
 await Promise.all([
