@@ -1168,23 +1168,9 @@ function registerDeclarativeServer(exports) {
     serveHost,
     workerCountWhenMain,
   }) => {
-    // Wire SIGTERM/SIGINT to graceful server shutdown so that
-    // `deno serve` exits cleanly instead of crashing mid-operation.
-    const ac = new AbortController();
-    const shutdownHandler = () => {
-      ac.abort();
-    };
-    try {
-      Deno.addSignalListener("SIGTERM", shutdownHandler);
-      Deno.addSignalListener("SIGINT", shutdownHandler);
-    } catch {
-      // Signal listeners may not be available (e.g. Windows workers)
-    }
-
-    Deno.serve({
+    const server = Deno.serve({
       port: servePort,
       hostname: serveHost,
-      signal: ac.signal,
       [kLoadBalanced]: workerCountWhenMain == null
         ? true
         : workerCountWhenMain > 0,
@@ -1228,6 +1214,28 @@ function registerDeclarativeServer(exports) {
         return exports.fetch(req, connInfo);
       },
     });
+
+    // Wire SIGTERM/SIGINT to a graceful server shutdown so that `deno serve`
+    // drains in-flight requests and exits cleanly (exit code 0) instead of
+    // being terminated by the OS default signal handler (exit code 143/130),
+    // e.g. when a container is redeployed.
+    const shutdownHandler = () => {
+      // Stop listening for the signal so a second SIGTERM/SIGINT falls through
+      // to the default handler and forcibly terminates a server that is slow
+      // to drain.
+      Deno.removeSignalListener("SIGTERM", shutdownHandler);
+      Deno.removeSignalListener("SIGINT", shutdownHandler);
+      // `shutdown()` already swallows the errors from an interrupted server,
+      // but guard against any rejection becoming unhandled.
+      PromisePrototypeCatch(server.shutdown(), () => {});
+    };
+    try {
+      Deno.addSignalListener("SIGTERM", shutdownHandler);
+      Deno.addSignalListener("SIGINT", shutdownHandler);
+    } catch {
+      // Adding signal listeners can fail in restricted environments; fall back
+      // to the default behavior in that case.
+    }
   };
 }
 
