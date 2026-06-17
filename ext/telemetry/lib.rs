@@ -121,7 +121,10 @@ deno_core::extension!(
     op_otel_log_foreign,
     op_otel_span_attribute1,
     op_otel_span_attributes,
+    op_otel_span_add_event,
     op_otel_span_add_link,
+    op_otel_span_end,
+    op_otel_span_record_exception,
     op_otel_span_update_name,
     op_otel_metric_record,
     op_otel_metric_observable_record,
@@ -2295,33 +2298,6 @@ impl OtelSpan {
   }
 
   #[fast]
-  fn add_event(&self, #[string] name: String, start_time: f64) -> u32 {
-    let start_time = if start_time.is_nan() {
-      SystemTime::now()
-    } else {
-      SystemTime::UNIX_EPOCH
-        .checked_add(Duration::from_secs_f64(start_time / 1000.0))
-        .unwrap()
-    };
-    let limit = span_event_count_limit();
-    let mut state = self.0.borrow_mut();
-    let OtelSpanState::Recording(span) = &mut **state else {
-      return 0;
-    };
-    // Enforce OTEL_SPAN_EVENT_COUNT_LIMIT: once the limit is reached, drop
-    // further events and count them in droppedEventsCount.
-    if span.events.events.len() >= limit {
-      span.events.dropped_count += 1;
-      return 0;
-    }
-    span
-      .events
-      .events
-      .push(Event::new(name, start_time, vec![], 0));
-    span.events.events.len() as u32
-  }
-
-  #[fast]
   fn drop_event(&self) {
     let mut state = self.0.borrow_mut();
     match &mut **state {
@@ -2331,31 +2307,120 @@ impl OtelSpan {
       OtelSpanState::Done(_) => {}
     }
   }
+}
 
-  #[fast]
-  fn end(&self, end_time: f64) {
-    let end_time = if end_time.is_nan() {
-      SystemTime::now()
-    } else {
-      SystemTime::UNIX_EPOCH
-        .checked_add(Duration::from_secs_f64(end_time / 1000.0))
-        .unwrap()
-    };
+/// Convert a JS `TimeInput` value to milliseconds since the Unix epoch.
+///
+/// Mirrors the JS `timeInputToMs`/`hrToMs` helpers that previously lived in
+/// `telemetry.ts`:
+/// - `undefined`/`null` -> `NaN` (callers map this to "use the current time")
+/// - `[seconds, nanos]` hrtime tuple -> `seconds * 1e3 + nanos / 1e6`
+/// - `Date` -> `Date.prototype.getTime()` (ms since epoch)
+/// - everything else -> coerced to a number (matching `input` passthrough)
+fn time_input_to_ms<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'s, v8::Value>,
+) -> f64 {
+  if value.is_null_or_undefined() {
+    return f64::NAN;
+  }
+  if let Ok(array) = value.try_cast::<v8::Array>() {
+    let seconds = array
+      .get_index(scope, 0)
+      .and_then(|v| v.number_value(scope))
+      .unwrap_or(f64::NAN);
+    let nanos = array
+      .get_index(scope, 1)
+      .and_then(|v| v.number_value(scope))
+      .unwrap_or(f64::NAN);
+    return seconds * 1e3 + nanos / 1e6;
+  }
+  if let Ok(date) = value.try_cast::<v8::Date>() {
+    return date.value_of();
+  }
+  value.number_value(scope).unwrap_or(f64::NAN)
+}
 
-    let mut state = self.0.borrow_mut();
-    if let OtelSpanState::Recording(span) = &mut **state {
-      let span_context = span.span_context.clone();
-      if let OtelSpanState::Recording(mut span) = *std::mem::replace(
-        &mut *state,
-        Box::new(OtelSpanState::Done(span_context)),
-      ) {
-        span.end_time = end_time;
-        let Some(OtelGlobals { span_processor, .. }) = OTEL_GLOBALS.get()
-        else {
-          return;
-        };
-        span_processor.on_end(span);
-      }
+/// `true` when `value` is a JS `TimeInput` (number, hrtime array, or `Date`),
+/// matching the JS `isTimeInput` helper. `null`/`undefined` and plain attribute
+/// objects return `false`.
+fn is_time_input(value: v8::Local<'_, v8::Value>) -> bool {
+  value.is_number() || value.is_array() || value.is_date()
+}
+
+fn get_property<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<'s, v8::Object>,
+  key: &str,
+) -> v8::Local<'s, v8::Value> {
+  let key = v8::String::new(scope, key).unwrap();
+  object
+    .get(scope, key.into())
+    .unwrap_or_else(|| v8::undefined(scope).into())
+}
+
+fn set_property<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<'s, v8::Object>,
+  key: &str,
+  value: v8::Local<'s, v8::Value>,
+) {
+  let key = v8::String::new(scope, key).unwrap();
+  object.set(scope, key.into(), value);
+}
+
+/// Append an event to a recording span, enforcing `OTEL_SPAN_EVENT_COUNT_LIMIT`.
+/// A `NaN` `start_time` means "use the current time". Extracted from the former
+/// `OtelSpan::add_event` cppgc method so it can be reused by the span ops.
+fn span_push_event(span: &OtelSpan, name: String, start_time: f64) {
+  let start_time = if start_time.is_nan() {
+    SystemTime::now()
+  } else {
+    SystemTime::UNIX_EPOCH
+      .checked_add(Duration::from_secs_f64(start_time / 1000.0))
+      .unwrap()
+  };
+  let limit = span_event_count_limit();
+  let mut state = span.0.borrow_mut();
+  let OtelSpanState::Recording(span) = &mut **state else {
+    return;
+  };
+  // Enforce OTEL_SPAN_EVENT_COUNT_LIMIT: once the limit is reached, drop
+  // further events and count them in droppedEventsCount.
+  if span.events.events.len() >= limit {
+    span.events.dropped_count += 1;
+    return;
+  }
+  span
+    .events
+    .events
+    .push(Event::new(name, start_time, vec![], 0));
+}
+
+/// End a recording span and dispatch it to the span processor. A `NaN`
+/// `end_time` means "use the current time". Extracted from the former
+/// `OtelSpan::end` cppgc method.
+fn span_end_inner(span: &OtelSpan, end_time: f64) {
+  let end_time = if end_time.is_nan() {
+    SystemTime::now()
+  } else {
+    SystemTime::UNIX_EPOCH
+      .checked_add(Duration::from_secs_f64(end_time / 1000.0))
+      .unwrap()
+  };
+
+  let mut state = span.0.borrow_mut();
+  if let OtelSpanState::Recording(span) = &mut **state {
+    let span_context = span.span_context.clone();
+    if let OtelSpanState::Recording(mut span) = *std::mem::replace(
+      &mut *state,
+      Box::new(OtelSpanState::Done(span_context)),
+    ) {
+      span.end_time = end_time;
+      let Some(OtelGlobals { span_processor, .. }) = OTEL_GLOBALS.get() else {
+        return;
+      };
+      span_processor.on_end(span);
     }
   }
 }
@@ -2462,13 +2527,8 @@ fn op_otel_span_attribute1<'s>(
 }
 
 /// Add every own, enumerable, string-keyed property of `attributes` to the span
-/// (or its last event/link, depending on `location`).
-///
-/// This replaces the previous JS `spanAddAttributes` batching loop that
-/// dispatched through `op_otel_span_attribute1/2/3`. It mirrors the previous
-/// `ObjectEntries(attributes)` iteration order and reuses `attr_raw!` for value
-/// conversion, so filtering and the per-element attribute count limit behave
-/// exactly as before.
+/// (or its last event/link, depending on `location`). Thin wrapper around
+/// [`apply_span_attributes_object`].
 #[op2(fast)]
 fn op_otel_span_attributes<'s>(
   scope: &mut v8::PinScope<'s, '_>,
@@ -2481,6 +2541,20 @@ fn op_otel_span_attributes<'s>(
   else {
     return;
   };
+  apply_span_attributes_object(scope, &span, location, attributes);
+}
+
+/// Apply every own, enumerable, string-keyed property of `attributes` to the
+/// span (or its last event/link, depending on `location`). Shared by
+/// `op_otel_span_attributes` and the combined add-event/add-link/record-exception
+/// ops so the batching, ordering and per-element attribute-count limit behave
+/// identically across all callers.
+fn apply_span_attributes_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  span: &OtelSpan,
+  location: u32,
+  attributes: v8::Local<'s, v8::Value>,
+) {
   let Ok(object) = attributes.try_cast::<v8::Object>() else {
     return;
   };
@@ -2563,47 +2637,189 @@ fn op_otel_span_update_name<'s>(
   }
 }
 
+/// Combined `Span.addEvent` path: disambiguate the
+/// `(name, attributesOrStartTime?, startTime?)` overload, convert the time input
+/// in Rust, push the event, then apply any event attributes to the new
+/// `LAST_EVENT` in a single op. Replaces the JS `addEvent` body.
+#[op2(fast)]
+fn op_otel_span_add_event<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  span: v8::Local<'s, v8::Value>,
+  name: v8::Local<'s, v8::Value>,
+  attributes_or_start_time: v8::Local<'s, v8::Value>,
+  start_time: v8::Local<'s, v8::Value>,
+) {
+  let Some(span) =
+    deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
+  else {
+    return;
+  };
+  let Ok(name) = name.try_cast::<v8::String>() else {
+    return;
+  };
+  let name = owned_string(scope, name);
+
+  // Mirror the JS overload resolution: a `TimeInput` in the second slot is the
+  // start time, otherwise it is the attributes bag (only applied if truthy).
+  let (attributes, start_time_value) =
+    if is_time_input(attributes_or_start_time) {
+      (None, attributes_or_start_time)
+    } else if attributes_or_start_time.boolean_value(scope) {
+      (Some(attributes_or_start_time), start_time)
+    } else {
+      (None, start_time)
+    };
+
+  let start_time_ms = time_input_to_ms(scope, start_time_value);
+  span_push_event(&span, name, start_time_ms);
+  if let Some(attributes) = attributes {
+    // SpanAttributesLocation::LAST_EVENT
+    apply_span_attributes_object(scope, &span, 1, attributes);
+  }
+}
+
+/// Combined `Span.end` path: convert the time input in Rust (preserving the JS
+/// `timeInputToMs(endTime) || NaN` semantics, where a falsy result such as `0`
+/// becomes "use the current time") and end the span.
+#[op2(fast)]
+fn op_otel_span_end<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  span: v8::Local<'s, v8::Value>,
+  end_time: v8::Local<'s, v8::Value>,
+) {
+  let Some(span) =
+    deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
+  else {
+    return;
+  };
+  let mut end_time_ms = time_input_to_ms(scope, end_time);
+  // JS used `timeInputToMs(endTime) || NaN`, so a `0` (or `-0`) result also
+  // falls back to the current time.
+  if end_time_ms == 0.0 {
+    end_time_ms = f64::NAN;
+  }
+  span_end_inner(&span, end_time_ms);
+}
+
+/// Combined `Span.recordException` path: build the `exception.*` attribute bag in
+/// Rust (mirroring the JS string/object handling and numeric `code`
+/// stringification), add the `exception` event, then apply the attributes.
+#[op2(fast)]
+fn op_otel_span_record_exception<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  span: v8::Local<'s, v8::Value>,
+  exception: v8::Local<'s, v8::Value>,
+  time: v8::Local<'s, v8::Value>,
+) {
+  let Some(span) =
+    deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
+  else {
+    return;
+  };
+
+  // Reconstruct the exact attribute object the JS path built, then run it
+  // through the shared attribute conversion so value typing/filtering matches.
+  let attributes = v8::Object::new(scope);
+  if let Ok(message) = exception.try_cast::<v8::String>() {
+    // `recordException("some message")`
+    set_property(scope, attributes, "exception.message", message.into());
+  } else if let Ok(exc) = exception.try_cast::<v8::Object>() {
+    let code = get_property(scope, exc, "code");
+    if code.boolean_value(scope) {
+      // `typeof exception.code === "number"` -> `String(code)`
+      let type_value = if code.is_number() {
+        match code.to_string(scope) {
+          Some(s) => s.into(),
+          None => code,
+        }
+      } else {
+        code
+      };
+      set_property(scope, attributes, "exception.type", type_value);
+    } else {
+      let name = get_property(scope, exc, "name");
+      if name.boolean_value(scope) {
+        set_property(scope, attributes, "exception.type", name);
+      }
+    }
+    let message = get_property(scope, exc, "message");
+    if message.boolean_value(scope) {
+      set_property(scope, attributes, "exception.message", message);
+    }
+    let stack = get_property(scope, exc, "stack");
+    if stack.boolean_value(scope) {
+      set_property(scope, attributes, "exception.stacktrace", stack);
+    }
+  }
+
+  let time_ms = time_input_to_ms(scope, time);
+  span_push_event(&span, "exception".to_string(), time_ms);
+  // SpanAttributesLocation::LAST_EVENT
+  apply_span_attributes_object(scope, &span, 1, attributes.into());
+}
+
+/// Combined `Span.addLink`/`addLinks` path: read the `link.context`
+/// (`traceId`/`spanId`/`traceFlags`/`isRemote`) and `droppedAttributesCount`,
+/// create the link, then apply `link.attributes` to the new `LAST_LINK`.
+/// Replaces the JS `addLink` body.
 #[op2(fast)]
 fn op_otel_span_add_link<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'s, v8::Value>,
-  trace_id: v8::Local<'s, v8::Value>,
-  span_id: v8::Local<'s, v8::Value>,
-  #[smi] trace_flags: u8,
-  is_remote: bool,
-  #[smi] dropped_attributes_count: u32,
-) -> u32 {
-  let trace_id = parse_trace_id(scope, trace_id);
-  if trace_id == TraceId::INVALID {
-    return 0;
-  };
-  let span_id = parse_span_id(scope, span_id);
-  if span_id == SpanId::INVALID {
-    return 0;
-  };
-  let span_context = SpanContext::new(
-    trace_id,
-    span_id,
-    TraceFlags::new(trace_flags),
-    is_remote,
-    TraceState::NONE,
-  );
-
+  link: v8::Local<'s, v8::Value>,
+) {
   let Some(span) =
     deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
   else {
-    return 0;
+    return;
   };
-  let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut **state {
-    span.links.links.push(Link::new(
-      span_context,
-      vec![],
-      dropped_attributes_count,
-    ));
-    span.links.links.len() as u32
-  } else {
-    0
+  let Ok(link) = link.try_cast::<v8::Object>() else {
+    return;
+  };
+  let context = get_property(scope, link, "context");
+  let Ok(context) = context.try_cast::<v8::Object>() else {
+    return;
+  };
+
+  let trace_id = get_property(scope, context, "traceId");
+  let trace_id = parse_trace_id(scope, trace_id);
+  let span_id = get_property(scope, context, "spanId");
+  let span_id = parse_span_id(scope, span_id);
+
+  // Only push a link when both ids are valid. Matching the previous JS, link
+  // attributes are still applied to `LAST_LINK` afterwards regardless.
+  if trace_id != TraceId::INVALID && span_id != SpanId::INVALID {
+    let trace_flags =
+      get_property(scope, context, "traceFlags").uint32_value(scope);
+    // `link.context.isRemote ?? false`
+    let is_remote =
+      get_property(scope, context, "isRemote").boolean_value(scope);
+    // `link.droppedAttributesCount ?? 0`
+    let dropped_attributes_count =
+      get_property(scope, link, "droppedAttributesCount")
+        .uint32_value(scope)
+        .unwrap_or(0);
+    let span_context = SpanContext::new(
+      trace_id,
+      span_id,
+      TraceFlags::new(trace_flags.unwrap_or(0) as u8),
+      is_remote,
+      TraceState::NONE,
+    );
+    let mut state = span.0.borrow_mut();
+    if let OtelSpanState::Recording(span) = &mut **state {
+      span.links.links.push(Link::new(
+        span_context,
+        vec![],
+        dropped_attributes_count,
+      ));
+    }
+  }
+
+  let attributes = get_property(scope, link, "attributes");
+  if attributes.boolean_value(scope) {
+    // SpanAttributesLocation::LAST_LINK
+    apply_span_attributes_object(scope, &span, 2, attributes);
   }
 }
 
