@@ -32,6 +32,36 @@ pub struct CoverageStats<'a> {
   pub report: Option<&'a CoverageReport>,
 }
 
+impl CoverageStats<'_> {
+  /// Adds the line, branch, and function hit/miss counts of a single report.
+  /// Shared by the summary reporter and the threshold check so both derive
+  /// percentages from the same definition of a covered line/branch/function.
+  pub fn add_report(&mut self, report: &CoverageReport) {
+    self.line_hit += report
+      .found_lines
+      .iter()
+      .filter(|(_, count)| *count > 0)
+      .count();
+    self.line_miss += report
+      .found_lines
+      .iter()
+      .filter(|(_, count)| *count == 0)
+      .count();
+    self.branch_hit += report.branches.iter().filter(|b| b.is_hit).count();
+    self.branch_miss += report.branches.iter().filter(|b| !b.is_hit).count();
+    self.fn_hit += report
+      .named_functions
+      .iter()
+      .filter(|f| f.execution_count > 0)
+      .count();
+    self.fn_miss += report
+      .named_functions
+      .iter()
+      .filter(|f| f.execution_count == 0)
+      .count();
+  }
+}
+
 type CoverageSummary<'a> = HashMap<String, CoverageStats<'a>>;
 
 pub fn create(kind: CoverageType) -> Box<dyn CoverageReporter + Send> {
@@ -86,29 +116,7 @@ pub trait CoverageReporter {
           ..CoverageStats::default()
         });
 
-        stats.line_hit += report
-          .found_lines
-          .iter()
-          .filter(|(_, count)| *count > 0)
-          .count();
-        stats.line_miss += report
-          .found_lines
-          .iter()
-          .filter(|(_, count)| *count == 0)
-          .count();
-        stats.branch_hit += report.branches.iter().filter(|b| b.is_hit).count();
-        stats.branch_miss +=
-          report.branches.iter().filter(|b| !b.is_hit).count();
-        stats.fn_hit += report
-          .named_functions
-          .iter()
-          .filter(|f| f.execution_count > 0)
-          .count();
-        stats.fn_miss += report
-          .named_functions
-          .iter()
-          .filter(|f| f.execution_count == 0)
-          .count();
+        stats.add_report(report);
 
         file_text = None;
         summary_path = path.parent();

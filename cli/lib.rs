@@ -205,6 +205,7 @@ async fn run_subcommand(
         coverage_flags.include,
         coverage_flags.exclude,
         coverage_flags.output,
+        coverage_flags.threshold.map(|t| t as f64),
         &[&*reporter],
       )
     }),

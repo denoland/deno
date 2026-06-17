@@ -1080,6 +1080,36 @@
         }
       }
     },
+    "coverage": {
+      "description": "Configuration for deno coverage and deno test --coverage",
+      "type": "object",
+      "properties": {
+        "thresholds": {
+          "description": "Minimum coverage percentages required for the command to succeed. Each metric is checked against the aggregate across all files.",
+          "type": "object",
+          "properties": {
+            "lines": {
+              "type": "number",
+              "description": "Minimum line coverage percentage (0-100).",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "branches": {
+              "type": "number",
+              "description": "Minimum branch coverage percentage (0-100).",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "functions": {
+              "type": "number",
+              "description": "Minimum function coverage percentage (0-100).",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        }
+      }
+    },
     "license": {
       "description": "The SPDX license identifier if this is a JSR package. Specify this or add a license file to the package.",
       "type": ["string"]
