@@ -95,9 +95,9 @@ const _httpServer = core.createLazyLoader("node:_http_server");
 // _tls_common, _tls_wrap are lazy-loaded via `lazyNodeModules` below: their
 // scripts extend net.Socket at module body, which pulls node:net (and then
 // node:stream) into the snapshot.
-const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+
 const assertStrict = core.createLazyLoader("node:assert/strict");
-const asyncHooks = core.loadExtScript("ext:deno_node/async_hooks.ts").default;
+
 const internalAsyncHooks = core.loadExtScript(
   "ext:deno_node/internal/async_hooks.ts",
 );
@@ -115,17 +115,10 @@ const buffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs").default;
 // stays eager because its body reads `NODE_CLUSTER_SCHED_POLICY` from env
 // at module evaluation time, which requires Deno env permission at runtime
 // but is freely granted at snapshot.
-const cluster = core.loadExtScript("ext:deno_node/cluster.ts").default;
-import console from "node:console";
-const constants = core.loadExtScript("ext:deno_node/constants.ts").default;
+
 const diagnosticsChannel =
   core.loadExtScript("ext:deno_node/diagnostics_channel.js").default;
-const dns = core.loadExtScript("ext:deno_node/dns.ts").default;
-const dnsPromises = core.loadExtScript(
-  "ext:deno_node/dns/promises.ts",
-).default;
-const domain = core.loadExtScript("ext:deno_node/domain.ts").default;
-const events = core.loadExtScript("ext:deno_node/_events.mjs").default;
+
 const fs = core.loadExtScript("ext:deno_node/fs.ts");
 // fs/promises is lazy-loaded via `lazyNodeModules` below: its script body
 // does `createLazyLoader("node:fs")()` which loads `node:fs` (fs_esm.ts),
@@ -135,60 +128,14 @@ const fs = core.loadExtScript("ext:deno_node/fs.ts");
 // http/http2/https are lazy-loaded via `lazyNodeModules` below: their script
 // bodies eagerly chain into the entire node:_http_* / node:net / node:stream
 // graph, so running them at snapshot time defeats lazifying _http_*.
-const internalAssertMyersDiff = core.loadExtScript(
-  "ext:deno_node/internal/assert/myers_diff.js",
-);
+
 // internal/child_process pulls deno_process/40_process.js -> 22_body
 // -> 06_streams (208 KB). Lazy-loaded via lazyNodeModules.
-const internalCryptoCertificate = core.loadExtScript(
-  "ext:deno_node/internal/crypto/certificate.ts",
-).default;
+
 // internal/crypto/cipher is lazy-loaded via `lazyNodeModules` below: its
 // script does `createLazyLoader("node:stream")()` at body time to extend
 // `Transform`, which pulls the whole stream subtree into the snapshot.
-const internalCryptoDiffiehellman = core.loadExtScript(
-  "ext:deno_node/internal/crypto/diffiehellman.ts",
-).default;
-const internalCryptoHash = core.loadExtScript(
-  "ext:deno_node/internal/crypto/hash.ts",
-).default;
-const internalCryptoHkdf = core.loadExtScript(
-  "ext:deno_node/internal/crypto/hkdf.ts",
-).default;
-const internalCryptoKeygen = core.loadExtScript(
-  "ext:deno_node/internal/crypto/keygen.ts",
-).default;
-const internalCryptoKeys = core.loadExtScript(
-  "ext:deno_node/internal/crypto/keys.ts",
-).default;
-const internalCryptoPbkdf2 = core.loadExtScript(
-  "ext:deno_node/internal/crypto/pbkdf2.ts",
-).default;
-const internalCryptoRandom = core.loadExtScript(
-  "ext:deno_node/internal/crypto/random.ts",
-).default;
-const internalCryptoScrypt = core.loadExtScript(
-  "ext:deno_node/internal/crypto/scrypt.ts",
-).default;
-const internalCryptoSig = core.loadExtScript(
-  "ext:deno_node/internal/crypto/sig.ts",
-).default;
-const internalCryptoUtil = core.loadExtScript(
-  "ext:deno_node/internal/crypto/util.ts",
-).default;
-const internalCryptoX509 = core.loadExtScript(
-  "ext:deno_node/internal/crypto/x509.ts",
-).default;
-const internalDgram = core.loadExtScript(
-  "ext:deno_node/internal/dgram.ts",
-).default;
-const internalUndici = core.loadExtScript(
-  "ext:deno_node/internal/deps/undici/undici.js",
-);
-const internalDnsPromises = core.loadExtScript(
-  "ext:deno_node/internal/dns/promises.ts",
-).default;
-const internalBuffer = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+
 const internalErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const internalEventTarget = core.createLazyLoader(
   "ext:deno_node/internal/event_target.mjs",
@@ -217,48 +164,25 @@ const internalFsPromisesProxy = new Proxy(ObjectCreate(null), {
 // http2 ESM chain (node:http2 -> http2.ts -> node:http -> http.ts -> the
 // node:_http_* graph) into the snapshot, defeating the http/_http_*
 // lazification we set up.
-const internalPriorityQueue = core.loadExtScript(
-  "ext:deno_node/internal/priority_queue.ts",
-);
-const internalReadlineUtils = core.loadExtScript(
-  "ext:deno_node/internal/readline/utils.mjs",
-);
-const internalStreamsAddAbortSignal = core.loadExtScript(
-  "ext:deno_node/internal/streams/add-abort-signal.js",
-).default;
+
 const internalStreamsLazyTransform = core.createLazyLoader(
   "ext:deno_node/internal/streams/lazy_transform.js",
 );
-const internalStreamsState =
-  core.loadExtScript("ext:deno_node/internal/streams/state.js").default;
-const internalSocketAddress = core.loadExtScript(
-  "ext:deno_node/internal/socketaddress.js",
-);
-const internalTestBinding = core.loadExtScript(
-  "ext:deno_node/internal/test/binding.ts",
-);
+
 const internalTimers = core.loadExtScript(
   "ext:deno_node/internal/timers.mjs",
 );
-const internalUrl = core.loadExtScript("ext:deno_node/internal/url.ts");
+
 const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
-const internalUtilDebuglog = core.loadExtScript(
-  "ext:deno_node/internal/util/debuglog.ts",
-);
-const internalUtilInspect = core.loadExtScript(
-  "ext:deno_node/internal/util/inspect.mjs",
-);
+
 const internalValidators = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-const internalConsole = core.loadExtScript(
-  "ext:deno_node/internal/console/constructor.mjs",
-).default;
-const os = core.loadExtScript("ext:deno_node/os.ts").default;
+
 import pathPosix from "node:path/posix";
 import pathWin32 from "node:path/win32";
 import path from "node:path";
-const punycode = core.loadExtScript("ext:deno_node/punycode.ts").default;
+
 // node:process is lazy now (see lib.rs / 98_global_scope_shared.js). 01_require
 // only uses `process` inside require-time functions + the builtin map, never at
 // module-eval, so resolving it lazily keeps the node process closure out of the
@@ -284,17 +208,11 @@ const internalRepl = core.createLazyLoader(
 // process.stdout/stderr/stdin are lazy getters now, so nothing forces the
 // stream/net/tty closure into the snapshot). stream/web pulls
 // ext:deno_web/14_compression.js -> 06_streams (208 KB) too.
-const stringDecoder =
-  core.loadExtScript("ext:deno_node/string_decoder.ts").default;
-const timers = core.loadExtScript("ext:deno_node/timers.ts");
-const timersPromises = core.loadExtScript(
-  "ext:deno_node/timers/promises.ts",
-);
+
 const tls = core.createLazyLoader("node:tls");
 const url = core.loadExtScript("ext:deno_node/url.ts");
 const util = core.loadExtScript("ext:deno_node/util.ts");
-const utilTypes = core.loadExtScript("ext:deno_node/internal/util/types.ts");
-const vm = core.loadExtScript("ext:deno_node/vm.js").default;
+
 // worker_threads must stay eager: it registers `internals.__initWorkerThreads`
 // / `internals.__isWorkerThread`, which the node process bootstrap calls
 // (`__initWorkerThreads` at startup). It also statically imports node:vm, so
@@ -321,6 +239,83 @@ const builtinModules = [];
 // Use `() => createLazyLoader("...")().default` for `lazy_loaded_esm` entries
 // and `() => loadExtScript("...")` for `lazy_loaded_js` entries.
 const lazyNodeModules = {
+  "assert": () => core.loadExtScript("ext:deno_node/assert.ts").default,
+  "console": () => core.createLazyLoader("node:console")().default,
+  "cluster": () => core.loadExtScript("ext:deno_node/cluster.ts").default,
+  "dns": () => core.loadExtScript("ext:deno_node/dns.ts").default,
+  "events": () => core.loadExtScript("ext:deno_node/_events.mjs").default,
+  "punycode": () => core.loadExtScript("ext:deno_node/punycode.ts").default,
+  "timers": () => core.loadExtScript("ext:deno_node/timers.ts"),
+  "vm": () => core.loadExtScript("ext:deno_node/vm.js").default,
+  "async_hooks": () =>
+    core.loadExtScript("ext:deno_node/async_hooks.ts").default,
+  "dns/promises": () =>
+    core.loadExtScript("ext:deno_node/dns/promises.ts").default,
+  "internal/assert/myers_diff": () =>
+    core.loadExtScript("ext:deno_node/internal/assert/myers_diff.js").default,
+  "internal/console/constructor": () =>
+    core.loadExtScript("ext:deno_node/internal/console/constructor.mjs")
+      .default,
+  "internal/crypto/certificate": () =>
+    core.loadExtScript("ext:deno_node/internal/crypto/certificate.ts").default,
+  "internal/crypto/diffiehellman": () =>
+    core.loadExtScript("ext:deno_node/internal/crypto/diffiehellman.ts")
+      .default,
+  "internal/crypto/hash": () =>
+    core.loadExtScript("ext:deno_node/internal/crypto/hash.ts").default,
+  "internal/crypto/hkdf": () =>
+    core.loadExtScript("ext:deno_node/internal/crypto/hkdf.ts").default,
+  "internal/crypto/keygen": () =>
+    core.loadExtScript("ext:deno_node/internal/crypto/keygen.ts").default,
+  "internal/crypto/keys": () =>
+    core.loadExtScript("ext:deno_node/internal/crypto/keys.ts").default,
+  "internal/crypto/pbkdf2": () =>
+    core.loadExtScript("ext:deno_node/internal/crypto/pbkdf2.ts").default,
+  "internal/crypto/random": () =>
+    core.loadExtScript("ext:deno_node/internal/crypto/random.ts").default,
+  "internal/crypto/scrypt": () =>
+    core.loadExtScript("ext:deno_node/internal/crypto/scrypt.ts").default,
+  "internal/crypto/sig": () =>
+    core.loadExtScript("ext:deno_node/internal/crypto/sig.ts").default,
+  "internal/crypto/util": () =>
+    core.loadExtScript("ext:deno_node/internal/crypto/util.ts").default,
+  "internal/crypto/x509": () =>
+    core.loadExtScript("ext:deno_node/internal/crypto/x509.ts").default,
+  "internal/dgram": () =>
+    core.loadExtScript("ext:deno_node/internal/dgram.ts").default,
+  "internal/deps/undici/undici": () =>
+    core.loadExtScript("ext:deno_node/internal/deps/undici/undici.js").default,
+  "internal/dns/promises": () =>
+    core.loadExtScript("ext:deno_node/internal/dns/promises.ts").default,
+  "internal/buffer": () =>
+    core.loadExtScript("ext:deno_node/internal/buffer.mjs").default,
+  "internal/priority_queue": () =>
+    core.loadExtScript("ext:deno_node/internal/priority_queue.ts").default,
+  "internal/readline/utils": () =>
+    core.loadExtScript("ext:deno_node/internal/readline/utils.mjs").default,
+  "internal/streams/add-abort-signal": () =>
+    core.loadExtScript("ext:deno_node/internal/streams/add-abort-signal.js")
+      .default,
+  "internal/streams/state": () =>
+    core.loadExtScript("ext:deno_node/internal/streams/state.js").default,
+  "internal/socketaddress": () =>
+    core.loadExtScript("ext:deno_node/internal/socketaddress.js"),
+  "internal/test/binding": () =>
+    core.loadExtScript("ext:deno_node/internal/test/binding.ts"),
+  "internal/url": () => core.loadExtScript("ext:deno_node/internal/url.ts"),
+  "internal/util/debuglog": () =>
+    core.loadExtScript("ext:deno_node/internal/util/debuglog.ts").default,
+  "internal/util/inspect": () =>
+    core.loadExtScript("ext:deno_node/internal/util/inspect.mjs"),
+  "string_decoder": () =>
+    core.loadExtScript("ext:deno_node/string_decoder.ts").default,
+  "timers/promises": () =>
+    core.loadExtScript("ext:deno_node/timers/promises.ts"),
+  "util/types": () =>
+    core.loadExtScript("ext:deno_node/internal/util/types.ts"),
+  "constants": () => core.loadExtScript("ext:deno_node/constants.ts").default,
+  "domain": () => core.loadExtScript("ext:deno_node/domain.ts").default,
+  "os": () => core.loadExtScript("ext:deno_node/os.ts").default,
   // Lazy so the WHATWG-streams adapter graph (stream/web -> deno_web
   // 06_streams, ~1.8MB of snapshot heap) is only loaded when something
   // actually requires these internals, not eagerly at node:module init.
@@ -441,54 +436,17 @@ function defineLazyNativeModule(name, loader) {
 // NOTE(bartlomieju): keep this list in sync with `ext/node/lib.rs`
 function setupBuiltinModules() {
   const nodeModules = {
-    assert,
-    "async_hooks": asyncHooks,
     buffer,
-    cluster,
-    console,
-    constants,
     diagnostics_channel: diagnosticsChannel,
-    dns,
-    "dns/promises": dnsPromises,
-    domain,
-    events,
     fs,
-    "internal/assert/myers_diff": internalAssertMyersDiff.default,
     "internal/async_hooks": internalAsyncHooks,
-    "internal/console/constructor": internalConsole,
-    "internal/crypto/certificate": internalCryptoCertificate,
-    "internal/crypto/diffiehellman": internalCryptoDiffiehellman,
-    "internal/crypto/hash": internalCryptoHash,
-    "internal/crypto/hkdf": internalCryptoHkdf,
-    "internal/crypto/keygen": internalCryptoKeygen,
-    "internal/crypto/keys": internalCryptoKeys,
-    "internal/crypto/pbkdf2": internalCryptoPbkdf2,
-    "internal/crypto/random": internalCryptoRandom,
-    "internal/crypto/scrypt": internalCryptoScrypt,
-    "internal/crypto/sig": internalCryptoSig,
-    "internal/crypto/util": internalCryptoUtil,
-    "internal/crypto/x509": internalCryptoX509,
-    "internal/dgram": internalDgram,
-    "internal/deps/undici/undici": internalUndici.default,
-    "internal/dns/promises": internalDnsPromises,
-    "internal/buffer": internalBuffer.default,
     "internal/errors": internalErrors,
     "internal/fs/promises": internalFsPromisesProxy,
-    "internal/priority_queue": internalPriorityQueue.default,
-    "internal/readline/utils": internalReadlineUtils.default,
-    "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
-    "internal/streams/state": internalStreamsState,
-    "internal/socketaddress": internalSocketAddress,
     "internal/options": internalOptions,
-    "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
-    "internal/url": internalUrl,
-    "internal/util/debuglog": internalUtilDebuglog.default,
-    "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     "internal/validators": internalValidators,
     module: Module,
-    os,
     "path/posix": pathPosix,
     "path/win32": pathWin32,
     path,
@@ -499,15 +457,9 @@ function setupBuiltinModules() {
     // getter, which ObjectEntries() invoked at module-eval -> loaded node:process
     // into the snapshot. Plain entry now (deprecation warning dropped pending
     // proper lazy wiring).
-    punycode,
-    string_decoder: stringDecoder,
     sys: util,
-    timers,
-    "timers/promises": timersPromises,
     url,
     util,
-    "util/types": utilTypes,
-    vm,
     worker_threads: workerThreads,
   };
   // Match Node's schemelessBlockList: these modules can only be imported
@@ -2104,7 +2056,7 @@ function isEsmSyntaxError(error) {
 
 function enrichCJSError(error) {
   if (isEsmSyntaxError(error)) {
-    console.error(
+    globalThis.console.error(
       'To load an ES module, set "type": "module" in the package.json or use ' +
         "the .mjs extension.",
     );
