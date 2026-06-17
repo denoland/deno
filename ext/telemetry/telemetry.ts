@@ -7,9 +7,11 @@ const {
   op_otel_enable_isolate_metrics,
   op_otel_log,
   op_otel_log_foreign,
-  op_otel_metric_observable_record,
+  op_otel_metric_add_batch_callback,
   op_otel_metric_observation_done,
   op_otel_metric_record,
+  op_otel_metric_remove_batch_callback,
+  op_otel_metric_run_observations,
   op_otel_metric_wait_to_observe,
   op_otel_span_add_event,
   op_otel_span_add_link,
@@ -18,7 +20,10 @@ const {
   op_otel_span_end,
   op_otel_span_record_exception,
   op_otel_span_update_name,
+  OtelBatchObservableResult,
   OtelMeter,
+  OtelObservable,
+  OtelObservableResult,
   OtelTracer,
   OtelW3CTraceContextPropagator,
   OtelW3CBaggagePropagator,
@@ -30,7 +35,6 @@ const {
   ArrayIsArray,
   ArrayPrototypeFilter,
   ArrayPrototypeMap,
-  ArrayPrototypePush,
   DatePrototype,
   DatePrototypeGetTime,
   Error,
@@ -39,11 +43,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   ObjectValues,
   ReflectApply,
-  SafeArrayIterator,
-  SafeMap,
   SafePromiseAll,
-  SafeSet,
-  SafeWeakSet,
   SymbolFor,
   TypeError,
 } = primordials;
@@ -618,42 +618,34 @@ type MetricAttributes = Attributes;
 
 type Instrument = { __key: "instrument" };
 
-let batchResultHasObservables: (
-  res: BatchObservableResult,
-  observables: Observable[],
-) => boolean;
+// Rust-backed observable metric objects (see ext/telemetry/lib.rs). The
+// per-observable / batch callback registries, the recording logic and the
+// `observe()` loop body now live in Rust; these names are aliases to the Rust
+// cppgc constructors, kept for the `new Observable(...)` call sites below.
+const Observable = OtelObservable;
+const ObservableResult = OtelObservableResult;
+const BatchObservableResult = OtelBatchObservableResult;
 
-class BatchObservableResult {
-  #observables: WeakSet<Observable>;
-
-  constructor(observables: WeakSet<Observable>) {
-    this.#observables = observables;
-  }
-
-  static {
-    batchResultHasObservables = (cb, observables) => {
-      for (const observable of new SafeArrayIterator(observables)) {
-        if (!cb.#observables.has(observable)) return false;
-      }
-      return true;
-    };
-  }
-
+// Shapes of the Rust-backed objects above (constructed via `core.ops`, so
+// otherwise untyped); used by the annotations on the metric APIs below.
+interface Observable {
+  addCallback(callback: ObservableCallback): void;
+  removeCallback(callback: ObservableCallback): void;
+}
+interface ObservableResult {
+  observe(value: number, attributes?: MetricAttributes): void;
+}
+interface BatchObservableResult {
   observe(
     metric: Observable,
     value: number,
     attributes?: MetricAttributes,
-  ): void {
-    if (!this.#observables.has(metric)) return;
-    getObservableResult(metric).observe(value, attributes);
-  }
+  ): void;
 }
 
-const BATCH_CALLBACKS = new SafeMap<
-  BatchObservableCallback,
-  BatchObservableResult
->();
-const INDIVIDUAL_CALLBACKS = new SafeMap<Observable, Set<ObservableCallback>>();
+type ObservableCallback = (
+  observableResult: ObservableResult,
+) => void | Promise<void>;
 
 class Meter {
   #meter: OtelMeter;
@@ -769,9 +761,9 @@ class Meter {
     observables: Observable[],
   ): void {
     if (!METRICS_ENABLED) return;
-    const result = new BatchObservableResult(new SafeWeakSet(observables));
+    const result = new BatchObservableResult(observables);
+    op_otel_metric_add_batch_callback(callback, result);
     startObserving();
-    BATCH_CALLBACKS.set(callback, result);
   }
 
   removeBatchObservableCallback(
@@ -779,10 +771,7 @@ class Meter {
     observables: Observable[],
   ): void {
     if (!METRICS_ENABLED) return;
-    const result = BATCH_CALLBACKS.get(callback);
-    if (result && batchResultHasObservables(result, observables)) {
-      BATCH_CALLBACKS.delete(callback);
-    }
+    op_otel_metric_remove_batch_callback(callback, observables);
   }
 }
 
@@ -798,16 +787,6 @@ function record(
   if (instrument === null) return;
   // Attribute iteration, conversion, and dispatch happen in Rust.
   op_otel_metric_record(instrument, value, attributes);
-}
-
-function recordObservable(
-  instrument: Instrument | null,
-  value: number,
-  attributes?: MetricAttributes,
-) {
-  if (instrument === null) return;
-  // Attribute iteration, conversion, and dispatch happen in Rust.
-  op_otel_metric_observable_record(instrument, value, attributes);
 }
 
 class Counter {
@@ -859,86 +838,16 @@ class Histogram {
   }
 }
 
-type ObservableCallback = (
-  observableResult: ObservableResult,
-) => void | Promise<void>;
-
-let getObservableResult: (observable: Observable) => ObservableResult;
-
-class Observable {
-  #result: ObservableResult;
-
-  constructor(result: ObservableResult) {
-    this.#result = result;
-  }
-
-  static {
-    getObservableResult = (observable) => observable.#result;
-  }
-
-  addCallback(callback: ObservableCallback): void {
-    const res = INDIVIDUAL_CALLBACKS.get(this);
-    if (res) res.add(callback);
-    else INDIVIDUAL_CALLBACKS.set(this, new SafeSet([callback]));
-    startObserving();
-  }
-
-  removeCallback(callback: ObservableCallback): void {
-    const res = INDIVIDUAL_CALLBACKS.get(this);
-    if (res) res.delete(callback);
-    if (res?.size === 0) INDIVIDUAL_CALLBACKS.delete(this);
-  }
-}
-
-class ObservableResult {
-  #instrument: Instrument | null;
-  #isRegularCounter: boolean;
-
-  constructor(instrument: Instrument | null, isRegularCounter: boolean) {
-    this.#instrument = instrument;
-    this.#isRegularCounter = isRegularCounter;
-  }
-
-  observe(
-    this: ObservableResult,
-    value: number,
-    attributes?: MetricAttributes,
-  ): void {
-    if (this.#isRegularCounter) {
-      if (value < 0) {
-        throw new Error("Observable counters can only be incremented");
-      }
-    }
-    recordObservable(this.#instrument, value, attributes);
-  }
-}
-
+// The callback invocation happens in Rust (`op_otel_metric_run_observations`),
+// which calls every registered individual and batch callback and returns the
+// array of their results. We still await them here with `SafePromiseAll`,
+// preserving the original `Promise.try(callback, result)` + `SafePromiseAll`
+// behavior, because `startObserving` drives the async collection loop in JS.
 async function observe(): Promise<void> {
   if (ISOLATE_METRICS) {
     op_otel_collect_isolate_metrics();
   }
-
-  const promises: Promise<void>[] = [];
-  // Primordials are not needed, because this is a SafeMap.
-  // deno-lint-ignore prefer-primordials
-  for (const { 0: observable, 1: callbacks } of INDIVIDUAL_CALLBACKS) {
-    const result = getObservableResult(observable);
-    // Primordials are not needed, because this is a SafeSet.
-    // deno-lint-ignore prefer-primordials
-    for (const callback of callbacks) {
-      // PromiseTry is not in primordials?
-      // deno-lint-ignore prefer-primordials
-      ArrayPrototypePush(promises, Promise.try(callback, result));
-    }
-  }
-  // Primordials are not needed, because this is a SafeMap.
-  // deno-lint-ignore prefer-primordials
-  for (const { 0: callback, 1: result } of BATCH_CALLBACKS) {
-    // PromiseTry is not in primordials?
-    // deno-lint-ignore prefer-primordials
-    ArrayPrototypePush(promises, Promise.try(callback, result));
-  }
-  await SafePromiseAll(promises);
+  await SafePromiseAll(op_otel_metric_run_observations());
 }
 
 let isObserving = false;
