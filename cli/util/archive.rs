@@ -72,10 +72,11 @@ fn unzip(
 }
 
 pub struct UnpackArgs<'a> {
+  /// The full file name of the file expected to be produced by unpacking the
+  /// archive (e.g. `deno`, `deno.exe`, `libdenort.dylib`).
   pub exe_name: &'a str,
   pub archive_name: &'a str,
   pub archive_data: &'a [u8],
-  pub is_windows: bool,
   pub dest_path: &'a Path,
 }
 
@@ -84,12 +85,10 @@ pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
     exe_name,
     archive_name,
     archive_data,
-    is_windows,
     dest_path,
   } = args;
-  let exe_ext = if is_windows { "exe" } else { "" };
   let archive_path = dest_path.join(exe_name).with_extension("zip");
-  let exe_path = dest_path.join(exe_name).with_extension(exe_ext);
+  let exe_path = dest_path.join(exe_name);
   assert!(!exe_path.exists());
 
   let archive_ext = Path::new(archive_name)
@@ -115,4 +114,69 @@ pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
 
   assert!(exe_path.exists());
   Ok(exe_path)
+}
+
+#[cfg(test)]
+mod tests {
+  use std::io::Write;
+
+  use super::*;
+
+  fn make_zip(file_name: &str, contents: &[u8]) -> Vec<u8> {
+    let mut buf = Vec::new();
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+    writer
+      .start_file(file_name, zip::write::SimpleFileOptions::default())
+      .unwrap();
+    writer.write_all(contents).unwrap();
+    writer.finish().unwrap();
+    buf
+  }
+
+  // The expected file name may carry a non-executable extension (e.g. a
+  // `.dylib`/`.so`/`.dll` library). Regression test for a panic where the
+  // extension was stripped and the unpacked file could not be found.
+  #[test]
+  fn unpacks_library_with_extension() {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let data = make_zip("libdenort.dylib", b"fake dylib");
+    let path = unpack_into_dir(UnpackArgs {
+      exe_name: "libdenort.dylib",
+      archive_name: "libdenort-aarch64-apple-darwin.zip",
+      archive_data: &data,
+      dest_path: temp_dir.path(),
+    })
+    .unwrap();
+    assert_eq!(path, temp_dir.path().join("libdenort.dylib"));
+    assert_eq!(std::fs::read(&path).unwrap(), b"fake dylib");
+  }
+
+  #[test]
+  fn unpacks_executable_without_extension() {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let data = make_zip("deno", b"fake exe");
+    let path = unpack_into_dir(UnpackArgs {
+      exe_name: "deno",
+      archive_name: "deno-aarch64-apple-darwin.zip",
+      archive_data: &data,
+      dest_path: temp_dir.path(),
+    })
+    .unwrap();
+    assert_eq!(path, temp_dir.path().join("deno"));
+    assert_eq!(std::fs::read(&path).unwrap(), b"fake exe");
+  }
+
+  #[test]
+  fn unpacks_executable_with_exe_extension() {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let data = make_zip("deno.exe", b"fake exe");
+    let path = unpack_into_dir(UnpackArgs {
+      exe_name: "deno.exe",
+      archive_name: "deno-x86_64-pc-windows-msvc.zip",
+      archive_data: &data,
+      dest_path: temp_dir.path(),
+    })
+    .unwrap();
+    assert_eq!(path, temp_dir.path().join("deno.exe"));
+  }
 }

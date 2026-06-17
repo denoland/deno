@@ -360,13 +360,22 @@ fn check_unix_socket_path<'a>(
   access_kind: OpenAccessKind,
   api_name: Option<&str>,
 ) -> Result<CheckedPath<'a>, NetError> {
-  if is_unix_socket_abstract_path(path.as_ref()) {
-    Ok(CheckedPath::unsafe_new(path))
+  let checked = if is_unix_socket_abstract_path(path.as_ref()) {
+    CheckedPath::unsafe_new(path)
   } else {
     permissions
       .check_open(path, access_kind, api_name)
-      .map_err(NetError::Permission)
-  }
+      .map_err(NetError::Permission)?
+  };
+  // Unix sockets are an outbound network primitive, so require an
+  // `--allow-net=unix:<path>` rule in addition to filesystem access on the
+  // socket path. Without this, a script with only
+  // `--allow-read=/var/run/docker.sock` could connect to local IPC services
+  // (Docker, dbus, podman, etc.) with no `--allow-net` grant.
+  permissions
+    .check_net_unix_socket(&checked, api_name)
+    .map_err(NetError::Permission)?;
+  Ok(checked)
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]

@@ -17,6 +17,7 @@ use deno_core::CancelHandle;
 use deno_core::FastString;
 use deno_core::FromV8;
 use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
@@ -39,6 +40,7 @@ use crate::OpenOptions;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
+use crate::interface::FsReadDirRc;
 
 #[derive(Debug, Boxed, deno_error::JsError)]
 pub struct FsOpsError(pub Box<FsOpsErrorKind>);
@@ -98,6 +100,15 @@ impl From<FsError> for FsOpsError {
       }
     }
     .into_box()
+  }
+}
+
+#[derive(Debug)]
+struct ReadDirResource(FsReadDirRc);
+
+impl Resource for ReadDirResource {
+  fn name(&self) -> Cow<'_, str> {
+    "readDir".into()
   }
 }
 
@@ -752,7 +763,7 @@ pub fn op_fs_read_dir_sync(
 pub async fn op_fs_read_dir_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-) -> Result<Vec<FsDirEntry>, FsOpsError> {
+) -> Result<ResourceId, FsOpsError> {
   let (fs, path) = {
     let mut state = state.borrow_mut();
     let path = state
@@ -765,12 +776,30 @@ pub async fn op_fs_read_dir_async(
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
-  let entries = fs
+  let read_dir = fs
     .read_dir_async(path.as_owned())
     .await
     .context_path("readdir", &path)?;
 
-  Ok(entries)
+  Ok(
+    state
+      .borrow_mut()
+      .resource_table
+      .add(ReadDirResource(read_dir)),
+  )
+}
+
+#[op2(stack_trace)]
+pub async fn op_fs_read_dir_async_next(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<Option<FsDirEntry>, FsOpsError> {
+  let resource = {
+    let state = state.borrow();
+    state.resource_table.get::<ReadDirResource>(rid)?
+  };
+
+  resource.0.next().await.map_err(Into::into)
 }
 
 #[op2(fast, stack_trace)]

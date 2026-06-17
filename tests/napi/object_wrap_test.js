@@ -79,3 +79,19 @@ Deno.test("napi new_instance allows JS in native constructor", function () {
   const obj = objectWrap.test_new_instance_constructor_can_call_js();
   assert(Object.isSealed(obj));
 });
+
+// Regression test for #33924: napi_resolve_deferred must not leave the isolate
+// in V8's Auto microtask policy. The runtime uses the Explicit policy, so a
+// microtask queued while resolving a deferred must NOT auto-drain mid-way
+// through a subsequent napi_new_instance call running at call-depth-zero on the
+// event loop. Pre-fix the isolate was flipped to Auto, the microtask drained
+// during construction, and napi-rs's factory wrapping leaked across classes.
+Deno.test("napi_resolve_deferred preserves Explicit microtask policy", async () => {
+  const drainedDuringConstruction = await new Promise((resolve) => {
+    objectWrap.test_resolve_deferred_keeps_microtask_policy(
+      objectWrap.NapiObject,
+      (drained) => resolve(drained),
+    );
+  });
+  assertEquals(drainedDuringConstruction, false);
+});
