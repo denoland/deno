@@ -127,16 +127,16 @@ deno_core::extension!(
     op_otel_span_end,
     op_otel_span_record_exception,
     op_otel_span_update_name,
-    op_otel_metric_record,
     op_otel_metric_wait_to_observe,
     op_otel_metric_observation_done,
-    op_otel_metric_add_batch_callback,
-    op_otel_metric_remove_batch_callback,
     op_otel_metric_run_observations,
   ],
   objects = [
     OtelTracer,
     OtelMeter,
+    OtelCounter,
+    OtelGauge,
+    OtelHistogram,
     OtelSpan,
     OtelTraceState,
     OtelBaggage,
@@ -2716,10 +2716,18 @@ impl OtelMeter {
     &self,
     scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
-    description: v8::Local<'s, v8::Value>,
-    unit: v8::Local<'s, v8::Value>,
-  ) -> Result<Instrument, JsErrorBox> {
-    create_instrument(
+    options: v8::Local<'s, v8::Value>,
+  ) -> Result<OtelCounter, JsErrorBox> {
+    validate_value_type(scope, options)?;
+    if !metrics_enabled() {
+      return Ok(OtelCounter {
+        instrument: None,
+        up_down: false,
+      });
+    }
+    let description = option_value(scope, options, "description");
+    let unit = option_value(scope, options, "unit");
+    let instrument = create_instrument(
       |name| self.0.f64_counter(name),
       |i| Instrument::Counter(i.build()),
       scope,
@@ -2727,7 +2735,11 @@ impl OtelMeter {
       description,
       unit,
     )
-    .map_err(|e| JsErrorBox::generic(e.to_string()))
+    .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+    Ok(OtelCounter {
+      instrument: Some(instrument),
+      up_down: false,
+    })
   }
 
   #[cppgc]
@@ -2735,10 +2747,18 @@ impl OtelMeter {
     &self,
     scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
-    description: v8::Local<'s, v8::Value>,
-    unit: v8::Local<'s, v8::Value>,
-  ) -> Result<Instrument, JsErrorBox> {
-    create_instrument(
+    options: v8::Local<'s, v8::Value>,
+  ) -> Result<OtelCounter, JsErrorBox> {
+    validate_value_type(scope, options)?;
+    if !metrics_enabled() {
+      return Ok(OtelCounter {
+        instrument: None,
+        up_down: true,
+      });
+    }
+    let description = option_value(scope, options, "description");
+    let unit = option_value(scope, options, "unit");
+    let instrument = create_instrument(
       |name| self.0.f64_up_down_counter(name),
       |i| Instrument::UpDownCounter(i.build()),
       scope,
@@ -2746,7 +2766,11 @@ impl OtelMeter {
       description,
       unit,
     )
-    .map_err(|e| JsErrorBox::generic(e.to_string()))
+    .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+    Ok(OtelCounter {
+      instrument: Some(instrument),
+      up_down: true,
+    })
   }
 
   #[cppgc]
@@ -2754,10 +2778,15 @@ impl OtelMeter {
     &self,
     scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
-    description: v8::Local<'s, v8::Value>,
-    unit: v8::Local<'s, v8::Value>,
-  ) -> Result<Instrument, JsErrorBox> {
-    create_instrument(
+    options: v8::Local<'s, v8::Value>,
+  ) -> Result<OtelGauge, JsErrorBox> {
+    validate_value_type(scope, options)?;
+    if !metrics_enabled() {
+      return Ok(OtelGauge { instrument: None });
+    }
+    let description = option_value(scope, options, "description");
+    let unit = option_value(scope, options, "unit");
+    let instrument = create_instrument(
       |name| self.0.f64_gauge(name),
       |i| Instrument::Gauge(i.build()),
       scope,
@@ -2765,7 +2794,10 @@ impl OtelMeter {
       description,
       unit,
     )
-    .map_err(|e| JsErrorBox::generic(e.to_string()))
+    .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+    Ok(OtelGauge {
+      instrument: Some(instrument),
+    })
   }
 
   #[cppgc]
@@ -2773,10 +2805,20 @@ impl OtelMeter {
     &self,
     scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
-    description: v8::Local<'s, v8::Value>,
-    unit: v8::Local<'s, v8::Value>,
-    #[scoped] boundaries: Option<Vec<f64>>,
-  ) -> Result<Instrument, JsErrorBox> {
+    options: v8::Local<'s, v8::Value>,
+  ) -> Result<OtelHistogram, JsErrorBox> {
+    validate_value_type(scope, options)?;
+    if !metrics_enabled() {
+      return Ok(OtelHistogram { instrument: None });
+    }
+    let description = option_value(scope, options, "description");
+    let unit = option_value(scope, options, "unit");
+    // `options?.advice?.explicitBucketBoundaries`
+    let advice = option_value(scope, options, "advice");
+    let boundaries_value =
+      option_value(scope, advice, "explicitBucketBoundaries");
+    let boundaries = value_to_f64_vec(scope, boundaries_value);
+
     let name = owned_string(
       scope,
       name
@@ -2806,7 +2848,9 @@ impl OtelMeter {
       builder = builder.with_boundaries(boundaries);
     }
 
-    Ok(Instrument::Histogram(builder.build()))
+    Ok(OtelHistogram {
+      instrument: Some(Instrument::Histogram(builder.build())),
+    })
   }
 
   #[cppgc]
@@ -2814,20 +2858,27 @@ impl OtelMeter {
     &self,
     scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
-    description: v8::Local<'s, v8::Value>,
-    unit: v8::Local<'s, v8::Value>,
-  ) -> Result<Instrument, JsErrorBox> {
-    create_async_instrument(
-      |name| self.0.f64_observable_counter(name),
-      |i| {
-        i.build();
-      },
-      scope,
-      name,
-      description,
-      unit,
-    )
-    .map_err(|e| JsErrorBox::generic(e.to_string()))
+    options: v8::Local<'s, v8::Value>,
+  ) -> Result<OtelObservable, JsErrorBox> {
+    validate_value_type(scope, options)?;
+    // NOTE: matches the JS, where `if (!METRICS_ENABLED)` had no `return`, so an
+    // observable instrument is always created (the disabled branch was a no-op).
+    let description = option_value(scope, options, "description");
+    let unit = option_value(scope, options, "unit");
+    let data_share = observable_data_share_for(
+      create_async_instrument(
+        |name| self.0.f64_observable_counter(name),
+        |i| {
+          i.build();
+        },
+        scope,
+        name,
+        description,
+        unit,
+      )
+      .map_err(|e| JsErrorBox::generic(e.to_string()))?,
+    );
+    Ok(build_observable(scope, data_share, true))
   }
 
   #[cppgc]
@@ -2835,20 +2886,25 @@ impl OtelMeter {
     &self,
     scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
-    description: v8::Local<'s, v8::Value>,
-    unit: v8::Local<'s, v8::Value>,
-  ) -> Result<Instrument, JsErrorBox> {
-    create_async_instrument(
-      |name| self.0.f64_observable_up_down_counter(name),
-      |i| {
-        i.build();
-      },
-      scope,
-      name,
-      description,
-      unit,
-    )
-    .map_err(|e| JsErrorBox::generic(e.to_string()))
+    options: v8::Local<'s, v8::Value>,
+  ) -> Result<OtelObservable, JsErrorBox> {
+    validate_value_type(scope, options)?;
+    let description = option_value(scope, options, "description");
+    let unit = option_value(scope, options, "unit");
+    let data_share = observable_data_share_for(
+      create_async_instrument(
+        |name| self.0.f64_observable_up_down_counter(name),
+        |i| {
+          i.build();
+        },
+        scope,
+        name,
+        description,
+        unit,
+      )
+      .map_err(|e| JsErrorBox::generic(e.to_string()))?,
+    );
+    Ok(build_observable(scope, data_share, false))
   }
 
   #[cppgc]
@@ -2856,20 +2912,164 @@ impl OtelMeter {
     &self,
     scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
-    description: v8::Local<'s, v8::Value>,
-    unit: v8::Local<'s, v8::Value>,
-  ) -> Result<Instrument, JsErrorBox> {
-    create_async_instrument(
-      |name| self.0.f64_observable_gauge(name),
-      |i| {
-        i.build();
-      },
-      scope,
-      name,
-      description,
-      unit,
-    )
-    .map_err(|e| JsErrorBox::generic(e.to_string()))
+    options: v8::Local<'s, v8::Value>,
+  ) -> Result<OtelObservable, JsErrorBox> {
+    validate_value_type(scope, options)?;
+    let description = option_value(scope, options, "description");
+    let unit = option_value(scope, options, "unit");
+    let data_share = observable_data_share_for(
+      create_async_instrument(
+        |name| self.0.f64_observable_gauge(name),
+        |i| {
+          i.build();
+        },
+        scope,
+        name,
+        description,
+        unit,
+      )
+      .map_err(|e| JsErrorBox::generic(e.to_string()))?,
+    );
+    Ok(build_observable(scope, data_share, false))
+  }
+
+  // `Meter.addBatchObservableCallback`. The observation driver loop
+  // (`startObserving` in telemetry.ts) is already running whenever metrics are
+  // enabled — bootstrap calls `enableIsolateMetrics()` → `startObserving()`
+  // unconditionally in that case, and this method only does work when metrics
+  // are enabled — so there is no need to (re)start it from here.
+  #[fast]
+  fn add_batch_observable_callback(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    state: &mut OpState,
+    callback: v8::Local<'_, v8::Value>,
+    observables: v8::Local<'_, v8::Value>,
+  ) {
+    if !metrics_enabled() {
+      return;
+    }
+    let result = batch_observable_result_from_value(scope, observables);
+    let result = deno_core::cppgc::make_cppgc_object(scope, result);
+    metric_add_batch_callback(scope, state, callback, result.into());
+  }
+
+  // `Meter.removeBatchObservableCallback`.
+  #[fast]
+  fn remove_batch_observable_callback(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    state: &mut OpState,
+    callback: v8::Local<'_, v8::Value>,
+    observables: v8::Local<'_, v8::Value>,
+  ) {
+    if !metrics_enabled() {
+      return;
+    }
+    metric_remove_batch_callback(scope, state, callback, observables);
+  }
+}
+
+/// Whether metrics collection is enabled (the Rust mirror of the JS
+/// `METRICS_ENABLED` flag, sourced from the same `OtelConfig`).
+fn metrics_enabled() -> bool {
+  OTEL_GLOBALS
+    .get()
+    .map(|globals| globals.has_metrics())
+    .unwrap_or(false)
+}
+
+/// Read `options?.<key>` from a metric options object, returning `undefined`
+/// when `options` is not an object (mirrors the JS optional chaining).
+fn option_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  options: v8::Local<'_, v8::Value>,
+  key: &str,
+) -> v8::Local<'s, v8::Value> {
+  let undefined: v8::Local<'s, v8::Value> = v8::undefined(scope).into();
+  let Ok(object) = options.try_cast::<v8::Object>() else {
+    return undefined;
+  };
+  let Some(key) = v8::String::new(scope, key) else {
+    return undefined;
+  };
+  object.get(scope, key.into()).unwrap_or(undefined)
+}
+
+/// The `Only valueType: DOUBLE is supported` rule from the JS `Meter` factory
+/// methods: `options?.valueType !== undefined && options?.valueType !== 1`.
+/// `value_type` is `None` for `undefined` and `Some(NaN)` for any non-number.
+fn check_value_type(value_type: Option<f64>) -> Result<(), JsErrorBox> {
+  // Accept `undefined` (None) and `DOUBLE` (1); reject everything else.
+  if value_type.is_none() || value_type == Some(1.0) {
+    return Ok(());
+  }
+  Err(JsErrorBox::generic("Only valueType: DOUBLE is supported"))
+}
+
+/// Validate `options?.valueType` from a JS metric options object.
+fn validate_value_type(
+  scope: &mut v8::PinScope<'_, '_>,
+  options: v8::Local<'_, v8::Value>,
+) -> Result<(), JsErrorBox> {
+  let value_type = option_value(scope, options, "valueType");
+  let value = if value_type.is_undefined() {
+    None
+  } else if value_type.is_number() {
+    Some(value_type.number_value(scope).unwrap_or(f64::NAN))
+  } else {
+    // Any non-number, non-undefined value (e.g. `null`) is `!== 1`.
+    Some(f64::NAN)
+  };
+  check_value_type(value)
+}
+
+/// Convert a JS value to `Some(Vec<f64>)` when it is an array (the histogram
+/// `explicitBucketBoundaries`), or `None` otherwise.
+fn value_to_f64_vec(
+  scope: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<'_, v8::Value>,
+) -> Option<Vec<f64>> {
+  let array = v8::Local::<v8::Array>::try_from(value).ok()?;
+  let len = array.length();
+  let mut out = Vec::with_capacity(len as usize);
+  for i in 0..len {
+    let element = array.get_index(scope, i)?;
+    out.push(element.number_value(scope).unwrap_or(f64::NAN));
+  }
+  Some(out)
+}
+
+/// Extract the shared observable data map from a freshly created
+/// `Instrument::Observable`.
+fn observable_data_share_for(instrument: Instrument) -> Option<ObservableData> {
+  match instrument {
+    Instrument::Observable(data_share) => Some(data_share),
+    _ => None,
+  }
+}
+
+/// Build a Rust-backed `OtelObservable` (and its wrapped `OtelObservableResult`)
+/// for an observable instrument, replacing the JS
+/// `new Observable(new ObservableResult(instrument, isRegularCounter))`.
+fn build_observable(
+  scope: &mut v8::PinScope<'_, '_>,
+  data_share: Option<ObservableData>,
+  is_regular_counter: bool,
+) -> OtelObservable {
+  let id = next_observable_result_id();
+  let result = OtelObservableResult {
+    id,
+    data_share: data_share.clone(),
+    is_regular_counter,
+  };
+  let result = deno_core::cppgc::make_cppgc_object(scope, result);
+  let result_val: v8::Local<v8::Value> = result.into();
+  OtelObservable {
+    result: v8::TracedReference::new(scope, result_val),
+    result_id: id,
+    data_share,
+    is_regular_counter,
   }
 }
 
@@ -2988,26 +3188,144 @@ fn metric_attributes_from_value(
   attributes
 }
 
-#[op2(fast)]
-fn op_otel_metric_record(
+/// Record `value`/`attributes` onto a synchronous instrument, replacing the JS
+/// `record()` helper and its `op_otel_metric_record`.
+fn record_to_instrument(
   scope: &mut v8::PinScope<'_, '_>,
-  instrument: v8::Local<'_, v8::Value>,
+  instrument: &Instrument,
   value: f64,
   attributes: v8::Local<'_, v8::Value>,
 ) {
-  let Some(instrument) = deno_core::_ops::try_unwrap_cppgc_object::<Instrument>(
-    &mut *scope,
-    instrument,
-  ) else {
-    return;
-  };
   let attributes = metric_attributes_from_value(scope, attributes);
-  match &*instrument {
+  match instrument {
     Instrument::Counter(counter) => counter.add(value, &attributes),
     Instrument::UpDownCounter(counter) => counter.add(value, &attributes),
     Instrument::Gauge(gauge) => gauge.record(value, &attributes),
     Instrument::Histogram(histogram) => histogram.record(value, &attributes),
     _ => {}
+  }
+}
+
+/// The `value < 0 && !upDown` rule from the JS `Counter.add`.
+fn check_counter_increment(
+  up_down: bool,
+  value: f64,
+) -> Result<(), JsErrorBox> {
+  if value < 0.0 && !up_down {
+    return Err(JsErrorBox::generic("Counter can only be incremented"));
+  }
+  Ok(())
+}
+
+/// Rust-backed `Counter` (and up/down counter) wrapper. `instrument` is `None`
+/// for the no-op instrument returned when metrics are disabled.
+pub struct OtelCounter {
+  instrument: Option<Instrument>,
+  up_down: bool,
+}
+
+// SAFETY: holds no traced v8 references.
+unsafe impl GarbageCollected for OtelCounter {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelCounter"
+  }
+}
+
+#[op2]
+impl OtelCounter {
+  // Instruments are created through `Meter`, never with `new`.
+  #[constructor]
+  #[cppgc]
+  fn new() -> Result<OtelCounter, JsErrorBox> {
+    Err(JsErrorBox::type_error("Counter can not be constructed"))
+  }
+
+  #[fast]
+  fn add(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: f64,
+    attributes: v8::Local<'_, v8::Value>,
+  ) -> Result<(), JsErrorBox> {
+    check_counter_increment(self.up_down, value)?;
+    if let Some(instrument) = &self.instrument {
+      record_to_instrument(scope, instrument, value, attributes);
+    }
+    Ok(())
+  }
+}
+
+/// Rust-backed `Gauge` wrapper. `instrument` is `None` for the no-op instrument
+/// returned when metrics are disabled.
+pub struct OtelGauge {
+  instrument: Option<Instrument>,
+}
+
+// SAFETY: holds no traced v8 references.
+unsafe impl GarbageCollected for OtelGauge {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelGauge"
+  }
+}
+
+#[op2]
+impl OtelGauge {
+  #[constructor]
+  #[cppgc]
+  fn new() -> Result<OtelGauge, JsErrorBox> {
+    Err(JsErrorBox::type_error("Gauge can not be constructed"))
+  }
+
+  #[fast]
+  fn record(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: f64,
+    attributes: v8::Local<'_, v8::Value>,
+  ) {
+    if let Some(instrument) = &self.instrument {
+      record_to_instrument(scope, instrument, value, attributes);
+    }
+  }
+}
+
+/// Rust-backed `Histogram` wrapper. `instrument` is `None` for the no-op
+/// instrument returned when metrics are disabled.
+pub struct OtelHistogram {
+  instrument: Option<Instrument>,
+}
+
+// SAFETY: holds no traced v8 references.
+unsafe impl GarbageCollected for OtelHistogram {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelHistogram"
+  }
+}
+
+#[op2]
+impl OtelHistogram {
+  #[constructor]
+  #[cppgc]
+  fn new() -> Result<OtelHistogram, JsErrorBox> {
+    Err(JsErrorBox::type_error("Histogram can not be constructed"))
+  }
+
+  #[fast]
+  fn record(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: f64,
+    attributes: v8::Local<'_, v8::Value>,
+  ) {
+    if let Some(instrument) = &self.instrument {
+      record_to_instrument(scope, instrument, value, attributes);
+    }
   }
 }
 
@@ -3250,6 +3568,33 @@ unsafe impl GarbageCollected for OtelBatchObservableResult {
   }
 }
 
+/// Build a `BatchObservableResult` from a JS array of observables, replacing
+/// the JS `new BatchObservableResult(observables)`.
+fn batch_observable_result_from_value(
+  scope: &mut v8::PinScope<'_, '_>,
+  observables: v8::Local<'_, v8::Value>,
+) -> OtelBatchObservableResult {
+  let mut members = Vec::new();
+  if let Ok(arr) = v8::Local::<v8::Array>::try_from(observables) {
+    for i in 0..arr.length() {
+      let Some(observable) = arr.get_index(scope, i) else {
+        continue;
+      };
+      if let Some(observable) = deno_core::_ops::try_unwrap_cppgc_object::<
+        OtelObservable,
+      >(&mut *scope, observable)
+      {
+        members.push(BatchMember {
+          result_id: observable.result_id,
+          data_share: observable.data_share.clone(),
+          is_regular_counter: observable.is_regular_counter,
+        });
+      }
+    }
+  }
+  OtelBatchObservableResult { members }
+}
+
 #[op2]
 impl OtelBatchObservableResult {
   #[constructor]
@@ -3258,25 +3603,7 @@ impl OtelBatchObservableResult {
     scope: &mut v8::PinScope<'_, '_>,
     observables: v8::Local<'_, v8::Value>,
   ) -> OtelBatchObservableResult {
-    let mut members = Vec::new();
-    if let Ok(arr) = v8::Local::<v8::Array>::try_from(observables) {
-      for i in 0..arr.length() {
-        let Some(observable) = arr.get_index(scope, i) else {
-          continue;
-        };
-        if let Some(observable) = deno_core::_ops::try_unwrap_cppgc_object::<
-          OtelObservable,
-        >(&mut *scope, observable)
-        {
-          members.push(BatchMember {
-            result_id: observable.result_id,
-            data_share: observable.data_share.clone(),
-            is_regular_counter: observable.is_regular_counter,
-          });
-        }
-      }
-    }
-    OtelBatchObservableResult { members }
+    batch_observable_result_from_value(scope, observables)
   }
 
   #[fast]
@@ -3343,8 +3670,7 @@ fn metric_callbacks(state: &mut OpState) -> &mut MetricCallbacks {
 
 /// `Meter.addBatchObservableCallback`: register `callback` with the batch
 /// `result`, keyed by the callback (`Map.set` overwrites an existing entry).
-#[op2(fast)]
-fn op_otel_metric_add_batch_callback(
+fn metric_add_batch_callback(
   scope: &mut v8::PinScope<'_, '_>,
   state: &mut OpState,
   callback: v8::Local<'_, v8::Value>,
@@ -3390,8 +3716,7 @@ fn batch_contains_all(member_ids: &[u64], requested: &[u64]) -> bool {
 /// `Meter.removeBatchObservableCallback`: remove the callback only when the
 /// stored batch result includes all of the requested observables
 /// (`batchResultHasObservables` in the JS original).
-#[op2(fast)]
-fn op_otel_metric_remove_batch_callback(
+fn metric_remove_batch_callback(
   scope: &mut v8::PinScope<'_, '_>,
   state: &mut OpState,
   callback: v8::Local<'_, v8::Value>,
@@ -3697,6 +4022,37 @@ mod tests {
     assert_eq!(
       err.to_string(),
       "Observable counters can only be incremented"
+    );
+  }
+
+  #[test]
+  fn counter_rejects_negative() {
+    // Regular counters cannot be decremented; up/down counters can.
+    assert!(check_counter_increment(false, -1.0).is_err());
+    assert!(check_counter_increment(false, 0.0).is_ok());
+    assert!(check_counter_increment(false, 1.0).is_ok());
+    assert!(check_counter_increment(true, -1.0).is_ok());
+    assert_eq!(
+      check_counter_increment(false, -1.0)
+        .unwrap_err()
+        .to_string(),
+      "Counter can only be incremented"
+    );
+  }
+
+  #[test]
+  fn value_type_validation() {
+    // `undefined` (None) and `DOUBLE` (1) are accepted.
+    assert!(check_value_type(None).is_ok());
+    assert!(check_value_type(Some(1.0)).is_ok());
+    // `INT` (0) and any other value are rejected.
+    assert!(check_value_type(Some(0.0)).is_err());
+    assert!(check_value_type(Some(2.0)).is_err());
+    // Non-number values arrive as `Some(NaN)` and are rejected.
+    assert!(check_value_type(Some(f64::NAN)).is_err());
+    assert_eq!(
+      check_value_type(Some(0.0)).unwrap_err().to_string(),
+      "Only valueType: DOUBLE is supported"
     );
   }
 
