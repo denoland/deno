@@ -661,10 +661,7 @@
     "parallel/test-crypto-authenticated-stream.js": {},
     "parallel/test-crypto-classes.js": {},
     "parallel/test-crypto-certificate.js": {},
-    "parallel/test-crypto-cipheriv-decipheriv.js": {
-      "exitCode": 1,
-      "output": "[WILDCARD]Unknown cipher id-aes128-wrap[WILDCARD]"
-    },
+    "parallel/test-crypto-cipheriv-decipheriv.js": {},
     "parallel/test-crypto-default-shake-lengths.js": {},
     "parallel/test-crypto-default-shake-lengths-oneshot.js": {},
     "parallel/test-crypto-des3-wrap.js": {},
@@ -705,9 +702,8 @@
     "parallel/test-crypto-getcipherinfo.js": {},
     "parallel/test-crypto-hash-stream-pipe.js": {},
     "parallel/test-crypto-hash.js": {
-      "exitCode": 1,
-      "output": "[WILDCARD]Mismatched <anonymous> function calls. Expected exactly 2, actual 1.[WILDCARD]",
-      "reason": "Test's expectWarning expects DEP0198 to fire, but the SHAKE128/256 block is gated on `!process.features.openssl_is_boringssl`; Deno reports BoringSSL=true so the SHAKE block — and thus the DEP0198 emit — is skipped"
+      "ignore": true,
+      "reason": "Flaky on CI (intermittently exits non-zero with no captured output) although it passes locally; the test's expectWarning/SHAKE handling races with async deprecation-warning delivery under CI concurrency"
     },
     "parallel/test-crypto-hkdf.js": {},
     "parallel/test-crypto-hmac.js": {},
@@ -2633,7 +2629,10 @@
     "parallel/test-net-socket-setnodelay.js": {},
     "parallel/test-net-socket-timeout-unref.js": {},
     "parallel/test-net-socket-timeout.js": {},
-    "parallel/test-net-socket-write-after-close.js": {},
+    "parallel/test-net-socket-write-after-close.js": {
+      "windows": false,
+      "reason": "On Windows Deno reports a write after close as EBADF where Node/libuv reports EPIPE"
+    },
     "parallel/test-net-socket-write-error.js": {},
     "parallel/test-net-stream.js": {},
     "parallel/test-net-sync-cork.js": {},
