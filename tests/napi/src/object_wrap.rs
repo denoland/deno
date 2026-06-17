@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::ptr;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use napi_sys::ValueType::napi_number;
 use napi_sys::*;
@@ -343,6 +345,272 @@ extern "C" fn test_raw_unwrap(
   result
 }
 
+/// Invokes `napi_new_instance` on the constructor passed as the first
+/// argument with the i32 second argument forwarded. Regression coverage
+/// for #33924: this verifies the API path still produces a properly
+/// wrapped instance on the normal codepath.
+extern "C" fn test_call_new_instance(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 2);
+  assert_eq!(argc, 2);
+
+  let argv = [args[1]];
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_new_instance(
+    env,
+    args[0],
+    argv.len(),
+    argv.as_ptr(),
+    &mut result,
+  ));
+  result
+}
+
+extern "C" fn js_calling_constructor(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (_, _, this) = napi_get_callback_info!(env, info, 0);
+  let mut global: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_global(env, &mut global));
+
+  let mut object: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_named_property(
+    env,
+    global,
+    c"Object".as_ptr(),
+    &mut object,
+  ));
+
+  let mut seal: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_named_property(
+    env,
+    object,
+    c"seal".as_ptr(),
+    &mut seal,
+  ));
+
+  let mut result: napi_value = ptr::null_mut();
+  let args = [this];
+  assert_napi_ok!(napi_call_function(
+    env,
+    global,
+    seal,
+    args.len(),
+    args.as_ptr(),
+    &mut result,
+  ));
+
+  ptr::null_mut()
+}
+
+extern "C" fn test_new_instance_constructor_can_call_js(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut constructor: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_define_class(
+    env,
+    c"JsCallingConstructor".as_ptr(),
+    usize::MAX,
+    Some(js_calling_constructor),
+    ptr::null_mut(),
+    0,
+    ptr::null(),
+    &mut constructor,
+  ));
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_new_instance(
+    env,
+    constructor,
+    0,
+    ptr::null(),
+    &mut result,
+  ));
+  result
+}
+
+// Regression test for #33924. The runtime runs with V8's Explicit microtask
+// policy, so microtasks are drained deliberately on event loop turns.
+// `napi_resolve_deferred` used to restore the isolate to the Auto policy (V8's
+// old default) after resolving, which permanently flipped the whole isolate to
+// Auto. Under Auto, V8 auto-drains microtasks whenever the call stack unwinds to
+// depth zero - including mid-construction inside `napi_new_instance` when it is
+// invoked from native event-loop code (e.g. an async-work completion). A drained
+// microtask that constructed another napi-rs class while the factory was still
+// in flight corrupted object wrapping and produced "Failed to recover
+// `TsconfigCache` type from napi value". This test recreates the depth-zero
+// context with async work and asserts the queued microtask does NOT drain during
+// construction.
+static MICROTASK_RAN: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn mark_microtask_ran(
+  _env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  MICROTASK_RAN.store(true, Ordering::SeqCst);
+  ptr::null_mut()
+}
+
+struct PolicyBaton {
+  constructor: napi_ref,
+  report: napi_ref,
+  task: napi_async_work,
+}
+
+unsafe extern "C" fn policy_execute(_env: napi_env, _data: *mut c_void) {}
+
+unsafe extern "C" fn policy_complete(
+  env: napi_env,
+  status: napi_status,
+  data: *mut c_void,
+) {
+  unsafe {
+    assert!(status == napi_sys::Status::napi_ok);
+    let baton: Box<PolicyBaton> = Box::from_raw(data as *mut PolicyBaton);
+
+    MICROTASK_RAN.store(false, Ordering::SeqCst);
+
+    // Create a deferred and register a microtask reaction on its promise.
+    let mut deferred: napi_deferred = ptr::null_mut();
+    let mut promise: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_create_promise(env, &mut deferred, &mut promise));
+
+    let mut mark: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_create_function(
+      env,
+      c"mark".as_ptr(),
+      usize::MAX,
+      Some(mark_microtask_ran),
+      ptr::null_mut(),
+      &mut mark,
+    ));
+
+    let mut then: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_named_property(
+      env,
+      promise,
+      c"then".as_ptr(),
+      &mut then,
+    ));
+    let then_args = [mark];
+    let mut _then_result: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_call_function(
+      env,
+      promise,
+      then,
+      then_args.len(),
+      then_args.as_ptr(),
+      &mut _then_result,
+    ));
+
+    // Resolve the deferred. This enqueues the `mark` microtask. Pre-fix this
+    // call also left the isolate in the Auto microtask policy.
+    let mut undefined: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_undefined(env, &mut undefined));
+    assert_napi_ok!(napi_resolve_deferred(env, deferred, undefined));
+
+    // Round-trip through napi_new_instance at call-depth-zero. Under Auto, V8
+    // drains the pending microtask when NewInstance unwinds to depth zero;
+    // under Explicit it stays queued until the next event loop checkpoint.
+    let mut constructor: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_reference_value(
+      env,
+      baton.constructor,
+      &mut constructor,
+    ));
+    let mut seven: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_create_int32(env, 7, &mut seven));
+    let ctor_args = [seven];
+    let mut _instance: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_new_instance(
+      env,
+      constructor,
+      ctor_args.len(),
+      ctor_args.as_ptr(),
+      &mut _instance,
+    ));
+
+    // Report whether the microtask drained during construction.
+    let mut drained: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_boolean(
+      env,
+      MICROTASK_RAN.load(Ordering::SeqCst),
+      &mut drained,
+    ));
+
+    let mut global: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_global(env, &mut global));
+    let mut report: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_reference_value(env, baton.report, &mut report));
+    let report_args = [drained];
+    let mut _result: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_call_function(
+      env,
+      global,
+      report,
+      report_args.len(),
+      report_args.as_ptr(),
+      &mut _result,
+    ));
+
+    assert_napi_ok!(napi_delete_reference(env, baton.constructor));
+    assert_napi_ok!(napi_delete_reference(env, baton.report));
+    assert_napi_ok!(napi_delete_async_work(env, baton.task));
+  }
+}
+
+/// Queues async work whose completion (running at call-depth-zero on the event
+/// loop) resolves a deferred and then calls `napi_new_instance`, reporting via
+/// the second argument whether a microtask drained during construction.
+/// Regression coverage for #33924.
+extern "C" fn test_resolve_deferred_keeps_microtask_policy(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 2);
+  assert_eq!(argc, 2);
+
+  let mut constructor: napi_ref = ptr::null_mut();
+  assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut constructor));
+  let mut report: napi_ref = ptr::null_mut();
+  assert_napi_ok!(napi_create_reference(env, args[1], 1, &mut report));
+
+  let mut resource_name: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    c"test_microtask_policy".as_ptr(),
+    usize::MAX,
+    &mut resource_name,
+  ));
+
+  let baton = Box::new(PolicyBaton {
+    constructor,
+    report,
+    task: ptr::null_mut(),
+  });
+  let baton_ptr = Box::into_raw(baton) as *mut c_void;
+
+  let mut async_work: napi_async_work = ptr::null_mut();
+  assert_napi_ok!(napi_create_async_work(
+    env,
+    ptr::null_mut(),
+    resource_name,
+    Some(policy_execute),
+    Some(policy_complete),
+    baton_ptr,
+    &mut async_work,
+  ));
+  let baton = unsafe { &mut *(baton_ptr as *mut PolicyBaton) };
+  baton.task = async_work;
+  assert_napi_ok!(napi_queue_async_work(env, async_work));
+
+  ptr::null_mut()
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let mut static_prop = napi_new_property!(env, "factory", NapiObject::factory);
   static_prop.attributes = PropertyAttributes::static_;
@@ -429,6 +697,17 @@ pub fn init(env: napi_env, exports: napi_value) {
     napi_new_property!(env, "test_remove_wrap", test_remove_wrap),
     napi_new_property!(env, "test_raw_wrap", test_raw_wrap),
     napi_new_property!(env, "test_raw_unwrap", test_raw_unwrap),
+    napi_new_property!(env, "test_call_new_instance", test_call_new_instance),
+    napi_new_property!(
+      env,
+      "test_new_instance_constructor_can_call_js",
+      test_new_instance_constructor_can_call_js
+    ),
+    napi_new_property!(
+      env,
+      "test_resolve_deferred_keeps_microtask_policy",
+      test_resolve_deferred_keeps_microtask_policy
+    ),
   ];
   assert_napi_ok!(napi_define_properties(
     env,

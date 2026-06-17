@@ -71,7 +71,7 @@ fn visit_fn(
 
 /// Parse a param of a test function for the test context binding, or any
 /// destructuring of a `steps` method from the test context.
-fn parse_test_context_param(
+pub(crate) fn parse_test_context_param(
   param: Option<&ast::Pat>,
 ) -> Option<(Option<String>, Option<String>)> {
   let mut maybe_test_context = None;
@@ -701,6 +701,7 @@ pub mod tests {
               "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
                 .to_string(),
             name: "test".to_string(),
+            name_index: 0,
             range: Some(new_range(1, 11, 1, 15)),
             is_dynamic: false,
             parent_id: None,
@@ -733,6 +734,7 @@ pub mod tests {
               "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
                 .to_string(),
             name: "test".to_string(),
+            name_index: 0,
             range: Some(new_range(1, 11, 1, 15)),
             is_dynamic: false,
             parent_id: None,
@@ -773,6 +775,7 @@ pub mod tests {
             TestDefinition {
               id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9".to_string(),
               name: "test".to_string(),
+              name_index: 0,
               range: Some(new_range(1, 11, 1, 15)),
               is_dynamic: false,
               parent_id: None,
@@ -784,6 +787,7 @@ pub mod tests {
             TestDefinition {
               id: "704d24083fd4a3e1bd204faa20827dc594334812245e5d45dda222b3edc60a0c".to_string(),
               name: "step".to_string(),
+              name_index: 0,
               range: Some(new_range(4, 18, 4, 22)),
               is_dynamic: false,
               parent_id: Some("4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9".to_string()),
@@ -795,6 +799,7 @@ pub mod tests {
             TestDefinition {
               id: "0d006a4ec0abaa9cc1d18256b1ccd2677a4c882ff5cb807123890f7528ab1e8d".to_string(),
               name: "sub step".to_string(),
+              name_index: 0,
               range: Some(new_range(5, 18, 5, 22)),
               is_dynamic: false,
               parent_id: Some("704d24083fd4a3e1bd204faa20827dc594334812245e5d45dda222b3edc60a0c".to_string()),
@@ -834,6 +839,7 @@ pub mod tests {
             TestDefinition {
               id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9".to_string(),
               name: "test".to_string(),
+              name_index: 0,
               range: Some(new_range(1, 11, 1, 15)),
               is_dynamic: false,
               parent_id: None,
@@ -845,6 +851,7 @@ pub mod tests {
             TestDefinition {
               id: "704d24083fd4a3e1bd204faa20827dc594334812245e5d45dda222b3edc60a0c".to_string(),
               name: "step".to_string(),
+              name_index: 0,
               range: Some(new_range(4, 18, 4, 22)),
               is_dynamic: false,
               parent_id: Some("4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9".to_string()),
@@ -856,6 +863,7 @@ pub mod tests {
             TestDefinition {
               id: "0d006a4ec0abaa9cc1d18256b1ccd2677a4c882ff5cb807123890f7528ab1e8d".to_string(),
               name: "sub step".to_string(),
+              name_index: 0,
               range: Some(new_range(5, 18, 5, 22)),
               is_dynamic: false,
               parent_id: Some("704d24083fd4a3e1bd204faa20827dc594334812245e5d45dda222b3edc60a0c".to_string()),
@@ -888,6 +896,7 @@ pub mod tests {
               "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
                 .to_string(),
             name: "test".to_string(),
+            name_index: 0,
             range: Some(new_range(2, 6, 2, 10)),
             is_dynamic: false,
             parent_id: None,
@@ -920,6 +929,7 @@ pub mod tests {
             TestDefinition {
               id: "86b4c821900e38fc89f24bceb0e45193608ab3f9d2a6019c7b6a5aceff5d7df2".to_string(),
               name: "useFnName".to_string(),
+              name_index: 0,
               range: Some(new_range(1, 11, 1, 15)),
               is_dynamic: false,
               parent_id: None,
@@ -931,6 +941,7 @@ pub mod tests {
             TestDefinition {
               id: "dac8a169b8f8c6babf11122557ea545de2733bfafed594d044b22bc6863a0856".to_string(),
               name: "step".to_string(),
+              name_index: 0,
               range: Some(new_range(2, 14, 2, 15)),
               is_dynamic: false,
               parent_id: Some("86b4c821900e38fc89f24bceb0e45193608ab3f9d2a6019c7b6a5aceff5d7df2".to_string()),
@@ -963,6 +974,7 @@ pub mod tests {
               "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
                 .to_string(),
             name: "test".to_string(),
+            name_index: 0,
             range: Some(new_range(2, 6, 2, 7)),
             is_dynamic: false,
             parent_id: None,
@@ -996,6 +1008,7 @@ pub mod tests {
               "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
                 .to_string(),
             name: "test".to_string(),
+            name_index: 0,
             range: Some(new_range(2, 11, 2, 15)),
             is_dynamic: false,
             parent_id: None,
@@ -1028,6 +1041,7 @@ pub mod tests {
             TestDefinition {
               id: "87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string(),
               name: "foo".to_string(),
+              name_index: 0,
               range: Some(new_range(2, 16, 2, 22)),
               is_dynamic: false,
               parent_id: None,
@@ -1039,6 +1053,7 @@ pub mod tests {
             TestDefinition {
               id: "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568".to_string(),
               name: "someFunction".to_string(),
+              name_index: 0,
               range: Some(new_range(1, 11, 1, 15)),
               is_dynamic: false,
               parent_id: None,
@@ -1050,6 +1065,7 @@ pub mod tests {
             TestDefinition {
               id: "e1bd61cdaf5e64863d3d85baffe3e43bd57cdb8dc0b5d6a9e03ade18b7f68d47".to_string(),
               name: "bar".to_string(),
+              name_index: 0,
               range: Some(new_range(3, 16, 3, 20)),
                 is_dynamic: false,
                 parent_id: None,
@@ -1084,6 +1100,7 @@ pub mod tests {
               "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568"
                 .to_string(),
             name: "someFunction".to_string(),
+            name_index: 0,
             range: Some(new_range(2, 11, 2, 15)),
             is_dynamic: false,
             parent_id: None,
@@ -1117,6 +1134,7 @@ pub mod tests {
               "6d05d6dc35548b86a1e70acaf24a5bc2dd35db686b35b685ad5931d201b4a918"
                 .to_string(),
             name: "Test 3:7".to_string(),
+            name_index: 0,
             range: Some(new_range(2, 11, 2, 15)),
             is_dynamic: false,
             parent_id: None,
@@ -1155,6 +1173,7 @@ pub mod tests {
             TestDefinition {
               id: "3799fc549a32532145ffc8532b0cd943e025bbc19a02e2cde9be94f87bceb829".to_string(),
               name: "1".to_string(),
+              name_index: 0,
               range: Some(new_range(1, 11, 1, 15)),
               is_dynamic: false,
               parent_id: None,
@@ -1169,6 +1188,7 @@ pub mod tests {
             TestDefinition {
               id: "e714fc695c0895327bf7148a934c3303ad515af029a14906be46f80340c6d7e3".to_string(),
               name: "step 1".to_string(),
+              name_index: 0,
               range: Some(new_range(2, 16, 2, 20)),
               is_dynamic: false,
               parent_id: Some("3799fc549a32532145ffc8532b0cd943e025bbc19a02e2cde9be94f87bceb829".to_string()),
@@ -1180,6 +1200,7 @@ pub mod tests {
             TestDefinition {
               id: "d874949e18dfc297e15c52ff13f13b4e6ae911ec1818b2c761e3313bc018a3ab".to_string(),
               name: "nested step".to_string(),
+              name_index: 0,
               range: Some(new_range(3, 18, 3, 22)),
               is_dynamic: false,
               parent_id: Some("e714fc695c0895327bf7148a934c3303ad515af029a14906be46f80340c6d7e3".to_string()),
@@ -1191,6 +1212,7 @@ pub mod tests {
             TestDefinition {
               id: "ec6b03d3dd3dde78d2d11ed981d3386083aeca701510cc049189d74bd79f8587".to_string(),
               name: "step 2".to_string(),
+              name_index: 0,
               range: Some(new_range(5, 16, 5, 20)),
               is_dynamic: false,
               parent_id: Some("3799fc549a32532145ffc8532b0cd943e025bbc19a02e2cde9be94f87bceb829".to_string()),
@@ -1202,6 +1224,7 @@ pub mod tests {
             TestDefinition {
               id: "96729f1f1608e50160b0bf11946719384b4021fd1d26b14eff7765034b3d2684".to_string(),
               name: "nested step".to_string(),
+              name_index: 0,
               range: Some(new_range(6, 18, 6, 22)),
               is_dynamic: false,
               parent_id: Some("ec6b03d3dd3dde78d2d11ed981d3386083aeca701510cc049189d74bd79f8587".to_string()),
@@ -1238,6 +1261,7 @@ pub mod tests {
             TestDefinition {
               id: "87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string(),
               name: "foo".to_string(),
+              name_index: 0,
               range: Some(new_range(1, 6, 1, 14)),
               is_dynamic: false,
               parent_id: None,
@@ -1254,6 +1278,7 @@ pub mod tests {
             TestDefinition {
               id: "821a21d7a8c0a0c09538ad10e683a8ea5907d14048d0ee264bcc300efb86f09d".to_string(),
               name: "foo step 1".to_string(),
+              name_index: 0,
               range: Some(new_range(2, 8, 2, 10)),
               is_dynamic: false,
               parent_id: Some("87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string()),
@@ -1265,6 +1290,7 @@ pub mod tests {
             TestDefinition {
               id: "778232aa6936db81c7f94c67c7ec9c60340f5aea76247fa183798264b690ef56".to_string(),
               name: "foo step 2".to_string(),
+              name_index: 0,
               range: Some(new_range(3, 11, 3, 17)),
               is_dynamic: false,
               parent_id: Some("87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string()),
@@ -1276,6 +1302,7 @@ pub mod tests {
             TestDefinition {
               id: "5be2a4c1f46c2efb816381a3b1a22fe271f59a91e695ad6324780168d9ed17b1".to_string(),
               name: "foo step 3".to_string(),
+              name_index: 0,
               range: Some(new_range(4, 11, 4, 15)),
               is_dynamic: false,
               parent_id: Some("87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string()),
@@ -1287,6 +1314,7 @@ pub mod tests {
             TestDefinition {
               id: "757cd9c4ee3042df742884fd8ebc3f8f60a523c13f09f2b425112424d704d1c1".to_string(),
               name: "foo step 4".to_string(),
+              name_index: 0,
               range: Some(new_range(5, 11, 5, 15)),
               is_dynamic: false,
               parent_id: Some("87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string()),
@@ -1298,6 +1326,7 @@ pub mod tests {
             TestDefinition {
               id: "4e3802608de755b3b67088cc5146f14f5a5757f050f7f506b9c33e94eb4b7c73".to_string(),
               name: "qux".to_string(),
+              name_index: 0,
               range: Some(new_range(9, 15, 9, 19)),
               is_dynamic: false,
               parent_id: None,
@@ -1309,6 +1338,7 @@ pub mod tests {
             TestDefinition {
               id: "e1bd61cdaf5e64863d3d85baffe3e43bd57cdb8dc0b5d6a9e03ade18b7f68d47".to_string(),
               name: "bar".to_string(),
+              name_index: 0,
               range: Some(new_range(7, 15, 7, 21)),
               is_dynamic: false,
               parent_id: None,
@@ -1320,6 +1350,7 @@ pub mod tests {
             TestDefinition {
               id: "3899772fca803def19cb92f852057a0117e3dfdd0dc6cd25e9180bef221605d4".to_string(),
               name: "baz".to_string(),
+              name_index: 0,
               range: Some(new_range(8, 15, 8, 19)),
               is_dynamic: false,
               parent_id: None,
@@ -1331,5 +1362,78 @@ pub mod tests {
         .collect(),
       }
     );
+  }
+
+  // Regression test for https://github.com/denoland/deno/issues/20371.
+  // Tests with duplicate names at the same level should each be discovered
+  // and assigned a unique id (disambiguated via `name_index`).
+  #[test]
+  fn test_test_collector_duplicate_test_names() {
+    let test_module = collect(
+      r#"
+      Deno.test(function foo() {});
+      Deno.test(function foo() {});
+      Deno.test(function foo() {});
+    "#,
+    );
+
+    let foos: Vec<_> = test_module
+      .defs
+      .values()
+      .filter(|d| d.parent_id.is_none() && d.name == "foo")
+      .collect();
+    assert_eq!(
+      foos.len(),
+      3,
+      "all three duplicate-named tests should be registered"
+    );
+    let mut indices: Vec<u32> = foos.iter().map(|d| d.name_index).collect();
+    indices.sort();
+    assert_eq!(indices, vec![0, 1, 2]);
+    let mut ids: Vec<&str> = foos.iter().map(|d| d.id.as_str()).collect();
+    ids.sort();
+    ids.dedup();
+    assert_eq!(
+      ids.len(),
+      3,
+      "each duplicate-named test should have a unique id"
+    );
+  }
+
+  // Steps with duplicate names inside duplicate-named parent tests should
+  // also each get a unique id.
+  #[test]
+  fn test_test_collector_duplicate_test_names_with_steps() {
+    let test_module = collect(
+      r#"
+      Deno.test("foo", async (t) => {
+        await t.step("step", () => {});
+      });
+      Deno.test("foo", async (t) => {
+        await t.step("step", () => {});
+      });
+    "#,
+    );
+
+    let foos: Vec<_> = test_module
+      .defs
+      .values()
+      .filter(|d| d.parent_id.is_none() && d.name == "foo")
+      .collect();
+    assert_eq!(foos.len(), 2);
+    let steps: Vec<_> = test_module
+      .defs
+      .values()
+      .filter(|d| d.name == "step")
+      .collect();
+    assert_eq!(steps.len(), 2);
+    // Each foo should own exactly one step.
+    for foo in &foos {
+      assert_eq!(foo.step_ids.len(), 1);
+    }
+    // The two steps belong to different parents.
+    let parent_ids: std::collections::HashSet<_> =
+      steps.iter().map(|d| d.parent_id.clone()).collect();
+    assert_eq!(parent_ids.len(), 2);
   }
 }

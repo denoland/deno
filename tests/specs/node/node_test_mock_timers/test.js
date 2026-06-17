@@ -155,6 +155,34 @@ test("runAll fires each interval exactly once", () => {
   mock.timers.reset();
 });
 
+test("runAll fires intervals up to the longest pending timer", () => {
+  // Matches Node: runAll() advances to the longest scheduled timer, so an
+  // interval shorter than that timer fires repeatedly along the way.
+  mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  let intervalCount = 0;
+  let timeoutFired = false;
+  setInterval(() => {
+    intervalCount++;
+  }, 100);
+  setTimeout(() => {
+    timeoutFired = true;
+  }, 500);
+  mock.timers.runAll();
+  assert.strictEqual(intervalCount, 5);
+  assert.strictEqual(timeoutFired, true);
+  mock.timers.reset();
+});
+
+test("a throwing timer callback propagates out of tick", () => {
+  // Matches Node: errors thrown by a timer callback surface synchronously.
+  mock.timers.enable({ apis: ["setTimeout"] });
+  setTimeout(() => {
+    throw new Error("boom");
+  }, 10);
+  assert.throws(() => mock.timers.tick(10), { message: "boom" });
+  mock.timers.reset();
+});
+
 test("Date is mocked and tracks tick", () => {
   mock.timers.enable({ apis: ["Date"], now: 5000 });
   assert.strictEqual(Date.now(), 5000);

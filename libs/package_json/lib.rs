@@ -96,6 +96,9 @@ pub enum PackageJsonDepValueParseErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   JsrRequiresScope(#[from] JsrDepPackageParseError),
+  #[class(type)]
+  #[error("Package name must not be empty")]
+  EmptyName,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -172,7 +175,13 @@ pub fn parse_jsr_dep_value<'a>(
 pub enum PackageJsonDepValue {
   File(String),
   Req(PackageReq),
-  Workspace(PackageJsonDepWorkspaceReq),
+  Workspace {
+    /// Target workspace package name for pnpm-style aliased deps
+    /// (`workspace:<name>@<range>`). `None` means resolve using the
+    /// dependency key.
+    name: Option<StackString>,
+    version_req: PackageJsonDepWorkspaceReq,
+  },
   Catalog(String),
 }
 
@@ -185,6 +194,9 @@ impl PackageJsonDepValue {
       name: StackString,
       version_req: &str,
     ) -> Result<PackageJsonDepValue, PackageJsonDepValueParseError> {
+      if name.is_empty() {
+        return Err(PackageJsonDepValueParseErrorKind::EmptyName.into_box());
+      }
       match VersionReq::parse_from_npm(version_req) {
         Ok(version_req) => {
           Ok(PackageJsonDepValue::Req(PackageReq { name, version_req }))
@@ -193,6 +205,10 @@ impl PackageJsonDepValue {
           Err(PackageJsonDepValueParseErrorKind::VersionReq(err).into_box())
         }
       }
+    }
+
+    if key.is_empty() {
+      return Err(PackageJsonDepValueParseErrorKind::EmptyName.into_box());
     }
 
     if let Some((scheme, value)) = value.split_once(':') {
@@ -226,14 +242,8 @@ impl PackageJsonDepValue {
           Ok(Self::Catalog(name))
         }
         "workspace" => {
-          let workspace_req = match value {
-            "~" => PackageJsonDepWorkspaceReq::Tilde,
-            "^" => PackageJsonDepWorkspaceReq::Caret,
-            _ => PackageJsonDepWorkspaceReq::VersionReq(
-              VersionReq::parse_from_npm(value)?,
-            ),
-          };
-          Ok(Self::Workspace(workspace_req))
+          let (name, version_req) = parse_workspace_dep_value(value)?;
+          Ok(Self::Workspace { name, version_req })
         }
         scheme => Err(
           PackageJsonDepValueParseErrorKind::Unsupported {
@@ -244,6 +254,53 @@ impl PackageJsonDepValue {
       }
     } else {
       from_name_and_version_req(key.into(), value)
+    }
+  }
+}
+
+/// Parses the part after `workspace:` in a package.json dependency.
+///
+/// Besides the bare requirement forms (`workspace:*`, `workspace:~`,
+/// `workspace:^`, `workspace:1.2.3`), this also supports the pnpm-style alias
+/// form `workspace:<name>@<range>` (e.g. `workspace:foo@*` or
+/// `workspace:@scope/pkg@^1.2`), where the dependency is imported under its key
+/// but resolves to the workspace member named `<name>`.
+fn parse_workspace_dep_value(
+  value: &str,
+) -> Result<
+  (Option<StackString>, PackageJsonDepWorkspaceReq),
+  PackageJsonDepValueParseError,
+> {
+  fn parse_workspace_req(
+    range: &str,
+  ) -> Result<PackageJsonDepWorkspaceReq, PackageJsonDepValueParseError> {
+    Ok(match range {
+      "~" => PackageJsonDepWorkspaceReq::Tilde,
+      "^" => PackageJsonDepWorkspaceReq::Caret,
+      _ => PackageJsonDepWorkspaceReq::VersionReq(VersionReq::parse_from_npm(
+        range,
+      )?),
+    })
+  }
+
+  // Bare requirement forms (`*`, `~`, `^`, an explicit range) never contain an
+  // `@`, so try interpreting the whole value as one first.
+  match parse_workspace_req(value) {
+    Ok(version_req) => Ok((None, version_req)),
+    Err(bare_err) => {
+      // Otherwise this may be the pnpm-style alias form
+      // `workspace:<name>@<range>`. The name may be scoped (`@scope/name`), so
+      // split on the last `@`. Both the name and range must be non-empty;
+      // degenerate forms like `workspace:foo@` or `workspace:@scope/pkg` (no
+      // range) are rejected with the original requirement parse error.
+      if let Some((name, range)) = value.rsplit_once('@')
+        && !name.is_empty()
+        && !range.is_empty()
+      {
+        Ok((Some(name.into()), parse_workspace_req(range)?))
+      } else {
+        Err(bare_err)
+      }
     }
   }
 }
@@ -324,6 +381,8 @@ pub struct PackageJson {
   pub optional_dependencies: Option<IndexMap<String, String>>,
   pub directories: Option<Map<String, Value>>,
   pub scripts: Option<IndexMap<String, String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub config: Option<Map<String, Value>>,
   pub workspaces: Option<Vec<String>>,
   pub os: Option<Vec<String>>,
   pub cpu: Option<Vec<String>>,
@@ -404,6 +463,7 @@ impl PackageJson {
         optional_dependencies: None,
         directories: None,
         scripts: None,
+        config: None,
         workspaces: None,
         os: None,
         cpu: None,
@@ -554,6 +614,7 @@ impl PackageJson {
       package_json.remove("directories").and_then(map_object);
     let scripts: Option<IndexMap<String, String>> =
       package_json.remove("scripts").and_then(parse_string_map);
+    let config = package_json.remove("config").and_then(map_object);
 
     // Ignore unknown types for forwards compatibility
     let typ = if let Some(t) = type_val {
@@ -661,6 +722,7 @@ impl PackageJson {
       optional_dependencies,
       directories,
       scripts,
+      config,
       workspaces,
       os,
       cpu,
@@ -879,6 +941,28 @@ mod test {
   }
 
   #[test]
+  fn test_get_local_package_json_version_reqs_empty_name() {
+    let mut package_json =
+      PackageJson::load_from_string(PathBuf::from("/package.json"), "{}")
+        .unwrap();
+    package_json.dependencies = Some(IndexMap::from([
+      ("".to_string(), ".".to_string()),
+      ("npm-empty".to_string(), "npm:".to_string()),
+      ("ok".to_string(), "^1".to_string()),
+    ]));
+    let map = get_local_package_json_version_reqs_for_tests(&package_json);
+    assert_eq!(
+      map.get("").unwrap().as_ref().unwrap_err(),
+      &PackageJsonDepValueParseErrorKind::EmptyName,
+    );
+    assert_eq!(
+      map.get("npm-empty").unwrap().as_ref().unwrap_err(),
+      &PackageJsonDepValueParseErrorKind::EmptyName,
+    );
+    assert!(map.get("ok").unwrap().is_ok());
+  }
+
+  #[test]
   fn test_get_local_package_json_version_reqs_errors_non_npm_specifier() {
     let mut package_json =
       PackageJson::load_from_string(PathBuf::from("/package.json"), "{}")
@@ -894,6 +978,40 @@ mod test {
     assert_eq!(
       format!("{}", err.source().unwrap()),
       concat!("Unexpected character.\n", "  %*(#$%()\n", "  ~")
+    );
+  }
+
+  #[test]
+  fn test_get_local_package_json_version_reqs_workspace_alias_degenerate() {
+    let mut package_json =
+      PackageJson::load_from_string(PathBuf::from("/package.json"), "{}")
+        .unwrap();
+    package_json.dependencies = Some(IndexMap::from([
+      // valid alias form for reference
+      ("ok".to_string(), "workspace:foo@*".to_string()),
+      // empty range after the alias `@`
+      ("empty-range".to_string(), "workspace:foo@".to_string()),
+      // scoped name with no range at all
+      ("no-range".to_string(), "workspace:@scope/pkg".to_string()),
+    ]));
+    let map = get_local_package_json_version_reqs_for_tests(&package_json);
+    assert_eq!(
+      map.get("ok").unwrap().as_ref().unwrap(),
+      &PackageJsonDepValue::Workspace {
+        name: Some("foo".into()),
+        version_req: PackageJsonDepWorkspaceReq::VersionReq(
+          VersionReq::parse_from_npm("*").unwrap()
+        )
+      }
+    );
+    // both degenerate forms are rejected rather than silently accepted
+    assert_eq!(
+      format!("{}", map.get("empty-range").unwrap().as_ref().unwrap_err()),
+      "Invalid version requirement"
+    );
+    assert_eq!(
+      format!("{}", map.get("no-range").unwrap().as_ref().unwrap_err()),
+      "Invalid version requirement"
     );
   }
 
@@ -999,6 +1117,22 @@ mod test {
       ("work-test-star".to_string(), "workspace:*".to_string()),
       ("work-test-tilde".to_string(), "workspace:~".to_string()),
       ("work-test-caret".to_string(), "workspace:^".to_string()),
+      (
+        "work-test-alias-star".to_string(),
+        "workspace:@scope/pkg@*".to_string(),
+      ),
+      (
+        "work-test-alias-tilde".to_string(),
+        "workspace:other@~".to_string(),
+      ),
+      (
+        "work-test-alias-caret".to_string(),
+        "workspace:other@^".to_string(),
+      ),
+      (
+        "work-test-alias-version".to_string(),
+        "workspace:other@1.1.1".to_string(),
+      ),
       ("catalog-test".to_string(), "catalog:".to_string()),
       (
         "catalog-default-test".to_string(),
@@ -1025,31 +1159,67 @@ mod test {
         ),
         (
           "work-test-star".to_string(),
-          Ok(PackageJsonDepValue::Workspace(
-            PackageJsonDepWorkspaceReq::VersionReq(
+          Ok(PackageJsonDepValue::Workspace {
+            name: None,
+            version_req: PackageJsonDepWorkspaceReq::VersionReq(
               VersionReq::parse_from_npm("*").unwrap()
             )
-          ))
+          })
         ),
         (
           "work-test-version-req".to_string(),
-          Ok(PackageJsonDepValue::Workspace(
-            PackageJsonDepWorkspaceReq::VersionReq(
+          Ok(PackageJsonDepValue::Workspace {
+            name: None,
+            version_req: PackageJsonDepWorkspaceReq::VersionReq(
               VersionReq::parse_from_npm("1.1.1").unwrap()
             )
-          ))
+          })
         ),
         (
           "work-test-tilde".to_string(),
-          Ok(PackageJsonDepValue::Workspace(
-            PackageJsonDepWorkspaceReq::Tilde
-          ))
+          Ok(PackageJsonDepValue::Workspace {
+            name: None,
+            version_req: PackageJsonDepWorkspaceReq::Tilde
+          })
         ),
         (
           "work-test-caret".to_string(),
-          Ok(PackageJsonDepValue::Workspace(
-            PackageJsonDepWorkspaceReq::Caret
-          ))
+          Ok(PackageJsonDepValue::Workspace {
+            name: None,
+            version_req: PackageJsonDepWorkspaceReq::Caret
+          })
+        ),
+        (
+          "work-test-alias-star".to_string(),
+          Ok(PackageJsonDepValue::Workspace {
+            name: Some("@scope/pkg".into()),
+            version_req: PackageJsonDepWorkspaceReq::VersionReq(
+              VersionReq::parse_from_npm("*").unwrap()
+            )
+          })
+        ),
+        (
+          "work-test-alias-tilde".to_string(),
+          Ok(PackageJsonDepValue::Workspace {
+            name: Some("other".into()),
+            version_req: PackageJsonDepWorkspaceReq::Tilde
+          })
+        ),
+        (
+          "work-test-alias-caret".to_string(),
+          Ok(PackageJsonDepValue::Workspace {
+            name: Some("other".into()),
+            version_req: PackageJsonDepWorkspaceReq::Caret
+          })
+        ),
+        (
+          "work-test-alias-version".to_string(),
+          Ok(PackageJsonDepValue::Workspace {
+            name: Some("other".into()),
+            version_req: PackageJsonDepWorkspaceReq::VersionReq(
+              VersionReq::parse_from_npm("1.1.1").unwrap()
+            )
+          })
         ),
         (
           "catalog-test".to_string(),

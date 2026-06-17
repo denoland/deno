@@ -1,4 +1,4 @@
-running 22 tests from ./test.js
+running 24 tests from ./test.js
 reproducer from issue 32987 does not throw ... ok ([WILDLINE])
 setTimeout fires on tick ... ok ([WILDLINE])
 setInterval fires repeatedly on tick ... ok ([WILDLINE])
@@ -11,6 +11,8 @@ setImmediate runs before zero-delay setTimeout ... ok ([WILDLINE])
 timeout overflow is coerced to one millisecond ... ok ([WILDLINE])
 runAll runs all pending timers ... ok ([WILDLINE])
 runAll fires each interval exactly once ... ok ([WILDLINE])
+runAll fires intervals up to the longest pending timer ... ok ([WILDLINE])
+a throwing timer callback propagates out of tick ... ok ([WILDLINE])
 Date is mocked and tracks tick ... ok ([WILDLINE])
 Date with `now` as Date instance ... ok ([WILDLINE])
 Date.parse and Date.UTC still work when mocked ... ok ([WILDLINE])
@@ -22,5 +24,5 @@ throws ERR_INVALID_STATE when not enabled ... ok ([WILDLINE])
 throws ERR_INVALID_STATE when enabling twice ... ok ([WILDLINE])
 throws on invalid api name ... ok ([WILDLINE])
 
-ok | 22 passed | 0 failed ([WILDLINE])
+ok | 24 passed | 0 failed ([WILDLINE])
 

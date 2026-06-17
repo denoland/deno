@@ -70,6 +70,20 @@ impl OpExitCallbacks {
   }
 }
 
+/// Holds the main isolate's handle so that `op_exit` (i.e. `Deno.exit()`) can
+/// terminate the current isolate instead of the whole process. Installed by
+/// `deno run --watch` / `deno serve --watch` so a script calling `Deno.exit()`
+/// ends the current run without killing the file watcher. See issue #7590.
+pub struct WatcherExitHandle(pub v8::IsolateHandle);
+
+/// Marker set by `op_exit` when a [`WatcherExitHandle`] is present, recording
+/// that the script called `Deno.exit()`. The watcher reads this after the run
+/// to confirm the V8 termination it observes was caused by `Deno.exit()` rather
+/// than another error; the requested exit code is read separately from the
+/// worker's `ExitCode` (set by `Deno.exit()` before `op_exit` runs).
+#[derive(Clone, Copy, Debug)]
+pub struct WatcherExited;
+
 deno_core::extension!(
   deno_os,
   ops = [
@@ -223,10 +237,16 @@ fn op_env(
   state: &mut OpState,
 ) -> Result<HashMap<String, String>, PermissionCheckError> {
   fn map_kv(kv: (OsString, OsString)) -> Option<(String, String)> {
-    kv.0
-      .into_string()
-      .ok()
-      .and_then(|key| kv.1.into_string().ok().map(|value| (key, value)))
+    let key = kv.0.into_string().ok()?;
+    // Skip keys that `Deno.env.get`/`set`/`delete` would reject, so that
+    // enumeration stays consistent with the rest of the API. On Windows,
+    // cmd.exe exposes hidden per-drive cwd variables such as `=C:` which
+    // contain `=` and are not meant to be surfaced to users.
+    if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
+      return None;
+    }
+    let value = kv.1.into_string().ok()?;
+    Some((key, value))
   }
 
   let permissions_container = state.borrow::<PermissionsContainer>();
@@ -346,6 +366,23 @@ fn op_get_exit_code(state: &mut OpState) -> i32 {
 
 #[op2(fast)]
 fn op_exit(state: &mut OpState) {
+  // Under `deno run --watch`, terminate the current V8 isolate instead of
+  // exiting the process so the file watcher survives and can restart the
+  // script on the next file change. See issue #7590.
+  //
+  // We intentionally return before running `OpExitCallbacks` here: those flush
+  // coverage/profiler data and notify the inspector as the process is about to
+  // disappear. Under a watcher the process keeps running, so that teardown is
+  // not wanted; the watcher run paths stop the coverage collector and profiler
+  // themselves after the run completes.
+  if let Some(handle) =
+    state.try_borrow::<WatcherExitHandle>().map(|h| h.0.clone())
+  {
+    state.put(WatcherExited);
+    handle.terminate_execution();
+    return;
+  }
+
   if let Some(cbs) = state.try_borrow_mut::<OpExitCallbacks>() {
     cbs.run();
   }
@@ -524,13 +561,13 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
 
 #[cfg(windows)]
 fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
-  use winapi::shared::minwindef::FALSE;
-  use winapi::shared::minwindef::FILETIME;
-  use winapi::shared::minwindef::TRUE;
-  use winapi::um::minwinbase::SYSTEMTIME;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::processthreadsapi::GetProcessTimes;
-  use winapi::um::timezoneapi::FileTimeToSystemTime;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::Foundation::FILETIME;
+  use windows_sys::Win32::Foundation::SYSTEMTIME;
+  use windows_sys::Win32::Foundation::TRUE;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+  use windows_sys::Win32::System::Threading::GetProcessTimes;
+  use windows_sys::Win32::System::Time::FileTimeToSystemTime;
 
   fn convert_system_time(system_time: SYSTEMTIME) -> std::time::Duration {
     std::time::Duration::from_secs(
@@ -545,7 +582,7 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   let mut kernel_time = std::mem::MaybeUninit::<FILETIME>::uninit();
   let mut user_time = std::mem::MaybeUninit::<FILETIME>::uninit();
 
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   let ret = unsafe {
     GetProcessTimes(
       GetCurrentProcess(),
@@ -746,13 +783,12 @@ fn rss() -> u64 {
 
 #[cfg(windows)]
 fn rss() -> u64 {
-  use winapi::shared::minwindef::DWORD;
-  use winapi::shared::minwindef::FALSE;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::psapi::GetProcessMemoryInfo;
-  use winapi::um::psapi::PROCESS_MEMORY_COUNTERS;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::System::ProcessStatus::GetProcessMemoryInfo;
+  use windows_sys::Win32::System::ProcessStatus::PROCESS_MEMORY_COUNTERS;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   unsafe {
     // this handle is a constant—no need to close it
     let current_process = GetCurrentProcess();
@@ -761,7 +797,7 @@ fn rss() -> u64 {
     if GetProcessMemoryInfo(
       current_process,
       &mut pmc,
-      std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as DWORD,
+      std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
     ) != FALSE
     {
       pmc.WorkingSetSize as u64

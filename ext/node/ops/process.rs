@@ -183,7 +183,7 @@ fn set_process_title(title: &str) {
   let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
   // SAFETY: FFI call, wide is null-terminated
   unsafe {
-    winapi::um::wincon::SetConsoleTitleW(wide.as_ptr());
+    windows_sys::Win32::System::Console::SetConsoleTitleW(wide.as_ptr());
   }
 }
 
@@ -256,9 +256,11 @@ pub fn op_node_process_kill(
   #[smi] pid: i32,
   #[smi] sig: i32,
 ) -> Result<i32, deno_permissions::PermissionCheckError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_run_all("process.kill")?;
+  if pid != std::process::id() as i32 {
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_run_all("process.kill")?;
+  }
   Ok(kill(pid, sig))
 }
 

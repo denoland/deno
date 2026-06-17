@@ -80,6 +80,9 @@ pub enum ByowError {
   #[class(type)]
   #[error("ns_view is null")]
   NSViewDisplay,
+  #[class(type)]
+  #[error("Could not get a wgpu instance")]
+  NoWgpuInstance,
 }
 
 pub struct UnsafeWindowSurface {
@@ -155,7 +158,15 @@ impl UnsafeWindowSurface {
     state: &mut OpState,
     #[scoped] options: UnsafeWindowSurfaceOptions,
   ) -> Result<UnsafeWindowSurface, ByowError> {
-    let (_, instance) = deno_webgpu::get_or_init_instance(state);
+    let (_, instance) = deno_webgpu::get_or_init_instance(
+      state,
+      &deno_webgpu::adapter::GPURequestAdapterOptions {
+        feature_level: "core".to_string(),
+        power_preference: None,
+        force_fallback_adapter: false,
+      },
+    )
+    .ok_or(ByowError::NoWgpuInstance)?;
 
     // Security note:
     //
@@ -373,7 +384,7 @@ impl<'a> FromV8<'a> for UnsafeWindowSurfaceOptions {
 
 type RawHandles = (
   raw_window_handle::RawWindowHandle,
-  raw_window_handle::RawDisplayHandle,
+  Option<raw_window_handle::RawDisplayHandle>,
 );
 
 #[cfg(target_os = "macos")]
@@ -395,7 +406,7 @@ fn raw_window(
   let display_handle = raw_window_handle::RawDisplayHandle::AppKit(
     raw_window_handle::AppKitDisplayHandle::new(),
   );
-  Ok((win_handle, display_handle))
+  Ok((win_handle, Some(display_handle)))
 }
 
 #[cfg(target_os = "windows")]
@@ -421,7 +432,7 @@ fn raw_window(
 
   let display_handle =
     raw_window_handle::RawDisplayHandle::Windows(WindowsDisplayHandle::new());
-  Ok((win_handle, display_handle))
+  Ok((win_handle, Some(display_handle)))
 }
 
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
@@ -458,7 +469,7 @@ fn raw_window(
     return Err(ByowError::InvalidSystem);
   }
 
-  Ok((win_handle, display_handle))
+  Ok((win_handle, Some(display_handle)))
 }
 
 #[cfg(not(any(

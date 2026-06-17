@@ -229,7 +229,11 @@ interface GPUCanvasConfiguration {
   presentMode?: GPUPresentMode;
 }
 
-/** @category Canvas */
+/** The rendering context that presents WebGPU-rendered images on an
+ * {@linkcode OffscreenCanvas}. Obtained from
+ * {@linkcode OffscreenCanvas.getContext} with the `"webgpu"` context id.
+ *
+ * @category Canvas */
 interface GPUCanvasContext {
   /** The canvas that this context is bound to. */
   readonly canvas: OffscreenCanvas;
@@ -239,24 +243,45 @@ interface GPUCanvasContext {
   unconfigure(): undefined;
   getCurrentTexture(): GPUTexture;
 }
-/** @category Canvas */
+/** The constructor object for {@linkcode GPUCanvasContext}.
+ *
+ * A `GPUCanvasContext` is obtained from
+ * {@linkcode OffscreenCanvas.getContext} with the `"webgpu"` context id rather
+ * than constructed directly.
+ *
+ * @category Canvas */
 declare var GPUCanvasContext: {
   prototype: GPUCanvasContext;
 };
 
-/** @category Canvas */
+/** A rendering context that displays the contents of an {@linkcode ImageBitmap}
+ * on an {@linkcode OffscreenCanvas}. Obtained from
+ * {@linkcode OffscreenCanvas.getContext} with the `"bitmaprenderer"` context
+ * id.
+ *
+ * @category Canvas */
 interface ImageBitmapRenderingContext {
   /** The canvas that this context is bound to. */
   readonly canvas: OffscreenCanvas;
 
   transferFromImageBitmap(bitmap: ImageBitmap | null): undefined;
 }
-/** @category Canvas */
+/** The constructor object for {@linkcode ImageBitmapRenderingContext}.
+ *
+ * An `ImageBitmapRenderingContext` is obtained from
+ * {@linkcode OffscreenCanvas.getContext} with the `"bitmaprenderer"` context id
+ * rather than constructed directly.
+ *
+ * @category Canvas */
 declare var ImageBitmapRenderingContext: {
   prototype: ImageBitmapRenderingContext;
 };
 
-/**
+/** A canvas that can be rendered to off the main thread and without being
+ * attached to the DOM. It exposes drawing contexts via
+ * {@linkcode OffscreenCanvas.getContext} and can produce a {@linkcode Blob} or
+ * {@linkcode ImageBitmap} from its contents.
+ *
  * @category Canvas
  * @see https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas
  */
@@ -295,7 +320,10 @@ interface OffscreenCanvas extends EventTarget {
   transferToImageBitmap(): ImageBitmap;
 }
 
-/**
+/** The constructor object for {@linkcode OffscreenCanvas}, used to create a new
+ * offscreen canvas with the given `width` and `height` that can be rendered to
+ * without being attached to the DOM.
+ *
  * @category Canvas
  * @see https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas
  */

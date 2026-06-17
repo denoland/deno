@@ -11,7 +11,9 @@ use deno_error::JsError;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_parent;
 use deno_path_util::url_to_file_path;
+use deno_semver::VersionReq;
 use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageReq;
 use import_map::ImportMapWithDiagnostics;
 use indexmap::IndexMap;
 use serde::Deserialize;
@@ -30,8 +32,8 @@ use url::Url;
 use crate::UrlToFilePathError;
 use crate::glob::FilePatterns;
 use crate::glob::PathOrPatternSet;
-use crate::import_map::imports_values;
-use crate::import_map::scope_values;
+use crate::import_map::imports_entries;
+use crate::import_map::scope_entries;
 use crate::import_map::value_to_dep_req;
 use crate::util::is_skippable_io_error;
 
@@ -339,6 +341,15 @@ pub enum TrailingCommas {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub enum JsonTrailingCommaKind {
+  Always,
+  Jsonc,
+  Maintain,
+  Never,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum OperatorPosition {
   Maintain,
   SameLine,
@@ -394,6 +405,7 @@ pub struct FmtOptionsConfig {
   pub single_body_position: Option<SingleBodyPosition>,
   pub next_control_flow_position: Option<NextControlFlowPosition>,
   pub trailing_commas: Option<TrailingCommas>,
+  pub json_trailing_commas: Option<JsonTrailingCommaKind>,
   pub operator_position: Option<OperatorPosition>,
   pub jsx_bracket_position: Option<BracketPosition>,
   pub jsx_force_new_lines_surrounding_content: Option<bool>,
@@ -420,6 +432,7 @@ impl FmtOptionsConfig {
       && self.single_body_position.is_none()
       && self.next_control_flow_position.is_none()
       && self.trailing_commas.is_none()
+      && self.json_trailing_commas.is_none()
       && self.operator_position.is_none()
       && self.jsx_bracket_position.is_none()
       && self.jsx_force_new_lines_surrounding_content.is_none()
@@ -491,6 +504,8 @@ struct SerializedFmtConfig {
   pub single_body_position: Option<SingleBodyPosition>,
   pub next_control_flow_position: Option<NextControlFlowPosition>,
   pub trailing_commas: Option<TrailingCommas>,
+  #[serde(rename = "json.trailingCommas")]
+  pub json_trailing_commas: Option<JsonTrailingCommaKind>,
   pub operator_position: Option<OperatorPosition>,
   #[serde(rename = "jsx.bracketPosition")]
   pub jsx_bracket_position: Option<BracketPosition>,
@@ -533,6 +548,7 @@ impl SerializedFmtConfig {
       single_body_position: self.single_body_position,
       next_control_flow_position: self.next_control_flow_position,
       trailing_commas: self.trailing_commas,
+      json_trailing_commas: self.json_trailing_commas,
       operator_position: self.operator_position,
       jsx_bracket_position: self.jsx_bracket_position,
       jsx_force_new_lines_surrounding_content: self
@@ -817,6 +833,197 @@ pub struct CompileConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+struct SerializedDesktopIconEntry {
+  pub path: String,
+  pub size: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(untagged)]
+enum SerializedDesktopIconValue {
+  Single(String),
+  Set(Vec<SerializedDesktopIconEntry>),
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopIconsConfig {
+  pub macos: Option<SerializedDesktopIconValue>,
+  pub windows: Option<SerializedDesktopIconValue>,
+  pub linux: Option<SerializedDesktopIconValue>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopAppConfig {
+  pub name: Option<String>,
+  pub icons: Option<SerializedDesktopIconsConfig>,
+  /// Bundle/application identifier in reverse-DNS form (e.g.
+  /// `com.acme.foo`). Used as the macOS `CFBundleIdentifier`, the Linux
+  /// `.desktop` file identifier, and (eventually) the Windows
+  /// AppUserModelID. Optional; when omitted a synthetic
+  /// `com.deno.desktop.<slug>` is generated from the app name.
+  pub identifier: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopOutputConfig {
+  pub macos: Option<String>,
+  pub windows: Option<String>,
+  pub linux: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopReleaseConfig {
+  #[serde(rename = "baseUrl")]
+  pub base_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+struct SerializedDesktopErrorReportingConfig {
+  pub url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopMacOSConfig {
+  /// Codesigning identity passed to `codesign --sign`. Typically
+  /// `Developer ID Application: Acme, Inc. (TEAMID)` for distribution,
+  /// or `-` for an ad-hoc signature (still required on Apple Silicon to
+  /// launch unsigned binaries).
+  #[serde(rename = "codesignIdentity")]
+  pub codesign_identity: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopConfig {
+  pub app: Option<SerializedDesktopAppConfig>,
+  pub backend: Option<String>,
+  pub output: Option<SerializedDesktopOutputConfig>,
+  pub release: Option<SerializedDesktopReleaseConfig>,
+  #[serde(rename = "errorReporting")]
+  pub error_reporting: Option<SerializedDesktopErrorReportingConfig>,
+  pub macos: Option<SerializedDesktopMacOSConfig>,
+}
+
+impl SerializedDesktopConfig {
+  pub fn into_resolved(self) -> DesktopConfig {
+    DesktopConfig {
+      app: self.app.map(|a| DesktopAppConfig {
+        name: a.name,
+        identifier: a.identifier,
+        icons: a.icons.map(|i| {
+          fn resolve_icon_value(
+            v: SerializedDesktopIconValue,
+          ) -> DesktopIconValue {
+            match v {
+              SerializedDesktopIconValue::Single(s) => {
+                DesktopIconValue::Single(s)
+              }
+              SerializedDesktopIconValue::Set(entries) => {
+                DesktopIconValue::Set(
+                  entries
+                    .into_iter()
+                    .map(|e| DesktopIconEntry {
+                      path: e.path,
+                      size: e.size,
+                    })
+                    .collect(),
+                )
+              }
+            }
+          }
+          DesktopIconsConfig {
+            macos: i.macos.map(resolve_icon_value),
+            windows: i.windows.map(resolve_icon_value),
+            linux: i.linux.map(resolve_icon_value),
+          }
+        }),
+      }),
+      backend: self.backend,
+      output: self.output.map(|o| DesktopOutputConfig {
+        macos: o.macos,
+        windows: o.windows,
+        linux: o.linux,
+      }),
+      release: self.release.map(|r| DesktopReleaseConfig {
+        base_url: r.base_url,
+      }),
+      error_reporting: self
+        .error_reporting
+        .map(|e| DesktopErrorReportingConfig { url: e.url }),
+      macos: self.macos.map(|m| DesktopMacOSConfig {
+        codesign_identity: m.codesign_identity,
+      }),
+    }
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DesktopIconEntry {
+  pub path: String,
+  pub size: u32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DesktopIconValue {
+  /// A single icon file (`.icns`, `.ico`, or `.png`).
+  Single(String),
+  /// Multiple PNGs at specific sizes.
+  Set(Vec<DesktopIconEntry>),
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopIconsConfig {
+  pub macos: Option<DesktopIconValue>,
+  pub windows: Option<DesktopIconValue>,
+  pub linux: Option<DesktopIconValue>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopAppConfig {
+  pub name: Option<String>,
+  pub identifier: Option<String>,
+  pub icons: Option<DesktopIconsConfig>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopOutputConfig {
+  pub macos: Option<String>,
+  pub windows: Option<String>,
+  pub linux: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopReleaseConfig {
+  pub base_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopErrorReportingConfig {
+  pub url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopMacOSConfig {
+  pub codesign_identity: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopConfig {
+  pub app: Option<DesktopAppConfig>,
+  pub backend: Option<String>,
+  pub output: Option<DesktopOutputConfig>,
+  pub release: Option<DesktopReleaseConfig>,
+  pub error_reporting: Option<DesktopErrorReportingConfig>,
+  pub macos: Option<DesktopMacOSConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum LockConfig {
   Bool(bool),
@@ -1007,7 +1214,8 @@ impl NewestDependencyDate {
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct RawMinimumDependencyAgeConfig {
-  pub age: serde_json::Value,
+  #[serde(default)]
+  pub age: Option<serde_json::Value>,
   #[serde(default)]
   pub exclude: Vec<String>,
 }
@@ -1218,6 +1426,7 @@ pub struct ConfigFileJson {
   pub test: Option<Value>,
   pub bench: Option<Value>,
   pub compile: Option<Value>,
+  pub desktop: Option<Value>,
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
   pub minimum_dependency_age: Option<Value>,
@@ -1940,6 +2149,24 @@ impl ConfigFile {
     }
   }
 
+  pub fn to_desktop_config(
+    &self,
+  ) -> Result<DesktopConfig, ToInvalidConfigError> {
+    match self.json.desktop.clone() {
+      Some(config) => {
+        let serialized: SerializedDesktopConfig =
+          serde_json::from_value(config).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "desktop",
+              source: error,
+            }
+          })?;
+        Ok(serialized.into_resolved())
+      }
+      None => Ok(DesktopConfig::default()),
+    }
+  }
+
   pub fn to_fmt_config(&self) -> Result<FmtConfig, ToInvalidConfigError> {
     match self.json.fmt.clone() {
       Some(config) => {
@@ -2317,7 +2544,10 @@ impl ConfigFile {
             serde_json::from_value(v.clone())
               .map_err(MinimumDependencyAgeParseError::UnsupportedObject)?;
           Ok(MinimumDependencyAgeConfig {
-            age: parse_date(&obj.age, sys)?,
+            age: match &obj.age {
+              Some(age) => parse_date(age, sys)?,
+              None => None,
+            },
             exclude: obj.exclude,
           })
         }
@@ -2395,10 +2625,34 @@ impl ConfigFile {
     }
   }
 
-  pub fn dependencies(&self) -> HashSet<JsrDepPackageReq> {
-    let mut set = imports_values(self.json.imports.as_ref())
-      .chain(scope_values(self.json.scopes.as_ref()))
-      .filter_map(value_to_dep_req)
+  pub fn dependencies(
+    &self,
+    catalogs: &IndexMap<String, IndexMap<String, String>>,
+  ) -> HashSet<JsrDepPackageReq> {
+    let entry_to_dep_req = |(key, value): (&str, &str)| {
+      if let Some(catalog_name) = value.strip_prefix("catalog:") {
+        // `catalog:`/`catalog:<name>` entries resolve to the version
+        // requirement defined in the workspace root's catalog
+        let catalog_name = if catalog_name.is_empty() {
+          "default"
+        } else {
+          catalog_name
+        };
+        let name = key.strip_suffix('/').unwrap_or(key);
+        let version_req_str =
+          catalogs.get(catalog_name).and_then(|c| c.get(name))?;
+        let version_req = VersionReq::parse_from_npm(version_req_str).ok()?;
+        Some(JsrDepPackageReq::npm(PackageReq {
+          name: name.into(),
+          version_req,
+        }))
+      } else {
+        value_to_dep_req(value)
+      }
+    };
+    let mut set = imports_entries(self.json.imports.as_ref())
+      .chain(scope_entries(self.json.scopes.as_ref()))
+      .filter_map(entry_to_dep_req)
       .collect::<HashSet<_>>();
 
     if let Some(serde_json::Value::Object(compiler_options)) =
@@ -2525,6 +2779,7 @@ mod tests {
         "singleBodyPosition": "nextLine",
         "nextControlFlowPosition": "sameLine",
         "trailingCommas": "never",
+        "json.trailingCommas": "maintain",
         "operatorPosition": "maintain",
         "jsx.bracketPosition": "maintain",
         "jsx.forceNewLinesSurroundingContent": true,
@@ -2600,6 +2855,7 @@ mod tests {
           single_body_position: Some(SingleBodyPosition::NextLine),
           next_control_flow_position: Some(NextControlFlowPosition::SameLine),
           trailing_commas: Some(TrailingCommas::Never),
+          json_trailing_commas: Some(JsonTrailingCommaKind::Maintain),
           operator_position: Some(OperatorPosition::Maintain),
           jsx_bracket_position: Some(BracketPosition::Maintain),
           jsx_force_new_lines_surrounding_content: Some(true),
@@ -2823,6 +3079,74 @@ mod tests {
     let config_specifier = Url::parse("file:///deno/tsconfig.json").unwrap();
     // Emit error: config file JSON "<config_path>" should be an object
     assert!(ConfigFile::new(config_text, config_specifier,).is_err());
+  }
+
+  #[test]
+  fn test_minimum_dependency_age_config() {
+    use chrono::TimeZone;
+
+    struct TestEnv;
+
+    impl sys_traits::SystemTimeNow for TestEnv {
+      fn sys_time_now(&self) -> std::time::SystemTime {
+        let datetime =
+          chrono::Utc.with_ymd_and_hms(2025, 6, 1, 0, 0, 0).unwrap();
+        std::time::SystemTime::from(datetime)
+      }
+    }
+
+    fn parse(json: &str) -> MinimumDependencyAgeConfig {
+      let specifier = Url::parse("file:///deno/deno.json").unwrap();
+      let config_file = ConfigFile::new(json, specifier).unwrap();
+      config_file
+        .to_minimum_dependency_age_config(&TestEnv)
+        .unwrap()
+    }
+
+    // Object with only "exclude" (no "age") should be accepted. The age
+    // can be supplied via the --minimum-dependency-age flag.
+    let config =
+      parse(r#"{ "minimumDependencyAge": { "exclude": ["npm:chalk"] } }"#);
+    assert!(config.age.is_none());
+    assert_eq!(config.exclude, vec!["npm:chalk".to_string()]);
+
+    // Empty object should also be accepted.
+    let config = parse(r#"{ "minimumDependencyAge": {} }"#);
+    assert!(config.age.is_none());
+    assert!(config.exclude.is_empty());
+
+    // Explicit null for "age" is also accepted.
+    let config =
+      parse(r#"{ "minimumDependencyAge": { "age": null, "exclude": [] } }"#);
+    assert!(config.age.is_none());
+    assert!(config.exclude.is_empty());
+
+    // Object with "age" still works.
+    let config = parse(
+      r#"{ "minimumDependencyAge": { "age": 120, "exclude": ["npm:chalk"] } }"#,
+    );
+    assert!(config.age.is_some());
+    assert_eq!(config.exclude, vec!["npm:chalk".to_string()]);
+
+    // Bare value still works.
+    let config = parse(r#"{ "minimumDependencyAge": 120 }"#);
+    assert!(config.age.is_some());
+    assert!(config.exclude.is_empty());
+
+    // Unknown field still errors.
+    let specifier = Url::parse("file:///deno/deno.json").unwrap();
+    let config_file = ConfigFile::new(
+      r#"{ "minimumDependencyAge": { "unknown": 1 } }"#,
+      specifier,
+    )
+    .unwrap();
+    let err = config_file
+      .to_minimum_dependency_age_config(&TestEnv)
+      .unwrap_err();
+    assert!(matches!(
+      err,
+      MinimumDependencyAgeParseError::UnsupportedObject(_)
+    ));
   }
 
   #[test]

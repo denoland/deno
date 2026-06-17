@@ -118,7 +118,12 @@ impl TestReporter for JunitTestReporter {
 
   fn report_plan(&mut self, _plan: &TestPlan) {}
 
-  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
+  fn report_slow(
+    &mut self,
+    _description: &TestDescription,
+    _elapsed: Duration,
+  ) {
+  }
   fn report_wait(&mut self, _description: &TestDescription) {}
 
   fn report_output(&mut self, _output: &[u8]) {
@@ -134,11 +139,11 @@ impl TestReporter for JunitTestReporter {
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    elapsed: u64,
+    elapsed: Duration,
   ) {
     if let Some(case) = self.cases.get_mut(&description.id) {
       case.status = Self::convert_status(result, &self.failure_format_options);
-      case.set_time(Duration::from_millis(elapsed));
+      case.set_time(elapsed);
     }
   }
 
@@ -172,14 +177,14 @@ impl TestReporter for JunitTestReporter {
     &mut self,
     description: &TestStepDescription,
     result: &TestStepResult,
-    elapsed: u64,
+    elapsed: Duration,
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
     if let Some(case) = self.cases.get_mut(&description.id) {
       case.status =
         Self::convert_step_status(result, &self.failure_format_options);
-      case.set_time(Duration::from_millis(elapsed));
+      case.set_time(elapsed);
     }
   }
 
@@ -199,9 +204,36 @@ impl TestReporter for JunitTestReporter {
   ) {
     for id in tests_pending {
       if let Some(description) = tests.get(id) {
-        self.report_result(description, &TestResult::Cancelled, 0)
+        self.report_result(
+          description,
+          &TestResult::Cancelled,
+          Duration::default(),
+        )
       }
     }
+  }
+
+  fn report_exit(
+    &mut self,
+    _exit_code: i32,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    _test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    for id in tests_pending {
+      if let Some(description) = tests.get(id) {
+        self.report_result(
+          description,
+          &TestResult::Cancelled,
+          Duration::default(),
+        )
+      }
+    }
+  }
+
+  fn report_isolate_exit(&mut self, _origin: &str, _exit_code: i32) {
+    // JUnit reporters are file-oriented; we surface the isolate exit via the
+    // overall test run failure status rather than emitting a synthetic case.
   }
 
   fn report_completed(&mut self) {

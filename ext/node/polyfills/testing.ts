@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
 "use strict";
 const { core, primordials } = __bootstrap;
@@ -11,10 +9,13 @@ const {
   ArrayPrototypeIndexOf,
   ArrayPrototypeJoin,
   ArrayPrototypePush,
+  ArrayPrototypeSlice,
   ArrayPrototypeSplice,
+  DatePrototypeGetTime,
   DatePrototypeToString,
   Error,
   ErrorPrototype,
+  MapPrototypeClear,
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeHas,
@@ -29,20 +30,25 @@ const {
   Promise,
   PromisePrototypeThen,
   PromiseResolve,
+  PromiseWithResolvers,
+  Proxy,
   ReflectApply,
   ReflectConstruct,
+  ReflectGet,
+  RegExpPrototypeExec,
+  RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
-  SafeSet,
-  SetPrototypeAdd,
-  SetPrototypeHas,
+  SafeMapIterator,
+  SafeRegExp,
   String,
-  StringPrototypeReplaceAll,
+  StringPrototypeMatch,
   Symbol,
   SymbolDispose,
   SymbolFor,
   SymbolToPrimitive,
   TypeError,
+  queueMicrotask,
 } = primordials;
 
 let errorHandlersInstalled = false;
@@ -92,7 +98,6 @@ function installErrorHandlers() {
     }
   });
 }
-const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const {
   validateFunction,
   validateInteger,
@@ -100,11 +105,19 @@ const {
   validateObject,
   validateStringArray,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const nodeErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
+  ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-  ERR_INVALID_STATE,
-} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+} = nodeErrors.codes;
+// `ERR_INVALID_STATE` is a hand-written class exported at the top level of the
+// errors module; unlike the generated codes it is not registered on `.codes`.
+const { ERR_INVALID_STATE } = nodeErrors;
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+const {
+  tapEscape,
+  tapIndent,
+} = core.loadExtScript("ext:deno_node/internal/test/reporters.ts");
 
 const methodsToCopy = [
   "deepEqual",
@@ -205,6 +218,7 @@ function run(options) {
       } catch { /* ignore */ }
       watcher = null;
     }
+    // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
     stream.push(null);
   }
 
@@ -214,6 +228,7 @@ function run(options) {
     // Node's TestsStream emits each lifecycle entry both as a data chunk
     // (consumed via async iteration / `'data'` listeners) and as a named
     // event so callers can attach `.on('test:watch:drained', ...)` directly.
+    // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
     stream.push({ __proto__: null, type, data });
     stream.emit(type, data);
   }
@@ -303,7 +318,10 @@ function detectNodeTestReporter() {
   // space-separated forms. We intentionally do not handle multiple reporters
   // (Node lets you stack reporters with destinations); the snapshot tests use
   // a single reporter and that is what we target.
-  const match = nodeOptions.match(/--test-reporter(?:=|\s+)(\S+)/);
+  const match = StringPrototypeMatch(
+    nodeOptions,
+    new SafeRegExp(/--test-reporter(?:=|\s+)(\S+)/),
+  );
   return match ? match[1] : null;
 }
 
@@ -349,21 +367,24 @@ function parsePatternFlag(flag) {
   } catch { /* permission denied */ }
   if (!nodeOptions) return null;
   const out = [];
-  const re = new RegExp(`${flag}(?:=|\\s+)(\\S+)`, "g");
+  const re = new SafeRegExp(`${flag}(?:=|\\s+)(\\S+)`, "g");
   let m;
-  while ((m = re.exec(nodeOptions)) !== null) {
+  while ((m = RegExpPrototypeExec(re, nodeOptions)) !== null) {
     const value = m[1];
     let pattern;
-    const litMatch = value.match(/^\/(.*)\/([a-z]*)$/);
+    const litMatch = StringPrototypeMatch(
+      value,
+      new SafeRegExp(/^\/(.*)\/([a-z]*)$/),
+    );
     if (litMatch) {
       try {
-        pattern = new RegExp(litMatch[1], litMatch[2]);
+        pattern = new SafeRegExp(litMatch[1], litMatch[2]);
       } catch {
         continue;
       }
     } else {
       try {
-        pattern = new RegExp(value);
+        pattern = new SafeRegExp(value);
       } catch {
         continue;
       }
@@ -392,7 +413,10 @@ function isTestOnlyFlagSet() {
   try {
     nodeOptions = env.get("NODE_OPTIONS") || "";
   } catch { /* permission denied */ }
-  testOnlyFlagCache = /(^|\s)--test-only(\s|=|$)/.test(nodeOptions);
+  testOnlyFlagCache = RegExpPrototypeTest(
+    new SafeRegExp(/(^|\s)--test-only(\s|=|$)/),
+    nodeOptions,
+  );
   return testOnlyFlagCache;
 }
 
@@ -401,7 +425,7 @@ const TEST_ONLY_WARNING =
 
 function matchesAnyPattern(name, patterns) {
   for (const p of new SafeArrayIterator(patterns)) {
-    if (p.test(name)) return true;
+    if (RegExpPrototypeTest(p, name)) return true;
   }
   return false;
 }
@@ -435,30 +459,9 @@ const tapStats = {
   todo: 0,
 };
 
-function tapEscape(input) {
-  // Node's TAP encoder replaces control characters with their two-char
-  // backslash escape, then escapes literal backslashes, then escapes `#`.
-  // Order matters: doubling backslashes last ensures the escapes introduced
-  // by the previous step also get their backslashes doubled.
-  let s = String(input);
-  s = StringPrototypeReplaceAll(s, "\b", "\\b");
-  s = StringPrototypeReplaceAll(s, "\f", "\\f");
-  s = StringPrototypeReplaceAll(s, "\v", "\\v");
-  s = StringPrototypeReplaceAll(s, "\n", "\\n");
-  s = StringPrototypeReplaceAll(s, "\r", "\\r");
-  s = StringPrototypeReplaceAll(s, "\t", "\\t");
-  s = StringPrototypeReplaceAll(s, "\\", "\\\\");
-  s = StringPrototypeReplaceAll(s, "#", "\\#");
-  return s;
-}
-
 function tapWrite(line) {
   // deno-lint-ignore no-console
   console.log(line);
-}
-
-function tapIndent(depth) {
-  return "    ".repeat(depth);
 }
 
 function tapDirective(options) {
@@ -491,6 +494,9 @@ class TapContext {
   // Per-context "warning printed" flag for the `--test-only` diagnostic.
   // Mutated by `runTapEntry` when a child uses `only: true`.
   onlyWarningEmitted = false;
+  // When set via `runOnly(true)`, only direct subtests registered with the
+  // `only: true` option are executed; all other subtests are filtered out.
+  #runOnly = false;
 
   constructor(name, depth, parentChildren) {
     this.#name = name;
@@ -533,8 +539,18 @@ class TapContext {
   // Subtest registration: `t.test(name, opts?, fn?)` queues a subtest that runs
   // sequentially in the order it was registered. Concurrent calls (Promise.all)
   // are serialized through the parent's subtest tail.
+  runOnly(value) {
+    this.#runOnly = !!value;
+    return null;
+  }
+
   test(name, options, fn) {
     const prepared = prepareOptions(name, options, fn, {});
+    // In run-only mode, subtests not flagged with `only: true` are filtered
+    // out entirely: they are neither registered nor reported, matching Node.
+    if (this.#runOnly && !prepared.options.only) {
+      return PromiseResolve();
+    }
     this.#subtestCount++;
     const n = this.#subtestCount;
     const childDepth = this.#depth + 1;
@@ -594,7 +610,9 @@ async function runTapTop() {
         try {
           const r = ReflectApply(hook, null, [rootCtx]);
           if (isThenable(r)) await r;
-        } catch { /* swallow to keep parity with Node's lenient hook errors */ }
+        } catch {
+          /* swallow to keep parity with Node's lenient hook errors */
+        }
       }
     }
     tapWrite("TAP version 13");
@@ -931,6 +949,9 @@ class NodeTestContext {
   #planAssert;
   #beforeEachHooks = [];
   #afterEachHooks = [];
+  // When set via `runOnly(true)`, only direct subtests registered with the
+  // `only: true` option are executed; all other subtests are skipped.
+  #runOnly = false;
 
   constructor(t, parent, name) {
     this.#denoContext = t;
@@ -994,8 +1015,8 @@ class NodeTestContext {
     return mock;
   }
 
-  runOnly() {
-    notImplemented("test.TestContext.runOnly");
+  runOnly(value) {
+    this.#runOnly = !!value;
     return null;
   }
 
@@ -1065,7 +1086,8 @@ class NodeTestContext {
             }
           }
         },
-        ignore: !!prepared.options.todo || !!prepared.options.skip,
+        ignore: !!prepared.options.todo || !!prepared.options.skip ||
+          (this.#runOnly && !prepared.options.only),
         sanitizeExit: false,
         sanitizeOps: false,
         sanitizeResources: false,
@@ -1126,7 +1148,11 @@ async function runRootAfterIfDone() {
   if (rootAfterHooks.length === 0) return;
   const rootCtx = { name: "<root>", fullName: "<root>" };
   // Snapshot and clear so we only run once even if more tests get queued.
-  const hooks = ArrayPrototypeSplice(rootAfterHooks, 0, rootAfterHooks.length);
+  const hooks = ArrayPrototypeSplice(
+    rootAfterHooks,
+    0,
+    rootAfterHooks.length,
+  );
   for (const hook of new SafeArrayIterator(hooks)) {
     try {
       await hook(rootCtx);
@@ -1190,11 +1216,16 @@ class TestSuite {
 
   addSuite(name, options, fn, overrides) {
     const prepared = prepareOptions(name, options, fn, overrides);
-    const { promise, resolve } = Promise.withResolvers();
+    const { promise, resolve } = PromiseWithResolvers();
     const parentSuiteContext = this.nodeTestContext;
     ArrayPrototypePush(this.entries, {
       name: prepared.name,
-      fn: wrapSuiteFn(prepared.fn, resolve, prepared.name, parentSuiteContext),
+      fn: wrapSuiteFn(
+        prepared.fn,
+        resolve,
+        prepared.name,
+        parentSuiteContext,
+      ),
       ignore: !!prepared.options.todo || !!prepared.options.skip,
     });
     return promise;
@@ -1561,6 +1592,120 @@ class MockFunctionContext {
   }
 }
 
+class MockPropertyContext {
+  #object;
+  #propertyName;
+  #value;
+  #originalValue;
+  #descriptor;
+  #accesses = [];
+  #onceValues = new SafeMap();
+  _restored = false;
+
+  constructor(object, propertyName, hasValue, value) {
+    this.#object = object;
+    this.#propertyName = propertyName;
+    this.#descriptor = ObjectGetOwnPropertyDescriptor(object, propertyName);
+    if (!this.#descriptor) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "propertyName",
+        propertyName,
+        "is not a property of the object",
+      );
+    }
+    this.#originalValue = object[propertyName];
+    this.#value = hasValue ? value : this.#originalValue;
+
+    const { configurable, enumerable } = this.#descriptor;
+    ObjectDefineProperty(object, propertyName, {
+      __proto__: null,
+      configurable,
+      enumerable,
+      get: () => {
+        const nextValue = this.#getAccessValue(this.#value);
+        ArrayPrototypePush(this.#accesses, {
+          type: "get",
+          value: nextValue,
+          stack: new Error(),
+        });
+        return nextValue;
+      },
+      set: (v) => this.mockImplementation(v),
+    });
+  }
+
+  get accesses() {
+    return ArrayPrototypeSlice(this.#accesses, 0);
+  }
+
+  accessCount() {
+    return this.#accesses.length;
+  }
+
+  mockImplementation(value) {
+    if (!this.#descriptor.writable) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "propertyName",
+        this.#propertyName,
+        "cannot be set",
+      );
+    }
+    const nextValue = this.#getAccessValue(value);
+    ArrayPrototypePush(this.#accesses, {
+      type: "set",
+      value: nextValue,
+      stack: new Error(),
+    });
+    this.#value = nextValue;
+  }
+
+  #getAccessValue(value) {
+    const accessIndex = this.#accesses.length;
+    let accessValue;
+    if (MapPrototypeHas(this.#onceValues, accessIndex)) {
+      accessValue = MapPrototypeGet(this.#onceValues, accessIndex);
+      MapPrototypeDelete(this.#onceValues, accessIndex);
+    } else {
+      accessValue = value;
+    }
+    return accessValue;
+  }
+
+  mockImplementationOnce(value, onAccess) {
+    const nextAccess = this.#accesses.length;
+    const accessIndex = onAccess ?? nextAccess;
+    validateInteger(accessIndex, "onAccess", nextAccess);
+    MapPrototypeSet(this.#onceValues, accessIndex, value);
+  }
+
+  resetAccesses() {
+    this.#accesses = [];
+  }
+
+  // Alias used by mock.reset() which iterates activeMocks calling resetCalls().
+  resetCalls() {
+    this.resetAccesses();
+  }
+
+  restore() {
+    if (!this._restored) {
+      // Reinstall the pristine original descriptor. Unlike Node we don't force
+      // a `value` field, since the original property may be an accessor (e.g.
+      // `process.platform` is a getter in Deno) and mixing `value` with
+      // `get`/`set` is an invalid descriptor.
+      ObjectDefineProperty(this.#object, this.#propertyName, {
+        __proto__: null,
+        ...this.#descriptor,
+      });
+      this._restored = true;
+    }
+    const idx = ArrayPrototypeIndexOf(activeMocks, this);
+    if (idx !== -1) {
+      ArrayPrototypeSplice(activeMocks, idx, 1);
+    }
+  }
+}
+
 function createMockFunction(original, implementation, ctx) {
   const mockFn = function (...args) {
     const newTarget = new.target;
@@ -1781,7 +1926,7 @@ class MockTimers {
     if (now === undefined) {
       now = 0;
     } else if (ObjectPrototypeIsPrototypeOf(originalDatePrototype, now)) {
-      now = originalDateGetTime.call(now);
+      now = DatePrototypeGetTime(now);
     }
     validateNumber(now, "options.now", 0);
     if (!NumberIsFinite(now) || !NumberIsInteger(now)) {
@@ -1805,14 +1950,20 @@ class MockTimers {
           (callback, delay, ...args) =>
             this._setTimeout(callback, delay, args, false),
         );
-        this.#mockGlobal("clearTimeout", (handle) => this._clearTimer(handle));
+        this.#mockGlobal(
+          "clearTimeout",
+          (handle) => this._clearTimer(handle),
+        );
       } else if (api === "setInterval") {
         this.#mockGlobal(
           "setInterval",
           (callback, delay, ...args) =>
             this._setInterval(callback, delay, args),
         );
-        this.#mockGlobal("clearInterval", (handle) => this._clearTimer(handle));
+        this.#mockGlobal(
+          "clearInterval",
+          (handle) => this._clearTimer(handle),
+        );
       } else if (api === "setImmediate") {
         this.#mockGlobal(
           "setImmediate",
@@ -1828,79 +1979,68 @@ class MockTimers {
 
   reset() {
     if (!this._enabled) return;
-    for (const [name, original] of this.#originals.entries()) {
+    for (
+      const { 0: name, 1: original } of new SafeMapIterator(this.#originals)
+    ) {
       if (name === "Date") {
         globalThis.Date = original;
       } else {
         globalThis[name] = original;
       }
     }
-    this.#originals.clear();
-    this._timers.clear();
+    MapPrototypeClear(this.#originals);
+    MapPrototypeClear(this._timers);
     this._now = 0;
     this._nextId = 1;
     this._enabled = false;
   }
 
-  tick(milliseconds = 0) {
+  #assertEnabled() {
     if (!this._enabled) {
       throw new ERR_INVALID_STATE(
         "You should enable MockTimers first by calling the .enable function",
       );
     }
-    validateNumber(milliseconds, "milliseconds", 0);
-    if (!NumberIsFinite(milliseconds)) {
-      throw new ERR_INVALID_ARG_VALUE(
-        "milliseconds",
-        milliseconds,
-        "must be a finite number",
-      );
-    }
-    const target = this._now + milliseconds;
-    while (true) {
-      const next = this.#findNextTimer();
-      if (next === null || next.fireAt > target) break;
-      this._now = next.fireAt;
-      this.#fireTimer(next);
-    }
-    this._now = target;
   }
 
-  runAll() {
-    if (!this._enabled) {
-      throw new ERR_INVALID_STATE(
-        "You should enable MockTimers first by calling the .enable function",
+  #assertTimeArg(time) {
+    if (time < 0) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "time",
+        time,
+        "must be a non-negative integer",
       );
     }
-    // Intervals re-arm in `_timers` after firing (their `fireAt` is bumped)
-    // instead of being deleted, so without bookkeeping `runAll()` with an
-    // active interval loops forever. Match Node and fire each registered
-    // timer at most once: track ids that have already fired and stop when
-    // `#findNextTimer()` returns one of them.
-    const fired = new SafeSet();
+  }
+
+  // Mirrors Node's `MockTimers.tick`: advance the virtual clock first, then
+  // drain every timer whose `fireAt` is now due (intervals re-arm and may fire
+  // again within the same tick).
+  tick(milliseconds = 1) {
+    this.#assertEnabled();
+    this.#assertTimeArg(milliseconds);
+    this._now += milliseconds;
     while (true) {
       const next = this.#findNextTimer();
-      if (next === null || SetPrototypeHas(fired, next.id)) break;
-      SetPrototypeAdd(fired, next.id);
-      this._now = next.fireAt;
+      if (next === null || next.fireAt > this._now) break;
       this.#fireTimer(next);
     }
+  }
+
+  // Mirrors Node's `MockTimers.runAll`: tick up to the longest pending timer.
+  // Intervals fire as many times as fit within that window, then re-arm past
+  // `_now` so the loop terminates.
+  runAll() {
+    this.#assertEnabled();
+    const longest = this.#findLongestTimer();
+    if (longest === null) return;
+    this.tick(longest.fireAt - this._now);
   }
 
   setTime(milliseconds) {
-    if (!this._enabled) {
-      throw new ERR_INVALID_STATE(
-        "You should enable MockTimers first by calling the .enable function",
-      );
-    }
-    validateNumber(milliseconds, "milliseconds", 0);
-    if (!NumberIsFinite(milliseconds)) {
-      throw new ERR_INVALID_ARG_VALUE(
-        "milliseconds",
-        milliseconds,
-        "must be a finite number",
-      );
-    }
+    validateNumber(milliseconds, "time");
+    this.#assertTimeArg(milliseconds);
+    this.#assertEnabled();
     this._now = milliseconds;
   }
 
@@ -1963,7 +2103,7 @@ class MockTimers {
 
   #findNextTimer() {
     let next = null;
-    for (const t of this._timers.values()) {
+    for (const { 1: t } of new SafeMapIterator(this._timers)) {
       if (
         next === null ||
         t.fireAt < next.fireAt ||
@@ -1976,29 +2116,32 @@ class MockTimers {
     return next;
   }
 
+  #findLongestTimer() {
+    let longest = null;
+    for (const { 1: t } of new SafeMapIterator(this._timers)) {
+      if (longest === null || t.fireAt > longest.fireAt) {
+        longest = t;
+      }
+    }
+    return longest;
+  }
+
   #fireTimer(timer) {
+    // Match Node: invoke the callback first (errors propagate synchronously out
+    // of `tick`), then re-arm intervals or drop one-shot timers. A timer that
+    // clears itself inside its own callback is already gone from `_timers`, so
+    // the bookkeeping below is a no-op for it.
+    ReflectApply(timer.callback, undefined, timer.args);
     if (timer.interval !== null) {
       timer.fireAt += timer.interval;
     } else {
       MapPrototypeDelete(this._timers, timer.id);
-    }
-    try {
-      ReflectApply(timer.callback, undefined, timer.args);
-    } catch (err) {
-      // Surface the error asynchronously via the original setTimeout so a
-      // single bad callback doesn't abort tick().
-      const originalSetTimeout = MapPrototypeGet(this.#originals, "setTimeout");
-      const fallback = originalSetTimeout ?? globalThis.setTimeout;
-      fallback(() => {
-        throw err;
-      }, 0);
     }
   }
 }
 
 const originalDate = globalThis.Date;
 const originalDatePrototype = originalDate.prototype;
-const originalDateGetTime = originalDate.prototype.getTime;
 
 function createMockDate(mockTimers) {
   function MockDate(...args) {
@@ -2013,10 +2156,12 @@ function createMockDate(mockTimers) {
     return ReflectConstruct(originalDate, args, MockDate);
   }
   ObjectDefineProperty(MockDate, "prototype", {
+    __proto__: null,
     value: originalDate.prototype,
     writable: false,
   });
   ObjectDefineProperty(MockDate, "name", {
+    __proto__: null,
     value: "Date",
     configurable: true,
   });
@@ -2036,7 +2181,9 @@ const mock = {
       options = original;
       original = undefined;
       implementation = undefined;
-    } else if (implementation !== null && typeof implementation === "object") {
+    } else if (
+      implementation !== null && typeof implementation === "object"
+    ) {
       options = implementation;
       implementation = original;
     }
@@ -2071,6 +2218,38 @@ const mock = {
     return mockMethodImpl(object, methodName, implementation, options);
   },
 
+  property: function (object, propertyName, value) {
+    validateObject(object, "object");
+    if (
+      typeof propertyName !== "string" && typeof propertyName !== "symbol"
+    ) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "propertyName",
+        ["string", "symbol"],
+        propertyName,
+      );
+    }
+
+    const hasValue = arguments.length > 2;
+    const ctx = new MockPropertyContext(
+      object,
+      propertyName,
+      hasValue,
+      value,
+    );
+    ArrayPrototypePush(activeMocks, ctx);
+
+    return new Proxy(object, {
+      __proto__: null,
+      get(target, property, receiver) {
+        if (property === "mock") {
+          return ctx;
+        }
+        return ReflectGet(target, property, receiver);
+      },
+    });
+  },
+
   reset: () => {
     ArrayPrototypeForEach(activeMocks, (ctx) => {
       ctx.resetCalls();
@@ -2100,6 +2279,8 @@ const mock = {
     reset: () => mockTimers.reset(),
     tick: (ms) => mockTimers.tick(ms),
     runAll: () => mockTimers.runAll(),
+    // `setTime` is MockTimers' own method, not Date.prototype.setTime.
+    // deno-lint-ignore prefer-primordials
     setTime: (ms) => mockTimers.setTime(ms),
     [SymbolDispose]: () => mockTimers.reset(),
   },
