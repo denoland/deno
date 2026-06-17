@@ -162,7 +162,10 @@ impl Foo {
                 let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<
                     Foo,
                 >(&mut scope, args.this().into()) else {
-                    deno_core::_ops::throw_error_one_byte_info(&info, "expected Foo");
+                    deno_core::_ops::throw_invalid_this_error_one_byte_info(
+                        &info,
+                        "expected Foo",
+                    );
                     return 1;
                 };
                 let self_ = unsafe { self_.as_ref() };
@@ -237,7 +240,10 @@ impl Foo {
                 let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<
                     Foo,
                 >(&mut scope, args.this().into()) else {
-                    deno_core::_ops::throw_error_one_byte_info(&info, "expected Foo");
+                    deno_core::_ops::throw_invalid_this_error_one_byte_info(
+                        &info,
+                        "expected Foo",
+                    );
                     return 1;
                 };
                 let self_ = unsafe { self_.as_ref() };
@@ -337,7 +343,10 @@ impl Foo {
                 let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<
                     Foo,
                 >(&mut scope, args.this().into()) else {
-                    deno_core::_ops::throw_error_one_byte_info(&info, "expected Foo");
+                    deno_core::_ops::throw_invalid_this_error_one_byte_info(
+                        &info,
+                        "expected Foo",
+                    );
                     return 1;
                 };
                 let self_ = unsafe { self_.as_ref() };
@@ -481,7 +490,7 @@ impl Foo {
                             fast_api_callback_options) }
                         );
                         let mut scope = scope.init();
-                        deno_core::_ops::throw_error_one_byte(
+                        deno_core::_ops::throw_invalid_this_error_one_byte(
                             &mut scope,
                             "expected Foo",
                         );
@@ -514,7 +523,10 @@ impl Foo {
                 let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<
                     Foo,
                 >(&mut scope, args.this().into()) else {
-                    deno_core::_ops::throw_error_one_byte_info(&info, "expected Foo");
+                    deno_core::_ops::throw_invalid_this_error_one_byte_info(
+                        &info,
+                        "expected Foo",
+                    );
                     return 1;
                 };
                 let self_ = unsafe { self_.as_ref() };
@@ -588,7 +600,10 @@ impl Foo {
                 let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<
                     Foo,
                 >(&mut scope, args.this().into()) else {
-                    deno_core::_ops::throw_error_one_byte_info(&info, "expected Foo");
+                    deno_core::_ops::throw_invalid_this_error_one_byte_info(
+                        &info,
+                        "expected Foo",
+                    );
                     return 1;
                 };
                 let self_ = unsafe { self_.as_ref() };
@@ -665,7 +680,10 @@ impl Foo {
                 let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<
                     Foo,
                 >(&mut scope, args.this().into()) else {
-                    deno_core::_ops::throw_error_one_byte_info(&info, "expected Foo");
+                    deno_core::_ops::throw_invalid_this_error_one_byte_info(
+                        &info,
+                        "expected Foo",
+                    );
                     return 1;
                 };
                 let self_ = unsafe { self_.as_ref() };
@@ -794,7 +812,10 @@ impl Foo {
                 let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<
                     Foo,
                 >(&mut scope, args.this().into()) else {
-                    deno_core::_ops::throw_error_one_byte_info(&info, "expected Foo");
+                    deno_core::_ops::throw_invalid_this_error_one_byte_info(
+                        &info,
+                        "expected Foo",
+                    );
                     return 1;
                 };
                 let self_ = unsafe { self_.as_ref() };
@@ -927,7 +948,7 @@ impl Foo {
                             fast_api_callback_options) }
                         );
                         let mut scope = scope.init();
-                        deno_core::_ops::throw_error_one_byte(
+                        deno_core::_ops::throw_invalid_this_error_one_byte(
                             &mut scope,
                             "expected Foo",
                         );
@@ -971,7 +992,10 @@ impl Foo {
                 let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<
                     Foo,
                 >(&mut scope, args.this().into()) else {
-                    deno_core::_ops::throw_error_one_byte_info(&info, "expected Foo");
+                    deno_core::_ops::throw_invalid_this_error_one_byte_info(
+                        &info,
+                        "expected Foo",
+                    );
                     return 1;
                 };
                 let self_ = unsafe { self_.as_ref() };

@@ -151,6 +151,18 @@ pub struct RemoveFlags {
   pub package_json: bool,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LinkFlags {
+  pub paths: Vec<String>,
+  pub lockfile_only: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct UnlinkFlags {
+  pub names_or_paths: Vec<String>,
+  pub lockfile_only: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct VersionFlags {
   pub increment: Option<VersionIncrement>,
@@ -241,6 +253,47 @@ pub struct CompileFlags {
   pub exclude_unused_npm: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IconSetEntry {
+  pub path: String,
+  pub size: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum IconConfig {
+  /// A single icon file (`.icns`, `.ico`, or `.png`).
+  Single(String),
+  /// Multiple PNGs at specific pixel sizes.
+  Set(Vec<IconSetEntry>),
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct DesktopFlags {
+  pub source_file: String,
+  pub output: Option<String>,
+  pub args: Vec<String>,
+  pub target: Option<String>,
+  pub icon: Option<IconConfig>,
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
+  pub hmr: bool,
+  pub backend: Option<String>,
+  pub all_targets: bool,
+  /// Reverse-DNS bundle / application identifier (e.g. `com.acme.foo`).
+  /// Used for the macOS `CFBundleIdentifier`, the Linux `.desktop` file
+  /// identifier, and (eventually) the Windows AppUserModelID. When unset
+  /// a synthetic `com.deno.desktop.<app-slug>` is generated.
+  pub identifier: Option<String>,
+  /// macOS codesigning identity (e.g. `Developer ID Application: Acme,
+  /// Inc. (TEAMID)`, or `-` for ad-hoc). When unset the bundle is left
+  /// unsigned; the system will quarantine it on download.
+  pub codesign_identity: Option<String>,
+  /// Optional override for the CEF renderer debugger port. When unset, a free
+  /// port is allocated. The user-visible inspector port (from `--inspect`) is
+  /// separate and is carried on `Flags::inspect`.
+  pub inspect_renderer: Option<SocketAddr>,
+}
+
 impl CompileFlags {
   pub fn resolve_target(&self) -> String {
     self
@@ -293,6 +346,9 @@ pub struct CoverageFlags {
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub r#type: CoverageType,
+  /// Minimum coverage percentage (0-100) applied to line, branch, and function
+  /// coverage. Overrides per-metric thresholds from `deno.json`.
+  pub threshold: Option<u32>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -633,6 +689,9 @@ pub struct TestFlags {
   pub no_run: bool,
   pub coverage_dir: Option<String>,
   pub coverage_raw_data_only: bool,
+  /// Minimum coverage percentage (0-100) required when `--coverage` is set.
+  /// Overrides per-metric thresholds from `deno.json`.
+  pub coverage_threshold: Option<u32>,
   pub clean: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
@@ -640,6 +699,11 @@ pub struct TestFlags {
   pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
+  pub retry: u32,
+  pub repeats: u32,
+  /// Run only a subset of test files, as `(index, count)` with a 1-based
+  /// index. Used to split a run across machines, e.g. `--shard=2/3`.
+  pub shard: Option<(usize, usize)>,
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
@@ -728,6 +792,7 @@ pub struct BundleFlags {
   pub sourcemap: Option<SourceMapType>,
   pub platform: BundlePlatform,
   pub watch: bool,
+  pub declaration: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -744,6 +809,7 @@ pub enum DenoSubcommand {
   Clean(CleanFlags),
   Compile(CompileFlags),
   Completions(CompletionsFlags),
+  Desktop(DesktopFlags),
   Coverage(CoverageFlags),
   Deploy(DeployFlags),
   Doc(DocFlags),
@@ -755,6 +821,8 @@ pub enum DenoSubcommand {
   JSONReference(JSONReferenceFlags),
   Jupyter(JupyterFlags),
   Uninstall(UninstallFlags),
+  Link(LinkFlags),
+  Unlink(UnlinkFlags),
   Lsp,
   Lint(LintFlags),
   Repl(ReplFlags),
@@ -853,6 +921,10 @@ impl DenoSubcommand {
   pub fn npm_system_info(&self) -> NpmSystemInfo {
     match self {
       DenoSubcommand::Compile(CompileFlags {
+        target: Some(target),
+        ..
+      })
+      | DenoSubcommand::Desktop(DesktopFlags {
         target: Some(target),
         ..
       }) => {
@@ -1024,6 +1096,8 @@ pub struct InternalFlags {
   pub root_node_modules_dir_override: Option<PathBuf>,
   /// Only reads to the lockfile instead of writing to it.
   pub lockfile_skip_write: bool,
+  /// Set when running the desktop subcommand to use desktop type libs.
+  pub is_desktop: bool,
   /// Set by `deno compile --bundle` when the bundled output contains
   /// references that need to resolve against npm packages at runtime
   /// (CJS dependencies, native addons). When true, the standalone
@@ -1519,6 +1593,10 @@ impl Flags {
       | Compile(CompileFlags {
         source_file: script,
         ..
+      })
+      | Desktop(DesktopFlags {
+        source_file: script,
+        ..
       }) => resolve_single_folder_path(script, current_dir, |mut p| {
         if p.pop() { Some(p) } else { None }
       })
@@ -1865,6 +1943,9 @@ static DENO_HELP: &str = cstr!(
     <g>outdated</>     Find and update outdated dependencies
     <g>approve-scripts</> Approve npm lifecycle scripts
     <g>remove</>       Remove dependencies from the configuration file
+    <g>link</>         Link a local JSR package into the current project
+                  <p(245)>deno link ../my-local-pkg</>
+    <g>unlink</>       Remove a linked local package from the current project
     <g>publish</>      Publish the current working directory's package or workspace
     <g>why</>          Show why a package is installed
 
@@ -1948,6 +2029,44 @@ pub fn flags_from_vec_with_initial_cwd(
   } else {
     args
   };
+  // Fast path: `deno run <file> [script args...]` with no deno-level flags.
+  // Building the full clap command tree (clap_root) costs ~5.5ms cold /
+  // ~0.86ms warm at startup; for the overwhelmingly common bare-run case we
+  // skip it entirely. Any deno flag (anything starting with `-` before the
+  // script) falls through to the full parser, preserving exact behavior.
+  // Config-file discovery still happens downstream in CliOptions, so this only
+  // skips argument parsing, not resolution.
+  if args.len() >= 3
+    && args[1] == "run"
+    && args[2] != "-"
+    && args[2].as_encoded_bytes().first() != Some(&b'-')
+    && let Some(script) = args[2].to_str()
+  {
+    let argv = args[3..]
+      .iter()
+      .map(|a| a.to_string_lossy().into_owned())
+      .collect::<Vec<_>>();
+    let mut flags = Flags {
+      subcommand: DenoSubcommand::Run(RunFlags {
+        script: script.to_string(),
+        watch: None,
+        bare: false,
+        coverage_dir: None,
+        print_task_list: false,
+      }),
+      argv,
+      // `flags.code_cache_enabled = !matches.get_flag("no-code-cache")` in
+      // the full `run_parse`; without any flags before the script that
+      // resolves to `true`. Match it here so downstream code-cache checks
+      // behave identically.
+      code_cache_enabled: true,
+      ..Default::default()
+    };
+    // NODE_OPTIONS / DENO_COMPAT etc. are handled here too, matching the
+    // tail of `flags_from_vec` after clap parsing.
+    apply_node_options(&mut flags);
+    return Ok(flags);
+  }
   let mut app = clap_root();
   let mut matches =
     app
@@ -2135,6 +2254,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "clean" => clean_parse(&mut flags, &mut m),
         "compile" => compile_parse(&mut flags, &mut m)?,
         "create" => create_parse(&mut flags, &mut m)?,
+        "desktop" => desktop_parse(&mut flags, &mut m)?,
         "completions" => completions_parse(&mut flags, &mut m, app),
         "coverage" => coverage_parse(&mut flags, &mut m)?,
         "doc" => doc_parse(&mut flags, &mut m)?,
@@ -2143,6 +2263,8 @@ pub fn flags_from_vec_with_initial_cwd(
         "init" => init_parse(&mut flags, &mut m)?,
         "info" => info_parse(&mut flags, &mut m)?,
         "install" => install_parse(&mut flags, &mut m, app)?,
+        "link" => link_parse(&mut flags, &mut m)?,
+        "unlink" => unlink_parse(&mut flags, &mut m)?,
         "ci" => ci_parse(&mut flags, &mut m)?,
         "json_reference" => json_reference_parse(&mut flags, &mut m, app),
         "jupyter" => jupyter_parse(&mut flags, &mut m),
@@ -2249,6 +2371,7 @@ heading! {
   DOC_HEADING = "Documentation options",
   FMT_HEADING = "Formatting options",
   COMPILE_HEADING = "Compile options",
+  DESKTOP_HEADING = "Desktop options",
   LINT_HEADING = "Linting options",
   TEST_HEADING = "Testing options",
   UPGRADE_HEADING = "Upgrade options",
@@ -2261,7 +2384,7 @@ heading! {
   DEPENDENCY_MANAGEMENT_HEADING = "Dependency management options",
 
   UNSTABLE_HEADING = "Unstable options";
-  12
+  13
 }
 
 fn help_parse(flags: &mut Flags, mut subcommand: Command) {
@@ -2407,6 +2530,7 @@ pub fn clap_root() -> Command {
         .subcommand(clean_subcommand())
         .subcommand(compile_subcommand())
         .subcommand(create_subcommand())
+        .subcommand(desktop_subcommand())
         .subcommand(completions_subcommand())
         .subcommand(coverage_subcommand())
         .subcommand(doc_subcommand())
@@ -2423,6 +2547,8 @@ pub fn clap_root() -> Command {
         .subcommand(approve_scripts_subcommand())
         .subcommand(uninstall_subcommand())
         .subcommand(outdated_subcommand())
+        .subcommand(link_subcommand())
+        .subcommand(unlink_subcommand())
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
         .subcommand(publish_subcommand())
@@ -2698,6 +2824,68 @@ You can remove multiple dependencies at once:
   })
 }
 
+fn link_subcommand() -> Command {
+  command(
+    "link",
+    cstr!(
+      "Link a local JSR package into the current project for development.
+
+  <p(245)>deno link ../my-local-pkg</>
+
+Each path must be a directory containing a deno.json with a JSR-style \"name\" field.
+The path is appended to the \"links\" array in the nearest deno.json, and modules
+imported by that package's name resolve to the local copy instead of the registry.
+
+To stop using the local copy:
+  <p(245)>deno unlink ../my-local-pkg</>
+  <p(245)>deno unlink @scope/name</>
+"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("paths")
+          .help("Paths to local package directories to link")
+          .required_unless_present("help")
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+      .args(lock_args())
+      .arg(lockfile_only_arg())
+  })
+}
+
+fn unlink_subcommand() -> Command {
+  command(
+    "unlink",
+    cstr!(
+      "Remove a linked local package from the current project.
+
+  <p(245)>deno unlink ../my-local-pkg</>
+  <p(245)>deno unlink @scope/name</>
+
+Accepts either a path that matches an existing entry in the \"links\" array,
+or the JSR-style name of a linked package.
+"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("names_or_paths")
+          .help("Linked package names or paths to remove")
+          .required_unless_present("help")
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+      .args(lock_args())
+      .arg(lockfile_only_arg())
+  })
+}
+
 fn bench_subcommand() -> Command {
   command(
     "bench",
@@ -2904,6 +3092,12 @@ If no output file is given, the output is written to standard output:
           .value_parser(clap::builder::ValueParser::new(platform_parser))
           .default_value("deno"),
       )
+      .arg(
+        Arg::new("declaration")
+          .long("declaration")
+          .help("Generate .d.ts declaration files alongside the bundle")
+          .action(ArgAction::SetTrue),
+      )
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
       .arg(deny_import_arg())
@@ -3040,6 +3234,14 @@ Unless --reload is specified, this command will not re-download already cached d
     )
 }
 
+const SUPPORTED_OS: [&str; 5] = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+];
+
 fn compile_subcommand() -> Command {
   command(
     "compile",
@@ -3102,13 +3304,7 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
         Arg::new("target")
           .long("target")
           .help("Target OS architecture")
-          .value_parser([
-            "x86_64-unknown-linux-gnu",
-            "aarch64-unknown-linux-gnu",
-            "x86_64-pc-windows-msvc",
-            "x86_64-apple-darwin",
-            "aarch64-apple-darwin",
-          ])
+          .value_parser(SUPPORTED_OS)
           .help_heading(COMPILE_HEADING),
       )
       .arg(no_code_cache_arg())
@@ -3180,6 +3376,121 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
         script_arg()
           .required_unless_present("help")
           .trailing_var_arg(true),
+      )
+  })
+}
+
+fn desktop_subcommand() -> Command {
+  command(
+    "desktop",
+    cstr!("Build and run desktop applications.
+
+  <p(245)>deno desktop main.tsx</>
+  <p(245)>deno desktop --hmr main.tsx</>
+  <p(245)>deno desktop --output MyApp.app main.tsx</>
+  <p(245)>deno desktop</>
+
+Compiles the given script into a desktop application using a backend for the UI
+layer. The entrypoint can be a file, or omitted (or <c>.</>) to auto-detect a
+supported framework (Next.js, Astro, etc.) in the current directory.
+
+<y>Read more:</> <c>https://docs.deno.com/go/desktop</>
+"),
+    UnstableArgsConfig::ResolutionAndRuntime,
+  )
+  .defer(|cmd| {
+    runtime_args(cmd, true, true, true)
+      .arg(check_arg(true))
+      .arg(
+        Arg::new("inspect-renderer")
+          .long("inspect-renderer")
+          .value_name("HOST_PORT")
+          .default_missing_value("127.0.0.1:0")
+          .help(
+            "Override the CEF renderer debugger listen address; defaults to an auto-allocated port",
+          )
+          .num_args(0..=1)
+          .require_equals(true)
+          .value_parser(inspect_value_parser)
+          .help_heading(DEBUGGING_HEADING),
+      )
+      .arg(
+        Arg::new("include")
+          .long("include")
+          .help(
+            cstr!("Includes an additional module or file/directory in the compiled executable.
+  <p(245)>Use this flag if a dynamically imported module or a web worker main module
+  fails to load in the executable or to embed a file or directory in the executable.
+  This flag can be passed multiple times, to include multiple additional modules.</>",
+          ))
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::FilePath)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("exclude")
+          .long("exclude")
+          .help(
+            cstr!("Excludes a file/directory in the compiled executable.
+  <p(245)>Use this flag to exclude a specific file or directory within the included files.</>",
+          ))
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::FilePath)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("output")
+          .long("output")
+          .short('o')
+          .value_parser(value_parser!(String))
+          .help(cstr!("Output path <p(245)>(e.g. MyApp.app, MyApp.dmg, MyApp.msi)</>"))
+          .value_hint(ValueHint::FilePath)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("target")
+          .long("target")
+          .help("Target OS architecture")
+          .value_parser(SUPPORTED_OS)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(no_code_cache_arg())
+      .arg(
+        Arg::new("icon")
+          .long("icon")
+          .help("Set the application icon (.ico on Windows, .icns or .png on macOS)")
+          .value_parser(value_parser!(String))
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("hmr")
+          .long("hmr")
+          .help("Run the desktop app with Hot Module Replacement enabled")
+          .action(ArgAction::SetTrue)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("backend")
+          .long("backend")
+          .help("Backend to use for the desktop app")
+          .value_parser(["webview", "cef", "raw"])
+          .default_value("cef")
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("all-targets")
+          .long("all-targets")
+          .help("Build for all supported target platforms")
+          .action(ArgAction::SetTrue)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(executable_ext_arg())
+      .arg(env_file_arg())
+      .arg(
+        // Optional: when omitted, defaults to "." so framework detection
+        // runs against the current directory (`deno desktop` ==
+        // `deno desktop .`).
+        script_arg().trailing_var_arg(true),
       )
   })
 }
@@ -3296,6 +3607,15 @@ Generate html reports from lcov:
           .long("detailed")
           .help("Output coverage report in detailed format in the terminal")
           .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("threshold")
+          .long("threshold")
+          .value_name("PERCENT")
+          .value_parser(value_parser!(u32).range(0..=100))
+          .require_equals(true)
+          .help(cstr!("Fail if coverage is below this percentage (0-100), applied to line, branch, and function coverage.
+  <p(245)>Per-metric thresholds can be set in deno.json under \"coverage\": { \"thresholds\": { ... } }. The flag takes precedence.</>")),
       )
       .arg(
         Arg::new("files")
@@ -3507,7 +3827,7 @@ Supported file types are:
   <p(245)>JavaScript, TypeScript, Markdown, JSON(C) and Jupyter Notebooks</>
 
 Supported file types which are behind corresponding unstable flags (see formatting options):
-  <p(245)>HTML, CSS, SCSS, SASS, LESS, YAML, Svelte, Vue, Astro and Angular</>
+  <p(245)>HTML, CSS, SCSS, LESS, YAML, Svelte, Vue, Astro and Angular</>
 
 Format stdin and write to stdout:
   <p(245)>cat file.ts | deno fmt -</>
@@ -3550,7 +3870,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .help("Set content type of the supplied file")
           .value_parser([
             "ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs", "md", "json", "jsonc", "css", "scss",
-            "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
+            "less", "html", "svelte", "vue", "astro", "yml", "yaml",
             "ipynb", "sql", "vto", "njk"
           ])
           .help_heading(FMT_HEADING).requires("files"),
@@ -3639,7 +3959,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       .arg(
         Arg::new("unstable-css")
           .long("unstable-css")
-          .help("Enable formatting CSS, SCSS, Sass and Less files")
+          .help("Enable formatting CSS, SCSS and Less files")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue)
           .help_heading(FMT_HEADING)
@@ -4800,6 +5120,26 @@ fn complete_available_tasks() -> Vec<CompletionCandidate> {
   }
 }
 
+/// Parses a `--shard` value of the form `<index>/<count>` (1-based index).
+fn parse_test_shard(value: &str) -> Result<(usize, usize), String> {
+  let (index, count) = value.split_once('/').ok_or_else(|| {
+    format!("expected format <index>/<count>, but got '{value}'")
+  })?;
+  let index: usize = index
+    .parse()
+    .map_err(|_| format!("invalid shard index '{index}'"))?;
+  let count: usize = count
+    .parse()
+    .map_err(|_| format!("invalid shard count '{count}'"))?;
+  if count == 0 {
+    return Err("shard count must be greater than 0".to_string());
+  }
+  if index == 0 || index > count {
+    return Err(format!("shard index must be between 1 and {count}"));
+  }
+  Ok((index, count))
+}
+
 fn test_subcommand() -> Command {
   command("test",
       cstr!("Run tests using Deno's built-in test runner.
@@ -4890,6 +5230,32 @@ or <c>**/__tests__/**</>:
           .help_heading(TEST_HEADING),
       )
       .arg(
+        Arg::new("retry")
+          .long("retry")
+          .value_name("NUMBER")
+          .help("Re-run failing tests up to NUMBER times. A test passes if any attempt passes. Tests that set their own `retry` option take precedence")
+          .value_parser(value_parser!(u32))
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("repeats")
+          .long("repeats")
+          .value_name("NUMBER")
+          .help("Run each test NUMBER additional times. Every repetition must pass. Tests that set their own `repeats` option take precedence")
+          .value_parser(value_parser!(u32))
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("shard")
+          .long("shard")
+          .value_name("INDEX/COUNT")
+          .help(cstr!("Run only the test files for shard INDEX of COUNT, e.g. --shard=2/3.
+  <p(245)>The discovered test files are sorted and split into COUNT consecutive groups; INDEX is 1-based. Useful for splitting a run across machines.</>"))
+          .require_equals(true)
+          .value_parser(parse_test_shard)
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
         Arg::new("coverage")
           .long("coverage")
           .value_name("DIR")
@@ -4908,6 +5274,16 @@ or <c>**/__tests__/**</>:
           .long("coverage-raw-data-only")
           .help("Only collect raw coverage data, without generating a report")
           .action(ArgAction::SetTrue)
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("coverage-threshold")
+          .long("coverage-threshold")
+          .value_name("PERCENT")
+          .value_parser(value_parser!(u32).range(0..=100))
+          .require_equals(true)
+          .requires("coverage")
+          .help("Fail if coverage is below this percentage (0-100). Requires --coverage")
           .help_heading(TEST_HEADING),
       )
       .arg(
@@ -6750,6 +7126,12 @@ impl CommandExt for Command {
         arg = arg.alias("sloppy-imports");
       }
 
+      // `--unsafe-proto` is a stable shorthand for `--unstable-unsafe-proto`;
+      // it enables the same behavior without being spelled as an unstable flag.
+      if feature.flag_name == "unstable-unsafe-proto" {
+        arg = arg.alias("unsafe-proto");
+      }
+
       arg = arg.long_help(long_help_val);
       cmd = cmd.arg(arg);
     }
@@ -6932,6 +7314,33 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
+fn link_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  lock_args_parse(flags, matches);
+  flags.subcommand = DenoSubcommand::Link(LinkFlags {
+    paths: matches.remove_many::<String>("paths").unwrap().collect(),
+    lockfile_only: matches.get_flag("lockfile-only"),
+  });
+  Ok(())
+}
+
+fn unlink_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  lock_args_parse(flags, matches);
+  flags.subcommand = DenoSubcommand::Unlink(UnlinkFlags {
+    names_or_paths: matches
+      .remove_many::<String>("names_or_paths")
+      .unwrap()
+      .collect(),
+    lockfile_only: matches.get_flag("lockfile-only"),
+  });
+  Ok(())
+}
+
 fn bump_version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let increment =
     matches
@@ -7082,6 +7491,7 @@ fn bundle_parse(
     inline_imports: matches.get_flag("inline-imports"),
     platform: matches.remove_one::<BundlePlatform>("platform").unwrap(),
     sourcemap: matches.remove_one::<SourceMapType>("sourcemap"),
+    declaration: matches.get_flag("declaration"),
   });
   Ok(())
 }
@@ -7211,6 +7621,68 @@ fn compile_parse(
   Ok(())
 }
 
+fn desktop_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  flags.type_check_mode = TypeCheckMode::Local;
+  runtime_args_parse(flags, matches, true, true, true)?;
+
+  if let Some(initial_cwd) = flags.initial_cwd.take() {
+    flags.initial_cwd = Some(
+      crate::util::fs::canonicalize_path(&initial_cwd)
+        .ok()
+        .unwrap_or(initial_cwd),
+    );
+  }
+
+  // The entrypoint is optional: a bare `deno desktop` defaults to "." so
+  // framework detection runs against the current directory.
+  let mut script = matches
+    .remove_many::<String>("script_arg")
+    .map(|s| s.collect::<Vec<_>>())
+    .unwrap_or_default()
+    .into_iter();
+  let source_file = script.next().unwrap_or_else(|| ".".to_string());
+  let args = script.collect();
+  let output = matches.remove_one::<String>("output");
+  let target = matches.remove_one::<String>("target");
+  let icon = matches.remove_one::<String>("icon");
+  let hmr = matches.get_flag("hmr");
+  let backend = matches.remove_one::<String>("backend");
+  let all_targets = matches.get_flag("all-targets");
+  let inspect_renderer = matches.remove_one::<SocketAddr>("inspect-renderer");
+  let include = matches
+    .remove_many::<String>("include")
+    .map(|f| f.collect::<Vec<_>>())
+    .unwrap_or_default();
+  let exclude = matches
+    .remove_many::<String>("exclude")
+    .map(|f| f.collect::<Vec<_>>())
+    .unwrap_or_default();
+  ext_arg_parse(flags, matches);
+
+  flags.code_cache_enabled = !matches.get_flag("no-code-cache");
+
+  flags.subcommand = DenoSubcommand::Desktop(DesktopFlags {
+    source_file,
+    output,
+    args,
+    target,
+    icon: icon.map(IconConfig::Single),
+    include,
+    exclude,
+    hmr,
+    backend,
+    all_targets,
+    identifier: None,
+    codesign_identity: None,
+    inspect_renderer,
+  });
+
+  Ok(())
+}
+
 fn completions_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
@@ -7310,6 +7782,7 @@ fn coverage_parse(
     CoverageType::Summary
   };
   let output = matches.remove_one::<String>("output");
+  let threshold = matches.remove_one::<u32>("threshold");
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
     files: FileFlags {
       include: files,
@@ -7319,6 +7792,7 @@ fn coverage_parse(
     include,
     exclude,
     r#type,
+    threshold,
   });
   Ok(())
 }
@@ -8364,11 +8838,15 @@ fn test_parse(
     doc,
     coverage_dir: matches.remove_one::<String>("coverage"),
     coverage_raw_data_only: matches.get_flag("coverage-raw-data-only"),
+    coverage_threshold: matches.remove_one::<u32>("coverage-threshold"),
     clean,
     fail_fast,
     files: FileFlags { include, ignore },
     filter,
     shuffle,
+    retry: matches.remove_one::<u32>("retry").unwrap_or(0),
+    repeats: matches.remove_one::<u32>("repeats").unwrap_or(0),
+    shard: matches.remove_one::<(usize, usize)>("shard"),
     permit_no_files: permit_no_files_parse(matches),
     parallel: matches.get_flag("parallel"),
     trace_leaks,
@@ -12786,12 +13264,16 @@ mod tests {
             ignore: vec![],
           },
           shuffle: None,
+          retry: 0,
+          repeats: 0,
+          shard: None,
           parallel: false,
           trace_leaks: true,
           sanitize_ops: false,
           sanitize_resources: false,
           coverage_dir: Some("cov".to_string()),
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: true,
           watch: Default::default(),
           reporter: Default::default(),
@@ -12891,6 +13373,9 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          retry: 0,
+          repeats: 0,
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -12901,6 +13386,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -12937,6 +13423,9 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          retry: 0,
+          repeats: 0,
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -12947,6 +13436,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -13077,6 +13567,9 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: Some(1),
+          retry: 0,
+          repeats: 0,
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -13087,6 +13580,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -13104,6 +13598,68 @@ mod tests {
   }
 
   #[test]
+  fn test_retry_and_repeats() {
+    let r = flags_from_vec(svec!["deno", "test", "--retry=3", "--repeats=2"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          permit_no_files: false,
+          shuffle: None,
+          retry: 3,
+          repeats: 2,
+          shard: None,
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
+          parallel: false,
+          trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
+          coverage_dir: None,
+          coverage_raw_data_only: false,
+          coverage_threshold: None,
+          clean: false,
+          watch: Default::default(),
+          reporter: Default::default(),
+          junit_path: None,
+          hide_stacktraces: false,
+        }),
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_shard() {
+    let r = flags_from_vec(svec!["deno", "test", "--shard=2/3"]);
+    let flags = r.unwrap();
+    assert!(matches!(
+      flags.subcommand,
+      DenoSubcommand::Test(TestFlags {
+        shard: Some((2, 3)),
+        ..
+      })
+    ));
+
+    // Invalid shard values are rejected at parse time.
+    assert!(flags_from_vec(svec!["deno", "test", "--shard=3/2"]).is_err());
+    assert!(flags_from_vec(svec!["deno", "test", "--shard=0/2"]).is_err());
+    assert!(flags_from_vec(svec!["deno", "test", "--shard=1/0"]).is_err());
+    assert!(flags_from_vec(svec!["deno", "test", "--shard=foo"]).is_err());
+  }
+
+  #[test]
   fn test_watch() {
     let r = flags_from_vec(svec!["deno", "test", "--watch"]);
     assert_eq!(
@@ -13116,6 +13672,9 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          retry: 0,
+          repeats: 0,
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -13126,6 +13685,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -13154,6 +13714,9 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          retry: 0,
+          repeats: 0,
+          shard: None,
           files: FileFlags {
             include: vec!["./".to_string()],
             ignore: vec![],
@@ -13164,6 +13727,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -13194,6 +13758,9 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          retry: 0,
+          repeats: 0,
+          shard: None,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -13204,6 +13771,7 @@ mod tests {
           sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
+          coverage_threshold: None,
           clean: false,
           watch: Some(WatchFlagsWithPaths {
             hmr: false,
@@ -14063,6 +14631,36 @@ mod tests {
   }
 
   #[test]
+  fn coverage_with_threshold() {
+    let r =
+      flags_from_vec(svec!["deno", "coverage", "--threshold=80", "foo.json"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Coverage(CoverageFlags {
+          files: FileFlags {
+            include: vec!["foo.json".to_string()],
+            ignore: vec![],
+          },
+          include: vec![r"^file:".to_string()],
+          exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
+          threshold: Some(80),
+          ..CoverageFlags::default()
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn coverage_threshold_out_of_range() {
+    // Percentages above 100 are rejected by the value parser.
+    let r =
+      flags_from_vec(svec!["deno", "coverage", "--threshold=150", "foo.json"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
   fn coverage_with_lcov_and_out_file() {
     let r = flags_from_vec(svec![
       "deno",
@@ -14082,6 +14680,7 @@ mod tests {
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           r#type: CoverageType::Lcov,
+          threshold: None,
           output: Some(String::from("foo.lcov")),
         }),
         ..Flags::default()

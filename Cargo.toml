@@ -6,6 +6,7 @@ members = [
   "cli",
   "cli/lib",
   "cli/rt",
+  "cli/rt_desktop",
   "cli/snapshot",
   "ext/bundle",
   "ext/cache",
@@ -91,9 +92,9 @@ repository = "https://github.com/denoland/deno"
 [workspace.dependencies]
 deno_ast = { version = "=0.53.2", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
-deno_doc = "=0.199.0"
+deno_doc = "=0.200.0"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.108.4", default-features = false }
+deno_graph = { version = "=0.109.0", default-features = false }
 deno_lint = "=0.84.1"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
@@ -103,7 +104,7 @@ deno_task_shell = "=0.33.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-v8 = { version = "149.3.0", default-features = false, features = ["simdutf"] }
+v8 = { version = "149.4.0", default-features = false, features = ["simdutf"] }
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -178,12 +179,15 @@ deno_tunnel = "0.8.1"
 # widely used libraries
 anyhow = "1.0.57"
 arc-swap = "1.7"
+argon2 = { version = "0.6.0-rc.8", default-features = false, features = ["alloc"] }
 async-compression = "0.4"
 async-once-cell = "0.5.4"
 async-stream = "0.3"
 async-trait = "0.1.73"
 aws-lc-rs = { version = "1.16.3" }
 aws-lc-sys = { version = "0.40.0", features = ["prebuilt-nasm"] }
+backhand = { version = "0.25.1", default-features = false, features = ["xz"] }
+base32 = "=0.5.1"
 base64 = "0.22.1"
 bencher = "0.1"
 bincode = "1"
@@ -267,6 +271,9 @@ prettyplease = "0.2.31"
 proc-macro2 = "1.0"
 proptest = "1"
 prost = "0.13"
+prost-build = "0.13"
+qbsdiff = "1.4"
+quick-junit = "0.3.5"
 quinn = { version = "0.11.8", default-features = false }
 rand = "=0.8.5"
 rayon = "1.11.0"
@@ -355,7 +362,10 @@ dprint-plugin-typescript = "=0.96.1"
 dunce = "1.0.5"
 env_logger = { version = "=0.11.6", default-features = false, features = ["regex"] }
 imara-diff = "=0.2.0"
-libsui = "0.12.6"
+lax-css = "=0.2.4"
+lax-markup = "=0.2.5"
+lax-sql = "=0.2.1"
+libsui = "=0.15.0"
 malva = "=0.15.2"
 markup_fmt = "=0.27.3"
 object = { version = "0.36.3", default-features = false, features = ["read_core", "pe"] }
@@ -363,7 +373,6 @@ open = "5.0.1"
 pathdiff = "0.2.1"
 pretty_yaml = "=0.5.0"
 rustc-hash = "2.1.1"
-sqlformat = "=0.3.5"
 strsim = "0.11.1"
 text-size = "=1.1.1"
 text_lines = "=0.6.0"
@@ -390,6 +399,7 @@ ed25519-dalek = "2.1.1"
 ed448-goldilocks = "0.14.0-pre.10"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 fips203 = "0.4.3"
+fips205 = "0.4.1"
 hkdf = "0.12.3"
 hmac = "0.12.1"
 k256 = { version = "0.13.1", features = ["ecdh", "jwk", "pem"] }
@@ -413,6 +423,7 @@ signature = "2.1"
 sm3 = "0.4.2"
 spki = "0.7.2"
 subtle = "2.6.1"
+tiny-keccak = "2.0.2"
 x25519-dalek = "2.0.0"
 x509-parser = "0.15.0"
 

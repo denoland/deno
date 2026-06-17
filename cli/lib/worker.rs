@@ -288,6 +288,7 @@ pub struct LibMainWorkerOptions {
   pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub close_on_idle: bool,
   pub maybe_initial_cwd: Option<Url>,
 }
 
@@ -728,7 +729,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
         otel_config: shared.options.otel_config.clone(),
-        close_on_idle: true,
+        close_on_idle: shared.options.close_on_idle,
       },
       extensions: custom_extensions,
       startup_snapshot: shared.options.startup_snapshot,

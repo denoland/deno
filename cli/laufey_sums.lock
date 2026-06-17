@@ -1,0 +1,31 @@
+# Pinned SHA-256 digests for Laufey backend archives.
+#
+# This file is the trust anchor for `deno desktop` backend downloads. Each
+# entry pins the digest of an archive published at:
+#   https://github.com/littledivy/laufey/releases/download/v<LAUFEY_VERSION>/<file>
+# `LAUFEY_VERSION` comes from the workspace `Cargo.lock` (the `laufey` crate).
+# When that version bumps, regenerate this file from the upstream
+# `SHA256SUMS` and verify the digests against the release out-of-band before
+# committing — this is what removes the TOFU on the unsigned SHA256SUMS.
+#
+# Format: GNU `sha256sum` style, one `<hex>  <filename>` per line.
+# A `# version: vX.Y.Z` directive (optional) is matched against LAUFEY_VERSION
+# at build time to guard against forgetting to refresh this file.
+#
+# version: v0.3.2
+
+08ca9afbb017d5f3fcb7f610e0bb4f12c8721baaa65122740ccf05e6593f866b  laufey-cef-aarch64-apple-darwin.tar.gz
+30f4062e97060aca984b28039dcc5b7fd7291366a940d0d574fbfc48baf928c7  laufey-cef-aarch64-unknown-linux-gnu.tar.gz
+e82769d843ef1c706344acde3e95a36f9c069c747d502a40b42e9b28f9610ea0  laufey-cef-x86_64-apple-darwin.tar.gz
+d7939b35c401a4ec12ca285927a6dde6e071d4e43b5aa9fa0e53caed65b33a8a  laufey-cef-x86_64-unknown-linux-gnu.tar.gz
+2308760642c6d69ae8eb86f31648a09449d141cc9394a0d24cadc7401c743532  laufey-webview-aarch64-apple-darwin.tar.gz
+73d1ed08feba2c1bfa36c0bc669d2480440e251f3c959afa32339a9e00c626d3  laufey-webview-aarch64-unknown-linux-gnu.tar.gz
+770c42352d1164c9c9600e8599059bae237c4b61cbc3802681a3fa84aaf11568  laufey-webview-x86_64-apple-darwin.tar.gz
+59dfda4b9bb36f2fbbfd0fd4aed91fac55c706f03fdbd946821372199cca9616  laufey-webview-x86_64-unknown-linux-gnu.tar.gz
+3b02ee34e7864979db7c7f0d98fd98c3f3237b4f5d80bd8b2765a190341cbe5a  laufey-winit-aarch64-apple-darwin.tar.gz
+fa120e433cd5141b69c4ef314b3d8cbc915471bc71402c104f217507c9dcab4e  laufey-winit-aarch64-unknown-linux-gnu.tar.gz
+fd88cd7db2763c82a2c49b048f0b467995c5f598586344ab6ecc852b4f1ddb92  laufey-winit-x86_64-apple-darwin.tar.gz
+4c0f091b89d8a1c98a560062cd342f43a7943b356d23e2d8f0030bcf0d79c35c  laufey-winit-x86_64-unknown-linux-gnu.tar.gz
+f89abe11afffe588cd9c6d367e217e211e1c8640260ccb2e7637f9eb4a0aa833  laufey-cef-x86_64-pc-windows-msvc.zip
+c8fbfd17f98ad37bbc7567121a24beff2dbee374fdf5f5395b29fc7a3b5c7059  laufey-webview-x86_64-pc-windows-msvc.zip
+899ab6e9dd6396e5fe7fb5f5860b540ed0092d0010e53ce7308a5bfff2bb4c1b  laufey-winit-x86_64-pc-windows-msvc.zip
