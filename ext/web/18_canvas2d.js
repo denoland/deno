@@ -6,6 +6,7 @@ const {
   op_fontdb_add,
   op_fontdb_load,
   op_fontdb_remove,
+  op_fontdb_unload,
   op_parse_css_font_query,
   OffscreenCanvasRenderingContext2D,
   TextMetrics,
@@ -29,6 +30,7 @@ const {
   PromiseResolve,
   RegExpPrototypeExec,
   SafeArrayIterator,
+  SafeFinalizationRegistry,
   SafePromiseAll,
   SafeRegExp,
   SafeSet,
@@ -203,6 +205,10 @@ const kRemoveFromSystem = Symbol("kRemoveFromSystem");
 const kFireBatchResult = Symbol("kFireBatchResult");
 const kUnicodeRangeCoversText = Symbol("kUnicodeRangeCoversText");
 const illegalConstructorKey = Symbol("illegalConstructorKey");
+
+const FONT_HANDLE_REGISTRY = new SafeFinalizationRegistry((handle) => {
+  op_fontdb_unload(handle);
+});
 
 // Generic font families are always considered available without a font file,
 // and are excluded from descriptor matching in check() / load().
@@ -823,6 +829,7 @@ class FontFace {
         const { handle, weight, style, stretch, unicodeCoverage } =
           await op_fontdb_load(this.#bytes);
         this.#handle = handle;
+        FONT_HANDLE_REGISTRY.register(this, handle, this);
         // Apply font-file metadata only for descriptors not set by the caller.
         // User-specified descriptors always win.
         if (!this.#weightUserSet) this.#weight = String(weight);
