@@ -13,8 +13,7 @@ const {
   op_otel_metric_wait_to_observe,
   op_otel_span_add_link,
   op_otel_span_attribute1,
-  op_otel_span_attribute2,
-  op_otel_span_attribute3,
+  op_otel_span_attributes,
   op_otel_span_update_name,
   OtelMeter,
   OtelTracer,
@@ -34,7 +33,6 @@ const {
   Error,
   NumberPrototypeToString,
   ObjectDefineProperty,
-  ObjectEntries,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ObjectValues,
@@ -240,48 +238,6 @@ enum SpanAttributesLocation {
   LAST_LINK = 2,
 }
 
-function spanAddAttributes(
-  span: OtelSpan,
-  attributesLocation: SpanAttributesLocation,
-  attributes: Attributes,
-) {
-  const attributeKvs = ObjectEntries(attributes);
-  let i = 0;
-  while (i < attributeKvs.length) {
-    if (i + 2 < attributeKvs.length) {
-      op_otel_span_attribute3(
-        span,
-        attributesLocation,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
-        attributeKvs[i + 1][0],
-        attributeKvs[i + 1][1],
-        attributeKvs[i + 2][0],
-        attributeKvs[i + 2][1],
-      );
-      i += 3;
-    } else if (i + 1 < attributeKvs.length) {
-      op_otel_span_attribute2(
-        span,
-        attributesLocation,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
-        attributeKvs[i + 1][0],
-        attributeKvs[i + 1][1],
-      );
-      i += 2;
-    } else {
-      op_otel_span_attribute1(
-        span,
-        attributesLocation,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
-      );
-      i += 1;
-    }
-  }
-}
-
 interface TracerOptions {
   schemaUrl?: string;
 }
@@ -455,7 +411,7 @@ class Span {
       startTimeMs ?? NaN,
     );
     if (attributes) {
-      spanAddAttributes(
+      op_otel_span_attributes(
         this.#otelSpan,
         SpanAttributesLocation.LAST_EVENT,
         attributes,
@@ -475,7 +431,7 @@ class Span {
       link.droppedAttributesCount ?? 0,
     );
     if (link.attributes) {
-      spanAddAttributes(
+      op_otel_span_attributes(
         this.#otelSpan,
         SpanAttributesLocation.LAST_LINK,
         link.attributes,
@@ -542,7 +498,11 @@ class Span {
 
   setAttributes(attributes: Attributes): this {
     if (!this.#otelSpan) return this;
-    spanAddAttributes(this.#otelSpan, SpanAttributesLocation.SELF, attributes);
+    op_otel_span_attributes(
+      this.#otelSpan,
+      SpanAttributesLocation.SELF,
+      attributes,
+    );
     return this;
   }
 
