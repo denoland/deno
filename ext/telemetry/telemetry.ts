@@ -18,36 +18,27 @@ const {
   op_otel_metric_record2,
   op_otel_metric_record3,
   op_otel_metric_wait_to_observe,
-  op_otel_baggage_parse,
-  op_otel_baggage_serialize,
-  op_otel_parse_traceparent,
-  op_otel_span_context_valid,
   op_otel_span_add_link,
   op_otel_span_attribute1,
   op_otel_span_attribute2,
   op_otel_span_attribute3,
   op_otel_span_update_name,
-  OtelBaggage,
   OtelMeter,
   OtelTracer,
-  OtelTraceState,
+  OtelW3CTraceContextPropagator,
+  OtelW3CBaggagePropagator,
+  OtelCompositePropagator,
 } = core.ops;
 const { Console } = core.loadExtScript("ext:deno_web/01_console.js");
 
 const {
-  ArrayFrom,
   ArrayIsArray,
-  ArrayPrototypeConcat,
   ArrayPrototypeFilter,
-  ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypePush,
-  ArrayPrototypeReduce,
-  ArrayPrototypeSlice,
   DatePrototype,
   DatePrototypeGetTime,
   Error,
-  Number,
   NumberPrototypeToString,
   ObjectDefineProperty,
   ObjectEntries,
@@ -80,24 +71,13 @@ enum SpanKind {
   CONSUMER = 4,
 }
 
+// The `TraceState` object is Rust-backed (see ext/telemetry/propagation.rs);
+// this interface only describes the shape attached to a `SpanContext`.
 interface TraceState {
   set(key: string, value: string): TraceState;
   unset(key: string): TraceState;
   get(key: string): string | undefined;
   serialize(): string;
-}
-
-// Rust-backed `TraceState` implementation (see ext/telemetry/propagation.rs).
-// Parsing, validation, member storage, clone/set/unset semantics and
-// serialization all live in Rust; this is just the cppgc object's type.
-interface OtelTraceState extends TraceState {
-  __key: "traceState";
-
-  // deno-lint-ignore no-misused-new
-  new (rawTraceState?: string): OtelTraceState;
-
-  set(key: string, value: string): OtelTraceState;
-  unset(key: string): OtelTraceState;
 }
 
 interface SpanContext {
@@ -1249,13 +1229,11 @@ function otelLog(message: string, level: number) {
  * limitations under the License.
  */
 
-// The trace-context version we emit when injecting `traceparent`. Parsing,
-// validation, the `TraceState` object and trace-state/baggage (de)serialization
-// now live in Rust (see ext/telemetry/propagation.rs).
-const VERSION = "00";
-
-const TRACE_PARENT_HEADER = "traceparent";
-const TRACE_STATE_HEADER = "tracestate";
+// The W3C propagators, the `TraceState`/`Baggage` objects and all
+// trace-context / baggage parsing, validation and (de)serialization now live in
+// Rust (see ext/telemetry/propagation.rs). `NonRecordingSpan` (an inert span
+// shell) and `baggageEntryMetadataFromString` remain here because the Rust
+// propagators construct them via these JS helpers on extraction.
 const INVALID_TRACEID = "00000000000000000000000000000000";
 const INVALID_SPANID = "0000000000000000";
 const INVALID_SPAN_CONTEXT: SpanContext = {
@@ -1263,8 +1241,6 @@ const INVALID_SPAN_CONTEXT: SpanContext = {
   spanId: INVALID_SPANID,
   traceFlags: 0,
 };
-const BAGGAGE_ITEMS_SEPARATOR = ",";
-const BAGGAGE_HEADER = "baggage";
 
 class NonRecordingSpan implements Span {
   constructor(
@@ -1319,13 +1295,6 @@ const otelPropagators = {
   none: 2,
 };
 
-function parseTraceParent(traceParent: string): SpanContext | null {
-  // Parsing and validation (including the version/future-version rules) is
-  // performed in Rust. The op returns `{ traceId, spanId, traceFlags }` or
-  // null.
-  return op_otel_parse_traceparent(traceParent);
-}
-
 // deno-lint-ignore no-explicit-any
 interface TextMapSetter<Carrier = any> {
   set(carrier: Carrier, key: string, value: string): void;
@@ -1350,75 +1319,6 @@ interface TextMapPropagator<Carrier = any> {
 interface TextMapGetter<Carrier = any> {
   keys(carrier: Carrier): string[];
   get(carrier: Carrier, key: string): undefined | string | string[];
-}
-
-function isTracingSuppressed(context: Context): boolean {
-  return context.getValue(
-    SymbolFor("OpenTelemetry SDK Context Key SUPPRESS_TRACING"),
-  ) === true;
-}
-
-function isSpanContextValid(spanContext: SpanContext): boolean {
-  // Trace id / span id validation is performed in Rust.
-  return op_otel_span_context_valid(spanContext.traceId, spanContext.spanId);
-}
-
-class W3CTraceContextPropagator implements TextMapPropagator {
-  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
-    const spanContext = (context.getValue(SPAN_KEY) as Span | undefined)
-      ?.spanContext();
-    if (
-      !spanContext ||
-      isTracingSuppressed(context) ||
-      !isSpanContextValid(spanContext)
-    ) {
-      return;
-    }
-
-    const traceParent =
-      `${VERSION}-${spanContext.traceId}-${spanContext.spanId}-0${
-        NumberPrototypeToString(Number(spanContext.traceFlags || 0), 16)
-      }`;
-
-    setter.set(carrier, TRACE_PARENT_HEADER, traceParent);
-    if (spanContext.traceState) {
-      setter.set(
-        carrier,
-        TRACE_STATE_HEADER,
-        spanContext.traceState.serialize(),
-      );
-    }
-  }
-
-  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
-    const traceParentHeader = getter.get(carrier, TRACE_PARENT_HEADER);
-    if (!traceParentHeader) return context;
-    const traceParent = ArrayIsArray(traceParentHeader)
-      ? traceParentHeader[0]
-      : traceParentHeader;
-    if (typeof traceParent !== "string") return context;
-    const spanContext = parseTraceParent(traceParent);
-    if (!spanContext) return context;
-
-    spanContext.isRemote = true;
-
-    const traceStateHeader = getter.get(carrier, TRACE_STATE_HEADER);
-    if (traceStateHeader) {
-      // If more than one `tracestate` header is found, we merge them into a
-      // single header.
-      const state = ArrayIsArray(traceStateHeader)
-        ? ArrayPrototypeJoin(traceStateHeader, ",")
-        : traceStateHeader;
-      spanContext.traceState = new OtelTraceState(
-        typeof state === "string" ? state : undefined,
-      );
-    }
-    return context.setValue(SPAN_KEY, new NonRecordingSpan(spanContext));
-  }
-
-  fields(): string[] {
-    return [TRACE_PARENT_HEADER, TRACE_STATE_HEADER];
-  }
 }
 
 const baggageEntryMetadataSymbol = SymbolFor("BaggageEntryMetadata");
@@ -1456,129 +1356,16 @@ function baggageEntryMetadataFromString(
   };
 }
 
-// Rust-backed `Baggage` implementation (see ext/telemetry/propagation.rs).
-// Entry storage, the immutable set/remove/clear semantics and the entry copies
-// returned by `getEntry`/`getAllEntries` all live in Rust; the metadata value
-// is held (and traced) as-is so its identity and `toString()` are preserved.
-// This is just the cppgc object's type.
-interface OtelBaggage extends Baggage {
-  // deno-lint-ignore no-misused-new
-  new (entries?: [string, BaggageEntry][]): OtelBaggage;
-
-  setEntry(key: string, entry: BaggageEntry): OtelBaggage;
-  removeEntry(key: string): OtelBaggage;
-  removeEntries(...key: string[]): OtelBaggage;
-  clear(): OtelBaggage;
-}
-
-const BAGGAGE_KEY = SymbolFor("OpenTelemetry Baggage Key");
-
-class W3CBaggagePropagator implements TextMapPropagator {
-  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
-    const baggage = context.getValue(BAGGAGE_KEY) as
-      | Baggage
-      | undefined;
-    if (!baggage || isTracingSuppressed(context)) return;
-    // Percent-encoding, per-pair / total length limits and the maximum number
-    // of members are all enforced by the Rust op.
-    const entries = ArrayPrototypeMap(
-      baggage.getAllEntries(),
-      (baggageEntry) => ({
-        key: baggageEntry[0],
-        value: baggageEntry[1].value,
-        metadata: baggageEntry[1].metadata !== undefined
-          // deno-lint-ignore prefer-primordials
-          ? baggageEntry[1].metadata.toString()
-          : undefined,
-      }),
-    );
-    const headerValue = op_otel_baggage_serialize(entries);
-    if (headerValue.length > 0) {
-      setter.set(carrier, BAGGAGE_HEADER, headerValue);
-    }
-  }
-
-  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
-    const headerValue = getter.get(carrier, BAGGAGE_HEADER);
-    const baggageString = ArrayIsArray(headerValue)
-      ? ArrayPrototypeJoin(headerValue, BAGGAGE_ITEMS_SEPARATOR)
-      : headerValue;
-    if (!baggageString) return context;
-    // Parsing, percent-decoding and de-duplication is performed in Rust.
-    const entries = op_otel_baggage_parse(baggageString);
-    if (entries.length === 0) return context;
-    // Build `[key, { value, metadata? }]` pairs (the same shape
-    // `getAllEntries` returns) for the Rust-backed baggage constructor.
-    const pairs: [string, BaggageEntry][] = [];
-    for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i];
-      const baggageEntry: BaggageEntry = { value: entry.value };
-      if (entry.metadata != null) {
-        baggageEntry.metadata = baggageEntryMetadataFromString(entry.metadata);
-      }
-      ArrayPrototypePush(pairs, [entry.key, baggageEntry]);
-    }
-    return context.setValue(BAGGAGE_KEY, new OtelBaggage(pairs));
-  }
-
-  fields(): string[] {
-    return [BAGGAGE_HEADER];
-  }
-}
-
-class CompositePropagator implements TextMapPropagator {
-  #propagators: TextMapPropagator[];
-  #fields: string[];
-
-  constructor(propagators: TextMapPropagator[]) {
-    this.#propagators = propagators;
-    this.#fields = ArrayFrom(
-      new SafeSet(
-        ArrayPrototypeReduce(
-          ArrayPrototypeMap(
-            this.#propagators,
-            (p) => p.fields(),
-          ),
-          (x, y) => ArrayPrototypeConcat(x, y),
-          [],
-        ),
-      ),
-    );
-  }
-
-  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
-    for (const propagator of new SafeArrayIterator(this.#propagators)) {
-      try {
-        propagator.inject(context, carrier, setter);
-      } catch (err) {
-        // deno-lint-ignore no-console
-        console.warn(
-          `Failed to inject with ${propagator.constructor.name}.`,
-          err,
-        );
-      }
-    }
-  }
-
-  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
-    return ArrayPrototypeReduce(this.#propagators, (ctx, propagator) => {
-      try {
-        return propagator.extract(ctx, carrier, getter);
-      } catch (err) {
-        // deno-lint-ignore no-console
-        console.warn(
-          `Failed to extract with ${propagator.constructor.name}.`,
-          err,
-        );
-      }
-      return ctx;
-    }, context);
-  }
-
-  fields(): string[] {
-    return ArrayPrototypeSlice(this.#fields);
-  }
-}
+// Rust-backed W3C propagators (see ext/telemetry/propagation.rs). The
+// inject/extract/fields logic and all getter/setter callback invocation now run
+// in Rust; these JS names are aliases to the Rust cppgc constructors, kept for
+// compatibility. The trace-context propagator is constructed with the
+// `NonRecordingSpan` constructor and the baggage propagator with
+// `baggageEntryMetadataFromString`, because the Rust code creates those objects
+// (on extraction) through these JS helpers.
+const W3CTraceContextPropagator = OtelW3CTraceContextPropagator;
+const W3CBaggagePropagator = OtelW3CBaggagePropagator;
+const CompositePropagator = OtelCompositePropagator;
 
 let builtinTracerCache: Tracer;
 
@@ -1626,9 +1413,9 @@ function bootstrap(
     (propagator) => {
       switch (propagator) {
         case otelPropagators.traceContext:
-          return new W3CTraceContextPropagator();
+          return new W3CTraceContextPropagator(NonRecordingSpan);
         case otelPropagators.baggage:
-          return new W3CBaggagePropagator();
+          return new W3CBaggagePropagator(baggageEntryMetadataFromString);
       }
     },
   );
