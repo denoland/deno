@@ -38,6 +38,8 @@ import {
   op_require_stat,
   op_require_try_self,
   op_stream_base_register_state,
+  op_v8_start_coverage,
+  op_v8_take_coverage,
 } from "ext:core/ops";
 const {
   ArrayIsArray,
@@ -3329,6 +3331,14 @@ function initialize(args) {
     if (op_node_has_child_ipc_pipe()) {
       core.loadExtScript("ext:deno_node/child_process.ts");
       internals.__setupChildProcessIpcChannel();
+    }
+    // Start V8 coverage collection if NODE_V8_COVERAGE is set. Like Node.js,
+    // write a final coverage snapshot automatically at process exit, so
+    // tools like c8 work without an explicit `v8.takeCoverage()` call.
+    if (op_v8_start_coverage()) {
+      nativeModuleExports["process"].on("exit", () => {
+        op_v8_take_coverage();
+      });
     }
     if (nodeClusterUniqueId) {
       core.loadExtScript("ext:deno_node/cluster.ts");
