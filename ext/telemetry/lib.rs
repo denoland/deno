@@ -127,9 +127,11 @@ deno_core::extension!(
     op_otel_span_record_exception,
     op_otel_span_update_name,
     op_otel_metric_record,
-    op_otel_metric_observable_record,
     op_otel_metric_wait_to_observe,
     op_otel_metric_observation_done,
+    op_otel_metric_add_batch_callback,
+    op_otel_metric_remove_batch_callback,
+    op_otel_metric_run_observations,
   ],
   objects = [
     OtelTracer,
@@ -140,6 +142,9 @@ deno_core::extension!(
     OtelW3CTraceContextPropagator,
     OtelW3CBaggagePropagator,
     OtelCompositePropagator,
+    OtelObservable,
+    OtelObservableResult,
+    OtelBatchObservableResult,
   ],
   lazy_loaded_js = ["telemetry.ts", "util.ts"],
 );
@@ -3159,23 +3164,482 @@ fn op_otel_metric_record(
   }
 }
 
-#[op2(fast)]
-fn op_otel_metric_observable_record(
+// === Observable metric callbacks ===========================================
+//
+// `Observable`, `ObservableResult` and `BatchObservableResult` (previously JS
+// classes in `telemetry.ts`) are Rust-backed cppgc objects. The per-observable
+// and batch callback registries, the `observe()` recording logic and the
+// callback-invocation loop body now live in Rust. Only the async driver loop
+// (`startObserving` in `telemetry.ts`) stays in JS, because it awaits the
+// promises returned by user callbacks via the existing
+// `op_otel_metric_wait_to_observe` async op.
+
+type ObservableData = Arc<Mutex<HashMap<Vec<KeyValue>, f64>>>;
+
+static OBSERVABLE_RESULT_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_observable_result_id() -> u64 {
+  OBSERVABLE_RESULT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The "observable counters can only be incremented" rule from the JS
+/// `ObservableResult.observe`. Kept as a free function so it can be unit tested
+/// and shared between the individual and batch observe paths.
+fn check_observable_counter(
+  is_regular_counter: bool,
+  value: f64,
+) -> Result<(), JsErrorBox> {
+  if is_regular_counter && value < 0.0 {
+    return Err(JsErrorBox::generic(
+      "Observable counters can only be incremented",
+    ));
+  }
+  Ok(())
+}
+
+/// Extract the shared data map from an `Instrument` cppgc object, returning
+/// `None` for a null instrument (metrics disabled) or a non-observable one.
+fn observable_data_share(
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
-  value: f64,
-  attributes: v8::Local<'_, v8::Value>,
+) -> Option<ObservableData> {
+  let instrument =
+    deno_core::_ops::try_unwrap_cppgc_object::<Instrument>(scope, instrument)?;
+  match &*instrument {
+    Instrument::Observable(data_share) => Some(data_share.clone()),
+    _ => None,
+  }
+}
+
+/// Rust-backed `ObservableResult` — the object passed to an individual
+/// observable callback. Holds a clone of the underlying instrument's shared
+/// data map so `observe` records directly, without a separate op.
+pub struct OtelObservableResult {
+  id: u64,
+  data_share: Option<ObservableData>,
+  is_regular_counter: bool,
+}
+
+// SAFETY: holds no traced v8 references.
+unsafe impl GarbageCollected for OtelObservableResult {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelObservableResult"
+  }
+}
+
+#[op2]
+impl OtelObservableResult {
+  #[constructor]
+  #[cppgc]
+  fn new(
+    scope: &mut v8::PinScope<'_, '_>,
+    instrument: v8::Local<'_, v8::Value>,
+    is_regular_counter: bool,
+  ) -> OtelObservableResult {
+    OtelObservableResult {
+      id: next_observable_result_id(),
+      data_share: observable_data_share(scope, instrument),
+      is_regular_counter,
+    }
+  }
+
+  #[fast]
+  fn observe(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: f64,
+    attributes: v8::Local<'_, v8::Value>,
+  ) -> Result<(), JsErrorBox> {
+    check_observable_counter(self.is_regular_counter, value)?;
+    if let Some(data_share) = &self.data_share {
+      let attributes = metric_attributes_from_value(scope, attributes);
+      data_share.lock().unwrap().insert(attributes, value);
+    }
+    Ok(())
+  }
+}
+
+/// Rust-backed `Observable`. Wraps its `ObservableResult` (kept as a traced
+/// reference so it can be handed to callbacks) and registers / removes the
+/// per-observable callbacks.
+pub struct OtelObservable {
+  result: v8::TracedReference<v8::Value>,
+  // Cached from the wrapped `OtelObservableResult` so the batch machinery can
+  // identify this observable and record into it without re-entering JS.
+  result_id: u64,
+  data_share: Option<ObservableData>,
+  is_regular_counter: bool,
+}
+
+// SAFETY: the wrapped `ObservableResult` reference is traced.
+unsafe impl GarbageCollected for OtelObservable {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    visitor.trace(&self.result);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelObservable"
+  }
+}
+
+#[op2]
+impl OtelObservable {
+  #[constructor]
+  #[cppgc]
+  fn new(
+    scope: &mut v8::PinScope<'_, '_>,
+    result: v8::Local<'_, v8::Value>,
+  ) -> OtelObservable {
+    let (result_id, data_share, is_regular_counter) =
+      match deno_core::_ops::try_unwrap_cppgc_object::<OtelObservableResult>(
+        &mut *scope,
+        result,
+      ) {
+        Some(r) => (r.id, r.data_share.clone(), r.is_regular_counter),
+        None => (0, None, false),
+      };
+    OtelObservable {
+      result: v8::TracedReference::new(scope, result),
+      result_id,
+      data_share,
+      is_regular_counter,
+    }
+  }
+
+  #[fast]
+  fn add_callback(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    state: &mut OpState,
+    callback: v8::Local<'_, v8::Value>,
+  ) {
+    let Ok(callback) = v8::Local::<v8::Function>::try_from(callback) else {
+      return;
+    };
+    let Some(result_local) = self.result.get(scope) else {
+      return;
+    };
+    let callback_val: v8::Local<v8::Value> = callback.into();
+    let result_id = self.result_id;
+    let registry = metric_callbacks(state);
+    if let Some(entry) = registry
+      .individual
+      .iter_mut()
+      .find(|e| e.result_id == result_id)
+    {
+      // `Set` semantics: ignore a callback that is already registered.
+      let already = entry.callbacks.iter().any(|c| {
+        let existing: v8::Local<v8::Value> = v8::Local::new(scope, c).into();
+        existing.strict_equals(callback_val)
+      });
+      if !already {
+        entry.callbacks.push(v8::Global::new(scope, callback));
+      }
+    } else {
+      registry.individual.push(IndividualEntry {
+        result_id,
+        result: v8::Global::new(scope, result_local),
+        callbacks: vec![v8::Global::new(scope, callback)],
+      });
+    }
+  }
+
+  #[fast]
+  fn remove_callback(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    state: &mut OpState,
+    callback: v8::Local<'_, v8::Value>,
+  ) {
+    let Ok(callback) = v8::Local::<v8::Function>::try_from(callback) else {
+      return;
+    };
+    let callback_val: v8::Local<v8::Value> = callback.into();
+    let result_id = self.result_id;
+    let Some(registry) = state.try_borrow_mut::<MetricCallbacks>() else {
+      return;
+    };
+    if let Some(pos) = registry
+      .individual
+      .iter()
+      .position(|e| e.result_id == result_id)
+    {
+      let entry = &mut registry.individual[pos];
+      entry.callbacks.retain(|c| {
+        let existing: v8::Local<v8::Value> = v8::Local::new(scope, c).into();
+        !existing.strict_equals(callback_val)
+      });
+      if entry.callbacks.is_empty() {
+        registry.individual.remove(pos);
+      }
+    }
+  }
+}
+
+/// A single observable referenced by a batch callback. The observe data is
+/// copied from the `OtelObservable` so `BatchObservableResult.observe` can
+/// record without re-entering JS.
+struct BatchMember {
+  result_id: u64,
+  data_share: Option<ObservableData>,
+  is_regular_counter: bool,
+}
+
+/// Rust-backed `BatchObservableResult` — the object passed to a batch callback.
+/// `observe(metric, ...)` only records for observables that were registered
+/// with this batch (the JS `WeakSet` membership check).
+pub struct OtelBatchObservableResult {
+  members: Vec<BatchMember>,
+}
+
+// SAFETY: holds no traced v8 references.
+unsafe impl GarbageCollected for OtelBatchObservableResult {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelBatchObservableResult"
+  }
+}
+
+#[op2]
+impl OtelBatchObservableResult {
+  #[constructor]
+  #[cppgc]
+  fn new(
+    scope: &mut v8::PinScope<'_, '_>,
+    observables: v8::Local<'_, v8::Value>,
+  ) -> OtelBatchObservableResult {
+    let mut members = Vec::new();
+    if let Ok(arr) = v8::Local::<v8::Array>::try_from(observables) {
+      for i in 0..arr.length() {
+        let Some(observable) = arr.get_index(scope, i) else {
+          continue;
+        };
+        if let Some(observable) = deno_core::_ops::try_unwrap_cppgc_object::<
+          OtelObservable,
+        >(&mut *scope, observable)
+        {
+          members.push(BatchMember {
+            result_id: observable.result_id,
+            data_share: observable.data_share.clone(),
+            is_regular_counter: observable.is_regular_counter,
+          });
+        }
+      }
+    }
+    OtelBatchObservableResult { members }
+  }
+
+  #[fast]
+  fn observe(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    metric: v8::Local<'_, v8::Value>,
+    value: f64,
+    attributes: v8::Local<'_, v8::Value>,
+  ) -> Result<(), JsErrorBox> {
+    let result_id = {
+      let Some(observable) = deno_core::_ops::try_unwrap_cppgc_object::<
+        OtelObservable,
+      >(&mut *scope, metric) else {
+        return Ok(());
+      };
+      observable.result_id
+    };
+    // Membership check: ignore observables that are not part of this batch.
+    let Some(member) = self.members.iter().find(|m| m.result_id == result_id)
+    else {
+      return Ok(());
+    };
+    check_observable_counter(member.is_regular_counter, value)?;
+    if let Some(data_share) = &member.data_share {
+      let attributes = metric_attributes_from_value(scope, attributes);
+      data_share.lock().unwrap().insert(attributes, value);
+    }
+    Ok(())
+  }
+}
+
+/// A registered individual-observable callback set, keyed by the observable's
+/// result id (`SafeMap<Observable, Set<callback>>` in the JS original).
+struct IndividualEntry {
+  result_id: u64,
+  result: v8::Global<v8::Value>,
+  callbacks: Vec<v8::Global<v8::Function>>,
+}
+
+/// A registered batch callback (`SafeMap<callback, BatchObservableResult>` in
+/// the JS original), keyed by the callback.
+struct BatchEntry {
+  callback: v8::Global<v8::Function>,
+  result: v8::Global<v8::Value>,
+  member_ids: Vec<u64>,
+}
+
+/// Per-runtime observable callback registry, replacing the JS
+/// `INDIVIDUAL_CALLBACKS` / `BATCH_CALLBACKS` maps. The stored `Global`s are
+/// strong references, matching the strong keys/values of the JS `SafeMap`s.
+#[derive(Default)]
+struct MetricCallbacks {
+  individual: Vec<IndividualEntry>,
+  batch: Vec<BatchEntry>,
+}
+
+fn metric_callbacks(state: &mut OpState) -> &mut MetricCallbacks {
+  if state.try_borrow::<MetricCallbacks>().is_none() {
+    state.put(MetricCallbacks::default());
+  }
+  state.borrow_mut::<MetricCallbacks>()
+}
+
+/// `Meter.addBatchObservableCallback`: register `callback` with the batch
+/// `result`, keyed by the callback (`Map.set` overwrites an existing entry).
+#[op2(fast)]
+fn op_otel_metric_add_batch_callback(
+  scope: &mut v8::PinScope<'_, '_>,
+  state: &mut OpState,
+  callback: v8::Local<'_, v8::Value>,
+  result: v8::Local<'_, v8::Value>,
 ) {
-  let Some(instrument) = deno_core::_ops::try_unwrap_cppgc_object::<Instrument>(
-    &mut *scope,
-    instrument,
-  ) else {
+  let Ok(callback) = v8::Local::<v8::Function>::try_from(callback) else {
     return;
   };
-  let attributes = metric_attributes_from_value(scope, attributes);
-  if let Instrument::Observable(data_share) = &*instrument {
-    let mut data = data_share.lock().unwrap();
-    data.insert(attributes, value);
+  let member_ids = match deno_core::_ops::try_unwrap_cppgc_object::<
+    OtelBatchObservableResult,
+  >(&mut *scope, result)
+  {
+    Some(r) => r.members.iter().map(|m| m.result_id).collect::<Vec<_>>(),
+    None => return,
+  };
+  let callback_val: v8::Local<v8::Value> = callback.into();
+  let callback_global = v8::Global::new(scope, callback);
+  let result_global = v8::Global::new(scope, result);
+  let registry = metric_callbacks(state);
+  if let Some(entry) = registry.batch.iter_mut().find(|e| {
+    let existing: v8::Local<v8::Value> =
+      v8::Local::new(scope, &e.callback).into();
+    existing.strict_equals(callback_val)
+  }) {
+    entry.result = result_global;
+    entry.member_ids = member_ids;
+  } else {
+    registry.batch.push(BatchEntry {
+      callback: callback_global,
+      result: result_global,
+      member_ids,
+    });
+  }
+}
+
+/// `batchResultHasObservables(result, observables)` from the JS original: every
+/// requested observable must be a member of the stored batch. An empty request
+/// matches (the JS loop returned `true` for no observables).
+fn batch_contains_all(member_ids: &[u64], requested: &[u64]) -> bool {
+  requested.iter().all(|id| member_ids.contains(id))
+}
+
+/// `Meter.removeBatchObservableCallback`: remove the callback only when the
+/// stored batch result includes all of the requested observables
+/// (`batchResultHasObservables` in the JS original).
+#[op2(fast)]
+fn op_otel_metric_remove_batch_callback(
+  scope: &mut v8::PinScope<'_, '_>,
+  state: &mut OpState,
+  callback: v8::Local<'_, v8::Value>,
+  observables: v8::Local<'_, v8::Value>,
+) {
+  let Ok(callback) = v8::Local::<v8::Function>::try_from(callback) else {
+    return;
+  };
+  let callback_val: v8::Local<v8::Value> = callback.into();
+  let mut requested: Vec<u64> = Vec::new();
+  if let Ok(arr) = v8::Local::<v8::Array>::try_from(observables) {
+    for i in 0..arr.length() {
+      let Some(observable) = arr.get_index(scope, i) else {
+        continue;
+      };
+      if let Some(observable) = deno_core::_ops::try_unwrap_cppgc_object::<
+        OtelObservable,
+      >(&mut *scope, observable)
+      {
+        requested.push(observable.result_id);
+      }
+    }
+  }
+  let Some(registry) = state.try_borrow_mut::<MetricCallbacks>() else {
+    return;
+  };
+  if let Some(pos) = registry.batch.iter().position(|e| {
+    let existing: v8::Local<v8::Value> =
+      v8::Local::new(scope, &e.callback).into();
+    existing.strict_equals(callback_val)
+  }) && batch_contains_all(&registry.batch[pos].member_ids, &requested)
+  {
+    registry.batch.remove(pos);
+  }
+}
+
+/// The body of the JS `observe()` loop: invoke every registered individual and
+/// batch callback and return an array of their results (promises or plain
+/// values). The JS driver awaits these with `SafePromiseAll`, preserving the
+/// original `Promise.try(callback, result)` + `SafePromiseAll` behavior.
+#[op2(reentrant)]
+fn op_otel_metric_run_observations<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  state: Rc<RefCell<OpState>>,
+) -> v8::Local<'s, v8::Array> {
+  // Materialize the callbacks to invoke while holding the registry borrow, then
+  // release it before calling into JS — the callbacks may re-enter and mutate
+  // the registry (e.g. `addCallback` / `removeCallback`).
+  let mut calls: Vec<(v8::Local<v8::Value>, v8::Local<v8::Function>)> =
+    Vec::new();
+  {
+    let state = state.borrow();
+    if let Some(registry) = state.try_borrow::<MetricCallbacks>() {
+      for entry in &registry.individual {
+        let result = v8::Local::new(scope, &entry.result);
+        for callback in &entry.callbacks {
+          let callback = v8::Local::new(scope, callback);
+          calls.push((result, callback));
+        }
+      }
+      for entry in &registry.batch {
+        let result = v8::Local::new(scope, &entry.result);
+        let callback = v8::Local::new(scope, &entry.callback);
+        calls.push((result, callback));
+      }
+    }
+  }
+  let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+  let mut results: Vec<v8::Local<v8::Value>> = Vec::with_capacity(calls.len());
+  for (result, callback) in calls {
+    results.push(invoke_observe_callback(scope, callback, undefined, result));
+  }
+  v8::Array::new_with_elements(scope, &results)
+}
+
+/// Invoke a single observe callback, mirroring `Promise.try(callback, result)`:
+/// a synchronous throw becomes a rejected promise, any other return value is
+/// passed through unchanged (`SafePromiseAll` resolves non-thenables).
+fn invoke_observe_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback: v8::Local<'s, v8::Function>,
+  recv: v8::Local<'s, v8::Value>,
+  arg: v8::Local<'s, v8::Value>,
+) -> v8::Local<'s, v8::Value> {
+  v8::tc_scope!(tc, scope);
+  match callback.call(tc, recv, &[arg]) {
+    Some(value) => value,
+    None => {
+      let exception =
+        tc.exception().unwrap_or_else(|| v8::undefined(tc).into());
+      tc.reset();
+      let resolver = v8::PromiseResolver::new(tc).unwrap();
+      resolver.reject(tc, exception);
+      resolver.get_promise(tc).into()
+    }
   }
 }
 
@@ -3363,5 +3827,42 @@ fn op_otel_collect_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
     data
       .physical_size
       .record(space.physical_space_size() as _, &attributes);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn observable_counter_rejects_negative() {
+    // Regular observable counters cannot be decremented.
+    assert!(check_observable_counter(true, -1.0).is_err());
+    assert!(check_observable_counter(true, 0.0).is_ok());
+    assert!(check_observable_counter(true, 1.0).is_ok());
+    // Up/down counters and gauges allow negative values.
+    assert!(check_observable_counter(false, -1.0).is_ok());
+  }
+
+  #[test]
+  fn observable_counter_error_message() {
+    let err = check_observable_counter(true, -1.0).unwrap_err();
+    assert_eq!(
+      err.to_string(),
+      "Observable counters can only be incremented"
+    );
+  }
+
+  #[test]
+  fn batch_membership_removal() {
+    // `removeBatchObservableCallback` only removes when every requested
+    // observable belongs to the stored batch.
+    let members = [1u64, 2, 3];
+    assert!(batch_contains_all(&members, &[1, 2]));
+    assert!(batch_contains_all(&members, &[1, 2, 3]));
+    // A request for an observable not in the batch does not match.
+    assert!(!batch_contains_all(&members, &[1, 4]));
+    // An empty request matches (the JS loop returned true for no observables).
+    assert!(batch_contains_all(&members, &[]));
   }
 }
