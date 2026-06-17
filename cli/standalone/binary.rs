@@ -240,10 +240,14 @@ fn validate_app_name(app_name: &str) -> Result<(), AnyError> {
     })
   {
     Some("must not contain path separators or any of `<>:\"|?*`")
-  } else if app_name.ends_with('.') || app_name.ends_with(' ') {
+  } else if app_name.ends_with('.')
+    || app_name.ends_with(' ')
+    || app_name.starts_with(' ')
+  {
     // Windows silently strips trailing dots and spaces, which would change the
-    // identity out from under the user.
-    Some("must not end with a `.` or a space")
+    // identity out from under the user; a leading space is an error-prone
+    // directory name everywhere, so reject it too.
+    Some("must not start or end with a space, or end with a `.`")
   } else if is_reserved_name {
     Some("must not be a reserved device name (e.g. `CON`, `NUL`, `COM1`)")
   } else {
@@ -356,7 +360,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     }
     // Validate the resolved app name (explicit `--app-name` or the default
-    // derived from the output file name) before writing the binary.
+    // derived from the output file name) up front, so an invalid name fails
+    // before we do any work to write the binary. The returned name is discarded
+    // here; the value actually baked into the metadata is resolved again at the
+    // write site below.
     resolve_app_name(options.compile_flags, options.display_output_filename)?;
     self.write_standalone_binary(options, original_binary).await
   }
