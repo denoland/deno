@@ -699,7 +699,7 @@ function styleText(format, text, options) {
   if (validateStream) {
     // Match Node defaulting stream to process.stdout: when no stream is
     // provided the colorize check still runs against stdout.
-    const effectiveStream = stream ?? globalThis.process?.stdout;
+    const effectiveStream = options?.stream ?? globalThis.process?.stdout;
     if (!shouldColorize(effectiveStream)) {
       return text;
     }
