@@ -663,9 +663,10 @@ fn package_json_dep_import_entries(module_url: &Url) -> Vec<(String, String)> {
     };
     let deps = pkg_json.resolve_local_package_json_deps();
     let mut entries = Vec::new();
-    for (alias, dep) in
-      deps.dependencies.iter().chain(deps.dev_dependencies.iter())
-    {
+    // Only runtime `dependencies` are flattened. `devDependencies` aren't
+    // needed by the installed global command and would otherwise emit a
+    // spurious warning for any dev-only file:/workspace:/catalog: entry.
+    for (alias, dep) in deps.dependencies.iter() {
       match dep {
         Ok(PackageJsonDepValue::Req(req)) => {
           // The trailing-slash entry uses the `npm:/pkg@req/` form because
