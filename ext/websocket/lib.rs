@@ -419,7 +419,8 @@ fn create_client_from_websocket_options(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs: ca_certs.into_iter().map(|cert| cert.into_bytes()).collect(),
       proxy: options.proxy.clone(),
-      dns_resolver: options.resolver.clone().with_permissions(permissions),
+      dns_resolver: options.resolver.clone(),
+      permissions: Some(permissions),
       unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
         .then_some(vec![]),
       client_cert_chain_and_key: options
