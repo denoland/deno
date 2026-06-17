@@ -2790,6 +2790,7 @@ version = "0.182.0"
 dependencies = [
  "deno_core",
  "deno_error",
+ "deno_node",
  "deno_permissions",
  "denort_helper",
  "libc",
