@@ -201,7 +201,7 @@
             },
             "linux": {
               "type": "string",
-              "description": "Output path for Linux (e.g. MyApp.AppImage, MyApp.deb)."
+              "description": "Output path for Linux (e.g. MyApp.AppImage, MyApp.deb, MyApp.rpm)."
             }
           }
         },

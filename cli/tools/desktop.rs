@@ -212,6 +212,50 @@ async fn compile_desktop(
     });
   }
 
+  // Same for Linux `.deb` / `.rpm` package installers — strip the extension
+  // for the intermediate compile/bundle step, then wrap the staged app dir in
+  // the chosen package at the end. Both wrap the same tree produced by
+  // `package_linux_app_dir`.
+  let deb_output = desktop_flags
+    .output
+    .as_ref()
+    .filter(|o| o.to_lowercase().ends_with(".deb"))
+    .cloned();
+  let rpm_output = desktop_flags
+    .output
+    .as_ref()
+    .filter(|o| o.to_lowercase().ends_with(".rpm"))
+    .cloned();
+  if let Some(ref pkg) = deb_output.as_ref().or(rpm_output.as_ref()) {
+    // `.deb`/`.rpm` wrap the staged Linux app dir, so the build must target
+    // Linux. The package itself is assembled in pure Rust and cross-compiles
+    // from any host — only the target OS matters. (Unlike `.dmg`, which is
+    // gated on a macOS *host* because it shells out to hdiutil.)
+    let targets_linux = match desktop_flags.target.as_deref() {
+      Some(t) => t.contains("linux"),
+      None => cfg!(target_os = "linux"),
+    };
+    if !targets_linux {
+      bail!(
+        "Building a {ext} requires a Linux target. Requested output: {pkg}. \
+         Pass --target <linux-triple> (e.g. x86_64-unknown-linux-gnu) or build \
+         on Linux.",
+        ext = if deb_output.is_some() { ".deb" } else { ".rpm" },
+      );
+    }
+    let stem = Path::new(pkg)
+      .file_stem()
+      .map(|s| s.to_string_lossy().into_owned())
+      .unwrap_or_else(|| "App".to_string());
+    let parent = Path::new(pkg)
+      .parent()
+      .filter(|p| !p.as_os_str().is_empty());
+    desktop_flags.output = Some(match parent {
+      Some(p) => p.join(&stem).to_string_lossy().into_owned(),
+      None => stem,
+    });
+  }
+
   // Desktop framework detection: when --desktop is used and the source is
   // "." (a directory), detect the framework and generate the entrypoint.
   // The cwd resolved from CliOptions is reused for the HMR launch below so
@@ -454,6 +498,24 @@ async fn compile_desktop(
         desktop_flags.target.as_deref(),
       )?;
       appimage_abs
+    } else if let Some(deb) = deb_output.as_deref() {
+      let deb_abs = cli_options.initial_cwd().join(deb);
+      create_linux_deb(
+        &bundle_path,
+        &deb_abs,
+        &desktop_flags,
+        desktop_flags.target.as_deref(),
+      )?;
+      deb_abs
+    } else if let Some(rpm) = rpm_output.as_deref() {
+      let rpm_abs = cli_options.initial_cwd().join(rpm);
+      create_linux_rpm(
+        &bundle_path,
+        &rpm_abs,
+        &desktop_flags,
+        desktop_flags.target.as_deref(),
+      )?;
+      rpm_abs
     } else {
       bundle_path
     };
@@ -2690,6 +2752,562 @@ fn create_linux_appimage(
   Ok(())
 }
 
+/// CEF/Chromium shared-library runtime dependencies, as
+/// `(soname, debian package)` pairs.
+///
+/// The Debian package names go into the `.deb` `Depends` field. The sonames go
+/// into the `.rpm` `Requires` field: every RPM auto-`Provides` the sonames of
+/// the shared libraries it ships, so a soname `Requires` resolves correctly on
+/// Fedora, openSUSE, etc. without hard-coding each distro's divergent package
+/// names. Too loose a list crashes the app on launch with a missing `.so`; too
+/// strict blocks install on otherwise-fine systems — this is the curated middle
+/// covering CEF's GTK/X11/NSS/audio needs.
+const CEF_RUNTIME_DEPS: &[(&str, &str)] = &[
+  ("libgtk-3.so.0", "libgtk-3-0"),
+  ("libnss3.so", "libnss3"),
+  ("libasound.so.2", "libasound2"),
+  ("libX11.so.6", "libx11-6"),
+  ("libXcomposite.so.1", "libxcomposite1"),
+  ("libXdamage.so.1", "libxdamage1"),
+  ("libXext.so.6", "libxext6"),
+  ("libXfixes.so.3", "libxfixes3"),
+  ("libXrandr.so.2", "libxrandr2"),
+  ("libgbm.so.1", "libgbm1"),
+  ("libxkbcommon.so.0", "libxkbcommon0"),
+  ("libpango-1.0.so.0", "libpango-1.0-0"),
+  ("libcairo.so.2", "libcairo2"),
+  ("libatk-1.0.so.0", "libatk1.0-0"),
+  ("libdbus-1.so.3", "libdbus-1-3"),
+  ("libexpat.so.1", "libexpat1"),
+  ("libxcb.so.1", "libxcb1"),
+  ("libdrm.so.2", "libdrm2"),
+];
+
+/// Default package version when no version is configured. Matches the macOS
+/// bundle's hard-coded `CFBundleVersion`.
+const LINUX_PACKAGE_VERSION: &str = "1.0.0";
+
+/// Metadata shared by the `.deb` and `.rpm` builders, derived from the staged
+/// app dir name and the desktop flags. Avoids new config fields — the package
+/// name comes from the app dir, the identifier from `--identifier` (or the same
+/// synthetic `com.deno.desktop.<slug>` default the `.desktop` writer uses).
+struct LinuxPackageMeta {
+  /// Sanitized lowercase package name (Debian rules: `[a-z0-9][a-z0-9+.-]+`).
+  /// Used as the package name, the `/usr/bin` symlink, and the icon/`.desktop`
+  /// basenames.
+  package: String,
+  /// Human display name (the staged app dir's name), used for `Name=` in the
+  /// `.desktop` entry and the package summary.
+  app_name: String,
+  version: String,
+  maintainer: String,
+  summary: String,
+  /// Reverse-DNS identifier for the `.desktop` `StartupWMClass`.
+  identifier: String,
+}
+
+/// Sanitize an app name into a Debian-style package name: lowercase, only
+/// `[a-z0-9+.-]`, and a leading alphanumeric (Debian forbids a leading `+`/`-`/
+/// `.`). Falls back to `app` when nothing usable remains.
+fn debian_package_name(app_name: &str) -> String {
+  let mut out = String::with_capacity(app_name.len());
+  for c in app_name.to_lowercase().chars() {
+    if c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-') {
+      out.push(c);
+    } else {
+      out.push('-');
+    }
+  }
+  let trimmed = out.trim_start_matches(|c: char| !c.is_ascii_alphanumeric());
+  let trimmed = trimmed.trim_end_matches('-');
+  if trimmed.len() < 2 {
+    "app".to_string()
+  } else {
+    trimmed.to_string()
+  }
+}
+
+fn linux_package_meta(
+  app_dir: &Path,
+  desktop_flags: &DesktopFlags,
+) -> LinuxPackageMeta {
+  let app_name = app_dir
+    .file_name()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| "App".to_string());
+  let package = debian_package_name(&app_name);
+  let identifier = desktop_flags
+    .identifier
+    .clone()
+    .unwrap_or_else(|| format!("com.deno.desktop.{package}"));
+  LinuxPackageMeta {
+    summary: format!("{app_name} desktop application"),
+    maintainer: format!("{app_name} <noreply@deno.com>"),
+    version: LINUX_PACKAGE_VERSION.to_string(),
+    package,
+    app_name,
+    identifier,
+  }
+}
+
+/// Map a target triple (or the host arch when `target` is None) to a Debian
+/// architecture name. Debian arch names differ from the triple's leading
+/// component (`x86_64` → `amd64`, `aarch64` → `arm64`).
+fn debian_arch_for_target(
+  target: Option<&str>,
+) -> Result<&'static str, AnyError> {
+  let arch = target
+    .and_then(|t| t.split('-').next())
+    .unwrap_or(std::env::consts::ARCH);
+  match arch {
+    "x86_64" => Ok("amd64"),
+    "aarch64" => Ok("arm64"),
+    other => bail!(
+      "No Debian architecture mapping for arch '{other}'; supported: x86_64, aarch64"
+    ),
+  }
+}
+
+/// Map a target triple (or the host arch) to an RPM architecture name. RPM
+/// keeps the triple's arch names (`x86_64`, `aarch64`).
+fn rpm_arch_for_target(target: Option<&str>) -> Result<&'static str, AnyError> {
+  let arch = target
+    .and_then(|t| t.split('-').next())
+    .unwrap_or(std::env::consts::ARCH);
+  match arch {
+    "x86_64" => Ok("x86_64"),
+    "aarch64" => Ok("aarch64"),
+    other => bail!(
+      "No RPM architecture mapping for arch '{other}'; supported: x86_64, aarch64"
+    ),
+  }
+}
+
+/// `.desktop` entry installed at `/usr/share/applications/<pkg>.desktop`.
+///
+/// Unlike the in-app-dir `.desktop` (whose `Exec`/`Icon` are relative), this
+/// one points `Exec` at the package name (resolved via PATH from the
+/// `/usr/bin/<pkg>` symlink) and `Icon` at the installed hicolor icon name.
+fn system_desktop_entry(meta: &LinuxPackageMeta) -> String {
+  format!(
+    "[Desktop Entry]\n\
+     Type=Application\n\
+     Name={app_name}\n\
+     Exec={package}\n\
+     Icon={package}\n\
+     StartupWMClass={identifier}\n\
+     Categories=Utility;\n",
+    app_name = meta.app_name,
+    package = meta.package,
+    identifier = meta.identifier,
+  )
+}
+
+/// Wrap a Linux app directory in a Debian `.deb` package.
+///
+/// A `.deb` is an `ar` archive of three members: `debian-binary` (`2.0\n`),
+/// `control.tar.gz` (metadata) and `data.tar.gz` (the install tree at absolute
+/// paths). Built entirely in Rust (`tar` + `flate2`, plus a hand-written `ar`
+/// header) so it cross-compiles from any build host. Install layout:
+///
+/// ```text
+/// /usr/lib/<pkg>/            ← staged app dir contents
+/// /usr/bin/<pkg>             ← symlink → ../lib/<pkg>/<launcher>
+/// /usr/share/applications/<pkg>.desktop
+/// /usr/share/icons/hicolor/512x512/apps/<pkg>.png
+/// ```
+fn create_linux_deb(
+  app_dir: &Path,
+  deb_path: &Path,
+  desktop_flags: &DesktopFlags,
+  target: Option<&str>,
+) -> Result<(), AnyError> {
+  let meta = linux_package_meta(app_dir, desktop_flags);
+  let arch = debian_arch_for_target(target)?;
+
+  let data_tar_gz = build_deb_data_tar(app_dir, &meta)?;
+  let installed_size_kib = data_tar_gz.installed_size_kib;
+
+  let depends = CEF_RUNTIME_DEPS
+    .iter()
+    .map(|(_, pkg)| *pkg)
+    .collect::<Vec<_>>()
+    .join(", ");
+  let control = format!(
+    "Package: {package}\n\
+     Version: {version}\n\
+     Architecture: {arch}\n\
+     Maintainer: {maintainer}\n\
+     Installed-Size: {size}\n\
+     Depends: {depends}\n\
+     Section: utils\n\
+     Priority: optional\n\
+     Description: {summary}\n",
+    package = meta.package,
+    version = meta.version,
+    maintainer = meta.maintainer,
+    size = installed_size_kib,
+    summary = meta.summary,
+  );
+  let control_tar_gz = build_deb_control_tar(&control)?;
+
+  // Assemble the ar archive: global header then the three members in the
+  // order dpkg expects (debian-binary, control, data).
+  let mut out = Vec::new();
+  out.extend_from_slice(b"!<arch>\n");
+  ar_append_member(&mut out, "debian-binary", b"2.0\n");
+  ar_append_member(&mut out, "control.tar.gz", &control_tar_gz);
+  ar_append_member(&mut out, "data.tar.gz", &data_tar_gz.bytes);
+
+  if let Some(parent) = deb_path.parent()
+    && !parent.as_os_str().is_empty()
+  {
+    std::fs::create_dir_all(parent)?;
+  }
+  std::fs::write(deb_path, &out).with_context(|| {
+    format!("Failed to write .deb at {}", deb_path.display())
+  })?;
+  Ok(())
+}
+
+/// Append one member to an `ar` archive. The 60-byte header is the common
+/// `ar` format dpkg uses: name (space-padded), mtime, uid/gid, mode, decimal
+/// size, then the `` `\n `` magic. Member data is padded to an even length
+/// with a trailing newline (per the `ar` spec).
+fn ar_append_member(out: &mut Vec<u8>, name: &str, data: &[u8]) {
+  let mut header = [b' '; 60];
+  let name_bytes = name.as_bytes();
+  header[..name_bytes.len()].copy_from_slice(name_bytes);
+  // mtime (16..28), uid (28..34), gid (34..40)
+  header[16..16 + 1].copy_from_slice(b"0");
+  header[28..28 + 1].copy_from_slice(b"0");
+  header[34..34 + 1].copy_from_slice(b"0");
+  // mode (40..48), octal
+  let mode = b"100644";
+  header[40..40 + mode.len()].copy_from_slice(mode);
+  // size (48..58), decimal
+  let size = data.len().to_string();
+  header[48..48 + size.len()].copy_from_slice(size.as_bytes());
+  // magic (58..60)
+  header[58] = b'`';
+  header[59] = b'\n';
+  out.extend_from_slice(&header);
+  out.extend_from_slice(data);
+  if data.len() % 2 == 1 {
+    out.push(b'\n');
+  }
+}
+
+struct DebDataTar {
+  bytes: Vec<u8>,
+  /// Sum of regular-file sizes rounded up to KiB, for the control file's
+  /// `Installed-Size:` field.
+  installed_size_kib: u64,
+}
+
+/// Build the `data.tar.gz`: the install tree at absolute (`./`-prefixed) paths.
+fn build_deb_data_tar(
+  app_dir: &Path,
+  meta: &LinuxPackageMeta,
+) -> Result<DebDataTar, AnyError> {
+  use flate2::Compression;
+  use flate2::write::GzEncoder;
+
+  let mut tar_buf: Vec<u8> = Vec::new();
+  let mut installed_size: u64 = 0;
+  {
+    let mut builder = tar::Builder::new(&mut tar_buf);
+
+    let push_dir = |b: &mut tar::Builder<&mut Vec<u8>>,
+                    path: &str|
+     -> Result<(), AnyError> {
+      let mut h = tar::Header::new_gnu();
+      h.set_entry_type(tar::EntryType::Directory);
+      h.set_mode(0o755);
+      h.set_uid(0);
+      h.set_gid(0);
+      h.set_mtime(0);
+      h.set_size(0);
+      h.set_cksum();
+      b.append_data(&mut h, path, std::io::empty())?;
+      Ok(())
+    };
+
+    // Intermediate directories the package owns or shares. The `./` prefix is
+    // conventional for `data.tar`; the `tar` crate strips it (it skips
+    // `CurDir` components), leaving root-relative `usr/...` entries, which dpkg
+    // installs to `/usr/...` identically.
+    for dir in [
+      "./usr/",
+      "./usr/bin/",
+      "./usr/lib/",
+      &format!("./usr/lib/{}/", meta.package),
+      "./usr/share/",
+      "./usr/share/applications/",
+      "./usr/share/icons/",
+      "./usr/share/icons/hicolor/",
+      "./usr/share/icons/hicolor/512x512/",
+      "./usr/share/icons/hicolor/512x512/apps/",
+    ] {
+      push_dir(&mut builder, dir)?;
+    }
+
+    // Copy the staged app dir under /usr/lib/<pkg>/.
+    let lib_prefix = format!("./usr/lib/{}", meta.package);
+    let mut stack = vec![app_dir.to_path_buf()];
+    let mut files: Vec<PathBuf> = Vec::new();
+    while let Some(dir) = stack.pop() {
+      let mut entries: Vec<_> =
+        std::fs::read_dir(&dir)?.collect::<Result<_, _>>()?;
+      entries.sort_by_key(|e| e.file_name());
+      for entry in entries {
+        files.push(entry.path());
+        if std::fs::symlink_metadata(entry.path())?.is_dir() {
+          stack.push(entry.path());
+        }
+      }
+    }
+    files.sort();
+    for path in files {
+      let rel = path.strip_prefix(app_dir)?;
+      let arc_path = format!("{}/{}", lib_prefix, rel.to_string_lossy());
+      let meta_fs = std::fs::symlink_metadata(&path)?;
+      let mode = unix_mode_of(&meta_fs) as u32;
+      let mut h = tar::Header::new_gnu();
+      h.set_uid(0);
+      h.set_gid(0);
+      h.set_mtime(0);
+      if meta_fs.is_dir() {
+        h.set_entry_type(tar::EntryType::Directory);
+        h.set_mode(if mode == 0 { 0o755 } else { mode });
+        h.set_size(0);
+        h.set_cksum();
+        builder.append_data(
+          &mut h,
+          format!("{arc_path}/"),
+          std::io::empty(),
+        )?;
+      } else if meta_fs.file_type().is_symlink() {
+        let link = std::fs::read_link(&path)?;
+        h.set_entry_type(tar::EntryType::Symlink);
+        h.set_mode(0o777);
+        h.set_size(0);
+        h.set_link_name(&link)?;
+        h.set_cksum();
+        builder.append_data(&mut h, &arc_path, std::io::empty())?;
+      } else {
+        let data = std::fs::read(&path)?;
+        installed_size += data.len() as u64;
+        h.set_entry_type(tar::EntryType::Regular);
+        h.set_mode(if mode == 0 { 0o644 } else { mode });
+        h.set_size(data.len() as u64);
+        h.set_cksum();
+        builder.append_data(&mut h, &arc_path, &data[..])?;
+      }
+    }
+
+    // /usr/bin/<pkg> → ../lib/<pkg>/<launcher>
+    {
+      let mut h = tar::Header::new_gnu();
+      h.set_entry_type(tar::EntryType::Symlink);
+      h.set_mode(0o777);
+      h.set_uid(0);
+      h.set_gid(0);
+      h.set_mtime(0);
+      h.set_size(0);
+      h.set_link_name(format!("../lib/{}/{}", meta.package, meta.app_name))?;
+      h.set_cksum();
+      builder.append_data(
+        &mut h,
+        format!("./usr/bin/{}", meta.package),
+        std::io::empty(),
+      )?;
+    }
+
+    // /usr/share/applications/<pkg>.desktop
+    {
+      let desktop = system_desktop_entry(meta).into_bytes();
+      installed_size += desktop.len() as u64;
+      let mut h = tar::Header::new_gnu();
+      h.set_entry_type(tar::EntryType::Regular);
+      h.set_mode(0o644);
+      h.set_uid(0);
+      h.set_gid(0);
+      h.set_mtime(0);
+      h.set_size(desktop.len() as u64);
+      h.set_cksum();
+      builder.append_data(
+        &mut h,
+        format!("./usr/share/applications/{}.desktop", meta.package),
+        &desktop[..],
+      )?;
+    }
+
+    // /usr/share/icons/.../<pkg>.png (if the app dir carries an icon)
+    let icon_src = app_dir.join("AppIcon.png");
+    if icon_src.exists() {
+      let data = std::fs::read(&icon_src)?;
+      installed_size += data.len() as u64;
+      let mut h = tar::Header::new_gnu();
+      h.set_entry_type(tar::EntryType::Regular);
+      h.set_mode(0o644);
+      h.set_uid(0);
+      h.set_gid(0);
+      h.set_mtime(0);
+      h.set_size(data.len() as u64);
+      h.set_cksum();
+      builder.append_data(
+        &mut h,
+        format!(
+          "./usr/share/icons/hicolor/512x512/apps/{}.png",
+          meta.package
+        ),
+        &data[..],
+      )?;
+    }
+
+    builder.finish()?;
+  }
+
+  let mut gz = Vec::new();
+  let mut enc = GzEncoder::new(&mut gz, Compression::default());
+  std::io::Write::write_all(&mut enc, &tar_buf)?;
+  enc.finish()?;
+  Ok(DebDataTar {
+    bytes: gz,
+    installed_size_kib: installed_size.div_ceil(1024).max(1),
+  })
+}
+
+/// Build the `control.tar.gz` carrying the single `./control` file.
+fn build_deb_control_tar(control: &str) -> Result<Vec<u8>, AnyError> {
+  use flate2::Compression;
+  use flate2::write::GzEncoder;
+
+  let mut tar_buf: Vec<u8> = Vec::new();
+  {
+    let mut builder = tar::Builder::new(&mut tar_buf);
+    let body = control.as_bytes();
+    let mut h = tar::Header::new_gnu();
+    h.set_entry_type(tar::EntryType::Regular);
+    h.set_mode(0o644);
+    h.set_uid(0);
+    h.set_gid(0);
+    h.set_mtime(0);
+    h.set_size(body.len() as u64);
+    h.set_cksum();
+    builder.append_data(&mut h, "./control", body)?;
+    builder.finish()?;
+  }
+  let mut gz = Vec::new();
+  let mut enc = GzEncoder::new(&mut gz, Compression::default());
+  std::io::Write::write_all(&mut enc, &tar_buf)?;
+  enc.finish()?;
+  Ok(gz)
+}
+
+/// Wrap a Linux app directory in an RPM `.rpm` package via the pure-Rust `rpm`
+/// crate (no `rpmbuild`, so it cross-compiles). Same install layout as the
+/// `.deb`. `Requires` is expressed as CEF shared-library sonames, which resolve
+/// across RPM distros without hard-coding each one's package names.
+fn create_linux_rpm(
+  app_dir: &Path,
+  rpm_path: &Path,
+  desktop_flags: &DesktopFlags,
+  target: Option<&str>,
+) -> Result<(), AnyError> {
+  let meta = linux_package_meta(app_dir, desktop_flags);
+  let arch = rpm_arch_for_target(target)?;
+
+  // Zstd payload (see Cargo.toml: gzip would pull flate2's zlib-rs shim, which
+  // link-clashes with deno's zlib-ng), plus a pinned source date for
+  // reproducible builds — mirrors the `mtime: 0` used in the AppImage/`.deb`
+  // paths so identical inputs yield identical packages.
+  let config = rpm::BuildConfig::default()
+    .compression(rpm::CompressionType::Zstd)
+    .source_date(0u32);
+
+  let mut builder = rpm::PackageBuilder::new(
+    &meta.package,
+    &meta.version,
+    "MIT",
+    arch,
+    &meta.summary,
+  );
+  builder.using_config(config);
+  builder.description(&meta.summary);
+  builder.vendor(&meta.maintainer);
+
+  // Own /usr/lib/<pkg>/** (the staged app dir). Standard dirs (/usr, /usr/bin,
+  // /usr/share, …) are deliberately not owned — they belong to the filesystem
+  // package.
+  builder
+    .with_dir(app_dir, format!("/usr/lib/{}", meta.package), |o| o)
+    .context("failed to add app directory to rpm")?;
+
+  // /usr/bin/<pkg> → ../lib/<pkg>/<launcher>
+  builder
+    .with_symlink(rpm::FileOptions::symlink(
+      format!("/usr/bin/{}", meta.package),
+      format!("../lib/{}/{}", meta.package, meta.app_name),
+    ))
+    .context("failed to add launcher symlink to rpm")?;
+
+  // /usr/share/applications/<pkg>.desktop — staged to a temp file because the
+  // rpm builder reads file content from disk.
+  let staging = tempfile::Builder::new()
+    .prefix(".deno-desktop-rpm-")
+    .tempdir()?;
+  let desktop_path = staging.path().join("app.desktop");
+  std::fs::write(&desktop_path, system_desktop_entry(&meta))?;
+  builder
+    .with_file(
+      &desktop_path,
+      rpm::FileOptions::new(format!(
+        "/usr/share/applications/{}.desktop",
+        meta.package
+      )),
+    )
+    .context("failed to add .desktop file to rpm")?;
+
+  // /usr/share/icons/.../<pkg>.png (if present)
+  let icon_src = app_dir.join("AppIcon.png");
+  if icon_src.exists() {
+    builder
+      .with_file(
+        &icon_src,
+        rpm::FileOptions::new(format!(
+          "/usr/share/icons/hicolor/512x512/apps/{}.png",
+          meta.package
+        )),
+      )
+      .context("failed to add icon to rpm")?;
+  }
+
+  // RPM auto-`Provides` 64-bit ELF sonames with an `()(64bit)` class suffix
+  // (e.g. `libgtk-3.so.0()(64bit)`), so a bare-soname `Requires` would not
+  // match. Both supported arches (x86_64, aarch64) are 64-bit ELF, so always
+  // append the suffix.
+  for (soname, _) in CEF_RUNTIME_DEPS {
+    builder.requires(rpm::Dependency::any(format!("{soname}()(64bit)")));
+  }
+
+  let package = builder.build().context("failed to build rpm package")?;
+
+  if let Some(parent) = rpm_path.parent()
+    && !parent.as_os_str().is_empty()
+  {
+    std::fs::create_dir_all(parent)?;
+  }
+  let mut out = std::fs::File::create(rpm_path).with_context(|| {
+    format!("Failed to create .rpm at {}", rpm_path.display())
+  })?;
+  package.write(&mut out).with_context(|| {
+    format!("Failed to write .rpm at {}", rpm_path.display())
+  })?;
+  Ok(())
+}
+
 /// Recursively copy a directory tree, ensuring writable permissions on the
 /// destination. This is needed because source files from the Nix store are
 /// read-only.
@@ -4191,5 +4809,216 @@ def456  other.zip
     let err =
       rewrite_helper_plist_identifier(&p, "com.acme.myapp").unwrap_err();
     assert!(err.to_string().contains("CFBundleIdentifier"));
+  }
+
+  // --- Linux .deb / .rpm packaging ---
+
+  #[test]
+  fn debian_package_name_sanitizes() {
+    assert_eq!(debian_package_name("MyApp"), "myapp");
+    assert_eq!(debian_package_name("My App!"), "my-app");
+    // Leading non-alphanumerics are stripped (Debian forbids leading -/+/.).
+    assert_eq!(debian_package_name("--foo"), "foo");
+    assert_eq!(debian_package_name("a"), "app", "too short falls back");
+    assert_eq!(debian_package_name("___"), "app", "nothing usable");
+    // Allowed punctuation is preserved.
+    assert_eq!(debian_package_name("a.b+c-d"), "a.b+c-d");
+  }
+
+  #[test]
+  fn package_arch_mappings() {
+    assert_eq!(
+      debian_arch_for_target(Some("x86_64-unknown-linux-gnu")).unwrap(),
+      "amd64"
+    );
+    assert_eq!(
+      debian_arch_for_target(Some("aarch64-unknown-linux-gnu")).unwrap(),
+      "arm64"
+    );
+    assert!(debian_arch_for_target(Some("riscv64-unknown-linux-gnu")).is_err());
+    assert_eq!(
+      rpm_arch_for_target(Some("x86_64-unknown-linux-gnu")).unwrap(),
+      "x86_64"
+    );
+    assert_eq!(
+      rpm_arch_for_target(Some("aarch64-unknown-linux-gnu")).unwrap(),
+      "aarch64"
+    );
+    assert!(rpm_arch_for_target(Some("mips-unknown-linux-gnu")).is_err());
+  }
+
+  /// Build a minimal staged Linux app dir like `package_linux_app_dir` does:
+  /// a launcher script named after the app, a fake runtime lib, and an icon.
+  fn fake_linux_app_dir(parent: &Path, app_name: &str) -> PathBuf {
+    let app_dir = parent.join(app_name);
+    std::fs::create_dir_all(&app_dir).unwrap();
+    std::fs::write(app_dir.join(app_name), "#!/bin/sh\nexec ./laufey\n")
+      .unwrap();
+    std::fs::write(app_dir.join("libdenort.so"), b"\x7fELFfake").unwrap();
+    std::fs::write(app_dir.join("AppIcon.png"), STUB_ICON_PNG).unwrap();
+    app_dir
+  }
+
+  fn empty_desktop_flags() -> DesktopFlags {
+    DesktopFlags {
+      source_file: String::new(),
+      output: None,
+      args: vec![],
+      target: None,
+      icon: None,
+      include: vec![],
+      exclude: vec![],
+      hmr: false,
+      backend: None,
+      all_targets: false,
+      identifier: None,
+      codesign_identity: None,
+      inspect_renderer: None,
+    }
+  }
+
+  /// Read a gzip-compressed buffer to bytes.
+  fn gunzip(data: &[u8]) -> Vec<u8> {
+    let mut dec = flate2::read::GzDecoder::new(data);
+    let mut out = Vec::new();
+    dec.read_to_end(&mut out).unwrap();
+    out
+  }
+
+  #[test]
+  fn deb_has_ar_members_and_control_fields() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
+    let deb = tmp.path().join("MyApp.deb");
+    let flags = empty_desktop_flags();
+    create_linux_deb(&app_dir, &deb, &flags, Some("x86_64-unknown-linux-gnu"))
+      .unwrap();
+
+    let bytes = std::fs::read(&deb).unwrap();
+    assert!(bytes.starts_with(b"!<arch>\n"), "missing ar global header");
+
+    // Walk the ar members in order and collect (name, data).
+    let mut members: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut pos = 8; // after "!<arch>\n"
+    while pos + 60 <= bytes.len() {
+      let header = &bytes[pos..pos + 60];
+      let name = String::from_utf8_lossy(&header[..16]).trim().to_string();
+      let size: usize = String::from_utf8_lossy(&header[48..58])
+        .trim()
+        .parse()
+        .unwrap();
+      assert_eq!(&header[58..60], b"`\n", "bad ar member magic");
+      let data_start = pos + 60;
+      members.push((name, bytes[data_start..data_start + size].to_vec()));
+      // members are padded to an even length
+      pos = data_start + size + (size % 2);
+    }
+    let names: Vec<&str> = members.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(
+      names,
+      vec!["debian-binary", "control.tar.gz", "data.tar.gz"],
+      "members must appear in dpkg's expected order"
+    );
+    assert_eq!(members[0].1, b"2.0\n");
+
+    // control.tar.gz → ./control with the required fields.
+    let control_tar = gunzip(&members[1].1);
+    let mut archive = tar::Archive::new(&control_tar[..]);
+    let mut control = String::new();
+    for entry in archive.entries().unwrap() {
+      let mut entry = entry.unwrap();
+      if entry.path().unwrap().ends_with("control") {
+        entry.read_to_string(&mut control).unwrap();
+      }
+    }
+    assert!(control.contains("Package: myapp\n"), "control:\n{control}");
+    assert!(control.contains("Architecture: amd64\n"));
+    assert!(control.contains("Version: 1.0.0\n"));
+    assert!(control.contains("Depends: libgtk-3-0,"));
+    assert!(control.contains("Installed-Size: "));
+
+    // data.tar.gz install layout. The `tar` crate strips the conventional
+    // leading `./` (it skips `CurDir` path components), leaving root-relative
+    // `usr/...` paths — which dpkg unpacks to `/usr/...` all the same.
+    let data_tar = gunzip(&members[2].1);
+    let mut archive = tar::Archive::new(&data_tar[..]);
+    let mut paths: Vec<String> = Vec::new();
+    let mut bin_link_target: Option<String> = None;
+    for entry in archive.entries().unwrap() {
+      let entry = entry.unwrap();
+      let p = entry.path().unwrap().to_string_lossy().into_owned();
+      if p == "usr/bin/myapp" {
+        bin_link_target = entry
+          .link_name()
+          .unwrap()
+          .map(|l| l.to_string_lossy().into_owned());
+      }
+      paths.push(p);
+    }
+    assert!(paths.iter().any(|p| p == "usr/lib/myapp/MyApp"));
+    assert!(paths.iter().any(|p| p == "usr/lib/myapp/libdenort.so"));
+    assert!(
+      paths
+        .iter()
+        .any(|p| p == "usr/share/applications/myapp.desktop")
+    );
+    assert!(
+      paths
+        .iter()
+        .any(|p| p == "usr/share/icons/hicolor/512x512/apps/myapp.png")
+    );
+    assert_eq!(
+      bin_link_target.as_deref(),
+      Some("../lib/myapp/MyApp"),
+      "/usr/bin symlink must point at the staged launcher"
+    );
+  }
+
+  #[test]
+  fn rpm_parses_with_expected_metadata() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
+    let rpm_path = tmp.path().join("MyApp.rpm");
+    let flags = empty_desktop_flags();
+    create_linux_rpm(
+      &app_dir,
+      &rpm_path,
+      &flags,
+      Some("aarch64-unknown-linux-gnu"),
+    )
+    .unwrap();
+
+    let bytes = std::fs::read(&rpm_path).unwrap();
+    let pkg = rpm::Package::parse(&mut &bytes[..]).unwrap();
+    assert_eq!(pkg.metadata.get_name().unwrap(), "myapp");
+    assert_eq!(pkg.metadata.get_version().unwrap(), "1.0.0");
+    assert_eq!(pkg.metadata.get_arch().unwrap(), "aarch64");
+
+    let requires: Vec<String> = pkg
+      .metadata
+      .get_requires()
+      .unwrap()
+      .into_iter()
+      .map(|d| d.name)
+      .collect();
+    assert!(
+      requires.iter().any(|r| r == "libgtk-3.so.0()(64bit)"),
+      "rpm Requires must carry CEF sonames with the 64-bit ELF class suffix, got: {requires:?}"
+    );
+
+    let files: Vec<String> = pkg
+      .metadata
+      .get_file_paths()
+      .unwrap()
+      .into_iter()
+      .map(|p| p.to_string_lossy().into_owned())
+      .collect();
+    assert!(files.iter().any(|f| f == "/usr/lib/myapp/MyApp"));
+    assert!(files.iter().any(|f| f == "/usr/bin/myapp"));
+    assert!(
+      files
+        .iter()
+        .any(|f| f == "/usr/share/applications/myapp.desktop")
+    );
   }
 }
