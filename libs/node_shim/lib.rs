@@ -3143,8 +3143,8 @@ pub struct TranslateOptions {
   /// Use "deno node" as base command (for standalone CLI)
   /// When false, uses "deno run" (for child_process spawning)
   pub use_node_subcommand: bool,
-  /// Add unstable Node.js compat flags (--unstable-node-globals,
-  /// --unstable-bare-node-builtins, --unstable-detect-cjs)
+  /// Add unstable Node.js compat flags (--unstable-bare-node-builtins,
+  /// --unstable-detect-cjs)
   pub add_unstable_flags: bool,
   /// Add standalone config overrides (--node-modules-dir=manual, --no-config)
   /// Only appropriate for the standalone node shim CLI, not for child processes
@@ -3361,7 +3361,6 @@ pub fn translate_to_deno_args(
     // Note: deno eval has implicit permissions, so we don't add -A
 
     if options.add_unstable_flags {
-      deno_args.push("--unstable-node-globals".to_string());
       deno_args.push("--unstable-bare-node-builtins".to_string());
       deno_args.push("--unstable-detect-cjs".to_string());
     }
@@ -3441,7 +3440,6 @@ pub fn translate_to_deno_args(
     deno_args.push("-A".to_string());
 
     if options.add_unstable_flags {
-      deno_args.push("--unstable-node-globals".to_string());
       deno_args.push("--unstable-bare-node-builtins".to_string());
       deno_args.push("--unstable-detect-cjs".to_string());
     }
@@ -3488,7 +3486,6 @@ pub fn translate_to_deno_args(
   deno_args.push("-A".to_string());
 
   if options.add_unstable_flags {
-    deno_args.push("--unstable-node-globals".to_string());
     deno_args.push("--unstable-bare-node-builtins".to_string());
     deno_args.push("--unstable-detect-cjs".to_string());
   }
@@ -5123,7 +5120,6 @@ mod tests {
       "node",
       "run",
       "-A",
-      "--unstable-node-globals",
       "--unstable-bare-node-builtins",
       "--unstable-detect-cjs",
       "--node-modules-dir=manual",
