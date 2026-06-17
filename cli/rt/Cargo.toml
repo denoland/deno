@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.7.14"
+version = "2.8.3"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -29,12 +29,16 @@ deno_runtime.workspace = true
 deno_core.workspace = true
 
 [dependencies]
+async-trait.workspace = true
+bincode.workspace = true
+deno_ast = { workspace = true, features = ["cjs"] }
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core.workspace = true
 deno_error.workspace = true
 deno_lib.workspace = true
 deno_media_type = { workspace = true, features = ["data_url", "decoding"] }
+deno_node.workspace = true
 deno_npm.workspace = true
 deno_npmrc.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
@@ -44,16 +48,15 @@ deno_runtime.workspace = true
 deno_semver.workspace = true
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
-libsui.workspace = true
-node_resolver.workspace = true
-
-async-trait.workspace = true
-bincode.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
+jsonc-parser = { workspace = true }
+libsui.workspace = true
 log = { workspace = true, features = ["serde"] }
+node_resolver.workspace = true
+notify.workspace = true
 rustls.workspace = true
-serde.workspace = true
+serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "real", "strip_unc", "winapi"] }
 thiserror.workspace = true

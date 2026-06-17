@@ -10,6 +10,7 @@
 use std::borrow::Cow;
 use std::env;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_core::FastString;
 use deno_core::OpState;
@@ -43,6 +44,15 @@ pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 
+/// The Node.js version that Deno emulates. This is the single source of truth
+/// for the value reported through `process.version` / `process.versions.node`:
+/// the `__NODE_VERSION__` token in `_process/process.ts` is substituted with it
+/// at snapshot build time (see `maybe_transpile_source` in
+/// `runtime/transpile.rs`). Rust consumers can read it directly.
+///
+/// When bumping the emulated Node version, change it here only.
+pub const NODE_VERSION: &str = "26.3.0";
+
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
 }
@@ -66,8 +76,28 @@ pub trait NodeRequireLoader {
   fn is_maybe_cjs(&self, specifier: &Url)
   -> Result<bool, PackageJsonLoadError>;
 
+  /// Get if a module loaded via `require()` should first be compiled as CJS.
+  fn is_maybe_cjs_from_require(
+    &self,
+    specifier: &Url,
+  ) -> Result<bool, PackageJsonLoadError>;
+
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
     default_resolve_require_node_module_paths(from)
+  }
+
+  /// Attempts to resolve an npm package by bare specifier from the global
+  /// cache when there is no usable referrer context (e.g. a `require` call
+  /// made from a file outside of the global cache directory while running
+  /// in `--no-node-modules-dir` mode). Returns the package folder for the
+  /// top-level dependency matching `package_name`, or `None` if it can't be
+  /// resolved or if the runtime is configured to use a local
+  /// `node_modules` directory.
+  fn resolve_package_folder_from_name(
+    &self,
+    _package_name: &str,
+  ) -> Option<PathBuf> {
+    None
   }
 }
 
@@ -113,8 +143,11 @@ fn op_node_load_env_file(
   #[string] path: &str,
 ) -> Result<(), DotEnvLoadErr> {
   let fs = state.borrow::<deno_fs::FileSystemRc>().clone();
-  let path = state
-    .borrow::<PermissionsContainer>()
+  let permissions = state.borrow::<PermissionsContainer>().clone();
+  permissions
+    .check_env_all()
+    .map_err(DotEnvLoadErr::Permission)?;
+  let path = permissions
     .check_open(
       Cow::Borrowed(Path::new(path)),
       OpenAccessKind::ReadNoFollow,
@@ -170,10 +203,9 @@ deno_core::extension!(deno_node,
     ops::assert::op_node_get_first_expression,
 
     ops::module_hooks::op_module_hooks_register,
-    ops::module_hooks::op_module_hooks_poll_resolve,
-    ops::module_hooks::op_module_hooks_respond_resolve,
     ops::module_hooks::op_module_hooks_poll_load,
     ops::module_hooks::op_module_hooks_respond_load,
+    ops::module_hooks::op_module_default_resolve,
 
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
@@ -191,7 +223,7 @@ deno_core::extension!(deno_node,
     ops::buffer::op_node_buffer_compare,
     ops::buffer::op_node_buffer_compare_offset,
     ops::constant::op_node_fs_constants,
-    ops::buffer::op_node_decode_utf8,
+    ops::buffer::op_node_encoding_slice,
     ops::dns::op_node_getaddrinfo,
     ops::dns::op_node_getnameinfo,
     ops::fs::op_node_fs_exists_sync,
@@ -242,11 +274,13 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_cp_validate_and_prepare,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
+    ops::v8::op_v8_set_flags_from_string,
     ops::v8::op_v8_get_heap_statistics,
     ops::v8::op_v8_number_of_heap_spaces,
     ops::v8::op_v8_update_heap_space_statistics,
     ops::v8::op_v8_get_heap_code_statistics,
     ops::v8::op_v8_take_heap_snapshot,
+    ops::v8::op_v8_query_objects_count,
     ops::v8::op_v8_get_wire_format_version,
     ops::v8::op_v8_new_deserializer,
     ops::v8::op_v8_new_serializer,
@@ -266,6 +300,9 @@ deno_core::extension!(deno_node,
     ops::v8::op_v8_write_uint32,
     ops::v8::op_v8_write_uint64,
     ops::v8::op_v8_write_value,
+    ops::v8::op_v8_gc_profiler_new,
+    ops::v8::op_v8_gc_profiler_start,
+    ops::v8::op_v8_gc_profiler_stop,
     ops::vm::op_vm_create_script,
     ops::vm::op_vm_create_context,
     ops::vm::op_vm_create_context_without_contextify,
@@ -274,7 +311,10 @@ deno_core::extension!(deno_node,
     ops::vm::op_vm_compile_function,
     ops::vm::op_vm_script_get_source_map_url,
     ops::vm::op_vm_script_create_cached_data,
+    ops::vm::op_vm_dynamic_import_callback_register,
     ops::vm::op_vm_module_create_source_text_module,
+    ops::vm::op_vm_module_create_synthetic_module,
+    ops::vm::op_vm_module_set_synthetic_export,
     ops::vm::op_vm_module_link,
     ops::vm::op_vm_module_instantiate,
     ops::vm::op_vm_module_evaluate,
@@ -292,6 +332,7 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_crc32,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
+    ops::http::op_node_http_check_proxy_net,
     ops::http2::op_http2_callbacks,
     // Keep the HTTP/2 error-string op wired so `internal/test/binding`
     // can mirror Node's `internalBinding('http2').nghttp2ErrorString()`
@@ -310,6 +351,7 @@ deno_core::extension!(deno_node,
     ops::os::op_homedir,
     op_node_build_os,
     op_node_load_env_file,
+    ops::module::op_node_strip_typescript_types,
     ops::require::op_require_can_parse_as_esm,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<TSys>,
@@ -326,7 +368,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_stat<TSys>,
     ops::require::op_require_path_resolve,
     ops::require::op_require_path_basename,
-    ops::require::op_require_read_file,
+    ops::require::op_require_read_file<TSys>,
     ops::require::op_require_as_file_path,
     ops::require::op_require_resolve_exports<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_read_package_scope<TSys>,
@@ -341,6 +383,7 @@ deno_core::extension!(deno_node,
     ops::worker_threads::op_worker_threads_filename<TSys>,
     ops::worker_threads::op_worker_get_resource_limits,
     ops::ipc::op_node_child_ipc_pipe,
+    ops::ipc::op_node_has_child_ipc_pipe,
     ops::ipc::op_node_ipc_write_json,
     ops::ipc::op_node_ipc_read_json,
     ops::ipc::op_node_ipc_read_advanced,
@@ -370,10 +413,12 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_url,
     ops::inspector::op_inspector_wait,
     ops::inspector::op_inspector_connect,
+    ops::inspector::op_node_repl_inspector_connect,
     ops::inspector::op_inspector_dispatch,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
+    ops::inspector::op_inspector_port,
     ops::udp::op_node_udp_bind,
     ops::udp::op_node_udp_join_multi_v4,
     ops::udp::op_node_udp_leave_multi_v4,
@@ -395,8 +440,10 @@ deno_core::extension!(deno_node,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
+    ops::perf_hooks::BaseHistogram,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
+    ops::wasi::WasiContext,
     ops::stream_wrap::LibUvStreamWrap,
     ops::tty_wrap::TTY,
     ops::zlib::BrotliDecoder,
@@ -411,24 +458,29 @@ deno_core::extension!(deno_node,
     ops::http2::Http2Session,
     ops::http2::Http2Stream,
   ],
-  esm_entry_point = "ext:deno_node/02_init.js",
+  esm_entry_point = "node:module",
   esm = [
     dir "polyfills",
-    "02_init.js",
-    "internal/streams/compose.js",
-    "internal/streams/duplexpair.js",
-    "internal/streams/lazy_transform.js",
-    "internal/streams/pipeline.js",
     "internal_binding/mod.ts",
-    "internal/streams/operators.js",
     "node:module" = "01_require.js",
     "node:process" = "process.ts",
-    "node:repl" = "repl.ts",
-    "node:stream" = "stream.ts",
-    "node:stream/promises" = "stream/promises.js",
   ],
   lazy_loaded_esm = [
     dir "polyfills",
+    // Previously eager. Combined with the lazy stdio refactor in
+    // process.ts (process.stdout/stderr/stdin are accessor properties),
+    // these modules only load when a script actually touches stdio or
+    // requires node:stream/net/tty directly.
+    "node:stream" = "stream.ts",
+    "node:stream/promises" = "stream/promises.js",
+    "node:net" = "net_esm.ts",
+    "node:tty" = "tty_esm.ts",
+    "internal/streams/compose.js",
+    "internal/streams/duplexpair.js",
+    "internal/streams/lazy_transform.js",
+    "internal/streams/operators.js",
+    "internal/streams/pipeline.js",
+    "node:repl" = "repl.ts",
     "_fs/_fs_copy.ts",
     "_fs/_fs_dir.ts",
     "_fs/_fs_exists.ts",
@@ -443,13 +495,13 @@ deno_core::extension!(deno_node,
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
     "internal/fs/handle.ts",
+    "internal/http/address_override.js",
     "internal/repl.ts",
     "_readline.mjs",
     "internal/streams/duplexify.js",
     "internal/streams/fast-utf8-stream.js",
     "internal/streams/from.js",
     "internal/tty.js",
-    "internal/webstreams/adapters.js",
     "readline/promises.ts",
     "node:readline/promises" = "readline/promises.ts",
     "deps/minimatch.js",
@@ -458,11 +510,11 @@ deno_core::extension!(deno_node,
     "node:_http_common" = "_http_common.js",
     "node:_http_incoming" = "_http_incoming.js",
     "node:_http_outgoing" = "_http_outgoing.ts",
+    "node:_http_proxy" = "_http_proxy.js",
     "node:_http_server" = "_http_server.js",
     "node:path" = "path.ts",
     "node:path/posix" = "path/posix.ts",
     "node:path/win32" = "path/win32.ts",
-    "node:assert" = "assert_esm.ts",
     "node:buffer" = "buffer.ts",
     "node:assert/strict" = "assert/strict.ts",
     "node:async_hooks" = "async_hooks_esm.ts",
@@ -474,7 +526,6 @@ deno_core::extension!(deno_node,
     "node:querystring" = "querystring_esm.js",
     "node:sys" = "sys_esm.js",
     "node:trace_events" = "trace_events_esm.ts",
-    "node:util" = "util_esm.ts",
     "node:util/types" = "util/types.ts",
     "node:vm" = "vm_esm.js",
     "node:wasi" = "wasi_esm.ts",
@@ -495,11 +546,7 @@ deno_core::extension!(deno_node,
     "node:timers" = "timers_esm.ts",
     "node:timers/promises" = "timers/promises_esm.ts",
     "node:tls" = "tls_esm.ts",
-    "node:tty" = "tty_esm.ts",
-    "node:url" = "url_esm.ts",
     "node:v8" = "v8_esm.ts",
-    "node:worker_threads" = "worker_threads_esm.ts",
-    "node:zlib" = "zlib_esm.ts",
     "node:child_process" = "child_process_esm.ts",
     "node:fs" = "fs_esm.ts",
     "node:fs/promises" = "fs/promises_esm.ts",
@@ -513,9 +560,9 @@ deno_core::extension!(deno_node,
     "node:_stream_readable" = "internal/streams/readable_esm.js",
     "node:_stream_transform" = "internal/streams/transform_esm.js",
     "node:_stream_writable" = "internal/streams/writable_esm.js",
-    "node:net" = "net_esm.ts",
     "node:_tls_common" = "_tls_common_esm.ts",
     "node:_tls_wrap" = "_tls_wrap_esm.js",
+    "node:assert" = "assert_esm.ts",
     "node:readline" = "readline.ts",
   ],
   lazy_loaded_js = [
@@ -545,7 +592,9 @@ deno_core::extension!(deno_node,
     "http2.ts",
     "https.ts",
     "inspector.js",
+    "inspector_network_bridge.js",
     "inspector/promises.js",
+    "_repl_preview.js",
     "internal/streams/duplex.js",
     "internal/streams/passthrough.js",
     "internal/streams/readable.js",
@@ -580,6 +629,7 @@ deno_core::extension!(deno_node,
     "internal_binding/_utils.ts",
     "internal_binding/ares.ts",
     "internal_binding/async_wrap.ts",
+    "internal_binding/block_list.ts",
     "internal_binding/_timingSafeEqual.ts",
     "internal_binding/cares_wrap.ts",
     "internal_binding/crypto.ts",
@@ -587,6 +637,7 @@ deno_core::extension!(deno_node,
     "internal_binding/http_parser.ts",
     "internal_binding/handle_wrap.ts",
     "internal_binding/http2.ts",
+    "internal_binding/inspector.js",
     "internal_binding/node_file.ts",
     "internal_binding/node_options.ts",
     "internal_binding/pipe_wrap.ts",
@@ -650,6 +701,7 @@ deno_core::extension!(deno_node,
     "internal/mime.ts",
     "internal/options.ts",
     "internal/priority_queue.ts",
+    "internal/process/active_resources.ts",
     "internal/process/per_thread.mjs",
     "internal/process/report.ts",
     "internal/process/warning.ts",
@@ -660,16 +712,22 @@ deno_core::extension!(deno_node,
     "internal/readline/promises.mjs",
     "internal/readline/symbols.mjs",
     "internal/readline/utils.mjs",
+    "internal/socketaddress.js",
     "internal/stream_base_commons.ts",
     "internal/streams/add-abort-signal.js",
     "internal/streams/utils.js",
     "internal/test/binding.ts",
+    "internal/test/reporters.ts",
     "internal/timers.mjs",
     "internal/url.ts",
     "internal/util/colors.ts",
     "internal/util/debuglog.ts",
     "internal/util/parse_args/parse_args.js",
     "internal/util/parse_args/utils.js",
+    "internal/webstreams/adapters.js",
+    "internal/webstreams/readablestream.js",
+    "internal/webstreams/util.js",
+    "internal/worker/js_transferable.js",
     "internal/net.ts",
     "internal/tls_common.js",
     "internal/util/comparisons.ts",
@@ -711,6 +769,12 @@ deno_core::extension!(deno_node,
     "path/_win32.ts",
     "path/mod.ts",
   ],
+  synthetic_esm = [
+    "node:url" = "ext:deno_node/url.ts",
+    "node:util" = "ext:deno_node/util.ts",
+    "node:worker_threads" = "ext:deno_node/worker_threads.ts",
+    "node:zlib" = "ext:deno_node/zlib.js",
+  ],
   options = {
     maybe_init: Option<NodeExtInitServices<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>>,
     fs: deno_fs::FileSystemRc,
@@ -735,9 +799,14 @@ deno_core::extension!(deno_node,
       client_session_store: std::sync::Arc::new(
         deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
       ),
+      client_session_store_insecure: std::sync::Arc::new(
+        deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
+      ),
       server_ticketer: None,
       cached_default_verifier: None,
+      cached_insecure_verifier: None,
       cached_no_client_auth: None,
+      cached_insecure_no_client_auth: None,
     });
   },
   customizer = |ext: &mut deno_core::Extension| {
@@ -849,4 +918,31 @@ pub fn create_host_defined_options<'s>(
   let value = v8::Boolean::new(scope, true);
   host_defined_options.set(scope, 0, value.into());
   host_defined_options.into()
+}
+
+/// Build host-defined options that mark a script as having been compiled
+/// by `node:vm` (e.g. via `vm.Script`, `vm.runInThisContext`,
+/// `vm.compileFunction`, `vm.SourceTextModule`) without an
+/// `importModuleDynamically` callback. When V8 invokes the dynamic-import
+/// host callback for such a script, the runtime rejects the import with
+/// `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`, matching Node.js. Without
+/// this marker, sandboxed `vm` code could escape via `import()`.
+pub fn create_vm_dynamic_import_missing_host_defined_options<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Data> {
+  deno_core::create_host_defined_options_with_kind(
+    scope,
+    deno_core::host_defined_options_kind::VM_DYNAMIC_IMPORT_MISSING,
+  )
+}
+
+pub fn create_vm_dynamic_import_callback_host_defined_options<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback_id: u32,
+) -> v8::Local<'s, v8::Data> {
+  deno_core::create_host_defined_options_with_kind_and_key(
+    scope,
+    deno_core::host_defined_options_kind::VM_DYNAMIC_IMPORT_CALLBACK,
+    callback_id,
+  )
 }

@@ -163,13 +163,13 @@ fn getaddrinfo_inner(
   }
   #[cfg(windows)]
   {
-    use winapi::shared::minwindef::MAKEWORD;
     use windows_sys::Win32::Networking::WinSock;
 
-    // SAFETY: winapi call
+    // SAFETY: Win32 call
     let wsa_startup_code = *WINSOCKET_INIT.get_or_init(|| unsafe {
       let mut wsa_data: WinSock::WSADATA = std::mem::zeroed();
-      WinSock::WSAStartup(MAKEWORD(2, 2), &mut wsa_data)
+      // MAKEWORD(2, 2)
+      WinSock::WSAStartup(0x0202, &mut wsa_data)
     });
     if wsa_startup_code != 0 {
       return Err(assert_success_err(wsa_startup_code));
@@ -322,13 +322,13 @@ fn getnameinfo(socket_addr: SocketAddr) -> Result<(String, String), DnsError> {
   {
     use std::os::windows::ffi::OsStringExt;
 
-    use winapi::shared::minwindef::MAKEWORD;
     use windows_sys::Win32::Networking::WinSock;
 
-    // SAFETY: winapi call
+    // SAFETY: Win32 call
     let wsa_startup_code = *WINSOCKET_INIT.get_or_init(|| unsafe {
       let mut wsa_data: WinSock::WSADATA = std::mem::zeroed();
-      WinSock::WSAStartup(MAKEWORD(2, 2), &mut wsa_data)
+      // MAKEWORD(2, 2)
+      WinSock::WSAStartup(0x0202, &mut wsa_data)
     });
     assert_success(wsa_startup_code)?;
 

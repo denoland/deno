@@ -20,11 +20,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { customPromisifyArgs } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
@@ -43,7 +40,6 @@ const dnsUtilsNs = core.loadExtScript(
 );
 const {
   dnsOrderToNumber,
-  emitInvalidHostnameWarning,
   getDefaultDnsOrder,
   getDefaultResolver,
   isFamily,
@@ -75,10 +71,18 @@ const {
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
+  kPermTokenSink,
 } = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
-const { domainToASCII } = core.loadExtScript("ext:deno_node/internal/idna.ts");
+const { domainToASCII } = core.loadExtScript(
+  "ext:deno_node/internal/idna.ts",
+);
 
-const { ObjectDefineProperty } = primordials;
+const {
+  ArrayPrototypeMap,
+  ObjectCreate,
+  ObjectDefineProperty,
+  ReflectApply,
+} = primordials;
 
 function onlookup(
   this: GetAddrInfoReqWrap,
@@ -90,12 +94,19 @@ function onlookup(
     return this.callback(dnsException(err, "getaddrinfo", this.hostname));
   }
 
-  this.callback(
-    null,
-    addresses[0],
-    this.family || isIP(addresses[0]),
-    netPermToken,
-  );
+  // The NetPermToken is only handed to net.connect's built-in lookup, which
+  // tags its callback with `kPermTokenSink`. User-supplied callbacks never
+  // bear the marker and so never observe the token (GHSA-fhjh-jqv7-m238).
+  if (this.callback[kPermTokenSink]) {
+    this.callback(
+      null,
+      addresses[0],
+      this.family || isIP(addresses[0]),
+      netPermToken,
+    );
+  } else {
+    this.callback(null, addresses[0], this.family || isIP(addresses[0]));
+  }
 }
 
 function onlookupall(
@@ -119,7 +130,9 @@ function onlookupall(
     };
   }
 
-  if (this.callback.length > 1) {
+  // Only net.connect's built-in lookup (tagged with `kPermTokenSink`) is given
+  // the NetPermToken; user-supplied callbacks never observe it.
+  if (this.callback[kPermTokenSink]) {
     this.callback(null, parsedAddresses, undefined, netPermToken);
   } else {
     this.callback(null, parsedAddresses);
@@ -255,14 +268,16 @@ function lookup(
   }
 
   if (!hostname) {
-    emitInvalidHostnameWarning(hostname);
-
     if (all) {
       nextTick(callback as LookupCallback, null, []);
     } else {
-      nextTick(callback as LookupCallback, null, null, family === 6 ? 6 : 4);
+      nextTick(
+        callback as LookupCallback,
+        null,
+        null,
+        family === 6 ? 6 : 4,
+      );
     }
-
     return {};
   }
 
@@ -307,7 +322,8 @@ function lookup(
   return req;
 }
 
-Object.defineProperty(lookup, customPromisifyArgs, {
+ObjectDefineProperty(lookup, customPromisifyArgs, {
+  __proto__: null,
   value: ["address", "family"],
   enumerable: false,
 });
@@ -379,10 +395,13 @@ function onresolve(
   }
 
   const parsedRecords = ttls && this.ttl
-    ? (records as string[]).map((address: string, index: number) => ({
-      address,
-      ttl: ttls[index],
-    }))
+    ? ArrayPrototypeMap(
+      records as string[],
+      (address: string, index: number) => ({
+        address,
+        ttl: ttls[index],
+      }),
+    )
     : records;
 
   this.callback(null, parsedRecords);
@@ -419,12 +438,15 @@ function resolver(bindingName: string) {
     return req;
   }
 
-  Object.defineProperty(query, "name", { value: bindingName });
+  ObjectDefineProperty(query, "name", {
+    __proto__: null,
+    value: bindingName,
+  });
 
   return query;
 }
 
-const resolveMap = Object.create(null);
+const resolveMap = ObjectCreate(null);
 
 class Resolver extends CallbackResolver {
   constructor(options?: ResolverOptions) {
@@ -469,7 +491,7 @@ function _resolve(
   }
 
   if (typeof resolver === "function") {
-    return Reflect.apply(resolver, this, [hostname, callback]);
+    return ReflectApply(resolver, this, [hostname, callback]);
   }
 
   throw new ERR_INVALID_ARG_VALUE("rrtype", rrtype);
@@ -532,7 +554,11 @@ function setServers(servers: ReadonlyArray<string>) {
  * ```
  */
 function getServers(): string[] {
-  return Resolver.prototype.getServers.bind(getDefaultResolver())();
+  return ReflectApply(
+    Resolver.prototype.getServers,
+    getDefaultResolver(),
+    [],
+  );
 }
 
 /**
@@ -569,8 +595,10 @@ function resolveAny(
   callback: (err: ErrnoException | null, addresses: AnyRecord[]) => void,
 ): QueryReqWrap;
 function resolveAny(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveAny.bind(getDefaultResolver() as Resolver)(
-    ...args,
+  return ReflectApply(
+    Resolver.prototype.resolveAny,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -603,10 +631,10 @@ function resolve4(
   options: unknown,
   callback?: unknown,
 ) {
-  return Resolver.prototype.resolve4.bind(getDefaultResolver() as Resolver)(
-    hostname,
-    options,
-    callback,
+  return ReflectApply(
+    Resolver.prototype.resolve4,
+    getDefaultResolver() as Resolver,
+    [hostname, options, callback],
   );
 }
 
@@ -639,10 +667,10 @@ function resolve6(
   options: unknown,
   callback?: unknown,
 ) {
-  return Resolver.prototype.resolve6.bind(getDefaultResolver() as Resolver)(
-    hostname,
-    options,
-    callback,
+  return ReflectApply(
+    Resolver.prototype.resolve6,
+    getDefaultResolver() as Resolver,
+    [hostname, options, callback],
   );
 }
 
@@ -657,8 +685,10 @@ function resolveCaa(
   callback: (err: ErrnoException | null, records: CaaRecord[]) => void,
 ): QueryReqWrap;
 function resolveCaa(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveCaa.bind(getDefaultResolver() as Resolver)(
-    ...args,
+  return ReflectApply(
+    Resolver.prototype.resolveCaa,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -672,8 +702,10 @@ function resolveCname(
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): QueryReqWrap;
 function resolveCname(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveCname.bind(getDefaultResolver() as Resolver)(
-    ...args,
+  return ReflectApply(
+    Resolver.prototype.resolveCname,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -688,8 +720,10 @@ function resolveMx(
   callback: (err: ErrnoException | null, addresses: MxRecord[]) => void,
 ): QueryReqWrap;
 function resolveMx(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveMx.bind(getDefaultResolver() as Resolver)(
-    ...args,
+  return ReflectApply(
+    Resolver.prototype.resolveMx,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -704,8 +738,10 @@ function resolveNs(
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): QueryReqWrap;
 function resolveNs(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveNs.bind(getDefaultResolver() as Resolver)(
-    ...args,
+  return ReflectApply(
+    Resolver.prototype.resolveNs,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -722,8 +758,10 @@ function resolveTxt(
   callback: (err: ErrnoException | null, addresses: string[][]) => void,
 ): QueryReqWrap;
 function resolveTxt(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveTxt.bind(getDefaultResolver() as Resolver)(
-    ...args,
+  return ReflectApply(
+    Resolver.prototype.resolveTxt,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -751,8 +789,10 @@ function resolveSrv(
   callback: (err: ErrnoException | null, addresses: SrvRecord[]) => void,
 ): QueryReqWrap;
 function resolveSrv(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveSrv.bind(getDefaultResolver() as Resolver)(
-    ...args,
+  return ReflectApply(
+    Resolver.prototype.resolveSrv,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -766,8 +806,10 @@ function resolvePtr(
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): QueryReqWrap;
 function resolvePtr(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolvePtr.bind(getDefaultResolver() as Resolver)(
-    ...args,
+  return ReflectApply(
+    Resolver.prototype.resolvePtr,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -800,8 +842,10 @@ function resolveNaptr(
   callback: (err: ErrnoException | null, addresses: NaptrRecord[]) => void,
 ): QueryReqWrap;
 function resolveNaptr(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveNaptr.bind(getDefaultResolver() as Resolver)(
-    ...args,
+  return ReflectApply(
+    Resolver.prototype.resolveNaptr,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -835,8 +879,10 @@ function resolveSoa(
   callback: (err: ErrnoException | null, address: SoaRecord) => void,
 ): QueryReqWrap;
 function resolveSoa(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveSoa.bind(getDefaultResolver() as Resolver)(
-    ...args,
+  return ReflectApply(
+    Resolver.prototype.resolveSoa,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -852,8 +898,10 @@ function reverse(
   callback: (err: ErrnoException | null, hostnames: string[]) => void,
 ): QueryReqWrap;
 function reverse(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.reverse.bind(getDefaultResolver() as Resolver)(
-    ...args,
+  return ReflectApply(
+    Resolver.prototype.reverse,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -943,10 +991,10 @@ function resolve(
   ) => void,
 ): QueryReqWrap;
 function resolve(hostname: string, rrtype: unknown, callback?: unknown) {
-  return Resolver.prototype.resolve.bind(getDefaultResolver() as Resolver)(
-    hostname,
-    rrtype,
-    callback,
+  return ReflectApply(
+    Resolver.prototype.resolve,
+    getDefaultResolver() as Resolver,
+    [hostname, rrtype, callback],
   );
 }
 

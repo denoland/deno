@@ -6,6 +6,7 @@ export const {
   Module,
   Script,
   SourceTextModule,
+  SyntheticModule,
   constants,
   createContext,
   createScript,

@@ -44,6 +44,7 @@ macro_rules! builtin_ops {
 builtin_ops! {
   op_close,
   op_try_close,
+  op_cancel_read,
   op_print,
   op_resources,
   op_wasm_streaming_feed,
@@ -109,6 +110,7 @@ builtin_ops! {
   ops_builtin_v8::op_unref_op,
   ops_builtin_v8::op_lazy_load_esm,
   ops_builtin_v8::op_load_ext_script,
+  ops_builtin_v8::op_set_captured_bootstrap,
   ops_builtin_v8::op_run_microtasks,
   ops_builtin_v8::op_drain_pending_rejections,
   ops_builtin_v8::op_compile_function,
@@ -213,6 +215,15 @@ pub fn op_close(
 pub fn op_try_close(state: Rc<RefCell<OpState>>, #[smi] rid: ResourceId) {
   if let Ok(resource) = state.borrow_mut().resource_table.take_any(rid) {
     resource.close();
+  }
+}
+
+/// Cancel pending read operations for a resource without removing it from the
+/// resource table.
+#[op2(fast)]
+pub fn op_cancel_read(state: Rc<RefCell<OpState>>, #[smi] rid: ResourceId) {
+  if let Ok(resource) = state.borrow().resource_table.get_any(rid) {
+    resource.cancel_read_ops();
   }
 }
 
@@ -538,10 +549,13 @@ async fn do_load_job<'s, 'i>(
     code,
   )
   .await?
-  .run_to_completion(|load, request, source| {
-    load
+  .run_to_completion(|load, step| match step {
+    crate::modules::recursive_load::RegisterStep::Register {
+      request,
+      source,
+    } => load
       .register_and_recurse(scope, request, source)
-      .map_err(|e| e.into_error(scope, false, false))
+      .map_err(|e| e.into_error(scope, false, false)),
   })
   .await?;
 
@@ -558,9 +572,10 @@ async fn do_load_job<'s, 'i>(
           exception_to_err(scope, exception, false, false)
         })?;
     }
-    v8::ModuleStatus::Instantiated
-    | v8::ModuleStatus::Instantiating
-    | v8::ModuleStatus::Evaluating => {
+    v8::ModuleStatus::Instantiated => {
+      // Already instantiated — caller (op_import_sync) will evaluate.
+    }
+    v8::ModuleStatus::Instantiating | v8::ModuleStatus::Evaluating => {
       return Err(
         JsErrorBox::generic(format!(
           "Cannot require() ES Module {specifier} in a cycle."
@@ -691,6 +706,14 @@ fn op_import_sync<'s, 'i>(
   let module = module_map_rc
     .get_module(scope, module_id)
     .expect("Module must exist");
+
+  // A module that was evaluated asynchronously (e.g. via `await import()`)
+  // and contains top-level await cannot be loaded via `require()`. Detect
+  // this regardless of current status so retries after async load still
+  // throw ERR_REQUIRE_ASYNC_MODULE.
+  if module.is_graph_async() {
+    return Err(CoreErrorKind::TLA.into_box());
+  }
 
   match module.get_status() {
     v8::ModuleStatus::Uninstantiated

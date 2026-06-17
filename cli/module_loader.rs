@@ -77,6 +77,7 @@ use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use eszip::EszipV2;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
@@ -107,6 +108,7 @@ use crate::sys::CliSys;
 use crate::type_checker::CheckError;
 use crate::type_checker::CheckOptions;
 use crate::type_checker::TypeChecker;
+use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
@@ -352,6 +354,7 @@ struct SharedCliModuleLoaderState {
   sys: CliSys,
   in_flight_loads_tracker: InFlightModuleLoadsTracker,
   maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
 }
 
 struct InFlightModuleLoadsTracker {
@@ -415,6 +418,7 @@ impl CliModuleLoaderFactory {
     resolver: Arc<CliResolver>,
     sys: CliSys,
     maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
+    watcher_communicator: Option<Arc<WatcherCommunicator>>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -448,6 +452,7 @@ impl CliModuleLoaderFactory {
           cleanup_task_handle: Arc::new(Mutex::new(None)),
         },
         maybe_eszip_loader,
+        watcher_communicator,
       }),
     }
   }
@@ -473,6 +478,22 @@ impl CliModuleLoaderFactory {
         loaded_files: Default::default(),
         hook_registry: hook_registry.clone(),
       })));
+    {
+      let inner = module_loader.0.clone();
+      hook_registry.set_default_resolve(Rc::new(
+        move |specifier: &str, referrer: &str| {
+          inner
+            .inner_resolve(
+              specifier,
+              referrer,
+              deno_core::ResolutionKind::Import,
+              false,
+            )
+            .map(|s| s.to_string())
+            .map_err(|e| JsErrorBox::generic(e.to_string()))
+        },
+      ));
+    }
     let node_require_loader = Rc::new(CliNodeRequireLoader {
       cjs_tracker: self.shared.cjs_tracker.clone(),
       emitter: self.shared.emitter.clone(),
@@ -581,15 +602,98 @@ pub enum CliModuleLoaderError {
   ResolveReferrer(#[from] ResolveReferrerError),
 }
 
+/// Applies `deno_resolver::patch_react_cves` to JavaScript module source,
+/// handling both string and (valid UTF-8) byte representations without
+/// allocating when no patch is needed.
+fn patch_react_cves_source(
+  specifier: &ModuleSpecifier,
+  code: ModuleSourceCode,
+) -> ModuleSourceCode {
+  // Borrow the source as `&str` and compute the patched output (if any) in an
+  // inner scope so the borrow of `code` ends before we move it below.
+  let patched: Option<String> = {
+    let src = match &code {
+      ModuleSourceCode::String(s) => s.as_str(),
+      ModuleSourceCode::Bytes(b) => match std::str::from_utf8(b.as_bytes()) {
+        Ok(s) => s,
+        // Non UTF-8 source can't contain the ASCII patterns we look for.
+        Err(_) => return code,
+      },
+    };
+    match deno_resolver::patch_react_cves(
+      specifier.as_str(),
+      Cow::Borrowed(src),
+    ) {
+      Cow::Borrowed(_) => None,
+      Cow::Owned(s) => Some(s),
+    }
+  };
+  match patched {
+    Some(s) => ModuleSourceCode::String(s.into()),
+    None => code,
+  }
+}
+
 impl<TGraphContainer: ModuleGraphContainer>
   CliModuleLoaderInner<TGraphContainer>
 {
+  /// Best-effort prepare a specifier through the module graph when ESM
+  /// hooks are active. Used both for the initial load preparation and for
+  /// redirects introduced by a load hook calling `nextLoad(newUrl)`.
+  /// Failures are intentionally swallowed: a user hook may resolve to a
+  /// virtual URL the graph builder cannot fetch, in which case the load
+  /// is serviced entirely by hooks.
+  async fn prepare_hooked_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+    is_dynamic_import: bool,
+  ) {
+    let permissions = if is_dynamic_import {
+      &self.permissions
+    } else {
+      &self.parent_permissions
+    };
+    let is_dynamic = is_dynamic_import || self.is_worker;
+    let mut update_permit = self.graph_container.acquire_update_permit().await;
+    let graph = update_permit.graph_mut();
+    let _ = self
+      .shared
+      .module_load_preparer
+      .prepare_module_load(
+        graph,
+        std::slice::from_ref(specifier),
+        PrepareModuleLoadOptions {
+          is_dynamic,
+          lib: self.lib,
+          permissions: permissions.clone(),
+          ext_overwrite: None,
+          allow_unknown_media_types: false,
+          skip_graph_roots_validation: true,
+          file_content_overrides: HashMap::new(),
+        },
+      )
+      .await;
+    graph.prune_types();
+    update_permit.commit();
+  }
+
   async fn load_inner(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleSource, ModuleLoaderError> {
+    if specifier.path().ends_with(".node") {
+      return Err(JsErrorBox::type_error(format!(
+        "Cannot import native Node.js addon \"{specifier}\" via ESM. \
+         Native `.node` addons can only be loaded through `require()`. \
+         Use `createRequire()` from `node:module`, e.g.:\n  \
+         import {{ createRequire }} from \"node:module\";\n  \
+         const require = createRequire(import.meta.url);\n  \
+         const addon = require(\"./addon.node\");"
+      )));
+    }
+
     let code_source = self
       .load_code_source(specifier, maybe_referrer, requested_module_type)
       .await
@@ -604,6 +708,17 @@ impl<TGraphContainer: ModuleGraphContainer>
     } else {
       // v8 is slower when source maps are present, so we strip them
       code_without_source_map(code_source.code)
+    };
+
+    // Apply load-time security mitigations for known React Server Components
+    // CVEs to JavaScript source. Opt in via `DENO_PATCH_REACT_CVE`. See
+    // `deno_resolver::patch_react_cves`.
+    let code = if code_source.module_type == ModuleType::JavaScript
+      && deno_resolver::is_react_cve_patch_enabled(&self.shared.sys)
+    {
+      patch_react_cves_source(specifier, code)
+    } else {
+      code
     };
 
     let code_cache = if code_source.module_type == ModuleType::JavaScript {
@@ -743,11 +858,16 @@ impl<TGraphContainer: ModuleGraphContainer>
       .file_fetcher
       .fetch_with_options(
         specifier,
+        // Always check against this worker's own permissions, never the
+        // broader `parent_permissions`. Dynamic `import()` of a text/bytes
+        // asset (`with { type: "text" | "bytes" }`) returns the file's raw
+        // contents to the caller and therefore requires read access; routing
+        // it through `parent_permissions` would let a worker created with
+        // restricted permissions read files its parent can but it cannot.
+        // For statically analyzable imports `check_specifier` skips the read
+        // check entirely, so the chosen container does not matter there.
         FetchPermissionsOptionRef::Restricted(
-          match check_specifier_kind {
-            CheckSpecifierKind::Static => &self.permissions,
-            CheckSpecifierKind::Dynamic => &self.parent_permissions,
-          },
+          &self.permissions,
           check_specifier_kind,
         ),
         FetchOptions {
@@ -766,6 +886,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     let module_type = match requested_module_type {
       RequestedModuleType::Text => ModuleType::Text,
       RequestedModuleType::Bytes => ModuleType::Bytes,
+      RequestedModuleType::Other(kind) => ModuleType::Other(kind.clone()),
       RequestedModuleType::None => {
         match file.resolve_media_type_and_charset().0 {
           MediaType::Wasm => ModuleType::Wasm,
@@ -988,29 +1109,6 @@ impl<TGraphContainer: ModuleGraphContainer>
   }
 }
 
-/// Returns true if the specifier is already a fully-resolved URL with a
-/// standard scheme (file, http, https, data, blob, node). Such specifiers
-/// don't need hook interception for resolution, and skipping hooks avoids
-/// deadlocks when called from synchronous contexts (op_import_sync).
-fn is_already_resolved_specifier(specifier: &str) -> bool {
-  specifier.starts_with("file://")
-    || specifier.starts_with("http://")
-    || specifier.starts_with("https://")
-    || specifier.starts_with("data:")
-    || specifier.starts_with("blob:")
-    || is_builtin_module_specifier(specifier)
-}
-
-/// Returns true if the specifier names a runtime built-in (`node:` or `ext:`).
-/// These modules are served by the runtime itself and must never be routed
-/// through user-supplied `module.register()` load hooks — the JS-side
-/// `defaultLoad` returns `{ source: null, format: "builtin" }` for them, which
-/// would otherwise fall through to the default file loader and surface as a
-/// confusing "Unsupported scheme" error.
-fn is_builtin_module_specifier(specifier: &str) -> bool {
-  specifier.starts_with("node:") || specifier.starts_with("ext:")
-}
-
 #[derive(Clone)]
 // todo(dsherret): this double Rc boxing is not ideal
 pub struct CliModuleLoader<TGraphContainer: ModuleGraphContainer>(
@@ -1026,111 +1124,57 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     referrer: &str,
     kind: deno_core::ResolutionKind,
   ) -> deno_core::ModuleResolveResponse {
-    if self.0.hook_registry.resolve_active.get()
-      && !is_already_resolved_specifier(specifier)
+    self.0.inner_resolve(specifier, referrer, kind, false)
+  }
+
+  fn resolve_with_scope(
+    &self,
+    scope: &mut deno_core::v8::PinScope,
+    specifier: &str,
+    referrer: &str,
+    kind: deno_core::ResolutionKind,
+  ) -> deno_core::ModuleResolveResponse {
+    // CJS modules generated by Deno import `node:module` internally. Node does
+    // not expose that implementation detail to resolve hooks, so only bypass
+    // hooks for CJS referrers. User ESM imports of `node:module` still go
+    // through hooks.
+    if specifier == "node:module"
+      && let Ok(referrer) = ModuleSpecifier::parse(referrer)
+      && self.0.shared.cjs_tracker.get_referrer_kind(&referrer)
+        == ResolutionMode::Require
     {
-      // Check if this specifier was already resolved by hooks during
-      // the load phase. This cache lookup is critical for V8's module
-      // instantiation callback (module_resolve_callback) which calls
-      // resolve synchronously -- we cannot return Async there.
-      let cache_key = format!("{specifier}\x00{referrer}");
-      if let Some(cached) = self
+      return self
         .0
-        .hook_registry
-        .resolve_cache
-        .borrow_mut()
-        .remove(&cache_key)
-      {
-        return deno_core::ModuleResolveResponse::Sync(
-          ModuleSpecifier::parse(&cached).map_err(JsErrorBox::from_err),
-        );
-      }
-
-      // For synchronous resolution contexts (V8's `module_resolve_callback`
-      // during instantiation), we cannot return an Async response. If the
-      // cache miss happens here, fall back to Deno's default sync resolver.
-      // This path is hit when `recursive_load` skipped an async resolve
-      // because the placeholder URL already matched a registered module --
-      // so the hook never got a chance to populate the cache. We bypass
-      // the user hook chain for this single resolution because the
-      // alternative is a panic in V8's sync callback; in practice the
-      // placeholder match means the module is already registered under
-      // the URL that Deno's default resolver will produce, so the
-      // bypassed hook would have returned the same URL anyway.
-      if matches!(kind, deno_core::ResolutionKind::Import) {
-        return deno_core::ModuleResolveResponse::Sync(
-          self.0.inner_resolve(specifier, referrer, kind, false),
-        );
-      }
-
-      // Pre-compute the default-resolved URL so the hook chain's
-      // `defaultResolve()` (in the hooks worker) returns Deno's actual
-      // resolution -- including import map and jsr lookups -- instead of
-      // naively URL-parsing the bare specifier against the referrer.
-      let default_url = self
-        .0
-        .inner_resolve(specifier, referrer, kind, false)
-        .ok()
-        .map(|u| u.to_string());
-      let receiver = self.0.hook_registry.push_resolve(
-        specifier.to_string(),
-        referrer.to_string(),
-        default_url,
-      );
-      let inner = self.0.clone();
-      let specifier = specifier.to_string();
-      let referrer = referrer.to_string();
-      return deno_core::ModuleResolveResponse::Async(
-        async move {
-          let hook_result: Result<Option<String>, String> = match receiver.await
-          {
-            Ok(r) => r,
-            Err(_) => {
-              return Err(JsErrorBox::generic("module resolve hook cancelled"));
-            }
-          };
-          match hook_result {
-            Ok(Some(url)) => {
-              let parsed =
-                ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err)?;
-              // Cache the resolve result so instantiation can look it up
-              // synchronously later.
-              inner.hook_registry.resolve_cache.borrow_mut().insert(
-                format!("{specifier}\x00{referrer}"),
-                parsed.to_string(),
-              );
-              // Track that this specifier was hook-intercepted (virtual module)
-              // so prepare_load knows to skip graph building for it.
-              inner
-                .hook_registry
-                .hook_intercepted_specifiers
-                .borrow_mut()
-                .insert(parsed.to_string());
-              Ok(parsed)
-            }
-            Ok(None) => {
-              // Fallthrough: hooks didn't intercept, use default.
-              // Cache the result so instantiation doesn't go async.
-              let result =
-                inner.inner_resolve(&specifier, &referrer, kind, false);
-              if let Ok(ref resolved) = result {
-                inner.hook_registry.resolve_cache.borrow_mut().insert(
-                  format!("{specifier}\x00{referrer}"),
-                  resolved.to_string(),
-                );
-              }
-              result
-            }
-            Err(err) => Err(JsErrorBox::generic(err)),
-          }
-        }
-        .boxed_local(),
-      );
+        .inner_resolve(specifier, referrer.as_str(), kind, false);
     }
+    if specifier == "node:module"
+      && let Ok(referrer) = ModuleSpecifier::parse(referrer)
+    {
+      let media_type = MediaType::from_specifier(&referrer);
+      if self
+        .0
+        .shared
+        .cjs_tracker
+        .is_maybe_cjs(&referrer, media_type)
+        .unwrap_or(false)
+      {
+        return self
+          .0
+          .inner_resolve(specifier, referrer.as_str(), kind, false);
+      }
+    }
+    if let Some(url) =
+      self.0.hook_registry.resolve(scope, specifier, referrer)?
+    {
+      return ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err);
+    }
+    self.0.inner_resolve(specifier, referrer, kind, false)
+  }
 
-    deno_core::ModuleResolveResponse::Sync(
-      self.0.inner_resolve(specifier, referrer, kind, false),
-    )
+  fn pump_event_loop_during_load(&self) -> bool {
+    // Load hooks respond through the async bridge, so the event loop must be
+    // pumped during the recursive load or the load deadlocks.
+    self.0.hook_registry.load_active.get()
   }
 
   fn import_meta_resolve(
@@ -1177,17 +1221,15 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let maybe_referrer = maybe_referrer.cloned();
 
     // When load hooks are active, delegate to JS hooks first.
-    // Skip the hook bridge for:
-    // - CJS modules — they go through the default loader which invokes the
-    //   sync load hook chain (executeLoadHookChain) in Module._load. Going
-    //   through both the ESM bridge AND the CJS path would call hooks twice.
-    // - `node:` and `ext:` built-ins — these are served by the runtime
-    //   itself. Routing them through the hook bridge ends in a fallthrough
-    //   to the default file loader, which doesn't understand the scheme and
-    //   surfaces as "Unsupported scheme" errors (see #34004).
+    // The hook function itself is synchronous, but this load path has no V8
+    // scope. The async bridge lets the JS event loop run the hook; blocking
+    // here waiting for JS would deadlock the same runtime.
+    // Skip the hook bridge for CJS modules — they go through the
+    // default loader which invokes the sync load hook chain
+    // (executeLoadHookChain) in Module._load. Going through both
+    // the ESM bridge AND the CJS path would call hooks twice.
     if self.0.hook_registry.load_active.get()
       && !options.is_synchronous
-      && !is_builtin_module_specifier(specifier.as_str())
       && !{
         let media_type = deno_media_type::MediaType::from_specifier(&specifier);
         self
@@ -1208,28 +1250,59 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
             }
           };
           match hook_result {
-            Ok((Some(source), format)) => {
-              let module_type = match format.as_deref() {
-                Some("json") => deno_core::ModuleType::Json,
-                Some("wasm") => deno_core::ModuleType::Wasm,
-                _ => deno_core::ModuleType::JavaScript,
-              };
+            Ok((Some(source), _format, _effective_url)) => {
               Ok(deno_core::ModuleSource::new(
-                module_type,
+                deno_core::ModuleType::JavaScript,
                 deno_core::ModuleSourceCode::String(source.into()),
                 &specifier,
                 None,
               ))
             }
-            Ok((None, _)) => {
-              // Fallthrough: hooks didn't intercept, use default
-              inner
+            Ok((None, Some(format), _effective_url))
+              if format == "builtin" && specifier.scheme() == "node" =>
+            {
+              Ok(deno_core::ModuleSource::new(
+                deno_core::ModuleType::JavaScript,
+                deno_core::ModuleSourceCode::String("".to_string().into()),
+                &specifier,
+                None,
+              ))
+            }
+            Ok((None, _, effective_url)) => {
+              // Fallthrough: hooks didn't intercept. If the user's load hook
+              // chain delegated via `nextLoad(newUrl)`, fetch source from
+              // that URL but keep the module's identity at the original
+              // specifier (matches Node's hook semantics).
+              let fetch_specifier = effective_url
+                .as_deref()
+                .and_then(|u| deno_core::ModuleSpecifier::parse(u).ok())
+                .filter(|u| u != &specifier);
+              if let Some(redirect) = fetch_specifier.as_ref() {
+                // The redirect target wasn't seen by the initial graph
+                // preparation pass; prepare it now so load_inner can find
+                // it in the graph.
+                inner
+                  .prepare_hooked_specifier(redirect, options.is_dynamic_import)
+                  .await;
+              }
+              let load_url = fetch_specifier.as_ref().unwrap_or(&specifier);
+              let source = inner
                 .load_inner(
-                  &specifier,
+                  load_url,
                   maybe_referrer.as_ref().map(|r| &r.specifier),
                   &options.requested_module_type,
                 )
-                .await
+                .await?;
+              if fetch_specifier.is_some() {
+                Ok(deno_core::ModuleSource::new(
+                  source.module_type,
+                  source.code,
+                  &specifier,
+                  source.code_cache,
+                ))
+              } else {
+                Ok(source)
+              }
             }
             Err(err) => Err(JsErrorBox::generic(err)),
           }
@@ -1240,6 +1313,21 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     deno_core::ModuleLoadResponse::Async(
       async move {
+        // A `registerHooks` resolve hook may have rewritten this specifier
+        // to a URL the initial graph preparation never saw (e.g. appended a
+        // fragment for cache busting), so prepare it on demand.
+        if inner.hook_registry.resolve_active()
+          && !matches!(
+            options.requested_module_type,
+            RequestedModuleType::Text | RequestedModuleType::Bytes
+          )
+          && !inner.shared.in_npm_pkg_checker.in_npm_package(&specifier)
+          && inner.graph_container.graph().get(&specifier).is_none()
+        {
+          inner
+            .prepare_hooked_specifier(&specifier, options.is_dynamic_import)
+            .await;
+        }
         inner
           .load_inner(
             &specifier,
@@ -1275,6 +1363,10 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     )
   }
 
+  fn should_load_synthetic_esm(&self, specifier: &str) -> bool {
+    self.0.hook_registry.load_active.get() && specifier.starts_with("node:")
+  }
+
   fn prepare_load(
     &self,
     specifier: &ModuleSpecifier,
@@ -1288,24 +1380,42 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     if matches!(
       options.requested_module_type,
-      RequestedModuleType::Text | RequestedModuleType::Bytes
+      RequestedModuleType::Text
+        | RequestedModuleType::Bytes
+        | RequestedModuleType::Other(_)
     ) {
+      // Text/Bytes imports skip graph preparation, so the file watcher's
+      // graph reporter never sees them. For dynamic imports, register the
+      // file directly with the watcher so editing it triggers a reload.
+      // (Static text/bytes imports are picked up by the initial graph
+      // build via deno_graph's asset/text edge analysis.)
+      if options.is_dynamic_import
+        && let Some(watcher_communicator) =
+          self.0.shared.watcher_communicator.as_ref()
+        && specifier.scheme() == "file"
+        && let Ok(file_path) = specifier.to_file_path()
+      {
+        let _ = watcher_communicator.watch_paths(vec![file_path]);
+      }
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
-    // Skip graph preparation only for specifiers that were intercepted by a
-    // resolve hook (virtual modules that don't exist on disk). Fallthrough
-    // specifiers still need normal prepare_load for graph building and
-    // permission checks.
-    if self
-      .0
-      .hook_registry
-      .hook_intercepted_specifiers
-      .borrow()
-      .contains(specifier.as_str())
-    {
+    // When ESM hooks are active, attempt graph preparation best-effort.
+    // A user hook may have resolved this specifier to a virtual URL the
+    // graph builder cannot fetch; in that case the load itself will be
+    // serviced entirely by hooks, so failure here is fine and must not
+    // abort the load.
+    if self.0.hook_registry.load_active.get() {
       self.0.shared.has_js_execution_started_flag.raise();
-      return Box::pin(deno_core::futures::future::ready(Ok(())));
+      let specifier = specifier.clone();
+      let inner = self.0.clone();
+      let is_dynamic_import = options.is_dynamic_import;
+      return Box::pin(async move {
+        inner
+          .prepare_hooked_specifier(&specifier, is_dynamic_import)
+          .await;
+        Ok(())
+      });
     }
 
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
@@ -1707,6 +1817,16 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     self.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }
 
+  fn is_maybe_cjs_from_require(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<bool, PackageJsonLoadError> {
+    let media_type = MediaType::from_specifier(specifier);
+    self
+      .cjs_tracker
+      .is_maybe_cjs_from_require(specifier, media_type)
+  }
+
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
     let is_global_resolver_and_from_in_global_cache = self
       .npm_resolver
@@ -1720,6 +1840,20 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     } else {
       deno_runtime::deno_node::default_resolve_require_node_module_paths(from)
     }
+  }
+
+  fn resolve_package_folder_from_name(
+    &self,
+    package_name: &str,
+  ) -> Option<PathBuf> {
+    // Only meaningful in global-cache mode: when a local node_modules
+    // directory exists, byonm-style walking handles the lookup.
+    let managed = self
+      .npm_resolver
+      .as_managed()
+      .filter(|r| r.root_node_modules_path().is_none())?;
+    let req = PackageReq::from_str(package_name).ok()?;
+    managed.resolve_pkg_folder_from_deno_module_req(&req).ok()
   }
 }
 

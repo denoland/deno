@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const { op_node_call_is_from_dependency } = core.ops;
 const {
   ArrayIsArray,
@@ -22,7 +22,9 @@ const {
   ObjectSetPrototypeOf,
   ReflectApply,
   ReflectConstruct,
+  SafeFinalizationRegistry,
   SafeSet,
+  SafeWeakRef,
   SetPrototypeAdd,
   SetPrototypeHas,
   StringPrototypeIsWellFormed,
@@ -30,6 +32,7 @@ const {
   StringPrototypeToWellFormed,
   PromiseResolve,
   PromiseWithResolvers,
+  WeakRefPrototypeDeref,
 } = primordials;
 
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
@@ -53,6 +56,7 @@ const { isDeepStrictEqual } = core.loadExtScript(
 );
 const {
   validateAbortSignal,
+  validateBoolean,
   validateNumber,
   validateObject,
   validateString,
@@ -64,18 +68,27 @@ const { MIMEParams, MIMEType } = core.loadExtScript(
   "ext:deno_node/internal/mime.ts",
 );
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
-const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
-  "ext:deno_node/internal/errors.ts",
-);
+const { ERR_INVALID_ARG_TYPE, ERR_WORKER_UNSUPPORTED_OPERATION } = core
+  .loadExtScript(
+    "ext:deno_node/internal/errors.ts",
+  );
 const { default: binding } = core.loadExtScript(
   "ext:deno_node/internal_binding/util.ts",
 );
 const { validateOneOf } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
+const lazyV8 = core.createLazyLoader("node:v8");
 const { os: osConstants } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
+
+const abortedRegistry = new SafeFinalizationRegistry((heldValue) => {
+  const signal = WeakRefPrototypeDeref(heldValue.signal);
+  if (signal !== undefined) {
+    signal[abortSignal.remove](heldValue.algorithm);
+  }
+});
 
 let process;
 const lazyLoadProcess = core.createLazyLoader("node:process");
@@ -129,6 +142,7 @@ function inherits(ctor, superCtor) {
 const {
   _TextDecoder,
   _TextEncoder,
+  getSystemErrorMap,
   getSystemErrorMessage,
   getSystemErrorName,
 } = core.loadExtScript("ext:deno_node/_utils.ts");
@@ -202,17 +216,20 @@ function deprecate(
     __proto__: null,
   },
 ) {
-  process ??= lazyLoadProcess();
-  if (process.noDeprecation === true) {
-    return fn;
-  }
-
+  // Note: `process` is loaded lazily on first invocation of `deprecated`,
+  // not here. Loading it eagerly during `deprecate()` is enough to deadlock
+  // snapshot evaluation when `deprecate` is called from a module body that
+  // is itself in `process.ts`'s transitive load chain (e.g. assert.ts).
   if (code !== undefined) {
     validateString(code, "code");
   }
 
   let warned = false;
   function deprecated(...args) {
+    process ??= lazyLoadProcess();
+    if (process.noDeprecation === true) {
+      return ReflectApply(fn, this, args);
+    }
     if (!warned && !op_node_call_is_from_dependency()) {
       warned = true;
       if (code !== undefined) {
@@ -252,17 +269,33 @@ function deprecate(
 // deno-lint-ignore require-await
 async function aborted(
   signal,
-  _resource,
+  resource,
 ) {
   if (signal === undefined) {
     throw new ERR_INVALID_ARG_TYPE("signal", "AbortSignal", signal);
   }
   validateAbortSignal(signal, "signal");
+  validateObject(resource, "resource", {
+    allowArray: true,
+    allowFunction: true,
+  });
   if (signal.aborted) {
     return PromiseResolve();
   }
   const abortPromise = PromiseWithResolvers();
-  signal[abortSignal.add](abortPromise.resolve);
+  const resourceRef = new SafeWeakRef(resource);
+  const algorithm = () => {
+    abortedRegistry.unregister(algorithm);
+    if (WeakRefPrototypeDeref(resourceRef) !== undefined) {
+      abortPromise.resolve();
+    }
+  };
+  signal[abortSignal.add](algorithm);
+  abortedRegistry.register(resource, {
+    __proto__: null,
+    signal: new SafeWeakRef(signal),
+    algorithm,
+  }, algorithm);
   return abortPromise.promise;
 }
 
@@ -333,6 +366,38 @@ function parseEnv(input) {
   return result;
 }
 
+function setTraceSigInt(enabled) {
+  validateBoolean(enabled, "enabled");
+  if (internals.__isWorkerThread) {
+    throw new ERR_WORKER_UNSUPPORTED_OPERATION("Setting trace SIGINT");
+  }
+  // No-op on the main thread: Deno does not implement Node's SIGINT trace
+  // facility, but the call should succeed so user code can opt in/out.
+}
+
+// https://nodejs.org/api/util.html#utilqueryobjectsconstructor-options
+// Mirrors `v8.queryObjects` - see ext/node/polyfills/v8.ts for the limitations.
+function queryObjects(ctor, options) {
+  return lazyV8().queryObjects(ctor, options);
+}
+
+// Deno's AbortSignal is not yet structured-cloneable, so transfer is a no-op:
+// the returned signal/controller can still be used in-process. This mirrors
+// Node's API surface so user code calling these does not throw.
+function transferableAbortSignal(signal) {
+  if (
+    signal === null || typeof signal !== "object" ||
+    typeof signal.aborted !== "boolean"
+  ) {
+    throw new ERR_INVALID_ARG_TYPE("signal", "AbortSignal", signal);
+  }
+  return signal;
+}
+
+function transferableAbortController() {
+  return new AbortController();
+}
+
 function convertProcessSignalToExitCode(signalCode) {
   const { signals } = osConstants;
   validateOneOf(signalCode, "signalCode", ObjectKeys(signals));
@@ -364,7 +429,12 @@ return {
   aborted,
   getCallSites,
   parseEnv,
+  queryObjects,
+  setTraceSigInt,
+  transferableAbortController,
+  transferableAbortSignal,
   convertProcessSignalToExitCode,
+  getSystemErrorMap,
   getSystemErrorMessage,
   getSystemErrorName,
   isDeepStrictEqual,

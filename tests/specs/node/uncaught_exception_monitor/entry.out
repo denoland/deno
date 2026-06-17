@@ -1,0 +1,4 @@
+monitor uncaughtException same-error
+uncaught uncaughtException same-error
+monitor uncaughtException same-error
+capture same-error

@@ -173,6 +173,16 @@ mod impl_ {
     }
   }
 
+  // Check whether bootstrap configured an IPC pipe without opening it.
+  // `op_node_child_ipc_pipe` itself has the side effect of opening the
+  // channel resource (and is non-idempotent — calling it twice fails with
+  // EEXIST), so callers that only need to decide whether to set up IPC at
+  // all should use this op instead.
+  #[op2(fast)]
+  pub fn op_node_has_child_ipc_pipe(state: &mut OpState) -> bool {
+    state.try_borrow::<crate::ChildPipeFd>().is_some()
+  }
+
   // Open IPC pipe from bootstrap options.
   #[op2]
   pub fn op_node_child_ipc_pipe(

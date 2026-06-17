@@ -235,6 +235,7 @@ pub struct OpDecl {
   pub accessor_type: AccessorType,
   pub arg_count: u8,
   pub no_side_effects: bool,
+  pub constructable: bool,
   /// The slow dispatch call. If metrics are disabled, the `v8::Function` is created with this callback.
   pub(crate) slow_fn: OpFnRef,
   /// The slow dispatch implementation, returning a status code. Used by the shared
@@ -261,6 +262,7 @@ impl OpDecl {
     symbol_for: bool,
     arg_count: u8,
     no_side_effects: bool,
+    constructable: bool,
     slow_fn: OpFnRef,
     slow_fn_impl: SlowFnImplRef,
     accessor_type: AccessorType,
@@ -277,6 +279,7 @@ impl OpDecl {
       symbol_for,
       arg_count,
       no_side_effects,
+      constructable,
       slow_fn,
       slow_fn_impl,
       slow_fn_with_metrics: crate::ops_metrics::slow_metrics_dispatch,
@@ -435,6 +438,10 @@ macro_rules! or {
 ///  * lazy_loaded_js: a comma-separated list of JS script filenames that will be included in
 ///    the produced binary, but not automatically evaluated. Loaded on demand via `Deno.core.loadExtScript()`.
 ///    Eg: `lazy_loaded_js = [ dir "dir", "my_file.js" ]`
+///  * synthetic_esm: a comma-separated list of `"module_specifier" = "backing_script_specifier"` pairs.
+///    Imports of `module_specifier` resolve to a synthetic ESM module whose exports are derived from
+///    the exports object returned by the IIFE in `backing_script_specifier` (which must be declared
+///    in `lazy_loaded_js`). Eg: `synthetic_esm = [ "node:zlib" = "ext:deno_node/zlib.js" ]`
 ///  * js: a comma-separated list of JS filenames (see [`include_js_files`]), eg: `js = [ dir "dir", "my_file.js" ]`
 ///  * config: a structure-like definition for configuration parameters which will be required when initializing this extension, eg: `config = { my_param: Option<usize> }`
 ///  * middleware: an [`OpDecl`] middleware function with the signature `fn (OpDecl) -> OpDecl`
@@ -456,6 +463,7 @@ macro_rules! extension {
     $(, esm = [ $($esm:tt)* ] )?
     $(, lazy_loaded_esm = [ $($lazy_loaded_esm:tt)* ] )?
     $(, lazy_loaded_js = [ $($lazy_loaded_js:tt)* ] )?
+    $(, synthetic_esm = [ $( $synthetic_esm_module:literal = $synthetic_esm_backing:literal ),* $(,)? ] )?
     $(, js = [ $($js:tt)* ] )?
     $(, options = { $( $options_id:ident : $options_type:ty ),* $(,)? } )?
     $(, middleware = $middleware_fn:expr_2021 )?
@@ -511,6 +519,12 @@ macro_rules! extension {
           lazy_loaded_js_files: {
             const JS: &'static [$crate::ExtensionFileSource] = &$crate::include_lazy_loaded_js_files!( $name $($($lazy_loaded_js)*)? );
             ::std::borrow::Cow::Borrowed(JS)
+          },
+          synthetic_esm_modules: {
+            const MAPPINGS: &'static [(&'static str, &'static str)] = &[
+              $($(($synthetic_esm_module, $synthetic_esm_backing)),*)?
+            ];
+            ::std::borrow::Cow::Borrowed(MAPPINGS)
           },
           esm_entry_point: {
             const V: ::std::option::Option<&'static ::std::primitive::str> = $crate::or!($(::std::option::Option::Some($esm_entry_point))?, ::std::option::Option::None);
@@ -666,6 +680,12 @@ pub struct Extension {
   pub esm_files: Cow<'static, [ExtensionFileSource]>,
   pub lazy_loaded_esm_files: Cow<'static, [ExtensionFileSource]>,
   pub lazy_loaded_js_files: Cow<'static, [ExtensionFileSource]>,
+  /// `(module_specifier, backing_script_specifier)` pairs. At extension
+  /// init, each pair is registered so that imports of `module_specifier`
+  /// resolve to a synthetic ESM module built from the exports object
+  /// returned by the IIFE in `backing_script_specifier` (which must be
+  /// declared in `lazy_loaded_js_files`).
+  pub synthetic_esm_modules: Cow<'static, [(&'static str, &'static str)]>,
   pub esm_entry_point: Option<&'static str>,
   pub ops: Cow<'static, [OpDecl]>,
   pub objects: Cow<'static, [OpMethodDecl]>,
@@ -693,6 +713,7 @@ impl Extension {
       esm_files: Cow::Borrowed(&[]),
       lazy_loaded_esm_files: Cow::Borrowed(&[]),
       lazy_loaded_js_files: Cow::Borrowed(&[]),
+      synthetic_esm_modules: Cow::Borrowed(&[]),
       esm_entry_point: None,
       ops: self.ops.clone(),
       objects: self.objects.clone(),
@@ -713,6 +734,7 @@ impl Default for Extension {
       esm_files: Cow::Borrowed(&[]),
       lazy_loaded_esm_files: Cow::Borrowed(&[]),
       lazy_loaded_js_files: Cow::Borrowed(&[]),
+      synthetic_esm_modules: Cow::Borrowed(&[]),
       esm_entry_point: None,
       ops: Cow::Borrowed(&[]),
       objects: Cow::Borrowed(&[]),

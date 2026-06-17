@@ -31,7 +31,7 @@ impl TestReporter for CompoundTestReporter {
     }
   }
 
-  fn report_slow(&mut self, description: &TestDescription, elapsed: u64) {
+  fn report_slow(&mut self, description: &TestDescription, elapsed: Duration) {
     for reporter in &mut self.test_reporters {
       reporter.report_slow(description, elapsed);
     }
@@ -47,10 +47,27 @@ impl TestReporter for CompoundTestReporter {
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    elapsed: u64,
+    elapsed: Duration,
   ) {
     for reporter in &mut self.test_reporters {
       reporter.report_result(description, result, elapsed);
+    }
+  }
+
+  fn report_retry(
+    &mut self,
+    description: &TestDescription,
+    attempt: u32,
+    failure: &TestFailure,
+  ) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_retry(description, attempt, failure);
+    }
+  }
+
+  fn report_repeat(&mut self, description: &TestDescription, repetition: u32) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_repeat(description, repetition);
     }
   }
 
@@ -76,7 +93,7 @@ impl TestReporter for CompoundTestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    elapsed: u64,
+    elapsed: Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
@@ -104,6 +121,24 @@ impl TestReporter for CompoundTestReporter {
   ) {
     for reporter in &mut self.test_reporters {
       reporter.report_sigint(tests_pending, tests, test_steps);
+    }
+  }
+
+  fn report_exit(
+    &mut self,
+    exit_code: i32,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_exit(exit_code, tests_pending, tests, test_steps);
+    }
+  }
+
+  fn report_isolate_exit(&mut self, origin: &str, exit_code: i32) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_isolate_exit(origin, exit_code);
     }
   }
 

@@ -149,6 +149,13 @@ pub struct CreateResponse {
   rid: ResourceId,
   protocol: String,
   extensions: String,
+  /// HTTP status code from the handshake response (101 on success).
+  /// Exposed to JS for inspector `Network.webSocketHandshakeResponseReceived`.
+  status: u16,
+  /// HTTP status text from the handshake response.
+  status_text: String,
+  /// All handshake response headers, as a flat `[name, value]` list.
+  headers: Vec<(ByteString, ByteString)>,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -402,6 +409,7 @@ fn populate_common_request_headers(
 
 fn create_client_from_websocket_options(
   options: &FetchOptions,
+  permissions: PermissionsContainer,
   ca_certs: Vec<String>,
   unsafely_ignore_certificate_errors: bool,
 ) -> Result<deno_fetch::Client, HttpClientCreateError> {
@@ -413,7 +421,7 @@ fn create_client_from_websocket_options(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs: ca_certs.into_iter().map(|cert| cert.into_bytes()).collect(),
       proxy: options.proxy.clone(),
-      dns_resolver: options.resolver.clone(),
+      dns_resolver: options.resolver.clone().with_permissions(permissions),
       unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
         .then_some(vec![]),
       client_cert_chain_and_key: options
@@ -457,10 +465,12 @@ pub async fn op_ws_create(
       let r = s.resource_table.get::<HttpClientResource>(rid)?;
       (r.client.clone(), r.allow_host)
     } else if ca_certs.is_some() || unsafely_ignore_certificate_errors {
+      let permissions = s.borrow::<PermissionsContainer>().clone();
       let options = s.borrow::<FetchOptions>().clone();
       (
         create_client_from_websocket_options(
           &options,
+          permissions,
           ca_certs.unwrap_or_default(),
           unsafely_ignore_certificate_errors,
         )?,
@@ -497,6 +507,25 @@ pub async fn op_ws_create(
     res.close();
   }
 
+  // `handshake_websocket` only resolves on a successful Upgrade response, so
+  // the status is implicitly 101 Switching Protocols. We surface it (plus
+  // the response headers) for the inspector's
+  // `Network.webSocketHandshakeResponseReceived` event.
+  //
+  // Failed handshakes (non-101) bail earlier via
+  // `HandshakeError::InvalidStatusCode` and never reach this point, so
+  // DevTools won't see a `webSocketHandshakeResponseReceived` for them —
+  // only the eventual `webSocketClosed`. This matches Chrome's behavior.
+  let response_headers: Vec<(ByteString, ByteString)> = response
+    .iter()
+    .map(|(name, value)| {
+      (
+        ByteString::from(name.as_str().as_bytes()),
+        ByteString::from(value.as_bytes()),
+      )
+    })
+    .collect();
+
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(ServerWebSocket::new(stream));
 
@@ -513,6 +542,9 @@ pub async fn op_ws_create(
     rid,
     protocol: protocol.to_string(),
     extensions,
+    status: 101,
+    status_text: "Switching Protocols".to_string(),
+    headers: response_headers,
   })
 }
 

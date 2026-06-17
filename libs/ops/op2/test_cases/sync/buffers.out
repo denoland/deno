@@ -13,6 +13,7 @@ const fn op_buffers() -> ::deno_core::_ops::OpDecl {
             false,
             4usize as u8,
             false,
+            false,
             Self::v8_fn_ptr as _,
             Self::slow_function_impl,
             ::deno_core::AccessorType::None,
@@ -268,9 +269,11 @@ const fn op_buffers() -> ::deno_core::_ops::OpDecl {
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
-            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
+            let mut rv = parts.return_value;
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info_parts(
                 info,
+                &parts,
             );
             let result = {
                 let arg0 = args.get(0usize as i32);
@@ -352,6 +355,7 @@ const fn op_buffers_32() -> ::deno_core::_ops::OpDecl {
             false,
             4usize as u8,
             false,
+            false,
             Self::v8_fn_ptr as _,
             Self::slow_function_impl,
             ::deno_core::AccessorType::None,
@@ -607,9 +611,11 @@ const fn op_buffers_32() -> ::deno_core::_ops::OpDecl {
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
-            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
+            let mut rv = parts.return_value;
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info_parts(
                 info,
+                &parts,
             );
             let result = {
                 let arg0 = args.get(0usize as i32);
@@ -691,6 +697,7 @@ const fn op_buffers_option() -> ::deno_core::_ops::OpDecl {
             false,
             2usize as u8,
             false,
+            false,
             Self::v8_fn_ptr as _,
             Self::slow_function_impl,
             ::deno_core::AccessorType::None,
@@ -713,9 +720,11 @@ const fn op_buffers_option() -> ::deno_core::_ops::OpDecl {
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
-            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
+            let mut rv = parts.return_value;
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info_parts(
                 info,
+                &parts,
             );
             let result = {
                 let arg0 = args.get(0usize as i32);

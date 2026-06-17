@@ -10,7 +10,7 @@
 /// <reference lib="esnext" />
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   isDataView,
   isSharedArrayBuffer,
@@ -20,7 +20,9 @@ const {
   op_encoding_decode,
   op_encoding_decode_single,
   op_encoding_decode_utf8,
+  op_encoding_decode_utf8_ascii_only,
   op_encoding_encode_into,
+  op_encoding_encode_into_fallback,
   op_encoding_new_decoder,
   op_encoding_normalize_label,
 } = core.ops;
@@ -28,6 +30,7 @@ const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
+  MathTrunc,
   ObjectPrototypeIsPrototypeOf,
   PromiseReject,
   PromiseResolve,
@@ -209,6 +212,19 @@ class TextDecoder {
         );
       }
 
+      // Streaming UTF-8 fast path. While the decoder has no pending state
+      // (`#handle === null`), an ASCII-only chunk decodes the same way
+      // single-pass would: there are no partial codepoints to carry over,
+      // so we can hand V8 the bytes directly as a one-byte string and skip
+      // both the `Vec<u16>` allocation and the UTF-8 -> UTF-16 conversion
+      // in `op_encoding_decode`. `op_encoding_decode_utf8_ascii_only`
+      // returns `null` for any non-ASCII byte, in which case we fall
+      // through to the general streaming op (which will create the handle).
+      if (stream && this.#utf8SinglePass && this.#handle === null) {
+        const ascii = op_encoding_decode_utf8_ascii_only(input);
+        if (ascii !== null) return ascii;
+      }
+
       if (this.#handle === null) {
         this.#handle = op_encoding_new_decoder(
           this.#encoding,
@@ -298,10 +314,18 @@ class TextEncoder {
         encodeIntoOpts,
       );
     }
-    op_encoding_encode_into(source, destination, encodeIntoBuf);
+    const packed = op_encoding_encode_into(source, destination);
+    if (packed === ENCODE_INTO_PACKED_SENTINEL) {
+      op_encoding_encode_into_fallback(source, destination, encodeIntoBuf);
+      return {
+        read: encodeIntoBuf[0],
+        written: encodeIntoBuf[1],
+      };
+    }
+    const read = MathTrunc(packed / ENCODE_INTO_PACKED_MULTIPLIER);
     return {
-      read: encodeIntoBuf[0],
-      written: encodeIntoBuf[1],
+      read,
+      written: packed - read * ENCODE_INTO_PACKED_MULTIPLIER,
     };
   }
 
@@ -319,6 +343,8 @@ class TextEncoder {
 
 const encodeIntoBuf = new Uint32Array(2);
 const encodeIntoOpts = { __proto__: null, allowShared: true };
+const ENCODE_INTO_PACKED_SENTINEL = -1;
+const ENCODE_INTO_PACKED_MULTIPLIER = 0x100000000;
 
 webidl.configureInterface(TextEncoder);
 const TextEncoderPrototype = TextEncoder.prototype;

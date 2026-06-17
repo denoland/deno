@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-lint-ignore-file no-explicit-any prefer-primordials
+// deno-lint-ignore-file no-explicit-any
 /*
 MIT License
 
@@ -24,11 +24,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  BigInt,
+  MathLog2,
+  PromisePrototypeCatch,
+  PromisePrototypeThen,
+  TypedArrayPrototypeGetBuffer,
+} = primordials;
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { op_node_scrypt_async, op_node_scrypt_sync } = core.ops;
 const {
@@ -64,11 +68,11 @@ function scryptSync(
     password,
     salt,
     keylen,
-    Math.log2(N),
+    MathLog2(N),
     r,
     p,
     maxmem,
-    buf.buffer,
+    TypedArrayPrototypeGetBuffer(buf),
   );
 
   return buf;
@@ -96,19 +100,23 @@ function scrypt(
     return;
   }
 
-  op_node_scrypt_async(
-    password,
-    salt,
-    keylen,
-    Math.log2(N),
-    r,
-    p,
-    maxmem,
-  ).then(
-    (buf: Uint8Array) => {
-      cb(null, Buffer.from(buf.buffer));
-    },
-  ).catch((err: unknown) => cb(err));
+  PromisePrototypeCatch(
+    PromisePrototypeThen(
+      op_node_scrypt_async(
+        password,
+        salt,
+        keylen,
+        MathLog2(N),
+        r,
+        p,
+        maxmem,
+      ),
+      (buf: Uint8Array) => {
+        cb(null, Buffer.from(TypedArrayPrototypeGetBuffer(buf)));
+      },
+    ),
+    (err: unknown) => cb(err),
+  );
 }
 
 const defaults = {
@@ -151,7 +159,9 @@ function check(password, salt, keylen, options) {
       validateUint32(p, "p");
     }
     if (options.parallelization !== undefined) {
-      if (hasP) throw new ERR_INCOMPATIBLE_OPTION_PAIR("p", "parallelization");
+      if (hasP) {
+        throw new ERR_INCOMPATIBLE_OPTION_PAIR("p", "parallelization");
+      }
       p = options.parallelization;
       validateUint32(p, "parallelization");
     }
@@ -168,7 +178,12 @@ function check(password, salt, keylen, options) {
   return { password, salt, keylen, N, r, p, maxmem };
 }
 
-function validateScryptParams(N: number, r: number, p: number, maxmem: number) {
+function validateScryptParams(
+  N: number,
+  r: number,
+  p: number,
+  maxmem: number,
+) {
   if (N < 2 || (N & (N - 1)) !== 0) {
     throw new ERR_CRYPTO_INVALID_SCRYPT_PARAMS();
   }

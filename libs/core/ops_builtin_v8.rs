@@ -186,6 +186,14 @@ pub fn op_lazy_load_esm(
   #[string] module_specifier: String,
 ) -> Result<v8::Global<v8::Value>, CoreError> {
   let module_map_rc = JsRealm::module_map_from(scope);
+  // `synthetic_esm` registrations don't live in `lazy_esm_sources`, so
+  // route them through their own sync-load path. `createLazyLoader` calls
+  // this op from JS land for builtins it wants to keep deferred (e.g.
+  // `node:worker_threads.ts` uses `createLazyLoader("node:url")`).
+  if module_map_rc.has_synthetic_esm_module(&module_specifier) {
+    return module_map_rc
+      .lazy_load_synthetic_esm_module(scope, &module_specifier);
+  }
   module_map_rc.lazy_load_esm_module(scope, &module_specifier)
 }
 
@@ -196,6 +204,21 @@ pub fn op_load_ext_script(
 ) -> Result<v8::Global<v8::Value>, CoreError> {
   let module_map_rc = JsRealm::module_map_from(scope);
   module_map_rc.load_ext_script(scope, &specifier)
+}
+
+/// Stash the snapshot-time `__bootstrap` view (a frozen clone of
+/// `core.ops` etc.) so `load_ext_script` can temporarily reinstall it on
+/// `globalThis.__bootstrap` for the duration of each script evaluation.
+/// Called once from `libs/core/01_core.js` after `__bootstrap.core` is
+/// fully populated.
+#[op2(fast)]
+pub fn op_set_captured_bootstrap(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) {
+  let module_map_rc = JsRealm::module_map_from(scope);
+  let global = v8::Global::new(scope, value);
+  module_map_rc.set_captured_bootstrap(global);
 }
 
 // We run in a `nofast` op here so we don't get put into a `DisallowJavascriptExecutionScope` and we're
@@ -582,6 +605,16 @@ struct SerializeDeserialize<'a> {
   for_storage: bool,
   host_object_brand: Option<v8::Local<'a, v8::Symbol>>,
   deserializers: Option<v8::Local<'a, v8::Object>>,
+  // Out-of-band `SharedArrayBuffer` transfer used by `BroadcastChannel`. Unlike
+  // the shared `SharedArrayBufferStore` (which hands an id to a single taker),
+  // these carry the backing stores alongside the serialized bytes so the same
+  // message can be deserialized by an arbitrary number of receivers.
+  //
+  // On serialize, each `SharedArrayBuffer` backing store is appended here and
+  // its index is written as the transfer id. On deserialize, the transfer id
+  // indexes into this list.
+  broadcast_shared_array_buffers:
+    Option<Rc<RefCell<Vec<v8::SharedRef<v8::BackingStore>>>>>,
 }
 
 impl v8::ValueSerializerImpl for SerializeDeserialize<'_> {
@@ -610,6 +643,15 @@ impl v8::ValueSerializerImpl for SerializeDeserialize<'_> {
     scope: &mut v8::PinScope<'s, 'i>,
     shared_array_buffer: v8::Local<'s, v8::SharedArrayBuffer>,
   ) -> Option<u32> {
+    // Broadcast mode: carry the backing store out-of-band and use its index in
+    // the list as the transfer id.
+    if let Some(broadcast) = &self.broadcast_shared_array_buffers {
+      let backing_store = shared_array_buffer.get_backing_store();
+      let mut list = broadcast.borrow_mut();
+      let id = list.len() as u32;
+      list.push(backing_store);
+      return Some(id);
+    }
     if self.for_storage {
       return None;
     }
@@ -696,6 +738,15 @@ impl v8::ValueDeserializerImpl for SerializeDeserialize<'_> {
     scope: &mut v8::PinScope<'s, 'i>,
     transfer_id: u32,
   ) -> Option<v8::Local<'s, v8::SharedArrayBuffer>> {
+    // Broadcast mode: the transfer id indexes into the out-of-band backing
+    // store list carried alongside the serialized bytes.
+    if let Some(broadcast) = &self.broadcast_shared_array_buffers {
+      let backing_store = broadcast.borrow().get(transfer_id as usize)?.clone();
+      return Some(v8::SharedArrayBuffer::with_backing_store(
+        scope,
+        &backing_store,
+      ));
+    }
     if self.for_storage {
       return None;
     }
@@ -814,6 +865,7 @@ pub fn op_serialize<'s, 'i>(
     for_storage,
     host_object_brand,
     deserializers: None,
+    broadcast_shared_array_buffers: None,
   });
   let value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
   value_serializer.write_header();
@@ -900,12 +952,17 @@ pub fn op_deserialize<'s, 'i>(
     None => None,
   };
 
+  let key = v8_static_strings::HOST_OBJECT.v8_string(scope).unwrap();
+  let symbol = v8::Symbol::for_key(scope, key);
+  let host_object_brand = Some(symbol);
+
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects,
     error_callback: None,
     for_storage,
-    host_object_brand: None,
+    host_object_brand,
     deserializers,
+    broadcast_shared_array_buffers: None,
   });
   let value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
@@ -954,6 +1011,90 @@ pub fn op_deserialize<'s, 'i>(
   }
 }
 
+/// Serializes `value` for delivery over a `BroadcastChannel`. Any
+/// `SharedArrayBuffer` it contains is collected out-of-band into the returned
+/// list (its index in the list is written as the transfer id in the bytes),
+/// rather than being inserted into the shared `SharedArrayBufferStore`. This
+/// allows the same serialized message to be deserialized by an arbitrary number
+/// of receivers (see [`deserialize_broadcast`]); the shared store, by contrast,
+/// hands each backing store to a single taker.
+pub fn serialize_broadcast<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  value: v8::Local<'s, v8::Value>,
+  error_callback: Option<v8::Local<'s, v8::Function>>,
+) -> Result<(Vec<u8>, Vec<v8::SharedRef<v8::BackingStore>>), JsErrorBox> {
+  let key = v8_static_strings::HOST_OBJECT.v8_string(scope).unwrap();
+  let symbol = v8::Symbol::for_key(scope, key);
+  let broadcast = Rc::new(RefCell::new(Vec::new()));
+
+  let serialize_deserialize = Box::new(SerializeDeserialize {
+    host_objects: None,
+    error_callback,
+    for_storage: false,
+    host_object_brand: Some(symbol),
+    deserializers: None,
+    broadcast_shared_array_buffers: Some(broadcast.clone()),
+  });
+  let value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
+  value_serializer.write_header();
+
+  v8::tc_scope!(let scope, scope);
+
+  let ret = value_serializer.write_value(scope.get_current_context(), value);
+  if scope.has_caught() || scope.has_terminated() {
+    scope.rethrow();
+    // Dummy value, discarded because an error was thrown.
+    return Ok((vec![], vec![]));
+  }
+  if let Some(true) = ret {
+    let vector = value_serializer.release();
+    let shared_array_buffers = std::mem::take(&mut *broadcast.borrow_mut());
+    Ok((vector, shared_array_buffers))
+  } else {
+    Err(JsErrorBox::type_error(
+      "Failed to serialize broadcast message",
+    ))
+  }
+}
+
+/// Counterpart to [`serialize_broadcast`]. `shared_array_buffers` are the
+/// out-of-band backing stores carried alongside `data`; each transfer id in the
+/// bytes indexes into this list. The list is consumed by value so each receiver
+/// owns its own clones of the backing stores.
+pub fn deserialize_broadcast<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  data: &[u8],
+  shared_array_buffers: Vec<v8::SharedRef<v8::BackingStore>>,
+  deserializers: Option<v8::Local<'s, v8::Object>>,
+) -> Result<v8::Local<'s, v8::Value>, JsErrorBox> {
+  let key = v8_static_strings::HOST_OBJECT.v8_string(scope).unwrap();
+  let symbol = v8::Symbol::for_key(scope, key);
+
+  let serialize_deserialize = Box::new(SerializeDeserialize {
+    host_objects: None,
+    error_callback: None,
+    for_storage: false,
+    host_object_brand: Some(symbol),
+    deserializers,
+    broadcast_shared_array_buffers: Some(Rc::new(RefCell::new(
+      shared_array_buffers,
+    ))),
+  });
+  let value_deserializer =
+    v8::ValueDeserializer::new(scope, serialize_deserialize, data);
+  let parsed_header = value_deserializer
+    .read_header(scope.get_current_context())
+    .unwrap_or_default();
+  if !parsed_header {
+    return Err(JsErrorBox::range_error("could not deserialize value"));
+  }
+
+  match value_deserializer.read_value(scope.get_current_context()) {
+    Some(deserialized) => Ok(deserialized),
+    None => Err(JsErrorBox::range_error("could not deserialize value")),
+  }
+}
+
 // Specialized op for `structuredClone` API called with no `options` argument.
 // May be reentrant when host object brand functions call ops (e.g. Blob clone).
 #[op2(reentrant)]
@@ -972,6 +1113,7 @@ pub fn op_structured_clone<'s, 'i>(
     for_storage: false,
     host_object_brand,
     deserializers: None,
+    broadcast_shared_array_buffers: None,
   });
   let value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
   value_serializer.write_header();
@@ -998,6 +1140,7 @@ pub fn op_structured_clone<'s, 'i>(
     for_storage: false,
     host_object_brand,
     deserializers,
+    broadcast_shared_array_buffers: None,
   });
   let value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &vector);
@@ -1206,9 +1349,12 @@ pub fn op_set_wasm_streaming_callback(
 ) -> Result<(), JsErrorBox> {
   let cb = v8::Global::new(scope, cb);
   let context_state_rc = JsRealm::state_from_scope(scope);
-  // The callback to pass to the v8 API has to be a unit type, so it can't
-  // borrow or move any local variables. Therefore, we're storing the JS
-  // callback in a JsRuntimeState slot.
+  // We only store the JS callback here. The v8-level streaming callback is
+  // installed natively at isolate creation (see `wasm_streaming_callback`),
+  // because v8 re-creates the `WebAssembly` object - and resets the
+  // isolate-wide streaming callback - every time a new context is created
+  // (e.g. through `node:vm`). Setting it from this op would mean any later
+  // context creation silently clobbers it. See denoland/deno#34677.
   if context_state_rc.js_wasm_streaming_cb.borrow().is_some() {
     return Err(JsErrorBox::type_error(
       "op_set_wasm_streaming_callback already called",
@@ -1216,31 +1362,42 @@ pub fn op_set_wasm_streaming_callback(
   }
   *context_state_rc.js_wasm_streaming_cb.borrow_mut() = Some(cb);
 
-  scope.set_wasm_streaming_callback(|scope, arg, wasm_streaming| {
-    let (cb_handle, streaming_rid) = {
-      let context_state_rc = JsRealm::state_from_scope(scope);
-      let cb_handle = context_state_rc
-        .js_wasm_streaming_cb
-        .borrow()
-        .as_ref()
-        .unwrap()
-        .clone();
-      let state = JsRuntime::state_from(scope);
-      let streaming_rid = state
-        .op_state
-        .borrow_mut()
-        .resource_table
-        .add(WasmStreamingResource(RefCell::new(wasm_streaming)));
-      (cb_handle, streaming_rid)
-    };
-
-    let undefined = v8::undefined(scope);
-    let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
-    cb_handle
-      .open(scope)
-      .call(scope, undefined.into(), &[arg, rid]);
-  });
   Ok(())
+}
+
+/// The isolate-wide [`v8::Isolate::set_wasm_streaming_callback`] handler. It
+/// dispatches to the JS handler registered through
+/// `op_set_wasm_streaming_callback`. This is installed once at isolate creation
+/// so that it survives v8 re-installing the `WebAssembly` object (and resetting
+/// the isolate-wide streaming callback) on every newly created context.
+pub fn wasm_streaming_callback<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  arg: v8::Local<'a, v8::Value>,
+  wasm_streaming: v8::WasmStreaming<false>,
+) {
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let maybe_cb_handle = context_state_rc.js_wasm_streaming_cb.borrow().clone();
+  let Some(cb_handle) = maybe_cb_handle else {
+    // The JS handler is registered while the runtime bootstraps, before any
+    // user code can trigger wasm streaming. Reaching this without a handler
+    // means deno_core was misconfigured.
+    panic!("wasm streaming callback invoked before the JS handler was set");
+  };
+
+  let streaming_rid = {
+    let state = JsRuntime::state_from(scope);
+    state
+      .op_state
+      .borrow_mut()
+      .resource_table
+      .add(WasmStreamingResource(RefCell::new(wasm_streaming)))
+  };
+
+  let undefined = v8::undefined(scope);
+  let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
+  cb_handle
+    .open(scope)
+    .call(scope, undefined.into(), &[arg, rid]);
 }
 
 // This op is re-entrant as it makes a v8 call. It also cannot be fast because
@@ -1274,7 +1431,6 @@ pub fn op_abort_wasm_streaming(
 
 // This op calls `op_apply_source_map` re-entrantly.
 #[op2(reentrant)]
-#[serde]
 pub fn op_destructure_error<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   error: v8::Local<'s, v8::Value>,

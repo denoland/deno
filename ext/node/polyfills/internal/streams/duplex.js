@@ -27,7 +27,7 @@
 // Writable.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const _mod1 =
   core.loadExtScript("ext:deno_node/internal/streams/legacy.js").default;
 const Readable = core.loadExtScript(
@@ -44,9 +44,8 @@ const destroyImpl =
 const { kOnConstructed } = core.loadExtScript(
   "ext:deno_node/internal/streams/utils.js",
 );
-const lazyWebStreamsAdapters = core.createLazyLoader(
-  "ext:deno_node/internal/webstreams/adapters.js",
-);
+const webStreamsAdaptersSpecifier =
+  "ext:deno_node/internal/webstreams/adapters.js";
 const lazyDuplexify = core.createLazyLoader(
   "ext:deno_node/internal/streams/duplexify.js",
 );
@@ -225,7 +224,7 @@ let webStreamsAdapters;
 // Lazy to avoid circular references
 function lazyWebStreams() {
   if (webStreamsAdapters === undefined) {
-    webStreamsAdapters = lazyWebStreamsAdapters();
+    webStreamsAdapters = core.loadExtScript(webStreamsAdaptersSpecifier);
   }
   return webStreamsAdapters;
 }
