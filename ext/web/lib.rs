@@ -155,6 +155,7 @@ deno_core::extension!(deno_web,
     font::op_fontdb_load,
     font::op_fontdb_add,
     font::op_fontdb_remove,
+    font::op_fontdb_unload,
     font::op_parse_css_font_query,
   ],
   objects = [

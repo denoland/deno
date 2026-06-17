@@ -201,6 +201,24 @@ pub fn op_fontdb_remove(state: &OpState, #[smi] handle: u32) {
   // bytes_store is NOT cleared; handle remains valid for re-add.
 }
 
+/// Sync op: fully unloads a font handle — removes active faces AND stored
+/// bytes.  Called by the JS FinalizationRegistry when a FontFace is GC'd.
+#[op2(fast)]
+pub fn op_fontdb_unload(state: &OpState, #[smi] handle: u32) {
+  let font_system = state
+    .borrow::<Arc<Mutex<cosmic_text::FontSystem>>>()
+    .clone();
+  let registry = state.borrow::<Arc<Mutex<FontRegistry>>>().clone();
+  let mut reg = registry.lock().unwrap();
+  if let Some(ids) = reg.active_faces.remove(&handle) {
+    let mut fs = font_system.lock().unwrap();
+    for id in ids {
+      fs.db_mut().remove_face(id);
+    }
+  }
+  reg.bytes_store.remove(&handle);
+}
+
 #[derive(Serialize)]
 struct CssFontQueryResult {
   family: String,
