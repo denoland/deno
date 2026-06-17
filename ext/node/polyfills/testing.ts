@@ -1887,18 +1887,31 @@ class MockTimersHandle {
   }
 }
 
+// Installs/uninstalls this MockTimers on the `node:timers` module so that
+// `require("node:timers")` and `import ... from "node:timers[/promises]"`
+// callers route through the virtual clock too, not just `globalThis`.
+const kInstallMockTimers = SymbolFor("Deno.internal.node.mockTimers");
+
 class MockTimers {
   _enabled = false;
   _now = 0;
   _timers = new SafeMap();
   _nextId = 1;
   #originals = new SafeMap();
+  #mockedApis = new SafeMap();
 
   #mockGlobal(name, value) {
     if (!MapPrototypeHas(this.#originals, name)) {
       MapPrototypeSet(this.#originals, name, globalThis[name]);
     }
     globalThis[name] = value;
+  }
+
+  // Whether `api` (e.g. `"setTimeout"`) is currently being intercepted. Read by
+  // the `node:timers` module functions to decide per-call whether to use the
+  // virtual clock, mirroring the per-api selection of `enable({ apis })`.
+  _apiEnabled(api) {
+    return MapPrototypeHas(this.#mockedApis, api);
   }
 
   enable(options = { __proto__: null }) {
@@ -1941,6 +1954,10 @@ class MockTimers {
     this._now = now;
 
     for (let i = 0; i < apis.length; i++) {
+      MapPrototypeSet(this.#mockedApis, apis[i], true);
+    }
+
+    for (let i = 0; i < apis.length; i++) {
       const api = apis[i];
       if (api === "Date") {
         this.#mockGlobal("Date", createMockDate(this));
@@ -1975,20 +1992,22 @@ class MockTimers {
         );
       }
     }
+
+    // Route the `node:timers` / `node:timers/promises` module functions through
+    // this instance too (see `kInstallMockTimers` in `timers.ts`).
+    core.loadExtScript("ext:deno_node/timers.ts")[kInstallMockTimers](this);
   }
 
   reset() {
     if (!this._enabled) return;
+    core.loadExtScript("ext:deno_node/timers.ts")[kInstallMockTimers](null);
     for (
       const { 0: name, 1: original } of new SafeMapIterator(this.#originals)
     ) {
-      if (name === "Date") {
-        globalThis.Date = original;
-      } else {
-        globalThis[name] = original;
-      }
+      globalThis[name] = original;
     }
     MapPrototypeClear(this.#originals);
+    MapPrototypeClear(this.#mockedApis);
     MapPrototypeClear(this._timers);
     this._now = 0;
     this._nextId = 1;
@@ -2013,18 +2032,21 @@ class MockTimers {
     }
   }
 
-  // Mirrors Node's `MockTimers.tick`: advance the virtual clock first, then
-  // drain every timer whose `fireAt` is now due (intervals re-arm and may fire
-  // again within the same tick).
+  // Mirrors Node's `MockTimers.tick`: advance the clock to each due timer's
+  // scheduled time as it fires (not straight to the end of the window), so a
+  // callback reading `Date.now()` sees the time the timer was scheduled for.
+  // Intervals re-arm and may fire again within the same tick.
   tick(milliseconds = 1) {
     this.#assertEnabled();
     this.#assertTimeArg(milliseconds);
-    this._now += milliseconds;
+    const target = this._now + milliseconds;
     while (true) {
       const next = this.#findNextTimer();
-      if (next === null || next.fireAt > this._now) break;
+      if (next === null || next.fireAt > target) break;
+      this._now = next.fireAt;
       this.#fireTimer(next);
     }
+    this._now = target;
   }
 
   // Mirrors Node's `MockTimers.runAll`: tick up to the longest pending timer.

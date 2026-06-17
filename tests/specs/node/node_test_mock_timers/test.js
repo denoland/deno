@@ -1,6 +1,16 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
+import { createRequire } from "node:module";
+// Imported (and statically bound) before any `enable()` call, to prove the
+// module exports honor the mock too, not just `globalThis`.
+import {
+  setImmediate as setImmediateP,
+  setInterval as setIntervalP,
+  setTimeout as setTimeoutP,
+} from "node:timers/promises";
+
+const require = createRequire(import.meta.url);
 
 test("reproducer from issue 32987 does not throw", () => {
   mock.timers.enable({ apis: ["setInterval", "Date"], now: 1234 });
@@ -247,6 +257,94 @@ test("Symbol.dispose resets original globals", () => {
     assert.notStrictEqual(globalThis.setTimeout, realSetTimeout);
   }
   assert.strictEqual(globalThis.setTimeout, realSetTimeout);
+});
+
+test("tick sets the clock to each timer's scheduled time", () => {
+  // Node advances the clock to each timer's `fireAt` as it fires, so a callback
+  // reading `Date.now()` sees the scheduled time, not the end of the window.
+  mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  let seen = -1;
+  setTimeout(() => {
+    seen = Date.now();
+  }, 100);
+  mock.timers.tick(500);
+  assert.strictEqual(seen, 100);
+  assert.strictEqual(Date.now(), 500);
+  mock.timers.reset();
+});
+
+test("interval callback sees its scheduled time under runAll", () => {
+  mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 0 });
+  const times = [];
+  setInterval(() => {
+    times.push(Date.now());
+  }, 100);
+  // Bound runAll() at 500ms so the interval fires 5 times.
+  setTimeout(() => {}, 500);
+  mock.timers.runAll();
+  assert.deepStrictEqual(times, [100, 200, 300, 400, 500]);
+  mock.timers.reset();
+});
+
+test("node:timers/promises setTimeout resolves on tick", async () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  let resolved = false;
+  const promise = setTimeoutP(100, "payload").then((v) => {
+    resolved = true;
+    return v;
+  });
+  assert.strictEqual(resolved, false);
+  mock.timers.tick(100);
+  assert.strictEqual(await promise, "payload");
+  mock.timers.reset();
+});
+
+test("node:timers/promises setImmediate resolves on tick", async () => {
+  mock.timers.enable({ apis: ["setImmediate"] });
+  const promise = setImmediateP("now");
+  mock.timers.tick(0);
+  assert.strictEqual(await promise, "now");
+  mock.timers.reset();
+});
+
+test("node:timers/promises setInterval yields on tick", async () => {
+  mock.timers.enable({ apis: ["setInterval"] });
+  const iter = setIntervalP(100, "x");
+  const first = iter.next();
+  mock.timers.tick(100);
+  assert.strictEqual((await first).value, "x");
+  const second = iter.next();
+  mock.timers.tick(100);
+  assert.strictEqual((await second).value, "x");
+  await iter.return();
+  mock.timers.reset();
+});
+
+test("require('node:timers') setTimeout fires on tick", () => {
+  const timers = require("node:timers");
+  mock.timers.enable({ apis: ["setTimeout"] });
+  let fired = false;
+  timers.setTimeout(() => {
+    fired = true;
+  }, 100);
+  mock.timers.tick(100);
+  assert.strictEqual(fired, true);
+  mock.timers.reset();
+});
+
+test("module setTimeout is untouched when its api is not enabled", () => {
+  const timers = require("node:timers");
+  mock.timers.enable({ apis: ["setInterval"] });
+  let fired = false;
+  // `setTimeout` was not requested, so this stays a real timer the virtual
+  // clock never advances.
+  const handle = timers.setTimeout(() => {
+    fired = true;
+  }, 100);
+  mock.timers.tick(1000);
+  assert.strictEqual(fired, false);
+  timers.clearTimeout(handle);
+  mock.timers.reset();
 });
 
 test("throws ERR_INVALID_STATE when not enabled", () => {
