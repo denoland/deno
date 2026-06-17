@@ -251,6 +251,15 @@ class ConnectionsList {
         }
       }
       if (requestTimeout > 0 && elapsed >= requestTimeout) {
+        // requestTimeout only covers receiving the entire request from the
+        // client. Once the full request message has been parsed off the wire
+        // (req.complete is set in parserOnMessageComplete), the clock stops,
+        // mirroring Node resetting last_message_start_ in on_message_complete.
+        // Without this an actively streaming response (SSE/proxy) gets aborted
+        // at requestTimeout even though the request was long since received.
+        if (entry.req?.complete) {
+          continue;
+        }
         ArrayPrototypePush(result, { socket });
       }
     }

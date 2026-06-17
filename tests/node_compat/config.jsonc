@@ -4970,6 +4970,7 @@
     "parallel/test-http-server-request-timeout-delayed-body.js": {},
     "parallel/test-http-server-request-timeout-delayed-headers.js": {},
     "parallel/test-http-server-request-timeout-interrupted-body.js": {},
+    "parallel/test-http-server-request-timeout-keepalive.js": {},
     "parallel/test-http-server-request-timeout-pipelining.js": {},
     "parallel/test-http-set-timeout-server.js": {},
     "parallel/test-http-timeout-client-warning.js": {
