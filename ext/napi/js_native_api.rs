@@ -3,7 +3,7 @@
 #![allow(non_upper_case_globals, reason = "native code")]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-const NAPI_VERSION: u32 = 9;
+const NAPI_VERSION: u32 = 10;
 
 use std::ptr::NonNull;
 

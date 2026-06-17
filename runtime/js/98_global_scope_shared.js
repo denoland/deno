@@ -500,12 +500,6 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   ),
 };
 
-unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
-  clearInterval: core.propWritable(nodeClearInterval),
-  clearTimeout: core.propWritable(nodeClearTimeout),
-  setInterval: core.propWritable(nodeSetInterval),
-  setTimeout: core.propWritable(nodeSetTimeout),
-};
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
 
 let _cssStyleSheetMod;

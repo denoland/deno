@@ -200,12 +200,17 @@ const env:
 /**
  * https://nodejs.org/api/process.html#process_process_version
  *
- * This value is hard coded to latest stable release of Node, as
- * some packages are checking it for compatibility. Previously
- * it pointed to Deno version, but that led to incompability
- * with some packages.
+ * This value tracks a stable release of Node, as some packages are
+ * checking it for compatibility. Previously it pointed to Deno version,
+ * but that led to incompability with some packages.
+ *
+ * The `__NODE_VERSION__` token is substituted at snapshot build time with
+ * `NODE_VERSION` from `ext/node/lib.rs` (see `maybe_transpile_source` in
+ * `runtime/transpile.rs`), which is the single source of truth, so the
+ * reported version can never drift from it.
  */
-const version = "v26.3.0";
+const nodeVersion = "__NODE_VERSION__";
+const version = `v${nodeVersion}`;
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions
@@ -216,7 +221,7 @@ const version = "v26.3.0";
  * with some packages. Value of `v8` field is still taken from `Deno.version`.
  */
 const versions = {
-  node: "26.3.0",
+  node: nodeVersion,
   uv: "1.52.1",
   zlib: "1.3.1-e00f703",
   brotli: "1.2.0",
@@ -225,7 +230,7 @@ const versions = {
   nghttp2: "1.69.0",
   // `napi` reflects the N-API version Deno actually implements, not Node's.
   // It must match NAPI_VERSION in ext/napi/js_native_api.rs.
-  napi: "9",
+  napi: "10",
   llhttp: "9.4.1",
   // `openssl` is intentionally NOT bumped to Node's value. Deno's crypto/TLS
   // stack does not ship OpenSSL 3.5 behavior (e.g. no ML-DSA/ML-KEM, different

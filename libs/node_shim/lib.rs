@@ -3143,8 +3143,8 @@ pub struct TranslateOptions {
   /// Use "deno node" as base command (for standalone CLI)
   /// When false, uses "deno run" (for child_process spawning)
   pub use_node_subcommand: bool,
-  /// Add unstable Node.js compat flags (--unstable-node-globals,
-  /// --unstable-bare-node-builtins, --unstable-detect-cjs)
+  /// Add unstable Node.js compat flags (--unstable-bare-node-builtins,
+  /// --unstable-detect-cjs)
   pub add_unstable_flags: bool,
   /// Add standalone config overrides (--node-modules-dir=manual, --no-config)
   /// Only appropriate for the standalone node shim CLI, not for child processes
@@ -3260,6 +3260,102 @@ pub fn is_deno_subcommand(arg: &str) -> bool {
   DENO_SUBCOMMANDS.contains(&arg)
 }
 
+/// Resolve a Node-style entrypoint to a specifier that Deno's `run` subcommand
+/// understands.
+///
+/// If the entrypoint is an absolute path, or a relative path that exists on
+/// disk, it is returned unchanged. Otherwise we shell out to `deno_exe` to
+/// resolve it using Node's module resolution semantics (via `resolve.js`).
+///
+/// `deno_exe` is the path or name used to invoke deno for the resolution
+/// fallback. The standalone shim passes `"deno"` (relying on PATH); callers
+/// running inside the deno process should pass `std::env::current_exe()`.
+///
+/// Infrastructure failures (no current dir, can't spawn deno, non-UTF8 output)
+/// fall back to returning the entrypoint unchanged, letting deno's own `run`
+/// resolution surface a normal error rather than panicking. A non-zero exit
+/// from the resolution script itself is still propagated via process exit, as
+/// that carries the user-facing "module not found" diagnostic.
+#[allow(
+  clippy::disallowed_methods,
+  reason = "CLI shim resolving a node entrypoint, mirrors the standalone binary"
+)]
+pub fn resolve_entrypoint(
+  deno_exe: &std::path::Path,
+  entrypoint: &str,
+) -> String {
+  use std::process::Stdio;
+
+  let Ok(cwd) = std::env::current_dir() else {
+    return entrypoint.to_string();
+  };
+  // If the entrypoint is either an absolute path, or a relative path that
+  // exists, return it as is.
+  if cwd.join(entrypoint).symlink_metadata().is_ok() {
+    return entrypoint.to_string();
+  }
+
+  let Ok(url) = url::Url::from_file_path(cwd.join("$file.js")) else {
+    return entrypoint.to_string();
+  };
+
+  // Otherwise, shell out to `deno` to try to resolve the entrypoint.
+  let mut command = std::process::Command::new(deno_exe);
+  command
+    .arg("eval")
+    .arg("--no-config")
+    .arg(include_str!("./resolve.js"))
+    .arg(url.to_string())
+    .arg(format!("./{}", entrypoint))
+    .env_clear()
+    .stdout(Stdio::piped())
+    .stderr(Stdio::inherit());
+  // A fully-cleared environment breaks process creation / DLL loading on
+  // Windows, so keep the essential system variables.
+  #[cfg(windows)]
+  for key in ["SystemRoot", "SystemDrive"] {
+    if let Some(value) = std::env::var_os(key) {
+      command.env(key, value);
+    }
+  }
+  let output = match command.output() {
+    Ok(output) => output,
+    Err(_) => return entrypoint.to_string(),
+  };
+  if !output.status.success() {
+    std::process::exit(output.status.code().unwrap_or(1));
+  }
+  match String::from_utf8(output.stdout) {
+    Ok(stdout) => stdout.trim().to_string(),
+    Err(_) => entrypoint.to_string(),
+  }
+}
+
+/// For a translated `deno run ...` argv, resolve the entrypoint argument in
+/// place using [`resolve_entrypoint`].
+///
+/// No-op unless `deno_args` is a `run` invocation with an entrypoint (the first
+/// non-flag argument after `run`). Shared by the standalone shim binary and the
+/// in-process arg0 dispatch so the entrypoint-finding logic lives in one place.
+pub fn resolve_run_entrypoint(
+  deno_exe: &std::path::Path,
+  deno_args: &mut [String],
+) {
+  if deno_args.len() < 3 || deno_args.get(1).map(|s| s.as_str()) != Some("run")
+  {
+    return;
+  }
+  let entrypoint_idx = deno_args
+    .iter()
+    .enumerate()
+    .skip(2)
+    .find(|(_, arg)| !arg.starts_with('-'))
+    .map(|(i, _)| i);
+  if let Some(idx) = entrypoint_idx {
+    deno_args[idx] = resolve_entrypoint(deno_exe, &deno_args[idx]);
+  }
+}
+
 /// Translate parsed Node.js CLI arguments to Deno CLI arguments.
 pub fn translate_to_deno_args(
   parsed_args: ParseResult,
@@ -3361,7 +3457,6 @@ pub fn translate_to_deno_args(
     // Note: deno eval has implicit permissions, so we don't add -A
 
     if options.add_unstable_flags {
-      deno_args.push("--unstable-node-globals".to_string());
       deno_args.push("--unstable-bare-node-builtins".to_string());
       deno_args.push("--unstable-detect-cjs".to_string());
     }
@@ -3441,7 +3536,6 @@ pub fn translate_to_deno_args(
     deno_args.push("-A".to_string());
 
     if options.add_unstable_flags {
-      deno_args.push("--unstable-node-globals".to_string());
       deno_args.push("--unstable-bare-node-builtins".to_string());
       deno_args.push("--unstable-detect-cjs".to_string());
     }
@@ -3488,7 +3582,6 @@ pub fn translate_to_deno_args(
   deno_args.push("-A".to_string());
 
   if options.add_unstable_flags {
-    deno_args.push("--unstable-node-globals".to_string());
     deno_args.push("--unstable-bare-node-builtins".to_string());
     deno_args.push("--unstable-detect-cjs".to_string());
   }
@@ -5123,7 +5216,6 @@ mod tests {
       "node",
       "run",
       "-A",
-      "--unstable-node-globals",
       "--unstable-bare-node-builtins",
       "--unstable-detect-cjs",
       "--node-modules-dir=manual",
