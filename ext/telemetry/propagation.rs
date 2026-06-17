@@ -800,6 +800,139 @@ impl OtelBaggage {
   }
 }
 
+// === Context object (Rust-backed `Context`) =================================
+
+/// A single context entry: a symbol `key` and its associated `value`, both kept
+/// as traced references so their V8 identity survives garbage collection. Keys
+/// are compared by identity (`===`), matching the `Record<symbol, unknown>` the
+/// JS `Context` class used for storage.
+struct ContextEntry {
+  key: v8::TracedReference<v8::Value>,
+  value: v8::TracedReference<v8::Value>,
+}
+
+/// Rust-backed implementation of the internal `Context`, replacing the JS
+/// `class Context` that stored a `{ __proto__: null }` symbol-keyed record.
+///
+/// Like the JS original, instances are immutable: `setValue` / `deleteValue`
+/// each return a brand new `OtelContext` and never mutate the receiver, so no
+/// interior mutability is required. `@opentelemetry/api` only ever creates
+/// context keys via `Symbol.for(...)`, but identity comparison is correct for
+/// any symbol regardless.
+pub struct OtelContext {
+  entries: Vec<ContextEntry>,
+}
+
+// SAFETY: every stored `v8` reference (each entry's key and value) is traced.
+unsafe impl GarbageCollected for OtelContext {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    for entry in &self.entries {
+      visitor.trace(&entry.key);
+      visitor.trace(&entry.value);
+    }
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelContext"
+  }
+}
+
+/// Index of the entry whose key is `===` to `key`, if any.
+fn context_find<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  entries: &[ContextEntry],
+  key: v8::Local<'s, v8::Value>,
+) -> Option<usize> {
+  entries
+    .iter()
+    .position(|e| e.key.get(scope).is_some_and(|k| k.strict_equals(key)))
+}
+
+/// Deep-clone the entry list (fresh traced references to the same keys/values),
+/// used when deriving a new immutable context.
+fn clone_context_entries<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  entries: &[ContextEntry],
+) -> Vec<ContextEntry> {
+  entries
+    .iter()
+    .filter_map(|e| {
+      let key = e.key.get(scope)?;
+      let value = e.value.get(scope)?;
+      Some(ContextEntry {
+        key: v8::TracedReference::new(scope, key),
+        value: v8::TracedReference::new(scope, value),
+      })
+    })
+    .collect()
+}
+
+#[op2]
+impl OtelContext {
+  // `new Context()` — the root context starts empty. The JS constructor also
+  // accepted a record to copy, but that path was only ever used internally by
+  // `setValue`/`deleteValue`, which are now Rust methods that build the new
+  // context directly.
+  #[constructor]
+  #[cppgc]
+  fn new() -> OtelContext {
+    OtelContext {
+      entries: Vec::new(),
+    }
+  }
+
+  // `getValue(key)` — returns the stored value, or `undefined` when absent.
+  fn get_value<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    key: v8::Local<'s, v8::Value>,
+  ) -> v8::Local<'s, v8::Value> {
+    let Some(i) = context_find(scope, &self.entries, key) else {
+      return v8::undefined(scope).into();
+    };
+    match self.entries[i].value.get(scope) {
+      Some(value) => value,
+      None => v8::undefined(scope).into(),
+    }
+  }
+
+  // `setValue(key, value)` — returns a new context with `key` set, leaving the
+  // receiver untouched (immutable copy semantics). Re-setting an existing key
+  // updates it in place, keeping its position.
+  #[cppgc]
+  fn set_value<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    key: v8::Local<'s, v8::Value>,
+    value: v8::Local<'s, v8::Value>,
+  ) -> OtelContext {
+    let mut entries = clone_context_entries(scope, &self.entries);
+    match context_find(scope, &entries, key) {
+      Some(i) => entries[i].value = v8::TracedReference::new(scope, value),
+      None => entries.push(ContextEntry {
+        key: v8::TracedReference::new(scope, key),
+        value: v8::TracedReference::new(scope, value),
+      }),
+    }
+    OtelContext { entries }
+  }
+
+  // `deleteValue(key)` — returns a new context without `key`, leaving the
+  // receiver untouched.
+  #[cppgc]
+  fn delete_value<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    key: v8::Local<'s, v8::Value>,
+  ) -> OtelContext {
+    let mut entries = clone_context_entries(scope, &self.entries);
+    if let Some(i) = context_find(scope, &entries, key) {
+      entries.remove(i);
+    }
+    OtelContext { entries }
+  }
+}
+
 // === W3C propagators (Rust-backed `TextMapPropagator`s) ======================
 
 // Header names and the trace-context version we emit. These mirror the
