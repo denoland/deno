@@ -119,6 +119,18 @@ impl Resource for TcpStreamResource {
   fn close(self: Rc<Self>) {
     self.cancel_read_ops();
   }
+
+  // Override the trait's no-op default. Without this, `self.cancel_read_ops()`
+  // (in `close()` and via `op_cancel_read`) resolves to `Resource`'s default
+  // empty `cancel_read_ops(self: Rc<Self>)` rather than the inherent
+  // `FullDuplexResource::cancel_read_ops(&self)`, because the trait method's
+  // by-value `Rc<Self>` receiver is an exact match while the inherent `&self`
+  // method needs an autoref. The result is that closing a TCP stream never
+  // cancels its in-flight read, so the socket is never dropped and no FIN is
+  // sent until the process exits.
+  fn cancel_read_ops(self: Rc<Self>) {
+    FullDuplexResource::cancel_read_ops(&self);
+  }
 }
 
 impl TcpStreamResource {
@@ -203,6 +215,14 @@ impl Resource for UnixStreamResource {
   fn close(self: Rc<Self>) {
     self.cancel_read_ops();
   }
+
+  // See the note on TcpStreamResource::cancel_read_ops.
+  fn cancel_read_ops(self: Rc<Self>) {
+    #[cfg(unix)]
+    FullDuplexResource::cancel_read_ops(&self);
+    #[cfg(not(unix))]
+    let _ = self;
+  }
 }
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
@@ -251,5 +271,21 @@ impl Resource for VsockStreamResource {
 
   fn close(self: Rc<Self>) {
     self.cancel_read_ops();
+  }
+
+  // See the note on TcpStreamResource::cancel_read_ops.
+  fn cancel_read_ops(self: Rc<Self>) {
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
+    FullDuplexResource::cancel_read_ops(&self);
+    #[cfg(not(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    )))]
+    let _ = self;
   }
 }
