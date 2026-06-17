@@ -316,6 +316,35 @@ Deno.test("[util] styleText() falls back to process.stdout when no stream given"
   }
 });
 
+Deno.test("[util] styleText() validates stream type before format", () => {
+  // When both the stream and the format are invalid, ERR_INVALID_ARG_TYPE
+  // (bad stream) must be thrown before ERR_INVALID_ARG_VALUE (bad format),
+  // matching Node's argument-validation order.
+  const streamErr = assertThrows(
+    () =>
+      // @ts-expect-error: intentionally invalid format and stream to test validation order
+      util.styleText("not_a_valid_format", "text", { stream: "not-a-stream" }),
+    TypeError,
+  );
+  assertEquals(
+    (streamErr as unknown as { code: string }).code,
+    "ERR_INVALID_ARG_TYPE",
+  );
+
+  // With a structurally-valid stream (has .write), the format check fires next
+  // and ERR_INVALID_ARG_VALUE is thrown.
+  const formatErr = assertThrows(
+    () =>
+      // @ts-expect-error: intentionally invalid format to test validation order
+      util.styleText("not_a_valid_format", "text", { stream: { write() {} } }),
+    TypeError,
+  );
+  assertEquals(
+    (formatErr as unknown as { code: string }).code,
+    "ERR_INVALID_ARG_VALUE",
+  );
+});
+
 Deno.test("[util] stripVTControlCharacters() removes OSC 8 hyperlinks", () => {
   // OSC 8 hyperlink with ESC \ (ST) terminator
   const input =
