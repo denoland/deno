@@ -800,38 +800,666 @@ impl OtelBaggage {
   }
 }
 
-// === Ops ====================================================================
+// === W3C propagators (Rust-backed `TextMapPropagator`s) ======================
 
-#[op2]
-#[serde]
-pub fn op_otel_parse_traceparent(
-  #[string] traceparent: String,
-) -> Option<JsTraceParent> {
-  parse_traceparent(&traceparent)
+// Header names and the trace-context version we emit. These mirror the
+// constants that previously lived in `telemetry.ts`.
+const VERSION: &str = "00";
+const TRACE_PARENT_HEADER: &str = "traceparent";
+const TRACE_STATE_HEADER: &str = "tracestate";
+const BAGGAGE_HEADER: &str = "baggage";
+
+// `@opentelemetry/api` context keys (created with `Symbol.for`, so the global
+// symbol registry is shared with the JavaScript `SymbolFor(...)` calls).
+const SPAN_KEY: &str = "OpenTelemetry Context Key SPAN";
+const SUPPRESS_TRACING_KEY: &str =
+  "OpenTelemetry SDK Context Key SUPPRESS_TRACING";
+const BAGGAGE_KEY: &str = "OpenTelemetry Baggage Key";
+
+fn v8_str<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  s: &str,
+) -> v8::Local<'s, v8::String> {
+  v8::String::new(scope, s).unwrap()
 }
 
-#[op2(fast)]
-pub fn op_otel_span_context_valid(
-  #[string] trace_id: String,
-  #[string] span_id: String,
-) -> bool {
-  is_valid_trace_id(&trace_id) && is_valid_span_id(&span_id)
+/// `Symbol.for(key)` — the same global symbol the JS code obtained via
+/// `SymbolFor(key)`.
+fn symbol_for<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  key: &str,
+) -> v8::Local<'s, v8::Symbol> {
+  let desc = v8_str(scope, key);
+  v8::Symbol::for_key(scope, desc)
 }
 
-#[op2]
-#[serde]
-pub fn op_otel_baggage_parse(
-  #[string] header: String,
-) -> Result<Vec<JsBaggageEntry>, JsErrorBox> {
-  baggage_parse(&header)
+/// `recv[name](...args)`. Returns `None` if `name` is not callable or the call
+/// throws (leaving the exception pending so V8 propagates it once we return).
+fn call_method<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  recv: v8::Local<'s, v8::Value>,
+  name: &str,
+  args: &[v8::Local<'s, v8::Value>],
+) -> Option<v8::Local<'s, v8::Value>> {
+  let obj = recv.to_object(scope)?;
+  let key = v8_str(scope, name);
+  let func = obj.get(scope, key.into())?;
+  let func = v8::Local::<v8::Function>::try_from(func).ok()?;
+  func.call(scope, recv, args)
 }
 
-#[op2]
-#[string]
-pub fn op_otel_baggage_serialize(
-  #[serde] entries: Vec<JsBaggageEntry>,
+/// `obj[name]`, or `None` if `obj` is not an object / the get throws.
+fn get_prop<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Value>,
+  name: &str,
+) -> Option<v8::Local<'s, v8::Value>> {
+  let obj = obj.to_object(scope)?;
+  let key = v8_str(scope, name);
+  obj.get(scope, key.into())
+}
+
+/// `obj[name]` coerced to a Rust string, or `None` when the property is
+/// absent / null / undefined.
+fn get_string_prop<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Value>,
+  name: &str,
+) -> Option<String> {
+  let v = get_prop(scope, obj, name)?;
+  if v.is_null_or_undefined() {
+    return None;
+  }
+  Some(v.to_rust_string_lossy(scope))
+}
+
+/// `Array.prototype.join(sep)` semantics (null/undefined elements become "").
+fn join_array<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'s, v8::Value>,
+  sep: &str,
 ) -> String {
-  baggage_serialize(&entries)
+  let Ok(arr) = v8::Local::<v8::Array>::try_from(value) else {
+    return value.to_rust_string_lossy(scope);
+  };
+  let mut parts: Vec<String> = Vec::with_capacity(arr.length() as usize);
+  for i in 0..arr.length() {
+    match arr.get_index(scope, i) {
+      Some(v) if !v.is_null_or_undefined() => {
+        parts.push(v.to_rust_string_lossy(scope))
+      }
+      _ => parts.push(String::new()),
+    }
+  }
+  parts.join(sep)
+}
+
+/// `context.getValue(SUPPRESS_TRACING) === true`. `None` means the `getValue`
+/// call threw.
+fn is_tracing_suppressed<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  context: v8::Local<'s, v8::Value>,
+) -> Option<bool> {
+  let key = symbol_for(scope, SUPPRESS_TRACING_KEY);
+  let value = call_method(scope, context, "getValue", &[key.into()])?;
+  Some(value.is_true())
+}
+
+// --- W3CTraceContextPropagator ----------------------------------------------
+
+/// Rust-backed `W3CTraceContextPropagator`, replacing the JS class that lived in
+/// `telemetry.ts`. The inject/extract/fields logic and all getter/setter
+/// callback invocation now run in Rust; `NonRecordingSpan` is still a small JS
+/// class (an inert span shell), so its constructor is passed in and called from
+/// Rust on extraction.
+pub struct OtelW3CTraceContextPropagator {
+  non_recording_span: v8::TracedReference<v8::Value>,
+}
+
+// SAFETY: the stored `NonRecordingSpan` constructor reference is traced.
+unsafe impl GarbageCollected for OtelW3CTraceContextPropagator {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    visitor.trace(&self.non_recording_span);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelW3CTraceContextPropagator"
+  }
+}
+
+#[op2]
+impl OtelW3CTraceContextPropagator {
+  #[constructor]
+  #[cppgc]
+  fn new<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    non_recording_span: v8::Local<'s, v8::Value>,
+  ) -> OtelW3CTraceContextPropagator {
+    OtelW3CTraceContextPropagator {
+      non_recording_span: v8::TracedReference::new(scope, non_recording_span),
+    }
+  }
+
+  #[nofast]
+  fn inject<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    context: v8::Local<'s, v8::Value>,
+    carrier: v8::Local<'s, v8::Value>,
+    setter: v8::Local<'s, v8::Value>,
+  ) {
+    let span_key = symbol_for(scope, SPAN_KEY);
+    let Some(span) =
+      call_method(scope, context, "getValue", &[span_key.into()])
+    else {
+      return;
+    };
+    if span.is_null_or_undefined() {
+      return;
+    }
+    let Some(span_context) = call_method(scope, span, "spanContext", &[])
+    else {
+      return;
+    };
+    if span_context.is_null_or_undefined() {
+      return;
+    }
+    let Some(suppressed) = is_tracing_suppressed(scope, context) else {
+      return;
+    };
+    if suppressed {
+      return;
+    }
+    let Some(trace_id) = get_string_prop(scope, span_context, "traceId") else {
+      return;
+    };
+    let Some(span_id) = get_string_prop(scope, span_context, "spanId") else {
+      return;
+    };
+    if !(is_valid_trace_id(&trace_id) && is_valid_span_id(&span_id)) {
+      return;
+    }
+
+    // `Number(spanContext.traceFlags || 0).toString(16)`, prefixed with "0".
+    let trace_flags = get_prop(scope, span_context, "traceFlags")
+      .and_then(|v| v.number_value(scope))
+      .filter(|f| !f.is_nan())
+      .unwrap_or(0.0) as i64;
+    let trace_parent =
+      format!("{VERSION}-{trace_id}-{span_id}-0{trace_flags:x}");
+
+    let header = v8_str(scope, TRACE_PARENT_HEADER).into();
+    let value = v8_str(scope, &trace_parent).into();
+    if call_method(scope, setter, "set", &[carrier, header, value]).is_none() {
+      return;
+    }
+
+    if let Some(trace_state) = get_prop(scope, span_context, "traceState")
+      && !trace_state.is_null_or_undefined()
+    {
+      let Some(serialized) = call_method(scope, trace_state, "serialize", &[])
+      else {
+        return;
+      };
+      let serialized = serialized.to_rust_string_lossy(scope);
+      let header = v8_str(scope, TRACE_STATE_HEADER).into();
+      let value = v8_str(scope, &serialized).into();
+      call_method(scope, setter, "set", &[carrier, header, value]);
+    }
+  }
+
+  fn extract<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    context: v8::Local<'s, v8::Value>,
+    carrier: v8::Local<'s, v8::Value>,
+    getter: v8::Local<'s, v8::Value>,
+  ) -> v8::Local<'s, v8::Value> {
+    let header = v8_str(scope, TRACE_PARENT_HEADER).into();
+    let Some(trace_parent_header) =
+      call_method(scope, getter, "get", &[carrier, header])
+    else {
+      return context;
+    };
+    if !trace_parent_header.boolean_value(scope) {
+      return context;
+    }
+    let trace_parent = if trace_parent_header.is_array() {
+      let arr = v8::Local::<v8::Array>::try_from(trace_parent_header).unwrap();
+      match arr.get_index(scope, 0) {
+        Some(v) => v,
+        None => return context,
+      }
+    } else {
+      trace_parent_header
+    };
+    if !trace_parent.is_string() {
+      return context;
+    }
+    let trace_parent = trace_parent.to_rust_string_lossy(scope);
+    let Some(parsed) = parse_traceparent(&trace_parent) else {
+      return context;
+    };
+
+    let span_context = v8::Object::new(scope);
+    set_string(scope, span_context, "traceId", &parsed.trace_id);
+    set_string(scope, span_context, "spanId", &parsed.span_id);
+    let trace_flags = v8::Integer::new(scope, parsed.trace_flags as i32);
+    set_value(scope, span_context, "traceFlags", trace_flags.into());
+    let is_remote = v8::Boolean::new(scope, true);
+    set_value(scope, span_context, "isRemote", is_remote.into());
+
+    let header = v8_str(scope, TRACE_STATE_HEADER).into();
+    let Some(trace_state_header) =
+      call_method(scope, getter, "get", &[carrier, header])
+    else {
+      return context;
+    };
+    if trace_state_header.boolean_value(scope) {
+      let state = if trace_state_header.is_array() {
+        Some(join_array(scope, trace_state_header, ","))
+      } else if trace_state_header.is_string() {
+        Some(trace_state_header.to_rust_string_lossy(scope))
+      } else {
+        None
+      };
+      let entries = match &state {
+        Some(s) if !s.is_empty() => tracestate_parse(s),
+        _ => Vec::new(),
+      };
+      let trace_state =
+        deno_core::cppgc::make_cppgc_object(scope, OtelTraceState { entries });
+      set_value(scope, span_context, "traceState", trace_state.into());
+    }
+
+    let Some(ctor) = self.non_recording_span.get(scope) else {
+      return context;
+    };
+    let Ok(ctor) = v8::Local::<v8::Function>::try_from(ctor) else {
+      return context;
+    };
+    let Some(span) = ctor.new_instance(scope, &[span_context.into()]) else {
+      return context;
+    };
+
+    let span_key = symbol_for(scope, SPAN_KEY);
+    call_method(scope, context, "setValue", &[span_key.into(), span.into()])
+      .unwrap_or(context)
+  }
+
+  fn fields<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> v8::Local<'s, v8::Array> {
+    let elements = [
+      v8_str(scope, TRACE_PARENT_HEADER).into(),
+      v8_str(scope, TRACE_STATE_HEADER).into(),
+    ];
+    v8::Array::new_with_elements(scope, &elements)
+  }
+}
+
+fn set_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  key: &str,
+  value: v8::Local<'s, v8::Value>,
+) {
+  let key = v8_str(scope, key);
+  obj.set(scope, key.into(), value);
+}
+
+fn set_string<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  key: &str,
+  value: &str,
+) {
+  let value = v8_str(scope, value).into();
+  set_value(scope, obj, key, value);
+}
+
+// --- W3CBaggagePropagator ---------------------------------------------------
+
+/// Rust-backed `W3CBaggagePropagator`, replacing the JS class. Parsing,
+/// percent-(de)coding, de-duplication and serialization already lived in Rust;
+/// now the inject/extract/fields control flow and getter/setter invocation do
+/// too. `baggageEntryMetadataFromString` is still a tiny JS helper (it builds
+/// the `BaggageEntryMetadata` object whose identity/`toString()` must be
+/// preserved), so it is passed in and called from Rust on extraction.
+pub struct OtelW3CBaggagePropagator {
+  metadata_from_string: v8::TracedReference<v8::Value>,
+}
+
+// SAFETY: the stored `baggageEntryMetadataFromString` reference is traced.
+unsafe impl GarbageCollected for OtelW3CBaggagePropagator {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    visitor.trace(&self.metadata_from_string);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelW3CBaggagePropagator"
+  }
+}
+
+#[op2]
+impl OtelW3CBaggagePropagator {
+  #[constructor]
+  #[cppgc]
+  fn new<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    metadata_from_string: v8::Local<'s, v8::Value>,
+  ) -> OtelW3CBaggagePropagator {
+    OtelW3CBaggagePropagator {
+      metadata_from_string: v8::TracedReference::new(
+        scope,
+        metadata_from_string,
+      ),
+    }
+  }
+
+  #[nofast]
+  fn inject<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    context: v8::Local<'s, v8::Value>,
+    carrier: v8::Local<'s, v8::Value>,
+    setter: v8::Local<'s, v8::Value>,
+  ) {
+    let baggage_key = symbol_for(scope, BAGGAGE_KEY);
+    let Some(baggage) =
+      call_method(scope, context, "getValue", &[baggage_key.into()])
+    else {
+      return;
+    };
+    if !baggage.boolean_value(scope) {
+      return;
+    }
+    let Some(suppressed) = is_tracing_suppressed(scope, context) else {
+      return;
+    };
+    if suppressed {
+      return;
+    }
+
+    let Some(all_entries) = call_method(scope, baggage, "getAllEntries", &[])
+    else {
+      return;
+    };
+    let Ok(all_entries) = v8::Local::<v8::Array>::try_from(all_entries) else {
+      return;
+    };
+
+    let mut entries: Vec<JsBaggageEntry> = Vec::new();
+    for i in 0..all_entries.length() {
+      let Some(pair) = all_entries.get_index(scope, i) else {
+        return;
+      };
+      let Ok(pair) = v8::Local::<v8::Array>::try_from(pair) else {
+        continue;
+      };
+      let Some(key) = pair.get_index(scope, 0) else {
+        return;
+      };
+      let Some(entry) = pair.get_index(scope, 1) else {
+        return;
+      };
+      let key = key.to_rust_string_lossy(scope);
+      let value = get_string_prop(scope, entry, "value").unwrap_or_default();
+      let metadata = match get_prop(scope, entry, "metadata") {
+        Some(metadata) if !metadata.is_undefined() => {
+          let Some(s) = call_method(scope, metadata, "toString", &[]) else {
+            return;
+          };
+          Some(s.to_rust_string_lossy(scope))
+        }
+        _ => None,
+      };
+      entries.push(JsBaggageEntry {
+        key,
+        value,
+        metadata,
+      });
+    }
+
+    let header_value = baggage_serialize(&entries);
+    if !header_value.is_empty() {
+      let header = v8_str(scope, BAGGAGE_HEADER).into();
+      let value = v8_str(scope, &header_value).into();
+      call_method(scope, setter, "set", &[carrier, header, value]);
+    }
+  }
+
+  fn extract<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    context: v8::Local<'s, v8::Value>,
+    carrier: v8::Local<'s, v8::Value>,
+    getter: v8::Local<'s, v8::Value>,
+  ) -> Result<v8::Local<'s, v8::Value>, JsErrorBox> {
+    let header = v8_str(scope, BAGGAGE_HEADER).into();
+    let Some(header_value) =
+      call_method(scope, getter, "get", &[carrier, header])
+    else {
+      return Ok(context);
+    };
+    if header_value.is_null_or_undefined() {
+      return Ok(context);
+    }
+    let baggage_string = if header_value.is_array() {
+      join_array(scope, header_value, ",")
+    } else {
+      header_value.to_rust_string_lossy(scope)
+    };
+    if baggage_string.is_empty() {
+      return Ok(context);
+    }
+
+    // Parsing / percent-decoding / de-duplication is performed in Rust and may
+    // throw on a malformed percent-encoding (`URIError`), matching the JS op.
+    let parsed = baggage_parse(&baggage_string)?;
+    if parsed.is_empty() {
+      return Ok(context);
+    }
+
+    let mut entries: Vec<StoredEntry> = Vec::with_capacity(parsed.len());
+    for entry in parsed {
+      let metadata = match &entry.metadata {
+        Some(metadata) => self.make_metadata(scope, metadata),
+        None => None,
+      };
+      entries.push(StoredEntry {
+        key: entry.key,
+        value: entry.value,
+        metadata,
+      });
+    }
+    let baggage =
+      deno_core::cppgc::make_cppgc_object(scope, OtelBaggage { entries });
+
+    let baggage_key = symbol_for(scope, BAGGAGE_KEY);
+    Ok(
+      call_method(
+        scope,
+        context,
+        "setValue",
+        &[baggage_key.into(), baggage.into()],
+      )
+      .unwrap_or(context),
+    )
+  }
+
+  fn fields<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> v8::Local<'s, v8::Array> {
+    let elements = [v8_str(scope, BAGGAGE_HEADER).into()];
+    v8::Array::new_with_elements(scope, &elements)
+  }
+}
+
+impl OtelW3CBaggagePropagator {
+  /// `baggageEntryMetadataFromString(value)`, returning a traced reference to
+  /// the resulting `BaggageEntryMetadata` object (so its identity / `toString()`
+  /// survive, exactly as in the JS implementation).
+  fn make_metadata<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    value: &str,
+  ) -> Option<v8::TracedReference<v8::Value>> {
+    let ctor = self.metadata_from_string.get(scope)?;
+    let ctor = v8::Local::<v8::Function>::try_from(ctor).ok()?;
+    let undefined = v8::undefined(scope).into();
+    let arg = v8_str(scope, value).into();
+    let metadata = ctor.call(scope, undefined, &[arg])?;
+    Some(v8::TracedReference::new(scope, metadata))
+  }
+}
+
+// --- CompositePropagator ----------------------------------------------------
+
+/// Rust-backed `CompositePropagator`, replacing the JS class. It fans inject /
+/// extract out to the wrapped propagators (each a JS `TextMapPropagator`, in
+/// practice the Rust-backed propagators above) and absorbs per-propagator
+/// failures with a `console.warn`, matching the JS behavior.
+pub struct OtelCompositePropagator {
+  propagators: Vec<v8::TracedReference<v8::Value>>,
+  fields: Vec<String>,
+}
+
+// SAFETY: every wrapped propagator reference is traced.
+unsafe impl GarbageCollected for OtelCompositePropagator {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    for propagator in &self.propagators {
+      visitor.trace(propagator);
+    }
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OtelCompositePropagator"
+  }
+}
+
+#[op2]
+impl OtelCompositePropagator {
+  #[constructor]
+  #[cppgc]
+  fn new<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    propagators: v8::Local<'s, v8::Value>,
+  ) -> OtelCompositePropagator {
+    let mut stored: Vec<v8::TracedReference<v8::Value>> = Vec::new();
+    let mut fields: Vec<String> = Vec::new();
+    if let Ok(arr) = v8::Local::<v8::Array>::try_from(propagators) {
+      for i in 0..arr.length() {
+        let Some(propagator) = arr.get_index(scope, i) else {
+          continue;
+        };
+        if propagator.is_null_or_undefined() {
+          continue;
+        }
+        stored.push(v8::TracedReference::new(scope, propagator));
+        // Union of each propagator's `fields()`, de-duplicated in order.
+        if let Some(fields_value) =
+          call_method(scope, propagator, "fields", &[])
+          && let Ok(fields_arr) = v8::Local::<v8::Array>::try_from(fields_value)
+        {
+          for j in 0..fields_arr.length() {
+            if let Some(field) = fields_arr.get_index(scope, j) {
+              let field = field.to_rust_string_lossy(scope);
+              if !fields.contains(&field) {
+                fields.push(field);
+              }
+            }
+          }
+        }
+      }
+    }
+    OtelCompositePropagator {
+      propagators: stored,
+      fields,
+    }
+  }
+
+  #[nofast]
+  fn inject<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    context: v8::Local<'s, v8::Value>,
+    carrier: v8::Local<'s, v8::Value>,
+    setter: v8::Local<'s, v8::Value>,
+  ) {
+    for i in 0..self.propagators.len() {
+      let Some(propagator) = self.propagators[i].get(scope) else {
+        continue;
+      };
+      v8::tc_scope!(tc, scope);
+      if call_method(tc, propagator, "inject", &[context, carrier, setter])
+        .is_none()
+        && tc.has_caught()
+      {
+        let exception = tc.exception().unwrap();
+        tc.reset();
+        warn_failed(tc, propagator, "inject", exception);
+      }
+    }
+  }
+
+  fn extract<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    context: v8::Local<'s, v8::Value>,
+    carrier: v8::Local<'s, v8::Value>,
+    getter: v8::Local<'s, v8::Value>,
+  ) -> v8::Local<'s, v8::Value> {
+    let mut ctx = context;
+    for i in 0..self.propagators.len() {
+      let Some(propagator) = self.propagators[i].get(scope) else {
+        continue;
+      };
+      v8::tc_scope!(tc, scope);
+      match call_method(tc, propagator, "extract", &[ctx, carrier, getter]) {
+        Some(result) => ctx = result,
+        None => {
+          if tc.has_caught() {
+            let exception = tc.exception().unwrap();
+            tc.reset();
+            warn_failed(tc, propagator, "extract", exception);
+          }
+        }
+      }
+    }
+    ctx
+  }
+
+  fn fields<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> v8::Local<'s, v8::Array> {
+    let mut elements: Vec<v8::Local<v8::Value>> =
+      Vec::with_capacity(self.fields.len());
+    for field in &self.fields {
+      elements.push(v8_str(scope, field).into());
+    }
+    v8::Array::new_with_elements(scope, &elements)
+  }
+}
+
+/// `console.warn(\`Failed to ${verb} with ${propagator.constructor.name}.\`, err)`.
+fn warn_failed<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  propagator: v8::Local<'s, v8::Value>,
+  verb: &str,
+  error: v8::Local<'s, v8::Value>,
+) {
+  let name = get_prop(scope, propagator, "constructor")
+    .and_then(|ctor| get_string_prop(scope, ctor, "name"))
+    .unwrap_or_default();
+  let message = v8_str(scope, &format!("Failed to {verb} with {name}.")).into();
+  let global = scope.get_current_context().global(scope);
+  if let Some(console) = get_prop(scope, global.into(), "console") {
+    call_method(scope, console, "warn", &[message, error]);
+  }
 }
 
 #[cfg(test)]
