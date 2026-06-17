@@ -906,6 +906,27 @@
     return desc;
   }
 
+  function propLazyLoadedByKey(key, loadFn, enumerable) {
+    const desc = {
+      get() {
+        return loadFn()[key];
+      },
+      set(v) {
+        const name = desc[lazyNameSym];
+        ObjectDefineProperty(this, name, {
+          value: v,
+          writable: true,
+          enumerable: enumerable || !ObjectHasOwn(this, name),
+          configurable: true,
+        });
+      },
+      enumerable,
+      configurable: true,
+      [lazyNameSym]: undefined,
+    };
+    return desc;
+  }
+
   // Like `Object.defineProperties`, but also stamps the property name into any
   // lazy-loaded descriptors so their setters can target the correct receiver.
   function defineGlobalProperties(target, props) {
@@ -1250,6 +1271,7 @@
     propGetterOnly,
     propWritableLazyLoaded,
     propNonEnumerableLazyLoaded,
+    propLazyLoadedByKey,
     defineGlobalProperties,
     createLazyLoader,
     loadExtScript,
