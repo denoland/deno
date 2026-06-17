@@ -1812,7 +1812,7 @@ fn flags_to_permissions_options(
   };
   let identity = |value: &str| value.to_string();
 
-  Ok(PermissionsOptions {
+  let options = PermissionsOptions {
     allow_env: handle_allow(
       flags.allow_all,
       config.and_then(|c| c.permissions.all),
@@ -1947,7 +1947,33 @@ fn flags_to_permissions_options(
       &identity,
     ),
     prompt: !resolve_no_prompt(flags),
-  })
+  };
+
+  // Enforce mutual exclusion between the legacy `net` model and the directional
+  // `net-connect` / `net-listen` model against the *merged* options. The
+  // CLI-only conflict is already rejected in `permission_args_parse`, but the
+  // legacy lists can also be populated from `deno.json` (`permissions.net`)
+  // *after* that check, so a config `net` grant combined with a directional CLI
+  // flag would otherwise slip through. If that mix were allowed, the runtime
+  // dispatch would silently honor only one model and drop the other (e.g. a
+  // `--deny-net-connect` would be ignored) — the worst possible failure mode
+  // for a deny flag.
+  let has_legacy_net =
+    options.allow_net.is_some() || options.deny_net.is_some();
+  let has_directional_net = options.allow_net_connect.is_some()
+    || options.deny_net_connect.is_some()
+    || options.allow_net_listen.is_some()
+    || options.deny_net_listen.is_some();
+  if has_legacy_net && has_directional_net {
+    bail!(
+      "The legacy \"net\" permission (--allow-net / --deny-net or the \
+\"net\" key in deno.json) cannot be combined with the direction-specific \
+net permissions (--allow-net-connect, --deny-net-connect, \
+--allow-net-listen, --deny-net-listen). Pick one model per invocation."
+    );
+  }
+
+  Ok(options)
 }
 
 fn augment_permissions_with_serve_flags(
@@ -1959,11 +1985,29 @@ fn augment_permissions_with_serve_flags(
   } else {
     format!("{}:{}", serve_flags.host, serve_flags.port)
   }])?;
-  match &mut permissions_options.allow_net {
+  // `deno serve` listens, so route its address to whichever net model is in
+  // effect. In the directional model the serve address must land in
+  // `allow_net_listen` — adding it to the legacy `allow_net` would be ignored
+  // by the runtime dispatch (which keys off the directional fields) and the
+  // server would fail to bind. The mutual-exclusion guard above guarantees the
+  // two models don't coexist, so picking by "any directional option set" is
+  // unambiguous.
+  let directional = permissions_options.allow_net_connect.is_some()
+    || permissions_options.deny_net_connect.is_some()
+    || permissions_options.allow_net_listen.is_some()
+    || permissions_options.deny_net_listen.is_some();
+  let target = if directional {
+    &mut permissions_options.allow_net_listen
+  } else {
+    &mut permissions_options.allow_net
+  };
+  match target {
     None => {
-      permissions_options.allow_net = Some(allowed);
+      *target = Some(allowed);
     }
     Some(v) => {
+      // An empty list means "allow all"; don't narrow it to just the serve
+      // address.
       if !v.is_empty() {
         v.extend(allowed);
       }

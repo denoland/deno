@@ -9286,10 +9286,15 @@ fn permission_args_parse(
 
   // Enforce mutual exclusion between legacy --allow-net / --deny-net and the
   // direction-specific --allow-net-{connect,listen} / --deny-net-{connect,listen}
-  // flags. See the design note in
-  // https://github.com/bartlomieju/orchid-inbox/issues/54 — users migrate
-  // all-or-nothing per invocation, which avoids having to specify and test
-  // every merge case across legacy and directional net permissions.
+  // flags. Users migrate all-or-nothing per invocation, which avoids having to
+  // specify and test every merge case across legacy and directional net
+  // permissions. See https://github.com/denoland/deno/issues/22902,
+  // https://github.com/denoland/deno/issues/2705 and
+  // https://github.com/denoland/deno/issues/16532.
+  //
+  // NOTE: this only covers CLI flags. The legacy lists can also be populated
+  // from deno.json, so the same check is repeated against the merged options in
+  // `flags_to_permissions_options`.
   let has_legacy_net = flags.permissions.allow_net.is_some()
     || flags.permissions.deny_net.is_some();
   let has_directional_net = flags.permissions.allow_net_connect.is_some()

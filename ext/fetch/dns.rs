@@ -202,7 +202,7 @@ fn check_resolved_permissions(
     let port = request_port.unwrap_or_else(|| addr.port());
     permissions
       .clone()
-      .check_net_resolved(&addr.ip(), port, "fetch()")
+      .check_net_connect_resolved(&addr.ip(), port, "fetch()")
       .map_err(|e| {
         io::Error::new(io::ErrorKind::PermissionDenied, e.to_string())
       })?;

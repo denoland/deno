@@ -1,0 +1,3 @@
+net-connect evil.com: denied
+net-connect deno.land: prompt
+net-listen evil.com: prompt

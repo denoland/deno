@@ -446,24 +446,6 @@ struct PromptOptions<'a> {
   is_unary: bool,
 }
 
-/// Pick the more permissive of two `PermissionState`s for direction-specific
-/// queries that should reflect *either* a legacy `--allow-net` rule *or* the
-/// matching directional rule.
-fn more_permissive_net_state(
-  a: PermissionState,
-  b: PermissionState,
-) -> PermissionState {
-  use PermissionState::*;
-  match (a, b) {
-    (Granted, _) | (_, Granted) => Granted,
-    (GrantedPartial, _) | (_, GrantedPartial) => GrantedPartial,
-    (Prompt, _) | (_, Prompt) => Prompt,
-    (DeniedPartial, _) | (_, DeniedPartial) => DeniedPartial,
-    (Ignored, _) | (_, Ignored) => Ignored,
-    (Denied, Denied) => Denied,
-  }
-}
-
 impl PermissionState {
   #[inline(always)]
   fn log_perm_access(
@@ -3962,6 +3944,28 @@ pub struct Permissions {
 }
 
 impl Permissions {
+  /// Whether the directional net model is in effect: the legacy `net`
+  /// permission is empty *and* at least one of the `net_connect` / `net_listen`
+  /// permissions is populated (by a `--{allow,deny}-net-{connect,listen}` flag
+  /// or its config-file equivalent).
+  ///
+  /// When false the legacy `net` permission serves *both* directions. Requiring
+  /// `net.is_empty()` keeps three cases in the legacy model:
+  ///   - the default no-flag case (all three empty) — so prompts/errors keep
+  ///     the original "net access" wording and grants land in the single `net`
+  ///     query surface;
+  ///   - plain `--allow-net` / `--deny-net` (legacy `net` populated);
+  ///   - `--allow-all` (which populates *all three* fields) — so `-A` keeps
+  ///     behaving like legacy `net`, including on spawned workers.
+  ///
+  /// The CLI/config layer guarantees the legacy and directional models are
+  /// mutually exclusive, so outside of `--allow-all` the directional fields are
+  /// populated only when the legacy `net` field is empty.
+  fn net_directional_active(&self) -> bool {
+    self.net.is_empty()
+      && (!self.net_connect.is_empty() || !self.net_listen.is_empty())
+  }
+
   pub fn all_granted(&self) -> bool {
     // Net is "fully granted" if either the legacy `--allow-net` field
     // grants all, or both directional permissions grant all. The two
@@ -4474,27 +4478,38 @@ impl PermissionsContainer {
         ))
       },
     )?;
-    worker_perms.net = inner.net.create_child_permissions(
-      child_permissions_arg.net.clone(),
-      |text| {
+    // The `ChildPermissionsArg` API only exposes a single `net` key — there is
+    // no separate `net-connect` / `net-listen` knob — so the child's `net` arg
+    // is routed to exactly one model, matching the parent's. Routing it to both
+    // the legacy and directional fields would let a child re-enable a direction
+    // the parent split off: in directional mode a `net: [...]` child would
+    // populate the legacy `net` field, and the child's `check_net_*` dispatch
+    // (which keys off the directional fields) would then ignore the parent's
+    // connect/listen split entirely. So:
+    //   - legacy parent  -> route to legacy `net`, leave directional empty;
+    //   - directional parent -> route to BOTH directional fields (each clamped
+    //     against the matching parent direction), leave legacy `net` empty.
+    // The directional clamp means `net: ["host"]` only succeeds if the parent
+    // permits *both* connect and listen to `host`; that is stricter than the
+    // legacy model but never an escalation.
+    let parent_directional = inner.net_directional_active();
+    let (legacy_arg, directional_arg) = if parent_directional {
+      (
+        ChildUnaryPermissionArg::NotGranted,
+        child_permissions_arg.net.clone(),
+      )
+    } else {
+      (
+        child_permissions_arg.net.clone(),
+        ChildUnaryPermissionArg::NotGranted,
+      )
+    };
+    worker_perms.net =
+      inner.net.create_child_permissions(legacy_arg, |text| {
         Ok::<_, NetDescriptorParseError>(Some(
           self.descriptor_parser.parse_net_descriptor(text)?,
         ))
-      },
-    )?;
-    // The `ChildPermissionsArg` API only exposes a single `net` key — there
-    // is no separate `net-connect` / `net-listen` knob — so we route the
-    // arg into the directional permissions only when the parent is running
-    // in the new (directional) mode. In legacy mode the parent's `net`
-    // permission carries the rules for both directions, and our
-    // `check_net_connect` / `check_net_listen` dispatch will consult that
-    // field on the child as well, so the directional fields on the child
-    // can stay empty without losing capability.
-    let directional_arg = if inner.net.is_empty() {
-      child_permissions_arg.net.clone()
-    } else {
-      ChildUnaryPermissionArg::NotGranted
-    };
+      })?;
     worker_perms.net_connect = inner.net_connect.create_child_permissions(
       directional_arg.clone(),
       |text| {
@@ -5058,7 +5073,7 @@ impl PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
-    if !inner.net.is_empty() {
+    if !inner.net_directional_active() {
       audit_and_skip_check_if_is_permission_fully_granted!(
         inner.net,
         NetDescriptor::flag_name(),
@@ -5094,7 +5109,7 @@ impl PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
-    if !inner.net.is_empty() {
+    if !inner.net_directional_active() {
       let legacy = &mut inner.net;
       audit_and_skip_check_if_is_permission_fully_granted!(
         legacy,
@@ -5139,7 +5154,7 @@ impl PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
-    if !inner.net.is_empty() {
+    if !inner.net_directional_active() {
       let legacy = &mut inner.net;
       audit_and_skip_check_if_is_permission_fully_granted!(
         legacy,
@@ -5185,7 +5200,7 @@ impl PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
-    if !inner.net.is_empty() {
+    if !inner.net_directional_active() {
       let desc = NetDescriptor(Host::Ip(*resolved_ip), Some(port.into()));
       inner.net.check_resolved_ip_deny(&desc, Some(api_name))?;
       return Ok(());
@@ -5210,7 +5225,7 @@ impl PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
-    if !inner.net.is_empty() {
+    if !inner.net_directional_active() {
       let desc = NetDescriptor(Host::Ip(*resolved_ip), Some(port.into()));
       inner.net.check_resolved_ip_deny(&desc, Some(api_name))?;
       return Ok(());
@@ -5234,7 +5249,7 @@ impl PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
-    if !inner.net.is_empty() {
+    if !inner.net_directional_active() {
       audit_and_skip_check_if_is_permission_fully_granted!(
         inner.net,
         NetDescriptor::flag_name(),
@@ -5264,7 +5279,7 @@ impl PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
-    if !inner.net.is_empty() {
+    if !inner.net_directional_active() {
       audit_and_skip_check_if_is_permission_fully_granted!(
         inner.net,
         NetDescriptor::flag_name(),
@@ -5454,23 +5469,28 @@ impl PermissionsContainer {
     host: Option<&str>,
   ) -> Result<PermissionState, NetDescriptorParseError> {
     let inner = self.inner.lock();
-    let legacy = &inner.net;
-    let permission = &inner.net_connect;
-    if legacy.is_allow_all() || permission.is_allow_all() {
-      return Ok(PermissionState::Granted);
-    }
     let query_desc = match host {
       None => None,
       Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
     };
-    let legacy_state = legacy.query(query_desc.as_ref());
-    let directional_state = permission.query(
-      query_desc
-        .as_ref()
-        .map(|d| NetConnectDescriptor(d.clone()))
-        .as_ref(),
-    );
-    Ok(more_permissive_net_state(legacy_state, directional_state))
+    // Mirror the `check_net_connect` dispatch exactly so `query()` never
+    // disagrees with enforcement. In the legacy model the `net` permission
+    // answers for both directions; in the directional model we must return the
+    // directional state directly (including `Denied`) rather than folding in
+    // the always-`Prompt` empty legacy permission, which would mask a hard
+    // deny as `prompt`.
+    if !inner.net_directional_active() {
+      Ok(inner.net.query(query_desc.as_ref()))
+    } else {
+      Ok(
+        inner.net_connect.query(
+          query_desc
+            .as_ref()
+            .map(|d| NetConnectDescriptor(d.clone()))
+            .as_ref(),
+        ),
+      )
+    }
   }
 
   #[inline(always)]
@@ -5479,23 +5499,24 @@ impl PermissionsContainer {
     host: Option<&str>,
   ) -> Result<PermissionState, NetDescriptorParseError> {
     let inner = self.inner.lock();
-    let legacy = &inner.net;
-    let permission = &inner.net_listen;
-    if legacy.is_allow_all() || permission.is_allow_all() {
-      return Ok(PermissionState::Granted);
-    }
     let query_desc = match host {
       None => None,
       Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
     };
-    let legacy_state = legacy.query(query_desc.as_ref());
-    let directional_state = permission.query(
-      query_desc
-        .as_ref()
-        .map(|d| NetListenDescriptor(d.clone()))
-        .as_ref(),
-    );
-    Ok(more_permissive_net_state(legacy_state, directional_state))
+    // See `query_net_connect` for why this mirrors the check dispatch instead
+    // of folding the legacy and directional states together.
+    if !inner.net_directional_active() {
+      Ok(inner.net.query(query_desc.as_ref()))
+    } else {
+      Ok(
+        inner.net_listen.query(
+          query_desc
+            .as_ref()
+            .map(|d| NetListenDescriptor(d.clone()))
+            .as_ref(),
+        ),
+      )
+    }
   }
 
   #[inline(always)]
@@ -5673,14 +5694,22 @@ impl PermissionsContainer {
       None => None,
       Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
     };
-    let legacy_state = inner.net.revoke(query_desc.as_ref());
-    let directional_state = inner.net_connect.revoke(
-      query_desc
-        .as_ref()
-        .map(|d| NetConnectDescriptor(d.clone()))
-        .as_ref(),
-    );
-    Ok(more_permissive_net_state(legacy_state, directional_state))
+    // Mirror the check/query dispatch. In the legacy model the host lives in
+    // the shared `net` permission, so revoking one direction necessarily
+    // revokes the other too (there is only one grant); in the directional
+    // model only the connect grant is touched.
+    if !inner.net_directional_active() {
+      Ok(inner.net.revoke(query_desc.as_ref()))
+    } else {
+      Ok(
+        inner.net_connect.revoke(
+          query_desc
+            .as_ref()
+            .map(|d| NetConnectDescriptor(d.clone()))
+            .as_ref(),
+        ),
+      )
+    }
   }
 
   #[inline(always)]
@@ -5693,14 +5722,19 @@ impl PermissionsContainer {
       None => None,
       Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
     };
-    let legacy_state = inner.net.revoke(query_desc.as_ref());
-    let directional_state = inner.net_listen.revoke(
-      query_desc
-        .as_ref()
-        .map(|d| NetListenDescriptor(d.clone()))
-        .as_ref(),
-    );
-    Ok(more_permissive_net_state(legacy_state, directional_state))
+    // See `revoke_net_connect` for the shared-field semantics.
+    if !inner.net_directional_active() {
+      Ok(inner.net.revoke(query_desc.as_ref()))
+    } else {
+      Ok(
+        inner.net_listen.revoke(
+          query_desc
+            .as_ref()
+            .map(|d| NetListenDescriptor(d.clone()))
+            .as_ref(),
+        ),
+      )
+    }
   }
 
   #[inline(always)]
@@ -5854,7 +5888,7 @@ impl PermissionsContainer {
       None => None,
       Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
     };
-    if !inner.net.is_empty() {
+    if !inner.net_directional_active() {
       return Ok(inner.net.request(query_desc.as_ref()));
     }
     Ok(
@@ -5877,7 +5911,7 @@ impl PermissionsContainer {
       None => None,
       Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
     };
-    if !inner.net.is_empty() {
+    if !inner.net_directional_active() {
       return Ok(inner.net.request(query_desc.as_ref()));
     }
     Ok(
@@ -6969,7 +7003,7 @@ mod tests {
   //
   // Establishes the expected behavior for the four-way grid of
   // {allow-only, deny-only, both, neither} × {connect, listen} introduced
-  // in https://github.com/bartlomieju/orchid-inbox/issues/54. The legacy
+  // in https://github.com/denoland/deno/issues/22902. The legacy
   // `--allow-net` / `--deny-net` flags are mutually exclusive with these
   // direction-specific permissions at the CLI level, so each scenario
   // populates only the directional permissions.
@@ -7276,6 +7310,159 @@ mod tests {
       perms
         .check_net_listen(&("evil.com", None), "api()")
         .is_err()
+    );
+  }
+
+  #[test]
+  fn test_query_net_connect_denied_reports_denied() {
+    // Regression: in directional mode the legacy `net` permission is empty, so
+    // a naive "more permissive of legacy/directional" fold would mask a hard
+    // deny as `Prompt` (legacy empty -> Prompt outranks directional Denied).
+    // `query` must agree with `check`/`request` and report `Denied`.
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        deny_net_connect: Some(svec!["evil.com"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser.clone()), perms);
+
+    // query agrees with enforcement: denied host is `Denied`, not `Prompt`.
+    assert_eq!(
+      perms.query_net_connect(Some("evil.com")).unwrap(),
+      PermissionState::Denied
+    );
+    assert!(
+      perms
+        .check_net_connect(&("evil.com", None), "api()")
+        .is_err()
+    );
+    // A host that is neither allowed nor denied still prompts.
+    assert_eq!(
+      perms.query_net_connect(Some("good.com")).unwrap(),
+      PermissionState::Prompt
+    );
+    // The deny is connect-only; the listen direction is unaffected.
+    assert_eq!(
+      perms.query_net_listen(Some("evil.com")).unwrap(),
+      PermissionState::Prompt
+    );
+  }
+
+  #[test]
+  fn test_child_permissions_directional_no_escalation() {
+    // A worker's single `net` arg must clamp against BOTH directions of a
+    // directional parent and must not leak into the child's legacy `net`
+    // field (which would re-enable the direction the parent split off).
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+
+    // Parent allows connect AND listen to deno.land.
+    let parent = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net_connect: Some(svec!["deno.land"]),
+        allow_net_listen: Some(svec!["deno.land"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let parent = PermissionsContainer::new(Arc::new(parser.clone()), parent);
+
+    // `net: ["deno.land"]` is permitted because the parent grants both
+    // directions for that host.
+    let child = parent
+      .create_child_permissions(ChildPermissionsArg {
+        net: ChildUnaryPermissionArg::GrantedList(svec!["deno.land"]),
+        ..ChildPermissionsArg::none()
+      })
+      .unwrap();
+    {
+      let inner = child.inner.lock();
+      // Legacy `net` must stay empty in directional mode — the dispatch keys
+      // off the directional fields, so a populated legacy field would bypass
+      // the split.
+      assert!(inner.net.is_empty());
+      assert!(inner.net_directional_active());
+    }
+    let mut child = child;
+    assert!(
+      child
+        .check_net_connect(&("deno.land", None), "api()")
+        .is_ok()
+    );
+    assert!(
+      child
+        .check_net_listen(&("deno.land", None), "api()")
+        .is_ok()
+    );
+
+    // Now a parent that only allows the connect direction.
+    let connect_only = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net_connect: Some(svec!["deno.land"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let connect_only =
+      PermissionsContainer::new(Arc::new(parser.clone()), connect_only);
+    // `net: ["deno.land"]` would require the listen direction too, which the
+    // parent does not have — this must be rejected as an escalation rather
+    // than silently granting inbound capability.
+    assert!(
+      connect_only
+        .create_child_permissions(ChildPermissionsArg {
+          net: ChildUnaryPermissionArg::GrantedList(svec!["deno.land"]),
+          ..ChildPermissionsArg::none()
+        })
+        .is_err()
+    );
+  }
+
+  #[test]
+  fn test_allow_all_net_stays_legacy() {
+    // `--allow-all` populates all three net fields (net, net_connect,
+    // net_listen). It must NOT count as directional mode, otherwise `-A` would
+    // route through the directional model and a spawned worker would lose its
+    // legacy `net` grant (e.g. `query({name: "net"})` would report prompt).
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::allow_all();
+    assert!(!perms.net_directional_active());
+    let parent = PermissionsContainer::new(Arc::new(parser.clone()), perms);
+
+    // A worker inheriting net keeps the legacy `net` field populated.
+    let child = parent
+      .create_child_permissions(ChildPermissionsArg {
+        net: ChildUnaryPermissionArg::Inherit,
+        ..ChildPermissionsArg::none()
+      })
+      .unwrap();
+    {
+      let inner = child.inner.lock();
+      assert!(!inner.net.is_empty());
+      assert!(!inner.net_directional_active());
+    }
+    assert_eq!(
+      child.query_net(Some("example.com")).unwrap(),
+      PermissionState::Granted
+    );
+    let mut child = child;
+    assert!(
+      child
+        .check_net_connect(&("example.com", Some(443)), "api()")
+        .is_ok()
+    );
+    assert!(
+      child
+        .check_net_listen(&("0.0.0.0", Some(8080)), "api()")
+        .is_ok()
     );
   }
 
