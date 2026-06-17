@@ -44,6 +44,15 @@ pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 
+/// The Node.js version that Deno emulates. This is the single source of truth
+/// for the value reported through `process.version` / `process.versions.node`:
+/// the `__NODE_VERSION__` token in `_process/process.ts` is substituted with it
+/// at snapshot build time (see `maybe_transpile_source` in
+/// `runtime/transpile.rs`). Rust consumers can read it directly.
+///
+/// When bumping the emulated Node version, change it here only.
+pub const NODE_VERSION: &str = "26.3.0";
+
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
 }
@@ -323,6 +332,7 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_crc32,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
+    ops::http::op_node_http_check_proxy_net,
     ops::http2::op_http2_callbacks,
     // Keep the HTTP/2 error-string op wired so `internal/test/binding`
     // can mirror Node's `internalBinding('http2').nghttp2ErrorString()`

@@ -608,6 +608,8 @@ impl CliFactory {
             DenoSubcommand::Add { .. }
             | DenoSubcommand::ApproveScripts { .. }
             | DenoSubcommand::Remove { .. }
+            | DenoSubcommand::Link { .. }
+            | DenoSubcommand::Unlink { .. }
             | DenoSubcommand::Cache { .. }
             | DenoSubcommand::Ci { .. }
             | DenoSubcommand::Uninstall { .. } => true,
@@ -629,6 +631,7 @@ impl CliFactory {
             | DenoSubcommand::Clean { .. }
             | DenoSubcommand::Compile { .. }
             | DenoSubcommand::Completions { .. }
+            | DenoSubcommand::Desktop { .. }
             | DenoSubcommand::Coverage { .. }
             | DenoSubcommand::Deploy { .. }
             | DenoSubcommand::Doc { .. }
@@ -1049,6 +1052,7 @@ impl CliFactory {
 
   pub async fn create_compile_binary_writer(
     &self,
+    is_desktop: bool,
   ) -> Result<DenoCompileBinaryWriter<'_>, AnyError> {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
@@ -1062,6 +1066,7 @@ impl CliFactory {
       self.npm_resolver().await?,
       self.workspace_resolver().await?.as_ref(),
       cli_options.npm_system_info(),
+      is_desktop,
     ))
   }
 
@@ -1272,6 +1277,7 @@ impl CliFactory {
       residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
       residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
       enable_raw_imports: cli_options.unstable_raw_imports(),
+      close_on_idle: true,
       maybe_initial_cwd: Some(deno_path_util::url_from_directory_path(
         cli_options.initial_cwd(),
       )?),
@@ -1464,8 +1470,10 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Clean(_)
         | DenoSubcommand::Init(_)
         | DenoSubcommand::Install(_)
+        | DenoSubcommand::Link(_)
         | DenoSubcommand::Outdated(_)
         | DenoSubcommand::Remove(_)
+        | DenoSubcommand::Unlink(_)
         | DenoSubcommand::Uninstall(_)
         | DenoSubcommand::ApproveScripts(_)
     ),

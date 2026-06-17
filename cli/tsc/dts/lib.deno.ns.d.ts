@@ -869,6 +869,24 @@ declare namespace Deno {
      * If unset or `0`, the test runs without a deadline.
      */
     timeout?: number;
+    /** Number of times to re-run the test if it fails. The test is considered
+     * to have passed if any attempt passes. Useful for tolerating flaky tests.
+     *
+     * When set, this takes precedence over the `--retry` flag, including an
+     * explicit `0` which opts the test out of a flag-provided default.
+     *
+     * @default {0} */
+    retry?: number;
+    /** Number of additional times to run the test. Every repetition must pass
+     * for the test to pass. Useful for surfacing flaky tests. When combined
+     * with {@linkcode TestDefinition.retry}, each repetition may itself be
+     * retried.
+     *
+     * When set, this takes precedence over the `--repeats` flag, including an
+     * explicit `0` which opts the test out of a flag-provided default.
+     *
+     * @default {0} */
+    repeats?: number;
   }
 
   /** Register a test which will be run when `deno test` is used on the command

@@ -4,4 +4,4 @@ who.__proto__.constructor;
     at [WILDCARD]read_and_throw.js:7:15
 
     info: This program read Object.prototype.__proto__, which Deno disables by default (it returns undefined).
-    hint: If this caused the error, run again with --unstable-unsafe-proto to restore it.
+    hint: If this caused the error, run again with --unsafe-proto to restore it.
