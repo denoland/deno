@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile -A --output main main.mjs",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "args": "compile -A --output main.exe main.mjs",
+    "output": "[WILDCARD]"
+  }, {
+    // Remove the on-disk target so the only source left is the copy embedded
+    // in the binary's VFS, forcing the Rust default loader fallthrough path.
+    "args": "eval Deno.removeSync('target.mjs')",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "main.out"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "main.out"
+  }]
+}

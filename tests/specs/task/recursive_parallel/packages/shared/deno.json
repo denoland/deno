@@ -1,0 +1,12 @@
+{
+  "name": "@app/shared",
+  "version": "0.0.1",
+  "exports": "./main.ts",
+  "tasks": {
+    "build": "echo 'shared build'",
+    "dev": {
+      "command": "deno run -A main.ts",
+      "dependencies": ["build"]
+    }
+  }
+}

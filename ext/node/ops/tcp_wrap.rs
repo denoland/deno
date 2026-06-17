@@ -8,11 +8,13 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::net::ToSocketAddrs;
+use std::rc::Rc;
 
 use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UvConnect;
@@ -169,11 +171,12 @@ unsafe extern "C" fn connect_cb(req: *mut UvConnect, status: i32) {
 #[repr(C)]
 pub struct TCPWrap {
   base: LibUvStreamWrap,
-  handle: Option<OwnedPtr<UvTcp>>,
+  handle: Cell<Option<OwnedPtr<UvTcp>>>,
   socket_type: Cell<SocketType>,
   /// Permission token from DNS lookup. When set, connect() checks
-  /// permissions against the original hostname instead of the resolved IP.
-  net_perm_hostname: RefCell<Option<String>>,
+  /// permissions against the original hostname, but only for an address
+  /// that is among the token's resolved IPs.
+  net_perm_token: RefCell<Option<deno_net::ops::NetPermToken>>,
 }
 
 // SAFETY: TCPWrap is a cppgc-managed object; the GC traces it via the base field.
@@ -229,9 +232,9 @@ impl TCPWrap {
 
       Self {
         base,
-        handle: Some(tcp),
+        handle: Cell::new(Some(tcp)),
         socket_type: Cell::new(socket_type),
-        net_perm_hostname: RefCell::new(None),
+        net_perm_token: RefCell::new(None),
       }
     } else {
       // Error path - create with null handle
@@ -258,16 +261,35 @@ impl TCPWrap {
           -1,
           std::ptr::null(),
         ),
-        handle: None,
+        handle: Cell::new(None),
         socket_type: Cell::new(socket_type),
-        net_perm_hostname: RefCell::new(None),
+        net_perm_token: RefCell::new(None),
       }
     }
   }
 
   fn tcp_ptr(&self) -> *mut UvTcp {
-    match &self.handle {
-      Some(h) => h.as_mut_ptr(),
+    // Briefly take the `OwnedPtr` out of the cell to read its raw address, then
+    // put it straight back so ownership is unchanged.
+    match self.handle.take() {
+      Some(h) => {
+        let ptr = h.as_mut_ptr();
+        self.handle.set(Some(h));
+        ptr
+      }
+      None => std::ptr::null_mut(),
+    }
+  }
+
+  /// Detach the underlying TCP handle, transferring ownership of the `UvTcp`
+  /// allocation to the caller. After this the `TCPWrap` no longer owns or
+  /// frees the handle, so exactly one owner (the caller) remains responsible
+  /// for freeing it. Returns null if the handle was already detached or never
+  /// allocated.
+  pub fn detach(&self) -> *mut UvTcp {
+    self.base.detach_stream();
+    match self.handle.take() {
+      Some(h) => h.into_raw(),
       None => std::ptr::null_mut(),
     }
   }
@@ -276,6 +298,20 @@ impl TCPWrap {
   /// to the TCP stream for encrypted I/O.
   pub fn stream_ptr(&self) -> *mut UvStream {
     self.base.stream_ptr()
+  }
+
+  /// Decide which host to check `--allow-net` against when connecting to
+  /// `address`. If a `node:dns.lookup()` token was installed and `address`
+  /// is one of the IPs that lookup resolved, the original hostname is used
+  /// (so e.g. `--allow-net=example.com` authorizes example.com's real IPs).
+  /// Otherwise the literal `address` is checked. This prevents a token
+  /// obtained for one host from being grafted onto an unrelated IP via a
+  /// custom `lookup` callback, and mirrors `op_net_connect_tcp`.
+  fn net_perm_check_host(&self, address: &str) -> String {
+    match &*self.net_perm_token.borrow() {
+      Some(token) => token.check_host(address).to_string(),
+      None => address.to_string(),
+    }
   }
 
   fn bind_inner(
@@ -343,9 +379,18 @@ impl TCPWrap {
   }
 
   #[fast]
-  fn open(&self, #[smi] fd: i32) -> i32 {
+  fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
     if fd < 0 {
       return uv_compat::UV_EBADF;
+    }
+    // Refuse to adopt a descriptor Deno already tracks. Stdio (0-2) is
+    // pre-registered and may be re-opened; any other fd already in the
+    // FdTable is rejected, matching `PipeWrap::open`.
+    {
+      let fd_table = state.borrow::<deno_io::FdTable>();
+      if fd_table.contains(fd) && !(0..=2).contains(&fd) {
+        return -libc::EEXIST;
+      }
     }
     let tcp = self.tcp_ptr();
     if tcp.is_null() {
@@ -353,12 +398,22 @@ impl TCPWrap {
     }
     // SAFETY: tcp handle is valid (null-checked above); fd is validated above.
     // Platform-specific non-blocking setup and uv_tcp_open are safe with valid args.
-    unsafe {
+    let ret = unsafe {
       #[cfg(unix)]
       {
         let flags = libc::fcntl(fd, libc::F_GETFL);
         if flags != -1 {
           libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+        // Match Node: a wrap constructed with `new TCP(SERVER)` opens the
+        // fd as a listener; `new TCP(SOCKET)` as a connected stream. Node's
+        // libuv layer doesn't autodetect; it uses the wrap's intent to
+        // decide how to register the fd, then `listen()` on a listening fd
+        // is a no-op at the kernel level.
+        if self.socket_type.get() == SocketType::Server {
+          uv_compat::uv_tcp_open_listener(tcp, fd)
+        } else {
+          uv_compat::uv_tcp_open(tcp, fd)
         }
       }
       #[cfg(windows)]
@@ -367,18 +422,47 @@ impl TCPWrap {
         use windows_sys::Win32::Networking::WinSock::ioctlsocket;
         let mut nonblocking: u32 = 1;
         ioctlsocket(fd as usize, FIONBIO, &mut nonblocking);
+        uv_compat::uv_tcp_open(tcp, fd)
       }
-      // Match Node: a wrap constructed with `new TCP(SERVER)` opens the
-      // fd as a listener; `new TCP(SOCKET)` as a connected stream. Node's
-      // libuv layer doesn't autodetect — it uses the wrap's intent to
-      // decide how to register the fd, then `listen()` on a listening fd
-      // is a no-op at the kernel level.
-      #[cfg(unix)]
-      if self.socket_type.get() == SocketType::Server {
-        return uv_compat::uv_tcp_open_listener(tcp, fd);
-      }
-      uv_compat::uv_tcp_open(tcp, fd)
+    };
+    // Track the adopted fd so it can't be re-adopted by another wrap and is
+    // dropped from the FdTable on close.
+    if ret == 0 {
+      state.borrow_mut::<deno_io::FdTable>().register_uv_owned(fd);
+      self.base.set_fd(fd);
     }
+    ret
+  }
+
+  /// Override the base close to drop the `FdTable` entry registered by
+  /// `open()` before `uv_close` frees the fd. A no-op for sockets that were
+  /// never adopted via `open()`; their fd stays -1.
+  #[reentrant]
+  fn close(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[scoped] cb: Option<v8::Global<v8::Function>>,
+  ) -> Result<(), ResourceError> {
+    let fd = self.base.get_fd();
+    if fd >= 0 {
+      op_state
+        .borrow_mut()
+        .borrow_mut::<deno_io::FdTable>()
+        .remove(fd);
+      // Clear the cached fd so the removal is one-shot. `close_handle()`
+      // guards against double frees of the libuv handle, but a second
+      // `close()` would still re-run this TCP-specific removal and could
+      // drop an unrelated FdTable entry if the OS has since reused the fd
+      // number.
+      self.base.set_fd(-1);
+    }
+    self.base.clear_js_handle();
+    self
+      .base
+      .handle_wrap()
+      .close_handle(op_state, this, scope, cb)
   }
 
   #[fast]
@@ -554,6 +638,22 @@ impl TCPWrap {
     unsafe { uv_compat::uv_tcp_nodelay(tcp, enable as i32) }
   }
 
+  /// Enable/disable `SO_KEEPALIVE`. `delay` is the idle time in seconds
+  /// before the first keepalive probe (Node passes seconds here). Matches
+  /// Node's `TCPWrap::SetKeepAlive`, which libraries such as `tedious`
+  /// rely on to keep tunneled/long-lived connections from being reaped.
+  #[fast]
+  #[rename("setKeepAlive")]
+  fn set_keep_alive(&self, enable: bool, #[smi] delay: i32) -> i32 {
+    let tcp = self.tcp_ptr();
+    if tcp.is_null() {
+      return -1;
+    }
+    let delay = delay.max(0) as u32;
+    // SAFETY: tcp is valid (null-checked above).
+    unsafe { uv_compat::uv_tcp_keepalive(tcp, enable as i32, delay) }
+  }
+
   /// Set SO_LINGER to 0 so the next close sends RST instead of FIN.
   #[fast]
   fn reset(&self) -> i32 {
@@ -565,12 +665,18 @@ impl TCPWrap {
     unsafe { uv_compat::uv_tcp_reset(tcp) }
   }
 
-  /// Store the original hostname from DNS lookup for permission checks.
-  /// When set, connect() checks permissions against this hostname
-  /// instead of the resolved IP, matching Node.js netPermToken behavior.
+  /// Store the DNS-lookup permission token for later permission checks.
+  /// We keep both the original hostname and the set of IPs that lookup
+  /// resolved, so connect() can check against the hostname only for an
+  /// address the token actually resolved (see `net_perm_check_host`),
+  /// matching Node.js netPermToken behavior.
   #[nofast]
   fn set_net_perm_token(&self, #[cppgc] token: &deno_net::ops::NetPermToken) {
-    *self.net_perm_hostname.borrow_mut() = Some(token.hostname.clone());
+    *self.net_perm_token.borrow_mut() = Some(deno_net::ops::NetPermToken {
+      hostname: token.hostname.clone(),
+      port: token.port,
+      resolved_ips: token.resolved_ips.clone(),
+    });
   }
 
   /// Connect to an address. Takes (req, address, port) where req is a
@@ -585,12 +691,9 @@ impl TCPWrap {
     scope: &mut v8::PinScope,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
     // If a hostname was stored from DNS lookup, check permissions against
-    // the original hostname instead of the resolved IP address.
-    let check_host = self
-      .net_perm_hostname
-      .borrow()
-      .clone()
-      .unwrap_or_else(|| address.to_string());
+    // the original hostname instead of the resolved IP address, but only
+    // when `address` is one of the token's resolved IPs.
+    let check_host = self.net_perm_check_host(address);
     state.borrow_mut::<PermissionsContainer>().check_net(
       &(check_host.as_str(), Some(port as u16)),
       "node:net.connect()",
@@ -658,11 +761,7 @@ impl TCPWrap {
     #[smi] port: i32,
     scope: &mut v8::PinScope,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
-    let check_host = self
-      .net_perm_hostname
-      .borrow()
-      .clone()
-      .unwrap_or_else(|| address.to_string());
+    let check_host = self.net_perm_check_host(address);
     state.borrow_mut::<PermissionsContainer>().check_net(
       &(check_host.as_str(), Some(port as u16)),
       "node:net.connect()",

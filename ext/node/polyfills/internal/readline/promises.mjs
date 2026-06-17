@@ -1,16 +1,19 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  Promise,
+} = primordials;
 const {
   ArrayPrototypeJoin,
   ArrayPrototypePush,
 } = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
 
-const { CSI } = core.loadExtScript("ext:deno_node/internal/readline/utils.mjs");
+const { CSI } = core.loadExtScript(
+  "ext:deno_node/internal/readline/utils.mjs",
+);
 const {
   validateBoolean,
   validateInteger,

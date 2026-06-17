@@ -112,6 +112,22 @@ const kWriteCbValue = Symbol("kWriteCbValue");
 const kAfterWriteTickInfoValue = Symbol("kAfterWriteTickInfoValue");
 const kBufferedValue = Symbol("kBufferedValue");
 
+// When an options object passed to `new Writable(...)` carries this symbol set
+// to `true`, the resulting `WritableState` stores its packed `kState` bitfield
+// behind an accessor (a closure-held value) instead of a plain own data
+// property. `process.stdout`/`process.stderr` opt in via this flag (see
+// `createWritableStdioStream`). Those stdio streams are long lived and, under
+// test runners like Jest that evaluate every test file in its own module
+// realm, are re-created and exercised across a huge number of realms. In that
+// scenario a synchronous write started through `writeOrBuffer()` could observe
+// a stale value when `onwrite()` read `state[kState]` back from the data slot,
+// making the freshly-set `kExpectWriteCb` bit look unset and throwing a
+// spurious `ERR_MULTIPLE_CALLBACK`. Reading/writing the field through an
+// accessor sidesteps that and keeps the bitfield optimization for every other
+// (non-stdio) stream. See denoland/deno#24646.
+const kForceStableState = Symbol("kForceStableState");
+Writable.kForceStableState = kForceStableState;
+
 const kSync = 1 << 9;
 const kFinalCalled = 1 << 10;
 const kNeedDrain = 1 << 11;
@@ -335,6 +351,25 @@ function WritableState(options, stream, isDuplex) {
   // Bit map field to store WritableState more efficiently with 1 bit per field
   // instead of a V8 slot per field.
   this[kState] = kSync | kConstructed | kEmitClose | kAutoDestroy;
+
+  // Opt-in (used by `process.stdout`/`process.stderr`): keep the `kState`
+  // bitfield behind an accessor so reads always observe the latest write, even
+  // across the heavy module-realm churn that test runners like Jest produce.
+  // See the comment on `kForceStableState` above and denoland/deno#24646.
+  if (options?.[kForceStableState]) {
+    let state = this[kState];
+    ObjectDefineProperty(this, kState, {
+      __proto__: null,
+      configurable: true,
+      enumerable: false,
+      get() {
+        return state;
+      },
+      set(value) {
+        state = value;
+      },
+    });
+  }
 
   if (options?.objectMode) {
     this[kState] |= kObjectMode;

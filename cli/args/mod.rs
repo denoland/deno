@@ -18,6 +18,7 @@ use deno_cache_dir::file_fetcher::CacheSetting;
 pub use deno_config::deno_json::BenchConfig;
 pub use deno_config::deno_json::CompilerOptions;
 pub use deno_config::deno_json::ConfigFile;
+pub use deno_config::deno_json::CoverageThresholds;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
 pub use deno_config::deno_json::LintRulesConfig;
@@ -46,7 +47,6 @@ use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::graph::NpmCachingStrategy;
-use deno_path_util::resolve_url_or_path;
 use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_permissions::AllowRunDescriptor;
@@ -62,6 +62,7 @@ use thiserror::Error;
 
 use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path;
+use crate::util::path::resolve_url_or_path_normalized;
 
 pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
 
@@ -202,6 +203,9 @@ pub struct WorkspaceTestOptions {
   pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
+  pub retry: u32,
+  pub repeats: u32,
+  pub shard: Option<(usize, usize)>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
@@ -234,6 +238,9 @@ impl WorkspaceTestOptions {
       filter: test_flags.filter.clone(),
       no_run: test_flags.no_run,
       shuffle: test_flags.shuffle,
+      retry: test_flags.retry,
+      repeats: test_flags.repeats,
+      shard: test_flags.shard,
       trace_leaks: test_flags.trace_leaks,
       sanitize_ops: test_flags.sanitize_ops
         || std::env::var("DENO_TEST_SANITIZE_OPS").ok().as_deref() == Some("1")
@@ -460,11 +467,14 @@ impl WorkspaceMainModuleResolver {
               sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
             ))?
           }
-          deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
+          deno_package_json::PackageJsonDepValue::Workspace {
+            name,
+            version_req,
+          } => {
             let pkg_folder = self
               .workspace_resolver
               .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
-                alias,
+                name.as_deref().unwrap_or(alias),
                 version_req,
               )?;
             self
@@ -511,6 +521,26 @@ impl WorkspaceMainModuleResolver {
         )?
         .into_url()?,
     };
+
+    // When the workspace resolver rewrites a bare specifier like
+    // `chalk/main.ts` into `npm:chalk@5/main.ts` via an import map alias,
+    // prefer a matching local file relative to cwd. Explicit `npm:`
+    // invocations keep strict semantics because the input itself starts
+    // with `npm:`.
+    if !specifier.starts_with("npm:")
+      && url.scheme() == "npm"
+      && let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&url)
+      && npm_ref.sub_path().is_some()
+      && let Ok(cwd_path) = deno_path_util::url_to_file_path(cwd)
+    {
+      let local_path = cwd_path.join(specifier);
+      if local_path.is_file()
+        && let Ok(local_url) = deno_path_util::url_from_file_path(&local_path)
+      {
+        return Ok(local_url);
+      }
+    }
+
     Ok(url)
   }
 }
@@ -585,6 +615,7 @@ impl CliOptions {
       DenoSubcommand::Add(_) => GraphKind::All,
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
+      DenoSubcommand::Ci(_) => GraphKind::All,
       DenoSubcommand::Install(InstallFlags::Local(
         InstallFlagsLocal::Entrypoints(flags),
         _,
@@ -595,7 +626,11 @@ impl CliOptions {
   }
 
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
-    TsTypeLib::DenoWindow
+    if self.flags.internal.is_desktop {
+      TsTypeLib::DenoDesktop
+    } else {
+      TsTypeLib::DenoWindow
+    }
   }
 
   pub fn ts_type_lib_worker(&self) -> TsTypeLib {
@@ -634,30 +669,9 @@ impl CliOptions {
 
   pub fn node_ipc_init(
     &self,
+    sys: &CliSys,
   ) -> Result<Option<(i64, ChildIpcSerialization)>, AnyError> {
-    let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
-    let maybe_node_channel_serialization = if let Ok(serialization) =
-      std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
-    {
-      Some(serialization.parse::<ChildIpcSerialization>()?)
-    } else {
-      None
-    };
-    if let Some(node_channel_fd) = maybe_node_channel_fd {
-      // Remove so that child processes don't inherit this environment variables.
-      // SAFETY: single-threaded at this point in startup
-      unsafe {
-        std::env::remove_var("NODE_CHANNEL_FD");
-        std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
-      }
-      let node_channel_fd = node_channel_fd.parse::<i64>()?;
-      Ok(Some((
-        node_channel_fd,
-        maybe_node_channel_serialization.unwrap_or(ChildIpcSerialization::Json),
-      )))
-    } else {
-      Ok(None)
-    }
+    deno_lib::args::node_ipc_init(sys)
   }
 
   pub fn serve_port(&self) -> Option<u16> {
@@ -678,6 +692,21 @@ impl CliOptions {
 
   pub fn eszip(&self) -> bool {
     self.flags.eszip
+  }
+
+  /// Set by `deno compile --bundle` after rewriting the bundle's absolute
+  /// CJS paths; signals the standalone binary writer that the npm tree
+  /// must still ship alongside the bundle.
+  pub fn compile_bundle_embed_node_modules(&self) -> bool {
+    self.flags.internal.compile_bundle_embed_node_modules
+  }
+
+  /// Absolute paths the `--bundle` rewriter pointed at — the on-disk
+  /// locations the compiled binary expects to require() at runtime. The
+  /// binary writer maps these back to npm packages so it can ship only
+  /// the packages actually reached, not the whole resolved tree.
+  pub fn compile_bundle_referenced_paths(&self) -> &[PathBuf] {
+    &self.flags.internal.compile_bundle_referenced_paths
   }
 
   pub fn node_conditions(&self) -> &[String] {
@@ -716,13 +745,28 @@ impl CliOptions {
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    self.preload_modules_with_resolver(None)
+  }
+
+  pub fn preload_modules_with_resolver(
+    &self,
+    resolver: Option<&WorkspaceMainModuleResolver>,
+  ) -> Result<Vec<ModuleSpecifier>, AnyError> {
     if self.flags.preload.is_empty() {
       return Ok(vec![]);
     }
 
     let mut modules = Vec::with_capacity(self.flags.preload.len());
     for preload_specifier in self.flags.preload.iter() {
-      modules.push(resolve_url_or_path(preload_specifier, self.initial_cwd())?);
+      let default_resolve = || {
+        resolve_url_or_path_normalized(preload_specifier, self.initial_cwd())
+          .map_err(|e| e.into())
+      };
+      modules.push(self.resolve_main_module_with_resolver_if_bare(
+        preload_specifier,
+        resolver,
+        default_resolve,
+      )?);
     }
 
     Ok(modules)
@@ -735,7 +779,10 @@ impl CliOptions {
 
     let mut require = Vec::with_capacity(self.flags.require.len());
     for require_specifier in self.flags.require.iter() {
-      require.push(resolve_url_or_path(require_specifier, self.initial_cwd())?);
+      require.push(resolve_url_or_path_normalized(
+        require_specifier,
+        self.initial_cwd(),
+      )?);
     }
 
     Ok(require)
@@ -770,7 +817,16 @@ impl CliOptions {
       .get_or_init(|| {
         Ok(match &self.flags.subcommand {
           DenoSubcommand::Compile(compile_flags) => {
-            resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
+            resolve_url_or_path_normalized(
+              &compile_flags.source_file,
+              self.initial_cwd(),
+            )?
+          }
+          DenoSubcommand::Desktop(desktop_flags) => {
+            resolve_url_or_path_normalized(
+              &desktop_flags.source_file,
+              self.initial_cwd(),
+            )?
           }
           DenoSubcommand::Eval(_) => {
             let specifier = format!(
@@ -792,8 +848,10 @@ impl CliOptions {
               deno_path_util::resolve_path(&specifier, self.initial_cwd())?
             } else {
               let default_resolve = || {
-                let url =
-                  resolve_url_or_path(&run_flags.script, self.initial_cwd())?;
+                let url = resolve_url_or_path_normalized(
+                  &run_flags.script,
+                  self.initial_cwd(),
+                )?;
                 if self.is_node_main()
                   && url.scheme() == "file"
                   && MediaType::from_specifier(&url) == MediaType::Unknown
@@ -821,8 +879,11 @@ impl CliOptions {
               &run_flags.script,
               resolver,
               || {
-                resolve_url_or_path(&run_flags.script, self.initial_cwd())
-                  .map_err(|e| e.into())
+                resolve_url_or_path_normalized(
+                  &run_flags.script,
+                  self.initial_cwd(),
+                )
+                .map_err(|e| e.into())
               },
             )?,
           _ => {
@@ -961,6 +1022,14 @@ impl CliOptions {
       result.push((ctx, options));
     }
     Ok(result)
+  }
+
+  /// Resolves the coverage thresholds configured in `deno.json`'s `coverage`
+  /// section. CLI flags are layered on top of this by the caller.
+  pub fn resolve_coverage_thresholds(
+    &self,
+  ) -> Result<CoverageThresholds, AnyError> {
+    Ok(self.start_dir.to_coverage_config()?.thresholds)
   }
 
   pub fn resolve_workspace_test_options(
@@ -1168,7 +1237,9 @@ impl CliOptions {
       if name.is_empty() {
         let maybe_subcommand_permissions = match &self.flags.subcommand {
           DenoSubcommand::Bench(_) => dir.to_bench_permissions_config()?,
-          DenoSubcommand::Compile(_) => dir.to_compile_permissions_config()?,
+          DenoSubcommand::Compile(_) | DenoSubcommand::Desktop(_) => {
+            dir.to_compile_permissions_config()?
+          }
           DenoSubcommand::Test(_) => dir.to_test_permissions_config()?,
           _ => None,
         };
@@ -1188,7 +1259,7 @@ impl CliOptions {
             .to_bench_permissions_config()?
             .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Bench", &permissions.base)),
-          DenoSubcommand::Compile(_) => dir
+          DenoSubcommand::Compile(_) | DenoSubcommand::Desktop(_) => dir
             .to_compile_permissions_config()?
             .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Compile", &permissions.base)),
@@ -1347,11 +1418,6 @@ impl CliOptions {
     &self.flags.unsafely_ignore_certificate_errors
   }
 
-  pub fn unstable_bare_node_builtins(&self) -> bool {
-    self.flags.unstable_config.bare_node_builtins
-      || self.workspace().has_unstable("bare-node-builtins")
-  }
-
   pub fn unstable_detect_cjs(&self) -> bool {
     self.flags.unstable_config.detect_cjs
       || self.workspace().has_unstable("detect-cjs")
@@ -1498,7 +1564,7 @@ impl CliOptions {
   pub fn lifecycle_scripts_config(&self) -> LifecycleScriptsConfig {
     LifecycleScriptsConfig {
       allowed: self.flags.allow_scripts.clone(),
-      denied: Default::default(),
+      denied: self.flags.deny_scripts.clone(),
       initial_cwd: self.initial_cwd.clone(),
       root_dir: self.workspace().root_dir_path(),
       explicit_install: matches!(

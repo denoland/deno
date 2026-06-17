@@ -17,6 +17,7 @@ use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::Value;
 use thiserror::Error;
 
 use crate::resolution::NewestDependencyDate;
@@ -207,6 +208,8 @@ pub enum NpmPackageVersionBinEntry {
 #[serde(rename_all = "camelCase")]
 pub struct NpmPackageVersionInfo {
   pub version: Version,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub exports: Option<Value>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub dist: Option<NpmPackageVersionDistInfo>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1612,6 +1615,7 @@ mod test {
   fn minimize_serialization_version_info() {
     let data = NpmPackageVersionInfo {
       version: Version::parse_from_npm("1.0.0").unwrap(),
+      exports: Default::default(),
       dist: Default::default(),
       bin: Default::default(),
       dependencies: Default::default(),

@@ -150,6 +150,7 @@ pub struct LockfileReadFromPathOptions {
 pub trait LockfileSys:
   deno_path_util::fs::AtomicWriteFileWithRetriesSys
   + sys_traits::FsRead
+  + sys_traits::FsCanonicalize
   + std::fmt::Debug
 {
 }
@@ -259,16 +260,23 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     let Some(bytes) = lockfile.resolve_write_bytes() else {
       return Ok(()); // nothing to do
     };
+    // If the lockfile path is a symlink, resolve it to its target so the
+    // atomic write below replaces the target file rather than clobbering the
+    // symlink with a freshly created regular file. This matches how the
+    // deno.json/package.json writes follow symlinks (they write in place).
+    let write_path = if self.sys.fs_is_symlink_no_err(&lockfile.filename) {
+      self
+        .sys
+        .fs_canonicalize(&lockfile.filename)
+        .unwrap_or_else(|_| lockfile.filename.clone())
+    } else {
+      lockfile.filename.clone()
+    };
     // do an atomic write to reduce the chance of multiple deno
     // processes corrupting the file
     const CACHE_PERM: u32 = 0o644;
-    atomic_write_file_with_retries(
-      &self.sys,
-      &lockfile.filename,
-      &bytes,
-      CACHE_PERM,
-    )
-    .map_err(LockfileWriteError::Io)?;
+    atomic_write_file_with_retries(&self.sys, &write_path, &bytes, CACHE_PERM)
+      .map_err(LockfileWriteError::Io)?;
     lockfile.has_content_changed = false;
     Ok(())
   }
@@ -302,7 +310,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
-          PackageJsonDepValue::Workspace(_) => None,
+          PackageJsonDepValue::Workspace { .. } => None,
           PackageJsonDepValue::Catalog(catalog_name) => {
             let catalog = catalogs.get(catalog_name.as_str())?;
             let version_req_str = catalog.get(alias.as_str())?;
@@ -362,7 +370,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           root_folder
             .deno_json
             .as_deref()
-            .map(|d| d.dependencies())
+            .map(|d| d.dependencies(workspace.catalogs()))
             .unwrap_or_default()
         },
       },
@@ -391,7 +399,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                 dependencies: folder
                   .deno_json
                   .as_deref()
-                  .map(|d| d.dependencies())
+                  .map(|d| d.dependencies(workspace.catalogs()))
                   .unwrap_or_default(),
               };
               if config.package_json_deps.is_empty()
@@ -421,7 +429,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                     }
                     // not supported
                     PackageJsonDepValue::File(_)
-                    | PackageJsonDepValue::Workspace(_)
+                    | PackageJsonDepValue::Workspace { .. }
                     | PackageJsonDepValue::Catalog(_)
                     | PackageJsonDepValue::Git(_) => None,
                   })
@@ -470,7 +478,8 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           })
           .unwrap();
           let value = deno_lockfile::LockfileLinkContent {
-            dependencies: deno_json.dependencies(),
+            // not this workspace's catalogs, so don't resolve against them
+            dependencies: deno_json.dependencies(&Default::default()),
             optional_dependencies: Default::default(),
             peer_dependencies: Default::default(),
             peer_dependencies_meta: Default::default(),

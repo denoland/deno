@@ -79,7 +79,7 @@ pub fn categorize_installed_npm_deps(
         deno_package_json::PackageJsonDepValue::Req(package_req) => {
           normal_deps.insert(package_req.name.to_string());
         }
-        deno_package_json::PackageJsonDepValue::Workspace(_) => {
+        deno_package_json::PackageJsonDepValue::Workspace { .. } => {
           // ignore workspace deps
         }
         deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
@@ -108,7 +108,7 @@ pub fn categorize_installed_npm_deps(
         deno_package_json::PackageJsonDepValue::Req(package_req) => {
           dev_deps.insert(package_req.name.to_string());
         }
-        deno_package_json::PackageJsonDepValue::Workspace(_) => {
+        deno_package_json::PackageJsonDepValue::Workspace { .. } => {
           // ignore workspace deps
         }
         deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {

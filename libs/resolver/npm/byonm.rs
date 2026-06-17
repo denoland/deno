@@ -30,6 +30,7 @@ use url::Url;
 
 use super::local::normalize_pkg_name_for_node_modules_deno_folder;
 use crate::npm::join_package_name_to_path;
+use crate::npm::version_req_matches_including_pre;
 
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ByonmResolvePkgFolderFromDenoReqError {
@@ -182,7 +183,10 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
             .and_then(|pkg| {
               let version =
                 Version::parse_from_npm(pkg.version.as_ref()?).ok()?;
-              Some(req.version_req.matches(&version))
+              Some(version_req_matches_including_pre(
+                &req.version_req,
+                &version,
+              ))
             })
             .unwrap_or(true);
         if version_matches {
@@ -235,7 +239,7 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
                 return Ok(Some(key.clone()));
               }
             }
-            PackageJsonDepValue::Workspace(_workspace) => {
+            PackageJsonDepValue::Workspace { .. } => {
               if key.as_str() == req.name
                 && req.version_req.tag() == Some("workspace")
               {
@@ -307,7 +311,9 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
           .version
           .as_ref()
           .and_then(|v| Version::parse_from_npm(v).ok())
-          .map(|version| req.version_req.matches(&version))
+          .map(|version| {
+            version_req_matches_including_pre(&req.version_req, &version)
+          })
           .unwrap_or(true);
         if matches_req {
           return Some((dep_pkg_json, req.name.clone()));
