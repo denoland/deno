@@ -56,6 +56,24 @@
         }
       ]
     },
+    "print_outdated_json": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --json",
+          "output": "outdated_json.out"
+        },
+        {
+          // Filtering that matches nothing should still emit a valid (empty)
+          // JSON array, not nothing.
+          "args": "outdated --json foobar",
+          "output": "[]\n"
+        }
+      ]
+    },
     "update_compatible": {
       "steps": [
         {

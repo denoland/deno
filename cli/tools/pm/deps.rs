@@ -38,6 +38,7 @@ use deno_semver::package::PackageReqReference;
 use import_map::ImportMap;
 use import_map::ImportMapWithDiagnostics;
 use import_map::SpecifierMapEntry;
+use serde::Serialize;
 use tokio::sync::Semaphore;
 
 use super::ConfigUpdater;
@@ -149,7 +150,8 @@ impl std::fmt::Debug for DepLocation {
   }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum DepKind {
   Jsr,
   Npm,
