@@ -199,7 +199,10 @@
     "parallel/test-assert-class-destructuring.js": {},
     "parallel/test-assert-class.js": {},
     "parallel/test-assert-deep-with-error.js": {},
-    "parallel/test-assert-deep.js": {},
+    "parallel/test-assert-deep.js": {
+      "ignore": true,
+      "reason": "assert.deepStrictEqual diff output for shared array elements after memoized cycle detection does not match Node's formatting (2 subtests)"
+    },
     "parallel/test-assert-esm-cjs-message-verify.js": {},
     "parallel/test-assert-fail.js": {},
     "parallel/test-assert-first-line.js": {},
@@ -645,10 +648,16 @@
     "parallel/test-console-tty-colors.js": {},
     "parallel/test-console-with-frozen-intrinsics.js": {},
     "parallel/test-coverage-with-inspector-disabled.js": {},
-    "parallel/test-crypto.js": {},
+    "parallel/test-crypto.js": {
+      "ignore": true,
+      "reason": "BoringSSL reports an oversized RSA signing digest as ERR_OSSL_RSA_DIGEST_TOO_BIG_FOR_RSA_KEY, where OpenSSL/Node expects ERR_OSSL_EVP_DECODE_ERROR"
+    },
     "parallel/test-crypto-aes-wrap.js": {},
     "parallel/test-crypto-argon2.js": {},
-    "parallel/test-crypto-async-sign-verify.js": {},
+    "parallel/test-crypto-async-sign-verify.js": {
+      "ignore": true,
+      "reason": "Expects the BoringSSL-specific ERR_OSSL_EVP_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE error; Deno does not surface this error for the unsupported keytype/digest combination"
+    },
     "parallel/test-crypto-authenticated-stream.js": {},
     "parallel/test-crypto-classes.js": {},
     "parallel/test-crypto-certificate.js": {},
@@ -660,7 +669,10 @@
     "parallel/test-crypto-default-shake-lengths-oneshot.js": {},
     "parallel/test-crypto-des3-wrap.js": {},
     "parallel/test-crypto-dh-constructor.js": {},
-    "parallel/test-crypto-dh-curves.js": {},
+    "parallel/test-crypto-dh-curves.js": {
+      "ignore": true,
+      "reason": "Requires DH_check() results exposed via DiffieHellman.verifyError for invalid groups, which Deno's BoringSSL-backed crypto does not expose"
+    },
     "parallel/test-crypto-dh-errors.js": {},
     "parallel/test-crypto-dh-generate-keys.js": {},
     "parallel/test-crypto-dh-group-setters.js": {},
@@ -726,19 +738,28 @@
       "ignore": true,
       "reason": "ML-DSA post-quantum keys are not supported by node:crypto createPublicKey/createPrivateKey (KeyObject layer)"
     },
-    "parallel/test-crypto-pqc-key-objects-ml-kem.js": {},
+    "parallel/test-crypto-pqc-key-objects-ml-kem.js": {
+      "ignore": true,
+      "reason": "ML-KEM post-quantum keys are not supported by node:crypto createPublicKey/createPrivateKey (KeyObject layer)"
+    },
     "parallel/test-crypto-pqc-key-objects-slh-dsa.js": {},
     "parallel/test-crypto-pqc-keygen-ml-dsa.js": {
       "ignore": true,
       "reason": "node:crypto generateKeyPair does not support ML-DSA post-quantum key types"
     },
-    "parallel/test-crypto-pqc-keygen-ml-kem.js": {},
+    "parallel/test-crypto-pqc-keygen-ml-kem.js": {
+      "ignore": true,
+      "reason": "node:crypto generateKeyPair does not support ML-KEM post-quantum key types"
+    },
     "parallel/test-crypto-pqc-keygen-slh-dsa.js": {},
     "parallel/test-crypto-pqc-sign-verify-ml-dsa.js": {
       "ignore": true,
       "reason": "node:crypto sign/verify does not support ML-DSA post-quantum keys"
     },
-    "parallel/test-crypto-sign-verify.js": {},
+    "parallel/test-crypto-sign-verify.js": {
+      "ignore": true,
+      "reason": "Uses the Node 26 raw-private/raw-public KeyObject export format, which Deno does not implement"
+    },
     "parallel/test-crypto-keygen-empty-passphrase-no-error.js": {},
     "parallel/test-crypto-keygen-empty-passphrase-no-prompt.js": {},
     "parallel/test-crypto-keygen-invalid-parameter-encoding-dsa.js": {},
@@ -774,9 +795,6 @@
     },
     "parallel/test-crypto-padding.js": {},
     "parallel/test-crypto-padding-aes256.js": {},
-    "parallel/test-crypto-pqc-key-objects-ml-dsa.js": {},
-    "parallel/test-crypto-pqc-key-objects-ml-kem.js": {},
-    "parallel/test-crypto-pqc-key-objects-slh-dsa.js": {},
     "parallel/test-crypto-private-decrypt-gh32240.js": {},
     "parallel/test-crypto-psychic-signatures.js": {},
     // TODO(bartlomieju): requires encrypted PEM export (cipher+passphrase in privateKeyEncoding)
@@ -1956,7 +1974,10 @@
     "parallel/test-http2-capture-rejection.js": {},
     "parallel/test-http2-clean-output.js": {},
     "parallel/test-http2-client-connection-tunnelling.js": {},
-    "parallel/test-http2-client-destroy.js": {},
+    "parallel/test-http2-client-destroy.js": {
+      "ignore": true,
+      "reason": "Requires Node's deferred-destroy session semantics where request() on a destroying session returns a stream that errors asynchronously instead of throwing synchronously"
+    },
     "parallel/test-http2-client-http1-server.js": {},
     "parallel/test-http2-client-onconnect-errors.js": {},
     "parallel/test-http2-client-port-80.js": {},
@@ -3702,7 +3723,10 @@
     "parallel/test-tls-ecdh-multiple.js": {},
     "parallel/test-tls-ecdh.js": {},
     "parallel/test-tls-econnreset.js": {},
-    "parallel/test-tls-empty-sni-context.js": {},
+    "parallel/test-tls-empty-sni-context.js": {
+      "ignore": true,
+      "reason": "BoringSSL surfaces the empty-SNI handshake failure as ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE, where OpenSSL/Node expects ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR"
+    },
     "parallel/test-tls-enable-trace-cli.js": {},
     "parallel/test-tls-enable-trace.js": {},
     "parallel/test-tls-error-stack.js": {},
@@ -3965,7 +3989,10 @@
       "ignore": true,
       "reason": "Deno's WebCrypto uses a generic operation-not-valid message instead of Node's per-operation 'Unable to use this key to encrypt/decrypt' wording"
     },
-    "parallel/test-webcrypto-encrypt-decrypt-rsa.js": {},
+    "parallel/test-webcrypto-encrypt-decrypt-rsa.js": {
+      "ignore": true,
+      "reason": "Expects Node's custom WebCrypto error message ('Unable to use this key to decrypt/encrypt'); Deno emits the spec-aligned 'The requested operation is not valid for the provided key'"
+    },
     "parallel/test-webcrypto-encrypt-decrypt.js": {
       "ignore": true,
       "reason": "Deno's WebCrypto uses a generic operation-not-valid message instead of Node's per-operation 'Unable to use this key to encrypt/decrypt' wording"
@@ -3974,7 +4001,10 @@
       "ignore": true,
       "reason": "Deno WebCrypto returns a generic 'Unsupported key format' message instead of Node's 'Unable to import ... using raw format' for plain raw ML-DSA import"
     },
-    "parallel/test-webcrypto-export-import-ml-kem.js": {},
+    "parallel/test-webcrypto-export-import-ml-kem.js": {
+      "ignore": true,
+      "reason": "ML-KEM post-quantum WebCrypto import/export is not implemented in Deno"
+    },
     "parallel/test-webcrypto-getRandomValues.js": {},
     "parallel/test-webcrypto-random.js": {},
     "parallel/test-webcrypto-keygen-kmac.js": {
@@ -4503,7 +4533,10 @@
     // "sequential/test-watch-mode-inspect.mjs": {},
     // TODO(bartlomieju): this test is very flaky on CI, especially on Windows ARM
     // "sequential/test-worker-fshandles-open-close-on-termination.js": {},
-    "wasm-allocation/test-wasm-allocation.js": {},
+    "wasm-allocation/test-wasm-allocation.js": {
+      "ignore": true,
+      "reason": "Relies on an RLIMIT_AS virtual-memory ulimit (declared in the test header) to force WebAssembly.Memory allocation failures; Deno's node_compat runner does not apply that rlimit"
+    },
 
     "wasi/test-wasi-options-validation.js": {},
     "wasi/test-wasi-start-validation.js": {},
@@ -4957,8 +4990,8 @@
       "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep"
     },
     "parallel/test-fs-stat-date.mjs": {
-      "darwin": false,
-      "reason": "error: Uncaught (in promise) AssertionError: expected -40691 \u00b1 1.000000000000000"
+      "ignore": true,
+      "reason": "Deno's FsStat represents file timestamps as unsigned milliseconds, so pre-1970 (negative) atime/mtime values lose their sign when read back via stat"
     },
     "parallel/test-fs-watch-close-when-destroyed.js": {
       "windows": false,
