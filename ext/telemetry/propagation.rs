@@ -941,6 +941,7 @@ impl OtelW3CTraceContextPropagator {
   }
 
   #[nofast]
+  #[reentrant]
   fn inject<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
@@ -1008,6 +1009,7 @@ impl OtelW3CTraceContextPropagator {
     }
   }
 
+  #[reentrant]
   fn extract<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
@@ -1159,6 +1161,7 @@ impl OtelW3CBaggagePropagator {
   }
 
   #[nofast]
+  #[reentrant]
   fn inject<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
@@ -1230,6 +1233,7 @@ impl OtelW3CBaggagePropagator {
     }
   }
 
+  #[reentrant]
   fn extract<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
@@ -1344,6 +1348,7 @@ unsafe impl GarbageCollected for OtelCompositePropagator {
 impl OtelCompositePropagator {
   #[constructor]
   #[cppgc]
+  #[reentrant]
   fn new<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     propagators: v8::Local<'s, v8::Value>,
@@ -1382,6 +1387,7 @@ impl OtelCompositePropagator {
   }
 
   #[nofast]
+  #[reentrant]
   fn inject<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
@@ -1405,6 +1411,7 @@ impl OtelCompositePropagator {
     }
   }
 
+  #[reentrant]
   fn extract<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
