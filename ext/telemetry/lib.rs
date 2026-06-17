@@ -109,6 +109,7 @@ mod propagation;
 
 use propagation::OtelBaggage;
 use propagation::OtelCompositePropagator;
+use propagation::OtelContext;
 use propagation::OtelTraceState;
 use propagation::OtelW3CBaggagePropagator;
 use propagation::OtelW3CTraceContextPropagator;
@@ -140,6 +141,7 @@ deno_core::extension!(
     OtelSpan,
     OtelTraceState,
     OtelBaggage,
+    OtelContext,
     OtelW3CTraceContextPropagator,
     OtelW3CBaggagePropagator,
     OtelCompositePropagator,

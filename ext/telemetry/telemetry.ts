@@ -17,6 +17,7 @@ const {
   op_otel_span_end,
   op_otel_span_record_exception,
   op_otel_span_update_name,
+  OtelContext,
   OtelMeter,
   OtelTracer,
   OtelW3CTraceContextPropagator,
@@ -173,7 +174,7 @@ function enterSpan(
   context?: Context,
 ): AsyncContextSnapshot | undefined {
   if (!span.isRecording()) return undefined;
-  context = (context ?? CURRENT.get() ?? ROOT_CONTEXT)
+  context = (context ?? CURRENT.get() ?? rootContext())
     .setValue(SPAN_KEY, span);
   return CURRENT.enter(context);
 }
@@ -288,9 +289,9 @@ class Tracer {
       throw new Error("startActiveSpan requires a function argument");
     }
     if (options?.root) {
-      context = ROOT_CONTEXT;
+      context = rootContext();
     } else {
-      context = context ?? CURRENT.get() ?? ROOT_CONTEXT;
+      context = context ?? CURRENT.get() ?? rootContext();
     }
     const span = this.startSpan(name, options, context);
     const ctx = CURRENT.enter(context.setValue(SPAN_KEY, span));
@@ -455,34 +456,26 @@ class Span {
 
 const CURRENT = new AsyncVariable();
 
-class Context {
-  // @ts-ignore __proto__ is not supported in TypeScript
-  #data: Record<symbol, unknown> = { __proto__: null };
-
-  constructor(data?: Record<symbol, unknown> | null | undefined) {
-    // @ts-ignore __proto__ is not supported in TypeScript
-    this.#data = { __proto__: null, ...data };
-  }
-
-  getValue(key: symbol): unknown {
-    return this.#data[key];
-  }
-
-  setValue(key: symbol, value: unknown): Context {
-    const c = new Context(this.#data);
-    c.#data[key] = value;
-    return c;
-  }
-
-  deleteValue(key: symbol): Context {
-    const c = new Context(this.#data);
-    delete c.#data[key];
-    return c;
-  }
+// The `Context` storage is Rust-backed (`OtelContext` in
+// ext/telemetry/propagation.rs): symbol keys and their values are held as
+// traced V8 references, and `setValue`/`deleteValue` return a fresh immutable
+// copy. This interface only describes the shape exposed to consumers (the
+// `@opentelemetry/api` `Context`).
+interface Context {
+  getValue(key: symbol): unknown;
+  setValue(key: symbol, value: unknown): Context;
+  deleteValue(key: symbol): Context;
 }
 
 // TODO(lucacasonato): @opentelemetry/api defines it's own ROOT_CONTEXT
-const ROOT_CONTEXT = new Context();
+//
+// `OtelContext` is a Rust `cppgc` object, which cannot be constructed while the
+// startup snapshot is being created (there is no cpp heap yet). The root
+// context is therefore created lazily on first use, at runtime.
+let ROOT_CONTEXT_INSTANCE: Context | undefined;
+function rootContext(): Context {
+  return ROOT_CONTEXT_INSTANCE ??= new OtelContext();
+}
 
 // Context manager for opentelemetry js library
 class ContextManager {
@@ -491,7 +484,7 @@ class ContextManager {
   }
 
   static active(): Context {
-    return CURRENT.get() ?? ROOT_CONTEXT;
+    return CURRENT.get() ?? rootContext();
   }
 
   static with<A extends unknown[], F extends (...args: A) => ReturnType<F>>(
