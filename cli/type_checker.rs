@@ -575,6 +575,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
     let TscRoots {
       roots: root_names,
       missing_diagnostics,
+      used_ts_expect_error_directives,
       maybe_check_hash,
     } = graph_walker.into_tsc_roots();
 
@@ -672,6 +673,9 @@ impl DiagnosticsByFolderRealIterator<'_> {
         && !self.is_untagged_jsdoc_dynamic_import_diagnostic(d)
     });
     response_diagnostics.apply_fast_check_source_maps(&self.graph);
+    response_diagnostics.retain(|d| {
+      !is_used_ts_expect_error_diagnostic(d, &used_ts_expect_error_directives)
+    });
     let mut diagnostics = missing_diagnostics.filter(|d| {
       if let Some(ambient_modules_regex) = &ambient_modules_regex
         && let Some(missing_specifier) = &d.missing_specifier
@@ -815,7 +819,26 @@ impl DiagnosticsByFolderRealIterator<'_> {
 struct TscRoots {
   roots: Vec<(ModuleSpecifier, MediaType)>,
   missing_diagnostics: tsc::Diagnostics,
+  used_ts_expect_error_directives: HashSet<TsDirective>,
   maybe_check_hash: Option<CacheDBHash>,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct TsDirective {
+  // The module specifier as a graph URL string. Recorded from
+  // `deno_graph::Range::specifier` and later matched against
+  // `tsc::Diagnostic::file_name`, which is the same canonical form.
+  specifier: String,
+  // 0-indexed source line of the directive comment. This must use the same
+  // line numbering as both `deno_graph::Range::start::line` (where the
+  // directive is recorded) and `tsc::Position::line` (where the TS2578 lookup
+  // happens) so the two sides match. Both are 0-indexed.
+  line: u64,
+}
+
+enum TsSuppressionComment {
+  Ignore,
+  ExpectError(TsDirective),
 }
 
 struct GraphWalker<'a> {
@@ -830,6 +853,7 @@ struct GraphWalker<'a> {
   has_seen_node_builtin: bool,
   roots: Vec<(ModuleSpecifier, MediaType)>,
   missing_diagnostics: tsc::Diagnostics,
+  used_ts_expect_error_directives: HashSet<TsDirective>,
 }
 
 struct PendingGraphWalkSpecifier<'a> {
@@ -876,6 +900,7 @@ impl<'a> GraphWalker<'a> {
       has_seen_node_builtin: false,
       roots: Vec::with_capacity(graph.imports.len() + graph.specifiers_count()),
       missing_diagnostics: Default::default(),
+      used_ts_expect_error_directives: Default::default(),
     }
   }
 
@@ -940,8 +965,49 @@ impl<'a> GraphWalker<'a> {
     TscRoots {
       roots: self.roots,
       missing_diagnostics: self.missing_diagnostics,
+      used_ts_expect_error_directives: self.used_ts_expect_error_directives,
       maybe_check_hash: self.maybe_hasher.map(|h| CacheDBHash::new(h.finish())),
     }
+  }
+
+  fn source_text_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&str> {
+    self
+      .graph
+      .try_get_prefer_types(specifier)
+      .ok()
+      .flatten()
+      .and_then(|m| m.js())
+      .map(|m| m.source.text.as_ref())
+  }
+
+  fn maybe_ts_suppression_comment(
+    &self,
+    range: &deno_graph::Range,
+  ) -> Option<TsSuppressionComment> {
+    maybe_ts_suppression_comment(
+      range.specifier.as_str(),
+      self.source_text_for_specifier(&range.specifier)?,
+      range.range.start.line,
+    )
+  }
+
+  fn push_missing_diagnostic(
+    &mut self,
+    diagnostic: tsc::Diagnostic,
+    maybe_range: Option<&deno_graph::Range>,
+  ) {
+    if let Some(range) = maybe_range
+      && let Some(comment) = self.maybe_ts_suppression_comment(range)
+    {
+      if let TsSuppressionComment::ExpectError(directive) = comment {
+        self.used_ts_expect_error_directives.insert(directive);
+      }
+      return;
+    }
+    self.missing_diagnostics.push(diagnostic);
   }
 
   fn resolve_pending(&mut self) {
@@ -958,16 +1024,17 @@ impl<'a> GraphWalker<'a> {
           if !is_dynamic
             && let Some(err) = module_error_for_tsc_diagnostic(self.sys, err)
           {
-            self
-              .missing_diagnostics
-              .push(tsc::Diagnostic::from_missing_error(
+            self.push_missing_diagnostic(
+              tsc::Diagnostic::from_missing_error(
                 err.specifier.as_str(),
                 err.maybe_range,
                 maybe_additional_sloppy_imports_message(
                   self.sys,
                   err.specifier,
                 ),
-              ));
+              ),
+              err.maybe_range,
+            );
           }
           continue;
         }
@@ -1072,7 +1139,10 @@ impl<'a> GraphWalker<'a> {
             && let Some(diagnostic) =
               tsc::Diagnostic::maybe_from_resolution_error(resolution_error)
           {
-            self.missing_diagnostics.push(diagnostic);
+            self.push_missing_diagnostic(
+              diagnostic,
+              Some(resolution_error.range()),
+            );
           }
         }
       }
@@ -1287,6 +1357,108 @@ impl<'a> GraphWalker<'a> {
       )
       .ok()?;
     resolved.into_url().ok()
+  }
+}
+
+fn is_used_ts_expect_error_diagnostic(
+  diagnostic: &tsc::Diagnostic,
+  used_ts_expect_error_directives: &HashSet<TsDirective>,
+) -> bool {
+  const TS_UNUSED_EXPECT_ERROR: u64 = 2578;
+  if diagnostic.code != TS_UNUSED_EXPECT_ERROR {
+    return false;
+  }
+  let Some(file_name) = &diagnostic.file_name else {
+    return false;
+  };
+  // Prefer `original_source_start`: `apply_fast_check_source_maps` may have
+  // rewritten `start` to point into generated fast-check output, whereas the
+  // directive was recorded against the original source position. This mirrors
+  // how the diagnostic's own display picks its position.
+  let Some(position) = diagnostic
+    .original_source_start
+    .as_ref()
+    .or(diagnostic.start.as_ref())
+  else {
+    return false;
+  };
+  used_ts_expect_error_directives.contains(&TsDirective {
+    specifier: file_name.to_string(),
+    line: position.line,
+  })
+}
+
+/// Looks for a `@ts-ignore` / `@ts-expect-error` directive suppressing a
+/// diagnostic recorded at `diagnostic_line` (0-indexed).
+///
+/// The graph records a missing-module diagnostic at the *specifier*, which for
+/// a multi-line `import`/`export ... from "..."` sits below the statement
+/// start. tsc instead reports its own diagnostics at the statement start and
+/// anchors a preceding directive to that line, so we first walk up to the line
+/// that begins the import/export statement.
+///
+/// From there this mirrors TypeScript's own `markPrecedingCommentDirectiveLine`:
+/// starting on the line above the statement, scan upwards skipping blank lines
+/// and any `//` comment lines, and stop at the first line of actual code. The
+/// directive only needs to be the nearest comment above the statement, not
+/// strictly on the immediately preceding line. Keeping this in sync with tsc
+/// matters so a graph-derived missing-module diagnostic is suppressed in
+/// exactly the cases tsc would suppress its own diagnostics.
+fn maybe_ts_suppression_comment(
+  specifier: &str,
+  source_text: &str,
+  diagnostic_line: usize,
+) -> Option<TsSuppressionComment> {
+  // We only ever scan upward from the diagnostic, so there's no need to
+  // materialize the rest of the file (imports sit near the top).
+  let lines = source_text
+    .lines()
+    .take(diagnostic_line + 1)
+    .collect::<Vec<_>>();
+
+  // Walk up from the specifier to the line that begins its import/export
+  // statement. A bare comment line (e.g. a `/// <reference />`) or anything
+  // that isn't a resolvable multi-line import body falls back to the
+  // diagnostic line, preserving the single-line behavior.
+  let mut anchor = diagnostic_line;
+  loop {
+    let trimmed = lines.get(anchor)?.trim_start();
+    if trimmed.starts_with("import") || trimmed.starts_with("export") {
+      break;
+    }
+    if anchor == 0 || trimmed.is_empty() || trimmed.starts_with("//") {
+      anchor = diagnostic_line;
+      break;
+    }
+    anchor -= 1;
+  }
+
+  let mut line_index = anchor.checked_sub(1)?;
+  loop {
+    let line = lines.get(line_index)?.trim();
+    if let Some(directive) = line.strip_prefix("//").and_then(|line| {
+      line
+        .strip_prefix('/')
+        .unwrap_or(line)
+        .trim_start()
+        .strip_prefix('@')
+    }) {
+      if directive.starts_with("ts-ignore") {
+        return Some(TsSuppressionComment::Ignore);
+      }
+      if directive.starts_with("ts-expect-error") {
+        return Some(TsSuppressionComment::ExpectError(TsDirective {
+          specifier: specifier.to_string(),
+          line: line_index as u64,
+        }));
+      }
+    }
+
+    if !line.is_empty() && !line.starts_with("//") {
+      return None;
+    }
+
+    line_index = line_index.checked_sub(1)?;
   }
 }
 

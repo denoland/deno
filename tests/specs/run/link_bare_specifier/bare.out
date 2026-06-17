@@ -1,3 +1,1 @@
-error: Import "@org/foo" not a dependency and not in import map from "[WILDLINE]/bare.ts"
-  hint: If you want to use a JSR or npm package, try running `deno add jsr:@org/foo` or `deno add npm:@org/foo`
-    at [WILDLINE]/bare.ts:1:8
+1

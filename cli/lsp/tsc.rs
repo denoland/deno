@@ -3198,6 +3198,8 @@ pub fn file_text_changes_to_workspace_edit<'a>(
 pub struct RefactorEditInfo {
   pub edits: Vec<FileTextChanges>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub rename_filename: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub rename_location: Option<u32>,
 }
 
@@ -3208,6 +3210,11 @@ impl RefactorEditInfo {
   ) -> Result<(), AnyError> {
     for changes in &mut self.edits {
       changes.normalize(specifier_map)?;
+    }
+    if let Some(rename_filename) = &mut self.rename_filename {
+      *rename_filename = specifier_map
+        .normalize(rename_filename.as_str())?
+        .to_string();
     }
     Ok(())
   }
@@ -3223,6 +3230,43 @@ impl RefactorEditInfo {
       snapshot,
       token,
     )
+  }
+
+  pub fn to_rename_command(
+    &self,
+    module: &Arc<DocumentModule>,
+    snapshot: &StateSnapshot,
+  ) -> Option<lsp::Command> {
+    let rename_location = self.rename_location?;
+    let rename_filename = self.rename_filename.as_ref()?;
+    let target_specifier = resolve_url(rename_filename).ok()?;
+    let target_module = snapshot.document_modules.module_for_specifier(
+      &target_specifier,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )?;
+    let changes = self
+      .edits
+      .iter()
+      .find(|c| &c.file_name == rename_filename)?;
+    let mut text = target_module.text.to_string();
+    for change in changes.text_changes.iter().rev() {
+      let range = change.span.to_range(&target_module.line_index);
+      let start = target_module.line_index.offset(range.start).ok()?;
+      let end = target_module.line_index.offset(range.end).ok()?;
+      text.replace_range(
+        u32::from(start) as usize..u32::from(end) as usize,
+        &change.new_text,
+      );
+    }
+    Some(lsp::Command {
+      title: "".to_string(),
+      command: "editor.action.rename".to_string(),
+      arguments: Some(vec![json!([
+        target_module.uri.as_ref(),
+        LineIndex::new(&text).position_utf16(rename_location.into())
+      ])]),
+    })
   }
 }
 
@@ -5701,6 +5745,18 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           module.media_type,
           scope.as_deref(),
         ));
+        // The auto-import alias hides `node_modules/.deno` from tsc, but
+        // requests for open documents (diagnostics, hover, etc.) use the
+        // unaliased name. Include it as a root too so they don't fail with
+        // "Could not find source file". See
+        // https://github.com/denoland/deno/issues/35170.
+        if is_open {
+          script_names.insert(
+            state
+              .specifier_map
+              .denormalize(&module.specifier, module.media_type),
+          );
+        }
       }
     }
   }

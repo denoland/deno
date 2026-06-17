@@ -35,6 +35,8 @@ use deno_npm_installer::lifecycle_scripts::compute_lifecycle_script_layers;
 use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
 use deno_npmrc::RegistryConfig;
 use deno_npmrc::ResolvedNpmRc;
+use deno_resolver::file_fetcher::FetchOptions;
+use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
@@ -72,6 +74,13 @@ pub type CliNpmGraphResolver = deno_npm_installer::graph::NpmDenoGraphResolver<
 >;
 
 pub use deno_npm_cache::NpmPackumentFormat;
+
+/// `Accept` header sent when fetching npm package metadata. Mirrors the npm
+/// install path (`CliNpmCacheHttpClient`) so registries that content-negotiate
+/// (or redirect non-npm-client requests elsewhere) behave the same for metadata
+/// lookups done by `deno outdated`, `deno add`, etc.
+const NPM_PACKAGE_INFO_ACCEPT: &str =
+  "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*";
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
@@ -352,9 +361,40 @@ impl NpmFetchResolver {
           None => Ok(None),
         })
         .map_err(|e| format!("{e:#}"))?;
+    // Identify as an npm client. Some registries (e.g. self-hosted GitLab) only
+    // serve package metadata to requests that send the npm `Accept` header and
+    // otherwise redirect to registry.npmjs.org, which drops the auth header on
+    // the cross-origin redirect and 404s for private packages. The npm install
+    // path sends this same header, so matching it keeps `deno outdated`/`deno
+    // add` working wherever `deno install` does.
+    // See https://github.com/denoland/deno/issues/31924
+    //
+    // Mirror the install path's tradeoff: this header requests the abbreviated
+    // packument, which omits the `time` field that `minimumDependencyAge` relies
+    // on for date filtering (`matches_newest_dependency_date`). When a date is
+    // configured we must request the full packument instead, so we don't send
+    // the header (matching `CliNpmCacheHttpClient`'s `Full` packument format).
+    let maybe_accept = if self
+      .version_resolver
+      .newest_dependency_date_options
+      .date
+      .is_none()
+    {
+      Some(NPM_PACKAGE_INFO_ACCEPT)
+    } else {
+      None
+    };
     let file = self
       .file_fetcher
-      .fetch_bypass_permissions_with_maybe_auth(&info_url, maybe_auth_header)
+      .fetch_with_options(
+        &info_url,
+        FetchPermissionsOptionRef::AllowAll,
+        FetchOptions {
+          maybe_auth: maybe_auth_header,
+          maybe_accept,
+          ..Default::default()
+        },
+      )
       .await
       .map_err(|e| format!("{e:#}"))?;
     serde_json::from_slice::<NpmPackageInfo>(&file.source)

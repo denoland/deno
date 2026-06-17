@@ -52,9 +52,11 @@ use tokio::net::TcpStream;
 
 use crate::DefaultTlsOptions;
 use crate::UnsafelyIgnoreCertificateErrors;
+use crate::happy_eyeballs::connect_happy_eyeballs;
 use crate::io::TcpStreamResource;
 use crate::ops::IpAddr;
 use crate::ops::NetError;
+use crate::ops::TcpConnectOptions;
 use crate::ops::TlsHandshakeInfo;
 use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
@@ -405,6 +407,7 @@ pub async fn op_net_connect_tls(
   #[scoped] addr: IpAddr,
   #[scoped] args: ConnectTlsArgs,
   #[cppgc] key_pair: &TlsKeysHolder,
+  #[serde] options: Option<TcpConnectOptions>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let cert_file = args.cert_file.as_deref();
   let unsafely_ignore_certificate_errors = state
@@ -458,19 +461,55 @@ pub async fn op_net_connect_tls(
     ServerName::try_from(addr.hostname.clone())
   }
   .map_err(|_| NetError::InvalidHostname(addr.hostname.clone()))?;
-  let connect_addr = resolve_addr(&addr.hostname, addr.port)
-    .await?
-    .next()
-    .ok_or_else(|| NetError::NoResolvedAddress)?;
-  state
-    .borrow_mut()
-    .borrow_mut::<PermissionsContainer>()
-    .check_net_resolved(
-      &connect_addr.ip(),
-      connect_addr.port(),
-      "Deno.connectTls()",
-    )?;
-  let tcp_stream = TcpStream::connect(connect_addr).await?;
+
+  // Resolve all addresses for Happy Eyeballs.
+  let options = options.unwrap_or_default();
+  let addrs: Vec<_> = resolve_addr(&addr.hostname, addr.port).await?.collect();
+
+  if addrs.is_empty() {
+    return Err(NetError::NoResolvedAddress);
+  }
+
+  // Happy Eyeballs races every resolved candidate, so it may connect to any of
+  // them; the non-racing path only ever connects to `addrs[0]`.
+  let use_happy_eyeballs = options.auto_select_family && addrs.len() > 1;
+
+  // Post-resolution deny check: verify the IPs we may actually connect to are
+  // not denied. This prevents bypassing IP-literal deny rules via numeric
+  // hostname aliases (e.g. 2130706433 -> 127.0.0.1). Only the candidates we may
+  // attempt are checked: all of them when Happy Eyeballs races them, otherwise
+  // just the single address that will be used.
+  {
+    let mut state_ = state.borrow_mut();
+    let permissions = state_.borrow_mut::<PermissionsContainer>();
+    let checked = if use_happy_eyeballs {
+      &addrs[..]
+    } else {
+      &addrs[..1]
+    };
+    for addr in checked {
+      permissions.check_net_resolved(
+        &addr.ip(),
+        addr.port(),
+        "Deno.connectTls()",
+      )?;
+    }
+  }
+
+  // Use Happy Eyeballs if enabled and multiple addresses available.
+  // Note: the TLS connect op has no abort resource, so no cancel handle is
+  // available here (matches the pre-Happy-Eyeballs behavior).
+  let tcp_stream = if use_happy_eyeballs {
+    let attempt_delay = std::time::Duration::from_millis(
+      options.auto_select_family_attempt_delay,
+    );
+    let result = connect_happy_eyeballs(addrs, attempt_delay, None).await?;
+    result.stream
+  } else {
+    // Single address or Happy Eyeballs disabled - use first address
+    TcpStream::connect(addrs[0]).await?
+  };
+
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 

@@ -32,6 +32,7 @@ const { markNotSerializable } = core.loadExtScript(
   "ext:deno_web/13_message_port.js",
 );
 const {
+  ArrayPrototypeFilter,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ObjectDefineProperties,
@@ -101,6 +102,9 @@ const webidlConvertersHeadersInit = webidl.converters["HeadersInit"];
  * @property {[string, string][]} headerList
  * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
  * @property {boolean} aborted
+ * @property {boolean} [bodyDecoded] body was transparently decompressed by
+ * fetch; `content-encoding`/`content-length`/`transfer-encoding` in
+ * `headerList` describe the encoded wire body, not `body`
  * @property {string} [error]
  */
 
@@ -146,6 +150,7 @@ function cloneInnerResponse(response) {
     status: response.status,
     statusMessage: response.statusMessage,
     aborted: response.aborted,
+    bodyDecoded: response.bodyDecoded,
     url() {
       if (this.urlList.length == 0) return null;
       return this.urlList[this.urlList.length - 1];
@@ -165,6 +170,7 @@ function newInnerResponse(status = 200, statusMessage = "") {
     status,
     statusMessage,
     aborted: false,
+    bodyDecoded: false,
     url() {
       if (this.urlList.length == 0) return null;
       return this.urlList[this.urlList.length - 1];
@@ -187,6 +193,28 @@ function responseHeaderList(response) {
     response[_lazyStaticContentType] = null;
   }
   return response[_response].headerList;
+}
+
+/**
+ * Header list of an inner response as it should be written when the response
+ * is re-serialized (HTTP server response, cache storage). When `fetch`
+ * transparently decompressed the body, the header list keeps the
+ * `content-encoding`/`content-length`/`transfer-encoding` headers of the
+ * encoded wire body per the fetch spec, but they don't describe the decoded
+ * body being serialized, so they are dropped here.
+ *
+ * @param {InnerResponse} inner
+ * @returns {[string, string][]}
+ */
+function wireHeaderList(inner) {
+  if (!inner.bodyDecoded) {
+    return inner.headerList;
+  }
+  return ArrayPrototypeFilter(inner.headerList, (header) => {
+    const name = byteLowerCase(header[0]);
+    return name !== "content-encoding" && name !== "content-length" &&
+      name !== "transfer-encoding";
+  });
 }
 
 /**
@@ -994,5 +1022,6 @@ return {
   SERVE_FAST_HEADER_NONE,
   toInnerResponse,
   toInnerResponseForDenoServe,
+  wireHeaderList,
 };
 })();
