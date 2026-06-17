@@ -7,10 +7,7 @@ const {
   op_otel_enable_isolate_metrics,
   op_otel_log,
   op_otel_log_foreign,
-  op_otel_metric_add_batch_callback,
   op_otel_metric_observation_done,
-  op_otel_metric_record,
-  op_otel_metric_remove_batch_callback,
   op_otel_metric_run_observations,
   op_otel_metric_wait_to_observe,
   op_otel_span_add_event,
@@ -20,10 +17,7 @@ const {
   op_otel_span_end,
   op_otel_span_record_exception,
   op_otel_span_update_name,
-  OtelBatchObservableResult,
   OtelMeter,
-  OtelObservable,
-  OtelObservableResult,
   OtelTracer,
   OtelW3CTraceContextPropagator,
   OtelW3CBaggagePropagator,
@@ -567,36 +561,32 @@ interface MetricAdvice {
   explicitBucketBoundaries?: number[];
 }
 
-interface OtelMeter {
-  __key: "meter";
-  createCounter(name: string, description?: string, unit?: string): Instrument;
-  createUpDownCounter(
-    name: string,
-    description?: string,
-    unit?: string,
-  ): Instrument;
-  createGauge(name: string, description?: string, unit?: string): Instrument;
-  createHistogram(
-    name: string,
-    description?: string,
-    unit?: string,
-    explicitBucketBoundaries?: number[],
-  ): Instrument;
-  createObservableCounter(
-    name: string,
-    description?: string,
-    unit?: string,
-  ): Instrument;
+// The `Meter` returned by `getMeter` and the instruments it creates are
+// Rust-backed cppgc objects (see ext/telemetry/lib.rs, `OtelMeter` /
+// `OtelCounter` / `OtelGauge` / `OtelHistogram` / `OtelObservable`). valueType
+// validation, the `METRICS_ENABLED` no-op behavior, option extraction
+// (`description` / `unit` / histogram `explicitBucketBoundaries`), wrapper
+// construction, and the batch callback add/remove logic all live in Rust now;
+// these interfaces only describe the shapes for the annotations below.
+interface Meter {
+  createCounter(name: string, options?: MetricOptions): Counter;
+  createUpDownCounter(name: string, options?: MetricOptions): Counter;
+  createGauge(name: string, options?: MetricOptions): Gauge;
+  createHistogram(name: string, options?: MetricOptions): Histogram;
+  createObservableCounter(name: string, options?: MetricOptions): Observable;
   createObservableUpDownCounter(
     name: string,
-    description?: string,
-    unit?: string,
-  ): Instrument;
-  createObservableGauge(
-    name: string,
-    description?: string,
-    unit?: string,
-  ): Instrument;
+    options?: MetricOptions,
+  ): Observable;
+  createObservableGauge(name: string, options?: MetricOptions): Observable;
+  addBatchObservableCallback(
+    callback: BatchObservableCallback,
+    observables: Observable[],
+  ): void;
+  removeBatchObservableCallback(
+    callback: BatchObservableCallback,
+    observables: Observable[],
+  ): void;
 }
 
 class MeterProvider {
@@ -609,25 +599,29 @@ class MeterProvider {
     version?: string,
     options?: MeterOptions,
   ): Meter {
-    const meter = new OtelMeter(name, version, options?.schemaUrl);
-    return new Meter(meter);
+    return new OtelMeter(name, version, options?.schemaUrl) as Meter;
   }
 }
 
 type MetricAttributes = Attributes;
 
-type Instrument = { __key: "instrument" };
-
-// Rust-backed observable metric objects (see ext/telemetry/lib.rs). The
-// per-observable / batch callback registries, the recording logic and the
-// `observe()` loop body now live in Rust; these names are aliases to the Rust
-// cppgc constructors, kept for the `new Observable(...)` call sites below.
-const Observable = OtelObservable;
-const ObservableResult = OtelObservableResult;
-const BatchObservableResult = OtelBatchObservableResult;
-
-// Shapes of the Rust-backed objects above (constructed via `core.ops`, so
-// otherwise untyped); used by the annotations on the metric APIs below.
+interface Counter {
+  add(value: number, attributes?: MetricAttributes, _context?: Context): void;
+}
+interface Gauge {
+  record(
+    value: number,
+    attributes?: MetricAttributes,
+    _context?: Context,
+  ): void;
+}
+interface Histogram {
+  record(
+    value: number,
+    attributes?: MetricAttributes,
+    _context?: Context,
+  ): void;
+}
 interface Observable {
   addCallback(callback: ObservableCallback): void;
   removeCallback(callback: ObservableCallback): void;
@@ -647,196 +641,9 @@ type ObservableCallback = (
   observableResult: ObservableResult,
 ) => void | Promise<void>;
 
-class Meter {
-  #meter: OtelMeter;
-
-  constructor(meter: OtelMeter) {
-    this.#meter = meter;
-  }
-
-  createCounter(name: string, options?: MetricOptions): Counter {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) return new Counter(null, false);
-    const instrument = this.#meter.createCounter(
-      name,
-      // deno-lint-ignore deno-internal/prefer-primordials
-      options?.description,
-      options?.unit,
-    ) as Instrument;
-    return new Counter(instrument, false);
-  }
-
-  createUpDownCounter(name: string, options?: MetricOptions): Counter {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) return new Counter(null, true);
-    const instrument = this.#meter.createUpDownCounter(
-      name,
-      // deno-lint-ignore deno-internal/prefer-primordials
-      options?.description,
-      options?.unit,
-    ) as Instrument;
-    return new Counter(instrument, true);
-  }
-
-  createGauge(name: string, options?: MetricOptions): Gauge {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) return new Gauge(null);
-    const instrument = this.#meter.createGauge(
-      name,
-      // deno-lint-ignore deno-internal/prefer-primordials
-      options?.description,
-      options?.unit,
-    ) as Instrument;
-    return new Gauge(instrument);
-  }
-
-  createHistogram(name: string, options?: MetricOptions): Histogram {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) return new Histogram(null);
-    const instrument = this.#meter.createHistogram(
-      name,
-      // deno-lint-ignore deno-internal/prefer-primordials
-      options?.description,
-      options?.unit,
-      options?.advice?.explicitBucketBoundaries,
-    ) as Instrument;
-    return new Histogram(instrument);
-  }
-
-  createObservableCounter(name: string, options?: MetricOptions): Observable {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, true));
-    const instrument = this.#meter.createObservableCounter(
-      name,
-      // deno-lint-ignore deno-internal/prefer-primordials
-      options?.description,
-      options?.unit,
-    ) as Instrument;
-    return new Observable(new ObservableResult(instrument, true));
-  }
-
-  createObservableUpDownCounter(
-    name: string,
-    options?: MetricOptions,
-  ): Observable {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
-    const instrument = this.#meter.createObservableUpDownCounter(
-      name,
-      // deno-lint-ignore deno-internal/prefer-primordials
-      options?.description,
-      options?.unit,
-    ) as Instrument;
-    return new Observable(new ObservableResult(instrument, false));
-  }
-
-  createObservableGauge(name: string, options?: MetricOptions): Observable {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
-    const instrument = this.#meter.createObservableGauge(
-      name,
-      // deno-lint-ignore deno-internal/prefer-primordials
-      options?.description,
-      options?.unit,
-    ) as Instrument;
-    return new Observable(new ObservableResult(instrument, false));
-  }
-
-  addBatchObservableCallback(
-    callback: BatchObservableCallback,
-    observables: Observable[],
-  ): void {
-    if (!METRICS_ENABLED) return;
-    const result = new BatchObservableResult(observables);
-    op_otel_metric_add_batch_callback(callback, result);
-    startObserving();
-  }
-
-  removeBatchObservableCallback(
-    callback: BatchObservableCallback,
-    observables: Observable[],
-  ): void {
-    if (!METRICS_ENABLED) return;
-    op_otel_metric_remove_batch_callback(callback, observables);
-  }
-}
-
 type BatchObservableCallback = (
   observableResult: BatchObservableResult,
 ) => void | Promise<void>;
-
-function record(
-  instrument: Instrument | null,
-  value: number,
-  attributes?: MetricAttributes,
-) {
-  if (instrument === null) return;
-  // Attribute iteration, conversion, and dispatch happen in Rust.
-  op_otel_metric_record(instrument, value, attributes);
-}
-
-class Counter {
-  #instrument: Instrument | null;
-  #upDown: boolean;
-
-  constructor(instrument: Instrument | null, upDown: boolean) {
-    this.#instrument = instrument;
-    this.#upDown = upDown;
-  }
-
-  add(value: number, attributes?: MetricAttributes, _context?: Context): void {
-    if (value < 0 && !this.#upDown) {
-      throw new Error("Counter can only be incremented");
-    }
-    record(this.#instrument, value, attributes);
-  }
-}
-
-class Gauge {
-  #instrument: Instrument | null;
-
-  constructor(instrument: Instrument | null) {
-    this.#instrument = instrument;
-  }
-
-  record(
-    value: number,
-    attributes?: MetricAttributes,
-    _context?: Context,
-  ): void {
-    record(this.#instrument, value, attributes);
-  }
-}
-
-class Histogram {
-  #instrument: Instrument | null;
-
-  constructor(instrument: Instrument | null) {
-    this.#instrument = instrument;
-  }
-
-  record(
-    value: number,
-    attributes?: MetricAttributes,
-    _context?: Context,
-  ): void {
-    record(this.#instrument, value, attributes);
-  }
-}
 
 // The callback invocation happens in Rust (`op_otel_metric_run_observations`),
 // which calls every registered individual and batch callback and returns the
