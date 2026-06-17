@@ -124,15 +124,8 @@ deno_core::extension!(
     op_otel_span_attribute3,
     op_otel_span_add_link,
     op_otel_span_update_name,
-    op_otel_metric_attribute3,
-    op_otel_metric_record0,
-    op_otel_metric_record1,
-    op_otel_metric_record2,
-    op_otel_metric_record3,
-    op_otel_metric_observable_record0,
-    op_otel_metric_observable_record1,
-    op_otel_metric_observable_record2,
-    op_otel_metric_observable_record3,
+    op_otel_metric_record,
+    op_otel_metric_observable_record,
     op_otel_metric_wait_to_observe,
     op_otel_metric_observation_done,
   ],
@@ -2904,38 +2897,53 @@ fn create_async_instrument<'a, 'b, T>(
   Ok(Instrument::Observable(data_share))
 }
 
-struct MetricAttributes {
-  attributes: Vec<KeyValue>,
+/// Convert a JS attributes object into a list of OpenTelemetry `KeyValue`s.
+///
+/// This mirrors the previous JS `ObjectEntries(attributes)` iteration: own,
+/// enumerable, string-keyed properties (array indices converted to strings) in
+/// the standard property order. Attribute values that cannot be converted are
+/// skipped, matching the behavior of the previous per-attribute record ops.
+fn metric_attributes_from_value(
+  scope: &mut v8::PinScope<'_, '_>,
+  attributes: v8::Local<'_, v8::Value>,
+) -> Vec<KeyValue> {
+  let Ok(object) = attributes.try_cast::<v8::Object>() else {
+    return Vec::new();
+  };
+  let Some(names) = object.get_own_property_names(
+    scope,
+    v8::GetPropertyNamesArgs {
+      mode: v8::KeyCollectionMode::OwnOnly,
+      property_filter: v8::PropertyFilter::ONLY_ENUMERABLE
+        | v8::PropertyFilter::SKIP_SYMBOLS,
+      index_filter: v8::IndexFilter::IncludeIndices,
+      key_conversion: v8::KeyConversionMode::ConvertToString,
+    },
+  ) else {
+    return Vec::new();
+  };
+  let len = names.length();
+  let mut attributes = Vec::with_capacity(len as usize);
+  for i in 0..len {
+    let Some(key) = names.get_index(scope, i) else {
+      continue;
+    };
+    let Some(value) = object.get(scope, key) else {
+      continue;
+    };
+    if let Some(kv) = attr_raw!(scope, key, value) {
+      attributes.push(kv);
+    }
+  }
+  attributes
 }
 
 #[op2(fast)]
-fn op_otel_metric_record0(
-  state: &mut OpState,
-  #[cppgc] instrument: &Instrument,
-  value: f64,
-) {
-  let values = state.try_take::<MetricAttributes>();
-  let attributes = match &values {
-    Some(values) => &*values.attributes,
-    None => &[],
-  };
-  match instrument {
-    Instrument::Counter(counter) => counter.add(value, attributes),
-    Instrument::UpDownCounter(counter) => counter.add(value, attributes),
-    Instrument::Gauge(gauge) => gauge.record(value, attributes),
-    Instrument::Histogram(histogram) => histogram.record(value, attributes),
-    _ => {}
-  }
-}
-
-#[op2(fast, reentrant)]
-fn op_otel_metric_record1(
-  state: Rc<RefCell<OpState>>,
+fn op_otel_metric_record(
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
-  key1: v8::Local<'_, v8::Value>,
-  value1: v8::Local<'_, v8::Value>,
+  attributes: v8::Local<'_, v8::Value>,
 ) {
   let Some(instrument) = deno_core::_ops::try_unwrap_cppgc_object::<Instrument>(
     &mut *scope,
@@ -2943,167 +2951,22 @@ fn op_otel_metric_record1(
   ) else {
     return;
   };
-  let mut values = {
-    let mut state = state.borrow_mut();
-    state.try_take::<MetricAttributes>()
-  };
-  let attr1 = attr_raw!(scope, key1, value1);
-  let attributes = match &mut values {
-    Some(values) => {
-      if let Some(kv) = attr1 {
-        values.attributes.reserve_exact(1);
-        values.attributes.push(kv);
-      }
-      &*values.attributes
-    }
-    None => match attr1 {
-      Some(kv1) => &[kv1] as &[KeyValue],
-      None => &[],
-    },
-  };
+  let attributes = metric_attributes_from_value(scope, attributes);
   match &*instrument {
-    Instrument::Counter(counter) => counter.add(value, attributes),
-    Instrument::UpDownCounter(counter) => counter.add(value, attributes),
-    Instrument::Gauge(gauge) => gauge.record(value, attributes),
-    Instrument::Histogram(histogram) => histogram.record(value, attributes),
-    _ => {}
-  }
-}
-
-#[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast, reentrant)]
-fn op_otel_metric_record2(
-  state: Rc<RefCell<OpState>>,
-  scope: &mut v8::PinScope<'_, '_>,
-  instrument: v8::Local<'_, v8::Value>,
-  value: f64,
-  key1: v8::Local<'_, v8::Value>,
-  value1: v8::Local<'_, v8::Value>,
-  key2: v8::Local<'_, v8::Value>,
-  value2: v8::Local<'_, v8::Value>,
-) {
-  let Some(instrument) = deno_core::_ops::try_unwrap_cppgc_object::<Instrument>(
-    &mut *scope,
-    instrument,
-  ) else {
-    return;
-  };
-  let mut values = {
-    let mut state = state.borrow_mut();
-    state.try_take::<MetricAttributes>()
-  };
-  let attr1 = attr_raw!(scope, key1, value1);
-  let attr2 = attr_raw!(scope, key2, value2);
-  let attributes = match &mut values {
-    Some(values) => {
-      values.attributes.reserve_exact(2);
-      if let Some(kv1) = attr1 {
-        values.attributes.push(kv1);
-      }
-      if let Some(kv2) = attr2 {
-        values.attributes.push(kv2);
-      }
-      &*values.attributes
-    }
-    None => match (attr1, attr2) {
-      (Some(kv1), Some(kv2)) => &[kv1, kv2] as &[KeyValue],
-      (Some(kv1), None) => &[kv1],
-      (None, Some(kv2)) => &[kv2],
-      (None, None) => &[],
-    },
-  };
-  match &*instrument {
-    Instrument::Counter(counter) => counter.add(value, attributes),
-    Instrument::UpDownCounter(counter) => counter.add(value, attributes),
-    Instrument::Gauge(gauge) => gauge.record(value, attributes),
-    Instrument::Histogram(histogram) => histogram.record(value, attributes),
-    _ => {}
-  }
-}
-
-#[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast, reentrant)]
-fn op_otel_metric_record3(
-  state: Rc<RefCell<OpState>>,
-  scope: &mut v8::PinScope<'_, '_>,
-  instrument: v8::Local<'_, v8::Value>,
-  value: f64,
-  key1: v8::Local<'_, v8::Value>,
-  value1: v8::Local<'_, v8::Value>,
-  key2: v8::Local<'_, v8::Value>,
-  value2: v8::Local<'_, v8::Value>,
-  key3: v8::Local<'_, v8::Value>,
-  value3: v8::Local<'_, v8::Value>,
-) {
-  let Some(instrument) = deno_core::_ops::try_unwrap_cppgc_object::<Instrument>(
-    &mut *scope,
-    instrument,
-  ) else {
-    return;
-  };
-  let mut values = {
-    let mut state = state.borrow_mut();
-    state.try_take::<MetricAttributes>()
-  };
-  let attr1 = attr_raw!(scope, key1, value1);
-  let attr2 = attr_raw!(scope, key2, value2);
-  let attr3 = attr_raw!(scope, key3, value3);
-  let attributes = match &mut values {
-    Some(values) => {
-      values.attributes.reserve_exact(3);
-      if let Some(kv1) = attr1 {
-        values.attributes.push(kv1);
-      }
-      if let Some(kv2) = attr2 {
-        values.attributes.push(kv2);
-      }
-      if let Some(kv3) = attr3 {
-        values.attributes.push(kv3);
-      }
-      &*values.attributes
-    }
-    None => match (attr1, attr2, attr3) {
-      (Some(kv1), Some(kv2), Some(kv3)) => &[kv1, kv2, kv3] as &[KeyValue],
-      (Some(kv1), Some(kv2), None) => &[kv1, kv2],
-      (Some(kv1), None, Some(kv3)) => &[kv1, kv3],
-      (None, Some(kv2), Some(kv3)) => &[kv2, kv3],
-      (Some(kv1), None, None) => &[kv1],
-      (None, Some(kv2), None) => &[kv2],
-      (None, None, Some(kv3)) => &[kv3],
-      (None, None, None) => &[],
-    },
-  };
-  match &*instrument {
-    Instrument::Counter(counter) => counter.add(value, attributes),
-    Instrument::UpDownCounter(counter) => counter.add(value, attributes),
-    Instrument::Gauge(gauge) => gauge.record(value, attributes),
-    Instrument::Histogram(histogram) => histogram.record(value, attributes),
+    Instrument::Counter(counter) => counter.add(value, &attributes),
+    Instrument::UpDownCounter(counter) => counter.add(value, &attributes),
+    Instrument::Gauge(gauge) => gauge.record(value, &attributes),
+    Instrument::Histogram(histogram) => histogram.record(value, &attributes),
     _ => {}
   }
 }
 
 #[op2(fast)]
-fn op_otel_metric_observable_record0(
-  state: &mut OpState,
-  #[cppgc] instrument: &Instrument,
-  value: f64,
-) {
-  let values = state.try_take::<MetricAttributes>();
-  let attributes = values.map(|attr| attr.attributes).unwrap_or_default();
-  if let Instrument::Observable(data_share) = instrument {
-    let mut data = data_share.lock().unwrap();
-    data.insert(attributes, value);
-  }
-}
-
-#[op2(fast, reentrant)]
-fn op_otel_metric_observable_record1(
-  state: Rc<RefCell<OpState>>,
+fn op_otel_metric_observable_record(
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
-  key1: v8::Local<'_, v8::Value>,
-  value1: v8::Local<'_, v8::Value>,
+  attributes: v8::Local<'_, v8::Value>,
 ) {
   let Some(instrument) = deno_core::_ops::try_unwrap_cppgc_object::<Instrument>(
     &mut *scope,
@@ -3111,154 +2974,11 @@ fn op_otel_metric_observable_record1(
   ) else {
     return;
   };
-  let values = {
-    let mut state = state.borrow_mut();
-    state.try_take::<MetricAttributes>()
-  };
-  let attr1 = attr_raw!(scope, key1, value1);
-  let mut attributes = values
-    .map(|mut attr| {
-      attr.attributes.reserve_exact(1);
-      attr.attributes
-    })
-    .unwrap_or_else(|| Vec::with_capacity(1));
-  if let Some(kv1) = attr1 {
-    attributes.push(kv1);
-  }
+  let attributes = metric_attributes_from_value(scope, attributes);
   if let Instrument::Observable(data_share) = &*instrument {
     let mut data = data_share.lock().unwrap();
     data.insert(attributes, value);
   }
-}
-
-#[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast, reentrant)]
-fn op_otel_metric_observable_record2(
-  state: Rc<RefCell<OpState>>,
-  scope: &mut v8::PinScope<'_, '_>,
-  instrument: v8::Local<'_, v8::Value>,
-  value: f64,
-  key1: v8::Local<'_, v8::Value>,
-  value1: v8::Local<'_, v8::Value>,
-  key2: v8::Local<'_, v8::Value>,
-  value2: v8::Local<'_, v8::Value>,
-) {
-  let Some(instrument) = deno_core::_ops::try_unwrap_cppgc_object::<Instrument>(
-    &mut *scope,
-    instrument,
-  ) else {
-    return;
-  };
-  let values = {
-    let mut state = state.borrow_mut();
-    state.try_take::<MetricAttributes>()
-  };
-  let attr1 = attr_raw!(scope, key1, value1);
-  let attr2 = attr_raw!(scope, key2, value2);
-  let mut attributes = values
-    .map(|mut attr| {
-      attr.attributes.reserve_exact(2);
-      attr.attributes
-    })
-    .unwrap_or_else(|| Vec::with_capacity(2));
-  if let Some(kv1) = attr1 {
-    attributes.push(kv1);
-  }
-  if let Some(kv2) = attr2 {
-    attributes.push(kv2);
-  }
-  if let Instrument::Observable(data_share) = &*instrument {
-    let mut data = data_share.lock().unwrap();
-    data.insert(attributes, value);
-  }
-}
-
-#[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast, reentrant)]
-fn op_otel_metric_observable_record3(
-  state: Rc<RefCell<OpState>>,
-  scope: &mut v8::PinScope<'_, '_>,
-  instrument: v8::Local<'_, v8::Value>,
-  value: f64,
-  key1: v8::Local<'_, v8::Value>,
-  value1: v8::Local<'_, v8::Value>,
-  key2: v8::Local<'_, v8::Value>,
-  value2: v8::Local<'_, v8::Value>,
-  key3: v8::Local<'_, v8::Value>,
-  value3: v8::Local<'_, v8::Value>,
-) {
-  let Some(instrument) = deno_core::_ops::try_unwrap_cppgc_object::<Instrument>(
-    &mut *scope,
-    instrument,
-  ) else {
-    return;
-  };
-  let values = {
-    let mut state = state.borrow_mut();
-    state.try_take::<MetricAttributes>()
-  };
-  let attr1 = attr_raw!(scope, key1, value1);
-  let attr2 = attr_raw!(scope, key2, value2);
-  let attr3 = attr_raw!(scope, key3, value3);
-  let mut attributes = values
-    .map(|mut attr| {
-      attr.attributes.reserve_exact(3);
-      attr.attributes
-    })
-    .unwrap_or_else(|| Vec::with_capacity(3));
-  if let Some(kv1) = attr1 {
-    attributes.push(kv1);
-  }
-  if let Some(kv2) = attr2 {
-    attributes.push(kv2);
-  }
-  if let Some(kv3) = attr3 {
-    attributes.push(kv3);
-  }
-  if let Instrument::Observable(data_share) = &*instrument {
-    let mut data = data_share.lock().unwrap();
-    data.insert(attributes, value);
-  }
-}
-
-#[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast, reentrant)]
-fn op_otel_metric_attribute3<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  state: Rc<RefCell<OpState>>,
-  #[smi] capacity: u32,
-  key1: v8::Local<'s, v8::Value>,
-  value1: v8::Local<'s, v8::Value>,
-  key2: v8::Local<'s, v8::Value>,
-  value2: v8::Local<'s, v8::Value>,
-  key3: v8::Local<'s, v8::Value>,
-  value3: v8::Local<'s, v8::Value>,
-) {
-  let values = {
-    let mut state = state.borrow_mut();
-    state.try_take::<MetricAttributes>()
-  };
-  let mut attributes = values
-    .map(|mut values| {
-      values.attributes.reserve_exact(
-        (capacity as usize).saturating_sub(values.attributes.capacity()),
-      );
-      values.attributes
-    })
-    .unwrap_or_else(|| Vec::with_capacity(capacity as usize));
-  let attr1 = attr_raw!(scope, key1, value1);
-  let attr2 = attr_raw!(scope, key2, value2);
-  let attr3 = attr_raw!(scope, key3, value3);
-  if let Some(kv1) = attr1 {
-    attributes.push(kv1);
-  }
-  if let Some(kv2) = attr2 {
-    attributes.push(kv2);
-  }
-  if let Some(kv3) = attr3 {
-    attributes.push(kv3);
-  }
-  state.borrow_mut().put(MetricAttributes { attributes });
 }
 
 struct ObservationDone(oneshot::Sender<()>);
