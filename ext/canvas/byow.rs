@@ -100,6 +100,16 @@ pub struct UnsafeWindowSurface {
   canvas2d_present: RefCell<Option<Canvas2DPresentState>>,
 }
 
+impl UnsafeWindowSurface {
+  pub fn from_surface_data(data: Rc<RefCell<SurfaceData>>) -> Self {
+    Self {
+      data,
+      active_context: Default::default(),
+      canvas2d_present: RefCell::new(None),
+    }
+  }
+}
+
 // SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for UnsafeWindowSurface {
   fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
