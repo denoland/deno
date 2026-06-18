@@ -1,0 +1,6 @@
+true
+body { color: red; }
+invalid arg rejected: true
+missing arg threw synchronously: false
+missing arg rejected: true
+Failed to execute 'replace' on 'CSSStyleSheet': 1 argument required, but only 0 present

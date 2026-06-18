@@ -733,7 +733,8 @@ async function startJupyterKernel() {
     if (evalResult !== null && evalResult !== undefined) {
       // Source-map-aware error shape filled in by the REPL thread: line
       // numbers in `traceback` already point at the user's TypeScript
-      // input, not the transpiled cell source.
+      // input, not the transpiled cell source. Every thrown exception is
+      // surfaced here (never silently dropped), which also covers #35290.
       const evalError = evalResult.error;
       if (evalError) {
         const ename = evalError.ename || "Error";
@@ -766,7 +767,8 @@ async function startJupyterKernel() {
         );
         await socket.send(peerId, replyFrames);
       } else {
-        // Success: publish the result
+        // Success: publish the result. The cdp evaluate response is nested
+        // under `value` by JupyterEvaluateOutcome (errors come via `error`).
         const result = evalResult?.value?.result;
         if (result && !silent) {
           const arg0 = { value: executionCount };
@@ -859,7 +861,12 @@ async function startJupyterKernel() {
         await socket.send(peerId, replyFrames);
       } else if (msgType === "complete_request") {
         const userCode = msg.content?.code || "";
-        const cursorPos = msg.content?.cursor_pos || userCode.length;
+        // `cursor_pos` is in Unicode codepoints; convert to a UTF-16 index for
+        // JS string slicing (a 0 cursor means the start of the cell, so use
+        // `??` rather than `||`).
+        const cursorPosCp = msg.content?.cursor_pos ??
+          utf16ToCodePointIndex(userCode, userCode.length);
+        const cursorPos = codePointToUtf16Index(userCode, cursorPosCp);
         const expr = getExprFromLineAtPos(userCode, cursorPos);
 
         let completions = [];
@@ -890,8 +897,10 @@ async function startJupyterKernel() {
           {
             status: "ok",
             matches: completions,
-            cursor_start: cursorStart,
-            cursor_end: cursorPos,
+            // Report cursor positions back in codepoints, as the frontend
+            // expects.
+            cursor_start: utf16ToCodePointIndex(userCode, cursorStart),
+            cursor_end: cursorPosCp,
             metadata: {},
           },
           parentHeader,
@@ -1058,6 +1067,32 @@ async function startJupyterKernel() {
     const start = sub.search(/[\w$._]+$/);
     if (start === -1) return "";
     return sub.slice(start);
+  }
+
+  // Jupyter's `cursor_pos` is measured in Unicode codepoints, but JS strings
+  // are indexed by UTF-16 code units. Convert a codepoint offset into the
+  // equivalent UTF-16 index so slicing lands on a valid boundary even when the
+  // code contains multi-byte / astral characters (see denoland/deno#22771).
+  function codePointToUtf16Index(str, cpOffset) {
+    let utf16 = 0;
+    let cp = 0;
+    while (cp < cpOffset && utf16 < str.length) {
+      utf16 += str.codePointAt(utf16) > 0xffff ? 2 : 1;
+      cp++;
+    }
+    return utf16;
+  }
+
+  // Inverse of codePointToUtf16Index: convert a UTF-16 index back to a codepoint
+  // offset, used when reporting `cursor_start`/`cursor_end` to the frontend.
+  function utf16ToCodePointIndex(str, utf16Offset) {
+    let utf16 = 0;
+    let cp = 0;
+    while (utf16 < utf16Offset && utf16 < str.length) {
+      utf16 += str.codePointAt(utf16) > 0xffff ? 2 : 1;
+      cp++;
+    }
+    return cp;
   }
 
   // Services REPL-originated input_request messages: send them to the

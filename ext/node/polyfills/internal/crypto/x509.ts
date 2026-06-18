@@ -353,13 +353,15 @@ function isX509Certificate(value: unknown): value is X509Certificate {
   return ObjectPrototypeIsPrototypeOf(X509Certificate.prototype, value);
 }
 
-core.registerCloneableResource(
-  "X509Certificate",
-  (data: { data: ArrayBuffer }) => new X509Certificate(Buffer.from(data.data)),
-);
+// Registered eagerly from `02_register_cloneable.js` so workers can resurrect a
+// transferred X509Certificate before this module is loaded.
+function deserializeX509Certificate(data: { data: ArrayBuffer }) {
+  return new X509Certificate(Buffer.from(data.data));
+}
 
 return {
   X509Certificate,
+  deserializeX509Certificate,
   isX509Certificate,
   default: {
     X509Certificate,

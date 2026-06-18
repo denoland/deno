@@ -78,6 +78,7 @@ use crate::worker::MEMORY_TRIM_HANDLER_ENABLED;
 use crate::worker::SIGUSR2_RX;
 use crate::worker::create_op_metrics;
 use crate::worker::create_validate_import_attributes_callback;
+use crate::worker::request_builder_hook;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -530,6 +531,7 @@ impl WebWorker {
           .unsafely_ignore_certificate_errors
           .clone(),
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+        request_builder_hook: Some(request_builder_hook),
         ..Default::default()
       }),
       deno_cache::deno_cache::init(create_cache),
@@ -586,6 +588,7 @@ impl WebWorker {
       ops::tty::deno_tty::init(),
       ops::http::deno_http_runtime::init(),
       deno_bundle_runtime::deno_bundle_runtime::init(services.bundle_provider),
+      ops::desktop::deno_desktop::init(),
       ops::bootstrap::deno_bootstrap::init(
         options.startup_snapshot.and_then(|_| Default::default()),
         false,
@@ -638,7 +641,9 @@ impl WebWorker {
       is_main: false,
       worker_id: Some(options.worker_id.0),
       wait_for_inspector_disconnect_callback: None,
-      custom_module_evaluation_cb: None,
+      custom_module_evaluation_cb: Some(
+        crate::worker::create_custom_module_evaluation_callback(),
+      ),
       eval_context_code_cache_cbs: None,
     });
 

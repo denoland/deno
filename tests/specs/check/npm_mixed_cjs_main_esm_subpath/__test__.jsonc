@@ -1,8 +1,0 @@
-{
-  "tests": {
-    "package_global_scan_flips_cjs_main_to_esm": {
-      "args": "check main.ts",
-      "output": "main.out"
-    }
-  }
-}

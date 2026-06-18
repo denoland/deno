@@ -295,8 +295,6 @@ function monitorEventLoopDelay(options = { __proto__: null }) {
   return new EventLoopDelayHistogram(new EldHistogram(resolution));
 }
 
-core.registerCloneableResource("EventLoopDelayHistogram", snapshotHistogram);
-
 const NUMBER_MAX_SAFE_INTEGER = NumberMAX_SAFE_INTEGER;
 const EMPTY_HISTOGRAM_MIN = 9223372036854776000;
 const EMPTY_HISTOGRAM_MIN_BIGINT = 9223372036854775807n;
@@ -601,13 +599,14 @@ function snapshotHistogram(data) {
   });
 }
 
-core.registerCloneableResource("RecordableHistogram", (data) => {
+// Registered eagerly from `02_register_cloneable.js`; impl stays lazy here.
+function deserializeRecordableHistogram(data) {
   const handle = MapPrototypeGet(histogramCloneRegistry, data.id);
   if (handle === undefined) {
     throw new Error("Unable to deserialize RecordableHistogram");
   }
   return new RecordableHistogram(handle, data.id);
-});
+}
 
 function validateInteger(value, name, min, max) {
   if (typeof value === "bigint") {
@@ -670,6 +669,7 @@ return {
   },
   constants,
   createHistogram,
+  deserializeRecordableHistogram,
   enqueueNodePerformanceEntry,
   eventLoopUtilization,
   hasNodeObserverForType,
@@ -678,6 +678,7 @@ return {
   PerformanceEntry,
   PerformanceObserver,
   PerformanceObserverEntryList,
+  snapshotHistogram,
   timerify,
 };
 })();

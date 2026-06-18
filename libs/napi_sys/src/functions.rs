@@ -577,6 +577,13 @@ generate!(
       result_data: *mut *mut c_void,
       result: *mut napi_value,
     ) -> napi_status;
+    fn node_api_create_buffer_from_arraybuffer(
+      env: napi_env,
+      arraybuffer: napi_value,
+      byte_offset: usize,
+      byte_length: usize,
+      result: *mut napi_value,
+    ) -> napi_status;
     fn napi_is_buffer(
       env: napi_env,
       value: napi_value,
