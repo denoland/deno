@@ -3342,6 +3342,13 @@ fn is_wasm_global_export(export_type: &wasm_dep_analyzer::ExportType) -> bool {
   matches!(export_type, wasm_dep_analyzer::ExportType::Global(_))
 }
 
+/// Whether a Wasm import is a global. Like [`is_wasm_global_export`], the import
+/// kind is read directly from the import section, independent of the global's
+/// value type.
+fn is_wasm_global_import(import_type: &wasm_dep_analyzer::ImportType) -> bool {
+  matches!(import_type, wasm_dep_analyzer::ImportType::Global(_))
+}
+
 fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
   struct NamedImport {
     escaped_name: String,
@@ -3368,8 +3375,7 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
             named_imports: Vec::new(),
             has_global_import: false,
           });
-      let is_global =
-        matches!(import.import_type, wasm_dep_analyzer::ImportType::Global(_));
+      let is_global = is_wasm_global_import(&import.import_type);
       entry.has_global_import |= is_global;
       entry.named_imports.push(NamedImport {
         escaped_name: import.name.escape_default().to_string(),
@@ -3499,6 +3505,11 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
     }
 
     if has_global_export {
+      // The generated source assumes `import.meta.wasmInstances` is present
+      // whenever a module uses globals. The map shares `import.meta.WasmInstance`'s
+      // lifecycle: both are absent only when WebAssembly is unavailable or during
+      // snapshotting, where the `new import.meta.WasmInstance(...)` call above
+      // would already have thrown. So if we reach here, the map exists.
       builder.append(
         "import.meta.wasmInstances.set(selfNs, modInstance.exports);\n",
       );
