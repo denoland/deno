@@ -448,12 +448,26 @@ declare namespace Deno {
    * @category Network */
   export interface TcpConn extends Conn<NetAddr> {
     /**
-     * Enable/disable the use of Nagle's algorithm.
+     * Sets the `TCP_NODELAY` option on this connection, which controls whether
+     * Nagle's algorithm is used.
+     *
+     * Note that the boolean is `noDelay`, not "enable Nagle", so the sense is
+     * the opposite of enabling the algorithm:
+     *
+     * - `setNoDelay(true)` (the default) sets `TCP_NODELAY`, which **disables**
+     *   Nagle's algorithm. Small writes are sent immediately with lower latency,
+     *   at the cost of potentially more, smaller packets.
+     * - `setNoDelay(false)` clears `TCP_NODELAY`, which **enables** Nagle's
+     *   algorithm. Small writes may be buffered and coalesced to reduce the
+     *   number of packets sent.
      *
      * @param [noDelay=true]
      */
     setNoDelay(noDelay?: boolean): void;
-    /** Enable/disable keep-alive functionality. */
+    /**
+     * Enable or disable TCP keep-alive probes on this connection. Pass `true`
+     * to enable keep-alive and `false` to disable it.
+     */
     setKeepAlive(keepAlive?: boolean): void;
   }
 
