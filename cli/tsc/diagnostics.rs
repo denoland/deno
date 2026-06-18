@@ -202,7 +202,10 @@ impl Diagnostic {
     }
   }
 
-  pub fn maybe_from_resolution_error(error: &ResolutionError) -> Option<Self> {
+  pub fn maybe_from_resolution_error(
+    error: &ResolutionError,
+    bare_importable_pkg_names: &[String],
+  ) -> Option<Self> {
     /// Some node resolution errors say "imported from '...'", but it's not
     /// very useful in a tsc diagnostic because it already has the referrer
     /// context, so remove that text
@@ -224,7 +227,8 @@ impl Diagnostic {
         None,
       ))
     } else {
-      let mut message = enhanced_resolution_error_message(error, &[]);
+      let mut message =
+        enhanced_resolution_error_message(error, bare_importable_pkg_names);
       // the diagnostic already shows the location, so this is redundant
       remove_imported_from(&mut message);
       Some(Self::from_missing_error_with_message(

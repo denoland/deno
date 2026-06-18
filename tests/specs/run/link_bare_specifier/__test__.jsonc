@@ -17,6 +17,11 @@
       "args": "run wrong_name.ts",
       "output": "wrong_name.out",
       "exitCode": 1
+    },
+    "wrong_name_hints_full_name_check": {
+      "args": "check wrong_name.ts",
+      "output": "wrong_name_check.out",
+      "exitCode": 1
     }
   }
 }
