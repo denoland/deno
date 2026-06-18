@@ -869,6 +869,57 @@ fn clone_context_entries<'s>(
     .collect()
 }
 
+// `getValue(key)` — returns the stored value, or `undefined` when absent.
+// Shared by the `OtelContext::get_value` op and the Rust-side direct dispatch
+// used by the propagators (see [`context_get`]).
+fn context_get_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  entries: &[ContextEntry],
+  key: v8::Local<'s, v8::Value>,
+) -> v8::Local<'s, v8::Value> {
+  let Some(i) = context_find(scope, entries, key) else {
+    return v8::undefined(scope).into();
+  };
+  match entries[i].value.get(scope) {
+    Some(value) => value,
+    None => v8::undefined(scope).into(),
+  }
+}
+
+// `setValue(key, value)` — returns the entry list of a new context with `key`
+// set, leaving the source entries untouched (immutable copy semantics).
+// Re-setting an existing key updates it in place, keeping its position.
+fn context_set_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  entries: &[ContextEntry],
+  key: v8::Local<'s, v8::Value>,
+  value: v8::Local<'s, v8::Value>,
+) -> Vec<ContextEntry> {
+  let mut entries = clone_context_entries(scope, entries);
+  match context_find(scope, &entries, key) {
+    Some(i) => entries[i].value = v8::TracedReference::new(scope, value),
+    None => entries.push(ContextEntry {
+      key: v8::TracedReference::new(scope, key),
+      value: v8::TracedReference::new(scope, value),
+    }),
+  }
+  entries
+}
+
+// `deleteValue(key)` — returns the entry list of a new context without `key`,
+// leaving the source entries untouched.
+fn context_delete_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  entries: &[ContextEntry],
+  key: v8::Local<'s, v8::Value>,
+) -> Vec<ContextEntry> {
+  let mut entries = clone_context_entries(scope, entries);
+  if let Some(i) = context_find(scope, &entries, key) {
+    entries.remove(i);
+  }
+  entries
+}
+
 #[op2]
 impl OtelContext {
   // `new Context()` — the root context starts empty. The JS constructor also
@@ -889,13 +940,7 @@ impl OtelContext {
     scope: &mut v8::PinScope<'s, '_>,
     key: v8::Local<'s, v8::Value>,
   ) -> v8::Local<'s, v8::Value> {
-    let Some(i) = context_find(scope, &self.entries, key) else {
-      return v8::undefined(scope).into();
-    };
-    match self.entries[i].value.get(scope) {
-      Some(value) => value,
-      None => v8::undefined(scope).into(),
-    }
+    context_get_value(scope, &self.entries, key)
   }
 
   // `setValue(key, value)` — returns a new context with `key` set, leaving the
@@ -908,15 +953,9 @@ impl OtelContext {
     key: v8::Local<'s, v8::Value>,
     value: v8::Local<'s, v8::Value>,
   ) -> OtelContext {
-    let mut entries = clone_context_entries(scope, &self.entries);
-    match context_find(scope, &entries, key) {
-      Some(i) => entries[i].value = v8::TracedReference::new(scope, value),
-      None => entries.push(ContextEntry {
-        key: v8::TracedReference::new(scope, key),
-        value: v8::TracedReference::new(scope, value),
-      }),
+    OtelContext {
+      entries: context_set_value(scope, &self.entries, key, value),
     }
-    OtelContext { entries }
   }
 
   // `deleteValue(key)` — returns a new context without `key`, leaving the
@@ -927,12 +966,52 @@ impl OtelContext {
     scope: &mut v8::PinScope<'s, '_>,
     key: v8::Local<'s, v8::Value>,
   ) -> OtelContext {
-    let mut entries = clone_context_entries(scope, &self.entries);
-    if let Some(i) = context_find(scope, &entries, key) {
-      entries.remove(i);
+    OtelContext {
+      entries: context_delete_value(scope, &self.entries, key),
     }
-    OtelContext { entries }
   }
+}
+
+/// `context.getValue(key)`, reading the value directly in Rust when `context`
+/// is a Deno-owned [`OtelContext`] (the common case — `ROOT_CONTEXT` and every
+/// context derived from it are `OtelContext`s), and only falling back to a JS
+/// `getValue` method call for a foreign `@opentelemetry/api` context.
+///
+/// The direct path avoids the per-call `v8::Function::Call` round-trip (Rust →
+/// JS → Rust) that crossing into the `getValue` op would otherwise cost on
+/// every inject/extract.
+fn context_get<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  context: v8::Local<'s, v8::Value>,
+  key: v8::Local<'s, v8::Value>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  if let Some(ctx) =
+    deno_core::cppgc::try_unwrap_cppgc_object::<OtelContext>(scope, context)
+  {
+    return Some(context_get_value(scope, &ctx.entries, key));
+  }
+  call_method(scope, context, GET_VALUE, &[key])
+}
+
+/// `context.setValue(key, value)`, building the new context directly in Rust
+/// when `context` is a Deno-owned [`OtelContext`] (see [`context_get`]).
+fn context_set<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  context: v8::Local<'s, v8::Value>,
+  key: v8::Local<'s, v8::Value>,
+  value: v8::Local<'s, v8::Value>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  if let Some(ctx) =
+    deno_core::cppgc::try_unwrap_cppgc_object::<OtelContext>(scope, context)
+  {
+    let entries = context_set_value(scope, &ctx.entries, key, value);
+    drop(ctx);
+    return Some(
+      deno_core::cppgc::make_cppgc_object(scope, OtelContext { entries })
+        .into(),
+    );
+  }
+  call_method(scope, context, SET_VALUE, &[key, value])
 }
 
 // === W3C propagators (Rust-backed `TextMapPropagator`s) ======================
@@ -1090,7 +1169,7 @@ fn is_tracing_suppressed<'s>(
   context: v8::Local<'s, v8::Value>,
   suppress_key: v8::Local<'s, v8::Symbol>,
 ) -> Option<bool> {
-  let value = call_method(scope, context, GET_VALUE, &[suppress_key.into()])?;
+  let value = context_get(scope, context, suppress_key.into())?;
   Some(value.is_true())
 }
 
@@ -1149,9 +1228,42 @@ impl OtelW3CTraceContextPropagator {
     carrier: v8::Local<'s, v8::Value>,
     setter: v8::Local<'s, v8::Value>,
   ) {
+    self.inject_impl(scope, context, carrier, setter);
+  }
+
+  #[reentrant]
+  fn extract<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    context: v8::Local<'s, v8::Value>,
+    carrier: v8::Local<'s, v8::Value>,
+    getter: v8::Local<'s, v8::Value>,
+  ) -> v8::Local<'s, v8::Value> {
+    self.extract_impl(scope, context, carrier, getter)
+  }
+
+  fn fields<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> v8::Local<'s, v8::Array> {
+    let elements = [
+      cstr(scope, TRACEPARENT_HEADER).into(),
+      cstr(scope, TRACESTATE_HEADER).into(),
+    ];
+    v8::Array::new_with_elements(scope, &elements)
+  }
+}
+
+impl OtelW3CTraceContextPropagator {
+  fn inject_impl<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    context: v8::Local<'s, v8::Value>,
+    carrier: v8::Local<'s, v8::Value>,
+    setter: v8::Local<'s, v8::Value>,
+  ) {
     let span_key = resolve_symbol(scope, &self.span_key, SPAN_KEY);
-    let Some(span) = call_method(scope, context, GET_VALUE, &[span_key.into()])
-    else {
+    let Some(span) = context_get(scope, context, span_key.into()) else {
       return;
     };
     if span.is_null_or_undefined() {
@@ -1210,8 +1322,7 @@ impl OtelW3CTraceContextPropagator {
     }
   }
 
-  #[reentrant]
-  fn extract<'s>(
+  fn extract_impl<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
     context: v8::Local<'s, v8::Value>,
@@ -1286,19 +1397,7 @@ impl OtelW3CTraceContextPropagator {
     };
 
     let span_key = resolve_symbol(scope, &self.span_key, SPAN_KEY);
-    call_method(scope, context, SET_VALUE, &[span_key.into(), span.into()])
-      .unwrap_or(context)
-  }
-
-  fn fields<'s>(
-    &self,
-    scope: &mut v8::PinScope<'s, '_>,
-  ) -> v8::Local<'s, v8::Array> {
-    let elements = [
-      cstr(scope, TRACEPARENT_HEADER).into(),
-      cstr(scope, TRACESTATE_HEADER).into(),
-    ];
-    v8::Array::new_with_elements(scope, &elements)
+    context_set(scope, context, span_key.into(), span.into()).unwrap_or(context)
   }
 }
 
@@ -1380,10 +1479,39 @@ impl OtelW3CBaggagePropagator {
     carrier: v8::Local<'s, v8::Value>,
     setter: v8::Local<'s, v8::Value>,
   ) {
+    self.inject_impl(scope, context, carrier, setter);
+  }
+
+  #[reentrant]
+  fn extract<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    context: v8::Local<'s, v8::Value>,
+    carrier: v8::Local<'s, v8::Value>,
+    getter: v8::Local<'s, v8::Value>,
+  ) -> Result<v8::Local<'s, v8::Value>, JsErrorBox> {
+    self.extract_impl(scope, context, carrier, getter)
+  }
+
+  fn fields<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> v8::Local<'s, v8::Array> {
+    let elements = [cstr(scope, BAGGAGE_HEADER).into()];
+    v8::Array::new_with_elements(scope, &elements)
+  }
+}
+
+impl OtelW3CBaggagePropagator {
+  fn inject_impl<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    context: v8::Local<'s, v8::Value>,
+    carrier: v8::Local<'s, v8::Value>,
+    setter: v8::Local<'s, v8::Value>,
+  ) {
     let baggage_key = resolve_symbol(scope, &self.baggage_key, BAGGAGE_KEY);
-    let Some(baggage) =
-      call_method(scope, context, GET_VALUE, &[baggage_key.into()])
-    else {
+    let Some(baggage) = context_get(scope, context, baggage_key.into()) else {
       return;
     };
     if !baggage.boolean_value(scope) {
@@ -1447,8 +1575,7 @@ impl OtelW3CBaggagePropagator {
     }
   }
 
-  #[reentrant]
-  fn extract<'s>(
+  fn extract_impl<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
     context: v8::Local<'s, v8::Value>,
@@ -1497,26 +1624,11 @@ impl OtelW3CBaggagePropagator {
 
     let baggage_key = resolve_symbol(scope, &self.baggage_key, BAGGAGE_KEY);
     Ok(
-      call_method(
-        scope,
-        context,
-        SET_VALUE,
-        &[baggage_key.into(), baggage.into()],
-      )
-      .unwrap_or(context),
+      context_set(scope, context, baggage_key.into(), baggage.into())
+        .unwrap_or(context),
     )
   }
 
-  fn fields<'s>(
-    &self,
-    scope: &mut v8::PinScope<'s, '_>,
-  ) -> v8::Local<'s, v8::Array> {
-    let elements = [cstr(scope, BAGGAGE_HEADER).into()];
-    v8::Array::new_with_elements(scope, &elements)
-  }
-}
-
-impl OtelW3CBaggagePropagator {
   /// `baggageEntryMetadataFromString(value)`, returning a traced reference to
   /// the resulting `BaggageEntryMetadata` object (so its identity / `toString()`
   /// survive, exactly as in the JS implementation).
@@ -1609,20 +1721,7 @@ impl OtelCompositePropagator {
     carrier: v8::Local<'s, v8::Value>,
     setter: v8::Local<'s, v8::Value>,
   ) {
-    for i in 0..self.propagators.len() {
-      let Some(propagator) = self.propagators[i].get(scope) else {
-        continue;
-      };
-      v8::tc_scope!(tc, scope);
-      if call_method(tc, propagator, INJECT, &[context, carrier, setter])
-        .is_none()
-        && tc.has_caught()
-      {
-        let exception = tc.exception().unwrap();
-        tc.reset();
-        warn_failed(tc, propagator, "inject", exception);
-      }
-    }
+    self.inject_impl(scope, context, carrier, setter);
   }
 
   #[reentrant]
@@ -1633,24 +1732,7 @@ impl OtelCompositePropagator {
     carrier: v8::Local<'s, v8::Value>,
     getter: v8::Local<'s, v8::Value>,
   ) -> v8::Local<'s, v8::Value> {
-    let mut ctx = context;
-    for i in 0..self.propagators.len() {
-      let Some(propagator) = self.propagators[i].get(scope) else {
-        continue;
-      };
-      v8::tc_scope!(tc, scope);
-      match call_method(tc, propagator, EXTRACT, &[ctx, carrier, getter]) {
-        Some(result) => ctx = result,
-        None => {
-          if tc.has_caught() {
-            let exception = tc.exception().unwrap();
-            tc.reset();
-            warn_failed(tc, propagator, "extract", exception);
-          }
-        }
-      }
-    }
-    ctx
+    self.extract_impl(scope, context, carrier, getter)
   }
 
   fn fields<'s>(
@@ -1664,6 +1746,132 @@ impl OtelCompositePropagator {
     }
     v8::Array::new_with_elements(scope, &elements)
   }
+}
+
+impl OtelCompositePropagator {
+  fn inject_impl<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    context: v8::Local<'s, v8::Value>,
+    carrier: v8::Local<'s, v8::Value>,
+    setter: v8::Local<'s, v8::Value>,
+  ) {
+    for i in 0..self.propagators.len() {
+      let Some(propagator) = self.propagators[i].get(scope) else {
+        continue;
+      };
+      v8::tc_scope!(tc, scope);
+      dispatch_inject(tc, propagator, context, carrier, setter);
+      if tc.has_caught() {
+        let exception = tc.exception().unwrap();
+        tc.reset();
+        warn_failed(tc, propagator, "inject", exception);
+      }
+    }
+  }
+
+  fn extract_impl<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    context: v8::Local<'s, v8::Value>,
+    carrier: v8::Local<'s, v8::Value>,
+    getter: v8::Local<'s, v8::Value>,
+  ) -> v8::Local<'s, v8::Value> {
+    let mut ctx = context;
+    for i in 0..self.propagators.len() {
+      let Some(propagator) = self.propagators[i].get(scope) else {
+        continue;
+      };
+      v8::tc_scope!(tc, scope);
+      let result = dispatch_extract(tc, propagator, ctx, carrier, getter);
+      if tc.has_caught() {
+        let exception = tc.exception().unwrap();
+        tc.reset();
+        warn_failed(tc, propagator, "extract", exception);
+      } else if let Some(result) = result {
+        ctx = result;
+      }
+    }
+    ctx
+  }
+}
+
+/// Invoke `propagator.inject(context, carrier, setter)`. When `propagator` is
+/// one of the Deno-owned Rust propagators, call its Rust `inject_impl` directly
+/// (Rust → Rust) instead of bouncing back out to JS to re-enter the op (Rust →
+/// JS → Rust). A getter/setter callback that throws leaves the exception
+/// pending for the composite to pick up via the surrounding `TryCatch`, exactly
+/// as the foreign `call_method` path does.
+fn dispatch_inject<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  propagator: v8::Local<'s, v8::Value>,
+  context: v8::Local<'s, v8::Value>,
+  carrier: v8::Local<'s, v8::Value>,
+  setter: v8::Local<'s, v8::Value>,
+) {
+  if let Some(p) = deno_core::cppgc::try_unwrap_cppgc_object::<
+    OtelW3CTraceContextPropagator,
+  >(scope, propagator)
+  {
+    p.inject_impl(scope, context, carrier, setter);
+    return;
+  }
+  if let Some(p) = deno_core::cppgc::try_unwrap_cppgc_object::<
+    OtelW3CBaggagePropagator,
+  >(scope, propagator)
+  {
+    p.inject_impl(scope, context, carrier, setter);
+    return;
+  }
+  if let Some(p) = deno_core::cppgc::try_unwrap_cppgc_object::<
+    OtelCompositePropagator,
+  >(scope, propagator)
+  {
+    p.inject_impl(scope, context, carrier, setter);
+    return;
+  }
+  call_method(scope, propagator, INJECT, &[context, carrier, setter]);
+}
+
+/// Invoke `propagator.extract(context, carrier, getter)`, dispatching directly
+/// to the Deno-owned Rust propagators when possible (see [`dispatch_inject`]).
+/// Returns the (possibly updated) context. A baggage parse error is re-thrown
+/// into the scope so the composite's `TryCatch` warns about it, matching the
+/// behavior of crossing the op boundary.
+fn dispatch_extract<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  propagator: v8::Local<'s, v8::Value>,
+  context: v8::Local<'s, v8::Value>,
+  carrier: v8::Local<'s, v8::Value>,
+  getter: v8::Local<'s, v8::Value>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  if let Some(p) = deno_core::cppgc::try_unwrap_cppgc_object::<
+    OtelW3CTraceContextPropagator,
+  >(scope, propagator)
+  {
+    return Some(p.extract_impl(scope, context, carrier, getter));
+  }
+  if let Some(p) = deno_core::cppgc::try_unwrap_cppgc_object::<
+    OtelW3CBaggagePropagator,
+  >(scope, propagator)
+  {
+    return match p.extract_impl(scope, context, carrier, getter) {
+      Ok(ctx) => Some(ctx),
+      Err(err) => {
+        let message = v8_str(scope, &err.to_string());
+        let exception = v8::Exception::type_error(scope, message);
+        scope.throw_exception(exception);
+        None
+      }
+    };
+  }
+  if let Some(p) = deno_core::cppgc::try_unwrap_cppgc_object::<
+    OtelCompositePropagator,
+  >(scope, propagator)
+  {
+    return Some(p.extract_impl(scope, context, carrier, getter));
+  }
+  call_method(scope, propagator, EXTRACT, &[context, carrier, getter])
 }
 
 /// `console.warn(\`Failed to ${verb} with ${propagator.constructor.name}.\`, err)`.
