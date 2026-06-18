@@ -22,7 +22,6 @@ use deno_core::v8::cppgc::Visitor;
 use deno_core::webidl::UnrestrictedDouble;
 use deno_error::JsErrorBox;
 use deno_image::image::DynamicImage;
-use deno_image::image::GenericImageView;
 use deno_image::image::Rgba;
 use deno_image::image::RgbaImage;
 use vello::kurbo;
@@ -1501,6 +1500,7 @@ fn compute_text_metrics(
 }
 
 /// Creates an OffscreenCanvasRenderingContext2D cppgc object.
+#[allow(clippy::too_many_arguments, reason = "matches CreateCanvasContext signature")]
 pub fn create_context<'s>(
   state: std::rc::Rc<std::cell::RefCell<OpState>>,
   _instance: Option<deno_webgpu::Instance>,
