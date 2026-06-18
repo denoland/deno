@@ -1,0 +1,28 @@
+{
+  "tests": {
+    "no_mode": {
+      // Without a mode only `.env` and `.env.local` are loaded, with
+      // `.env.local` overriding `.env`.
+      "args": "run --allow-env --env-file main.js",
+      "output": "no_mode.out"
+    },
+    "mode_flag": {
+      // `--mode production` adds `.env.production` and
+      // `.env.production.local`, each overriding the lower-precedence files.
+      "args": "run --allow-env --env-file --mode=production main.js",
+      "output": "mode.out"
+    },
+    "mode_from_deno_env": {
+      // `DENO_ENV` provides the mode when `--mode` is absent.
+      "args": "run --allow-env --env-file main.js",
+      "envs": { "DENO_ENV": "production" },
+      "output": "mode.out"
+    },
+    "process_env_wins": {
+      // Process environment variables always take precedence over any file.
+      "args": "run --allow-env --env-file --mode=production main.js",
+      "envs": { "B": "proc", "D": "proc" },
+      "output": "process_env_wins.out"
+    }
+  }
+}

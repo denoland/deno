@@ -57,6 +57,30 @@ pub fn handle_denied_env_file_key(
   }
 }
 
+/// Resolves the mode used to select the `--env-file` cascade files. Prefers
+/// the explicit `--mode` flag, falling back to the `DENO_ENV` environment
+/// variable, and otherwise leaving the mode unset (only `.env` and
+/// `.env.local` are loaded).
+pub fn resolve_env_file_mode(flag_mode: Option<&str>) -> Option<String> {
+  flag_mode
+    .map(str::to_string)
+    .or_else(|| env::var("DENO_ENV").ok().filter(|value| !value.is_empty()))
+}
+
+/// Expands each base `--env-file` specifier into its conventional cascade
+/// (see [`deno_dotenv::cascade_paths`]), preserving the order of the passed
+/// files. The resulting list is in increasing precedence order, which is what
+/// [`load_env_variables_from_env_files`] expects.
+pub fn expand_env_file_cascade(
+  env_files: &[String],
+  mode: Option<&str>,
+) -> Vec<String> {
+  env_files
+    .iter()
+    .flat_map(|base| deno_dotenv::cascade_paths(base, mode))
+    .collect()
+}
+
 pub fn resolve_cwd(
   initial_cwd: Option<&Path>,
 ) -> Result<Cow<'_, Path>, std::io::Error> {

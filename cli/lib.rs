@@ -74,7 +74,9 @@ use crate::args::flags_from_vec_with_initial_cwd;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
 use crate::util::env::WatchEnvTracker;
+use crate::util::env::expand_env_file_cascade;
 use crate::util::env::load_env_variables_from_env_files;
+use crate::util::env::resolve_env_file_mode;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
@@ -868,7 +870,9 @@ async fn resolve_flags_and_init(
         Err(_) => Cow::Owned(PathBuf::from(".")),
       },
     };
-    load_env_variables_from_env_files(&cwd, files, flags.log_level);
+    let mode = resolve_env_file_mode(flags.mode.as_deref());
+    let files = expand_env_file_cascade(files, mode.as_deref());
+    load_env_variables_from_env_files(&cwd, &files, flags.log_level);
   }
 
   let sys = crate::sys::CliSys::default();
