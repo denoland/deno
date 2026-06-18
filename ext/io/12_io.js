@@ -153,7 +153,7 @@ class Stdin {
     if (this.#readable === undefined) {
       this.#readable = lazyStreams().readableStreamForRidUnrefable(
         this.#rid,
-        { autoClose: false, closeOnCancel: true },
+        { autoClose: false, closeOnCancel: false },
       );
     }
     return this.#readable;

@@ -1145,15 +1145,14 @@ function readableStreamForRidUnrefable(
   let constructor = ReadableStream;
   if (typeof optionsOrConstructor === "function") {
     constructor = optionsOrConstructor;
+  } else if (typeof optionsOrConstructor === "boolean") {
+    autoClose = optionsOrConstructor;
+    closeOnCancel = optionsOrConstructor;
   } else {
     autoClose = optionsOrConstructor.autoClose ?? true;
     closeOnCancel = optionsOrConstructor.closeOnCancel ?? autoClose;
     constructor = optionsOrConstructor.readableStreamConstructor ??
       ReadableStream;
-  }
-  if (typeof optionsOrConstructor === "boolean") {
-    autoClose = optionsOrConstructor;
-    closeOnCancel = optionsOrConstructor;
   }
   const stream = new constructor(_brand);
   stream[promiseSymbol] = undefined;
@@ -1161,6 +1160,9 @@ function readableStreamForRidUnrefable(
   stream[_resourceBackingUnrefable] = { rid, autoClose };
   const tryClose = () => {
     if (autoClose) core.tryClose(rid);
+  };
+  const cancelRead = () => {
+    core.cancelRead(rid);
   };
   const underlyingSource = {
     type: "bytes",
@@ -1188,6 +1190,7 @@ function readableStreamForRidUnrefable(
       if (stream[promiseSymbol] !== undefined) {
         core.unrefOpPromise(stream[promiseSymbol]);
       }
+      cancelRead();
       if (closeOnCancel) core.tryClose(rid);
     },
     autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
