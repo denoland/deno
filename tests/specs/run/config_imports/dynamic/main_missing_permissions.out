@@ -1,0 +1,7 @@
+[WILDCARD]
+yaml.name: deno
+json5.a: 1
+error: Uncaught (in promise) TypeError: Requires read access to "[WILDLINE]settings.toml", run again with the --allow-read flag
+const { default: toml } = await import(nonAnalyzablePath(), {
+                          ^
+    at async file:///[WILDLINE]/main.ts:[WILDLINE]

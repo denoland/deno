@@ -1398,12 +1398,21 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     // decremented unconditionally in "finish_load"
     self.0.shared.in_flight_loads_tracker.increase();
 
-    if matches!(
-      options.requested_module_type,
-      RequestedModuleType::Text
-        | RequestedModuleType::Bytes
-        | RequestedModuleType::Other(_)
-    ) {
+    // Config imports (yaml/toml/json5/jsonc) are rewritten into JavaScript
+    // modules by deno_graph, so unlike text/bytes/css they must go through
+    // graph preparation rather than being loaded as external assets. They are
+    // intentionally excluded here so the normal graph-building path below
+    // handles them; otherwise a non-analyzable dynamic import of a config file
+    // would never be added to the graph and fail with "Loading unprepared
+    // module".
+    let skip_graph_preparation = match &options.requested_module_type {
+      RequestedModuleType::Text | RequestedModuleType::Bytes => true,
+      RequestedModuleType::Other(kind) => {
+        !matches!(kind.as_ref(), "yaml" | "toml" | "json5" | "jsonc")
+      }
+      _ => false,
+    };
+    if skip_graph_preparation {
       // Text/Bytes imports skip graph preparation, so the file watcher's
       // graph reporter never sees them. For dynamic imports, register the
       // file directly with the watcher so editing it triggers a reload.

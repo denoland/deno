@@ -1,0 +1,34 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@std/collections@^1.1.3": "1.2.0",
+    "jsr:@std/jsonc@1": "1.0.2",
+    "jsr:@std/toml@1": "1.0.11",
+    "jsr:@std/yaml@1": "1.1.1",
+    "npm:json5@2": "2.2.3"
+  },
+  "jsr": {
+    "@std/collections@1.2.0": {
+      "integrity": "ff2b3f9ec160f6286ede68bdcf312239eb7233bf640fbc09751b978c73eeb146"
+    },
+    "@std/jsonc@1.0.2": {
+      "integrity": "bbbecaf99072043fc9b0be520f82d769b6fb25ea611e97ad78a00af70ac7ec57"
+    },
+    "@std/toml@1.0.11": {
+      "integrity": "e358a686f6f53c1c9fc981b5dde02f5a138e27cb6aced23871aa65be61769f39",
+      "dependencies": [
+        "jsr:@std/collections"
+      ]
+    },
+    "@std/yaml@1.1.1": {
+      "integrity": "c497530c603de5261ff6706f80a32aa006c70b73a6baf929ef1422813d40a877"
+    }
+  },
+  "npm": {
+    "json5@2.2.3": {
+      "integrity": "sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==",
+      "bin": true,
+      "tarball": "http://localhost:4260/json5/json5-2.2.3.tgz"
+    }
+  }
+}
