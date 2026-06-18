@@ -1575,6 +1575,10 @@ pub async fn run_with_options(
     enable_raw_imports: metadata.unstable_config.raw_imports,
     close_on_idle: !options.auto_serve,
     maybe_initial_cwd: None,
+    disable_offscreen_canvas: matches!(
+      std::env::var("DENO_DISABLE_OFFSCREEN_CANVAS").as_deref(),
+      Ok("1") | Ok("true")
+    ),
   };
   let worker_factory = LibMainWorkerFactory::new(
     blob_store,

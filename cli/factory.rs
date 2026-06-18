@@ -1281,6 +1281,15 @@ impl CliFactory {
       maybe_initial_cwd: Some(deno_path_util::url_from_directory_path(
         cli_options.initial_cwd(),
       )?),
+      // Deno 2.8 exposes an `OffscreenCanvas` global whose 2D context is
+      // unimplemented (`getContext("2d")` returns null). Libraries that
+      // feature-detect on the global's presence then crash. Setting this
+      // removes the global, restoring the pre-2.8 fallback path. Truthy
+      // values are `1` and `true`.
+      disable_offscreen_canvas: matches!(
+        std::env::var("DENO_DISABLE_OFFSCREEN_CANVAS").as_deref(),
+        Ok("1") | Ok("true")
+      ),
     })
   }
 
