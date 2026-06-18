@@ -438,6 +438,7 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
     "Deno.core.setUpAsyncStub",
   );
 
+  let prototype_key = v8::String::new(scope, "prototype").unwrap();
   let undefined = v8::undefined(scope);
   let mut index = 0;
 
@@ -465,48 +466,17 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 
     let key = decl.name.1.v8_string(scope).unwrap();
 
-    let prototype = tmpl.prototype_template(scope);
     let method_ctxs = &op_ctxs[index..index + decl.methods.len()];
-
     let accessor_store = create_accessor_store(method_ctxs);
 
-    for method in method_ctxs.iter() {
-      // Skip async methods, we are going to register them later.
-      if method.decl.is_async {
-        continue;
-      }
+    if !will_snapshot {
+      let prototype = tmpl.prototype_template(scope);
+      for method in method_ctxs.iter() {
+        // Skip async methods, we are going to register them later.
+        if method.decl.is_async {
+          continue;
+        }
 
-      op_ctx_template_or_accessor(
-        &accessor_store,
-        set_up_async_stub_fn,
-        scope,
-        prototype,
-        tmpl,
-        method,
-        will_snapshot,
-      );
-    }
-
-    index += decl.methods.len();
-
-    let static_method_ctxs = &op_ctxs[index..index + decl.static_methods.len()];
-    for method in static_method_ctxs.iter() {
-      let op_fn = op_ctx_template(
-        scope,
-        method,
-        v8::ConstructorBehavior::Throw,
-        will_snapshot,
-      );
-      let method_key = name_key(scope, &method.decl);
-
-      tmpl.set(method_key, op_fn.into());
-    }
-
-    index += decl.static_methods.len();
-
-    // Register async methods at the end since we need to create the template instance.
-    for method in method_ctxs.iter() {
-      if method.decl.is_async {
         op_ctx_template_or_accessor(
           &accessor_store,
           set_up_async_stub_fn,
@@ -519,6 +489,43 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
       }
     }
 
+    index += decl.methods.len();
+
+    let static_method_ctxs = &op_ctxs[index..index + decl.static_methods.len()];
+    if !will_snapshot {
+      for method in static_method_ctxs.iter() {
+        let op_fn = op_ctx_template(
+          scope,
+          method,
+          v8::ConstructorBehavior::Throw,
+          will_snapshot,
+        );
+        let method_key = name_key(scope, &method.decl);
+
+        tmpl.set(method_key, op_fn.into());
+      }
+    }
+
+    index += decl.static_methods.len();
+
+    if !will_snapshot {
+      let prototype = tmpl.prototype_template(scope);
+      // Register async methods at the end since we need to create the template instance.
+      for method in method_ctxs.iter() {
+        if method.decl.is_async {
+          op_ctx_template_or_accessor(
+            &accessor_store,
+            set_up_async_stub_fn,
+            scope,
+            prototype,
+            tmpl,
+            method,
+            will_snapshot,
+          );
+        }
+      }
+    }
+
     if let Some(e) = (decl.inherits_type_name)() {
       let parent = fn_template_store.get_raw(e).unwrap();
       tmpl.inherit(v8::Local::new(scope, parent));
@@ -526,6 +533,33 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 
     let op_fn = tmpl.get_function(scope).unwrap();
     op_fn.set_name(key);
+
+    if will_snapshot {
+      let prototype = op_fn
+        .get(scope, prototype_key.into())
+        .and_then(|p| v8::Local::<v8::Object>::try_from(p).ok())
+        .unwrap();
+
+      for method in method_ctxs.iter() {
+        op_ctx_function_or_accessor(
+          &accessor_store,
+          set_up_async_stub_fn,
+          scope,
+          prototype,
+          op_fn,
+          method,
+        );
+      }
+
+      for method in static_method_ctxs.iter() {
+        let method_fn =
+          op_ctx_plain_function(scope, method, v8::ConstructorBehavior::Throw);
+        let method_key = name_key(scope, &method.decl);
+
+        op_fn.set(scope, method_key.into(), method_fn.into());
+      }
+    }
+
     deno_core_ops_obj.set(scope, key.into(), op_fn.into());
 
     let id = (decl.type_name)().to_string();
@@ -789,6 +823,91 @@ fn op_ctx_template_or_accessor<'s, 'i>(
   }
 }
 
+fn op_ctx_function_or_accessor<'s, 'i>(
+  accessor_store: &AccessorStore,
+  set_up_async_stub_fn: v8::Local<'s, v8::Function>,
+  scope: &mut v8::PinScope<'s, 'i>,
+  target: v8::Local<'s, v8::Object>,
+  constructor: v8::Local<'s, v8::Function>,
+  op_ctx: &OpCtx,
+) {
+  if !op_ctx.decl.is_accessor() {
+    let op_fn =
+      op_ctx_plain_function(scope, op_ctx, v8::ConstructorBehavior::Throw);
+    let method_key = name_key(scope, &op_ctx.decl);
+    if op_ctx.decl.is_async {
+      let undefined = v8::undefined(scope);
+      let _result = set_up_async_stub_fn
+        .call(
+          scope,
+          undefined.into(),
+          &[method_key.into(), op_fn.into(), constructor.into()],
+        )
+        .unwrap();
+
+      return;
+    }
+
+    target.set(scope, method_key.into(), op_fn.into());
+
+    return;
+  }
+
+  if let Some((named_getter, named_setter)) =
+    accessor_store.get(op_ctx.decl.name)
+  {
+    let should_define = if let Some(getter) = named_getter {
+      std::ptr::eq(*getter, op_ctx)
+    } else if let Some(setter) = named_setter {
+      std::ptr::eq(*setter, op_ctx)
+    } else {
+      false
+    };
+    if !should_define {
+      return;
+    }
+
+    let getter_fn: v8::Local<v8::Value> = if let Some(getter) = named_getter {
+      let op_fn = op_ctx_plain_function_with_length(
+        scope,
+        getter,
+        v8::ConstructorBehavior::Throw,
+        0,
+      );
+      let method_name = format!("get {}", op_ctx.decl.name_fast);
+      let method_name = v8::String::new(scope, method_name.as_str()).unwrap();
+      op_fn.set_name(method_name);
+
+      op_fn.into()
+    } else {
+      v8::undefined(scope).into()
+    };
+
+    let setter_fn: v8::Local<v8::Value> = if let Some(setter) = named_setter {
+      let op_fn = op_ctx_plain_function_with_length(
+        scope,
+        setter,
+        v8::ConstructorBehavior::Throw,
+        1,
+      );
+      let method_name = format!("set {}", op_ctx.decl.name_fast);
+      let method_name = v8::String::new(scope, method_name.as_str()).unwrap();
+      op_fn.set_name(method_name);
+
+      op_fn.into()
+    } else {
+      v8::undefined(scope).into()
+    };
+
+    let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
+    let mut desc =
+      v8::PropertyDescriptor::new_from_get_set(getter_fn, setter_fn);
+    desc.set_enumerable(true);
+    desc.set_configurable(true);
+    target.define_property(scope, key.into(), &desc).unwrap();
+  }
+}
+
 pub(crate) fn op_ctx_template<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   op_ctx: &OpCtx,
@@ -858,6 +977,20 @@ fn op_ctx_plain_function<'s, 'i>(
   op_ctx: &OpCtx,
   constructor_behaviour: v8::ConstructorBehavior,
 ) -> v8::Local<'s, v8::Function> {
+  op_ctx_plain_function_with_length(
+    scope,
+    op_ctx,
+    constructor_behaviour,
+    op_ctx.decl.arg_count as i32,
+  )
+}
+
+fn op_ctx_plain_function_with_length<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  op_ctx: &OpCtx,
+  constructor_behaviour: v8::ConstructorBehavior,
+  length: i32,
+) -> v8::Local<'s, v8::Function> {
   let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
   let slow_fn = if op_ctx.metrics_enabled() {
@@ -874,7 +1007,7 @@ fn op_ctx_plain_function<'s, 'i>(
     } else {
       v8::SideEffectType::HasSideEffect
     })
-    .length(op_ctx.decl.arg_count as i32)
+    .length(length)
     .build(scope)
     .unwrap();
   let v8name = op_ctx.decl.name_fast.v8_string(scope).unwrap();

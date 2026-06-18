@@ -2,6 +2,7 @@
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -128,6 +129,8 @@ fn op_register_test(
   #[buffer] ret_buf: &mut [u8],
   sanitize_only: bool,
   #[smi] timeout_ms: u32,
+  #[smi] retry: Option<u32>,
+  #[smi] repeats: Option<u32>,
 ) -> Result<(), JsErrorBox> {
   if ret_buf.len() != 4 {
     return Err(JsErrorBox::type_error(format!(
@@ -157,6 +160,8 @@ fn op_register_test(
       column_number,
     },
     timeout_ms,
+    retry,
+    repeats,
   };
   state
     .borrow_mut::<TestContainer>()
@@ -231,7 +236,11 @@ fn op_test_event_step_result_ok(
 ) {
   let sender = state.borrow_mut::<TestEventSender>();
   sender
-    .send(TestEvent::StepResult(id, TestStepResult::Ok, duration))
+    .send(TestEvent::StepResult(
+      id,
+      TestStepResult::Ok,
+      Duration::from_millis(duration),
+    ))
     .ok();
 }
 
@@ -243,7 +252,11 @@ fn op_test_event_step_result_ignored(
 ) {
   let sender = state.borrow_mut::<TestEventSender>();
   sender
-    .send(TestEvent::StepResult(id, TestStepResult::Ignored, duration))
+    .send(TestEvent::StepResult(
+      id,
+      TestStepResult::Ignored,
+      Duration::from_millis(duration),
+    ))
     .ok();
 }
 
@@ -259,7 +272,7 @@ fn op_test_event_step_result_failed(
     .send(TestEvent::StepResult(
       id,
       TestStepResult::Failed(failure),
-      duration,
+      Duration::from_millis(duration),
     ))
     .ok();
 }

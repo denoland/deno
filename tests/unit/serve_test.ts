@@ -497,13 +497,15 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
     },
     port: servePort,
     signal: ac.signal,
-    onListen: (addr) => listeningDeferred.resolve(addr),
+    onListen: listeningDeferred.resolve,
     onError: createOnErrorCb(ac),
   });
 
   const addr = await listeningDeferred.promise;
   assertEquals(addr.hostname, server.addr.hostname);
   assertEquals(addr.port, server.addr.port);
+  assertEquals(addr.transport, server.addr.transport);
+  assertEquals(addr.transport, "tcp");
   const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
     headers: { "connection": "close" },
   });
@@ -3679,21 +3681,25 @@ Deno.test(
   { permissions: { read: true, net: true } },
   async function httpServerWithTls() {
     const ac = new AbortController();
-    const { promise, resolve } = Promise.withResolvers<void>();
     const hostname = "127.0.0.1";
+    const listeningDeferred = Promise.withResolvers<Deno.NetAddr>();
 
     await using server = Deno.serve({
       handler: () => new Response("Hello World"),
       hostname,
       port: servePort,
       signal: ac.signal,
-      onListen: onListen(resolve),
+      onListen: listeningDeferred.resolve,
       onError: createOnErrorCb(ac),
       cert: Deno.readTextFileSync("tests/testdata/tls/localhost.crt"),
       key: Deno.readTextFileSync("tests/testdata/tls/localhost.key"),
     });
 
-    await promise;
+    const addr = await listeningDeferred.promise;
+    assertEquals(addr.hostname, server.addr.hostname);
+    assertEquals(addr.port, server.addr.port);
+    assertEquals(addr.transport, server.addr.transport);
+    assertEquals(addr.transport, "tcp");
     const caCert = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
     const resp = await fetch(`https://localhost:${servePort}/`, {
