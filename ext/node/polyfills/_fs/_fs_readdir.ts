@@ -11,7 +11,11 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { op_fs_read_dir_async, op_fs_read_dir_sync } from "ext:core/ops";
+import {
+  op_fs_read_dir_async,
+  op_fs_read_dir_async_next,
+  op_fs_read_dir_sync,
+} from "ext:core/ops";
 const lazyPath = core.createLazyLoader("node:path");
 
 const {
@@ -33,6 +37,23 @@ type readDirCallbackDirent = (err: Error | null, files: Dirent[]) => void;
 type readDirBoth = (
   ...args: [Error] | [null, string[] | Dirent[] | Array<string | Dirent>]
 ) => void;
+
+async function collectReadDir(path: string): Promise<Deno.DirEntry[]> {
+  const rid = await op_fs_read_dir_async(path);
+  const entries: Deno.DirEntry[] = [];
+  try {
+    while (true) {
+      const entry = await op_fs_read_dir_async_next(rid);
+      if (entry === null) {
+        break;
+      }
+      ArrayPrototypePush(entries, entry);
+    }
+  } finally {
+    core.close(rid);
+  }
+  return entries;
+}
 
 // Mirrors Node's lib/internal/fs/utils.js getOptions(): a bare string options
 // arg is treated as { encoding: <string> }.
@@ -94,7 +115,7 @@ export function readdir(
   (async () => {
     while ((current = ArrayPrototypeShift(dirs)) !== undefined) {
       try {
-        const entries = await op_fs_read_dir_async(current);
+        const entries = await collectReadDir(current);
 
         for (let i = 0; i < entries.length; i++) {
           const entry = entries[i];

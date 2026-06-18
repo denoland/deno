@@ -389,6 +389,23 @@ fn permissions_prompt_allow_all_lowercase_a() {
     });
 }
 
+// Regression test for https://github.com/denoland/deno/issues/34399
+// When stdin has been put into raw mode by user code (e.g. ts-node calling
+// `process.stdin.setRawMode(true)`), the prompt's line-buffered `read_line`
+// would hang because Enter delivers `\r` and ECHO is off. Verify we bail
+// out with a clear message and deny the permission instead.
+#[test(flaky)]
+fn permissions_prompt_raw_stdin() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/permissions_prompt_raw_stdin.ts"])
+    .with_pty(|mut console| {
+      console.expect("stdin is in raw mode");
+      console.expect("Run again with --allow-env");
+      console.expect("STATUS: denied");
+    });
+}
+
 #[test(flaky)]
 fn permission_request_long() {
   TestContext::default()
@@ -1718,6 +1735,42 @@ mod permissions {
           .expect("PermissionStatus { state: \"granted\", onchange: null }");
         console
           .expect("PermissionStatus { state: \"granted\", onchange: null }");
+      });
+  }
+
+  #[test(flaky)]
+  fn prompt_esc_cancel_pty() {
+    TestContext::default()
+      .new_command()
+      .args_vec(["run", "--quiet", "run/prompt_esc_cancel.ts"])
+      .with_pty(|mut console| {
+        console.expect("Cancel me default");
+        console.write_raw("\x1b"); // Esc
+        console.expect("answer=null");
+        console.expect("after prompt");
+      });
+  }
+
+  #[test(flaky)]
+  fn prompt_esc_cancel_eval_pty() {
+    TestContext::default()
+      .new_command()
+      .args_vec([
+        "eval",
+        r#"try {
+          const answer = prompt();
+          console.log(answer === null ? "answer=null" : answer);
+          console.log("asdf");
+        } catch (error) {
+          console.error(error);
+          Deno.exit(1);
+        }"#,
+      ])
+      .with_pty(|mut console| {
+        console.expect("Prompt");
+        console.write_raw("\x1b"); // Esc
+        console.expect("answer=null");
+        console.expect("asdf");
       });
   }
 
@@ -3386,6 +3439,17 @@ fn node_process_stdin_unref_with_pty() {
     .with_pty(|mut console| {
       // if process.stdin.unref is called, the program immediately ends by skipping reading from stdin.
       console.expect("START\r\nEND\r\n");
+    });
+}
+
+#[test]
+fn stdin_readable_cancel_with_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/stdin_readable_cancel.ts"])
+    .with_pty(|mut console| {
+      console.expect("CANCELLED");
+      console.expect("DONE");
     });
 }
 

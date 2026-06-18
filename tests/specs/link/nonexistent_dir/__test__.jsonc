@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "link ./missing",
+  "exitCode": 1,
+  "output": "error.out"
+}

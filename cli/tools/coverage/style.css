@@ -52,11 +52,12 @@ pre {
   tab-size: 2;
 }
 a {
-  color: light-dark(#0074d9, #3ba3ff);
-  text-decoration: none;
+  color: light-dark(#0074d9, #75baff);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 a:hover {
-  text-decoration: underline;
+  text-decoration-thickness: 2px;
 }
 .strong {
   font-weight: bold;
@@ -112,10 +113,10 @@ a:hover {
 }
 
 .quiet {
-  color: light-dark(rgb(0 0 0 / 0.5), rgb(255 255 255 / 0.5));
+  color: light-dark(rgb(0 0 0 / 0.65), rgb(255 255 255 / 0.65));
 }
 .quiet a {
-  opacity: 0.7;
+  opacity: 1;
 }
 
 .fraction {

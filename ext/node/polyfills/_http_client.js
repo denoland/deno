@@ -25,16 +25,18 @@
 // deno-lint-ignore-file no-this-alias no-inner-declarations
 
 import { core, internals, primordials } from "ext:core/mod.js";
+import { op_node_http_check_proxy_net } from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeIndexOf,
-  ArrayPrototypeMap,
+  ArrayPrototypePush,
   ArrayPrototypeSplice,
   Boolean,
   DateNow,
   ErrorPrototype,
   FunctionPrototypeCall,
   NumberIsFinite,
+  NumberParseInt,
   ObjectAssign,
   ObjectDefineProperty,
   ObjectKeys,
@@ -62,6 +64,7 @@ const { kEmptyObject, once } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
 import {
+  _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,
   freeParser,
   HTTPParser,
@@ -129,6 +132,7 @@ const kPath = Symbol("kPath");
 const kOtelSpan = Symbol("kOtelSpan");
 const kPerfStartTime = Symbol("kPerfStartTime");
 const kRetryData = Symbol("kRetryData");
+const kRetryDataSize = Symbol("kRetryDataSize");
 const kRetryOptions = Symbol("kRetryOptions");
 const kProxy = Symbol("kProxy");
 const kProxyTargetHost = Symbol("kProxyTargetHost");
@@ -137,6 +141,9 @@ const kInspectorRequestId = Symbol("kInspectorRequestId");
 const kInspectorNetwork = Symbol("kInspectorNetwork");
 const kInspectorUrl = Symbol("kInspectorUrl");
 const kInspectorCompleted = Symbol("kInspectorCompleted");
+// Bound replay buffering for stale keep-alive retry. Larger streaming uploads
+// keep constant-memory behavior and surface the socket error instead.
+const MAX_RETRY_DATA_SIZE = 1024 * 1024;
 
 // ============================================================================
 // Inspector Network domain instrumentation (Chrome DevTools Protocol).
@@ -503,6 +510,17 @@ function ClientRequest(input, options, cb) {
 
   const optsWithoutSignal = { __proto__: null, ...options };
 
+  // The `_proxy*` fields are internal transport details set only by the proxy
+  // selection below. A caller must not be able to supply them directly: doing
+  // so would route the request through an arbitrary proxy while bypassing the
+  // target permission check that the proxy branch performs. Strip any that came
+  // in via `options` so only the values computed here are honored.
+  delete optsWithoutSignal._proxy;
+  delete optsWithoutSignal._proxyTargetHost;
+  delete optsWithoutSignal._proxyTargetPort;
+  delete optsWithoutSignal._proxyProtocol;
+  delete optsWithoutSignal._proxyUseProxyConnection;
+
   const port = optsWithoutSignal.port = options.port || defaultPort || 80;
   const host = optsWithoutSignal.host =
     validateHost(options.hostname, "hostname") ||
@@ -522,6 +540,29 @@ function ClientRequest(input, options, cb) {
     port,
   );
   if (proxyEntry) {
+    // A proxied request connects only to the proxy, so the target host would
+    // otherwise never be permission-checked. Enforce --allow-net for the
+    // target here, matching fetch(), before routing through the proxy.
+    //
+    // A host or port carrying invalid header characters (e.g. CR/LF) is not a
+    // reachable target: node:http rejects it with ERR_INVALID_CHAR while
+    // building the request. Skip the permission check for those so the op does
+    // not pre-empt that error with a parse/permission failure. Every other
+    // target is permission-checked and a denial fails closed, like fetch().
+    if (
+      !checkInvalidHeaderChar(host) && !checkInvalidHeaderChar(String(port))
+    ) {
+      // `port` may be a numeric string; coerce and clamp to the op's u16 range
+      // so the argument conversion never throws.
+      const targetPort = NumberParseInt(port, 10);
+      op_node_http_check_proxy_net(
+        host,
+        NumberIsFinite(targetPort) && targetPort >= 0 && targetPort <= 65535
+          ? targetPort
+          : 0,
+        protocol === "https:" ? "node:https.request()" : "node:http.request()",
+      );
+    }
     this[kProxy] = proxyEntry;
     this[kProxyTargetHost] = host;
     this[kProxyTargetPort] = port;
@@ -880,15 +921,48 @@ function ondrain() {
   }
 }
 
+function canRetryRequest(req) {
+  return req.reusedSocket && !req.res && req.agent && !req._retrying &&
+    req[kRetryData] !== null;
+}
+
+function getRetryDataSize(data, encoding) {
+  if (typeof data === "string") {
+    return Buffer.byteLength(data, encoding || undefined);
+  }
+  // deno-lint-ignore prefer-primordials
+  return data?.byteLength ?? data?.length ?? 0;
+}
+
+function cloneOutputDataForRetry(req) {
+  const retryData = [];
+  let retryDataSize = 0;
+  for (let i = 0; i < req.outputData.length; i++) {
+    const item = req.outputData[i];
+    retryDataSize += getRetryDataSize(item.data, item.encoding);
+    if (retryDataSize > MAX_RETRY_DATA_SIZE) {
+      req[kRetryData] = null;
+      req[kRetryDataSize] = 0;
+      return;
+    }
+    ArrayPrototypePush(retryData, {
+      data: item.data,
+      encoding: item.encoding,
+      callback: item.callback,
+    });
+  }
+  req[kRetryData] = retryData;
+  req[kRetryDataSize] = retryDataSize;
+}
+
 // Transparently retry a request on a new connection when the reused
 // keepalive socket turns out to be stale (server closed it while idle).
 function maybeRetryRequest(req, socket) {
-  if (!req.reusedSocket || req.res || !req.agent || req._retrying) {
-    return false;
-  }
+  if (!canRetryRequest(req)) return false;
 
   req._retrying = true;
   const agent = req.agent;
+  const retryHeader = req._header;
 
   // Clean up parser on the old socket
   const parser = socket.parser;
@@ -942,6 +1016,9 @@ function maybeRetryRequest(req, socket) {
   if (req[kRetryData]) {
     req.outputData = req[kRetryData];
     req[kRetryData] = null;
+    req[kRetryDataSize] = 0;
+    req._header = retryHeader;
+    req._headerSent = true;
   }
 
   // Re-queue through agent to get a fresh socket
@@ -1167,6 +1244,8 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
   }
 
   req.res = res;
+  req[kRetryData] = null;
+  req[kRetryDataSize] = 0;
   res.req = req;
 
   // Emit HttpClient perf entry (at response-header time)
@@ -1422,12 +1501,8 @@ function onSocketNT(req, socket, err) {
     tickOnSocket(req, socket);
     // Save output data before flushing so it can be replayed on retry
     // if this reused keepalive socket turns out to be stale.
-    if (req.reusedSocket && req.outputData.length > 0) {
-      req[kRetryData] = ArrayPrototypeMap(req.outputData, (item) => ({
-        data: item.data,
-        encoding: item.encoding,
-        callback: item.callback,
-      }));
+    if (canRetryRequest(req) && req.outputData.length > 0) {
+      cloneOutputDataForRetry(req);
     }
     req._flush();
   }
@@ -1497,6 +1572,28 @@ ClientRequest.prototype.setSocketKeepAlive = function setSocketKeepAlive(
 
 ClientRequest.prototype.clearTimeout = function clearTimeout(cb) {
   this.setTimeout(0, cb);
+};
+
+ClientRequest.prototype._recordRetryData = function _recordRetryData(
+  data,
+  encoding,
+  callback,
+) {
+  if (!canRetryRequest(this)) return;
+
+  const dataSize = getRetryDataSize(data, encoding);
+  const retryDataSize = (this[kRetryDataSize] ?? 0) + dataSize;
+  if (retryDataSize > MAX_RETRY_DATA_SIZE) {
+    this[kRetryData] = null;
+    this[kRetryDataSize] = 0;
+    return;
+  }
+
+  if (this[kRetryData] === null || this[kRetryData] === undefined) {
+    this[kRetryData] = [];
+  }
+  ArrayPrototypePush(this[kRetryData], { data, encoding, callback });
+  this[kRetryDataSize] = retryDataSize;
 };
 
 export { ClientRequest };
