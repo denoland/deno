@@ -107,6 +107,72 @@
           "output": "Task no_inputs deno run src/in.ts\n1\n"
         }
       ]
+    },
+    // Declared outputs are captured on a successful run and restored on a hit,
+    // so deleting them and re-running regenerates them from the cache instead
+    // of leaving them missing.
+    "output_restored_on_hit": {
+      "steps": [
+        {
+          "args": "task build_out",
+          "output": "Task build_out deno run -A src/gen.ts\ngenerated\n"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('dist/out.txt'))"
+          ],
+          "output": "artifact\n"
+        },
+        {
+          "args": ["eval", "Deno.removeSync('dist', { recursive: true })"],
+          "output": ""
+        },
+        {
+          "args": "task build_out",
+          "output": "Task build_out deno run -A src/gen.ts (cached, inputs unchanged)\n"
+        },
+        // The deleted output is back, restored from the cache.
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('dist/out.txt'))"
+          ],
+          "output": "artifact\n"
+        }
+      ]
+    },
+    // A task that depends on another invalidates when the upstream task
+    // re-runs, even if its own inputs are unchanged (dependency cascade).
+    "dependency_cascade_invalidates": {
+      "steps": [
+        {
+          "args": "task downstream",
+          "output": "Task dep deno run src/dep_in.ts\ndep\nTask downstream deno run src/down_in.ts\ndown\n"
+        },
+        {
+          "args": "task downstream",
+          "output": "Task dep deno run src/dep_in.ts (cached, inputs unchanged)\nTask downstream deno run src/down_in.ts (cached, inputs unchanged)\n"
+        },
+        {
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('src/dep_in.ts', 'console.log(\"dep2\")')"
+          ],
+          "output": ""
+        },
+        // `dep` re-runs because its input changed; `downstream` re-runs too,
+        // even though `src/down_in.ts` is untouched, because `dep`'s
+        // fingerprint is part of `downstream`'s cache key.
+        {
+          "args": "task downstream",
+          "output": "Task dep deno run src/dep_in.ts\ndep2\nTask downstream deno run src/down_in.ts\ndown\n"
+        },
+        {
+          "args": "task downstream",
+          "output": "Task dep deno run src/dep_in.ts (cached, inputs unchanged)\nTask downstream deno run src/down_in.ts (cached, inputs unchanged)\n"
+        }
+      ]
     }
   }
 }
