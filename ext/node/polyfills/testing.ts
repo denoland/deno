@@ -8,6 +8,7 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
   ArrayPrototypeJoin,
+  ArrayPrototypeLastIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
@@ -51,11 +52,78 @@ const {
   queueMicrotask,
 } = primordials;
 
+// The genuine timer functions, captured once at runtime so that an enabled mock
+// clock (node:test's mock.timers) cannot stop a test's timeout from firing in
+// real time. We cannot read these at module-init time: this polyfill is baked
+// into the startup snapshot, where the module body runs before the timer APIs
+// exist on `globalThis`. Instead we capture lazily on the first `test()` /
+// `suite()` registration (see installErrorHandlers), which always runs after
+// the runtime is booted and before any test body can call mock.timers.enable().
+let realSetTimeout = null;
+let realClearTimeout = null;
+function ensureRealTimers() {
+  if (realSetTimeout === null) {
+    realSetTimeout = globalThis.setTimeout;
+    realClearTimeout = globalThis.clearTimeout;
+  }
+}
+
 let errorHandlersInstalled = false;
 
 let activeNodeTests = 0;
 
 let pendingCallbackReject = null;
+
+// Stack of failure "sinks" for the tests whose bodies are currently executing.
+// A test pushes a sink for the duration of its body (across await boundaries)
+// and pops it when the body settles. An unhandled rejection or uncaught
+// exception that fires while a test body is running is attributed to the
+// innermost still-running test, matching Node's behavior of failing the
+// currently-active test (see https://github.com/denoland/deno/issues/34818).
+const activeTestSinks = [];
+
+function pushTestSink(sink) {
+  ArrayPrototypePush(activeTestSinks, sink);
+}
+
+function popTestSink(sink) {
+  const idx = ArrayPrototypeLastIndexOf(activeTestSinks, sink);
+  if (idx !== -1) {
+    ArrayPrototypeSplice(activeTestSinks, idx, 1);
+  }
+}
+
+// The innermost test whose body is still running, or null when no test body is
+// currently on the stack (e.g. between registration and execution).
+function currentTestSink() {
+  for (let i = activeTestSinks.length - 1; i >= 0; i--) {
+    const sink = activeTestSinks[i];
+    if (!sink.settled) return sink;
+  }
+  return null;
+}
+
+function buildTimeoutError(timeout) {
+  // Node fails a timed-out test with a `test timed out after Nms` cause and an
+  // ERR_TEST_FAILURE wrapper. We surface the same message and tag the error so
+  // reporters that look at code/failureType behave like Node.
+  const err = new Error(`test timed out after ${timeout}ms`);
+  err.code = "ERR_TEST_FAILURE";
+  err.failureType = "testTimeoutFailure";
+  return err;
+}
+
+function buildAbortError(signal) {
+  // When the test is aborted via a caller-supplied signal, Node fails the test
+  // with the signal's reason (or a generic abort error when none was given).
+  if (signal && signal.reason !== undefined) {
+    return signal.reason;
+  }
+  const err = new Error("The test was aborted");
+  err.code = "ABORT_ERR";
+  err.failureType = "testAborted";
+  return err;
+}
 
 function sanitizeThrowValue(err) {
   if (err === null || err === undefined || typeof err !== "object") {
@@ -79,16 +147,37 @@ function sanitizeThrowValue(err) {
 }
 
 function installErrorHandlers() {
+  // Capture the genuine timers now, before any test body runs and before any
+  // mock clock can replace the globals.
+  ensureRealTimers();
   if (errorHandlersInstalled) return;
   errorHandlersInstalled = true;
 
   globalThis.addEventListener("unhandledrejection", (event) => {
+    // Attribute the rejection to the currently-running test so it fails, the
+    // way Node does. This is gated on an active sink rather than on
+    // `activeNodeTests` so it also works in TAP mode, where tests are run by
+    // our own runner and the counter is not used.
+    const sink = currentTestSink();
+    if (sink !== null) {
+      event.preventDefault();
+      sink.fail(event.reason);
+      return;
+    }
+    // Preserve the prior behavior of swallowing rejections while Deno.test
+    // backed node tests are pending but no body is actively running.
     if (activeNodeTests > 0) {
       event.preventDefault();
     }
   });
 
   globalThis.addEventListener("error", (event) => {
+    // Uncaught exceptions are not routed through the test sink: a synchronous
+    // throw in a test body is already caught by the body wrapper, and Node does
+    // not treat every uncaught `error` event (for example warnings surfaced as
+    // errors) as a test failure. We keep the original behavior of swallowing
+    // the error while node tests are pending and forwarding to a pending
+    // callback-style `done` reject.
     if (activeNodeTests > 0) {
       event.preventDefault();
     }
@@ -491,6 +580,7 @@ class TapContext {
   #subtestTail = PromiseResolve();
   #subtestCount = 0;
   #parentChildren;
+  #abortController = new AbortController();
   // Per-context "warning printed" flag for the `--test-only` diagnostic.
   // Mutated by `runTapEntry` when a child uses `only: true`.
   onlyWarningEmitted = false;
@@ -513,9 +603,14 @@ class TapContext {
   }
 
   get signal() {
-    // Provide an AbortSignal so consumers that read t.signal don't crash; the
-    // minimal TAP runner does not currently honour aborts.
-    return new AbortController().signal;
+    return this.#abortController.signal;
+  }
+
+  // Aborts this test's own AbortSignal (t.signal); see NodeTestContext._abort.
+  _abort(reason) {
+    if (!this.#abortController.signal.aborted) {
+      this.#abortController.abort(reason);
+    }
   }
 
   get assert() {
@@ -711,8 +806,14 @@ async function runTapEntry(entry, depth, n, parentState) {
     // test/it body
     const ctx = new TapContext(entry.name, depth, entry.children);
     try {
-      const ret = ReflectApply(entry.fn, ctx, [ctx]);
-      if (isThenable(ret)) await ret;
+      await runWithTestGuards(async () => {
+        const ret = ReflectApply(entry.fn, ctx, [ctx]);
+        if (isThenable(ret)) await ret;
+      }, {
+        timeout: entry.options.timeout,
+        signal: entry.options.signal,
+        abort: (reason) => ctx._abort(reason),
+      });
       // Wait for any concurrent t.test() calls (e.g. Promise.all([...])).
       await ctx._drainSubtests();
       childCount = ctx._subtestCount();
@@ -858,6 +959,93 @@ function assertExpectedFailure(err, expectFailure) {
   }
 }
 
+// Runs `invoke()` (a thunk that executes a single test body) while enforcing
+// the `timeout` option, honoring a caller-supplied abort `signal`, and capturing
+// any unhandled rejection / uncaught exception that fires during the body. The
+// returned promise resolves with the body's value, or rejects with the first
+// failure observed: a body error, a timeout, an abort, or a captured rejection.
+// `opts.abort(reason)` is invoked on timeout/abort so the test's own
+// AbortSignal (`t.signal`) is aborted and user code can react.
+async function runWithTestGuards(invoke, opts) {
+  ensureRealTimers();
+  const timeout = opts?.timeout;
+  const signal = opts?.signal;
+  const abort = opts?.abort;
+
+  const failure = PromiseWithResolvers();
+  const result = PromiseWithResolvers();
+  const sink = {
+    settled: false,
+    fail(reason) {
+      if (this.settled) return;
+      this.settled = true;
+      failure.reject(reason);
+    },
+  };
+  pushTestSink(sink);
+
+  let timeoutId = null;
+  let onAbort = null;
+  try {
+    if (signal !== undefined && signal !== null) {
+      if (signal.aborted) {
+        if (typeof abort === "function") abort(signal.reason);
+        sink.fail(buildAbortError(signal));
+      } else {
+        onAbort = () => {
+          if (typeof abort === "function") abort(signal.reason);
+          sink.fail(buildAbortError(signal));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    }
+
+    if (typeof timeout === "number" && timeout > 0) {
+      timeoutId = realSetTimeout(() => {
+        const err = buildTimeoutError(timeout);
+        if (typeof abort === "function") abort(err);
+        sink.fail(err);
+      }, timeout);
+    }
+
+    // Race the body against any externally-signalled failure. We avoid
+    // Promise.race so a late body settlement cannot resurface after a failure.
+    const body = (async () => {
+      const value = await invoke();
+      // Stop attributing as soon as the body settles. An unhandled rejection
+      // whose `unhandledrejection` event already fired while the body was
+      // running (for example one surfacing during an await, as in the
+      // denoland/deno#34818 repro) has already failed this test through the
+      // sink. This is best-effort and bounded to the body's lifetime: a
+      // rejection that only surfaces after the body returns is treated as
+      // post-test asynchronous activity and not attributed, matching the
+      // limitation Node also has for activity that outlives a test. We avoid
+      // draining extra event-loop turns here because doing so perturbs the
+      // runner's output ordering and timing.
+      sink.settled = true;
+      return value;
+    })();
+    PromisePrototypeThen(
+      body,
+      (value) => result.resolve(value),
+      (err) => result.reject(err),
+    );
+    PromisePrototypeThen(failure.promise, undefined, (err) => {
+      result.reject(err);
+    });
+    return await result.promise;
+  } finally {
+    sink.settled = true;
+    popTestSink(sink);
+    if (timeoutId !== null) {
+      realClearTimeout(timeoutId);
+    }
+    if (onAbort !== null && signal) {
+      signal.removeEventListener("abort", onAbort);
+    }
+  }
+}
+
 async function runNodeTestFunction(fn, nodeTestContext) {
   if (fn.length >= 2) {
     // Node-style callback API: fn(t, done) - wait for `done()` (or promise
@@ -891,19 +1079,30 @@ async function runNodeTestFunction(fn, nodeTestContext) {
 }
 
 async function runPossiblyExpectingFailure(fn, nodeTestContext, options) {
+  const guards = {
+    timeout: options.timeout,
+    signal: options.signal,
+    abort: (reason) => nodeTestContext._abort(reason),
+  };
   if (
     !options.expectFailure ||
     options.skip ||
     options.todo
   ) {
-    const result = await runNodeTestFunction(fn, nodeTestContext);
+    const result = await runWithTestGuards(
+      () => runNodeTestFunction(fn, nodeTestContext),
+      guards,
+    );
     nodeTestContext._checkPlan();
     return result;
   }
 
   let failed = false;
   try {
-    await runNodeTestFunction(fn, nodeTestContext);
+    await runWithTestGuards(
+      () => runNodeTestFunction(fn, nodeTestContext),
+      guards,
+    );
     nodeTestContext._checkPlan();
   } catch (err) {
     failed = true;
@@ -993,6 +1192,15 @@ class NodeTestContext {
 
   get signal() {
     return this.#abortController.signal;
+  }
+
+  // Aborts this test's own AbortSignal (t.signal). Called by the test guards on
+  // timeout or when a caller-supplied signal aborts, so user code awaiting
+  // t.signal observes the abort.
+  _abort(reason) {
+    if (!this.#abortController.signal.aborted) {
+      this.#abortController.abort(reason);
+    }
   }
 
   get name() {
