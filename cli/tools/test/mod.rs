@@ -82,6 +82,7 @@ use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::collect_specifiers;
+use crate::util::git::run_git;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
@@ -2087,31 +2088,6 @@ fn is_script_specifier(specifier: &ModuleSpecifier) -> bool {
   deno_path_util::url_to_file_path(specifier)
     .map(|p| is_script_ext(&p))
     .unwrap_or(true)
-}
-
-/// Run `git` in `cwd`, returning stdout on success.
-fn run_git(cwd: &Path, args: &[&str]) -> Result<String, AnyError> {
-  let output = std::process::Command::new("git")
-    .current_dir(cwd)
-    .args(args)
-    .output();
-  let output = match output {
-    Ok(output) => output,
-    Err(err) => {
-      return Err(anyhow!(
-        "Failed to run `git {}` for `--changed`: {err}. Is git installed and on PATH?",
-        args.join(" ")
-      ));
-    }
-  };
-  if !output.status.success() {
-    return Err(anyhow!(
-      "`git {}` failed: {}",
-      args.join(" "),
-      String::from_utf8_lossy(&output.stderr).trim()
-    ));
-  }
-  Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// Collect the set of files changed in git, as absolute paths.
