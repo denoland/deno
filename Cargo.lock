@@ -6302,7 +6302,9 @@ dependencies = [
 
 [[package]]
 name = "laufey"
-version = "0.3.2"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "901533c75b92d50b15c6cc1ebcc0fd32161b9171d0db0c30fdbfe93c6cb3bd46"
 dependencies = [
  "bindgen 0.72.1",
  "tokio",

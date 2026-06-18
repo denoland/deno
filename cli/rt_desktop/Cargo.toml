@@ -28,9 +28,7 @@ deno_runtime.workspace = true
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
 denort = { path = "../rt" }
-# Local checkout: the in-process scheme handler transport requires laufey API
-# version 26 (register_scheme_handler), unreleased as of laufey 0.3.2.
-laufey = { path = "../../../wef/capi" }
+laufey = "0.3.3"
 libsui.workspace = true
 
 bytes.workspace = true
