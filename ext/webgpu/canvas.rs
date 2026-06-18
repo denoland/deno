@@ -42,6 +42,21 @@ impl Drop for SurfaceData {
   }
 }
 
+impl ContextData {
+  pub fn dimensions(&self) -> (u32, u32) {
+    match self {
+      ContextData::Canvas(image) => {
+        let d = image.borrow();
+        (d.width(), d.height())
+      }
+      ContextData::Surface(surface) => {
+        let d = surface.borrow();
+        (d.width, d.height)
+      }
+    }
+  }
+}
+
 pub enum Descriptor {
   Texture(TextureDescriptor<'static>),
   Surface(SurfaceConfiguration<Vec<wgpu_types::TextureFormat>>),
