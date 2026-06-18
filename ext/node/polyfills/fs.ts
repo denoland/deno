@@ -4,70 +4,42 @@
 
 (function () {
 const { core, primordials } = __bootstrap;
-const { fs: fsConstants } = core.loadExtScript(
-  "ext:deno_node/internal_binding/constants.ts",
-);
-const { codeMap } = core.loadExtScript(
-  "ext:deno_node/internal_binding/uv.ts",
-);
+const { BadResourcePrototype } = core;
 type BinaryOptionsArgument = any;
 type CallbackWithError = any;
 type FileOptions = any;
 type FileOptionsArgument = any;
 type TextOptionsArgument = any;
 type WriteFileOptions = any;
-const {
-  getValidatedEncoding,
-  isFd,
-  isFileOptions,
-  makeCallback,
-  maybeCallback,
-} = core.loadExtScript("ext:deno_node/_fs/_fs_common.ts");
 type Encodings = any;
 const {
   AbortError,
   denoErrorToNodeError,
   denoWriteFileErrorToNodeError,
+  ERR_DIR_CLOSED,
+  ERR_DIR_CONCURRENT_OPERATION,
+  ERR_FS_CP_DIR_TO_NON_DIR,
+  ERR_FS_CP_EEXIST,
+  ERR_FS_CP_EINVAL,
+  ERR_FS_CP_FIFO_PIPE,
+  ERR_FS_CP_NON_DIR_TO_DIR,
+  ERR_FS_CP_SOCKET,
+  ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY,
+  ERR_FS_CP_UNKNOWN,
+  ERR_FS_EISDIR,
   ERR_FS_FILE_TOO_LARGE,
+  ERR_INVALID_ARG_VALUE,
+  ERR_INVALID_RETURN_VALUE,
+  ERR_INVALID_THIS,
+  ERR_MISSING_ARGS,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
-const {
-  CFISBIS,
-  convertFileInfoToBigIntStats,
-  convertFileInfoToStats,
-} = core.createLazyLoader("ext:deno_node/internal/fs/stat_utils.ts")();
+const { fsConstants: constants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 type statCallback = any;
 type statCallbackBigInt = any;
 type statOptions = any;
-const { copyFile, copyFileSync } = core.createLazyLoader(
-  "ext:deno_node/_fs/_fs_copy.ts",
-)();
-const { cp, cpSync } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
-const { default: Dir } = core.createLazyLoader(
-  "ext:deno_node/_fs/_fs_dir.ts",
-)();
-const { exists, existsSync } = core.createLazyLoader(
-  "ext:deno_node/_fs/_fs_exists.ts",
-)();
-const { fstat, fstatSync } = core.loadExtScript(
-  "ext:deno_node/_fs/_fs_fstat.ts",
-);
-const { lstat, lstatSync } = core.loadExtScript(
-  "ext:deno_node/_fs/_fs_lstat.ts",
-);
-const { lutimes, lutimesSync } = core.createLazyLoader(
-  "ext:deno_node/_fs/_fs_lutimes.ts",
-)();
-const { read, readSync } = core.createLazyLoader(
-  "ext:deno_node/_fs/_fs_read.ts",
-)();
-const { readdir, readdirSync } = core.createLazyLoader(
-  "ext:deno_node/_fs/_fs_readdir.ts",
-)();
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
-const lazyTimers = core.createLazyLoader("node:timers");
-const { clearTimeout, setTimeout } = lazyTimers();
-const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 type MaybeEmpty<T> = T | null | undefined;
 const { deprecate, promisify } = core.loadExtScript("ext:deno_node/util.ts");
 // internal/fs/{promises,streams,handle}.ts call `lazyFs()` at top-level to
@@ -102,25 +74,26 @@ const lazyUtf8Stream = core.createLazyLoader(
 const {
   arrayBufferViewToUint8Array,
   BigIntStats,
+  callbackify,
+  callbackifyOpt,
+  callbackifyWrite,
   constants: fsUtilConstants,
   copyObject,
   Dirent,
   getOptions,
   getValidatedFd,
+  getSignal,
+  getValidatedEncoding,
   getValidatedPath,
   getValidatedPathToString,
-  getValidMode,
-  kMaxUserId,
+  isFd,
+  isFileOptions,
+  makeCallback,
   Stats,
-  stringToFlags,
   toUnixTimestamp,
-  validateBufferArray,
-  validateOffsetLengthWrite,
-  validateRmdirOptions,
-  validateRmOptions,
-  validateRmOptionsSync,
-  validateStringAfterArrayBufferView,
-  warnOnNonPortableTemplate,
+  validateCpOptions,
+  validateOffsetLengthRead,
+  validatePosition,
 } = core.createLazyLoader("ext:deno_node/internal/fs/utils.mjs")();
 const { glob, globSync } = core.createLazyLoader(
   "ext:deno_node/_fs/_fs_glob.ts",
@@ -136,14 +109,25 @@ type ErrnoException = any;
 type BufferEncoding = any;
 const {
   op_fs_read_file_async,
-  op_fs_read_file_sync,
+  op_node_cp_check_paths_recursive,
+  op_node_cp_on_file,
+  op_node_cp_on_link,
+  op_node_cp_sync,
+  op_node_cp_validate_and_prepare,
   op_node_fs_close,
+  op_node_fs_close_async,
+  op_node_fs_copy_file,
+  op_node_fs_copy_file_sync,
+  op_node_fs_exists,
+  op_node_fs_exists_sync,
   op_node_fs_fchmod,
   op_node_fs_fchmod_sync,
   op_node_fs_fchown,
   op_node_fs_fchown_sync,
   op_node_fs_fdatasync,
   op_node_fs_fdatasync_sync,
+  op_node_fs_fstat_stats,
+  op_node_fs_fstat_stats_sync,
   op_node_fs_fstat_sync,
   op_node_fs_fsync,
   op_node_fs_fsync_sync,
@@ -152,16 +136,31 @@ const {
   op_node_fs_futimes,
   op_node_fs_futimes_sync,
   op_node_fs_read_deferred,
-  op_node_fs_read_file_sync,
-  op_node_fs_read_sync,
-  op_node_fs_seek,
-  op_node_fs_seek_sync,
+  op_node_fs_readdir,
+  op_node_fs_readdir_sync,
+  op_node_fs_read_file,
+  op_node_fs_readv,
+  op_node_fs_readv_sync,
+  op_node_fs_read_v_sync,
+  op_node_fs_read_file_path_sync,
+  op_node_fs_read_file_path,
   op_node_fs_write_deferred,
-  op_node_fs_write_sync,
+  op_node_fs_write_v_sync,
+  op_node_fs_write_v,
+  op_node_fs_writev_sync,
+  op_node_fs_writev,
+  op_node_fs_write_file_sync,
+  op_node_fs_write_file,
+  op_node_fs_append_file_sync,
+  op_node_fs_append_file,
+  op_node_fs_truncate_sync,
+  op_node_fs_truncate,
   op_node_lchmod,
   op_node_lchmod_sync,
   op_node_lchown,
   op_node_lchown_sync,
+  op_node_lutimes,
+  op_node_lutimes_sync,
   op_node_mkdtemp,
   op_node_mkdtemp_sync,
   op_node_open,
@@ -170,104 +169,114 @@ const {
   op_node_rmdir_sync,
   op_node_statfs,
   op_node_statfs_sync,
+  op_node_fs_stat,
+  op_node_fs_stat_sync,
+  op_node_fs_stat_watcher_open,
+  op_node_fs_stat_watcher_poll,
+  op_node_fs_mkdir,
+  op_node_fs_mkdir_sync,
+  op_node_fs_remove,
+  op_node_fs_remove_sync,
+  op_node_fs_rm,
+  op_node_fs_rm_sync,
+  op_node_fs_rename,
+  op_node_fs_rename_sync,
+  op_node_fs_realpath,
+  op_node_fs_realpath_sync,
+  op_node_fs_read_link,
+  op_node_fs_read_link_sync,
+  op_node_fs_chmod,
+  op_node_fs_chmod_sync,
+  op_node_fs_chown,
+  op_node_fs_chown_sync,
+  op_node_fs_link,
+  op_node_fs_link_sync,
+  op_node_fs_lstat,
+  op_node_fs_lstat_sync,
+  op_node_fs_symlink,
+  op_node_fs_symlink_sync,
+  op_node_fs_utime,
+  op_node_fs_utime_sync,
+  op_node_fs_opendir_sync,
+  op_node_fs_access,
+  op_node_fs_access_sync,
+  op_node_fs_validate_watch_ignore,
+  op_node_fs_encode_bytes,
+  op_node_fs_encode_watch_filename,
+  op_node_fs_watch_open,
+  op_node_fs_watch_poll,
 } = core.ops;
-const {
-  ERR_INVALID_ARG_TYPE,
-  ERR_INVALID_ARG_VALUE,
-  uvException,
-} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { isMacOS, isWindows } = core.loadExtScript(
   "ext:deno_node/_util/os.ts",
 );
 const {
   customPromisifyArgs,
+  kCustomPromisifiedSymbol,
   kEmptyObject,
-  normalizeEncoding,
 } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const lazyPath = core.createLazyLoader("node:path");
 const pathModule = lazyPath();
-const { basename, relative, resolve, toNamespacedPath } = pathModule;
+const { join, resolve } = pathModule;
+// errno values (EEXIST etc.) for the ERR_FS_CP_* error payloads.
+const lazyNodeConstants = core.createLazyLoader("node:constants");
 type Encoding = any;
 const {
-  parseFileMode,
   validateAbortSignal,
   validateBoolean,
-  validateEncoding,
+  validateBuffer,
   validateFunction,
-  validateInt32,
   validateInteger,
   validateObject,
-  validateOneOf,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-const { isArrayBufferView } = core.loadExtScript(
-  "ext:deno_node/internal/util/types.ts",
+const { createFSReqCallback, unregisterActiveRequest } = core.loadExtScript(
+  "ext:deno_node/internal/process/active_resources.ts",
 );
 const { Blob, markFileBackedBlob } = core.loadExtScript(
   "ext:deno_web/09_file.js",
 );
 // Re-exported under both names for tests.
 const _toUnixTimestamp = toUnixTimestamp;
-const {
-  createFSReqCallback,
-  unregisterActiveRequest,
-} = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
 
 const {
   ArrayBufferIsView,
   ArrayIsArray,
   BigInt,
-  DateUTC,
-  Error,
+  DataViewPrototype,
+  DataViewPrototypeGetByteLength,
   FunctionPrototypeBind,
-  ErrorPrototype,
+  Number,
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeSet,
-  MathMax,
   MathMin,
-  MathTrunc,
-  Number,
-  NumberIsFinite,
-  NumberIsNaN,
   ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromisePrototypeThen,
+  PromiseReject,
   PromiseResolve,
+  ReflectApply,
   RegExpPrototype,
   RegExpPrototypeTest,
   SafeMap,
-  StringPrototypeToString,
+  SymbolAsyncDispose,
   SymbolAsyncIterator,
   SymbolDispose,
   SymbolFor,
+  Uint8ArrayPrototype,
   ArrayPrototypePush,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSubarray,
   Uint8Array,
-  queueMicrotask,
 } = primordials;
 
-const { TextEncoder } = core.loadExtScript(
-  "ext:deno_web/08_text_encoding.js",
-);
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
-
-const {
-  kIoMaxLength,
-  kReadFileUnknownBufferLength,
-} = fsUtilConstants;
-
-const defaultStatOptions = { __proto__: null, bigint: false };
-const defaultStatSyncOptions = {
-  __proto__: null,
-  bigint: false,
-  throwIfNoEntry: true,
-};
 
 function stat(
   path: string | Buffer | URL,
@@ -283,85 +292,68 @@ function stat(
   options: { bigint: true },
   callback: statCallbackBigInt,
 ): void;
-function stat(
-  path: string | Buffer | URL,
-  options:
-    | statCallback
-    | statCallbackBigInt
-    | statOptions = defaultStatOptions,
-  callback?: statCallback | statCallbackBigInt,
-) {
-  if (typeof options === "function") {
-    callback = options;
-    options = defaultStatOptions;
-  }
-  callback = makeCallback(callback);
-  path = getValidatedPathToString(path);
+// The op extracts bigint/throwIfNoEntry from options, validates the path
+// (async(eager_throw)), and resolves the Stats (or undefined when
+// throwIfNoEntry is false and the path is missing).
+const stat = callbackifyOpt(op_node_fs_stat);
 
-  PromisePrototypeThen(
-    Deno.stat(path),
-    (stat) => callback(null, CFISBIS(stat, options.bigint)),
-    (err) => {
-      // Match Node: `{ throwIfNoEntry: false }` suppresses ENOENT and yields
-      // undefined stats, matching the behavior of binding.stat(..., false)
-      // in lib/fs.js stat().
-      if (
-        (options as statOptions)?.throwIfNoEntry === false &&
-        ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
-      ) {
-        callback(null, undefined);
-        return;
-      }
-      callback(
-        denoErrorToNodeError(err, { syscall: "stat", path }),
-      );
+// Wrap a sync op in a thin JS function carrying `name`, so the function shows
+// up in stack traces as `at <name> (ext:deno_node/fs.ts:...)`. node's `fs.*`
+// are JS functions, and a missing frame is confusing to debug (see
+// tests/specs/node/error_stack_internal_frames). The extra forwarder frame is
+// intentional; correctness/debuggability over shaving one call.
+function syncOp<T extends (...args: any[]) => any>(name: string, op: T): T {
+  return {
+    [name](...args: any[]) {
+      return ReflectApply(op, undefined, args);
     },
-  );
+  }[name] as T;
 }
 
-function statSync(path: string | Buffer | URL): Stats;
-function statSync(
-  path: string | Buffer | URL,
-  options: { bigint: false; throwIfNoEntry: true },
-): Stats;
-function statSync(
-  path: string | Buffer | URL,
-  options: { bigint: false; throwIfNoEntry: false },
-): Stats | undefined;
-function statSync(
-  path: string | Buffer | URL,
-  options: { bigint: true; throwIfNoEntry: true },
-): BigIntStats;
-function statSync(
-  path: string | Buffer | URL,
-  options: { bigint: true; throwIfNoEntry: false },
-): BigIntStats | undefined;
-function statSync(
-  path: string | Buffer | URL,
-  options: statOptions = defaultStatSyncOptions,
-): Stats | BigIntStats | undefined {
-  path = getValidatedPathToString(path);
+// Direct op binding: the op extracts bigint/throwIfNoEntry from options,
+// validates the path, and returns the cppgc Stats (or undefined when
+// throwIfNoEntry is false and the path is missing).
+const statSync = syncOp("statSync", op_node_fs_stat_sync) as {
+  (path: string | Buffer | URL): Stats;
+  (
+    path: string | Buffer | URL,
+    options: { bigint: false; throwIfNoEntry: true },
+  ): Stats;
+  (
+    path: string | Buffer | URL,
+    options: { bigint: false; throwIfNoEntry: false },
+  ): Stats | undefined;
+  (
+    path: string | Buffer | URL,
+    options: { bigint: true; throwIfNoEntry: true },
+  ): BigIntStats;
+  (
+    path: string | Buffer | URL,
+    options: { bigint: true; throwIfNoEntry: false },
+  ): BigIntStats | undefined;
+  (
+    path: string | Buffer | URL,
+    options?: statOptions,
+  ): Stats | BigIntStats | undefined;
+};
 
-  try {
-    const origin = Deno.statSync(path);
-    return CFISBIS(origin, options.bigint);
-  } catch (err) {
-    if (
-      options?.throwIfNoEntry === false &&
-      ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
-    ) {
-      return;
-    }
-    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)) {
-      throw denoErrorToNodeError(err as Error, {
-        syscall: "stat",
-        path,
-      });
-    } else {
-      throw err;
-    }
-  }
-}
+// -- fstat / lstat --
+
+// The op validates the fd (getValidatedFd) + extracts bigint from options and
+// resolves the cppgc Stats (errors node-formatted with syscall "fstat").
+const fstat = callbackifyOpt(op_node_fs_fstat_stats);
+
+// Direct op binding: the op validates the fd, extracts bigint from options,
+// reads the stats, and node-formats errors (syscall "fstat").
+const fstatSync = syncOp("fstatSync", op_node_fs_fstat_stats_sync);
+
+// The op extracts bigint/throwIfNoEntry from options, validates the path
+// (async(eager_throw)), and resolves the Stats (or undefined when
+// throwIfNoEntry is false and the path is missing).
+const lstat = callbackifyOpt(op_node_fs_lstat);
+
+// Direct op binding (see lstat).
+const lstatSync = syncOp("lstatSync", op_node_fs_lstat_sync);
 
 // -- realpath --
 
@@ -373,102 +365,48 @@ type RealpathCallback = (
   path?: string | Buffer,
 ) => void;
 
-function encodeRealpathResult(
-  result: string,
-  options?: RealpathEncodingObj,
-): string | Buffer {
-  if (!options || !options.encoding || options.encoding === "utf8") {
-    return result;
-  }
-
-  const asBuffer = Buffer.from(result);
-  if (options.encoding === "buffer") {
-    return asBuffer;
-  }
-  // deno-lint-ignore prefer-primordials
-  return asBuffer.toString(options.encoding);
-}
-
-function realpathImpl(
-  path: string | Buffer,
-  options:
-    | RealpathOptions
-    | RealpathCallback
-    | RealpathEncoding
-    | undefined,
-  callback: RealpathCallback | undefined,
-  syscall: "lstat" | "realpath",
-) {
-  if (typeof options === "function") {
-    callback = options;
-  }
-  validateFunction(callback, "cb");
-  options = getOptions(options) as RealpathEncodingObj;
-  const validatedPath = getValidatedPathToString(path);
-
-  PromisePrototypeThen(
-    Deno.realPath(validatedPath),
-    (resolved) =>
-      callback!(null, encodeRealpathResult(resolved, options as never)),
-    (err) =>
-      callback!(
-        denoErrorToNodeError(err as Error, {
-          syscall,
-          path: validatedPath,
-        }),
-      ),
-  );
-}
-
-function realpath(
-  path: string | Buffer,
-  options?: RealpathOptions | RealpathCallback | RealpathEncoding,
-  callback?: RealpathCallback,
-) {
-  // Match Node: `fs.realpath` uses lstat under the hood and emits
-  // `syscall: 'lstat'`; `fs.realpath.native` calls the platform realpath
-  // and emits `syscall: 'realpath'` (see lib/fs.js).
-  realpathImpl(path, options, callback, "lstat");
-}
-
-realpath.native = function realpath_native(
-  path: string | Buffer,
-  options?: RealpathOptions | RealpathCallback | RealpathEncoding,
-  callback?: RealpathCallback,
-) {
-  realpathImpl(path, options, callback, "realpath");
-};
-
-function realpathSyncImpl(
-  path: string,
-  options: RealpathOptions | RealpathEncoding | undefined,
-  syscall: "lstat" | "realpath",
-): string | Buffer {
-  options = getOptions(options) as RealpathEncodingObj;
-  const validatedPath = getValidatedPathToString(path);
-  try {
-    const result = Deno.realPathSync(validatedPath);
-    return encodeRealpathResult(result, options);
-  } catch (err) {
-    throw denoErrorToNodeError(err as Error, {
+// The op validates the path + encoding options synchronously
+// (async(eager_throw)) and returns the result already encoded (string or
+// Buffer). `fs.realpath` reports syscall "lstat"; `fs.realpath.native`
+// reports "realpath" (matching node's lib/fs.js).
+// realpath / realpath.native share the op but pass a different `syscall`
+// ("lstat" vs "realpath"); bind it once each (no per-function wrapper SFI).
+function callbackifyRealpath(syscall: "lstat" | "realpath") {
+  return function (
+    path: string | Buffer,
+    optionsOrCb: any,
+    maybeCb?: any,
+  ) {
+    const isCb = typeof optionsOrCb === "function";
+    const promise = op_node_fs_realpath(
+      path,
+      isCb ? undefined : optionsOrCb,
       syscall,
-      path: validatedPath,
-    });
-  }
+    );
+    const callback = makeCallback(isCb ? optionsOrCb : maybeCb);
+    return PromisePrototypeThen(
+      promise,
+      (resolved: unknown) => callback(null, resolved),
+      callback,
+    );
+  };
 }
+
+const realpath = callbackifyRealpath("lstat");
+realpath.native = callbackifyRealpath("realpath");
 
 function realpathSync(
   path: string,
   options?: RealpathOptions | RealpathEncoding,
 ): string | Buffer {
-  return realpathSyncImpl(path, options, "lstat");
+  return op_node_fs_realpath_sync(path, options, "lstat");
 }
 
 realpathSync.native = function realpathSync_native(
   path: string,
   options?: RealpathOptions | RealpathEncoding,
 ): string | Buffer {
-  return realpathSyncImpl(path, options, "realpath");
+  return op_node_fs_realpath_sync(path, options, "realpath");
 };
 
 // -- readv --
@@ -479,69 +417,24 @@ type ReadvCallback = (
   buffers: readonly ArrayBufferView[],
 ) => void;
 
-function readv(
-  fd: number,
-  buffers: readonly ArrayBufferView[],
-  callback: ReadvCallback,
-): void;
-function readv(
-  fd: number,
-  buffers: readonly ArrayBufferView[],
-  position: number | ReadvCallback,
-  callback?: ReadvCallback,
-): void {
-  if (typeof fd !== "number") {
-    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
-  }
-  fd = getValidatedFd(fd);
-  validateBufferArray(buffers);
-  const cb = maybeCallback(callback || position) as ReadvCallback;
-  let pos: number | null = null;
-  if (typeof position === "number") {
-    validateInteger(position, "position", 0);
-    pos = position;
-  }
-
-  if (buffers.length === 0) {
-    process.nextTick(cb, null, 0, buffers);
-    return;
-  }
-
-  const innerReadv = async (
+// The op validates fd/buffers/position synchronously (async(eager_throw)),
+// short-circuits empty buffer lists, then seeks to `position` (-1 = current;
+// a non-number, e.g. the callback in the 3-arg form, reads as -1) and fills
+// each view in order. callbackifyWrite locates the callback and invokes it
+// like node's wrapper: `(err, read || 0, buffers)`.
+const readv = callbackifyWrite(op_node_fs_readv) as {
+  (
+    fd: number,
+    buffers: readonly ArrayBufferView[],
+    callback: ReadvCallback,
+  ): void;
+  (
     fd: number,
     buffers: readonly ArrayBufferView[],
     position: number | null,
-  ) => {
-    if (typeof position === "number") {
-      await op_node_fs_seek(fd, position, 0);
-    }
-
-    let readTotal = 0;
-    let readInBuf = 0;
-    let bufIdx = 0;
-    let buf = buffers[bufIdx];
-    while (bufIdx < buffers.length) {
-      const nread = op_node_fs_read_sync(fd, buf, -1n);
-      if (nread === null) {
-        break;
-      }
-      readInBuf += nread;
-      if (readInBuf === TypedArrayPrototypeGetByteLength(buf)) {
-        readTotal += readInBuf;
-        readInBuf = 0;
-        bufIdx += 1;
-        buf = buffers[bufIdx];
-      }
-    }
-    readTotal += readInBuf;
-
-    return readTotal;
-  };
-
-  PromisePrototypeThen(innerReadv(fd, buffers, pos), (numRead) => {
-    cb(null, numRead, buffers);
-  }, (err) => cb(err, -1, buffers));
-}
+    callback: ReadvCallback,
+  ): void;
+};
 
 ObjectDefineProperty(readv, customPromisifyArgs, {
   __proto__: null,
@@ -554,57 +447,191 @@ interface ReadVResult {
   buffers: readonly ArrayBufferView[];
 }
 
-function readvSync(
+// Direct op binding: a missing/non-number position reads from the current
+// file position.
+const readvSync = syncOp("readvSync", op_node_fs_readv_sync) as (
   fd: number,
   buffers: readonly ArrayBufferView[],
-  position: number | null = null,
-): number {
-  if (typeof fd !== "number") {
-    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
-  }
-  fd = getValidatedFd(fd);
-  validateBufferArray(buffers);
-  if (buffers.length === 0) {
-    return 0;
-  }
-  if (typeof position === "number") {
-    validateInteger(position, "position", 0);
-    op_node_fs_seek_sync(fd, position, 0);
-  }
+  position?: number | null,
+) => number;
 
-  let readTotal = 0;
-  let readInBuf = 0;
-  let bufIdx = 0;
-  let buf = buffers[bufIdx];
-  while (bufIdx < buffers.length) {
-    const nread = op_node_fs_read_sync(fd, buf, -1n);
-    if (nread === null) {
-      break;
-    }
-    readInBuf += nread;
-    if (readInBuf === TypedArrayPrototypeGetByteLength(buf)) {
-      readTotal += readInBuf;
-      readInBuf = 0;
-      bufIdx += 1;
-      buf = buffers[bufIdx];
-    }
-  }
-  readTotal += readInBuf;
-
-  return readTotal;
-}
-
-function readvPromise(
+// promisify picks up readv's customPromisifyArgs and resolves
+// `{ bytesRead, buffers }`.
+const readvPromise = promisify(readv) as (
   fd: number,
   buffers: readonly ArrayBufferView[],
   position?: number,
-): Promise<ReadVResult> {
-  return new Promise((resolve, reject) => {
-    readv(fd, buffers, position ?? null, (err, bytesRead, buffers) => {
-      if (err) reject(err);
-      else resolve({ bytesRead, buffers });
+) => Promise<ReadVResult>;
+
+// -- read --
+
+type ReadCallback = (
+  err: Error | null,
+  bytesRead: number,
+  buffer?: ArrayBufferView,
+) => void;
+
+const validateOptionsNullable = { __proto__: null, nullable: true };
+
+// `buffer?.byteLength` for views via primordial getters; undefined otherwise
+// (non-views fail validateBuffer before the value is ever used, like node's
+// optional chaining producing NaN).
+function viewByteLength(buffer: unknown): number | undefined {
+  if (ObjectPrototypeIsPrototypeOf(DataViewPrototype, buffer)) {
+    return DataViewPrototypeGetByteLength(buffer as DataView);
+  }
+  if (ArrayBufferIsView(buffer)) {
+    return TypedArrayPrototypeGetByteLength(buffer);
+  }
+  return undefined;
+}
+
+// `fs.read`: node's arity-based overload dispatch and validation order,
+// verbatim (lib/fs.js). The dispatch stays in JS because it allocates the
+// default 16384-byte Buffer and locates the callback -- both of which the
+// completion path needs -- and the zero-length case must deliver via
+// process.nextTick (ahead of promise microtasks), which an op can't do.
+function read(
+  fd: number,
+  buffer?: unknown,
+  offsetOrOptions?: unknown,
+  length?: unknown,
+  position?: unknown,
+  callback?: unknown,
+) {
+  fd = getValidatedFd(fd);
+
+  let offset = offsetOrOptions;
+  let params = null;
+  if (arguments.length <= 4) {
+    if (arguments.length === 4) {
+      // This is fs.read(fd, buffer, options, callback)
+      validateObject(offsetOrOptions, "options", validateOptionsNullable);
+      callback = length;
+      params = offsetOrOptions;
+    } else if (arguments.length === 3) {
+      // This is fs.read(fd, bufferOrParams, callback)
+      if (!ArrayBufferIsView(buffer)) {
+        // This is fs.read(fd, params, callback)
+        params = buffer;
+        ({ buffer = Buffer.alloc(16384) } = (params ?? kEmptyObject) as any);
+      }
+      callback = offsetOrOptions;
+    } else {
+      // This is fs.read(fd, callback)
+      callback = buffer;
+      buffer = Buffer.alloc(16384);
+    }
+
+    if (params !== undefined) {
+      validateObject(params, "options", validateOptionsNullable);
+    }
+    ({
+      offset = 0,
+      length = viewByteLength(buffer)! - (offset as number),
+      position = null,
+    } = (params ?? kEmptyObject) as any);
+  }
+
+  validateBuffer(buffer);
+  validateFunction(callback, "cb");
+
+  if (offset == null) {
+    offset = 0;
+  } else {
+    validateInteger(offset, "offset", 0);
+  }
+
+  (length as number) |= 0;
+
+  if (position == null) {
+    position = -1;
+  } else {
+    validatePosition(position, "position", length);
+  }
+
+  if (length === 0) {
+    return process.nextTick(function tick() {
+      (callback as ReadCallback)(null, 0, buffer as ArrayBufferView);
     });
-  });
+  }
+
+  if (viewByteLength(buffer) === 0) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "buffer",
+      buffer,
+      "is empty and cannot be written",
+    );
+  }
+
+  validateOffsetLengthRead(offset, length, viewByteLength(buffer)!);
+
+  // node's wrapper: retain `buffer` so it can't be GC'ed before completion
+  // and deliver `(err, bytesRead || 0, buffer)` on BOTH paths. The op emits
+  // final node errors (EBADF/read failures, syscall "read"). BigInt avoids
+  // precision loss for positions > 2**31; -1n reads the current position.
+  const request = createFSReqCallback();
+  PromisePrototypeThen(
+    op_node_fs_read_deferred(
+      fd,
+      TypedArrayPrototypeSubarray(
+        arrayBufferViewToUint8Array(buffer),
+        offset as number,
+        (offset as number) + (length as number),
+      ),
+      typeof position === "bigint" ? position : BigInt(position as number),
+    ),
+    (bytesRead: number) => {
+      unregisterActiveRequest(request);
+      (callback as ReadCallback)(
+        null,
+        bytesRead || 0,
+        buffer as ArrayBufferView,
+      );
+    },
+    (err: Error) => {
+      unregisterActiveRequest(request);
+      (callback as ReadCallback)(err, 0, buffer as ArrayBufferView);
+    },
+  );
+}
+
+ObjectDefineProperty(read, customPromisifyArgs, {
+  __proto__: null,
+  value: ["bytesRead", "buffer"],
+  enumerable: false,
+});
+
+// `fs.readSync`: the whole overload resolution + validation + positioned
+// read happens in the op; `arguments.length` rides along because node's
+// dispatch is arity-based (an explicit `undefined` offsetOrOptions with five
+// args selects the positional form, where an undefined length |0s to a
+// zero-byte read). The op returns -1 when the (non-zero-length) target
+// buffer is empty -- the throw stays here for util.inspect's rendering of
+// the received buffer in the error message.
+function readSync(
+  fd: number,
+  buffer: ArrayBufferView,
+  offsetOrOptions?: unknown,
+  length?: unknown,
+  position?: unknown,
+): number {
+  const bytesRead = op_node_fs_read_v_sync(
+    arguments.length,
+    fd,
+    buffer,
+    offsetOrOptions,
+    length,
+    position,
+  );
+  if (bytesRead === -1) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "buffer",
+      buffer,
+      "is empty and cannot be written",
+    );
+  }
+  return bytesRead;
 }
 
 // -- readFile --
@@ -613,22 +640,6 @@ const readFileDefaultOptions = {
   __proto__: null,
   flag: "r",
 };
-
-function readFileMaybeDecode(data: Uint8Array, encoding: Encodings): string;
-function readFileMaybeDecode(
-  data: Uint8Array,
-  encoding: null | undefined,
-): Buffer;
-function readFileMaybeDecode(
-  data: Uint8Array,
-  encoding: Encodings | null | undefined,
-): string | Buffer {
-  // deno-lint-ignore prefer-primordials
-  const buffer = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-  // deno-lint-ignore prefer-primordials
-  if (encoding) return buffer.toString(encoding);
-  return buffer;
-}
 
 type ReadFileTextCallback = (err: Error | null, data?: string) => void;
 type ReadFileBinaryCallback = (err: Error | null, data?: Buffer) => void;
@@ -642,35 +653,41 @@ type ReadFileCallback =
   | ReadFileGenericCallback;
 type ReadFilePath = string | URL | FileHandle | number;
 
-async function readFileAsync(
-  path: string,
-  options: FileOptions | undefined,
-): Promise<Uint8Array> {
-  let cancelRid: number | undefined;
-  let abortHandler: (rid: number) => void;
-  const flagsNumber = stringToFlags(options!.flag, "options.flag");
-  if (options?.signal) {
-    options.signal.throwIfAborted();
-    cancelRid = core.createCancelHandle();
-    abortHandler = () => core.tryClose(cancelRid as number);
-    options.signal[abortSignal.add](abortHandler);
+// Runs `fn(cancelRid)` with node's AbortSignal semantics, shared by the
+// readFile/writeFile signal paths: reject with node's AbortError when already
+// aborted, close the cancel handle on abort (which interrupts the in-flight
+// op), and always surface the abort (with `signal.reason` as cause) once the
+// signal fired -- even if the op won the race. The op's own cancellation
+// error is never observable: whenever the handle closes, `signal.aborted` is
+// set and the AbortError replaces it.
+function callWithSignal<T>(
+  signal: AbortSignal,
+  fn: (cancelRid: number) => Promise<T>,
+): Promise<T> {
+  if (signal.aborted) {
+    return PromiseReject(new AbortError(undefined, { cause: signal.reason }));
   }
-
-  try {
-    const data = await op_fs_read_file_async(
-      path,
-      cancelRid,
-      flagsNumber,
-    );
-    return data;
-  } finally {
-    if (options?.signal) {
-      options.signal[abortSignal.remove](abortHandler);
-
-      // always throw the abort error when aborted
-      options.signal.throwIfAborted();
+  const cancelRid = core.createCancelHandle();
+  const abortHandler = () => core.tryClose(cancelRid as number);
+  signal[abortSignal.add](abortHandler);
+  const finish = () => {
+    signal[abortSignal.remove](abortHandler);
+    core.tryClose(cancelRid as number);
+    if (signal.aborted) {
+      throw new AbortError(undefined, { cause: signal.reason });
     }
-  }
+  };
+  return PromisePrototypeThen(
+    fn(cancelRid as number),
+    (value: T) => {
+      finish();
+      return value;
+    },
+    (e: Error) => {
+      finish();
+      throw e;
+    },
+  );
 }
 
 function readFileCheckAborted(signal: AbortSignal | undefined) {
@@ -696,8 +713,16 @@ function readFileConcatBuffers(buffers: Uint8Array[]): Uint8Array {
   return contents;
 }
 
-async function readFileFromFd(fd: number, options?: FileOptions) {
-  const signal = options?.signal;
+// Abort-capable fd read (the no-signal case goes straight to
+// `op_node_fs_read_file`, whose read_to_end handles unknown-size sources and
+// "zero-byte liar" files). This stays a JS chunked loop -- NOT a one-shot
+// native read with a cancel handle -- because node guarantees an abort
+// scheduled via process.nextTick before a chunk read completes is observed
+// (test-fs-promises-file-handle-readFile's tick-0 case), which needs
+// JS-visible async hops between chunk reads. Returns raw bytes; the caller
+// encodes via `op_node_fs_encode_bytes`.
+async function readFileFromFdWithSignal(fd: number, options: FileOptions) {
+  const signal = options.signal;
   readFileCheckAborted(signal);
 
   const statFields = op_node_fs_fstat_sync(fd);
@@ -785,8 +810,6 @@ function readFile(
     )
   ) {
     pathOrRid = (pathOrRid as FileHandle).fd;
-  } else if (typeof pathOrRid !== "number") {
-    pathOrRid = getValidatedPathToString(pathOrRid as string);
   }
 
   let cb: ReadFileCallback | undefined;
@@ -801,18 +824,33 @@ function readFile(
     readFileDefaultOptions,
   );
 
-  let p: Promise<Uint8Array>;
-  if (typeof pathOrRid === "string") {
-    p = readFileAsync(pathOrRid, options);
+  // The common no-signal cases resolve to an already-encoded string/Buffer
+  // (the ops parse options + decode). With a signal: the path case uses the
+  // shared cancel-handle wrapper (the abort interrupts the native open/read);
+  // the fd case stays a JS chunked loop for node's nextTick abort-timing
+  // guarantee (see readFileFromFdWithSignal).
+  let p: Promise<string | Buffer>;
+  if (!options?.signal) {
+    p = typeof pathOrRid === "number"
+      ? op_node_fs_read_file(pathOrRid, options)
+      : op_node_fs_read_file_path(pathOrRid, options);
+  } else if (typeof pathOrRid === "number") {
+    p = PromisePrototypeThen(
+      readFileFromFdWithSignal(pathOrRid, options),
+      (data: Uint8Array) => op_node_fs_encode_bytes(data, options),
+    );
   } else {
-    p = readFileFromFd(pathOrRid as number, options);
+    p = callWithSignal(
+      options.signal,
+      (cancelRid: number) =>
+        op_node_fs_read_file_path(pathOrRid, options, cancelRid),
+    );
   }
 
   if (cb) {
     PromisePrototypeThen(
       p,
-      (data: Uint8Array) => {
-        const textOrBuffer = readFileMaybeDecode(data, options?.encoding);
+      (textOrBuffer) => {
         (cb as ReadFileBinaryCallback)(null, textOrBuffer);
       },
       (err) =>
@@ -839,37 +877,17 @@ function readFilePromise(
   });
 }
 
-function readFileSync(
-  path: string | URL | number,
-  opt: TextOptionsArgument,
-): string;
-function readFileSync(
-  path: string | URL | number,
-  opt?: BinaryOptionsArgument,
-): Buffer;
-function readFileSync(
-  path: string | URL | number,
-  opt?: FileOptionsArgument,
-): string | Buffer {
-  const options = getOptions<FileOptions>(opt, readFileDefaultOptions);
-
-  let data;
-  if (typeof path === "number") {
-    data = op_node_fs_read_file_sync(path);
-  } else {
-    // Validate/convert path to string (throws on invalid types)
-    path = getValidatedPathToString(path as unknown as string);
-
-    const flagsNumber = stringToFlags(options?.flag, "options.flag");
-    try {
-      data = op_fs_read_file_sync(path, flagsNumber);
-    } catch (err) {
-      throw denoErrorToNodeError(err, { path, syscall: "open" });
-    }
-  }
-  const textOrBuffer = readFileMaybeDecode(data, options?.encoding);
-  return textOrBuffer;
-}
+// Direct op binding: the op validates path + options (flag, encoding), reads
+// all bytes, and returns them already encoded, throwing final node errors. A
+// numeric first arg is an already-open fd (read directly, no open).
+const readFileSync = syncOp(
+  "readFileSync",
+  op_node_fs_read_file_path_sync,
+) as {
+  (path: string | URL | number, opt: TextOptionsArgument): string;
+  (path: string | URL | number, opt?: BinaryOptionsArgument): Buffer;
+  (path: string | URL | number, opt?: FileOptionsArgument): string | Buffer;
+};
 
 // -- readlink --
 
@@ -882,95 +900,22 @@ interface ReadlinkOptions {
   encoding?: string | null;
 }
 
-function readlinkMaybeEncode(
-  data: string,
-  encoding: string | null,
-): string | Uint8Array {
-  if (encoding === "buffer") {
-    return new TextEncoder().encode(data);
-  }
-  return data;
-}
-
-function readlinkGetEncoding(
-  optOrCallback?: ReadlinkOptions | ReadlinkCallback,
-): string | null {
-  if (!optOrCallback || typeof optOrCallback === "function") {
-    return null;
-  } else {
-    if (optOrCallback.encoding) {
-      if (
-        optOrCallback.encoding === "utf8" ||
-        optOrCallback.encoding === "utf-8"
-      ) {
-        return "utf8";
-      } else if (optOrCallback.encoding === "buffer") {
-        return "buffer";
-      } else {
-        notImplemented(`fs.readlink encoding=${optOrCallback.encoding}`);
-      }
-    }
-    return null;
-  }
-}
-
-function readlink(
-  path: string | Buffer | URL,
-  optOrCallback: ReadlinkCallback | ReadlinkOptions,
-  callback?: ReadlinkCallback,
-) {
-  path = getValidatedPathToString(path);
-
-  let cb: ReadlinkCallback | undefined;
-  if (typeof optOrCallback === "function") {
-    cb = optOrCallback;
-  } else {
-    cb = callback;
-  }
-  cb = makeCallback(cb);
-
-  const encoding = readlinkGetEncoding(optOrCallback);
-
-  PromisePrototypeThen(
-    Deno.readLink(path),
-    (data: string) => {
-      const res = readlinkMaybeEncode(data, encoding);
-      if (cb) cb(null, res);
-    },
-    (err: Error) => {
-      if (cb) {
-        (cb as (e: Error) => void)(denoErrorToNodeError(err, {
-          syscall: "readlink",
-          path,
-        }));
-      }
-    },
-  );
-}
+// The op validates the path + encoding options synchronously
+// (async(eager_throw)) and returns the link target already encoded
+// (string or Buffer).
+const readlink = callbackifyOpt(op_node_fs_read_link);
 
 const readlinkPromise = promisify(readlink) as (
   path: string | Buffer | URL,
   opt?: ReadlinkOptions,
 ) => Promise<string | Uint8Array>;
 
-function readlinkSync(
+// Direct op binding: the op validates path + encoding and returns the link
+// target already encoded.
+const readlinkSync = syncOp("readlinkSync", op_node_fs_read_link_sync) as (
   path: string | Buffer | URL,
   opt?: ReadlinkOptions,
-): string | Uint8Array {
-  path = getValidatedPathToString(path);
-
-  try {
-    return readlinkMaybeEncode(
-      Deno.readLinkSync(path),
-      readlinkGetEncoding(opt),
-    );
-  } catch (error) {
-    throw denoErrorToNodeError(error, {
-      syscall: "readlink",
-      path,
-    });
-  }
-}
+) => string | Uint8Array;
 
 // -- statfs --
 
@@ -980,7 +925,7 @@ type StatFsOptions = {
   bigint?: boolean;
 };
 
-class StatFs<T> {
+type StatFs<T> = {
   type: T;
   bsize: T;
   blocks: T;
@@ -988,759 +933,158 @@ class StatFs<T> {
   bavail: T;
   files: T;
   ffree: T;
-  constructor(
-    type: T,
-    bsize: T,
-    blocks: T,
-    bfree: T,
-    bavail: T,
-    files: T,
-    ffree: T,
-  ) {
-    this.type = type;
-    this.bsize = bsize;
-    this.blocks = blocks;
-    this.bfree = bfree;
-    this.bavail = bavail;
-    this.files = files;
-    this.ffree = ffree;
-  }
-}
-
-type StatFsOpResult = {
-  type: number;
-  bsize: number;
-  blocks: number;
-  bfree: number;
-  bavail: number;
-  files: number;
-  ffree: number;
 };
 
-function opResultToStatFs(
-  result: StatFsOpResult,
-  bigint: true,
-): StatFs<bigint>;
-function opResultToStatFs(
-  result: StatFsOpResult,
-  bigint: false,
-): StatFs<number>;
-function opResultToStatFs(
-  result: StatFsOpResult,
-  bigint: boolean,
-): StatFs<bigint> | StatFs<number> {
-  if (!bigint) {
-    return new StatFs(
-      result.type,
-      result.bsize,
-      result.blocks,
-      result.bfree,
-      result.bavail,
-      result.files,
-      result.ffree,
-    );
-  }
-  return new StatFs(
-    BigInt(result.type),
-    BigInt(result.bsize),
-    BigInt(result.blocks),
-    BigInt(result.bfree),
-    BigInt(result.bavail),
-    BigInt(result.files),
-    BigInt(result.ffree),
-  );
-}
+// The op validates the path + options synchronously (async(eager_throw)),
+// throws the final node error (syscall "statfs", path), and returns the
+// statfs object with Number or BigInt fields per `options.bigint`.
+const statfs = callbackifyOpt(op_node_statfs);
 
-function statfs(
-  path: string | Buffer | URL,
-  callback: StatFsCallback<number>,
-): void;
-function statfs(
-  path: string | Buffer | URL,
-  options: { bigint?: false },
-  callback: StatFsCallback<number>,
-): void;
-function statfs(
-  path: string | Buffer | URL,
-  options: { bigint: true },
-  callback: StatFsCallback<bigint>,
-): void;
-function statfs(
-  path: string | Buffer | URL,
-  options: StatFsOptions | StatFsCallback<number> | undefined,
-  callback?: StatFsCallback<number> | StatFsCallback<bigint>,
-): void {
-  if (typeof options === "function") {
-    callback = options;
-    options = undefined;
-  }
-  // @ts-expect-error callback type is known to be valid
-  callback = makeCallback(callback);
-  path = getValidatedPathToString(path);
-  const bigint = typeof options?.bigint === "boolean" ? options.bigint : false;
+// Direct op bindings (no JS wrapper to bake into the snapshot): the op does
+// all validation + the syscall. See also chmodSync/rmSync/etc. below.
+const statfsSync = op_node_statfs_sync;
 
-  PromisePrototypeThen(
-    op_node_statfs(path, bigint),
-    (statFs) => {
-      callback(
-        null,
-        opResultToStatFs(statFs, bigint),
-      );
-    },
-    (err: Error) =>
-      callback(denoErrorToNodeError(err, {
-        syscall: "statfs",
-        path,
-      })),
-  );
-}
-
-function statfsSync(
+// The op validates path + mode synchronously (async(eager_throw));
+// callbackifyOpt treats the optional 2nd arg as mode-or-callback.
+const access = callbackifyOpt(op_node_fs_access, 1) as (
   path: string | Buffer | URL,
-  options?: { bigint?: false },
-): StatFs<number>;
-function statfsSync(
-  path: string | Buffer | URL,
-  options: { bigint: true },
-): StatFs<bigint>;
-function statfsSync(
-  path: string | Buffer | URL,
-  options?: StatFsOptions,
-): StatFs<number> | StatFs<bigint> {
-  path = getValidatedPathToString(path);
-  const bigint = typeof options?.bigint === "boolean" ? options.bigint : false;
-
-  try {
-    const result = op_node_statfs_sync(
-      path,
-      bigint,
-    );
-    return opResultToStatFs(result, bigint);
-  } catch (err) {
-    throw denoErrorToNodeError(err as Error, {
-      syscall: "statfs",
-      path,
-    });
-  }
-}
-
-function access(
-  path: string | Buffer | URL,
-  mode: number | CallbackWithError,
+  mode?: number | CallbackWithError,
   callback?: CallbackWithError,
-) {
-  if (typeof mode === "function") {
-    callback = mode;
-    mode = fsConstants.F_OK;
-  }
+) => void;
 
-  // deno-lint-ignore prefer-primordials
-  path = getValidatedPath(path).toString();
-  mode = getValidMode(mode, "access");
-  const cb = makeCallback(callback);
+const accessSync = syncOp("accessSync", op_node_fs_access_sync);
 
-  // deno-lint-ignore prefer-primordials
-  Deno.lstat(path).then(
-    (info) => {
-      if (info.mode === null) {
-        cb(null);
-        return;
-      }
-      let m = +mode || 0;
-      let fileMode = +info.mode || 0;
-
-      if (Deno.build.os === "windows") {
-        m &= ~fsConstants.X_OK;
-      } else if (info.uid === Deno.uid()) {
-        fileMode >>= 6;
-      }
-
-      if ((m & fileMode) === m) {
-        cb(null);
-      } else {
-        const e: any = new Error(
-          `EACCES: permission denied, access '${path}'`,
-        );
-        e.path = path;
-        e.syscall = "access";
-        e.errno = codeMap.get("EACCES");
-        e.code = "EACCES";
-        cb(e);
-      }
-    },
-    (err) => {
-      // deno-lint-ignore prefer-primordials
-      if (err instanceof Deno.errors.NotFound) {
-        const e: any = new Error(
-          `ENOENT: no such file or directory, access '${path}'`,
-        );
-        e.path = path;
-        e.syscall = "access";
-        e.errno = codeMap.get("ENOENT");
-        e.code = "ENOENT";
-        cb(e);
-      } else {
-        cb(err);
-      }
-    },
-  );
-}
-
-function accessSync(path: string | Buffer | URL, mode?: number) {
-  // deno-lint-ignore prefer-primordials
-  path = getValidatedPath(path).toString();
-  mode = getValidMode(mode, "access");
-  try {
-    // deno-lint-ignore prefer-primordials
-    const info = Deno.lstatSync(path.toString());
-    if (info.mode === null) {
-      return;
-    }
-    let m = +mode! || 0;
-    let fileMode = +info.mode! || 0;
-    if (Deno.build.os === "windows") {
-      m &= ~fsConstants.X_OK;
-    } else if (info.uid === Deno.uid()) {
-      fileMode >>= 6;
-    }
-    if ((m & fileMode) === m) {
-      // all required flags exist
-    } else {
-      const e: any = new Error(`EACCES: permission denied, access '${path}'`);
-      e.path = path;
-      e.syscall = "access";
-      e.errno = codeMap.get("EACCES");
-      e.code = "EACCES";
-      throw e;
-    }
-  } catch (err) {
-    // deno-lint-ignore prefer-primordials
-    if (err instanceof Deno.errors.NotFound) {
-      const e: any = new Error(
-        `ENOENT: no such file or directory, access '${path}'`,
-      );
-      e.path = path;
-      e.syscall = "access";
-      e.errno = codeMap.get("ENOENT");
-      e.code = "ENOENT";
-      throw e;
-    } else {
-      throw err;
-    }
-  }
-}
-
-/**
- * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once these
- * are implemented. See https://github.com/denoland/deno/issues/3403
- */
+// Common case (no AbortSignal, no custom iterable): the op applies node's
+// appendFile option handling (default flag "a") and runs the open/write/close
+// natively, emitting the final node errors. The rare signal/iterable cases
+// force the append flag like node and reuse writeFile's JS orchestration.
 function appendFile(
   path: string | number | URL,
   data: string | Uint8Array,
   options: Encodings | WriteFileOptions | CallbackWithError,
   callback?: CallbackWithError,
 ) {
-  callback = maybeCallback(callback || options);
-  options = getOptions(options, { encoding: "utf8", mode: 0o666, flag: "a" });
-
-  // Don't make changes directly on options object
-  options = copyObject(options);
-
-  // Force append behavior when using a supplied file descriptor
-  if (!options.flag || isFd(path)) {
-    options.flag = "a";
+  callback ||= options as CallbackWithError;
+  validateFunction(callback, "cb");
+  if (typeof options === "function") {
+    options = undefined;
   }
 
-  writeFile(path, data, options, callback);
-}
-
-/**
- * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once these
- * are implemented. See https://github.com/denoland/deno/issues/3403
- */
-function appendFileSync(
-  path: string | number | URL,
-  data: string | Uint8Array,
-  options?: Encodings | WriteFileOptions,
-) {
-  options = getOptions(options, { encoding: "utf8", mode: 0o666, flag: "a" });
-
-  // Don't make changes directly on options object
-  options = copyObject(options);
-
-  // Force append behavior when using a supplied file descriptor
-  if (!options.flag || isFd(path)) {
-    options.flag = "a";
+  if (getSignal(options) || _isCustomIterable(data)) {
+    options = copyObject(
+      getOptions(options, { encoding: "utf8", mode: 0o666, flag: "a" }),
+    );
+    // Force append behavior when using a supplied file descriptor
+    if (!options.flag || isFd(path)) {
+      options.flag = "a";
+    }
+    writeFile(path, data, options, callback);
+    return;
   }
-
-  writeFileSync(path, data, options);
-}
-
-function chmod(
-  path: string | Buffer | URL,
-  mode: string | number,
-  callback: CallbackWithError,
-) {
-  path = getValidatedPathToString(path);
-  mode = parseFileMode(mode, "mode");
 
   PromisePrototypeThen(
-    Deno.chmod(path, mode),
-    () => callback(null),
-    (err: Error) =>
-      callback(denoErrorToNodeError(err, { syscall: "chmod", path })),
-  );
-}
-
-function chmodSync(path: string | Buffer | URL, mode: string | number) {
-  path = getValidatedPathToString(path);
-  mode = parseFileMode(mode, "mode");
-
-  try {
-    Deno.chmodSync(path, mode);
-  } catch (error) {
-    throw denoErrorToNodeError(error as Error, { syscall: "chmod", path });
-  }
-}
-
-function chown(
-  path: string | Buffer | URL,
-  uid: number,
-  gid: number,
-  callback: CallbackWithError,
-) {
-  callback = makeCallback(callback);
-  // deno-lint-ignore prefer-primordials
-  path = getValidatedPath(path).toString();
-  validateInteger(uid, "uid", -1, kMaxUserId);
-  validateInteger(gid, "gid", -1, kMaxUserId);
-
-  // deno-lint-ignore prefer-primordials
-  Deno.chown(path, uid, gid).then(
+    op_node_fs_append_file(path, data, options),
     () => callback(null),
     callback,
   );
 }
 
-function chownSync(
-  path: string | Buffer | URL,
-  uid: number,
-  gid: number,
-) {
-  // deno-lint-ignore prefer-primordials
-  path = getValidatedPath(path).toString();
-  validateInteger(uid, "uid", -1, kMaxUserId);
-  validateInteger(gid, "gid", -1, kMaxUserId);
+// Direct op binding: writeFileSync with node's appendFile option handling
+// (default flag "a") done natively, throwing the final node error.
+const appendFileSync = syncOp(
+  "appendFileSync",
+  op_node_fs_append_file_sync,
+) as (
+  path: string | number | URL,
+  data: string | Uint8Array,
+  options?: Encodings | WriteFileOptions,
+) => void;
 
-  Deno.chownSync(path, uid, gid);
-}
+const chmod = callbackify(op_node_fs_chmod, 2);
+
+const chmodSync = syncOp("chmodSync", op_node_fs_chmod_sync);
+
+const chown = callbackify(op_node_fs_chown, 3);
+
+const chownSync = syncOp("chownSync", op_node_fs_chown_sync);
 
 function defaultCloseCallback(err: Error | null) {
   if (err !== null) throw err;
 }
 
-function close(
-  fd: number,
-  callback: CallbackWithError = defaultCloseCallback,
-) {
-  fd = getValidatedFd(fd);
-  if (callback !== defaultCloseCallback) {
-    callback = makeCallback(callback);
-  }
+// The async op validates the fd eagerly (getValidatedFd) and runs the close on
+// a microtask (resolving the promise), so the callback fires asynchronously
+// like node. No-callback close uses node's `defaultCloseCallback` (rethrows on
+// error).
+const close = callbackify(op_node_fs_close_async, 1, defaultCloseCallback);
 
-  // Defer to a microtask rather than a JS `setTimeout(0)`. Both make the
-  // callback asynchronous, but a real timer trips Deno's test sanitizer as a
-  // leaked timeout when a test ends before the timer fires. Node.js' libuv
-  // libc-backed `close` is invisible to userland timer queues; a microtask
-  // matches that more closely.
-  queueMicrotask(() => {
-    let error = null;
-    try {
-      op_node_fs_close(fd);
-    } catch (err) {
-      error = ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)
-        ? err as Error
-        : new Error("[non-error thrown]");
-    }
-    callback(error);
-  });
-}
+const closeSync = syncOp("closeSync", op_node_fs_close);
 
-function closeSync(fd: number) {
-  fd = getValidatedFd(fd);
-  op_node_fs_close(fd);
-}
+const fchown = callbackify(op_node_fs_fchown, 3);
 
-function fchown(
-  fd: number,
-  uid: number,
-  gid: number,
-  callback: CallbackWithError,
-) {
-  validateInteger(fd, "fd", 0, 2147483647);
-  validateInteger(uid, "uid", -1, kMaxUserId);
-  validateInteger(gid, "gid", -1, kMaxUserId);
-  callback = makeCallback(callback);
+const fchmod = callbackify(op_node_fs_fchmod, 2);
 
-  PromisePrototypeThen(
-    op_node_fs_fchown(fd, uid, gid),
-    () => callback(null),
-    callback,
-  );
-}
+const fchownSync = syncOp("fchownSync", op_node_fs_fchown_sync);
 
-function fchmod(
-  fd: number,
-  mode: string | number,
-  callback: CallbackWithError,
-) {
-  validateInteger(fd, "fd", 0, 2147483647);
-  mode = parseFileMode(mode, "mode");
-  callback = makeCallback(callback);
+// The op validates fd (typeof number) + len (validateInteger, default 0) and
+// truncates; callbackifyOpt(.., 1) treats the optional 2nd arg as len-or-cb.
+const ftruncate = callbackifyOpt(op_node_fs_ftruncate, 1);
 
-  PromisePrototypeThen(
-    op_node_fs_fchmod(fd, mode),
-    () => callback(null),
-    callback,
-  );
-}
+const ftruncateSync = syncOp("ftruncateSync", op_node_fs_ftruncate_sync);
 
-function fchownSync(
-  fd: number,
-  uid: number,
-  gid: number,
-) {
-  validateInteger(fd, "fd", 0, 2147483647);
-  validateInteger(uid, "uid", -1, kMaxUserId);
-  validateInteger(gid, "gid", -1, kMaxUserId);
+const futimes = callbackify(op_node_fs_futimes, 3);
 
-  op_node_fs_fchown_sync(fd, uid, gid);
-}
+const fchmodSync = syncOp("fchmodSync", op_node_fs_fchmod_sync);
 
-function ftruncate(
-  fd: number,
-  lenOrCallback: number | CallbackWithError = 0,
-  maybeCallback?: CallbackWithError,
-) {
-  let len: number = 0;
-  let callback: CallbackWithError | undefined;
-  if (typeof lenOrCallback === "function") {
-    callback = lenOrCallback;
-  } else {
-    len = lenOrCallback;
-    callback = maybeCallback;
-  }
+const fdatasync = callbackify(op_node_fs_fdatasync, 1);
 
-  // Match Node: validate fd and len before any async work (lib/fs.js).
-  if (typeof fd !== "number") {
-    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
-  }
-  validateInteger(len, "len");
-  len = MathMax(0, len);
+const futimesSync = syncOp("futimesSync", op_node_fs_futimes_sync);
 
-  if (!callback) throw new Error("No callback function supplied");
-
-  PromisePrototypeThen(
-    op_node_fs_ftruncate(fd, len),
-    () => callback(null),
-    callback,
-  );
-}
-
-function ftruncateSync(fd: number, len: number = 0) {
-  if (typeof fd !== "number") {
-    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
-  }
-  validateInteger(len, "len");
-  op_node_fs_ftruncate_sync(fd, MathMax(0, len));
-}
-
-function _getValidTime(
-  time: number | string | Date,
-  name: string,
-): number | Date {
-  if (typeof time === "string") {
-    time = Number(time);
-  }
-
-  if (
-    typeof time === "number" &&
-    (NumberIsNaN(time) || !NumberIsFinite(time))
-  ) {
-    throw new Deno.errors.InvalidData(
-      `invalid ${name}, must not be infinity or NaN`,
-    );
-  }
-
-  return toUnixTimestamp(time);
-}
-
-function futimes(
-  fd: number,
-  atime: number | string | Date,
-  mtime: number | string | Date,
-  callback: CallbackWithError,
-) {
-  if (!callback) {
-    throw new Deno.errors.InvalidData("No callback function supplied");
-  }
-  if (typeof fd !== "number") {
-    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
-  }
-
-  validateInteger(fd, "fd", 0, 2147483647);
-
-  atime = _getValidTime(atime, "atime");
-  mtime = _getValidTime(mtime, "mtime");
-
-  const atimeSecs = MathTrunc(atime as number);
-  const atimeNanos = MathTrunc(
-    ((atime as number) - atimeSecs) * 1e9,
-  );
-  const mtimeSecs = MathTrunc(mtime as number);
-  const mtimeNanos = MathTrunc(
-    ((mtime as number) - mtimeSecs) * 1e9,
-  );
-  PromisePrototypeThen(
-    op_node_fs_futimes(fd, atimeSecs, atimeNanos, mtimeSecs, mtimeNanos),
-    () => callback(null),
-    callback,
-  );
-}
-
-function fchmodSync(fd: number, mode: string | number) {
-  validateInteger(fd, "fd", 0, 2147483647);
-
-  op_node_fs_fchmod_sync(fd, parseFileMode(mode, "mode"));
-}
-
-function fdatasync(
-  fd: number,
-  callback: CallbackWithError,
-) {
-  validateInt32(fd, "fd", 0);
-  PromisePrototypeThen(
-    op_node_fs_fdatasync(fd),
-    () => callback(null),
-    callback,
-  );
-}
-
-function futimesSync(
-  fd: number,
-  atime: number | string | Date,
-  mtime: number | string | Date,
-) {
-  if (typeof fd !== "number") {
-    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
-  }
-
-  validateInteger(fd, "fd", 0, 2147483647);
-
-  atime = _getValidTime(atime, "atime");
-  mtime = _getValidTime(mtime, "mtime");
-
-  const atimeSecs = MathTrunc(atime as number);
-  const atimeNanos = MathTrunc(
-    ((atime as number) - atimeSecs) * 1e9,
-  );
-  const mtimeSecs = MathTrunc(mtime as number);
-  const mtimeNanos = MathTrunc(
-    ((mtime as number) - mtimeSecs) * 1e9,
-  );
-  op_node_fs_futimes_sync(fd, atimeSecs, atimeNanos, mtimeSecs, mtimeNanos);
-}
-
-const lchmod:
-  | ((
-    path: string | Buffer | URL,
-    mode: number,
-    callback: CallbackWithError,
-  ) => void)
-  | undefined = !isMacOS ? undefined : (
-    path: string | Buffer | URL,
-    mode: number,
-    callback: CallbackWithError,
-  ) => {
-    path = getValidatedPathToString(path);
-    mode = parseFileMode(mode, "mode");
-    callback = makeCallback(callback);
-
-    PromisePrototypeThen(
-      op_node_lchmod(path, mode),
-      () => callback(null),
-      (err: Error) => callback(err),
-    );
-  };
+const lchmod = !isMacOS ? undefined : callbackify(op_node_lchmod, 2);
 
 const lchmodSync:
   | ((
     path: string | Buffer | URL,
     mode: number,
   ) => void)
-  | undefined = !isMacOS
-    ? undefined
-    : (path: string | Buffer | URL, mode: number) => {
-      path = getValidatedPathToString(path);
-      mode = parseFileMode(mode, "mode");
-      return op_node_lchmod_sync(path, mode);
-    };
+  | undefined = !isMacOS ? undefined : op_node_lchmod_sync;
 
-function lchown(
+const lchown = callbackify(op_node_lchown, 3);
+
+const fdatasyncSync = syncOp("fdatasyncSync", op_node_fs_fdatasync_sync);
+
+const fsync = callbackify(op_node_fs_fsync, 1);
+
+// Direct op binding: the op validates path + uid/gid (validateInteger) and
+// node-formats errors (syscall "lchown").
+const lchownSync = op_node_lchown_sync as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
-  callback: CallbackWithError,
-) {
-  callback = makeCallback(callback);
-  path = getValidatedPathToString(path);
-  validateInteger(uid, "uid", -1, kMaxUserId);
-  validateInteger(gid, "gid", -1, kMaxUserId);
+) => void;
 
-  PromisePrototypeThen(
-    op_node_lchown(path, uid, gid),
-    () => callback(null),
-    callback,
-  );
-}
+const fsyncSync = syncOp("fsyncSync", op_node_fs_fsync_sync);
 
-function fdatasyncSync(fd: number) {
-  validateInt32(fd, "fd", 0);
-  op_node_fs_fdatasync_sync(fd);
-}
+const link = callbackify(op_node_fs_link, 2);
 
-function fsync(
-  fd: number,
-  callback: CallbackWithError,
-) {
-  validateInt32(fd, "fd", 0);
-  PromisePrototypeThen(
-    op_node_fs_fsync(fd),
-    () => callback(null),
-    callback,
-  );
-}
-
-function lchownSync(
-  path: string | Buffer | URL,
-  uid: number,
-  gid: number,
-) {
-  path = getValidatedPathToString(path);
-  validateInteger(uid, "uid", -1, kMaxUserId);
-  validateInteger(gid, "gid", -1, kMaxUserId);
-
-  op_node_lchown_sync(path, uid, gid);
-}
-
-function fsyncSync(fd: number) {
-  validateInt32(fd, "fd", 0);
-  op_node_fs_fsync_sync(fd);
-}
-
-function link(
+// Direct op binding: the op validates both paths (existingPath/newPath arg
+// names like node) and node-formats errors (syscall "link").
+const linkSync = syncOp("linkSync", op_node_fs_link_sync) as (
   existingPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
-  callback: CallbackWithError,
-) {
-  existingPath = getValidatedPathToString(existingPath);
-  newPath = getValidatedPathToString(newPath);
+) => void;
 
-  // Match Node: errors carry both `path` and `dest` (see lib/fs.js link).
-  PromisePrototypeThen(
-    Deno.link(existingPath, newPath),
-    () => callback(null),
-    (err) =>
-      callback(
-        denoErrorToNodeError(err as Error, {
-          syscall: "link",
-          path: existingPath as string,
-          dest: newPath as string,
-        }),
-      ),
-  );
-}
+const unlink = callbackify(op_node_fs_remove, 1);
+const unlinkSync = syncOp("unlinkSync", op_node_fs_remove_sync);
 
-function linkSync(
-  existingPath: string | Buffer | URL,
-  newPath: string | Buffer | URL,
-) {
-  existingPath = getValidatedPathToString(existingPath);
-  newPath = getValidatedPathToString(newPath);
+const rename = callbackify(op_node_fs_rename, 2);
 
-  try {
-    Deno.linkSync(existingPath, newPath);
-  } catch (err) {
-    throw denoErrorToNodeError(err as Error, {
-      syscall: "link",
-      path: existingPath as string,
-      dest: newPath as string,
-    });
-  }
-}
-
-function unlink(
-  path: string | Buffer | URL,
-  callback: (err?: Error) => void,
-): void {
-  path = getValidatedPathToString(path);
-  validateFunction(callback, "callback");
-
-  PromisePrototypeThen(
-    Deno.remove(path),
-    () => callback(),
-    (err: Error) =>
-      callback(denoErrorToNodeError(err, { syscall: "unlink", path })),
-  );
-}
-
-function unlinkSync(path: string | Buffer | URL): void {
-  path = getValidatedPathToString(path);
-  try {
-    Deno.removeSync(path);
-  } catch (err) {
-    throw denoErrorToNodeError(err as Error, { syscall: "unlink", path });
-  }
-}
-
-function rename(
+// Direct op binding: the op validates both paths (oldPath/newPath arg names
+// like node) and node-formats errors (syscall "rename").
+const renameSync = syncOp("renameSync", op_node_fs_rename_sync) as (
   oldPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
-  callback: (err?: Error) => void,
-) {
-  oldPath = getValidatedPathToString(oldPath, "oldPath");
-  newPath = getValidatedPathToString(newPath, "newPath");
-  validateFunction(callback, "callback");
-
-  PromisePrototypeThen(
-    Deno.rename(oldPath, newPath),
-    () => callback(),
-    (err: Error) =>
-      callback(denoErrorToNodeError(err, {
-        syscall: "rename",
-        path: oldPath,
-        dest: newPath,
-      })),
-  );
-}
-
-function renameSync(
-  oldPath: string | Buffer | URL,
-  newPath: string | Buffer | URL,
-) {
-  oldPath = getValidatedPathToString(oldPath, "oldPath");
-  newPath = getValidatedPathToString(newPath, "newPath");
-
-  try {
-    Deno.renameSync(oldPath, newPath);
-  } catch (err) {
-    throw denoErrorToNodeError(err as Error, {
-      syscall: "rename",
-      path: oldPath,
-      dest: newPath,
-    });
-  }
-}
+) => void;
 
 type rmOptions = {
   force?: boolean;
@@ -1751,67 +1095,16 @@ type rmOptions = {
 
 type rmCallback = (err: Error | null) => void;
 
-function rm(path: string | URL, callback: rmCallback): void;
-function rm(
-  path: string | URL,
-  options: rmOptions,
-  callback: rmCallback,
-): void;
-function rm(
-  path: string | URL,
-  optionsOrCallback: rmOptions | rmCallback,
-  maybeCallback?: rmCallback,
-) {
-  const callback = typeof optionsOrCallback === "function"
-    ? optionsOrCallback
-    : maybeCallback;
-  const options = typeof optionsOrCallback === "object"
-    ? optionsOrCallback
-    : undefined;
+// The op validates `options` (node's validateRmOptions: object + force/
+// recursive/retryDelay/maxRetries types) and runs the lstat precheck
+// (ERR_FS_EISDIR / force-ENOENT) natively, emitting the final node error;
+// callbackifyOpt treats the optional 2nd arg as options-or-callback.
+const rm = callbackifyOpt(op_node_fs_rm, 1) as {
+  (path: string | URL, callback: rmCallback): void;
+  (path: string | URL, options: rmOptions, callback: rmCallback): void;
+};
 
-  if (!callback) throw new Error("No callback function supplied");
-
-  validateRmOptions(
-    path,
-    options,
-    false,
-    (err: Error | null, options: rmOptions) => {
-      if (err) {
-        return callback(err);
-      }
-
-      PromisePrototypeThen(
-        Deno.remove(path, { recursive: options?.recursive }),
-        () => callback(null),
-        (err) => {
-          if (
-            options?.force &&
-            ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
-          ) {
-            return callback(null);
-          }
-
-          callback(denoErrorToNodeError(err, { syscall: "rm" }));
-        },
-      );
-    },
-  );
-}
-
-function rmSync(path: string | URL, options?: rmOptions) {
-  options = validateRmOptionsSync(path, options, false);
-  try {
-    Deno.removeSync(path, { recursive: options?.recursive });
-  } catch (err: unknown) {
-    if (
-      options?.force &&
-      ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
-    ) {
-      return;
-    }
-    throw denoErrorToNodeError(err, { syscall: "rm" });
-  }
-}
+const rmSync = syncOp("rmSync", op_node_fs_rm_sync);
 
 type rmdirOptions = {
   maxRetries?: number;
@@ -1821,67 +1114,20 @@ type rmdirOptions = {
 
 type rmdirCallback = (err?: Error) => void;
 
-function rmdir(
-  path: string | Buffer | URL,
-  callback: rmdirCallback,
-): void;
-function rmdir(
-  path: string | Buffer | URL,
-  options: rmdirOptions,
-  callback: rmdirCallback,
-): void;
-function rmdir(
-  path: string | Buffer | URL,
-  options: rmdirOptions | rmdirCallback | undefined,
-  callback?: rmdirCallback,
-) {
-  if (typeof options === "function") {
-    callback = options;
-    options = undefined;
-  }
+// The op validates options (incl. throwing ERR_INVALID_ARG_VALUE for the
+// removed `recursive` option) + the path synchronously (async(eager_throw))
+// and throws the final node error (syscall "rmdir", path); callbackifyOpt
+// treats the optional 2nd arg as options-or-callback.
+const rmdir = callbackifyOpt(op_node_rmdir, 1) as {
+  (path: string | Buffer | URL, callback: rmdirCallback): void;
+  (
+    path: string | Buffer | URL,
+    options: rmdirOptions,
+    callback: rmdirCallback,
+  ): void;
+};
 
-  if (options?.recursive !== undefined) {
-    // The `recursive` option was deprecated and removed in Node. Throw with a
-    // clear message rather than silently doing the wrong thing.
-    throw new ERR_INVALID_ARG_VALUE(
-      "options.recursive",
-      options.recursive,
-      "is no longer supported",
-    );
-  }
-
-  validateFunction(callback, "cb");
-  path = getValidatedPathToString(path);
-
-  validateRmdirOptions(options);
-  PromisePrototypeThen(
-    op_node_rmdir(path),
-    (_) => callback(),
-    (err: Error) =>
-      callback(
-        denoErrorToNodeError(err, { syscall: "rmdir", path }),
-      ),
-  );
-}
-
-function rmdirSync(path: string | Buffer | URL, options?: rmdirOptions) {
-  path = getValidatedPathToString(path);
-
-  if (options?.recursive !== undefined) {
-    throw new ERR_INVALID_ARG_VALUE(
-      "options.recursive",
-      options.recursive,
-      "is no longer supported",
-    );
-  }
-
-  validateRmdirOptions(options);
-  try {
-    op_node_rmdir_sync(path);
-  } catch (err) {
-    throw (denoErrorToNodeError(err as Error, { syscall: "rmdir", path }));
-  }
-}
+const rmdirSync = op_node_rmdir_sync;
 
 // -- mkdir --
 
@@ -1889,157 +1135,21 @@ type MkdirCallback =
   | ((err: Error | null, path?: string) => void)
   | CallbackWithError;
 
-/**
- * On Windows, recursive mkdir through a file returns EEXIST instead of
- * ENOTDIR. Check if any component of the path is a file and fix the error.
- */
-function fixMkdirError(
-  err: Error,
-  path: string,
-): Error {
-  const nodeErr = denoErrorToNodeError(err, { syscall: "mkdir", path });
-  if (!isWindows) return nodeErr;
-  if ((nodeErr as NodeJS.ErrnoException).code !== "EEXIST") return nodeErr;
-  let cursor = resolve(path, "..");
-  while (true) {
-    try {
-      const stat = Deno.statSync(cursor);
-      if (!stat.isDirectory) {
-        return uvException({
-          errno: codeMap.get("ENOTDIR")!,
-          syscall: "mkdir",
-          path,
-        });
-      }
-      break;
-    } catch {
-      const parent = resolve(cursor, "..");
-      if (parent === cursor) break;
-      cursor = parent;
-    }
-  }
-  return nodeErr;
-}
-
-/** Find the first component of `path` that does not exist. */
-function findFirstNonExistent(path: string): string | undefined {
-  let cursor = resolve(path);
-  while (true) {
-    try {
-      Deno.statSync(cursor);
-      return undefined;
-    } catch {
-      const parent = resolve(cursor, "..");
-      if (parent === cursor) {
-        return toNamespacedPath(cursor);
-      }
-      try {
-        Deno.statSync(parent);
-        return toNamespacedPath(cursor);
-      } catch {
-        cursor = parent;
-      }
-    }
-  }
-}
-
 type MkdirOptions =
   | { recursive?: boolean; mode?: number | undefined }
   | number
   | boolean;
 
-function mkdir(
-  path: string | URL,
-  options?: MkdirOptions | MkdirCallback,
-  callback?: MkdirCallback,
-) {
-  path = getValidatedPath(path) as string;
+// The op validates path + options, computes the recursive `mkdirp` return path
+// (passed as the 2nd callback arg), and throws the final node error.
+const mkdir = callbackifyOpt(op_node_fs_mkdir);
 
-  let mode = 0o777;
-  let recursive = false;
-
-  if (typeof options == "function") {
-    callback = options;
-  } else if (typeof options === "number" || typeof options === "string") {
-    // Match Node: a number or string second arg is a file mode
-    // (see lib/fs.js mkdir).
-    mode = parseFileMode(options, "mode");
-  } else if (typeof options === "boolean") {
-    recursive = options;
-  } else if (options) {
-    if (options.recursive !== undefined) recursive = options.recursive;
-    if (options.mode !== undefined) {
-      mode = parseFileMode(options.mode, "options.mode");
-    }
-  }
-  validateBoolean(recursive, "options.recursive");
-
-  let firstNonExistent: string | undefined;
-  try {
-    firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
-  } catch (err) {
-    if (typeof callback === "function") {
-      callback(
-        denoErrorToNodeError(err as Error, { syscall: "mkdir", path }),
-      );
-    }
-    return;
-  }
-
-  PromisePrototypeThen(
-    Deno.mkdir(path, { recursive, mode }),
-    () => {
-      if (typeof callback === "function") {
-        callback(null, firstNonExistent);
-      }
-    },
-    (err: Error) => {
-      if (typeof callback === "function") {
-        callback(
-          recursive
-            ? fixMkdirError(err as Error, path as string)
-            : denoErrorToNodeError(err as Error, { syscall: "mkdir", path }),
-        );
-      }
-    },
-  );
-}
-
-function mkdirSync(
+// Direct op binding: the op validates path + options, creates the dir(s), and
+// returns the first created path (recursive) or undefined.
+const mkdirSync = syncOp("mkdirSync", op_node_fs_mkdir_sync) as (
   path: string | URL,
   options?: MkdirOptions,
-): string | undefined {
-  path = getValidatedPath(path) as string;
-
-  let mode = 0o777;
-  let recursive = false;
-
-  if (typeof options === "number" || typeof options === "string") {
-    // Match Node: a number or string second arg is a file mode
-    // (see lib/fs.js mkdirSync).
-    mode = parseFileMode(options, "mode");
-  } else if (typeof options === "boolean") {
-    recursive = options;
-  } else if (options) {
-    if (options.recursive !== undefined) recursive = options.recursive;
-    if (options.mode !== undefined) {
-      mode = parseFileMode(options.mode, "options.mode");
-    }
-  }
-  validateBoolean(recursive, "options.recursive");
-
-  let firstNonExistent: string | undefined;
-  try {
-    firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
-    Deno.mkdirSync(path, { recursive, mode });
-  } catch (err) {
-    throw recursive
-      ? fixMkdirError(err as Error, path)
-      : denoErrorToNodeError(err as Error, { syscall: "mkdir", path });
-  }
-
-  return firstNonExistent;
-}
+) => string | undefined;
 
 // -- mkdtemp --
 
@@ -2052,73 +1162,37 @@ type MkdtempBufferCallback = (
   directory?: Buffer<ArrayBufferLike>,
 ) => void;
 
-function mkdtemp(
-  prefix: string | Buffer | Uint8Array | URL,
-  callback: MkdtempCallback,
-): void;
-function mkdtemp(
-  prefix: string | Buffer | Uint8Array | URL,
-  options: { encoding: "buffer" } | "buffer",
-  callback: MkdtempBufferCallback,
-): void;
-function mkdtemp(
-  prefix: string | Buffer | Uint8Array | URL,
-  options: { encoding: string } | string,
-  callback: MkdtempCallback,
-): void;
-function mkdtemp(
-  prefix: string | Buffer | Uint8Array | URL,
-  options: { encoding: string } | string | MkdtempCallback | undefined,
-  callback?: MkdtempCallback | MkdtempBufferCallback,
-) {
-  if (typeof options === "function") {
-    callback = options;
-    options = undefined;
-  }
-  callback = makeCallback(callback);
-  const encoding = parseMkdtempEncoding(options);
-  prefix = getValidatedPathToString(prefix, "prefix");
+// The op validates the prefix + encoding options synchronously
+// (async(eager_throw)), emits node's one-time non-portable-template warning
+// (templates ending in 'X'), creates the dir, and returns the path already
+// encoded (string or Buffer). It throws the final node error (syscall
+// "mkdtemp"). callbackifyOpt handles the (prefix, options?, cb) shuffle.
+const mkdtemp = callbackifyOpt(op_node_mkdtemp, 1) as {
+  (prefix: string | Buffer | Uint8Array | URL, callback: MkdtempCallback): void;
+  (
+    prefix: string | Buffer | Uint8Array | URL,
+    options: { encoding: "buffer" } | "buffer",
+    callback: MkdtempBufferCallback,
+  ): void;
+  (
+    prefix: string | Buffer | Uint8Array | URL,
+    options: { encoding: string } | string,
+    callback: MkdtempCallback,
+  ): void;
+};
 
-  warnOnNonPortableTemplate(prefix);
-
-  PromisePrototypeThen(
-    op_node_mkdtemp(prefix),
-    (path: string) => callback(null, decodeMkdtemp(path, encoding)),
-    (err: Error) =>
-      callback(denoErrorToNodeError(err, {
-        syscall: "mkdtemp",
-        path: `${prefix}XXXXXX`,
-      })),
-  );
-}
-
-function mkdtempSync(
-  prefix: string | Buffer | Uint8Array | URL,
-  options?: { encoding: "buffer" } | "buffer",
-): Buffer<ArrayBufferLike>;
-function mkdtempSync(
-  prefix: string | Buffer | Uint8Array | URL,
-  options?: { encoding: string } | string,
-): string;
-function mkdtempSync(
-  prefix: string | Buffer | Uint8Array | URL,
-  options?: { encoding: string } | string,
-): string | Buffer<ArrayBufferLike> {
-  const encoding = parseMkdtempEncoding(options);
-  prefix = getValidatedPathToString(prefix, "prefix");
-
-  warnOnNonPortableTemplate(prefix);
-
-  try {
-    const path = op_node_mkdtemp_sync(prefix) as string;
-    return decodeMkdtemp(path, encoding);
-  } catch (err) {
-    throw denoErrorToNodeError(err as Error, {
-      syscall: "mkdtemp",
-      path: `${prefix}XXXXXX`,
-    });
-  }
-}
+// Direct op binding: the op validates prefix + options, emits the one-time
+// warning, creates the dir, and returns the path already encoded.
+const mkdtempSync = op_node_mkdtemp_sync as {
+  (
+    prefix: string | Buffer | Uint8Array | URL,
+    options?: { encoding: "buffer" } | "buffer",
+  ): Buffer<ArrayBufferLike>;
+  (
+    prefix: string | Buffer | Uint8Array | URL,
+    options?: { encoding: string } | string,
+  ): string;
+};
 
 // Mirrors Node's lib/fs.js mkdtempDisposableSync(): create the temp dir and
 // return an object with .path, .remove(), and Symbol.dispose. cwd is captured
@@ -2147,53 +1221,6 @@ function mkdtempDisposableSync(
   };
 }
 
-function decodeMkdtemp(str: string, encoding: Encoding): string;
-function decodeMkdtemp(
-  str: string,
-  encoding: "buffer",
-): Buffer<ArrayBufferLike>;
-function decodeMkdtemp(
-  str: string,
-  encoding: Encoding | "buffer",
-): string | Buffer<ArrayBufferLike> {
-  if (encoding === "utf8") return str;
-  const buffer = Buffer.from(str);
-  if (encoding === "buffer") return buffer;
-  // deno-lint-ignore prefer-primordials
-  return buffer.toString(encoding);
-}
-
-function parseMkdtempEncoding(
-  options: string | { encoding?: string } | undefined,
-): Encoding | "buffer" {
-  let encoding: string | undefined;
-
-  if (typeof options === "undefined" || options === null) {
-    encoding = "utf8";
-  } else if (typeof options === "string") {
-    encoding = options;
-  } else if (typeof options === "object") {
-    encoding = options.encoding ?? "utf8";
-  } else {
-    throw new ERR_INVALID_ARG_TYPE("options", ["string", "Object"], options);
-  }
-
-  if (encoding === "buffer") {
-    return encoding;
-  }
-
-  const parsedEncoding = normalizeEncoding(encoding);
-  if (!parsedEncoding) {
-    throw new ERR_INVALID_ARG_TYPE(
-      "encoding",
-      encoding,
-      "is invalid encoding",
-    );
-  }
-
-  return parsedEncoding;
-}
-
 // -- open --
 
 type OpenFlags =
@@ -2216,87 +1243,201 @@ type OpenFlags =
 
 type OpenCallback = (err: Error | null, fd?: number) => void;
 
-function open(path: string | Buffer | URL, callback: OpenCallback): void;
-function open(
-  path: string | Buffer | URL,
-  flags: OpenFlags,
-  callback: OpenCallback,
-): void;
-function open(
-  path: string | Buffer | URL,
-  flags: OpenFlags,
-  mode: number,
-  callback: OpenCallback,
-): void;
-function open(
-  path: string | Buffer | URL,
-  flags: OpenCallback | OpenFlags,
-  mode?: OpenCallback | number,
-  callback?: OpenCallback,
-) {
-  path = getValidatedPathToString(path);
-  if (arguments.length < 3) {
-    callback = flags as any;
-    flags = "r";
-    mode = 0o666;
-  } else if (typeof mode === "function") {
-    callback = mode;
-    mode = 0o666;
-  } else {
-    mode = parseFileMode(mode, "mode", 0o666);
-  }
-  flags = stringToFlags(flags);
-  callback = makeCallback(callback);
+// `open(path, flags?, mode?, callback)`: the op validates the path
+// (getValidatedPathToString), parses flags (default "r") + mode (default 0o666)
+// synchronously -- throwing ERR_INVALID_ARG_* at the call site like node --
+// then opens asynchronously and emits the final node error (syscall "open",
+// path). callbackifyOpt forwards the supplied leading args (path + any of
+// flags/mode), letting the op default the rest, and passes the resolved fd to
+// the callback.
+const open = callbackifyOpt(op_node_open, 1) as {
+  (path: string | Buffer | URL, callback: OpenCallback): void;
+  (path: string | Buffer | URL, flags: OpenFlags, callback: OpenCallback): void;
+  (
+    path: string | Buffer | URL,
+    flags: OpenFlags,
+    mode: number,
+    callback: OpenCallback,
+  ): void;
+};
 
-  const request = createFSReqCallback();
-  let openPromise: Promise<number>;
-  try {
-    openPromise = op_node_open(path, flags, mode);
-  } catch (err) {
-    unregisterActiveRequest(request);
-    throw err;
-  }
-  PromisePrototypeThen(
-    openPromise,
-    (rid: number) => {
-      unregisterActiveRequest(request);
-      callback(null, rid);
-    },
-    (err: Error) => {
-      unregisterActiveRequest(request);
-      callback(denoErrorToNodeError(err, { syscall: "open", path }));
-    },
-  );
-}
-
-function openSync(path: string | Buffer | URL): number;
-function openSync(
-  path: string | Buffer | URL,
-  flags?: OpenFlags,
-): number;
-function openSync(path: string | Buffer | URL, mode?: number): number;
-function openSync(
-  path: string | Buffer | URL,
-  flags?: OpenFlags,
-  mode?: number,
-): number;
-function openSync(
-  path: string | Buffer | URL,
-  flags: OpenFlags = "r",
-  maybeMode?: number,
-) {
-  path = getValidatedPathToString(path);
-  flags = stringToFlags(flags);
-  const mode = parseFileMode(maybeMode, "mode", 0o666);
-
-  try {
-    return op_node_open_sync(path, flags, mode);
-  } catch (err) {
-    throw denoErrorToNodeError(err as Error, { syscall: "open", path });
-  }
-}
+// Direct op binding: the op validates path, parses flags (default "r") + mode,
+// opens, and returns the fd. No JS wrapper to bake into the snapshot.
+const openSync = op_node_open_sync;
 
 // -- opendir --
+
+// Node's `fs.Dir` (lib/internal/fs/dir.js), backed by a single native
+// readdir: the whole listing is produced in Rust (`op_node_fs_readdir`) on
+// the first read and handed out one entry at a time, so close() has nothing
+// native to release (it only flips the flag, with node's ERR_DIR_CLOSED and
+// callback-validation semantics).
+class Dir {
+  #dirPath: string | Uint8Array;
+  #entries: Dirent[] | null = null;
+  // The in-flight native readdir, shared by concurrent read()s so the listing
+  // is fetched once and handed out in call order.
+  #fetch: Promise<Dirent[]> | null = null;
+  // Number of async reads currently awaiting the fetch: sync operations throw
+  // ERR_DIR_CONCURRENT_OPERATION while nonzero, like node's operation queue.
+  #pending = 0;
+  #idx = 0;
+  #closed = false;
+  #recursive: boolean;
+
+  constructor(path: string | Uint8Array, recursive = false) {
+    if (!path) {
+      throw new ERR_MISSING_ARGS("path");
+    }
+    this.#dirPath = path;
+    this.#recursive = recursive;
+  }
+
+  get path(): string {
+    // Match Node: invoking the getter on a non-Dir receiver (e.g. the
+    // prototype) throws ERR_INVALID_THIS rather than a private-field error.
+    // deno-lint-ignore prefer-primordials -- private-field brand check
+    if (!(#dirPath in this)) {
+      throw new ERR_INVALID_THIS("Dir");
+    }
+    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, this.#dirPath)) {
+      // deno-lint-ignore prefer-primordials
+      return Buffer.from(this.#dirPath as Uint8Array).toString("utf8");
+    }
+    return this.#dirPath as string;
+  }
+
+  #next(): Dirent | null {
+    if (this.#entries !== null && this.#idx < this.#entries.length) {
+      return this.#entries[this.#idx++];
+    }
+    return null;
+  }
+
+  async #readPromisified(): Promise<Dirent | null> {
+    if (this.#closed) {
+      throw new ERR_DIR_CLOSED();
+    }
+    if (this.#entries === null) {
+      // Async-function bodies run synchronously up to the first await, so
+      // buffered reads complete without ever appearing pending.
+      this.#pending++;
+      try {
+        this.#fetch ??= op_node_fs_readdir(this.path, this.#recursive, true);
+        const entries = await this.#fetch;
+        this.#entries ??= entries;
+      } finally {
+        this.#pending--;
+      }
+    }
+    return this.#next();
+  }
+
+  // Match node's read(): no arguments -> a promise; with a callback the
+  // closed check throws ERR_DIR_CLOSED synchronously, the callback is
+  // validated (ERR_INVALID_ARG_TYPE), and the method returns undefined.
+  read(
+    callback?: (...args: any[]) => void,
+  ): Promise<Dirent | null> | undefined {
+    if (arguments.length === 0) {
+      return this.#readPromisified();
+    }
+    if (this.#closed) {
+      throw new ERR_DIR_CLOSED();
+    }
+    if (callback === undefined) {
+      return this.#readPromisified();
+    }
+    validateFunction(callback, "callback");
+    PromisePrototypeThen(
+      this.#readPromisified(),
+      (dirent) => callback(null, dirent),
+      callback,
+    );
+  }
+
+  readSync(): Dirent | null {
+    if (this.#closed) {
+      throw new ERR_DIR_CLOSED();
+    }
+    if (this.#pending > 0) {
+      throw new ERR_DIR_CONCURRENT_OPERATION();
+    }
+    if (this.#entries === null) {
+      this.#entries = op_node_fs_readdir_sync(
+        this.path,
+        this.#recursive,
+        true,
+      ) as unknown as Dirent[];
+    }
+    return this.#next();
+  }
+
+  close(callback?: (...args: any[]) => void): Promise<void> | undefined {
+    if (callback === undefined) {
+      if (this.#closed) {
+        return PromiseReject(new ERR_DIR_CLOSED());
+      }
+      this.#closed = true;
+      return PromiseResolve();
+    }
+    validateFunction(callback, "callback");
+    if (this.#closed) {
+      process.nextTick(callback, new ERR_DIR_CLOSED());
+      return;
+    }
+    this.#closed = true;
+    process.nextTick(callback, null);
+  }
+
+  closeSync() {
+    if (this.#closed) {
+      throw new ERR_DIR_CLOSED();
+    }
+    if (this.#pending > 0) {
+      throw new ERR_DIR_CONCURRENT_OPERATION();
+    }
+    this.#closed = true;
+  }
+
+  async *entries(): AsyncIterableIterator<Dirent> {
+    try {
+      while (true) {
+        const dirent = await this.#readPromisified();
+        if (dirent === null) {
+          break;
+        }
+        yield dirent;
+      }
+    } finally {
+      if (!this.#closed) {
+        this.#closed = true;
+      }
+    }
+  }
+
+  // Unlike explicit close()/closeSync(), the dispose protocol is idempotent:
+  // repeated invocations must not throw (see node's file-handle-dispose test).
+  [SymbolDispose]() {
+    if (this.#closed) return;
+    this.closeSync();
+  }
+
+  async [SymbolAsyncDispose]() {
+    if (this.#closed) return;
+    await this.close();
+  }
+}
+
+// Match node: `Dir.prototype[Symbol.asyncIterator]` IS `entries` (the same
+// function object; non-enumerable, writable, configurable).
+ObjectDefineProperty(Dir.prototype, SymbolAsyncIterator, {
+  __proto__: null,
+  enumerable: false,
+  writable: true,
+  configurable: true,
+  value: Dir.prototype.entries,
+});
 
 type OpendirOptions = {
   encoding?: string;
@@ -2310,17 +1451,6 @@ function _opendirValidateFunction(
   validateFunction(callback, "callback");
 }
 
-function _opendirGetPathString(
-  path: string | Buffer | URL,
-): string {
-  if (Buffer.isBuffer(path)) {
-    // deno-lint-ignore prefer-primordials
-    return path.toString();
-  }
-
-  return StringPrototypeToString(path);
-}
-
 function opendir(
   path: string | Buffer | URL,
   options: OpendirOptions | OpendirCallback,
@@ -2329,22 +1459,21 @@ function opendir(
   callback = typeof options === "function" ? options : callback;
   _opendirValidateFunction(callback);
 
-  path = _opendirGetPathString(getValidatedPath(path));
+  // Path type errors must throw synchronously (node validates the path before
+  // the async open), so validate here; bufferSize + the dir probe go through
+  // the op and are surfaced via the callback.
+  path = getValidatedPathToString(path);
+  const opts = getOptions(options, { encoding: "utf8" });
+  const bufferSize = opts.bufferSize === undefined ? 32 : opts.bufferSize;
+  const recursive = opts.recursive ?? false;
 
   let err, dir;
   try {
-    const { bufferSize } = getOptions(options, {
-      encoding: "utf8",
-      bufferSize: 32,
-    });
-    validateInteger(bufferSize, "options.bufferSize", 1, 4294967295);
-
-    /** Throws if path is invalid */
-    Deno.readDirSync(path);
-
-    dir = new Dir(path);
+    // Validates bufferSize, probes the dir, throws the node error ("opendir").
+    op_node_fs_opendir_sync(path, bufferSize);
+    dir = new Dir(path, recursive);
   } catch (error) {
-    err = denoErrorToNodeError(error as Error, { syscall: "opendir" });
+    err = error as Error;
   }
   if (err) {
     callback(err);
@@ -2357,23 +1486,508 @@ function opendirSync(
   path: string | Buffer | URL,
   options?: OpendirOptions,
 ): Dir {
-  path = _opendirGetPathString(getValidatedPath(path));
+  path = getValidatedPathToString(path);
+  const opts = getOptions(options, { encoding: "utf8" });
+  const bufferSize = opts.bufferSize === undefined ? 32 : opts.bufferSize;
+  const recursive = opts.recursive ?? false;
+  // Validates bufferSize, probes the dir, throws the node error ("opendir").
+  op_node_fs_opendir_sync(path, bufferSize);
+  return new Dir(path, recursive);
+}
 
-  const { bufferSize } = getOptions(options, {
-    encoding: "utf8",
-    bufferSize: 32,
+// -- readdir --
+
+// Names come back utf8 from the native op; re-encode for the rare non-utf8
+// encodings. Only `name` is re-encoded -- node's Dirent keeps `parentPath` a
+// string even with `encoding: "buffer"`.
+function applyReaddirEncoding(
+  result: Array<string | Dirent>,
+  options: { encoding?: string; withFileTypes?: boolean },
+): Array<string | Dirent> {
+  const enc = options.encoding;
+  if (!enc || enc === "utf8" || enc === "utf-8") return result;
+  if (options.withFileTypes) {
+    for (let i = 0; i < result.length; i++) {
+      const d = result[i] as Dirent;
+      d.name = decodeDirentName(d.name as string, enc) as string;
+    }
+  } else {
+    for (let i = 0; i < result.length; i++) {
+      result[i] = decodeDirentName(result[i] as string, enc);
+    }
+  }
+  return result;
+}
+
+function decodeDirentName(str: string, encoding: string): string | Buffer {
+  // "buffer" returns Buffer instances; every other (node-supported) encoding
+  // re-encodes the UTF-8 filename through Buffer to match node's
+  // lib/internal/fs/utils.js getDirent / readdir output.
+  const buf = Buffer.from(str, "utf8");
+  if (encoding === "buffer") return buf;
+  // No primordial exists for Buffer.prototype.toString with an encoding.
+  // deno-lint-ignore prefer-primordials
+  return buf.toString(encoding as BufferEncoding);
+}
+
+// Mirrors node's lib/fs.js readdir() validation order: callback, options
+// (encoding via getOptions), path, recursive. The op walks the tree natively
+// (recursive included) and produces the final node error (scandir + path).
+function readdir(
+  path: string | Buffer | URL,
+  options?:
+    | { encoding?: string; withFileTypes?: boolean; recursive?: boolean }
+    | string
+    | ((err: Error | null, files?: unknown[]) => void),
+  callback?: (err: Error | null, files?: unknown[]) => void,
+) {
+  callback = makeCallback(typeof options === "function" ? options : callback);
+  const opts = getOptions(options);
+  path = getValidatedPathToString(path);
+  if (opts.recursive != null) {
+    validateBoolean(opts.recursive, "options.recursive");
+  }
+  PromisePrototypeThen(
+    op_node_fs_readdir(path, opts.recursive ?? false, !!opts.withFileTypes),
+    (result: Array<string | Dirent>) =>
+      callback(null, applyReaddirEncoding(result, opts)),
+    callback,
+  );
+}
+
+function readdirSync(
+  path: string | Buffer | URL,
+  options?:
+    | { encoding?: string; withFileTypes?: boolean; recursive?: boolean }
+    | string,
+): Array<string | Dirent> {
+  const opts = getOptions(options);
+  path = getValidatedPathToString(path);
+  if (opts.recursive != null) {
+    validateBoolean(opts.recursive, "options.recursive");
+  }
+  return applyReaddirEncoding(
+    op_node_fs_readdir_sync(
+      path,
+      opts.recursive ?? false,
+      !!opts.withFileTypes,
+    ),
+    opts,
+  );
+}
+
+// -- cp --
+
+const { isPromise } = core;
+
+/**
+  Layout (bigint) of the stat info returned by the cp "check paths" ops:
+  - bits 0..31  : source mode (`st_mode`) masked by `SrcModeMask`
+  - bit 32      : whether destination exists
+  - bits 33..39 : source entry type flags (dir, file, char/block device,
+                  symlink, socket, fifo)
+*/
+const CpEntryFlags = {
+  SrcModeMask: (1n << 32n) - 1n,
+  IsDestExists: 1n << 32n,
+  IsSrcDirectory: 1n << 33n,
+  IsSrcFile: 1n << 34n,
+  IsSrcCharDevice: 1n << 35n,
+  IsSrcBlockDevice: 1n << 36n,
+  IsSrcSymlink: 1n << 37n,
+  IsSrcSocket: 1n << 38n,
+  IsSrcFifo: 1n << 39n,
+};
+
+// Maps errors out of the cp ops to node's: plain errno errors (anything
+// carrying `os_errno`) become regular node fs errors; the ops' structured
+// `{ kind, message, path }` payloads become the ERR_FS_CP_* family.
+function rethrowCpError(err: any): never {
+  if (typeof err?.os_errno === "number") {
+    throw denoErrorToNodeError(err, {
+      path: err.path,
+      dest: err.dest,
+      syscall: err.syscall,
+    });
+  }
+  const { EEXIST, EINVAL, EISDIR, ENOTDIR } = lazyNodeConstants();
+  switch (err.kind) {
+    case "EINVAL":
+      throw new ERR_FS_CP_EINVAL({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "DIR_TO_NON_DIR":
+      throw new ERR_FS_CP_DIR_TO_NON_DIR({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EISDIR,
+        code: "EISDIR",
+      });
+    case "NON_DIR_TO_DIR":
+      throw new ERR_FS_CP_NON_DIR_TO_DIR({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: ENOTDIR,
+        code: "ENOTDIR",
+      });
+    case "EEXIST":
+      throw new ERR_FS_CP_EEXIST({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EEXIST,
+        code: "EEXIST",
+      });
+    case "EISDIR":
+      throw new ERR_FS_EISDIR({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EISDIR,
+        code: "EISDIR",
+      });
+    case "SOCKET":
+      throw new ERR_FS_CP_SOCKET({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "FIFO":
+      throw new ERR_FS_CP_FIFO_PIPE({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "UNKNOWN":
+      throw new ERR_FS_CP_UNKNOWN({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "SYMLINK_TO_SUBDIRECTORY":
+      throw new ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    default:
+      throw err;
+  }
+}
+
+// The recursion stays in JS (like node's lib/internal/fs/cp) because
+// `options.filter` is a user callback, possibly async, consulted per entry;
+// the per-entry stat/copy/link work is all in the ops.
+async function cpFn(src: string, dest: string, opts: any): Promise<void> {
+  try {
+    const filter = opts.filter;
+    if (filter && !(await filter(src, dest))) return;
+    const statInfo = await op_node_cp_validate_and_prepare(
+      src,
+      dest,
+      opts.dereference,
+    );
+    return await getStatsForCopy(statInfo, src, dest, opts);
+  } catch (err) {
+    rethrowCpError(err);
+  }
+}
+
+function getStatsForCopy(
+  statInfo: bigint,
+  src: string,
+  dest: string,
+  opts: any,
+) {
+  const { EISDIR, EINVAL } = lazyNodeConstants();
+  if ((statInfo & CpEntryFlags.IsSrcDirectory) && opts.recursive) {
+    return onDirCp(statInfo, src, dest, opts);
+  } else if (statInfo & CpEntryFlags.IsSrcDirectory) {
+    throw new ERR_FS_EISDIR({
+      message: `${src} is a directory (not copied)`,
+      path: src,
+      syscall: "cp",
+      errno: EISDIR,
+      code: "EISDIR",
+    });
+  } else if (
+    (statInfo & CpEntryFlags.IsSrcFile) ||
+    (statInfo & CpEntryFlags.IsSrcCharDevice) ||
+    (statInfo & CpEntryFlags.IsSrcBlockDevice)
+  ) {
+    return onFileCp(statInfo, src, dest, opts);
+  } else if (statInfo & CpEntryFlags.IsSrcSymlink) {
+    const isDestExists = !!(statInfo & CpEntryFlags.IsDestExists);
+    return onLinkCp(isDestExists, src, dest, opts);
+  } else if (statInfo & CpEntryFlags.IsSrcSocket) {
+    throw new ERR_FS_CP_SOCKET({
+      message: `cannot copy a socket file: ${dest}`,
+      path: dest,
+      syscall: "cp",
+      errno: EINVAL,
+      code: "EINVAL",
+    });
+  } else if (statInfo & CpEntryFlags.IsSrcFifo) {
+    throw new ERR_FS_CP_FIFO_PIPE({
+      message: `cannot copy a FIFO pipe: ${dest}`,
+      path: dest,
+      syscall: "cp",
+      errno: EINVAL,
+      code: "EINVAL",
+    });
+  }
+  throw new ERR_FS_CP_UNKNOWN({
+    message: `cannot copy an unknown file type: ${dest}`,
+    path: dest,
+    syscall: "cp",
+    errno: EINVAL,
+    code: "EINVAL",
   });
+}
 
-  validateInteger(bufferSize, "options.bufferSize", 1, 4294967295);
+async function onFileCp(
+  statInfo: bigint,
+  src: string,
+  dest: string,
+  opts: any,
+) {
+  const srcMode = Number(statInfo & CpEntryFlags.SrcModeMask);
+  const isDestExists = !!(statInfo & CpEntryFlags.IsDestExists);
+  await op_node_cp_on_file(
+    src,
+    dest,
+    srcMode,
+    isDestExists,
+    opts.force,
+    opts.errorOnExist,
+    opts.preserveTimestamps,
+    opts.mode ?? 0,
+  );
+}
+
+async function setDestMode(dest: string, srcMode: number) {
+  if (!srcMode) return;
+  // node's setDestMode is fsPromises.chmod; the op produces the same
+  // node-formatted errors. Awaited (not returned) so the op's `null`
+  // resolution doesn't leak out of cpPromise, which resolves undefined.
+  await op_node_fs_chmod(dest, srcMode);
+}
+
+function onDirCp(statInfo: bigint, src: string, dest: string, opts: any) {
+  if (!(statInfo & CpEntryFlags.IsDestExists)) {
+    const srcMode = Number(statInfo & CpEntryFlags.SrcModeMask);
+    return mkDirAndCopy(srcMode, src, dest, opts);
+  }
+  // node: an existing destination directory is EEXIST under `errorOnExist`
+  // without `force`, even when no contents conflict (the async cp only;
+  // node's cpSync has no such check).
+  if (opts.errorOnExist && !opts.force) {
+    const { EEXIST } = lazyNodeConstants();
+    throw new ERR_FS_CP_EEXIST({
+      message: `${dest} already exists`,
+      path: dest,
+      syscall: "cp",
+      errno: EEXIST,
+      code: "EEXIST",
+    });
+  }
+  return copyDir(src, dest, opts);
+}
+
+async function mkDirAndCopy(
+  srcMode: number,
+  src: string,
+  dest: string,
+  opts: any,
+) {
+  await lazyInternalPromises().mkdirPromise(dest);
+  await copyDir(src, dest, opts);
+  return setDestMode(dest, srcMode);
+}
+
+async function copyDir(src: string, dest: string, opts: any) {
+  const filter = opts.filter;
+  const dir = await lazyInternalPromises().opendirPromise(src);
+  const iterator = dir[SymbolAsyncIterator]();
+  while (true) {
+    // deno-lint-ignore prefer-primordials
+    const { done, value } = await iterator.next();
+    if (done) break;
+    const { name } = value;
+    const srcItem = join(src, name);
+    const destItem = join(dest, name);
+    if (filter && !(await filter(srcItem, destItem))) continue;
+    const statInfo = await op_node_cp_check_paths_recursive(
+      srcItem,
+      destItem,
+      opts.dereference,
+    );
+    await getStatsForCopy(statInfo, srcItem, destItem, opts);
+  }
+}
+
+async function onLinkCp(
+  destExists: boolean,
+  src: string,
+  dest: string,
+  opts: any,
+) {
+  await op_node_cp_on_link(
+    src,
+    dest,
+    destExists,
+    opts.verbatimSymlinks,
+  );
+}
+
+function cpSync(src: string | URL, dest: string | URL, options?: any) {
+  options = validateCpOptions(options);
+  const srcPath = getValidatedPathToString(src, "src");
+  const destPath = getValidatedPathToString(dest, "dest");
 
   try {
-    /** Throws if path is invalid */
-    Deno.readDirSync(path);
+    if (options.filter) {
+      // deno-lint-ignore prefer-primordials
+      const shouldCopy = options.filter(srcPath, destPath);
+      if (isPromise(shouldCopy)) {
+        throw new ERR_INVALID_RETURN_VALUE("boolean", "filter", shouldCopy);
+      }
+      if (!shouldCopy) return;
+    }
 
-    return new Dir(path);
+    op_node_cp_sync(
+      srcPath,
+      destPath,
+      options.dereference,
+      options.recursive,
+      options.force,
+      options.errorOnExist,
+      options.preserveTimestamps,
+      options.verbatimSymlinks,
+      options.mode ?? 0,
+      options.filter,
+    );
   } catch (err) {
-    throw denoErrorToNodeError(err as Error, { syscall: "opendir" });
+    rethrowCpError(err);
   }
+}
+
+function cp(
+  src: string | URL,
+  dest: string | URL,
+  options?: any,
+  callback?: any,
+) {
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+  callback = makeCallback(callback);
+  options = validateCpOptions(options);
+  const srcPath = getValidatedPathToString(src, "src");
+  const destPath = getValidatedPathToString(dest, "dest");
+
+  PromisePrototypeThen(
+    cpFn(srcPath, destPath, options),
+    () => callback(null),
+    callback,
+  );
+}
+
+// fsPromises.cp (re-exported via internal/fs/promises.ts): validation errors
+// reject (node validates inside the async fn). Can't be `promisify(cp)` -- a
+// function `options` would be taken for the callback by cp's dispatch
+// instead of failing validateCpOptions.
+async function cpPromise(
+  src: string | URL,
+  dest: string | URL,
+  options?: any,
+) {
+  options = validateCpOptions(options);
+  const srcPath = getValidatedPathToString(src, "src");
+  const destPath = getValidatedPathToString(dest, "dest");
+  return await cpFn(srcPath, destPath, options);
+}
+
+// -- copyFile / lutimes / exists --
+
+// node validates src/dest before the callback and mode after it (in the C++
+// binding); the op's eager validation covers all three, and COPYFILE_EXCL /
+// the FICLONE hints are handled natively.
+const copyFile = callbackifyOpt(op_node_fs_copy_file, 2);
+const copyFileSync = syncOp("copyFileSync", op_node_fs_copy_file_sync);
+
+// node's lutimes validates the callback (positionally, like symlink) before
+// the path/times, which the op then validates eagerly.
+const lutimes = callbackifyOpt(op_node_lutimes, 3, true);
+const lutimesSync = op_node_lutimes_sync;
+
+// Deprecated. node's `exists` swallows every error into a boolean and has a
+// non-standard callback signature (no error argument), hence the custom
+// promisify form below (fs.promises has no `exists`).
+function exists(
+  path: string | Buffer | URL,
+  callback: (exists: boolean) => void,
+) {
+  callback = makeCallback(callback);
+  try {
+    path = getValidatedPathToString(path);
+  } catch {
+    callback(false);
+    return;
+  }
+  PromisePrototypeThen(op_node_fs_exists(path), callback);
+}
+
+// fs.exists' callback has no error argument, so promisify needs a custom
+// implementation (nodejs/node#13316), named `exists` to match node's.
+const existsPromisified = (path: string | Buffer | URL) =>
+  new Promise((resolve) => exists(path, resolve));
+ObjectDefineProperty(existsPromisified, "name", {
+  __proto__: null,
+  value: "exists",
+  configurable: true,
+});
+ObjectDefineProperty(exists, kCustomPromisifiedSymbol, {
+  __proto__: null,
+  value: existsPromisified,
+  enumerable: false,
+  writable: false,
+  configurable: true,
+});
+
+let showExistsDeprecation = true;
+function existsSync(path: string | Buffer | URL): boolean {
+  try {
+    path = getValidatedPathToString(path);
+  } catch (err) {
+    if (
+      showExistsDeprecation && (err as any)?.code === "ERR_INVALID_ARG_TYPE"
+    ) {
+      process.emitWarning(
+        "Passing invalid argument types to fs.existsSync is deprecated",
+        "DeprecationWarning",
+        "DEP0187",
+      );
+      showExistsDeprecation = false;
+    }
+    return false;
+  }
+  return op_node_fs_exists_sync(path);
 }
 
 /**
@@ -2407,157 +2021,35 @@ type WriteOptions = {
   position?: number | null;
 };
 
-function writeSync(
+// Direct op binding: the full overload resolution (buffer vs string,
+// options-object form, offset/length/position defaults, validation, string
+// encoding via `Buffer.from` + `validateEncoding`) lives in the native op, so
+// `writeSync(fd, buffer, offsetOrOptions?, length?, position?)` is just the op.
+const writeSync = syncOp("writeSync", op_node_fs_write_v_sync) as (
   fd: number,
   buffer: ArrayBufferView | string,
   offsetOrOptions?: number | WriteOptions | null,
   length?: number | null,
   position?: number | null,
-): number {
-  fd = getValidatedFd(fd);
-
-  const innerWriteSync = (
-    fd: number,
-    buffer: ArrayBufferView | Uint8Array,
-    offset: number,
-    length: number,
-    position: number | null | undefined,
-  ) => {
-    buffer = arrayBufferViewToUint8Array(buffer);
-    const pos = typeof position === "number" && position >= 0 ? position : -1;
-    return op_node_fs_write_sync(
-      fd,
-      (buffer as Uint8Array).subarray(offset, offset + length),
-      pos,
-    );
-  };
-
-  let offset = offsetOrOptions;
-  if (isArrayBufferView(buffer)) {
-    if (typeof offset === "object") {
-      ({
-        offset = 0,
-        // deno-lint-ignore prefer-primordials
-        length = buffer.byteLength - (offset as number),
-        position = null,
-      } = offsetOrOptions ?? kEmptyObject);
-    }
-    if (position === undefined) {
-      position = null;
-    }
-    if (offset == null) {
-      offset = 0;
-    } else {
-      validateInteger(offset, "offset", 0);
-    }
-    if (typeof length !== "number") {
-      // deno-lint-ignore prefer-primordials
-      length = buffer.byteLength - offset;
-    }
-    // deno-lint-ignore prefer-primordials
-    validateOffsetLengthWrite(offset, length, buffer.byteLength);
-    return innerWriteSync(fd, buffer, offset, length, position);
-  }
-  validateStringAfterArrayBufferView(buffer, "buffer");
-  validateEncoding(buffer, length);
-  buffer = Buffer.from(buffer, length);
-  return innerWriteSync(fd, buffer, 0, buffer.length, position);
-}
+) => number;
 
 /** Writes the buffer to the file of the given descriptor.
  * https://nodejs.org/api/fs.html#fswritefd-buffer-offset-length-position-callback
  * https://github.com/nodejs/node/blob/42ad4137aadda69c51e1df48eee9bc2e5cebca5c/lib/fs.js#L797
  */
-function write(
+// The overload resolution, validation and string encoding live in the native
+// op (`op_node_fs_write_v`), which validates synchronously. callbackifyWrite
+// forwards the whole argument list (the callback included, since the op uses
+// the trailing slots to disambiguate the string overload), locates the
+// callback, and re-attaches the original `buffer`/`string` to the completion.
+const write = callbackifyWrite(op_node_fs_write_v) as (
   fd: number,
   buffer: ArrayBufferView | string,
   offsetOrOptions?: number | WriteOptions | WriteCallback | null,
   length?: number | WriteCallback | null,
   position?: number | WriteCallback | null,
   callback?: WriteCallback,
-) {
-  fd = getValidatedFd(fd);
-
-  const innerWrite = async (
-    fd: number,
-    buffer: ArrayBufferView | Uint8Array,
-    offset: number,
-    length: number,
-    position: number | null | undefined,
-  ) => {
-    buffer = arrayBufferViewToUint8Array(buffer);
-    const pos = typeof position === "number" && position >= 0 ? position : -1;
-    return await op_node_fs_write_deferred(
-      fd,
-      (buffer as Uint8Array).subarray(offset, offset + length),
-      pos,
-    );
-  };
-
-  let offset = offsetOrOptions;
-  if (isArrayBufferView(buffer)) {
-    callback = maybeCallback(callback || position || length || offset);
-
-    if (typeof offset === "object") {
-      ({
-        offset = 0,
-        // deno-lint-ignore prefer-primordials
-        length = buffer.byteLength - (offset as number),
-        position = null,
-      } = offsetOrOptions ?? kEmptyObject);
-    }
-    if (offset == null || typeof offset === "function") {
-      offset = 0;
-    } else {
-      validateInteger(offset, "offset", 0);
-    }
-    if (typeof length !== "number") {
-      // deno-lint-ignore prefer-primordials
-      length = buffer.byteLength - offset;
-    }
-    if (typeof position !== "number") {
-      position = null;
-    }
-    // deno-lint-ignore prefer-primordials
-    validateOffsetLengthWrite(offset, length, buffer.byteLength);
-    // deno-lint-ignore prefer-primordials
-    innerWrite(fd, buffer, offset, length, position).then(
-      (nwritten) => {
-        callback!(null, nwritten, buffer);
-      },
-      (err) => callback!(err),
-    );
-    return;
-  }
-
-  // Here the call signature is
-  // `fs.write(fd, string[, position[, encoding]], callback)`
-
-  validateStringAfterArrayBufferView(buffer, "buffer");
-
-  if (typeof position !== "function") {
-    if (typeof offset === "function") {
-      position = offset;
-      offset = null;
-    } else {
-      position = length;
-    }
-    length = "utf-8";
-  }
-
-  const str = buffer;
-  validateEncoding(str, length);
-  callback = maybeCallback(position);
-  buffer = Buffer.from(str, length);
-
-  // deno-lint-ignore prefer-primordials
-  innerWrite(fd, buffer, 0, buffer.length, offset).then(
-    (nwritten) => {
-      callback(null, nwritten, buffer);
-    },
-    (err) => callback(err),
-  );
-}
+) => void;
 
 ObjectDefineProperty(write, customPromisifyArgs, {
   __proto__: null,
@@ -2597,46 +2089,16 @@ type writeVCallback = (
  * the end of the file.
  * @since v12.9.0
  */
-function writev(
+// The op validates fd/buffers/position synchronously (async(eager_throw)),
+// short-circuits empty buffer lists, then gathers the views and writes them
+// at `position` (-1 = current). callbackifyWrite locates the callback and
+// re-attaches the original `buffers` to the completion (node's `wrapper`).
+const writev = callbackifyWrite(op_node_fs_writev) as (
   fd: number,
   buffers: ReadonlyArray<ArrayBufferView>,
   position?: number | null,
   callback?: writeVCallback,
-): void {
-  const innerWritev = async (fd, buffers, position) => {
-    const chunks: Buffer[] = [];
-    for (let i = 0; i < buffers.length; i++) {
-      if (Buffer.isBuffer(buffers[i])) {
-        // deno-lint-ignore prefer-primordials
-        chunks.push(buffers[i]);
-      } else {
-        // deno-lint-ignore prefer-primordials
-        chunks.push(Buffer.from(buffers[i]));
-      }
-    }
-    const pos = typeof position === "number" ? position : -1;
-    // deno-lint-ignore prefer-primordials
-    const buffer = Buffer.concat(chunks);
-    return await op_node_fs_write_deferred(fd, buffer, pos);
-  };
-
-  fd = getValidatedFd(fd);
-  validateBufferArray(buffers);
-  callback = maybeCallback(callback || position);
-
-  if (buffers.length === 0) {
-    process.nextTick(callback, null, 0, buffers);
-    return;
-  }
-
-  if (typeof position !== "number") position = null;
-
-  // deno-lint-ignore prefer-primordials
-  innerWritev(fd, buffers, position).then(
-    (nwritten) => callback(null, nwritten, buffers),
-    (err) => callback(err),
-  );
-}
+) => void;
 
 /**
  * For detailed information, see the documentation of the asynchronous version of
@@ -2644,39 +2106,13 @@ function writev(
  * @since v12.9.0
  * @return The number of bytes written.
  */
-function writevSync(
+// Direct op binding: the op validates + gathers + writes, returning the bytes
+// written.
+const writevSync = syncOp("writevSync", op_node_fs_writev_sync) as (
   fd: number,
   buffers: ArrayBufferView[],
   position?: number | null,
-): number {
-  const innerWritev = (fd, buffers, position) => {
-    const chunks: Buffer[] = [];
-    for (let i = 0; i < buffers.length; i++) {
-      if (Buffer.isBuffer(buffers[i])) {
-        // deno-lint-ignore prefer-primordials
-        chunks.push(buffers[i]);
-      } else {
-        // deno-lint-ignore prefer-primordials
-        chunks.push(Buffer.from(buffers[i]));
-      }
-    }
-    const pos = typeof position === "number" ? position : -1;
-    // deno-lint-ignore prefer-primordials
-    const buffer = Buffer.concat(chunks);
-    return op_node_fs_write_sync(fd, buffer, pos);
-  };
-
-  fd = getValidatedFd(fd);
-  validateBufferArray(buffers);
-
-  if (buffers.length === 0) {
-    return 0;
-  }
-
-  if (typeof position !== "number") position = null;
-
-  return innerWritev(fd, buffers, position);
-}
+) => number;
 
 // -- writeFile --
 
@@ -2693,12 +2129,13 @@ type WriteFileData =
   | AsyncIterable<NodeJS.TypedArray | string>;
 
 const {
+  kIoMaxLength,
+  kReadFileUnknownBufferLength,
   kWriteFileMaxChunkSize,
 } = fsUtilConstants;
 
 interface Writer {
   write(p: NodeJS.TypedArray): Promise<number>;
-  writeSync(p: NodeJS.TypedArray): number;
 }
 
 async function _writeFileGetRid(
@@ -2708,31 +2145,9 @@ async function _writeFileGetRid(
   if (typeof pathOrRid === "number") {
     return pathOrRid;
   }
-  try {
-    return await op_node_open(pathOrRid, stringToFlags(flag), 0o666);
-  } catch (err) {
-    throw denoErrorToNodeError(err as Error, {
-      syscall: "open",
-      path: pathOrRid,
-    });
-  }
-}
-
-function _writeFileGetRidSync(
-  pathOrRid: string | number,
-  flag: string = "w",
-): number {
-  if (typeof pathOrRid === "number") {
-    return pathOrRid;
-  }
-  try {
-    return op_node_open_sync(pathOrRid, stringToFlags(flag), 0o666);
-  } catch (err) {
-    throw denoErrorToNodeError(err as Error, {
-      syscall: "open",
-      path: pathOrRid,
-    });
-  }
+  // The op parses the flag and emits the final node error (syscall "open",
+  // path).
+  return await op_node_open(pathOrRid, flag, 0o666);
 }
 
 function writeFile(
@@ -2769,14 +2184,27 @@ function writeFile(
     signal = options.signal;
   }
 
-  const encoding = getValidatedEncoding(options) || "utf8";
+  const isRid = typeof pathOrRid === "number";
 
-  if (!ArrayBufferIsView(data) && !_isCustomIterable(data)) {
-    validateStringAfterArrayBufferView(data, "data");
-    data = Buffer.from(data, encoding);
+  // Non-iterable data, path or fd: the op parses options + data (string ->
+  // encoded bytes), opens, optionally chmods, writes all bytes, and closes
+  // natively, throwing the final node error; with a signal the shared
+  // cancel-handle wrapper interrupts the native open/write on abort. Only
+  // the (async-)iterable data case falls through to JS.
+  if (!_isCustomIterable(data)) {
+    const promise = signal
+      ? callWithSignal(
+        signal,
+        (cancelRid: number) =>
+          op_node_fs_write_file(pathOrRid, data, options, cancelRid),
+      )
+      : op_node_fs_write_file(pathOrRid, data, options);
+    PromisePrototypeThen(promise, () => callback(null), callback);
+    return;
   }
 
-  const isRid = typeof pathOrRid === "number";
+  const encoding = getValidatedEncoding(options) || "utf8";
+
   let file;
 
   let error: Error | null = null;
@@ -2789,9 +2217,6 @@ function writeFile(
           // allowing abort signals scheduled via process.nextTick to fire.
           return op_node_fs_write_deferred(fd, p, -1);
         },
-        writeSync(p: NodeJS.TypedArray) {
-          return op_node_fs_write_sync(fd, p, -1);
-        },
         close() {
           op_node_fs_close(fd);
         },
@@ -2799,7 +2224,7 @@ function writeFile(
       _checkAborted(signal);
 
       if (!isRid && mode) {
-        await Deno.chmod(pathOrRid as string, mode);
+        await op_node_fs_chmod(pathOrRid as string, mode);
         _checkAborted(signal);
       }
 
@@ -2819,158 +2244,48 @@ function writeFile(
   })();
 }
 
-function writeFileSync(
+// Direct op binding: the op parses options (encoding/flag/mode) and data
+// (string -> encoded bytes; only string or ArrayBufferView are accepted,
+// matching node's sync variant), opens (path case), optionally chmods, writes
+// all bytes, and closes, throwing the final node error.
+const writeFileSync = syncOp("writeFileSync", op_node_fs_write_file_sync) as (
   pathOrRid: string | number | URL,
   data: WriteFileSyncData,
   options?: Encodings | WriteFileOptions,
-) {
-  let flag: string | undefined;
-  let mode: number | undefined;
+) => void;
 
-  pathOrRid = ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrRid)
-    ? pathFromURL(pathOrRid as URL)
-    : pathOrRid as string | number;
-
-  if (isFileOptions(options)) {
-    flag = options.flag;
-    mode = options.mode;
-  }
-
-  const encoding = getValidatedEncoding(options) || "utf8";
-
-  // Match Node: fs.writeFileSync only accepts string or ArrayBufferView for
-  // data (see lib/fs.js). The async Promise variant supports custom
-  // iterables, but the sync version does not.
-  if (!ArrayBufferIsView(data)) {
-    validateStringAfterArrayBufferView(data, "data");
-    data = Buffer.from(data, encoding);
-  }
-
-  const isRid = typeof pathOrRid === "number";
-  let file;
-
-  let error: Error | null = null;
-  try {
-    const fd = _writeFileGetRidSync(pathOrRid, flag);
-    file = {
-      write(p: NodeJS.TypedArray) {
-        return PromiseResolve(op_node_fs_write_sync(fd, p, -1));
-      },
-      writeSync(p: NodeJS.TypedArray) {
-        return op_node_fs_write_sync(fd, p, -1);
-      },
-      close() {
-        op_node_fs_close(fd);
-      },
-    };
-
-    if (!isRid && mode) {
-      Deno.chmodSync(pathOrRid as string, mode);
-    }
-
-    _writeAllSync(
-      file,
-      data as (Exclude<WriteFileSyncData, string>),
-      encoding,
-    );
-  } catch (e) {
-    error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
-  } finally {
-    // Make sure to close resource
-    if (!isRid && file) file.close();
-  }
-
-  if (error) throw error;
-}
-
-function _writeAllSync(
-  w: Writer,
-  data: Exclude<WriteFileSyncData, string>,
-  encoding: BufferEncoding,
-) {
-  if (!_isCustomIterable(data)) {
-    // deno-lint-ignore prefer-primordials
-    data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    // deno-lint-ignore prefer-primordials
-    let remaining = data.byteLength;
-    while (remaining > 0) {
-      const bytesWritten = w.writeSync(
-        // deno-lint-ignore prefer-primordials
-        data.subarray(data.byteLength - remaining),
-      );
-      remaining -= bytesWritten;
-    }
-  } else {
-    // deno-lint-ignore prefer-primordials
-    for (const buf of data) {
-      let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
-      toWrite = new Uint8Array(
-        // deno-lint-ignore prefer-primordials
-        toWrite.buffer,
-        // deno-lint-ignore prefer-primordials
-        toWrite.byteOffset,
-        // deno-lint-ignore prefer-primordials
-        toWrite.byteLength,
-      );
-      // deno-lint-ignore prefer-primordials
-      let remaining = toWrite.byteLength;
-      while (remaining > 0) {
-        const bytesWritten = w.writeSync(
-          // deno-lint-ignore prefer-primordials
-          toWrite.subarray(toWrite.byteLength - remaining),
-        );
-        remaining -= bytesWritten;
-      }
-    }
-  }
-}
-
+// Writes each chunk of an (async-)iterable `data` (the non-iterable cases go
+// through `op_node_fs_write_file` natively), checking the AbortSignal between
+// chunk writes.
 async function _writeAll(
   w: Writer,
   data: Exclude<WriteFileData, string>,
   encoding: BufferEncoding,
   signal?: AbortSignal,
 ) {
-  if (!_isCustomIterable(data)) {
+  // deno-lint-ignore prefer-primordials
+  for await (const buf of data) {
+    _checkAborted(signal);
+    let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
+    toWrite = new Uint8Array(
+      // deno-lint-ignore prefer-primordials
+      toWrite.buffer,
+      // deno-lint-ignore prefer-primordials
+      toWrite.byteOffset,
+      // deno-lint-ignore prefer-primordials
+      toWrite.byteLength,
+    );
     // deno-lint-ignore prefer-primordials
-    data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    // deno-lint-ignore prefer-primordials
-    let remaining = data.byteLength;
+    let remaining = toWrite.byteLength;
     while (remaining > 0) {
       const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
       // deno-lint-ignore prefer-primordials
-      const offset = data.byteLength - remaining;
+      const offset = toWrite.byteLength - remaining;
       const bytesWritten = await w.write(
-        data.subarray(offset, offset + writeSize),
+        toWrite.subarray(offset, offset + writeSize),
       );
       remaining -= bytesWritten;
       _checkAborted(signal);
-    }
-  } else {
-    // deno-lint-ignore prefer-primordials
-    for await (const buf of data) {
-      _checkAborted(signal);
-      let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
-      toWrite = new Uint8Array(
-        // deno-lint-ignore prefer-primordials
-        toWrite.buffer,
-        // deno-lint-ignore prefer-primordials
-        toWrite.byteOffset,
-        // deno-lint-ignore prefer-primordials
-        toWrite.byteLength,
-      );
-      // deno-lint-ignore prefer-primordials
-      let remaining = toWrite.byteLength;
-      while (remaining > 0) {
-        const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
-        // deno-lint-ignore prefer-primordials
-        const offset = toWrite.byteLength - remaining;
-        const bytesWritten = await w.write(
-          toWrite.subarray(offset, offset + writeSize),
-        );
-        remaining -= bytesWritten;
-        _checkAborted(signal);
-      }
     }
   }
 
@@ -2994,288 +2309,41 @@ function _checkAborted(signal?: AbortSignal) {
 
 // -- truncate --
 
-function truncate(
-  path: string | URL,
-  lenOrCallback: number | CallbackWithError = 0,
-  maybeCallback?: CallbackWithError,
-) {
-  let len: number = 0;
-  let callback: CallbackWithError | undefined;
-  if (typeof lenOrCallback === "function") {
-    callback = lenOrCallback;
-  } else {
-    len = lenOrCallback;
-    callback = maybeCallback;
-  }
+// The op validates path + len (validateInteger, default 0), opens 'r+',
+// ftruncates, and emits node errors; callbackifyOpt(.., 1) treats the optional
+// 2nd arg as len-or-cb.
+const truncate = callbackifyOpt(op_node_fs_truncate, 1);
 
-  // Match Node: validate len before any async work (lib/fs.js truncate).
-  validateInteger(len, "len");
-  len = MathMax(0, len);
-
-  if (!callback) throw new Error("No callback function supplied");
-
-  // Match Node: open with 'r+', ftruncate, close so ENOENT and other
-  // errors surface with a path/syscall='open' rather than the raw
-  // truncate error.
-  open(path, "r+", (openErr, fd) => {
-    if (openErr) {
-      callback(openErr);
-      return;
-    }
-    ftruncate(fd as number, len, (ftErr) => {
-      close(fd as number, (closeErr) => {
-        callback(ftErr || closeErr || null);
-      });
-    });
-  });
-}
-
-function truncateSync(path: string | URL, len: number = 0) {
-  validateInteger(len, "len");
-  len = MathMax(0, len);
-  // Match Node: open with 'r+', ftruncate, close.
-  const fd = openSync(path, "r+");
-  try {
-    ftruncateSync(fd, len);
-  } finally {
-    closeSync(fd);
-  }
-}
+const truncateSync = syncOp("truncateSync", op_node_fs_truncate_sync);
 
 // -- utimes --
 
-function getValidTime(
-  time: number | string | Date,
-  name: string,
-): number {
-  if (typeof time === "string") {
-    time = Number(time);
-  }
+const utimes = callbackify(op_node_fs_utime, 3);
 
-  if (
-    typeof time === "number" &&
-    (NumberIsNaN(time) || !NumberIsFinite(time))
-  ) {
-    throw new Deno.errors.InvalidData(
-      `invalid ${name}, must not be infinity or NaN`,
-    );
-  }
-
-  return toUnixTimestamp(time);
-}
-
-function utimes(
-  path: string | URL,
-  atime: number | string | Date,
-  mtime: number | string | Date,
-  callback: CallbackWithError,
-) {
-  // deno-lint-ignore prefer-primordials
-  path = getValidatedPath(path).toString();
-
-  if (!callback) {
-    throw new Deno.errors.InvalidData("No callback function supplied");
-  }
-
-  atime = getValidTime(atime, "atime");
-  mtime = getValidTime(mtime, "mtime");
-
-  PromisePrototypeThen(
-    Deno.utime(path, atime, mtime),
-    () => callback(null),
-    callback,
-  );
-}
-
-function utimesSync(
-  path: string | URL,
-  atime: number | string | Date,
-  mtime: number | string | Date,
-) {
-  // deno-lint-ignore prefer-primordials
-  path = getValidatedPath(path).toString();
-  atime = getValidTime(atime, "atime");
-  mtime = getValidTime(mtime, "mtime");
-
-  Deno.utimeSync(path, atime, mtime);
-}
+const utimesSync = syncOp("utimesSync", op_node_fs_utime_sync);
 
 // -- symlink --
 
 type SymlinkType = "file" | "dir" | "junction";
 
-function symlink(
-  target: string | Buffer | URL,
-  path: string | Buffer | URL,
-  linkType?: SymlinkType | CallbackWithError,
-  callback?: CallbackWithError,
-) {
-  if (callback === undefined) {
-    callback = linkType as CallbackWithError;
-    linkType = undefined;
-  } else {
-    validateOneOf(linkType, "type", [
-      "dir",
-      "file",
-      "junction",
-      null,
-      undefined,
-    ]);
-  }
+// The op validates target/path/type synchronously (async(eager_throw)) and,
+// on Windows with no explicit type, auto-detects "dir" vs "file" by statting
+// the target resolved relative to the new link's parent (matching node).
+// callbackifyOpt(.., 2, cbAtEnd): target + path are fixed; like node, the
+// LAST argument past those is the callback by position (so
+// `symlink(t, p, "dir")` with no callback throws "Received type string
+// ('dir')"), validated before the op starts the I/O.
+const symlink = callbackifyOpt(op_node_fs_symlink, 2, true);
 
-  callback = makeCallback(callback);
-  target = getValidatedPathToString(target, "target");
-  path = getValidatedPathToString(path);
-
-  if (isWindows && !linkType) {
-    let absoluteTarget;
-    try {
-      // Symlinks targets can be relative to the newly created path.
-      // Calculate absolute file name of the symlink target, and check
-      // if it is a directory. Ignore resolve error to keep symlink
-      // errors consistent between platforms if invalid path is
-      // provided.
-      absoluteTarget = pathModule.resolve(path, "..", target);
-    } catch {
-      // Continue regardless of error.
-    }
-    if (absoluteTarget !== undefined) {
-      stat(absoluteTarget, (err, stat) => {
-        const resolvedType = !err && stat.isDirectory() ? "dir" : "file";
-
-        PromisePrototypeThen(
-          Deno.symlink(
-            target,
-            path,
-            { type: resolvedType },
-          ),
-          () => callback(null),
-          callback,
-        );
-      });
-      return;
-    }
-  }
-
-  PromisePrototypeThen(
-    Deno.symlink(
-      target,
-      path,
-      { type: linkType ?? "file" },
-    ),
-    () => callback(null),
-    callback,
-  );
-}
-
-function symlinkSync(
+// Direct op binding: the op validates target/path/type and does the Windows
+// dir/file autodetect (see symlink above).
+const symlinkSync = syncOp("symlinkSync", op_node_fs_symlink_sync) as (
   target: string | Buffer | URL,
   path: string | Buffer | URL,
   type?: SymlinkType,
-) {
-  validateOneOf(type, "type", ["dir", "file", "junction", null, undefined]);
-  target = getValidatedPathToString(target, "target");
-  path = getValidatedPathToString(path);
-
-  if (isWindows && !type) {
-    const absoluteTarget = pathModule.resolve(path, "..", target);
-    if (
-      statSync(absoluteTarget, { bigint: false, throwIfNoEntry: false })
-        ?.isDirectory()
-    ) {
-      type = "dir";
-    }
-  }
-
-  Deno.symlinkSync(target, path, { type: type ?? "file" });
-}
+) => void;
 
 // -- watch --
-
-const statPromisified = promisify(stat) as {
-  (filename: string, options: { bigint: false }): Promise<Stats>;
-  (filename: string, options: { bigint: true }): Promise<BigIntStats>;
-};
-const statAsync = async (
-  filename: string,
-  bigint: boolean,
-): Promise<Stats | BigIntStats> => {
-  try {
-    return bigint
-      ? await statPromisified(filename, { bigint: true })
-      : await statPromisified(filename, { bigint: false });
-  } catch {
-    return bigint ? emptyBigIntStats : emptyStats;
-  }
-};
-const emptyStats = new Stats(
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  DateUTC(1970, 0, 1, 0, 0, 0),
-  DateUTC(1970, 0, 1, 0, 0, 0),
-  DateUTC(1970, 0, 1, 0, 0, 0),
-  DateUTC(1970, 0, 1, 0, 0, 0),
-) as unknown as Stats;
-const emptyBigIntStats = new BigIntStats(
-  0n,
-  0n,
-  0n,
-  0n,
-  0n,
-  0n,
-  0n,
-  0n,
-  0n,
-  0n,
-  0n,
-  0n,
-  0n,
-  0n,
-) as unknown as BigIntStats;
-
-// Mirrors libuv's `uv_fs_poll_t` field comparison so chmod/chown,
-// file replacement, and sub-mtime-resolution changes all fire "change".
-function statsChanged(
-  prev: Stats | BigIntStats,
-  curr: Stats | BigIntStats,
-): boolean {
-  return prev.mtimeMs !== curr.mtimeMs ||
-    prev.ctimeMs !== curr.ctimeMs ||
-    prev.size !== curr.size ||
-    prev.mode !== curr.mode ||
-    prev.uid !== curr.uid ||
-    prev.gid !== curr.gid ||
-    prev.ino !== curr.ino ||
-    prev.dev !== curr.dev;
-}
-
-function asyncIterableToCallback<T>(
-  iter: AsyncIterable<T>,
-  callback: (val: T, done?: boolean) => void,
-  errCallback: (e: unknown) => void,
-) {
-  const iterator = iter[SymbolAsyncIterator]();
-  function next() {
-    // deno-lint-ignore prefer-primordials
-    PromisePrototypeThen(iterator.next(), (obj: IteratorResult<T>) => {
-      if (obj.done) {
-        callback(obj.value, true);
-        return;
-      }
-      callback(obj.value);
-      next();
-    }, errCallback);
-  }
-  next();
-}
 
 // Mirrors Node's `validateIgnoreOption` /
 // `createIgnoreMatcher` from `lib/internal/fs/watchers.js`.
@@ -3293,37 +2361,6 @@ let _lazyMinimatch: any = null;
 function getMinimatch() {
   _lazyMinimatch ??= core.createLazyLoader("ext:deno_node/deps/minimatch.js");
   return _lazyMinimatch();
-}
-
-function validateIgnoreOptionElement(value: unknown, name: string) {
-  if (typeof value === "string") {
-    if (value.length === 0) {
-      throw new ERR_INVALID_ARG_VALUE(
-        name,
-        value,
-        "must be a non-empty string",
-      );
-    }
-    return;
-  }
-  if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) return;
-  if (typeof value === "function") return;
-  throw new ERR_INVALID_ARG_TYPE(
-    name,
-    ["string", "RegExp", "Function"],
-    value,
-  );
-}
-
-function validateIgnoreOption(value: unknown, name: string) {
-  if (value == null) return;
-  if (ArrayIsArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      validateIgnoreOptionElement(value[i], `${name}[${i}]`);
-    }
-    return;
-  }
-  validateIgnoreOptionElement(value, name);
 }
 
 function createIgnoreMatcher(
@@ -3385,24 +2422,6 @@ type watchListener = (
   filename: string | Buffer,
 ) => void;
 
-// Match Node: `encoding: 'buffer'` returns a Buffer, any other named encoding
-// returns the filename re-encoded from utf8. Default ('utf8' or absent) leaves
-// the string unchanged. https://github.com/nodejs/node/blob/main/lib/internal/fs/watchers.js
-function encodeWatchFilename(
-  filename: string,
-  encoding: string | undefined,
-): string | Buffer {
-  if (!encoding || encoding === "utf8" || encoding === "utf-8") {
-    return filename;
-  }
-  const asBuffer = Buffer.from(filename);
-  if (encoding === "buffer") {
-    return asBuffer;
-  }
-  // deno-lint-ignore prefer-primordials
-  return asBuffer.toString(encoding as BufferEncoding);
-}
-
 function watch(
   filename: string | URL,
   options: watchOptions,
@@ -3427,13 +2446,15 @@ function watch(
     : typeof optionsOrListener2 === "function"
     ? optionsOrListener2
     : undefined;
-  const options = typeof optionsOrListener === "object"
-    ? optionsOrListener
-    : typeof optionsOrListener2 === "object"
-    ? optionsOrListener2
-    : undefined;
+  // node's watch(filename, options, listener): when `options` is a function it
+  // is the listener (a third argument is ignored), and a string is
+  // `{ encoding }`. getOptions validates encoding + signal up front, before
+  // the path (test-fs-assert-encoding-error relies on the sync throw).
+  const options = getOptions(
+    typeof optionsOrListener === "function" ? undefined : optionsOrListener,
+  );
 
-  validateIgnoreOption(options?.ignore, "options.ignore");
+  op_node_fs_validate_watch_ignore(options.ignore, "options.ignore");
 
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
@@ -3448,96 +2469,28 @@ function watch(
   }
   const recursive = options?.recursive || false;
   const encoding = options?.encoding;
-  validateIgnoreOption(options?.ignore, "options.ignore");
   const ignoreMatcher = createIgnoreMatcher(options?.ignore);
 
-  // Open the underlying Deno.FsWatcher, but defer any failure to an
-  // 'error' event on the returned FSWatcher rather than throwing
-  // synchronously with a raw `Deno.errors.NotFound`. Editors that
+  // Open the watcher, but defer any failure to an 'error' event on the
+  // returned FSWatcher rather than throwing synchronously. Editors that
   // atomically save (write to <file>.tmp.<pid>.<ts> then rename over
   // the original) can race the inotify watch and produce a transient
   // ENOENT here; callers using EventEmitter-style error handling
-  // (chokidar, vite) can't recover from a sync throw of a Deno error.
-  // See denoland/deno#34396.
-  const notFoundProto = Deno.errors.NotFound.prototype;
-  const makeWatchNodeError = (e: unknown): Error => {
-    // The notify crate's PathNotFound/WatchNotFound error messages don't
-    // include the "(os error N)" suffix that `denoErrorToNodeError` parses,
-    // so detect NotFound by class and build a Node-style ENOENT manually.
-    if (ObjectPrototypeIsPrototypeOf(notFoundProto, e)) {
-      return uvException({
-        errno: codeMap.get("ENOENT")!,
-        syscall: "watch",
-        path: watchPath,
-      });
-    }
-    return denoErrorToNodeError(e as Error, {
-      syscall: "watch",
-      path: watchPath,
-    });
-  };
-
-  let iterator: Deno.FsWatcher | undefined;
+  // (chokidar, vite) can't recover from a sync throw. See
+  // denoland/deno#34396. The op pre-validates path existence and returns
+  // fully node-formatted errors (uv ENOENT with syscall "watch" etc).
+  let rid: number | null = null;
   let openError: Error | undefined;
-  let resolvedWatchPath = watchPath;
   try {
-    // Pre-validate path existence so missing-path failures surface as a
-    // typed `Deno.errors.NotFound` consistently across platforms. notify
-    // 6.1.1's Windows backend (`add_watch` in src/windows.rs) returns a
-    // Generic error rather than a typed NotFound when the path doesn't
-    // exist, which would otherwise bypass the prototype check in
-    // makeWatchNodeError above.
-    Deno.lstatSync(watchPath);
-    iterator = Deno.watchFs(watchPath, { recursive });
-    // Resolve the watched path once so we can compute relative paths.
-    // Use realPathSync to resolve symlinks (e.g. macOS /var -> /private/var)
-    // since Deno.watchFs returns real (symlink-resolved) paths.
-    resolvedWatchPath = realpathSync(watchPath) as string;
+    rid = op_node_fs_watch_open(watchPath, recursive);
   } catch (e) {
-    if (iterator) {
-      try {
-        iterator.close();
-      } catch { /* ignore */ }
-      iterator = undefined;
-    }
-    openError = makeWatchNodeError(e);
+    openError = e as Error;
   }
 
-  if (iterator) {
-    asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
-      if (done) return;
-      // Node.js returns the relative path from the watched directory for
-      // recursive watches, but just the basename for non-recursive watches.
-      const filename = recursive
-        ? relative(resolvedWatchPath, val.paths[0])
-        : basename(val.paths[0]);
-      if (ignoreMatcher !== null && ignoreMatcher(filename)) {
-        return;
-      }
-      fsWatcher.emit(
-        "change",
-        convertDenoFsEventToNodeFsEvent(val.kind),
-        encodeWatchFilename(filename, encoding),
-      );
-    }, (e) => {
-      fsWatcher.emit("error", makeWatchNodeError(e));
-    });
+  const fsWatcher = new FSWatcher();
+  if (rid !== null) {
+    fsWatcher[kFSWatchStart](rid, ignoreMatcher, encoding);
   }
-
-  const fsWatcher = new FSWatcher(() => {
-    if (!iterator) return;
-    try {
-      iterator.close();
-    } catch (e) {
-      if (
-        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
-      ) {
-        // already closed
-        return;
-      }
-      throw e;
-    }
-  }, () => iterator);
 
   if (listener) {
     fsWatcher.on(
@@ -3587,12 +2540,17 @@ function watchPromise(
   const recursive = options?.recursive ?? false;
   const signal = options?.signal;
   validateAbortSignal(signal, "options.signal");
-  validateIgnoreOption(options?.ignore, "options.ignore");
+  op_node_fs_validate_watch_ignore(options?.ignore, "options.ignore");
   const ignoreMatcher = createIgnoreMatcher(options?.ignore);
-  const watcher = Deno.watchFs(watchPath, {
-    recursive,
-  });
-  const resolvedWatchPath = realpathSync(watchPath) as string;
+  const rid = op_node_fs_watch_open(watchPath, recursive);
+
+  let closed = false;
+  const close = () => {
+    if (!closed) {
+      closed = true;
+      core.tryClose(rid);
+    }
+  };
 
   let onAbort: (() => void) | null = null;
   function cleanupAbort() {
@@ -3604,9 +2562,9 @@ function watchPromise(
 
   if (signal) {
     if (signal.aborted) {
-      watcher.close();
+      close();
     } else {
-      onAbort = () => watcher.close();
+      onAbort = close;
       signal.addEventListener("abort", onAbort, { once: true });
     }
   }
@@ -3618,7 +2576,6 @@ function watchPromise(
     return new AbortError(undefined, { cause: signal?.reason });
   }
 
-  const fsIterable = watcher[SymbolAsyncIterator]();
   const result = {
     async next(): Promise<
       IteratorResult<{ eventType: string; filename: string | Buffer | null }>
@@ -3628,34 +2585,35 @@ function watchPromise(
         throw abortError();
       }
       while (true) {
-        // deno-lint-ignore prefer-primordials
-        const iterResult = await fsIterable.next();
-        if (iterResult.done) {
+        let event;
+        try {
+          event = await op_node_fs_watch_poll(rid);
+        } catch (e) {
+          cleanupAbort();
+          if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, e)) {
+            return { value: undefined, done: true };
+          }
+          throw e;
+        }
+        if (event === null) {
           cleanupAbort();
           if (signal?.aborted) {
             throw abortError();
           }
-          return iterResult;
+          return { value: undefined, done: true };
         }
-
-        const eventType = convertDenoFsEventToNodeFsEvent(
-          iterResult.value.kind,
-        );
-        const fname = recursive
-          ? relative(resolvedWatchPath, iterResult.value.paths[0])
-          : basename(iterResult.value.paths[0]);
-        if (ignoreMatcher !== null && ignoreMatcher(fname)) {
+        if (ignoreMatcher !== null && ignoreMatcher(event[1])) {
           continue;
         }
         return {
-          value: { eventType, filename: fname },
+          value: { eventType: event[0], filename: event[1] },
           done: false,
         };
       }
     },
     return(value?: any): Promise<IteratorResult<any>> {
       cleanupAbort();
-      watcher.close();
+      close();
       return PromiseResolve({ value, done: true });
     },
     [SymbolAsyncIterator]() {
@@ -3747,11 +2705,14 @@ const kFSStatWatcherAddOrCleanRef = SymbolFor("kFSStatWatcherAddOrCleanRef");
 class StatWatcher extends EventEmitter {
   #bigint: boolean;
   #refCount = 0;
-  #abortController = new AbortController();
   #refed = true;
-  // The current in-flight interval timer, ref'd / unref'd when ref()/unref()
-  // is called between polls so the process can exit while nothing is changing.
-  #timer: Timeout | null = null;
+  #rid: number | null = null;
+  #stopped = false;
+  // The current in-flight poll op promise: the Rust op owns the interval
+  // timer and the previous-stats snapshot, resolving once per change (or
+  // null when the watcher is stopped). Ref/unref of the op promise toggles
+  // whether the watcher keeps the event loop alive.
+  #pollPromise: Promise<unknown> | null = null;
 
   constructor(bigint: boolean) {
     super();
@@ -3766,59 +2727,33 @@ class StatWatcher extends EventEmitter {
       this.#refCount++;
     }
 
-    const bigint = this.#bigint;
+    const rid = op_node_fs_stat_watcher_open(filename, this.#bigint, interval);
+    this.#rid = rid;
     (async () => {
-      let prev = await statAsync(filename, bigint);
-
-      // libuv emits an initial "change" only when the first stat fails.
-      if (prev === emptyStats || prev === emptyBigIntStats) {
-        this.emit("change", prev, prev);
-      }
-
-      try {
-        while (true) {
-          await this.#sleep(interval);
-          const curr = await statAsync(filename, bigint);
-          if (statsChanged(prev, curr)) {
-            this.emit("change", curr, prev);
-            prev = curr;
+      while (true) {
+        let pair;
+        try {
+          const promise = op_node_fs_stat_watcher_poll(rid);
+          this.#pollPromise = promise;
+          if (!this.#refed) {
+            core.unrefOpPromise(promise);
           }
+          pair = await promise;
+        } catch (e) {
+          if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, e)) {
+            return;
+          }
+          this.emit("error", e);
+          return;
+        } finally {
+          this.#pollPromise = null;
         }
-      } catch (e) {
-        if (
-          ObjectPrototypeIsPrototypeOf(DOMException.prototype, e) &&
-          e.name === "AbortError"
-        ) {
+        if (pair === null) {
           return;
         }
-        this.emit("error", e);
+        this.emit("change", pair[0], pair[1]);
       }
     })();
-  }
-  #sleep(ms: number): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const signal = this.#abortController.signal;
-      if (signal.aborted) {
-        reject(signal.reason);
-        return;
-      }
-      const abort = () => {
-        clearTimeout(timer);
-        this.#timer = null;
-        reject(signal.reason);
-      };
-      const done = () => {
-        signal.removeEventListener("abort", abort);
-        this.#timer = null;
-        resolve();
-      };
-      const timer = setTimeout(done, ms);
-      if (!this.#refed) {
-        timer.unref();
-      }
-      this.#timer = timer;
-      signal.addEventListener("abort", abort, { once: true });
-    });
   }
   [kFSStatWatcherAddOrCleanRef](addOrClean: "add" | "clean" | "cleanAll") {
     if (addOrClean === "add") {
@@ -3830,43 +2765,87 @@ class StatWatcher extends EventEmitter {
     }
   }
   stop() {
-    if (this.#abortController.signal.aborted) {
+    if (this.#stopped) {
       return;
     }
-    this.#abortController.abort();
+    this.#stopped = true;
+    if (this.#rid !== null) {
+      core.tryClose(this.#rid);
+    }
     // Match Node: stop fires asynchronously so listeners removed
     // synchronously after stop() are not called (see
     // StatWatcher.prototype.stop in lib/internal/fs/watchers.js).
     process.nextTick(() => this.emit("stop"));
   }
   // Node's ref/unref toggle whether the StatWatcher's internal handle keeps
-  // the event loop alive (see lib/internal/fs/watchers.js). In Deno the
-  // handle is the interval Timeout used between poll iterations, so we
-  // ref/unref that.
+  // the event loop alive (see lib/internal/fs/watchers.js). Here the handle
+  // is the pending poll op promise, so we ref/unref that.
   ref() {
     this.#refed = true;
-    this.#timer?.ref();
+    if (this.#pollPromise !== null) {
+      core.refOpPromise(this.#pollPromise);
+    }
     return this;
   }
   unref() {
     this.#refed = false;
-    this.#timer?.unref();
+    if (this.#pollPromise !== null) {
+      core.unrefOpPromise(this.#pollPromise);
+    }
     return this;
   }
 }
 
-class FSWatcher extends EventEmitter {
-  #closer: () => void;
-  #closed = false;
-  #watcher: () => Deno.FsWatcher | undefined;
+const kFSWatchStart = SymbolFor("kFSWatchStart");
 
-  constructor(
-    closer: () => void,
-    getter: () => Deno.FsWatcher | undefined,
+class FSWatcher extends EventEmitter {
+  #rid: number | null = null;
+  #closed = false;
+  #refed = true;
+  // The current in-flight poll op promise. The Rust op converts each notify
+  // event to node's (eventType, filename) pair and resolves null once the
+  // watcher closes; ref/unref of the promise toggles event-loop liveness.
+  #pollPromise: Promise<unknown> | null = null;
+
+  [kFSWatchStart](
+    rid: number,
+    ignoreMatcher: ((filename: string) => boolean) | null,
+    encoding: string | undefined,
   ) {
-    super();
-    this.#closer = closer;
-    this.#watcher = getter;
+    this.#rid = rid;
+    (async () => {
+      while (true) {
+        let event;
+        try {
+          const promise = op_node_fs_watch_poll(rid);
+          this.#pollPromise = promise;
+          if (!this.#refed) {
+            core.unrefOpPromise(promise);
+          }
+          event = await promise;
+        } catch (e) {
+          if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, e)) {
+            return;
+          }
+          // Already node-formatted by the op (uv-style, syscall "watch").
+          this.emit("error", e);
+          return;
+        } finally {
+          this.#pollPromise = null;
+        }
+        if (event === null) {
+          return;
+        }
+        if (ignoreMatcher !== null && ignoreMatcher(event[1])) {
+          continue;
+        }
+        this.emit(
+          "change",
+          event[0],
+          op_node_fs_encode_watch_filename(event[1], encoding),
+        );
+      }
+    })();
   }
   close() {
     if (this.#closed) {
@@ -3874,40 +2853,36 @@ class FSWatcher extends EventEmitter {
     }
     this.#closed = true;
     this.emit("close");
-    this.#closer();
+    if (this.#rid !== null) {
+      core.tryClose(this.#rid);
+    }
   }
   ref() {
-    this.#watcher()?.ref();
+    this.#refed = true;
+    if (this.#pollPromise !== null) {
+      core.refOpPromise(this.#pollPromise);
+    }
+    return this;
   }
   unref() {
-    this.#watcher()?.unref();
-  }
-}
-
-type NodeFsEventType = "rename" | "change";
-
-function convertDenoFsEventToNodeFsEvent(
-  kind: Deno.FsEvent["kind"],
-): NodeFsEventType {
-  if (kind === "create" || kind === "remove") {
-    return "rename";
-  } else if (kind === "rename") {
-    return "rename";
-  } else {
-    return "change";
+    this.#refed = false;
+    if (this.#pollPromise !== null) {
+      core.unrefOpPromise(this.#pollPromise);
+    }
+    return this;
   }
 }
 
 // Match Node: the public `fs.Stats` export is deprecated (DEP0180).
-// Internal call sites use the un-deprecated `Stats` directly (see
-// emptyStats above). See lib/internal/fs/utils.js `Stats: deprecate(...)`.
+// Internal call sites use the un-deprecated `Stats` directly.
+// See lib/internal/fs/utils.js `Stats: deprecate(...)`.
 const DeprecatedStats = deprecate(
   Stats,
   "fs.Stats constructor is deprecated.",
   "DEP0180",
 );
 
-return {
+const fsExports = {
   // For tests
   _toUnixTimestamp,
   access,
@@ -3915,7 +2890,6 @@ return {
   appendFile,
   appendFileSync,
   BigIntStats,
-  CFISBIS,
   chmod,
   chmodSync,
   chown,
@@ -3923,11 +2897,10 @@ return {
   close,
   closeSync,
   constants,
-  convertFileInfoToBigIntStats,
-  convertFileInfoToStats,
   copyFile,
   copyFileSync,
   cp,
+  cpPromise,
   cpSync,
   get createReadStream() {
     return _createReadStream ??
@@ -4050,4 +3023,29 @@ return {
   writev,
   writevSync,
 };
+
+// The `callbackify()`-produced wrappers (fs.access, fs.close, ...) are anonymous
+// closures, but node's `fs.*` functions are named (code and tests read `.name`).
+// Name each anonymous function after its export key. Iterate descriptors rather
+// than reading the values so the lazy stream/promise getters above are not
+// triggered. This loop runs at snapshot-build time, so it costs nothing at
+// runtime.
+const fsExportKeys = ObjectKeys(fsExports);
+for (let i = 0; i < fsExportKeys.length; i++) {
+  const key = fsExportKeys[i];
+  const desc = ObjectGetOwnPropertyDescriptor(fsExports, key);
+  if (
+    desc !== undefined &&
+    typeof desc.value === "function" &&
+    desc.value.name === ""
+  ) {
+    ObjectDefineProperty(desc.value, "name", {
+      __proto__: null,
+      value: key,
+      configurable: true,
+    });
+  }
+}
+
+return fsExports;
 })();

@@ -38,6 +38,7 @@ impl Foo {
                 None,
                 None,
                 ::deno_core::OpMetadata {
+                    eager_throw: false,
                     ..::deno_core::OpMetadata::default()
                 },
             );
@@ -132,6 +133,7 @@ impl Foo {
                 None,
                 None,
                 ::deno_core::OpMetadata {
+                    eager_throw: false,
                     ..::deno_core::OpMetadata::default()
                 },
             );
@@ -211,6 +213,7 @@ impl Foo {
                 None,
                 None,
                 ::deno_core::OpMetadata {
+                    eager_throw: false,
                     ..::deno_core::OpMetadata::default()
                 },
             );
@@ -299,6 +302,7 @@ impl Foo {
                 None,
                 None,
                 ::deno_core::OpMetadata {
+                    eager_throw: false,
                     ..::deno_core::OpMetadata::default()
                 },
             );
@@ -429,6 +433,7 @@ impl Foo {
                     )
                 }),
                 ::deno_core::OpMetadata {
+                    eager_throw: false,
                     ..::deno_core::OpMetadata::default()
                 },
             );
@@ -570,6 +575,7 @@ impl Foo {
                 None,
                 None,
                 ::deno_core::OpMetadata {
+                    eager_throw: false,
                     ..::deno_core::OpMetadata::default()
                 },
             );
@@ -650,6 +656,7 @@ impl Foo {
                 None,
                 None,
                 ::deno_core::OpMetadata {
+                    eager_throw: false,
                     ..::deno_core::OpMetadata::default()
                 },
             );
@@ -727,6 +734,7 @@ impl Foo {
                 None,
                 None,
                 ::deno_core::OpMetadata {
+                    eager_throw: false,
                     ..::deno_core::OpMetadata::default()
                 },
             );
@@ -782,6 +790,7 @@ impl Foo {
                 None,
                 None,
                 ::deno_core::OpMetadata {
+                    eager_throw: false,
                     ..::deno_core::OpMetadata::default()
                 },
             );
@@ -887,6 +896,7 @@ impl Foo {
                     )
                 }),
                 ::deno_core::OpMetadata {
+                    eager_throw: false,
                     ..::deno_core::OpMetadata::default()
                 },
             );

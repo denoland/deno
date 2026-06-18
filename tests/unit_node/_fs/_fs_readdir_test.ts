@@ -119,7 +119,9 @@ Deno.test("SYNC: read dirs recursively", () => {
   }
 });
 
-Deno.test("SYNC: withFileTypes + buffer encoding returns Buffer name/parentPath", () => {
+// Match node: with `encoding: "buffer"` only `name` becomes a Buffer;
+// `parentPath` stays a string.
+Deno.test("SYNC: withFileTypes + buffer encoding returns Buffer name", () => {
   const dir = Deno.makeTempDirSync();
   try {
     Deno.writeTextFileSync(join(dir, "file1.txt"), "hi");
@@ -134,17 +136,14 @@ Deno.test("SYNC: withFileTypes + buffer encoding returns Buffer name/parentPath"
       (entry.name as unknown as Buffer).toString("utf8"),
       "file1.txt",
     );
-    assertEquals(Buffer.isBuffer(entry.parentPath), true);
-    assertEquals(
-      (entry.parentPath as unknown as Buffer).toString("utf8"),
-      dir,
-    );
+    assertEquals(typeof entry.parentPath, "string");
+    assertEquals(entry.parentPath, dir);
   } finally {
     Deno.removeSync(dir, { recursive: true });
   }
 });
 
-Deno.test("ASYNC: withFileTypes + buffer encoding returns Buffer name/parentPath", async () => {
+Deno.test("ASYNC: withFileTypes + buffer encoding returns Buffer name", async () => {
   const dir = Deno.makeTempDirSync();
   try {
     Deno.writeTextFileSync(join(dir, "file1.txt"), "hi");
@@ -168,11 +167,8 @@ Deno.test("ASYNC: withFileTypes + buffer encoding returns Buffer name/parentPath
       (entry.name as unknown as Buffer).toString("utf8"),
       "file1.txt",
     );
-    assertEquals(Buffer.isBuffer(entry.parentPath), true);
-    assertEquals(
-      (entry.parentPath as unknown as Buffer).toString("utf8"),
-      dir,
-    );
+    assertEquals(typeof entry.parentPath, "string");
+    assertEquals(entry.parentPath, dir);
   } finally {
     Deno.removeSync(dir, { recursive: true });
   }

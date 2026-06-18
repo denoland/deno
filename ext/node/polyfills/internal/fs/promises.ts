@@ -3,20 +3,26 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { core } from "ext:core/mod.js";
-import type { WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
+type WriteFileOptions = any;
 import type { Encodings } from "ext:deno_node/_utils.ts";
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
-import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
-const { cpPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
-import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
-import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
-const { lstatPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_lstat.ts");
+const { fsConstants: constants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+import { op_node_fs_lstat } from "ext:core/ops";
+// The op is already the promise form: it extracts bigint/throwIfNoEntry from
+// options, validates the path eagerly, and resolves the cppgc Stats.
+const lstatPromise = op_node_fs_lstat;
 const lazyFs = core.createLazyLoader("node:fs");
 import { globPromise } from "ext:deno_node/_fs/_fs_glob.ts";
-import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
+import {
+  getValidatedPathToString,
+  validateStringAfterArrayBufferView,
+} from "ext:deno_node/internal/fs/utils.mjs";
 import type { Buffer } from "node:buffer";
-import Dir from "ext:deno_node/_fs/_fs_dir.ts";
+// The runtime Dir class lives in fs.ts (reached via lazyFs().opendir); only
+// the type is needed here.
+type Dir = any;
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { primordials } from "ext:core/mod.js";
 const { parseFileMode } = core.loadExtScript(
@@ -31,12 +37,16 @@ const lazyPath = core.createLazyLoader("node:path");
 const lazyProcess = core.createLazyLoader("node:process");
 
 const {
+  ArrayBufferIsView,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromiseReject,
   SafeArrayIterator,
   SymbolAsyncDispose,
 } = primordials;
+const { isIterable } = core.loadExtScript(
+  "ext:deno_node/internal/streams/utils.js",
+);
 
 // Promisified fs.X wrappers MUST NOT be built at module body. handle.ts /
 // internal/fs/promises.ts are loaded during the initial `fs.promises`
@@ -129,6 +139,16 @@ function appendFilePromise(
   opts.flag = opts.flag || "a";
   return writeFilePromise(path, data, opts);
 }
+
+// -- copyFile --
+
+// promisify wraps the executor, so the callback form's synchronous validation
+// throws become rejections, matching node's async fsPromises.copyFile.
+const copyFilePromise = lazyPromisifyFs("copyFile", 3) as (
+  src: string | Buffer | URL,
+  dest: string | Buffer | URL,
+  mode?: number,
+) => Promise<void>;
 
 // -- chmod --
 
@@ -321,6 +341,21 @@ const utimesPromise = lazyPromisifyFs("utimes", 3) as (
   mtime: number | string | Date,
 ) => Promise<void>;
 
+const lutimesPromise = lazyPromisifyFs("lutimes", 3) as (
+  path: string | Buffer | URL,
+  atime: number | string | Date,
+  mtime: number | string | Date,
+) => Promise<void>;
+
+// -- readdir --
+
+const readdirPromise = lazyPromisifyFs("readdir", 2) as (
+  path: string | Buffer | URL,
+  options?:
+    | { encoding?: string; withFileTypes?: boolean; recursive?: boolean }
+    | string,
+) => Promise<unknown[]>;
+
 // -- writeFile --
 
 // Low-level callback writeFile, used when we already have an fd/FileHandle
@@ -359,6 +394,14 @@ function writeFilePromise(
   const flag = opts.flag ?? "w";
   const mode = opts.mode ?? 0o666;
   return (async () => {
+    // Node validates `data` before opening, so invalid data must not create
+    // the file (custom iterables are consumed by FileHandle.writeFile later).
+    if (
+      !ArrayBufferIsView(data) &&
+      !(isIterable(data) && typeof data !== "string")
+    ) {
+      validateStringAfterArrayBufferView(data, "data");
+    }
     // Match the existing path-based behavior: surface the same `DOMException`
     // that `signal.throwIfAborted()` produces (the fd-based fallback would
     // throw Deno's `AbortError` instead). Inside the async IIFE so the throw
@@ -444,7 +487,9 @@ const promises = {
   access: accessPromise,
   constants,
   copyFile: copyFilePromise,
-  cp: cpPromise,
+  cp:
+    ((...args: any[]) =>
+      (lazyFs() as any).cpPromise(...new SafeArrayIterator(args))) as any,
   glob: globPromise,
   open: openPromise,
   opendir: opendirPromise,

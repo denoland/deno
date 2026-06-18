@@ -1251,6 +1251,7 @@
       "reason": "Tests Node.js internal `internal/fixed_queue` module which is not exposed in Deno"
     },
     "parallel/test-fs-append-file-sync.js": {},
+    "parallel/test-fs-assert-encoding-error.js": {},
     "parallel/test-fs-buffer.js": {},
     "parallel/test-fs-buffertype-writesync.js": {},
     "parallel/test-fs-chmod-mask.js": {},
@@ -1270,6 +1271,7 @@
     "parallel/test-fs-cp-async-dereference-force-false-silent-fail.mjs": {},
     "parallel/test-fs-cp-async-dereference-symlink.mjs": {},
     "parallel/test-fs-cp-async-dest-symlink-points-to-src-error.mjs": {},
+    "parallel/test-fs-cp-async-dir-exists-error-on-exist.mjs": {},
     "parallel/test-fs-cp-async-dir-to-file.mjs": {},
     "parallel/test-fs-cp-async-error-on-exist.mjs": {},
     "parallel/test-fs-cp-async-file-to-dir.mjs": {},
@@ -1341,6 +1343,7 @@
     "parallel/test-fs-cp-sync-verbatim-symlinks-invalid.mjs": {},
     "parallel/test-fs-cp-sync-verbatim-symlinks-true.mjs": {},
     "parallel/test-fs-empty-readStream.js": {},
+    "parallel/test-fs-error-messages.js": {},
     "parallel/test-fs-exists.js": {},
     "parallel/test-fs-existssync-false.js": {},
     "parallel/test-fs-fchmod.js": {},
@@ -1433,7 +1436,9 @@
     "parallel/test-fs-read-file-sync.js": {},
     "parallel/test-fs-read-offset-null.js": {},
     "parallel/test-fs-read-optional-params.js": {},
+    "parallel/test-fs-read-position-validation.mjs": {},
     "parallel/test-fs-read-promises-optional-params.js": {},
+    "parallel/test-fs-read-promises-position-validation.mjs": {},
     "parallel/test-fs-read-stream-autoClose.js": {},
     "parallel/test-fs-read-stream-concurrent-reads.js": {},
     "parallel/test-fs-read-stream-double-close.js": {},
@@ -4886,8 +4891,6 @@
     "parallel/test-file-write-stream.js": {},
     "parallel/test-file-write-stream4.js": {},
     "parallel/test-fileurltopathbuffer.js": {},
-    "parallel/test-fs-read-position-validation.mjs": {},
-    "parallel/test-fs-read-promises-position-validation.mjs": {},
     "parallel/test-fs-readdir-ucs2.js": {
       "linux": false,
       "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep"
@@ -5326,6 +5329,7 @@
       "reason": "times out"
     },
     "pummel/test-fs-read-file-sync-utf8-memory.js": {},
+    "pummel/test-fs-readfile-tostring-fail.js": {},
     "pummel/test-fs-watch-file-slow.js": {},
     "pummel/test-fs-watch-non-recursive.js": {},
     "pummel/test-heapsnapshot-near-heap-limit-bounded.js": {},

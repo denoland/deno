@@ -20,6 +20,7 @@ const fn op_slow() -> ::deno_core::_ops::OpDecl {
             Some({ op_fast().fast_fn() }),
             Some({ op_fast().fast_fn_with_metrics() }),
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );
@@ -149,6 +150,7 @@ const fn op_fast() -> ::deno_core::_ops::OpDecl {
                 )
             }),
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );
@@ -270,6 +272,7 @@ const fn op_slow_generic<T: Trait>() -> ::deno_core::_ops::OpDecl {
             Some({ op_fast_generic::<T>().fast_fn() }),
             Some({ op_fast_generic::<T>().fast_fn_with_metrics() }),
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );
@@ -399,6 +402,7 @@ const fn op_fast_generic<T: Trait>() -> ::deno_core::_ops::OpDecl {
                 )
             }),
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );

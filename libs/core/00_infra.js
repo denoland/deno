@@ -207,7 +207,7 @@
     return MapPrototypeHas(promiseMap, promiseId);
   }
 
-  function setUpAsyncStub(opName, originalOp, maybeProto) {
+  function setUpAsyncStub(opName, originalOp, maybeProto, eagerThrow) {
     let fn;
 
     // The body of this switch statement can be generated using the script above.
@@ -224,6 +224,7 @@
               return PromiseResolve(maybeResult);
             }
           } catch (err) {
+            if (eagerThrow) throw err;
             ErrorCaptureStackTrace(err, async_op_0);
             return PromiseReject(err);
           }
@@ -244,6 +245,7 @@
               return PromiseResolve(maybeResult);
             }
           } catch (err) {
+            if (eagerThrow) throw err;
             ErrorCaptureStackTrace(err, async_op_1);
             return PromiseReject(err);
           }
@@ -264,6 +266,7 @@
               return PromiseResolve(maybeResult);
             }
           } catch (err) {
+            if (eagerThrow) throw err;
             ErrorCaptureStackTrace(err, async_op_2);
             return PromiseReject(err);
           }
@@ -284,6 +287,7 @@
               return PromiseResolve(maybeResult);
             }
           } catch (err) {
+            if (eagerThrow) throw err;
             ErrorCaptureStackTrace(err, async_op_3);
             return PromiseReject(err);
           }
@@ -304,6 +308,7 @@
               return PromiseResolve(maybeResult);
             }
           } catch (err) {
+            if (eagerThrow) throw err;
             ErrorCaptureStackTrace(err, async_op_4);
             return PromiseReject(err);
           }
@@ -324,6 +329,7 @@
               return PromiseResolve(maybeResult);
             }
           } catch (err) {
+            if (eagerThrow) throw err;
             ErrorCaptureStackTrace(err, async_op_5);
             return PromiseReject(err);
           }
@@ -344,6 +350,7 @@
               return PromiseResolve(maybeResult);
             }
           } catch (err) {
+            if (eagerThrow) throw err;
             ErrorCaptureStackTrace(err, async_op_6);
             return PromiseReject(err);
           }
@@ -364,6 +371,7 @@
               return PromiseResolve(maybeResult);
             }
           } catch (err) {
+            if (eagerThrow) throw err;
             ErrorCaptureStackTrace(err, async_op_7);
             return PromiseReject(err);
           }
@@ -384,6 +392,7 @@
               return PromiseResolve(maybeResult);
             }
           } catch (err) {
+            if (eagerThrow) throw err;
             ErrorCaptureStackTrace(err, async_op_8);
             return PromiseReject(err);
           }
@@ -404,6 +413,7 @@
               return PromiseResolve(maybeResult);
             }
           } catch (err) {
+            if (eagerThrow) throw err;
             ErrorCaptureStackTrace(err, async_op_9);
             return PromiseReject(err);
           }

@@ -46,6 +46,7 @@ pub const fn op_bool() -> ::deno_core::_ops::OpDecl {
                 )
             }),
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );

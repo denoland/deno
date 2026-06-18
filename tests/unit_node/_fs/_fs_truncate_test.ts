@@ -11,7 +11,7 @@ Deno.test({
         truncate("some/path", 0);
       },
       Error,
-      "No callback function supplied",
+      'The "cb" argument must be of type function. Received undefined',
     );
   },
 });

@@ -85,6 +85,7 @@ const fn op_smi_unsigned_return() -> ::deno_core::_ops::OpDecl {
                 )
             }),
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );
@@ -295,6 +296,7 @@ const fn op_smi_signed_return() -> ::deno_core::_ops::OpDecl {
                 )
             }),
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );
@@ -440,6 +442,7 @@ const fn op_smi_option() -> ::deno_core::_ops::OpDecl {
             None,
             None,
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );

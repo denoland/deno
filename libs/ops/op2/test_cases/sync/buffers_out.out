@@ -20,6 +20,7 @@ const fn op_buffers() -> ::deno_core::_ops::OpDecl {
             None,
             None,
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );
@@ -103,6 +104,7 @@ const fn op_buffers_option() -> ::deno_core::_ops::OpDecl {
             None,
             None,
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );
@@ -193,6 +195,7 @@ const fn op_arraybuffers() -> ::deno_core::_ops::OpDecl {
             None,
             None,
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );

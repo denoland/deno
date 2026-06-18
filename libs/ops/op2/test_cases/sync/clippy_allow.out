@@ -44,6 +44,7 @@ pub const fn op_extra_annotation() -> ::deno_core::_ops::OpDecl {
                 )
             }),
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );
@@ -161,6 +162,7 @@ pub const fn op_clippy_internal() -> ::deno_core::_ops::OpDecl {
                 )
             }),
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );

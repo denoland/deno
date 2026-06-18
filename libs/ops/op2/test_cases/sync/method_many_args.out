@@ -73,6 +73,7 @@ impl Big {
                     )
                 }),
                 ::deno_core::OpMetadata {
+                    eager_throw: false,
                     ..::deno_core::OpMetadata::default()
                 },
             );

@@ -114,8 +114,25 @@ pub(crate) fn generate_dispatch_async(
     }));
   }
 
-  if config.async_lazy || config.async_deferred {
-    let lazy = config.async_lazy;
+  // For all of LAZY/DEFERRED/`eager_throw`, only the synchronous prologue error
+  // (the outer `Result<Future, E>::Err`, handled by `#exception` above) throws
+  // synchronously; the future's own output -- even an `Err` -- always flows
+  // through the promise, so I/O errors reject (and reach a callback) instead of
+  // being rethrown by the `eagerThrow` stub.
+  //
+  // `eager_throw` defaults to LAZY scheduling: the future is spawned without the
+  // eager first poll, so a future that performs a synchronous side effect before
+  // its first await (e.g. `fs.close`'s `do_close`, which removes the fd) does NOT
+  // run it on the call -- a same-tick op on that state would otherwise observe
+  // the effect early and diverge from node. Pair it with `deferred`
+  // (`async(deferred), async(eager_throw)`) for the op that DOES want the eager
+  // poll -- e.g. `fs.write`, whose data must hit the file before a subsequent
+  // synchronous `writeSync` for the offsets to match node's prompt threadpool
+  // ordering. This is what the old per-op `yield_now().await` approximated
+  // (lazy), now expressed once and selectable per op.
+  if config.async_lazy || config.async_deferred || config.async_eager_throw {
+    let lazy =
+      (config.async_lazy || config.async_eager_throw) && !config.async_deferred;
     let deferred = config.async_deferred;
     output.extend(gs_quote!(generator_state(promise_id, fn_args, result, opctx, scope) => {
       let #promise_id = deno_core::_ops::to_i32_option(&#fn_args.get(0)).unwrap_or_default();

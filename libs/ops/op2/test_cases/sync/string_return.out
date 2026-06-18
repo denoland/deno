@@ -20,6 +20,7 @@ pub const fn op_string_return() -> ::deno_core::_ops::OpDecl {
             None,
             None,
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );
@@ -87,6 +88,7 @@ pub const fn op_string_return_ref() -> ::deno_core::_ops::OpDecl {
             None,
             None,
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );
@@ -154,6 +156,7 @@ pub const fn op_string_return_cow() -> ::deno_core::_ops::OpDecl {
             None,
             None,
             ::deno_core::OpMetadata {
+                eager_throw: false,
                 ..::deno_core::OpMetadata::default()
             },
         );

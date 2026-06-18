@@ -32,6 +32,9 @@ pub struct MacroConfig {
   pub async_deferred: bool,
   /// Marks a top-level op as requiring a JS function prototype.
   pub constructable: bool,
+  /// Marks an async op whose eager (sync-prologue) error throws synchronously
+  /// instead of rejecting the returned promise (async must also be true).
+  pub async_eager_throw: bool,
   /// Marks an op as re-entrant (can safely call other ops).
   pub reentrant: bool,
   /// Marks an op as a method on a wrapped object.
@@ -120,6 +123,7 @@ impl MacroConfig {
           AsyncMode::Fake => config.fake_async = true,
           AsyncMode::Lazy => config.async_lazy = true,
           AsyncMode::Deferred => config.async_deferred = true,
+          AsyncMode::EagerThrow => config.async_eager_throw = true,
         },
         Flags::Reentrant => config.reentrant = true,
         Flags::NoSideEffects => config.no_side_effects = true,
@@ -181,6 +185,7 @@ impl MacroConfig {
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 enum AsyncMode {
   Deferred,
+  EagerThrow,
   Fake,
   Lazy,
 }
@@ -277,6 +282,9 @@ impl Parse for Flags {
         } else if lookahead.peek(kw::deferred) {
           input.parse::<kw::deferred>()?;
           Ok(AsyncMode::Deferred)
+        } else if lookahead.peek(kw::eager_throw) {
+          input.parse::<kw::eager_throw>()?;
+          Ok(AsyncMode::EagerThrow)
         } else {
           Err(lookahead.error())
         }
@@ -425,6 +433,7 @@ mod kw {
   custom_keyword!(fake);
   custom_keyword!(lazy);
   custom_keyword!(deferred);
+  custom_keyword!(eager_throw);
   custom_keyword!(promise_id);
   custom_keyword!(validate);
 }

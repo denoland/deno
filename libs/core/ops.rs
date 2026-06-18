@@ -65,6 +65,11 @@ pub struct OpMetadata {
   pub sanitizer_details: Option<&'static str>,
   /// The fix for the issue described in `sanitizer_details`.
   pub sanitizer_fix: Option<&'static str>,
+  /// For async ops declared `async(eager_throw)`: surface a synchronous error
+  /// from the op's sync prologue as a synchronous throw (node semantics)
+  /// rather than a rejected promise. Errors from the returned future still
+  /// reject as usual.
+  pub eager_throw: bool,
 }
 
 impl OpMetadata {
@@ -72,6 +77,7 @@ impl OpMetadata {
     Self {
       sanitizer_details: None,
       sanitizer_fix: None,
+      eager_throw: false,
     }
   }
 }

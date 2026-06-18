@@ -8,11 +8,9 @@ const lazyFs = core.createLazyLoader("node:fs");
 const lazyReadline = core.createLazyLoader("node:readline");
 const lazyBuffer = core.createLazyLoader("node:buffer");
 import { op_node_fs_close } from "ext:core/ops";
-import type {
-  BinaryOptionsArgument,
-  FileOptionsArgument,
-  TextOptionsArgument,
-} from "ext:deno_node/_fs/_fs_common.ts";
+type BinaryOptionsArgument = any;
+type FileOptionsArgument = any;
+type TextOptionsArgument = any;
 // writev loaded lazily from node:fs via lazyFs
 
 export interface WriteVResult {
@@ -33,7 +31,11 @@ function writevPromise(
   });
 }
 // readvPromise loaded lazily from node:fs via lazyFs
-const { fstatPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_fstat.ts");
+import { op_node_fs_fstat_stats } from "ext:core/ops";
+// The op is already the promise form: it validates the fd, extracts bigint
+// from options, and resolves the cppgc Stats (errors node-formatted with
+// syscall "fstat").
+const fstatPromise = op_node_fs_fstat_stats;
 // fchown, ftruncate, futimes loaded lazily from node:fs via lazyFs
 const { kEmptyObject, promisify } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
