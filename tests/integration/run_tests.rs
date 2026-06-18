@@ -1092,6 +1092,54 @@ console.log(remaining);
   assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }
 
+#[test]
+fn stdin_readable_cancel_keeps_stdin_readable() {
+  let source_code = r#"
+const reader = Deno.stdin.readable.getReader();
+const cancelPromise = new Promise((resolve, reject) => {
+  setTimeout(() => {
+    reader.cancel("shutdown").then(resolve, reject);
+  }, 10);
+});
+await reader.read();
+await cancelPromise;
+reader.releaseLock();
+const buf = new Uint8Array(1);
+const nread = await Deno.stdin.read(buf);
+console.log(`${nread}:${String.fromCharCode(buf[0])}`);
+"#;
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("eval")
+    .arg(source_code)
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let mut stdin = child.stdin.take().unwrap();
+  let writer = std::thread::spawn(move || {
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    stdin.write_all(b"x").ok();
+  });
+  let start = std::time::Instant::now();
+  while start.elapsed() < std::time::Duration::from_secs(2) {
+    if child.try_wait().unwrap().is_some() {
+      let output = child.wait_with_output().unwrap();
+      writer.join().unwrap();
+      assert!(output.status.success());
+      assert_eq!(String::from_utf8_lossy(&output.stdout), "1:x\n");
+      assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+      return;
+    }
+    std::thread::sleep(std::time::Duration::from_millis(10));
+  }
+  child.kill().unwrap();
+  writer.join().unwrap();
+  panic!("Deno did not keep stdin readable after stdin readable cancellation");
+}
+
 #[cfg(windows)]
 // Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
 #[allow(clippy::enum_variant_names, reason = "NoStd prefix improves clarity")]
