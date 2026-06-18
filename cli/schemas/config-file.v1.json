@@ -1029,6 +1029,18 @@
         "sanitizeResources": {
           "type": "boolean",
           "description": "Enable the resources sanitizer for all tests. Ensures that all resources opened in a test are closed before the test ends. Can be overridden per-test or per-module."
+        },
+        "dom": {
+          "description": "Set up a DOM environment (document, window, etc.) before running tests. Set to true to use the default DOM library (happy-dom), or specify \"happy-dom\" or \"jsdom\". The DOM library is loaded from npm using a version built into Deno; declare the package in your import map or package.json to use a different version.",
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "enum": ["happy-dom", "jsdom"]
+            }
+          ]
         }
       }
     },

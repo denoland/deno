@@ -151,6 +151,11 @@ pub enum IntoResolvedErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   UndefinedPermission(#[from] UndefinedPermissionError),
+  #[class(type)]
+  #[error(
+    "Invalid \"dom\" value: expected true, false, \"happy-dom\" or \"jsdom\", but found {0}"
+  )]
+  InvalidDom(String),
 }
 
 #[derive(Debug, Error, JsError)]
@@ -629,6 +634,23 @@ struct SerializedTestConfig {
   pub sanitize_ops: Option<bool>,
   #[serde(rename = "sanitizeResources")]
   pub sanitize_resources: Option<bool>,
+  pub dom: serde_json::Value,
+}
+
+/// DOM library used for the `deno test` DOM environment.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum TestDomLibrary {
+  HappyDom,
+  Jsdom,
+}
+
+impl TestDomLibrary {
+  pub fn package_name(&self) -> &'static str {
+    match self {
+      Self::HappyDom => "happy-dom",
+      Self::Jsdom => "jsdom",
+    }
+  }
 }
 
 impl SerializedTestConfig {
@@ -660,6 +682,25 @@ impl SerializedTestConfig {
       },
       sanitize_ops: self.sanitize_ops,
       sanitize_resources: self.sanitize_resources,
+      dom: match self.dom {
+        serde_json::Value::Null | serde_json::Value::Bool(false) => None,
+        serde_json::Value::Bool(true) => Some(TestDomLibrary::HappyDom),
+        serde_json::Value::String(value) => match value.as_str() {
+          "happy-dom" => Some(TestDomLibrary::HappyDom),
+          "jsdom" => Some(TestDomLibrary::Jsdom),
+          _ => {
+            return Err(
+              IntoResolvedErrorKind::InvalidDom(format!("\"{}\"", value))
+                .into_box(),
+            );
+          }
+        },
+        value => {
+          return Err(
+            IntoResolvedErrorKind::InvalidDom(value.to_string()).into_box(),
+          );
+        }
+      },
     })
   }
 }
@@ -670,6 +711,7 @@ pub struct TestConfig {
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
   pub sanitize_ops: Option<bool>,
   pub sanitize_resources: Option<bool>,
+  pub dom: Option<TestDomLibrary>,
 }
 
 impl TestConfig {
@@ -679,6 +721,7 @@ impl TestConfig {
       permissions: None,
       sanitize_ops: None,
       sanitize_resources: None,
+      dom: None,
     }
   }
 }
@@ -2321,6 +2364,7 @@ impl ConfigFile {
         permissions: None,
         sanitize_ops: None,
         sanitize_resources: None,
+        dom: None,
       }),
     }
   }
@@ -3075,6 +3119,51 @@ mod tests {
       bench_config.files.exclude,
       PathOrPatternSet::from_absolute_paths(&["/deno/foo/".to_string()])
         .unwrap()
+    );
+  }
+
+  #[test]
+  fn test_parse_config_test_dom() {
+    fn get_dom(config_text: &str) -> Result<Option<TestDomLibrary>, String> {
+      let config_specifier = Url::parse("file:///deno/deno.json").unwrap();
+      let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+      config_file
+        .to_test_config(&Default::default())
+        .map(|c| c.dom)
+        .map_err(|e| {
+          let mut text = e.to_string();
+          let mut source = std::error::Error::source(&e);
+          while let Some(err) = source {
+            text.push_str(&format!(": {}", err));
+            source = std::error::Error::source(err);
+          }
+          text
+        })
+    }
+
+    assert_eq!(get_dom(r#"{ "test": {} }"#), Ok(None));
+    assert_eq!(get_dom(r#"{ "test": { "dom": false } }"#), Ok(None));
+    assert_eq!(
+      get_dom(r#"{ "test": { "dom": true } }"#),
+      Ok(Some(TestDomLibrary::HappyDom))
+    );
+    assert_eq!(
+      get_dom(r#"{ "test": { "dom": "happy-dom" } }"#),
+      Ok(Some(TestDomLibrary::HappyDom))
+    );
+    assert_eq!(
+      get_dom(r#"{ "test": { "dom": "jsdom" } }"#),
+      Ok(Some(TestDomLibrary::Jsdom))
+    );
+    assert!(
+      get_dom(r#"{ "test": { "dom": "chrome" } }"#)
+        .unwrap_err()
+        .contains("Invalid \"dom\" value")
+    );
+    assert!(
+      get_dom(r#"{ "test": { "dom": 1 } }"#)
+        .unwrap_err()
+        .contains("Invalid \"dom\" value")
     );
   }
 

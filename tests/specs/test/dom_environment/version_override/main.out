@@ -1,0 +1,6 @@
+Warning The DOM test environment is experimental and may change.
+[WILDCARD]running 1 test from ./main_test.js
+uses the version from the import map ... ok ([WILDLINE])
+
+ok | 1 passed | 0 failed ([WILDLINE])
+

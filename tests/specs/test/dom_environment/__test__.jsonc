@@ -1,0 +1,44 @@
+{
+  "tempDir": true,
+  "tests": {
+    "flag": {
+      "cwd": "flag",
+      "args": "test --dom main_test.js",
+      "output": "flag/main.out"
+    },
+    "config": {
+      "cwd": "config",
+      "args": "test main_test.js",
+      "output": "config/main.out"
+    },
+    "jsdom": {
+      "cwd": "jsdom",
+      "args": "test --dom=jsdom main_test.js",
+      "output": "jsdom/main.out"
+    },
+    "version_override": {
+      "cwd": "version_override",
+      "args": "test main_test.js",
+      "output": "version_override/main.out"
+    },
+    "package_json": {
+      "cwd": "package_json",
+      "steps": [
+        {
+          "args": "install",
+          "output": "package_json/install.out"
+        },
+        {
+          "args": "test --dom main_test.js",
+          "output": "package_json/main.out"
+        }
+      ]
+    },
+    "invalid_config": {
+      "cwd": "invalid_config",
+      "args": "test main_test.js",
+      "output": "invalid_config/main.out",
+      "exitCode": 1
+    }
+  }
+}

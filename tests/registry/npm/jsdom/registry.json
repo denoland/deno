@@ -1,0 +1,20 @@
+{
+  "name": "jsdom",
+  "description": "Mock of the jsdom package for testing the DOM test environment",
+  "dist-tags": {
+    "latest": "29.1.1"
+  },
+  "versions": {
+    "29.1.1": {
+      "name": "jsdom",
+      "version": "29.1.1",
+      "main": "index.js",
+      "dependencies": {},
+      "dist": {
+        "shasum": "9a5aa401f051d9e4d540e935bbfc43df6830ea83",
+        "tarball": "http://localhost:4260/jsdom/jsdom-29.1.1.tgz",
+        "integrity": "sha512-1NVKHRUlpdbFbU5SNMtYXuB3iPWS4kNQJc73rNZuhNVIKUayc0N5ysZBQcVqLS/UQAtDkBjzZAmcW0x+cEVW5A=="
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+error: Invalid test config
+
+Caused by:
+    Invalid "dom" value: expected true, false, "happy-dom" or "jsdom", but found "chrome"

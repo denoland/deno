@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "happy-dom": "npm:happy-dom@1.0.0"
+  },
+  "test": {
+    "dom": "happy-dom"
+  }
+}
