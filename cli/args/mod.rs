@@ -191,6 +191,13 @@ fn resolve_fmt_options(
     options.semi_colons = Some(!no_semis);
   }
 
+  // `--no-editorconfig` takes precedence over the deno.json
+  // `useEditorConfig` field. When the flag is absent the config value
+  // (or its `None` default of "on") is left untouched.
+  if fmt_flags.no_editorconfig {
+    options.use_editor_config = Some(false);
+  }
+
   options
 }
 

@@ -403,6 +403,7 @@ pub struct FmtFlags {
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
+  pub no_editorconfig: bool,
   pub watch: Option<WatchFlags>,
   pub unstable_component: bool,
   pub unstable_sql: bool,
@@ -3925,6 +3926,15 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .help(
            cstr!("Don't use semicolons except where necessary <p(245)>[default: false]</>"),
           )
+          .help_heading(FMT_HEADING),
+      )
+      .arg(
+        Arg::new("no-editorconfig")
+          .long("no-editorconfig")
+          .help(
+           cstr!("Don't read .editorconfig files to infer formatting options <p(245)>[default: false]</>"),
+          )
+          .action(ArgAction::SetTrue)
           .help_heading(FMT_HEADING),
       )
       .arg(
@@ -7886,6 +7896,7 @@ fn fmt_parse(
   let single_quote = matches.remove_one::<bool>("single-quote");
   let prose_wrap = matches.remove_one::<String>("prose-wrap");
   let no_semicolons = matches.remove_one::<bool>("no-semicolons");
+  let no_editorconfig = matches.get_flag("no-editorconfig");
   let unstable_component = matches.get_flag("unstable-component");
   let unstable_sql = matches.get_flag("unstable-sql");
 
@@ -7900,6 +7911,7 @@ fn fmt_parse(
     single_quote,
     prose_wrap,
     no_semicolons,
+    no_editorconfig,
     watch: watch_arg_parse(matches)?,
     unstable_component,
     unstable_sql,
@@ -10415,6 +10427,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          no_editorconfig: false,
           unstable_component: false,
           unstable_sql: false,
           watch: Default::default(),
@@ -10442,6 +10455,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          no_editorconfig: false,
           unstable_component: false,
           unstable_sql: false,
           watch: Default::default(),
@@ -10468,6 +10482,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          no_editorconfig: false,
           unstable_component: false,
           unstable_sql: false,
           watch: Default::default(),
@@ -10494,6 +10509,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          no_editorconfig: false,
           unstable_component: false,
           unstable_sql: false,
           watch: Some(Default::default()),
@@ -10530,6 +10546,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          no_editorconfig: false,
           unstable_component: true,
           unstable_sql: true,
           watch: Some(WatchFlags {
@@ -10567,6 +10584,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          no_editorconfig: false,
           unstable_component: false,
           unstable_sql: false,
           watch: Some(Default::default()),
@@ -10593,6 +10611,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          no_editorconfig: false,
           unstable_component: false,
           unstable_sql: false,
           watch: Default::default(),
@@ -10627,6 +10646,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          no_editorconfig: false,
           unstable_component: false,
           unstable_sql: false,
           watch: Some(Default::default()),
@@ -10666,6 +10686,7 @@ mod tests {
           single_quote: Some(true),
           prose_wrap: Some("never".to_string()),
           no_semicolons: Some(true),
+          no_editorconfig: false,
           unstable_component: false,
           unstable_sql: false,
           watch: Default::default(),
@@ -10699,6 +10720,35 @@ mod tests {
           single_quote: Some(false),
           prose_wrap: None,
           no_semicolons: Some(false),
+          no_editorconfig: false,
+          unstable_component: false,
+          unstable_sql: false,
+          watch: Default::default(),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // --no-editorconfig opts out of reading .editorconfig
+    let r = flags_from_vec(svec!["deno", "fmt", "--no-editorconfig"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt(FmtFlags {
+          check: false,
+          fail_fast: false,
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
+          permit_no_files: false,
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
+          no_semicolons: None,
+          no_editorconfig: true,
           unstable_component: false,
           unstable_sql: false,
           watch: Default::default(),
@@ -10727,6 +10777,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          no_editorconfig: false,
           unstable_component: false,
           unstable_sql: false,
           watch: Default::default(),

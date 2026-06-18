@@ -245,6 +245,11 @@ async fn format_files(
     );
     let fmt_options = paths_with_options.options;
     let paths = paths_with_options.paths;
+    // The DB key captures only the batch-level fmt options. Per-file
+    // `.editorconfig` options are not part of this key — instead they are
+    // folded into the hashed *text* of each file by `incremental_cache_text`
+    // below, so a file governed by an `.editorconfig` is re-evaluated when
+    // that file changes even though the batch key stays the same.
     let incremental_cache = Arc::new(IncrementalCache::new(
       caches.fmt_incremental_cache_db(),
       CacheDBHash::from_hashable((&fmt_options.options, &fmt_options.unstable)),
@@ -845,6 +850,12 @@ fn resolve_per_file_options(
   editorconfig_cache: &EditorConfigCache,
   file_path: &Path,
 ) -> FmtOptionsConfig {
+  // `.editorconfig` reading is on by default; `useEditorConfig: false` in
+  // deno.json or `--no-editorconfig` on the CLI opts out (the latter takes
+  // precedence, resolved upstream in `resolve_fmt_options`).
+  if base.use_editor_config == Some(false) {
+    return base.clone();
+  }
   let props = editorconfig_cache.resolve(file_path);
   if props.is_empty() {
     return base.clone();

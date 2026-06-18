@@ -168,6 +168,16 @@ impl EditorConfigCache {
   /// the literal path is walked, matching the editorconfig reference
   /// implementation (and avoiding a `realpath` syscall per file).
   pub fn resolve(&self, file_path: &Path) -> EditorConfigProperties {
+    // The relative-path computation (`strip_prefix`) and the parent
+    // walk both rely on an absolute path; a relative one would stop the
+    // walk early and silently miss parent `.editorconfig`s above cwd.
+    // fmt's `FileCollector` always resolves against an absolute base, so
+    // this holds in practice — assert it to keep the contract explicit.
+    debug_assert!(
+      file_path.is_absolute(),
+      "resolve() requires an absolute path, got {}",
+      file_path.display()
+    );
     let Some(start) = file_path.parent() else {
       return EditorConfigProperties::default();
     };
@@ -512,10 +522,18 @@ fn glob_to_regex_depth(
             i = j + 1;
             continue;
           }
-          // Single literal — fall through to literal
+          // A comma-less `{...}` group (no alternation, no numeric
+          // range) is a literal *including* the braces, per the
+          // editorconfig reference implementation — `{word}.ts`
+          // matches the literal string `{word}.ts`, not `word.ts`.
+          // This branch is also reached when alternation nesting
+          // exceeds MAX_GLOB_DEPTH, where degrading to a literal is
+          // the safe fallback.
+          regex_push_escaped(&mut out, '{');
           for ch in group.chars() {
             regex_push_escaped(&mut out, ch);
           }
+          regex_push_escaped(&mut out, '}');
           i = j + 1;
           continue;
         } else {
@@ -817,6 +835,30 @@ max_line_length = off
     assert!(r.starts_with('^') && r.ends_with('$'));
     // Must compile rather than blow up.
     assert!(Regex::new(&r).is_ok());
+  }
+
+  #[test]
+  fn glob_commaless_brace_is_literal() {
+    // A `{...}` group with no comma and no range is a literal that
+    // includes the braces, matching the editorconfig reference (rather
+    // than stripping the braces and matching `word.ts`).
+    let r = glob_to_regex("{word}.ts", true);
+    assert!(match_regex(&r, "{word}.ts"));
+    assert!(!match_regex(&r, "word.ts"));
+  }
+
+  #[test]
+  fn glob_empty_and_trailing_comma_braces() {
+    // `{}` is a comma-less literal (matches the literal braces); `{a,}`
+    // is a two-way alternation where one branch is empty. These are
+    // degenerate inputs but must still compile to valid regexes.
+    let empty = glob_to_regex("a{}b", false);
+    assert!(match_regex(&empty, "a{}b"));
+    assert!(!match_regex(&empty, "ab"));
+
+    let trailing = glob_to_regex("a{x,}b", false);
+    assert!(match_regex(&trailing, "axb"));
+    assert!(match_regex(&trailing, "ab"));
   }
 
   #[test]
