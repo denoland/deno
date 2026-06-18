@@ -598,6 +598,79 @@ async fn jupyter_execute_request() -> Result<()> {
   Ok(())
 }
 
+// Regression test for denoland/deno#35290: a cell that throws must report the
+// error. The JS-kernel rewrite (#34083) read the evaluate result under a bogus
+// `.value` wrapper that the Rust op never sends, so `exceptionDetails` was
+// always `undefined`: errors silently became `status: "ok"` with no broadcast.
+#[test]
+async fn jupyter_execute_error_reports_traceback() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  let request = client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "user_expressions": {},
+        "allow_stdin": true,
+        "stop_on_error": false,
+        "code": "throw new Error(\"boom\")"
+      }),
+    )
+    .await?;
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_json_subset(
+    reply.content.clone(),
+    json!({
+      "status": "error",
+      "execution_count": 1,
+      "ename": "Error",
+      "evalue": "boom",
+    }),
+  );
+  let traceback = reply
+    .content
+    .get("traceback")
+    .and_then(|t| t.as_array())
+    .expect("traceback array");
+  assert!(
+    traceback
+      .iter()
+      .any(|line| line.as_str().map(|s| s.contains("boom")).unwrap_or(false)),
+    "traceback should mention the error: {traceback:?}",
+  );
+
+  let mut msgs = Vec::new();
+  for _ in 0..4 {
+    match client.recv(IoPub).await {
+      Ok(msg) => msgs.push(msg),
+      Err(e) => {
+        if e.downcast_ref::<tokio::time::error::Elapsed>().is_some() {
+          eprintln!("Timed out waiting for messages");
+        }
+        panic!("Error: {:#?}", e);
+      }
+    }
+  }
+
+  let error_msg = msgs
+    .iter()
+    .find(|msg| msg.header.msg_type == "error")
+    .expect("error message not broadcast on iopub");
+  assert_eq!(error_msg.parent_header, request.header.to_json());
+  assert_json_subset(
+    error_msg.content.clone(),
+    json!({
+      "ename": "Error",
+      "evalue": "boom",
+    }),
+  );
+
+  Ok(())
+}
+
 // Regression test for denoland/deno#22771: a `complete_request` whose code
 // contains multi-byte (e.g. Korean) characters must not crash the kernel. The
 // old Rust kernel sliced the cell text using the codepoint-based `cursor_pos`
