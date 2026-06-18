@@ -1071,16 +1071,13 @@ pub struct TaskDefinition {
   pub description: Option<String>,
   /// Globs identifying input files. When set, the task participates in
   /// input-based caching and is skipped on subsequent runs if none of the
-  /// inputs (or the listed `env` values, or the command itself) have changed.
-  ///
-  /// Caveat: outputs are not yet tracked, so a cache hit skips the task even
-  /// if artifacts it produced were deleted in the meantime. Until output
-  /// restoration lands this is best used for tasks that are pure with respect
-  /// to their declared inputs.
+  /// inputs (or the listed `env` values, the command itself, or the
+  /// fingerprints of the task's dependencies) have changed.
   #[serde(default)]
   pub files: Vec<String>,
-  /// Globs identifying output artifacts produced by the task. Recorded in the
-  /// cache manifest; in this first pass they are not yet restored on hit.
+  /// Globs identifying output artifacts produced by the task. Captured into
+  /// the cache after a successful run and restored on a cache hit, so deleting
+  /// them and re-running regenerates them instead of leaving them missing.
   #[serde(default)]
   pub output: Vec<String>,
   /// Names of environment variables whose values should be folded into the
