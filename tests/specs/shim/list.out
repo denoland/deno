@@ -1,0 +1,9 @@
+Shim directory: [WILDLINE]
+On PATH: no
+
+  ✓ npm
+  ✓ npx
+  ✓ pnpm
+  ✓ yarn
+
+The shim directory is not on your PATH, so the shims are inactive.

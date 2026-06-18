@@ -1,0 +1,39 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_INSTALL_ROOT": "$PWD"
+  },
+  "tests": {
+    "install_list_uninstall": {
+      "steps": [
+        {
+          "args": "shim",
+          "output": "install.out"
+        },
+        {
+          "args": "shim --list",
+          "output": "list.out"
+        },
+        {
+          "args": "shim --uninstall",
+          "output": "uninstall.out"
+        }
+      ]
+    },
+    "run_translates_to_task": {
+      "args": "shim --run npm -- run hello",
+      "output": "run.out"
+    },
+    "unknown_passes_through_and_errors": {
+      // No real `npm` on PATH, and `npm whoami` is not translated, so it
+      // should error clearly rather than silently doing the wrong thing.
+      "envs": {
+        "DENO_INSTALL_ROOT": "$PWD",
+        "PATH": "$PWD"
+      },
+      "args": "shim --run npm -- whoami",
+      "output": "passthrough_error.out",
+      "exitCode": 1
+    }
+  }
+}

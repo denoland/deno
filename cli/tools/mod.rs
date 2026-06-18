@@ -24,6 +24,7 @@ pub mod publish;
 pub mod repl;
 pub mod run;
 pub mod serve;
+pub mod shim;
 pub mod task;
 pub mod test;
 pub mod transpile;
