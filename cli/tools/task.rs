@@ -365,8 +365,11 @@ struct RunSingleOptions<'a> {
   parallel_info: Option<ParallelInfo>,
   /// Extra environment variables to overlay on the runner's base env vars for
   /// this script (the npm `npm_package_*`/`npm_lifecycle_*`/process vars when
-  /// running package.json scripts). Borrowed so the shared map can be reused
-  /// across a package's pre/run/post scripts without re-cloning it.
+  /// running package.json scripts). Borrowed because the caller builds this map
+  /// once per package and overwrites the per-script `npm_lifecycle_*` entries
+  /// in place, rather than rebuilding the whole map for each pre/run/post
+  /// script. The entries are still cloned onto the base env when the script
+  /// actually runs.
   extra_env_vars: &'a HashMap<OsString, OsString>,
 }
 
