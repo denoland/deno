@@ -16,12 +16,15 @@ use cosmic_text::SwashCache;
 use cosmic_text::Weight;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::WebIDL;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::cppgc::Visitor;
 use deno_core::webidl::UnrestrictedDouble;
+use deno_core::webidl::WebIdlConverter;
 use deno_error::JsErrorBox;
 use deno_image::image::DynamicImage;
+use deno_image::image::GenericImageView;
 use deno_image::image::Rgba;
 use deno_image::image::RgbaImage;
 use vello::kurbo;
@@ -43,52 +46,44 @@ use crate::text_metrics::TextMetrics;
 pub const CONTEXT_ID: &str = "2d";
 pub const UNSTABLE_FEATURE_NAME: &str = "canvas2d";
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum Canvas2DError {
+  #[class(type)]
+  #[error("Illegal constructor")]
+  IllegalConstructor,
+  #[class("DOMExceptionNotSupportedError")]
+  #[error("OffscreenCanvasRenderingContext2D.{0}() is not yet implemented")]
+  NotSupported(&'static str),
+}
+
 // TODO(petamoriken): move to a shared crate when canvas2d and webgpu types need to be unified.
 // ext/webgpu/canvas.rs has its own PredefinedColorSpace with additional variants.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub enum PredefinedColorSpace {
+#[derive(WebIDL, Default)]
+#[webidl(enum)]
+enum PredefinedColorSpace {
   #[default]
+  #[webidl(rename = "srgb")]
   Srgb,
   // TODO(petamoriken): rendering in display-p3 color space is not yet implemented.
+  #[webidl(rename = "display-p3")]
   DisplayP3,
 }
 
 // TODO(petamoriken): move to a shared crate when canvas2d and webgpu types need to be unified.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub enum CanvasColorType {
+#[derive(WebIDL, Default)]
+#[webidl(enum)]
+enum CanvasColorType {
   #[default]
+  #[webidl(rename = "unorm8")]
   Unorm8,
   // TODO(petamoriken): float16 rendering is not yet implemented.
+  #[webidl(rename = "float16")]
   Float16,
 }
 
-/// Settings passed as the second argument to `getContext("2d", settings)`.
-#[derive(Clone, Copy, Debug)]
-pub struct Canvas2DSettings {
-  /// When false, the canvas background is always opaque (base color is black).
-  pub alpha: bool,
-  // TODO(petamoriken): hint; ignored in headless context.
-  pub desynchronized: bool,
-  pub color_space: PredefinedColorSpace,
-  pub color_type: CanvasColorType,
-  // TODO(petamoriken): reserved for future getImageData optimization.
-  pub will_read_frequently: bool,
-}
-
-impl Default for Canvas2DSettings {
-  fn default() -> Self {
-    Self {
-      alpha: true,
-      desynchronized: false,
-      color_space: PredefinedColorSpace::Srgb,
-      color_type: CanvasColorType::Unorm8,
-      will_read_frequently: false,
-    }
-  }
-}
-
-#[derive(Clone, Copy, Default)]
-pub enum TextAlign {
+#[derive(WebIDL, Clone, Copy, Default)]
+#[webidl(enum)]
+enum TextAlign {
   #[default]
   Start,
   End,
@@ -97,8 +92,9 @@ pub enum TextAlign {
   Center,
 }
 
-#[derive(Clone, Copy, Default)]
-pub enum TextBaseline {
+#[derive(WebIDL, Clone, Copy, Default)]
+#[webidl(enum)]
+enum TextBaseline {
   #[default]
   Alphabetic,
   Top,
@@ -108,38 +104,50 @@ pub enum TextBaseline {
   Bottom,
 }
 
-#[derive(Clone, Copy, Default)]
-pub enum ImageSmoothingQuality {
+#[derive(WebIDL, Clone, Copy, Default)]
+#[webidl(enum)]
+enum ImageSmoothingQuality {
   #[default]
   Low,
   Medium,
   High,
 }
 
-#[derive(Clone, Copy, Default)]
-pub enum LineCap {
+#[derive(WebIDL, Clone, Copy, Default)]
+#[webidl(enum)]
+enum LineCap {
   #[default]
   Butt,
   Round,
   Square,
 }
 
-#[derive(Clone, Copy, Default)]
-pub enum LineJoin {
+#[derive(WebIDL, Clone, Copy, Default)]
+#[webidl(enum)]
+enum LineJoin {
   Round,
   Bevel,
   #[default]
   Miter,
 }
 
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum Canvas2DError {
-  #[class(type)]
-  #[error("Illegal constructor")]
-  IllegalConstructor,
-  #[class("DOMExceptionNotSupportedError")]
-  #[error("OffscreenCanvasRenderingContext2D.{0}() is not yet implemented")]
-  NotSupported(&'static str),
+#[derive(WebIDL)]
+#[webidl(dictionary)]
+#[allow(
+  dead_code,
+  reason = "fields are parsed from WebIDL but not all are used yet"
+)]
+struct Canvas2DSettings {
+  #[webidl(default = true)]
+  alpha: bool,
+  #[webidl(default = false)]
+  desynchronized: bool,
+  #[webidl(default = PredefinedColorSpace::Srgb)]
+  color_space: PredefinedColorSpace,
+  #[webidl(default = CanvasColorType::Unorm8)]
+  color_type: CanvasColorType,
+  #[webidl(default = false)]
+  will_read_frequently: bool,
 }
 
 // `DrawingBackend` abstracts over two unrelated vello renderer families that do
@@ -153,7 +161,7 @@ pub enum Canvas2DError {
 // and the GPU-compute `vello` crate does not use it at all. Once `vello_api`
 // stabilizes with text support, the Cpu and Hybrid backends could be unified
 // behind a single `vello_api::Scene`; revisit `DrawingBackend` then.
-pub enum DrawingBackend {
+enum DrawingBackend {
   // Shared by Gpu and Hybrid
   Vello(vello::Scene),
   VelloCpu(vello_cpu::RenderContext, Box<vello_cpu::Resources>),
@@ -182,46 +190,42 @@ impl DrawingBackend {
 }
 
 pub struct OffscreenCanvasRenderingContext2D {
-  pub canvas: v8::Global<v8::Object>,
-  pub width: Cell<u32>,
-  pub height: Cell<u32>,
+  canvas: v8::Global<v8::Object>,
+  data: deno_webgpu::canvas::ContextData,
 
-  // Accumulates drawing commands for rendering.
-  pub drawing: RefCell<DrawingBackend>,
+  drawing: RefCell<DrawingBackend>,
 
-  // Shared GPU renderer from OpState.
-  pub renderer: SharedRenderer,
+  renderer: SharedRenderer,
 
-  // Shared font resources from OpState.
-  pub font_system: Arc<Mutex<cosmic_text::FontSystem>>,
-  pub swash_cache: Arc<Mutex<SwashCache>>,
+  font_system: Arc<Mutex<cosmic_text::FontSystem>>,
+  #[allow(dead_code, reason = "reserved for text rasterization")]
+  swash_cache: Arc<Mutex<SwashCache>>,
 
-  // Drawing state (interior mutability for setters).
-  pub fill_color: Cell<[u8; 4]>,
-  pub stroke_color: Cell<[u8; 4]>,
-  pub global_alpha: Cell<f32>,
-  pub font_state: RefCell<FontState>,
-  pub text_align: Cell<TextAlign>,
-  pub text_baseline: Cell<TextBaseline>,
-  pub lang: RefCell<String>,
+  fill_color: Cell<[u8; 4]>,
+  stroke_color: Cell<[u8; 4]>,
+  global_alpha: Cell<f32>,
+  font_state: RefCell<FontState>,
+  text_align: Cell<TextAlign>,
+  text_baseline: Cell<TextBaseline>,
+  lang: RefCell<String>,
 
   // TODO(petamoriken): stored-only state. These are tracked to satisfy the API
   // surface but are not yet applied during rendering.
-  pub global_composite_operation: RefCell<String>,
-  pub filter: RefCell<String>,
-  pub image_smoothing_enabled: Cell<bool>,
-  pub image_smoothing_quality: Cell<ImageSmoothingQuality>,
-  pub line_width: Cell<f64>,
-  pub line_cap: Cell<LineCap>,
-  pub line_join: Cell<LineJoin>,
-  pub miter_limit: Cell<f64>,
-  pub line_dash_offset: Cell<f64>,
-  pub shadow_blur: Cell<f64>,
-  pub shadow_color: RefCell<String>,
-  pub shadow_offset_x: Cell<f64>,
-  pub shadow_offset_y: Cell<f64>,
+  global_composite_operation: RefCell<String>,
+  filter: RefCell<String>,
+  image_smoothing_enabled: Cell<bool>,
+  image_smoothing_quality: Cell<ImageSmoothingQuality>,
+  line_width: Cell<f64>,
+  line_cap: Cell<LineCap>,
+  line_join: Cell<LineJoin>,
+  miter_limit: Cell<f64>,
+  line_dash_offset: Cell<f64>,
+  shadow_blur: Cell<f64>,
+  shadow_color: RefCell<String>,
+  shadow_offset_x: Cell<f64>,
+  shadow_offset_y: Cell<f64>,
 
-  pub settings: Canvas2DSettings,
+  settings: Canvas2DSettings,
 }
 
 // SAFETY: OffscreenCanvasRenderingContext2D is only accessed from the JS thread.
@@ -311,13 +315,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn text_align(&self) -> &'static str {
-    match self.text_align.get() {
-      TextAlign::Start => "start",
-      TextAlign::End => "end",
-      TextAlign::Left => "left",
-      TextAlign::Right => "right",
-      TextAlign::Center => "center",
-    }
+    self.text_align.get().as_str()
   }
 
   #[setter]
@@ -335,14 +333,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn text_baseline(&self) -> &'static str {
-    match self.text_baseline.get() {
-      TextBaseline::Top => "top",
-      TextBaseline::Hanging => "hanging",
-      TextBaseline::Middle => "middle",
-      TextBaseline::Alphabetic => "alphabetic",
-      TextBaseline::Ideographic => "ideographic",
-      TextBaseline::Bottom => "bottom",
-    }
+    self.text_baseline.get().as_str()
   }
 
   #[setter]
@@ -362,11 +353,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn direction(&self) -> &'static str {
-    match self.font_state.borrow().direction {
-      crate::css::font::TextDirection::Inherit => "inherit",
-      crate::css::font::TextDirection::Ltr => "ltr",
-      crate::css::font::TextDirection::Rtl => "rtl",
-    }
+    self.font_state.borrow().direction.as_str()
   }
 
   #[setter]
@@ -396,11 +383,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn font_kerning(&self) -> &'static str {
-    match self.font_state.borrow().font_kerning {
-      crate::css::font::FontKerning::Auto => "auto",
-      crate::css::font::FontKerning::Normal => "normal",
-      crate::css::font::FontKerning::None => "none",
-    }
+    self.font_state.borrow().font_kerning.as_str()
   }
 
   #[setter]
@@ -442,15 +425,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn font_variant_caps(&self) -> &'static str {
-    match self.font_state.borrow().font_variant_caps {
-      crate::css::font::FontVariantCaps::Normal => "normal",
-      crate::css::font::FontVariantCaps::SmallCaps => "small-caps",
-      crate::css::font::FontVariantCaps::AllSmallCaps => "all-small-caps",
-      crate::css::font::FontVariantCaps::PetiteCaps => "petite-caps",
-      crate::css::font::FontVariantCaps::AllPetiteCaps => "all-petite-caps",
-      crate::css::font::FontVariantCaps::Unicase => "unicase",
-      crate::css::font::FontVariantCaps::TitlingCaps => "titling-caps",
-    }
+    self.font_state.borrow().font_variant_caps.as_str()
   }
 
   #[setter]
@@ -500,16 +475,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn text_rendering(&self) -> &'static str {
-    match self.font_state.borrow().text_rendering {
-      crate::css::font::TextRendering::Auto => "auto",
-      crate::css::font::TextRendering::OptimizeSpeed => "optimizeSpeed",
-      crate::css::font::TextRendering::OptimizeLegibility => {
-        "optimizeLegibility"
-      }
-      crate::css::font::TextRendering::GeometricPrecision => {
-        "geometricPrecision"
-      }
-    }
+    self.font_state.borrow().text_rendering.as_str()
   }
 
   #[setter]
@@ -687,11 +653,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn image_smoothing_quality(&self) -> &'static str {
-    match self.image_smoothing_quality.get() {
-      ImageSmoothingQuality::Low => "low",
-      ImageSmoothingQuality::Medium => "medium",
-      ImageSmoothingQuality::High => "high",
-    }
+    self.image_smoothing_quality.get().as_str()
   }
 
   #[setter]
@@ -719,11 +681,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn line_cap(&self) -> &'static str {
-    match self.line_cap.get() {
-      LineCap::Butt => "butt",
-      LineCap::Round => "round",
-      LineCap::Square => "square",
-    }
+    self.line_cap.get().as_str()
   }
 
   #[setter]
@@ -739,11 +697,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn line_join(&self) -> &'static str {
-    match self.line_join.get() {
-      LineJoin::Round => "round",
-      LineJoin::Bevel => "bevel",
-      LineJoin::Miter => "miter",
-    }
+    self.line_join.get().as_str()
   }
 
   #[setter]
@@ -1200,9 +1154,8 @@ impl OffscreenCanvasRenderingContext2D {
 
   /// Clears the accumulated scene and updates the canvas dimensions.
   /// Called when OffscreenCanvas.width or .height is changed.
-  pub fn resize(&self, width: u32, height: u32) {
-    self.width.set(width);
-    self.height.set(height);
+  pub fn resize(&self) {
+    let (width, height) = self.data.dimensions();
     self.drawing.borrow_mut().reset(width, height);
   }
 
@@ -1210,8 +1163,7 @@ impl OffscreenCanvasRenderingContext2D {
   ///
   /// Returns a blank zero-filled buffer when no GPU backend is available.
   pub fn render_to_bytes(&self) -> Result<Vec<u8>, JsErrorBox> {
-    let width = self.width.get();
-    let height = self.height.get();
+    let (width, height) = self.data.dimensions();
     let base_color = if self.settings.alpha {
       peniko::Color::TRANSPARENT
     } else {
@@ -1256,8 +1208,7 @@ impl OffscreenCanvasRenderingContext2D {
     &self,
     view: &crate::canvas2d_renderer::wgpu::TextureView,
   ) -> Result<(), JsErrorBox> {
-    let width = self.width.get();
-    let height = self.height.get();
+    let (width, height) = self.data.dimensions();
     let base_color = if self.settings.alpha {
       peniko::Color::TRANSPARENT
     } else {
@@ -1284,8 +1235,7 @@ impl OffscreenCanvasRenderingContext2D {
   /// Renders the accumulated scene into a DynamicImage.
   /// Called by ext/canvas when convertToBlob / transferToImageBitmap is invoked.
   pub fn flush_to_image(&self, image: &mut DynamicImage) {
-    let width = self.width.get();
-    let height = self.height.get();
+    let (width, height) = image.dimensions();
     let base_color = if self.settings.alpha {
       peniko::Color::TRANSPARENT
     } else {
@@ -1511,19 +1461,10 @@ pub fn create_context<'s>(
   data: deno_webgpu::canvas::ContextData,
   scope: &mut v8::PinScope<'s, '_>,
   options: v8::Local<'s, v8::Value>,
-  _prefix: &'static str,
-  _context: &'static str,
+  prefix: &'static str,
+  context: &'static str,
 ) -> Result<v8::Global<v8::Value>, JsErrorBox> {
-  let (width, height) = match &data {
-    deno_webgpu::canvas::ContextData::Canvas(image) => {
-      let d = image.borrow();
-      (d.width(), d.height())
-    }
-    deno_webgpu::canvas::ContextData::Surface(surface) => {
-      let d = surface.borrow();
-      (d.width, d.height)
-    }
-  };
+  let (width, height) = data.dimensions();
   let (renderer, font_system, swash_cache) = {
     let state = state.borrow();
     let renderer = state
@@ -1541,12 +1482,18 @@ pub fn create_context<'s>(
     (renderer, font_system, swash_cache)
   };
 
-  let settings = parse_canvas2d_settings(scope, Some(options));
+  let settings = Canvas2DSettings::convert(
+    scope,
+    options,
+    prefix.into(),
+    (|| context.into()).into(),
+    &(),
+  )
+  .map_err(JsErrorBox::from_err)?;
 
   let ctx = OffscreenCanvasRenderingContext2D {
     canvas,
-    width: Cell::new(width),
-    height: Cell::new(height),
+    data,
     drawing: RefCell::new({
       match renderer.get() {
         Some(Some(backend)) => DrawingBackend::new(backend, width, height),
@@ -1582,67 +1529,6 @@ pub fn create_context<'s>(
   let obj = deno_core::cppgc::make_cppgc_object(scope, ctx);
   let val: v8::Local<v8::Value> = obj.cast();
   Ok(v8::Global::new(scope, val))
-}
-
-fn get_v8_key<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  obj: v8::Local<'s, v8::Object>,
-  key: &str,
-) -> Option<v8::Local<'s, v8::Value>> {
-  let k = v8::String::new(scope, key)?;
-  let v = obj.get(scope, k.into())?;
-  if v.is_undefined() || v.is_null() {
-    None
-  } else {
-    Some(v)
-  }
-}
-
-fn parse_canvas2d_settings<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  options: Option<v8::Local<'s, v8::Value>>,
-) -> Canvas2DSettings {
-  let mut s = Canvas2DSettings::default();
-  let Some(options) = options else {
-    return s;
-  };
-  let Ok(obj) = options.try_cast::<v8::Object>() else {
-    return s;
-  };
-
-  if let Some(v) = get_v8_key(scope, obj, "alpha")
-    && v.is_boolean()
-  {
-    s.alpha = v.boolean_value(scope);
-  }
-  if let Some(v) = get_v8_key(scope, obj, "desynchronized")
-    && v.is_boolean()
-  {
-    s.desynchronized = v.boolean_value(scope);
-  }
-  if let Some(v) = get_v8_key(scope, obj, "colorSpace")
-    && let Some(str_v) = v.to_string(scope)
-  {
-    s.color_space = match str_v.to_rust_string_lossy(scope).as_str() {
-      "display-p3" => PredefinedColorSpace::DisplayP3,
-      _ => PredefinedColorSpace::Srgb,
-    };
-  }
-  if let Some(v) = get_v8_key(scope, obj, "colorType")
-    && let Some(str_v) = v.to_string(scope)
-  {
-    s.color_type = match str_v.to_rust_string_lossy(scope).as_str() {
-      "float16" => CanvasColorType::Float16,
-      _ => CanvasColorType::Unorm8,
-    };
-  }
-  if let Some(v) = get_v8_key(scope, obj, "willReadFrequently")
-    && v.is_boolean()
-  {
-    s.will_read_frequently = v.boolean_value(scope);
-  }
-
-  s
 }
 
 /// Placeholder init op (reserved for future initialization).

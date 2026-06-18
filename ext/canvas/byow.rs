@@ -138,9 +138,7 @@ impl UnsafeWindowSurface {
       let active_context = v8::Local::new(scope, active_context);
       match get_context(id, scope, active_context) {
         Context::Bitmap(context) => context.resize()?,
-        Context::Canvas2D(context) => {
-          context.resize(value, self.data.borrow().height)
-        }
+        Context::Canvas2D(context) => context.resize(),
         Context::WebGPU(context) => context.resize(scope),
       }
     }
@@ -165,9 +163,7 @@ impl UnsafeWindowSurface {
       let active_context = v8::Local::new(scope, active_context);
       match get_context(id, scope, active_context) {
         Context::Bitmap(context) => context.resize()?,
-        Context::Canvas2D(context) => {
-          context.resize(self.data.borrow().width, value)
-        }
+        Context::Canvas2D(context) => context.resize(),
         Context::WebGPU(context) => context.resize(scope),
       }
     }
@@ -357,8 +353,6 @@ impl UnsafeWindowSurface {
             "Canvas2D surface not initialized for presentation",
           ));
         };
-        let data = self.data.borrow();
-
         // Render the accumulated scene to raw RGBA8 bytes.
         let mut bytes = context
           .render_to_bytes()
@@ -372,6 +366,8 @@ impl UnsafeWindowSurface {
             chunk.swap(0, 2); // R ↔ B
           }
         }
+
+        let data = self.data.borrow();
 
         // Acquire the current surface texture.
         let surface_output = data
