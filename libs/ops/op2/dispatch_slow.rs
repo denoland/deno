@@ -306,18 +306,19 @@ pub(crate) fn with_required_check(
   };
 
   let prefix = get_prefix(generator_state);
+  let message_prefix = format!(
+    "{}: {} {} required, but only ",
+    prefix, required, arguments_lit
+  );
 
   let async_offset = if is_async { 1 } else { 0 };
 
   gs_quote!(generator_state(fn_args, scope) =>
     (if #fn_args.length() < (#required as i32) + #async_offset {
-      let msg = format!(
-        "{}: {} {} required, but only {} present",
-        #prefix,
-        #required,
-        #arguments_lit,
-        #fn_args.length() - #async_offset
-      );
+      let present = #fn_args.length() - #async_offset;
+      let mut msg = #message_prefix.to_string();
+      msg.push_str(&present.to_string());
+      msg.push_str(" present");
       let msg = deno_core::v8::String::new(&mut #scope, &msg).unwrap();
       let exception = deno_core::v8::Exception::type_error(&mut #scope, msg.into());
       #scope.throw_exception(exception);
@@ -360,7 +361,7 @@ pub(crate) fn with_self(
 ) -> TokenStream {
   generator_state.needs_opctx = true;
   generator_state.needs_scope = true;
-  let throw_exception = throw_type_error(
+  let throw_exception = throw_invalid_this_type_error(
     generator_state,
     format!("expected {}", &generator_state.self_ty),
   );
@@ -1290,6 +1291,22 @@ fn throw_type_error(
 
   gs_quote!(generator_state(info) => {
     deno_core::_ops::throw_error_one_byte_info(&#info, #message);
+    return 1;
+  })
+}
+
+/// Generates code to throw a Node-compat `TypeError` whose `code` property
+/// is `"ERR_INVALID_THIS"`. Used by the cppgc self-check (brand check)
+/// generators so that calling a method on a wrong-`this` receiver matches
+/// the shape that `webidl.assertBranded` produces in JS.
+fn throw_invalid_this_type_error(
+  generator_state: &mut GeneratorState,
+  message: String,
+) -> TokenStream {
+  debug_assert!(message.is_ascii() && message.len() < 1024);
+
+  gs_quote!(generator_state(info) => {
+    deno_core::_ops::throw_invalid_this_error_one_byte_info(&#info, #message);
     return 1;
   })
 }

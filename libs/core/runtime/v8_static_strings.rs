@@ -19,6 +19,7 @@ v8_static_strings!(
   CODE = "code",
   CONSOLE = "console",
   CONSTRUCTOR = "constructor",
+  ERROR_CONSTRUCTORS = "errorConstructors",
   CORE = "core",
   DENO = "Deno",
   DEFAULT = "default",

@@ -1,0 +1,5 @@
+{
+  "args": "info --quiet --minimum-dependency-age=2025-05-01T20:00:00.000Z main.ts",
+  "output": "main.out",
+  "exitCode": 0
+}

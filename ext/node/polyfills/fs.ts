@@ -983,6 +983,7 @@ type StatFsOptions = {
 class StatFs<T> {
   type: T;
   bsize: T;
+  frsize: T;
   blocks: T;
   bfree: T;
   bavail: T;
@@ -991,6 +992,7 @@ class StatFs<T> {
   constructor(
     type: T,
     bsize: T,
+    frsize: T,
     blocks: T,
     bfree: T,
     bavail: T,
@@ -999,6 +1001,7 @@ class StatFs<T> {
   ) {
     this.type = type;
     this.bsize = bsize;
+    this.frsize = frsize;
     this.blocks = blocks;
     this.bfree = bfree;
     this.bavail = bavail;
@@ -1033,6 +1036,9 @@ function opResultToStatFs(
     return new StatFs(
       result.type,
       result.bsize,
+      // Deno's statfs op does not expose a separate fragment size; it equals
+      // the block size on the platforms we support (matches Node in practice).
+      result.bsize,
       result.blocks,
       result.bfree,
       result.bavail,
@@ -1042,6 +1048,7 @@ function opResultToStatFs(
   }
   return new StatFs(
     BigInt(result.type),
+    BigInt(result.bsize),
     BigInt(result.bsize),
     BigInt(result.blocks),
     BigInt(result.bfree),
@@ -3450,35 +3457,82 @@ function watch(
   const encoding = options?.encoding;
   validateIgnoreOption(options?.ignore, "options.ignore");
   const ignoreMatcher = createIgnoreMatcher(options?.ignore);
-  const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
-    recursive,
-  });
 
-  // Resolve the watched path once so we can compute relative paths.
-  // Use realPathSync to resolve symlinks (e.g. macOS /var -> /private/var)
-  // since Deno.watchFs returns real (symlink-resolved) paths.
-  const resolvedWatchPath = realpathSync(watchPath) as string;
-
-  asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
-    if (done) return;
-    // Node.js returns the relative path from the watched directory for
-    // recursive watches, but just the basename for non-recursive watches.
-    const filename = recursive
-      ? relative(resolvedWatchPath, val.paths[0])
-      : basename(val.paths[0]);
-    if (ignoreMatcher !== null && ignoreMatcher(filename)) {
-      return;
+  // Open the underlying Deno.FsWatcher, but defer any failure to an
+  // 'error' event on the returned FSWatcher rather than throwing
+  // synchronously with a raw `Deno.errors.NotFound`. Editors that
+  // atomically save (write to <file>.tmp.<pid>.<ts> then rename over
+  // the original) can race the inotify watch and produce a transient
+  // ENOENT here; callers using EventEmitter-style error handling
+  // (chokidar, vite) can't recover from a sync throw of a Deno error.
+  // See denoland/deno#34396.
+  const notFoundProto = Deno.errors.NotFound.prototype;
+  const makeWatchNodeError = (e: unknown): Error => {
+    // The notify crate's PathNotFound/WatchNotFound error messages don't
+    // include the "(os error N)" suffix that `denoErrorToNodeError` parses,
+    // so detect NotFound by class and build a Node-style ENOENT manually.
+    if (ObjectPrototypeIsPrototypeOf(notFoundProto, e)) {
+      return uvException({
+        errno: codeMap.get("ENOENT")!,
+        syscall: "watch",
+        path: watchPath,
+      });
     }
-    fsWatcher.emit(
-      "change",
-      convertDenoFsEventToNodeFsEvent(val.kind),
-      encodeWatchFilename(filename, encoding),
-    );
-  }, (e) => {
-    fsWatcher.emit("error", e);
-  });
+    return denoErrorToNodeError(e as Error, {
+      syscall: "watch",
+      path: watchPath,
+    });
+  };
+
+  let iterator: Deno.FsWatcher | undefined;
+  let openError: Error | undefined;
+  let resolvedWatchPath = watchPath;
+  try {
+    // Pre-validate path existence so missing-path failures surface as a
+    // typed `Deno.errors.NotFound` consistently across platforms. notify
+    // 6.1.1's Windows backend (`add_watch` in src/windows.rs) returns a
+    // Generic error rather than a typed NotFound when the path doesn't
+    // exist, which would otherwise bypass the prototype check in
+    // makeWatchNodeError above.
+    Deno.lstatSync(watchPath);
+    iterator = Deno.watchFs(watchPath, { recursive });
+    // Resolve the watched path once so we can compute relative paths.
+    // Use realPathSync to resolve symlinks (e.g. macOS /var -> /private/var)
+    // since Deno.watchFs returns real (symlink-resolved) paths.
+    resolvedWatchPath = realpathSync(watchPath) as string;
+  } catch (e) {
+    if (iterator) {
+      try {
+        iterator.close();
+      } catch { /* ignore */ }
+      iterator = undefined;
+    }
+    openError = makeWatchNodeError(e);
+  }
+
+  if (iterator) {
+    asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
+      if (done) return;
+      // Node.js returns the relative path from the watched directory for
+      // recursive watches, but just the basename for non-recursive watches.
+      const filename = recursive
+        ? relative(resolvedWatchPath, val.paths[0])
+        : basename(val.paths[0]);
+      if (ignoreMatcher !== null && ignoreMatcher(filename)) {
+        return;
+      }
+      fsWatcher.emit(
+        "change",
+        convertDenoFsEventToNodeFsEvent(val.kind),
+        encodeWatchFilename(filename, encoding),
+      );
+    }, (e) => {
+      fsWatcher.emit("error", makeWatchNodeError(e));
+    });
+  }
 
   const fsWatcher = new FSWatcher(() => {
+    if (!iterator) return;
     try {
       iterator.close();
     } catch (e) {
@@ -3513,6 +3567,12 @@ function watch(
         signal.removeEventListener("abort", onAbort);
       });
     }
+  }
+
+  if (openError) {
+    process.nextTick(() => {
+      fsWatcher.emit("error", openError);
+    });
   }
 
   return fsWatcher;
@@ -3805,9 +3865,12 @@ class StatWatcher extends EventEmitter {
 class FSWatcher extends EventEmitter {
   #closer: () => void;
   #closed = false;
-  #watcher: () => Deno.FsWatcher;
+  #watcher: () => Deno.FsWatcher | undefined;
 
-  constructor(closer: () => void, getter: () => Deno.FsWatcher) {
+  constructor(
+    closer: () => void,
+    getter: () => Deno.FsWatcher | undefined,
+  ) {
     super();
     this.#closer = closer;
     this.#watcher = getter;
@@ -3821,10 +3884,10 @@ class FSWatcher extends EventEmitter {
     this.#closer();
   }
   ref() {
-    this.#watcher().ref();
+    this.#watcher()?.ref();
   }
   unref() {
-    this.#watcher().unref();
+    this.#watcher()?.unref();
   }
 }
 

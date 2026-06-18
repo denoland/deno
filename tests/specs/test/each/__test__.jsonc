@@ -1,0 +1,29 @@
+{
+  "tests": {
+    "each": {
+      "args": "test each.ts",
+      "output": "each.out",
+      "exitCode": 0
+    },
+    "ignore_each": {
+      "args": "test ignore_each.ts",
+      "output": "ignore_each.out",
+      "exitCode": 0
+    },
+    "only_each": {
+      "args": "test only_each.ts",
+      "output": "only_each.out",
+      "exitCode": 1
+    },
+    "not_array": {
+      "args": "test not_array.ts",
+      "output": "not_array.out",
+      "exitCode": 1
+    },
+    "missing_fn": {
+      "args": "test missing_fn.ts",
+      "output": "missing_fn.out",
+      "exitCode": 1
+    }
+  }
+}

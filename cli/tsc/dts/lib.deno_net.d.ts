@@ -5,30 +5,48 @@
 /// <reference lib="esnext.disposable" />
 
 declare namespace Deno {
-  /** @category Network */
+  /** The address of a network connection or listener using an IP-based
+   * transport.
+   *
+   * @category Network */
   export interface NetAddr {
+    /** The IP-based transport protocol. */
     transport: "tcp" | "udp";
+    /** The IP address. */
     hostname: string;
+    /** The port number. */
     port: number;
   }
 
-  /** @category Network */
+  /** The address of a network connection or listener using a Unix domain
+   * socket.
+   *
+   * @category Network */
   export interface UnixAddr {
+    /** The Unix domain socket transport protocol. */
     transport: "unix" | "unixpacket";
+    /** The file system path to the socket. */
     path: string;
   }
 
-  /**
+  /** The address of a network connection or listener using the VSOCK transport
+   * for communication between a virtual machine and its host.
+   *
    * @experimental **UNSTABLE**: New API, yet to be vetted.
    * @category Network
    */
   export interface VsockAddr {
+    /** The VSOCK transport protocol. */
     transport: "vsock";
+    /** The context identifier (CID) of the peer. */
     cid: number;
+    /** The port number. */
     port: number;
   }
 
-  /** @category Network */
+  /** The address of a network connection or listener, regardless of transport.
+   *
+   * @category Network */
   export type Addr = NetAddr | UnixAddr | VsockAddr;
 
   /** A generic network listener for stream-oriented protocols.
@@ -40,11 +58,19 @@ declare namespace Deno {
     /** Waits for and resolves to the next connection to the `Listener`. */
     accept(): Promise<T>;
     /** Close closes the listener. Any pending accept promises will be rejected
-     * with errors. */
+     * with errors. A pending async iterator `next()` call will settle after the
+     * underlying accept promise is rejected.
+     *
+     * If the listener has a pending accept operation, the underlying socket may
+     * not be released until the pending promise is rejected. If you need to
+     * listen on the same address immediately after closing the listener, await
+     * the pending accept promise before calling {@linkcode Deno.listen} again.
+     */
     close(): void;
     /** Return the address of the `Listener`. */
     readonly addr: A;
 
+    /** Iterates over the connections accepted by the listener. */
     [Symbol.asyncIterator](): AsyncIterableIterator<T>;
 
     /**
@@ -85,7 +111,10 @@ declare namespace Deno {
    */
   export type VsockListener = Listener<VsockConn, VsockAddr>;
 
-  /** @category Network */
+  /** A generic stream-oriented network connection that can be read from and
+   * written to.
+   *
+   * @category Network */
   export interface Conn<A extends Addr = Addr> extends Disposable {
     /** Read the incoming data from the connection into an array buffer (`p`).
      *
@@ -154,11 +183,15 @@ declare namespace Deno {
     /** Make the connection not block the event loop from finishing. */
     unref(): void;
 
+    /** A {@linkcode ReadableStream} of the data received over the connection. */
     readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
+    /** A {@linkcode WritableStream} for sending data over the connection. */
     readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
   }
 
-  /** @category Network */
+  /** Information about a completed TLS handshake.
+   *
+   * @category Network */
   export interface TlsHandshakeInfo {
     /**
      * Contains the ALPN protocol selected during negotiation with the server.
@@ -167,7 +200,9 @@ declare namespace Deno {
     alpnProtocol: string | null;
   }
 
-  /** @category Network */
+  /** A TLS-encrypted stream connection over an IP-based transport.
+   *
+   * @category Network */
   export interface TlsConn extends Conn<NetAddr> {
     /** Runs the client or server handshake protocol to completion if that has
      * not happened yet. Calling this method is optional; the TLS handshake
@@ -175,13 +210,16 @@ declare namespace Deno {
     handshake(): Promise<TlsHandshakeInfo>;
   }
 
-  /** @category Network */
+  /** Options which can be set when opening a listener via
+   * {@linkcode Deno.listen}.
+   *
+   * @category Network */
   export interface ListenOptions {
     /** The port to listen on.
      *
      * Set to `0` to listen on any available port.
      */
-    port: number;
+    port?: number;
     /** A literal IP address or host name that can be resolved to an IP address.
      *
      * __Note about `0.0.0.0`__ While listening `0.0.0.0` works on all platforms,
@@ -205,7 +243,10 @@ declare namespace Deno {
     tcpBacklog?: number;
   }
 
-  /** @category Network */
+  /** Options which can be set when opening a TCP listener via
+   * {@linkcode Deno.listen}.
+   *
+   * @category Network */
   export interface TcpListenOptions extends ListenOptions {
   }
 
@@ -243,9 +284,11 @@ declare namespace Deno {
    * const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
    * ```
    *
-   * Requires `allow-read` and `allow-write` permission.
+   * Requires `allow-read`, `allow-write` and `allow-net` permission. The
+   * `allow-net` grant may be scoped to the socket path with
+   * `--allow-net=unix:<absolute-path>`.
    *
-   * @tags allow-read, allow-write
+   * @tags allow-read, allow-write, allow-net
    * @category Network
    */
   // deno-lint-ignore adjacent-overload-signatures
@@ -261,7 +304,10 @@ declare namespace Deno {
    * @category Network
    */
   export interface VsockListenOptions {
+    /** The context identifier (CID) to listen on. Use `-1` to listen on any
+     * CID. */
     cid: number;
+    /** The port to listen on. */
     port: number;
   }
 
@@ -311,8 +357,12 @@ declare namespace Deno {
     cert: string;
   }
 
-  /** @category Network */
+  /** Options which can be set when opening a TLS listener via
+   * {@linkcode Deno.listenTls}.
+   *
+   * @category Network */
   export interface ListenTlsOptions extends TcpListenOptions {
+    /** The transport layer protocol to use. */
     transport?: "tcp";
 
     /** Application-Layer Protocol Negotiation (ALPN) protocols to announce to
@@ -342,7 +392,9 @@ declare namespace Deno {
     options: ListenTlsOptions & TlsCertifiedKeyPem,
   ): TlsListener;
 
-  /** @category Network */
+  /** Options which can be set when connecting via {@linkcode Deno.connect}.
+   *
+   * @category Network */
   export interface ConnectOptions {
     /** The port to connect to. */
     port: number;
@@ -355,6 +407,22 @@ declare namespace Deno {
     transport?: "tcp";
     /** An {@linkcode AbortSignal} to close the tcp connection. */
     signal?: AbortSignal;
+    /**
+     * Enable Happy Eyeballs algorithm (RFC 8305) for automatic address family
+     * selection. When enabled, the connection will try both IPv6 and IPv4
+     * addresses with interleaving for faster connection establishment.
+     *
+     * @default {true}
+     */
+    autoSelectFamily?: boolean;
+    /**
+     * Delay in milliseconds between starting new connection attempts when
+     * using Happy Eyeballs. A new connection attempt is started every
+     * `autoSelectFamilyAttemptDelay` milliseconds until one succeeds.
+     *
+     * @default {250}
+     */
+    autoSelectFamilyAttemptDelay?: number;
   }
 
   /**
@@ -375,25 +443,39 @@ declare namespace Deno {
    */
   export function connect(options: ConnectOptions): Promise<TcpConn>;
 
-  /** @category Network */
+  /** A TCP stream connection.
+   *
+   * @category Network */
   export interface TcpConn extends Conn<NetAddr> {
     /**
-     * Enable/disable the use of Nagle's algorithm.
+     * Enable or disable the use of Nagle's algorithm.
      *
-     * @param [noDelay=true]
+     * When `noDelay` is set to `true`, Nagle's algorithm is disabled (this
+     * sets the `TCP_NODELAY` socket option). When set to `false`, Nagle's
+     * algorithm is enabled. Note that this is the inverse of enabling the
+     * algorithm: `noDelay = true` turns Nagle's algorithm *off*.
+     *
+     * @param [noDelay=true] When `true`, disables Nagle's algorithm.
      */
     setNoDelay(noDelay?: boolean): void;
     /** Enable/disable keep-alive functionality. */
     setKeepAlive(keepAlive?: boolean): void;
   }
 
-  /** @category Network */
+  /** Options which can be set when connecting to a Unix domain socket via
+   * {@linkcode Deno.connect}.
+   *
+   * @category Network */
   export interface UnixConnectOptions {
+    /** The Unix domain socket transport protocol. */
     transport: "unix";
+    /** The file system path to the socket to connect to. */
     path: string;
   }
 
-  /** @category Network */
+  /** A Unix domain socket stream connection.
+   *
+   * @category Network */
   export interface UnixConn extends Conn<UnixAddr> {}
 
   /** Connects to the hostname (default is "127.0.0.1") and port on the named
@@ -407,7 +489,9 @@ declare namespace Deno {
    * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
    * ```
    *
-   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix".
+   * Requires `allow-net` permission for "tcp", and `allow-read` and
+   * `allow-net` for "unix". The "unix" `allow-net` grant may be scoped to the
+   * socket path with `--allow-net=unix:<absolute-path>`.
    *
    * @tags allow-net, allow-read
    * @category Network
@@ -415,17 +499,24 @@ declare namespace Deno {
   // deno-lint-ignore adjacent-overload-signatures
   export function connect(options: UnixConnectOptions): Promise<UnixConn>;
 
-  /**
+  /** Options which can be set when connecting over VSOCK via
+   * {@linkcode Deno.connect}.
+   *
    * @experimental **UNSTABLE**: New API, yet to be vetted.
    * @category Network
    */
   export interface VsockConnectOptions {
+    /** The VSOCK transport protocol. */
     transport: "vsock";
+    /** The context identifier (CID) of the peer to connect to. */
     cid: number;
+    /** The port to connect to. */
     port: number;
   }
 
-  /** @category Network */
+  /** A VSOCK stream connection.
+   *
+   * @category Network */
   export interface VsockConn extends Conn<VsockAddr> {}
 
   /** Connects to the hostname (default is "127.0.0.1") and port on the named
@@ -442,7 +533,7 @@ declare namespace Deno {
    * const conn6 = await Deno.connect({ cid: -1, port: 80, transport: "vsock" });
    * ```
    *
-   * Requires `allow-net` permission for "tcp" and "vsock", and `allow-read` for "unix".
+   * Requires `allow-net` permission for "tcp" and "vsock", and `allow-read` and `allow-net` for "unix". The "unix" `allow-net` grant may be scoped to the socket path with `--allow-net=unix:<absolute-path>`.
    *
    * @tags allow-net, allow-read
    * @category Network
@@ -450,7 +541,10 @@ declare namespace Deno {
   // deno-lint-ignore adjacent-overload-signatures
   export function connect(options: VsockConnectOptions): Promise<VsockConn>;
 
-  /** @category Network */
+  /** Options which can be set when establishing a TLS connection via
+   * {@linkcode Deno.connectTls}.
+   *
+   * @category Network */
   export interface ConnectTlsOptions {
     /** The port to connect to. */
     port: number;
@@ -477,6 +571,22 @@ declare namespace Deno {
      * @default {false}
      */
     unsafelyDisableHostnameVerification?: boolean;
+    /**
+     * Enable Happy Eyeballs algorithm (RFC 8305) for automatic address family
+     * selection. When enabled, the connection will try both IPv6 and IPv4
+     * addresses with interleaving for faster connection establishment.
+     *
+     * @default {true}
+     */
+    autoSelectFamily?: boolean;
+    /**
+     * Delay in milliseconds between starting new connection attempts when
+     * using Happy Eyeballs. A new connection attempt is started every
+     * `autoSelectFamilyAttemptDelay` milliseconds until one succeeds.
+     *
+     * @default {250}
+     */
+    autoSelectFamilyAttemptDelay?: number;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
@@ -510,7 +620,10 @@ declare namespace Deno {
     options: ConnectTlsOptions | (ConnectTlsOptions & TlsCertifiedKeyPem),
   ): Promise<TlsConn>;
 
-  /** @category Network */
+  /** Options which can be set when upgrading an existing connection to TLS via
+   * {@linkcode Deno.startTls}.
+   *
+   * @category Network */
   export interface StartTlsOptions {
     /** A literal IP address or host name that can be resolved to an IP address.
      *
@@ -797,6 +910,7 @@ declare namespace Deno {
     /** Stops the listener. This does not close the endpoint. */
     stop(): void;
 
+    /** Iterates over the incoming connections received by the listener. */
     [Symbol.asyncIterator](): AsyncIterableIterator<QuicIncoming>;
 
     /** The endpoint for this listener. */
