@@ -534,7 +534,11 @@ function newReadableStreamFromStreamReadable(
 
   let isCanceled = false;
 
-  const cleanup = finished(streamReadable, (error) => {
+  // Only watch the readable side: a Duplex exposed via Readable.toWeb should
+  // close the ReadableStream once its readable side ends, even if the writable
+  // side is still open (otherwise the reader would hang waiting on the writable
+  // half to finish).
+  const cleanup = finished(streamReadable, { writable: false }, (error) => {
     if (error?.code === "ERR_STREAM_PREMATURE_CLOSE") {
       const err = new AbortError(undefined, { cause: error });
       error = err;

@@ -104,6 +104,20 @@ pub struct ContextState {
   pub(crate) op_ctxs: Box<[OpCtx]>,
   pub(crate) op_method_decls: Vec<OpMethodDecl>,
   pub(crate) methods_ctx_offset: usize,
+  /// Snapshots built against V8 14.9+ bake the *slow* version of each op
+  /// (see `op_ctx_template`); fast-call overloads are re-attached at runtime
+  /// by `upgrade_snapshotted_ops_with_fast_calls`. That pass creates ~1.6k V8
+  /// functions (~0.9ms). It only benefits ops accessed at runtime (baked
+  /// modules captured their slow refs at snapshot eval), so we DEFER it until
+  /// the first residual ext-module load — a program that never loads a
+  /// residual module (e.g. `deno run empty.js`) never pays for it.
+  pub(crate) fast_ops_upgraded: Cell<bool>,
+  /// `(Deno.core.ops, Deno.core.setUpAsyncStub)` captured at `new_inner` time,
+  /// because `Deno.core` is scrubbed from the public `Deno` after bootstrap and
+  /// the deferred upgrade (which runs post-bootstrap) can no longer read them
+  /// from the global. `None` when the upgrade isn't deferred.
+  pub(crate) deferred_fast_ops:
+    RefCell<Option<(v8::Global<v8::Object>, v8::Global<v8::Function>)>>,
   pub(crate) isolate: Option<v8::UnsafeRawIsolatePtr>,
   pub(crate) exception_state: Rc<ExceptionState>,
   /// Shared tick info buffer exposed to JS as a Uint8Array.
@@ -189,6 +203,8 @@ impl ContextState {
       op_ctxs,
       op_method_decls,
       methods_ctx_offset,
+      fast_ops_upgraded: Cell::new(false),
+      deferred_fast_ops: RefCell::new(None),
       pending_ops: op_driver,
       task_spawner_factory: Default::default(),
       user_timer: Default::default(),

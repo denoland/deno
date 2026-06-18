@@ -256,9 +256,11 @@ pub fn op_node_process_kill(
   #[smi] pid: i32,
   #[smi] sig: i32,
 ) -> Result<i32, deno_permissions::PermissionCheckError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_run_all("process.kill")?;
+  if pid != std::process::id() as i32 {
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_run_all("process.kill")?;
+  }
   Ok(kill(pid, sig))
 }
 

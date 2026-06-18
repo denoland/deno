@@ -8,6 +8,8 @@ pub struct DotTestReporter {
   n: usize,
   width: usize,
   cwd: Url,
+  retried_tests: HashSet<usize>,
+  pending_step_tally: common::PendingStepTally,
   summary: TestSummary,
   failure_format_options: TestFailureFormatOptions,
 }
@@ -29,6 +31,8 @@ impl DotTestReporter {
       n: 0,
       width: console_width,
       cwd,
+      retried_tests: Default::default(),
+      pending_step_tally: Default::default(),
       summary: TestSummary::new(),
       failure_format_options,
     }
@@ -100,18 +104,32 @@ impl TestReporter for DotTestReporter {
     std::io::stdout().flush().ok();
   }
 
-  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
+  fn report_slow(
+    &mut self,
+    _description: &TestDescription,
+    _elapsed: Duration,
+  ) {
+  }
   fn report_output(&mut self, _output: &[u8]) {}
 
   fn report_result(
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    _elapsed: u64,
+    _elapsed: Duration,
   ) {
+    common::commit_step_results(
+      &mut self.pending_step_tally,
+      &mut self.summary,
+      description.id,
+    );
+
     match &result {
       TestResult::Ok => {
         self.summary.passed += 1;
+        if self.retried_tests.contains(&description.id) {
+          self.summary.flaky += 1;
+        }
       }
       TestResult::Ignored => {
         self.summary.ignored += 1;
@@ -129,6 +147,22 @@ impl TestReporter for DotTestReporter {
     }
 
     self.print_test_result(result);
+  }
+
+  fn report_retry(
+    &mut self,
+    description: &TestDescription,
+    _attempt: u32,
+    _failure: &TestFailure,
+  ) {
+    self.retried_tests.insert(description.id);
+    common::discard_step_results(&mut self.pending_step_tally, description.id);
+  }
+
+  fn report_repeat(&mut self, description: &TestDescription, _repetition: u32) {
+    // Drop the previous repetition's step results so each step is counted once,
+    // not once per repetition.
+    common::discard_step_results(&mut self.pending_step_tally, description.id);
   }
 
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>) {
@@ -156,30 +190,17 @@ impl TestReporter for DotTestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    _elapsed: u64,
+    _elapsed: Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    match &result {
-      TestStepResult::Ok => {
-        self.summary.passed_steps += 1;
-      }
-      TestStepResult::Ignored => {
-        self.summary.ignored_steps += 1;
-      }
-      TestStepResult::Failed(failure) => {
-        self.summary.failed_steps += 1;
-        self.summary.failures.push((
-          TestFailureDescription {
-            id: desc.id,
-            name: common::format_test_step_ancestry(desc, tests, test_steps),
-            origin: desc.origin.clone(),
-            location: desc.location.clone(),
-          },
-          failure.clone(),
-        ))
-      }
-    }
+    common::record_step_result(
+      &mut self.pending_step_tally,
+      desc,
+      result,
+      tests,
+      test_steps,
+    );
 
     self.print_test_step_result(result);
   }

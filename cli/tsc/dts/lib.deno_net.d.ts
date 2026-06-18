@@ -407,6 +407,22 @@ declare namespace Deno {
     transport?: "tcp";
     /** An {@linkcode AbortSignal} to close the tcp connection. */
     signal?: AbortSignal;
+    /**
+     * Enable Happy Eyeballs algorithm (RFC 8305) for automatic address family
+     * selection. When enabled, the connection will try both IPv6 and IPv4
+     * addresses with interleaving for faster connection establishment.
+     *
+     * @default {true}
+     */
+    autoSelectFamily?: boolean;
+    /**
+     * Delay in milliseconds between starting new connection attempts when
+     * using Happy Eyeballs. A new connection attempt is started every
+     * `autoSelectFamilyAttemptDelay` milliseconds until one succeeds.
+     *
+     * @default {250}
+     */
+    autoSelectFamilyAttemptDelay?: number;
   }
 
   /**
@@ -432,9 +448,14 @@ declare namespace Deno {
    * @category Network */
   export interface TcpConn extends Conn<NetAddr> {
     /**
-     * Enable/disable the use of Nagle's algorithm.
+     * Enable or disable the use of Nagle's algorithm.
      *
-     * @param [noDelay=true]
+     * When `noDelay` is set to `true`, Nagle's algorithm is disabled (this
+     * sets the `TCP_NODELAY` socket option). When set to `false`, Nagle's
+     * algorithm is enabled. Note that this is the inverse of enabling the
+     * algorithm: `noDelay = true` turns Nagle's algorithm *off*.
+     *
+     * @param [noDelay=true] When `true`, disables Nagle's algorithm.
      */
     setNoDelay(noDelay?: boolean): void;
     /** Enable/disable keep-alive functionality. */
@@ -550,6 +571,22 @@ declare namespace Deno {
      * @default {false}
      */
     unsafelyDisableHostnameVerification?: boolean;
+    /**
+     * Enable Happy Eyeballs algorithm (RFC 8305) for automatic address family
+     * selection. When enabled, the connection will try both IPv6 and IPv4
+     * addresses with interleaving for faster connection establishment.
+     *
+     * @default {true}
+     */
+    autoSelectFamily?: boolean;
+    /**
+     * Delay in milliseconds between starting new connection attempts when
+     * using Happy Eyeballs. A new connection attempt is started every
+     * `autoSelectFamilyAttemptDelay` milliseconds until one succeeds.
+     *
+     * @default {250}
+     */
+    autoSelectFamilyAttemptDelay?: number;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using

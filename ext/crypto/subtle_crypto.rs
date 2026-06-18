@@ -656,7 +656,13 @@ fn supports_params_valid<'s>(
 
   // HKDF / PBKDF2 length constraint applies regardless of whether the
   // algorithm argument was a string or a dictionary.
-  if registered_op == "deriveBits" && (upper == "HKDF" || upper == "PBKDF2") {
+  if registered_op == "deriveBits"
+    && (upper == "HKDF"
+      || upper == "PBKDF2"
+      || upper == "ARGON2I"
+      || upper == "ARGON2D"
+      || upper == "ARGON2ID")
+  {
     let Some(l) = length else { return false };
     if l == 0 || !l.is_multiple_of(8) {
       return false;
@@ -676,6 +682,16 @@ fn supports_params_valid<'s>(
   }
 
   match registered_op {
+    "digest" => match upper.as_str() {
+      "CSHAKE128" | "CSHAKE256" | "TURBOSHAKE128" | "TURBOSHAKE256"
+      | "KT128" | "KT256" | "KANGAROOTWELVE" => {
+        let Some(l) = read_u32_member(scope, obj, b"outputLength") else {
+          return true;
+        };
+        l != 0 && l.is_multiple_of(8)
+      }
+      _ => true,
+    },
     "encrypt" | "decrypt" => match upper.as_str() {
       "AES-CBC" => {
         if let Some(n) = read_buffer_source_byte_length(scope, obj, b"iv")
@@ -742,9 +758,47 @@ fn supports_params_valid<'s>(
         }
         true
       }
+      "KMAC128" | "KMAC256" => {
+        if let Some(l) = read_u32_member(scope, obj, b"length")
+          && (l == 0 || !l.is_multiple_of(8))
+        {
+          return false;
+        }
+        true
+      }
       "ECDSA" | "ECDH" => {
         if let Some(curve) = read_string_member(scope, obj, b"namedCurve")
           && !matches!(curve.as_str(), "P-256" | "P-384" | "P-521")
+        {
+          return false;
+        }
+        true
+      }
+      _ => true,
+    },
+    "sign" | "verify" => match upper.as_str() {
+      "KMAC128" | "KMAC256" => {
+        let Some(l) = read_u32_member(scope, obj, b"outputLength") else {
+          return true;
+        };
+        l != 0 && l.is_multiple_of(8)
+      }
+      _ => true,
+    },
+    "deriveBits" => match upper.as_str() {
+      "ARGON2I" | "ARGON2D" | "ARGON2ID" => {
+        if let Some(memory) = read_u32_member(scope, obj, b"memory")
+          && memory == 0
+        {
+          return false;
+        }
+        if let Some(passes) = read_u32_member(scope, obj, b"passes")
+          && passes == 0
+        {
+          return false;
+        }
+        if let Some(parallelism) = read_u32_member(scope, obj, b"parallelism")
+          && parallelism == 0
         {
           return false;
         }

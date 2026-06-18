@@ -192,6 +192,7 @@ async fn generate_doc_nodes_for_builtin_types(
         resolver: None,
         unstable_bytes_imports: false,
         unstable_text_imports: true,
+        unstable_css_imports: false,
       },
     )
     .await;
@@ -264,6 +265,7 @@ pub async fn doc(
         graph.roots.iter().cloned().collect::<Vec<_>>();
 
       graph_exit_integrity_errors(&graph);
+      let collect_bare_importable_pkg_names = Vec::<String>::new;
       let errors = graph_walk_errors(
         &graph,
         &sys,
@@ -274,6 +276,7 @@ pub async fn doc(
           will_type_check: false,
           allow_unknown_media_types: false,
           allow_unknown_jsr_exports: false,
+          collect_bare_importable_pkg_names: &collect_bare_importable_pkg_names,
         },
       );
       let mut markdown_urls = IndexSet::new();
