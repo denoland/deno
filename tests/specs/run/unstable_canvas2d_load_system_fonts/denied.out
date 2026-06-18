@@ -1,1 +1,1 @@
-NotCapable: Requires sys access to "systemFonts"[WILDCARD]
+error: Uncaught (in promise) NotCapable: Requires sys access to "systemFonts"[WILDCARD]

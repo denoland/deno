@@ -3,6 +3,7 @@
 use cosmic_text::fontdb;
 use cssparser::Token;
 use cssparser::match_ignore_ascii_case;
+use deno_core::WebIDL;
 
 use super::error::CSSCustomError;
 use super::error::CSSParseError;
@@ -17,7 +18,8 @@ use super::value::ParserInput;
 /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-font>
 /// See <https://drafts.csswg.org/css-fonts-4/#font-prop>
 /// Values for `CanvasTextDrawingStyles.direction`.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(WebIDL, Clone, Copy, Debug, Default, PartialEq)]
+#[webidl(enum)]
 pub enum TextDirection {
   #[default]
   Inherit,
@@ -26,7 +28,8 @@ pub enum TextDirection {
 }
 
 /// Values for `CanvasTextDrawingStyles.fontKerning`.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(WebIDL, Clone, Copy, Debug, Default, PartialEq)]
+#[webidl(enum)]
 pub enum FontKerning {
   #[default]
   Auto,
@@ -35,7 +38,9 @@ pub enum FontKerning {
 }
 
 /// Values for `CanvasTextDrawingStyles.fontVariantCaps`.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(WebIDL, Clone, Copy, Debug, Default)]
+#[cfg_attr(test, derive(PartialEq))]
+#[webidl(enum)]
 pub enum FontVariantCaps {
   #[default]
   Normal,
@@ -48,12 +53,16 @@ pub enum FontVariantCaps {
 }
 
 /// Values for `CanvasTextDrawingStyles.textRendering`.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(WebIDL, Clone, Copy, Debug, Default)]
+#[webidl(enum)]
 pub enum TextRendering {
   #[default]
   Auto,
+  #[webidl(rename = "optimizeSpeed")]
   OptimizeSpeed,
+  #[webidl(rename = "optimizeLegibility")]
   OptimizeLegibility,
+  #[webidl(rename = "geometricPrecision")]
   GeometricPrecision,
 }
 
