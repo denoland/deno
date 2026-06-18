@@ -668,6 +668,8 @@ pub struct TaskFlags {
   pub filter: Option<String>,
   pub eval: bool,
   pub no_prefix: bool,
+  /// Exit with code 0 instead of an error when the named task is not found.
+  pub if_present: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -5039,6 +5041,14 @@ Evaluate a task from string:
           )
           .action(ArgAction::SetTrue),
       )
+      .arg(
+        Arg::new("if-present")
+          .long("if-present")
+          .help(
+            "Exit with code 0 instead of an error when the task is not found",
+          )
+          .action(ArgAction::SetTrue),
+      )
       .arg(env_file_arg())
       .arg(node_modules_dir_arg())
       .arg(node_modules_linker_arg())
@@ -8595,6 +8605,7 @@ fn task_parse(
     filter,
     eval: matches.get_flag("eval"),
     no_prefix: matches.get_flag("no-prefix"),
+    if_present: matches.get_flag("if-present"),
   };
 
   match matches.remove_subcommand() {
@@ -14776,6 +14787,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         argv: svec!["hello", "world"],
         ..Flags::default()
@@ -14794,6 +14806,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -14811,6 +14824,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -14828,6 +14842,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -14845,6 +14860,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -14862,6 +14878,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -14879,6 +14896,7 @@ mod tests {
           filter: None,
           eval: true,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -14911,6 +14929,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         argv: svec!["--", "hello", "world"],
         config_flag: ConfigFlag::Path("deno.json".to_owned()),
@@ -14932,6 +14951,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         argv: svec!["--", "hello", "world"],
         ..Flags::default()
@@ -14954,6 +14974,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         argv: svec!["--"],
         ..Flags::default()
@@ -14975,6 +14996,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         argv: svec!["-1", "--test"],
         ..Flags::default()
@@ -14996,6 +15018,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         argv: svec!["--test"],
         ..Flags::default()
@@ -15018,6 +15041,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         log_level: Some(log::Level::Error),
         ..Flags::default()
@@ -15039,6 +15063,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -15059,6 +15084,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -15080,6 +15106,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -15110,6 +15137,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         env_file: Some(vec![".env".to_owned()]),
         ..Flags::default()
@@ -15134,8 +15162,30 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         env_file: Some(vec![".env.dev".to_owned(), ".env.local".to_owned()]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_subcommand_if_present() {
+    let r = flags_from_vec(svec!["deno", "task", "--if-present", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: false,
+          filter: None,
+          eval: false,
+          no_prefix: false,
+          if_present: true,
+        }),
         ..Flags::default()
       }
     );
