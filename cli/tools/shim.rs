@@ -52,7 +52,7 @@ fn shim_dir() -> Result<PathBuf, AnyError> {
   Ok(home.join(".deno").join("shims"))
 }
 
-pub async fn shim(
+pub fn shim(
   _flags: Arc<Flags>,
   shim_flags: ShimFlags,
 ) -> Result<i32, AnyError> {
@@ -188,7 +188,7 @@ fn maybe_print_notice() {
   if marker.exists() {
     return;
   }
-  eprintln!(
+  log::warn!(
     "{}",
     colors::italic_gray(
       "Note: this is a Deno shim, not the real package manager. \
@@ -418,9 +418,7 @@ fn exec_real_pm(pm: &str, args: &[String]) -> Result<i32, AnyError> {
 
 /// Replace the current process with `command` on Unix; on other platforms spawn
 /// it and propagate the exit code.
-fn exec_replacing(
-  #[allow(unused_mut)] mut command: std::process::Command,
-) -> Result<i32, AnyError> {
+fn exec_replacing(mut command: std::process::Command) -> Result<i32, AnyError> {
   #[cfg(unix)]
   {
     use std::os::unix::process::CommandExt;
@@ -471,7 +469,7 @@ fn binary_candidates(pm: &str) -> Vec<String> {
 }
 
 fn canonicalize(path: &Path) -> Option<PathBuf> {
-  std::fs::canonicalize(path).ok()
+  crate::util::fs::canonicalize_path(path).ok()
 }
 
 /// Whether `dir` is present on the current `PATH`.
@@ -515,7 +513,6 @@ fn write_shim(dir: &Path, pm: &str, exe: &Path) -> Result<(), AnyError> {
     let mut perms = std::fs::metadata(&out_path)?.permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&out_path, perms)?;
-    let _ = exe;
   }
 
   #[cfg(windows)]
