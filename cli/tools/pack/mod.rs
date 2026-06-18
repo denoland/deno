@@ -472,9 +472,29 @@ fn collect_asset_files(
   for file in readme_license_files {
     excluded.insert(package_dir.join(&file.relative_path));
   }
+  // The tarball we are about to write must never be packed into itself. When
+  // `--output` is given, resolve it (relative to the cwd, like
+  // `create_npm_tarball`) and exclude that exact path — this covers an
+  // output tarball that lands inside an included dir, e.g.
+  // `pack --output ./assets/foo.tgz`. The root-level `.tgz` heuristic below
+  // additionally catches default-named tarballs left over from prior runs.
+  if let Some(output) = pack_flags.output.as_deref() {
+    excluded.insert(cli_options.initial_cwd().join(output));
+  }
 
   let collected = FileCollector::new(|e| {
     if !e.metadata.file_type().is_file() {
+      // Mirror `deno publish`, which surfaces a diagnostic for non-regular
+      // files matched by the publish config. `pack` can't include them, so
+      // warn rather than silently dropping (e.g. a symlinked asset) to
+      // avoid a confusing "why is my file missing?" report.
+      if e.metadata.file_type().is_symlink() {
+        log::warn!(
+          "{} Skipping symlink '{}' matched by the package's publish config; symlinks can't be packed.",
+          colors::yellow("Warning"),
+          e.path.display()
+        );
+      }
       return false;
     }
     e.path
@@ -499,11 +519,13 @@ fn collect_asset_files(
     let Ok(relative) = path.strip_prefix(&package_dir) else {
       continue;
     };
-    // `deno pack` writes its output tarball into the package directory, so
-    // a root-level `.tgz` is a pack artifact (e.g. left over from a
-    // previous run) rather than a source asset — never bundle it. Without
-    // this, re-running `pack` would embed the prior tarball and break the
-    // reproducibility guarantee.
+    // By default `deno pack` writes its output tarball into the package
+    // directory, so a root-level `.tgz` is most likely a pack artifact
+    // (e.g. left over from a previous default-named run) rather than a
+    // source asset — drop it. Without this, re-running `pack` would embed
+    // the prior tarball and break the reproducibility guarantee. An
+    // explicit `--output` path is excluded above; this only covers the
+    // default-named, root-level case.
     if relative
       .parent()
       .map(|p| p.as_os_str().is_empty())
