@@ -2232,6 +2232,14 @@ async fn filter_specifiers_by_changed(
       run_everything_paths.insert(path);
     }
   }
+  // A changed package.json can alter npm dependencies (and thus any test's
+  // runtime behavior) in ways the import graph doesn't capture, so treat it
+  // like a deno config change.
+  for pkg_json in cli_options.workspace().package_jsons() {
+    if let Ok(path) = canonicalize_path(&pkg_json.path) {
+      run_everything_paths.insert(path);
+    }
+  }
   if let Some(lockfile) = factory.maybe_lockfile().await?
     && let Ok(path) = canonicalize_path(&lockfile.filename)
   {
