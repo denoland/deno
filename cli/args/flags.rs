@@ -668,6 +668,8 @@ pub struct TaskFlags {
   pub filter: Option<String>,
   pub eval: bool,
   pub no_prefix: bool,
+  /// Exit with code 0 instead of an error when the named task is not found.
+  pub if_present: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -2598,7 +2600,7 @@ fn add_dev_arg() -> Arg {
   Arg::new("dev")
     .long("dev")
     .short('D')
-    .help("Add the package as a dev dependency. Note: This only applies when adding to a `package.json` file.")
+    .help("Add the package as a dev dependency (under `devDependencies`). Note: this only applies when adding to a `package.json` file.")
     .action(ArgAction::SetTrue)
 }
 
@@ -5046,6 +5048,14 @@ Evaluate a task from string:
           )
           .action(ArgAction::SetTrue),
       )
+      .arg(
+        Arg::new("if-present")
+          .long("if-present")
+          .help(
+            "Exit with code 0 instead of an error when the task is not found",
+          )
+          .action(ArgAction::SetTrue),
+      )
       .arg(env_file_arg())
       .arg(node_modules_dir_arg())
       .arg(node_modules_linker_arg())
@@ -6485,11 +6495,7 @@ fn reload_arg() -> Arg {
     .long("reload")
     .value_name("CACHE_BLOCKLIST")
     .help(
-      cstr!("Reload source code cache (recompile TypeScript)
-  <p(245)>no value                                                 Reload everything
-  jsr:@std/http/file-server,jsr:@std/assert/assert-equals  Reloads specific modules
-  npm:                                                     Reload all npm modules
-  npm:chalk                                                Reload specific npm module</>",
+      cstr!("Reload source code cache (recompile TypeScript). With no value, reloads everything. Pass a comma-separated list of specifiers to reload only those modules; <p(245)>npm:</> reloads all npm modules; <p(245)>npm:chalk</> reloads a single npm module; <p(245)>jsr:@std/http/file-server,jsr:@std/assert/assert-equals</> reloads specific modules.",
     ))
     .value_hint(ValueHint::FilePath)
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
@@ -6838,15 +6844,11 @@ fn check_arg(checks_local_by_default: bool) -> Arg {
 
   if checks_local_by_default {
     arg.help(
-      cstr!("Set type-checking behavior. This subcommand type-checks local modules by default, so adding --check is redundant
-  <p(245)>If the value of \"all\" is supplied, remote modules will be included.
-  Alternatively, the 'deno check' subcommand can be used</>",
+      cstr!("Set type-checking behavior. This subcommand type-checks local modules by default, so passing <p(245)>--check</> is redundant; pass <p(245)>--check=all</> to also type-check remote modules. Alternatively, use the <p(245)>'deno check'</> subcommand.",
     ))
   } else {
     arg.help(cstr!(
-      "Enable type-checking. This subcommand does not type-check by default
-  <p(245)>If the value of \"all\" is supplied, remote modules will be included.
-  Alternatively, the 'deno check' subcommand can be used</>"
+      "Enable type-checking. This subcommand does not type-check by default; pass <p(245)>--check=all</> to also type-check remote modules. Alternatively, use the <p(245)>'deno check'</> subcommand."
     ))
   }
 }
@@ -6972,7 +6974,7 @@ fn node_modules_dir_arg() -> Arg {
     .value_parser(clap::builder::ValueParser::new(parse_node_modules_dir_mode))
     .value_name("MODE")
     .require_equals(true)
-    .help("Sets the node modules management mode for npm packages")
+    .help(cstr!("Selects the node_modules directory mode for npm packages (not a path). One of: <p(245)>auto</> (create a local node_modules directory and install npm packages into it), <p(245)>manual</> (use the existing local node_modules directory, do not modify it), <p(245)>none</> (do not use a local node_modules directory; resolve npm packages from the global cache). Defaults to <p(245)>auto</> when the flag is passed without a value."))
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
@@ -8629,6 +8631,7 @@ fn task_parse(
     filter,
     eval: matches.get_flag("eval"),
     no_prefix: matches.get_flag("no-prefix"),
+    if_present: matches.get_flag("if-present"),
   };
 
   match matches.remove_subcommand() {
@@ -14811,6 +14814,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         argv: svec!["hello", "world"],
         ..Flags::default()
@@ -14829,6 +14833,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -14846,6 +14851,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -14863,6 +14869,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -14880,6 +14887,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -14897,6 +14905,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -14914,6 +14923,7 @@ mod tests {
           filter: None,
           eval: true,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -14946,6 +14956,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         argv: svec!["--", "hello", "world"],
         config_flag: ConfigFlag::Path("deno.json".to_owned()),
@@ -14967,6 +14978,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         argv: svec!["--", "hello", "world"],
         ..Flags::default()
@@ -14989,6 +15001,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         argv: svec!["--"],
         ..Flags::default()
@@ -15010,6 +15023,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         argv: svec!["-1", "--test"],
         ..Flags::default()
@@ -15031,6 +15045,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         argv: svec!["--test"],
         ..Flags::default()
@@ -15053,6 +15068,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         log_level: Some(log::Level::Error),
         ..Flags::default()
@@ -15074,6 +15090,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         ..Flags::default()
       }
@@ -15094,6 +15111,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -15115,6 +15133,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -15145,6 +15164,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         env_file: Some(vec![".env".to_owned()]),
         ..Flags::default()
@@ -15169,8 +15189,30 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          if_present: false,
         }),
         env_file: Some(vec![".env.dev".to_owned(), ".env.local".to_owned()]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_subcommand_if_present() {
+    let r = flags_from_vec(svec!["deno", "task", "--if-present", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: false,
+          filter: None,
+          eval: false,
+          no_prefix: false,
+          if_present: true,
+        }),
         ..Flags::default()
       }
     );
