@@ -127,10 +127,12 @@ pub fn op_ws_check_permission_and_cancel_handle(
   #[string] url: String,
   cancel_handle: bool,
 ) -> Result<Option<ResourceId>, WebsocketError> {
-  state.borrow_mut::<PermissionsContainer>().check_net_url(
-    &url::Url::parse(&url).map_err(WebsocketError::Url)?,
-    &api_name,
-  )?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_connect_url(
+      &url::Url::parse(&url).map_err(WebsocketError::Url)?,
+      &api_name,
+    )?;
 
   if cancel_handle {
     let rid = state
@@ -453,7 +455,7 @@ pub async fn op_ws_create(
   let (client, allow_host) = {
     let mut s = state.borrow_mut();
     s.borrow_mut::<PermissionsContainer>()
-      .check_net_url(
+      .check_net_connect_url(
         &url::Url::parse(&url).map_err(WebsocketError::Url)?,
         &api_name,
       )

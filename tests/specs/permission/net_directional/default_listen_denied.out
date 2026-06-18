@@ -1,0 +1,2 @@
+error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:0", run again with the --allow-net flag
+[WILDCARD]

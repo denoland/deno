@@ -67,7 +67,8 @@ pub async fn op_node_getaddrinfo(
   {
     let mut state_ = state.borrow_mut();
     let permissions = state_.borrow_mut::<PermissionsContainer>();
-    permissions.check_net(&(hostname.as_str(), port), "node:dns.lookup()")?;
+    permissions
+      .check_net_connect(&(hostname.as_str(), port), "node:dns.lookup()")?;
   }
 
   let hostname_clone = hostname.clone();
@@ -266,8 +267,10 @@ pub async fn op_node_getnameinfo(
   {
     let mut state_ = state.borrow_mut();
     let permissions = state_.borrow_mut::<PermissionsContainer>();
-    permissions
-      .check_net(&(ip.as_str(), Some(port)), "node:dns.lookupService()")?;
+    permissions.check_net_connect(
+      &(ip.as_str(), Some(port)),
+      "node:dns.lookupService()",
+    )?;
   }
 
   let ip_addr: IpAddr = ip.parse()?;

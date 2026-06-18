@@ -421,7 +421,10 @@ pub async fn op_net_connect_tls(
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<PermissionsContainer>();
     permissions
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectTls()")
+      .check_net_connect(
+        &(&addr.hostname, Some(addr.port)),
+        "Deno.connectTls()",
+      )
       .map_err(NetError::Permission)?;
     if let Some(path) = cert_file {
       Some(
@@ -488,7 +491,7 @@ pub async fn op_net_connect_tls(
       &addrs[..1]
     };
     for addr in checked {
-      permissions.check_net_resolved(
+      permissions.check_net_connect_resolved(
         &addr.ip(),
         addr.port(),
         "Deno.connectTls()",
@@ -568,7 +571,7 @@ pub fn op_net_listen_tls(
   {
     let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenTls()")
+      .check_net_listen(&(&addr.hostname, Some(addr.port)), "Deno.listenTls()")
       .map_err(NetError::Permission)?;
   }
 
@@ -577,7 +580,7 @@ pub fn op_net_listen_tls(
     .ok_or(NetError::NoResolvedAddress)?;
   state
     .borrow_mut::<PermissionsContainer>()
-    .check_net_resolved(
+    .check_net_listen_resolved(
       &bind_addr.ip(),
       bind_addr.port(),
       "Deno.listenTls()",

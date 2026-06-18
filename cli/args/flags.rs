@@ -1179,6 +1179,10 @@ pub struct PermissionFlags {
   pub deny_ffi: Option<Vec<String>>,
   pub allow_net: Option<Vec<String>>,
   pub deny_net: Option<Vec<String>>,
+  pub allow_net_connect: Option<Vec<String>>,
+  pub deny_net_connect: Option<Vec<String>>,
+  pub allow_net_listen: Option<Vec<String>>,
+  pub deny_net_listen: Option<Vec<String>>,
   pub allow_read: Option<Vec<String>>,
   pub deny_read: Option<Vec<String>>,
   pub ignore_read: Option<Vec<String>>,
@@ -1203,6 +1207,10 @@ impl PermissionFlags {
       || self.deny_ffi.is_some()
       || self.allow_net.is_some()
       || self.deny_net.is_some()
+      || self.allow_net_connect.is_some()
+      || self.deny_net_connect.is_some()
+      || self.allow_net_listen.is_some()
+      || self.deny_net_listen.is_some()
       || self.allow_read.is_some()
       || self.deny_read.is_some()
       || self.ignore_read.is_some()
@@ -1298,6 +1306,46 @@ impl Flags {
       Some(net_denylist) => {
         let s = format!("--deny-net={}", net_denylist.join(","));
         args.push(s);
+      }
+      _ => {}
+    }
+
+    match &self.permissions.allow_net_connect {
+      Some(list) if list.is_empty() => {
+        args.push("--allow-net-connect".to_string());
+      }
+      Some(list) => {
+        args.push(format!("--allow-net-connect={}", list.join(",")));
+      }
+      _ => {}
+    }
+
+    match &self.permissions.deny_net_connect {
+      Some(list) if list.is_empty() => {
+        args.push("--deny-net-connect".to_string());
+      }
+      Some(list) => {
+        args.push(format!("--deny-net-connect={}", list.join(",")));
+      }
+      _ => {}
+    }
+
+    match &self.permissions.allow_net_listen {
+      Some(list) if list.is_empty() => {
+        args.push("--allow-net-listen".to_string());
+      }
+      Some(list) => {
+        args.push(format!("--allow-net-listen={}", list.join(",")));
+      }
+      _ => {}
+    }
+
+    match &self.permissions.deny_net_listen {
+      Some(list) if list.is_empty() => {
+        args.push("--deny-net-listen".to_string());
+      }
+      Some(list) => {
+        args.push(format!("--deny-net-listen={}", list.join(",")));
       }
       _ => {}
     }
@@ -1665,6 +1713,8 @@ impl Flags {
     self.permissions.allow_read = None;
     self.permissions.allow_env = None;
     self.permissions.allow_net = None;
+    self.permissions.allow_net_connect = None;
+    self.permissions.allow_net_listen = None;
     self.permissions.allow_run = None;
     self.permissions.allow_write = None;
     self.permissions.allow_sys = None;
@@ -5856,8 +5906,12 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                             Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>
                                              <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
-  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary. A Unix domain socket can be scoped with <p(245)>unix:<<absolute-path></>.
+  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access (both inbound and outbound). Optionally specify allowed IP addresses and host names, with ports as necessary. A Unix domain socket can be scoped with <p(245)>unix:<<absolute-path></>. Mutually exclusive with --allow-net-connect / --allow-net-listen.
                                              <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"  |  --allow-net="unix:/var/run/docker.sock"</>
+      <g>--allow-net-connect[=<<IP_OR_HOSTNAME>...]</> Allow outbound network connections only (fetch, Deno.connect, etc.). Cannot be combined with --allow-net / --deny-net.
+                                             <p(245)>--allow-net-connect  |  --allow-net-connect="deno.land:443"</>
+      <g>--allow-net-listen[=<<IP_OR_HOSTNAME>...]</>  Allow inbound network listeners only (Deno.listen, Deno.serve, etc.). Cannot be combined with --allow-net / --deny-net.
+                                             <p(245)>--allow-net-listen  |  --allow-net-listen="127.0.0.1:8080"</>
   <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>     Allow access to environment variables. Optionally specify accessible environment variables.
                                              <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"</>
   <g>-S, --allow-sys[=<<API_NAME>...]</>          Allow access to OS information. Optionally allow specific APIs by function name.
@@ -5870,8 +5924,12 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--deny-read  |  --deny-read="/etc,/var/log.txt"</>
       <g>--deny-write[=<<PATH>...]</>             Deny file system write access. Optionally specify denied paths.
                                              <p(245)>--deny-write  |  --deny-write="/etc,/var/log.txt"</>
-      <g>--deny-net[=<<IP_OR_HOSTNAME>...]</>     Deny network access. Optionally specify defined IP addresses and host names, with ports as necessary.
+      <g>--deny-net[=<<IP_OR_HOSTNAME>...]</>     Deny network access (both directions). Mutually exclusive with --deny-net-connect / --deny-net-listen.
                                              <p(245)>--deny-net  |  --deny-net="localhost:8080,deno.land"</>
+      <g>--deny-net-connect[=<<IP_OR_HOSTNAME>...]</> Deny outbound network connections only. Cannot be combined with --allow-net / --deny-net.
+                                             <p(245)>--deny-net-connect  |  --deny-net-connect="example.com:80"</>
+      <g>--deny-net-listen[=<<IP_OR_HOSTNAME>...]</>  Deny inbound network listeners only. Cannot be combined with --allow-net / --deny-net.
+                                             <p(245)>--deny-net-listen  |  --deny-net-listen="0.0.0.0:8080"</>
       <g>--deny-env[=<<VARIABLE_NAME>...]</>      Deny access to environment variables. Optionally specify inacessible environment variables.
                                              <p(245)>--deny-env  |  --deny-env="PORT,HOME,PATH"</>
       <g>--deny-sys[=<<API_NAME>...]</>           Deny access to OS information. Optionally deny specific APIs by function name.
@@ -5994,6 +6052,74 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
       {
         let mut arg = Arg::new("deny-net")
           .long("deny-net")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("IP_OR_HOSTNAME")
+          .long_help("false")
+          .value_parser(flags_net::validator)
+          .hide(true);
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
+    )
+    .arg(
+      {
+        let mut arg = Arg::new("allow-net-connect")
+          .long("allow-net-connect")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("IP_OR_HOSTNAME")
+          .long_help("false")
+          .value_parser(flags_net::validator)
+          .hide(true);
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
+    )
+    .arg(
+      {
+        let mut arg = Arg::new("deny-net-connect")
+          .long("deny-net-connect")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("IP_OR_HOSTNAME")
+          .long_help("false")
+          .value_parser(flags_net::validator)
+          .hide(true);
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
+    )
+    .arg(
+      {
+        let mut arg = Arg::new("allow-net-listen")
+          .long("allow-net-listen")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("IP_OR_HOSTNAME")
+          .long_help("false")
+          .value_parser(flags_net::validator)
+          .hide(true);
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
+    )
+    .arg(
+      {
+        let mut arg = Arg::new("deny-net-listen")
+          .long("deny-net-listen")
           .num_args(0..)
           .use_value_delimiter(true)
           .require_equals(true)
@@ -9169,6 +9295,53 @@ fn permission_args_parse(
     flags.permissions.deny_net = Some(net_denylist);
   }
 
+  if let Some(net_wl) = matches.remove_many::<String>("allow-net-connect") {
+    let list = flags_net::parse(net_wl.collect())?;
+    flags.permissions.allow_net_connect = Some(list);
+  }
+
+  if let Some(net_wl) = matches.remove_many::<String>("deny-net-connect") {
+    let list = flags_net::parse(net_wl.collect())?;
+    flags.permissions.deny_net_connect = Some(list);
+  }
+
+  if let Some(net_wl) = matches.remove_many::<String>("allow-net-listen") {
+    let list = flags_net::parse(net_wl.collect())?;
+    flags.permissions.allow_net_listen = Some(list);
+  }
+
+  if let Some(net_wl) = matches.remove_many::<String>("deny-net-listen") {
+    let list = flags_net::parse(net_wl.collect())?;
+    flags.permissions.deny_net_listen = Some(list);
+  }
+
+  // Enforce mutual exclusion between legacy --allow-net / --deny-net and the
+  // direction-specific --allow-net-{connect,listen} / --deny-net-{connect,listen}
+  // flags. Users migrate all-or-nothing per invocation, which avoids having to
+  // specify and test every merge case across legacy and directional net
+  // permissions. See https://github.com/denoland/deno/issues/22902,
+  // https://github.com/denoland/deno/issues/2705 and
+  // https://github.com/denoland/deno/issues/16532.
+  //
+  // NOTE: this only covers CLI flags. The legacy lists can also be populated
+  // from deno.json, so the same check is repeated against the merged options in
+  // `flags_to_permissions_options`.
+  let has_legacy_net = flags.permissions.allow_net.is_some()
+    || flags.permissions.deny_net.is_some();
+  let has_directional_net = flags.permissions.allow_net_connect.is_some()
+    || flags.permissions.deny_net_connect.is_some()
+    || flags.permissions.allow_net_listen.is_some()
+    || flags.permissions.deny_net_listen.is_some();
+  if has_legacy_net && has_directional_net {
+    return Err(clap::Error::raw(
+      clap::error::ErrorKind::ArgumentConflict,
+      "the legacy --allow-net / --deny-net flags cannot be combined with \
+the direction-specific --allow-net-connect, --deny-net-connect, \
+--allow-net-listen, or --deny-net-listen flags. Pick one model per \
+invocation.\n",
+    ));
+  }
+
   if let Some(env_wl) = matches.remove_many::<String>("allow-env") {
     flags.permissions.allow_env = Some(env_wl.collect());
     debug!("env allowlist: {:#?}", &flags.permissions.allow_env);
@@ -11809,6 +11982,211 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn allow_net_connect_allowlist() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-net-connect=deno.land:443",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap().permissions.allow_net_connect,
+      Some(svec!["deno.land:443"])
+    );
+  }
+
+  #[test]
+  fn deny_net_connect_denylist() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--deny-net-connect=evil.example.com",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap().permissions.deny_net_connect,
+      Some(svec!["evil.example.com"])
+    );
+  }
+
+  #[test]
+  fn allow_net_listen_allowlist() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-net-listen=127.0.0.1:8080",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap().permissions.allow_net_listen,
+      Some(svec!["127.0.0.1:8080"])
+    );
+  }
+
+  #[test]
+  fn deny_net_listen_denylist() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--deny-net-listen=0.0.0.0:9000",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap().permissions.deny_net_listen,
+      Some(svec!["0.0.0.0:9000"])
+    );
+  }
+
+  #[test]
+  fn allow_net_connect_and_deny_net_connect() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-net-connect=deno.land",
+      "--deny-net-connect=evil.example.com",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.permissions.allow_net_connect,
+      Some(svec!["deno.land"])
+    );
+    assert_eq!(
+      flags.permissions.deny_net_connect,
+      Some(svec!["evil.example.com"])
+    );
+  }
+
+  #[test]
+  fn allow_net_listen_and_deny_net_listen() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-net-listen=127.0.0.1:0",
+      "--deny-net-listen=0.0.0.0:22",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.permissions.allow_net_listen,
+      Some(svec!["127.0.0.1:0"])
+    );
+    assert_eq!(flags.permissions.deny_net_listen, Some(svec!["0.0.0.0:22"]));
+  }
+
+  #[test]
+  fn allow_net_connect_bare() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-net-connect", "script.ts"]);
+    assert_eq!(r.unwrap().permissions.allow_net_connect, Some(svec![]));
+  }
+
+  #[test]
+  fn allow_net_listen_bare() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-net-listen", "script.ts"]);
+    assert_eq!(r.unwrap().permissions.allow_net_listen, Some(svec![]));
+  }
+
+  #[test]
+  fn allow_net_connect_with_ipv6() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-net-connect=[::1]:5678",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap().permissions.allow_net_connect,
+      Some(svec!["[::1]:5678"])
+    );
+  }
+
+  #[test]
+  fn directional_net_flags_conflict_with_legacy_allow_net() {
+    // --allow-net cannot be combined with any of the directional flags.
+    for directional in [
+      "--allow-net-connect=deno.land",
+      "--deny-net-connect=deno.land",
+      "--allow-net-listen=127.0.0.1",
+      "--deny-net-listen=127.0.0.1",
+    ] {
+      let r = flags_from_vec(svec![
+        "deno",
+        "run",
+        "--allow-net=deno.land",
+        directional,
+        "script.ts"
+      ]);
+      let err = r.expect_err(&format!(
+        "expected error when combining --allow-net with {directional}"
+      ));
+      let msg = err.to_string();
+      assert!(
+        msg
+          .contains("legacy --allow-net / --deny-net flags cannot be combined"),
+        "unexpected error message: {msg}"
+      );
+    }
+  }
+
+  #[test]
+  fn directional_net_flags_conflict_with_legacy_deny_net() {
+    for directional in [
+      "--allow-net-connect=deno.land",
+      "--deny-net-connect=deno.land",
+      "--allow-net-listen=127.0.0.1",
+      "--deny-net-listen=127.0.0.1",
+    ] {
+      let r = flags_from_vec(svec![
+        "deno",
+        "run",
+        "--deny-net=evil.example.com",
+        directional,
+        "script.ts"
+      ]);
+      let err = r.expect_err(&format!(
+        "expected error when combining --deny-net with {directional}"
+      ));
+      let msg = err.to_string();
+      assert!(
+        msg
+          .contains("legacy --allow-net / --deny-net flags cannot be combined"),
+        "unexpected error message: {msg}"
+      );
+    }
+  }
+
+  #[test]
+  fn directional_net_flags_do_not_conflict_with_each_other() {
+    // All four directional flags together is fine — only the legacy
+    // (--allow-net/--deny-net) ↔ directional combinations are rejected.
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-net-connect=deno.land",
+      "--deny-net-connect=evil.example.com",
+      "--allow-net-listen=127.0.0.1:8080",
+      "--deny-net-listen=0.0.0.0:22",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.permissions.allow_net_connect,
+      Some(svec!["deno.land"])
+    );
+    assert_eq!(
+      flags.permissions.deny_net_connect,
+      Some(svec!["evil.example.com"])
+    );
+    assert_eq!(
+      flags.permissions.allow_net_listen,
+      Some(svec!["127.0.0.1:8080"])
+    );
+    assert_eq!(flags.permissions.deny_net_listen, Some(svec!["0.0.0.0:22"]));
   }
 
   #[test]

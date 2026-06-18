@@ -323,7 +323,7 @@ impl TCPWrap {
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
     state
       .borrow_mut::<PermissionsContainer>()
-      .check_net(&(address, Some(port as u16)), "node:net.listen()")?;
+      .check_net_listen(&(address, Some(port as u16)), "node:net.listen()")?;
 
     let addr_str = format!("{}:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {
@@ -544,7 +544,7 @@ impl TCPWrap {
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
     state
       .borrow_mut::<PermissionsContainer>()
-      .check_net(&(address, Some(port as u16)), "node:net.listen()")?;
+      .check_net_listen(&(address, Some(port as u16)), "node:net.listen()")?;
 
     let addr_str = format!("{}:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {
@@ -694,10 +694,12 @@ impl TCPWrap {
     // the original hostname instead of the resolved IP address, but only
     // when `address` is one of the token's resolved IPs.
     let check_host = self.net_perm_check_host(address);
-    state.borrow_mut::<PermissionsContainer>().check_net(
-      &(check_host.as_str(), Some(port as u16)),
-      "node:net.connect()",
-    )?;
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_connect(
+        &(check_host.as_str(), Some(port as u16)),
+        "node:net.connect()",
+      )?;
 
     let addr_str = format!("{}:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {
@@ -713,7 +715,7 @@ impl TCPWrap {
     // from bypassing --deny-net rules that target the resolved IP.
     state
       .borrow_mut::<PermissionsContainer>()
-      .check_net_resolved(
+      .check_net_connect_resolved(
         &socket_addr.ip(),
         socket_addr.port(),
         "node:net.connect()",
@@ -762,10 +764,12 @@ impl TCPWrap {
     scope: &mut v8::PinScope,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
     let check_host = self.net_perm_check_host(address);
-    state.borrow_mut::<PermissionsContainer>().check_net(
-      &(check_host.as_str(), Some(port as u16)),
-      "node:net.connect()",
-    )?;
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_connect(
+        &(check_host.as_str(), Some(port as u16)),
+        "node:net.connect()",
+      )?;
 
     let addr_str = format!("{}:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {
@@ -779,7 +783,7 @@ impl TCPWrap {
     // Post-resolution deny check for connect6 as well.
     state
       .borrow_mut::<PermissionsContainer>()
-      .check_net_resolved(
+      .check_net_connect_resolved(
         &socket_addr.ip(),
         socket_addr.port(),
         "node:net.connect()",

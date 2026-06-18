@@ -4471,6 +4471,52 @@ declare namespace Deno {
     host?: string;
   }
 
+  /** The permission descriptor for the `allow-net-connect` and
+   * `deny-net-connect` permissions, which control outbound network
+   * connections (`Deno.connect`, `Deno.connectTls`, `fetch`, the WebSocket
+   * constructor, the Node compat `net`/`dns`/`dgram` shims, etc.). The
+   * option `host` allows scoping the permission to a specific host and
+   * port.
+   *
+   * The legacy `--allow-net` / `--deny-net` flags are mutually exclusive
+   * with the direction-specific `--allow-net-connect` /
+   * `--deny-net-connect` / `--allow-net-listen` / `--deny-net-listen`
+   * flags. Combining them on the same invocation is a CLI error.
+   *
+   * @category Permissions */
+  export interface NetConnectPermissionDescriptor {
+    name: "net-connect";
+    /** Optional host string of the form `"<hostname>[:<port>]"`. Examples:
+     *
+     *      "github.com"
+     *      "deno.land:8080"
+     */
+    host?: string;
+  }
+
+  /** The permission descriptor for the `allow-net-listen` and
+   * `deny-net-listen` permissions, which control inbound network listeners
+   * (`Deno.listen`, `Deno.listenTls`, `Deno.serve`, `Deno.listenDatagram`,
+   * `Deno.QuicEndpoint`, the Node compat `net.listen`,
+   * `dgram.createSocket`, `inspector.open`, etc.). The option `host`
+   * allows scoping the permission to a specific host and port.
+   *
+   * The legacy `--allow-net` / `--deny-net` flags are mutually exclusive
+   * with the direction-specific `--allow-net-connect` /
+   * `--deny-net-connect` / `--allow-net-listen` / `--deny-net-listen`
+   * flags. Combining them on the same invocation is a CLI error.
+   *
+   * @category Permissions */
+  export interface NetListenPermissionDescriptor {
+    name: "net-listen";
+    /** Optional host string of the form `"<hostname>[:<port>]"`. Examples:
+     *
+     *      "0.0.0.0:8080"
+     *      "127.0.0.1"
+     */
+    host?: string;
+  }
+
   /** The permission descriptor for the `allow-env` and `deny-env` permissions, which controls
    * access to being able to read and write to the process environment variables
    * as well as access other information about the environment. The option
@@ -4552,6 +4598,8 @@ declare namespace Deno {
     | ReadPermissionDescriptor
     | WritePermissionDescriptor
     | NetPermissionDescriptor
+    | NetConnectPermissionDescriptor
+    | NetListenPermissionDescriptor
     | EnvPermissionDescriptor
     | SysPermissionDescriptor
     | FfiPermissionDescriptor

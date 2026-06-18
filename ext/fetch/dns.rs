@@ -236,7 +236,7 @@ fn check_resolved(
 ) -> Result<(), BoxError> {
   permissions
     .clone()
-    .check_net_resolved(ip, port, "fetch()")
+    .check_net_connect_resolved(ip, port, "fetch()")
     .map_err(|e| {
       io::Error::new(io::ErrorKind::PermissionDenied, e.to_string()).into()
     })

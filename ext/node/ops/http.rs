@@ -14,9 +14,9 @@ use deno_permissions::PermissionsContainer;
 // established.
 //
 // This fails closed: a denied or unparseable target propagates its error,
-// matching check_net_url() in fetch(). Targets node:http rejects on its own
-// (invalid header characters such as CR/LF, which would also fail check_net's
-// host parser) are filtered out before this op is called, so they surface as
+// matching check_net_connect_url() in fetch(). Targets node:http rejects on its
+// own (invalid header characters such as CR/LF, which would also fail the host
+// parser) are filtered out before this op is called, so they surface as
 // ERR_INVALID_CHAR rather than being masked here.
 #[op2(fast, stack_trace)]
 pub fn op_node_http_check_proxy_net(
@@ -27,5 +27,5 @@ pub fn op_node_http_check_proxy_net(
 ) -> Result<(), PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .check_net(&(hostname, Some(port)), api_name)
+    .check_net_connect(&(hostname, Some(port)), api_name)
 }

@@ -1,0 +1,71 @@
+{
+  "tempDir": true,
+  "tests": {
+    "listen_allowed_by_allow_net_listen": {
+      "args": "run --allow-net-listen=127.0.0.1:0 listen.ts",
+      "output": "listen_allowed.out"
+    },
+    "listen_denied_when_only_connect_granted": {
+      "args": "run --allow-net-connect=127.0.0.1:0 listen.ts",
+      "exitCode": 1,
+      "output": "listen_denied.out"
+    },
+    "connect_allowed_by_allow_net_connect": {
+      "args": "run --allow-net-connect=127.0.0.1:1 connect.ts",
+      "output": "connect_allowed.out"
+    },
+    "connect_denied_when_only_listen_granted": {
+      "args": "run --allow-net-listen=127.0.0.1:0 connect.ts",
+      "exitCode": 1,
+      "output": "connect_denied.out"
+    },
+    "deny_net_listen_blocks_listen_with_connect_allow": {
+      "args": "run --allow-net-connect --deny-net-listen=127.0.0.1 listen.ts",
+      "exitCode": 1,
+      "output": "listen_denied.out"
+    },
+    "legacy_allow_net_conflicts_with_directional_allow_connect": {
+      "args": "run --allow-net --allow-net-connect listen.ts",
+      "exitCode": 1,
+      "output": "legacy_conflict.out"
+    },
+    "legacy_allow_net_conflicts_with_directional_deny_connect": {
+      "args": "run --allow-net=deno.land --deny-net-connect=evil.com listen.ts",
+      "exitCode": 1,
+      "output": "legacy_conflict.out"
+    },
+    "legacy_allow_net_conflicts_with_directional_allow_listen": {
+      "args": "run --allow-net --allow-net-listen=127.0.0.1 listen.ts",
+      "exitCode": 1,
+      "output": "legacy_conflict.out"
+    },
+    "legacy_deny_net_conflicts_with_directional_deny_listen": {
+      "args": "run --deny-net=evil.com --deny-net-listen=0.0.0.0:22 listen.ts",
+      "exitCode": 1,
+      "output": "legacy_conflict.out"
+    },
+    "query_net_listen_descriptor": {
+      "args": "run --allow-net-listen=127.0.0.1:0 query.ts",
+      "output": "query.out"
+    },
+    "query_denied_connect_reports_denied": {
+      "args": "run --deny-net-connect=evil.com query_denied.ts",
+      "output": "query_denied.out"
+    },
+    "config_net_conflicts_with_directional_deny_connect": {
+      "args": "run --config config_net/deno.json -P --deny-net-connect=evil.com connect.ts",
+      "exitCode": 1,
+      "output": "config_conflict.out"
+    },
+    "default_connect_uses_legacy_net_wording": {
+      "args": "run --no-prompt connect.ts",
+      "exitCode": 1,
+      "output": "default_connect_denied.out"
+    },
+    "default_listen_uses_legacy_net_wording": {
+      "args": "run --no-prompt listen.ts",
+      "exitCode": 1,
+      "output": "default_listen_denied.out"
+    }
+  }
+}

@@ -1821,7 +1821,7 @@ fn flags_to_permissions_options(
   };
   let identity = |value: &str| value.to_string();
 
-  Ok(PermissionsOptions {
+  let options = PermissionsOptions {
     allow_env: handle_allow(
       flags.allow_all,
       config.and_then(|c| c.permissions.all),
@@ -1849,6 +1849,33 @@ fn flags_to_permissions_options(
     deny_net: handle_deny_or_ignore(
       flags.deny_net.as_ref(),
       config.and_then(|c| c.permissions.net.deny.as_ref()),
+      &identity,
+    ),
+    allow_net_connect: handle_allow(
+      // --allow-all alone shouldn't synthesize a directional list — it
+      // already populates the legacy `allow_net` field above, which the
+      // permission system honours for both directions.
+      false,
+      None,
+      flags.allow_net_connect.as_ref(),
+      None,
+      &identity,
+    ),
+    deny_net_connect: handle_deny_or_ignore(
+      flags.deny_net_connect.as_ref(),
+      None,
+      &identity,
+    ),
+    allow_net_listen: handle_allow(
+      false,
+      None,
+      flags.allow_net_listen.as_ref(),
+      None,
+      &identity,
+    ),
+    deny_net_listen: handle_deny_or_ignore(
+      flags.deny_net_listen.as_ref(),
+      None,
       &identity,
     ),
     allow_ffi: handle_allow(
@@ -1929,7 +1956,33 @@ fn flags_to_permissions_options(
       &identity,
     ),
     prompt: !resolve_no_prompt(flags),
-  })
+  };
+
+  // Enforce mutual exclusion between the legacy `net` model and the directional
+  // `net-connect` / `net-listen` model against the *merged* options. The
+  // CLI-only conflict is already rejected in `permission_args_parse`, but the
+  // legacy lists can also be populated from `deno.json` (`permissions.net`)
+  // *after* that check, so a config `net` grant combined with a directional CLI
+  // flag would otherwise slip through. If that mix were allowed, the runtime
+  // dispatch would silently honor only one model and drop the other (e.g. a
+  // `--deny-net-connect` would be ignored) — the worst possible failure mode
+  // for a deny flag.
+  let has_legacy_net =
+    options.allow_net.is_some() || options.deny_net.is_some();
+  let has_directional_net = options.allow_net_connect.is_some()
+    || options.deny_net_connect.is_some()
+    || options.allow_net_listen.is_some()
+    || options.deny_net_listen.is_some();
+  if has_legacy_net && has_directional_net {
+    bail!(
+      "The legacy \"net\" permission (--allow-net / --deny-net or the \
+\"net\" key in deno.json) cannot be combined with the direction-specific \
+net permissions (--allow-net-connect, --deny-net-connect, \
+--allow-net-listen, --deny-net-listen). Pick one model per invocation."
+    );
+  }
+
+  Ok(options)
 }
 
 fn augment_permissions_with_serve_flags(
@@ -1941,11 +1994,29 @@ fn augment_permissions_with_serve_flags(
   } else {
     format!("{}:{}", serve_flags.host, serve_flags.port)
   }])?;
-  match &mut permissions_options.allow_net {
+  // `deno serve` listens, so route its address to whichever net model is in
+  // effect. In the directional model the serve address must land in
+  // `allow_net_listen` — adding it to the legacy `allow_net` would be ignored
+  // by the runtime dispatch (which keys off the directional fields) and the
+  // server would fail to bind. The mutual-exclusion guard above guarantees the
+  // two models don't coexist, so picking by "any directional option set" is
+  // unambiguous.
+  let directional = permissions_options.allow_net_connect.is_some()
+    || permissions_options.deny_net_connect.is_some()
+    || permissions_options.allow_net_listen.is_some()
+    || permissions_options.deny_net_listen.is_some();
+  let target = if directional {
+    &mut permissions_options.allow_net_listen
+  } else {
+    &mut permissions_options.allow_net
+  };
+  match target {
     None => {
-      permissions_options.allow_net = Some(allowed);
+      *target = Some(allowed);
     }
     Some(v) => {
+      // An empty list means "allow all"; don't narrow it to just the serve
+      // address.
       if !v.is_empty() {
         v.extend(allowed);
       }
@@ -2130,6 +2201,10 @@ mod test {
           ignore_env: Some(vec!["env-ignore".to_string()]),
           allow_net: Some(vec!["net-allow".to_string()]),
           deny_net: Some(vec!["net-deny".to_string()]),
+          allow_net_connect: None,
+          deny_net_connect: None,
+          allow_net_listen: None,
+          deny_net_listen: None,
           allow_ffi: Some(vec![
             base_dir
               .join("ffi-allow")
@@ -2237,6 +2312,10 @@ mod test {
           ignore_env: None,
           allow_net: Some(vec![]),
           deny_net: None,
+          allow_net_connect: None,
+          deny_net_connect: None,
+          allow_net_listen: None,
+          deny_net_listen: None,
           allow_ffi: Some(vec![]),
           deny_ffi: None,
           allow_read: Some(vec!["./folder".to_string()]),
