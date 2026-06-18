@@ -448,9 +448,14 @@ declare namespace Deno {
    * @category Network */
   export interface TcpConn extends Conn<NetAddr> {
     /**
-     * Enable/disable the use of Nagle's algorithm.
+     * Enable or disable the use of Nagle's algorithm.
      *
-     * @param [noDelay=true]
+     * When `noDelay` is set to `true`, Nagle's algorithm is disabled (this
+     * sets the `TCP_NODELAY` socket option). When set to `false`, Nagle's
+     * algorithm is enabled. Note that this is the inverse of enabling the
+     * algorithm: `noDelay = true` turns Nagle's algorithm *off*.
+     *
+     * @param [noDelay=true] When `true`, disables Nagle's algorithm.
      */
     setNoDelay(noDelay?: boolean): void;
     /** Enable/disable keep-alive functionality. */
