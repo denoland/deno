@@ -461,7 +461,7 @@ declare namespace Deno {
      *   algorithm. Small writes may be buffered and coalesced to reduce the
      *   number of packets sent.
      *
-     * @param [noDelay=true]
+     * @param [noDelay=true] When `true`, disables Nagle's algorithm.
      */
     setNoDelay(noDelay?: boolean): void;
     /**
