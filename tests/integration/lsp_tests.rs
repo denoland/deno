@@ -6861,6 +6861,44 @@ fn lsp_jsr_auto_import_completion_patch() {
 }
 
 #[test(timeout = 300)]
+fn lsp_diagnostics_linked_pkg_wrong_name_hint() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "links": ["package"],
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package/deno.json",
+    json!({
+      "name": "@org/package",
+      "exports": "./mod.ts",
+    })
+    .to_string(),
+  );
+  temp_dir.write("package/mod.ts", "export const someValue = 1;\n");
+  // Import the linked package by its unscoped tail ("package") instead of its
+  // declared name ("@org/package"). The diagnostic should hint at the full
+  // name rather than suggesting `deno add npm:`.
+  let file = temp_dir.source_file("file.ts", "import \"package\";\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  let messages = diagnostics.messages_with_source("deno");
+  let message = messages.diagnostics[0].message.as_str();
+  assert!(
+    message.contains(
+      "\"@org/package\" is available in this workspace (via a workspace member or the \"links\" field). Import it by its full name.",
+    ),
+    "unexpected diagnostic message: {message}",
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_jsr_code_action_missing_declaration() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -19245,6 +19283,35 @@ fn lsp_tsconfig_scopes() {
       },
     ]),
   );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_tsconfig_include_global_roots() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "tsconfig.json",
+    json!({
+      "include": ["*.ts"],
+    })
+    .to_string(),
+  );
+  temp_dir.source_file(
+    "foo.ts",
+    "declare global { const a: number; }\nexport {};\n",
+  );
+  let file = temp_dir.source_file("bar.ts", "a;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_preload_limit(0);
+  });
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
   client.shutdown();
 }
 

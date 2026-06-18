@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "tests": {
+    "out_of_range_value_is_fatal": {
+      "args": "test --quiet --config range.json --coverage=cov main_test.ts",
+      "output": "out_of_range.out",
+      "exitCode": 1
+    },
+    "wrong_type_is_fatal": {
+      "args": "test --quiet --config wrong_type.json --coverage=cov2 main_test.ts",
+      "output": "parse_error.out",
+      "exitCode": 1
+    },
+    "unknown_field_is_fatal": {
+      "args": "test --quiet --config unknown_field.json --coverage=cov3 main_test.ts",
+      "output": "parse_error.out",
+      "exitCode": 1
+    }
+  }
+}

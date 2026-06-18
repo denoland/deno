@@ -503,6 +503,12 @@ pub struct JsError {
   pub source_line_frame_index: Option<usize>,
   pub aggregated: Option<Vec<JsError>>,
   pub additional_properties: Vec<(String, String)>,
+  /// True when the error's `.stack` was not produced by our
+  /// `prepareStackTrace` (e.g. a custom getter from libraries like Effect, or
+  /// a manually assigned value). In that case the structured `frames` are not
+  /// authoritative and formatters should preserve the custom `.stack` string.
+  #[serde(default)]
+  pub stack_is_custom: bool,
 }
 
 impl JsErrorClass for JsError {
@@ -952,6 +958,7 @@ impl JsError {
       stack: None,
       aggregated: None,
       additional_properties: vec![],
+      stack_is_custom: false,
     })
   }
 
@@ -1029,6 +1036,31 @@ impl JsError {
       // Ignore non-array values
       let frames_v8: Option<v8::Local<v8::Array>> =
         frames_v8.and_then(|a| a.try_into().ok());
+
+      // If accessing `.stack` above did not populate `#callSiteEvals`, the
+      // error's stack was not produced by our `prepareStackTrace`. This happens
+      // when the user overrides `.stack` with a custom getter (e.g. Effect,
+      // fiber runtimes) or assigns a plain string. In that case the structured
+      // frames are not authoritative, so we mark the stack as custom and let
+      // formatters preserve the `.stack` string.
+      //
+      // V8's default `.stack` for a frame-less error is exactly its
+      // "name: message" string (and `message` may itself be multi-line). We
+      // only treat the stack as custom when it carries content beyond that
+      // header, so a multi-line *message* isn't mistaken for a stack.
+      let default_stack = if message_prop.is_empty() {
+        name.clone()
+      } else if name.is_empty() {
+        message_prop.clone()
+      } else {
+        format!("{name}: {message_prop}")
+      };
+      let has_structured_frames =
+        frames_v8.map(|a| a.length() > 0).unwrap_or(false);
+      let stack_is_custom = !has_structured_frames
+        && stack.as_ref().is_some_and(|s| {
+          s.lines().count() > 1 && s.trim_end() != default_stack.trim_end()
+        });
 
       // Convert them into Vec<JsStackFrame>
       let mut frames: Vec<JsStackFrame> = match frames_v8 {
@@ -1161,6 +1193,7 @@ impl JsError {
         stack,
         aggregated,
         additional_properties,
+        stack_is_custom,
       }
     } else {
       let exception_message = exception_message
@@ -1179,6 +1212,7 @@ impl JsError {
         stack: None,
         aggregated: None,
         additional_properties: vec![],
+        stack_is_custom: false,
       }
     }
   }
@@ -2655,6 +2689,7 @@ mod tests {
       source_line_frame_index: None,
       aggregated: None,
       additional_properties: vec![],
+      stack_is_custom: false,
     };
     let err = JsError {
       name: Some("TypeError".to_string()),
@@ -2669,6 +2704,7 @@ mod tests {
       source_line_frame_index: Some(0),
       aggregated: None,
       additional_properties: vec![("code".to_string(), "X1".to_string())],
+      stack_is_custom: false,
     };
 
     let v = err.clone().to_v8(scope).unwrap();
@@ -2687,6 +2723,7 @@ mod tests {
       "sourceLineFrameIndex",
       "aggregated",
       "additionalProperties",
+      "stackIsCustom",
     ];
     for key in expected_keys {
       let key_v = v8::String::new(scope, key).unwrap();

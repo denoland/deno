@@ -1248,9 +1248,19 @@ impl VfsRoot {
     let relative_path = match path.strip_prefix(&self.root_path) {
       Ok(p) => p,
       Err(_) => {
+        // "outside root" is the common host-FS fallback path in
+        // desktop --hmr / runtime-dynamic imports. Don't print at all
+        // by default; the caller falls through to a real filesystem
+        // read. Set DENO_LOG=denort=debug to see it.
+        log::debug!(
+          target: "denort",
+          "[VFS] path outside root '{}': {}",
+          self.root_path.display(),
+          path.display(),
+        );
         return Err(std::io::Error::new(
           std::io::ErrorKind::NotFound,
-          "path not found",
+          format!("path not found (outside root): {}", path.display()),
         ));
       }
     };
@@ -1276,7 +1286,7 @@ impl VfsRoot {
             _ => {
               return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                "path not found",
+                format!("path not found (symlink not dir): {}", path.display()),
               ));
             }
           }
@@ -1284,7 +1294,7 @@ impl VfsRoot {
         _ => {
           return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            "path not found",
+            format!("path not found (not dir): {}", path.display()),
           ));
         }
       };
@@ -1293,7 +1303,10 @@ impl VfsRoot {
         .entries
         .get_by_name(&component, case_sensitivity)
         .ok_or_else(|| {
-          std::io::Error::new(std::io::ErrorKind::NotFound, "path not found")
+          std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("path not found (entry missing): {}", path.display()),
+          )
         })?
         .as_ref();
     }
