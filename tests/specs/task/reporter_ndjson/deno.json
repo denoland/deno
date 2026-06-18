@@ -1,0 +1,12 @@
+{
+  "tasks": {
+    "hello": "echo hi",
+    "fail": "echo before && exit 3",
+    "foo": "echo foo_output",
+    "bar": "echo bar_output",
+    "main": {
+      "command": "echo main_output",
+      "dependencies": ["foo", "bar"]
+    }
+  }
+}
