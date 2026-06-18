@@ -394,6 +394,9 @@ denoNsUnstableById[unstableIds.canvas2d] = {
   get fonts() {
     return loadCanvas2d().fonts;
   },
+  loadSystemFonts() {
+    return loadCanvas2d().loadSystemFonts();
+  },
 };
 
 export { denoNs, denoNsUnstableById, unstableIds };

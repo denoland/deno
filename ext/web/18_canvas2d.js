@@ -5,6 +5,7 @@ const { core, primordials } = __bootstrap;
 const {
   op_fontdb_add,
   op_fontdb_load,
+  op_fontdb_load_system_fonts,
   op_fontdb_remove,
   op_fontdb_unload,
   op_parse_css_font_query,
@@ -1227,6 +1228,10 @@ ObjectDefineProperty(
 
 const fonts = new FontFaceSet(illegalConstructorKey);
 
+function loadSystemFonts() {
+  return op_fontdb_load_system_fonts();
+}
+
 return {
   OffscreenCanvasRenderingContext2D,
   FontFace,
@@ -1235,6 +1240,7 @@ return {
   FontFaceSetLoadEvent,
   FontFaceSetPrototype,
   fonts,
+  loadSystemFonts,
   TextMetrics,
 };
 })();

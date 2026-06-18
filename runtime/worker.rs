@@ -239,6 +239,7 @@ pub struct WorkerServiceOptions<
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
+  pub shared_system_font_db: deno_web::SharedSystemFontDb,
   pub fetch_dns_resolver: deno_fetch::dns::Resolver,
 
   /// The store to use for transferring SharedArrayBuffers between isolates.
@@ -616,6 +617,7 @@ impl MainWorker {
           options.bootstrap.location.clone(),
           true,
           services.broadcast_channel.clone(),
+          services.shared_system_font_db.clone(),
         ),
         deno_fetch::deno_fetch::args(deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),

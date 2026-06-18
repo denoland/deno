@@ -38,6 +38,7 @@ fn setup() -> Vec<Extension> {
       None,
       Default::default(),
       Default::default(),
+      Default::default(),
     ),
     bench_setup::init(),
   ]
