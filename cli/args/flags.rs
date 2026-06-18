@@ -13721,6 +13721,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          changed: None,
+          related: vec![],
         }),
         permissions: PermissionFlags {
           no_prompt: true,

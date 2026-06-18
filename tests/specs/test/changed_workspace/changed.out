@@ -1,6 +1,7 @@
 running 1 test from ./a/a_test.ts
-a ... ok ([WILDLINE])
+a ... ok ([WILDCARD])
 running 1 test from ./b/b_test.ts
-b ... ok ([WILDLINE])
+b ... ok ([WILDCARD])
 
-ok | 2 passed | 0 failed ([WILDLINE])
+ok | 2 passed | 0 failed ([WILDCARD])
+
