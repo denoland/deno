@@ -90,9 +90,11 @@ pub struct GraphValidOptions<'a> {
   pub exit_integrity_errors: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
-  /// Names of packages importable by bare specifier (workspace members and
-  /// packages linked via the "links" field), used to enhance import errors.
-  pub bare_importable_pkg_names: &'a [String],
+  /// Lazily collects the names of packages importable by bare specifier
+  /// (workspace members and packages linked via the "links" field), used to
+  /// enhance import errors. Only called when a resolution error is actually
+  /// encountered, so the happy path pays nothing.
+  pub collect_bare_importable_pkg_names: &'a dyn Fn() -> Vec<String>,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -122,7 +124,8 @@ pub fn graph_valid(
       will_type_check: options.will_type_check,
       allow_unknown_media_types: options.allow_unknown_media_types,
       allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
-      bare_importable_pkg_names: options.bare_importable_pkg_names,
+      collect_bare_importable_pkg_names: options
+        .collect_bare_importable_pkg_names,
     },
   );
   match errors.next() {
@@ -147,9 +150,11 @@ pub struct GraphWalkErrorsOptions<'a> {
   pub will_type_check: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
-  /// Names of packages importable by bare specifier (workspace members and
-  /// packages linked via the "links" field), used to enhance import errors.
-  pub bare_importable_pkg_names: &'a [String],
+  /// Lazily collects the names of packages importable by bare specifier
+  /// (workspace members and packages linked via the "links" field), used to
+  /// enhance import errors. Only called when a resolution error is actually
+  /// encountered, so the happy path pays nothing.
+  pub collect_bare_importable_pkg_names: &'a dyn Fn() -> Vec<String>,
 }
 
 /// Walks the errors found in the module graph that should be surfaced to users
@@ -178,6 +183,12 @@ pub fn graph_walk_errors<'a>(
     // surface these as typescript diagnostics instead
     will_type_check && has_module_graph_error_for_tsc_diagnostic(sys, error)
   }
+
+  let collect_bare_importable_pkg_names =
+    options.collect_bare_importable_pkg_names;
+  // Built lazily on the first error that needs enhancing, then reused for the
+  // rest of the walk.
+  let mut bare_importable_pkg_names: Option<Vec<String>> = None;
 
   graph
     .walk(
@@ -228,7 +239,8 @@ pub fn graph_walk_errors<'a>(
         } else {
           EnhanceGraphErrorMode::ShowRange
         },
-        options.bare_importable_pkg_names,
+        bare_importable_pkg_names
+          .get_or_insert_with(&collect_bare_importable_pkg_names),
       );
 
       Some(enhanced)
@@ -1160,12 +1172,14 @@ impl ModuleGraphBuilder {
     allow_unknown_jsr_exports: bool,
   ) -> Result<(), JsErrorBox> {
     let will_type_check = self.cli_options.type_check_mode().is_true();
-    let bare_importable_pkg_names = self
-      .cli_options
-      .workspace()
-      .resolver_jsr_pkgs()
-      .map(|pkg| pkg.name)
-      .collect::<Vec<_>>();
+    let collect_bare_importable_pkg_names = || {
+      self
+        .cli_options
+        .workspace()
+        .resolver_jsr_pkgs()
+        .map(|pkg| pkg.name)
+        .collect::<Vec<_>>()
+    };
     graph_valid(
       graph,
       &self.sys,
@@ -1183,7 +1197,7 @@ impl ModuleGraphBuilder {
         exit_integrity_errors: true,
         allow_unknown_media_types,
         allow_unknown_jsr_exports,
-        bare_importable_pkg_names: &bare_importable_pkg_names,
+        collect_bare_importable_pkg_names: &collect_bare_importable_pkg_names,
       },
     )
   }

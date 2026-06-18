@@ -6891,7 +6891,7 @@ fn lsp_diagnostics_linked_pkg_wrong_name_hint() {
   let message = messages.diagnostics[0].message.as_str();
   assert!(
     message.contains(
-      "\"@org/package\" is available in this workspace (via a workspace member or the \"links\" field). Import it by its full name: \"@org/package\".",
+      "\"@org/package\" is available in this workspace (via a workspace member or the \"links\" field). Import it by its full name.",
     ),
     "unexpected diagnostic message: {message}",
   );

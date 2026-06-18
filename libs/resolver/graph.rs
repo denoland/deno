@@ -787,7 +787,7 @@ pub fn enhanced_resolution_error_message(
         maybe_matching_bare_pkg_name(specifier, bare_importable_pkg_names)
       {
         format!(
-          "\"{name}\" is available in this workspace (via a workspace member or the \"links\" field). Import it by its full name: \"{name}\".",
+          "\"{name}\" is available in this workspace (via a workspace member or the \"links\" field). Import it by its full name.",
         )
       } else if specifier.starts_with("@std/") {
         format!(
@@ -969,6 +969,9 @@ fn get_resolution_error_bare_specifier(
 ///
 /// This catches the common mistake of importing a scoped package by its
 /// unscoped tail, e.g. importing `"my-pkg"` when `"@scope/my-pkg"` is linked.
+///
+/// If two packages share an unscoped tail (e.g. `@a/foo` and `@b/foo`), the
+/// first match wins; that's acceptable since this only produces a hint.
 fn maybe_matching_bare_pkg_name<'a>(
   specifier: &str,
   bare_importable_pkg_names: &'a [String],

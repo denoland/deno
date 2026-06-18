@@ -424,12 +424,14 @@ impl LanguageServer {
           NpmCachingStrategy::Eager,
         )
         .await?;
-      let bare_importable_pkg_names = factory
-        .cli_options()?
-        .workspace()
-        .resolver_jsr_pkgs()
-        .map(|pkg| pkg.name)
-        .collect::<Vec<_>>();
+      let cli_options = factory.cli_options()?;
+      let collect_bare_importable_pkg_names = || {
+        cli_options
+          .workspace()
+          .resolver_jsr_pkgs()
+          .map(|pkg| pkg.name)
+          .collect::<Vec<_>>()
+      };
       graph_util::graph_valid(
         &graph,
         &CliSys::default(),
@@ -441,7 +443,7 @@ impl LanguageServer {
           exit_integrity_errors: false,
           allow_unknown_media_types: true,
           allow_unknown_jsr_exports: false,
-          bare_importable_pkg_names: &bare_importable_pkg_names,
+          collect_bare_importable_pkg_names: &collect_bare_importable_pkg_names,
         },
       )?;
       Ok(())
