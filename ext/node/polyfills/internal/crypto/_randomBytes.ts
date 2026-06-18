@@ -116,6 +116,16 @@ function randomBytes(
         // If there's an active domain, emit error to it
         if (process.domain && process.domain.listenerCount("error") > 0) {
           process.domain.emit("error", callbackErr);
+        } else if (
+          process.listenerCount("uncaughtException") > 0 &&
+          process._fatalException(callbackErr)
+        ) {
+          // Deliver the uncaught exception to its handler while we are still
+          // inside this request's async scope, i.e. before the `emitAfter()`
+          // in the `finally` block pops the execution async id. This matches
+          // Node's `MakeCallback` semantics, where `executionAsyncId()` inside
+          // an 'uncaughtException' handler equals the async id of the resource
+          // whose callback threw (see test-async-wrap-uncaughtexception.js).
         } else {
           throw callbackErr;
         }

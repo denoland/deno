@@ -29,6 +29,8 @@
 const { core, primordials } = __bootstrap;
 const { AsyncWrap, op_node_new_async_id } = core.ops;
 const {
+  ArrayPrototypePush,
+  ArrayPrototypeSplice,
   Float64Array,
   ObjectKeys,
   Uint32Array,
@@ -41,6 +43,51 @@ function registerDestroyHook(
   _prop: { destroyed: boolean },
 ) {
   // TODO(kt3k): implement actual procedures
+}
+
+// ---------------------------------------------------------------------------
+// queueDestroyAsyncId
+//
+// Mirrors Node's `async_wrap.queueDestroyAsyncId` (src/async_wrap.cc). Async
+// ids passed here are batched and their `destroy` hooks are fired on the next
+// turn of the event loop via a single `setImmediate`, matching Node's
+// `DestroyAsyncIdsCallback`. The actual hook emission lives in
+// `internal/async_hooks.ts` (where the active hook list is), which registers
+// its `emitDestroy` via `setDestroyCallback()`.
+// ---------------------------------------------------------------------------
+
+let destroyCallback: ((asyncId: number) => void) | null = null;
+const destroyAsyncIdList: number[] = [];
+let destroyScheduled = false;
+// deno-lint-ignore no-explicit-any
+let lazyTimers: (() => any) | null = null;
+
+function setDestroyCallback(cb: (asyncId: number) => void) {
+  destroyCallback = cb;
+}
+
+function processDestroyAsyncIds() {
+  destroyScheduled = false;
+  // Process a snapshot: any ids queued while emitting destroy hooks below will
+  // schedule a fresh immediate of their own.
+  const ids = ArrayPrototypeSplice(destroyAsyncIdList, 0);
+  if (destroyCallback === null) {
+    return;
+  }
+  for (let i = 0; i < ids.length; i++) {
+    destroyCallback(ids[i]);
+  }
+}
+
+function queueDestroyAsyncId(asyncId: number) {
+  ArrayPrototypePush(destroyAsyncIdList, asyncId);
+  if (!destroyScheduled) {
+    destroyScheduled = true;
+    if (lazyTimers === null) {
+      lazyTimers = core.createLazyLoader("node:timers");
+    }
+    lazyTimers().setImmediate(processDestroyAsyncIds);
+  }
 }
 
 enum constants {
@@ -136,5 +183,7 @@ return {
   constants,
   UidFields,
   providerType,
+  queueDestroyAsyncId,
+  setDestroyCallback,
 };
 })();

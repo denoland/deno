@@ -229,6 +229,13 @@ function emitDestroy(asyncId: number): void {
   }
 }
 
+// Wire emitDestroy into the async_wrap binding so that
+// `internalBinding('async_wrap').queueDestroyAsyncId()` fires the destroy
+// hooks registered here (the active hook list lives in this module).
+if (typeof async_wrap.setDestroyCallback === "function") {
+  async_wrap.setDestroyCallback(emitDestroy);
+}
+
 function emitPromiseResolve(asyncId: number): void {
   const hooks = active_hooks.array;
   for (let i = 0; i < hooks.length; i++) {
