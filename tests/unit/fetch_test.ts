@@ -2438,15 +2438,18 @@ Deno.test(
   },
 );
 
-// Server that sends the response headers (with a chunked body) and optionally a
-// single body chunk, then abruptly closes the connection without terminating
-// the chunked body. Reading past what was sent therefore errors.
+// Server that sends the response headers (with a chunked body) and optionally
+// some body chunks, then abruptly closes the connection without terminating the
+// chunked body. Reading past what was sent therefore errors.
 function closeAfterHeadersServer(
   addr: string,
-  opts: { chunk?: string } = {},
+  opts: { chunk?: string; chunks?: string[] } = {},
 ): Deno.Listener {
   const [hostname, port] = addr.split(":");
   const listener = Deno.listen({ hostname, port: Number(port) });
+
+  const chunks = opts.chunks ??
+    (opts.chunk !== undefined ? [opts.chunk] : []);
 
   (async () => {
     try {
@@ -2455,8 +2458,8 @@ function closeAfterHeadersServer(
           // Read (and discard) the request.
           await conn.read(new Uint8Array(2 ** 14));
           let head = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
-          if (opts.chunk !== undefined) {
-            head += `${opts.chunk.length.toString(16)}\r\n${opts.chunk}\r\n`;
+          for (const chunk of chunks) {
+            head += `${chunk.length.toString(16)}\r\n${chunk}\r\n`;
           }
           await conn.write(new TextEncoder().encode(head));
         } finally {
@@ -2533,6 +2536,41 @@ Deno.test(
     const first = await reader.read();
     assertEquals(new TextDecoder().decode(first.value), "TEST_CHUNK");
     await assertRejects(() => reader.read(), TypeError);
+    listener.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  // Regression test for the dual-path error race: when the server sends several
+  // body chunks and then errors the connection, a consumer reading chunk by
+  // chunk — with the event loop yielded between reads — must still receive every
+  // chunk that arrived before the error. The connection-close watcher errors the
+  // stream independently of the read path, so it must not win the race and
+  // orphan a buffered-but-unread chunk. It cannot: an error terminal only
+  // settles (and so only fires the watcher) once all buffered data has been
+  // drained (`settled_terminal` gates on `buffered == 0`), so the buffered chunk
+  // is always delivered to the reader ahead of the error.
+  async function fetchDeliversBufferedChunksBeforeError() {
+    const addr = `127.0.0.1:${listenPort}`;
+    const listener = closeAfterHeadersServer(addr, {
+      chunks: ["CHUNK_ONE", "CHUNK_TWO"],
+    });
+    const response = await fetch(`http://${addr}/`);
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+
+    const first = await reader.read();
+    assertEquals(decoder.decode(first.value), "CHUNK_ONE");
+    // Yield to the event loop so the close watcher has every chance to fire
+    // before the second (already-received) chunk is read.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const second = await reader.read();
+    assertEquals(decoder.decode(second.value), "CHUNK_TWO");
+
+    // Only once both buffered chunks have been drained does the error surface.
+    await assertRejects(() => reader.read(), TypeError);
+    await assertRejects(() => reader.closed, TypeError);
     listener.close();
   },
 );
