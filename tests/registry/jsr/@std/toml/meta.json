@@ -1,0 +1,8 @@
+{
+  "scope": "std",
+  "name": "toml",
+  "latest": "1.0.11",
+  "versions": {
+    "1.0.11": {}
+  }
+}

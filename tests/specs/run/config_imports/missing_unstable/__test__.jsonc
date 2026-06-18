@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "extension": {
+      "args": "run ext.ts",
+      "exitCode": 1,
+      "output": "ext.out"
+    },
+    "attribute": {
+      "args": "run attr.ts",
+      "exitCode": 1,
+      "output": "attr.out"
+    }
+  }
+}

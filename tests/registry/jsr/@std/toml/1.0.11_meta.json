@@ -1,0 +1,7 @@
+{
+  "exports": {
+    ".": "./mod.ts",
+    "./parse": "./parse.ts",
+    "./stringify": "./stringify.ts"
+  }
+}

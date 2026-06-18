@@ -1,0 +1,8 @@
+{
+  "scope": "std",
+  "name": "collections",
+  "latest": "1.2.0",
+  "versions": {
+    "1.2.0": {}
+  }
+}

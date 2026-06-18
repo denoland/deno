@@ -1,0 +1,8 @@
+[WILDCARD]
+yaml.name: deno
+yaml.nested: {"count":3}
+toml.title: demo
+toml.server.port: 8080
+jsonc.a: 1 jsonc.b: [1,2,3]
+json5.a: 1 json5.b: two
+json5AsJson.b: two
