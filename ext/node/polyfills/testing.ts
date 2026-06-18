@@ -355,7 +355,7 @@ function serializeError(err) {
   return out;
 }
 
-function validateShard(shard, total, watch) {
+function validateShard(shard, watch) {
   if (typeof shard.total !== "number") {
     throw errArgType("options.shard.total", "number", shard.total);
   }
@@ -452,7 +452,7 @@ function validateRunOptions(options) {
     );
   }
   if (shard !== undefined) {
-    validateShard(shard, files, watch);
+    validateShard(shard, watch);
   }
 }
 
@@ -488,6 +488,8 @@ function discoverTestFiles(dir) {
     }
     for (const entry of new SafeArrayIterator(entries)) {
       const name = entry.name;
+      // `path` is the node:path module, not an Array; `path.join` is the joiner.
+      // deno-lint-ignore prefer-primordials
       const full = path.join(current, name);
       if (entry.isDirectory()) {
         if (name === "node_modules" || StringPrototypeStartsWith(name, ".")) {
@@ -659,7 +661,7 @@ function run(options) {
       file,
       details: {
         __proto__: null,
-        duration_ms: 0,
+        "duration_ms": 0,
         type: "test",
         error: serializeError(error),
       },
@@ -1598,7 +1600,7 @@ async function runStructuredEntry(entry, depth, n) {
     });
   }
 
-  const details = { __proto__: null, duration_ms: 0, type };
+  const details = { __proto__: null, "duration_ms": 0, type };
   if (error !== null) details.error = serializeError(error);
   const data = {
     __proto__: null,
