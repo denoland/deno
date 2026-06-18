@@ -954,6 +954,16 @@ function assertExpectedFailure(err, expectFailure) {
   }
 }
 
+// Yields one real-timer macrotask turn so deno_core's event loop runs its
+// unhandled-rejection check and dispatches any pending `unhandledrejection`
+// events. Uses the captured realSetTimeout so an enabled mock clock cannot
+// stall it.
+function drainPendingRejections() {
+  const { promise, resolve } = PromiseWithResolvers();
+  realSetTimeout(() => resolve(), 0);
+  return promise;
+}
+
 // Runs `invoke()` (a thunk that executes a single test body) while enforcing
 // the `timeout` option, honoring a caller-supplied abort `signal`, and capturing
 // any unhandled rejection / uncaught exception that fires during the body. The
@@ -1006,19 +1016,25 @@ async function runWithTestGuards(invoke, opts) {
     // Promise.race so a late body settlement cannot resurface after a failure.
     const body = (async () => {
       const value = await invoke();
-      // The body finished first; stop attributing later rejections to it.
+      // The body's own promise has settled, but a promise that rejected during
+      // the body may not have been reported yet. In deno_core an unhandled
+      // rejection is reported - and its `unhandledrejection` event dispatched -
+      // at the next event-loop macrotask boundary after the microtask
+      // checkpoint, not at the microtask checkpoint itself (see
+      // processUnhandledPromiseRejection in runtime/js/99_main.js). So we keep
+      // this test's sink attributable and yield one real-timer macrotask turn
+      // (plus a microtask flush) so deno_core flushes any pending rejection and
+      // attributes it to this test before we let it pass. The captured
+      // realSetTimeout keeps this immune to an enabled mock clock.
       //
-      // Attribution is best-effort and bounded by timing: an unhandled
-      // rejection scheduled by the body is only attributed to this test if its
-      // `unhandledrejection` event fires before the sink is marked settled. A
-      // rejected promise is typically reported at the next microtask
-      // checkpoint, which can land a tick or two after the body's returned
-      // promise resolves. To widen the window we flush a couple of microtask
-      // turns before settling, so a rejection that surfaces immediately after
-      // the body returns is still caught. A rejection that surfaces even later
-      // (for example behind a macrotask) will not be attributed; Node's
-      // microtask-checkpoint based mechanism is more deterministic here.
-      await PromiseResolve();
+      // Because tests run sequentially (Deno.test steps and the TAP runner both
+      // serialize), this drain completes before the next test's sink is pushed,
+      // so a rejection leaked here is never misattributed to the next test. A
+      // timeout or abort still fails the test immediately via `failure` without
+      // waiting for this drain. This is bounded best-effort: a rejection that
+      // only surfaces more than a macrotask turn after the body returns is not
+      // attributed.
+      await drainPendingRejections();
       await PromiseResolve();
       sink.settled = true;
       return value;

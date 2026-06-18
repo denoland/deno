@@ -1,7 +1,8 @@
-running 2 tests from ./test.js
-fails on unhandled rejection ... FAILED ([WILDLINE])
-passing test still passes ... ok ([WILDLINE])
-[WILDCARD]boom from unhandled rejection[WILDCARD]
-FAILED | 1 passed | 1 failed ([WILDLINE])
+running 3 tests from ./test.js
+rejection with no await fails the test ... FAILED ([WILDLINE])
+rejection during await fails the test ... FAILED ([WILDLINE])
+well-behaved test still passes ... ok ([WILDLINE])
+[WILDCARD]boom no await[WILDCARD]boom during await[WILDCARD]
+FAILED | 1 passed | 2 failed ([WILDLINE])
 
 error: Test failed
