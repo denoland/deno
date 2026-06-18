@@ -1,0 +1,26 @@
+{
+  // Each member's `work` task grabs an exclusive lock file in the workspace
+  // root for the duration of its run. If two tasks ever overlap the lock
+  // acquisition fails and the run exits non-zero, so a clean exit proves the
+  // tasks ran sequentially. With `--workspace-concurrency 1` they never
+  // overlap, even when `DENO_JOBS` asks for more.
+  "tempDir": true,
+  "tests": {
+    "concurrency_one_is_sequential": {
+      "args": "task -r --no-prefix --workspace-concurrency 1 work",
+      "output": "sequential.out"
+    },
+    "flag_overrides_deno_jobs": {
+      "args": "task -r --no-prefix --workspace-concurrency 1 work",
+      "envs": {
+        "DENO_JOBS": "3"
+      },
+      "output": "sequential.out"
+    },
+    "invalid_zero": {
+      "args": "task -r --workspace-concurrency 0 work",
+      "exitCode": 1,
+      "output": "invalid.out"
+    }
+  }
+}

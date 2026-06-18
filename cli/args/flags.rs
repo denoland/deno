@@ -668,6 +668,10 @@ pub struct TaskFlags {
   pub filter: Option<String>,
   pub eval: bool,
   pub no_prefix: bool,
+  /// Maximum number of workspace tasks to run concurrently. Overrides the
+  /// `DENO_JOBS` env var and the `available_parallelism()` default. Only
+  /// meaningful for multi-task (`-r`/`--filter`) runs.
+  pub workspace_concurrency: Option<NonZeroUsize>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -5039,6 +5043,18 @@ Evaluate a task from string:
           )
           .action(ArgAction::SetTrue),
       )
+      .arg(
+        Arg::new("workspace-concurrency")
+          .long("workspace-concurrency")
+          .help(
+            "Maximum number of workspace tasks to run concurrently.
+Overrides the DENO_JOBS environment variable; defaults to the number of
+available CPUs. Use 1 to force sequential execution. Only affects
+multi-task runs (--recursive/--filter); single-task runs are unaffected",
+          )
+          .value_name("NUMBER")
+          .value_parser(value_parser!(NonZeroUsize)),
+      )
       .arg(env_file_arg())
       .arg(node_modules_dir_arg())
       .arg(node_modules_linker_arg())
@@ -8603,6 +8619,8 @@ fn task_parse(
     filter,
     eval: matches.get_flag("eval"),
     no_prefix: matches.get_flag("no-prefix"),
+    workspace_concurrency: matches
+      .remove_one::<NonZeroUsize>("workspace-concurrency"),
   };
 
   match matches.remove_subcommand() {
@@ -14784,6 +14802,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         argv: svec!["hello", "world"],
         ..Flags::default()
@@ -14802,6 +14821,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         ..Flags::default()
       }
@@ -14819,6 +14839,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         ..Flags::default()
       }
@@ -14836,6 +14857,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         ..Flags::default()
       }
@@ -14853,6 +14875,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         ..Flags::default()
       }
@@ -14870,6 +14893,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         ..Flags::default()
       }
@@ -14887,6 +14911,7 @@ mod tests {
           filter: None,
           eval: true,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         ..Flags::default()
       }
@@ -14894,6 +14919,45 @@ mod tests {
 
     let r = flags_from_vec(svec!["deno", "task", "--eval"]);
     assert!(r.is_err());
+  }
+
+  #[test]
+  fn task_subcommand_workspace_concurrency() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "task",
+      "--workspace-concurrency",
+      "1",
+      "build"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: false,
+          filter: None,
+          eval: false,
+          no_prefix: false,
+          workspace_concurrency: Some(NonZeroUsize::new(1).unwrap()),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // Reject zero, negative, and non-numeric values.
+    for invalid in ["0", "-1", "abc"] {
+      let r = flags_from_vec(svec![
+        "deno",
+        "task",
+        "--workspace-concurrency",
+        invalid,
+        "build"
+      ]);
+      assert!(r.is_err(), "expected error for value {invalid:?}");
+    }
   }
 
   #[test]
@@ -14919,6 +14983,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         argv: svec!["--", "hello", "world"],
         config_flag: ConfigFlag::Path("deno.json".to_owned()),
@@ -14940,6 +15005,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         argv: svec!["--", "hello", "world"],
         ..Flags::default()
@@ -14962,6 +15028,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         argv: svec!["--"],
         ..Flags::default()
@@ -14983,6 +15050,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         argv: svec!["-1", "--test"],
         ..Flags::default()
@@ -15004,6 +15072,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         argv: svec!["--test"],
         ..Flags::default()
@@ -15026,6 +15095,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         log_level: Some(log::Level::Error),
         ..Flags::default()
@@ -15047,6 +15117,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         ..Flags::default()
       }
@@ -15067,6 +15138,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -15088,6 +15160,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -15118,6 +15191,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         env_file: Some(vec![".env".to_owned()]),
         ..Flags::default()
@@ -15142,6 +15216,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          workspace_concurrency: None,
         }),
         env_file: Some(vec![".env.dev".to_owned(), ".env.local".to_owned()]),
         ..Flags::default()
