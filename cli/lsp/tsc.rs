@@ -5888,6 +5888,10 @@ fn run_tsc_thread(
     create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     inspector: has_inspector_server,
+    // See cli/tsc/js.rs: the LSP TSC isolate shares CLI_SNAPSHOT and needs
+    // the residual lazy-ESM/JS sources for node:* lookups (e.g. `process`).
+    residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
+    residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
     ..Default::default()
   });
 
