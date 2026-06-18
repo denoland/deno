@@ -2,11 +2,15 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::future::Future;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::task::Context;
+use std::task::Poll;
 use std::time::Duration;
 
 use deno_core::AsyncRefCell;
@@ -27,11 +31,17 @@ use hickory_proto::ProtoError;
 use hickory_proto::ProtoErrorKind;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
+use hickory_proto::runtime::RuntimeProvider;
+use hickory_proto::runtime::TokioRuntimeProvider;
+use hickory_proto::runtime::TokioTime;
+use hickory_proto::udp::DnsUdpSocket;
 use hickory_resolver::ResolveError;
 use hickory_resolver::ResolveErrorKind;
 use hickory_resolver::config::NameServerConfigGroup;
 use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::config::ResolverOpts;
+use hickory_resolver::name_server::ConnectionProvider;
+use hickory_resolver::name_server::GenericConnector;
 use hickory_resolver::name_server::TokioConnectionProvider;
 use hickory_resolver::system_conf;
 use quinn::rustls;
@@ -154,6 +164,9 @@ pub enum NetError {
   #[class("NotConnected")]
   #[error("{0}")]
   DnsNotConnected(ResolveError),
+  #[class("ConnectionRefused")]
+  #[error("{0}")]
+  DnsConnectionRefused(ResolveError),
   #[class("TimedOut")]
   #[error("{0}")]
   DnsTimedOut(ResolveError),
@@ -1040,6 +1053,151 @@ pub struct NameServer {
   port: u16,
 }
 
+/// A hickory [`RuntimeProvider`] that hands out UDP sockets which are
+/// `connect()`ed to the name server.
+///
+/// hickory's default UDP socket is unconnected, so when the configured name
+/// server refuses the connection the ICMP "port unreachable" response is never
+/// delivered to the socket and the query silently times out. Connecting the
+/// socket makes the kernel surface that as `ECONNREFUSED`, matching the
+/// behaviour of c-ares (used by Node.js). This is used for the `node:dns`
+/// `Resolver.setServers()` code path.
+#[derive(Clone, Default)]
+struct ConnectedUdpRuntimeProvider(TokioRuntimeProvider);
+
+impl RuntimeProvider for ConnectedUdpRuntimeProvider {
+  type Handle = <TokioRuntimeProvider as RuntimeProvider>::Handle;
+  type Timer = <TokioRuntimeProvider as RuntimeProvider>::Timer;
+  type Udp = ConnectedUdpSocket;
+  type Tcp = <TokioRuntimeProvider as RuntimeProvider>::Tcp;
+
+  fn create_handle(&self) -> Self::Handle {
+    self.0.create_handle()
+  }
+
+  fn connect_tcp(
+    &self,
+    server_addr: SocketAddr,
+    bind_addr: Option<SocketAddr>,
+    timeout: Option<Duration>,
+  ) -> Pin<Box<dyn Send + Future<Output = std::io::Result<Self::Tcp>>>> {
+    self.0.connect_tcp(server_addr, bind_addr, timeout)
+  }
+
+  fn bind_udp(
+    &self,
+    local_addr: SocketAddr,
+    server_addr: SocketAddr,
+  ) -> Pin<Box<dyn Send + Future<Output = std::io::Result<Self::Udp>>>> {
+    Box::pin(async move {
+      let socket = tokio::net::UdpSocket::bind(local_addr).await?;
+      socket.connect(server_addr).await?;
+      Ok(ConnectedUdpSocket(socket))
+    })
+  }
+}
+
+/// A connected UDP socket adapter for [`ConnectedUdpRuntimeProvider`].
+struct ConnectedUdpSocket(tokio::net::UdpSocket);
+
+impl DnsUdpSocket for ConnectedUdpSocket {
+  type Time = TokioTime;
+
+  fn poll_recv_from(
+    &self,
+    cx: &mut Context<'_>,
+    buf: &mut [u8],
+  ) -> Poll<std::io::Result<(usize, SocketAddr)>> {
+    let mut read_buf = tokio::io::ReadBuf::new(buf);
+    std::task::ready!(self.0.poll_recv(cx, &mut read_buf))?;
+    let len = read_buf.filled().len();
+    // The socket is connected, so all datagrams come from the name server.
+    let addr = self.0.peer_addr()?;
+    Poll::Ready(Ok((len, addr)))
+  }
+
+  fn poll_send_to(
+    &self,
+    cx: &mut Context<'_>,
+    buf: &[u8],
+    _target: SocketAddr,
+  ) -> Poll<std::io::Result<usize>> {
+    // The socket is connected, so the target is implied.
+    self.0.poll_send(cx, buf)
+  }
+}
+
+fn map_resolve_error(e: ResolveError) -> NetError {
+  match e.kind() {
+    ResolveErrorKind::Proto(ProtoError { kind, .. })
+      if matches!(**kind, ProtoErrorKind::NoRecordsFound { .. }) =>
+    {
+      NetError::DnsNotFound(e)
+    }
+    ResolveErrorKind::Proto(ProtoError { kind, .. })
+      if matches!(**kind, ProtoErrorKind::NoConnections) =>
+    {
+      NetError::DnsNotConnected(e)
+    }
+    ResolveErrorKind::Proto(ProtoError { kind, .. })
+      if matches!(
+        &**kind,
+        ProtoErrorKind::Io(io)
+          if io.kind() == std::io::ErrorKind::ConnectionRefused
+      ) =>
+    {
+      NetError::DnsConnectionRefused(e)
+    }
+    ResolveErrorKind::Proto(ProtoError { kind, .. })
+      if matches!(**kind, ProtoErrorKind::Timeout) =>
+    {
+      NetError::DnsTimedOut(e)
+    }
+    _ => NetError::Dns(e),
+  }
+}
+
+async fn resolve_lookup<P: ConnectionProvider>(
+  state: &Rc<RefCell<OpState>>,
+  provider: P,
+  config: ResolverConfig,
+  opts: ResolverOpts,
+  query: String,
+  record_type: RecordType,
+  cancel_rid: Option<ResourceId>,
+) -> Result<hickory_resolver::lookup::Lookup, NetError> {
+  let resolver =
+    hickory_resolver::Resolver::builder_with_config(config, provider)
+      .with_options(opts)
+      .build();
+
+  let lookup_fut = resolver.lookup(query, record_type);
+
+  let cancel_handle = cancel_rid.and_then(|rid| {
+    state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(rid)
+      .ok()
+  });
+
+  let lookup = if let Some(cancel_handle) = cancel_handle {
+    let lookup_rv = lookup_fut.or_cancel(cancel_handle).await;
+
+    if let Some(cancel_rid) = cancel_rid
+      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+    {
+      res.close();
+    };
+
+    lookup_rv?
+  } else {
+    lookup_fut.await
+  };
+
+  lookup.map_err(map_resolve_error)
+}
+
 #[op2(stack_trace)]
 pub async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
@@ -1053,9 +1211,11 @@ pub async fn op_dns_resolve(
     cancel_rid,
   } = args;
 
-  let (config, mut opts) = if let Some(name_server) =
-    options.as_ref().and_then(|o| o.name_server.as_ref())
-  {
+  let custom_name_server =
+    options.as_ref().and_then(|o| o.name_server.as_ref());
+  let has_custom_name_server = custom_name_server.is_some();
+
+  let (config, mut opts) = if let Some(name_server) = custom_name_server {
     let group = NameServerConfigGroup::from_ips_clear(
       &[name_server.ip_addr.parse()?],
       name_server.port,
@@ -1093,55 +1253,34 @@ pub async fn op_dns_resolve(
     }
   }
 
-  let provider = TokioConnectionProvider::default();
-  let resolver =
-    hickory_resolver::Resolver::builder_with_config(config, provider)
-      .with_options(opts)
-      .build();
-
-  let lookup_fut = resolver.lookup(query, record_type);
-
-  let cancel_handle = cancel_rid.and_then(|rid| {
-    state
-      .borrow_mut()
-      .resource_table
-      .get::<CancelHandle>(rid)
-      .ok()
-  });
-
-  let lookup = if let Some(cancel_handle) = cancel_handle {
-    let lookup_rv = lookup_fut.or_cancel(cancel_handle).await;
-
-    if let Some(cancel_rid) = cancel_rid
-      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
-    {
-      res.close();
-    };
-
-    lookup_rv?
+  // When the caller configured an explicit name server (e.g. via
+  // `node:dns` `Resolver.setServers()`), use a connected UDP socket so that a
+  // refused connection surfaces as `ECONNREFUSED` instead of timing out.
+  let lookup = if has_custom_name_server {
+    resolve_lookup(
+      &state,
+      GenericConnector::new(ConnectedUdpRuntimeProvider::default()),
+      config,
+      opts,
+      query,
+      record_type,
+      cancel_rid,
+    )
+    .await?
   } else {
-    lookup_fut.await
+    resolve_lookup(
+      &state,
+      TokioConnectionProvider::default(),
+      config,
+      opts,
+      query,
+      record_type,
+      cancel_rid,
+    )
+    .await?
   };
 
   lookup
-    .map_err(|e| match e.kind() {
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::NoRecordsFound { .. }) =>
-      {
-        NetError::DnsNotFound(e)
-      }
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::NoConnections) =>
-      {
-        NetError::DnsNotConnected(e)
-      }
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::Timeout) =>
-      {
-        NetError::DnsTimedOut(e)
-      }
-      _ => NetError::Dns(e),
-    })?
     .records()
     .iter()
     .filter_map(|rec| {
