@@ -5,17 +5,24 @@
 const { core, primordials } = __bootstrap;
 const {
   ArrayPrototypeForEach,
+  ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
+  ArrayPrototypeJoin,
   ArrayPrototypeLastIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
+  DatePrototypeGetTime,
+  DatePrototypeToString,
   Error,
   ErrorPrototype,
+  MapPrototypeClear,
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
+  NumberIsFinite,
+  NumberIsInteger,
   ObjectDefineProperty,
   ObjectPrototypeHasOwnProperty,
   ObjectGetOwnPropertyDescriptor,
@@ -33,11 +40,14 @@ const {
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
+  SafeMapIterator,
   SafeRegExp,
   String,
   StringPrototypeMatch,
   Symbol,
+  SymbolDispose,
   SymbolFor,
+  SymbolToPrimitive,
   TypeError,
   queueMicrotask,
 } = primordials;
@@ -172,15 +182,21 @@ function installErrorHandlers() {
     }
   });
 }
-const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const {
   validateFunction,
   validateInteger,
+  validateNumber,
   validateObject,
+  validateStringArray,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-const { ERR_INVALID_ARG_TYPE, ERR_INVALID_ARG_VALUE } = core.loadExtScript(
-  "ext:deno_node/internal/errors.ts",
-).codes;
+const nodeErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+} = nodeErrors.codes;
+// `ERR_INVALID_STATE` is a hand-written class exported at the top level of the
+// errors module; unlike the generated codes it is not registered on `.codes`.
+const { ERR_INVALID_STATE } = nodeErrors;
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const {
   tapEscape,
@@ -2030,6 +2046,363 @@ function mockMethodImpl(object, methodName, implementation, options) {
   return mockFn;
 }
 
+const SUPPORTED_APIS = [
+  "setTimeout",
+  "setInterval",
+  "setImmediate",
+  "Date",
+];
+
+class MockTimersHandle {
+  #id;
+  #timer;
+  #timers;
+  #refed;
+  constructor(timer, timers, refed) {
+    this.#id = timer.id;
+    this.#timer = timer;
+    this.#timers = timers;
+    this.#refed = refed;
+  }
+  ref() {
+    this.#refed = true;
+    return this;
+  }
+  unref() {
+    this.#refed = false;
+    return this;
+  }
+  hasRef() {
+    return this.#refed;
+  }
+  refresh() {
+    if (this.#timer && !this.#timer.interval) {
+      this.#timer.fireAt = this.#timers._now + this.#timer.delay;
+      MapPrototypeSet(this.#timers._timers, this.#id, this.#timer);
+    }
+    return this;
+  }
+  [SymbolToPrimitive]() {
+    return this.#id;
+  }
+  [SymbolFor("Deno.customInspect")]() {
+    return `MockTimer { id: ${this.#id} }`;
+  }
+  get _id() {
+    return this.#id;
+  }
+}
+
+// Installs/uninstalls this MockTimers on the `node:timers` module so that
+// `require("node:timers")` and `import ... from "node:timers[/promises]"`
+// callers route through the virtual clock too, not just `globalThis`.
+const kInstallMockTimers = SymbolFor("Deno.internal.node.mockTimers");
+
+class MockTimers {
+  _enabled = false;
+  _now = 0;
+  _timers = new SafeMap();
+  _nextId = 1;
+  #originals = new SafeMap();
+  #mockedApis = new SafeMap();
+
+  #mockGlobal(name, value) {
+    if (!MapPrototypeHas(this.#originals, name)) {
+      MapPrototypeSet(this.#originals, name, globalThis[name]);
+    }
+    globalThis[name] = value;
+  }
+
+  // Whether `api` (e.g. `"setTimeout"`) is currently being intercepted. Read by
+  // the `node:timers` module functions to decide per-call whether to use the
+  // virtual clock, mirroring the per-api selection of `enable({ apis })`.
+  _apiEnabled(api) {
+    return MapPrototypeHas(this.#mockedApis, api);
+  }
+
+  enable(options = { __proto__: null }) {
+    if (this._enabled) {
+      throw new ERR_INVALID_STATE(
+        "MockTimers is already enabled. Reset it first to enable it again",
+      );
+    }
+    validateObject(options, "options");
+    let { apis, now } = options;
+    if (apis === undefined) {
+      apis = SUPPORTED_APIS;
+    } else {
+      validateStringArray(apis, "options.apis");
+      for (let i = 0; i < apis.length; i++) {
+        if (!ArrayPrototypeIncludes(SUPPORTED_APIS, apis[i])) {
+          throw new ERR_INVALID_ARG_VALUE(
+            `options.apis[${i}]`,
+            apis[i],
+            `must be one of ${ArrayPrototypeJoin(SUPPORTED_APIS, ", ")}`,
+          );
+        }
+      }
+    }
+    if (now === undefined) {
+      now = 0;
+    } else if (ObjectPrototypeIsPrototypeOf(originalDatePrototype, now)) {
+      now = DatePrototypeGetTime(now);
+    }
+    validateNumber(now, "options.now", 0);
+    if (!NumberIsFinite(now) || !NumberIsInteger(now)) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options.now",
+        now,
+        "must be a finite, non-negative integer or a Date object",
+      );
+    }
+
+    this._enabled = true;
+    this._now = now;
+
+    for (let i = 0; i < apis.length; i++) {
+      MapPrototypeSet(this.#mockedApis, apis[i], true);
+    }
+
+    for (let i = 0; i < apis.length; i++) {
+      const api = apis[i];
+      if (api === "Date") {
+        this.#mockGlobal("Date", createMockDate(this));
+      } else if (api === "setTimeout") {
+        this.#mockGlobal(
+          "setTimeout",
+          (callback, delay, ...args) =>
+            this._setTimeout(callback, delay, args, false),
+        );
+        this.#mockGlobal(
+          "clearTimeout",
+          (handle) => this._clearTimer(handle),
+        );
+      } else if (api === "setInterval") {
+        this.#mockGlobal(
+          "setInterval",
+          (callback, delay, ...args) =>
+            this._setInterval(callback, delay, args),
+        );
+        this.#mockGlobal(
+          "clearInterval",
+          (handle) => this._clearTimer(handle),
+        );
+      } else if (api === "setImmediate") {
+        this.#mockGlobal(
+          "setImmediate",
+          (callback, ...args) => this._setTimeout(callback, 0, args, true),
+        );
+        this.#mockGlobal(
+          "clearImmediate",
+          (handle) => this._clearTimer(handle),
+        );
+      }
+    }
+
+    // Route the `node:timers` / `node:timers/promises` module functions through
+    // this instance too (see `kInstallMockTimers` in `timers.ts`).
+    core.loadExtScript("ext:deno_node/timers.ts")[kInstallMockTimers](this);
+  }
+
+  reset() {
+    if (!this._enabled) return;
+    core.loadExtScript("ext:deno_node/timers.ts")[kInstallMockTimers](null);
+    for (
+      const { 0: name, 1: original } of new SafeMapIterator(this.#originals)
+    ) {
+      globalThis[name] = original;
+    }
+    MapPrototypeClear(this.#originals);
+    MapPrototypeClear(this.#mockedApis);
+    MapPrototypeClear(this._timers);
+    this._now = 0;
+    this._nextId = 1;
+    this._enabled = false;
+  }
+
+  #assertEnabled() {
+    if (!this._enabled) {
+      throw new ERR_INVALID_STATE(
+        "You should enable MockTimers first by calling the .enable function",
+      );
+    }
+  }
+
+  #assertTimeArg(time) {
+    if (time < 0) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "time",
+        time,
+        "must be a non-negative integer",
+      );
+    }
+  }
+
+  // Mirrors Node's `MockTimers.tick`: advance the clock to each due timer's
+  // scheduled time as it fires (not straight to the end of the window), so a
+  // callback reading `Date.now()` sees the time the timer was scheduled for.
+  // Intervals re-arm and may fire again within the same tick.
+  tick(milliseconds = 1) {
+    this.#assertEnabled();
+    this.#assertTimeArg(milliseconds);
+    const target = this._now + milliseconds;
+    while (true) {
+      const next = this.#findNextTimer();
+      if (next === null || next.fireAt > target) break;
+      this._now = next.fireAt;
+      this.#fireTimer(next);
+    }
+    this._now = target;
+  }
+
+  // Mirrors Node's `MockTimers.runAll`: tick up to the longest pending timer.
+  // Intervals fire as many times as fit within that window, then re-arm past
+  // `_now` so the loop terminates.
+  runAll() {
+    this.#assertEnabled();
+    const longest = this.#findLongestTimer();
+    if (longest === null) return;
+    this.tick(longest.fireAt - this._now);
+  }
+
+  setTime(milliseconds) {
+    validateNumber(milliseconds, "time");
+    this.#assertTimeArg(milliseconds);
+    this.#assertEnabled();
+    this._now = milliseconds;
+  }
+
+  [SymbolDispose]() {
+    this.reset();
+  }
+
+  _setTimeout(callback, delay, args, immediate) {
+    validateFunction(callback, "callback");
+    if (delay === undefined || delay === null) delay = 1;
+    if (typeof delay !== "number") delay = +delay;
+    if (!NumberIsFinite(delay) || delay < 0) delay = 1;
+    if (delay > 2147483647) delay = 1;
+    const id = this._nextId++;
+    const timer = {
+      id,
+      callback,
+      args,
+      delay,
+      fireAt: this._now + delay,
+      interval: null,
+      immediate,
+    };
+    MapPrototypeSet(this._timers, id, timer);
+    return new MockTimersHandle(timer, this, true);
+  }
+
+  _setInterval(callback, delay, args) {
+    validateFunction(callback, "callback");
+    if (delay === undefined || delay === null) delay = 1;
+    if (typeof delay !== "number") delay = +delay;
+    if (!NumberIsFinite(delay) || delay < 1) delay = 1;
+    if (delay > 2147483647) delay = 1;
+    const id = this._nextId++;
+    const timer = {
+      id,
+      callback,
+      args,
+      delay,
+      fireAt: this._now + delay,
+      interval: delay,
+      immediate: false,
+    };
+    MapPrototypeSet(this._timers, id, timer);
+    return new MockTimersHandle(timer, this, true);
+  }
+
+  _clearTimer(handle) {
+    if (handle === null || handle === undefined) return;
+    let id;
+    if (typeof handle === "number") {
+      id = handle;
+    } else if (typeof handle === "object" && typeof handle._id === "number") {
+      id = handle._id;
+    } else {
+      return;
+    }
+    MapPrototypeDelete(this._timers, id);
+  }
+
+  #findNextTimer() {
+    let next = null;
+    for (const { 1: t } of new SafeMapIterator(this._timers)) {
+      if (
+        next === null ||
+        t.fireAt < next.fireAt ||
+        (t.fireAt === next.fireAt &&
+          (t.immediate !== next.immediate ? t.immediate : t.id < next.id))
+      ) {
+        next = t;
+      }
+    }
+    return next;
+  }
+
+  #findLongestTimer() {
+    let longest = null;
+    for (const { 1: t } of new SafeMapIterator(this._timers)) {
+      if (longest === null || t.fireAt > longest.fireAt) {
+        longest = t;
+      }
+    }
+    return longest;
+  }
+
+  #fireTimer(timer) {
+    // Match Node: invoke the callback first (errors propagate synchronously out
+    // of `tick`), then re-arm intervals or drop one-shot timers. A timer that
+    // clears itself inside its own callback is already gone from `_timers`, so
+    // the bookkeeping below is a no-op for it.
+    ReflectApply(timer.callback, undefined, timer.args);
+    if (timer.interval !== null) {
+      timer.fireAt += timer.interval;
+    } else {
+      MapPrototypeDelete(this._timers, timer.id);
+    }
+  }
+}
+
+const originalDate = globalThis.Date;
+const originalDatePrototype = originalDate.prototype;
+
+function createMockDate(mockTimers) {
+  function MockDate(...args) {
+    if (!new.target) {
+      return DatePrototypeToString(
+        ReflectConstruct(originalDate, [mockTimers._now], MockDate),
+      );
+    }
+    if (args.length === 0) {
+      return ReflectConstruct(originalDate, [mockTimers._now], MockDate);
+    }
+    return ReflectConstruct(originalDate, args, MockDate);
+  }
+  ObjectDefineProperty(MockDate, "prototype", {
+    __proto__: null,
+    value: originalDate.prototype,
+    writable: false,
+  });
+  ObjectDefineProperty(MockDate, "name", {
+    __proto__: null,
+    value: "Date",
+    configurable: true,
+  });
+  MockDate.now = () => mockTimers._now;
+  MockDate.parse = originalDate.parse;
+  MockDate.UTC = originalDate.UTC;
+  MockDate.isMock = true;
+  MockDate.toString = () => "function Date() { [native code] }";
+  return MockDate;
+}
+
+const mockTimers = new MockTimers();
+
 const mock = {
   fn: (original, implementation, options) => {
     if (original !== null && typeof original === "object") {
@@ -2075,7 +2448,9 @@ const mock = {
 
   property: function (object, propertyName, value) {
     validateObject(object, "object");
-    if (typeof propertyName !== "string" && typeof propertyName !== "symbol") {
+    if (
+      typeof propertyName !== "string" && typeof propertyName !== "symbol"
+    ) {
       throw new ERR_INVALID_ARG_TYPE(
         "propertyName",
         ["string", "symbol"],
@@ -2128,18 +2503,14 @@ const mock = {
   },
 
   timers: {
-    enable: () => {
-      notImplemented("test.mock.timers.enable");
-    },
-    reset: () => {
-      notImplemented("test.mock.timers.reset");
-    },
-    tick: () => {
-      notImplemented("test.mock.timers.tick");
-    },
-    runAll: () => {
-      notImplemented("test.mock.timers.runAll");
-    },
+    enable: (options) => mockTimers.enable(options),
+    reset: () => mockTimers.reset(),
+    tick: (ms) => mockTimers.tick(ms),
+    runAll: () => mockTimers.runAll(),
+    // `setTime` is MockTimers' own method, not Date.prototype.setTime.
+    // deno-lint-ignore prefer-primordials
+    setTime: (ms) => mockTimers.setTime(ms),
+    [SymbolDispose]: () => mockTimers.reset(),
   },
 };
 
