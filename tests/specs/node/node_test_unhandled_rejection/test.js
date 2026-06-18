@@ -2,20 +2,15 @@
 
 import test from "node:test";
 
-// An unhandled promise rejection that occurs while a test body is running must
-// fail that test, matching Node.js (see denoland/deno#34818). The rejection
-// reason becomes the test failure.
+// An unhandled promise rejection that surfaces while a test body is still
+// running must fail that test, matching Node.js (see denoland/deno#34818). The
+// rejection reason becomes the test failure. Attribution is best-effort and
+// bounded to the body's lifetime: a rejection whose event fires after the body
+// has returned is treated as post-test asynchronous activity and is not
+// attributed (the same limitation Node has for activity that outlives a test).
 
-// (a) A rejection created with no await at all before the body returns. In
-// deno_core the rejection is reported a macrotask after the body resolves; the
-// runner drains that window with the test still active so it is attributed.
-// This is intentionally stricter than Node 26.3.0, which lets a no-await
-// rejection pass the test with a diagnostic; we fail the test instead.
-test("rejection with no await fails the test", () => {
-  Promise.reject(new Error("boom no await"));
-});
-
-// (b) A rejection that surfaces during an await must also fail the test.
+// A rejection that surfaces during an await is attributed to the running test
+// and fails it. This is the denoland/deno#34818 repro.
 test("rejection during await fails the test", async () => {
   (async () => {
     throw new Error("boom during await");
@@ -23,9 +18,7 @@ test("rejection during await fails the test", async () => {
   await new Promise((resolve) => setTimeout(resolve, 50));
 });
 
-// (c) A rejection leaked by an earlier test must not fail a subsequent
-// well-behaved test: the attribution window is bounded and per-test. This test
-// runs after the two failing tests above and must still pass.
+// A test that does not leak a rejection passes normally.
 test("well-behaved test still passes", async () => {
   await new Promise((resolve) => setTimeout(resolve, 1));
 });

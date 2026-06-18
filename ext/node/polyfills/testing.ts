@@ -52,12 +52,21 @@ const {
   queueMicrotask,
 } = primordials;
 
-// Capture the real timer functions at module initialization so that an enabled
-// mock clock (node:test's mock.timers) cannot stop a test's timeout from firing
-// in real time. node:test is imported before mock.timers.enable() runs, so
-// these references are always the genuine runtime timers.
-const realSetTimeout = globalThis.setTimeout;
-const realClearTimeout = globalThis.clearTimeout;
+// The genuine timer functions, captured once at runtime so that an enabled mock
+// clock (node:test's mock.timers) cannot stop a test's timeout from firing in
+// real time. We cannot read these at module-init time: this polyfill is baked
+// into the startup snapshot, where the module body runs before the timer APIs
+// exist on `globalThis`. Instead we capture lazily on the first `test()` /
+// `suite()` registration (see installErrorHandlers), which always runs after
+// the runtime is booted and before any test body can call mock.timers.enable().
+let realSetTimeout = null;
+let realClearTimeout = null;
+function ensureRealTimers() {
+  if (realSetTimeout === null) {
+    realSetTimeout = globalThis.setTimeout;
+    realClearTimeout = globalThis.clearTimeout;
+  }
+}
 
 let errorHandlersInstalled = false;
 
@@ -138,6 +147,9 @@ function sanitizeThrowValue(err) {
 }
 
 function installErrorHandlers() {
+  // Capture the genuine timers now, before any test body runs and before any
+  // mock clock can replace the globals.
+  ensureRealTimers();
   if (errorHandlersInstalled) return;
   errorHandlersInstalled = true;
 
@@ -160,25 +172,18 @@ function installErrorHandlers() {
   });
 
   globalThis.addEventListener("error", (event) => {
-    const err = event.error ?? new Error("uncaught error");
-    // A test body is always wrapped in a guard sink while it runs, so the sink
-    // identifies the currently-active test and fails it. The callback-style
-    // `done` reject is kept only as a fallback for the (now unreachable) case
-    // where an uncaught error fires with no active sink.
-    const sink = currentTestSink();
-    if (sink !== null) {
-      event.preventDefault();
-      sink.fail(err);
-      return;
-    }
-    if (pendingCallbackReject !== null) {
-      event.preventDefault();
-      pendingCallbackReject(err);
-      pendingCallbackReject = null;
-      return;
-    }
+    // Uncaught exceptions are not routed through the test sink: a synchronous
+    // throw in a test body is already caught by the body wrapper, and Node does
+    // not treat every uncaught `error` event (for example warnings surfaced as
+    // errors) as a test failure. We keep the original behavior of swallowing
+    // the error while node tests are pending and forwarding to a pending
+    // callback-style `done` reject.
     if (activeNodeTests > 0) {
       event.preventDefault();
+    }
+    if (pendingCallbackReject !== null) {
+      pendingCallbackReject(event.error ?? new Error("uncaught error"));
+      pendingCallbackReject = null;
     }
   });
 }
@@ -954,16 +959,6 @@ function assertExpectedFailure(err, expectFailure) {
   }
 }
 
-// Yields one real-timer macrotask turn so deno_core's event loop runs its
-// unhandled-rejection check and dispatches any pending `unhandledrejection`
-// events. Uses the captured realSetTimeout so an enabled mock clock cannot
-// stall it.
-function drainPendingRejections() {
-  const { promise, resolve } = PromiseWithResolvers();
-  realSetTimeout(() => resolve(), 0);
-  return promise;
-}
-
 // Runs `invoke()` (a thunk that executes a single test body) while enforcing
 // the `timeout` option, honoring a caller-supplied abort `signal`, and capturing
 // any unhandled rejection / uncaught exception that fires during the body. The
@@ -972,6 +967,7 @@ function drainPendingRejections() {
 // `opts.abort(reason)` is invoked on timeout/abort so the test's own
 // AbortSignal (`t.signal`) is aborted and user code can react.
 async function runWithTestGuards(invoke, opts) {
+  ensureRealTimers();
   const timeout = opts?.timeout;
   const signal = opts?.signal;
   const abort = opts?.abort;
@@ -1016,26 +1012,16 @@ async function runWithTestGuards(invoke, opts) {
     // Promise.race so a late body settlement cannot resurface after a failure.
     const body = (async () => {
       const value = await invoke();
-      // The body's own promise has settled, but a promise that rejected during
-      // the body may not have been reported yet. In deno_core an unhandled
-      // rejection is reported - and its `unhandledrejection` event dispatched -
-      // at the next event-loop macrotask boundary after the microtask
-      // checkpoint, not at the microtask checkpoint itself (see
-      // processUnhandledPromiseRejection in runtime/js/99_main.js). So we keep
-      // this test's sink attributable and yield one real-timer macrotask turn
-      // (plus a microtask flush) so deno_core flushes any pending rejection and
-      // attributes it to this test before we let it pass. The captured
-      // realSetTimeout keeps this immune to an enabled mock clock.
-      //
-      // Because tests run sequentially (Deno.test steps and the TAP runner both
-      // serialize), this drain completes before the next test's sink is pushed,
-      // so a rejection leaked here is never misattributed to the next test. A
-      // timeout or abort still fails the test immediately via `failure` without
-      // waiting for this drain. This is bounded best-effort: a rejection that
-      // only surfaces more than a macrotask turn after the body returns is not
-      // attributed.
-      await drainPendingRejections();
-      await PromiseResolve();
+      // Stop attributing as soon as the body settles. An unhandled rejection
+      // whose `unhandledrejection` event already fired while the body was
+      // running (for example one surfacing during an await, as in the
+      // denoland/deno#34818 repro) has already failed this test through the
+      // sink. This is best-effort and bounded to the body's lifetime: a
+      // rejection that only surfaces after the body returns is treated as
+      // post-test asynchronous activity and not attributed, matching the
+      // limitation Node also has for activity that outlives a test. We avoid
+      // draining extra event-loop turns here because doing so perturbs the
+      // runner's output ordering and timing.
       sink.settled = true;
       return value;
     })();
