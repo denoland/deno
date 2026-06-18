@@ -39,8 +39,14 @@ pub fn register() {
 async fn handle_request(req: SchemeRequest) {
   let exchange = req.exchange;
   let mut began = false;
-  if let Err(e) =
-    bridge(&req.method, &req.url, &req.headers, &exchange, &mut began).await
+  if let Err(e) = Box::pin(bridge(
+    &req.method,
+    &req.url,
+    &req.headers,
+    &exchange,
+    &mut began,
+  ))
+  .await
   {
     log::error!("[desktop] app:// bridge error: {e}");
     if !began {
