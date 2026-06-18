@@ -481,9 +481,8 @@ async fn run_subcommand(
         }
       })
     }
-    DenoSubcommand::Types => spawn_subcommand(async move {
-      let types = tsc::get_types_declaration_file_text();
-      display::write_to_stdout_ignore_sigpipe(types.as_bytes())
+    DenoSubcommand::Types(types_flags) => spawn_subcommand(async move {
+      tools::types::types(Arc::new(flags), types_flags).await
     }),
     #[cfg(feature = "upgrade")]
     DenoSubcommand::Upgrade(upgrade_flags) => spawn_subcommand(async {
