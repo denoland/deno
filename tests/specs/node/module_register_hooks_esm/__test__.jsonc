@@ -42,6 +42,16 @@
       "cwd": "load_raw_imports",
       "args": "run -A --unstable-raw-imports --import=./hook.mjs main.mjs",
       "output": "load_raw_imports/main.out"
+    },
+    "redirect": {
+      "cwd": "redirect",
+      "args": "run -A main.mjs",
+      "output": "redirect/main.out"
+    },
+    "resolve_cache_bust": {
+      "cwd": "resolve_cache_bust",
+      "args": "run -A main.mjs",
+      "output": "resolve_cache_bust/main.out"
     }
   }
 }

@@ -53,6 +53,7 @@ const {
   StringPrototypePadStart,
   StringPrototypeReplace,
   StringPrototypeSplit,
+  Symbol,
 } = primordials;
 const {
   op_dns_resolve,
@@ -91,6 +92,14 @@ interface ErrnoException extends Error {
 const DNS_ORDER_VERBATIM = 0;
 const DNS_ORDER_IPV4_FIRST = 1;
 const DNS_ORDER_IPV6_FIRST = 2;
+
+// Module-private marker placed on the getaddrinfo completion callback used by
+// net.connect's *built-in* lookup. Only a callback bearing this symbol is
+// handed the NetPermToken from a lookup, so the token never escapes to a
+// user-supplied dns.lookup callback or a custom net.connect `lookup` function.
+// User code cannot reference this symbol, so it can neither receive the token
+// nor forge the marker. See GHSA-fhjh-jqv7-m238.
+const kPermTokenSink = Symbol("kPermTokenSink");
 
 class GetAddrInfoReqWrap extends AsyncWrap {
   family!: number;
@@ -907,6 +916,7 @@ return {
   QueryReqWrap,
   ChannelWrap,
   strerror,
+  kPermTokenSink,
   default: {
     DNS_ORDER_VERBATIM,
     DNS_ORDER_IPV4_FIRST,

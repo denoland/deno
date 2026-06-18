@@ -537,6 +537,9 @@ fn transpile(
   emit_options: &deno_ast::EmitOptions,
 ) -> Result<EmittedSourceText, EmitParsedSourceHelperError> {
   ensure_no_import_assertion(&parsed_source)?;
+  if let Some(diagnostics) = invalid_syntax_parse_diagnostics(&parsed_source) {
+    return Err(deno_ast::TranspileError::ParseErrors(diagnostics).into());
+  }
   // Skip the decorator transform when the module has no decorators. The
   // swc decorator pass otherwise hoists every computed class-member key into
   // a `var _computedKey; _computedKey = ...;` pair at module scope, which
@@ -621,6 +624,46 @@ fn program_has_decorators(program: deno_ast::ProgramRef<'_>) -> bool {
   let mut detector = DecoratorDetector::default();
   program.visit_with(&mut detector);
   detector.found
+}
+
+/// When `swc` recovers from a syntax error it leaves an `Invalid` placeholder
+/// node in the AST. The code generator emits these as the literal text
+/// `<invalid>`, which then surfaces downstream as a misleading
+/// `Uncaught SyntaxError: Unexpected token '<'` once the emitted output is
+/// executed. If any such node is present, return the (otherwise non-fatal)
+/// parse diagnostics so a precise syntax error can be reported instead of
+/// emitting broken JavaScript. See denoland/deno#19457.
+pub fn invalid_syntax_parse_diagnostics(
+  parsed_source: &ParsedSource,
+) -> Option<deno_ast::ParseDiagnosticsError> {
+  let diagnostics = parsed_source.diagnostics();
+  // Fast path: well-formed sources have no recovered-from diagnostics, and
+  // `swc` only ever inserts an `Invalid` node alongside one, so there's no
+  // need to walk the AST.
+  if diagnostics.is_empty() {
+    return None;
+  }
+
+  #[derive(Default)]
+  struct InvalidNodeDetector {
+    found: bool,
+  }
+
+  impl Visit for InvalidNodeDetector {
+    noop_visit_type!();
+
+    fn visit_invalid(&mut self, _: &deno_ast::swc::ast::Invalid) {
+      self.found = true;
+    }
+  }
+
+  let mut detector = InvalidNodeDetector::default();
+  parsed_source.program_ref().visit_with(&mut detector);
+  if !detector.found {
+    return None;
+  }
+
+  Some(deno_ast::ParseDiagnosticsError(diagnostics.clone()))
 }
 
 // todo(dsherret): this is a temporary measure until we have swc erroring for this

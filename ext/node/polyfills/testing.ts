@@ -5,16 +5,24 @@
 const { core, primordials } = __bootstrap;
 const {
   ArrayPrototypeForEach,
+  ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
+  ArrayPrototypeJoin,
+  ArrayPrototypeLastIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
+  DatePrototypeGetTime,
+  DatePrototypeToString,
   Error,
   ErrorPrototype,
+  MapPrototypeClear,
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
+  NumberIsFinite,
+  NumberIsInteger,
   ObjectDefineProperty,
   ObjectPrototypeHasOwnProperty,
   ObjectGetOwnPropertyDescriptor,
@@ -32,20 +40,90 @@ const {
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
+  SafeMapIterator,
   SafeRegExp,
   String,
   StringPrototypeMatch,
   Symbol,
+  SymbolDispose,
   SymbolFor,
+  SymbolToPrimitive,
   TypeError,
   queueMicrotask,
 } = primordials;
+
+// The genuine timer functions, captured once at runtime so that an enabled mock
+// clock (node:test's mock.timers) cannot stop a test's timeout from firing in
+// real time. We cannot read these at module-init time: this polyfill is baked
+// into the startup snapshot, where the module body runs before the timer APIs
+// exist on `globalThis`. Instead we capture lazily on the first `test()` /
+// `suite()` registration (see installErrorHandlers), which always runs after
+// the runtime is booted and before any test body can call mock.timers.enable().
+let realSetTimeout = null;
+let realClearTimeout = null;
+function ensureRealTimers() {
+  if (realSetTimeout === null) {
+    realSetTimeout = globalThis.setTimeout;
+    realClearTimeout = globalThis.clearTimeout;
+  }
+}
 
 let errorHandlersInstalled = false;
 
 let activeNodeTests = 0;
 
 let pendingCallbackReject = null;
+
+// Stack of failure "sinks" for the tests whose bodies are currently executing.
+// A test pushes a sink for the duration of its body (across await boundaries)
+// and pops it when the body settles. An unhandled rejection or uncaught
+// exception that fires while a test body is running is attributed to the
+// innermost still-running test, matching Node's behavior of failing the
+// currently-active test (see https://github.com/denoland/deno/issues/34818).
+const activeTestSinks = [];
+
+function pushTestSink(sink) {
+  ArrayPrototypePush(activeTestSinks, sink);
+}
+
+function popTestSink(sink) {
+  const idx = ArrayPrototypeLastIndexOf(activeTestSinks, sink);
+  if (idx !== -1) {
+    ArrayPrototypeSplice(activeTestSinks, idx, 1);
+  }
+}
+
+// The innermost test whose body is still running, or null when no test body is
+// currently on the stack (e.g. between registration and execution).
+function currentTestSink() {
+  for (let i = activeTestSinks.length - 1; i >= 0; i--) {
+    const sink = activeTestSinks[i];
+    if (!sink.settled) return sink;
+  }
+  return null;
+}
+
+function buildTimeoutError(timeout) {
+  // Node fails a timed-out test with a `test timed out after Nms` cause and an
+  // ERR_TEST_FAILURE wrapper. We surface the same message and tag the error so
+  // reporters that look at code/failureType behave like Node.
+  const err = new Error(`test timed out after ${timeout}ms`);
+  err.code = "ERR_TEST_FAILURE";
+  err.failureType = "testTimeoutFailure";
+  return err;
+}
+
+function buildAbortError(signal) {
+  // When the test is aborted via a caller-supplied signal, Node fails the test
+  // with the signal's reason (or a generic abort error when none was given).
+  if (signal && signal.reason !== undefined) {
+    return signal.reason;
+  }
+  const err = new Error("The test was aborted");
+  err.code = "ABORT_ERR";
+  err.failureType = "testAborted";
+  return err;
+}
 
 function sanitizeThrowValue(err) {
   if (err === null || err === undefined || typeof err !== "object") {
@@ -69,16 +147,37 @@ function sanitizeThrowValue(err) {
 }
 
 function installErrorHandlers() {
+  // Capture the genuine timers now, before any test body runs and before any
+  // mock clock can replace the globals.
+  ensureRealTimers();
   if (errorHandlersInstalled) return;
   errorHandlersInstalled = true;
 
   globalThis.addEventListener("unhandledrejection", (event) => {
+    // Attribute the rejection to the currently-running test so it fails, the
+    // way Node does. This is gated on an active sink rather than on
+    // `activeNodeTests` so it also works in TAP mode, where tests are run by
+    // our own runner and the counter is not used.
+    const sink = currentTestSink();
+    if (sink !== null) {
+      event.preventDefault();
+      sink.fail(event.reason);
+      return;
+    }
+    // Preserve the prior behavior of swallowing rejections while Deno.test
+    // backed node tests are pending but no body is actively running.
     if (activeNodeTests > 0) {
       event.preventDefault();
     }
   });
 
   globalThis.addEventListener("error", (event) => {
+    // Uncaught exceptions are not routed through the test sink: a synchronous
+    // throw in a test body is already caught by the body wrapper, and Node does
+    // not treat every uncaught `error` event (for example warnings surfaced as
+    // errors) as a test failure. We keep the original behavior of swallowing
+    // the error while node tests are pending and forwarding to a pending
+    // callback-style `done` reject.
     if (activeNodeTests > 0) {
       event.preventDefault();
     }
@@ -88,15 +187,21 @@ function installErrorHandlers() {
     }
   });
 }
-const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const {
   validateFunction,
   validateInteger,
+  validateNumber,
   validateObject,
+  validateStringArray,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-const { ERR_INVALID_ARG_TYPE, ERR_INVALID_ARG_VALUE } = core.loadExtScript(
-  "ext:deno_node/internal/errors.ts",
-).codes;
+const nodeErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+} = nodeErrors.codes;
+// `ERR_INVALID_STATE` is a hand-written class exported at the top level of the
+// errors module; unlike the generated codes it is not registered on `.codes`.
+const { ERR_INVALID_STATE } = nodeErrors;
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const {
   tapEscape,
@@ -475,9 +580,13 @@ class TapContext {
   #subtestTail = PromiseResolve();
   #subtestCount = 0;
   #parentChildren;
+  #abortController = new AbortController();
   // Per-context "warning printed" flag for the `--test-only` diagnostic.
   // Mutated by `runTapEntry` when a child uses `only: true`.
   onlyWarningEmitted = false;
+  // When set via `runOnly(true)`, only direct subtests registered with the
+  // `only: true` option are executed; all other subtests are filtered out.
+  #runOnly = false;
 
   constructor(name, depth, parentChildren) {
     this.#name = name;
@@ -494,9 +603,14 @@ class TapContext {
   }
 
   get signal() {
-    // Provide an AbortSignal so consumers that read t.signal don't crash; the
-    // minimal TAP runner does not currently honour aborts.
-    return new AbortController().signal;
+    return this.#abortController.signal;
+  }
+
+  // Aborts this test's own AbortSignal (t.signal); see NodeTestContext._abort.
+  _abort(reason) {
+    if (!this.#abortController.signal.aborted) {
+      this.#abortController.abort(reason);
+    }
   }
 
   get assert() {
@@ -520,8 +634,18 @@ class TapContext {
   // Subtest registration: `t.test(name, opts?, fn?)` queues a subtest that runs
   // sequentially in the order it was registered. Concurrent calls (Promise.all)
   // are serialized through the parent's subtest tail.
+  runOnly(value) {
+    this.#runOnly = !!value;
+    return null;
+  }
+
   test(name, options, fn) {
     const prepared = prepareOptions(name, options, fn, {});
+    // In run-only mode, subtests not flagged with `only: true` are filtered
+    // out entirely: they are neither registered nor reported, matching Node.
+    if (this.#runOnly && !prepared.options.only) {
+      return PromiseResolve();
+    }
     this.#subtestCount++;
     const n = this.#subtestCount;
     const childDepth = this.#depth + 1;
@@ -682,8 +806,14 @@ async function runTapEntry(entry, depth, n, parentState) {
     // test/it body
     const ctx = new TapContext(entry.name, depth, entry.children);
     try {
-      const ret = ReflectApply(entry.fn, ctx, [ctx]);
-      if (isThenable(ret)) await ret;
+      await runWithTestGuards(async () => {
+        const ret = ReflectApply(entry.fn, ctx, [ctx]);
+        if (isThenable(ret)) await ret;
+      }, {
+        timeout: entry.options.timeout,
+        signal: entry.options.signal,
+        abort: (reason) => ctx._abort(reason),
+      });
       // Wait for any concurrent t.test() calls (e.g. Promise.all([...])).
       await ctx._drainSubtests();
       childCount = ctx._subtestCount();
@@ -829,6 +959,93 @@ function assertExpectedFailure(err, expectFailure) {
   }
 }
 
+// Runs `invoke()` (a thunk that executes a single test body) while enforcing
+// the `timeout` option, honoring a caller-supplied abort `signal`, and capturing
+// any unhandled rejection / uncaught exception that fires during the body. The
+// returned promise resolves with the body's value, or rejects with the first
+// failure observed: a body error, a timeout, an abort, or a captured rejection.
+// `opts.abort(reason)` is invoked on timeout/abort so the test's own
+// AbortSignal (`t.signal`) is aborted and user code can react.
+async function runWithTestGuards(invoke, opts) {
+  ensureRealTimers();
+  const timeout = opts?.timeout;
+  const signal = opts?.signal;
+  const abort = opts?.abort;
+
+  const failure = PromiseWithResolvers();
+  const result = PromiseWithResolvers();
+  const sink = {
+    settled: false,
+    fail(reason) {
+      if (this.settled) return;
+      this.settled = true;
+      failure.reject(reason);
+    },
+  };
+  pushTestSink(sink);
+
+  let timeoutId = null;
+  let onAbort = null;
+  try {
+    if (signal !== undefined && signal !== null) {
+      if (signal.aborted) {
+        if (typeof abort === "function") abort(signal.reason);
+        sink.fail(buildAbortError(signal));
+      } else {
+        onAbort = () => {
+          if (typeof abort === "function") abort(signal.reason);
+          sink.fail(buildAbortError(signal));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    }
+
+    if (typeof timeout === "number" && timeout > 0) {
+      timeoutId = realSetTimeout(() => {
+        const err = buildTimeoutError(timeout);
+        if (typeof abort === "function") abort(err);
+        sink.fail(err);
+      }, timeout);
+    }
+
+    // Race the body against any externally-signalled failure. We avoid
+    // Promise.race so a late body settlement cannot resurface after a failure.
+    const body = (async () => {
+      const value = await invoke();
+      // Stop attributing as soon as the body settles. An unhandled rejection
+      // whose `unhandledrejection` event already fired while the body was
+      // running (for example one surfacing during an await, as in the
+      // denoland/deno#34818 repro) has already failed this test through the
+      // sink. This is best-effort and bounded to the body's lifetime: a
+      // rejection that only surfaces after the body returns is treated as
+      // post-test asynchronous activity and not attributed, matching the
+      // limitation Node also has for activity that outlives a test. We avoid
+      // draining extra event-loop turns here because doing so perturbs the
+      // runner's output ordering and timing.
+      sink.settled = true;
+      return value;
+    })();
+    PromisePrototypeThen(
+      body,
+      (value) => result.resolve(value),
+      (err) => result.reject(err),
+    );
+    PromisePrototypeThen(failure.promise, undefined, (err) => {
+      result.reject(err);
+    });
+    return await result.promise;
+  } finally {
+    sink.settled = true;
+    popTestSink(sink);
+    if (timeoutId !== null) {
+      realClearTimeout(timeoutId);
+    }
+    if (onAbort !== null && signal) {
+      signal.removeEventListener("abort", onAbort);
+    }
+  }
+}
+
 async function runNodeTestFunction(fn, nodeTestContext) {
   if (fn.length >= 2) {
     // Node-style callback API: fn(t, done) - wait for `done()` (or promise
@@ -862,19 +1079,30 @@ async function runNodeTestFunction(fn, nodeTestContext) {
 }
 
 async function runPossiblyExpectingFailure(fn, nodeTestContext, options) {
+  const guards = {
+    timeout: options.timeout,
+    signal: options.signal,
+    abort: (reason) => nodeTestContext._abort(reason),
+  };
   if (
     !options.expectFailure ||
     options.skip ||
     options.todo
   ) {
-    const result = await runNodeTestFunction(fn, nodeTestContext);
+    const result = await runWithTestGuards(
+      () => runNodeTestFunction(fn, nodeTestContext),
+      guards,
+    );
     nodeTestContext._checkPlan();
     return result;
   }
 
   let failed = false;
   try {
-    await runNodeTestFunction(fn, nodeTestContext);
+    await runWithTestGuards(
+      () => runNodeTestFunction(fn, nodeTestContext),
+      guards,
+    );
     nodeTestContext._checkPlan();
   } catch (err) {
     failed = true;
@@ -920,6 +1148,9 @@ class NodeTestContext {
   #planAssert;
   #beforeEachHooks = [];
   #afterEachHooks = [];
+  // When set via `runOnly(true)`, only direct subtests registered with the
+  // `only: true` option are executed; all other subtests are skipped.
+  #runOnly = false;
 
   constructor(t, parent, name) {
     this.#denoContext = t;
@@ -963,6 +1194,15 @@ class NodeTestContext {
     return this.#abortController.signal;
   }
 
+  // Aborts this test's own AbortSignal (t.signal). Called by the test guards on
+  // timeout or when a caller-supplied signal aborts, so user code awaiting
+  // t.signal observes the abort.
+  _abort(reason) {
+    if (!this.#abortController.signal.aborted) {
+      this.#abortController.abort(reason);
+    }
+  }
+
   get name() {
     return this.#name;
   }
@@ -983,8 +1223,8 @@ class NodeTestContext {
     return mock;
   }
 
-  runOnly() {
-    notImplemented("test.TestContext.runOnly");
+  runOnly(value) {
+    this.#runOnly = !!value;
     return null;
   }
 
@@ -1054,7 +1294,8 @@ class NodeTestContext {
             }
           }
         },
-        ignore: !!prepared.options.todo || !!prepared.options.skip,
+        ignore: !!prepared.options.todo || !!prepared.options.skip ||
+          (this.#runOnly && !prepared.options.only),
         sanitizeExit: false,
         sanitizeOps: false,
         sanitizeResources: false,
@@ -1807,6 +2048,363 @@ function mockMethodImpl(object, methodName, implementation, options) {
   return mockFn;
 }
 
+const SUPPORTED_APIS = [
+  "setTimeout",
+  "setInterval",
+  "setImmediate",
+  "Date",
+];
+
+class MockTimersHandle {
+  #id;
+  #timer;
+  #timers;
+  #refed;
+  constructor(timer, timers, refed) {
+    this.#id = timer.id;
+    this.#timer = timer;
+    this.#timers = timers;
+    this.#refed = refed;
+  }
+  ref() {
+    this.#refed = true;
+    return this;
+  }
+  unref() {
+    this.#refed = false;
+    return this;
+  }
+  hasRef() {
+    return this.#refed;
+  }
+  refresh() {
+    if (this.#timer && !this.#timer.interval) {
+      this.#timer.fireAt = this.#timers._now + this.#timer.delay;
+      MapPrototypeSet(this.#timers._timers, this.#id, this.#timer);
+    }
+    return this;
+  }
+  [SymbolToPrimitive]() {
+    return this.#id;
+  }
+  [SymbolFor("Deno.customInspect")]() {
+    return `MockTimer { id: ${this.#id} }`;
+  }
+  get _id() {
+    return this.#id;
+  }
+}
+
+// Installs/uninstalls this MockTimers on the `node:timers` module so that
+// `require("node:timers")` and `import ... from "node:timers[/promises]"`
+// callers route through the virtual clock too, not just `globalThis`.
+const kInstallMockTimers = SymbolFor("Deno.internal.node.mockTimers");
+
+class MockTimers {
+  _enabled = false;
+  _now = 0;
+  _timers = new SafeMap();
+  _nextId = 1;
+  #originals = new SafeMap();
+  #mockedApis = new SafeMap();
+
+  #mockGlobal(name, value) {
+    if (!MapPrototypeHas(this.#originals, name)) {
+      MapPrototypeSet(this.#originals, name, globalThis[name]);
+    }
+    globalThis[name] = value;
+  }
+
+  // Whether `api` (e.g. `"setTimeout"`) is currently being intercepted. Read by
+  // the `node:timers` module functions to decide per-call whether to use the
+  // virtual clock, mirroring the per-api selection of `enable({ apis })`.
+  _apiEnabled(api) {
+    return MapPrototypeHas(this.#mockedApis, api);
+  }
+
+  enable(options = { __proto__: null }) {
+    if (this._enabled) {
+      throw new ERR_INVALID_STATE(
+        "MockTimers is already enabled. Reset it first to enable it again",
+      );
+    }
+    validateObject(options, "options");
+    let { apis, now } = options;
+    if (apis === undefined) {
+      apis = SUPPORTED_APIS;
+    } else {
+      validateStringArray(apis, "options.apis");
+      for (let i = 0; i < apis.length; i++) {
+        if (!ArrayPrototypeIncludes(SUPPORTED_APIS, apis[i])) {
+          throw new ERR_INVALID_ARG_VALUE(
+            `options.apis[${i}]`,
+            apis[i],
+            `must be one of ${ArrayPrototypeJoin(SUPPORTED_APIS, ", ")}`,
+          );
+        }
+      }
+    }
+    if (now === undefined) {
+      now = 0;
+    } else if (ObjectPrototypeIsPrototypeOf(originalDatePrototype, now)) {
+      now = DatePrototypeGetTime(now);
+    }
+    validateNumber(now, "options.now", 0);
+    if (!NumberIsFinite(now) || !NumberIsInteger(now)) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options.now",
+        now,
+        "must be a finite, non-negative integer or a Date object",
+      );
+    }
+
+    this._enabled = true;
+    this._now = now;
+
+    for (let i = 0; i < apis.length; i++) {
+      MapPrototypeSet(this.#mockedApis, apis[i], true);
+    }
+
+    for (let i = 0; i < apis.length; i++) {
+      const api = apis[i];
+      if (api === "Date") {
+        this.#mockGlobal("Date", createMockDate(this));
+      } else if (api === "setTimeout") {
+        this.#mockGlobal(
+          "setTimeout",
+          (callback, delay, ...args) =>
+            this._setTimeout(callback, delay, args, false),
+        );
+        this.#mockGlobal(
+          "clearTimeout",
+          (handle) => this._clearTimer(handle),
+        );
+      } else if (api === "setInterval") {
+        this.#mockGlobal(
+          "setInterval",
+          (callback, delay, ...args) =>
+            this._setInterval(callback, delay, args),
+        );
+        this.#mockGlobal(
+          "clearInterval",
+          (handle) => this._clearTimer(handle),
+        );
+      } else if (api === "setImmediate") {
+        this.#mockGlobal(
+          "setImmediate",
+          (callback, ...args) => this._setTimeout(callback, 0, args, true),
+        );
+        this.#mockGlobal(
+          "clearImmediate",
+          (handle) => this._clearTimer(handle),
+        );
+      }
+    }
+
+    // Route the `node:timers` / `node:timers/promises` module functions through
+    // this instance too (see `kInstallMockTimers` in `timers.ts`).
+    core.loadExtScript("ext:deno_node/timers.ts")[kInstallMockTimers](this);
+  }
+
+  reset() {
+    if (!this._enabled) return;
+    core.loadExtScript("ext:deno_node/timers.ts")[kInstallMockTimers](null);
+    for (
+      const { 0: name, 1: original } of new SafeMapIterator(this.#originals)
+    ) {
+      globalThis[name] = original;
+    }
+    MapPrototypeClear(this.#originals);
+    MapPrototypeClear(this.#mockedApis);
+    MapPrototypeClear(this._timers);
+    this._now = 0;
+    this._nextId = 1;
+    this._enabled = false;
+  }
+
+  #assertEnabled() {
+    if (!this._enabled) {
+      throw new ERR_INVALID_STATE(
+        "You should enable MockTimers first by calling the .enable function",
+      );
+    }
+  }
+
+  #assertTimeArg(time) {
+    if (time < 0) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "time",
+        time,
+        "must be a non-negative integer",
+      );
+    }
+  }
+
+  // Mirrors Node's `MockTimers.tick`: advance the clock to each due timer's
+  // scheduled time as it fires (not straight to the end of the window), so a
+  // callback reading `Date.now()` sees the time the timer was scheduled for.
+  // Intervals re-arm and may fire again within the same tick.
+  tick(milliseconds = 1) {
+    this.#assertEnabled();
+    this.#assertTimeArg(milliseconds);
+    const target = this._now + milliseconds;
+    while (true) {
+      const next = this.#findNextTimer();
+      if (next === null || next.fireAt > target) break;
+      this._now = next.fireAt;
+      this.#fireTimer(next);
+    }
+    this._now = target;
+  }
+
+  // Mirrors Node's `MockTimers.runAll`: tick up to the longest pending timer.
+  // Intervals fire as many times as fit within that window, then re-arm past
+  // `_now` so the loop terminates.
+  runAll() {
+    this.#assertEnabled();
+    const longest = this.#findLongestTimer();
+    if (longest === null) return;
+    this.tick(longest.fireAt - this._now);
+  }
+
+  setTime(milliseconds) {
+    validateNumber(milliseconds, "time");
+    this.#assertTimeArg(milliseconds);
+    this.#assertEnabled();
+    this._now = milliseconds;
+  }
+
+  [SymbolDispose]() {
+    this.reset();
+  }
+
+  _setTimeout(callback, delay, args, immediate) {
+    validateFunction(callback, "callback");
+    if (delay === undefined || delay === null) delay = 1;
+    if (typeof delay !== "number") delay = +delay;
+    if (!NumberIsFinite(delay) || delay < 0) delay = 1;
+    if (delay > 2147483647) delay = 1;
+    const id = this._nextId++;
+    const timer = {
+      id,
+      callback,
+      args,
+      delay,
+      fireAt: this._now + delay,
+      interval: null,
+      immediate,
+    };
+    MapPrototypeSet(this._timers, id, timer);
+    return new MockTimersHandle(timer, this, true);
+  }
+
+  _setInterval(callback, delay, args) {
+    validateFunction(callback, "callback");
+    if (delay === undefined || delay === null) delay = 1;
+    if (typeof delay !== "number") delay = +delay;
+    if (!NumberIsFinite(delay) || delay < 1) delay = 1;
+    if (delay > 2147483647) delay = 1;
+    const id = this._nextId++;
+    const timer = {
+      id,
+      callback,
+      args,
+      delay,
+      fireAt: this._now + delay,
+      interval: delay,
+      immediate: false,
+    };
+    MapPrototypeSet(this._timers, id, timer);
+    return new MockTimersHandle(timer, this, true);
+  }
+
+  _clearTimer(handle) {
+    if (handle === null || handle === undefined) return;
+    let id;
+    if (typeof handle === "number") {
+      id = handle;
+    } else if (typeof handle === "object" && typeof handle._id === "number") {
+      id = handle._id;
+    } else {
+      return;
+    }
+    MapPrototypeDelete(this._timers, id);
+  }
+
+  #findNextTimer() {
+    let next = null;
+    for (const { 1: t } of new SafeMapIterator(this._timers)) {
+      if (
+        next === null ||
+        t.fireAt < next.fireAt ||
+        (t.fireAt === next.fireAt &&
+          (t.immediate !== next.immediate ? t.immediate : t.id < next.id))
+      ) {
+        next = t;
+      }
+    }
+    return next;
+  }
+
+  #findLongestTimer() {
+    let longest = null;
+    for (const { 1: t } of new SafeMapIterator(this._timers)) {
+      if (longest === null || t.fireAt > longest.fireAt) {
+        longest = t;
+      }
+    }
+    return longest;
+  }
+
+  #fireTimer(timer) {
+    // Match Node: invoke the callback first (errors propagate synchronously out
+    // of `tick`), then re-arm intervals or drop one-shot timers. A timer that
+    // clears itself inside its own callback is already gone from `_timers`, so
+    // the bookkeeping below is a no-op for it.
+    ReflectApply(timer.callback, undefined, timer.args);
+    if (timer.interval !== null) {
+      timer.fireAt += timer.interval;
+    } else {
+      MapPrototypeDelete(this._timers, timer.id);
+    }
+  }
+}
+
+const originalDate = globalThis.Date;
+const originalDatePrototype = originalDate.prototype;
+
+function createMockDate(mockTimers) {
+  function MockDate(...args) {
+    if (!new.target) {
+      return DatePrototypeToString(
+        ReflectConstruct(originalDate, [mockTimers._now], MockDate),
+      );
+    }
+    if (args.length === 0) {
+      return ReflectConstruct(originalDate, [mockTimers._now], MockDate);
+    }
+    return ReflectConstruct(originalDate, args, MockDate);
+  }
+  ObjectDefineProperty(MockDate, "prototype", {
+    __proto__: null,
+    value: originalDate.prototype,
+    writable: false,
+  });
+  ObjectDefineProperty(MockDate, "name", {
+    __proto__: null,
+    value: "Date",
+    configurable: true,
+  });
+  MockDate.now = () => mockTimers._now;
+  MockDate.parse = originalDate.parse;
+  MockDate.UTC = originalDate.UTC;
+  MockDate.isMock = true;
+  MockDate.toString = () => "function Date() { [native code] }";
+  return MockDate;
+}
+
+const mockTimers = new MockTimers();
+
 const mock = {
   fn: (original, implementation, options) => {
     if (original !== null && typeof original === "object") {
@@ -1852,7 +2450,9 @@ const mock = {
 
   property: function (object, propertyName, value) {
     validateObject(object, "object");
-    if (typeof propertyName !== "string" && typeof propertyName !== "symbol") {
+    if (
+      typeof propertyName !== "string" && typeof propertyName !== "symbol"
+    ) {
       throw new ERR_INVALID_ARG_TYPE(
         "propertyName",
         ["string", "symbol"],
@@ -1905,18 +2505,14 @@ const mock = {
   },
 
   timers: {
-    enable: () => {
-      notImplemented("test.mock.timers.enable");
-    },
-    reset: () => {
-      notImplemented("test.mock.timers.reset");
-    },
-    tick: () => {
-      notImplemented("test.mock.timers.tick");
-    },
-    runAll: () => {
-      notImplemented("test.mock.timers.runAll");
-    },
+    enable: (options) => mockTimers.enable(options),
+    reset: () => mockTimers.reset(),
+    tick: (ms) => mockTimers.tick(ms),
+    runAll: () => mockTimers.runAll(),
+    // `setTime` is MockTimers' own method, not Date.prototype.setTime.
+    // deno-lint-ignore prefer-primordials
+    setTime: (ms) => mockTimers.setTime(ms),
+    [SymbolDispose]: () => mockTimers.reset(),
   },
 };
 

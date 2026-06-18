@@ -46,7 +46,10 @@ const {
   SafeSetIterator,
   String,
   StringPrototypeIncludes,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
   StringPrototypeSplit,
+  StringPrototypeStartsWith,
   Symbol,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
@@ -248,6 +251,15 @@ class ConnectionsList {
         }
       }
       if (requestTimeout > 0 && elapsed >= requestTimeout) {
+        // requestTimeout only covers receiving the entire request from the
+        // client. Once the full request message has been parsed off the wire
+        // (req.complete is set in parserOnMessageComplete), the clock stops,
+        // mirroring Node resetting last_message_start_ in on_message_complete.
+        // Without this an actively streaming response (SSE/proxy) gets aborted
+        // at requestTimeout even though the request was long since received.
+        if (entry.req?.complete) {
+          continue;
+        }
         ArrayPrototypePush(result, { socket });
       }
     }
@@ -899,6 +911,20 @@ function updateOutgoingData(socket, state, delta) {
 // ---- parserOnIncoming: creates ServerResponse, emits 'request' ----
 
 function parserOnIncoming(server, socket, state, req, keepAlive) {
+  // Connections accepted via the DENO_SERVE_ADDRESS override carry
+  // absolute-form request targets (the control plane forwards the full
+  // public URL, which is how Deno.serve() reconstructs request.url).
+  // Node applications expect origin-form, so strip scheme and authority.
+  if (
+    socket.isDenoServeAddressOverride &&
+    (StringPrototypeStartsWith(req.url, "http://") ||
+      StringPrototypeStartsWith(req.url, "https://"))
+  ) {
+    const schemeEnd = StringPrototypeIndexOf(req.url, "://") + 3;
+    const pathStart = StringPrototypeIndexOf(req.url, "/", schemeEnd);
+    req.url = pathStart === -1 ? "/" : StringPrototypeSlice(req.url, pathStart);
+  }
+
   resetSocketTimeout(server, socket, state, !req.upgrade);
 
   // Headers have been fully parsed; clear the headersTimeout watchdog and
@@ -1570,14 +1596,17 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
 };
 
 export {
+  applyAddressOverride,
   connectionListener as _connectionListener,
   httpServerPreClose,
   kConnectionsCheckingInterval,
   kIncomingMessage,
   kServerResponse,
+  notifyAddressOverrideServing,
   Server,
   ServerResponse,
   setupConnectionsTracking,
+  startOverrideListener,
   STATUS_CODES,
   storeHTTPOptions,
 };

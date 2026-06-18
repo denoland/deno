@@ -125,14 +125,28 @@ subtest sync throw fails ...
   sync throw fails at first ... FAILED ([WILDLINE])
   sync throw fails at second ... FAILED ([WILDLINE])
 subtest sync throw fails ... FAILED (due to 2 failed steps) ([WILDLINE])
-timed out async test ... ok ([WILDLINE])
-timed out callback test ... ok ([WILDLINE])
+timed out async test ... FAILED ([WILDLINE])
+timed out callback test ... FAILED ([WILDLINE])
 large timeout async test is ok ... ok ([WILDLINE])
 large timeout callback test is ok ... ok ([WILDLINE])
 successful thenable ... ok ([WILDLINE])
 rejected thenable ... FAILED ([WILDLINE])
-unfinished test with uncaughtException ...
-[WILDCARD] ERRORS [WILDCARD] FAILURES [WILDCARD]
-FAILED | 42 passed (23 steps) | 18 failed (12 steps) | 7 ignored ([WILDLINE])
+unfinished test with uncaughtException ... FAILED ([WILDLINE])
+unfinished test with unhandledRejection ... FAILED ([WILDLINE])
+[WILDCARD] ERRORS [WILDCARD]
+rejected thenable => ./test.js:455:1
+error: "custom error"
 
-error: Promise resolution is still pending but the event loop has already resolved
+unfinished test with uncaughtException => ./test.js:466:1
+error: Promise resolution is still pending but the event loop has already resolved.
+
+unfinished test with unhandledRejection => ./test.js:474:1
+error: Error: bar
+[WILDCARD] FAILURES [WILDCARD]
+rejected thenable => ./test.js:455:1
+unfinished test with uncaughtException => ./test.js:466:1
+unfinished test with unhandledRejection => ./test.js:474:1
+
+FAILED | 40 passed (23 steps) | 22 failed (12 steps) | 7 ignored ([WILDLINE])
+
+error: Test failed

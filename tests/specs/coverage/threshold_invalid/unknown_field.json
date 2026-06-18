@@ -1,0 +1,8 @@
+{
+  "coverage": {
+    "thresholds": {
+      "lines": 90,
+      "perFile": true
+    }
+  }
+}

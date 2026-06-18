@@ -786,11 +786,12 @@ function esmResolveHookCallback(specifier, referrer, importAttributes) {
 }
 
 // ESM load hook chain: runs hooks in LIFO order.
-// Returns `{ result, effectiveUrl }` where `result` is the hook chain's
-// return value (or null when no hooks are registered) and `effectiveUrl`
-// is the URL the chain ultimately delegated to via `nextLoad(newUrl)`:
-// used by the load loop when falling through to Rust default loading so
-// the source comes from the URL the user redirected to, not the original.
+// Returns `null` when no load hooks are registered, otherwise
+// `{ result, effectiveUrl }` where `result` is the hook chain's return value
+// and `effectiveUrl` is the URL the chain ultimately delegated to via
+// `nextLoad(newUrl)`: used by the load loop when falling through to Rust
+// default loading so the source comes from the URL the user redirected to,
+// not the original.
 function executeEsmLoadHookChain(fileUrl, context) {
   const loadHooks = [];
   for (let i = hookEntries.length - 1; i >= 0; i--) {
@@ -888,7 +889,7 @@ function _startEsmLoadLoop() {
       };
       try {
         const chainResult = executeEsmLoadHookChain(fileUrl, context);
-        const result = chainResult?.result;
+        const result = chainResult?.result ?? null;
         const effectiveUrl = chainResult?.effectiveUrl ?? null;
         if (result?.format === "builtin") {
           op_module_hooks_respond_load(id, null, "builtin", null, null);
@@ -1410,6 +1411,25 @@ Module._resolveLookupPaths = function (request, parent) {
 };
 
 Module._load = function (request, parent, isMain) {
+  // A `node:`-prefixed `require()` of a specifier that isn't a user-requirable
+  // builtin throws ERR_UNKNOWN_BUILTIN_MODULE. This covers unknown ids and
+  // `internal/*` modules (Node only exposes those under `--expose-internals`).
+  // `require.resolve()` goes through `_resolveFilename` directly and instead
+  // reports MODULE_NOT_FOUND, so this check lives here rather than there.
+  if (
+    typeof request === "string" &&
+    StringPrototypeStartsWith(request, "node:") &&
+    !(hookEntries.length > 0 && !insideResolveHook)
+  ) {
+    const id = StringPrototypeSlice(request, 5);
+    if (
+      !(id in nativeModuleExports) ||
+      StringPrototypeStartsWith(id, "internal/")
+    ) {
+      throw new internalErrors.ERR_UNKNOWN_BUILTIN_MODULE(request);
+    }
+  }
+
   let relResolveCacheIdentifier;
   if (parent) {
     // Fast path for (lazy loaded) modules in the same directory. The indirect
@@ -1710,6 +1730,9 @@ Module._resolveFilename = function (
     if (hookEntries.length > 0 && !insideResolveHook) {
       return request;
     }
+    // `require.resolve("node:unknown")` reports MODULE_NOT_FOUND, unlike
+    // `require("node:unknown")` which throws ERR_UNKNOWN_BUILTIN_MODULE from
+    // `Module._load`.
     const err = new Error(`Cannot find module '${request}'`);
     err.code = "MODULE_NOT_FOUND";
     throw err;
@@ -3246,19 +3269,17 @@ export function register(_specifier, _parentUrl, _options) {
  * @returns {{ deregister: () => void }}
  */
 export function registerHooks(hooks) {
-  if (typeof hooks !== "object" || hooks === null) {
-    throw new internalErrors.ERR_INVALID_ARG_TYPE("hooks", "object", hooks);
+  const { resolve, load } = hooks;
+  if (resolve) {
+    internalValidators.validateFunction(resolve, "hooks.resolve");
   }
-  const resolve = typeof hooks.resolve === "function" ? hooks.resolve : null;
-  const load = typeof hooks.load === "function" ? hooks.load : null;
-  if (resolve === null && load === null) {
-    throw new internalErrors.ERR_INVALID_ARG_VALUE(
-      "hooks",
-      hooks,
-      "must contain at least one of 'resolve' or 'load'",
-    );
+  if (load) {
+    internalValidators.validateFunction(load, "hooks.load");
   }
-  const entry = { resolve, load };
+  const entry = {
+    resolve: typeof resolve === "function" ? resolve : null,
+    load: typeof load === "function" ? load : null,
+  };
   ArrayPrototypePush(hookEntries, entry);
 
   // Activate ESM hooks in Rust module loader
@@ -3424,5 +3445,6 @@ export const _resolveFilename = Module._resolveFilename;
 export const _resolveLookupPaths = Module._resolveLookupPaths;
 export const _stat = Module._stat;
 export const globalPaths = Module.globalPaths;
+export const runMain = Module.runMain;
 
 export default Module;

@@ -798,6 +798,74 @@ Deno.test({
     assertEquals(buf.latin1Slice().length, 4);
     assertEquals(buf.latin1Slice(), "\x01\x02\x03\xff");
     assertEquals(buf.latin1Slice(1, 3), "\x02\x03");
+    assertEquals(buf.latin1Slice(1, 0), "");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] asciiSlice returns correct string",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.of(1, 2, 3, 0x80, 0x81, 0x82, 0x83, 0xc0, 0xff);
+    assertEquals(buf.asciiSlice().length, 9);
+    assertEquals(buf.asciiSlice(), "\x01\x02\x03\x00\x01\x02\x03\x40\x7f");
+    assertEquals(buf.asciiSlice(1, 3), "\x02\x03");
+
+    // test `new_external_onebyte`
+    // ZERO_COPY_THRESHOLD 1024
+    //
+    // deno-lint-ignore no-explicit-any
+    const buf1111: any = Buffer.alloc(1111);
+    for (let i = 0, len = buf1111.length; i < len; i++) {
+      buf1111[i] = Math.random() * 128;
+    }
+    const target1111: string = buf1111.latin1Slice();
+    assertEquals(buf1111.asciiSlice(), target1111);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] ucs2Slice returns correct string",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.of(
+      0x60,
+      0x4f,
+      0x7d,
+      0x59,
+      0x44,
+      0x00,
+      0x65,
+      0x00,
+      0x6e,
+      0x00,
+      0x6f,
+      0x00,
+    );
+
+    assertEquals(buf.ucs2Slice().length, 6);
+    assertEquals(buf.ucs2Slice(), "你好Deno");
+    assertEquals(buf.ucs2Slice(0, 4), "你好");
+    assertEquals(buf.ucs2Slice(4, 12), "Deno");
+    assertEquals(buf.ucs2Slice(0, 3), "你");
+    assertEquals(buf.ucs2Slice(1, 4), "絏");
+    assertEquals(buf.ucs2Slice(1, 6), "絏䑙");
+
+    // deno-lint-ignore no-explicit-any
+    const oddBuf: any = Buffer.of(0x60, 0x4f, 0x7d, 0x59, 0x44);
+    assertEquals(oddBuf.ucs2Slice(), "你好");
+
+    // test `new_external_twobyte`
+    // ZERO_COPY_THRESHOLD 1024
+    //
+    // deno-lint-ignore no-explicit-any
+    const buf2001: any = Buffer.alloc(2001);
+    for (let i = 1, len = buf2001.length; i < len; i++) {
+      buf2001[i] = Math.random() * 128;
+    }
+    const target2000: string = buf2001.ucs2Slice(1, 1001) +
+      buf2001.ucs2Slice(1001);
+    assertEquals(buf2001.ucs2Slice(1), target2000);
   },
 });
 
@@ -830,6 +898,21 @@ Deno.test({
     const buf: any = Buffer.of(1, 2, 3, 0xff);
     assertEquals(buf.hexSlice(), "010203ff");
     assertEquals(buf.hexSlice(1, 3), "0203");
+
+    // deno-lint-ignore no-explicit-any
+    const emptyBuf: any = Buffer.of();
+    assertEquals(emptyBuf.hexSlice(), "");
+
+    // test `new_external_onebyte`
+    // ZERO_COPY_THRESHOLD 1024
+    //
+    // deno-lint-ignore no-explicit-any
+    const buf1111: any = Buffer.alloc(1111);
+    for (let i = 0, len = buf1111.length; i < len; i++) {
+      buf1111[i] = Math.random() * 128;
+    }
+    const target1111: string = buf1111.toHex();
+    assertEquals(buf1111.hexSlice(), target1111);
   },
 });
 

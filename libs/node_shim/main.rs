@@ -5,7 +5,6 @@
 #![allow(clippy::disallowed_methods, reason = "CLI tool")]
 
 use std::env;
-use std::process::Stdio;
 use std::process::{self};
 
 use node_shim::TranslateOptions;
@@ -49,22 +48,10 @@ fn main() {
   let mut deno_args = result.deno_args;
 
   // Handle entrypoint resolution for run commands
-  if deno_args.len() >= 3 && deno_args.get(1) == Some(&"run".to_string()) {
-    // Find the entrypoint (first non-flag arg after "run")
-    let mut entrypoint_idx = None;
-    for (i, arg) in deno_args.iter().enumerate().skip(2) {
-      if !arg.starts_with('-') && !arg.starts_with("--") {
-        entrypoint_idx = Some(i);
-        break;
-      }
-    }
-
-    if let Some(idx) = entrypoint_idx {
-      let entrypoint = &deno_args[idx];
-      let resolved = resolve_entrypoint(entrypoint);
-      deno_args[idx] = resolved;
-    }
-  }
+  node_shim::resolve_run_entrypoint(
+    std::path::Path::new("deno"),
+    &mut deno_args,
+  );
 
   if std::env::var("NODE_SHIM_DEBUG").is_ok() {
     eprintln!("deno {:?}", deno_args);
@@ -91,35 +78,4 @@ fn main() {
       .expect("Failed to execute deno");
     process::exit(status.code().unwrap_or(1));
   }
-}
-
-fn resolve_entrypoint(entrypoint: &str) -> String {
-  let cwd = env::current_dir().unwrap();
-  // If the entrypoint is either an absolute path, or a relative path that exists,
-  // return it as is.
-  if cwd.join(entrypoint).symlink_metadata().is_ok() {
-    return entrypoint.to_string();
-  }
-
-  let url = url::Url::from_file_path(cwd.join("$file.js")).unwrap();
-
-  // Otherwise, shell out to `deno` to try to resolve the entrypoint.
-  let output = process::Command::new("deno")
-    .arg("eval")
-    .arg("--no-config")
-    .arg(include_str!("./resolve.js"))
-    .arg(url.to_string())
-    .arg(format!("./{}", entrypoint))
-    .env_clear()
-    .stdout(Stdio::piped())
-    .stderr(Stdio::inherit())
-    .output()
-    .expect("Failed to execute deno resolve script");
-  if !output.status.success() {
-    std::process::exit(output.status.code().unwrap_or(1));
-  }
-  String::from_utf8(output.stdout)
-    .expect("Failed to parse deno resolve output")
-    .trim()
-    .to_string()
 }
