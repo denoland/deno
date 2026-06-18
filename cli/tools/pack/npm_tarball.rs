@@ -7,6 +7,7 @@ use deno_core::error::AnyError;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 
+use super::AssetFile;
 use super::ProcessedFile;
 use super::ReadmeOrLicense;
 use super::extensions::js_to_dts_extension;
@@ -38,12 +39,14 @@ fn append_reproducible(
   tar.append(&header, bytes)
 }
 
+#[allow(clippy::too_many_arguments, reason = "tarball assembly inputs")]
 pub fn create_npm_tarball(
   config_file: &ConfigFile,
   version: &str,
   files: &[ProcessedFile],
   package_json: &str,
   readme_license_files: &[ReadmeOrLicense],
+  asset_files: &[AssetFile],
   output_path: Option<&str>,
   dry_run: bool,
 ) -> Result<PathBuf, AnyError> {
@@ -92,6 +95,9 @@ pub fn create_npm_tarball(
         log::info!("  {}", dts_path);
       }
     }
+    for asset in asset_files {
+      log::info!("  {}", asset.relative_path);
+    }
     return Ok(filename);
   }
 
@@ -129,6 +135,14 @@ pub fn create_npm_tarball(
         dts.as_bytes(),
       )?;
     }
+  }
+
+  for asset in asset_files {
+    append_reproducible(
+      &mut tar,
+      &format!("package/{}", asset.relative_path),
+      asset.content.as_slice(),
+    )?;
   }
 
   tar.finish()?;

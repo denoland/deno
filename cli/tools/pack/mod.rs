@@ -1,11 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::diagnostics::Diagnostic;
+use deno_config::glob::FileCollector;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
@@ -14,11 +16,13 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_terminal::colors;
 
+use crate::args::CliOptions;
 use crate::args::FileFlagsExt;
 use crate::args::Flags;
 use crate::args::PackFlags;
 use crate::factory::CliFactory;
 use crate::graph_util::CreatePublishGraphOptions;
+use crate::sys::CliSys;
 use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::util::display::human_size;
 
@@ -164,6 +168,20 @@ pub async fn pack(
       format!("Failed to process modules for package '{}'", package.name)
     })?;
 
+    // Collect non-module assets matched by the package's publish config
+    // (e.g. `publish.include` entries like `assets/icon.svg`). Source
+    // modules are transpiled above, so the raw source paths, the config
+    // file and README/LICENSE are excluded here to avoid duplicates.
+    let asset_files = collect_asset_files(
+      &package,
+      cli_options,
+      &pack_flags,
+      &collected_paths,
+      &readme_license_files,
+    )?;
+
+    log::info!("  {} assets collected", asset_files.len());
+
     // Generate package.json
     let package_json =
       generate_package_json(&package.config_file, &version, &processed_files)?;
@@ -175,6 +193,7 @@ pub async fn pack(
       &processed_files,
       &package_json,
       &readme_license_files,
+      &asset_files,
       pack_flags.output.as_deref(),
       pack_flags.dry_run,
     )?;
@@ -397,6 +416,115 @@ fn collect_readme_license_files(
   }
 
   Ok(files)
+}
+
+/// A non-module file (e.g. an asset listed in `publish.include`) that is
+/// packed verbatim into the tarball without going through the transpile
+/// pipeline.
+pub struct AssetFile {
+  /// Relative path in the package (e.g. "assets/icon.svg").
+  pub relative_path: String,
+  /// Raw file contents.
+  pub content: Vec<u8>,
+}
+
+/// Walk the filesystem for non-module assets matched by the package's
+/// publish config (`publish.include`/`exclude`) and read their raw bytes.
+///
+/// `deno publish` collects every file via the publish `FilePatterns`, but
+/// `deno pack` only walks the module graph, so static assets were never
+/// included. This mirrors `publish`'s `collect_paths` (ignore .git,
+/// node_modules and the vendor dir, honour .gitignore, skip non-regular
+/// files / `.DS_Store` / `.gitignore`) and then drops anything already
+/// emitted by another part of the tarball:
+///   - source modules (they are transpiled into the tarball separately),
+///   - the generated `package.json`'s source `deno.json`/`deno.jsonc`,
+///   - the auto-included README/LICENSE files.
+fn collect_asset_files(
+  package: &JsrPackageConfig,
+  cli_options: &CliOptions,
+  pack_flags: &PackFlags,
+  collected_paths: &[CollectedPath],
+  readme_license_files: &[ReadmeOrLicense],
+) -> Result<Vec<AssetFile>, AnyError> {
+  let package_dir = package.config_file.dir_path();
+  let file_patterns = package.member_dir.to_publish_config()?.files;
+  // The `--ignore`/`--exclude` CLI flags filter graph modules in
+  // `collect_graph_modules`; apply the same patterns to assets so e.g.
+  // `pack --ignore=tests/**` also drops asset files under `tests/`.
+  let cli_patterns = pack_flags.files.as_file_patterns(&package_dir)?;
+
+  // Absolute paths that are already represented elsewhere in the tarball
+  // and must not be packed again as raw assets.
+  let mut excluded = HashSet::new();
+  // Source modules are transpiled — exclude the ORIGINAL source path
+  // (not the emitted output path).
+  for path in collected_paths {
+    if let Ok(p) = path.specifier.to_file_path() {
+      excluded.insert(p);
+    }
+  }
+  // The source config file is replaced by the generated package.json.
+  if let Ok(p) = package.config_file.specifier.to_file_path() {
+    excluded.insert(p);
+  }
+  // README/LICENSE are added by `collect_readme_license_files`.
+  for file in readme_license_files {
+    excluded.insert(package_dir.join(&file.relative_path));
+  }
+
+  let collected = FileCollector::new(|e| {
+    if !e.metadata.file_type().is_file() {
+      return false;
+    }
+    e.path
+      .file_name()
+      .map(|s| s != ".DS_Store" && s != ".gitignore")
+      .unwrap_or(true)
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .use_gitignore()
+  .collect_file_patterns(&CliSys::default(), &file_patterns);
+
+  let mut assets = Vec::new();
+  for path in collected {
+    if excluded.contains(&path)
+      || is_excluded_path(&path, &package_dir)
+      || !cli_patterns.matches_path(&path, deno_config::glob::PathKind::File)
+    {
+      continue;
+    }
+    let Ok(relative) = path.strip_prefix(&package_dir) else {
+      continue;
+    };
+    // `deno pack` writes its output tarball into the package directory, so
+    // a root-level `.tgz` is a pack artifact (e.g. left over from a
+    // previous run) rather than a source asset — never bundle it. Without
+    // this, re-running `pack` would embed the prior tarball and break the
+    // reproducibility guarantee.
+    if relative
+      .parent()
+      .map(|p| p.as_os_str().is_empty())
+      .unwrap_or(true)
+      && relative.extension().map(|e| e == "tgz").unwrap_or(false)
+    {
+      continue;
+    }
+    let content = std::fs::read(&path)
+      .with_context(|| format!("failed reading '{}'.", path.display()))?;
+    assets.push(AssetFile {
+      relative_path: relative.to_string_lossy().to_string(),
+      content,
+    });
+  }
+
+  // Sort for deterministic tarball output (consistent with
+  // `collect_graph_modules`).
+  assets.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+
+  Ok(assets)
 }
 
 pub struct ProcessedFile {
