@@ -32,14 +32,20 @@ for await (const _ of stream);
 
 rmSync(dir, { recursive: true, force: true });
 
+// Each run cycle also emits the run summary `test:diagnostic` events (tests 0,
+// pass 0, ...) before draining, so assert specifically on the ordering of the
+// watch lifecycle events this test cares about.
+const watchEvents = events.filter((type) => type.startsWith("test:watch:"));
 const expected = [
   "test:watch:drained",
   "test:watch:restarted",
   "test:watch:drained",
 ];
 for (let i = 0; i < expected.length; i++) {
-  if (events[i] !== expected[i]) {
-    console.log(`fail: events[${i}] = ${events[i]}, expected ${expected[i]}`);
+  if (watchEvents[i] !== expected[i]) {
+    console.log(
+      `fail: watchEvents[${i}] = ${watchEvents[i]}, expected ${expected[i]}`,
+    );
     console.log(`full events: ${JSON.stringify(events)}`);
     process.exit(1);
   }

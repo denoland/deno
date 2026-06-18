@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "run": {
+      "args": "run -A main.mjs",
+      "output": "main.out"
+    }
+  }
+}

@@ -3145,6 +3145,10 @@
     "parallel/test-runner-enable-source-maps-issue.js": {},
     "parallel/test-runner-filter-warning.js": {},
     "parallel/test-runner-root-after-with-refed-handles.js": {},
+    "parallel/test-runner-run.mjs": {
+      "exitCode": 1,
+      "reason": "run() discovery/execution and the TestsStream events are implemented; 47 of 50 subtests pass. The remaining three are known gaps: execArgv maps Node interpreter flags (-p) that Deno does not accept, and the two AbortSignal-still-call-abort cases need top-level afterEach plus per-test signal-abort-on-completion in the child auto-runner."
+    },
     "parallel/test-runner-snapshot-file-tests.js": {
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"

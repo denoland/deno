@@ -58,7 +58,9 @@ function xmlEscape(value) {
 
 function formatError(details) {
   if (details === undefined || details === null) return "";
-  const error = details.error ?? details;
+  // Only a `details.error` is rendered as a TAP error block. A bare details
+  // object (carrying duration_ms/type for a passing test) is not an error.
+  const error = details.error;
   if (error === undefined || error === null) return "";
   if (typeof error === "string") return error;
   return error.stack ?? error.message ?? String(error);
@@ -66,12 +68,22 @@ function formatError(details) {
 
 function reportTapDetails(nesting, data) {
   const details = formatError(data.details);
-  if (!details && data.skip === undefined && data.todo === undefined) {
+  const durationMs = data.details === undefined || data.details === null
+    ? undefined
+    : data.details.duration_ms;
+  const hasDuration = typeof durationMs === "number";
+  if (
+    !details && data.skip === undefined && data.todo === undefined &&
+    !hasDuration
+  ) {
     return "";
   }
   const lines = [];
   const prefix = tapIndent(nesting);
   ArrayPrototypePush(lines, `${prefix}  ---\n`);
+  if (hasDuration) {
+    ArrayPrototypePush(lines, `${prefix}  duration_ms: ${durationMs}\n`);
+  }
   if (data.skip !== undefined) {
     ArrayPrototypePush(lines, `${prefix}  skip: ${yamlEscape(data.skip)}\n`);
   }
@@ -100,7 +112,7 @@ function reportTest(status, data) {
     ? ` # TODO${data.todo ? ` ${tapEscape(data.todo)}` : ""}`
     : "";
   const testNumber = data.testNumber ? ` ${data.testNumber}` : "";
-  return `${tapIndent(nesting)}${status}${testNumber} ${
+  return `${tapIndent(nesting)}${status}${testNumber} - ${
     tapEscape(data.name ?? "<anonymous>")
   }${directive}\n`;
 }

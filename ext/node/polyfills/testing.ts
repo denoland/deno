@@ -4,18 +4,29 @@
 "use strict";
 const { core, primordials } = __bootstrap;
 const {
+  ArrayIsArray,
   ArrayPrototypeForEach,
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
   ArrayPrototypeJoin,
   ArrayPrototypeLastIndexOf,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
+  ArrayPrototypeShift,
   ArrayPrototypeSlice,
+  ArrayPrototypeSort,
   ArrayPrototypeSplice,
   DatePrototypeGetTime,
   DatePrototypeToString,
   Error,
   ErrorPrototype,
+  JSONParse,
+  JSONStringify,
+  ObjectKeys,
+  RangeError,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
   MapPrototypeClear,
   MapPrototypeDelete,
   MapPrototypeGet,
@@ -245,9 +256,12 @@ function getAssertObject() {
 let _Readable = null;
 function getReadable() {
   if (_Readable === null) {
-    _Readable = core.loadExtScript(
-      "ext:deno_node/internal/streams/readable.js",
-    ).Readable;
+    // Load the full `node:stream` module (not just the bare readable.js) so the
+    // returned Readable carries the stream operator methods such as `.compose()`
+    // that run() consumers use to pipe the TestsStream through reporters. The
+    // operators are attached to Readable.prototype as a side effect of that
+    // module evaluating.
+    _Readable = lazyStream().Readable;
   }
   return _Readable;
 }
@@ -258,23 +272,281 @@ function getFsWatch() {
   }
   return _fsWatch;
 }
+const lazyStream = core.createLazyLoader("node:stream");
 const lazyProcess = core.createLazyLoader("node:process");
+const lazyChildProcess = core.createLazyLoader("node:child_process");
+const lazyFs = core.createLazyLoader("node:fs");
+const lazyPath = core.createLazyLoader("node:path");
+
+// Sentinel prefix the child runner uses to multiplex structured lifecycle
+// events onto its stdout. Any stdout line beginning with this marker carries a
+// JSON-encoded TestsStream event; every other line is genuine user output and
+// is forwarded as a `test:stdout` event. The marker starts with NUL bytes so
+// it cannot collide with ordinary console output.
+const RUN_EVENT_PREFIX = "\u0000\u0000DENO_NODE_TEST_EVENT:";
+// Internal event the child emits once, carrying its aggregated counters. It is
+// consumed by the parent to build the run-wide summary diagnostics and is never
+// forwarded to the caller's stream.
+const RUN_SUMMARY_TYPE = "test:__file_summary";
+const MAX_SAFE_INTEGER = 9007199254740991;
+const lazyUtil = core.createLazyLoader("node:util");
+
+// Activated in spawned child processes via the DENO_NODE_TEST_RUN env var so
+// that `test()`/`suite()` route through the auto-runner (tests execute under a
+// plain `deno run`, not just `deno test`) and emit structured events.
+let runChildModeCache;
+function isStructuredChildMode() {
+  if (runChildModeCache !== undefined) return runChildModeCache;
+  const env = globalThis.Deno?.env;
+  let value = "";
+  try {
+    value = env ? env.get("DENO_NODE_TEST_RUN") || "" : "";
+  } catch { /* permission denied */ }
+  runChildModeCache = value === "1";
+  return runChildModeCache;
+}
+
+// Render a value the way Node does in the trailing "Received ..." portion of
+// its argument-validation error messages.
+function received(value) {
+  if (value === undefined) return "undefined";
+  if (value === null) return "null";
+  const t = typeof value;
+  if (t === "number" || t === "boolean" || t === "bigint") return String(value);
+  if (t === "string") return `'${value}'`;
+  try {
+    return lazyUtil().default.inspect(value, { __proto__: null, depth: 0 });
+  } catch {
+    return String(value);
+  }
+}
+
+function makeRunError(Ctor, code, message) {
+  const err = new Ctor(message);
+  err.code = code;
+  return err;
+}
+
+function errArgType(name, expected, value) {
+  return makeRunError(
+    TypeError,
+    "ERR_INVALID_ARG_TYPE",
+    `The "${name}" property must be of type ${expected}. Received ${
+      received(value)
+    }`,
+  );
+}
+
+// Convert an Error instance into a plain, JSON-serializable shape so the child
+// can forward failure details across the stdout protocol boundary.
+function serializeError(err) {
+  if (err === undefined || err === null) {
+    return { __proto__: null, message: "test failed" };
+  }
+  if (typeof err === "string") return { __proto__: null, message: err };
+  const out = { __proto__: null };
+  try {
+    out.name = err.name;
+    out.message = err.message;
+    out.stack = err.stack;
+    if (err.code !== undefined) out.code = err.code;
+    if (err.failureType !== undefined) out.failureType = err.failureType;
+  } catch { /* exotic throw value */ }
+  return out;
+}
+
+function validateShard(shard, total, watch) {
+  if (typeof shard.total !== "number") {
+    throw errArgType("options.shard.total", "number", shard.total);
+  }
+  if (typeof shard.index !== "number") {
+    throw errArgType("options.shard.index", "number", shard.index);
+  }
+  if (watch === true) {
+    throw makeRunError(
+      TypeError,
+      "ERR_INVALID_ARG_VALUE",
+      `The property 'options.shard' shards not supported with watch mode. Received ${
+        received(watch)
+      }`,
+    );
+  }
+  if (
+    !NumberIsInteger(shard.total) || shard.total < 1 ||
+    shard.total > MAX_SAFE_INTEGER
+  ) {
+    throw makeRunError(
+      RangeError,
+      "ERR_OUT_OF_RANGE",
+      `The value of "options.shard.total" is out of range. It must be >= 1 && <= ${MAX_SAFE_INTEGER}. Received ${shard.total}`,
+    );
+  }
+  if (
+    !NumberIsInteger(shard.index) || shard.index < 1 ||
+    shard.index > shard.total
+  ) {
+    throw makeRunError(
+      RangeError,
+      "ERR_OUT_OF_RANGE",
+      `The value of "options.shard.index" is out of range. It must be >= 1 && <= ${shard.total}. Received ${shard.index}`,
+    );
+  }
+}
+
+function validateRunOptions(options) {
+  if (
+    options === null || typeof options !== "object" || ArrayIsArray(options)
+  ) {
+    throw errArgType("options", "object", options);
+  }
+  const { files, globPatterns, cwd, watch, env, isolation, forceExit, shard } =
+    options;
+  if (files !== undefined && !ArrayIsArray(files)) {
+    throw makeRunError(
+      TypeError,
+      "ERR_INVALID_ARG_TYPE",
+      `The "options.files" property must be an instance of Array. Received ${
+        received(files)
+      }`,
+    );
+  }
+  if (globPatterns !== undefined && !ArrayIsArray(globPatterns)) {
+    throw makeRunError(
+      TypeError,
+      "ERR_INVALID_ARG_TYPE",
+      `The "options.globPatterns" property must be an instance of Array. Received ${
+        received(globPatterns)
+      }`,
+    );
+  }
+  if (
+    ArrayIsArray(files) && files.length > 0 &&
+    ArrayIsArray(globPatterns) && globPatterns.length > 0
+  ) {
+    throw makeRunError(
+      TypeError,
+      "ERR_INVALID_ARG_VALUE",
+      "The property 'options.globPatterns' globPatterns and files are not supported together.",
+    );
+  }
+  if (cwd !== undefined && typeof cwd !== "string") {
+    throw errArgType("options.cwd", "string", cwd);
+  }
+  if (forceExit !== undefined && typeof forceExit !== "boolean") {
+    throw errArgType("options.forceExit", "boolean", forceExit);
+  }
+  if (forceExit === true && watch === true) {
+    throw makeRunError(
+      TypeError,
+      "ERR_INVALID_ARG_VALUE",
+      "The property 'options.forceExit' is not supported with watch mode.",
+    );
+  }
+  if (env !== undefined && isolation === "none") {
+    throw makeRunError(
+      TypeError,
+      "ERR_INVALID_ARG_VALUE",
+      `The property 'options.env' is not supported with isolation='none'. Received ${
+        received(env)
+      }`,
+    );
+  }
+  if (shard !== undefined) {
+    validateShard(shard, files, watch);
+  }
+}
+
+// Node treats a basename as a test file when it is `test.{js,cjs,mjs}`, or has
+// a `test-` prefix, or a `[._-]test` suffix. Deno additionally recognizes the
+// TypeScript variants it can execute directly.
+const RUN_TEST_FILE_PATTERN = new SafeRegExp(
+  /^(?:test|test[-_.].+|.+[-_.]test)\.(?:[cm]?[jt]sx?)$/,
+);
+
+function isTestFileName(name) {
+  return RegExpPrototypeTest(RUN_TEST_FILE_PATTERN, name);
+}
+
+// Walk `dir` recursively collecting files Node's default test runner would
+// discover. Any I/O error (including a missing directory) yields no files,
+// matching Node's "run produced zero tests" behavior for a bad cwd.
+function discoverTestFiles(dir) {
+  const fs = lazyFs().default;
+  const path = lazyPath().default;
+  const out = [];
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = ArrayPrototypeShift(stack);
+    let entries;
+    try {
+      entries = fs.readdirSync(current, {
+        __proto__: null,
+        withFileTypes: true,
+      });
+    } catch {
+      continue;
+    }
+    for (const entry of new SafeArrayIterator(entries)) {
+      const name = entry.name;
+      const full = path.join(current, name);
+      if (entry.isDirectory()) {
+        if (name === "node_modules" || StringPrototypeStartsWith(name, ".")) {
+          continue;
+        }
+        ArrayPrototypePush(stack, full);
+      } else if (entry.isFile() && isTestFileName(name)) {
+        ArrayPrototypePush(out, full);
+      }
+    }
+  }
+  ArrayPrototypeSort(out);
+  return out;
+}
+
+// Deterministically select the files belonging to `shard.index` of
+// `shard.total`, mirroring Node's contiguous round-robin assignment.
+function applyShard(files, shard) {
+  const out = [];
+  for (let i = 0; i < files.length; i++) {
+    if (i % shard.total === shard.index - 1) {
+      ArrayPrototypePush(out, files[i]);
+    }
+  }
+  return out;
+}
+
+function resolveRunFiles(options, cwd) {
+  const path = lazyPath().default;
+  // An explicit `files` array (even empty) is authoritative: an empty list runs
+  // nothing rather than falling back to discovery.
+  if (ArrayIsArray(options.files)) {
+    return ArrayPrototypeMap(
+      options.files,
+      (f) => path.resolve(cwd, String(f)),
+    );
+  }
+  // No files given: use Node's default discovery of the cwd. globPatterns are
+  // not yet expanded, so a pattern-only run also falls back to discovery rather
+  // than throwing.
+  return discoverTestFiles(cwd);
+}
 
 // node:test `run()` implementation.
 //
-// Returns a `TestsStream`-compatible Readable that emits structured events
-// describing the test run lifecycle. We currently support the watch-mode
-// event stream (`test:watch:drained`, `test:watch:restarted`) which is the
-// minimum required for the Node.js `test-runner/test-run-watch-*` fixtures
-// that drive watch behavior through the programmatic API. Actual test file
-// discovery / execution remains TODO and is gated behind separate work; the
-// stream emits a single empty run cycle, then either ends (watch:false) or
-// waits for filesystem changes to trigger restarts (watch:true).
-//
-// See test-runner/test-run-watch-*.mjs in the Node compat suite for the
-// behavior this implements.
+// Discovers test files (from `options.files`, or Node's default discovery of
+// the cwd), executes each in a child `deno run` process, and re-emits the
+// child's structured lifecycle events on the returned TestsStream-compatible
+// Readable. Each spawned child reuses the same Deno binary in a structured
+// reporter mode (DENO_NODE_TEST_RUN=1) so test bodies actually execute under a
+// plain `deno run`; the child serializes every test:* event onto its stdout
+// behind RUN_EVENT_PREFIX and the parent forwards them, injecting the source
+// `file` and aggregating the run-wide summary diagnostics. Watch mode reruns
+// the whole cycle on filesystem changes; an AbortSignal terminates running
+// children and ends the stream.
 function run(options) {
   options = options ?? {};
+  validateRunOptions(options);
+
   const watch = options.watch === true;
   const signal = options.signal;
   let cwd = options.cwd;
@@ -290,9 +562,39 @@ function run(options) {
     read() {},
   });
 
-  let watcher = null;
+  // Guard against run() recursion: when a test file spawned by run() itself
+  // calls run(), Node prints a warning and skips the nested run rather than
+  // forking endlessly. The child sets DENO_NODE_TEST_RUN, so detect it here.
+  if (isStructuredChildMode()) {
+    try {
+      lazyProcess().default.stderr.write(
+        "Warning: node:test run() is being called recursively within a " +
+          "test file. skipping subsequent runs.\n",
+      );
+    } catch { /* stderr unavailable */ }
+    queueMicrotask(() => {
+      // deno-lint-ignore prefer-primordials -- Node Readable, not an Array
+      stream.push(null);
+    });
+    return stream;
+  }
+
   let finished = false;
+  let watcher = null;
   let pendingRestartTimer = null;
+  let aborted = false;
+  let currentChild = null;
+
+  function emit(type, data) {
+    if (finished) return;
+    const payload = data ?? { __proto__: null };
+    // Node's TestsStream emits each lifecycle entry both as a data chunk
+    // (consumed via async iteration / `'data'` listeners) and as a named
+    // event so callers can attach `.on('test:pass', ...)` directly.
+    // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
+    stream.push({ __proto__: null, type, data: payload });
+    stream.emit(type, payload);
+  }
 
   function finish() {
     if (finished) return;
@@ -311,54 +613,289 @@ function run(options) {
     stream.push(null);
   }
 
-  function emit(type) {
-    if (finished) return;
-    const data = { __proto__: null };
-    // Node's TestsStream emits each lifecycle entry both as a data chunk
-    // (consumed via async iteration / `'data'` listeners) and as a named
-    // event so callers can attach `.on('test:watch:drained', ...)` directly.
-    // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
-    stream.push({ __proto__: null, type, data });
-    stream.emit(type, data);
+  const totals = {
+    tests: 0,
+    suites: 0,
+    pass: 0,
+    fail: 0,
+    cancelled: 0,
+    skipped: 0,
+    todo: 0,
+  };
+
+  function resetTotals() {
+    totals.tests = 0;
+    totals.suites = 0;
+    totals.pass = 0;
+    totals.fail = 0;
+    totals.cancelled = 0;
+    totals.skipped = 0;
+    totals.todo = 0;
   }
 
-  function drained() {
-    emit("test:watch:drained");
+  function emitSummary() {
+    emit("test:diagnostic", diag(`tests ${totals.tests}`));
+    emit("test:diagnostic", diag(`suites ${totals.suites}`));
+    emit("test:diagnostic", diag(`pass ${totals.pass}`));
+    emit("test:diagnostic", diag(`fail ${totals.fail}`));
+    emit("test:diagnostic", diag(`cancelled ${totals.cancelled}`));
+    emit("test:diagnostic", diag(`skipped ${totals.skipped}`));
+    emit("test:diagnostic", diag(`todo ${totals.todo}`));
+    emit("test:diagnostic", diag("duration_ms 0"));
   }
 
-  function scheduleRestart() {
-    if (finished) return;
-    // Debounce bursts of fs events so a single user-visible change produces
-    // exactly one restart cycle (Node's watcher coalesces likewise).
-    if (pendingRestartTimer !== null) {
-      clearTimeout(pendingRestartTimer);
+  function diag(message) {
+    return { __proto__: null, nesting: 0, message, level: "info", file: null };
+  }
+
+  function synthFail(file, error) {
+    totals.tests++;
+    totals.fail++;
+    emit("test:fail", {
+      __proto__: null,
+      name: file,
+      nesting: 0,
+      testNumber: 1,
+      file,
+      details: {
+        __proto__: null,
+        duration_ms: 0,
+        type: "test",
+        error: serializeError(error),
+      },
+    });
+  }
+
+  // Execute a single file in a child process and forward its events. Resolves
+  // when the child exits (or fails to spawn).
+  function runFile(file) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+
+      const execPath = globalThis.Deno.execPath();
+      const argv = ArrayIsArray(options.argv) ? options.argv : [];
+      const args = [
+        "run",
+        "-A",
+        "--no-config",
+        // Node runs test files in their package's module system; many fixtures
+        // are CommonJS `.js` files using require(). Let Deno auto-detect CJS so
+        // they load the same way under a plain `deno run`.
+        "--unstable-detect-cjs",
+        file,
+        ...new SafeArrayIterator(argv),
+      ];
+      const baseEnv = options.env ?? lazyProcess().default.env;
+      const childEnv = { __proto__: null };
+      for (const key of new SafeArrayIterator(ObjectKeys(baseEnv))) {
+        childEnv[key] = baseEnv[key];
+      }
+      childEnv.DENO_NODE_TEST_RUN = "1";
+      // Node sets this in spawned children; some fixtures assert on it.
+      childEnv.NODE_TEST_CONTEXT = "child-v8";
+
+      // Build the NODE_OPTIONS the child inherits. testNamePatterns become
+      // repeated --test-name-pattern entries (a RegExp serialized in
+      // /source/flags literal form, a string as a bare regex source) and
+      // `only` becomes --test-only so the child's only-filter activates.
+      let nodeOptions = childEnv.NODE_OPTIONS
+        ? String(childEnv.NODE_OPTIONS)
+        : "";
+      const namePatterns = options.testNamePatterns;
+      if (ArrayIsArray(namePatterns) && namePatterns.length > 0) {
+        for (const p of new SafeArrayIterator(namePatterns)) {
+          let value;
+          if (
+            p !== null && typeof p === "object" && typeof p.source === "string"
+          ) {
+            value = `/${p.source}/${p.flags || ""}`;
+          } else {
+            value = String(p);
+          }
+          nodeOptions += ` --test-name-pattern=${value}`;
+        }
+      }
+      if (options.only === true) {
+        nodeOptions += " --test-only";
+      }
+      if (nodeOptions.length > 0) {
+        childEnv.NODE_OPTIONS = nodeOptions;
+      }
+
+      let child;
+      try {
+        child = lazyChildProcess().spawn(execPath, args, {
+          __proto__: null,
+          cwd,
+          env: childEnv,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      } catch (err) {
+        synthFail(file, err);
+        done();
+        return;
+      }
+
+      currentChild = child;
+      let sawResult = false;
+      let sawSummary = false;
+      let outBuffer = "";
+
+      function handleLine(line) {
+        if (StringPrototypeStartsWith(line, RUN_EVENT_PREFIX)) {
+          const json = StringPrototypeSlice(line, RUN_EVENT_PREFIX.length);
+          let event;
+          try {
+            event = JSONParse(json);
+          } catch {
+            return;
+          }
+          const type = event.type;
+          const data = event.data ?? { __proto__: null };
+          if (type === RUN_SUMMARY_TYPE) {
+            sawSummary = true;
+            totals.tests += data.tests || 0;
+            totals.suites += data.suites || 0;
+            totals.pass += data.pass || 0;
+            totals.fail += data.fail || 0;
+            totals.cancelled += data.cancelled || 0;
+            totals.skipped += data.skipped || 0;
+            totals.todo += data.todo || 0;
+            return;
+          }
+          data.file = file;
+          if (type === "test:pass" || type === "test:fail") sawResult = true;
+          emit(type, data);
+          return;
+        }
+        emit("test:stdout", {
+          __proto__: null,
+          file,
+          message: line + "\n",
+        });
+      }
+
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => {
+        outBuffer += chunk;
+        let idx;
+        while ((idx = StringPrototypeIndexOf(outBuffer, "\n")) >= 0) {
+          const line = StringPrototypeSlice(outBuffer, 0, idx);
+          outBuffer = StringPrototypeSlice(outBuffer, idx + 1);
+          handleLine(line);
+        }
+      });
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk) => {
+        emit("test:stderr", { __proto__: null, file, message: chunk });
+      });
+      child.on("error", (err) => {
+        synthFail(file, err);
+        done();
+      });
+      child.on("close", (code) => {
+        currentChild = null;
+        if (outBuffer.length > 0) {
+          handleLine(outBuffer);
+          outBuffer = "";
+        }
+        // A child that produced no test results and exited abnormally (a
+        // missing file, a load-time crash, or a kill from signal abort) is
+        // reported as a single failed test for that file, matching Node.
+        if (!sawResult && !sawSummary && (code !== 0 || aborted)) {
+          synthFail(file, makeRunError(Error, undefined, `test failed`));
+        }
+        done();
+      });
+    });
+  }
+
+  function killCurrentChild() {
+    if (currentChild !== null) {
+      try {
+        currentChild.kill("SIGTERM");
+      } catch { /* already exited */ }
     }
-    pendingRestartTimer = setTimeout(() => {
-      pendingRestartTimer = null;
-      if (finished) return;
-      emit("test:watch:restarted");
-      drained();
-    }, 50);
+  }
+
+  async function runCycle() {
+    resetTotals();
+    let files;
+    try {
+      files = resolveRunFiles(options, cwd);
+    } catch {
+      files = [];
+    }
+    if (options.shard !== undefined) {
+      files = applyShard(files, options.shard);
+    }
+    for (const file of new SafeArrayIterator(files)) {
+      if (aborted) {
+        // Files not yet started when an abort lands are reported as failures,
+        // mirroring Node where every in-flight file is cancelled.
+        synthFail(file, makeRunError(Error, undefined, "test aborted"));
+        continue;
+      }
+      await runFile(file);
+    }
+    emitSummary();
+  }
+
+  if (typeof options.setup === "function") {
+    try {
+      const r = options.setup(stream);
+      if (isThenable(r)) {
+        // Best-effort: Node awaits setup before discovery. We do not block the
+        // synchronous return, but kick discovery off after it settles below.
+      }
+    } catch { /* setup errors are surfaced by Node as a run failure */ }
   }
 
   if (signal) {
     if (signal.aborted) {
-      // Resolve the initial drained on next tick to keep callers that
-      // `await once(stream, 'test:watch:drained')` working.
+      aborted = true;
       queueMicrotask(() => {
-        drained();
+        emit("test:watch:drained");
         finish();
       });
       return stream;
     }
-    signal.addEventListener("abort", finish, { once: true });
+    signal.addEventListener("abort", () => {
+      aborted = true;
+      killCurrentChild();
+      if (!watch) {
+        // Non-watch runs end as soon as the abort propagates through the
+        // current file; the cycle loop fails any remaining files.
+        return;
+      }
+      finish();
+    }, { once: true });
   }
 
-  // Emit the initial "drained" event after the current microtask completes
-  // so that consumers attaching `.on('data')` synchronously after `run(...)`
-  // returns still observe the event.
-  queueMicrotask(() => {
-    drained();
+  function scheduleRestart() {
+    if (finished) return;
+    if (pendingRestartTimer !== null) clearTimeout(pendingRestartTimer);
+    pendingRestartTimer = setTimeout(async () => {
+      pendingRestartTimer = null;
+      if (finished) return;
+      emit("test:watch:restarted");
+      await runCycle();
+      if (finished) return;
+      emit("test:watch:drained");
+    }, 50);
+  }
+
+  // Defer the first cycle so consumers attaching listeners synchronously after
+  // run() returns still observe every event.
+  queueMicrotask(async () => {
+    await runCycle();
+    if (finished) return;
+    emit("test:watch:drained");
     if (!watch) {
       finish();
       return;
@@ -372,7 +909,6 @@ function run(options) {
         finish();
       });
     } catch {
-      // If we can't watch (e.g. cwd doesn't exist), end the stream gracefully.
       finish();
     }
   });
@@ -426,6 +962,13 @@ function getNodeTestReporter() {
 }
 function isTapMode() {
   return getNodeTestReporter() === "tap";
+}
+
+// Both the TAP reporter mode and the structured child mode use the auto-runner
+// (registered tests execute on a plain `deno run`) rather than registering with
+// Deno's native test harness.
+function isAutoRunMode() {
+  return isTapMode() || isStructuredChildMode();
 }
 
 function getTapSuiteALS() {
@@ -488,6 +1031,22 @@ function getTestSkipPatterns() {
   if (testSkipPatternCache !== undefined) return testSkipPatternCache;
   testSkipPatternCache = parsePatternFlag("--test-skip-pattern");
   return testSkipPatternCache;
+}
+
+let testNamePatternCache;
+function getTestNamePatterns() {
+  if (testNamePatternCache !== undefined) return testNamePatternCache;
+  testNamePatternCache = parsePatternFlag("--test-name-pattern");
+  return testNamePatternCache;
+}
+
+// `--test-name-pattern` is an include filter: when any are present, a leaf test
+// whose name matches none of them is excluded from the run entirely (it is not
+// reported), matching Node's testNamePatterns option.
+function excludedByNamePattern(name) {
+  const patterns = getTestNamePatterns();
+  if (!patterns) return false;
+  return !matchesAnyPattern(String(name), patterns);
 }
 
 let testOnlyFlagCache;
@@ -665,7 +1224,10 @@ class TapContext {
     const parentState = this;
     const p = PromisePrototypeThen(
       this.#subtestTail,
-      () => runTapEntry(entry, childDepth, n, parentState),
+      () =>
+        isStructuredChildMode()
+          ? runStructuredEntry(entry, childDepth, n)
+          : runTapEntry(entry, childDepth, n, parentState),
     );
     this.#subtestTail = PromisePrototypeThen(p, () => {}, () => {});
     return p;
@@ -686,7 +1248,11 @@ function scheduleTapRun() {
   // Defer to the macrotask queue so synchronous top-level test() calls finish
   // queueing before we start running.
   setTimeout(() => {
-    runTapTop();
+    if (isStructuredChildMode()) {
+      runStructuredTop();
+    } else {
+      runTapTop();
+    }
   }, 0);
 }
 
@@ -856,9 +1422,218 @@ async function runTapEntry(entry, depth, n, parentState) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Structured child runner.
+//
+// When a file is executed by run() it is spawned with DENO_NODE_TEST_RUN=1.
+// The same registration entries the TAP runner builds are traversed here, but
+// instead of writing TAP text each lifecycle step is serialized as a JSON
+// TestsStream event onto stdout behind RUN_EVENT_PREFIX so the parent run()
+// process can decode and forward it. TAP output is intentionally left
+// untouched so the existing reporter fixtures stay byte-identical.
+function emitStruct(type, data) {
+  core.print(
+    RUN_EVENT_PREFIX + JSONStringify({ __proto__: null, type, data }) + "\n",
+  );
+}
+
+async function runStructuredTop() {
+  // Keep the loop alive while async test bodies run, mirroring runTapTop.
+  const keepAlive = setInterval(() => {}, 1 << 30);
+  try {
+    if (rootBeforeHooks.length > 0) {
+      const rootCtx = { name: "<root>", fullName: "<root>" };
+      for (const hook of new SafeArrayIterator(rootBeforeHooks)) {
+        try {
+          const r = ReflectApply(hook, null, [rootCtx]);
+          if (isThenable(r)) await r;
+        } catch { /* swallow to match Node's lenient hook errors */ }
+      }
+    }
+    // When --test-only is set, only top-level entries flagged `only: true` run;
+    // every other top-level test/suite is filtered out, matching Node.
+    const onlyFilter = isTestOnlyFlagSet();
+    let n = 0;
+    for (const entry of new SafeArrayIterator(tapTopEntries)) {
+      if (onlyFilter && !entry.options.only) continue;
+      n++;
+      await runStructuredEntry(entry, 0, n);
+    }
+    if (rootAfterHooks.length > 0) {
+      const rootCtx = { name: "<root>", fullName: "<root>" };
+      const hooks = ArrayPrototypeSplice(
+        rootAfterHooks,
+        0,
+        rootAfterHooks.length,
+      );
+      for (const hook of new SafeArrayIterator(hooks)) {
+        try {
+          const r = ReflectApply(hook, null, [rootCtx]);
+          if (isThenable(r)) await r;
+        } catch { /* swallow */ }
+      }
+    }
+    emitStruct("test:plan", { __proto__: null, nesting: 0, count: n });
+    emitStruct(RUN_SUMMARY_TYPE, {
+      __proto__: null,
+      tests: tapStats.tests,
+      suites: tapStats.suites,
+      pass: tapStats.pass,
+      fail: tapStats.fail,
+      cancelled: tapStats.cancelled,
+      skipped: tapStats.skipped,
+      todo: tapStats.todo,
+    });
+  } finally {
+    clearInterval(keepAlive);
+  }
+  // The parent relies on lifecycle events and the summary, not the exit code,
+  // so always exit cleanly once results are flushed. A genuine load-time crash
+  // never reaches here and surfaces to the parent as a nonzero exit instead.
+  try {
+    globalThis.Deno?.exit?.(0);
+  } catch { /* exit unavailable */ }
+}
+
+async function runStructuredEntry(entry, depth, n) {
+  const isSuite = entry.kind === "suite";
+  const type = isSuite ? "suite" : "test";
+  emitStruct("test:enqueue", {
+    __proto__: null,
+    name: entry.name,
+    nesting: depth,
+    type,
+  });
+  emitStruct("test:dequeue", {
+    __proto__: null,
+    name: entry.name,
+    nesting: depth,
+    type,
+  });
+  emitStruct("test:start", {
+    __proto__: null,
+    name: entry.name,
+    nesting: depth,
+  });
+
+  let status = "pass";
+  let error = null;
+  let diagnostics = [];
+  let childCount = 0;
+  let skipReason;
+  let todoReason;
+  if (entry.options.skip) {
+    skipReason = entry.options.skip === true
+      ? true
+      : String(entry.options.skip);
+  }
+  if (entry.options.todo) {
+    todoReason = entry.options.todo === true
+      ? true
+      : String(entry.options.todo);
+  }
+
+  if (entry.options.skip) {
+    if (isSuite) {
+      tapStats.suites++;
+    } else {
+      tapStats.skipped++;
+      tapStats.tests++;
+    }
+  } else if (entry.options.todo) {
+    if (isSuite) {
+      tapStats.suites++;
+    } else {
+      tapStats.todo++;
+      tapStats.tests++;
+    }
+  } else if (isSuite) {
+    try {
+      if (entry.bodyError) throw entry.bodyError;
+      if (entry.bodyPromise) await entry.bodyPromise;
+      let childN = 0;
+      for (const child of new SafeArrayIterator(entry.children)) {
+        childN++;
+        await runStructuredEntry(child, depth + 1, childN);
+      }
+      childCount = childN;
+    } catch (err) {
+      status = "fail";
+      error = err;
+      tapStats.fail++;
+    }
+    tapStats.suites++;
+  } else {
+    const ctx = new TapContext(entry.name, depth, entry.children);
+    try {
+      await runWithTestGuards(async () => {
+        const ret = ReflectApply(entry.fn, ctx, [ctx]);
+        if (isThenable(ret)) await ret;
+      }, {
+        timeout: entry.options.timeout,
+        signal: entry.options.signal,
+        abort: (reason) => ctx._abort(reason),
+      });
+      await ctx._drainSubtests();
+      childCount = ctx._subtestCount();
+      tapStats.pass++;
+    } catch (err) {
+      status = "fail";
+      error = err;
+      tapStats.fail++;
+      try {
+        await ctx._drainSubtests();
+      } catch { /* ignore */ }
+      childCount = ctx._subtestCount();
+    }
+    diagnostics = ctx._drainDiagnostics();
+    tapStats.tests++;
+  }
+
+  if (childCount > 0) {
+    emitStruct("test:plan", {
+      __proto__: null,
+      nesting: depth + 1,
+      count: childCount,
+    });
+  }
+
+  const details = { __proto__: null, duration_ms: 0, type };
+  if (error !== null) details.error = serializeError(error);
+  const data = {
+    __proto__: null,
+    name: entry.name,
+    nesting: depth,
+    testNumber: n,
+    file: null,
+    details,
+  };
+  if (skipReason !== undefined) data.skip = skipReason;
+  if (todoReason !== undefined) data.todo = todoReason;
+  emitStruct(status === "pass" ? "test:pass" : "test:fail", data);
+  // Node emits test:complete for every test after its pass/fail, carrying the
+  // same payload plus the pass/fail outcome.
+  emitStruct("test:complete", {
+    __proto__: null,
+    ...data,
+    passed: status === "pass",
+  });
+  for (const d of new SafeArrayIterator(diagnostics)) {
+    emitStruct("test:diagnostic", {
+      __proto__: null,
+      nesting: depth,
+      message: String(d),
+      level: "info",
+      file: null,
+    });
+  }
+}
+
 function queueTapTest(name, options, fn, overrides) {
   const prepared = prepareOptions(name, options, fn, overrides);
-  if (shouldSkipByPattern(prepared.name)) {
+  if (
+    shouldSkipByPattern(prepared.name) || excludedByNamePattern(prepared.name)
+  ) {
     // Filtered out entirely: do not register or run.
     scheduleTapRun();
     return PromiseResolve();
@@ -1592,7 +2367,7 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
 
 function test(name, options, fn, overrides) {
   installErrorHandlers();
-  if (isTapMode()) {
+  if (isAutoRunMode()) {
     return queueTapTest(name, options, fn, overrides);
   }
   if (currentSuite) {
@@ -1619,7 +2394,7 @@ test.expectFailure = function expectFailure(name, options, fn) {
 
 function suite(name, options, fn, overrides) {
   installErrorHandlers();
-  if (isTapMode()) {
+  if (isAutoRunMode()) {
     return queueTapSuite(name, options, fn, overrides);
   }
   if (currentSuite) {
@@ -1645,7 +2420,7 @@ function before(fn, _options) {
   if (typeof fn !== "function") {
     throw new TypeError("before() requires a function argument");
   }
-  if (isTapMode()) {
+  if (isAutoRunMode()) {
     const tapSuite = getTapCurrentSuite();
     if (tapSuite !== null) {
       ArrayPrototypePush(tapSuite.beforeAllHooks ??= [], fn);
@@ -1668,7 +2443,7 @@ function after(fn, _options) {
   if (typeof fn !== "function") {
     throw new TypeError("after() requires a function argument");
   }
-  if (isTapMode()) {
+  if (isAutoRunMode()) {
     const tapSuite = getTapCurrentSuite();
     if (tapSuite !== null) {
       ArrayPrototypePush(tapSuite.afterAllHooks ??= [], fn);
