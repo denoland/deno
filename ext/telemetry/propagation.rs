@@ -371,7 +371,7 @@ impl OtelTraceState {
     #[string] key: String,
   ) -> v8::Local<'s, v8::Value> {
     match tracestate_get(&self.entries, &key) {
-      Some(value) => v8::String::new(scope, value).unwrap().into(),
+      Some(value) => v8_str(scope, value).into(),
       None => v8::undefined(scope).into(),
     }
   }
@@ -635,7 +635,7 @@ fn make_entry_object<'s>(
 ) -> v8::Local<'s, v8::Object> {
   let obj = v8::Object::new(scope);
   if let Some(key) = v8::String::new(scope, "value") {
-    let value = v8::String::new(scope, &entry.value).unwrap();
+    let value = v8_str(scope, &entry.value);
     obj.set(scope, key.into(), value.into());
   }
   if let Some(metadata) = &entry.metadata
@@ -743,7 +743,7 @@ impl OtelBaggage {
       .entries
       .iter()
       .map(|entry| {
-        let key = v8::String::new(scope, &entry.key).unwrap().into();
+        let key = v8_str(scope, &entry.key).into();
         let value = make_entry_object(scope, entry).into();
         v8::Array::new_with_elements(scope, &[key, value]).into()
       })
@@ -1060,11 +1060,18 @@ v8_static_strings! {
   METADATA = "metadata",
 }
 
+// Build a V8 string from a dynamic Rust `&str`. Every caller here passes a
+// string already bounded by W3C parse limits (traceparent/tracestate/baggage
+// header sizes) or a value that round-trips from an existing V8 string, so the
+// only way `v8::String::new` returns `None` is an over-`v8::String::MAX_LENGTH`
+// input that these bounds make unreachable. Fall back to the empty string
+// rather than panicking the isolate, keeping this defensive against a future
+// caller that forgets the bound.
 fn v8_str<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   s: &str,
 ) -> v8::Local<'s, v8::String> {
-  v8::String::new(scope, s).unwrap()
+  v8::String::new(scope, s).unwrap_or_else(|| v8::String::empty(scope))
 }
 
 /// A cached constant V8 string (see [`v8_static_strings`]).

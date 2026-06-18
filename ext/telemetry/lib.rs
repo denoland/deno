@@ -2360,6 +2360,8 @@ fn get_property<'s>(
   object: v8::Local<'s, v8::Object>,
   key: &str,
 ) -> v8::Local<'s, v8::Value> {
+  // `key` is always a short static property-name literal at every call site, so
+  // it is well under `v8::String::MAX_LENGTH` and the `unwrap` cannot fire.
   let key = v8::String::new(scope, key).unwrap();
   object
     .get(scope, key.into())
@@ -2372,6 +2374,8 @@ fn set_property<'s>(
   key: &str,
   value: v8::Local<'s, v8::Value>,
 ) {
+  // `key` is always a short static property-name literal at every call site, so
+  // it is well under `v8::String::MAX_LENGTH` and the `unwrap` cannot fire.
   let key = v8::String::new(scope, key).unwrap();
   object.set(scope, key.into(), value);
 }
@@ -3618,6 +3622,11 @@ impl OtelObservable {
         result,
       ) {
         Some(r) => (r.id, r.data_share.clone(), r.is_regular_counter),
+        // `result` is always an `OtelObservableResult` in practice (the wrapper
+        // is constructed by `build_observable` / the observable factory). The
+        // fallback uses `result_id = 0`, which is the unused sentinel below the
+        // `OBSERVABLE_RESULT_ID` start of 1, so it can never match a real entry
+        // and the observable is simply inert rather than aliasing another one.
         None => (0, None, false),
       };
     OtelObservable {
