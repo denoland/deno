@@ -88,7 +88,32 @@ impl DepGraph {
         .iter()
         .filter_map(|dep_req| {
           let resolved = content.specifiers.get(dep_req)?;
-          Some((dep_req.kind, format!("{}@{}", dep_req.req.name, resolved)))
+          let id = match dep_req.kind {
+            PackageKind::Jsr => (
+              PackageKind::Jsr,
+              format!("{}@{}", dep_req.req.name, resolved),
+            ),
+            PackageKind::Npm => {
+              // `specifiers` records an npm resolution as a bare version,
+              // possibly with a peer suffix. Usually `name@<resolved>` is the
+              // `content.npm` key verbatim (preferred: it pins the exact peer
+              // variant), but the suffix is sometimes formatted differently
+              // (`version__peer@1.0.0` vs the key's `name@version_peer@1`), so
+              // fall back to mapping the base `name@version` onto its node.
+              let exact = format!("{}@{}", dep_req.req.name, resolved);
+              let key =
+                if forward.contains_key(&(PackageKind::Npm, exact.clone())) {
+                  exact
+                } else {
+                  let base_version =
+                    resolved.split('_').next().unwrap_or(resolved);
+                  let base = format!("{}@{}", dep_req.req.name, base_version);
+                  npm_by_base.get(&base).cloned().unwrap_or(exact)
+                };
+              (PackageKind::Npm, key)
+            }
+          };
+          Some(id)
         })
         .collect();
       forward.insert((PackageKind::Jsr, nv.to_string()), deps);
