@@ -14,9 +14,9 @@ use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
 use deno_net::raw::NetworkStreamListener;
 use deno_net::raw::NetworkStreamType;
-use hyper::header::HOST;
 use hyper::HeaderMap;
 use hyper::Uri;
+use hyper::header::HOST;
 
 // TODO(mmastrac): I don't like that we have to clone this, but it's one-time setup
 #[derive(Clone)]

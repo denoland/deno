@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use deno_core::futures::TryFutureExt;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -11,6 +10,7 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::futures::TryFutureExt;
 use deno_error::JsErrorBox;
 use socket2::SockRef;
 use tokio::io::AsyncRead;
@@ -227,6 +227,7 @@ impl Resource for MemoryStreamResource {
   }
 }
 
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 pub type VsockStreamResource =
   FullDuplexResource<tokio_vsock::OwnedReadHalf, tokio_vsock::OwnedWriteHalf>;
 

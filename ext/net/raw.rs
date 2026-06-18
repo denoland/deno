@@ -3,12 +3,12 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use deno_core::error::ResourceError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ResourceTable;
+use deno_core::error::ResourceError;
 use deno_error::JsErrorBox;
 
 use crate::io::TcpStreamResource;

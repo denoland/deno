@@ -13,10 +13,10 @@
 use std::collections::HashMap;
 use std::io;
 use std::pin::Pin;
-use std::sync::atomic::AtomicU32;
-use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use std::sync::OnceLock;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 
