@@ -847,16 +847,16 @@ impl BrowserWindow {
           })?
       };
       let (width, height) = api.get_window_size(window_id);
-      Ok::<_, deno_error::JsErrorBox>(deno_canvas::byow::UnsafeWindowSurface::from_surface_data(
-        std::rc::Rc::new(RefCell::new(
-          deno_webgpu::canvas::SurfaceData {
+      Ok::<_, deno_error::JsErrorBox>(
+        deno_canvas::byow::UnsafeWindowSurface::from_surface_data(
+          std::rc::Rc::new(RefCell::new(deno_webgpu::canvas::SurfaceData {
             id: surface_id,
             width: width as u32,
             height: height as u32,
             instance,
-          },
-        )),
-      ))
+          })),
+        ),
+      )
     })?;
     // Only suppress close() once the surface is actually live. If
     // surface creation failed above, the window is still safe to close.

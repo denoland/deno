@@ -11,6 +11,7 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_error::JsErrorBox;
+use deno_permissions::PermissionsContainer;
 use serde::Serialize;
 
 use crate::css::font::parse_css_font;
@@ -19,6 +20,18 @@ use crate::css::font::parse_css_style;
 use crate::css::font::parse_css_weight;
 use crate::css::font::stretch_to_css_str;
 use crate::css::font::style_to_css_str;
+
+/// System font metadata shared across all workers.
+/// Populated once by `Deno.loadSystemFonts()`, then each worker copies
+/// the FaceInfo entries into its own FontSystem via `push_face_info`.
+#[derive(Clone, Default)]
+pub struct SharedSystemFontDb(Arc<Mutex<SharedSystemFontDbInner>>);
+
+#[derive(Default)]
+struct SharedSystemFontDbInner {
+  faces: Vec<fontdb::FaceInfo>,
+  loaded: bool,
+}
 
 /// Maps u32 handles to font data.
 /// bytes_store holds validated bytes; active_faces tracks what is in fontdb.
@@ -247,4 +260,57 @@ pub fn op_parse_css_font_query(
     weight: state.weight,
     stretch: stretch_to_css_str(state.stretch).to_string(),
   })
+}
+
+#[op2(stack_trace)]
+pub async fn op_fontdb_load_system_fonts(
+  state: Rc<RefCell<OpState>>,
+) -> Result<(), deno_permissions::PermissionCheckError> {
+  let (shared_db, font_system) = {
+    let st = state.borrow();
+    let shared_db = st.borrow::<SharedSystemFontDb>().clone();
+    let font_system =
+      st.borrow::<Arc<Mutex<cosmic_text::FontSystem>>>().clone();
+    (shared_db, font_system)
+  };
+
+  state
+    .borrow_mut()
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("systemFonts", "Deno.loadSystemFonts")?;
+
+  let faces = {
+    let already_loaded = {
+      let inner = shared_db.0.lock().unwrap();
+      if inner.loaded {
+        Some(inner.faces.clone())
+      } else {
+        None
+      }
+    };
+    if let Some(faces) = already_loaded {
+      faces
+    } else {
+      let discovered = tokio::task::spawn_blocking(|| {
+        let mut tmp = fontdb::Database::new();
+        tmp.load_system_fonts();
+        tmp.faces().cloned().collect::<Vec<_>>()
+      })
+      .await
+      .unwrap_or_default();
+      let mut inner = shared_db.0.lock().unwrap();
+      if !inner.loaded {
+        inner.faces = discovered;
+        inner.loaded = true;
+      }
+      inner.faces.clone()
+    }
+  };
+
+  let mut fs = font_system.lock().unwrap();
+  for face in faces {
+    fs.db_mut().push_face_info(face);
+  }
+
+  Ok(())
 }

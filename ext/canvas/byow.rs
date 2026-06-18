@@ -276,16 +276,13 @@ impl UnsafeWindowSurface {
           ctx
         }
         _ => {
-          let create_context: CreateCanvasContext =
-            match context_id.as_str() {
-              super::bitmaprenderer::CONTEXT_ID => {
-                super::bitmaprenderer::create as _
-              }
-              deno_webgpu::canvas::CONTEXT_ID => {
-                deno_webgpu::canvas::create as _
-              }
-              _ => return Ok(None),
-            };
+          let create_context: CreateCanvasContext = match context_id.as_str() {
+            super::bitmaprenderer::CONTEXT_ID => {
+              super::bitmaprenderer::create as _
+            }
+            deno_webgpu::canvas::CONTEXT_ID => deno_webgpu::canvas::create as _,
+            _ => return Ok(None),
+          };
           create_context(
             state,
             Some(instance),

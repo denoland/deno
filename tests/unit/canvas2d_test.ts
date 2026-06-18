@@ -1025,3 +1025,20 @@ async function checkIsWsl() {
     }
   }
 }
+
+Deno.test(
+  { permissions: { sys: ["systemFonts"] } },
+  async function loadSystemFontsSucceeds() {
+    await Deno.loadSystemFonts();
+  },
+);
+
+Deno.test(
+  { permissions: { sys: [] } },
+  async function loadSystemFontsRequiresPermission() {
+    await assertRejects(
+      () => Deno.loadSystemFonts(),
+      Deno.errors.NotCapable,
+    );
+  },
+);

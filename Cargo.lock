@@ -3641,6 +3641,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_image",
+ "deno_permissions",
  "deno_webgpu",
  "deno_webidl",
  "encoding_rs",

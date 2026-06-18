@@ -1500,7 +1500,10 @@ fn compute_text_metrics(
 }
 
 /// Creates an OffscreenCanvasRenderingContext2D cppgc object.
-#[allow(clippy::too_many_arguments, reason = "matches CreateCanvasContext signature")]
+#[allow(
+  clippy::too_many_arguments,
+  reason = "matches CreateCanvasContext signature"
+)]
 pub fn create_context<'s>(
   state: std::rc::Rc<std::cell::RefCell<OpState>>,
   _instance: Option<deno_webgpu::Instance>,

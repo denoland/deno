@@ -56,6 +56,7 @@ use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
 pub use crate::broadcast_channel::InMemoryBroadcastChannel;
+pub use crate::font::SharedSystemFontDb;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 pub use crate::message_port::RecvMessageData;
@@ -157,6 +158,7 @@ deno_core::extension!(deno_web,
     font::op_fontdb_remove,
     font::op_fontdb_unload,
     font::op_parse_css_font_query,
+    font::op_fontdb_load_system_fonts,
   ],
   objects = [
     css_stylesheet::CSSRule,
@@ -209,6 +211,7 @@ deno_core::extension!(deno_web,
     maybe_location: Option<Url>,
     enable_css_parser_features: bool,
     bc: InMemoryBroadcastChannel,
+    shared_system_font_db: font::SharedSystemFontDb,
   },
   state = |state, options| {
     state.put(options.blob_store);
@@ -221,9 +224,10 @@ deno_core::extension!(deno_web,
     state.put(broadcast_channel::BroadcastSabStash::default());
     let renderer = canvas2d_renderer::init_canvas_renderer();
     state.put(Arc::new(OnceLock::from(renderer)));
-    state.put(Arc::new(Mutex::new(cosmic_text::FontSystem::new())));
+    state.put(Arc::new(Mutex::new(cosmic_text::FontSystem::new_with_fonts(std::iter::empty()))));
     state.put(Arc::new(Mutex::new(cosmic_text::SwashCache::new())));
     state.put(Arc::new(Mutex::new(font::FontRegistry::default())));
+    state.put(options.shared_system_font_db);
   }
 );
 
