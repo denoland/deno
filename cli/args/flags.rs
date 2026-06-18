@@ -1137,6 +1137,10 @@ pub struct Flags {
   pub ignore: Vec<String>,
   pub import_map_path: Option<String>,
   pub env_file: Option<Vec<String>>,
+  /// The mode used to resolve the `.env.<mode>` cascade files when
+  /// `--env-file` is used. Falls back to the `DENO_ENV` environment variable
+  /// when unset.
+  pub mode: Option<String>,
   pub inspect_brk: Option<SocketAddr>,
   pub inspect_wait: Option<SocketAddr>,
   pub inspect: Option<SocketAddr>,
@@ -2939,6 +2943,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
       .arg(no_clear_screen_arg())
       .arg(script_arg().last(true))
       .arg(env_file_arg())
+      .arg(mode_arg())
       .arg(executable_ext_arg())
   })
 }
@@ -3798,7 +3803,8 @@ This command has implicit access to all permissions.
             .value_name("CODE_ARG")
             .required_unless_present("help"),
         )
-        .arg(env_file_arg()),
+        .arg(env_file_arg())
+        .arg(mode_arg()),
     )
   })
 }
@@ -4778,6 +4784,7 @@ TypeScript is supported, however it is not type-checked, only transpiled."
                        <p(245)>[default: $DENO_DIR/deno_history.txt]</>"))
     })
     .arg(env_file_arg())
+    .arg(mode_arg())
     .arg(
       Arg::new("args")
         .num_args(0..)
@@ -4802,6 +4809,7 @@ fn run_args(command: Command, top_level: bool) -> Command {
         script_arg().trailing_var_arg(true)
       })
       .arg(env_file_arg())
+      .arg(mode_arg())
       .arg(no_code_cache_arg())
       .arg(coverage_arg()),
   )
@@ -4976,6 +4984,7 @@ Start a server defined in server.ts, watching for changes and running on port 50
         .trailing_var_arg(true),
     )
     .arg(env_file_arg())
+    .arg(mode_arg())
     .arg(no_code_cache_arg()),
   )
   .arg(tunnel_arg())
@@ -5040,6 +5049,7 @@ Evaluate a task from string:
           .action(ArgAction::SetTrue),
       )
       .arg(env_file_arg())
+      .arg(mode_arg())
       .arg(node_modules_dir_arg())
       .arg(node_modules_linker_arg())
       .arg(tunnel_arg())
@@ -5320,6 +5330,7 @@ or <c>**/__tests__/**</>:
           .action(ArgAction::SetTrue)
       )
       .arg(env_file_arg())
+      .arg(mode_arg())
       .arg(executable_ext_arg())
     )
 }
@@ -6444,13 +6455,26 @@ fn env_file_arg() -> Arg {
       "Load environment variables from local file
   <p(245)>Only the first environment variable with a given key is used.
   Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.
-  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments.</>"
+  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments.
+  For each file passed, the conventional cascade is also loaded from the same directory, in increasing precedence: the file itself, then its '.mode', '.local', and '.mode.local' siblings. The mode comes from --mode or the DENO_ENV environment variable; when neither is set only the file and its '.local' sibling are loaded. Missing cascade files are ignored.</>"
     ))
     .value_hint(ValueHint::FilePath)
     .default_missing_value(".env")
     .require_equals(true)
     .num_args(0..=1)
     .action(ArgAction::Append)
+}
+
+fn mode_arg() -> Arg {
+  Arg::new("mode")
+    .long("mode")
+    .value_name("MODE")
+    .help(cstr!(
+      "Set the mode used to resolve the --env-file cascade
+  <p(245)>Selects the '.mode' and '.mode.local' files loaded alongside each --env-file. Defaults to the DENO_ENV environment variable when unset.</>"
+    ))
+    .require_equals(true)
+    .num_args(1)
 }
 
 fn use_env_proxy_arg() -> Arg {
@@ -9322,6 +9346,14 @@ fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.env_file = matches
     .get_many::<String>("env-file")
     .map(|values| values.cloned().collect());
+  // `--mode` is only registered on the commands that run user code, so parse
+  // it defensively: `try_get_one` returns an error (swallowed here) rather
+  // than panicking when the argument isn't defined on the current command.
+  flags.mode = matches
+    .try_get_one::<String>("mode")
+    .ok()
+    .flatten()
+    .cloned();
 }
 
 fn reload_arg_parse(
@@ -12395,6 +12427,35 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn run_env_file_with_mode() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--env-file",
+      "--mode=production",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        env_file: Some(svec![".env"]),
+        mode: Some("production".to_string()),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_mode_without_env_file() {
+    let r = flags_from_vec(svec!["deno", "run", "--mode=staging", "script.ts"]);
+    assert_eq!(r.unwrap().mode, Some("staging".to_string()));
   }
 
   // The dependency and registry subcommands also accept --env-file so that

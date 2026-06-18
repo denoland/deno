@@ -91,6 +91,32 @@ pub fn find_path_and_content(
   Ok(None)
 }
 
+/// Expands an env file specifier into its conventional cascade, returned in
+/// increasing precedence order (later entries are meant to override earlier
+/// ones):
+///
+/// ```text
+/// <base>
+/// <base>.<mode>          (only when `mode` is `Some`)
+/// <base>.local
+/// <base>.<mode>.local    (only when `mode` is `Some`)
+/// ```
+///
+/// The suffixes are appended to the full specifier, so both bare names like
+/// `.env` and explicit paths like `config/app.env` cascade the same way.
+pub fn cascade_paths(base: &str, mode: Option<&str>) -> Vec<String> {
+  let mut paths = Vec::with_capacity(if mode.is_some() { 4 } else { 2 });
+  paths.push(base.to_string());
+  if let Some(mode) = mode {
+    paths.push(format!("{base}.{mode}"));
+  }
+  paths.push(format!("{base}.local"));
+  if let Some(mode) = mode {
+    paths.push(format!("{base}.{mode}.local"));
+  }
+  paths
+}
+
 #[derive(Debug, Error)]
 #[error("Error parsing line at index {index}: {line}")]
 pub struct ParseError {
@@ -1065,6 +1091,37 @@ u4QuUoobAgMBAAE=
       // `KEY1_2` is the whole variable name and is undefined, so it resolves
       // to an empty string
       &[("KEY2", ""), ("KEY", "><><")],
+    );
+  }
+
+  #[test]
+  fn cascade_paths_without_mode() {
+    assert_eq!(cascade_paths(".env", None), vec![".env", ".env.local"]);
+  }
+
+  #[test]
+  fn cascade_paths_with_mode() {
+    assert_eq!(
+      cascade_paths(".env", Some("production")),
+      vec![
+        ".env",
+        ".env.production",
+        ".env.local",
+        ".env.production.local",
+      ]
+    );
+  }
+
+  #[test]
+  fn cascade_paths_explicit_path() {
+    assert_eq!(
+      cascade_paths("config/app.env", Some("dev")),
+      vec![
+        "config/app.env",
+        "config/app.env.dev",
+        "config/app.env.local",
+        "config/app.env.dev.local",
+      ]
     );
   }
 

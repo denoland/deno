@@ -34,6 +34,8 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::time::sleep;
 
 use super::env::WatchEnvTracker;
+use super::env::expand_env_file_cascade;
+use super::env::resolve_env_file_mode;
 use crate::args::Flags;
 use crate::colors;
 use crate::util::fs::canonicalize_path;
@@ -393,9 +395,11 @@ where
         .as_deref()
         .map(Cow::Borrowed)
         .unwrap_or_else(|| Cow::Owned(PathBuf::from(".")));
+      let mode = resolve_env_file_mode(flags.mode.as_deref());
+      let env_files = expand_env_file_cascade(env_files, mode.as_deref());
       snapshot.load_env_variables_from_env_files(
         &cwd,
-        env_files,
+        &env_files,
         flags.log_level,
       );
     }

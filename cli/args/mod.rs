@@ -731,12 +731,20 @@ impl CliOptions {
   pub fn possible_env_file_paths_for_watch(
     &self,
   ) -> impl Iterator<Item = PathBuf> {
-    self
-      .env_file_names()
-      .flat_map(|env_file| {
-        deno_dotenv::candidate_paths(&self.initial_cwd, env_file)
-      })
-      .filter_map(|p| canonicalize_path(&p).ok())
+    let mode =
+      crate::util::env::resolve_env_file_mode(self.flags.mode.as_deref());
+    let mut paths = Vec::new();
+    for base in self.env_file_names() {
+      for spec in deno_dotenv::cascade_paths(base, mode.as_deref()) {
+        for candidate in deno_dotenv::candidate_paths(&self.initial_cwd, &spec)
+        {
+          if let Ok(path) = canonicalize_path(&candidate) {
+            paths.push(path);
+          }
+        }
+      }
+    }
+    paths.into_iter()
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
@@ -1526,11 +1534,17 @@ impl CliOptions {
     }
 
     if let Some(env_file_names) = &self.flags.env_file {
-      // Only watch the exact environment files specified
+      // Watch the specified environment files along with their cascade
+      // siblings (.env.local, .env.<mode>, etc.).
+      let mode =
+        crate::util::env::resolve_env_file_mode(self.flags.mode.as_deref());
       full_paths.extend(
-        env_file_names
-          .iter()
-          .map(|name| self.initial_cwd.join(name)),
+        crate::util::env::expand_env_file_cascade(
+          env_file_names,
+          mode.as_deref(),
+        )
+        .iter()
+        .map(|name| self.initial_cwd.join(name)),
       );
     }
 
