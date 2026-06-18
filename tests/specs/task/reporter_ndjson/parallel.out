@@ -1,0 +1,11 @@
+[UNORDERED_START]
+{"type":"taskStart","package":null,"task":"foo","command":"echo foo_output"}
+{"type":"taskOutput","package":null,"task":"foo","stream":"stdout","text":"foo_output\n"}
+{"type":"taskEnd","package":null,"task":"foo","code":0,"durationMs":[WILDLINE]
+{"type":"taskStart","package":null,"task":"bar","command":"echo bar_output"}
+{"type":"taskOutput","package":null,"task":"bar","stream":"stdout","text":"bar_output\n"}
+{"type":"taskEnd","package":null,"task":"bar","code":0,"durationMs":[WILDLINE]
+[UNORDERED_END]
+{"type":"taskStart","package":null,"task":"main","command":"echo main_output"}
+{"type":"taskOutput","package":null,"task":"main","stream":"stdout","text":"main_output\n"}
+{"type":"taskEnd","package":null,"task":"main","code":0,"durationMs":[WILDLINE]

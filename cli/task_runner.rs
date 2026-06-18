@@ -123,6 +123,37 @@ pub fn make_prefixed_task_io(prefix: String) -> (TaskIo, Vec<JoinHandle<()>>) {
   )
 }
 
+/// Build a [`TaskIo`] that pipes the task's stdout and stderr into the given
+/// writers (run on blocking threads). Used by the ndjson reporter to capture
+/// task output and wrap it in structured events instead of writing it raw.
+pub fn make_captured_task_io(
+  stdout_writer: Box<dyn std::io::Write + Send>,
+  stderr_writer: Box<dyn std::io::Write + Send>,
+) -> (TaskIo, Vec<JoinHandle<()>>) {
+  let (out_r, out_w) = deno_task_shell::pipe();
+  let (err_r, err_w) = deno_task_shell::pipe();
+
+  let out_handle = tokio::task::spawn_blocking(move || {
+    let mut writer = stdout_writer;
+    let _ = out_r.pipe_to(&mut *writer);
+    let _ = writer.flush();
+  });
+
+  let err_handle = tokio::task::spawn_blocking(move || {
+    let mut writer = stderr_writer;
+    let _ = err_r.pipe_to(&mut *writer);
+    let _ = writer.flush();
+  });
+
+  (
+    TaskIo {
+      stdout: TaskStdio(None, out_w),
+      stderr: TaskStdio(None, err_w),
+    },
+    vec![out_handle, err_handle],
+  )
+}
+
 impl TaskStdio {
   pub fn stdout() -> Self {
     Self(None, ShellPipeWriter::stdout())

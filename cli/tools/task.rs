@@ -4,11 +4,14 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
+use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 
 use console_static_text::ansi::strip_ansi_codes;
 use deno_config::workspace::FolderConfigs;
@@ -25,6 +28,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::stream::futures_unordered;
+use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_npm_installer::PackageCaching;
@@ -34,11 +38,13 @@ use deno_task_shell::ShellCommand;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use regex::Regex;
+use serde::Serialize;
 
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TaskFlags;
+use crate::args::TaskReporter;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::node::CliNodeResolver;
@@ -349,6 +355,115 @@ fn colorize_task_prefix(label: &str, color_index: usize) -> String {
   }
 }
 
+/// A `deno task --reporter ndjson` lifecycle event, serialized as a single
+/// JSON object per line on stdout. The event/field set is intended to be
+/// stable; see `deno task --help` for documentation.
+#[derive(Serialize)]
+#[serde(tag = "type")]
+enum TaskEvent<'a> {
+  /// Emitted just before a task's command starts running.
+  #[serde(rename = "taskStart")]
+  Start {
+    package: Option<&'a str>,
+    task: &'a str,
+    command: &'a str,
+  },
+  /// A line of captured task output. One event is emitted per line written by
+  /// the task; `stream` is either `"stdout"` or `"stderr"`.
+  #[serde(rename = "taskOutput")]
+  Output {
+    package: Option<&'a str>,
+    task: &'a str,
+    stream: &'a str,
+    text: &'a str,
+  },
+  /// Emitted after a task's command finishes.
+  #[serde(rename = "taskEnd", rename_all = "camelCase")]
+  End {
+    package: Option<&'a str>,
+    task: &'a str,
+    code: i32,
+    duration_ms: u128,
+  },
+}
+
+/// Serialize an ndjson event and write it to stdout as a single line. The whole
+/// line (including the trailing newline) is written under one stdout lock so
+/// that output from concurrently-running tasks never interleaves mid-line.
+#[allow(
+  clippy::print_stdout,
+  reason = "the ndjson reporter writes its events to stdout"
+)]
+fn emit_ndjson_event(event: &TaskEvent) {
+  let Ok(mut line) = serde_json::to_vec(event) else {
+    return;
+  };
+  line.push(b'\n');
+  let stdout = std::io::stdout();
+  let mut lock = stdout.lock();
+  let _ = lock.write_all(&line);
+  let _ = lock.flush();
+}
+
+/// A writer that wraps each line of a task's captured output in a `taskOutput`
+/// ndjson event. Partial lines are buffered until a newline (or `flush`) so
+/// that every event corresponds to exactly one line of output.
+struct NdjsonOutputWriter {
+  package: Option<String>,
+  task: String,
+  stream: &'static str,
+  line_buf: Vec<u8>,
+}
+
+impl NdjsonOutputWriter {
+  fn new(package: Option<String>, task: String, stream: &'static str) -> Self {
+    Self {
+      package,
+      task,
+      stream,
+      line_buf: Vec::new(),
+    }
+  }
+
+  fn emit_line(&mut self) {
+    let text = String::from_utf8_lossy(&self.line_buf);
+    emit_ndjson_event(&TaskEvent::Output {
+      package: self.package.as_deref(),
+      task: &self.task,
+      stream: self.stream,
+      text: &text,
+    });
+    self.line_buf.clear();
+  }
+}
+
+impl std::io::Write for NdjsonOutputWriter {
+  fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    let mut rest = buf;
+    while !rest.is_empty() {
+      match rest.iter().position(|&b| b == b'\n') {
+        Some(pos) => {
+          self.line_buf.extend_from_slice(&rest[..pos + 1]);
+          self.emit_line();
+          rest = &rest[pos + 1..];
+        }
+        None => {
+          self.line_buf.extend_from_slice(rest);
+          break;
+        }
+      }
+    }
+    Ok(buf.len())
+  }
+
+  fn flush(&mut self) -> std::io::Result<()> {
+    if !self.line_buf.is_empty() {
+      self.emit_line();
+    }
+    Ok(())
+  }
+}
+
 struct RunSingleOptions<'a> {
   task_name: &'a str,
   package_name: Option<&'a str>,
@@ -640,11 +755,17 @@ impl<'a> TaskRunner<'a> {
     parallel_info: Option<ParallelInfo>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     let Some(command) = &definition.command else {
-      self.output_task(
-        task_name,
-        package_name,
-        &colors::gray("(no command)").to_string(),
-      );
+      match self.task_flags.reporter {
+        TaskReporter::Pretty => self.output_task(
+          task_name,
+          package_name,
+          &colors::gray("(no command)").to_string(),
+        ),
+        TaskReporter::Ndjson => {
+          self.report_task_start(task_name, package_name, "(no command)");
+          self.report_task_end(task_name, package_name, 0, Duration::ZERO);
+        }
+      }
       return Ok(0);
     };
 
@@ -791,31 +912,51 @@ impl<'a> TaskRunner<'a> {
       extra_env_vars,
     } = opts;
 
-    self.output_task(
-      task_name,
-      package_name,
-      &task_runner::get_script_with_args(script, argv),
-    );
+    let script_with_args = task_runner::get_script_with_args(script, argv);
+    self.report_task_start(task_name, package_name, &script_with_args);
 
-    let (stdio, prefix_handles) = if let Some(info) = parallel_info {
-      // Right-align the entire `[name]` block so brackets line up across rows,
-      // putting the leading padding spaces *outside* the brackets.
-      let inner: Cow<str> = if info.include_package
-        && let Some(pkg) = label_name
-      {
-        Cow::Owned(format!("{}#{}", pkg, task_name))
-      } else {
-        Cow::Borrowed(task_name)
-      };
-      let label = format!("[{}]", inner);
-      let padded_label =
-        format!("{:>width$}", label, width = info.label_pad_width + 2);
-      let prefix =
-        format!("{} ", colorize_task_prefix(&padded_label, info.color_index));
-      let (io, handles) = task_runner::make_prefixed_task_io(prefix);
-      (Some(io), handles)
-    } else {
-      (None, vec![])
+    let (stdio, output_handles) = match self.task_flags.reporter {
+      // Capture stdout/stderr and wrap each line in a `taskOutput` event so the
+      // stream on stdout stays valid NDJSON.
+      TaskReporter::Ndjson => {
+        let (io, handles) = task_runner::make_captured_task_io(
+          Box::new(NdjsonOutputWriter::new(
+            package_name.map(str::to_string),
+            task_name.to_string(),
+            "stdout",
+          )),
+          Box::new(NdjsonOutputWriter::new(
+            package_name.map(str::to_string),
+            task_name.to_string(),
+            "stderr",
+          )),
+        );
+        (Some(io), handles)
+      }
+      TaskReporter::Pretty => {
+        if let Some(info) = parallel_info {
+          // Right-align the entire `[name]` block so brackets line up across
+          // rows, putting the leading padding spaces *outside* the brackets.
+          let inner: Cow<str> = if info.include_package
+            && let Some(pkg) = label_name
+          {
+            Cow::Owned(format!("{}#{}", pkg, task_name))
+          } else {
+            Cow::Borrowed(task_name)
+          };
+          let label = format!("[{}]", inner);
+          let padded_label =
+            format!("{:>width$}", label, width = info.label_pad_width + 2);
+          let prefix = format!(
+            "{} ",
+            colorize_task_prefix(&padded_label, info.color_index)
+          );
+          let (io, handles) = task_runner::make_prefixed_task_io(prefix);
+          (Some(io), handles)
+        } else {
+          (None, vec![])
+        }
+      }
     };
 
     let env_vars = if extra_env_vars.is_empty() {
@@ -826,6 +967,7 @@ impl<'a> TaskRunner<'a> {
       env_vars
     };
 
+    let started_at = Instant::now();
     let exit_code = task_runner::run_task(task_runner::RunTaskOptions {
       task_name,
       script,
@@ -841,9 +983,17 @@ impl<'a> TaskRunner<'a> {
     .await?
     .exit_code;
 
-    for handle in prefix_handles {
+    // Wait for the output-forwarding tasks to drain before reporting the end so
+    // that all `taskOutput` events precede the `taskEnd` event.
+    for handle in output_handles {
       let _ = handle.await;
     }
+    self.report_task_end(
+      task_name,
+      package_name,
+      exit_code,
+      started_at.elapsed(),
+    );
 
     Ok(exit_code)
   }
@@ -860,6 +1010,45 @@ impl<'a> TaskRunner<'a> {
       }
     }
     Ok(())
+  }
+
+  /// Report that a task is about to start: either the human-readable `Task`
+  /// log line (pretty) or a `taskStart` ndjson event.
+  fn report_task_start(
+    &self,
+    task_name: &str,
+    package_name: Option<&str>,
+    command: &str,
+  ) {
+    match self.task_flags.reporter {
+      TaskReporter::Pretty => {
+        self.output_task(task_name, package_name, command)
+      }
+      TaskReporter::Ndjson => emit_ndjson_event(&TaskEvent::Start {
+        package: package_name,
+        task: task_name,
+        command,
+      }),
+    }
+  }
+
+  /// Report that a task finished. Only the ndjson reporter emits an end event;
+  /// the pretty reporter's output is unchanged.
+  fn report_task_end(
+    &self,
+    task_name: &str,
+    package_name: Option<&str>,
+    code: i32,
+    duration: Duration,
+  ) {
+    if let TaskReporter::Ndjson = self.task_flags.reporter {
+      emit_ndjson_event(&TaskEvent::End {
+        package: package_name,
+        task: task_name,
+        code,
+        duration_ms: duration.as_millis(),
+      });
+    }
   }
 
   fn output_task(

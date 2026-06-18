@@ -1,0 +1,22 @@
+{
+  "tests": {
+    "single_task": {
+      "args": "task --reporter ndjson hello",
+      "output": "single.out"
+    },
+    "failing_task_preserves_exit_code": {
+      "args": "task --reporter ndjson fail",
+      "exitCode": 3,
+      "output": "fail.out"
+    },
+    "parallel_tasks": {
+      "args": "task --reporter ndjson main",
+      "output": "parallel.out"
+    },
+    "invalid_reporter": {
+      "args": "task --reporter bogus hello",
+      "exitCode": 1,
+      "output": "invalid.out"
+    }
+  }
+}
