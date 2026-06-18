@@ -446,6 +446,7 @@ const INDICES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
 pub const CONTEXT_ID: &str = "bitmaprenderer";
 
+#[allow(clippy::too_many_arguments, reason = "matches CreateCanvasContext signature")]
 pub fn create<'s>(
   _state: std::rc::Rc<std::cell::RefCell<deno_core::OpState>>,
   instance: Option<deno_webgpu::Instance>,
