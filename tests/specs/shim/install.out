@@ -1,0 +1,7 @@
+✓ Installed npm, npx, pnpm, yarn shims to [WILDLINE]
+
+These are shims, not the real package managers; they route to Deno.
+
+Add the shim directory to your PATH to start using them:
+[WILDCARD]
+Run deno shim --uninstall to remove them.

@@ -425,6 +425,11 @@ async fn run_subcommand(
         }
       }
     }),
+    DenoSubcommand::Shim(shim_flags) => {
+      spawn_subcommand(
+        async move { tools::shim::shim(Arc::new(flags), shim_flags) },
+      )
+    }
     DenoSubcommand::Serve(serve_flags) => spawn_subcommand(async move {
       tools::serve::serve(
         Arc::new(flags),

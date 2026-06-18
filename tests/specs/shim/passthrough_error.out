@@ -1,0 +1,2 @@
+[WILDCARD]error: `npm` is not translated by the Deno shim and no real `npm` was found on your PATH.
+  Install npm, or run the Deno equivalent directly.

@@ -774,6 +774,24 @@ pub struct CleanFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ShimMode {
+  /// Install the package manager shims into a PATH directory.
+  Install,
+  /// Remove the previously installed shims.
+  Uninstall,
+  /// Print the current shim installation state.
+  List,
+  /// Internal: a shim is forwarding an invocation of `pm` (e.g. `npm`) with
+  /// `args` so Deno can translate it. Not meant to be typed by users directly.
+  Run { pm: String, args: Vec<String> },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ShimFlags {
+  pub mode: ShimMode,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleFlags {
   pub entrypoints: Vec<String>,
   pub output_path: Option<String>,
@@ -823,6 +841,7 @@ pub enum DenoSubcommand {
   Lint(LintFlags),
   Repl(ReplFlags),
   Run(RunFlags),
+  Shim(ShimFlags),
   Serve(ServeFlags),
   Task(TaskFlags),
   Test(TestFlags),
@@ -2269,6 +2288,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "outdated" => outdated_parse(&mut flags, &mut m, false)?,
         "repl" => repl_parse(&mut flags, &mut m)?,
         "run" => run_parse(&mut flags, &mut m, app, false)?,
+        "shim" => shim_parse(&mut flags, &mut m)?,
         "serve" => serve_parse(&mut flags, &mut m, app)?,
         "task" => task_parse(&mut flags, &mut m, app)?,
         "test" => test_parse(&mut flags, &mut m)?,
@@ -2550,6 +2570,7 @@ pub fn clap_root() -> Command {
         .subcommand(publish_subcommand())
         .subcommand(pack_subcommand())
         .subcommand(repl_subcommand())
+        .subcommand(shim_subcommand())
         .subcommand(task_subcommand())
         .subcommand(test_subcommand())
         .subcommand(transpile_subcommand())
@@ -3160,6 +3181,58 @@ fn clean_subcommand() -> Command {
       .arg(node_modules_dir_arg().requires("except"))
       .arg(node_modules_linker_arg().requires("except"))
       .arg(vendor_arg().requires("except"))
+  })
+}
+
+fn shim_subcommand() -> Command {
+  command(
+    "shim",
+    cstr!(
+      "<y>Experimental:</> Install shims that route npm/npx/pnpm/yarn to Deno.
+
+A migration aid for teams coming from Node: your existing package-manager
+muscle memory keeps working, but the commands run their Deno equivalents.
+These are shims, not the real package managers. Only a curated, high-confidence
+subset of commands is translated; anything else is passed through to the real
+binary if one is found on <p(245)>PATH</>.
+
+  <p(245)>deno shim</>            <p(245)># install npm/npx/pnpm/yarn shims</>
+  <p(245)>deno shim --list</>     <p(245)># show what is installed</>
+  <p(245)>deno shim --uninstall</> <p(245)># remove the shims</>"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("uninstall")
+          .long("uninstall")
+          .help("Remove the installed shims")
+          .action(ArgAction::SetTrue)
+          .conflicts_with_all(["list", "run"]),
+      )
+      .arg(
+        Arg::new("list")
+          .long("list")
+          .help("Show the current shim installation state")
+          .action(ArgAction::SetTrue)
+          .conflicts_with_all(["uninstall", "run"]),
+      )
+      .arg(
+        // Internal: invoked by the generated shim scripts.
+        Arg::new("run")
+          .long("run")
+          .hide(true)
+          .num_args(1)
+          .conflicts_with_all(["uninstall", "list"]),
+      )
+      .arg(
+        Arg::new("args")
+          .num_args(0..)
+          .trailing_var_arg(true)
+          .allow_hyphen_values(true)
+          .requires("run"),
+      )
   })
 }
 
@@ -7538,6 +7611,27 @@ fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     node_modules_and_vendor_dir_arg_parse(flags, matches);
   }
   flags.subcommand = DenoSubcommand::Clean(clean_flags);
+}
+
+fn shim_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  let mode = if let Some(pm) = matches.remove_one::<String>("run") {
+    let args = matches
+      .remove_many::<String>("args")
+      .map(|args| args.collect())
+      .unwrap_or_default();
+    ShimMode::Run { pm, args }
+  } else if matches.get_flag("uninstall") {
+    ShimMode::Uninstall
+  } else if matches.get_flag("list") {
+    ShimMode::List
+  } else {
+    ShimMode::Install
+  };
+  flags.subcommand = DenoSubcommand::Shim(ShimFlags { mode });
+  Ok(())
 }
 
 fn compile_parse(
@@ -17153,6 +17247,45 @@ Usage: deno lint [OPTIONS] [files]...\n"
         Flags {
           subcommand: DenoSubcommand::Clean(expected),
           cached_only,
+          ..Flags::default()
+        },
+        "incorrect result for args: {:?}",
+        args
+      );
+    }
+  }
+
+  #[test]
+  fn shim_subcommand() {
+    let cases = [
+      (svec!["shim"], ShimMode::Install),
+      (svec!["shim", "--uninstall"], ShimMode::Uninstall),
+      (svec!["shim", "--list"], ShimMode::List),
+      (
+        svec!["shim", "--run", "npm", "--", "install", "express"],
+        ShimMode::Run {
+          pm: "npm".to_string(),
+          args: svec!["install", "express"],
+        },
+      ),
+      (
+        svec![
+          "shim", "--run", "npm", "--", "run", "build", "--", "--watch"
+        ],
+        ShimMode::Run {
+          pm: "npm".to_string(),
+          args: svec!["run", "build", "--", "--watch"],
+        },
+      ),
+    ];
+    for (input, expected) in cases {
+      let mut args = svec!["deno"];
+      args.extend(input.clone());
+      let r = flags_from_vec(args.clone()).unwrap();
+      assert_eq!(
+        r,
+        Flags {
+          subcommand: DenoSubcommand::Shim(ShimFlags { mode: expected }),
           ..Flags::default()
         },
         "incorrect result for args: {:?}",

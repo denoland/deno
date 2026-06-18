@@ -645,6 +645,7 @@ impl CliFactory {
             | DenoSubcommand::Lint { .. }
             | DenoSubcommand::Repl { .. }
             | DenoSubcommand::Run { .. }
+            | DenoSubcommand::Shim { .. }
             | DenoSubcommand::Serve { .. }
             | DenoSubcommand::Task { .. }
             | DenoSubcommand::Test { .. }
