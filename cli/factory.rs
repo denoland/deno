@@ -1338,6 +1338,14 @@ impl CliFactory {
             ),
             source_map_base: None,
             preserve_jsx: false,
+            // Untyped execution environments (e.g. isolates running with
+            // --no-check) can opt out of verbatimModuleSyntax, which
+            // otherwise leaves dangling type-only re-exports that crash at
+            // runtime. Truthy values are `1` and `true`.
+            force_disable_verbatim_module_syntax: matches!(
+              std::env::var("DENO_DISABLE_VERBATIM_MODULE_SYNTAX").as_deref(),
+              Ok("1") | Ok("true")
+            ),
           },
           is_cjs_resolution_mode: if options.is_node_main()
             || options.unstable_detect_cjs()
