@@ -991,6 +991,19 @@ async function runWithTestGuards(invoke, opts) {
     const body = (async () => {
       const value = await invoke();
       // The body finished first; stop attributing later rejections to it.
+      //
+      // Attribution is best-effort and bounded by timing: an unhandled
+      // rejection scheduled by the body is only attributed to this test if its
+      // `unhandledrejection` event fires before the sink is marked settled. A
+      // rejected promise is typically reported at the next microtask
+      // checkpoint, which can land a tick or two after the body's returned
+      // promise resolves. To widen the window we flush a couple of microtask
+      // turns before settling, so a rejection that surfaces immediately after
+      // the body returns is still caught. A rejection that surfaces even later
+      // (for example behind a macrotask) will not be attributed; Node's
+      // microtask-checkpoint based mechanism is more deterministic here.
+      await PromiseResolve();
+      await PromiseResolve();
       sink.settled = true;
       return value;
     })();
