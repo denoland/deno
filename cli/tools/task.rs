@@ -196,14 +196,15 @@ pub async fn execute_script(
 
   // Precedence: explicit `--workspace-concurrency` flag > `DENO_JOBS` env var >
   // `available_parallelism()` default.
-  let no_of_concurrent_tasks =
-    if let Some(concurrency) = task_flags.workspace_concurrency {
-      Some(concurrency)
-    } else if let Ok(value) = std::env::var("DENO_JOBS") {
-      value.parse::<NonZeroUsize>().ok()
-    } else {
-      std::thread::available_parallelism().ok()
-    }
+  let no_of_concurrent_tasks = task_flags
+    .workspace_concurrency
+    .or_else(|| {
+      std::env::var("DENO_JOBS")
+        .ok()?
+        .parse::<NonZeroUsize>()
+        .ok()
+    })
+    .or_else(|| std::thread::available_parallelism().ok())
     .unwrap_or_else(|| NonZeroUsize::new(2).unwrap());
 
   let task_runner = TaskRunner {

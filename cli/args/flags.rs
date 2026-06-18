@@ -5047,10 +5047,11 @@ Evaluate a task from string:
         Arg::new("workspace-concurrency")
           .long("workspace-concurrency")
           .help(
-            "Maximum number of workspace tasks to run concurrently.
+            "Maximum number of tasks to run concurrently.
 Overrides the DENO_JOBS environment variable; defaults to the number of
-available CPUs. Use 1 to force sequential execution. Only affects
-multi-task runs (--recursive/--filter); single-task runs are unaffected",
+available CPUs. Use 1 to force sequential execution. Only affects runs
+where multiple tasks can run concurrently (workspace runs, or a task with
+parallelizable dependencies)",
           )
           .value_name("NUMBER")
           .value_parser(value_parser!(NonZeroUsize)),
