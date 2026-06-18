@@ -418,6 +418,11 @@ impl<'a> TaskRunner<'a> {
       if self.task_flags.is_run {
         return Err(anyhow!("Task not found: {}", task_name));
       }
+      // `--if-present` mirrors npm's flag: exit cleanly and quietly when the
+      // requested task does not exist, without listing available tasks.
+      if self.task_flags.if_present {
+        return Ok(0);
+      }
       log::error!("Task not found: {}", task_name);
       if log::log_enabled!(log::Level::Error)
         && let Some(pkg) = packages.first()
