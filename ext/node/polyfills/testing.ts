@@ -16,6 +16,7 @@ const {
   DatePrototypeToString,
   Error,
   ErrorPrototype,
+  JSONStringify,
   MapPrototypeClear,
   MapPrototypeDelete,
   MapPrototypeGet,
@@ -24,6 +25,7 @@ const {
   NumberIsFinite,
   NumberIsInteger,
   ObjectDefineProperty,
+  ObjectKeys,
   ObjectPrototypeHasOwnProperty,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
@@ -43,7 +45,13 @@ const {
   SafeMapIterator,
   SafeRegExp,
   String,
+  StringPrototypeEndsWith,
+  StringPrototypeIncludes,
+  StringPrototypeIndexOf,
   StringPrototypeMatch,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  StringPrototypeStartsWith,
   Symbol,
   SymbolDispose,
   SymbolFor,
@@ -188,6 +196,7 @@ function installErrorHandlers() {
   });
 }
 const {
+  validateBoolean,
   validateFunction,
   validateInteger,
   validateNumber,
@@ -2405,6 +2414,476 @@ function createMockDate(mockTimers) {
 
 const mockTimers = new MockTimers();
 
+// `mock.module()` support.
+//
+// Module mocking is built on top of `module.registerHooks()` (the Node module
+// customization hooks). A single registration intercepts both `import()` and
+// `require()`. The whole subsystem is lazily initialized on the first
+// `mock.module()` call so that importing `node:test` without mocking modules
+// pays no startup cost and registers no hooks.
+
+// Symbol under which the live mock registry is published on `globalThis`. The
+// synthetic module source generated for a mocked specifier reads the live
+// export values back out of this registry at evaluation time, so functions and
+// objects passed to `mock.module()` cross into the mocked module unchanged.
+const kMockModuleRegistryName = "deno.internal.nodeTestMockModules";
+// Search param appended to a mocked ESM url to bust the module cache when
+// `cache` is false. ESM modules cannot be evicted from the loader cache, so a
+// fresh url (new version) is resolved on every import instead.
+const kMockSearchParam = "node-test-mock";
+const kBadExportsMessage = "Cannot create mock because named exports cannot " +
+  "be applied to the provided default export.";
+
+let mockModuleRegistry = null;
+let mockModuleHooksHandle = null;
+let nodeModuleNamespace = null;
+// Monotonic counter used to version mocked ESM urls. A global (rather than
+// per-mock) counter guarantees that a freshly created mock never collides with
+// a versioned url that a previous mock already cached.
+let mockModuleVersion = 0;
+
+function getNodeModuleNamespace() {
+  if (nodeModuleNamespace === null) {
+    nodeModuleNamespace = core.createLazyLoader("node:module")();
+  }
+  return nodeModuleNamespace;
+}
+
+function isUrlLike(value) {
+  return value !== null && typeof value === "object" &&
+    typeof value.href === "string" && typeof value.protocol === "string";
+}
+
+function ensureMockModuleHooks() {
+  if (mockModuleHooksHandle !== null) {
+    return;
+  }
+  mockModuleRegistry = new SafeMap();
+  globalThis[SymbolFor(kMockModuleRegistryName)] = mockModuleRegistry;
+  const { registerHooks } = getNodeModuleNamespace();
+  mockModuleHooksHandle = registerHooks({
+    __proto__: null,
+    resolve: mockModuleResolveHook,
+    load: mockModuleLoadHook,
+  });
+}
+
+// Best effort discovery of the file that called `mock.module()`, used to
+// resolve relative specifiers the same way Node does (eagerly, against the
+// caller). Returns undefined when no user frame can be found, in which case
+// the default resolver falls back to the current working directory.
+const kStackFrameUrl = new SafeRegExp(
+  "((?:file|https?):\\/\\/[^\\s)]+?):\\d+:\\d+",
+);
+function getCallerUrl() {
+  const stack = new Error().stack;
+  if (typeof stack !== "string") {
+    return undefined;
+  }
+  const lines = StringPrototypeSplit(stack, "\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (
+      StringPrototypeIncludes(line, "ext:deno_node/") ||
+      StringPrototypeIncludes(line, "ext:core/")
+    ) {
+      continue;
+    }
+    const match = RegExpPrototypeExec(kStackFrameUrl, line);
+    if (match !== null) {
+      const candidate = match[1];
+      if (
+        StringPrototypeStartsWith(candidate, "file:") ||
+        StringPrototypeStartsWith(candidate, "http")
+      ) {
+        return candidate;
+      }
+    }
+  }
+  return undefined;
+}
+
+let nodeUrlNamespace = null;
+function getNodeUrl() {
+  if (nodeUrlNamespace === null) {
+    nodeUrlNamespace = core.createLazyLoader("node:url")();
+  }
+  return nodeUrlNamespace;
+}
+
+// Normalizes a builtin specifier so that both `readline` and `node:readline`
+// map to the same registry key.
+function normalizeNodeScheme(specifier) {
+  if (StringPrototypeStartsWith(specifier, "node:")) {
+    return specifier;
+  }
+  const { isBuiltin } = getNodeModuleNamespace();
+  if (isBuiltin(specifier)) {
+    return "node:" + specifier;
+  }
+  return specifier;
+}
+
+// Canonicalizes a resolved url into the registry key. Builtins are normalized
+// to the `node:` scheme; file urls are resolved through the real path so that
+// the key registered by `mock.module()` matches the (realpath based) url the
+// require/import hooks observe, regardless of symlinks such as macOS
+// `/tmp` to `/private/tmp`.
+function canonicalizeUrlKey(u) {
+  if (StringPrototypeStartsWith(u, "file:")) {
+    try {
+      const path = getNodeUrl().fileURLToPath(u);
+      const real = core.ops.op_require_real_path(path);
+      return getNodeUrl().pathToFileURL(real).href;
+    } catch {
+      return u;
+    }
+  }
+  return normalizeNodeScheme(u);
+}
+
+// Resolves a `mock.module()` specifier to the canonical registry key (the
+// resolved module url, with builtins normalized to the `node:` scheme).
+function resolveSpecifierToKey(specifier) {
+  if (StringPrototypeStartsWith(specifier, "node:")) {
+    return specifier;
+  }
+  const parentUrl = getCallerUrl();
+  let resolved;
+  try {
+    resolved = core.ops.op_module_default_resolve(specifier, parentUrl);
+  } catch {
+    resolved = specifier;
+  }
+  return canonicalizeUrlKey(resolved);
+}
+
+// Strips the cache busting search param so a versioned ESM url maps back to its
+// registry key.
+function stripMockParam(u) {
+  const idx = StringPrototypeIndexOf(u, kMockSearchParam);
+  if (idx === -1) {
+    return u;
+  }
+  try {
+    const parsed = new URL(u);
+    parsed.searchParams.delete(kMockSearchParam);
+    let href = parsed.href;
+    if (StringPrototypeEndsWith(href, "?")) {
+      href = StringPrototypeSlice(href, 0, href.length - 1);
+    }
+    return href;
+  } catch {
+    return u;
+  }
+}
+
+function appendMockParam(u, version) {
+  const sep = StringPrototypeIncludes(u, "?") ? "&" : "?";
+  return u + sep + kMockSearchParam + "=" + version;
+}
+
+// Looks up the active mock entry (if any) for a url seen by a hook.
+function lookupMockEntry(u) {
+  if (mockModuleRegistry === null) {
+    return undefined;
+  }
+  let entry = MapPrototypeGet(mockModuleRegistry, u);
+  if (entry === undefined && StringPrototypeIncludes(u, kMockSearchParam)) {
+    entry = MapPrototypeGet(mockModuleRegistry, stripMockParam(u));
+  }
+  if (entry === undefined) {
+    return undefined;
+  }
+  return entry.active ? entry : undefined;
+}
+
+function detectFormat(key) {
+  if (StringPrototypeStartsWith(key, "node:")) {
+    return "commonjs";
+  }
+  if (
+    StringPrototypeEndsWith(key, ".mjs") || StringPrototypeEndsWith(key, ".mts")
+  ) {
+    return "module";
+  }
+  if (
+    StringPrototypeEndsWith(key, ".cjs") || StringPrototypeEndsWith(key, ".cts")
+  ) {
+    return "commonjs";
+  }
+  if (StringPrototypeStartsWith(key, "file:")) {
+    try {
+      const path = getUrlHelpers().toPathIfFileURL(key);
+      return core.ops.op_require_is_maybe_cjs(path) ? "commonjs" : "module";
+    } catch {
+      return "commonjs";
+    }
+  }
+  return "commonjs";
+}
+
+function registryAccessSource() {
+  return "globalThis[Symbol.for(" + JSONStringify(kMockModuleRegistryName) +
+    ")]";
+}
+
+function generateCjsSource(entry, key) {
+  let src = '"use strict";\n';
+  src += "const $e = " + registryAccessSource() + ".get(" +
+    JSONStringify(key) + ");\n";
+  src += "if ($e === undefined) { throw new Error(" +
+    JSONStringify('mock exports not found for "' + key + '"') + "); }\n";
+  if (entry.hasDefaultExport) {
+    src += "module.exports = $e.moduleExports.default;\n";
+  }
+  if (entry.exportNames.length > 0) {
+    src += "if (module.exports === null || typeof module.exports !== " +
+      '"object") { throw new Error(' + JSONStringify(kBadExportsMessage) +
+      "); }\n";
+    for (let i = 0; i < entry.exportNames.length; i++) {
+      const name = entry.exportNames[i];
+      src += "module.exports[" + JSONStringify(name) + "] = " +
+        "$e.moduleExports[" + JSONStringify(name) + "];\n";
+    }
+  }
+  return src;
+}
+
+function generateEsmSource(entry, key) {
+  let src = "const $e = " + registryAccessSource() + ".get(" +
+    JSONStringify(key) + ");\n";
+  src += "if ($e === undefined) { throw new Error(" +
+    JSONStringify('mock exports not found for "' + key + '"') + "); }\n";
+  if (entry.isCjs) {
+    // For a CommonJS module the named exports are applied onto the default
+    // export object, mirroring how Deno exposes a required CJS module to an
+    // ESM importer (default plus the merged keys).
+    src += "let $d = $e.hasDefaultExport ? $e.moduleExports.default : {};\n";
+    if (entry.exportNames.length > 0) {
+      src += 'if ($d === null || typeof $d !== "object") { throw new Error(' +
+        JSONStringify(kBadExportsMessage) + "); }\n";
+      for (let i = 0; i < entry.exportNames.length; i++) {
+        const name = entry.exportNames[i];
+        src += "$d[" + JSONStringify(name) + "] = $e.moduleExports[" +
+          JSONStringify(name) + "];\n";
+      }
+    }
+    src += "export default $d;\n";
+    for (let i = 0; i < entry.exportNames.length; i++) {
+      const name = entry.exportNames[i];
+      src += "export let " + name + " = $d[" + JSONStringify(name) + "];\n";
+    }
+  } else {
+    // For an ESM module the default export and named exports are independent.
+    if (entry.hasDefaultExport) {
+      src += "export default $e.moduleExports.default;\n";
+    }
+    for (let i = 0; i < entry.exportNames.length; i++) {
+      const name = entry.exportNames[i];
+      src += "export let " + name + " = $e.moduleExports[" +
+        JSONStringify(name) + "];\n";
+    }
+  }
+  return src;
+}
+
+// The require cache (Module._cache) key for a mocked module: builtins are keyed
+// by their `node:` url, file modules by their (real) path.
+function cjsCacheKeyFor(key) {
+  if (StringPrototypeStartsWith(key, "file:")) {
+    try {
+      return getNodeUrl().fileURLToPath(key);
+    } catch {
+      return key;
+    }
+  }
+  return key;
+}
+
+// Removes a mocked CommonJS module from the require cache so the next
+// `require()` re-runs the load hook and produces a fresh exports object.
+function evictCjsCache(key) {
+  const { default: Module } = getNodeModuleNamespace();
+  delete Module._cache[cjsCacheKeyFor(key)];
+}
+
+function mockModuleResolveHook(specifier, context, nextResolve) {
+  const result = nextResolve(specifier, context);
+  if (result === null || result === undefined || result.url == null) {
+    return result;
+  }
+  const conditions = context?.conditions;
+  // Only the ESM import path needs per-import versioned urls. The require path
+  // busts its cache by evicting the require cache entry in the load hook.
+  if (
+    conditions === undefined ||
+    !ArrayPrototypeIncludes(conditions, "import")
+  ) {
+    return result;
+  }
+  const entry = lookupMockEntry(canonicalizeUrlKey(result.url));
+  if (entry === undefined) {
+    return result;
+  }
+  // A stable version (cache: true) reuses the cached module; otherwise bump the
+  // global counter so every import resolves to a brand new url.
+  const version = entry.cache ? entry.stableVersion : ++mockModuleVersion;
+  return {
+    __proto__: null,
+    url: appendMockParam(result.url, version),
+    shortCircuit: true,
+  };
+}
+
+function mockModuleLoadHook(url, context, nextLoad) {
+  const key = canonicalizeUrlKey(stripMockParam(url));
+  const entry = lookupMockEntry(key);
+  if (entry === undefined) {
+    return nextLoad(url, context);
+  }
+  const conditions = context?.conditions;
+  const viaRequire = conditions !== undefined &&
+    ArrayPrototypeIncludes(conditions, "require");
+  if (viaRequire) {
+    if (!entry.cache) {
+      evictCjsCache(key);
+    }
+    return {
+      __proto__: null,
+      source: generateCjsSource(entry, key),
+      format: "commonjs",
+      shortCircuit: true,
+    };
+  }
+  return {
+    __proto__: null,
+    source: generateEsmSource(entry, key),
+    format: "module",
+    shortCircuit: true,
+  };
+}
+
+class MockModuleContext {
+  #restore;
+
+  constructor(restore) {
+    this.#restore = restore;
+  }
+
+  restore() {
+    if (this.#restore !== undefined) {
+      this.#restore();
+      this.#restore = undefined;
+    }
+    const idx = ArrayPrototypeIndexOf(activeMocks, this);
+    if (idx !== -1) {
+      ArrayPrototypeSplice(activeMocks, idx, 1);
+    }
+  }
+
+  // `mock.reset()` iterates `activeMocks` calling `resetCalls()`. Node's
+  // `MockTracker.reset()` restores module mocks, so alias it to the restore
+  // behavior. The splice from `activeMocks` is deferred to `restore()` to
+  // avoid mutating the array mid iteration.
+  resetCalls() {
+    if (this.#restore !== undefined) {
+      this.#restore();
+      this.#restore = undefined;
+    }
+  }
+}
+
+function mockModule(specifier, options = { __proto__: null }) {
+  let specStr;
+  if (typeof specifier === "string") {
+    specStr = specifier;
+  } else if (isUrlLike(specifier)) {
+    specStr = `${specifier}`;
+  } else {
+    throw new ERR_INVALID_ARG_TYPE(
+      "specifier",
+      ["string", "URL"],
+      specifier,
+    );
+  }
+
+  validateObject(options, "options");
+  const cache = options.cache === undefined ? false : options.cache;
+  validateBoolean(cache, "options.cache");
+  if (options.namedExports !== undefined) {
+    validateObject(options.namedExports, "options.namedExports");
+  }
+
+  ensureMockModuleHooks();
+
+  const moduleExports = { __proto__: null };
+  const exportNames = [];
+  const namedExports = options.namedExports;
+  if (namedExports !== undefined && namedExports !== null) {
+    const keys = ObjectKeys(namedExports);
+    for (let i = 0; i < keys.length; i++) {
+      const name = keys[i];
+      moduleExports[name] = namedExports[name];
+      ArrayPrototypePush(exportNames, name);
+    }
+  }
+  const hasDefaultExport = ObjectPrototypeHasOwnProperty(
+    options,
+    "defaultExport",
+  );
+  if (hasDefaultExport) {
+    moduleExports.default = options.defaultExport;
+  }
+
+  const key = resolveSpecifierToKey(specStr);
+  const existing = MapPrototypeGet(mockModuleRegistry, key);
+  if (existing !== undefined && existing.active) {
+    throw new ERR_INVALID_STATE(
+      `Cannot mock '${specStr}'. The module is already mocked.`,
+    );
+  }
+
+  const format = detectFormat(key);
+  const entry = {
+    __proto__: null,
+    url: key,
+    isCjs: format === "commonjs",
+    cache,
+    stableVersion: cache ? ++mockModuleVersion : 0,
+    active: true,
+    moduleExports,
+    exportNames,
+    hasDefaultExport,
+  };
+  MapPrototypeSet(mockModuleRegistry, key, entry);
+  // Save and evict any previously loaded copy of this module so the next
+  // require/import re-runs the hooks and observes the mock. The saved entry is
+  // put back on restore so the exact original instance is returned again.
+  const { default: Module } = getNodeModuleNamespace();
+  const cacheKey = cjsCacheKeyFor(key);
+  entry.savedCacheEntry = Module._cache[cacheKey];
+  delete Module._cache[cacheKey];
+
+  const restore = () => {
+    if (!entry.active) {
+      return;
+    }
+    entry.active = false;
+    if (MapPrototypeGet(mockModuleRegistry, key) === entry) {
+      MapPrototypeDelete(mockModuleRegistry, key);
+    }
+    delete Module._cache[cacheKey];
+    if (entry.savedCacheEntry !== undefined) {
+      Module._cache[cacheKey] = entry.savedCacheEntry;
+    }
+  };
+
+  const ctx = new MockModuleContext(restore);
+  ArrayPrototypePush(activeMocks, ctx);
+  return ctx;
+}
+
 const mock = {
   fn: (original, implementation, options) => {
     if (original !== null && typeof original === "object") {
@@ -2447,6 +2926,8 @@ const mock = {
   method: (object, methodName, implementation, options) => {
     return mockMethodImpl(object, methodName, implementation, options);
   },
+
+  module: mockModule,
 
   property: function (object, propertyName, value) {
     validateObject(object, "object");
