@@ -12,6 +12,11 @@
     "import_map_entry_resolves": {
       "args": "run --config=with_import_map.json import_map.ts",
       "output": "import_map.out"
+    },
+    "wrong_name_hints_full_name": {
+      "args": "run wrong_name.ts",
+      "output": "wrong_name.out",
+      "exitCode": 1
     }
   }
 }

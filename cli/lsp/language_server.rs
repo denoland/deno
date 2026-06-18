@@ -435,6 +435,7 @@ impl LanguageServer {
           exit_integrity_errors: false,
           allow_unknown_media_types: true,
           allow_unknown_jsr_exports: false,
+          bare_importable_pkg_names: &[],
         },
       )?;
       Ok(())

@@ -90,6 +90,9 @@ pub struct GraphValidOptions<'a> {
   pub exit_integrity_errors: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
+  /// Names of packages importable by bare specifier (workspace members and
+  /// packages linked via the "links" field), used to enhance import errors.
+  pub bare_importable_pkg_names: &'a [String],
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -119,6 +122,7 @@ pub fn graph_valid(
       will_type_check: options.will_type_check,
       allow_unknown_media_types: options.allow_unknown_media_types,
       allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
+      bare_importable_pkg_names: options.bare_importable_pkg_names,
     },
   );
   match errors.next() {
@@ -143,6 +147,9 @@ pub struct GraphWalkErrorsOptions<'a> {
   pub will_type_check: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
+  /// Names of packages importable by bare specifier (workspace members and
+  /// packages linked via the "links" field), used to enhance import errors.
+  pub bare_importable_pkg_names: &'a [String],
 }
 
 /// Walks the errors found in the module graph that should be surfaced to users
@@ -221,6 +228,7 @@ pub fn graph_walk_errors<'a>(
         } else {
           EnhanceGraphErrorMode::ShowRange
         },
+        options.bare_importable_pkg_names,
       );
 
       Some(enhanced)
@@ -1152,6 +1160,12 @@ impl ModuleGraphBuilder {
     allow_unknown_jsr_exports: bool,
   ) -> Result<(), JsErrorBox> {
     let will_type_check = self.cli_options.type_check_mode().is_true();
+    let bare_importable_pkg_names = self
+      .cli_options
+      .workspace()
+      .resolver_jsr_pkgs()
+      .map(|pkg| pkg.name)
+      .collect::<Vec<_>>();
     graph_valid(
       graph,
       &self.sys,
@@ -1169,6 +1183,7 @@ impl ModuleGraphBuilder {
         exit_integrity_errors: true,
         allow_unknown_media_types,
         allow_unknown_jsr_exports,
+        bare_importable_pkg_names: &bare_importable_pkg_names,
       },
     )
   }

@@ -224,7 +224,7 @@ impl Diagnostic {
         None,
       ))
     } else {
-      let mut message = enhanced_resolution_error_message(error);
+      let mut message = enhanced_resolution_error_message(error, &[]);
       // the diagnostic already shows the location, so this is redundant
       remove_imported_from(&mut message);
       Some(Self::from_missing_error_with_message(

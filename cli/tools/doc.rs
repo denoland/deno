@@ -275,6 +275,7 @@ pub async fn doc(
           will_type_check: false,
           allow_unknown_media_types: false,
           allow_unknown_jsr_exports: false,
+          bare_importable_pkg_names: &[],
         },
       );
       let mut markdown_urls = IndexSet::new();
