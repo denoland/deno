@@ -194,7 +194,7 @@ pub async fn execute_script(
     env_vars.insert("DENO_CONNECTED".into(), "1".into());
   }
 
-  // Precedence: explicit `--workspace-concurrency` flag > `DENO_JOBS` env var >
+  // Precedence: explicit `--jobs` flag > `DENO_JOBS` env var >
   // `available_parallelism()` default.
   let no_of_concurrent_tasks = task_flags
     .workspace_concurrency

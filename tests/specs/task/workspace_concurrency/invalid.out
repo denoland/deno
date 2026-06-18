@@ -1,2 +1,2 @@
-error: invalid value '0' for '--workspace-concurrency [WILDCARD]
+error: invalid value '0' for '--jobs [WILDCARD]
 [WILDCARD]

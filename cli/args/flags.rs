@@ -5044,8 +5044,10 @@ Evaluate a task from string:
           .action(ArgAction::SetTrue),
       )
       .arg(
-        Arg::new("workspace-concurrency")
-          .long("workspace-concurrency")
+        Arg::new("jobs")
+          .long("jobs")
+          .short('j')
+          .visible_alias("concurrency")
           .help(
             "Maximum number of tasks to run concurrently.
 Overrides the DENO_JOBS environment variable; defaults to the number of
@@ -8620,8 +8622,7 @@ fn task_parse(
     filter,
     eval: matches.get_flag("eval"),
     no_prefix: matches.get_flag("no-prefix"),
-    workspace_concurrency: matches
-      .remove_one::<NonZeroUsize>("workspace-concurrency"),
+    workspace_concurrency: matches.remove_one::<NonZeroUsize>("jobs"),
   };
 
   match matches.remove_subcommand() {
@@ -14923,40 +14924,37 @@ mod tests {
   }
 
   #[test]
-  fn task_subcommand_workspace_concurrency() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "task",
-      "--workspace-concurrency",
-      "1",
-      "build"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Task(TaskFlags {
-          cwd: None,
-          task: Some("build".to_string()),
-          is_run: false,
-          recursive: false,
-          filter: None,
-          eval: false,
-          no_prefix: false,
-          workspace_concurrency: Some(NonZeroUsize::new(1).unwrap()),
-        }),
-        ..Flags::default()
-      }
-    );
+  fn task_subcommand_jobs() {
+    // `--jobs`, its `--concurrency` alias, and the `-j` short form all parse
+    // to the same value.
+    for args in [
+      svec!["deno", "task", "--jobs", "1", "build"],
+      svec!["deno", "task", "--concurrency", "1", "build"],
+      svec!["deno", "task", "-j", "1", "build"],
+    ] {
+      let r = flags_from_vec(args.clone());
+      assert_eq!(
+        r.unwrap(),
+        Flags {
+          subcommand: DenoSubcommand::Task(TaskFlags {
+            cwd: None,
+            task: Some("build".to_string()),
+            is_run: false,
+            recursive: false,
+            filter: None,
+            eval: false,
+            no_prefix: false,
+            workspace_concurrency: Some(NonZeroUsize::new(1).unwrap()),
+          }),
+          ..Flags::default()
+        },
+        "unexpected parse for {args:?}"
+      );
+    }
 
     // Reject zero, negative, and non-numeric values.
     for invalid in ["0", "-1", "abc"] {
-      let r = flags_from_vec(svec![
-        "deno",
-        "task",
-        "--workspace-concurrency",
-        invalid,
-        "build"
-      ]);
+      let r = flags_from_vec(svec!["deno", "task", "--jobs", invalid, "build"]);
       assert!(r.is_err(), "expected error for value {invalid:?}");
     }
   }
