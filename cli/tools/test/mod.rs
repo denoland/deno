@@ -1970,9 +1970,13 @@ fn changed_files_from_git(
     commands.push(vec!["diff", "--name-only", &range]);
   }
 
+  // Run the commands from the repository root so their output is uniformly
+  // root-relative. `diff --name-only` is always root-relative, but `ls-files`
+  // prints paths relative to the current directory, so running from a
+  // subdirectory would otherwise emit paths that `repo_root.join` can't resolve.
   let mut files = Vec::new();
   for args in &commands {
-    let stdout = run_git(cwd, args)?;
+    let stdout = run_git(&repo_root, args)?;
     for line in stdout.lines() {
       let line = line.trim();
       if !line.is_empty() {
@@ -1997,21 +2001,32 @@ fn collect_changed_paths(
   }
 
   let cwd = cli_options.initial_cwd();
-  let mut raw_paths: Vec<PathBuf> = Vec::new();
-
-  if let Some(base) = changed {
-    raw_paths.extend(changed_files_from_git(cwd, base.as_deref())?);
-  }
-  for file in related {
-    raw_paths.push(cwd.join(file));
-  }
-
   // Canonicalize so paths match the graph's canonicalized module paths. Deleted
   // files can't be canonicalized and are simply dropped.
-  let mut result = HashSet::with_capacity(raw_paths.len());
-  for path in raw_paths {
-    if let Ok(path) = canonicalize_path(&path) {
-      result.insert(path);
+  let mut result = HashSet::new();
+
+  if let Some(base) = changed {
+    for path in changed_files_from_git(cwd, base.as_deref())? {
+      if let Ok(path) = canonicalize_path(&path) {
+        result.insert(path);
+      }
+    }
+  }
+  // Unlike git-derived paths, a `--related` argument is typed by the user, so
+  // warn when it doesn't resolve to an existing file rather than silently
+  // dropping it (which would look like a legitimately empty result).
+  for file in related {
+    match canonicalize_path(&cwd.join(file)) {
+      Ok(path) => {
+        result.insert(path);
+      }
+      Err(_) => {
+        log::warn!(
+          "{} --related file not found: {}",
+          colors::yellow("Warning"),
+          file
+        );
+      }
     }
   }
   Ok(Some(result))
@@ -2021,25 +2036,45 @@ fn collect_changed_paths(
 /// `changed_paths`, using the module graph to find dependents.
 ///
 /// A module is kept when it is itself a changed/related file, or when any of its
-/// local dependencies changed. As an escape hatch, if a `.env` file changed
-/// (which any test could read) nothing is filtered out.
+/// local dependencies changed. As an escape hatch, a change to a file that can
+/// affect any test but isn't visible in the import graph (an env file, a deno
+/// config file or the lockfile) disables filtering and keeps every module.
 async fn filter_specifiers_by_changed(
   factory: &CliFactory,
   cli_options: &CliOptions,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
   changed_paths: HashSet<PathBuf>,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  // If an env file changed, any test could be affected; don't filter.
-  let env_file_changed = cli_options
+  // A change to one of these files can affect resolution or runtime behavior of
+  // any test in ways the import graph doesn't capture (env vars, import maps,
+  // workspace config, locked versions), so don't filter when one of them
+  // changed. This mirrors Vitest/Jest, which re-run everything on config changes.
+  let mut run_everything_paths = cli_options
     .possible_env_file_paths_for_watch()
-    .any(|path| changed_paths.contains(&path));
-  if env_file_changed {
+    .collect::<HashSet<_>>();
+  for deno_json in cli_options.workspace().deno_jsons() {
+    if let Ok(path) = deno_path_util::url_to_file_path(&deno_json.specifier)
+      && let Ok(path) = canonicalize_path(&path)
+    {
+      run_everything_paths.insert(path);
+    }
+  }
+  if let Some(lockfile) = factory.maybe_lockfile().await?
+    && let Ok(path) = canonicalize_path(&lockfile.filename)
+  {
+    run_everything_paths.insert(path);
+  }
+  if changed_paths
+    .iter()
+    .any(|p| run_everything_paths.contains(p))
+  {
     return Ok(specifiers_with_mode);
   }
 
   // Build a graph over the script test modules so we can walk each test's
   // dependencies. Doc-only (e.g. markdown) modules aren't part of the graph and
-  // are matched by path instead.
+  // are matched by path instead. A markdown doc test is therefore only selected
+  // when it is itself a changed/related file, never via the dependency walk.
   //
   // Note: this graph is built solely to resolve the affected set; the downstream
   // typecheck/run path builds its own graph again. That's the same shape watch
