@@ -134,17 +134,16 @@ pub async fn execute_script(
       if let Some(resume_regex) = &resume_regex
         && !resume_reached
       {
-        if matches_package(
+        if !matches_package(
           folder,
           folder_url,
           force_use_pkg_json,
           resume_regex,
           folder_url == root_dir_url,
         ) {
-          resume_reached = true;
-        } else {
           continue;
         }
+        resume_reached = true;
       }
 
       let member_dir = workspace.resolve_member_dir(folder_url);
@@ -165,13 +164,36 @@ pub async fn execute_script(
       });
     }
 
-    if let Some(resume_from) = &task_flags.resume_from
+    if let Some(resume_regex) = &resume_regex
+      && let Some(resume_from) = &task_flags.resume_from
       && !resume_reached
     {
-      bail!(
-        "No package matching '{}' found in the workspace for --resume-from.",
-        resume_from
-      );
+      // Distinguish "doesn't exist" from "exists but excluded by --filter":
+      // re-scan the whole workspace ignoring the filter to see if the package
+      // is there at all.
+      let exists_in_workspace = workspace
+        .config_folders_sorted_by_dependencies()
+        .into_iter()
+        .any(|(folder_url, folder)| {
+          matches_package(
+            folder,
+            folder_url,
+            force_use_pkg_json,
+            resume_regex,
+            folder_url == root_dir_url,
+          )
+        });
+      if exists_in_workspace {
+        bail!(
+          "Package '{}' is excluded by --filter, so --resume-from cannot start from it.",
+          resume_from
+        );
+      } else {
+        bail!(
+          "No package matching '{}' found in the workspace for --resume-from.",
+          resume_from
+        );
+      }
     }
 
     // Logging every task definition would be too spammy. Pnpm only

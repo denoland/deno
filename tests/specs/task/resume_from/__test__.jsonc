@@ -10,6 +10,11 @@
       "args": "task --resume-from pkg-b build",
       "output": "from_middle.out"
     },
+    "resume_from_last_runs_one": {
+      // pkg-a sorts last, so resuming from it runs only pkg-a.
+      "args": "task --resume-from pkg-a build",
+      "output": "from_last.out"
+    },
     "resume_from_implies_recursive": {
       // No -r needed: --resume-from implies a workspace run.
       "args": "task -r --resume-from pkg-b build",
