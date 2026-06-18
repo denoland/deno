@@ -1845,6 +1845,71 @@ async fn test_timer_return_protocol_keeps_timers_armed_from_promise_hook() {
   }
 }
 
+#[tokio::test]
+async fn test_timer_return_protocol_keeps_timers_armed_from_run_next_ticks() {
+  static FIRED: AtomicBool = AtomicBool::new(false);
+
+  #[op2(fast)]
+  fn op_mark_run_next_ticks_timer_fired() {
+    FIRED.store(true, Ordering::SeqCst);
+  }
+
+  deno_core::extension!(
+    timer_run_next_ticks_ext,
+    ops = [op_mark_run_next_ticks_timer_fired]
+  );
+
+  FIRED.store(false, Ordering::SeqCst);
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![timer_run_next_ticks_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "timer_return_protocol_run_next_ticks.js",
+      r#"
+      const { op_mark_run_next_ticks_timer_fired } = Deno.core.ops;
+      let armed = false;
+
+      Deno.core.setPromiseHooks(null, () => {
+        if (armed) return;
+        armed = true;
+        Deno.core.createTimer(() => {
+          op_mark_run_next_ticks_timer_fired();
+        }, 5, undefined, false, true, false);
+      }, null, null);
+
+      // These timers share a timeout list. processTimers() drains ticks and
+      // microtasks between callbacks, so the Promise callback below runs from
+      // processTimers()'s runNextTicks() path before the second timer fires.
+      Deno.core.createTimer(() => {
+        Promise.resolve().then(() => {});
+      }, 1, undefined, false, true, false);
+      Deno.core.createTimer(() => {}, 1, undefined, false, true, false);
+      "#,
+    )
+    .unwrap();
+
+  let run_result = tokio::time::timeout(
+    Duration::from_millis(250),
+    runtime.run_event_loop(Default::default()),
+  )
+  .await;
+
+  if let Ok(result) = run_result {
+    result.unwrap();
+  } else if !FIRED.load(Ordering::SeqCst) {
+    panic!("timed out waiting for timer armed from runNextTicks");
+  }
+
+  assert!(
+    FIRED.load(Ordering::SeqCst),
+    "timer armed during runNextTicks did not fire"
+  );
+}
+
 /// Test that multiple nextTick callbacks all run before any Promise.then
 /// callbacks, and that promises queued during nextTick run after all ticks.
 #[tokio::test]
