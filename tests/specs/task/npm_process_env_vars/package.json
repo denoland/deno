@@ -1,0 +1,7 @@
+{
+  "name": "my-package",
+  "version": "1.0.0",
+  "scripts": {
+    "env": "echo command:$npm_command && deno eval \"console.log('execpath_is_deno:' + (Deno.env.get('npm_execpath') === Deno.execPath())); console.log('node_execpath_is_deno:' + (Deno.env.get('npm_node_execpath') === Deno.execPath()))\""
+  }
+}

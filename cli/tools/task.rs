@@ -723,10 +723,11 @@ impl<'a> TaskRunner<'a> {
       &node_modules_bin_dirs,
     )?;
 
-    // npm sets a number of `npm_package_*` lifecycle env vars when running a
-    // package.json script. Build them from the script's package.json so that
-    // `deno task` matches npm's behavior (see #35251).
-    let base_npm_env_vars = self
+    // npm sets a number of `npm_*` env vars when running a package.json script.
+    // Build the `npm_package_*` vars from the script's package.json plus the
+    // process-level vars (`npm_execpath`, `npm_node_execpath`, `npm_command`)
+    // so that `deno task` matches npm's behavior (see #35251, #35306).
+    let mut base_npm_env_vars = self
       .cli_options
       .workspace()
       .config_folders()
@@ -734,6 +735,7 @@ impl<'a> TaskRunner<'a> {
       .and_then(|folder| folder.pkg_json.as_ref())
       .map(|pkg_json| npm_package_env_vars(pkg_json))
       .unwrap_or_default();
+    base_npm_env_vars.extend(npm_process_env_vars());
 
     for task_name in &task_names {
       if let Some(script) = scripts.get(task_name) {
@@ -1044,6 +1046,27 @@ fn npm_package_env_vars(
       );
     }
   }
+  env_vars
+}
+
+/// Build the process-level npm env vars that npm sets for every package.json
+/// script, independent of which package it belongs to:
+///
+/// - `npm_execpath`: the package manager executable. npm points this at
+///   `npm-cli.js`; like pnpm/yarn point it at their own binary, we point it at
+///   the running `deno` executable.
+/// - `npm_node_execpath`: the JS runtime executing the script. npm sets this to
+///   the `node` binary; under `deno task` the runtime is `deno` itself.
+/// - `npm_command`: the npm command being run. `deno task <name>` runs a script
+///   the same way `npm run <name>` does, which npm reports as `run-script`.
+fn npm_process_env_vars() -> HashMap<OsString, OsString> {
+  let mut env_vars = HashMap::new();
+  if let Ok(exe) = std::env::current_exe() {
+    env_vars
+      .insert(OsString::from("npm_execpath"), exe.clone().into_os_string());
+    env_vars.insert(OsString::from("npm_node_execpath"), exe.into_os_string());
+  }
+  env_vars.insert(OsString::from("npm_command"), OsString::from("run-script"));
   env_vars
 }
 
