@@ -55,8 +55,9 @@ class AsyncResource {
     // receive this resource, matching Node.js behaviour.
     emitInit(this.#asyncId, type, internalExecutionAsyncId(), this);
     // Register with the FinalizationRegistry so emitDestroy is called when
-    // this object is garbage collected.
-    asyncResourceRegistry.register(this, this.#asyncId);
+    // this object is garbage collected. Pass `this` as the unregister token so
+    // emitDestroy() can cancel the finalizer.
+    asyncResourceRegistry.register(this, this.#asyncId, this);
   }
 
   asyncId() {

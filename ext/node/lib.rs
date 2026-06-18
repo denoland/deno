@@ -458,15 +458,30 @@ deno_core::extension!(deno_node,
     ops::http2::Http2Session,
     ops::http2::Http2Stream,
   ],
-  esm_entry_point = "node:module",
+  // All node polyfills are registered via `dir "polyfills"` as *available*
+  // (resolvable) modules without forcing eager evaluation. There is no
+  // explicit eager `esm` entry: the whole node process closure
+  // (module / process / stream / net / tty / ...) is moved to
+  // `lazy_loaded_esm` and only deserialized on first node:* use, so non-node
+  // `deno run` programs never pay for it in the snapshot. An explicit entry
+  // here that no eager module imports would land in the module map
+  // unevaluated and fail snapshot validation with `NonEvaluatedModules`.
   esm = [
     dir "polyfills",
-    "internal_binding/mod.ts",
-    "node:module" = "01_require.js",
-    "node:process" = "process.ts",
   ],
+  // Keep the rest of the node-polyfill closures (process / module / net /
+  // tty / 01_require) out of the eager evaluation graph: their foundational
+  // SFIs and context state are loaded only on first node:* use, so non-node
+  // `deno run` paths skip ~2 MB of node-polyfill deserialization.
+  // node:module previously had to stay eager because lazy bootstrap shifted
+  // Agent.keepSocketAlive's setUnrefTimeout(5000) into test execution where
+  // the sanitizer saw it as a leak; the timer is now marked is_system in
+  // internal/timers.mjs so the sanitizer skips it correctly and node:module
+  // can stay lazy again.
   lazy_loaded_esm = [
     dir "polyfills",
+    "node:module" = "01_require.js",
+    "node:process" = "process.ts",
     // Previously eager. Combined with the lazy stdio refactor in
     // process.ts (process.stdout/stderr/stdin are accessor properties),
     // these modules only load when a script actually touches stdio or
@@ -492,6 +507,11 @@ deno_core::extension!(deno_node,
     "internal/fs/promises.ts",
     "internal/fs/stat_utils.ts",
     "internal/event_target.mjs",
+    // node:process / node:stream statically import this ESM module; it must be
+    // registered as lazy_loaded_esm (not lazy_loaded_js, where `dir "polyfills"`
+    // would otherwise place it) so the static import resolves when those
+    // modules are deserialized on demand.
+    "internal_binding/mod.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
     "internal/fs/handle.ts",
@@ -567,6 +587,7 @@ deno_core::extension!(deno_node,
   ],
   lazy_loaded_js = [
     dir "polyfills",
+    "02_register_cloneable.js",
     "cluster.ts",
     "console.ts",
     "constants.ts",

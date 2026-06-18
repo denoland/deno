@@ -127,7 +127,6 @@ const { glob, globSync } = core.createLazyLoader(
 )();
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const lazyProcess = core.createLazyLoader("node:process");
-const process = lazyProcess().default;
 const { isIterable } = core.loadExtScript(
   "ext:deno_node/internal/streams/utils.js",
 );
@@ -503,7 +502,7 @@ function readv(
   }
 
   if (buffers.length === 0) {
-    process.nextTick(cb, null, 0, buffers);
+    lazyProcess().default.nextTick(cb, null, 0, buffers);
     return;
   }
 
@@ -720,7 +719,7 @@ async function readFileFromFd(fd: number, options?: FileOptions) {
       readFileCheckAborted(signal);
       const slice = TypedArrayPrototypeSubarray(buffer, totalRead);
       // Use the deferred op so we yield to the event loop between reads,
-      // allowing abort signals scheduled via process.nextTick to fire.
+      // allowing abort signals scheduled via lazyProcess().default.nextTick to fire.
       const nread = await op_node_fs_read_deferred(fd, slice, -1n);
       if (nread === 0) break;
       totalRead += nread;
@@ -2129,12 +2128,12 @@ function mkdtempSync(
 
 // Mirrors Node's lib/fs.js mkdtempDisposableSync(): create the temp dir and
 // return an object with .path, .remove(), and Symbol.dispose. cwd is captured
-// at creation time so a later process.chdir() doesn't break removal.
+// at creation time so a later lazyProcess().default.chdir() doesn't break removal.
 function mkdtempDisposableSync(
   prefix: string | Buffer | Uint8Array | URL,
   options?: { encoding: string } | string,
 ) {
-  const cwd = process.cwd();
+  const cwd = lazyProcess().default.cwd();
   const path = mkdtempSync(prefix, options as { encoding: string }) as string;
   const fullPath = resolve(cwd, path);
   const remove = () => {
@@ -2632,7 +2631,7 @@ function writev(
   callback = maybeCallback(callback || position);
 
   if (buffers.length === 0) {
-    process.nextTick(callback, null, 0, buffers);
+    lazyProcess().default.nextTick(callback, null, 0, buffers);
     return;
   }
 
@@ -2793,7 +2792,7 @@ function writeFile(
       file = {
         write(p: NodeJS.TypedArray) {
           // Use the deferred op to yield to the event loop between writes,
-          // allowing abort signals scheduled via process.nextTick to fire.
+          // allowing abort signals scheduled via lazyProcess().default.nextTick to fire.
           return op_node_fs_write_deferred(fd, p, -1);
         },
         writeSync(p: NodeJS.TypedArray) {
@@ -3559,7 +3558,7 @@ function watch(
   if (options?.signal) {
     const signal = options.signal;
     if (signal.aborted) {
-      process.nextTick(() => fsWatcher.close());
+      lazyProcess().default.nextTick(() => fsWatcher.close());
     } else {
       const onAbort = () => fsWatcher.close();
       signal.addEventListener("abort", onAbort, { once: true });
@@ -3570,7 +3569,7 @@ function watch(
   }
 
   if (openError) {
-    process.nextTick(() => {
+    lazyProcess().default.nextTick(() => {
       fsWatcher.emit("error", openError);
     });
   }
@@ -3844,7 +3843,7 @@ class StatWatcher extends EventEmitter {
     // Match Node: stop fires asynchronously so listeners removed
     // synchronously after stop() are not called (see
     // StatWatcher.prototype.stop in lib/internal/fs/watchers.js).
-    process.nextTick(() => this.emit("stop"));
+    lazyProcess().default.nextTick(() => this.emit("stop"));
   }
   // Node's ref/unref toggle whether the StatWatcher's internal handle keeps
   // the event loop alive (see lib/internal/fs/watchers.js). In Deno the
