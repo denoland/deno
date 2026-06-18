@@ -129,7 +129,7 @@ impl Resource for TcpStreamResource {
   // cancels its in-flight read, so the socket is never dropped and no FIN is
   // sent until the process exits.
   fn cancel_read_ops(self: Rc<Self>) {
-    FullDuplexResource::cancel_read_ops(&self);
+    TcpStreamResource::cancel_read_ops(&self);
   }
 }
 
@@ -218,10 +218,7 @@ impl Resource for UnixStreamResource {
 
   // See the note on TcpStreamResource::cancel_read_ops.
   fn cancel_read_ops(self: Rc<Self>) {
-    #[cfg(unix)]
-    FullDuplexResource::cancel_read_ops(&self);
-    #[cfg(not(unix))]
-    let _ = self;
+    UnixStreamResource::cancel_read_ops(&self);
   }
 }
 
@@ -275,17 +272,6 @@ impl Resource for VsockStreamResource {
 
   // See the note on TcpStreamResource::cancel_read_ops.
   fn cancel_read_ops(self: Rc<Self>) {
-    #[cfg(any(
-      target_os = "android",
-      target_os = "linux",
-      target_os = "macos"
-    ))]
-    FullDuplexResource::cancel_read_ops(&self);
-    #[cfg(not(any(
-      target_os = "android",
-      target_os = "linux",
-      target_os = "macos"
-    )))]
-    let _ = self;
+    VsockStreamResource::cancel_read_ops(&self);
   }
 }

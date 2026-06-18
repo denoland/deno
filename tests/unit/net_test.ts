@@ -1770,10 +1770,14 @@ Deno.test(
     await delay(100);
     conn.close();
 
+    // Abort the timeout once the race settles so the test sanitizer does not
+    // report a leaked timer.
+    const ac = new AbortController();
     const sawEof = await Promise.race([
       serverSawEof,
-      delay(5000).then(() => false),
+      delay(2000, { signal: ac.signal }).then(() => false, () => false),
     ]);
+    ac.abort();
     assert(
       sawEof,
       "peer did not observe FIN after conn.close() with a pending read",
