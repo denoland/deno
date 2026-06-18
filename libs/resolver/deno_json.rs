@@ -10,6 +10,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_config::deno_json::CompilerOptions;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::TsTypeLib;
@@ -987,6 +989,25 @@ impl TsConfigFileFilter {
     }
     false
   }
+
+  fn file_patterns(&self) -> FilePatterns {
+    FilePatterns {
+      base: self.dir_path.clone(),
+      include: self
+        .files
+        .as_ref()
+        .map(|(_, files)| {
+          PathOrPatternSet::new(
+            files
+              .iter()
+              .map(|file| PathOrPattern::Path(file.absolute_path.clone()))
+              .collect(),
+          )
+        })
+        .or_else(|| self.include.clone()),
+      exclude: self.exclude.clone().unwrap_or_default(),
+    }
+  }
 }
 
 #[allow(clippy::disallowed_types, reason = "definition")]
@@ -1534,6 +1555,17 @@ impl CompilerOptionsResolver {
           t.files(),
         )
       }))
+  }
+
+  pub fn ts_config_file_patterns(
+    &self,
+  ) -> impl Iterator<Item = (CompilerOptionsKey, FilePatterns)> + '_ {
+    self.ts_configs.iter().enumerate().map(|(i, ts_config)| {
+      (
+        CompilerOptionsKey::TsConfig(i),
+        ts_config.filter.file_patterns(),
+      )
+    })
   }
 
   pub fn size(&self) -> usize {

@@ -161,6 +161,7 @@ rustc-hash.workspace = true
 rustls.workspace = true
 rustyline.workspace = true
 rustyline-derive.workspace = true
+same-file.workspace = true
 serde.workspace = true
 serde_repr.workspace = true
 sha2.workspace = true
@@ -186,6 +187,7 @@ uuid = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
 wasm_dep_analyzer = "0.4.0"
 wasmparser = "0.244.0"
+which = { workspace = true, features = ["real-sys"] }
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 

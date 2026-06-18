@@ -48,6 +48,8 @@ use crate::deno_json::ConfigFile;
 use crate::deno_json::ConfigFileError;
 use crate::deno_json::ConfigFileRc;
 use crate::deno_json::ConfigFileReadError;
+use crate::deno_json::CoverageConfig;
+use crate::deno_json::CoverageThresholds;
 use crate::deno_json::DeployConfig;
 use crate::deno_json::DesktopConfig;
 use crate::deno_json::FmtConfig;
@@ -2358,6 +2360,30 @@ impl WorkspaceDirectory {
     combine_files_config_with_cli_args(&mut config.files, cli_args);
     self.append_workspace_members_to_exclude(&mut config.files);
     Ok(config)
+  }
+
+  /// Resolves the coverage config, merging the workspace root and member
+  /// `coverage` sections (member thresholds take precedence per metric).
+  pub fn to_coverage_config(
+    &self,
+  ) -> Result<CoverageConfig, ToInvalidConfigError> {
+    let member_config = match &self.deno_json.member {
+      Some(member) => member.to_coverage_config()?,
+      None => CoverageConfig::default(),
+    };
+    let root_config = match &self.deno_json.root {
+      Some(root) => root.to_coverage_config()?,
+      None => return Ok(member_config),
+    };
+    let root = root_config.thresholds;
+    let member = member_config.thresholds;
+    Ok(CoverageConfig {
+      thresholds: CoverageThresholds {
+        lines: member.lines.or(root.lines),
+        branches: member.branches.or(root.branches),
+        functions: member.functions.or(root.functions),
+      },
+    })
   }
 
   fn to_bench_config_inner(

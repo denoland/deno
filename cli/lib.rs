@@ -12,6 +12,7 @@ mod jsr;
 mod lsp;
 mod module_loader;
 mod node;
+mod node_compat_shim;
 mod npm;
 mod ops;
 mod registry;
@@ -204,6 +205,7 @@ async fn run_subcommand(
         coverage_flags.include,
         coverage_flags.exclude,
         coverage_flags.output,
+        coverage_flags.threshold.map(|t| t as f64),
         &[&*reporter],
       )
     }),
@@ -746,6 +748,10 @@ pub fn main() {
   boot_phase("after aws_lc install");
 
   let args: Vec<_> = env::args_os().collect();
+  // If we were invoked through a `node` shim (a symlink/hardlink named `node`
+  // pointing at this binary), translate the Node.js CLI args to Deno args.
+  // Done here, before any threads are spawned, because it may set env vars.
+  let args = node_compat_shim::maybe_rewrite_node_arg0(args);
   let future = async move {
     let roots = LibWorkerFactoryRoots::default();
 
@@ -864,6 +870,33 @@ async fn resolve_flags_and_init(
   }
 
   let sys = crate::sys::CliSys::default();
+
+  // Best-effort: make a `node` available on PATH (pointing back at this binary)
+  // when no real Node.js is installed, so child processes that spawn `node`
+  // natively (e.g. Next.js Turbopack) can find one. Must run before any threads
+  // spawn since it mutates PATH (the tunnel below can spawn threads), and only
+  // for subcommands that execute user code, so unrelated commands (`fmt`,
+  // `lint`, `check`, `lsp`, ...) don't pay for the `node` PATH scan on startup.
+  if node_compat_shim::subcommand_may_spawn_node(&flags.subcommand) {
+    match deno_cache_dir::resolve_deno_dir(
+      &sys,
+      deno_cache_dir::ResolveDenoDirOptions {
+        maybe_initial_cwd: initial_cwd.as_deref(),
+        maybe_custom_root: None,
+      },
+    ) {
+      Ok(deno_dir_root) => {
+        if let Err(err) = node_compat_shim::ensure_node_on_path(&deno_dir_root)
+        {
+          log::debug!("node compat shim setup failed (best-effort): {err}");
+        }
+      }
+      Err(err) => {
+        log::debug!("could not resolve DENO_DIR for node compat shim: {err}");
+      }
+    }
+  }
+
   if deno_lib::args::has_flag_env_var(&sys, "DENO_CONNECTED") {
     flags.tunnel = true;
   }
