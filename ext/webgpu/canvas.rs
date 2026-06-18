@@ -650,7 +650,10 @@ pub fn copy_texture_to_vec(
 
 pub const CONTEXT_ID: &str = "webgpu";
 
-#[allow(clippy::too_many_arguments, reason = "matches CreateCanvasContext signature")]
+#[allow(
+  clippy::too_many_arguments,
+  reason = "matches CreateCanvasContext signature"
+)]
 pub fn create<'s>(
   _state: std::rc::Rc<std::cell::RefCell<deno_core::OpState>>,
   _instance: Option<Instance>,
