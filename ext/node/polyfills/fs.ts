@@ -983,6 +983,7 @@ type StatFsOptions = {
 class StatFs<T> {
   type: T;
   bsize: T;
+  frsize: T;
   blocks: T;
   bfree: T;
   bavail: T;
@@ -991,6 +992,7 @@ class StatFs<T> {
   constructor(
     type: T,
     bsize: T,
+    frsize: T,
     blocks: T,
     bfree: T,
     bavail: T,
@@ -999,6 +1001,7 @@ class StatFs<T> {
   ) {
     this.type = type;
     this.bsize = bsize;
+    this.frsize = frsize;
     this.blocks = blocks;
     this.bfree = bfree;
     this.bavail = bavail;
@@ -1033,6 +1036,9 @@ function opResultToStatFs(
     return new StatFs(
       result.type,
       result.bsize,
+      // Deno's statfs op does not expose a separate fragment size; it equals
+      // the block size on the platforms we support (matches Node in practice).
+      result.bsize,
       result.blocks,
       result.bfree,
       result.bavail,
@@ -1042,6 +1048,7 @@ function opResultToStatFs(
   }
   return new StatFs(
     BigInt(result.type),
+    BigInt(result.bsize),
     BigInt(result.bsize),
     BigInt(result.blocks),
     BigInt(result.bfree),
