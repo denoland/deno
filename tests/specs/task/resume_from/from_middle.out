@@ -1,0 +1,6 @@
+[UNORDERED_START]
+Task build (pkg-b) echo b
+[pkg-b#build] b
+Task build (pkg-a) echo a
+[pkg-a#build] a
+[UNORDERED_END]

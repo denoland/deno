@@ -1,0 +1,1 @@
+error: No package matching 'pkg-b' found in the workspace for --resume-from.
