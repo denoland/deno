@@ -1792,3 +1792,49 @@ Deno.test(
     listener.close();
   },
 );
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true, net: true },
+  },
+  async function netUnixCloseCancelsPendingReadAndSendsEof() {
+    // Same as the TCP regression test above, for Unix domain sockets
+    // (UnixStreamResource shares the same fix).
+    const filePath = tmpUnixSocketPath();
+    const listener = Deno.listen({ path: filePath, transport: "unix" });
+
+    const serverSawEof = (async () => {
+      const conn = await listener.accept();
+      const buf = new Uint8Array(64);
+      const n = await conn.read(buf);
+      conn.close();
+      return n === null;
+    })();
+
+    const conn = await Deno.connect({ path: filePath, transport: "unix" });
+    const reader = conn.readable.getReader();
+    const pendingRead = reader.read().catch(() => {});
+    await delay(100);
+    conn.close();
+
+    const ac = new AbortController();
+    const sawEof = await Promise.race([
+      serverSawEof,
+      delay(2000, { signal: ac.signal }).then(() => false, () => false),
+    ]);
+    ac.abort();
+    assert(
+      sawEof,
+      "peer did not observe EOF after conn.close() with a pending read",
+    );
+
+    await pendingRead;
+    try {
+      reader.releaseLock();
+    } catch {
+      // already released
+    }
+    listener.close();
+  },
+);
