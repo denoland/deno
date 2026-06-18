@@ -39,6 +39,8 @@ use tokio_socks::tcp::Socks5Stream;
 use tokio_vsock::VsockStream;
 use tower_service::Service;
 
+use crate::dns::CheckDst;
+
 #[derive(Debug, Clone)]
 pub(crate) struct ProxyConnector<C> {
   pub(crate) http: C,
@@ -564,7 +566,7 @@ pub enum Proxied<T> {
 
 impl<C> Service<Uri> for ProxyConnector<C>
 where
-  C: Service<Uri> + Clone,
+  C: Service<Uri> + Clone + CheckDst,
   C::Response:
     hyper::rt::Read + hyper::rt::Write + Connection + Unpin + Send + 'static,
   C::Future: Send + 'static,
@@ -585,7 +587,12 @@ where
     if let Some(intercept) = self.intercept(&orig_dst).cloned() {
       let is_https = orig_dst.scheme() == Some(&Scheme::HTTPS);
       let user_agent = self.user_agent.clone();
-      return match intercept.target {
+      // The connect below opens a socket to the *proxy*, so the connector's
+      // own net-deny check only sees the proxy address. Run a best-effort
+      // check against the real destination too, so an IP-level `--deny-net`
+      // rule still applies to requests routed through a proxy.
+      let check_dst = self.http.check_dst(orig_dst.clone());
+      let proxying: Self::Future = match intercept.target {
         Target::Http {
           dst: proxy_dst,
           auth,
@@ -698,6 +705,10 @@ where
           Ok(Proxied::Vsock(TokioIo::new(io)))
         }),
       };
+      return Box::pin(async move {
+        check_dst.await?;
+        proxying.await
+      });
     }
 
     let mut connector =

@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::sync::LazyLock;
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -35,6 +36,7 @@ use deno_core::error::JsError;
 use deno_core::v8;
 use deno_cron::CronHandler;
 use deno_cron::CronHandlerImpl;
+use deno_error::JsErrorBox;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
@@ -327,6 +329,48 @@ impl Default for WorkerOptions {
   }
 }
 
+pub(crate) fn request_builder_hook(
+  request: &mut http::Request<deno_fetch::ReqBody>,
+) -> Result<(), JsErrorBox> {
+  const X_DENO_FETCH_TOKEN: http::HeaderName =
+    http::HeaderName::from_static("x-deno-fetch-token");
+  const CDN_LOOP: http::HeaderName = http::HeaderName::from_static("cdn-loop");
+  static X_DENO_FETCH_TOKEN_VALUE: OnceLock<Option<http::HeaderValue>> =
+    OnceLock::new();
+  static CDN_LOOP_VALUE: OnceLock<Option<http::HeaderValue>> = OnceLock::new();
+
+  // Scrub Deno-specific headers to prevent user code from spoofing them.
+  if let http::header::Entry::Occupied(entry) =
+    request.headers_mut().entry(X_DENO_FETCH_TOKEN)
+  {
+    entry.remove_entry_mult();
+  }
+
+  let maybe_x_deno_fetch_token = X_DENO_FETCH_TOKEN_VALUE.get_or_init(|| {
+    std::env::var("X_DENO_FETCH_TOKEN")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  });
+
+  if let Some(token) = maybe_x_deno_fetch_token {
+    request
+      .headers_mut()
+      .insert(X_DENO_FETCH_TOKEN, token.clone());
+  }
+
+  let cdn_loop_value = CDN_LOOP_VALUE.get_or_init(|| {
+    std::env::var("CDN_LOOP")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  });
+
+  if let Some(cdn_loop) = cdn_loop_value {
+    request.headers_mut().insert(CDN_LOOP, cdn_loop.clone());
+  }
+
+  Ok(())
+}
+
 pub fn create_op_metrics(
   trace_ops: Option<Vec<String>>,
 ) -> Option<OpMetricsFactoryFn> {
@@ -566,6 +610,7 @@ impl MainWorker {
             .clone(),
           file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
           resolver: services.fetch_dns_resolver,
+          request_builder_hook: Some(request_builder_hook),
           ..Default::default()
         }),
         deno_cache::deno_cache::args(create_cache),
@@ -1167,6 +1212,7 @@ fn common_extensions<
     ops::tty::deno_tty::init(),
     ops::http::deno_http_runtime::init(),
     deno_bundle_runtime::deno_bundle_runtime::lazy_init(),
+    ops::desktop::deno_desktop::init(),
     ops::bootstrap::deno_bootstrap::init(
       has_snapshot.then(Default::default),
       unconfigured_runtime,

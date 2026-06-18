@@ -10,6 +10,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_config::deno_json::CompilerOptions;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::TsTypeLib;
@@ -329,6 +331,8 @@ pub fn get_base_compiler_options_for_emit(
         (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::TsConfig) => vec!["deno.window", "deno.unstable", "dom", "node"],
         (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::DenoJson) => vec!["deno.worker", "deno.unstable", "node"],
         (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom", "node"],
+        (TsTypeLib::DenoDesktop, CompilerOptionsSourceKind::DenoJson) => vec!["deno.desktop", "deno.unstable", "node"],
+        (TsTypeLib::DenoDesktop, CompilerOptionsSourceKind::TsConfig) => vec!["deno.desktop", "deno.unstable", "dom", "node"],
       },
       "module": "NodeNext",
       "moduleDetection": "force",
@@ -490,6 +494,8 @@ struct MemoizedValues {
     OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
   deno_worker_check_compiler_options:
     OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
+  deno_desktop_check_compiler_options:
+    OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
   emit_compiler_options:
     OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
   #[cfg(feature = "deno_ast")]
@@ -583,6 +589,9 @@ impl CompilerOptionsData {
       CompilerOptionsType::Check {
         lib: TsTypeLib::DenoWorker,
       } => &self.memoized.deno_worker_check_compiler_options,
+      CompilerOptionsType::Check {
+        lib: TsTypeLib::DenoDesktop,
+      } => &self.memoized.deno_desktop_check_compiler_options,
       CompilerOptionsType::Emit => &self.memoized.emit_compiler_options,
     };
     let result = cell.get_or_init(|| {
@@ -979,6 +988,25 @@ impl TsConfigFileFilter {
       return true;
     }
     false
+  }
+
+  fn file_patterns(&self) -> FilePatterns {
+    FilePatterns {
+      base: self.dir_path.clone(),
+      include: self
+        .files
+        .as_ref()
+        .map(|(_, files)| {
+          PathOrPatternSet::new(
+            files
+              .iter()
+              .map(|file| PathOrPattern::Path(file.absolute_path.clone()))
+              .collect(),
+          )
+        })
+        .or_else(|| self.include.clone()),
+      exclude: self.exclude.clone().unwrap_or_default(),
+    }
   }
 }
 
@@ -1527,6 +1555,17 @@ impl CompilerOptionsResolver {
           t.files(),
         )
       }))
+  }
+
+  pub fn ts_config_file_patterns(
+    &self,
+  ) -> impl Iterator<Item = (CompilerOptionsKey, FilePatterns)> + '_ {
+    self.ts_configs.iter().enumerate().map(|(i, ts_config)| {
+      (
+        CompilerOptionsKey::TsConfig(i),
+        ts_config.filter.file_patterns(),
+      )
+    })
   }
 
   pub fn size(&self) -> usize {

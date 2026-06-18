@@ -14342,9 +14342,9 @@ fn lsp_format_component() {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 },
+          "end": { "line": 2, "character": 0 },
         },
-        "newText": "<script module>\n",
+        "newText": "<script module>\n// foo\n",
       },
     ]),
   );
@@ -14402,18 +14402,7 @@ fn lsp_format_component() {
       },
     }),
   );
-  assert_eq!(
-    res,
-    json!([
-      {
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 },
-        },
-        "newText": "{{ layout \"foo.vto\" }}\n",
-      },
-    ]),
-  );
+  assert_eq!(res, json!(null));
   let res = client.write_request(
     "textDocument/formatting",
     json!({
@@ -14424,18 +14413,7 @@ fn lsp_format_component() {
       },
     }),
   );
-  assert_eq!(
-    res,
-    json!([
-      {
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 },
-        },
-        "newText": "{% block header %}\n",
-      },
-    ]),
-  );
+  assert_eq!(res, json!(null));
   client.shutdown();
 }
 
@@ -19416,6 +19394,35 @@ fn lsp_tsconfig_scopes() {
       },
     ]),
   );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_tsconfig_include_global_roots() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "tsconfig.json",
+    json!({
+      "include": ["*.ts"],
+    })
+    .to_string(),
+  );
+  temp_dir.source_file(
+    "foo.ts",
+    "declare global { const a: number; }\nexport {};\n",
+  );
+  let file = temp_dir.source_file("bar.ts", "a;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_preload_limit(0);
+  });
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
   client.shutdown();
 }
 
