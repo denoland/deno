@@ -1817,9 +1817,6 @@ fn resolve_child_entrypoint(
   }
 }
 
-/// Pick the `ModuleType` for source returned by a `module.registerHooks()`
-/// load hook. Honors a hook-supplied `format` first (Node's hook contract),
-/// then falls back to the importer's `with { type: "..." }` attribute.
 /// Build the `importAttributes` object handed to a `module.registerHooks()`
 /// load hook. V8 only surfaces the `type` attribute at load time, so recover
 /// the full `with { ... }` clause recorded during resolution and make sure
@@ -1838,6 +1835,9 @@ fn hook_load_import_attributes(
   attrs
 }
 
+/// Pick the `ModuleType` for source returned by a `module.registerHooks()`
+/// load hook. Honors a hook-supplied `format` first (Node's hook contract),
+/// then falls back to the importer's `with { type: "..." }` attribute.
 fn pick_hook_module_type(
   format: Option<&str>,
   requested: &deno_core::RequestedModuleType,

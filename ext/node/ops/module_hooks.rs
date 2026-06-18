@@ -180,9 +180,11 @@ impl LoaderHookRegistry {
     url: &str,
     import_attributes: &HashMap<String, String>,
   ) {
-    // Only the hook-active load path consumes these. Without a hook nothing
-    // ever takes them, so skip recording to avoid the map growing unbounded.
-    if import_attributes.is_empty() || !self.hooks_active.get() {
+    // Only the load-hook path (`take_resolved_attributes`) ever consumes
+    // these. With no load hook registered nothing takes them, so skip
+    // recording to avoid the map growing unbounded — e.g. a resolve-only
+    // hook would otherwise accumulate an entry per resolved import forever.
+    if import_attributes.is_empty() || !self.load_active.get() {
       return;
     }
     // First write wins: when the same URL is imported with different
