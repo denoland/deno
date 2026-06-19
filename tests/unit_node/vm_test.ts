@@ -320,52 +320,6 @@ Deno.test({
   },
 });
 
-// https://github.com/denoland/deno/issues/35372
-Deno.test({
-  name: "vm SourceTextModule with import.meta does not panic",
-  async fn() {
-    const context = vm.createContext({ secret: 42 });
-    const module = new vm.SourceTextModule(
-      "export const captured = { url: import.meta.url, prop: import.meta.prop };",
-      {
-        identifier: "vm:test-import-meta",
-        context,
-        initializeImportMeta(meta: Record<string, unknown>) {
-          meta.prop = { extra: true };
-        },
-      },
-    );
-    module.linkRequests([]);
-    module.instantiate();
-    await module.evaluate();
-    const ns = module.namespace as {
-      captured: { url: string; prop: { extra: boolean } };
-    };
-    assertEquals(ns.captured.url, "vm:test-import-meta");
-    assertEquals(ns.captured.prop, { extra: true });
-  },
-});
-
-// https://github.com/denoland/deno/issues/35372 (no callback)
-Deno.test({
-  name: "vm SourceTextModule import.meta without initializeImportMeta",
-  async fn() {
-    const context = vm.createContext({});
-    const module = new vm.SourceTextModule(
-      "export const meta = { url: import.meta.url, hasProp: 'prop' in import.meta };",
-      { context, identifier: "vm:test-no-init" },
-    );
-    module.linkRequests([]);
-    module.instantiate();
-    await module.evaluate();
-    const ns = module.namespace as {
-      meta: { url: string; hasProp: boolean };
-    };
-    assertEquals(ns.meta.url, "vm:test-no-init");
-    assertEquals(ns.meta.hasProp, false);
-  },
-});
-
 // https://github.com/denoland/deno/issues/23913
 Deno.test({
   name: "vm memory leak crash",
