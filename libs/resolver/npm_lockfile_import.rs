@@ -65,7 +65,7 @@ pub fn package_lock_to_deno_lock_v5(
   let lockfile: NpmLockfile =
     serde_json::from_str(json_text).map_err(NpmLockfileImportError::Parse)?;
 
-  if lockfile.lockfile_version < 2 {
+  if !(2..=3).contains(&lockfile.lockfile_version) {
     return Err(NpmLockfileImportError::UnsupportedVersion(
       lockfile.lockfile_version,
     ));
@@ -419,5 +419,12 @@ mod tests {
     let input = r#"{ "lockfileVersion": 1, "packages": {} }"#;
     let err = package_lock_to_deno_lock_v5(input).unwrap_err();
     assert!(matches!(err, NpmLockfileImportError::UnsupportedVersion(1)));
+  }
+
+  #[test]
+  fn rejects_unknown_future_lockfile() {
+    let input = r#"{ "lockfileVersion": 4, "packages": {} }"#;
+    let err = package_lock_to_deno_lock_v5(input).unwrap_err();
+    assert!(matches!(err, NpmLockfileImportError::UnsupportedVersion(4)));
   }
 }
