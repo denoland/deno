@@ -139,10 +139,10 @@ class Script {
     );
     this.#inner = result.value;
     referrer.value = this;
-    this.cachedDataProduced = result.cached_data_produced;
-    this.cachedDataRejected = result.cached_data_rejected;
-    this.cachedData = result.cached_data
-      ? Buffer.from(result.cached_data)
+    this.cachedDataProduced = result.cachedDataProduced;
+    this.cachedDataRejected = result.cachedDataRejected;
+    this.cachedData = result.cachedData
+      ? Buffer.from(result.cachedData)
       : undefined;
   }
 
@@ -507,10 +507,10 @@ function compileFunction(code, params, options = { __proto__: null }) {
   );
   referrer.value = result.value;
 
-  result.value.cachedDataProduced = result.cached_data_produced;
-  result.value.cachedDataRejected = result.cached_data_rejected;
-  result.value.cachedData = result.cached_data
-    ? Buffer.from(result.cached_data)
+  result.value.cachedDataProduced = result.cachedDataProduced;
+  result.value.cachedDataRejected = result.cachedDataRejected;
+  result.value.cachedData = result.cachedData
+    ? Buffer.from(result.cachedData)
     : undefined;
 
   return result.value;
