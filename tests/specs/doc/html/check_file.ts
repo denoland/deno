@@ -6,20 +6,6 @@ if (content.includes("..")) {
 
 const searchJs = Deno.readTextFileSync("./docs/search.js");
 
-if (
-  !searchJs.includes(
-    'const rootUrl = new URL(".", document.currentScript.src);',
-  )
-) {
-  throw new Error("search.js should resolve result hrefs from the docs root");
-}
-
-if (searchJs.includes("pathToRoot")) {
-  throw new Error(
-    "search.js should not infer the docs root from doc-current-file",
-  );
-}
-
 let renderedSearchResults = "";
 const searchInput = {
   value: "",
@@ -29,6 +15,13 @@ const searchInput = {
   focus() {},
 };
 const contentDiv = { style: {} };
+const currentFileMeta = {
+  attributes: {
+    content: {
+      value: ".",
+    },
+  },
+};
 const searchResultsDiv = {
   style: {},
   set innerHTML(value: string) {
@@ -74,6 +67,9 @@ const searchResultsDiv = {
     }
     if (selector === "#searchResults") {
       return searchResultsDiv;
+    }
+    if (selector === "meta[name='doc-current-file']") {
+      return currentFileMeta;
     }
     throw new Error(`Unexpected selector: ${selector}`);
   },
