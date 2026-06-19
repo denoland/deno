@@ -8,6 +8,10 @@
     {
       "args": "coverage cov",
       "output": "coverage.out"
+    },
+    {
+      "args": "coverage cov --detailed",
+      "output": "detailed.out"
     }
   ]
 }
