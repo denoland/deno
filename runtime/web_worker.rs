@@ -398,6 +398,8 @@ pub struct WebWorkerOptions {
   pub trace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  /// Captured root blob for `main_module`; paired with `main_module` when
+  /// constructing the worker's internal handle.
   pub maybe_main_module_blob: Option<Arc<Blob>>,
   pub maybe_coverage_dir: Option<PathBuf>,
   pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,

@@ -68,6 +68,9 @@ pub struct CreateWebWorkerArgs {
   pub worker_type: WorkerThreadType,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  /// Captured root blob for `main_module`; paired with `main_module` by the
+  /// worker's loader/handle. Blob dependencies are intentionally resolved
+  /// normally by their own URLs.
   pub maybe_main_module_blob: Option<Arc<Blob>>,
   pub resource_limits: Option<ResourceLimits>,
 }
@@ -281,6 +284,8 @@ fn op_create_worker(
   let module_specifier = deno_core::resolve_url(&specifier)?;
   // Synchronously capture the root blob so a racing `URL.revokeObjectURL`
   // after `new Worker(blobUrl)` can't make the worker load fail (see #26142).
+  // This anchors only the worker root; blob URL dependencies still resolve
+  // through the normal blob store at load time.
   let maybe_main_module_blob = if module_specifier.scheme() == "blob" {
     let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
     blob_store.get_object_url(module_specifier.clone())
