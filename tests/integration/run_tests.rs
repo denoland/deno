@@ -3319,10 +3319,12 @@ fn code_cache_npm_cjs_wrapper_module_many_exports() {
     output.skip_stdout_check();
 
     // should have two occurrences of this (one for entrypoint and one for wrapper module)
+    // note: residual lazy ext-scripts now also hit the ES module code cache, so we
+    // only count hits for user file modules here.
     assert_eq!(
       output
         .stderr()
-        .split("V8 code cache hit for ES module")
+        .split("V8 code cache hit for ES module: file:///")
         .count(),
       3
     );

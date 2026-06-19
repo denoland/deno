@@ -606,22 +606,16 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 /// `FunctionTemplate::build` (no `Managed`) and survived the snapshot.
 pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  context: v8::Local<'s, v8::Context>,
+  // `Deno.core.ops` and `Deno.core.setUpAsyncStub`, passed in directly because
+  // `Deno.core` is scrubbed from the public `Deno` after bootstrap and the
+  // deferred caller can no longer read them from the global (see
+  // `snapshotted_fast_op_refs` / `ensure_fast_ops_upgraded`).
+  deno_core_ops_obj: v8::Local<'s, v8::Object>,
+  set_up_async_stub_fn: v8::Local<'s, v8::Function>,
   op_ctxs: &[OpCtx],
   op_method_decls: &[OpMethodDecl],
   methods_ctx_offset: usize,
 ) {
-  let global = context.global(scope);
-  let deno_obj = get(scope, global, DENO, "Deno");
-  let deno_core_obj = get(scope, deno_obj, CORE, "Deno.core");
-  let deno_core_ops_obj: v8::Local<v8::Object> =
-    get(scope, deno_core_obj, OPS, "Deno.core.ops");
-  let set_up_async_stub_fn: v8::Local<v8::Function> = get(
-    scope,
-    deno_core_obj,
-    SET_UP_ASYNC_STUB,
-    "Deno.core.setUpAsyncStub",
-  );
   let prototype_key = v8::String::new(scope, "prototype").unwrap();
   let undefined = v8::undefined(scope);
 
@@ -704,6 +698,58 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
 
     deno_core_ops_obj.set(scope, key.into(), op_fn.into());
   }
+}
+
+/// Run the deferred fast-call op upgrade exactly once, lazily. Called from the
+/// residual ext-module loaders (`op_lazy_load_esm` / `op_load_ext_script`)
+/// before the loaded module's body captures its op references, so runtime
+/// modules see the fast-call overloads. Programs that never load a residual
+/// module (e.g. `deno run empty.js`) never trigger it, saving the ~0.9ms pass.
+/// No-op during snapshot build / fresh-bind (flag pre-set in `new_inner`).
+/// Read `Deno.core.ops` + `Deno.core.setUpAsyncStub` from the global. Valid
+/// only while `Deno.core` is still present (during `new_inner`, before the
+/// bootstrap scrubs `Deno.core` from the public `Deno`). The deferred upgrade
+/// stashes the result (`ContextState::deferred_fast_ops`) for later use.
+pub(crate) fn snapshotted_fast_op_refs<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  context: v8::Local<'s, v8::Context>,
+) -> (v8::Local<'s, v8::Object>, v8::Local<'s, v8::Function>) {
+  let global = context.global(scope);
+  let deno_obj = get(scope, global, DENO, "Deno");
+  let deno_core_obj = get(scope, deno_obj, CORE, "Deno.core");
+  let deno_core_ops_obj: v8::Local<v8::Object> =
+    get(scope, deno_core_obj, OPS, "Deno.core.ops");
+  let set_up_async_stub_fn: v8::Local<v8::Function> = get(
+    scope,
+    deno_core_obj,
+    SET_UP_ASYNC_STUB,
+    "Deno.core.setUpAsyncStub",
+  );
+  (deno_core_ops_obj, set_up_async_stub_fn)
+}
+
+pub(crate) fn ensure_fast_ops_upgraded(scope: &mut v8::PinScope) {
+  let context_state = JsRealm::state_from_scope(scope);
+  if context_state.fast_ops_upgraded.get() {
+    return;
+  }
+  // Set the flag BEFORE running the upgrade so any reentrant residual load
+  // during the upgrade (which calls back into JS via setUpAsyncStub) no-ops.
+  context_state.fast_ops_upgraded.set(true);
+  let refs = context_state.deferred_fast_ops.borrow().clone();
+  let Some((ops_global, stub_global)) = refs else {
+    return;
+  };
+  let deno_core_ops_obj = v8::Local::new(scope, &ops_global);
+  let set_up_async_stub_fn = v8::Local::new(scope, &stub_global);
+  upgrade_snapshotted_ops_with_fast_calls(
+    scope,
+    deno_core_ops_obj,
+    set_up_async_stub_fn,
+    &context_state.op_ctxs,
+    &context_state.op_method_decls,
+    context_state.methods_ctx_offset,
+  );
 }
 
 fn method_needs_fast_call_upgrade(op_ctx: &OpCtx) -> bool {

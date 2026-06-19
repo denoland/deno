@@ -29,6 +29,7 @@ use node_resolver::PackageJson;
 use parking_lot::Mutex;
 use parking_lot::MutexGuard;
 
+use crate::npm_lockfile_import::package_lock_to_deno_lock_v5;
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
 
 pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
@@ -144,6 +145,9 @@ pub struct LockfileReadFromPathOptions {
   pub frozen: bool,
   /// Causes the lockfile to only be read from, but not written to.
   pub skip_write: bool,
+  /// If true and `file_path` does not exist, attempt to seed the lockfile by
+  /// translating a sibling `package-lock.json`.
+  pub import_npm_lockfile: bool,
 }
 
 #[sys_traits::auto_impl]
@@ -181,6 +185,10 @@ pub struct LockfileFlags {
   pub skip_write: bool,
   pub no_config: bool,
   pub no_npm: bool,
+  /// When no `deno.lock` exists in the workspace, attempt to seed one by
+  /// translating a sibling `package-lock.json`. Currently only set by
+  /// `deno install`.
+  pub import_npm_lockfile: bool,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -349,6 +357,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
         file_path,
         frozen,
         skip_write: flags.skip_write,
+        import_npm_lockfile: flags.import_npm_lockfile,
       },
       api,
     )
@@ -513,7 +522,14 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
         .await?
       }
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        Lockfile::new_empty(opts.file_path, false)
+        if opts.import_npm_lockfile
+          && let Some(seeded) =
+            try_import_npm_lockfile(&sys, &opts.file_path, api).await?
+        {
+          seeded
+        } else {
+          Lockfile::new_empty(opts.file_path, false)
+        }
       }
       Err(err) => {
         return Err(err).with_context(|| {
@@ -562,6 +578,55 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       Ok(())
     }
   }
+}
+
+/// Attempt to translate a sibling `package-lock.json` into a seed `Lockfile`.
+/// Returns `Ok(None)` when no usable package-lock.json is present (so the
+/// caller falls back to creating an empty lockfile). The returned lockfile is
+/// flagged as changed so the next write persists it to disk.
+async fn try_import_npm_lockfile<TSys: LockfileSys>(
+  sys: &TSys,
+  deno_lock_path: &std::path::Path,
+  api: &dyn deno_lockfile::NpmPackageInfoProvider,
+) -> Result<Option<Lockfile>, AnyError> {
+  let Some(parent) = deno_lock_path.parent() else {
+    return Ok(None);
+  };
+  let pkg_lock_path = parent.join("package-lock.json");
+  let pkg_lock_text = match sys.fs_read_to_string(&pkg_lock_path) {
+    Ok(text) => text,
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+    Err(err) => {
+      return Err(err).with_context(|| {
+        format!("Failed reading '{}'", pkg_lock_path.display())
+      });
+    }
+  };
+  let deno_lock_text = match package_lock_to_deno_lock_v5(&pkg_lock_text) {
+    Ok(text) => text,
+    Err(err) => {
+      log::warn!(
+        "Failed to import npm lockfile at {}: {}. Falling back to an empty deno.lock.",
+        pkg_lock_path.display(),
+        err
+      );
+      return Ok(None);
+    }
+  };
+  log::info!("Seeded deno.lock from {}", pkg_lock_path.display());
+  let mut lockfile = Lockfile::new(
+    deno_lockfile::NewLockfileOptions {
+      file_path: deno_lock_path.to_path_buf(),
+      content: &deno_lock_text,
+      overwrite: false,
+    },
+    api,
+  )
+  .await?;
+  // Force write on first save so the imported state is persisted even if no
+  // subsequent resolution mutates the lockfile.
+  lockfile.has_content_changed = true;
+  Ok(Some(lockfile))
 }
 
 /// An adapter to use the lockfile with `deno_graph`.

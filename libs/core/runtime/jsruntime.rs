@@ -1075,16 +1075,31 @@ impl JsRuntime {
         );
       } else if !will_snapshot {
         // Snapshots built against V8 14.9+ bake the slow version of each op
-        // function (see `op_ctx_template`). Re-attach fast-call overloads to
-        // the snapshotted ops (top-level + cppgc class methods) now that
-        // we're running.
-        bindings::upgrade_snapshotted_ops_with_fast_calls(
-          scope,
-          context,
-          &context_state.op_ctxs,
-          &context_state.op_method_decls,
-          methods_ctx_offset,
-        );
+        // function (see `op_ctx_template`); the fast-call overloads must be
+        // re-attached at runtime. That pass (~0.9ms, ~1.6k V8 functions) only
+        // helps ops accessed at runtime — baked modules already captured their
+        // slow refs at snapshot eval — so we DEFER it until the first residual
+        // ext-module load (`ensure_fast_ops_upgraded`). A program that loads no
+        // residual module (e.g. an empty script) never pays for it.
+        //
+        // Capture the refs the deferred upgrade needs NOW, while `Deno.core` is
+        // still on the global — it's scrubbed from the public `Deno` after
+        // bootstrap, so the post-bootstrap deferred caller can't read them.
+        let (ops_obj, stub_fn) =
+          bindings::snapshotted_fast_op_refs(scope, context);
+        *context_state.deferred_fast_ops.borrow_mut() = Some((
+          v8::Global::new(scope, ops_obj),
+          v8::Global::new(scope, stub_fn),
+        ));
+      }
+      // The deferred upgrade applies ONLY when loading a snapshot at runtime.
+      // In the fresh-bind path the ops were just bound with fast calls, and in
+      // the snapshot-build path we must keep the slow ops (fast-call functions
+      // can't be serialized) and must NOT upgrade even though `op_load_ext_script`
+      // runs during the build. Mark those paths done so `ensure_fast_ops_upgraded`
+      // is a no-op for them.
+      if init_mode.needs_ops_bindings() || will_snapshot {
+        context_state.fast_ops_upgraded.set(true);
       }
       startup_phase_end(_phase, "ops_bindings (fast call upgrade)");
 

@@ -36,6 +36,7 @@ members = [
   "ext/websocket",
   "ext/webstorage",
   "libs/cache_dir",
+  "libs/cli_parser",
   "libs/config",
   "libs/core",
   "libs/core/examples/snapshot",
@@ -144,6 +145,7 @@ denort_helper = { version = "0.49.0", path = "./ext/rt_helper" }
 # workspace libraries
 deno_bench_util = { version = "0.245.0", path = "./tests/bench_util" }
 deno_cache_dir = { version = "0.43.0", path = "./libs/cache_dir" }
+deno_cli_parser = { version = "0.1.0", path = "./libs/cli_parser" }
 deno_config = { version = "0.101.0", features = ["workspace"], path = "./libs/config" }
 deno_core = { version = "0.404.0", path = "./libs/core" }
 deno_core_testing = { path = "./libs/core_testing" }
