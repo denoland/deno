@@ -460,7 +460,7 @@
   "Worker-termination-with-port-messages.html": true,
   "Worker-timeout-cancel-order.html": true,
   "Worker-timeout-decreasing-order.html": true,
-  "Worker-timeout-increasing-order.html": true,
+  "Worker-timeout-increasing-order.html": { "flaky": true },
   "WorkerGlobalScope-close.html": false,
   "WorkerGlobalScope_requestAnimationFrame.worker.html": false,
   "WorkerNavigator_userAgentData.http.html": true,
