@@ -2211,6 +2211,7 @@ dependencies = [
  "deno_runtime",
  "deno_semver",
  "log",
+ "pretty_assertions",
  "serde",
 ]
 
@@ -3289,6 +3290,7 @@ dependencies = [
  "thiserror 2.0.12",
  "twox-hash 2.1.2",
  "url",
+ "yaml_parser",
 ]
 
 [[package]]
