@@ -40,7 +40,7 @@ pub struct InstallStats {
   pub reused_jsr: DashSet<String>,
   pub resolved_npm: DashSet<String>,
   pub downloaded_npm: DashSet<String>,
-  pub intialized_npm: DashSet<String>,
+  pub initialized_npm: DashSet<String>,
   pub reused_npm: crate::util::sync::RelaxedAtomicCounter,
 }
 
@@ -68,14 +68,14 @@ impl std::fmt::Debug for InstallStats {
       .field("downloaded_npm", &self.downloaded_npm.len())
       .field("downloaded_jsr_count", &self.downloaded_jsr.len())
       .field(
-        "intialized_npm",
+        "initialized_npm",
         &self
-          .intialized_npm
+          .initialized_npm
           .iter()
           .map(|s| s.as_str().to_string())
           .collect::<Vec<_>>(),
       )
-      .field("intialized_npm_count", &self.intialized_npm.len())
+      .field("initialized_npm_count", &self.initialized_npm.len())
       .field("reused_npm", &self.reused_npm.get())
       .finish()
   }
@@ -112,7 +112,7 @@ impl deno_npm_installer::InstallProgressReporter for InstallReporter {
   fn initializing(&self, _nv: &deno_semver::package::PackageNv) {}
 
   fn initialized(&self, nv: &deno_semver::package::PackageNv) {
-    self.stats.intialized_npm.insert(nv.to_string());
+    self.stats.initialized_npm.insert(nv.to_string());
   }
 
   fn blocking(&self, _message: &str) {}
@@ -268,11 +268,11 @@ pub fn print_install_report(
 
   let rep = install_reporter;
 
-  if !rep.stats.intialized_npm.is_empty()
+  if !rep.stats.initialized_npm.is_empty()
     || !rep.stats.downloaded_jsr.is_empty()
   {
     let total_installed =
-      rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len();
+      rep.stats.initialized_npm.len() + rep.stats.downloaded_jsr.len();
     log::info!(
       "{} {} {} {} {}",
       deno_terminal::colors::gray("Installed"),

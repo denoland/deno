@@ -124,7 +124,7 @@ pub fn categorize_installed_npm_deps(
   let mut installed_dev_deps = Vec::new();
 
   let npm_installed_set = if npm_resolver.root_node_modules_path().is_some() {
-    &install_reporter.stats.intialized_npm
+    &install_reporter.stats.initialized_npm
   } else {
     &install_reporter.stats.downloaded_npm
   };
