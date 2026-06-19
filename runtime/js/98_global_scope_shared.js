@@ -14,6 +14,13 @@ const loadEncoding = () =>
 const console = core.loadExtScript("ext:deno_web/01_console.js");
 const worker = core.loadExtScript("ext:runtime/11_workers.js");
 const performance = core.loadExtScript("ext:deno_web/15_performance.js");
+// `internals.kKeyObject` (set by this tiny, dependency-free node module) brands
+// WebCrypto CryptoKeys so node's crypto recognizes them (`00_crypto.js` below
+// reads it for `Crypto.registerSymbols`, and node's key bridge checks
+// `obj[kKeyObject]`). It used to be set as a side effect of the eager
+// `import "node:buffer"` chain; now that buffer/timers are deferred, set it
+// explicitly before crypto evaluates.
+core.loadExtScript("ext:deno_node/internal/crypto/constants.ts");
 // crypto is installed eagerly: evaluating 00_crypto.js at startup runs its
 // `registerCloneableResource("CryptoKey", ...)` side effect, which workers need
 // to deserialize a CryptoKey transferred via postMessage/workerData. The impl
