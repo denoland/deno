@@ -644,16 +644,30 @@ pub fn cover_files(
   let proc_coverages: Vec<_> = script_coverages
     .into_iter()
     .map(|mut cov| {
-      // Schemes supporting search params or hash fragments (`file:`/`http:`/`https:` URLs)
-      // and that does not change the resulting loaded source are treated as a single module
-      // so their coverage appear merged rather than being reported as separate entries
-      if let Ok(mut url) = Url::parse(&cov.url)
-        && matches!(url.scheme(), "file" | "http" | "https")
-        && (url.query().is_some() || url.fragment().is_some())
-      {
-        url.set_query(None);
-        url.set_fragment(None);
-        cov.url = url.to_string();
+      // Normalize the coverage URL so that the same module loaded under
+      // slightly different specifiers is reported as a single merged entry.
+      //
+      // Fragments never affect the loaded source, so strip them for any
+      // `file:`/`http:`/`https:` URL (e.g. `mod.ts#a` and `mod.ts#b` merge).
+      //
+      // Query strings are only stripped for `file:` URLs, which resolve to the
+      // same file on disk regardless of the query. For `http(s):` a server can
+      // legitimately return different bytes for `mod.js?v=1` vs `mod.js?v=2`,
+      // so merging their V8 ranges would be wrong; the HTTP cache also keys on
+      // the full URL, so dropping the query would lose the source entirely.
+      if let Ok(mut url) = Url::parse(&cov.url) {
+        let strip_fragment = matches!(url.scheme(), "file" | "http" | "https")
+          && url.fragment().is_some();
+        let strip_query = url.scheme() == "file" && url.query().is_some();
+        if strip_fragment {
+          url.set_fragment(None);
+        }
+        if strip_query {
+          url.set_query(None);
+        }
+        if strip_fragment || strip_query {
+          cov.url = url.to_string();
+        }
       }
       ProcessCoverage { result: vec![cov] }
     })
