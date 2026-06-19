@@ -446,6 +446,30 @@ Deno.test(function urlBase() {
   assertEquals(new URL("//bar", "file://foo/a/b?c#d").href, "file://bar/");
   assertEquals(new URL("//bar", "abcd://foo/a/b?c#d").href, "abcd://bar");
 
+  assertEquals(new URL("///bar", "http://foo/a/b?c#d").href, "http://bar/");
+  assertEquals(new URL("///test", "http://example.org/").href, "http://test/");
+  assertEquals(new URL("///bar", "ftp://foo/a/b?c#d").href, "ftp://bar/");
+  assertEquals(new URL("///bar", "ws://foo/a/b?c#d").href, "ws://bar/");
+  assertEquals(new URL("///bar", "wss://foo/a/b?c#d").href, "wss://bar/");
+  assertEquals(
+    new URL("////bar/baz?c#d", "https://foo/a").href,
+    "https://bar/baz?c#d",
+  );
+  assertEquals(
+    new URL("///bar", "file://foo/a/b?c#d").href,
+    "file:///bar",
+  );
+  assertEquals(
+    new URL("///bar", "abcd://foo/a/b?c#d").href,
+    "abcd:///bar",
+  );
+  assertThrows(() => new URL("///bar", "mailto:foo"), TypeError, "Invalid URL");
+  assertEquals(URL.parse("///bar", "http://foo/a")?.href, "http://bar/");
+  assertStrictEquals(URL.canParse("///bar", "http://foo/a"), true);
+  assertThrows(() => new URL("///", "http://foo/a"), TypeError, "Invalid URL");
+  assertStrictEquals(URL.parse("///", "http://foo/a"), null);
+  assertStrictEquals(URL.canParse("///", "http://foo/a"), false);
+
   assertEquals(new URL("efgh:", "http://foo/a/b?c#d").href, "efgh:");
   assertEquals(new URL("efgh:", "file://foo/a/b?c#d").href, "efgh:");
   assertEquals(new URL("efgh:", "abcd://foo/a/b?c#d").href, "efgh:");
