@@ -197,7 +197,7 @@ pub async fn execute_script(
   // Precedence: explicit `--jobs` flag > `DENO_JOBS` env var >
   // `available_parallelism()` default.
   let no_of_concurrent_tasks = task_flags
-    .workspace_concurrency
+    .concurrency
     .or_else(|| {
       std::env::var("DENO_JOBS")
         .ok()?

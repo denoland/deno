@@ -292,7 +292,7 @@ async fn run_subcommand(
           filter: None,
           eval: false,
           no_prefix: false,
-          workspace_concurrency: None,
+          concurrency: None,
           if_present: false,
         };
         let mut flags = flags;
@@ -406,7 +406,7 @@ async fn run_subcommand(
                   filter: None,
                   eval: false,
                   no_prefix: false,
-                  workspace_concurrency: None,
+                  concurrency: None,
                   if_present: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
