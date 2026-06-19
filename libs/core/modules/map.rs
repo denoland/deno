@@ -3157,14 +3157,9 @@ impl ModuleMap {
     // stores; warm runs consume and skip parse+compile. Producing and consuming
     // binary are identical, so the cache is always accepted.
     let cache_specifier = crate::ModuleSpecifier::parse(&specifier_str).ok();
-    let state = JsRuntime::state_from(tc_scope);
-    let code_cache_info = match (
-      cache_specifier.as_ref(),
-      state.eval_context_get_code_cache_cb.borrow().as_ref(),
-    ) {
-      (Some(spec), Some(cb)) => cb(spec, &v8_source).ok(),
-      _ => None,
-    };
+    let code_cache_info = cache_specifier
+      .as_ref()
+      .and_then(|spec| self.loader.borrow().get_code_cache(spec, &v8_source));
     let (mut compile_source, compile_options) =
       match code_cache_info.as_ref().and_then(|i| i.data.as_ref()) {
         Some(data) => (
@@ -3214,10 +3209,14 @@ impl ModuleMap {
     if (!had_data || rejected)
       && let (Some(spec), Some(info)) =
         (cache_specifier.as_ref(), code_cache_info.as_ref())
-      && let Some(cb) = state.eval_context_code_cache_ready_cb.borrow().as_ref()
       && let Some(cache) = function.create_code_cache()
     {
-      cb(spec.clone(), info.hash, &cache[..]);
+      let fut = self.loader.borrow().code_cache_ready(
+        spec.clone(),
+        info.hash,
+        &cache[..],
+      );
+      self.code_cache_ready_futs.push(fut);
     }
 
     let captured = self.data.borrow().captured_bootstrap.borrow().clone();
