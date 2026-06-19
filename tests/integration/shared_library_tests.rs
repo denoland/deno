@@ -54,7 +54,6 @@ fn macos_shared_libraries() {
   // 	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
 
   // path and whether its weak or not
-  #[cfg(target_arch = "x86_64")]
   const EXPECTED: [(&str, bool); 11] = [
     (
       "/System/Library/Frameworks/Security.framework/Versions/A/Security",
@@ -88,12 +87,6 @@ fn macos_shared_libraries() {
       "/System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/MetalPerformanceShaders",
       true,
     ),
-    ("/usr/lib/libiconv.2.dylib", false),
-    ("/usr/lib/libSystem.B.dylib", false),
-    ("/usr/lib/libobjc.A.dylib", false),
-  ];
-  #[cfg(target_arch = "aarch64")]
-  const EXPECTED: [(&str, bool); 3] = [
     ("/usr/lib/libiconv.2.dylib", false),
     ("/usr/lib/libSystem.B.dylib", false),
     ("/usr/lib/libobjc.A.dylib", false),
