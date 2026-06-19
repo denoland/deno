@@ -140,10 +140,14 @@ pub type WaitForInspectorDisconnectCallback = Box<dyn Fn()>;
 /// fires for a module that is not registered in deno_core's module map (e.g.
 /// a `node:vm` `SourceTextModule`). The embedder is expected to populate the
 /// `meta` object as needed and return; the hook is not allowed to throw.
-pub type ExternalModuleImportMetaCb = for<'s, 'i> fn(
+///
+/// Each argument carries its own lifetime parameter (rather than being tied
+/// to the scope's `'s`) so the unbound `Local`s V8 passes into the
+/// extern "C" callback can be forwarded without re-creating handles.
+pub type ExternalModuleImportMetaCb = for<'s, 'i, 'm, 'o> fn(
   scope: &mut v8::PinScope<'s, 'i>,
-  module: v8::Local<'s, v8::Module>,
-  meta: v8::Local<'s, v8::Object>,
+  module: v8::Local<'m, v8::Module>,
+  meta: v8::Local<'o, v8::Object>,
 );
 
 const STATE_DATA_OFFSET: u32 = 0;

@@ -1737,10 +1737,10 @@ thread_local! {
 /// `meta.url` from the module's `identifier` option (matching Node's
 /// behavior) and then invokes the user's `initializeImportMeta(meta)`
 /// callback, if any.
-fn external_import_meta_hook<'s, 'i>(
+fn external_import_meta_hook<'s, 'i, 'm, 'o>(
   scope: &mut v8::PinScope<'s, 'i>,
-  module: v8::Local<'s, v8::Module>,
-  meta: v8::Local<'s, v8::Object>,
+  module: v8::Local<'m, v8::Module>,
+  meta: v8::Local<'o, v8::Object>,
 ) {
   let hash = module.get_identity_hash();
   let entry = IMPORT_META_CALLBACKS.with(|m| {
