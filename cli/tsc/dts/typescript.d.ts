@@ -5979,7 +5979,7 @@ declare namespace ts {
          *
          * Note that this field is only set by the module resolution process when
          * `moduleResolution` is `Node16` or `NodeNext`, which is implied by the `module` setting
-         * of `Node16` or `NodeNext`, respectively, but may be overriden (eg, by a `moduleResolution`
+         * of `Node16` or `NodeNext`, respectively, but may be overridden (eg, by a `moduleResolution`
          * of `node`). If so, this field will be unset and source files will be considered to be
          * CommonJS-output-format by the node module transformer and type checker, regardless of extension or context.
          */
