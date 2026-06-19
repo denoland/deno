@@ -7,6 +7,7 @@
       "output": "with_flag.out"
     },
     "without_flag": {
+      "if": "notWindowsArm",
       "args": "x -y jsr:@denotest/x-unstable-kv",
       "exitCode": 1,
       "output": "without_flag.out"
