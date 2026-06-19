@@ -143,7 +143,6 @@ pub async fn pack(
           package.name
         )
       })?;
-    warn_for_slow_type_diagnostics(&graph, &package, &pack_flags)?;
 
     // Collect files from the graph
     let collected_paths = collect_graph_modules(&graph, &package, &pack_flags)?;
@@ -231,6 +230,7 @@ async fn create_graph(
       validate_graph: true,
     })
     .await?;
+  warn_for_slow_type_diagnostics(&graph, package, pack_flags)?;
 
   // If fast check is enabled, rebuild with DTS generation
   if !pack_flags.allow_slow_types {
