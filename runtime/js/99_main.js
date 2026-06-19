@@ -1236,19 +1236,22 @@ function bootstrapWorkerRuntime(
     };
     if (nodeBootstrap) {
       nodeBootstrap(nodeBootstrapArgs);
-    } else if (workerType === "node") {
-      // node-defer: node worker_threads need the FULL node bootstrap eagerly:
-      // require, workerData, SharedArrayBuffer, etc. must be ready before the
-      // worker's first line runs. Web workers stay lazy like the main thread
-      // so non-node workers never pay node bootstrap.
+    } else {
+      // node-defer: in a WORKER, run the FULL node bootstrap eagerly. Unlike
+      // the main thread (where deferring node is the whole deser win), worker
+      // code commonly needs `require`, `workerData`, SharedArrayBuffer, etc.
+      // ready before its first line runs, and a worker is node-heavy anyway.
+      // Deferring node for non-node (web) workers leaves the worker half of
+      // the bootstrap (`__initWorkerThreads`: parentPort/workerData/cross-thread
+      // messaging) un-run, since the lazy node:process/node:module self-triggers
+      // only run `__bootstrapNodeProcess`. That hangs workers that lazily pull
+      // node (e.g. npm:playwright on windows), so keep workers eager here.
       // Load node:process FIRST (fully evaluates + runs the process bootstrap),
       // THEN node:module (its closure now captures a fully-evaluated
       // node:process, avoiding the cold-bootstrap TDZ), then run `initialize`.
       core.createLazyLoader("node:process")();
       core.createLazyLoader("node:module")();
       globalThis.nodeBootstrap(nodeBootstrapArgs);
-    } else {
-      internals.__nodeBootstrapArgs = nodeBootstrapArgs;
     }
   } else {
     // Warmup
