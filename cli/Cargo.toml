@@ -100,6 +100,7 @@ bincode.workspace = true
 boxed_error.workspace = true
 bsdiff.workspace = true
 bytes.workspace = true
+cab.workspace = true
 capacity_builder.workspace = true
 chrono = { workspace = true, features = ["now"] }
 clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context"] }
@@ -143,6 +144,7 @@ locked-tripwire = "0.1.1"
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 memchr.workspace = true
+msi.workspace = true
 notify.workspace = true
 once_cell.workspace = true
 open.workspace = true
@@ -185,7 +187,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter"], optional = t
 twox-hash.workspace = true
 typed-arena.workspace = true
 unicode-width.workspace = true
-uuid = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["serde", "v5"] }
 walkdir.workspace = true
 wasm_dep_analyzer = "0.4.0"
 wasmparser = "0.244.0"
