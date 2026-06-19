@@ -61,6 +61,7 @@ winres.workspace = true
 deno_ast = { workspace = true, features = ["cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit", "utils"] }
 deno_bundle_runtime.workspace = true
 deno_cache_dir = { workspace = true, features = ["sync"] }
+deno_cli_parser.workspace = true
 deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core.workspace = true
 deno_doc = { workspace = true, features = ["rust", "comrak"] }

@@ -3149,14 +3149,38 @@ impl ModuleMap {
       v8::String::new(tc_scope, &wrapped_source).unwrap()
     };
     let bootstrap_param = v8::String::new(tc_scope, "__bootstrap").unwrap();
-    let mut compile_source =
-      v8::script_compiler::Source::new(v8_source, Some(&origin));
+    // Persist a V8 code cache for this residual `lazy_loaded_js` module through
+    // the same on-disk (DENO_DIR) cache user scripts use, keyed by specifier +
+    // source hash. Residuals ship source-only in the binary, so without this a
+    // node-heavy program re-pays parse+compile of the whole node-polyfill
+    // closure at runtime on every cold start. The first run compiles and
+    // stores; warm runs consume and skip parse+compile. Producing and consuming
+    // binary are identical, so the cache is always accepted.
+    let cache_specifier = crate::ModuleSpecifier::parse(&specifier_str).ok();
+    let code_cache_info = cache_specifier
+      .as_ref()
+      .and_then(|spec| self.loader.borrow().get_code_cache(spec, &v8_source));
+    let (mut compile_source, compile_options) =
+      match code_cache_info.as_ref().and_then(|i| i.data.as_ref()) {
+        Some(data) => (
+          v8::script_compiler::Source::new_with_cached_data(
+            v8_source,
+            Some(&origin),
+            v8::CachedData::new(data),
+          ),
+          v8::script_compiler::CompileOptions::ConsumeCodeCache,
+        ),
+        None => (
+          v8::script_compiler::Source::new(v8_source, Some(&origin)),
+          v8::script_compiler::CompileOptions::NoCompileOptions,
+        ),
+      };
     let function = match v8::script_compiler::compile_function(
       tc_scope,
       &mut compile_source,
       &[bootstrap_param],
       &[],
-      v8::script_compiler::CompileOptions::NoCompileOptions,
+      compile_options,
       v8::script_compiler::NoCacheReason::NoReason,
     ) {
       Some(f) => f,
@@ -3172,6 +3196,28 @@ impl ModuleMap {
         return Err(CoreErrorKind::Js(err).into_box());
       }
     };
+    // Store the freshly-compiled cache on the first run (cold), or if V8
+    // rejected the existing cache (e.g. the source changed).
+    let rejected = compile_source
+      .get_cached_data()
+      .map(|d| d.rejected())
+      .unwrap_or(true);
+    let had_data = code_cache_info
+      .as_ref()
+      .map(|i| i.data.is_some())
+      .unwrap_or(false);
+    if (!had_data || rejected)
+      && let (Some(spec), Some(info)) =
+        (cache_specifier.as_ref(), code_cache_info.as_ref())
+      && let Some(cache) = function.create_code_cache()
+    {
+      let fut = self.loader.borrow().code_cache_ready(
+        spec.clone(),
+        info.hash,
+        &cache[..],
+      );
+      self.code_cache_ready_futs.push(fut);
+    }
 
     let captured = self.data.borrow().captured_bootstrap.borrow().clone();
     let bootstrap_arg = match &captured {

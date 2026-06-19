@@ -1657,6 +1657,9 @@ function pathToFileURL(
     const rest = StringPrototypeSlice(filepath, hostnameEndIndex + 1);
 
     outURL.hostname = idnaToASCII(hostname);
+    if (outURL.hostname === "" && hostname !== "") {
+      throw new ERR_INVALID_URL(filepath);
+    }
     outURL.pathname = encodePathChars(
       StringPrototypeReplace(rest, backslashRegEx, "/"),
       {

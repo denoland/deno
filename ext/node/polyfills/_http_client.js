@@ -276,6 +276,12 @@ function parseContentTypeFromRawHeaders(rawHeaders) {
 }
 
 function buildInspectorRequestUrl(protocol, host, port, path) {
+  if (
+    path && (StringPrototypeStartsWith(path, "http://") ||
+      StringPrototypeStartsWith(path, "https://"))
+  ) {
+    return path;
+  }
   let hostPart = host || "localhost";
   if (
     StringPrototypeIndexOf(hostPart, ":") !== -1 &&

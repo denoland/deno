@@ -13,6 +13,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_terminal::colors;
 
+use crate::args::FileFlagsExt;
 use crate::args::Flags;
 use crate::args::PackFlags;
 use crate::factory::CliFactory;

@@ -16,6 +16,7 @@ import {
   op_get_ext_import_meta_proto,
   op_internal_log,
   op_main_module,
+  op_node_has_child_ipc_pipe,
   op_ppid,
   op_proto_get_attempted,
   op_proto_set_attempted,
@@ -48,6 +49,7 @@ const {
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
   PromiseResolve,
+  ReflectApply,
   StringPrototypePadEnd,
   Symbol,
   SymbolDispose,
@@ -109,9 +111,29 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 const { SymbolMetadata } = core.loadExtScript("ext:deno_web/00_infra.js");
-const { bootstrap: bootstrapOtel } = core.loadExtScript(
-  "ext:deno_telemetry/telemetry.ts",
-);
+// Telemetry (~2000 LOC, ~70 KB of bytecode + V8 heap) is only needed when an
+// OTEL config flag is set, but it was being loaded unconditionally at snapshot
+// build time. Skip the load on the cold-start path; only enter the module
+// when the bootstrap config actually asks for telemetry.
+//
+// Layout of `otelConfig` (see OtelConfig::as_v8 in ext/telemetry/lib.rs):
+//   [0]  tracing_enabled (0/1)
+//   [1]  metrics_enabled (0/1)
+//   [2]  console mode (OtelConsoleConfig: 0 = Ignore, 1 = Capture, 2 = Replace)
+//   [3..] zero or more propagator ids; if no propagator is configured the
+//         array ends at length 3.
+function bootstrapOtel(otelConfig) {
+  if (
+    otelConfig[0] === 0 &&
+    otelConfig[1] === 0 &&
+    otelConfig[2] === 0 &&
+    otelConfig.length <= 3
+  ) {
+    return;
+  }
+  const { bootstrap } = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+  bootstrap(otelConfig);
+}
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -690,6 +712,21 @@ function removeImportedOps() {
 // methods should be left there.
 ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
+// `Deno.test` and its sub-methods are no-ops outside of `deno test`, kept for
+// compatibility so they don't error under `deno run`. Mirrors the surface of
+// the real `Deno.test` defined in cli/js/40_test.js.
+function noopTest() {}
+noopTest.ignore = () => {};
+noopTest.only = () => {};
+noopTest.beforeAll = () => {};
+noopTest.beforeEach = () => {};
+noopTest.afterEach = () => {};
+noopTest.afterAll = () => {};
+noopTest.sanitizer = () => {};
+const noopTestEach = () => () => {};
+noopTest.each = noopTestEach;
+noopTest.only.each = noopTestEach;
+noopTest.ignore.each = noopTestEach;
 // Build finalDenoNs without spreading denoNs: spread invokes every getter,
 // including the lazy ones (Deno.serve / Deno.run / etc.) that intentionally
 // avoid loading 06_streams / 22_body / 40_process at snapshot time. Use
@@ -702,7 +739,7 @@ const finalDenoNs = ObjectDefineProperties(
     // Deno.test, Deno.bench, Deno.lint are noops here, but kept for
     // compatibility; so that they don't cause errors when used outside of
     // `deno test`/`deno bench`/`deno lint` contexts.
-    test: () => {},
+    test: noopTest,
     bench: () => {},
     lint: {
       runPlugin: () => {
@@ -834,6 +871,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       16: autoServe,
       17: nodeClusterUniqueId,
       18: nodeClusterSchedPolicy,
+      19: disableOffscreenCanvas,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -941,7 +979,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       location.setLocationHref(location_);
     }
 
-    ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
+    // Use defineGlobalProperties so the lazy-loaded descriptors (alert,
+    // confirm, prompt, Storage) get their `lazyNameSym` stamped with the
+    // property name. Without this, the setter calls
+    // `Object.defineProperty(this, undefined, ...)` which fails because the
+    // global `undefined` is non-configurable on `globalThis`.
+    core.defineGlobalProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
       // TODO(bartlomieju): in the future we might want to change the
       // behavior of setting `name` to actually update the process name.
@@ -950,6 +993,9 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       close: core.propWritable(windowClose),
       closed: core.propGetterOnly(() => windowIsClosing),
     });
+    if (disableOffscreenCanvas) {
+      delete globalThis.OffscreenCanvas;
+    }
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
@@ -1009,15 +1055,41 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
+    const nodeBootstrapArgs = {
+      usesLocalNodeModulesDir: hasNodeModulesDir,
+      runningOnMainThread: true,
+      argv0,
+      nodeDebug,
+      nodeClusterUniqueId,
+      nodeClusterSchedPolicy,
+      // Stashed so process.ts's self-trigger can call __bootstrapNodeProcess
+      // without reading Deno.* (the no-deno-api-in-polyfills lint counts
+      // Deno.* references in node polyfills; passing them in keeps process.ts
+      // at zero new violations).
+      denoArgs: Deno.args,
+      denoVersion: Deno.version,
+    };
     if (nodeBootstrap) {
-      nodeBootstrap({
-        usesLocalNodeModulesDir: hasNodeModulesDir,
-        runningOnMainThread: true,
-        argv0,
-        nodeDebug,
-        nodeClusterUniqueId,
-        nodeClusterSchedPolicy,
-      });
+      nodeBootstrap(nodeBootstrapArgs);
+    } else if (op_node_has_child_ipc_pipe()) {
+      // node-defer: this main process is a forked child with an IPC pipe. It
+      // needs the IPC channel (set up in the full `initialize`) ready
+      // synchronously before its main module calls process.send /
+      // process.on("message"). Run the full node bootstrap EAGERLY (like
+      // workers) -- a forked IPC child is a node process, so the deser win
+      // doesn't apply. node:process first (fully evaluates), then node:module
+      // (its closure captures a finished node:process, so no cold-bootstrap
+      // TDZ), then `initialize`.
+      core.createLazyLoader("node:process")();
+      core.createLazyLoader("node:module")();
+      globalThis.nodeBootstrap(nodeBootstrapArgs);
+    } else {
+      // node-defer: node:module (01_require.js) is `lazy_loaded_esm`, so its
+      // top-level `globalThis.nodeBootstrap = initialize` hasn't run yet and
+      // `nodeBootstrap` is undefined here. Stash the args so node:process and
+      // 01_require.js self-bootstrap from them when first lazily loaded (on
+      // the first node:* use), so non-node programs never pay node bootstrap.
+      internals.__nodeBootstrapArgs = nodeBootstrapArgs;
     }
   } else {
     // Warmup
@@ -1050,6 +1122,7 @@ function bootstrapWorkerRuntime(
       15: standalone,
       17: nodeClusterUniqueId,
       18: nodeClusterSchedPolicy,
+      19: disableOffscreenCanvas,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -1080,6 +1153,9 @@ function bootstrapWorkerRuntime(
       close: core.propNonEnumerable(workerClose),
       postMessage: core.propWritable(postMessage),
     });
+    if (disableOffscreenCanvas) {
+      delete globalThis.OffscreenCanvas;
+    }
     if (enableTestingFeaturesFlag) {
       ObjectDefineProperty(
         globalThis,
@@ -1143,18 +1219,36 @@ function bootstrapWorkerRuntime(
       ? messagePort.deserializeJsMessageData(maybeWorkerMetadata)
       : undefined;
 
+    const nodeBootstrapArgs = {
+      usesLocalNodeModulesDir: hasNodeModulesDir,
+      runningOnMainThread: false,
+      argv0,
+      workerId,
+      maybeWorkerMetadata: workerMetadata,
+      nodeDebug,
+      nodeClusterUniqueId,
+      nodeClusterSchedPolicy,
+      moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
+      // Stashed so process.ts's self-trigger can call __bootstrapNodeProcess
+      // without reading Deno.* (see the main-thread branch above).
+      denoArgs: Deno.args,
+      denoVersion: Deno.version,
+    };
     if (nodeBootstrap) {
-      nodeBootstrap({
-        usesLocalNodeModulesDir: hasNodeModulesDir,
-        runningOnMainThread: false,
-        argv0,
-        workerId,
-        maybeWorkerMetadata: workerMetadata,
-        nodeDebug,
-        nodeClusterUniqueId,
-        nodeClusterSchedPolicy,
-        moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
-      });
+      nodeBootstrap(nodeBootstrapArgs);
+    } else if (workerType === "node") {
+      // node-defer: node worker_threads need the FULL node bootstrap eagerly:
+      // require, workerData, SharedArrayBuffer, etc. must be ready before the
+      // worker's first line runs. Web workers stay lazy like the main thread
+      // so non-node workers never pay node bootstrap.
+      // Load node:process FIRST (fully evaluates + runs the process bootstrap),
+      // THEN node:module (its closure now captures a fully-evaluated
+      // node:process, avoiding the cold-bootstrap TDZ), then run `initialize`.
+      core.createLazyLoader("node:process")();
+      core.createLazyLoader("node:module")();
+      globalThis.nodeBootstrap(nodeBootstrapArgs);
+    } else {
+      internals.__nodeBootstrapArgs = nodeBootstrapArgs;
     }
   } else {
     // Warmup
@@ -1164,10 +1258,20 @@ function bootstrapWorkerRuntime(
 
 const nodeBootstrap = globalThis.nodeBootstrap;
 delete globalThis.nodeBootstrap;
-const dispatchProcessExitEvent = internals.dispatchProcessExitEvent;
-delete internals.dispatchProcessExitEvent;
-const dispatchProcessBeforeExitEvent = internals.dispatchProcessBeforeExitEvent;
-delete internals.dispatchProcessBeforeExitEvent;
+// node-defer: node:process sets internals.dispatchProcess{Exit,BeforeExit}Event
+// during its bootstrap, which is now deferred to first node:* use -- i.e. AFTER
+// this module evaluates. Capturing the values here would freeze the no-op
+// (node not yet bootstrapped). Instead dispatch dynamically: look up the
+// current internals handler at call time. No-op when node was never
+// bootstrapped (a non-node program has no process exit listeners).
+const dispatchProcessExitEvent = (...args) =>
+  internals.dispatchProcessExitEvent
+    ? ReflectApply(internals.dispatchProcessExitEvent, internals, args)
+    : undefined;
+const dispatchProcessBeforeExitEvent = (...args) =>
+  internals.dispatchProcessBeforeExitEvent
+    ? ReflectApply(internals.dispatchProcessBeforeExitEvent, internals, args)
+    : false;
 
 globalThis.bootstrap = {
   mainRuntime: bootstrapMainRuntime,

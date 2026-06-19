@@ -911,6 +911,34 @@ impl ModuleLoader for EmbeddedModuleLoader {
     self.load_default(original_specifier, maybe_referrer, options)
   }
 
+  fn get_code_cache(
+    &self,
+    specifier: &ModuleSpecifier,
+    source: &deno_core::v8::String,
+  ) -> Option<SourceCodeCacheInfo> {
+    let code_cache = self.shared.code_cache.as_ref()?;
+    if !code_cache.enabled() {
+      return None;
+    }
+    // Residual ext-scripts (the node polyfill closure, etc.) don't go through
+    // `load()`, so they can't ride their cache on a `ModuleSource`. Read the
+    // shared on-disk cache directly here. The deno version is already part of
+    // the root cache key. Hash the `v8::String` the same way `CliModuleLoader`
+    // does so this read side lines up with the `code_cache_ready` write side.
+    let hash = FastInsecureHasher::new_without_deno_version()
+      .write_hashable(source)
+      .finish();
+    let data = code_cache.get_sync(
+      specifier,
+      deno_runtime::code_cache::CodeCacheType::EsModule,
+      hash,
+    );
+    Some(SourceCodeCacheInfo {
+      hash,
+      data: data.map(Cow::Owned),
+    })
+  }
+
   fn code_cache_ready(
     &self,
     specifier: Url,
@@ -1575,6 +1603,10 @@ pub async fn run_with_options(
     enable_raw_imports: metadata.unstable_config.raw_imports,
     close_on_idle: !options.auto_serve,
     maybe_initial_cwd: None,
+    disable_offscreen_canvas: matches!(
+      std::env::var("DENO_DISABLE_OFFSCREEN_CANVAS").as_deref(),
+      Ok("1") | Ok("true")
+    ),
   };
   let worker_factory = LibMainWorkerFactory::new(
     blob_store,

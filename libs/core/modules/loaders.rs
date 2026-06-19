@@ -177,6 +177,20 @@ pub trait ModuleLoader {
     async {}.boxed_local()
   }
 
+  /// Read a persisted V8 code cache for a residual lazy ext-script that is
+  /// compiled via `compile_function` during bootstrap (not loaded through
+  /// `load()`, so its cache cannot ride on a `ModuleSource`). Returns the
+  /// stored bytes + source hash so the compile can consume the cache.
+  ///
+  /// It's not required to implement this method.
+  fn get_code_cache(
+    &self,
+    _specifier: &ModuleSpecifier,
+    _source: &v8::String,
+  ) -> Option<SourceCodeCacheInfo> {
+    None
+  }
+
   /// Called when V8 code cache should be ignored for this module. This can happen
   /// if eg. module causes a V8 warning, like when using deprecated import assertions.
   /// Implementors should make sure that the code cache for this module is purged and not saved anymore.

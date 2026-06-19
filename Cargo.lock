@@ -1939,6 +1939,7 @@ dependencies = [
  "deno_ast",
  "deno_bundle_runtime",
  "deno_cache_dir",
+ "deno_cli_parser",
  "deno_config",
  "deno_core",
  "deno_doc",
@@ -2196,6 +2197,22 @@ dependencies = [
  "deno_webgpu",
  "raw-window-handle",
  "thiserror 2.0.12",
+]
+
+[[package]]
+name = "deno_cli_parser"
+version = "0.1.0"
+dependencies = [
+ "deno_bundle_runtime",
+ "deno_config",
+ "deno_core",
+ "deno_lib",
+ "deno_npm_installer",
+ "deno_runtime",
+ "deno_semver",
+ "log",
+ "pretty_assertions",
+ "serde",
 ]
 
 [[package]]
@@ -3273,6 +3290,7 @@ dependencies = [
  "thiserror 2.0.12",
  "twox-hash 2.1.2",
  "url",
+ "yaml_parser",
 ]
 
 [[package]]
