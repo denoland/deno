@@ -3292,7 +3292,7 @@ jobs:
     needs:
       - build-debug-windows-aarch64
     runs-on: windows-11-arm
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
