@@ -2213,6 +2213,7 @@ dependencies = [
  "log",
  "pretty_assertions",
  "serde",
+ "sys_traits",
 ]
 
 [[package]]
