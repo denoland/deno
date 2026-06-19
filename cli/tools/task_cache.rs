@@ -311,8 +311,9 @@ pub struct TaskCacheKey<'a> {
   /// restored on a hit.
   pub output: &'a [String],
   pub env_names: &'a [String],
-  /// Snapshot of the current environment, looked up at fingerprint time. Pass
-  /// the same map the task will execute with.
+  /// Values of the environment variables named in `env_names`, snapshotted at
+  /// fingerprint time. Only the listed names are read, so this need not carry
+  /// the rest of the environment.
   pub env: &'a BTreeMap<String, String>,
   /// Fingerprints of the task's direct dependencies, folded into the static
   /// hash so a downstream task re-runs when an upstream one did. `None` means

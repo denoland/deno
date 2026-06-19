@@ -721,14 +721,26 @@ impl<'a> TaskRunner<'a> {
     )?;
 
     // Input-based cache: if the task declares `files`, hash inputs +
-    // command + listed env values and skip on match.
-    let env_snapshot: std::collections::BTreeMap<String, String> = self
-      .env_vars
-      .iter()
-      .filter_map(|(k, v)| {
-        Some((k.to_str()?.to_string(), v.to_str()?.to_string()))
-      })
-      .collect();
+    // command + listed env values and skip on match. Only snapshot the env
+    // vars the task actually lists, and only for cacheable tasks, so the
+    // common (non-cacheable) path doesn't clone the whole environment.
+    let env_snapshot: std::collections::BTreeMap<String, String> =
+      if definition.files.is_empty() || definition.env.is_empty() {
+        std::collections::BTreeMap::new()
+      } else {
+        self
+          .env_vars
+          .iter()
+          .filter_map(|(k, v)| {
+            let k = k.to_str()?;
+            if definition.env.iter().any(|name| name == k) {
+              Some((k.to_string(), v.to_str()?.to_string()))
+            } else {
+              None
+            }
+          })
+          .collect()
+      };
     let cache_key = crate::tools::task_cache::TaskCacheKey {
       package_name,
       task_name,
