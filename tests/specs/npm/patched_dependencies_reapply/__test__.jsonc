@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run -A main.ts",
+      "output": "[WILDCARD]says hello! (patched v1)\n"
+    },
+    {
+      "args": "eval Deno.copyFileSync('patches/say-hello-v2.patch','patches/say-hello.patch')",
+      "output": ""
+    },
+    {
+      "args": "run -A main.ts",
+      "output": "[WILDCARD]says hello! (patched v2)\n"
+    }
+  ]
+}

@@ -884,6 +884,30 @@ pub enum PatchedDependenciesParseError {
   },
 }
 
+/// Parses a `patchedDependencies` map (`<name>@<version>` -> patch file path),
+/// resolving each patch path relative to `dir_path` and each key into a
+/// package identifier. Shared by the `deno.json` and `package.json` parsers.
+pub fn parse_patched_dependencies(
+  entries: &IndexMap<String, String>,
+  dir_path: &Path,
+) -> Result<
+  BTreeMap<deno_semver::package::PackageNv, PathBuf>,
+  PatchedDependenciesParseError,
+> {
+  let mut result = BTreeMap::new();
+  for (key, patch_path) in entries {
+    let nv =
+      deno_semver::package::PackageNv::from_str(key).map_err(|source| {
+        PatchedDependenciesParseError::InvalidKey {
+          key: key.clone(),
+          source,
+        }
+      })?;
+    result.insert(nv, dir_path.join(patch_path));
+  }
+  Ok(result)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TaskDefinition {
   pub command: Option<String>,
@@ -2138,19 +2162,7 @@ impl ConfigFile {
     let Some(entries) = self.json.patched_dependencies.as_ref() else {
       return Ok(Default::default());
     };
-    let dir_path = self.dir_path();
-    let mut result = BTreeMap::new();
-    for (key, patch_path) in entries {
-      let nv =
-        deno_semver::package::PackageNv::from_str(key).map_err(|source| {
-          PatchedDependenciesParseError::InvalidKey {
-            key: key.clone(),
-            source,
-          }
-        })?;
-      result.insert(nv, dir_path.join(patch_path));
-    }
-    Ok(result)
+    parse_patched_dependencies(entries, &self.dir_path())
   }
 
   pub fn to_workspace_config(

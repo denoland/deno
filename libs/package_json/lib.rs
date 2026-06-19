@@ -387,6 +387,8 @@ pub struct PackageJson {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub overrides: Option<Map<String, Value>>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub patched_dependencies: Option<IndexMap<String, String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub catalog: Option<IndexMap<String, String>>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub catalogs: Option<IndexMap<String, IndexMap<String, String>>>,
@@ -465,6 +467,7 @@ impl PackageJson {
         os: None,
         cpu: None,
         overrides: None,
+        patched_dependencies: None,
         catalog: None,
         catalogs: None,
         side_effects: None,
@@ -665,6 +668,11 @@ impl PackageJson {
     let os = package_json.remove("os").and_then(parse_string_array);
     let cpu = package_json.remove("cpu").and_then(parse_string_array);
     let overrides = package_json.remove("overrides").and_then(map_object);
+    // `patchedDependencies` maps `<name>@<version>` to a `.patch` file path,
+    // matching the top-level field used by Bun (and pnpm).
+    let patched_dependencies = package_json
+      .remove("patchedDependencies")
+      .and_then(parse_string_map);
     let side_effects =
       package_json.remove("sideEffects").and_then(|v| match v {
         Value::Bool(b) => Some(PackageJsonSideEffects::Bool(b)),
@@ -722,6 +730,7 @@ impl PackageJson {
       os,
       cpu,
       overrides,
+      patched_dependencies,
       catalog,
       catalogs,
       side_effects,

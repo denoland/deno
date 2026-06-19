@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "tests": {
+    "patch_apply_failure": {
+      "args": "run -A main.ts",
+      "output": "main.out",
+      "exitCode": 1
+    }
+  }
+}

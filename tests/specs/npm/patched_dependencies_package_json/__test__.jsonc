@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "tests": {
+    "applies_patch_from_package_json": {
+      "args": "run -A --node-modules-dir=auto main.ts",
+      "output": "main.out"
+    }
+  }
+}
