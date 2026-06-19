@@ -215,6 +215,7 @@ pub async fn cache_top_level_deps(
           loader: None,
           is_dynamic: false,
           npm_caching: NpmCachingStrategy::Manual,
+          maybe_root_attribute_type: None,
         },
       )
       .await?;

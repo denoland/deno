@@ -547,6 +547,7 @@ impl ModuleGraphCreator {
               is_dynamic: false,
               loader: Some(&publish_loader),
               npm_caching: self.options.default_npm_caching_strategy(),
+              maybe_root_attribute_type: None,
             },
           )
           .await?;
@@ -591,6 +592,7 @@ impl ModuleGraphCreator {
           is_dynamic: options.is_dynamic,
           loader: options.loader,
           npm_caching: options.npm_caching,
+          maybe_root_attribute_type: None,
         },
       )
       .await?;
@@ -690,6 +692,10 @@ pub struct BuildGraphWithNpmOptions<'a> {
   /// Specify `None` to use the default CLI loader.
   pub loader: Option<&'a dyn Loader>,
   pub npm_caching: NpmCachingStrategy,
+  /// The `type` import attribute to associate with the roots being built, so a
+  /// non-analyzable dynamic import of a config file (which enters the graph as
+  /// a root) can be recognized via its `with { type: "..." }` attribute.
+  pub maybe_root_attribute_type: Option<String>,
 }
 
 pub struct ModuleGraphBuilder {
@@ -781,6 +787,7 @@ impl ModuleGraphBuilder {
           is_dynamic: options.is_dynamic,
           loader: options.loader,
           npm_caching: options.npm_caching,
+          maybe_root_attribute_type: options.maybe_root_attribute_type,
         },
       )
       .await
@@ -859,6 +866,7 @@ impl ModuleGraphBuilder {
           unstable_text_imports: true,
           unstable_css_imports: self.cli_options.unstable_raw_imports(),
           unstable_config_imports: self.cli_options.unstable_raw_imports(),
+          maybe_root_attribute_type: options.maybe_root_attribute_type.clone(),
         }
       };
     }

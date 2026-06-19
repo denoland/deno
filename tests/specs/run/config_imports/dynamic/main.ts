@@ -4,11 +4,13 @@ function nonAnalyzablePath() {
   return "./settings.toml";
 }
 
-// Statically-analyzable dynamic import via file extension.
-const { default: yaml } = await import("./config.yaml");
+// Statically-analyzable dynamic import via import attribute.
+const { default: yaml } = await import("./config.yaml", {
+  with: { type: "yaml" },
+});
 console.log("yaml.name:", (yaml as Record<string, unknown>).name);
 
-// Statically-analyzable dynamic import via import attribute.
+// Statically-analyzable dynamic import with a different attribute.
 const { default: json5 } = await import("./data.json5", {
   with: { type: "json5" },
 });

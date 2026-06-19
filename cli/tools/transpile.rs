@@ -263,6 +263,7 @@ async fn emit_declarations(
         is_dynamic: false,
         loader: None,
         npm_caching: cli_options.default_npm_caching_strategy(),
+        maybe_root_attribute_type: None,
       },
     )
     .await?;

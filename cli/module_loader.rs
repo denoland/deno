@@ -155,6 +155,10 @@ pub struct PrepareModuleLoadOptions<'a> {
   /// graph back, reload some specifiers in it, then do graph validation).
   pub skip_graph_roots_validation: bool,
   pub file_content_overrides: HashMap<ModuleSpecifier, Arc<[u8]>>,
+  /// The `type` import attribute of the root being prepared, forwarded to the
+  /// graph builder so a non-analyzable dynamic import of a config file can be
+  /// recognized via its `with { type: "..." }` attribute.
+  pub maybe_root_attribute_type: Option<String>,
 }
 
 impl ModuleLoadPreparer {
@@ -194,6 +198,7 @@ impl ModuleLoadPreparer {
       allow_unknown_media_types,
       skip_graph_roots_validation,
       file_content_overrides,
+      maybe_root_attribute_type,
     } = options;
     let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
@@ -235,6 +240,7 @@ impl ModuleLoadPreparer {
           is_dynamic,
           loader: Some(&loader),
           npm_caching: self.options.default_npm_caching_strategy(),
+          maybe_root_attribute_type,
         },
       )
       .await?;
@@ -302,6 +308,7 @@ impl ModuleLoadPreparer {
           is_dynamic,
           loader: Some(&loader),
           npm_caching: self.options.default_npm_caching_strategy(),
+          maybe_root_attribute_type: None,
         },
       )
       .await?;
@@ -670,6 +677,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           allow_unknown_media_types: false,
           skip_graph_roots_validation: true,
           file_content_overrides: HashMap::new(),
+          maybe_root_attribute_type: None,
         },
       )
       .await;
@@ -1508,6 +1516,17 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           HashMap::from([(specifier.clone(), Arc::from(code.into_bytes()))])
         })
         .unwrap_or_default();
+      // Forward the `type` attribute of a config import so deno_graph can
+      // recognize a non-analyzable dynamic import of a config file (which
+      // enters the graph as a root with no referrer).
+      let maybe_root_attribute_type = match &options.requested_module_type {
+        RequestedModuleType::Other(kind)
+          if matches!(kind.as_ref(), "yaml" | "toml" | "json5" | "jsonc") =>
+        {
+          Some(kind.to_string())
+        }
+        _ => None,
+      };
       let specifiers = &[specifier];
       {
         let graph = update_permit.graph_mut();
@@ -1523,6 +1542,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               allow_unknown_media_types: false,
               skip_graph_roots_validation: is_dynamic,
               file_content_overrides: file_overrides,
+              maybe_root_attribute_type,
             },
           )
           .await

@@ -623,4 +623,4 @@ opt-level = 3
 # imports (yaml/toml/json5/jsonc, issue #35304, denoland/deno_graph#656). Remove
 # this and bump the pinned deno_graph version once that PR is released.
 [patch.crates-io]
-deno_graph = { git = "https://github.com/denoland/deno_graph", rev = "10f02e7fd91c363f5a20773bd0d4dda0709e0dd9" }
+deno_graph = { git = "https://github.com/denoland/deno_graph", rev = "0bcb456fa5eb8c46850dd065c2510c32fcb59982" }
