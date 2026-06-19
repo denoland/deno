@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -30,6 +31,35 @@ use parking_lot::Mutex;
 use parking_lot::MutexGuard;
 
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
+
+/// Computes a content hash for each configured `patchedDependencies` patch
+/// file, keyed by its specifier, so the lockfile can detect when a patch is
+/// edited, added or removed. Best-effort: parse failures and unreadable patch
+/// files (both surfaced elsewhere during install) are skipped.
+fn patched_dependencies_hashes(
+  sys: &impl sys_traits::FsRead,
+  workspace: &Workspace,
+) -> BTreeMap<String, String> {
+  use std::hash::Hasher;
+
+  let patches = match workspace.patched_packages() {
+    Ok(patches) => patches,
+    Err(err) => {
+      log::warn!("Failed to parse \"patchedDependencies\": {}", err);
+      return Default::default();
+    }
+  };
+  let mut result = BTreeMap::new();
+  for (key, patch_path) in patches.entries() {
+    let Ok(contents) = sys.fs_read_to_string(patch_path) else {
+      continue;
+    };
+    let mut hasher = twox_hash::XxHash64::default();
+    hasher.write(contents.as_bytes());
+    result.insert(key.to_string(), format!("{:016x}", hasher.finish()));
+  }
+  result
+}
 
 pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
 
@@ -486,6 +516,10 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       npm_overrides: workspace
         .npm_overrides()
         .map(|m| serde_json::Value::Object(m.clone())),
+      patched_dependencies: patched_dependencies_hashes(
+        &lockfile.sys,
+        workspace,
+      ),
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: flags.no_npm,

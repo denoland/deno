@@ -178,6 +178,7 @@ async fn config_changes_test(test: &CollectedTest) {
           })
           .collect(),
         npm_overrides: self.npm_overrides,
+        patched_dependencies: Default::default(),
       }
     }
   }

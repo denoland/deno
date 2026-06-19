@@ -58,6 +58,9 @@ pub struct WorkspaceConfig {
   pub links: HashMap<String, LockfileLinkContent>,
   /// npm overrides from the root package.json
   pub npm_overrides: Option<serde_json::Value>,
+  /// Maps each `patchedDependencies` specifier to a content hash of its patch
+  /// file, so editing or removing a patch invalidates the lockfile.
+  pub patched_dependencies: BTreeMap<String, String>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -331,6 +334,10 @@ pub(crate) struct WorkspaceConfigContent {
   /// npm overrides from the root package.json
   #[serde(default)]
   pub npm_overrides: Option<serde_json::Value>,
+  /// Maps each `patchedDependencies` specifier to a content hash of its patch
+  /// file, recorded for drift detection.
+  #[serde(default)]
+  pub patched_dependencies: BTreeMap<String, String>,
 }
 
 impl WorkspaceConfigContent {
@@ -339,6 +346,7 @@ impl WorkspaceConfigContent {
       && self.members.is_empty()
       && self.links.is_empty()
       && self.npm_overrides.is_none()
+      && self.patched_dependencies.is_empty()
   }
 
   fn get_all_dep_reqs(&self) -> impl Iterator<Item = &JsrDepPackageReq> {
@@ -913,6 +921,15 @@ impl Lockfile {
       self.has_content_changed = true;
       self.content.workspace.npm_overrides =
         options.config.npm_overrides.clone();
+    }
+
+    // check if patchedDependencies (or any patch file's contents) changed
+    if options.config.patched_dependencies
+      != self.content.workspace.patched_dependencies
+    {
+      self.has_content_changed = true;
+      self.content.workspace.patched_dependencies =
+        std::mem::take(&mut options.config.patched_dependencies);
     }
 
     let has_any_patch_changed =

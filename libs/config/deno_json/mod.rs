@@ -902,6 +902,9 @@ enum PatchMatcher {
 
 #[derive(Debug, Clone)]
 struct PatchEntry {
+  /// The original `patchedDependencies` key (e.g. `@scope/pkg@1.0.0`), kept so
+  /// the resolved patches can be recorded in the lockfile for drift detection.
+  key: String,
   matcher: PatchMatcher,
   path: PathBuf,
 }
@@ -937,6 +940,17 @@ impl PatchedDependencies {
       }
     }
     best.map(|(_, path)| path)
+  }
+
+  /// Iterates over every configured patch as `(key, patch_path)` pairs, where
+  /// `key` is the original `patchedDependencies` specifier. Used to record the
+  /// patches in the lockfile.
+  pub fn entries(&self) -> impl Iterator<Item = (&str, &Path)> {
+    self
+      .by_name
+      .values()
+      .flatten()
+      .map(|entry| (entry.key.as_str(), entry.path.as_path()))
   }
 
   /// Merges another set of patches into this one with lower priority: on an
@@ -988,6 +1002,7 @@ pub fn parse_patched_dependencies(
       .entry(req.name)
       .or_default()
       .push(PatchEntry {
+        key: key.clone(),
         matcher,
         path: dir_path.join(patch_path),
       });
