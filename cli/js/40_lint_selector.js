@@ -239,7 +239,7 @@ export class Lexer {
             this.step();
           }
 
-          // Check if space preceeded operator
+          // Check if space preceded operator
           if (this.isOpContinue()) {
             continue;
           }
