@@ -87,6 +87,14 @@
       "args": "run --quiet --allow-read parent_port_isolation.mjs",
       "output": "postMessage isolation: post_message_ok\nno double delivery: count:1\n",
       "exitCode": 0
+    },
+    "worker_message_source": {
+      // Test for https://github.com/denoland/deno/issues/35369
+      // `process.on('workerMessage', (value, source))` must receive the
+      // sender's thread id as `source`.
+      "args": "run --quiet --allow-read worker_message_source.mjs",
+      "output": "worker_message_source.out",
+      "exitCode": 0
     }
   }
 }
