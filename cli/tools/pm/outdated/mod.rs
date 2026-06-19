@@ -517,8 +517,27 @@ async fn update(
       deps.commit_changes()?;
     }
 
+    // Force fresh npm registry metadata for exactly the packages being
+    // updated. The installer's re-resolution reads the npm registry cache with
+    // the default `CacheSetting::Use`, so a stale cached packument can hide a
+    // newer in-range version and leave the lockfile pinned to the old one --
+    // even though `deno outdated` (which fetches packuments fresh) reports the
+    // update. Adding each updated npm package to the cache blocklist makes
+    // `cache_setting()` return `ReloadSome`, refetching metadata for only those
+    // packages. See #35348.
+    let install_flags = {
+      let mut install_flags = (*flags).clone();
+      install_flags.cache_blocklist.extend(
+        to_update
+          .iter()
+          .filter(|pkg| deps.get_dep(pkg.dep_id).kind == DepKind::Npm)
+          .map(|pkg| pkg.package_name.clone()),
+      );
+      Arc::new(install_flags)
+    };
+
     let factory = super::npm_install_after_modification(
-      flags.clone(),
+      install_flags,
       Some(deps.jsr_fetch_resolver.clone()),
       cache_options,
     )
