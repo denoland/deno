@@ -453,6 +453,11 @@ fn collect_asset_files(
 ) -> Result<Vec<AssetFile>, AnyError> {
   let package_dir = package.config_file.dir_path();
   let file_patterns = package.member_dir.to_publish_config()?.files;
+  // Whether the package explicitly configured `publish.include`. When it
+  // did, we ship exactly what it lists; when it didn't (the default of
+  // "everything"), we additionally drop root-level `.tgz` files as likely
+  // leftover pack artifacts (see the loop below).
+  let has_explicit_include = file_patterns.include.is_some();
   // The `--ignore`/`--exclude` CLI flags filter graph modules in
   // `collect_graph_modules`; apply the same patterns to assets so e.g.
   // `pack --ignore=tests/**` also drops asset files under `tests/`.
@@ -526,6 +531,24 @@ fn collect_asset_files(
     let Ok(relative) = path.strip_prefix(&package_dir) else {
       continue;
     };
+    // Unless the package explicitly lists what to publish, treat a
+    // root-level `.tgz` as a pack artifact (e.g. a tarball left over from a
+    // previous `pack --output other.tgz` run, or `npm pack` output) rather
+    // than a source asset, and drop it. Without this, re-running `pack` in a
+    // directory that already contains a tarball would embed that tarball and
+    // break the reproducibility guarantee. The exact tarball being written
+    // is always excluded above; this only covers *other* root-level
+    // tarballs. A package that opts in via `publish.include` keeps full
+    // control and is never second-guessed here.
+    if !has_explicit_include
+      && relative
+        .parent()
+        .map(|p| p.as_os_str().is_empty())
+        .unwrap_or(true)
+      && relative.extension().map(|e| e == "tgz").unwrap_or(false)
+    {
+      continue;
+    }
     let content = std::fs::read(&path)
       .with_context(|| format!("failed reading '{}'.", path.display()))?;
     assets.push(AssetFile {
