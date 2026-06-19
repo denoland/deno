@@ -635,7 +635,7 @@ function prepareRequestHeadersArray(headers, session) {
   let path;
   let protocol;
 
-  // Extract the key psuedo header values from the headers array
+  // Extract the key pseudo header values from the headers array
   for (let i = 0; i < headers.length; i += 2) {
     if (headers[i][0] !== ":") {
       continue;
