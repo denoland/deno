@@ -5,8 +5,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_core::ModuleSpecifier;
-#[cfg(windows)]
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
@@ -32,26 +30,21 @@ pub async fn serve(
 ) -> Result<i32, AnyError> {
   check_permission_before_script(&flags);
 
+  #[cfg(not(windows))]
+  if let Some(ref socket_path) = serve_flags.unix_socket {
+    // SAFETY: tokio current-thread runtime; set before worker/factory init.
+    unsafe {
+      std::env::set_var("DENO_SERVE_ADDRESS", format!("unix:{socket_path}"))
+    };
+  }
+
   if let Some(watch_flags) = serve_flags.watch {
     return serve_with_watch(
       flags,
       watch_flags,
       parallelism_count(serve_flags.parallel),
-      serve_flags.unix_socket,
     )
     .await;
-  }
-
-  // Set DENO_SERVE_ADDRESS if --unix-socket is provided
-  if let Some(ref _socket_path) = serve_flags.unix_socket {
-    #[cfg(windows)]
-    bail!("The `--unix-socket` flag is not available on Windows");
-
-    #[cfg(not(windows))]
-    // SAFETY: We're doing this before any threads are created.
-    unsafe {
-      std::env::set_var("DENO_SERVE_ADDRESS", format!("unix:{}", _socket_path))
-    };
   }
 
   let factory = CliFactory::from_flags(flags);
@@ -185,7 +178,6 @@ async fn serve_with_watch(
   flags: Arc<Flags>,
   watch_flags: WatchFlagsWithPaths,
   parallelism_count: NonZeroUsize,
-  unix_socket: Option<String>,
 ) -> Result<i32, AnyError> {
   let hmr = watch_flags.hmr;
   crate::util::file_watcher::watch_recv(
@@ -198,23 +190,7 @@ async fn serve_with_watch(
     WatcherRestartMode::Automatic,
     move |flags, watcher_communicator, changed_paths| {
       watcher_communicator.show_path_changed(changed_paths.clone());
-      let unix_socket = unix_socket.clone();
       Ok(async move {
-        // Set DENO_SERVE_ADDRESS if --unix-socket is provided
-        if let Some(ref _socket_path) = unix_socket {
-          #[cfg(windows)]
-          bail!("The `--unix-socket` flag is not available on Windows");
-
-          #[cfg(not(windows))]
-          // SAFETY: We're doing this before any threads are created.
-          unsafe {
-            std::env::set_var(
-              "DENO_SERVE_ADDRESS",
-              format!("unix:{}", _socket_path),
-            )
-          };
-        }
-
         let factory = CliFactory::from_flags_for_watcher(
           flags,
           watcher_communicator.clone(),

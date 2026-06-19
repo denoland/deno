@@ -8063,14 +8063,20 @@ fn run_parse(
 fn serve_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
-  app: Command,
+  mut app: Command,
 ) -> clap::error::Result<()> {
   // deno serve implies --allow-net=host:port
+  let unix_socket = matches.remove_one::<String>("unix-socket");
+  if cfg!(windows) && unix_socket.is_some() {
+    return Err(app.find_subcommand_mut("serve").unwrap().error(
+      clap::error::ErrorKind::InvalidValue,
+      "The `--unix-socket` flag is not available on Windows",
+    ));
+  }
   let port = matches.remove_one::<u16>("port").unwrap_or(8000);
   let host = matches
     .remove_one::<String>("host")
     .unwrap_or_else(|| "0.0.0.0".to_owned());
-  let unix_socket = matches.remove_one::<String>("unix-socket");
   let open_site = matches.remove_one::<bool>("open").unwrap_or(false);
 
   runtime_args_parse(flags, matches, true, true, true)?;
@@ -9791,6 +9797,20 @@ mod tests {
         code_cache_enabled: true,
         ..Flags::default()
       }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "serve",
+      "--port",
+      "8080",
+      "--unix-socket",
+      "x",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap_err().kind(),
+      clap::error::ErrorKind::ArgumentConflict
     );
   }
 
