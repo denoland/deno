@@ -431,7 +431,7 @@ async function ensureWorkflowYmlsUpToDate() {
   const pending = generators.map(async (gen) => {
     const cmd = new Deno.Command("deno", {
       cwd: ROOT_PATH,
-      args: ["run", "--allow-read=.", gen, "--lint"],
+      args: ["run", "--allow-read=.", "--allow-net=jsr.io", gen, "--lint"],
       stderr: "piped",
       stdout: "piped",
     });
