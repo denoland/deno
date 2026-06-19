@@ -27,7 +27,7 @@ use windows_sys::Win32::System::Pipes::PIPE_TYPE_BYTE;
 /// This is the same way that Rust and pretty much everyone else does it.
 ///
 /// For more information, there is an interesting S.O. question that explains the history, as
-/// well as offering a complex NTAPI solution if we decide to try to make these pipes truely
+/// well as offering a complex NTAPI solution if we decide to try to make these pipes truly
 /// anonymous: https://stackoverflow.com/questions/60645/overlapped-i-o-on-anonymous-pipe
 pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
   create_named_pipe_inner()
