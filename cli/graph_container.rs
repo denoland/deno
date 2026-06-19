@@ -96,7 +96,6 @@ impl MainModuleGraphContainer {
           allow_unknown_media_types: options.allow_unknown_media_types,
           skip_graph_roots_validation: false,
           file_content_overrides: Default::default(),
-          maybe_root_attribute_type: None,
         },
       )
       .await?;

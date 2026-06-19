@@ -2527,7 +2527,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.109.0"
-source = "git+https://github.com/denoland/deno_graph?rev=0bcb456fa5eb8c46850dd065c2510c32fcb59982#0bcb456fa5eb8c46850dd065c2510c32fcb59982"
+source = "git+https://github.com/denoland/deno_graph?rev=7541064aa1765022cc39d1675889f97fd7ee512f#7541064aa1765022cc39d1675889f97fd7ee512f"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -3264,6 +3264,7 @@ dependencies = [
  "node_resolver",
  "once_cell",
  "parking_lot",
+ "percent-encoding",
  "phf 0.11.2",
  "serde",
  "serde_json",

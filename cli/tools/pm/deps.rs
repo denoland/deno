@@ -817,7 +817,6 @@ impl DepManager {
           allow_unknown_media_types: true,
           skip_graph_roots_validation: false,
           file_content_overrides: Default::default(),
-          maybe_root_attribute_type: None,
         },
       )
       .await?;

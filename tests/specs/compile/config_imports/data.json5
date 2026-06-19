@@ -1,6 +1,0 @@
-{
-  // json5 supports comments and trailing commas
-  a: 1,
-  b: 'two',
-  list: [1, 2, 3,],
-}

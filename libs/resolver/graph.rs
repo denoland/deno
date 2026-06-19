@@ -489,12 +489,14 @@ impl<
     Ok(resolution.url)
   }
 
+  #[allow(clippy::too_many_arguments, reason = "graph resolver adapter")]
   pub fn as_graph_resolver<'a>(
     &'a self,
     cjs_tracker: &'a CjsTracker<TInNpmPackageChecker, TSys>,
     jsx_import_source_config_resolver: &'a JsxImportSourceConfigResolver,
     maybe_graph: Option<&'a deno_graph::ModuleGraph>,
     npm_types_resolution_mode: NpmTypesResolutionMode,
+    raw_imports: bool,
   ) -> DenoGraphResolverAdapter<
     'a,
     TInNpmPackageChecker,
@@ -508,6 +510,7 @@ impl<
       jsx_import_source_config_resolver,
       maybe_graph,
       npm_types_resolution_mode,
+      raw_imports,
     }
   }
 }
@@ -529,6 +532,7 @@ pub struct DenoGraphResolverAdapter<
   jsx_import_source_config_resolver: &'a JsxImportSourceConfigResolver,
   maybe_graph: Option<&'a deno_graph::ModuleGraph>,
   npm_types_resolution_mode: NpmTypesResolutionMode,
+  raw_imports: bool,
 }
 
 impl<
@@ -640,7 +644,110 @@ impl<
 
     result.map_err(|err| err.into_deno_graph_error())
   }
+
+  fn resolve_attribute_type_import(
+    &self,
+    specifier_text: &str,
+    referrer_range: &deno_graph::Range,
+    resolution_kind: deno_graph::source::ResolutionKind,
+    attribute_type: &str,
+  ) -> Option<Result<Url, ResolveError>> {
+    if !self.raw_imports {
+      return None;
+    }
+    let parser = config_import_parser(attribute_type)?;
+    // Resolve the config file to its real specifier, then redirect the import
+    // to a generated wrapper module that text-imports that file and parses it.
+    // The file itself stays an ordinary text module; only the import is
+    // redirected, so `with { type: "text" }` of the file still yields its raw
+    // bytes.
+    let file =
+      match self.resolve(specifier_text, referrer_range, resolution_kind) {
+        Ok(url) => url,
+        Err(err) => return Some(Err(err)),
+      };
+    Some(Ok(config_import_wrapper_specifier(&file, parser)))
+  }
 }
+
+/// If `attribute_type` is a config import format (`yaml`/`toml`/`json5`/
+/// `jsonc`), returns the `data:` URL of the wrapper module that text-imports
+/// `file` and parses it. Used both when resolving static/analyzable imports
+/// (via [`Resolver::resolve_attribute_type_import`]) and when handling
+/// non-analyzable dynamic imports at load time, so both paths produce an
+/// identical wrapper specifier.
+pub fn maybe_config_import_wrapper_specifier(
+  file: &Url,
+  attribute_type: &str,
+) -> Option<Url> {
+  config_import_parser(attribute_type)
+    .map(|parser| config_import_wrapper_specifier(file, parser))
+}
+
+/// The registry parser module for a config import attribute type, or `None` if
+/// the attribute is not a config format.
+fn config_import_parser(attribute_type: &str) -> Option<ConfigImportParser> {
+  match attribute_type {
+    "yaml" => Some(ConfigImportParser::NamedParse("jsr:@std/yaml@^1")),
+    "toml" => Some(ConfigImportParser::NamedParse("jsr:@std/toml@^1")),
+    "jsonc" => Some(ConfigImportParser::NamedParse("jsr:@std/jsonc@^1")),
+    // There is no `@std/json5`, so use the ubiquitous npm package.
+    "json5" => Some(ConfigImportParser::DefaultParse("npm:json5@^2")),
+    _ => None,
+  }
+}
+
+#[derive(Clone, Copy)]
+enum ConfigImportParser {
+  /// Parser exposed as a named `parse` export (e.g. `@std/yaml`).
+  NamedParse(&'static str),
+  /// Parser exposed as a default export with a `parse` method (e.g. `json5`).
+  DefaultParse(&'static str),
+}
+
+/// Builds the `data:` URL of the wrapper module that turns a config file into
+/// its parsed default export. The wrapper text-imports the original file (so
+/// the raw bytes flow through the normal text-import path and become a real,
+/// cacheable/compilable graph node) and parses it with a parser pulled from the
+/// registry on demand.
+fn config_import_wrapper_specifier(
+  file: &Url,
+  parser: ConfigImportParser,
+) -> Url {
+  // `serde_json::to_string` produces a valid JS string literal, safely escaping
+  // the file specifier.
+  let file_lit = serde_json::to_string(file.as_str()).unwrap();
+  // Import the file as bytes (not text) and decode it: a bytes import is always
+  // served as the raw file contents, whereas a text import of a file with a
+  // JSON-ish media type (`.json5`/`.jsonc`) can be evaluated as a module in a
+  // `deno compile` binary instead of returned verbatim.
+  let decode = "new TextDecoder().decode(source)";
+  let source = match parser {
+    ConfigImportParser::NamedParse(pkg) => format!(
+      "import source from {file_lit} with {{ type: \"bytes\" }};\n\
+       import {{ parse }} from \"{pkg}\";\n\
+       export default parse({decode});\n"
+    ),
+    ConfigImportParser::DefaultParse(pkg) => format!(
+      "import source from {file_lit} with {{ type: \"bytes\" }};\n\
+       import parser from \"{pkg}\";\n\
+       export default parser.parse({decode});\n"
+    ),
+  };
+  let encoded =
+    percent_encoding::percent_encode(source.as_bytes(), &DATA_URL_ENCODE_SET);
+  Url::parse(&format!("data:text/javascript,{encoded}")).unwrap()
+}
+
+/// Characters to percent-encode in the `data:` URL body. Encode everything that
+/// isn't an unreserved URL character so the generated JavaScript survives URL
+/// parsing intact.
+const DATA_URL_ENCODE_SET: percent_encoding::AsciiSet =
+  percent_encoding::NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~');
 
 impl ResolveWithGraphError {
   fn is_types_not_found_for_npm_resolution(&self) -> bool {
