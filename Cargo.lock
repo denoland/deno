@@ -2211,6 +2211,7 @@ dependencies = [
  "deno_runtime",
  "deno_semver",
  "log",
+ "pretty_assertions",
  "serde",
 ]
 
