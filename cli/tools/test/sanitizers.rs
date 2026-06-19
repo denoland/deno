@@ -20,11 +20,10 @@ const MAX_SANITIZER_LOOP_SPINS: usize = 16;
 
 /// A stable identity for a runtime activity (op, resource, timer or interval).
 ///
-/// Op promise IDs, resource IDs and timer/interval IDs are all allocated
-/// monotonically within a single isolate, so they uniquely identify a leaked
-/// activity for as long as the isolate lives. This is used to remember leaks
-/// that escaped a sanitizer-ignoring test so that later tests don't attribute
-/// them as their own.
+/// Op promise IDs, resource IDs and timer/interval IDs identify an activity
+/// while it is active. This is used to remember leaks that escaped a
+/// sanitizer-ignoring test so that later tests don't attribute them as their
+/// own.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum LeakKey {
   AsyncOp(i32),
@@ -97,7 +96,7 @@ impl TestSanitizerHelper {
 
   /// Drop any activity from the diff that was previously recorded as a leak
   /// escaping a sanitizer-ignoring test.
-  fn remove_ignored_activities(&self, diff: &mut RuntimeActivityDiff) {
+  fn remove_ignored_activities(&mut self, diff: &mut RuntimeActivityDiff) {
     if self.ignored_activities.is_empty() {
       return;
     }
@@ -105,7 +104,9 @@ impl TestSanitizerHelper {
       !self.ignored_activities.contains(&leak_key(activity))
     });
     diff.disappeared.retain(|activity| {
-      !self.ignored_activities.contains(&leak_key(activity))
+      // Once an ignored leak disappears, future activity with the same key
+      // should be treated normally.
+      !self.ignored_activities.remove(&leak_key(activity))
     });
   }
 
