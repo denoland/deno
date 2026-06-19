@@ -52,6 +52,7 @@ use deno_process::NpmProcessStateProviderRc;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
+use deno_web::Blob;
 use deno_web::BlobStoreTrait;
 use deno_web::InMemoryBroadcastChannel;
 use deno_web::JsMessageData;
@@ -190,6 +191,7 @@ pub struct WebWorkerInternalHandle {
   isolate_handle: v8::IsolateHandle,
   pub name: String,
   pub worker_type: WorkerThreadType,
+  pub maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 }
 
 impl WebWorkerInternalHandle {
@@ -316,6 +318,7 @@ fn create_handles(
   isolate_handle: v8::IsolateHandle,
   name: String,
   worker_type: WorkerThreadType,
+  maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 ) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
   let (ctrl_tx, ctrl_rx) = mpsc::channel::<WorkerControlEvent>(1);
@@ -332,6 +335,7 @@ fn create_handles(
     cancel: CancelHandle::new_rc(),
     sender: ctrl_tx,
     worker_type,
+    maybe_main_module_blob,
   };
   let external_handle = SendableWebWorkerHandle {
     receiver: ctrl_rx,
@@ -394,6 +398,7 @@ pub struct WebWorkerOptions {
   pub trace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  pub maybe_main_module_blob: Option<Arc<Blob>>,
   pub maybe_coverage_dir: Option<PathBuf>,
   pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub enable_raw_imports: bool,
@@ -686,8 +691,15 @@ impl WebWorker {
 
     let (internal_handle, external_handle) = {
       let handle = js_runtime.v8_isolate().thread_safe_handle();
-      let (internal_handle, external_handle) =
-        create_handles(handle, options.name.clone(), options.worker_type);
+      let (internal_handle, external_handle) = create_handles(
+        handle,
+        options.name.clone(),
+        options.worker_type,
+        options
+          .maybe_main_module_blob
+          .clone()
+          .map(|blob| (options.main_module.clone(), blob)),
+      );
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       op_state.put(internal_handle.clone());
