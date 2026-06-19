@@ -1383,7 +1383,6 @@ fn indexed_property_deleter<'s>(
 
 #[allow(clippy::too_many_arguments, reason = "op")]
 #[op2]
-#[to_v8]
 pub fn op_vm_create_script<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   source: v8::Local<'a, v8::String>,
@@ -1492,7 +1491,6 @@ struct CompileResult {
 
 #[allow(clippy::too_many_arguments, reason = "op")]
 #[op2]
-#[to_v8]
 pub fn op_vm_compile_function<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   source: v8::Local<'s, v8::String>,
@@ -2241,7 +2239,6 @@ pub struct ModuleRequestInfo {
 }
 
 #[op2]
-#[to_v8]
 pub fn op_vm_module_get_module_requests(
   scope: &mut v8::PinScope<'_, '_>,
   #[cppgc] this: &ContextifyModule,
