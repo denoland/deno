@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_ast::diagnostics::Diagnostic;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
@@ -18,6 +19,7 @@ use crate::args::Flags;
 use crate::args::PackFlags;
 use crate::factory::CliFactory;
 use crate::graph_util::CreatePublishGraphOptions;
+use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::util::display::human_size;
 
 mod extensions;
@@ -141,6 +143,7 @@ pub async fn pack(
           package.name
         )
       })?;
+    warn_for_slow_type_diagnostics(&graph, &package, &pack_flags)?;
 
     // Collect files from the graph
     let collected_paths = collect_graph_modules(&graph, &package, &pack_flags)?;
@@ -188,6 +191,23 @@ pub async fn pack(
         human_size(metadata.len() as f64)
       );
     }
+  }
+
+  Ok(())
+}
+
+fn warn_for_slow_type_diagnostics(
+  graph: &ModuleGraph,
+  package: &JsrPackageConfig,
+  pack_flags: &PackFlags,
+) -> Result<(), AnyError> {
+  if pack_flags.allow_slow_types {
+    return Ok(());
+  }
+
+  let export_urls = package.config_file.resolve_export_value_urls()?;
+  for diagnostic in collect_no_slow_type_diagnostics(graph, &export_urls) {
+    log::warn!("{}", diagnostic.display());
   }
 
   Ok(())
