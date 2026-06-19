@@ -4,18 +4,30 @@
 //!
 //! Only the npm subset is translated. Targets pnpm lockfileVersion 6.x and
 //! 9.x (the formats produced by pnpm v8 and pnpm v9+ respectively).
+//!
+//! YAML is parsed with `yaml_parser` (the same parser `deno fmt` already
+//! depends on) to avoid pulling a new YAML crate into the dependency tree.
+//! `yaml_parser` is a lossless CST parser, so the helpers below adapt its
+//! syntax tree into a small `Node`/`MapNode` value model that is convenient
+//! for the lookups this translation needs.
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
-use saphyr::LoadableYamlNode;
-use saphyr::Yaml;
 use serde_json::Value;
+use yaml_parser::SyntaxError;
+use yaml_parser::ast::AstNode;
+use yaml_parser::ast::BlockMap;
+use yaml_parser::ast::BlockMapKey;
+use yaml_parser::ast::BlockMapValue;
+use yaml_parser::ast::Flow;
+use yaml_parser::ast::FlowMap;
+use yaml_parser::ast::Root;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PnpmLockfileImportError {
   #[error("Failed to parse pnpm-lock.yaml")]
-  Parse(#[source] saphyr::ScanError),
+  Parse(#[source] SyntaxError),
   #[error("pnpm-lock.yaml is empty or not a mapping")]
   EmptyOrInvalid,
   #[error(
@@ -29,16 +41,18 @@ pub enum PnpmLockfileImportError {
 pub fn pnpm_lock_to_deno_lock_v5(
   yaml_text: &str,
 ) -> Result<String, PnpmLockfileImportError> {
-  let mut docs =
-    Yaml::load_from_str(yaml_text).map_err(PnpmLockfileImportError::Parse)?;
-  let doc = docs
-    .pop()
-    .filter(|d| d.is_mapping())
+  let syntax =
+    yaml_parser::parse(yaml_text).map_err(PnpmLockfileImportError::Parse)?;
+  let root_map = Root::cast(syntax)
+    .and_then(|root| root.documents().next())
+    .and_then(|doc| doc.block())
+    .and_then(|block| block.block_map())
+    .map(MapNode::Block)
     .ok_or(PnpmLockfileImportError::EmptyOrInvalid)?;
 
-  let version = doc
-    .as_mapping_get("lockfileVersion")
-    .and_then(yaml_to_string)
+  let version = root_map
+    .get("lockfileVersion")
+    .and_then(Node::into_string)
     .ok_or_else(
       || PnpmLockfileImportError::UnsupportedVersion(String::new()),
     )?;
@@ -56,19 +70,16 @@ pub fn pnpm_lock_to_deno_lock_v5(
   // Build integrity map: `name@version` -> integrity. pnpm v6 keys may be
   // prefixed with `/` (e.g. `/lodash@4.17.21`); v9 keys are bare.
   let mut integrity: HashMap<String, String> = HashMap::new();
-  if let Some(packages) = doc.as_mapping_get("packages")
-    && let Some(map) = packages.as_mapping()
-  {
-    for (k, v) in map {
-      let Some(key) = yaml_to_string(k) else {
-        continue;
-      };
+  if let Some(packages) = root_map.get("packages").and_then(Node::into_map) {
+    for (key, value) in packages.entries() {
       let key = normalize_package_key(&key);
       let base = strip_peer_suffix(&key).to_string();
-      if let Some(integ) = v
-        .as_mapping_get("resolution")
-        .and_then(|r| r.as_mapping_get("integrity"))
-        .and_then(yaml_to_string)
+      if let Some(integ) = value
+        .into_map()
+        .and_then(|m| m.get("resolution"))
+        .and_then(Node::into_map)
+        .and_then(|m| m.get("integrity"))
+        .and_then(Node::into_string)
       {
         integrity.entry(base).or_insert(integ);
       }
@@ -77,23 +88,15 @@ pub fn pnpm_lock_to_deno_lock_v5(
 
   // Snapshots define the resolved dependency tree. In v6 the `packages`
   // section itself carries `dependencies`; in v9 they live under `snapshots`.
-  // We accept whichever is present (or both, with snapshots taking
-  // precedence).
+  // Walk snapshots first so the dep-bearing entries win when both sections
+  // exist (the `packages` pass for v9 only carries metadata we've already
+  // captured in `integrity`).
   let mut npm: BTreeMap<String, Value> = BTreeMap::new();
-  // In v9 dependencies live under `snapshots`; in v6 they live inline under
-  // `packages`. Walk snapshots first so the dep-bearing entries win when
-  // both sections exist (the `packages` pass for v9 only carries metadata
-  // we've already captured in `integrity`).
-  let snapshot_sources: [&str; 2] = ["snapshots", "packages"];
-  for section in snapshot_sources {
-    let Some(snaps) = doc.as_mapping_get(section).and_then(|s| s.as_mapping())
-    else {
+  for section in ["snapshots", "packages"] {
+    let Some(snaps) = root_map.get(section).and_then(Node::into_map) else {
       continue;
     };
-    for (k, v) in snaps {
-      let Some(raw_key) = yaml_to_string(k) else {
-        continue;
-      };
+    for (raw_key, value) in snaps.entries() {
       let normalized = normalize_package_key(&raw_key);
       let base = strip_peer_suffix(&normalized).to_string();
       // Snapshot keys may include peer-suffix parens; for our purposes,
@@ -106,9 +109,19 @@ pub fn pnpm_lock_to_deno_lock_v5(
         continue;
       };
 
-      let deps = collect_deps(v.as_mapping_get("dependencies"));
-      let optional_deps =
-        collect_deps(v.as_mapping_get("optionalDependencies"));
+      let value_map = value.into_map();
+      let deps = collect_deps(
+        value_map
+          .as_ref()
+          .and_then(|m| m.get("dependencies"))
+          .and_then(Node::into_map),
+      );
+      let optional_deps = collect_deps(
+        value_map
+          .as_ref()
+          .and_then(|m| m.get("optionalDependencies"))
+          .and_then(Node::into_map),
+      );
 
       let mut entry = serde_json::Map::new();
       entry.insert("integrity".to_string(), Value::String(integ.clone()));
@@ -140,26 +153,26 @@ pub fn pnpm_lock_to_deno_lock_v5(
 
   // Build specifiers from the root importer (key `.`).
   let mut specifiers: BTreeMap<String, String> = BTreeMap::new();
-  if let Some(importers) = doc.as_mapping_get("importers")
-    && let Some(root) = importers.as_mapping_get(".")
+  if let Some(root_importer) = root_map
+    .get("importers")
+    .and_then(Node::into_map)
+    .and_then(|m| m.get("."))
+    .and_then(Node::into_map)
   {
     for section in ["dependencies", "devDependencies", "optionalDependencies"] {
-      let Some(deps) =
-        root.as_mapping_get(section).and_then(|s| s.as_mapping())
+      let Some(deps) = root_importer.get(section).and_then(Node::into_map)
       else {
         continue;
       };
-      for (name_node, info) in deps {
-        let Some(name) = yaml_to_string(name_node) else {
+      for (name, info) in deps.entries() {
+        let Some(info) = info.into_map() else {
           continue;
         };
-        let Some(spec) =
-          info.as_mapping_get("specifier").and_then(yaml_to_string)
+        let Some(spec) = info.get("specifier").and_then(Node::into_string)
         else {
           continue;
         };
-        let Some(ver) = info.as_mapping_get("version").and_then(yaml_to_string)
-        else {
+        let Some(ver) = info.get("version").and_then(Node::into_string) else {
           continue;
         };
         if !is_supported_spec(&spec) {
@@ -173,28 +186,20 @@ pub fn pnpm_lock_to_deno_lock_v5(
   }
   // pnpm v6 places top-level deps directly on the document root.
   if major == 6 {
-    let specifiers_section = doc
-      .as_mapping_get("specifiers")
-      .and_then(|s| s.as_mapping());
+    let specifiers_section =
+      root_map.get("specifiers").and_then(Node::into_map);
     for section in ["dependencies", "devDependencies", "optionalDependencies"] {
-      let Some(deps) = doc.as_mapping_get(section).and_then(|s| s.as_mapping())
-      else {
+      let Some(deps) = root_map.get(section).and_then(Node::into_map) else {
         continue;
       };
-      for (name_node, ver_node) in deps {
-        let Some(name) = yaml_to_string(name_node) else {
-          continue;
-        };
-        let Some(ver) = yaml_to_string(ver_node) else {
+      for (name, ver_node) in deps.entries() {
+        let Some(ver) = ver_node.into_string() else {
           continue;
         };
         let spec = specifiers_section
-          .and_then(|s| {
-            s.iter().find(|(k, _)| {
-              yaml_to_string(k).as_deref() == Some(name.as_str())
-            })
-          })
-          .and_then(|(_, v)| yaml_to_string(v))
+          .as_ref()
+          .and_then(|s| s.get(&name))
+          .and_then(Node::into_string)
           .unwrap_or_else(|| ver.clone());
         if !is_supported_spec(&spec) {
           continue;
@@ -223,40 +228,174 @@ pub fn pnpm_lock_to_deno_lock_v5(
     output.insert("npm".to_string(), Value::Object(npm.into_iter().collect()));
   }
 
-  Ok(serde_json::to_string(&Value::Object(output)).unwrap())
+  Ok(
+    serde_json::to_string(&Value::Object(output))
+      .expect("serializing deno.lock v5"),
+  )
 }
 
-fn yaml_to_string(node: &Yaml) -> Option<String> {
-  // Saphyr lazy-parses plain scalars and leaves them in the `Representation`
-  // variant when they don't resolve to a typed value (e.g. multi-dot
-  // version strings like `4.3.0`). Pull the raw text out for those before
-  // falling back to the typed accessors.
-  if let Yaml::Representation(raw, _, _) = node {
-    return Some(raw.to_string());
+/// A minimal value model over `yaml_parser`'s CST, covering the node shapes
+/// `pnpm-lock.yaml` uses: scalars and mappings (block or flow style).
+enum Node {
+  Scalar(String),
+  Map(MapNode),
+  Other,
+}
+
+impl Node {
+  fn into_string(self) -> Option<String> {
+    match self {
+      Node::Scalar(s) => Some(s),
+      _ => None,
+    }
   }
-  if let Some(s) = node.as_str() {
-    return Some(s.to_string());
+
+  fn into_map(self) -> Option<MapNode> {
+    match self {
+      Node::Map(m) => Some(m),
+      _ => None,
+    }
   }
-  if let Some(b) = node.as_bool() {
-    return Some(b.to_string());
+}
+
+enum MapNode {
+  Block(BlockMap),
+  Flow(FlowMap),
+}
+
+impl MapNode {
+  /// Materialize the mapping's entries as `(key, value)` pairs. Entries whose
+  /// key is not a scalar are skipped.
+  fn entries(&self) -> Vec<(String, Node)> {
+    match self {
+      MapNode::Block(block_map) => block_map
+        .entries()
+        .filter_map(|entry| {
+          let key = entry.key().and_then(|k| block_key_text(&k))?;
+          let value = entry
+            .value()
+            .map(|v| block_value_to_node(&v))
+            .unwrap_or(Node::Other);
+          Some((key, value))
+        })
+        .collect(),
+      MapNode::Flow(flow_map) => {
+        let Some(entries) = flow_map.entries() else {
+          return Vec::new();
+        };
+        entries
+          .entries()
+          .filter_map(|entry| {
+            let key = entry
+              .key()
+              .and_then(|k| k.flow())
+              .and_then(|f| flow_text(&f))?;
+            let value = entry
+              .value()
+              .and_then(|v| v.flow())
+              .map(|f| flow_to_node(&f))
+              .unwrap_or(Node::Other);
+            Some((key, value))
+          })
+          .collect()
+      }
+    }
   }
-  if let Some(i) = node.as_integer() {
-    return Some(i.to_string());
+
+  fn get(&self, key: &str) -> Option<Node> {
+    self
+      .entries()
+      .into_iter()
+      .find(|(k, _)| k == key)
+      .map(|(_, v)| v)
   }
-  node.as_floating_point().map(|f| f.to_string())
+}
+
+fn block_key_text(key: &BlockMapKey) -> Option<String> {
+  key.flow().and_then(|f| flow_text(&f))
+}
+
+fn block_value_to_node(value: &BlockMapValue) -> Node {
+  if let Some(block_map) = value.block().and_then(|b| b.block_map()) {
+    return Node::Map(MapNode::Block(block_map));
+  }
+  if let Some(flow) = value.flow() {
+    return flow_to_node(&flow);
+  }
+  Node::Other
+}
+
+fn flow_to_node(flow: &Flow) -> Node {
+  if let Some(text) = flow_text(flow) {
+    return Node::Scalar(text);
+  }
+  if let Some(flow_map) = flow.flow_map() {
+    return Node::Map(MapNode::Flow(flow_map));
+  }
+  Node::Other
+}
+
+/// Extract the string content of a scalar `Flow`, unquoting single/double
+/// quoted forms. Returns `None` for non-scalar flows (maps, sequences).
+fn flow_text(flow: &Flow) -> Option<String> {
+  if let Some(token) = flow.plain_scalar() {
+    return Some(token.text().trim().to_string());
+  }
+  if let Some(token) = flow.single_quoted_scalar() {
+    return Some(unquote_single(token.text()));
+  }
+  if let Some(token) = flow.double_qouted_scalar() {
+    return Some(unquote_double(token.text()));
+  }
+  None
+}
+
+fn unquote_single(raw: &str) -> String {
+  let inner = raw
+    .strip_prefix('\'')
+    .and_then(|s| s.strip_suffix('\''))
+    .unwrap_or(raw);
+  // In single-quoted YAML scalars the only escape is a doubled quote.
+  inner.replace("''", "'")
+}
+
+fn unquote_double(raw: &str) -> String {
+  let inner = raw
+    .strip_prefix('"')
+    .and_then(|s| s.strip_suffix('"'))
+    .unwrap_or(raw);
+  let mut out = String::with_capacity(inner.len());
+  let mut chars = inner.chars();
+  while let Some(c) = chars.next() {
+    if c != '\\' {
+      out.push(c);
+      continue;
+    }
+    match chars.next() {
+      Some('n') => out.push('\n'),
+      Some('t') => out.push('\t'),
+      Some('r') => out.push('\r'),
+      Some('"') => out.push('"'),
+      Some('\\') => out.push('\\'),
+      Some('0') => out.push('\0'),
+      Some(other) => out.push(other),
+      None => {}
+    }
+  }
+  out
 }
 
 /// Build a sorted list of `dep@version` strings from a pnpm dependency
 /// mapping (e.g. `{ ansi-styles: 4.3.0, color-convert: 2.0.1 }`).
-fn collect_deps(node: Option<&Yaml>) -> Vec<String> {
-  let Some(map) = node.and_then(|n| n.as_mapping()) else {
+fn collect_deps(node: Option<MapNode>) -> Vec<String> {
+  let Some(map) = node else {
     return Vec::new();
   };
   let mut out: Vec<String> = map
-    .iter()
-    .filter_map(|(k, v)| {
-      let name = yaml_to_string(k)?;
-      let ver = yaml_to_string(v)?;
+    .entries()
+    .into_iter()
+    .filter_map(|(name, value)| {
+      let ver = value.into_string()?;
       let ver = strip_peer_suffix(&ver);
       Some(format!("{}@{}", name, ver))
     })
