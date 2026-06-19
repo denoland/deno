@@ -524,9 +524,13 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
         .await?
       }
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+        // Box the seeding future so its (multi-candidate) size stays off the
+        // stack of every caller that awaits a lockfile read, which would
+        // otherwise trip clippy's `large_futures` lint.
         if opts.import_npm_lockfile
           && let Some(seeded) =
-            try_import_npm_lockfile(&sys, &opts.file_path, api).await?
+            Box::pin(try_import_npm_lockfile(&sys, &opts.file_path, api))
+              .await?
         {
           seeded
         } else {

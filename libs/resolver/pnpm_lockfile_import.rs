@@ -436,6 +436,9 @@ fn strip_peer_suffix(key: &str) -> &str {
 }
 
 fn is_supported_spec(req: &str) -> bool {
+  // `npm:` reqs are aliased dependencies (e.g. `foo: npm:bar@^1`). Building a
+  // specifier from those would produce `npm:foo@npm:bar@^1`, which isn't a
+  // valid deno.lock specifier, so skip them and let resolution handle aliases.
   !req.starts_with("file:")
     && !req.starts_with("link:")
     && !req.starts_with("workspace:")
@@ -444,6 +447,7 @@ fn is_supported_spec(req: &str) -> bool {
     && !req.starts_with("github:")
     && !req.starts_with("http:")
     && !req.starts_with("https:")
+    && !req.starts_with("npm:")
     && !req.starts_with("catalog:")
 }
 
@@ -593,6 +597,67 @@ packages:
     let v: Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["specifiers"]["npm:lodash@^4.17.21"], "4.17.21");
     assert_eq!(v["npm"]["lodash@4.17.21"]["integrity"], "sha512-LODASH");
+  }
+
+  #[test]
+  fn skips_aliased_specifier() {
+    // An aliased dependency (`my-lodash: npm:lodash@^4`) must not produce a
+    // malformed `npm:my-lodash@npm:lodash@^4` specifier.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      my-lodash:
+        specifier: npm:lodash@^4.17.21
+        version: lodash@4.17.21
+
+packages:
+  lodash@4.17.21:
+    resolution: {integrity: sha512-AAA}
+
+snapshots:
+  lodash@4.17.21: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    // No specifier is emitted for the aliased dep.
+    assert!(v.get("specifiers").is_none());
+    // The resolved package itself is still captured in the npm section.
+    assert_eq!(v["npm"]["lodash@4.17.21"]["integrity"], "sha512-AAA");
+  }
+
+  #[test]
+  fn captures_optional_dependencies() {
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      pkg:
+        specifier: ^1.0.0
+        version: 1.0.0
+
+packages:
+  pkg@1.0.0:
+    resolution: {integrity: sha512-PKG}
+  fsevents@2.3.3:
+    resolution: {integrity: sha512-FS}
+
+snapshots:
+  pkg@1.0.0:
+    optionalDependencies:
+      fsevents: 2.3.3
+  fsevents@2.3.3: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let opt = v["npm"]["pkg@1.0.0"]["optionalDependencies"]
+      .as_array()
+      .unwrap();
+    assert_eq!(opt[0], "fsevents@2.3.3");
   }
 
   #[test]
