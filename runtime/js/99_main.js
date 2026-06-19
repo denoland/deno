@@ -16,7 +16,10 @@ import {
   op_get_ext_import_meta_proto,
   op_internal_log,
   op_main_module,
+  op_node_has_child_ipc_pipe,
   op_ppid,
+  op_proto_get_attempted,
+  op_proto_set_attempted,
   op_set_format_exception_callback,
   op_snapshot_options,
   op_worker_close,
@@ -39,11 +42,14 @@ const {
   ObjectDefineProperty,
   ObjectGetOwnPropertyDescriptors,
   ObjectHasOwn,
+  ObjectIsExtensible,
   ObjectKeys,
+  ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
   PromiseResolve,
+  ReflectApply,
   StringPrototypePadEnd,
   Symbol,
   SymbolDispose,
@@ -105,9 +111,29 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 const { SymbolMetadata } = core.loadExtScript("ext:deno_web/00_infra.js");
-const { bootstrap: bootstrapOtel } = core.loadExtScript(
-  "ext:deno_telemetry/telemetry.ts",
-);
+// Telemetry (~2000 LOC, ~70 KB of bytecode + V8 heap) is only needed when an
+// OTEL config flag is set, but it was being loaded unconditionally at snapshot
+// build time. Skip the load on the cold-start path; only enter the module
+// when the bootstrap config actually asks for telemetry.
+//
+// Layout of `otelConfig` (see OtelConfig::as_v8 in ext/telemetry/lib.rs):
+//   [0]  tracing_enabled (0/1)
+//   [1]  metrics_enabled (0/1)
+//   [2]  console mode (OtelConsoleConfig: 0 = Ignore, 1 = Capture, 2 = Replace)
+//   [3..] zero or more propagator ids; if no propagator is configured the
+//         array ends at length 3.
+function bootstrapOtel(otelConfig) {
+  if (
+    otelConfig[0] === 0 &&
+    otelConfig[1] === 0 &&
+    otelConfig[2] === 0 &&
+    otelConfig.length <= 3
+  ) {
+    return;
+  }
+  const { bootstrap } = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+  bootstrap(otelConfig);
+}
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -422,7 +448,7 @@ core.registerErrorBuilder(
 core.registerErrorBuilder(
   "DOMExceptionNotSupportedError",
   function DOMExceptionNotSupportedError(msg) {
-    return new DOMException(msg, "NotSupported");
+    return new DOMException(msg, "NotSupportedError");
   },
 );
 core.registerErrorBuilder(
@@ -465,6 +491,18 @@ core.registerErrorBuilder(
   "DOMExceptionIndexSizeError",
   function DOMExceptionIndexSizeError(msg) {
     return new DOMException(msg, "IndexSizeError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionTypeMismatchError",
+  function DOMExceptionTypeMismatchError(msg) {
+    return new DOMException(msg, "TypeMismatchError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionInvalidAccessError",
+  function DOMExceptionInvalidAccessError(msg) {
+    return new DOMException(msg, "InvalidAccessError");
   },
 );
 
@@ -635,6 +673,24 @@ const NOT_IMPORTED_OPS = [
   "op_set_exit_code",
   "op_napi_open",
 
+  // Related to `Deno.desktop` API (deno compile --desktop)
+  "BrowserWindow",
+  "Dock",
+  "Tray",
+  "Notification",
+  "op_desktop_apply_patch",
+  "op_desktop_confirm_update",
+  "op_desktop_init",
+  "op_desktop_recv_event",
+  "op_desktop_resolve_bind_call",
+  "op_desktop_reject_bind_call",
+  "op_desktop_alert",
+  "op_desktop_confirm",
+  "op_desktop_prompt",
+  "op_desktop_send_error_report",
+  "op_desktop_request_notification_permission",
+  "op_desktop_query_notification_permission",
+
   // deno deploy subcommand
   "op_deploy_token_get",
   "op_deploy_token_set",
@@ -718,6 +774,64 @@ const executionModes = {
   jupyter: 8,
 };
 
+let protoSetRecorded = false;
+let protoGetRecorded = false;
+
+// By default Deno disables the `Object.prototype.__proto__` accessor for
+// security reasons (it enables prototype pollution), see
+// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+//
+// Historically this was done with `delete Object.prototype.__proto__`, which
+// makes `obj.__proto__` reads return `undefined` and writes silently create a
+// useless own property. Making the accessor *throw* instead would surface those
+// silent bugs, but it broke real packages such as Playwright (see
+// denoland/deno#34730 / #34772), so we keep the silent behavior.
+//
+// Instead of deleting we install an accessor that reproduces the deleted
+// semantics exactly (read -> `undefined`, write -> own data property, prototype
+// unchanged) but additionally records the first read and the first write. When
+// the program later crashes, the uncaught-error formatter (runtime/fmt_errors.rs)
+// reads those flags and suggests `--unstable-unsafe-proto`. A write surfaces
+// downstream so any later crash triggers the nudge; a read crashes at the
+// access site, so the formatter additionally requires `__proto__` on the
+// failing line before nudging. The `__proto__` key in object literals (e.g.
+// `{ __proto__: null }`) is separate syntax and is unaffected.
+function disableProtoAccessor() {
+  ObjectDefineProperty(ObjectPrototype, "__proto__", {
+    __proto__: null,
+    configurable: true,
+    enumerable: false,
+    // Distinct getter/setter function objects: the native accessor uses
+    // separate functions and WPT asserts accessor get/set are unique.
+    get: function __proto__() {
+      if (!protoGetRecorded) {
+        protoGetRecorded = true;
+        op_proto_get_attempted();
+      }
+      return undefined;
+    },
+    set: function __proto__(value) {
+      if (!protoSetRecorded) {
+        protoSetRecorded = true;
+        op_proto_set_attempted();
+      }
+      // Reproduce the previous `delete` behavior: a bare assignment created a
+      // normal own data property. Skip non-extensible receivers, where that
+      // assignment was a silent no-op in sloppy mode (and a throw in strict
+      // mode); keeping it silent here matches the "stay silent" goal above.
+      if (ObjectIsExtensible(this)) {
+        ObjectDefineProperty(this, "__proto__", {
+          __proto__: null,
+          value,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+      }
+    },
+  });
+}
+
 function bootstrapMainRuntime(runtimeOptions, warmup = false) {
   if (!warmup) {
     if (hasBootstrapped) {
@@ -742,6 +856,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       16: autoServe,
       17: nodeClusterUniqueId,
       18: nodeClusterSchedPolicy,
+      19: disableOffscreenCanvas,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -849,7 +964,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       location.setLocationHref(location_);
     }
 
-    ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
+    // Use defineGlobalProperties so the lazy-loaded descriptors (alert,
+    // confirm, prompt, Storage) get their `lazyNameSym` stamped with the
+    // property name. Without this, the setter calls
+    // `Object.defineProperty(this, undefined, ...)` which fails because the
+    // global `undefined` is non-configurable on `globalThis`.
+    core.defineGlobalProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
       // TODO(bartlomieju): in the future we might want to change the
       // behavior of setting `name` to actually update the process name.
@@ -858,6 +978,9 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       close: core.propWritable(windowClose),
       closed: core.propGetterOnly(() => windowIsClosing),
     });
+    if (disableOffscreenCanvas) {
+      delete globalThis.OffscreenCanvas;
+    }
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
@@ -910,24 +1033,48 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     }
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
-      // Removes the `__proto__` for security reasons.
-      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-      delete Object.prototype.__proto__;
+      disableProtoAccessor();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
+    const nodeBootstrapArgs = {
+      usesLocalNodeModulesDir: hasNodeModulesDir,
+      runningOnMainThread: true,
+      argv0,
+      nodeDebug,
+      nodeClusterUniqueId,
+      nodeClusterSchedPolicy,
+      // Stashed so process.ts's self-trigger can call __bootstrapNodeProcess
+      // without reading Deno.* (the no-deno-api-in-polyfills lint counts
+      // Deno.* references in node polyfills; passing them in keeps process.ts
+      // at zero new violations).
+      denoArgs: Deno.args,
+      denoVersion: Deno.version,
+    };
     if (nodeBootstrap) {
-      nodeBootstrap({
-        usesLocalNodeModulesDir: hasNodeModulesDir,
-        runningOnMainThread: true,
-        argv0,
-        nodeDebug,
-        nodeClusterUniqueId,
-        nodeClusterSchedPolicy,
-      });
+      nodeBootstrap(nodeBootstrapArgs);
+    } else if (op_node_has_child_ipc_pipe()) {
+      // node-defer: this main process is a forked child with an IPC pipe. It
+      // needs the IPC channel (set up in the full `initialize`) ready
+      // synchronously before its main module calls process.send /
+      // process.on("message"). Run the full node bootstrap EAGERLY (like
+      // workers) -- a forked IPC child is a node process, so the deser win
+      // doesn't apply. node:process first (fully evaluates), then node:module
+      // (its closure captures a finished node:process, so no cold-bootstrap
+      // TDZ), then `initialize`.
+      core.createLazyLoader("node:process")();
+      core.createLazyLoader("node:module")();
+      globalThis.nodeBootstrap(nodeBootstrapArgs);
+    } else {
+      // node-defer: node:module (01_require.js) is `lazy_loaded_esm`, so its
+      // top-level `globalThis.nodeBootstrap = initialize` hasn't run yet and
+      // `nodeBootstrap` is undefined here. Stash the args so node:process and
+      // 01_require.js self-bootstrap from them when first lazily loaded (on
+      // the first node:* use), so non-node programs never pay node bootstrap.
+      internals.__nodeBootstrapArgs = nodeBootstrapArgs;
     }
   } else {
     // Warmup
@@ -960,6 +1107,7 @@ function bootstrapWorkerRuntime(
       15: standalone,
       17: nodeClusterUniqueId,
       18: nodeClusterSchedPolicy,
+      19: disableOffscreenCanvas,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -990,6 +1138,9 @@ function bootstrapWorkerRuntime(
       close: core.propNonEnumerable(workerClose),
       postMessage: core.propWritable(postMessage),
     });
+    if (disableOffscreenCanvas) {
+      delete globalThis.OffscreenCanvas;
+    }
     if (enableTestingFeaturesFlag) {
       ObjectDefineProperty(
         globalThis,
@@ -1042,9 +1193,7 @@ function bootstrapWorkerRuntime(
     delete finalDenoNs.mainModule;
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
-      // Removes the `__proto__` for security reasons.
-      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-      delete Object.prototype.__proto__;
+      disableProtoAccessor();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -1055,18 +1204,36 @@ function bootstrapWorkerRuntime(
       ? messagePort.deserializeJsMessageData(maybeWorkerMetadata)
       : undefined;
 
+    const nodeBootstrapArgs = {
+      usesLocalNodeModulesDir: hasNodeModulesDir,
+      runningOnMainThread: false,
+      argv0,
+      workerId,
+      maybeWorkerMetadata: workerMetadata,
+      nodeDebug,
+      nodeClusterUniqueId,
+      nodeClusterSchedPolicy,
+      moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
+      // Stashed so process.ts's self-trigger can call __bootstrapNodeProcess
+      // without reading Deno.* (see the main-thread branch above).
+      denoArgs: Deno.args,
+      denoVersion: Deno.version,
+    };
     if (nodeBootstrap) {
-      nodeBootstrap({
-        usesLocalNodeModulesDir: hasNodeModulesDir,
-        runningOnMainThread: false,
-        argv0,
-        workerId,
-        maybeWorkerMetadata: workerMetadata,
-        nodeDebug,
-        nodeClusterUniqueId,
-        nodeClusterSchedPolicy,
-        moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
-      });
+      nodeBootstrap(nodeBootstrapArgs);
+    } else if (workerType === "node") {
+      // node-defer: node worker_threads need the FULL node bootstrap eagerly:
+      // require, workerData, SharedArrayBuffer, etc. must be ready before the
+      // worker's first line runs. Web workers stay lazy like the main thread
+      // so non-node workers never pay node bootstrap.
+      // Load node:process FIRST (fully evaluates + runs the process bootstrap),
+      // THEN node:module (its closure now captures a fully-evaluated
+      // node:process, avoiding the cold-bootstrap TDZ), then run `initialize`.
+      core.createLazyLoader("node:process")();
+      core.createLazyLoader("node:module")();
+      globalThis.nodeBootstrap(nodeBootstrapArgs);
+    } else {
+      internals.__nodeBootstrapArgs = nodeBootstrapArgs;
     }
   } else {
     // Warmup
@@ -1076,10 +1243,20 @@ function bootstrapWorkerRuntime(
 
 const nodeBootstrap = globalThis.nodeBootstrap;
 delete globalThis.nodeBootstrap;
-const dispatchProcessExitEvent = internals.dispatchProcessExitEvent;
-delete internals.dispatchProcessExitEvent;
-const dispatchProcessBeforeExitEvent = internals.dispatchProcessBeforeExitEvent;
-delete internals.dispatchProcessBeforeExitEvent;
+// node-defer: node:process sets internals.dispatchProcess{Exit,BeforeExit}Event
+// during its bootstrap, which is now deferred to first node:* use -- i.e. AFTER
+// this module evaluates. Capturing the values here would freeze the no-op
+// (node not yet bootstrapped). Instead dispatch dynamically: look up the
+// current internals handler at call time. No-op when node was never
+// bootstrapped (a non-node program has no process exit listeners).
+const dispatchProcessExitEvent = (...args) =>
+  internals.dispatchProcessExitEvent
+    ? ReflectApply(internals.dispatchProcessExitEvent, internals, args)
+    : undefined;
+const dispatchProcessBeforeExitEvent = (...args) =>
+  internals.dispatchProcessBeforeExitEvent
+    ? ReflectApply(internals.dispatchProcessBeforeExitEvent, internals, args)
+    : false;
 
 globalThis.bootstrap = {
   mainRuntime: bootstrapMainRuntime,

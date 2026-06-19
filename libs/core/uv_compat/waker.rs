@@ -11,52 +11,49 @@
 //! The `in_queue` flag coalesces duplicate wakeups between drains.
 //! On close, the handle's waker pointer is zeroed via `detach()`:
 //! - future wakes become no-ops (push_ready checks ptr before queuing)
-//! - already-queued entries self-invalidate — `run_io` pops the Arc,
+//! - already-queued entries self-invalidate: `run_io` pops the Arc,
 //!   loads `ptr` (0 after detach), and skips
 //!
 //! Because the Arc keeps the waker allocation alive across the
 //! handle's destruction, inspecting `live_ptr()` after a pop is
-//! always safe — replacing what would otherwise be an O(n) scan of
+//! always safe, replacing what would otherwise be an O(n) scan of
 //! the live-handle list with a plain load.
 //!
 //! ## Threading
 //!
-//! Deno's event loop is single-threaded: the tokio current-thread
-//! runtime drives both the reactor and the executor on the same
-//! thread, so waker invocations never cross threads. That lets us
-//! use `Cell` / `RefCell` instead of atomics / `Mutex` for the
-//! queue and waker fields.
+//! Handles are created, polled, and closed on the event loop thread,
+//! but wakes can arrive from OTHER threads. On Windows, TTY readiness
+//! is delivered by a thread pool wait callback registered with
+//! `RegisterWaitForSingleObject`, and line mode console reads complete
+//! on a dedicated reader thread; both call `Waker::wake` on the
+//! per-handle waker from their own thread while the loop thread may be
+//! draining the queues. The queues therefore use `Mutex` and the
+//! per-handle fields use atomics. The mutexes are uncontended in
+//! practice, so this costs nothing on the hot single-threaded path.
 //!
-//! `Arc` is still required (not `Rc`) because the `Wake` trait's
-//! method signatures are `fn wake(self: Arc<Self>)`. The `unsafe
-//! impl Send + Sync` on the waker types asserts the single-thread
-//! invariant; `std::task::Waker` requires `Send + Sync` of its
-//! backing data, so we lie at the type level and keep the
-//! invariant by construction.
+//! `detach()` and `live_ptr()` are only ever called on the loop
+//! thread. A cross-thread wake racing `detach()` may still enqueue the
+//! handle, but the entry self-invalidates: `run_io` rechecks
+//! `live_ptr()` on the loop thread before touching the handle.
 
-use std::cell::Cell;
-use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::task::Wake;
 
 use futures::task::AtomicWaker;
 
 /// State shared between `UvLoopInner` and every per-handle waker.
-/// Held behind an `Arc`; we assert `Sync` manually — see the module
-/// doc "Threading" section.
 #[derive(Default)]
 pub(crate) struct LoopShared {
   pub loop_waker: AtomicWaker,
-  pub ready_tcp: RefCell<VecDeque<Arc<TcpHandleWaker>>>,
-  pub ready_pipe: RefCell<VecDeque<Arc<PipeHandleWaker>>>,
-  pub ready_tty: RefCell<VecDeque<Arc<TtyHandleWaker>>>,
+  pub ready_tcp: Mutex<VecDeque<Arc<TcpHandleWaker>>>,
+  pub ready_pipe: Mutex<VecDeque<Arc<PipeHandleWaker>>>,
+  pub ready_tty: Mutex<VecDeque<Arc<TtyHandleWaker>>>,
 }
-
-// SAFETY: deno's event loop is single-threaded. All accesses to the
-// ready queues happen from that thread (either directly in run_io or
-// via tokio's current-thread reactor firing a waker). See module doc.
-unsafe impl Sync for LoopShared {}
 
 impl LoopShared {
   pub fn new() -> Arc<Self> {
@@ -69,23 +66,21 @@ macro_rules! impl_handle_waker {
     pub(crate) struct $name {
       /// Raw handle pointer (as usize). Zeroed by `detach()` when the
       /// handle is torn down; queued entries self-invalidate and late
-      /// wakes become no-ops.
-      ptr: Cell<usize>,
+      /// wakes become no-ops. Relaxed ordering suffices: the pointer
+      /// is only dereferenced on the loop thread, which rechecks
+      /// `live_ptr()` after popping (program order with `detach()`).
+      ptr: AtomicUsize,
       /// Coalesces duplicate wakeups. `true` means this handle is
       /// already sitting in its ready queue waiting to be drained.
-      in_queue: Cell<bool>,
+      in_queue: AtomicBool,
       shared: Arc<LoopShared>,
     }
-
-    // SAFETY: single-threaded event loop — see module doc.
-    unsafe impl Send for $name {}
-    unsafe impl Sync for $name {}
 
     impl $name {
       pub fn new(ptr: usize, shared: Arc<LoopShared>) -> Arc<Self> {
         Arc::new(Self {
-          ptr: Cell::new(ptr),
-          in_queue: Cell::new(false),
+          ptr: AtomicUsize::new(ptr),
+          in_queue: AtomicBool::new(false),
           shared,
         })
       }
@@ -93,30 +88,30 @@ macro_rules! impl_handle_waker {
       /// Zero the handle pointer so future wakes become no-ops and
       /// already-queued entries self-invalidate.
       pub fn detach(&self) {
-        self.ptr.set(0);
+        self.ptr.store(0, Ordering::Relaxed);
       }
 
       /// Mark this handle as no-longer-queued. Called by `run_io`
       /// right before polling so a wake during the poll re-queues
       /// the handle for the next pass.
       pub fn reset_queued(&self) {
-        self.in_queue.set(false);
+        self.in_queue.store(false, Ordering::Release);
       }
 
       /// Returns the handle pointer, or 0 if detached. Safe to call
-      /// after handle memory has been freed — the Arc keeps the
+      /// after handle memory has been freed; the Arc keeps the
       /// waker allocation alive.
       #[inline]
       pub fn live_ptr(&self) -> usize {
-        self.ptr.get()
+        self.ptr.load(Ordering::Relaxed)
       }
 
       fn push_ready(self: &Arc<Self>) {
-        if self.ptr.get() == 0 {
+        if self.ptr.load(Ordering::Relaxed) == 0 {
           return;
         }
-        if !self.in_queue.replace(true) {
-          self.shared.$queue.borrow_mut().push_back(self.clone());
+        if !self.in_queue.swap(true, Ordering::AcqRel) {
+          self.shared.$queue.lock().unwrap().push_back(self.clone());
           self.shared.loop_waker.wake();
         }
       }

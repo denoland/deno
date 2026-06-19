@@ -2,6 +2,8 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -35,6 +37,7 @@ use deno_semver::package::PackageReq;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 use deno_unsync::sync::TaskQueue;
+use parking_lot::Mutex;
 
 pub struct AddPkgReqsResult {
   /// Results from adding the individual packages.
@@ -69,6 +72,19 @@ impl HasJsExecutionStartedFlag {
 #[sys_traits::auto_impl]
 pub trait NpmResolutionInstallerSys: LockfileSys + NpmCacheSys {}
 
+/// Accumulates unmet peer dependency diagnostics produced during npm
+/// resolution so they can be rendered once, after the module graph (and thus
+/// the importing modules) is known. See `take_unmet_peer_diagnostics`.
+#[derive(Debug, Default)]
+struct UnmetPeerDiagnosticsState {
+  /// Diagnostics that have been collected but not yet drained for display.
+  pending: Vec<UnmetPeerDepDiagnostic>,
+  /// Every diagnostic ever collected, used to avoid reporting the same issue
+  /// more than once across the multiple resolution passes that happen while a
+  /// graph is built (each pass re-reports the full set).
+  seen: HashSet<UnmetPeerDepDiagnostic>,
+}
+
 /// Updates the npm resolution with the provided package requirements.
 #[derive(Debug)]
 pub struct NpmResolutionInstaller<
@@ -82,6 +98,7 @@ pub struct NpmResolutionInstaller<
   resolution: Arc<NpmResolutionCell>,
   maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
   update_queue: TaskQueue,
+  unmet_peer_diagnostics: Mutex<UnmetPeerDiagnosticsState>,
 }
 
 impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
@@ -105,7 +122,16 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       resolution,
       maybe_lockfile,
       update_queue: Default::default(),
+      unmet_peer_diagnostics: Default::default(),
     }
+  }
+
+  /// Drains and returns the unmet peer dependency diagnostics collected since
+  /// the last call. Callers are expected to render these (see
+  /// [`format_unmet_peer_dep_warning`]); the diagnostics are deduplicated so a
+  /// given issue is only ever returned once for the lifetime of the installer.
+  pub fn take_unmet_peer_diagnostics(&self) -> Vec<UnmetPeerDepDiagnostic> {
+    std::mem::take(&mut self.unmet_peer_diagnostics.lock().pending)
   }
 
   pub async fn cache_package_info(
@@ -114,6 +140,11 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
   ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
     // this will internally cache the package information
     self.registry_info_provider.package_info(package_name).await
+  }
+
+  /// Whether only cached registry data may be used (`--cached-only`).
+  pub fn is_cached_only(&self) -> bool {
+    self.registry_info_provider.is_cached_only()
   }
 
   /// Run a resolution install if the npm snapshot is in a pending state
@@ -159,7 +190,17 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     package_reqs: &[PackageReq],
   ) -> deno_npm::resolution::AddPkgReqsResult {
     let snapshot = self.resolution.snapshot();
-    if !self.resolution.is_pending()
+    // Skip npm resolution when the lockfile snapshot already resolves every
+    // requirement and either the lockfile is unchanged, or we are offline
+    // (`--cached-only`). The offline case is important: a lockfile can be
+    // flagged as changed for reasons unrelated to npm — most notably a `links`
+    // section that older deno versions did not write and is re-derived from the
+    // workspace config on load. Re-resolving then would need to fetch registry
+    // metadata that an offline cache does not contain, failing the run even
+    // though the lockfile's npm section is already complete. Online, the
+    // re-resolution still runs so the lockfile is brought up to date.
+    if (!self.resolution.is_pending()
+      || self.registry_info_provider.is_cached_only())
       && package_reqs
         .iter()
         .all(|req| snapshot.package_reqs().contains_key(req))
@@ -241,11 +282,18 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       &filtered
     };
 
-    if !diagnostics.is_empty() && log::log_enabled!(log::Level::Warn) {
-      let root_node = peer_dep_diagnostics_to_display_tree(diagnostics);
-      let mut text = String::new();
-      _ = root_node.print(&mut text);
-      log::warn!("{}", text);
+    // Stash the diagnostics rather than printing them here. npm resolution
+    // happens deep inside the graph build and is re-run multiple times, and at
+    // this point we don't yet know which user module imported the offending
+    // package. The diagnostics are drained and rendered later, once the graph
+    // is available. See `take_unmet_peer_diagnostics`.
+    if !diagnostics.is_empty() {
+      let mut state = self.unmet_peer_diagnostics.lock();
+      for diagnostic in diagnostics {
+        if state.seen.insert(diagnostic.clone()) {
+          state.pending.push(diagnostic.clone());
+        }
+      }
     }
 
     if let Ok(snapshot) = &result.dep_graph_result {
@@ -357,8 +405,36 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
   }
 }
 
+/// Formats the unmet peer dependency diagnostics into a warning message ready
+/// to be logged.
+///
+/// `importers` optionally maps a top-level package (its `name@version` string)
+/// to the user modules that import it, so the warning can point at the source
+/// of a transitively introduced package. Pass an empty map when the importing
+/// modules are not known (e.g. when resolving `package.json` dependencies).
+pub fn format_unmet_peer_dep_warning(
+  diagnostics: &[UnmetPeerDepDiagnostic],
+  importers: &HashMap<String, Vec<String>>,
+) -> String {
+  let root_node = peer_dep_diagnostics_to_display_tree(diagnostics, importers);
+  let mut text = String::new();
+  _ = root_node.print(&mut text);
+  // Append a short, actionable explanation. The fix (an "overrides" entry) is
+  // otherwise undocumented from the warning itself. See
+  // https://github.com/denoland/deno/issues/35196.
+  text.push_str(
+    "\nThese packages were resolved to a version that does not satisfy a peer \
+     dependency constraint, which can cause runtime errors. To silence this \
+     warning, install a compatible version or add an \"overrides\" entry to \
+     your package.json or deno.json.\n",
+  );
+  text.push_str("Learn more: https://docs.deno.com/go/peer-deps");
+  text
+}
+
 fn peer_dep_diagnostics_to_display_tree(
   diagnostics: &[UnmetPeerDepDiagnostic],
+  importers: &HashMap<String, Vec<String>>,
 ) -> DisplayTreeNode {
   struct MergedNode {
     text: Rc<String>,
@@ -424,10 +500,42 @@ fn peer_dep_diagnostics_to_display_tree(
   }
 
   for top_level_node in top_level_nodes {
-    root_node.children.push(convert_node(&top_level_node));
+    let mut node = convert_node(&top_level_node);
+    // Annotate the top-level package with the user module(s) that import it,
+    // which is the part the warning otherwise omits.
+    if let Some(referrers) = importers.get(top_level_node.text.as_str()) {
+      node.text = format!("{} ({})", node.text, format_importers(referrers));
+    }
+    root_node.children.push(node);
   }
 
   root_node
+}
+
+/// Renders the list of importing modules for a package, capping the number
+/// shown so the warning stays readable.
+fn format_importers(referrers: &[String]) -> String {
+  const MAX_SHOWN: usize = 2;
+  let shown = referrers
+    .iter()
+    .take(MAX_SHOWN)
+    .cloned()
+    .collect::<Vec<_>>()
+    .join(", ");
+  if referrers.len() > MAX_SHOWN {
+    format!(
+      "imported by {} and {} other{}",
+      shown,
+      referrers.len() - MAX_SHOWN,
+      if referrers.len() - MAX_SHOWN == 1 {
+        ""
+      } else {
+        "s"
+      }
+    )
+  } else {
+    format!("imported by {}", shown)
+  }
 }
 
 #[cfg(test)]
@@ -452,8 +560,30 @@ mod test {
         resolved: Version::parse_standard("1.0.0").unwrap(),
       },
     ]);
-    let display_tree = peer_dep_diagnostics_to_display_tree(&peer_deps);
+    let display_tree =
+      peer_dep_diagnostics_to_display_tree(&peer_deps, &HashMap::new());
     assert_eq!(display_tree.children.len(), 1);
     assert_eq!(display_tree.children[0].children.len(), 2);
+  }
+
+  #[test]
+  fn annotates_top_level_importers() {
+    let peer_deps = Vec::from([UnmetPeerDepDiagnostic {
+      ancestors: vec![PackageNv::from_str("a@1.0.0").unwrap()],
+      dependency: PackageReq::from_str("b@*").unwrap(),
+      resolved: Version::parse_standard("1.0.0").unwrap(),
+    }]);
+    let mut importers = HashMap::new();
+    importers.insert(
+      "a@1.0.0".to_string(),
+      vec!["https://deno.land/x/dev/mod.js".to_string()],
+    );
+    let display_tree =
+      peer_dep_diagnostics_to_display_tree(&peer_deps, &importers);
+    assert_eq!(display_tree.children.len(), 1);
+    assert_eq!(
+      display_tree.children[0].text,
+      "a@1.0.0 (imported by https://deno.land/x/dev/mod.js)"
+    );
   }
 }

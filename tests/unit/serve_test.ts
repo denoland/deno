@@ -31,6 +31,7 @@ const {
   serveHttpOnListener,
   serveHttpOnConnection,
   getCachedAbortSignal,
+  resetLegacyAbortWarning,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
@@ -496,13 +497,15 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
     },
     port: servePort,
     signal: ac.signal,
-    onListen: (addr) => listeningDeferred.resolve(addr),
+    onListen: listeningDeferred.resolve,
     onError: createOnErrorCb(ac),
   });
 
   const addr = await listeningDeferred.promise;
   assertEquals(addr.hostname, server.addr.hostname);
   assertEquals(addr.port, server.addr.port);
+  assertEquals(addr.transport, server.addr.transport);
+  assertEquals(addr.transport, "tcp");
   const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
     headers: { "connection": "close" },
   });
@@ -3368,10 +3371,15 @@ for (const testCase of compressionTestCases) {
               testCase.out["Content-Encoding"] || null,
             );
           } else if (testCase.expect == "gzip" || testCase.expect == "br") {
-            // Note the fetch will transparently decompress this response, BUT we can detect that a response
-            // was compressed by the lack of a content length.
+            // The fetch will transparently decompress this response. Per the
+            // fetch spec the `content-encoding` header stays visible;
+            // `content-length` is absent because the server streams the
+            // compressed body with chunked transfer encoding.
             assertEquals(body.byteLength, testCase.length);
-            assertEquals(resp.headers.get("content-encoding"), null);
+            assertEquals(
+              resp.headers.get("content-encoding"),
+              testCase.expect,
+            );
             assertEquals(resp.headers.get("content-length"), null);
           }
         } finally {
@@ -3673,21 +3681,25 @@ Deno.test(
   { permissions: { read: true, net: true } },
   async function httpServerWithTls() {
     const ac = new AbortController();
-    const { promise, resolve } = Promise.withResolvers<void>();
     const hostname = "127.0.0.1";
+    const listeningDeferred = Promise.withResolvers<Deno.NetAddr>();
 
     await using server = Deno.serve({
       handler: () => new Response("Hello World"),
       hostname,
       port: servePort,
       signal: ac.signal,
-      onListen: onListen(resolve),
+      onListen: listeningDeferred.resolve,
       onError: createOnErrorCb(ac),
       cert: Deno.readTextFileSync("tests/testdata/tls/localhost.crt"),
       key: Deno.readTextFileSync("tests/testdata/tls/localhost.key"),
     });
 
-    await promise;
+    const addr = await listeningDeferred.promise;
+    assertEquals(addr.hostname, server.addr.hostname);
+    assertEquals(addr.port, server.addr.port);
+    assertEquals(addr.transport, server.addr.transport);
+    assertEquals(addr.transport, "tcp");
     const caCert = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
     const resp = await fetch(`https://localhost:${servePort}/`, {
@@ -5431,5 +5443,106 @@ Deno.test(
     await serverWebSocketClosed.promise;
     ac.abort();
     await server.finished;
+  },
+);
+
+async function captureLegacyAbortWarnings(
+  fn: () => Promise<void>,
+): Promise<string[]> {
+  resetLegacyAbortWarning();
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    if (typeof args[0] === "string" && args[0].includes("request.signal")) {
+      warnings.push(args[0]);
+      return;
+    }
+    originalWarn(...args);
+  };
+  try {
+    await fn();
+  } finally {
+    console.warn = originalWarn;
+    resetLegacyAbortWarning();
+  }
+  return warnings;
+}
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerLegacyAbortWarningFiresOnce() {
+    const warnings = await captureLegacyAbortWarnings(async () => {
+      const { finished, shutdown } = await makeServer((req) => {
+        req.signal.addEventListener("abort", () => {});
+        return new Response("ok");
+      });
+      for (let i = 0; i < 3; i++) {
+        await (await fetch(`http://localhost:${servePort}`)).text();
+      }
+      await shutdown();
+      await finished;
+    });
+    assertEquals(warnings.length, 1);
+    assertStringIncludes(warnings[0], "request.signal");
+    assertStringIncludes(warnings[0], "--unstable-no-legacy-abort");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerLegacyAbortWarningSkipsWhenSignalUntouched() {
+    const warnings = await captureLegacyAbortWarnings(async () => {
+      const { finished, shutdown } = await makeServer(() => {
+        return new Response("ok");
+      });
+      for (let i = 0; i < 3; i++) {
+        await (await fetch(`http://localhost:${servePort}`)).text();
+      }
+      await shutdown();
+      await finished;
+    });
+    assertEquals(warnings.length, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, run: true, read: true } },
+  async function httpServerLegacyAbortWarningSilentUnderUnstableFlag() {
+    const subprocessPort = servePort + 1;
+    const code = `
+      const originalWarn = console.warn;
+      let warned = false;
+      console.warn = (...args) => {
+        if (typeof args[0] === "string" && args[0].includes("request.signal")) {
+          warned = true;
+        }
+        originalWarn(...args);
+      };
+      const { promise, resolve } = Promise.withResolvers();
+      const server = Deno.serve({
+        port: ${subprocessPort},
+        handler: (req) => {
+          req.signal.addEventListener("abort", () => {});
+          return new Response("ok");
+        },
+        onListen: resolve,
+      });
+      await promise;
+      for (let i = 0; i < 3; i++) {
+        await (await fetch("http://localhost:${subprocessPort}")).text();
+      }
+      console.log(warned ? "WARNED" : "QUIET");
+      await server.shutdown();
+    `;
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "--unstable-no-legacy-abort", code],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code: exitCode, stdout } = await command.output();
+    const output = new TextDecoder().decode(stdout);
+    assertEquals(exitCode, 0);
+    assertStringIncludes(output, "QUIET");
+    assert(!output.includes("WARNED"));
   },
 );

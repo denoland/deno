@@ -424,6 +424,14 @@ impl LanguageServer {
           NpmCachingStrategy::Eager,
         )
         .await?;
+      let cli_options = factory.cli_options()?;
+      let collect_bare_importable_pkg_names = || {
+        cli_options
+          .workspace()
+          .resolver_jsr_pkgs()
+          .map(|pkg| pkg.name)
+          .collect::<Vec<_>>()
+      };
       graph_util::graph_valid(
         &graph,
         &CliSys::default(),
@@ -435,6 +443,7 @@ impl LanguageServer {
           exit_integrity_errors: false,
           allow_unknown_media_types: true,
           allow_unknown_jsr_exports: false,
+          collect_bare_importable_pkg_names: &collect_bare_importable_pkg_names,
         },
       )?;
       Ok(())
@@ -1218,10 +1227,12 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn refresh_compiler_options_resolver(&mut self) {
-    self.compiler_options_resolver = Arc::new(LspCompilerOptionsResolver::new(
+    let compiler_options_resolver = LspCompilerOptionsResolver::new(
       &self.config,
       &self.resolver,
-    ));
+      Some(&self.compiler_options_resolver),
+    );
+    self.compiler_options_resolver = Arc::new(compiler_options_resolver);
     // TODO(nayeemrmn): This represents a circular dependency between
     // `LspCompilerOptionsResolver` and `LspResolver` because the former uses
     // the node resolver to resolve `extends` in tsconfig. Break out the node

@@ -24,6 +24,7 @@ const {
   StringPrototypeToLowerCase,
   SymbolSpecies,
   TypeError,
+  TypeErrorPrototype,
   TypedArrayPrototypeAt,
   TypedArrayPrototypeGetByteLength,
   Uint8Array,
@@ -53,7 +54,6 @@ const {
 
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 
-const lazyProcess = core.createLazyLoader("node:process");
 const lazyStream = core.createLazyLoader("node:stream");
 
 const {
@@ -81,9 +81,10 @@ const {
   isAnyArrayBuffer,
   isArrayBufferView,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
-const { ERR_CRYPTO_INVALID_STATE } = core.loadExtScript(
-  "ext:deno_node/internal/errors.ts",
-);
+const { ERR_CRYPTO_INVALID_STATE, ERR_CRYPTO_UNKNOWN_CIPHER } = core
+  .loadExtScript(
+    "ext:deno_node/internal/errors.ts",
+  );
 const { StringDecoder } = core.loadExtScript(
   "ext:deno_node/string_decoder.ts",
 );
@@ -184,14 +185,26 @@ function Cipheriv(
     this._aesWrapIv = toU8(iv);
     this._context = 1; // non-zero sentinel; not used for wrap ops
   } else {
-    this._context = op_node_create_cipheriv(
-      cipher,
-      toU8(key),
-      toU8(iv),
-      authTagLength,
-    );
+    try {
+      this._context = op_node_create_cipheriv(
+        cipher,
+        toU8(key),
+        toU8(iv),
+        authTagLength,
+      );
+    } catch (e) {
+      // The op reports an unrecognized algorithm as a TypeError that includes
+      // the cipher name; surface Node's ERR_CRYPTO_UNKNOWN_CIPHER instead.
+      if (
+        ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e) &&
+        StringPrototypeStartsWith(e.message, "Unknown cipher")
+      ) {
+        throw new ERR_CRYPTO_UNKNOWN_CIPHER();
+      }
+      throw e;
+    }
     if (this._context == 0) {
-      throw new TypeError("Unknown cipher");
+      throw new ERR_CRYPTO_UNKNOWN_CIPHER();
     }
   }
 
@@ -472,14 +485,26 @@ function Decipheriv(
     this._aesWrapIv = toU8(iv);
     this._context = 1; // non-zero sentinel; not used for wrap ops
   } else {
-    this._context = op_node_create_decipheriv(
-      cipher,
-      toU8(key),
-      toU8(iv),
-      authTagLength,
-    );
+    try {
+      this._context = op_node_create_decipheriv(
+        cipher,
+        toU8(key),
+        toU8(iv),
+        authTagLength,
+      );
+    } catch (e) {
+      // The op reports an unrecognized algorithm as a TypeError that includes
+      // the cipher name; surface Node's ERR_CRYPTO_UNKNOWN_CIPHER instead.
+      if (
+        ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e) &&
+        StringPrototypeStartsWith(e.message, "Unknown cipher")
+      ) {
+        throw new ERR_CRYPTO_UNKNOWN_CIPHER();
+      }
+      throw e;
+    }
     if (this._context == 0) {
-      throw new TypeError("Unknown cipher");
+      throw new ERR_CRYPTO_UNKNOWN_CIPHER();
     }
   }
 
@@ -567,8 +592,6 @@ Decipheriv.prototype.setAAD = function (
   return this;
 };
 
-let gcmShortTagDeprecationEmitted = false;
-
 Decipheriv.prototype.setAuthTag = function (
   buffer: any,
   _encoding?: string,
@@ -576,21 +599,18 @@ Decipheriv.prototype.setAuthTag = function (
   if (this._authTag) {
     throw new ERR_CRYPTO_INVALID_STATE("setAuthTag");
   }
-  // DEP0182: warn once per process when using a short GCM auth tag without
-  // an explicit `authTagLength` option at decipher creation time.
+  // When no explicit `authTagLength` was given at decipher creation time, a
+  // GCM authentication tag must be the full 128 bits (16 bytes); shorter tags
+  // are only accepted when `authTagLength` is set. This used to be the DEP0182
+  // deprecation warning and is now a hard error (matching Node.js).
+  // deno-lint-ignore prefer-primordials -- `buffer` may be Buffer/TypedArray/DataView
+  const tagByteLength = buffer.byteLength;
   if (
     this._isGcmMode && this._authTagLength === -1 &&
-    // deno-lint-ignore prefer-primordials -- `buffer` may be Buffer/TypedArray/DataView
-    buffer.byteLength !== 16 && !gcmShortTagDeprecationEmitted
+    tagByteLength !== 16
   ) {
-    gcmShortTagDeprecationEmitted = true;
-    const process = lazyProcess().default;
-    process.emitWarning(
-      "Using AES-GCM authentication tags of less than 128 bits without " +
-        "specifying the authTagLength option when initializing decryption " +
-        "is deprecated.",
-      "DeprecationWarning",
-      "DEP0182",
+    throw new TypeError(
+      `Invalid authentication tag length: ${tagByteLength}`,
     );
   }
   // deno-lint-ignore prefer-primordials -- `buffer` may be Buffer/TypedArray/DataView

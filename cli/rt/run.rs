@@ -577,6 +577,65 @@ impl EmbeddedModuleLoader {
         }
       }
       Ok(None) => {
+        // Fall back to reading from disk (used by dev entrypoint in HMR mode).
+        if original_specifier.scheme() == "file"
+          && let Ok(path) = original_specifier.to_file_path()
+          && let Ok(source) = std::fs::read_to_string(&path)
+        {
+          let media_type = MediaType::from_specifier(original_specifier);
+          let (module_type, should_transpile) = match media_type {
+            MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
+              (ModuleType::JavaScript, false)
+            }
+            MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Jsx
+            | MediaType::Tsx => (ModuleType::JavaScript, true),
+            MediaType::Json => (ModuleType::Json, false),
+            _ => (ModuleType::JavaScript, false),
+          };
+          let code = if should_transpile {
+            match deno_ast::parse_module(deno_ast::ParseParams {
+              specifier: original_specifier.clone(),
+              text: source.into(),
+              media_type,
+              capture_tokens: false,
+              scope_analysis: false,
+              maybe_syntax: None,
+            }) {
+              Ok(parsed) => match parsed.transpile(
+                &deno_ast::TranspileOptions::default(),
+                &deno_ast::TranspileModuleOptions::default(),
+                &deno_ast::EmitOptions::default(),
+              ) {
+                Ok(transpiled) => {
+                  ModuleSourceCode::String(transpiled.into_source().text.into())
+                }
+                Err(e) => {
+                  return deno_core::ModuleLoadResponse::Sync(Err(
+                    JsErrorBox::type_error(format!("Transpile error: {e}")),
+                  ));
+                }
+              },
+              Err(e) => {
+                return deno_core::ModuleLoadResponse::Sync(Err(
+                  JsErrorBox::type_error(format!("Parse error: {e}")),
+                ));
+              }
+            }
+          } else {
+            ModuleSourceCode::String(source.into())
+          };
+          return deno_core::ModuleLoadResponse::Sync(Ok(
+            deno_core::ModuleSource::new(
+              module_type,
+              code,
+              original_specifier,
+              None,
+            ),
+          ));
+        }
         deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::type_error(
           format!("Module not found: {}", original_specifier),
         )))
@@ -852,6 +911,34 @@ impl ModuleLoader for EmbeddedModuleLoader {
     self.load_default(original_specifier, maybe_referrer, options)
   }
 
+  fn get_code_cache(
+    &self,
+    specifier: &ModuleSpecifier,
+    source: &deno_core::v8::String,
+  ) -> Option<SourceCodeCacheInfo> {
+    let code_cache = self.shared.code_cache.as_ref()?;
+    if !code_cache.enabled() {
+      return None;
+    }
+    // Residual ext-scripts (the node polyfill closure, etc.) don't go through
+    // `load()`, so they can't ride their cache on a `ModuleSource`. Read the
+    // shared on-disk cache directly here. The deno version is already part of
+    // the root cache key. Hash the `v8::String` the same way `CliModuleLoader`
+    // does so this read side lines up with the `code_cache_ready` write side.
+    let hash = FastInsecureHasher::new_without_deno_version()
+      .write_hashable(source)
+      .finish();
+    let data = code_cache.get_sync(
+      specifier,
+      deno_runtime::code_cache::CodeCacheType::EsModule,
+      hash,
+    );
+    Some(SourceCodeCacheInfo {
+      hash,
+      data: data.map(Cow::Owned),
+    })
+  }
+
   fn code_cache_ready(
     &self,
     specifier: Url,
@@ -1081,11 +1168,65 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
   }
 }
 
+/// Callback to initialize additional `OpState` during worker creation.
+pub type OpStateInitFn = Box<dyn FnOnce(&mut deno_core::OpState) + Send>;
+
+/// Options to override default standalone runtime behavior.
+/// Used by the desktop runtime to enable auto_serve and set the port.
+#[derive(Default)]
+pub struct RunOptions {
+  pub auto_serve: bool,
+  pub serve_port: Option<u16>,
+  pub serve_host: Option<String>,
+  /// Enable HMR file watching from this directory.
+  pub hmr_watch_dir: Option<PathBuf>,
+  /// Callback invoked after each successful HMR replacement.
+  pub hmr_on_reload: Option<crate::hmr::HmrReloadCallback>,
+  /// Callback to initialize additional OpState (e.g. desktop APIs).
+  /// Called during worker creation to inject state without adding extensions.
+  pub op_state_init: Option<OpStateInitFn>,
+  /// Override the main module to execute instead of the embedded entrypoint.
+  /// Used by desktop runtime for forked worker processes (child_process.fork)
+  /// where the child should run a specific script, not the embedded entrypoint.
+  pub override_main_module: Option<deno_core::url::Url>,
+  /// Version and rollback state for desktop auto-update JS initialization.
+  pub auto_update_version: Option<String>,
+  pub auto_update_rolled_back: bool,
+  /// Error reporting URL from deno.json `desktop.errorReporting.url`.
+  pub error_reporting_url: Option<String>,
+  /// Auto-update release base URL from deno.json `desktop.release.baseUrl`.
+  /// Used as the default `url` for `Deno.autoUpdate` when none is passed.
+  pub release_base_url: Option<String>,
+  /// Stop on the first line of user code. Mirrors `--inspect-brk`.
+  pub inspect_brk: bool,
+  /// Wait for a DevTools session to attach before running user code.
+  /// Mirrors `--inspect-wait`.
+  pub inspect_wait: bool,
+  /// Enables inspector-related setup in the worker (registers the runtime
+  /// with the global inspector server). Mirrors `--inspect`/`-brk`/`-wait`.
+  pub is_inspecting: bool,
+}
+
+/// Read NODE_CHANNEL_FD from the environment to initialize IPC for
+/// forked child processes (e.g. child_process.fork()).
 pub async fn run(
   fs: Arc<dyn FileSystem>,
   sys: DenoRtSys,
   data: StandaloneData,
 ) -> Result<i32, AnyError> {
+  run_with_options(fs, sys, data, RunOptions::default()).await
+}
+
+pub async fn run_with_options(
+  fs: Arc<dyn FileSystem>,
+  sys: DenoRtSys,
+  data: StandaloneData,
+  options: RunOptions,
+) -> Result<i32, AnyError> {
+  let hmr_watch_dir = options.hmr_watch_dir;
+  let hmr_on_reload = options.hmr_on_reload;
+  let op_state_init = options.op_state_init;
+  let override_main_module = options.override_main_module;
   let StandaloneData {
     metadata,
     modules,
@@ -1103,6 +1244,10 @@ pub async fn run(
   // use a dummy npm registry url
   let npm_registry_url = Url::parse("https://localhost/").unwrap();
   let root_dir_url = Arc::new(Url::from_directory_path(&root_path).unwrap());
+  let workspace_root_path =
+    hmr_watch_dir.clone().unwrap_or_else(|| root_path.clone());
+  let workspace_root_dir_url =
+    Arc::new(Url::from_directory_path(&workspace_root_path).unwrap());
   let entrypoint = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   // When this process was spawned by node:child_process.fork() from a compiled
   // binary, the parent asks us to run a specific embedded module instead of the
@@ -1117,20 +1262,24 @@ pub async fn run(
     // SAFETY: single-threaded during startup, before the runtime is created.
     unsafe { std::env::remove_var(INTERNAL_CHILD_ENTRYPOINT_ENV_VAR) };
   }
-  let main_module = match child_entrypoint {
-    // Only honor the override for a genuine fork() child, which always wires up
-    // an IPC channel (NODE_CHANNEL_FD). This is defense in depth against an
-    // accidental collision with a stray DENO_INTERNAL_CHILD_ENTRYPOINT, not a
-    // security boundary: an attacker who can set one env var can set both, and
-    // resolve_child_entrypoint's cwd-relative fallback will then run an on-disk
-    // module with the binary's baked-in permissions. That on-disk fallback is
-    // intentional (it matches fork() semantics outside a compiled binary), so a
-    // hostile environment is out of scope here. NODE_CHANNEL_FD is still present
-    // because node_ipc_init() consumes it later.
-    Some(module_path) if std::env::var("NODE_CHANNEL_FD").is_ok() => {
-      resolve_child_entrypoint(&module_path, &entrypoint, &vfs, &sys)
+  let main_module = if let Some(url) = override_main_module {
+    url
+  } else {
+    match child_entrypoint {
+      // Only honor the override for a genuine fork() child, which always wires
+      // up an IPC channel (NODE_CHANNEL_FD). This is defense in depth against an
+      // accidental collision with a stray DENO_INTERNAL_CHILD_ENTRYPOINT, not a
+      // security boundary: an attacker who can set one env var can set both, and
+      // resolve_child_entrypoint's cwd-relative fallback will then run an
+      // on-disk module with the binary's baked-in permissions. That on-disk
+      // fallback is intentional (it matches fork() semantics outside a compiled
+      // binary), so a hostile environment is out of scope here. NODE_CHANNEL_FD
+      // is still present because node_ipc_init() consumes it later.
+      Some(module_path) if std::env::var("NODE_CHANNEL_FD").is_ok() => {
+        resolve_child_entrypoint(&module_path, &entrypoint, &vfs, &sys)
+      }
+      _ => entrypoint,
     }
-    _ => entrypoint,
   };
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
   let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
@@ -1174,7 +1323,7 @@ pub async fn run(
       ));
       let snapshot = npm_snapshot.unwrap();
       let maybe_node_modules_path = node_modules_dir
-        .map(|node_modules_dir| root_path.join(node_modules_dir));
+        .map(|node_modules_dir| workspace_root_path.join(node_modules_dir));
       let in_npm_pkg_checker =
         DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Managed(
           ManagedInNpmPkgCheckerCreateOptions {
@@ -1201,7 +1350,7 @@ pub async fn run(
       root_node_modules_dir,
     }) => {
       let root_node_modules_dir =
-        root_node_modules_dir.map(|p| vfs.root().join(p));
+        root_node_modules_dir.map(|p| workspace_root_path.join(p));
       let in_npm_pkg_checker =
         DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
       let npm_resolver = NpmResolver::<DenoRtSys>::new::<DenoRtSys>(
@@ -1209,7 +1358,7 @@ pub async fn run(
           sys: node_resolution_sys.clone(),
           pkg_json_resolver: pkg_json_resolver.clone(),
           root_node_modules_dir,
-          search_stop_dir: Some(root_path.clone()),
+          search_stop_dir: Some(workspace_root_path.clone()),
         }),
       );
       (in_npm_pkg_checker, npm_resolver)
@@ -1296,7 +1445,7 @@ pub async fn run(
     let import_map = match metadata.workspace_resolver.import_map {
       Some(import_map) => Some(
         import_map::parse_from_json_with_options(
-          root_dir_url.join(&import_map.specifier).unwrap(),
+          workspace_root_dir_url.join(&import_map.specifier).unwrap(),
           &import_map.json,
           import_map::ImportMapOptions {
             address_hook: None,
@@ -1312,7 +1461,7 @@ pub async fn run(
       .package_jsons
       .into_iter()
       .map(|(relative_path, json)| {
-        let path = root_dir_url
+        let path = workspace_root_dir_url
           .join(&relative_path)
           .unwrap()
           .to_file_path()
@@ -1323,7 +1472,7 @@ pub async fn run(
       })
       .collect::<Result<Vec<_>, AnyError>>()?;
     WorkspaceResolver::new_raw(
-      root_dir_url.clone(),
+      workspace_root_dir_url.clone(),
       import_map,
       metadata
         .workspace_resolver
@@ -1384,20 +1533,23 @@ pub async fn run(
     sys: sys.clone(),
   };
 
+  // Desktop runtimes always need a baseline set of permissions to function:
+  // the renderer is served over loopback HTTP, so net access to 127.0.0.1
+  // is mandatory; the desktop init JS reads `DENO_DESKTOP_*` env vars to
+  // discover the inspector mux, HMR watch dir, etc. Without these, the
+  // very first `Deno.serve(...)` or `Deno.env.get(...)` throws NotCapable
+  // and aborts script execution before the event-loop IIFE registers —
+  // which manifests as a blank window where nothing works (no input,
+  // no auto-tests, no bindings). Granting them up front avoids forcing
+  // every `deno desktop` user to remember `-A`.
+  let has_desktop = op_state_init.is_some();
   let permissions = {
     let mut permissions = metadata.permissions;
     // grant read access to the vfs
-    match &mut permissions.allow_read {
-      Some(vec) if vec.is_empty() => {
-        // do nothing, already granted
-      }
-      Some(vec) => {
-        vec.push(root_path.to_string_lossy().into_owned());
-      }
-      None => {
-        permissions.allow_read =
-          Some(vec![root_path.to_string_lossy().into_owned()]);
-      }
+    grant_vfs_read_access(&mut permissions, &root_path);
+
+    if has_desktop {
+      apply_desktop_permission_defaults(&mut permissions);
     }
 
     let desc_parser =
@@ -1421,12 +1573,12 @@ pub async fn run(
     log_level: WorkerLogLevel::Info,
     enable_testing_features: false,
     has_node_modules_dir,
-    inspect_brk: false,
-    inspect_wait: false,
+    inspect_brk: options.inspect_brk,
+    inspect_wait: options.inspect_wait,
     trace_ops: None,
-    is_inspecting: false,
+    is_inspecting: options.is_inspecting,
     is_standalone: true,
-    auto_serve: false,
+    auto_serve: options.auto_serve,
     skip_op_registration: true,
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)
@@ -1441,15 +1593,20 @@ pub async fn run(
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
     node_ipc_init: deno_lib::args::node_ipc_init(&sys)?,
-    serve_port: None,
-    serve_host: None,
+    serve_port: options.serve_port,
+    serve_host: options.serve_host,
     otel_config: metadata.otel_config,
     no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
     residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
     enable_raw_imports: metadata.unstable_config.raw_imports,
+    close_on_idle: !options.auto_serve,
     maybe_initial_cwd: None,
+    disable_offscreen_canvas: matches!(
+      std::env::var("DENO_DISABLE_OFFSCREEN_CANVAS").as_deref(),
+      Ok("1") | Ok("true")
+    ),
   };
   let worker_factory = LibMainWorkerFactory::new(
     blob_store,
@@ -1501,16 +1658,97 @@ pub async fn run(
     .map(|key| root_dir_url.join(key).unwrap())
     .collect::<Vec<_>>();
 
-  let mut worker = worker_factory.create_main_worker(
+  let mut worker = worker_factory.create_custom_worker(
     WorkerExecutionMode::Run,
-    permissions,
     main_module,
     preload_modules,
     require_modules,
+    permissions,
+    vec![],
+    Default::default(),
+    None,
   )?;
 
-  let exit_code = worker.run().await?;
-  Ok(exit_code)
+  // Inject desktop API state into OpState after worker creation.
+  if let Some(init_fn) = op_state_init {
+    let op_state = worker.js_runtime().op_state();
+    init_fn(&mut op_state.borrow_mut());
+  }
+
+  // Initialize desktop APIs (Deno.desktop.*).
+  if has_desktop {
+    worker
+      .js_runtime()
+      .execute_script("ext:deno_desktop/init", crate::desktop::DESKTOP_JS)?;
+
+    // Initialize auto-update JS (DesktopUpdater cppgc object is already
+    // registered via the desktop extension's objects).
+    let js = crate::desktop::desktop_auto_update_js(
+      options.auto_update_version.as_deref(),
+      options.auto_update_rolled_back,
+      options.release_base_url.as_deref(),
+    );
+    worker
+      .js_runtime()
+      .execute_script("ext:deno_desktop/auto_update", js)?;
+
+    let js = crate::desktop::desktop_error_reporting_js(
+      options.error_reporting_url.as_deref(),
+      options.auto_update_version.as_deref(),
+    );
+    worker
+      .js_runtime()
+      .execute_script("ext:deno_desktop/error_reporting", js)?;
+  }
+
+  if let Some(watch_dir) = hmr_watch_dir {
+    let mut hmr_runner =
+      crate::hmr::setup_desktop_hmr(&mut worker, watch_dir, root_path.clone())?;
+    if let Some(cb) = hmr_on_reload {
+      hmr_runner.set_on_reload(cb);
+    }
+
+    // Run one event loop tick so the inspector processes the
+    // Debugger.enable / Runtime.enable messages before we load modules.
+    // This ensures scriptParsed notifications are emitted during module load.
+    worker.run_event_loop(false).await?;
+
+    // Run preload modules first
+    worker.execute_preload_modules().await?;
+    worker.execute_main_module().await?;
+    worker.dispatch_load_event()?;
+
+    loop {
+      let hmr_fut = hmr_runner.run();
+      let event_loop_fut = worker.run_event_loop(false);
+
+      tokio::select! {
+        hmr_result = hmr_fut => {
+          if let Err(e) = hmr_result {
+            log::error!("HMR error: {:?}", e);
+          }
+        }
+        event_loop_result = event_loop_fut => {
+          event_loop_result?;
+          let web_continue = worker.dispatch_beforeunload_event()?;
+          if !web_continue {
+            let node_continue =
+              worker.dispatch_process_beforeexit_event()?;
+            if !node_continue {
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    worker.dispatch_unload_event()?;
+    worker.dispatch_process_exit_event()?;
+    Ok(worker.exit_code())
+  } else {
+    let exit_code = worker.run().await?;
+    Ok(exit_code)
+  }
 }
 
 // Internal env var carrying the module a fork()ed child of a compiled binary
@@ -1593,4 +1831,216 @@ fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
     registry_configs: Default::default(),
     min_release_age_days: None,
   })
+}
+
+/// Grant read access to the embedded VFS root so the compiled binary
+/// can read the files it shipped with. Preserves the `Some(vec![])`
+/// allow-all sentinel and avoids duplicating an already-present entry.
+pub(crate) fn grant_vfs_read_access(
+  permissions: &mut deno_runtime::deno_permissions::PermissionsOptions,
+  root_path: &std::path::Path,
+) {
+  let entry = root_path.to_string_lossy().into_owned();
+  match &mut permissions.allow_read {
+    Some(vec) if vec.is_empty() => {
+      // already wide-open (--allow-read with no args / -A); nothing to
+      // extend.
+    }
+    Some(vec) => {
+      if !vec.contains(&entry) {
+        vec.push(entry);
+      }
+    }
+    None => {
+      permissions.allow_read = Some(vec![entry]);
+    }
+  }
+}
+
+/// Loopback hosts a desktop runtime must be able to reach. The compiled
+/// app's renderer talks to its `Deno.serve()` over loopback HTTP, so
+/// net access here is structural, not optional.
+const DESKTOP_LOOPBACK_HOSTS: &[&str] = &["127.0.0.1", "localhost", "[::1]"];
+
+/// Env vars the DESKTOP_JS init script reads. Granting only these
+/// (instead of blanket `allow-env`) keeps the user's shell environment
+/// off-limits to arbitrary `Deno.env.get` calls in their app code while
+/// still letting the framework boot.
+const DESKTOP_ENV_KEYS: &[&str] = &[
+  "DENO_DESKTOP_MUX_WS",
+  "DENO_DESKTOP_HMR",
+  "DENO_DESKTOP_INSPECT_INTERNAL_PORT",
+  "DENO_DESKTOP_INSPECT_BRK",
+  "DENO_DESKTOP_INSPECT_WAIT",
+  "LAUFEY_RUNTIME_PATH",
+  "LAUFEY_REMOTE_DEBUGGING_PORT",
+];
+
+/// Grant the baseline net (loopback) and env (DESKTOP_JS read keys)
+/// access a desktop runtime needs to boot. Idempotent: re-applying
+/// preserves any wider grants the user already had.
+///
+/// `Some(vec)` with `vec.is_empty()` represents allow-all (e.g. `-A`)
+/// and is left untouched. `Some(vec)` with entries gets the missing
+/// loopback/key entries appended. `None` is replaced with the baseline
+/// vec.
+pub(crate) fn apply_desktop_permission_defaults(
+  permissions: &mut deno_runtime::deno_permissions::PermissionsOptions,
+) {
+  fn extend(slot: &mut Option<Vec<String>>, defaults: &[&str]) {
+    match slot {
+      Some(vec) if vec.is_empty() => {
+        // already allow-all — wider than our baseline; don't narrow.
+      }
+      Some(vec) => {
+        for entry in defaults {
+          let s = (*entry).to_string();
+          if !vec.contains(&s) {
+            vec.push(s);
+          }
+        }
+      }
+      None => {
+        *slot = Some(defaults.iter().map(|s| (*s).to_string()).collect());
+      }
+    }
+  }
+
+  extend(&mut permissions.allow_net, DESKTOP_LOOPBACK_HOSTS);
+  extend(&mut permissions.allow_env, DESKTOP_ENV_KEYS);
+}
+
+#[cfg(test)]
+mod tests {
+  use deno_runtime::deno_permissions::PermissionsOptions;
+
+  use super::DESKTOP_ENV_KEYS;
+  use super::DESKTOP_LOOPBACK_HOSTS;
+  use super::apply_desktop_permission_defaults;
+  use super::grant_vfs_read_access;
+
+  fn strs(v: &[&str]) -> Vec<String> {
+    v.iter().map(|s| (*s).to_string()).collect()
+  }
+
+  #[test]
+  fn defaults_populate_empty_options() {
+    let mut p = PermissionsOptions::default();
+    apply_desktop_permission_defaults(&mut p);
+    assert_eq!(p.allow_net, Some(strs(DESKTOP_LOOPBACK_HOSTS)));
+    assert_eq!(p.allow_env, Some(strs(DESKTOP_ENV_KEYS)));
+    // Other permission categories must remain untouched.
+    assert_eq!(p.allow_read, None);
+    assert_eq!(p.allow_write, None);
+  }
+
+  #[test]
+  fn defaults_extend_existing_allowlist_without_duplicating() {
+    let mut p = PermissionsOptions {
+      allow_net: Some(vec![
+        "example.com".to_string(),
+        "127.0.0.1".to_string(), // already present — must not duplicate
+      ]),
+      allow_env: Some(vec!["MY_VAR".to_string()]),
+      ..Default::default()
+    };
+    apply_desktop_permission_defaults(&mut p);
+
+    let net = p.allow_net.unwrap();
+    // Original entries preserved.
+    assert!(net.contains(&"example.com".to_string()));
+    // 127.0.0.1 still appears exactly once.
+    assert_eq!(net.iter().filter(|s| *s == "127.0.0.1").count(), 1);
+    // Missing loopback entries appended.
+    assert!(net.contains(&"localhost".to_string()));
+    assert!(net.contains(&"[::1]".to_string()));
+
+    let env = p.allow_env.unwrap();
+    assert!(env.contains(&"MY_VAR".to_string()));
+    for key in DESKTOP_ENV_KEYS {
+      assert!(env.contains(&key.to_string()), "missing {key}");
+    }
+  }
+
+  #[test]
+  fn defaults_preserve_allow_all_sentinel() {
+    // `Some(vec![])` is the allow-all sentinel (-A / --allow-net with
+    // no args). Narrowing it down to a specific allowlist would silently
+    // break user code that depends on broader access — leave it alone.
+    let mut p = PermissionsOptions {
+      allow_net: Some(vec![]),
+      allow_env: Some(vec![]),
+      ..Default::default()
+    };
+    apply_desktop_permission_defaults(&mut p);
+    assert_eq!(p.allow_net, Some(vec![]));
+    assert_eq!(p.allow_env, Some(vec![]));
+  }
+
+  #[test]
+  fn defaults_are_idempotent() {
+    let mut p = PermissionsOptions::default();
+    apply_desktop_permission_defaults(&mut p);
+    let after_once = p.clone();
+    apply_desktop_permission_defaults(&mut p);
+    assert_eq!(p, after_once);
+  }
+
+  // --- grant_vfs_read_access ---
+
+  #[test]
+  fn vfs_grant_populates_empty_options() {
+    let mut p = PermissionsOptions::default();
+    grant_vfs_read_access(&mut p, std::path::Path::new("/data/vfs"));
+    assert_eq!(p.allow_read, Some(vec!["/data/vfs".to_string()]));
+    // Net / env / write must remain None.
+    assert_eq!(p.allow_net, None);
+    assert_eq!(p.allow_env, None);
+    assert_eq!(p.allow_write, None);
+  }
+
+  #[test]
+  fn vfs_grant_preserves_allow_all_sentinel() {
+    // `Some(vec![])` means --allow-read with no args (allow-all). The
+    // compiled binary should keep its broader privilege; narrowing it
+    // to a single path here would silently break user code that reads
+    // outside the VFS.
+    let mut p = PermissionsOptions {
+      allow_read: Some(vec![]),
+      ..Default::default()
+    };
+    grant_vfs_read_access(&mut p, std::path::Path::new("/data/vfs"));
+    assert_eq!(p.allow_read, Some(vec![]));
+  }
+
+  #[test]
+  fn vfs_grant_extends_existing_allowlist() {
+    let mut p = PermissionsOptions {
+      allow_read: Some(vec!["/etc".to_string()]),
+      ..Default::default()
+    };
+    grant_vfs_read_access(&mut p, std::path::Path::new("/data/vfs"));
+    let v = p.allow_read.unwrap();
+    assert!(
+      v.contains(&"/etc".to_string()),
+      "original entries preserved"
+    );
+    assert!(v.contains(&"/data/vfs".to_string()));
+  }
+
+  #[test]
+  fn vfs_grant_is_idempotent() {
+    let mut p = PermissionsOptions::default();
+    grant_vfs_read_access(&mut p, std::path::Path::new("/data/vfs"));
+    grant_vfs_read_access(&mut p, std::path::Path::new("/data/vfs"));
+    // Same path twice must not duplicate.
+    assert_eq!(p.allow_read, Some(vec!["/data/vfs".to_string()]));
+  }
+
+  #[test]
+  fn vfs_grant_handles_path_with_unicode() {
+    let mut p = PermissionsOptions::default();
+    grant_vfs_read_access(&mut p, std::path::Path::new("/Users/café/My App"));
+    assert_eq!(p.allow_read, Some(vec!["/Users/café/My App".to_string()]));
+  }
 }
