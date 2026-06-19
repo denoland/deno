@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
@@ -34,6 +35,7 @@ mod unfurl;
 use extensions::compute_output_path;
 use extensions::media_type_extension;
 use npm_tarball::create_npm_tarball;
+use npm_tarball::default_tarball_filename;
 use package_json::generate_package_json;
 use unfurl::unfurl_specifiers;
 
@@ -176,6 +178,7 @@ pub async fn pack(
       &package,
       cli_options,
       &pack_flags,
+      &version,
       &collected_paths,
       &readme_license_files,
     )?;
@@ -444,6 +447,7 @@ fn collect_asset_files(
   package: &JsrPackageConfig,
   cli_options: &CliOptions,
   pack_flags: &PackFlags,
+  version: &str,
   collected_paths: &[CollectedPath],
   readme_license_files: &[ReadmeOrLicense],
 ) -> Result<Vec<AssetFile>, AnyError> {
@@ -472,15 +476,18 @@ fn collect_asset_files(
   for file in readme_license_files {
     excluded.insert(package_dir.join(&file.relative_path));
   }
-  // The tarball we are about to write must never be packed into itself. When
-  // `--output` is given, resolve it (relative to the cwd, like
-  // `create_npm_tarball`) and exclude that exact path — this covers an
-  // output tarball that lands inside an included dir, e.g.
-  // `pack --output ./assets/foo.tgz`. The root-level `.tgz` heuristic below
-  // additionally catches default-named tarballs left over from prior runs.
-  if let Some(output) = pack_flags.output.as_deref() {
-    excluded.insert(cli_options.initial_cwd().join(output));
-  }
+  // The tarball we are about to write must never be packed into itself.
+  // Resolve its exact path (relative to the cwd, like `create_npm_tarball`)
+  // and exclude it. With `--output` this covers a tarball that lands inside
+  // an included dir, e.g. `pack --output ./assets/foo.tgz`; otherwise we
+  // exclude the default-named tarball pack writes into the cwd, so
+  // re-running pack doesn't embed a prior run's artifact and break the
+  // reproducibility guarantee.
+  let output_tarball = match pack_flags.output.as_deref() {
+    Some(output) => PathBuf::from(output),
+    None => default_tarball_filename(&package.config_file, version)?,
+  };
+  excluded.insert(cli_options.initial_cwd().join(output_tarball));
 
   let collected = FileCollector::new(|e| {
     if !e.metadata.file_type().is_file() {
@@ -519,21 +526,6 @@ fn collect_asset_files(
     let Ok(relative) = path.strip_prefix(&package_dir) else {
       continue;
     };
-    // By default `deno pack` writes its output tarball into the package
-    // directory, so a root-level `.tgz` is most likely a pack artifact
-    // (e.g. left over from a previous default-named run) rather than a
-    // source asset — drop it. Without this, re-running `pack` would embed
-    // the prior tarball and break the reproducibility guarantee. An
-    // explicit `--output` path is excluded above; this only covers the
-    // default-named, root-level case.
-    if relative
-      .parent()
-      .map(|p| p.as_os_str().is_empty())
-      .unwrap_or(true)
-      && relative.extension().map(|e| e == "tgz").unwrap_or(false)
-    {
-      continue;
-    }
     let content = std::fs::read(&path)
       .with_context(|| format!("failed reading '{}'.", path.display()))?;
     assets.push(AssetFile {

@@ -12,6 +12,36 @@ use super::ProcessedFile;
 use super::ReadmeOrLicense;
 use super::extensions::js_to_dts_extension;
 
+/// Compute the default tarball filename (`scope-name-version.tgz`) that
+/// `pack` writes when no `--output` is given. Extracted so the asset
+/// collector can exclude this exact path (instead of guessing by `.tgz`
+/// extension) and so the name is computed in exactly one place.
+pub fn default_tarball_filename(
+  config_file: &ConfigFile,
+  version: &str,
+) -> Result<PathBuf, AnyError> {
+  let name = config_file
+    .json
+    .name
+    .as_ref()
+    .ok_or_else(|| deno_core::anyhow::anyhow!("Missing name"))?;
+  // Convert @scope/name to scope-name
+  let normalized = name.replace('@', "").replace('/', "-");
+  // The package name shape is checked against `@scope/name` higher up
+  // (see `pack` in mod.rs), but that check is loose — it does not
+  // forbid path-traversal sequences. Treat this as a hard safety
+  // boundary right before we open a file, rejecting any derived
+  // tarball name that contains `..` or path separators so we never
+  // escape the cwd regardless of upstream validation drift.
+  if normalized.contains("..") || normalized.contains('/') {
+    return Err(deno_core::anyhow::anyhow!(
+      "refusing to write tarball with unsafe name derived from package: {}",
+      name
+    ));
+  }
+  Ok(PathBuf::from(format!("{}-{}.tgz", normalized, version)))
+}
+
 /// Tar archive paths must use forward slashes, even on Windows. Output paths
 /// are computed with platform separators when they pass through `Path::display`,
 /// so normalize before writing the tar header. Unconditional — backslash is
@@ -50,12 +80,6 @@ pub fn create_npm_tarball(
   output_path: Option<&str>,
   dry_run: bool,
 ) -> Result<PathBuf, AnyError> {
-  let name = config_file
-    .json
-    .name
-    .as_ref()
-    .ok_or_else(|| deno_core::anyhow::anyhow!("Missing name"))?;
-
   // Compute output filename
   let filename = if let Some(path) = output_path {
     let p = PathBuf::from(path);
@@ -64,21 +88,7 @@ pub fn create_npm_tarball(
     }
     p
   } else {
-    // Convert @scope/name to scope-name
-    let normalized = name.replace('@', "").replace('/', "-");
-    // The package name shape is checked against `@scope/name` higher up
-    // (see `pack` in mod.rs), but that check is loose — it does not
-    // forbid path-traversal sequences. Treat this as a hard safety
-    // boundary right before we open a file, rejecting any derived
-    // tarball name that contains `..` or path separators so we never
-    // escape the cwd regardless of upstream validation drift.
-    if normalized.contains("..") || normalized.contains('/') {
-      return Err(deno_core::anyhow::anyhow!(
-        "refusing to write tarball with unsafe name derived from package: {}",
-        name
-      ));
-    }
-    PathBuf::from(format!("{}-{}.tgz", normalized, version))
+    default_tarball_filename(config_file, version)?
   };
 
   if dry_run {
