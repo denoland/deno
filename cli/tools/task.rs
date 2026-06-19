@@ -194,12 +194,18 @@ pub async fn execute_script(
     env_vars.insert("DENO_CONNECTED".into(), "1".into());
   }
 
-  let no_of_concurrent_tasks = if let Ok(value) = std::env::var("DENO_JOBS") {
-    value.parse::<NonZeroUsize>().ok()
-  } else {
-    std::thread::available_parallelism().ok()
-  }
-  .unwrap_or_else(|| NonZeroUsize::new(2).unwrap());
+  // Precedence: explicit `--jobs` flag > `DENO_JOBS` env var >
+  // `available_parallelism()` default.
+  let no_of_concurrent_tasks = task_flags
+    .concurrency
+    .or_else(|| {
+      std::env::var("DENO_JOBS")
+        .ok()?
+        .parse::<NonZeroUsize>()
+        .ok()
+    })
+    .or_else(|| std::thread::available_parallelism().ok())
+    .unwrap_or_else(|| NonZeroUsize::new(2).unwrap());
 
   let task_runner = TaskRunner {
     task_flags: &task_flags,

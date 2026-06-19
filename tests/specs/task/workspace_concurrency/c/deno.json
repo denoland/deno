@@ -1,0 +1,8 @@
+{
+  "name": "@app/c",
+  "version": "0.0.1",
+  "exports": "./main.ts",
+  "tasks": {
+    "work": "deno run -A main.ts"
+  }
+}
