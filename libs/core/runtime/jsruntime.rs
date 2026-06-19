@@ -135,6 +135,17 @@ use crate::stats::RuntimeActivityType;
 use crate::uv_compat;
 
 pub type WaitForInspectorDisconnectCallback = Box<dyn Fn()>;
+
+/// A per-isolate hook invoked when V8's host-initialize-import-meta callback
+/// fires for a module that is not registered in deno_core's module map (e.g.
+/// a `node:vm` `SourceTextModule`). The embedder is expected to populate the
+/// `meta` object as needed and return; the hook is not allowed to throw.
+pub type ExternalModuleImportMetaCb = for<'s, 'i> fn(
+  scope: &mut v8::PinScope<'s, 'i>,
+  module: v8::Local<'s, v8::Module>,
+  meta: v8::Local<'s, v8::Object>,
+);
+
 const STATE_DATA_OFFSET: u32 = 0;
 
 pub type ExtensionTranspiler =
@@ -505,6 +516,15 @@ pub struct JsRuntimeState {
   pub(crate) vm_dynamic_import_callbacks:
     RefCell<HashMap<u32, v8::Global<v8::Function>>>,
   pub(crate) next_vm_dynamic_import_callback_id: Cell<u32>,
+  /// Hook invoked by `host_initialize_import_meta_object_callback` when V8
+  /// asks to initialize `import.meta` for a module that is *not* tracked by
+  /// the module map. This is the path `node:vm` `SourceTextModule` takes:
+  /// the v8::Module is created directly by the `node:vm` op and is never
+  /// registered in the deno_core module map, but V8 still invokes the
+  /// per-isolate import-meta callback for it. Without this hook the
+  /// callback used to `panic!("Module not found")`.
+  pub(crate) external_module_import_meta_cb:
+    Cell<Option<ExternalModuleImportMetaCb>>,
   pub(crate) eval_context_get_code_cache_cb:
     RefCell<Option<EvalContextGetCodeCacheCb>>,
   pub(crate) eval_context_code_cache_ready_cb:
@@ -858,6 +878,7 @@ impl JsRuntime {
       custom_module_evaluation_cb: options.custom_module_evaluation_cb,
       vm_dynamic_import_callbacks: Default::default(),
       next_vm_dynamic_import_callback_id: Cell::new(1),
+      external_module_import_meta_cb: Cell::new(None),
       eval_context_get_code_cache_cb: RefCell::new(
         eval_context_get_code_cache_cb,
       ),
