@@ -1,6 +1,6 @@
-import { a } from "./repro.ts";
-import { b } from "./repro.ts#fragment";
-import { c } from "./repro.ts?search";
+import { a } from "./source.ts";
+import { b } from "./source.ts#fragment";
+import { c } from "./source.ts?search";
 
 Deno.test("a", () => {
   a();
