@@ -2927,11 +2927,11 @@ impl ModuleMap {
       .get_code_cache(&specifier, &v8_source)
       .map(|info| {
         let loader = self.loader.borrow().clone();
-        let spec = specifier.clone();
         CodeCacheInfo {
           data: info.data,
+          // `specifier` is unused after this, so move it straight in.
           ready_callback: Box::new(move |cache| {
-            loader.code_cache_ready(spec, info.hash, cache)
+            loader.code_cache_ready(specifier, info.hash, cache)
           }),
         }
       });
