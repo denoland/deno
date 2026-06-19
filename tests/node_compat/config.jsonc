@@ -230,11 +230,23 @@
     "parallel/test-async-hooks-enable-disable.js": {},
     "parallel/test-async-hooks-enable-disable-enable.js": {},
     "parallel/test-async-hooks-enable-during-promise.js": {},
+    "parallel/test-async-hooks-enable-recursive.js": {
+      "ignore": true,
+      "reason": "Deno's fs callback APIs (fs.access) are implemented on top of internal promises, which surface as extra PROMISE async_hooks init events; Node creates a single FSREQCALLBACK async_wrap resource per call, so the outer hook's init fires 2 times in Node but 6 in Deno. Matching this requires re-architecting fs callbacks onto native async resources and suppressing the internal promises."
+    },
     "parallel/test-async-hooks-enabledhooksexits.js": {},
     "parallel/test-async-hooks-execution-async-resource-await.js": {},
     "parallel/test-async-hooks-execution-async-resource.js": {},
+    "parallel/test-async-hooks-fatal-error.js": {
+      "ignore": true,
+      "reason": "Requires exceptions thrown from async_hooks callbacks (init/before/after/destroy/promiseResolve) to abort the process with exit code 1; Deno's V8 promise-hook integration reports them as non-fatal uncaught exceptions and continues, so the spawned child exits 0. Making hook-callback exceptions fatal touches deno_core's promise-hook machinery with broad blast radius."
+    },
     "parallel/test-async-hooks-http-agent-destroy.js": {},
     "parallel/test-async-hooks-http-agent.js": {},
+    "parallel/test-async-hooks-http-parser-destroy.js": {
+      "ignore": true,
+      "reason": "Deno's HTTP implementation does not create Node's HTTPINCOMINGMESSAGE/HTTPCLIENTREQUEST async_wrap resources, so the matching destroy() events the test counts never fire; the server is never closed and the test hangs."
+    },
     "parallel/test-async-hooks-prevent-double-destroy.js": {},
     "parallel/test-async-hooks-promise-enable-disable.js": {},
     "parallel/test-async-hooks-promise-triggerid.js": {},
