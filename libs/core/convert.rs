@@ -1,6 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::convert::Infallible;
+use std::hash::BuildHasher;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -938,6 +940,29 @@ where
       .map(|v| v.to_v8(scope))
       .collect::<Result<Vec<_>, _>>()?;
     Ok(v8::Array::new_with_elements(scope, &buf).into())
+  }
+}
+
+impl<'a, K, V, S> ToV8<'a> for HashMap<K, V, S>
+where
+  K: AsRef<str>,
+  V: ToV8<'a>,
+  S: BuildHasher,
+{
+  type Error = JsErrorBox;
+
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'a, 'i>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+    let obj = v8::Object::new(scope);
+    for (k, v) in self {
+      let key = v8::String::new(scope, k.as_ref())
+        .ok_or_else(|| JsErrorBox::type_error("Failed to create string key"))?;
+      let val = v.to_v8(scope).map_err(JsErrorBox::from_err)?;
+      obj.set(scope, key.into(), val);
+    }
+    Ok(obj.into())
   }
 }
 
