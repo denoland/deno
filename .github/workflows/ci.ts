@@ -926,6 +926,21 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               ],
             },
             {
+              // Eager bootstrap modules must lazy-load node:/heavy closures via
+              // core.createLazyLoader, never a static `import`. A static import
+              // pulls the module's whole transitive closure into the startup
+              // snapshot (e.g. `import "node:buffer"` dragged ~22 node internal
+              // modules / ~700 SFIs in). Keep them out.
+              name: "Check eager bootstrap does not static-import node:",
+              if: isLinux,
+              run: [
+                "if grep -rEn '^import .* from \"node:' runtime/js/; then",
+                '  echo "eager bootstrap statically imports a node: module — use core.createLazyLoader so it stays out of the startup snapshot"',
+                "  exit 1",
+                "fi",
+              ],
+            },
+            {
               name: "Generate symcache",
               run: [
                 "target/release/deno -A tools/release/create_symcache.ts ./deno.symcache",
