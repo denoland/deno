@@ -60,6 +60,7 @@ node_resolver.workspace = true
 once_cell.workspace = true
 parking_lot.workspace = true
 phf = { workspace = true, features = ["macros"] }
+saphyr.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true
