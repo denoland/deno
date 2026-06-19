@@ -96,11 +96,7 @@ impl TestSanitizerHelper {
 
   /// Drop any activity from the diff that was previously recorded as a leak
   /// escaping a sanitizer-ignoring test.
-  fn remove_ignored_activities(
-    &self,
-    diff: &mut RuntimeActivityDiff,
-    resolved_ignored_activities: &mut HashSet<LeakKey>,
-  ) {
+  fn remove_ignored_activities(&mut self, diff: &mut RuntimeActivityDiff) {
     if self.ignored_activities.is_empty() {
       return;
     }
@@ -108,16 +104,9 @@ impl TestSanitizerHelper {
       !self.ignored_activities.contains(&leak_key(activity))
     });
     diff.disappeared.retain(|activity| {
-      let key = leak_key(activity);
-      if self.ignored_activities.contains(&key) {
-        // Keep filtering this key for the rest of the current sanitizer check.
-        // The same before/after diff may be recomputed several times while the
-        // event loop stabilizes.
-        resolved_ignored_activities.insert(key);
-        false
-      } else {
-        true
-      }
+      // Once an ignored leak disappears, future activity with the same key
+      // should be treated normally.
+      !self.ignored_activities.remove(&leak_key(activity))
     });
   }
 
@@ -125,14 +114,6 @@ impl TestSanitizerHelper {
   fn record_ignored_activities(&mut self, leaked: &[RuntimeActivity]) {
     for activity in leaked {
       self.ignored_activities.insert(leak_key(activity));
-    }
-  }
-
-  /// Stop ignoring activities that have disappeared and were consumed by a
-  /// later sanitizer check.
-  fn forget_ignored_activities(&mut self, activities: &HashSet<LeakKey>) {
-    for activity in activities {
-      self.ignored_activities.remove(activity);
     }
   }
 }
@@ -247,16 +228,14 @@ pub async fn wait_for_activity_to_stabilize(
   sanitize_resources: bool,
 ) -> Result<Option<RuntimeActivityDiff>, CoreError> {
   // First, check to see if there's any diff at all. If not, just continue.
-  let mut resolved_ignored_activities = HashSet::new();
   let after_test_stats = helper.capture_stats();
   let mut diff =
     RuntimeActivityStats::diff(&before_test_stats, &after_test_stats);
   // Ops/resources/timers that leaked out of an earlier sanitizer-ignoring test
   // must not be attributed to this one.
-  helper.remove_ignored_activities(&mut diff, &mut resolved_ignored_activities);
+  helper.remove_ignored_activities(&mut diff);
   if is_empty(&helper.top_level_sanitizer_stats, &diff) {
     // No activity, so we return early
-    helper.forget_ignored_activities(&resolved_ignored_activities);
     return Ok(None);
   }
 
@@ -270,10 +249,8 @@ pub async fn wait_for_activity_to_stabilize(
 
     let after_test_stats = helper.capture_stats();
     diff = RuntimeActivityStats::diff(&before_test_stats, &after_test_stats);
-    helper
-      .remove_ignored_activities(&mut diff, &mut resolved_ignored_activities);
+    helper.remove_ignored_activities(&mut diff);
     if is_empty(&helper.top_level_sanitizer_stats, &diff) {
-      helper.forget_ignored_activities(&resolved_ignored_activities);
       return Ok(None);
     }
   }
@@ -319,7 +296,6 @@ pub async fn wait_for_activity_to_stabilize(
 
   // Record the leaks that escaped this sanitizer-ignoring test so subsequent
   // tests don't flag them.
-  helper.forget_ignored_activities(&resolved_ignored_activities);
   helper.record_ignored_activities(&leaked);
 
   Ok(if is_empty(&helper.top_level_sanitizer_stats, &diff) {
