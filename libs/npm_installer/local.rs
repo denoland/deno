@@ -331,7 +331,11 @@ impl<
           .unwrap()
         })
         .unwrap_or_default();
-      let patch_path = self.patch_packages.0.get(&package.id.nv).cloned();
+      let patch_path = self
+        .patch_packages
+        .0
+        .get(&package.id.nv)
+        .map(std::path::Path::to_path_buf);
       // Fold the patch contents into the folder marker stored in `.initialized`
       // so adding, changing or removing a `patchedDependencies` entry forces a
       // re-clone and re-apply on the next install.

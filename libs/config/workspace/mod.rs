@@ -636,7 +636,7 @@ impl Workspace {
   pub fn patched_packages(
     &self,
   ) -> Result<
-    std::collections::BTreeMap<deno_semver::package::PackageNv, PathBuf>,
+    crate::deno_json::PatchedDependencies,
     crate::deno_json::PatchedDependenciesParseError,
   > {
     let mut result = match self.root_deno_json() {
@@ -650,9 +650,7 @@ impl Workspace {
         entries,
         pkg_json.dir_path(),
       )?;
-      for (nv, patch_path) in from_pkg_json {
-        result.entry(nv).or_insert(patch_path);
-      }
+      result.merge(from_pkg_json);
     }
     Ok(result)
   }

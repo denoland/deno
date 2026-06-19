@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "tests": {
+    "applies_patch": {
+      "args": "run -A main.ts",
+      "output": "main.out"
+    }
+  }
+}
