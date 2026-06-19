@@ -643,7 +643,28 @@ pub fn cover_files(
 
   let proc_coverages: Vec<_> = script_coverages
     .into_iter()
-    .map(|cov| ProcessCoverage { result: vec![cov] })
+    .map(|mut cov| {
+      // Strip the URL query and fragment so that the same module imported
+      // with different search params or hash fragments (e.g. `mod.ts?wasm`
+      // and `mod.ts#wasm`) is treated as a single module and its coverage is
+      // merged, rather than being reported as separate entries each with
+      // partial coverage. These variants resolve to the same file, so their
+      // V8 ranges are offsets into identical source and can be merged.
+      //
+      // Only do this for `file:`/`http:`/`https:` URLs: for these schemes the
+      // query and fragment never change the loaded source, whereas for e.g.
+      // `data:` URLs a `?` or `#` can be part of the inline content and must
+      // be preserved.
+      if let Ok(mut url) = Url::parse(&cov.url)
+        && matches!(url.scheme(), "file" | "http" | "https")
+        && (url.query().is_some() || url.fragment().is_some())
+      {
+        url.set_query(None);
+        url.set_fragment(None);
+        cov.url = url.to_string();
+      }
+      ProcessCoverage { result: vec![cov] }
+    })
     .collect();
 
   let script_coverages = if let Some(c) = merge::merge_processes(proc_coverages)

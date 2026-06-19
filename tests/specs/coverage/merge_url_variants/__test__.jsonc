@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test --coverage=cov",
+      "output": "[WILDCARD]3 passed[WILDCARD]"
+    },
+    {
+      "args": "coverage cov",
+      "output": "coverage.out"
+    }
+  ]
+}
