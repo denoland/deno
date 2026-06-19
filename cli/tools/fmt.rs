@@ -1806,7 +1806,7 @@ mod test {
   }
 
   #[test]
-  fn test_formated_removes_utf8_bom() {
+  fn test_formatted_removes_utf8_bom() {
     let file_text = format_file(
       Path::new("test.ts"),
       &FileContents {
