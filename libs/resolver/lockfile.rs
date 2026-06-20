@@ -633,7 +633,6 @@ async fn try_import_npm_lockfile<TSys: LockfileSys>(
         continue;
       }
     };
-    log::info!("Seeded deno.lock from {}", path.display());
     let mut lockfile = Lockfile::new(
       deno_lockfile::NewLockfileOptions {
         file_path: deno_lock_path.to_path_buf(),
@@ -643,6 +642,13 @@ async fn try_import_npm_lockfile<TSys: LockfileSys>(
       api,
     )
     .await?;
+    // Only announce the import when the translation actually produced
+    // content. A foreign lockfile whose deps are all unsupported (e.g. only
+    // `file:`/`link:` entries) translates to an empty lockfile, and claiming
+    // we seeded it would be misleading.
+    if !lockfile.content.is_empty() {
+      log::info!("Seeded deno.lock from {}", path.display());
+    }
     // Force write on first save so the imported state is persisted even if
     // no subsequent resolution mutates the lockfile.
     lockfile.has_content_changed = true;
