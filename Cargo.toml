@@ -612,11 +612,14 @@ opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
 
-# TEMPORARY: consume the dprint-core fix for the `deno fmt` OOM (denoland/deno#26713)
-# until a new dprint-core is published. The fix (count condition re-evaluation
-# flips cumulatively so mutually-dependent conditions can't oscillate forever)
-# is a standalone copy of dprint-core 0.67.4 with that one-file change. Replace
-# this with a plain version bump once the fix is released upstream
-# (https://github.com/dprint/dprint).
+# TEMPORARY: consume the dprint-core fix for the `deno fmt` OOM (denoland/deno#26713).
+# The fix (count condition re-evaluation flips cumulatively so mutually-dependent
+# conditions can't oscillate forever) has landed upstream in dprint/dprint#1137,
+# which shipped in dprint-core 0.68.x. We can't bump to 0.68 yet because the
+# dprint-plugin-* family pinned below still depends on dprint-core 0.67.x; mixing
+# would pull two dprint-core versions into the tree. This fork is therefore a
+# standalone copy of dprint-core 0.67.4 with only that one-file change applied.
+# Drop this patch and bump to the 0.68-line crates once the plugins are
+# republished against dprint-core 0.68.x.
 [patch.crates-io]
 dprint-core = { git = "https://github.com/divybot/dprint", rev = "9e6bd58dfdfb49e7691d10837ae6ed3bbcedf908" }
