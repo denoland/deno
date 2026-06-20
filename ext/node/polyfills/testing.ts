@@ -1086,13 +1086,14 @@ async function runPossiblyExpectingFailure(fn, nodeTestContext, options) {
   };
   // Install this context as the current one for the duration of the body so a
   // top-level `test()` called inside it is routed here as a subtest (see the
-  // dispatcher in `test()`). Saved/restored synchronously around the body:
-  // Deno runs test bodies sequentially, so a plain variable suffices, and
-  // unlike wrapping the body in an extra call it adds no stack frames - extra
-  // frames can push `ext:cli/40_test.js` out of a failure's captured stack and
-  // break the source location reported for failed tests.
-  const prevContext = currentTestContext;
-  currentTestContext = nodeTestContext;
+  // dispatcher in `test()`). `enterWith` is a synchronous setter that binds the
+  // context for the current async root and its descendants without adding a
+  // stack frame - extra frames can push `ext:cli/40_test.js` out of a failure's
+  // captured stack and break the source location reported for failed tests. No
+  // save/restore is needed: each body runs in its own async root, so concurrent
+  // subtest bodies each keep their own context even when they interleave across
+  // `await`.
+  getTestContextALS().enterWith(nodeTestContext);
   if (
     !options.expectFailure ||
     options.skip ||
@@ -1106,7 +1107,6 @@ async function runPossiblyExpectingFailure(fn, nodeTestContext, options) {
       nodeTestContext._checkPlan();
       return result;
     } finally {
-      currentTestContext = prevContext;
       // Drain even on failure so subtests registered before the error finish
       // their Deno test steps before this test settles.
       await nodeTestContext._drainSubtests();
@@ -1124,7 +1124,6 @@ async function runPossiblyExpectingFailure(fn, nodeTestContext, options) {
     failed = true;
     assertExpectedFailure(err, options.expectFailure);
   } finally {
-    currentTestContext = prevContext;
     await nodeTestContext._drainSubtests();
   }
 
@@ -1414,18 +1413,32 @@ class NodeTestContext {
 
 let currentSuite = null;
 
-// The NodeTestContext whose body is currently executing, or null when no test
-// body is on the stack. Set by `runPossiblyExpectingFailure` for the duration
-// of each body so that a top-level `test()` / `it()` call made from inside
-// another test's body is registered as a subtest of that test (via
-// `t.step()`), matching Node, rather than hitting Deno's "Nested Deno.test()
-// calls are not supported" error. Deno runs test bodies sequentially, so a
-// single variable with save/restore tracks the active body across its `await`
-// boundaries and through nested subtests. See
+// AsyncLocalStorage holding the NodeTestContext whose body is currently
+// executing, or null when no test body is on the stack. Set by
+// `runPossiblyExpectingFailure` for the duration of each body so that a
+// top-level `test()` / `it()` call made from inside another test's body is
+// registered as a subtest of that test (via `t.step()`), matching Node, rather
+// than hitting Deno's "Nested Deno.test() calls are not supported" error.
+//
+// This must be an ALS, not a single module global with synchronous
+// save/restore: the unawaited routed-subtest path this enables makes execution
+// non-LIFO. With concurrent subtest bodies suspended across `await`, a plain
+// variable can point at a sibling when a parent resumes and silently mis-nest
+// the next routed `test()`. Each Deno test/step fn is its own async root, so
+// the store stays scoped to that body's subtree and survives `await`
+// boundaries, giving every interleaved body its own context. See
 // https://github.com/denoland/deno/issues/35391.
-let currentTestContext = null;
+let testContextALS = null;
+function getTestContextALS() {
+  if (testContextALS !== null) return testContextALS;
+  const mod = core.loadExtScript("ext:deno_node/async_hooks.ts");
+  const ALS = mod.AsyncLocalStorage;
+  testContextALS = new ALS();
+  return testContextALS;
+}
 function getCurrentTestContext() {
-  return currentTestContext;
+  if (testContextALS === null) return null;
+  return testContextALS.getStore() ?? null;
 }
 
 const rootBeforeHooks = [];
