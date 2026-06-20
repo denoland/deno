@@ -3473,6 +3473,7 @@ fn create_windows_msi(
   desktop_flags: &DesktopFlags,
   target: Option<&str>,
 ) -> Result<(), AnyError> {
+  use msi::CodePage;
   use msi::Column;
   use msi::Insert;
   use msi::Package;
@@ -3668,8 +3669,18 @@ fn create_windows_msi(
   let mut cursor = std::io::Cursor::new(Vec::<u8>::new());
   let mut package = Package::create(PackageType::Installer, &mut cursor)?;
 
+  // The `msi` crate defaults both the database string pool and the summary
+  // info to the UTF-8 codepage (65001). Windows Installer (msiexec) rejects a
+  // UTF-8 database outright — "This installation package could not be opened"
+  // — because an MSI codepage must be a valid ANSI codepage (or neutral). All
+  // our strings are ASCII (file names, GUIDs, ids), so Windows-1252 encodes
+  // them identically and is universally accepted. Set the database codepage
+  // here and the summary-info codepage below.
+  package.set_database_codepage(CodePage::Windows1252);
+
   {
     let summary = package.summary_info_mut();
+    summary.set_codepage(CodePage::Windows1252);
     summary.set_title(format!("{app_name} Installer"));
     summary.set_subject(app_name.clone());
     summary.set_author(manufacturer.to_string());
@@ -5759,6 +5770,14 @@ def456  other.zip
 
     let mut package = msi::open(&msi_path).unwrap();
     assert_eq!(package.summary_info().arch(), Some("x64"));
+    // Windows Installer rejects a UTF-8 (65001) database codepage with "could
+    // not be opened"; both the database and summary-info codepage must be a
+    // valid ANSI codepage. We author Windows-1252.
+    assert_eq!(package.database_codepage(), msi::CodePage::Windows1252);
+    assert_eq!(
+      package.summary_info().codepage(),
+      msi::CodePage::Windows1252
+    );
 
     // Property table: product identity.
     let mut props = std::collections::HashMap::new();
