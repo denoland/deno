@@ -20,4 +20,31 @@ assert.throws(
   { code: "ERR_INVALID_ARG_TYPE" },
 );
 
+// The legacy `exports` option must be an object.
+assert.throws(
+  () => mock.module("./basic-esm.mjs", { exports: null }),
+  { code: "ERR_INVALID_ARG_TYPE" },
+);
+
+// `exports` cannot be combined with `namedExports` or `defaultExport`.
+assert.throws(
+  () => mock.module("./basic-esm.mjs", { exports: {}, namedExports: {} }),
+  { code: "ERR_INVALID_ARG_VALUE" },
+);
+
+assert.throws(
+  () => mock.module("./basic-esm.mjs", { exports: {}, defaultExport: {} }),
+  { code: "ERR_INVALID_ARG_VALUE" },
+);
+
+assert.throws(
+  () =>
+    mock.module("./basic-esm.mjs", {
+      exports: {},
+      namedExports: {},
+      defaultExport: {},
+    }),
+  { code: "ERR_INVALID_ARG_VALUE" },
+);
+
 console.log("validation ok");

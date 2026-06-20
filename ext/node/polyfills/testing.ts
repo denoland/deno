@@ -2823,29 +2823,56 @@ function mockModule(specifier, options = { __proto__: null }) {
   validateObject(options, "options");
   const cache = options.cache === undefined ? false : options.cache;
   validateBoolean(cache, "options.cache");
-  if (options.namedExports !== undefined) {
-    validateObject(options.namedExports, "options.namedExports");
+
+  // `exports` is a legacy alias that bundles `defaultExport` and
+  // `namedExports` into a single object: its `default` property (if any)
+  // becomes the default export and its remaining own enumerable keys become
+  // named exports. It cannot be combined with either of the newer options.
+  const exportsOption = options.exports;
+  const namedExports = options.namedExports;
+  let exportSource = namedExports;
+  let hasDefaultExport = ObjectPrototypeHasOwnProperty(
+    options,
+    "defaultExport",
+  );
+  let defaultExportValue = options.defaultExport;
+  if (exportsOption !== undefined) {
+    if (namedExports !== undefined || options.defaultExport !== undefined) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options.exports",
+        exportsOption,
+        'cannot be used with "namedExports" or "defaultExport"',
+      );
+    }
+    validateObject(exportsOption, "options.exports");
+    exportSource = exportsOption;
+    if (ObjectPrototypeHasOwnProperty(exportsOption, "default")) {
+      hasDefaultExport = true;
+      defaultExportValue = exportsOption.default;
+    }
+  } else if (namedExports !== undefined) {
+    validateObject(namedExports, "options.namedExports");
   }
 
   ensureMockModuleHooks();
 
   const moduleExports = { __proto__: null };
   const exportNames = [];
-  const namedExports = options.namedExports;
-  if (namedExports !== undefined && namedExports !== null) {
-    const keys = ObjectKeys(namedExports);
+  if (exportSource !== undefined && exportSource !== null) {
+    const keys = ObjectKeys(exportSource);
     for (let i = 0; i < keys.length; i++) {
       const name = keys[i];
-      moduleExports[name] = namedExports[name];
+      // For the `exports` form the `default` key is the default export, not a
+      // named export.
+      if (exportsOption !== undefined && name === "default") {
+        continue;
+      }
+      moduleExports[name] = exportSource[name];
       ArrayPrototypePush(exportNames, name);
     }
   }
-  const hasDefaultExport = ObjectPrototypeHasOwnProperty(
-    options,
-    "defaultExport",
-  );
   if (hasDefaultExport) {
-    moduleExports.default = options.defaultExport;
+    moduleExports.default = defaultExportValue;
   }
 
   const key = resolveSpecifierToKey(specStr);

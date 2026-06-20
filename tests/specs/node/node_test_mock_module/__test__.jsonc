@@ -23,6 +23,10 @@
     "validation": {
       "args": "run -A main_validation.mjs",
       "output": "main_validation.out"
+    },
+    "exports_option": {
+      "args": "run -A main_exports.mjs",
+      "output": "main_exports.out"
     }
   }
 }
