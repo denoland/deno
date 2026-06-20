@@ -5437,10 +5437,7 @@
     "sequential/test-timers-block-eventloop.js": {},
     "sequential/test-timers-set-interval-excludes-callback-duration.js": {},
     "sequential/test-tls-connect.js": {},
-    "sequential/test-worker-fshandles-open-close-on-termination.js": {
-      "windows": false,
-      "reason": "flaky timeout"
-    },
+    "sequential/test-worker-fshandles-open-close-on-termination.js": {},
     "sequential/test-zlib-crc32-fast-api.js": {},
     "test-runner/test-output-default-output.mjs": {
       "linux": false,

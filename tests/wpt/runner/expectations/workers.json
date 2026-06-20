@@ -482,7 +482,7 @@
       "indexedDB is present"
     ]
   },
-  "dedicated-worker-from-blob-url.window.html": true,
+  "dedicated-worker-from-blob-url.window.html": false,
   "dedicated-worker-parse-error-failure.html": false,
   "multi-globals": {
     "url-parsing.html": false
