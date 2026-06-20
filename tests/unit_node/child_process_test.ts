@@ -1080,6 +1080,11 @@ Deno.test(async function ipcSerializationAdvanced() {
         true,
         null,
         new Uint8Array([1, 2, 3]),
+        new Uint8Array([]),
+        new Int32Array([]),
+        new Float64Array([]),
+        new DataView(new ArrayBuffer(0)),
+        Buffer.alloc(0),
         {
           foo: new Uint8Array([1, 2, 3]),
           bar: makeSab([4, 5, 6]),
@@ -1115,6 +1120,11 @@ Deno.test(async function ipcSerializationAdvanced() {
     true,
     null,
     new Uint8Array([1, 2, 3]),
+    new Uint8Array([]),
+    new Int32Array([]),
+    new Float64Array([]),
+    new DataView(new ArrayBuffer(0)),
+    Buffer.alloc(0),
     {
       foo: new Uint8Array([1, 2, 3]),
       bar: makeSab([4, 5, 6]),

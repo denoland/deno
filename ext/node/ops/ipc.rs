@@ -588,14 +588,21 @@ mod impl_ {
           };
 
           let array_buffer = v8::ArrayBuffer::new(scope, byte_length as usize);
-          // SAFETY: array_buffer is valid as v8 is keeping it alive, and is byte_length bytes
-          // buf is also byte_length bytes long
-          unsafe {
-            std::ptr::copy(
-              buf.as_ptr(),
-              array_buffer.data().unwrap().as_ptr().cast::<u8>(),
-              byte_length as usize,
-            );
+          if byte_length > 0 {
+            let Some(data) = array_buffer.data() else {
+              return throw_error(
+                "failed to allocate typed array backing store",
+              );
+            };
+            // SAFETY: array_buffer is valid as v8 is keeping it alive, and is byte_length bytes
+            // buf is also byte_length bytes long
+            unsafe {
+              std::ptr::copy(
+                buf.as_ptr(),
+                data.as_ptr().cast::<u8>(),
+                byte_length as usize,
+              );
+            }
           }
 
           let value = match index {
