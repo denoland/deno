@@ -1,4 +1,6 @@
 [UNORDERED_START]
+Download http://localhost:4260/@denotest%2fbreaking-change-between-versions
+Download http://localhost:4260/@denotest%2fhas-patch-versions
 Download http://127.0.0.1:4250/@denotest/subtract/1.0.0/mod.ts
 Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
 Download http://localhost:4260/@denotest/has-patch-versions/0.2.0.tgz

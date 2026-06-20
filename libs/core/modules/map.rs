@@ -2908,21 +2908,39 @@ impl ModuleMap {
       ModuleLoadResponse::Async(fut) => futures::executor::block_on(fut),
     }?;
 
+    // `LazyEsmModuleLoader` only knows the in-binary static sources and has no
+    // DENO_DIR access, so `source.code_cache` is always `None` here. Read the
+    // persisted V8 code cache from the REAL loader (Cli/EmbeddedModuleLoader)
+    // instead — the same seam the residual `lazy_loaded_js` path uses. Without
+    // this, residual ESM (node:process, node:module, the stream/net/tty
+    // closure) re-pays parse+compile in every isolate on every cold start.
+    let source_code = ModuleSource::get_string_source(source.code);
+    // Hash key for the on-disk cache. `v8_string` borrows `&source_code`, so it
+    // stays usable for the compile below.
+    let v8_source = source_code.v8_string(scope).unwrap();
+    // Build a `CodeCacheInfo` whenever the loader returns `Some` — even when
+    // `data` is `None` (cold run). The `Some`-with-`data: None` case is what
+    // arms the write side so the first run stores; warm runs consume.
+    let code_cache_info = self
+      .loader
+      .borrow()
+      .get_code_cache(&specifier, &v8_source)
+      .map(|info| {
+        let loader = self.loader.borrow().clone();
+        CodeCacheInfo {
+          data: info.data,
+          // `specifier` is unused after this, so move it straight in.
+          ready_callback: Box::new(move |cache| {
+            loader.code_cache_ready(specifier, info.hash, cache)
+          }),
+        }
+      });
+
     self.lazy_load_es_module_with_code(
       scope,
       module_specifier,
-      ModuleSource::get_string_source(source.code),
-      if let Some(code_cache) = source.code_cache {
-        let loader = self.loader.borrow().clone();
-        Some(CodeCacheInfo {
-          data: code_cache.data,
-          ready_callback: Box::new(move |cache| {
-            loader.code_cache_ready(specifier, code_cache.hash, cache)
-          }),
-        })
-      } else {
-        None
-      },
+      source_code,
+      code_cache_info,
     )
   }
 
