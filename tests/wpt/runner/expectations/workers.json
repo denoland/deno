@@ -459,7 +459,7 @@
   "Worker-terminate-forever.html": true,
   "Worker-termination-with-port-messages.html": true,
   "Worker-timeout-cancel-order.html": true,
-  "Worker-timeout-decreasing-order.html": false,
+  "Worker-timeout-decreasing-order.html": true,
   "Worker-timeout-increasing-order.html": true,
   "WorkerGlobalScope-close.html": false,
   "WorkerGlobalScope_requestAnimationFrame.worker.html": false,
