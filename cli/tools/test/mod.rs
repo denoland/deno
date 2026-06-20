@@ -69,6 +69,7 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TestFlags;
 use crate::args::TestReporterConfig;
+use crate::args::TypeCheckModeExt;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
