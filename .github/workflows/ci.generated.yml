@@ -5060,7 +5060,7 @@ jobs:
     needs:
       - build-debug-linux-x86_64
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash

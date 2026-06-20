@@ -1186,6 +1186,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     const timeoutMinutes = rawBuildItem.profile === "debug" &&
         ((rawBuildItem.os === "windows" &&
           rawBuildItem.arch === "aarch64") ||
+          (rawBuildItem.os === "linux" &&
+            rawBuildItem.arch === "x86_64") ||
           (rawBuildItem.os === "macos" &&
             rawBuildItem.arch === "x86_64"))
       ? 60
