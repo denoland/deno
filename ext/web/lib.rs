@@ -65,7 +65,7 @@ pub use crate::timers::StartTime;
 use crate::timers::op_defer;
 use crate::timers::op_now;
 use crate::timers::op_time_origin;
-mod locks;
+pub mod locks;
 
 deno_core::extension!(deno_web,
   deps = [ deno_webidl ],

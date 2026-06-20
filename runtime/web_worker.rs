@@ -708,6 +708,12 @@ impl WebWorker {
       );
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
+      if options.worker_type == WorkerThreadType::Node {
+        deno_web::locks::set_lock_client_id(
+          &mut op_state,
+          deno_web::locks::worker_lock_client_id(options.worker_id),
+        );
+      }
       op_state.put(internal_handle.clone());
       op_state.put(crate::ops::web_worker::WaitForWorkerDebuggerOnMessage(
         options.wait_for_page_wait_for_debugger,
