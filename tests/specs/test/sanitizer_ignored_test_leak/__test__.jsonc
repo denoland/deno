@@ -8,6 +8,11 @@
       "args": "test --sanitize-ops --sanitize-resources --trace-leaks issue_22927.ts",
       "output": "issue_22927.out"
     },
+    "failed_ignored_test_leak_not_attributed_to_later_test": {
+      "args": "test --sanitize-ops --sanitize-resources --trace-leaks failed_ignored_test_leak.ts",
+      "exitCode": 1,
+      "output": "failed_ignored_test_leak.out"
+    },
     "genuine_leak_still_detected": {
       "args": "test --sanitize-ops --sanitize-resources --trace-leaks genuine_leak.ts",
       "exitCode": 1,

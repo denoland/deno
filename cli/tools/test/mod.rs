@@ -1542,9 +1542,10 @@ async fn run_tests_for_worker_inner(
         // attempt, and is therefore retryable like any other failure. Only
         // check when the test function itself passed and afterEach didn't error
         // (a real failure takes precedence over a leak report).
-        if matches!(attempt_result, TestResult::Ok)
-          && after_each_failure.is_none()
-          && let Some(diff) = sanitizers::wait_for_activity_to_stabilize(
+        let should_check_sanitizers = matches!(attempt_result, TestResult::Ok)
+          && after_each_failure.is_none();
+        if should_check_sanitizers {
+          if let Some(diff) = sanitizers::wait_for_activity_to_stabilize(
             worker,
             &mut sanitizer_helper,
             before_test_stats,
@@ -1552,12 +1553,22 @@ async fn run_tests_for_worker_inner(
             desc.sanitize_resources,
           )
           .await?
-        {
-          let (formatted, trailer_notes) = format_sanitizer_diff(diff);
-          if !formatted.is_empty() {
-            attempt_result =
-              TestResult::Failed(TestFailure::Leaked(formatted, trailer_notes));
+          {
+            let (formatted, trailer_notes) = format_sanitizer_diff(diff);
+            if !formatted.is_empty() {
+              attempt_result = TestResult::Failed(TestFailure::Leaked(
+                formatted,
+                trailer_notes,
+              ));
+            }
           }
+        } else {
+          sanitizers::record_ignored_leaks(
+            &mut sanitizer_helper,
+            before_test_stats,
+            desc.sanitize_ops,
+            desc.sanitize_resources,
+          );
         }
 
         // An afterEach error is terminal, but only wins when the test itself
