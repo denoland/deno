@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "codemod --dry-run ./var_to_let.ts input.ts",
+      "output": "dry_run.out"
+    },
+    {
+      "args": "codemod ./var_to_let.ts input.ts",
+      "output": "modified.out"
+    },
+    {
+      "args": "codemod ./var_to_let.ts input.ts",
+      "output": "unchanged.out"
+    },
+    {
+      "args": "run input.ts",
+      "output": "run.out"
+    }
+  ]
+}
