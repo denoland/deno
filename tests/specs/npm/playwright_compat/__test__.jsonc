@@ -3,6 +3,12 @@
   "envs": {
     "PLAYWRIGHT_BROWSERS_PATH": "../../../../.ms-playwright"
   },
+  // Backstop per-step timeout so a wedged step fails fast instead of stalling
+  // the whole spec shard until the 30-minute CI job timeout. The `install` step
+  // can deadlock while extracting the downloaded browser archive (the yauzl
+  // unzip stalls mid-extraction under the deferred node bootstrap landed in
+  // #34450); the launch step also passes an explicit `{ timeout }` in main.ts.
+  "timeout": 300,
   "steps": [{
     "args": "run -A npm:playwright install chromium",
     "output": "[WILDCARD]"
