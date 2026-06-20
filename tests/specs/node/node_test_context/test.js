@@ -121,3 +121,31 @@ test("t.before and t.after run once", async (t) => {
   // Still inside the parent body, so after() has not fired yet.
   assert.strictEqual(afters, 0);
 });
+
+// --- nested suite beforeEach/afterEach cascade (issue #35404) ---
+describe("cascade outer", () => {
+  const order = [];
+
+  beforeEach(() => order.push("before-outer"));
+  afterEach(() => order.push("after-outer"));
+
+  describe("cascade inner", () => {
+    beforeEach(() => order.push("before-inner"));
+    afterEach(() => order.push("after-inner"));
+
+    it("runs every enclosing beforeEach, outermost-first", () => {
+      assert.deepStrictEqual(order, ["before-outer", "before-inner"]);
+    });
+  });
+
+  after(() => {
+    // After the inner test finished, both suites' afterEach hooks ran,
+    // innermost-first.
+    assert.deepStrictEqual(order, [
+      "before-outer",
+      "before-inner",
+      "after-inner",
+      "after-outer",
+    ]);
+  });
+});

@@ -1394,22 +1394,27 @@ async function runRootAfterIfDone() {
 class TestSuite {
   #denoTestContext;
   nodeTestContext;
+  // The enclosing suite, or null for a top-level suite. Used to cascade
+  // beforeEach()/afterEach() hooks from every ancestor suite onto each test
+  // (issue #35404).
+  parent = null;
   entries = [];
   beforeAllHooks = [];
   afterAllHooks = [];
   beforeEachHooks = [];
   afterEachHooks = [];
 
-  constructor(t, nodeTestContext) {
+  constructor(t, nodeTestContext, parent) {
     this.#denoTestContext = t;
     this.nodeTestContext = nodeTestContext;
+    this.parent = parent ?? null;
   }
 
   addTest(name, options, fn, overrides) {
     const prepared = prepareOptions(name, options, fn, overrides);
-    const beforeEach = this.beforeEachHooks;
-    const afterEach = this.afterEachHooks;
     const suiteNodeContext = this.nodeTestContext;
+    // deno-lint-ignore no-this-alias
+    const suite = this;
     ArrayPrototypePush(this.entries, {
       name: prepared.name,
       fn: async (denoTestContext) => {
@@ -1418,9 +1423,25 @@ class TestSuite {
           suiteNodeContext,
           prepared.name,
         );
+        // beforeEach()/afterEach() cascade through the whole ancestor chain:
+        // each test runs every enclosing suite's hooks, plus the file-scope
+        // (root) hooks. beforeEach runs outermost-first, afterEach runs
+        // innermost-first, matching Node (issue #35404). The chain is collected
+        // here, at run time, so hooks registered late in a suite body are seen.
+        const suiteChain = []; // innermost-first
+        for (let s = suite; s !== null; s = s.parent) {
+          ArrayPrototypePush(suiteChain, s);
+        }
         try {
-          for (const hook of new SafeArrayIterator(beforeEach)) {
+          for (const hook of new SafeArrayIterator(rootBeforeEachHooks)) {
             await hook(newNodeTextContext);
+          }
+          for (let i = suiteChain.length - 1; i >= 0; i--) {
+            for (
+              const hook of new SafeArrayIterator(suiteChain[i].beforeEachHooks)
+            ) {
+              await hook(newNodeTextContext);
+            }
           }
           return await runPossiblyExpectingFailure(
             prepared.fn,
@@ -1434,7 +1455,16 @@ class TestSuite {
             throw err;
           }
         } finally {
-          for (const hook of new SafeArrayIterator(afterEach)) {
+          for (let i = 0; i < suiteChain.length; i++) {
+            for (
+              const hook of new SafeArrayIterator(suiteChain[i].afterEachHooks)
+            ) {
+              try {
+                await hook(newNodeTextContext);
+              } catch { /* ignore */ }
+            }
+          }
+          for (const hook of new SafeArrayIterator(rootAfterEachHooks)) {
             try {
               await hook(newNodeTextContext);
             } catch { /* ignore */ }
@@ -1449,6 +1479,8 @@ class TestSuite {
     const prepared = prepareOptions(name, options, fn, overrides);
     const { promise, resolve } = PromiseWithResolvers();
     const parentSuiteContext = this.nodeTestContext;
+    // deno-lint-ignore no-this-alias
+    const parentSuite = this;
     ArrayPrototypePush(this.entries, {
       name: prepared.name,
       fn: wrapSuiteFn(
@@ -1456,6 +1488,7 @@ class TestSuite {
         resolve,
         prepared.name,
         parentSuiteContext,
+        parentSuite,
       ),
       ignore: !!prepared.options.todo || !!prepared.options.skip,
     });
@@ -1565,13 +1598,17 @@ function prepareDenoTest(name, options, fn, overrides) {
   return PromiseResolve();
 }
 
-function wrapSuiteFn(fn, resolve, name, parentNodeContext) {
+function wrapSuiteFn(fn, resolve, name, parentNodeContext, parentSuite) {
   return async function (t) {
     const isTopLevel = parentNodeContext === undefined;
     if (isTopLevel) await runRootBeforeOnce();
     const suiteNodeContext = new NodeTestContext(t, parentNodeContext, name);
     const prevSuite = currentSuite;
-    const suite = currentSuite = new TestSuite(t, suiteNodeContext);
+    const suite = currentSuite = new TestSuite(
+      t,
+      suiteNodeContext,
+      parentSuite,
+    );
     try {
       fn(suiteNodeContext);
     } finally {

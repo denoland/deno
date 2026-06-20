@@ -1,4 +1,4 @@
-running 9 tests from ./test.js
+running 10 tests from ./test.js
 t.name returns the test name ... ok ([WILDLINE])
 t.fullName with nested tests ...
   child ...
@@ -24,7 +24,12 @@ t.before and t.after run once ...
   sub 1 ... ok ([WILDLINE])
   sub 2 ... ok ([WILDLINE])
 t.before and t.after run once ... ok ([WILDLINE])
+cascade outer ...
+  cascade inner ...
+    runs every enclosing beforeEach, outermost-first ... ok ([WILDLINE])
+  cascade inner ... ok ([WILDLINE])
+cascade outer ... ok ([WILDLINE])
 [WILDCARD] ERRORS [WILDCARD] FAILURES [WILDCARD]
-FAILED | 8 passed (10 steps) | 1 failed ([WILDLINE])
+FAILED | 9 passed (12 steps) | 1 failed ([WILDLINE])
 
 error: Test failed
