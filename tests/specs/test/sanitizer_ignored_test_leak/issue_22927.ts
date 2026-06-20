@@ -5,10 +5,10 @@
 Deno.test(
   { sanitizeOps: false, sanitizeResources: false },
   function test1() {
-    setTimeout(() => {}, 1000);
+    setTimeout(() => {}, 10);
   },
 );
 
 Deno.test(async function test2() {
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+  await new Promise((resolve) => setTimeout(resolve, 50));
 });
