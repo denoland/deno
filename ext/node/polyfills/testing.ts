@@ -2614,11 +2614,18 @@ function detectFormat(key) {
   }
   if (StringPrototypeStartsWith(key, "file:")) {
     try {
-      const path = getUrlHelpers().toPathIfFileURL(key);
+      const path = getNodeUrl().fileURLToPath(key);
       return core.ops.op_require_is_maybe_cjs(path) ? "commonjs" : "module";
     } catch {
       return "commonjs";
     }
+  }
+  // Remote modules (http/https) are only loadable as ESM.
+  if (
+    StringPrototypeStartsWith(key, "http:") ||
+    StringPrototypeStartsWith(key, "https:")
+  ) {
+    return "module";
   }
   return "commonjs";
 }
@@ -2672,7 +2679,11 @@ function generateEsmSource(entry, key) {
     src += "export default $d;\n";
     for (let i = 0; i < entry.exportNames.length; i++) {
       const name = entry.exportNames[i];
-      src += "export let " + name + " = $d[" + JSONStringify(name) + "];\n";
+      // Use a safe local identifier plus a string export name so export names
+      // that are not valid identifiers (e.g. "foo-bar") still generate valid
+      // source.
+      src += "let $n" + i + " = $d[" + JSONStringify(name) + "];\n";
+      src += "export { $n" + i + " as " + JSONStringify(name) + " };\n";
     }
   } else {
     // For an ESM module the default export and named exports are independent.
@@ -2681,8 +2692,9 @@ function generateEsmSource(entry, key) {
     }
     for (let i = 0; i < entry.exportNames.length; i++) {
       const name = entry.exportNames[i];
-      src += "export let " + name + " = $e.moduleExports[" +
-        JSONStringify(name) + "];\n";
+      src += "let $n" + i + " = $e.moduleExports[" + JSONStringify(name) +
+        "];\n";
+      src += "export { $n" + i + " as " + JSONStringify(name) + " };\n";
     }
   }
   return src;

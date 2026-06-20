@@ -4,6 +4,10 @@
       "args": "run -A main_esm.mjs",
       "output": "main_esm.out"
     },
+    "js_format": {
+      "args": "run -A main_js.mjs",
+      "output": "main_js.out"
+    },
     "cjs_importer": {
       "args": "run -A main_cjs.cjs",
       "output": "main_cjs.out"
