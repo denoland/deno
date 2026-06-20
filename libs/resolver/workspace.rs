@@ -971,18 +971,15 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
           base_import_map_config,
           child_import_map_configs,
         );
-      // When a node_modules directory is in use, install and resolve `jsr:`
+      // When `jsrDepsInNodeModules` is enabled, install and resolve `jsr:`
       // dependencies through the npm machinery by rewriting them to their
       // npm-compat (`@jsr/scope__name`) form. This mirrors how pnpm/npm install
       // JSR packages and ensures they end up in `node_modules` (so external
       // tooling can find them) and resolve from disk (so `import.meta.dirname`
-      // and bundled assets work).
-      if workspace
-        .node_modules_dir()
-        .ok()
-        .flatten()
-        .is_some_and(|mode| mode.uses_node_modules_dir())
-      {
+      // and bundled assets work). The local npm installer additionally writes a
+      // `@jsr:registry` entry to `.npmrc` so that external tooling can resolve
+      // the materialized packages.
+      if workspace.jsr_deps_in_node_modules() == Some(true) {
         deno_config::import_map::rewrite_jsr_imports_to_npm(&mut import_map);
       }
       log::debug!(

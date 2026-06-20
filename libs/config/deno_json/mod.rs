@@ -1224,6 +1224,7 @@ pub struct ConfigFileJson {
   pub minimum_dependency_age: Option<Value>,
   pub node_modules_dir: Option<Value>,
   pub node_modules_linker: Option<Value>,
+  pub jsr_deps_in_node_modules: Option<bool>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,
   pub permissions: Option<Value>,
@@ -1585,6 +1586,13 @@ impl ConfigFile {
 
   pub fn vendor(&self) -> Option<bool> {
     self.json.vendor
+  }
+
+  /// Whether `jsr:` dependencies should be installed into `node_modules` via
+  /// JSR's npm compatibility registry. See the `jsrDepsInNodeModules` config
+  /// option.
+  pub fn jsr_deps_in_node_modules(&self) -> Option<bool> {
+    self.json.jsr_deps_in_node_modules
   }
 
   /// Resolves the import map potentially resolving the file specified

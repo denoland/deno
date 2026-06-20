@@ -77,6 +77,14 @@ pub(crate) fn value_to_dep_req(value: &str) -> Option<JsrDepPackageReq> {
 ///
 /// Returns `None` when `value` is not a parseable `jsr:` specifier.
 pub fn jsr_specifier_to_npm(value: &str) -> Option<String> {
+  jsr_specifier_to_npm_parts(value).map(|(rewritten, _has_subpath)| rewritten)
+}
+
+/// Like [`jsr_specifier_to_npm`] but also reports whether the original
+/// specifier carried a subpath. Parsing happens exactly once so callers that
+/// need both the rewritten string and the subpath flag stay consistent (a
+/// trailing slash is stripped before parsing in either case).
+fn jsr_specifier_to_npm_parts(value: &str) -> Option<(String, bool)> {
   // A trailing slash marks an import-map prefix mapping (e.g. the expanded
   // `@david/dax/` -> `jsr:@david/dax@^0.42/`). Strip it for parsing and
   // re-append it to the npm target so subpath imports keep resolving.
@@ -93,6 +101,7 @@ pub fn jsr_specifier_to_npm(value: &str) -> Option<String> {
     out.push('@');
     out.push_str(version_text);
   }
+  let has_subpath = req_ref.sub_path().is_some();
   if let Some(sub_path) = req_ref.sub_path() {
     out.push('/');
     out.push_str(sub_path);
@@ -100,7 +109,7 @@ pub fn jsr_specifier_to_npm(value: &str) -> Option<String> {
   if trailing_slash {
     out.push('/');
   }
-  Some(out)
+  Some((out, has_subpath))
 }
 
 /// In-place rewrite of every `jsr:` specifier within an import map
@@ -118,13 +127,11 @@ pub fn rewrite_jsr_imports_to_npm(value: &mut serde_json::Value) {
     let mut prefix_additions: Vec<(String, String)> = Vec::new();
     for (key, v) in map.iter_mut() {
       if let serde_json::Value::String(s) = v
-        && let Some(rewritten) = jsr_specifier_to_npm(s)
+        && let Some((rewritten, has_subpath)) = jsr_specifier_to_npm_parts(s)
       {
         // Only bare package mappings (no subpath in the original value) get a
         // trailing-slash prefix entry; a value with a subpath already targets a
         // specific file.
-        let has_subpath = JsrPackageReqReference::from_str(s)
-          .is_ok_and(|r| r.sub_path().is_some());
         if !key.ends_with('/') && !has_subpath {
           prefix_additions.push((format!("{key}/"), format!("{rewritten}/")));
         }
