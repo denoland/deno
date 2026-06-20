@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::future::poll_fn;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -33,6 +34,7 @@ use log::debug;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::oneshot;
 
 use crate::ops::TestingFeaturesEnabled;
 use crate::tokio_util::create_and_run_current_thread;
@@ -84,6 +86,7 @@ struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
 
 pub struct WorkerThread {
+  thread_id: u32,
   worker_handle: WebWorkerHandle,
   worker_type: WorkerThreadType,
   cancel_handle: Rc<CancelHandle>,
@@ -112,6 +115,9 @@ impl WorkerThread {
 
 impl Drop for WorkerThread {
   fn drop(&mut self) {
+    if matches!(self.worker_type, WorkerThreadType::Node) {
+      cleanup_node_locks_for_client(&node_lock_client_id(self.thread_id));
+    }
     self.worker_handle.clone().terminate();
   }
 }
@@ -139,6 +145,120 @@ static THREAD_REGISTRY: LazyLock<
   Mutex<HashMap<u32, Arc<ThreadRegistryEntry>>>,
 > = LazyLock::new(|| Mutex::new(HashMap::new()));
 
+#[derive(Clone, deno_core::serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NodeLockRecord {
+  name: String,
+  mode: String,
+  client_id: String,
+}
+
+#[derive(Clone, deno_core::serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NodeLockGrant {
+  id: u64,
+  name: String,
+  mode: String,
+}
+
+#[derive(deno_core::serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NodeLocksSnapshot {
+  held: Vec<NodeLockRecord>,
+  pending: Vec<NodeLockRecord>,
+}
+
+#[derive(Clone)]
+struct HeldNodeLock {
+  id: u64,
+  name: String,
+  mode: String,
+  client_id: String,
+}
+
+struct PendingNodeLock {
+  request_id: u64,
+  name: String,
+  mode: String,
+  client_id: String,
+  sender: oneshot::Sender<NodeLockGrant>,
+}
+
+#[derive(Default)]
+struct NodeLocksState {
+  held: Vec<HeldNodeLock>,
+  pending: VecDeque<PendingNodeLock>,
+}
+
+static NEXT_NODE_LOCK_ID: AtomicU64 = AtomicU64::new(1);
+static NODE_LOCKS: LazyLock<Mutex<NodeLocksState>> =
+  LazyLock::new(|| Mutex::new(NodeLocksState::default()));
+
+fn node_lock_client_id(thread_id: u32) -> String {
+  format!("deno-{}-{thread_id}", std::process::id())
+}
+
+fn can_grant_node_lock(held: &[HeldNodeLock], name: &str, mode: &str) -> bool {
+  let mut has_same_name = false;
+  for lock in held {
+    if lock.name != name {
+      continue;
+    }
+    has_same_name = true;
+    if lock.mode != "shared" || mode != "shared" {
+      return false;
+    }
+  }
+  !has_same_name || mode == "shared"
+}
+
+fn grant_node_lock(
+  state: &mut NodeLocksState,
+  name: String,
+  mode: String,
+  client_id: String,
+) -> NodeLockGrant {
+  let id = NEXT_NODE_LOCK_ID.fetch_add(1, Ordering::SeqCst);
+  state.held.push(HeldNodeLock {
+    id,
+    name: name.clone(),
+    mode: mode.clone(),
+    client_id,
+  });
+  NodeLockGrant { id, name, mode }
+}
+
+fn process_pending_node_locks(state: &mut NodeLocksState) {
+  let mut index = 0;
+  while index < state.pending.len() {
+    let request = &state.pending[index];
+    let has_earlier_same_name = state
+      .pending
+      .iter()
+      .take(index)
+      .any(|pending| pending.name == request.name);
+    if has_earlier_same_name
+      || !can_grant_node_lock(&state.held, &request.name, &request.mode)
+    {
+      index += 1;
+      continue;
+    }
+    let request = state.pending.remove(index).unwrap();
+    let grant =
+      grant_node_lock(state, request.name, request.mode, request.client_id);
+    let _ = request.sender.send(grant);
+  }
+}
+
+fn cleanup_node_locks_for_client(client_id: &str) {
+  let mut state = NODE_LOCKS.lock().unwrap();
+  state.held.retain(|lock| lock.client_id != client_id);
+  state
+    .pending
+    .retain(|pending| pending.client_id != client_id);
+  process_pending_node_locks(&mut state);
+}
+
 pub struct ThreadMessageReceiver {
   thread_id: u32,
   rx: RefCell<UnboundedReceiver<ThreadMessage>>,
@@ -163,6 +283,7 @@ impl Drop for ThreadMessageReceiver {
     if let Ok(mut registry) = THREAD_REGISTRY.lock() {
       registry.remove(&self.thread_id);
     }
+    cleanup_node_locks_for_client(&node_lock_client_id(self.thread_id));
   }
 }
 
@@ -182,6 +303,10 @@ deno_core::extension!(
     op_node_worker_thread_set_listener_count,
     op_node_worker_thread_post_message,
     op_node_worker_thread_recv_message,
+    op_node_locks_request,
+    op_node_locks_cancel_request,
+    op_node_locks_release,
+    op_node_locks_query,
   ],
   options = {
     create_web_worker_cb: Arc<CreateWebWorkerCb>,
@@ -368,6 +493,7 @@ fn op_create_worker(
   })?;
 
   let worker_thread = WorkerThread {
+    thread_id: worker_id.as_u32(),
     worker_handle: worker_handle.into(),
     worker_type: args.worker_type,
     cancel_handle: CancelHandle::new_rc(),
@@ -653,6 +779,96 @@ fn op_node_worker_thread_post_message(
     return Ok(0);
   }
   Ok(2)
+}
+
+#[op2]
+#[serde]
+async fn op_node_locks_request(
+  #[smi] thread_id: u32,
+  #[number] request_id: u64,
+  #[string] name: String,
+  #[string] mode: String,
+  if_available: bool,
+  steal: bool,
+) -> Option<NodeLockGrant> {
+  let client_id = node_lock_client_id(thread_id);
+  let rx = {
+    let mut state = NODE_LOCKS.lock().unwrap();
+    if steal {
+      state.held.retain(|lock| lock.name != name);
+      state.pending.retain(|pending| pending.name != name);
+    }
+    let has_pending_same_name =
+      state.pending.iter().any(|pending| pending.name == name);
+    if !has_pending_same_name && can_grant_node_lock(&state.held, &name, &mode)
+    {
+      return Some(grant_node_lock(&mut state, name, mode, client_id));
+    }
+    if if_available {
+      return None;
+    }
+    let (tx, rx) = oneshot::channel();
+    state.pending.push_back(PendingNodeLock {
+      request_id,
+      name,
+      mode,
+      client_id,
+      sender: tx,
+    });
+    rx
+  };
+  rx.await.ok()
+}
+
+#[op2(fast)]
+fn op_node_locks_cancel_request(#[number] request_id: u64) -> bool {
+  let mut state = NODE_LOCKS.lock().unwrap();
+  if let Some(index) = state
+    .pending
+    .iter()
+    .position(|pending| pending.request_id == request_id)
+  {
+    state.pending.remove(index);
+    process_pending_node_locks(&mut state);
+    true
+  } else {
+    false
+  }
+}
+
+#[op2(fast)]
+fn op_node_locks_release(#[number] id: u64) {
+  let mut state = NODE_LOCKS.lock().unwrap();
+  if let Some(index) = state.held.iter().position(|lock| lock.id == id) {
+    state.held.remove(index);
+    process_pending_node_locks(&mut state);
+  }
+}
+
+#[op2]
+#[serde]
+fn op_node_locks_query() -> NodeLocksSnapshot {
+  let state = NODE_LOCKS.lock().unwrap();
+  NodeLocksSnapshot {
+    held: state
+      .held
+      .iter()
+      .map(|lock| NodeLockRecord {
+        name: lock.name.clone(),
+        mode: lock.mode.clone(),
+        client_id: lock.client_id.clone(),
+      })
+      .collect(),
+    pending: state
+      .pending
+      .iter()
+      .map(|lock| NodeLockRecord {
+        name: lock.name.clone(),
+        mode: lock.mode.clone(),
+        client_id: lock.client_id.clone(),
+      })
+      .collect(),
+  }
 }
 
 /// Receive the next cross-thread message addressed to this thread.

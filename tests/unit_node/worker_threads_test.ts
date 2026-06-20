@@ -4,6 +4,7 @@ import {
   assert,
   assertEquals,
   assertObjectMatch,
+  assertRejects,
   assertThrows,
   fail,
 } from "@std/assert";
@@ -55,6 +56,122 @@ Deno.test({
   name: "[node/worker_threads] resourceLimits",
   fn() {
     assertObjectMatch(workerThreads.resourceLimits, {});
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] locks request and query",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-basic";
+    const result = await workerThreads.locks.request(
+      lockName,
+      async (lock) => {
+        assert(lock);
+        assertEquals(lock.name, lockName);
+        assertEquals(lock.mode, "exclusive");
+
+        const snapshot = await workerThreads.locks.query();
+        assert(snapshot.held.some((entry) => entry.name === lockName));
+        assertEquals(
+          snapshot.held.find((entry) => entry.name === lockName)?.mode,
+          "exclusive",
+        );
+        return 42;
+      },
+    );
+
+    assertEquals(result, 42);
+    const snapshot = await workerThreads.locks.query();
+    assertEquals(snapshot.held.some((entry) => entry.name === lockName), false);
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] locks request can be aborted while pending",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-abort";
+    await workerThreads.locks.request(lockName, async () => {
+      const ac = new AbortController();
+      const pending = workerThreads.locks.request(
+        lockName,
+        { signal: ac.signal },
+        () => fail("aborted lock request should not be granted"),
+      );
+
+      let sawPending = false;
+      for (let i = 0; i < 10; i++) {
+        const snapshot = await workerThreads.locks.query();
+        if (snapshot.pending.some((entry) => entry.name === lockName)) {
+          sawPending = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      assert(sawPending);
+
+      ac.abort();
+      const error = await assertRejects(() => pending);
+      assertEquals((error as Error).name, "AbortError");
+    });
+
+    const snapshot = await workerThreads.locks.query();
+    assertEquals(
+      snapshot.pending.some((entry) => entry.name === lockName),
+      false,
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] locks ifAvailable and option validation",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-if-available";
+    await workerThreads.locks.request(lockName, async () => {
+      const unavailable = await workerThreads.locks.request(
+        lockName,
+        { ifAvailable: true },
+        (lock) => lock === null,
+      );
+      assertEquals(unavailable, true);
+    });
+
+    const error = await assertRejects(() =>
+      workerThreads.locks.request(
+        lockName,
+        { ifAvailable: true, steal: true },
+        () => fail("invalid lock options should reject before callback"),
+      )
+    );
+    assertEquals((error as Error).name, "NotSupportedError");
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] locks shared mode allows concurrent holders",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-shared";
+    await workerThreads.locks.request(
+      lockName,
+      { mode: "shared" },
+      async (firstLock) => {
+        assert(firstLock);
+        assertEquals(firstLock.mode, "shared");
+
+        const second = await workerThreads.locks.request(
+          lockName,
+          { mode: "shared" },
+          (secondLock) => secondLock?.mode,
+        );
+        assertEquals(second, "shared");
+
+        const exclusiveUnavailable = await workerThreads.locks.request(
+          lockName,
+          { ifAvailable: true },
+          (exclusiveLock) => exclusiveLock === null,
+        );
+        assertEquals(exclusiveUnavailable, true);
+      },
+    );
   },
 });
 
@@ -150,6 +267,70 @@ Deno.test({
     assertEquals((await once(worker, "message"))[0], "It works!");
     worker.terminate();
   },
+});
+
+Deno.test({
+  name: "[node/worker_threads] locks are shared with workers",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-cross-worker";
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort, locks } = require("node:worker_threads");
+      parentPort.once("message", async (lockName) => {
+        try {
+          const unavailable = await locks.request(
+            lockName,
+            { ifAvailable: true },
+            (lock) => lock === null,
+          );
+          parentPort.postMessage(unavailable);
+        } catch (error) {
+          parentPort.postMessage({ error: error.message });
+        }
+      });
+      `,
+      { eval: true },
+    );
+
+    try {
+      await workerThreads.locks.request(lockName, async () => {
+        worker.postMessage(lockName);
+        const message = (await once(worker, "message"))[0];
+        assertEquals(message, true);
+      });
+    } finally {
+      await worker.terminate();
+    }
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name: "[node/worker_threads] locks are released when worker exits",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-worker-exit";
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort, locks } = require("node:worker_threads");
+      locks.request(${JSON.stringify(lockName)}, async () => {
+        parentPort.postMessage("held");
+        await new Promise(() => {});
+      });
+      `,
+      { eval: true },
+    );
+
+    assertEquals((await once(worker, "message"))[0], "held");
+    await worker.terminate();
+
+    const available = await workerThreads.locks.request(
+      lockName,
+      { ifAvailable: true },
+      (lock) => lock !== null,
+    );
+    assertEquals(available, true);
+  },
+  sanitizeResources: false,
 });
 
 Deno.test({
