@@ -638,6 +638,9 @@ impl ExportCollector {
       if symbols_to_exclude.contains(named_export) {
         continue;
       }
+      if !is_importable_binding_identifier(named_export) {
+        continue;
+      }
 
       import_specifiers.push(ast::ImportSpecifier::Named(
         ast::ImportNamedSpecifier {
@@ -656,6 +659,10 @@ impl ExportCollector {
 
     import_specifiers
   }
+}
+
+fn is_importable_binding_identifier(name: &Atom) -> bool {
+  swc_utils::is_valid_ident(name.as_ref())
 }
 
 impl Visit for ExportCollector {
@@ -2171,6 +2178,57 @@ Deno.test("file:///main.ts#3-6.ts", async ()=>{
           media_type: MediaType::TypeScript,
         }],
       },
+      // Regression test for https://github.com/denoland/deno/issues/35177
+      // Export names can be reserved words or string-literal names that cannot
+      // be used as local import bindings in the generated doc-test module.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * useFoo();
+ * ```
+ */
+export function useFoo() {}
+const null_ = null;
+const dashed = 1;
+export { null_ as null, dashed as "key-with-hyphens" };
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { useFoo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
+    useFoo();
+});
+"#,
+          specifier: "file:///main.ts#3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * useFoo();
+ * ```
+ */
+export function useFoo() {}
+export { nullValue as null, dashed as "key-with-hyphens" } from "./deps.ts";
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { useFoo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
+    useFoo();
+});
+"#,
+          specifier: "file:///main.ts#3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
       // A name that is both a value export and a type export via declaration
       // merging (here `const Foo` + `interface Foo`) must be injected as a
       // value import, otherwise the value binding is dropped under
@@ -2467,6 +2525,21 @@ add('1', '2');
   }
 
   #[test]
+  fn test_is_importable_binding_identifier() {
+    assert!(is_importable_binding_identifier(&"foo".into()));
+    assert!(is_importable_binding_identifier(&"$foo".into()));
+    assert!(is_importable_binding_identifier(&"_foo".into()));
+    assert!(is_importable_binding_identifier(&"async".into()));
+    assert!(!is_importable_binding_identifier(&"null".into()));
+    assert!(!is_importable_binding_identifier(&"default".into()));
+    assert!(!is_importable_binding_identifier(
+      &"key-with-hyphens".into()
+    ));
+    assert!(!is_importable_binding_identifier(&"with spaces".into()));
+    assert!(!is_importable_binding_identifier(&"".into()));
+  }
+
+  #[test]
   fn test_export_collector() {
     fn helper(input: &'static str) -> ExportCollector {
       let mut collector = ExportCollector::default();
@@ -2610,6 +2683,11 @@ add('1', '2');
       Test {
         input: r#"export { foo, bar as barAlias };"#,
         named_expected: atom_set!("foo", "barAlias"),
+        default_expected: None,
+      },
+      Test {
+        input: r#"export { foo as null, bar as "key-with-hyphens" };"#,
+        named_expected: atom_set!("null", "key-with-hyphens"),
         default_expected: None,
       },
       Test {
