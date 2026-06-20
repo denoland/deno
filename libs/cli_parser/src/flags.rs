@@ -651,6 +651,7 @@ pub struct TestFlags {
   pub changed: Option<Option<String>>,
   /// Run only test modules that depend on the given source files (`--related`).
   pub related: Vec<String>,
+  pub update_snapshots: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]

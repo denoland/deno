@@ -4415,6 +4415,14 @@ or <c>**/__tests__/**</>:
           .help("Hide stack traces for errors in failure test results.")
           .action(ArgAction::SetTrue)
       )
+      .arg(
+        Arg::new("update-snapshots")
+          .long("update-snapshots")
+          .short('u')
+          .help("Update snapshots created with `t.assertSnapshot()` instead of failing when they do not match")
+          .action(ArgAction::SetTrue)
+          .help_heading(TEST_HEADING),
+      )
       .arg(env_file_arg())
       .arg(executable_ext_arg())
     )
@@ -7933,6 +7941,7 @@ fn test_parse(
   }
 
   let hide_stacktraces = matches.get_flag("hide-stacktraces");
+  let update_snapshots = matches.get_flag("update-snapshots");
 
   let changed = if matches.contains_id("changed") {
     Some(matches.remove_one::<String>("changed"))
@@ -7972,6 +7981,7 @@ fn test_parse(
     hide_stacktraces,
     changed,
     related,
+    update_snapshots,
   });
   Ok(())
 }
@@ -12397,6 +12407,7 @@ mod tests {
           hide_stacktraces: false,
           changed: None,
           related: vec![],
+          update_snapshots: false,
         }),
         no_npm: true,
         no_remote: true,
@@ -12512,6 +12523,7 @@ mod tests {
           hide_stacktraces: false,
           changed: None,
           related: vec![],
+          update_snapshots: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         permissions: PermissionFlags {
@@ -12564,6 +12576,7 @@ mod tests {
           hide_stacktraces: false,
           changed: None,
           related: vec![],
+          update_snapshots: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12766,6 +12779,7 @@ mod tests {
           hide_stacktraces: false,
           changed: None,
           related: vec![],
+          update_snapshots: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12811,6 +12825,7 @@ mod tests {
           hide_stacktraces: false,
           changed: None,
           related: vec![],
+          update_snapshots: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12875,6 +12890,7 @@ mod tests {
           hide_stacktraces: false,
           changed: None,
           related: vec![],
+          update_snapshots: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12919,6 +12935,7 @@ mod tests {
           hide_stacktraces: false,
           changed: None,
           related: vec![],
+          update_snapshots: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12970,6 +12987,7 @@ mod tests {
           hide_stacktraces: false,
           changed: None,
           related: vec![],
+          update_snapshots: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         permissions: PermissionFlags {
@@ -13174,6 +13192,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Test(TestFlags {
           hide_stacktraces: true,
+          update_snapshots: false,
           ..TestFlags::default()
         }),
         type_check_mode: TypeCheckMode::Local,
