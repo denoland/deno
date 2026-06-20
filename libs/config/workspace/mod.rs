@@ -1287,6 +1287,12 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("allowScripts"),
         });
       }
+      if member_config.json.prefer_package_json.is_some() {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("preferPackageJson"),
+        });
+      }
       if let Some(value) = &member_config.json.lint
         && value.get("report").is_some()
       {
@@ -1297,20 +1303,20 @@ impl Workspace {
       }
     }
 
+    // Whether the config's `imports`/`scopes` contain `npm:`/`jsr:`
+    // dependency specifiers. Path-alias imports (e.g. `"#/": "./src/"`)
+    // can't move to package.json, so they shouldn't trigger the
+    // `preferPackageJson` warning.
+    fn has_dependency_imports(config: &ConfigFile) -> bool {
+      crate::import_map::imports_values(config.json.imports.as_ref())
+        .chain(crate::import_map::scope_values(config.json.scopes.as_ref()))
+        .any(|value| crate::import_map::value_to_dep_req(value).is_some())
+    }
+
     fn check_all_configs(
       config: &ConfigFile,
       diagnostics: &mut Vec<WorkspaceDiagnostic>,
     ) {
-      // Whether the config's `imports`/`scopes` contain `npm:`/`jsr:`
-      // dependency specifiers. Path-alias imports (e.g. `"#/": "./src/"`)
-      // can't move to package.json, so they shouldn't trigger the
-      // `preferPackageJson` warning.
-      fn has_dependency_imports(config: &ConfigFile) -> bool {
-        crate::import_map::imports_values(config.json.imports.as_ref())
-          .chain(crate::import_map::scope_values(config.json.scopes.as_ref()))
-          .any(|value| crate::import_map::value_to_dep_req(value).is_some())
-      }
-
       if let Some(name) = &config.json.name
         && !is_valid_jsr_pkg_name(name)
       {
@@ -1409,14 +1415,6 @@ impl Workspace {
           }
         }
       }
-      if config.json.prefer_package_json == Some(true)
-        && has_dependency_imports(config)
-      {
-        diagnostics.push(WorkspaceDiagnostic {
-          config_url: config.specifier.clone(),
-          kind: WorkspaceDiagnosticKind::PreferPackageJsonWithImports,
-        });
-      }
     }
 
     // Surface a clear error when a package's `exports` map is invalid.
@@ -1449,6 +1447,19 @@ impl Workspace {
             self.root_deno_json().map(|r| r.as_ref()),
             &mut diagnostics,
           );
+        }
+
+        // `preferPackageJson` is a root-only setting, so only warn about
+        // lingering dependency imports on the root config. Members that set it
+        // get a `RootOnlyOption` diagnostic instead.
+        if is_root
+          && config.json.prefer_package_json == Some(true)
+          && has_dependency_imports(config)
+        {
+          diagnostics.push(WorkspaceDiagnostic {
+            config_url: config.specifier.clone(),
+            kind: WorkspaceDiagnosticKind::PreferPackageJsonWithImports,
+          });
         }
 
         check_all_configs(config, &mut diagnostics);
@@ -4700,6 +4711,29 @@ pub mod test {
         "imports": { "@std/assert": "jsr:@std/assert@^1" }
       })),
       vec![]
+    );
+  }
+
+  #[test]
+  fn test_prefer_package_json_member_root_only() {
+    // `preferPackageJson` on a member is ignored (the setting is read from the
+    // root only), so it surfaces a `RootOnlyOption` diagnostic. The lingering
+    // imports warning must not fire on the member, since the setting has no
+    // effect there.
+    let workspace_dir = workspace_for_root_and_member(
+      json!({}),
+      json!({
+        "preferPackageJson": true,
+        "imports": { "@std/assert": "jsr:@std/assert@^1" }
+      }),
+    );
+    assert_eq!(
+      workspace_dir.workspace.diagnostics(),
+      vec![WorkspaceDiagnostic {
+        kind: WorkspaceDiagnosticKind::RootOnlyOption("preferPackageJson"),
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
+          .unwrap(),
+      }]
     );
   }
 
