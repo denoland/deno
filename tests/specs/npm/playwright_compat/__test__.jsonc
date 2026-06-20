@@ -1,5 +1,5 @@
 {
-  "if": "notWindowsArmOrMacIntel",
+  "if": "notSlowDebugShard",
   "envs": {
     "PLAYWRIGHT_BROWSERS_PATH": "../../../../.ms-playwright"
   },
