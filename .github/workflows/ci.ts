@@ -1181,15 +1181,15 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     // shard_index > 0 jobs only run on PRs (main runs unsharded)
     const isShardZero = testMatrix.shard_index.equals(0);
     const shouldRunShard = isShardZero.or(isPr);
-    // Some debug test shards can finish close to the default 30m job timeout
+    // Some test shards can finish close to the default 30m job timeout
     // and get cancelled during harness shutdown.
-    const timeoutMinutes = rawBuildItem.profile === "debug" &&
+    const timeoutMinutes = ((rawBuildItem.profile === "debug" &&
         ((rawBuildItem.os === "windows" &&
           rawBuildItem.arch === "aarch64") ||
-          (rawBuildItem.os === "linux" &&
-            rawBuildItem.arch === "x86_64") ||
           (rawBuildItem.os === "macos" &&
-            rawBuildItem.arch === "x86_64"))
+            rawBuildItem.arch === "x86_64"))) ||
+        (rawBuildItem.os === "linux" &&
+          rawBuildItem.arch === "x86_64"))
       ? 60
       : 30;
     additionalJobs.push(job(
