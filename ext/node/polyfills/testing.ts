@@ -1078,37 +1078,35 @@ async function runNodeTestFunction(fn, nodeTestContext) {
   return await ReflectApply(fn, nodeTestContext, [nodeTestContext]);
 }
 
-// Runs a node test body with `nodeTestContext` installed as the current test
-// context (via AsyncLocalStorage) so that any top-level `test()` call made
-// inside the body is routed to it as a subtest. Returns the body's result.
-function runBodyInContext(fn, nodeTestContext, guards) {
-  const als = getTestContextALS();
-  return als.run(
-    nodeTestContext,
-    () =>
-      runWithTestGuards(
-        () => runNodeTestFunction(fn, nodeTestContext),
-        guards,
-      ),
-  );
-}
-
 async function runPossiblyExpectingFailure(fn, nodeTestContext, options) {
   const guards = {
     timeout: options.timeout,
     signal: options.signal,
     abort: (reason) => nodeTestContext._abort(reason),
   };
+  // Install this context as the current one for the duration of the body so a
+  // top-level `test()` called inside it is routed here as a subtest (see the
+  // dispatcher in `test()`). Saved/restored synchronously around the body:
+  // Deno runs test bodies sequentially, so a plain variable suffices, and
+  // unlike wrapping the body in an extra call it adds no stack frames - extra
+  // frames can push `ext:cli/40_test.js` out of a failure's captured stack and
+  // break the source location reported for failed tests.
+  const prevContext = currentTestContext;
+  currentTestContext = nodeTestContext;
   if (
     !options.expectFailure ||
     options.skip ||
     options.todo
   ) {
     try {
-      const result = await runBodyInContext(fn, nodeTestContext, guards);
+      const result = await runWithTestGuards(
+        () => runNodeTestFunction(fn, nodeTestContext),
+        guards,
+      );
       nodeTestContext._checkPlan();
       return result;
     } finally {
+      currentTestContext = prevContext;
       // Drain even on failure so subtests registered before the error finish
       // their Deno test steps before this test settles.
       await nodeTestContext._drainSubtests();
@@ -1117,12 +1115,16 @@ async function runPossiblyExpectingFailure(fn, nodeTestContext, options) {
 
   let failed = false;
   try {
-    await runBodyInContext(fn, nodeTestContext, guards);
+    await runWithTestGuards(
+      () => runNodeTestFunction(fn, nodeTestContext),
+      guards,
+    );
     nodeTestContext._checkPlan();
   } catch (err) {
     failed = true;
     assertExpectedFailure(err, options.expectFailure);
   } finally {
+    currentTestContext = prevContext;
     await nodeTestContext._drainSubtests();
   }
 
@@ -1412,25 +1414,18 @@ class NodeTestContext {
 
 let currentSuite = null;
 
-// Tracks the NodeTestContext whose body is currently executing so that a
-// top-level `test()` / `it()` call made from inside another test's body is
-// registered as a subtest of that test (via `t.step()`), matching Node, rather
-// than hitting Deno's "Nested Deno.test() calls are not supported" error. We
-// use AsyncLocalStorage so the association survives `await` boundaries within
-// the body. See https://github.com/denoland/deno/issues/35391.
-let testContextALS = null;
-function getTestContextALS() {
-  if (testContextALS === null) {
-    const { AsyncLocalStorage } = core.loadExtScript(
-      "ext:deno_node/async_hooks.ts",
-    );
-    testContextALS = new AsyncLocalStorage();
-  }
-  return testContextALS;
-}
+// The NodeTestContext whose body is currently executing, or null when no test
+// body is on the stack. Set by `runPossiblyExpectingFailure` for the duration
+// of each body so that a top-level `test()` / `it()` call made from inside
+// another test's body is registered as a subtest of that test (via
+// `t.step()`), matching Node, rather than hitting Deno's "Nested Deno.test()
+// calls are not supported" error. Deno runs test bodies sequentially, so a
+// single variable with save/restore tracks the active body across its `await`
+// boundaries and through nested subtests. See
+// https://github.com/denoland/deno/issues/35391.
+let currentTestContext = null;
 function getCurrentTestContext() {
-  if (testContextALS === null) return null;
-  return testContextALS.getStore() ?? null;
+  return currentTestContext;
 }
 
 const rootBeforeHooks = [];
