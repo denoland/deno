@@ -52,8 +52,14 @@ const {
 const {
   Promise,
   PromisePrototypeThen,
+  Symbol,
   SymbolDispose,
 } = primordials;
+
+// When set as an option on eos()/finished(), an already-aborted signal runs
+// the callback synchronously instead of on a nextTick. Matches Node's
+// internal/streams/end-of-stream kEosNodeSynchronousCallback.
+const kEosNodeSynchronousCallback = Symbol("kEosNodeSynchronousCallback");
 
 let addAbortListener;
 
@@ -283,7 +289,11 @@ function eos(stream, options, callback) {
       );
     };
     if (options.signal.aborted) {
-      lazyProcess().nextTick(abort);
+      if (options[kEosNodeSynchronousCallback]) {
+        abort();
+      } else {
+        lazyProcess().nextTick(abort);
+      }
     } else {
       addAbortListener ??= _mod2.addAbortListener;
       const disposable = addAbortListener(options.signal, abort);
@@ -310,7 +320,11 @@ function eosWeb(stream, options, callback) {
       );
     };
     if (options.signal.aborted) {
-      lazyProcess().nextTick(abort);
+      if (options[kEosNodeSynchronousCallback]) {
+        abort();
+      } else {
+        lazyProcess().nextTick(abort);
+      }
     } else {
       addAbortListener ??= _mod2.addAbortListener;
       const disposable = addAbortListener(options.signal, abort);
@@ -360,6 +374,7 @@ function finished(stream, opts) {
 return {
   finished,
   eos,
+  kEosNodeSynchronousCallback,
   default: eos,
 };
 })();

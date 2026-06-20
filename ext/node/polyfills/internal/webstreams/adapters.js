@@ -719,7 +719,16 @@ function newReadableWritablePairFromDuplex(
     writable.close();
   }
 
-  const readableType = options?.readableType || options?.type;
+  let readableType = options?.readableType;
+  if (options?.type !== undefined) {
+    lazyProcess().default.emitWarning(
+      "Passing 'options.type' to Duplex.toWeb() is deprecated. " +
+        "Use 'options.readableType' instead.",
+      "DeprecationWarning",
+      "DEP0201",
+    );
+    readableType ??= options.type;
+  }
   const readableOptions = readableType ? { type: readableType } : kEmptyObject;
 
   const readable = isReadable(duplex)

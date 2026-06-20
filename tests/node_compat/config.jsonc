@@ -1381,10 +1381,7 @@
     "parallel/test-fs-fmap.js": {},
     "parallel/test-fs-fsync.js": {},
     "parallel/test-fs-glob-throw.mjs": {},
-    "parallel/test-fs-glob.mjs": {
-      "ignore": true,
-      "reason": "New Node 26 glob followSymlinks option not yet implemented"
-    },
+    "parallel/test-fs-glob.mjs": {},
     "parallel/test-fs-internal-assertencoding.js": {},
     "parallel/test-fs-lchmod.js": {},
     "parallel/test-fs-lchown-negative-one.js": {
@@ -3410,10 +3407,7 @@
     "parallel/test-stream-duplex-readable-end.js": {},
     "parallel/test-stream-duplex-readable-writable.js": {},
     "parallel/test-stream-duplex-writable-finished.js": {},
-    "parallel/test-stream-duplex.js": {
-      "ignore": true,
-      "reason": "Requires the new Node 26 DEP0201 deprecation warning for Duplex.toWeb({ type }) which Deno does not emit"
-    },
+    "parallel/test-stream-duplex.js": {},
     "parallel/test-stream-duplexpair.js": {},
     "parallel/test-stream-end-of-streams.js": {},
     "parallel/test-stream-end-paused.js": {},
@@ -3422,10 +3416,7 @@
     "parallel/test-stream-event-names.js": {},
     "parallel/test-stream-events-prepend.js": {},
     "parallel/test-stream-filter.js": {},
-    "parallel/test-stream-finished.js": {
-      "ignore": true,
-      "reason": "Uses the new Node 26 internal API internal/streams/end-of-stream kEosNodeSynchronousCallback which Deno does not expose"
-    },
+    "parallel/test-stream-finished.js": {},
     "parallel/test-stream-flatMap.js": {},
     "parallel/test-stream-forEach.js": {},
     "parallel/test-stream-inheritance.js": {},
