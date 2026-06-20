@@ -1,6 +1,7 @@
 {
   "tests": {
     "js": {
+      "if": "notWindowsArmOrMacIntel",
       "args": "run --quiet main.ts",
       "output": "main.out"
     },
