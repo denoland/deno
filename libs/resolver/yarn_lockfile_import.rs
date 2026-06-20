@@ -313,7 +313,11 @@ fn split_key_value(s: &str) -> (&str, &str) {
     .unwrap_or(s.len());
   let key = &s[..key_end];
   let value = s[key_end..].trim();
-  (key, unquote(value))
+  // The key may be quoted too (yarn quotes any package name containing `@` or
+  // `/`, so scoped names like `"@babel/code-frame"` arrive quoted). Package
+  // names never contain whitespace, so splitting on the first whitespace is
+  // still correct for a quoted key.
+  (unquote(key), unquote(value))
 }
 
 fn unquote(s: &str) -> &str {
@@ -404,6 +408,31 @@ supports-color@^7.1.0:
         .unwrap()
         .contains_key("@scope/pkg@1.2.3")
     );
+  }
+
+  #[test]
+  fn scoped_dependency_entry() {
+    // A scoped package name appears quoted in a `dependencies:` block. The
+    // quotes must be stripped from the key so the dep resolves to its locked
+    // version (otherwise the edge is silently dropped).
+    let input = r#"# yarn lockfile v1
+
+"@babel/code-frame@^7.0.0":
+  version "7.0.0"
+  resolved "https://registry.yarnpkg.com/@babel/code-frame/-/code-frame-7.0.0.tgz"
+  integrity sha512-CF
+
+pkg@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/pkg/-/pkg-1.0.0.tgz"
+  integrity sha512-PKG
+  dependencies:
+    "@babel/code-frame" "^7.0.0"
+"#;
+    let out = yarn_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let pkg_deps = v["npm"]["pkg@1.0.0"]["dependencies"].as_array().unwrap();
+    assert!(pkg_deps.iter().any(|d| d == "@babel/code-frame@7.0.0"));
   }
 
   #[test]
