@@ -6,6 +6,7 @@
       "output": "main.out"
     },
     "ts": {
+      "if": "notWindowsArmOrMacIntel",
       "args": "run --quiet ts.ts",
       "output": "ts.out"
     }
