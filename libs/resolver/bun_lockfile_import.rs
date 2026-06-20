@@ -127,6 +127,13 @@ pub fn bun_lock_to_deno_lock_v5(
           Value::Array(opt_deps.into_iter().map(Value::String).collect()),
         );
       }
+      // Keep the first entry seen for a given `name@version`. The same version
+      // can appear under both its hoisted key and a nested `<parent>/<name>`
+      // key; deno.lock's npm graph is flat (one dependency set per version) and
+      // cannot represent context-sensitive edges, so we record one resolution.
+      // The dependency requirements are identical across those keys, and
+      // iteration order over `packages` is deterministic, so the choice is
+      // stable.
       npm
         .entry(format!("{}@{}", name, version))
         .or_insert(Value::Object(obj));
@@ -248,11 +255,14 @@ fn resolve_dep_version<'a>(
 
 /// Collect the supported `npm:<name>@<req>` specifier keys declared by a single
 /// workspace, inserting each into the shared `specifiers` map (keyed to the
-/// resolved version). Returns the sorted, de-duped list of keys for the
+/// hoisted version). Returns the sorted, de-duped list of keys for the
 /// caller to record under the workspace's `packageJson.dependencies`.
+///
+/// A top-level specifier points at the hoisted version by design; a member
+/// depending on a non-hoisted version is left for Deno to resolve.
 fn collect_workspace_specifiers(
   ws: &serde_json::Map<String, Value>,
-  resolved: &HashMap<String, String>,
+  hoisted: &HashMap<String, String>,
   specifiers: &mut BTreeMap<String, String>,
 ) -> Vec<String> {
   let mut keys = Vec::new();
@@ -267,7 +277,7 @@ fn collect_workspace_specifiers(
       if !is_supported_req(req) {
         continue;
       }
-      let Some(version) = resolved.get(name) else {
+      let Some(version) = hoisted.get(name) else {
         continue;
       };
       let key = format!("npm:{}@{}", name, req);
