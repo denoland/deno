@@ -11,7 +11,18 @@ const {
   PromiseWithResolvers,
   SafeArrayIterator,
   SafePromisePrototypeFinally,
+  SymbolFor,
 } = primordials;
+
+// `node:test`'s `mock.timers` installs itself here while enabled. Routing the
+// interception through a module-level hook (rather than swapping the module's
+// exports) makes every call site honor the virtual clock regardless of how it
+// reached these functions: `globalThis`, `require("node:timers")`, or a static
+// `import { setTimeout } from "node:timers/promises"` binding captured before
+// `enable()`. Node's MockTimers likewise intercepts the timers modules, not
+// just the globals. `null` means no mocking is active.
+let mockTimers = null;
+const kInstallMockTimers = SymbolFor("Deno.internal.node.mockTimers");
 const {
   getActiveTimer,
   Immediate,
@@ -47,6 +58,9 @@ function setTimeout(
   ...args: unknown[]
 ) {
   validateFunction(callback, "callback");
+  if (mockTimers !== null && mockTimers._apiEnabled("setTimeout")) {
+    return mockTimers._setTimeout(callback, timeout, args, false);
+  }
   return new Timeout(callback, timeout, args, false, true);
 }
 
@@ -92,7 +106,11 @@ function setTimeoutPromise<T = void>(
 
   let oncancel: EventListenerOrEventListenerObject | undefined;
   const { promise, resolve, reject } = PromiseWithResolvers();
-  const timeout = new Timeout(resolve, after, [value], false, ref);
+  // When mocking is active the timer is driven by the virtual clock, so the
+  // promise resolves on `tick()`/`runAll()` instead of a real timer.
+  const timeout = mockTimers !== null && mockTimers._apiEnabled("setTimeout")
+    ? mockTimers._setTimeout(resolve, after, [value], false)
+    : new Timeout(resolve, after, [value], false, ref);
   if (signal) {
     oncancel = FunctionPrototypeBind(
       cancelListenerHandler,
@@ -133,6 +151,10 @@ function clearTimeout(timeout?: Timeout | number) {
   if (timeout == null) {
     return;
   }
+  if (mockTimers !== null && mockTimers._apiEnabled("setTimeout")) {
+    mockTimers._clearTimer(timeout);
+    return;
+  }
   const id = +timeout;
   getActiveTimer(id)?.[kDestroy]();
 }
@@ -142,10 +164,17 @@ function setInterval(
   ...args: unknown[]
 ) {
   validateFunction(callback, "callback");
+  if (mockTimers !== null && mockTimers._apiEnabled("setInterval")) {
+    return mockTimers._setInterval(callback, timeout, args);
+  }
   return new Timeout(callback, timeout, args, true, true);
 }
 function clearInterval(timeout?: Timeout | number | string) {
   if (timeout == null) {
+    return;
+  }
+  if (mockTimers !== null && mockTimers._apiEnabled("setInterval")) {
+    mockTimers._clearTimer(timeout);
     return;
   }
   const id = +timeout;
@@ -156,6 +185,9 @@ function setImmediate(
   ...args: unknown[]
 ): Timeout {
   validateFunction(cb, "callback");
+  if (mockTimers !== null && mockTimers._apiEnabled("setImmediate")) {
+    return mockTimers._setTimeout(cb, 0, args, true);
+  }
   return new Immediate(cb, ...new SafeArrayIterator(args));
 }
 
@@ -185,7 +217,10 @@ function setImmediatePromise<T = void>(
 
   let oncancel: EventListenerOrEventListenerObject | undefined;
   const { promise, resolve, reject } = PromiseWithResolvers();
-  const immediate = new Immediate(() => resolve(value));
+  const immediate =
+    mockTimers !== null && mockTimers._apiEnabled("setImmediate")
+      ? mockTimers._setTimeout(() => resolve(value), 0, [], true)
+      : new Immediate(() => resolve(value));
   if (!ref) {
     immediate.unref();
   }
@@ -226,6 +261,13 @@ ObjectDefineProperty(setImmediate, promisify.custom, {
 });
 
 function clearImmediate(immediate: Immediate) {
+  if (immediate == null) {
+    return;
+  }
+  if (mockTimers !== null && mockTimers._apiEnabled("setImmediate")) {
+    mockTimers._clearTimer(immediate);
+    return;
+  }
   if (!immediate?._onImmediate || immediate._destroyed) {
     return;
   }
@@ -259,20 +301,17 @@ async function* setIntervalAsync(
     let notYielded = 0;
     let callback: ((value?: object) => void) | undefined = undefined;
     let rejectCallback: ((message?: string) => void) | undefined = undefined;
-    interval = new Timeout(
-      () => {
-        notYielded++;
-        if (callback) {
-          callback();
-          callback = undefined;
-          rejectCallback = undefined;
-        }
-      },
-      after,
-      [],
-      true,
-      ref,
-    );
+    const onInterval = () => {
+      notYielded++;
+      if (callback) {
+        callback();
+        callback = undefined;
+        rejectCallback = undefined;
+      }
+    };
+    interval = mockTimers !== null && mockTimers._apiEnabled("setInterval")
+      ? mockTimers._setInterval(onInterval, after, [])
+      : new Timeout(onInterval, after, [], true, ref);
     if (signal) {
       onCancel = () => {
         clearInterval(interval);
@@ -343,5 +382,11 @@ return {
   setImmediate,
   clearImmediate,
   promises,
+  // Internal entry point for `node:test`'s `mock.timers`. Keyed by a symbol so
+  // it does not surface as a public `node:timers` export. Passing a MockTimers
+  // instance enables interception; passing `null` disables it.
+  [kInstallMockTimers]: (instance) => {
+    mockTimers = instance;
+  },
 };
 })();

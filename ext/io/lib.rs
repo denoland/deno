@@ -471,6 +471,14 @@ impl Resource for ChildStdoutResource {
   fn close(self: Rc<Self>) {
     self.cancel_read_ops();
   }
+
+  // Override the trait's no-op default so `self.cancel_read_ops()` reaches the
+  // inherent cancellation rather than `Resource`'s empty default (which the
+  // by-value `Rc<Self>` receiver would otherwise resolve to). Without this,
+  // closing the resource with a read in flight never cancels it.
+  fn cancel_read_ops(self: Rc<Self>) {
+    ChildStdoutResource::cancel_read_ops(&self);
+  }
 }
 
 pub type ChildStderrResource = ReadOnlyResource<process::ChildStderr>;
@@ -484,6 +492,11 @@ impl Resource for ChildStderrResource {
 
   fn close(self: Rc<Self>) {
     self.cancel_read_ops();
+  }
+
+  // See the note on ChildStdoutResource::cancel_read_ops.
+  fn cancel_read_ops(self: Rc<Self>) {
+    ChildStderrResource::cancel_read_ops(&self);
   }
 }
 

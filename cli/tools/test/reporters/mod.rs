@@ -19,14 +19,35 @@ pub trait TestReporter {
   fn report_register(&mut self, description: &TestDescription);
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
-  fn report_slow(&mut self, description: &TestDescription, elapsed: u64);
+  fn report_slow(&mut self, description: &TestDescription, elapsed: Duration);
   fn report_output(&mut self, output: &[u8]);
   fn report_result(
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    elapsed: u64,
+    elapsed: Duration,
   );
+  /// Called when a test attempt failed but will be retried (`retry` option).
+  /// `attempt` is the zero-based index of the attempt that failed. This is
+  /// informational; the test's terminal result is still delivered via
+  /// [`Self::report_result`]. Defaults to a no-op.
+  fn report_retry(
+    &mut self,
+    _description: &TestDescription,
+    _attempt: u32,
+    _failure: &TestFailure,
+  ) {
+  }
+  /// Called when a test begins a fresh repetition (`repeats` option).
+  /// `repetition` is the one-based index of the repetition that is starting.
+  /// This lets a reporter discard the previous repetition's step results so
+  /// they aren't counted more than once. Defaults to a no-op.
+  fn report_repeat(
+    &mut self,
+    _description: &TestDescription,
+    _repetition: u32,
+  ) {
+  }
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>);
   fn report_step_register(&mut self, description: &TestStepDescription);
   fn report_step_wait(&mut self, description: &TestStepDescription);
@@ -34,7 +55,7 @@ pub trait TestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    elapsed: u64,
+    elapsed: Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   );

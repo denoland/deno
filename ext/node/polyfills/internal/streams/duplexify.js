@@ -358,7 +358,9 @@ function _duplexify(pair) {
     eos(r, (err) => {
       readable = false;
       if (err) {
-        destroyer(r, err);
+        // Propagate a readable-side error to the writable side (mirrors the
+        // writable eos handler above, which destroys the readable side).
+        destroyer(w, err);
       }
       onfinished(err);
     });
