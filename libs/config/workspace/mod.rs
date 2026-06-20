@@ -1301,6 +1301,16 @@ impl Workspace {
       config: &ConfigFile,
       diagnostics: &mut Vec<WorkspaceDiagnostic>,
     ) {
+      // Whether the config's `imports`/`scopes` contain `npm:`/`jsr:`
+      // dependency specifiers. Path-alias imports (e.g. `"#/": "./src/"`)
+      // can't move to package.json, so they shouldn't trigger the
+      // `preferPackageJson` warning.
+      fn has_dependency_imports(config: &ConfigFile) -> bool {
+        crate::import_map::imports_values(config.json.imports.as_ref())
+          .chain(crate::import_map::scope_values(config.json.scopes.as_ref()))
+          .any(|value| crate::import_map::value_to_dep_req(value).is_some())
+      }
+
       if let Some(name) = &config.json.name
         && !is_valid_jsr_pkg_name(name)
       {
@@ -1400,7 +1410,7 @@ impl Workspace {
         }
       }
       if config.json.prefer_package_json == Some(true)
-        && (config.json.imports.is_some() || config.json.scopes.is_some())
+        && has_dependency_imports(config)
       {
         diagnostics.push(WorkspaceDiagnostic {
           config_url: config.specifier.clone(),
@@ -4642,6 +4652,54 @@ pub mod test {
         config_url: url_from_file_path(&root_dir().join("member/package.json"))
           .unwrap(),
       }]
+    );
+  }
+
+  #[test]
+  fn test_prefer_package_json_imports_warning() {
+    fn diagnostics_for(value: serde_json::Value) -> Vec<WorkspaceDiagnostic> {
+      let sys = InMemorySys::default();
+      sys.fs_insert_json(root_dir().join("deno.json"), value);
+      workspace_at_start_dir(&sys, &root_dir())
+        .workspace
+        .diagnostics()
+    }
+
+    let expected = vec![WorkspaceDiagnostic {
+      kind: WorkspaceDiagnosticKind::PreferPackageJsonWithImports,
+      config_url: url_from_file_path(&root_dir().join("deno.json")).unwrap(),
+    }];
+
+    // A `jsr:`/`npm:` dependency specifier in `imports` triggers the warning.
+    assert_eq!(
+      diagnostics_for(json!({
+        "preferPackageJson": true,
+        "imports": { "@std/assert": "jsr:@std/assert@^1" }
+      })),
+      expected
+    );
+    // A dependency specifier nested in `scopes` also triggers it.
+    assert_eq!(
+      diagnostics_for(json!({
+        "preferPackageJson": true,
+        "scopes": { "./sub/": { "chalk": "npm:chalk@5" } }
+      })),
+      expected
+    );
+    // Path-alias imports can't move to package.json, so they don't warn.
+    assert_eq!(
+      diagnostics_for(json!({
+        "preferPackageJson": true,
+        "imports": { "#utils": "./utils.ts", "@/": "./src/" }
+      })),
+      vec![]
+    );
+    // No warning when the setting is off.
+    assert_eq!(
+      diagnostics_for(json!({
+        "imports": { "@std/assert": "jsr:@std/assert@^1" }
+      })),
+      vec![]
     );
   }
 
