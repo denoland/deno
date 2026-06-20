@@ -644,17 +644,11 @@ pub fn cover_files(
   let proc_coverages: Vec<_> = script_coverages
     .into_iter()
     .map(|mut cov| {
-      // Normalize the coverage URL so that the same module loaded under
-      // slightly different specifiers is reported as a single merged entry.
-      //
-      // Fragments never affect the loaded source, so strip them for any
-      // `file:`/`http:`/`https:` URL (e.g. `mod.ts#a` and `mod.ts#b` merge).
-      //
-      // Query strings are only stripped for `file:` URLs, which resolve to the
-      // same file on disk regardless of the query. For `http(s):` a server can
-      // legitimately return different bytes for `mod.js?v=1` vs `mod.js?v=2`,
-      // so merging their V8 ranges would be wrong; the HTTP cache also keys on
-      // the full URL, so dropping the query would lose the source entirely.
+      // Merge the same module loaded under different specifiers. Fragments
+      // never affect the source, so strip them for any file/http(s) URL.
+      // Query strings are only stripped for `file:` (same file on disk);
+      // http(s) servers can return different bytes per query and the cache
+      // keys on the full URL, so keep it there.
       if let Ok(mut url) = Url::parse(&cov.url) {
         let strip_fragment = matches!(url.scheme(), "file" | "http" | "https")
           && url.fragment().is_some();
