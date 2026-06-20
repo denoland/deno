@@ -449,6 +449,53 @@ pub fn op_node_process_setuid(
   Err(ProcessError::NotSupported)
 }
 
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
+#[op2(fast, stack_trace)]
+pub fn op_node_process_setgroups<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  state: &mut OpState,
+  groups: v8::Local<'a, v8::Value>,
+) -> Result<(), ProcessError> {
+  {
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_sys("setgid", "node:process.setgroups")?;
+  }
+
+  if !groups.is_array() {
+    return Err(ProcessError::InvalidParam("groups".to_string()));
+  }
+
+  let arr = v8::Local::<v8::Array>::try_from(groups)
+    .map_err(|_| ProcessError::InvalidParam("groups".to_string()))?;
+  let len = arr.length();
+  let mut gids: Vec<Gid> = Vec::with_capacity(len as usize);
+
+  for i in 0..len {
+    let elem = arr
+      .get_index(scope, i)
+      .ok_or_else(|| ProcessError::InvalidParam("groups".to_string()))?;
+    let gid = match serialize_id(scope, elem)? {
+      Id::Number(n) => Gid::from_raw(n),
+      Id::Name(name) => get_group_id(&name)?,
+    };
+    gids.push(gid);
+  }
+
+  nix::unistd::setgroups(&gids)?;
+
+  Ok(())
+}
+
+#[cfg(any(target_os = "android", target_os = "windows"))]
+#[op2(fast, stack_trace)]
+pub fn op_node_process_setgroups(
+  _scope: &mut v8::PinScope<'_, '_>,
+  _state: &mut OpState,
+  _groups: v8::Local<'_, v8::Value>,
+) -> Result<(), ProcessError> {
+  Err(ProcessError::NotSupported)
+}
+
 /// Returns the cgroup-constrained memory limit, or 0 if unconstrained.
 /// This matches Node.js `process.constrainedMemory()` semantics.
 #[op2(fast)]
