@@ -6,4 +6,5 @@ error[missing-explicit-return-type]: missing explicit return type in the public 
 
   1 modules collected
 Could not generate types for 'file://[WILDCARD]/mod.ts'. Types will not be included for this module.
+  0 assets collected
 ✓ test-slow-types-1.0.0.tgz ([WILDCARD])
