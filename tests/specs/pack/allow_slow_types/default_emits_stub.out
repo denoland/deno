@@ -1,0 +1,9 @@
+[WILDCARD]Packing @test/slow-types
+Check mod.ts
+error[missing-explicit-return-type]: missing explicit return type in the public API
+[WILDCARD]
+  docs: https://jsr.io/go/slow-type-missing-explicit-return-type
+
+  1 modules collected
+Could not generate types for 'file://[WILDCARD]/mod.ts'. Types will not be included for this module.
+✓ test-slow-types-1.0.0.tgz ([WILDCARD])

@@ -4,7 +4,7 @@
     "default_emits_stub": {
       "steps": [{
         "args": "pack",
-        "output": "[WILDCARD]Could not generate types[WILDCARD]✓[WILDCARD]test-slow-types-1.0.0.tgz[WILDCARD]"
+        "output": "default_emits_stub.out"
       }]
     },
     "allow_slow_types_skips_fast_check": {
