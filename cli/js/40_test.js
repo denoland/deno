@@ -2,6 +2,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
+import { assertSnapshot, snapshotRunState } from "ext:cli/40_test_snapshot.js";
 
 // TODO(mmastrac): We cannot import these from "ext:core/ops" yet
 const {
@@ -225,15 +226,25 @@ function assertExit(fn, isTest, sanitizeExit) {
 
 function wrapOuter(fn, desc) {
   return async function outerWrapped() {
+    const state = MapPrototypeGet(testStates, desc.id);
+    // A test may be invoked more than once when `retry`/`repeats` are set.
+    // Reset any state left over from a previous invocation so steps can run
+    // again and stale children aren't reported as incomplete.
+    state.children = [];
+    state.completed = false;
     try {
       if (desc.ignore) {
         return "ignored";
       }
-      return await fn(desc) ?? "ok";
+      const result = await fn(desc) ?? "ok";
+      if (result !== "ok" && result !== "ignored") {
+        snapshotRunState.sawFailure = true;
+      }
+      return result;
     } catch (error) {
+      snapshotRunState.sawFailure = true;
       return { failed: { jsError: core.destructureError(error) } };
     } finally {
-      const state = MapPrototypeGet(testStates, desc.id);
       for (const childDesc of state.children) {
         stepReportResult(childDesc, { failed: "incomplete" }, 0);
       }
@@ -325,6 +336,23 @@ function encodeTimeout(value) {
   return value;
 }
 
+// Validates the `retry`/`repeats` test options. Returns `null` when the option
+// is unset so the runner can distinguish "inherit the flag default" from an
+// explicit `0` (which opts out and takes precedence over the flag).
+function encodeCount(value, label) {
+  if (value === undefined || value === null) return null;
+  // `NumberIsInteger` already rejects NaN and +/-Infinity.
+  if (typeof value !== "number" || !NumberIsInteger(value) || value < 0) {
+    throw new TypeError(`Test ${label} must be a non-negative integer`);
+  }
+  if (value > TIMEOUT_MAX) {
+    throw new TypeError(
+      `Test ${label} out of range (must be between 0 and 2147483647)`,
+    );
+  }
+  return value;
+}
+
 // As long as we're using one isolate per test, we can cache the origin since it won't change
 let cachedOrigin = undefined;
 
@@ -355,6 +383,8 @@ function testInner(
     sanitizeExit: true,
     permissions: null,
     timeout: undefined,
+    retry: undefined,
+    repeats: undefined,
   };
 
   if (typeof nameOrFnOrOptions === "string") {
@@ -432,6 +462,16 @@ function testInner(
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
 
+  // Ignored tests (and non-`only` tests in an `only` run) never execute
+  // their snapshot assertions, so their snapshots must not be treated as
+  // stale by `--update-snapshots`.
+  if (testDesc.ignore) {
+    snapshotRunState.sawIgnored = true;
+  }
+  if (testDesc.only) {
+    snapshotRunState.sawOnly = true;
+  }
+
   if (cachedOrigin == undefined) {
     cachedOrigin = op_test_get_origin();
   }
@@ -456,6 +496,8 @@ function testInner(
     registerTestIdRetBufU8,
     testDesc.sanitizeOnly ?? true,
     encodeTimeout(testDesc.timeout),
+    encodeCount(testDesc.retry, "retry"),
+    encodeCount(testDesc.repeats, "repeats"),
   );
   testDesc.id = registerTestIdRetBuf[0];
   testDesc.origin = cachedOrigin;
@@ -703,7 +745,7 @@ function createTestContext(desc) {
     rootId = desc.id;
     rootName = desc.name;
   }
-  return {
+  const testContext = {
     [SymbolToStringTag]: "TestContext",
     /**
      * The current test name.
@@ -717,6 +759,18 @@ function createTestContext(desc) {
      * File Uri of the test code.
      */
     origin: desc.origin,
+    /**
+     * Asserts that `actual` matches the snapshot stored in the snapshot
+     * file. With `deno test --update-snapshots`, mismatching or missing
+     * snapshots are written to the snapshot file instead.
+     *
+     * @param actual {unknown}
+     * @param maybeOptions {string | object | undefined}
+     */
+    // deno-lint-ignore require-await
+    async assertSnapshot(actual, maybeOptions) {
+      return assertSnapshot(testContext, actual, maybeOptions);
+    },
     /**
      * @param nameOrFnOrOptions {string | TestStepDefinition | ((t: TestContext) => void | Promise<void>)}
      * @param maybeFn {((t: TestContext) => void | Promise<void>) | undefined}
@@ -759,6 +813,9 @@ function createTestContext(desc) {
         );
       }
       stepDesc.ignore ??= false;
+      if (stepDesc.ignore) {
+        snapshotRunState.sawIgnored = true;
+      }
       stepDesc.sanitizeOps ??= desc.sanitizeOps;
       stepDesc.sanitizeResources ??= desc.sanitizeResources;
       stepDesc.sanitizeExit ??= desc.sanitizeExit;
@@ -802,6 +859,7 @@ function createTestContext(desc) {
       return result == "ok";
     },
   };
+  return testContext;
 }
 
 /**

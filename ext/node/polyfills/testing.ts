@@ -5,17 +5,27 @@
 const { core, primordials } = __bootstrap;
 const {
   ArrayPrototypeForEach,
+  ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
+  ArrayPrototypeJoin,
+  ArrayPrototypeLastIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
+  DatePrototypeGetTime,
+  DatePrototypeToString,
   Error,
   ErrorPrototype,
+  JSONStringify,
+  MapPrototypeClear,
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
+  NumberIsFinite,
+  NumberIsInteger,
   ObjectDefineProperty,
+  ObjectKeys,
   ObjectPrototypeHasOwnProperty,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
@@ -32,20 +42,96 @@ const {
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
+  SafeMapIterator,
   SafeRegExp,
   String,
+  StringPrototypeEndsWith,
+  StringPrototypeIncludes,
+  StringPrototypeIndexOf,
   StringPrototypeMatch,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  StringPrototypeStartsWith,
   Symbol,
+  SymbolDispose,
   SymbolFor,
+  SymbolToPrimitive,
   TypeError,
   queueMicrotask,
 } = primordials;
+
+// The genuine timer functions, captured once at runtime so that an enabled mock
+// clock (node:test's mock.timers) cannot stop a test's timeout from firing in
+// real time. We cannot read these at module-init time: this polyfill is baked
+// into the startup snapshot, where the module body runs before the timer APIs
+// exist on `globalThis`. Instead we capture lazily on the first `test()` /
+// `suite()` registration (see installErrorHandlers), which always runs after
+// the runtime is booted and before any test body can call mock.timers.enable().
+let realSetTimeout = null;
+let realClearTimeout = null;
+function ensureRealTimers() {
+  if (realSetTimeout === null) {
+    realSetTimeout = globalThis.setTimeout;
+    realClearTimeout = globalThis.clearTimeout;
+  }
+}
 
 let errorHandlersInstalled = false;
 
 let activeNodeTests = 0;
 
 let pendingCallbackReject = null;
+
+// Stack of failure "sinks" for the tests whose bodies are currently executing.
+// A test pushes a sink for the duration of its body (across await boundaries)
+// and pops it when the body settles. An unhandled rejection or uncaught
+// exception that fires while a test body is running is attributed to the
+// innermost still-running test, matching Node's behavior of failing the
+// currently-active test (see https://github.com/denoland/deno/issues/34818).
+const activeTestSinks = [];
+
+function pushTestSink(sink) {
+  ArrayPrototypePush(activeTestSinks, sink);
+}
+
+function popTestSink(sink) {
+  const idx = ArrayPrototypeLastIndexOf(activeTestSinks, sink);
+  if (idx !== -1) {
+    ArrayPrototypeSplice(activeTestSinks, idx, 1);
+  }
+}
+
+// The innermost test whose body is still running, or null when no test body is
+// currently on the stack (e.g. between registration and execution).
+function currentTestSink() {
+  for (let i = activeTestSinks.length - 1; i >= 0; i--) {
+    const sink = activeTestSinks[i];
+    if (!sink.settled) return sink;
+  }
+  return null;
+}
+
+function buildTimeoutError(timeout) {
+  // Node fails a timed-out test with a `test timed out after Nms` cause and an
+  // ERR_TEST_FAILURE wrapper. We surface the same message and tag the error so
+  // reporters that look at code/failureType behave like Node.
+  const err = new Error(`test timed out after ${timeout}ms`);
+  err.code = "ERR_TEST_FAILURE";
+  err.failureType = "testTimeoutFailure";
+  return err;
+}
+
+function buildAbortError(signal) {
+  // When the test is aborted via a caller-supplied signal, Node fails the test
+  // with the signal's reason (or a generic abort error when none was given).
+  if (signal && signal.reason !== undefined) {
+    return signal.reason;
+  }
+  const err = new Error("The test was aborted");
+  err.code = "ABORT_ERR";
+  err.failureType = "testAborted";
+  return err;
+}
 
 function sanitizeThrowValue(err) {
   if (err === null || err === undefined || typeof err !== "object") {
@@ -69,16 +155,37 @@ function sanitizeThrowValue(err) {
 }
 
 function installErrorHandlers() {
+  // Capture the genuine timers now, before any test body runs and before any
+  // mock clock can replace the globals.
+  ensureRealTimers();
   if (errorHandlersInstalled) return;
   errorHandlersInstalled = true;
 
   globalThis.addEventListener("unhandledrejection", (event) => {
+    // Attribute the rejection to the currently-running test so it fails, the
+    // way Node does. This is gated on an active sink rather than on
+    // `activeNodeTests` so it also works in TAP mode, where tests are run by
+    // our own runner and the counter is not used.
+    const sink = currentTestSink();
+    if (sink !== null) {
+      event.preventDefault();
+      sink.fail(event.reason);
+      return;
+    }
+    // Preserve the prior behavior of swallowing rejections while Deno.test
+    // backed node tests are pending but no body is actively running.
     if (activeNodeTests > 0) {
       event.preventDefault();
     }
   });
 
   globalThis.addEventListener("error", (event) => {
+    // Uncaught exceptions are not routed through the test sink: a synchronous
+    // throw in a test body is already caught by the body wrapper, and Node does
+    // not treat every uncaught `error` event (for example warnings surfaced as
+    // errors) as a test failure. We keep the original behavior of swallowing
+    // the error while node tests are pending and forwarding to a pending
+    // callback-style `done` reject.
     if (activeNodeTests > 0) {
       event.preventDefault();
     }
@@ -88,15 +195,22 @@ function installErrorHandlers() {
     }
   });
 }
-const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const {
+  validateBoolean,
   validateFunction,
   validateInteger,
+  validateNumber,
   validateObject,
+  validateStringArray,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-const { ERR_INVALID_ARG_TYPE, ERR_INVALID_ARG_VALUE } = core.loadExtScript(
-  "ext:deno_node/internal/errors.ts",
-).codes;
+const nodeErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+} = nodeErrors.codes;
+// `ERR_INVALID_STATE` is a hand-written class exported at the top level of the
+// errors module; unlike the generated codes it is not registered on `.codes`.
+const { ERR_INVALID_STATE } = nodeErrors;
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const {
   tapEscape,
@@ -475,6 +589,7 @@ class TapContext {
   #subtestTail = PromiseResolve();
   #subtestCount = 0;
   #parentChildren;
+  #abortController = new AbortController();
   // Per-context "warning printed" flag for the `--test-only` diagnostic.
   // Mutated by `runTapEntry` when a child uses `only: true`.
   onlyWarningEmitted = false;
@@ -497,9 +612,14 @@ class TapContext {
   }
 
   get signal() {
-    // Provide an AbortSignal so consumers that read t.signal don't crash; the
-    // minimal TAP runner does not currently honour aborts.
-    return new AbortController().signal;
+    return this.#abortController.signal;
+  }
+
+  // Aborts this test's own AbortSignal (t.signal); see NodeTestContext._abort.
+  _abort(reason) {
+    if (!this.#abortController.signal.aborted) {
+      this.#abortController.abort(reason);
+    }
   }
 
   get assert() {
@@ -695,8 +815,14 @@ async function runTapEntry(entry, depth, n, parentState) {
     // test/it body
     const ctx = new TapContext(entry.name, depth, entry.children);
     try {
-      const ret = ReflectApply(entry.fn, ctx, [ctx]);
-      if (isThenable(ret)) await ret;
+      await runWithTestGuards(async () => {
+        const ret = ReflectApply(entry.fn, ctx, [ctx]);
+        if (isThenable(ret)) await ret;
+      }, {
+        timeout: entry.options.timeout,
+        signal: entry.options.signal,
+        abort: (reason) => ctx._abort(reason),
+      });
       // Wait for any concurrent t.test() calls (e.g. Promise.all([...])).
       await ctx._drainSubtests();
       childCount = ctx._subtestCount();
@@ -842,6 +968,93 @@ function assertExpectedFailure(err, expectFailure) {
   }
 }
 
+// Runs `invoke()` (a thunk that executes a single test body) while enforcing
+// the `timeout` option, honoring a caller-supplied abort `signal`, and capturing
+// any unhandled rejection / uncaught exception that fires during the body. The
+// returned promise resolves with the body's value, or rejects with the first
+// failure observed: a body error, a timeout, an abort, or a captured rejection.
+// `opts.abort(reason)` is invoked on timeout/abort so the test's own
+// AbortSignal (`t.signal`) is aborted and user code can react.
+async function runWithTestGuards(invoke, opts) {
+  ensureRealTimers();
+  const timeout = opts?.timeout;
+  const signal = opts?.signal;
+  const abort = opts?.abort;
+
+  const failure = PromiseWithResolvers();
+  const result = PromiseWithResolvers();
+  const sink = {
+    settled: false,
+    fail(reason) {
+      if (this.settled) return;
+      this.settled = true;
+      failure.reject(reason);
+    },
+  };
+  pushTestSink(sink);
+
+  let timeoutId = null;
+  let onAbort = null;
+  try {
+    if (signal !== undefined && signal !== null) {
+      if (signal.aborted) {
+        if (typeof abort === "function") abort(signal.reason);
+        sink.fail(buildAbortError(signal));
+      } else {
+        onAbort = () => {
+          if (typeof abort === "function") abort(signal.reason);
+          sink.fail(buildAbortError(signal));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    }
+
+    if (typeof timeout === "number" && timeout > 0) {
+      timeoutId = realSetTimeout(() => {
+        const err = buildTimeoutError(timeout);
+        if (typeof abort === "function") abort(err);
+        sink.fail(err);
+      }, timeout);
+    }
+
+    // Race the body against any externally-signalled failure. We avoid
+    // Promise.race so a late body settlement cannot resurface after a failure.
+    const body = (async () => {
+      const value = await invoke();
+      // Stop attributing as soon as the body settles. An unhandled rejection
+      // whose `unhandledrejection` event already fired while the body was
+      // running (for example one surfacing during an await, as in the
+      // denoland/deno#34818 repro) has already failed this test through the
+      // sink. This is best-effort and bounded to the body's lifetime: a
+      // rejection that only surfaces after the body returns is treated as
+      // post-test asynchronous activity and not attributed, matching the
+      // limitation Node also has for activity that outlives a test. We avoid
+      // draining extra event-loop turns here because doing so perturbs the
+      // runner's output ordering and timing.
+      sink.settled = true;
+      return value;
+    })();
+    PromisePrototypeThen(
+      body,
+      (value) => result.resolve(value),
+      (err) => result.reject(err),
+    );
+    PromisePrototypeThen(failure.promise, undefined, (err) => {
+      result.reject(err);
+    });
+    return await result.promise;
+  } finally {
+    sink.settled = true;
+    popTestSink(sink);
+    if (timeoutId !== null) {
+      realClearTimeout(timeoutId);
+    }
+    if (onAbort !== null && signal) {
+      signal.removeEventListener("abort", onAbort);
+    }
+  }
+}
+
 async function runNodeTestFunction(fn, nodeTestContext) {
   if (fn.length >= 2) {
     // Node-style callback API: fn(t, done) - wait for `done()` (or promise
@@ -875,19 +1088,30 @@ async function runNodeTestFunction(fn, nodeTestContext) {
 }
 
 async function runPossiblyExpectingFailure(fn, nodeTestContext, options) {
+  const guards = {
+    timeout: options.timeout,
+    signal: options.signal,
+    abort: (reason) => nodeTestContext._abort(reason),
+  };
   if (
     !options.expectFailure ||
     options.skip ||
     options.todo
   ) {
-    const result = await runNodeTestFunction(fn, nodeTestContext);
+    const result = await runWithTestGuards(
+      () => runNodeTestFunction(fn, nodeTestContext),
+      guards,
+    );
     nodeTestContext._checkPlan();
     return result;
   }
 
   let failed = false;
   try {
-    await runNodeTestFunction(fn, nodeTestContext);
+    await runWithTestGuards(
+      () => runNodeTestFunction(fn, nodeTestContext),
+      guards,
+    );
     nodeTestContext._checkPlan();
   } catch (err) {
     failed = true;
@@ -933,6 +1157,10 @@ class NodeTestContext {
   #planAssert;
   #beforeEachHooks = [];
   #afterEachHooks = [];
+  // Guards so the once-per-test `before()`/`after()` hooks run a single time
+  // regardless of how many subtests this context has.
+  #beforeHooksRun = false;
+  #afterHooksRun = false;
   // When set via `runOnly(true)`, only direct subtests registered with the
   // `only: true` option are executed; all other subtests are skipped.
   #runOnly = false;
@@ -979,6 +1207,15 @@ class NodeTestContext {
     return this.#abortController.signal;
   }
 
+  // Aborts this test's own AbortSignal (t.signal). Called by the test guards on
+  // timeout or when a caller-supplied signal aborts, so user code awaiting
+  // t.signal observes the abort.
+  _abort(reason) {
+    if (!this.#abortController.signal.aborted) {
+      this.#abortController.abort(reason);
+    }
+  }
+
   get name() {
     return this.#name;
   }
@@ -1019,16 +1256,6 @@ class NodeTestContext {
     if (this.#plan) this.#plan.increment();
     // deno-lint-ignore no-this-alias
     const parentContext = this;
-    const after = async () => {
-      for (const hook of new SafeArrayIterator(this.#afterHooks)) {
-        await hook();
-      }
-    };
-    const before = async () => {
-      for (const hook of new SafeArrayIterator(this.#beforeHooks)) {
-        await hook();
-      }
-    };
     return PromisePrototypeThen(
       this.#denoContext.step({
         name: prepared.name,
@@ -1038,8 +1265,10 @@ class NodeTestContext {
             parentContext,
             prepared.name,
           );
+          let bodyOk = false;
           try {
-            await before();
+            // The parent's `before()` hooks run once, before its first subtest.
+            await parentContext._runBeforeHooksOnce();
             for (
               const hook of new SafeArrayIterator(
                 parentContext.#beforeEachHooks,
@@ -1052,14 +1281,20 @@ class NodeTestContext {
               newNodeTextContext,
               prepared.options,
             );
-            await after();
+            bodyOk = true;
+            // This subtest's own `after()` hooks run once, after its body and
+            // all of its own subtests have completed. The parent's `after()`
+            // hooks run after the parent finishes, not here.
+            await newNodeTextContext._runAfterHooksOnce();
           } catch (err) {
+            if (!bodyOk) {
+              try {
+                await newNodeTextContext._runAfterHooksOnce();
+              } catch { /* ignore, test is already failing */ }
+            }
             if (!newNodeTextContext[skippedSymbol]) {
               throw err;
             }
-            try {
-              await after();
-            } catch { /* ignore, test is already failing */ }
           } finally {
             for (
               const hook of new SafeArrayIterator(
@@ -1107,6 +1342,27 @@ class NodeTestContext {
     }
     ArrayPrototypePush(this.#afterEachHooks, fn);
   }
+
+  // Runs this context's `before()` hooks a single time, before its first
+  // subtest. Idempotent so it is safe to call from every subtest's step.
+  async _runBeforeHooksOnce() {
+    if (this.#beforeHooksRun) return;
+    this.#beforeHooksRun = true;
+    for (const hook of new SafeArrayIterator(this.#beforeHooks)) {
+      await hook();
+    }
+  }
+
+  // Runs this context's `after()` hooks a single time, after its body and all
+  // of its subtests have completed. Idempotent so success and failure paths can
+  // both invoke it without double-running.
+  async _runAfterHooksOnce() {
+    if (this.#afterHooksRun) return;
+    this.#afterHooksRun = true;
+    for (const hook of new SafeArrayIterator(this.#afterHooks)) {
+      await hook();
+    }
+  }
 }
 
 let currentSuite = null;
@@ -1147,22 +1403,27 @@ async function runRootAfterIfDone() {
 class TestSuite {
   #denoTestContext;
   nodeTestContext;
+  // The enclosing suite, or null for a top-level suite. Used to cascade
+  // beforeEach()/afterEach() hooks from every ancestor suite onto each test
+  // (issue #35404).
+  parent = null;
   entries = [];
   beforeAllHooks = [];
   afterAllHooks = [];
   beforeEachHooks = [];
   afterEachHooks = [];
 
-  constructor(t, nodeTestContext) {
+  constructor(t, nodeTestContext, parent) {
     this.#denoTestContext = t;
     this.nodeTestContext = nodeTestContext;
+    this.parent = parent ?? null;
   }
 
   addTest(name, options, fn, overrides) {
     const prepared = prepareOptions(name, options, fn, overrides);
-    const beforeEach = this.beforeEachHooks;
-    const afterEach = this.afterEachHooks;
     const suiteNodeContext = this.nodeTestContext;
+    // deno-lint-ignore no-this-alias
+    const suite = this;
     ArrayPrototypePush(this.entries, {
       name: prepared.name,
       fn: async (denoTestContext) => {
@@ -1171,9 +1432,25 @@ class TestSuite {
           suiteNodeContext,
           prepared.name,
         );
+        // beforeEach()/afterEach() cascade through the whole ancestor chain:
+        // each test runs every enclosing suite's hooks, plus the file-scope
+        // (root) hooks. beforeEach runs outermost-first, afterEach runs
+        // innermost-first, matching Node (issue #35404). The chain is collected
+        // here, at run time, so hooks registered late in a suite body are seen.
+        const suiteChain = []; // innermost-first
+        for (let s = suite; s !== null; s = s.parent) {
+          ArrayPrototypePush(suiteChain, s);
+        }
         try {
-          for (const hook of new SafeArrayIterator(beforeEach)) {
+          for (const hook of new SafeArrayIterator(rootBeforeEachHooks)) {
             await hook(newNodeTextContext);
+          }
+          for (let i = suiteChain.length - 1; i >= 0; i--) {
+            for (
+              const hook of new SafeArrayIterator(suiteChain[i].beforeEachHooks)
+            ) {
+              await hook(newNodeTextContext);
+            }
           }
           return await runPossiblyExpectingFailure(
             prepared.fn,
@@ -1187,7 +1464,16 @@ class TestSuite {
             throw err;
           }
         } finally {
-          for (const hook of new SafeArrayIterator(afterEach)) {
+          for (let i = 0; i < suiteChain.length; i++) {
+            for (
+              const hook of new SafeArrayIterator(suiteChain[i].afterEachHooks)
+            ) {
+              try {
+                await hook(newNodeTextContext);
+              } catch { /* ignore */ }
+            }
+          }
+          for (const hook of new SafeArrayIterator(rootAfterEachHooks)) {
             try {
               await hook(newNodeTextContext);
             } catch { /* ignore */ }
@@ -1202,6 +1488,8 @@ class TestSuite {
     const prepared = prepareOptions(name, options, fn, overrides);
     const { promise, resolve } = PromiseWithResolvers();
     const parentSuiteContext = this.nodeTestContext;
+    // deno-lint-ignore no-this-alias
+    const parentSuite = this;
     ArrayPrototypePush(this.entries, {
       name: prepared.name,
       fn: wrapSuiteFn(
@@ -1209,6 +1497,7 @@ class TestSuite {
         resolve,
         prepared.name,
         parentSuiteContext,
+        parentSuite,
       ),
       ignore: !!prepared.options.todo || !!prepared.options.skip,
     });
@@ -1267,7 +1556,13 @@ function wrapTestFn(fn, resolve, name, options) {
       }
       beforeEachOk = true;
       await runPossiblyExpectingFailure(fn, nodeTestContext, options);
+      // The test's own `after()` hooks run once, after its body and all of its
+      // subtests complete (a top-level test awaits its subtests inline).
+      await nodeTestContext._runAfterHooksOnce();
     } catch (err) {
+      try {
+        await nodeTestContext._runAfterHooksOnce();
+      } catch { /* ignore, test is already failing */ }
       if (!nodeTestContext[skippedSymbol]) {
         throw sanitizeThrowValue(err);
       }
@@ -1312,13 +1607,17 @@ function prepareDenoTest(name, options, fn, overrides) {
   return PromiseResolve();
 }
 
-function wrapSuiteFn(fn, resolve, name, parentNodeContext) {
+function wrapSuiteFn(fn, resolve, name, parentNodeContext, parentSuite) {
   return async function (t) {
     const isTopLevel = parentNodeContext === undefined;
     if (isTopLevel) await runRootBeforeOnce();
     const suiteNodeContext = new NodeTestContext(t, parentNodeContext, name);
     const prevSuite = currentSuite;
-    const suite = currentSuite = new TestSuite(t, suiteNodeContext);
+    const suite = currentSuite = new TestSuite(
+      t,
+      suiteNodeContext,
+      parentSuite,
+    );
     try {
       fn(suiteNodeContext);
     } finally {
@@ -1824,6 +2123,872 @@ function mockMethodImpl(object, methodName, implementation, options) {
   return mockFn;
 }
 
+const SUPPORTED_APIS = [
+  "setTimeout",
+  "setInterval",
+  "setImmediate",
+  "Date",
+];
+
+class MockTimersHandle {
+  #id;
+  #timer;
+  #timers;
+  #refed;
+  constructor(timer, timers, refed) {
+    this.#id = timer.id;
+    this.#timer = timer;
+    this.#timers = timers;
+    this.#refed = refed;
+  }
+  ref() {
+    this.#refed = true;
+    return this;
+  }
+  unref() {
+    this.#refed = false;
+    return this;
+  }
+  hasRef() {
+    return this.#refed;
+  }
+  refresh() {
+    if (this.#timer && !this.#timer.interval) {
+      this.#timer.fireAt = this.#timers._now + this.#timer.delay;
+      MapPrototypeSet(this.#timers._timers, this.#id, this.#timer);
+    }
+    return this;
+  }
+  [SymbolToPrimitive]() {
+    return this.#id;
+  }
+  [SymbolFor("Deno.customInspect")]() {
+    return `MockTimer { id: ${this.#id} }`;
+  }
+  get _id() {
+    return this.#id;
+  }
+}
+
+// Installs/uninstalls this MockTimers on the `node:timers` module so that
+// `require("node:timers")` and `import ... from "node:timers[/promises]"`
+// callers route through the virtual clock too, not just `globalThis`.
+const kInstallMockTimers = SymbolFor("Deno.internal.node.mockTimers");
+
+class MockTimers {
+  _enabled = false;
+  _now = 0;
+  _timers = new SafeMap();
+  _nextId = 1;
+  #originals = new SafeMap();
+  #mockedApis = new SafeMap();
+
+  #mockGlobal(name, value) {
+    if (!MapPrototypeHas(this.#originals, name)) {
+      MapPrototypeSet(this.#originals, name, globalThis[name]);
+    }
+    globalThis[name] = value;
+  }
+
+  // Whether `api` (e.g. `"setTimeout"`) is currently being intercepted. Read by
+  // the `node:timers` module functions to decide per-call whether to use the
+  // virtual clock, mirroring the per-api selection of `enable({ apis })`.
+  _apiEnabled(api) {
+    return MapPrototypeHas(this.#mockedApis, api);
+  }
+
+  enable(options = { __proto__: null }) {
+    if (this._enabled) {
+      throw new ERR_INVALID_STATE(
+        "MockTimers is already enabled. Reset it first to enable it again",
+      );
+    }
+    validateObject(options, "options");
+    let { apis, now } = options;
+    if (apis === undefined) {
+      apis = SUPPORTED_APIS;
+    } else {
+      validateStringArray(apis, "options.apis");
+      for (let i = 0; i < apis.length; i++) {
+        if (!ArrayPrototypeIncludes(SUPPORTED_APIS, apis[i])) {
+          throw new ERR_INVALID_ARG_VALUE(
+            `options.apis[${i}]`,
+            apis[i],
+            `must be one of ${ArrayPrototypeJoin(SUPPORTED_APIS, ", ")}`,
+          );
+        }
+      }
+    }
+    if (now === undefined) {
+      now = 0;
+    } else if (ObjectPrototypeIsPrototypeOf(originalDatePrototype, now)) {
+      now = DatePrototypeGetTime(now);
+    }
+    validateNumber(now, "options.now", 0);
+    if (!NumberIsFinite(now) || !NumberIsInteger(now)) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options.now",
+        now,
+        "must be a finite, non-negative integer or a Date object",
+      );
+    }
+
+    this._enabled = true;
+    this._now = now;
+
+    for (let i = 0; i < apis.length; i++) {
+      MapPrototypeSet(this.#mockedApis, apis[i], true);
+    }
+
+    for (let i = 0; i < apis.length; i++) {
+      const api = apis[i];
+      if (api === "Date") {
+        this.#mockGlobal("Date", createMockDate(this));
+      } else if (api === "setTimeout") {
+        this.#mockGlobal(
+          "setTimeout",
+          (callback, delay, ...args) =>
+            this._setTimeout(callback, delay, args, false),
+        );
+        this.#mockGlobal(
+          "clearTimeout",
+          (handle) => this._clearTimer(handle),
+        );
+      } else if (api === "setInterval") {
+        this.#mockGlobal(
+          "setInterval",
+          (callback, delay, ...args) =>
+            this._setInterval(callback, delay, args),
+        );
+        this.#mockGlobal(
+          "clearInterval",
+          (handle) => this._clearTimer(handle),
+        );
+      } else if (api === "setImmediate") {
+        this.#mockGlobal(
+          "setImmediate",
+          (callback, ...args) => this._setTimeout(callback, 0, args, true),
+        );
+        this.#mockGlobal(
+          "clearImmediate",
+          (handle) => this._clearTimer(handle),
+        );
+      }
+    }
+
+    // Route the `node:timers` / `node:timers/promises` module functions through
+    // this instance too (see `kInstallMockTimers` in `timers.ts`).
+    core.loadExtScript("ext:deno_node/timers.ts")[kInstallMockTimers](this);
+  }
+
+  reset() {
+    if (!this._enabled) return;
+    core.loadExtScript("ext:deno_node/timers.ts")[kInstallMockTimers](null);
+    for (
+      const { 0: name, 1: original } of new SafeMapIterator(this.#originals)
+    ) {
+      globalThis[name] = original;
+    }
+    MapPrototypeClear(this.#originals);
+    MapPrototypeClear(this.#mockedApis);
+    MapPrototypeClear(this._timers);
+    this._now = 0;
+    this._nextId = 1;
+    this._enabled = false;
+  }
+
+  #assertEnabled() {
+    if (!this._enabled) {
+      throw new ERR_INVALID_STATE(
+        "You should enable MockTimers first by calling the .enable function",
+      );
+    }
+  }
+
+  #assertTimeArg(time) {
+    if (time < 0) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "time",
+        time,
+        "must be a non-negative integer",
+      );
+    }
+  }
+
+  // Mirrors Node's `MockTimers.tick`: advance the clock to each due timer's
+  // scheduled time as it fires (not straight to the end of the window), so a
+  // callback reading `Date.now()` sees the time the timer was scheduled for.
+  // Intervals re-arm and may fire again within the same tick.
+  tick(milliseconds = 1) {
+    this.#assertEnabled();
+    this.#assertTimeArg(milliseconds);
+    const target = this._now + milliseconds;
+    while (true) {
+      const next = this.#findNextTimer();
+      if (next === null || next.fireAt > target) break;
+      this._now = next.fireAt;
+      this.#fireTimer(next);
+    }
+    this._now = target;
+  }
+
+  // Mirrors Node's `MockTimers.runAll`: tick up to the longest pending timer.
+  // Intervals fire as many times as fit within that window, then re-arm past
+  // `_now` so the loop terminates.
+  runAll() {
+    this.#assertEnabled();
+    const longest = this.#findLongestTimer();
+    if (longest === null) return;
+    this.tick(longest.fireAt - this._now);
+  }
+
+  setTime(milliseconds) {
+    validateNumber(milliseconds, "time");
+    this.#assertTimeArg(milliseconds);
+    this.#assertEnabled();
+    this._now = milliseconds;
+  }
+
+  [SymbolDispose]() {
+    this.reset();
+  }
+
+  _setTimeout(callback, delay, args, immediate) {
+    validateFunction(callback, "callback");
+    if (delay === undefined || delay === null) delay = 1;
+    if (typeof delay !== "number") delay = +delay;
+    if (!NumberIsFinite(delay) || delay < 0) delay = 1;
+    if (delay > 2147483647) delay = 1;
+    const id = this._nextId++;
+    const timer = {
+      id,
+      callback,
+      args,
+      delay,
+      fireAt: this._now + delay,
+      interval: null,
+      immediate,
+    };
+    MapPrototypeSet(this._timers, id, timer);
+    return new MockTimersHandle(timer, this, true);
+  }
+
+  _setInterval(callback, delay, args) {
+    validateFunction(callback, "callback");
+    if (delay === undefined || delay === null) delay = 1;
+    if (typeof delay !== "number") delay = +delay;
+    if (!NumberIsFinite(delay) || delay < 1) delay = 1;
+    if (delay > 2147483647) delay = 1;
+    const id = this._nextId++;
+    const timer = {
+      id,
+      callback,
+      args,
+      delay,
+      fireAt: this._now + delay,
+      interval: delay,
+      immediate: false,
+    };
+    MapPrototypeSet(this._timers, id, timer);
+    return new MockTimersHandle(timer, this, true);
+  }
+
+  _clearTimer(handle) {
+    if (handle === null || handle === undefined) return;
+    let id;
+    if (typeof handle === "number") {
+      id = handle;
+    } else if (typeof handle === "object" && typeof handle._id === "number") {
+      id = handle._id;
+    } else {
+      return;
+    }
+    MapPrototypeDelete(this._timers, id);
+  }
+
+  #findNextTimer() {
+    let next = null;
+    for (const { 1: t } of new SafeMapIterator(this._timers)) {
+      if (
+        next === null ||
+        t.fireAt < next.fireAt ||
+        (t.fireAt === next.fireAt &&
+          (t.immediate !== next.immediate ? t.immediate : t.id < next.id))
+      ) {
+        next = t;
+      }
+    }
+    return next;
+  }
+
+  #findLongestTimer() {
+    let longest = null;
+    for (const { 1: t } of new SafeMapIterator(this._timers)) {
+      if (longest === null || t.fireAt > longest.fireAt) {
+        longest = t;
+      }
+    }
+    return longest;
+  }
+
+  #fireTimer(timer) {
+    // Match Node: invoke the callback first (errors propagate synchronously out
+    // of `tick`), then re-arm intervals or drop one-shot timers. A timer that
+    // clears itself inside its own callback is already gone from `_timers`, so
+    // the bookkeeping below is a no-op for it.
+    ReflectApply(timer.callback, undefined, timer.args);
+    if (timer.interval !== null) {
+      timer.fireAt += timer.interval;
+    } else {
+      MapPrototypeDelete(this._timers, timer.id);
+    }
+  }
+}
+
+const originalDate = globalThis.Date;
+const originalDatePrototype = originalDate.prototype;
+
+function createMockDate(mockTimers) {
+  function MockDate(...args) {
+    if (!new.target) {
+      return DatePrototypeToString(
+        ReflectConstruct(originalDate, [mockTimers._now], MockDate),
+      );
+    }
+    if (args.length === 0) {
+      return ReflectConstruct(originalDate, [mockTimers._now], MockDate);
+    }
+    return ReflectConstruct(originalDate, args, MockDate);
+  }
+  ObjectDefineProperty(MockDate, "prototype", {
+    __proto__: null,
+    value: originalDate.prototype,
+    writable: false,
+  });
+  ObjectDefineProperty(MockDate, "name", {
+    __proto__: null,
+    value: "Date",
+    configurable: true,
+  });
+  MockDate.now = () => mockTimers._now;
+  MockDate.parse = originalDate.parse;
+  MockDate.UTC = originalDate.UTC;
+  MockDate.isMock = true;
+  MockDate.toString = () => "function Date() { [native code] }";
+  return MockDate;
+}
+
+const mockTimers = new MockTimers();
+
+// `mock.module()` support.
+//
+// Module mocking is built on top of `module.registerHooks()` (the Node module
+// customization hooks). A single registration intercepts both `import()` and
+// `require()`. The whole subsystem is lazily initialized on the first
+// `mock.module()` call so that importing `node:test` without mocking modules
+// pays no startup cost and registers no hooks.
+
+// Symbol under which the live mock registry is published on `globalThis`. The
+// synthetic module source generated for a mocked specifier reads the live
+// export values back out of this registry at evaluation time, so functions and
+// objects passed to `mock.module()` cross into the mocked module unchanged.
+const kMockModuleRegistryName = "deno.internal.nodeTestMockModules";
+// Search param appended to a mocked ESM url to bust the module cache when
+// `cache` is false. ESM modules cannot be evicted from the loader cache, so a
+// fresh url (new version) is resolved on every import instead.
+const kMockSearchParam = "node-test-mock";
+const kBadExportsMessage = "Cannot create mock because named exports cannot " +
+  "be applied to the provided default export.";
+
+let mockModuleRegistry = null;
+let mockModuleHooksHandle = null;
+let nodeModuleNamespace = null;
+// Monotonic counter used to version mocked ESM urls. A global (rather than
+// per-mock) counter guarantees that a freshly created mock never collides with
+// a versioned url that a previous mock already cached.
+let mockModuleVersion = 0;
+
+function getNodeModuleNamespace() {
+  if (nodeModuleNamespace === null) {
+    nodeModuleNamespace = core.createLazyLoader("node:module")();
+  }
+  return nodeModuleNamespace;
+}
+
+function isUrlLike(value) {
+  return value !== null && typeof value === "object" &&
+    typeof value.href === "string" && typeof value.protocol === "string";
+}
+
+function ensureMockModuleHooks() {
+  if (mockModuleHooksHandle !== null) {
+    return;
+  }
+  mockModuleRegistry = new SafeMap();
+  globalThis[SymbolFor(kMockModuleRegistryName)] = mockModuleRegistry;
+  const { registerHooks } = getNodeModuleNamespace();
+  mockModuleHooksHandle = registerHooks({
+    __proto__: null,
+    resolve: mockModuleResolveHook,
+    load: mockModuleLoadHook,
+  });
+}
+
+// Best effort discovery of the file that called `mock.module()`, used to
+// resolve relative specifiers the same way Node does (eagerly, against the
+// caller). Returns undefined when no user frame can be found, in which case
+// the default resolver falls back to the current working directory.
+const kStackFrameUrl = new SafeRegExp(
+  "((?:file|https?):\\/\\/[^\\s)]+?):\\d+:\\d+",
+);
+function getCallerUrl() {
+  const stack = new Error().stack;
+  if (typeof stack !== "string") {
+    return undefined;
+  }
+  const lines = StringPrototypeSplit(stack, "\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (
+      StringPrototypeIncludes(line, "ext:deno_node/") ||
+      StringPrototypeIncludes(line, "ext:core/")
+    ) {
+      continue;
+    }
+    const match = RegExpPrototypeExec(kStackFrameUrl, line);
+    if (match !== null) {
+      const candidate = match[1];
+      if (
+        StringPrototypeStartsWith(candidate, "file:") ||
+        StringPrototypeStartsWith(candidate, "http")
+      ) {
+        return candidate;
+      }
+    }
+  }
+  return undefined;
+}
+
+let nodeUrlNamespace = null;
+function getNodeUrl() {
+  if (nodeUrlNamespace === null) {
+    nodeUrlNamespace = core.createLazyLoader("node:url")();
+  }
+  return nodeUrlNamespace;
+}
+
+// Normalizes a builtin specifier so that both `readline` and `node:readline`
+// map to the same registry key.
+function normalizeNodeScheme(specifier) {
+  if (StringPrototypeStartsWith(specifier, "node:")) {
+    return specifier;
+  }
+  const { isBuiltin } = getNodeModuleNamespace();
+  if (isBuiltin(specifier)) {
+    return "node:" + specifier;
+  }
+  return specifier;
+}
+
+// Canonicalizes a resolved url into the registry key. Builtins are normalized
+// to the `node:` scheme; file urls are resolved through the real path so that
+// the key registered by `mock.module()` matches the (realpath based) url the
+// require/import hooks observe, regardless of symlinks such as macOS
+// `/tmp` to `/private/tmp`.
+function canonicalizeUrlKey(u) {
+  if (StringPrototypeStartsWith(u, "file:")) {
+    try {
+      const path = getNodeUrl().fileURLToPath(u);
+      const real = core.ops.op_require_real_path(path);
+      return getNodeUrl().pathToFileURL(real).href;
+    } catch {
+      return u;
+    }
+  }
+  return normalizeNodeScheme(u);
+}
+
+// Resolves a `mock.module()` specifier to the canonical registry key (the
+// resolved module url, with builtins normalized to the `node:` scheme).
+function resolveSpecifierToKey(specifier) {
+  if (StringPrototypeStartsWith(specifier, "node:")) {
+    return specifier;
+  }
+  const parentUrl = getCallerUrl();
+  let resolved;
+  try {
+    resolved = core.ops.op_module_default_resolve(specifier, parentUrl);
+  } catch {
+    resolved = specifier;
+  }
+  return canonicalizeUrlKey(resolved);
+}
+
+// Strips the cache busting search param so a versioned ESM url maps back to its
+// registry key.
+function stripMockParam(u) {
+  const idx = StringPrototypeIndexOf(u, kMockSearchParam);
+  if (idx === -1) {
+    return u;
+  }
+  try {
+    const parsed = new URL(u);
+    parsed.searchParams.delete(kMockSearchParam);
+    let href = parsed.href;
+    if (StringPrototypeEndsWith(href, "?")) {
+      href = StringPrototypeSlice(href, 0, href.length - 1);
+    }
+    return href;
+  } catch {
+    return u;
+  }
+}
+
+function appendMockParam(u, version) {
+  const sep = StringPrototypeIncludes(u, "?") ? "&" : "?";
+  return u + sep + kMockSearchParam + "=" + version;
+}
+
+// Looks up the active mock entry (if any) for a url seen by a hook.
+function lookupMockEntry(u) {
+  if (mockModuleRegistry === null) {
+    return undefined;
+  }
+  let entry = MapPrototypeGet(mockModuleRegistry, u);
+  if (entry === undefined && StringPrototypeIncludes(u, kMockSearchParam)) {
+    entry = MapPrototypeGet(mockModuleRegistry, stripMockParam(u));
+  }
+  if (entry === undefined) {
+    return undefined;
+  }
+  return entry.active ? entry : undefined;
+}
+
+function detectFormat(key) {
+  if (StringPrototypeStartsWith(key, "node:")) {
+    return "commonjs";
+  }
+  if (
+    StringPrototypeEndsWith(key, ".mjs") || StringPrototypeEndsWith(key, ".mts")
+  ) {
+    return "module";
+  }
+  if (
+    StringPrototypeEndsWith(key, ".cjs") || StringPrototypeEndsWith(key, ".cts")
+  ) {
+    return "commonjs";
+  }
+  if (StringPrototypeStartsWith(key, "file:")) {
+    try {
+      const path = getNodeUrl().fileURLToPath(key);
+      return core.ops.op_require_is_maybe_cjs(path) ? "commonjs" : "module";
+    } catch {
+      return "commonjs";
+    }
+  }
+  // Remote modules (http/https) are only loadable as ESM.
+  if (
+    StringPrototypeStartsWith(key, "http:") ||
+    StringPrototypeStartsWith(key, "https:")
+  ) {
+    return "module";
+  }
+  return "commonjs";
+}
+
+function registryAccessSource() {
+  return "globalThis[Symbol.for(" + JSONStringify(kMockModuleRegistryName) +
+    ")]";
+}
+
+function generateCjsSource(entry, key) {
+  let src = '"use strict";\n';
+  src += "const $e = " + registryAccessSource() + ".get(" +
+    JSONStringify(key) + ");\n";
+  src += "if ($e === undefined) { throw new Error(" +
+    JSONStringify('mock exports not found for "' + key + '"') + "); }\n";
+  if (entry.hasDefaultExport) {
+    src += "module.exports = $e.moduleExports.default;\n";
+  }
+  if (entry.exportNames.length > 0) {
+    src += "if (module.exports === null || typeof module.exports !== " +
+      '"object") { throw new Error(' + JSONStringify(kBadExportsMessage) +
+      "); }\n";
+    for (let i = 0; i < entry.exportNames.length; i++) {
+      const name = entry.exportNames[i];
+      src += "module.exports[" + JSONStringify(name) + "] = " +
+        "$e.moduleExports[" + JSONStringify(name) + "];\n";
+    }
+  }
+  return src;
+}
+
+function generateEsmSource(entry, key) {
+  let src = "const $e = " + registryAccessSource() + ".get(" +
+    JSONStringify(key) + ");\n";
+  src += "if ($e === undefined) { throw new Error(" +
+    JSONStringify('mock exports not found for "' + key + '"') + "); }\n";
+  if (entry.isCjs) {
+    // For a CommonJS module the named exports are applied onto the default
+    // export object, mirroring how Deno exposes a required CJS module to an
+    // ESM importer (default plus the merged keys).
+    src += "let $d = $e.hasDefaultExport ? $e.moduleExports.default : {};\n";
+    if (entry.exportNames.length > 0) {
+      src += 'if ($d === null || typeof $d !== "object") { throw new Error(' +
+        JSONStringify(kBadExportsMessage) + "); }\n";
+      for (let i = 0; i < entry.exportNames.length; i++) {
+        const name = entry.exportNames[i];
+        src += "$d[" + JSONStringify(name) + "] = $e.moduleExports[" +
+          JSONStringify(name) + "];\n";
+      }
+    }
+    src += "export default $d;\n";
+    for (let i = 0; i < entry.exportNames.length; i++) {
+      const name = entry.exportNames[i];
+      // Use a safe local identifier plus a string export name so export names
+      // that are not valid identifiers (e.g. "foo-bar") still generate valid
+      // source.
+      src += "let $n" + i + " = $d[" + JSONStringify(name) + "];\n";
+      src += "export { $n" + i + " as " + JSONStringify(name) + " };\n";
+    }
+  } else {
+    // For an ESM module the default export and named exports are independent.
+    if (entry.hasDefaultExport) {
+      src += "export default $e.moduleExports.default;\n";
+    }
+    for (let i = 0; i < entry.exportNames.length; i++) {
+      const name = entry.exportNames[i];
+      src += "let $n" + i + " = $e.moduleExports[" + JSONStringify(name) +
+        "];\n";
+      src += "export { $n" + i + " as " + JSONStringify(name) + " };\n";
+    }
+  }
+  return src;
+}
+
+// The require cache (Module._cache) key for a mocked module: builtins are keyed
+// by their `node:` url, file modules by their (real) path.
+function cjsCacheKeyFor(key) {
+  if (StringPrototypeStartsWith(key, "file:")) {
+    try {
+      return getNodeUrl().fileURLToPath(key);
+    } catch {
+      return key;
+    }
+  }
+  return key;
+}
+
+// Removes a mocked CommonJS module from the require cache so the next
+// `require()` re-runs the load hook and produces a fresh exports object.
+function evictCjsCache(key) {
+  const { default: Module } = getNodeModuleNamespace();
+  delete Module._cache[cjsCacheKeyFor(key)];
+}
+
+function mockModuleResolveHook(specifier, context, nextResolve) {
+  const result = nextResolve(specifier, context);
+  if (result === null || result === undefined || result.url == null) {
+    return result;
+  }
+  const conditions = context?.conditions;
+  // Only the ESM import path needs per-import versioned urls. The require path
+  // busts its cache by evicting the require cache entry in the load hook.
+  if (
+    conditions === undefined ||
+    !ArrayPrototypeIncludes(conditions, "import")
+  ) {
+    return result;
+  }
+  const entry = lookupMockEntry(canonicalizeUrlKey(result.url));
+  if (entry === undefined) {
+    return result;
+  }
+  // A stable version (cache: true) reuses the cached module; otherwise bump the
+  // global counter so every import resolves to a brand new url.
+  const version = entry.cache ? entry.stableVersion : ++mockModuleVersion;
+  return {
+    __proto__: null,
+    url: appendMockParam(result.url, version),
+    shortCircuit: true,
+  };
+}
+
+function mockModuleLoadHook(url, context, nextLoad) {
+  const key = canonicalizeUrlKey(stripMockParam(url));
+  const entry = lookupMockEntry(key);
+  if (entry === undefined) {
+    return nextLoad(url, context);
+  }
+  const conditions = context?.conditions;
+  const viaRequire = conditions !== undefined &&
+    ArrayPrototypeIncludes(conditions, "require");
+  if (viaRequire) {
+    if (!entry.cache) {
+      evictCjsCache(key);
+    }
+    return {
+      __proto__: null,
+      source: generateCjsSource(entry, key),
+      format: "commonjs",
+      shortCircuit: true,
+    };
+  }
+  return {
+    __proto__: null,
+    source: generateEsmSource(entry, key),
+    format: "module",
+    shortCircuit: true,
+  };
+}
+
+class MockModuleContext {
+  #restore;
+
+  constructor(restore) {
+    this.#restore = restore;
+  }
+
+  restore() {
+    if (this.#restore !== undefined) {
+      this.#restore();
+      this.#restore = undefined;
+    }
+    const idx = ArrayPrototypeIndexOf(activeMocks, this);
+    if (idx !== -1) {
+      ArrayPrototypeSplice(activeMocks, idx, 1);
+    }
+  }
+
+  // `mock.reset()` iterates `activeMocks` calling `resetCalls()`. Node's
+  // `MockTracker.reset()` restores module mocks, so alias it to the restore
+  // behavior. The splice from `activeMocks` is deferred to `restore()` to
+  // avoid mutating the array mid iteration.
+  resetCalls() {
+    if (this.#restore !== undefined) {
+      this.#restore();
+      this.#restore = undefined;
+    }
+  }
+}
+
+function mockModule(specifier, options = { __proto__: null }) {
+  let specStr;
+  if (typeof specifier === "string") {
+    specStr = specifier;
+  } else if (isUrlLike(specifier)) {
+    specStr = `${specifier}`;
+  } else {
+    throw new ERR_INVALID_ARG_TYPE(
+      "specifier",
+      ["string", "URL"],
+      specifier,
+    );
+  }
+
+  validateObject(options, "options");
+  const cache = options.cache === undefined ? false : options.cache;
+  validateBoolean(cache, "options.cache");
+
+  // `exports` is a legacy alias that bundles `defaultExport` and
+  // `namedExports` into a single object: its `default` property (if any)
+  // becomes the default export and its remaining own enumerable keys become
+  // named exports. It cannot be combined with either of the newer options.
+  const exportsOption = options.exports;
+  const namedExports = options.namedExports;
+  let exportSource = namedExports;
+  let hasDefaultExport = ObjectPrototypeHasOwnProperty(
+    options,
+    "defaultExport",
+  );
+  let defaultExportValue = options.defaultExport;
+  if (exportsOption !== undefined) {
+    if (namedExports !== undefined || options.defaultExport !== undefined) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options.exports",
+        exportsOption,
+        'cannot be used with "namedExports" or "defaultExport"',
+      );
+    }
+    validateObject(exportsOption, "options.exports");
+    exportSource = exportsOption;
+    if (ObjectPrototypeHasOwnProperty(exportsOption, "default")) {
+      hasDefaultExport = true;
+      defaultExportValue = exportsOption.default;
+    }
+  } else if (namedExports !== undefined) {
+    validateObject(namedExports, "options.namedExports");
+  }
+
+  ensureMockModuleHooks();
+
+  const moduleExports = { __proto__: null };
+  const exportNames = [];
+  if (exportSource !== undefined && exportSource !== null) {
+    const keys = ObjectKeys(exportSource);
+    for (let i = 0; i < keys.length; i++) {
+      const name = keys[i];
+      // For the `exports` form the `default` key is the default export, not a
+      // named export.
+      if (exportsOption !== undefined && name === "default") {
+        continue;
+      }
+      moduleExports[name] = exportSource[name];
+      ArrayPrototypePush(exportNames, name);
+    }
+  }
+  if (hasDefaultExport) {
+    moduleExports.default = defaultExportValue;
+  }
+
+  const key = resolveSpecifierToKey(specStr);
+  const existing = MapPrototypeGet(mockModuleRegistry, key);
+  if (existing !== undefined && existing.active) {
+    throw new ERR_INVALID_STATE(
+      `Cannot mock '${specStr}'. The module is already mocked.`,
+    );
+  }
+
+  const format = detectFormat(key);
+  const entry = {
+    __proto__: null,
+    url: key,
+    isCjs: format === "commonjs",
+    cache,
+    stableVersion: cache ? ++mockModuleVersion : 0,
+    active: true,
+    moduleExports,
+    exportNames,
+    hasDefaultExport,
+  };
+  MapPrototypeSet(mockModuleRegistry, key, entry);
+  // Save and evict any previously loaded copy of this module so the next
+  // require/import re-runs the hooks and observes the mock. The saved entry is
+  // put back on restore so the exact original instance is returned again.
+  const { default: Module } = getNodeModuleNamespace();
+  const cacheKey = cjsCacheKeyFor(key);
+  entry.savedCacheEntry = Module._cache[cacheKey];
+  delete Module._cache[cacheKey];
+
+  const restore = () => {
+    if (!entry.active) {
+      return;
+    }
+    entry.active = false;
+    if (MapPrototypeGet(mockModuleRegistry, key) === entry) {
+      MapPrototypeDelete(mockModuleRegistry, key);
+    }
+    delete Module._cache[cacheKey];
+    if (entry.savedCacheEntry !== undefined) {
+      Module._cache[cacheKey] = entry.savedCacheEntry;
+    }
+  };
+
+  const ctx = new MockModuleContext(restore);
+  ArrayPrototypePush(activeMocks, ctx);
+  return ctx;
+}
+
 const mock = {
   fn: (original, implementation, options) => {
     if (original !== null && typeof original === "object") {
@@ -1867,9 +3032,13 @@ const mock = {
     return mockMethodImpl(object, methodName, implementation, options);
   },
 
+  module: mockModule,
+
   property: function (object, propertyName, value) {
     validateObject(object, "object");
-    if (typeof propertyName !== "string" && typeof propertyName !== "symbol") {
+    if (
+      typeof propertyName !== "string" && typeof propertyName !== "symbol"
+    ) {
       throw new ERR_INVALID_ARG_TYPE(
         "propertyName",
         ["string", "symbol"],
@@ -1922,18 +3091,14 @@ const mock = {
   },
 
   timers: {
-    enable: () => {
-      notImplemented("test.mock.timers.enable");
-    },
-    reset: () => {
-      notImplemented("test.mock.timers.reset");
-    },
-    tick: () => {
-      notImplemented("test.mock.timers.tick");
-    },
-    runAll: () => {
-      notImplemented("test.mock.timers.runAll");
-    },
+    enable: (options) => mockTimers.enable(options),
+    reset: () => mockTimers.reset(),
+    tick: (ms) => mockTimers.tick(ms),
+    runAll: () => mockTimers.runAll(),
+    // `setTime` is MockTimers' own method, not Date.prototype.setTime.
+    // deno-lint-ignore prefer-primordials
+    setTime: (ms) => mockTimers.setTime(ms),
+    [SymbolDispose]: () => mockTimers.reset(),
   },
 };
 

@@ -751,6 +751,7 @@ mod tests {
       cause: None,
       aggregated: None,
       additional_properties: vec![],
+      stack_is_custom: false,
     };
 
     let step_result =

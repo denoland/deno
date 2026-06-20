@@ -116,7 +116,7 @@ Deno.test({
     assertEquals(typeof process.versions.nghttp2, "string");
     assertEquals(typeof process.versions.napi, "string");
     // Must match the NAPI_VERSION in ext/napi/js_native_api.rs
-    assertEquals(process.versions.napi, "9");
+    assertEquals(process.versions.napi, "10");
     assertEquals(typeof process.versions.llhttp, "string");
     assertEquals(typeof process.versions.openssl, "string");
     assertEquals(typeof process.versions.cldr, "string");

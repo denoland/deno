@@ -234,6 +234,8 @@ jobs:
         run: ./tools/install_prebuilt.js wrk hyperfine
       - name: Build deno
         if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
+        env:
+          DENO_SNAPSHOT_MINIFY_SOURCES: '1'
         run: cargo build --release -p deno
       - name: Run benchmarks
         if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
@@ -759,9 +761,18 @@ jobs:
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        env:
+          DENO_SNAPSHOT_MINIFY_SOURCES: '1'
         run: |-
+          if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+            git submodule update --init tools/lzld
+            make -C tools/lzld
+            sed -i '' "s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #" .cargo/config.toml
+            grep -n fuse-ld .cargo/config.toml
+          fi
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          cargo build --release --locked -p denort_desktop
           df -h
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -793,6 +804,9 @@ jobs:
           strip -x -S ./denort
           zip -r denort-x86_64-apple-darwin.zip denort
           shasum -a 256 denort-x86_64-apple-darwin.zip > denort-x86_64-apple-darwin.zip.sha256sum
+          strip -x -S ./libdenort.dylib
+          zip -r libdenort-x86_64-apple-darwin.zip libdenort.dylib
+          shasum -a 256 libdenort-x86_64-apple-darwin.zip > libdenort-x86_64-apple-darwin.zip.sha256sum
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: cargo build --release -p bsdiff_helper
@@ -882,31 +896,43 @@ jobs:
             target/release/deno-x86_64-pc-windows-msvc.sha256sum
             target/release/denort-x86_64-pc-windows-msvc.zip
             target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
+            target/release/libdenort-x86_64-pc-windows-msvc.zip
+            target/release/libdenort-x86_64-pc-windows-msvc.zip.sha256sum
             target/release/deno-aarch64-pc-windows-msvc.zip
             target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-aarch64-pc-windows-msvc.sha256sum
             target/release/denort-aarch64-pc-windows-msvc.zip
             target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
+            target/release/libdenort-aarch64-pc-windows-msvc.zip
+            target/release/libdenort-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.sha256sum
             target/release/denort-x86_64-unknown-linux-gnu.zip
             target/release/denort-x86_64-unknown-linux-gnu.zip.sha256sum
+            target/release/libdenort-x86_64-unknown-linux-gnu.zip
+            target/release/libdenort-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-x86_64-apple-darwin.zip
             target/release/deno-x86_64-apple-darwin.zip.sha256sum
             target/release/deno-x86_64-apple-darwin.sha256sum
             target/release/denort-x86_64-apple-darwin.zip
             target/release/denort-x86_64-apple-darwin.zip.sha256sum
+            target/release/libdenort-x86_64-apple-darwin.zip
+            target/release/libdenort-x86_64-apple-darwin.zip.sha256sum
             target/release/deno-aarch64-unknown-linux-gnu.zip
             target/release/deno-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-aarch64-unknown-linux-gnu.sha256sum
             target/release/denort-aarch64-unknown-linux-gnu.zip
             target/release/denort-aarch64-unknown-linux-gnu.zip.sha256sum
+            target/release/libdenort-aarch64-unknown-linux-gnu.zip
+            target/release/libdenort-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-aarch64-apple-darwin.zip
             target/release/deno-aarch64-apple-darwin.zip.sha256sum
             target/release/deno-aarch64-apple-darwin.sha256sum
             target/release/denort-aarch64-apple-darwin.zip
             target/release/denort-aarch64-apple-darwin.zip.sha256sum
+            target/release/libdenort-aarch64-apple-darwin.zip
+            target/release/libdenort-aarch64-apple-darwin.zip.sha256sum
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
             target/release/deno-*.bsdiff
@@ -1614,7 +1640,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_canvas -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_http_h1 -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p denort_desktop -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_canvas -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_cli_parser -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_http_h1 -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -1766,9 +1792,18 @@ jobs:
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        env:
+          DENO_SNAPSHOT_MINIFY_SOURCES: '1'
         run: |-
+          if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+            git submodule update --init tools/lzld
+            make -C tools/lzld
+            sed -i '' "s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #" .cargo/config.toml
+            grep -n fuse-ld .cargo/config.toml
+          fi
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          cargo build --release --locked -p denort_desktop
           df -h
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -1800,6 +1835,9 @@ jobs:
           strip -x -S ./denort
           zip -r denort-aarch64-apple-darwin.zip denort
           shasum -a 256 denort-aarch64-apple-darwin.zip > denort-aarch64-apple-darwin.zip.sha256sum
+          strip -x -S ./libdenort.dylib
+          zip -r libdenort-aarch64-apple-darwin.zip libdenort.dylib
+          shasum -a 256 libdenort-aarch64-apple-darwin.zip > libdenort-aarch64-apple-darwin.zip.sha256sum
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: cargo build --release -p bsdiff_helper
@@ -1889,31 +1927,43 @@ jobs:
             target/release/deno-x86_64-pc-windows-msvc.sha256sum
             target/release/denort-x86_64-pc-windows-msvc.zip
             target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
+            target/release/libdenort-x86_64-pc-windows-msvc.zip
+            target/release/libdenort-x86_64-pc-windows-msvc.zip.sha256sum
             target/release/deno-aarch64-pc-windows-msvc.zip
             target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-aarch64-pc-windows-msvc.sha256sum
             target/release/denort-aarch64-pc-windows-msvc.zip
             target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
+            target/release/libdenort-aarch64-pc-windows-msvc.zip
+            target/release/libdenort-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.sha256sum
             target/release/denort-x86_64-unknown-linux-gnu.zip
             target/release/denort-x86_64-unknown-linux-gnu.zip.sha256sum
+            target/release/libdenort-x86_64-unknown-linux-gnu.zip
+            target/release/libdenort-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-x86_64-apple-darwin.zip
             target/release/deno-x86_64-apple-darwin.zip.sha256sum
             target/release/deno-x86_64-apple-darwin.sha256sum
             target/release/denort-x86_64-apple-darwin.zip
             target/release/denort-x86_64-apple-darwin.zip.sha256sum
+            target/release/libdenort-x86_64-apple-darwin.zip
+            target/release/libdenort-x86_64-apple-darwin.zip.sha256sum
             target/release/deno-aarch64-unknown-linux-gnu.zip
             target/release/deno-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-aarch64-unknown-linux-gnu.sha256sum
             target/release/denort-aarch64-unknown-linux-gnu.zip
             target/release/denort-aarch64-unknown-linux-gnu.zip.sha256sum
+            target/release/libdenort-aarch64-unknown-linux-gnu.zip
+            target/release/libdenort-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-aarch64-apple-darwin.zip
             target/release/deno-aarch64-apple-darwin.zip.sha256sum
             target/release/deno-aarch64-apple-darwin.sha256sum
             target/release/denort-aarch64-apple-darwin.zip
             target/release/denort-aarch64-apple-darwin.zip.sha256sum
+            target/release/libdenort-aarch64-apple-darwin.zip
+            target/release/libdenort-aarch64-apple-darwin.zip.sha256sum
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
             target/release/deno-*.bsdiff
@@ -2572,7 +2622,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_canvas -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_http_h1 -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p denort_desktop -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_canvas -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_cli_parser -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_http_h1 -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -2627,6 +2677,11 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
+      - name: Install Deno
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        with:
+          deno-version: v2.x
       - name: Restore cache cargo home
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
@@ -2703,9 +2758,18 @@ jobs:
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        env:
+          DENO_SNAPSHOT_MINIFY_SOURCES: '1'
         run: |-
+          if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+            git submodule update --init tools/lzld
+            make -C tools/lzld
+            sed -i '' "s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #" .cargo/config.toml
+            grep -n fuse-ld .cargo/config.toml
+          fi
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          cargo build --release --locked -p denort_desktop
           df -h
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -2758,6 +2822,8 @@ jobs:
           Get-FileHash target/release/deno-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-x86_64-pc-windows-msvc.zip.sha256sum
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-x86_64-pc-windows-msvc.zip
           Get-FileHash target/release/denort-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-x86_64-pc-windows-msvc.zip
+          Get-FileHash target/release/libdenort-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-x86_64-pc-windows-msvc.zip.sha256sum
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-x86_64-pc-windows-msvc.symcache
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -2851,31 +2917,43 @@ jobs:
             target/release/deno-x86_64-pc-windows-msvc.sha256sum
             target/release/denort-x86_64-pc-windows-msvc.zip
             target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
+            target/release/libdenort-x86_64-pc-windows-msvc.zip
+            target/release/libdenort-x86_64-pc-windows-msvc.zip.sha256sum
             target/release/deno-aarch64-pc-windows-msvc.zip
             target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-aarch64-pc-windows-msvc.sha256sum
             target/release/denort-aarch64-pc-windows-msvc.zip
             target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
+            target/release/libdenort-aarch64-pc-windows-msvc.zip
+            target/release/libdenort-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.sha256sum
             target/release/denort-x86_64-unknown-linux-gnu.zip
             target/release/denort-x86_64-unknown-linux-gnu.zip.sha256sum
+            target/release/libdenort-x86_64-unknown-linux-gnu.zip
+            target/release/libdenort-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-x86_64-apple-darwin.zip
             target/release/deno-x86_64-apple-darwin.zip.sha256sum
             target/release/deno-x86_64-apple-darwin.sha256sum
             target/release/denort-x86_64-apple-darwin.zip
             target/release/denort-x86_64-apple-darwin.zip.sha256sum
+            target/release/libdenort-x86_64-apple-darwin.zip
+            target/release/libdenort-x86_64-apple-darwin.zip.sha256sum
             target/release/deno-aarch64-unknown-linux-gnu.zip
             target/release/deno-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-aarch64-unknown-linux-gnu.sha256sum
             target/release/denort-aarch64-unknown-linux-gnu.zip
             target/release/denort-aarch64-unknown-linux-gnu.zip.sha256sum
+            target/release/libdenort-aarch64-unknown-linux-gnu.zip
+            target/release/libdenort-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-aarch64-apple-darwin.zip
             target/release/deno-aarch64-apple-darwin.zip.sha256sum
             target/release/deno-aarch64-apple-darwin.sha256sum
             target/release/denort-aarch64-apple-darwin.zip
             target/release/denort-aarch64-apple-darwin.zip.sha256sum
+            target/release/libdenort-aarch64-apple-darwin.zip
+            target/release/libdenort-aarch64-apple-darwin.zip.sha256sum
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
             target/release/deno-*.bsdiff
@@ -3447,6 +3525,11 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
+      - name: Install Deno
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        with:
+          deno-version: v2.x
       - name: Restore cache cargo home
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
@@ -3523,9 +3606,18 @@ jobs:
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        env:
+          DENO_SNAPSHOT_MINIFY_SOURCES: '1'
         run: |-
+          if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+            git submodule update --init tools/lzld
+            make -C tools/lzld
+            sed -i '' "s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #" .cargo/config.toml
+            grep -n fuse-ld .cargo/config.toml
+          fi
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          cargo build --release --locked -p denort_desktop
           df -h
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -3578,6 +3670,8 @@ jobs:
           Get-FileHash target/release/deno-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-aarch64-pc-windows-msvc.zip
           Get-FileHash target/release/denort-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-aarch64-pc-windows-msvc.zip
+          Get-FileHash target/release/libdenort-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-aarch64-pc-windows-msvc.zip.sha256sum
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-aarch64-pc-windows-msvc.symcache
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -3671,31 +3765,43 @@ jobs:
             target/release/deno-x86_64-pc-windows-msvc.sha256sum
             target/release/denort-x86_64-pc-windows-msvc.zip
             target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
+            target/release/libdenort-x86_64-pc-windows-msvc.zip
+            target/release/libdenort-x86_64-pc-windows-msvc.zip.sha256sum
             target/release/deno-aarch64-pc-windows-msvc.zip
             target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-aarch64-pc-windows-msvc.sha256sum
             target/release/denort-aarch64-pc-windows-msvc.zip
             target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
+            target/release/libdenort-aarch64-pc-windows-msvc.zip
+            target/release/libdenort-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.sha256sum
             target/release/denort-x86_64-unknown-linux-gnu.zip
             target/release/denort-x86_64-unknown-linux-gnu.zip.sha256sum
+            target/release/libdenort-x86_64-unknown-linux-gnu.zip
+            target/release/libdenort-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-x86_64-apple-darwin.zip
             target/release/deno-x86_64-apple-darwin.zip.sha256sum
             target/release/deno-x86_64-apple-darwin.sha256sum
             target/release/denort-x86_64-apple-darwin.zip
             target/release/denort-x86_64-apple-darwin.zip.sha256sum
+            target/release/libdenort-x86_64-apple-darwin.zip
+            target/release/libdenort-x86_64-apple-darwin.zip.sha256sum
             target/release/deno-aarch64-unknown-linux-gnu.zip
             target/release/deno-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-aarch64-unknown-linux-gnu.sha256sum
             target/release/denort-aarch64-unknown-linux-gnu.zip
             target/release/denort-aarch64-unknown-linux-gnu.zip.sha256sum
+            target/release/libdenort-aarch64-unknown-linux-gnu.zip
+            target/release/libdenort-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-aarch64-apple-darwin.zip
             target/release/deno-aarch64-apple-darwin.zip.sha256sum
             target/release/deno-aarch64-apple-darwin.sha256sum
             target/release/denort-aarch64-apple-darwin.zip
             target/release/denort-aarch64-apple-darwin.zip.sha256sum
+            target/release/libdenort-aarch64-apple-darwin.zip
+            target/release/libdenort-aarch64-apple-darwin.zip.sha256sum
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
             target/release/deno-*.bsdiff
@@ -3919,6 +4025,10 @@ jobs:
           mkdir -p target/release
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
               -czvf target/release/deno_src.tar.gz -C .. deno
+      - name: Install Deno
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282
+        with:
+          deno-version: v2.x
       - name: Restore cache cargo home
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4085,14 +4195,29 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
+        env:
+          DENO_SNAPSHOT_MINIFY_SOURCES: '1'
         run: |-
+          if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+            git submodule update --init tools/lzld
+            make -C tools/lzld
+            sed -i '' "s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #" .cargo/config.toml
+            grep -n fuse-ld .cargo/config.toml
+          fi
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          cargo build --release --locked -p denort_desktop
           df -h
       - name: Check release snapshot flags
         run: |-
           if strings target/release/deno | grep -F -- '--no-lazy --no-lazy-eval --no-lazy-streaming'; then
             echo "release deno binary contains eager snapshot flags"
+            exit 1
+          fi
+      - name: 'Check eager bootstrap does not static-import node:'
+        run: |-
+          if grep -rEn '^import .* from "node:' runtime/js/; then
+            echo "eager bootstrap statically imports a node: module — use core.createLazyLoader so it stays out of the startup snapshot"
             exit 1
           fi
       - name: Generate symcache
@@ -4111,9 +4236,12 @@ jobs:
           shasum -a 256 deno > deno-x86_64-unknown-linux-gnu.sha256sum
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
           shasum -a 256 deno-x86_64-unknown-linux-gnu.zip > deno-x86_64-unknown-linux-gnu.zip.sha256sum
-          strip ./denort
+          strip --strip-debug ./denort
           zip -r denort-x86_64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-x86_64-unknown-linux-gnu.zip > denort-x86_64-unknown-linux-gnu.zip.sha256sum
+          strip ./libdenort.so
+          zip -r libdenort-x86_64-unknown-linux-gnu.zip libdenort.so
+          shasum -a 256 libdenort-x86_64-unknown-linux-gnu.zip > libdenort-x86_64-unknown-linux-gnu.zip.sha256sum
           ./deno types > lib.deno.d.ts
       - name: Build bsdiff helper
         if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -4202,31 +4330,43 @@ jobs:
             target/release/deno-x86_64-pc-windows-msvc.sha256sum
             target/release/denort-x86_64-pc-windows-msvc.zip
             target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
+            target/release/libdenort-x86_64-pc-windows-msvc.zip
+            target/release/libdenort-x86_64-pc-windows-msvc.zip.sha256sum
             target/release/deno-aarch64-pc-windows-msvc.zip
             target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-aarch64-pc-windows-msvc.sha256sum
             target/release/denort-aarch64-pc-windows-msvc.zip
             target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
+            target/release/libdenort-aarch64-pc-windows-msvc.zip
+            target/release/libdenort-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.sha256sum
             target/release/denort-x86_64-unknown-linux-gnu.zip
             target/release/denort-x86_64-unknown-linux-gnu.zip.sha256sum
+            target/release/libdenort-x86_64-unknown-linux-gnu.zip
+            target/release/libdenort-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-x86_64-apple-darwin.zip
             target/release/deno-x86_64-apple-darwin.zip.sha256sum
             target/release/deno-x86_64-apple-darwin.sha256sum
             target/release/denort-x86_64-apple-darwin.zip
             target/release/denort-x86_64-apple-darwin.zip.sha256sum
+            target/release/libdenort-x86_64-apple-darwin.zip
+            target/release/libdenort-x86_64-apple-darwin.zip.sha256sum
             target/release/deno-aarch64-unknown-linux-gnu.zip
             target/release/deno-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-aarch64-unknown-linux-gnu.sha256sum
             target/release/denort-aarch64-unknown-linux-gnu.zip
             target/release/denort-aarch64-unknown-linux-gnu.zip.sha256sum
+            target/release/libdenort-aarch64-unknown-linux-gnu.zip
+            target/release/libdenort-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-aarch64-apple-darwin.zip
             target/release/deno-aarch64-apple-darwin.zip.sha256sum
             target/release/deno-aarch64-apple-darwin.sha256sum
             target/release/denort-aarch64-apple-darwin.zip
             target/release/denort-aarch64-apple-darwin.zip.sha256sum
+            target/release/libdenort-aarch64-apple-darwin.zip
+            target/release/libdenort-aarch64-apple-darwin.zip.sha256sum
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
             target/release/deno-*.bsdiff
@@ -5807,7 +5947,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_canvas -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_http_h1 -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p denort_desktop -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_canvas -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_cli_parser -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_http_h1 -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -5862,6 +6002,11 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
+      - name: Install Deno
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          deno-version: v2.x
       - name: Restore cache cargo home
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
@@ -6034,15 +6179,31 @@ jobs:
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        env:
+          DENO_SNAPSHOT_MINIFY_SOURCES: '1'
         run: |-
+          if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+            git submodule update --init tools/lzld
+            make -C tools/lzld
+            sed -i '' "s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #" .cargo/config.toml
+            grep -n fuse-ld .cargo/config.toml
+          fi
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          cargo build --release --locked -p denort_desktop
           df -h
       - name: Check release snapshot flags
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           if strings target/release/deno | grep -F -- '--no-lazy --no-lazy-eval --no-lazy-streaming'; then
             echo "release deno binary contains eager snapshot flags"
+            exit 1
+          fi
+      - name: 'Check eager bootstrap does not static-import node:'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: |-
+          if grep -rEn '^import .* from "node:' runtime/js/; then
+            echo "eager bootstrap statically imports a node: module — use core.createLazyLoader so it stays out of the startup snapshot"
             exit 1
           fi
       - name: Generate symcache
@@ -6062,9 +6223,12 @@ jobs:
           shasum -a 256 deno > deno-aarch64-unknown-linux-gnu.sha256sum
           zip -r deno-aarch64-unknown-linux-gnu.zip deno
           shasum -a 256 deno-aarch64-unknown-linux-gnu.zip > deno-aarch64-unknown-linux-gnu.zip.sha256sum
-          strip ./denort
+          strip --strip-debug ./denort
           zip -r denort-aarch64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-aarch64-unknown-linux-gnu.zip > denort-aarch64-unknown-linux-gnu.zip.sha256sum
+          strip ./libdenort.so
+          zip -r libdenort-aarch64-unknown-linux-gnu.zip libdenort.so
+          shasum -a 256 libdenort-aarch64-unknown-linux-gnu.zip > libdenort-aarch64-unknown-linux-gnu.zip.sha256sum
           ./deno types > lib.deno.d.ts
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -6158,31 +6322,43 @@ jobs:
             target/release/deno-x86_64-pc-windows-msvc.sha256sum
             target/release/denort-x86_64-pc-windows-msvc.zip
             target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
+            target/release/libdenort-x86_64-pc-windows-msvc.zip
+            target/release/libdenort-x86_64-pc-windows-msvc.zip.sha256sum
             target/release/deno-aarch64-pc-windows-msvc.zip
             target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-aarch64-pc-windows-msvc.sha256sum
             target/release/denort-aarch64-pc-windows-msvc.zip
             target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
+            target/release/libdenort-aarch64-pc-windows-msvc.zip
+            target/release/libdenort-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.sha256sum
             target/release/denort-x86_64-unknown-linux-gnu.zip
             target/release/denort-x86_64-unknown-linux-gnu.zip.sha256sum
+            target/release/libdenort-x86_64-unknown-linux-gnu.zip
+            target/release/libdenort-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-x86_64-apple-darwin.zip
             target/release/deno-x86_64-apple-darwin.zip.sha256sum
             target/release/deno-x86_64-apple-darwin.sha256sum
             target/release/denort-x86_64-apple-darwin.zip
             target/release/denort-x86_64-apple-darwin.zip.sha256sum
+            target/release/libdenort-x86_64-apple-darwin.zip
+            target/release/libdenort-x86_64-apple-darwin.zip.sha256sum
             target/release/deno-aarch64-unknown-linux-gnu.zip
             target/release/deno-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-aarch64-unknown-linux-gnu.sha256sum
             target/release/denort-aarch64-unknown-linux-gnu.zip
             target/release/denort-aarch64-unknown-linux-gnu.zip.sha256sum
+            target/release/libdenort-aarch64-unknown-linux-gnu.zip
+            target/release/libdenort-aarch64-unknown-linux-gnu.zip.sha256sum
             target/release/deno-aarch64-apple-darwin.zip
             target/release/deno-aarch64-apple-darwin.zip.sha256sum
             target/release/deno-aarch64-apple-darwin.sha256sum
             target/release/denort-aarch64-apple-darwin.zip
             target/release/denort-aarch64-apple-darwin.zip.sha256sum
+            target/release/libdenort-aarch64-apple-darwin.zip
+            target/release/libdenort-aarch64-apple-darwin.zip.sha256sum
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
             target/release/deno-*.bsdiff

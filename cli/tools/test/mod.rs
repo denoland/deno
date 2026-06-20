@@ -69,6 +69,7 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TestFlags;
 use crate::args::TestReporterConfig;
+use crate::args::TypeCheckModeExt;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
@@ -107,6 +108,7 @@ use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
 
+use crate::tools::coverage::CoverageThresholdError;
 use crate::tools::coverage::cover_files;
 use crate::tools::coverage::reporter;
 use crate::tools::test::channel::ChannelClosedError;
@@ -194,6 +196,14 @@ impl TestFilter {
       regex,
       ..Default::default()
     }
+  }
+
+  /// Returns `true` when this filter may exclude some tests from running.
+  pub fn is_active(&self) -> bool {
+    self.substring.is_some()
+      || self.regex.is_some()
+      || self.include.is_some()
+      || !self.exclude.is_empty()
   }
 }
 
@@ -300,6 +310,16 @@ pub struct TestDescription {
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
   pub timeout_ms: Option<u32>,
+  /// Per-test `retry` option: number of times to re-run the test if it fails
+  /// (the test passes if any attempt passes). `None` means the test did not set
+  /// the option and inherits the `--retry` flag default; `Some(0)` is an
+  /// explicit opt-out that takes precedence over the flag.
+  pub retry: Option<u32>,
+  /// Per-test `repeats` option: number of additional times to repeat the test
+  /// (every repetition must pass). `None` means the test did not set the option
+  /// and inherits the `--repeats` flag default; `Some(0)` is an explicit
+  /// opt-out that takes precedence over the flag.
+  pub repeats: Option<u32>,
 }
 
 /// May represent a failure of a test or test step.
@@ -539,10 +559,21 @@ pub enum TestEvent {
   Output(Vec<u8>),
   Slow(usize, Duration),
   Result(usize, TestResult, Duration),
+  /// A test attempt failed but will be retried (`retry` option). Carries the
+  /// test id, the zero-based attempt index that failed, and the failure. This
+  /// is informational only and does not count toward the test's final result.
+  Retry(usize, u32, TestFailure),
+  /// A test is starting a fresh repetition (`repeats` option). Carries the test
+  /// id and the one-based repetition index. Lets the reporter drop the previous
+  /// repetition's step results so they aren't tallied more than once.
+  Repeat(usize, u32),
   UncaughtError(String, Box<JsError>),
   StepRegister(TestStepDescription),
   StepWait(usize),
   StepResult(usize, TestStepResult, Duration),
+  /// Reports how many snapshots were updated and which were removed for a
+  /// test module after it finished running with `--update-snapshots`.
+  SnapshotSummary(TestSnapshotSummary),
   /// Indicates that this worker has completed running tests.
   Completed,
   /// Indicates that the user has cancelled the test run with Ctrl+C and
@@ -572,6 +603,8 @@ impl TestEvent {
       self,
       TestEvent::Plan(..)
         | TestEvent::Result(..)
+        | TestEvent::Retry(..)
+        | TestEvent::Repeat(..)
         | TestEvent::StepWait(..)
         | TestEvent::StepResult(..)
         | TestEvent::UncaughtError(..)
@@ -588,14 +621,26 @@ pub struct TestSummary {
   pub total: usize,
   pub passed: usize,
   pub failed: usize,
+  /// Number of tests that passed but only after one or more retries.
+  pub flaky: usize,
   pub ignored: usize,
   pub passed_steps: usize,
   pub failed_steps: usize,
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
+  pub snapshots_updated: usize,
+  pub snapshots_removed: Vec<String>,
   pub failures: Vec<(TestFailureDescription, TestFailure)>,
   pub uncaught_errors: Vec<(String, Box<JsError>)>,
+}
+
+/// Snapshot statistics for a single test module run with
+/// `--update-snapshots`, sent after all of its tests have finished.
+#[derive(Debug, Clone)]
+pub struct TestSnapshotSummary {
+  pub updated: usize,
+  pub removed: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -609,15 +654,25 @@ struct TestSpecifiersOptions {
   reporter: TestReporterConfig,
   junit_path: Option<String>,
   hide_stacktraces: bool,
+  /// `(index, count)` with a 1-based index, from `--shard`. Selects a subset
+  /// of test files so a run can be split across machines.
+  shard: Option<(usize, usize)>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct TestSpecifierOptions {
   pub shuffle: Option<u64>,
   pub filter: TestFilter,
+  /// Default number of retries applied to tests that don't set their own
+  /// `retry` option (from the `--retry` flag).
+  pub retry: u32,
+  /// Default number of repeats applied to tests that don't set their own
+  /// `repeats` option (from the `--repeats` flag).
+  pub repeats: u32,
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
+  pub update_snapshots: bool,
 }
 
 impl TestSummary {
@@ -626,12 +681,15 @@ impl TestSummary {
       total: 0,
       passed: 0,
       failed: 0,
+      flaky: 0,
       ignored: 0,
       passed_steps: 0,
       failed_steps: 0,
       ignored_steps: 0,
       filtered_out: 0,
       measured: 0,
+      snapshots_updated: 0,
+      snapshots_removed: Vec::new(),
       failures: Vec::new(),
       uncaught_errors: Vec::new(),
     }
@@ -741,6 +799,14 @@ async fn configure_main_worker(
     .op_state()
     .borrow_mut()
     .put(ops::testing::TestIsolateHandle(isolate_handle));
+  if options.update_snapshots {
+    // Authorizes `op_test_snapshot_write` for this isolate. Only ever set
+    // from the `--update-snapshots` CLI flag, never from JS.
+    worker
+      .op_state()
+      .borrow_mut()
+      .put(ops::testing::SnapshotUpdateMode);
+  }
   worker
     .execute_script_static(
       located_script_name!(),
@@ -1174,6 +1240,31 @@ pub async fn run_tests_for_worker(
   }
   .await;
 
+  // Let the snapshot machinery write pending `t.assertSnapshot()` updates and
+  // report a summary (no-op unless running with `--update-snapshots`). Stale
+  // snapshots may only be removed when every test in the module had a chance
+  // to run its assertions: a name filter or an aborted (fail-fast) run must
+  // not cause snapshots of tests that didn't run to be treated as stale.
+  let result = if result.is_ok()
+    && !state_rc.borrow().has::<ops::testing::IsolateExitInfo>()
+  {
+    let allow_stale_removal =
+      !options.filter.is_active() && !fail_fast_tracker.should_stop();
+    worker
+      .js_runtime
+      .execute_script(
+        located_script_name!(),
+        format!(
+          "Deno[Deno.internal].flushTestSnapshots?.({})",
+          allow_stale_removal
+        ),
+      )
+      .map(|_| ())
+      .map_err(|e| RunTestsForWorkerErr::Core(CoreErrorKind::Js(e).into_box()))
+  } else {
+    result
+  };
+
   // This worker can execute another discovery/run cycle (for example in REPL),
   // so reset to a fresh container after the current run ends.
   *state_rc.borrow_mut().borrow_mut::<TestContainer>() =
@@ -1237,6 +1328,101 @@ where
   Ok(())
 }
 
+/// The outcome of a single invocation of a test function (one attempt).
+enum AttemptInvocation {
+  /// The test function ran to completion and produced this result.
+  Completed(TestResult),
+  /// The test function threw an uncaught error that escaped the test wrapper.
+  /// The error has already been reported via the event tracker; the isolate is
+  /// considered poisoned and the test run should be abandoned.
+  Uncaught,
+}
+
+/// Runs the wrapped test function once, applying the timeout/watchdog handling.
+/// This is the unit that `retry`/`repeats` re-invoke.
+#[allow(clippy::too_many_arguments, reason = "internal helper")]
+async fn invoke_test_function(
+  worker: &mut MainWorker,
+  function: &v8::Global<v8::Function>,
+  timeout_ms: Option<u32>,
+  watchdog: &TestWatchdog,
+  event_tracker: &TestEventTracker,
+  test_id: usize,
+  specifier: &ModuleSpecifier,
+) -> Result<AttemptInvocation, RunTestsForWorkerErr> {
+  if let Some(ms) = timeout_ms {
+    watchdog.arm(ms);
+  }
+
+  let call = worker.js_runtime.call(function);
+
+  let slow_test_warning =
+    spawn(slow_test_watchdog(event_tracker.clone(), test_id));
+
+  let test_fut = worker
+    .js_runtime
+    .with_event_loop_promise(call, PollEventLoopOptions::default());
+
+  let raced = match timeout_ms {
+    Some(ms) => {
+      match tokio::time::timeout(Duration::from_millis(ms as u64), test_fut)
+        .await
+      {
+        Ok(r) => Ok(r),
+        Err(_elapsed) => Err(()),
+      }
+    }
+    None => Ok(test_fut.await),
+  };
+  slow_test_warning.abort();
+
+  // `disarm()` must run before any further JS executes on the isolate —
+  // a stale `Fired` flag would kill the next test. The
+  // `cancel_terminate_execution` below clears it; do not refactor this
+  // pair apart.
+  let watchdog_fired = timeout_ms.is_some() && watchdog.disarm();
+  if watchdog_fired {
+    worker.js_runtime.v8_isolate().cancel_terminate_execution();
+  }
+
+  // Tokio fires for async hangs; the watchdog fires for sync hot loops.
+  // If the test still produced a valid result, a watchdog fire must have
+  // raced after V8 was already done — preserve the result.
+  let timed_out = match &raced {
+    Err(_) => true,
+    Ok(Ok(_)) => false,
+    Ok(Err(_)) => watchdog_fired,
+  };
+
+  if timed_out {
+    return Ok(AttemptInvocation::Completed(TestResult::Failed(
+      TestFailure::TimedOut(timeout_ms.unwrap_or(0)),
+    )));
+  }
+
+  match raced.unwrap() {
+    Ok(r) => {
+      deno_core::scope!(scope, &mut worker.js_runtime);
+      let result = v8::Local::new(scope, r);
+      Ok(AttemptInvocation::Completed(
+        <TestResult as deno_core::FromV8>::from_v8(scope, result)?,
+      ))
+    }
+    Err(error) => match error.into_kind() {
+      CoreErrorKind::Js(js_error) => {
+        event_tracker.uncaught_error(specifier.to_string(), js_error)?;
+        Ok(AttemptInvocation::Uncaught)
+      }
+      CoreErrorKind::PendingPromiseResolution => {
+        Ok(AttemptInvocation::Completed(TestResult::Failed(
+          TestFailure::PendingPromiseResolution,
+        )))
+      }
+      err => Err(err.into_box().into()),
+    },
+  }
+}
+
 #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 async fn run_tests_for_worker_inner(
   worker: &mut MainWorker,
@@ -1298,165 +1484,174 @@ async fn run_tests_for_worker_inner(
     }
     event_tracker.wait(desc)?;
 
-    // Poll event loop once, to allow all ops that are already resolved, but haven't
-    // responded to settle.
-    // TODO(mmastrac): we should provide an API to poll the event loop until no further
-    // progress is made.
-    poll_event_loop(worker).await?;
-
-    // We always capture stats, regardless of sanitization state
-    let before_test_stats = sanitizer_helper.capture_stats();
-
+    let timeout_ms = desc.timeout_ms.filter(|&t| t > 0);
+    // A test's own `retry`/`repeats` option takes precedence (including an
+    // explicit `0` to opt out); otherwise fall back to the `--retry`/`--repeats`
+    // flag defaults.
+    let retry = desc.retry.unwrap_or(options.retry);
+    let repeats = desc.repeats.unwrap_or(options.repeats);
     let earlier = Instant::now();
 
-    // Execute beforeEach hooks (FIFO order)
-    let mut before_each_hook_errored = false;
+    // The terminal result of the test once all repetitions/attempts settle.
+    // `None` means an early exit (uncaught error) already reported a result.
+    let mut final_result: Option<TestResult> = None;
 
-    call_hooks(worker, test_hooks.before_each.iter(), |core_error| {
-      match core_error {
-        CoreErrorKind::Js(err) => {
-          before_each_hook_errored = true;
-          let test_result = TestResult::Failed(TestFailure::JsError(err));
-          fail_fast_tracker.add_failure();
-          event_tracker.result(desc, test_result, earlier.elapsed())?;
-          Ok(())
+    // `repeats` requires every repetition to pass; `retry` allows each
+    // repetition up to `1 + retry` attempts and passes on the first success.
+    'repetitions: for repetition in 0..=repeats {
+      // Signal the start of a fresh repetition so the reporter discards the
+      // previous repetition's step results instead of tallying them again.
+      if repetition > 0 {
+        event_tracker.repeat(desc, repetition)?;
+      }
+      let mut repetition_result = TestResult::Ok;
+
+      'attempts: for attempt in 0..=retry {
+        // Poll event loop once, to allow all ops that are already resolved, but
+        // haven't responded, to settle.
+        // TODO(mmastrac): we should provide an API to poll the event loop until
+        // no further progress is made.
+        poll_event_loop(worker).await?;
+
+        // We always capture stats, regardless of sanitization state. A fresh
+        // baseline per attempt keeps each attempt's leak check independent of
+        // resources leaked by a previous, retried attempt.
+        let before_test_stats = sanitizer_helper.capture_stats();
+
+        // Execute beforeEach hooks (FIFO order). A hook error is terminal and
+        // is not retried.
+        let mut before_each_failure: Option<Box<JsError>> = None;
+        call_hooks(worker, test_hooks.before_each.iter(), |core_error| {
+          match core_error {
+            CoreErrorKind::Js(err) => {
+              if before_each_failure.is_none() {
+                before_each_failure = Some(err);
+              }
+              Ok(())
+            }
+            err => Err(err.into_box().into()),
+          }
+        })
+        .await?;
+
+        if let Some(err) = before_each_failure {
+          // Run afterEach for best-effort cleanup, ignoring its errors, then
+          // fail the test without retrying.
+          call_hooks(
+            worker,
+            test_hooks.after_each.iter().rev(),
+            |core_error| match core_error {
+              CoreErrorKind::Js(_) => Ok(()),
+              err => Err(err.into_box().into()),
+            },
+          )
+          .await?;
+          final_result = Some(TestResult::Failed(TestFailure::JsError(err)));
+          break 'repetitions;
         }
-        err => Err(err.into_box().into()),
-      }
-    })
-    .await?;
 
-    let result = if !before_each_hook_errored {
-      let timeout_ms = desc.timeout_ms.filter(|&t| t > 0);
+        let mut attempt_result = match invoke_test_function(
+          worker,
+          &function,
+          timeout_ms,
+          &watchdog,
+          event_tracker,
+          desc.id,
+          specifier,
+        )
+        .await?
+        {
+          AttemptInvocation::Completed(result) => result,
+          AttemptInvocation::Uncaught => {
+            fail_fast_tracker.add_failure();
+            event_tracker.cancelled(desc)?;
+            had_uncaught_error = true;
+            final_result = None;
+            break 'repetitions;
+          }
+        };
 
-      if let Some(ms) = timeout_ms {
-        watchdog.arm(ms);
-      }
+        // Execute afterEach hooks (LIFO order). A hook error is terminal and is
+        // not retried.
+        let mut after_each_failure: Option<Box<JsError>> = None;
+        call_hooks(worker, test_hooks.after_each.iter().rev(), |core_error| {
+          match core_error {
+            CoreErrorKind::Js(err) => {
+              if after_each_failure.is_none() {
+                after_each_failure = Some(err);
+              }
+              Ok(())
+            }
+            err => Err(err.into_box().into()),
+          }
+        })
+        .await?;
 
-      let call = worker.js_runtime.call(&function);
+        // Close idle Node.js HTTP Agent connections to prevent cross-test
+        // pollution and false positive resource leak detection from pooled
+        // keepAlive connections. Defined in ext/node/polyfills/01_require.js.
+        _ = worker.js_runtime.execute_script(
+          located_script_name!(),
+          "Deno[Deno.internal].closeIdleConnections?.()",
+        );
 
-      let slow_test_warning =
-        spawn(slow_test_watchdog(event_tracker.clone(), desc.id));
-
-      let test_fut = worker
-        .js_runtime
-        .with_event_loop_promise(call, PollEventLoopOptions::default());
-
-      let raced = match timeout_ms {
-        Some(ms) => {
-          match tokio::time::timeout(Duration::from_millis(ms as u64), test_fut)
-            .await
-          {
-            Ok(r) => Ok(r),
-            Err(_elapsed) => Err(()),
+        // Await activity stabilization. A leak counts as a failure of the
+        // attempt, and is therefore retryable like any other failure. Only
+        // check when the test function itself passed and afterEach didn't error
+        // (a real failure takes precedence over a leak report).
+        if matches!(attempt_result, TestResult::Ok)
+          && after_each_failure.is_none()
+          && let Some(diff) = sanitizers::wait_for_activity_to_stabilize(
+            worker,
+            &sanitizer_helper,
+            before_test_stats,
+            desc.sanitize_ops,
+            desc.sanitize_resources,
+          )
+          .await?
+        {
+          let (formatted, trailer_notes) = format_sanitizer_diff(diff);
+          if !formatted.is_empty() {
+            attempt_result =
+              TestResult::Failed(TestFailure::Leaked(formatted, trailer_notes));
           }
         }
-        None => Ok(test_fut.await),
-      };
-      slow_test_warning.abort();
 
-      // `disarm()` must run before any further JS executes on the isolate —
-      // a stale `Fired` flag would kill the next test. The
-      // `cancel_terminate_execution` below clears it; do not refactor this
-      // pair apart.
-      let watchdog_fired = timeout_ms.is_some() && watchdog.disarm();
-      if watchdog_fired {
-        worker.js_runtime.v8_isolate().cancel_terminate_execution();
-      }
+        // An afterEach error is terminal, but only wins when the test itself
+        // passed (a test failure takes precedence, matching the old behavior).
+        if matches!(attempt_result, TestResult::Ok)
+          && let Some(err) = after_each_failure
+        {
+          final_result = Some(TestResult::Failed(TestFailure::JsError(err)));
+          break 'repetitions;
+        }
 
-      // Tokio fires for async hangs; the watchdog fires for sync hot loops.
-      // If the test still produced a valid result, a watchdog fire must have
-      // raced after V8 was already done — preserve the result.
-      let timed_out = match &raced {
-        Err(_) => true,
-        Ok(Ok(_)) => false,
-        Ok(Err(_)) => watchdog_fired,
-      };
-
-      if timed_out {
-        TestResult::Failed(TestFailure::TimedOut(timeout_ms.unwrap_or(0)))
-      } else {
-        match raced.unwrap() {
-          Ok(r) => {
-            deno_core::scope!(scope, &mut worker.js_runtime);
-            let result = v8::Local::new(scope, r);
-            <TestResult as deno_core::FromV8>::from_v8(scope, result)?
+        match attempt_result {
+          TestResult::Failed(failure) if attempt < retry => {
+            // Attempts remain: surface the retry and try this repetition again.
+            event_tracker.retry(desc, attempt, failure)?;
+            continue 'attempts;
           }
-          Err(error) => match error.into_kind() {
-            CoreErrorKind::Js(js_error) => {
-              event_tracker.uncaught_error(specifier.to_string(), js_error)?;
-              fail_fast_tracker.add_failure();
-              event_tracker.cancelled(desc)?;
-              had_uncaught_error = true;
-              continue;
-            }
-            CoreErrorKind::PendingPromiseResolution => {
-              TestResult::Failed(TestFailure::PendingPromiseResolution)
-            }
-            err => return Err(err.into_box().into()),
-          },
+          other => {
+            repetition_result = other;
+            break 'attempts;
+          }
         }
       }
-    } else {
-      TestResult::Ignored
-    };
 
-    if matches!(result, TestResult::Failed(_)) {
-      fail_fast_tracker.add_failure();
-      event_tracker.result(desc, result.clone(), earlier.elapsed())?;
-    }
-
-    // Execute afterEach hooks (LIFO order)
-    call_hooks(worker, test_hooks.after_each.iter().rev(), |core_error| {
-      match core_error {
-        CoreErrorKind::Js(err) => {
-          let test_result = TestResult::Failed(TestFailure::JsError(err));
-          fail_fast_tracker.add_failure();
-          event_tracker.result(desc, test_result, earlier.elapsed())?;
-          Ok(())
-        }
-        err => Err(err.into_box().into()),
+      if matches!(repetition_result, TestResult::Failed(_)) {
+        // This repetition failed definitively; the whole test fails.
+        final_result = Some(repetition_result);
+        break 'repetitions;
       }
-    })
-    .await?;
-
-    if matches!(result, TestResult::Failed(_)) {
-      continue;
+      // This repetition passed; carry on to the next one (if any).
+      final_result = Some(repetition_result);
     }
 
-    // Close idle Node.js HTTP Agent connections to prevent cross-test
-    // pollution and false positive resource leak detection from pooled
-    // keepAlive connections. Defined in ext/node/polyfills/01_require.js.
-    _ = worker.js_runtime.execute_script(
-      located_script_name!(),
-      "Deno[Deno.internal].closeIdleConnections?.()",
-    );
-
-    // Await activity stabilization
-    if let Some(diff) = sanitizers::wait_for_activity_to_stabilize(
-      worker,
-      &sanitizer_helper,
-      before_test_stats,
-      desc.sanitize_ops,
-      desc.sanitize_resources,
-    )
-    .await?
-    {
-      let (formatted, trailer_notes) = format_sanitizer_diff(diff);
-      if !formatted.is_empty() {
-        let failure = TestFailure::Leaked(formatted, trailer_notes);
+    if let Some(result) = final_result {
+      if matches!(result, TestResult::Failed(_)) {
         fail_fast_tracker.add_failure();
-        event_tracker.result(
-          desc,
-          TestResult::Failed(failure),
-          earlier.elapsed(),
-        )?;
-        continue;
       }
-    }
-
-    // TODO(bartlomieju): using `before_each_hook_errored` is fishy
-    if !before_each_hook_errored {
       event_tracker.result(desc, result, earlier.elapsed())?;
     }
   }
@@ -1481,6 +1676,24 @@ async fn run_tests_for_worker_inner(
 static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 
 /// Test a collection of specifiers with test modes concurrently.
+/// Selects the test files belonging to shard `index` of `count` (1-based).
+/// The files are sorted for a stable order, then split into `count`
+/// consecutive, balanced groups. Assumes `1 <= index <= count` (validated at
+/// flag-parse time).
+fn shard_specifiers(
+  mut specifiers: Vec<ModuleSpecifier>,
+  index: usize,
+  count: usize,
+) -> Vec<ModuleSpecifier> {
+  specifiers.sort();
+  let total = specifiers.len();
+  // Balanced split: shard i covers [total*(i-1)/count, total*i/count). This
+  // partitions every file into exactly one shard with sizes differing by <= 1.
+  let start = total * (index - 1) / count;
+  let end = total * index / count;
+  specifiers.into_iter().take(end).skip(start).collect()
+}
+
 async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   cli_options: &Arc<CliOptions>,
@@ -1490,6 +1703,14 @@ async fn test_specifiers(
   require_modules: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
+  // Select this shard's files first (on a stable sorted order) so the split is
+  // deterministic across machines regardless of any later shuffling.
+  let specifiers = if let Some((index, count)) = options.shard {
+    shard_specifiers(specifiers, index, count)
+  } else {
+    specifiers
+  };
+
   let specifiers = if let Some(seed) = options.specifier.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers = specifiers;
@@ -1620,6 +1841,16 @@ pub async fn report_tests(
           reporter.report_result(tests.get(&id).unwrap(), &result, elapsed);
         }
       }
+      TestEvent::Retry(id, attempt, failure) => {
+        // Informational only: a retried attempt does not produce a terminal
+        // result and is intentionally not gated by `tests_with_result`.
+        reporter.report_retry(tests.get(&id).unwrap(), attempt, &failure);
+      }
+      TestEvent::Repeat(id, repetition) => {
+        // Informational only: a repetition boundary lets the reporter drop the
+        // previous repetition's step state before the next one runs.
+        reporter.report_repeat(tests.get(&id).unwrap(), repetition);
+      }
       TestEvent::UncaughtError(origin, error) => {
         failed = true;
         reporter.report_uncaught_error(&origin, error);
@@ -1643,6 +1874,9 @@ pub async fn report_tests(
             &test_steps,
           );
         }
+      }
+      TestEvent::SnapshotSummary(summary) => {
+        reporter.report_snapshot_summary(&summary);
       }
       TestEvent::ForceEndReport => {
         break;
@@ -1986,12 +2220,16 @@ pub async fn run_tests(
       reporter: workspace_test_options.reporter,
       junit_path: workspace_test_options.junit_path,
       hide_stacktraces: workspace_test_options.hide_stacktraces,
+      shard: workspace_test_options.shard,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&workspace_test_options.filter),
         shuffle: workspace_test_options.shuffle,
+        retry: workspace_test_options.retry,
+        repeats: workspace_test_options.repeats,
         trace_leaks: workspace_test_options.trace_leaks,
         sanitize_ops: workspace_test_options.sanitize_ops,
         sanitize_resources: workspace_test_options.sanitize_resources,
+        update_snapshots: workspace_test_options.update_snapshots,
       },
     },
   )
@@ -2002,6 +2240,10 @@ pub async fn run_tests(
   }
 
   if let Some(ref coverage) = test_flags.coverage_dir {
+    // A malformed `coverage` config is a user error and must fail the command.
+    // The best-effort error handling below only logs report-generation errors,
+    // so surface an invalid config as a hard error before generating reports.
+    cli_options.resolve_coverage_thresholds()?;
     let reporters: [&dyn reporter::CoverageReporter; 3] = [
       &reporter::SummaryCoverageReporter::new(),
       &reporter::LcovCoverageReporter::new(),
@@ -2019,8 +2261,14 @@ pub async fn run_tests(
           .to_string_lossy()
           .into_owned(),
       ),
+      test_flags.coverage_threshold.map(|t| t as f64),
       &reporters,
     ) {
+      // An unmet coverage threshold is a deliberate failure and must fail the
+      // command; other (best-effort) report errors are only logged.
+      if err.downcast_ref::<CoverageThresholdError>().is_some() {
+        return Err(err);
+      }
       log::info!("Error generating coverage report: {}", err);
     }
   }
@@ -2236,12 +2484,16 @@ pub async fn run_tests_with_watch(
             reporter: workspace_test_options.reporter,
             junit_path: workspace_test_options.junit_path,
             hide_stacktraces: workspace_test_options.hide_stacktraces,
+            shard: workspace_test_options.shard,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&workspace_test_options.filter),
               shuffle: workspace_test_options.shuffle,
+              retry: workspace_test_options.retry,
+              repeats: workspace_test_options.repeats,
               trace_leaks: workspace_test_options.trace_leaks,
               sanitize_ops: workspace_test_options.sanitize_ops,
               sanitize_resources: workspace_test_options.sanitize_resources,
+              update_snapshots: workspace_test_options.update_snapshots,
             },
           },
         )
@@ -2367,6 +2619,23 @@ impl TestEventTracker {
     duration: Duration,
   ) -> Result<(), ChannelClosedError> {
     self.send_event(TestEvent::Result(desc.id, test_result, duration))
+  }
+
+  fn retry(
+    &self,
+    desc: &TestDescription,
+    attempt: u32,
+    failure: TestFailure,
+  ) -> Result<(), ChannelClosedError> {
+    self.send_event(TestEvent::Retry(desc.id, attempt, failure))
+  }
+
+  fn repeat(
+    &self,
+    desc: &TestDescription,
+    repetition: u32,
+  ) -> Result<(), ChannelClosedError> {
+    self.send_event(TestEvent::Repeat(desc.id, repetition))
   }
 
   pub(crate) fn force_end_report(&self) -> Result<(), ChannelClosedError> {

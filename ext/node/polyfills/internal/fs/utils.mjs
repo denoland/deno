@@ -1077,8 +1077,11 @@ export const validateRmOptionsSync = hideStackFrames(
   },
 );
 
-let recursiveRmdirWarned = lazyProcess().default.noDeprecation;
+// Lazy: reading `lazyProcess().default` at eval time TDZs while node:process
+// is itself bootstrapping (cold node-defer path). Resolve on first warning.
+let recursiveRmdirWarned;
 export function emitRecursiveRmdirWarning() {
+  recursiveRmdirWarned ??= lazyProcess().default.noDeprecation;
   if (!recursiveRmdirWarned) {
     lazyProcess().default.emitWarning(
       "In future versions of Node.js, fs.rmdir(path, { recursive: true }) " +

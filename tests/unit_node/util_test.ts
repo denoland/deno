@@ -10,6 +10,7 @@ import { stripAnsiCode } from "@std/fmt/colors";
 import * as util from "node:util";
 import utilDefault from "node:util";
 import { Buffer } from "node:buffer";
+import process from "node:process";
 
 Deno.test({
   name: "[util] format",
@@ -262,13 +263,86 @@ Deno.test("[util] aborted() drops pending promise when resource is GCed", async 
 });
 
 Deno.test("[util] styleText()", () => {
-  const redText = util.styleText("red", "error");
+  const redText = util.styleText("red", "error", { validateStream: false });
   assertEquals(redText, "\x1B[31merror\x1B[39m");
 });
 
 Deno.test("[util] styleText() with array of formats", () => {
-  const colored = util.styleText(["red", "green"], "error");
+  const colored = util.styleText(["red", "green"], "error", {
+    validateStream: false,
+  });
   assertEquals(colored, "\x1b[31m\x1b[32merror\x1b[39m\x1b[39m");
+});
+
+Deno.test("[util] styleText() respects stream.isTTY", () => {
+  const streamTTY = {
+    write() {},
+    isTTY: true,
+  } as unknown as NodeJS.WritableStream;
+  const streamNoTTY = {
+    write() {},
+    isTTY: false,
+  } as unknown as NodeJS.WritableStream;
+
+  const redText = util.styleText("red", "TTY", { stream: streamTTY });
+  assertEquals(redText, "\x1b[31mTTY\x1b[39m");
+
+  const plainText = util.styleText("blue", "No TTY", { stream: streamNoTTY });
+  const greenText = util.styleText("green", "No TTY", {
+    stream: streamNoTTY,
+    validateStream: false,
+  });
+  assertEquals(plainText, "No TTY");
+  assertEquals(greenText, "\x1b[32mNo TTY\x1b[39m");
+});
+
+Deno.test("[util] styleText() falls back to process.stdout when no stream given", () => {
+  const orig = process.env.FORCE_COLOR;
+  try {
+    process.env.FORCE_COLOR = "0";
+    assertEquals(util.styleText("red", "no stream"), "no stream");
+
+    process.env.FORCE_COLOR = "1";
+    assertEquals(
+      util.styleText("red", "no stream"),
+      "\x1b[31mno stream\x1b[39m",
+    );
+  } finally {
+    if (orig === undefined) {
+      delete process.env.FORCE_COLOR;
+    } else {
+      process.env.FORCE_COLOR = orig;
+    }
+  }
+});
+
+Deno.test("[util] styleText() validates stream type before format", () => {
+  // When both the stream and the format are invalid, ERR_INVALID_ARG_TYPE
+  // (bad stream) must be thrown before ERR_INVALID_ARG_VALUE (bad format),
+  // matching Node's argument-validation order.
+  const streamErr = assertThrows(
+    () =>
+      // @ts-expect-error: intentionally invalid format and stream to test validation order
+      util.styleText("not_a_valid_format", "text", { stream: "not-a-stream" }),
+    TypeError,
+  );
+  assertEquals(
+    (streamErr as unknown as { code: string }).code,
+    "ERR_INVALID_ARG_TYPE",
+  );
+
+  // With a structurally-valid stream (has .write), the format check fires next
+  // and ERR_INVALID_ARG_VALUE is thrown.
+  const formatErr = assertThrows(
+    () =>
+      // @ts-expect-error: intentionally invalid format to test validation order
+      util.styleText("not_a_valid_format", "text", { stream: { write() {} } }),
+    TypeError,
+  );
+  assertEquals(
+    (formatErr as unknown as { code: string }).code,
+    "ERR_INVALID_ARG_VALUE",
+  );
 });
 
 Deno.test("[util] stripVTControlCharacters() removes OSC 8 hyperlinks", () => {

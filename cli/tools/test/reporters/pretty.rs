@@ -23,6 +23,12 @@ pub struct PrettyTestReporter {
     usize,
     IndexMap<usize, (TestStepDescription, TestStepResult, Duration)>,
   >,
+  /// Ids of tests that have been retried at least once, used to count flaky
+  /// tests (those that ultimately passed after a retry).
+  retried_tests: HashSet<usize>,
+  /// Step results buffered until the owning test produces a terminal result,
+  /// so a retried attempt's steps can be discarded rather than counted.
+  pending_step_tally: common::PendingStepTally,
   summary: TestSummary,
   writer: Box<dyn std::io::Write>,
   failure_format_options: TestFailureFormatOptions,
@@ -50,10 +56,23 @@ impl PrettyTestReporter {
       started_tests: false,
       ended_tests: false,
       child_results_buffer: Default::default(),
+      retried_tests: Default::default(),
+      pending_step_tally: Default::default(),
       summary: TestSummary::new(),
       writer: Box::new(std::io::stdout()),
       failure_format_options,
     }
+  }
+
+  /// Drops the step state buffered for a test that is about to re-run (a retry
+  /// attempt or a new repetition): the pending tally so the previous run's
+  /// steps aren't counted, and any unflushed step output so it doesn't leak
+  /// into the next run.
+  fn discard_buffered_steps(&mut self, root_id: usize) {
+    common::discard_step_results(&mut self.pending_step_tally, root_id);
+    self
+      .child_results_buffer
+      .retain(|_, steps| !steps.values().any(|(d, _, _)| d.root_id == root_id));
   }
 
   fn force_report_wait(&mut self, description: &TestDescription) {
@@ -260,9 +279,20 @@ impl TestReporter for PrettyTestReporter {
     result: &TestResult,
     elapsed: Duration,
   ) {
+    // Commit step results from the final attempt now that the test's fate is
+    // known (results from any retried attempt were already discarded).
+    common::commit_step_results(
+      &mut self.pending_step_tally,
+      &mut self.summary,
+      description.id,
+    );
+
     match &result {
       TestResult::Ok => {
         self.summary.passed += 1;
+        if self.retried_tests.contains(&description.id) {
+          self.summary.flaky += 1;
+        }
       }
       TestResult::Ignored => {
         self.summary.ignored += 1;
@@ -330,6 +360,42 @@ impl TestReporter for PrettyTestReporter {
     self.scope_test_id = None;
   }
 
+  fn report_retry(
+    &mut self,
+    description: &TestDescription,
+    attempt: u32,
+    failure: &TestFailure,
+  ) {
+    self.retried_tests.insert(description.id);
+    // Drop the failed attempt's step results so they don't count.
+    self.discard_buffered_steps(description.id);
+
+    if self.repl {
+      return;
+    }
+
+    self.write_output_end();
+    if self.in_new_line || self.scope_test_id != Some(description.id) {
+      self.force_report_wait(description);
+    }
+
+    writeln!(
+      &mut self.writer,
+      " {} {}",
+      colors::yellow(format!("retrying (attempt {} failed)", attempt + 1)),
+      colors::gray(format!("({})", failure.overview())),
+    )
+    .ok();
+    self.in_new_line = true;
+    self.scope_test_id = None;
+  }
+
+  fn report_repeat(&mut self, description: &TestDescription, _repetition: u32) {
+    // Drop the previous repetition's step results so each step is counted once,
+    // not once per repetition.
+    self.discard_buffered_steps(description.id);
+  }
+
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>) {
     self.summary.failed += 1;
     self
@@ -367,26 +433,13 @@ impl TestReporter for PrettyTestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    match &result {
-      TestStepResult::Ok => {
-        self.summary.passed_steps += 1;
-      }
-      TestStepResult::Ignored => {
-        self.summary.ignored_steps += 1;
-      }
-      TestStepResult::Failed(failure) => {
-        self.summary.failed_steps += 1;
-        self.summary.failures.push((
-          TestFailureDescription {
-            id: desc.id,
-            name: common::format_test_step_ancestry(desc, tests, test_steps),
-            origin: desc.origin.clone(),
-            location: desc.location.clone(),
-          },
-          failure.clone(),
-        ))
-      }
-    }
+    common::record_step_result(
+      &mut self.pending_step_tally,
+      desc,
+      result,
+      tests,
+      test_steps,
+    );
 
     if self.parallel {
       self.write_output_end();
@@ -420,6 +473,14 @@ impl TestReporter for PrettyTestReporter {
           .insert(desc.id, (desc.clone(), result.clone(), elapsed));
       }
     }
+  }
+
+  fn report_snapshot_summary(&mut self, summary: &TestSnapshotSummary) {
+    self.summary.snapshots_updated += summary.updated;
+    self
+      .summary
+      .snapshots_removed
+      .extend(summary.removed.iter().cloned());
   }
 
   fn report_summary(

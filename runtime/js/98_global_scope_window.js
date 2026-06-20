@@ -20,13 +20,29 @@ const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const globalInterfaces = core.loadExtScript(
   "ext:deno_web/04_global_interfaces.js",
 );
-const webStorage = core.loadExtScript("ext:deno_webstorage/01_webstorage.js");
-const prompt = core.loadExtScript("ext:runtime/41_prompt.js");
 import {
   NavigatorUAData,
   navigatorUAData,
 } from "ext:runtime/97_navigator_user_agent_data.js";
-const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
+// `localStorage`, `sessionStorage`, `Storage`, `alert`/`confirm`/`prompt`,
+// and `navigator.gpu` are rarely accessed on the cold-start path. Their
+// implementations come from `lazy_loaded_js` polyfills that we don't want
+// to evaluate at snapshot build time. The descriptor entries below resolve
+// each polyfill on first read.
+let _webStorage;
+const lazyWebStorage = () =>
+  _webStorage ??
+    (_webStorage = core.loadExtScript("ext:deno_webstorage/01_webstorage.js"));
+let _prompt;
+const lazyPrompt = () =>
+  _prompt ?? (_prompt = core.loadExtScript("ext:runtime/41_prompt.js"));
+let _webgpu;
+const lazyWebGPU = () =>
+  (_webgpu ??
+    (_webgpu = core.loadExtScript("ext:deno_webgpu/00_init.js"))).loadWebGPU();
+function loadWebGPU() {
+  return lazyWebGPU();
+}
 
 /**
  * @param {string} arch
@@ -186,12 +202,31 @@ const mainRuntimeGlobalProperties = {
   Navigator: core.propNonEnumerable(Navigator),
   navigator: core.propGetterOnly(() => navigator),
   NavigatorUAData: core.propNonEnumerable(NavigatorUAData),
-  alert: core.propWritable(prompt.alert),
-  confirm: core.propWritable(prompt.confirm),
-  prompt: core.propWritable(prompt.prompt),
-  localStorage: core.propGetterOnly(webStorage.localStorage),
-  sessionStorage: core.propGetterOnly(webStorage.sessionStorage),
-  Storage: core.propNonEnumerable(webStorage.Storage),
+  alert: core.propWritableLazyLoaded((p) => p.alert, lazyPrompt),
+  confirm: core.propWritableLazyLoaded((p) => p.confirm, lazyPrompt),
+  prompt: core.propWritableLazyLoaded((p) => p.prompt, lazyPrompt),
+  // Match the previous descriptor shape (get-only with a silent `set() {}`):
+  // `webstorage_test.ts` relies on `globalThis.localStorage = 1` being
+  // silently ignored rather than throwing.
+  localStorage: {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      return lazyWebStorage().localStorage();
+    },
+    set() {},
+  },
+  sessionStorage: {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      return lazyWebStorage().sessionStorage();
+    },
+    set() {},
+  },
+  Storage: core.propNonEnumerableLazyLoaded((w) => w.Storage, lazyWebStorage),
 };
 
 export { mainRuntimeGlobalProperties, memoizeLazy };

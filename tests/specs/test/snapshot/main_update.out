@@ -1,0 +1,13 @@
+Check [WILDCARD]main_test.ts
+running 4 tests from ./main_test.ts
+basic object ... ok ([WILDLINE])
+multiple snapshots ... ok ([WILDLINE])
+steps ...
+  child ... ok ([WILDLINE])
+steps ... ok ([WILDLINE])
+custom name and serializer ... ok ([WILDLINE])
+
+ > 5 snapshots updated.
+
+ok | 4 passed (1 step) | 0 failed ([WILDLINE])
+

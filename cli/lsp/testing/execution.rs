@@ -330,12 +330,15 @@ impl TestRun {
             test::TestSpecifierOptions {
               filter,
               shuffle: None,
+              retry: 0,
+              repeats: 0,
               trace_leaks: false,
               // LSP-driven test runs intentionally disable sanitizers — the
               // LSP UI doesn't surface op/resource leak failures usefully
               // and they'd generate noise in the test gutter.
               sanitize_ops: false,
               sanitize_resources: false,
+              update_snapshots: false,
             },
           ))
         }
@@ -439,9 +442,15 @@ impl TestRun {
                 );
               }
             }
+            test::TestEvent::Retry(..) | test::TestEvent::Repeat(..) => {
+              // Informational only; the test's terminal result is reported via
+              // `TestEvent::Result`.
+            }
             test::TestEvent::Completed => {
               reporter.report_completed();
             }
+            // LSP-driven test runs never use `--update-snapshots`.
+            test::TestEvent::SnapshotSummary(_) => {}
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
             test::TestEvent::Exit(_) => {}

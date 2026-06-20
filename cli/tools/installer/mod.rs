@@ -6,7 +6,10 @@ use dashmap::DashSet;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_lib::version::DENO_VERSION;
+use deno_lib::version::NODE_VERSION;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsWarning;
+use deno_package_json::EngineMismatchKind;
 use deno_resolver::workspace::WorkspaceResolver;
 
 pub use self::bin_name_resolver::BinNameResolver;
@@ -389,5 +392,42 @@ pub fn print_install_report(
   let deprecation_messages = install_reporter.take_deprecation_message();
   for message in deprecation_messages {
     log::warn!("{}", message);
+  }
+
+  warn_on_engines_mismatch(workspace);
+}
+
+/// Emit a warning for each package.json in the workspace whose `engines.node`
+/// or `engines.deno` field is not satisfied by the current runtime.
+///
+/// Modeled on `npm`/`yarn`'s default behavior: this is a warning, never an
+/// error. Engines other than `node` and `deno` are ignored — Deno has no way
+/// to verify them.
+fn warn_on_engines_mismatch(workspace: &WorkspaceResolver<CliSys>) {
+  for pkg_json in workspace.package_jsons() {
+    let mismatches = pkg_json.check_engines(DENO_VERSION, NODE_VERSION);
+    if mismatches.is_empty() {
+      continue;
+    }
+    let display_path = pkg_json.path.display();
+    for m in mismatches {
+      let warning_label = deno_terminal::colors::yellow("Warning");
+      let required = deno_terminal::colors::cyan(&m.required);
+      let actual = deno_terminal::colors::cyan(&m.actual);
+      match m.kind {
+        EngineMismatchKind::Unsatisfied => {
+          log::warn!(
+            "{warning_label} {display_path}: engines.{engine} \"{required}\" is not satisfied by current {engine} version {actual}",
+            engine = m.engine,
+          );
+        }
+        EngineMismatchKind::InvalidRequirement => {
+          log::warn!(
+            "{warning_label} {display_path}: engines.{engine} value \"{required}\" is not a valid version range",
+            engine = m.engine,
+          );
+        }
+      }
+    }
   }
 }
