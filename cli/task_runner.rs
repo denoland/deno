@@ -18,6 +18,8 @@ use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
 use deno_task_shell::ShellPipeReader;
 use deno_task_shell::ShellPipeWriter;
+use percent_encoding::NON_ALPHANUMERIC;
+use percent_encoding::utf8_percent_encode;
 use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
@@ -377,11 +379,73 @@ impl ShellCommand for DenoCommand {
 
 pub struct NodeCommand;
 
+fn node_eval_arg(args: &[OsString]) -> Option<(String, usize)> {
+  let first_arg = args.first()?.to_string_lossy();
+  if first_arg == "-e" || first_arg == "--eval" {
+    let code = args.get(1)?.to_string_lossy().into_owned();
+    Some((code, 2))
+  } else if let Some(code) = first_arg.strip_prefix("--eval=") {
+    Some((code.to_string(), 1))
+  } else {
+    None
+  }
+}
+
+fn wrap_node_eval_script(code: &str) -> String {
+  format!(
+    r#"import {{ createRequire }} from "node:module";
+import process from "node:process";
+const require = createRequire(`${{Deno.cwd()}}/[eval]`);
+const module = {{ exports: {{}} }};
+const exports = module.exports;
+const __filename = "[eval]";
+// Node reports "." for __dirname in -e/--eval scripts.
+const __dirname = ".";
+process.argv.splice(1, 1);
+{code}"#
+  )
+}
+
+fn node_eval_data_url(code: &str) -> OsString {
+  format!(
+    "data:application/javascript,{}",
+    utf8_percent_encode(code, NON_ALPHANUMERIC)
+  )
+  .into()
+}
+
 impl ShellCommand for NodeCommand {
   fn execute(
     &self,
     context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
+    if let Some((code, consumed_args)) = node_eval_arg(&context.args) {
+      let mut args: Vec<OsString> = Vec::with_capacity(
+        3 + context.args.len().saturating_sub(consumed_args),
+      );
+      args.push("run".into());
+      args.push("-A".into());
+      args.push(node_eval_data_url(&wrap_node_eval_script(&code)));
+      args.extend(context.args.into_iter().skip(consumed_args));
+
+      let mut state = context.state;
+      state.apply_env_var(
+        OsStr::new(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME),
+        OsStr::new("1"),
+      );
+      return ExecutableCommand::new(
+        "deno".to_string(),
+        std::env::current_exe()
+          .and_then(|p| canonicalize_path(&p))
+          .unwrap(),
+      )
+      .execute(ShellCommandContext {
+        args,
+        state,
+        ..context
+      });
+    }
+
     // continue to use Node if the first argument is a flag
     // or there are no arguments provided for some reason
     if context.args.is_empty()

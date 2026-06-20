@@ -51,6 +51,24 @@
         }
       ]
     },
+    "node_eval_lifecycle_script_without_node_on_path": {
+      "steps": [
+        {
+          "envs": {
+            "PATH": ""
+          },
+          "args": "cache --allow-scripts node_eval.js",
+          "output": "node_eval.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('node-eval-lifecycle.txt'))"
+          ],
+          "output": "node_eval_file.out"
+        }
+      ]
+    },
     "deno_run_lifecycle_scripts": {
       "steps": [
         {
