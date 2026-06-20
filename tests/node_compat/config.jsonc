@@ -5514,7 +5514,9 @@
     "sequential/test-timers-set-interval-excludes-callback-duration.js": {},
     "sequential/test-tls-connect.js": {},
     "sequential/test-worker-fshandles-open-close-on-termination.js": {
-      "flaky": true
+      "flaky": true,
+      "windows": false,
+      "reason": "times out on Windows; flaky on other platforms"
     },
     "sequential/test-zlib-crc32-fast-api.js": {},
     "test-runner/test-output-default-output.mjs": {
