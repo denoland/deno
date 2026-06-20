@@ -4,11 +4,11 @@
 Deno.test(
   { sanitizeOps: false, sanitizeResources: false },
   function ignoresSanitizersLeaksAndFails() {
-    setTimeout(() => {}, 1000);
+    setTimeout(() => {}, 10);
     throw new Error("primary failure");
   },
 );
 
 Deno.test(async function laterTestWaitsForIgnoredTimer() {
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+  await new Promise((resolve) => setTimeout(resolve, 50));
 });

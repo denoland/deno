@@ -6,7 +6,8 @@ Deno.test(
   function ignoresSanitizersAndLeaksActivities() {
     const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
     listener.accept().catch(() => {});
-    setTimeout(() => {}, 100000);
+    const timer = setTimeout(() => {}, 100000);
+    Deno.unrefTimer(timer);
   },
 );
 
