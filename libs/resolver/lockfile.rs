@@ -33,6 +33,7 @@ use crate::bun_lockfile_import::bun_lock_to_deno_lock_v5;
 use crate::npm_lockfile_import::package_lock_to_deno_lock_v5;
 use crate::pnpm_lockfile_import::pnpm_lock_to_deno_lock_v5;
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
+use crate::yarn_lockfile_import::yarn_lock_to_deno_lock_v5;
 
 pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
 
@@ -586,14 +587,14 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
   }
 }
 
-/// Attempt to translate a sibling `package-lock.json`, `pnpm-lock.yaml`, or
-/// `bun.lock` into a seed `Lockfile`. Returns `Ok(None)` when no usable
-/// lockfile is present (so the caller falls back to creating an empty
+/// Attempt to translate a sibling `package-lock.json`, `pnpm-lock.yaml`,
+/// `yarn.lock`, or `bun.lock` into a seed `Lockfile`. Returns `Ok(None)` when
+/// no usable lockfile is present (so the caller falls back to creating an empty
 /// lockfile). The returned lockfile is flagged as changed so the next write
 /// persists it to disk.
 ///
 /// When several are present, the first in the order
-/// `package-lock.json`, `pnpm-lock.yaml`, `bun.lock` wins.
+/// `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` wins.
 async fn try_import_npm_lockfile<TSys: LockfileSys>(
   sys: &TSys,
   deno_lock_path: &std::path::Path,
@@ -604,12 +605,15 @@ async fn try_import_npm_lockfile<TSys: LockfileSys>(
   };
 
   type Translator = fn(&str) -> Result<String, String>;
-  let candidates: [(&str, Translator); 3] = [
+  let candidates: [(&str, Translator); 4] = [
     ("package-lock.json", |s| {
       package_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
     }),
     ("pnpm-lock.yaml", |s| {
       pnpm_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
+    }),
+    ("yarn.lock", |s| {
+      yarn_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
     }),
     ("bun.lock", |s| {
       bun_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
