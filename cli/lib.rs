@@ -70,6 +70,7 @@ use self::util::env::resolve_cwd;
 use crate::args::CompletionsFlags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::FlagsExt;
 use crate::args::flags_from_vec_with_initial_cwd;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
@@ -291,6 +292,7 @@ async fn run_subcommand(
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         };
         let mut flags = flags;
@@ -404,6 +406,7 @@ async fn run_subcommand(
                   filter: None,
                   eval: false,
                   no_prefix: false,
+                  concurrency: None,
                   if_present: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
@@ -528,7 +531,7 @@ async fn run_subcommand(
         },
       );
 
-      match stream.write_all(help_flags.help.ansi().to_string().as_bytes()) {
+      match stream.write_all(help_flags.help.as_bytes()) {
         Ok(()) => Ok(()),
         Err(e) => match e.kind() {
           std::io::ErrorKind::BrokenPipe => Ok(()),

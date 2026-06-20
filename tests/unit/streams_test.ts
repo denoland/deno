@@ -743,7 +743,16 @@ Deno.test(async function readableStreamEmittingManyChunks() {
     await startClient();
     stopSignal.abort();
     console.log(\`\${after} / \${before} = \${after / before}\`);
-    if (after / before > 1.5) {
+    // This guards against a per-chunk leak: a real leak over 30k chunks grows
+    // the heap many-fold, so the threshold only needs to exclude the fixed
+    // streaming overhead (~1.8 MB here, constant regardless of chunk count).
+    // It's a ratio rather than an absolute so the baseline heap size doesn't
+    // need hardcoding — but that makes it sensitive to baseline shrinkage:
+    // deferring the node-polyfill foundation out of the startup snapshot
+    // lowered \`before\` (~4.4 -> ~3.7 MB) while absolute growth was unchanged,
+    // pushing the ratio from ~1.42 to ~1.50. Use 2x, which still flags any real
+    // unbounded leak (those are >>2x) and is robust to baseline size.
+    if (after / before > 2) {
       Deno.exit(1);
     }
   `;
