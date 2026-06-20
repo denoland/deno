@@ -3468,6 +3468,8 @@ Update dependencies to the latest semver compatible versions:
   <p(245)>deno update</>
 Update dependencies to the latest versions, ignoring semver requirements:
   <p(245)>deno update --latest</>
+Update dependencies within their existing version ranges, without editing deno.json / package.json (like <p(245)>npm update</>):
+  <p(245)>deno update --lockfile-only</>
 
 <i>This command is an alias of <p(245)>deno outdated --update</></>
 
@@ -3515,6 +3517,8 @@ Update dependencies to the latest semver compatible versions:
   <p(245)>deno outdated --update</>
 Update dependencies to the latest versions, ignoring semver requirements:
   <p(245)>deno outdated --update --latest</>
+Update dependencies within their existing version ranges, without editing deno.json / package.json (like <p(245)>npm update</>):
+  <p(245)>deno outdated --update --lockfile-only</>
 
 Filters can be used to select which packages to act on. Filters can include wildcards (*) to match multiple packages.
   <p(245)>deno outdated --update --latest \"@std/*\"</>

@@ -151,36 +151,31 @@ pub fn pnpm_lock_to_deno_lock_v5(
     });
   }
 
-  // Build specifiers from the root importer (key `.`).
+  // pnpm v9 embeds a top-level `catalogs:` block mapping each catalog name to
+  // its `dep -> {specifier, version}` entries. Build a lookup so importer deps
+  // declared as `catalog:`/`catalog:<name>` can be resolved to a real version
+  // requirement.
+  let catalogs = collect_catalogs(&root_map);
+
+  // Build specifiers from every importer. The root importer (`.`) feeds the
+  // top-level `workspace.packageJson` section; non-root importers map to
+  // `workspace.members.<path>.packageJson`. All resolved specifiers end up in
+  // the single flat `specifiers` map regardless of which importer declared
+  // them.
   let mut specifiers: BTreeMap<String, String> = BTreeMap::new();
-  if let Some(root_importer) = root_map
-    .get("importers")
-    .and_then(Node::into_map)
-    .and_then(|m| m.get("."))
-    .and_then(Node::into_map)
-  {
-    for section in ["dependencies", "devDependencies", "optionalDependencies"] {
-      let Some(deps) = root_importer.get(section).and_then(Node::into_map)
-      else {
+  let mut root_dep_keys: Vec<String> = Vec::new();
+  let mut member_dep_keys: BTreeMap<String, Vec<String>> = BTreeMap::new();
+  if let Some(importers) = root_map.get("importers").and_then(Node::into_map) {
+    for (path, importer) in importers.entries() {
+      let Some(importer) = importer.into_map() else {
         continue;
       };
-      for (name, info) in deps.entries() {
-        let Some(info) = info.into_map() else {
-          continue;
-        };
-        let Some(spec) = info.get("specifier").and_then(Node::into_string)
-        else {
-          continue;
-        };
-        let Some(ver) = info.get("version").and_then(Node::into_string) else {
-          continue;
-        };
-        if !is_supported_spec(&spec) {
-          continue;
-        }
-        let resolved = strip_peer_suffix(&ver).to_string();
-        let key = format!("npm:{}@{}", name, spec);
-        specifiers.entry(key).or_insert(resolved);
+      let keys =
+        collect_importer_specifiers(&importer, &catalogs, &mut specifiers);
+      if path == "." {
+        root_dep_keys = keys;
+      } else if !keys.is_empty() {
+        member_dep_keys.insert(path, keys);
       }
     }
   }
@@ -206,9 +201,12 @@ pub fn pnpm_lock_to_deno_lock_v5(
         }
         let resolved = strip_peer_suffix(&ver).to_string();
         let key = format!("npm:{}@{}", name, spec);
-        specifiers.entry(key).or_insert(resolved);
+        specifiers.entry(key.clone()).or_insert(resolved);
+        root_dep_keys.push(key);
       }
     }
+    root_dep_keys.sort();
+    root_dep_keys.dedup();
   }
 
   let mut output = serde_json::Map::new();
@@ -226,6 +224,9 @@ pub fn pnpm_lock_to_deno_lock_v5(
   }
   if !npm.is_empty() {
     output.insert("npm".to_string(), Value::Object(npm.into_iter().collect()));
+  }
+  if let Some(workspace) = build_workspace(root_dep_keys, member_dep_keys) {
+    output.insert("workspace".to_string(), workspace);
   }
 
   Ok(
@@ -385,6 +386,132 @@ fn unquote_double(raw: &str) -> String {
   out
 }
 
+/// Build a lookup of pnpm catalogs from the top-level `catalogs:` block:
+/// `catalog_name -> (dep_name -> specifier)`. The default catalog is keyed
+/// `default`. Returns an empty map when no `catalogs:` block is present (e.g.
+/// pnpm v6, which has no catalog support).
+fn collect_catalogs(
+  root_map: &MapNode,
+) -> HashMap<String, HashMap<String, String>> {
+  let mut catalogs: HashMap<String, HashMap<String, String>> = HashMap::new();
+  let Some(block) = root_map.get("catalogs").and_then(Node::into_map) else {
+    return catalogs;
+  };
+  for (catalog_name, entries) in block.entries() {
+    let Some(entries) = entries.into_map() else {
+      continue;
+    };
+    let mut map = HashMap::new();
+    for (dep_name, info) in entries.entries() {
+      if let Some(spec) = info
+        .into_map()
+        .and_then(|m| m.get("specifier"))
+        .and_then(Node::into_string)
+      {
+        map.insert(dep_name, spec);
+      }
+    }
+    catalogs.insert(catalog_name, map);
+  }
+  catalogs
+}
+
+/// Collect the supported `npm:<name>@<spec>` specifier keys declared by a
+/// single importer, inserting each into the shared `specifiers` map (keyed to
+/// the resolved version). `catalog:`/`catalog:<name>` specifiers are resolved
+/// to a real version requirement via `catalogs`. Returns the sorted, de-duped
+/// list of keys so the caller can record them under the importer's
+/// `packageJson.dependencies`.
+fn collect_importer_specifiers(
+  importer: &MapNode,
+  catalogs: &HashMap<String, HashMap<String, String>>,
+  specifiers: &mut BTreeMap<String, String>,
+) -> Vec<String> {
+  let mut keys = Vec::new();
+  for section in ["dependencies", "devDependencies", "optionalDependencies"] {
+    let Some(deps) = importer.get(section).and_then(Node::into_map) else {
+      continue;
+    };
+    for (name, info) in deps.entries() {
+      let Some(info) = info.into_map() else {
+        continue;
+      };
+      let Some(spec) = info.get("specifier").and_then(Node::into_string) else {
+        continue;
+      };
+      let Some(ver) = info.get("version").and_then(Node::into_string) else {
+        continue;
+      };
+      let resolved_spec = if let Some(catalog) = spec.strip_prefix("catalog:") {
+        // A bare `catalog:` references the `default` catalog; `catalog:<name>`
+        // references a named one. Skip if the catalog entry is missing.
+        let catalog_name = if catalog.is_empty() {
+          "default"
+        } else {
+          catalog
+        };
+        match catalogs.get(catalog_name).and_then(|m| m.get(&name)) {
+          // A catalog may itself point at an aliased/unsupported spec (e.g.
+          // `npm:other@^1`); guard against producing a malformed key.
+          Some(resolved) if is_supported_spec(resolved) => resolved.clone(),
+          _ => continue,
+        }
+      } else if is_supported_spec(&spec) {
+        spec.clone()
+      } else {
+        continue;
+      };
+      let resolved_ver = strip_peer_suffix(&ver).to_string();
+      let key = format!("npm:{}@{}", name, resolved_spec);
+      specifiers.entry(key.clone()).or_insert(resolved_ver);
+      keys.push(key);
+    }
+  }
+  keys.sort();
+  keys.dedup();
+  keys
+}
+
+/// Build the deno.lock v5 `workspace` object from the root importer's deps and
+/// the per-member dep lists. Returns `None` when nothing was collected so the
+/// caller can omit the section entirely.
+fn build_workspace(
+  root_dep_keys: Vec<String>,
+  member_dep_keys: BTreeMap<String, Vec<String>>,
+) -> Option<Value> {
+  fn package_json_deps(keys: Vec<String>) -> Value {
+    let mut package_json = serde_json::Map::new();
+    package_json.insert(
+      "dependencies".to_string(),
+      Value::Array(keys.into_iter().map(Value::String).collect()),
+    );
+    let mut obj = serde_json::Map::new();
+    obj.insert("packageJson".to_string(), Value::Object(package_json));
+    Value::Object(obj)
+  }
+
+  let mut workspace = serde_json::Map::new();
+  if !root_dep_keys.is_empty() {
+    // The root member is flattened onto the `workspace` object, so lift its
+    // `packageJson` up a level.
+    if let Value::Object(root) = package_json_deps(root_dep_keys) {
+      workspace.extend(root);
+    }
+  }
+  if !member_dep_keys.is_empty() {
+    let members = member_dep_keys
+      .into_iter()
+      .map(|(path, keys)| (path, package_json_deps(keys)))
+      .collect();
+    workspace.insert("members".to_string(), Value::Object(members));
+  }
+  if workspace.is_empty() {
+    None
+  } else {
+    Some(Value::Object(workspace))
+  }
+}
+
 /// Build a sorted list of `dep@version` strings from a pnpm dependency
 /// mapping (e.g. `{ ansi-styles: 4.3.0, color-convert: 2.0.1 }`).
 fn collect_deps(node: Option<MapNode>) -> Vec<String> {
@@ -448,7 +575,8 @@ fn is_supported_spec(req: &str) -> bool {
     && !req.starts_with("http:")
     && !req.starts_with("https:")
     && !req.starts_with("npm:")
-    && !req.starts_with("catalog:")
+  // `catalog:` specifiers are resolved before this check (see
+  // `collect_importer_specifiers`), so they never reach here.
 }
 
 #[cfg(test)]
@@ -658,6 +786,186 @@ snapshots:
       .as_array()
       .unwrap();
     assert_eq!(opt[0], "fsevents@2.3.3");
+  }
+
+  #[test]
+  fn seeds_workspace_members() {
+    // A monorepo with a root dep and a member dep: both end up in the flat
+    // `specifiers` map, the root under `workspace.packageJson` and the member
+    // under `workspace.members.<path>.packageJson`.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      is-number:
+        specifier: 7.0.0
+        version: 7.0.0
+  packages/app:
+    dependencies:
+      is-odd:
+        specifier: 3.0.1
+        version: 3.0.1
+
+packages:
+  is-number@7.0.0:
+    resolution: {integrity: sha512-NUM}
+  is-odd@3.0.1:
+    resolution: {integrity: sha512-ODD}
+
+snapshots:
+  is-number@7.0.0: {}
+  is-odd@3.0.1: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["specifiers"]["npm:is-number@7.0.0"], "7.0.0");
+    assert_eq!(v["specifiers"]["npm:is-odd@3.0.1"], "3.0.1");
+    // Root dep under the flattened workspace.packageJson.
+    assert_eq!(
+      v["workspace"]["packageJson"]["dependencies"][0],
+      "npm:is-number@7.0.0"
+    );
+    // Member dep under workspace.members.<path>.packageJson.
+    assert_eq!(
+      v["workspace"]["members"]["packages/app"]["packageJson"]["dependencies"]
+        [0],
+      "npm:is-odd@3.0.1"
+    );
+  }
+
+  #[test]
+  fn resolves_default_catalog() {
+    // A `catalog:` (default) specifier resolves to its real version
+    // requirement via the top-level `catalogs:` block.
+    let input = r#"
+lockfileVersion: '9.0'
+
+catalogs:
+  default:
+    is-odd:
+      specifier: 3.0.1
+      version: 3.0.1
+
+importers:
+  .:
+    dependencies:
+      is-odd:
+        specifier: 'catalog:'
+        version: 3.0.1
+
+packages:
+  is-odd@3.0.1:
+    resolution: {integrity: sha512-ODD}
+
+snapshots:
+  is-odd@3.0.1: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["specifiers"]["npm:is-odd@3.0.1"], "3.0.1");
+    assert_eq!(
+      v["workspace"]["packageJson"]["dependencies"][0],
+      "npm:is-odd@3.0.1"
+    );
+    assert_eq!(v["npm"]["is-odd@3.0.1"]["integrity"], "sha512-ODD");
+  }
+
+  #[test]
+  fn resolves_named_catalog() {
+    // A named `catalog:<name>` specifier resolves via the matching catalog.
+    let input = r#"
+lockfileVersion: '9.0'
+
+catalogs:
+  react18:
+    react:
+      specifier: ^18.0.0
+      version: 18.3.1
+
+importers:
+  .:
+    dependencies:
+      react:
+        specifier: 'catalog:react18'
+        version: 18.3.1
+
+packages:
+  react@18.3.1:
+    resolution: {integrity: sha512-REACT}
+
+snapshots:
+  react@18.3.1: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["specifiers"]["npm:react@^18.0.0"], "18.3.1");
+  }
+
+  #[test]
+  fn member_via_catalog() {
+    // A workspace member declaring a `catalog:` dep seeds correctly under
+    // workspace.members.
+    let input = r#"
+lockfileVersion: '9.0'
+
+catalogs:
+  default:
+    is-odd:
+      specifier: 3.0.1
+      version: 3.0.1
+
+importers:
+  .:
+    dependencies:
+      is-number:
+        specifier: 7.0.0
+        version: 7.0.0
+  packages/app:
+    dependencies:
+      is-odd:
+        specifier: 'catalog:'
+        version: 3.0.1
+
+packages:
+  is-number@7.0.0:
+    resolution: {integrity: sha512-NUM}
+  is-odd@3.0.1:
+    resolution: {integrity: sha512-ODD}
+
+snapshots:
+  is-number@7.0.0: {}
+  is-odd@3.0.1: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["specifiers"]["npm:is-odd@3.0.1"], "3.0.1");
+    assert_eq!(
+      v["workspace"]["members"]["packages/app"]["packageJson"]["dependencies"]
+        [0],
+      "npm:is-odd@3.0.1"
+    );
+  }
+
+  #[test]
+  fn skips_unknown_catalog_entry() {
+    // A `catalog:` dep with no matching catalog entry is skipped, producing an
+    // empty lockfile (so the caller can suppress the "Seeded" message).
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      is-odd:
+        specifier: 'catalog:'
+        version: 3.0.1
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert!(v.get("specifiers").is_none());
+    assert!(v.get("workspace").is_none());
   }
 
   #[test]

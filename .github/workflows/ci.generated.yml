@@ -764,6 +764,12 @@ jobs:
         env:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
         run: |-
+          if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+            git submodule update --init tools/lzld
+            make -C tools/lzld
+            sed -i '' "s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #" .cargo/config.toml
+            grep -n fuse-ld .cargo/config.toml
+          fi
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
           cargo build --release --locked -p denort_desktop
@@ -1789,6 +1795,12 @@ jobs:
         env:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
         run: |-
+          if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+            git submodule update --init tools/lzld
+            make -C tools/lzld
+            sed -i '' "s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #" .cargo/config.toml
+            grep -n fuse-ld .cargo/config.toml
+          fi
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
           cargo build --release --locked -p denort_desktop
@@ -2749,6 +2761,12 @@ jobs:
         env:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
         run: |-
+          if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+            git submodule update --init tools/lzld
+            make -C tools/lzld
+            sed -i '' "s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #" .cargo/config.toml
+            grep -n fuse-ld .cargo/config.toml
+          fi
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
           cargo build --release --locked -p denort_desktop
@@ -3591,6 +3609,12 @@ jobs:
         env:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
         run: |-
+          if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+            git submodule update --init tools/lzld
+            make -C tools/lzld
+            sed -i '' "s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #" .cargo/config.toml
+            grep -n fuse-ld .cargo/config.toml
+          fi
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
           cargo build --release --locked -p denort_desktop
@@ -4174,6 +4198,12 @@ jobs:
         env:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
         run: |-
+          if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+            git submodule update --init tools/lzld
+            make -C tools/lzld
+            sed -i '' "s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #" .cargo/config.toml
+            grep -n fuse-ld .cargo/config.toml
+          fi
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
           cargo build --release --locked -p denort_desktop
@@ -4182,6 +4212,12 @@ jobs:
         run: |-
           if strings target/release/deno | grep -F -- '--no-lazy --no-lazy-eval --no-lazy-streaming'; then
             echo "release deno binary contains eager snapshot flags"
+            exit 1
+          fi
+      - name: 'Check eager bootstrap does not static-import node:'
+        run: |-
+          if grep -rEn '^import .* from "node:' runtime/js/; then
+            echo "eager bootstrap statically imports a node: module — use core.createLazyLoader so it stays out of the startup snapshot"
             exit 1
           fi
       - name: Generate symcache
@@ -6146,6 +6182,12 @@ jobs:
         env:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
         run: |-
+          if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+            git submodule update --init tools/lzld
+            make -C tools/lzld
+            sed -i '' "s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #" .cargo/config.toml
+            grep -n fuse-ld .cargo/config.toml
+          fi
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
           cargo build --release --locked -p denort_desktop
@@ -6155,6 +6197,13 @@ jobs:
         run: |-
           if strings target/release/deno | grep -F -- '--no-lazy --no-lazy-eval --no-lazy-streaming'; then
             echo "release deno binary contains eager snapshot flags"
+            exit 1
+          fi
+      - name: 'Check eager bootstrap does not static-import node:'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: |-
+          if grep -rEn '^import .* from "node:' runtime/js/; then
+            echo "eager bootstrap statically imports a node: module — use core.createLazyLoader so it stays out of the startup snapshot"
             exit 1
           fi
       - name: Generate symcache
