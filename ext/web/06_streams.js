@@ -363,6 +363,57 @@ function cloneAsUint8Array(O) {
   }
 }
 
+/**
+ * Coerce an ArrayBuffer or ArrayBufferView into a Uint8Array view over the
+ * same underlying memory (no copy). Used by resource-backed underlying sinks
+ * which need to forward bytes to a native op regardless of the user-provided
+ * view type. Throws TypeError for anything else.
+ * @param {unknown} O
+ * @returns {Uint8Array}
+ */
+function bufferSourceAsUint8Array(O) {
+  if (isTypedArray(O)) {
+    return new Uint8Array(
+      TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (O)),
+      TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (O)),
+      TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (O)),
+    );
+  }
+  if (ArrayBufferIsView(O)) {
+    return new Uint8Array(
+      DataViewPrototypeGetBuffer(/** @type {DataView} */ (O)),
+      DataViewPrototypeGetByteOffset(/** @type {DataView} */ (O)),
+      DataViewPrototypeGetByteLength(/** @type {DataView} */ (O)),
+    );
+  }
+  if (isAnyArrayBuffer(O)) {
+    return new Uint8Array(/** @type {ArrayBuffer} */ (O));
+  }
+  throw new TypeError(
+    "Expected ArrayBuffer or ArrayBufferView for write chunk",
+  );
+}
+
+/**
+ * Byte length of an ArrayBuffer or ArrayBufferView. Throws TypeError otherwise.
+ * @param {unknown} O
+ * @returns {number}
+ */
+function bufferSourceByteLength(O) {
+  if (isTypedArray(O)) {
+    return TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (O));
+  }
+  if (ArrayBufferIsView(O)) {
+    return DataViewPrototypeGetByteLength(/** @type {DataView} */ (O));
+  }
+  if (isAnyArrayBuffer(O)) {
+    return ArrayBufferPrototypeGetByteLength(/** @type {ArrayBuffer} */ (O));
+  }
+  throw new TypeError(
+    "Expected ArrayBuffer or ArrayBufferView for write chunk",
+  );
+}
+
 // Using SymbolFor to make globally available. This is used by `node:stream`
 // to interop with the web streams API.
 const _isClosedPromise = SymbolFor("nodejs.webstream.isClosedPromise");
@@ -849,8 +900,9 @@ async function readableStreamWriteChunkFn(reader, sink, chunk) {
 /**
  * @param {ReadableStreamDefaultReader<Uint8Array>} reader
  * @param {any} sink
+ * @param {((error: unknown) => void) | undefined} onError
  */
-async function readableStreamReadFn(reader, sink) {
+async function readableStreamReadFn(reader, sink, onError) {
   let loop = true;
 
   while (loop) {
@@ -878,6 +930,16 @@ async function readableStreamReadFn(reader, sink) {
         promise.resolve(false);
       },
       errorSteps(error) {
+        // Surface the original error (with its stack) to the owner of the
+        // resource before we flatten it to a string for the Rust side. Without
+        // this hook the error is otherwise swallowed: it is converted to a
+        // plain message, pushed into the channel and used only to abort the
+        // underlying transport, so e.g. a throwing `TransformStream` feeding a
+        // `Deno.serve` response body would fail with nothing implicating the
+        // faulty callback. See https://github.com/denoland/deno/issues/19867.
+        if (onError !== undefined) {
+          onError(error);
+        }
         const success = op_readable_stream_resource_write_error(
           sink.external,
           extractStringErrorFromError(error),
@@ -918,9 +980,13 @@ async function readableStreamReadFn(reader, sink) {
  * ReadableStream source.
  * @param {ReadableStream<Uint8Array>} stream
  * @param {number | undefined} length
+ * @param {((error: unknown) => void) | undefined} onError Invoked with the
+ *   original error (including its stack) if the stream errors while being
+ *   drained into the resource. Lets the owner report an otherwise swallowed
+ *   error before it is flattened to a string for the transport.
  * @returns {number}
  */
-function resourceForReadableStream(stream, length) {
+function resourceForReadableStream(stream, length, onError) {
   const reader = acquireReadableStreamDefaultReader(stream);
 
   // Allocate the resource
@@ -945,7 +1011,7 @@ function resourceForReadableStream(stream, length) {
   );
 
   // Trigger the first read
-  PromisePrototypeCatch(readableStreamReadFn(reader, sink), (err) => {
+  PromisePrototypeCatch(readableStreamReadFn(reader, sink, onError), (err) => {
     PromisePrototypeCatch(reader.cancel(err), () => {});
   });
 
@@ -1251,12 +1317,13 @@ function writableStreamForRid(rid, autoClose = true, cfn, options) {
   const underlyingSink = {
     async write(chunk, controller) {
       try {
+        const view = bufferSourceAsUint8Array(chunk);
         if (bufferSize > 0) {
-          const chunkLen = TypedArrayPrototypeGetByteLength(chunk);
+          const chunkLen = TypedArrayPrototypeGetByteLength(view);
           // Large chunks: flush buffer then write directly
           if (chunkLen >= bufferSize) {
             await flushBuffer();
-            await core.writeAll(rid, chunk);
+            await core.writeAll(rid, view);
             return;
           }
 
@@ -1271,14 +1338,18 @@ function writableStreamForRid(rid, autoClose = true, cfn, options) {
           }
 
           // Copy chunk into buffer
-          TypedArrayPrototypeSet(buffer, chunk, bufferOffset);
+          TypedArrayPrototypeSet(buffer, view, bufferOffset);
           bufferOffset += chunkLen;
         } else {
-          await core.writeAll(rid, chunk);
+          await core.writeAll(rid, view);
         }
       } catch (e) {
         controller.error(annotateResourceStreamError(e));
         tryClose();
+        // Re-throw so writer.write() rejects with this specific error
+        // rather than resolving successfully and only failing subsequent
+        // writes via the now-errored controller.
+        throw e;
       }
     },
     async close() {
@@ -1297,7 +1368,7 @@ function writableStreamForRid(rid, autoClose = true, cfn, options) {
 
   const highWaterMark = bufferSize > 0 ? bufferSize : 1;
   const sizeAlgorithm = bufferSize > 0
-    ? (chunk) => TypedArrayPrototypeGetByteLength(chunk)
+    ? (chunk) => bufferSourceByteLength(chunk)
     : () => 1;
 
   initializeWritableStream(stream);
@@ -3111,21 +3182,18 @@ function readableStreamReaderGenericRelease(reader) {
   const stream = reader[_stream];
   assert(stream !== undefined);
   assert(stream[_reader] === reader);
-  if (stream[_state] === "readable") {
-    reader[_closedPromise].reject(
-      new TypeError(
-        "Reader was released and can no longer be used to monitor the stream's closedness.",
-      ),
-    );
-  } else {
+  if (stream[_state] !== "readable") {
     reader[_closedPromise] = new Deferred();
-    reader[_closedPromise].reject(
-      new TypeError(
-        "Reader was released and can no longer be used to monitor the stream's closedness.",
-      ),
-    );
   }
+  // Mark the promise as handled before rejecting it. Otherwise the rejection is
+  // momentarily observable as unhandled, which trips a debugger configured to
+  // "pause on uncaught exceptions". See https://github.com/denoland/deno/issues/18513
   setPromiseIsHandledToTrue(reader[_closedPromise].promise);
+  reader[_closedPromise].reject(
+    new TypeError(
+      "Reader was released and can no longer be used to monitor the stream's closedness.",
+    ),
+  );
   stream[_controller][_releaseSteps]();
   stream[_reader] = undefined;
   reader[_stream] = undefined;
@@ -4733,13 +4801,14 @@ function writableStreamDefaultWriterEnsureClosedPromiseRejected(
   writer,
   error,
 ) {
-  if (writer[_closedPromise].state === "pending") {
-    writer[_closedPromise].reject(error);
-  } else {
+  if (writer[_closedPromise].state !== "pending") {
     writer[_closedPromise] = new Deferred();
-    writer[_closedPromise].reject(error);
   }
+  // Mark the promise as handled before rejecting it. Otherwise the rejection is
+  // momentarily observable as unhandled, which trips a debugger configured to
+  // "pause on uncaught exceptions". See https://github.com/denoland/deno/issues/18513
   setPromiseIsHandledToTrue(writer[_closedPromise].promise);
+  writer[_closedPromise].reject(error);
 }
 
 /**
@@ -4750,13 +4819,14 @@ function writableStreamDefaultWriterEnsureReadyPromiseRejected(
   writer,
   error,
 ) {
-  if (writer[_readyPromise].state === "pending") {
-    writer[_readyPromise].reject(error);
-  } else {
+  if (writer[_readyPromise].state !== "pending") {
     writer[_readyPromise] = new Deferred();
-    writer[_readyPromise].reject(error);
   }
+  // Mark the promise as handled before rejecting it. Otherwise the rejection is
+  // momentarily observable as unhandled, which trips a debugger configured to
+  // "pause on uncaught exceptions". See https://github.com/denoland/deno/issues/18513
   setPromiseIsHandledToTrue(writer[_readyPromise].promise);
+  writer[_readyPromise].reject(error);
 }
 
 /**

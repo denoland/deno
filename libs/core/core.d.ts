@@ -30,6 +30,10 @@ export namespace core {
    * if there are only "unref" promises left. */
   function unrefOpPromise<T>(promise: Promise<T>): void;
 
+  /** Set the id assigned to the next async op promise. Exposed solely for
+   * testing promise id wraparound behavior. */
+  function __setNextPromiseId(promiseId: number): void;
+
   /**
    * Enables collection of stack traces for sanitizers. This allows for
    * debugging of where a given async op was started. Deno CLI uses this for

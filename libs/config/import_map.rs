@@ -36,11 +36,23 @@ pub fn import_map_deps_from_value(
 pub(crate) fn imports_values(
   value: Option<&serde_json::Value>,
 ) -> impl Iterator<Item = &str> {
+  imports_entries(value).map(|(_, v)| v)
+}
+
+pub(crate) fn scope_values(
+  value: Option<&serde_json::Value>,
+) -> impl Iterator<Item = &str> {
+  scope_entries(value).map(|(_, v)| v)
+}
+
+pub(crate) fn imports_entries(
+  value: Option<&serde_json::Value>,
+) -> impl Iterator<Item = (&str, &str)> {
   value
     .and_then(|v| v.as_object())
     .map(|obj| {
-      obj.values().filter_map(|v| match v {
-        serde_json::Value::String(value) => Some(value.as_ref()),
+      obj.iter().filter_map(|(k, v)| match v {
+        serde_json::Value::String(value) => Some((k.as_str(), value.as_ref())),
         _ => None,
       })
     })
@@ -48,12 +60,12 @@ pub(crate) fn imports_values(
     .flatten()
 }
 
-pub(crate) fn scope_values(
+pub(crate) fn scope_entries(
   value: Option<&serde_json::Value>,
-) -> impl Iterator<Item = &str> {
+) -> impl Iterator<Item = (&str, &str)> {
   value
     .and_then(|v| v.as_object())
-    .map(|obj| obj.values().flat_map(|v| imports_values(Some(v))))
+    .map(|obj| obj.values().flat_map(|v| imports_entries(Some(v))))
     .into_iter()
     .flatten()
 }

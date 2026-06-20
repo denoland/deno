@@ -54,6 +54,7 @@ impl Encoding {
 }
 
 /// Select the encoding with the largest qval or the first with qval ~= 1
+#[cfg(test)]
 pub fn preferred(
   encodings: impl Iterator<Item = Result<(Option<Encoding>, f32), EncodingError>>,
 ) -> Result<Option<Encoding>, EncodingError> {

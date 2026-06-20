@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "tests": {
+    "missing_catalog_import": {
+      "args": "run -A main.js",
+      "output": "error: Package '@denotest/add' not found in catalog\n",
+      "exitCode": 1
+    }
+  }
+}

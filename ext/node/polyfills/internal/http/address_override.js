@@ -24,20 +24,29 @@ import {
 
 import { Buffer } from "node:buffer";
 import { Duplex } from "node:stream";
+import { clearTimeout, setTimeout } from "node:timers";
 
 const {
+  ArrayPrototypePush,
   Error,
   FunctionPrototypeCall,
+  ObjectDefineProperty,
   Number,
   Promise,
+  PromisePrototypeCatch,
   PromisePrototypeThen,
+  SafePromiseRace,
   Symbol,
   SymbolAsyncIterator,
+  TypedArrayPrototypeSubarray,
   Uint8Array,
 } = primordials;
 
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { listen: denoListen } = core.loadExtScript("ext:deno_net/01_net.js");
+const { ERR_SOCKET_CLOSED } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 // Has the process-global override been consumed by some server yet?
 let addressOverrideConsumed = false;
@@ -94,10 +103,15 @@ function overrideToListenArgs(override) {
 class OverrideSocket extends Duplex {
   #conn;
   #closed = false;
+  #initialChunk = null;
   #readBuf = new Uint8Array(64 * 1024);
   #timeoutMsecs = 0;
   #timeoutTimer = null;
   // Node's HTTP server uses these directly.
+  isDenoServeAddressOverride = true;
+  // Set by the alpn-routing dispatch (node:http2 servers) to the sniffed
+  // protocol, mirroring what a TLS socket would report.
+  alpnProtocol = undefined;
   _paused = false;
   server = null;
   parser = null;
@@ -107,9 +121,10 @@ class OverrideSocket extends Duplex {
   remotePort = null;
   remoteFamily = null;
 
-  constructor(conn) {
+  constructor(conn, initialChunk) {
     super({ allowHalfOpen: true });
     this.#conn = conn;
+    this.#initialChunk = initialChunk;
 
     const remote = conn.remoteAddr;
     if (remote && remote.transport === "tcp") {
@@ -138,6 +153,19 @@ class OverrideSocket extends Duplex {
 
   async #readLoop() {
     try {
+      if (this.#initialChunk !== null && this.#initialChunk.length > 0) {
+        const chunk = Buffer.from(this.#initialChunk);
+        this.#initialChunk = null;
+        // deno-lint-ignore prefer-primordials
+        if (!this.push(chunk)) {
+          await new Promise((resolve) => {
+            this._readResume = resolve;
+          });
+          this._readResume = null;
+        }
+      } else {
+        this.#initialChunk = null;
+      }
       while (!this.#closed) {
         let n;
         try {
@@ -179,13 +207,29 @@ class OverrideSocket extends Duplex {
     }
   }
 
+  // Deno.Conn.write() is a single syscall-like write: it may write fewer
+  // bytes than provided (e.g. when the transport send buffer is full --
+  // vsock buffers are 64 KiB). Loop until the whole chunk is flushed.
+  async #writeAll(bytes) {
+    let nwritten = await this.#conn.write(bytes);
+    while (nwritten < bytes.length) {
+      const n = await this.#conn.write(
+        TypedArrayPrototypeSubarray(bytes, nwritten, bytes.length),
+      );
+      if (n === 0) {
+        throw new ERR_SOCKET_CLOSED();
+      }
+      nwritten += n;
+    }
+  }
+
   _write(chunk, encoding, callback) {
     const bytes = typeof chunk === "string"
       ? Buffer.from(chunk, encoding)
       : chunk;
     // Any outgoing byte resets the idle timer too, matching net.Socket.
     this.#armTimer();
-    PromisePrototypeThen(this.#conn.write(bytes), () => callback(), callback);
+    PromisePrototypeThen(this.#writeAll(bytes), () => callback(), callback);
   }
 
   _final(callback) {
@@ -260,13 +304,213 @@ class OverrideSocket extends Duplex {
   }
 }
 
+// The HTTP/2 client connection preface: "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".
+// Control planes (e.g. Deno Deploy's deployd) forward HTTP/2 requests to the
+// override listener with prior knowledge, so node:http servers must accept
+// both HTTP/1.1 and HTTP/2 connections here, like Deno.serve() does.
+// deno-fmt-ignore
+const H2_PREFACE = [
+  0x50, 0x52, 0x49, 0x20, 0x2a, 0x20, 0x48, 0x54, 0x54, 0x50, 0x2f, 0x32,
+  0x2e, 0x30, 0x0d, 0x0a, 0x0d, 0x0a, 0x53, 0x4d, 0x0d, 0x0a, 0x0d, 0x0a,
+];
+
+// How long a freshly accepted connection may take to send enough bytes to
+// identify its protocol before it is dropped. The node server's own header
+// timeouts only start once the connection is handed to it, so this guards
+// the sniffing window against connections that never send anything.
+const SNIFF_TIMEOUT_MS = 60_000;
+
+// Reads just enough of the connection to decide whether the client is
+// speaking HTTP/2 (prior knowledge) or HTTP/1.x. Never reads past the
+// 24-byte HTTP/2 preface. Returns the consumed bytes so the HTTP/1.x
+// path can replay them into the parser. Throws on timeout.
+async function sniffConnection(conn) {
+  const buf = new Uint8Array(H2_PREFACE.length);
+  let filled = 0;
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("protocol sniffing timed out")),
+      SNIFF_TIMEOUT_MS,
+    );
+  });
+  try {
+    while (filled < H2_PREFACE.length) {
+      let n;
+      try {
+        n = await SafePromiseRace([
+          conn.read(TypedArrayPrototypeSubarray(buf, filled)),
+          timeout,
+        ]);
+      } catch (err) {
+        if (err?.message === "protocol sniffing timed out") throw err;
+        return {
+          isH2: false,
+          initial: TypedArrayPrototypeSubarray(buf, 0, filled),
+        };
+      }
+      if (n === null) {
+        return {
+          isH2: false,
+          initial: TypedArrayPrototypeSubarray(buf, 0, filled),
+        };
+      }
+      for (let i = filled; i < filled + n; i++) {
+        if (buf[i] !== H2_PREFACE[i]) {
+          return {
+            isH2: false,
+            initial: TypedArrayPrototypeSubarray(buf, 0, filled + n),
+          };
+        }
+      }
+      filled += n;
+    }
+    return { isH2: true, initial: buf };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// HTTP/2 connections accepted on the override listener are served by a
+// real node:http2 server session over the same socket wrapper: HTTP/2
+// stays HTTP/2 (native trailers, flow control), and requests reach the
+// node server's "request" listeners as Http2ServerRequest /
+// Http2ServerResponse compat objects -- the same objects node delivers
+// for `http2.createSecureServer({ allowHTTP1: true })` servers.
+//
+// node:http2 is loaded lazily to avoid a module cycle (http2 depends on
+// node:http internals).
+let lazyHttp2;
+function loadHttp2() {
+  lazyHttp2 ??= core.loadExtScript("ext:deno_node/http2.ts");
+  return lazyHttp2;
+}
+
+const kH2Shadow = Symbol("http.overrideH2Shadow");
+
+// Returns a non-listening Http2Server bound to `server` that forwards
+// requests (and the events frameworks commonly use) to it.
+function h2ShadowServer(server) {
+  let shadow = server[kH2Shadow];
+  if (shadow !== undefined) return shadow;
+  const http2 = loadHttp2();
+  shadow = http2.createServer({});
+  server[kH2Shadow] = shadow;
+  shadow.on("request", (req, res) => {
+    // The target server's listeners were written for node:http requests:
+    // hide the HTTP/2 pseudo-headers (frameworks commonly copy req.headers
+    // into a web Headers object, which rejects ":"-prefixed names) and
+    // synthesize the host header an HTTP/1.1 request would carry. Hiding
+    // them from the public `req.headers` view below is safe because
+    // Http2ServerRequest.method / .url read `:method` / `:path` straight
+    // from the internal kHeaders object (see internal/http2/compat.js), not
+    // through the `headers` getter we override -- so the internal object is
+    // left untouched and those accessors keep working.
+    const headers = req.headers;
+    // Note: a plain Object.prototype-backed object and settable
+    // properties, matching the http1 IncomingMessage the listener was
+    // written against (frameworks reassign req.headers and call
+    // req.headers.hasOwnProperty()).
+    let headersView = {};
+    for (const name in headers) {
+      if (name[0] === ":") continue;
+      if (name === "__proto__") {
+        // `headersView[name] = ...` would hit Object.prototype's `__proto__`
+        // setter and silently drop the header, leaving it present in
+        // rawHeaders but missing from headers. Define a real own property so
+        // the two views stay consistent.
+        ObjectDefineProperty(headersView, name, {
+          __proto__: null,
+          value: headers[name],
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+      } else {
+        headersView[name] = headers[name];
+      }
+    }
+    if (
+      headersView.host === undefined && headers[":authority"] !== undefined
+    ) {
+      headersView.host = headers[":authority"];
+    }
+    ObjectDefineProperty(req, "headers", {
+      __proto__: null,
+      configurable: true,
+      enumerable: true,
+      get: () => headersView,
+      set: (value) => {
+        headersView = value;
+      },
+    });
+    const rawHeaders = req.rawHeaders;
+    let hasHost = false;
+    let rawView = [];
+    for (let i = 0; i < rawHeaders.length; i += 2) {
+      const name = rawHeaders[i];
+      if (name[0] === ":") continue;
+      if (name === "host") hasHost = true;
+      ArrayPrototypePush(rawView, name, rawHeaders[i + 1]);
+    }
+    if (!hasHost && headersView.host !== undefined) {
+      ArrayPrototypePush(rawView, "host", headersView.host);
+    }
+    ObjectDefineProperty(req, "rawHeaders", {
+      __proto__: null,
+      configurable: true,
+      enumerable: true,
+      get: () => rawView,
+      set: (value) => {
+        rawView = value;
+      },
+    });
+    server.emit("request", req, res);
+  });
+  // Surface session/stream errors on the http.Server like client
+  // connection errors; never let them become uncaught "error" events on
+  // the shadow.
+  shadow.on("sessionError", (err, session) => {
+    const socket = session?.socket;
+    // Only surface as clientError when there is a socket for the
+    // listener to act on; otherwise (and when unhandled) tear the
+    // session down directly.
+    if (!socket || !server.emit("clientError", err, socket)) {
+      session?.destroy(err);
+    }
+  });
+  server.once("close", () => {
+    shadow.close();
+  });
+  return shadow;
+}
+
+function startH2OverrideConnection(server, conn, initialChunk) {
+  const socket = new OverrideSocket(conn, initialChunk);
+  const shadow = h2ShadowServer(server);
+  // net.Server registers its connection listener for the "connection"
+  // event; emitting it runs the full HTTP/2 session setup on `socket`.
+  shadow.emit("connection", socket);
+}
+
 // Run a Deno listener on the override address, handing each accepted
 // connection to `connectionListener` so the HTTP parser picks it up
 // the same way a regular net.Server connection would. For https.Server
 // the caller should pass the plain http _connectionListener so the
 // override channel stays cleartext (typical Deno Deploy / desktop
 // runtime use case: trusted local vsock/unix transport).
-function startOverrideListener(server, override, connectionListener) {
+// `alpnRouting` is used by node:http2 servers: instead of the
+// http.Server-specific dispatch (h1 parser path / shadow HTTP/2 session),
+// the sniffed protocol is exposed as `socket.alpnProtocol` ("h2" or
+// "http/1.1") and every connection is handed to `connectionListener`,
+// which performs its own protocol routing exactly like it would for a
+// TLS+ALPN connection.
+function startOverrideListener(
+  server,
+  override,
+  connectionListener,
+  alpnRouting = false,
+) {
   let denoListener;
   try {
     denoListener = denoListen(overrideToListenArgs(override));
@@ -295,8 +539,39 @@ function startOverrideListener(server, override, connectionListener) {
           }
           break;
         }
-        const socket = new OverrideSocket(conn);
-        FunctionPrototypeCall(connectionListener, server, socket);
+        // Sniff the protocol off the accept loop so a slow client can't
+        // stall other connections.
+        PromisePrototypeCatch(
+          (async () => {
+            const { isH2, initial } = await sniffConnection(conn);
+            if (server[kOverrideClosed]) {
+              try {
+                conn.close();
+              } catch (_) {
+                // ignore
+              }
+              return;
+            }
+            if (alpnRouting) {
+              const socket = new OverrideSocket(conn, initial);
+              socket.server = server;
+              socket.alpnProtocol = isH2 ? "h2" : "http/1.1";
+              FunctionPrototypeCall(connectionListener, server, socket);
+            } else if (isH2) {
+              startH2OverrideConnection(server, conn, initial);
+            } else {
+              const socket = new OverrideSocket(conn, initial);
+              FunctionPrototypeCall(connectionListener, server, socket);
+            }
+          })(),
+          (_err) => {
+            try {
+              conn.close();
+            } catch (_) {
+              // ignore
+            }
+          },
+        );
       }
     } catch (err) {
       // Ignore BadResource on close.

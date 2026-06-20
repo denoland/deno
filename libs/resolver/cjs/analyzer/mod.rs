@@ -212,6 +212,35 @@ impl<TSys: DenoCjsCodeAnalyzerSys> DenoCjsCodeAnalyzer<TSys> {
       return Ok(DenoCjsAnalysis::Cjs(Default::default()));
     }
 
+    // Non-script files can't carry CJS exports. Extensions answer this for
+    // everything except extensionless files (`MediaType::Unknown`), which may
+    // be real modules (an npm `"main"` with no extension — see
+    // test-module-main-extension-lookup) OR binary assets a framework happened
+    // to `require()`. Feeding binary to swc panics (it asserts on a backwards
+    // span), so for `Unknown` we only proceed when the source looks like text
+    // rather than blanket-skipping every extensionless module.
+    let is_definitely_non_script = !matches!(
+      media_type,
+      MediaType::JavaScript
+        | MediaType::Mjs
+        | MediaType::Cjs
+        | MediaType::Jsx
+        | MediaType::TypeScript
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::Tsx
+        | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
+        | MediaType::Unknown
+    );
+    let looks_binary = source.contains('\0') || source.contains('\u{FFFD}');
+    if is_definitely_non_script
+      || (media_type == MediaType::Unknown && looks_binary)
+    {
+      return Ok(DenoCjsAnalysis::Esm);
+    }
+
     let cjs_tracker = self.cjs_tracker.clone();
     let is_maybe_cjs = cjs_tracker
       .is_maybe_cjs(specifier, media_type)

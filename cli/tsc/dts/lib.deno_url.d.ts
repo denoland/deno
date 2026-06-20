@@ -187,10 +187,15 @@ interface URLSearchParams {
   readonly size: number;
 }
 
-/** The constructor object for {@linkcode URLSearchParams}, used to create a new
- * `URLSearchParams` object for parsing and building URL query strings.
+/** The URLSearchParams interface defines utility methods to work with the
+ * query string of a URL. An object implementing URLSearchParams can directly
+ * be used in a `for...of` structure to iterate over key/value pairs in the
+ * same order as they appear in the query string.
  *
- * @category URL */
+ * @see https://developer.mozilla.org/docs/Web/API/URLSearchParams
+ *
+ * @category URL
+ */
 declare var URLSearchParams: {
   readonly prototype: URLSearchParams;
   /**

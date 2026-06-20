@@ -55,9 +55,22 @@ let _kvImpl;
 function lazyKv() {
   return _kvImpl ?? (_kvImpl = core.loadExtScript("ext:deno_kv/01_db.ts"));
 }
-const cron = core.loadExtScript("ext:deno_cron/01_cron.ts");
-const surface = core.loadExtScript("ext:deno_canvas/02_surface.js");
-const telemetry = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+// `Deno.cron`, `Deno.UnsafeWindowSurface`, `Deno.telemetry` are rarely used
+// and their backing modules (`01_cron.ts`, `02_surface.js`, `telemetry.ts`)
+// are several KB of bytecode + closures each in the snapshot heap. Defer the
+// `loadExtScript()` calls so they don't materialize at snapshot build time:
+// only on first property access at runtime.
+let _cron;
+const lazyCron = () =>
+  _cron ?? (_cron = core.loadExtScript("ext:deno_cron/01_cron.ts"));
+let _surface;
+const lazySurface = () =>
+  _surface ??
+    (_surface = core.loadExtScript("ext:deno_canvas/02_surface.js"));
+let _telemetry;
+const lazyTelemetry = () =>
+  _telemetry ??
+    (_telemetry = core.loadExtScript("ext:deno_telemetry/telemetry.ts"));
 import { unstableIds } from "ext:deno_features/flags.js";
 const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
 import { bundle } from "ext:deno_bundle_runtime/bundle.ts";
@@ -108,6 +121,13 @@ defineLazyInternal("addTrailers", "ext:deno_http/00_serve.ts");
 defineLazyInternal("upgradeHttpRaw", "ext:deno_http/00_serve.ts");
 defineLazyInternal("serveHttpOnListener", "ext:deno_http/00_serve.ts");
 defineLazyInternal("serveHttpOnConnection", "ext:deno_http/00_serve.ts");
+// `ext:deno_cron/01_cron.ts` registers `internals.formatToCronSchedule` /
+// `internals.parseScheduleToString` at module body. Now that cron is lazy
+// (see `lazyCron` below), expose these via the same accessor pattern so
+// `cron_test.ts` (which destructures them from `Deno[Deno.internal]`) and
+// any user code reaching in keep working.
+defineLazyInternal("formatToCronSchedule", "ext:deno_cron/01_cron.ts");
+defineLazyInternal("parseScheduleToString", "ext:deno_cron/01_cron.ts");
 // `ext:deno_http/02_websocket.ts`.
 defineLazyInternal(
   "buildCaseInsensitiveCommaValueFinder",
@@ -124,12 +144,8 @@ defineLazyInternal("kExtraStdio", "ext:deno_process/40_process.js");
 const usageBuffer = new Float64Array(4);
 
 const denoNs = {
-  get Process() {
-    return lazyProcess().Process;
-  },
-  get run() {
-    return lazyProcess().run;
-  },
+  Process: undefined,
+  run: undefined,
   isatty: tty.isatty,
   writeFileSync: fs.writeFileSync,
   writeFile: fs.writeFile,
@@ -222,21 +238,13 @@ const denoNs = {
   permissions: permissions.permissions,
   Permissions: permissions.Permissions,
   PermissionStatus: permissions.PermissionStatus,
-  get serveHttp() {
-    return lazyHttp().serveHttp;
-  },
-  get serve() {
-    return lazyServe().serve;
-  },
+  serveHttp: undefined,
+  serve: undefined,
   resolveDns: net.resolveDns,
-  get upgradeWebSocket() {
-    return lazyWebsocket().upgradeWebSocket;
-  },
+  upgradeWebSocket: undefined,
   utime: fs.utime,
   utimeSync: fs.utimeSync,
-  get kill() {
-    return lazyProcess().kill;
-  },
+  kill: undefined,
   addSignalListener: signals.addSignalListener,
   removeSignalListener: signals.removeSignalListener,
   refTimer: timers.refTimer,
@@ -249,21 +257,11 @@ const denoNs = {
   consoleSize: tty.consoleSize,
   gid: os.gid,
   uid: os.uid,
-  get Command() {
-    return lazyProcess().Command;
-  },
-  get ChildProcess() {
-    return lazyProcess().ChildProcess;
-  },
-  get spawn() {
-    return lazyProcess().spawn;
-  },
-  get spawnAndWait() {
-    return lazyProcess().spawnAndWait;
-  },
-  get spawnAndWaitSync() {
-    return lazyProcess().spawnAndWaitSync;
-  },
+  Command: undefined,
+  ChildProcess: undefined,
+  spawn: undefined,
+  spawnAndWait: undefined,
+  spawnAndWaitSync: undefined,
   dlopen: ffi.dlopen,
   UnsafeCallback: ffi.UnsafeCallback,
   UnsafePointer: ffi.UnsafePointer,
@@ -272,8 +270,42 @@ const denoNs = {
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
-  telemetry: telemetry.telemetry,
+  get telemetry() {
+    return lazyTelemetry().telemetry;
+  },
 };
+
+core.defineGlobalProperties(denoNs, {
+  Process: core.propWritableLazyLoaded(
+    (process) => process.Process,
+    lazyProcess,
+  ),
+  run: core.propWritableLazyLoaded((process) => process.run, lazyProcess),
+  serveHttp: core.propWritableLazyLoaded((http) => http.serveHttp, lazyHttp),
+  serve: core.propWritableLazyLoaded((serve) => serve.serve, lazyServe),
+  upgradeWebSocket: core.propWritableLazyLoaded(
+    (websocket) => websocket.upgradeWebSocket,
+    lazyWebsocket,
+  ),
+  kill: core.propWritableLazyLoaded((process) => process.kill, lazyProcess),
+  Command: core.propWritableLazyLoaded(
+    (process) => process.Command,
+    lazyProcess,
+  ),
+  ChildProcess: core.propWritableLazyLoaded(
+    (process) => process.ChildProcess,
+    lazyProcess,
+  ),
+  spawn: core.propWritableLazyLoaded((process) => process.spawn, lazyProcess),
+  spawnAndWait: core.propWritableLazyLoaded(
+    (process) => process.spawnAndWait,
+    lazyProcess,
+  ),
+  spawnAndWaitSync: core.propWritableLazyLoaded(
+    (process) => process.spawnAndWaitSync,
+    lazyProcess,
+  ),
+});
 
 const denoNsUnstableById = { __proto__: null };
 
@@ -284,7 +316,9 @@ denoNsUnstableById[unstableIds.bundle] = {
 // denoNsUnstableById[unstableIds.broadcastChannel] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.cron] = {
-  cron: cron.cron,
+  get cron() {
+    return lazyCron().cron;
+  },
 };
 
 denoNsUnstableById[unstableIds.kv] = {
@@ -339,7 +373,9 @@ core.defineGlobalProperties(denoNsUnstableById[unstableIds.net], {
 // denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.webgpu] = {
-  UnsafeWindowSurface: surface.UnsafeWindowSurface,
+  get UnsafeWindowSurface() {
+    return lazySurface().UnsafeWindowSurface;
+  },
 };
 core.defineGlobalProperties(denoNsUnstableById[unstableIds.webgpu], {
   webgpu: core.propWritableLazyLoaded(

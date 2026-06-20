@@ -10,7 +10,7 @@ use deno_core::op2;
 use deno_core::url::Url;
 use deno_fetch::FetchError;
 use deno_fetch::data_url::DataUrl;
-use deno_web::BlobStore;
+use deno_web::BlobStoreTrait;
 use http_body_util::BodyExt;
 use hyper::body::Bytes;
 
@@ -100,7 +100,7 @@ pub fn op_worker_sync_fetch(
   // URLs when none of the script URLs use the blob scheme.
   // Also, in which contexts are blob URLs not supported?
   let blob_store = state
-    .try_borrow::<Arc<BlobStore>>()
+    .try_borrow::<Arc<dyn BlobStoreTrait>>()
     .ok_or(SyncFetchErrorKind::BlobUrlsNotSupportedInContext)?
     .clone();
 

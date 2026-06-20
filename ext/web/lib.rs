@@ -5,6 +5,7 @@ mod blob;
 mod broadcast_channel;
 mod compression;
 mod console;
+mod css_stylesheet;
 mod css_value;
 mod f64;
 mod geometry;
@@ -21,6 +22,7 @@ use std::sync::Arc;
 
 pub use blob::BlobError;
 pub use compression::CompressionError;
+pub use css_stylesheet::create_css_style_sheet;
 use deno_core::U16String;
 use deno_core::convert::ByteString;
 use deno_core::convert::Uint8Array;
@@ -37,6 +39,7 @@ pub use stream_resource::StreamResourceError;
 pub use crate::blob::Blob;
 pub use crate::blob::BlobPart;
 pub use crate::blob::BlobStore;
+pub use crate::blob::BlobStoreTrait;
 pub use crate::blob::InMemoryBlobPart;
 use crate::blob::op_blob_clone_part;
 use crate::blob::op_blob_create_object_url;
@@ -75,6 +78,7 @@ deno_core::extension!(deno_web,
     op_encoding_normalize_label,
     op_encoding_decode_single,
     op_encoding_decode_utf8,
+    op_encoding_decode_utf8_ascii_only,
     op_encoding_new_decoder,
     op_encoding_decode,
     op_encoding_encode_into,
@@ -118,6 +122,15 @@ deno_core::extension!(deno_web,
     urlpattern::op_urlpattern_parse,
     urlpattern::op_urlpattern_process_match_input,
     console::op_preview_entries,
+    console::op_console_inspect,
+    console::op_console_inspect_args,
+    console::op_console_format_value,
+    console::op_console_quote_string,
+    console::op_console_parse_css,
+    console::op_console_parse_css_color,
+    console::op_console_css_to_ansi,
+    console::op_console_get_string_width,
+    console::op_console_strip_vt,
     broadcast_channel::op_broadcast_subscribe,
     broadcast_channel::op_broadcast_unsubscribe,
     broadcast_channel::op_broadcast_serialize,
@@ -127,6 +140,8 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_recv,
   ],
   objects = [
+    css_stylesheet::CSSRule,
+    css_stylesheet::CSSStyleSheet,
     geometry::DOMPointReadOnly,
     geometry::DOMPoint,
     geometry::DOMRectReadOnly,
@@ -135,6 +150,7 @@ deno_core::extension!(deno_web,
     geometry::DOMMatrixReadOnly,
     geometry::DOMMatrix,
     image_data::ImageData,
+    console::Console,
   ],
   lazy_loaded_esm = [
     "webtransport.js",
@@ -163,9 +179,10 @@ deno_core::extension!(deno_web,
     "15_performance.js",
     "16_image_data.js",
     "17_geometry.js",
+    "18_css_stylesheet.js",
   ],
   options = {
-    blob_store: Arc<BlobStore>,
+    blob_store: Arc<dyn BlobStoreTrait>,
     maybe_location: Option<Url>,
     enable_css_parser_features: bool,
     bc: InMemoryBroadcastChannel,
@@ -519,6 +536,25 @@ fn op_encoding_normalize_label(
   let encoding = Encoding::for_label_no_replacement(label.as_bytes())
     .ok_or(WebError::InvalidEncodingLabel(label))?;
   Ok(encoding.name().to_lowercase())
+}
+
+// Streaming-mode fast path for UTF-8 decoding: returns a V8 string when the
+// input is pure ASCII, and `null` otherwise. Pure ASCII can never split a
+// codepoint at a chunk boundary, so a streaming `TextDecoder` whose internal
+// state is idle can decode an ASCII chunk without touching its incremental
+// decoder at all. Used by `TextDecoder.decode(chunk, { stream: true })` in
+// `08_text_encoding.js` to skip the `Vec<u16>` allocation and UTF-16
+// conversion of the encoding_rs path while keeping the decoder idle for the
+// next ASCII chunk.
+#[op2]
+fn op_encoding_decode_utf8_ascii_only<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[anybuffer] zero_copy: &[u8],
+) -> Option<v8::Local<'a, v8::String>> {
+  if !v8::simdutf::validate_ascii(zero_copy) {
+    return None;
+  }
+  v8::String::new_from_one_byte(scope, zero_copy, v8::NewStringType::Normal)
 }
 
 #[op2]

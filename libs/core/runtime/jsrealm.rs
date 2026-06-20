@@ -96,6 +96,20 @@ pub struct ContextState {
   pub(crate) op_ctxs: Box<[OpCtx]>,
   pub(crate) op_method_decls: Vec<OpMethodDecl>,
   pub(crate) methods_ctx_offset: usize,
+  /// Snapshots built against V8 14.9+ bake the *slow* version of each op
+  /// (see `op_ctx_template`); fast-call overloads are re-attached at runtime
+  /// by `upgrade_snapshotted_ops_with_fast_calls`. That pass creates ~1.6k V8
+  /// functions (~0.9ms). It only benefits ops accessed at runtime (baked
+  /// modules captured their slow refs at snapshot eval), so we DEFER it until
+  /// the first residual ext-module load — a program that never loads a
+  /// residual module (e.g. `deno run empty.js`) never pays for it.
+  pub(crate) fast_ops_upgraded: Cell<bool>,
+  /// `(Deno.core.ops, Deno.core.setUpAsyncStub)` captured at `new_inner` time,
+  /// because `Deno.core` is scrubbed from the public `Deno` after bootstrap and
+  /// the deferred upgrade (which runs post-bootstrap) can no longer read them
+  /// from the global. `None` when the upgrade isn't deferred.
+  pub(crate) deferred_fast_ops:
+    RefCell<Option<(v8::Global<v8::Object>, v8::Global<v8::Function>)>>,
   pub(crate) isolate: Option<v8::UnsafeRawIsolatePtr>,
   pub(crate) exception_state: Rc<ExceptionState>,
   /// Shared tick info buffer exposed to JS as a Uint8Array.
@@ -180,6 +194,8 @@ impl ContextState {
       op_ctxs,
       op_method_decls,
       methods_ctx_offset,
+      fast_ops_upgraded: Cell::new(false),
+      deferred_fast_ops: RefCell::new(None),
       pending_ops: op_driver,
       task_spawner_factory: Default::default(),
       user_timer: Default::default(),
@@ -578,58 +594,6 @@ impl JsRealm {
   pub(crate) fn increment_modules_idle(&self) {
     let count = &self.0.module_map.dyn_module_evaluate_idle_counter;
     count.set(count.get() + 1)
-  }
-
-  /// Asynchronously load specified module and all of its dependencies.
-  ///
-  /// The module will be marked as "main", and because of that
-  /// "import.meta.main" will return true when checked inside that module.
-  ///
-  /// User must call [`ModuleMap::mod_evaluate`] with returned `ModuleId`
-  /// manually after load is finished.
-  pub(crate) async fn load_main_es_module_from_code(
-    &self,
-    isolate: &mut v8::Isolate,
-    specifier: &ModuleSpecifier,
-    code: Option<ModuleCodeString>,
-  ) -> Result<ModuleId, CoreError> {
-    let module_map_rc = self.0.module_map();
-    if let Some(code) = code {
-      context_scope!(scope, self, isolate);
-      // true for main module
-      module_map_rc
-        .new_es_module(
-          scope,
-          true,
-          specifier.to_string().into(),
-          code,
-          false,
-          None,
-        )
-        .map_err(|e| e.into_error(scope, false, false))?;
-    }
-
-    let root_id =
-      RecursiveModuleLoad::main(specifier.to_string(), module_map_rc.clone())
-        .await?
-        .run_to_completion(|load, step| {
-          context_scope!(scope, self, isolate);
-          match step {
-            crate::modules::recursive_load::RegisterStep::Register {
-              request,
-              source,
-            } => load
-              .register_and_recurse(scope, request, source)
-              .map_err(|e| e.into_error(scope, false, false)),
-          }
-        })
-        .await?;
-    context_scope!(scope, self, isolate);
-    self.instantiate_module(scope, root_id).map_err(|e| {
-      let exception = v8::Local::new(scope, e);
-      exception_to_err(scope, exception, false, false)
-    })?;
-    Ok(root_id)
   }
 
   /// Asynchronously load specified ES module and all of its dependencies.

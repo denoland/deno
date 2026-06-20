@@ -631,6 +631,7 @@ fn compute_document_doc_diagnostics(
       resolver: None,
       unstable_bytes_imports: false,
       unstable_text_imports: false,
+      unstable_css_imports: false,
     },
   ));
   if token.is_cancelled() {
@@ -742,8 +743,11 @@ pub enum DenoDiagnostic {
   NoExportNpm(NpmPackageReqReference),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
-  /// An error occurred when resolving the specifier string.
-  ResolutionError(deno_graph::ResolutionError),
+  /// An error occurred when resolving the specifier string. The second field
+  /// holds the names of packages importable by bare specifier (workspace
+  /// members and packages linked via the "links" field), used to enhance the
+  /// error with a better hint.
+  ResolutionError(deno_graph::ResolutionError, Vec<String>),
   /// Unknown `node:` specifier.
   UnknownNodeSpecifier(ModuleSpecifier),
   /// Bare specifier is used for `node:` specifier
@@ -763,7 +767,7 @@ impl DenoDiagnostic {
       Self::NotInstalledNpm(_, _) => "not-installed-npm",
       Self::NoExportNpm(_) => "no-export-npm",
       Self::NoLocal(_) => "no-local",
-      Self::ResolutionError(err) => {
+      Self::ResolutionError(err, _) => {
         if deno_resolver::graph::get_resolution_error_bare_node_specifier(err)
           .is_some()
         {
@@ -1019,8 +1023,8 @@ impl DenoDiagnostic {
         });
         (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, sloppy_resolution.as_ref().map(|(resolved, sloppy_reason)| sloppy_reason.suggestion_message_for_specifier(resolved))), data)
       },
-      Self::ResolutionError(err) => {
-        let message = strip_ansi_codes(&enhanced_resolution_error_message(err)).into_owned();
+      Self::ResolutionError(err, bare_importable_pkg_names) => {
+        let message = strip_ansi_codes(&enhanced_resolution_error_message(err, bare_importable_pkg_names)).into_owned();
         (
         lsp::DiagnosticSeverity::ERROR,
         message,
@@ -1095,7 +1099,7 @@ fn maybe_ambient_import_specifier(
     DenoDiagnostic::NoCache(url) | DenoDiagnostic::NoLocal(url) => {
       Some(url.to_string())
     }
-    DenoDiagnostic::ResolutionError(err) => {
+    DenoDiagnostic::ResolutionError(err, _) => {
       maybe_ambient_specifier_resolution_err(err)
     }
     _ => None,
@@ -1282,11 +1286,31 @@ fn diagnose_resolution(
     // The specifier resolution resulted in an error, so we want to issue a
     // diagnostic for that.
     Resolution::Err(err) => {
+      // Names of packages importable by bare specifier (workspace members and
+      // packages linked via the "links" field) in the referrer's scope, used
+      // to enhance the error with a better hint.
+      let bare_importable_pkg_names = snapshot
+        .config
+        .tree
+        .data_for_specifier(&referrer_module.specifier)
+        .map(|d| {
+          d.member_dir
+            .workspace
+            .resolver_jsr_pkgs()
+            .map(|pkg| pkg.name)
+            .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
       if maybe_ambient_specifier_resolution_err(err).is_none() {
-        diagnostics.push(DenoDiagnostic::ResolutionError(*err.clone()))
+        diagnostics.push(DenoDiagnostic::ResolutionError(
+          *err.clone(),
+          bare_importable_pkg_names,
+        ))
       } else {
-        deferred_diagnostics
-          .push(DenoDiagnostic::ResolutionError(*err.clone()));
+        deferred_diagnostics.push(DenoDiagnostic::ResolutionError(
+          *err.clone(),
+          bare_importable_pkg_names,
+        ));
       }
     }
     _ => (),
@@ -2070,7 +2094,7 @@ mod tests {
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
-      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver, None));
     resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
     let linter_resolver = Arc::new(LspLinterResolver::new(
       &config,

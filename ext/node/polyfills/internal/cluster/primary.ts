@@ -11,6 +11,7 @@
 
 (function () {
 const { core, primordials } = __bootstrap;
+const { op_get_env_no_permission_check } = core.ops;
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const lazyChildProcess = core.createLazyLoader("node:child_process");
 const lazyPath = core.createLazyLoader("node:path");
@@ -78,8 +79,11 @@ function init(cluster: any) {
   let setupCalled = false;
 
   // Read the policy from env, mirroring lib/internal/cluster/primary.js.
+  // Use the no-permission-check op (Node reads this unconditionally at
+  // cluster init): the now-lazy node bootstrap can run this in the worker
+  // path where `process.env` access would otherwise require `--allow-env`.
   let schedulingPolicy: number;
-  const env = (process as any).env.NODE_CLUSTER_SCHED_POLICY;
+  const env = op_get_env_no_permission_check("NODE_CLUSTER_SCHED_POLICY");
   if (env === "rr") {
     schedulingPolicy = SCHED_RR;
   } else if (env === "none") {

@@ -363,6 +363,7 @@ interface Navigator {
   readonly language: string;
   readonly languages: string[];
   readonly platform: string;
+  readonly userAgentData: NavigatorUAData;
 }
 
 /**
