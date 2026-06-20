@@ -29,6 +29,8 @@
     URIError,
   } = window.__bootstrap.primordials;
 
+  // Promise ids must be non-negative and fit in an i32 (Rust's `PromiseId`);
+  // the increment in the async op stubs wraps back to 0 past 2^31 - 1.
   let nextPromiseId = 0;
   const promiseMap = new SafeMap();
   const RING_SIZE = 4 * 1024;
@@ -40,6 +42,11 @@
 
   let isLeakTracingEnabled = false;
   let submitLeakTrace;
+
+  // Exposed for testing promise id wraparound behavior.
+  function __setNextPromiseId(promiseId) {
+    nextPromiseId = promiseId;
+  }
 
   function __setLeakTracingEnabled(enabled) {
     isLeakTracingEnabled = enabled;
@@ -76,6 +83,13 @@
   }
 
   const errorMap = {};
+  // Maps a registered error class name to its constructor. Unlike `errorMap`
+  // (which stores builder closures), this keeps a reference to the class itself
+  // so the Rust side can restore the exact prototype when building an exception
+  // natively (e.g. from inside a V8 fast call, where re-entering JS to call
+  // `buildCustomError` is forbidden). Null prototype so class names can't
+  // collide with `Object.prototype` members.
+  const errorConstructors = { __proto__: null };
   // Builtin v8 / JS errors
   registerErrorClass("Error", Error);
   registerErrorClass("RangeError", RangeError);
@@ -118,6 +132,7 @@
 
   function registerErrorClass(className, errorClass) {
     registerErrorBuilder(className, (msg) => new errorClass(msg));
+    errorConstructors[className] = errorClass;
   }
 
   function registerErrorBuilder(className, errorBuilder) {
@@ -132,12 +147,17 @@
     // Move old promise from ring to map
     const oldPromise = promiseRing[idx];
     if (oldPromise !== NO_PROMISE) {
-      const oldPromiseId = promiseId - RING_SIZE;
-      MapPrototypeSet(promiseMap, oldPromiseId, oldPromise);
+      // Keyed on the entry's own id rather than `promiseId - RING_SIZE` so it
+      // stays correct across the id counter wrapping back to 0. The one
+      // unavoidable limit: if a single promise stays pending while 2^31 more
+      // ids are dispatched its id is reused, and this set silently overwrites
+      // (loses) the older map entry. Not a regression: the old code broke far
+      // sooner, and no real workload keeps an op pending across 2^31 dispatches.
+      MapPrototypeSet(promiseMap, oldPromise[2], oldPromise);
     }
 
     const promise = new Promise((resolve, reject) => {
-      promiseRing[idx] = [resolve, reject];
+      promiseRing[idx] = [resolve, reject, promiseId];
     });
     const wrappedPromise = PromisePrototypeCatch(
       promise,
@@ -152,44 +172,39 @@
   }
 
   function __resolvePromise(promiseId, res, isOk) {
-    // Check if out of ring bounds, fallback to map
-    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
-    if (outOfBounds) {
-      const promise = MapPrototypeGet(promiseMap, promiseId);
+    // A promise stays in the ring until its slot is reclaimed by a newer
+    // promise, at which point it moves to the map. The entry stores its own
+    // promise id, so a slot reused after the id counter wrapped around is
+    // never mistaken for an older promise that is now in the map.
+    const idx = promiseId % RING_SIZE;
+    let promise = promiseRing[idx];
+    if (promise !== NO_PROMISE && promise[2] === promiseId) {
+      promiseRing[idx] = NO_PROMISE;
+    } else {
+      promise = MapPrototypeGet(promiseMap, promiseId);
       if (!promise) {
-        throw "Missing promise in map @ " + promiseId;
+        throw "Missing promise @ " + promiseId;
       }
       MapPrototypeDelete(promiseMap, promiseId);
-      if (isOk) {
-        promise[0](res);
-      } else {
-        promise[1](res);
-      }
+    }
+    if (isOk) {
+      promise[0](res);
     } else {
-      // Otherwise take from ring
-      const idx = promiseId % RING_SIZE;
-      const promise = promiseRing[idx];
-      if (!promise) {
-        throw "Missing promise in ring @ " + promiseId;
-      }
-      promiseRing[idx] = NO_PROMISE;
-      if (isOk) {
-        promise[0](res);
-      } else {
-        promise[1](res);
-      }
+      promise[1](res);
     }
   }
 
   function hasPromise(promiseId) {
-    // Check if out of ring bounds, fallback to map
-    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
-    if (outOfBounds) {
-      return MapPrototypeHas(promiseMap, promiseId);
-    }
-    // Otherwise check it in ring
     const idx = promiseId % RING_SIZE;
-    return promiseRing[idx] != NO_PROMISE;
+    // Loose comparison on purpose: `promiseId` can be `undefined` (e.g.
+    // `unrefOpPromise()` with a promise from an op that completed eagerly and
+    // has no promise id attached), making `idx` NaN and the ring lookup
+    // return `undefined` instead of the `NO_PROMISE` (null) sentinel.
+    const promise = promiseRing[idx];
+    if (promise != NO_PROMISE && promise[2] === promiseId) {
+      return true;
+    }
+    return MapPrototypeHas(promiseMap, promiseId);
   }
 
   function setUpAsyncStub(opName, originalOp, maybeProto) {
@@ -215,7 +230,7 @@
           if (isLeakTracingEnabled) {
             submitLeakTrace(id);
           }
-          nextPromiseId = (id + 1) & 0xffffffff;
+          nextPromiseId = (id + 1) & 0x7fffffff;
           return setPromise(id);
         };
         break;
@@ -235,7 +250,7 @@
           if (isLeakTracingEnabled) {
             submitLeakTrace(id);
           }
-          nextPromiseId = (id + 1) & 0xffffffff;
+          nextPromiseId = (id + 1) & 0x7fffffff;
           return setPromise(id);
         };
         break;
@@ -255,7 +270,7 @@
           if (isLeakTracingEnabled) {
             submitLeakTrace(id);
           }
-          nextPromiseId = (id + 1) & 0xffffffff;
+          nextPromiseId = (id + 1) & 0x7fffffff;
           return setPromise(id);
         };
         break;
@@ -275,7 +290,7 @@
           if (isLeakTracingEnabled) {
             submitLeakTrace(id);
           }
-          nextPromiseId = (id + 1) & 0xffffffff;
+          nextPromiseId = (id + 1) & 0x7fffffff;
           return setPromise(id);
         };
         break;
@@ -295,7 +310,7 @@
           if (isLeakTracingEnabled) {
             submitLeakTrace(id);
           }
-          nextPromiseId = (id + 1) & 0xffffffff;
+          nextPromiseId = (id + 1) & 0x7fffffff;
           return setPromise(id);
         };
         break;
@@ -315,7 +330,7 @@
           if (isLeakTracingEnabled) {
             submitLeakTrace(id);
           }
-          nextPromiseId = (id + 1) & 0xffffffff;
+          nextPromiseId = (id + 1) & 0x7fffffff;
           return setPromise(id);
         };
         break;
@@ -335,7 +350,7 @@
           if (isLeakTracingEnabled) {
             submitLeakTrace(id);
           }
-          nextPromiseId = (id + 1) & 0xffffffff;
+          nextPromiseId = (id + 1) & 0x7fffffff;
           return setPromise(id);
         };
         break;
@@ -355,7 +370,7 @@
           if (isLeakTracingEnabled) {
             submitLeakTrace(id);
           }
-          nextPromiseId = (id + 1) & 0xffffffff;
+          nextPromiseId = (id + 1) & 0x7fffffff;
           return setPromise(id);
         };
         break;
@@ -375,7 +390,7 @@
           if (isLeakTracingEnabled) {
             submitLeakTrace(id);
           }
-          nextPromiseId = (id + 1) & 0xffffffff;
+          nextPromiseId = (id + 1) & 0x7fffffff;
           return setPromise(id);
         };
         break;
@@ -395,7 +410,7 @@
           if (isLeakTracingEnabled) {
             submitLeakTrace(id);
           }
-          nextPromiseId = (id + 1) & 0xffffffff;
+          nextPromiseId = (id + 1) & 0x7fffffff;
           return setPromise(id);
         };
         break;
@@ -512,9 +527,11 @@
     registerErrorBuilder,
     buildCustomError,
     registerErrorClass,
+    errorConstructors,
     setUpAsyncStub,
     hasPromise,
     promiseIdSymbol,
+    __setNextPromiseId,
   });
 
   const infra = {

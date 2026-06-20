@@ -3,7 +3,11 @@
 // deno-lint-ignore-file no-console
 
 import { EventEmitter, once } from "node:events";
-import { createHook } from "node:async_hooks";
+import {
+  AsyncLocalStorage,
+  createHook,
+  executionAsyncResource,
+} from "node:async_hooks";
 import http, {
   IncomingMessage,
   type RequestOptions,
@@ -16,6 +20,7 @@ import net, { type AddressInfo, Socket } from "node:net";
 import fs from "node:fs";
 import type { Duplex } from "node:stream";
 import { text } from "node:stream/consumers";
+import { channel } from "node:diagnostics_channel";
 
 import { assert, assertEquals, assertStringIncludes, fail } from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
@@ -763,6 +768,32 @@ Deno.test("[node/http] ServerResponse direct end sets content-length", async () 
   assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
   assert(rawResponse.endsWith("\r\n\r\nhi"));
 });
+
+Deno.test("[node/http] ServerResponse empty end sets content-length", async () => {
+  const rawResponse = await getRawServerResponse((_req, res) => {
+    res.end();
+  });
+
+  assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+  assertStringIncludes(rawResponse, "Content-Length: 0\r\n");
+  assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
+  assert(rawResponse.endsWith("\r\n\r\n"));
+});
+
+Deno.test(
+  "[node/http] ServerResponse empty end respects pre-generated content-length",
+  async () => {
+    const rawResponse = await getRawServerResponse((_req, res) => {
+      res.writeHead(200, { "Content-Length": "0" });
+      res.end();
+    });
+
+    assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+    assertStringIncludes(rawResponse, "Content-Length: 0\r\n");
+    assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
+    assert(rawResponse.endsWith("\r\n\r\n"));
+  },
+);
 
 Deno.test(
   "[node/http] ServerResponse direct end respects explicit chunked transfer-encoding",
@@ -2268,6 +2299,51 @@ Deno.test("[node/http] rawHeaders are in flattened format", async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
+Deno.test("[node/http] request header values trim trailing OWS", async () => {
+  const parsed = Promise.withResolvers<void>();
+  const server = http.createServer((req, res) => {
+    try {
+      assertEquals(req.headers["x-ows"], "value");
+      const idx = req.rawHeaders.findIndex((header) =>
+        header.toLowerCase() === "x-ows"
+      );
+      assert(idx >= 0);
+      assertEquals(req.rawHeaders[idx + 1], "value");
+      res.end();
+      parsed.resolve();
+    } catch (err) {
+      parsed.reject(err);
+      res.destroy(err as Error);
+    }
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const client = net.createConnection(
+    (server.address() as AddressInfo).port,
+    "127.0.0.1",
+    () => {
+      client.end(
+        "GET / HTTP/1.1\r\n" +
+          "Host: localhost\r\n" +
+          "X-OWS:\t value \t \r\n" +
+          "Connection: close\r\n\r\n",
+      );
+    },
+  );
+  client.resume();
+  client.on("error", parsed.reject);
+
+  try {
+    await parsed.promise;
+  } finally {
+    client.destroy();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 // TODO(@bartlomieju): re-enable once server-side HTTP also uses llhttp
 // (currently the Deno.serve-based server path still needs RID access)
 Deno.test("[node/http] client http over unix socket works", async () => {
@@ -2578,6 +2654,125 @@ Deno.test("[node/http] keep-alive timer is suspended during active request", asy
     await readBody("/slow");
   } finally {
     socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] AsyncLocalStorage propagates into request handler", async () => {
+  const storage = new AsyncLocalStorage<string>();
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const responseDone = Promise.withResolvers<void>();
+  const requestStart = channel("http.server.request.start");
+  const subscriber = () => storage.enterWith("request-context");
+  const server = http.createServer((_req, res) => {
+    try {
+      assertEquals(storage.getStore(), "request-context");
+      resolve();
+    } catch (err) {
+      reject(err);
+    } finally {
+      res.end("ok");
+    }
+  });
+
+  requestStart.subscribe(subscriber);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  try {
+    const port = (server.address() as AddressInfo).port;
+    const req = http.get(`http://127.0.0.1:${port}`, (res) => {
+      res.resume();
+      res.on("end", responseDone.resolve);
+      res.on("error", responseDone.reject);
+    });
+    req.on("error", reject);
+    await Promise.all([promise, responseDone.promise]);
+  } finally {
+    requestStart.unsubscribe(subscriber);
+    storage.disable();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] AsyncLocalStorage enterWith in request handler is isolated", async () => {
+  const storage = new AsyncLocalStorage<string>();
+  const firstDone = Promise.withResolvers<void>();
+  const secondDone = Promise.withResolvers<void>();
+  let requests = 0;
+  const server = http.createServer((_req, res) => {
+    try {
+      requests++;
+      if (requests === 1) {
+        assertEquals(storage.getStore(), undefined);
+        storage.enterWith("first-request");
+        assertEquals(storage.getStore(), "first-request");
+      } else {
+        assertEquals(storage.getStore(), undefined);
+      }
+      res.end("ok");
+      if (requests === 1) {
+        firstDone.resolve();
+      } else {
+        secondDone.resolve();
+      }
+    } catch (err) {
+      firstDone.reject(err);
+      secondDone.reject(err);
+      res.destroy(err as Error);
+    }
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  try {
+    const port = (server.address() as AddressInfo).port;
+    const request = () =>
+      new Promise<void>((resolve, reject) => {
+        const req = http.get(`http://127.0.0.1:${port}`, (res) => {
+          res.resume();
+          res.on("end", resolve);
+          res.on("error", reject);
+        });
+        req.on("error", reject);
+      });
+
+    await request();
+    await firstDone.promise;
+    await request();
+    await secondDone.promise;
+  } finally {
+    storage.disable();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] async_hooks observes request execution resource", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const responseDone = Promise.withResolvers<void>();
+  const hook = createHook({
+    before() {},
+  });
+  const server = http.createServer((req, res) => {
+    try {
+      assertEquals(executionAsyncResource(), req);
+      res.end("ok");
+      resolve();
+    } catch (err) {
+      reject(err);
+    }
+  });
+
+  hook.enable();
+  try {
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as AddressInfo).port;
+    const req = http.get(`http://127.0.0.1:${port}`, (res) => {
+      res.resume();
+      res.on("end", responseDone.resolve);
+      res.on("error", responseDone.reject);
+    });
+    req.on("error", reject);
+    await Promise.all([promise, responseDone.promise]);
+  } finally {
+    hook.disable();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
@@ -2901,6 +3096,183 @@ Deno.test(
   },
 );
 
+// Regression test: a long-running request must not trigger a spurious
+// ERR_HTTP_REQUEST_TIMEOUT. The ConnectionsList watchdog
+// (headersTimeout/requestTimeout) was never told that headers had been
+// parsed or that the request had finished, so connections sat with
+// headersCompleted=false forever and the watchdog fired ~headersTimeout
+// after the connection was accepted, causing Fastify/etc. to return 400.
+// https://github.com/denoland/deno/issues/34297
+Deno.test(
+  "[node/http] long-running request does not trigger spurious headersTimeout",
+  async () => {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    const server = http.createServer({
+      headersTimeout: 300,
+      connectionsCheckingInterval: 50,
+    }, (_req, res) => {
+      // Sleep longer than headersTimeout to verify the watchdog doesn't
+      // fire mid-request even though headers have already been parsed.
+      setTimeout(() => res.end("done"), 800);
+    });
+
+    server.on("clientError", (err: Error & { code?: string }) => {
+      reject(new Error(`unexpected clientError: ${err.code ?? err.message}`));
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      const req = http.request(
+        { port, host: "127.0.0.1", path: "/" },
+        (res) => {
+          let data = "";
+          res.on("data", (d) => data += d);
+          res.on("end", () => {
+            assertEquals(res.statusCode, 200);
+            assertEquals(data, "done");
+            server.close(() => resolve());
+          });
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+
+    await promise;
+  },
+);
+
+// Regression test: requestTimeout only covers receiving the full request from
+// the client, not the response lifetime. A response that streams for longer
+// than requestTimeout (SSE/proxy) must not be aborted, mirroring Node which
+// stops the requestTimeout clock once the request message is fully received.
+// Previously the ConnectionsList watchdog kept firing requestTimeout against
+// the active entry until the response finished, killing long-lived streams.
+// https://github.com/denoland/deno/issues/35289
+Deno.test(
+  "[node/http] streaming response does not trigger spurious requestTimeout",
+  async () => {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    const writeCount = 20;
+    const writeInterval = 50;
+    // requestTimeout is far shorter than the total streaming duration
+    // (20 * 50ms = ~1s) so the bug would abort the response mid-stream.
+    const server = http.createServer({
+      requestTimeout: 300,
+      connectionsCheckingInterval: 50,
+    }, (_req, res) => {
+      res.writeHead(200, { "content-type": "text/plain" });
+      let n = 0;
+      const interval = setInterval(() => {
+        n++;
+        res.write(`chunk ${n}\n`);
+        if (n === writeCount) {
+          clearInterval(interval);
+          res.end("done\n");
+        }
+      }, writeInterval);
+      res.on("close", () => clearInterval(interval));
+    });
+
+    server.on("clientError", (err: Error & { code?: string }) => {
+      reject(new Error(`unexpected clientError: ${err.code ?? err.message}`));
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      const req = http.get({ port, host: "127.0.0.1", path: "/" }, (res) => {
+        let data = "";
+        res.setEncoding("utf8");
+        res.on("data", (d) => data += d);
+        res.on("aborted", () => reject(new Error("response was aborted")));
+        res.on("end", () => {
+          assertEquals(res.statusCode, 200);
+          // All chunks plus the final "done" line must have arrived intact.
+          assertEquals(
+            data.trim().split("\n").filter(Boolean).length,
+            writeCount + 1,
+          );
+          assertStringIncludes(data, "done");
+          server.close(() => resolve());
+        });
+      });
+      req.on("error", reject);
+    });
+
+    await promise;
+  },
+);
+
+// Regression test for pipelined requests: when request 2's response finishes
+// after request 1's, resOnFinish for request 1 must not delete the active
+// ConnectionsList entry that now belongs to request 2 (otherwise
+// headersTimeout/requestTimeout silently stop covering request 2).
+// Verifies both pipelined responses succeed without spurious clientError.
+Deno.test(
+  "[node/http] pipelined requests don't drop timeout tracking",
+  async () => {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    let req1Finished = false;
+    let req2Finished = false;
+    const server = http.createServer({
+      headersTimeout: 2000,
+      requestTimeout: 2000,
+      connectionsCheckingInterval: 50,
+    }, (req, res) => {
+      if (req.url === "/1") {
+        // Finish first response quickly so resOnFinish for req1 runs while
+        // request 2 may still be in flight on the parser.
+        setTimeout(() => res.end("first"), 50);
+      } else {
+        // Hold second response until well after the first has finished so
+        // the pipelined entry-swap window is exercised.
+        setTimeout(() => res.end("second"), 300);
+      }
+    });
+
+    server.on("clientError", (err: Error & { code?: string }) => {
+      reject(new Error(`unexpected clientError: ${err.code ?? err.message}`));
+    });
+
+    server.listen(0, async () => {
+      try {
+        const port = (server.address() as AddressInfo).port;
+        const conn = await Deno.connect({ port, hostname: "127.0.0.1" });
+        const encoder = new TextEncoder();
+        await conn.write(encoder.encode(
+          "GET /1 HTTP/1.1\r\nHost: localhost\r\n\r\n" +
+            "GET /2 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+        ));
+        const decoder = new TextDecoder();
+        const buf = new Uint8Array(8192);
+        let received = "";
+        while (true) {
+          const n = await conn.read(buf);
+          if (n === null) break;
+          received += decoder.decode(buf.subarray(0, n));
+        }
+        try {
+          conn.close();
+        } catch { /* already closed */ }
+        assertStringIncludes(received, "first");
+        assertStringIncludes(received, "second");
+        req1Finished = true;
+        req2Finished = true;
+        server.close(() => resolve());
+      } catch (e) {
+        reject(e);
+      }
+    });
+
+    await promise;
+    assertEquals(req1Finished, true);
+    assertEquals(req2Finished, true);
+  },
+);
+
 // Regression test: oversized headers must trigger HPE_HEADER_OVERFLOW on the
 // server's clientError event, and the default handler should respond with 431.
 // Previously maxHeaderSize was tracked but never enforced.
@@ -3194,6 +3566,164 @@ Deno.test(
       }
     });
 
+    await promise;
+  },
+);
+
+// deno-lint-ignore no-explicit-any
+type ProxyAgentLike = any;
+// deno-lint-ignore no-explicit-any
+type HttpWithProxy = any;
+
+Deno.test("[node/http] setGlobalProxyFromEnv validates input", () => {
+  for (const bad of [42, "string", null, [], true]) {
+    let err: { code?: string } | undefined;
+    try {
+      (http as HttpWithProxy).setGlobalProxyFromEnv(bad);
+    } catch (e) {
+      err = e as { code?: string };
+    }
+    assert(err, `expected throw for ${typeof bad}`);
+    assertEquals(err!.code, "ERR_INVALID_ARG_TYPE");
+  }
+});
+
+Deno.test("[node/http] setGlobalProxyFromEnv rejects malformed proxy URLs", () => {
+  for (
+    const cfg of [{ http_proxy: "not a url" }, { https_proxy: "not a url" }]
+  ) {
+    let err: { code?: string } | undefined;
+    try {
+      (http as HttpWithProxy).setGlobalProxyFromEnv(cfg);
+    } catch (e) {
+      err = e as { code?: string };
+    }
+    assert(err);
+    assertEquals(err!.code, "ERR_PROXY_INVALID_CONFIG");
+  }
+});
+
+Deno.test("[node/http] setGlobalProxyFromEnv returns a restore function", () => {
+  const restore = (http as HttpWithProxy).setGlobalProxyFromEnv({
+    http_proxy: "http://127.0.0.1:9999",
+  });
+  assertEquals(typeof restore, "function");
+  restore();
+  // calling twice is a no-op
+  restore();
+});
+
+Deno.test("[node/http] Agent proxyEnv rejects CRLF-injected proxy URLs", () => {
+  for (
+    const proxyUrl of [
+      "http://user\r:pass@proxy.example.com:8080",
+      "http://user\n:pass@proxy.example.com:8080",
+      "http://user:pass\r@proxy.example.com:8080",
+      "http://user:pass\n@proxy.example.com:8080",
+      "http://user\r\nHost: example.com:pass@proxy.example.com:8080",
+    ]
+  ) {
+    let err: { code?: string } | undefined;
+    try {
+      new http.Agent({
+        proxyEnv: { HTTP_PROXY: proxyUrl },
+      } as ProxyAgentLike);
+    } catch (e) {
+      err = e as { code?: string };
+    }
+    assert(err, `expected throw for ${JSON.stringify(proxyUrl)}`);
+    assertEquals(err!.code, "ERR_PROXY_INVALID_CONFIG");
+  }
+});
+
+Deno.test(
+  "[node/http] http.request through HTTP_PROXY rewrites to absolute URL",
+  async () => {
+    // Verifies the proxy receives the full URL form (GET http://target/path)
+    // and a Proxy-Connection header, then forwards the body back.
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const proxy = http.createServer((req, res) => {
+      try {
+        assertEquals(req.method, "GET");
+        assert(req.url!.startsWith("http://"));
+        assertEquals(req.headers["proxy-connection"], "keep-alive");
+        assertEquals(req.headers["connection"], "keep-alive");
+      } catch (e) {
+        reject(e);
+        res.statusCode = 500;
+        res.end("test-fail");
+        return;
+      }
+      res.end("via-proxy");
+    });
+    proxy.listen(0, () => {
+      const proxyPort = (proxy.address() as AddressInfo).port;
+      // unreachable target - the proxy intercepts and short-circuits.
+      const req = http.request({
+        hostname: "127.0.0.1",
+        port: 1,
+        path: "/foo",
+        agent: new http.Agent({
+          keepAlive: true,
+          proxyEnv: {
+            HTTP_PROXY: `http://127.0.0.1:${proxyPort}`,
+          },
+        } as ProxyAgentLike),
+      }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          try {
+            assertEquals(Buffer.concat(chunks).toString(), "via-proxy");
+            proxy.close();
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+      req.on("error", reject);
+      req.end();
+    });
+    await promise;
+  },
+);
+
+Deno.test(
+  "[node/http] NO_PROXY bypasses configured HTTP_PROXY",
+  async () => {
+    // If NO_PROXY matches the target, the request should hit the origin
+    // directly rather than the configured (and unreachable) proxy.
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const origin = http.createServer((_req, res) => res.end("direct"));
+    origin.listen(0, () => {
+      const port = (origin.address() as AddressInfo).port;
+      const req = http.request({
+        hostname: "127.0.0.1",
+        port,
+        path: "/",
+        agent: new http.Agent({
+          proxyEnv: {
+            HTTP_PROXY: "http://10.255.255.1:1",
+            NO_PROXY: "127.0.0.1",
+          },
+        } as ProxyAgentLike),
+      }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          try {
+            assertEquals(Buffer.concat(chunks).toString(), "direct");
+            origin.close();
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+      req.on("error", reject);
+      req.end();
+    });
     await promise;
   },
 );

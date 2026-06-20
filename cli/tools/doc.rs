@@ -1,11 +1,19 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::diagnostics::Diagnostic;
+use deno_ast::diagnostics::DiagnosticLevel;
+use deno_ast::diagnostics::DiagnosticLocation;
+use deno_ast::diagnostics::DiagnosticSnippet;
+use deno_ast::diagnostics::DiagnosticSnippetHighlight;
+use deno_ast::diagnostics::DiagnosticSnippetHighlightStyle;
+use deno_ast::diagnostics::DiagnosticSourcePos;
+use deno_ast::diagnostics::DiagnosticSourceRange;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::Context;
@@ -53,6 +61,94 @@ const JSON_SCHEMA_VERSION: u8 = 2;
 const PRISM_CSS: &str = include_str!("./doc/prism.css");
 const PRISM_JS: &str = include_str!("./doc/prism.js");
 
+fn char_highlight_end(text: &str, start_byte_index: usize) -> usize {
+  if start_byte_index >= text.len() {
+    return start_byte_index;
+  }
+  if let Some(text) = text.get(start_byte_index..) {
+    return start_byte_index
+      + text.chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+  }
+  let mut end_byte_index = start_byte_index + 1;
+  while end_byte_index < text.len() && !text.is_char_boundary(end_byte_index) {
+    end_byte_index += 1;
+  }
+  end_byte_index
+}
+
+struct DisplayDocDiagnostic<'a>(&'a DocDiagnostic);
+
+impl Diagnostic for DisplayDocDiagnostic<'_> {
+  fn level(&self) -> DiagnosticLevel {
+    self.0.level()
+  }
+
+  fn code(&self) -> Cow<'_, str> {
+    self.0.code()
+  }
+
+  fn message(&self) -> Cow<'_, str> {
+    self.0.message()
+  }
+
+  fn location(&self) -> DiagnosticLocation<'_> {
+    self.0.location()
+  }
+
+  fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
+    let start_byte_index = self.0.location.byte_index;
+    Some(DiagnosticSnippet {
+      source: Cow::Borrowed(&self.0.text_info),
+      highlights: vec![DiagnosticSnippetHighlight {
+        style: DiagnosticSnippetHighlightStyle::Error,
+        range: DiagnosticSourceRange {
+          start: DiagnosticSourcePos::ByteIndex(start_byte_index),
+          end: DiagnosticSourcePos::ByteIndex(char_highlight_end(
+            self.0.text_info.text_str(),
+            start_byte_index,
+          )),
+        },
+        description: None,
+      }],
+    })
+  }
+
+  fn hint(&self) -> Option<Cow<'_, str>> {
+    self.0.hint()
+  }
+
+  fn snippet_fixed(&self) -> Option<DiagnosticSnippet<'_>> {
+    match &self.0.kind {
+      doc::DocDiagnosticKind::PrivateTypeRef(diagnostic) => {
+        let start_byte_index = diagnostic.reference_location.byte_index;
+        Some(DiagnosticSnippet {
+          source: Cow::Borrowed(&diagnostic.reference_text_info),
+          highlights: vec![DiagnosticSnippetHighlight {
+            style: DiagnosticSnippetHighlightStyle::Hint,
+            range: DiagnosticSourceRange {
+              start: DiagnosticSourcePos::ByteIndex(start_byte_index),
+              end: DiagnosticSourcePos::ByteIndex(char_highlight_end(
+                diagnostic.reference_text_info.text_str(),
+                start_byte_index,
+              )),
+            },
+            description: Some(Cow::Borrowed("this is the referenced type")),
+          }],
+        })
+      }
+      _ => None,
+    }
+  }
+
+  fn info(&self) -> Cow<'_, [Cow<'_, str>]> {
+    self.0.info()
+  }
+
+  fn docs_url(&self) -> Option<Cow<'_, str>> {
+    self.0.docs_url()
+  }
+}
+
 async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
   parser: &dyn EsParser,
@@ -96,6 +192,7 @@ async fn generate_doc_nodes_for_builtin_types(
         resolver: None,
         unstable_bytes_imports: false,
         unstable_text_imports: true,
+        unstable_css_imports: false,
       },
     )
     .await;
@@ -168,6 +265,7 @@ pub async fn doc(
         graph.roots.iter().cloned().collect::<Vec<_>>();
 
       graph_exit_integrity_errors(&graph);
+      let collect_bare_importable_pkg_names = Vec::<String>::new;
       let errors = graph_walk_errors(
         &graph,
         &sys,
@@ -178,6 +276,7 @@ pub async fn doc(
           will_type_check: false,
           allow_unknown_media_types: false,
           allow_unknown_jsr_exports: false,
+          collect_bare_importable_pkg_names: &collect_bare_importable_pkg_names,
         },
       );
       let mut markdown_urls = IndexSet::new();
@@ -210,7 +309,17 @@ pub async fn doc(
       let mut doc_nodes_by_url = doc_parser.parse()?;
 
       if doc_flags.lint {
-        let diagnostics = doc_parser.take_diagnostics();
+        let mut diagnostics = doc_parser.take_diagnostics();
+        // Drop private-type-ref diagnostics whose referenced type lives
+        // in a different package (i.e. a non-file specifier such as
+        // jsr:, npm:, http:, https:). Those types' visibility is the
+        // upstream package's concern, not the current package's.
+        diagnostics.retain(|diagnostic| match &diagnostic.kind {
+          doc::DocDiagnosticKind::PrivateTypeRef(d) => {
+            d.reference_location.filename.starts_with("file:")
+          }
+          _ => true,
+        });
         check_diagnostics(&diagnostics)?;
       }
 
@@ -631,7 +740,7 @@ fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {
     for (_, diagnostics_by_col) in diagnostics_by_lc {
       for (_, diagnostics) in diagnostics_by_col {
         for diagnostic in diagnostics {
-          log::error!("{}\n", diagnostic.display());
+          log::error!("{}\n", DisplayDocDiagnostic(diagnostic).display());
         }
       }
     }

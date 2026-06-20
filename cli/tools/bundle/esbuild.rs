@@ -95,21 +95,41 @@ pub async fn ensure_esbuild(
       package_folder.join("bin").join("esbuild")
     };
 
-    std::fs::create_dir_all(esbuild_path.parent().unwrap()).with_context(
-      || {
-        format!(
-          "failed to create directory {}",
-          esbuild_path.parent().unwrap().display()
-        )
-      },
-    )?;
-    std::fs::copy(&path, &esbuild_path).with_context(|| {
+    let esbuild_dir = esbuild_path.parent().unwrap();
+    std::fs::create_dir_all(esbuild_dir).with_context(|| {
+      format!("failed to create directory {}", esbuild_dir.display())
+    })?;
+    // Install the binary atomically: copy to a temporary file in the same
+    // directory and then rename it into place. The rename is atomic, so a
+    // concurrent `deno bundle` process never observes (via the `exists()`
+    // check above) and tries to execute a half-written binary, which would
+    // otherwise fail with ETXTBSY ("text file busy") on Linux.
+    let tmp_path =
+      esbuild_dir.join(format!(".esbuild-{}.tmp", std::process::id()));
+    std::fs::copy(&path, &tmp_path).with_context(|| {
       format!(
         "failed to copy esbuild binary from {} to {}",
         path.display(),
-        esbuild_path.display()
+        tmp_path.display()
       )
     })?;
+    match std::fs::rename(&tmp_path, &esbuild_path) {
+      Ok(()) => {}
+      // Another process won the race and installed the binary already; our
+      // copy is redundant, so just discard it.
+      Err(_) if esbuild_path.exists() => {
+        let _ = std::fs::remove_file(&tmp_path);
+      }
+      Err(err) => {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(err).with_context(|| {
+          format!(
+            "failed to move esbuild binary into place at {}",
+            esbuild_path.display()
+          )
+        });
+      }
+    }
 
     if !existed {
       let _ = std::fs::remove_dir_all(&package_folder).inspect_err(|e| {

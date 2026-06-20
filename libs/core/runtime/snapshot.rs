@@ -313,7 +313,7 @@ pub(crate) struct SnapshottedData<'snapshot> {
 /// we hand it off to serde.
 #[derive(Serialize, Deserialize)]
 pub(crate) struct SerializableSnapshotSidecarData<'snapshot> {
-  data_count: u32,
+  pub(crate) data_count: u32,
   #[serde(borrow)]
   pub snapshot_data: SnapshottedData<'snapshot>,
 }

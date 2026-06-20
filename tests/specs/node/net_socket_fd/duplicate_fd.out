@@ -1,0 +1,4 @@
+fs.openSync returned fd: [WILDCARD]
+TCP.open([WILDCARD]) returned: [WILDCARD]
+PASS: TCP.open() correctly rejected already-registered fd
+(node:[WILDCARD]) internal/test/binding: These APIs are for internal testing only. Do not use them.

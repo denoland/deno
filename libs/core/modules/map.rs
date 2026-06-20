@@ -28,6 +28,7 @@ use v8::PromiseState;
 use wasm_dep_analyzer::WasmDeps;
 
 use super::CustomModuleEvaluationKind;
+use super::ImportAttributesContext;
 use super::IntoModuleCodeString;
 use super::IntoModuleName;
 use super::LazyEsmModuleLoader;
@@ -1032,7 +1033,16 @@ impl ModuleMap {
         if let Some(validate_import_attributes_cb) =
           &state.validate_import_attributes_cb
         {
-          (validate_import_attributes_cb)(tc_scope, &attributes);
+          let location = module
+            .source_offset_to_location(module_request.get_source_offset());
+          let context = ImportAttributesContext {
+            referrer: name.as_str().to_string(),
+            specifier: import_specifier.to_string(),
+            // V8 reports 0-based line/column; report them 1-based.
+            line_number: Some(location.get_line_number() as u32 + 1),
+            column_number: Some(location.get_column_number() as u32 + 1),
+          };
+          (validate_import_attributes_cb)(tc_scope, &attributes, &context);
         }
       }
 
@@ -2076,7 +2086,17 @@ impl ModuleMap {
     tc_scope.set_continuation_preserved_embedder_data(cped);
 
     let module = v8::Local::new(tc_scope, &module_handle);
+    // Set `evaluating_top_level` so that any nested `lazy_load_esm_module`
+    // calls (triggered e.g. by CJS `require()` chains under
+    // `npm:` packages) skip their post-evaluate `perform_microtask_checkpoint`.
+    // Draining microtasks while V8 is inside `module.evaluate()` on an
+    // async module graph leaves the evaluation promise permanently
+    // Pending — V8 advances AsyncModuleExecutionFulfilled for the resumed
+    // TLA dep but cannot then run `ExecuteModule` on the still-evaluating
+    // parent.
+    self.evaluating_top_level.set(true);
     let maybe_value = module.evaluate(tc_scope);
+    self.evaluating_top_level.set(false);
 
     // Update status after evaluating.
     let status = module.get_status();
@@ -2822,23 +2842,33 @@ impl ModuleMap {
     // module map (notably `module.evaluate(scope)`, which can recursively
     // compile dependent modules and would otherwise panic with a
     // `RefCell already borrowed` at `new_module_from_js_source`).
-    let cached_handle = {
+    let cached_id_and_handle = {
       let module_map_data = self.data.borrow();
       module_map_data
         .get_id(module_specifier, RequestedModuleType::None)
-        .and_then(|id| module_map_data.get_handle(id))
+        .and_then(|id| module_map_data.get_handle(id).map(|h| (id, h)))
     };
-    if let Some(handle) = cached_handle {
+    if let Some((cached_id, handle)) = cached_id_and_handle {
       crate::modules::import_graph::record_lazy_esm_cached(
         scope,
         module_specifier,
       );
       let handle_local = v8::Local::new(scope, handle);
-      // The module may be present in the map but not yet evaluated --
-      // e.g. when this lazy load fires from a sibling ES module that V8 is
-      // evaluating earlier in DFS post-order. Returning the namespace
-      // before evaluation leaves `export const` bindings in the temporal
-      // dead zone, so trigger evaluation here.
+      // The module may be present in the map but not yet instantiated --
+      // e.g. when this lazy load fires from inside a sibling module's
+      // resolve-callback (a `synthetic_esm` backing script synchronously
+      // calling `op_lazy_load_esm` for a peer that the surrounding
+      // `RecursiveModuleLoad` has registered but not yet instantiated).
+      // `get_module_namespace` requires Instantiated+, so drive the module
+      // forward synchronously here.
+      if handle_local.get_status() == v8::ModuleStatus::Uninstantiated {
+        self.instantiate_module(scope, cached_id).map_err(|e| {
+          let exception = v8::Local::new(scope, e);
+          exception_to_err(scope, exception, false, true)
+        })?;
+      }
+      // Returning the namespace before evaluation leaves `export const`
+      // bindings in the temporal dead zone, so trigger evaluation here.
       if handle_local.get_status() == v8::ModuleStatus::Instantiated {
         let value = handle_local.evaluate(scope).unwrap();
         if !self.evaluating_top_level.get() {
@@ -2878,21 +2908,39 @@ impl ModuleMap {
       ModuleLoadResponse::Async(fut) => futures::executor::block_on(fut),
     }?;
 
+    // `LazyEsmModuleLoader` only knows the in-binary static sources and has no
+    // DENO_DIR access, so `source.code_cache` is always `None` here. Read the
+    // persisted V8 code cache from the REAL loader (Cli/EmbeddedModuleLoader)
+    // instead — the same seam the residual `lazy_loaded_js` path uses. Without
+    // this, residual ESM (node:process, node:module, the stream/net/tty
+    // closure) re-pays parse+compile in every isolate on every cold start.
+    let source_code = ModuleSource::get_string_source(source.code);
+    // Hash key for the on-disk cache. `v8_string` borrows `&source_code`, so it
+    // stays usable for the compile below.
+    let v8_source = source_code.v8_string(scope).unwrap();
+    // Build a `CodeCacheInfo` whenever the loader returns `Some` — even when
+    // `data` is `None` (cold run). The `Some`-with-`data: None` case is what
+    // arms the write side so the first run stores; warm runs consume.
+    let code_cache_info = self
+      .loader
+      .borrow()
+      .get_code_cache(&specifier, &v8_source)
+      .map(|info| {
+        let loader = self.loader.borrow().clone();
+        CodeCacheInfo {
+          data: info.data,
+          // `specifier` is unused after this, so move it straight in.
+          ready_callback: Box::new(move |cache| {
+            loader.code_cache_ready(specifier, info.hash, cache)
+          }),
+        }
+      });
+
     self.lazy_load_es_module_with_code(
       scope,
       module_specifier,
-      ModuleSource::get_string_source(source.code),
-      if let Some(code_cache) = source.code_cache {
-        let loader = self.loader.borrow().clone();
-        Some(CodeCacheInfo {
-          data: code_cache.data,
-          ready_callback: Box::new(move |cache| {
-            loader.code_cache_ready(specifier, code_cache.hash, cache)
-          }),
-        })
-      } else {
-        None
-      },
+      source_code,
+      code_cache_info,
     )
   }
 
@@ -3083,28 +3131,6 @@ impl ModuleMap {
     // script's `(function () { ... })()` is the function body's single
     // expression, so we wrap it with `return ( ... );` to surface the
     // IIFE's result as the function's return value.
-    let source_str =
-      ModuleSource::get_string_source(ModuleSourceCode::String(source));
-    // The script body's last statement is an IIFE expression like
-    // `(function () { ... })();`. Strip the trailing `;`/whitespace so the
-    // whole source becomes the operand of a single `return ( ... )`. This
-    // way the function we compile below returns the IIFE's exports object
-    // — the same value the original `Script::run` produced as the script's
-    // completion value.
-    let source_text: &str = AsRef::<str>::as_ref(&source_str);
-    // Some polyfills ship a leading `"use strict";` directive (transpiled
-    // from Node sources). A bare `"use strict";` is a statement, not an
-    // expression, so it can't sit inside `return ( ... )`. Skip past the
-    // leading prologue (comments + any directive prologue) and start the
-    // expression at the IIFE's opening `(function`.
-    let expr_start = strip_script_prologue(source_text).unwrap_or(source_text);
-    let trimmed: &str =
-      expr_start.trim_end_matches(|c: char| c.is_whitespace() || c == ';');
-    // Emit `"use strict";` at the head of the compile_function body so
-    // the IIFE still runs in strict mode (function bodies default to
-    // sloppy, unlike modules — and these polyfills were strict before
-    // being lazified, so we preserve that).
-    let wrapped_source = format!("\"use strict\"; return ({trimmed});");
     let name = v8::String::new(scope, specifier).unwrap();
     let origin = v8::ScriptOrigin::new(
       scope,
@@ -3122,16 +3148,57 @@ impl ModuleMap {
 
     v8::tc_scope!(let tc_scope, scope);
 
-    let v8_source = v8::String::new(tc_scope, &wrapped_source).unwrap();
+    // The compile_function body is `"use strict"; return (<IIFE>);`. For
+    // residual lazy scripts this wrapping is performed at build time
+    // (`cli/snapshot/build.rs`), so `source` is a `&'static` external string we
+    // can hand to V8 without an owned heap copy (avoiding a per-script source
+    // string in the V8 heap). Sources that arrive unwrapped (e.g. consumed
+    // during snapshot creation, before that path is build-time wrapped) are
+    // wrapped here at runtime via `wrap_lazy_ext_script`.
+    let v8_source = if AsRef::<str>::as_ref(&source)
+      .starts_with("\"use strict\"; return (")
+    {
+      // Build-time wrapped residual: hand V8 the `&'static` external string
+      // directly so the source stays off the V8 heap (file-backed/clean).
+      source.v8_string(tc_scope).unwrap()
+    } else {
+      // Unwrapped (e.g. consumed during snapshot creation): wrap at runtime.
+      let wrapped_source = wrap_lazy_ext_script(AsRef::<str>::as_ref(&source));
+      v8::String::new(tc_scope, &wrapped_source).unwrap()
+    };
     let bootstrap_param = v8::String::new(tc_scope, "__bootstrap").unwrap();
-    let mut compile_source =
-      v8::script_compiler::Source::new(v8_source, Some(&origin));
+    // Persist a V8 code cache for this residual `lazy_loaded_js` module through
+    // the same on-disk (DENO_DIR) cache user scripts use, keyed by specifier +
+    // source hash. Residuals ship source-only in the binary, so without this a
+    // node-heavy program re-pays parse+compile of the whole node-polyfill
+    // closure at runtime on every cold start. The first run compiles and
+    // stores; warm runs consume and skip parse+compile. Producing and consuming
+    // binary are identical, so the cache is always accepted.
+    let cache_specifier = crate::ModuleSpecifier::parse(&specifier_str).ok();
+    let code_cache_info = cache_specifier
+      .as_ref()
+      .and_then(|spec| self.loader.borrow().get_code_cache(spec, &v8_source));
+    let (mut compile_source, compile_options) =
+      match code_cache_info.as_ref().and_then(|i| i.data.as_ref()) {
+        Some(data) => (
+          v8::script_compiler::Source::new_with_cached_data(
+            v8_source,
+            Some(&origin),
+            v8::CachedData::new(data),
+          ),
+          v8::script_compiler::CompileOptions::ConsumeCodeCache,
+        ),
+        None => (
+          v8::script_compiler::Source::new(v8_source, Some(&origin)),
+          v8::script_compiler::CompileOptions::NoCompileOptions,
+        ),
+      };
     let function = match v8::script_compiler::compile_function(
       tc_scope,
       &mut compile_source,
       &[bootstrap_param],
       &[],
-      v8::script_compiler::CompileOptions::NoCompileOptions,
+      compile_options,
       v8::script_compiler::NoCacheReason::NoReason,
     ) {
       Some(f) => f,
@@ -3147,6 +3214,28 @@ impl ModuleMap {
         return Err(CoreErrorKind::Js(err).into_box());
       }
     };
+    // Store the freshly-compiled cache on the first run (cold), or if V8
+    // rejected the existing cache (e.g. the source changed).
+    let rejected = compile_source
+      .get_cached_data()
+      .map(|d| d.rejected())
+      .unwrap_or(true);
+    let had_data = code_cache_info
+      .as_ref()
+      .map(|i| i.data.is_some())
+      .unwrap_or(false);
+    if (!had_data || rejected)
+      && let (Some(spec), Some(info)) =
+        (cache_specifier.as_ref(), code_cache_info.as_ref())
+      && let Some(cache) = function.create_code_cache()
+    {
+      let fut = self.loader.borrow().code_cache_ready(
+        spec.clone(),
+        info.hash,
+        &cache[..],
+      );
+      self.code_cache_ready_futs.push(fut);
+    }
 
     let captured = self.data.borrow().captured_bootstrap.borrow().clone();
     let bootstrap_arg = match &captured {
@@ -3235,6 +3324,26 @@ fn strip_script_prologue(source: &str) -> Option<&str> {
     }
     return None;
   }
+}
+
+/// Wrap a lazy ext-script (`loadExtScript`) source into the `compile_function`
+/// body we evaluate at load time: `"use strict"; return (<IIFE>);`.
+///
+/// The IIFE's completion value is the script's exports object (what the
+/// original `Script::run` produced). We strip the leading prologue (comments +
+/// any `"use strict";` directive — a bare directive is a statement and can't
+/// sit inside `return ( ... )`) and the trailing `;`/whitespace so the IIFE is
+/// the single operand of `return ( ... )`, and re-emit `"use strict";` at the
+/// head so the body still runs in strict mode.
+///
+/// Performed at build time for residual lazy scripts so the stored source is a
+/// `&'static` string that compiles without an owned heap copy; also used as the
+/// runtime fallback for sources that arrive unwrapped.
+pub fn wrap_lazy_ext_script(source: &str) -> String {
+  let expr_start = strip_script_prologue(source).unwrap_or(source);
+  let trimmed =
+    expr_start.trim_end_matches(|c: char| c.is_whitespace() || c == ';');
+  format!("\"use strict\"; return ({trimmed});")
 }
 
 // Clippy thinks the return value doesn't need to be an Option, it's unaware

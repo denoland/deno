@@ -1,0 +1,4 @@
+Deno.serve: request.signal aborts on successful responses (legacy behavior, see https://github.com/denoland/deno/issues/29111). Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/runtime/reference/migrate-deprecations/
+body: chunk1;chunk2;chunk3;chunk4;chunk5;
+aborted during stream: false
+aborted after completion: true

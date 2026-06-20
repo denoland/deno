@@ -839,6 +839,15 @@ function blobFromObjectUrl(url) {
 function createObjectURL(blob) {
   const prefix = "Failed to execute 'createObjectURL' on 'URL'";
   webidl.requiredArguments(arguments.length, 1, prefix);
+  if (!isBlob(blob)) {
+    // Node.js throws ERR_INVALID_ARG_TYPE for non-Blob arguments; preserve
+    // that `code` while still throwing a TypeError as the web platform does.
+    const err = new TypeError(
+      `${prefix}: The "blob" argument must be an instance of Blob`,
+    );
+    err.code = "ERR_INVALID_ARG_TYPE";
+    throw err;
+  }
   blob = webidl.converters["Blob"](blob, prefix, "Argument 1");
 
   return op_blob_create_object_url(blob.type, getParts(blob));

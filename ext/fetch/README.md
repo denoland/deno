@@ -10,15 +10,17 @@ From javascript, include the extension's source, and assign the following
 properties to the global scope:
 
 ```javascript
-import * as headers from "ext:deno_fetch/20_headers.js";
-import * as formData from "ext:deno_fetch/21_formdata.js";
-import * as request from "ext:deno_fetch/23_request.js";
-import * as response from "ext:deno_fetch/23_response.js";
-import * as fetch from "ext:deno_fetch/26_fetch.js";
-import * as eventSource from "ext:deno_fetch/27_eventsource.js";
+import { core } from "ext:core/mod.js";
+
+const headers = core.loadExtScript("ext:deno_fetch/20_headers.js");
+const formData = core.loadExtScript("ext:deno_fetch/21_formdata.js");
+const request = core.loadExtScript("ext:deno_fetch/23_request.js");
+const response = core.loadExtScript("ext:deno_fetch/23_response.js");
+const fetch = core.loadExtScript("ext:deno_fetch/26_fetch.js");
+const eventSource = core.loadExtScript("ext:deno_fetch/27_eventsource.js");
 
 // Set up the callback for Wasm streaming ops
-Deno.core.setWasmStreamingCallback(fetch.handleWasmStreaming);
+core.setWasmStreamingCallback(fetch.handleWasmStreaming);
 
 Object.defineProperty(globalThis, "fetch", {
   value: fetch.fetch,
@@ -56,13 +58,11 @@ Object.defineProperty(globalThis, "FormData", {
 });
 ```
 
-Then from rust, provide
-`deno_fetch::deno_fetch::init<Permissions>(Default::default())` in the
-`extensions` field of your `RuntimeOptions`
+Then from rust, provide `deno_fetch::deno_fetch::init(Default::default())` in
+the `extensions` field of your `RuntimeOptions`
 
 Where:
 
-- Permissions: a struct implementing `deno_fetch::FetchPermissions`
 - Options: `deno_fetch::Options`, which implements `Default`
 
 ## Dependencies
@@ -79,3 +79,4 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 - op_fetch_send
 - op_utf8_to_byte_string
 - op_fetch_custom_client
+- op_fetch_promise_is_settled

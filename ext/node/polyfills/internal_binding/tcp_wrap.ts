@@ -31,14 +31,13 @@
 // This module adds thin JS wrappers for listen (to create client handles on
 // accept) and for re-exporting types.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
 const { TCPWrap } = core.ops;
 const { AsyncWrap, providerType } = core.loadExtScript(
   "ext:deno_node/internal_binding/async_wrap.ts",
 );
+const { FunctionPrototypeCall } = primordials;
 
 // Mark TCPWrap as a StreamBase handle, matching Node's StreamBase::AddMethods.
 // This allows parser.consume(socket._handle) to detect it as consumable.
@@ -89,7 +88,12 @@ function setupListenWrap(serverHandle: InstanceType<typeof TCPWrap>) {
   serverHandle.onconnection = function (status: number) {
     if (status !== 0) {
       if (userOnConnection) {
-        userOnConnection.call(serverHandle, status, undefined);
+        FunctionPrototypeCall(
+          userOnConnection,
+          serverHandle,
+          status,
+          undefined,
+        );
       }
       return;
     }
@@ -99,13 +103,18 @@ function setupListenWrap(serverHandle: InstanceType<typeof TCPWrap>) {
     const acceptErr = serverHandle.accept(clientHandle);
     if (acceptErr !== 0) {
       if (userOnConnection) {
-        userOnConnection.call(serverHandle, acceptErr, undefined);
+        FunctionPrototypeCall(
+          userOnConnection,
+          serverHandle,
+          acceptErr,
+          undefined,
+        );
       }
       return;
     }
 
     if (userOnConnection) {
-      userOnConnection.call(serverHandle, 0, clientHandle);
+      FunctionPrototypeCall(userOnConnection, serverHandle, 0, clientHandle);
     }
   };
 }
