@@ -905,6 +905,18 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 DENO_SNAPSHOT_MINIFY_SOURCES: "1",
               },
               run: [
+                // On macOS aarch64, link through lzld so system frameworks
+                // (CoreFoundation/Foundation/Security/CoreServices/Metal/...) are
+                // dlopen'd on first use instead of loaded at launch, cutting dyld
+                // startup cost. lzld needs an absolute -fuse-ld path (Apple clang
+                // rejects relative ones), so patch it in here rather than in the
+                // committed .cargo/config.toml. See tools/lzld.
+                'if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then',
+                "  git submodule update --init tools/lzld",
+                "  make -C tools/lzld",
+                "  sed -i '' \"s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #\" .cargo/config.toml",
+                "  grep -n fuse-ld .cargo/config.toml",
+                "fi",
                 // output fs space before and after building
                 "df -h",
                 `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
