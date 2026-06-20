@@ -17,6 +17,7 @@ import process, {
   getuid,
   pid as importedPid,
   platform as importedPlatform,
+  report as importedReport,
   setegid,
   seteuid,
   setgid,
@@ -1388,6 +1389,21 @@ Deno.test({
       userLimits: undefined,
       sharedObjects: undefined,
     });
+  },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/35072
+Deno.test({
+  name: "named export { report } from node:process",
+  fn() {
+    // `import { report } from 'node:process'` must work as a named export
+    assert(importedReport !== undefined);
+    // The named export must be the same object reference as process.report
+    assert(importedReport === process.report);
+    assert(typeof importedReport.getReport === "function");
+    assert(typeof importedReport.writeReport === "function");
+    assert(typeof importedReport.directory === "string");
+    assert(typeof importedReport.filename === "string");
   },
 });
 

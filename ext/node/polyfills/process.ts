@@ -583,7 +583,17 @@ if (!isWindows) {
   }
 }
 
-export { getegid, geteuid, getgid, getuid, setegid, seteuid, setgid, setuid };
+export {
+  getegid,
+  geteuid,
+  getgid,
+  getuid,
+  report,
+  setegid,
+  seteuid,
+  setgid,
+  setuid,
+};
 
 const ALLOWED_FLAGS = buildAllowedFlags();
 
