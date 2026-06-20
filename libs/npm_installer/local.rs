@@ -94,6 +94,11 @@ pub struct LocalNpmPackageInstallerOptions {
   pub node_modules_folder: PathBuf,
   pub reporter: Option<Arc<dyn crate::InstallReporter>>,
   pub system_info: NpmSystemInfo,
+  /// Whether `jsr:` dependencies are being installed into `node_modules` via
+  /// JSR's npm compatibility registry (the `jsrDepsInNodeModules` config
+  /// option). Gates the `@scope/name` alias symlinks and the `.npmrc` write
+  /// for `@jsr/*` packages.
+  pub jsr_deps_in_node_modules: bool,
 }
 
 /// Resolver that creates a local node_modules directory
@@ -116,6 +121,7 @@ pub struct LocalNpmPackageInstaller<
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
   install_reporter: Option<Arc<dyn crate::InstallReporter>>,
+  jsr_deps_in_node_modules: bool,
 }
 
 impl<
@@ -183,6 +189,7 @@ impl<
       root_node_modules_path: options.node_modules_folder,
       install_reporter: options.reporter,
       system_info: options.system_info,
+      jsr_deps_in_node_modules: options.jsr_deps_in_node_modules,
     }
   }
 
@@ -819,7 +826,10 @@ impl<
       // covers top-level packages; transitive `jsr:` deps resolve through their
       // `@jsr/...` name and don't need a root alias. The alias is skipped when a
       // real package already claims that root name, so we don't clobber it.
-      if let Some(alias) = jsr_npm_name_to_original(&id.nv.name)
+      // Only done when `jsrDepsInNodeModules` is enabled so projects that depend
+      // on `npm:@jsr/...` packages directly are left untouched.
+      if self.jsr_deps_in_node_modules
+        && let Some(alias) = jsr_npm_name_to_original(&id.nv.name)
         && !newest_packages_by_name
           .contains_key(&StackString::from(alias.as_str()))
         && setup_cache.insert_root_symlink(&alias, &target_folder_name)
@@ -843,11 +853,14 @@ impl<
       }
     }
 
-    // Whenever JSR packages were materialized into `node_modules` (under their
-    // `@jsr/scope__name` npm-compat name), make sure a `.npmrc` next to
-    // `node_modules` points the `@jsr` scope at JSR's npm registry so external
-    // tooling (npm, pnpm, yarn) can resolve them too.
-    if let Some(project_dir) = self.root_node_modules_path.parent()
+    // When `jsrDepsInNodeModules` is enabled and JSR packages were materialized
+    // into `node_modules` (under their `@jsr/scope__name` npm-compat name), make
+    // sure a `.npmrc` next to `node_modules` points the `@jsr` scope at JSR's
+    // npm registry so external tooling (npm, pnpm, yarn) can resolve them too.
+    // Gated on the config so we don't write into the project directory of users
+    // that merely depend on `npm:@jsr/...` packages directly.
+    if self.jsr_deps_in_node_modules
+      && let Some(project_dir) = self.root_node_modules_path.parent()
       && package_partitions
         .packages
         .iter()

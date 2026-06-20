@@ -156,6 +156,9 @@ pub struct NpmInstallerOptions<TSys: NpmInstallerSys> {
   pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
   pub system_info: NpmSystemInfo,
   pub workspace_link_packages: WorkspaceNpmLinkPackagesRc,
+  /// Whether `jsr:` dependencies are installed into `node_modules` via JSR's
+  /// npm compatibility registry (the `jsrDepsInNodeModules` config option).
+  pub jsr_deps_in_node_modules: bool,
 }
 
 #[derive(Debug)]
@@ -222,6 +225,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
                   system_info: options.system_info,
                   reporter: install_reporter,
                   node_modules_folder,
+                  jsr_deps_in_node_modules: options.jsr_deps_in_node_modules,
                 },
               ))
             }
@@ -241,6 +245,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
                   system_info: options.system_info,
                   reporter: install_reporter,
                   node_modules_folder,
+                  jsr_deps_in_node_modules: options.jsr_deps_in_node_modules,
                 },
               ))
             }
