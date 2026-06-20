@@ -12721,6 +12721,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          update_snapshots: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
