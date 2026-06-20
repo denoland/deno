@@ -1148,6 +1148,10 @@ class NodeTestContext {
   #planAssert;
   #beforeEachHooks = [];
   #afterEachHooks = [];
+  // Guards so the once-per-test `before()`/`after()` hooks run a single time
+  // regardless of how many subtests this context has.
+  #beforeHooksRun = false;
+  #afterHooksRun = false;
   // When set via `runOnly(true)`, only direct subtests registered with the
   // `only: true` option are executed; all other subtests are skipped.
   #runOnly = false;
@@ -1243,16 +1247,6 @@ class NodeTestContext {
     if (this.#plan) this.#plan.increment();
     // deno-lint-ignore no-this-alias
     const parentContext = this;
-    const after = async () => {
-      for (const hook of new SafeArrayIterator(this.#afterHooks)) {
-        await hook();
-      }
-    };
-    const before = async () => {
-      for (const hook of new SafeArrayIterator(this.#beforeHooks)) {
-        await hook();
-      }
-    };
     return PromisePrototypeThen(
       this.#denoContext.step({
         name: prepared.name,
@@ -1262,8 +1256,10 @@ class NodeTestContext {
             parentContext,
             prepared.name,
           );
+          let bodyOk = false;
           try {
-            await before();
+            // The parent's `before()` hooks run once, before its first subtest.
+            await parentContext._runBeforeHooksOnce();
             for (
               const hook of new SafeArrayIterator(
                 parentContext.#beforeEachHooks,
@@ -1276,14 +1272,20 @@ class NodeTestContext {
               newNodeTextContext,
               prepared.options,
             );
-            await after();
+            bodyOk = true;
+            // This subtest's own `after()` hooks run once, after its body and
+            // all of its own subtests have completed. The parent's `after()`
+            // hooks run after the parent finishes, not here.
+            await newNodeTextContext._runAfterHooksOnce();
           } catch (err) {
+            if (!bodyOk) {
+              try {
+                await newNodeTextContext._runAfterHooksOnce();
+              } catch { /* ignore, test is already failing */ }
+            }
             if (!newNodeTextContext[skippedSymbol]) {
               throw err;
             }
-            try {
-              await after();
-            } catch { /* ignore, test is already failing */ }
           } finally {
             for (
               const hook of new SafeArrayIterator(
@@ -1330,6 +1332,27 @@ class NodeTestContext {
       throw new TypeError("afterEach() requires a function");
     }
     ArrayPrototypePush(this.#afterEachHooks, fn);
+  }
+
+  // Runs this context's `before()` hooks a single time, before its first
+  // subtest. Idempotent so it is safe to call from every subtest's step.
+  async _runBeforeHooksOnce() {
+    if (this.#beforeHooksRun) return;
+    this.#beforeHooksRun = true;
+    for (const hook of new SafeArrayIterator(this.#beforeHooks)) {
+      await hook();
+    }
+  }
+
+  // Runs this context's `after()` hooks a single time, after its body and all
+  // of its subtests have completed. Idempotent so success and failure paths can
+  // both invoke it without double-running.
+  async _runAfterHooksOnce() {
+    if (this.#afterHooksRun) return;
+    this.#afterHooksRun = true;
+    for (const hook of new SafeArrayIterator(this.#afterHooks)) {
+      await hook();
+    }
   }
 }
 
@@ -1491,7 +1514,13 @@ function wrapTestFn(fn, resolve, name, options) {
       }
       beforeEachOk = true;
       await runPossiblyExpectingFailure(fn, nodeTestContext, options);
+      // The test's own `after()` hooks run once, after its body and all of its
+      // subtests complete (a top-level test awaits its subtests inline).
+      await nodeTestContext._runAfterHooksOnce();
     } catch (err) {
+      try {
+        await nodeTestContext._runAfterHooksOnce();
+      } catch { /* ignore, test is already failing */ }
       if (!nodeTestContext[skippedSymbol]) {
         throw sanitizeThrowValue(err);
       }
