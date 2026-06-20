@@ -1148,6 +1148,10 @@ class NodeTestContext {
   #planAssert;
   #beforeEachHooks = [];
   #afterEachHooks = [];
+  // Guards so the once-per-test `before()`/`after()` hooks run a single time
+  // regardless of how many subtests this context has.
+  #beforeHooksRun = false;
+  #afterHooksRun = false;
   // When set via `runOnly(true)`, only direct subtests registered with the
   // `only: true` option are executed; all other subtests are skipped.
   #runOnly = false;
@@ -1243,16 +1247,6 @@ class NodeTestContext {
     if (this.#plan) this.#plan.increment();
     // deno-lint-ignore no-this-alias
     const parentContext = this;
-    const after = async () => {
-      for (const hook of new SafeArrayIterator(this.#afterHooks)) {
-        await hook();
-      }
-    };
-    const before = async () => {
-      for (const hook of new SafeArrayIterator(this.#beforeHooks)) {
-        await hook();
-      }
-    };
     return PromisePrototypeThen(
       this.#denoContext.step({
         name: prepared.name,
@@ -1262,8 +1256,10 @@ class NodeTestContext {
             parentContext,
             prepared.name,
           );
+          let bodyOk = false;
           try {
-            await before();
+            // The parent's `before()` hooks run once, before its first subtest.
+            await parentContext._runBeforeHooksOnce();
             for (
               const hook of new SafeArrayIterator(
                 parentContext.#beforeEachHooks,
@@ -1276,14 +1272,20 @@ class NodeTestContext {
               newNodeTextContext,
               prepared.options,
             );
-            await after();
+            bodyOk = true;
+            // This subtest's own `after()` hooks run once, after its body and
+            // all of its own subtests have completed. The parent's `after()`
+            // hooks run after the parent finishes, not here.
+            await newNodeTextContext._runAfterHooksOnce();
           } catch (err) {
+            if (!bodyOk) {
+              try {
+                await newNodeTextContext._runAfterHooksOnce();
+              } catch { /* ignore, test is already failing */ }
+            }
             if (!newNodeTextContext[skippedSymbol]) {
               throw err;
             }
-            try {
-              await after();
-            } catch { /* ignore, test is already failing */ }
           } finally {
             for (
               const hook of new SafeArrayIterator(
@@ -1331,6 +1333,27 @@ class NodeTestContext {
     }
     ArrayPrototypePush(this.#afterEachHooks, fn);
   }
+
+  // Runs this context's `before()` hooks a single time, before its first
+  // subtest. Idempotent so it is safe to call from every subtest's step.
+  async _runBeforeHooksOnce() {
+    if (this.#beforeHooksRun) return;
+    this.#beforeHooksRun = true;
+    for (const hook of new SafeArrayIterator(this.#beforeHooks)) {
+      await hook();
+    }
+  }
+
+  // Runs this context's `after()` hooks a single time, after its body and all
+  // of its subtests have completed. Idempotent so success and failure paths can
+  // both invoke it without double-running.
+  async _runAfterHooksOnce() {
+    if (this.#afterHooksRun) return;
+    this.#afterHooksRun = true;
+    for (const hook of new SafeArrayIterator(this.#afterHooks)) {
+      await hook();
+    }
+  }
 }
 
 let currentSuite = null;
@@ -1371,22 +1394,27 @@ async function runRootAfterIfDone() {
 class TestSuite {
   #denoTestContext;
   nodeTestContext;
+  // The enclosing suite, or null for a top-level suite. Used to cascade
+  // beforeEach()/afterEach() hooks from every ancestor suite onto each test
+  // (issue #35404).
+  parent = null;
   entries = [];
   beforeAllHooks = [];
   afterAllHooks = [];
   beforeEachHooks = [];
   afterEachHooks = [];
 
-  constructor(t, nodeTestContext) {
+  constructor(t, nodeTestContext, parent) {
     this.#denoTestContext = t;
     this.nodeTestContext = nodeTestContext;
+    this.parent = parent ?? null;
   }
 
   addTest(name, options, fn, overrides) {
     const prepared = prepareOptions(name, options, fn, overrides);
-    const beforeEach = this.beforeEachHooks;
-    const afterEach = this.afterEachHooks;
     const suiteNodeContext = this.nodeTestContext;
+    // deno-lint-ignore no-this-alias
+    const suite = this;
     ArrayPrototypePush(this.entries, {
       name: prepared.name,
       fn: async (denoTestContext) => {
@@ -1395,9 +1423,25 @@ class TestSuite {
           suiteNodeContext,
           prepared.name,
         );
+        // beforeEach()/afterEach() cascade through the whole ancestor chain:
+        // each test runs every enclosing suite's hooks, plus the file-scope
+        // (root) hooks. beforeEach runs outermost-first, afterEach runs
+        // innermost-first, matching Node (issue #35404). The chain is collected
+        // here, at run time, so hooks registered late in a suite body are seen.
+        const suiteChain = []; // innermost-first
+        for (let s = suite; s !== null; s = s.parent) {
+          ArrayPrototypePush(suiteChain, s);
+        }
         try {
-          for (const hook of new SafeArrayIterator(beforeEach)) {
+          for (const hook of new SafeArrayIterator(rootBeforeEachHooks)) {
             await hook(newNodeTextContext);
+          }
+          for (let i = suiteChain.length - 1; i >= 0; i--) {
+            for (
+              const hook of new SafeArrayIterator(suiteChain[i].beforeEachHooks)
+            ) {
+              await hook(newNodeTextContext);
+            }
           }
           return await runPossiblyExpectingFailure(
             prepared.fn,
@@ -1411,7 +1455,16 @@ class TestSuite {
             throw err;
           }
         } finally {
-          for (const hook of new SafeArrayIterator(afterEach)) {
+          for (let i = 0; i < suiteChain.length; i++) {
+            for (
+              const hook of new SafeArrayIterator(suiteChain[i].afterEachHooks)
+            ) {
+              try {
+                await hook(newNodeTextContext);
+              } catch { /* ignore */ }
+            }
+          }
+          for (const hook of new SafeArrayIterator(rootAfterEachHooks)) {
             try {
               await hook(newNodeTextContext);
             } catch { /* ignore */ }
@@ -1426,6 +1479,8 @@ class TestSuite {
     const prepared = prepareOptions(name, options, fn, overrides);
     const { promise, resolve } = PromiseWithResolvers();
     const parentSuiteContext = this.nodeTestContext;
+    // deno-lint-ignore no-this-alias
+    const parentSuite = this;
     ArrayPrototypePush(this.entries, {
       name: prepared.name,
       fn: wrapSuiteFn(
@@ -1433,6 +1488,7 @@ class TestSuite {
         resolve,
         prepared.name,
         parentSuiteContext,
+        parentSuite,
       ),
       ignore: !!prepared.options.todo || !!prepared.options.skip,
     });
@@ -1491,7 +1547,13 @@ function wrapTestFn(fn, resolve, name, options) {
       }
       beforeEachOk = true;
       await runPossiblyExpectingFailure(fn, nodeTestContext, options);
+      // The test's own `after()` hooks run once, after its body and all of its
+      // subtests complete (a top-level test awaits its subtests inline).
+      await nodeTestContext._runAfterHooksOnce();
     } catch (err) {
+      try {
+        await nodeTestContext._runAfterHooksOnce();
+      } catch { /* ignore, test is already failing */ }
       if (!nodeTestContext[skippedSymbol]) {
         throw sanitizeThrowValue(err);
       }
@@ -1536,13 +1598,17 @@ function prepareDenoTest(name, options, fn, overrides) {
   return PromiseResolve();
 }
 
-function wrapSuiteFn(fn, resolve, name, parentNodeContext) {
+function wrapSuiteFn(fn, resolve, name, parentNodeContext, parentSuite) {
   return async function (t) {
     const isTopLevel = parentNodeContext === undefined;
     if (isTopLevel) await runRootBeforeOnce();
     const suiteNodeContext = new NodeTestContext(t, parentNodeContext, name);
     const prevSuite = currentSuite;
-    const suite = currentSuite = new TestSuite(t, suiteNodeContext);
+    const suite = currentSuite = new TestSuite(
+      t,
+      suiteNodeContext,
+      parentSuite,
+    );
     try {
       fn(suiteNodeContext);
     } finally {
