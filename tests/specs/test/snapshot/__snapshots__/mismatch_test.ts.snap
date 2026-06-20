@@ -1,0 +1,9 @@
+export const snapshot = {};
+
+snapshot[`mismatch 1`] = `
+{
+  value: 1,
+}
+`;
+
+snapshot[`stale entry 1`] = `old`;

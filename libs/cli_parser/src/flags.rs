@@ -645,6 +645,7 @@ pub struct TestFlags {
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
+  pub update_snapshots: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
