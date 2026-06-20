@@ -256,6 +256,10 @@ pub enum WorkspaceDiagnosticKind {
     "Invalid version requirement '{version_req}' for catalog entry '{name}'."
   )]
   InvalidCatalogVersionReq { name: String, version_req: String },
+  #[error(
+    "\"imports\" and \"scopes\" in the config file are ignored for dependency management when \"preferPackageJson\" is enabled. Move these dependencies to package.json."
+  )]
+  PreferPackageJsonWithImports,
 }
 
 #[derive(Debug, Error, JsError, Clone, PartialEq, Eq)]
@@ -1395,6 +1399,14 @@ impl Workspace {
           }
         }
       }
+      if config.json.prefer_package_json == Some(true)
+        && (config.json.imports.is_some() || config.json.scopes.is_some())
+      {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::PreferPackageJsonWithImports,
+        });
+      }
     }
 
     // Surface a clear error when a package's `exports` map is invalid.
@@ -1719,6 +1731,17 @@ impl Workspace {
   pub fn has_unstable(&self, name: &str) -> bool {
     self
       .with_root_config_only(|deno_json| deno_json.has_unstable(name))
+      .unwrap_or(false)
+  }
+
+  /// Whether dependencies should be managed via `package.json` rather than
+  /// `deno.json`, as configured by the `preferPackageJson` field in the root
+  /// `deno.json`.
+  pub fn prefer_package_json(&self) -> bool {
+    self
+      .with_root_config_only(|deno_json| {
+        deno_json.json.prefer_package_json.unwrap_or(false)
+      })
       .unwrap_or(false)
   }
 

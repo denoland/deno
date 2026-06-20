@@ -398,11 +398,25 @@ fn load_configs(
   flags: &Arc<Flags>,
   has_jsr_specifiers: impl FnOnce() -> bool,
   force_package_json: bool,
-) -> Result<(CliFactory, Option<ConfigUpdater>, Option<ConfigUpdater>), AnyError>
-{
+  honor_prefer_package_json: bool,
+) -> Result<
+  (
+    CliFactory,
+    bool,
+    Option<ConfigUpdater>,
+    Option<ConfigUpdater>,
+  ),
+  AnyError,
+> {
   let cli_factory = CliFactory::from_flags(flags.clone());
   let options = cli_factory.cli_options()?;
   let start_dir = &options.start_dir;
+
+  // The `--package-json` flag or the `preferPackageJson` config setting both
+  // force dependencies to be managed via package.json. `link`/`unlink` opt out
+  // of the config setting because the `"links"` field lives in deno.json.
+  let force_package_json = force_package_json
+    || (honor_prefer_package_json && start_dir.workspace.prefer_package_json());
 
   if force_package_json {
     let npm_config = match start_dir.member_pkg_json() {
@@ -415,12 +429,13 @@ fn load_configs(
         let factory = create_package_json(flags, options)?;
         return Ok((
           factory,
+          force_package_json,
           Some(ConfigUpdater::new(ConfigKind::PackageJson, pkg_json_path)?),
           None,
         ));
       }
     };
-    return Ok((cli_factory, npm_config, None));
+    return Ok((cli_factory, force_package_json, npm_config, None));
   }
 
   let npm_config = match start_dir.member_pkg_json() {
@@ -462,7 +477,7 @@ fn load_configs(
     }
   };
   assert!(deno_config.is_some() || npm_config.is_some());
-  Ok((cli_factory, npm_config, deno_config))
+  Ok((cli_factory, force_package_json, npm_config, deno_config))
 }
 
 fn path_distance(a: &Path, b: &Path) -> usize {
@@ -479,12 +494,13 @@ pub async fn add(
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
   let save_exact = add_flags.save_exact;
-  let force_package_json = add_flags.package_json;
-  let (cli_factory, mut npm_config, mut deno_config) = load_configs(
-    &flags,
-    || add_flags.packages.iter().any(|s| s.starts_with("jsr:")),
-    force_package_json,
-  )?;
+  let (cli_factory, force_package_json, mut npm_config, mut deno_config) =
+    load_configs(
+      &flags,
+      || add_flags.packages.iter().any(|s| s.starts_with("jsr:")),
+      add_flags.package_json,
+      true,
+    )?;
 
   if let Some(deno) = &deno_config
     && deno.obj().get("importMap").is_some()
@@ -1026,9 +1042,8 @@ pub async fn remove(
   flags: Arc<Flags>,
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
-  let force_package_json = remove_flags.package_json;
-  let (_, npm_config, deno_config) =
-    load_configs(&flags, || false, force_package_json)?;
+  let (_, force_package_json, npm_config, deno_config) =
+    load_configs(&flags, || false, remove_flags.package_json, true)?;
 
   let mut configs = if force_package_json {
     [npm_config, None]
@@ -1278,8 +1293,8 @@ fn load_deno_config_for_link(
     // For `link`, force creation of deno.json if missing; the `"links"` field
     // lives there. We achieve this by claiming jsr specifiers are present,
     // which makes `load_configs` materialise a deno.json when one isn't found.
-    let (cli_factory, _npm_config, deno_config) =
-      load_configs(flags, || true, false)?;
+    let (cli_factory, _force_package_json, _npm_config, deno_config) =
+      load_configs(flags, || true, false, false)?;
     let deno_config = deno_config.ok_or_else(|| {
       deno_core::anyhow::anyhow!("Could not load or create deno.json")
     })?;
