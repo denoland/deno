@@ -543,13 +543,12 @@ fn should_run(if_cond: Option<&str>) -> bool {
         !((cfg!(target_os = "windows") && cfg!(target_arch = "aarch64"))
           || (cfg!(target_os = "macos") && cfg!(target_arch = "x86_64")))
       }
-      "notSlowDebugShard" => {
-        let is_linux_x86_debug_ci = cfg!(target_os = "linux")
-          && cfg!(target_arch = "x86_64")
-          && std::env::var("CARGO_PROFILE_DEV_DEBUG").as_deref() == Ok("0");
+      "notSlowCiShard" => {
+        let is_linux_x86_ci =
+          *IS_CI && cfg!(target_os = "linux") && cfg!(target_arch = "x86_64");
         !((cfg!(target_os = "windows") && cfg!(target_arch = "aarch64"))
           || (cfg!(target_os = "macos") && cfg!(target_arch = "x86_64"))
-          || is_linux_x86_debug_ci)
+          || is_linux_x86_ci)
       }
       value => panic!("Unknown if condition: {}", value),
     }
