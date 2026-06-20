@@ -42,6 +42,7 @@ use crate::workspace::MappedResolutionError;
 use crate::workspace::WorkspaceResolvePkgJsonFolderError;
 use crate::workspace::WorkspaceResolver;
 
+pub mod bun_lockfile_import;
 pub mod cache;
 pub mod cjs;
 pub mod collections;

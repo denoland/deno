@@ -29,6 +29,7 @@ use node_resolver::PackageJson;
 use parking_lot::Mutex;
 use parking_lot::MutexGuard;
 
+use crate::bun_lockfile_import::bun_lock_to_deno_lock_v5;
 use crate::npm_lockfile_import::package_lock_to_deno_lock_v5;
 use crate::pnpm_lockfile_import::pnpm_lock_to_deno_lock_v5;
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
@@ -585,13 +586,14 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
   }
 }
 
-/// Attempt to translate a sibling `package-lock.json` or `pnpm-lock.yaml`
-/// into a seed `Lockfile`. Returns `Ok(None)` when no usable lockfile is
-/// present (so the caller falls back to creating an empty lockfile). The
-/// returned lockfile is flagged as changed so the next write persists it to
-/// disk.
+/// Attempt to translate a sibling `package-lock.json`, `pnpm-lock.yaml`, or
+/// `bun.lock` into a seed `Lockfile`. Returns `Ok(None)` when no usable
+/// lockfile is present (so the caller falls back to creating an empty
+/// lockfile). The returned lockfile is flagged as changed so the next write
+/// persists it to disk.
 ///
-/// When both are present, `package-lock.json` wins.
+/// When several are present, the first in the order
+/// `package-lock.json`, `pnpm-lock.yaml`, `bun.lock` wins.
 async fn try_import_npm_lockfile<TSys: LockfileSys>(
   sys: &TSys,
   deno_lock_path: &std::path::Path,
@@ -602,12 +604,15 @@ async fn try_import_npm_lockfile<TSys: LockfileSys>(
   };
 
   type Translator = fn(&str) -> Result<String, String>;
-  let candidates: [(&str, Translator); 2] = [
+  let candidates: [(&str, Translator); 3] = [
     ("package-lock.json", |s| {
       package_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
     }),
     ("pnpm-lock.yaml", |s| {
       pnpm_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
+    }),
+    ("bun.lock", |s| {
+      bun_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
     }),
   ];
 
