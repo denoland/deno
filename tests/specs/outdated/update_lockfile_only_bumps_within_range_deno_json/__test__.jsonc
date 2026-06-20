@@ -1,0 +1,36 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Same as ../update_lockfile_only_bumps_within_range but for a
+    // deno.json `imports` entry instead of package.json. `--lockfile-only`
+    // must bump the lockfile to the latest in-range version (0.1.0 -> 0.1.1)
+    // while leaving the `^0.1.0` requirement in deno.json untouched and NOT
+    // jumping to the out-of-range 0.2.0. See denoland/deno#35348.
+    "bumps_within_range": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "update --lockfile-only",
+          "output": "update.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./deno.json').trim());"
+          ],
+          "output": "deno.json.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./deno.lock').trim());"
+          ],
+          "output": "deno.lock.out"
+        }
+      ]
+    }
+  }
+}

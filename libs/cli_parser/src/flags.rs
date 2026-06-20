@@ -600,6 +600,10 @@ pub struct TaskFlags {
   pub filter: Option<String>,
   pub eval: bool,
   pub no_prefix: bool,
+  /// Maximum number of workspace tasks to run concurrently. Overrides the
+  /// `DENO_JOBS` env var and the `available_parallelism()` default. Only
+  /// meaningful for multi-task (`-r`/`--filter`) runs.
+  pub concurrency: Option<NonZeroUsize>,
   /// Exit with code 0 instead of an error when the named task is not found.
   pub if_present: bool,
 }
