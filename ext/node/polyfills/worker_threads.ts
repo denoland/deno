@@ -287,6 +287,15 @@ class NodeWorker extends EventEmitter {
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
 
+    // Ensure the creating thread is wired up to send/receive cross-thread
+    // `postMessageToThread` messages. On the main thread under the deferred
+    // node bootstrap `__initWorkerThreads` (which normally does this) never
+    // runs, so without this the main thread can neither be addressed by
+    // `postMessageToThread(0, ...)` nor have its `workerMessage` listeners
+    // counted. Idempotent, so the eager paths that already ran it are a
+    // no-op here.
+    setupCrossThreadMessaging();
+
     if (options?.execArgv) {
       validateArray(options.execArgv, "options.execArgv");
       if (options.execArgv.length > 0) {
@@ -1402,6 +1411,7 @@ let threadMessageRid: number | undefined;
 let workerMessageListenerCount = 0;
 let nextThreadMessageId = 1;
 let crossThreadSetUp = false;
+let crossThreadMessagingSetUp = false;
 const pendingThreadMessages = new SafeMap<
   number,
   {
@@ -1490,7 +1500,11 @@ async function pollCrossThreadMessages() {
     // on `process`, then ack with whatever the listeners produced.
     let status = kAckStatusOk;
     try {
-      lazyProcess().default.emit("workerMessage", envelope.payload);
+      lazyProcess().default.emit(
+        "workerMessage",
+        envelope.payload,
+        envelope.sender,
+      );
     } catch {
       status = kAckStatusError;
     }
@@ -1504,6 +1518,13 @@ async function pollCrossThreadMessages() {
 // touch `postMessageToThread` don't carry an extra entry in
 // `core.resources()` (which several finalization tests assert on).
 function setupCrossThreadMessaging() {
+  // Idempotent: under the deferred node bootstrap this is invoked lazily
+  // from the `Worker` constructor on the main thread (where `initialize()`
+  // -- and thus `__initWorkerThreads` -- never auto-runs), as well as
+  // eagerly from `__initWorkerThreads` on workers and the eager main path.
+  // Installing the `newListener` hook twice would double-count listeners.
+  if (crossThreadMessagingSetUp) return;
+  crossThreadMessagingSetUp = true;
   workerMessageListenerCount =
     lazyProcess().default.listenerCount?.("workerMessage") ?? 0;
   if (workerMessageListenerCount > 0) {
