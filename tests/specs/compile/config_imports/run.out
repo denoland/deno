@@ -1,0 +1,5 @@
+yaml.name: deno
+yaml.nested: {"count":3}
+toml.title: demo
+toml.server.port: 8080
+json5.a: 1 json5.b: two
