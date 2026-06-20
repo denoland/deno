@@ -56,11 +56,13 @@ pub fn bun_lock_to_deno_lock_v5(
 
   let packages = root.get("packages").and_then(Value::as_object);
 
-  // First pass: map each hoisted package name to its resolved version. A
-  // top-level (hoisted) entry is keyed by the bare package name; nested
-  // duplicates are keyed by a `parent/name` path, so a key that equals the
-  // package's own name identifies the version a sibling dependency resolves to.
-  let mut resolved: HashMap<String, String> = HashMap::new();
+  // First pass: index resolved versions. `versions_by_key` maps every package
+  // key to its version (bun keys a hoisted package by its bare name and a
+  // nested duplicate by a `<parent-key>/<name>` path), while `hoisted` is the
+  // subset keyed by the bare name. A sibling dependency resolves to the nested
+  // entry under its requester's key when present, else to the hoisted one.
+  let mut versions_by_key: HashMap<String, String> = HashMap::new();
+  let mut hoisted: HashMap<String, String> = HashMap::new();
   if let Some(packages) = packages {
     for (key, entry) in packages {
       let Some((name, version)) = entry_ident(entry) else {
@@ -71,17 +73,21 @@ pub fn bun_lock_to_deno_lock_v5(
       if version.contains(':') {
         continue;
       }
+      versions_by_key.insert(key.clone(), version.to_string());
       if key == name {
-        resolved.insert(name.to_string(), version.to_string());
+        hoisted.insert(name.to_string(), version.to_string());
       }
     }
   }
 
   // Second pass: build the npm map keyed by `name@version`, resolving each
-  // package's dependency requirements to concrete versions via `resolved`.
+  // package's dependency requirements to concrete versions. The package's own
+  // key anchors the nested lookup so a dependency pinned to a non-hoisted
+  // version (stored under `<key>/<dep>`) resolves to that version, not the
+  // hoisted one.
   let mut npm: BTreeMap<String, Value> = BTreeMap::new();
   if let Some(packages) = packages {
-    for entry in packages.values() {
+    for (key, entry) in packages {
       let Some((name, version)) = entry_ident(entry) else {
         continue;
       };
@@ -94,8 +100,15 @@ pub fn bun_lock_to_deno_lock_v5(
         continue;
       };
       let info = arr.get(2).and_then(Value::as_object);
-      let deps = collect_deps(info, "dependencies", &resolved);
-      let opt_deps = collect_deps(info, "optionalDependencies", &resolved);
+      let deps =
+        collect_deps(info, "dependencies", key, &versions_by_key, &hoisted);
+      let opt_deps = collect_deps(
+        info,
+        "optionalDependencies",
+        key,
+        &versions_by_key,
+        &hoisted,
+      );
 
       let mut obj = serde_json::Map::new();
       obj.insert(
@@ -132,7 +145,7 @@ pub fn bun_lock_to_deno_lock_v5(
       let Some(ws) = ws.as_object() else {
         continue;
       };
-      let keys = collect_workspace_specifiers(ws, &resolved, &mut specifiers);
+      let keys = collect_workspace_specifiers(ws, &hoisted, &mut specifiers);
       if path.is_empty() {
         root_dep_keys = keys;
       } else if !keys.is_empty() {
@@ -188,11 +201,15 @@ fn split_ident(ident: &str) -> Option<(&str, &str)> {
 
 /// Resolve a package's `dependencies`/`optionalDependencies` requirement map
 /// into a sorted, de-duped list of `dep@version` strings, dropping any
-/// requirement that does not resolve to a known hoisted version.
+/// requirement that does not resolve to a known version. `parent_key` is the
+/// requesting package's `packages` key, used to find a nested resolution
+/// before falling back to the hoisted one.
 fn collect_deps(
   info: Option<&serde_json::Map<String, Value>>,
   section: &str,
-  resolved: &HashMap<String, String>,
+  parent_key: &str,
+  versions_by_key: &HashMap<String, String>,
+  hoisted: &HashMap<String, String>,
 ) -> Vec<String> {
   let Some(deps) = info.and_then(|m| m.get(section)).and_then(Value::as_object)
   else {
@@ -201,12 +218,32 @@ fn collect_deps(
   let mut out: Vec<String> = deps
     .keys()
     .filter_map(|name| {
-      resolved.get(name).map(|ver| format!("{}@{}", name, ver))
+      resolve_dep_version(versions_by_key, hoisted, parent_key, name)
+        .map(|ver| format!("{}@{}", name, ver))
     })
     .collect();
   out.sort();
   out.dedup();
   out
+}
+
+/// Resolve a single dependency to its installed version: prefer the entry
+/// nested directly under the requester (`<parent_key>/<dep_name>`, how bun
+/// stores a version that could not be hoisted), then fall back to the hoisted
+/// top-level version.
+fn resolve_dep_version<'a>(
+  versions_by_key: &'a HashMap<String, String>,
+  hoisted: &'a HashMap<String, String>,
+  parent_key: &str,
+  dep_name: &str,
+) -> Option<&'a str> {
+  if !parent_key.is_empty()
+    && let Some(version) =
+      versions_by_key.get(&format!("{}/{}", parent_key, dep_name))
+  {
+    return Some(version);
+  }
+  hoisted.get(dep_name).map(String::as_str)
 }
 
 /// Collect the supported `npm:<name>@<req>` specifier keys declared by a single
@@ -386,6 +423,36 @@ mod tests {
         [0],
       "npm:is-odd@^3.0.0"
     );
+  }
+
+  #[test]
+  fn nested_version_conflict() {
+    // Root pins is-number@7, but is-odd needs is-number@^6, so bun nests the
+    // older copy under `is-odd/is-number`. is-odd's dependency must resolve to
+    // the nested 6.0.0, not the hoisted 7.0.0.
+    let input = r#"{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": { "name": "root", "dependencies": { "is-number": "7.0.0", "is-odd": "3.0.1" } },
+  },
+  "packages": {
+    "is-number": ["is-number@7.0.0", "", {}, "sha512-NUM7"],
+    "is-odd": ["is-odd@3.0.1", "", { "dependencies": { "is-number": "^6.0.0" } }, "sha512-ODD"],
+    "is-odd/is-number": ["is-number@6.0.0", "", {}, "sha512-NUM6"],
+  }
+}
+"#;
+    let out = bun_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let is_odd_deps =
+      v["npm"]["is-odd@3.0.1"]["dependencies"].as_array().unwrap();
+    assert_eq!(is_odd_deps, &["is-number@6.0.0"]);
+    // Both versions are present in the npm section.
+    let npm = v["npm"].as_object().unwrap();
+    assert!(npm.contains_key("is-number@6.0.0"));
+    assert!(npm.contains_key("is-number@7.0.0"));
+    // The hoisted version still backs the top-level specifier.
+    assert_eq!(v["specifiers"]["npm:is-number@7.0.0"], "7.0.0");
   }
 
   #[test]
