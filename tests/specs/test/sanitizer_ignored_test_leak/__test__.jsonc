@@ -13,12 +13,7 @@
       "exitCode": 1,
       "output": "failed_ignored_test_leak.out"
     },
-    "genuine_leak_still_detected": {
-      "args": "test --sanitize-ops --sanitize-resources --trace-leaks genuine_leak.ts",
-      "exitCode": 1,
-      "output": "genuine_leak.out"
-    },
-    "genuine_resource_and_op_leak_still_detected": {
+    "genuine_leaks_still_detected": {
       "args": "test --allow-net=127.0.0.1 --sanitize-ops --sanitize-resources --trace-leaks genuine_resource_and_op_leak.ts",
       "exitCode": 1,
       "output": "genuine_resource_and_op_leak.out"

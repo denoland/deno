@@ -1,12 +1,12 @@
 [WILDCARD]
 ignoresSanitizersAndLeaksActivities ... ok [WILDCARD]
-laterTestLeaksItsOwnResourceAndOp ... FAILED [WILDCARD]
+laterTestLeaksItsOwnActivities ... FAILED [WILDCARD]
 [WILDCARD]
 error: Leaks detected:
-[UNORDERED_START]
   - A TCP listener was opened during the test, but not closed during the test. Close the TCP listener by calling `tcpListener.close()`.
-[WILDLINE]
-[UNORDERED_END]
+  - A timer was started in this test, but never completed. This is often caused by not calling `clearTimeout`. The operation was started here:
+[WILDCARD]
+  - An async operation to accept a TCP stream was started in this test, but never completed. This is often caused by not closing a `Deno.Listener`. The operation was started here:
 [WILDCARD]
 FAILED | 1 passed | 1 failed [WILDCARD]
 
