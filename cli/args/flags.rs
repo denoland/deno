@@ -2475,7 +2475,7 @@ supported framework (Next.js, Astro, etc.) in the current directory.
           .long("output")
           .short('o')
           .value_parser(value_parser!(String))
-          .help(cstr!("Output path <p(245)>(e.g. MyApp.app, MyApp.dmg, MyApp.msi)</>"))
+          .help(cstr!("Output path <p(245)>(e.g. MyApp.app, MyApp.dmg, MyApp.AppImage, MyApp.deb, MyApp.rpm)</>"))
           .value_hint(ValueHint::FilePath)
           .help_heading(DESKTOP_HEADING),
       )
@@ -3468,6 +3468,8 @@ Update dependencies to the latest semver compatible versions:
   <p(245)>deno update</>
 Update dependencies to the latest versions, ignoring semver requirements:
   <p(245)>deno update --latest</>
+Update dependencies within their existing version ranges, without editing deno.json / package.json (like <p(245)>npm update</>):
+  <p(245)>deno update --lockfile-only</>
 
 <i>This command is an alias of <p(245)>deno outdated --update</></>
 
@@ -3515,6 +3517,8 @@ Update dependencies to the latest semver compatible versions:
   <p(245)>deno outdated --update</>
 Update dependencies to the latest versions, ignoring semver requirements:
   <p(245)>deno outdated --update --latest</>
+Update dependencies within their existing version ranges, without editing deno.json / package.json (like <p(245)>npm update</>):
+  <p(245)>deno outdated --update --lockfile-only</>
 
 Filters can be used to select which packages to act on. Filters can include wildcards (*) to match multiple packages.
   <p(245)>deno outdated --update --latest \"@std/*\"</>
