@@ -1056,6 +1056,26 @@ impl<TGraphContainer: ModuleGraphContainer>
       Ok(())
     }
 
+    // An `npm:` package's bin entry chosen as the main module is
+    // resolved to a concrete `file:` URL inside the global npm cache before it
+    // reaches here. deno_core then re-resolves that already-resolved specifier
+    // as the main module, running it through the import map. An
+    // `"imports": { "/": "./" }` entry (recommended in the docs for
+    // project-root absolute imports) normalizes to a `file:///` =>
+    // `file:///<project>/` mapping whose prefix match rewrites any file URL
+    // outside the project root (such as the npm cache) to live underneath the
+    // project directory, breaking the load. Such a package-internal main
+    // module is not a user source file and must not be remapped, so load it
+    // verbatim. A user-provided path entry (e.g. `deno run ./thing.ts`) is
+    // intentionally left to the import map.
+    if matches!(kind, deno_core::ResolutionKind::MainModule)
+      && let Ok(url) = ModuleSpecifier::parse(raw_specifier)
+      && url.scheme() == "file"
+      && self.shared.in_npm_pkg_checker.in_npm_package(&url)
+    {
+      return Ok(url);
+    }
+
     let referrer = self
       .resolve_referrer(raw_referrer)
       .map_err(JsErrorBox::from_err)?;
@@ -1540,6 +1560,34 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       .shared
       .in_flight_loads_tracker
       .decrease(&self.0.shared.parsed_source_cache);
+  }
+
+  fn get_code_cache(
+    &self,
+    specifier: &ModuleSpecifier,
+    source: &deno_core::v8::String,
+  ) -> Option<SourceCodeCacheInfo> {
+    let cache = self.0.shared.code_cache.as_ref()?;
+    let source_hash = {
+      use std::hash::Hash;
+      use std::hash::Hasher;
+      let mut hasher = twox_hash::XxHash64::default();
+      source.hash(&mut hasher);
+      hasher.finish()
+    };
+    let data = cache
+      .get_sync(specifier, code_cache::CodeCacheType::EsModule, source_hash)
+      .inspect(|_| {
+        // This log line is also used by tests.
+        log::debug!(
+          "V8 code cache hit for ES module: {specifier}, [{source_hash}]"
+        );
+      })
+      .map(Cow::from);
+    Some(SourceCodeCacheInfo {
+      hash: source_hash,
+      data,
+    })
   }
 
   fn code_cache_ready(

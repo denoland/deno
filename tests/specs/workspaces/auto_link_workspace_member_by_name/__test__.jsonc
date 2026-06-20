@@ -1,0 +1,44 @@
+// Tests that a workspace member which is itself an npm package (it has a
+// package.json `name`) is symlinked into the workspace root `node_modules`
+// under its real package name, even when the member is referenced only by a
+// bare specifier and is not declared as a dependency of any other member. This
+// matches the npm/pnpm workspace layout so external Node tooling that resolves
+// through `node_modules` (e.g. jiti) can find the member.
+//
+// It also guards that an arbitrary import-map alias for the same member is NOT
+// linked: only the real package name is linked, never an import alias.
+//
+// Checked for both the isolated (default) and hoisted linker modes. No network
+// access is required — the workspace contains only local members.
+//
+// https://github.com/denoland/deno/issues/35359
+// https://github.com/denoland/deno/issues/25542
+{
+  "tempDir": true,
+  "tests": {
+    "isolated": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read check.ts",
+          "output": "ok\n"
+        }
+      ]
+    },
+    "hoisted": {
+      "steps": [
+        {
+          "args": "install --node-modules-dir=manual --node-modules-linker=hoisted",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read check.ts",
+          "output": "ok\n"
+        }
+      ]
+    }
+  }
+}

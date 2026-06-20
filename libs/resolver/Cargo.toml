@@ -66,6 +66,7 @@ sys_traits.workspace = true
 thiserror.workspace = true
 twox-hash.workspace = true
 url.workspace = true
+yaml_parser.workspace = true
 
 [dev-dependencies]
 node_resolver.workspace = true

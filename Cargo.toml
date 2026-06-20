@@ -36,6 +36,7 @@ members = [
   "ext/websocket",
   "ext/webstorage",
   "libs/cache_dir",
+  "libs/cli_parser",
   "libs/config",
   "libs/core",
   "libs/core/examples/snapshot",
@@ -144,6 +145,7 @@ denort_helper = { version = "0.49.0", path = "./ext/rt_helper" }
 # workspace libraries
 deno_bench_util = { version = "0.245.0", path = "./tests/bench_util" }
 deno_cache_dir = { version = "0.43.0", path = "./libs/cache_dir" }
+deno_cli_parser = { version = "0.1.0", path = "./libs/cli_parser" }
 deno_config = { version = "0.101.0", features = ["workspace"], path = "./libs/config" }
 deno_core = { version = "0.404.0", path = "./libs/core" }
 deno_core_testing = { path = "./libs/core_testing" }
@@ -279,6 +281,10 @@ rand = "=0.8.5"
 rayon = "1.11.0"
 regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
+# zstd payload (not gzip): rpm's `gzip-compression` pulls flate2's zlib-rs C
+# shim, which collides at link time with deno's zlib-ng (libz-sys). deno
+# already depends on `zstd`, and modern RPM tooling reads zstd payloads.
+rpm = { version = "0.25.1", default-features = false, features = ["payload", "zstd-compression"] }
 rstest = "0"
 rusqlite = { version = "0.37.0", features = ["unlock_notify", "bundled", "session", "modern_sqlite", "limits", "backup"] } # "modern_sqlite": need sqlite >= 3.49.0 for some db configs
 rustls = { version = "=0.23.40", default-features = false, features = ["logging", "std", "tls12", "aws_lc_rs"] }
@@ -378,6 +384,7 @@ text-size = "=1.1.1"
 text_lines = "=0.6.0"
 unicode-normalization = "0.1"
 unicode-width = "0.1.3"
+yaml_parser = "=0.2.1"
 zstd = "=0.13.2"
 
 # crypto

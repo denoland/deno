@@ -69,6 +69,7 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TestFlags;
 use crate::args::TestReporterConfig;
+use crate::args::TypeCheckModeExt;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
@@ -107,6 +108,7 @@ use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
 
+use crate::tools::coverage::CoverageThresholdError;
 use crate::tools::coverage::cover_files;
 use crate::tools::coverage::reporter;
 use crate::tools::test::channel::ChannelClosedError;
@@ -2177,6 +2179,10 @@ pub async fn run_tests(
   }
 
   if let Some(ref coverage) = test_flags.coverage_dir {
+    // A malformed `coverage` config is a user error and must fail the command.
+    // The best-effort error handling below only logs report-generation errors,
+    // so surface an invalid config as a hard error before generating reports.
+    cli_options.resolve_coverage_thresholds()?;
     let reporters: [&dyn reporter::CoverageReporter; 3] = [
       &reporter::SummaryCoverageReporter::new(),
       &reporter::LcovCoverageReporter::new(),
@@ -2194,8 +2200,14 @@ pub async fn run_tests(
           .to_string_lossy()
           .into_owned(),
       ),
+      test_flags.coverage_threshold.map(|t| t as f64),
       &reporters,
     ) {
+      // An unmet coverage threshold is a deliberate failure and must fail the
+      // command; other (best-effort) report errors are only logged.
+      if err.downcast_ref::<CoverageThresholdError>().is_some() {
+        return Err(err);
+      }
       log::info!("Error generating coverage report: {}", err);
     }
   }

@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "tests": {
+    "mismatch_warns": {
+      "args": "install",
+      "cwd": "mismatch",
+      "output": "mismatch/install.out"
+    },
+    "match_silent": {
+      "args": "install",
+      "cwd": "match",
+      "output": "match/install.out"
+    },
+    "invalid_range_warns": {
+      "args": "install",
+      "cwd": "invalid",
+      "output": "invalid/install.out"
+    }
+  }
+}
