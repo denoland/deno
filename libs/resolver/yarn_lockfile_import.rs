@@ -463,4 +463,46 @@ __metadata:
     let err = yarn_lock_to_deno_lock_v5(input).unwrap_err();
     assert!(matches!(err, YarnLockfileImportError::BerryUnsupported));
   }
+
+  #[test]
+  fn skips_unsupported_reqs() {
+    // Non-registry reqs (file:/link:/workspace:/git/http) and aliased
+    // (`npm:`) reqs cannot be expressed as plain `npm:name@req` specifiers, so
+    // they must be omitted. A normal registry dep alongside them confirms the
+    // supported subset is still emitted.
+    let input = r#"# yarn lockfile v1
+
+ok@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/ok/-/ok-1.0.0.tgz"
+  integrity sha512-OK
+
+local@file:../local:
+  version "1.0.0"
+
+linked@link:../linked:
+  version "1.0.0"
+
+ws@workspace:packages/ws:
+  version "1.0.0"
+
+fromgit@git+https://github.com/example/fromgit.git:
+  version "1.0.0"
+
+remote@https://example.com/remote.tgz:
+  version "1.0.0"
+
+"aliased@npm:underlying@^2.0.0":
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/underlying/-/underlying-2.0.0.tgz"
+  integrity sha512-UNDERLYING
+"#;
+    let out = yarn_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let specifiers = v["specifiers"].as_object().unwrap();
+    assert_eq!(specifiers.len(), 1);
+    assert_eq!(specifiers["npm:ok@^1.0.0"], "1.0.0");
+    // None of the unsupported reqs leak into specifiers.
+    assert!(specifiers.keys().all(|k| k == "npm:ok@^1.0.0"));
+  }
 }
