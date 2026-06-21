@@ -2475,7 +2475,7 @@ supported framework (Next.js, Astro, etc.) in the current directory.
           .long("output")
           .short('o')
           .value_parser(value_parser!(String))
-          .help(cstr!("Output path <p(245)>(e.g. MyApp.app, MyApp.dmg, MyApp.AppImage, MyApp.deb, MyApp.rpm)</>"))
+          .help(cstr!("Output path <p(245)>(e.g. MyApp.app, MyApp.dmg, MyApp.AppImage, MyApp.deb, MyApp.rpm, MyApp.msi)</>"))
           .value_hint(ValueHint::FilePath)
           .help_heading(DESKTOP_HEADING),
       )
