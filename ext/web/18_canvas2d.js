@@ -10,6 +10,7 @@ const {
   op_fontdb_unload,
   op_parse_css_font_query,
   OffscreenCanvasRenderingContext2D,
+  Path2D,
   TextMetrics,
 } = core.ops;
 
@@ -1146,6 +1147,7 @@ defineEventHandler(FontFaceSetPrototype, "loadingerror");
 
 webidl.configureInterface(TextMetrics);
 webidl.configureInterface(OffscreenCanvasRenderingContext2D);
+webidl.configureInterface(Path2D);
 
 ObjectDefineProperty(
   TextMetrics.prototype,
@@ -1234,6 +1236,7 @@ function loadSystemFonts() {
 
 return {
   OffscreenCanvasRenderingContext2D,
+  Path2D,
   FontFace,
   FontFacePrototype,
   FontFaceSet,

@@ -69,30 +69,30 @@ Deno.test(function canvas2dCanvasGetter() {
 Deno.test(function canvas2dFillStyleDefault() {
   const canvas = new OffscreenCanvas(10, 10);
   const ctx = canvas.getContext("2d")!;
-  assertEquals(ctx.fillStyle, "rgb(0, 0, 0)");
+  assertEquals(ctx.fillStyle, "#000000");
 });
 
 Deno.test(function canvas2dFillStyleNamedColor() {
   const canvas = new OffscreenCanvas(10, 10);
   const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "red";
-  assertEquals(ctx.fillStyle, "rgb(255, 0, 0)");
+  assertEquals(ctx.fillStyle, "#ff0000");
 });
 
 Deno.test(function canvas2dFillStyleHex() {
   const canvas = new OffscreenCanvas(10, 10);
   const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "#00ff00";
-  assertEquals(ctx.fillStyle, "rgb(0, 255, 0)");
+  assertEquals(ctx.fillStyle, "#00ff00");
 });
 
 Deno.test(function canvas2dFillStyleSemiTransparent() {
   const canvas = new OffscreenCanvas(10, 10);
   const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "rgba(0, 0, 255, 1)";
-  assertEquals(ctx.fillStyle, "rgb(0, 0, 255)");
+  assertEquals(ctx.fillStyle, "#0000ff");
   ctx.fillStyle = "rgba(0, 0, 255, 0)";
-  assertEquals(ctx.fillStyle, "rgba(0, 0, 255, 0.000000)");
+  assertEquals(ctx.fillStyle, "rgba(0, 0, 255, 0)");
 });
 
 Deno.test(function canvas2dFillStyleInvalidIgnored() {
@@ -100,7 +100,7 @@ Deno.test(function canvas2dFillStyleInvalidIgnored() {
   const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "red";
   ctx.fillStyle = "not-a-color";
-  assertEquals(ctx.fillStyle, "rgb(255, 0, 0)");
+  assertEquals(ctx.fillStyle, "#ff0000");
 });
 
 // --- strokeStyle ---
@@ -108,14 +108,14 @@ Deno.test(function canvas2dFillStyleInvalidIgnored() {
 Deno.test(function canvas2dStrokeStyleDefault() {
   const canvas = new OffscreenCanvas(10, 10);
   const ctx = canvas.getContext("2d")!;
-  assertEquals(ctx.strokeStyle, "rgb(0, 0, 0)");
+  assertEquals(ctx.strokeStyle, "#000000");
 });
 
 Deno.test(function canvas2dStrokeStyleRoundTrip() {
   const canvas = new OffscreenCanvas(10, 10);
   const ctx = canvas.getContext("2d")!;
   ctx.strokeStyle = "blue";
-  assertEquals(ctx.strokeStyle, "rgb(0, 0, 255)");
+  assertEquals(ctx.strokeStyle, "#0000ff");
 });
 
 Deno.test(function canvas2dStrokeStyleInvalidIgnored() {
@@ -123,7 +123,7 @@ Deno.test(function canvas2dStrokeStyleInvalidIgnored() {
   const ctx = canvas.getContext("2d")!;
   ctx.strokeStyle = "blue";
   ctx.strokeStyle = "not-a-color";
-  assertEquals(ctx.strokeStyle, "rgb(0, 0, 255)");
+  assertEquals(ctx.strokeStyle, "#0000ff");
 });
 
 // --- globalAlpha ---
@@ -141,13 +141,18 @@ Deno.test(function canvas2dGlobalAlphaRoundTrip() {
   assertEquals(ctx.globalAlpha, 0.5);
 });
 
-Deno.test(function canvas2dGlobalAlphaClamped() {
+Deno.test(function canvas2dGlobalAlphaOutOfRangeIgnored() {
   const canvas = new OffscreenCanvas(10, 10);
   const ctx = canvas.getContext("2d")!;
+  ctx.globalAlpha = 0.5;
   ctx.globalAlpha = 2.0;
-  assertEquals(ctx.globalAlpha, 1.0);
+  assertEquals(ctx.globalAlpha, 0.5);
   ctx.globalAlpha = -0.5;
-  assertEquals(ctx.globalAlpha, 0.0);
+  assertEquals(ctx.globalAlpha, 0.5);
+  ctx.globalAlpha = Infinity;
+  assertEquals(ctx.globalAlpha, 0.5);
+  ctx.globalAlpha = NaN;
+  assertEquals(ctx.globalAlpha, 0.5);
 });
 
 // --- font ---
@@ -303,6 +308,33 @@ Deno.test(function canvas2dSettingsWillReadFrequently() {
 Deno.test(function canvas2dSettingsDesynchronized() {
   const canvas = new OffscreenCanvas(10, 10);
   assert(canvas.getContext("2d", { desynchronized: true }) !== null);
+});
+
+// --- Phase 2: Paths (basic API, no pixel readback) ---
+
+Deno.test(function canvas2dPathBasics() {
+  const canvas = new OffscreenCanvas(10, 10);
+  const ctx = canvas.getContext("2d")!;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(5, 5);
+  ctx.rect(1, 1, 2, 2);
+  ctx.closePath();
+  ctx.strokeRect(0, 0, 1, 1);
+  // Should not throw
+  ctx.fill();
+  ctx.stroke();
+  ctx.clip();
+});
+
+Deno.test(function canvas2dPath2D() {
+  const p = new Path2D();
+  p.moveTo(0, 0);
+  p.lineTo(10, 10);
+  p.rect(0, 0, 4, 4);
+  const p2 = new Path2D(p);
+  // basic
+  assert(p2 !== p);
 });
 
 // --- Rendering (GPU required) ---
@@ -1051,9 +1083,9 @@ Deno.test(function canvas2dSaveRestorePreservesAndRestoresState() {
   ctx.fillStyle = "red";
   ctx.save();
   ctx.fillStyle = "blue";
-  assertEquals(ctx.fillStyle, "rgb(0, 0, 255)");
+  assertEquals(ctx.fillStyle, "#0000ff");
   ctx.restore();
-  assertEquals(ctx.fillStyle, "rgb(255, 0, 0)");
+  assertEquals(ctx.fillStyle, "#ff0000");
 });
 
 Deno.test(function canvas2dRestoreOnEmptyStackIsNoOp() {
@@ -1066,7 +1098,7 @@ Deno.test(function canvas2dResetClearsStateToDefaults() {
   const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
   ctx.fillStyle = "red";
   ctx.reset();
-  assertEquals(ctx.fillStyle, "rgb(0, 0, 0)");
+  assertEquals(ctx.fillStyle, "#000000");
 });
 
 Deno.test(function canvas2dIsContextLostReturnsFalse() {
@@ -1174,4 +1206,220 @@ Deno.test(function canvas2dNonFiniteTransformArgumentsAreIgnored() {
   assertEquals(m.b, 0);
   assertEquals(m.c, 0);
   assertEquals(m.d, 1);
+});
+
+// --- Phase 2: Path / Vector Engine ---
+
+Deno.test(function canvas2dBeginPathAndRect() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.beginPath();
+  ctx.rect(0, 0, 5, 5);
+  ctx.closePath();
+  // No error
+});
+
+Deno.test(function canvas2dArcNegativeRadiusThrows() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  assertThrows(
+    () => ctx.arc(0, 0, -1, 0, 0),
+    DOMException,
+  );
+});
+
+Deno.test(function canvas2dArcToNegativeRadiusThrows() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  assertThrows(
+    () => ctx.arcTo(0, 0, 5, 5, -1),
+    DOMException,
+  );
+});
+
+Deno.test(function canvas2dEllipseNegativeRadiusThrows() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  assertThrows(
+    () => ctx.ellipse(5, 5, -1, 5, 0, 0, Math.PI * 2),
+    DOMException,
+  );
+  assertThrows(
+    () => ctx.ellipse(5, 5, 5, -1, 0, 0, Math.PI * 2),
+    DOMException,
+  );
+});
+
+Deno.test(function canvas2dArcNonFiniteArgumentsIgnored() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.arc(NaN, 0, 1, 0, Math.PI);
+  ctx.arc(0, Infinity, 1, 0, Math.PI);
+  // No error, no-op
+});
+
+Deno.test(function canvas2dMoveToLineToNonFiniteIgnored() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.beginPath();
+  ctx.moveTo(NaN, 0);
+  ctx.lineTo(0, Infinity);
+  // No error
+});
+
+Deno.test(function canvas2dSetLineDashInvalidSilentlyReturns() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.setLineDash([5, 3]);
+  assertEquals(ctx.getLineDash(), [5, 3]);
+
+  // Negative values: silently ignored
+  ctx.setLineDash([-1, 3]);
+  assertEquals(ctx.getLineDash(), [5, 3]);
+
+  // NaN: silently ignored
+  ctx.setLineDash([NaN]);
+  assertEquals(ctx.getLineDash(), [5, 3]);
+
+  // Infinity: silently ignored
+  ctx.setLineDash([Infinity]);
+  assertEquals(ctx.getLineDash(), [5, 3]);
+});
+
+Deno.test(function canvas2dSetLineDashOddLengthDoubles() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.setLineDash([5, 3, 1]);
+  assertEquals(ctx.getLineDash(), [5, 3, 1, 5, 3, 1]);
+});
+
+Deno.test(function canvas2dFillStrokeClipNoError() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.beginPath();
+  ctx.rect(0, 0, 5, 5);
+  ctx.fill();
+  ctx.stroke();
+  ctx.clip();
+  // No error
+});
+
+Deno.test(function canvas2dFillWithFillRule() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.beginPath();
+  ctx.rect(0, 0, 5, 5);
+  ctx.fill("evenodd");
+  ctx.fill("nonzero");
+  // No error
+});
+
+Deno.test(function canvas2dStrokeRect() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.strokeRect(0, 0, 5, 5);
+  // No error
+});
+
+Deno.test(function canvas2dPath2DConstructor() {
+  const _p = new Path2D();
+  _p.rect(0, 0, 10, 10);
+
+  const _p2 = new Path2D(_p);
+});
+
+Deno.test(function canvas2dPath2DSvgPath() {
+  const _p = new Path2D("M10 10 L20 20 Z");
+});
+
+Deno.test(function canvas2dPath2DArcNegativeRadiusThrows() {
+  const p = new Path2D();
+  assertThrows(
+    () => p.arc(0, 0, -1, 0, 0),
+    DOMException,
+  );
+});
+
+Deno.test(function canvas2dPath2DAddPath() {
+  const p1 = new Path2D();
+  p1.rect(0, 0, 5, 5);
+  const p2 = new Path2D();
+  p2.addPath(p1);
+  // No error
+});
+
+Deno.test(function canvas2dFillWithPath2D() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const p = new Path2D();
+  p.rect(0, 0, 5, 5);
+  ctx.fill(p);
+  ctx.fill(p, "evenodd");
+  ctx.stroke(p);
+  // No error
+});
+
+Deno.test(function canvas2dGetImageDataBasic() {
+  const canvas = new OffscreenCanvas(2, 2);
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "rgb(255, 0, 0)";
+  ctx.fillRect(0, 0, 2, 2);
+  const data = ctx.getImageData(0, 0, 2, 2);
+  assertEquals(data.width, 2);
+  assertEquals(data.height, 2);
+  assertEquals(data.data.length, 16);
+});
+
+Deno.test(function canvas2dGetImageDataZeroSizeThrows() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  assertThrows(
+    () => ctx.getImageData(0, 0, 0, 1),
+    DOMException,
+  );
+  assertThrows(
+    () => ctx.getImageData(0, 0, 1, 0),
+    DOMException,
+  );
+});
+
+Deno.test(function canvas2dIsPointInPath() {
+  const ctx = new OffscreenCanvas(100, 100).getContext("2d")!;
+  ctx.beginPath();
+  ctx.rect(10, 10, 50, 50);
+  assertEquals(ctx.isPointInPath(25, 25), true);
+  assertEquals(ctx.isPointInPath(0, 0), false);
+});
+
+Deno.test(function canvas2dIsPointInPathWithPath2D() {
+  const ctx = new OffscreenCanvas(100, 100).getContext("2d")!;
+  const path = new Path2D();
+  path.rect(10, 10, 50, 50);
+  assertEquals(ctx.isPointInPath(path, 25, 25), true);
+  assertEquals(ctx.isPointInPath(path, 0, 0), false);
+});
+
+Deno.test(function canvas2dIsPointInPathEvenOdd() {
+  const ctx = new OffscreenCanvas(200, 200).getContext("2d")!;
+  const path = new Path2D();
+  path.rect(0, 0, 100, 100);
+  path.rect(25, 25, 50, 50);
+  assertEquals(ctx.isPointInPath(path, 50, 50), true);
+  assertEquals(ctx.isPointInPath(path, 50, 50, "nonzero"), true);
+  assertEquals(ctx.isPointInPath(path, 50, 50, "evenodd"), false);
+});
+
+Deno.test(function canvas2dIsPointInPathInvalidFillRule() {
+  const ctx = new OffscreenCanvas(100, 100).getContext("2d")!;
+  assertThrows(() => ctx.isPointInPath(50, 50, "gazonk"), TypeError);
+  const path = new Path2D();
+  path.rect(0, 0, 100, 100);
+  assertThrows(() => ctx.isPointInPath(path, 50, 50, "gazonk"), TypeError);
+});
+
+Deno.test(function canvas2dIsPointInPathInvalidFirstArg() {
+  const ctx = new OffscreenCanvas(100, 100).getContext("2d")!;
+  assertThrows(
+    () => ctx.isPointInPath(null as unknown as Path2D, 50, 50),
+    TypeError,
+  );
+  assertThrows(
+    () => ctx.isPointInPath(undefined as unknown as Path2D, 50, 50),
+    TypeError,
+  );
+});
+
+Deno.test(function canvas2dIsPointInStrokeWithPath2D() {
+  const ctx = new OffscreenCanvas(100, 100).getContext("2d")!;
+  const path = new Path2D();
+  path.rect(20, 20, 60, 60);
+  assertEquals(ctx.isPointInStroke(path, 20, 20), true);
+  assertEquals(ctx.isPointInStroke(path, 50, 50), false);
 });

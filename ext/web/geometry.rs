@@ -1222,7 +1222,9 @@ impl DOMMatrix2DInit {
   /// Validates 2D matrix members per the spec's "validate and fixup" algorithm
   /// and converts to a 2D matrix tuple `(a, b, c, d, e, f)`.
   /// Returns an error if any aliased pair (e.g. `a`/`m11`) has conflicting values.
-  pub fn to_affine(&self) -> Result<(f64, f64, f64, f64, f64, f64), GeometryError> {
+  pub fn to_affine(
+    &self,
+  ) -> Result<(f64, f64, f64, f64, f64, f64), GeometryError> {
     macro_rules! fixup {
       ($value3d:expr, $value2d:expr, $default:expr) => {
         if let Some(value3d) = $value3d {

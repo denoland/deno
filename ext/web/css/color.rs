@@ -31,8 +31,12 @@ pub fn parse_css_color(s: &str) -> Result<[u8; 4], CSSCustomError> {
 pub fn rgba8_to_css(rgba: [u8; 4]) -> String {
   let [r, g, b, a] = rgba;
   if a == 255 {
-    format!("rgb({r}, {g}, {b})")
+    format!("#{r:02x}{g:02x}{b:02x}")
   } else {
-    format!("rgba({r}, {g}, {b}, {:.6})", a as f64 / 255.0)
+    let alpha = a as f64 / 255.0;
+    let alpha_str = format!("{alpha:.6}");
+    let alpha_str = alpha_str.trim_end_matches('0');
+    let alpha_str = alpha_str.strip_suffix('.').unwrap_or(alpha_str);
+    format!("rgba({r}, {g}, {b}, {alpha_str})")
   }
 }
