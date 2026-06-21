@@ -967,15 +967,12 @@ impl JsRuntime {
     // threads can queue foreground tasks. The task queue Arc is already shared
     // with JsRuntimeState (created above) so the event loop can drain it
     // without touching the global map.
-    // Not all contexts have a tokio runtime (e.g. snapshot creation, unit tests).
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-      setup::register_isolate(
-        setup::isolate_ptr_to_key(isolate_ptr),
-        waker.clone(),
-        handle,
-        state_rc.foreground_tasks.clone(),
-      );
-    }
+    setup::register_isolate(
+      setup::isolate_ptr_to_key(isolate_ptr),
+      waker.clone(),
+      tokio::runtime::Handle::try_current().ok(),
+      state_rc.foreground_tasks.clone(),
+    );
 
     // ...isolate is fully set up, we can forward its pointer to the ops to finish
     // their' setup...
