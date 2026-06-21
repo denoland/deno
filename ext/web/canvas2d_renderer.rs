@@ -2,12 +2,15 @@
 
 use std::sync::Mutex;
 
-use deno_error::JsErrorBox;
 use vello::AaConfig;
 use vello::AaSupport;
 use vello::RendererOptions;
 use vello::peniko;
 pub use vello::wgpu;
+
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub struct RenderError(#[from] vello::Error);
 
 /// GPU compute backend — uses a real GPU hardware adapter.
 pub struct GpuRenderer {
@@ -134,7 +137,7 @@ pub fn render_scene_to_texture_view(
   width: u32,
   height: u32,
   base_color: peniko::Color,
-) -> Result<(), JsErrorBox> {
+) -> Result<(), RenderError> {
   let (device, queue, renderer) = wgpu_renderer(backend);
   render_wgpu_to_view(
     device, queue, renderer, scene, view, width, height, base_color,
@@ -151,7 +154,7 @@ pub fn render_scene(
   width: u32,
   height: u32,
   base_color: peniko::Color,
-) -> Result<Vec<u8>, JsErrorBox> {
+) -> Result<Vec<u8>, RenderError> {
   let (device, queue, renderer) = wgpu_renderer(backend);
   render_wgpu(device, queue, renderer, scene, width, height, base_color)
 }
@@ -181,7 +184,7 @@ fn render_wgpu_to_view(
   width: u32,
   height: u32,
   base_color: peniko::Color,
-) -> Result<(), JsErrorBox> {
+) -> Result<(), RenderError> {
   renderer
     .lock()
     .unwrap()
@@ -197,7 +200,7 @@ fn render_wgpu_to_view(
         antialiasing_method: AaConfig::Area,
       },
     )
-    .map_err(|e| JsErrorBox::generic(format!("vello render error: {e}")))
+    .map_err(RenderError::from)
 }
 
 fn render_wgpu(
@@ -208,7 +211,7 @@ fn render_wgpu(
   width: u32,
   height: u32,
   base_color: peniko::Color,
-) -> Result<Vec<u8>, JsErrorBox> {
+) -> Result<Vec<u8>, RenderError> {
   let texture = device.create_texture(&wgpu::TextureDescriptor {
     label: Some("canvas2d_render_target"),
     size: wgpu::Extent3d {
@@ -242,7 +245,7 @@ fn render_wgpu(
         antialiasing_method: AaConfig::Area,
       },
     )
-    .map_err(|e| JsErrorBox::generic(format!("vello render error: {e}")))?;
+    .map_err(RenderError::from)?;
 
   // bytes_per_row must be aligned to COPY_BYTES_PER_ROW_ALIGNMENT (256).
   let unaligned_bytes_per_row = width * 4;

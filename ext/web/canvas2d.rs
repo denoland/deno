@@ -27,6 +27,7 @@ use deno_image::image::GenericImageView;
 use deno_image::image::Rgba;
 use deno_image::image::RgbaImage;
 use vello::kurbo;
+use vello::kurbo::Shape;
 use vello::peniko;
 
 use crate::canvas2d_renderer::DenoCanvasBackend;
@@ -40,19 +41,35 @@ use crate::css::font::FontState;
 use crate::css::font::TextDirection;
 use crate::css::font::parse_css_font;
 use crate::css::font::parse_css_spacing;
+use crate::image_data::ImageData;
 use crate::text_metrics::TextMetrics;
 
 pub const CONTEXT_ID: &str = "2d";
 pub const UNSTABLE_FEATURE_NAME: &str = "canvas2d";
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-enum Canvas2DError {
+pub enum Canvas2DError {
   #[class(type)]
   #[error("Illegal constructor")]
   IllegalConstructor,
   #[class("DOMExceptionNotSupportedError")]
   #[error("OffscreenCanvasRenderingContext2D.{0}() is not yet implemented")]
   NotSupported(&'static str),
+  #[class("DOMExceptionIndexSizeError")]
+  #[error("{0}")]
+  IndexSize(String),
+  #[class(generic)]
+  #[error("{0}")]
+  Render(#[from] crate::canvas2d_renderer::RenderError),
+  #[class(generic)]
+  #[error("canvas2d not initialized")]
+  NotInitialized,
+  #[class(inherit)]
+  #[error(transparent)]
+  Geometry(#[from] crate::geometry::GeometryError),
+  #[class(inherit)]
+  #[error(transparent)]
+  WebIdl(#[from] deno_core::webidl::WebIdlError),
 }
 
 // TODO(petamoriken): move to a shared crate when canvas2d and webgpu types need to be unified.
@@ -206,11 +223,13 @@ struct DrawingState {
   line_join: LineJoin,
   miter_limit: f64,
   line_dash_offset: f64,
+  line_dash: Vec<f64>,
   shadow_blur: f64,
   shadow_color: String,
   shadow_offset_x: f64,
   shadow_offset_y: f64,
   transform: kurbo::Affine,
+  clip_depth: usize,
 }
 
 impl Default for DrawingState {
@@ -232,11 +251,13 @@ impl Default for DrawingState {
       line_join: LineJoin::default(),
       miter_limit: 10.0,
       line_dash_offset: 0.0,
+      line_dash: Vec::new(),
       shadow_blur: 0.0,
       shadow_color: String::from("rgba(0, 0, 0, 0)"),
       shadow_offset_x: 0.0,
       shadow_offset_y: 0.0,
       transform: kurbo::Affine::IDENTITY,
+      clip_depth: 0,
     }
   }
 }
@@ -256,6 +277,8 @@ pub struct OffscreenCanvasRenderingContext2D {
   state: RefCell<DrawingState>,
   state_stack: RefCell<Vec<DrawingState>>,
 
+  current_path: RefCell<kurbo::BezPath>,
+
   settings: Canvas2DSettings,
 }
 
@@ -265,6 +288,311 @@ unsafe impl GarbageCollected for OffscreenCanvasRenderingContext2D {
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OffscreenCanvasRenderingContext2D"
+  }
+}
+
+// Path2D stub (core path drawing on context uses current_path; full Path2D object support pending).
+pub struct Path2D {
+  path: RefCell<kurbo::BezPath>,
+}
+
+// SAFETY: Path2D is only accessed from the JS thread (same as context).
+unsafe impl GarbageCollected for Path2D {
+  fn trace(&self, _visitor: &mut Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Path2D"
+  }
+}
+
+#[op2]
+impl Path2D {
+  #[constructor]
+  #[cppgc]
+  fn new(
+    scope: &mut v8::PinScope<'_, '_>,
+    path: Option<v8::Local<'_, v8::Value>>,
+  ) -> Result<Path2D, Canvas2DError> {
+    let bez = match path {
+      Some(v) if v.is_string() => {
+        let s = v.to_rust_string_lossy(scope);
+        kurbo::BezPath::from_svg(&s).unwrap_or_else(|_| kurbo::BezPath::new())
+      }
+      Some(v) => {
+        if let Some(p) =
+          deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, v)
+        {
+          p.path.borrow().clone()
+        } else {
+          kurbo::BezPath::new()
+        }
+      }
+      None => kurbo::BezPath::new(),
+    };
+    Ok(Path2D {
+      path: RefCell::new(bez),
+    })
+  }
+
+  // CanvasPath methods (duplicated logic from context for Path2D; can be refactored later)
+  #[fast]
+  fn close_path(&self) {
+    self.path.borrow_mut().close_path();
+  }
+
+  fn move_to(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+  ) {
+    if x.is_finite() && y.is_finite() {
+      self.path.borrow_mut().move_to((*x, *y));
+    }
+  }
+
+  fn line_to(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+  ) {
+    if x.is_finite() && y.is_finite() {
+      self.path.borrow_mut().line_to((*x, *y));
+    }
+  }
+
+  fn bezier_curve_to(
+    &self,
+    #[webidl] cp1x: UnrestrictedDouble,
+    #[webidl] cp1y: UnrestrictedDouble,
+    #[webidl] cp2x: UnrestrictedDouble,
+    #[webidl] cp2y: UnrestrictedDouble,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+  ) {
+    if cp1x.is_finite()
+      && cp1y.is_finite()
+      && cp2x.is_finite()
+      && cp2y.is_finite()
+      && x.is_finite()
+      && y.is_finite()
+    {
+      self
+        .path
+        .borrow_mut()
+        .curve_to((*cp1x, *cp1y), (*cp2x, *cp2y), (*x, *y));
+    }
+  }
+
+  fn quadratic_curve_to(
+    &self,
+    #[webidl] cpx: UnrestrictedDouble,
+    #[webidl] cpy: UnrestrictedDouble,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+  ) {
+    if cpx.is_finite() && cpy.is_finite() && x.is_finite() && y.is_finite() {
+      self.path.borrow_mut().quad_to((*cpx, *cpy), (*x, *y));
+    }
+  }
+
+  fn arc(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+    #[webidl] radius: UnrestrictedDouble,
+    #[webidl] start_angle: UnrestrictedDouble,
+    #[webidl] end_angle: UnrestrictedDouble,
+    counterclockwise: Option<bool>,
+  ) -> Result<(), Canvas2DError> {
+    let counterclockwise = counterclockwise.unwrap_or(false);
+    if *radius < 0.0 {
+      return Err(Canvas2DError::IndexSize(format!(
+        "Failed to execute 'arc': The radius provided ({}) is negative.",
+        *radius
+      )));
+    }
+    if !x.is_finite()
+      || !y.is_finite()
+      || !radius.is_finite()
+      || !start_angle.is_finite()
+      || !end_angle.is_finite()
+    {
+      return Ok(());
+    }
+    let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
+    let mut path = self.path.borrow_mut();
+    let arc = kurbo::Arc {
+      center: kurbo::Point::new(*x, *y),
+      radii: kurbo::Vec2::new(*radius, *radius),
+      start_angle: *start_angle,
+      sweep_angle: delta,
+      x_rotation: 0.0,
+    };
+    let start_pt = arc.center
+      + kurbo::Vec2::new(
+        *radius * start_angle.cos(),
+        *radius * start_angle.sin(),
+      );
+    if path.is_empty() {
+      path.move_to(start_pt);
+    } else {
+      path.line_to(start_pt);
+    }
+    arc.to_cubic_beziers(0.1, |p1, p2, p3| {
+      path.curve_to(p1, p2, p3);
+    });
+    Ok(())
+  }
+
+  fn arc_to(
+    &self,
+    #[webidl] x1: UnrestrictedDouble,
+    #[webidl] y1: UnrestrictedDouble,
+    #[webidl] x2: UnrestrictedDouble,
+    #[webidl] y2: UnrestrictedDouble,
+    #[webidl] radius: UnrestrictedDouble,
+  ) -> Result<(), Canvas2DError> {
+    if *radius < 0.0 {
+      return Err(Canvas2DError::IndexSize(format!(
+        "Failed to execute 'arcTo': The radius provided ({}) is negative.",
+        *radius
+      )));
+    }
+    if !x1.is_finite()
+      || !y1.is_finite()
+      || !x2.is_finite()
+      || !y2.is_finite()
+      || !radius.is_finite()
+    {
+      return Ok(());
+    }
+    let mut path = self.path.borrow_mut();
+    if path.is_empty() {
+      path.move_to((*x1, *y1));
+      return Ok(());
+    }
+    arc_to_impl(&mut path, *x1, *y1, *x2, *y2, *radius);
+    Ok(())
+  }
+
+  fn ellipse(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+    #[webidl] radius_x: UnrestrictedDouble,
+    #[webidl] radius_y: UnrestrictedDouble,
+    #[webidl] rotation: UnrestrictedDouble,
+    #[webidl] start_angle: UnrestrictedDouble,
+    #[webidl] end_angle: UnrestrictedDouble,
+    counterclockwise: Option<bool>,
+  ) -> Result<(), Canvas2DError> {
+    let counterclockwise = counterclockwise.unwrap_or(false);
+    if *radius_x < 0.0 {
+      return Err(Canvas2DError::IndexSize(format!(
+        "Failed to execute 'ellipse': The major-axis radius provided ({}) is negative.",
+        *radius_x
+      )));
+    }
+    if *radius_y < 0.0 {
+      return Err(Canvas2DError::IndexSize(format!(
+        "Failed to execute 'ellipse': The minor-axis radius provided ({}) is negative.",
+        *radius_y
+      )));
+    }
+    if !x.is_finite()
+      || !y.is_finite()
+      || !radius_x.is_finite()
+      || !radius_y.is_finite()
+      || !rotation.is_finite()
+      || !start_angle.is_finite()
+      || !end_angle.is_finite()
+    {
+      return Ok(());
+    }
+    let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
+    let mut path = self.path.borrow_mut();
+    let arc = kurbo::Arc {
+      center: kurbo::Point::new(*x, *y),
+      radii: kurbo::Vec2::new(*radius_x, *radius_y),
+      start_angle: *start_angle,
+      sweep_angle: delta,
+      x_rotation: *rotation,
+    };
+    let dx = *radius_x * start_angle.cos();
+    let dy = *radius_y * start_angle.sin();
+    let cos_r = rotation.cos();
+    let sin_r = rotation.sin();
+    let start_pt = kurbo::Point::new(
+      *x + dx * cos_r - dy * sin_r,
+      *y + dx * sin_r + dy * cos_r,
+    );
+    if path.is_empty() {
+      path.move_to(start_pt);
+    } else {
+      path.line_to(start_pt);
+    }
+    arc.to_cubic_beziers(0.1, |p1, p2, p3| {
+      path.curve_to(p1, p2, p3);
+    });
+    Ok(())
+  }
+
+  fn rect(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+    #[webidl] w: UnrestrictedDouble,
+    #[webidl] h: UnrestrictedDouble,
+  ) {
+    if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
+      return;
+    }
+    let mut p = self.path.borrow_mut();
+    p.move_to((*x, *y));
+    p.line_to((*x + *w, *y));
+    p.line_to((*x + *w, *y + *h));
+    p.line_to((*x, *y + *h));
+    p.close_path();
+  }
+
+  fn round_rect(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+    #[webidl] w: UnrestrictedDouble,
+    #[webidl] h: UnrestrictedDouble,
+    radii: Option<f64>,
+  ) {
+    if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
+      return;
+    }
+    let r = radii.unwrap_or(0.0);
+    if r <= 0.0 {
+      let mut p = self.path.borrow_mut();
+      p.move_to((*x, *y));
+      p.line_to((*x + *w, *y));
+      p.line_to((*x + *w, *y + *h));
+      p.line_to((*x, *y + *h));
+      p.close_path();
+      return;
+    }
+    let mut path = self.path.borrow_mut();
+    let rr = kurbo::RoundedRect::new(*x, *y, *x + *w, *y + *h, r);
+    path.extend(rr.path_elements(0.1));
+  }
+
+  #[fast]
+  fn add_path(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    other: v8::Local<'_, v8::Value>,
+  ) {
+    if let Some(p) =
+      deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, other)
+    {
+      let other_path = p.path.borrow();
+      self.path.borrow_mut().extend(other_path.iter());
+    }
   }
 }
 
@@ -313,8 +641,10 @@ impl OffscreenCanvasRenderingContext2D {
   }
 
   #[setter]
-  fn global_alpha(&self, #[webidl] value: f64) {
-    self.state.borrow_mut().global_alpha = value.clamp(0.0, 1.0) as f32;
+  fn global_alpha(&self, #[webidl] value: UnrestrictedDouble) {
+    if value.is_finite() && *value >= 0.0 && *value <= 1.0 {
+      self.state.borrow_mut().global_alpha = *value as f32;
+    }
   }
 
   /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-font>
@@ -478,7 +808,12 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn letter_spacing(&self) -> String {
-    self.state.borrow().font_state.letter_spacing.to_css_string()
+    self
+      .state
+      .borrow()
+      .font_state
+      .letter_spacing
+      .to_css_string()
   }
 
   #[setter]
@@ -532,21 +867,14 @@ impl OffscreenCanvasRenderingContext2D {
     }
     let state = self.state.borrow();
     let [r, g, b, a] = state.fill_color;
-    let alpha =
-      (a as f32 / 255.0 * state.global_alpha * 255.0).round() as u8;
+    let alpha = (a as f32 / 255.0 * state.global_alpha * 255.0).round() as u8;
     let color = peniko::Color::from_rgba8(r, g, b, alpha);
     let transform = state.transform;
     drop(state);
     let rect = kurbo::Rect::new(x, y, x + w, y + h);
     match &mut *self.drawing.borrow_mut() {
       DrawingBackend::Vello(scene) => {
-        scene.fill(
-          peniko::Fill::NonZero,
-          transform,
-          color,
-          None,
-          &rect,
-        );
+        scene.fill(peniko::Fill::NonZero, transform, color, None, &rect);
       }
       DrawingBackend::VelloCpu(ctx, _) => {
         ctx.set_paint(color);
@@ -570,13 +898,7 @@ impl OffscreenCanvasRenderingContext2D {
     let rect = kurbo::Rect::new(x, y, x + w, y + h);
     match &mut *self.drawing.borrow_mut() {
       DrawingBackend::Vello(scene) => {
-        scene.fill(
-          peniko::Fill::NonZero,
-          transform,
-          clear_color,
-          None,
-          &rect,
-        );
+        scene.fill(peniko::Fill::NonZero, transform, clear_color, None, &rect);
       }
       DrawingBackend::VelloCpu(ctx, _) => {
         ctx.set_paint(clear_color);
@@ -707,9 +1029,9 @@ impl OffscreenCanvasRenderingContext2D {
   }
 
   #[setter]
-  fn line_width(&self, #[webidl] value: f64) {
-    if value.is_finite() && value > 0.0 {
-      self.state.borrow_mut().line_width = value;
+  fn line_width(&self, #[webidl] value: UnrestrictedDouble) {
+    if value.is_finite() && *value > 0.0 {
+      self.state.borrow_mut().line_width = *value;
     }
   }
 
@@ -751,9 +1073,9 @@ impl OffscreenCanvasRenderingContext2D {
   }
 
   #[setter]
-  fn miter_limit(&self, #[webidl] value: f64) {
-    if value.is_finite() && value > 0.0 {
-      self.state.borrow_mut().miter_limit = value;
+  fn miter_limit(&self, #[webidl] value: UnrestrictedDouble) {
+    if value.is_finite() && *value > 0.0 {
+      self.state.borrow_mut().miter_limit = *value;
     }
   }
 
@@ -763,9 +1085,9 @@ impl OffscreenCanvasRenderingContext2D {
   }
 
   #[setter]
-  fn line_dash_offset(&self, #[webidl] value: f64) {
+  fn line_dash_offset(&self, #[webidl] value: UnrestrictedDouble) {
     if value.is_finite() {
-      self.state.borrow_mut().line_dash_offset = value;
+      self.state.borrow_mut().line_dash_offset = *value;
     }
   }
 
@@ -775,9 +1097,9 @@ impl OffscreenCanvasRenderingContext2D {
   }
 
   #[setter]
-  fn shadow_blur(&self, #[webidl] value: f64) {
-    if value.is_finite() && value >= 0.0 {
-      self.state.borrow_mut().shadow_blur = value;
+  fn shadow_blur(&self, #[webidl] value: UnrestrictedDouble) {
+    if value.is_finite() && *value >= 0.0 {
+      self.state.borrow_mut().shadow_blur = *value;
     }
   }
 
@@ -800,9 +1122,9 @@ impl OffscreenCanvasRenderingContext2D {
   }
 
   #[setter]
-  fn shadow_offset_x(&self, #[webidl] value: f64) {
+  fn shadow_offset_x(&self, #[webidl] value: UnrestrictedDouble) {
     if value.is_finite() {
-      self.state.borrow_mut().shadow_offset_x = value;
+      self.state.borrow_mut().shadow_offset_x = *value;
     }
   }
 
@@ -812,15 +1134,18 @@ impl OffscreenCanvasRenderingContext2D {
   }
 
   #[setter]
-  fn shadow_offset_y(&self, #[webidl] value: f64) {
+  fn shadow_offset_y(&self, #[webidl] value: UnrestrictedDouble) {
     if value.is_finite() {
-      self.state.borrow_mut().shadow_offset_y = value;
+      self.state.borrow_mut().shadow_offset_y = *value;
     }
   }
 
   #[fast]
   fn save(&self) {
-    self.state_stack.borrow_mut().push(self.state.borrow().clone());
+    self
+      .state_stack
+      .borrow_mut()
+      .push(self.state.borrow().clone());
   }
 
   #[fast]
@@ -834,6 +1159,8 @@ impl OffscreenCanvasRenderingContext2D {
   fn reset(&self) {
     *self.state.borrow_mut() = DrawingState::default();
     self.state_stack.borrow_mut().clear();
+    self.current_path.borrow_mut().truncate(0);
+    // TODO(petamoriken): pop clip layers on backend for full clip support
     let (width, height) = self.data.dimensions();
     self.drawing.borrow_mut().reset(width, height);
   }
@@ -844,88 +1171,359 @@ impl OffscreenCanvasRenderingContext2D {
   }
 
   #[fast]
-  fn stroke_rect(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("strokeRect"))
+  fn begin_path(&self) {
+    self.current_path.borrow_mut().truncate(0);
   }
 
   #[fast]
-  fn begin_path(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("beginPath"))
+  fn close_path(&self) {
+    self.current_path.borrow_mut().close_path();
+  }
+
+  fn move_to(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+  ) {
+    if x.is_finite() && y.is_finite() {
+      self.current_path.borrow_mut().move_to((*x, *y));
+    }
+  }
+
+  fn line_to(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+  ) {
+    if x.is_finite() && y.is_finite() {
+      self.current_path.borrow_mut().line_to((*x, *y));
+    }
+  }
+
+  fn bezier_curve_to(
+    &self,
+    #[webidl] cp1x: UnrestrictedDouble,
+    #[webidl] cp1y: UnrestrictedDouble,
+    #[webidl] cp2x: UnrestrictedDouble,
+    #[webidl] cp2y: UnrestrictedDouble,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+  ) {
+    if cp1x.is_finite()
+      && cp1y.is_finite()
+      && cp2x.is_finite()
+      && cp2y.is_finite()
+      && x.is_finite()
+      && y.is_finite()
+    {
+      self.current_path.borrow_mut().curve_to(
+        (*cp1x, *cp1y),
+        (*cp2x, *cp2y),
+        (*x, *y),
+      );
+    }
+  }
+
+  fn quadratic_curve_to(
+    &self,
+    #[webidl] cpx: UnrestrictedDouble,
+    #[webidl] cpy: UnrestrictedDouble,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+  ) {
+    if cpx.is_finite() && cpy.is_finite() && x.is_finite() && y.is_finite() {
+      self
+        .current_path
+        .borrow_mut()
+        .quad_to((*cpx, *cpy), (*x, *y));
+    }
+  }
+
+  fn arc(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+    #[webidl] radius: UnrestrictedDouble,
+    #[webidl] start_angle: UnrestrictedDouble,
+    #[webidl] end_angle: UnrestrictedDouble,
+    counterclockwise: Option<bool>,
+  ) -> Result<(), Canvas2DError> {
+    let counterclockwise = counterclockwise.unwrap_or(false);
+    if *radius < 0.0 {
+      return Err(Canvas2DError::IndexSize(format!(
+        "Failed to execute 'arc': The radius provided ({}) is negative.",
+        *radius
+      )));
+    }
+    if !x.is_finite()
+      || !y.is_finite()
+      || !radius.is_finite()
+      || !start_angle.is_finite()
+      || !end_angle.is_finite()
+    {
+      return Ok(());
+    }
+
+    let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
+
+    let mut path = self.current_path.borrow_mut();
+    let arc = kurbo::Arc {
+      center: kurbo::Point::new(*x, *y),
+      radii: kurbo::Vec2::new(*radius, *radius),
+      start_angle: *start_angle,
+      sweep_angle: delta,
+      x_rotation: 0.0,
+    };
+
+    let start_pt = arc.center
+      + kurbo::Vec2::new(
+        *radius * start_angle.cos(),
+        *radius * start_angle.sin(),
+      );
+    if path.is_empty() {
+      path.move_to(start_pt);
+    } else {
+      path.line_to(start_pt);
+    }
+    arc.to_cubic_beziers(0.1, |p1, p2, p3| {
+      path.curve_to(p1, p2, p3);
+    });
+    Ok(())
+  }
+
+  fn arc_to(
+    &self,
+    #[webidl] x1: UnrestrictedDouble,
+    #[webidl] y1: UnrestrictedDouble,
+    #[webidl] x2: UnrestrictedDouble,
+    #[webidl] y2: UnrestrictedDouble,
+    #[webidl] radius: UnrestrictedDouble,
+  ) -> Result<(), Canvas2DError> {
+    if *radius < 0.0 {
+      return Err(Canvas2DError::IndexSize(format!(
+        "Failed to execute 'arcTo': The radius provided ({}) is negative.",
+        *radius
+      )));
+    }
+    if !x1.is_finite()
+      || !y1.is_finite()
+      || !x2.is_finite()
+      || !y2.is_finite()
+      || !radius.is_finite()
+    {
+      return Ok(());
+    }
+    let mut path = self.current_path.borrow_mut();
+    if path.is_empty() {
+      path.move_to((*x1, *y1));
+      return Ok(());
+    }
+    arc_to_impl(&mut path, *x1, *y1, *x2, *y2, *radius);
+    Ok(())
+  }
+
+  fn ellipse(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+    #[webidl] radius_x: UnrestrictedDouble,
+    #[webidl] radius_y: UnrestrictedDouble,
+    #[webidl] rotation: UnrestrictedDouble,
+    #[webidl] start_angle: UnrestrictedDouble,
+    #[webidl] end_angle: UnrestrictedDouble,
+    counterclockwise: Option<bool>,
+  ) -> Result<(), Canvas2DError> {
+    let counterclockwise = counterclockwise.unwrap_or(false);
+    if *radius_x < 0.0 {
+      return Err(Canvas2DError::IndexSize(format!(
+        "Failed to execute 'ellipse': The major-axis radius provided ({}) is negative.",
+        *radius_x
+      )));
+    }
+    if *radius_y < 0.0 {
+      return Err(Canvas2DError::IndexSize(format!(
+        "Failed to execute 'ellipse': The minor-axis radius provided ({}) is negative.",
+        *radius_y
+      )));
+    }
+    if !x.is_finite()
+      || !y.is_finite()
+      || !radius_x.is_finite()
+      || !radius_y.is_finite()
+      || !rotation.is_finite()
+      || !start_angle.is_finite()
+      || !end_angle.is_finite()
+    {
+      return Ok(());
+    }
+
+    let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
+
+    let mut path = self.current_path.borrow_mut();
+    let arc = kurbo::Arc {
+      center: kurbo::Point::new(*x, *y),
+      radii: kurbo::Vec2::new(*radius_x, *radius_y),
+      start_angle: *start_angle,
+      sweep_angle: delta,
+      x_rotation: *rotation,
+    };
+
+    let dx = *radius_x * start_angle.cos();
+    let dy = *radius_y * start_angle.sin();
+    let cos_r = rotation.cos();
+    let sin_r = rotation.sin();
+    let start_pt = kurbo::Point::new(
+      *x + dx * cos_r - dy * sin_r,
+      *y + dx * sin_r + dy * cos_r,
+    );
+    if path.is_empty() {
+      path.move_to(start_pt);
+    } else {
+      path.line_to(start_pt);
+    }
+    arc.to_cubic_beziers(0.1, |p1, p2, p3| {
+      path.curve_to(p1, p2, p3);
+    });
+    Ok(())
+  }
+
+  fn rect(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+    #[webidl] w: UnrestrictedDouble,
+    #[webidl] h: UnrestrictedDouble,
+  ) {
+    if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
+      return;
+    }
+    let mut path = self.current_path.borrow_mut();
+    path.move_to((*x, *y));
+    path.line_to((*x + *w, *y));
+    path.line_to((*x + *w, *y + *h));
+    path.line_to((*x, *y + *h));
+    path.close_path();
+  }
+
+  fn round_rect(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+    #[webidl] w: UnrestrictedDouble,
+    #[webidl] h: UnrestrictedDouble,
+    radii: Option<f64>,
+  ) {
+    if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
+      return;
+    }
+    let r = radii.unwrap_or(0.0);
+    if r <= 0.0 {
+      let mut p = self.current_path.borrow_mut();
+      p.move_to((*x, *y));
+      p.line_to((*x + *w, *y));
+      p.line_to((*x + *w, *y + *h));
+      p.line_to((*x, *y + *h));
+      p.close_path();
+      return;
+    }
+    let mut path = self.current_path.borrow_mut();
+    let rr = kurbo::RoundedRect::new(*x, *y, *x + *w, *y + *h, r);
+    path.extend(rr.path_elements(0.1));
+  }
+
+  fn stroke_rect(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+    #[webidl] w: UnrestrictedDouble,
+    #[webidl] h: UnrestrictedDouble,
+  ) {
+    if !x.is_finite()
+      || !y.is_finite()
+      || !w.is_finite()
+      || !h.is_finite()
+      || *w == 0.0
+      || *h == 0.0
+    {
+      return;
+    }
+    let rect = kurbo::Rect::new(*x, *y, *x + *w, *y + *h);
+    self.stroke_shape(&rect);
+  }
+
+  fn fill(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    first: Option<v8::Local<'_, v8::Value>>,
+    #[string] second: Option<String>,
+  ) {
+    let (path, rule) = self.resolve_path_and_fill_rule(scope, first, second);
+    if path.is_empty() {
+      return;
+    }
+    self.draw_path_fill(path, rule);
   }
 
   #[fast]
-  fn close_path(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("closePath"))
+  fn stroke(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    path: Option<v8::Local<'_, v8::Value>>,
+  ) {
+    let path = self.resolve_optional_path(scope, path);
+    if path.is_empty() {
+      return;
+    }
+    self.draw_path_stroke(path);
+  }
+
+  fn clip(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    first: Option<v8::Local<'_, v8::Value>>,
+    #[string] second: Option<String>,
+  ) {
+    let (path, rule) = self.resolve_path_and_fill_rule(scope, first, second);
+    if path.is_empty() {
+      return;
+    }
+    self.apply_clip(path, rule);
+  }
+
+  fn is_point_in_path(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    a: Option<v8::Local<'_, v8::Value>>,
+    b: Option<v8::Local<'_, v8::Value>>,
+    c: Option<v8::Local<'_, v8::Value>>,
+    #[string] d: Option<String>,
+  ) -> Result<bool, Canvas2DError> {
+    let (path, x, y, rule) =
+      self.resolve_point_in_path_args(scope, a, b, c, d)?;
+    if !x.is_finite() || !y.is_finite() {
+      return Ok(false);
+    }
+    let transform = self.state.borrow().transform;
+    let p = transform.inverse() * kurbo::Point::new(x, y);
+    Ok(self.test_point_in_path(path, p.x, p.y, rule))
   }
 
   #[fast]
-  fn move_to(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("moveTo"))
-  }
-
-  #[fast]
-  fn line_to(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("lineTo"))
-  }
-
-  #[fast]
-  fn bezier_curve_to(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("bezierCurveTo"))
-  }
-
-  #[fast]
-  fn quadratic_curve_to(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("quadraticCurveTo"))
-  }
-
-  #[fast]
-  fn arc(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("arc"))
-  }
-
-  #[fast]
-  fn arc_to(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("arcTo"))
-  }
-
-  #[fast]
-  fn ellipse(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("ellipse"))
-  }
-
-  #[fast]
-  fn rect(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("rect"))
-  }
-
-  #[fast]
-  fn round_rect(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("roundRect"))
-  }
-
-  #[fast]
-  fn fill(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("fill"))
-  }
-
-  #[fast]
-  fn stroke(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("stroke"))
-  }
-
-  #[fast]
-  fn clip(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("clip"))
-  }
-
-  #[fast]
-  fn is_point_in_path(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("isPointInPath"))
-  }
-
-  #[fast]
-  fn is_point_in_stroke(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("isPointInStroke"))
+  fn is_point_in_stroke(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    a: Option<v8::Local<'_, v8::Value>>,
+    b: Option<v8::Local<'_, v8::Value>>,
+    c: Option<v8::Local<'_, v8::Value>>,
+  ) -> Result<bool, Canvas2DError> {
+    let (path, x, y) =
+      self.resolve_point_in_stroke_args(scope, a, b, c)?;
+    if !x.is_finite() || !y.is_finite() {
+      return Ok(false);
+    }
+    let transform = self.state.borrow().transform;
+    let p = transform.inverse() * kurbo::Point::new(x, y);
+    Ok(self.test_point_in_stroke(path, p.x, p.y))
   }
 
   fn get_transform<'a>(
@@ -952,7 +1550,7 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] d: Option<UnrestrictedDouble>,
     #[webidl] e: Option<UnrestrictedDouble>,
     #[webidl] f_val: Option<UnrestrictedDouble>,
-  ) -> Result<(), JsErrorBox> {
+  ) -> Result<(), Canvas2DError> {
     let (a, b, c, d, e, f) = match a_or_init {
       Some(v) if v.is_number() => {
         let a = v.number_value(scope).unwrap_or(f64::NAN);
@@ -973,9 +1571,8 @@ impl OffscreenCanvasRenderingContext2D {
           Default::default(),
           (|| "".into()).into(),
           &Default::default(),
-        )
-        .map_err(|e| JsErrorBox::from_err(e))?;
-        init.to_affine().map_err(JsErrorBox::from_err)?
+        )?;
+        init.to_affine()?
       }
     };
     self.state.borrow_mut().transform = kurbo::Affine::new([a, b, c, d, e, f]);
@@ -1007,7 +1604,7 @@ impl OffscreenCanvasRenderingContext2D {
     }
     let m = kurbo::Affine::new([*a, *b, *c, *d, *e, *f]);
     let mut state = self.state.borrow_mut();
-    state.transform = state.transform * m;
+    state.transform *= m;
   }
 
   fn scale(
@@ -1019,8 +1616,7 @@ impl OffscreenCanvasRenderingContext2D {
       return;
     }
     let mut state = self.state.borrow_mut();
-    state.transform =
-      state.transform * kurbo::Affine::scale_non_uniform(*x, *y);
+    state.transform *= kurbo::Affine::scale_non_uniform(*x, *y);
   }
 
   fn rotate(&self, #[webidl] angle: UnrestrictedDouble) {
@@ -1028,7 +1624,7 @@ impl OffscreenCanvasRenderingContext2D {
       return;
     }
     let mut state = self.state.borrow_mut();
-    state.transform = state.transform * kurbo::Affine::rotate(*angle);
+    state.transform *= kurbo::Affine::rotate(*angle);
   }
 
   fn translate(
@@ -1040,7 +1636,7 @@ impl OffscreenCanvasRenderingContext2D {
       return;
     }
     let mut state = self.state.borrow_mut();
-    state.transform = state.transform * kurbo::Affine::translate((*x, *y));
+    state.transform *= kurbo::Affine::translate((*x, *y));
   }
 
   #[fast]
@@ -1073,9 +1669,50 @@ impl OffscreenCanvasRenderingContext2D {
     Err(Canvas2DError::NotSupported("createImageData"))
   }
 
-  #[fast]
-  fn get_image_data(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("getImageData"))
+  #[cppgc]
+  fn get_image_data(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[webidl] sx: i32,
+    #[webidl] sy: i32,
+    #[webidl] sw: i32,
+    #[webidl] sh: i32,
+  ) -> Result<ImageData, JsErrorBox> {
+    if sw == 0 || sh == 0 {
+      return Err(JsErrorBox::from_err(Canvas2DError::IndexSize(
+        "The source width or height is zero.".to_string(),
+      )));
+    }
+
+    let full = self.render_to_bytes().map_err(JsErrorBox::from_err)?;
+    let (canvas_w, canvas_h) = self.data.dimensions();
+
+    let (sx, sw) = if sw < 0 { (sx + sw, -sw) } else { (sx, sw) };
+    let (sy, sh) = if sh < 0 { (sy + sh, -sh) } else { (sy, sh) };
+    let out_w = sw as u32;
+    let out_h = sh as u32;
+
+    let mut sub = vec![0u8; (out_w as usize) * (out_h as usize) * 4];
+    for row in 0..out_h {
+      let src_y = sy + row as i32;
+      if src_y < 0 || src_y >= canvas_h as i32 {
+        continue;
+      }
+      for col in 0..out_w {
+        let src_x = sx + col as i32;
+        if src_x < 0 || src_x >= canvas_w as i32 {
+          continue;
+        }
+        let src_idx = (src_y as u32 * canvas_w + src_x as u32) as usize * 4;
+        let dst_idx = (row * out_w + col) as usize * 4;
+        sub[dst_idx..dst_idx + 4].copy_from_slice(&full[src_idx..src_idx + 4]);
+      }
+    }
+
+    let img = ImageData::new_rgba_unorm8(scope, out_w, out_h, &sub)
+      .map_err(JsErrorBox::from_err)?;
+
+    Ok(img)
   }
 
   #[fast]
@@ -1083,17 +1720,27 @@ impl OffscreenCanvasRenderingContext2D {
     Err(Canvas2DError::NotSupported("putImageData"))
   }
 
-  #[fast]
-  fn get_line_dash(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("getLineDash"))
+  fn get_line_dash(&self) -> Vec<f64> {
+    self.state.borrow().line_dash.clone()
   }
 
-  #[fast]
-  fn set_line_dash(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("setLineDash"))
+  fn set_line_dash(&self, #[webidl] segments: Vec<UnrestrictedDouble>) {
+    if segments.iter().any(|s| !s.is_finite() || **s < 0.0) {
+      return;
+    }
+    let values: Vec<f64> = segments.iter().map(|s| **s).collect();
+    let dash = if values.len() % 2 == 1 {
+      let mut doubled = values.clone();
+      doubled.extend_from_slice(&values);
+      doubled
+    } else {
+      values
+    };
+    self.state.borrow_mut().line_dash = dash;
   }
 }
 
+#[allow(dead_code, reason = "text drawing helpers used by fillText/strokeText")]
 impl OffscreenCanvasRenderingContext2D {
   fn draw_text(&self, text: &str, x: f64, y: f64, max_width: Option<f64>) {
     // https://html.spec.whatwg.org/multipage/canvas.html#text-preparation-algorithm
@@ -1120,8 +1767,7 @@ impl OffscreenCanvasRenderingContext2D {
 
     let state = self.state.borrow();
     let [r, g, b, a] = state.fill_color;
-    let alpha =
-      (a as f32 / 255.0 * state.global_alpha * 255.0).round() as u8;
+    let alpha = (a as f32 / 255.0 * state.global_alpha * 255.0).round() as u8;
     let brush = peniko::Color::from_rgba8(r, g, b, alpha);
     let text_align = state.text_align;
     let text_baseline = state.text_baseline;
@@ -1286,7 +1932,7 @@ impl OffscreenCanvasRenderingContext2D {
   /// Renders the accumulated scene to raw RGBA8 bytes.
   ///
   /// Returns a blank zero-filled buffer when no GPU backend is available.
-  pub fn render_to_bytes(&self) -> Result<Vec<u8>, JsErrorBox> {
+  pub fn render_to_bytes(&self) -> Result<Vec<u8>, Canvas2DError> {
     let (width, height) = self.data.dimensions();
     let base_color = if self.settings.alpha {
       peniko::Color::TRANSPARENT
@@ -1296,7 +1942,7 @@ impl OffscreenCanvasRenderingContext2D {
     match &mut *self.drawing.borrow_mut() {
       DrawingBackend::Vello(scene) => {
         if let Some(Some(renderer)) = self.renderer.get() {
-          render_scene(renderer, scene, width, height, base_color)
+          Ok(render_scene(renderer, scene, width, height, base_color)?)
         } else {
           Ok(vec![0u8; (width * height * 4) as usize])
         }
@@ -1311,9 +1957,6 @@ impl OffscreenCanvasRenderingContext2D {
           height as u16,
           vello_cpu::RenderMode::OptimizeSpeed,
         );
-        // For alpha:false, composite over opaque black: set all alpha channels to 255.
-        // (vello_cpu outputs premultiplied RGBA; compositing premul over black keeps RGB and
-        // makes alpha 255. The result is already straight-alpha since a=255 means no division.)
         if !self.settings.alpha {
           for pixel in buf.chunks_exact_mut(4) {
             pixel[3] = 255;
@@ -1331,7 +1974,7 @@ impl OffscreenCanvasRenderingContext2D {
   pub fn render_to_texture_view(
     &self,
     view: &crate::canvas2d_renderer::wgpu::TextureView,
-  ) -> Result<(), JsErrorBox> {
+  ) -> Result<(), Canvas2DError> {
     let (width, height) = self.data.dimensions();
     let base_color = if self.settings.alpha {
       peniko::Color::TRANSPARENT
@@ -1593,15 +2236,15 @@ pub fn create_context<'s>(
     let state = state.borrow();
     let renderer = state
       .try_borrow::<SharedRenderer>()
-      .ok_or_else(|| JsErrorBox::generic("canvas2d not initialized"))?
+      .ok_or_else(|| JsErrorBox::from_err(Canvas2DError::NotInitialized))?
       .clone();
     let font_system = state
       .try_borrow::<Arc<Mutex<cosmic_text::FontSystem>>>()
-      .ok_or_else(|| JsErrorBox::generic("canvas2d not initialized"))?
+      .ok_or_else(|| JsErrorBox::from_err(Canvas2DError::NotInitialized))?
       .clone();
     let swash_cache = state
       .try_borrow::<Arc<Mutex<SwashCache>>>()
-      .ok_or_else(|| JsErrorBox::generic("canvas2d not initialized"))?
+      .ok_or_else(|| JsErrorBox::from_err(Canvas2DError::NotInitialized))?
       .clone();
     (renderer, font_system, swash_cache)
   };
@@ -1629,6 +2272,7 @@ pub fn create_context<'s>(
     swash_cache,
     state: RefCell::new(DrawingState::default()),
     state_stack: RefCell::new(Vec::new()),
+    current_path: RefCell::new(kurbo::BezPath::new()),
     settings,
   };
 
@@ -1640,3 +2284,419 @@ pub fn create_context<'s>(
 /// Placeholder init op (reserved for future initialization).
 #[op2(fast)]
 pub fn op_canvas2d_init(_state: &mut OpState) {}
+
+// --- Internal helpers for Phase 2 paths ---
+
+#[allow(dead_code, reason = "path resolution helpers used by fill/stroke/clip")]
+impl OffscreenCanvasRenderingContext2D {
+  fn resolve_optional_path(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    arg: Option<v8::Local<'_, v8::Value>>,
+  ) -> kurbo::BezPath {
+    if let Some(v) = arg
+      && let Some(p) =
+        deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, v)
+    {
+      return p.path.borrow().clone();
+    }
+    self.current_path.borrow().clone()
+  }
+
+  fn resolve_path_and_fill_rule(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    first: Option<v8::Local<'_, v8::Value>>,
+    second: Option<String>,
+  ) -> (kurbo::BezPath, String) {
+    // first may be Path2D or fillRule string
+    if let Some(v) = first {
+      if v.is_string() {
+        let rule = v.to_rust_string_lossy(scope);
+        return (self.current_path.borrow().clone(), rule);
+      }
+      if let Some(p) =
+        deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, v)
+      {
+        let rule = second.unwrap_or_else(|| "nonzero".to_string());
+        return (p.path.borrow().clone(), rule);
+      }
+    }
+    let rule = second.unwrap_or_else(|| "nonzero".to_string());
+    (self.current_path.borrow().clone(), rule)
+  }
+
+  fn draw_path_fill(&self, path: kurbo::BezPath, rule: String) {
+    if path.is_empty() {
+      return;
+    }
+    let state = self.state.borrow();
+    let [r, g, b, a] = state.fill_color;
+    let alpha = (a as f32 / 255.0 * state.global_alpha * 255.0).round() as u8;
+    let color = peniko::Color::from_rgba8(r, g, b, alpha);
+    let transform = state.transform;
+    let fill = if rule == "evenodd" {
+      peniko::Fill::EvenOdd
+    } else {
+      peniko::Fill::NonZero
+    };
+    drop(state);
+
+    match &mut *self.drawing.borrow_mut() {
+      DrawingBackend::Vello(scene) => {
+        scene.fill(fill, transform, color, None, &path);
+      }
+      DrawingBackend::VelloCpu(ctx, _) => {
+        ctx.set_paint(color);
+        ctx.set_fill_rule(if fill == peniko::Fill::EvenOdd {
+          vello_cpu::peniko::Fill::EvenOdd
+        } else {
+          vello_cpu::peniko::Fill::NonZero
+        });
+        ctx.set_transform(transform);
+        ctx.fill_path(&path);
+      }
+    }
+  }
+
+  fn draw_path_stroke(&self, path: kurbo::BezPath) {
+    if path.is_empty() {
+      return;
+    }
+    let state = self.state.borrow();
+    let [r, g, b, a] = state.stroke_color;
+    let alpha = (a as f32 / 255.0 * state.global_alpha * 255.0).round() as u8;
+    let color = peniko::Color::from_rgba8(r, g, b, alpha);
+    let transform = state.transform;
+
+    let mut stroke =
+      kurbo::Stroke::new(state.line_width).with_miter_limit(state.miter_limit);
+    match state.line_join {
+      LineJoin::Round => {
+        stroke.join = kurbo::Join::Round;
+      }
+      LineJoin::Bevel => {
+        stroke.join = kurbo::Join::Bevel;
+      }
+      LineJoin::Miter => {
+        stroke.join = kurbo::Join::Miter;
+      }
+    }
+    match state.line_cap {
+      LineCap::Butt => {
+        stroke.start_cap = kurbo::Cap::Butt;
+        stroke.end_cap = kurbo::Cap::Butt;
+      }
+      LineCap::Round => {
+        stroke.start_cap = kurbo::Cap::Round;
+        stroke.end_cap = kurbo::Cap::Round;
+      }
+      LineCap::Square => {
+        stroke.start_cap = kurbo::Cap::Square;
+        stroke.end_cap = kurbo::Cap::Square;
+      }
+    }
+    if !state.line_dash.is_empty() {
+      stroke = stroke
+        .with_dashes(state.line_dash_offset, state.line_dash.iter().copied());
+    }
+    drop(state);
+
+    match &mut *self.drawing.borrow_mut() {
+      DrawingBackend::Vello(scene) => {
+        scene.stroke(&stroke, transform, color, None, &path);
+      }
+      DrawingBackend::VelloCpu(ctx, _) => {
+        ctx.set_paint(color);
+        ctx.set_stroke(stroke);
+        ctx.set_transform(transform);
+        ctx.stroke_path(&path);
+      }
+    }
+  }
+
+  fn stroke_shape(&self, shape: &impl kurbo::Shape) {
+    // For strokeRect etc. Convert shape to path or use directly.
+    let path: kurbo::BezPath = shape.path_elements(0.1).collect();
+    self.draw_path_stroke(path);
+  }
+
+  fn apply_clip(&self, path: kurbo::BezPath, rule: String) {
+    if path.is_empty() {
+      return;
+    }
+    let fill = if rule == "evenodd" {
+      peniko::Fill::EvenOdd
+    } else {
+      peniko::Fill::NonZero
+    };
+    let transform = self.state.borrow().transform;
+
+    match &mut *self.drawing.borrow_mut() {
+      DrawingBackend::Vello(scene) => {
+        scene.push_clip_layer(fill, transform, &path);
+      }
+      DrawingBackend::VelloCpu(ctx, _) => {
+        ctx.push_clip_layer(&path);
+      }
+    }
+    self.state.borrow_mut().clip_depth += 1;
+  }
+
+  #[inline]
+  fn v8_to_f64(
+    scope: &mut v8::PinScope<'_, '_>,
+    v: v8::Local<'_, v8::Value>,
+  ) -> f64 {
+    v.number_value(scope).unwrap_or(f64::NAN)
+  }
+
+  #[inline]
+  fn type_error_not_path2d(
+    prefix: &'static str,
+    context: &'static str,
+  ) -> Canvas2DError {
+    Canvas2DError::WebIdl(deno_core::webidl::WebIdlError {
+      prefix: prefix.into(),
+      context: context.into(),
+      kind: deno_core::webidl::WebIdlErrorKind::ConvertToConverterType(
+        "Path2D",
+      ),
+    })
+  }
+
+  #[inline]
+  fn resolve_point_in_path_args(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    a: Option<v8::Local<'_, v8::Value>>,
+    b: Option<v8::Local<'_, v8::Value>>,
+    c: Option<v8::Local<'_, v8::Value>>,
+    d: Option<String>,
+  ) -> Result<(kurbo::BezPath, f64, f64, String), Canvas2DError> {
+    const PREFIX: &str =
+      "Failed to execute 'isPointInPath' on 'OffscreenCanvasRenderingContext2D'";
+
+    let validate_fill_rule = |context: &'static str, rule: &str| -> Result<(), Canvas2DError> {
+      match rule {
+        "nonzero" | "evenodd" => Ok(()),
+        _ => Err(Canvas2DError::WebIdl(
+          deno_core::webidl::WebIdlError {
+            prefix: PREFIX.into(),
+            context: context.into(),
+            kind: deno_core::webidl::WebIdlErrorKind::InvalidEnumVariant {
+              converter: "CanvasFillRule",
+              variant: rule.to_string(),
+            },
+          },
+        )),
+      }
+    };
+
+    let Some(a) = a else {
+      return Ok((self.current_path.borrow().clone(), f64::NAN, f64::NAN, "nonzero".into()));
+    };
+    if let Some(p) =
+      deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, a)
+    {
+      // isPointInPath(path, x, y [, fillRule])
+      let x = b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+      let y = c.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+      let rule = d.unwrap_or_else(|| "nonzero".into());
+      validate_fill_rule("parameter 4", &rule)?;
+      return Ok((p.path.borrow().clone(), x, y, rule));
+    }
+    if a.is_number() {
+      // isPointInPath(x, y [, fillRule])
+      let x = Self::v8_to_f64(scope, a);
+      let y = b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+      let rule = c
+        .map(|v| v.to_rust_string_lossy(scope))
+        .unwrap_or_else(|| "nonzero".into());
+      validate_fill_rule("parameter 3", &rule)?;
+      return Ok((self.current_path.borrow().clone(), x, y, rule));
+    }
+    Err(Self::type_error_not_path2d(PREFIX, "parameter 1"))
+  }
+
+  #[inline]
+  fn resolve_point_in_stroke_args(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    a: Option<v8::Local<'_, v8::Value>>,
+    b: Option<v8::Local<'_, v8::Value>>,
+    c: Option<v8::Local<'_, v8::Value>>,
+  ) -> Result<(kurbo::BezPath, f64, f64), Canvas2DError> {
+    const PREFIX: &str =
+      "Failed to execute 'isPointInStroke' on 'OffscreenCanvasRenderingContext2D'";
+    let Some(a) = a else {
+      return Ok((self.current_path.borrow().clone(), f64::NAN, f64::NAN));
+    };
+    if let Some(p) =
+      deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, a)
+    {
+      // isPointInStroke(path, x, y)
+      let x = b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+      let y = c.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+      return Ok((p.path.borrow().clone(), x, y));
+    }
+    if a.is_number() {
+      // isPointInStroke(x, y)
+      let x = Self::v8_to_f64(scope, a);
+      let y = b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+      return Ok((self.current_path.borrow().clone(), x, y));
+    }
+    Err(Self::type_error_not_path2d(PREFIX, "parameter 1"))
+  }
+
+  #[inline]
+  fn test_point_in_path(
+    &self,
+    path: kurbo::BezPath,
+    x: f64,
+    y: f64,
+    rule: String,
+  ) -> bool {
+    use kurbo::Shape;
+    let pt = kurbo::Point::new(x, y);
+    let w = path.winding(pt);
+    match rule.as_str() {
+      "evenodd" => w % 2 != 0,
+      _ => w != 0,
+    }
+  }
+
+  #[inline]
+  fn test_point_in_stroke(&self, path: kurbo::BezPath, x: f64, y: f64) -> bool {
+    if path.is_empty() {
+      return false;
+    }
+    // Approximate: stroke the path and test contains on outline.
+    let state = self.state.borrow();
+    let stroke = kurbo::Stroke::new(state.line_width.max(1.0));
+    drop(state);
+    let outline = kurbo::stroke(
+      path.path_elements(0.1),
+      &stroke,
+      &kurbo::StrokeOpts::default(),
+      0.1,
+    );
+    outline.contains(kurbo::Point::new(x, y))
+  }
+}
+
+fn compute_arc_sweep(
+  start_angle: f64,
+  end_angle: f64,
+  counterclockwise: bool,
+) -> f64 {
+  let two_pi = 2.0 * std::f64::consts::PI;
+  let mut delta = end_angle - start_angle;
+
+  if counterclockwise {
+    if delta >= two_pi {
+      delta = two_pi;
+    } else if delta <= 0.0 {
+      while delta <= 0.0 {
+        delta += two_pi;
+      }
+      if delta > two_pi {
+        delta = two_pi;
+      }
+    }
+  } else {
+    if delta <= -two_pi {
+      delta = -two_pi;
+    } else if delta >= 0.0 {
+      while delta >= 0.0 {
+        delta -= two_pi;
+      }
+      if delta < -two_pi {
+        delta = -two_pi;
+      }
+    }
+  }
+  delta
+}
+
+fn arc_to_impl(
+  path: &mut kurbo::BezPath,
+  x1: f64,
+  y1: f64,
+  x2: f64,
+  y2: f64,
+  radius: f64,
+) {
+  let current = match path.elements().last() {
+    Some(kurbo::PathEl::MoveTo(p)) => *p,
+    Some(kurbo::PathEl::LineTo(p)) => *p,
+    Some(kurbo::PathEl::QuadTo(_, p)) => *p,
+    Some(kurbo::PathEl::CurveTo(_, _, p)) => *p,
+    Some(kurbo::PathEl::ClosePath) => return,
+    None => return,
+  };
+
+  let p0 = current;
+  let p1 = kurbo::Point::new(x1, y1);
+  let p2 = kurbo::Point::new(x2, y2);
+
+  if p0 == p1 || p1 == p2 || radius == 0.0 {
+    path.line_to(p1);
+    return;
+  }
+
+  let v0 = p0 - p1;
+  let v1 = p2 - p1;
+
+  let cross = v0.x * v1.y - v0.y * v1.x;
+  if cross.abs() < 1e-10 {
+    path.line_to(p1);
+    return;
+  }
+
+  let d0 = v0.hypot();
+  let d1 = v1.hypot();
+  let u0 = kurbo::Vec2::new(v0.x / d0, v0.y / d0);
+  let u1 = kurbo::Vec2::new(v1.x / d1, v1.y / d1);
+
+  let cos_half = ((1.0 + u0.dot(u1)) / 2.0).sqrt();
+  if cos_half == 0.0 {
+    path.line_to(p1);
+    return;
+  }
+  let d = radius / ((1.0 - cos_half * cos_half).sqrt() / cos_half);
+
+  let t0 = kurbo::Point::new(p1.x + u0.x * d, p1.y + u0.y * d);
+  let t1 = kurbo::Point::new(p1.x + u1.x * d, p1.y + u1.y * d);
+
+  let cx_dir = kurbo::Vec2::new(u0.x + u1.x, u0.y + u1.y);
+  let cx_len = cx_dir.hypot();
+  if cx_len == 0.0 {
+    path.line_to(p1);
+    return;
+  }
+
+  let sign = if cross < 0.0 { 1.0 } else { -1.0 };
+  let center = kurbo::Point::new(
+    p1.x + cx_dir.x / cx_len * (d * d + radius * radius).sqrt(),
+    p1.y + cx_dir.y / cx_len * (d * d + radius * radius).sqrt(),
+  );
+
+  let start_angle = (t0.y - center.y).atan2(t0.x - center.x);
+  let end_angle = (t1.y - center.y).atan2(t1.x - center.x);
+
+  let counterclockwise = sign > 0.0;
+  let sweep = compute_arc_sweep(start_angle, end_angle, counterclockwise);
+
+  path.line_to(t0);
+  let arc = kurbo::Arc {
+    center,
+    radii: kurbo::Vec2::new(radius, radius),
+    start_angle,
+    sweep_angle: sweep,
+    x_rotation: 0.0,
+  };
+  arc.to_cubic_beziers(0.1, |p1, p2, p3| {
+    path.curve_to(p1, p2, p3);
+  });
+}

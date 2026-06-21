@@ -113,6 +113,45 @@ pub struct ImageData {
   data: v8::TracedReference<v8::Object>,
 }
 
+impl ImageData {
+  /// Create an ImageData from raw RGBA8 pixel data (for internal use by getImageData etc).
+  pub fn new_rgba_unorm8(
+    scope: &mut v8::PinScope<'_, '_>,
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+  ) -> Result<Self, deno_error::JsErrorBox> {
+    if pixels.len() != (width as usize * height as usize * 4) {
+      return Err(deno_error::JsErrorBox::generic(
+        "pixel data length mismatch",
+      ));
+    }
+    let byte_len = pixels.len();
+    let ab = v8::ArrayBuffer::new(scope, byte_len);
+    let Some(ta) = v8::Uint8ClampedArray::new(scope, ab, 0, byte_len) else {
+      return Err(deno_error::JsErrorBox::generic(
+        "failed to create Uint8ClampedArray",
+      ));
+    };
+    let buf_ptr = ab.data().unwrap().as_ptr() as *mut u8;
+    // SAFETY: `buf_ptr` points to the ArrayBuffer's backing store with at
+    // least `byte_len` bytes (allocated above), and `pixels` has exactly
+    // `byte_len` bytes. The regions do not overlap.
+    unsafe {
+      std::ptr::copy_nonoverlapping(pixels.as_ptr(), buf_ptr, byte_len);
+    }
+    let data_obj: v8::Local<v8::Object> = ta.into();
+
+    Ok(ImageData {
+      width,
+      height,
+      pixel_format: ImageDataPixelFormat::RgbaUnorm8,
+      color_space: PredefinedColorSpace::Srgb,
+      data: v8::TracedReference::new(scope, data_obj),
+    })
+  }
+}
+
 // SAFETY: we're sure `ImageData` can be GCed.
 unsafe impl GarbageCollected for ImageData {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
