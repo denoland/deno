@@ -2,6 +2,7 @@
 
 import {
   assert,
+  assertAlmostEquals,
   assertEquals,
   assertFalse,
   assertRejects,
@@ -1042,3 +1043,135 @@ Deno.test(
     );
   },
 );
+
+// CanvasState tests
+
+Deno.test(function canvas2dSaveRestorePreservesAndRestoresState() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.fillStyle = "red";
+  ctx.save();
+  ctx.fillStyle = "blue";
+  assertEquals(ctx.fillStyle, "rgb(0, 0, 255)");
+  ctx.restore();
+  assertEquals(ctx.fillStyle, "rgb(255, 0, 0)");
+});
+
+Deno.test(function canvas2dRestoreOnEmptyStackIsNoOp() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  // Should not throw when the state stack is empty
+  ctx.restore();
+});
+
+Deno.test(function canvas2dResetClearsStateToDefaults() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.fillStyle = "red";
+  ctx.reset();
+  assertEquals(ctx.fillStyle, "rgb(0, 0, 0)");
+});
+
+Deno.test(function canvas2dIsContextLostReturnsFalse() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  assertFalse(ctx.isContextLost());
+});
+
+// CanvasTransform tests
+
+Deno.test(function canvas2dGetTransformReturnsIdentityByDefault() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const m = ctx.getTransform();
+  assertEquals(m.a, 1);
+  assertEquals(m.b, 0);
+  assertEquals(m.c, 0);
+  assertEquals(m.d, 1);
+  assertEquals(m.e, 0);
+  assertEquals(m.f, 0);
+});
+
+Deno.test(function canvas2dTranslateModifiesTransform() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.translate(10, 20);
+  const m = ctx.getTransform();
+  assertEquals(m.e, 10);
+  assertEquals(m.f, 20);
+});
+
+Deno.test(function canvas2dScaleModifiesTransform() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.scale(2, 3);
+  const m = ctx.getTransform();
+  assertEquals(m.a, 2);
+  assertEquals(m.d, 3);
+});
+
+Deno.test(function canvas2dRotateModifiesTransform() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.rotate(Math.PI / 2);
+  const m = ctx.getTransform();
+  assertAlmostEquals(m.a, 0, 1e-10);
+  assertAlmostEquals(m.b, 1, 1e-10);
+  assertAlmostEquals(m.c, -1, 1e-10);
+  assertAlmostEquals(m.d, 0, 1e-10);
+});
+
+Deno.test(function canvas2dSetTransformSetsMatrixDirectly() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.setTransform(2, 0, 0, 3, 10, 20);
+  const m = ctx.getTransform();
+  assertEquals(m.a, 2);
+  assertEquals(m.b, 0);
+  assertEquals(m.c, 0);
+  assertEquals(m.d, 3);
+  assertEquals(m.e, 10);
+  assertEquals(m.f, 20);
+});
+
+Deno.test(function canvas2dResetTransformResetsToIdentity() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.translate(10, 20);
+  ctx.resetTransform();
+  const m = ctx.getTransform();
+  assertEquals(m.a, 1);
+  assertEquals(m.b, 0);
+  assertEquals(m.c, 0);
+  assertEquals(m.d, 1);
+  assertEquals(m.e, 0);
+  assertEquals(m.f, 0);
+});
+
+Deno.test(function canvas2dSaveRestorePreservesTransform() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.translate(10, 20);
+  ctx.save();
+  ctx.translate(5, 5);
+  const mAfterSecondTranslate = ctx.getTransform();
+  assertEquals(mAfterSecondTranslate.e, 15);
+  assertEquals(mAfterSecondTranslate.f, 25);
+  ctx.restore();
+  const mAfterRestore = ctx.getTransform();
+  assertEquals(mAfterRestore.e, 10);
+  assertEquals(mAfterRestore.f, 20);
+});
+
+Deno.test(function canvas2dNonFiniteTransformArgumentsAreIgnored() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+
+  // translate with NaN — should be a no-op
+  ctx.translate(NaN, 0);
+  let m = ctx.getTransform();
+  assertEquals(m.e, 0);
+  assertEquals(m.f, 0);
+
+  // scale with Infinity — should be a no-op
+  ctx.scale(Infinity, 1);
+  m = ctx.getTransform();
+  assertEquals(m.a, 1);
+  assertEquals(m.d, 1);
+
+  // rotate with NaN — should be a no-op
+  ctx.rotate(NaN);
+  m = ctx.getTransform();
+  assertEquals(m.a, 1);
+  assertEquals(m.b, 0);
+  assertEquals(m.c, 0);
+  assertEquals(m.d, 1);
+});
