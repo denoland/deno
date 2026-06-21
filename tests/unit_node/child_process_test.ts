@@ -1080,9 +1080,14 @@ Deno.test(async function ipcSerializationAdvanced() {
         true,
         null,
         new Uint8Array([1, 2, 3]),
+        // Empty typed arrays / buffers used to panic the IPC deserializer
+        // because a zero-length ArrayBuffer has a null backing store.
+        new Uint8Array([]),
+        Buffer.alloc(0),
         {
           foo: new Uint8Array([1, 2, 3]),
           bar: makeSab([4, 5, 6]),
+          baz: new Uint8Array([]),
         },
         [1, { foo: 2 }, [3, 4]],
         42n,
@@ -1115,9 +1120,12 @@ Deno.test(async function ipcSerializationAdvanced() {
     true,
     null,
     new Uint8Array([1, 2, 3]),
+    new Uint8Array([]),
+    Buffer.alloc(0),
     {
       foo: new Uint8Array([1, 2, 3]),
       bar: makeSab([4, 5, 6]),
+      baz: new Uint8Array([]),
     },
     [1, { foo: 2 }, [3, 4]],
     42n,

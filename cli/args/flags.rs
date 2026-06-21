@@ -1270,7 +1270,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "add" => add_parse(&mut flags, &mut m)?,
         "audit" => audit_parse(&mut flags, &mut m)?,
         "approve-scripts" => approve_scripts_parse(&mut flags, &mut m)?,
-        "remove" => remove_parse(&mut flags, &mut m),
+        "remove" => remove_parse(&mut flags, &mut m)?,
         "bench" => bench_parse(&mut flags, &mut m)?,
         "bundle" => bundle_parse(&mut flags, &mut m)?,
         "cache" => cache_parse(&mut flags, &mut m)?,
@@ -1829,6 +1829,10 @@ fn remove_subcommand() -> Command {
 
 You can remove multiple dependencies at once:
   <p(245)>deno remove @std/path @std/assert</>
+
+With the <c>--global</> flag, this is an alias for <c>deno uninstall --global</> and
+removes a globally installed executable script:
+  <p(245)>deno remove --global file_server</>
 "
     ),
     UnstableArgsConfig::None,
@@ -1842,9 +1846,23 @@ You can remove multiple dependencies at once:
           .num_args(1..)
           .action(ArgAction::Append),
       )
+      .arg(
+        Arg::new("root")
+          .long("root")
+          .help("Installation root")
+          .requires("global")
+          .value_hint(ValueHint::DirPath),
+      )
+      .arg(
+        Arg::new("global")
+          .long("global")
+          .short('g')
+          .help("Remove globally installed package or module")
+          .action(ArgAction::SetTrue),
+      )
       .args(lock_args())
-      .arg(lockfile_only_arg())
-      .arg(package_json_arg())
+      .arg(lockfile_only_arg().conflicts_with("global"))
+      .arg(package_json_arg().conflicts_with("global"))
   })
 }
 
@@ -2457,7 +2475,7 @@ supported framework (Next.js, Astro, etc.) in the current directory.
           .long("output")
           .short('o')
           .value_parser(value_parser!(String))
-          .help(cstr!("Output path <p(245)>(e.g. MyApp.app, MyApp.dmg, MyApp.msi)</>"))
+          .help(cstr!("Output path <p(245)>(e.g. MyApp.app, MyApp.dmg, MyApp.AppImage, MyApp.deb, MyApp.rpm)</>"))
           .value_hint(ValueHint::FilePath)
           .help_heading(DESKTOP_HEADING),
       )
@@ -3450,6 +3468,8 @@ Update dependencies to the latest semver compatible versions:
   <p(245)>deno update</>
 Update dependencies to the latest versions, ignoring semver requirements:
   <p(245)>deno update --latest</>
+Update dependencies within their existing version ranges, without editing deno.json / package.json (like <p(245)>npm update</>):
+  <p(245)>deno update --lockfile-only</>
 
 <i>This command is an alias of <p(245)>deno outdated --update</></>
 
@@ -3497,6 +3517,8 @@ Update dependencies to the latest semver compatible versions:
   <p(245)>deno outdated --update</>
 Update dependencies to the latest versions, ignoring semver requirements:
   <p(245)>deno outdated --update --latest</>
+Update dependencies within their existing version ranges, without editing deno.json / package.json (like <p(245)>npm update</>):
+  <p(245)>deno outdated --update --lockfile-only</>
 
 Filters can be used to select which packages to act on. Filters can include wildcards (*) to match multiple packages.
   <p(245)>deno outdated --update --latest \"@std/*\"</>
@@ -4068,6 +4090,21 @@ Evaluate a task from string:
           .action(ArgAction::SetTrue),
       )
       .arg(
+        Arg::new("jobs")
+          .long("jobs")
+          .short('j')
+          .visible_alias("concurrency")
+          .help(
+            "Maximum number of tasks to run concurrently.
+Overrides the DENO_JOBS environment variable; defaults to the number of
+available CPUs. Use 1 to force sequential execution. Only affects runs
+where multiple tasks can run concurrently (workspace runs, or a task with
+parallelizable dependencies)",
+          )
+          .value_name("NUMBER")
+          .value_parser(value_parser!(NonZeroUsize)),
+      )
+      .arg(
         Arg::new("if-present")
           .long("if-present")
           .help(
@@ -4354,6 +4391,14 @@ or <c>**/__tests__/**</>:
           .long("hide-stacktraces")
           .help("Hide stack traces for errors in failure test results.")
           .action(ArgAction::SetTrue)
+      )
+      .arg(
+        Arg::new("update-snapshots")
+          .long("update-snapshots")
+          .short('u')
+          .help("Update snapshots created with `t.assertSnapshot()` instead of failing when they do not match")
+          .action(ArgAction::SetTrue)
+          .help_heading(TEST_HEADING),
       )
       .arg(env_file_arg())
       .arg(executable_ext_arg())
@@ -6319,13 +6364,40 @@ fn add_parse_inner(
   }
 }
 
-fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn remove_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   lock_args_parse(flags, matches);
+  let mut packages = matches.remove_many::<String>("packages").unwrap();
+
+  // `deno remove --global <name>` is an alias for `deno uninstall --global
+  // <name>`: it removes a globally installed executable rather than a
+  // dependency from the configuration file, so route it through the same
+  // subcommand the uninstaller uses.
+  if matches.get_flag("global") {
+    let name = packages.next().unwrap();
+    // A global removal targets a single executable, matching
+    // `deno uninstall --global`, so reject any extra names.
+    if packages.next().is_some() {
+      return Err(clap::Error::raw(
+        clap::error::ErrorKind::ArgumentConflict,
+        "--global only removes a single executable, but multiple packages were provided\n",
+      ));
+    }
+    let root = matches.remove_one::<String>("root");
+    flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags {
+      kind: UninstallKind::Global(UninstallFlagsGlobal { name, root }),
+    });
+    return Ok(());
+  }
+
   flags.subcommand = DenoSubcommand::Remove(RemoveFlags {
-    packages: matches.remove_many::<String>("packages").unwrap().collect(),
+    packages: packages.collect(),
     lockfile_only: matches.get_flag("lockfile-only"),
     package_json: matches.get_flag("package-json"),
   });
+  Ok(())
 }
 
 fn link_parse(
@@ -7631,6 +7703,7 @@ fn task_parse(
     filter,
     eval: matches.get_flag("eval"),
     no_prefix: matches.get_flag("no-prefix"),
+    concurrency: matches.remove_one::<NonZeroUsize>("jobs"),
     if_present: matches.get_flag("if-present"),
   };
 
@@ -7845,6 +7918,7 @@ fn test_parse(
   }
 
   let hide_stacktraces = matches.get_flag("hide-stacktraces");
+  let update_snapshots = matches.get_flag("update-snapshots");
 
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
@@ -7869,6 +7943,7 @@ fn test_parse(
     reporter,
     junit_path,
     hide_stacktraces,
+    update_snapshots,
   });
   Ok(())
 }
@@ -12292,6 +12367,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          update_snapshots: false,
         }),
         no_npm: true,
         no_remote: true,
@@ -12405,6 +12481,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          update_snapshots: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         permissions: PermissionFlags {
@@ -12455,6 +12532,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          update_snapshots: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12599,6 +12677,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          update_snapshots: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12642,6 +12721,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          update_snapshots: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12704,6 +12784,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          update_snapshots: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12746,6 +12827,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          update_snapshots: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -12795,6 +12877,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          update_snapshots: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         permissions: PermissionFlags {
@@ -12999,6 +13082,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Test(TestFlags {
           hide_stacktraces: true,
+          update_snapshots: false,
           ..TestFlags::default()
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -13813,6 +13897,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         argv: svec!["hello", "world"],
@@ -13832,6 +13917,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         ..Flags::default()
@@ -13850,6 +13936,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         ..Flags::default()
@@ -13868,6 +13955,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         ..Flags::default()
@@ -13886,6 +13974,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         ..Flags::default()
@@ -13904,6 +13993,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         ..Flags::default()
@@ -13922,6 +14012,7 @@ mod tests {
           filter: None,
           eval: true,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         ..Flags::default()
@@ -13930,6 +14021,43 @@ mod tests {
 
     let r = flags_from_vec(svec!["deno", "task", "--eval"]);
     assert!(r.is_err());
+  }
+
+  #[test]
+  fn task_subcommand_jobs() {
+    // `--jobs`, its `--concurrency` alias, and the `-j` short form all parse
+    // to the same value.
+    for args in [
+      svec!["deno", "task", "--jobs", "1", "build"],
+      svec!["deno", "task", "--concurrency", "1", "build"],
+      svec!["deno", "task", "-j", "1", "build"],
+    ] {
+      let r = flags_from_vec(args.clone());
+      assert_eq!(
+        r.unwrap(),
+        Flags {
+          subcommand: DenoSubcommand::Task(TaskFlags {
+            cwd: None,
+            task: Some("build".to_string()),
+            is_run: false,
+            recursive: false,
+            filter: None,
+            eval: false,
+            no_prefix: false,
+            concurrency: Some(NonZeroUsize::new(1).unwrap()),
+            if_present: false,
+          }),
+          ..Flags::default()
+        },
+        "unexpected parse for {args:?}"
+      );
+    }
+
+    // Reject zero, negative, and non-numeric values.
+    for invalid in ["0", "-1", "abc"] {
+      let r = flags_from_vec(svec!["deno", "task", "--jobs", invalid, "build"]);
+      assert!(r.is_err(), "expected error for value {invalid:?}");
+    }
   }
 
   #[test]
@@ -13955,6 +14083,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         argv: svec!["--", "hello", "world"],
@@ -13977,6 +14106,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         argv: svec!["--", "hello", "world"],
@@ -14000,6 +14130,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         argv: svec!["--"],
@@ -14022,6 +14153,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         argv: svec!["-1", "--test"],
@@ -14044,6 +14176,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         argv: svec!["--test"],
@@ -14067,6 +14200,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         log_level: Some(log::Level::Error),
@@ -14089,6 +14223,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         ..Flags::default()
@@ -14110,6 +14245,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -14132,6 +14268,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -14163,6 +14300,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         env_file: Some(vec![".env".to_owned()]),
@@ -14188,6 +14326,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         }),
         env_file: Some(vec![".env.dev".to_owned(), ".env.local".to_owned()]),
@@ -14210,6 +14349,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: true,
         }),
         ..Flags::default()
@@ -15199,6 +15339,74 @@ mod tests {
           package_json: false,
         }),
         frozen_lockfile: Some(true),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn remove_global_alias_for_uninstall() {
+    // `deno remove --global <name>` is an alias for `deno uninstall --global
+    // <name>` and produces the exact same subcommand.
+    for global_flag in ["--global", "-g"] {
+      let r =
+        flags_from_vec(svec!["deno", "remove", global_flag, "file_server"]);
+      assert_eq!(
+        r.unwrap(),
+        Flags {
+          subcommand: DenoSubcommand::Uninstall(UninstallFlags {
+            kind: UninstallKind::Global(UninstallFlagsGlobal {
+              name: "file_server".to_string(),
+              root: None,
+            }),
+          }),
+          ..Flags::default()
+        }
+      );
+    }
+
+    // `--root` is honored, just like `deno uninstall --global --root`.
+    let r = flags_from_vec(svec![
+      "deno",
+      "remove",
+      "-g",
+      "--root",
+      "/user/foo/bar",
+      "file_server"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Uninstall(UninstallFlags {
+          kind: UninstallKind::Global(UninstallFlagsGlobal {
+            name: "file_server".to_string(),
+            root: Some("/user/foo/bar".to_string()),
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // A global removal targets a single executable; extra names are rejected.
+    let r =
+      flags_from_vec(svec!["deno", "remove", "-g", "file_server", "chalk"]);
+    assert!(r.is_err());
+
+    // `--root` requires `--global`.
+    let r =
+      flags_from_vec(svec!["deno", "remove", "--root", "/tmp", "@std/path"]);
+    assert!(r.is_err());
+
+    // Without `--global`, removal stays a config-file dependency removal.
+    let r = flags_from_vec(svec!["deno", "remove", "@david/which"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Remove(RemoveFlags {
+          packages: svec!["@david/which"],
+          lockfile_only: false,
+          package_json: false,
+        }),
         ..Flags::default()
       }
     );

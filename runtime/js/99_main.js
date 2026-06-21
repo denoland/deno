@@ -667,6 +667,10 @@ const NOT_IMPORTED_OPS = [
   "op_test_event_exit",
   "op_test_isolate_exit",
   "op_pledge_test_permissions",
+  "op_test_snapshot_in_update_mode",
+  "op_test_snapshot_read",
+  "op_test_snapshot_write",
+  "op_test_event_snapshot_summary",
 
   // TODO(bartlomieju): used in various integration tests - figure out a way
   // to not depend on them.
@@ -712,6 +716,21 @@ function removeImportedOps() {
 // methods should be left there.
 ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
+// `Deno.test` and its sub-methods are no-ops outside of `deno test`, kept for
+// compatibility so they don't error under `deno run`. Mirrors the surface of
+// the real `Deno.test` defined in cli/js/40_test.js.
+function noopTest() {}
+noopTest.ignore = () => {};
+noopTest.only = () => {};
+noopTest.beforeAll = () => {};
+noopTest.beforeEach = () => {};
+noopTest.afterEach = () => {};
+noopTest.afterAll = () => {};
+noopTest.sanitizer = () => {};
+const noopTestEach = () => () => {};
+noopTest.each = noopTestEach;
+noopTest.only.each = noopTestEach;
+noopTest.ignore.each = noopTestEach;
 // Build finalDenoNs without spreading denoNs: spread invokes every getter,
 // including the lazy ones (Deno.serve / Deno.run / etc.) that intentionally
 // avoid loading 06_streams / 22_body / 40_process at snapshot time. Use
@@ -724,7 +743,7 @@ const finalDenoNs = ObjectDefineProperties(
     // Deno.test, Deno.bench, Deno.lint are noops here, but kept for
     // compatibility; so that they don't cause errors when used outside of
     // `deno test`/`deno bench`/`deno lint` contexts.
-    test: () => {},
+    test: noopTest,
     bench: () => {},
     lint: {
       runPlugin: () => {

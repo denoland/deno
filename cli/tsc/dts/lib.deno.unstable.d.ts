@@ -191,7 +191,7 @@ declare namespace Deno {
    * }
    * ```
    *
-   * @category Bundle
+   * @category Bundler
    * @experimental
    */
   export function bundle(

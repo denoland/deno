@@ -158,6 +158,7 @@ plist = "1"
 pretty_yaml.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
+rpm.workspace = true
 rustc-hash.workspace = true
 rustls.workspace = true
 rustyline.workspace = true

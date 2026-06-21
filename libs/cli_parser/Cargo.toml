@@ -22,3 +22,6 @@ deno_runtime.workspace = true
 deno_semver.workspace = true
 log.workspace = true
 serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+pretty_assertions.workspace = true
