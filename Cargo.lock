@@ -1952,6 +1952,7 @@ dependencies = [
  "bytes",
  "cab",
  "capacity_builder",
+ "cfb",
  "chrono",
  "clap",
  "clap_complete",

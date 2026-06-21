@@ -3938,6 +3938,279 @@ fn create_windows_msi(
   std::fs::write(msi_path, cursor.into_inner()).with_context(|| {
     format!("Failed to write .msi at {}", msi_path.display())
   })?;
+
+  // The `msi` crate emits each table's rows in the order they were inserted (and
+  // the auto-generated system tables `_Tables`/`_Columns`/`_Validation` in
+  // table-name order), but Windows Installer requires every table's rows to be
+  // sorted ascending by primary key — and for string-typed keys that ordering is
+  // by the row's *string-pool id*, not the string's text. When the two orders
+  // disagree (e.g. `_Validation` has a low string id yet sorts late
+  // alphabetically) real `msiexec` rejects the database at open time with error
+  // 2219 "Invalid Installer database format", even though the file is a valid
+  // compound document and round-trips through the `msi` crate's own reader. Fix
+  // this up in place by re-sorting every persistent table by its primary-key
+  // columns in string-id order. See `msi_sort_tables_by_string_id`.
+  msi_sort_tables_by_string_id(msi_path).with_context(|| {
+    format!("Failed to finalize .msi at {}", msi_path.display())
+  })?;
+  Ok(())
+}
+
+/// Decode a Windows Installer stream name back to its logical table name.
+///
+/// MSI stores each table in a compound-file stream whose name is encoded with a
+/// custom base-64 scheme: code points in `0x3800..0x4800` carry two base-64
+/// digits and `0x4800..0x4840` carry one, over the alphabet
+/// `0-9 A-Z a-z . _`. Table-data streams are additionally prefixed with the
+/// sentinel `0x4840`, which falls outside both ranges; we return that prefix as
+/// a leading NUL so callers can tell a real table stream apart from the special
+/// `\u{5}SummaryInformation` stream.
+fn msi_demangle_stream_name(name: &str) -> String {
+  const B64: &[u8] =
+    b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz._";
+  let mut out = String::new();
+  for c in name.chars() {
+    let v = c as u32;
+    if (0x3800..0x4800).contains(&v) {
+      let n = v - 0x3800;
+      out.push(B64[(n & 0x3f) as usize] as char);
+      out.push(B64[((n >> 6) & 0x3f) as usize] as char);
+    } else if (0x4800..0x4840).contains(&v) {
+      let n = v - 0x4800;
+      out.push(B64[(n & 0x3f) as usize] as char);
+    } else if v == 0x4840 {
+      out.push('\0');
+    } else {
+      out.push(c);
+    }
+  }
+  out
+}
+
+/// Re-sort the rows of a column-major MSI table stream by the given key columns.
+///
+/// `widths` is the byte width of every column (a stream is laid out column by
+/// column: all of column 0's values, then all of column 1's, …). `keys` lists
+/// the column indices to sort by, in priority order. Stored values are compared
+/// as little-endian unsigned integers, which matches MSI's ordering for both
+/// integer columns and string columns (whose stored value is the string-pool
+/// id).
+fn msi_resort_stream(data: &[u8], widths: &[usize], keys: &[usize]) -> Vec<u8> {
+  let row_width: usize = widths.iter().sum();
+  if row_width == 0 {
+    return data.to_vec();
+  }
+  let rows = data.len() / row_width;
+  if rows <= 1 {
+    return data.to_vec();
+  }
+  // Byte offset where each column's run of values begins.
+  let mut col_off = vec![0usize; widths.len()];
+  let mut acc = 0;
+  for (c, &w) in widths.iter().enumerate() {
+    col_off[c] = acc;
+    acc += rows * w;
+  }
+  let read = |row: usize, col: usize| -> u64 {
+    let base = col_off[col] + row * widths[col];
+    let mut v = 0u64;
+    for k in 0..widths[col] {
+      v |= (data[base + k] as u64) << (8 * k);
+    }
+    v
+  };
+  let mut order: Vec<usize> = (0..rows).collect();
+  order.sort_by(|&a, &b| {
+    for &k in keys {
+      match read(a, k).cmp(&read(b, k)) {
+        std::cmp::Ordering::Equal => continue,
+        ord => return ord,
+      }
+    }
+    a.cmp(&b)
+  });
+  let mut out = vec![0u8; data.len()];
+  for (c, &w) in widths.iter().enumerate() {
+    for (new_row, &old_row) in order.iter().enumerate() {
+      let src = col_off[c] + old_row * w;
+      let dst = col_off[c] + new_row * w;
+      out[dst..dst + w].copy_from_slice(&data[src..src + w]);
+    }
+  }
+  out
+}
+
+/// Sort every persistent table in a freshly written `.msi` by primary key in
+/// string-pool-id order, as Windows Installer requires (see the call site for
+/// why the `msi` crate's output needs this). Operates in place on the compound
+/// file, rewriting only the small metadata/table streams — the embedded cabinet
+/// stream is left untouched.
+fn msi_sort_tables_by_string_id(msi_path: &Path) -> Result<(), AnyError> {
+  use std::io::Read;
+  use std::io::Write;
+
+  let mut comp = cfb::open_rw(msi_path)?;
+  let names: Vec<String> = comp
+    .read_storage("/")?
+    .map(|e| e.name().to_string())
+    .collect();
+  let read_stream = |comp: &mut cfb::CompoundFile<std::fs::File>,
+                     raw: &str|
+   -> Result<Vec<u8>, AnyError> {
+    let mut s = comp.open_stream(format!("/{raw}"))?;
+    let mut b = Vec::new();
+    s.read_to_end(&mut b)?;
+    Ok(b)
+  };
+  let write_stream = |comp: &mut cfb::CompoundFile<std::fs::File>,
+                      raw: &str,
+                      bytes: &[u8]|
+   -> Result<(), AnyError> {
+    let mut s = comp.open_stream(format!("/{raw}"))?;
+    s.write_all(bytes)?;
+    Ok(())
+  };
+  let find_raw = |suffix: &str| -> Option<String> {
+    names
+      .iter()
+      .find(|n| msi_demangle_stream_name(n).ends_with(suffix))
+      .cloned()
+  };
+
+  // The string-pool header's top bit selects 3-byte string references; tiny
+  // databases use 2-byte refs, but honor the flag to stay correct at any size.
+  let pool_raw = find_raw("_StringPool").ok_or_else(|| {
+    deno_core::anyhow::anyhow!("malformed .msi: no _StringPool stream")
+  })?;
+  let pool = read_stream(&mut comp, &pool_raw)?;
+  let str_w: usize = if pool.len() >= 4 && (pool[3] & 0x80) != 0 {
+    3
+  } else {
+    2
+  };
+
+  // Map every string-pool id to its text so data-table streams (named by table
+  // text) can be matched to their column schema (keyed by table string id).
+  let data_raw = find_raw("_StringData").ok_or_else(|| {
+    deno_core::anyhow::anyhow!("malformed .msi: no _StringData stream")
+  })?;
+  let str_data = read_stream(&mut comp, &data_raw)?;
+  let mut strings = vec![String::new()]; // 1-based; index 0 is unused.
+  {
+    let mut off = 0usize;
+    let mut i = 4;
+    while i + 4 <= pool.len() {
+      let len = u16::from_le_bytes([pool[i], pool[i + 1]]) as usize;
+      let end = (off + len).min(str_data.len());
+      strings.push(String::from_utf8_lossy(&str_data[off..end]).into_owned());
+      off += len;
+      i += 4;
+    }
+  }
+  let id_of = |text: &str| -> Option<u64> {
+    strings.iter().position(|s| s == text).map(|i| i as u64)
+  };
+
+  // System tables have a fixed schema not described in `_Columns`; their
+  // string-typed columns use the same `str_w` reference width.
+  let system_tables: &[(&str, Vec<usize>, Vec<usize>)] = &[
+    ("_Tables", vec![str_w], vec![0]),
+    ("_Columns", vec![str_w, 2, str_w, 2], vec![0, 1]),
+    (
+      "_Validation",
+      vec![str_w, str_w, str_w, 4, 4, str_w, 2, str_w, str_w, str_w],
+      vec![0, 1],
+    ),
+  ];
+  for (name, widths, keys) in system_tables {
+    if let Some(raw) = find_raw(name) {
+      let bytes = read_stream(&mut comp, &raw)?;
+      let sorted = msi_resort_stream(&bytes, widths, keys);
+      write_stream(&mut comp, &raw, &sorted)?;
+    }
+  }
+
+  // Parse the (now sorted) `_Columns` table to recover every persistent table's
+  // column widths and which columns are primary keys.
+  let columns_raw = find_raw("_Columns").ok_or_else(|| {
+    deno_core::anyhow::anyhow!("malformed .msi: no _Columns stream")
+  })?;
+  let columns = read_stream(&mut comp, &columns_raw)?;
+  let col_row_w = str_w + 2 + str_w + 2; // Table, Number, Name, Type
+  let ncol = columns.len() / col_row_w;
+  let read_col = |arr_off: usize, row: usize, w: usize| -> u64 {
+    let base = arr_off + row * w;
+    let mut v = 0u64;
+    for k in 0..w {
+      v |= (columns[base + k] as u64) << (8 * k);
+    }
+    v
+  };
+  let off_table = 0usize;
+  let off_number = ncol * str_w;
+  let off_type = off_number + ncol * 2 + ncol * str_w;
+  // A column Type word: 0x8000 marks the stored value present (always set here);
+  // 0x0800 marks a string type; 0x2000 marks a primary-key column; for integer
+  // columns the low byte is the storage size (2 or 4 bytes).
+  let width_of = |ty: u64| -> usize {
+    let t = (ty ^ 0x8000) & 0xffff;
+    if (t & 0x0800) != 0 {
+      str_w
+    } else if (t & 0xff) == 4 {
+      4
+    } else {
+      2
+    }
+  };
+  let is_key = |ty: u64| -> bool { ((ty ^ 0x8000) & 0x2000) != 0 };
+  let mut table_columns: std::collections::BTreeMap<u64, Vec<(u64, u64)>> =
+    std::collections::BTreeMap::new();
+  for r in 0..ncol {
+    let table_id = read_col(off_table, r, str_w);
+    let number = read_col(off_number, r, 2) ^ 0x8000;
+    let ty = read_col(off_type, r, 2);
+    table_columns
+      .entry(table_id)
+      .or_default()
+      .push((number, ty));
+  }
+  for cols in table_columns.values_mut() {
+    cols.sort_by_key(|&(number, _)| number);
+  }
+
+  // Re-sort each persistent data-table stream by its primary-key columns.
+  for raw in &names {
+    let demangled = msi_demangle_stream_name(raw);
+    // Table-data streams carry the 0x4840 sentinel (decoded as a leading NUL);
+    // skip the summary-information stream and the already-handled system tables.
+    let Some(table_name) = demangled.strip_prefix('\0') else {
+      continue;
+    };
+    if table_name.starts_with('_') {
+      continue;
+    }
+    let Some(table_id) = id_of(table_name) else {
+      continue;
+    };
+    let Some(cols) = table_columns.get(&table_id) else {
+      continue;
+    };
+    let widths: Vec<usize> = cols.iter().map(|&(_, ty)| width_of(ty)).collect();
+    let keys: Vec<usize> = cols
+      .iter()
+      .enumerate()
+      .filter(|&(_, &(_, ty))| is_key(ty))
+      .map(|(i, _)| i)
+      .collect();
+    if keys.is_empty() {
+      continue;
+    }
+    let bytes = read_stream(&mut comp, raw)?;
+    let sorted = msi_resort_stream(&bytes, &widths, &keys);
+    write_stream(&mut comp, raw, &sorted)?;
+  }
+
+  comp.flush()?;
   Ok(())
 }
 
@@ -5872,5 +6145,67 @@ def456  other.zip
       .read_to_end(&mut content)
       .unwrap();
     assert_eq!(content, b"MZfake-dll");
+  }
+
+  #[test]
+  fn msi_tables_sorted_by_string_id() {
+    use std::io::Read as _;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_windows_app_dir(tmp.path(), "SortApp");
+    let msi_path = tmp.path().join("SortApp.msi");
+    create_windows_msi(
+      &app_dir,
+      &msi_path,
+      &empty_desktop_flags(),
+      Some("x86_64-pc-windows-msvc"),
+    )
+    .unwrap();
+
+    // Windows Installer requires every table's rows to be ordered ascending by
+    // primary key, and for string-typed keys that ordering is by the row's
+    // string-pool id (not the string's text). The `msi` crate does not emit the
+    // system tables in that order, so `create_windows_msi` re-sorts them; real
+    // `msiexec` rejects the database with error 2219 otherwise. Verify the
+    // invariant on the `_Tables` stream, whose single column is the table name's
+    // string id, and on the `Directory` data table's primary-key column.
+    let mut comp = cfb::open(&msi_path).unwrap();
+    let names: Vec<String> = comp
+      .read_storage("/")
+      .unwrap()
+      .map(|e| e.name().to_string())
+      .collect();
+    let read_ids =
+      |comp: &mut cfb::CompoundFile<std::fs::File>, suffix: &str| -> Vec<u16> {
+        let raw = names
+          .iter()
+          .find(|n| msi_demangle_stream_name(n).ends_with(suffix))
+          .cloned()
+          .unwrap();
+        let mut s = comp.open_stream(format!("/{raw}")).unwrap();
+        let mut b = Vec::new();
+        s.read_to_end(&mut b).unwrap();
+        b.chunks_exact(2)
+          .map(|c| u16::from_le_bytes([c[0], c[1]]))
+          .collect()
+      };
+
+    let table_ids = read_ids(&mut comp, "_Tables");
+    assert!(table_ids.len() > 1, "expected multiple tables");
+    assert!(
+      table_ids.windows(2).all(|w| w[0] < w[1]),
+      "_Tables must be strictly ascending by string id: {table_ids:?}"
+    );
+
+    // The Directory table's first column is its primary key (the directory id).
+    // Its run of values (the table is stored column-major, key column first)
+    // must be ascending by string id.
+    let dir_keys = read_ids(&mut comp, "\0Directory");
+    let dir_rows = dir_keys.len() / 3; // Directory, Directory_Parent, DefaultDir
+    let pk: Vec<u16> = dir_keys.into_iter().take(dir_rows).collect();
+    assert!(
+      pk.windows(2).all(|w| w[0] < w[1]),
+      "Directory primary key must be ascending by string id: {pk:?}"
+    );
   }
 }

@@ -203,6 +203,7 @@ bytes = "1.11.1"
 cab = "0.6.0"
 capacity_builder = "0.5.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
+cfb = "0.14.0"
 # Note: Do not use the "clock" feature of chrono, as it links us to CoreFoundation on macOS.
 #       Instead use util::time::utc_now()
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
