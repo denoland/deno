@@ -941,20 +941,21 @@ async fn package_windows_app_dir(
   validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
   validate_launcher_name(&dylib_filename_str, "dylib filename")?;
   let launcher_path = app_dir.join(format!("{}.bat", app_name));
-  // The laufey backend mishandles a `--runtime` path that contains a space — it
-  // fails to load the runtime dylib with error 126 (ERROR_MOD_NOT_FOUND). That
-  // makes every install location with a space in it broken, most importantly the
-  // default MSI target `C:\Program Files\`. Resolve the dylib to its 8.3 short
-  // path (`%%~sI`, e.g. `C:\PROGRA~1\...`) before handing it to laufey so the
-  // path it receives never contains a space. The laufey binary itself is
-  // launched by cmd with normal quoting, which handles spaces fine.
+  // Pass the runtime dylib to laufey by its bare filename, not a full path. The
+  // laufey backend mishandles a `--runtime` path that contains a space (it fails
+  // to load the dylib with error 126, ERROR_MOD_NOT_FOUND, when it re-launches),
+  // which broke every install location with a space in it — most importantly the
+  // default MSI target `C:\Program Files\`. laufey resolves a bare dylib name
+  // against its own executable's directory (where the dylib is co-located), so a
+  // plain filename loads correctly regardless of the install path or the current
+  // working directory. The laufey binary itself is launched by cmd with normal
+  // quoting, which handles spaces fine.
   std::fs::write(
     &launcher_path,
     format!(
       "@echo off\r\n\
        set DIR=%~dp0\r\n\
-       for %%I in (\"%DIR%{dylib}\") do set RUNTIME=%%~sI\r\n\
-       \"%DIR%{laufey_binary}\" --runtime \"%RUNTIME%\" %*\r\n",
+       \"%DIR%{laufey_binary}\" --runtime \"{dylib}\" %*\r\n",
       laufey_binary = laufey_binary_name,
       dylib = dylib_filename_str,
     ),
@@ -3624,6 +3625,36 @@ fn create_windows_msi(
     bail!("Cannot build a .msi from an empty app directory");
   }
 
+  // Locate the laufey launcher in the install root so we can author a Start Menu
+  // shortcut to it (otherwise the installed app is not discoverable — there is no
+  // icon anywhere, only files under Program Files). The shortcut targets the
+  // laufey exe directly with `--runtime <dylib>` so launching it opens the app's
+  // window with no console, mirroring the `.bat` launcher. laufey resolves the
+  // bare dylib name against its own directory, so no path (and no space) is
+  // needed in the arguments.
+  let shortcut_target = rel_files
+    .iter()
+    .zip(files.iter())
+    .find(|((rel, _), _)| {
+      rel.parent() == Some(Path::new(""))
+        && rel.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+          let n = n.to_ascii_lowercase();
+          n.starts_with("laufey") && n.ends_with(".exe")
+        })
+    })
+    .map(|(_, f)| (f.key.clone(), f.component.clone()));
+  let dylib_name = format!("{app_name}.dll");
+
+  // The all-users Start Menu folder that hosts the app shortcut. Only added when
+  // we found a launcher to point at.
+  if shortcut_target.is_some() {
+    directory_rows.push(vec![
+      Value::Str("ProgramMenuFolder".to_string()),
+      Value::Str("TARGETDIR".to_string()),
+      Value::Str(".".to_string()),
+    ]);
+  }
+
   // msidbComponentAttributes64bit (256): mark components 64-bit so they
   // resolve ProgramFiles64Folder and the 64-bit registry view.
   const COMPONENT_64BIT: i32 = 256;
@@ -3803,6 +3834,32 @@ fn create_windows_msi(
       Column::build("Value").text_string(0),
     ],
   )?;
+  if shortcut_target.is_some() {
+    package.create_table(
+      "Shortcut",
+      vec![
+        Column::build("Shortcut").primary_key().id_string(72),
+        Column::build("Directory_").id_string(72),
+        Column::build("Name")
+          .category(msi::Category::Filename)
+          .string(128),
+        Column::build("Component_").id_string(72),
+        Column::build("Target")
+          .category(msi::Category::Shortcut)
+          .string(72),
+        Column::build("Arguments")
+          .nullable()
+          .category(msi::Category::Formatted)
+          .string(255),
+        Column::build("Description").nullable().text_string(255),
+        Column::build("Hotkey").nullable().int16(),
+        Column::build("Icon_").nullable().id_string(72),
+        Column::build("IconIndex").nullable().int16(),
+        Column::build("ShowCmd").nullable().int16(),
+        Column::build("WkDir").nullable().id_string(72),
+      ],
+    )?;
+  }
   for table in ["InstallExecuteSequence", "InstallUISequence"] {
     package.create_table(
       table,
@@ -3849,6 +3906,25 @@ fn create_windows_msi(
     Value::Null,
     Value::Null,
   ]))?;
+  if let Some((launcher_key, launcher_comp)) = &shortcut_target {
+    short_counter += 1;
+    let short_name = msi_short_name(short_counter, &app_name, false);
+    package.insert_rows(Insert::into("Shortcut").row(vec![
+      Value::Str("AppShortcut".to_string()),
+      Value::Str("ProgramMenuFolder".to_string()),
+      Value::Str(format!("{short_name}|{app_name}")),
+      Value::Str(launcher_comp.clone()),
+      // Non-advertised shortcut: `[#key]` resolves to the installed exe's path.
+      Value::Str(format!("[#{launcher_key}]")),
+      Value::Str(format!("--runtime \"{dylib_name}\"")),
+      Value::Null,                          // Description
+      Value::Null,                          // Hotkey
+      Value::Null,                          // Icon_
+      Value::Null,                          // IconIndex
+      Value::Null,                          // ShowCmd
+      Value::Str("INSTALLDIR".to_string()), // WkDir
+    ]))?;
+  }
 
   let product_code =
     msi_derive_guid(&identifier, &format!("product:{version}"));
@@ -3886,7 +3962,7 @@ fn create_windows_msi(
   ]))?;
 
   // Standard action sequences for a basic per-machine install + uninstall.
-  let exec_seq: &[(&str, i32)] = &[
+  let mut exec_seq: Vec<(&str, i32)> = vec![
     ("CostInitialize", 800),
     ("FileCost", 900),
     ("CostFinalize", 1000),
@@ -3901,6 +3977,11 @@ fn create_windows_msi(
     ("PublishProduct", 6400),
     ("InstallFinalize", 6600),
   ];
+  if shortcut_target.is_some() {
+    // RemoveShortcuts on uninstall; CreateShortcuts after the files land.
+    exec_seq.push(("RemoveShortcuts", 3800));
+    exec_seq.push(("CreateShortcuts", 4500));
+  }
   package.insert_rows(
     Insert::into("InstallExecuteSequence").rows(
       exec_seq
@@ -6215,5 +6296,53 @@ def456  other.zip
       pk.windows(2).all(|w| w[0] < w[1]),
       "Directory primary key must be ascending by string id: {pk:?}"
     );
+  }
+
+  #[test]
+  fn msi_authors_start_menu_shortcut() {
+    let tmp = tempfile::tempdir().unwrap();
+    // fake_windows_app_dir stages a `laufey.exe`, which is detected as the
+    // launcher the shortcut points at.
+    let app_dir = fake_windows_app_dir(tmp.path(), "MyApp");
+    let msi_path = tmp.path().join("MyApp.msi");
+    create_windows_msi(
+      &app_dir,
+      &msi_path,
+      &empty_desktop_flags(),
+      Some("x86_64-pc-windows-msvc"),
+    )
+    .unwrap();
+    let mut package = msi::open(&msi_path).unwrap();
+
+    // The all-users Start Menu folder must exist for the shortcut to land in it.
+    let dirs: Vec<String> = package
+      .select_rows(msi::Select::table("Directory"))
+      .unwrap()
+      .map(|r| r["Directory"].as_str().unwrap().to_string())
+      .collect();
+    assert!(dirs.iter().any(|d| d == "ProgramMenuFolder"));
+
+    // Exactly one shortcut, targeting the laufey launcher (`[#fkey]`) with
+    // `--runtime "<app>.dll"` and running from INSTALLDIR — no console window and
+    // no spaced path handed to laufey.
+    let shortcuts: Vec<_> = package
+      .select_rows(msi::Select::table("Shortcut"))
+      .unwrap()
+      .collect();
+    assert_eq!(shortcuts.len(), 1);
+    let s = &shortcuts[0];
+    assert_eq!(s["Directory_"].as_str(), Some("ProgramMenuFolder"));
+    assert_eq!(s["Arguments"].as_str(), Some("--runtime \"MyApp.dll\""));
+    assert_eq!(s["WkDir"].as_str(), Some("INSTALLDIR"));
+    assert!(s["Target"].as_str().unwrap().starts_with("[#"));
+
+    // CreateShortcuts/RemoveShortcuts must be sequenced or the table is ignored.
+    let actions: Vec<String> = package
+      .select_rows(msi::Select::table("InstallExecuteSequence"))
+      .unwrap()
+      .map(|r| r["Action"].as_str().unwrap().to_string())
+      .collect();
+    assert!(actions.iter().any(|a| a == "CreateShortcuts"));
+    assert!(actions.iter().any(|a| a == "RemoveShortcuts"));
   }
 }
