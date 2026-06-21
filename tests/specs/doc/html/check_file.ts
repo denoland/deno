@@ -15,13 +15,6 @@ const searchInput = {
   focus() {},
 };
 const contentDiv = { style: {} };
-const currentFileMeta = {
-  attributes: {
-    content: {
-      value: ".",
-    },
-  },
-};
 const searchResultsDiv = {
   style: {},
   set innerHTML(value: string) {
@@ -67,9 +60,6 @@ const searchResultsDiv = {
     }
     if (selector === "#searchResults") {
       return searchResultsDiv;
-    }
-    if (selector === "meta[name='doc-current-file']") {
-      return currentFileMeta;
     }
     throw new Error(`Unexpected selector: ${selector}`);
   },
