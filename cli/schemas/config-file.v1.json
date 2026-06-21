@@ -819,14 +819,14 @@
           "type": "boolean"
         },
         "sortNamedImports": {
-          "description": "Whether to sort named imports alphabetically within an import statement.",
-          "default": true,
-          "type": "boolean"
+          "description": "How to sort named imports within an import statement. \"caseInsensitive\" (the default) sorts ignoring case, \"caseSensitive\" sorts with uppercase before lowercase, and \"maintain\" preserves the source order.",
+          "default": "caseInsensitive",
+          "enum": ["maintain", "caseSensitive", "caseInsensitive"]
         },
         "sortNamedExports": {
-          "description": "Whether to sort named exports alphabetically within an export statement.",
-          "default": true,
-          "type": "boolean"
+          "description": "How to sort named exports within an export statement. \"caseInsensitive\" (the default) sorts ignoring case, \"caseSensitive\" sorts with uppercase before lowercase, and \"maintain\" preserves the source order.",
+          "default": "caseInsensitive",
+          "enum": ["maintain", "caseSensitive", "caseInsensitive"]
         },
         "options": {
           "type": "object",

@@ -389,6 +389,14 @@ pub enum VueComponentCase {
   KebabCase,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub enum SortOrder {
+  Maintain,
+  CaseSensitive,
+  CaseInsensitive,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
@@ -415,8 +423,8 @@ pub struct FmtOptionsConfig {
   pub space_surrounding_properties: Option<bool>,
   pub vue_component_case: Option<VueComponentCase>,
   pub angular_next_control_flow_same_line: Option<bool>,
-  pub sort_named_imports: Option<bool>,
-  pub sort_named_exports: Option<bool>,
+  pub sort_named_imports: Option<SortOrder>,
+  pub sort_named_exports: Option<SortOrder>,
 }
 
 impl FmtOptionsConfig {
@@ -523,8 +531,8 @@ struct SerializedFmtConfig {
   pub space_surrounding_properties: Option<bool>,
   pub vue_component_case: Option<VueComponentCase>,
   pub angular_next_control_flow_same_line: Option<bool>,
-  pub sort_named_imports: Option<bool>,
-  pub sort_named_exports: Option<bool>,
+  pub sort_named_imports: Option<SortOrder>,
+  pub sort_named_exports: Option<SortOrder>,
   #[serde(rename = "options")]
   pub deprecated_options: FmtOptionsConfig,
   pub include: Option<Vec<String>>,
@@ -2587,8 +2595,8 @@ mod tests {
         "spaceSurroundingProperties": true,
         "vueComponentCase": "pascal-case",
         "angularNextControlFlowSameLine": false,
-        "sortNamedImports": false,
-        "sortNamedExports": false
+        "sortNamedImports": "maintain",
+        "sortNamedExports": "caseSensitive"
       },
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
@@ -2665,8 +2673,8 @@ mod tests {
           space_surrounding_properties: Some(true),
           vue_component_case: Some(VueComponentCase::PascalCase),
           angular_next_control_flow_same_line: Some(false),
-          sort_named_imports: Some(false),
-          sort_named_exports: Some(false),
+          sort_named_imports: Some(SortOrder::Maintain),
+          sort_named_exports: Some(SortOrder::CaseSensitive),
         },
       }
     );
