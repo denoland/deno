@@ -19,17 +19,27 @@ rustflags = [
   "link-arg=/OPT:ICF",
 ]
 
+# Emit the modern chained-fixups format (LC_DYLD_CHAINED_FIXUPS) instead of the
+# legacy LC_DYLD_INFO_ONLY rebase/bind opcode stream. dyld applies chained
+# fixups lazily per-page instead of eagerly walking every relocation at launch,
+# which measurably cuts pre-main startup time on our ~116MB binary. Requires a
+# macOS 12 deployment target (older dyld can't parse the format); lld only emits
+# it automatically at min 13.0, so we request it explicitly to keep macOS 12.
+[env]
+MACOSX_DEPLOYMENT_TARGET = "12.0"
+
 [target.x86_64-apple-darwin]
 rustflags = [
   "-C",
-  "link-args=-weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+  "link-args=-Wl,-fixup_chains -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
 ]
 
 [target.aarch64-apple-darwin]
 rustflags = [
   "-C",
   # --icf=safe folds identical (address-insignificant) functions; ~6MB (~10%) idle RSS win, measured on release.
-  "link-args=-fuse-ld=lld -Wl,--icf=safe -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+  # -fixup_chains: see [env] note above (chained fixups -> faster pre-main launch).
+  "link-args=-fuse-ld=lld -Wl,--icf=safe -Wl,-fixup_chains -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
 ]
 
 [target.'cfg(all())']
