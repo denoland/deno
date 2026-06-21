@@ -941,12 +941,20 @@ async fn package_windows_app_dir(
   validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
   validate_launcher_name(&dylib_filename_str, "dylib filename")?;
   let launcher_path = app_dir.join(format!("{}.bat", app_name));
+  // The laufey backend mishandles a `--runtime` path that contains a space — it
+  // fails to load the runtime dylib with error 126 (ERROR_MOD_NOT_FOUND). That
+  // makes every install location with a space in it broken, most importantly the
+  // default MSI target `C:\Program Files\`. Resolve the dylib to its 8.3 short
+  // path (`%%~sI`, e.g. `C:\PROGRA~1\...`) before handing it to laufey so the
+  // path it receives never contains a space. The laufey binary itself is
+  // launched by cmd with normal quoting, which handles spaces fine.
   std::fs::write(
     &launcher_path,
     format!(
       "@echo off\r\n\
        set DIR=%~dp0\r\n\
-       \"%DIR%{laufey_binary}\" --runtime \"%DIR%{dylib}\" %*\r\n",
+       for %%I in (\"%DIR%{dylib}\") do set RUNTIME=%%~sI\r\n\
+       \"%DIR%{laufey_binary}\" --runtime \"%RUNTIME%\" %*\r\n",
       laufey_binary = laufey_binary_name,
       dylib = dylib_filename_str,
     ),
