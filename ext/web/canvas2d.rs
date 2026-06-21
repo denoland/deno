@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -189,6 +188,59 @@ impl DrawingBackend {
   }
 }
 
+#[derive(Clone)]
+struct DrawingState {
+  fill_color: [u8; 4],
+  stroke_color: [u8; 4],
+  global_alpha: f32,
+  font_state: FontState,
+  text_align: TextAlign,
+  text_baseline: TextBaseline,
+  lang: String,
+  global_composite_operation: String,
+  filter: String,
+  image_smoothing_enabled: bool,
+  image_smoothing_quality: ImageSmoothingQuality,
+  line_width: f64,
+  line_cap: LineCap,
+  line_join: LineJoin,
+  miter_limit: f64,
+  line_dash_offset: f64,
+  shadow_blur: f64,
+  shadow_color: String,
+  shadow_offset_x: f64,
+  shadow_offset_y: f64,
+  transform: kurbo::Affine,
+}
+
+impl Default for DrawingState {
+  fn default() -> Self {
+    Self {
+      fill_color: [0, 0, 0, 255],
+      stroke_color: [0, 0, 0, 255],
+      global_alpha: 1.0,
+      font_state: FontState::default(),
+      text_align: TextAlign::default(),
+      text_baseline: TextBaseline::default(),
+      lang: String::from("inherit"),
+      global_composite_operation: String::from("source-over"),
+      filter: String::from("none"),
+      image_smoothing_enabled: true,
+      image_smoothing_quality: ImageSmoothingQuality::default(),
+      line_width: 1.0,
+      line_cap: LineCap::default(),
+      line_join: LineJoin::default(),
+      miter_limit: 10.0,
+      line_dash_offset: 0.0,
+      shadow_blur: 0.0,
+      shadow_color: String::from("rgba(0, 0, 0, 0)"),
+      shadow_offset_x: 0.0,
+      shadow_offset_y: 0.0,
+      transform: kurbo::Affine::IDENTITY,
+    }
+  }
+}
+
 pub struct OffscreenCanvasRenderingContext2D {
   canvas: v8::Global<v8::Object>,
   data: deno_webgpu::canvas::ContextData,
@@ -201,29 +253,8 @@ pub struct OffscreenCanvasRenderingContext2D {
   #[allow(dead_code, reason = "reserved for text rasterization")]
   swash_cache: Arc<Mutex<SwashCache>>,
 
-  fill_color: Cell<[u8; 4]>,
-  stroke_color: Cell<[u8; 4]>,
-  global_alpha: Cell<f32>,
-  font_state: RefCell<FontState>,
-  text_align: Cell<TextAlign>,
-  text_baseline: Cell<TextBaseline>,
-  lang: RefCell<String>,
-
-  // TODO(petamoriken): stored-only state. These are tracked to satisfy the API
-  // surface but are not yet applied during rendering.
-  global_composite_operation: RefCell<String>,
-  filter: RefCell<String>,
-  image_smoothing_enabled: Cell<bool>,
-  image_smoothing_quality: Cell<ImageSmoothingQuality>,
-  line_width: Cell<f64>,
-  line_cap: Cell<LineCap>,
-  line_join: Cell<LineJoin>,
-  miter_limit: Cell<f64>,
-  line_dash_offset: Cell<f64>,
-  shadow_blur: Cell<f64>,
-  shadow_color: RefCell<String>,
-  shadow_offset_x: Cell<f64>,
-  shadow_offset_y: Cell<f64>,
+  state: RefCell<DrawingState>,
+  state_stack: RefCell<Vec<DrawingState>>,
 
   settings: Canvas2DSettings,
 }
@@ -253,60 +284,60 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn fill_style(&self) -> String {
-    rgba8_to_css(self.fill_color.get())
+    rgba8_to_css(self.state.borrow().fill_color)
   }
 
   #[setter]
   fn fill_style(&self, #[webidl] value: String) {
     if let Ok(c) = parse_css_color(&value) {
-      self.fill_color.set(c);
+      self.state.borrow_mut().fill_color = c;
     }
   }
 
   #[getter]
   #[string]
   fn stroke_style(&self) -> String {
-    rgba8_to_css(self.stroke_color.get())
+    rgba8_to_css(self.state.borrow().stroke_color)
   }
 
   #[setter]
   fn stroke_style(&self, #[webidl] value: String) {
     if let Ok(c) = parse_css_color(&value) {
-      self.stroke_color.set(c);
+      self.state.borrow_mut().stroke_color = c;
     }
   }
 
   #[getter]
   fn global_alpha(&self) -> f64 {
-    self.global_alpha.get() as f64
+    self.state.borrow().global_alpha as f64
   }
 
   #[setter]
   fn global_alpha(&self, #[webidl] value: f64) {
-    self.global_alpha.set(value.clamp(0.0, 1.0) as f32);
+    self.state.borrow_mut().global_alpha = value.clamp(0.0, 1.0) as f32;
   }
 
   /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-font>
   #[getter]
   #[string]
   fn font(&self) -> String {
-    self.font_state.borrow().to_css_string()
+    self.state.borrow().font_state.to_css_string()
   }
 
   /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-font>
   #[setter]
   fn font(&self, #[webidl] value: String) {
     if let Some(state) = parse_css_font(&value) {
-      let mut fstate = self.font_state.borrow_mut();
+      let mut s = self.state.borrow_mut();
       // The font shorthand only covers style, variant-caps, weight, stretch,
       // size, line-height and family. The other text drawing styles are
       // independent attributes and must survive a font change.
-      *fstate = FontState {
-        direction: fstate.direction,
-        font_kerning: fstate.font_kerning,
-        letter_spacing: fstate.letter_spacing,
-        word_spacing: fstate.word_spacing,
-        text_rendering: fstate.text_rendering,
+      s.font_state = FontState {
+        direction: s.font_state.direction,
+        font_kerning: s.font_state.font_kerning,
+        letter_spacing: s.font_state.letter_spacing,
+        word_spacing: s.font_state.word_spacing,
+        text_rendering: s.font_state.text_rendering,
         ..state
       };
     }
@@ -315,30 +346,30 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn text_align(&self) -> &'static str {
-    self.text_align.get().as_str()
+    self.state.borrow().text_align.as_str()
   }
 
   #[setter]
   fn text_align(&self, #[webidl] value: String) {
-    self.text_align.set(match value.as_str() {
+    self.state.borrow_mut().text_align = match value.as_str() {
       "start" => TextAlign::Start,
       "end" => TextAlign::End,
       "left" => TextAlign::Left,
       "right" => TextAlign::Right,
       "center" => TextAlign::Center,
       _ => return,
-    });
+    };
   }
 
   #[getter]
   #[string]
   fn text_baseline(&self) -> &'static str {
-    self.text_baseline.get().as_str()
+    self.state.borrow().text_baseline.as_str()
   }
 
   #[setter]
   fn text_baseline(&self, #[webidl] value: String) {
-    self.text_baseline.set(match value.as_str() {
+    self.state.borrow_mut().text_baseline = match value.as_str() {
       "top" => TextBaseline::Top,
       "hanging" => TextBaseline::Hanging,
       "middle" => TextBaseline::Middle,
@@ -346,14 +377,14 @@ impl OffscreenCanvasRenderingContext2D {
       "ideographic" => TextBaseline::Ideographic,
       "bottom" => TextBaseline::Bottom,
       _ => return,
-    });
+    };
   }
 
   /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-direction>
   #[getter]
   #[string]
   fn direction(&self) -> &'static str {
-    self.font_state.borrow().direction.as_str()
+    self.state.borrow().font_state.direction.as_str()
   }
 
   #[setter]
@@ -364,26 +395,26 @@ impl OffscreenCanvasRenderingContext2D {
       "rtl" => crate::css::font::TextDirection::Rtl,
       _ => return,
     };
-    self.font_state.borrow_mut().direction = d;
+    self.state.borrow_mut().font_state.direction = d;
   }
 
   /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-lang>
   #[getter]
   #[string]
   fn lang(&self) -> String {
-    self.lang.borrow().clone()
+    self.state.borrow().lang.clone()
   }
 
   #[setter]
   fn lang(&self, #[webidl] value: String) {
-    *self.lang.borrow_mut() = value;
+    self.state.borrow_mut().lang = value;
   }
 
   /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-fontkerning>
   #[getter]
   #[string]
   fn font_kerning(&self) -> &'static str {
-    self.font_state.borrow().font_kerning.as_str()
+    self.state.borrow().font_state.font_kerning.as_str()
   }
 
   #[setter]
@@ -394,14 +425,14 @@ impl OffscreenCanvasRenderingContext2D {
       "none" => crate::css::font::FontKerning::None,
       _ => return,
     };
-    self.font_state.borrow_mut().font_kerning = k;
+    self.state.borrow_mut().font_state.font_kerning = k;
   }
 
   /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-fontstretch>
   #[getter]
   #[string]
   fn font_stretch(&self) -> &'static str {
-    match self.font_state.borrow().stretch {
+    match self.state.borrow().font_state.stretch {
       cosmic_text::Stretch::UltraCondensed => "ultra-condensed",
       cosmic_text::Stretch::ExtraCondensed => "extra-condensed",
       cosmic_text::Stretch::Condensed => "condensed",
@@ -417,7 +448,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[setter]
   fn font_stretch(&self, #[webidl] value: String) {
     if let Some(s) = crate::css::font::parse_css_stretch(&value) {
-      self.font_state.borrow_mut().stretch = s;
+      self.state.borrow_mut().font_state.stretch = s;
     }
   }
 
@@ -425,7 +456,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn font_variant_caps(&self) -> &'static str {
-    self.font_state.borrow().font_variant_caps.as_str()
+    self.state.borrow().font_state.font_variant_caps.as_str()
   }
 
   #[setter]
@@ -440,20 +471,20 @@ impl OffscreenCanvasRenderingContext2D {
       "titling-caps" => crate::css::font::FontVariantCaps::TitlingCaps,
       _ => return,
     };
-    self.font_state.borrow_mut().font_variant_caps = v;
+    self.state.borrow_mut().font_state.font_variant_caps = v;
   }
 
   /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-letterspacing>
   #[getter]
   #[string]
   fn letter_spacing(&self) -> String {
-    self.font_state.borrow().letter_spacing.to_css_string()
+    self.state.borrow().font_state.letter_spacing.to_css_string()
   }
 
   #[setter]
   fn letter_spacing(&self, #[webidl] value: String) {
     if let Some(spacing) = parse_css_spacing(&value) {
-      self.font_state.borrow_mut().letter_spacing = spacing;
+      self.state.borrow_mut().font_state.letter_spacing = spacing;
     }
   }
 
@@ -461,13 +492,13 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn word_spacing(&self) -> String {
-    self.font_state.borrow().word_spacing.to_css_string()
+    self.state.borrow().font_state.word_spacing.to_css_string()
   }
 
   #[setter]
   fn word_spacing(&self, #[webidl] value: String) {
     if let Some(spacing) = parse_css_spacing(&value) {
-      self.font_state.borrow_mut().word_spacing = spacing;
+      self.state.borrow_mut().font_state.word_spacing = spacing;
     }
   }
 
@@ -475,7 +506,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn text_rendering(&self) -> &'static str {
-    self.font_state.borrow().text_rendering.as_str()
+    self.state.borrow().font_state.text_rendering.as_str()
   }
 
   #[setter]
@@ -491,7 +522,7 @@ impl OffscreenCanvasRenderingContext2D {
       }
       _ => return,
     };
-    self.font_state.borrow_mut().text_rendering = r;
+    self.state.borrow_mut().font_state.text_rendering = r;
   }
 
   #[fast]
@@ -499,16 +530,19 @@ impl OffscreenCanvasRenderingContext2D {
     if w == 0.0 || h == 0.0 {
       return;
     }
-    let [r, g, b, a] = self.fill_color.get();
+    let state = self.state.borrow();
+    let [r, g, b, a] = state.fill_color;
     let alpha =
-      (a as f32 / 255.0 * self.global_alpha.get() * 255.0).round() as u8;
+      (a as f32 / 255.0 * state.global_alpha * 255.0).round() as u8;
     let color = peniko::Color::from_rgba8(r, g, b, alpha);
+    let transform = state.transform;
+    drop(state);
     let rect = kurbo::Rect::new(x, y, x + w, y + h);
     match &mut *self.drawing.borrow_mut() {
       DrawingBackend::Vello(scene) => {
         scene.fill(
           peniko::Fill::NonZero,
-          kurbo::Affine::IDENTITY,
+          transform,
           color,
           None,
           &rect,
@@ -532,12 +566,13 @@ impl OffscreenCanvasRenderingContext2D {
     } else {
       peniko::Color::from_rgb8(0, 0, 0)
     };
+    let transform = self.state.borrow().transform;
     let rect = kurbo::Rect::new(x, y, x + w, y + h);
     match &mut *self.drawing.borrow_mut() {
       DrawingBackend::Vello(scene) => {
         scene.fill(
           peniko::Fill::NonZero,
-          kurbo::Affine::IDENTITY,
+          transform,
           clear_color,
           None,
           &rect,
@@ -580,8 +615,8 @@ impl OffscreenCanvasRenderingContext2D {
   fn measure_text(&self, #[string] text: &str) -> TextMetrics {
     compute_text_metrics(
       text,
-      &self.font_state.borrow(),
-      self.text_align.get(),
+      &self.state.borrow().font_state,
+      self.state.borrow().text_align,
       &self.font_system,
     )
   }
@@ -591,7 +626,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn global_composite_operation(&self) -> String {
-    self.global_composite_operation.borrow().clone()
+    self.state.borrow().global_composite_operation.clone()
   }
 
   #[setter]
@@ -625,184 +660,187 @@ impl OffscreenCanvasRenderingContext2D {
         | "source-over"
         | "xor"
     ) {
-      *self.global_composite_operation.borrow_mut() = value;
+      self.state.borrow_mut().global_composite_operation = value;
     }
   }
 
   #[getter]
   #[string]
   fn filter(&self) -> String {
-    self.filter.borrow().clone()
+    self.state.borrow().filter.clone()
   }
 
   #[setter]
   fn filter(&self, #[webidl] value: String) {
-    *self.filter.borrow_mut() = value;
+    self.state.borrow_mut().filter = value;
   }
 
   #[getter]
   fn image_smoothing_enabled(&self) -> bool {
-    self.image_smoothing_enabled.get()
+    self.state.borrow().image_smoothing_enabled
   }
 
   #[setter]
   fn image_smoothing_enabled(&self, #[webidl] value: bool) {
-    self.image_smoothing_enabled.set(value);
+    self.state.borrow_mut().image_smoothing_enabled = value;
   }
 
   #[getter]
   #[string]
   fn image_smoothing_quality(&self) -> &'static str {
-    self.image_smoothing_quality.get().as_str()
+    self.state.borrow().image_smoothing_quality.as_str()
   }
 
   #[setter]
   fn image_smoothing_quality(&self, #[webidl] value: String) {
-    self.image_smoothing_quality.set(match value.as_str() {
+    self.state.borrow_mut().image_smoothing_quality = match value.as_str() {
       "low" => ImageSmoothingQuality::Low,
       "medium" => ImageSmoothingQuality::Medium,
       "high" => ImageSmoothingQuality::High,
       _ => return,
-    });
+    };
   }
 
   #[getter]
   fn line_width(&self) -> f64 {
-    self.line_width.get()
+    self.state.borrow().line_width
   }
 
   #[setter]
   fn line_width(&self, #[webidl] value: f64) {
     if value.is_finite() && value > 0.0 {
-      self.line_width.set(value);
+      self.state.borrow_mut().line_width = value;
     }
   }
 
   #[getter]
   #[string]
   fn line_cap(&self) -> &'static str {
-    self.line_cap.get().as_str()
+    self.state.borrow().line_cap.as_str()
   }
 
   #[setter]
   fn line_cap(&self, #[webidl] value: String) {
-    self.line_cap.set(match value.as_str() {
+    self.state.borrow_mut().line_cap = match value.as_str() {
       "butt" => LineCap::Butt,
       "round" => LineCap::Round,
       "square" => LineCap::Square,
       _ => return,
-    });
+    };
   }
 
   #[getter]
   #[string]
   fn line_join(&self) -> &'static str {
-    self.line_join.get().as_str()
+    self.state.borrow().line_join.as_str()
   }
 
   #[setter]
   fn line_join(&self, #[webidl] value: String) {
-    self.line_join.set(match value.as_str() {
+    self.state.borrow_mut().line_join = match value.as_str() {
       "round" => LineJoin::Round,
       "bevel" => LineJoin::Bevel,
       "miter" => LineJoin::Miter,
       _ => return,
-    });
+    };
   }
 
   #[getter]
   fn miter_limit(&self) -> f64 {
-    self.miter_limit.get()
+    self.state.borrow().miter_limit
   }
 
   #[setter]
   fn miter_limit(&self, #[webidl] value: f64) {
     if value.is_finite() && value > 0.0 {
-      self.miter_limit.set(value);
+      self.state.borrow_mut().miter_limit = value;
     }
   }
 
   #[getter]
   fn line_dash_offset(&self) -> f64 {
-    self.line_dash_offset.get()
+    self.state.borrow().line_dash_offset
   }
 
   #[setter]
   fn line_dash_offset(&self, #[webidl] value: f64) {
     if value.is_finite() {
-      self.line_dash_offset.set(value);
+      self.state.borrow_mut().line_dash_offset = value;
     }
   }
 
   #[getter]
   fn shadow_blur(&self) -> f64 {
-    self.shadow_blur.get()
+    self.state.borrow().shadow_blur
   }
 
   #[setter]
   fn shadow_blur(&self, #[webidl] value: f64) {
     if value.is_finite() && value >= 0.0 {
-      self.shadow_blur.set(value);
+      self.state.borrow_mut().shadow_blur = value;
     }
   }
 
   #[getter]
   #[string]
   fn shadow_color(&self) -> String {
-    self.shadow_color.borrow().clone()
+    self.state.borrow().shadow_color.clone()
   }
 
   #[setter]
   fn shadow_color(&self, #[webidl] value: String) {
     if parse_css_color(&value).is_ok() {
-      *self.shadow_color.borrow_mut() = value;
+      self.state.borrow_mut().shadow_color = value;
     }
   }
 
   #[getter]
   fn shadow_offset_x(&self) -> f64 {
-    self.shadow_offset_x.get()
+    self.state.borrow().shadow_offset_x
   }
 
   #[setter]
   fn shadow_offset_x(&self, #[webidl] value: f64) {
     if value.is_finite() {
-      self.shadow_offset_x.set(value);
+      self.state.borrow_mut().shadow_offset_x = value;
     }
   }
 
   #[getter]
   fn shadow_offset_y(&self) -> f64 {
-    self.shadow_offset_y.get()
+    self.state.borrow().shadow_offset_y
   }
 
   #[setter]
   fn shadow_offset_y(&self, #[webidl] value: f64) {
     if value.is_finite() {
-      self.shadow_offset_y.set(value);
+      self.state.borrow_mut().shadow_offset_y = value;
     }
   }
 
-  // TODO(petamoriken): the following methods are not yet implemented and throw a
-  // NotSupportedError. Replace each stub body with a real implementation.
   #[fast]
-  fn save(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("save"))
+  fn save(&self) {
+    self.state_stack.borrow_mut().push(self.state.borrow().clone());
   }
 
   #[fast]
-  fn restore(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("restore"))
+  fn restore(&self) {
+    if let Some(saved) = self.state_stack.borrow_mut().pop() {
+      *self.state.borrow_mut() = saved;
+    }
   }
 
   #[fast]
-  fn reset(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("reset"))
+  fn reset(&self) {
+    *self.state.borrow_mut() = DrawingState::default();
+    self.state_stack.borrow_mut().clear();
+    let (width, height) = self.data.dimensions();
+    self.drawing.borrow_mut().reset(width, height);
   }
 
   #[fast]
-  fn is_context_lost(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("isContextLost"))
+  fn is_context_lost(&self) -> bool {
+    false
   }
 
   #[fast]
@@ -890,39 +928,119 @@ impl OffscreenCanvasRenderingContext2D {
     Err(Canvas2DError::NotSupported("isPointInStroke"))
   }
 
-  #[fast]
-  fn get_transform(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("getTransform"))
+  fn get_transform<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+  ) -> v8::Local<'a, v8::Object> {
+    let [a, b, c, d, e, f] = self.state.borrow().transform.as_coeffs();
+    let obj = deno_core::cppgc::make_cppgc_empty_object::<
+      crate::geometry::DOMMatrix,
+    >(scope);
+    deno_core::cppgc::wrap_object(
+      scope,
+      obj,
+      crate::geometry::DOMMatrix::new_2d(a, b, c, d, e, f),
+    )
+  }
+
+  fn set_transform<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    a_or_init: Option<v8::Local<'s, v8::Value>>,
+    #[webidl] b: Option<UnrestrictedDouble>,
+    #[webidl] c: Option<UnrestrictedDouble>,
+    #[webidl] d: Option<UnrestrictedDouble>,
+    #[webidl] e: Option<UnrestrictedDouble>,
+    #[webidl] f_val: Option<UnrestrictedDouble>,
+  ) -> Result<(), JsErrorBox> {
+    let (a, b, c, d, e, f) = match a_or_init {
+      Some(v) if v.is_number() => {
+        let a = v.number_value(scope).unwrap_or(f64::NAN);
+        (
+          a,
+          b.map(|x| *x).unwrap_or(0.0),
+          c.map(|x| *x).unwrap_or(0.0),
+          d.map(|x| *x).unwrap_or(0.0),
+          e.map(|x| *x).unwrap_or(0.0),
+          f_val.map(|x| *x).unwrap_or(0.0),
+        )
+      }
+      arg => {
+        let v = arg.unwrap_or_else(|| v8::undefined(scope).into());
+        let init = crate::geometry::DOMMatrix2DInit::convert(
+          scope,
+          v,
+          Default::default(),
+          (|| "".into()).into(),
+          &Default::default(),
+        )
+        .map_err(|e| JsErrorBox::from_err(e))?;
+        init.to_affine().map_err(JsErrorBox::from_err)?
+      }
+    };
+    self.state.borrow_mut().transform = kurbo::Affine::new([a, b, c, d, e, f]);
+    Ok(())
   }
 
   #[fast]
-  fn set_transform(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("setTransform"))
+  fn reset_transform(&self) {
+    self.state.borrow_mut().transform = kurbo::Affine::IDENTITY;
   }
 
-  #[fast]
-  fn reset_transform(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("resetTransform"))
+  fn transform(
+    &self,
+    #[webidl] a: UnrestrictedDouble,
+    #[webidl] b: UnrestrictedDouble,
+    #[webidl] c: UnrestrictedDouble,
+    #[webidl] d: UnrestrictedDouble,
+    #[webidl] e: UnrestrictedDouble,
+    #[webidl] f: UnrestrictedDouble,
+  ) {
+    if !a.is_finite()
+      || !b.is_finite()
+      || !c.is_finite()
+      || !d.is_finite()
+      || !e.is_finite()
+      || !f.is_finite()
+    {
+      return;
+    }
+    let m = kurbo::Affine::new([*a, *b, *c, *d, *e, *f]);
+    let mut state = self.state.borrow_mut();
+    state.transform = state.transform * m;
   }
 
-  #[fast]
-  fn transform(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("transform"))
+  fn scale(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+  ) {
+    if !x.is_finite() || !y.is_finite() {
+      return;
+    }
+    let mut state = self.state.borrow_mut();
+    state.transform =
+      state.transform * kurbo::Affine::scale_non_uniform(*x, *y);
   }
 
-  #[fast]
-  fn scale(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("scale"))
+  fn rotate(&self, #[webidl] angle: UnrestrictedDouble) {
+    if !angle.is_finite() {
+      return;
+    }
+    let mut state = self.state.borrow_mut();
+    state.transform = state.transform * kurbo::Affine::rotate(*angle);
   }
 
-  #[fast]
-  fn rotate(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("rotate"))
-  }
-
-  #[fast]
-  fn translate(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("translate"))
+  fn translate(
+    &self,
+    #[webidl] x: UnrestrictedDouble,
+    #[webidl] y: UnrestrictedDouble,
+  ) {
+    if !x.is_finite() || !y.is_finite() {
+      return;
+    }
+    let mut state = self.state.borrow_mut();
+    state.transform = state.transform * kurbo::Affine::translate((*x, *y));
   }
 
   #[fast]
@@ -989,7 +1107,7 @@ impl OffscreenCanvasRenderingContext2D {
     {
       return;
     }
-    let fstate = self.font_state.borrow();
+    let fstate = self.state.borrow().font_state.clone();
     let mut fs = self.font_system.lock().unwrap();
 
     let metrics = Metrics::new(fstate.size, fstate.size * 1.2);
@@ -1000,12 +1118,17 @@ impl OffscreenCanvasRenderingContext2D {
     buf.set_text(text, &attrs, Shaping::Advanced, None);
     buf.shape_until_scroll(&mut fs, false);
 
-    let [r, g, b, a] = self.fill_color.get();
+    let state = self.state.borrow();
+    let [r, g, b, a] = state.fill_color;
     let alpha =
-      (a as f32 / 255.0 * self.global_alpha.get() * 255.0).round() as u8;
+      (a as f32 / 255.0 * state.global_alpha * 255.0).round() as u8;
     let brush = peniko::Color::from_rgba8(r, g, b, alpha);
+    let text_align = state.text_align;
+    let text_baseline = state.text_baseline;
+    let transform = state.transform;
+    drop(state);
 
-    let baseline_y = compute_baseline_y(y, &buf, self.text_baseline.get());
+    let baseline_y = compute_baseline_y(y, &buf, text_baseline);
 
     // wordSpacing is not supported by cosmic-text, so the advance of each
     // word separator is widened manually by shifting the following glyphs.
@@ -1043,7 +1166,7 @@ impl OffscreenCanvasRenderingContext2D {
     let scaled_width = line_width * x_scale;
 
     let rtl = fstate.direction == TextDirection::Rtl;
-    let x_offset = match self.text_align.get() {
+    let x_offset = match text_align {
       TextAlign::Left => 0.0,
       TextAlign::Right => -scaled_width,
       TextAlign::Center => -scaled_width / 2.0,
@@ -1096,6 +1219,7 @@ impl OffscreenCanvasRenderingContext2D {
             scene
               .draw_glyphs(&font)
               .font_size(font_size)
+              .transform(transform)
               .brush(brush)
               .draw(peniko::Fill::NonZero, glyphs);
 
@@ -1503,26 +1627,8 @@ pub fn create_context<'s>(
     renderer,
     font_system,
     swash_cache,
-    fill_color: Cell::new([0, 0, 0, 255]),
-    stroke_color: Cell::new([0, 0, 0, 255]),
-    global_alpha: Cell::new(1.0),
-    font_state: RefCell::new(FontState::default()),
-    lang: RefCell::new(String::from("inherit")),
-    text_align: Cell::new(TextAlign::default()),
-    text_baseline: Cell::new(TextBaseline::default()),
-    global_composite_operation: RefCell::new(String::from("source-over")),
-    filter: RefCell::new(String::from("none")),
-    image_smoothing_enabled: Cell::new(true),
-    image_smoothing_quality: Cell::new(ImageSmoothingQuality::default()),
-    line_width: Cell::new(1.0),
-    line_cap: Cell::new(LineCap::default()),
-    line_join: Cell::new(LineJoin::default()),
-    miter_limit: Cell::new(10.0),
-    line_dash_offset: Cell::new(0.0),
-    shadow_blur: Cell::new(0.0),
-    shadow_color: RefCell::new(String::from("rgba(0, 0, 0, 0)")),
-    shadow_offset_x: Cell::new(0.0),
-    shadow_offset_y: Cell::new(0.0),
+    state: RefCell::new(DrawingState::default()),
+    state_stack: RefCell::new(Vec::new()),
     settings,
   };
 
