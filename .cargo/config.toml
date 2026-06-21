@@ -19,12 +19,12 @@ rustflags = [
   "link-arg=/OPT:ICF",
 ]
 
-# Emit the modern chained-fixups format (LC_DYLD_CHAINED_FIXUPS) instead of the
-# legacy LC_DYLD_INFO_ONLY rebase/bind opcode stream. dyld applies chained
-# fixups lazily per-page instead of eagerly walking every relocation at launch,
-# which measurably cuts pre-main startup time on our ~116MB binary. Requires a
-# macOS 12 deployment target (older dyld can't parse the format); lld only emits
-# it automatically at min 13.0, so we request it explicitly to keep macOS 12.
+# Emit the modern chained-fixups format (LC_DYLD_CHAINED_FIXUPS) via -fixup_chains
+# instead of the legacy LC_DYLD_INFO_ONLY rebase/bind opcode stream. dyld applies
+# chained fixups lazily per-page instead of eagerly walking every relocation at
+# launch, cutting pre-main startup (~0.8ms on the ~116MB binary). Requires a
+# macOS 12 deployment target (older dyld can't parse the format) and the bundled
+# ld64.lld bumped to LLD 20 (LLD 17 segfaults on -fixup_chains; see tools/util.js).
 [env]
 MACOSX_DEPLOYMENT_TARGET = "12.0"
 
