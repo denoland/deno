@@ -44,6 +44,10 @@ function arch(): string {
     return "arm64";
   } else if (build.arch == "riscv64gc") {
     return "riscv64";
+  } else if (build.arch == "loongarch64") {
+    return "loong64";
+  } else if (build.arch == "powerpc64le") {
+    return "ppc64";
   } else {
     throw new Error("unreachable");
   }
