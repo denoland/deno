@@ -435,8 +435,8 @@ x25519-dalek = "2.0.0"
 x509-parser = "0.15.0"
 
 # ffi
-cranelift = "0.116"
-cranelift-native = "0.116"
+cranelift = "0.117"
+cranelift-native = "0.117"
 dlopen2 = "0.6.1"
 libffi = "=5.1.0"
 memmap2 = "0.9"
