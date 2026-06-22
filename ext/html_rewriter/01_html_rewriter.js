@@ -781,13 +781,12 @@ function buildSpec(rewriter, syncMode) {
   };
 }
 
-function transformString(rewriter, input) {
-  const { handlers, spec } = buildSpec(rewriter, true);
-  const transform = op_html_rewriter_start(spec);
-  op_html_rewriter_write(transform, core.encode(input));
-  op_html_rewriter_end(transform);
-
-  const chunks = [];
+/**
+ * Pumps the sync rewriter until the pending write or end completes, running
+ * handlers for dispatched tokens and pushing the produced output onto
+ * `chunks`. Returns `true` once the final `endDone` is seen.
+ */
+function pumpSync(transform, handlers, chunks) {
   while (true) {
     const msg = op_html_rewriter_pump_sync(transform);
     switch (msg.kind) {
@@ -796,15 +795,29 @@ function transformString(rewriter, input) {
         break;
       case "writeDone":
         ArrayPrototypePush(chunks, msg.output);
-        break;
+        return false;
       case "endDone":
         ArrayPrototypePush(chunks, msg.output);
-        return core.decode(concatOutput(chunks));
+        return true;
       case "aborted":
       case "error":
         throwPumpError(msg);
     }
   }
+}
+
+function transformString(rewriter, input) {
+  const { handlers, spec } = buildSpec(rewriter, true);
+  const transform = op_html_rewriter_start(spec);
+  const chunks = [];
+  // Drive write and end one at a time: each runs on a blocking task that owns
+  // the rewriter for its duration, so the end must not be issued until the
+  // write has completed and handed the rewriter back.
+  op_html_rewriter_write(transform, core.encode(input));
+  pumpSync(transform, handlers, chunks);
+  op_html_rewriter_end(transform);
+  pumpSync(transform, handlers, chunks);
+  return core.decode(concatOutput(chunks));
 }
 
 function copyInnerResponse(inner) {

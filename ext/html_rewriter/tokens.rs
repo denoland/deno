@@ -6,14 +6,15 @@
 //!
 //! `TokenPtr` stores a lifetime-erased pointer to a `lol_html` content token
 //! (`Element`, `TextChunk`, ...) that lives on the stack of the parked
-//! rewriter thread, inside the content handler closure that dispatched it.
-//! Dereferencing it is sound if and only if:
+//! rewriter task (a blocking-pool thread running one `write`/`end`), inside
+//! the content handler closure that dispatched it. Dereferencing it is sound
+//! if and only if:
 //!
-//! 1. The rewriter thread is parked in `ThreadCtx::dispatch` waiting for the
-//!    response to exactly this dispatch. The thread only unparks when
+//! 1. The rewriter task is parked in `ThreadCtx::dispatch` waiting for the
+//!    response to exactly this dispatch. The task only unparks when
 //!    `HtmlRewriterTransform::finish_token` sends the response, which also
 //!    removes the `TokenPtr` from `current_token`, so the pointer can never
-//!    be dereferenced after the thread resumes.
+//!    be dereferenced after the task resumes.
 //! 2. Only one dispatch is outstanding at a time (guaranteed by the strictly
 //!    sequential dispatch/park protocol), so the main thread has exclusive
 //!    access to the token while it holds the pointer.

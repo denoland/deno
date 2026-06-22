@@ -2,18 +2,30 @@
 
 //! The streaming core of the `HTMLRewriter` API.
 //!
-//! Each `transform()` call spawns a dedicated thread that runs a `lol_html`
-//! rewriter. The JS side feeds input chunks with `op_html_rewriter_write` /
-//! `op_html_rewriter_end` and then pulls messages from the thread with
+//! Each `transform()` call builds a `lol_html` rewriter that is stored on the
+//! `HtmlRewriterTransform` cppgc object. Input is fed one chunk at a time:
+//! `op_html_rewriter_write` / `op_html_rewriter_end` hand the rewriter to a
+//! blocking task (`tokio::task::spawn_blocking`, i.e. the shared blocking
+//! thread pool) for the duration of that single `write`/`end` call and then
+//! take it back. The rewriter therefore only occupies a thread while it is
+//! actively parsing a chunk, not for the whole lifetime of the transform: an
+//! idle streaming transform (for example one waiting for the next `Response`
+//! body chunk to arrive) holds no thread at all, and many concurrent
+//! transforms share the bounded blocking pool instead of each spawning a
+//! dedicated OS thread.
+//!
+//! The JS side pulls messages produced by those tasks with
 //! `op_html_rewriter_pump` (async mode, used for `Response` inputs) or
 //! `op_html_rewriter_pump_sync` (sync mode, used for string inputs).
 //!
-//! When a `lol_html` content handler fires on the rewriter thread, it sends
-//! `Msg::Dispatch` and parks on the response channel until the JS handler
-//! finishes (including resolution of a returned promise) and JS calls
+//! When a `lol_html` content handler fires on the blocking task, it sends
+//! `Msg::Dispatch` and parks the task on the response channel until the JS
+//! handler finishes (including resolution of a returned promise) and JS calls
 //! `op_html_rewriter_token_done` or `op_html_rewriter_token_error`. While the
-//! thread is parked the dispatched token is mutated from the main thread
-//! through `TokenPtr` (see `tokens.rs` for the safety invariant).
+//! task is parked the dispatched token is mutated from the main thread through
+//! `TokenPtr` (see `tokens.rs` for the safety invariant). Because the rewriter
+//! is moved out of its storage slot for exactly the duration of one parked
+//! `write`/`end`, only a single dispatch is ever outstanding at a time.
 
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -32,6 +44,12 @@ use lol_html::send::ElementContentHandlers;
 use lol_html::send::Settings;
 
 use crate::tokens::TokenPtr;
+
+/// Output sink type for the rewriter. Boxed and `Send` so the rewriter can be
+/// moved onto a blocking task for each `write`/`end`.
+type BoxedSink = Box<dyn FnMut(&[u8]) + Send>;
+/// The `Send`-able `lol_html` rewriter stored on the transform between chunks.
+type Rewriter = lol_html::send::HtmlRewriter<'static, BoxedSink>;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HtmlRewriterError {
@@ -61,11 +79,6 @@ pub enum HtmlRewriterError {
 #[derive(Debug, thiserror::Error)]
 #[error("JS handler errored")]
 pub(crate) struct HandlerAborted;
-
-pub(crate) enum Input {
-  Write(Vec<u8>),
-  End,
-}
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -97,9 +110,8 @@ pub(crate) enum Msg {
     /// exception and rethrows it instead of this message.
     handler: bool,
   },
-  /// Sent by `op_html_rewriter_abort` (not by the rewriter thread) so that a
-  /// pending pump resolves; the rewriter thread itself exits silently when
-  /// the input sender is dropped.
+  /// Sent by `op_html_rewriter_abort` (not by a rewriter task) so that a
+  /// pending pump resolves.
   Aborted,
 }
 
@@ -116,8 +128,8 @@ pub(crate) enum MsgTx {
 
 impl MsgTx {
   fn send(&self, msg: Msg) {
-    // Errors mean the main thread side is gone; the rewriter thread will
-    // notice the dropped input sender and exit on its own.
+    // Errors mean the main thread side is gone; the rewriter task will notice
+    // (the response channel is closed) and unwind on its own.
     match self {
       MsgTx::Async(tx) => {
         let _ = tx.send(msg);
@@ -134,17 +146,21 @@ enum MsgRx {
   Sync(mpsc::Receiver<Msg>),
 }
 
-/// Shared between the `lol_html` content handler closures (rewriter thread)
-/// and `op_html_rewriter_element_on_end_tag` (main thread), which appends an
-/// end tag handler closure to a parked element.
+/// Shared between the `lol_html` content handler closures (rewriter task) and
+/// `op_html_rewriter_element_on_end_tag` (main thread), which appends an end
+/// tag handler closure to a parked element.
 pub(crate) struct ThreadCtx {
   msg_tx: Mutex<MsgTx>,
   response_rx: Mutex<mpsc::Receiver<DispatchResult>>,
 }
 
 impl ThreadCtx {
+  fn send(&self, msg: Msg) {
+    self.msg_tx.lock().unwrap().send(msg);
+  }
+
   /// Sends a dispatch for `token` to the main thread and parks the rewriter
-  /// thread until the JS handler completes.
+  /// task until the JS handler completes.
   pub(crate) fn dispatch(
     &self,
     handler_id: u32,
@@ -195,21 +211,52 @@ pub(crate) struct CurrentToken {
 }
 
 pub struct HtmlRewriterTransform {
-  input_tx: RefCell<Option<mpsc::Sender<Input>>>,
+  /// The rewriter lives here between chunks. It is `take`n while a `write` or
+  /// `end` task is running on a blocking thread, and is `None` once the
+  /// transform has finished, errored, or been aborted.
+  rewriter: Arc<Mutex<Option<Rewriter>>>,
+  /// Bytes emitted by the rewriter's output sink. Drained after each chunk.
+  output: Arc<Mutex<Vec<u8>>>,
   msg_rx: MsgRx,
   response_tx: mpsc::Sender<DispatchResult>,
   pub(crate) ctx: Arc<ThreadCtx>,
   pub(crate) current_token: RefCell<Option<CurrentToken>>,
   generation: Cell<u32>,
+  /// Set once `end` has been requested (or the transform aborted) so further
+  /// writes fail synchronously.
+  finished: Cell<bool>,
 }
 
 impl HtmlRewriterTransform {
   /// Completes the currently dispatched token: invalidates the token pointer
-  /// and unparks the rewriter thread. No-op if there is no parked dispatch.
+  /// and unparks the rewriter task. No-op if there is no parked dispatch.
   fn finish_token(&self, result: DispatchResult) {
     if self.current_token.borrow_mut().take().is_some() {
       let _ = self.response_tx.send(result);
     }
+  }
+
+  /// Runs one `write` (`Some(chunk)`) or the final `end` (`None`) on the
+  /// shared blocking pool. The rewriter is moved onto the task and, for a
+  /// `write`, restored to its slot before completion is signalled so the next
+  /// write can use it; `end` consumes it.
+  fn spawn_chunk(
+    &self,
+    input: Option<Vec<u8>>,
+  ) -> Result<(), HtmlRewriterError> {
+    if self.finished.get() {
+      return Err(HtmlRewriterError::TransformFinished);
+    }
+    if input.is_none() {
+      self.finished.set(true);
+    }
+    let rewriter = self.rewriter.clone();
+    let output = self.output.clone();
+    let ctx = self.ctx.clone();
+    tokio::task::spawn_blocking(move || {
+      run_chunk(rewriter, output, ctx, input)
+    });
+    Ok(())
   }
 
   fn process_msg(&self, msg: Option<Msg>) -> PumpMsg {
@@ -239,8 +286,8 @@ impl HtmlRewriterTransform {
         PumpMsg::Error { message, handler }
       }
       Some(Msg::Aborted) => PumpMsg::Aborted,
-      // The rewriter thread always sends `EndDone` or `Error` before exiting,
-      // so a closed channel means the transform was already finished.
+      // A rewriter task always sends `WriteDone`, `EndDone`, or `Error`, so a
+      // closed channel means the transform was already finished.
       None => PumpMsg::Error {
         message: "The rewriter transform is no longer usable".to_string(),
         handler: false,
@@ -249,18 +296,77 @@ impl HtmlRewriterTransform {
   }
 }
 
-impl Drop for HtmlRewriterTransform {
-  fn drop(&mut self) {
-    // Drop the input sender so the rewriter thread exits, and unpark it if
-    // it is waiting on a dispatch.
-    self.input_tx.borrow_mut().take();
-    self.finish_token(DispatchResult::Error);
+/// Body of the blocking task spawned for each chunk. Takes the rewriter out of
+/// the shared slot, runs the chunk (parking on dispatches), and reports the
+/// result over the message channel.
+fn run_chunk(
+  rewriter_slot: Arc<Mutex<Option<Rewriter>>>,
+  output: Arc<Mutex<Vec<u8>>>,
+  ctx: Arc<ThreadCtx>,
+  input: Option<Vec<u8>>,
+) {
+  let Some(mut rewriter) = rewriter_slot.lock().unwrap().take() else {
+    // The rewriter is gone: the transform was finished, dropped, or aborted
+    // before this task ran.
+    ctx.send(Msg::Error {
+      message: "The rewriter transform is no longer usable".to_string(),
+      handler: false,
+    });
+    return;
+  };
+
+  // `write` keeps the rewriter alive (returns it for the next chunk); `end`
+  // consumes it.
+  let result = match input {
+    Some(chunk) => rewriter.write(&chunk).map(|()| Some(rewriter)),
+    None => rewriter.end().map(|()| None),
+  };
+
+  match result {
+    Ok(maybe_rewriter) => {
+      let bytes = std::mem::take(&mut *output.lock().unwrap());
+      if let Some(rewriter) = maybe_rewriter {
+        // Restore the rewriter before signalling completion so the next write
+        // finds it available.
+        *rewriter_slot.lock().unwrap() = Some(rewriter);
+        ctx.send(Msg::WriteDone { output: bytes });
+      } else {
+        ctx.send(Msg::EndDone { output: bytes });
+      }
+    }
+    Err(err) => {
+      // The rewriter is dropped here, leaving the slot empty; the transform is
+      // now unusable.
+      let handler = matches!(
+        &err,
+        RewritingError::ContentHandlerError(inner)
+          if inner.downcast_ref::<HandlerAborted>().is_some()
+      );
+      ctx.send(Msg::Error {
+        message: format!("HTML rewriting failed: {err}"),
+        handler,
+      });
+    }
   }
 }
 
-// SAFETY: this type is neither Send nor Sync, the cppgc object is only
-// accessed from the thread it was created on, and it holds no traced
-// references to other GC'd objects.
+impl Drop for HtmlRewriterTransform {
+  fn drop(&mut self) {
+    self.finished.set(true);
+    // Unpark an in-flight task if it is waiting on a dispatch. The task holds
+    // its own `Arc` clones, so it can finish and drop the rewriter even after
+    // the transform object is gone.
+    self.finish_token(DispatchResult::Error);
+    // Drop the rewriter if it is currently idle in its slot. If a task holds
+    // it, the slot is empty here and the task drops it when it unwinds.
+    if let Ok(mut slot) = self.rewriter.lock() {
+      slot.take();
+    }
+  }
+}
+
+// SAFETY: this type is only accessed from the thread it was created on, and it
+// holds no traced references to other GC'd objects.
 unsafe impl GarbageCollected for HtmlRewriterTransform {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -308,65 +414,19 @@ pub fn op_html_rewriter_parse_selector(
   Ok(())
 }
 
-#[op2]
-#[cppgc]
-pub fn op_html_rewriter_start(
-  #[serde] spec: TransformSpec,
-) -> HtmlRewriterTransform {
-  let (input_tx, input_rx) = mpsc::channel::<Input>();
-  let (response_tx, response_rx) = mpsc::channel::<DispatchResult>();
-
-  let (msg_tx, msg_rx) = if spec.sync_mode {
-    let (tx, rx) = mpsc::channel::<Msg>();
-    (MsgTx::Sync(tx), MsgRx::Sync(rx))
-  } else {
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Msg>();
-    (MsgTx::Async(tx), MsgRx::Async(RefCell::new(Some(rx))))
-  };
-
-  let ctx = Arc::new(ThreadCtx {
-    msg_tx: Mutex::new(msg_tx),
-    response_rx: Mutex::new(response_rx),
-  });
-
-  let thread_ctx = ctx.clone();
-  // The thread exits when the input sender is dropped or when rewriting
-  // finishes or errors, so it never outlives the transform for long.
-  let _ = std::thread::Builder::new()
-    .name("html-rewriter".to_string())
-    .spawn(move || rewriter_thread(spec, input_rx, thread_ctx));
-
-  HtmlRewriterTransform {
-    input_tx: RefCell::new(Some(input_tx)),
-    msg_rx,
-    response_tx,
-    ctx,
-    current_token: RefCell::new(None),
-    generation: Cell::new(0),
-  }
-}
-
-fn rewriter_thread(
-  spec: TransformSpec,
-  input_rx: mpsc::Receiver<Input>,
-  ctx: Arc<ThreadCtx>,
-) {
-  let send_msg = |msg: Msg| ctx.msg_tx.lock().unwrap().send(msg);
-
+/// Builds the `lol_html` rewriter for `spec`, wiring each handler to dispatch
+/// through `ctx` and appending emitted bytes to `output`.
+fn build_rewriter(
+  spec: &TransformSpec,
+  ctx: &Arc<ThreadCtx>,
+  output: Arc<Mutex<Vec<u8>>>,
+) -> Result<Rewriter, HtmlRewriterError> {
   let mut settings = Settings::new_send().with_strict(false);
 
   for handler in &spec.element_handlers {
-    // Selectors are pre-validated on the main thread in `on()`.
-    let selector = match parse_selector(&handler.selector) {
-      Ok(selector) => selector,
-      Err(err) => {
-        send_msg(Msg::Error {
-          message: err.to_string(),
-          handler: false,
-        });
-        return;
-      }
-    };
+    // Selectors are pre-validated on the main thread in `on()`, but parse
+    // again here so a malformed selector surfaces as a clean error.
+    let selector = parse_selector(&handler.selector)?;
 
     let mut handlers = ElementContentHandlers::default();
     if let Some(handler_id) = handler.element {
@@ -453,49 +513,46 @@ fn rewriter_thread(
     settings = settings.append_document_content_handler(handlers);
   }
 
-  let output = std::rc::Rc::new(RefCell::new(Vec::<u8>::new()));
-  let sink_output = output.clone();
-  let mut rewriter = HtmlRewriter::new(settings, move |chunk: &[u8]| {
-    sink_output.borrow_mut().extend_from_slice(chunk);
+  let sink_output = output;
+  let sink: BoxedSink = Box::new(move |chunk: &[u8]| {
+    sink_output.lock().unwrap().extend_from_slice(chunk);
   });
+  Ok(HtmlRewriter::new(settings, sink))
+}
 
-  let send_rewriting_error = |err: RewritingError| {
-    let handler = matches!(
-      &err,
-      RewritingError::ContentHandlerError(inner)
-        if inner.downcast_ref::<HandlerAborted>().is_some()
-    );
-    send_msg(Msg::Error {
-      message: format!("HTML rewriting failed: {err}"),
-      handler,
-    });
+#[op2]
+#[cppgc]
+pub fn op_html_rewriter_start(
+  #[serde] spec: TransformSpec,
+) -> Result<HtmlRewriterTransform, HtmlRewriterError> {
+  let (response_tx, response_rx) = mpsc::channel::<DispatchResult>();
+
+  let (msg_tx, msg_rx) = if spec.sync_mode {
+    let (tx, rx) = mpsc::channel::<Msg>();
+    (MsgTx::Sync(tx), MsgRx::Sync(rx))
+  } else {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Msg>();
+    (MsgTx::Async(tx), MsgRx::Async(RefCell::new(Some(rx))))
   };
 
-  loop {
-    match input_rx.recv() {
-      Ok(Input::Write(chunk)) => {
-        if let Err(err) = rewriter.write(&chunk) {
-          send_rewriting_error(err);
-          return;
-        }
-        send_msg(Msg::WriteDone {
-          output: std::mem::take(&mut output.borrow_mut()),
-        });
-      }
-      Ok(Input::End) => {
-        if let Err(err) = rewriter.end() {
-          send_rewriting_error(err);
-          return;
-        }
-        send_msg(Msg::EndDone {
-          output: std::mem::take(&mut output.borrow_mut()),
-        });
-        return;
-      }
-      // The transform was dropped or aborted.
-      Err(_) => return,
-    }
-  }
+  let ctx = Arc::new(ThreadCtx {
+    msg_tx: Mutex::new(msg_tx),
+    response_rx: Mutex::new(response_rx),
+  });
+
+  let output = Arc::new(Mutex::new(Vec::<u8>::new()));
+  let rewriter = build_rewriter(&spec, &ctx, output.clone())?;
+
+  Ok(HtmlRewriterTransform {
+    rewriter: Arc::new(Mutex::new(Some(rewriter))),
+    output,
+    msg_rx,
+    response_tx,
+    ctx,
+    current_token: RefCell::new(None),
+    generation: Cell::new(0),
+    finished: Cell::new(false),
+  })
 }
 
 #[op2]
@@ -503,27 +560,14 @@ pub fn op_html_rewriter_write(
   #[cppgc] transform: &HtmlRewriterTransform,
   #[anybuffer] chunk: &[u8],
 ) -> Result<(), HtmlRewriterError> {
-  let input_tx = transform.input_tx.borrow();
-  let input_tx = input_tx
-    .as_ref()
-    .ok_or(HtmlRewriterError::TransformFinished)?;
-  input_tx
-    .send(Input::Write(chunk.to_vec()))
-    .map_err(|_| HtmlRewriterError::TransformFinished)
+  transform.spawn_chunk(Some(chunk.to_vec()))
 }
 
 #[op2(fast)]
 pub fn op_html_rewriter_end(
   #[cppgc] transform: &HtmlRewriterTransform,
 ) -> Result<(), HtmlRewriterError> {
-  let input_tx = transform
-    .input_tx
-    .borrow_mut()
-    .take()
-    .ok_or(HtmlRewriterError::TransformFinished)?;
-  input_tx
-    .send(Input::End)
-    .map_err(|_| HtmlRewriterError::TransformFinished)
+  transform.spawn_chunk(None)
 }
 
 #[op2]
@@ -553,9 +597,9 @@ pub fn op_html_rewriter_pump_sync(
   let MsgRx::Sync(rx) = &transform.msg_rx else {
     return Err(HtmlRewriterError::InvalidTokenOperation);
   };
-  // This blocks the event loop until the rewriter thread sends the next
-  // message. That is safe from deadlocks: the rewriter thread never waits on
-  // the event loop, only on dispatch responses provided by this very loop.
+  // This blocks the event loop until the rewriter task sends the next message.
+  // That is safe from deadlocks: the task runs on a separate blocking thread
+  // and only waits on dispatch responses provided by this very loop.
   let msg = rx.recv().ok();
   Ok(transform.process_msg(msg))
 }
@@ -574,10 +618,14 @@ pub fn op_html_rewriter_token_error(
 
 #[op2(fast)]
 pub fn op_html_rewriter_abort(#[cppgc] transform: &HtmlRewriterTransform) {
-  transform.input_tx.borrow_mut().take();
+  transform.finished.set(true);
+  // Unpark an in-flight task, dropping its rewriter on the way out.
   transform.finish_token(DispatchResult::Error);
+  if let Ok(mut slot) = transform.rewriter.lock() {
+    slot.take();
+  }
   // Resolve a pending pump, if any. The transform object holds the message
-  // sender alive through `ctx`, so the channel does not close when the
-  // rewriter thread exits.
-  transform.ctx.msg_tx.lock().unwrap().send(Msg::Aborted);
+  // sender alive through `ctx`, so the channel does not close just because a
+  // rewriter task exited.
+  transform.ctx.send(Msg::Aborted);
 }
