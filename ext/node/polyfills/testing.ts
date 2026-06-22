@@ -1093,17 +1093,33 @@ async function runPossiblyExpectingFailure(fn, nodeTestContext, options) {
     signal: options.signal,
     abort: (reason) => nodeTestContext._abort(reason),
   };
+  // Install this context as the current one for the duration of the body so a
+  // top-level `test()` called inside it is routed here as a subtest (see the
+  // dispatcher in `test()`). `enterWith` is a synchronous setter that binds the
+  // context for the current async root and its descendants without adding a
+  // stack frame - extra frames can push `ext:cli/40_test.js` out of a failure's
+  // captured stack and break the source location reported for failed tests. No
+  // save/restore is needed: each body runs in its own async root, so concurrent
+  // subtest bodies each keep their own context even when they interleave across
+  // `await`.
+  getTestContextALS().enterWith(nodeTestContext);
   if (
     !options.expectFailure ||
     options.skip ||
     options.todo
   ) {
-    const result = await runWithTestGuards(
-      () => runNodeTestFunction(fn, nodeTestContext),
-      guards,
-    );
-    nodeTestContext._checkPlan();
-    return result;
+    try {
+      const result = await runWithTestGuards(
+        () => runNodeTestFunction(fn, nodeTestContext),
+        guards,
+      );
+      nodeTestContext._checkPlan();
+      return result;
+    } finally {
+      // Drain even on failure so subtests registered before the error finish
+      // their Deno test steps before this test settles.
+      await nodeTestContext._drainSubtests();
+    }
   }
 
   let failed = false;
@@ -1116,6 +1132,8 @@ async function runPossiblyExpectingFailure(fn, nodeTestContext, options) {
   } catch (err) {
     failed = true;
     assertExpectedFailure(err, options.expectFailure);
+  } finally {
+    await nodeTestContext._drainSubtests();
   }
 
   if (!failed) {
@@ -1164,6 +1182,11 @@ class NodeTestContext {
   // When set via `runOnly(true)`, only direct subtests registered with the
   // `only: true` option are executed; all other subtests are skipped.
   #runOnly = false;
+  // Promises for top-level `test()` calls routed here from inside this
+  // context's body (see `_trackSubtest`). The body awaits these before settling
+  // so such subtests still complete (Node semantics) and their Deno test steps
+  // finish before the parent step returns.
+  #subtestPromises = [];
 
   constructor(t, parent, name) {
     this.#denoContext = t;
@@ -1251,12 +1274,12 @@ class NodeTestContext {
     return null;
   }
 
-  test(name, options, fn) {
-    const prepared = prepareOptions(name, options, fn, {});
+  test(name, options, fn, overrides) {
+    const prepared = prepareOptions(name, options, fn, overrides);
     if (this.#plan) this.#plan.increment();
     // deno-lint-ignore no-this-alias
     const parentContext = this;
-    return PromisePrototypeThen(
+    const stepPromise = PromisePrototypeThen(
       this.#denoContext.step({
         name: prepared.name,
         fn: async (denoTestContext) => {
@@ -1312,7 +1335,39 @@ class NodeTestContext {
         sanitizeResources: false,
       }),
       () => undefined,
+      // A failed step settles `false` rather than rejecting, but guard against
+      // rejection so the returned promise never surfaces as unhandled.
+      () => undefined,
     );
+    return stepPromise;
+  }
+
+  // Records a subtest promise so the body runner can await it before this test
+  // settles. Used only for top-level `test()` calls routed here from inside the
+  // body (see the dispatcher in `test()`); a user awaiting `t.test()` directly
+  // sequences it themselves, and an unawaited `t.test()` keeps its existing
+  // (Node-divergent) "INCOMPLETE" behavior so unref'd-timer subtests are not
+  // forced to resolve.
+  _trackSubtest(promise) {
+    ArrayPrototypePush(this.#subtestPromises, promise);
+  }
+
+  // Awaits subtests registered via a routed top-level `test()` call. Called by
+  // the body runner after the test function returns so that such subtests,
+  // which are commonly not awaited (e.g. fastify's suites), still run to
+  // completion before the parent test settles.
+  async _drainSubtests() {
+    if (this.#subtestPromises.length === 0) return;
+    const promises = ArrayPrototypeSplice(
+      this.#subtestPromises,
+      0,
+      this.#subtestPromises.length,
+    );
+    for (const p of new SafeArrayIterator(promises)) {
+      try {
+        await p;
+      } catch { /* failures already reported through the subtest's own step */ }
+    }
   }
 
   before(fn, _options) {
@@ -1366,6 +1421,34 @@ class NodeTestContext {
 }
 
 let currentSuite = null;
+
+// AsyncLocalStorage holding the NodeTestContext whose body is currently
+// executing, or null when no test body is on the stack. Set by
+// `runPossiblyExpectingFailure` for the duration of each body so that a
+// top-level `test()` / `it()` call made from inside another test's body is
+// registered as a subtest of that test (via `t.step()`), matching Node, rather
+// than hitting Deno's "Nested Deno.test() calls are not supported" error.
+//
+// This must be an ALS, not a single module global with synchronous
+// save/restore: the unawaited routed-subtest path this enables makes execution
+// non-LIFO. With concurrent subtest bodies suspended across `await`, a plain
+// variable can point at a sibling when a parent resumes and silently mis-nest
+// the next routed `test()`. Each Deno test/step fn is its own async root, so
+// the store stays scoped to that body's subtree and survives `await`
+// boundaries, giving every interleaved body its own context. See
+// https://github.com/denoland/deno/issues/35391.
+let testContextALS = null;
+function getTestContextALS() {
+  if (testContextALS !== null) return testContextALS;
+  const mod = core.loadExtScript("ext:deno_node/async_hooks.ts");
+  const ALS = mod.AsyncLocalStorage;
+  testContextALS = new ALS();
+  return testContextALS;
+}
+function getCurrentTestContext() {
+  if (testContextALS === null) return null;
+  return testContextALS.getStore() ?? null;
+}
 
 const rootBeforeHooks = [];
 const rootAfterHooks = [];
@@ -1672,6 +1755,17 @@ function test(name, options, fn, overrides) {
   }
   if (currentSuite) {
     return currentSuite.addTest(name, options, fn, overrides);
+  }
+  // A top-level `test()` called from inside another test's body becomes a
+  // subtest of that test, matching Node. Without this it would fall through to
+  // `Deno.test()`, which rejects nested registration.
+  const currentContext = getCurrentTestContext();
+  if (currentContext !== null) {
+    const promise = currentContext.test(name, options, fn, overrides);
+    // The body that issued this call may not await it; have the running test
+    // wait for it before settling so the subtest still completes (Node).
+    currentContext._trackSubtest(promise);
+    return promise;
   }
   return prepareDenoTest(name, options, fn, overrides);
 }
