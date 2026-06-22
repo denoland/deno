@@ -1212,6 +1212,18 @@
       },
       "description": "List of paths, file URLs, or glob patterns to folders containing JSR packages to use local versions of."
     },
+    "patchedDependencies": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Maps an npm package to the path of a unified diff (`.patch`) file that is applied to the package after it is installed into node_modules. Keys may be an exact version (\"<name>@<version>\"), a version range (\"<name>@<range>\"), or a bare package name matching all versions. Mirrors the \"patchedDependencies\" field of pnpm/bun.",
+      "examples": [
+        {
+          "@denotest/say-hello@1.0.0": "patches/say-hello.patch"
+        }
+      ]
+    },
     "workspace": {
       "oneOf": [
         {

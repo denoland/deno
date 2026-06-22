@@ -135,11 +135,17 @@ struct SerializedWorkspaceConfigContent<'a> {
   #[serde(skip_serializing_if = "BTreeMap::is_empty")]
   #[serde(default)]
   pub links: BTreeMap<&'a str, SerializedLockfileLinkContent>,
+  #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+  #[serde(default)]
+  pub patched_dependencies: BTreeMap<&'a str, &'a str>,
 }
 
 impl SerializedWorkspaceConfigContent<'_> {
   pub fn is_empty(&self) -> bool {
-    self.root.is_empty() && self.members.is_empty() && self.links.is_empty()
+    self.root.is_empty()
+      && self.members.is_empty()
+      && self.links.is_empty()
+      && self.patched_dependencies.is_empty()
   }
 }
 
@@ -367,6 +373,11 @@ pub fn print_v5_content(content: &LockfileContent) -> String {
         .links
         .iter()
         .map(|(key, value)| (key.as_str(), handle_patch_content(value)))
+        .collect(),
+      patched_dependencies: content
+        .patched_dependencies
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
         .collect(),
     }
   }

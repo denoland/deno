@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "commandName": "cat",
+      "args": "deno.lock",
+      "output": "lock.out"
+    },
+    {
+      "args": "eval Deno.copyFileSync('patches/say-hello-v2.patch','patches/say-hello.patch')",
+      "output": ""
+    },
+    {
+      "args": "install --frozen",
+      "output": "frozen.out",
+      "exitCode": 1
+    }
+  ]
+}

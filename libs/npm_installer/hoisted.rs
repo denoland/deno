@@ -33,6 +33,7 @@ use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_npm_cache::TarballCache;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::workspace::WorkspaceNpmPatchPackagesRc;
 use deno_semver::StackString;
 use deno_semver::package::PackageNv;
 use deno_terminal::colors;
@@ -293,6 +294,7 @@ pub struct HoistedNpmPackageInstaller<
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
   install_reporter: Option<Arc<dyn crate::InstallReporter>>,
+  patch_packages: WorkspaceNpmPatchPackagesRc,
 }
 
 impl<
@@ -343,6 +345,7 @@ impl<
       root_node_modules_path: options.node_modules_folder,
       install_reporter: options.reporter,
       system_info: options.system_info,
+      patch_packages: options.patch_packages,
     }
   }
 
@@ -903,11 +906,23 @@ impl<
 
     let cache_folder = self.npm_cache.package_folder_for_nv(&package.id.nv);
 
+    // A configured `patchedDependencies` diff for this package, applied to the
+    // freshly-cloned copy. The hoisted installer re-clones (overwriting) on
+    // every install, so re-applying here also picks up a changed patch.
+    let patch_path = self
+      .patch_packages
+      .0
+      .get(&package.id.nv)
+      .map(Path::to_path_buf);
+
     let handle = crate::rt::spawn_blocking({
       let package_path = package_path.clone();
       let sys = self.sys.clone();
       move || {
         clone_dir_recursive(&sys, &cache_folder, &package_path)?;
+        if let Some(patch_path) = &patch_path {
+          crate::patch::apply_patch(&sys, &package_path, patch_path)?;
+        }
         Ok::<_, SyncResolutionWithFsError>(())
       }
     });

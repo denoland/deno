@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@denotest/say-hello": "1.0.0"
+  },
+  "patchedDependencies": {
+    "@denotest/say-hello@1.0.0": "patches/say-hello.patch"
+  }
+}

@@ -1,0 +1,10 @@
+diff --git a/index.js b/index.js
+index 2c5b6be..4f8a83a 100644
+--- a/index.js
++++ b/index.js
+@@ -1,3 +1,3 @@
+ export function sayHello() {
+-  return '@denotest/say-hello says hello!';
++  return '@denotest/say-hello says hello! (patched v2)';
+ }
+\ No newline at end of file

@@ -16,6 +16,7 @@ use deno_npm_cache::NpmCacheHttpClient;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
+use deno_resolver::workspace::WorkspaceNpmPatchPackagesRc;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
@@ -31,6 +32,7 @@ pub mod initializer;
 pub mod lifecycle_scripts;
 mod local;
 pub mod package_json;
+pub mod patch;
 pub mod process_state;
 pub mod resolution;
 mod rt;
@@ -159,6 +161,7 @@ pub struct NpmInstallerOptions<TSys: NpmInstallerSys> {
   pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
   pub system_info: NpmSystemInfo,
   pub workspace_link_packages: WorkspaceNpmLinkPackagesRc,
+  pub workspace_patch_packages: WorkspaceNpmPatchPackagesRc,
 }
 
 #[derive(Debug)]
@@ -225,6 +228,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
                   system_info: options.system_info,
                   reporter: install_reporter,
                   node_modules_folder,
+                  patch_packages: options.workspace_patch_packages,
                 },
               ))
             }
@@ -244,6 +248,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
                   system_info: options.system_info,
                   reporter: install_reporter,
                   node_modules_folder,
+                  patch_packages: options.workspace_patch_packages,
                 },
               ))
             }

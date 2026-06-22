@@ -3118,6 +3118,7 @@ dependencies = [
  "deno_semver",
  "deno_terminal",
  "deno_unsync",
+ "diffy",
  "futures",
  "lazy-regex",
  "log",
@@ -4008,6 +4009,15 @@ name = "diff"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
+
+[[package]]
+name = "diffy"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b545b8c50194bdd008283985ab0b31dba153cfd5b3066a92770634fbc0d7d291"
+dependencies = [
+ "nu-ansi-term",
+]
 
 [[package]]
 name = "digest"

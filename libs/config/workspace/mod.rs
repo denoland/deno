@@ -631,6 +631,33 @@ impl Workspace {
     self.root_folder_configs().pkg_json.as_ref()
   }
 
+  /// Returns the `patchedDependencies` configured in the workspace root
+  /// `deno.json` and/or `package.json`, mapping a `<name>@<version>` to the
+  /// absolute path of the unified diff to apply after the npm package is
+  /// extracted. When the same package is patched in both files, the
+  /// `deno.json` entry wins.
+  pub fn patched_packages(
+    &self,
+  ) -> Result<
+    crate::deno_json::PatchedDependencies,
+    crate::deno_json::PatchedDependenciesParseError,
+  > {
+    let mut result = match self.root_deno_json() {
+      Some(deno_json) => deno_json.to_patched_dependencies_config()?,
+      None => Default::default(),
+    };
+    if let Some(pkg_json) = self.root_pkg_json()
+      && let Some(entries) = pkg_json.patched_dependencies.as_ref()
+    {
+      let from_pkg_json = crate::deno_json::parse_patched_dependencies(
+        entries,
+        pkg_json.dir_path(),
+      )?;
+      result.merge(from_pkg_json);
+    }
+    Ok(result)
+  }
+
   /// Returns the npm overrides from the root package.json, if any.
   pub fn npm_overrides(
     &self,

@@ -1092,6 +1092,145 @@ pub struct WorkspaceConfig {
 #[error("Failed to parse \"link\" configuration.")]
 pub struct LinkConfigParseError(#[source] serde_json::Error);
 
+#[derive(Debug, Error, JsError)]
+#[class(type)]
+pub enum PatchedDependenciesParseError {
+  #[error(
+    "Failed to parse \"patchedDependencies\" key \"{key}\": expected a \"<name>\", \"<name>@<version>\" or \"<name>@<range>\" specifier."
+  )]
+  InvalidKey {
+    key: String,
+    #[source]
+    source: deno_semver::package::PackageReqParseError,
+  },
+  #[error(
+    "Failed to parse \"patchedDependencies\" key \"{key}\": dist-tags such as \"{tag}\" are not supported, use a version or version range."
+  )]
+  UnsupportedTag { key: String, tag: String },
+}
+
+/// How the `<name>@...` part of a `patchedDependencies` key selects which
+/// resolved package versions a patch applies to.
+#[derive(Debug, Clone)]
+enum PatchMatcher {
+  /// `name@1.2.3` — applies only to that exact version.
+  Exact(deno_semver::Version),
+  /// `name@^1` — applies to any version satisfying the range.
+  Range(deno_semver::VersionReq),
+  /// `name` or `name@*` — applies to every version of the package.
+  Name,
+}
+
+#[derive(Debug, Clone)]
+struct PatchEntry {
+  /// The original `patchedDependencies` key (e.g. `@scope/pkg@1.0.0`), kept so
+  /// the resolved patches can be recorded in the lockfile for drift detection.
+  key: String,
+  matcher: PatchMatcher,
+  path: PathBuf,
+}
+
+/// A parsed `patchedDependencies` map. Keys may be an exact version, a version
+/// range, or a bare package name (matching all versions), mirroring pnpm/bun.
+/// When several entries match a resolved package, the most specific one wins:
+/// exact version > version range > name-only.
+#[derive(Debug, Clone, Default)]
+pub struct PatchedDependencies {
+  by_name: BTreeMap<deno_semver::package::PackageName, Vec<PatchEntry>>,
+}
+
+impl PatchedDependencies {
+  pub fn is_empty(&self) -> bool {
+    self.by_name.is_empty()
+  }
+
+  /// Returns the path of the patch that should be applied to the given
+  /// resolved package, or `None` if no configured entry matches.
+  pub fn get(&self, nv: &deno_semver::package::PackageNv) -> Option<&Path> {
+    let entries = self.by_name.get(&nv.name)?;
+    let mut best: Option<(u8, &Path)> = None;
+    for entry in entries {
+      let (rank, matches) = match &entry.matcher {
+        PatchMatcher::Exact(version) => (3u8, *version == nv.version),
+        PatchMatcher::Range(req) => (2u8, req.matches(&nv.version)),
+        PatchMatcher::Name => (1u8, true),
+      };
+      // higher rank wins; on a tie the earlier (deno.json) entry is kept
+      if matches && best.is_none_or(|(best_rank, _)| rank > best_rank) {
+        best = Some((rank, entry.path.as_path()));
+      }
+    }
+    best.map(|(_, path)| path)
+  }
+
+  /// Iterates over every configured patch as `(key, patch_path)` pairs, where
+  /// `key` is the original `patchedDependencies` specifier. Used to record the
+  /// patches in the lockfile.
+  pub fn entries(&self) -> impl Iterator<Item = (&str, &Path)> {
+    self
+      .by_name
+      .values()
+      .flatten()
+      .map(|entry| (entry.key.as_str(), entry.path.as_path()))
+  }
+
+  /// Merges another set of patches into this one with lower priority: on an
+  /// exact tie the existing entries (parsed first) are preferred.
+  pub(crate) fn merge(&mut self, mut other: PatchedDependencies) {
+    for (name, entries) in other.by_name.iter_mut() {
+      self
+        .by_name
+        .entry(name.clone())
+        .or_default()
+        .append(entries);
+    }
+  }
+}
+
+/// Parses a `patchedDependencies` map (key -> patch file path), resolving each
+/// patch path relative to `dir_path` and each key into a matcher. Shared by the
+/// `deno.json` and `package.json` parsers.
+pub fn parse_patched_dependencies(
+  entries: &IndexMap<String, String>,
+  dir_path: &Path,
+) -> Result<PatchedDependencies, PatchedDependenciesParseError> {
+  let mut result = PatchedDependencies::default();
+  for (key, patch_path) in entries {
+    let req =
+      deno_semver::package::PackageReq::from_str(key).map_err(|source| {
+        PatchedDependenciesParseError::InvalidKey {
+          key: key.clone(),
+          source,
+        }
+      })?;
+    let version_text = req.version_req.version_text();
+    let matcher = if version_text == "*" {
+      PatchMatcher::Name
+    } else if let Ok(version) =
+      deno_semver::Version::parse_standard(version_text)
+    {
+      PatchMatcher::Exact(version)
+    } else if req.version_req.range().is_some() {
+      PatchMatcher::Range(req.version_req)
+    } else {
+      return Err(PatchedDependenciesParseError::UnsupportedTag {
+        key: key.clone(),
+        tag: version_text.to_string(),
+      });
+    };
+    result
+      .by_name
+      .entry(req.name)
+      .or_default()
+      .push(PatchEntry {
+        key: key.clone(),
+        matcher,
+        path: dir_path.join(patch_path),
+      });
+  }
+  Ok(result)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TaskDefinition {
   pub command: Option<String>,
@@ -1479,6 +1618,10 @@ pub struct ConfigFileJson {
   pub links: Option<Value>,
   #[serde(rename = "patch")]
   pub(crate) deprecated_patch: Option<Value>,
+  /// Maps `<name>@<version>` to a path to a unified diff (`.patch`) file that
+  /// is applied to the extracted npm package on install. Mirrors the
+  /// `patchedDependencies` field in pnpm/bun.
+  pub patched_dependencies: Option<IndexMap<String, String>>,
   #[serde(rename = "workspaces")]
   pub(crate) deprecated_workspaces: Option<Vec<String>>,
   pub exports: Option<Value>,
@@ -2388,6 +2531,18 @@ impl ConfigFile {
     }
   }
 
+  /// Parses the `patchedDependencies` field, resolving each patch path
+  /// relative to this config file's directory and each key into a
+  /// `<name>@<version>` package identifier.
+  pub fn to_patched_dependencies_config(
+    &self,
+  ) -> Result<PatchedDependencies, PatchedDependenciesParseError> {
+    let Some(entries) = self.json.patched_dependencies.as_ref() else {
+      return Ok(Default::default());
+    };
+    parse_patched_dependencies(entries, &self.dir_path())
+  }
+
   pub fn to_workspace_config(
     &self,
   ) -> Result<Option<WorkspaceConfig>, WorkspaceConfigParseError> {
@@ -2778,6 +2933,63 @@ mod tests {
         panic!("{:?} does not contain any of {:?}", string, [$($test),+]);
       }
     }
+  }
+
+  #[test]
+  fn patched_dependencies_key_formats_and_priority() {
+    use deno_semver::package::PackageNv;
+
+    let entries: IndexMap<String, String> = [
+      ("@scope/pkg", "patches/name-only.patch"),
+      ("@scope/pkg@^1", "patches/range.patch"),
+      ("@scope/pkg@1.0.0", "patches/exact.patch"),
+      ("other", "patches/other.patch"),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect();
+    let dir = Path::new("/root");
+    let patches = parse_patched_dependencies(&entries, dir).unwrap();
+
+    // exact version wins over range and name-only
+    assert_eq!(
+      patches.get(&PackageNv::from_str("@scope/pkg@1.0.0").unwrap()),
+      Some(dir.join("patches/exact.patch").as_path())
+    );
+    // range wins over name-only when no exact match
+    assert_eq!(
+      patches.get(&PackageNv::from_str("@scope/pkg@1.5.0").unwrap()),
+      Some(dir.join("patches/range.patch").as_path())
+    );
+    // falls back to the name-only patch outside the range
+    assert_eq!(
+      patches.get(&PackageNv::from_str("@scope/pkg@2.0.0").unwrap()),
+      Some(dir.join("patches/name-only.patch").as_path())
+    );
+    // unrelated name-only entry still matches any version
+    assert_eq!(
+      patches.get(&PackageNv::from_str("other@9.9.9").unwrap()),
+      Some(dir.join("patches/other.patch").as_path())
+    );
+    // a package with no entry returns nothing
+    assert_eq!(
+      patches.get(&PackageNv::from_str("missing@1.0.0").unwrap()),
+      None
+    );
+  }
+
+  #[test]
+  fn patched_dependencies_rejects_dist_tag() {
+    let entries: IndexMap<String, String> =
+      [("pkg@latest".to_string(), "patches/p.patch".to_string())]
+        .into_iter()
+        .collect();
+    let err =
+      parse_patched_dependencies(&entries, Path::new("/root")).unwrap_err();
+    assert!(matches!(
+      err,
+      PatchedDependenciesParseError::UnsupportedTag { .. }
+    ));
   }
 
   struct UnreachableSys;

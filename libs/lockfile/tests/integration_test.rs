@@ -30,6 +30,7 @@ fn adding_workspace_does_not_cause_content_changes() {
         members: Default::default(),
         links: Default::default(),
         npm_overrides: None,
+        patched_dependencies: Default::default(),
       },
     });
     assert!(!lockfile.has_content_changed); // should not have changed
@@ -53,6 +54,7 @@ fn adding_workspace_does_not_cause_content_changes() {
         members: Default::default(),
         links: Default::default(),
         npm_overrides: None,
+        patched_dependencies: Default::default(),
       },
     });
     assert!(lockfile.has_content_changed);
@@ -81,6 +83,7 @@ fn adding_workspace_does_not_cause_content_changes() {
         members: Default::default(),
         links: Default::default(),
         npm_overrides: None,
+        patched_dependencies: Default::default(),
       },
     });
     assert!(lockfile.has_content_changed); // should have changed since lockfile was not empty
@@ -107,6 +110,7 @@ fn npm_overrides_causes_content_change() {
       npm_overrides: Some(serde_json::json!({
         "foo": "1.0.0"
       })),
+      patched_dependencies: Default::default(),
     },
   });
   assert!(lockfile.has_content_changed);
@@ -131,6 +135,7 @@ fn npm_overrides_serialized_in_package_json_section() {
       npm_overrides: Some(serde_json::json!({
         "bar": "2.0.0"
       })),
+      patched_dependencies: Default::default(),
     },
   });
 
