@@ -68,6 +68,17 @@ const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 // explicit calls to ref/unref (in the case of node message ports)
 let refedMessagePortsCount = 0;
 
+// counter of internal "message" event listeners on the worker global scope
+// (e.g. the node:worker_threads CPU-profiling control channel) that must NOT
+// keep the worker alive. `hasMessageEventListener()` subtracts these from the
+// raw global listener count so a worker whose only remaining "message"
+// listener is internal can still idle-terminate.
+let internalMessageListenerCount = 0;
+
+function addInternalMessageListener() {
+  internalMessageListenerCount++;
+}
+
 class MessageChannel {
   /** @type {MessagePort} */
   #port1;
@@ -893,7 +904,13 @@ function structuredClone(value, options) {
 }
 
 return {
+  addInternalMessageListener,
   deserializeJsMessageData,
+  // Exposed as a getter for the same live-binding reason as
+  // `refedMessagePortsCount` below.
+  get internalMessageListenerCount() {
+    return internalMessageListenerCount;
+  },
   markAsUncloneable,
   markNotSerializable,
   MessageChannel,

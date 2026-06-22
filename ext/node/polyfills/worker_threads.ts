@@ -28,6 +28,7 @@ const {
 const {
   deserializeJsMessageData,
   markAsUncloneable: webMarkAsUncloneable,
+  addInternalMessageListener,
   MessageChannel,
   MessagePort,
   MessagePortIdSymbol,
@@ -1346,6 +1347,13 @@ internals.__initWorkerThreads = (
         // Intercept CPU profiling control messages from the parent
         // (`worker.startCpuProfile()` / `handle.stop()`). Registered before
         // user code runs so these never reach user `message` listeners.
+        //
+        // Registered via the native (raw) addEventListener rather than
+        // `parentPort.addEventListener` so it is not counted as a user
+        // "message" listener: that would both suppress `globalThis.onmessage`
+        // delivery and, via `hasMessageEventListener()`, keep the worker alive
+        // forever. It is instead tracked as an internal listener that the
+        // worker idle-termination check explicitly ignores.
         const cpuProfileHandler = (ev) => {
           const msg = ev.data;
           const type = messageType(msg);
@@ -1388,7 +1396,8 @@ internals.__initWorkerThreads = (
             );
           }
         };
-        parentPort.addEventListener("message", cpuProfileHandler);
+        nativeAddEventListener("message", cpuProfileHandler);
+        addInternalMessageListener();
 
         // Forward stdout writes to the parent so worker.stdout
         // is readable from the host side.
