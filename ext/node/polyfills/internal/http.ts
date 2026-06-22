@@ -28,17 +28,26 @@ function resetCache() {
 
 const kOutHeaders = Symbol("kOutHeaders");
 const kNeedDrain = Symbol("kNeedDrain");
+// Native fast-path mode: when set on a ServerResponse, `end()`/`write()` commit
+// the response directly via the op_http_* ops (the deno_http_h1 engine) instead
+// of serializing to a socket. Set by the node:http native dispatch.
+const kNativeExternal = Symbol("kNativeExternal");
+const kNativeWriteBuf = Symbol("kNativeWriteBuf");
 
 const _defaultExport = {
   utcDate,
   kOutHeaders,
   kNeedDrain,
+  kNativeExternal,
+  kNativeWriteBuf,
 };
 
 return {
   utcDate,
   kOutHeaders,
   kNeedDrain,
+  kNativeExternal,
+  kNativeWriteBuf,
   default: _defaultExport,
 };
 })();

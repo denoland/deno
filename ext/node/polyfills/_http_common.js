@@ -252,7 +252,6 @@ function freeParser(parser, req, socket) {
   }
 }
 
-const tokenRegExp = new SafeRegExp("^[\\^_`a-zA-Z\\-0-9!#$%&'*+.|~]+$");
 // deno-fmt-ignore
 const validTokenChars = new Uint8Array([
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -274,33 +273,45 @@ const validTokenChars = new Uint8Array([
 ]);
 
 function checkIsHttpToken(val) {
-  if (val.length >= 10) {
-    return RegExpPrototypeTest(tokenRegExp, val);
-  }
-
-  if (val.length === 0) return false;
-
-  for (let i = 0; i < val.length; i++) {
-    if (!validTokenChars[StringPrototypeCharCodeAt(val, i)]) {
+  // Table-driven scan for all lengths. The previous code fell back to a regex
+  // for val.length >= 10, which caught common header names (content-type,
+  // content-length, x-powered-by, ...) and showed up as RegExpExecSlow +
+  // string flattening in the hot path. validTokenChars[code] is undefined for
+  // code > 255 (non-ASCII), which is correctly falsy.
+  const len = val.length;
+  if (len === 0) return false;
+  for (let i = 0; i < len; i++) {
+    if (validTokenChars[StringPrototypeCharCodeAt(val, i)] !== 1) {
       return false;
     }
   }
   return true;
 }
 
-const headerCharRegex = new SafeRegExp("[^\\t\\x20-\\x7e\\x80-\\xff]");
-// In lenient mode (insecure HTTP parser) only NUL (0x00), LF (0x0a),
-// CR (0x0d), and characters above 0xff are considered invalid, matching
-// the Fetch spec and Node.js.
-const lenientHeaderCharRegex = new SafeRegExp(
-  "[\\x00\\x0a\\x0d]|[^\\x00-\\xff]",
-);
+// Invalid header value chars (RFC 7230 / Node): control chars except HT, DEL,
+// and any UTF-16 code unit > 0xff. 1 = invalid. Table-driven instead of a regex
+// (the regex forced a per-call string flatten -- ~3-4% of the Express hot path).
+const invalidHeaderCharTable = new Uint8Array(256);
+for (let i = 0; i <= 0x1f; i++) invalidHeaderCharTable[i] = 1;
+invalidHeaderCharTable[0x09] = 0; // HT is allowed
+invalidHeaderCharTable[0x7f] = 1; // DEL
+// Lenient (insecure parser): only NUL, LF, CR (and code units > 0xff) invalid.
+const lenientInvalidHeaderCharTable = new Uint8Array(256);
+lenientInvalidHeaderCharTable[0x00] = 1;
+lenientInvalidHeaderCharTable[0x0a] = 1;
+lenientInvalidHeaderCharTable[0x0d] = 1;
 
 function checkInvalidHeaderChar(val, lenient = false) {
-  return RegExpPrototypeTest(
-    lenient ? lenientHeaderCharRegex : headerCharRegex,
-    val,
-  );
+  const table = lenient
+    ? lenientInvalidHeaderCharTable
+    : invalidHeaderCharTable;
+  for (let i = 0; i < val.length; i++) {
+    const code = StringPrototypeCharCodeAt(val, i);
+    if (code > 0xff || table[code] === 1) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function cleanParser(parser) {

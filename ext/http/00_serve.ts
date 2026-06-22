@@ -1465,11 +1465,78 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
       serveFastHeaderKindKey,
       serveFastContentTypeKey,
       serveFastConsumedKey,
+      false,
+      0,
+      0,
+      0,
     ),
     listener,
   );
   callback = mapToCallback(serverContext, handler, onError);
   nativeCallback = mapToNativeResponseCallback(serverContext, handler, onError);
+
+  onListen(serverContext.scheme);
+
+  return serveHttpOn(serverContext, listener.addr);
+}
+
+/**
+ * Serve HTTP on a listener, dispatching each request straight to a Node-style
+ * callback that receives the raw request `external` pointer. This is the fast
+ * path that backs `node:http` servers: instead of materializing a web `Request`
+ * and expecting a `Response` back (as `serveHttpOnListener` does), it hands the
+ * `external` to `onRequest`, which builds Node `IncomingMessage`/`ServerResponse`
+ * objects that read/write directly via the `op_http_*` ops. The response is
+ * completed synchronously (via a response-body op) or later for async handlers.
+ *
+ * `onRequest(external)` must not throw; it is responsible for completing the
+ * request (setting a response or completing it) itself.
+ */
+function serveHttpOnListenerForNode(
+  listener,
+  signal,
+  onRequest,
+  _onError,
+  onListen,
+  nodeHttpOptions,
+) {
+  let serverContext = undefined;
+  const nodeOpts = nodeHttpOptions ?? { __proto__: null };
+  const dispatch = (req, connId, isClose) => {
+    try {
+      onRequest(req, connId, isClose);
+    } catch (error) {
+      // `onRequest` is expected to handle its own errors; this is a backstop so
+      // a stray throw doesn't tear down the serve loop. The request may be left
+      // incomplete (connection closes on timeout) but the server keeps running.
+      internals.log(
+        "error",
+        "Uncaught error in node:http request dispatch",
+        error,
+      );
+    }
+    return undefined;
+  };
+  serverContext = new CallbackContext(
+    signal,
+    op_http_serve(
+      listener[internalRidSymbol],
+      dispatch,
+      false,
+      dispatch,
+      serveNativeResponseKey,
+      serveFastStatusKey,
+      serveFastBodyKey,
+      serveFastHeaderKindKey,
+      serveFastContentTypeKey,
+      serveFastConsumedKey,
+      true,
+      nodeOpts.keepAliveTimeoutMs || 0,
+      nodeOpts.headersTimeoutMs || 0,
+      nodeOpts.requestTimeoutMs || 0,
+    ),
+    listener,
+  );
 
   onListen(serverContext.scheme);
 
@@ -1621,6 +1688,7 @@ function serveHttpOn(context, addr) {
 internals.addTrailers = addTrailers;
 internals.upgradeHttpRaw = upgradeHttpRaw;
 internals.serveHttpOnListener = serveHttpOnListener;
+internals.serveHttpOnListenerForNode = serveHttpOnListenerForNode;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 internals.resetLegacyAbortWarning = () => {
   legacyAbortWarned = false;
@@ -1721,6 +1789,7 @@ return {
   serve,
   serveHttpOnConnection,
   serveHttpOnListener,
+  serveHttpOnListenerForNode,
   upgradeHttpRaw,
 };
 })();

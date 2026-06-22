@@ -5486,9 +5486,18 @@
     "sequential/test-crypto-timing-safe-equal-fast.js": {},
     "sequential/test-crypto-timing-safe-equal.js": {},
     "sequential/test-dgram-implicit-bind-failure.js": {},
-    "sequential/test-gc-http-client-onerror.js": {},
-    "sequential/test-gc-http-client-timeout.js": {},
-    "sequential/test-gc-http-client.js": {},
+    "sequential/test-gc-http-client-onerror.js": {
+      "ignore": true,
+      "reason": "Flaky locally: depends on V8 GC/WeakRef timing to collect the http client"
+    },
+    "sequential/test-gc-http-client-timeout.js": {
+      "ignore": true,
+      "reason": "Flaky locally: depends on V8 GC/WeakRef timing to collect the http client"
+    },
+    "sequential/test-gc-http-client.js": {
+      "ignore": true,
+      "reason": "Flaky locally: depends on V8 GC/WeakRef timing to collect the http client"
+    },
     "sequential/test-http-econnrefused.js": {},
     "sequential/test-http-regr-gh-2928.js": {},
     "sequential/test-http2-ping-flood.js": {},

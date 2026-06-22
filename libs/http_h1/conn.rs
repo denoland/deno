@@ -80,6 +80,11 @@ pub enum ResponseBody<'a> {
   Empty,
   Head(Option<u64>),
   Bytes(&'a [u8]),
+  // Like `Bytes`, but the message is close-delimited: no content-length is
+  // emitted and the body runs until the connection closes. Used by node:http
+  // when the handler removes both Content-Length and Transfer-Encoding. The
+  // caller must also close the connection (keep_alive=false / force_close).
+  CloseDelimitedBytes(&'a [u8]),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -116,12 +121,16 @@ impl<'a> SharedResponseWriter<'a> {
       ResponseBody::Empty => Some(0),
       ResponseBody::Head(content_length) => content_length,
       ResponseBody::Bytes(bytes) => Some(bytes.len() as u64),
+      // Close-delimited: no content-length header (length is implied by close).
+      ResponseBody::CloseDelimitedBytes(_) => None,
     };
     let content_length = status_allows_body(response.status)
       .then_some(body_len)
       .flatten();
     let body = match response.body {
-      ResponseBody::Bytes(bytes) if status_allows_body(response.status) => {
+      ResponseBody::Bytes(bytes) | ResponseBody::CloseDelimitedBytes(bytes)
+        if status_allows_body(response.status) =>
+      {
         bytes
       }
       _ => &[],
@@ -275,6 +284,7 @@ pub struct SharedConn<I> {
   protocol: Protocol,
   buffered: Vec<u8>,
   response_state: ResponseState,
+  node_mode: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -311,11 +321,37 @@ impl<I> SharedConn<I> {
       protocol: Protocol::new(),
       buffered: Vec::new(),
       response_state: ResponseState::Idle,
+      node_mode: false,
     }
   }
 
   pub fn set_allow_missing_host(&mut self, allow: bool) {
     self.protocol.set_allow_missing_host(allow);
+  }
+
+  /// node:http keeps the first of multiple Host headers (the JS layer dedups);
+  /// Deno.serve rejects per RFC 7230.
+  pub fn set_allow_multiple_host(&mut self, allow: bool) {
+    self.protocol.set_allow_multiple_host(allow);
+  }
+
+  /// node:http mode: preserve a user-set content-length on bodiless statuses
+  /// (304 etc.) when writing response heads, matching Node.
+  pub fn set_node_mode(&mut self, node_mode: bool) {
+    self.node_mode = node_mode;
+  }
+
+  /// node:http rejects a bare CR/LF in the request head (httparse is lenient and
+  /// would let it smuggle header lines); Deno.serve keeps the lenient behavior.
+  pub fn set_reject_bare_lf(&mut self, reject: bool) {
+    self.protocol.set_reject_bare_lf(reject);
+  }
+
+  /// True when no bytes of a next request are buffered. A non-empty buffer means
+  /// a request head has started arriving (e.g. a partial pipelined request),
+  /// which node:http bounds by `requestTimeout` rather than `keepAliveTimeout`.
+  pub fn buffered_is_empty(&self) -> bool {
+    self.buffered.is_empty()
   }
 
   pub fn into_inner(self) -> I {
@@ -340,7 +376,7 @@ impl<I> SharedConn<I> {
       return Ok(Some(body));
     }
 
-    let mut protocol = self.protocol;
+    let mut protocol = self.protocol.clone();
     let mut cursor = 0usize;
     let mut body_len = 0usize;
 
@@ -362,7 +398,7 @@ impl<I> SharedConn<I> {
 
     let consumed_total = cursor;
     let final_protocol = protocol;
-    let mut protocol = self.protocol;
+    let mut protocol = self.protocol.clone();
     let mut cursor = 0usize;
     let mut body = Vec::with_capacity(body_len);
 
@@ -392,6 +428,12 @@ impl<I> SharedConn<I> {
     self.protocol = final_protocol;
     self.buffered.drain(..consumed_total);
     Ok(Some(body))
+  }
+
+  // Trailers parsed from the most recent chunked request body (after the body
+  // is fully read). node:http exposes them as req.rawTrailers / req.trailers.
+  pub fn take_request_trailers(&mut self) -> Vec<(Vec<u8>, Vec<u8>)> {
+    self.protocol.take_request_trailers()
   }
 }
 
@@ -560,6 +602,7 @@ where
       ResponseBody::Empty => Some(0),
       ResponseBody::Head(content_length) => content_length,
       ResponseBody::Bytes(bytes) => Some(bytes.len() as u64),
+      ResponseBody::CloseDelimitedBytes(_) => None,
     };
     let content_length = status_allows_body(response.status)
       .then_some(body_len)
@@ -573,9 +616,11 @@ where
         headers: response.headers,
         content_length,
         keep_alive: response.keep_alive,
+        node_mode: false,
       },
     );
-    if let ResponseBody::Bytes(bytes) = response.body
+    if let ResponseBody::Bytes(bytes) | ResponseBody::CloseDelimitedBytes(bytes) =
+      response.body
       && status_allows_body(response.status)
     {
       self.write_buf.extend_from_slice(bytes);
@@ -600,6 +645,7 @@ where
         headers: response.headers,
         content_length: None,
         keep_alive: response.keep_alive,
+        node_mode: false,
       },
     );
     self.io.write_all(&self.write_buf).await?;
@@ -632,6 +678,7 @@ where
         headers: response.headers,
         content_length: Some(content_length),
         keep_alive: response.keep_alive,
+        node_mode: false,
       },
     );
     self.io.write_all(&self.write_buf).await?;
@@ -1039,6 +1086,36 @@ where
     Ok(())
   }
 
+  /// Write raw 1xx interim-response bytes (e.g. `103 Early Hints`) directly to
+  /// the socket ahead of the final response.
+  pub async fn write_interim(&mut self, bytes: &[u8]) -> Result<(), Error> {
+    self.io.write_all(bytes).await?;
+    Ok(())
+  }
+
+  /// Poll-based variant of [`write_interim`] for callers that hold the
+  /// connection inside a `RefCell` and can't `.await`. `offset` tracks progress
+  /// across polls and must start at 0.
+  pub fn poll_write_interim(
+    &mut self,
+    cx: &mut Context<'_>,
+    bytes: &[u8],
+    offset: &mut usize,
+  ) -> Poll<Result<(), Error>> {
+    while *offset < bytes.len() {
+      let written =
+        ready!(Pin::new(&mut self.io).poll_write(cx, &bytes[*offset..]))?;
+      if written == 0 {
+        return Poll::Ready(Err(Error::Io(io::Error::new(
+          io::ErrorKind::WriteZero,
+          "failed to write interim response",
+        ))));
+      }
+      *offset += written;
+    }
+    Poll::Ready(Ok(()))
+  }
+
   pub fn poll_write_response_with(
     &mut self,
     cx: &mut Context<'_>,
@@ -1058,6 +1135,7 @@ where
         headers: writer.response.headers,
         content_length: writer.content_length,
         keep_alive: writer.response.keep_alive,
+        node_mode: self.node_mode,
       },
     );
     let head_len = scratch.write_buf.len();
@@ -1142,6 +1220,7 @@ where
         headers: writer.response.headers,
         content_length: None,
         keep_alive: writer.response.keep_alive,
+        node_mode: self.node_mode,
       },
     );
     while writer.written < scratch.write_buf.len() {
@@ -1203,6 +1282,7 @@ where
         headers: writer.response.headers,
         content_length: Some(writer.content_length),
         keep_alive: writer.response.keep_alive,
+        node_mode: self.node_mode,
       },
     );
     while writer.written < scratch.write_buf.len() {

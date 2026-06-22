@@ -22,7 +22,22 @@
 
 // Ported from Node.js lib/_http_server.js
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
+import {
+  op_get_env_no_permission_check,
+  op_http_abort_response,
+  op_http_get_request_headers,
+  op_http_get_request_http_minor_version,
+  op_http_get_request_method,
+  op_http_get_request_remote_addr,
+  op_http_get_request_trailers,
+  op_http_get_request_url,
+  op_http_read_request_body,
+  op_http_request_on_cancel,
+  op_http_set_response_interim,
+  op_http_set_response_status_message,
+  op_http_try_take_full_request_body,
+} from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
@@ -34,9 +49,15 @@ const {
   FunctionPrototypeApply,
   FunctionPrototypeBind,
   FunctionPrototypeCall,
+  MapPrototypeDelete,
+  MapPrototypeGet,
+  MapPrototypeSet,
   MathMin,
+  Number,
   NumberIsFinite,
+  ObjectDefineProperty,
   ObjectKeys,
+  PromisePrototypeThen,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   SafeArrayIterator,
@@ -50,13 +71,17 @@ const {
   StringPrototypeSlice,
   StringPrototypeSplit,
   StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
   Symbol,
+  SymbolHasInstance,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
+  Uint8Array,
 } = primordials;
 
 import net from "node:net";
+import { Duplex } from "node:stream";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { ok: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 import {
@@ -77,13 +102,15 @@ import {
   validateHeaderName,
   validateHeaderValue,
 } from "node:_http_outgoing";
-const { kNeedDrain, kOutHeaders } = core.loadExtScript(
-  "ext:deno_node/internal/http.ts",
-);
+const { kNativeExternal, kNeedDrain, kOutHeaders } = core
+  .loadExtScript(
+    "ext:deno_node/internal/http.ts",
+  );
 import { IncomingMessage } from "node:_http_incoming";
 const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
+  ERR_HTTP_TRAILER_INVALID,
   ERR_HTTP_SOCKET_ASSIGNED,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
@@ -405,13 +432,33 @@ ServerResponse.prototype.detachSocket = function detachSocket(socket) {
   this.socket = null;
 };
 
+// Native fast path: 1xx interim responses (writeContinue/writeProcessing/
+// writeInformation/writeEarlyHints) can't reach the wire via the synthetic
+// socket's _writeRaw, so hand the raw bytes to the engine, which flushes them
+// ahead of the final response. Returns true when handled natively.
+function nativeWriteInterim(msg, head, cb) {
+  const external = msg[kNativeExternal];
+  if (external === null || external === undefined) {
+    return false;
+  }
+  op_http_set_response_interim(external, head);
+  if (typeof cb === "function") {
+    nextTick(cb);
+  }
+  return true;
+}
+
 ServerResponse.prototype.writeContinue = function writeContinue(cb) {
-  this._writeRaw("HTTP/1.1 100 Continue\r\n\r\n", "ascii", cb);
+  if (!nativeWriteInterim(this, "HTTP/1.1 100 Continue\r\n\r\n", cb)) {
+    this._writeRaw("HTTP/1.1 100 Continue\r\n\r\n", "ascii", cb);
+  }
   this._sent100 = true;
 };
 
 ServerResponse.prototype.writeProcessing = function writeProcessing(cb) {
-  this._writeRaw("HTTP/1.1 102 Processing\r\n\r\n", "ascii", cb);
+  if (!nativeWriteInterim(this, "HTTP/1.1 102 Processing\r\n\r\n", cb)) {
+    this._writeRaw("HTTP/1.1 102 Processing\r\n\r\n", "ascii", cb);
+  }
 };
 
 ServerResponse.prototype.writeInformation = function writeInformation(
@@ -447,7 +494,9 @@ ServerResponse.prototype.writeInformation = function writeInformation(
 
   head += "\r\n";
 
-  this._writeRaw(head, "ascii", cb);
+  if (!nativeWriteInterim(this, head, cb)) {
+    this._writeRaw(head, "ascii", cb);
+  }
 };
 
 ServerResponse.prototype.writeEarlyHints = function writeEarlyHints(
@@ -487,7 +536,9 @@ ServerResponse.prototype.writeEarlyHints = function writeEarlyHints(
 
   head += "\r\n";
 
-  this._writeRaw(head, "ascii", cb);
+  if (!nativeWriteInterim(this, head, cb)) {
+    this._writeRaw(head, "ascii", cb);
+  }
 };
 
 ServerResponse.prototype._implicitHeader = function _implicitHeader() {
@@ -525,20 +576,41 @@ ServerResponse.prototype.writeHead = function writeHead(
     this._hasBody = false;
   }
 
+  // Native mode: force headers into kOutHeaders (below) so they survive into
+  // the native commit, rather than only the raw _storeHeader serialization.
+  if (this[kNativeExternal] && this[kOutHeaders] === null && obj) {
+    this[kOutHeaders] = { __proto__: null };
+  }
+
   let headers;
   if (this[kOutHeaders]) {
     // Slow-case: progressive API and header fields are passed.
     if (ArrayIsArray(obj)) {
-      if (obj.length % 2 !== 0) {
-        throw new ERR_INVALID_ARG_VALUE("headers", obj);
-      }
-      for (let n = 0; n < obj.length; n += 2) {
-        const k = obj[n + 0];
-        if (k) this.removeHeader(k);
-      }
-      for (let n = 0; n < obj.length; n += 2) {
-        const k = obj[n + 0];
-        if (k) this.appendHeader(k, obj[n + 1]);
+      if (this[kNativeExternal] && obj.length && ArrayIsArray(obj[0])) {
+        // Native mode forces kOutHeaders above, so the `[[name, value], ...]`
+        // tuple form that the classic path hands straight to _storeHeader lands
+        // here instead. Handle it like _storeHeader does (remove-then-append so
+        // duplicates such as multiple set-cookie headers are preserved).
+        for (let n = 0; n < obj.length; n++) {
+          const k = obj[n][0];
+          if (k) this.removeHeader(k);
+        }
+        for (let n = 0; n < obj.length; n++) {
+          const k = obj[n][0];
+          if (k) this.appendHeader(k, obj[n][1]);
+        }
+      } else {
+        if (obj.length % 2 !== 0) {
+          throw new ERR_INVALID_ARG_VALUE("headers", obj);
+        }
+        for (let n = 0; n < obj.length; n += 2) {
+          const k = obj[n + 0];
+          if (k) this.removeHeader(k);
+        }
+        for (let n = 0; n < obj.length; n += 2) {
+          const k = obj[n + 0];
+          if (k) this.appendHeader(k, obj[n + 1]);
+        }
       }
     } else if (obj) {
       const keys = ObjectKeys(obj);
@@ -559,6 +631,35 @@ ServerResponse.prototype.writeHead = function writeHead(
 
   const statusLine = "HTTP/1.1 " + statusCode + " " + this.statusMessage +
     "\r\n";
+  // Native mode: skip socket-oriented header serialization. The headers are in
+  // kOutHeaders (forced above) and the native engine adds Date/Content-Length/
+  // Connection itself; nativeEnd() reads kOutHeaders on commit.
+  if (this[kNativeExternal]) {
+    // A Trailer header is only valid with chunked transfer-encoding; a
+    // Content-Length response is non-chunked, so trailers can't be sent (Node
+    // throws this from _storeHeader, which writeHead invokes).
+    if (this.hasHeader("trailer") && this.hasHeader("content-length")) {
+      throw new ERR_HTTP_TRAILER_INVALID();
+    }
+    this._header = "\r\n"; // truthy sentinel -> headersSent true; never written
+    // writeHead resolved statusMessage; mark it so nativeCommit doesn't also try
+    // (it handles the no-writeHead `res.statusMessage = ...; res.end()` case).
+    this._nativeWriteHead = true;
+    // Node commits the status into the header at writeHead time; a later
+    // `res.statusCode = ...` then has no effect. Native commit is deferred to
+    // end(), so lock the status here for it to read.
+    this._nativeStatus = statusCode;
+    // Only push a custom reason phrase to the engine (it uses the canonical one
+    // by default); avoids a per-response op on the hot path.
+    if (this.statusMessage !== (STATUS_CODES[statusCode] || "unknown")) {
+      op_http_set_response_status_message(
+        this[kNativeExternal],
+        this.statusMessage,
+      );
+    }
+    return this;
+  }
+
   this._storeHeader(statusLine, headers);
 
   return this;
@@ -1165,6 +1266,36 @@ function isRequestKnownEmpty(req) {
     req.headers["transfer-encoding"] === undefined;
 }
 
+// Emit an `http` PerformanceEntry for a finished server request/response, when
+// a PerformanceObserver is watching the "http" type. Shared by the classic
+// resOnFinish and the native fast path (makeNativeOnRequest), both of which set
+// req[kPerfStartTime] when the request starts.
+function emitServerHttpPerfEntry(req, res) {
+  const perfStartTime = req[kPerfStartTime];
+  if (perfStartTime === undefined || !hasNodeObserverForType("http")) {
+    return;
+  }
+  enqueueNodePerformanceEntry({
+    name: "HttpRequest",
+    entryType: "http",
+    startTime: perfStartTime,
+    duration: performance.now() - perfStartTime,
+    detail: {
+      req: {
+        method: req.method,
+        url: req.url || "/",
+        headers: req.headers,
+      },
+      res: {
+        statusCode: res.statusCode,
+        statusMessage: res.statusMessage ||
+          STATUS_CODES[res.statusCode] || "",
+        headers: res.getHeaders(),
+      },
+    },
+  });
+}
+
 function resOnFinish(req, res, socket, state, server) {
   if (onServerResponseFinishChannel.hasSubscribers) {
     onServerResponseFinishChannel.publish({
@@ -1189,29 +1320,7 @@ function resOnFinish(req, res, socket, state, server) {
     res[kOtelSpan] = null;
   }
 
-  // Emit HttpRequest perf entry
-  const perfStartTime = req[kPerfStartTime];
-  if (perfStartTime !== undefined && hasNodeObserverForType("http")) {
-    enqueueNodePerformanceEntry({
-      name: "HttpRequest",
-      entryType: "http",
-      startTime: perfStartTime,
-      duration: performance.now() - perfStartTime,
-      detail: {
-        req: {
-          method: req.method,
-          url: req.url || "/",
-          headers: req.headers,
-        },
-        res: {
-          statusCode: res.statusCode,
-          statusMessage: res.statusMessage ||
-            STATUS_CODES[res.statusCode] || "",
-          headers: res.getHeaders(),
-        },
-      },
-    });
-  }
+  emitServerHttpPerfEntry(req, res);
 
   // Record OTel server metrics
   if (res[kOtelStartTime] !== undefined) {
@@ -1319,6 +1428,739 @@ function clearIncoming(req) {
       req.on("end", clearIncoming);
     }
   }
+}
+
+// ===========================================================================
+// Native fast path for node:http servers.
+//
+// Eligible plain-TCP servers bind through the same native HTTP engine that
+// backs Deno.serve (deno_http_h1), dispatching each parsed request straight to
+// lightweight IncomingMessage/ServerResponse shims that read/write via the
+// op_http_* ops. This bypasses the net.Socket + llhttp + node-stream machinery
+// (and its per-request event-loop ticks / async-read parking) on the hot path.
+// Anything the shims don't support falls back to the classic polyfill path.
+// ===========================================================================
+
+const { listen: denoListen } = core.loadExtScript("ext:deno_net/01_net.js");
+
+const kNativeServeHandle = Symbol("kNativeServeHandle");
+
+// Escape hatch while the fast path matures. Default on; opt out with
+// DENO_NODE_HTTP_NATIVE=0. Read without a permission check (no --allow-env
+// needed) so the opt-out always works.
+let nativeHttpForceDisabled = false;
+let nativeHttpEnvChecked = false;
+function nativeHttpEnabled() {
+  if (!nativeHttpEnvChecked) {
+    nativeHttpEnvChecked = true;
+    const v = op_get_env_no_permission_check("DENO_NODE_HTTP_NATIVE");
+    if (v === "0" || v === "false") {
+      nativeHttpForceDisabled = true;
+    }
+  }
+  return !nativeHttpForceDisabled;
+}
+internals.__disableNodeHttpNative = () => {
+  nativeHttpForceDisabled = true;
+  nativeHttpEnvChecked = true;
+};
+
+// Request-body pump state for a native-mode IncomingMessage (see
+// nativeIncomingRead). Request-reading ops borrow (do not consume) the external;
+// the response op consumes it.
+const BODY_NOT_STARTED = 0;
+const BODY_STREAMING = 1;
+const BODY_DONE = 2;
+const RID_NONE = 4294967295; // ResourceId::MAX
+
+// Decide whether `server` can use the native fast path. Conservative: only
+// plain http.Server with the default request/response classes and no listeners
+// that need raw socket / upgrade semantics.
+function nativeFastPathEligible(server) {
+  if (!nativeHttpEnabled()) return false;
+  if (server[kServerResponse] !== ServerResponse) return false;
+  if (server[kIncomingMessage] !== IncomingMessage) return false;
+  if (server.listenerCount("upgrade") > 0) return false;
+  if (server.listenerCount("connect") > 0) return false;
+  // A user-supplied shouldUpgradeCallback routes requests to the upgrade path;
+  // the native path can't honor it, so fall back to the classic path.
+  if (server._hasUserShouldUpgradeCallback) return false;
+  if (server.listenerCount("clientError") > 0) return false;
+  // 'connection' is always present (internal connectionListener); a user
+  // listener means they want raw socket access -> fall back.
+  if (server.listenerCount("connection") > 1) return false;
+  // A server with no 'request' handler isn't dispatching requests (e.g. tests
+  // that only exercise raw 'connection'/socket behavior). The native fast path
+  // exists to dispatch requests, so there's nothing to gain and it would
+  // suppress connection-level events; let the classic net.Server path handle it.
+  if (server.listenerCount("request") === 0) return false;
+  if (otelState.TRACING_ENABLED || otelState.METRICS_ENABLED) return false;
+  // Connection/socket semantics the native fast path can't honor: a per-socket
+  // inactivity timeout (server.setTimeout adds a 'timeout' listener and sets
+  // server.timeout) needs a real per-connection socket to fire 'timeout' on,
+  // and maxRequestsPerSocket needs per-connection request accounting. The
+  // classic path handles both, so fall back rather than silently dropping them.
+  if (server.timeout > 0 || server.listenerCount("timeout") > 0) return false;
+  if (server.maxRequestsPerSocket > 0) return false;
+  // Expect: 100-continue handling (checkContinue/checkExpectation) lets the
+  // handler decide whether to continue or reject; the native path can't emit
+  // those events, so fall back to the classic path.
+  if (
+    server.listenerCount("checkContinue") > 0 ||
+    server.listenerCount("checkExpectation") > 0
+  ) {
+    return false;
+  }
+  return true;
+}
+
+// Parse listen() args into { port, host } for a plain TCP listen, or null if
+// the form isn't an eligible TCP bind (unix path, fd, handle, etc.).
+function parseTcpListenArgs(args) {
+  let cb;
+  if (typeof args[args.length - 1] === "function") {
+    cb = args[args.length - 1];
+    args = ArrayPrototypeSlice(args, 0, -1);
+  }
+  const first = args[0];
+  if (typeof first === "number" || typeof first === "string") {
+    // listen(port[, host])
+    const port = Number(first);
+    if (!NumberIsFinite(port)) return null;
+    const host = typeof args[1] === "string" ? args[1] : undefined;
+    return { port, host, cb };
+  }
+  if (first !== null && typeof first === "object") {
+    if (first.path !== undefined || first.fd !== undefined) return null;
+    if (first.port === undefined) return null;
+    const port = Number(first.port);
+    if (!NumberIsFinite(port)) return null;
+    return { port, host: first.host, cb, reusePort: first.reusePort };
+  }
+  return null;
+}
+
+// `push` here is Readable.prototype.push, not Array.prototype.push, but the
+// prefer-primordials lint can't distinguish them; wrap it once.
+// deno-lint-ignore prefer-primordials
+const nativePush = (readable, chunk) => readable.push(chunk);
+
+// Pull the request body lazily into the (real) IncomingMessage Readable. The
+// common small-body keep-alive case is fully prebuffered by deno_http_h1 and
+// delivered in one synchronous chunk; larger bodies stream via a resource.
+// Assigned per-instance as `req._read` (the real IncomingMessage._read expects
+// a socket, which native mode doesn't have).
+function nativeIncomingRead(_n) {
+  if (this._nativeBodyState === BODY_DONE) {
+    return;
+  }
+  // A streaming read is already in flight; its continuation self-pumps the
+  // next read (see below), so ignore the stream machinery's extra _read calls
+  // to avoid issuing concurrent reads on the same body resource.
+  if (this._nativeReadInFlight) {
+    return;
+  }
+  if (this._nativeBodyState === BODY_NOT_STARTED) {
+    const ext = this[kNativeExternal];
+    if (!ext) {
+      this._nativeBodyState = BODY_DONE;
+      this.complete = true;
+      nativePush(this, null);
+      return;
+    }
+    const buffered = op_http_try_take_full_request_body(ext);
+    if (buffered !== null) {
+      this._nativeBodyState = BODY_DONE;
+      this.complete = true;
+      nativePush(
+        this,
+        Buffer.from(
+          TypedArrayPrototypeGetBuffer(buffered),
+          TypedArrayPrototypeGetByteOffset(buffered),
+          TypedArrayPrototypeGetByteLength(buffered),
+        ),
+      );
+      nativePush(this, null);
+      return;
+    }
+    const rid = op_http_read_request_body(ext);
+    if (rid === RID_NONE) {
+      this._nativeBodyState = BODY_DONE;
+      this.complete = true;
+      nativePush(this, null);
+      return;
+    }
+    this._nativeStreamRid = rid;
+    this._nativeBodyState = BODY_STREAMING;
+  }
+  const rid = this._nativeStreamRid;
+  const buf = new Uint8Array(65536);
+  // deno-lint-ignore no-this-alias
+  const self = this;
+  self._nativeReadInFlight = true;
+  PromisePrototypeThen(
+    core.read(rid, buf),
+    (n) => {
+      self._nativeReadInFlight = false;
+      if (n === 0) {
+        self._nativeBodyState = BODY_DONE;
+        self.complete = true;
+        core.tryClose(rid);
+        nativePush(self, null);
+        return;
+      }
+      // Push the chunk. `push()` returns true while the consumer still wants
+      // data; when it does, self-pump the next read directly rather than
+      // relying on the Readable's `maybeReadMore` (which does not re-arm an
+      // async source reliably). On backpressure (false) we stop and wait for
+      // the stream to call `_read` again on drain.
+      const more = nativePush(
+        self,
+        Buffer.from(TypedArrayPrototypeGetBuffer(buf), 0, n),
+      );
+      if (more && self._nativeBodyState === BODY_STREAMING) {
+        FunctionPrototypeCall(nativeIncomingRead, self, 0);
+      }
+    },
+    (_err) => {
+      // A body-read failure means the connection went away mid-request (the
+      // resource is the connection). Treat it as a client abort, matching the
+      // abort watcher in makeNativeOnRequest; gate on `destroyed` so the two
+      // paths don't double-destroy with competing errors.
+      self._nativeReadInFlight = false;
+      core.tryClose(rid);
+      if (!self.destroyed) {
+        self.destroy(connResetException("aborted"));
+      }
+    },
+  );
+}
+
+// Response finished without the handler consuming the request body: discard it
+// like Node's `req._dump()`. The engine drains the unread wire body; we just
+// remove any 'data' listeners (so a deferred `_read` can't deliver the body),
+// mark the body done, and queue EOF -- WITHOUT touching the external (the
+// response commit may have freed it). Only acts on a not-yet-started body, so a
+// handler that is actively reading (streaming) or already finished is untouched.
+function nativeDiscardBody() {
+  if (this._nativeBodyState !== BODY_NOT_STARTED) {
+    return;
+  }
+  this._nativeBodyState = BODY_DONE;
+  this._dumped = true;
+  this.complete = true;
+  this.removeAllListeners("data");
+  nativePush(this, null);
+}
+
+// Strip the origin from an absolute URL to get Node's req.url (request target).
+function nativeRequestTarget(full) {
+  const schemeEnd = StringPrototypeIndexOf(full, "://");
+  if (schemeEnd === -1) return full;
+  const pathStart = StringPrototypeIndexOf(full, "/", schemeEnd + 3);
+  return pathStart === -1 ? "/" : StringPrototypeSlice(full, pathStart);
+}
+
+// Build a real IncomingMessage backed by the native request `external` so that
+// frameworks which re-parent onto http.IncomingMessage.prototype keep working.
+// Synthetic socket exposed as `req.socket` / `res.socket` on the native path.
+// The deno_http_h1 engine owns the real TCP connection, so this is a stand-in
+// that provides the net.Socket surface node:http handlers and middleware read
+// (remote/local address, byte counters, timeouts, the Writable stream methods).
+// It is NOT wired to the real connection: writes are discarded and destroy()
+// does not close the underlying connection (the response ops drive that).
+class NativeFakeSocket extends Duplex {
+  constructor() {
+    super({ autoDestroy: false });
+    this.remoteAddress = undefined;
+    this.remotePort = undefined;
+    this.remoteFamily = undefined;
+    this.localAddress = undefined;
+    this.localPort = undefined;
+    this.encrypted = undefined;
+    this.bytesRead = 0;
+    this.bytesWritten = 0;
+    this.connecting = false;
+    this._httpMessage = null;
+    this.parser = null;
+    this.timeout = 0;
+    this._handle = { __proto__: null, writeQueueSize: 0, reading: false };
+  }
+
+  _read() {}
+
+  _write(chunk, _encoding, callback) {
+    this.bytesWritten += chunk.length;
+    callback();
+  }
+
+  _final(callback) {
+    callback();
+  }
+
+  // The engine owns the real connection, so destroying the synthetic socket
+  // tears down the in-flight response (which drives the connection): a handler
+  // that calls `res.socket.destroy()` mid-response aborts it like Node does
+  // (e.g. test-http-client-spurious-aborted truncates a Content-Length body).
+  _destroy(err, callback) {
+    if (this._timeoutTimer !== undefined) {
+      clearTimeout(this._timeoutTimer);
+      this._timeoutTimer = undefined;
+    }
+    const res = this._httpMessage;
+    if (res !== undefined && res !== null && !res.destroyed) {
+      res.destroy(err || undefined);
+    }
+    callback(err);
+  }
+
+  setTimeout(msecs, callback) {
+    this.timeout = msecs;
+    if (callback !== undefined) {
+      if (msecs === 0) {
+        this.removeListener("timeout", callback);
+      } else {
+        this.once("timeout", callback);
+      }
+    }
+    // The engine owns the real I/O, so schedule a coarse one-shot inactivity
+    // timer (cleared on destroy): it fires 'timeout' if the connection is still
+    // alive after `msecs`, enough for a handler that stalls (test-http-set-timeout).
+    if (this._timeoutTimer !== undefined) {
+      clearTimeout(this._timeoutTimer);
+      this._timeoutTimer = undefined;
+    }
+    if (msecs > 0) {
+      this._timeoutTimer = setTimeout(() => {
+        this._timeoutTimer = undefined;
+        this.emit("timeout");
+      }, msecs);
+      if (typeof this._timeoutTimer?.unref === "function") {
+        this._timeoutTimer.unref();
+      }
+    }
+    return this;
+  }
+
+  _onTimeout() {}
+
+  setKeepAlive() {
+    return this;
+  }
+
+  setNoDelay() {
+    return this;
+  }
+
+  ref() {
+    return this;
+  }
+
+  unref() {
+    return this;
+  }
+
+  address() {
+    return {
+      address: this.localAddress,
+      port: this.localPort,
+      family: this.remoteFamily ?? "IPv4",
+    };
+  }
+}
+
+// Make `req.socket`/`res.socket` pass `instanceof net.Socket` (some handlers
+// assert it, e.g. test-http-set-timeout). The fake can't extend net.Socket --
+// its getter-only `remoteAddress`/etc. conflict with the fake's data props -- so
+// brand it via Symbol.hasInstance (additive: real net.Sockets still match).
+const realSocketHasInstance = net.Socket[SymbolHasInstance];
+ObjectDefineProperty(net.Socket, SymbolHasInstance, {
+  __proto__: null,
+  configurable: true,
+  writable: true,
+  value(obj) {
+    return ObjectPrototypeIsPrototypeOf(NativeFakeSocket.prototype, obj) ||
+      FunctionPrototypeCall(realSocketHasInstance, this, obj);
+  },
+});
+
+// Build the synthetic socket for a native request: remote address from the
+// engine, local address from the listener.
+function makeNativeSocket(external, server) {
+  const socket = new NativeFakeSocket();
+  try {
+    const addr = op_http_get_request_remote_addr(external);
+    if (
+      addr && addr[0] !== "unix" &&
+      !StringPrototypeStartsWith(addr[0], "vsock:")
+    ) {
+      socket.remoteAddress = addr[0];
+      socket.remotePort = addr[1];
+      socket.remoteFamily = StringPrototypeIncludes(addr[0], ":")
+        ? "IPv6"
+        : "IPv4";
+    }
+  } catch {
+    // External already consumed; leave the remote address undefined.
+  }
+  const handle = server[kNativeServeHandle];
+  if (handle !== undefined && handle.addr !== undefined) {
+    socket.localAddress = handle.addr.hostname;
+    socket.localPort = handle.addr.port;
+  }
+  // Node attaches an error handler to every server connection socket; without
+  // one a `res.socket.emit('error', ...)` (e.g. test-http-header-badrequest)
+  // throws as an unhandled 'error'. Route it to 'clientError' if observed, else
+  // tear down the in-flight response (or the socket) like Node's default does.
+  socket.on("error", (err) => {
+    if (server.listenerCount("clientError") > 0) {
+      server.emit("clientError", err, socket);
+      return;
+    }
+    const res = socket._httpMessage;
+    if (res !== undefined && res !== null && !res.destroyed) {
+      res.destroy(err);
+    } else if (!socket.destroyed) {
+      socket.destroy(err);
+    }
+  });
+  // A handler that manually emits 'close' on its socket uses Node's freeParser
+  // pattern to abort any pipelined requests still in the buffer (e.g.
+  // test-http-parser-freed-during-execute). The native engine reads pipelined
+  // requests response-ordered, so force the in-flight response to non-keepalive:
+  // the serve loop then closes the connection after it instead of dispatching
+  // the next pipelined request. The normal end-of-connection 'close' fires after
+  // the response committed, so setting this is a no-op there.
+  socket.on("close", () => {
+    const res = socket._httpMessage;
+    if (res !== undefined && res !== null && !res.destroyed) {
+      res.shouldKeepAlive = false;
+      // The serve loop derives keep-alive from the request, so flag the response
+      // to force the connection closed once it commits (nativeCommit honors it).
+      res._nativeForceClose = true;
+    }
+  });
+  // node:http attaches an llhttp parser to every connection socket and frees it
+  // when the connection closes (freeParser in _http_common.js). The native
+  // engine parses in Rust, but some code reads/overrides `socket.parser.free` /
+  // `.close` (e.g. to keep the parser in server.connectionList), so expose a
+  // minimal stand-in; `free()` is invoked on connection close (see isClose).
+  socket.parser = {
+    free() {},
+    close() {},
+  };
+  return socket;
+}
+
+function createNativeIncomingMessage(
+  external,
+  socket,
+  maxHeaderPairs,
+  joinDuplicateHeaders,
+) {
+  const req = new IncomingMessage(null);
+  req.socket = socket;
+  req[kNativeExternal] = external;
+  req._nativeBodyState = BODY_NOT_STARTED;
+  req._nativeStreamRid = RID_NONE;
+  req._nativeReadInFlight = false;
+  req._nativeDiscardBody = nativeDiscardBody;
+  // `_addHeaderLines` below reads this to decide whether to comma-join
+  // duplicate headers (e.g. authorization) vs keep-first; set it before.
+  if (joinDuplicateHeaders) {
+    req.joinDuplicateHeaders = true;
+  }
+  const minor = op_http_get_request_http_minor_version(external);
+  req.httpVersionMajor = 1;
+  req.httpVersionMinor = minor;
+  req.httpVersion = minor === 0 ? "1.0" : "1.1";
+  req.method = op_http_get_request_method(external);
+  req.url = nativeRequestTarget(op_http_get_request_url(external));
+  // `server.maxHeadersCount` limits how many request headers are parsed (the
+  // classic path caps llhttp at `maxHeadersCount << 1` pairs). The flat array
+  // holds 2 entries (name, value) per header, so truncate to that many entries.
+  let flat = op_http_get_request_headers(external);
+  if (maxHeaderPairs > 0 && flat.length > maxHeaderPairs) {
+    flat = ArrayPrototypeSlice(flat, 0, maxHeaderPairs);
+  }
+  req._addHeaderLines(flat, flat.length);
+  req._read = nativeIncomingRead;
+  // No request body (no Content-Length / Transfer-Encoding): mark it complete
+  // and queue EOF so the stream can 'end' (and autoDestroy -> 'close') when
+  // drained, without ever touching the external (which the response commit may
+  // already have freed).
+  const h = req.headers;
+  if (
+    h["content-length"] === undefined && h["transfer-encoding"] === undefined
+  ) {
+    req._nativeBodyState = BODY_DONE;
+    req.complete = true;
+    nativePush(req, null);
+  }
+  return req;
+}
+
+function makeNativeOnRequest(server) {
+  // connId -> the one synthetic socket shared by every request on that H1
+  // connection (Node gives all keep-alive requests the same `req.socket`). The
+  // engine calls us with `(external, connId, isClose)`; on close we drop and
+  // destroy the socket. connId is unique per connection (engine thread-local).
+  const sockets = new SafeMap();
+  return (external, connId, isClose) => {
+    if (isClose) {
+      const socket = MapPrototypeGet(sockets, connId);
+      if (socket !== undefined) {
+        MapPrototypeDelete(sockets, connId);
+        // Free the parser stand-in like Node's freeParser does on close (some
+        // handlers override socket.parser.free and expect it to run).
+        const parser = socket.parser;
+        if (parser !== undefined && parser !== null) {
+          socket.parser = null;
+          parser.free();
+        }
+        // Emits 'close' on the socket (Duplex emitClose default). The current
+        // req/res 'close' is handled on response finish.
+        socket.destroy();
+      }
+      return;
+    }
+    let socket = MapPrototypeGet(sockets, connId);
+    if (socket === undefined) {
+      socket = makeNativeSocket(external, server);
+      MapPrototypeSet(sockets, connId, socket);
+    }
+    const maxHeaderPairs = typeof server.maxHeadersCount === "number" &&
+        server.maxHeadersCount > 0
+      ? server.maxHeadersCount << 1
+      : 0;
+    const req = createNativeIncomingMessage(
+      external,
+      socket,
+      maxHeaderPairs,
+      server.joinDuplicateHeaders === true,
+    );
+    if (server.highWaterMark !== undefined) {
+      req._readableState.highWaterMark = server.highWaterMark;
+    }
+    // A chunked request can carry trailers after the body. The engine parsed
+    // them onto the record before dispatch; fetch them now (while the external
+    // is valid -- a later response commit may free it) and apply them on the
+    // request's 'end', before the user's 'end' handler runs, so req.rawTrailers
+    // / req.trailers are populated regardless of how the body is consumed.
+    if (req.headers["transfer-encoding"] !== undefined) {
+      const trailers = op_http_get_request_trailers(external);
+      if (trailers.length > 0) {
+        req.prependOnceListener("end", () => {
+          req._addHeaderLines(trailers, trailers.length);
+        });
+      }
+    }
+    // optimizeEmptyRequests: a request with no body (no Content-Length /
+    // Transfer-Encoding) is dumped and its readable closed up front, so the
+    // handler sees `req._dumped`/readableEnded/destroyed (matches the classic
+    // path) instead of an empty body to drain.
+    if (server.optimizeEmptyRequests && isRequestKnownEmpty(req)) {
+      req._dumpAndCloseReadable();
+    }
+    // Real ServerResponse in native mode: writeHead/write/end branch to the
+    // op_http_* ops (see _http_outgoing.ts). Because it IS an http.ServerResponse,
+    // frameworks like Express that re-parent `res` keep working.
+    const res = new server[kServerResponse](req, {
+      __proto__: null,
+      rejectNonStandardBodyWrites: server.rejectNonStandardBodyWrites,
+      highWaterMark: server.highWaterMark,
+    });
+    // Node keep-alive intent from the request: HTTP/1.1 keeps alive unless
+    // `Connection: close`; HTTP/1.0 only with `Connection: keep-alive`. Drives
+    // the JS-side `Connection: keep-alive` response header (nativeWireHeaders).
+    const connHeader = req.headers.connection;
+    const connLower = typeof connHeader === "string"
+      ? StringPrototypeToLowerCase(connHeader)
+      : "";
+    res.shouldKeepAlive = req.httpVersionMinor === 1
+      ? connLower !== "close"
+      : connLower === "keep-alive";
+    res._keepAliveTimeout = server.keepAliveTimeout;
+    res[kNativeExternal] = external;
+    res.socket = socket;
+    socket._httpMessage = res;
+    // maxRequestsPerSocket: count requests on this connection; once the limit is
+    // exceeded, drop the request (emit 'dropRequest' if observed, else 503) and
+    // don't run the handler. Mirrors parserOnIncoming. (Eligibility falls back to
+    // the classic path only when the limit is set before listen; set after, the
+    // server takes the native path and this enforces it.)
+    const maxRequestsPerSocket = server.maxRequestsPerSocket;
+    if (
+      typeof maxRequestsPerSocket === "number" && maxRequestsPerSocket > 0
+    ) {
+      socket._requestsCount = (socket._requestsCount || 0) + 1;
+      res.maxRequestsOnConnectionReached =
+        maxRequestsPerSocket <= socket._requestsCount;
+      if (maxRequestsPerSocket < socket._requestsCount) {
+        server.emit("dropRequest", req, socket);
+        res.writeHead(503);
+        res.end();
+        return;
+      }
+    }
+    // perf_hooks `http` instrumentation: when a PerformanceObserver watches the
+    // "http" type, stamp the start time and emit an HttpRequest entry on finish
+    // (the classic path does this in parserOnIncoming/resOnFinish).
+    if (hasNodeObserverForType("http")) {
+      req[kPerfStartTime] = performance.now();
+      res.once("finish", () => emitServerHttpPerfEntry(req, res));
+    }
+    // RFC 7230 5.4: an HTTP/1.1 request without a Host header is a 400 (the
+    // handler must not run). Mirrors the classic path; gated on requireHostHeader.
+    if (
+      req.httpVersionMajor === 1 && req.httpVersionMinor === 1 &&
+      server.requireHostHeader !== false && req.headers.host === undefined
+    ) {
+      res.writeHead(400, ["Connection", "close"]);
+      res.end();
+      return;
+    }
+    // Expect header (RFC 7231 5.1.1): an HTTP/1.1 request with an Expect value
+    // other than 100-continue must not run the request handler -- emit
+    // `checkExpectation` if anyone listens, else auto-417 Expectation Failed.
+    // (100-continue is handled by the engine / checkContinue eligibility.)
+    const expectHeader = req.headers.expect;
+    if (
+      expectHeader !== undefined && req.httpVersionMajor === 1 &&
+      req.httpVersionMinor === 1 &&
+      !StringPrototypeIncludes(
+        StringPrototypeToLowerCase(expectHeader),
+        "100-continue",
+      )
+    ) {
+      if (server.listenerCount("checkExpectation") > 0) {
+        server.emit("checkExpectation", req, res);
+      } else {
+        res.writeHead(417);
+        res.end();
+      }
+      return;
+    }
+    try {
+      server.emit("request", req, res);
+    } catch (err) {
+      // Always finish the response so the connection can't hang. If headers
+      // weren't sent yet we can still turn it into a 500; if they were (e.g. the
+      // handler threw after writeHead), just end it so the request completes.
+      try {
+        if (!res.headersSent) {
+          res.statusCode = 500;
+        }
+        if (!res.finished) {
+          res.end();
+        }
+      } catch { /* external already consumed */ }
+      internals.log("error", "Error in node:http request handler", err);
+    }
+    // If the handler returned without committing a response, watch for a client
+    // abort. The hot path (sync res.end) already consumed the external, so this
+    // op is only armed for still-open (async/streaming/no-reply) responses.
+    if (res[kNativeExternal] !== null && res[kNativeExternal] !== undefined) {
+      PromisePrototypeThen(
+        op_http_request_on_cancel(external),
+        (cancelled) => {
+          if (!cancelled || req.destroyed) {
+            return;
+          }
+          // With lifecycle listeners, propagate the abort as Node does:
+          // req.destroy(aborted) -> 'aborted'/'error'/'close'.
+          if (
+            req.listenerCount("aborted") > 0 ||
+            req.listenerCount("close") > 0 ||
+            req.listenerCount("error") > 0 || res.listenerCount("close") > 0
+          ) {
+            req.destroy(connResetException("aborted"));
+            return;
+          }
+          // No lifecycle listeners (e.g. a handler that never replies while the
+          // client times out): end the response so the serve loop and
+          // server.close() can complete, without surfacing an unhandled 'error'.
+          const ext = res[kNativeExternal];
+          if (ext !== null && ext !== undefined) {
+            op_http_abort_response(ext);
+          }
+        },
+      );
+    }
+  };
+}
+
+// Try to bind `server` via the native fast path. Returns true if it took over
+// the listen, false to fall back to the classic net.Server path.
+function tryListenNative(server, args) {
+  if (!nativeFastPathEligible(server)) return false;
+  const parsed = parseTcpListenArgs(args);
+  if (parsed === null) return false;
+
+  let listener;
+  try {
+    listener = denoListen({
+      hostname: parsed.host ?? "0.0.0.0",
+      port: parsed.port,
+      transport: "tcp",
+      reusePort: parsed.reusePort ?? false,
+    });
+  } catch {
+    // Couldn't bind natively (e.g. unsupported option); fall back.
+    return false;
+  }
+
+  // 00_serve.ts is lazy-loaded; loadExtScript forces its evaluation and
+  // returns the serve entry points (the IIFE also wires up internals).
+  const { serveHttpOnListenerForNode } = core.loadExtScript(
+    "ext:deno_http/00_serve.ts",
+  );
+  const handle = serveHttpOnListenerForNode(
+    listener,
+    undefined,
+    makeNativeOnRequest(server),
+    undefined,
+    () => {},
+    {
+      __proto__: null,
+      keepAliveTimeoutMs: server.keepAliveTimeout,
+      headersTimeoutMs: server.headersTimeout,
+      requestTimeoutMs: server.requestTimeout,
+    },
+  );
+  server[kNativeServeHandle] = handle;
+  const addr = handle.addr;
+
+  server._handle = {
+    close(cb) {
+      PromisePrototypeThen(handle.shutdown(), () => cb && cb());
+    },
+    ref() {
+      handle.ref();
+    },
+    unref() {
+      handle.unref();
+    },
+  };
+  // The classic net.Server listen path applies a pre-listen `unref()` in
+  // `_listen2`; the native path bypasses it, so honor `server.unref()` that ran
+  // before `listen()` here (otherwise the serve op keeps the loop alive).
+  if (server._unref) {
+    handle.unref();
+  }
+  server.address = function address() {
+    return {
+      address: addr.hostname,
+      port: addr.port,
+      family: StringPrototypeIncludes(addr.hostname, ":") ? "IPv6" : "IPv4",
+    };
+  };
+  // `server.listening` is a getter derived from `_handle` (set above).
+  if (parsed.cb) {
+    server.once("listening", parsed.cb);
+  }
+  nextTick(() => server.emit("listening"));
+  return true;
 }
 
 function Server(options, requestListener) {
@@ -1527,6 +2369,11 @@ function storeHTTPOptions(options) {
       "options.shouldUpgradeCallback",
     );
     this.shouldUpgradeCallback = shouldUpgradeCallback;
+    // A user-supplied callback can route any request to the upgrade path; the
+    // native fast path can't honor it, so mark the server ineligible. (The
+    // default below only upgrades when there's an 'upgrade' listener, which
+    // nativeFastPathEligible already checks.)
+    this._hasUserShouldUpgradeCallback = true;
   } else {
     this.shouldUpgradeCallback = function () {
       return this.listenerCount("upgrade") > 0;
@@ -1547,6 +2394,9 @@ Server.prototype.listen = function listen(...args) {
 
   switch (applied.mode) {
     case "none":
+      if (tryListenNative(this, args)) {
+        return this;
+      }
       return FunctionPrototypeApply(net.Server.prototype.listen, this, args);
 
     case "tcp": {

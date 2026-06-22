@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::fmt;
@@ -93,6 +94,7 @@ use crate::service::HttpRecordResponse;
 use crate::service::HttpRequestBodyAutocloser;
 use crate::service::HttpServerState;
 use crate::service::NativeResponseCell;
+use crate::service::NodeHttpServeOptions;
 use crate::service::ServerCallback;
 use crate::service::SignallingRc;
 use crate::service::handle_request;
@@ -726,10 +728,22 @@ fn raw_request_header_to_v8<'scope>(
 
 struct RawResponseParts {
   status: u16,
+  // Custom reason phrase from `res.statusMessage` (node), else None -> canonical.
+  reason: Option<Vec<u8>>,
   headers: Vec<RawHeader>,
   trailers: Vec<RawHeader>,
   default_text_content_type: bool,
   content_type: Option<Vec<u8>>,
+  // node:http only: close the connection after this response regardless of the
+  // request's keep-alive intent.
+  force_close: bool,
+  // node:http only: the handler removed both Content-Length and
+  // Transfer-Encoding, so a flat body is sent close-delimited (no content-length
+  // header, body ends at connection close). Implies force_close.
+  close_delimited: bool,
+  // node:http only: raw 1xx interim-response bytes (e.g. `103 Early Hints`)
+  // written verbatim before the final response status line.
+  interim_prefix: Vec<u8>,
 }
 
 enum RawResponseBody {
@@ -905,6 +919,11 @@ fn weaken_raw_etag(headers: &mut [RawHeader]) {
 struct RawH1ConnectionState<I> {
   conn: h1::SharedConn<I>,
   scratch: h1::SharedScratch,
+  // Set when a streaming request-body read hits a framing parse error (e.g. a
+  // malformed chunk-size line used for smuggling). node:http replies 400 for
+  // such a request once the handler returns without committing a response; the
+  // serve loop reads this off the taken connection state.
+  body_parse_error: bool,
 }
 
 impl<I> RawH1ConnectionState<I>
@@ -917,12 +936,21 @@ where
     limit: usize,
   ) -> Poll<Result<BufView, HttpNextError>> {
     self.scratch.ensure_read_capacity(limit);
-    match ready!(self.conn.poll_read_body_chunk_limited_with(
+    let chunk = match ready!(self.conn.poll_read_body_chunk_limited_with(
       cx,
       &mut self.scratch,
       limit,
       |chunk| BufView::from(chunk.to_vec())
-    ))? {
+    )) {
+      Ok(chunk) => chunk,
+      Err(error) => {
+        if matches!(error, h1::Error::Parse(_)) {
+          self.body_parse_error = true;
+        }
+        return Poll::Ready(Err(error.into()));
+      }
+    };
+    match chunk {
       h1::SharedBodyChunk::Chunk(chunk) => Poll::Ready(Ok(chunk)),
       h1::SharedBodyChunk::Complete => Poll::Ready(Ok(BufView::empty())),
     }
@@ -934,7 +962,7 @@ where
     buf: &mut [u8],
   ) -> Poll<Result<usize, HttpNextError>> {
     self.scratch.ensure_read_capacity(buf.len());
-    match ready!(self.conn.poll_read_body_chunk_limited_with(
+    let chunk = match ready!(self.conn.poll_read_body_chunk_limited_with(
       cx,
       &mut self.scratch,
       buf.len(),
@@ -943,7 +971,16 @@ where
         buf[..len].copy_from_slice(chunk);
         len
       }
-    ))? {
+    )) {
+      Ok(chunk) => chunk,
+      Err(error) => {
+        if matches!(error, h1::Error::Parse(_)) {
+          self.body_parse_error = true;
+        }
+        return Poll::Ready(Err(error.into()));
+      }
+    };
+    match chunk {
       h1::SharedBodyChunk::Chunk(len) => Poll::Ready(Ok(len)),
       h1::SharedBodyChunk::Complete => Poll::Ready(Ok(0)),
     }
@@ -974,6 +1011,19 @@ where
       &mut self.scratch,
       writer,
     ) {
+      Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+      Poll::Ready(Err(error)) => Poll::Ready(Err(error.into())),
+      Poll::Pending => Poll::Pending,
+    }
+  }
+
+  fn poll_write_interim(
+    &mut self,
+    cx: &mut Context<'_>,
+    bytes: &[u8],
+    offset: &mut usize,
+  ) -> Poll<Result<(), HttpNextError>> {
+    match self.conn.poll_write_interim(cx, bytes, offset) {
       Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
       Poll::Ready(Err(error)) => Poll::Ready(Err(error.into())),
       Poll::Pending => Poll::Pending,
@@ -1070,16 +1120,30 @@ enum RawRequestBody {
 struct RawHttpRecordInner {
   request_info: HttpConnectionProperties,
   client_addr: Option<Vec<u8>>,
+  version: h1::Version,
   method: RawMethod,
   path: String,
   headers: RawRequestHeaders,
   request_body: Option<RawRequestBody>,
+  // node:http only: trailers parsed from a chunked request body, exposed as
+  // req.rawTrailers / req.trailers via op_http_get_request_trailers.
+  request_trailers: Vec<(Vec<u8>, Vec<u8>)>,
   upgrade: Option<Rc<RawUpgrade>>,
   response_status: u16,
+  response_reason: Option<Vec<u8>>,
   response_headers: Vec<RawHeader>,
   response_trailers: Vec<RawHeader>,
   default_text_content_type: bool,
   content_type: Option<Vec<u8>>,
+  // node:http only: force the connection closed after this response (e.g. a
+  // bodiless 204/304 the handler marked `Transfer-Encoding: chunked`).
+  response_force_close: bool,
+  // node:http only: send a flat body close-delimited (handler removed both
+  // Content-Length and Transfer-Encoding). Implies response_force_close.
+  response_close_delimited: bool,
+  // node:http only: buffered 1xx interim-response bytes (writeEarlyHints etc.)
+  // flushed ahead of the final response.
+  response_interim: Vec<u8>,
   response_body: Option<RawResponseBody>,
   request_body_taken_full: bool,
   request_cancelled: bool,
@@ -1094,8 +1158,13 @@ struct RawHttpRecordInner {
 struct RawHttpRecord(RefCell<RawHttpRecordInner>);
 
 impl RawHttpRecord {
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "raw request record needs all parsed head fields"
+  )]
   fn new(
     request_info: HttpConnectionProperties,
+    version: h1::Version,
     method: RawMethod,
     path: String,
     mut headers: RawRequestHeaders,
@@ -1123,16 +1192,22 @@ impl RawHttpRecord {
     Rc::new(Self(RefCell::new(RawHttpRecordInner {
       request_info,
       client_addr,
+      version,
       method,
       path,
       headers,
       request_body,
+      request_trailers: Vec::new(),
       upgrade,
       response_status: 200,
+      response_reason: None,
       response_headers: Vec::new(),
       response_trailers: Vec::new(),
       default_text_content_type: false,
       content_type: None,
+      response_force_close: false,
+      response_close_delimited: false,
+      response_interim: Vec::new(),
       response_body: None,
       request_body_taken_full: false,
       request_cancelled: false,
@@ -1184,6 +1259,10 @@ impl RawHttpRecord {
 
   fn cancelled(&self) -> bool {
     self.0.borrow().request_cancelled
+  }
+
+  fn version(&self) -> h1::Version {
+    self.0.borrow().version
   }
 
   fn request_cancelled(&self) -> impl Future<Output = bool> + '_ {
@@ -1263,6 +1342,30 @@ impl RawHttpRecord {
     self.0.borrow_mut().response_trailers = trailers;
   }
 
+  fn set_response_reason(&self, reason: Vec<u8>) {
+    self.0.borrow_mut().response_reason = Some(reason);
+  }
+
+  fn set_response_force_close(&self) {
+    self.0.borrow_mut().response_force_close = true;
+  }
+
+  fn set_response_close_delimited(&self) {
+    let mut inner = self.0.borrow_mut();
+    inner.response_close_delimited = true;
+    // Close-delimited bodies have no length framing, so the connection must
+    // close for the peer to know the body ended.
+    inner.response_force_close = true;
+  }
+
+  fn append_response_interim(&self, bytes: &[u8]) {
+    self
+      .0
+      .borrow_mut()
+      .response_interim
+      .extend_from_slice(bytes);
+  }
+
   fn set_default_text_content_type(&self) {
     self.0.borrow_mut().default_text_content_type = true;
   }
@@ -1313,14 +1416,26 @@ impl RawHttpRecord {
       (
         RawResponseParts {
           status: inner.response_status,
+          reason: inner.response_reason.take(),
           headers: std::mem::take(&mut inner.response_headers),
           trailers: std::mem::take(&mut inner.response_trailers),
           default_text_content_type: inner.default_text_content_type,
           content_type: inner.content_type.take(),
+          force_close: inner.response_force_close,
+          close_delimited: inner.response_close_delimited,
+          interim_prefix: std::mem::take(&mut inner.response_interim),
         },
         body,
       )
     })
+  }
+
+  fn set_request_trailers(&self, trailers: Vec<(Vec<u8>, Vec<u8>)>) {
+    self.0.borrow_mut().request_trailers = trailers;
+  }
+
+  fn take_request_trailers(&self) -> Vec<(Vec<u8>, Vec<u8>)> {
+    std::mem::take(&mut self.0.borrow_mut().request_trailers)
   }
 
   fn take_request_body(&self) -> Option<Rc<dyn Resource>> {
@@ -1470,6 +1585,10 @@ struct RawH1RequestBody<I> {
   conn: RawH1ConnectionCell<I>,
   size_hint: (u64, Option<u64>),
   canceled: std::cell::Cell<bool>,
+  // Waker for an in-flight read, so closing/cancelling the body resource wakes
+  // a parked read instead of leaving it pending forever (e.g. when the client
+  // aborts and the cancel signal is consumed by another connection poller).
+  read_waker: RefCell<Option<std::task::Waker>>,
 }
 
 impl<I> RawH1RequestBody<I> {
@@ -1478,11 +1597,15 @@ impl<I> RawH1RequestBody<I> {
       conn,
       size_hint: length.map_or((0, None), |length| (length, Some(length))),
       canceled: std::cell::Cell::new(false),
+      read_waker: RefCell::new(None),
     }
   }
 
   fn cancel(&self) {
     self.canceled.set(true);
+    if let Some(waker) = self.read_waker.borrow_mut().take() {
+      waker.wake();
+    }
   }
 
   fn try_take_full(&self) -> Option<Vec<u8>> {
@@ -1521,6 +1644,7 @@ where
         ),
       )));
     }
+    *this.body.read_waker.borrow_mut() = Some(cx.waker().clone());
     let mut conn = this.body.conn.borrow_mut();
     let Some(conn) = conn.as_mut() else {
       return Poll::Ready(Err(HttpNextError::Other(
@@ -1557,6 +1681,7 @@ where
         ),
       )));
     }
+    *this.body.read_waker.borrow_mut() = Some(cx.waker().clone());
     let mut conn = this.body.conn.borrow_mut();
     let Some(conn) = conn.as_mut() else {
       return Poll::Ready(Err(HttpNextError::Other(
@@ -1587,6 +1712,13 @@ where
 {
   fn name(&self) -> Cow<'_, str> {
     "requestBody".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    // Cancel and wake any in-flight read so closing the resource (e.g. when the
+    // request is destroyed) doesn't leave a pending read op keeping the event
+    // loop alive.
+    self.cancel();
   }
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
@@ -1919,6 +2051,24 @@ fn split_absolute_form_target(target: &str) -> Option<(&str, &str, &str)> {
     &rest[path_start..]
   };
   Some((scheme, authority, path))
+}
+
+/// Minor HTTP version of the request: 0 for HTTP/1.0, 1 for HTTP/1.1 (the node
+/// native path reports 1.1 by default; this lets it report the real version and
+/// avoid emitting a duplicate `Connection: keep-alive` on HTTP/1.0, which the
+/// engine already writes). Hyper/H2 path returns 1.
+#[op2(fast)]
+pub fn op_http_get_request_http_minor_version(external: *const c_void) -> u8 {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_get_request_http_minor_version") };
+  match http {
+    HttpRecordExternal::Raw(http) => match http.version() {
+      h1::Version::Http10 => 0,
+      h1::Version::Http11 => 1,
+    },
+    HttpRecordExternal::Hyper(_) => 1,
+  }
 }
 
 #[op2]
@@ -2506,6 +2656,38 @@ pub fn op_http_set_response_headers(
   }
 }
 
+/// node:http only: take the trailers parsed from a chunked request body as a
+/// flat `[name, value, name, value, ...]` v8 array in wire order (original case
+/// preserved), matching IncomingMessage._addHeaderLines. Empty when none.
+#[op2]
+pub fn op_http_get_request_trailers<'scope>(
+  scope: &mut v8::PinScope<'scope, '_>,
+  external: *const c_void,
+) -> v8::Local<'scope, v8::Array> {
+  let http =
+    // SAFETY: op is called with external (the request is still alive).
+    unsafe { clone_external!(external, "op_http_get_request_trailers") };
+  if let HttpRecordExternal::Raw(record) = http {
+    let trailers = record.take_request_trailers();
+    let mut vec: SmallVec<[v8::Local<v8::Value>; 8]> =
+      SmallVec::with_capacity(trailers.len() * 2);
+    for (name, value) in &trailers {
+      vec.push(
+        v8::String::new_from_one_byte(scope, name, v8::NewStringType::Normal)
+          .unwrap()
+          .into(),
+      );
+      vec.push(
+        v8::String::new_from_one_byte(scope, value, v8::NewStringType::Normal)
+          .unwrap()
+          .into(),
+      );
+    }
+    return v8::Array::new_with_elements(scope, vec.as_slice());
+  }
+  v8::Array::new(scope, 0)
+}
+
 #[op2]
 pub fn op_http_set_response_trailers(
   external: *const c_void,
@@ -2538,6 +2720,79 @@ pub fn op_http_set_response_trailers(
     trailer_map.append(name, value);
   }
   *http.trailers() = Some(trailer_map);
+}
+
+/// Set a custom reason phrase (`res.statusMessage`) for the node:http raw H1
+/// path. HTTP/2 (hyper) has no reason phrase, so the Hyper path ignores it.
+#[op2(fast)]
+pub fn op_http_set_response_status_message(
+  external: *const c_void,
+  #[string] reason: String,
+) {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_set_response_status_message") };
+  if let HttpRecordExternal::Raw(record) = http {
+    record.set_response_reason(reason.into_bytes());
+  }
+}
+
+/// node:http only: force the connection closed after this response (e.g. a
+/// bodiless 204/304 the handler marked `Transfer-Encoding: chunked`). The serve
+/// loop honors it regardless of the request's keep-alive intent.
+#[op2(fast)]
+pub fn op_http_set_response_force_close(external: *const c_void) {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_set_response_force_close") };
+  if let HttpRecordExternal::Raw(record) = http {
+    record.set_response_force_close();
+  }
+}
+
+/// node:http only: mark the response close-delimited -- the handler removed both
+/// Content-Length and Transfer-Encoding, so the flat body is sent with no
+/// content-length and the connection closes to delimit it (implies force-close).
+#[op2(fast)]
+pub fn op_http_set_response_close_delimited(external: *const c_void) {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_set_response_close_delimited") };
+  if let HttpRecordExternal::Raw(record) = http {
+    record.set_response_close_delimited();
+  }
+}
+
+/// node:http only: buffer raw 1xx interim-response bytes (writeEarlyHints,
+/// writeProcessing, writeInformation) to be flushed verbatim ahead of the final
+/// response. Borrows the external; safe before any response-commit op consumes
+/// it (the JS caller runs these before writeHead/end).
+#[op2(fast)]
+pub fn op_http_set_response_interim(
+  external: *const c_void,
+  #[string] head: &str,
+) {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_set_response_interim") };
+  if let HttpRecordExternal::Raw(record) = http {
+    record.append_response_interim(head.as_bytes());
+  }
+}
+
+/// node:http only: abort a request whose handler destroyed it without sending a
+/// response (`req.destroy()`). Marks the response ready with no body, so the
+/// serve loop drops the connection and the client sees an ECONNRESET. Only safe
+/// while no response-commit op has consumed the external (the JS caller guards
+/// on `_nativeResponded`).
+#[op2(fast)]
+pub fn op_http_abort_response(external: *const c_void) {
+  let http =
+    // SAFETY: op is called with external (not yet consumed; see doc comment).
+    unsafe { clone_external!(external, "op_http_abort_response") };
+  if let HttpRecordExternal::Raw(record) = http {
+    record.complete();
+  }
 }
 
 fn is_request_compressible(
@@ -3182,6 +3437,10 @@ struct RawParsedRequest {
   keep_alive: bool,
   expect_continue: bool,
   has_body: bool,
+  // The request declares a body with indeterminate framing (unrecognized
+  // Transfer-Encoding). node:http dispatches the handler then 400s when the body
+  // read errors; Deno.serve rejects it up front.
+  indeterminate_body: bool,
   request_size: u64,
   request_body_len: Option<u64>,
   upgrade: Option<h1::UpgradeKind>,
@@ -3219,6 +3478,7 @@ fn raw_request_from_h1(
       request.body,
       h1::BodyKind::Empty | h1::BodyKind::Upgrade
     ),
+    indeterminate_body: matches!(request.body, h1::BodyKind::Indeterminate),
     request_size: match request.body {
       h1::BodyKind::ContentLength(length) => length,
       _ => 0,
@@ -3239,6 +3499,32 @@ fn h1_reason_for(status: u16) -> &'static [u8] {
     .as_bytes()
 }
 
+/// The custom `res.statusMessage` reason if the node path set one, else the
+/// canonical reason for the status. JS validates the reason before sending it.
+fn raw_response_reason(parts: &RawResponseParts) -> &[u8] {
+  match &parts.reason {
+    Some(reason) => reason,
+    None => h1_reason_for(parts.status),
+  }
+}
+
+// Per-connection id handed to the node:http native dispatch so JS can give all
+// requests on one H1 connection the same `req.socket` (Node semantics) and
+// clean it up on connection close. The runtime is single-threaded, so a
+// thread-local counter is enough. f64 so it crosses to V8 as a plain number;
+// exact up to 2^53, which no realistic uptime reaches.
+thread_local! {
+  static NEXT_RAW_CONN_ID: Cell<f64> = const { Cell::new(1.0) };
+}
+
+fn next_raw_conn_id() -> f64 {
+  NEXT_RAW_CONN_ID.with(|c| {
+    let id = c.get();
+    c.set(id + 1.0);
+    id
+  })
+}
+
 const RAW_H1_DATE_LEN: usize = 29;
 
 #[derive(Clone, Copy)]
@@ -3246,6 +3532,9 @@ struct RawH1ResponseContext {
   version: h1::Version,
   keep_alive: bool,
   head: bool,
+  // node-compat: emit explicit `Connection: keep-alive` (see
+  // `raw_should_send_keep_alive`).
+  explicit_keep_alive: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -3295,10 +3584,14 @@ fn raw_response_from_direct_response(
 ) -> (RawResponseParts, FlatResponseBody) {
   let mut parts = RawResponseParts {
     status: response.status,
+    reason: None,
     headers: Vec::new(),
     trailers: Vec::new(),
     default_text_content_type: false,
     content_type: None,
+    force_close: false,
+    close_delimited: false,
+    interim_prefix: Vec::new(),
   };
   match response.headers {
     DirectResponseHeaders::None => {}
@@ -3355,6 +3648,10 @@ fn set_direct_response(http: HttpRecordExternal, response: DirectResponse) {
   http.complete();
 }
 
+#[allow(
+  clippy::too_many_arguments,
+  reason = "flat H1 response writer threads full response context"
+)]
 async fn write_h1_flat_response<I>(
   conn: &mut h1::SharedConn<I>,
   scratch: &mut h1::SharedScratch,
@@ -3363,16 +3660,26 @@ async fn write_h1_flat_response<I>(
   body: FlatResponseBody,
   keep_alive: bool,
   head: bool,
+  explicit_keep_alive: bool,
 ) -> Result<(), h1::Error>
 where
   I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
+  if !parts.interim_prefix.is_empty() {
+    conn.write_interim(&parts.interim_prefix).await?;
+  }
   let date = raw_h1_date();
+  let add_keep_alive = explicit_keep_alive;
+  // A close-delimited response emits no Connection header: the handler removed
+  // it, and the body is delimited by the connection close that force_close
+  // performs in the serve loop. Treat it as keep-alive for header purposes only
+  // so no `Connection: close` line is written.
+  let keep_alive = keep_alive || parts.close_delimited;
   let should_chunk = version == h1::Version::Http11
     && !head
     && raw_response_needs_chunked(&parts);
   if should_chunk {
-    let headers = raw_response_headers(&parts, &date);
+    let headers = raw_response_headers(&parts, &date, add_keep_alive);
     let trailers = raw_response_trailers(&parts);
     conn
       .start_chunked_response_with_scratch(
@@ -3380,7 +3687,7 @@ where
         h1::ResponseHead {
           version,
           status: parts.status,
-          reason: h1_reason_for(parts.status),
+          reason: raw_response_reason(&parts),
           headers: &headers,
           keep_alive,
         },
@@ -3398,11 +3705,16 @@ where
       .await?;
     return Ok(());
   }
+  // The fast text/content-type templates emit no `Connection` header, so skip
+  // them in node-compat mode (where one is required) and fall through to the
+  // general header path.
   if !head
+    && !add_keep_alive
     && version == h1::Version::Http11
     && parts.status == StatusCode::OK.as_u16()
     && parts.default_text_content_type
     && parts.headers.is_empty()
+    && !parts.close_delimited
   {
     let body = match &body {
       FlatResponseBody::Empty => &[][..],
@@ -3418,10 +3730,12 @@ where
     }
   }
   if !head
+    && !add_keep_alive
     && version == h1::Version::Http11
     && parts.status == StatusCode::OK.as_u16()
     && !parts.default_text_content_type
     && parts.headers.is_empty()
+    && !parts.close_delimited
     && let Some(content_type) = &parts.content_type
   {
     let body = match &body {
@@ -3442,13 +3756,19 @@ where
     }
   }
 
-  let headers = raw_response_headers(&parts, &date);
+  let headers = raw_response_headers(&parts, &date, add_keep_alive);
   let response_body = match &body {
     _ if head => h1::ResponseBody::Head(Some(match &body {
       FlatResponseBody::Empty => 0,
       FlatResponseBody::Bytes(body) => body.len() as u64,
     })),
     FlatResponseBody::Empty => h1::ResponseBody::Empty,
+    // Close-delimited (handler removed Content-Length + Transfer-Encoding): emit
+    // the body with no content-length; `keep_alive` is already false (force
+    // close) so the connection closes to delimit it.
+    FlatResponseBody::Bytes(body) if parts.close_delimited => {
+      h1::ResponseBody::CloseDelimitedBytes(body.as_ref())
+    }
     FlatResponseBody::Bytes(body) => h1::ResponseBody::Bytes(body.as_ref()),
   };
   conn
@@ -3457,7 +3777,7 @@ where
       h1::Response {
         version,
         status: parts.status,
-        reason: h1_reason_for(parts.status),
+        reason: raw_response_reason(&parts),
         headers: &headers,
         body: response_body,
         keep_alive,
@@ -3601,21 +3921,39 @@ async fn write_h1_flat_response_shared<I>(
   body: FlatResponseBody,
   keep_alive: bool,
   head: bool,
+  explicit_keep_alive: bool,
 ) -> Result<(), HttpNextError>
 where
   I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
+  if !parts.interim_prefix.is_empty() {
+    let mut offset = 0;
+    poll_fn(|cx| {
+      let mut conn = conn.borrow_mut();
+      let Some(conn) = conn.as_mut() else {
+        return Poll::Ready(Err(raw_h1_connection_closed()));
+      };
+      conn.poll_write_interim(cx, &parts.interim_prefix, &mut offset)
+    })
+    .await?;
+  }
   let date = raw_h1_date();
+  let add_keep_alive = explicit_keep_alive;
+  // A close-delimited response emits no Connection header: the handler removed
+  // it, and the body is delimited by the connection close that force_close
+  // performs in the serve loop. Treat it as keep-alive for header purposes only
+  // so no `Connection: close` line is written.
+  let keep_alive = keep_alive || parts.close_delimited;
   let should_chunk = version == h1::Version::Http11
     && !head
     && raw_response_needs_chunked(&parts);
   if should_chunk {
-    let headers = raw_response_headers(&parts, &date);
+    let headers = raw_response_headers(&parts, &date, add_keep_alive);
     let trailers = raw_response_trailers(&parts);
     let mut head = h1::SharedChunkedResponseHeadWriter::new(h1::ResponseHead {
       version,
       status: parts.status,
-      reason: h1_reason_for(parts.status),
+      reason: raw_response_reason(&parts),
       headers: &headers,
       keep_alive,
     });
@@ -3651,19 +3989,25 @@ where
     .await?;
     return Ok(());
   }
-  let headers = raw_response_headers(&parts, &date);
+  let headers = raw_response_headers(&parts, &date, add_keep_alive);
   let response_body = match &body {
     _ if head => h1::ResponseBody::Head(Some(match &body {
       FlatResponseBody::Empty => 0,
       FlatResponseBody::Bytes(body) => body.len() as u64,
     })),
     FlatResponseBody::Empty => h1::ResponseBody::Empty,
+    // Close-delimited (handler removed Content-Length + Transfer-Encoding): emit
+    // the body with no content-length; `keep_alive` is already false (force
+    // close) so the connection closes to delimit it.
+    FlatResponseBody::Bytes(body) if parts.close_delimited => {
+      h1::ResponseBody::CloseDelimitedBytes(body.as_ref())
+    }
     FlatResponseBody::Bytes(body) => h1::ResponseBody::Bytes(body.as_ref()),
   };
   let mut writer = h1::SharedResponseWriter::new(h1::Response {
     version,
     status: parts.status,
-    reason: h1_reason_for(parts.status),
+    reason: raw_response_reason(&parts),
     headers: &headers,
     body: response_body,
     keep_alive,
@@ -3681,6 +4025,7 @@ where
 fn raw_response_headers<'a>(
   parts: &'a RawResponseParts,
   date: &'a [u8],
+  node_mode: bool,
 ) -> SmallVec<[h1::Header<'a>; 16]> {
   let mut headers = SmallVec::<[h1::Header<'_>; 16]>::new();
   let has_date = parts
@@ -3704,7 +4049,9 @@ fn raw_response_headers<'a>(
       value: value.as_slice(),
     });
   }
-  if !has_date {
+  // node:http adds Date itself (honoring `res.sendDate` / removeHeader('Date'))
+  // in nativeWireHeaders, so the engine must not auto-add it in node mode.
+  if !has_date && !node_mode {
     headers.push(h1::Header {
       name: b"date",
       value: date,
@@ -3835,7 +4182,8 @@ where
 {
   let finish = RawResponseBodyFinishGuard::new(record);
   let date = raw_h1_date();
-  let headers = raw_response_headers(&parts, &date);
+  let add_keep_alive = context.explicit_keep_alive;
+  let headers = raw_response_headers(&parts, &date, add_keep_alive);
   let trailers = raw_response_trailers(&parts);
   let content_length = (!raw_response_body_is_compressed(&body)
     && !raw_response_has_transfer_encoding(&parts))
@@ -3848,7 +4196,7 @@ where
         h1::Response {
           version: context.version,
           status: parts.status,
-          reason: h1_reason_for(parts.status),
+          reason: raw_response_reason(&parts),
           headers: &headers,
           body: h1::ResponseBody::Head(content_length),
           keep_alive: context.keep_alive,
@@ -3863,7 +4211,7 @@ where
   let response_head = h1::ResponseHead {
     version: context.version,
     status: parts.status,
-    reason: h1_reason_for(parts.status),
+    reason: raw_response_reason(&parts),
     headers: &headers,
     keep_alive: context.keep_alive
       && (context.version == h1::Version::Http11 || content_length.is_some()),
@@ -3960,7 +4308,8 @@ where
 {
   let finish = RawResponseBodyFinishGuard::new(record);
   let date = raw_h1_date();
-  let headers = raw_response_headers(&parts, &date);
+  let add_keep_alive = context.explicit_keep_alive;
+  let headers = raw_response_headers(&parts, &date, add_keep_alive);
   let trailers = raw_response_trailers(&parts);
   let content_length = (!raw_response_body_is_compressed(&body)
     && !raw_response_has_transfer_encoding(&parts))
@@ -3970,7 +4319,7 @@ where
     let mut writer = h1::SharedResponseWriter::new(h1::Response {
       version: context.version,
       status: parts.status,
-      reason: h1_reason_for(parts.status),
+      reason: raw_response_reason(&parts),
       headers: &headers,
       body: h1::ResponseBody::Head(content_length),
       keep_alive: context.keep_alive,
@@ -3991,7 +4340,7 @@ where
   let response_head = h1::ResponseHead {
     version: context.version,
     status: parts.status,
-    reason: h1_reason_for(parts.status),
+    reason: raw_response_reason(&parts),
     headers: &headers,
     keep_alive: context.keep_alive
       && (context.version == h1::Version::Http11 || content_length.is_some()),
@@ -4114,24 +4463,158 @@ async fn serve_http11_raw(
   request_info: HttpConnectionProperties,
   callback: Rc<ServerCallback>,
   cancel: Rc<CancelHandle>,
+  server_state: SignallingRc<HttpServerState>,
+) -> Result<(), HttpNextError> {
+  // One id per H1 connection, handed to the node:http dispatch so JS keeps a
+  // single `req.socket` across keep-alive requests and tears it down here.
+  let conn_id = next_raw_conn_id();
+  let node_mode = callback.node_http().enabled;
+  // Box the (large) per-connection serve future so it doesn't bloat the stack
+  // frame of every caller that awaits this wrapper (clippy::large_futures).
+  let result = Box::pin(serve_http11_raw_inner(
+    io,
+    request_info,
+    callback.clone(),
+    cancel,
+    server_state,
+    conn_id,
+  ))
+  .await;
+  if node_mode {
+    // SAFETY: the isolate stays valid while the HttpJoinHandle holding this
+    // ServerCallback is alive (same invariant as the dispatch calls above).
+    unsafe { callback.dispatch_connection_close(conn_id) };
+  }
+  result
+}
+
+async fn serve_http11_raw_inner(
+  io: RawH1Io,
+  request_info: HttpConnectionProperties,
+  callback: Rc<ServerCallback>,
+  cancel: Rc<CancelHandle>,
   _server_state: SignallingRc<HttpServerState>,
+  conn_id: f64,
 ) -> Result<(), HttpNextError> {
   let mut conn = h1::SharedConn::new(io);
   conn.set_allow_missing_host(true);
   let mut scratch = h1::SharedScratch::default();
   let store_request = !callback.raw_no_request();
+  let node_http = callback.node_http();
+  let explicit_keep_alive = node_http.enabled;
+  // node:http preserves a user-set content-length on bodiless statuses (304);
+  // Deno.serve strips it. The write path reads this off the connection.
+  conn.set_node_mode(node_http.enabled);
+  // node:http keeps the first of duplicate Host headers (JS dedups); Deno.serve
+  // rejects per RFC 7230.
+  conn.set_allow_multiple_host(node_http.enabled);
+  // node:http rejects a bare CR/LF in the head (header-line smuggling); Deno.serve
+  // keeps httparse's lenient behavior.
+  conn.set_reject_bare_lf(node_http.enabled);
+  // node-compat: the first request head is bounded by `headersTimeout`; each
+  // subsequent (idle keep-alive) wait is bounded by `keepAliveTimeout`. On
+  // elapse we close the connection like Node does, which also lets a graceful
+  // `server.close()` drain idle keep-alive connections instead of hanging.
+  let mut first_request = true;
   loop {
-    let next_request = poll_fn(|cx| {
-      conn.poll_next_request_with(cx, &mut scratch, |request| {
-        raw_request_from_h1(request, store_request)
+    let head_timeout_ms = if first_request {
+      node_http.headers_timeout_ms
+    } else {
+      node_http.keep_alive_timeout_ms
+    };
+    first_request = false;
+    // node:http only: drain an already-buffered (pipelined) request first,
+    // without honoring the cancel/timeout. A graceful `server.close()` cancels
+    // the listen handle, but requests already received on an active connection
+    // must still be processed (Node finishes pipelined requests before close).
+    // Deno.serve keeps the original behavior (closes on listen cancel).
+    let immediate = if node_http.enabled {
+      poll_fn(|cx| {
+        Poll::Ready(
+          match conn.poll_next_request_with(cx, &mut scratch, |request| {
+            raw_request_from_h1(request, store_request)
+          }) {
+            Poll::Ready(result) => Some(result),
+            Poll::Pending => None,
+          },
+        )
       })
-    })
-    .or_cancel(cancel.clone())
-    .await;
+      .await
+    } else {
+      None
+    };
+    let next_request = if let Some(result) = immediate {
+      Ok(result)
+    } else {
+      // A request whose head is only PARTIALLY received (bytes already
+      // buffered, e.g. a partial pipelined request) is bounded by headersTimeout
+      // for the head and requestTimeout for the whole request, and replies 408
+      // on elapse. An idle keep-alive / not-yet-started wait uses the loop's
+      // head_timeout_ms (headersTimeout first, keepAliveTimeout idle) and just
+      // closes. Computed before `wait` borrows `conn` mutably.
+      let partial = node_http.enabled && !conn.buffered_is_empty();
+      let headers_ms = if partial {
+        node_http.headers_timeout_ms
+      } else {
+        head_timeout_ms
+      };
+      let head_ms = if node_http.enabled && headers_ms > 0 {
+        Some((headers_ms, partial))
+      } else {
+        None
+      };
+      let req_ms = if partial && node_http.request_timeout_ms > 0 {
+        Some((node_http.request_timeout_ms, true))
+      } else {
+        None
+      };
+      let deadline = match (head_ms, req_ms) {
+        (Some((h, _)), Some((r, rt))) if r <= h => Some((r, rt)),
+        (Some(x), _) => Some(x),
+        (None, Some(y)) => Some(y),
+        (None, None) => None,
+      };
+      let wait = poll_fn(|cx| {
+        conn.poll_next_request_with(cx, &mut scratch, |request| {
+          raw_request_from_h1(request, store_request)
+        })
+      })
+      .or_cancel(cancel.clone());
+      match deadline {
+        Some((ms, is_request_timeout)) => {
+          match tokio::time::timeout(Duration::from_millis(ms), wait).await {
+            Ok(result) => result,
+            Err(_elapsed) => {
+              let mut io = conn.into_inner();
+              if is_request_timeout {
+                io.write_all(
+                  b"HTTP/1.1 408 Request Timeout\r\nConnection: close\r\n\r\n",
+                )
+                .await?;
+              }
+              io.shutdown().await?;
+              return Ok(());
+            }
+          }
+        }
+        None => wait.await,
+      }
+    };
     let Some(parsed) = (match next_request {
       Ok(Ok(result)) => result,
       Ok(Err(h1::Error::Parse(_) | h1::Error::HeadTooLarge)) => {
-        write_h1_bad_request(&mut conn, &mut scratch).await?;
+        if node_http.enabled {
+          // Node replies with exactly this for a malformed/smuggling request:
+          // no auto date/content-length, capitalized `Connection: close`.
+          let mut io = conn.into_inner();
+          io.write_all(
+            b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n",
+          )
+          .await?;
+          io.shutdown().await?;
+        } else {
+          write_h1_bad_request(&mut conn, &mut scratch).await?;
+        }
         return Ok(());
       }
       Ok(Err(error)) => {
@@ -4154,6 +4637,7 @@ async fn serve_http11_raw(
       version: parsed.version,
       keep_alive,
       head,
+      explicit_keep_alive,
     };
 
     if expect_continue && has_body {
@@ -4164,12 +4648,40 @@ async fn serve_http11_raw(
       Some(h1::UpgradeKind::Any) => Some(()),
       Some(h1::UpgradeKind::H2c) | None => None,
     };
-    if parsed.has_body
-      && upgrade.is_none()
-      && let Some(body) = conn.try_take_full_body()?
-    {
+    // A body with indeterminate framing (unrecognized Transfer-Encoding):
+    // Deno.serve rejects it before dispatch (the old head-parse behavior).
+    // node:http instead dispatches the handler and replies 400 when the body
+    // read errors -- it falls through to the streaming path below, where
+    // try_take_full_body's parse error streams+dispatches and the body read sets
+    // `body_parse_error`.
+    if parsed.indeterminate_body && !node_http.enabled {
+      write_h1_bad_request(&mut conn, &mut scratch).await?;
+      return Ok(());
+    }
+    // node:http dispatches the handler at head-parse and streams the body
+    // (erroring during the read if malformed, e.g. a bare-LF chunk size used for
+    // request smuggling) rather than rejecting before the handler runs. So fall
+    // back to the streaming path on a body parse error. Deno.serve rejects.
+    let prebuffered_body = if parsed.has_body && upgrade.is_none() {
+      match conn.try_take_full_body() {
+        Ok(body) => body,
+        Err(_) if node_http.enabled => None,
+        Err(e) => return Err(e.into()),
+      }
+    } else {
+      None
+    };
+    if let Some(body) = prebuffered_body {
+      // Trailers parsed from the just-consumed chunked body (node:http exposes
+      // them as req.rawTrailers / req.trailers).
+      let request_trailers = if node_http.enabled {
+        conn.take_request_trailers()
+      } else {
+        Vec::new()
+      };
       let record = RawHttpRecord::new(
         request_info.clone(),
+        parsed.version,
         parsed.method,
         parsed.path,
         parsed.headers,
@@ -4177,10 +4689,13 @@ async fn serve_http11_raw(
         None,
         parsed.request_size,
       );
+      if !request_trailers.is_empty() {
+        record.set_request_trailers(request_trailers);
+      }
       let mut record_cancel_guard =
         RawHttpRecordCancelGuard::new(record.clone());
       let direct_response =
-        dispatch_raw_to_native_response(&callback, record.clone());
+        dispatch_raw_to_native_response(&callback, record.clone(), conn_id);
       if let Some(response) = direct_response {
         let (response_parts, body) =
           raw_response_from_direct_response(response);
@@ -4193,6 +4708,7 @@ async fn serve_http11_raw(
           body,
           keep_alive,
           head,
+          explicit_keep_alive,
         )
         .await?;
         record_cancel_guard.disarm();
@@ -4230,6 +4746,7 @@ async fn serve_http11_raw(
             body,
             keep_alive,
             head,
+            explicit_keep_alive,
           )
           .await?;
         }
@@ -4260,8 +4777,11 @@ async fn serve_http11_raw(
       continue;
     }
     if parsed.has_body || upgrade.is_some() {
-      let body_conn =
-        Rc::new(RefCell::new(Some(RawH1ConnectionState { conn, scratch })));
+      let body_conn = Rc::new(RefCell::new(Some(RawH1ConnectionState {
+        conn,
+        scratch,
+        body_parse_error: false,
+      })));
       let request_body_resource = parsed.has_body.then(|| {
         Rc::new(RawH1RequestBody::new(
           body_conn.clone(),
@@ -4277,6 +4797,7 @@ async fn serve_http11_raw(
       });
       let record = RawHttpRecord::new(
         request_info.clone(),
+        parsed.version,
         parsed.method,
         parsed.path,
         parsed.headers,
@@ -4287,7 +4808,7 @@ async fn serve_http11_raw(
       let mut record_cancel_guard =
         RawHttpRecordCancelGuard::new(record.clone());
       let direct_response = if upgrade.is_none() {
-        dispatch_raw_to_native_response(&callback, record.clone())
+        dispatch_raw_to_native_response(&callback, record.clone(), conn_id)
       } else {
         dispatch_raw_to_js(&callback, record.clone());
         None
@@ -4309,6 +4830,7 @@ async fn serve_http11_raw(
             body,
             keep_alive,
             head,
+            explicit_keep_alive,
           )
           .await?;
           conn = local_conn;
@@ -4326,14 +4848,87 @@ async fn serve_http11_raw(
           continue;
         }
       }
-      wait_raw_response_ready(
-        &record,
-        &body_conn,
-        request_body_for_cancel.as_ref(),
-      )
-      .await?;
+      // node:http `requestTimeout`: if the full request body isn't received in
+      // time, reply 408 and close. A complete-body-but-slow handler is NOT a
+      // request timeout (the request was received), so only fire while the body
+      // is still incomplete, then wait without a deadline.
+      let request_timeout_ms = node_http.request_timeout_ms;
+      let timed_out = if node_http.enabled && request_timeout_ms > 0 {
+        match tokio::time::timeout(
+          Duration::from_millis(request_timeout_ms),
+          wait_raw_response_ready(
+            &record,
+            &body_conn,
+            request_body_for_cancel.as_ref(),
+          ),
+        )
+        .await
+        {
+          Ok(result) => {
+            result?;
+            false
+          }
+          Err(_elapsed) => true,
+        }
+      } else {
+        wait_raw_response_ready(
+          &record,
+          &body_conn,
+          request_body_for_cancel.as_ref(),
+        )
+        .await?;
+        false
+      };
+      if timed_out {
+        if !record.request_body_taken_full() {
+          // Cancel the body resource so the handler's parked `core.read` (which
+          // is registered on the io waker we're about to drop) wakes, errors,
+          // and tears down -- otherwise it leaks and keeps the loop alive.
+          if let Some(body) = request_body_for_cancel.as_ref() {
+            body.cancel();
+          }
+          let state = { body_conn.borrow_mut().take() };
+          if let Some(state) = state {
+            let mut io = state.conn.into_inner();
+            io.write_all(
+              b"HTTP/1.1 408 Request Timeout\r\nConnection: close\r\n\r\n",
+            )
+            .await?;
+            io.shutdown().await?;
+          }
+          return Ok(());
+        }
+        wait_raw_response_ready(
+          &record,
+          &body_conn,
+          request_body_for_cancel.as_ref(),
+        )
+        .await?;
+      }
       let Some((response_parts, body)) = record.clone().into_flat_response()
       else {
+        // The response was aborted with no body (e.g. `res.destroy()` or
+        // `res.socket.destroy()` mid-request), OR the request body itself had a
+        // framing parse error (smuggling). Cancel any parked body read so it
+        // wakes and tears down instead of leaking on the io waker, then drop the
+        // connection. node:http replies 400 for a malformed body before close.
+        if !record.request_body_taken_full() {
+          if let Some(body) = request_body_for_cancel.as_ref() {
+            body.cancel();
+          }
+          let state = { body_conn.borrow_mut().take() };
+          if let Some(state) = state {
+            let bad_request = state.body_parse_error;
+            let mut io = state.conn.into_inner();
+            if bad_request && node_http.enabled {
+              io.write_all(
+                b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n",
+              )
+              .await?;
+            }
+            io.shutdown().await?;
+          }
+        }
         return Ok(());
       };
       let response_status = response_parts.status;
@@ -4352,6 +4947,7 @@ async fn serve_http11_raw(
                 body,
                 keep_alive,
                 head,
+                explicit_keep_alive,
               )
               .await?;
             }
@@ -4373,7 +4969,7 @@ async fn serve_http11_raw(
           }
           conn = local_conn;
           scratch = local_scratch;
-          if !keep_alive || cancel.is_canceled() {
+          if !keep_alive || (!explicit_keep_alive && cancel.is_canceled()) {
             record_cancel_guard.disarm();
             return Ok(());
           }
@@ -4391,6 +4987,7 @@ async fn serve_http11_raw(
             body,
             keep_alive,
             head,
+            explicit_keep_alive,
           )
           .await?;
         }
@@ -4399,6 +4996,7 @@ async fn serve_http11_raw(
             version: response_context.version,
             keep_alive: response_context.keep_alive && !parsed.has_body,
             head: response_context.head,
+            explicit_keep_alive: response_context.explicit_keep_alive,
           };
           write_h1_stream_response_shared(
             body_conn.clone(),
@@ -4428,7 +5026,10 @@ async fn serve_http11_raw(
       };
       conn = state.conn;
       scratch = state.scratch;
-      if !keep_alive || parsed.has_body || cancel.is_canceled() {
+      if !keep_alive
+        || parsed.has_body
+        || (!explicit_keep_alive && cancel.is_canceled())
+      {
         if parsed.has_body {
           let _ = conn.discard_body_with_scratch(&mut scratch).await;
         }
@@ -4441,6 +5042,7 @@ async fn serve_http11_raw(
 
     let record = RawHttpRecord::new(
       request_info.clone(),
+      parsed.version,
       parsed.method,
       parsed.path,
       parsed.headers,
@@ -4450,7 +5052,7 @@ async fn serve_http11_raw(
     );
     let mut record_cancel_guard = RawHttpRecordCancelGuard::new(record.clone());
     let direct_response =
-      dispatch_raw_to_native_response(&callback, record.clone());
+      dispatch_raw_to_native_response(&callback, record.clone(), conn_id);
     if let Some(response) = direct_response {
       let (response_parts, body) = raw_response_from_direct_response(response);
       write_h1_flat_response(
@@ -4461,10 +5063,11 @@ async fn serve_http11_raw(
         body,
         keep_alive,
         head,
+        explicit_keep_alive,
       )
       .await?;
       record_cancel_guard.disarm();
-      if !keep_alive || cancel.is_canceled() {
+      if !keep_alive || (!explicit_keep_alive && cancel.is_canceled()) {
         return Ok(());
       }
       continue;
@@ -4484,6 +5087,10 @@ async fn serve_http11_raw(
     else {
       return Ok(());
     };
+    // node:http can force the connection closed for this response (e.g. a
+    // bodiless 204/304 the handler marked chunked); the write emits
+    // `Connection: close` and the loop exits below.
+    let keep_alive = keep_alive && !response_parts.force_close;
     match body {
       RawResponseBody::Flat(body) => {
         write_h1_flat_response(
@@ -4494,6 +5101,7 @@ async fn serve_http11_raw(
           body,
           keep_alive,
           head,
+          explicit_keep_alive,
         )
         .await?;
       }
@@ -4513,7 +5121,7 @@ async fn serve_http11_raw(
         }
       }
     }
-    if !keep_alive || cancel.is_canceled() {
+    if !keep_alive || (!explicit_keep_alive && cancel.is_canceled()) {
       record_cancel_guard.disarm();
       return Ok(());
     }
@@ -4602,13 +5210,15 @@ fn dispatch_raw_to_js(callback: &ServerCallback, record: Rc<RawHttpRecord>) {
 fn dispatch_raw_to_native_response(
   callback: &ServerCallback,
   record: Rc<RawHttpRecord>,
+  conn_id: f64,
 ) -> Option<DirectResponse> {
   let ptr = ExternalPointer::new(RcHttpRecord(HttpRecordExternal::Raw(record)))
     .into_raw();
   // SAFETY: callback's isolate ptr remains valid while the HttpJoinHandle is
   // alive.
-  let response =
-    unsafe { callback.dispatch_native_response(ptr as *mut std::ffi::c_void) };
+  let response = unsafe {
+    callback.dispatch_native_response(ptr as *mut std::ffi::c_void, conn_id)
+  };
   if response.is_some() {
     // The JS native-response callback closed its InnerRequest before returning
     // this response, so no JS object should retain this external pointer.
@@ -4888,6 +5498,10 @@ pub fn op_http_serve<'scope, HTTP>(
   serve_fast_header_kind_key: v8::Local<'scope, v8::Value>,
   serve_fast_content_type_key: v8::Local<'scope, v8::Value>,
   serve_fast_consumed_key: v8::Local<'scope, v8::Value>,
+  node_http_mode: bool,
+  node_keep_alive_timeout_ms: f64,
+  node_headers_timeout_ms: f64,
+  node_request_timeout_ms: f64,
 ) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
@@ -4915,6 +5529,12 @@ where
     v8::Global::new(scope, serve_fast_content_type_key),
     v8::Global::new(scope, serve_fast_consumed_key),
     raw_no_request,
+    NodeHttpServeOptions {
+      enabled: node_http_mode,
+      keep_alive_timeout_ms: node_keep_alive_timeout_ms as u64,
+      headers_timeout_ms: node_headers_timeout_ms as u64,
+      request_timeout_ms: node_request_timeout_ms as u64,
+    },
     state.borrow().waker.clone(),
   ));
 
@@ -4994,6 +5614,7 @@ where
     v8::Global::new(scope, serve_fast_content_type_key),
     v8::Global::new(scope, serve_fast_consumed_key),
     raw_no_request,
+    NodeHttpServeOptions::default(),
     state.borrow().waker.clone(),
   ));
 
