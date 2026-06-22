@@ -30,7 +30,7 @@ Some Web APIs are using ops under the hood, eg. `console`, `performance`.
 - [fetch](https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope/fetch),
   [Request](https://developer.mozilla.org/en-US/docs/Web/API/Request),
   [Response](https://developer.mozilla.org/en-US/docs/Web/API/Response),
-  [Body](https://developer.mozilla.org/en-US/docs/Web/API/Body) and
+  [Body](https://developer.mozilla.org/en-US/docs/Web/API/Response/body) and
   [Headers](https://developer.mozilla.org/en-US/docs/Web/API/Headers): modern
   Promise-based HTTP Request API.
 - [location](https://developer.mozilla.org/en-US/docs/Web/API/Window/location)

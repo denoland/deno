@@ -1562,6 +1562,34 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       .decrease(&self.0.shared.parsed_source_cache);
   }
 
+  fn get_code_cache(
+    &self,
+    specifier: &ModuleSpecifier,
+    source: &deno_core::v8::String,
+  ) -> Option<SourceCodeCacheInfo> {
+    let cache = self.0.shared.code_cache.as_ref()?;
+    let source_hash = {
+      use std::hash::Hash;
+      use std::hash::Hasher;
+      let mut hasher = twox_hash::XxHash64::default();
+      source.hash(&mut hasher);
+      hasher.finish()
+    };
+    let data = cache
+      .get_sync(specifier, code_cache::CodeCacheType::EsModule, source_hash)
+      .inspect(|_| {
+        // This log line is also used by tests.
+        log::debug!(
+          "V8 code cache hit for ES module: {specifier}, [{source_hash}]"
+        );
+      })
+      .map(Cow::from);
+    Some(SourceCodeCacheInfo {
+      hash: source_hash,
+      data,
+    })
+  }
+
   fn code_cache_ready(
     &self,
     specifier: ModuleSpecifier,

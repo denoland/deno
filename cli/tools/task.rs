@@ -253,12 +253,18 @@ pub async fn execute_script(
     env_vars.insert("DENO_CONNECTED".into(), "1".into());
   }
 
-  let no_of_concurrent_tasks = if let Ok(value) = std::env::var("DENO_JOBS") {
-    value.parse::<NonZeroUsize>().ok()
-  } else {
-    std::thread::available_parallelism().ok()
-  }
-  .unwrap_or_else(|| NonZeroUsize::new(2).unwrap());
+  // Precedence: explicit `--jobs` flag > `DENO_JOBS` env var >
+  // `available_parallelism()` default.
+  let no_of_concurrent_tasks = task_flags
+    .concurrency
+    .or_else(|| {
+      std::env::var("DENO_JOBS")
+        .ok()?
+        .parse::<NonZeroUsize>()
+        .ok()
+    })
+    .or_else(|| std::thread::available_parallelism().ok())
+    .unwrap_or_else(|| NonZeroUsize::new(2).unwrap());
 
   let task_runner = TaskRunner {
     task_flags: &task_flags,
@@ -422,10 +428,14 @@ struct RunSingleOptions<'a> {
   kill_signal: KillSignal,
   argv: &'a [String],
   parallel_info: Option<ParallelInfo>,
-  /// Extra environment variables to set for this script in addition to the
-  /// runner's base env vars. Used for the npm lifecycle vars (`npm_package_*`,
-  /// `npm_lifecycle_*`) when running package.json scripts.
-  extra_env_vars: HashMap<OsString, OsString>,
+  /// Extra environment variables to overlay on the runner's base env vars for
+  /// this script (the npm `npm_package_*`/`npm_lifecycle_*`/process vars when
+  /// running package.json scripts). Borrowed because the caller builds this map
+  /// once per package and overwrites the per-script `npm_lifecycle_*` entries
+  /// in place, rather than rebuilding the whole map for each pre/run/post
+  /// script. The entries are still cloned onto the base env when the script
+  /// actually runs.
+  extra_env_vars: &'a HashMap<OsString, OsString>,
 }
 
 struct TaskRunner<'a> {
@@ -476,6 +486,11 @@ impl<'a> TaskRunner<'a> {
     if sorted.is_empty() {
       if self.task_flags.is_run {
         return Err(anyhow!("Task not found: {}", task_name));
+      }
+      // `--if-present` mirrors npm's flag: exit cleanly and quietly when the
+      // requested task does not exist, without listing available tasks.
+      if self.task_flags.if_present {
+        return Ok(0);
       }
       log::error!("Task not found: {}", task_name);
       if log::log_enabled!(log::Level::Error)
@@ -738,7 +753,7 @@ impl<'a> TaskRunner<'a> {
         argv,
         parallel_info,
         // npm lifecycle env vars are only set for package.json scripts.
-        extra_env_vars: HashMap::new(),
+        extra_env_vars: &HashMap::new(),
       })
       .await
   }
@@ -782,29 +797,30 @@ impl<'a> TaskRunner<'a> {
       &node_modules_bin_dirs,
     )?;
 
-    // npm sets a number of `npm_package_*` lifecycle env vars when running a
-    // package.json script. Build them from the script's package.json so that
-    // `deno task` matches npm's behavior (see #35251).
-    let base_npm_env_vars = self
+    // npm sets a number of `npm_*` env vars when running a package.json script.
+    // Build them once (the `npm_package_*` vars from the script's package.json
+    // plus the process-level `npm_execpath`/`npm_node_execpath`/`npm_command`)
+    // so that `deno task` matches npm's behavior (see #35251, #35306). The
+    // per-script `npm_lifecycle_*` vars are overwritten in place each iteration,
+    // so this single map is reused across the package's pre/run/post scripts.
+    let pkg_json = self
       .cli_options
       .workspace()
       .config_folders()
       .get(dir_url)
-      .and_then(|folder| folder.pkg_json.as_ref())
-      .map(|pkg_json| npm_package_env_vars(pkg_json))
-      .unwrap_or_default();
+      .and_then(|folder| folder.pkg_json.as_deref());
+    let mut npm_env_vars = npm_script_env_vars(pkg_json);
 
     for task_name in &task_names {
       if let Some(script) = scripts.get(task_name) {
-        let mut extra_env_vars = base_npm_env_vars.clone();
         // `npm_lifecycle_event` is the name of the script currently running
         // (the pre/post-prefixed name), and `npm_lifecycle_script` is its
         // command.
-        extra_env_vars.insert(
+        npm_env_vars.insert(
           OsString::from("npm_lifecycle_event"),
           OsString::from(task_name),
         );
-        extra_env_vars.insert(
+        npm_env_vars.insert(
           OsString::from("npm_lifecycle_script"),
           OsString::from(script),
         );
@@ -820,7 +836,7 @@ impl<'a> TaskRunner<'a> {
             kill_signal: kill_signal.clone(),
             argv,
             parallel_info,
-            extra_env_vars,
+            extra_env_vars: &npm_env_vars,
           })
           .await?;
         if exit_code > 0 {
@@ -881,7 +897,8 @@ impl<'a> TaskRunner<'a> {
       self.env_vars.clone()
     } else {
       let mut env_vars = self.env_vars.clone();
-      env_vars.extend(extra_env_vars);
+      env_vars
+        .extend(extra_env_vars.iter().map(|(k, v)| (k.clone(), v.clone())));
       env_vars
     };
 
@@ -1073,36 +1090,59 @@ fn matches_package(
   false
 }
 
-/// Build the `npm_package_*` env vars that npm sets when running a
-/// package.json script (`npm_package_name`, `npm_package_version`,
-/// `npm_package_json`, and flattened `npm_package_config_*`). The
-/// `npm_lifecycle_*` vars are set per-script by the caller.
-fn npm_package_env_vars(
-  pkg_json: &deno_package_json::PackageJson,
+/// Build the base `npm_*` env vars that npm sets when running a package.json
+/// script, in a single map. These are shared by every script in a run; the
+/// per-script `npm_lifecycle_*` vars are added by the caller.
+///
+/// Package vars (from `pkg_json`): `npm_package_name`, `npm_package_version`,
+/// `npm_package_json`, and flattened `npm_package_config_*`.
+///
+/// Process vars (independent of the package):
+/// - `npm_execpath`: the package manager executable. npm points this at
+///   `npm-cli.js`; like pnpm/yarn point it at their own binary, we point it at
+///   the running `deno` executable.
+/// - `npm_node_execpath`: the JS runtime executing the script. npm sets this to
+///   the `node` binary; under `deno task` the runtime is `deno` itself.
+/// - `npm_command`: the npm command being run. `deno task <name>` runs a script
+///   the same way `npm run <name>` does, which npm reports as `run-script`.
+fn npm_script_env_vars(
+  pkg_json: Option<&deno_package_json::PackageJson>,
 ) -> HashMap<OsString, OsString> {
   let mut env_vars = HashMap::new();
-  if let Some(name) = &pkg_json.name {
-    env_vars.insert(OsString::from("npm_package_name"), OsString::from(name));
-  }
-  if let Some(version) = &pkg_json.version {
-    env_vars.insert(
-      OsString::from("npm_package_version"),
-      OsString::from(version),
-    );
-  }
-  env_vars.insert(
-    OsString::from("npm_package_json"),
-    pkg_json.path.clone().into_os_string(),
-  );
-  if let Some(config) = &pkg_json.config {
-    for (key, value) in config {
-      flatten_config_env_var(
-        &mut env_vars,
-        &format!("npm_package_config_{key}"),
-        value,
+  if let Some(pkg_json) = pkg_json {
+    if let Some(name) = &pkg_json.name {
+      env_vars.insert(OsString::from("npm_package_name"), OsString::from(name));
+    }
+    if let Some(version) = &pkg_json.version {
+      env_vars.insert(
+        OsString::from("npm_package_version"),
+        OsString::from(version),
       );
     }
+    env_vars.insert(
+      OsString::from("npm_package_json"),
+      pkg_json.path.clone().into_os_string(),
+    );
+    if let Some(config) = &pkg_json.config {
+      for (key, value) in config {
+        flatten_config_env_var(
+          &mut env_vars,
+          &format!("npm_package_config_{key}"),
+          value,
+        );
+      }
+    }
   }
+  if let Ok(exe) = std::env::current_exe() {
+    // Normalize so `npm_execpath`/`npm_node_execpath` match `Deno.execPath()`
+    // exactly (it normalizes `current_exe()` too).
+    let exe = normalize_path(Cow::Owned(exe))
+      .into_owned()
+      .into_os_string();
+    env_vars.insert(OsString::from("npm_execpath"), exe.clone());
+    env_vars.insert(OsString::from("npm_node_execpath"), exe);
+  }
+  env_vars.insert(OsString::from("npm_command"), OsString::from("run-script"));
   env_vars
 }
 

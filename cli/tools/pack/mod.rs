@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_ast::diagnostics::Diagnostic;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
@@ -13,10 +14,12 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_terminal::colors;
 
+use crate::args::FileFlagsExt;
 use crate::args::Flags;
 use crate::args::PackFlags;
 use crate::factory::CliFactory;
 use crate::graph_util::CreatePublishGraphOptions;
+use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::util::display::human_size;
 
 mod extensions;
@@ -192,6 +195,23 @@ pub async fn pack(
   Ok(())
 }
 
+fn warn_for_slow_type_diagnostics(
+  graph: &ModuleGraph,
+  package: &JsrPackageConfig,
+  pack_flags: &PackFlags,
+) -> Result<(), AnyError> {
+  if pack_flags.allow_slow_types {
+    return Ok(());
+  }
+
+  let export_urls = package.config_file.resolve_export_value_urls()?;
+  for diagnostic in collect_no_slow_type_diagnostics(graph, &export_urls) {
+    log::warn!("{}", diagnostic.display());
+  }
+
+  Ok(())
+}
+
 async fn create_graph(
   module_graph_creator: &Arc<crate::graph_util::ModuleGraphCreator>,
   package: &JsrPackageConfig,
@@ -210,6 +230,7 @@ async fn create_graph(
       validate_graph: true,
     })
     .await?;
+  warn_for_slow_type_diagnostics(&graph, package, pack_flags)?;
 
   // If fast check is enabled, rebuild with DTS generation
   if !pack_flags.allow_slow_types {

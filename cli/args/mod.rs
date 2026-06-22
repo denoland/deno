@@ -213,6 +213,7 @@ pub struct WorkspaceTestOptions {
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
+  pub update_snapshots: bool,
 }
 
 impl WorkspaceTestOptions {
@@ -254,6 +255,7 @@ impl WorkspaceTestOptions {
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path.clone(),
       hide_stacktraces: test_flags.hide_stacktraces,
+      update_snapshots: test_flags.update_snapshots,
     }
   }
 }

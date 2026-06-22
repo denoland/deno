@@ -526,6 +526,17 @@ pub struct CompilerOptionsOverrides {
   ///
   /// This may be useful when bundling.
   pub preserve_jsx: bool,
+  /// Ignore the user's `verbatimModuleSyntax` and transpile as if it were
+  /// off.
+  ///
+  /// Untyped execution environments (e.g. isolates that run with
+  /// `--no-check`) cannot honor verbatim semantics safely: a type-only
+  /// import that is re-exported without the `type` modifier
+  /// (`import { type X }` + `export { X }`) is left as a dangling value
+  /// export and crashes at runtime. Falling back to heuristic import
+  /// elision matches the `deno compile` runtime, which forces verbatim
+  /// off too.
+  pub force_disable_verbatim_module_syntax: bool,
 }
 
 #[derive(Debug)]
@@ -1810,7 +1821,9 @@ fn compiler_options_to_transpile_and_emit_options(
     imports_not_used_as_values,
     jsx,
     var_decl_imports: false,
-    verbatim_module_syntax: options.verbatim_module_syntax,
+    // See `CompilerOptionsOverrides::force_disable_verbatim_module_syntax`.
+    verbatim_module_syntax: options.verbatim_module_syntax
+      && !overrides.force_disable_verbatim_module_syntax,
   };
   let emit = deno_ast::EmitOptions {
     inline_sources: options.inline_sources,
