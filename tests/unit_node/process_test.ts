@@ -1730,6 +1730,26 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.setgroups requires --allow-sys=setgroups permission",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  async fn() {
+    const cwd = path.dirname(path.fromFileUrl(import.meta.url));
+    const { code, stdout } = await new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--allow-sys=setgroups",
+        "./testdata/process_setgroups_permission.ts",
+      ],
+      cwd,
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assertEquals(new TextDecoder().decode(stdout).trim(), "function");
+    assertEquals(code, 0);
+  },
+});
+
+Deno.test({
   name: "process.setgroups should be undefined on unsupported platforms",
   ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
   fn() {

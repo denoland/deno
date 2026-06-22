@@ -458,7 +458,7 @@ pub fn op_node_process_setgroups<'a>(
 ) -> Result<(), ProcessError> {
   {
     let permissions = state.borrow_mut::<PermissionsContainer>();
-    permissions.check_sys("setgid", "node:process.setgroups")?;
+    permissions.check_sys("setgroups", "node:process.setgroups")?;
   }
 
   if !groups.is_array() {
