@@ -5,12 +5,52 @@ use std::borrow::Cow;
 use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::v8;
+use deno_core::webidl::ConstrainedSequence;
 use deno_core::webidl::ContextFn;
 use deno_core::webidl::IntOptions;
+use deno_core::webidl::SequenceLengthAtMost;
+use deno_core::webidl::SequenceLengthExact;
+use deno_core::webidl::SequenceLengthPolicy;
+use deno_core::webidl::SequenceLengthRange;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 use deno_core::webidl::WebIdlErrorKind;
 use deno_error::JsErrorBox;
+
+fn convert_webgpu_number_sequence<'a, 'b, 'i, T, P, const MAX: usize>(
+  scope: &mut v8::PinScope<'a, 'i>,
+  value: v8::Local<'a, v8::Value>,
+  prefix: Cow<'static, str>,
+  context: ContextFn<'b>,
+  options: &T::Options,
+  type_name: &'static str,
+) -> Result<ConstrainedSequence<T, P, MAX>, WebIdlError>
+where
+  T: WebIdlConverter<'a>,
+  P: SequenceLengthPolicy,
+{
+  match ConstrainedSequence::<T, P, MAX>::convert(
+    scope,
+    value,
+    prefix.clone(),
+    context.borrowed(),
+    options,
+  ) {
+    Ok(sequence) => Ok(sequence),
+    Err(WebIdlError {
+      kind: WebIdlErrorKind::InvalidSequenceLength { actual, .. },
+      ..
+    }) => Err(WebIdlError::other(
+      prefix,
+      context,
+      JsErrorBox::type_error(format!(
+        "A sequence of number used as a {type_name} must have {}, received {actual} elements",
+        P::expectation()
+      )),
+    )),
+    Err(err) => Err(err),
+  }
+}
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]
@@ -54,32 +94,22 @@ impl<'a> WebIdlConverter<'a> for GPUExtent3D {
       if let Some(iter) = obj.get(scope, iter.into())
         && !iter.is_undefined()
       {
-        let conv = <Vec<u32>>::convert(
-          scope,
-          value,
-          prefix.clone(),
-          context.borrowed(),
-          &IntOptions {
-            clamp: false,
-            enforce_range: true,
-          },
-        )?;
-        if conv.is_empty() || conv.len() > 3 {
-          return Err(WebIdlError::other(
+        let conv =
+          convert_webgpu_number_sequence::<u32, SequenceLengthRange<1, 3>, 3>(
+            scope,
+            value,
             prefix,
             context,
-            JsErrorBox::type_error(format!(
-              "A sequence of number used as a GPUExtent3D must have between 1 and 3 elements, received {} elements",
-              conv.len()
-            )),
-          ));
-        }
-
-        let mut iter = conv.into_iter();
+            &IntOptions {
+              clamp: false,
+              enforce_range: true,
+            },
+            "GPUExtent3D",
+          )?;
         return Ok(GPUExtent3D::Sequence((
-          iter.next().unwrap(),
-          iter.next().unwrap_or(1),
-          iter.next().unwrap_or(1),
+          conv[0],
+          conv.get(1).copied().unwrap_or(1),
+          conv.get(2).copied().unwrap_or(1),
         )));
       }
 
@@ -164,32 +194,22 @@ impl<'a> WebIdlConverter<'a> for GPUOrigin3D {
       if let Some(iter) = obj.get(scope, iter.into())
         && !iter.is_undefined()
       {
-        let conv = <Vec<u32>>::convert(
-          scope,
-          value,
-          prefix.clone(),
-          context.borrowed(),
-          &IntOptions {
-            clamp: false,
-            enforce_range: true,
-          },
-        )?;
-        if conv.len() > 3 {
-          return Err(WebIdlError::other(
+        let conv =
+          convert_webgpu_number_sequence::<u32, SequenceLengthAtMost<3>, 3>(
+            scope,
+            value,
             prefix,
             context,
-            JsErrorBox::type_error(format!(
-              "A sequence of number used as a GPUOrigin3D must have at most 3 elements, received {} elements",
-              conv.len()
-            )),
-          ));
-        }
-
-        let mut iter = conv.into_iter();
+            &IntOptions {
+              clamp: false,
+              enforce_range: true,
+            },
+            "GPUOrigin3D",
+          )?;
         return Ok(GPUOrigin3D::Sequence((
-          iter.next().unwrap_or(0),
-          iter.next().unwrap_or(0),
-          iter.next().unwrap_or(0),
+          conv.get(0).copied().unwrap_or(0),
+          conv.get(1).copied().unwrap_or(0),
+          conv.get(2).copied().unwrap_or(0),
         )));
       }
 
@@ -259,31 +279,11 @@ impl<'a> WebIdlConverter<'a> for GPUColor {
       if let Some(iter) = obj.get(scope, iter.into())
         && !iter.is_undefined()
       {
-        let conv = <Vec<f64>>::convert(
-          scope,
-          value,
-          prefix.clone(),
-          context.borrowed(),
-          options,
-        )?;
-        if conv.len() != 4 {
-          return Err(WebIdlError::other(
-            prefix,
-            context,
-            JsErrorBox::type_error(format!(
-              "A sequence of number used as a GPUColor must have exactly 4 elements, received {} elements",
-              conv.len()
-            )),
-          ));
-        }
-
-        let mut iter = conv.into_iter();
-        return Ok(GPUColor::Sequence((
-          iter.next().unwrap(),
-          iter.next().unwrap(),
-          iter.next().unwrap(),
-          iter.next().unwrap(),
-        )));
+        let conv =
+          convert_webgpu_number_sequence::<f64, SequenceLengthExact<4>, 4>(
+            scope, value, prefix, context, options, "GPUColor",
+          )?;
+        return Ok(GPUColor::Sequence((conv[0], conv[1], conv[2], conv[3])));
       }
 
       return Ok(GPUColor::Dict(GPUColorDict::convert(
