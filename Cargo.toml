@@ -200,8 +200,10 @@ brotli = { version = "6.0.0", features = ["ffi-api"] }
 bsdiff = "0.2.1"
 bytemuck = "1.17.1"
 bytes = "1.11.1"
+cab = "0.6.0"
 capacity_builder = "0.5.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
+cfb = "0.14.0"
 # Note: Do not use the "clock" feature of chrono, as it links us to CoreFoundation on macOS.
 #       Instead use util::time::utc_now()
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
@@ -248,12 +250,14 @@ jsonc-parser = { version = "0.32.1", features = ["serde"] }
 lazy-regex = "3"
 libc = "0.2.168"
 libdeflater = "1.25.2"
+liblzma = "0.4.6"
 libz-sys = { version = "1.1.20", default-features = false }
 log = { version = "0.4.28", features = ["kv"] }
 lsp-types = { package = "ls-types", version = "=0.0.3" }
 memchr = "2.7.4"
 mime = "0.3.16"
 monch = "=0.6.0"
+msi = "0.10.0"
 netif = "0.1.6"
 notify = "8.2.0"
 num-bigint = { version = "0.4", features = ["rand"] }
@@ -435,8 +439,8 @@ x25519-dalek = "2.0.0"
 x509-parser = "0.15.0"
 
 # ffi
-cranelift = "0.116"
-cranelift-native = "0.116"
+cranelift = "0.117"
+cranelift-native = "0.117"
 dlopen2 = "0.6.1"
 libffi = "=5.1.0"
 memmap2 = "0.9"
