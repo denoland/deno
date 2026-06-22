@@ -1892,6 +1892,8 @@ fn foreground_tasks_delivered_without_tokio_handle() {
     .build()
     .unwrap();
 
+  // Created outside `block_on` so there is no tokio runtime context and
+  // the isolate is registered with `handle: None`.
   let mut runtime = JsRuntime::new(Default::default());
 
   tokio_runtime.block_on(async {
