@@ -1237,7 +1237,16 @@ pub async fn op_dns_resolve(
   // cancellation (they are not aborted by the cancel handle itself).
   if cancel_rid.is_some() {
     opts.timeout = std::time::Duration::from_secs(1);
-    opts.attempts = 1;
+    // For the connected-UDP path (an explicit name server), perform a single
+    // attempt with no internal retry. hickory's `RetryDnsHandle` reports the
+    // *last* attempt's error, so a refused server can surface `ECONNREFUSED`
+    // on the first attempt only to have an immediate second attempt time out
+    // (Linux rate-limits the ICMP "port unreachable") and clobber it with a
+    // timeout. c-ares (used by Node.js) instead preserves the connection
+    // error and only times out when no real error occurred. The `node:dns`
+    // layer already retries, so dropping the redundant internal retry both
+    // fixes the error reporting and avoids a wasted, rate-limited retry.
+    opts.attempts = if has_custom_name_server { 0 } else { 1 };
   }
 
   {
