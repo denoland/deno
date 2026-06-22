@@ -61,6 +61,9 @@ const {
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
+const { shouldColorize } = core.loadExtScript(
+  "ext:deno_node/internal/util/colorize.mjs",
+);
 const {
   colors,
   createStylizeWithColor,
@@ -658,27 +661,49 @@ function styleText(format, text, options) {
   const validateStream = options?.validateStream ?? true;
   validateBoolean(validateStream, "options.validateStream");
 
+  // Match node: validate stream before any format validation, so any
+  // ERR_INVALID_ARG_TYPE always gets throws regardless of
+  // `ERR_INVALID_ARG_VALUE` errors.
   if (validateStream) {
     const stream = options?.stream;
-    if (
-      stream !== undefined && stream !== null &&
-      // Match Node's lib/util.js: bail when `stream` is not a Readable/
-      // Writable/Node Stream. Approximate the duck-type used in those checks.
-      !(typeof stream === "object" && (
-        typeof stream.read === "function" ||
-        typeof stream.write === "function" ||
-        typeof stream.pipe === "function"
-      ))
-    ) {
-      throw new codes.ERR_INVALID_ARG_TYPE(
-        "stream",
-        ["ReadableStream", "WritableStream", "Stream"],
-        stream,
-      );
+    if (stream !== undefined && stream !== null) {
+      // Match Node: bail when `stream` is not a Readable/Writable/Node Stream.
+      // Approximate the duck-type used in those checks.
+      if (
+        !(typeof stream === "object" && (
+          typeof stream.read === "function" ||
+          typeof stream.write === "function" ||
+          typeof stream.pipe === "function"
+        ))
+      ) {
+        throw new codes.ERR_INVALID_ARG_TYPE(
+          "stream",
+          ["ReadableStream", "WritableStream", "Stream"],
+          stream,
+        );
+      }
     }
   }
 
+  // Match Node: validate format even when colorizing is skipped, so
+  // ERR_INVALID_ARG_VALUE is always thrown regardless of TTY state.
   const formatArray = ArrayIsArray(format) ? format : [format];
+  for (let i = 0; i < formatArray.length; i++) {
+    const key = formatArray[i];
+    if (key === "none") continue;
+    if (inspect.colors[key] == null) {
+      validateOneOf(key, "format", ObjectKeys(inspect.colors));
+    }
+  }
+
+  if (validateStream) {
+    // Match Node defaulting stream to process.stdout: when no stream is
+    // provided the colorize check still runs against stdout.
+    const effectiveStream = options?.stream ?? globalThis.process?.stdout;
+    if (!shouldColorize(effectiveStream)) {
+      return text;
+    }
+  }
 
   let openCodes = "";
   let closeCodes = "";
@@ -689,9 +714,6 @@ function styleText(format, text, options) {
     if (key === "none") continue;
 
     const formatCodes = inspect.colors[key];
-    if (formatCodes == null) {
-      validateOneOf(key, "format", ObjectKeys(inspect.colors));
-    }
     const openNum = formatCodes[0];
     const closeNum = formatCodes[1];
     const openSeq = kStyleTextEscape + openNum + kStyleTextEscapeEnd;

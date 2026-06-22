@@ -1306,6 +1306,7 @@ impl WorkspaceConfigData {
         node_modules_linker: None,
         no_lock: false,
         no_npm: false,
+        import_npm_lockfile: false,
         npm_process_state: None,
         root_node_modules_dir_override: None,
         vendor: None,
@@ -1320,7 +1321,6 @@ impl WorkspaceConfigData {
         // anything other than resolving the lockfile at the moment
         allow_json_imports:
           deno_resolver::loader::AllowJsonImports::WithAttribute,
-        bare_node_builtins: false,
         compiler_options_overrides: Default::default(),
         is_cjs_resolution_mode: Default::default(),
         on_mapped_resolution_diagnostic: None,

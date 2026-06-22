@@ -28,6 +28,7 @@ extension!(runtime,
   esm = [
     dir "js",
     "90_deno_ns.js",
+    "97_navigator_user_agent_data.js",
     "98_global_scope_shared.js",
     "98_global_scope_window.js",
     "98_global_scope_worker.js"

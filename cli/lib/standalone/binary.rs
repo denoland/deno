@@ -98,6 +98,16 @@ pub struct Metadata {
   /// hash of the VFS data used for versioning the extraction directory.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub self_extracting: Option<String>,
+  /// Application version from deno.json or package.json, used for
+  /// auto-update support in desktop apps.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub app_version: Option<String>,
+  /// Error reporting URL from deno.json `desktop.errorReporting.url`.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub error_reporting_url: Option<String>,
+  /// Auto-update release base URL from deno.json `desktop.release.baseUrl`.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub release_base_url: Option<String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

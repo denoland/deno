@@ -96,6 +96,7 @@ pub fn create_runtime_snapshot(
     ops::tty::deno_tty::lazy_init(),
     ops::http::deno_http_runtime::lazy_init(),
     deno_bundle_runtime::deno_bundle_runtime::lazy_init(),
+    ops::desktop::deno_desktop::lazy_init(),
     ops::bootstrap::deno_bootstrap::init(Some(snapshot_options), false),
     runtime::lazy_init(),
     ops::web_worker::deno_web_worker::lazy_init(),
@@ -103,14 +104,20 @@ pub fn create_runtime_snapshot(
   extensions.extend(custom_extensions);
 
   let lazy_extension_files = collect_lazy_extension_files(&extensions);
+  let minify_sources =
+    std::env::var_os("DENO_SNAPSHOT_MINIFY_SOURCES").is_some();
 
   let output = create_snapshot(
     CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       startup_snapshot: None,
       extensions,
-      extension_transpiler: Some(Rc::new(|specifier, source| {
-        crate::transpile::maybe_transpile_source(specifier, source)
+      extension_transpiler: Some(Rc::new(move |specifier, source| {
+        if minify_sources {
+          crate::transpile::maybe_transpile_and_minify_source(specifier, source)
+        } else {
+          crate::transpile::maybe_transpile_source(specifier, source)
+        }
       })),
       with_runtime_cb: Some(Box::new(|rt| {
         let isolate = rt.v8_isolate();

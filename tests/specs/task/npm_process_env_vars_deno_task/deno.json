@@ -1,0 +1,5 @@
+{
+  "tasks": {
+    "env": "deno eval \"console.log('command:' + Deno.env.get('npm_command')); console.log('execpath:' + Deno.env.get('npm_execpath')); console.log('node_execpath:' + Deno.env.get('npm_node_execpath'))\""
+  }
+}

@@ -442,6 +442,7 @@ pub(crate) fn generate_op2(
   };
 
   let symbol_for = config.symbol;
+  let constructable = config.constructable;
 
   Ok(quote! {
     #[allow(non_camel_case_types)]
@@ -462,6 +463,7 @@ pub(crate) fn generate_op2(
           /*symbol_for*/ #symbol_for,
           /*arg_count*/ #arg_count as u8,
           /*no_side_effect*/ #no_side_effect,
+          /*constructable*/ #constructable,
           /*slow_fn*/ Self::#slow_function as _,
           /*slow_fn_impl*/ Self::slow_function_impl,
           /*accessor_type*/ #accessor_type,

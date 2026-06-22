@@ -220,7 +220,9 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
           LoadedModuleOrAsset::Module(loaded_module)
         } else {
           match requested_module_type {
-            RequestedModuleType::Text | RequestedModuleType::Bytes => {
+            RequestedModuleType::Text
+            | RequestedModuleType::Bytes
+            | RequestedModuleType::Other("css") => {
               LoadedModuleOrAsset::ExternalAsset {
                 specifier: Cow::Borrowed(specifier),
                 statically_analyzable: false,
@@ -410,6 +412,9 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
         &self.sys,
         deno_graph::ModuleGraphError::ModuleError(err.clone()),
         EnhanceGraphErrorMode::ShowRange,
+        // This is the post-build module-load path; bare-specifier resolution
+        // hints don't apply here.
+        &[],
       )
     })?;
 
@@ -428,7 +433,7 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
           }))),
           None => Ok(Some(CodeOrDeferredEmit::ExternalAsset { specifier })),
         },
-        RequestedModuleType::Text => {
+        RequestedModuleType::Text | RequestedModuleType::Other("css") => {
           Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
             source: LoadedModuleSource::ArcStr(source.text.clone()),
             specifier: Cow::Borrowed(specifier),
@@ -456,7 +461,7 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
           }))),
           None => Ok(Some(CodeOrDeferredEmit::ExternalAsset { specifier })),
         },
-        RequestedModuleType::Text => {
+        RequestedModuleType::Text | RequestedModuleType::Other("css") => {
           Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
             source: LoadedModuleSource::ArcStr(source.text.clone()),
             specifier: Cow::Borrowed(specifier),

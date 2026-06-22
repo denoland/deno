@@ -171,8 +171,27 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Bundle Typescript/Javascript code
-   * @category Bundle
+   * Bundle Typescript/Javascript code into a single file.
+   *
+   * This is an unstable API and requires the `--unstable-bundle` flag to be
+   * passed when running Deno:
+   *
+   * ```sh
+   * deno run --unstable-bundle main.ts
+   * ```
+   *
+   * ```ts
+   * const result = await Deno.bundle({
+   *   entrypoints: ["./main.ts"],
+   *   minify: true,
+   * });
+   *
+   * for (const file of result.outputFiles ?? []) {
+   *   console.log(file.text());
+   * }
+   * ```
+   *
+   * @category Bundler
    * @experimental
    */
   export function bundle(
@@ -382,9 +401,11 @@ declare namespace Deno {
    * });
    * ```
    *
-   * Requires `allow-read` and `allow-write` permission.
+   * Requires `allow-read`, `allow-write` and `allow-net` permission. The
+   * `allow-net` grant may be scoped to the socket path with
+   * `--allow-net=unix:<absolute-path>`.
    *
-   * @tags allow-read, allow-write
+   * @tags allow-read, allow-write, allow-net
    * @category Network
    * @experimental
    */
@@ -396,14 +417,36 @@ declare namespace Deno {
    *
    * Open a new {@linkcode Deno.Kv} connection to persist data.
    *
-   * When a path is provided, the database will be persisted to disk at that
-   * path. Read and write access to the file is required.
+   * This is an unstable API and requires the `--unstable-kv` flag to be passed
+   * when running Deno.
+   *
+   * The `path` argument accepts several forms:
+   *
+   * - A path to a local SQLite database **file** (not a directory). The file,
+   *   and any missing parent directories, are created if they don't exist. For
+   *   example `Deno.openKv("./my_database.sqlite")`. Read and write access to
+   *   the file is required.
+   * - The special value `":memory:"` to open an in-memory database that is
+   *   discarded when the process exits.
+   * - An `http://` or `https://` URL pointing at a remote KV database, such as
+   *   one hosted on Deno Deploy.
    *
    * When no path is provided, the database will be opened in a default path for
    * the current script. This location is persistent across script runs and is
    * keyed on the origin storage key (the same key that is used to determine
    * `localStorage` persistence). More information about the origin storage key
    * can be found in the Deno Manual.
+   *
+   * ```ts
+   * // Open (or create) a database backed by a local file.
+   * const kv = await Deno.openKv("./my_database.sqlite");
+   *
+   * await kv.set(["users", "alice"], { name: "Alice" });
+   * const entry = await kv.get(["users", "alice"]);
+   * console.log(entry.value); // { name: "Alice" }
+   *
+   * kv.close();
+   * ```
    *
    * @tags allow-read, allow-write
    * @category Cloud
@@ -444,6 +487,9 @@ declare namespace Deno {
    * Create a cron job that will periodically execute the provided handler
    * callback based on the specified schedule.
    *
+   * This is an unstable API and requires the `--unstable-cron` flag to be
+   * passed when running Deno.
+   *
    * ```ts
    * Deno.cron("sample cron", "20 * * * *", () => {
    *   console.log("cron job executed");
@@ -459,6 +505,13 @@ declare namespace Deno {
    * `schedule` can be a string in the Unix cron format or in JSON format
    * as specified by interface {@linkcode CronSchedule}, where time is specified
    * using UTC time zone.
+   *
+   * Calling `Deno.cron` registers the job and immediately returns. The returned
+   * promise should not be awaited to wait for the job to run, it is provided
+   * only to surface registration errors. The job keeps running in the
+   * background for the lifetime of the process. To be able to stop a cron job
+   * (for example during a graceful shutdown), use the overload that accepts an
+   * `options` object with an {@linkcode AbortSignal}.
    *
    * @category Cloud
    * @experimental
@@ -492,6 +545,21 @@ declare namespace Deno {
    * means that a failed execution will be retried at most 3 times, with 1
    * second, 5 seconds, and 10 seconds delay between each retry. There is a
    * limit of 5 retries and a maximum interval of 1 hour (3600000 milliseconds).
+   *
+   * `signal` option can be used to stop the cron job by passing an
+   * {@linkcode AbortSignal} and aborting it. This is useful for implementing a
+   * graceful shutdown, since aborting the signal unregisters the job:
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * Deno.cron("sample cron", "20 * * * *", { signal: ac.signal }, () => {
+   *   console.log("cron job executed");
+   * });
+   *
+   * // Later, stop the cron job from running again.
+   * ac.abort();
+   * ```
    *
    * @category Cloud
    * @experimental
@@ -5254,3 +5322,60 @@ interface Uint8ArrayConstructor {
    */
   fromHex(string: string): Uint8Array<ArrayBuffer>;
 }
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * A single CSS rule of a {@linkcode CSSStyleSheet}, as returned from its
+ * `cssRules` property. Available only when the `--unstable-raw-imports` flag
+ * is enabled.
+ *
+ * Note: `cssText` is the verbatim text of one top-level rule of the style
+ * sheet; Deno does not implement a full CSS object model.
+ *
+ * @category Platform
+ * @experimental
+ */
+interface CSSRule {
+  readonly cssText: string;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @category Platform
+ * @experimental
+ */
+declare var CSSRule: {
+  readonly prototype: CSSRule;
+  new (): never;
+};
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * A style sheet backing a CSS module script. This is what a
+ * `import sheet from "./styles.css" with { type: "css" }` import evaluates
+ * to. Available only when the `--unstable-raw-imports` flag is enabled.
+ *
+ * Deno has no DOM, so a sheet can't be adopted anywhere; the implementation
+ * is backed by the raw CSS text.
+ *
+ * Note: `cssRules` returns a frozen array of {@linkcode CSSRule} instead of a
+ * live `CSSRuleList`.
+ *
+ * @category Platform
+ * @experimental
+ */
+interface CSSStyleSheet {
+  readonly cssRules: readonly CSSRule[];
+  replace(text: string): Promise<CSSStyleSheet>;
+  replaceSync(text: string): void;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @category Platform
+ * @experimental
+ */
+declare var CSSStyleSheet: {
+  readonly prototype: CSSStyleSheet;
+  new (): CSSStyleSheet;
+};

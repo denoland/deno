@@ -1,0 +1,26 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "root",
+      "dependencies": {
+        "@denotest/add": "1.0.0",
+      },
+    },
+    "packages/app": {
+      "name": "app",
+      "version": "1.0.0",
+      "dependencies": {
+        "@denotest/esm-basic": "1.0.0",
+      },
+    },
+  },
+  "packages": {
+    "@denotest/add": ["@denotest/add@1.0.0", "", {}, "sha512-uvNpnVPU/CC2Do/LNF3TkhoLGLLKC6jFDPiSnojuZCEwmoXJjS2+Sn+LYk7eUix4vsMKA9ctxaMhcfb6pdHQTQ=="],
+
+    "@denotest/esm-basic": ["@denotest/esm-basic@1.0.0", "", {}, "sha512-LvAO9tXoBq0fhrWc5PdAATOZxxrd1KTeIFhUucK8w1WNKrapcjVVjqU8s8L5fm0Ppd/tMIGXcRvbfWWmOmBgWQ=="],
+
+    "app": ["app@workspace:packages/app"],
+  }
+}
