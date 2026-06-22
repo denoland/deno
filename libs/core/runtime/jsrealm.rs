@@ -88,6 +88,13 @@ pub struct ContextState {
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_wasm_streaming_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) wasm_instance_fn: RefCell<Option<v8::Global<v8::Function>>>,
+  // WeakMap<ModuleNamespace, WebAssembly.Instance.exports> shared by the
+  // synthetic modules rendered for `.wasm` files, so that a Wasm module
+  // importing a global from another Wasm module links against the original
+  // `WebAssembly.Global` object instead of the unwrapped snapshot value
+  // exposed to JS. Stands in for the [[Instance]] slot of the Wasm module
+  // record from the ESM integration proposal (same trick as Node.js).
+  pub(crate) wasm_instances_map: RefCell<Option<v8::Global<v8::Object>>>,
   pub(crate) unrefed_ops: UnrefedOps,
   pub(crate) activity_traces: RuntimeActivityTraces,
   pub(crate) pending_ops: Rc<OpDriverImpl>,
@@ -96,6 +103,20 @@ pub struct ContextState {
   pub(crate) op_ctxs: Box<[OpCtx]>,
   pub(crate) op_method_decls: Vec<OpMethodDecl>,
   pub(crate) methods_ctx_offset: usize,
+  /// Snapshots built against V8 14.9+ bake the *slow* version of each op
+  /// (see `op_ctx_template`); fast-call overloads are re-attached at runtime
+  /// by `upgrade_snapshotted_ops_with_fast_calls`. That pass creates ~1.6k V8
+  /// functions (~0.9ms). It only benefits ops accessed at runtime (baked
+  /// modules captured their slow refs at snapshot eval), so we DEFER it until
+  /// the first residual ext-module load — a program that never loads a
+  /// residual module (e.g. `deno run empty.js`) never pays for it.
+  pub(crate) fast_ops_upgraded: Cell<bool>,
+  /// `(Deno.core.ops, Deno.core.setUpAsyncStub)` captured at `new_inner` time,
+  /// because `Deno.core` is scrubbed from the public `Deno` after bootstrap and
+  /// the deferred upgrade (which runs post-bootstrap) can no longer read them
+  /// from the global. `None` when the upgrade isn't deferred.
+  pub(crate) deferred_fast_ops:
+    RefCell<Option<(v8::Global<v8::Object>, v8::Global<v8::Function>)>>,
   pub(crate) isolate: Option<v8::UnsafeRawIsolatePtr>,
   pub(crate) exception_state: Rc<ExceptionState>,
   /// Shared tick info buffer exposed to JS as a Uint8Array.
@@ -176,10 +197,13 @@ impl ContextState {
       run_immediate_callbacks_cb: Default::default(),
       js_wasm_streaming_cb: Default::default(),
       wasm_instance_fn: Default::default(),
+      wasm_instances_map: Default::default(),
       activity_traces: Default::default(),
       op_ctxs,
       op_method_decls,
       methods_ctx_offset,
+      fast_ops_upgraded: Cell::new(false),
+      deferred_fast_ops: RefCell::new(None),
       pending_ops: op_driver,
       task_spawner_factory: Default::default(),
       user_timer: Default::default(),

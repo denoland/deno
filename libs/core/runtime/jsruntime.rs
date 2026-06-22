@@ -1075,16 +1075,31 @@ impl JsRuntime {
         );
       } else if !will_snapshot {
         // Snapshots built against V8 14.9+ bake the slow version of each op
-        // function (see `op_ctx_template`). Re-attach fast-call overloads to
-        // the snapshotted ops (top-level + cppgc class methods) now that
-        // we're running.
-        bindings::upgrade_snapshotted_ops_with_fast_calls(
-          scope,
-          context,
-          &context_state.op_ctxs,
-          &context_state.op_method_decls,
-          methods_ctx_offset,
-        );
+        // function (see `op_ctx_template`); the fast-call overloads must be
+        // re-attached at runtime. That pass (~0.9ms, ~1.6k V8 functions) only
+        // helps ops accessed at runtime — baked modules already captured their
+        // slow refs at snapshot eval — so we DEFER it until the first residual
+        // ext-module load (`ensure_fast_ops_upgraded`). A program that loads no
+        // residual module (e.g. an empty script) never pays for it.
+        //
+        // Capture the refs the deferred upgrade needs NOW, while `Deno.core` is
+        // still on the global — it's scrubbed from the public `Deno` after
+        // bootstrap, so the post-bootstrap deferred caller can't read them.
+        let (ops_obj, stub_fn) =
+          bindings::snapshotted_fast_op_refs(scope, context);
+        *context_state.deferred_fast_ops.borrow_mut() = Some((
+          v8::Global::new(scope, ops_obj),
+          v8::Global::new(scope, stub_fn),
+        ));
+      }
+      // The deferred upgrade applies ONLY when loading a snapshot at runtime.
+      // In the fresh-bind path the ops were just bound with fast calls, and in
+      // the snapshot-build path we must keep the slow ops (fast-call functions
+      // can't be serialized) and must NOT upgrade even though `op_load_ext_script`
+      // runs during the build. Mark those paths done so `ensure_fast_ops_upgraded`
+      // is a no-op for them.
+      if init_mode.needs_ops_bindings() || will_snapshot {
+        context_state.fast_ops_upgraded.set(true);
       }
       startup_phase_end(_phase, "ops_bindings (fast call upgrade)");
 
@@ -1662,6 +1677,7 @@ impl JsRuntime {
       error_constructors,
       run_immediate_callbacks_cb,
       wasm_instance_fn,
+      wasm_instances_map,
     ) = {
       scope!(scope, self);
       let context = realm.context();
@@ -1710,6 +1726,7 @@ impl JsRuntime {
         "Deno.core.runImmediateCallbacks",
       );
       let mut wasm_instance_fn = None;
+      let mut wasm_instances_map = None;
       if !will_snapshot {
         let key = WEBASSEMBLY.v8_string(scope).unwrap();
         if let Some(web_assembly_obj_value) = global.get(scope, key.into()) {
@@ -1722,6 +1739,13 @@ impl JsRuntime {
               INSTANCE,
               "WebAssembly.Instance",
             ));
+            // Registry mapping a Wasm module's namespace to its instance
+            // exports, shared by all synthetic `.wasm` modules in this realm
+            // via `import.meta.wasmInstances`. See `ContextState` for details.
+            let weak_map_fn = bindings::get::<v8::Local<v8::Function>>(
+              scope, global, WEAK_MAP, "WeakMap",
+            );
+            wasm_instances_map = weak_map_fn.new_instance(scope, &[]);
           }
         }
       }
@@ -1875,6 +1899,7 @@ impl JsRuntime {
         v8::Global::new(scope, error_constructors),
         v8::Global::new(scope, run_immediate_callbacks_cb),
         wasm_instance_fn.map(|f| v8::Global::new(scope, f)),
+        wasm_instances_map.map(|m| v8::Global::new(scope, m)),
       )
     };
 
@@ -1911,6 +1936,12 @@ impl JsRuntime {
         .wasm_instance_fn
         .borrow_mut()
         .replace(wasm_instance_fn);
+    }
+    if let Some(wasm_instances_map) = wasm_instances_map {
+      state_rc
+        .wasm_instances_map
+        .borrow_mut()
+        .replace(wasm_instances_map);
     }
   }
 

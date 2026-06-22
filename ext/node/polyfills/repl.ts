@@ -74,6 +74,9 @@ const {
 const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
+const { shouldColorize } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const vm = core.loadExtScript("ext:deno_node/vm.js").default;
 import process from "node:process";
 import path from "node:path";
@@ -192,36 +195,6 @@ function _removeNewListenerGuard() {
   if (--_newListenerGuardCount === 0) {
     process.removeListener("newListener", _newListenerGuard);
   }
-}
-
-// Mirrors Node's internal/util/colors.shouldColorize so node_compat tests
-// that flip FORCE_COLOR / NODE_DISABLE_COLORS / NO_COLOR / TERM=dumb behave
-// like Node. NO_COLOR / NODE_DISABLE_COLORS / TERM=dumb only apply via
-// `stream.getColorDepth()` (matching Node's tty.WriteStream.getColorDepth)
-// or under FORCE_COLOR; a non-TTY plain stream stays at `false`, while a
-// fake stream with `isTTY=true` and no `getColorDepth` returns `true`.
-function _shouldColorize(stream: any): boolean {
-  const env = (process as any).env || {};
-  if (env.FORCE_COLOR !== undefined) {
-    const v = String(env.FORCE_COLOR);
-    if (v === "0" || v === "false") return false;
-    if (
-      (env.NODE_DISABLE_COLORS !== undefined &&
-        env.NODE_DISABLE_COLORS !== "") ||
-      (env.NO_COLOR !== undefined && env.NO_COLOR !== "") ||
-      env.TERM === "dumb"
-    ) {
-      // FORCE_COLOR with any non-default value still wins in Node 20+.
-      return v !== "" && v !== "0";
-    }
-    return true;
-  }
-  if (!stream?.isTTY) return false;
-  if (typeof stream.getColorDepth === "function") {
-    return stream.getColorDepth() > 2;
-  }
-  // Match Node: TTY-flagged stream with no getColorDepth defaults to colorful.
-  return true;
 }
 
 const reAtFrame = new SafeRegExp(/^\s+at\s/);
@@ -668,7 +641,7 @@ export class REPLServer extends (Interface as any) {
     const usePreview = previewSession !== null;
 
     if (options.terminal && options.useColors === undefined) {
-      options.useColors = _shouldColorize(options.output);
+      options.useColors = shouldColorize(options.output);
     }
 
     // Default prompt
