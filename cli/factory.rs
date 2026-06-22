@@ -634,7 +634,6 @@ impl CliFactory {
             | DenoSubcommand::Info { .. }
             | DenoSubcommand::JSONReference { .. }
             | DenoSubcommand::Jupyter { .. }
-            | DenoSubcommand::Migrate { .. }
             | DenoSubcommand::Lsp
             | DenoSubcommand::Lint { .. }
             | DenoSubcommand::Repl { .. }

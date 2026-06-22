@@ -1,15 +1,22 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-//! `deno migrate <target>` converts third-party configuration into Deno's
-//! native `deno.json`. Currently the only target is `pnpm`, which reads a
-//! `pnpm-workspace.yaml` file and writes the equivalent `workspace`,
-//! `catalog`, and `catalogs` fields into `deno.json`.
+//! Automatic migration of a `pnpm-workspace.yaml` into the equivalent
+//! `deno.json` fields.
+//!
+//! Deno deliberately does not read `pnpm-workspace.yaml` during module
+//! resolution, so a project whose workspace members (or catalog versions) live
+//! in that file fails to resolve. Rather than adding a dedicated subcommand for
+//! a single package manager, we detect this situation on the resolution-failure
+//! path: when an error looks like a workspace/npm resolution failure and a
+//! `pnpm-workspace.yaml` is found nearby, we convert its `packages`, `catalog`,
+//! and `catalogs` into `deno.json` and ask the user to run the command again.
+//! The conversion preserves existing comments and formatting via the jsonc CST
+//! and never overwrites fields the user already set.
 
 use std::path::Path;
 use std::path::PathBuf;
 
 use deno_core::anyhow::Context;
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_terminal::colors;
 use indexmap::IndexMap;
@@ -21,9 +28,6 @@ use yaml_parser::ast::AstNode;
 use yaml_parser::ast::BlockMap;
 use yaml_parser::ast::Document;
 use yaml_parser::ast::Root;
-
-use crate::args::Flags;
-use crate::args::MigrateFlags;
 
 /// The subset of `pnpm-workspace.yaml` that maps cleanly onto `deno.json`.
 #[derive(Default)]
@@ -41,87 +45,6 @@ struct PnpmWorkspace {
   unsupported_keys: Vec<String>,
 }
 
-pub async fn migrate(
-  _flags: std::sync::Arc<Flags>,
-  migrate_flags: MigrateFlags,
-) -> Result<(), AnyError> {
-  match migrate_flags.target.as_str() {
-    "pnpm" => migrate_pnpm(&migrate_flags),
-    other => bail!(
-      "Unknown migrate target '{other}'. Currently supported targets: pnpm"
-    ),
-  }
-}
-
-fn migrate_pnpm(migrate_flags: &MigrateFlags) -> Result<(), AnyError> {
-  let cwd = std::env::current_dir()?;
-  let Some(yaml_path) = find_pnpm_workspace(&cwd) else {
-    bail!(
-      "Could not find a pnpm-workspace.yaml in '{}' or any parent directory.",
-      cwd.display()
-    );
-  };
-  let dir = yaml_path.parent().unwrap_or(&cwd).to_path_buf();
-
-  let yaml_text = std::fs::read_to_string(&yaml_path)
-    .with_context(|| format!("Reading '{}'", yaml_path.display()))?;
-  let parsed = parse_pnpm_workspace(&yaml_text)
-    .with_context(|| format!("Parsing '{}'", yaml_path.display()))?;
-
-  let deno_json_path = pick_deno_json_path(&dir);
-  let new_contents = apply_to_deno_json(&deno_json_path, &parsed)?;
-  std::fs::write(&deno_json_path, new_contents)
-    .with_context(|| format!("Writing '{}'", deno_json_path.display()))?;
-
-  log::info!(
-    "{} pnpm-workspace.yaml into {}",
-    colors::green("Migrated"),
-    colors::cyan(deno_json_path.display().to_string())
-  );
-  if !parsed.packages.is_empty() {
-    log::info!(
-      "  {} {} workspace member glob(s)",
-      colors::gray("•"),
-      parsed.packages.len()
-    );
-  }
-  if !parsed.catalog.is_empty() {
-    log::info!(
-      "  {} default catalog ({} entries)",
-      colors::gray("•"),
-      parsed.catalog.len()
-    );
-  }
-  if !parsed.catalogs.is_empty() {
-    log::info!(
-      "  {} {} named catalog(s)",
-      colors::gray("•"),
-      parsed.catalogs.len()
-    );
-  }
-  if !parsed.unsupported_keys.is_empty() {
-    log::warn!(
-      "{} the following pnpm-workspace.yaml keys have no deno.json equivalent and were not migrated: {}",
-      colors::yellow("warning:"),
-      parsed.unsupported_keys.join(", ")
-    );
-  }
-
-  if migrate_flags.remove_source {
-    std::fs::remove_file(&yaml_path)
-      .with_context(|| format!("Removing '{}'", yaml_path.display()))?;
-    log::info!("  {} removed {}", colors::gray("•"), yaml_path.display());
-  } else {
-    log::info!(
-      "{} pnpm-workspace.yaml was left in place. Remove it (or re-run with {}) once you've verified the migration.",
-      colors::gray("note:"),
-      colors::cyan("--remove")
-    );
-  }
-
-  Ok(())
-}
-
 /// Error message fragments produced when a workspace/npm package fails to
 /// resolve. When one of these is shown and a `pnpm-workspace.yaml` is nearby,
 /// the user is almost certainly in a pnpm workspace that Deno can't read.
@@ -132,31 +55,83 @@ const RESOLUTION_FAILURE_MARKERS: &[&str] = &[
 ];
 
 /// If `error_text` looks like a workspace/npm resolution failure and a
-/// `pnpm-workspace.yaml` exists in the cwd or an ancestor, returns a hint
-/// block suggesting `deno migrate pnpm`. Returns `None` otherwise (including
-/// when the hint is already present, to avoid duplicating it).
-pub fn maybe_pnpm_migration_hint(error_text: &str) -> Option<String> {
-  if error_text.contains("deno migrate pnpm") {
-    return None;
-  }
+/// `pnpm-workspace.yaml` exists in `cwd` or an ancestor, converts it into the
+/// equivalent `deno.json` fields (without overwriting anything the user already
+/// set) and returns a note telling the user to run the command again.
+///
+/// Returns `None` when this does not apply: the error is unrelated, no
+/// `pnpm-workspace.yaml` is found, or `deno.json` already has the fields the
+/// migration would add (so re-running would not change anything and there is
+/// nothing to migrate).
+///
+/// This only ever runs on an error path, so the filesystem work never affects
+/// successful resolution.
+pub fn maybe_auto_migrate_pnpm_workspace(
+  error_text: &str,
+  cwd: Option<&Path>,
+) -> Option<String> {
   if !RESOLUTION_FAILURE_MARKERS
     .iter()
     .any(|m| error_text.contains(m))
   {
     return None;
   }
-  let cwd = std::env::current_dir().ok()?;
-  find_pnpm_workspace(&cwd)?;
-  Some(format!(
-    "\n\n{} A pnpm-workspace.yaml was found nearby, but Deno does not read it.\n{} Run `{}` to convert it into your deno.json.",
-    colors::yellow("info:"),
+
+  let cwd = crate::util::env::resolve_cwd_or_fallback(cwd);
+  let yaml_path = find_pnpm_workspace(&cwd)?;
+  let dir = yaml_path.parent().unwrap_or(&cwd).to_path_buf();
+
+  match auto_migrate(&yaml_path, &dir) {
+    Ok(Some(message)) => Some(message),
+    // Nothing to migrate (e.g. `deno.json` already has these fields): stay
+    // silent and let the original error speak for itself.
+    Ok(None) => None,
+    // We found a `pnpm-workspace.yaml` but couldn't convert it. Point the user
+    // at it rather than failing silently; the migration is best-effort.
+    Err(err) => Some(format!(
+      "\n\n{} Found {} nearby, which Deno does not read directly, but it could not be converted automatically: {}",
+      colors::yellow("warning:"),
+      colors::cyan("pnpm-workspace.yaml"),
+      err,
+    )),
+  }
+}
+
+fn auto_migrate(
+  yaml_path: &Path,
+  dir: &Path,
+) -> Result<Option<String>, AnyError> {
+  let yaml_text = std::fs::read_to_string(yaml_path)
+    .with_context(|| format!("Reading '{}'", yaml_path.display()))?;
+  let parsed = parse_pnpm_workspace(&yaml_text)
+    .with_context(|| format!("Parsing '{}'", yaml_path.display()))?;
+
+  let deno_json_path = pick_deno_json_path(dir);
+  let Some(new_contents) = apply_to_deno_json(&deno_json_path, &parsed)? else {
+    return Ok(None);
+  };
+  std::fs::write(&deno_json_path, new_contents)
+    .with_context(|| format!("Writing '{}'", deno_json_path.display()))?;
+
+  let mut message = format!(
+    "\n\n{} Found {} nearby, which Deno does not read directly.\n{} Migrated its workspace configuration into {}. Run the command again.",
+    colors::yellow("warning:"),
+    colors::cyan("pnpm-workspace.yaml"),
     colors::intense_blue("hint:"),
-    colors::cyan("deno migrate pnpm"),
-  ))
+    colors::cyan(deno_json_path.display().to_string()),
+  );
+  if !parsed.unsupported_keys.is_empty() {
+    message.push_str(&format!(
+      "\n{} these pnpm-workspace.yaml keys have no deno.json equivalent and were not migrated: {}",
+      colors::yellow("note:"),
+      parsed.unsupported_keys.join(", "),
+    ));
+  }
+  Ok(Some(message))
 }
 
 /// Walks up from `start` looking for a `pnpm-workspace.yaml`.
-pub fn find_pnpm_workspace(start: &Path) -> Option<PathBuf> {
+fn find_pnpm_workspace(start: &Path) -> Option<PathBuf> {
   let mut dir = Some(start);
   while let Some(current) = dir {
     let candidate = current.join("pnpm-workspace.yaml");
@@ -177,25 +152,22 @@ fn pick_deno_json_path(dir: &Path) -> PathBuf {
 }
 
 /// Merges the parsed pnpm workspace into an existing `deno.json` (preserving
-/// comments and formatting via the jsonc CST) or creates a new one. Returns
-/// the new file contents.
+/// comments and formatting via the jsonc CST) or creates a new one. Fields the
+/// user has already set are left untouched. Returns the new file contents, or
+/// `None` when there is nothing to add (so the caller can avoid a no-op write).
 fn apply_to_deno_json(
   path: &Path,
   parsed: &PnpmWorkspace,
-) -> Result<String, AnyError> {
+) -> Result<Option<String>, AnyError> {
   let existing =
     std::fs::read_to_string(path).unwrap_or_else(|_| "{}\n".to_string());
   let cst = CstRootNode::parse(&existing, &Default::default())
     .with_context(|| format!("Parsing existing '{}'", path.display()))?;
   let root = cst.object_value_or_set();
 
-  if !parsed.packages.is_empty() {
-    if root.get("workspace").is_some() {
-      bail!(
-        "'{}' already has a \"workspace\" field. Refusing to overwrite it.",
-        path.display()
-      );
-    }
+  let mut changed = false;
+
+  if !parsed.packages.is_empty() && root.get("workspace").is_none() {
     let array = CstInputValue::Array(
       parsed
         .packages
@@ -204,10 +176,12 @@ fn apply_to_deno_json(
         .collect(),
     );
     root.append("workspace", array);
+    changed = true;
   }
 
   if !parsed.catalog.is_empty() && root.get("catalog").is_none() {
     root.append("catalog", string_map_to_value(&parsed.catalog));
+    changed = true;
   }
 
   if !parsed.catalogs.is_empty() && root.get("catalogs").is_none() {
@@ -219,10 +193,15 @@ fn apply_to_deno_json(
         .collect(),
     );
     root.append("catalogs", obj);
+    changed = true;
+  }
+
+  if !changed {
+    return Ok(None);
   }
 
   root.ensure_multiline();
-  Ok(cst.to_string())
+  Ok(Some(cst.to_string()))
 }
 
 fn string_map_to_value(map: &IndexMap<String, String>) -> CstInputValue {
@@ -431,5 +410,38 @@ mod tests {
     let out = cst.to_string();
     assert!(out.contains("\"workspace\""));
     assert!(out.contains("\"packages/*\""));
+  }
+
+  #[test]
+  fn apply_skips_existing_fields() {
+    // `deno.json` already declares `workspace`; nothing to add -> no-op.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("deno.json");
+    std::fs::write(&path, "{ \"workspace\": [\"a\"] }\n").unwrap();
+    let parsed = PnpmWorkspace {
+      packages: vec!["packages/*".to_string()],
+      ..Default::default()
+    };
+    assert!(apply_to_deno_json(&path, &parsed).unwrap().is_none());
+  }
+
+  #[test]
+  fn apply_adds_only_missing_fields() {
+    // `workspace` is present but `catalog` is not: only `catalog` is added.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("deno.json");
+    std::fs::write(&path, "{ \"workspace\": [\"a\"] }\n").unwrap();
+    let mut catalog = IndexMap::new();
+    catalog.insert("react".to_string(), "^18.0.0".to_string());
+    let parsed = PnpmWorkspace {
+      packages: vec!["packages/*".to_string()],
+      catalog,
+      ..Default::default()
+    };
+    let out = apply_to_deno_json(&path, &parsed).unwrap().unwrap();
+    assert!(out.contains("\"catalog\""));
+    assert!(out.contains("\"react\""));
+    // The existing workspace was left as-is (not duplicated).
+    assert_eq!(out.matches("\"workspace\"").count(), 1);
   }
 }

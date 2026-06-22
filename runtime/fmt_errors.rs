@@ -572,45 +572,10 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
           ),
         ]),
       ];
-    } else if (msg
-      .contains("Deno expects the node_modules/ directory to be up to date")
-      || msg.contains("Could not find package.json with name")
-      || msg.contains("Could not find a matching package for"))
-      && ancestor_has_pnpm_workspace()
-    {
-      // The user is in a pnpm workspace whose members live in
-      // `pnpm-workspace.yaml`, which Deno does not read. Point them at the
-      // migration command rather than letting the misleading "run deno
-      // install" hint send them in circles.
-      return vec![
-        FixSuggestion::info(cstr!(
-          "A <u>pnpm-workspace.yaml</> was found nearby, but Deno does not read it."
-        )),
-        FixSuggestion::hint(cstr!(
-          "Run <u>deno migrate pnpm</> to convert it into your <u>deno.json</>."
-        )),
-      ];
     }
   }
 
   vec![]
-}
-
-/// Returns whether the current working directory or any ancestor contains a
-/// `pnpm-workspace.yaml`. Only ever called on an error path, so the
-/// filesystem walk never affects successful resolution.
-fn ancestor_has_pnpm_workspace() -> bool {
-  let Ok(cwd) = std::env::current_dir() else {
-    return false;
-  };
-  let mut dir = Some(cwd.as_path());
-  while let Some(current) = dir {
-    if current.join("pnpm-workspace.yaml").is_file() {
-      return true;
-    }
-    dir = current.parent();
-  }
-  false
 }
 
 static SHOULD_FILTER_FRAMES: LazyLock<bool> =

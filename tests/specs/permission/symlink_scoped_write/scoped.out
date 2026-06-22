@@ -1,1 +1,0 @@
-NotCapable: Deno.symlink() requires unscoped --allow-read and --allow-write permissions; path-scoped grants (e.g. --allow-write=<path>) are not supported because a symlink's target is only resolved when the link is traversed
