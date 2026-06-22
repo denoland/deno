@@ -2365,9 +2365,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.200.0"
+version = "0.202.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "766da743b9cf2f59151996cfb62ff541c8cc72ccee52791de5cd42d96b9c7db9"
+checksum = "bd19673cd4b60b0ecfb9a2bdc594057417da1cd0c571f2516714d8dd44941c03"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2526,8 +2526,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.109.0"
-source = "git+https://github.com/denoland/deno_graph?rev=7541064aa1765022cc39d1675889f97fd7ee512f#7541064aa1765022cc39d1675889f97fd7ee512f"
+version = "0.110.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "99fae1db677b397e79ca77b43c55da31cb994aab07ea59bd0e9e5c4e3efb97be"
 dependencies = [
  "async-trait",
  "boxed_error",

@@ -92,9 +92,9 @@ repository = "https://github.com/denoland/deno"
 [workspace.dependencies]
 deno_ast = { version = "=0.53.2", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
-deno_doc = "=0.200.0"
+deno_doc = "=0.202.0"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.109.0", default-features = false }
+deno_graph = { version = "=0.110.0", default-features = false }
 deno_lint = "=0.84.1"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
@@ -618,9 +618,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
-
-# TEMP(feat/config-imports): patch deno_graph to the branch that adds config
-# imports (yaml/toml/json5/jsonc, issue #35304, denoland/deno_graph#656). Remove
-# this and bump the pinned deno_graph version once that PR is released.
-[patch.crates-io]
-deno_graph = { git = "https://github.com/denoland/deno_graph", rev = "7541064aa1765022cc39d1675889f97fd7ee512f" }
