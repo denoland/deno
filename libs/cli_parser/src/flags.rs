@@ -651,6 +651,12 @@ pub struct TestFlags {
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
+  /// Run only test modules affected by files changed in git.
+  /// `None` when `--changed` is absent, `Some(None)` for `--changed` with no
+  /// value (uncommitted changes), `Some(Some(ref))` for `--changed=<ref>`.
+  pub changed: Option<Option<String>>,
+  /// Run only test modules that depend on the given source files (`--related`).
+  pub related: Vec<String>,
   pub update_snapshots: bool,
 }
 
