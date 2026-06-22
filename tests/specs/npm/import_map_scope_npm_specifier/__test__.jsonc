@@ -12,6 +12,14 @@
       "output": "2\n",
       "exitCode": 0
     },
+    // `info --json` documents that the scoped npm target is seeded into the
+    // npm package snapshot during graph build, not only discovered at runtime.
+    "info_json": {
+      "tempDir": true,
+      "args": "info --quiet --json --no-lock main.ts",
+      "output": "info_json.out",
+      "exitCode": 0
+    },
     // A scope keyed by the referrer's npm package applies, but the specifier
     // the package imports (`@denotest/different-nested-dep-child`) is not mapped
     // by that scope (only an unrelated `@denotest/esm-basic` is). The import
