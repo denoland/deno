@@ -374,7 +374,7 @@ impl FileSystem for RealFs {
   ) -> FsResult<()> {
     let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
     let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    filetime::set_file_times(path, atime, mtime).map_err(Into::into)
+    utime(path, atime, mtime)
   }
   async fn utime_async(
     &self,
@@ -386,10 +386,7 @@ impl FileSystem for RealFs {
   ) -> FsResult<()> {
     let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
     let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    spawn_blocking(move || {
-      filetime::set_file_times(path, atime, mtime).map_err(Into::into)
-    })
-    .await?
+    spawn_blocking(move || utime(&path, atime, mtime)).await?
   }
 
   fn lutime_sync(
@@ -514,11 +511,31 @@ fn mkdir(path: &Path, recursive: bool, mode: Option<u32>) -> FsResult<()> {
   builder.create(path).map_err(Into::into)
 }
 
+// Open the terminal path no-follow so a metadata operation cannot reach the
+// target of a terminal symlink. The permission check for these ops is performed
+// no-follow (against the named path, without canonicalization), so following a
+// terminal symlink here would let a writable symlink inside an allowed scope be
+// used to modify a file it points to outside that scope. O_NOFOLLOW makes the
+// open fail with ELOOP when the final component is a symlink; intermediate
+// symlinks are still resolved, matching the existing path model and the
+// truncate fix in #35239. O_NONBLOCK avoids blocking when the path is a FIFO or
+// other special file.
+#[cfg(unix)]
+fn open_no_follow_for_metadata(path: &Path) -> FsResult<fs::File> {
+  use std::os::unix::fs::OpenOptionsExt;
+  let mut open_options = fs::OpenOptions::new();
+  open_options.read(true);
+  open_options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+  Ok(open_options.open(path)?)
+}
+
 #[cfg(unix)]
 fn chmod(path: &Path, mode: u32) -> FsResult<()> {
   use std::os::unix::fs::PermissionsExt;
-  let permissions = fs::Permissions::from_mode(mode);
-  fs::set_permissions(path, permissions)?;
+  let file = open_no_follow_for_metadata(path)?;
+  // Uses fchmod(2) on the opened fd rather than a path-based chmod(2), so a
+  // terminal symlink is refused (ELOOP) instead of having its target modified.
+  file.set_permissions(fs::Permissions::from_mode(mode))?;
   Ok(())
 }
 
@@ -546,14 +563,21 @@ fn chmod(path: &Path, mode: i32) -> FsResult<()> {
 
 #[cfg(unix)]
 fn chown(path: &Path, uid: Option<u32>, gid: Option<u32>) -> FsResult<()> {
-  use nix::unistd::Gid;
-  use nix::unistd::Uid;
-  use nix::unistd::chown;
-  let owner = uid.map(Uid::from_raw);
-  let group = gid.map(Gid::from_raw);
-  let res = chown(path, owner, group);
-  if let Err(err) = res {
-    return Err(io::Error::from_raw_os_error(err as i32).into());
+  use std::os::unix::io::AsRawFd;
+  let file = open_no_follow_for_metadata(path)?;
+  // -1 = leave unchanged
+  let uid = uid
+    .map(|uid| uid as libc::uid_t)
+    .unwrap_or(-1i32 as libc::uid_t);
+  let gid = gid
+    .map(|gid| gid as libc::gid_t)
+    .unwrap_or(-1i32 as libc::gid_t);
+  // Uses fchown(2) on the opened fd rather than a path-based chown(2), so a
+  // terminal symlink is refused (ELOOP) instead of having its target modified.
+  // SAFETY: `file` owns a valid fd that lives throughout this call.
+  let result = unsafe { libc::fchown(file.as_raw_fd(), uid, gid) };
+  if result != 0 {
+    return Err(io::Error::last_os_error().into());
   }
   Ok(())
 }
@@ -668,74 +692,84 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
   #[cfg(target_os = "macos")]
   {
     use std::ffi::CString;
-    use std::os::unix::fs::OpenOptionsExt;
-    use std::os::unix::fs::PermissionsExt;
 
     use libc::clonefile;
     use libc::stat;
     use libc::unlink;
 
-    let from_str = CString::new(from.as_os_str().as_encoded_bytes())
-      .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-    let to_str = CString::new(to.as_os_str().as_encoded_bytes())
-      .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+    // Fast path: clonefile() large files. Skip it when the destination is a
+    // terminal symlink so we fall through to the no-follow copy below and
+    // refuse it (ELOOP) rather than unlinking the link and replacing it.
+    let dest_is_symlink = fs::symlink_metadata(to)
+      .map(|m| m.file_type().is_symlink())
+      .unwrap_or(false);
+    if !dest_is_symlink {
+      let from_str = CString::new(from.as_os_str().as_encoded_bytes())
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+      let to_str = CString::new(to.as_os_str().as_encoded_bytes())
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
-    // SAFETY: `from` and `to` are valid C strings.
-    // std::fs::copy does open() + fcopyfile() on macOS. We try to use
-    // clonefile() instead, which is more efficient.
-    unsafe {
-      let mut st = std::mem::zeroed();
-      let ret = stat(from_str.as_ptr(), &mut st);
-      if ret != 0 {
-        return Err(io::Error::last_os_error().into());
-      }
-
-      if st.st_size > 128 * 1024 {
-        // Try unlink. If it fails, we are going to try clonefile() anyway.
-        let _ = unlink(to_str.as_ptr());
-        // Matches rust stdlib behavior for io::copy.
-        // https://github.com/rust-lang/rust/blob/3fdd578d72a24d4efc2fe2ad18eec3b6ba72271e/library/std/src/sys/unix/fs.rs#L1613-L1616
-        if clonefile(from_str.as_ptr(), to_str.as_ptr(), 0) == 0 {
-          return Ok(());
+      // SAFETY: `from` and `to` are valid C strings.
+      // std::fs::copy does open() + fcopyfile() on macOS. We try to use
+      // clonefile() instead, which is more efficient.
+      unsafe {
+        let mut st = std::mem::zeroed();
+        let ret = stat(from_str.as_ptr(), &mut st);
+        if ret != 0 {
+          return Err(io::Error::last_os_error().into());
         }
-      } else {
-        // Do a regular copy. fcopyfile() is an overkill for < 128KB
-        // files.
-        let mut buf = [0u8; 128 * 1024];
-        let mut from_file = fs::File::open(from)?;
-        let perm = from_file.metadata()?.permissions();
 
-        let mut to_file = fs::OpenOptions::new()
-          // create the file with the correct mode right away
-          .mode(perm.mode())
-          .write(true)
-          .create(true)
-          .truncate(true)
-          .open(to)?;
-        let writer_metadata = to_file.metadata()?;
-        if writer_metadata.is_file() {
-          // Set the correct file permissions, in case the file already existed.
-          // Don't set the permissions on already existing non-files like
-          // pipes/FIFOs or device nodes.
-          to_file.set_permissions(perm)?;
-        }
-        loop {
-          let nread = from_file.read(&mut buf)?;
-          if nread == 0 {
-            break;
+        if st.st_size > 128 * 1024 {
+          // Try unlink. If it fails, we are going to try clonefile() anyway.
+          let _ = unlink(to_str.as_ptr());
+          // Matches rust stdlib behavior for io::copy.
+          // https://github.com/rust-lang/rust/blob/3fdd578d72a24d4efc2fe2ad18eec3b6ba72271e/library/std/src/sys/unix/fs.rs#L1613-L1616
+          if clonefile(from_str.as_ptr(), to_str.as_ptr(), 0) == 0 {
+            return Ok(());
           }
-          to_file.write_all(&buf[..nread])?;
         }
-        return Ok(());
       }
     }
 
-    // clonefile() failed, fall back to std::fs::copy().
+    // Small files, symlink destinations, and clonefile() failures fall through
+    // to the no-follow copy below.
   }
 
-  fs::copy(from, to)?;
+  // The permission check for the destination is performed no-follow, so on unix
+  // the destination is opened with O_NOFOLLOW: a terminal symlink is refused
+  // (ELOOP) instead of having its target overwritten, mirroring the truncate
+  // fix in #35239. Windows behavior is unchanged.
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::fs::PermissionsExt;
 
-  Ok(())
+    let mut from_file = fs::File::open(from)?;
+    let perm = from_file.metadata()?.permissions();
+
+    let mut to_file = fs::OpenOptions::new()
+      // create the file with the correct mode right away
+      .mode(perm.mode())
+      .write(true)
+      .create(true)
+      .truncate(true)
+      .custom_flags(libc::O_NOFOLLOW)
+      .open(to)?;
+    let writer_metadata = to_file.metadata()?;
+    if writer_metadata.is_file() {
+      // Set the correct file permissions, in case the file already existed.
+      // Don't set the permissions on already existing non-files like
+      // pipes/FIFOs or device nodes.
+      to_file.set_permissions(perm)?;
+    }
+    io::copy(&mut from_file, &mut to_file)?;
+    Ok(())
+  }
+  #[cfg(not(unix))]
+  {
+    fs::copy(from, to)?;
+    Ok(())
+  }
 }
 
 fn cp(from: &Path, to: &Path) -> FsResult<()> {
@@ -1256,6 +1290,29 @@ fn symlink(
   };
 
   Ok(())
+}
+
+#[cfg(unix)]
+fn utime(
+  path: &Path,
+  atime: filetime::FileTime,
+  mtime: filetime::FileTime,
+) -> FsResult<()> {
+  // Open no-follow and update times on the fd so a terminal symlink is refused
+  // (ELOOP) rather than having its target's timestamps changed. The permission
+  // check is performed no-follow, mirroring the truncate fix in #35239.
+  let file = open_no_follow_for_metadata(path)?;
+  filetime::set_file_handle_times(&file, Some(atime), Some(mtime))?;
+  Ok(())
+}
+
+#[cfg(not(unix))]
+fn utime(
+  path: &Path,
+  atime: filetime::FileTime,
+  mtime: filetime::FileTime,
+) -> FsResult<()> {
+  filetime::set_file_times(path, atime, mtime).map_err(Into::into)
 }
 
 fn truncate(path: &Path, len: u64) -> FsResult<()> {
