@@ -2037,6 +2037,7 @@ dependencies = [
  "lax-sql",
  "lazy-regex",
  "libc",
+ "liblzma",
  "libsui",
  "libz-sys",
  "locked-tripwire",

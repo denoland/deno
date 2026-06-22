@@ -140,6 +140,7 @@ lax-markup.workspace = true
 lax-sql.workspace = true
 lazy-regex.workspace = true
 libc.workspace = true
+liblzma.workspace = true
 libz-sys.workspace = true
 locked-tripwire = "0.1.1"
 log = { workspace = true, features = ["serde"] }

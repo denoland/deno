@@ -520,6 +520,15 @@ async fn compile_desktop(
     )
     .await?;
 
+    // Optionally make the bundle self-extracting: the heavy payload is
+    // compressed inside the shipped app and unpacked on first launch. This
+    // shrinks the distributed artifact (the installed footprint is restored
+    // on first run). Done before any .dmg/.deb/.AppImage wrapping so the
+    // installer wraps the compact, self-extracting app.
+    if let Some(format) = desktop_flags.compress.as_deref() {
+      make_self_extracting(&bundle_path, format, &desktop_flags)?;
+    }
+
     // If the user requested a .dmg, wrap the .app in one and report the DMG.
     // If the user requested a .AppImage, wrap the Linux app dir in one.
     let final_path = if let Some(dmg) = dmg_output.as_deref() {
@@ -582,6 +591,295 @@ async fn compile_desktop(
   }
 
   Ok(())
+}
+
+/// Convert a packaged app bundle into a self-extracting one: the heavy payload
+/// is compressed inside the shipped bundle and unpacked to a per-user data
+/// directory on first launch, then the real app is exec'd from there.
+///
+/// This shrinks the distributed artifact (the installed footprint is restored
+/// on first run, cached and reused on subsequent launches). The transform is
+/// in place at `bundle_path`. `format` is `"xz"` (LZMA, smallest, decompressed
+/// everywhere by libarchive `tar`) or `"zstd"` (faster, slightly larger).
+fn make_self_extracting(
+  bundle_path: &Path,
+  format: &str,
+  desktop_flags: &DesktopFlags,
+) -> Result<(), AnyError> {
+  let target_os = match desktop_flags.target.as_deref() {
+    Some(t) if t.contains("apple-darwin") => "macos",
+    Some(t) if t.contains("windows") => "windows",
+    Some(_) => "linux",
+    None => {
+      if cfg!(target_os = "macos") {
+        "macos"
+      } else if cfg!(target_os = "windows") {
+        "windows"
+      } else {
+        "linux"
+      }
+    }
+  };
+  match target_os {
+    "macos" => make_self_extracting_macos(bundle_path, format, desktop_flags),
+    "windows" => make_self_extracting_dir(bundle_path, format, true),
+    _ => make_self_extracting_dir(bundle_path, format, false),
+  }
+}
+
+/// Tar `parent/entry_name` (preserving symlinks and modes) into `dest_file`,
+/// compressed with `format`. Returns `(uncompressed, compressed)` byte sizes.
+fn write_tar_compressed(
+  parent: &Path,
+  entry_name: &str,
+  dest_file: &Path,
+  format: &str,
+) -> Result<(u64, u64), AnyError> {
+  use std::io::Write;
+  let mut tar_buf = Vec::new();
+  {
+    let mut builder = tar::Builder::new(&mut tar_buf);
+    builder.follow_symlinks(false);
+    builder.append_dir_all(entry_name, parent.join(entry_name))?;
+    builder.finish()?;
+  }
+  let raw_len = tar_buf.len() as u64;
+
+  let out = std::fs::File::create(dest_file).with_context(|| {
+    format!("failed to create payload {}", dest_file.display())
+  })?;
+  let out = std::io::BufWriter::new(out);
+  match format {
+    "xz" | "lzma" => {
+      // Preset 9 ≈ `xz -9`; PRESET_EXTREME trades a lot of CPU for a few
+      // percent, so stick to plain 9 for build-time sanity.
+      let mut enc = liblzma::write::XzEncoder::new(out, 9);
+      enc.write_all(&tar_buf)?;
+      enc.finish()?.flush()?;
+    }
+    "zstd" => {
+      let mut enc = zstd::stream::write::Encoder::new(out, 19)?;
+      enc.write_all(&tar_buf)?;
+      enc.finish()?.flush()?;
+    }
+    other => bail!("unknown --compress format '{other}' (use xz or zstd)"),
+  }
+  let comp_len = std::fs::metadata(dest_file).map(|m| m.len()).unwrap_or(0);
+  Ok((raw_len, comp_len))
+}
+
+/// Short, stable cache key derived from the payload bytes — bumps the
+/// extraction directory whenever the app contents change.
+fn payload_hash(payload: &Path) -> Result<String, AnyError> {
+  let bytes = std::fs::read(payload)?;
+  let digest = sha2::Sha256::digest(&bytes);
+  Ok(faster_hex::hex_string(&digest)[..16].to_string())
+}
+
+fn payload_ext(format: &str) -> &'static str {
+  match format {
+    "zstd" => "tar.zst",
+    _ => "tar.xz",
+  }
+}
+
+/// macOS: replace `MyApp.app` with a thin `.app` whose `Resources/` holds the
+/// compressed real bundle. The `Contents/MacOS/<App>` launcher extracts it to
+/// `~/Library/Application Support/<bundle-id>/<hash>/` on first run and execs
+/// the real backend from there.
+fn make_self_extracting_macos(
+  bundle_path: &Path,
+  format: &str,
+  desktop_flags: &DesktopFlags,
+) -> Result<(), AnyError> {
+  let app_name = bundle_path
+    .file_stem()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| "App".to_string());
+  validate_launcher_name(&app_name, "app name")?;
+
+  let contents = bundle_path.join("Contents");
+  let bundle_id =
+    read_plist_string(&contents.join("Info.plist"), "CFBundleIdentifier")
+      .unwrap_or_else(|| {
+        format!("com.deno.desktop.{}", app_name.to_lowercase())
+      });
+  validate_bundle_identifier(&bundle_id)?;
+
+  // Capture the bits we re-create in the thin bundle before moving the real
+  // one out of the way.
+  let info_plist = std::fs::read(contents.join("Info.plist"))?;
+  let icon_src = contents.join("Resources").join("AppIcon.icns");
+  let icon = icon_src
+    .exists()
+    .then(|| std::fs::read(&icon_src))
+    .transpose()?;
+
+  // Move the full, signed bundle into a staging dir as `<App>.app`.
+  let parent = bundle_path.parent().unwrap_or_else(|| Path::new("."));
+  let staging = tempfile::Builder::new()
+    .prefix(".selfextract-")
+    .tempdir_in(parent)?;
+  let inner_name = format!("{app_name}.app");
+  let inner = staging.path().join(&inner_name);
+  std::fs::rename(bundle_path, &inner)?;
+
+  // Build the thin bundle in place.
+  let macos_dir = contents.join("MacOS");
+  let resources_dir = contents.join("Resources");
+  std::fs::create_dir_all(&macos_dir)?;
+  std::fs::create_dir_all(&resources_dir)?;
+
+  let payload_name = format!("payload.{}", payload_ext(format));
+  let payload = resources_dir.join(&payload_name);
+  let (raw, comp) =
+    write_tar_compressed(staging.path(), &inner_name, &payload, format)?;
+  let hash = payload_hash(&payload)?;
+
+  let launcher = format!(
+    "#!/bin/sh\n\
+     set -e\n\
+     DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
+     DEST=\"$HOME/Library/Application Support/{bundle_id}/{hash}\"\n\
+     APP=\"$DEST/{inner_name}\"\n\
+     if [ ! -x \"$APP/Contents/MacOS/{app_name}\" ]; then\n\
+     \u{20} mkdir -p \"$DEST\"\n\
+     \u{20} tar -xf \"$DIR/../Resources/{payload_name}\" -C \"$DEST\"\n\
+     fi\n\
+     exec \"$APP/Contents/MacOS/{app_name}\" \"$@\"\n",
+  );
+  let launcher_path = macos_dir.join(&app_name);
+  std::fs::write(&launcher_path, launcher)?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(
+      &launcher_path,
+      std::fs::Permissions::from_mode(0o755),
+    )?;
+  }
+
+  std::fs::write(contents.join("Info.plist"), info_plist)?;
+  if let Some(icon) = icon {
+    std::fs::write(resources_dir.join("AppIcon.icns"), icon)?;
+  }
+
+  // Re-sign the thin bundle (the inner one keeps its own signature inside the
+  // archive). Ad-hoc on a macOS host when no identity was given.
+  let codesign_identity = desktop_flags.codesign_identity.as_deref().or(
+    if cfg!(target_os = "macos") {
+      Some("-")
+    } else {
+      None
+    },
+  );
+  if let Some(identity) = codesign_identity {
+    codesign_macos_bundle(bundle_path, identity)?;
+  }
+
+  log::info!(
+    "{} {} ({} -> {}, {})",
+    colors::green("Self-extract"),
+    app_name,
+    human_size(raw),
+    human_size(comp),
+    format,
+  );
+  Ok(())
+}
+
+/// Linux / Windows: replace the app directory with a thin one holding the
+/// compressed payload plus a launcher that extracts to a per-user data dir
+/// (`$XDG_DATA_HOME` / `%LOCALAPPDATA%`) on first run and execs the real app.
+fn make_self_extracting_dir(
+  bundle_path: &Path,
+  format: &str,
+  windows: bool,
+) -> Result<(), AnyError> {
+  let app_name = bundle_path
+    .file_name()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| "App".to_string());
+  validate_launcher_name(&app_name, "app name")?;
+  let id = format!("com.deno.desktop.{}", app_name.to_lowercase());
+
+  let parent = bundle_path.parent().unwrap_or_else(|| Path::new("."));
+  let staging = tempfile::Builder::new()
+    .prefix(".selfextract-")
+    .tempdir_in(parent)?;
+  let inner = staging.path().join(&app_name);
+  std::fs::rename(bundle_path, &inner)?;
+
+  std::fs::create_dir_all(bundle_path)?;
+  let payload_name = format!("payload.{}", payload_ext(format));
+  let payload = bundle_path.join(&payload_name);
+  let (raw, comp) =
+    write_tar_compressed(staging.path(), &app_name, &payload, format)?;
+  let hash = payload_hash(&payload)?;
+
+  if windows {
+    let launcher = format!(
+      "@echo off\r\n\
+       setlocal\r\n\
+       set \"DIR=%~dp0\"\r\n\
+       set \"DEST=%LOCALAPPDATA%\\{id}\\{hash}\"\r\n\
+       if not exist \"%DEST%\\{app_name}\\{app_name}.bat\" (\r\n\
+       \u{20} mkdir \"%DEST%\" 2>nul\r\n\
+       \u{20} tar -xf \"%DIR%{payload_name}\" -C \"%DEST%\"\r\n\
+       )\r\n\
+       call \"%DEST%\\{app_name}\\{app_name}.bat\" %*\r\n",
+    );
+    std::fs::write(bundle_path.join(format!("{app_name}.bat")), launcher)?;
+  } else {
+    let launcher = format!(
+      "#!/bin/sh\n\
+       set -e\n\
+       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
+       DEST=\"${{XDG_DATA_HOME:-$HOME/.local/share}}/{id}/{hash}\"\n\
+       APP=\"$DEST/{app_name}\"\n\
+       if [ ! -x \"$APP/{app_name}\" ]; then\n\
+       \u{20} mkdir -p \"$DEST\"\n\
+       \u{20} tar -xf \"$DIR/{payload_name}\" -C \"$DEST\"\n\
+       fi\n\
+       exec \"$APP/{app_name}\" \"$@\"\n",
+    );
+    let launcher_path = bundle_path.join(&app_name);
+    std::fs::write(&launcher_path, launcher)?;
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      std::fs::set_permissions(
+        &launcher_path,
+        std::fs::Permissions::from_mode(0o755),
+      )?;
+    }
+  }
+
+  log::info!(
+    "{} {} ({} -> {}, {})",
+    colors::green("Self-extract"),
+    app_name,
+    human_size(raw),
+    human_size(comp),
+    format,
+  );
+  Ok(())
+}
+
+/// Format a byte count as a short human-readable size (e.g. `66.0M`).
+fn human_size(bytes: u64) -> String {
+  const UNITS: [&str; 5] = ["B", "K", "M", "G", "T"];
+  let mut size = bytes as f64;
+  let mut unit = 0;
+  while size >= 1024.0 && unit < UNITS.len() - 1 {
+    size /= 1024.0;
+    unit += 1;
+  }
+  if unit == 0 {
+    format!("{}{}", bytes, UNITS[unit])
+  } else {
+    format!("{:.1}{}", size, UNITS[unit])
+  }
 }
 
 /// Resolve `icon` (a `.png` or `.icns` path, possibly relative to
@@ -5907,6 +6205,7 @@ def456  other.zip
       identifier: None,
       codesign_identity: None,
       inspect_renderer: None,
+      compress: None,
     }
   }
 

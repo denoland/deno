@@ -2516,6 +2516,20 @@ supported framework (Next.js, Astro, etc.) in the current directory.
           .action(ArgAction::SetTrue)
           .help_heading(DESKTOP_HEADING),
       )
+      .arg(
+        Arg::new("compress")
+          .long("compress")
+          .help(
+            "Make the packaged app self-extracting: the payload is compressed \
+             inside the app and unpacked on first launch. Off by default. \
+             Defaults to xz (decompressed by the system `tar` everywhere); \
+             zstd is smaller/faster but needs the `zstd` tool at runtime.",
+          )
+          .value_parser(["xz", "lzma", "zstd"])
+          .num_args(0..=1)
+          .default_missing_value("xz")
+          .help_heading(DESKTOP_HEADING),
+      )
       .arg(executable_ext_arg())
       .arg(env_file_arg())
       .arg(
@@ -6735,6 +6749,13 @@ fn desktop_parse(
   let hmr = matches.get_flag("hmr");
   let backend = matches.remove_one::<String>("backend");
   let all_targets = matches.get_flag("all-targets");
+  // Self-extracting packaging is opt-in via `--compress [<fmt>]`. Bare
+  // `--compress` defaults to xz (decompressed by the system `tar` with no
+  // external tool); zstd is smaller/faster but needs the `zstd` binary at
+  // runtime. The `lzma` alias normalizes to xz (same liblzma container).
+  let compress = matches
+    .remove_one::<String>("compress")
+    .map(|c| if c == "lzma" { "xz".to_string() } else { c });
   let inspect_renderer = matches.remove_one::<SocketAddr>("inspect-renderer");
   let include = matches
     .remove_many::<String>("include")
@@ -6762,6 +6783,7 @@ fn desktop_parse(
     identifier: None,
     codesign_identity: None,
     inspect_renderer,
+    compress,
   });
 
   Ok(())

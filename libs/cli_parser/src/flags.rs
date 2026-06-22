@@ -226,6 +226,12 @@ pub struct DesktopFlags {
   /// port is allocated. The user-visible inspector port (from `--inspect`) is
   /// separate and is carried on `Flags::inspect`.
   pub inspect_renderer: Option<SocketAddr>,
+  /// When set, emit a compressed distribution archive of the packaged app
+  /// next to it (`<output>.tar.xz` or `<output>.tar.zst`). The installed
+  /// `.app`/app dir is left untouched (and still code-signed); the archive is
+  /// just a small download artifact. Value is the compressor: `"xz"` (LZMA)
+  /// or `"zstd"`.
+  pub compress: Option<String>,
 }
 
 #[derive(Clone)]
