@@ -1,0 +1,6 @@
+name: deno
+list:
+  - one
+  - two
+nested:
+  deep: true

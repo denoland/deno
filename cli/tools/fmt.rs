@@ -58,6 +58,13 @@ pub async fn format(
   flags: Arc<Flags>,
   fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
+  // Prototype: when `DENO_FMT_DPRINT` is set, format by shelling out to the
+  // pinned `dprint` npm package + WASM plugins instead of the in-process
+  // formatter crates. See `cli/tools/fmt_dprint.rs`.
+  if super::fmt_dprint::is_enabled() {
+    return super::fmt_dprint::format(flags, fmt_flags).await;
+  }
+
   if fmt_flags.is_stdin() {
     let factory = CliFactory::from_flags(flags);
     let cli_options = factory.cli_options()?;
@@ -159,13 +166,13 @@ pub async fn format(
   Ok(())
 }
 
-struct PathsWithOptions {
-  base: PathBuf,
-  paths: Vec<PathBuf>,
-  options: FmtOptions,
+pub(crate) struct PathsWithOptions {
+  pub base: PathBuf,
+  pub paths: Vec<PathBuf>,
+  pub options: FmtOptions,
 }
 
-fn resolve_paths_with_options_batches(
+pub(crate) fn resolve_paths_with_options_batches(
   cli_options: &CliOptions,
   fmt_flags: &FmtFlags,
 ) -> Result<Vec<PathsWithOptions>, AnyError> {

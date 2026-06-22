@@ -1,0 +1,44 @@
+{
+  // Runs the same `deno fmt --check` over a set of canonically-formatted
+  // fixtures twice, via the test runner's `variants` matrix:
+  //
+  //   * in_process - the default, in-process formatter (DENO_FMT_DPRINT unset)
+  //   * dprint_npm  - shells out to the pinned `dprint` CLI npm package +
+  //                   WASM plugins (DENO_FMT_DPRINT=1)
+  //   * dprint_wasm - runs the dprint WASM plugins in-process through
+  //                   `@dprint/formatter`, loaded from pinned `@dprint/*` npm
+  //                   packages (DENO_FMT_DPRINT=wasm)
+  //
+  // All must agree the fixtures are already formatted (empty output, exit 0),
+  // which proves the code paths produce identical formatting. `--quiet` makes
+  // every mode silent on success so they can share one expectation.
+  //
+  // NOTE: the dprint_npm and dprint_wasm variants are NOT hermetic. They fetch
+  // the dprint npm package(s) from the real registry (the local test registry
+  // doesn't vendor them) and some WASM plugins from plugins.dprint.dev, so they
+  // only pass with network access. The in_process variant keeps
+  // NPM_CONFIG_REGISTRY unset and stays fully hermetic. Vendoring the
+  // `@dprint/*` packages + plugin WASM into the test registry would make the
+  // dprint_wasm variant hermetic (see the prototype notes).
+  "variants": {
+    "in_process": { "DPRINT": "", "REGISTRY": "" },
+    "dprint_npm": {
+      "DPRINT": "1",
+      "REGISTRY": "https://registry.npmjs.org/"
+    },
+    "dprint_wasm": {
+      "DPRINT": "wasm",
+      "REGISTRY": "https://registry.npmjs.org/"
+    }
+  },
+  "envs": {
+    "DENO_FMT_DPRINT": "${DPRINT}",
+    "NPM_CONFIG_REGISTRY": "${REGISTRY}"
+  },
+  "tests": {
+    "check_formatted": {
+      "args": "fmt --check --quiet",
+      "output": ""
+    }
+  }
+}

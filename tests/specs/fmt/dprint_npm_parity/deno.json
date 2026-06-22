@@ -1,0 +1,8 @@
+{
+  "fmt": {
+    "lineWidth": 60,
+    "singleQuote": true,
+    "semiColons": false,
+    "proseWrap": "always"
+  }
+}
