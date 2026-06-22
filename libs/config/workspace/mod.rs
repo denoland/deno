@@ -2245,12 +2245,16 @@ impl WorkspaceDirectory {
           url_to_file_path(&self.dir_url).unwrap(),
         ),
         options: Default::default(),
+        overrides: Default::default(),
       },
     };
     let root_config = match &self.deno_json.root {
       Some(root) => root.to_fmt_config()?,
       None => return Ok(member_config),
     };
+
+    let mut overrides = root_config.overrides;
+    overrides.extend(member_config.overrides);
 
     Ok(FmtConfig {
       options: FmtOptionsConfig {
@@ -2347,6 +2351,7 @@ impl WorkspaceDirectory {
           .angular_next_control_flow_same_line
           .or(root_config.options.angular_next_control_flow_same_line),
       },
+      overrides,
       files: combine_patterns(root_config.files, member_config.files),
     })
   }
@@ -4181,6 +4186,7 @@ pub mod test {
     assert_eq!(
       fmt_config,
       FmtConfig {
+        overrides: Default::default(),
         options: FmtOptionsConfig {
           use_tabs: Some(false),
           line_width: Some(120),
@@ -4226,6 +4232,7 @@ pub mod test {
     assert_eq!(
       root_fmt_config,
       FmtConfig {
+        overrides: Default::default(),
         options: FmtOptionsConfig {
           use_tabs: Some(true),
           line_width: Some(80),
@@ -4470,6 +4477,7 @@ pub mod test {
           .unwrap(),
         FmtConfig {
           options: Default::default(),
+          overrides: Default::default(),
           files: expected_files.clone(),
         }
       );

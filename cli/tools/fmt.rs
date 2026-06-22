@@ -245,14 +245,17 @@ async fn format_files(
     let paths = paths_with_options.paths;
     let incremental_cache = Arc::new(IncrementalCache::new(
       caches.fmt_incremental_cache_db(),
-      CacheDBHash::from_hashable((&fmt_options.options, &fmt_options.unstable)),
+      CacheDBHash::from_hashable((
+        &fmt_options.options,
+        &fmt_options.overrides,
+        &fmt_options.unstable,
+      )),
       &paths,
     ));
     formatter
       .handle_files(
         paths,
-        fmt_options.options,
-        fmt_options.unstable,
+        fmt_options,
         incremental_cache.clone(),
         cli_options.ext_flag().clone(),
       )
@@ -824,8 +827,7 @@ trait Formatter {
   async fn handle_files(
     &self,
     paths: Vec<PathBuf>,
-    fmt_options: FmtOptionsConfig,
-    unstable_options: UnstableFmtOptions,
+    fmt_options: FmtOptions,
     incremental_cache: Arc<IncrementalCache>,
     ext: Option<String>,
   ) -> Result<(), AnyError>;
@@ -858,8 +860,7 @@ impl Formatter for CheckFormatter {
   async fn handle_files(
     &self,
     paths: Vec<PathBuf>,
-    fmt_options: FmtOptionsConfig,
-    unstable_options: UnstableFmtOptions,
+    fmt_options: FmtOptions,
     incremental_cache: Arc<IncrementalCache>,
     ext: Option<String>,
   ) -> Result<(), AnyError> {
@@ -891,8 +892,8 @@ impl Formatter for CheckFormatter {
         match format_file(
           &file_path,
           &file,
-          &fmt_options,
-          &unstable_options,
+          fmt_options.options_for_path(&file_path),
+          &fmt_options.unstable,
           ext.clone(),
         ) {
           Ok(Some(formatted_text)) => {
@@ -979,8 +980,7 @@ impl Formatter for RealFormatter {
   async fn handle_files(
     &self,
     paths: Vec<PathBuf>,
-    fmt_options: FmtOptionsConfig,
-    unstable_options: UnstableFmtOptions,
+    fmt_options: FmtOptions,
     incremental_cache: Arc<IncrementalCache>,
     ext: Option<String>,
   ) -> Result<(), AnyError> {
@@ -1005,8 +1005,8 @@ impl Formatter for RealFormatter {
           format_file(
             file_path,
             file,
-            &fmt_options,
-            &unstable_options,
+            fmt_options.options_for_path(file_path),
+            &fmt_options.unstable,
             ext.clone(),
           )
         }) {
