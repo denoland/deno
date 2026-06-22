@@ -35,6 +35,7 @@ use crate::args::CompileFlags;
 use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::FlagsExt;
 use crate::args::InstallEntrypointsFlags;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsGlobal;

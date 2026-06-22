@@ -251,6 +251,15 @@ class ConnectionsList {
         }
       }
       if (requestTimeout > 0 && elapsed >= requestTimeout) {
+        // requestTimeout only covers receiving the entire request from the
+        // client. Once the full request message has been parsed off the wire
+        // (req.complete is set in parserOnMessageComplete), the clock stops,
+        // mirroring Node resetting last_message_start_ in on_message_complete.
+        // Without this an actively streaming response (SSE/proxy) gets aborted
+        // at requestTimeout even though the request was long since received.
+        if (entry.req?.complete) {
+          continue;
+        }
         ArrayPrototypePush(result, { socket });
       }
     }
@@ -403,6 +412,42 @@ ServerResponse.prototype.writeContinue = function writeContinue(cb) {
 
 ServerResponse.prototype.writeProcessing = function writeProcessing(cb) {
   this._writeRaw("HTTP/1.1 102 Processing\r\n\r\n", "ascii", cb);
+};
+
+ServerResponse.prototype.writeInformation = function writeInformation(
+  statusCode,
+  headers,
+  cb,
+) {
+  if (this._header) {
+    throw new ERR_HTTP_HEADERS_SENT("write");
+  }
+
+  if (typeof headers === "function") {
+    cb = headers;
+    headers = undefined;
+  }
+
+  validateInteger(statusCode, "statusCode", 100, 199);
+
+  let head = `HTTP/1.1 ${statusCode} ${
+    STATUS_CODES[statusCode] || "unknown"
+  }\r\n`;
+
+  if (headers !== null && headers !== undefined) {
+    const keys = ObjectKeys(headers);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      validateHeaderName(key);
+      const value = headers[key];
+      validateHeaderValue(key, value);
+      head += key + ": " + value + "\r\n";
+    }
+  }
+
+  head += "\r\n";
+
+  this._writeRaw(head, "ascii", cb);
 };
 
 ServerResponse.prototype.writeEarlyHints = function writeEarlyHints(
@@ -1587,14 +1632,17 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
 };
 
 export {
+  applyAddressOverride,
   connectionListener as _connectionListener,
   httpServerPreClose,
   kConnectionsCheckingInterval,
   kIncomingMessage,
   kServerResponse,
+  notifyAddressOverrideServing,
   Server,
   ServerResponse,
   setupConnectionsTracking,
+  startOverrideListener,
   STATUS_CODES,
   storeHTTPOptions,
 };

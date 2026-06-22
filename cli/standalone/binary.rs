@@ -65,6 +65,7 @@ use node_resolver::analyze::ResolvedCjsAnalysis;
 use super::virtual_fs::output_vfs;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
+use crate::args::CompileFlagsExt;
 use crate::args::get_default_v8_flags;
 use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;

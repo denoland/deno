@@ -412,6 +412,9 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
         &self.sys,
         deno_graph::ModuleGraphError::ModuleError(err.clone()),
         EnhanceGraphErrorMode::ShowRange,
+        // This is the post-build module-load path; bare-specifier resolution
+        // hints don't apply here.
+        &[],
       )
     })?;
 
