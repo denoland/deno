@@ -2475,7 +2475,7 @@ supported framework (Next.js, Astro, etc.) in the current directory.
           .long("output")
           .short('o')
           .value_parser(value_parser!(String))
-          .help(cstr!("Output path <p(245)>(e.g. MyApp.app, MyApp.dmg, MyApp.AppImage, MyApp.deb, MyApp.rpm)</>"))
+          .help(cstr!("Output path <p(245)>(e.g. MyApp.app, MyApp.dmg, MyApp.AppImage, MyApp.deb, MyApp.rpm, MyApp.msi)</>"))
           .value_hint(ValueHint::FilePath)
           .help_heading(DESKTOP_HEADING),
       )
@@ -2514,6 +2514,20 @@ supported framework (Next.js, Astro, etc.) in the current directory.
           .long("all-targets")
           .help("Build for all supported target platforms")
           .action(ArgAction::SetTrue)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("compress")
+          .long("compress")
+          .help(
+            "Make the packaged app self-extracting: the payload is compressed \
+             inside the app and unpacked on first launch. Off by default. \
+             Defaults to xz (decompressed by the system `tar` everywhere); \
+             zstd is smaller/faster but needs the `zstd` tool at runtime.",
+          )
+          .value_parser(["xz", "lzma", "zstd"])
+          .num_args(0..=1)
+          .default_missing_value("xz")
           .help_heading(DESKTOP_HEADING),
       )
       .arg(executable_ext_arg())
@@ -4362,6 +4376,29 @@ or <c>**/__tests__/**</>:
           .num_args(0..)
           .action(ArgAction::Append)
           .value_hint(ValueHint::AnyPath),
+      )
+      .arg(
+        Arg::new("changed")
+          .long("changed")
+          .help(cstr!("Run only test modules affected by files changed in git.
+  <p(245)>With no value, uses uncommitted changes (staged, unstaged and untracked).
+  Pass a git ref to compare against, e.g. --changed=main or --changed=HEAD~1.</>"))
+          .value_name("REF")
+          .num_args(0..=1)
+          .require_equals(true)
+          .conflicts_with("watch")
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("related")
+          .long("related")
+          .help("Run only test modules that depend on the given source files")
+          .num_args(1)
+          .require_equals(true)
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::AnyPath)
+          .conflicts_with("watch")
+          .help_heading(TEST_HEADING),
       )
       .arg(
         watch_arg(true)
@@ -6735,6 +6772,13 @@ fn desktop_parse(
   let hmr = matches.get_flag("hmr");
   let backend = matches.remove_one::<String>("backend");
   let all_targets = matches.get_flag("all-targets");
+  // Self-extracting packaging is opt-in via `--compress [<fmt>]`. Bare
+  // `--compress` defaults to xz (decompressed by the system `tar` with no
+  // external tool); zstd is smaller/faster but needs the `zstd` binary at
+  // runtime. The `lzma` alias normalizes to xz (same liblzma container).
+  let compress = matches
+    .remove_one::<String>("compress")
+    .map(|c| if c == "lzma" { "xz".to_string() } else { c });
   let inspect_renderer = matches.remove_one::<SocketAddr>("inspect-renderer");
   let include = matches
     .remove_many::<String>("include")
@@ -6762,6 +6806,7 @@ fn desktop_parse(
     identifier: None,
     codesign_identity: None,
     inspect_renderer,
+    compress,
   });
 
   Ok(())
@@ -7920,6 +7965,19 @@ fn test_parse(
   let hide_stacktraces = matches.get_flag("hide-stacktraces");
   let update_snapshots = matches.get_flag("update-snapshots");
 
+  let changed = if matches.contains_id("changed") {
+    Some(matches.remove_one::<String>("changed"))
+  } else {
+    None
+  };
+
+  let related = match matches.remove_many::<String>("related") {
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<_, _>>()?,
+    None => vec![],
+  };
+
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
     doc,
@@ -7943,6 +8001,8 @@ fn test_parse(
     reporter,
     junit_path,
     hide_stacktraces,
+    changed,
+    related,
     update_snapshots,
   });
   Ok(())
@@ -12367,6 +12427,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          changed: None,
+          related: vec![],
           update_snapshots: false,
         }),
         no_npm: true,
@@ -12481,6 +12543,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          changed: None,
+          related: vec![],
           update_snapshots: false,
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -12532,6 +12596,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          changed: None,
+          related: vec![],
           update_snapshots: false,
         }),
         permissions: PermissionFlags {
@@ -12543,6 +12609,62 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn test_changed() {
+    let r = flags_from_vec(svec!["deno", "test", "--changed"]);
+    assert_eq!(
+      r.unwrap().subcommand,
+      DenoSubcommand::Test(TestFlags {
+        changed: Some(None),
+        ..Default::default()
+      })
+    );
+
+    let r = flags_from_vec(svec!["deno", "test", "--changed=origin/main"]);
+    assert_eq!(
+      r.unwrap().subcommand,
+      DenoSubcommand::Test(TestFlags {
+        changed: Some(Some("origin/main".to_string())),
+        ..Default::default()
+      })
+    );
+
+    // space-separated value is not allowed (would be ambiguous with file args)
+    let r = flags_from_vec(svec!["deno", "test", "--changed", "HEAD~1"]);
+    assert_eq!(
+      r.unwrap().subcommand,
+      DenoSubcommand::Test(TestFlags {
+        changed: Some(None),
+        files: FileFlags {
+          include: vec!["HEAD~1".to_string()],
+          ignore: vec![],
+        },
+        ..Default::default()
+      })
+    );
+  }
+
+  #[test]
+  fn test_related() {
+    let r =
+      flags_from_vec(svec!["deno", "test", "--related=src/a.ts,src/b.ts"]);
+    assert_eq!(
+      r.unwrap().subcommand,
+      DenoSubcommand::Test(TestFlags {
+        related: svec!["src/a.ts", "src/b.ts"],
+        ..Default::default()
+      })
+    );
+  }
+
+  #[test]
+  fn test_changed_conflicts_with_watch() {
+    let r = flags_from_vec(svec!["deno", "test", "--changed", "--watch"]);
+    assert!(r.is_err());
+    let r = flags_from_vec(svec!["deno", "test", "--related=a.ts", "--watch"]);
+    assert!(r.is_err());
   }
 
   #[test]
@@ -12677,6 +12799,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          changed: None,
+          related: vec![],
           update_snapshots: false,
         }),
         permissions: PermissionFlags {
@@ -12721,6 +12845,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          changed: None,
+          related: vec![],
           update_snapshots: false,
         }),
         permissions: PermissionFlags {
@@ -12784,6 +12910,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          changed: None,
+          related: vec![],
           update_snapshots: false,
         }),
         permissions: PermissionFlags {
@@ -12827,6 +12955,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          changed: None,
+          related: vec![],
           update_snapshots: false,
         }),
         permissions: PermissionFlags {
@@ -12877,6 +13007,8 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          changed: None,
+          related: vec![],
           update_snapshots: false,
         }),
         type_check_mode: TypeCheckMode::Local,
