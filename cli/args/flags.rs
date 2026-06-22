@@ -965,6 +965,7 @@ static DENO_HELP: &str = cstr!(
                   <p(245)>deno ci  |  deno ci --prod</>
     <g>uninstall</>    Uninstalls a dependency or an executable script in the installation root's bin directory
     <g>outdated</>     Find and update outdated dependencies
+    <g>list</>         List the dependencies declared in deno.json / package.json
     <g>approve-scripts</> Approve npm lifecycle scripts
     <g>remove</>       Remove dependencies from the configuration file
     <g>link</>         Link a local JSR package into the current project
@@ -1286,6 +1287,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "fmt" => fmt_parse(&mut flags, &mut m)?,
         "init" => init_parse(&mut flags, &mut m)?,
         "info" => info_parse(&mut flags, &mut m)?,
+        "list" => list_parse(&mut flags, &mut m)?,
         "install" => install_parse(&mut flags, &mut m, app)?,
         "link" => link_parse(&mut flags, &mut m)?,
         "unlink" => unlink_parse(&mut flags, &mut m)?,
@@ -1564,6 +1566,7 @@ pub fn clap_root() -> Command {
         .subcommand(fmt_subcommand())
         .subcommand(init_subcommand())
         .subcommand(info_subcommand())
+        .subcommand(list_subcommand())
         .subcommand(install_subcommand())
         .subcommand(ci_subcommand())
         .subcommand(json_reference_subcommand())
@@ -3568,6 +3571,75 @@ Specific version requirements to update to can be specified:
           .short('u')
           .action(ArgAction::SetTrue)
           .help("Update dependency versions"),
+      )
+  })
+}
+
+fn list_subcommand() -> Command {
+  command(
+    "list",
+    cstr!("List the dependencies declared in deno.json / package.json.
+
+Show declared dependencies and their resolved versions:
+  <p(245)>deno list</>
+
+Show the dependency tree two levels deep:
+  <p(245)>deno list --depth 2</>
+
+Show only production or only development dependencies:
+  <p(245)>deno list --prod</>
+  <p(245)>deno list --dev</>
+
+Filter by name (wildcards allowed, negate with a leading '!'):
+  <p(245)>deno list \"@std/*\"</>
+  <p(245)>deno list \"react*\" \"!react-dom\"</>
+
+Include all workspace members:
+  <p(245)>deno list --recursive</>
+
+Unlike <p(245)>deno info</>, which walks the module graph from an entrypoint, this lists the
+packages a project declares as dependencies, similar to <p(245)>npm ls</> / <p(245)>pnpm list</>."),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("filters")
+          .num_args(0..)
+          .action(ArgAction::Append)
+          .help(
+            "Filters selecting which packages to list. Can include wildcards \
+             (*) to match multiple packages, and a leading '!' to exclude.",
+          ),
+      )
+      .arg(
+        Arg::new("depth")
+          .long("depth")
+          .value_parser(value_parser!(u16))
+          .help(
+            "Maximum depth of the dependency tree to display (0 = direct \
+             dependencies only)",
+          ),
+      )
+      .arg(
+        Arg::new("prod")
+          .long("prod")
+          .action(ArgAction::SetTrue)
+          .conflicts_with("dev")
+          .help("Only list production dependencies"),
+      )
+      .arg(
+        Arg::new("dev")
+          .long("dev")
+          .action(ArgAction::SetTrue)
+          .help("Only list development dependencies"),
+      )
+      .arg(
+        Arg::new("recursive")
+          .long("recursive")
+          .short('r')
+          .action(ArgAction::SetTrue)
+          .help("Include all workspace members"),
       )
   })
 }
@@ -6530,6 +6602,24 @@ fn outdated_parse(
   lock_args_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
+  Ok(())
+}
+
+fn list_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  let filters = match matches.remove_many::<String>("filters") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
+  flags.subcommand = DenoSubcommand::List(ListFlags {
+    recursive: matches.get_flag("recursive"),
+    depth: matches.remove_one::<u16>("depth").unwrap_or(0),
+    prod: matches.get_flag("prod"),
+    dev: matches.get_flag("dev"),
+    filters,
+  });
   Ok(())
 }
 
@@ -16314,6 +16404,56 @@ Usage: deno lint [OPTIONS] [files]...\n"
         args
       );
     }
+  }
+
+  #[test]
+  fn list_subcommand() {
+    let cases = [
+      (svec![], ListFlags::default()),
+      (
+        svec!["--recursive"],
+        ListFlags {
+          recursive: true,
+          ..Default::default()
+        },
+      ),
+      (
+        svec!["--depth", "3"],
+        ListFlags {
+          depth: 3,
+          ..Default::default()
+        },
+      ),
+      (
+        svec!["--prod"],
+        ListFlags {
+          prod: true,
+          ..Default::default()
+        },
+      ),
+      (
+        svec!["--dev", "@foo/bar", "react*"],
+        ListFlags {
+          dev: true,
+          filters: svec!["@foo/bar", "react*"],
+          ..Default::default()
+        },
+      ),
+    ];
+    for (input, expected) in cases {
+      let mut args = svec!["deno", "list"];
+      args.extend(input);
+      let r = flags_from_vec(args.clone()).unwrap();
+      assert_eq!(
+        r.subcommand,
+        DenoSubcommand::List(expected),
+        "incorrect result for args: {:?}",
+        args
+      );
+    }
+
+    // --prod and --dev are mutually exclusive
+    assert!(flags_from_vec(svec!["deno", "list", "--prod", "--dev"]).is_err());
   }
 
   #[test]

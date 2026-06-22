@@ -375,6 +375,15 @@ pub struct InfoFlags {
   pub file: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ListFlags {
+  pub recursive: bool,
+  pub depth: u16,
+  pub prod: bool,
+  pub dev: bool,
+  pub filters: Vec<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallFlagsGlobal {
   pub module_urls: Vec<String>,
@@ -785,6 +794,7 @@ pub enum DenoSubcommand {
   Fmt(FmtFlags),
   Init(InitFlags),
   Info(InfoFlags),
+  List(ListFlags),
   Install(InstallFlags),
   JSONReference(JSONReferenceFlags),
   Jupyter(JupyterFlags),

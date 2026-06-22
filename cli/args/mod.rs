@@ -1590,6 +1590,7 @@ impl CliOptions {
           }),
         _,
       )) | DenoSubcommand::Add(_)
+        | DenoSubcommand::List(_)
         | DenoSubcommand::Outdated(_)
     ) {
       NpmCachingStrategy::Manual
