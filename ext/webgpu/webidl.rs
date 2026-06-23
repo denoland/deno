@@ -207,7 +207,7 @@ impl<'a> WebIdlConverter<'a> for GPUOrigin3D {
             "GPUOrigin3D",
           )?;
         return Ok(GPUOrigin3D::Sequence((
-          conv.get(0).copied().unwrap_or(0),
+          conv.first().copied().unwrap_or(0),
           conv.get(1).copied().unwrap_or(0),
           conv.get(2).copied().unwrap_or(0),
         )));
