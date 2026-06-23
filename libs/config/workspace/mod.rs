@@ -2346,6 +2346,10 @@ impl WorkspaceDirectory {
           .options
           .angular_next_control_flow_same_line
           .or(root_config.options.angular_next_control_flow_same_line),
+        use_editor_config: member_config
+          .options
+          .use_editor_config
+          .or(root_config.options.use_editor_config),
       },
       files: combine_patterns(root_config.files, member_config.files),
     })
@@ -4205,6 +4209,7 @@ pub mod test {
           space_surrounding_properties: Some(true),
           vue_component_case: None,
           angular_next_control_flow_same_line: None,
+          use_editor_config: None,
         },
         files: FilePatterns {
           base: root_dir().join("member"),
@@ -4250,6 +4255,7 @@ pub mod test {
           space_surrounding_properties: Some(false),
           vue_component_case: None,
           angular_next_control_flow_same_line: None,
+          use_editor_config: None,
         },
         files: FilePatterns {
           base: root_dir(),

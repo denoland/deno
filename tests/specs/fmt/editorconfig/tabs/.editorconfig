@@ -1,0 +1,4 @@
+root = true
+
+[*.ts]
+indent_style = tab

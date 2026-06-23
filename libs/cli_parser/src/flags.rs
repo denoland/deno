@@ -346,6 +346,7 @@ pub struct FmtFlags {
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
+  pub no_editorconfig: bool,
   pub watch: Option<WatchFlags>,
   pub unstable_component: bool,
   pub unstable_sql: bool,

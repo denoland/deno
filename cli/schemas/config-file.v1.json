@@ -890,6 +890,11 @@
           "default": true,
           "type": "boolean"
         },
+        "useEditorConfig": {
+          "description": "Whether `deno fmt` reads `.editorconfig` files to fill in formatting options that are not otherwise set. Defaults to true.",
+          "default": true,
+          "type": "boolean"
+        },
         "options": {
           "type": "object",
           "properties": {
