@@ -429,6 +429,10 @@ struct ToUpdate {
   current_version: Option<PackageNv>,
   current_version_req: VersionReq,
   new_version_req: VersionReq,
+  // Whether the npm registry metadata for this package must be refetched
+  // before the post-modification install re-resolves it. See the comment at
+  // the blocklist construction below for why.
+  force_reload_npm: bool,
 }
 
 async fn update(
@@ -466,12 +470,39 @@ async fn update(
       }
     };
 
+    // Determine whether re-resolution could move this npm package to a version
+    // that a stale cached packument might be hiding, in which case its metadata
+    // must be refetched first.
+    let force_reload_npm = dep.kind == DepKind::Npm
+      && if cache_options.lockfile_only {
+        // `--lockfile-only` leaves the version requirement untouched, so the
+        // package can only move if a newer version already exists within its
+        // existing range. Refetching the others would emit spurious downloads
+        // (and network requests) without ever changing the lockfile.
+        match (
+          resolved.as_ref(),
+          latest_versions.semver_compatible.as_ref(),
+        ) {
+          (Some(resolved), Some(compatible)) => {
+            compatible.version > resolved.version
+          }
+          // No resolved version (or unknown compatible version) -- refetch to
+          // be safe.
+          _ => true,
+        }
+      } else {
+        // Otherwise the requirement is rewritten to `new_version_req`, so the
+        // package is going to be re-resolved to a new version regardless.
+        true
+      };
+
     to_update.push(ToUpdate {
       dep_id,
       package_name: format!("{}:{}", dep.kind.scheme(), dep.req.name),
       current_version: resolved.clone(),
       current_version_req: dep.req.version_req.clone(),
       new_version_req: new_version_req.clone(),
+      force_reload_npm,
     });
   }
 
@@ -517,8 +548,27 @@ async fn update(
       deps.commit_changes()?;
     }
 
+    // Force fresh npm registry metadata for exactly the packages being
+    // updated. The installer's re-resolution reads the npm registry cache with
+    // the default `CacheSetting::Use`, so a stale cached packument can hide a
+    // newer in-range version and leave the lockfile pinned to the old one --
+    // even though `deno outdated` (which fetches packuments fresh) reports the
+    // update. Adding each such npm package to the cache blocklist makes
+    // `cache_setting()` return `ReloadSome`, refetching metadata for only those
+    // packages. See #35348.
+    let install_flags = {
+      let mut install_flags = (*flags).clone();
+      install_flags.cache_blocklist.extend(
+        to_update
+          .iter()
+          .filter(|pkg| pkg.force_reload_npm)
+          .map(|pkg| pkg.package_name.clone()),
+      );
+      Arc::new(install_flags)
+    };
+
     let factory = super::npm_install_after_modification(
-      flags.clone(),
+      install_flags,
       Some(deps.jsr_fetch_resolver.clone()),
       cache_options,
     )
@@ -656,7 +706,7 @@ async fn dep_manager_args(
   })
 }
 
-mod filter {
+pub(crate) mod filter {
   use deno_core::anyhow::Context;
   use deno_core::anyhow::anyhow;
   use deno_core::error::AnyError;

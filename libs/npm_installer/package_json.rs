@@ -426,6 +426,24 @@ impl NpmInstallDepsProvider {
             .unwrap_or_default(),
           deps: workspace_pkg_deps,
         });
+
+        // Also symlink each non-root workspace member that is itself an npm
+        // package (has a `name`) into the root `node_modules` under its real
+        // package name. This mirrors npm/pnpm: a member referenced only by bare
+        // specifier (not declared as a dependency, not via an `npm:` import map
+        // value) would otherwise land only in `workspace_pkgs` and never be
+        // linked into the root `node_modules`, so external Node tooling that
+        // resolves through `node_modules` fails with MODULE_NOT_FOUND (#35359).
+        // Keyed on the member's real package.json `name` (never an import-map
+        // alias) so arbitrary `"foo": "npm:..."` aliases stay unlinked (#25542,
+        // #25538). A non-empty `local_pkgs` also defeats the installers'
+        // `has_no_packages` early-return so `node_modules` is created.
+        if !is_root && let Some(name) = pkg_json.name.as_ref() {
+          local_pkgs.push(InstallLocalPkg {
+            alias: Some(StackString::from_str(name)),
+            target_dir: pkg_json.dir_path().to_path_buf(),
+          });
+        }
       }
     }
 

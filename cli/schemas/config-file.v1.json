@@ -201,7 +201,7 @@
             },
             "linux": {
               "type": "string",
-              "description": "Output path for Linux (e.g. MyApp.AppImage, MyApp.deb)."
+              "description": "Output path for Linux (e.g. MyApp.AppImage, MyApp.deb, MyApp.rpm)."
             }
           }
         },
@@ -1082,6 +1082,36 @@
         },
         "permissions": {
           "$ref": "#/$defs/permissionNameOrSet"
+        }
+      }
+    },
+    "coverage": {
+      "description": "Configuration for deno coverage and deno test --coverage",
+      "type": "object",
+      "properties": {
+        "thresholds": {
+          "description": "Minimum coverage percentages required for the command to succeed. Each metric is checked against the aggregate across all files.",
+          "type": "object",
+          "properties": {
+            "lines": {
+              "type": "number",
+              "description": "Minimum line coverage percentage (0-100).",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "branches": {
+              "type": "number",
+              "description": "Minimum branch coverage percentage (0-100).",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "functions": {
+              "type": "number",
+              "description": "Minimum function coverage percentage (0-100).",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
         }
       }
     },

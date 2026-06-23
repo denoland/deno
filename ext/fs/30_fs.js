@@ -80,6 +80,7 @@ const {
   DatePrototypeGetTime,
   Error,
   Function,
+  MathFloor,
   MathTrunc,
   Number,
   ObjectEntries,
@@ -505,9 +506,13 @@ async function link(oldpath, newpath) {
 }
 
 function toUnixTimeFromEpoch(value) {
+  // Use floor (not trunc) when splitting into seconds + nanoseconds so the
+  // nanosecond remainder is always non-negative, even for timestamps before
+  // the Unix epoch. The op receives nanoseconds as a u32, so a negative
+  // remainder would wrap around and corrupt the stored time.
   if (isDate(value)) {
     const time = DatePrototypeGetTime(value);
-    const seconds = MathTrunc(time / 1e3);
+    const seconds = MathFloor(time / 1e3);
     const nanoseconds = MathTrunc(time - (seconds * 1e3)) * 1e6;
 
     return [
@@ -516,7 +521,7 @@ function toUnixTimeFromEpoch(value) {
     ];
   }
 
-  const seconds = MathTrunc(value);
+  const seconds = MathFloor(value);
   const nanoseconds = MathTrunc((value * 1e3) - (seconds * 1e3)) * 1e6;
 
   return [

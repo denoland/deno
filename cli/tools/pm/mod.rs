@@ -43,13 +43,15 @@ mod audit;
 mod cache_deps;
 pub(crate) mod deps;
 pub(crate) mod interactive_picker;
-mod outdated;
+mod list;
+pub(crate) mod outdated;
 mod why;
 
 pub use approve_scripts::approve_scripts;
 pub use audit::audit;
 pub use cache_deps::CacheTopLevelDepsOptions;
 pub use cache_deps::cache_top_level_deps;
+pub use list::list;
 pub use outdated::outdated;
 pub use why::why;
 
