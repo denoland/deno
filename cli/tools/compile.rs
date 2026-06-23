@@ -210,6 +210,7 @@ async fn compile_inner(
       "{} deno compile --bundle is experimental and may change.",
       colors::yellow("Warning")
     );
+    let original_source_file = compile_flags.source_file.clone();
     // Auto-include the closest `package.json` to the entrypoint, if any.
     // Lots of packages read their own `package.json` for version info
     // (pi's `getPackageJsonPath()` walks up from `import.meta.url`),
@@ -236,6 +237,8 @@ async fn compile_inner(
       .boxed_local()
       .await?;
     flags.internal.compile_bundle_embed_node_modules = needs_npm_embed;
+    flags.internal.compile_bundle_original_source_file =
+      Some(original_source_file);
     // Referenced files that live inside a `node_modules` tree are npm
     // packages, embedded by the binary writer's npm path. The rest are local
     // project files the bundle externalized (e.g. a sibling `.cjs` imported
@@ -316,7 +319,10 @@ async fn run_bundle_for_compile(
   )
   .await?;
   let main_rewrite = rewrite_absolute_bundle_paths(&main_bytes, &initial_cwd)?;
-  let mut needs_npm_embed = main_rewrite.rewrote_paths;
+  let mut needs_npm_embed = main_rewrite
+    .referenced_abs_paths
+    .iter()
+    .any(|path| path_is_in_node_modules(path));
   let mut all_referenced_paths: Vec<PathBuf> =
     main_rewrite.referenced_abs_paths.clone();
 
@@ -342,7 +348,10 @@ async fn run_bundle_for_compile(
     .await?;
     let worker_rewrite =
       rewrite_absolute_bundle_paths(&worker_bytes, &initial_cwd)?;
-    needs_npm_embed |= worker_rewrite.rewrote_paths;
+    needs_npm_embed |= worker_rewrite
+      .referenced_abs_paths
+      .iter()
+      .any(|path| path_is_in_node_modules(path));
     all_referenced_paths.extend(worker_rewrite.referenced_abs_paths.clone());
 
     let worker_path = initial_cwd.join(format!(
@@ -519,6 +528,10 @@ fn closest_package_json(
   }
 }
 
+fn path_is_in_node_modules(path: &Path) -> bool {
+  path.components().any(|c| c.as_os_str() == "node_modules")
+}
+
 fn rewrite_worker_urls(
   bundle_src: &str,
   replacements: &[(String, String)],
@@ -550,6 +563,7 @@ fn rewrite_worker_urls(
 
 struct RewriteResult {
   bytes: Vec<u8>,
+  #[allow(dead_code)]
   rewrote_paths: bool,
   /// Absolute paths the rewriter touched. These point at the build-machine
   /// locations of files the bundled output expects to require at runtime
@@ -672,6 +686,9 @@ pub async fn compile_binary(
   let output_path = resolve_compile_executable_output_path(
     &bin_name_resolver,
     &compile_flags,
+    cli_options
+      .compile_bundle_original_source_file()
+      .unwrap_or(&compile_flags.source_file),
     cli_options.initial_cwd(),
     is_desktop,
   )
@@ -939,6 +956,9 @@ async fn compile_eszip(
   let mut output_path = resolve_compile_executable_output_path(
     &bin_name_resolver,
     &compile_flags,
+    cli_options
+      .compile_bundle_original_source_file()
+      .unwrap_or(&compile_flags.source_file),
     cli_options.initial_cwd(),
     false,
   )
@@ -1297,11 +1317,12 @@ fn get_module_roots_and_include_paths(
 async fn resolve_compile_executable_output_path(
   bin_name_resolver: &BinNameResolver<'_>,
   compile_flags: &CompileFlags,
+  source_file_for_inference: &str,
   current_dir: &Path,
   is_desktop: bool,
 ) -> Result<PathBuf, AnyError> {
   let module_specifier =
-    resolve_url_or_path(&compile_flags.source_file, current_dir)?;
+    resolve_url_or_path(source_file_for_inference, current_dir)?;
 
   let output_flag = compile_flags.output.clone();
   let mut output_path = if let Some(out) = output_flag.as_ref() {
@@ -1383,6 +1404,8 @@ fn get_os_specific_filepath(
 
 #[cfg(test)]
 mod test {
+  use std::collections::HashMap;
+
   use deno_npm::registry::TestNpmRegistryApi;
   use deno_npm::resolution::NpmVersionResolver;
 
@@ -1449,6 +1472,7 @@ mod test {
         minify: false,
         exclude_unused_npm: false,
       },
+      "mod.ts",
       &resolve_cwd(None).unwrap(),
       false,
     )
@@ -1487,12 +1511,53 @@ mod test {
         minify: false,
         exclude_unused_npm: false,
       },
+      "mod.ts",
       &resolve_cwd(None).unwrap(),
       false,
     )
     .await
     .unwrap();
     assert_eq!(path.file_name().unwrap(), "file.exe");
+  }
+
+  #[tokio::test]
+  async fn resolve_compile_output_path_bundle_uses_original_npm_source() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let http_client = HttpClientProvider::new(None, None);
+    let npm_api = TestNpmRegistryApi::default();
+    npm_api.with_version_info(("@google/gemini-cli", "1.0.0"), |info| {
+      info.bin = Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(
+        HashMap::from([("gemini".to_string(), "./bin.js".to_string())]),
+      ))
+    });
+    let npm_version_resolver = NpmVersionResolver::default();
+    let bin_name_resolver =
+      BinNameResolver::new(&http_client, &npm_api, &npm_version_resolver);
+    let path = resolve_compile_executable_output_path(
+      &bin_name_resolver,
+      &CompileFlags {
+        source_file: ".deno_compile_bundle_12345678.mjs".to_string(),
+        output: None,
+        args: Vec::new(),
+        target: Some("x86_64-unknown-linux-gnu".to_string()),
+        watch: None,
+        include: Default::default(),
+        exclude: Default::default(),
+        icon: None,
+        no_terminal: false,
+        eszip: false,
+        self_extracting: false,
+        bundle: true,
+        minify: false,
+        exclude_unused_npm: false,
+      },
+      "npm:@google/gemini-cli",
+      &resolve_cwd(None).unwrap(),
+      false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(path.file_name().unwrap(), "gemini");
   }
 
   #[test]
