@@ -2,8 +2,11 @@
 
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::ops::Range;
 
 use anyhow::Error as AnyError;
+use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use deno_ast::EmittedSourceText;
 use deno_ast::ModuleKind;
 use deno_ast::ParsedSource;
@@ -27,6 +30,8 @@ use futures::FutureExt;
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use node_resolver::InNpmPackageChecker;
+use sourcemap::SourceMap;
+use sourcemap::SourceMapBuilder;
 use url::Url;
 
 use crate::cache::EmitCacheRc;
@@ -57,6 +62,13 @@ pub struct Emitter<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
   emit_cache: EmitCacheRc<TSys>,
   parsed_source_cache: ParsedSourceCacheRc,
   compiler_options_resolver: CompilerOptionsResolverRc,
+  /// When `true`, TypeScript that can be transpiled by only stripping types is
+  /// emitted by blanking the type-only portions in place instead of running it
+  /// through the full code generator. This preserves the original line (and
+  /// column) numbers so that tools which don't apply source maps — most notably
+  /// the Chrome DevTools performance profiler — report locations that match the
+  /// original source. See denoland/deno#25349.
+  line_preserving_emit: bool,
 }
 
 impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
@@ -67,12 +79,14 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
     emit_cache: EmitCacheRc<TSys>,
     parsed_source_cache: ParsedSourceCacheRc,
     compiler_options_resolver: CompilerOptionsResolverRc,
+    line_preserving_emit: bool,
   ) -> Self {
     Self {
       cjs_tracker,
       emit_cache,
       parsed_source_cache,
       compiler_options_resolver,
+      line_preserving_emit,
     }
   }
 
@@ -195,6 +209,8 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       PreEmitResult::Cached(emitted_text) => Ok(emitted_text.into()),
       PreEmitResult::NotCached { source_hash } => {
         let specifier = provider.specifier().clone();
+        let line_preserving_emit = self.line_preserving_emit
+          && supports_line_preserving_emit(&specifier, provider.media_type());
         let emit = {
           let transpile_and_emit_options = transpile_and_emit_options.clone();
           move || {
@@ -204,6 +220,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
               module_kind,
               &transpile_and_emit_options.transpile,
               &transpile_and_emit_options.emit,
+              line_preserving_emit,
             )
             .map(|r| r.text)
           }
@@ -269,6 +286,8 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
           module_kind,
           &transpile_and_emit_options.transpile,
           &transpile_and_emit_options.emit,
+          self.line_preserving_emit
+            && supports_line_preserving_emit(specifier, media_type),
         )?
         .text;
         helper.post_emit_parsed_source(
@@ -308,6 +327,9 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       module_kind,
       &transpile_and_emit_options.transpile,
       &emit_options,
+      // `deno compile` provides the source map to v8 separately, so it must not
+      // use line-preserving emit (which omits the source map).
+      false,
     )?;
     Ok((source.text, source.source_map.unwrap()))
   }
@@ -396,6 +418,11 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
     source_text.hash(&mut hasher);
     transpile_and_emit.pre_computed_hash.hash(&mut hasher);
     module_kind.hash(&mut hasher);
+    // Only mix this in when enabled so the on-disk cache key (and therefore the
+    // emitted output) is unchanged for the common, non-inspecting case.
+    if self.line_preserving_emit {
+      "line_preserving_emit".hash(&mut hasher);
+    }
     hasher.finish()
   }
 }
@@ -535,6 +562,7 @@ fn transpile(
   module_kind: deno_ast::ModuleKind,
   transpile_options: &deno_ast::TranspileOptions,
   emit_options: &deno_ast::EmitOptions,
+  line_preserving_emit: bool,
 ) -> Result<EmittedSourceText, EmitParsedSourceHelperError> {
   ensure_no_import_assertion(&parsed_source)?;
   if let Some(diagnostics) = invalid_syntax_parse_diagnostics(&parsed_source) {
@@ -569,13 +597,204 @@ fn transpile(
   )?;
   let mut transpiled_source = match transpile_result {
     TranspileResult::Owned(source) => source,
-    TranspileResult::Cloned(source) => {
-      debug_assert!(false, "Transpile owned failed.");
-      source
-    }
+    TranspileResult::Cloned(source) => source,
   };
   patch_public_decorator_access_has(&mut transpiled_source.text);
+  if line_preserving_emit {
+    maybe_pad_transpiled_lines_with_source_map(&mut transpiled_source);
+  }
   Ok(transpiled_source)
+}
+
+static SOURCE_MAP_PREFIX: &str =
+  "//# sourceMappingURL=data:application/json;base64,";
+
+fn supports_line_preserving_emit(
+  specifier: &Url,
+  media_type: MediaType,
+) -> bool {
+  if specifier.path().contains("/$deno$eval.") {
+    return false;
+  }
+  matches!(
+    media_type,
+    MediaType::TypeScript | MediaType::Mts | MediaType::Cts | MediaType::Tsx
+  )
+}
+
+fn maybe_pad_transpiled_lines_with_source_map(
+  transpiled_source: &mut EmittedSourceText,
+) {
+  let (source_map, inline_source_map_range) =
+    match source_map_from_emitted_source(transpiled_source) {
+      Some(result) => result,
+      None => return,
+    };
+
+  let Some((padded_text, line_offsets)) =
+    pad_text_lines_to_source_lines(&transpiled_source.text, &source_map)
+  else {
+    return;
+  };
+
+  let Some(updated_source_map) =
+    offset_source_map_lines(&source_map, &line_offsets)
+  else {
+    return;
+  };
+
+  let Ok(updated_source_map) = source_map_to_string(&updated_source_map) else {
+    return;
+  };
+
+  if inline_source_map_range.is_some() {
+    let encoded_source_map = BASE64_STANDARD.encode(updated_source_map);
+    let mut text = padded_text;
+    text.push_str(SOURCE_MAP_PREFIX);
+    text.push_str(&encoded_source_map);
+    transpiled_source.text = text;
+  } else {
+    transpiled_source.text = padded_text;
+    transpiled_source.source_map = Some(updated_source_map);
+  }
+}
+
+fn source_map_from_emitted_source(
+  transpiled_source: &EmittedSourceText,
+) -> Option<(SourceMap, Option<Range<usize>>)> {
+  if let Some(source_map) = &transpiled_source.source_map {
+    return SourceMap::from_slice(source_map.as_bytes())
+      .ok()
+      .map(|source_map| (source_map, None));
+  }
+
+  let source_map_range = find_inline_source_map_range(&transpiled_source.text)?;
+  let source_map = &transpiled_source.text[source_map_range.clone()];
+  let source_map = source_map.strip_prefix(SOURCE_MAP_PREFIX)?;
+  let source_map = BASE64_STANDARD.decode(source_map).ok()?;
+  SourceMap::from_slice(&source_map)
+    .ok()
+    .map(|source_map| (source_map, Some(source_map_range)))
+}
+
+fn find_inline_source_map_range(text: &str) -> Option<Range<usize>> {
+  let line_start = text.rfind('\n').map(|index| index + 1).unwrap_or(0);
+  text[line_start..]
+    .starts_with(SOURCE_MAP_PREFIX)
+    .then_some(line_start..text.len())
+}
+
+fn pad_text_lines_to_source_lines(
+  text: &str,
+  source_map: &SourceMap,
+) -> Option<(String, Vec<u32>)> {
+  let source_map_range = find_inline_source_map_range(text);
+  let text_without_source_map = source_map_range
+    .as_ref()
+    .map_or(text, |range| &text[..range.start]);
+  let line_count = text_without_source_map.lines().count().max(1);
+  let mut insertions_before_line = vec![0u32; line_count];
+  let mut inserted_lines = 0u32;
+  let mut current_dst_line = None;
+
+  for token in source_map.tokens() {
+    if !token.has_source() {
+      continue;
+    }
+    let dst_line = token.get_dst_line() as usize;
+    if dst_line >= insertions_before_line.len() {
+      continue;
+    }
+    if current_dst_line == Some(dst_line) {
+      continue;
+    }
+    current_dst_line = Some(dst_line);
+    let shifted_line = token.get_dst_line() + inserted_lines;
+    let src_line = token.get_src_line();
+    if src_line > shifted_line {
+      let insertions = src_line - shifted_line;
+      insertions_before_line[dst_line] = insertions;
+      inserted_lines += insertions;
+    }
+  }
+
+  if inserted_lines == 0 {
+    return None;
+  }
+
+  let mut padded_text = String::with_capacity(
+    text_without_source_map.len() + inserted_lines as usize,
+  );
+  for (index, line) in text_without_source_map.split_inclusive('\n').enumerate()
+  {
+    for _ in 0..insertions_before_line
+      .get(index)
+      .copied()
+      .unwrap_or_default()
+    {
+      padded_text.push('\n');
+    }
+    padded_text.push_str(line);
+  }
+
+  let line_offsets = cumulative_line_offsets(&insertions_before_line);
+  Some((padded_text, line_offsets))
+}
+
+fn cumulative_line_offsets(insertions_before_line: &[u32]) -> Vec<u32> {
+  let mut inserted_lines = 0;
+  let mut line_offsets = Vec::with_capacity(insertions_before_line.len());
+  for insertions in insertions_before_line {
+    inserted_lines += *insertions;
+    line_offsets.push(inserted_lines);
+  }
+  line_offsets
+}
+
+fn offset_source_map_lines(
+  source_map: &SourceMap,
+  line_offsets: &[u32],
+) -> Option<SourceMap> {
+  let mut builder = SourceMapBuilder::new(source_map.get_file());
+  builder.set_source_root(source_map.get_source_root());
+  for source_id in 0..source_map.get_source_count() {
+    let source = source_map.get_source(source_id)?;
+    let new_source_id = builder.add_source(source);
+    builder.set_source_contents(
+      new_source_id,
+      source_map.get_source_contents(source_id),
+    );
+  }
+
+  for token in source_map.tokens() {
+    let mut raw_token = token.get_raw_token();
+    let offset = line_offsets
+      .get(raw_token.dst_line as usize)
+      .copied()
+      .unwrap_or_else(|| line_offsets.last().copied().unwrap_or_default());
+    raw_token.dst_line += offset;
+    builder.add(
+      raw_token.dst_line,
+      raw_token.dst_col,
+      raw_token.src_line,
+      raw_token.src_col,
+      token.get_source(),
+      token.get_name(),
+      raw_token.is_range,
+    );
+  }
+
+  Some(builder.into_sourcemap())
+}
+
+fn source_map_to_string(
+  source_map: &SourceMap,
+) -> Result<String, sourcemap::Error> {
+  let mut source_map_bytes = Vec::new();
+  source_map.to_writer(&mut source_map_bytes)?;
+  Ok(
+    String::from_utf8(source_map_bytes).expect("sourcemap emitted valid utf-8"),
+  )
 }
 
 pub fn patch_public_decorator_access_has(source: &mut String) {
@@ -734,4 +953,129 @@ fn ensure_no_import_assertion(
   }
 
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn parse(specifier: &str, text: &str) -> ParsedSource {
+    let specifier = Url::parse(specifier).unwrap();
+    deno_ast::parse_module(deno_ast::ParseParams {
+      media_type: MediaType::from_specifier(&specifier),
+      specifier,
+      text: text.into(),
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })
+    .unwrap()
+  }
+
+  #[test]
+  fn line_preserving_padding_is_typescript_only() {
+    let specifier = Url::parse("file:///mod.ts").unwrap();
+    assert!(supports_line_preserving_emit(
+      &specifier,
+      MediaType::TypeScript
+    ));
+    assert!(supports_line_preserving_emit(&specifier, MediaType::Mts));
+    assert!(supports_line_preserving_emit(&specifier, MediaType::Cts));
+    assert!(supports_line_preserving_emit(&specifier, MediaType::Tsx));
+    assert!(!supports_line_preserving_emit(
+      &specifier,
+      MediaType::JavaScript
+    ));
+    assert!(!supports_line_preserving_emit(&specifier, MediaType::Mjs));
+    assert!(!supports_line_preserving_emit(&specifier, MediaType::Cjs));
+    assert!(!supports_line_preserving_emit(&specifier, MediaType::Jsx));
+    assert!(!supports_line_preserving_emit(
+      &Url::parse("file:///$deno$eval.mts").unwrap(),
+      MediaType::Mts
+    ));
+  }
+
+  #[test]
+  fn line_preserving_padding_preserves_function_line() {
+    let src = parse(
+      "file:///mod.ts",
+      concat!(
+        "interface Foo {\n",
+        "  a: number;\n",
+        "  b: string;\n",
+        "}\n",
+        "type Bar = Foo | null;\n",
+        "export function target(x: number): number {\n",
+        "  return x * 2;\n",
+        "}\n",
+      ),
+    );
+    let emitted = transpile(
+      src.clone(),
+      ModuleKind::Esm,
+      &deno_ast::TranspileOptions::default(),
+      &deno_ast::EmitOptions {
+        source_map: SourceMapOption::Inline,
+        ..Default::default()
+      },
+      true,
+    )
+    .unwrap();
+
+    let line_of = |text: &str, needle: &str| {
+      text.lines().position(|l| l.contains(needle)).unwrap()
+    };
+    assert_eq!(
+      line_of(&emitted.text, "function target"),
+      line_of(src.text(), "function target"),
+    );
+
+    let (source_map, _) = source_map_from_emitted_source(&emitted).unwrap();
+    let function_line = line_of(&emitted.text, "function target") as u32;
+    let token = source_map.lookup_token(function_line, 0).unwrap();
+    assert_eq!(
+      token.get_src_line(),
+      line_of(src.text(), "function target") as u32
+    );
+    // Keep the inline map valid after mutating the emitted text.
+    assert!(emitted.source_map.is_none());
+    assert!(find_inline_source_map_range(&emitted.text).is_some());
+  }
+
+  #[test]
+  fn line_preserving_padding_updates_separate_source_map() {
+    let src = parse(
+      "file:///mod.ts",
+      "type T = number;\nexport function target(x: T): T { return x; }\n",
+    );
+    let emitted = transpile(
+      src,
+      ModuleKind::Esm,
+      &deno_ast::TranspileOptions::default(),
+      &deno_ast::EmitOptions {
+        source_map: SourceMapOption::Separate,
+        ..Default::default()
+      },
+      true,
+    )
+    .unwrap();
+
+    assert!(emitted.source_map.is_some());
+    let source_map =
+      SourceMap::from_slice(emitted.source_map.as_ref().unwrap().as_bytes())
+        .unwrap();
+    let function_line = emitted
+      .text
+      .lines()
+      .position(|l| l.contains("function target"))
+      .unwrap();
+    assert_eq!(function_line, 1);
+    assert_eq!(
+      source_map
+        .lookup_token(function_line as u32, 0)
+        .unwrap()
+        .get_src_line(),
+      1,
+    );
+  }
 }
