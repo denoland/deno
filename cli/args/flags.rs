@@ -2524,12 +2524,14 @@ supported framework (Next.js, Astro, etc.) in the current directory.
           .long("compress")
           .help(
             "Make the packaged app self-extracting: the payload is compressed \
-             inside the app and unpacked on first launch. Off by default. \
+             inside the app and unpacked on first launch. Enabled by default. \
              Defaults to xz (decompressed by the system `tar` everywhere); \
-             zstd is smaller/faster but needs the `zstd` tool at runtime.",
+             zstd is smaller/faster but needs the `zstd` tool at runtime. \
+             Use `none` to ship the app uncompressed.",
           )
-          .value_parser(["xz", "lzma", "zstd"])
+          .value_parser(["xz", "zstd", "none"])
           .num_args(0..=1)
+          .default_value("xz")
           .default_missing_value("xz")
           .help_heading(DESKTOP_HEADING),
       )
@@ -6862,13 +6864,12 @@ fn desktop_parse(
   let hmr = matches.get_flag("hmr");
   let backend = matches.remove_one::<String>("backend");
   let all_targets = matches.get_flag("all-targets");
-  // Self-extracting packaging is opt-in via `--compress [<fmt>]`. Bare
-  // `--compress` defaults to xz (decompressed by the system `tar` with no
-  // external tool); zstd is smaller/faster but needs the `zstd` binary at
-  // runtime. The `lzma` alias normalizes to xz (same liblzma container).
+  // Self-extracting packaging is on by default with xz (decompressed by the
+  // system `tar` with no external tool); zstd is smaller/faster but needs the
+  // `zstd` binary at runtime. `--compress none` ships the app uncompressed.
   let compress = matches
     .remove_one::<String>("compress")
-    .map(|c| if c == "lzma" { "xz".to_string() } else { c });
+    .filter(|c| c != "none");
   let inspect_renderer = matches.remove_one::<SocketAddr>("inspect-renderer");
   let include = matches
     .remove_many::<String>("include")
@@ -13837,6 +13838,65 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn desktop_compress_default() {
+    let r = flags_from_vec(svec!["deno", "desktop", "main.tsx"]);
+    let flags = r.unwrap();
+    let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    assert_eq!(desktop.source_file, "main.tsx");
+    // Compression defaults to xz.
+    assert_eq!(desktop.compress.as_deref(), Some("xz"));
+  }
+
+  #[test]
+  fn desktop_compress_explicit() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "desktop",
+      "--compress",
+      "zstd",
+      "main.tsx"
+    ]);
+    let flags = r.unwrap();
+    let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    assert_eq!(desktop.compress.as_deref(), Some("zstd"));
+  }
+
+  #[test]
+  fn desktop_compress_none() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "desktop",
+      "--compress",
+      "none",
+      "main.tsx"
+    ]);
+    let flags = r.unwrap();
+    let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    // `none` disables compression and maps to `None`.
+    assert_eq!(desktop.compress, None);
+  }
+
+  #[test]
+  fn desktop_compress_bare() {
+    // Bare `--compress` (no value) defaults to xz. The entrypoint is omitted so
+    // clap can't ambiguously consume a trailing token as the option value; it
+    // defaults to ".".
+    let r = flags_from_vec(svec!["deno", "desktop", "--compress"]);
+    let flags = r.unwrap();
+    let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    assert_eq!(desktop.source_file, ".");
+    assert_eq!(desktop.compress.as_deref(), Some("xz"));
   }
 
   #[test]
