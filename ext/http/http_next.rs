@@ -837,11 +837,17 @@ fn raw_response_header<'a>(
     .map(|header| header.value.as_slice())
 }
 
-fn raw_response_is_compressible(inner: &RawHttpRecordInner) -> bool {
-  let Some(content_type) = inner.content_type.as_deref().or_else(|| {
-    raw_response_header(&inner.response_headers, CONTENT_TYPE.as_ref())
-  }) else {
-    return false;
+fn raw_response_metadata_is_compressible(
+  headers: &[RawHeader],
+  content_type: Option<&[u8]>,
+  default_text_content_type: bool,
+) -> bool {
+  let content_type = match content_type
+    .or_else(|| raw_response_header(headers, CONTENT_TYPE.as_ref()))
+  {
+    Some(content_type) => content_type,
+    None if default_text_content_type => b"text/plain;charset=UTF-8",
+    None => return false,
   };
 
   let Ok(content_type) = HeaderValue::from_bytes(content_type) else {
@@ -850,15 +856,13 @@ fn raw_response_is_compressible(inner: &RawHttpRecordInner) -> bool {
   if !is_content_compressible(&content_type) {
     return false;
   }
-  if raw_response_header(&inner.response_headers, CONTENT_ENCODING.as_ref())
-    .is_some()
-    || raw_response_header(&inner.response_headers, CONTENT_RANGE.as_ref())
-      .is_some()
+  if raw_response_header(headers, CONTENT_ENCODING.as_ref()).is_some()
+    || raw_response_header(headers, CONTENT_RANGE.as_ref()).is_some()
   {
     return false;
   }
   if let Some(cache_control) =
-    raw_response_header(&inner.response_headers, CACHE_CONTROL.as_ref())
+    raw_response_header(headers, CACHE_CONTROL.as_ref())
     && let Ok(cache_control) = std::str::from_utf8(cache_control)
     && let Some(no_transform) =
       crate::cache_control_has_no_transform(cache_control)
@@ -867,6 +871,33 @@ fn raw_response_is_compressible(inner: &RawHttpRecordInner) -> bool {
     return false;
   }
   true
+}
+
+fn raw_response_is_compressible(inner: &RawHttpRecordInner) -> bool {
+  raw_response_metadata_is_compressible(
+    &inner.response_headers,
+    inner.content_type.as_deref(),
+    inner.default_text_content_type,
+  )
+}
+
+fn apply_raw_response_compression_headers(
+  headers: &mut Vec<RawHeader>,
+  compression: &Compression,
+) {
+  headers.retain(|header| !header.name.eq_ignore_ascii_case(b"content-length"));
+  ensure_raw_vary_accept_encoding(headers);
+  weaken_raw_etag(headers);
+
+  let encoding = match compression {
+    Compression::Brotli => b"br".as_slice(),
+    Compression::GZip => b"gzip".as_slice(),
+    Compression::None => unreachable!(),
+  };
+  headers.push(RawHeader {
+    name: b"content-encoding".to_vec(),
+    value: encoding.to_vec(),
+  });
 }
 
 fn ensure_raw_vary_accept_encoding(headers: &mut Vec<RawHeader>) {
@@ -1067,6 +1098,13 @@ enum RawRequestBody {
   Streaming(Rc<RawH1RequestBody<RawH1Io>>),
 }
 
+struct RawHttpRecordOptions {
+  request_body: Option<RawRequestBody>,
+  upgrade: Option<Rc<RawUpgrade>>,
+  request_size: u64,
+  automatic_compression: bool,
+}
+
 struct RawHttpRecordInner {
   request_info: HttpConnectionProperties,
   client_addr: Option<Vec<u8>>,
@@ -1089,6 +1127,7 @@ struct RawHttpRecordInner {
   response_body_finished: bool,
   response_body_waker: Option<std::task::Waker>,
   otel_info: Option<OtelInfo>,
+  automatic_compression: bool,
 }
 
 struct RawHttpRecord(RefCell<RawHttpRecordInner>);
@@ -1099,9 +1138,7 @@ impl RawHttpRecord {
     method: RawMethod,
     path: String,
     mut headers: RawRequestHeaders,
-    request_body: Option<RawRequestBody>,
-    upgrade: Option<Rc<RawUpgrade>>,
-    request_size: u64,
+    options: RawHttpRecordOptions,
   ) -> Rc<Self> {
     let client_addr = if crate::service::trust_proxy_headers() {
       headers.remove(b"x-deno-client-address")
@@ -1115,7 +1152,7 @@ impl RawHttpRecord {
         OtelInfo::new(
           otel,
           std::time::Instant::now(),
-          request_size,
+          options.request_size,
           RawOtelInfoAttributes::new(&request_info, &method, &path, &headers)
             .into_attributes(),
         )
@@ -1126,8 +1163,8 @@ impl RawHttpRecord {
       method,
       path,
       headers,
-      request_body,
-      upgrade,
+      request_body: options.request_body,
+      upgrade: options.upgrade,
       response_status: 200,
       response_headers: Vec::new(),
       response_trailers: Vec::new(),
@@ -1142,6 +1179,7 @@ impl RawHttpRecord {
       response_body_finished: false,
       response_body_waker: None,
       otel_info,
+      automatic_compression: options.automatic_compression,
     })))
   }
 
@@ -1272,6 +1310,10 @@ impl RawHttpRecord {
   }
 
   fn prepare_stream_compression(&self, length: Option<usize>) -> Compression {
+    if !self.0.borrow().automatic_compression {
+      return Compression::None;
+    }
+
     if let Some(length) = length
       && length < 64
     {
@@ -1285,22 +1327,10 @@ impl RawHttpRecord {
       return Compression::None;
     }
 
-    inner
-      .response_headers
-      .retain(|header| !header.name.eq_ignore_ascii_case(b"content-length"));
-    ensure_raw_vary_accept_encoding(&mut inner.response_headers);
-    weaken_raw_etag(&mut inner.response_headers);
-
-    let encoding = match compression {
-      Compression::Brotli => b"br".as_slice(),
-      Compression::GZip => b"gzip".as_slice(),
-      Compression::None => unreachable!(),
-    };
-    inner.response_headers.push(RawHeader {
-      name: b"content-encoding".to_vec(),
-      value: encoding.to_vec(),
-    });
-
+    apply_raw_response_compression_headers(
+      &mut inner.response_headers,
+      &compression,
+    );
     compression
   }
 
@@ -2656,8 +2686,11 @@ fn set_response(
   // The request may have been cancelled by this point and if so, there's no need for us to
   // do all of this work to send the response.
   if !http.cancelled() {
-    let compression =
-      is_request_compressible(length, &http.request_parts().headers);
+    let compression = if http.automatic_compression() {
+      is_request_compressible(length, &http.request_parts().headers)
+    } else {
+      Compression::None
+    };
     let mut response_headers =
       std::cell::RefMut::map(http.response_parts(), |this| &mut this.headers);
     let compression =
@@ -2684,10 +2717,14 @@ fn set_static_response_vec(
   if !http.cancelled() {
     match &http {
       HttpRecordExternal::Hyper(record) => {
-        let compression = is_request_compressible(
-          Some(bytes.len()),
-          &record.request_parts().headers,
-        );
+        let compression = if record.automatic_compression() {
+          is_request_compressible(
+            Some(bytes.len()),
+            &record.request_parts().headers,
+          )
+        } else {
+          Compression::None
+        };
         let mut response_headers =
           std::cell::RefMut::map(record.response_parts(), |this| {
             &mut this.headers
@@ -2733,13 +2770,25 @@ fn set_static_response_bufview(
   buffer: JsBuffer,
   status: u16,
 ) {
+  set_static_response_bufview_inner(http, BufView::from(buffer), status);
+}
+
+fn set_static_response_bufview_inner(
+  http: HttpRecordExternal,
+  buffer: BufView,
+  status: u16,
+) {
   if !http.cancelled() {
     match &http {
       HttpRecordExternal::Hyper(record) => {
-        let compression = is_request_compressible(
-          Some(buffer.len()),
-          &record.request_parts().headers,
-        );
+        let compression = if record.automatic_compression() {
+          is_request_compressible(
+            Some(buffer.len()),
+            &record.request_parts().headers,
+          )
+        } else {
+          Compression::None
+        };
         let mut response_headers =
           std::cell::RefMut::map(record.response_parts(), |this| {
             &mut this.headers
@@ -2750,7 +2799,6 @@ fn set_static_response_bufview(
         );
         drop(response_headers);
         set_response_status(&http, status);
-        let buffer = BufView::from(buffer);
         if compression == Compression::None {
           http.set_flat_response_body(FlatResponseBody::Bytes(buffer));
         } else {
@@ -2763,7 +2811,6 @@ fn set_static_response_bufview(
       HttpRecordExternal::Raw(record) => {
         let compression = record.prepare_stream_compression(Some(buffer.len()));
         set_response_status(&http, status);
-        let buffer = BufView::from(buffer);
         if compression == Compression::None {
           http.set_flat_response_body(FlatResponseBody::Bytes(buffer));
         } else {
@@ -3291,8 +3338,9 @@ impl fmt::Write for RawH1DateCache {
 }
 
 fn raw_response_from_direct_response(
+  record: &RawHttpRecord,
   response: DirectResponse,
-) -> (RawResponseParts, FlatResponseBody) {
+) -> (RawResponseParts, RawResponseBody) {
   let mut parts = RawResponseParts {
     status: response.status,
     headers: Vec::new(),
@@ -3323,7 +3371,52 @@ fn raw_response_from_direct_response(
     DirectResponseBody::Empty => FlatResponseBody::Empty,
     DirectResponseBody::Bytes(body) => FlatResponseBody::Bytes(body),
   };
+  let compression = match &body {
+    FlatResponseBody::Empty => Compression::None,
+    FlatResponseBody::Bytes(body) => {
+      raw_direct_response_compression(record, Some(body.len()), &mut parts)
+    }
+  };
+  let body = match (compression, body) {
+    (Compression::None, body) => RawResponseBody::Flat(body),
+    (compression, FlatResponseBody::Bytes(body)) => RawResponseBody::Stream(
+      ResponseBytesInner::from_bufview(compression, body),
+    ),
+    (_, FlatResponseBody::Empty) => unreachable!(),
+  };
   (parts, body)
+}
+
+fn raw_direct_response_compression(
+  record: &RawHttpRecord,
+  length: Option<usize>,
+  parts: &mut RawResponseParts,
+) -> Compression {
+  if let Some(length) = length
+    && length < 64
+  {
+    return Compression::None;
+  }
+
+  let inner = record.0.borrow();
+  if !inner.automatic_compression {
+    return Compression::None;
+  }
+  let compression = raw_request_compression(&inner.headers);
+  drop(inner);
+
+  if compression == Compression::None
+    || !raw_response_metadata_is_compressible(
+      &parts.headers,
+      parts.content_type.as_deref(),
+      parts.default_text_content_type,
+    )
+  {
+    return Compression::None;
+  }
+
+  apply_raw_response_compression_headers(&mut parts.headers, &compression);
+  compression
 }
 
 fn set_direct_response(http: HttpRecordExternal, response: DirectResponse) {
@@ -3348,7 +3441,8 @@ fn set_direct_response(http: HttpRecordExternal, response: DirectResponse) {
         http.set_flat_response_body(FlatResponseBody::Empty);
       }
       DirectResponseBody::Bytes(body) => {
-        http.set_flat_response_body(FlatResponseBody::Bytes(body));
+        set_static_response_bufview_inner(http, body, response.status);
+        return;
       }
     }
   }
@@ -4115,6 +4209,7 @@ async fn serve_http11_raw(
   callback: Rc<ServerCallback>,
   cancel: Rc<CancelHandle>,
   _server_state: SignallingRc<HttpServerState>,
+  automatic_compression: bool,
 ) -> Result<(), HttpNextError> {
   let mut conn = h1::SharedConn::new(io);
   conn.set_allow_missing_host(true);
@@ -4173,9 +4268,12 @@ async fn serve_http11_raw(
         parsed.method,
         parsed.path,
         parsed.headers,
-        Some(RawRequestBody::Prebuffered(body)),
-        None,
-        parsed.request_size,
+        RawHttpRecordOptions {
+          request_body: Some(RawRequestBody::Prebuffered(body)),
+          upgrade: None,
+          request_size: parsed.request_size,
+          automatic_compression,
+        },
       );
       let mut record_cancel_guard =
         RawHttpRecordCancelGuard::new(record.clone());
@@ -4183,18 +4281,37 @@ async fn serve_http11_raw(
         dispatch_raw_to_native_response(&callback, record.clone());
       if let Some(response) = direct_response {
         let (response_parts, body) =
-          raw_response_from_direct_response(response);
+          raw_response_from_direct_response(&record, response);
         let response_status = response_parts.status;
-        write_h1_flat_response(
-          &mut conn,
-          &mut scratch,
-          parsed.version,
-          response_parts,
-          body,
-          keep_alive,
-          head,
-        )
-        .await?;
+        match body {
+          RawResponseBody::Flat(body) => {
+            write_h1_flat_response(
+              &mut conn,
+              &mut scratch,
+              parsed.version,
+              response_parts,
+              body,
+              keep_alive,
+              head,
+            )
+            .await?;
+          }
+          RawResponseBody::Stream(body) => {
+            write_h1_stream_response(
+              &mut conn,
+              &mut scratch,
+              response_context,
+              response_parts,
+              body,
+              record.clone(),
+            )
+            .await?;
+            if parsed.version == h1::Version::Http10 {
+              record_cancel_guard.disarm();
+              return Ok(());
+            }
+          }
+        }
         record_cancel_guard.disarm();
         if response_status == StatusCode::SWITCHING_PROTOCOLS.as_u16()
           || !keep_alive
@@ -4280,9 +4397,12 @@ async fn serve_http11_raw(
         parsed.method,
         parsed.path,
         parsed.headers,
-        request_body_resource.map(RawRequestBody::Streaming),
-        upgrade.clone(),
-        parsed.request_size,
+        RawHttpRecordOptions {
+          request_body: request_body_resource.map(RawRequestBody::Streaming),
+          upgrade: upgrade.clone(),
+          request_size: parsed.request_size,
+          automatic_compression,
+        },
       );
       let mut record_cancel_guard =
         RawHttpRecordCancelGuard::new(record.clone());
@@ -4294,23 +4414,47 @@ async fn serve_http11_raw(
       };
       if let Some(response) = direct_response {
         let (response_parts, body) =
-          raw_response_from_direct_response(response);
+          raw_response_from_direct_response(&record, response);
         let response_status = response_parts.status;
         let state = { body_conn.borrow_mut().take() };
         if let Some(state) = state {
           let mut local_conn = state.conn;
           let mut local_scratch = state.scratch;
           let keep_alive = keep_alive && !parsed.has_body;
-          write_h1_flat_response(
-            &mut local_conn,
-            &mut local_scratch,
-            parsed.version,
-            response_parts,
-            body,
-            keep_alive,
-            head,
-          )
-          .await?;
+          match body {
+            RawResponseBody::Flat(body) => {
+              write_h1_flat_response(
+                &mut local_conn,
+                &mut local_scratch,
+                parsed.version,
+                response_parts,
+                body,
+                keep_alive,
+                head,
+              )
+              .await?;
+            }
+            RawResponseBody::Stream(body) => {
+              let response_context = RawH1ResponseContext {
+                version: response_context.version,
+                keep_alive,
+                head: response_context.head,
+              };
+              write_h1_stream_response(
+                &mut local_conn,
+                &mut local_scratch,
+                response_context,
+                response_parts,
+                body,
+                record.clone(),
+              )
+              .await?;
+              if parsed.version == h1::Version::Http10 {
+                record_cancel_guard.disarm();
+                return Ok(());
+              }
+            }
+          }
           conn = local_conn;
           scratch = local_scratch;
           record_cancel_guard.disarm();
@@ -4444,25 +4588,48 @@ async fn serve_http11_raw(
       parsed.method,
       parsed.path,
       parsed.headers,
-      None,
-      None,
-      parsed.request_size,
+      RawHttpRecordOptions {
+        request_body: None,
+        upgrade: None,
+        request_size: parsed.request_size,
+        automatic_compression,
+      },
     );
     let mut record_cancel_guard = RawHttpRecordCancelGuard::new(record.clone());
     let direct_response =
       dispatch_raw_to_native_response(&callback, record.clone());
     if let Some(response) = direct_response {
-      let (response_parts, body) = raw_response_from_direct_response(response);
-      write_h1_flat_response(
-        &mut conn,
-        &mut scratch,
-        parsed.version,
-        response_parts,
-        body,
-        keep_alive,
-        head,
-      )
-      .await?;
+      let (response_parts, body) =
+        raw_response_from_direct_response(&record, response);
+      match body {
+        RawResponseBody::Flat(body) => {
+          write_h1_flat_response(
+            &mut conn,
+            &mut scratch,
+            parsed.version,
+            response_parts,
+            body,
+            keep_alive,
+            head,
+          )
+          .await?;
+        }
+        RawResponseBody::Stream(body) => {
+          write_h1_stream_response(
+            &mut conn,
+            &mut scratch,
+            response_context,
+            response_parts,
+            body,
+            record.clone(),
+          )
+          .await?;
+          if parsed.version == h1::Version::Http10 {
+            record_cancel_guard.disarm();
+            return Ok(());
+          }
+        }
+      }
       record_cancel_guard.disarm();
       if !keep_alive || cancel.is_canceled() {
         return Ok(());
@@ -4570,7 +4737,15 @@ async fn serve_http2_autodetect(
       .await
       .map_err(HttpNextError::Hyper)
   } else {
-    serve_http11_raw(io, request_info, callback, cancel, server_state).await
+    serve_http11_raw(
+      io,
+      request_info,
+      callback,
+      cancel,
+      server_state,
+      options.automatic_compression,
+    )
+    .await
   }
 }
 
@@ -4633,6 +4808,7 @@ fn serve_https(
   } = lifetime;
 
   let legacy_abort = !options.no_legacy_abort;
+  let automatic_compression = options.automatic_compression;
   let raw_request_info = request_info.clone();
   let raw_callback = callback.clone();
   let raw_server_state = server_state.clone();
@@ -4647,6 +4823,7 @@ fn serve_https(
         server_state,
         move |record| dispatch_to_js(&callback, record),
         legacy_abort,
+        automatic_compression,
       )
       .await
     }
@@ -4674,6 +4851,7 @@ fn serve_https(
           raw_callback,
           listen_cancel_handle,
           raw_server_state,
+          options.automatic_compression,
         )
         .await
       } else {
@@ -4708,6 +4886,7 @@ fn serve_http(
   } = lifetime;
 
   let legacy_abort = !options.no_legacy_abort;
+  let automatic_compression = options.automatic_compression;
   let raw_request_info = request_info.clone();
   let raw_callback = callback.clone();
   let raw_server_state = server_state.clone();
@@ -4722,6 +4901,7 @@ fn serve_http(
         server_state,
         move |record| dispatch_to_js(&callback, record),
         legacy_abort,
+        automatic_compression,
       )
       .await
     }
@@ -4761,6 +4941,7 @@ fn serve_http(
               raw_callback,
               listen_cancel_handle,
               raw_server_state,
+              options.automatic_compression,
             )
             .await
           }
@@ -4879,6 +5060,7 @@ pub fn op_http_serve<'scope, HTTP>(
   isolate: &mut v8::Isolate,
   state: Rc<RefCell<OpState>>,
   #[smi] listener_rid: ResourceId,
+  automatic_compression: bool,
   callback: v8::Local<'scope, v8::Function>,
   raw_no_request: bool,
   native_callback: v8::Local<'scope, v8::Function>,
@@ -4920,7 +5102,9 @@ where
 
   let options = {
     let state = state.borrow();
-    *state.borrow::<Options>()
+    let mut options = *state.borrow::<Options>();
+    options.automatic_compression = automatic_compression;
+    options
   };
 
   let listen_properties_clone: HttpListenProperties = listen_properties.clone();
@@ -4961,6 +5145,7 @@ pub fn op_http_serve_on<'scope, HTTP>(
   isolate: &mut v8::Isolate,
   state: Rc<RefCell<OpState>>,
   #[smi] connection_rid: ResourceId,
+  automatic_compression: bool,
   callback: v8::Local<'scope, v8::Function>,
   raw_no_request: bool,
   native_callback: v8::Local<'scope, v8::Function>,
@@ -4999,7 +5184,9 @@ where
 
   let options = {
     let state = state.borrow();
-    *state.borrow::<Options>()
+    let mut options = *state.borrow::<Options>();
+    options.automatic_compression = automatic_compression;
+    options
   };
 
   let handle = serve_http_on::<HTTP>(

@@ -3393,6 +3393,211 @@ for (const testCase of compressionTestCases) {
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServerAutomaticCompressionSkippedForNoRequestFastPath() {
+    const body = "a".repeat(1000);
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      handler: () => {
+        return new Response(body, {
+          headers: { "content-type": "text/plain" },
+        });
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    try {
+      await listeningDeferred.promise;
+      const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+        headers: { "accept-encoding": "gzip" },
+      });
+      assertEquals(await resp.text(), body);
+      assertEquals(resp.headers.get("content-encoding"), null);
+      assertEquals(resp.headers.get("vary"), null);
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerAutomaticCompressionCanBeDisabled() {
+    const body = "a".repeat(1000);
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      automaticCompression: false,
+      handler: () => {
+        return new Response(body, {
+          headers: { "content-type": "text/plain" },
+        });
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    try {
+      await listeningDeferred.promise;
+      const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+        headers: { "accept-encoding": "gzip" },
+      });
+      assertEquals(await resp.text(), body);
+      assertEquals(resp.headers.get("content-encoding"), null);
+      assertEquals(resp.headers.get("vary"), null);
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerAutomaticCompressionCanBeDisabledHyper() {
+    const body = "a".repeat(1000);
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      automaticCompression: false,
+      handler: (_request) => {
+        return new Response(body, {
+          headers: { "content-type": "text/plain" },
+        });
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    try {
+      await listeningDeferred.promise;
+      const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+        headers: { "accept-encoding": "gzip" },
+      });
+      assertEquals(await resp.text(), body);
+      assertEquals(resp.headers.get("content-encoding"), null);
+      assertEquals(resp.headers.get("vary"), null);
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerAutomaticCompressionPostBodyDirectResponseCloses() {
+    const body = "a".repeat(1000);
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      handler: (_request) => {
+        return new Response(body, {
+          headers: { "content-type": "text/plain" },
+        });
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+    const conn = await Deno.connect({ port: servePort });
+    const encoder = new TextEncoder();
+    await writeAll(
+      conn,
+      encoder.encode(
+        `POST / HTTP/1.1\r\nHost: example.domain\r\nAccept-Encoding: gzip\r\nContent-Length: 5\r\n\r\n`,
+      ),
+    );
+
+    const reader = new BufReader(conn);
+    const textProtoReader = new TextProtoReader(reader);
+    const statusLine = await textProtoReader.readLine();
+    assertEquals(statusLine, "HTTP/1.1 200 OK");
+    const headers = await textProtoReader.readMimeHeader();
+    assert(headers !== null);
+    assertEquals(headers.get("content-encoding"), "gzip");
+    assertEquals(headers.get("transfer-encoding"), "chunked");
+    assertEquals(headers.get("connection"), "close");
+
+    conn.close();
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  async function httpServerAutomaticCompressionEnvDefault() {
+    async function run(envValue: string): Promise<string[]> {
+      const { success, stdout } = await new Deno.Command(Deno.execPath(), {
+        args: [
+          "eval",
+          `
+          async function check(options) {
+            let server;
+            const finished = Promise.withResolvers();
+            server = Deno.serve({
+              ...options,
+              port: 0,
+              onListen: async ({ port }) => {
+                const resp = await fetch("http://127.0.0.1:" + port + "/", {
+                  headers: { "accept-encoding": "gzip" },
+                });
+                console.log(resp.headers.get("content-encoding") ?? "none");
+                await resp.text();
+                await server.shutdown();
+                finished.resolve();
+              },
+            }, (_request) => {
+              return new Response("a".repeat(1000), {
+                headers: { "content-type": "text/plain" },
+              });
+            });
+            await finished.promise;
+            await server.finished;
+          }
+
+          await check({});
+          await check({ automaticCompression: true });
+        `,
+        ],
+        env: { DENO_SERVE_AUTOMATIC_COMPRESSION: envValue },
+        stdout: "piped",
+        stderr: "inherit",
+      }).output();
+
+      assert(success);
+      return new TextDecoder().decode(stdout).trim().split("\n");
+    }
+
+    assertEquals(await run("0"), [
+      "none",
+      "gzip",
+    ]);
+    assertEquals(await run("False"), [
+      "none",
+      "gzip",
+    ]);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServerHttp2Compression() {
     const body = "a".repeat(1000);
     const listeningDeferred = Promise.withResolvers<void>();
@@ -3439,6 +3644,64 @@ Deno.test(
       assertEquals(headers["vary"], "Accept-Encoding");
       assertEquals(headers["content-length"], `${compressedLength}`);
       assert(compressedLength < body.length);
+    } finally {
+      client.close();
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerHttp2AutomaticCompressionCanBeDisabled() {
+    const body = "a".repeat(1000);
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      automaticCompression: false,
+      handler: () => {
+        return new Response(body, {
+          headers: { "content-type": "text/plain" },
+        });
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+    const client = http2.connect(`http://localhost:${servePort}`);
+    try {
+      const req = client.request({
+        ":path": "/",
+        "accept-encoding": "br",
+      });
+      let headers: http2.IncomingHttpHeaders | undefined;
+      let responseBody = "";
+      req.setEncoding("utf8");
+      req.on("response", (responseHeaders) => {
+        headers = responseHeaders;
+      });
+      req.on("data", (chunk) => {
+        responseBody += chunk;
+      });
+
+      req.end();
+      await new Promise<void>((resolve, reject) => {
+        req.on("end", resolve);
+        req.on("error", reject);
+        client.on("error", reject);
+      });
+
+      assert(headers);
+      assertEquals(Number(headers[":status"]), 200);
+      assertEquals(headers["content-encoding"], undefined);
+      assertEquals(headers["vary"], undefined);
+      assertEquals(headers["content-length"], `${body.length}`);
+      assertEquals(responseBody, body);
     } finally {
       client.close();
       ac.abort();

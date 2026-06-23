@@ -5744,6 +5744,14 @@ declare namespace Deno {
 
     /** The callback which is called when the server starts listening. */
     onListen?: (localAddr: Addr) => void;
+
+    /**
+     * Whether to automatically compress response bodies when the client accepts
+     * a supported encoding and the response is compressible.
+     *
+     * @default {true}
+     */
+    automaticCompression?: boolean;
   }
 
   /**
