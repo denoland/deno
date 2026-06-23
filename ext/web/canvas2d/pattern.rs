@@ -2,8 +2,9 @@
 
 use vello::peniko;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PatternError {
+  #[class("DOMExceptionSyntaxError")]
   #[error("The string did not match the expected pattern.")]
   Syntax,
 }

@@ -1,5 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+pub mod gradient;
+pub mod pattern;
+
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -32,6 +35,12 @@ use vello::kurbo;
 use vello::kurbo::Shape;
 use vello::peniko;
 
+use self::gradient::build_conic_gradient;
+use self::gradient::build_linear_gradient;
+use self::gradient::build_radial_gradient;
+use self::gradient::parse_color_stop;
+use self::gradient::validate_color_stop_offset;
+use self::pattern::parse_repetition;
 use crate::canvas2d_renderer::DenoCanvasBackend;
 use crate::canvas2d_renderer::SharedRenderer;
 use crate::canvas2d_renderer::render_scene;
@@ -43,14 +52,6 @@ use crate::css::font::FontState;
 use crate::css::font::TextDirection;
 use crate::css::font::parse_css_font;
 use crate::css::font::parse_css_spacing;
-use crate::css::gradient::ColorStopError;
-use crate::css::gradient::build_conic_gradient;
-use crate::css::gradient::build_linear_gradient;
-use crate::css::gradient::build_radial_gradient;
-use crate::css::gradient::parse_color_stop;
-use crate::css::gradient::validate_color_stop_offset;
-use crate::css::pattern::PatternError;
-use crate::css::pattern::parse_repetition;
 use crate::image_data::ImageData;
 use crate::text_metrics::TextMetrics;
 
@@ -168,15 +169,12 @@ pub enum Canvas2DError {
   #[class("DOMExceptionIndexSizeError")]
   #[error("{0}")]
   IndexSize(String),
-  #[class("DOMExceptionSyntaxError")]
-  #[error("{0}")]
-  Syntax(String),
   #[class("DOMExceptionInvalidStateError")]
   #[error("{0}")]
   InvalidState(String),
   #[class(type)]
-  #[error("{0}")]
-  NonFinite(String),
+  #[error("The provided value is non-finite.")]
+  NonFinite,
   #[class(type)]
   #[error("{0}")]
   TypeMismatch(String),
@@ -188,34 +186,16 @@ pub enum Canvas2DError {
   NotInitialized,
   #[class(inherit)]
   #[error(transparent)]
+  ColorStop(#[from] self::gradient::ColorStopError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Pattern(#[from] self::pattern::PatternError),
+  #[class(inherit)]
+  #[error(transparent)]
   Geometry(#[from] crate::geometry::GeometryError),
   #[class(inherit)]
   #[error(transparent)]
   WebIdl(#[from] deno_core::webidl::WebIdlError),
-}
-
-impl From<ColorStopError> for Canvas2DError {
-  fn from(err: ColorStopError) -> Self {
-    match err {
-      ColorStopError::IndexSize => Canvas2DError::IndexSize(
-        "The index is not in the allowed range.".to_string(),
-      ),
-      ColorStopError::Syntax => {
-        Canvas2DError::Syntax("Failed to parse color".to_string())
-      }
-      ColorStopError::TypeError => Canvas2DError::NonFinite(
-        "The value provided is non-finite.".to_string(),
-      ),
-    }
-  }
-}
-
-impl From<PatternError> for Canvas2DError {
-  fn from(_: PatternError) -> Self {
-    Canvas2DError::Syntax(
-      "The string did not match the expected pattern.".to_string(),
-    )
-  }
 }
 
 #[derive(Clone)]
@@ -1986,9 +1966,7 @@ impl OffscreenCanvasRenderingContext2D {
       _ => {
         let rep = args.get(1);
         if rep.is_undefined() {
-          return Err(Canvas2DError::Syntax(
-            "The string did not match the expected pattern.".to_string(),
-          ));
+          return Err(self::pattern::PatternError::Syntax.into());
         }
         if rep.is_null() {
           String::new()
@@ -2797,9 +2775,7 @@ impl OffscreenCanvasRenderingContext2D {
     values: &[UnrestrictedDouble],
   ) -> Result<(), Canvas2DError> {
     if values.iter().any(|v| !v.is_finite()) {
-      return Err(Canvas2DError::NonFinite(
-        "The provided value is non-finite.".to_string(),
-      ));
+      return Err(Canvas2DError::NonFinite);
     }
     Ok(())
   }

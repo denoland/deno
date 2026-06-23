@@ -6,15 +6,18 @@ use vello::kurbo::Point;
 use vello::peniko;
 use vello::peniko::InterpolationAlphaSpace;
 
-use super::color::parse_css_color;
+use crate::css::color::parse_css_color;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ColorStopError {
+  #[class("DOMExceptionIndexSizeError")]
   #[error("The index is not in the allowed range.")]
   IndexSize,
+  #[class("DOMExceptionSyntaxError")]
   #[error("Failed to parse color")]
   Syntax,
-  #[error("The value provided is non-finite.")]
+  #[class(type)]
+  #[error("The provided value is non-finite.")]
   TypeError,
 }
 
