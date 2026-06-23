@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/bin-with-transitive-lifecycle",
+  "version": "1.0.0",
+  "bin": {
+    "transitive-lifecycle": "./main.js"
+  },
+  "dependencies": {
+    "@denotest/transitive-lifecycle-script": "1.0.0"
+  }
+}
