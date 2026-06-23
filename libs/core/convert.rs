@@ -1248,6 +1248,61 @@ where
   }
 }
 
+const MAX_SAFE_INTEGER: i64 = (1 << 53) - 1;
+const MIN_SAFE_INTEGER: i64 = -MAX_SAFE_INTEGER;
+
+impl<'s> ToV8<'s> for serde_json::Value {
+  type Error = JsErrorBox;
+
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'s, 'i>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    match self {
+      serde_json::Value::Null => Ok(v8::null(scope).into()),
+      serde_json::Value::Bool(b) => Ok(v8::Boolean::new(scope, b).into()),
+      serde_json::Value::Number(n) => {
+        if let Some(v) = n.as_i64() {
+          if (MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&v) {
+            Ok(v8::Number::new(scope, v as f64).into())
+          } else {
+            Ok(v8::BigInt::new_from_i64(scope, v).into())
+          }
+        } else if let Some(v) = n.as_u64() {
+          if v <= MAX_SAFE_INTEGER as u64 {
+            Ok(v8::Number::new(scope, v as f64).into())
+          } else {
+            Ok(v8::BigInt::new_from_u64(scope, v).into())
+          }
+        } else {
+          Ok(v8::Number::new(scope, n.as_f64().unwrap()).into())
+        }
+      }
+      serde_json::Value::String(s) => v8::String::new(scope, &s)
+        .ok_or_else(|| JsErrorBox::type_error("String too long"))
+        .map(Into::into),
+      serde_json::Value::Array(a) => {
+        let elements = a
+          .into_iter()
+          .map(|v| v.to_v8(scope))
+          .collect::<Result<Vec<_>, _>>()?;
+        Ok(v8::Array::new_with_elements(scope, &elements).into())
+      }
+      serde_json::Value::Object(o) => {
+        let obj = v8::Object::new(scope);
+        for (k, v) in o {
+          let key: v8::Local<v8::Value> = v8::String::new(scope, &k)
+            .ok_or_else(|| JsErrorBox::type_error("String too long"))?
+            .into();
+          let v8_val = v.to_v8(scope)?;
+          obj.set(scope, key, v8_val);
+        }
+        Ok(obj.into())
+      }
+    }
+  }
+}
+
 #[cfg(all(test, not(miri)))]
 mod tests {
   use std::collections::HashMap;
