@@ -761,8 +761,8 @@ Deno.test(async function readableStreamEmittingManyChunks() {
   // macOS aarch64 in release mode) even without a real leak. A genuine
   // unbounded leak grows >>2x and reproduces on every run, so retry a few
   // times and only fail if every attempt reports a leak. See #35353.
-  let code_result = 1;
-  for (let attempt = 0; attempt < 3 && code_result !== 0; attempt++) {
+  let codeResult = 1;
+  for (let attempt = 0; attempt < 3 && codeResult !== 0; attempt++) {
     const command = new Deno.Command(Deno.execPath(), {
       args: ["run", "-N", "-"],
       stdin: "piped",
@@ -773,10 +773,10 @@ Deno.test(async function readableStreamEmittingManyChunks() {
       .pipeThrough(new TextEncoderStream())
       .pipeTo(child.stdin);
 
-    code_result = (await child.status).code;
+    codeResult = (await child.status).code;
   }
 
-  assertEquals(code_result, 0, "memory leak");
+  assertEquals(codeResult, 0, "memory leak");
 });
 
 // Regression test for https://github.com/denoland/deno/issues/33476
