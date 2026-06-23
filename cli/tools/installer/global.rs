@@ -2450,6 +2450,7 @@ mod tests {
       scopes,
       registry_configs: Default::default(),
       min_release_age_days: None,
+      trust_policy: Default::default(),
     })
   }
 
@@ -2472,6 +2473,7 @@ mod tests {
           deprecated: false,
           scripts: false,
           bin: false,
+          trust: 0,
         },
       );
     }

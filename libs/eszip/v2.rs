@@ -3982,6 +3982,7 @@ mod tests {
       has_bin: false,
       has_scripts: false,
       optional_peer_dependencies: Default::default(),
+      trust: Default::default(),
     }
   }
 
