@@ -1,0 +1,27 @@
+{
+  "tests": {
+    // By default the `OffscreenCanvas` global is present (upstream 2.8
+    // behavior).
+    "offscreen_canvas_present_by_default": {
+      "args": "run main.js",
+      "output": "present.out"
+    },
+    // DENO_DISABLE_OFFSCREEN_CANVAS removes the global, restoring the
+    // pre-2.8 fallback path for libraries that feature-detect on it.
+    "env_removes_offscreen_canvas": {
+      "args": "run main.js",
+      "envs": {
+        "DENO_DISABLE_OFFSCREEN_CANVAS": "1"
+      },
+      "output": "absent.out"
+    },
+    // `true` is also accepted as a truthy value.
+    "env_true_removes_offscreen_canvas": {
+      "args": "run main.js",
+      "envs": {
+        "DENO_DISABLE_OFFSCREEN_CANVAS": "true"
+      },
+      "output": "absent.out"
+    }
+  }
+}

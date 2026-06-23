@@ -146,6 +146,78 @@
         }
       }
     },
+    "desktop": {
+      "type": "object",
+      "description": "Configuration for `deno desktop`.",
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "object",
+          "description": "Application metadata.",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The application name."
+            },
+            "icons": {
+              "type": "object",
+              "description": "Platform-specific icon paths.",
+              "additionalProperties": false,
+              "properties": {
+                "macos": {
+                  "type": "string",
+                  "description": "Icon path for macOS (.icns or .png)."
+                },
+                "windows": {
+                  "type": "string",
+                  "description": "Icon path for Windows (.ico)."
+                },
+                "linux": {
+                  "type": "string",
+                  "description": "Icon path for Linux (.png)."
+                }
+              }
+            }
+          }
+        },
+        "backend": {
+          "type": "string",
+          "description": "Backend to use for the desktop app.",
+          "enum": ["webview", "cef"]
+        },
+        "output": {
+          "type": "object",
+          "description": "Platform-specific output paths.",
+          "additionalProperties": false,
+          "properties": {
+            "macos": {
+              "type": "string",
+              "description": "Output path for macOS (e.g. MyApp.app, MyApp.dmg)."
+            },
+            "windows": {
+              "type": "string",
+              "description": "Output path for Windows (e.g. MyApp.msi, MyApp.exe)."
+            },
+            "linux": {
+              "type": "string",
+              "description": "Output path for Linux (e.g. MyApp.AppImage, MyApp.deb, MyApp.rpm)."
+            }
+          }
+        },
+        "release": {
+          "type": "object",
+          "description": "Release and auto-update configuration.",
+          "additionalProperties": false,
+          "properties": {
+            "baseUrl": {
+              "type": "string",
+              "description": "Base URL for auto-update release artifacts."
+            }
+          }
+        }
+      }
+    },
     "compilerOptions": {
       "type": "object",
       "description": "Instructs the TypeScript compiler how to compile .ts files.",
@@ -743,12 +815,11 @@
         },
         "singleBodyPosition": {
           "description": "The position of the body in single body blocks in JavaScript and TypeScript.",
-          "default": "sameLineUnlessHanging",
+          "default": "maintain",
           "enum": [
             "maintain",
             "sameLine",
-            "nextLine",
-            "sameLineUnlessHanging"
+            "nextLine"
           ]
         },
         "nextControlFlowPosition": {
@@ -764,6 +835,11 @@
           "description": "Whether to add trailing commas in JavaScript and TypeScript.",
           "default": "onlyMultiLine",
           "enum": ["never", "always", "onlyMultiLine"]
+        },
+        "json.trailingCommas": {
+          "description": "Whether to add trailing commas in JSON and JSONC. Defaults to \"never\". The \"jsonc\" option adds trailing commas in JSONC files and omits them in JSON files.",
+          "default": "never",
+          "enum": ["never", "always", "maintain", "jsonc"]
         },
         "operatorPosition": {
           "description": "Where to place the operator for expressions that span multiple lines in JavaScript and TypeScript.",
@@ -1004,6 +1080,36 @@
         }
       }
     },
+    "coverage": {
+      "description": "Configuration for deno coverage and deno test --coverage",
+      "type": "object",
+      "properties": {
+        "thresholds": {
+          "description": "Minimum coverage percentages required for the command to succeed. Each metric is checked against the aggregate across all files.",
+          "type": "object",
+          "properties": {
+            "lines": {
+              "type": "number",
+              "description": "Minimum line coverage percentage (0-100).",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "branches": {
+              "type": "number",
+              "description": "Minimum branch coverage percentage (0-100).",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "functions": {
+              "type": "number",
+              "description": "Minimum function coverage percentage (0-100).",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        }
+      }
+    },
     "license": {
       "description": "The SPDX license identifier if this is a JSR package. Specify this or add a license file to the package.",
       "type": ["string"]
@@ -1104,7 +1210,7 @@
       "items": {
         "type": "string"
       },
-      "description": "UNSTABLE: List of paths, file URLs, or glob patterns to folders containing JSR packages to use local versions of."
+      "description": "List of paths, file URLs, or glob patterns to folders containing JSR packages to use local versions of."
     },
     "workspace": {
       "oneOf": [

@@ -74,8 +74,8 @@
     "filereader_abort.any.worker.html": true,
     "filereader_error.any.html": true,
     "filereader_error.any.worker.html": true,
-    "filereader_events.any.html": false,
-    "filereader_events.any.worker.html": false,
+    "filereader_events.any.html": true,
+    "filereader_events.any.worker.html": true,
     "filereader_readAsArrayBuffer.any.html": true,
     "filereader_readAsArrayBuffer.any.worker.html": true,
     "filereader_readAsBinaryString.any.html": true,
@@ -98,7 +98,8 @@
       "FileList interface: existence and properties of interface prototype object's \"constructor\" property",
       "FileList interface: existence and properties of interface prototype object's @@unscopables property",
       "FileList interface: operation item(unsigned long)",
-      "FileList interface: attribute length"
+      "FileList interface: attribute length",
+      "FileReader interface: existence and properties of interface object"
     ]
   },
   "idlharness.any.worker.html": {
@@ -111,6 +112,7 @@
       "FileList interface: existence and properties of interface prototype object's @@unscopables property",
       "FileList interface: operation item(unsigned long)",
       "FileList interface: attribute length",
+      "FileReader interface: existence and properties of interface object",
       "FileReaderSync interface: existence and properties of interface object",
       "FileReaderSync interface object length",
       "FileReaderSync interface object name",
@@ -134,6 +136,7 @@
       "FileList interface: existence and properties of interface prototype object's @@unscopables property",
       "FileList interface: operation item(unsigned long)",
       "FileList interface: attribute length",
+      "FileReader interface: existence and properties of interface object",
       "FileReaderSync interface: existence and properties of interface object",
       "FileReaderSync interface object length",
       "FileReaderSync interface object name",
@@ -183,7 +186,8 @@
       "Stringification of document.querySelector(\"#fileChooser\").files",
       "FileList interface: document.querySelector(\"#fileChooser\").files must inherit property \"item(unsigned long)\" with the proper type",
       "FileList interface: calling item(unsigned long) on document.querySelector(\"#fileChooser\").files with too few arguments must throw TypeError",
-      "FileList interface: document.querySelector(\"#fileChooser\").files must inherit property \"length\" with the proper type"
+      "FileList interface: document.querySelector(\"#fileChooser\").files must inherit property \"length\" with the proper type",
+      "FileReader interface: existence and properties of interface object"
     ]
   },
   "BlobURL": {

@@ -330,12 +330,15 @@ impl TestRun {
             test::TestSpecifierOptions {
               filter,
               shuffle: None,
+              retry: 0,
+              repeats: 0,
               trace_leaks: false,
               // LSP-driven test runs intentionally disable sanitizers — the
               // LSP UI doesn't surface op/resource leak failures usefully
               // and they'd generate noise in the test gutter.
               sanitize_ops: false,
               sanitize_resources: false,
+              update_snapshots: false,
             },
           ))
         }
@@ -439,9 +442,15 @@ impl TestRun {
                 );
               }
             }
+            test::TestEvent::Retry(..) | test::TestEvent::Repeat(..) => {
+              // Informational only; the test's terminal result is reported via
+              // `TestEvent::Result`.
+            }
             test::TestEvent::Completed => {
               reporter.report_completed();
             }
+            // LSP-driven test runs never use `--update-snapshots`.
+            test::TestEvent::SnapshotSummary(_) => {}
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
             test::TestEvent::Exit(_) => {}
@@ -671,7 +680,8 @@ impl LspTestReporter {
     self.progress(lsp_custom::TestRunProgressMessage::Started { test });
   }
 
-  fn report_slow(&mut self, _desc: &test::TestDescription, _elapsed: u64) {}
+  fn report_slow(&mut self, _desc: &test::TestDescription, _elapsed: Duration) {
+  }
 
   fn report_output(&mut self, output: &[u8]) {
     let test = self
@@ -691,15 +701,16 @@ impl LspTestReporter {
     &mut self,
     desc: &test::TestDescription,
     result: &test::TestResult,
-    elapsed: u64,
+    elapsed: Duration,
   ) {
     self.current_test = None;
+    let elapsed = elapsed.as_millis() as u32;
     match result {
       test::TestResult::Ok => {
         let desc = self.tests.get(&desc.id).unwrap();
         self.progress(lsp_custom::TestRunProgressMessage::Passed {
           test: desc.as_test_identifier(&self.tests),
-          duration: Some(elapsed as u32),
+          duration: Some(elapsed),
         })
       }
       test::TestResult::Ignored => {
@@ -713,7 +724,7 @@ impl LspTestReporter {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
           messages: vec![failure_to_test_message(failure)],
-          duration: Some(elapsed as u32),
+          duration: Some(elapsed),
         })
       }
       test::TestResult::Cancelled => {
@@ -721,7 +732,7 @@ impl LspTestReporter {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
           messages: vec![],
-          duration: Some(elapsed as u32),
+          duration: Some(elapsed),
         })
       }
     }
@@ -864,8 +875,9 @@ impl LspTestReporter {
     &mut self,
     desc: &test::TestStepDescription,
     result: &test::TestStepResult,
-    elapsed: u64,
+    elapsed: Duration,
   ) {
+    let elapsed = elapsed.as_millis() as u32;
     if self.current_test == Some(desc.id) {
       self.current_test = Some(desc.parent_id);
     }
@@ -874,7 +886,7 @@ impl LspTestReporter {
       test::TestStepResult::Ok => {
         self.progress(lsp_custom::TestRunProgressMessage::Passed {
           test: desc.as_test_identifier(&self.tests),
-          duration: Some(elapsed as u32),
+          duration: Some(elapsed),
         })
       }
       test::TestStepResult::Ignored => {
@@ -886,7 +898,7 @@ impl LspTestReporter {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
           messages: vec![failure_to_test_message(failure)],
-          duration: Some(elapsed as u32),
+          duration: Some(elapsed),
         })
       }
     }

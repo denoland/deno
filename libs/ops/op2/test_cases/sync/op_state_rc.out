@@ -13,6 +13,7 @@ const fn op_state_rc() -> ::deno_core::_ops::OpDecl {
             false,
             1usize as u8,
             false,
+            false,
             Self::v8_fn_ptr as _,
             Self::slow_function_impl,
             ::deno_core::AccessorType::None,

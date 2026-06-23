@@ -18,6 +18,9 @@ const { os } = core.loadExtScript(
 const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
+const { shouldColorize } = core.loadExtScript(
+  "ext:deno_node/internal/util/colorize.mjs",
+);
 const { isNativeError } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
@@ -295,6 +298,7 @@ return {
   pendingDeprecate,
   promisify,
   removeColors,
+  shouldColorize,
   sleep,
   WeakReference,
   default: {
@@ -311,6 +315,7 @@ return {
     pendingDeprecate,
     promisify,
     removeColors,
+    shouldColorize,
     sleep,
   },
 };
