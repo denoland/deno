@@ -1993,7 +1993,7 @@ function mkdir(
   }
 
   PromisePrototypeThen(
-    Deno.mkdir(path, { recursive, mode }),
+    Deno.mkdir(recursive ? resolve(path) : path, { recursive, mode }),
     () => {
       if (typeof callback === "function") {
         callback(null, firstNonExistent);
@@ -2037,7 +2037,7 @@ function mkdirSync(
   let firstNonExistent: string | undefined;
   try {
     firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
-    Deno.mkdirSync(path, { recursive, mode });
+    Deno.mkdirSync(recursive ? resolve(path) : path, { recursive, mode });
   } catch (err) {
     throw recursive
       ? fixMkdirError(err as Error, path)
