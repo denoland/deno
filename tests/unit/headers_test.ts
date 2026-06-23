@@ -426,6 +426,14 @@ Deno.test(function customInspectReturnsCorrectHeadersFormat() {
     stringify(multiParamHeader),
     `Headers { "content-length": "1337", "content-type": "application/json" }`,
   );
+  const duplicateSetCookieHeaders = new Headers([
+    ["Set-Cookie", "foo=bar; Expires=Wed, 21 Oct 2015 07:28:00 GMT"],
+    ["Set-Cookie", "bar=baz; Expires=Thu, 22 Oct 2015 07:28:00 GMT"],
+  ]);
+  assertEquals(
+    stringify(duplicateSetCookieHeaders),
+    `Headers { "set-cookie": "foo=bar; Expires=Wed, 21 Oct 2015 07:28:00 GMT, bar=baz; Expires=Thu, 22 Oct 2015 07:28:00 GMT" }`,
+  );
 });
 
 Deno.test(function invalidHeadersFlaky() {
