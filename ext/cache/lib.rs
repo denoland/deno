@@ -160,6 +160,10 @@ pub struct CacheDeleteRequest {
 #[derive(FromV8, Debug)]
 pub struct CacheKeysRequest {
   pub cache_id: i64,
+  /// When set, only the key matching this (already normalized) request URL is
+  /// returned. This lets the backend filter instead of materializing every
+  /// entry in the cache just to return a single key.
+  pub request_url: Option<String>,
 }
 
 #[derive(Debug, ToV8)]
@@ -249,10 +253,11 @@ impl CacheImpl {
   pub async fn keys(
     &self,
     cache_id: i64,
+    request_url: Option<String>,
   ) -> Result<Vec<CacheKeyEntry>, CacheError> {
     match self {
-      Self::Sqlite(cache) => cache.keys(cache_id).await,
-      Self::Lsc(cache) => cache.keys(cache_id).await,
+      Self::Sqlite(cache) => cache.keys(cache_id, request_url).await,
+      Self::Lsc(cache) => cache.keys(cache_id, request_url).await,
     }
   }
 }
@@ -395,7 +400,7 @@ pub async fn op_cache_keys(
   #[scoped] request: CacheKeysRequest,
 ) -> Result<Vec<CacheKeyEntry>, CacheError> {
   let cache = get_cache(&state)?;
-  cache.keys(request.cache_id).await
+  cache.keys(request.cache_id, request.request_url).await
 }
 
 pub fn get_cache(

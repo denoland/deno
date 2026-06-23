@@ -307,6 +307,7 @@ impl LscBackend {
   pub async fn keys(
     &self,
     _cache_id: i64,
+    _request_url: Option<String>,
   ) -> Result<Vec<CacheKeyEntry>, CacheError> {
     Err(CacheError::KeysNotSupported)
   }

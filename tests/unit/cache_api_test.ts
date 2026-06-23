@@ -82,6 +82,35 @@ Deno.test(async function cacheKeys() {
   const none = await cache.keys("https://example.com/missing");
   assertEquals(none.length, 0);
 
+  // A non-GET request returns an empty array (only GET is stored).
+  const nonGet = await cache.keys(
+    new Request("https://example.com/a", { method: "POST" }),
+  );
+  assertEquals(nonGet.length, 0);
+
+  // keys() reflects a prior delete().
+  assert(await cache.delete("https://example.com/a"));
+  const afterDelete = await cache.keys();
+  assertEquals(afterDelete.length, 1);
+  assertEquals(afterDelete[0].url, "https://example.com/b");
+
+  // A put() overwriting an existing URL doesn't duplicate the key, and the
+  // returned order reflects the order entries were (re-)inserted: /b is put
+  // before /a here, so it comes first.
+  await cache.put(
+    new Request("https://example.com/b"),
+    new Response("b2"),
+  );
+  await cache.put(
+    new Request("https://example.com/a"),
+    new Response("a2"),
+  );
+  const afterOverwrite = await cache.keys();
+  assertEquals(afterOverwrite.map((r) => r.url), [
+    "https://example.com/b",
+    "https://example.com/a",
+  ]);
+
   assert(await caches.delete(cacheName));
 });
 

@@ -261,7 +261,7 @@ class Cache {
     webidl.assertBranded(this, CachePrototype);
     const prefix = "Failed to execute 'keys' on 'Cache'";
     // Step 1-2.
-    let targetUrl = null;
+    let requestUrl = null;
     if (request !== undefined) {
       request = webidl.converters["RequestInfo_DOMString"](
         request,
@@ -278,21 +278,19 @@ class Cache {
       } else {
         r = new Request(request);
       }
-      // Remove the fragment from the request URL before comparing.
+      // Remove the fragment from the request URL before matching.
       const url = new URL(r.url);
       url.hash = "";
       // deno-lint-ignore prefer-primordials
-      targetUrl = url.toString();
+      requestUrl = url.toString();
     }
 
-    // Step 5: return the request keys in insertion order.
-    const entries = await op_cache_keys({ cacheId: this[_id] });
+    // Step 5: return the request keys in insertion order. When a request is
+    // given, the backend filters by URL so we don't fetch the whole cache.
+    const entries = await op_cache_keys({ cacheId: this[_id], requestUrl });
     const requests = [];
     for (let i = 0; i < entries.length; ++i) {
       const entry = entries[i];
-      if (targetUrl !== null && entry.requestUrl !== targetUrl) {
-        continue;
-      }
       ArrayPrototypePush(
         requests,
         new Request(entry.requestUrl, { headers: entry.requestHeaders }),

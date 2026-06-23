@@ -386,19 +386,31 @@ impl SqliteBackedCache {
   pub async fn keys(
     &self,
     cache_id: i64,
+    request_url: Option<String>,
   ) -> Result<Vec<CacheKeyEntry>, CacheError> {
     let db = self.connection.clone();
     spawn_blocking(move || {
       let db = db.lock();
-      let mut stmt = db.prepare(
+      // When a request URL is provided, filter in SQL rather than
+      // materializing every entry in the cache just to return a single key.
+      let mut sql = String::from(
         "SELECT request_url, request_headers FROM request_response_list
-             WHERE cache_id = ?1 ORDER BY id",
-      )?;
-      let rows = stmt.query_map(params![cache_id], |row| {
-        let request_url: String = row.get(0)?;
-        let request_headers: Vec<u8> = row.get(1)?;
-        Ok((request_url, request_headers))
-      })?;
+             WHERE cache_id = ?1",
+      );
+      let mut sql_params: Vec<rusqlite::types::Value> =
+        vec![rusqlite::types::Value::Integer(cache_id)];
+      if let Some(request_url) = request_url {
+        sql.push_str(" AND request_url = ?2");
+        sql_params.push(rusqlite::types::Value::Text(request_url));
+      }
+      sql.push_str(" ORDER BY id");
+      let mut stmt = db.prepare(&sql)?;
+      let rows =
+        stmt.query_map(rusqlite::params_from_iter(sql_params), |row| {
+          let request_url: String = row.get(0)?;
+          let request_headers: Vec<u8> = row.get(1)?;
+          Ok((request_url, request_headers))
+        })?;
       let mut entries = Vec::new();
       for row in rows {
         let (request_url, request_headers) = row?;
