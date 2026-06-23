@@ -675,7 +675,10 @@ impl<'a> TaskRunner<'a> {
     Some(fingerprints)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "task execution threads several independent inputs; refactoring into a struct is deferred"
+  )]
   pub async fn run_deno_task(
     &self,
     dir_url: &Url,
