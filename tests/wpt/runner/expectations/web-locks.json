@@ -2,70 +2,46 @@
   "acquire.https.any.html": true,
   "acquire.https.any.worker.html": true,
   "bfcache": {
-    "abort.tentative.https.html": false,
-    "held.tentative.https.html": false,
-    "release-across-thread.tentative.https.html": false,
-    "release.tentative.https.html": false
+    "abort.tentative.https.html": true,
+    "held.tentative.https.html": true,
+    "release-across-thread.tentative.https.html": true,
+    "release.tentative.https.html": true
   },
-  "clientids.https.html": false,
-  "frames.https.html": false,
-  "held.https.any.html": false,
-  "held.https.any.worker.html": false,
-  "idlharness.https.any.html": {
-    "expectedFailures": [
-      "Navigator interface: attribute locks"
-    ]
-  },
-  "idlharness.https.any.worker.html": {
-    "expectedFailures": [
-      "WorkerNavigator interface: attribute locks"
-    ]
-  },
+  "clientids.https.html": true,
+  "frames.https.html": true,
+  "held.https.any.html": true,
+  "held.https.any.worker.html": true,
+  "idlharness.https.any.html": true,
+  "idlharness.https.any.worker.html": true,
   "ifAvailable.https.any.html": true,
   "ifAvailable.https.any.worker.html": true,
   "lock-attributes.https.any.html": true,
   "lock-attributes.https.any.worker.html": true,
-  "mode-exclusive.https.any.html": {
-    "expectedFailures": [
-      "Requests for distinct resources can be granted"
-    ]
-  },
-  "mode-exclusive.https.any.worker.html": {
-    "expectedFailures": [
-      "Requests for distinct resources can be granted"
-    ]
-  },
+  "mode-exclusive.https.any.html": true,
+  "mode-exclusive.https.any.worker.html": true,
   "mode-mixed.https.any.html": true,
   "mode-mixed.https.any.worker.html": true,
   "mode-shared.https.any.html": true,
   "mode-shared.https.any.worker.html": true,
-  "non-fully-active.https.html": false,
-  "non-secure-context.any.html": false,
-  "non-secure-context.any.worker.html": false,
-  "opaque-origin.https.html": false,
-  "partitioned-web-locks.tentative.https.html": false,
+  "non-fully-active.https.html": true,
+  "non-secure-context.any.html": true,
+  "non-secure-context.any.worker.html": true,
+  "opaque-origin.https.html": true,
+  "partitioned-web-locks.tentative.https.html": true,
   "query-empty.https.any.html": true,
   "query-empty.https.any.worker.html": true,
-  "query-ordering.https.html": false,
-  "query.https.any.html": {
-    "expectedFailures": [
-      "query() returns dictionaries with expected properties"
-    ]
-  },
-  "query.https.any.worker.html": {
-    "expectedFailures": [
-      "query() returns dictionaries with expected properties"
-    ]
-  },
-  "resource-names.https.any.html": false,
-  "resource-names.https.any.worker.html": false,
-  "secure-context.https.any.html": false,
-  "secure-context.https.any.worker.html": false,
-  "signal.https.any.html": false,
-  "signal.https.any.worker.html": false,
-  "steal.https.any.html": false,
-  "steal.https.any.worker.html": false,
-  "storage-buckets.tentative.https.any.html": false,
-  "storage-buckets.tentative.https.any.worker.html": false,
-  "workers.https.html": false
+  "query-ordering.https.html": true,
+  "query.https.any.html": true,
+  "query.https.any.worker.html": true,
+  "resource-names.https.any.html": true,
+  "resource-names.https.any.worker.html": true,
+  "secure-context.https.any.html": true,
+  "secure-context.https.any.worker.html": true,
+  "signal.https.any.html": true,
+  "signal.https.any.worker.html": true,
+  "steal.https.any.html": true,
+  "steal.https.any.worker.html": true,
+  "storage-buckets.tentative.https.any.html": true,
+  "storage-buckets.tentative.https.any.worker.html": true,
+  "workers.https.html": true
 }
