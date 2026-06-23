@@ -2,6 +2,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
+import { assertSnapshot, snapshotRunState } from "ext:cli/40_test_snapshot.js";
 
 // TODO(mmastrac): We cannot import these from "ext:core/ops" yet
 const {
@@ -17,19 +18,28 @@ const {
   op_test_isolate_exit,
 } = core.ops;
 const {
+  ArrayIsArray,
   ArrayPrototypeFilter,
   ArrayPrototypePush,
   DateNow,
   Error,
+  FunctionPrototypeApply,
+  JSONStringify,
   Map,
+  MathTrunc,
+  Number,
   NumberIsFinite,
   NumberIsInteger,
   NumberIsNaN,
   MapPrototypeGet,
   MapPrototypeSet,
   SafeArrayIterator,
+  SafeRegExp,
+  String,
   StringPrototypeLastIndexOf,
+  StringPrototypeReplace,
   StringPrototypeSlice,
+  StringPrototypeSplit,
   SymbolFor,
   SymbolToStringTag,
   TypeError,
@@ -216,15 +226,25 @@ function assertExit(fn, isTest, sanitizeExit) {
 
 function wrapOuter(fn, desc) {
   return async function outerWrapped() {
+    const state = MapPrototypeGet(testStates, desc.id);
+    // A test may be invoked more than once when `retry`/`repeats` are set.
+    // Reset any state left over from a previous invocation so steps can run
+    // again and stale children aren't reported as incomplete.
+    state.children = [];
+    state.completed = false;
     try {
       if (desc.ignore) {
         return "ignored";
       }
-      return await fn(desc) ?? "ok";
+      const result = await fn(desc) ?? "ok";
+      if (result !== "ok" && result !== "ignored") {
+        snapshotRunState.sawFailure = true;
+      }
+      return result;
     } catch (error) {
+      snapshotRunState.sawFailure = true;
       return { failed: { jsError: core.destructureError(error) } };
     } finally {
-      const state = MapPrototypeGet(testStates, desc.id);
       for (const childDesc of state.children) {
         stepReportResult(childDesc, { failed: "incomplete" }, 0);
       }
@@ -316,6 +336,23 @@ function encodeTimeout(value) {
   return value;
 }
 
+// Validates the `retry`/`repeats` test options. Returns `null` when the option
+// is unset so the runner can distinguish "inherit the flag default" from an
+// explicit `0` (which opts out and takes precedence over the flag).
+function encodeCount(value, label) {
+  if (value === undefined || value === null) return null;
+  // `NumberIsInteger` already rejects NaN and +/-Infinity.
+  if (typeof value !== "number" || !NumberIsInteger(value) || value < 0) {
+    throw new TypeError(`Test ${label} must be a non-negative integer`);
+  }
+  if (value > TIMEOUT_MAX) {
+    throw new TypeError(
+      `Test ${label} out of range (must be between 0 and 2147483647)`,
+    );
+  }
+  return value;
+}
+
 // As long as we're using one isolate per test, we can cache the origin since it won't change
 let cachedOrigin = undefined;
 
@@ -346,6 +383,8 @@ function testInner(
     sanitizeExit: true,
     permissions: null,
     timeout: undefined,
+    retry: undefined,
+    repeats: undefined,
   };
 
   if (typeof nameOrFnOrOptions === "string") {
@@ -423,6 +462,16 @@ function testInner(
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
 
+  // Ignored tests (and non-`only` tests in an `only` run) never execute
+  // their snapshot assertions, so their snapshots must not be treated as
+  // stale by `--update-snapshots`.
+  if (testDesc.ignore) {
+    snapshotRunState.sawIgnored = true;
+  }
+  if (testDesc.only) {
+    snapshotRunState.sawOnly = true;
+  }
+
   if (cachedOrigin == undefined) {
     cachedOrigin = op_test_get_origin();
   }
@@ -447,6 +496,8 @@ function testInner(
     registerTestIdRetBufU8,
     testDesc.sanitizeOnly ?? true,
     encodeTimeout(testDesc.timeout),
+    encodeCount(testDesc.retry, "retry"),
+    encodeCount(testDesc.repeats, "repeats"),
   );
   testDesc.id = registerTestIdRetBuf[0];
   testDesc.origin = cachedOrigin;
@@ -521,6 +572,137 @@ test.sanitizer = function (options) {
   }
 };
 
+// Matches a `printf`-style token (`%s`, `%d`, `%i`, `%f`, `%j`, `%o`, `%O`,
+// `%#`, `%%`) or a `$`-prefixed object path (`$foo`, `$foo.bar`) inside a
+// `Deno.test.each()` name template.
+const EACH_NAME_TOKEN = new SafeRegExp(
+  "%[sdifjoO#%]|\\$[\\w$]+(?:\\.[\\w$]+)*",
+  "g",
+);
+
+// Stringify a value for interpolation into a generated test name. Strings are
+// inserted verbatim; everything else is JSON-encoded (falling back to `String`
+// for values JSON can't represent, such as `bigint` or circular objects).
+function eachStringify(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    const json = JSONStringify(value);
+    return json === undefined ? String(value) : json;
+  } catch {
+    return String(value);
+  }
+}
+
+// Resolve a dotted `$`-path (e.g. `foo.bar`) against an object row.
+function eachResolvePath(row, path) {
+  const parts = StringPrototypeSplit(path, ".");
+  let current = row;
+  for (const part of new SafeArrayIterator(parts)) {
+    if (current === null || current === undefined) {
+      return undefined;
+    }
+    current = current[part];
+  }
+  return current;
+}
+
+// Build the name for a single `Deno.test.each()` case by interpolating the
+// template against the case's row and its zero-based index.
+function formatEachName(template, row, index) {
+  if (typeof template !== "string") {
+    throw new TypeError("Deno.test.each: test name must be a string");
+  }
+  const isArray = ArrayIsArray(row);
+  const positional = isArray ? row : [row];
+  let argIndex = 0;
+  return StringPrototypeReplace(template, EACH_NAME_TOKEN, (token) => {
+    if (token === "%%") {
+      return "%";
+    }
+    if (token === "%#") {
+      return String(index);
+    }
+    if (token[0] === "$") {
+      const value = eachResolvePath(row, StringPrototypeSlice(token, 1));
+      return eachStringify(value);
+    }
+    const value = positional[argIndex++];
+    switch (token) {
+      case "%s":
+        return String(value);
+      case "%d":
+      case "%i": {
+        const n = Number(value);
+        return NumberIsNaN(n) ? "NaN" : String(MathTrunc(n));
+      }
+      case "%f":
+        return String(Number(value));
+      case "%j":
+        return eachStringify(value);
+      case "%o":
+      case "%O":
+        return eachStringify(value);
+      default:
+        return token;
+    }
+  });
+}
+
+// Create a `Deno.test.each()` (and `.only.each`/`.ignore.each`) implementation
+// bound to the given test registration `overrides`.
+function createEach(overrides) {
+  return function each(cases) {
+    if (!ArrayIsArray(cases)) {
+      throw new TypeError(
+        "Deno.test.each: expected an array of test cases",
+      );
+    }
+    return function (name, optionsOrFn, maybeFn) {
+      let options;
+      let fn;
+      if (typeof optionsOrFn === "function") {
+        fn = optionsOrFn;
+      } else {
+        options = optionsOrFn;
+        fn = maybeFn;
+      }
+      if (typeof fn !== "function") {
+        throw new TypeError("Deno.test.each: missing test function");
+      }
+
+      // Report all generated tests at the user's `.each(...)(...)` call site
+      // rather than inside this function.
+      const callSite = core.currentUserCallSite();
+      const location =
+        `${callSite.fileName}:${callSite.lineNumber}:${callSite.columnNumber}`;
+
+      let index = 0;
+      for (const row of new SafeArrayIterator(cases)) {
+        const caseName = formatEachName(name, row, index);
+        const args = ArrayIsArray(row) ? row : [row];
+        const caseFn = (t) =>
+          FunctionPrototypeApply(fn, undefined, [
+            ...new SafeArrayIterator(args),
+            t,
+          ]);
+        caseFn[TEST_LOCATION_SYMBOL] = location;
+        if (options === undefined) {
+          testInner(caseName, caseFn, undefined, overrides);
+        } else {
+          testInner(caseName, options, caseFn, overrides);
+        }
+        index++;
+      }
+    };
+  };
+}
+
+test.each = createEach({ __proto__: null });
+test.only.each = createEach({ only: true });
+test.ignore.each = createEach({ ignore: true });
+
 function getFullName(desc) {
   if ("parent" in desc) {
     return `${getFullName(desc.parent)} ... ${desc.name}`;
@@ -563,7 +745,7 @@ function createTestContext(desc) {
     rootId = desc.id;
     rootName = desc.name;
   }
-  return {
+  const testContext = {
     [SymbolToStringTag]: "TestContext",
     /**
      * The current test name.
@@ -577,6 +759,18 @@ function createTestContext(desc) {
      * File Uri of the test code.
      */
     origin: desc.origin,
+    /**
+     * Asserts that `actual` matches the snapshot stored in the snapshot
+     * file. With `deno test --update-snapshots`, mismatching or missing
+     * snapshots are written to the snapshot file instead.
+     *
+     * @param actual {unknown}
+     * @param maybeOptions {string | object | undefined}
+     */
+    // deno-lint-ignore require-await
+    async assertSnapshot(actual, maybeOptions) {
+      return assertSnapshot(testContext, actual, maybeOptions);
+    },
     /**
      * @param nameOrFnOrOptions {string | TestStepDefinition | ((t: TestContext) => void | Promise<void>)}
      * @param maybeFn {((t: TestContext) => void | Promise<void>) | undefined}
@@ -619,6 +813,9 @@ function createTestContext(desc) {
         );
       }
       stepDesc.ignore ??= false;
+      if (stepDesc.ignore) {
+        snapshotRunState.sawIgnored = true;
+      }
       stepDesc.sanitizeOps ??= desc.sanitizeOps;
       stepDesc.sanitizeResources ??= desc.sanitizeResources;
       stepDesc.sanitizeExit ??= desc.sanitizeExit;
@@ -662,6 +859,7 @@ function createTestContext(desc) {
       return result == "ok";
     },
   };
+  return testContext;
 }
 
 /**

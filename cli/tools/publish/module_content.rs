@@ -506,20 +506,46 @@ mod test {
   }
 
   fn build_wasm_with_imports(modules: &[&str]) -> Vec<u8> {
-    let mut types = wasm_encoder::TypeSection::new();
-    types.ty().function(vec![], vec![]);
-    let mut imports = wasm_encoder::ImportSection::new();
-    for (i, module) in modules.iter().enumerate() {
-      imports.import(
-        module,
-        &format!("import_{i}"),
-        wasm_encoder::EntityType::Function(0),
-      );
+    fn write_var_u32(mut value: u32, output: &mut Vec<u8>) {
+      loop {
+        let mut byte = (value & 0x7f) as u8;
+        value >>= 7;
+        if value != 0 {
+          byte |= 0x80;
+        }
+        output.push(byte);
+        if value == 0 {
+          break;
+        }
+      }
     }
-    let mut module = wasm_encoder::Module::new();
-    module.section(&types);
-    module.section(&imports);
-    module.finish()
+
+    fn write_wasm_string(value: &str, output: &mut Vec<u8>) {
+      write_var_u32(value.len() as u32, output);
+      output.extend_from_slice(value.as_bytes());
+    }
+
+    fn section(id: u8, body: &[u8], output: &mut Vec<u8>) {
+      output.push(id);
+      write_var_u32(body.len() as u32, output);
+      output.extend_from_slice(body);
+    }
+
+    let mut wasm = b"\0asm\x01\0\0\0".to_vec();
+
+    let types = [0x01, 0x60, 0x00, 0x00];
+    section(1, &types, &mut wasm);
+
+    let mut imports = Vec::new();
+    write_var_u32(modules.len() as u32, &mut imports);
+    for (i, module) in modules.iter().enumerate() {
+      write_wasm_string(module, &mut imports);
+      write_wasm_string(&format!("import_{i}"), &mut imports);
+      imports.extend_from_slice(&[0x00, 0x00]);
+    }
+    section(2, &imports, &mut wasm);
+
+    wasm
   }
 
   fn wasm_import_modules(bytes: &[u8]) -> Vec<String> {
@@ -602,7 +628,6 @@ mod test {
         .unwrap()
         .clone(),
       resolver_factory.workspace_resolver().await.unwrap().clone(),
-      true,
     );
     ModuleContentProvider::new(
       Arc::new(ParsedSourceCache::default()),

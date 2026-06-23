@@ -3096,6 +3096,183 @@ Deno.test(
   },
 );
 
+// Regression test: a long-running request must not trigger a spurious
+// ERR_HTTP_REQUEST_TIMEOUT. The ConnectionsList watchdog
+// (headersTimeout/requestTimeout) was never told that headers had been
+// parsed or that the request had finished, so connections sat with
+// headersCompleted=false forever and the watchdog fired ~headersTimeout
+// after the connection was accepted, causing Fastify/etc. to return 400.
+// https://github.com/denoland/deno/issues/34297
+Deno.test(
+  "[node/http] long-running request does not trigger spurious headersTimeout",
+  async () => {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    const server = http.createServer({
+      headersTimeout: 300,
+      connectionsCheckingInterval: 50,
+    }, (_req, res) => {
+      // Sleep longer than headersTimeout to verify the watchdog doesn't
+      // fire mid-request even though headers have already been parsed.
+      setTimeout(() => res.end("done"), 800);
+    });
+
+    server.on("clientError", (err: Error & { code?: string }) => {
+      reject(new Error(`unexpected clientError: ${err.code ?? err.message}`));
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      const req = http.request(
+        { port, host: "127.0.0.1", path: "/" },
+        (res) => {
+          let data = "";
+          res.on("data", (d) => data += d);
+          res.on("end", () => {
+            assertEquals(res.statusCode, 200);
+            assertEquals(data, "done");
+            server.close(() => resolve());
+          });
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+
+    await promise;
+  },
+);
+
+// Regression test: requestTimeout only covers receiving the full request from
+// the client, not the response lifetime. A response that streams for longer
+// than requestTimeout (SSE/proxy) must not be aborted, mirroring Node which
+// stops the requestTimeout clock once the request message is fully received.
+// Previously the ConnectionsList watchdog kept firing requestTimeout against
+// the active entry until the response finished, killing long-lived streams.
+// https://github.com/denoland/deno/issues/35289
+Deno.test(
+  "[node/http] streaming response does not trigger spurious requestTimeout",
+  async () => {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    const writeCount = 20;
+    const writeInterval = 50;
+    // requestTimeout is far shorter than the total streaming duration
+    // (20 * 50ms = ~1s) so the bug would abort the response mid-stream.
+    const server = http.createServer({
+      requestTimeout: 300,
+      connectionsCheckingInterval: 50,
+    }, (_req, res) => {
+      res.writeHead(200, { "content-type": "text/plain" });
+      let n = 0;
+      const interval = setInterval(() => {
+        n++;
+        res.write(`chunk ${n}\n`);
+        if (n === writeCount) {
+          clearInterval(interval);
+          res.end("done\n");
+        }
+      }, writeInterval);
+      res.on("close", () => clearInterval(interval));
+    });
+
+    server.on("clientError", (err: Error & { code?: string }) => {
+      reject(new Error(`unexpected clientError: ${err.code ?? err.message}`));
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      const req = http.get({ port, host: "127.0.0.1", path: "/" }, (res) => {
+        let data = "";
+        res.setEncoding("utf8");
+        res.on("data", (d) => data += d);
+        res.on("aborted", () => reject(new Error("response was aborted")));
+        res.on("end", () => {
+          assertEquals(res.statusCode, 200);
+          // All chunks plus the final "done" line must have arrived intact.
+          assertEquals(
+            data.trim().split("\n").filter(Boolean).length,
+            writeCount + 1,
+          );
+          assertStringIncludes(data, "done");
+          server.close(() => resolve());
+        });
+      });
+      req.on("error", reject);
+    });
+
+    await promise;
+  },
+);
+
+// Regression test for pipelined requests: when request 2's response finishes
+// after request 1's, resOnFinish for request 1 must not delete the active
+// ConnectionsList entry that now belongs to request 2 (otherwise
+// headersTimeout/requestTimeout silently stop covering request 2).
+// Verifies both pipelined responses succeed without spurious clientError.
+Deno.test(
+  "[node/http] pipelined requests don't drop timeout tracking",
+  async () => {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    let req1Finished = false;
+    let req2Finished = false;
+    const server = http.createServer({
+      headersTimeout: 2000,
+      requestTimeout: 2000,
+      connectionsCheckingInterval: 50,
+    }, (req, res) => {
+      if (req.url === "/1") {
+        // Finish first response quickly so resOnFinish for req1 runs while
+        // request 2 may still be in flight on the parser.
+        setTimeout(() => res.end("first"), 50);
+      } else {
+        // Hold second response until well after the first has finished so
+        // the pipelined entry-swap window is exercised.
+        setTimeout(() => res.end("second"), 300);
+      }
+    });
+
+    server.on("clientError", (err: Error & { code?: string }) => {
+      reject(new Error(`unexpected clientError: ${err.code ?? err.message}`));
+    });
+
+    server.listen(0, async () => {
+      try {
+        const port = (server.address() as AddressInfo).port;
+        const conn = await Deno.connect({ port, hostname: "127.0.0.1" });
+        const encoder = new TextEncoder();
+        await conn.write(encoder.encode(
+          "GET /1 HTTP/1.1\r\nHost: localhost\r\n\r\n" +
+            "GET /2 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+        ));
+        const decoder = new TextDecoder();
+        const buf = new Uint8Array(8192);
+        let received = "";
+        while (true) {
+          const n = await conn.read(buf);
+          if (n === null) break;
+          received += decoder.decode(buf.subarray(0, n));
+        }
+        try {
+          conn.close();
+        } catch { /* already closed */ }
+        assertStringIncludes(received, "first");
+        assertStringIncludes(received, "second");
+        req1Finished = true;
+        req2Finished = true;
+        server.close(() => resolve());
+      } catch (e) {
+        reject(e);
+      }
+    });
+
+    await promise;
+    assertEquals(req1Finished, true);
+    assertEquals(req2Finished, true);
+  },
+);
+
 // Regression test: oversized headers must trigger HPE_HEADER_OVERFLOW on the
 // server's clientError event, and the default handler should respond with 431.
 // Previously maxHeaderSize was tracked but never enforced.

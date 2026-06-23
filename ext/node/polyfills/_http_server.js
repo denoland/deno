@@ -46,7 +46,10 @@ const {
   SafeSetIterator,
   String,
   StringPrototypeIncludes,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
   StringPrototypeSplit,
+  StringPrototypeStartsWith,
   Symbol,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
@@ -111,6 +114,7 @@ const { enqueueNodePerformanceEntry, hasNodeObserverForType } = core
   );
 import {
   applyAddressOverride,
+  notifyAddressOverrideServing,
   startOverrideListener,
 } from "ext:deno_node/internal/http/address_override.js";
 const {
@@ -182,6 +186,7 @@ function getOtelMetrics() {
 const kLenientAll = HTTPParser.kLenientAll | 0;
 const kLenientNone = HTTPParser.kLenientNone | 0;
 const kOnExecute = HTTPParser.kOnExecute | 0;
+const kOnMessageBegin = HTTPParser.kOnMessageBegin | 0;
 const _kOnTimeout = HTTPParser.kOnTimeout | 0;
 
 // JS-based ConnectionsList matching Node's native ConnectionsList.
@@ -190,7 +195,7 @@ const _kOnTimeout = HTTPParser.kOnTimeout | 0;
 class ConnectionsList {
   constructor() {
     this._all = new SafeSet();
-    this._active = new SafeMap(); // socket -> { headersCompleted, startTime }
+    this._active = new SafeMap(); // socket -> { headersCompleted, startTime, req }
   }
 
   add(socket) {
@@ -206,6 +211,7 @@ class ConnectionsList {
     this._active.set(socket, {
       headersCompleted: false,
       startTime: performance.now(),
+      req: null,
     });
   }
 
@@ -213,10 +219,22 @@ class ConnectionsList {
     this._active.delete(socket);
   }
 
-  markHeadersCompleted(socket) {
+  // For pipelined requests the parser fires kOnMessageBegin for the next
+  // request before the previous response finishes, replacing the active
+  // entry. resOnFinish must only clear the entry if it still tracks the
+  // request whose response just finished, not a pipelined successor.
+  popActiveIfReq(socket, req) {
+    const entry = this._active.get(socket);
+    if (entry && entry.req === req) {
+      this._active.delete(socket);
+    }
+  }
+
+  markHeadersCompleted(socket, req) {
     const entry = this._active.get(socket);
     if (entry) {
       entry.headersCompleted = true;
+      entry.req = req;
     }
   }
 
@@ -233,6 +251,15 @@ class ConnectionsList {
         }
       }
       if (requestTimeout > 0 && elapsed >= requestTimeout) {
+        // requestTimeout only covers receiving the entire request from the
+        // client. Once the full request message has been parsed off the wire
+        // (req.complete is set in parserOnMessageComplete), the clock stops,
+        // mirroring Node resetting last_message_start_ in on_message_complete.
+        // Without this an actively streaming response (SSE/proxy) gets aborted
+        // at requestTimeout even though the request was long since received.
+        if (entry.req?.complete) {
+          continue;
+        }
         ArrayPrototypePush(result, { socket });
       }
     }
@@ -385,6 +412,42 @@ ServerResponse.prototype.writeContinue = function writeContinue(cb) {
 
 ServerResponse.prototype.writeProcessing = function writeProcessing(cb) {
   this._writeRaw("HTTP/1.1 102 Processing\r\n\r\n", "ascii", cb);
+};
+
+ServerResponse.prototype.writeInformation = function writeInformation(
+  statusCode,
+  headers,
+  cb,
+) {
+  if (this._header) {
+    throw new ERR_HTTP_HEADERS_SENT("write");
+  }
+
+  if (typeof headers === "function") {
+    cb = headers;
+    headers = undefined;
+  }
+
+  validateInteger(statusCode, "statusCode", 100, 199);
+
+  let head = `HTTP/1.1 ${statusCode} ${
+    STATUS_CODES[statusCode] || "unknown"
+  }\r\n`;
+
+  if (headers !== null && headers !== undefined) {
+    const keys = ObjectKeys(headers);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      validateHeaderName(key);
+      const value = headers[key];
+      validateHeaderValue(key, value);
+      head += key + ": " + value + "\r\n";
+    }
+  }
+
+  head += "\r\n";
+
+  this._writeRaw(head, "ascii", cb);
 };
 
 ServerResponse.prototype.writeEarlyHints = function writeEarlyHints(
@@ -623,12 +686,36 @@ function connectionListenerInternal(server, socket) {
     parser,
     state,
   );
+  // Reset timeout-tracking state at the start of each HTTP message so
+  // headersTimeout/requestTimeout are measured per-request on keepalive
+  // connections (mirrors Node's native on_message_begin behavior).
+  parser[kOnMessageBegin] = FunctionPrototypeBind(
+    onParserMessageBegin,
+    undefined,
+    server,
+    socket,
+  );
 
   socket._paused = false;
 }
 
+function onParserMessageBegin(server, socket) {
+  const connections = server[kConnectionsKey];
+  if (connections) {
+    connections.popActive(socket);
+    connections.pushActive(socket);
+  }
+}
+
 function onParserExecute(server, socket, parser, state, ret, d) {
-  socket._unrefTimer?.();
+  // Don't refresh the socket timeout while the connection is idling in
+  // keep-alive mode (waiting for the next request). Stray bytes like
+  // `\r\n` between requests must not reset keepAliveTimeout. The timer
+  // is reset explicitly via resetSocketTimeout once a new request
+  // actually begins.
+  if (!state.keepAliveTimeoutSet) {
+    socket._unrefTimer?.();
+  }
   // The consume path (parser.consume(handle)) passes `d` as a bare
   // Uint8Array from the C++ binding. onParserExecuteCommon's upgrade
   // branch does `d.slice(bytesParsed).toString()` and expects the
@@ -860,7 +947,27 @@ function updateOutgoingData(socket, state, delta) {
 // ---- parserOnIncoming: creates ServerResponse, emits 'request' ----
 
 function parserOnIncoming(server, socket, state, req, keepAlive) {
+  // Connections accepted via the DENO_SERVE_ADDRESS override carry
+  // absolute-form request targets (the control plane forwards the full
+  // public URL, which is how Deno.serve() reconstructs request.url).
+  // Node applications expect origin-form, so strip scheme and authority.
+  if (
+    socket.isDenoServeAddressOverride &&
+    (StringPrototypeStartsWith(req.url, "http://") ||
+      StringPrototypeStartsWith(req.url, "https://"))
+  ) {
+    const schemeEnd = StringPrototypeIndexOf(req.url, "://") + 3;
+    const pathStart = StringPrototypeIndexOf(req.url, "/", schemeEnd);
+    req.url = pathStart === -1 ? "/" : StringPrototypeSlice(req.url, pathStart);
+  }
+
   resetSocketTimeout(server, socket, state, !req.upgrade);
+
+  // Headers have been fully parsed; clear the headersTimeout watchdog and
+  // bind the active entry to this request so resOnFinish can identify it
+  // even if a pipelined successor has already replaced it.
+  const connections = server[kConnectionsKey];
+  if (connections) connections.markHeadersCompleted(socket, req);
 
   if (req.upgrade && req.method !== "CONNECT") {
     if (
@@ -1137,6 +1244,13 @@ function resOnFinish(req, res, socket, state, server) {
   res.detachSocket(socket);
   clearIncoming(req);
   nextTick(emitCloseNT, res);
+
+  // The request is done; stop tracking it for headersTimeout/requestTimeout.
+  // Only pop if the entry still belongs to this completed request: when
+  // requests are pipelined, the parser has already pushed a fresh entry
+  // for the next request via kOnMessageBegin.
+  const connections = server[kConnectionsKey];
+  if (connections) connections.popActiveIfReq(socket, req);
 
   if (res._last) {
     if (typeof socket.destroySoon === "function") {
@@ -1446,6 +1560,7 @@ Server.prototype.listen = function listen(...args) {
       }
       const rewritten = [{ host: applied.host, port: applied.port }];
       if (cb) ArrayPrototypePush(rewritten, cb);
+      this.once("listening", notifyAddressOverrideServing);
       return FunctionPrototypeApply(
         net.Server.prototype.listen,
         this,
@@ -1517,14 +1632,17 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
 };
 
 export {
+  applyAddressOverride,
   connectionListener as _connectionListener,
   httpServerPreClose,
   kConnectionsCheckingInterval,
   kIncomingMessage,
   kServerResponse,
+  notifyAddressOverrideServing,
   Server,
   ServerResponse,
   setupConnectionsTracking,
+  startOverrideListener,
   STATUS_CODES,
   storeHTTPOptions,
 };

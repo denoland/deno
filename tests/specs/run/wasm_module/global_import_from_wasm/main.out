@@ -1,0 +1,4 @@
+js snapshot 1 number
+wasm read 1
+wasm read after bump 2
+js snapshot after bump 1

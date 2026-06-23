@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "unlink @local/greet",
+  "exitCode": 1,
+  "output": "error.out"
+}

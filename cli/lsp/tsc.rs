@@ -3198,6 +3198,8 @@ pub fn file_text_changes_to_workspace_edit<'a>(
 pub struct RefactorEditInfo {
   pub edits: Vec<FileTextChanges>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub rename_filename: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub rename_location: Option<u32>,
 }
 
@@ -3208,6 +3210,11 @@ impl RefactorEditInfo {
   ) -> Result<(), AnyError> {
     for changes in &mut self.edits {
       changes.normalize(specifier_map)?;
+    }
+    if let Some(rename_filename) = &mut self.rename_filename {
+      *rename_filename = specifier_map
+        .normalize(rename_filename.as_str())?
+        .to_string();
     }
     Ok(())
   }
@@ -3223,6 +3230,43 @@ impl RefactorEditInfo {
       snapshot,
       token,
     )
+  }
+
+  pub fn to_rename_command(
+    &self,
+    module: &Arc<DocumentModule>,
+    snapshot: &StateSnapshot,
+  ) -> Option<lsp::Command> {
+    let rename_location = self.rename_location?;
+    let rename_filename = self.rename_filename.as_ref()?;
+    let target_specifier = resolve_url(rename_filename).ok()?;
+    let target_module = snapshot.document_modules.module_for_specifier(
+      &target_specifier,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )?;
+    let changes = self
+      .edits
+      .iter()
+      .find(|c| &c.file_name == rename_filename)?;
+    let mut text = target_module.text.to_string();
+    for change in changes.text_changes.iter().rev() {
+      let range = change.span.to_range(&target_module.line_index);
+      let start = target_module.line_index.offset(range.start).ok()?;
+      let end = target_module.line_index.offset(range.end).ok()?;
+      text.replace_range(
+        u32::from(start) as usize..u32::from(end) as usize,
+        &change.new_text,
+      );
+    }
+    Some(lsp::Command {
+      title: "".to_string(),
+      command: "editor.action.rename".to_string(),
+      arguments: Some(vec![json!([
+        target_module.uri.as_ref(),
+        LineIndex::new(&text).position_utf16(rename_location.into())
+      ])]),
+    })
   }
 }
 
@@ -5473,6 +5517,59 @@ struct ScriptNames {
   by_notebook_uri: BTreeMap<Arc<Uri>, IndexSet<String>>,
 }
 
+fn insert_root_module_script_names(
+  state: &State,
+  script_names: &mut IndexSet<String>,
+  module: &DocumentModule,
+  scope: Option<&ModuleSpecifier>,
+  is_open: bool,
+) {
+  let types_entry = (|| {
+    let types_specifier = module
+      .types_dependency
+      .as_ref()?
+      .dependency
+      .maybe_specifier()?;
+    state.state_snapshot.document_modules.resolve_dependency(
+      types_specifier,
+      &module.specifier,
+      module.resolution_mode,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )
+  })();
+  // If there is a types dep, use that as the root instead. But if the doc
+  // is open, include both as roots.
+  if let Some((types_specifier, types_media_type, _)) = &types_entry {
+    script_names.insert(denormalize_with_auto_import_alias(
+      state,
+      types_specifier,
+      *types_media_type,
+      scope,
+    ));
+  }
+  if types_entry.is_none() || is_open {
+    script_names.insert(denormalize_with_auto_import_alias(
+      state,
+      &module.specifier,
+      module.media_type,
+      scope,
+    ));
+    // The auto-import alias hides `node_modules/.deno` from tsc, but
+    // requests for open documents (diagnostics, hover, etc.) use the
+    // unaliased name. Include it as a root too so they don't fail with
+    // "Could not find source file". See
+    // https://github.com/denoland/deno/issues/35170.
+    if is_open {
+      script_names.insert(
+        state
+          .specifier_map
+          .denormalize(&module.specifier, module.media_type),
+      );
+    }
+  }
+}
+
 #[op2]
 #[serde]
 fn op_script_names(state: &mut OpState) -> ScriptNames {
@@ -5609,6 +5706,30 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         ));
       }
     }
+    for specifier in compiler_options_data.ts_config_roots.iter() {
+      let scope = state
+        .state_snapshot
+        .config
+        .tree
+        .scope_for_specifier(specifier)
+        .cloned();
+      let Some(module) =
+        state.state_snapshot.document_modules.module_for_specifier(
+          specifier,
+          scope.as_deref(),
+          Some(compiler_options_key),
+        )
+      else {
+        continue;
+      };
+      insert_root_module_script_names(
+        state,
+        script_names,
+        &module,
+        scope.as_deref(),
+        false,
+      );
+    }
   }
 
   // roots for notebook scopes
@@ -5665,43 +5786,17 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     .into_iter()
   {
     for module in modules {
-      let is_open = module.open_data.is_some();
-      let types_entry = (|| {
-        let types_specifier = module
-          .types_dependency
-          .as_ref()?
-          .dependency
-          .maybe_specifier()?;
-        state.state_snapshot.document_modules.resolve_dependency(
-          types_specifier,
-          &module.specifier,
-          module.resolution_mode,
-          module.scope.as_deref(),
-          Some(&module.compiler_options_key),
-        )
-      })();
       let script_names = result
         .by_compiler_options_key
         .entry(module.compiler_options_key.clone())
         .or_default();
-      // If there is a types dep, use that as the root instead. But if the doc
-      // is open, include both as roots.
-      if let Some((types_specifier, types_media_type, _)) = &types_entry {
-        script_names.insert(denormalize_with_auto_import_alias(
-          state,
-          types_specifier,
-          *types_media_type,
-          scope.as_deref(),
-        ));
-      }
-      if types_entry.is_none() || is_open {
-        script_names.insert(denormalize_with_auto_import_alias(
-          state,
-          &module.specifier,
-          module.media_type,
-          scope.as_deref(),
-        ));
-      }
+      insert_root_module_script_names(
+        state,
+        script_names,
+        &module,
+        scope.as_deref(),
+        module.open_data.is_some(),
+      );
     }
   }
 
@@ -5793,6 +5888,10 @@ fn run_tsc_thread(
     create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     inspector: has_inspector_server,
+    // See cli/tsc/js.rs: the LSP TSC isolate shares CLI_SNAPSHOT and needs
+    // the residual lazy-ESM/JS sources for node:* lookups (e.g. `process`).
+    residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
+    residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
     ..Default::default()
   });
 
@@ -6216,14 +6315,18 @@ impl UserPreferences {
   }
 }
 
-#[derive(Debug, Clone, Serialize)]
+// `Serialize` is retained because the whole `TscRequest` is serialized to a
+// JSON performance-trace via `Performance::mark_with_args`; `ToV8` is what
+// actually crosses the V8 boundary in `into_server_request`.
+#[derive(Debug, Clone, Serialize, deno_core::ToV8)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItemsOptions {
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub trigger_reason: Option<SignatureHelpTriggerReason>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, deno_core::ToV8)]
 pub enum SignatureHelpTriggerKind {
   #[serde(rename = "characterTyped")]
   CharacterTyped,
@@ -6246,11 +6349,12 @@ impl From<lsp::SignatureHelpTriggerKind> for SignatureHelpTriggerKind {
   }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, deno_core::ToV8)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpTriggerReason {
   pub kind: SignatureHelpTriggerKind,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub trigger_character: Option<String>,
 }
 
@@ -6526,9 +6630,9 @@ impl TscRequest {
         "getEncodedSemanticClassifications",
         Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
       ),
-      TscRequest::GetSignatureHelpItems(args) => (
+      TscRequest::GetSignatureHelpItems((specifier, position, options)) => (
         "getSignatureHelpItems",
-        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+        Some((specifier, Number(position), options).to_v8(scope)?),
       ),
       TscRequest::GetNavigateToItems((search, max_result_count, file)) => (
         "getNavigateToItems",
@@ -6660,7 +6764,7 @@ mod tests {
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
-      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver, None));
     resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
     let linter_resolver = Arc::new(LspLinterResolver::new(
       &config,

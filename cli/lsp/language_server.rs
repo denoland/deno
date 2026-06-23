@@ -424,6 +424,14 @@ impl LanguageServer {
           NpmCachingStrategy::Eager,
         )
         .await?;
+      let cli_options = factory.cli_options()?;
+      let collect_bare_importable_pkg_names = || {
+        cli_options
+          .workspace()
+          .resolver_jsr_pkgs()
+          .map(|pkg| pkg.name)
+          .collect::<Vec<_>>()
+      };
       graph_util::graph_valid(
         &graph,
         &CliSys::default(),
@@ -435,6 +443,7 @@ impl LanguageServer {
           exit_integrity_errors: false,
           allow_unknown_media_types: true,
           allow_unknown_jsr_exports: false,
+          collect_bare_importable_pkg_names: &collect_bare_importable_pkg_names,
         },
       )?;
       Ok(())
@@ -1185,9 +1194,10 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  async fn refresh_config_tree(&mut self) {
+  async fn refresh_config_tree(&mut self, reason: &str) {
     let file_fetcher = create_cli_file_fetcher(
-      Default::default(),
+      Arc::new(deno_runtime::deno_web::BlobStore::default())
+        as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
       GlobalOrLocalHttpCache::Global(self.cache.global().clone()),
       self.http_client_provider.clone(),
       MemoryFilesRc::default(),
@@ -1209,6 +1219,7 @@ impl Inner {
         &file_fetcher,
         &self.http_client_provider,
         self.cache.deno_dir(),
+        reason,
       )
       .await;
     self
@@ -1220,10 +1231,12 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn refresh_compiler_options_resolver(&mut self) {
-    self.compiler_options_resolver = Arc::new(LspCompilerOptionsResolver::new(
+    let compiler_options_resolver = LspCompilerOptionsResolver::new(
       &self.config,
       &self.resolver,
-    ));
+      Some(&self.compiler_options_resolver),
+    );
+    self.compiler_options_resolver = Arc::new(compiler_options_resolver);
     // TODO(nayeemrmn): This represents a circular dependency between
     // `LspCompilerOptionsResolver` and `LspResolver` because the former uses
     // the node resolver to resolve `extends` in tsconfig. Break out the node
@@ -1616,7 +1629,7 @@ impl Inner {
     self.update_debug_flag();
     self.update_global_cache().await;
     self.refresh_workspace_files();
-    self.refresh_config_tree().await;
+    self.refresh_config_tree("did_change_configuration").await;
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
@@ -1710,7 +1723,7 @@ impl Inner {
       }));
       self.workspace_files_hash = 0;
       self.refresh_workspace_files();
-      self.refresh_config_tree().await;
+      self.refresh_config_tree("did_change_watched_files").await;
       self.update_cache();
       self.refresh_resolver().await;
       self.refresh_compiler_options_resolver();
@@ -2495,6 +2508,8 @@ impl Inner {
               }
             })?
           }
+          code_action.command =
+            refactor_edit_info.to_rename_command(&module, &snapshot);
           code_action.edit = refactor_edit_info
             .to_workspace_edit(&module, &snapshot, token)
             .map_err(|err| {
@@ -4160,7 +4175,7 @@ impl Inner {
     self.update_debug_flag();
     self.update_global_cache().await;
     self.refresh_workspace_files();
-    self.refresh_config_tree().await;
+    self.refresh_config_tree("initialized").await;
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
@@ -4359,7 +4374,7 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn post_cache(&mut self) {
-    self.refresh_config_tree().await;
+    self.refresh_config_tree("post_cache").await;
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
@@ -4412,7 +4427,10 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn post_did_change_workspace_folders(&mut self) {
     self.refresh_workspace_files();
-    self.refresh_config_tree().await;
+    self
+      .refresh_config_tree("did_change_workspace_folders")
+      .await;
+    self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
     self.refresh_linter_resolver();

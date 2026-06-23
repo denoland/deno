@@ -598,6 +598,146 @@ async fn jupyter_execute_request() -> Result<()> {
   Ok(())
 }
 
+// Regression test for denoland/deno#35290: a cell that throws must report the
+// error. The JS-kernel rewrite (#34083) read the evaluate result under a bogus
+// `.value` wrapper that the Rust op never sends, so `exceptionDetails` was
+// always `undefined`: errors silently became `status: "ok"` with no broadcast.
+#[test]
+async fn jupyter_execute_error_reports_traceback() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  let request = client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "user_expressions": {},
+        "allow_stdin": true,
+        "stop_on_error": false,
+        "code": "throw new Error(\"boom\")"
+      }),
+    )
+    .await?;
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_json_subset(
+    reply.content.clone(),
+    json!({
+      "status": "error",
+      "execution_count": 1,
+      "ename": "Error",
+      "evalue": "boom",
+    }),
+  );
+  let traceback = reply
+    .content
+    .get("traceback")
+    .and_then(|t| t.as_array())
+    .expect("traceback array");
+  assert!(
+    traceback
+      .iter()
+      .any(|line| line.as_str().map(|s| s.contains("boom")).unwrap_or(false)),
+    "traceback should mention the error: {traceback:?}",
+  );
+
+  let mut msgs = Vec::new();
+  for _ in 0..4 {
+    match client.recv(IoPub).await {
+      Ok(msg) => msgs.push(msg),
+      Err(e) => {
+        if e.downcast_ref::<tokio::time::error::Elapsed>().is_some() {
+          eprintln!("Timed out waiting for messages");
+        }
+        panic!("Error: {:#?}", e);
+      }
+    }
+  }
+
+  let error_msg = msgs
+    .iter()
+    .find(|msg| msg.header.msg_type == "error")
+    .expect("error message not broadcast on iopub");
+  assert_eq!(error_msg.parent_header, request.header.to_json());
+  assert_json_subset(
+    error_msg.content.clone(),
+    json!({
+      "ename": "Error",
+      "evalue": "boom",
+    }),
+  );
+
+  Ok(())
+}
+
+// Regression test for denoland/deno#22771: a `complete_request` whose code
+// contains multi-byte (e.g. Korean) characters must not crash the kernel. The
+// old Rust kernel sliced the cell text using the codepoint-based `cursor_pos`
+// as a byte index and panicked ("byte index N is not a char boundary").
+#[test]
+async fn jupyter_complete_request_multibyte() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  // The exact shape from the issue: a Korean character earlier in the cell and
+  // an identifier prefix at the very end where the cursor sits.
+  let code = "function getLunchPlace(me) {\n  '서';\n}\n\nge";
+  let cursor_pos = code.chars().count() as i64;
+  client
+    .send(
+      Shell,
+      "complete_request",
+      json!({ "code": code, "cursor_pos": cursor_pos }),
+    )
+    .await?;
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "complete_reply");
+  // Cursor positions are reported in codepoints, not bytes/UTF-16 units.
+  assert_json_subset(
+    reply.content.clone(),
+    json!({
+      "status": "ok",
+      "cursor_end": cursor_pos,
+    }),
+  );
+
+  Ok(())
+}
+
+// Regression test for cursor_pos handling with astral (non-BMP) characters.
+// `cursor_pos` is measured in Unicode codepoints, while JS strings are indexed
+// by UTF-16 code units, so the kernel must translate between the two for both
+// slicing the completion target and reporting `cursor_start`/`cursor_end`.
+#[test]
+async fn jupyter_complete_request_astral_cursor() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  // `"😀"; cons` — the emoji is a single codepoint but two UTF-16 units.
+  let code = "\"😀\"; cons";
+  let cursor_pos = code.chars().count() as i64; // 9 codepoints
+  client
+    .send(
+      Shell,
+      "complete_request",
+      json!({ "code": code, "cursor_pos": cursor_pos }),
+    )
+    .await?;
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "complete_reply");
+  // The completion target is "cons", which starts at codepoint offset 5
+  // (the emoji counts as one codepoint, not two). Before the fix the kernel
+  // sliced with the codepoint cursor as a UTF-16 index and reported
+  // cursor_start == 6.
+  assert_json_subset(
+    reply.content.clone(),
+    json!({
+      "status": "ok",
+      "cursor_start": 5,
+      "cursor_end": cursor_pos,
+    }),
+  );
+
+  Ok(())
+}
+
 // Regression test for the HMAC signature verification of incoming messages.
 // When a connection key is configured, the kernel must reject `execute_request`s
 // whose signature doesn't verify (otherwise any local process able to reach the

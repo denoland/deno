@@ -319,7 +319,7 @@ function validateDefaultCACertificates(certs: string[]) {
         );
       }
       throw makeNodeCryptoError(
-        "ERR_OSSL_PEM_ASN1_LIB",
+        "ERR_OSSL_PEM_ASN.1_ENCODING_ROUTINES",
         "error:0680009B:asn1 encoding routines::too long",
       );
     }

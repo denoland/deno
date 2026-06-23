@@ -725,17 +725,26 @@ impl Cipher {
         if key.len() != 16 {
           return Err(CipherError::InvalidKeyLength);
         }
+        if !iv.is_empty() {
+          return Err(CipherError::InvalidInitializationVector);
+        }
         Aes128Ecb(Box::new(ecb::Encryptor::new(key.into())))
       }
       "aes-192-ecb" => {
         if key.len() != 24 {
           return Err(CipherError::InvalidKeyLength);
         }
+        if !iv.is_empty() {
+          return Err(CipherError::InvalidInitializationVector);
+        }
         Aes192Ecb(Box::new(ecb::Encryptor::new(key.into())))
       }
       "aes-256-ecb" => {
         if key.len() != 32 {
           return Err(CipherError::InvalidKeyLength);
+        }
+        if !iv.is_empty() {
+          return Err(CipherError::InvalidInitializationVector);
         }
         Aes256Ecb(Box::new(ecb::Encryptor::new(key.into())))
       }
@@ -1160,17 +1169,26 @@ impl Decipher {
         if key.len() != 16 {
           return Err(DecipherError::InvalidKeyLength);
         }
+        if !iv.is_empty() {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
         Aes128Ecb(Box::new(ecb::Decryptor::new(key.into())))
       }
       "aes-192-ecb" => {
         if key.len() != 24 {
           return Err(DecipherError::InvalidKeyLength);
         }
+        if !iv.is_empty() {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
         Aes192Ecb(Box::new(ecb::Decryptor::new(key.into())))
       }
       "aes-256-ecb" => {
         if key.len() != 32 {
           return Err(DecipherError::InvalidKeyLength);
+        }
+        if !iv.is_empty() {
+          return Err(DecipherError::InvalidInitializationVector);
         }
         Aes256Ecb(Box::new(ecb::Decryptor::new(key.into())))
       }

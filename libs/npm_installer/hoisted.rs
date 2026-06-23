@@ -594,6 +594,119 @@ impl<
       }
     }
 
+    // 7. Create a `node_modules` directory inside each workspace member and
+    // symlink that member's direct dependencies into it. This mirrors how npm
+    // and pnpm lay out workspaces so that native Node.js tooling run from
+    // within a member resolves the member's dependencies and sibling workspace
+    // members. Each dependency is linked to its actual location in the hoisted
+    // layout (a top-level package, or a nested one in case of conflicts).
+    {
+      let workspace_member_dirs: HashMap<&PackageNv, &Path> = self
+        .npm_install_deps_provider
+        .workspace_pkgs()
+        .iter()
+        .map(|pkg| (&pkg.nv, pkg.target_dir.as_path()))
+        .collect();
+      for workspace_pkg in self.npm_install_deps_provider.workspace_pkgs() {
+        // The workspace root's `node_modules` is already fully set up above.
+        // (Comparing paths here is unreliable: `root_node_modules_path` is
+        // canonicalized while `target_dir` is not, so on Windows they can
+        // differ by 8.3 short names or casing for the same directory.)
+        if workspace_pkg.is_root {
+          continue;
+        }
+        let member_node_modules = workspace_pkg.target_dir.join("node_modules");
+        // Remove links to dependencies the member no longer declares (or to
+        // sibling members that were removed) so they stop being resolvable,
+        // mirroring how the root `node_modules` prunes stale links. This also
+        // covers a member that dropped all of its dependencies, which is why it
+        // runs before the `deps.is_empty()` short-circuit.
+        let keep_aliases: HashSet<&str> = workspace_pkg
+          .deps
+          .iter()
+          .map(|dep| dep.alias().as_str())
+          .collect();
+        crate::local::remove_stale_member_symlinks(
+          sys.as_ref(),
+          &member_node_modules,
+          &keep_aliases,
+        );
+        // The member's direct npm dependencies that ship executables, gathered
+        // while linking so their bins can be set up in the member's `.bin` once
+        // every alias link exists.
+        let mut bin_deps: Vec<crate::local::MemberBinDep> = Vec::new();
+        if !workspace_pkg.deps.is_empty() {
+          let mut created_dir = false;
+          for dep in &workspace_pkg.deps {
+            let (alias, target_path) = match dep {
+              InstallWorkspacePkgDep::Remote { alias, req } => {
+                let Some(id) = resolve_remote_pkg_id(snapshot, req) else {
+                  continue;
+                };
+                let Some(target_path) = hoisted_package_path(
+                  &layout,
+                  &self.root_node_modules_path,
+                  &id.nv,
+                ) else {
+                  // The resolved version isn't placed anywhere in the hoisted
+                  // layout (a version-conflict corner case where no package pins
+                  // this exact version), so there's nothing to link it to. Skip
+                  // it rather than fail, but log it: the member will resolve this
+                  // dependency via the hoisted top-level version instead, which
+                  // may differ from the version it declared. See
+                  // https://github.com/denoland/deno/pull/34970.
+                  log::debug!(
+                    "workspace member {} dependency {} ({}) is not present in the hoisted layout; skipping its node_modules link",
+                    workspace_pkg.nv,
+                    alias,
+                    id.nv,
+                  );
+                  continue;
+                };
+                if let Some(package) = snapshot.package_from_id(&id)
+                  && package.has_bin
+                {
+                  // The shim reads the package's `package.json` from its real
+                  // hoisted location but points at the member's own alias link.
+                  bin_deps.push(crate::local::MemberBinDep {
+                    package,
+                    read_path: target_path.clone(),
+                    link_path: member_node_modules.join(alias.as_str()),
+                  });
+                }
+                (alias, target_path)
+              }
+              InstallWorkspacePkgDep::Workspace { alias, nv } => {
+                let Some(target_dir) = workspace_member_dirs.get(nv) else {
+                  continue;
+                };
+                (alias, target_dir.to_path_buf())
+              }
+            };
+            if !created_dir {
+              sys.fs_create_dir_all(&member_node_modules)?;
+              created_dir = true;
+            }
+            crate::local::symlink_package_dir(
+              sys.as_ref(),
+              &target_path,
+              &member_node_modules.join(alias.as_str()),
+            )?;
+          }
+        }
+        // Populate (and prune) the member's `node_modules/.bin`. Runs even when
+        // the member has no dependencies so a dropped last bin is cleaned up.
+        crate::local::setup_member_bin_entries(
+          sys,
+          snapshot,
+          &extra_info_provider,
+          &member_node_modules,
+          &bin_deps,
+        )
+        .await?;
+      }
+    }
+
     for package in &workspace_lifecycle_packages {
       lifecycle_scripts.borrow_mut().add(
         &package.package,
@@ -871,6 +984,38 @@ struct WorkspaceLifecyclePackage {
   package: NpmResolutionPackage,
   package_path: PathBuf,
   scripts: HashMap<deno_semver::SmallStackString, String>,
+}
+
+/// Resolves the on-disk location of a package version in the hoisted layout,
+/// either as a top-level package or a nested one. Returns `None` if the version
+/// isn't placed anywhere (for example a conflicting version that no package
+/// depends on).
+fn hoisted_package_path(
+  layout: &HoistedLayout,
+  root_node_modules_path: &Path,
+  nv: &PackageNv,
+) -> Option<PathBuf> {
+  if let Some(top) = layout.top_level.get(&nv.name)
+    && top.id.nv == *nv
+  {
+    return Some(join_package_name(
+      Cow::Borrowed(root_node_modules_path),
+      &nv.name,
+    ));
+  }
+  for nested in &layout.nested {
+    if nested.dep.id.nv == *nv {
+      return Some(join_package_name(
+        Cow::Owned(
+          root_node_modules_path
+            .join(&nested.parent_path)
+            .join("node_modules"),
+        ),
+        &nv.name,
+      ));
+    }
+  }
+  None
 }
 
 fn resolve_remote_pkg_id(

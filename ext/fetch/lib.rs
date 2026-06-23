@@ -22,6 +22,8 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
+use async_compression::tokio::bufread::BrotliDecoder;
+use async_compression::tokio::bufread::GzipDecoder;
 use bytes::Bytes;
 // Re-export data_url
 pub use data_url;
@@ -79,22 +81,25 @@ use http::header::HeaderValue;
 use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
 use http::header::USER_AGENT;
+use http_body_util::BodyDataStream;
 use http_body_util::BodyExt;
+use http_body_util::StreamBody;
 use http_body_util::combinators::BoxBody;
 use hyper::body::Frame;
+use hyper::body::Incoming;
 use hyper_util::client::legacy::Builder as HyperClientBuilder;
 use hyper_util::client::legacy::connect::Connection;
-use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::HttpInfo;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
 pub use proxy::basic_auth;
+use tokio_util::io::ReaderStream;
+use tokio_util::io::StreamReader;
 use tower::BoxError;
 use tower::Service;
 use tower::ServiceExt;
 use tower::retry;
-use tower_http::decompression::Decompression;
 
 #[derive(Clone)]
 pub struct Options {
@@ -317,10 +322,6 @@ pub fn create_client_from_options(
   options: &Options,
   permissions: Option<PermissionsContainer>,
 ) -> Result<Client, HttpClientCreateError> {
-  let dns_resolver = match permissions {
-    Some(p) => options.resolver.clone().with_permissions(p),
-    None => options.resolver.clone(),
-  };
   create_http_client(
     &options.user_agent,
     CreateHttpClientOptions {
@@ -329,7 +330,8 @@ pub fn create_client_from_options(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs: vec![],
       proxy: options.proxy.clone(),
-      dns_resolver,
+      dns_resolver: options.resolver.clone(),
+      permissions,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -524,14 +526,6 @@ pub fn op_fetch(
         }
       }
 
-      if request.headers().contains_key(RANGE) {
-        // https://fetch.spec.whatwg.org/#http-network-or-cache-fetch step 18
-        // If httpRequest’s header list contains `Range`, then append (`Accept-Encoding`, `identity`)
-        request
-          .headers_mut()
-          .insert(ACCEPT_ENCODING, HeaderValue::from_static("identity"));
-      }
-
       let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
         request_builder_hook(&mut request)
@@ -604,6 +598,11 @@ pub struct FetchResponse {
   pub url: String,
   pub response_rid: ResourceId,
   pub content_length: Option<u64>,
+  /// Whether the body was transparently decompressed, in which case the
+  /// `content-encoding`/`content-length`/`transfer-encoding` entries in
+  /// `headers` describe the encoded wire body, not the body behind
+  /// `response_rid`.
+  pub body_decoded: bool,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.
   /// In the tuple, the first element is an error message and the second one is
@@ -657,6 +656,7 @@ pub async fn op_fetch_send(
   }
 
   let content_length = hyper::body::Body::size_hint(res.body()).exact();
+  let body_decoded = res.extensions().get::<BodyDecoded>().is_some();
 
   let response_rid = state
     .borrow_mut()
@@ -670,6 +670,7 @@ pub async fn op_fetch_send(
     url,
     response_rid,
     content_length,
+    body_decoded,
     error: None,
   })
 }
@@ -873,6 +874,13 @@ pub fn op_fetch_custom_client(
             Some("Deno.createHttpClient()"),
           )?
           .into_path();
+        // Unix sockets are an outbound network primitive, so a Unix proxy
+        // requires an `--allow-net=unix:<path>` rule in addition to the
+        // filesystem check above, mirroring the direct Unix socket ops.
+        permissions.check_net_unix_socket(
+          &resolved_path,
+          Some("Deno.createHttpClient()"),
+        )?;
         if path != resolved_path {
           *original_path = resolved_path.to_string_lossy().into_owned();
         }
@@ -900,7 +908,8 @@ pub fn op_fetch_custom_client(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
-      dns_resolver: dns::Resolver::default().with_permissions(permissions),
+      dns_resolver: dns::Resolver::default(),
+      permissions: Some(permissions),
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -935,6 +944,9 @@ pub struct CreateHttpClientOptions {
   pub ca_certs: Vec<Vec<u8>>,
   pub proxy: Option<Proxy>,
   pub dns_resolver: dns::Resolver,
+  /// When set, every connection runs the net-deny check against the IP it
+  /// actually connected to, mirroring `Deno.connect`.
+  pub permissions: Option<PermissionsContainer>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<TlsKey>,
   pub pool_max_idle_per_host: Option<usize>,
@@ -952,6 +964,7 @@ impl Default for CreateHttpClientOptions {
       ca_certs: vec![],
       proxy: None,
       dns_resolver: dns::Resolver::default(),
+      permissions: None,
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       pool_max_idle_per_host: None,
@@ -1020,16 +1033,19 @@ pub fn create_http_client(
   tls_config.alpn_protocols = alpn_protocols;
   let tls_config = Arc::from(tls_config);
 
-  let mut http_connector =
-    HttpConnector::new_with_resolver(options.dns_resolver.clone());
-  http_connector.enforce_http(false);
-  if let Some(local_address) = options.local_address {
-    let local_addr = local_address
-      .parse::<IpAddr>()
-      .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))?;
-    http_connector.set_local_address(Some(local_addr));
-  }
-  let http_connector = dns::PermissionedHttpConnector::new(http_connector);
+  let local_address = options
+    .local_address
+    .map(|local_address| {
+      local_address
+        .parse::<IpAddr>()
+        .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))
+    })
+    .transpose()?;
+  let http_connector = dns::PermissionedHttpConnector::new(
+    options.dns_resolver.clone(),
+    local_address,
+    options.permissions,
+  );
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
@@ -1123,43 +1139,13 @@ pub fn create_http_client(
 
   let pooled_client = builder.build(connector.clone());
   let retry_client = retry::Retry::new(FetchRetry, pooled_client);
+  let decompress = DecompressionService::new(retry_client);
 
   Ok(Client {
-    inner: retry_client,
+    inner: decompress,
     connector,
     user_agent,
   })
-}
-
-/// Function pointer type for [`strip_content_encoding_for_empty_body`], used to
-/// name the response-mapping middleware in the [`Client`] type.
-type StripEmptyEncodingFn = fn(
-  http::Response<hyper::body::Incoming>,
-) -> http::Response<hyper::body::Incoming>;
-
-/// Strips the `Content-Encoding` header from a response whose body is empty
-/// (`Content-Length: 0`).
-///
-/// Some servers (and compression middlewares) advertise `Content-Encoding:
-/// gzip` while sending an empty body. A valid gzip stream is never zero bytes,
-/// so attempting to decompress it fails with "unexpected end of file". Other
-/// clients (curl, browsers, ...) tolerate this by simply not decompressing an
-/// empty body. We do the same by removing the encoding header before the
-/// transparent decompression middleware sees the response, so the empty body
-/// passes through untouched. See denoland/deno#29281.
-fn strip_content_encoding_for_empty_body(
-  mut resp: http::Response<hyper::body::Incoming>,
-) -> http::Response<hyper::body::Incoming> {
-  let is_empty = resp
-    .headers()
-    .get(CONTENT_LENGTH)
-    .and_then(|v| v.to_str().ok())
-    .and_then(|v| v.parse::<u64>().ok())
-    == Some(0);
-  if is_empty {
-    resp.headers_mut().remove(CONTENT_ENCODING);
-  }
-  resp
 }
 
 #[op2]
@@ -1167,16 +1153,176 @@ pub fn op_utf8_to_byte_string(#[string] input: String) -> ByteString {
   input.into()
 }
 
-type RetryClient = retry::Retry<
+#[derive(Clone, Debug)]
+pub struct Client {
+  inner: DecompressionService<FetchClient>,
+  connector: Connector,
+  user_agent: HeaderValue,
+}
+
+type FetchClient = retry::Retry<
   FetchRetry,
   hyper_util::client::legacy::Client<Connector, ReqBody>,
 >;
 
 #[derive(Clone, Debug)]
-pub struct Client {
-  inner: RetryClient,
-  connector: Connector,
-  user_agent: HeaderValue,
+struct DecompressionService<S> {
+  inner: S,
+}
+
+impl<S> DecompressionService<S> {
+  fn new(inner: S) -> Self {
+    Self { inner }
+  }
+
+  fn into_inner(self) -> S {
+    self.inner
+  }
+}
+
+impl<S> Service<http::Request<ReqBody>> for DecompressionService<S>
+where
+  S: Service<http::Request<ReqBody>, Response = http::Response<Incoming>>
+    + 'static,
+  S::Future: Send + Sync + 'static,
+  S::Error: 'static,
+{
+  type Response = http::Response<ResBody>;
+  type Error = S::Error;
+  type Future = Pin<
+    Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + Sync>,
+  >;
+
+  fn poll_ready(
+    &mut self,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), Self::Error>> {
+    self.inner.poll_ready(cx)
+  }
+
+  fn call(&mut self, mut req: http::Request<ReqBody>) -> Self::Future {
+    // Range responses may contain compressed byte ranges that cannot be
+    // transparently decoded as a complete representation.
+    let skip_decompression = req.headers().contains_key(RANGE)
+      || req.headers().get(ACCEPT_ENCODING).is_some_and(|value| {
+        value.as_bytes().eq_ignore_ascii_case(b"identity")
+      });
+    if req.headers().contains_key(RANGE) {
+      req
+        .headers_mut()
+        .entry(ACCEPT_ENCODING)
+        .or_insert_with(|| HeaderValue::from_static("identity"));
+    } else {
+      req
+        .headers_mut()
+        .entry(ACCEPT_ENCODING)
+        .or_insert_with(|| HeaderValue::from_static("gzip,br"));
+    }
+
+    let fut = self.inner.call(req);
+    Box::pin(async move {
+      let resp = fut.await?;
+      Ok(decompress_response(resp, skip_decompression))
+    })
+  }
+}
+
+fn decompress_response(
+  resp: http::Response<Incoming>,
+  skip_decompression: bool,
+) -> http::Response<ResBody> {
+  if skip_decompression {
+    return resp.map(box_raw_body);
+  }
+
+  // Some servers advertise a compressed empty body. A valid gzip/br stream is
+  // never zero bytes, so pass empty bodies through instead of trying to decode.
+  let is_empty = resp
+    .headers()
+    .get(CONTENT_LENGTH)
+    .and_then(|v| v.to_str().ok())
+    .and_then(|v| v.parse::<u64>().ok())
+    == Some(0);
+  if is_empty {
+    return resp.map(box_raw_body);
+  }
+
+  match resp
+    .headers()
+    .get(CONTENT_ENCODING)
+    .and_then(content_encoding_decode_kind)
+  {
+    Some(DecodeKind::Gzip) => decode_response(resp, DecodeKind::Gzip),
+    Some(DecodeKind::Brotli) => decode_response(resp, DecodeKind::Brotli),
+    _ => resp.map(box_raw_body),
+  }
+}
+
+fn content_encoding_decode_kind(encoding: &HeaderValue) -> Option<DecodeKind> {
+  let encoding = std::str::from_utf8(encoding.as_bytes()).ok()?.trim();
+  if encoding.contains(',') {
+    return None;
+  }
+  if encoding.eq_ignore_ascii_case("gzip") {
+    Some(DecodeKind::Gzip)
+  } else if encoding.eq_ignore_ascii_case("br") {
+    Some(DecodeKind::Brotli)
+  } else {
+    None
+  }
+}
+
+enum DecodeKind {
+  Gzip,
+  Brotli,
+}
+
+/// Marker inserted into the response extensions when the body was
+/// transparently decompressed, so consumers know the `Content-Encoding`,
+/// `Content-Length` and `Transfer-Encoding` headers describe the encoded
+/// wire body rather than the body in the response.
+#[derive(Clone, Copy)]
+pub struct BodyDecoded;
+
+fn decode_response(
+  resp: http::Response<Incoming>,
+  kind: DecodeKind,
+) -> http::Response<ResBody> {
+  // Per the fetch spec, handling content codings only decodes the body; the
+  // header list keeps `Content-Encoding` and `Content-Length` as received
+  // (the latter describes the encoded body, not the decoded one). See
+  // https://github.com/denoland/deno/issues/20548.
+  let (mut parts, body) = resp.into_parts();
+  parts.extensions.insert(BodyDecoded);
+
+  let stream = BodyDataStream::new(
+    body.map_err(|err| std::io::Error::other(err.to_string())),
+  );
+  let reader = StreamReader::new(stream);
+  let body = match kind {
+    DecodeKind::Gzip => box_reader_body(GzipDecoder::new(reader)),
+    DecodeKind::Brotli => box_reader_body(BrotliDecoder::new(reader)),
+  };
+
+  http::Response::from_parts(parts, body)
+}
+
+fn box_reader_body<R>(reader: R) -> ResBody
+where
+  R: tokio::io::AsyncRead + Send + Sync + 'static,
+{
+  let stream = ReaderStream::new(reader).map(|result| {
+    result
+      .map(Frame::data)
+      .map_err(|err| JsErrorBox::generic(err.to_string()))
+  });
+  BoxBody::new(StreamBody::new(stream))
+}
+
+fn box_raw_body(body: Incoming) -> ResBody {
+  body
+    .map_err(|err| JsErrorBox::generic(err.to_string()))
+    .boxed()
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -1229,9 +1375,7 @@ impl Client {
   }
 }
 
-type Connector = proxy::ProxyConnector<
-  dns::PermissionedHttpConnector<HttpConnector<dns::Resolver>>,
->;
+type Connector = proxy::ProxyConnector<dns::PermissionedHttpConnector>;
 
 #[allow(
   clippy::declare_interior_mutable_const,
@@ -1340,20 +1484,12 @@ impl Client {
 
     let uri = req.uri().clone();
 
-    // Strip `Content-Encoding` from empty-bodied responses before the
-    // decompression middleware runs, so an empty body advertised as gzip/br
-    // is passed through instead of failing to decompress. See
-    // `strip_content_encoding_for_empty_body`.
-    let service = self.inner.map_response(
-      strip_content_encoding_for_empty_body as StripEmptyEncodingFn,
-    );
-    let decompress = Decompression::new(service).gzip(true).br(true);
-
-    let resp = decompress
+    let resp = self
+      .inner
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
-    Ok(resp.map(|b| b.map_err(|e| JsErrorBox::generic(e.to_string())).boxed()))
+    Ok(resp)
   }
 
   /// Sends a request bypassing the transparent decompression middleware.
@@ -1370,13 +1506,14 @@ impl Client {
 
     let uri = req.uri().clone();
 
-    // No decompression middleware here: the response body is returned as-is.
+    // .into_inner() unwraps the transparent decompression layer.
     let resp = self
       .inner
+      .into_inner()
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
-    Ok(resp.map(|b| b.map_err(|e| JsErrorBox::generic(e.to_string())).boxed()))
+    Ok(resp.map(box_raw_body))
   }
 }
 

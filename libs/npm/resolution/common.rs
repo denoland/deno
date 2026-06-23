@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use deno_semver::RangeSetOrTag;
 use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::VersionReq;
@@ -233,6 +234,38 @@ impl<'a> NpmPackageVersionResolver<'a> {
     }
   }
 
+  /// Like `version_req_satisfies`, but also matches prerelease versions that
+  /// fall within the requirement's range bounds.
+  ///
+  /// This is used only for linked (workspace) packages. npm's default semver
+  /// rules exclude prereleases from ranges like `*` or `^1.0.0` to avoid
+  /// silently selecting an unstable version from the registry. Linked packages
+  /// are provided explicitly by the user though, so a local workspace member
+  /// with a prerelease version (e.g. `0.40.0-pre`) should still be selectable
+  /// for a bare `npm:<pkg>` (`*`) requirement instead of falling back to the
+  /// registry.
+  ///
+  /// This is the canonical prerelease fallback used by the npm graph resolver.
+  /// `deno_config`'s `version_req_matches_including_pre` keeps an identical
+  /// copy for the workspace/byonm paths (it can't depend on this crate, since
+  /// the dependency goes the other way). Keep the two in sync.
+  fn link_version_req_satisfies(
+    &self,
+    version_req: &VersionReq,
+    version: &Version,
+  ) -> Result<bool, NpmPackageVersionResolutionError> {
+    if self.version_req_satisfies(version_req, version)? {
+      return Ok(true);
+    }
+    Ok(match version_req.inner() {
+      RangeSetOrTag::RangeSet(set) => {
+        !version.pre.is_empty()
+          && set.0.iter().any(|range| range.intersects_version(version))
+      }
+      RangeSetOrTag::Tag(_) => false,
+    })
+  }
+
   /// Gets if the provided version should be ignored or not
   /// based on the `newest_dependency_date`.
   pub fn matches_newest_dependency_date(&self, version: &Version) -> bool {
@@ -255,7 +288,7 @@ impl<'a> NpmPackageVersionResolver<'a> {
       let mut best_version: Option<&'a NpmPackageVersionInfo> = None;
       for version_info in version_infos {
         let version = &version_info.version;
-        if self.version_req_satisfies(version_req, version)? {
+        if self.link_version_req_satisfies(version_req, version)? {
           let is_greater =
             best_version.map(|c| *version > c.version).unwrap_or(true);
           if is_greater {
