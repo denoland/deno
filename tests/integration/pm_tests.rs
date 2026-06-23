@@ -193,6 +193,7 @@ fn add_npm_latest_default_minimum_dependency_age_downgrades() {
 
   let output = context
     .new_command()
+    .env_remove("NPM_CONFIG_MIN_RELEASE_AGE")
     .args("add npm:@denotest/min-release-age-latest@latest")
     .run();
   output.assert_exit_code(0);

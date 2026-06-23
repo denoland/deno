@@ -79,7 +79,7 @@ impl NpmRc {
     let mut registry = None;
     let mut scope_registries: HashMap<String, String> = HashMap::new();
     let mut registry_configs: HashMap<String, RegistryConfig> = HashMap::new();
-    let mut min_release_age_days: Option<u64> = None;
+    let mut min_release_age_days = min_release_age_days_from_env(sys);
 
     for kv_or_section in kv_or_sections {
       match kv_or_section {
@@ -252,6 +252,19 @@ impl NpmRc {
       url = &url[..next_slash_index + 1];
     }
   }
+}
+
+pub fn min_release_age_days_from_env(sys: &impl EnvVar) -> Option<u64> {
+  for env_var_name in
+    ["NPM_CONFIG_MIN_RELEASE_AGE", "npm_config_min_release_age"]
+  {
+    if let Ok(value) = sys.env_var(env_var_name)
+      && let Ok(days) = value.trim().parse::<u64>()
+    {
+      return Some(days);
+    }
+  }
+  None
 }
 
 fn get_scope_name(package_name: &str) -> Option<&str> {
@@ -851,6 +864,16 @@ registry=${VAR_FOUND}
     sys.env_set_var("MIN_AGE", "7");
     let npm_rc = NpmRc::parse(&sys, "min-release-age=${MIN_AGE}").unwrap();
     assert_eq!(npm_rc.min_release_age_days, Some(7));
+
+    // npm config environment variable
+    let sys = InMemorySys::default();
+    sys.env_set_var("NPM_CONFIG_MIN_RELEASE_AGE", "4");
+    let npm_rc = NpmRc::parse(&sys, "").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, Some(4));
+
+    // .npmrc value takes precedence over the environment fallback.
+    let npm_rc = NpmRc::parse(&sys, "min-release-age=5").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, Some(5));
   }
 
   #[test]
