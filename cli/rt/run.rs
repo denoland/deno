@@ -1341,6 +1341,7 @@ pub async fn run_with_options(
         scopes: Default::default(),
         registry_configs: Default::default(),
         min_release_age_days: None,
+        trust_policy: Default::default(),
       });
       let npm_cache_dir = Arc::new(NpmCacheDir::new(
         &sys,
@@ -1898,6 +1899,7 @@ fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
     scopes: Default::default(),
     registry_configs: Default::default(),
     min_release_age_days: None,
+    trust_policy: Default::default(),
   })
 }
 
