@@ -104,6 +104,19 @@ impl StorageKeyResolver {
     Self(StorageKeyResolverStrategy::Specified(Some(url.to_string())))
   }
 
+  /// Storage key for a compiled binary. Keyed by the stable app name so each
+  /// app gets a single persistent store, independent of the main module URL
+  /// (which is not stable across differently named binaries). The `app:`
+  /// prefix namespaces this key from URL-derived keys so a compiled app and a
+  /// `deno run` of the same origin can't collide in the shared, temp-backed
+  /// `caches` directory (which is keyed by the hash of this string rather than
+  /// by the per-app data directory).
+  pub fn from_compile_app_name(app_name: &str) -> Self {
+    Self(StorageKeyResolverStrategy::Specified(Some(format!(
+      "app:{app_name}"
+    ))))
+  }
+
   pub fn new_use_main_module() -> Self {
     Self(StorageKeyResolverStrategy::UseMainModule)
   }

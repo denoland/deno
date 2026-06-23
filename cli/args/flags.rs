@@ -2383,6 +2383,16 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .help_heading(COMPILE_HEADING),
       )
       .arg(
+        Arg::new("app-name")
+          .long("app-name")
+          .help(cstr!("Stable identity for the compiled app.
+  <p(245)>Determines where origin-bound storage such as the default `Deno.openKv()`,
+  `localStorage` and `caches` is persisted (under the platform's app data directory).
+  Defaults to the output file name. Set this to keep storage stable across renames.</>"))
+          .value_parser(value_parser!(String))
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
         Arg::new("minify")
           .long("minify")
           .help(cstr!("<y>Experimental.</> Minify the bundled output. Only meaningful with <c>--bundle</>.
@@ -6807,6 +6817,7 @@ fn compile_parse(
   let eszip = matches.get_flag("eszip-internal-do-not-use");
   let self_extracting = matches.get_flag("self-extracting");
   let bundle = matches.get_flag("bundle");
+  let app_name = matches.remove_one::<String>("app-name");
   let minify = matches.get_flag("minify");
   let exclude_unused_npm = matches.get_flag("exclude-unused-npm");
   let include = matches
@@ -6834,6 +6845,7 @@ fn compile_parse(
     eszip,
     self_extracting,
     bundle,
+    app_name,
     minify,
     exclude_unused_npm,
   });
@@ -13879,6 +13891,7 @@ mod tests {
           eszip: false,
           self_extracting: false,
           bundle: false,
+          app_name: None,
           minify: false,
           exclude_unused_npm: false,
         }),
@@ -13941,6 +13954,7 @@ mod tests {
           eszip: false,
           self_extracting: false,
           bundle: false,
+          app_name: None,
           minify: false,
           exclude_unused_npm: false,
         }),
@@ -13972,6 +13986,7 @@ mod tests {
           eszip: false,
           self_extracting: false,
           bundle: false,
+          app_name: None,
           minify: false,
           exclude_unused_npm: false,
         }),
@@ -16915,6 +16930,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
           eszip: false,
           self_extracting: false,
           bundle: false,
+          app_name: None,
           minify: false,
           exclude_unused_npm: false,
         }),

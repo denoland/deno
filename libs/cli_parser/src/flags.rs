@@ -178,6 +178,10 @@ pub struct CompileFlags {
   /// Bundle the entrypoint with esbuild before embedding it, instead of
   /// shipping the entire node_modules tree. Experimental.
   pub bundle: bool,
+  /// Stable identity for the compiled app. Determines where origin-bound
+  /// storage (default `Deno.openKv()`, `localStorage`, `caches`) is persisted.
+  /// Defaults to the output file name when not set.
+  pub app_name: Option<String>,
   /// Minify the bundle. Only meaningful with `bundle: true`.
   pub minify: bool,
   /// Prune the embedded managed npm snapshot to only those packages reachable
