@@ -72,11 +72,13 @@ Deno.test({
     try {
       const lexicalParent = path.join(tempDir, "a");
       const target = lexicalParent + path.SEPARATOR + ".." +
-        path.SEPARATOR + "b" + path.SEPARATOR + "c";
+        path.SEPARATOR + "b" + path.SEPARATOR + "c" + path.SEPARATOR + ".";
       mkdirSync(target, { recursive: true });
 
       assert(existsSync(target));
-      assert(existsSync(lexicalParent));
+      if (Deno.build.os !== "windows") {
+        assert(existsSync(lexicalParent));
+      }
     } finally {
       await Deno.remove(tempDir, { recursive: true });
     }

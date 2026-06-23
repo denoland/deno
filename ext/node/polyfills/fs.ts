@@ -238,6 +238,7 @@ const {
   RegExpPrototypeTest,
   SafeMap,
   StringPrototypeCharCodeAt,
+  StringPrototypeSlice,
   StringPrototypeToString,
   SymbolAsyncIterator,
   SymbolDispose,
@@ -1976,7 +1977,7 @@ function stripTrailingCurrentDirSegments(path: string): string {
       end--;
     }
   }
-  return end === path.length ? path : path.slice(0, end) || path;
+  return end === path.length ? path : StringPrototypeSlice(path, 0, end) || path;
 }
 
 type MkdirOptions =
