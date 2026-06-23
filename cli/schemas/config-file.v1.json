@@ -890,6 +890,11 @@
           "default": true,
           "type": "boolean"
         },
+        "useEditorConfig": {
+          "description": "Whether `deno fmt` reads `.editorconfig` files to fill in formatting options that are not otherwise set. Defaults to true.",
+          "default": true,
+          "type": "boolean"
+        },
         "options": {
           "type": "object",
           "properties": {
@@ -967,6 +972,10 @@
     },
     "jsrDepsInNodeModules": {
       "description": "Installs `jsr:` dependencies into the `node_modules` directory via JSR's npm compatibility registry (`@jsr/<scope>__<name>`), the same way pnpm and npm handle JSR packages. When enabled Deno also writes a `@jsr:registry` entry to a `.npmrc` file so external tooling can resolve these packages. Requires a `node_modules` directory.",
+      "type": "boolean"
+    },
+    "preferPackageJson": {
+      "description": "When enabled, `deno add`, `deno install` and `deno remove` manage dependencies in package.json instead of deno.json, creating a package.json if one does not exist. Equivalent to passing `--package-json` to those commands.",
       "type": "boolean"
     },
     "tasks": {

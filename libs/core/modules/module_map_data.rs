@@ -341,6 +341,26 @@ impl ModuleMapData {
     );
   }
 
+  /// Register an additional `(name, requested_module_type) -> module_id`
+  /// mapping for a module that was already registered under a different
+  /// requested module type. Used to make modules visible to imports whose
+  /// `with { type: ... }` attribute doesn't match the loaded module's
+  /// actual type — for example when a `module.registerHooks()` load hook
+  /// returns `format: "module"` for an import with a custom type
+  /// attribute like `with { type: "x-css" }`.
+  pub(crate) fn register_under_type(
+    &mut self,
+    name: FastString,
+    requested_module_type: &RequestedModuleType,
+    module_id: ModuleId,
+  ) {
+    self.by_name.insert(
+      requested_module_type,
+      name,
+      SymbolicModule::Mod(module_id),
+    );
+  }
+
   #[cfg(test)]
   pub(crate) fn is_alias(
     &self,

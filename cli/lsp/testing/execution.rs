@@ -338,6 +338,7 @@ impl TestRun {
               // and they'd generate noise in the test gutter.
               sanitize_ops: false,
               sanitize_resources: false,
+              update_snapshots: false,
             },
           ))
         }
@@ -448,6 +449,8 @@ impl TestRun {
             test::TestEvent::Completed => {
               reporter.report_completed();
             }
+            // LSP-driven test runs never use `--update-snapshots`.
+            test::TestEvent::SnapshotSummary(_) => {}
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
             test::TestEvent::Exit(_) => {}

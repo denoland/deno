@@ -80,8 +80,13 @@ DIAGNOSTIC: this subtest should make its parent test fail
 subtest sync throw fail ... FAILED (due to 1 failed step) ([WILDLINE])
 sync throw non-error fail ... FAILED ([WILDLINE])
 level 0a ...
-  level 1a ... INCOMPLETE
-level 0a ... FAILED ([WILDLINE])
+[UNORDERED_START]
+  level 1a ... ok ([WILDLINE])
+  level 1b ... ok ([WILDLINE])
+  level 1c ... ok ([WILDLINE])
+  level 1d ... ok ([WILDLINE])
+[UNORDERED_END]
+level 0a ... ok ([WILDLINE])
 top level ...
   +long running ... INCOMPLETE
   +short running ...
@@ -147,6 +152,6 @@ rejected thenable => ./test.js:455:1
 unfinished test with uncaughtException => ./test.js:466:1
 unfinished test with unhandledRejection => ./test.js:474:1
 
-FAILED | 40 passed (23 steps) | 22 failed (12 steps) | 7 ignored ([WILDLINE])
+FAILED | 41 passed (27 steps) | 21 failed (11 steps) | 7 ignored ([WILDLINE])
 
 error: Test failed
