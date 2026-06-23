@@ -256,6 +256,10 @@ pub enum WorkspaceDiagnosticKind {
     "Invalid version requirement '{version_req}' for catalog entry '{name}'."
   )]
   InvalidCatalogVersionReq { name: String, version_req: String },
+  #[error(
+    "\"imports\" and \"scopes\" in the config file are ignored for dependency management when \"preferPackageJson\" is enabled. Move these dependencies to package.json."
+  )]
+  PreferPackageJsonWithImports,
 }
 
 #[derive(Debug, Error, JsError, Clone, PartialEq, Eq)]
@@ -1283,6 +1287,12 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("allowScripts"),
         });
       }
+      if member_config.json.prefer_package_json.is_some() {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("preferPackageJson"),
+        });
+      }
       if let Some(value) = &member_config.json.lint
         && value.get("report").is_some()
       {
@@ -1291,6 +1301,16 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("lint.report"),
         });
       }
+    }
+
+    // Whether the config's `imports`/`scopes` contain `npm:`/`jsr:`
+    // dependency specifiers. Path-alias imports (e.g. `"#/": "./src/"`)
+    // can't move to package.json, so they shouldn't trigger the
+    // `preferPackageJson` warning.
+    fn has_dependency_imports(config: &ConfigFile) -> bool {
+      crate::import_map::imports_values(config.json.imports.as_ref())
+        .chain(crate::import_map::scope_values(config.json.scopes.as_ref()))
+        .any(|value| crate::import_map::value_to_dep_req(value).is_some())
     }
 
     fn check_all_configs(
@@ -1427,6 +1447,19 @@ impl Workspace {
             self.root_deno_json().map(|r| r.as_ref()),
             &mut diagnostics,
           );
+        }
+
+        // `preferPackageJson` is a root-only setting, so only warn about
+        // lingering dependency imports on the root config. Members that set it
+        // get a `RootOnlyOption` diagnostic instead.
+        if is_root
+          && config.json.prefer_package_json == Some(true)
+          && has_dependency_imports(config)
+        {
+          diagnostics.push(WorkspaceDiagnostic {
+            config_url: config.specifier.clone(),
+            kind: WorkspaceDiagnosticKind::PreferPackageJsonWithImports,
+          });
         }
 
         check_all_configs(config, &mut diagnostics);
@@ -1719,6 +1752,17 @@ impl Workspace {
   pub fn has_unstable(&self, name: &str) -> bool {
     self
       .with_root_config_only(|deno_json| deno_json.has_unstable(name))
+      .unwrap_or(false)
+  }
+
+  /// Whether dependencies should be managed via `package.json` rather than
+  /// `deno.json`, as configured by the `preferPackageJson` field in the root
+  /// `deno.json`.
+  pub fn prefer_package_json(&self) -> bool {
+    self
+      .with_root_config_only(|deno_json| {
+        deno_json.json.prefer_package_json.unwrap_or(false)
+      })
       .unwrap_or(false)
   }
 
@@ -4623,6 +4667,77 @@ pub mod test {
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::PkgJsonRootOnlyOption("overrides"),
         config_url: url_from_file_path(&root_dir().join("member/package.json"))
+          .unwrap(),
+      }]
+    );
+  }
+
+  #[test]
+  fn test_prefer_package_json_imports_warning() {
+    fn diagnostics_for(value: serde_json::Value) -> Vec<WorkspaceDiagnostic> {
+      let sys = InMemorySys::default();
+      sys.fs_insert_json(root_dir().join("deno.json"), value);
+      workspace_at_start_dir(&sys, &root_dir())
+        .workspace
+        .diagnostics()
+    }
+
+    let expected = vec![WorkspaceDiagnostic {
+      kind: WorkspaceDiagnosticKind::PreferPackageJsonWithImports,
+      config_url: url_from_file_path(&root_dir().join("deno.json")).unwrap(),
+    }];
+
+    // A `jsr:`/`npm:` dependency specifier in `imports` triggers the warning.
+    assert_eq!(
+      diagnostics_for(json!({
+        "preferPackageJson": true,
+        "imports": { "@std/assert": "jsr:@std/assert@^1" }
+      })),
+      expected
+    );
+    // A dependency specifier nested in `scopes` also triggers it.
+    assert_eq!(
+      diagnostics_for(json!({
+        "preferPackageJson": true,
+        "scopes": { "./sub/": { "chalk": "npm:chalk@5" } }
+      })),
+      expected
+    );
+    // Path-alias imports can't move to package.json, so they don't warn.
+    assert_eq!(
+      diagnostics_for(json!({
+        "preferPackageJson": true,
+        "imports": { "#utils": "./utils.ts", "@/": "./src/" }
+      })),
+      vec![]
+    );
+    // No warning when the setting is off.
+    assert_eq!(
+      diagnostics_for(json!({
+        "imports": { "@std/assert": "jsr:@std/assert@^1" }
+      })),
+      vec![]
+    );
+  }
+
+  #[test]
+  fn test_prefer_package_json_member_root_only() {
+    // `preferPackageJson` on a member is ignored (the setting is read from the
+    // root only), so it surfaces a `RootOnlyOption` diagnostic. The lingering
+    // imports warning must not fire on the member, since the setting has no
+    // effect there.
+    let workspace_dir = workspace_for_root_and_member(
+      json!({}),
+      json!({
+        "preferPackageJson": true,
+        "imports": { "@std/assert": "jsr:@std/assert@^1" }
+      }),
+    );
+    assert_eq!(
+      workspace_dir.workspace.diagnostics(),
+      vec![WorkspaceDiagnostic {
+        kind: WorkspaceDiagnosticKind::RootOnlyOption("preferPackageJson"),
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );
