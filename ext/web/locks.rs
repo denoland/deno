@@ -30,6 +30,9 @@ struct HeldLock {
   mode: LockMode,
   id: u64,
   client_id: String,
+  // Fires when the lock is stolen, so the holder's `request()` promise can
+  // reject with an AbortError. `None` until the holder starts awaiting it.
+  broken_tx: Option<oneshot::Sender<()>>,
 }
 
 struct PendingRequest {
@@ -94,6 +97,7 @@ fn process_queue(state: &mut LockState, name: &str) {
         mode: request.mode,
         id: request.id,
         client_id: request.client_id,
+        broken_tx: None,
       });
     }
     // If send fails (receiver dropped / cancelled), skip this request
@@ -120,6 +124,22 @@ fn cancel_request(state: &mut LockState, id: u64) {
 // Resource for a held lock — releases the lock on drop
 struct HeldLockResource {
   id: u64,
+  // Resolves when the lock is stolen (see `op_lock_manager_await_steal`).
+  broken_rx: RefCell<Option<oneshot::Receiver<()>>>,
+}
+
+// Sets up the steal-notification channel for a freshly granted lock: the
+// sender is stored on the held lock in the global state and the receiver is
+// stored on the resource handed back to the holder.
+fn make_held_lock_resource(state: &mut LockState, id: u64) -> HeldLockResource {
+  let (tx, rx) = oneshot::channel();
+  if let Some(held) = state.held.iter_mut().find(|h| h.id == id) {
+    held.broken_tx = Some(tx);
+  }
+  HeldLockResource {
+    id,
+    broken_rx: RefCell::new(Some(rx)),
+  }
 }
 
 impl Drop for HeldLockResource {
@@ -181,14 +201,17 @@ pub fn op_lock_manager_request(
   let id = ls.counter;
 
   if steal {
-    // Remove all held locks for this name
-    ls.held.retain(|h| h.name != name);
-    // Reject all pending requests for this name
-    if let Some(queue) = ls.queues.get_mut(&name) {
-      for req in queue.drain(..) {
-        let _ = req.tx.send(false);
+    // Notify the current holders that their lock has been broken, then remove
+    // all held locks for this name. The holders' `request()` promises reject
+    // with an AbortError. Pending requests are left untouched: the stealing
+    // request jumps to the front of the queue (below) and is granted ahead of
+    // them, but they remain queued and are granted once the steal is released.
+    for held in ls.held.iter_mut().filter(|h| h.name == name) {
+      if let Some(tx) = held.broken_tx.take() {
+        let _ = tx.send(());
       }
     }
+    ls.held.retain(|h| h.name != name);
   } else if if_available && !grantable(&ls.held, &name, mode) {
     return LockRequestResult { status: 2, rid: 0 };
   }
@@ -221,8 +244,9 @@ pub fn op_lock_manager_request(
   // through the oneshot before we check)
   match rx.try_recv() {
     Ok(true) => {
+      let resource = make_held_lock_resource(&mut ls, id);
       drop(ls);
-      let rid = state.resource_table.add(HeldLockResource { id });
+      let rid = state.resource_table.add(resource);
       LockRequestResult { status: 0, rid }
     }
     _ => {
@@ -262,14 +286,39 @@ pub async fn op_lock_manager_await_lock(
     .take::<PendingLockResource>(rid);
 
   if granted {
-    let held_rid = state
-      .borrow_mut()
-      .resource_table
-      .add(HeldLockResource { id: lock_id });
+    let resource = {
+      let mut ls = LOCK_STATE.lock().unwrap();
+      make_held_lock_resource(&mut ls, lock_id)
+    };
+    let held_rid = state.borrow_mut().resource_table.add(resource);
     Some(held_rid)
   } else {
     None
   }
+}
+
+/// Async op: resolves while a held lock is alive. Returns `true` if the lock
+/// was stolen (the holder's `request()` promise must reject with AbortError),
+/// or `false` when the lock is released normally. Keeping this op pending also
+/// keeps the event loop alive for as long as the lock is held.
+#[op2]
+pub async fn op_lock_manager_await_steal(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> bool {
+  let rx = {
+    let state = state.borrow();
+    let Ok(held) = state.resource_table.get::<HeldLockResource>(rid) else {
+      return false;
+    };
+    let Some(rx) = held.broken_rx.borrow_mut().take() else {
+      return false;
+    };
+    rx
+  };
+  // `Ok(())` means the lock was stolen; `Err(_)` means the sender was dropped
+  // because the lock was released normally.
+  rx.await.is_ok()
 }
 
 /// Cancels a pending lock request (used by AbortSignal).
