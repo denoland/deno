@@ -2509,7 +2509,7 @@ supported framework (Next.js, Astro, etc.) in the current directory.
           .long("backend")
           .help("Backend to use for the desktop app")
           .value_parser(["webview", "cef", "raw"])
-          .default_value("cef")
+          .default_value("webview")
           .help_heading(DESKTOP_HEADING),
       )
       .arg(
@@ -13837,6 +13837,29 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn desktop_backend_default() {
+    let r = flags_from_vec(svec!["deno", "desktop", "main.tsx"]);
+    let flags = r.unwrap();
+    let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    assert_eq!(desktop.source_file, "main.tsx");
+    // The UI backend defaults to webview.
+    assert_eq!(desktop.backend.as_deref(), Some("webview"));
+  }
+
+  #[test]
+  fn desktop_backend_explicit() {
+    let r =
+      flags_from_vec(svec!["deno", "desktop", "--backend", "cef", "main.tsx"]);
+    let flags = r.unwrap();
+    let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    assert_eq!(desktop.backend.as_deref(), Some("cef"));
   }
 
   #[test]
