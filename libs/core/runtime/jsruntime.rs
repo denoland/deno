@@ -967,15 +967,12 @@ impl JsRuntime {
     // threads can queue foreground tasks. The task queue Arc is already shared
     // with JsRuntimeState (created above) so the event loop can drain it
     // without touching the global map.
-    // Not all contexts have a tokio runtime (e.g. snapshot creation, unit tests).
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-      setup::register_isolate(
-        setup::isolate_ptr_to_key(isolate_ptr),
-        waker.clone(),
-        handle,
-        state_rc.foreground_tasks.clone(),
-      );
-    }
+    setup::register_isolate(
+      setup::isolate_ptr_to_key(isolate_ptr),
+      waker.clone(),
+      tokio::runtime::Handle::try_current().ok(),
+      state_rc.foreground_tasks.clone(),
+    );
 
     // ...isolate is fully set up, we can forward its pointer to the ops to finish
     // their' setup...
@@ -1677,6 +1674,7 @@ impl JsRuntime {
       error_constructors,
       run_immediate_callbacks_cb,
       wasm_instance_fn,
+      wasm_instances_map,
     ) = {
       scope!(scope, self);
       let context = realm.context();
@@ -1725,6 +1723,7 @@ impl JsRuntime {
         "Deno.core.runImmediateCallbacks",
       );
       let mut wasm_instance_fn = None;
+      let mut wasm_instances_map = None;
       if !will_snapshot {
         let key = WEBASSEMBLY.v8_string(scope).unwrap();
         if let Some(web_assembly_obj_value) = global.get(scope, key.into()) {
@@ -1737,6 +1736,13 @@ impl JsRuntime {
               INSTANCE,
               "WebAssembly.Instance",
             ));
+            // Registry mapping a Wasm module's namespace to its instance
+            // exports, shared by all synthetic `.wasm` modules in this realm
+            // via `import.meta.wasmInstances`. See `ContextState` for details.
+            let weak_map_fn = bindings::get::<v8::Local<v8::Function>>(
+              scope, global, WEAK_MAP, "WeakMap",
+            );
+            wasm_instances_map = weak_map_fn.new_instance(scope, &[]);
           }
         }
       }
@@ -1890,6 +1896,7 @@ impl JsRuntime {
         v8::Global::new(scope, error_constructors),
         v8::Global::new(scope, run_immediate_callbacks_cb),
         wasm_instance_fn.map(|f| v8::Global::new(scope, f)),
+        wasm_instances_map.map(|m| v8::Global::new(scope, m)),
       )
     };
 
@@ -1926,6 +1933,12 @@ impl JsRuntime {
         .wasm_instance_fn
         .borrow_mut()
         .replace(wasm_instance_fn);
+    }
+    if let Some(wasm_instances_map) = wasm_instances_map {
+      state_rc
+        .wasm_instances_map
+        .borrow_mut()
+        .replace(wasm_instances_map);
     }
   }
 
