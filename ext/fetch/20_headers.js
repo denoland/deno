@@ -3,6 +3,7 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const {
+  ArrayFrom,
   ArrayIsArray,
   ArrayPrototypePush,
   ArrayPrototypeSort,
@@ -11,6 +12,7 @@ const {
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
+  SafeArrayIterator,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -609,7 +611,7 @@ class Headers {
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     if (ObjectPrototypeIsPrototypeOf(HeadersPrototype, this)) {
       const headers = {};
-      for (const entry of this) {
+      for (const entry of new SafeArrayIterator(ArrayFrom(this))) {
         const name = entry[0];
         let value = entry[1];
         if (ObjectHasOwn(headers, name)) {
