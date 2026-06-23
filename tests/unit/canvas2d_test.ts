@@ -1423,3 +1423,184 @@ Deno.test(function canvas2dIsPointInStrokeWithPath2D() {
   assertEquals(ctx.isPointInStroke(path, 20, 20), true);
   assertEquals(ctx.isPointInStroke(path, 50, 50), false);
 });
+
+// --- Gradients and patterns ---
+
+Deno.test(function canvas2dCanvasGradientExists() {
+  assert(globalThis.CanvasGradient !== undefined);
+  assertEquals(
+    typeof globalThis.CanvasGradient.prototype.addColorStop,
+    "function",
+  );
+});
+
+Deno.test(function canvas2dCanvasPatternExists() {
+  assert(globalThis.CanvasPattern !== undefined);
+  assertEquals(
+    typeof globalThis.CanvasPattern.prototype.setTransform,
+    "function",
+  );
+});
+
+Deno.test(function canvas2dCanvasGradientIllegalConstructor() {
+  // @ts-ignore: testing illegal constructor
+  assertThrows(() => new CanvasGradient(), TypeError);
+});
+
+Deno.test(function canvas2dCanvasPatternIllegalConstructor() {
+  // @ts-ignore: testing illegal constructor
+  assertThrows(() => new CanvasPattern(), TypeError);
+});
+
+Deno.test(function canvas2dCreateLinearGradient() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 10, 10);
+  assert(g instanceof globalThis.CanvasGradient);
+});
+
+Deno.test(function canvas2dCreateRadialGradient() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const g = ctx.createRadialGradient(0, 0, 1, 5, 5, 5);
+  assert(g instanceof globalThis.CanvasGradient);
+});
+
+Deno.test(function canvas2dCreateConicGradient() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const g = ctx.createConicGradient(0, 5, 5);
+  assert(g instanceof globalThis.CanvasGradient);
+});
+
+Deno.test(function canvas2dCreateLinearGradientNonFiniteThrows() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  assertThrows(
+    () => ctx.createLinearGradient(0, 0, NaN, 10),
+    TypeError,
+  );
+});
+
+Deno.test(function canvas2dAddColorStopValid() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 10, 0);
+  g.addColorStop(0, "#f00");
+  g.addColorStop(1, "blue");
+});
+
+Deno.test(function canvas2dAddColorStopInvalidOffsetThrows() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 10, 0);
+  assertThrows(() => g.addColorStop(-1, "#000"), DOMException);
+  assertThrows(() => g.addColorStop(2, "#000"), DOMException);
+});
+
+Deno.test(function canvas2dAddColorStopNonFiniteThrows() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 10, 0);
+  assertThrows(() => g.addColorStop(NaN, "#000"), TypeError);
+  assertThrows(() => g.addColorStop(Infinity, "#000"), TypeError);
+});
+
+Deno.test(function canvas2dAddColorStopInvalidColorThrows() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 10, 0);
+  assertThrows(() => g.addColorStop(0.5, "not-a-color"), DOMException);
+});
+
+Deno.test(function canvas2dFillStyleGradientRoundTrip() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 10, 0);
+  g.addColorStop(0, "#f00");
+  g.addColorStop(1, "#00f");
+  ctx.fillStyle = g;
+  assert((ctx.fillStyle as unknown) === g);
+});
+
+Deno.test(function canvas2dStrokeStyleGradientRoundTrip() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const g = ctx.createRadialGradient(0, 0, 1, 5, 5, 5);
+  ctx.strokeStyle = g;
+  assert((ctx.strokeStyle as unknown) === g);
+});
+
+Deno.test(function canvas2dFillStyleGradientSaveRestore() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 10, 0);
+  ctx.fillStyle = g;
+  ctx.save();
+  ctx.fillStyle = "red";
+  ctx.restore();
+  assert((ctx.fillStyle as unknown) === g);
+});
+
+Deno.test(function canvas2dFillStyleInvalidGradientIgnored() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 10, 0);
+  ctx.fillStyle = g;
+  // @ts-expect-error: invalid fillStyle value
+  ctx.fillStyle = {};
+  assert((ctx.fillStyle as unknown) === g);
+});
+
+Deno.test(function canvas2dCreatePatternNullImageThrows() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  assertThrows(
+    // @ts-expect-error: null is not a valid CanvasImageSource
+    () => ctx.createPattern(null, "repeat"),
+    TypeError,
+  );
+});
+
+Deno.test(function canvas2dCreatePatternUndefinedRepetitionThrows() {
+  const canvas = new OffscreenCanvas(2, 2);
+  const ctx = canvas.getContext("2d")!;
+  assertThrows(
+    // @ts-expect-error: undefined repetition throws SyntaxError
+    () => ctx.createPattern(canvas, undefined),
+    DOMException,
+  );
+});
+
+Deno.test(function canvas2dCreatePatternNullRepetition() {
+  const canvas = new OffscreenCanvas(2, 2);
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#f00";
+  ctx.fillRect(0, 0, 2, 2);
+  const pattern = ctx.createPattern(canvas, null);
+  assert(pattern instanceof globalThis.CanvasPattern);
+});
+
+Deno.test(function canvas2dCreatePatternEmptyRepetition() {
+  const canvas = new OffscreenCanvas(2, 2);
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#0f0";
+  ctx.fillRect(0, 0, 2, 2);
+  const pattern = ctx.createPattern(canvas, "");
+  assert(pattern instanceof globalThis.CanvasPattern);
+});
+
+Deno.test(function canvas2dCreatePatternInvalidRepetitionThrows() {
+  const canvas = new OffscreenCanvas(2, 2);
+  const ctx = canvas.getContext("2d")!;
+  assertThrows(
+    () => ctx.createPattern(canvas, "invalid"),
+    DOMException,
+  );
+});
+
+Deno.test(function canvas2dFillStylePatternRoundTrip() {
+  const canvas = new OffscreenCanvas(2, 2);
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#00f";
+  ctx.fillRect(0, 0, 2, 2);
+  const pattern = ctx.createPattern(canvas, "repeat")!;
+  ctx.fillStyle = pattern;
+  assert((ctx.fillStyle as unknown) === pattern);
+});
+
+Deno.test(function canvas2dPatternSetTransform() {
+  const canvas = new OffscreenCanvas(2, 2);
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#f00";
+  ctx.fillRect(0, 0, 2, 2);
+  const pattern = ctx.createPattern(canvas, "repeat")!;
+  pattern.setTransform({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
+});

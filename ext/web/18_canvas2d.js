@@ -9,6 +9,8 @@ const {
   op_fontdb_remove,
   op_fontdb_unload,
   op_parse_css_font_query,
+  CanvasGradient,
+  CanvasPattern,
   OffscreenCanvasRenderingContext2D,
   Path2D,
   TextMetrics,
@@ -1146,6 +1148,8 @@ defineEventHandler(FontFaceSetPrototype, "loadingdone");
 defineEventHandler(FontFaceSetPrototype, "loadingerror");
 
 webidl.configureInterface(TextMetrics);
+webidl.configureInterface(CanvasGradient);
+webidl.configureInterface(CanvasPattern);
 webidl.configureInterface(OffscreenCanvasRenderingContext2D);
 webidl.configureInterface(Path2D);
 
@@ -1235,6 +1239,8 @@ function loadSystemFonts() {
 }
 
 return {
+  CanvasGradient,
+  CanvasPattern,
   OffscreenCanvasRenderingContext2D,
   Path2D,
   FontFace,
