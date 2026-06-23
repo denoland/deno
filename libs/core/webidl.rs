@@ -298,12 +298,6 @@ crate::v8_static_strings! {
   VALUE = "value",
 }
 
-thread_local! {
-  static NEXT_ETERNAL: v8::Eternal<v8::String> = v8::Eternal::empty();
-  static DONE_ETERNAL: v8::Eternal<v8::String> = v8::Eternal::empty();
-  static VALUE_ETERNAL: v8::Eternal<v8::String> = v8::Eternal::empty();
-}
-
 // helper for iterating over a sequence
 fn for_each_in_sequence<'a, 'b, 'i>(
   scope: &mut v8::PinScope<'a, 'i>,
@@ -340,46 +334,28 @@ fn for_each_in_sequence<'a, 'b, 'i>(
     ));
   };
 
-  let next_key = NEXT_ETERNAL
-    .with(|eternal| {
-      if let Some(key) = eternal.get(scope) {
-        Ok(key)
-      } else {
-        let key = NEXT.v8_string(scope).map_err(|e| {
-          WebIdlError::other(prefix.clone(), context.borrowed(), e)
-        })?;
-        eternal.set(scope, key);
-        Ok(key)
-      }
-    })?
+  // These keys must be materialized fresh for the current isolate on every
+  // call. They were previously cached in a `thread_local` `v8::Eternal`, but an
+  // `Eternal` handle is scoped to the isolate that created it. In `deno test`
+  // each test file runs in its own isolate, and those isolates are created on
+  // reused tokio blocking-pool threads, so a cached handle would dangle into a
+  // disposed isolate once a thread was reused. That manifested as spurious
+  // "can not be converted to a sequence" errors (and occasionally SIGSEGV)
+  // starting from the third test file. Re-creating the strings here is cheap:
+  // they are built once per sequence conversion, not once per element.
+  let next_key = NEXT
+    .v8_string(scope)
+    .map_err(|e| WebIdlError::other(prefix.clone(), context.borrowed(), e))?
     .into();
 
-  let done_key = DONE_ETERNAL
-    .with(|eternal| {
-      if let Some(key) = eternal.get(scope) {
-        Ok(key)
-      } else {
-        let key = DONE.v8_string(scope).map_err(|e| {
-          WebIdlError::other(prefix.clone(), context.borrowed(), e)
-        })?;
-        eternal.set(scope, key);
-        Ok(key)
-      }
-    })?
+  let done_key = DONE
+    .v8_string(scope)
+    .map_err(|e| WebIdlError::other(prefix.clone(), context.borrowed(), e))?
     .into();
 
-  let value_key = VALUE_ETERNAL
-    .with(|eternal| {
-      if let Some(key) = eternal.get(scope) {
-        Ok(key)
-      } else {
-        let key = VALUE.v8_string(scope).map_err(|e| {
-          WebIdlError::other(prefix.clone(), context.borrowed(), e)
-        })?;
-        eternal.set(scope, key);
-        Ok(key)
-      }
-    })?
+  let value_key = VALUE
+    .v8_string(scope)
+    .map_err(|e| WebIdlError::other(prefix.clone(), context.borrowed(), e))?
     .into();
 
   let mut len = 0;
