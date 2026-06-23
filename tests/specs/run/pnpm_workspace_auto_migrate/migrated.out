@@ -2,4 +2,4 @@ error: Could not find package.json with name '@denotest/lib' in workspace.
     at file:///[WILDCARD]/main.ts:1:23
 
 warning: Found pnpm-workspace.yaml nearby, which Deno does not read directly.
-hint: Migrated its workspace configuration into [WILDLINE]deno.json. Run the command again.
+hint: Migrated its workspace configuration into [WILDLINE]package.json. Run the command again.

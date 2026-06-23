@@ -106,23 +106,24 @@ fn auto_migrate(
   let parsed = parse_pnpm_workspace(&yaml_text)
     .with_context(|| format!("Parsing '{}'", yaml_path.display()))?;
 
-  let deno_json_path = pick_deno_json_path(dir);
-  let Some(new_contents) = apply_to_deno_json(&deno_json_path, &parsed)? else {
+  let (config_path, config_kind) = pick_target_config(dir);
+  let Some(new_contents) = apply_to_config(&config_path, config_kind, &parsed)?
+  else {
     return Ok(None);
   };
-  std::fs::write(&deno_json_path, new_contents)
-    .with_context(|| format!("Writing '{}'", deno_json_path.display()))?;
+  std::fs::write(&config_path, new_contents)
+    .with_context(|| format!("Writing '{}'", config_path.display()))?;
 
   let mut message = format!(
     "\n\n{} Found {} nearby, which Deno does not read directly.\n{} Migrated its workspace configuration into {}. Run the command again.",
     colors::yellow("warning:"),
     colors::cyan("pnpm-workspace.yaml"),
     colors::intense_blue("hint:"),
-    colors::cyan(deno_json_path.display().to_string()),
+    colors::cyan(config_path.display().to_string()),
   );
   if !parsed.unsupported_keys.is_empty() {
     message.push_str(&format!(
-      "\n{} these pnpm-workspace.yaml keys have no deno.json equivalent and were not migrated: {}",
+      "\n{} these pnpm-workspace.yaml keys have no equivalent in Deno and were not migrated: {}",
       colors::yellow("note:"),
       parsed.unsupported_keys.join(", "),
     ));
@@ -143,20 +144,47 @@ fn find_pnpm_workspace(start: &Path) -> Option<PathBuf> {
   None
 }
 
-fn pick_deno_json_path(dir: &Path) -> PathBuf {
-  let jsonc = dir.join("deno.jsonc");
-  if jsonc.is_file() {
-    return jsonc;
-  }
-  dir.join("deno.json")
+/// Which config file the migration writes into. A pnpm project already has a
+/// `package.json`, and Deno reads `workspaces`/`catalog`/`catalogs` from it
+/// natively, so we prefer keeping the project's config there rather than
+/// introducing a `deno.json`. We only fall back to `deno.json`/`deno.jsonc` when
+/// there is no `package.json` next to the `pnpm-workspace.yaml`.
+#[derive(Clone, Copy)]
+enum ConfigKind {
+  PackageJson,
+  DenoConfig,
 }
 
-/// Merges the parsed pnpm workspace into an existing `deno.json` (preserving
+impl ConfigKind {
+  /// The key that holds the workspace member globs in this config file
+  /// (`workspaces` in `package.json`, `workspace` in `deno.json`).
+  fn workspace_key(self) -> &'static str {
+    match self {
+      ConfigKind::PackageJson => "workspaces",
+      ConfigKind::DenoConfig => "workspace",
+    }
+  }
+}
+
+fn pick_target_config(dir: &Path) -> (PathBuf, ConfigKind) {
+  let package_json = dir.join("package.json");
+  if package_json.is_file() {
+    return (package_json, ConfigKind::PackageJson);
+  }
+  let jsonc = dir.join("deno.jsonc");
+  if jsonc.is_file() {
+    return (jsonc, ConfigKind::DenoConfig);
+  }
+  (dir.join("deno.json"), ConfigKind::DenoConfig)
+}
+
+/// Merges the parsed pnpm workspace into an existing config file (preserving
 /// comments and formatting via the jsonc CST) or creates a new one. Fields the
 /// user has already set are left untouched. Returns the new file contents, or
 /// `None` when there is nothing to add (so the caller can avoid a no-op write).
-fn apply_to_deno_json(
+fn apply_to_config(
   path: &Path,
+  kind: ConfigKind,
   parsed: &PnpmWorkspace,
 ) -> Result<Option<String>, AnyError> {
   let existing =
@@ -167,7 +195,8 @@ fn apply_to_deno_json(
 
   let mut changed = false;
 
-  if !parsed.packages.is_empty() && root.get("workspace").is_none() {
+  let workspace_key = kind.workspace_key();
+  if !parsed.packages.is_empty() && root.get(workspace_key).is_none() {
     let array = CstInputValue::Array(
       parsed
         .packages
@@ -175,7 +204,7 @@ fn apply_to_deno_json(
         .map(|p| CstInputValue::String(p.clone()))
         .collect(),
     );
-    root.append("workspace", array);
+    root.append(workspace_key, array);
     changed = true;
   }
 
@@ -422,7 +451,11 @@ mod tests {
       packages: vec!["packages/*".to_string()],
       ..Default::default()
     };
-    assert!(apply_to_deno_json(&path, &parsed).unwrap().is_none());
+    assert!(
+      apply_to_config(&path, ConfigKind::DenoConfig, &parsed)
+        .unwrap()
+        .is_none()
+    );
   }
 
   #[test]
@@ -438,10 +471,47 @@ mod tests {
       catalog,
       ..Default::default()
     };
-    let out = apply_to_deno_json(&path, &parsed).unwrap().unwrap();
+    let out = apply_to_config(&path, ConfigKind::DenoConfig, &parsed)
+      .unwrap()
+      .unwrap();
     assert!(out.contains("\"catalog\""));
     assert!(out.contains("\"react\""));
     // The existing workspace was left as-is (not duplicated).
     assert_eq!(out.matches("\"workspace\"").count(), 1);
+  }
+
+  #[test]
+  fn apply_to_package_json_uses_workspaces_key() {
+    // A pnpm project keeps its config in package.json, so the migration writes
+    // `workspaces` (the package.json key) rather than `workspace`.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("package.json");
+    std::fs::write(&path, "{ \"name\": \"root\" }\n").unwrap();
+    let mut catalog = IndexMap::new();
+    catalog.insert("react".to_string(), "^18.0.0".to_string());
+    let parsed = PnpmWorkspace {
+      packages: vec!["packages/*".to_string()],
+      catalog,
+      ..Default::default()
+    };
+    let out = apply_to_config(&path, ConfigKind::PackageJson, &parsed)
+      .unwrap()
+      .unwrap();
+    assert!(out.contains("\"workspaces\""));
+    assert!(!out.contains("\"workspace\":"));
+    assert!(out.contains("\"packages/*\""));
+    assert!(out.contains("\"catalog\""));
+    // The existing `name` field was preserved.
+    assert!(out.contains("\"name\""));
+  }
+
+  #[test]
+  fn pick_target_prefers_package_json() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("package.json"), "{}\n").unwrap();
+    std::fs::write(dir.path().join("deno.json"), "{}\n").unwrap();
+    let (path, kind) = pick_target_config(dir.path());
+    assert!(matches!(kind, ConfigKind::PackageJson));
+    assert_eq!(path, dir.path().join("package.json"));
   }
 }
