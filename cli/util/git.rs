@@ -3,7 +3,34 @@
 use std::path::Path;
 use std::process::Stdio;
 
+use deno_core::anyhow::anyhow;
+use deno_core::error::AnyError;
 use tokio::process::Command;
+
+/// Run `git` with `args` in `cwd`, returning stdout on success.
+pub fn run_git(cwd: &Path, args: &[&str]) -> Result<String, AnyError> {
+  let output = match std::process::Command::new("git")
+    .current_dir(cwd)
+    .args(args)
+    .output()
+  {
+    Ok(output) => output,
+    Err(err) => {
+      return Err(anyhow!(
+        "Failed to run `git {}`: {err}. Is git installed and on PATH?",
+        args.join(" ")
+      ));
+    }
+  };
+  if !output.status.success() {
+    return Err(anyhow!(
+      "`git {}` failed: {}",
+      args.join(" "),
+      String::from_utf8_lossy(&output.stderr).trim()
+    ));
+  }
+  Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
 
 pub async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
   let bin_name = if cfg!(windows) { "git.exe" } else { "git" };

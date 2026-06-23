@@ -228,6 +228,9 @@ async fn run_subcommand(
     DenoSubcommand::Info(info_flags) => spawn_subcommand(async {
       tools::info::info(Arc::new(flags), info_flags).await
     }),
+    DenoSubcommand::List(list_flags) => spawn_subcommand(async {
+      tools::pm::list(Arc::new(flags), list_flags).await
+    }),
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(Arc::new(flags), install_flags).await
     }),

@@ -1702,6 +1702,7 @@ impl JsRuntime {
       error_constructors,
       run_immediate_callbacks_cb,
       wasm_instance_fn,
+      wasm_instances_map,
     ) = {
       scope!(scope, self);
       let context = realm.context();
@@ -1750,6 +1751,7 @@ impl JsRuntime {
         "Deno.core.runImmediateCallbacks",
       );
       let mut wasm_instance_fn = None;
+      let mut wasm_instances_map = None;
       if !will_snapshot {
         let key = WEBASSEMBLY.v8_string(scope).unwrap();
         if let Some(web_assembly_obj_value) = global.get(scope, key.into()) {
@@ -1762,6 +1764,13 @@ impl JsRuntime {
               INSTANCE,
               "WebAssembly.Instance",
             ));
+            // Registry mapping a Wasm module's namespace to its instance
+            // exports, shared by all synthetic `.wasm` modules in this realm
+            // via `import.meta.wasmInstances`. See `ContextState` for details.
+            let weak_map_fn = bindings::get::<v8::Local<v8::Function>>(
+              scope, global, WEAK_MAP, "WeakMap",
+            );
+            wasm_instances_map = weak_map_fn.new_instance(scope, &[]);
           }
         }
       }
@@ -1915,6 +1924,7 @@ impl JsRuntime {
         v8::Global::new(scope, error_constructors),
         v8::Global::new(scope, run_immediate_callbacks_cb),
         wasm_instance_fn.map(|f| v8::Global::new(scope, f)),
+        wasm_instances_map.map(|m| v8::Global::new(scope, m)),
       )
     };
 
@@ -1951,6 +1961,12 @@ impl JsRuntime {
         .wasm_instance_fn
         .borrow_mut()
         .replace(wasm_instance_fn);
+    }
+    if let Some(wasm_instances_map) = wasm_instances_map {
+      state_rc
+        .wasm_instances_map
+        .borrow_mut()
+        .replace(wasm_instances_map);
     }
   }
 

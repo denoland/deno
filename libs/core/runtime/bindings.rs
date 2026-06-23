@@ -1433,6 +1433,24 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
         return;
       }
     }
+    // Registry of instance exports keyed by module namespace, used so that
+    // Wasm-to-Wasm global imports link against the original
+    // `WebAssembly.Global` object rather than the unwrapped snapshot value.
+    //
+    // Exposed only on `.wasm` modules' `import.meta` (this branch is gated on
+    // `ModuleType::Wasm`), since only the generated `.wasm` source reads it.
+    // The map itself is a per-realm `WeakMap` shared across all of them; Node
+    // keeps the equivalent registry in its translator closure rather than on
+    // `import.meta`, but our synthetic source reads it from `import.meta`.
+    if let Some(m) = state.wasm_instances_map.borrow().as_ref() {
+      let wasm_instances_key = WASM_INSTANCES.v8_string(scope).unwrap();
+      let wasm_instances_val = v8::Local::new(scope, m.clone());
+      meta.create_data_property(
+        scope,
+        wasm_instances_key.into(),
+        wasm_instances_val.into(),
+      );
+    }
   }
 
   let builder =
