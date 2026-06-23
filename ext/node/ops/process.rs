@@ -481,7 +481,11 @@ pub fn op_node_process_setgroups<'a>(
     gids.push(gid);
   }
 
-  nix::unistd::setgroups(&gids)?;
+  let raw: Vec<libc::gid_t> = gids.iter().map(|g| g.as_raw()).collect();
+  // SAFETY: raw holds valid gid_t values; pointer is valid for the call duration.
+  if unsafe { libc::setgroups(raw.len() as _, raw.as_ptr()) } != 0 {
+    return Err(std::io::Error::last_os_error().into());
+  }
 
   Ok(())
 }
