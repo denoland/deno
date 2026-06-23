@@ -327,6 +327,37 @@ impl OffscreenCanvas {
 
     Ok(blob)
   }
+
+  /// Flushes the active context and returns RGBA8 pixels for Canvas 2D createPattern().
+  fn sync_pixels_for_pattern<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, 'a>,
+  ) -> Result<(u32, u32, Vec<u8>), JsErrorBox> {
+    if let Some((id, active_context)) = self.active_context.get() {
+      let active_context_local = v8::Local::new(scope, active_context);
+      let context = get_context(id, scope, active_context_local);
+      match &context {
+        Context::Bitmap(_) => {}
+        Context::Canvas2D(ctx) => {
+          ctx.flush_to_image(&mut self.data.borrow_mut());
+        }
+        Context::WebGPU(ctx) => {
+          ctx.bitmap_read_hook(scope)?;
+        }
+      }
+    }
+
+    let data = self.data.borrow();
+    let (width, height) = data.dimensions();
+    if width == 0 || height == 0 {
+      return Err(JsErrorBox::new(
+        "DOMExceptionInvalidStateError",
+        "The image argument is a canvas element with a width or height of zero.",
+      ));
+    }
+
+    Ok((width, height, data.as_bytes().to_vec()))
+  }
 }
 
 pub enum Context {
@@ -374,6 +405,21 @@ pub fn get_context<'t>(
     }
     _ => panic!(),
   }
+}
+
+pub(crate) fn sync_offscreen_canvas_pixels_for_pattern<'a>(
+  scope: &mut v8::PinScope<'a, 'a>,
+  image: v8::Local<'a, v8::Value>,
+) -> Result<(u32, u32, Vec<u8>), JsErrorBox> {
+  let Some(canvas) =
+    deno_core::cppgc::try_unwrap_cppgc_object::<OffscreenCanvas>(scope, image)
+  else {
+    return Err(JsErrorBox::new(
+      "TypeError",
+      "Failed to execute 'createPattern' on 'OffscreenCanvasRenderingContext2D': parameter 1 is not of type 'CanvasImageSource'.",
+    ));
+  };
+  canvas.sync_pixels_for_pattern(scope)
 }
 
 #[derive(WebIDL)]

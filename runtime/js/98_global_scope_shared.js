@@ -591,6 +591,14 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.canvas2d] = {
     (c) => c.Path2D,
     loadCanvas2d,
   ),
+  CanvasGradient: core.propNonEnumerableLazyLoaded(
+    (c) => c.CanvasGradient,
+    loadCanvas2d,
+  ),
+  CanvasPattern: core.propNonEnumerableLazyLoaded(
+    (c) => c.CanvasPattern,
+    loadCanvas2d,
+  ),
 };
 
 let _cssStyleSheetMod;
