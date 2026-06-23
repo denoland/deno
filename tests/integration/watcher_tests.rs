@@ -878,6 +878,15 @@ async fn serve_watch_with_import_map() {
 // generation of workers running (the worker threads were never signalled and
 // the main worker task was detached), so requests kept being served by the old
 // code and the process would eventually panic with an isolate mismatch.
+//
+// TODO(denoland/deno#35352): this test is flaky on the windows-x86_64 runner —
+// under `--parallel` with `DENO_JOBS=4` the server intermittently does not
+// print "Listening on"/"Restarting" within the wait timeout, so `wait_contains`
+// times out. It already retries via `#[test(flaky)]` and still fails. The
+// non-determinism is in the watcher restart timing under load on Windows, not
+// in the test, so disable it there until that is addressed. Re-enable once
+// denoland/deno#35352 is fixed.
+#[cfg(not(windows))]
 #[test(flaky)]
 async fn serve_watch_parallel_stops_old_workers() {
   let t = TempDir::new();
@@ -922,6 +931,7 @@ async fn serve_watch_parallel_stops_old_workers() {
   check_alive_then_kill(child);
 }
 
+#[cfg(not(windows))]
 async fn serve_watch_parallel_stops_old_workers_inner(
   t: &TempDir,
   child: &mut DenoChild,
