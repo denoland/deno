@@ -1,11 +1,10 @@
 // Regression test for denoland/deno#25349.
 //
-// When running under the inspector, Deno transpiles TypeScript by only stripping
-// types (replacing them with whitespace) so that the line numbers of the emitted
-// JavaScript match the original source. Tools such as the Chrome DevTools
-// performance profiler report the raw V8 line numbers without applying source
-// maps, so a function's reported location must line up with its position in the
-// `.ts` source.
+// When running under the inspector, Deno pads TypeScript output after transpile
+// so the emitted JavaScript keeps source-mapped tokens on their original source
+// lines. Tools such as the Chrome DevTools performance profiler report the raw
+// V8 line numbers without applying source maps, so a function's reported
+// location must line up with its position in the `.ts` source.
 //
 // `[[FunctionLocation]]` (read via the inspector's Runtime/Debugger domains) is
 // exactly the raw, un-source-mapped location V8 records for a function — the same

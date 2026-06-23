@@ -62,12 +62,11 @@ pub struct Emitter<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
   emit_cache: EmitCacheRc<TSys>,
   parsed_source_cache: ParsedSourceCacheRc,
   compiler_options_resolver: CompilerOptionsResolverRc,
-  /// When `true`, TypeScript that can be transpiled by only stripping types is
-  /// emitted by blanking the type-only portions in place instead of running it
-  /// through the full code generator. This preserves the original line (and
-  /// column) numbers so that tools which don't apply source maps — most notably
-  /// the Chrome DevTools performance profiler — report locations that match the
-  /// original source. See denoland/deno#25349.
+  /// When `true`, TypeScript-family modules emitted under the inspector are
+  /// padded after transpile so source-mapped generated tokens keep their
+  /// original line numbers. This lets tools that don't apply source maps — most
+  /// notably the Chrome DevTools performance profiler — report locations that
+  /// match the original source. See denoland/deno#25349.
   line_preserving_emit: bool,
 }
 
@@ -327,8 +326,8 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       module_kind,
       &transpile_and_emit_options.transpile,
       &emit_options,
-      // `deno compile` provides the source map to v8 separately, so it must not
-      // use line-preserving emit (which omits the source map).
+      // `deno compile` provides the source map to v8 separately, so it should
+      // keep the normal emitted source shape.
       false,
     )?;
     Ok((source.text, source.source_map.unwrap()))
