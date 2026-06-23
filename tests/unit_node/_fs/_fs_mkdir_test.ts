@@ -51,10 +51,12 @@ Deno.test({
   fn: async () => {
     const tempDir = await Deno.makeTempDir();
     try {
-      const target = path.join(tempDir, "a", "b", "c", ".");
+      const normalizedTarget = path.join(tempDir, "a", "b", "c");
+      const target = normalizedTarget + path.SEPARATOR + "." + path.SEPARATOR;
+      assert(target.endsWith(`${path.SEPARATOR}.${path.SEPARATOR}`));
       const firstCreated = mkdirSync(target, { recursive: true });
 
-      assert(existsSync(path.join(tempDir, "a", "b", "c")));
+      assert(existsSync(normalizedTarget));
       assert(firstCreated);
       assert(existsSync(firstCreated));
     } finally {
@@ -68,7 +70,9 @@ Deno.test({
   fn: async () => {
     const tempDir = await Deno.makeTempDir();
     try {
-      const target = path.join(tempDir, "a", "b", "c", ".");
+      const normalizedTarget = path.join(tempDir, "a", "b", "c");
+      const target = normalizedTarget + path.SEPARATOR + "." + path.SEPARATOR;
+      assert(target.endsWith(`${path.SEPARATOR}.${path.SEPARATOR}`));
       const firstCreated = await new Promise<string | undefined>(
         (resolve, reject) => {
           mkdir(target, { recursive: true }, (err, path) => {
@@ -81,7 +85,7 @@ Deno.test({
         },
       );
 
-      assert(existsSync(path.join(tempDir, "a", "b", "c")));
+      assert(existsSync(normalizedTarget));
       assert(firstCreated);
       assert(existsSync(firstCreated));
     } finally {
