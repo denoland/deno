@@ -563,7 +563,10 @@ fn rewrite_worker_urls(
 
 struct RewriteResult {
   bytes: Vec<u8>,
-  #[allow(dead_code)]
+  #[allow(
+    dead_code,
+    reason = "read by unit tests on platforms with rewriting"
+  )]
   rewrote_paths: bool,
   /// Absolute paths the rewriter touched. These point at the build-machine
   /// locations of files the bundled output expects to require at runtime
