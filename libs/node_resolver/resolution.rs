@@ -7,10 +7,13 @@ use std::io::BufReader;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use anyhow::Error as AnyError;
 use anyhow::bail;
 use deno_media_type::MediaType;
+use deno_package_json::BrowserMapEntry;
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::url_to_file_path;
@@ -37,6 +40,7 @@ use crate::PackageJsonResolverRc;
 use crate::PathClean;
 use crate::cache::NodeResolutionSys;
 use crate::errors;
+use crate::errors::BrowserMapDisabledError;
 use crate::errors::DataUrlReferrerError;
 use crate::errors::FinalizeResolutionError;
 use crate::errors::InvalidModuleSpecifierError;
@@ -74,9 +78,13 @@ pub static IMPORT_CONDITIONS: &[Cow<'static, str>] = &[
   Cow::Borrowed("deno"),
   Cow::Borrowed("node"),
   Cow::Borrowed("import"),
+  Cow::Borrowed("module-sync"),
 ];
-pub static REQUIRE_CONDITIONS: &[Cow<'static, str>] =
-  &[Cow::Borrowed("require"), Cow::Borrowed("node")];
+pub static REQUIRE_CONDITIONS: &[Cow<'static, str>] = &[
+  Cow::Borrowed("require"),
+  Cow::Borrowed("node"),
+  Cow::Borrowed("module-sync"),
+];
 static TYPES_ONLY_CONDITIONS: &[Cow<'static, str>] = &[Cow::Borrowed("types")];
 
 #[derive(Debug, Default, Clone)]
@@ -84,11 +92,11 @@ pub struct NodeConditionOptions {
   pub conditions: Vec<Cow<'static, str>>,
   /// Provide a value to override the default import conditions.
   ///
-  /// Defaults to `["deno", "node", "import"]`
+  /// Defaults to `["deno", "node", "import", "module-sync"]`
   pub import_conditions_override: Option<Vec<Cow<'static, str>>>,
   /// Provide a value to override the default require conditions.
   ///
-  /// Defaults to `["require", "node"]`
+  /// Defaults to `["require", "node", "module-sync"]`
   pub require_conditions_override: Option<Vec<Cow<'static, str>>>,
 }
 
@@ -260,9 +268,43 @@ pub struct NodeResolverOptions {
   pub typescript_version: Option<Version>,
 }
 
+/// Result of consulting the `browser` map on a `package.json`.
+struct BrowserMapMatch {
+  entry: BrowserMapEntry,
+  pkg_json: PackageJsonRc,
+}
+
+/// Extensions probed when matching a relative-path `browser` map key against a
+/// resolved file path. Mirrors the suffixes Node's `require()` algorithm tries
+/// after the bare path, so an entry like `"./foo": false` also catches
+/// `./foo.js`, `./foo.cjs`, `./foo/index.js`, etc.
+const BROWSER_MAP_PROBE_EXTS: &[&str] =
+  &[".js", ".mjs", ".cjs", ".json", ".node"];
+
+fn browser_map_key_matches(key_path: &Path, resolved_path: &Path) -> bool {
+  if key_path == resolved_path {
+    return true;
+  }
+  for ext in BROWSER_MAP_PROBE_EXTS {
+    // strip the leading '.' so OsString::push("js") gives "foo.js".
+    let ext = &ext[1..];
+    let mut with_ext = key_path.as_os_str().to_owned();
+    with_ext.push(".");
+    with_ext.push(ext);
+    if Path::new(&with_ext) == resolved_path {
+      return true;
+    }
+    let index_path = key_path.join("index").with_extension(ext);
+    if index_path == resolved_path {
+      return true;
+    }
+  }
+  false
+}
+
 #[derive(Debug)]
 struct ResolutionConfig {
-  pub bundle_mode: bool,
+  pub bundle_mode: AtomicBool,
   pub prefer_browser_field: bool,
   pub typescript_version: Option<Version>,
 }
@@ -355,7 +397,7 @@ impl<
           }),
       }),
       resolution_config: ResolutionConfig {
-        bundle_mode: options.bundle_mode,
+        bundle_mode: AtomicBool::new(options.bundle_mode),
         prefer_browser_field: options.is_browser_platform,
         typescript_version: options.typescript_version,
       },
@@ -364,6 +406,21 @@ impl<
 
   pub fn require_conditions(&self) -> &[Cow<'static, str>] {
     self.condition_resolver.require_conditions()
+  }
+
+  /// Updates whether the resolver should treat resolutions as occurring
+  /// inside a bundler (e.g. when `moduleResolution: "bundler"` is set). When
+  /// enabled, directory imports do not error and a CommonJS-style fallback
+  /// resolution is used for extensionless files.
+  pub fn set_bundle_mode(&self, bundle_mode: bool) {
+    self
+      .resolution_config
+      .bundle_mode
+      .store(bundle_mode, Ordering::Relaxed);
+  }
+
+  fn bundle_mode(&self) -> bool {
+    self.resolution_config.bundle_mode.load(Ordering::Relaxed)
   }
 
   pub fn in_npm_package(&self, specifier: &Url) -> bool {
@@ -386,8 +443,38 @@ impl<
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
   ) -> Result<NodeResolution, NodeResolveError> {
+    self.resolve_internal(
+      specifier,
+      referrer,
+      resolution_mode,
+      resolution_kind,
+      true,
+    )
+  }
+
+  fn resolve_internal(
+    &self,
+    specifier: &str,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+    apply_browser_pre: bool,
+  ) -> Result<NodeResolution, NodeResolveError> {
     // Note: if we are here, then the referrer is an esm module
     // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
+
+    if apply_browser_pre
+      && self.resolution_config.prefer_browser_field
+      && let Some(action) = self.lookup_browser_map_pre(specifier, referrer)?
+    {
+      return self.apply_browser_pre_action(
+        specifier,
+        referrer,
+        resolution_mode,
+        resolution_kind,
+        action,
+      );
+    }
 
     if self.is_builtin_node_module(specifier) {
       return Ok(NodeResolution::BuiltIn(specifier.to_string()));
@@ -425,10 +512,10 @@ impl<
     }
 
     let conditions = self.condition_resolver.resolve(resolution_mode);
-    let referrer = UrlOrPathRef::from_url(referrer);
+    let referrer_ref = UrlOrPathRef::from_url(referrer);
     let (url, resolved_kind) = self.module_resolve(
       specifier,
-      &referrer,
+      &referrer_ref,
       resolution_mode,
       conditions,
       resolution_kind,
@@ -440,8 +527,16 @@ impl<
       resolution_mode,
       conditions,
       resolution_kind,
-      Some(&referrer),
+      Some(&referrer_ref),
     )?;
+
+    if self.resolution_config.prefer_browser_field
+      && let Some(action) = self.lookup_browser_map_post(&url_or_path)
+      && let Some(res) = self.apply_browser_post_action(specifier, action)?
+    {
+      return Ok(res);
+    }
+
     let resolve_response = NodeResolution::Module(url_or_path);
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
@@ -462,10 +557,10 @@ impl<
     resolution_kind: NodeResolutionKind,
   ) -> Result<NodeResolution, NodeResolveError> {
     let conditions = self.condition_resolver.resolve(resolution_mode);
-    let referrer = UrlOrPathRef::from_url(referrer);
+    let referrer_ref = UrlOrPathRef::from_url(referrer);
     let (url, resolved_kind) = self.module_resolve(
       specifier,
-      &referrer,
+      &referrer_ref,
       resolution_mode,
       conditions,
       resolution_kind,
@@ -477,9 +572,169 @@ impl<
       resolution_mode,
       conditions,
       resolution_kind,
-      Some(&referrer),
+      Some(&referrer_ref),
     )?;
+
+    if self.resolution_config.prefer_browser_field
+      && let Some(action) = self.lookup_browser_map_post(&url_or_path)
+      && let Some(res) = self.apply_browser_post_action(specifier, action)?
+    {
+      return Ok(res);
+    }
     Ok(NodeResolution::Module(url_or_path))
+  }
+
+  /// Pre-resolution `browser` map lookup. Matches bare-specifier keys
+  /// ("fs", "foo") against the importer's nearest `package.json`. The
+  /// `node:` prefix is stripped before lookup.
+  fn lookup_browser_map_pre(
+    &self,
+    specifier: &str,
+    referrer: &Url,
+  ) -> Result<Option<BrowserMapMatch>, NodeResolveError> {
+    if specifier.starts_with("./")
+      || specifier.starts_with("../")
+      || specifier.starts_with('/')
+    {
+      return Ok(None);
+    }
+    let Ok(referrer_path) = url_to_file_path(referrer) else {
+      return Ok(None);
+    };
+    let probe = if self.sys.is_dir(Cow::Borrowed(&referrer_path)) {
+      referrer_path.join("__")
+    } else {
+      referrer_path
+    };
+    let pkg_json = match self.pkg_json_resolver.get_closest_package_json(&probe)
+    {
+      Ok(Some(pkg)) => pkg,
+      _ => return Ok(None),
+    };
+    let Some(map) = pkg_json.browser_map.as_ref() else {
+      return Ok(None);
+    };
+    let lookup_key = specifier.strip_prefix("node:").unwrap_or(specifier);
+    let entry = map.get(specifier).or_else(|| map.get(lookup_key));
+    Ok(entry.map(|e| BrowserMapMatch {
+      entry: e.clone(),
+      pkg_json: pkg_json.clone(),
+    }))
+  }
+
+  /// Post-resolution `browser` map lookup. Matches relative-path keys
+  /// ("./bar.js") against the resolved file's nearest `package.json`.
+  fn lookup_browser_map_post(
+    &self,
+    resolved: &UrlOrPath,
+  ) -> Option<BrowserMapMatch> {
+    let resolved_path = match resolved {
+      UrlOrPath::Path(p) => p.clone(),
+      UrlOrPath::Url(u) if u.scheme() == "file" => url_to_file_path(u).ok()?,
+      _ => return None,
+    };
+    let resolved_clean =
+      deno_path_util::normalize_path(Cow::Borrowed(resolved_path.as_path()));
+    let pkg_json = self
+      .pkg_json_resolver
+      .get_closest_package_json(&resolved_path)
+      .ok()
+      .flatten()?;
+    let map = pkg_json.browser_map.as_ref()?;
+    let pkg_dir = pkg_json.path.parent()?;
+    for (key, entry) in map {
+      if !key.starts_with("./") && !key.starts_with("../") {
+        continue;
+      }
+      let joined = pkg_dir.join(key);
+      let key_path =
+        deno_path_util::normalize_path(Cow::Borrowed(joined.as_path()));
+      // Per the proposal, relative-path keys are matched after node-style
+      // probing — `"./foo": false` should disable `./foo.js`, `./foo/index.js`,
+      // etc. Compare the resolved file against the key plus the same extension
+      // and `/index.*` variants `require()` would try.
+      if browser_map_key_matches(&key_path, &resolved_clean) {
+        return Some(BrowserMapMatch {
+          entry: entry.clone(),
+          pkg_json: pkg_json.clone(),
+        });
+      }
+    }
+    None
+  }
+
+  fn apply_browser_pre_action(
+    &self,
+    specifier: &str,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+    action: BrowserMapMatch,
+  ) -> Result<NodeResolution, NodeResolveError> {
+    match action.entry {
+      BrowserMapEntry::Disabled => Err(
+        BrowserMapDisabledError {
+          specifier: specifier.to_string(),
+          pkg_json_path: action.pkg_json.path.clone(),
+        }
+        .into(),
+      ),
+      BrowserMapEntry::Replace(replacement) => {
+        if replacement.starts_with("./") || replacement.starts_with("../") {
+          // Relative to the package containing the map.
+          let pkg_dir = action
+            .pkg_json
+            .path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("/"));
+          let abs = deno_path_util::normalize_path(Cow::Owned(
+            pkg_dir.join(&replacement),
+          ));
+          Ok(NodeResolution::Module(UrlOrPath::Path(abs.into_owned())))
+        } else {
+          // Bare module name — resolve normally. Skip pre-check to avoid
+          // self-referential loops like `{"foo": "foo"}`.
+          self.resolve_internal(
+            &replacement,
+            referrer,
+            resolution_mode,
+            resolution_kind,
+            false,
+          )
+        }
+      }
+    }
+  }
+
+  fn apply_browser_post_action(
+    &self,
+    original_specifier: &str,
+    action: BrowserMapMatch,
+  ) -> Result<Option<NodeResolution>, NodeResolveError> {
+    match action.entry {
+      BrowserMapEntry::Disabled => Err(
+        BrowserMapDisabledError {
+          specifier: original_specifier.to_string(),
+          pkg_json_path: action.pkg_json.path.clone(),
+        }
+        .into(),
+      ),
+      BrowserMapEntry::Replace(replacement) => {
+        // Relative-key replacements only fire post-resolve; the value
+        // should likewise be relative to the package directory.
+        let pkg_dir = action
+          .pkg_json
+          .path
+          .parent()
+          .unwrap_or_else(|| std::path::Path::new("/"));
+        let abs = deno_path_util::normalize_path(Cow::Owned(
+          pkg_dir.join(&replacement),
+        ));
+        Ok(Some(NodeResolution::Module(UrlOrPath::Path(
+          abs.into_owned(),
+        ))))
+      }
+    }
   }
 
   fn module_resolve(
@@ -609,9 +864,7 @@ impl<
     let maybe_file_type = self.sys.get_file_type(Cow::Borrowed(&path));
     match maybe_file_type {
       Ok(FileType::Dir) => {
-        if resolution_mode == ResolutionMode::Import
-          && !self.resolution_config.bundle_mode
-        {
+        if resolution_mode == ResolutionMode::Import && !self.bundle_mode() {
           let suggestion = self.directory_import_suggestion(&path);
           Err(
             UnsupportedDirImportError {
@@ -657,13 +910,16 @@ impl<
       }
       _ => {
         if let Err(e) = maybe_file_type
-          && (resolution_mode == ResolutionMode::Require
-            || self.resolution_config.bundle_mode)
+          && (resolution_mode == ResolutionMode::Require || self.bundle_mode())
           && e.kind() == std::io::ErrorKind::NotFound
         {
-          let file_with_ext = with_known_extension(&path, "js");
-          if self.sys.is_file(Cow::Borrowed(&file_with_ext)) {
-            return Ok(UrlOrPath::Path(file_with_ext));
+          // Match Node's `require()` resolution order: try .js, then .node
+          // for native addons (`require('./build/Release/foo')`).
+          for ext in ["js", "node"] {
+            let file_with_ext = with_known_extension(&path, ext);
+            if self.sys.is_file(Cow::Borrowed(&file_with_ext)) {
+              return Ok(UrlOrPath::Path(file_with_ext));
+            }
           }
         }
 
@@ -786,6 +1042,31 @@ impl<
       resolution_kind,
       maybe_referrer.as_ref(),
     )?;
+    if self.resolution_config.prefer_browser_field
+      && let Some(action) = self.lookup_browser_map_post(&url_or_path)
+    {
+      let pkg_json_path = action.pkg_json.path.clone();
+      match action.entry {
+        BrowserMapEntry::Disabled => {
+          return Err(
+            BrowserMapDisabledError {
+              specifier: package_subpath.into_owned(),
+              pkg_json_path,
+            }
+            .into(),
+          );
+        }
+        BrowserMapEntry::Replace(replacement) => {
+          let pkg_dir = pkg_json_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("/"));
+          let abs = deno_path_util::normalize_path(Cow::Owned(
+            pkg_dir.join(&replacement),
+          ));
+          return Ok(UrlOrPath::Path(abs.into_owned()));
+        }
+      }
+    }
     Ok(url_or_path)
   }
 
@@ -839,7 +1120,7 @@ impl<
       deno_package_json::PackageJsonBins::Bins(items) => items
         .into_iter()
         .filter_map(|(command, path)| {
-          let bin_value = bin_value_from_file(&path, &self.sys)?;
+          let bin_value = read_bin_value(&path, &self.sys)?;
           Some((command, bin_value))
         })
         .collect(),
@@ -889,7 +1170,7 @@ impl<
       return None;
     };
     let command_name = entry.file_name().to_string_lossy().into_owned();
-    let bin_value = bin_value_from_file(&path, &self.sys)?;
+    let bin_value = read_bin_value(&path, &self.sys)?;
     Some((command_name, bin_value))
   }
 
@@ -1941,7 +2222,7 @@ impl<
     fn filter_empty(value: Option<&str>) -> Option<&str> {
       value.map(|v| v.trim()).filter(|v| !v.is_empty())
     }
-    if self.resolution_config.bundle_mode {
+    if self.bundle_mode() {
       let maybe_browser = if self.resolution_config.prefer_browser_field {
         filter_empty(package_json.browser.as_deref())
       } else {
@@ -2276,7 +2557,11 @@ fn resolve_pkg_json_import<'a>(
   }
 }
 
-fn bin_value_from_file<TSys: FsOpen>(
+/// Reads a file from disk and classifies it as a [`BinValue`] —
+/// `Executable` for native binaries, `JsFile` for JavaScript bin scripts
+/// (resolving through npx shims when applicable). Returns `None` if the
+/// file does not exist.
+pub fn read_bin_value<TSys: FsOpen>(
   path: &Path,
   sys: &NodeResolutionSys<TSys>,
 ) -> Option<BinValue> {
@@ -2721,7 +3006,7 @@ impl BinValue {
     }
   }
 }
-fn is_binary(data: &[u8]) -> bool {
+pub fn is_binary(data: &[u8]) -> bool {
   is_elf(data) || is_macho(data) || is_pe(data)
 }
 
@@ -2797,6 +3082,7 @@ mod tests {
   use sys_traits::impls::InMemorySys;
 
   use super::*;
+  use crate::PackageJsonResolver;
 
   fn build_package_json(json: Value) -> PackageJson {
     PackageJson::load_from_value(PathBuf::from("/package.json"), json).unwrap()
@@ -2810,6 +3096,128 @@ mod tests {
         .map(|(k, v)| (k, BinValue::JsFile(v)))
         .collect(),
     }
+  }
+
+  #[derive(Debug)]
+  struct TestBuiltInNodeModuleChecker;
+
+  impl IsBuiltInNodeModuleChecker for TestBuiltInNodeModuleChecker {
+    fn is_builtin_node_module(&self, _module_name: &str) -> bool {
+      false
+    }
+  }
+
+  struct TestNpmPackageFolderResolver;
+
+  impl NpmPackageFolderResolver for TestNpmPackageFolderResolver {
+    fn resolve_package_folder_from_package(
+      &self,
+      _specifier: &str,
+      _referrer: &UrlOrPathRef,
+    ) -> Result<PathBuf, errors::PackageFolderResolveError> {
+      unreachable!()
+    }
+
+    fn resolve_types_package_folder(
+      &self,
+      _types_package_name: &str,
+      _maybe_package_version: Option<&Version>,
+      _maybe_referrer: Option<&UrlOrPathRef>,
+    ) -> Option<PathBuf> {
+      None
+    }
+  }
+
+  struct TestInNpmPackageChecker;
+
+  impl InNpmPackageChecker for TestInNpmPackageChecker {
+    fn in_npm_package(&self, _specifier: &Url) -> bool {
+      false
+    }
+  }
+
+  fn test_node_resolver() -> NodeResolver<
+    TestInNpmPackageChecker,
+    TestBuiltInNodeModuleChecker,
+    TestNpmPackageFolderResolver,
+    InMemorySys,
+  > {
+    let sys = InMemorySys::default();
+    NodeResolver::new(
+      TestInNpmPackageChecker,
+      TestBuiltInNodeModuleChecker,
+      TestNpmPackageFolderResolver,
+      deno_maybe_sync::new_rc(PackageJsonResolver::new(sys.clone(), None)),
+      NodeResolutionSys::new(sys, None),
+      NodeResolverOptions::default(),
+    )
+  }
+
+  #[test]
+  fn test_default_conditions_include_module_sync() {
+    assert_eq!(
+      IMPORT_CONDITIONS,
+      &[
+        Cow::Borrowed("deno"),
+        Cow::Borrowed("node"),
+        Cow::Borrowed("import"),
+        Cow::Borrowed("module-sync"),
+      ]
+    );
+    assert_eq!(
+      REQUIRE_CONDITIONS,
+      &[
+        Cow::Borrowed("require"),
+        Cow::Borrowed("node"),
+        Cow::Borrowed("module-sync"),
+      ]
+    );
+  }
+
+  #[test]
+  fn test_module_sync_condition_matches_import_and_require() {
+    let resolver = test_node_resolver();
+    let package_json_path =
+      PathBuf::from("/node_modules/module-sync-pkg/package.json");
+    let package_exports = json!({
+      ".": {
+        "module-sync": "./sync.mjs",
+        "node": "./node.cjs"
+      }
+    });
+    let package_exports = package_exports.as_object().unwrap();
+
+    let import_resolved = resolver
+      .package_exports_resolve(
+        &package_json_path,
+        ".",
+        package_exports,
+        None,
+        ResolutionMode::Import,
+        resolver.condition_resolver.resolve(ResolutionMode::Import),
+        NodeResolutionKind::Execution,
+      )
+      .unwrap();
+    let require_resolved = resolver
+      .package_exports_resolve(
+        &package_json_path,
+        ".",
+        package_exports,
+        None,
+        ResolutionMode::Require,
+        resolver.require_conditions(),
+        NodeResolutionKind::Execution,
+      )
+      .unwrap();
+
+    assert_eq!(
+      import_resolved.into_path().unwrap(),
+      PathBuf::from("/node_modules/module-sync-pkg/sync.mjs")
+    );
+    assert_eq!(
+      require_resolved.into_path().unwrap(),
+      PathBuf::from("/node_modules/module-sync-pkg/sync.mjs")
+    );
   }
 
   #[test]

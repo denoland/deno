@@ -80,6 +80,20 @@ pub struct uv_pipe_t {
       Box<dyn std::future::Future<Output = std::io::Result<()>> + Send>,
     >,
   >,
+  /// In-flight `WaitNamedPipeW` retry task spawned when a synchronous
+  /// `ClientOptions::open()` returned `ERROR_PIPE_BUSY`. The deferred
+  /// connect callback fires once this task completes (success or final
+  /// failure). Mirrors libuv's `pipe_connect_thread_proc`.
+  #[cfg(windows)]
+  #[allow(
+    clippy::type_complexity,
+    reason = "JoinHandle<io::Result<NamedPipeClient>> is inherently complex"
+  )]
+  pub(crate) internal_win_connect_retry: Option<
+    tokio::task::JoinHandle<
+      std::io::Result<tokio::net::windows::named_pipe::NamedPipeClient>,
+    >,
+  >,
 
   // Connected stream (from connect or accept)
   #[cfg(unix)]
@@ -219,6 +233,8 @@ pub fn new_pipe(ipc: bool) -> uv_pipe_t {
     internal_win_client: None,
     #[cfg(windows)]
     internal_win_connect_fut: None,
+    #[cfg(windows)]
+    internal_win_connect_retry: None,
     #[cfg(unix)]
     internal_stream: None,
     #[cfg(unix)]
@@ -306,49 +322,208 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
 /// `fd` must be a valid CRT file descriptor.
 #[cfg(windows)]
 pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
+  use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+  use windows_sys::Win32::Foundation::DuplicateHandle;
+  use windows_sys::Win32::Foundation::HANDLE;
   use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE;
   use windows_sys::Win32::Storage::FileSystem::GetFileType;
+  use windows_sys::Win32::System::Pipes::GetNamedPipeInfo;
+  use windows_sys::Win32::System::Pipes::PIPE_SERVER_END;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
   if fd < 0 {
     return UV_EBADF;
   }
 
-  // Convert CRT fd to OS HANDLE.
+  // Read the OS HANDLE backing the CRT fd. `_get_osfhandle` does not
+  // transfer ownership; the CRT fd still owns the original handle and
+  // will close it via `_close(fd)`.
   // SAFETY: libc::get_osfhandle returns the OS handle for a CRT fd.
   let handle = unsafe { libc::get_osfhandle(fd) };
   if handle == -1 {
     return UV_EBADF;
   }
 
-  // If this is a named pipe, wrap it in a tokio NamedPipeClient so reads
-  // and writes go through the async reactor. A sync `ReadFile` on a pipe
-  // opened with `FILE_FLAG_OVERLAPPED` aborts inside Rust's std when the
-  // operation returns `ERROR_IO_PENDING`, which is the common case when
-  // no data is immediately available. We cannot know the overlapped flag
-  // after the fact, so we fall through to the raw-handle path only for
-  // non-pipe handles.
+  // Duplicate the handle so the pipe owns an independent copy. The CRT
+  // fd retains the original. `PipeWrap::close` calls `libc::close(fd)`
+  // after `close_pipe` has closed the dup, so each handle value is
+  // closed exactly once and there is no double-close even if Windows
+  // recycles the handle value between the two closes.
+  let cur = unsafe { GetCurrentProcess() };
+  let mut dup: HANDLE = std::ptr::null_mut();
+  let ok = unsafe {
+    DuplicateHandle(
+      cur,
+      handle as HANDLE,
+      cur,
+      &mut dup,
+      0,
+      0,
+      DUPLICATE_SAME_ACCESS,
+    )
+  };
+  if ok == 0 {
+    return UV_EBADF;
+  }
+
+  // If this is a *named* pipe opened with FILE_FLAG_OVERLAPPED, wrap it
+  // in a tokio NamedPipeServer or NamedPipeClient so reads and writes
+  // go through the async reactor. A sync `ReadFile` on an overlapped
+  // pipe aborts inside Rust's std when the operation returns
+  // `ERROR_IO_PENDING`, which is the common case when no data is
+  // immediately available.
+  //
+  // The wrapper choice matters: parent ends of child stdio pipes are
+  // server-side handles created via `CreateNamedPipeW`. Wrapping a
+  // server-side handle in `NamedPipeClient` masks broken-pipe / EOF
+  // events through the tokio reactor, so the JS Socket above never
+  // sees EOF after the child exits, never destroys, and the handle
+  // leaks. Use `GetNamedPipeInfo` to detect server vs client end.
+  //
+  // Anonymous pipes (`CreatePipe`) are implemented as named pipes on
+  // Windows so `GetNamedPipeInfo` succeeds, but they are not opened
+  // with `FILE_FLAG_OVERLAPPED`. There is no direct API to query the
+  // overlapped flag, so we detect this empirically: tokio's
+  // `from_raw_handle` returns `Err` for non-overlapped handles. On
+  // failure, re-duplicate the original CRT handle (the first dup was
+  // consumed by `from_raw_handle`, which takes ownership even on
+  // `Err`) and try the alternate wrapper before falling through to
+  // the raw-handle path. `NamedPipeClient` wraps server-end handles
+  // without surfacing EOF (the leak this change fixes), but its
+  // writes drive through the async reactor — vastly faster than the
+  // blocking raw-handle path for the bulk-write workload of e.g.
+  // `child_process.spawn` stdin.
   unsafe {
-    let h = handle as *mut std::ffi::c_void;
-    if GetFileType(h) == FILE_TYPE_PIPE {
-      match tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(
-        handle as std::os::windows::io::RawHandle,
-      ) {
-        Ok(client) => {
-          (*pipe).internal_win_client = Some(client);
+    let redup = |handle: isize| -> Option<HANDLE> {
+      let mut redup: HANDLE = std::ptr::null_mut();
+      let ok = DuplicateHandle(
+        cur,
+        handle as HANDLE,
+        cur,
+        &mut redup,
+        0,
+        0,
+        DUPLICATE_SAME_ACCESS,
+      );
+      if ok == 0 { None } else { Some(redup) }
+    };
+
+    if GetFileType(dup) == FILE_TYPE_PIPE {
+      let mut flags: u32 = 0;
+      let info_ok = GetNamedPipeInfo(
+        dup,
+        &mut flags,
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+      );
+      if info_ok != 0 {
+        let is_server = (flags & PIPE_SERVER_END) != 0;
+        let raw = dup as std::os::windows::io::RawHandle;
+        let primary_ok = if is_server {
+          match tokio::net::windows::named_pipe::NamedPipeServer::from_raw_handle(
+            raw,
+          ) {
+            Ok(server) => {
+              (*pipe).internal_win_server = Some(std::sync::Arc::new(server));
+              true
+            }
+            Err(_) => false,
+          }
+        } else {
+          match tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(
+            raw,
+          ) {
+            Ok(client) => {
+              (*pipe).internal_win_client = Some(client);
+              true
+            }
+            Err(_) => false,
+          }
+        };
+        if primary_ok {
           return 0;
         }
-        Err(_) => {
-          // Fall through to raw-handle path on failure (e.g. handle not
-          // overlapped). NamedPipeClient owns the handle on success; on
-          // failure it does not, so it is safe to reuse `handle` below.
+        // `dup` was consumed by `from_raw_handle` on Err. For server-end
+        // handles, try `NamedPipeClient` as a fallback before giving up
+        // on the async path: this matches the prior behavior and keeps
+        // bulk writes fast, at the cost of EOF propagation that the
+        // initial `NamedPipeServer` attempt would have provided.
+        if is_server {
+          let redup1 = match redup(handle) {
+            Some(h) => h,
+            None => return UV_EBADF,
+          };
+          let raw = redup1 as std::os::windows::io::RawHandle;
+          if let Ok(client) =
+            tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(
+              raw,
+            )
+          {
+            (*pipe).internal_win_client = Some(client);
+            return 0;
+          }
         }
+        // Both wrappers failed (or only the client-end attempt did).
+        // Re-duplicate again for the raw-handle path.
+        let raw_handle_dup = match redup(handle) {
+          Some(h) => h,
+          None => return UV_EBADF,
+        };
+        (*pipe).internal_handle =
+          Some(raw_handle_dup as std::os::windows::io::RawHandle);
+        return 0;
       }
     }
 
-    (*pipe).internal_handle = Some(handle as std::os::windows::io::RawHandle);
+    (*pipe).internal_handle = Some(dup as std::os::windows::io::RawHandle);
     // Note: do NOT set UV_HANDLE_ACTIVE here. See Unix uv_pipe_open.
   }
   0
+}
+
+/// Open `pipe` from an fd that should be used as a *listening* socket
+/// (typically a unix-socket `net.Server` received via IPC handle passing).
+///
+/// Unlike [`uv_pipe_open`], this does NOT eagerly create an `AsyncFd`. The
+/// tokio `UnixListener` that [`uv_pipe_listen`] registers is the sole reactor
+/// registration for the fd; pre-registering an `AsyncFd` here would make
+/// `uv_pipe_listen`'s `epoll_ctl(EPOLL_CTL_ADD)` fail with `EEXIST`. This
+/// mirrors the TCP split between [`uv_tcp_open`] and [`uv_tcp_open_listener`].
+///
+/// # Safety
+/// `pipe` must be a valid pointer to an initialized `uv_pipe_t`. `fd` must be
+/// a valid socket fd whose ownership the caller is transferring.
+#[cfg(unix)]
+pub unsafe fn uv_pipe_open_listener(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
+  if fd < 0 {
+    return UV_EBADF;
+  }
+  unsafe {
+    // Set non-blocking mode (tokio's `from_std` requires it).
+    let flags = libc::fcntl(fd, libc::F_GETFL);
+    if flags == -1 {
+      return UV_EBADF;
+    }
+    if libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) == -1 {
+      return UV_EBADF;
+    }
+    // Record the fd so uv_pipe_listen can adopt it. Crucially, do not create
+    // an AsyncFd here (see the doc comment above).
+    (*pipe).internal_fd = Some(fd);
+  }
+  0
+}
+
+/// Windows has no SCM_RIGHTS-style fd passing for unix sockets, so the IPC
+/// listener-transfer path is never exercised there. Fall back to the regular
+/// open to keep the API uniform across platforms.
+///
+/// # Safety
+/// See [`uv_pipe_open`].
+#[cfg(windows)]
+pub unsafe fn uv_pipe_open_listener(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
+  unsafe { uv_pipe_open(pipe, fd) }
 }
 
 /// Build a `sockaddr_un` from a path, handling both abstract sockets
@@ -813,6 +988,32 @@ pub unsafe fn uv_pipe_connect(
         }
         0
       }
+      Err(e) if e.raw_os_error() == Some(231) => {
+        // ERROR_PIPE_BUSY: all of the server's pipe instances are in use.
+        // Match libuv (`pipe_connect_thread_proc`) by retrying on a worker
+        // thread using `WaitNamedPipeW`. The connect callback fires
+        // asynchronously once the retry resolves.
+        if !req.is_null() {
+          (*req).handle = pipe as *mut super::stream::uv_stream_t;
+        }
+        let path_owned = path.to_owned();
+        let join = tokio::task::spawn_blocking(move || {
+          wait_named_pipe_and_open(&path_owned)
+        });
+        (*pipe).internal_win_connect_retry = Some(join);
+        (*pipe).internal_connect = Some(PipeConnectPending { req, cb });
+        (*pipe).flags |= UV_HANDLE_ACTIVE;
+
+        let inner = super::get_inner((*pipe).loop_);
+        let mut handles = inner.pipe_handles.borrow_mut();
+        if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
+          handles.push(pipe);
+        }
+        if let Some(w) = (*pipe).internal_waker.as_ref() {
+          w.mark_ready();
+        }
+        0
+      }
       Err(e) => {
         // If the path exists but isn't a named pipe, return ENOTSOCK
         // (matching libuv behavior). ClientOptions::open returns NotFound
@@ -824,6 +1025,49 @@ pub unsafe fn uv_pipe_connect(
         }
         io_error_to_uv(&e)
       }
+    }
+  }
+}
+
+/// Wait for a Windows named pipe instance to become free and open a client.
+///
+/// Mirrors libuv's `pipe_connect_thread_proc`: loop on `WaitNamedPipeW`
+/// (30s per attempt) until an instance is available, then try to open it
+/// via `CreateFileW`. If another client races us, the wait/open loop
+/// continues until success or `WaitNamedPipeW` itself fails (e.g. the
+/// server is gone).
+#[cfg(windows)]
+pub(crate) fn wait_named_pipe_and_open(
+  path: &str,
+) -> std::io::Result<tokio::net::windows::named_pipe::NamedPipeClient> {
+  use std::os::windows::ffi::OsStrExt;
+  let wide: Vec<u16> = std::ffi::OsStr::new(path)
+    .encode_wide()
+    .chain(std::iter::once(0))
+    .collect();
+  loop {
+    // SAFETY: `wide` is a null-terminated wide string for the lifetime
+    // of this call. WaitNamedPipeW has no other safety requirements.
+    let ok = unsafe {
+      windows_sys::Win32::System::Pipes::WaitNamedPipeW(wide.as_ptr(), 30000)
+    };
+    if ok == 0 {
+      // Any `WaitNamedPipeW` failure — including `ERROR_SEM_TIMEOUT` —
+      // exits the loop. Matches libuv's `pipe_connect_thread_proc`:
+      // the 30s timeout signals the server is unresponsive and the
+      // connect should be reported as failed rather than retried
+      // indefinitely.
+      return Err(std::io::Error::last_os_error());
+    }
+    match tokio::net::windows::named_pipe::ClientOptions::new().open(path) {
+      Ok(client) => return Ok(client),
+      Err(e) if e.raw_os_error() == Some(231) => {
+        // Another client raced us to the freed instance. Loop and wait
+        // for another one. Yield first to avoid a hot spin.
+        std::thread::yield_now();
+        continue;
+      }
+      Err(e) => return Err(e),
     }
   }
 }
@@ -962,6 +1206,9 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
     {
       if let Some(handle) = (*pipe).internal_pending_read.take() {
         handle.abort();
+      }
+      if let Some(retry) = (*pipe).internal_win_connect_retry.take() {
+        retry.abort();
       }
       if let Some(handle) = (*pipe).internal_handle.take() {
         // SAFETY: handle is a valid OS handle from get_osfhandle.
@@ -1115,7 +1362,50 @@ pub(crate) unsafe fn poll_pipe_handle(
 
   unsafe {
     // 1. Poll deferred connect callback (from uv_pipe_connect on Windows).
-    if let Some(pending) = (*pipe_ptr).internal_connect.take() {
+    //
+    // Two sub-cases:
+    //   a) Sync-success: ClientOptions::open() returned a connected client
+    //      immediately; the client is already stored in `internal_win_client`
+    //      and we just need to fire cb(req, 0).
+    //   b) Retry-in-flight: ClientOptions::open() returned ERROR_PIPE_BUSY
+    //      and a worker task is calling WaitNamedPipeW + retry. Wait for the
+    //      task to finish before firing cb with the resolved status.
+    if let Some(ref mut join) = (*pipe_ptr).internal_win_connect_retry {
+      match std::pin::Pin::new(join).poll(cx) {
+        Poll::Pending => { /* keep waiting */ }
+        Poll::Ready(join_res) => {
+          (*pipe_ptr).internal_win_connect_retry = None;
+          let status = match join_res {
+            Ok(Ok(client)) => {
+              // Same FILE_TYPE_PIPE sanity check as the sync path.
+              use std::os::windows::io::AsRawHandle;
+              let handle = client.as_raw_handle();
+              let file_type =
+                windows_sys::Win32::Storage::FileSystem::GetFileType(
+                  handle as _,
+                );
+              if file_type
+                != windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE
+              {
+                drop(client);
+                super::UV_ENOTSOCK
+              } else {
+                (*pipe_ptr).internal_win_client = Some(client);
+                0
+              }
+            }
+            Ok(Err(ref e)) => io_error_to_uv(e),
+            Err(_) => super::UV_ECANCELED,
+          };
+          if let Some(pending) = (*pipe_ptr).internal_connect.take()
+            && let Some(cb) = pending.cb
+          {
+            cb(pending.req, status);
+          }
+          any_work = true;
+        }
+      }
+    } else if let Some(pending) = (*pipe_ptr).internal_connect.take() {
       if let Some(cb) = pending.cb {
         cb(pending.req, 0);
       }

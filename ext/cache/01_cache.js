@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   op_cache_delete,
   op_cache_match,
@@ -27,7 +27,9 @@ const {
   RequestPrototype,
   toInnerRequest,
 } = core.loadExtScript("ext:deno_fetch/23_request.js");
-const { toInnerResponse } = core.loadExtScript("ext:deno_fetch/23_response.js");
+const { toInnerResponse, wireHeaderList } = core.loadExtScript(
+  "ext:deno_fetch/23_response.js",
+);
 const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 const { getHeader } = core.loadExtScript("ext:deno_fetch/20_headers.js");
 const {
@@ -196,7 +198,7 @@ class Cache {
         cacheId: this[_id],
         // deno-lint-ignore prefer-primordials
         requestUrl: reqUrl.toString(),
-        responseHeaders: innerResponse.headerList,
+        responseHeaders: wireHeaderList(innerResponse),
         requestHeaders: innerRequest.headerList,
         responseStatus: innerResponse.status,
         responseStatusText: innerResponse.statusMessage,

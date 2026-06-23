@@ -1,0 +1,4 @@
+{
+  "args": "test --doc main.md",
+  "output": "main.out"
+}

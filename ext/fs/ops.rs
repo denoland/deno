@@ -17,7 +17,9 @@ use deno_core::CancelHandle;
 use deno_core::FastString;
 use deno_core::FromV8;
 use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
 use deno_core::error::ResourceError;
 use deno_core::op2;
@@ -33,12 +35,12 @@ use deno_permissions::PermissionCheckError;
 use rand::Rng;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
-use serde::Serialize;
 
 use crate::OpenOptions;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
+use crate::interface::FsReadDirRc;
 
 #[derive(Debug, Boxed, deno_error::JsError)]
 pub struct FsOpsError(pub Box<FsOpsErrorKind>);
@@ -98,6 +100,15 @@ impl From<FsError> for FsOpsError {
       }
     }
     .into_box()
+  }
+}
+
+#[derive(Debug)]
+struct ReadDirResource(FsReadDirRc);
+
+impl Resource for ReadDirResource {
+  fn name(&self) -> Cow<'_, str> {
+    "readDir".into()
   }
 }
 
@@ -487,13 +498,13 @@ pub fn op_fs_remove_sync(
 ) -> Result<(), FsOpsError> {
   let path = Cow::Borrowed(Path::new(path));
   let path = if recursive {
+    // Recursive remove descends into the whole tree, so it must use the strict
+    // write check: a deny scope *inside* the requested path has to block the
+    // operation. `check_open` uses partial-deny semantics and would let a
+    // recursive delete bypass a denied descendant.
     state
       .borrow_mut::<deno_permissions::PermissionsContainer>()
-      .check_open(
-        path,
-        OpenAccessKind::WriteNoFollow,
-        Some("Deno.removeSync()"),
-      )?
+      .check_write(path, "Deno.removeSync()")?
   } else {
     state
       .borrow_mut::<deno_permissions::PermissionsContainer>()
@@ -517,13 +528,13 @@ pub async fn op_fs_remove_async(
     let mut state = state.borrow_mut();
     let path = Cow::Owned(PathBuf::from(path));
     let path = if recursive {
+      // Recursive remove descends into the whole tree, so it must use the
+      // strict write check: a deny scope *inside* the requested path has to
+      // block the operation. `check_open` uses partial-deny semantics and would
+      // let a recursive delete bypass a denied descendant.
       state
         .borrow_mut::<deno_permissions::PermissionsContainer>()
-        .check_open(
-          path,
-          OpenAccessKind::WriteNoFollow,
-          Some("Deno.remove()"),
-        )?
+        .check_write(path, "Deno.remove()")?
     } else {
       state
         .borrow_mut::<deno_permissions::PermissionsContainer>()
@@ -616,7 +627,6 @@ pub fn op_fs_stat_sync(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_fs_stat_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -660,7 +670,6 @@ pub fn op_fs_lstat_sync(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_fs_lstat_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -754,7 +763,7 @@ pub fn op_fs_read_dir_sync(
 pub async fn op_fs_read_dir_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-) -> Result<Vec<FsDirEntry>, FsOpsError> {
+) -> Result<ResourceId, FsOpsError> {
   let (fs, path) = {
     let mut state = state.borrow_mut();
     let path = state
@@ -767,12 +776,30 @@ pub async fn op_fs_read_dir_async(
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
-  let entries = fs
+  let read_dir = fs
     .read_dir_async(path.as_owned())
     .await
     .context_path("readdir", &path)?;
 
-  Ok(entries)
+  Ok(
+    state
+      .borrow_mut()
+      .resource_table
+      .add(ReadDirResource(read_dir)),
+  )
+}
+
+#[op2(stack_trace)]
+pub async fn op_fs_read_dir_async_next(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<Option<FsDirEntry>, FsOpsError> {
+  let resource = {
+    let state = state.borrow();
+    state.resource_table.get::<ReadDirResource>(rid)?
+  };
+
+  resource.0.next().await.map_err(Into::into)
 }
 
 #[op2(fast, stack_trace)]
@@ -887,6 +914,36 @@ pub async fn op_fs_link_async(
   Ok(())
 }
 
+// Symlink permissions cannot be path-scoped. A symlink's target (`oldpath`) is
+// just a string stored in the link: it may be relative, absolute, or not yet
+// exist, and it is only resolved when the link is later traversed. There is no
+// concrete path to validate against an allow-list at creation time, so we
+// require unscoped read+write rather than give a false sense of containment.
+// The generic "Requires write access" message does not convey that scoping is
+// the problem, so we replace it with a clearer one.
+fn check_symlink_permissions(
+  permissions: &deno_permissions::PermissionsContainer,
+  api_name: &str,
+) -> Result<(), FsOpsError> {
+  permissions
+    .check_write_all(api_name)
+    .and_then(|()| permissions.check_read_all(api_name))
+    .map_err(|err| {
+      let err = match err {
+        PermissionCheckError::PermissionDenied(mut denied)
+          if denied.custom_message.is_none() =>
+        {
+          denied.custom_message = Some(format!(
+            "{api_name} requires unscoped --allow-read and --allow-write permissions; path-scoped grants (e.g. --allow-write=<path>) are not supported because a symlink's target is only resolved when the link is traversed"
+          ));
+          PermissionCheckError::PermissionDenied(denied)
+        }
+        other => other,
+      };
+      FsOpsErrorKind::Permission(err).into_box()
+    })
+}
+
 #[op2(stack_trace)]
 pub fn op_fs_symlink_sync(
   state: &mut OpState,
@@ -896,8 +953,7 @@ pub fn op_fs_symlink_sync(
 ) -> Result<(), FsOpsError> {
   let permissions =
     state.borrow_mut::<deno_permissions::PermissionsContainer>();
-  permissions.check_write_all("Deno.symlinkSync()")?;
-  permissions.check_read_all("Deno.symlinkSync()")?;
+  check_symlink_permissions(permissions, "Deno.symlinkSync()")?;
 
   // PERMISSIONS: ok because we verified --allow-write and --allow-read above
   let oldpath = CheckedPath::unsafe_new(Cow::Borrowed(Path::new(oldpath)));
@@ -921,8 +977,7 @@ pub async fn op_fs_symlink_async(
     let mut state = state.borrow_mut();
     let permissions =
       state.borrow_mut::<deno_permissions::PermissionsContainer>();
-    permissions.check_write_all("Deno.symlink()")?;
-    permissions.check_read_all("Deno.symlink()")?;
+    check_symlink_permissions(permissions, "Deno.symlink()")?;
     state.borrow::<FileSystemRc>().clone()
   };
 
@@ -1392,11 +1447,8 @@ fn tmp_name(
 
   // If we use a 32-bit number, we only need ~70k temp files before we have a 50%
   // chance of collision. By bumping this up to 64-bits, we require ~5 billion
-  // before hitting a 50% chance. We also base32-encode this value so the entire
-  // thing is 1) case insensitive and 2) slightly shorter than the equivalent hex
-  // value.
+  // before hitting a 50% chance.
   let unique = rng.r#gen::<u64>();
-  base32::encode(base32::Alphabet::Crockford, &unique.to_le_bytes());
   let path = dir.join(format!("{prefix}{unique:08x}{suffix}"));
 
   Ok(path)
@@ -1735,7 +1787,6 @@ pub fn op_fs_file_stat_sync(
 }
 
 #[op2]
-#[serde]
 pub async fn op_fs_file_stat_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -2036,8 +2087,7 @@ macro_rules! create_struct_writer {
       }
     }
 
-    #[derive(Serialize)]
-    #[serde(rename_all = "camelCase")]
+    #[derive(ToV8)]
     pub struct $name {
       $($field: $type),*
     }

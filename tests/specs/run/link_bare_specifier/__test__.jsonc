@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "tests": {
+    "bare_specifier_resolves": {
+      "args": "run bare.ts",
+      "output": "bare.out"
+    },
+    "jsr_specifier_resolves": {
+      "args": "run jsr_prefix.ts",
+      "output": "jsr_prefix.out"
+    },
+    "import_map_entry_resolves": {
+      "args": "run --config=with_import_map.json import_map.ts",
+      "output": "import_map.out"
+    },
+    "wrong_name_hints_full_name": {
+      "args": "run wrong_name.ts",
+      "output": "wrong_name.out",
+      "exitCode": 1
+    },
+    "wrong_name_hints_full_name_check": {
+      "args": "check wrong_name.ts",
+      "output": "wrong_name_check.out",
+      "exitCode": 1
+    }
+  }
+}

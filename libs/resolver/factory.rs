@@ -213,6 +213,9 @@ pub struct WorkspaceFactoryOptions {
   pub node_modules_linker: Option<NodeModulesLinkerMode>,
   pub no_lock: bool,
   pub no_npm: bool,
+  /// When no `deno.lock` exists, attempt to seed one by translating a
+  /// sibling `package-lock.json`. Currently set by `deno install`.
+  pub import_npm_lockfile: bool,
   /// The process state if using ext/node and the current process was "forked".
   /// This value is found at `deno_lib::args::NPM_PROCESS_STATE`
   /// but in most scenarios this can probably just be `None`.
@@ -547,6 +550,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
               ConfigDiscoveryOption::Disabled
             ),
             no_npm: self.options.no_npm,
+            import_npm_lockfile: self.options.import_npm_lockfile,
           },
           &workspace_directory.workspace,
           maybe_external_import_map.as_ref().map(|v| &v.value),
@@ -716,8 +720,6 @@ pub struct ResolverFactoryOptions {
   pub package_json_cache: Option<node_resolver::PackageJsonCacheRc>,
   pub package_json_dep_resolution: Option<PackageJsonDepResolution>,
   pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
-  /// Whether to resolve bare node builtins (ex. "path" as "node:path").
-  pub bare_node_builtins: bool,
   pub unstable_sloppy_imports: bool,
   #[cfg(feature = "graph")]
   pub on_mapped_resolution_diagnostic:
@@ -835,7 +837,6 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
                 npm_req_resolver: self.npm_req_resolver()?.clone(),
               })
             },
-            bare_node_builtins: self.bare_node_builtins()?,
             is_byonm: self.use_byonm()?,
             maybe_vendor_dir: self
               .workspace_factory
@@ -1004,16 +1005,31 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     &self,
   ) -> Result<&MinimumDependencyAgeConfig, anyhow::Error> {
     self.minimum_dependency_age.get_or_try_init(|| {
-      let config = if let Some(date) = self.options.newest_dependency_date {
+      let workspace_factory = self.workspace_factory();
+      let mut config = if let Some(date) = self.options.newest_dependency_date {
         MinimumDependencyAgeConfig {
           age: Some(date),
           exclude: Vec::new(),
         }
       } else {
-        let workspace_factory = self.workspace_factory();
         let workspace = &workspace_factory.workspace_directory()?.workspace;
         workspace.minimum_dependency_age(workspace_factory.sys())?
       };
+      // fall back to .npmrc's `min-release-age` when not configured in deno.json
+      if config.age.is_none()
+        && let Some(days) = workspace_factory.npmrc()?.min_release_age_days
+      {
+        let now = chrono::DateTime::<chrono::Utc>::from(
+          workspace_factory.sys().sys_time_now(),
+        );
+        config.age = Some(if days == 0 {
+          NewestDependencyDate::Disabled
+        } else {
+          NewestDependencyDate::Enabled(
+            now - chrono::Duration::days(days as i64),
+          )
+        });
+      }
       if let Some(newest_dependency_date) =
         config.age.and_then(|d| d.into_option())
       {
@@ -1276,17 +1292,6 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         .boxed_local(),
       )
       .await
-  }
-
-  pub fn bare_node_builtins(&self) -> Result<bool, anyhow::Error> {
-    Ok(
-      self.options.bare_node_builtins
-        || self
-          .workspace_factory
-          .workspace_directory()?
-          .workspace
-          .has_unstable("bare-node-builtins"),
-    )
   }
 
   pub fn npm_system_info(&self) -> &NpmSystemInfo {

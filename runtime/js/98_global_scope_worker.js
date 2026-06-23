@@ -22,6 +22,10 @@ const globalInterfaces = core.loadExtScript(
 );
 const loadLocks = core.createLazyLoader("ext:deno_web/locks.js");
 const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
+import {
+  NavigatorUAData,
+  navigatorUAData,
+} from "ext:runtime/97_navigator_user_agent_data.js";
 
 /**
  * @param {string} arch
@@ -94,6 +98,7 @@ class WorkerNavigator {
           "language",
           "languages",
           "platform",
+          "userAgentData",
         ],
       }),
       inspectOptions,
@@ -169,6 +174,15 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
       return platform();
     },
   },
+  userAgentData: {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, WorkerNavigatorPrototype);
+      return navigatorUAData;
+    },
+  },
 });
 const WorkerNavigatorPrototype = WorkerNavigator.prototype;
 
@@ -180,6 +194,7 @@ const workerRuntimeGlobalProperties = {
     globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
   WorkerNavigator: core.propNonEnumerable(WorkerNavigator),
   navigator: core.propGetterOnly(() => workerNavigator),
+  NavigatorUAData: core.propNonEnumerable(NavigatorUAData),
   self: core.propGetterOnly(() => globalThis),
 };
 

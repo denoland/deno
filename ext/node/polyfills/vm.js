@@ -1,16 +1,27 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
+// Pre-evaluate node:process in the realm that imported node:vm so that any
+// vm context's `import('node:process')` returns the cached module rather
+// than instantiating node:process inside the sandbox (where `Deno` is not
+// defined and process.ts's body would throw `ReferenceError: Deno is not
+// defined`). node:process is `lazy_loaded_esm` now, so without this nudge
+// the first instantiation can happen from a sandbox realm. Loader is
+// memoized; repeat calls are cheap.
+core.createLazyLoader("node:process")();
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
-import {
+const {
   op_vm_compile_function,
   op_vm_create_context,
   op_vm_create_context_without_contextify,
   op_vm_create_script,
+  op_vm_dynamic_import_callback_register,
   op_vm_is_context,
   op_vm_module_create_source_text_module,
+  op_vm_module_create_synthetic_module,
   op_vm_module_evaluate,
   op_vm_module_get_exception,
   op_vm_module_get_identifier,
@@ -19,10 +30,11 @@ import {
   op_vm_module_get_status,
   op_vm_module_instantiate,
   op_vm_module_link,
+  op_vm_module_set_synthetic_export,
   op_vm_script_create_cached_data,
   op_vm_script_get_source_map_url,
   op_vm_script_run_in_context,
-} from "ext:core/ops";
+} = core.ops;
 const {
   validateArray,
   validateBoolean,
@@ -36,6 +48,8 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const {
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+  ERR_MODULE_LINK_MISMATCH,
   ERR_VM_MODULE_ALREADY_LINKED,
   ERR_VM_MODULE_DIFFERENT_CONTEXT,
   ERR_VM_MODULE_NOT_MODULE,
@@ -43,19 +57,37 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const {
+  ArrayIsArray,
   ArrayPrototypeForEach,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
+  ArrayPrototypeSome,
+  JSONStringify,
+  ObjectAssign,
   ObjectFreeze,
-  ObjectPrototypeIsPrototypeOf,
+  ObjectPrototypeHasOwnProperty,
   PromisePrototypeThen,
+  PromiseReject,
   PromiseResolve,
+  SafeMap,
   SafePromiseAll,
+  SafeSet,
+  SafeWeakMap,
   Symbol,
+  WeakMapPrototypeGet,
+  WeakMapPrototypeSet,
 } = primordials;
 
 const kParsingContext = Symbol("script parsing context");
+const importModuleDynamicallyMap = new SafeWeakMap();
 
-export class Script {
+const USE_MAIN_CONTEXT_DEFAULT_LOADER = Symbol(
+  "USE_MAIN_CONTEXT_DEFAULT_LOADER",
+);
+const DONT_CONTEXTIFY = Symbol("DONT_CONTEXTIFY");
+
+class Script {
   #inner;
 
   constructor(code, options = { __proto__: null }) {
@@ -72,7 +104,7 @@ export class Script {
       columnOffset = 0,
       cachedData,
       produceCachedData = false,
-      // importModuleDynamically,
+      importModuleDynamically,
       [kParsingContext]: parsingContext,
     } = options;
 
@@ -84,8 +116,16 @@ export class Script {
     }
     validateBoolean(produceCachedData, "options.produceCachedData");
 
-    // const hostDefinedOptionId =
-    //     getHostDefinedOptionId(importModuleDynamically, filename);
+    const referrer = { value: undefined };
+    const effectiveImportModuleDynamically =
+      importModuleDynamically === undefined && parsingContext !== undefined
+        ? WeakMapPrototypeGet(importModuleDynamicallyMap, parsingContext)
+        : importModuleDynamically;
+    const importModuleDynamicallyId = getImportModuleDynamicallyId(
+      effectiveImportModuleDynamically,
+      "options.importModuleDynamically",
+      () => referrer.value,
+    );
 
     const result = op_vm_create_script(
       code,
@@ -95,8 +135,10 @@ export class Script {
       cachedData,
       produceCachedData,
       parsingContext,
+      importModuleDynamicallyId,
     );
     this.#inner = result.value;
+    referrer.value = this;
     this.cachedDataProduced = result.cached_data_produced;
     this.cachedDataRejected = result.cached_data_rejected;
     this.cachedData = result.cached_data
@@ -158,6 +200,45 @@ export class Script {
   }
 }
 
+function finishDynamicImportResult(result) {
+  if (isModule(result)) {
+    return PromisePrototypeThen(result.evaluate(), () => result.namespace);
+  }
+  return result;
+}
+
+function validateImportModuleDynamically(value, name) {
+  if (
+    value !== undefined &&
+    value !== USE_MAIN_CONTEXT_DEFAULT_LOADER &&
+    typeof value !== "function"
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      name,
+      "function",
+      value,
+    );
+  }
+}
+
+function getImportModuleDynamicallyId(value, name, getReferrer) {
+  validateImportModuleDynamically(value, name);
+  if (value === USE_MAIN_CONTEXT_DEFAULT_LOADER) {
+    return -1;
+  }
+  if (value === undefined) {
+    return 0;
+  }
+  return op_vm_dynamic_import_callback_register(
+    (specifier, importAttributes) => {
+      return PromisePrototypeThen(
+        PromiseResolve(value(specifier, getReferrer(), importAttributes)),
+        finishDynamicImportResult,
+      );
+    },
+  );
+}
+
 function validateContext(contextifiedObject) {
   if (!isContext(contextifiedObject)) {
     throw new ERR_INVALID_ARG_TYPE(
@@ -205,7 +286,7 @@ function getContextOptions(options) {
 }
 
 let defaultContextNameIndex = 1;
-export function createContext(
+function createContext(
   // deno-lint-ignore prefer-primordials
   contextObject = {},
   options = { __proto__: null },
@@ -218,6 +299,7 @@ export function createContext(
       origin,
       codeGeneration,
       microtaskMode,
+      importModuleDynamically,
     } = options;
 
     validateString(name, "options.name");
@@ -240,13 +322,23 @@ export function createContext(
       "afterEvaluate",
       undefined,
     ]);
+    validateImportModuleDynamically(
+      importModuleDynamically,
+      "options.importModuleDynamically",
+    );
     const microtaskQueue = microtaskMode === "afterEvaluate";
 
-    return op_vm_create_context_without_contextify(
+    const context = op_vm_create_context_without_contextify(
       strings,
       wasm,
       microtaskQueue,
     );
+    WeakMapPrototypeSet(
+      importModuleDynamicallyMap,
+      context,
+      importModuleDynamically,
+    );
+    return context;
   }
 
   if (isContext(contextObject)) {
@@ -260,7 +352,7 @@ export function createContext(
     origin,
     codeGeneration,
     microtaskMode,
-    // importModuleDynamically,
+    importModuleDynamically,
   } = options;
 
   validateString(name, "options.name");
@@ -283,10 +375,11 @@ export function createContext(
     "afterEvaluate",
     undefined,
   ]);
+  validateImportModuleDynamically(
+    importModuleDynamically,
+    "options.importModuleDynamically",
+  );
   const microtaskQueue = microtaskMode === "afterEvaluate";
-
-  // const hostDefinedOptionId =
-  //   getHostDefinedOptionId(importModuleDynamically, name);
 
   op_vm_create_context(
     contextObject,
@@ -296,16 +389,19 @@ export function createContext(
     wasm,
     microtaskQueue,
   );
-  // Register the context scope callback after the context was initialized.
-  // registerImportModuleDynamically(contextObject, importModuleDynamically);
+  WeakMapPrototypeSet(
+    importModuleDynamicallyMap,
+    contextObject,
+    importModuleDynamically,
+  );
   return contextObject;
 }
 
-export function createScript(code, options) {
+function createScript(code, options) {
   return new Script(code, options);
 }
 
-export function runInContext(code, contextifiedObject, options) {
+function runInContext(code, contextifiedObject, options) {
   validateContext(contextifiedObject);
   if (typeof options === "string") {
     options = {
@@ -322,7 +418,7 @@ export function runInContext(code, contextifiedObject, options) {
     .runInContext(contextifiedObject, options);
 }
 
-export function runInNewContext(code, contextObject, options) {
+function runInNewContext(code, contextObject, options) {
   if (typeof options === "string") {
     options = { filename: options };
   }
@@ -331,23 +427,24 @@ export function runInNewContext(code, contextObject, options) {
   return createScript(code, options).runInNewContext(contextObject, options);
 }
 
-export function runInThisContext(code, options) {
+function runInThisContext(code, options) {
   if (typeof options === "string") {
     options = { filename: options };
   }
   return createScript(code, options).runInThisContext(options);
 }
 
-export function isContext(object) {
+function isContext(object) {
   validateObject(object, "object", { allowArray: true });
   return op_vm_is_context(object);
 }
 
-export function compileFunction(code, params, options = { __proto__: null }) {
+function compileFunction(code, params, options = { __proto__: null }) {
   validateString(code, "code");
   if (params !== undefined) {
     validateStringArray(params, "params");
   }
+  validateObject(options, "options");
   const {
     filename = "",
     columnOffset = 0,
@@ -356,7 +453,7 @@ export function compileFunction(code, params, options = { __proto__: null }) {
     produceCachedData = false,
     parsingContext = undefined,
     contextExtensions = [],
-    // importModuleDynamically,
+    importModuleDynamically,
   } = options;
 
   validateString(filename, "options.filename");
@@ -385,8 +482,16 @@ export function compileFunction(code, params, options = { __proto__: null }) {
     validateObject(extension, name, { nullable: true });
   });
 
-  // const hostDefinedOptionId =
-  //     getHostDefinedOptionId(importModuleDynamically, filename);
+  const referrer = { value: undefined };
+  const effectiveImportModuleDynamically =
+    importModuleDynamically === undefined && parsingContext !== undefined
+      ? WeakMapPrototypeGet(importModuleDynamicallyMap, parsingContext)
+      : importModuleDynamically;
+  const importModuleDynamicallyId = getImportModuleDynamicallyId(
+    effectiveImportModuleDynamically,
+    "options.importModuleDynamically",
+    () => referrer.value,
+  );
 
   const result = op_vm_compile_function(
     code,
@@ -398,7 +503,9 @@ export function compileFunction(code, params, options = { __proto__: null }) {
     parsingContext,
     contextExtensions,
     params,
+    importModuleDynamicallyId,
   );
+  referrer.value = result.value;
 
   result.value.cachedDataProduced = result.cached_data_produced;
   result.value.cachedDataRejected = result.cached_data_rejected;
@@ -409,16 +516,11 @@ export function compileFunction(code, params, options = { __proto__: null }) {
   return result.value;
 }
 
-export function measureMemory(_options) {
+function measureMemory(_options) {
   notImplemented("measureMemory");
 }
 
-const USE_MAIN_CONTEXT_DEFAULT_LOADER = Symbol(
-  "USE_MAIN_CONTEXT_DEFAULT_LOADER",
-);
-const DONT_CONTEXTIFY = Symbol("DONT_CONTEXTIFY");
-
-export const constants = {
+const constants = {
   __proto__: null,
   USE_MAIN_CONTEXT_DEFAULT_LOADER,
   DONT_CONTEXTIFY,
@@ -443,10 +545,37 @@ const STATUS_NAMES = [
 const kWrap = Symbol("kWrap");
 const kContext = Symbol("kContext");
 const kLink = Symbol("kLink");
+const kLinkGraph = Symbol("kLinkGraph");
 const kLinkingStatus = Symbol("kLinkingStatus");
+const kModuleRequests = Symbol("kModuleRequests");
+const kDependencySpecifiers = Symbol("kDependencySpecifiers");
 let defaultModuleIdIndex = 0;
 
-export class Module {
+function isModule(object) {
+  return typeof object === "object" && object !== null &&
+    ObjectPrototypeHasOwnProperty(object, kWrap);
+}
+
+function buildModuleRequests(wrap) {
+  const raw = op_vm_module_get_module_requests(wrap);
+  const out = [];
+  for (let i = 0; i < raw.length; i++) {
+    const r = raw[i];
+    const attrs = { __proto__: null };
+    // Object.assign on a null-proto target copies enumerable string keys.
+    ObjectAssign(attrs, r.attributes);
+    ObjectFreeze(attrs);
+    out[i] = ObjectFreeze({
+      __proto__: null,
+      specifier: r.specifier,
+      attributes: attrs,
+      phase: r.phase,
+    });
+  }
+  return ObjectFreeze(out);
+}
+
+class Module {
   constructor() {
     if (new.target === Module) {
       throw new ERR_INVALID_ARG_TYPE(
@@ -505,60 +634,87 @@ export class Module {
     });
   }
 
-  // TODO(divybot): cyclic imports not yet supported. Single-pass linking
-  // also makes instantiation order depend on linker resolution order: in a
-  // diamond (A imports B and C; B also imports C) C is instantiated when
-  // B's kLink finishes, so by the time A's instantiate runs, B and C are
-  // already instantiated. V8 tolerates re-instantiating an instantiated
-  // module as a no-op, but a Node-style two-phase resolve+instantiate
-  // would be needed for true cyclic-import support.
+  // Two-phase linking so cyclic imports are supported. First walk the whole
+  // dependency graph, calling the linker for each module and recording its
+  // resolved dependencies via `op_vm_module_link`, WITHOUT instantiating.
+  // Then instantiate once at the root - V8 instantiates the entire graph in
+  // a single pass. Decoupling linking from instantiation is what lets a
+  // module that (transitively) imports itself resolve: the `visited` set
+  // short-circuits the cycle once a module has recorded its resolutions.
   async [kLink](linker) {
-    const requests = op_vm_module_get_module_requests(this[kWrap]);
+    await this[kLinkGraph](linker, new SafeSet());
+    op_vm_module_instantiate(this[kWrap]);
+  }
+
+  async [kLinkGraph](linker, visited) {
+    if (visited.has(this)) {
+      return;
+    }
+    visited.add(this);
+
+    // Synthetic modules have no module requests and are already linked on
+    // construction; nothing to resolve. `op_vm_module_get_status` is used
+    // instead of the `status` getter because the latter reports "linking"
+    // for the root while `link()` is in flight.
+    const requests = this[kModuleRequests];
+    if (requests === undefined || op_vm_module_get_status(this[kWrap]) !== 0) {
+      return;
+    }
+
     const specifiers = [];
-    const modules = [];
     const linkerPromises = [];
     for (let i = 0; i < requests.length; i++) {
-      const specifier = requests[i];
+      const { specifier, attributes } = requests[i];
       ArrayPrototypePush(specifiers, specifier);
       const p = PromiseResolve(
-        linker(specifier, this, { attributes: {} }),
+        linker(specifier, this, { attributes, assert: attributes }),
       );
       ArrayPrototypePush(linkerPromises, p);
     }
     const resolvedModules = await SafePromiseAll(linkerPromises);
+
+    const wraps = [];
     for (let i = 0; i < resolvedModules.length; i++) {
       const m = resolvedModules[i];
-      if (!ObjectPrototypeIsPrototypeOf(Module.prototype, m)) {
+      if (!isModule(m)) {
         throw new ERR_VM_MODULE_NOT_MODULE();
       }
       if (m.context !== this[kContext]) {
         throw new ERR_VM_MODULE_DIFFERENT_CONTEXT();
       }
-      if (m.status === "unlinked") {
-        await m[kLink](linker);
-      }
-      ArrayPrototypePush(modules, m[kWrap]);
+      ArrayPrototypePush(wraps, m[kWrap]);
     }
 
-    op_vm_module_link(this[kWrap], specifiers, modules);
-    op_vm_module_instantiate(this[kWrap]);
+    // Record this module's resolutions before recursing so a dependency that
+    // imports back into this module finds it already in `visited`.
+    op_vm_module_link(this[kWrap], specifiers, wraps);
+
+    for (let i = 0; i < resolvedModules.length; i++) {
+      await resolvedModules[i][kLinkGraph](linker, visited);
+    }
   }
 
-  async evaluate(options = { __proto__: null }) {
-    validateObject(options, "options");
-    const status = op_vm_module_get_status(this[kWrap]);
-    // Allow evaluate from linked (2), evaluating (3), evaluated (4), errored (5).
-    if (status < 2) {
-      throw new ERR_VM_MODULE_STATUS(
-        "must be one of linked, evaluated, or errored",
-      );
+  evaluate(options = { __proto__: null }) {
+    try {
+      validateObject(options, "options");
+      const status = op_vm_module_get_status(this[kWrap]);
+      // Allow evaluate from linked (2), evaluating (3), evaluated (4), errored (5).
+      if (status < 2) {
+        throw new ERR_VM_MODULE_STATUS(
+          "must be one of linked, evaluated, or errored",
+        );
+      }
+      // Return the V8 Promise directly so that synthetic modules with sync
+      // evaluation steps produce a synchronously-resolved Promise (matching
+      // Node's behavior).
+      return op_vm_module_evaluate(this[kWrap]);
+    } catch (e) {
+      return PromiseReject(e);
     }
-    const result = op_vm_module_evaluate(this[kWrap]);
-    return await result;
   }
 }
 
-export class SourceTextModule extends Module {
+class SourceTextModule extends Module {
   constructor(sourceText, options = { __proto__: null }) {
     super();
     if (typeof sourceText !== "string") {
@@ -570,6 +726,7 @@ export class SourceTextModule extends Module {
       context,
       lineOffset = 0,
       columnOffset = 0,
+      importModuleDynamically,
     } = options;
     if (context !== undefined) {
       validateContext(context);
@@ -578,6 +735,17 @@ export class SourceTextModule extends Module {
     validateInt32(lineOffset, "options.lineOffset");
     validateInt32(columnOffset, "options.columnOffset");
 
+    const referrer = { value: undefined };
+    const effectiveImportModuleDynamically =
+      importModuleDynamically === undefined && context !== undefined
+        ? WeakMapPrototypeGet(importModuleDynamicallyMap, context)
+        : importModuleDynamically;
+    const importModuleDynamicallyId = getImportModuleDynamicallyId(
+      effectiveImportModuleDynamically,
+      "options.importModuleDynamically",
+      () => referrer.value,
+    );
+
     this[kContext] = context;
     this[kWrap] = op_vm_module_create_source_text_module(
       sourceText,
@@ -585,14 +753,164 @@ export class SourceTextModule extends Module {
       lineOffset,
       columnOffset,
       context,
+      importModuleDynamicallyId,
     );
+    referrer.value = this;
+    this[kModuleRequests] = buildModuleRequests(this[kWrap]);
+    this[kDependencySpecifiers] = undefined;
+  }
+
+  get moduleRequests() {
+    return this[kModuleRequests];
+  }
+
+  get dependencySpecifiers() {
+    if (this[kDependencySpecifiers] === undefined) {
+      this[kDependencySpecifiers] = ObjectFreeze(
+        ArrayPrototypeMap(this[kModuleRequests], (r) => r.specifier),
+      );
+    }
+    return this[kDependencySpecifiers];
+  }
+
+  linkRequests(modules) {
+    if (this.status !== "unlinked") {
+      throw new ERR_VM_MODULE_STATUS("must be unlinked");
+    }
+    validateArray(modules, "modules");
+    const requests = this[kModuleRequests];
+    if (modules.length !== requests.length) {
+      throw new ERR_MODULE_LINK_MISMATCH(
+        `Expected ${requests.length} modules, got ${modules.length}`,
+      );
+    }
+    // Validate each provided module first (type + context), then check for
+    // cache-key collisions: two requests sharing (specifier, attributes)
+    // must map to the same module instance, matching Node's V8 binding
+    // behavior. We use this single pass to keep the error precedence
+    // identical to Node's tests.
+    const seen = new SafeMap();
+    const specifiers = [];
+    const wraps = [];
+    for (let i = 0; i < modules.length; i++) {
+      const m = modules[i];
+      if (!isModule(m)) {
+        throw new ERR_VM_MODULE_NOT_MODULE();
+      }
+      if (m.context !== this[kContext]) {
+        throw new ERR_VM_MODULE_DIFFERENT_CONTEXT();
+      }
+      const { specifier, attributes } = requests[i];
+      const key = `${specifier}\0${JSONStringify(attributes)}`;
+      if (seen.has(key)) {
+        if (seen.get(key) !== m) {
+          throw new ERR_MODULE_LINK_MISMATCH(
+            `Different modules linked to the same cache key '${specifier}'`,
+          );
+        }
+      } else {
+        seen.set(key, m);
+      }
+      ArrayPrototypePush(specifiers, specifier);
+      ArrayPrototypePush(wraps, m[kWrap]);
+    }
+
+    op_vm_module_link(this[kWrap], specifiers, wraps);
+  }
+
+  instantiate() {
+    op_vm_module_instantiate(this[kWrap]);
   }
 }
 
-export default {
+class SyntheticModule extends Module {
+  constructor(exportNames, evaluateCallback, options = { __proto__: null }) {
+    super();
+    if (
+      !ArrayIsArray(exportNames) ||
+      ArrayPrototypeSome(exportNames, (e) => typeof e !== "string")
+    ) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "exportNames",
+        "Array of unique strings",
+        exportNames,
+      );
+    }
+    ArrayPrototypeForEach(exportNames, (name, i) => {
+      if (ArrayPrototypeIndexOf(exportNames, name, i + 1) !== -1) {
+        throw new ERR_INVALID_ARG_VALUE(
+          `exportNames.${name}`,
+          name,
+          "is duplicated",
+        );
+      }
+    });
+    if (typeof evaluateCallback !== "function") {
+      throw new ERR_INVALID_ARG_TYPE(
+        "evaluateCallback",
+        "function",
+        evaluateCallback,
+      );
+    }
+    validateObject(options, "options");
+    const {
+      identifier = `vm:module(${defaultModuleIdIndex++})`,
+      context,
+    } = options;
+    if (context !== undefined) {
+      validateContext(context);
+    }
+    validateString(identifier, "options.identifier");
+
+    this[kContext] = context;
+    this[kWrap] = op_vm_module_create_synthetic_module(
+      identifier,
+      exportNames,
+      context,
+      evaluateCallback,
+      this,
+    );
+    // Synthetic modules have no dependencies; instantiate immediately so
+    // the module enters the `linked` state and is ready for evaluation.
+    op_vm_module_instantiate(this[kWrap]);
+  }
+
+  link() {
+    // No-op for synthetic modules. The base `Module.link` would otherwise
+    // throw ERR_VM_MODULE_ALREADY_LINKED because the constructor already
+    // instantiated us.
+  }
+
+  setExport(name, value) {
+    validateString(name, "name");
+    const status = op_vm_module_get_status(this[kWrap]);
+    if (status < 2) {
+      throw new ERR_VM_MODULE_STATUS("must be linked");
+    }
+    op_vm_module_set_synthetic_export(this[kWrap], name, value);
+  }
+}
+
+return {
+  default: {
+    Module,
+    Script,
+    SourceTextModule,
+    SyntheticModule,
+    constants,
+    createContext,
+    createScript,
+    runInContext,
+    runInNewContext,
+    runInThisContext,
+    isContext,
+    compileFunction,
+    measureMemory,
+  },
   Module,
   Script,
   SourceTextModule,
+  SyntheticModule,
   constants,
   createContext,
   createScript,
@@ -603,3 +921,4 @@ export default {
   compileFunction,
   measureMemory,
 };
+})();

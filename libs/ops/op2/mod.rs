@@ -260,6 +260,7 @@ pub(crate) fn generate_op2(
   let fn_args = Ident::new("args", Span::call_site());
   let scope = Ident::new("scope", Span::call_site());
   let info = Ident::new("info", Span::call_site());
+  let parts = Ident::new("parts", Span::call_site());
   let opctx = Ident::new("opctx", Span::call_site());
   let opstate = Ident::new("opstate", Span::call_site());
   let js_runtime_state = Ident::new("js_runtime_state", Span::call_site());
@@ -282,6 +283,7 @@ pub(crate) fn generate_op2(
     fn_args,
     scope,
     info,
+    parts,
     opctx,
     opstate,
     js_runtime_state,
@@ -289,6 +291,7 @@ pub(crate) fn generate_op2(
     result,
     retval,
     needs_args,
+    needs_parts: false,
     slow_function: slow_function.clone(),
     fast_function,
     fast_function_metrics,
@@ -405,8 +408,13 @@ pub(crate) fn generate_op2(
   let callable = if let Some(ty) = config.method {
     op_fn.vis = syn::Visibility::Inherited;
     let ident = format_ident!("{ty}");
+    // The `Callable` trait method also needs the lint allow: clippy fires
+    // on the trait declaration too, not just the impl, so without this
+    // attribute users hit `clippy::too_many_arguments` for any op method
+    // that legitimately takes more than 7 args.
     quote! {
       trait Callable {
+        #[allow(clippy::too_many_arguments)]
         #op_fn_sig;
       }
       impl Callable for #ident {
@@ -434,6 +442,7 @@ pub(crate) fn generate_op2(
   };
 
   let symbol_for = config.symbol;
+  let constructable = config.constructable;
 
   Ok(quote! {
     #[allow(non_camel_case_types)]
@@ -454,6 +463,7 @@ pub(crate) fn generate_op2(
           /*symbol_for*/ #symbol_for,
           /*arg_count*/ #arg_count as u8,
           /*no_side_effect*/ #no_side_effect,
+          /*constructable*/ #constructable,
           /*slow_fn*/ Self::#slow_function as _,
           /*slow_fn_impl*/ Self::slow_function_impl,
           /*accessor_type*/ #accessor_type,

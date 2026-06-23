@@ -5,6 +5,10 @@
       "args": "transpile main.ts",
       "output": "basic_stdout.out"
     },
+    "jsdoc_newline": {
+      "args": "transpile jsdoc.ts",
+      "output": "jsdoc.out"
+    },
     "output_flag": {
       "steps": [
         {

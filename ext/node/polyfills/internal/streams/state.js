@@ -2,7 +2,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { validateInteger } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );

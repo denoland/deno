@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   createTimer: createTimer_,
   cancelTimer: cancelTimer_,
@@ -13,6 +14,7 @@ const {
   immediateRefCount,
 } = core;
 const {
+  ArrayPrototypePush,
   DateNow,
   FunctionPrototypeCall,
   MapPrototypeDelete,
@@ -23,6 +25,7 @@ const {
   ObjectDefineProperty,
   ReflectApply,
   SafeArrayIterator,
+  SafeMapIterator,
   SafeMap,
   Symbol,
   SymbolDispose,
@@ -47,15 +50,17 @@ const {
 const { ERR_OUT_OF_RANGE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-import { emitWarning } from "node:process";
+const lazyProcess = core.createLazyLoader("node:process");
 
 // Timeout values > TIMEOUT_MAX are set to 1.
-export const TIMEOUT_MAX = 2 ** 31 - 1;
+const TIMEOUT_MAX = 2 ** 31 - 1;
 
-export const kDestroy = Symbol("destroy");
-export const kTimerId = Symbol("timerId");
-export const kTimeout = Symbol("timeout");
-export const kRefed = core.kRefed;
+const kDestroy = Symbol("destroy");
+const kTimerId = Symbol("timerId");
+const kSystem = Symbol("system");
+const kTimeout = Symbol("timeout");
+const kSuspended = Symbol("suspended");
+const kRefed = core.kRefed;
 const createTimer = Symbol("createTimer");
 
 /**
@@ -70,15 +75,28 @@ const activeTimers = new SafeMap();
  * @param {number} id
  * @returns {Timeout | undefined}
  */
-export function getActiveTimer(id) {
+function getActiveTimer(id) {
   return MapPrototypeGet(activeTimers, id);
+}
+
+function getActiveResourcesInfo() {
+  const resources = [];
+  for (const { 1: timeout } of new SafeMapIterator(activeTimers)) {
+    if (timeout[kRefed]) {
+      ArrayPrototypePush(resources, "Timeout");
+    }
+  }
+  return resources;
 }
 
 let warnedNegativeNumber = false;
 let warnedNotNumber = false;
 
 // Timer constructor function.
-export function Timeout(callback, after, args, isRepeat, isRefed) {
+// isSystem marks the timer as runtime-internal (e.g. setUnrefTimeout's
+// keep-alive timers); leak/sanitizer machinery skips these so an
+// internal timer doesn't surface as a user-visible leak.
+function Timeout(callback, after, args, isRepeat, isRefed, isSystem) {
   if (after === undefined) {
     after = 1;
   } else {
@@ -87,21 +105,21 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
 
   if (!(after >= 1 && after <= TIMEOUT_MAX)) {
     if (after > TIMEOUT_MAX) {
-      emitWarning(
+      lazyProcess().default.emitWarning(
         `${after} does not fit into a 32-bit signed integer.` +
           "\nTimeout duration was set to 1.",
         "TimeoutOverflowWarning",
       );
     } else if (after < 0 && !warnedNegativeNumber) {
       warnedNegativeNumber = true;
-      emitWarning(
+      lazyProcess().default.emitWarning(
         `${after} is a negative number.` +
           "\nTimeout duration was set to 1.",
         "TimeoutNegativeWarning",
       );
     } else if (NumberIsNaN(after) && !warnedNotNumber) {
       warnedNotNumber = true;
-      emitWarning(
+      lazyProcess().default.emitWarning(
         `${after} is not a number.` +
           "\nTimeout duration was set to 1.",
         "TimeoutNaNWarning",
@@ -117,7 +135,19 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
   this._timerArgs = args;
   this._repeat = isRepeat;
   this._destroyed = false;
+  ObjectDefineProperty(this, kSuspended, {
+    __proto__: null,
+    value: false,
+    writable: true,
+  });
   this[kRefed] = isRefed;
+  // Non-enumerable: this is a runtime-internal marker and must not leak into
+  // `util.inspect(timer)` output (node has no such property).
+  ObjectDefineProperty(this, kSystem, {
+    __proto__: null,
+    value: !!isSystem,
+    writable: true,
+  });
 
   const asyncId = nextAsyncId();
   const triggerAsyncId = executionAsyncId();
@@ -213,6 +243,7 @@ Timeout.prototype[createTimer] = function () {
     undefined,
     this._repeat,
     this[kRefed],
+    this[kSystem],
   );
   ObjectDefineProperty(this, "_timer", {
     __proto__: null,
@@ -227,8 +258,9 @@ Timeout.prototype[createTimer] = function () {
 };
 
 Timeout.prototype[kDestroy] = function () {
-  if (!this._destroyed) {
+  if (!this._destroyed || this[kSuspended]) {
     this._destroyed = true;
+    this[kSuspended] = false;
     this._idleTimeout = -1;
     this._idleStart = DateNow();
     this._onTimeout = null;
@@ -263,6 +295,7 @@ Timeout.prototype.refresh = function () {
     // nulled by kDestroy or _onTimeout explicitly cleared).
     if (this._onTimeout !== null) {
       this._destroyed = false;
+      this[kSuspended] = false;
       this[kTimerId] = this[createTimer]();
     }
   } else {
@@ -314,7 +347,7 @@ Timeout.prototype[SymbolToPrimitive] = function () {
  * @param {string} name
  * @returns
  */
-export function getTimerDuration(msecs, name) {
+function getTimerDuration(msecs, name) {
   validateNumber(msecs, name);
 
   if (msecs < 0 || !NumberIsFinite(msecs)) {
@@ -323,7 +356,7 @@ export function getTimerDuration(msecs, name) {
 
   // Ensure that msecs fits into signed int32
   if (msecs > TIMEOUT_MAX) {
-    emitWarning(
+    lazyProcess().default.emitWarning(
       `${msecs} does not fit into a 32-bit signed integer.` +
         `\nTimer duration was truncated to ${TIMEOUT_MAX}.`,
       "TimeoutOverflowWarning",
@@ -335,16 +368,30 @@ export function getTimerDuration(msecs, name) {
   return msecs;
 }
 
-export function setUnrefTimeout(callback, timeout, ...args) {
+function setUnrefTimeout(callback, timeout, ...args) {
   validateFunction(callback, "callback");
-  return new Timeout(callback, timeout, args, false, false);
+  // isSystem=true: this is a runtime-internal timer (keep-alive, socket
+  // timeouts, idle eviction etc.). The leak sanitizer skips system timers
+  // so e.g. Agent.keepSocketAlive's 5000 ms unref'd timer stays invisible
+  // to Deno.test's `sanitizeOps`.
+  return new Timeout(callback, timeout, args, false, false, true);
+}
+
+function suspendTimeout(timeout) {
+  if (timeout !== null && timeout !== undefined && !timeout._destroyed) {
+    timeout._destroyed = true;
+    timeout[kSuspended] = true;
+    timeout._idleStart = DateNow();
+    cancelTimer_(timeout._timer);
+    MapPrototypeDelete(activeTimers, timeout[kTimerId]);
+  }
 }
 
 // Re-export immediate queue and runImmediates from core for consumers
-export const immediateQueue = core.immediateQueue;
-export const runImmediates = core.runImmediates;
+const immediateQueue = core.immediateQueue;
+const runImmediates = core.runImmediates;
 
-export class Immediate {
+class Immediate {
   constructor(unboundCallback, ...args) {
     const asyncContext = getAsyncContext();
     // Match Node's `immediate._onImmediate(...argv)` invocation: the callback's
@@ -412,11 +459,20 @@ export class Immediate {
   };
 }
 
-export default {
-  getTimerDuration,
+return {
+  TIMEOUT_MAX,
+  kDestroy,
   kTimerId,
   kTimeout,
-  setUnrefTimeout,
+  kRefed,
+  getActiveTimer,
+  getActiveResourcesInfo,
   Timeout,
-  TIMEOUT_MAX,
+  getTimerDuration,
+  setUnrefTimeout,
+  suspendTimeout,
+  immediateQueue,
+  runImmediates,
+  Immediate,
 };
+})();

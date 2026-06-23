@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "only_test_fails_on_its_own": {
+      "args": "test --no-check main.ts",
+      "exitCode": 1,
+      "output": "main.out"
+    },
+    "only_test_passes": {
+      "args": "test --no-check pass.ts",
+      "exitCode": 1,
+      "output": "pass.out"
+    }
+  }
+}

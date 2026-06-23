@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::sync::LazyLock;
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -33,7 +34,9 @@ use deno_core::SourceCodeCacheInfo;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::v8;
+use deno_cron::CronHandler;
 use deno_cron::CronHandlerImpl;
+use deno_error::JsErrorBox;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
@@ -45,7 +48,7 @@ use deno_permissions::PermissionsContainer;
 use deno_process::NpmProcessStateProviderRc;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
-use deno_web::BlobStore;
+use deno_web::BlobStoreTrait;
 use deno_web::InMemoryBroadcastChannel;
 use log::debug;
 use node_resolver::InNpmPackageChecker;
@@ -97,11 +100,27 @@ pub fn create_validate_import_attributes_callback(
 ) -> deno_core::ValidateImportAttributesCb {
   Box::new(
     move |scope: &mut v8::PinScope<'_, '_>,
-          attributes: &HashMap<String, String>| {
+          attributes: &HashMap<String, String>,
+          context: &deno_core::ImportAttributesContext| {
+      // If `module.registerHooks()` has installed user hooks, defer
+      // import-attribute validation to the user hooks so they can
+      // implement custom module types and attributes
+      // (e.g. `with { type: "x-css" }`). Without this, the builtin
+      // validator rejects anything outside the small allow-list before
+      // hooks ever get a chance to handle the import.
+      let op_state = JsRuntime::op_state_from(&*scope);
+      if let Ok(op_state) = op_state.try_borrow()
+        && let Some(registry) = op_state
+          .try_borrow::<deno_node::ops::module_hooks::LoaderHookRegistry>(
+        )
+        && registry.hooks_active.get()
+      {
+        return;
+      }
       let valid_attribute = |kind: &str| {
-        enable_raw_imports.load(Ordering::Relaxed)
-          && matches!(kind, "bytes" | "text")
-          || matches!(kind, "json")
+        matches!(kind, "json" | "text")
+          || (enable_raw_imports.load(Ordering::Relaxed)
+            && matches!(kind, "bytes" | "css"))
       };
       for (key, value) in attributes {
         let msg = if key != "type" {
@@ -116,11 +135,39 @@ pub fn create_validate_import_attributes_callback(
           continue;
         };
 
+        let msg = format!("{msg}{}", context.format_location());
         let message = v8::String::new(scope, &msg).unwrap();
         let exception = v8::Exception::type_error(scope, message);
         scope.throw_exception(exception);
         return;
       }
+    },
+  )
+}
+
+/// Evaluates custom module types that aren't built into deno_core. Currently
+/// only `with { type: "css" }` imports (gated on `--unstable-raw-imports` by
+/// `create_validate_import_attributes_callback`), which evaluate to a
+/// `CSSStyleSheet` containing the source text.
+pub fn create_custom_module_evaluation_callback()
+-> deno_core::CustomModuleEvaluationCb {
+  Box::new(
+    |scope, module_type, _module_name, code| match &*module_type {
+      "css" => {
+        let code = match code {
+          deno_core::ModuleSourceCode::String(code) => code.as_str().to_owned(),
+          deno_core::ModuleSourceCode::Bytes(bytes) => {
+            String::from_utf8_lossy(bytes.as_bytes()).into_owned()
+          }
+        };
+        let sheet: v8::Local<v8::Value> =
+          deno_web::create_css_style_sheet(scope, code).into();
+        let sheet = v8::Global::new(scope, sheet);
+        Ok(deno_core::CustomModuleEvaluationKind::Synthetic(sheet))
+      }
+      _ => Err(deno_error::JsErrorBox::generic(format!(
+        "Importing \"{module_type}\" modules is not supported"
+      ))),
     },
   )
 }
@@ -171,7 +218,7 @@ pub struct WorkerServiceOptions<
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TExtNodeSys: ExtNodeSys,
 > {
-  pub blob_store: Arc<BlobStore>,
+  pub blob_store: Arc<dyn BlobStoreTrait>,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   pub feature_checker: Arc<FeatureChecker>,
@@ -228,6 +275,14 @@ pub struct WorkerOptions {
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<&'static [u8]>,
 
+  /// `(specifier, source)` pairs for `lazy_loaded_js` files that were not
+  /// consumed during snapshot creation. Emitted by the snapshot build script.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+
+  /// `(specifier, source)` pairs for `lazy_loaded_esm` files that were not
+  /// consumed during snapshot creation. Emitted by the snapshot build script.
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
+
   /// Should op registration be skipped?
   pub skip_op_registration: bool,
 
@@ -277,6 +332,8 @@ impl Default for WorkerOptions {
       cache_storage_dir: Default::default(),
       extensions: Default::default(),
       startup_snapshot: Default::default(),
+      residual_lazy_js_sources: &[],
+      residual_lazy_esm_sources: &[],
       create_params: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
@@ -285,6 +342,48 @@ impl Default for WorkerOptions {
       unconfigured_runtime: None,
     }
   }
+}
+
+pub(crate) fn request_builder_hook(
+  request: &mut http::Request<deno_fetch::ReqBody>,
+) -> Result<(), JsErrorBox> {
+  const X_DENO_FETCH_TOKEN: http::HeaderName =
+    http::HeaderName::from_static("x-deno-fetch-token");
+  const CDN_LOOP: http::HeaderName = http::HeaderName::from_static("cdn-loop");
+  static X_DENO_FETCH_TOKEN_VALUE: OnceLock<Option<http::HeaderValue>> =
+    OnceLock::new();
+  static CDN_LOOP_VALUE: OnceLock<Option<http::HeaderValue>> = OnceLock::new();
+
+  // Scrub Deno-specific headers to prevent user code from spoofing them.
+  if let http::header::Entry::Occupied(entry) =
+    request.headers_mut().entry(X_DENO_FETCH_TOKEN)
+  {
+    entry.remove_entry_mult();
+  }
+
+  let maybe_x_deno_fetch_token = X_DENO_FETCH_TOKEN_VALUE.get_or_init(|| {
+    std::env::var("X_DENO_FETCH_TOKEN")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  });
+
+  if let Some(token) = maybe_x_deno_fetch_token {
+    request
+      .headers_mut()
+      .insert(X_DENO_FETCH_TOKEN, token.clone());
+  }
+
+  let cdn_loop_value = CDN_LOOP_VALUE.get_or_init(|| {
+    std::env::var("CDN_LOOP")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  });
+
+  if let Some(cdn_loop) = cdn_loop_value {
+    request.headers_mut().insert(CDN_LOOP, cdn_loop.clone());
+  }
+
+  Ok(())
 }
 
 pub fn create_op_metrics(
@@ -423,25 +522,16 @@ impl MainWorker {
       options.unconfigured_runtime = None;
     }
 
-    #[cfg(feature = "hmr")]
-    const {
-      assert!(
-        cfg!(not(feature = "only_snapshotted_js_sources")),
-        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-      );
-    }
-
-    #[cfg(feature = "only_snapshotted_js_sources")]
-    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
-
     let mut js_runtime = if let Some(u) = options.unconfigured_runtime {
       let js_runtime = u.hydrate(services.module_loader);
 
       let op_state = js_runtime.op_state();
       let current_handler =
-        op_state.borrow().borrow::<Rc<CronHandlerImpl>>().clone();
+        op_state.borrow().borrow::<Rc<dyn CronHandler>>().clone();
       if let Some(new_handler) = current_handler.maybe_reload() {
-        op_state.borrow_mut().put(Rc::new(new_handler));
+        op_state
+          .borrow_mut()
+          .put::<Rc<dyn CronHandler>>(Rc::from(new_handler));
       }
 
       js_runtime
@@ -457,6 +547,8 @@ impl MainWorker {
       common_runtime(CommonRuntimeOptions {
         module_loader: services.module_loader.clone(),
         startup_snapshot: options.startup_snapshot,
+        residual_lazy_js_sources: options.residual_lazy_js_sources,
+        residual_lazy_esm_sources: options.residual_lazy_esm_sources,
         create_params: options.create_params,
         skip_op_registration: options.skip_op_registration,
         shared_array_buffer_store: services.shared_array_buffer_store,
@@ -533,6 +625,7 @@ impl MainWorker {
             .clone(),
           file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
           resolver: services.fetch_dns_resolver,
+          request_builder_hook: Some(request_builder_hook),
           ..Default::default()
         }),
         deno_cache::deno_cache::args(create_cache),
@@ -547,7 +640,7 @@ impl MainWorker {
           options.unsafely_ignore_certificate_errors.clone(),
         ),
         deno_kv::deno_kv::args(
-          MultiBackendDbHandler::remote_or_sqlite(
+          Box::new(MultiBackendDbHandler::remote_or_sqlite(
             options.origin_storage_dir.clone(),
             options.seed,
             deno_kv::remote::HttpOptions {
@@ -561,7 +654,7 @@ impl MainWorker {
               client_cert_chain_and_key: TlsKeys::Null,
               proxy: None,
             },
-          ),
+          )),
           deno_kv::KvConfig::builder().build(),
         ),
         deno_napi::deno_napi::args(
@@ -724,6 +817,18 @@ impl MainWorker {
   }
 
   pub fn bootstrap(&mut self, options: BootstrapOptions) {
+    // Diagnostic env var; not on the sys_traits surface in this crate.
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "diagnostic env var; not part of the sys_traits surface"
+    )]
+    let phase_enabled = std::env::var_os("DENO_STARTUP_PHASES")
+      .is_some_and(|v| !v.is_empty() && v != "0");
+    let t0 = if phase_enabled {
+      Some(std::time::Instant::now())
+    } else {
+      None
+    };
     // Setup bootstrap options for ops.
     {
       let op_state = self.js_runtime.op_state();
@@ -744,6 +849,16 @@ impl MainWorker {
     if let Some(exception) = scope.exception() {
       let error = JsError::from_v8_exception(scope, exception);
       panic!("Bootstrap exception: {error}");
+    }
+    if let Some(t) = t0 {
+      #[allow(clippy::print_stderr, reason = "diagnostic")]
+      {
+        eprintln!(
+          "[startup] {:>32}  {:?}",
+          "MainWorker::bootstrap (99_main)",
+          t.elapsed()
+        );
+      }
     }
   }
 
@@ -916,6 +1031,34 @@ impl MainWorker {
       .await
   }
 
+  /// If a debugger session is attached and would otherwise be dropped on
+  /// shutdown (a legacy blocking session, or one that opted into
+  /// `NodeRuntime.notifyWhenWaitingForDisconnect` (e.g. Chrome DevTools)),
+  /// block until it disconnects. Returns immediately when no such session
+  /// is attached.
+  ///
+  /// This mirrors the wait the `deno run` event loop performs at the end of
+  /// execution and is meant for tools like `deno test` / `deno bench` whose
+  /// normal shutdown polls the event loop with a zero-duration timeout and
+  /// would otherwise exit while a debugger is still attached.
+  pub async fn wait_for_inspector_session_disconnect(
+    &mut self,
+  ) -> Result<(), CoreError> {
+    let sessions_state = self.js_runtime.inspector().sessions_state();
+    if sessions_state.has_active
+      && (sessions_state.has_blocking
+        || sessions_state.has_nonblocking_wait_for_disconnect)
+    {
+      self
+        .js_runtime
+        .run_event_loop(PollEventLoopOptions {
+          wait_for_inspector: true,
+        })
+        .await?;
+    }
+    Ok(())
+  }
+
   /// Return exit code set by the executed code (either in main worker
   /// or one of child web workers).
   pub fn exit_code(&self) -> i32 {
@@ -1083,8 +1226,8 @@ fn common_extensions<
     deno_ffi::deno_ffi::lazy_init(),
     deno_net::deno_net::lazy_init(),
     deno_tls::deno_tls::init(),
-    deno_kv::deno_kv::lazy_init::<MultiBackendDbHandler>(),
-    deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
+    deno_kv::deno_kv::lazy_init(),
+    deno_cron::deno_cron::init(Box::new(CronHandlerImpl::create_from_env())),
     deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),
@@ -1106,6 +1249,7 @@ fn common_extensions<
     ops::tty::deno_tty::init(),
     ops::http::deno_http_runtime::init(),
     deno_bundle_runtime::deno_bundle_runtime::lazy_init(),
+    ops::desktop::deno_desktop::init(),
     ops::bootstrap::deno_bootstrap::init(
       has_snapshot.then(Default::default),
       unconfigured_runtime,
@@ -1122,6 +1266,8 @@ fn common_extensions<
 struct CommonRuntimeOptions {
   module_loader: Rc<dyn ModuleLoader>,
   startup_snapshot: Option<&'static [u8]>,
+  residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   create_params: Option<v8::CreateParams>,
   skip_op_registration: bool,
   shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -1139,6 +1285,8 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
   let js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(opts.module_loader),
     startup_snapshot: opts.startup_snapshot,
+    residual_lazy_js_sources: opts.residual_lazy_js_sources,
+    residual_lazy_esm_sources: opts.residual_lazy_esm_sources,
     create_params: opts.create_params,
     skip_op_registration: opts.skip_op_registration,
     shared_array_buffer_store: opts.shared_array_buffer_store,
@@ -1165,7 +1313,9 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
       .then(create_permissions_stack_trace_callback),
     extension_code_cache: None,
     v8_platform: None,
-    custom_module_evaluation_cb: None,
+    custom_module_evaluation_cb: Some(
+      create_custom_module_evaluation_callback(),
+    ),
     eval_context_code_cache_cbs: None,
   });
 
@@ -1195,6 +1345,8 @@ pub fn create_permissions_stack_trace_callback()
 
 pub struct UnconfiguredRuntimeOptions {
   pub startup_snapshot: &'static [u8],
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub create_params: Option<v8::CreateParams>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -1228,6 +1380,8 @@ impl UnconfiguredRuntime {
     let js_runtime = common_runtime(CommonRuntimeOptions {
       module_loader: module_loader.clone(),
       startup_snapshot: Some(options.startup_snapshot),
+      residual_lazy_js_sources: options.residual_lazy_js_sources,
+      residual_lazy_esm_sources: options.residual_lazy_esm_sources,
       create_params: options.create_params,
       skip_op_registration: true,
       shared_array_buffer_store: options.shared_array_buffer_store,

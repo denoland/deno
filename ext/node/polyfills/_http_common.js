@@ -20,7 +20,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypePop,
   ArrayPrototypePush,
@@ -38,11 +38,11 @@ const {
   Uint8Array,
 } = primordials;
 import { setImmediate } from "node:timers";
-import {
+const {
   allMethods,
   HTTPParser,
   methods,
-} from "ext:deno_node/internal_binding/http_parser.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/http_parser.ts");
 import { IncomingMessage, readStart, readStop } from "node:_http_incoming";
 
 const kIncomingMessage = Symbol("IncomingMessage");
@@ -289,9 +289,18 @@ function checkIsHttpToken(val) {
 }
 
 const headerCharRegex = new SafeRegExp("[^\\t\\x20-\\x7e\\x80-\\xff]");
+// In lenient mode (insecure HTTP parser) only NUL (0x00), LF (0x0a),
+// CR (0x0d), and characters above 0xff are considered invalid, matching
+// the Fetch spec and Node.js.
+const lenientHeaderCharRegex = new SafeRegExp(
+  "[\\x00\\x0a\\x0d]|[^\\x00-\\xff]",
+);
 
-function checkInvalidHeaderChar(val) {
-  return RegExpPrototypeTest(headerCharRegex, val);
+function checkInvalidHeaderChar(val, lenient = false) {
+  return RegExpPrototypeTest(
+    lenient ? lenientHeaderCharRegex : headerCharRegex,
+    val,
+  );
 }
 
 function cleanParser(parser) {
@@ -308,6 +317,7 @@ function cleanParser(parser) {
   parser.onIncoming = null;
   parser.joinDuplicateHeaders = null;
   parser._asyncResource = null;
+  parser._lastRawPacket = null;
 }
 
 // The Rust binding collapses every llhttp errno into the generic HPE_ERROR;

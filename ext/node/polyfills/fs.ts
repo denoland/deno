@@ -1,23 +1,29 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { core } from "ext:core/mod.js";
+
+// deno-lint-ignore-file no-explicit-any
+
+(function () {
+const { core, primordials } = __bootstrap;
 const { fs: fsConstants } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
-const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
-import {
-  type BinaryOptionsArgument,
-  type CallbackWithError,
-  type FileOptions,
-  type FileOptionsArgument,
+const { codeMap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
+type BinaryOptionsArgument = any;
+type CallbackWithError = any;
+type FileOptions = any;
+type FileOptionsArgument = any;
+type TextOptionsArgument = any;
+type WriteFileOptions = any;
+const {
   getValidatedEncoding,
   isFd,
   isFileOptions,
   makeCallback,
   maybeCallback,
-  type TextOptionsArgument,
-  type WriteFileOptions,
-} from "ext:deno_node/_fs/_fs_common.ts";
-import type { Encodings } from "ext:deno_node/_utils.ts";
+} = core.loadExtScript("ext:deno_node/_fs/_fs_common.ts");
+type Encodings = any;
 const {
   AbortError,
   denoErrorToNodeError,
@@ -25,44 +31,78 @@ const {
   ERR_FS_FILE_TOO_LARGE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
-import {
+const {
   CFISBIS,
   convertFileInfoToBigIntStats,
   convertFileInfoToStats,
-  type statCallback,
-  type statCallbackBigInt,
-  type statOptions,
-} from "ext:deno_node/internal/fs/stat_utils.ts";
-import { copyFile, copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
-import { cp, cpSync } from "ext:deno_node/_fs/_fs_cp.ts";
-import Dir from "ext:deno_node/_fs/_fs_dir.ts";
-import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
-import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
-import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
-import { lutimes, lutimesSync } from "ext:deno_node/_fs/_fs_lutimes.ts";
-import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
-import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
+} = core.createLazyLoader("ext:deno_node/internal/fs/stat_utils.ts")();
+type statCallback = any;
+type statCallbackBigInt = any;
+type statOptions = any;
+const { copyFile, copyFileSync } = core.createLazyLoader(
+  "ext:deno_node/_fs/_fs_copy.ts",
+)();
+const { cp, cpSync } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
+const { default: Dir } = core.createLazyLoader(
+  "ext:deno_node/_fs/_fs_dir.ts",
+)();
+const { exists, existsSync } = core.createLazyLoader(
+  "ext:deno_node/_fs/_fs_exists.ts",
+)();
+const { fstat, fstatSync } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_fstat.ts",
+);
+const { lstat, lstatSync } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_lstat.ts",
+);
+const { lutimes, lutimesSync } = core.createLazyLoader(
+  "ext:deno_node/_fs/_fs_lutimes.ts",
+)();
+const { read, readSync } = core.createLazyLoader(
+  "ext:deno_node/_fs/_fs_read.ts",
+)();
+const { readdir, readdirSync } = core.createLazyLoader(
+  "ext:deno_node/_fs/_fs_readdir.ts",
+)();
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
-import { clearTimeout, setTimeout } from "node:timers";
+const lazyTimers = core.createLazyLoader("node:timers");
+const { clearTimeout, setTimeout } = lazyTimers();
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
-import type { MaybeEmpty } from "ext:deno_node/_utils.ts";
+type MaybeEmpty<T> = T | null | undefined;
 const { deprecate, promisify } = core.loadExtScript("ext:deno_node/util.ts");
-import promises from "ext:deno_node/internal/fs/promises.ts";
-// @deno-types="./internal/fs/streams.d.ts"
-import {
-  createReadStream,
-  createWriteStream,
-  ReadStream,
-  WriteStream,
-} from "ext:deno_node/internal/fs/streams.mjs";
+// internal/fs/{promises,streams,handle}.ts call `lazyFs()` at top-level to
+// build promisified wrappers around members of `node:fs`. Loading them
+// eagerly from inside fs.ts would re-enter the partially-loaded `node:fs`
+// namespace and hit a TDZ error. Defer to first access of `fs.promises` etc.
+const lazyInternalPromises = core.createLazyLoader(
+  "ext:deno_node/internal/fs/promises.ts",
+);
+const lazyInternalStreams = core.createLazyLoader(
+  "ext:deno_node/internal/fs/streams.mjs",
+);
+const lazyInternalHandle = core.createLazyLoader(
+  "ext:deno_node/internal/fs/handle.ts",
+);
+// Backing storage so the lazy getters below can be paired with setters;
+// some packages monkey-patch these on the `node:fs` namespace.
+let _createReadStream: any;
+let _createWriteStream: any;
+let _ReadStream: any;
+let _WriteStream: any;
+let _promises: any;
 const { default: SyncWriteStream } = core.loadExtScript(
   "ext:deno_node/internal/fs/sync_write_stream.js",
 );
-import Utf8Stream from "ext:deno_node/internal/streams/fast-utf8-stream.js";
-import {
+// Utf8Stream is only re-exported, never used at module body. Keep this as
+// a thunk so loading fs.ts doesn't immediately pull fast-utf8-stream.js
+// (which statically imports node:fs and triggers the whole stream subtree).
+const lazyUtf8Stream = core.createLazyLoader(
+  "ext:deno_node/internal/streams/fast-utf8-stream.js",
+);
+const {
   arrayBufferViewToUint8Array,
   BigIntStats,
-  constants as fsUtilConstants,
+  constants: fsUtilConstants,
   copyObject,
   Dirent,
   getOptions,
@@ -73,7 +113,7 @@ import {
   kMaxUserId,
   Stats,
   stringToFlags,
-  toUnixTimestamp as _toUnixTimestamp,
+  toUnixTimestamp,
   validateBufferArray,
   validateOffsetLengthWrite,
   validateRmdirOptions,
@@ -81,17 +121,19 @@ import {
   validateRmOptionsSync,
   validateStringAfterArrayBufferView,
   warnOnNonPortableTemplate,
-} from "ext:deno_node/internal/fs/utils.mjs";
-import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
+} = core.createLazyLoader("ext:deno_node/internal/fs/utils.mjs")();
+const { glob, globSync } = core.createLazyLoader(
+  "ext:deno_node/_fs/_fs_glob.ts",
+)();
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-import process from "node:process";
-import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
+const lazyProcess = core.createLazyLoader("node:process");
 const { isIterable } = core.loadExtScript(
   "ext:deno_node/internal/streams/utils.js",
 );
-import type { ErrnoException } from "ext:deno_node/_global.d.ts";
-import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
-import {
+type FileHandle = any;
+type ErrnoException = any;
+type BufferEncoding = any;
+const {
   op_fs_read_file_async,
   op_fs_read_file_sync,
   op_node_fs_close,
@@ -127,23 +169,24 @@ import {
   op_node_rmdir_sync,
   op_node_statfs,
   op_node_statfs_sync,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   uvException,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
-const { isMacOS, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { isMacOS, isWindows } = core.loadExtScript(
+  "ext:deno_node/_util/os.ts",
+);
 const {
   customPromisifyArgs,
   kEmptyObject,
   normalizeEncoding,
 } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { basename, relative, resolve, toNamespacedPath } from "node:path";
-import * as pathModule from "node:path";
-import type { Encoding } from "node:crypto";
-import { primordials } from "ext:core/mod.js";
+const lazyPath = core.createLazyLoader("node:path");
+const pathModule = lazyPath();
+const { basename, relative, resolve, toNamespacedPath } = pathModule;
+type Encoding = any;
 const {
   parseFileMode,
   validateAbortSignal,
@@ -159,12 +202,20 @@ const {
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
+const { Blob, markFileBackedBlob } = core.loadExtScript(
+  "ext:deno_web/09_file.js",
+);
+// Re-exported under both names for tests.
+const _toUnixTimestamp = toUnixTimestamp;
+const {
+  createFSReqCallback,
+  unregisterActiveRequest,
+} = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
 
 const {
   ArrayBufferIsView,
   ArrayIsArray,
   BigInt,
-  DatePrototypeGetTime,
   DateUTC,
   Error,
   FunctionPrototypeBind,
@@ -198,14 +249,15 @@ const {
   queueMicrotask,
 } = primordials;
 
-const { TextEncoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const { TextEncoder } = core.loadExtScript(
+  "ext:deno_web/08_text_encoding.js",
+);
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 
 const {
   kIoMaxLength,
-  kReadFileBufferLength,
   kReadFileUnknownBufferLength,
 } = fsUtilConstants;
 
@@ -450,7 +502,7 @@ function readv(
   }
 
   if (buffers.length === 0) {
-    process.nextTick(cb, null, 0, buffers);
+    lazyProcess().default.nextTick(cb, null, 0, buffers);
     return;
   }
 
@@ -468,7 +520,7 @@ function readv(
     let bufIdx = 0;
     let buf = buffers[bufIdx];
     while (bufIdx < buffers.length) {
-      const nread = op_node_fs_read_sync(fd, buf, -1);
+      const nread = op_node_fs_read_sync(fd, buf, -1n);
       if (nread === null) {
         break;
       }
@@ -524,7 +576,7 @@ function readvSync(
   let bufIdx = 0;
   let buf = buffers[bufIdx];
   while (bufIdx < buffers.length) {
-    const nread = op_node_fs_read_sync(fd, buf, -1);
+    const nread = op_node_fs_read_sync(fd, buf, -1n);
     if (nread === null) {
       break;
     }
@@ -645,43 +697,53 @@ function readFileConcatBuffers(buffers: Uint8Array[]): Uint8Array {
 
 async function readFileFromFd(fd: number, options?: FileOptions) {
   const signal = options?.signal;
-  const encoding = options?.encoding;
   readFileCheckAborted(signal);
 
   const statFields = op_node_fs_fstat_sync(fd);
   readFileCheckAborted(signal);
 
-  let size = 0;
-  let length = 0;
-  if (statFields.isFile) {
-    size = statFields.size;
-    length = encoding ? MathMin(size, kReadFileBufferLength) : size;
-  }
-  if (length === 0) {
-    length = kReadFileUnknownBufferLength;
-  }
+  const isFile = statFields.isFile;
+  const size = isFile ? statFields.size : 0;
 
   if (size > kIoMaxLength) {
     throw new ERR_FS_FILE_TOO_LARGE(size);
   }
 
-  const buffer = new Uint8Array(length);
+  if (isFile && size > 0) {
+    // Known size: read into a single buffer with an advancing offset.
+    // Mirrors Node's readFileHandle which avoids the subarray-aliasing trap
+    // by writing successive reads into different regions of one buffer.
+    const buffer = new Uint8Array(size);
+    let totalRead = 0;
+    while (totalRead < size) {
+      readFileCheckAborted(signal);
+      const slice = TypedArrayPrototypeSubarray(buffer, totalRead);
+      // Use the deferred op so we yield to the event loop between reads,
+      // allowing abort signals scheduled via lazyProcess().default.nextTick to fire.
+      const nread = await op_node_fs_read_deferred(fd, slice, -1n);
+      if (nread === 0) break;
+      totalRead += nread;
+    }
+    readFileCheckAborted(signal);
+    return totalRead === size
+      ? buffer
+      : TypedArrayPrototypeSubarray(buffer, 0, totalRead);
+  }
+
+  // Unknown size (pipes, sockets, /dev/stdin): allocate a fresh buffer per
+  // iteration so pushed subarrays don't alias a reused read buffer.
   const buffers: Uint8Array[] = [];
   let totalRead = 0;
-
   while (true) {
     readFileCheckAborted(signal);
-    // Use the deferred op so we yield to the event loop between reads,
-    // allowing abort signals scheduled via process.nextTick to fire.
-    const nread = await op_node_fs_read_deferred(fd, buffer, -1);
-    if (nread === 0) {
-      break;
-    }
+    const chunk = new Uint8Array(kReadFileUnknownBufferLength);
+    const nread = await op_node_fs_read_deferred(fd, chunk, -1n);
+    if (nread === 0) break;
     totalRead += nread;
     if (totalRead > kIoMaxLength) {
       throw new ERR_FS_FILE_TOO_LARGE(totalRead);
     }
-    ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buffer, 0, nread));
+    ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(chunk, 0, nread));
   }
 
   return readFileConcatBuffers(buffers);
@@ -715,7 +777,12 @@ function readFile(
     | undefined,
   callback?: ReadFileCallback,
 ) {
-  if (ObjectPrototypeIsPrototypeOf(FileHandle.prototype, pathOrRid)) {
+  if (
+    ObjectPrototypeIsPrototypeOf(
+      lazyInternalHandle().FileHandle.prototype,
+      pathOrRid,
+    )
+  ) {
     pathOrRid = (pathOrRid as FileHandle).fd;
   } else if (typeof pathOrRid !== "number") {
     pathOrRid = getValidatedPathToString(pathOrRid as string);
@@ -762,7 +829,6 @@ function readFile(
 function readFilePromise(
   path: ReadFilePath,
   options?: FileOptionsArgument | null | undefined,
-  // deno-lint-ignore no-explicit-any
 ): Promise<any> {
   return new Promise((resolve, reject) => {
     readFile(path, options, (err, data) => {
@@ -916,6 +982,7 @@ type StatFsOptions = {
 class StatFs<T> {
   type: T;
   bsize: T;
+  frsize: T;
   blocks: T;
   bfree: T;
   bavail: T;
@@ -924,6 +991,7 @@ class StatFs<T> {
   constructor(
     type: T,
     bsize: T,
+    frsize: T,
     blocks: T,
     bfree: T,
     bavail: T,
@@ -932,6 +1000,7 @@ class StatFs<T> {
   ) {
     this.type = type;
     this.bsize = bsize;
+    this.frsize = frsize;
     this.blocks = blocks;
     this.bfree = bfree;
     this.bavail = bavail;
@@ -966,6 +1035,9 @@ function opResultToStatFs(
     return new StatFs(
       result.type,
       result.bsize,
+      // Deno's statfs op does not expose a separate fragment size; it equals
+      // the block size on the platforms we support (matches Node in practice).
+      result.bsize,
       result.blocks,
       result.bfree,
       result.bavail,
@@ -975,6 +1047,7 @@ function opResultToStatFs(
   }
   return new StatFs(
     BigInt(result.type),
+    BigInt(result.bsize),
     BigInt(result.bsize),
     BigInt(result.blocks),
     BigInt(result.bfree),
@@ -1091,8 +1164,9 @@ function access(
       if ((m & fileMode) === m) {
         cb(null);
       } else {
-        // deno-lint-ignore no-explicit-any
-        const e: any = new Error(`EACCES: permission denied, access '${path}'`);
+        const e: any = new Error(
+          `EACCES: permission denied, access '${path}'`,
+        );
         e.path = path;
         e.syscall = "access";
         e.errno = codeMap.get("EACCES");
@@ -1103,7 +1177,6 @@ function access(
     (err) => {
       // deno-lint-ignore prefer-primordials
       if (err instanceof Deno.errors.NotFound) {
-        // deno-lint-ignore no-explicit-any
         const e: any = new Error(
           `ENOENT: no such file or directory, access '${path}'`,
         );
@@ -1139,7 +1212,6 @@ function accessSync(path: string | Buffer | URL, mode?: number) {
     if ((m & fileMode) === m) {
       // all required flags exist
     } else {
-      // deno-lint-ignore no-explicit-any
       const e: any = new Error(`EACCES: permission denied, access '${path}'`);
       e.path = path;
       e.syscall = "access";
@@ -1150,7 +1222,6 @@ function accessSync(path: string | Buffer | URL, mode?: number) {
   } catch (err) {
     // deno-lint-ignore prefer-primordials
     if (err instanceof Deno.errors.NotFound) {
-      // deno-lint-ignore no-explicit-any
       const e: any = new Error(
         `ENOENT: no such file or directory, access '${path}'`,
       );
@@ -2057,12 +2128,12 @@ function mkdtempSync(
 
 // Mirrors Node's lib/fs.js mkdtempDisposableSync(): create the temp dir and
 // return an object with .path, .remove(), and Symbol.dispose. cwd is captured
-// at creation time so a later process.chdir() doesn't break removal.
+// at creation time so a later lazyProcess().default.chdir() doesn't break removal.
 function mkdtempDisposableSync(
   prefix: string | Buffer | Uint8Array | URL,
   options?: { encoding: string } | string,
 ) {
-  const cwd = process.cwd();
+  const cwd = lazyProcess().default.cwd();
   const path = mkdtempSync(prefix, options as { encoding: string }) as string;
   const fullPath = resolve(cwd, path);
   const remove = () => {
@@ -2119,7 +2190,11 @@ function parseMkdtempEncoding(
 
   const parsedEncoding = normalizeEncoding(encoding);
   if (!parsedEncoding) {
-    throw new ERR_INVALID_ARG_TYPE("encoding", encoding, "is invalid encoding");
+    throw new ERR_INVALID_ARG_TYPE(
+      "encoding",
+      encoding,
+      "is invalid encoding",
+    );
   }
 
   return parsedEncoding;
@@ -2167,7 +2242,6 @@ function open(
 ) {
   path = getValidatedPathToString(path);
   if (arguments.length < 3) {
-    // deno-lint-ignore no-explicit-any
     callback = flags as any;
     flags = "r";
     mode = 0o666;
@@ -2180,11 +2254,24 @@ function open(
   flags = stringToFlags(flags);
   callback = makeCallback(callback);
 
+  const request = createFSReqCallback();
+  let openPromise: Promise<number>;
+  try {
+    openPromise = op_node_open(path, flags, mode);
+  } catch (err) {
+    unregisterActiveRequest(request);
+    throw err;
+  }
   PromisePrototypeThen(
-    op_node_open(path, flags, mode),
-    (rid: number) => callback(null, rid),
-    (err: Error) =>
-      callback(denoErrorToNodeError(err, { syscall: "open", path })),
+    openPromise,
+    (rid: number) => {
+      unregisterActiveRequest(request);
+      callback(null, rid);
+    },
+    (err: Error) => {
+      unregisterActiveRequest(request);
+      callback(denoErrorToNodeError(err, { syscall: "open", path }));
+    },
   );
 }
 
@@ -2308,7 +2395,7 @@ function openAsBlob(
   path = getValidatedPath(path);
   return PromisePrototypeThen(
     op_fs_read_file_async(path as string, undefined, 0),
-    (data: Uint8Array) => new Blob([data], { type }),
+    (data: Uint8Array) => markFileBackedBlob(new Blob([data], { type })),
   );
 }
 
@@ -2544,7 +2631,7 @@ function writev(
   callback = maybeCallback(callback || position);
 
   if (buffers.length === 0) {
-    process.nextTick(callback, null, 0, buffers);
+    lazyProcess().default.nextTick(callback, null, 0, buffers);
     return;
   }
 
@@ -2673,7 +2760,12 @@ function writeFile(
 
   if (ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrRid)) {
     pathOrRid = pathFromURL(pathOrRid as URL);
-  } else if (ObjectPrototypeIsPrototypeOf(FileHandle.prototype, pathOrRid)) {
+  } else if (
+    ObjectPrototypeIsPrototypeOf(
+      lazyInternalHandle().FileHandle.prototype,
+      pathOrRid,
+    )
+  ) {
     pathOrRid = (pathOrRid as FileHandle).fd;
   }
 
@@ -2700,7 +2792,7 @@ function writeFile(
       file = {
         write(p: NodeJS.TypedArray) {
           // Use the deferred op to yield to the event loop between writes,
-          // allowing abort signals scheduled via process.nextTick to fire.
+          // allowing abort signals scheduled via lazyProcess().default.nextTick to fire.
           return op_node_fs_write_deferred(fd, p, -1);
         },
         writeSync(p: NodeJS.TypedArray) {
@@ -2896,7 +2988,8 @@ function _isCustomIterable(
 ): obj is
   | Iterable<NodeJS.TypedArray | string>
   | AsyncIterable<NodeJS.TypedArray | string> {
-  return isIterable(obj) && !ArrayBufferIsView(obj) && typeof obj !== "string";
+  return isIterable(obj) && !ArrayBufferIsView(obj) &&
+    typeof obj !== "string";
 }
 
 function _checkAborted(signal?: AbortSignal) {
@@ -3105,12 +3198,20 @@ function symlinkSync(
 
 // -- watch --
 
-const statPromisified = promisify(stat);
-const statAsync = async (filename: string): Promise<Stats | null> => {
+const statPromisified = promisify(stat) as {
+  (filename: string, options: { bigint: false }): Promise<Stats>;
+  (filename: string, options: { bigint: true }): Promise<BigIntStats>;
+};
+const statAsync = async (
+  filename: string,
+  bigint: boolean,
+): Promise<Stats | BigIntStats> => {
   try {
-    return await statPromisified(filename);
+    return bigint
+      ? await statPromisified(filename, { bigint: true })
+      : await statPromisified(filename, { bigint: false });
   } catch {
-    return emptyStats;
+    return bigint ? emptyBigIntStats : emptyStats;
   }
 };
 const emptyStats = new Stats(
@@ -3129,6 +3230,38 @@ const emptyStats = new Stats(
   DateUTC(1970, 0, 1, 0, 0, 0),
   DateUTC(1970, 0, 1, 0, 0, 0),
 ) as unknown as Stats;
+const emptyBigIntStats = new BigIntStats(
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+  0n,
+) as unknown as BigIntStats;
+
+// Mirrors libuv's `uv_fs_poll_t` field comparison so chmod/chown,
+// file replacement, and sub-mtime-resolution changes all fire "change".
+function statsChanged(
+  prev: Stats | BigIntStats,
+  curr: Stats | BigIntStats,
+): boolean {
+  return prev.mtimeMs !== curr.mtimeMs ||
+    prev.ctimeMs !== curr.ctimeMs ||
+    prev.size !== curr.size ||
+    prev.mode !== curr.mode ||
+    prev.uid !== curr.uid ||
+    prev.gid !== curr.gid ||
+    prev.ino !== curr.ino ||
+    prev.dev !== curr.dev;
+}
 
 function asyncIterableToCallback<T>(
   iter: AsyncIterable<T>,
@@ -3162,7 +3295,6 @@ type IgnoreOption =
   | undefined
   | null;
 
-// deno-lint-ignore no-explicit-any
 let _lazyMinimatch: any = null;
 function getMinimatch() {
   _lazyMinimatch ??= core.createLazyLoader("ext:deno_node/deps/minimatch.js");
@@ -3324,35 +3456,82 @@ function watch(
   const encoding = options?.encoding;
   validateIgnoreOption(options?.ignore, "options.ignore");
   const ignoreMatcher = createIgnoreMatcher(options?.ignore);
-  const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
-    recursive,
-  });
 
-  // Resolve the watched path once so we can compute relative paths.
-  // Use realPathSync to resolve symlinks (e.g. macOS /var -> /private/var)
-  // since Deno.watchFs returns real (symlink-resolved) paths.
-  const resolvedWatchPath = realpathSync(watchPath) as string;
-
-  asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
-    if (done) return;
-    // Node.js returns the relative path from the watched directory for
-    // recursive watches, but just the basename for non-recursive watches.
-    const filename = recursive
-      ? relative(resolvedWatchPath, val.paths[0])
-      : basename(val.paths[0]);
-    if (ignoreMatcher !== null && ignoreMatcher(filename)) {
-      return;
+  // Open the underlying Deno.FsWatcher, but defer any failure to an
+  // 'error' event on the returned FSWatcher rather than throwing
+  // synchronously with a raw `Deno.errors.NotFound`. Editors that
+  // atomically save (write to <file>.tmp.<pid>.<ts> then rename over
+  // the original) can race the inotify watch and produce a transient
+  // ENOENT here; callers using EventEmitter-style error handling
+  // (chokidar, vite) can't recover from a sync throw of a Deno error.
+  // See denoland/deno#34396.
+  const notFoundProto = Deno.errors.NotFound.prototype;
+  const makeWatchNodeError = (e: unknown): Error => {
+    // The notify crate's PathNotFound/WatchNotFound error messages don't
+    // include the "(os error N)" suffix that `denoErrorToNodeError` parses,
+    // so detect NotFound by class and build a Node-style ENOENT manually.
+    if (ObjectPrototypeIsPrototypeOf(notFoundProto, e)) {
+      return uvException({
+        errno: codeMap.get("ENOENT")!,
+        syscall: "watch",
+        path: watchPath,
+      });
     }
-    fsWatcher.emit(
-      "change",
-      convertDenoFsEventToNodeFsEvent(val.kind),
-      encodeWatchFilename(filename, encoding),
-    );
-  }, (e) => {
-    fsWatcher.emit("error", e);
-  });
+    return denoErrorToNodeError(e as Error, {
+      syscall: "watch",
+      path: watchPath,
+    });
+  };
+
+  let iterator: Deno.FsWatcher | undefined;
+  let openError: Error | undefined;
+  let resolvedWatchPath = watchPath;
+  try {
+    // Pre-validate path existence so missing-path failures surface as a
+    // typed `Deno.errors.NotFound` consistently across platforms. notify
+    // 6.1.1's Windows backend (`add_watch` in src/windows.rs) returns a
+    // Generic error rather than a typed NotFound when the path doesn't
+    // exist, which would otherwise bypass the prototype check in
+    // makeWatchNodeError above.
+    Deno.lstatSync(watchPath);
+    iterator = Deno.watchFs(watchPath, { recursive });
+    // Resolve the watched path once so we can compute relative paths.
+    // Use realPathSync to resolve symlinks (e.g. macOS /var -> /private/var)
+    // since Deno.watchFs returns real (symlink-resolved) paths.
+    resolvedWatchPath = realpathSync(watchPath) as string;
+  } catch (e) {
+    if (iterator) {
+      try {
+        iterator.close();
+      } catch { /* ignore */ }
+      iterator = undefined;
+    }
+    openError = makeWatchNodeError(e);
+  }
+
+  if (iterator) {
+    asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
+      if (done) return;
+      // Node.js returns the relative path from the watched directory for
+      // recursive watches, but just the basename for non-recursive watches.
+      const filename = recursive
+        ? relative(resolvedWatchPath, val.paths[0])
+        : basename(val.paths[0]);
+      if (ignoreMatcher !== null && ignoreMatcher(filename)) {
+        return;
+      }
+      fsWatcher.emit(
+        "change",
+        convertDenoFsEventToNodeFsEvent(val.kind),
+        encodeWatchFilename(filename, encoding),
+      );
+    }, (e) => {
+      fsWatcher.emit("error", makeWatchNodeError(e));
+    });
+  }
 
   const fsWatcher = new FSWatcher(() => {
+    if (!iterator) return;
     try {
       iterator.close();
     } catch (e) {
@@ -3379,7 +3558,7 @@ function watch(
   if (options?.signal) {
     const signal = options.signal;
     if (signal.aborted) {
-      process.nextTick(() => fsWatcher.close());
+      lazyProcess().default.nextTick(() => fsWatcher.close());
     } else {
       const onAbort = () => fsWatcher.close();
       signal.addEventListener("abort", onAbort, { once: true });
@@ -3387,6 +3566,12 @@ function watch(
         signal.removeEventListener("abort", onAbort);
       });
     }
+  }
+
+  if (openError) {
+    lazyProcess().default.nextTick(() => {
+      fsWatcher.emit("error", openError);
+    });
   }
 
   return fsWatcher;
@@ -3474,7 +3659,6 @@ function watchPromise(
         };
       }
     },
-    // deno-lint-ignore no-explicit-any
     return(value?: any): Promise<IteratorResult<any>> {
       cleanupAbort();
       watcher.close();
@@ -3588,21 +3772,20 @@ class StatWatcher extends EventEmitter {
       this.#refCount++;
     }
 
+    const bigint = this.#bigint;
     (async () => {
-      let prev = await statAsync(filename);
+      let prev = await statAsync(filename, bigint);
 
-      if (prev === emptyStats) {
+      // libuv emits an initial "change" only when the first stat fails.
+      if (prev === emptyStats || prev === emptyBigIntStats) {
         this.emit("change", prev, prev);
       }
 
       try {
         while (true) {
           await this.#sleep(interval);
-          const curr = await statAsync(filename);
-          if (
-            DatePrototypeGetTime(curr?.mtime) !==
-              DatePrototypeGetTime(prev?.mtime)
-          ) {
+          const curr = await statAsync(filename, bigint);
+          if (statsChanged(prev, curr)) {
             this.emit("change", curr, prev);
             prev = curr;
           }
@@ -3660,7 +3843,7 @@ class StatWatcher extends EventEmitter {
     // Match Node: stop fires asynchronously so listeners removed
     // synchronously after stop() are not called (see
     // StatWatcher.prototype.stop in lib/internal/fs/watchers.js).
-    process.nextTick(() => this.emit("stop"));
+    lazyProcess().default.nextTick(() => this.emit("stop"));
   }
   // Node's ref/unref toggle whether the StatWatcher's internal handle keeps
   // the event loop alive (see lib/internal/fs/watchers.js). In Deno the
@@ -3681,9 +3864,12 @@ class StatWatcher extends EventEmitter {
 class FSWatcher extends EventEmitter {
   #closer: () => void;
   #closed = false;
-  #watcher: () => Deno.FsWatcher;
+  #watcher: () => Deno.FsWatcher | undefined;
 
-  constructor(closer: () => void, getter: () => Deno.FsWatcher) {
+  constructor(
+    closer: () => void,
+    getter: () => Deno.FsWatcher | undefined,
+  ) {
     super();
     this.#closer = closer;
     this.#watcher = getter;
@@ -3697,10 +3883,10 @@ class FSWatcher extends EventEmitter {
     this.#closer();
   }
   ref() {
-    this.#watcher().ref();
+    this.#watcher()?.ref();
   }
   unref() {
-    this.#watcher().unref();
+    this.#watcher()?.unref();
   }
 }
 
@@ -3727,118 +3913,7 @@ const DeprecatedStats = deprecate(
   "DEP0180",
 );
 
-export default {
-  access,
-  accessSync,
-  appendFile,
-  appendFileSync,
-  chmod,
-  chmodSync,
-  chown,
-  chownSync,
-  close,
-  closeSync,
-  constants,
-  copyFile,
-  copyFileSync,
-  cp,
-  cpSync,
-  createReadStream,
-  createWriteStream,
-  Dir,
-  Dirent,
-  exists,
-  existsSync,
-  fchmod,
-  fchmodSync,
-  fchown,
-  fchownSync,
-  fdatasync,
-  fdatasyncSync,
-  fstat,
-  fstatSync,
-  fsync,
-  fsyncSync,
-  ftruncate,
-  ftruncateSync,
-  futimes,
-  futimesSync,
-  glob,
-  globSync,
-  lchmod,
-  lchmodSync,
-  lchown,
-  lchownSync,
-  link,
-  linkSync,
-  lstat,
-  lstatSync,
-  lutimes,
-  lutimesSync,
-  mkdir,
-  mkdirSync,
-  mkdtemp,
-  mkdtempDisposableSync,
-  mkdtempSync,
-  open,
-  openAsBlob,
-  openSync,
-  opendir,
-  opendirSync,
-  read,
-  readSync,
-  promises,
-  readdir,
-  readdirSync,
-  readFile,
-  readFilePromise,
-  readFileSync,
-  readlink,
-  readlinkPromise,
-  readlinkSync,
-  ReadStream,
-  realpath,
-  realpathSync,
-  readv,
-  readvSync,
-  rename,
-  renameSync,
-  rmdir,
-  rmdirSync,
-  rm,
-  rmSync,
-  stat,
-  Stats: DeprecatedStats,
-  statSync,
-  statfs,
-  statfsSync,
-  symlink,
-  symlinkSync,
-  truncate,
-  truncateSync,
-  unlink,
-  unlinkSync,
-  unwatchFile,
-  utimes,
-  utimesSync,
-  watch,
-  watchFile,
-  write,
-  writeFile,
-  writev,
-  writevSync,
-  writeFileSync,
-  WriteStream,
-  writeSync,
-  SyncWriteStream,
-  Utf8Stream,
-  // For tests
-  _toUnixTimestamp,
-};
-
-export type { ReadVResult, statCallback, statCallbackBigInt, statOptions };
-
-export {
+return {
   // For tests
   _toUnixTimestamp,
   access,
@@ -3860,9 +3935,20 @@ export {
   copyFileSync,
   cp,
   cpSync,
-  createReadStream,
-  createWriteStream,
-  DeprecatedStats as Stats,
+  get createReadStream() {
+    return _createReadStream ??
+      (_createReadStream = lazyInternalStreams().createReadStream);
+  },
+  set createReadStream(v) {
+    _createReadStream = v;
+  },
+  get createWriteStream() {
+    return _createWriteStream ??
+      (_createWriteStream = lazyInternalStreams().createWriteStream);
+  },
+  set createWriteStream(v) {
+    _createWriteStream = v;
+  },
   Dir,
   Dirent,
   exists,
@@ -3903,7 +3989,12 @@ export {
   opendir,
   opendirSync,
   openSync,
-  promises,
+  get promises() {
+    return _promises ?? (_promises = lazyInternalPromises().default);
+  },
+  set promises(v) {
+    _promises = v;
+  },
   read,
   readdir,
   readdirSync,
@@ -3913,7 +4004,12 @@ export {
   readlink,
   readlinkPromise,
   readlinkSync,
-  ReadStream,
+  get ReadStream() {
+    return _ReadStream ?? (_ReadStream = lazyInternalStreams().ReadStream);
+  },
+  set ReadStream(v) {
+    _ReadStream = v;
+  },
   readSync,
   readv,
   readvPromise,
@@ -3927,6 +4023,7 @@ export {
   rmdirSync,
   rmSync,
   stat,
+  Stats: DeprecatedStats,
   statfs,
   statfsSync,
   statSync,
@@ -3938,7 +4035,9 @@ export {
   unlink,
   unlinkSync,
   unwatchFile,
-  Utf8Stream,
+  get Utf8Stream() {
+    return lazyUtf8Stream().default;
+  },
   utimes,
   utimesSync,
   watch,
@@ -3947,8 +4046,14 @@ export {
   write,
   writeFile,
   writeFileSync,
-  WriteStream,
+  get WriteStream() {
+    return _WriteStream ?? (_WriteStream = lazyInternalStreams().WriteStream);
+  },
+  set WriteStream(v) {
+    _WriteStream = v;
+  },
   writeSync,
   writev,
   writevSync,
 };
+})();

@@ -1,21 +1,48 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file no-explicit-any
 
-import { core } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  Array,
+  ArrayBufferPrototypeGetByteLength,
+  BigInt,
+  BigIntPrototypeToString,
+  DataView,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+  DataViewPrototypeGetUint8,
+  MathClz32,
+  NumberParseInt,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeCatch,
+  PromisePrototypeThen,
+  SafeArrayIterator,
+  StringFromCharCode,
+  StringPrototypePadStart,
+  StringPrototypeSubstring,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  Uint8Array,
+  Uint8ArrayPrototype,
+} = primordials;
+const {
   op_node_check_prime_bytes,
   op_node_check_prime_bytes_async,
   op_node_gen_prime,
   op_node_gen_prime_async,
-} from "ext:core/ops";
+} = core.ops;
 
-import randomBytes from "ext:deno_node/internal/crypto/_randomBytes.ts";
-import randomFill, {
-  randomFillSync,
-} from "ext:deno_node/internal/crypto/_randomFill.mjs";
+const { default: randomBytes } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/_randomBytes.ts",
+);
+const { default: randomFill, randomFillSync } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/_randomFill.mjs",
+);
 const { default: randomInt } = core.loadExtScript(
   "ext:deno_node/internal/crypto/_randomInt.ts",
 );
@@ -28,6 +55,7 @@ const {
 const {
   isAnyArrayBuffer,
   isArrayBufferView,
+  isTypedArray,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 const {
   ERR_INVALID_ARG_TYPE,
@@ -37,48 +65,13 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 
-export { default as randomBytes } from "ext:deno_node/internal/crypto/_randomBytes.ts";
-export {
-  default as randomFill,
-  randomFillSync,
-} from "ext:deno_node/internal/crypto/_randomFill.mjs";
-export { randomInt };
-
 // OpenSSL BIGNUM max size: INT_MAX / (4 * BN_BITS2) words * 8 bytes/word
 // On 64-bit: (2^31 - 1) / 256 * 8 = 67108856 bytes
 const OPENSSL_BIGNUM_MAX_BYTES = (((2 ** 31 - 1) / (4 * 64)) | 0) * 8;
 
-export type LargeNumberLike =
-  | ArrayBufferView
-  | SharedArrayBuffer
-  | ArrayBuffer
-  | bigint;
-
-export interface CheckPrimeOptions {
-  /**
-   * The number of Miller-Rabin probabilistic primality iterations to perform.
-   * When the value is 0 (zero), a number of checks is used that yields a false positive rate of at most 2-64 for random input.
-   * Care must be used when selecting a number of checks.
-   * Refer to the OpenSSL documentation for the BN_is_prime_ex function nchecks options for more details.
-   *
-   * @default 0
-   */
-  checks?: number | undefined;
-}
-
-export function checkPrime(
-  candidate: LargeNumberLike,
-  callback: (err: Error | null, result: boolean) => void,
-): void;
-export function checkPrime(
-  candidate: LargeNumberLike,
-  options: CheckPrimeOptions,
-  callback: (err: Error | null, result: boolean) => void,
-): void;
-export function checkPrime(
-  candidate: LargeNumberLike,
-  options: CheckPrimeOptions | ((err: Error | null, result: boolean) => void) =
-    {},
+function checkPrime(
+  candidate: any,
+  options: any = { __proto__: null },
   callback?: (err: Error | null, result: boolean) => void,
 ) {
   if (typeof options === "function") {
@@ -103,8 +96,8 @@ export function checkPrime(
     candidateBytes = bigintToBytes(candidate);
   } else if (isAnyArrayBuffer(candidate) || isArrayBufferView(candidate)) {
     const byteLength = isArrayBufferView(candidate)
-      ? (candidate as ArrayBufferView).byteLength
-      : (candidate as ArrayBuffer).byteLength;
+      ? arrayBufferViewByteLength(candidate as ArrayBufferView)
+      : ArrayBufferPrototypeGetByteLength(candidate as ArrayBuffer);
     if (byteLength > OPENSSL_BIGNUM_MAX_BYTES) {
       throw new NodeError(
         "ERR_OSSL_BN_BIGNUM_TOO_LONG",
@@ -126,18 +119,22 @@ export function checkPrime(
     );
   }
 
-  op_node_check_prime_bytes_async(candidateBytes, checks).then(
-    (result) => {
-      callback?.(null, result);
+  PromisePrototypeCatch(
+    PromisePrototypeThen(
+      op_node_check_prime_bytes_async(candidateBytes, checks),
+      (result) => {
+        callback?.(null, result);
+      },
+    ),
+    (err) => {
+      callback?.(err, false);
     },
-  ).catch((err) => {
-    callback?.(err, false);
-  });
+  );
 }
 
-export function checkPrimeSync(
-  candidate: LargeNumberLike,
-  options: CheckPrimeOptions = {},
+function checkPrimeSync(
+  candidate: any,
+  options: any = { __proto__: null },
 ): boolean {
   validateObject(options, "options");
 
@@ -155,8 +152,8 @@ export function checkPrimeSync(
     candidateBytes = bigintToBytes(candidate);
   } else if (isAnyArrayBuffer(candidate) || isArrayBufferView(candidate)) {
     const byteLength = isArrayBufferView(candidate)
-      ? (candidate as ArrayBufferView).byteLength
-      : (candidate as ArrayBuffer).byteLength;
+      ? arrayBufferViewByteLength(candidate as ArrayBufferView)
+      : ArrayBufferPrototypeGetByteLength(candidate as ArrayBuffer);
     if (byteLength > OPENSSL_BIGNUM_MAX_BYTES) {
       throw new NodeError(
         "ERR_OSSL_BN_BIGNUM_TOO_LONG",
@@ -181,19 +178,9 @@ export function checkPrimeSync(
   return op_node_check_prime_bytes(candidateBytes, checks);
 }
 
-export interface GeneratePrimeOptions {
-  add?: LargeNumberLike | undefined;
-  rem?: LargeNumberLike | undefined;
-  /**
-   * @default false
-   */
-  safe?: boolean | undefined;
-  bigint?: boolean | undefined;
-}
-
-export function generatePrime(
+function generatePrime(
   size: number,
-  options: GeneratePrimeOptions = {},
+  options: any = { __proto__: null },
   callback?: (err: Error | null, prime: ArrayBuffer | bigint) => void,
 ) {
   validateInt32(size, "size", 1);
@@ -208,11 +195,11 @@ export function generatePrime(
     add,
     rem,
   } = validateRandomPrimeJob(size, options);
-  op_node_gen_prime_async(size, safe, add ?? null, rem ?? null).then(
+  PromisePrototypeThen(
+    op_node_gen_prime_async(size, safe, add ?? null, rem ?? null),
     (prime: Uint8Array) => {
-      const result = bigint
-        ? arrayBufferToUnsignedBigInt(prime.buffer)
-        : prime.buffer;
+      const buffer = TypedArrayPrototypeGetBuffer(prime);
+      const result = bigint ? arrayBufferToUnsignedBigInt(buffer) : buffer;
       callback?.(null, result);
     },
     (err: Error) => {
@@ -221,9 +208,9 @@ export function generatePrime(
   );
 }
 
-export function generatePrimeSync(
+function generatePrimeSync(
   size: number,
-  options: GeneratePrimeOptions = {},
+  options: any = { __proto__: null },
 ): ArrayBuffer | bigint {
   const {
     bigint,
@@ -233,33 +220,45 @@ export function generatePrimeSync(
   } = validateRandomPrimeJob(size, options);
 
   const prime = op_node_gen_prime(size, safe, add ?? null, rem ?? null);
-  if (bigint) return arrayBufferToUnsignedBigInt(prime.buffer);
-  return prime.buffer;
+  const buffer = TypedArrayPrototypeGetBuffer(prime);
+  if (bigint) return arrayBufferToUnsignedBigInt(buffer);
+  return buffer;
 }
 
-interface ValidatedPrimeOptions {
-  safe: boolean;
-  bigint: boolean;
-  add?: Uint8Array;
-  rem?: Uint8Array;
+// Returns the byteLength of an ArrayBufferView using the correct primordial
+// getter depending on whether it is a TypedArray or a DataView.
+function arrayBufferViewByteLength(view: ArrayBufferView): number {
+  return isTypedArray(view)
+    ? TypedArrayPrototypeGetByteLength(view as Uint8Array)
+    : DataViewPrototypeGetByteLength(view as DataView);
 }
 
 function toUint8Array(
   value: ArrayBuffer | ArrayBufferView | Buffer,
 ): Uint8Array {
-  if (value instanceof Uint8Array) {
-    return value;
+  if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
+    return value as Uint8Array;
   }
   if (isArrayBufferView(value)) {
-    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    const buffer = isTypedArray(value)
+      ? TypedArrayPrototypeGetBuffer(value as Uint8Array)
+      : DataViewPrototypeGetBuffer(value as DataView);
+    const byteOffset = isTypedArray(value)
+      ? TypedArrayPrototypeGetByteOffset(value as Uint8Array)
+      : DataViewPrototypeGetByteOffset(value as DataView);
+    return new Uint8Array(
+      buffer,
+      byteOffset,
+      arrayBufferViewByteLength(value),
+    );
   }
   return new Uint8Array(value);
 }
 
 function validateRandomPrimeJob(
   size: number,
-  options: GeneratePrimeOptions,
-): ValidatedPrimeOptions {
+  options: any,
+): any {
   validateInt32(size, "size", 1);
   validateObject(options, "options");
 
@@ -313,19 +312,15 @@ function validateRandomPrimeJob(
   const remBuf = rem ? toUint8Array(rem) : undefined;
 
   if (addBuf) {
-    // add must be non-zero; a zero modulus would cause division by zero in the
-    // Rust generator.
     const addBitCount = bitCount(addBuf);
     if (addBitCount === 0) {
       throw new NodeRangeError("ERR_OUT_OF_RANGE", "invalid options.add");
     }
-    // Node.js/OpenSSL: bit count of add must not exceed requested size
     if (addBitCount > size) {
       throw new NodeRangeError("ERR_OUT_OF_RANGE", "invalid options.add");
     }
 
     if (remBuf) {
-      // rem must be strictly less than add
       const addBigInt = bufferToBigInt(addBuf);
       const remBigInt = bufferToBigInt(remBuf);
       if (addBigInt <= remBigInt) {
@@ -344,11 +339,14 @@ function validateRandomPrimeJob(
 
 function bigintToBytes(n: bigint): Uint8Array {
   if (n === 0n) return new Uint8Array([0]);
-  const hex = n.toString(16);
+  const hex = BigIntPrototypeToString(n, 16);
   const padded = hex.length % 2 ? "0" + hex : hex;
   const bytes = new Uint8Array(padded.length / 2);
   for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(padded.substring(i * 2, i * 2 + 2), 16);
+    bytes[i] = NumberParseInt(
+      StringPrototypeSubstring(padded, i * 2, i * 2 + 2),
+      16,
+    );
   }
   return bytes;
 }
@@ -362,40 +360,29 @@ function bufferToBigInt(buf: Uint8Array): bigint {
 }
 
 function bitCount(buf: Uint8Array): number {
-  // Count the number of significant bits in a big-endian byte array
   for (let i = 0; i < buf.length; i++) {
     if (buf[i] !== 0) {
-      return (buf.length - i) * 8 - Math.clz32(buf[i]) + 24;
+      return (buf.length - i) * 8 - MathClz32(buf[i]) + 24;
     }
   }
   return 0;
 }
 
-/**
- * 48 is the ASCII code for '0', 97 is the ASCII code for 'a'.
- * @param {number} number An integer between 0 and 15.
- * @returns {number} corresponding to the ASCII code of the hex representation
- *                   of the parameter.
- */
 const numberToHexCharCode = (number: number): number =>
   (number < 10 ? 48 : 87) + number;
 
-/**
- * @param {ArrayBuffer} buf An ArrayBuffer.
- * @return {bigint}
- */
 function arrayBufferToUnsignedBigInt(buf: ArrayBuffer): bigint {
-  const length = buf.byteLength;
-  const chars: number[] = Array(length * 2);
+  const length = ArrayBufferPrototypeGetByteLength(buf);
+  const chars: number[] = new Array(length * 2);
   const view = new DataView(buf);
 
   for (let i = 0; i < length; i++) {
-    const val = view.getUint8(i);
+    const val = DataViewPrototypeGetUint8(view, i);
     chars[2 * i] = numberToHexCharCode(val >> 4);
     chars[2 * i + 1] = numberToHexCharCode(val & 0xf);
   }
 
-  return BigInt(`0x${String.fromCharCode(...chars)}`);
+  return BigInt(`0x${StringFromCharCode(...new SafeArrayIterator(chars))}`);
 }
 
 function unsignedBigIntToBuffer(bigint: bigint, name: string) {
@@ -403,12 +390,16 @@ function unsignedBigIntToBuffer(bigint: bigint, name: string) {
     throw new ERR_OUT_OF_RANGE(name, ">= 0", bigint);
   }
 
-  const hex = bigint.toString(16);
-  const padded = hex.padStart(hex.length + (hex.length % 2), "0");
+  const hex = BigIntPrototypeToString(bigint, 16);
+  const padded = StringPrototypePadStart(
+    hex,
+    hex.length + (hex.length % 2),
+    "0",
+  );
   return Buffer.from(padded, "hex");
 }
 
-export function randomUUID(options) {
+function randomUUID(options) {
   if (options !== undefined) {
     validateObject(options, "options");
   }
@@ -421,7 +412,7 @@ export function randomUUID(options) {
   return globalThis.crypto.randomUUID();
 }
 
-export default {
+return {
   checkPrime,
   checkPrimeSync,
   generatePrime,
@@ -431,4 +422,16 @@ export default {
   randomBytes,
   randomFill,
   randomFillSync,
+  default: {
+    checkPrime,
+    checkPrimeSync,
+    generatePrime,
+    generatePrimeSync,
+    randomUUID,
+    randomInt,
+    randomBytes,
+    randomFill,
+    randomFillSync,
+  },
 };
+})();

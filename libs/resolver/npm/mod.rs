@@ -586,6 +586,7 @@ impl<
           | NodeResolveErrorKind::UrlToFilePath(_)
           | NodeResolveErrorKind::TypesNotFound(_)
           | NodeResolveErrorKind::UnknownBuiltInNodeModule(_)
+          | NodeResolveErrorKind::BrowserMapDisabled(_)
           | NodeResolveErrorKind::FinalizeResolution(_) => Err(
             ResolveIfForNpmPackageErrorKind::NodeResolve(err.into()).into_box(),
           ),
@@ -687,3 +688,9 @@ pub(crate) fn join_package_name_to_path(
   }
   path.into_owned()
 }
+
+// Matching a locally installed (e.g. pnpm/npm workspace) package against a
+// requirement is prerelease-inclusive. The canonical implementation lives in
+// `deno_config` so it can be shared with `NpmPackageConfig` matching; re-export
+// it here for the byonm and cache_deps callers.
+pub use deno_config::workspace::version_req_matches_including_pre;

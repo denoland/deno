@@ -1,34 +1,19 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file no-explicit-any no-node-globals
 
-const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
-import { Buffer } from "node:buffer";
-import {
-  type BigIntStats,
-  fchmod,
-  fdatasync,
-  fsync,
-  Mode,
-  promises,
-  read as readAsync,
-  type ReadAsyncOptions,
-  ReadStream,
-  type Stats,
-  write as writeAsync,
-  WriteStream,
-} from "node:fs";
-import { createInterface } from "node:readline";
-import type { Interface as ReadlineInterface } from "node:readline";
 import { core, primordials } from "ext:core/mod.js";
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const lazyFs = core.createLazyLoader("node:fs");
+const lazyReadline = core.createLazyLoader("node:readline");
+const lazyBuffer = core.createLazyLoader("node:buffer");
 import { op_node_fs_close } from "ext:core/ops";
 import type {
   BinaryOptionsArgument,
   FileOptionsArgument,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
-import { writev } from "node:fs";
+// writev loaded lazily from node:fs via lazyFs
 
 export interface WriteVResult {
   bytesWritten: number;
@@ -41,27 +26,20 @@ function writevPromise(
   position?: number,
 ): Promise<WriteVResult> {
   return new Promise((resolve, reject) => {
-    writev(fd, buffers, position, (err, bytesWritten, buffers) => {
+    lazyFs().writev(fd, buffers, position, (err, bytesWritten, buffers) => {
       if (err) reject(err);
       else resolve({ bytesWritten, buffers });
     });
   });
 }
-import { readvPromise, type ReadVResult } from "node:fs";
-import { fstatPromise } from "ext:deno_node/_fs/_fs_fstat.ts";
-import {
-  fchown as fchownCb,
-  ftruncate as ftruncateCb,
-  futimes as futimesCb,
-} from "node:fs";
+// readvPromise loaded lazily from node:fs via lazyFs
+const { fstatPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_fstat.ts");
+// fchown, ftruncate, futimes loaded lazily from node:fs via lazyFs
 const { kEmptyObject, promisify } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
 
-import {
-  CreateReadStreamOptions,
-  CreateWriteStreamOptions,
-} from "node:fs/promises";
+// CreateReadStreamOptions, CreateWriteStreamOptions types from node:fs/promises
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const {
   denoErrorToNodeError,
@@ -74,30 +52,58 @@ const {
   validateBoolean,
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import process from "node:process";
+const { isDataView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const lazyProcess = core.createLazyLoader("node:process");
 
-const fchmodPromise = promisify(fchmod) as (
+// Promisified wrappers must NOT be built at module body: handle.ts is loaded
+// during `fs.promises` evaluation, and calling `lazyFs()` here re-enters
+// `node:fs`'s still-evaluating module body. Its `export const promises =
+// mod.promises` then re-triggers `get promises` -> `lazyInternalPromises()
+// .default` which is in TDZ. Build the wrappers on first call instead.
+let _fchmodPromise: any;
+const fchmodPromise = (
   fd: number,
   mode: string | number,
-) => Promise<void>;
-const fdatasyncPromise = promisify(fdatasync) as (
-  fd: number,
-) => Promise<void>;
-const fsyncPromise = promisify(fsync) as (fd: number) => Promise<void>;
+): Promise<void> => {
+  _fchmodPromise ??= promisify(lazyFs().fchmod);
+  return _fchmodPromise(fd, mode);
+};
+let _fdatasyncPromise: any;
+const fdatasyncPromise = (fd: number): Promise<void> => {
+  _fdatasyncPromise ??= promisify(lazyFs().fdatasync);
+  return _fdatasyncPromise(fd);
+};
+let _fsyncPromise: any;
+const fsyncPromise = (fd: number): Promise<void> => {
+  _fsyncPromise ??= promisify(lazyFs().fsync);
+  return _fsyncPromise(fd);
+};
 
 const {
+  DataViewPrototypeGetByteLength,
   Error,
   ObjectAssign,
   ObjectPrototypeIsPrototypeOf,
   Promise,
+  PromisePrototypeCatch,
   PromisePrototypeThen,
   SafePromisePrototypeFinally,
   PromiseResolve,
   SafeArrayIterator,
   Symbol,
   SymbolAsyncDispose,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
   Uint8ArrayPrototype,
 } = primordials;
+
+function getByteLength(buffer: ArrayBufferView): number {
+  return isDataView(buffer)
+    ? DataViewPrototypeGetByteLength(buffer)
+    : TypedArrayPrototypeGetByteLength(buffer);
+}
 
 const kRefs = Symbol("kRefs");
 const kClosePromise = Symbol("kClosePromise");
@@ -107,9 +113,22 @@ export const kRef = Symbol("kRef");
 export const kUnref = Symbol("kUnref");
 const kLocked = Symbol("kLocked");
 
-const ftruncatePromise = promisify(ftruncateCb);
-const fchownPromise = promisify(fchownCb);
-const futimesPromise = promisify(futimesCb);
+// See `fchmodPromise` above for why these are deferred.
+let _ftruncatePromise: any;
+const ftruncatePromise = (...args: any[]) => {
+  _ftruncatePromise ??= promisify(lazyFs().ftruncate);
+  return _ftruncatePromise(...new SafeArrayIterator(args));
+};
+let _fchownPromise: any;
+const fchownPromise = (...args: any[]) => {
+  _fchownPromise ??= promisify(lazyFs().fchown);
+  return _fchownPromise(...new SafeArrayIterator(args));
+};
+let _futimesPromise: any;
+const futimesPromise = (...args: any[]) => {
+  _futimesPromise ??= promisify(lazyFs().futimes);
+  return _futimesPromise(...new SafeArrayIterator(args));
+};
 
 interface WriteResult {
   bytesWritten: number;
@@ -150,24 +169,57 @@ export class FileHandle extends EventEmitter {
   ): Promise<ReadResult>;
   read(
     buffer: ArrayBufferView,
-    options?: ReadAsyncOptions<NodeJS.ArrayBufferView>,
+    options?: any,
   ): Promise<ReadResult>;
-  read(options?: ReadAsyncOptions<NodeJS.ArrayBufferView>): Promise<ReadResult>;
+  read(options?: any): Promise<ReadResult>;
   read(
-    bufferOrOpt?: ArrayBufferView | ReadAsyncOptions<NodeJS.ArrayBufferView>,
-    offsetOrOpt?: number | ReadAsyncOptions<NodeJS.ArrayBufferView>,
+    bufferOrOpt?: ArrayBufferView | any,
+    offsetOrOpt?: number | any,
     length?: number,
     position?: number | null,
   ): Promise<ReadResult> {
-    return fsCall(
-      readPromise,
-      "read",
-      this,
-      bufferOrOpt,
-      offsetOrOpt,
-      length,
-      position,
-    );
+    // Normalize arguments to mirror Node's lib/internal/fs/promises.js
+    // FileHandle.read: when length/position are nullish in any of the three
+    // overload shapes, fall back to buffer-relative defaults rather than
+    // letting them reach fs.read() as `undefined`/`null` and get coerced
+    // to 0.
+    let buf: ArrayBufferView;
+    let offset: number;
+    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, bufferOrOpt)) {
+      buf = bufferOrOpt as ArrayBufferView;
+      if (offsetOrOpt == null || typeof offsetOrOpt === "object") {
+        // fileHandle.read(buffer, options)
+        const opts = (offsetOrOpt ?? {}) as {
+          offset?: number;
+          length?: number;
+          position?: number | null;
+        };
+        offset = opts.offset ?? 0;
+        length = opts.length ?? getByteLength(buf) - offset;
+        position = opts.position ?? null;
+      } else {
+        // fileHandle.read(buffer, offset, length, position)
+        offset = offsetOrOpt as number;
+        if (length == null) length = getByteLength(buf) - offset;
+        if (position == null) position = null;
+      }
+    } else {
+      // fileHandle.read(options)
+      const opts = (bufferOrOpt ?? {}) as {
+        buffer?: ArrayBufferView;
+        offset?: number;
+        length?: number;
+        position?: number | null;
+      };
+      // `opts` is a plain options object; `.buffer` is a normal property,
+      // not the TypedArray `.buffer` getter.
+      // deno-lint-ignore prefer-primordials
+      buf = opts.buffer ?? lazyBuffer().Buffer.alloc(16384);
+      offset = opts.offset ?? 0;
+      length = opts.length ?? getByteLength(buf) - offset;
+      position = opts.position ?? null;
+    }
+    return fsCall(readPromise, "read", this, buf, offset, length, position);
   }
 
   truncate(len?: number): Promise<void> {
@@ -177,7 +229,7 @@ export class FileHandle extends EventEmitter {
   readFile(
     opt?: TextOptionsArgument | BinaryOptionsArgument | FileOptionsArgument,
   ): Promise<string | Buffer> {
-    return fsCall(promises.readFile, "readFile", this, opt);
+    return fsCall(lazyFs().promises.readFile, "readFile", this, opt);
   }
 
   write(
@@ -205,7 +257,13 @@ export class FileHandle extends EventEmitter {
   }
 
   writeFile(data, options): Promise<void> {
-    return fsCall(promises.writeFile, "writeFile", this, data, options);
+    return fsCall(
+      lazyFs().promises.writeFile,
+      "writeFile",
+      this,
+      data,
+      options,
+    );
   }
 
   writev(buffers: ArrayBufferView[], position?: number): Promise<WriteVResult> {
@@ -215,8 +273,8 @@ export class FileHandle extends EventEmitter {
   readv(
     buffers: readonly ArrayBufferView[],
     position?: number,
-  ): Promise<ReadVResult> {
-    return fsCall(readvPromise, "readv", this, buffers, position);
+  ): Promise<any> {
+    return fsCall(lazyFs().readvPromise, "readv", this, buffers, position);
   }
 
   [kRef]() {
@@ -225,7 +283,10 @@ export class FileHandle extends EventEmitter {
 
   [kUnref]() {
     this[kRefs]--;
-    if (this[kRefs] > 0 || this.fd === -1) {
+    // Use #rid (the backing storage) rather than `this.fd` so user code that
+    // overrides FileHandle.prototype.fd can't perturb internal close logic.
+    // Mirrors Node's lib/internal/fs/promises.js use of `this[kFd]` here.
+    if (this[kRefs] > 0 || this.#rid === -1) {
       return;
     }
 
@@ -239,7 +300,7 @@ export class FileHandle extends EventEmitter {
   #close(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        op_node_fs_close(this.fd);
+        op_node_fs_close(this.#rid);
         this.#rid = -1;
         resolve();
       } catch (err) {
@@ -249,7 +310,7 @@ export class FileHandle extends EventEmitter {
   }
 
   close(): Promise<void> {
-    if (this.fd === -1) {
+    if (this.#rid === -1) {
       return PromiseResolve();
     }
 
@@ -283,14 +344,14 @@ export class FileHandle extends EventEmitter {
     return this[kClosePromise];
   }
 
-  stat(): Promise<Stats>;
-  stat(options: { bigint: false }): Promise<Stats>;
-  stat(options: { bigint: true }): Promise<BigIntStats>;
-  stat(options?: { bigint: boolean }): Promise<Stats | BigIntStats> {
+  stat(): Promise<any>;
+  stat(options: { bigint: false }): Promise<any>;
+  stat(options: { bigint: true }): Promise<any>;
+  stat(options?: { bigint: boolean }): Promise<any> {
     return fsCall(fstatPromise, "fstat", this, options);
   }
 
-  chmod(mode: Mode): Promise<void> {
+  chmod(mode: any): Promise<void> {
     return fsCall(fchmodPromise, "fchmod", this, mode);
   }
 
@@ -313,16 +374,16 @@ export class FileHandle extends EventEmitter {
     return fsCall(fchownPromise, "fchown", this, uid, gid);
   }
 
-  createReadStream(options?: CreateReadStreamOptions): ReadStream {
-    return new ReadStream(undefined, { ...options, fd: this });
+  createReadStream(options?: any): any {
+    return new (lazyFs().ReadStream)(undefined, { ...options, fd: this });
   }
 
-  createWriteStream(options?: CreateWriteStreamOptions): WriteStream {
-    return new WriteStream(undefined, { ...options, fd: this });
+  createWriteStream(options?: any): any {
+    return new (lazyFs().WriteStream)(undefined, { ...options, fd: this });
   }
 
-  readLines(options?: CreateReadStreamOptions): ReadlineInterface {
-    return createInterface({
+  readLines(options?: any): any {
+    return lazyReadline().createInterface({
       input: this.createReadStream(options),
       crlfDelay: Infinity,
     });
@@ -348,7 +409,7 @@ export class FileHandle extends EventEmitter {
     validateBoolean(autoClose, "options.autoClose");
 
     if (type !== "bytes") {
-      process.emitWarning(
+      lazyProcess().default.emitWarning(
         'A non-"bytes" options.type has no effect. A byte-oriented steam is ' +
           "always created.",
         "ExperimentalWarning",
@@ -358,7 +419,7 @@ export class FileHandle extends EventEmitter {
     const ondone = async () => {
       this[kUnref]();
       if (autoClose) {
-        await this.close().catch(() => {});
+        await PromisePrototypeCatch(this.close(), () => {});
       }
     };
 
@@ -370,8 +431,8 @@ export class FileHandle extends EventEmitter {
         const view = controller.byobRequest!.view! as Uint8Array;
         const { bytesRead } = await this.read(
           view,
-          view.byteOffset,
-          view.byteLength,
+          TypedArrayPrototypeGetByteOffset(view),
+          TypedArrayPrototypeGetByteLength(view),
         );
 
         if (bytesRead === 0) {
@@ -412,7 +473,13 @@ export class FileHandle extends EventEmitter {
       flag: resolvedOptions.flag ?? "a",
     };
 
-    return fsCall(promises.writeFile, "writeFile", this, data, optsWithAppend);
+    return fsCall(
+      lazyFs().promises.writeFile,
+      "writeFile",
+      this,
+      data,
+      optsWithAppend,
+    );
   }
 }
 
@@ -426,16 +493,16 @@ function readPromise(
 function readPromise(
   rid: number,
   buffer: ArrayBufferView,
-  options?: ReadAsyncOptions<NodeJS.ArrayBufferView>,
+  options?: any,
 ): Promise<ReadResult>;
 function readPromise(
   rid: number,
-  options?: ReadAsyncOptions<NodeJS.ArrayBufferView>,
+  options?: any,
 ): Promise<ReadResult>;
 function readPromise(
   rid: number,
-  bufferOrOpt?: ArrayBufferView | ReadAsyncOptions<NodeJS.ArrayBufferView>,
-  offsetOrOpt?: number | ReadAsyncOptions<NodeJS.ArrayBufferView>,
+  bufferOrOpt?: ArrayBufferView | any,
+  offsetOrOpt?: number | any,
   length?: number,
   position?: number | null,
 ): Promise<ReadResult> {
@@ -445,11 +512,9 @@ function readPromise(
       typeof position !== "number"
     ) {
       // fileHandle.read(buffer) or fileHandle.read(buffer, options)
-      const opts = (offsetOrOpt ?? {}) as ReadAsyncOptions<
-        NodeJS.ArrayBufferView
-      >;
+      const opts = (offsetOrOpt ?? {}) as any;
       return new Promise((resolve, reject) => {
-        readAsync(
+        lazyFs().read(
           rid,
           bufferOrOpt,
           opts,
@@ -462,7 +527,7 @@ function readPromise(
     }
 
     return new Promise((resolve, reject) => {
-      readAsync(
+      lazyFs().read(
         rid,
         bufferOrOpt,
         offsetOrOpt,
@@ -476,7 +541,7 @@ function readPromise(
     });
   } else {
     return new Promise((resolve, reject) => {
-      readAsync(
+      lazyFs().read(
         rid,
         bufferOrOpt,
         (err: Error, bytesRead: number, buffer: Buffer) => {
@@ -514,7 +579,7 @@ function writePromise(
     const length = lengthOrEncoding;
 
     return new Promise((resolve, reject) => {
-      writeAsync(
+      lazyFs().write(
         rid,
         buffer,
         offset,
@@ -532,7 +597,7 @@ function writePromise(
     const encoding = lengthOrEncoding;
 
     return new Promise((resolve, reject) => {
-      writeAsync(
+      lazyFs().write(
         rid,
         str,
         position,

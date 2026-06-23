@@ -18,6 +18,7 @@ use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
 use deno_core::Extension;
+use deno_core::FromV8;
 use deno_core::JsRuntime;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -26,6 +27,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::ToV8;
 use deno_core::error::CoreError;
 use deno_core::error::CoreErrorKind;
 use deno_core::futures::channel::mpsc;
@@ -50,7 +52,7 @@ use deno_process::NpmProcessStateProviderRc;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
-use deno_web::BlobStore;
+use deno_web::BlobStoreTrait;
 use deno_web::InMemoryBroadcastChannel;
 use deno_web::JsMessageData;
 use deno_web::MessagePort;
@@ -76,6 +78,7 @@ use crate::worker::MEMORY_TRIM_HANDLER_ENABLED;
 use crate::worker::SIGUSR2_RX;
 use crate::worker::create_op_metrics;
 use crate::worker::create_validate_import_attributes_callback;
+use crate::worker::request_builder_hook;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -84,7 +87,7 @@ pub struct WorkerMetadata {
 
 static WORKER_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, FromV8, ToV8)]
 pub struct WorkerId(u32);
 impl WorkerId {
   pub fn new() -> WorkerId {
@@ -103,7 +106,7 @@ impl Default for WorkerId {
   }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToV8, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WorkerThreadType {
   // Used only for testing
@@ -115,22 +118,6 @@ pub enum WorkerThreadType {
   Node,
 }
 
-impl<'s> WorkerThreadType {
-  pub fn to_v8(
-    &self,
-    scope: &mut v8::PinScope<'s, '_>,
-  ) -> v8::Local<'s, v8::String> {
-    v8::String::new(
-      scope,
-      match self {
-        WorkerThreadType::Classic => "classic",
-        WorkerThreadType::Module => "module",
-        WorkerThreadType::Node => "node",
-      },
-    )
-    .unwrap()
-  }
-}
 /// Events that are sent to host from child
 /// worker.
 pub enum WorkerControlEvent {
@@ -360,7 +347,7 @@ pub struct WebWorkerServiceOptions<
   TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
   TExtNodeSys: ExtNodeSys + 'static,
 > {
-  pub blob_store: Arc<BlobStore>,
+  pub blob_store: Arc<dyn BlobStoreTrait>,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -389,6 +376,12 @@ pub struct WebWorkerOptions {
   pub bootstrap: BootstrapOptions,
   pub extensions: Vec<Extension>,
   pub startup_snapshot: Option<&'static [u8]>,
+  /// `(specifier, source)` pairs for `lazy_loaded_js` files not consumed
+  /// during snapshot creation; emitted by the snapshot build script.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  /// `(specifier, source)` pairs for `lazy_loaded_esm` files not consumed
+  /// during snapshot creation; emitted by the snapshot build script.
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   /// Optional isolate creation parameters, such as heap limits.
   pub create_params: Option<v8::CreateParams>,
@@ -538,6 +531,7 @@ impl WebWorker {
           .unsafely_ignore_certificate_errors
           .clone(),
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+        request_builder_hook: Some(request_builder_hook),
         ..Default::default()
       }),
       deno_cache::deno_cache::init(create_cache),
@@ -551,7 +545,7 @@ impl WebWorker {
       ),
       deno_tls::deno_tls::init(),
       deno_kv::deno_kv::init(
-        MultiBackendDbHandler::remote_or_sqlite(
+        Box::new(MultiBackendDbHandler::remote_or_sqlite(
           None,
           options.seed,
           deno_kv::remote::HttpOptions {
@@ -563,10 +557,10 @@ impl WebWorker {
             client_cert_chain_and_key: TlsKeys::Null,
             proxy: None,
           },
-        ),
+        )),
         deno_kv::KvConfig::builder().build(),
       ),
-      deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
+      deno_cron::deno_cron::init(Box::new(CronHandlerImpl::create_from_env())),
       deno_napi::deno_napi::init(services.deno_rt_native_addon_loader.clone()),
       deno_http::deno_http::init(deno_http::Options {
         no_legacy_abort: options.bootstrap.no_legacy_abort,
@@ -594,6 +588,7 @@ impl WebWorker {
       ops::tty::deno_tty::init(),
       ops::http::deno_http_runtime::init(),
       deno_bundle_runtime::deno_bundle_runtime::init(services.bundle_provider),
+      ops::desktop::deno_desktop::init(),
       ops::bootstrap::deno_bootstrap::init(
         options.startup_snapshot.and_then(|_| Default::default()),
         false,
@@ -601,14 +596,6 @@ impl WebWorker {
       runtime::init(),
       ops::web_worker::deno_web_worker::init(),
     ];
-
-    #[cfg(feature = "hmr")]
-    const {
-      assert!(
-        cfg!(not(feature = "only_snapshotted_js_sources")),
-        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-      );
-    }
 
     for extension in &mut extensions {
       if options.startup_snapshot.is_some() {
@@ -620,15 +607,14 @@ impl WebWorker {
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
-    #[cfg(feature = "only_snapshotted_js_sources")]
-    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
-
     // Get our op metrics
     let op_metrics_factory_fn = create_op_metrics(options.trace_ops);
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(services.module_loader),
       startup_snapshot: options.startup_snapshot,
+      residual_lazy_js_sources: options.residual_lazy_js_sources,
+      residual_lazy_esm_sources: options.residual_lazy_esm_sources,
       create_params: options.create_params,
       shared_array_buffer_store: services.shared_array_buffer_store,
       compiled_wasm_module_store: services.compiled_wasm_module_store,
@@ -655,7 +641,9 @@ impl WebWorker {
       is_main: false,
       worker_id: Some(options.worker_id.0),
       wait_for_inspector_disconnect_callback: None,
-      custom_module_evaluation_cb: None,
+      custom_module_evaluation_cb: Some(
+        crate::worker::create_custom_module_evaluation_callback(),
+      ),
       eval_context_code_cache_cbs: None,
     });
 
@@ -786,7 +774,7 @@ impl WebWorker {
       let id: v8::Local<v8::Value> =
         v8::Integer::new(scope, self.id.0 as i32).into();
       let worker_type: v8::Local<v8::Value> =
-        self.worker_type.to_v8(scope).into();
+        self.worker_type.to_v8(scope).unwrap();
       let result = bootstrap_fn.call(
         scope,
         undefined.into(),

@@ -47,7 +47,7 @@
 // internal module so there can be re-use within the "url" module etc.
 (function () {
 "use strict";
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_node_idna_domain_to_ascii, op_node_idna_domain_to_unicode } =
   core.ops;
 const {

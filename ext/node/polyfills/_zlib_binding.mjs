@@ -4,7 +4,7 @@
 
 // https://github.com/nodeca/pako/blob/master/lib/zlib/constants.js
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const Z_NO_FLUSH = 0;
 const Z_PARTIAL_FLUSH = 1;
 const Z_SYNC_FLUSH = 2;

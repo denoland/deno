@@ -1,0 +1,40 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "denort_desktop"
+version = "2.7.4"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+repository.workspace = true
+description = "Provides libdenort shared library for laufey desktop apps"
+
+[lib]
+name = "denort"
+path = "lib.rs"
+crate-type = ["cdylib"]
+
+[build-dependencies]
+deno_runtime.workspace = true
+deno_core.workspace = true
+
+[dependencies]
+deno_core.workspace = true
+deno_error.workspace = true
+deno_lib.workspace = true
+deno_runtime.workspace = true
+deno_snapshots.workspace = true
+deno_terminal.workspace = true
+denort = { path = "../rt" }
+laufey = "0.4.0"
+libsui.workspace = true
+
+log = { workspace = true, features = ["serde"] }
+raw-window-handle.workspace = true
+rustls.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

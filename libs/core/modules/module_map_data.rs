@@ -207,9 +207,35 @@ pub(crate) struct ModuleMapData {
   pub(crate) known_lazy_esm: RefCell<HashSet<String>>,
   pub(crate) lazy_script_sources:
     Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
+  /// Results of `load_ext_script` evaluations. Populated on first
+  /// evaluation so later callers (`Deno.core.loadExtScript()` from JS,
+  /// the `synthetic_esm` dispatch from Rust) share a single evaluated
+  /// exports value — the source is removed from `lazy_script_sources`
+  /// on first eval, so subsequent reads come from here. Runtime-only —
+  /// not snapshotted.
+  pub(crate) loaded_script_results:
+    Rc<RefCell<HashMap<ModuleName, v8::Global<v8::Value>>>>,
+  /// `synthetic_esm` registry: module specifier (e.g. `node:worker_threads`)
+  /// to backing-script specifier (e.g. `ext:deno_node/worker_threads.ts`).
+  /// Populated at extension init from each extension's
+  /// `synthetic_esm_files` list. Runtime-only — not snapshotted.
+  pub(crate) synthetic_esm_modules:
+    Rc<RefCell<HashMap<ModuleName, ModuleName>>>,
   /// Set of scripts currently being loaded (for circular dep detection).
   pub(crate) lazy_script_loading: Rc<RefCell<HashSet<ModuleName>>>,
-  pub(crate) sources: HashMap<ModuleSourceKey, Rc<v8::Global<v8::Object>>>,
+  /// Snapshot-time `__bootstrap` view (frozen clone of `core.ops` etc.)
+  /// registered from JS via `op_set_captured_bootstrap`. `load_ext_script`
+  /// temporarily installs this on `globalThis.__bootstrap` for the duration
+  /// of each script evaluation if `__bootstrap` isn't already on the global
+  /// — every lazy_loaded_js polyfill's IIFE preamble destructures it, and
+  /// the `synthetic_esm` dispatch goes straight through Rust without the
+  /// JS `core.loadExtScript` wrapper. Runtime-only — not snapshotted.
+  pub(crate) captured_bootstrap: RefCell<Option<v8::Global<v8::Value>>>,
+  pub(crate) sources: HashMap<ModuleSourceKey, v8::Global<v8::Object>>,
+  /// Specifiers of `lazy_loaded_esm` / `lazy_loaded_js` files whose source
+  /// was actually compiled by V8 during snapshot creation. Their bytes live
+  /// in the snapshot blob; the binary does not need a separate copy.
+  pub(crate) consumed_lazy_specifiers: RefCell<HashSet<String>>,
 }
 
 /// Snapshot-compatible representation of this data.
@@ -226,6 +252,19 @@ pub(crate) struct ModuleMapSnapshotData {
   /// from the binary on first access at runtime.
   #[serde(default)]
   lazy_esm_specifiers: Vec<String>,
+  /// `load_ext_script` cache snapshot. Captures the exports object
+  /// returned by each polyfill IIFE evaluated at snapshot time so the
+  /// runtime can share the same value (with the `synthetic_esm` dispatch
+  /// in particular) without re-evaluating — re-eval would clobber
+  /// registered `internals.__*` hooks and duplicate class identities.
+  #[serde(default)]
+  loaded_script_results: Vec<(FastString, SnapshotDataId)>,
+  /// Snapshot of the captured `__bootstrap` view registered via
+  /// `op_set_captured_bootstrap` at the end of `01_core.js`. Restored
+  /// at runtime so the Rust `load_ext_script` can reinstall it on
+  /// `globalThis.__bootstrap` during each script evaluation.
+  #[serde(default)]
+  captured_bootstrap: Option<SnapshotDataId>,
 }
 
 impl ModuleMapData {
@@ -299,6 +338,26 @@ impl ModuleMapData {
       requested_module_type,
       name,
       SymbolicModule::Alias(target),
+    );
+  }
+
+  /// Register an additional `(name, requested_module_type) -> module_id`
+  /// mapping for a module that was already registered under a different
+  /// requested module type. Used to make modules visible to imports whose
+  /// `with { type: ... }` attribute doesn't match the loaded module's
+  /// actual type — for example when a `module.registerHooks()` load hook
+  /// returns `format: "module"` for an import with a custom type
+  /// attribute like `with { type: "x-css" }`.
+  pub(crate) fn register_under_type(
+    &mut self,
+    name: FastString,
+    requested_module_type: &RequestedModuleType,
+    module_id: ModuleId,
+  ) {
+    self.by_name.insert(
+      requested_module_type,
+      name,
+      SymbolicModule::Mod(module_id),
     );
   }
 
@@ -401,6 +460,19 @@ impl ModuleMapData {
       .map(|s| s.to_string())
       .collect();
 
+    // Move out of the Rc<RefCell<...>> so we can consume the values.
+    let cached_results: HashMap<ModuleName, v8::Global<v8::Value>> =
+      std::mem::take(&mut *self.loaded_script_results.borrow_mut());
+    ser.loaded_script_results = cached_results
+      .into_iter()
+      .map(|(name, value)| (name, data_store.register(value)))
+      .collect();
+
+    ser.captured_bootstrap = self
+      .captured_bootstrap
+      .into_inner()
+      .map(|value| data_store.register(value));
+
     ser
   }
 
@@ -434,6 +506,18 @@ impl ModuleMapData {
 
     *self.known_lazy_esm.borrow_mut() =
       data.lazy_esm_specifiers.into_iter().collect();
+
+    let mut cached_results = self.loaded_script_results.borrow_mut();
+    for (name, id) in data.loaded_script_results {
+      let value = data_store.get::<v8::Value>(scope, id);
+      cached_results.insert(name, value);
+    }
+    drop(cached_results);
+
+    if let Some(id) = data.captured_bootstrap {
+      let value = data_store.get::<v8::Value>(scope, id);
+      *self.captured_bootstrap.borrow_mut() = Some(value);
+    }
   }
 
   // TODO(mmastrac): this is better than giving the entire crate access to the internals.

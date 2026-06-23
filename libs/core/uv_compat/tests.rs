@@ -665,18 +665,165 @@ async fn tcp_nodelay() {
   .await;
 }
 
-// ========== TCP keepalive / simultaneous_accepts (no-ops) ==========
+// ========== TCP keepalive / simultaneous_accepts ==========
 
 #[tokio::test(flavor = "current_thread")]
-async fn tcp_keepalive_is_noop() {
+async fn tcp_keepalive_without_socket_is_ok() {
+  // Without an underlying socket the request is recorded (and applied
+  // later when the socket is created) rather than erroring.
   run_test(async |_runtime, uv_loop| {
     let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
     let tcp_ptr = tcp.as_mut_ptr();
     unsafe {
       uv_tcp_init(uv_loop, tcp_ptr);
       assert_ok(uv_tcp_keepalive(tcp_ptr, 1, 60));
+      assert_eq!((*tcp_ptr).internal_keepalive, Some((true, 60)));
       assert_ok(uv_tcp_simultaneous_accepts(tcp_ptr, 1));
     }
+  })
+  .await;
+}
+
+/// Regression test for tedious/mssql ECONNRESET (denoland/deno#34729):
+/// `socket.setKeepAlive()` must actually toggle `SO_KEEPALIVE` on the
+/// underlying socket. The native TCPWrap rewrite had regressed this to a
+/// silent no-op, so libraries that rely on TCP keepalive to keep
+/// tunneled/long-lived connections alive lost that protection.
+#[cfg(unix)]
+#[tokio::test(flavor = "current_thread")]
+async fn tcp_keepalive_sets_so_keepalive_on_connected_socket() {
+  use std::os::unix::io::AsRawFd;
+
+  run_test(async |runtime, uv_loop| {
+    let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let server_ptr = server.as_mut_ptr();
+
+    unsafe extern "C" fn on_connection(_: *mut uv_stream_t, status: i32) {
+      assert_eq!(status, 0);
+    }
+
+    let server_port: u16;
+    unsafe {
+      uv_tcp_init(uv_loop, server_ptr);
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), 0, addr.as_mut_ptr());
+      assert_ok(uv_tcp_bind(
+        server_ptr,
+        addr.as_ptr() as *const c_void,
+        0,
+        0,
+      ));
+      assert_ok(uv_listen(
+        server_ptr as *mut uv_stream_t,
+        128,
+        Some(on_connection),
+      ));
+      let mut name = std::mem::MaybeUninit::<sockaddr_in>::zeroed();
+      let mut namelen = std::mem::size_of::<sockaddr_in>() as i32;
+      uv_tcp_getsockname(
+        server_ptr,
+        name.as_mut_ptr() as *mut c_void,
+        &mut namelen,
+      );
+      server_port = u16::from_be(name.assume_init_ref().sin_port);
+    }
+
+    let connected = Rc::new(Cell::new(false));
+    let connected_ptr = Rc::into_raw(connected.clone());
+
+    unsafe extern "C" fn on_connect(req: *mut uv_connect_t, status: i32) {
+      assert_eq!(status, 0);
+      let connected = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      connected.set(true);
+      let _ = Rc::into_raw(connected);
+    }
+
+    let mut client = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let client_ptr = client.as_mut_ptr();
+    let mut connect_req = std::mem::MaybeUninit::<uv_connect_t>::uninit();
+    let connect_req_ptr = connect_req.as_mut_ptr();
+
+    unsafe {
+      uv_tcp_init(uv_loop, client_ptr);
+      (*connect_req_ptr).data = connected_ptr as *mut c_void;
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), server_port as i32, addr.as_mut_ptr());
+      assert_ok(uv_tcp_connect(
+        connect_req_ptr,
+        client_ptr,
+        addr.as_ptr() as *const c_void,
+        Some(on_connect),
+      ));
+    }
+
+    // Generous budget so the test stays reliable on slow/loaded CI runners.
+    for _ in 0..2000 {
+      tick(runtime).await;
+      if connected.get() {
+        break;
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    assert!(connected.get(), "Client should have connected");
+
+    unsafe {
+      // Enable keepalive on the connected client and confirm the kernel
+      // socket actually has SO_KEEPALIVE set.
+      assert_ok(uv_tcp_keepalive(client_ptr, 1, 45));
+      let fd = (*client_ptr)
+        .internal_stream
+        .as_ref()
+        .expect("connected client should have a stream")
+        .as_raw_fd();
+
+      let mut val: libc::c_int = 0;
+      let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+      let rc = libc::getsockopt(
+        fd,
+        libc::SOL_SOCKET,
+        libc::SO_KEEPALIVE,
+        &mut val as *mut _ as *mut c_void,
+        &mut len,
+      );
+      assert_eq!(rc, 0, "getsockopt(SO_KEEPALIVE) failed");
+      assert_ne!(val, 0, "SO_KEEPALIVE should be enabled");
+
+      // Linux exposes the idle delay via TCP_KEEPIDLE; verify it was set.
+      #[cfg(any(target_os = "linux", target_os = "android"))]
+      {
+        let mut idle: libc::c_int = 0;
+        let mut ilen = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+        let rc = libc::getsockopt(
+          fd,
+          libc::IPPROTO_TCP,
+          libc::TCP_KEEPIDLE,
+          &mut idle as *mut _ as *mut c_void,
+          &mut ilen,
+        );
+        assert_eq!(rc, 0, "getsockopt(TCP_KEEPIDLE) failed");
+        assert_eq!(idle, 45, "TCP_KEEPIDLE should match requested delay");
+      }
+
+      // Disabling clears SO_KEEPALIVE again.
+      assert_ok(uv_tcp_keepalive(client_ptr, 0, 0));
+      let mut val2: libc::c_int = 1;
+      let mut len2 = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+      libc::getsockopt(
+        fd,
+        libc::SOL_SOCKET,
+        libc::SO_KEEPALIVE,
+        &mut val2 as *mut _ as *mut c_void,
+        &mut len2,
+      );
+      assert_eq!(val2, 0, "SO_KEEPALIVE should be disabled");
+
+      uv_close(client_ptr as *mut uv_handle_t, None);
+      uv_close(server_ptr as *mut uv_handle_t, None);
+      Rc::from_raw(connected_ptr);
+    }
+    tick(runtime).await;
   })
   .await;
 }
@@ -2988,4 +3135,236 @@ async fn pipe_open_not_active_until_read_start() {
     tick(runtime).await;
   })
   .await;
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/33923.
+///
+/// On Windows, when all named-pipe instances are in use (e.g., Docker
+/// Desktop under load), `CreateFileW` returns `ERROR_PIPE_BUSY` (231).
+/// libuv handles this by transparently retrying via `WaitNamedPipeW` on
+/// a worker thread; node code (like `docker-modem`) relies on this. We
+/// must do the same — without it, the connection surfaces as
+/// `connect EINVAL` to JavaScript.
+#[cfg(windows)]
+#[tokio::test(flavor = "current_thread")]
+async fn pipe_connect_retries_on_error_pipe_busy() {
+  use tokio::net::windows::named_pipe::ClientOptions;
+  use tokio::net::windows::named_pipe::ServerOptions;
+  // Unique pipe name per test run.
+  let pipe_name =
+    format!(r"\\.\pipe\deno-uvcompat-busy-{}", std::process::id());
+
+  // Server with max_instances=1 -- only one client can be connected at
+  // a time. The first server instance must use first_pipe_instance(true).
+  let server = ServerOptions::new()
+    .first_pipe_instance(true)
+    .max_instances(1)
+    .create(&pipe_name)
+    .unwrap();
+
+  // Client 1 connects, consuming the only instance.
+  let _client1 = ClientOptions::new().open(&pipe_name).unwrap();
+  // Drive the server's ConnectNamedPipe so the pair is fully established.
+  server.connect().await.unwrap();
+
+  // Sanity: a second synchronous open MUST now return ERROR_PIPE_BUSY.
+  // (If this assertion fails, the test setup no longer triggers the
+  // condition we're trying to exercise.)
+  let busy_err = ClientOptions::new().open(&pipe_name).unwrap_err();
+  assert_eq!(
+    busy_err.raw_os_error(),
+    Some(231),
+    "expected ERROR_PIPE_BUSY, got {:?}",
+    busy_err
+  );
+
+  // Now exercise the retry helper. It should block in WaitNamedPipeW
+  // until we drop the existing server and create a fresh instance.
+  let pipe_name_clone = pipe_name.clone();
+  let join = tokio::task::spawn_blocking(move || {
+    pipe::wait_named_pipe_and_open(&pipe_name_clone)
+  });
+
+  // Give the worker a moment to actually enter WaitNamedPipeW. Without
+  // this the new server instance below could appear before the wait
+  // starts, masking whether the retry actually waits.
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  assert!(!join.is_finished(), "wait must block while pipe is busy");
+
+  // Free the instance: drop the original server, then create a new one.
+  drop(server);
+  let new_server = ServerOptions::new()
+    .first_pipe_instance(false)
+    .create(&pipe_name)
+    .unwrap();
+  // Drive the server side so the client's CreateFileW can complete.
+  let connect_fut = tokio::spawn(async move {
+    new_server.connect().await.unwrap();
+    new_server
+  });
+
+  // The retry helper must observe the new instance and succeed.
+  let result = tokio::time::timeout(std::time::Duration::from_secs(5), join)
+    .await
+    .expect("wait_named_pipe_and_open did not complete in time")
+    .expect("spawn_blocking join failed")
+    .expect("wait_named_pipe_and_open returned an error");
+
+  // Hand-off succeeded: result is a connected client.
+  drop(result);
+  let _ = connect_fut.await;
+}
+
+/// End-to-end check that `uv_pipe_connect` returns successfully (0 from
+/// the function, status=0 to the connect callback) even when the initial
+/// `ClientOptions::open()` fails with `ERROR_PIPE_BUSY`. Prior to the
+/// retry fix, this scenario surfaced as `UV_EINVAL` (the
+/// `connect EINVAL //./pipe/...` error from #33923).
+#[cfg(windows)]
+#[tokio::test(flavor = "current_thread")]
+async fn uv_pipe_connect_busy_then_succeeds() {
+  use std::sync::atomic::AtomicI32;
+  use std::sync::atomic::Ordering;
+
+  use tokio::net::windows::named_pipe::ClientOptions;
+  use tokio::net::windows::named_pipe::ServerOptions;
+
+  let pipe_name =
+    format!(r"\\.\pipe\deno-uvcompat-busy-cb-{}", std::process::id());
+
+  // Saturate the pipe so the synchronous open in uv_pipe_connect hits
+  // ERROR_PIPE_BUSY.
+  let server = ServerOptions::new()
+    .first_pipe_instance(true)
+    .max_instances(1)
+    .create(&pipe_name)
+    .unwrap();
+  let _client1 = ClientOptions::new().open(&pipe_name).unwrap();
+  server.connect().await.unwrap();
+
+  run_test(async |runtime, uv_loop| {
+    // Static result slot for the connect callback. The pointer is
+    // stable for the test's duration.
+    static RESULT: AtomicI32 = AtomicI32::new(i32::MIN);
+    RESULT.store(i32::MIN, Ordering::SeqCst);
+
+    unsafe extern "C" fn connect_cb(_req: *mut uv_connect_t, status: i32) {
+      RESULT.store(status, Ordering::SeqCst);
+    }
+
+    let mut pipe = pipe::new_pipe(false);
+    unsafe {
+      assert_ok(pipe::uv_pipe_init(uv_loop, &mut pipe, 0));
+    }
+
+    let mut req = new_connect();
+    let rc = unsafe {
+      pipe::uv_pipe_connect(&mut req, &mut pipe, &pipe_name, Some(connect_cb))
+    };
+    // The retry path returns 0 synchronously; the callback fires later.
+    assert_eq!(rc, 0, "uv_pipe_connect should defer, not fail with {rc}");
+    assert_eq!(
+      RESULT.load(Ordering::SeqCst),
+      i32::MIN,
+      "callback must not fire before the pipe is free"
+    );
+
+    // Free up the pipe and create a new server instance so the worker's
+    // WaitNamedPipeW returns.
+    drop(server);
+    let new_server = ServerOptions::new()
+      .first_pipe_instance(false)
+      .create(&pipe_name)
+      .unwrap();
+    // Drive the server side concurrently so the client's CreateFileW
+    // (issued from the retry worker) can complete.
+    let server_task = tokio::spawn(async move {
+      new_server.connect().await.unwrap();
+      new_server
+    });
+
+    // Tick the loop until the callback fires (with timeout).
+    let deadline =
+      std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while RESULT.load(Ordering::SeqCst) == i32::MIN {
+      if std::time::Instant::now() > deadline {
+        panic!("connect callback did not fire within timeout");
+      }
+      tick(runtime).await;
+      tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert_eq!(
+      RESULT.load(Ordering::SeqCst),
+      0,
+      "expected status=0, got {}",
+      RESULT.load(Ordering::SeqCst)
+    );
+
+    let _ = server_task.await;
+    unsafe {
+      uv_close(&mut pipe as *mut uv_pipe_t as *mut uv_handle_t, None);
+    }
+    tick(runtime).await;
+  })
+  .await;
+}
+
+// ========== Waker thread safety ==========
+
+/// Regression test for https://github.com/denoland/deno/issues/35171.
+/// On Windows, TTY readiness is delivered from thread pool wait
+/// threads and line mode reader threads, so per-handle wakers can be
+/// invoked off the loop thread while `run_io` is draining the ready
+/// queues. The old `RefCell` based queue panicked with "RefCell
+/// already borrowed" (and was UB) under that race; the queues are now
+/// `Mutex` + atomics. This test hammers a waker from multiple threads
+/// while the main thread drains, mirroring the `run_io` drain loop.
+#[test]
+fn handle_waker_cross_thread_wake_race() {
+  use std::sync::atomic::AtomicBool;
+  use std::sync::atomic::Ordering;
+
+  let shared = super::waker::LoopShared::new();
+  // Fake nonzero handle pointer; it is never dereferenced because the
+  // handle is never polled, only queued and drained.
+  let handle_waker = super::waker::TtyHandleWaker::new(0x8, shared.clone());
+
+  let stop = std::sync::Arc::new(AtomicBool::new(false));
+  let wake_threads: Vec<_> = (0..4)
+    .map(|_| {
+      let waker = std::task::Waker::from(handle_waker.clone());
+      let stop = stop.clone();
+      std::thread::spawn(move || {
+        while !stop.load(Ordering::Relaxed) {
+          waker.wake_by_ref();
+        }
+      })
+    })
+    .collect();
+
+  // Drain until we've observed enough wakes rather than looping a fixed
+  // number of times: an empty-queue drain is just an uncontended lock +
+  // `mem::take`, so a fixed count can race to completion before the wake
+  // threads are even scheduled, leaving `drained == 0` on a loaded CI box.
+  let mut drained = 0usize;
+  while drained < 10_000 {
+    let mut ready = std::mem::take(&mut *shared.ready_tty.lock().unwrap());
+    while let Some(w) = ready.pop_front() {
+      w.reset_queued();
+      drained += 1;
+    }
+    std::hint::spin_loop();
+  }
+
+  stop.store(true, Ordering::Relaxed);
+  for t in wake_threads {
+    t.join().unwrap();
+  }
+  assert!(drained > 0, "drain loop should have observed wakes");
+
+  // After detach, further wakes must be no-ops.
+  handle_waker.detach();
+  let _ = std::mem::take(&mut *shared.ready_tty.lock().unwrap());
+  std::task::Waker::from(handle_waker.clone()).wake_by_ref();
+  assert!(shared.ready_tty.lock().unwrap().is_empty());
 }

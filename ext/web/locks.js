@@ -10,6 +10,7 @@ import {
 } from "ext:core/ops";
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 const { Symbol, StringPrototypeStartsWith, TypeError } = primordials;
 

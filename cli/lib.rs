@@ -12,6 +12,7 @@ mod jsr;
 mod lsp;
 mod module_loader;
 mod node;
+mod node_compat_shim;
 mod npm;
 mod ops;
 mod registry;
@@ -61,12 +62,15 @@ use util::fs::canonicalize_path;
 
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
+const UNSUPPORTED_DIR_IMPORT: &str =
+  "[ERR_UNSUPPORTED_DIR_IMPORT] Directory import";
 
 use self::util::draw_thread::DrawThread;
 use self::util::env::resolve_cwd;
 use crate::args::CompletionsFlags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::FlagsExt;
 use crate::args::flags_from_vec_with_initial_cwd;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
@@ -136,6 +140,12 @@ async fn run_subcommand(
     DenoSubcommand::Remove(remove_flags) => spawn_subcommand(async {
       tools::pm::remove(Arc::new(flags), remove_flags).await
     }),
+    DenoSubcommand::Link(link_flags) => spawn_subcommand(async {
+      tools::pm::link(Arc::new(flags), link_flags).await
+    }),
+    DenoSubcommand::Unlink(unlink_flags) => spawn_subcommand(async {
+      tools::pm::unlink(Arc::new(flags), unlink_flags).await
+    }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       let flags = Arc::new(flags);
       if bench_flags.watch.is_some() {
@@ -183,6 +193,9 @@ async fn run_subcommand(
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       tools::compile::compile(flags, compile_flags).await
     }),
+    DenoSubcommand::Desktop(desktop_flags) => spawn_subcommand(async {
+      Box::pin(tools::desktop::desktop(flags, desktop_flags)).await
+    }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async move {
       let reporter =
         crate::tools::coverage::reporter::create(coverage_flags.r#type.clone());
@@ -193,6 +206,7 @@ async fn run_subcommand(
         coverage_flags.include,
         coverage_flags.exclude,
         coverage_flags.output,
+        coverage_flags.threshold.map(|t| t as f64),
         &[&*reporter],
       )
     }),
@@ -214,8 +228,14 @@ async fn run_subcommand(
     DenoSubcommand::Info(info_flags) => spawn_subcommand(async {
       tools::info::info(Arc::new(flags), info_flags).await
     }),
+    DenoSubcommand::List(list_flags) => spawn_subcommand(async {
+      tools::pm::list(Arc::new(flags), list_flags).await
+    }),
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(Arc::new(flags), install_flags).await
+    }),
+    DenoSubcommand::Ci(ci_flags) => spawn_subcommand(async {
+      tools::installer::ci_command(Arc::new(flags), ci_flags).await
     }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
@@ -274,6 +294,9 @@ async fn run_subcommand(
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
+          concurrency: None,
+          if_present: false,
         };
         let mut flags = flags;
         flags.subcommand = DenoSubcommand::Task(task_flags.clone());
@@ -364,6 +387,10 @@ async fn run_subcommand(
                     )
                     .with_cmd(&cmd);
                   error.insert(
+                    clap::error::ContextKind::InvalidSubcommand,
+                    clap::error::ContextValue::String(run_flags.script.clone()),
+                  );
+                  error.insert(
                     clap::error::ContextKind::SuggestedSubcommand,
                     clap::error::ContextValue::Strings(suggestions),
                   );
@@ -381,6 +408,9 @@ async fn run_subcommand(
                   recursive: false,
                   filter: None,
                   eval: false,
+                  no_prefix: false,
+                  concurrency: None,
+                  if_present: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
                 let result = tools::task::execute_script(
@@ -504,7 +534,7 @@ async fn run_subcommand(
         },
       );
 
-      match stream.write_all(help_flags.help.ansi().to_string().as_bytes()) {
+      match stream.write_all(help_flags.help.as_bytes()) {
         Ok(()) => Ok(()),
         Err(e) => match e.kind() {
           std::io::ErrorKind::BrokenPipe => Ok(()),
@@ -531,6 +561,7 @@ async fn run_subcommand(
 fn should_fallback_on_run_error(script_err: &str) -> bool {
   if script_err.starts_with(MODULE_NOT_FOUND)
     || script_err.starts_with(UNSUPPORTED_SCHEME)
+    || script_err.starts_with(UNSUPPORTED_DIR_IMPORT)
   {
     return true;
   }
@@ -549,6 +580,15 @@ fn setup_panic_hook() {
   //   should be reported to us.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
+    // Broken-pipe panics from `println!`/`eprintln!` (e.g. `deno | cls` on
+    // Windows, where the reader closes the pipe before we finish writing) are
+    // not bugs in Deno — they're a normal consequence of the downstream
+    // process exiting. Exit silently rather than emitting the bug-report
+    // banner. https://github.com/denoland/deno/issues/16308
+    if is_broken_pipe_print_panic(panic_info) {
+      deno_runtime::exit(1);
+    }
+
     eprintln!("\n============================================================");
     eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
     eprintln!("at https://github.com/denoland/deno/issues/new.");
@@ -595,6 +635,32 @@ fn setup_panic_hook() {
   deno_core::v8::V8::set_fatal_error_handler(error_handler);
 }
 
+/// Returns `true` if `panic_info` is a panic from `std`'s print macros caused
+/// by the downstream reader of stdout/stderr closing the pipe.
+///
+/// `println!`/`print!`/`eprintln!`/`eprint!` panic with the literal payload
+/// `"failed printing to {stdout,stderr}: <io error>"` when the underlying
+/// write fails. EPIPE (Unix, 32), ERROR_BROKEN_PIPE (Windows, 109), and
+/// ERROR_NO_DATA (Windows, 232) all indicate the receiver dropped the pipe.
+fn is_broken_pipe_print_panic(panic_info: &std::panic::PanicHookInfo) -> bool {
+  let payload = panic_info.payload();
+  let msg: &str = if let Some(s) = payload.downcast_ref::<String>() {
+    s.as_str()
+  } else if let Some(&s) = payload.downcast_ref::<&'static str>() {
+    s
+  } else {
+    return false;
+  };
+  if !msg.starts_with("failed printing to stdout:")
+    && !msg.starts_with("failed printing to stderr:")
+  {
+    return false;
+  }
+  msg.contains("(os error 32)")
+    || msg.contains("(os error 109)")
+    || msg.contains("(os error 232)")
+}
+
 fn exit_with_message(message: &str, code: i32) -> ! {
   log::error!(
     "{}: {}",
@@ -639,13 +705,35 @@ fn maybe_setup_permission_broker() {
 }
 
 #[inline(always)]
+pub(crate) fn boot_phase(label: &str) {
+  use std::sync::OnceLock;
+  use std::time::Instant;
+  static START: OnceLock<Instant> = OnceLock::new();
+  static ENABLED: OnceLock<bool> = OnceLock::new();
+  let start = START.get_or_init(Instant::now);
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "diagnostic env var; startup profiling only"
+  )]
+  let enabled =
+    *ENABLED.get_or_init(|| std::env::var_os("DENO_STARTUP_PHASES").is_some());
+  if enabled {
+    #[allow(clippy::print_stderr, reason = "diagnostic")]
+    {
+      eprintln!("[boot] {label:>28}  {:?}", start.elapsed());
+    }
+  }
+}
+
 pub fn main() {
+  boot_phase("main start");
   #[cfg(feature = "dhat-heap")]
   let profiler = dhat::Profiler::new_heap();
 
   setup_panic_hook();
 
   init_logging(None, None);
+  boot_phase("after panic+logging");
 
   util::unix::raise_fd_limit();
   util::windows::ensure_stdio_open();
@@ -661,11 +749,17 @@ pub fn main() {
 
   maybe_setup_permission_broker();
 
+  boot_phase("before aws_lc install");
   rustls::crypto::aws_lc_rs::default_provider()
     .install_default()
     .unwrap();
+  boot_phase("after aws_lc install");
 
   let args: Vec<_> = env::args_os().collect();
+  // If we were invoked through a `node` shim (a symlink/hardlink named `node`
+  // pointing at this binary), translate the Node.js CLI args to Deno args.
+  // Done here, before any threads are spawned, because it may set env vars.
+  let args = node_compat_shim::maybe_rewrite_node_arg0(args);
   let future = async move {
     let roots = LibWorkerFactoryRoots::default();
 
@@ -715,6 +809,7 @@ pub fn main() {
     if waited_unconfigured_runtime.is_none() {
       init_v8(&flags);
     }
+    boot_phase("after init_v8");
 
     (
       run_subcommand(flags, waited_unconfigured_runtime, roots).await,
@@ -746,12 +841,17 @@ async fn resolve_flags_and_init(
     deno_runtime::exit(0);
   }
 
+  boot_phase("before clap parse");
   let mut flags =
     match flags_from_vec_with_initial_cwd(args, initial_cwd.clone()) {
-      Ok(flags) => flags,
+      Ok(flags) => {
+        boot_phase("after clap parse");
+        flags
+      }
       Err(err @ clap::Error { .. })
         if err.kind() == clap::error::ErrorKind::DisplayVersion =>
       {
+        boot_phase("clap parse (version exit)");
         // Ignore results to avoid BrokenPipe errors.
         let _ = err.print();
         deno_runtime::exit(0);
@@ -778,6 +878,33 @@ async fn resolve_flags_and_init(
   }
 
   let sys = crate::sys::CliSys::default();
+
+  // Best-effort: make a `node` available on PATH (pointing back at this binary)
+  // when no real Node.js is installed, so child processes that spawn `node`
+  // natively (e.g. Next.js Turbopack) can find one. Must run before any threads
+  // spawn since it mutates PATH (the tunnel below can spawn threads), and only
+  // for subcommands that execute user code, so unrelated commands (`fmt`,
+  // `lint`, `check`, `lsp`, ...) don't pay for the `node` PATH scan on startup.
+  if node_compat_shim::subcommand_may_spawn_node(&flags.subcommand) {
+    match deno_cache_dir::resolve_deno_dir(
+      &sys,
+      deno_cache_dir::ResolveDenoDirOptions {
+        maybe_initial_cwd: initial_cwd.as_deref(),
+        maybe_custom_root: None,
+      },
+    ) {
+      Ok(deno_dir_root) => {
+        if let Err(err) = node_compat_shim::ensure_node_on_path(&deno_dir_root)
+        {
+          log::debug!("node compat shim setup failed (best-effort): {err}");
+        }
+      }
+      Err(err) => {
+        log::debug!("could not resolve DENO_DIR for node compat shim: {err}");
+      }
+    }
+  }
+
   if deno_lib::args::has_flag_env_var(&sys, "DENO_CONNECTED") {
     flags.tunnel = true;
   }
@@ -936,7 +1063,6 @@ fn wait_for_start(
     use tokio::io::AsyncWrite;
     use tokio::io::AsyncWriteExt;
     use tokio::io::BufReader;
-    use tokio::net::TcpListener;
     use tokio::net::UnixSocket;
     #[cfg(any(
       target_os = "android",
@@ -959,6 +1085,8 @@ fn wait_for_start(
       crate::sys::CliSys,
     >(deno_runtime::UnconfiguredRuntimeOptions {
       startup_snapshot,
+      residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
+      residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
       create_params: deno_lib::worker::create_isolate_create_params(
         &crate::sys::CliSys::default(),
       ),
@@ -973,12 +1101,6 @@ fn wait_for_start(
       Box<dyn AsyncRead + Unpin>,
       Box<dyn AsyncWrite + Send + Unpin>,
     ) = match addr.split_once(':') {
-      Some(("tcp", addr)) => {
-        let listener = TcpListener::bind(addr).await?;
-        let (stream, _) = listener.accept().await?;
-        let (rx, tx) = stream.into_split();
-        (Box::new(rx), Box::new(tx))
-      }
       Some(("unix", path)) => {
         let socket = UnixSocket::new_stream()?;
         socket.bind(path)?;

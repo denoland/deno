@@ -10,6 +10,7 @@ import process, {
   env,
   execArgv as importedExecArgv,
   execPath as importedExecPath,
+  getActiveResourcesInfo as importedGetActiveResourcesInfo,
   getegid,
   geteuid,
   getgid,
@@ -39,9 +40,16 @@ import * as path from "@std/path";
 import { delay } from "@std/async/delay";
 import { stub } from "@std/testing/mock";
 import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as net from "node:net";
 import nodeAssert from "node:assert";
 
 const testDir = new URL(".", import.meta.url);
+
+const processWithActiveResources = process as typeof process & {
+  _getActiveHandles(): unknown[];
+  _getActiveRequests(): unknown[];
+};
 
 function getGroupNameFromSystem(gid: number): string {
   const stdout = execSync(`grep ":${gid}:" /etc/group`).toString();
@@ -108,7 +116,7 @@ Deno.test({
     assertEquals(typeof process.versions.nghttp2, "string");
     assertEquals(typeof process.versions.napi, "string");
     // Must match the NAPI_VERSION in ext/napi/js_native_api.rs
-    assertEquals(process.versions.napi, "9");
+    assertEquals(process.versions.napi, "10");
     assertEquals(typeof process.versions.llhttp, "string");
     assertEquals(typeof process.versions.openssl, "string");
     assertEquals(typeof process.versions.cldr, "string");
@@ -210,6 +218,44 @@ Deno.test({
 
     const decoder = new TextDecoder();
     assertEquals(stripAnsiCode(decoder.decode(stdout).trim()), "1\n2");
+  },
+});
+
+Deno.test({
+  // Regression test for https://github.com/denoland/deno/issues/24646: a
+  // spurious `ERR_MULTIPLE_CALLBACK` ("Callback called multiple times") was
+  // thrown from `onwrite` while doing many synchronous writes to
+  // `process.stdout`/`process.stderr` (e.g. commander.js help output under
+  // Jest). The full reproduction needs a test runner that evaluates files in
+  // separate module realms, but this at least exercises the stdio write path
+  // with the same empty-write / `isTTY` toggling pattern in a piped child.
+  name: "process.stdout/stderr survive many synchronous writes (#24646)",
+  async fn() {
+    const code = `
+      import process from "node:process";
+      for (let i = 0; i < 1000; i++) {
+        process.stdout.isTTY = i % 2 === 0;
+        process.stderr.isTTY = i % 2 === 0;
+        process.stdout.write("");
+        process.stderr.write("");
+        process.stdout.write("Usage: prog [options]\\n");
+        process.stderr.write("error: bad option\\n");
+      }
+      console.error("DONE_OK");
+    `;
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "--quiet", code],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const err = new TextDecoder().decode(stderr);
+    assert(
+      !err.includes("Callback called multiple times"),
+      "unexpected ERR_MULTIPLE_CALLBACK:\n" + err,
+    );
+    assert(err.includes("DONE_OK"), "child did not finish cleanly:\n" + err);
+    assertEquals(exitCode, 0);
   },
 });
 
@@ -808,6 +854,93 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.getActiveResourcesInfo reports active timers",
+  fn() {
+    const countTimeouts = () =>
+      process.getActiveResourcesInfo().filter((type) => type === "Timeout")
+        .length;
+    const before = countTimeouts();
+    const timer = setTimeout(() => {}, 1000);
+    try {
+      assertEquals(countTimeouts(), before + 1);
+      assertEquals(importedGetActiveResourcesInfo(), [
+        ...process.getActiveResourcesInfo(),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+});
+
+Deno.test({
+  name: "process._getActiveRequests reports pending fs requests",
+  async fn() {
+    const tempFile = Deno.makeTempFileSync();
+    try {
+      const before = processWithActiveResources._getActiveRequests().length;
+      const promises = Array.from(
+        { length: 12 },
+        () =>
+          new Promise<number>((resolve, reject) => {
+            fs.open(tempFile, "r", (err, fd) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(fd);
+              }
+            });
+          }),
+      );
+
+      assertEquals(
+        processWithActiveResources._getActiveRequests().length,
+        before + 12,
+      );
+
+      const fds = await Promise.all(promises);
+      for (const fd of fds) {
+        fs.closeSync(fd);
+      }
+      assertEquals(
+        processWithActiveResources._getActiveRequests().length,
+        before,
+      );
+    } finally {
+      Deno.removeSync(tempFile);
+    }
+  },
+});
+
+Deno.test({
+  name: "process._getActiveHandles reports active net handles",
+  async fn() {
+    let acceptedSocket: net.Socket | undefined;
+    const server = net.createServer((socket) => {
+      acceptedSocket = socket;
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    const serverConnection = once(server, "connection");
+    const clientSocket = net.connect(
+      (server.address() as net.AddressInfo).port,
+    );
+    try {
+      await Promise.all([once(clientSocket, "connect"), serverConnection]);
+
+      const handles = processWithActiveResources._getActiveHandles();
+      assert(handles.includes(server));
+      assert(handles.includes(clientSocket));
+      assert(acceptedSocket);
+      assert(handles.includes(acceptedSocket));
+    } finally {
+      clientSocket.destroy();
+      acceptedSocket?.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+});
+
+Deno.test({
   name: "process.hrtime",
   // TODO(kt3k): Enable this test
   ignore: true,
@@ -1205,6 +1338,26 @@ Deno.test({
     assert(typeof result.header.host === "string");
     delete result.header.host;
 
+    // glibc fields only exist on Linux+glibc builds; on musl Linux and
+    // non-Linux platforms the keys must be absent so libc-flavor detection
+    // works (denoland/deno#33948).
+    const isGlibc = Deno.build.os === "linux" && Deno.build.env === "gnu";
+    if (isGlibc) {
+      assertEquals(result.header.glibcVersionRuntime, "2.38");
+      assertEquals(result.header.glibcVersionCompiler, "2.38");
+      delete result.header.glibcVersionRuntime;
+      delete result.header.glibcVersionCompiler;
+    } else {
+      assert(
+        !("glibcVersionRuntime" in result.header),
+        "glibcVersionRuntime must not be present on non-glibc platforms",
+      );
+      assert(
+        !("glibcVersionCompiler" in result.header),
+        "glibcVersionCompiler must not be present on non-glibc platforms",
+      );
+    }
+
     // test hardcoded part
     assertEquals(result, {
       header: {
@@ -1213,8 +1366,6 @@ Deno.test({
         trigger: "GetReport",
         threadId: 0,
         commandLine: ["node"],
-        glibcVersionRuntime: "2.38",
-        glibcVersionCompiler: "2.38",
         wordSize: 64,
         release: {
           name: "node",

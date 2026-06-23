@@ -20,17 +20,23 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { core } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  Array,
+  ArrayIsArray,
+  ArrayPrototypePush,
+  FunctionPrototypeBind,
+  FunctionPrototypeCall,
+  ObjectDefineProperty,
+  Promise,
+  PromiseResolve,
+  ReflectApply,
+  SafeArrayIterator,
+  SymbolAsyncDispose,
+} = primordials;
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
-import { lookup as defaultLookup } from "node:dns";
-import type {
-  ErrnoException,
-  NodeSystemErrorCtx,
-} from "ext:deno_node/internal/errors.ts";
 const {
   ERR_BUFFER_OUT_OF_BOUNDS,
   ERR_INVALID_ARG_TYPE,
@@ -45,15 +51,17 @@ const {
   errnoException,
   exceptionWithHostPort,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import type { Abortable } from "ext:deno_node/_events.d.ts";
-import { kStateSymbol, newHandle } from "ext:deno_node/internal/dgram.ts";
-import type { SocketType } from "ext:deno_node/internal/dgram.ts";
+const { kStateSymbol, newHandle } = core.loadExtScript(
+  "ext:deno_node/internal/dgram.ts",
+);
 const {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
   ownerSymbol,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
-import { SendWrap, UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
+const { SendWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/udp_wrap.ts",
+);
 const {
   isInt32,
   validateAbortSignal,
@@ -70,7 +78,9 @@ const { os } = core.loadExtScript(
 );
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
-import { channel } from "node:diagnostics_channel";
+const { channel } = core.loadExtScript(
+  "ext:deno_node/diagnostics_channel.js",
+);
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
@@ -90,29 +100,29 @@ const CONNECT_STATE_CONNECTED = 2;
 const RECV_BUFFER = true;
 const SEND_BUFFER = false;
 
-export interface AddressInfo {
+interface AddressInfo {
   address: string;
   family: number;
   port: number;
 }
 
-export type MessageType = string | Uint8Array | Buffer | DataView;
+type MessageType = string | Uint8Array | Buffer | DataView;
 
-export type RemoteInfo = {
+type RemoteInfo = {
   address: string;
   family: "IPv4" | "IPv6";
   port: number;
   size?: number;
 };
 
-export interface BindOptions {
+interface BindOptions {
   port?: number;
   address?: string;
   exclusive?: boolean;
   fd?: number;
 }
 
-export interface SocketOptions extends Abortable {
+interface SocketOptions extends Abortable {
   type: SocketType;
   reuseAddr?: boolean;
   /**
@@ -161,7 +171,7 @@ const isBindOptions = (options: unknown): options is BindOptions =>
  * New instances of `dgram.Socket` are created using `createSocket`.
  * The `new` keyword is not to be used to create `dgram.Socket` instances.
  */
-export class Socket extends EventEmitter {
+class Socket extends EventEmitter {
   [asyncIdSymbol]!: number;
   [kStateSymbol]!: SocketInternalState;
 
@@ -416,8 +426,8 @@ export class Socket extends EventEmitter {
 
       // deno-lint-ignore no-inner-declarations
       function onListening(this: Socket) {
-        removeListeners.call(this);
-        cb.call(this);
+        FunctionPrototypeCall(removeListeners, this);
+        FunctionPrototypeCall(cb, this);
       }
 
       this.on("error", removeListeners);
@@ -509,6 +519,7 @@ export class Socket extends EventEmitter {
         return; // Handle has been closed in the mean time
       }
 
+      // deno-lint-ignore prefer-primordials -- UDP handle's bind method, not Function.prototype.bind
       const err = state.handle.bind(ip, port as number || 0, flags);
 
       if (err) {
@@ -541,7 +552,7 @@ export class Socket extends EventEmitter {
     }
 
     if (queue !== undefined) {
-      queue.push(this.close.bind(this));
+      ArrayPrototypePush(queue, FunctionPrototypeBind(this.close, this));
 
       return this;
     }
@@ -606,13 +617,15 @@ export class Socket extends EventEmitter {
     state.connectState = CONNECT_STATE_CONNECTING;
 
     if (state.bindState === BIND_STATE_UNBOUND) {
+      // deno-lint-ignore prefer-primordials -- Socket's own bind method, not Function.prototype.bind
       this.bind({ port: 0, exclusive: true });
     }
 
     if (state.bindState !== BIND_STATE_BOUND) {
       enqueue(
         this,
-        _connect.bind(
+        FunctionPrototypeBind(
+          _connect,
           this,
           port,
           address as string,
@@ -623,7 +636,7 @@ export class Socket extends EventEmitter {
       return;
     }
 
-    Reflect.apply(_connect, this, [port, address, callback]);
+    ReflectApply(_connect, this, [port, address, callback]);
   }
 
   /**
@@ -948,7 +961,7 @@ export class Socket extends EventEmitter {
       }
     }
 
-    if (!Array.isArray(buffer)) {
+    if (!ArrayIsArray(buffer)) {
       if (typeof buffer === "string") {
         list = [Buffer.from(buffer)];
       } else if (!isArrayBufferView(buffer)) {
@@ -988,18 +1001,22 @@ export class Socket extends EventEmitter {
     healthCheck(this);
 
     if (state.bindState === BIND_STATE_UNBOUND) {
+      // deno-lint-ignore prefer-primordials -- Socket's own bind method, not Function.prototype.bind
       this.bind({ port: 0, exclusive: true });
     }
 
     if (list.length === 0) {
-      list.push(Buffer.alloc(0));
+      ArrayPrototypePush(list, Buffer.alloc(0));
     }
 
     // If the socket hasn't been bound yet, push the outbound packet onto the
     // send queue and send after binding is complete.
     if (state.bindState !== BIND_STATE_BOUND) {
       // @ts-ignore mapping unknowns back onto themselves doesn't type nicely
-      enqueue(this, this.send.bind(this, list, port, address, callback));
+      enqueue(
+        this,
+        FunctionPrototypeBind(this.send, this, list, port, address, callback),
+      );
 
       return;
     }
@@ -1236,10 +1253,10 @@ export class Socket extends EventEmitter {
     return this;
   }
 
-  [Symbol.asyncDispose](): Promise<void> {
+  [SymbolAsyncDispose](): Promise<void> {
     const state = this[kStateSymbol];
     if (!state.handle) {
-      return Promise.resolve();
+      return PromiseResolve();
     }
 
     return new Promise((resolve) => {
@@ -1264,11 +1281,14 @@ const stateKeys: Record<string, string> = {
   _reuseAddr: "reuseAddr",
 };
 
-for (const prop of deprecatedProps) {
-  Object.defineProperty(Socket.prototype, prop, {
+for (const prop of new SafeArrayIterator(deprecatedProps)) {
+  ObjectDefineProperty(Socket.prototype, prop, {
+    __proto__: null,
     get: deprecate(
       function (this: Socket) {
-        return this[kStateSymbol][stateKeys[prop] as keyof SocketInternalState];
+        return this[kStateSymbol][
+          stateKeys[prop] as keyof SocketInternalState
+        ];
       },
       `Socket.prototype.${prop} is deprecated`,
       "DEP0112",
@@ -1328,15 +1348,15 @@ Socket.prototype._stopReceiving = deprecate(
  * @param options
  * @param callback Attached as a listener for `'message'` events. Optional.
  */
-export function createSocket(
+function createSocket(
   type: SocketType,
   listener?: (msg: Buffer, rinfo: RemoteInfo) => void,
 ): Socket;
-export function createSocket(
+function createSocket(
   type: SocketOptions,
   listener?: (msg: Buffer, rinfo: RemoteInfo) => void,
 ): Socket;
-export function createSocket(
+function createSocket(
   type: SocketType | SocketOptions,
   listener?: (msg: Buffer, rinfo: RemoteInfo) => void,
 ): Socket {
@@ -1448,14 +1468,17 @@ function sliceBuffer(buffer: MessageType, offset: number, length: number) {
   offset = offset >>> 0;
   length = length >>> 0;
 
+  // deno-lint-ignore prefer-primordials -- buffer may be a Buffer or DataView, not a plain TypedArray
   if (offset > buffer.byteLength) {
     throw new ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
 
+  // deno-lint-ignore prefer-primordials -- buffer may be a Buffer or DataView, not a plain TypedArray
   if (offset + length > buffer.byteLength) {
     throw new ERR_BUFFER_OUT_OF_BOUNDS("length");
   }
 
+  // deno-lint-ignore prefer-primordials -- Buffer is the Node Buffer class; .buffer/.byteOffset on a Buffer or DataView
   return Buffer.from(buffer.buffer, buffer.byteOffset + offset, length);
 }
 
@@ -1472,6 +1495,7 @@ function fixBufferList(
     } else if (!isArrayBufferView(buf)) {
       return null;
     } else {
+      // deno-lint-ignore prefer-primordials -- Buffer is the Node Buffer class; .buffer/.byteOffset/.byteLength on a Buffer or DataView
       newList[i] = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength);
     }
   }
@@ -1491,12 +1515,12 @@ function enqueue(self: Socket, toEnqueue: () => void) {
     self.once("listening", onListenSuccess);
   }
 
-  state.queue.push(toEnqueue);
+  ArrayPrototypePush(state.queue, toEnqueue);
 }
 
 function onListenSuccess(this: Socket) {
   this.removeListener(EventEmitter.errorMonitor, onListenError);
-  clearQueue.call(this);
+  FunctionPrototypeCall(clearQueue, this);
 }
 
 function onListenError(this: Socket) {
@@ -1510,7 +1534,7 @@ function clearQueue(this: Socket) {
   state.queue = undefined;
 
   // Flush the send queue.
-  for (const queueEntry of queue!) {
+  for (const queueEntry of new SafeArrayIterator(queue!)) {
     queueEntry();
   }
 }
@@ -1657,9 +1681,12 @@ function afterSend(this: SendWrap, err: number | null, sent?: number) {
   this.callback(ex, sent);
 }
 
-export type { SocketType };
-
-export default {
+return {
+  default: {
+    createSocket,
+    Socket,
+  },
   createSocket,
   Socket,
 };
+})();

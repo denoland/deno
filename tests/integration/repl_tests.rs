@@ -44,6 +44,19 @@ fn pty_multiline() {
 }
 
 #[test(flaky)]
+fn pty_multiline_dot_chain() {
+  // Breaking a method chain right after a `.` should continue reading input
+  // instead of throwing a parse error.
+  // https://github.com/denoland/deno/issues/16335
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("[1, 2, 3].\nmap(x => x * 2)");
+    console.expect("[ 2, 4, 6 ]");
+    console.write_line("(await Promise.resolve([4, 5, 6])).\nmap(x => x + 1)");
+    console.expect("[ 5, 6, 7 ]");
+  });
+}
+
+#[test(flaky)]
 fn pty_null() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("null");
@@ -134,6 +147,17 @@ fn pty_complete_expression() {
     console.expect("Display all");
     console.write_raw("y");
     console.expect_all(&["symlink", "args", "permissions", "exit"]);
+  });
+}
+
+#[test(flaky)]
+fn pty_complete_lazy_loaded_getter() {
+  // `navigator.gpu` is exposed through a lazily-loaded getter that triggers a
+  // side effect on first access. Completion must still surface its properties.
+  // https://github.com/denoland/deno/issues/24917
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line_raw("navigator.gpu.getPreferredCanvasForma\t");
+    console.expect("navigator.gpu.getPreferredCanvasFormat");
   });
 }
 
@@ -250,6 +274,20 @@ fn await_timeout() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("await new Promise((r) => setTimeout(r, 0, 'done'))");
     console.expect("\"done\"");
+  });
+}
+
+#[test(flaky)]
+fn pty_uncaught_exception_from_timeout() {
+  // Regression test for https://github.com/denoland/deno/issues/21622:
+  // an uncaught exception thrown from a `setTimeout` callback must be printed
+  // while sitting at the prompt, without requiring another expression to be
+  // evaluated first.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("setTimeout(() => { throw new Error('boom') }, 200);");
+    // Do NOT evaluate anything else. The exception should be reported on its
+    // own once the timer fires.
+    console.expect("Uncaught Error: boom");
   });
 }
 
@@ -464,6 +502,32 @@ fn syntax_error() {
     // ensure it keeps accepting input after
     console.write_line("7 * 6");
     console.expect("42");
+  });
+}
+
+#[test(flaky)]
+fn syntax_error_invalid_arrow_params() {
+  // Regression test for https://github.com/denoland/deno/issues/19457: swc
+  // recovers from the malformed arrow params by emitting an `<invalid>` token,
+  // which used to surface as a misleading `Unexpected token '<'`.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("const test = (i, 2 * i) => console.log(i);");
+    console.expect("parse error: Not a pattern");
+    // ensure it keeps accepting input after
+    console.write_line("7 * 6");
+    console.expect("42");
+  });
+}
+
+#[test(flaky)]
+fn type_assertion_still_parses() {
+  // A `.ts` type assertion looks like JSX when parsed as `.tsx`; the repl must
+  // fall back to parsing as TypeScript rather than reporting a parse error.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("const x = <string>('hello' as unknown);");
+    console.expect("undefined");
+    console.write_line("x");
+    console.expect("\"hello\"");
   });
 }
 
@@ -1120,4 +1184,70 @@ fn repl_no_globalthis() {
       console.expect(r#"Hello World"#);
       console.expect(r#"undefined"#);
     });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/34360.
+// Running `babel-node` (or any user code that calls `repl.start` with both
+// a custom `eval` and `preview: true`) used to evaluate the typed input
+// via `vm.Script` on every keystroke. That produced visible side effects
+// the moment a closing paren completed an expression -- `console.log("hi")`
+// would print "hi" while still being typed.
+#[test(flaky)]
+fn pty_node_repl_no_preview_side_effects_with_custom_eval() {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "main.mjs",
+    r#"import repl from "node:repl";
+globalThis.__sideEffectCount = 0;
+const server = repl.start({
+  prompt: "> ",
+  // babel-node's pattern: custom eval + preview enabled. Preview must
+  // not re-run the typed input via vm.Script.
+  preview: true,
+  useGlobal: true,
+  eval(_code, _ctx, _file, cb) {
+    process.stdout.write(
+      "EVALED__side_effect=" + globalThis.__sideEffectCount + "\n",
+    );
+    cb(null);
+  },
+});
+server.on("exit", () => process.exit(0));
+"#,
+  );
+  context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args_vec(["run", "-A", "main.mjs"])
+    .with_pty(|mut console| {
+      console.expect("> ");
+      // Type a fully-formed expression that *would* increment the side-
+      // effect counter if the preview path eagerly ran user code via
+      // `vm.Script`. Critically, do not press Enter yet.
+      console.write_raw("(globalThis.__sideEffectCount++, 0)");
+      // Give the REPL plenty of time to (not) run the preview eval.
+      console.human_delay();
+      // Now press Enter. The custom eval reports the counter value: it
+      // must still be 0, meaning no preview-time side effects occurred.
+      console.write_raw("\r");
+      console.expect("EVALED__side_effect=0");
+      console.write_raw(".exit\r");
+    });
+}
+
+#[test(flaky)]
+fn pty_lint_run_plugin_disabled() {
+  // Regression test for https://github.com/denoland/deno/issues/28264
+  // `Deno.lint.runPlugin` is not available outside of `deno test`, so calling
+  // it in the REPL should throw a helpful error instead of a cryptic
+  // "op_lint_create_serialized_ast is not a function".
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      "Deno.lint.runPlugin({ name: \"x\", rules: {} }, \"x.ts\", \"\");",
+    );
+    console.expect(
+      "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
+    );
+  });
 }

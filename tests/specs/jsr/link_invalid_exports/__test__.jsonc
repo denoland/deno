@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "tests": {
+    // A valid "exports" map resolves the linked package locally without any
+    // warning or registry fetch.
+    "valid_exports": {
+      "args": "run main.ts",
+      "output": "valid_exports.out"
+    },
+    // A linked package with an invalid "exports" map used to be silently
+    // dropped, causing a confusing fallback to the JSR registry. We now surface
+    // a warning explaining exactly what is wrong with the "exports" map.
+    "invalid_exports": {
+      "steps": [{
+        "args": [
+          "eval",
+          "--no-config",
+          "Deno.copyFileSync('add/invalid.json', 'add/deno.json')"
+        ],
+        "output": ""
+      }, {
+        "args": "run main.ts",
+        "output": "invalid_exports.out"
+      }]
+    }
+  }
+}

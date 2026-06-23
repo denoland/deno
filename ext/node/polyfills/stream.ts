@@ -70,7 +70,9 @@ import Duplex from "node:_stream_duplex";
 import Transform from "node:_stream_transform";
 import PassThrough from "node:_stream_passthrough";
 import duplexPair from "ext:deno_node/internal/streams/duplexpair.js";
-import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
+const { addAbortSignal } = core.loadExtScript(
+  "ext:deno_node/internal/streams/add-abort-signal.js",
+);
 const { ERR_ILLEGAL_CONSTRUCTOR } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -175,7 +177,7 @@ Stream._uint8ArrayToBuffer = function _uint8ArrayToBuffer(chunk) {
 export {
   addAbortSignal,
   compose,
-  destroyer,
+  destroyer as destroy,
   Duplex,
   duplexPair,
   getDefaultHighWaterMark,

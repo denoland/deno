@@ -40,7 +40,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
+use deno_runtime::deno_web::BlobStoreTrait;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
@@ -269,9 +269,16 @@ pub struct LibMainWorkerOptions {
   pub node_ipc_init: Option<(i64, ChildIpcSerialization)>,
   pub no_legacy_abort: bool,
   pub startup_snapshot: Option<&'static [u8]>,
+  /// Residual `lazy_loaded_js` sources from the snapshot build script.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  /// Residual `lazy_loaded_esm` sources from the snapshot build script.
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub close_on_idle: bool,
   pub maybe_initial_cwd: Option<Url>,
+  /// When true, the `OffscreenCanvas` global is removed at bootstrap.
+  pub disable_offscreen_canvas: bool,
 }
 
 #[derive(Default, Clone)]
@@ -281,7 +288,7 @@ pub struct LibWorkerFactoryRoots {
 }
 
 struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
-  blob_store: Arc<BlobStore>,
+  blob_store: Arc<dyn BlobStoreTrait>,
   broadcast_channel: InMemoryBroadcastChannel,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
@@ -339,7 +346,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let CreateModuleLoaderResult {
         module_loader,
         node_require_loader,
-        hook_registry: _, // web workers don't support hooks yet
+        hook_registry,
       } = shared.module_loader_factory.create_for_worker(
         args.parent_permissions.clone(),
         args.permissions.clone(),
@@ -469,9 +476,12 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           otel_config: shared.options.otel_config.clone(),
           no_legacy_abort: shared.options.no_legacy_abort,
           close_on_idle: args.close_on_idle,
+          disable_offscreen_canvas: shared.options.disable_offscreen_canvas,
         },
         extensions: vec![],
         startup_snapshot: shared.options.startup_snapshot,
+        residual_lazy_js_sources: shared.options.residual_lazy_js_sources,
+        residual_lazy_esm_sources: shared.options.residual_lazy_esm_sources,
         create_params,
         unsafely_ignore_certificate_errors: shared
           .options
@@ -509,6 +519,13 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
 
       worker.bootstrap(&bootstrap_options);
 
+      // Wire the module hook registry into OpState after bootstrap so
+      // `module.registerHooks()` in worker scripts shares state with the
+      // worker's module loader (same pattern as the main worker).
+      if let Some(registry) = hook_registry {
+        worker.js_runtime.op_state().borrow_mut().put(registry);
+      }
+
       // When resource limits are set, install a near-heap-limit callback
       // that terminates the worker's isolate gracefully instead of
       // crashing the entire process with a V8 fatal OOM.
@@ -536,7 +553,7 @@ pub struct LibMainWorkerFactory<TSys: DenoLibSys> {
 impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
   #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
-    blob_store: Arc<BlobStore>,
+    blob_store: Arc<dyn BlobStoreTrait>,
     code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
     deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
     feature_checker: Arc<FeatureChecker>,
@@ -702,10 +719,13 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
         otel_config: shared.options.otel_config.clone(),
-        close_on_idle: true,
+        close_on_idle: shared.options.close_on_idle,
+        disable_offscreen_canvas: shared.options.disable_offscreen_canvas,
       },
       extensions: custom_extensions,
       startup_snapshot: shared.options.startup_snapshot,
+      residual_lazy_js_sources: shared.options.residual_lazy_js_sources,
+      residual_lazy_esm_sources: shared.options.residual_lazy_esm_sources,
       create_params: create_isolate_create_params(&shared.sys),
       unsafely_ignore_certificate_errors: shared
         .options

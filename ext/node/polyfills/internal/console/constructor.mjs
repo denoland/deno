@@ -1,12 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   op_get_env_no_permission_check,
   op_preview_entries,
-} from "ext:core/ops";
-import { core, primordials } from "ext:core/mod.js";
-import { emitWarning } from "node:process";
+} = core.ops;
+const lazyProcess = core.createLazyLoader("node:process");
 const {
   ArrayIsArray,
   ArrayFrom,
@@ -55,6 +56,14 @@ const {
 
 // Mock trace for now
 const trace = () => {};
+const { channel: createDiagnosticsChannel } = core.loadExtScript(
+  "ext:deno_node/diagnostics_channel.js",
+);
+const onConsoleLog = createDiagnosticsChannel("console.log");
+const onConsoleInfo = createDiagnosticsChannel("console.info");
+const onConsoleDebug = createDiagnosticsChannel("console.debug");
+const onConsoleWarn = createDiagnosticsChannel("console.warn");
+const onConsoleError = createDiagnosticsChannel("console.error");
 const {
   ERR_CONSOLE_WRITABLE_STREAM,
   ERR_INCOMPATIBLE_OPTION_PAIR,
@@ -444,10 +453,37 @@ function createWriteErrorHandler(instance, streamSymbol) {
 
 const consoleMethods = {
   log(...args) {
+    if (onConsoleLog.hasSubscribers) {
+      onConsoleLog.publish(args);
+    }
+    this[kWriteToConsole](kUseStdout, this[kFormatForStdout](args));
+  },
+
+  info(...args) {
+    if (onConsoleInfo.hasSubscribers) {
+      onConsoleInfo.publish(args);
+    }
+    this[kWriteToConsole](kUseStdout, this[kFormatForStdout](args));
+  },
+
+  debug(...args) {
+    if (onConsoleDebug.hasSubscribers) {
+      onConsoleDebug.publish(args);
+    }
     this[kWriteToConsole](kUseStdout, this[kFormatForStdout](args));
   },
 
   warn(...args) {
+    if (onConsoleWarn.hasSubscribers) {
+      onConsoleWarn.publish(args);
+    }
+    this[kWriteToConsole](kUseStderr, this[kFormatForStderr](args));
+  },
+
+  error(...args) {
+    if (onConsoleError.hasSubscribers) {
+      onConsoleError.publish(args);
+    }
     this[kWriteToConsole](kUseStderr, this[kFormatForStderr](args));
   },
 
@@ -466,7 +502,9 @@ const consoleMethods = {
     // Coerces everything other than Symbol to a string
     label = `${label}`;
     if (MapPrototypeHas(this._times, label)) {
-      emitWarning(`Label '${label}' already exists for console.time()`);
+      lazyProcess().emitWarning(
+        `Label '${label}' already exists for console.time()`,
+      );
       return;
     }
     trace(kTraceBegin, kTraceConsoleCategory, `time::${label}`, 0);
@@ -540,7 +578,7 @@ const consoleMethods = {
   countReset(label = "default") {
     const counts = this[kCounts];
     if (!MapPrototypeHas(counts, label)) {
-      emitWarning(`Count for '${label}' does not exist`);
+      lazyProcess().emitWarning(`Count for '${label}' does not exist`);
       return;
     }
     trace(kTraceCount, kTraceConsoleCategory, `count::${label}`, 0, 0);
@@ -703,7 +741,7 @@ const consoleMethods = {
 function timeLogImpl(self, name, label, data) {
   const time = MapPrototypeGet(self._times, label);
   if (time === undefined) {
-    emitWarning(`No such label '${label}' for console.${name}()`);
+    lazyProcess().emitWarning(`No such label '${label}' for console.${name}()`);
     return false;
   }
   const duration = process.hrtime(time);
@@ -769,21 +807,25 @@ for (const method of new SafeArrayIterator(ReflectOwnKeys(consoleMethods))) {
   Console.prototype[method] = consoleMethods[method];
 }
 
-Console.prototype.debug = Console.prototype.log;
-Console.prototype.info = Console.prototype.log;
 Console.prototype.dirxml = Console.prototype.log;
-Console.prototype.error = Console.prototype.warn;
 Console.prototype.groupCollapsed = Console.prototype.group;
 
-export function bindStreamsLazy(console, object) {
+function bindStreamsLazy(console, object) {
   FunctionPrototypeCall(Console.prototype[kBindStreamsLazy], console, object);
 }
 
-export { Console, formatTime, kBindProperties, kBindStreamsLazy };
-export default {
+return {
   Console,
-  kBindStreamsLazy,
-  kBindProperties,
   formatTime,
+  kBindProperties,
+  kBindStreamsLazy,
   bindStreamsLazy,
+  default: {
+    Console,
+    kBindStreamsLazy,
+    kBindProperties,
+    formatTime,
+    bindStreamsLazy,
+  },
 };
+})();

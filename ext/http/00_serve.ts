@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   BadResourcePrototype,
   InterruptedPrototype,
@@ -13,8 +13,12 @@ const {
   op_http_close,
   op_http_close_after_finish,
   op_http_copy_span_to_otel_info,
+  op_http_get_request_header,
   op_http_get_request_headers,
-  op_http_get_request_method_and_url,
+  op_http_get_request_method,
+  op_http_get_request_url,
+  op_http_get_request_remote_addr,
+  op_http_is_raw_request,
   op_http_metric_handle_otel_error,
   op_http_notify_serving,
   op_http_read_request_body,
@@ -23,26 +27,34 @@ const {
   op_http_serve_address_override,
   op_http_serve_on,
   op_http_set_promise_complete,
+  op_http_set_response_native,
   op_http_set_response_body_bytes,
+  op_http_set_response_body_bytes_with_headers,
   op_http_set_response_body_resource,
+  op_http_set_response_body_static_with_content_type,
+  op_http_set_response_body_static_with_default_header,
+  op_http_set_response_body_static_with_header,
   op_http_set_response_body_text,
+  op_http_set_response_body_text_with_headers,
   op_http_set_response_header,
   op_http_set_response_headers,
   op_http_set_response_trailers,
   op_http_try_take_full_request_body,
+  op_http_try_take_full_request_body_text,
   op_http_upgrade_raw,
-  op_http_upgrade_raw_connect,
-  op_http_upgrade_raw_get_head,
   op_http_upgrade_websocket_next,
   op_http_wait,
 } = core.ops;
+
 const {
   ArrayPrototypeFind,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
+  PromisePrototype,
   PromisePrototypeCatch,
+  PromiseResolve,
   SafeArrayIterator,
   SafePromisePrototypeFinally,
   SafePromiseAll,
@@ -53,6 +65,7 @@ const {
   Symbol,
   SymbolAsyncDispose,
   TypeError,
+  TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   Promise,
@@ -61,14 +74,29 @@ const {
 
 const { InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
 const {
+  dropServeNativeResponse,
   fromInnerResponse,
+  getInnerResponse,
   newInnerResponse,
+  responseBodyUsed,
   ResponsePrototype,
+  serveNativeResponseKey,
+  serveFastBodyKey,
+  serveFastConsumedKey,
+  serveFastContentTypeKey,
+  serveFastHeaderKindKey,
+  serveFastStatusKey,
+  SERVE_FAST_HEADER_CONTENT_TYPE,
+  SERVE_FAST_HEADER_DEFAULT_TEXT,
+  SERVE_FAST_HEADER_NONE,
   toInnerResponse,
+  wireHeaderList,
 } = core.loadExtScript("ext:deno_fetch/23_response.js");
 const {
   abortRequest,
+  cacheRequestHeaders,
   fromInnerRequest,
+  requestHeadersExposed,
   toInnerRequest,
 } = core.loadExtScript("ext:deno_fetch/23_request.js");
 const { AbortController } = core.loadExtScript(
@@ -102,6 +130,8 @@ const {
 } = core.loadExtScript("ext:deno_telemetry/util.ts");
 
 const _upgraded = Symbol("_upgraded");
+
+let legacyAbortWarned = false;
 
 function internalServerError() {
   // "Internal Server Error"
@@ -147,16 +177,6 @@ function upgradeHttpRaw(req) {
   throw new TypeError("'upgradeHttpRaw' may only be used with Deno.serve");
 }
 
-function upgradeHttpRawConnect(req) {
-  const inner = toInnerRequest(req);
-  if (inner?._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeConnect");
-  }
-  throw new TypeError(
-    "'upgradeHttpRawConnect' may only be used with Deno.serve",
-  );
-}
-
 function addTrailers(resp, headerList) {
   const inner = toInnerResponse(resp);
   op_http_set_response_trailers(inner.external, headerList);
@@ -165,12 +185,13 @@ function addTrailers(resp, headerList) {
 class InnerRequest {
   #external;
   #context;
-  #methodAndUri;
+  #methodValue;
   #streamRid;
   #body;
   #upgraded;
   #urlValue;
   #completed;
+  #signalAccessed;
   request;
 
   constructor(external, context) {
@@ -178,9 +199,14 @@ class InnerRequest {
     this.#context = context;
     this.#upgraded = false;
     this.#completed = undefined;
+    this.#signalAccessed = false;
   }
 
   close(success = true) {
+    if (this.#streamRid !== undefined) {
+      core.tryClose(this.#streamRid);
+      this.#streamRid = undefined;
+    }
     // The completion signal fires only if someone cares
     if (this.#completed) {
       if (success) {
@@ -195,6 +221,13 @@ class InnerRequest {
       }
     }
     if (this.#context.legacyAbort) {
+      if (success && this.#signalAccessed && !legacyAbortWarned) {
+        legacyAbortWarned = true;
+        // deno-lint-ignore no-console
+        console.warn(
+          "Deno.serve: request.signal aborts on successful responses (legacy behavior, see https://github.com/denoland/deno/issues/29111). Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/runtime/reference/migrate-deprecations/",
+        );
+      }
       abortRequest(this.request);
     }
     this.#external = null;
@@ -202,6 +235,12 @@ class InnerRequest {
 
   get [_upgraded]() {
     return this.#upgraded;
+  }
+
+  _throwIfUpgraded() {
+    if (this.#upgraded) {
+      throw new Deno.errors.Http("Already upgraded");
+    }
   }
 
   _wantsUpgrade(upgradeType) {
@@ -217,6 +256,7 @@ class InnerRequest {
 
       this.url();
       this.headerList;
+      const remoteAddr = this.remoteAddr;
       this.close();
 
       this.#upgraded = true;
@@ -225,36 +265,11 @@ class InnerRequest {
 
       const conn = new UpgradedConn(
         upgradeRid,
-        this.remoteAddr,
+        remoteAddr,
         this.#context.listener.addr,
       );
 
       return { response: UPGRADE_RESPONSE_SENTINEL, conn };
-    }
-
-    if (upgradeType == "upgradeConnect") {
-      const external = this.#external;
-      const remoteAddr = this.remoteAddr;
-      const localAddr = this.#context.listener.addr;
-
-      this.url();
-      this.headerList;
-      this.close();
-
-      this.#upgraded = true;
-
-      return (async () => {
-        const upgradeRid = await op_http_upgrade_raw_connect(external);
-        const head = op_http_upgrade_raw_get_head(upgradeRid);
-
-        const conn = new UpgradedConn(
-          upgradeRid,
-          remoteAddr,
-          localAddr,
-        );
-
-        return { response: UPGRADE_RESPONSE_SENTINEL, conn, head };
-      })();
     }
 
     if (upgradeType == "upgradeWebSocket") {
@@ -262,6 +277,7 @@ class InnerRequest {
 
       this.url();
       this.headerList;
+      this.remoteAddr;
       this.close();
 
       this.#upgraded = true;
@@ -275,33 +291,15 @@ class InnerRequest {
       return this.#urlValue;
     }
 
-    if (this.#methodAndUri === undefined) {
-      if (this.#external === null) {
-        throw new TypeError("Request closed");
-      }
-      // TODO(mmastrac): This is quite slow as we're serializing a large number of values. We may want to consider
-      // splitting this up into multiple ops.
-      this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
+    if (this.#external === null) {
+      throw new TypeError("Request closed");
     }
 
-    const method = this.#methodAndUri[0];
-    const scheme = this.#methodAndUri[5] !== undefined
-      ? `${this.#methodAndUri[5]}://`
-      : this.#context.scheme;
-    const authority = this.#methodAndUri[1] ?? this.#context.fallbackHost;
-    const path = this.#methodAndUri[2];
-
-    // * is valid for OPTIONS
-    if (method === "OPTIONS" && path === "*") {
-      return (this.#urlValue = scheme + authority + "/" + path);
+    if (this.#methodValue === undefined) {
+      this.#methodValue = op_http_get_request_method(this.#external);
     }
 
-    // CONNECT requires an authority
-    if (method === "CONNECT") {
-      return (this.#urlValue = scheme + this.#methodAndUri[1]);
-    }
-
-    return this.#urlValue = scheme + authority + path;
+    return this.#urlValue = op_http_get_request_url(this.#external);
   }
 
   get completed() {
@@ -318,41 +316,39 @@ class InnerRequest {
   }
 
   get remoteAddr() {
-    if (this.#methodAndUri === undefined) {
-      if (this.#external === null) {
-        throw new TypeError("Request closed");
-      }
-      this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
+    if (this.#external === null) {
+      throw new TypeError("Request closed");
     }
+    const remoteAddr = op_http_get_request_remote_addr(this.#external);
     const transport = this.#context.listener?.addr.transport;
-    if (this.#methodAndUri[3] === "unix") {
+    if (remoteAddr[0] === "unix") {
       return {
         transport,
         path: this.#context.listener.addr.path,
       };
     }
-    if (StringPrototypeStartsWith(this.#methodAndUri[3], "vsock:")) {
+    if (StringPrototypeStartsWith(remoteAddr[0], "vsock:")) {
       return {
         transport,
-        cid: Number(StringPrototypeSlice(this.#methodAndUri[3], 6)),
-        port: this.#methodAndUri[4],
+        cid: Number(StringPrototypeSlice(remoteAddr[0], 6)),
+        port: remoteAddr[1],
       };
     }
     return {
       transport: "tcp",
-      hostname: this.#methodAndUri[3],
-      port: this.#methodAndUri[4],
+      hostname: remoteAddr[0],
+      port: remoteAddr[1],
     };
   }
 
   get method() {
-    if (this.#methodAndUri === undefined) {
+    if (this.#methodValue === undefined) {
       if (this.#external === null) {
         throw new TypeError("Request closed");
       }
-      this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
+      this.#methodValue = op_http_get_request_method(this.#external);
     }
-    return this.#methodAndUri[0];
+    return this.#methodValue;
   }
 
   get body() {
@@ -362,9 +358,12 @@ class InnerRequest {
     if (this.#body !== undefined) {
       return this.#body;
     }
-    // If the method is GET or HEAD, we do not want to include a body here, even if the Rust
+    // If the method is GET, HEAD, or CONNECT, we do not want to include a body here, even if the Rust
     // side of the code is willing to provide it to us.
-    if (this.method == "GET" || this.method == "HEAD") {
+    if (
+      this.method == "GET" || this.method == "HEAD" ||
+      this.method == "CONNECT"
+    ) {
       this.#body = null;
       return null;
     }
@@ -377,6 +376,9 @@ class InnerRequest {
     const buffered = op_http_try_take_full_request_body(this.#external);
     if (buffered !== null) {
       this.#body = new InnerBody({ body: buffered, consumed: false });
+      if (this.header("content-length") !== null) {
+        this.#body.length = TypedArrayPrototypeGetByteLength(buffered);
+      }
       return this.#body;
     }
     this.#streamRid = op_http_read_request_body(this.#external);
@@ -414,11 +416,38 @@ class InnerRequest {
     return headers;
   }
 
+  header(name) {
+    if (this.#external === null) {
+      throw new TypeError("Request closed");
+    }
+    return op_http_get_request_header(this.#external, name);
+  }
+
+  consumeTextBody() {
+    if (this.#external === null || this.#body !== undefined) {
+      return null;
+    }
+    if (
+      this.method == "GET" || this.method == "HEAD" ||
+      this.method == "CONNECT"
+    ) {
+      this.#body = null;
+      return "";
+    }
+    const text = op_http_try_take_full_request_body_text(this.#external);
+    if (text === null) {
+      return null;
+    }
+    this.#body = new InnerBody({ body: text, consumed: true });
+    return text;
+  }
+
   get external() {
     return this.#external;
   }
 
   onCancel(callback) {
+    this.#signalAccessed = true;
     if (this.#external === null) {
       if (this.#context.legacyAbort) callback();
       return;
@@ -487,36 +516,175 @@ class ServeHandlerInfo {
   }
 }
 
+function setResponseHeaders(req, headers) {
+  if (headers && headers.length > 0) {
+    if (headers.length == 1) {
+      op_http_set_response_header(req, headers[0][0], headers[0][1]);
+    } else {
+      op_http_set_response_headers(req, headers);
+    }
+  }
+}
+
+function closeInnerRequestImmediately(innerRequest) {
+  innerRequest?.close();
+}
+
+function closeInnerRequestForNative(innerRequest) {
+  innerRequest?.close();
+}
+
+function trySetServeFastStaticResponse(
+  req,
+  response,
+  innerRequest,
+  closeInnerRequest = closeInnerRequestImmediately,
+) {
+  const status = response[serveFastStatusKey];
+  if (status === 0) {
+    return false;
+  }
+
+  const body = response[serveFastBodyKey];
+  if (body === null) {
+    return false;
+  }
+
+  closeInnerRequest(innerRequest);
+  response[serveFastConsumedKey] = true;
+  switch (response[serveFastHeaderKindKey]) {
+    case SERVE_FAST_HEADER_DEFAULT_TEXT:
+      op_http_set_response_body_static_with_default_header(req, body, status);
+      return true;
+    case SERVE_FAST_HEADER_CONTENT_TYPE:
+      op_http_set_response_body_static_with_content_type(
+        req,
+        body,
+        status,
+        response[serveFastContentTypeKey],
+      );
+      return true;
+    case SERVE_FAST_HEADER_NONE:
+      if (typeof body === "string") {
+        op_http_set_response_body_text(req, body, status);
+      } else {
+        op_http_set_response_body_bytes(req, body, status);
+      }
+      return true;
+    default:
+      throw new TypeError("Invalid response");
+  }
+}
+
+// Report an error that was thrown while a streaming response body was being
+// drained. The response status/headers are already on the wire at this point,
+// so the value returned from `onError` can no longer be used; we route the
+// error through the handler purely so it is observed (the default handler logs
+// a stack trace) instead of being silently swallowed.
+function reportResponseStreamError(onError, error) {
+  let result;
+  try {
+    result = onError(error);
+  } catch (e) {
+    internals.log("error", "Exception in onError while handling exception", e);
+    return;
+  }
+  if (ObjectPrototypeIsPrototypeOf(PromisePrototype, result)) {
+    PromisePrototypeThen(result, undefined, (e) => {
+      internals.log(
+        "error",
+        "Exception in onError while handling exception",
+        e,
+      );
+    });
+  }
+}
+
 function fastSyncResponseOrStream(
   req,
   respBody,
   status,
   innerRequest: InnerRequest,
+  headers,
+  onError,
 ) {
   if (respBody === null || respBody === undefined) {
     // Don't set the body
     innerRequest?.close();
+    setResponseHeaders(req, headers);
     op_http_set_promise_complete(req, status);
     return;
   }
 
   const stream = respBody.streamOrStatic;
   const body = stream.body;
+  const singleHeader = headers?.length === 1 ? headers[0] : null;
   if (body !== undefined) {
     // We ensure the response has not been consumed yet in the caller of this
     // function.
     stream.consumed = true;
+    if (
+      singleHeader !== null &&
+      (singleHeader[0] === "Content-Type" ||
+        singleHeader[0] === "content-type") &&
+      singleHeader[1] === "text/plain;charset=UTF-8"
+    ) {
+      innerRequest?.close();
+      op_http_set_response_body_static_with_default_header(req, body, status);
+      return;
+    }
+    if (singleHeader !== null) {
+      innerRequest?.close();
+      if (
+        singleHeader[0] === "Content-Type" ||
+        singleHeader[0] === "content-type"
+      ) {
+        op_http_set_response_body_static_with_content_type(
+          req,
+          body,
+          status,
+          singleHeader[1],
+        );
+        return;
+      }
+      op_http_set_response_body_static_with_header(
+        req,
+        body,
+        status,
+        singleHeader[0],
+        singleHeader[1],
+      );
+      return;
+    }
   }
 
   if (TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array") {
     innerRequest?.close();
-    op_http_set_response_body_bytes(req, body, status);
+    if (headers?.length > 0) {
+      op_http_set_response_body_bytes_with_headers(
+        req,
+        body,
+        status,
+        headers,
+      );
+    } else {
+      op_http_set_response_body_bytes(req, body, status);
+    }
     return;
   }
 
   if (typeof body === "string") {
     innerRequest?.close();
-    op_http_set_response_body_text(req, body, status);
+    if (headers?.length > 0) {
+      op_http_set_response_body_text_with_headers(
+        req,
+        body,
+        status,
+        headers,
+      );
+    } else {
+      op_http_set_response_body_text(req, body, status);
+    }
     return;
   }
 
@@ -525,13 +693,20 @@ function fastSyncResponseOrStream(
     innerRequest?.close();
     throw new TypeError("Invalid response");
   }
+  setResponseHeaders(req, headers);
   const resourceBacking = getReadableStreamResourceBacking(stream);
   let rid, autoClose;
   if (resourceBacking) {
     rid = resourceBacking.rid;
     autoClose = resourceBacking.autoClose;
   } else {
-    rid = resourceForReadableStream(stream);
+    // The response headers/status have already been committed by the time the
+    // body stream starts producing chunks, so an error thrown while draining
+    // the stream (e.g. inside a `TransformStream` transformer) can no longer
+    // change the response. Report it through the server's error handler so it
+    // is not silently swallowed and a stack trace implicating the faulty
+    // callback is surfaced. See https://github.com/denoland/deno/issues/19867.
+    rid = resourceForReadableStream(stream, undefined, onError);
     autoClose = true;
   }
   PromisePrototypeThen(
@@ -539,6 +714,16 @@ function fastSyncResponseOrStream(
     (success) => {
       innerRequest?.close(success);
       op_http_close_after_finish(req);
+    },
+    () => {
+      // Setting up the streamed response body failed because the backing
+      // resource was unavailable (e.g. a `using` file handle that was disposed
+      // when the handler returned, leaving `file.readable` backed by a closed
+      // rid). No response has been sent at this point, so complete the request
+      // with a 500 instead of letting the rejection escape as a fatal
+      // unhandled promise rejection that would take the whole server down.
+      innerRequest?.close();
+      op_http_set_promise_complete(req, 500);
     },
   );
 }
@@ -551,21 +736,31 @@ function fastSyncResponseOrStream(
  * This function returns a promise that will only reject in the case of abnormal exit.
  */
 function mapToCallback(context, callback, onError) {
+  const zeroArgCallback = callback.length === 0 &&
+    !otelState.TRACING_ENABLED;
   let mapped = async function (req, span) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
     let innerRequest;
     let response;
+    let inner;
     try {
-      innerRequest = new InnerRequest(req, context);
-      const request = fromInnerRequest(innerRequest, "immutable");
-      innerRequest.request = request;
+      if (zeroArgCallback && op_http_is_raw_request(req)) {
+        response = await callback();
+      } else {
+        innerRequest = new InnerRequest(req, context);
+        const request = fromInnerRequest(innerRequest, "immutable");
+        innerRequest.request = request;
 
-      if (span) {
-        updateSpanFromRequest(span, request);
+        if (span) {
+          updateSpanFromRequest(span, request);
+        }
+
+        response = await callback(
+          request,
+          new ServeHandlerInfo(innerRequest),
+        );
       }
-
-      response = await callback(request, new ServeHandlerInfo(innerRequest));
 
       // Throwing Error if the handler return value is not a Response class
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
@@ -574,13 +769,24 @@ function mapToCallback(context, callback, onError) {
         );
       }
 
-      if (response.type === "error") {
+      // The Response prototype check above passes for Response-like objects
+      // (e.g. a subclass that skipped super(), or a Response from a different
+      // realm/polyfill). Those don't carry the internal slot we read from
+      // below, so reject them with a clear error instead of crashing later.
+      inner = getInnerResponse(response);
+      if (inner === undefined) {
+        throw new TypeError(
+          "Return value from serve handler must be a Response constructed via the Response constructor in this realm",
+        );
+      }
+
+      if (inner.type === "error") {
         throw new TypeError(
           "Return value from serve handler must not be an error response (like Response.error())",
         );
       }
 
-      if (response.bodyUsed) {
+      if (responseBodyUsed(response)) {
         throw new TypeError(
           "The body of the Response returned from the serve handler has already been consumed",
         );
@@ -593,6 +799,12 @@ function mapToCallback(context, callback, onError) {
             "Return value from onError handler must be a response or a promise resolving to a response",
           );
         }
+        inner = toInnerResponse(response);
+        if (inner === undefined) {
+          throw new TypeError(
+            "Return value from onError handler must be a Response constructed via the Response constructor in this realm",
+          );
+        }
       } catch (error) {
         if (otelState.METRICS_ENABLED) {
           op_http_metric_handle_otel_error(req);
@@ -603,6 +815,7 @@ function mapToCallback(context, callback, onError) {
           error,
         );
         response = internalServerError();
+        inner = toInnerResponse(response);
       }
     }
 
@@ -616,7 +829,6 @@ function mapToCallback(context, callback, onError) {
       }
     }
 
-    const inner = toInnerResponse(response);
     if (innerRequest?.[_upgraded]) {
       if (response.status !== 101) {
         internals.log(
@@ -639,17 +851,32 @@ function mapToCallback(context, callback, onError) {
       return;
     }
 
-    const status = inner.status;
-    const headers = inner.headerList;
-    if (headers && headers.length > 0) {
-      if (headers.length == 1) {
-        op_http_set_response_header(req, headers[0][0], headers[0][1]);
-      } else {
-        op_http_set_response_headers(req, headers);
-      }
+    const nativeResponse = response[serveNativeResponseKey];
+    if (trySetServeFastStaticResponse(req, response, innerRequest)) {
+      return;
+    }
+    if (
+      nativeResponse !== null && nativeResponse !== undefined &&
+      op_http_set_response_native(req, nativeResponse)
+    ) {
+      dropServeNativeResponse(response);
+      response[serveFastConsumedKey] = true;
+      innerRequest?.close();
+      return;
     }
 
-    fastSyncResponseOrStream(req, inner.body, status, innerRequest);
+    inner = toInnerResponse(response);
+    const status = inner.status;
+    const headers = wireHeaderList(inner);
+    const respBody = inner.body;
+    fastSyncResponseOrStream(
+      req,
+      respBody,
+      status,
+      innerRequest,
+      headers,
+      (error) => reportResponseStreamError(onError, error),
+    );
   };
 
   if (otelState.TRACING_ENABLED) {
@@ -710,6 +937,201 @@ function mapToCallback(context, callback, onError) {
   }
 
   return mapped;
+}
+
+function mapToNativeResponseCallback(context, callback, onError) {
+  const zeroArgCallback = callback.length === 0 &&
+    !otelState.TRACING_ENABLED &&
+    !otelState.METRICS_ENABLED;
+
+  function finishOrReturnNative(
+    req,
+    span,
+    innerRequest,
+    response,
+    fromPromise = false,
+  ) {
+    if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+      throw new TypeError(
+        "Return value from serve handler must be a response or a promise resolving to a response",
+      );
+    }
+    let inner = getInnerResponse(response);
+    if (inner === undefined) {
+      throw new TypeError(
+        "Return value from serve handler must be a Response constructed via the Response constructor in this realm",
+      );
+    }
+    if (inner.type === "error") {
+      throw new TypeError(
+        "Return value from serve handler must not be an error response (like Response.error())",
+      );
+    }
+    if (responseBodyUsed(response)) {
+      throw new TypeError(
+        "The body of the Response returned from the serve handler has already been consumed",
+      );
+    }
+
+    if (
+      innerRequest?.request !== undefined &&
+      requestHeadersExposed(innerRequest.request)
+    ) {
+      cacheRequestHeaders(innerRequest.request);
+    }
+
+    if (span) {
+      updateSpanFromServerResponse(span, response);
+      const otelSpan = otelState.getOtelSpan?.(span);
+      if (otelSpan) {
+        op_http_copy_span_to_otel_info(req, otelSpan);
+      }
+    }
+
+    if (context.closed) {
+      innerRequest?.close();
+      op_http_set_promise_complete(req, 503);
+      return undefined;
+    }
+
+    if (innerRequest?.[_upgraded]) {
+      if (response.status !== 101) {
+        internals.log(
+          "error",
+          "Upgrade response was not returned from callback",
+        );
+        context.close();
+        return undefined;
+      }
+      if (response === UPGRADE_RESPONSE_SENTINEL) {
+        return undefined;
+      }
+    }
+
+    if (
+      trySetServeFastStaticResponse(
+        req,
+        response,
+        innerRequest,
+        fromPromise ? closeInnerRequestImmediately : closeInnerRequestForNative,
+      )
+    ) {
+      return undefined;
+    }
+
+    const nativeResponse = response[serveNativeResponseKey];
+    if (
+      nativeResponse !== null && nativeResponse !== undefined &&
+      op_http_set_response_native(req, nativeResponse)
+    ) {
+      dropServeNativeResponse(response);
+      response[serveFastConsumedKey] = true;
+      if (fromPromise) {
+        closeInnerRequestImmediately(innerRequest);
+      } else {
+        closeInnerRequestForNative(innerRequest);
+      }
+      return undefined;
+    }
+
+    inner = toInnerResponse(response);
+    fastSyncResponseOrStream(
+      req,
+      inner.body,
+      inner.status,
+      innerRequest,
+      wireHeaderList(inner),
+      (error) => reportResponseStreamError(onError, error),
+    );
+    return undefined;
+  }
+
+  function handleError(req, span, innerRequest, error) {
+    let response;
+    try {
+      response = onError(error);
+    } catch (error) {
+      if (otelState.METRICS_ENABLED) {
+        op_http_metric_handle_otel_error(req);
+      }
+      internals.log(
+        "error",
+        "Exception in onError while handling exception",
+        error,
+      );
+      response = internalServerError();
+    }
+    try {
+      return finishOrReturnMaybePromise(req, span, innerRequest, response);
+    } catch (error) {
+      if (otelState.METRICS_ENABLED) {
+        op_http_metric_handle_otel_error(req);
+      }
+      internals.log(
+        "error",
+        "Exception in onError while handling exception",
+        error,
+      );
+      return finishOrReturnNative(
+        req,
+        span,
+        innerRequest,
+        internalServerError(),
+      );
+    }
+  }
+
+  function finishOrReturnMaybePromise(req, span, innerRequest, response) {
+    if (
+      response !== null &&
+      (typeof response === "object" || typeof response === "function") &&
+      typeof response.then === "function"
+    ) {
+      return PromisePrototypeThen(
+        PromiseResolve(response),
+        (response) =>
+          finishOrReturnNative(req, span, innerRequest, response, true),
+        (error) => handleError(req, span, innerRequest, error),
+      );
+    }
+    if (
+      innerRequest?.request !== undefined &&
+      requestHeadersExposed(innerRequest.request)
+    ) {
+      return PromisePrototypeThen(
+        PromiseResolve(response),
+        (response) =>
+          finishOrReturnNative(req, span, innerRequest, response, true),
+        (error) => handleError(req, span, innerRequest, error),
+      );
+    }
+    return finishOrReturnNative(req, span, innerRequest, response);
+  }
+
+  return function nativeMapped(req, span) {
+    let innerRequest;
+    let response;
+    try {
+      if (zeroArgCallback && op_http_is_raw_request(req)) {
+        response = callback();
+      } else {
+        innerRequest = new InnerRequest(req, context);
+        const request = fromInnerRequest(innerRequest, "immutable");
+        innerRequest.request = request;
+        if (span) {
+          updateSpanFromRequest(span, request);
+        }
+        response = callback(request, new ServeHandlerInfo(innerRequest));
+      }
+    } catch (error) {
+      return handleError(req, span, innerRequest, error);
+    }
+    try {
+      return finishOrReturnMaybePromise(req, span, innerRequest, response);
+    } catch (error) {
+      return handleError(req, span, innerRequest, error);
+    }
+  };
 }
 
 type RawHandler = (
@@ -1008,6 +1430,7 @@ function serveInner(options, handler) {
 function serveHttpOnListener(listener, signal, handler, onError, onListen) {
   let serverContext = undefined;
   let callback = undefined;
+  let nativeCallback = undefined;
   const promiseErrorHandler = (error) => {
     internals.log(
       "error",
@@ -1019,13 +1442,34 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
   const dispatch = (req) => {
     PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
   };
-
+  const nativeFastPath = !otelState.TRACING_ENABLED &&
+    !otelState.METRICS_ENABLED;
+  const nativeDispatch = (req) => {
+    if (!nativeFastPath) {
+      PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
+      return undefined;
+    }
+    return nativeCallback(req, undefined);
+  };
+  const rawNoRequest = handler.length === 0 && nativeFastPath;
   serverContext = new CallbackContext(
     signal,
-    op_http_serve(listener[internalRidSymbol], dispatch),
+    op_http_serve(
+      listener[internalRidSymbol],
+      dispatch,
+      rawNoRequest,
+      nativeDispatch,
+      serveNativeResponseKey,
+      serveFastStatusKey,
+      serveFastBodyKey,
+      serveFastHeaderKindKey,
+      serveFastContentTypeKey,
+      serveFastConsumedKey,
+    ),
     listener,
   );
   callback = mapToCallback(serverContext, handler, onError);
+  nativeCallback = mapToNativeResponseCallback(serverContext, handler, onError);
 
   onListen(serverContext.scheme);
 
@@ -1038,6 +1482,7 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
 function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
   let serverContext = undefined;
   let callback = undefined;
+  let nativeCallback = undefined;
   const promiseErrorHandler = (error) => {
     internals.log(
       "error",
@@ -1049,13 +1494,34 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
   const dispatch = (req) => {
     PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
   };
-
+  const nativeFastPath = !otelState.TRACING_ENABLED &&
+    !otelState.METRICS_ENABLED;
+  const nativeDispatch = (req) => {
+    if (!nativeFastPath) {
+      PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
+      return undefined;
+    }
+    return nativeCallback(req, undefined);
+  };
+  const rawNoRequest = handler.length === 0 && nativeFastPath;
   serverContext = new CallbackContext(
     signal,
-    op_http_serve_on(connection[internalRidSymbol], dispatch),
+    op_http_serve_on(
+      connection[internalRidSymbol],
+      dispatch,
+      rawNoRequest,
+      nativeDispatch,
+      serveNativeResponseKey,
+      serveFastStatusKey,
+      serveFastBodyKey,
+      serveFastHeaderKindKey,
+      serveFastContentTypeKey,
+      serveFastConsumedKey,
+    ),
     null,
   );
   callback = mapToCallback(serverContext, handler, onError);
+  nativeCallback = mapToNativeResponseCallback(serverContext, handler, onError);
 
   onListen(serverContext.scheme);
 
@@ -1154,9 +1620,11 @@ function serveHttpOn(context, addr) {
 
 internals.addTrailers = addTrailers;
 internals.upgradeHttpRaw = upgradeHttpRaw;
-internals.upgradeHttpRawConnect = upgradeHttpRawConnect;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
+internals.resetLegacyAbortWarning = () => {
+  legacyAbortWarned = false;
+};
 
 function registerDeclarativeServer(exports) {
   if (!ObjectHasOwn(exports, "fetch")) return;
@@ -1176,7 +1644,7 @@ function registerDeclarativeServer(exports) {
     serveHost,
     workerCountWhenMain,
   }) => {
-    Deno.serve({
+    const server = Deno.serve({
       port: servePort,
       hostname: serveHost,
       [kLoadBalanced]: workerCountWhenMain == null
@@ -1222,6 +1690,28 @@ function registerDeclarativeServer(exports) {
         return exports.fetch(req, connInfo);
       },
     });
+
+    // Wire SIGTERM/SIGINT to a graceful server shutdown so that `deno serve`
+    // drains in-flight requests and exits cleanly (exit code 0) instead of
+    // being terminated by the OS default signal handler (exit code 143/130),
+    // e.g. when a container is redeployed.
+    const shutdownHandler = () => {
+      // Stop listening for the signal so a second SIGTERM/SIGINT falls through
+      // to the default handler and forcibly terminates a server that is slow
+      // to drain.
+      Deno.removeSignalListener("SIGTERM", shutdownHandler);
+      Deno.removeSignalListener("SIGINT", shutdownHandler);
+      // `shutdown()` already swallows the errors from an interrupted server,
+      // but guard against any rejection becoming unhandled.
+      PromisePrototypeCatch(server.shutdown(), () => {});
+    };
+    try {
+      Deno.addSignalListener("SIGTERM", shutdownHandler);
+      Deno.addSignalListener("SIGINT", shutdownHandler);
+    } catch {
+      // Adding signal listeners can fail in restricted environments; fall back
+      // to the default behavior in that case.
+    }
   };
 }
 
@@ -1232,6 +1722,5 @@ return {
   serveHttpOnConnection,
   serveHttpOnListener,
   upgradeHttpRaw,
-  upgradeHttpRawConnect,
 };
 })();
