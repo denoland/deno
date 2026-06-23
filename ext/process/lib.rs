@@ -2238,9 +2238,11 @@ mod deprecated {
     #[serde] signal: SignalArg,
     #[string] api_name: String,
   ) -> Result<(), ProcessError> {
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_run_all(&api_name)?;
+    if pid != std::process::id() as i32 {
+      state
+        .borrow_mut::<PermissionsContainer>()
+        .check_run_all(&api_name)?;
+    }
     kill(pid, &signal)
   }
 }

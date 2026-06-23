@@ -1080,7 +1080,10 @@ function createSecretKey(
   }
 }
 
-core.registerCloneableResource("NodeCryptoKeyObject", (data) => {
+// Deserializer for KeyObjects transferred via structured clone. Registered
+// eagerly (so workers can resurrect a KeyObject before this module loads) from
+// `02_register_cloneable.js`; the impl stays lazy here.
+function deserializeNodeCryptoKeyObject(data) {
   switch (data.keyType) {
     case "secret": {
       const handle = op_node_create_secret_key(data.keyData);
@@ -1109,10 +1112,11 @@ core.registerCloneableResource("NodeCryptoKeyObject", (data) => {
         `Unsupported KeyObject type for structured clone: ${data.keyType}`,
       );
   }
-});
+}
 
 return {
   getArrayBufferOrView,
+  deserializeNodeCryptoKeyObject,
   KeyObject,
   kConsumePublic,
   kConsumePrivate,

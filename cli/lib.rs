@@ -12,6 +12,7 @@ mod jsr;
 mod lsp;
 mod module_loader;
 mod node;
+mod node_compat_shim;
 mod npm;
 mod ops;
 mod registry;
@@ -69,6 +70,7 @@ use self::util::env::resolve_cwd;
 use crate::args::CompletionsFlags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::FlagsExt;
 use crate::args::flags_from_vec_with_initial_cwd;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
@@ -204,6 +206,7 @@ async fn run_subcommand(
         coverage_flags.include,
         coverage_flags.exclude,
         coverage_flags.output,
+        coverage_flags.threshold.map(|t| t as f64),
         &[&*reporter],
       )
     }),
@@ -224,6 +227,9 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Info(info_flags) => spawn_subcommand(async {
       tools::info::info(Arc::new(flags), info_flags).await
+    }),
+    DenoSubcommand::List(list_flags) => spawn_subcommand(async {
+      tools::pm::list(Arc::new(flags), list_flags).await
     }),
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(Arc::new(flags), install_flags).await
@@ -289,6 +295,8 @@ async fn run_subcommand(
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
+          if_present: false,
         };
         let mut flags = flags;
         flags.subcommand = DenoSubcommand::Task(task_flags.clone());
@@ -401,6 +409,8 @@ async fn run_subcommand(
                   filter: None,
                   eval: false,
                   no_prefix: false,
+                  concurrency: None,
+                  if_present: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
                 let result = tools::task::execute_script(
@@ -524,7 +534,7 @@ async fn run_subcommand(
         },
       );
 
-      match stream.write_all(help_flags.help.ansi().to_string().as_bytes()) {
+      match stream.write_all(help_flags.help.as_bytes()) {
         Ok(()) => Ok(()),
         Err(e) => match e.kind() {
           std::io::ErrorKind::BrokenPipe => Ok(()),
@@ -661,7 +671,7 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 }
 
 fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
-  let error_string = match js_error_downcast_ref(&error) {
+  let mut error_string = match js_error_downcast_ref(&error) {
     Some(e) => {
       let initial_cwd = initial_cwd
         .and_then(|cwd| deno_path_util::url_from_directory_path(cwd).ok());
@@ -669,6 +679,17 @@ fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
     }
     None => format!("{error:?}"),
   };
+
+  // If this looks like a workspace/npm resolution failure and a
+  // pnpm-workspace.yaml is nearby, convert it into the equivalent deno.json
+  // fields and tell the user to run the command again, rather than leaving them
+  // with the misleading "run deno install" hint baked into the error.
+  if let Some(hint) = util::pnpm_workspace::maybe_auto_migrate_pnpm_workspace(
+    &error_string,
+    initial_cwd,
+  ) {
+    error_string.push_str(&hint);
+  }
 
   exit_with_message(&error_string, 1);
 }
@@ -746,6 +767,10 @@ pub fn main() {
   boot_phase("after aws_lc install");
 
   let args: Vec<_> = env::args_os().collect();
+  // If we were invoked through a `node` shim (a symlink/hardlink named `node`
+  // pointing at this binary), translate the Node.js CLI args to Deno args.
+  // Done here, before any threads are spawned, because it may set env vars.
+  let args = node_compat_shim::maybe_rewrite_node_arg0(args);
   let future = async move {
     let roots = LibWorkerFactoryRoots::default();
 
@@ -864,6 +889,33 @@ async fn resolve_flags_and_init(
   }
 
   let sys = crate::sys::CliSys::default();
+
+  // Best-effort: make a `node` available on PATH (pointing back at this binary)
+  // when no real Node.js is installed, so child processes that spawn `node`
+  // natively (e.g. Next.js Turbopack) can find one. Must run before any threads
+  // spawn since it mutates PATH (the tunnel below can spawn threads), and only
+  // for subcommands that execute user code, so unrelated commands (`fmt`,
+  // `lint`, `check`, `lsp`, ...) don't pay for the `node` PATH scan on startup.
+  if node_compat_shim::subcommand_may_spawn_node(&flags.subcommand) {
+    match deno_cache_dir::resolve_deno_dir(
+      &sys,
+      deno_cache_dir::ResolveDenoDirOptions {
+        maybe_initial_cwd: initial_cwd.as_deref(),
+        maybe_custom_root: None,
+      },
+    ) {
+      Ok(deno_dir_root) => {
+        if let Err(err) = node_compat_shim::ensure_node_on_path(&deno_dir_root)
+        {
+          log::debug!("node compat shim setup failed (best-effort): {err}");
+        }
+      }
+      Err(err) => {
+        log::debug!("could not resolve DENO_DIR for node compat shim: {err}");
+      }
+    }
+  }
+
   if deno_lib::args::has_flag_env_var(&sys, "DENO_CONNECTED") {
     flags.tunnel = true;
   }
@@ -1022,7 +1074,6 @@ fn wait_for_start(
     use tokio::io::AsyncWrite;
     use tokio::io::AsyncWriteExt;
     use tokio::io::BufReader;
-    use tokio::net::TcpListener;
     use tokio::net::UnixSocket;
     #[cfg(any(
       target_os = "android",
@@ -1061,12 +1112,6 @@ fn wait_for_start(
       Box<dyn AsyncRead + Unpin>,
       Box<dyn AsyncWrite + Send + Unpin>,
     ) = match addr.split_once(':') {
-      Some(("tcp", addr)) => {
-        let listener = TcpListener::bind(addr).await?;
-        let (stream, _) = listener.accept().await?;
-        let (rx, tx) = stream.into_split();
-        (Box::new(rx), Box::new(tx))
-      }
       Some(("unix", path)) => {
         let socket = UnixSocket::new_stream()?;
         socket.bind(path)?;

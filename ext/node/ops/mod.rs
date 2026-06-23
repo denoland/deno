@@ -7,6 +7,7 @@ pub mod constant;
 pub mod dns;
 pub mod fs;
 pub mod handle_wrap;
+pub mod http;
 pub mod http2;
 pub mod idna;
 pub mod inspector;
