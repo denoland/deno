@@ -1977,7 +1977,9 @@ function stripTrailingCurrentDirSegments(path: string): string {
       end--;
     }
   }
-  return end === path.length ? path : StringPrototypeSlice(path, 0, end) || path;
+  return end === path.length
+    ? path
+    : StringPrototypeSlice(path, 0, end) || path;
 }
 
 type MkdirOptions =
