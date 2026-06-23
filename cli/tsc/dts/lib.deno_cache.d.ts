@@ -75,6 +75,18 @@ interface Cache {
     request: RequestInfo | URL,
     options?: CacheQueryOptions,
   ): Promise<boolean>;
+  /**
+   * Return the {@linkcode Request} keys stored in the cache, in insertion
+   * order. When a `request` is provided, only the matching keys are returned.
+   *
+   * How is the API different from browsers?
+   * 1. You cannot match cache objects using by relative paths.
+   * 2. You cannot pass options like `ignoreVary`, `ignoreMethod`, `ignoreSearch`.
+   */
+  keys(
+    request?: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<ReadonlyArray<Request>>;
 }
 
 /** The constructor object for {@linkcode Cache}.

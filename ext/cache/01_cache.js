@@ -4,6 +4,7 @@
 const { core, primordials } = __bootstrap;
 const {
   op_cache_delete,
+  op_cache_keys,
   op_cache_match,
   op_cache_put,
   op_cache_storage_delete,
@@ -253,6 +254,51 @@ class Cache {
       cacheId: this[_id],
       requestUrl: r.url,
     });
+  }
+
+  /** See https://w3c.github.io/ServiceWorker/#cache-keys */
+  async keys(request, _options) {
+    webidl.assertBranded(this, CachePrototype);
+    const prefix = "Failed to execute 'keys' on 'Cache'";
+    // Step 1-2.
+    let targetUrl = null;
+    if (request !== undefined) {
+      request = webidl.converters["RequestInfo_DOMString"](
+        request,
+        prefix,
+        "Argument 1",
+      );
+      let r = null;
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
+        r = request;
+        // Only GET requests are stored in the cache.
+        if (request.method !== "GET") {
+          return [];
+        }
+      } else {
+        r = new Request(request);
+      }
+      // Remove the fragment from the request URL before comparing.
+      const url = new URL(r.url);
+      url.hash = "";
+      // deno-lint-ignore prefer-primordials
+      targetUrl = url.toString();
+    }
+
+    // Step 5: return the request keys in insertion order.
+    const entries = await op_cache_keys({ cacheId: this[_id] });
+    const requests = [];
+    for (let i = 0; i < entries.length; ++i) {
+      const entry = entries[i];
+      if (targetUrl !== null && entry.requestUrl !== targetUrl) {
+        continue;
+      }
+      ArrayPrototypePush(
+        requests,
+        new Request(entry.requestUrl, { headers: entry.requestHeaders }),
+      );
+    }
+    return requests;
   }
 
   /** See https://w3c.github.io/ServiceWorker/#cache-matchall

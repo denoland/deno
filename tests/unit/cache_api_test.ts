@@ -46,6 +46,45 @@ Deno.test(async function cacheStorageKeys() {
   assert(await caches.delete("keys-c"));
 });
 
+Deno.test(async function cacheKeys() {
+  const cacheName = "cache-keys";
+  await caches.delete(cacheName);
+  const cache = await caches.open(cacheName);
+
+  // Empty cache returns an empty array.
+  const empty = await cache.keys();
+  assert(Array.isArray(empty));
+  assertEquals(empty.length, 0);
+
+  await cache.put(
+    new Request("https://example.com/a"),
+    new Response("a"),
+  );
+  await cache.put(
+    new Request("https://example.com/b", { headers: { "x-test": "yes" } }),
+    new Response("b"),
+  );
+
+  // Returns the request keys in insertion order, preserving headers.
+  const keys = await cache.keys();
+  assertEquals(keys.length, 2);
+  assert(keys[0] instanceof Request);
+  assertEquals(keys[0].url, "https://example.com/a");
+  assertEquals(keys[1].url, "https://example.com/b");
+  assertEquals(keys[1].headers.get("x-test"), "yes");
+
+  // Filtering by a request only returns the matching key.
+  const filtered = await cache.keys(new Request("https://example.com/b"));
+  assertEquals(filtered.length, 1);
+  assertEquals(filtered[0].url, "https://example.com/b");
+
+  // A non-existent request returns an empty array.
+  const none = await cache.keys("https://example.com/missing");
+  assertEquals(none.length, 0);
+
+  assert(await caches.delete(cacheName));
+});
+
 Deno.test(async function cacheApi() {
   const cacheName = "cache-v1";
   const cache = await caches.open(cacheName);

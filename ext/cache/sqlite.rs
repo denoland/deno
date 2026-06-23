@@ -21,6 +21,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::CacheDeleteRequest;
 use crate::CacheError;
+use crate::CacheKeyEntry;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
@@ -378,6 +379,35 @@ impl SqliteBackedCache {
         (request.cache_id, &request.request_url),
       )?;
       Ok::<bool, CacheError>(rows_effected > 0)
+    })
+    .await?
+  }
+
+  pub async fn keys(
+    &self,
+    cache_id: i64,
+  ) -> Result<Vec<CacheKeyEntry>, CacheError> {
+    let db = self.connection.clone();
+    spawn_blocking(move || {
+      let db = db.lock();
+      let mut stmt = db.prepare(
+        "SELECT request_url, request_headers FROM request_response_list
+             WHERE cache_id = ?1 ORDER BY id",
+      )?;
+      let rows = stmt.query_map(params![cache_id], |row| {
+        let request_url: String = row.get(0)?;
+        let request_headers: Vec<u8> = row.get(1)?;
+        Ok((request_url, request_headers))
+      })?;
+      let mut entries = Vec::new();
+      for row in rows {
+        let (request_url, request_headers) = row?;
+        entries.push(CacheKeyEntry {
+          request_url,
+          request_headers: deserialize_headers(&request_headers),
+        });
+      }
+      Ok::<Vec<CacheKeyEntry>, CacheError>(entries)
     })
     .await?
   }

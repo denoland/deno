@@ -21,6 +21,7 @@ use slab::Slab;
 
 use crate::CacheDeleteRequest;
 use crate::CacheError;
+use crate::CacheKeyEntry;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
@@ -299,6 +300,15 @@ impl LscBackend {
     );
     shard.put_object_empty(&object_key, headers).await?;
     Ok(true)
+  }
+
+  /// Listing cached request keys is not supported by the remote cache
+  /// backend as it provides no way to enumerate stored objects.
+  pub async fn keys(
+    &self,
+    _cache_id: i64,
+  ) -> Result<Vec<CacheKeyEntry>, CacheError> {
+    Err(CacheError::KeysNotSupported)
   }
 }
 impl deno_core::Resource for LscBackend {
