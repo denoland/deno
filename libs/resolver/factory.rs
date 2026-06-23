@@ -93,6 +93,8 @@ use crate::workspace::SloppyImportsOptions;
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
 use crate::workspace::WorkspaceResolver;
 
+const DEFAULT_MINIMUM_DEPENDENCY_AGE_MINUTES: i64 = 1440;
+
 // todo(https://github.com/rust-lang/rust/issues/109737): remove once_cell after get_or_try_init is stabilized
 #[cfg(feature = "sync")]
 type Deferred<T> = once_cell::sync::OnceCell<T>;
@@ -1015,20 +1017,14 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         let workspace = &workspace_factory.workspace_directory()?.workspace;
         workspace.minimum_dependency_age(workspace_factory.sys())?
       };
-      // fall back to .npmrc's `min-release-age` when not configured in deno.json
-      if config.age.is_none()
-        && let Some(days) = workspace_factory.npmrc()?.min_release_age_days
-      {
-        let now = chrono::DateTime::<chrono::Utc>::from(
-          workspace_factory.sys().sys_time_now(),
+      if config.age.is_none() {
+        apply_minimum_dependency_age_fallbacks(
+          &mut config,
+          workspace_factory.npmrc()?.min_release_age_days,
+          chrono::DateTime::<chrono::Utc>::from(
+            workspace_factory.sys().sys_time_now(),
+          ),
         );
-        config.age = Some(if days == 0 {
-          NewestDependencyDate::Disabled
-        } else {
-          NewestDependencyDate::Enabled(
-            now - chrono::Duration::days(days as i64),
-          )
-        });
       }
       if let Some(newest_dependency_date) =
         config.age.and_then(|d| d.into_option())
@@ -1306,6 +1302,29 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
   }
 }
 
+fn apply_minimum_dependency_age_fallbacks(
+  config: &mut MinimumDependencyAgeConfig,
+  npmrc_min_release_age_days: Option<u64>,
+  now: chrono::DateTime<chrono::Utc>,
+) {
+  if config.age.is_some() {
+    return;
+  }
+
+  // Fall back to .npmrc's `min-release-age` when not configured in deno.json.
+  config.age = Some(if let Some(days) = npmrc_min_release_age_days {
+    if days == 0 {
+      NewestDependencyDate::Disabled
+    } else {
+      NewestDependencyDate::Enabled(now - chrono::Duration::days(days as i64))
+    }
+  } else {
+    NewestDependencyDate::Enabled(
+      now - chrono::Duration::minutes(DEFAULT_MINIMUM_DEPENDENCY_AGE_MINUTES),
+    )
+  });
+}
+
 /// Parses npm overrides from a workspace's root package.json.
 ///
 /// Returns `NpmOverrides::default()` if no overrides are present or if parsing fails.
@@ -1332,5 +1351,68 @@ pub fn npm_overrides_from_workspace(
       );
       NpmOverrides::default()
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use chrono::TimeZone;
+  use deno_config::deno_json::MinimumDependencyAgeConfig;
+  use deno_config::deno_json::NewestDependencyDate;
+
+  use super::apply_minimum_dependency_age_fallbacks;
+
+  fn now() -> chrono::DateTime<chrono::Utc> {
+    chrono::Utc.with_ymd_and_hms(2025, 6, 1, 0, 0, 0).unwrap()
+  }
+
+  #[test]
+  fn minimum_dependency_age_falls_back_to_default() {
+    let mut config = MinimumDependencyAgeConfig::default();
+    apply_minimum_dependency_age_fallbacks(&mut config, None, now());
+    assert_eq!(
+      config.age,
+      Some(NewestDependencyDate::Enabled(
+        now() - chrono::Duration::minutes(1440)
+      ))
+    );
+  }
+
+  #[test]
+  fn minimum_dependency_age_preserves_exclude_with_default() {
+    let mut config = MinimumDependencyAgeConfig {
+      age: None,
+      exclude: vec!["npm:chalk".to_string()],
+    };
+    apply_minimum_dependency_age_fallbacks(&mut config, None, now());
+    assert_eq!(
+      config.age,
+      Some(NewestDependencyDate::Enabled(
+        now() - chrono::Duration::minutes(1440)
+      ))
+    );
+    assert_eq!(config.exclude, vec!["npm:chalk".to_string()]);
+  }
+
+  #[test]
+  fn minimum_dependency_age_prefers_npmrc_over_default() {
+    let mut config = MinimumDependencyAgeConfig::default();
+    apply_minimum_dependency_age_fallbacks(&mut config, Some(2), now());
+    assert_eq!(
+      config.age,
+      Some(NewestDependencyDate::Enabled(
+        now() - chrono::Duration::days(2)
+      ))
+    );
+  }
+
+  #[test]
+  fn minimum_dependency_age_preserves_explicit_disable() {
+    let mut config = MinimumDependencyAgeConfig {
+      age: Some(NewestDependencyDate::Disabled),
+      exclude: Vec::new(),
+    };
+    apply_minimum_dependency_age_fallbacks(&mut config, Some(2), now());
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
   }
 }
