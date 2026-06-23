@@ -3186,7 +3186,6 @@ impl Http2Session {
     });
   }
 
-  #[to_v8]
   fn get_state(&self) -> Http2SessionState {
     // SAFETY: self.session is a valid nghttp2 session pointer
     unsafe {
@@ -3421,7 +3420,6 @@ pub fn op_http2_callbacks(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_http2_http_state<'a>(
   scope: &mut v8::PinScope<'a, 'a>,
 ) -> JSHttp2State<'a> {
