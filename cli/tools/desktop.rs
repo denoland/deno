@@ -1359,10 +1359,7 @@ async fn package_linux_app_dir(
   std::fs::copy(dylib_path, &dest_dylib)?;
 
   // Create a shell launcher that invokes the backend with --runtime.
-  // --ozone-platform=x11 forces CEF to create X11 windows (via XWayland on
-  // Wayland sessions). The Linux LAUFEY mouse/focus/resize event monitor uses
-  // XI2 on X11 and does not support Wayland.
-  // GDK_BACKEND=x11 aligns GDK with Ozone so GDK_IS_X11_DISPLAY is true.
+  // laufey auto-detects Wayland vs X11 at runtime.
   //
   // Validate every name we interpolate: bash expands `$VAR`, backticks,
   // and `$(...)` even inside `"..."`.
@@ -1376,8 +1373,7 @@ async fn package_linux_app_dir(
     format!(
       "#!/bin/sh\n\
        DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
-       export GDK_BACKEND=x11\n\
-       exec \"$DIR/{laufey_binary}\" --ozone-platform=x11 --runtime \"$DIR/{dylib}\" \"$@\"\n",
+       exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
       laufey_binary = laufey_binary_name,
       dylib = dylib_filename_str,
     ),
