@@ -135,13 +135,24 @@ fn allocate_stable_serve_port(
     && let Some(prev) = read_persisted_serve_port(dir)
     && let Ok(p) = try_bind_loopback_port(prev)
   {
+    log::debug!("[desktop] reusing persisted serve port {p}");
     return Ok(p);
   }
 
   let preferred = derive_stable_serve_port(app_name);
   let port = match try_bind_loopback_port(preferred) {
-    Ok(p) => p,
-    Err(_) => allocate_random_port()?,
+    Ok(p) => {
+      log::debug!("[desktop] using hash-derived serve port {p}");
+      p
+    }
+    Err(_) => {
+      let p = allocate_random_port()?;
+      log::debug!(
+        "[desktop] hash-derived port {preferred} was unavailable; \
+         falling back to ephemeral port {p}"
+      );
+      p
+    }
   };
 
   if let Some(dir) = app_data_dir {
