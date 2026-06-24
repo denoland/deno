@@ -6936,6 +6936,7 @@ fn desktop_parse(
     backend,
     all_targets,
     identifier: None,
+    deep_links: Vec::new(),
     codesign_identity: None,
     inspect_renderer,
     compress,

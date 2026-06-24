@@ -106,6 +106,12 @@ pub async fn desktop(
     {
       desktop_flags.identifier = Some(identifier);
     }
+
+    if let Some(deep_links) = app_config.deep_links
+      && desktop_flags.deep_links.is_empty()
+    {
+      desktop_flags.deep_links = deep_links;
+    }
   }
 
   if let Some(backend) = desktop_config.backend
@@ -521,6 +527,13 @@ async fn compile_desktop(
     )
     .await?;
 
+    // Register any deep-link URL schemes with the OS-specific app metadata
+    // (macOS Info.plist, Linux .desktop, Windows registry script) before
+    // the bundle gets compressed or wrapped into an installer.
+    if !desktop_flags.deep_links.is_empty() {
+      register_deep_links(&bundle_path, &desktop_flags)?;
+    }
+
     // Optionally make the bundle self-extracting: the heavy payload is
     // compressed inside the shipped app and unpacked on first launch. This
     // shrinks the distributed artifact (the installed footprint is restored
@@ -626,6 +639,221 @@ fn make_self_extracting(
     "windows" => make_self_extracting_dir(bundle_path, format, true),
     _ => make_self_extracting_dir(bundle_path, format, false),
   }
+}
+
+/// Validate a deep-link URL scheme. Follows the RFC 3986 `scheme` grammar:
+/// `ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`. We additionally reject the
+/// `http`/`https`/`file` schemes since registering those as app handlers is
+/// almost never intended and would hijack normal browsing.
+fn validate_url_scheme(scheme: &str) -> Result<(), AnyError> {
+  let reserved = ["http", "https", "file", "ftp", "ws", "wss"];
+  let bail = |reason: &str| {
+    Err(deno_core::anyhow::anyhow!(
+      "Invalid deep-link scheme {scheme:?}: {reason}."
+    ))
+  };
+  match scheme.chars().next() {
+    None => return bail("scheme is empty"),
+    Some(c) if !c.is_ascii_alphabetic() => {
+      return bail("scheme must start with an ASCII letter");
+    }
+    _ => {}
+  }
+  if !scheme
+    .chars()
+    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+  {
+    return bail("scheme may only contain letters, digits, '+', '-', and '.'");
+  }
+  if reserved.contains(&scheme) {
+    return bail("scheme is reserved and cannot be used as a deep link");
+  }
+  Ok(())
+}
+
+/// Register the configured deep-link URL schemes with the OS-specific app
+/// metadata so the system routes `<scheme>://...` links to this app.
+///
+/// First pass: this writes the declarative registration into the bundle
+/// (macOS `CFBundleURLTypes`, Linux `.desktop` `MimeType` + `Exec %u`,
+/// Windows `.reg`/`.bat` helper). Delivering the opened URL into the running
+/// app (single-instance forwarding, the macOS `openURLs` Apple Event, and the
+/// `open-url` JS event) is tracked separately in the issue.
+fn register_deep_links(
+  bundle_path: &Path,
+  desktop_flags: &DesktopFlags,
+) -> Result<(), AnyError> {
+  let schemes: Vec<String> = desktop_flags
+    .deep_links
+    .iter()
+    .map(|s| s.trim().to_ascii_lowercase())
+    .filter(|s| !s.is_empty())
+    .collect();
+  if schemes.is_empty() {
+    return Ok(());
+  }
+  for scheme in &schemes {
+    validate_url_scheme(scheme)?;
+  }
+
+  let target_os = match desktop_flags.target.as_deref() {
+    Some(t) if t.contains("apple-darwin") => "macos",
+    Some(t) if t.contains("windows") => "windows",
+    Some(_) => "linux",
+    None => {
+      if cfg!(target_os = "macos") {
+        "macos"
+      } else if cfg!(target_os = "windows") {
+        "windows"
+      } else {
+        "linux"
+      }
+    }
+  };
+  match target_os {
+    "macos" => register_deep_links_macos(bundle_path, &schemes)?,
+    "windows" => register_deep_links_windows(bundle_path, &schemes)?,
+    _ => register_deep_links_linux(bundle_path, &schemes)?,
+  }
+
+  log::info!(
+    "{} {}",
+    colors::green("Deep links"),
+    schemes
+      .iter()
+      .map(|s| format!("{s}://"))
+      .collect::<Vec<_>>()
+      .join(", "),
+  );
+  Ok(())
+}
+
+/// macOS: add a single `CFBundleURLTypes` entry carrying every scheme to the
+/// bundle `Info.plist`.
+fn register_deep_links_macos(
+  bundle_path: &Path,
+  schemes: &[String],
+) -> Result<(), AnyError> {
+  let plist_path = bundle_path.join("Contents").join("Info.plist");
+  let mut dict: plist::Dictionary = plist::from_file(&plist_path)
+    .with_context(|| format!("failed to parse {}", plist_path.display()))?;
+
+  let url_name = dict
+    .get("CFBundleIdentifier")
+    .and_then(|v| v.as_string())
+    .unwrap_or("")
+    .to_string();
+
+  let mut url_type = plist::Dictionary::new();
+  url_type.insert(
+    "CFBundleURLName".to_string(),
+    plist::Value::String(url_name),
+  );
+  url_type.insert(
+    "CFBundleTypeRole".to_string(),
+    plist::Value::String("Viewer".to_string()),
+  );
+  url_type.insert(
+    "CFBundleURLSchemes".to_string(),
+    plist::Value::Array(
+      schemes.iter().cloned().map(plist::Value::String).collect(),
+    ),
+  );
+  dict.insert(
+    "CFBundleURLTypes".to_string(),
+    plist::Value::Array(vec![plist::Value::Dictionary(url_type)]),
+  );
+
+  plist::to_file_xml(&plist_path, &dict)
+    .with_context(|| format!("failed to write {}", plist_path.display()))?;
+  Ok(())
+}
+
+/// Linux: add `x-scheme-handler/<scheme>` MIME types to the `.desktop` entry
+/// and make sure `Exec=` forwards the opened URL via the `%u` field code.
+fn register_deep_links_linux(
+  bundle_path: &Path,
+  schemes: &[String],
+) -> Result<(), AnyError> {
+  let desktop_file = std::fs::read_dir(bundle_path)?
+    .filter_map(|e| e.ok().map(|e| e.path()))
+    .find(|p| p.extension().is_some_and(|e| e == "desktop"))
+    .ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "no .desktop file found in {}",
+        bundle_path.display()
+      )
+    })?;
+
+  let contents = std::fs::read_to_string(&desktop_file)?;
+  let mime = schemes
+    .iter()
+    .map(|s| format!("x-scheme-handler/{s};"))
+    .collect::<String>();
+
+  let mut out = String::with_capacity(contents.len() + mime.len() + 16);
+  let mut wrote_mime = false;
+  for line in contents.lines() {
+    if let Some(rest) = line.strip_prefix("Exec=") {
+      // The launcher must receive the URL as an argument, so ensure a `%u`
+      // field code is present exactly once.
+      if rest.contains("%u") || rest.contains("%U") {
+        out.push_str(line);
+      } else {
+        out.push_str(&format!("Exec={} %u", rest.trim_end()));
+      }
+      out.push('\n');
+    } else if let Some(rest) = line.strip_prefix("MimeType=") {
+      // Merge into the existing MimeType list.
+      out.push_str("MimeType=");
+      out.push_str(rest.trim_end());
+      if !rest.trim_end().ends_with(';') && !rest.trim_end().is_empty() {
+        out.push(';');
+      }
+      out.push_str(&mime);
+      out.push('\n');
+      wrote_mime = true;
+    } else {
+      out.push_str(line);
+      out.push('\n');
+    }
+  }
+  if !wrote_mime {
+    out.push_str(&format!("MimeType={mime}\n"));
+  }
+
+  std::fs::write(&desktop_file, out)?;
+  Ok(())
+}
+
+/// Windows: there is no in-bundle declarative registration for protocol
+/// handlers, so drop a `register-deep-links.bat` next to the launcher that
+/// writes the `HKCU\Software\Classes\<scheme>` keys. An installer (or the
+/// user) runs it once after install; the keys point back at the launcher in
+/// its install location (`%~dp0`).
+fn register_deep_links_windows(
+  bundle_path: &Path,
+  schemes: &[String],
+) -> Result<(), AnyError> {
+  // The launcher written by the Windows packaging step is `<app>.bat`.
+  let launcher = std::fs::read_dir(bundle_path)?
+    .filter_map(|e| e.ok().map(|e| e.path()))
+    .find(|p| p.extension().is_some_and(|e| e == "bat"))
+    .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+    .unwrap_or_else(|| "launcher.bat".to_string());
+
+  let mut script = String::from("@echo off\r\nsetlocal\r\n");
+  for scheme in schemes {
+    script.push_str(&format!(
+      "reg add \"HKCU\\Software\\Classes\\{scheme}\" /ve /d \"URL:{scheme}\" /f\r\n\
+       reg add \"HKCU\\Software\\Classes\\{scheme}\" /v \"URL Protocol\" /d \"\" /f\r\n\
+       reg add \"HKCU\\Software\\Classes\\{scheme}\\shell\\open\\command\" /ve /d \"\\\"%~dp0{launcher}\\\" \\\"%%1\\\"\" /f\r\n",
+    ));
+  }
+  script.push_str("endlocal\r\n");
+
+  std::fs::write(bundle_path.join("register-deep-links.bat"), script)?;
+  Ok(())
 }
 
 /// Tar `parent/entry_name` (preserving symlinks and modes) into `dest_file`,
@@ -6204,6 +6432,7 @@ def456  other.zip
       backend: None,
       all_targets: false,
       identifier: None,
+      deep_links: Vec::new(),
       codesign_identity: None,
       inspect_renderer: None,
       compress: None,

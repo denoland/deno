@@ -208,6 +208,10 @@ pub enum DesktopEvent {
   DockMenuClick { id: String },
   #[serde(rename_all = "camelCase")]
   DockReopen { has_visible_windows: bool },
+  /// A deep link (`<scheme>://...`) was opened and routed to this app, either
+  /// at launch (cold start) or while already running. Carries the full URL.
+  #[serde(rename_all = "camelCase")]
+  OpenUrl { url: String },
   #[serde(rename_all = "camelCase")]
   TrayClick { tray_id: u32 },
   #[serde(rename_all = "camelCase")]
