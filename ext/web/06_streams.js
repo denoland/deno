@@ -18,6 +18,7 @@ const {
   // TODO(mmastrac): use readAll
   op_read_all,
   op_readable_stream_resource_allocate,
+  op_readable_stream_resource_allocate_no_aggregate,
   op_readable_stream_resource_allocate_sized,
   op_readable_stream_resource_await_close,
   op_readable_stream_resource_close,
@@ -986,12 +987,16 @@ async function readableStreamReadFn(reader, sink, onError) {
  *   error before it is flattened to a string for the transport.
  * @returns {number}
  */
-function resourceForReadableStream(stream, length, onError) {
+function resourceForReadableStream(stream, length, onError, noAggregate) {
   const reader = acquireReadableStreamDefaultReader(stream);
 
-  // Allocate the resource
+  // Allocate the resource. `noAggregate` preserves per-write buffer boundaries
+  // (node:http chunked streaming -> one HTTP chunk per write); it is mutually
+  // exclusive with a size hint (the boundary-preserving path is unsized).
   const rid = typeof length == "number"
     ? op_readable_stream_resource_allocate_sized(length)
+    : noAggregate
+    ? op_readable_stream_resource_allocate_no_aggregate()
     : op_readable_stream_resource_allocate();
 
   // Close the Reader we get from the ReadableStream when the resource is closed, ignoring any errors

@@ -225,6 +225,41 @@ fn status_line_version(response: &ResponseHeader<'_>) -> Version {
   }
 }
 
+// The auto `Connection` header bytes for this response, or None if none is
+// emitted. node:http capitalizes it (Deno.serve lowercases). A close-delimited
+// HTTP/1.0 response (streamed body, no Content-Length, no chunked framing) is
+// delimited by the connection close, so node:http emits an explicit close.
+// Callers place this BEFORE Transfer-Encoding for node:http (Node's order) and
+// after the framing headers for Deno.serve.
+fn connection_header_for(
+  response: &ResponseHeader<'_>,
+  chunked: bool,
+  body_allowed: bool,
+) -> Option<&'static [u8]> {
+  let node_mode = response.node_mode;
+  if response.keep_alive && response.version == Version::Http10 {
+    Some(if node_mode {
+      b"Connection: keep-alive\r\n".as_slice()
+    } else {
+      b"connection: keep-alive\r\n".as_slice()
+    })
+  } else if (!response.keep_alive && response.version == Version::Http11)
+    || (node_mode
+      && response.version == Version::Http10
+      && body_allowed
+      && response.content_length.is_none()
+      && !chunked)
+  {
+    Some(if node_mode {
+      b"Connection: close\r\n".as_slice()
+    } else {
+      b"connection: close\r\n".as_slice()
+    })
+  } else {
+    None
+  }
+}
+
 fn write_response_head_inner(
   out: &mut Vec<u8>,
   response: ResponseHeader<'_>,
@@ -288,9 +323,23 @@ fn write_response_head_inner(
     && !chunked
     && !user_content_length
   {
-    out.extend_from_slice(b"content-length: ");
+    // node:http capitalizes the auto Content-Length header (Deno.serve uses
+    // lowercase); Node always emits `Content-Length` and some clients/tests
+    // depend on the exact bytes.
+    out.extend_from_slice(if node_mode {
+      b"Content-Length: ".as_slice()
+    } else {
+      b"content-length: ".as_slice()
+    });
     push_u64(out, content_length);
     out.extend_from_slice(b"\r\n");
+  }
+
+  let connection = connection_header_for(&response, chunked, body_allowed);
+  // node:http emits the Connection header BEFORE Transfer-Encoding (Node's
+  // order); Deno.serve emits it after the framing headers (its byte layout).
+  if node_mode && let Some(connection) = connection {
+    out.extend_from_slice(connection);
   }
 
   if chunked && body_allowed {
@@ -307,20 +356,8 @@ fn write_response_head_inner(
     out.extend_from_slice(b"\r\n");
   }
 
-  // node:http capitalizes the auto-added Connection header (Deno.serve uses
-  // lowercase); some node tests assert the exact bytes.
-  if response.keep_alive && response.version == Version::Http10 {
-    out.extend_from_slice(if node_mode {
-      b"Connection: keep-alive\r\n"
-    } else {
-      b"connection: keep-alive\r\n"
-    });
-  } else if !response.keep_alive && response.version == Version::Http11 {
-    out.extend_from_slice(if node_mode {
-      b"Connection: close\r\n"
-    } else {
-      b"connection: close\r\n"
-    });
+  if !node_mode && let Some(connection) = connection {
+    out.extend_from_slice(connection);
   }
   out.extend_from_slice(b"\r\n");
 }
@@ -392,6 +429,13 @@ fn write_response_head_to_inner(
     cursor.push(b"\r\n")?;
   }
 
+  let connection = connection_header_for(&response, chunked, body_allowed);
+  // node:http emits the Connection header BEFORE Transfer-Encoding (Node's
+  // order); Deno.serve emits it after the framing headers (its byte layout).
+  if node_mode && let Some(connection) = connection {
+    cursor.push(connection)?;
+  }
+
   if chunked && body_allowed {
     cursor.push(if node_mode {
       b"Transfer-Encoding: chunked\r\n".as_slice()
@@ -406,18 +450,8 @@ fn write_response_head_to_inner(
     cursor.push(b"\r\n")?;
   }
 
-  if response.keep_alive && response.version == Version::Http10 {
-    cursor.push(if node_mode {
-      b"Connection: keep-alive\r\n".as_slice()
-    } else {
-      b"connection: keep-alive\r\n".as_slice()
-    })?;
-  } else if !response.keep_alive && response.version == Version::Http11 {
-    cursor.push(if node_mode {
-      b"Connection: close\r\n".as_slice()
-    } else {
-      b"connection: close\r\n".as_slice()
-    })?;
+  if !node_mode && let Some(connection) = connection {
+    cursor.push(connection)?;
   }
   cursor.push(b"\r\n")?;
   Ok(cursor.len())

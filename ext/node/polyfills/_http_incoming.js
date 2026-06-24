@@ -242,7 +242,18 @@ IncomingMessage.prototype._destroy = function _destroy(err, cb) {
     !this._nativeResponded && !this._nativeAbortSent
   ) {
     this._nativeAbortSent = true;
-    op_http_abort_response(ext);
+    // Defer the connection drop: a handler may still commit a response on the
+    // request's 'close' (e.g. `req.destroy(err)` then `res.end()` in a 'close'
+    // listener -- test-stream-destroy). The response (committed via the
+    // external) must win over the ECONNRESET, so only abort if nothing
+    // responded once the close handlers have run.
+    this.once("close", () => {
+      nextTick(() => {
+        if (!this._nativeResponded && this[kNativeExternal] === ext) {
+          op_http_abort_response(ext);
+        }
+      });
+    });
   }
 
   if (!this.readableEnded || !this.complete) {

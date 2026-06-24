@@ -33,7 +33,9 @@ import {
   op_http_get_request_trailers,
   op_http_get_request_url,
   op_http_read_request_body,
+  op_http_reclaim_socket,
   op_http_request_on_cancel,
+  op_http_set_allow_half_open,
   op_http_set_response_interim,
   op_http_set_response_status_message,
   op_http_try_take_full_request_body,
@@ -56,6 +58,7 @@ const {
   Number,
   NumberIsFinite,
   ObjectDefineProperty,
+  ObjectHasOwn,
   ObjectKeys,
   PromisePrototypeThen,
   ObjectPrototypeIsPrototypeOf,
@@ -82,8 +85,12 @@ const {
 
 import net from "node:net";
 import { Duplex } from "node:stream";
+import { AsyncResource } from "node:async_hooks";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { ok: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+const { enabledHooksExist } = core.loadExtScript(
+  "ext:deno_node/internal/async_hooks.ts",
+);
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   chunkExpression,
@@ -552,6 +559,18 @@ ServerResponse.prototype.writeHead = function writeHead(
 ) {
   if (this._header) {
     throw new ERR_HTTP_HEADERS_SENT("write");
+  }
+
+  // The handler assigned an own `res.socket.write` before committing -> it wants
+  // raw socket writes to reach the wire. Demote to classic mode so the response
+  // flows through res.socket. Rare: the hot path never sets an own `write` on
+  // the synthetic socket, so this check is a cheap miss there.
+  if (
+    this[kNativeExternal] &&
+    this.socket !== null && this.socket !== undefined &&
+    ObjectHasOwn(this.socket, "write")
+  ) {
+    demoteNativeResponse(this);
   }
 
   statusCode |= 0;
@@ -1476,8 +1495,19 @@ const RID_NONE = 4294967295; // ResourceId::MAX
 // Decide whether `server` can use the native fast path. Conservative: only
 // plain http.Server with the default request/response classes and no listeners
 // that need raw socket / upgrade semantics.
+// True in a cluster worker (flag set by node:cluster's worker init). Cheap: no
+// node:cluster import in the common non-cluster case.
+function isClusterWorker() {
+  return internals.nodeClusterIsWorker === true;
+}
+
 function nativeFastPathEligible(server) {
   if (!nativeHttpEnabled()) return false;
+  // Cluster workers virtualize listen() through cluster._getServer (shared-fd /
+  // round-robin handoff from the primary); the native fast path binds its own
+  // listener and would bypass that, hanging the worker. Fall back to the classic
+  // net.Server path (which routes through cluster) for cluster workers.
+  if (isClusterWorker()) return false;
   if (server[kServerResponse] !== ServerResponse) return false;
   if (server[kIncomingMessage] !== IncomingMessage) return false;
   if (server.listenerCount("upgrade") > 0) return false;
@@ -1684,12 +1714,29 @@ class NativeFakeSocket extends Duplex {
     this._httpMessage = null;
     this.parser = null;
     this.timeout = 0;
+    // Real net.Sockets initialize this to null; some code (and tests, e.g.
+    // test-child-process-http-socket-leak) reads `socket[kTimeout]`.
+    this[kTimeout] = null;
     this._handle = { __proto__: null, writeQueueSize: 0, reading: false };
+    // Set when the response is demoted to classic mode (the handler took over
+    // raw socket writes, e.g. test-http-response-cork): a real net.Socket on the
+    // reclaimed fd that writes reach the wire through. See demoteNativeResponse.
+    this._realBacking = null;
   }
 
   _read() {}
 
-  _write(chunk, _encoding, callback) {
+  _write(chunk, encoding, callback) {
+    if (this._realBacking !== null && this._realBacking !== undefined) {
+      // Queue to the real socket and signal this write complete immediately, so
+      // the synthetic socket's (corked) write machinery flushes all chunks in
+      // one tick. Threading the real socket's async completion back here would
+      // stall the flush after the first chunk (it never advances). The real
+      // socket buffers and writes the queued chunks to the wire in order.
+      this._realBacking.write(chunk, encoding);
+      callback();
+      return;
+    }
     this.bytesWritten += chunk.length;
     callback();
   }
@@ -1766,6 +1813,31 @@ class NativeFakeSocket extends Duplex {
       port: this.localPort,
       family: this.remoteFamily ?? "IPv4",
     };
+  }
+
+  // Reclaim the real OS file descriptor behind this synthetic socket from the
+  // HTTP engine so it can be exposed as a real socket (e.g. handed to a child
+  // process over IPC via child.send(msg, res.socket)). Only works while the
+  // request is being dispatched synchronously (the bodiless path). Returns the
+  // fd, or -1 if it can't be reclaimed. On success the native response is
+  // abandoned: the engine relinquishes the connection, so the caller (or
+  // whoever receives the fd) must drive the response. See op_http_reclaim_socket.
+  _nativeReclaimFd() {
+    const res = this._httpMessage;
+    const external = res != null ? res[kNativeExternal] : undefined;
+    if (external === null || external === undefined) {
+      return -1;
+    }
+    const fd = op_http_reclaim_socket(external);
+    if (fd < 0) {
+      return -1;
+    }
+    // The external was consumed by the op; stop driving the native response.
+    res[kNativeExternal] = null;
+    if (res.req != null && res.req[kNativeExternal] !== undefined) {
+      res.req[kNativeExternal] = null;
+    }
+    return fd;
   }
 }
 
@@ -1900,13 +1972,55 @@ function createNativeIncomingMessage(
   return req;
 }
 
+// The handler took over raw socket writes (assigned `res.socket.write`) before
+// the response committed -- e.g. test-http-response-cork, which intercepts the
+// socket's writes and corks the socket through the response. The native engine
+// writes the response via ops, so those writes never reach `res.socket`. Reclaim
+// the real connection fd, back the synthetic socket with a real net.Socket, and
+// clear native mode so writeHead/write/end run the classic OutgoingMessage path
+// (writing through res.socket exactly like Node, preserving its write framing).
+function demoteNativeResponse(res) {
+  const socket = res.socket;
+  if (
+    socket === null || socket === undefined ||
+    typeof socket._nativeReclaimFd !== "function"
+  ) {
+    return;
+  }
+  // Reclaims the fd and consumes the external (nulls res[kNativeExternal] and
+  // res.req[kNativeExternal]); returns the fd or -1 if it can't be reclaimed.
+  const fd = socket._nativeReclaimFd();
+  if (fd < 0) {
+    return;
+  }
+  socket._realBacking = new net.Socket({
+    fd,
+    readable: true,
+    writable: true,
+  });
+}
+
 function makeNativeOnRequest(server) {
   // connId -> the one synthetic socket shared by every request on that H1
   // connection (Node gives all keep-alive requests the same `req.socket`). The
   // engine calls us with `(external, connId, isClose)`; on close we drop and
   // destroy the socket. connId is unique per connection (engine thread-local).
   const sockets = new SafeMap();
-  return (external, connId, isClose) => {
+  return (external, connId, isClose, isTimeout) => {
+    if (isTimeout) {
+      // node:http server.keepAliveTimeout fired on an idle connection. Mirror
+      // the classic socketOnTimeout: emit 'timeout' on the last response and the
+      // server; if nothing handles it, destroy the socket. The serve loop closes
+      // the connection afterward regardless.
+      const socket = MapPrototypeGet(sockets, connId);
+      if (socket !== undefined && !socket.destroyed) {
+        const serverTimeout = server.emit("timeout", socket);
+        if (!serverTimeout) {
+          socket.destroy();
+        }
+      }
+      return;
+    }
     if (isClose) {
       const socket = MapPrototypeGet(sockets, connId);
       if (socket !== undefined) {
@@ -1929,6 +2043,13 @@ function makeNativeOnRequest(server) {
       socket = makeNativeSocket(external, server);
       MapPrototypeSet(sockets, connId, socket);
     }
+    // Whether a PRIOR pipelined handler already destroyed this shared, per-
+    // connection socket. Captured before this handler runs: socket.destroy() on
+    // an already-destroyed Duplex is a no-op, so a request arriving on such a
+    // socket can never have its response aborted through it. Using the pre-
+    // dispatch value avoids tripping on a socket torn down later by normal
+    // completion mid-pipeline (which must NOT abort a live response).
+    const socketDestroyedBeforeDispatch = socket.destroyed;
     const maxHeaderPairs = typeof server.maxHeadersCount === "number" &&
         server.maxHeadersCount > 0
       ? server.maxHeadersCount << 1
@@ -1984,6 +2105,12 @@ function makeNativeOnRequest(server) {
     res[kNativeExternal] = external;
     res.socket = socket;
     socket._httpMessage = res;
+    // httpAllowHalfOpen: a client half-close (FIN) must not cancel an in-flight
+    // response. The option is read in JS (set any time, incl. after listen), so
+    // tell the engine per request not to abort this response on peer close.
+    if (server.httpAllowHalfOpen) {
+      op_http_set_allow_half_open(external);
+    }
     // maxRequestsPerSocket: count requests on this connection; once the limit is
     // exceeded, drop the request (emit 'dropRequest' if observed, else 503) and
     // don't run the handler. Mirrors parserOnIncoming. (Eligibility falls back to
@@ -2042,7 +2169,17 @@ function makeNativeOnRequest(server) {
       return;
     }
     try {
-      server.emit("request", req, res);
+      // node:http runs each request handler inside its own async resource so
+      // async_hooks / executionAsyncResource() observe per-request context (the
+      // classic path runs in the IncomingMessage's async resource). Gated on
+      // active hooks so the no-hook fast path stays allocation-free.
+      if (enabledHooksExist()) {
+        new AsyncResource("HTTPINCOMINGMESSAGE").runInAsyncScope(() => {
+          server.emit("request", req, res);
+        });
+      } else {
+        server.emit("request", req, res);
+      }
     } catch (err) {
       // Always finish the response so the connection can't hang. If headers
       // weren't sent yet we can still turn it into a 500; if they were (e.g. the
@@ -2056,6 +2193,20 @@ function makeNativeOnRequest(server) {
         }
       } catch { /* external already consumed */ }
       internals.log("error", "Error in node:http request handler", err);
+    }
+    // A prior pipelined handler may have destroyed the (shared, per-connection)
+    // socket. Since socket.destroy() on an already-destroyed Duplex is a no-op,
+    // this handler's res can never be aborted through the socket and would
+    // otherwise leave the response-ordered serve loop waiting forever for a
+    // reply that never comes. The handler has already run (mustCall satisfied),
+    // so abort the uncommitted response and let the loop move on (Node discards
+    // responses on a destroyed socket too).
+    if (
+      socketDestroyedBeforeDispatch && !res.finished &&
+      res[kNativeExternal] !== null && res[kNativeExternal] !== undefined
+    ) {
+      op_http_abort_response(external);
+      return;
     }
     // If the handler returned without committing a response, watch for a client
     // abort. The hot path (sync res.end) already consumed the external, so this

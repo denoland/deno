@@ -498,6 +498,49 @@ impl ServerCallback {
     }
   }
 
+  /// Calls the native callback with `(null, conn_id, /*isClose*/ false,
+  /// /*isTimeout*/ true)` so the JS side can emit the connection's `'timeout'`
+  /// event (server keepAliveTimeout). The serve loop then closes the
+  /// connection.
+  ///
+  /// # Safety
+  /// Same invariant as [`Self::dispatch_connection_close`]: the isolate must
+  /// still be live.
+  pub unsafe fn dispatch_connection_timeout(&self, conn_id: f64) {
+    // SAFETY: caller upholds isolate validity.
+    unsafe {
+      let mut isolate = v8::Isolate::from_raw_isolate_ptr(self.isolate_ptr);
+      v8::scope!(let handle_scope, &mut isolate);
+      let context = v8::Local::new(handle_scope, &self.context);
+      let scope = &mut v8::ContextScope::new(handle_scope, context);
+      let pin_scope: &mut v8::PinScope = scope;
+      {
+        v8::tc_scope!(tc, pin_scope);
+        let cb = v8::Local::new(tc, &self.native_callback);
+        let arg = v8::null(tc);
+        let conn_id = v8::Number::new(tc, conn_id);
+        let is_close = v8::Boolean::new(tc, false);
+        let is_timeout = v8::Boolean::new(tc, true);
+        let recv = v8::undefined(tc);
+        let _ = cb.call(
+          tc,
+          recv.into(),
+          &[
+            arg.into(),
+            conn_id.into(),
+            is_close.into(),
+            is_timeout.into(),
+          ],
+        );
+        if tc.has_caught() {
+          tc.reset();
+        }
+      }
+      pin_scope.perform_microtask_checkpoint();
+      self.runtime_waker.wake();
+    }
+  }
+
   /// Invoke the JavaScript callback with the given record-pointer
   /// argument. The pointer is wrapped as a v8 External so the JS side
   /// can pass it back to ops that take `*const c_void` parameters.

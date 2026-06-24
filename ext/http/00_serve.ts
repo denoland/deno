@@ -1502,9 +1502,9 @@ function serveHttpOnListenerForNode(
 ) {
   let serverContext = undefined;
   const nodeOpts = nodeHttpOptions ?? { __proto__: null };
-  const dispatch = (req, connId, isClose) => {
+  const dispatch = (req, connId, isClose, isTimeout) => {
     try {
-      onRequest(req, connId, isClose);
+      onRequest(req, connId, isClose, isTimeout);
     } catch (error) {
       // `onRequest` is expected to handle its own errors; this is a backstop so
       // a stray throw doesn't tear down the serve loop. The request may be left

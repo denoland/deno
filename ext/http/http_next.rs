@@ -1128,6 +1128,10 @@ struct RawHttpRecordInner {
   // node:http only: trailers parsed from a chunked request body, exposed as
   // req.rawTrailers / req.trailers via op_http_get_request_trailers.
   request_trailers: Vec<(Vec<u8>, Vec<u8>)>,
+  // node:http only: server.httpAllowHalfOpen -- a client half-close (FIN) must
+  // not cancel an in-flight response; keep waiting for the handler. Set per
+  // request by op_http_set_allow_half_open (the server option is read in JS).
+  allow_half_open: bool,
   upgrade: Option<Rc<RawUpgrade>>,
   response_status: u16,
   response_reason: Option<Vec<u8>>,
@@ -1198,6 +1202,7 @@ impl RawHttpRecord {
       headers,
       request_body,
       request_trailers: Vec::new(),
+      allow_half_open: false,
       upgrade,
       response_status: 200,
       response_reason: None,
@@ -1436,6 +1441,14 @@ impl RawHttpRecord {
 
   fn take_request_trailers(&self) -> Vec<(Vec<u8>, Vec<u8>)> {
     std::mem::take(&mut self.0.borrow_mut().request_trailers)
+  }
+
+  fn set_allow_half_open(&self) {
+    self.0.borrow_mut().allow_half_open = true;
+  }
+
+  fn allow_half_open(&self) -> bool {
+    self.0.borrow().allow_half_open
   }
 
   fn take_request_body(&self) -> Option<Rc<dyn Resource>> {
@@ -2688,6 +2701,19 @@ pub fn op_http_get_request_trailers<'scope>(
   v8::Array::new(scope, 0)
 }
 
+/// node:http only: mark this request's connection as half-open-tolerant
+/// (server.httpAllowHalfOpen) -- a client FIN won't cancel the in-flight
+/// response; the serve loop keeps waiting for the handler.
+#[op2(fast)]
+pub fn op_http_set_allow_half_open(external: *const c_void) {
+  let http =
+    // SAFETY: op is called with external (the request is still alive).
+    unsafe { clone_external!(external, "op_http_set_allow_half_open") };
+  if let HttpRecordExternal::Raw(record) = http {
+    record.set_allow_half_open();
+  }
+}
+
 #[op2]
 pub fn op_http_set_response_trailers(
   external: *const c_void,
@@ -3525,6 +3551,93 @@ fn next_raw_conn_id() -> f64 {
   })
 }
 
+// node:http native fast path "socket reclaim". A handler can ask for the real
+// OS socket behind `req.socket`/`res.socket` (e.g. to pass it to a child via
+// IPC) by calling `op_http_reclaim_socket`. The bodiless serve loop owns `conn`
+// directly on its stack and dispatches the handler SYNCHRONOUSLY, so instead of
+// paying an Rc wrap on the hot path we publish raw pointers into the loop's
+// stack for exactly the duration of that synchronous dispatch (the serve future
+// is suspended in the nested call, so the pointers are live and exclusively
+// ours). The op moves `conn` out by value and flags `RAW_RECLAIM_DONE`; the
+// loop then `mem::forget`s its (now logically-moved) binding and relinquishes
+// the connection. See op_http_reclaim_socket and the bodiless dispatch site.
+#[derive(Clone, Copy)]
+struct RawReclaimSlot {
+  conn: *mut h1::SharedConn<RawH1Io>,
+  record: *const RawHttpRecord,
+}
+
+thread_local! {
+  static RAW_RECLAIM_SLOT: Cell<Option<RawReclaimSlot>> =
+    const { Cell::new(None) };
+  static RAW_RECLAIM_DONE: Cell<bool> = const { Cell::new(false) };
+}
+
+#[cfg(unix)]
+fn reclaim_stream_into_raw_fd(stream: NetworkStream) -> i32 {
+  use std::os::fd::IntoRawFd;
+  // Transfer fd ownership to JS without closing it (into_raw_fd consumes the
+  // stream but does NOT drop the fd). Tokio's into_std deregisters the fd from
+  // the reactor; libuv re-registers it when JS adopts it via uv_tcp_open.
+  match stream {
+    NetworkStream::Tcp(tcp) => match tcp.into_std() {
+      Ok(std) => std.into_raw_fd(),
+      Err(_) => -1,
+    },
+    NetworkStream::Unix(unix) => match unix.into_std() {
+      Ok(std) => std.into_raw_fd(),
+      Err(_) => -1,
+    },
+    _ => -1,
+  }
+}
+
+#[cfg(not(unix))]
+fn reclaim_stream_into_raw_fd(_stream: NetworkStream) -> i32 {
+  -1
+}
+
+/// node:http native fast path: hand the live H1 connection's OS file descriptor
+/// to JS so a handler can expose `req.socket`/`res.socket` as a real socket
+/// (e.g. `child.send(msg, res.socket)` to pass it to a child process). Returns
+/// the fd, or -1 if reclaim isn't available: not the request currently being
+/// dispatched (only valid synchronously inside the handler, on the bodiless
+/// path), already reclaimed, a non-TCP/Unix stream, or Windows. On success the
+/// serve loop relinquishes the connection -- the handler (or whoever it hands
+/// the socket to) is responsible for the response.
+#[op2(fast)]
+pub fn op_http_reclaim_socket(external: *const c_void) -> i32 {
+  let Some(slot) = RAW_RECLAIM_SLOT.with(|s| s.get()) else {
+    return -1;
+  };
+  // Only the request currently being dispatched can be reclaimed. Borrow (do
+  // NOT consume) the external to compare its record identity against the slot.
+  let record_ptr = {
+    // SAFETY: external points at a live http record (the handler holds it).
+    let http = unsafe { clone_external!(external, "op_http_reclaim_socket") };
+    match http {
+      HttpRecordExternal::Raw(record) => Rc::as_ptr(&record),
+      HttpRecordExternal::Hyper(_) => return -1,
+    }
+  };
+  if !std::ptr::eq(record_ptr, slot.record) {
+    return -1;
+  }
+  // The native response is abandoned in favor of the reclaimed socket: consume
+  // the external so it's freed and JS stops driving the response ops on it.
+  // SAFETY: verified above that this external is the active raw record.
+  let _ = unsafe { take_external!(external, "op_http_reclaim_socket") };
+  // SAFETY: the serve future is suspended inside the synchronous dispatch that
+  // is running this op, so `conn` is live and not otherwise borrowed. We move it
+  // out by value; the loop observes RAW_RECLAIM_DONE and `mem::forget`s its
+  // binding instead of using or dropping it (the fd now belongs to JS).
+  let conn = unsafe { std::ptr::read(slot.conn) };
+  RAW_RECLAIM_DONE.with(|d| d.set(true));
+  let (io, _h1_bytes) = conn.into_upgrade_parts();
+  let (stream, _prefix) = io.into_inner();
+  reclaim_stream_into_raw_fd(stream)
+}
+
 const RAW_H1_DATE_LEN: usize = 29;
 
 #[derive(Clone, Copy)]
@@ -3861,7 +3974,14 @@ async fn wait_raw_response_ready_or_closed<I>(
 where
   I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
+  // `peer_closed` is the REPORTED result (true => the serve loop aborts the
+  // in-flight response); `stop_poll` only avoids re-polling once the FIN is
+  // seen. For httpAllowHalfOpen these diverge: the FIN is observed (stop_poll)
+  // but NOT reported and NOT cancelled, so the handler's response is still
+  // written and the loop goes on to read the next pipelined request.
+  let allow_half_open = record.allow_half_open();
   let mut peer_closed = false;
+  let mut stop_poll = false;
   poll_fn(|cx| {
     {
       let mut inner = record.0.borrow_mut();
@@ -3871,11 +3991,14 @@ where
       inner.response_ready_waker = Some(cx.waker().clone());
     }
 
-    if !peer_closed {
+    if !stop_poll {
       match conn.poll_peer_closed_with(cx, scratch) {
         Poll::Ready(Ok(true)) => {
-          record.cancel_request();
-          peer_closed = true;
+          stop_poll = true;
+          if !allow_half_open {
+            record.cancel_request();
+            peer_closed = true;
+          }
         }
         Poll::Ready(Ok(false)) | Poll::Pending => {}
         Poll::Ready(Err(error)) => return Poll::Ready(Err(error.into())),
@@ -4376,14 +4499,24 @@ where
         let Some(conn) = conn.as_mut() else {
           return Poll::Ready(Err(raw_h1_connection_closed()));
         };
-        match conn.poll_peer_closed(cx) {
-          Poll::Ready(Ok(true)) => {
-            return Poll::Ready(Ok::<_, HttpNextError>(
-              RawResponseBodyEvent::PeerClosed,
-            ));
+        // While the request body is still being read, that read owns the
+        // connection's read side. Polling peer-close here registers our waker
+        // over the body read's, so the body's own terminating bytes wake the
+        // response writer (which ignores them) and never the body read -- req
+        // 'end' never fires (e.g. a handler that res.write()s on req 'data' and
+        // res.end()s on req 'end'; see test-async-hooks-http-agent-destroy).
+        // The streaming body read detects peer close itself, so only poll it
+        // here once the request body has been fully consumed.
+        if finish.record.request_body_taken_full() {
+          match conn.poll_peer_closed(cx) {
+            Poll::Ready(Ok(true)) => {
+              return Poll::Ready(Ok::<_, HttpNextError>(
+                RawResponseBodyEvent::PeerClosed,
+              ));
+            }
+            Poll::Ready(Ok(false)) | Poll::Pending => {}
+            Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
           }
-          Poll::Ready(Ok(false)) | Poll::Pending => {}
-          Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
         }
       }
       Poll::Ready(Ok::<_, HttpNextError>(RawResponseBodyEvent::Frame(ready!(
@@ -4516,12 +4649,22 @@ async fn serve_http11_raw_inner(
   // elapse we close the connection like Node does, which also lets a graceful
   // `server.close()` drain idle keep-alive connections instead of hanging.
   let mut first_request = true;
+  // node:http only: set when a handler aborted its response (res.destroy /
+  // socket.destroy, or an auto-abort on an already-destroyed socket) on a
+  // keep-alive connection. Node dispatches all already-received pipelined
+  // requests before the connection closes, so we loop back to drain a buffered
+  // request and close only if nothing more is immediately available.
+  let mut drain_pipelined_after_abort = false;
   loop {
     let head_timeout_ms = if first_request {
       node_http.headers_timeout_ms
     } else {
       node_http.keep_alive_timeout_ms
     };
+    // Whether this head wait is the idle keep-alive wait between requests (vs the
+    // first-request headers wait). Only the keep-alive idle timeout fires the
+    // connection's 'timeout' event (server.keepAliveTimeout).
+    let keep_alive_wait = !first_request;
     first_request = false;
     // node:http only: drain an already-buffered (pipelined) request first,
     // without honoring the cancel/timeout. A graceful `server.close()` cancels
@@ -4543,6 +4686,15 @@ async fn serve_http11_raw_inner(
     } else {
       None
     };
+    // A prior handler aborted its response: drain an already-buffered pipelined
+    // request if one is here, otherwise the connection closes now (rather than
+    // idling on the keep-alive wait).
+    if drain_pipelined_after_abort {
+      drain_pipelined_after_abort = false;
+      if immediate.is_none() {
+        return Ok(());
+      }
+    }
     let next_request = if let Some(result) = immediate {
       Ok(result)
     } else {
@@ -4585,6 +4737,27 @@ async fn serve_http11_raw_inner(
           match tokio::time::timeout(Duration::from_millis(ms), wait).await {
             Ok(result) => result,
             Err(_elapsed) => {
+              // node:http: keepAliveTimeout governs only the IDLE wait between
+              // requests. If header bytes for the next request started arriving
+              // during that window, Node switches to the (longer) headersTimeout
+              // rather than closing. Loop back so the next iteration recomputes
+              // `partial` and waits with headersTimeout. (`is_request_timeout`
+              // is false only for the idle keep-alive/headers head wait.)
+              if node_http.enabled
+                && !is_request_timeout
+                && !conn.buffered_is_empty()
+              {
+                continue;
+              }
+              // node:http: an idle keep-alive timeout fires the connection's
+              // 'timeout' event before the connection is closed (Node's
+              // server.keepAliveTimeout). The JS handler may run user code
+              // (e.g. socket.end()/server.close()); we still close below.
+              if node_http.enabled && keep_alive_wait && !is_request_timeout {
+                // SAFETY: the isolate stays valid while the serve future
+                // (holding this callback) is running.
+                unsafe { callback.dispatch_connection_timeout(conn_id) };
+              }
               let mut io = conn.into_inner();
               if is_request_timeout {
                 io.write_all(
@@ -5051,8 +5224,32 @@ async fn serve_http11_raw_inner(
       parsed.request_size,
     );
     let mut record_cancel_guard = RawHttpRecordCancelGuard::new(record.clone());
+    // node:http only: publish this connection for in-handler socket reclaim
+    // (res.socket/req.socket -> a real OS socket, e.g. passed to a child via
+    // IPC). Zero-cost on the Deno.serve hot path; node:http pays two cheap
+    // thread-local writes per bodiless request. Valid only for the synchronous
+    // dispatch below (see RawReclaimSlot).
+    if node_http.enabled {
+      RAW_RECLAIM_SLOT.with(|s| {
+        s.set(Some(RawReclaimSlot {
+          conn: &mut conn as *mut _,
+          record: Rc::as_ptr(&record),
+        }))
+      });
+      RAW_RECLAIM_DONE.with(|d| d.set(false));
+    }
     let direct_response =
       dispatch_raw_to_native_response(&callback, record.clone(), conn_id);
+    if node_http.enabled {
+      RAW_RECLAIM_SLOT.with(|s| s.set(None));
+      if RAW_RECLAIM_DONE.with(|d| d.get()) {
+        // The handler reclaimed the underlying socket; the serve loop no longer
+        // owns the connection (the reclaim op moved `conn` out by value).
+        std::mem::forget(conn);
+        record_cancel_guard.disarm();
+        return Ok(());
+      }
+    }
     if let Some(response) = direct_response {
       let (response_parts, body) = raw_response_from_direct_response(response);
       write_h1_flat_response(
@@ -5085,6 +5282,15 @@ async fn serve_http11_raw_inner(
     }
     let Some((response_parts, body)) = record.clone().into_flat_response()
     else {
+      // node:http: the handler aborted this response (res.destroy /
+      // socket.destroy / auto-abort on a destroyed socket). Loop back to drain
+      // any already-buffered pipelined request before closing -- Node dispatches
+      // all received pipelined requests even after the socket is destroyed.
+      if node_http.enabled && keep_alive {
+        record_cancel_guard.disarm();
+        drain_pipelined_after_abort = true;
+        continue;
+      }
       return Ok(());
     };
     // node:http can force the connection closed for this response (e.g. a

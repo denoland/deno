@@ -565,7 +565,14 @@ function nativeStartStream(msg: any) {
     msg[kNeedDrain] = false;
     (globalThis as any).process.nextTick(() => msg.emit("drain"));
   }
-  const rid = internals.resourceForReadableStream(stream, undefined);
+  // noAggregate: preserve per-write buffer boundaries so each res.write becomes
+  // its own HTTP chunk on the wire, matching Node's chunked framing.
+  const rid = internals.resourceForReadableStream(
+    stream,
+    undefined,
+    undefined,
+    true,
+  );
   PromisePrototypeThen(
     op_http_set_response_body_resource(external, rid, true, status),
     () => op_http_close_after_finish(external),
@@ -1145,9 +1152,16 @@ ObjectDefineProperties(
         // Fully uncork connection on end().
         this.socket._writableState.corked = 1;
         this.socket.uncork();
+      } else {
+        // No socket yet: fully uncork the buffered output. Only in the no-socket
+        // case -- Node's uncork() decrements kCorked even with a socket, but
+        // Deno's only does so without one (see cork()/uncork() below), so running
+        // this with a socket would leave kCorked stuck at 1 and make
+        // res.writableCorked disagree with res.socket.writableCorked
+        // (test-http-response-cork).
+        this[kCorked] = 1;
+        this.uncork();
       }
-      this[kCorked] = 1;
-      this.uncork();
 
       this.finished = true;
 
@@ -1275,6 +1289,25 @@ ObjectDefineProperties(
     },
 
     _send(data: any, encoding?: string | null, callback?: () => void) {
+      // Native fast path: an explicit _send() is a manual flush (e.g. test code
+      // forcing packet boundaries via res._send('')). Promote to a streaming
+      // response so the headers commit now with streaming framing (chunked for
+      // HTTP/1.1, close-delimited for HTTP/1.0) instead of coalescing into a
+      // flat Content-Length body. The native write()+end() hot path commits via
+      // nativeEnd/nativeEndStream and never reaches here, so this only affects
+      // code that calls _send() directly.
+      if (this[kNativeStream] || this[kNativeExternal]) {
+        if (this[kNativeExternal]) {
+          nativeStartStream(this);
+        }
+        if (data !== undefined && data !== null && data.length !== 0) {
+          this[kNativeStream].enqueue(nativeChunkToBuffer(data, encoding));
+        }
+        if (typeof callback === "function") {
+          (globalThis as any).process.nextTick(callback);
+        }
+        return true;
+      }
       // This is a shameful hack to get the headers and first body chunk onto
       // the same packet. Future versions of Node are going to take care of
       // this at a lower level and in a more general way.
