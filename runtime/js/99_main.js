@@ -47,8 +47,10 @@ const {
   ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  Promise,
   PromisePrototypeThen,
   PromiseResolve,
+  queueMicrotask,
   ReflectApply,
   StringPrototypePadEnd,
   Symbol,
@@ -292,7 +294,11 @@ function dispatchWorkerMessage(data) {
   const msgEvent = new event.MessageEvent("message", {
     cancelable: false,
     data: message,
-    ports: ArrayPrototypeFilter(
+    // Skip the transferables filter for the common no-transferables case.
+    // Passing `undefined` lets the MessageEvent constructor take its cheap
+    // `ports == null` branch (a single frozen empty array, no iterator
+    // validation) instead of allocating a filtered array per message.
+    ports: transferables.length === 0 ? undefined : ArrayPrototypeFilter(
       transferables,
       (t) => ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
     ),
@@ -337,13 +343,22 @@ async function pollForMessages() {
     const data = await recvMessage;
     if (data === null) break;
     dispatchWorkerMessage(data);
-    // Sync drain: process a limited batch of already-queued messages
-    // without going through the async op machinery. The batch limit
-    // prevents starvation of the event loop when message handlers
-    // synchronously post new messages (e.g. ping-pong patterns).
+    // Drain messages already queued on the host side instead of taking the
+    // async op + Promise path for each. The whole burst is processed within
+    // this event-loop turn; the batch limit prevents starving the event loop
+    // under a sustained flood.
     for (let i = 0; i < 1000 && !isClosing; i++) {
       const syncData = op_worker_recv_message_sync();
       if (syncData === null) break;
+      // Each message dispatch is its own task. Yield a microtask before
+      // delivering this already-dequeued message so a handler that re-armed
+      // itself in a microtask after the previous dispatch (e.g. reassigning
+      // `onmessage` inside a `.then`) is installed first -- otherwise the
+      // message reaches the stale handler and is lost. A synchronous
+      // checkpoint can't help: V8 won't run microtasks reentrantly while we
+      // are already inside one.
+      await new Promise((resolve) => queueMicrotask(() => resolve()));
+      if (isClosing) break;
       dispatchWorkerMessage(syncData);
     }
   }

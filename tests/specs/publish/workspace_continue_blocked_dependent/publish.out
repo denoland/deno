@@ -1,0 +1,17 @@
+Publishing a workspace...
+[UNORDERED_START]
+Check [WILDLINE]
+Check [WILDLINE]
+[UNORDERED_END]
+Checking for slow types in the public API...
+[UNORDERED_START]
+Check [WILDLINE]
+Check [WILDLINE]
+[UNORDERED_END]
+Publishing @foo/publish-fails@1.0.0 ...
+Warning Skipped publishing 1 package(s) that depended on a package that failed to publish:
+  @foo/dependent@1.0.0
+error: Failed to publish @foo/publish-fails@1.0.0
+
+Caused by:
+    Simulated publish failure

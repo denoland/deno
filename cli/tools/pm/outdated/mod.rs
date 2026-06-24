@@ -706,7 +706,7 @@ async fn dep_manager_args(
   })
 }
 
-mod filter {
+pub(crate) mod filter {
   use deno_core::anyhow::Context;
   use deno_core::anyhow::anyhow;
   use deno_core::error::AnyError;

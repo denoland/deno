@@ -178,6 +178,10 @@ pub struct CompileFlags {
   /// Bundle the entrypoint with esbuild before embedding it, instead of
   /// shipping the entire node_modules tree. Experimental.
   pub bundle: bool,
+  /// Stable identity for the compiled app. Determines where origin-bound
+  /// storage (default `Deno.openKv()`, `localStorage`, `caches`) is persisted.
+  /// Defaults to the output file name when not set.
+  pub app_name: Option<String>,
   /// Minify the bundle. Only meaningful with `bundle: true`.
   pub minify: bool,
   /// Prune the embedded managed npm snapshot to only those packages reachable
@@ -346,6 +350,7 @@ pub struct FmtFlags {
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
+  pub no_editorconfig: bool,
   pub watch: Option<WatchFlags>,
   pub unstable_component: bool,
   pub unstable_sql: bool,
@@ -373,6 +378,15 @@ pub struct InitFlags {
 pub struct InfoFlags {
   pub json: bool,
   pub file: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ListFlags {
+  pub recursive: bool,
+  pub depth: u16,
+  pub prod: bool,
+  pub dev: bool,
+  pub filters: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -785,6 +799,7 @@ pub enum DenoSubcommand {
   Fmt(FmtFlags),
   Init(InitFlags),
   Info(InfoFlags),
+  List(ListFlags),
   Install(InstallFlags),
   JSONReference(JSONReferenceFlags),
   Jupyter(JupyterFlags),

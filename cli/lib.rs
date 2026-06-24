@@ -228,6 +228,9 @@ async fn run_subcommand(
     DenoSubcommand::Info(info_flags) => spawn_subcommand(async {
       tools::info::info(Arc::new(flags), info_flags).await
     }),
+    DenoSubcommand::List(list_flags) => spawn_subcommand(async {
+      tools::pm::list(Arc::new(flags), list_flags).await
+    }),
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(Arc::new(flags), install_flags).await
     }),
@@ -668,7 +671,7 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 }
 
 fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
-  let error_string = match js_error_downcast_ref(&error) {
+  let mut error_string = match js_error_downcast_ref(&error) {
     Some(e) => {
       let initial_cwd = initial_cwd
         .and_then(|cwd| deno_path_util::url_from_directory_path(cwd).ok());
@@ -676,6 +679,17 @@ fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
     }
     None => format!("{error:?}"),
   };
+
+  // If this looks like a workspace/npm resolution failure and a
+  // pnpm-workspace.yaml is nearby, convert it into the equivalent deno.json
+  // fields and tell the user to run the command again, rather than leaving them
+  // with the misleading "run deno install" hint baked into the error.
+  if let Some(hint) = util::pnpm_workspace::maybe_auto_migrate_pnpm_workspace(
+    &error_string,
+    initial_cwd,
+  ) {
+    error_string.push_str(&hint);
+  }
 
   exit_with_message(&error_string, 1);
 }

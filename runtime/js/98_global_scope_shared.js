@@ -81,6 +81,7 @@ const {
   QuotaExceededError,
 } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const loadLocks = core.createLazyLoader("ext:deno_web/locks.js");
 // node:process is loaded lazily so its closure isn't pulled into the snapshot
 // build; the `process` global is installed via `propWritableLazyLoaded` below.
 const lazyProcessMod = core.createLazyLoader("node:process");
@@ -515,6 +516,14 @@ const windowOrWorkerGlobalScope = {
   GPUValidationError: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUValidationError,
     loadWebGPU,
+  ),
+  Lock: core.propNonEnumerableLazyLoaded(
+    (locks) => locks.Lock,
+    loadLocks,
+  ),
+  LockManager: core.propNonEnumerableLazyLoaded(
+    (locks) => locks.LockManager,
+    loadLocks,
   ),
 };
 

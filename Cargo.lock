@@ -2100,6 +2100,7 @@ dependencies = [
  "which 8.0.0",
  "windows-sys 0.59.0",
  "winres",
+ "yaml_parser",
  "zip",
  "zstd",
 ]
@@ -2763,8 +2764,10 @@ dependencies = [
  "rand 0.8.5",
  "rusqlite",
  "serde",
+ "serde_json",
  "sys_traits",
  "thiserror 2.0.12",
+ "tokio",
  "url",
 ]
 
@@ -6437,9 +6440,9 @@ dependencies = [
 
 [[package]]
 name = "laufey"
-version = "0.3.2"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b9829cff71e28a741d010b22da79ad04042370bd988a6feacf0893b0d196807"
+checksum = "872324bd361ae02376a671c546ebed814e008e63d433e5dbed8d0d9f37168564"
 dependencies = [
  "bindgen 0.72.1",
  "tokio",
@@ -6682,9 +6685,9 @@ dependencies = [
 
 [[package]]
 name = "libsui"
-version = "0.15.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6af25036f57ea101cca401af0769d705cb5380181f9b1fe674c0e890a194eb03"
+checksum = "3a0350f185d562954a521d1fcaffd621559ea0b707143ef53b599f1e665b97b5"
 dependencies = [
  "editpe",
  "image",

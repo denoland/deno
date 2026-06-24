@@ -20,6 +20,7 @@ const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const globalInterfaces = core.loadExtScript(
   "ext:deno_web/04_global_interfaces.js",
 );
+const loadLocks = core.createLazyLoader("ext:deno_web/locks.js");
 import {
   NavigatorUAData,
   navigatorUAData,
@@ -171,6 +172,15 @@ ObjectDefineProperties(Navigator.prototype, {
     get() {
       webidl.assertBranded(this, NavigatorPrototype);
       return [language()];
+    },
+  },
+  locks: {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, NavigatorPrototype);
+      return loadLocks().locks;
     },
   },
   platform: {

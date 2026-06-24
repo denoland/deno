@@ -681,6 +681,55 @@ Deno.test(async function testDeriveKey() {
   assertEquals(algorithm.length, 512);
 });
 
+Deno.test(async function testDeriveKeyAesOcb() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const rawKey = crypto.getRandomValues(new Uint8Array(16));
+  const key = await subtle.importKey(
+    "raw",
+    rawKey,
+    "PBKDF2",
+    false,
+    ["deriveKey"],
+  );
+
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const derivedKey = await subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: 1000,
+      hash: "SHA-256",
+    },
+    key,
+    { name: "AES-OCB", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+
+  assert(derivedKey instanceof CryptoKey);
+  assertEquals(derivedKey.type, "secret");
+  assertEquals(derivedKey.extractable, false);
+  assertEquals(derivedKey.usages, ["encrypt", "decrypt"]);
+  const algorithm = derivedKey.algorithm as AesKeyAlgorithm;
+  assertEquals(algorithm.name, "AES-OCB");
+  assertEquals(algorithm.length, 256);
+
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode("Hello, world!");
+  const encrypted = await subtle.encrypt(
+    { name: "AES-OCB", iv },
+    derivedKey,
+    plaintext,
+  );
+  const decrypted = await subtle.decrypt(
+    { name: "AES-OCB", iv },
+    derivedKey,
+    encrypted,
+  );
+  assertEquals(new Uint8Array(decrypted), plaintext);
+});
+
 Deno.test(async function testAesCbcEncryptDecrypt() {
   const key = await crypto.subtle.generateKey(
     { name: "AES-CBC", length: 128 },
@@ -4114,6 +4163,10 @@ Deno.test(function subtleCryptoSupportsAdditionalAlgorithm() {
   // deriveKey with target algorithm (the second-overload form).
   assert(supports("deriveKey", "HKDF", {
     name: "AES-GCM",
+    length: 256,
+  }));
+  assert(supports("deriveKey", "PBKDF2", {
+    name: "AES-OCB",
     length: 256,
   }));
   assert(supports("deriveKey", "PBKDF2", {
