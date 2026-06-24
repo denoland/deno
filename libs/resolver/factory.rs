@@ -1368,6 +1368,13 @@ pub fn npm_overrides_from_workspace(
 
 /// Builds the per-package trust baseline for the `no-downgrade` policy from
 /// the lockfile: the highest trust level recorded for each package name.
+///
+/// This reads the already-discovered lockfile (`maybe_lockfile_sync`). The
+/// version resolver is constructed after lockfile discovery, so the baseline
+/// is populated. If that ordering were ever inverted the baseline would be
+/// empty, which fails open: the policy becomes a no-op (it can never wrongly
+/// reject, only fail to protect), so a missing lockfile is treated the same as
+/// "no recorded trust".
 fn locked_trust_from_lockfile<TSys: crate::lockfile::LockfileSys>(
   lockfile: Option<&LockfileLockRc<TSys>>,
 ) -> std::collections::HashMap<

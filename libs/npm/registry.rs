@@ -260,7 +260,35 @@ pub struct NpmPackageVersionInfo {
   /// became installable. This is the strongest publishing-trust signal.
   /// See https://docs.npmjs.com/staged-publishing/
   #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub approver: Option<Value>,
+  pub approver: Option<Present>,
+}
+
+/// A presence marker for a registry field whose mere existence is the signal
+/// we care about (`approver`, `_npmUser.trustedPublisher`,
+/// `dist.attestations.provenance`). The full packument carries large objects
+/// here, but [`NpmPackageVersionInfo::trust_level`] only checks whether they
+/// are present, so this discards the contents on deserialize and re-serializes
+/// compactly as `true`. That keeps the cached packument small even though
+/// `min-release-age` makes Deno fetch the full packument by default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Present;
+
+impl Serialize for Present {
+  fn serialize<S: serde::Serializer>(
+    &self,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error> {
+    serializer.serialize_bool(true)
+  }
+}
+
+impl<'de> Deserialize<'de> for Present {
+  fn deserialize<D: serde::Deserializer<'de>>(
+    deserializer: D,
+  ) -> Result<Self, D::Error> {
+    serde::de::IgnoredAny::deserialize(deserializer)?;
+    Ok(Present)
+  }
 }
 
 impl NpmPackageVersionInfo {
@@ -497,11 +525,11 @@ pub struct NpmPackageVersionDistInfo {
   pub attestations: Option<NpmAttestations>,
 }
 
-/// The `_npmUser` object from the full packument.
+/// The `_npmUser` object from the full packument. Only the presence of
+/// `trustedPublisher` is a trust signal; the `name` and other fields are
+/// dropped on deserialize to keep the cached packument small.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmUser {
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub name: Option<String>,
   /// Present when the version was published via npm trusted publishing
   /// (OIDC). Its contents identify the CI provider and workflow.
   #[serde(
@@ -509,7 +537,7 @@ pub struct NpmUser {
     rename = "trustedPublisher",
     skip_serializing_if = "Option::is_none"
   )]
-  pub trusted_publisher: Option<Value>,
+  pub trusted_publisher: Option<Present>,
 }
 
 /// The `dist.attestations` object from the full packument.
@@ -518,7 +546,7 @@ pub struct NpmAttestations {
   /// SLSA provenance attestation linking the package to the source commit and
   /// build. Present when the version was published with `--provenance`.
   #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub provenance: Option<Value>,
+  pub provenance: Option<Present>,
 }
 
 /// The publishing-trust level of a package version, derived from registry
@@ -1262,6 +1290,40 @@ mod test {
     assert!(provenance < both);
     assert!(trusted < both);
     assert!(both < staged);
+  }
+
+  #[test]
+  fn trust_signals_serialize_compactly() {
+    // The full packument carries large objects in `approver`,
+    // `_npmUser.trustedPublisher` and `dist.attestations.provenance`, but we
+    // only care that they exist. Re-serializing (as the registry cache does)
+    // must collapse them to compact markers and still preserve the trust
+    // level, so caching the full packument by default stays cheap.
+    let info: NpmPackageVersionInfo = serde_json::from_str(
+      r#"{
+        "version": "1.0.0",
+        "_npmUser": { "name": "ci", "trustedPublisher": { "id": "github", "oidcConfigId": "abc" } },
+        "dist": { "tarball": "t", "attestations": { "url": "https://example/att", "provenance": { "predicateType": "https://slsa.dev/provenance/v1" } } }
+      }"#,
+    )
+    .unwrap();
+
+    let serialized = serde_json::to_string(&info).unwrap();
+    assert!(
+      serialized.contains(r#""trustedPublisher":true"#),
+      "{serialized}"
+    );
+    assert!(serialized.contains(r#""provenance":true"#), "{serialized}");
+    // none of the dropped sub-fields survive
+    assert!(!serialized.contains("oidcConfigId"), "{serialized}");
+    assert!(!serialized.contains("predicateType"), "{serialized}");
+    assert!(!serialized.contains("\"name\""), "{serialized}");
+
+    // and the trust level round-trips through the slimmed form
+    let reparsed: NpmPackageVersionInfo =
+      serde_json::from_str(&serialized).unwrap();
+    assert_eq!(reparsed.trust_level(), info.trust_level());
+    assert_eq!(reparsed.trust_level().rank(), 3);
   }
 
   #[test]

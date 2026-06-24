@@ -82,6 +82,14 @@ pub enum NpmPackageVersionResolutionError {
     version_req: VersionReq,
     newest_dependency_date: Option<NewestDependencyDate>,
   },
+  #[class(type)]
+  #[error(
+    "Refused to resolve npm package '{package_name}' matching '{version_req}' under the 'no-downgrade' trust policy.\n\nEvery matching version has a weaker publishing-trust level than what is recorded in the lockfile for this package. This usually means a new release was published with a less trusted method (for example a plain token publish instead of trusted publishing or provenance).\n\nReview the release, then either update the lockfile entry once you trust it or set 'trust-policy=off' in .npmrc to disable this check."
+  )]
+  TrustPolicyDowngrade {
+    package_name: StackString,
+    version_req: VersionReq,
+  },
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -363,20 +371,25 @@ impl<'a> NpmPackageVersionResolver<'a> {
     error_version_req: &VersionReq,
   ) -> Result<&'a NpmPackageVersionInfo, NpmPackageVersionResolutionError> {
     let mut found_matching_version = false;
+    // a version matched the req and date but was rejected solely by the trust
+    // policy, so we can report that as the reason rather than a generic miss
+    let mut trust_rejected_match = false;
     let mut maybe_best_version: Option<&'a NpmPackageVersionInfo> = None;
     for version_info in self.info.versions.values() {
       let version = &version_info.version;
       if self.version_req_satisfies(matching_version_req, version)? {
         found_matching_version = true;
-        if self.matches_newest_dependency_date(version)
-          && self.matches_trust_policy(version_info)
-        {
-          let is_best_version = maybe_best_version
-            .as_ref()
-            .map(|best_version| best_version.version.cmp(version).is_lt())
-            .unwrap_or(true);
-          if is_best_version {
-            maybe_best_version = Some(version_info);
+        if self.matches_newest_dependency_date(version) {
+          if self.matches_trust_policy(version_info) {
+            let is_best_version = maybe_best_version
+              .as_ref()
+              .map(|best_version| best_version.version.cmp(version).is_lt())
+              .unwrap_or(true);
+            if is_best_version {
+              maybe_best_version = Some(version_info);
+            }
+          } else {
+            trust_rejected_match = true;
           }
         }
       }
@@ -384,6 +397,14 @@ impl<'a> NpmPackageVersionResolver<'a> {
 
     match maybe_best_version {
       Some(v) => Ok(v),
+      // the only thing standing between us and a match was the trust policy:
+      // give a targeted error instead of a confusing "version not found"
+      None if trust_rejected_match => {
+        Err(NpmPackageVersionResolutionError::TrustPolicyDowngrade {
+          package_name: self.info.name.clone(),
+          version_req: error_version_req.clone(),
+        })
+      }
       // Although it seems like we could make this smart by fetching the latest
       // information for this package here, we really need a full restart. There
       // could be very interesting bugs that occur if this package's version was
@@ -710,6 +731,27 @@ mod test {
         .version
         .to_string(),
       "1.1.0"
+    );
+
+    // when every matching version is a downgrade, resolution fails with the
+    // targeted trust error rather than a generic "version not found".
+    let mut only_downgrade = package_info.clone();
+    only_downgrade
+      .versions
+      .remove(&Version::parse_from_npm("1.0.0").unwrap());
+    only_downgrade
+      .versions
+      .remove(&Version::parse_from_npm("1.2.0").unwrap());
+    let vr = resolver.get_for_package(&only_downgrade);
+    let err = vr
+      .get_resolved_package_version_and_info(&package_req.version_req)
+      .unwrap_err();
+    assert!(
+      matches!(
+        err,
+        NpmPackageVersionResolutionError::TrustPolicyDowngrade { .. }
+      ),
+      "expected TrustPolicyDowngrade, got {err:?}"
     );
   }
 
