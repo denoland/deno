@@ -890,6 +890,16 @@
           "default": true,
           "type": "boolean"
         },
+        "sortNamedImports": {
+          "description": "How to sort named imports within an import statement. \"caseInsensitive\" (the default) sorts ignoring case, \"caseSensitive\" sorts with uppercase before lowercase, and \"maintain\" preserves the source order.",
+          "default": "caseInsensitive",
+          "enum": ["maintain", "caseSensitive", "caseInsensitive"]
+        },
+        "sortNamedExports": {
+          "description": "How to sort named exports within an export statement. \"caseInsensitive\" (the default) sorts ignoring case, \"caseSensitive\" sorts with uppercase before lowercase, and \"maintain\" preserves the source order.",
+          "default": "caseInsensitive",
+          "enum": ["maintain", "caseSensitive", "caseInsensitive"]
+        },
         "useEditorConfig": {
           "description": "Whether `deno fmt` reads `.editorconfig` files to fill in formatting options that are not otherwise set. Defaults to true.",
           "default": true,
