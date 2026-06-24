@@ -1756,6 +1756,16 @@ Module._resolveFilename = function (
     return request;
   }
 
+  if (StringPrototypeStartsWith(request, "file://")) {
+    const filename = op_require_as_file_path(request);
+    if (filename) {
+      const resolved = tryFile(filename, isMain);
+      if (resolved) {
+        return resolved;
+      }
+    }
+  }
+
   if (StringPrototypeStartsWith(request, "node:")) {
     const id = StringPrototypeSlice(request, 5);
     if (id in nativeModuleExports) {
@@ -3345,6 +3355,7 @@ function initialize(args) {
     nodeDebug,
     nodeClusterUniqueId,
     nodeClusterSchedPolicy,
+    isNpmBinary = false,
     warmup = false,
     moduleSpecifier = null,
   } = args;
@@ -3396,6 +3407,15 @@ function initialize(args) {
       globalThis.console,
       nativeModuleExports["process"],
     );
+    if (isNpmBinary && moduleSpecifier !== null) {
+      ObjectDefineProperty(globalThis, "require", {
+        __proto__: null,
+        configurable: true,
+        enumerable: false,
+        value: createRequire(moduleSpecifier),
+        writable: true,
+      });
+    }
   } else {
     internals.__bootstrapNodeProcess(
       undefined,

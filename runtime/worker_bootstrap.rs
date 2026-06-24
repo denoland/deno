@@ -107,6 +107,7 @@ pub struct BootstrapOptions {
   /// If this is a `deno compile`-ed executable.
   pub is_standalone: bool,
   pub has_node_modules_dir: bool,
+  pub is_npm_binary: bool,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
   pub node_cluster_unique_id: Option<String>,
@@ -150,6 +151,7 @@ impl Default for BootstrapOptions {
       is_standalone: false,
       auto_serve: false,
       has_node_modules_dir: false,
+      is_npm_binary: false,
       argv0: None,
       node_debug: None,
       node_cluster_unique_id: None,
@@ -217,6 +219,8 @@ struct BootstrapV8<'a>(
   Option<&'a str>,
   // disable offscreen canvas
   bool,
+  // is npm binary
+  bool,
 );
 
 impl BootstrapOptions {
@@ -253,6 +257,7 @@ impl BootstrapOptions {
       self.node_cluster_unique_id.as_deref(),
       self.node_cluster_sched_policy.as_deref(),
       self.disable_offscreen_canvas,
+      self.is_npm_binary,
     );
 
     bootstrap.serialize(ser).unwrap()
