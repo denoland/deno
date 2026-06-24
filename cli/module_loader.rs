@@ -1514,134 +1514,133 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let inner = self.0.clone();
     let is_synchronous = options.is_synchronous;
 
-    let future = async move {
-      let graph_container = &inner.graph_container;
-      let module_load_preparer = &inner.shared.module_load_preparer;
-      let permissions = if options.is_dynamic_import {
-        &inner.permissions
-      } else {
-        &inner.parent_permissions
-      };
+    let future =
+      async move {
+        let graph_container = &inner.graph_container;
+        let module_load_preparer = &inner.shared.module_load_preparer;
+        let permissions = if options.is_dynamic_import {
+          &inner.permissions
+        } else {
+          &inner.parent_permissions
+        };
 
-      if options.is_dynamic_import {
-        // This doesn't acquire a graph update permit because that will
-        // clone the graph which is a bit slow.
-        let mut graph = graph_container.graph();
-        // When the specifier is already in the graph then it means it
-        // was previously loaded, so we can skip that and only check if
-        // this part of the graph is valid.
-        if !graph.roots.is_empty() && graph.get(&specifier).is_some() {
-          let did_reload = inner
-            .maybe_reload_dynamic(&graph, &specifier, permissions)
+        if options.is_dynamic_import {
+          // This doesn't acquire a graph update permit because that will
+          // clone the graph which is a bit slow.
+          let mut graph = graph_container.graph();
+          // When the specifier is already in the graph then it means it
+          // was previously loaded, so we can skip that and only check if
+          // this part of the graph is valid.
+          if !graph.roots.is_empty() && graph.get(&specifier).is_some() {
+            let did_reload = inner
+              .maybe_reload_dynamic(&graph, &specifier, permissions)
+              .await
+              .map_err(JsErrorBox::from_err)?;
+            if did_reload {
+              graph = inner.graph_container.graph();
+            }
+
+            log::debug!("Skipping prepare module load.");
+            // roots are already validated so we can skip those
+            if did_reload || !graph.roots.contains(&specifier) {
+              module_load_preparer.graph_roots_valid(
+                &graph,
+                &[specifier],
+                false,
+                false,
+              )?;
+            }
+            return Ok(());
+          }
+        }
+
+        let is_dynamic = options.is_dynamic_import || inner.is_worker; // consider workers as dynamic for permissions
+        let lib = inner.lib;
+        let mut update_permit = graph_container.acquire_update_permit().await;
+        // For a blob/object-URL worker root, inject the captured blob's content
+        // and media type so the graph builds from the synchronously-captured
+        // bytes even if the object URL has since been revoked. Otherwise fall
+        // back to any caller-provided source code, or to memory_files (used by
+        // `node -e`/`-p` lifecycle eval whose synthetic specifier lives inside
+        // an npm package cwd and would otherwise be treated as an on-disk
+        // npm file by the resolver).
+        let captured_blob = inner.maybe_main_module_blob.as_ref().filter(
+          |(blob_specifier, _)| {
+            maybe_code.is_none() && *blob_specifier == specifier
+          },
+        );
+        let (file_overrides, header_overrides) =
+          if let Some((blob_specifier, blob)) = captured_blob {
+            let bytes = blob.read_all().await;
+            (
+              HashMap::from([(blob_specifier.clone(), Arc::from(bytes))]),
+              HashMap::from([(
+                blob_specifier.clone(),
+                HashMap::from([(
+                  "content-type".to_string(),
+                  blob.media_type.clone(),
+                )]),
+              )]),
+            )
+          } else {
+            let file_overrides = maybe_code
+              .map(|code| Arc::from(code.into_bytes()))
+              .or_else(|| {
+                inner
+                  .shared
+                  .memory_files
+                  .get(&specifier)
+                  .map(|file| file.source)
+              })
+              .map(|source| HashMap::from([(specifier.clone(), source)]))
+              .unwrap_or_default();
+            (file_overrides, HashMap::new())
+          };
+        let specifiers = &[specifier];
+        {
+          let graph = update_permit.graph_mut();
+          module_load_preparer
+            .prepare_module_load(
+              graph,
+              specifiers,
+              PrepareModuleLoadOptions {
+                is_dynamic,
+                lib,
+                permissions: permissions.clone(),
+                ext_overwrite: None,
+                allow_unknown_media_types: false,
+                skip_graph_roots_validation: is_dynamic,
+                file_content_overrides: file_overrides,
+                file_header_overrides: header_overrides,
+              },
+            )
             .await
             .map_err(JsErrorBox::from_err)?;
-          if did_reload {
-            graph = inner.graph_container.graph();
-          }
-
-          log::debug!("Skipping prepare module load.");
-          // roots are already validated so we can skip those
-          if did_reload || !graph.roots.contains(&specifier) {
-            module_load_preparer.graph_roots_valid(
-              &graph,
-              &[specifier],
-              false,
-              false,
-            )?;
-          }
-          return Ok(());
+          graph.prune_types();
+          update_permit.commit();
+          inner.shared.has_js_execution_started_flag.raise();
         }
-      }
 
-      let is_dynamic = options.is_dynamic_import || inner.is_worker; // consider workers as dynamic for permissions
-      let lib = inner.lib;
-      let mut update_permit = graph_container.acquire_update_permit().await;
-      // For a blob/object-URL worker root, inject the captured blob's content
-      // and media type so the graph builds from the synchronously-captured
-      // bytes even if the object URL has since been revoked. Otherwise fall
-      // back to any caller-provided source code, or to memory_files (used by
-      // `node -e`/`-p` lifecycle eval whose synthetic specifier lives inside
-      // an npm package cwd and would otherwise be treated as an on-disk
-      // npm file by the resolver).
-      let captured_blob =
-        inner
-          .maybe_main_module_blob
-          .as_ref()
-          .filter(|(blob_specifier, _)| {
-            maybe_code.is_none() && *blob_specifier == specifier
-          });
-      let (file_overrides, header_overrides) =
-        if let Some((blob_specifier, blob)) = captured_blob {
-          let bytes = blob.read_all().await;
-          (
-            HashMap::from([(blob_specifier.clone(), Arc::from(bytes))]),
-            HashMap::from([(
-              blob_specifier.clone(),
-              HashMap::from([(
-                "content-type".to_string(),
-                blob.media_type.clone(),
-              )]),
-            )]),
-          )
-        } else {
-          let file_overrides = maybe_code
-            .map(|code| Arc::from(code.into_bytes()))
-            .or_else(|| {
-              inner
-                .shared
-                .memory_files
-                .get(&specifier)
-                .map(|file| file.source)
-            })
-            .map(|source| HashMap::from([(specifier.clone(), source)]))
-            .unwrap_or_default();
-          (file_overrides, HashMap::new())
-        };
-      let specifiers = &[specifier];
-      {
-        let graph = update_permit.graph_mut();
-        module_load_preparer
-          .prepare_module_load(
-            graph,
-            specifiers,
-            PrepareModuleLoadOptions {
-              is_dynamic,
-              lib,
-              permissions: permissions.clone(),
-              ext_overwrite: None,
-              allow_unknown_media_types: false,
-              skip_graph_roots_validation: is_dynamic,
-              file_content_overrides: file_overrides,
-              file_header_overrides: header_overrides,
-            },
-          )
-          .await
-          .map_err(JsErrorBox::from_err)?;
-        graph.prune_types();
-        update_permit.commit();
-        inner.shared.has_js_execution_started_flag.raise();
-      }
-
-      if is_dynamic {
-        inner
-          .maybe_reload_dynamic(
+        if is_dynamic {
+          inner
+            .maybe_reload_dynamic(
+              &graph_container.graph(),
+              &specifiers[0],
+              permissions,
+            )
+            .await
+            .map_err(JsErrorBox::from_err)?;
+          // always validate the graph roots because we skipped doing it above
+          module_load_preparer.graph_roots_valid(
             &graph_container.graph(),
-            &specifiers[0],
-            permissions,
-          )
-          .await
-          .map_err(JsErrorBox::from_err)?;
-        // always validate the graph roots because we skipped doing it above
-        module_load_preparer.graph_roots_valid(
-          &graph_container.graph(),
-          specifiers,
-          false,
-          false,
-        )?;
-      }
+            specifiers,
+            false,
+            false,
+          )?;
+        }
 
-      Ok(())
-    };
+        Ok(())
+      };
 
     // when is_synchronous is true, the caller is only polling the future
     // without a tokio runtime, so we need to run it in a new runtime
