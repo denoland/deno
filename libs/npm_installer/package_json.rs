@@ -83,6 +83,23 @@ pub struct TarballUrlPkg {
   pub location: Url,
 }
 
+/// Per-project on-disk location where a tarball downloaded from a URL
+/// dependency in package.json is cached. The file name is derived from the
+/// URL so the installer can find a previously downloaded copy without
+/// re-fetching it, and without rewriting the URL in package.json. The CLI
+/// layer writes the tarball here (gated behind `--allow-import`) and
+/// [`NpmInstallDepsProvider::from_workspace`] reads it back as a local
+/// tarball dep.
+pub fn tarball_url_cache_path(pkg_json_dir: &Path, url: &Url) -> PathBuf {
+  use std::hash::Hasher;
+  let mut hasher = twox_hash::XxHash64::default();
+  hasher.write(url.as_str().as_bytes());
+  pkg_json_dir
+    .join(".deno_tarball_cache")
+    .join("url")
+    .join(format!("{:016x}.tgz", hasher.finish()))
+}
+
 /// A `workspace:<version>` dependency referenced a local workspace member by
 /// name, but the member's version did not satisfy the requested constraint.
 /// Like pnpm, this is a hard error rather than silently linking the member or
@@ -341,15 +358,36 @@ impl NpmInstallDepsProvider {
               }
             }
             PackageJsonDepValue::Tarball(url_str) => {
-              // Tarball URL deps from package.json require --allow-import.
-              // Collect them here; the CLI layer will check permissions
-              // before proceeding with the download.
               if let Ok(url) = Url::parse(url_str) {
-                tarball_pkgs.push(TarballUrlPkg {
-                  alias: alias.clone(),
-                  url,
-                  location: pkg_json.specifier(),
-                });
+                let cached = tarball_url_cache_path(pkg_json.dir_path(), &url);
+                if cached.exists() {
+                  // A previously downloaded copy exists, so install it like
+                  // a local tarball dep: extract it into node_modules and
+                  // resolve its transitive deps, leaving the URL in
+                  // package.json untouched.
+                  local_pkgs.push(InstallLocalPkg {
+                    alias: Some(alias.clone()),
+                    target_dir: cached.clone(),
+                  });
+                  if let Ok(tarball_deps) = read_tarball_dependencies(&cached) {
+                    for (dep_alias, dep_req) in tarball_deps {
+                      pkg_pkgs.push(InstallNpmRemotePkg {
+                        alias: Some(dep_alias),
+                        base_dir: pkg_json.dir_path().to_path_buf(),
+                        req: dep_req,
+                      });
+                    }
+                  }
+                } else {
+                  // Not yet downloaded. Record it so the CLI layer fetches
+                  // it (gated behind --allow-import) before re-running the
+                  // install.
+                  tarball_pkgs.push(TarballUrlPkg {
+                    alias: alias.clone(),
+                    url,
+                    location: pkg_json.specifier(),
+                  });
+                }
               }
             }
             PackageJsonDepValue::Workspace { name, version_req } => {

@@ -753,11 +753,29 @@ pub async fn add(
   .await?;
 
   // Write tarball package entries to the lockfile
-  if !tarball_lockfile_entries.is_empty()
-    && let Some(lockfile) = cli_factory.maybe_lockfile().await?
+  write_tarball_entries_to_lockfile(&cli_factory, &tarball_lockfile_entries)
+    .await?;
+
+  Ok(())
+}
+
+/// Insert tarball package entries into the lockfile (integrity, tarball
+/// source, and resolved transitive dependency ids) and persist it. Shared by
+/// `deno install <tarball>` and the bare `deno install` path that materializes
+/// tarball URL deps from package.json.
+pub async fn write_tarball_entries_to_lockfile(
+  cli_factory: &CliFactory,
+  entries: &[(String, StackString, TarballLockfileInfo)],
+) -> Result<(), AnyError> {
+  if entries.is_empty() {
+    return Ok(());
+  }
+  let Some(lockfile) = cli_factory.maybe_lockfile().await? else {
+    return Ok(());
+  };
   {
     let mut lockfile = lockfile.lock();
-    for (name, version, info) in &tarball_lockfile_entries {
+    for (name, version, info) in entries {
       let serialized_id =
         StackString::from(format!("{}@{}", name, version).as_str());
 
@@ -812,13 +830,9 @@ pub async fn add(
         bin: false,
       });
     }
-    drop(lockfile);
-    // Write the updated lockfile
-    if let Some(lockfile) = cli_factory.maybe_lockfile().await? {
-      lockfile.write_if_changed()?;
-    }
   }
-
+  // Write the updated lockfile
+  lockfile.write_if_changed()?;
   Ok(())
 }
 
@@ -833,7 +847,7 @@ struct SelectedPackage {
 }
 
 #[derive(Clone)]
-struct TarballLockfileInfo {
+pub struct TarballLockfileInfo {
   /// sha512 SRI hash of the tarball bytes
   integrity: String,
   /// The tarball source (file: path or URL)
@@ -859,46 +873,23 @@ enum PackageAndVersion {
   Selected(SelectedPackage),
 }
 
-/// Resolve a tarball specifier by fetching the tarball, extracting
-/// package.json, and returning a SelectedPackage.
-async fn resolve_tarball_package(
-  source: &TarballSource,
-  start_dir: &Path,
-  http_client: Arc<crate::http_util::HttpClientProvider>,
-  permissions: &PermissionsContainer,
-) -> Result<SelectedPackage, AnyError> {
+struct TarballMetadata {
+  name: String,
+  version: String,
+  dependencies: Vec<(String, String)>,
+  optional_dependencies: Vec<(String, String)>,
+}
+
+/// Decompress a tarball, read its `package/package.json`, and return the
+/// package name, version, and dependency entries. The name and version are
+/// validated against path separators and `..` so they can be safely used to
+/// build cache file names.
+fn parse_tarball_metadata(
+  tarball_bytes: &[u8],
+) -> Result<TarballMetadata, AnyError> {
   use std::io::Read;
 
   use flate2::read::GzDecoder;
-
-  // Step 1: Get tarball bytes
-  let tarball_bytes = match source {
-    TarballSource::Local(path) => {
-      let abs_path = if path.is_absolute() {
-        path.clone()
-      } else {
-        start_dir.join(path)
-      };
-      std::fs::read(&abs_path).with_context(|| {
-        format!("Failed to read tarball: {}", abs_path.display())
-      })?
-    }
-    TarballSource::Remote(url) => {
-      // A remote tarball is remote code, so gate the download behind
-      // --allow-import just like any other remote import. check_specifier
-      // mirrors module import permissions, honoring the implicit trusted
-      // hosts (e.g. the npm registry).
-      permissions
-        .check_specifier(url, CheckSpecifierKind::Static)
-        .with_context(|| format!("Cannot download tarball: {url}"))?;
-      log::info!("Downloading {}", url);
-      let client = http_client.get_or_create()?;
-      client
-        .download(url.clone())
-        .await
-        .with_context(|| format!("Failed to download tarball: {url}"))?
-    }
-  };
 
   const MAX_TARBALL_SIZE: u64 = 512 * 1024 * 1024; // 512 MB
 
@@ -910,8 +901,8 @@ async fn resolve_tarball_package(
     );
   }
 
-  // Step 2: Decompress gzip and extract package.json from the tar
-  let decoder = GzDecoder::new(&tarball_bytes[..]);
+  // Decompress gzip and extract package.json from the tar
+  let decoder = GzDecoder::new(tarball_bytes);
   let mut decompressed = Vec::new();
   decoder
     .take(MAX_TARBALL_SIZE)
@@ -948,7 +939,6 @@ async fn resolve_tarball_package(
   let package_json =
     package_json.context("No package.json found in tarball")?;
 
-  // Step 3: Extract name, version, and dependencies
   let name = package_json
     .get("name")
     .and_then(|v| v.as_str())
@@ -996,6 +986,107 @@ async fn resolve_tarball_package(
   let dependencies = extract_dep_entries(&package_json, "dependencies");
   let optional_dependencies =
     extract_dep_entries(&package_json, "optionalDependencies");
+
+  Ok(TarballMetadata {
+    name,
+    version,
+    dependencies,
+    optional_dependencies,
+  })
+}
+
+/// Download a tarball declared as a URL dependency in package.json into the
+/// per-project tarball cache so the installer can extract it like a local
+/// tarball dep. The download is gated behind `--allow-import` via
+/// `check_specifier`, mirroring module import permissions (the implicit
+/// trusted hosts, e.g. the npm registry, are honored). Returns the package
+/// name, version, and lockfile info; the URL in package.json is left
+/// untouched.
+pub async fn download_tarball_url_dep(
+  url: &Url,
+  pkg_json_dir: &Path,
+  http_client: Arc<crate::http_util::HttpClientProvider>,
+  permissions: &PermissionsContainer,
+) -> Result<(String, StackString, TarballLockfileInfo), AnyError> {
+  permissions
+    .check_specifier(url, CheckSpecifierKind::Static)
+    .with_context(|| format!("Cannot download tarball: {url}"))?;
+  log::info!("Downloading {}", url);
+  let tarball_bytes = http_client
+    .get_or_create()?
+    .download(url.clone())
+    .await
+    .with_context(|| format!("Failed to download tarball: {url}"))?;
+
+  let metadata = parse_tarball_metadata(&tarball_bytes)?;
+
+  let cached_path =
+    deno_npm_installer::package_json::tarball_url_cache_path(pkg_json_dir, url);
+  if let Some(parent) = cached_path.parent() {
+    std::fs::create_dir_all(parent)
+      .context("Failed to create tarball cache directory")?;
+  }
+  std::fs::write(&cached_path, &tarball_bytes)
+    .context("Failed to cache tarball")?;
+
+  let integrity =
+    deno_npm_cache::tarball_extract::tarball_sha512_sri(&tarball_bytes);
+
+  Ok((
+    metadata.name,
+    StackString::from(metadata.version.as_str()),
+    TarballLockfileInfo {
+      integrity,
+      tarball_url: url.to_string(),
+      dependencies: metadata.dependencies,
+      optional_dependencies: metadata.optional_dependencies,
+    },
+  ))
+}
+
+/// Resolve a tarball specifier by fetching the tarball, extracting
+/// package.json, and returning a SelectedPackage.
+async fn resolve_tarball_package(
+  source: &TarballSource,
+  start_dir: &Path,
+  http_client: Arc<crate::http_util::HttpClientProvider>,
+  permissions: &PermissionsContainer,
+) -> Result<SelectedPackage, AnyError> {
+  // Step 1: Get tarball bytes
+  let tarball_bytes = match source {
+    TarballSource::Local(path) => {
+      let abs_path = if path.is_absolute() {
+        path.clone()
+      } else {
+        start_dir.join(path)
+      };
+      std::fs::read(&abs_path).with_context(|| {
+        format!("Failed to read tarball: {}", abs_path.display())
+      })?
+    }
+    TarballSource::Remote(url) => {
+      // A remote tarball is remote code, so gate the download behind
+      // --allow-import just like any other remote import. check_specifier
+      // mirrors module import permissions, honoring the implicit trusted
+      // hosts (e.g. the npm registry).
+      permissions
+        .check_specifier(url, CheckSpecifierKind::Static)
+        .with_context(|| format!("Cannot download tarball: {url}"))?;
+      log::info!("Downloading {}", url);
+      let client = http_client.get_or_create()?;
+      client
+        .download(url.clone())
+        .await
+        .with_context(|| format!("Failed to download tarball: {url}"))?
+    }
+  };
+
+  let TarballMetadata {
+    name,
+    version,
+    dependencies,
+    optional_dependencies,
+  } = parse_tarball_metadata(&tarball_bytes)?;
 
   // The tarball is extracted to node_modules by the npm installer's
   // local package handling (it detects .tgz/.tar.gz targets and

@@ -9,7 +9,6 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_npm::NpmPackageId;
 use deno_resolver::workspace::WorkspaceResolver;
-use deno_runtime::deno_permissions::CheckSpecifierKind;
 
 use super::InstallReporter;
 use super::print_install_report;
@@ -159,7 +158,7 @@ async fn install_top_level(
   top_level_flags: InstallTopLevelFlags,
 ) -> Result<(), AnyError> {
   let start_instant = std::time::Instant::now();
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   // surface any errors in the package.json
   factory
     .npm_installer()
@@ -168,24 +167,44 @@ async fn install_top_level(
   let npm_installer = factory.npm_installer().await?;
   npm_installer.ensure_no_pkg_json_dep_errors()?;
 
-  // Tarball URL deps in package.json are remote code, so they must be
-  // permitted by --allow-import just like any other remote import. Routing
-  // through check_specifier mirrors module import permissions, so the
-  // implicit trusted hosts (e.g. the npm registry) are honored.
+  // Tarball URL deps in package.json are remote code. Download each one
+  // (gated behind --allow-import, just like any other remote import) into the
+  // per-project tarball cache so the install can extract it like a local
+  // tarball dep, leaving the URL in package.json untouched.
+  let mut tarball_lockfile_entries = Vec::new();
   let tarball_pkgs = npm_installer.tarball_pkgs();
   if !tarball_pkgs.is_empty() {
     let permissions = factory.root_permissions_container()?;
+    let http_client = factory.http_client_provider().clone();
     for tarball in tarball_pkgs {
-      permissions
-        .check_specifier(&tarball.url, CheckSpecifierKind::Static)
-        .with_context(|| {
-          format!(
-            "Cannot install tarball \"{}\" from package.json",
-            tarball.url
-          )
-        })?;
+      let pkg_json_dir = deno_path_util::url_to_file_path(&tarball.location)
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_default();
+      let entry = crate::tools::pm::download_tarball_url_dep(
+        &tarball.url,
+        &pkg_json_dir,
+        http_client.clone(),
+        permissions,
+      )
+      .await
+      .with_context(|| {
+        format!(
+          "Cannot install tarball \"{}\" from package.json",
+          tarball.url
+        )
+      })?;
+      tarball_lockfile_entries.push(entry);
     }
   }
+
+  // Recreate the factory so the freshly downloaded tarballs are discovered in
+  // the cache and installed as local tarball deps.
+  let factory = if tarball_lockfile_entries.is_empty() {
+    factory
+  } else {
+    CliFactory::from_flags(flags)
+  };
 
   // the actual work
   crate::tools::pm::cache_top_level_deps(
@@ -194,6 +213,14 @@ async fn install_top_level(
     crate::tools::pm::CacheTopLevelDepsOptions {
       lockfile_only: top_level_flags.lockfile_only,
     },
+  )
+  .await?;
+
+  // Record the downloaded tarballs (integrity + resolved transitive dep ids)
+  // in the lockfile now that npm install has resolved their dependencies.
+  crate::tools::pm::write_tarball_entries_to_lockfile(
+    &factory,
+    &tarball_lockfile_entries,
   )
   .await?;
 

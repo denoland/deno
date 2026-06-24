@@ -1,0 +1,6 @@
+{
+  "name": "test-project",
+  "dependencies": {
+    "@denotest/esm-basic": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz"
+  }
+}
