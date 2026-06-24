@@ -970,6 +970,10 @@
       "description": "Enables or disables the use of a local vendor folder as a local cache for remote modules and node_modules folder for npm packages. Alternatively, use the `--vendor` flag or override the config via `--vendor=false`. Requires Deno 1.36.1 or later.",
       "type": "boolean"
     },
+    "jsrDepsInNodeModules": {
+      "description": "Installs `jsr:` dependencies into the `node_modules` directory via JSR's npm compatibility registry (`@jsr/<scope>__<name>`), the same way pnpm and npm handle JSR packages. When enabled Deno also writes a `@jsr:registry` entry to a `.npmrc` file in your project directory so external tooling can resolve these packages; this file is created on install and you may want to commit it (or add it to `.gitignore`). Has no effect unless a `node_modules` directory is in use.",
+      "type": "boolean"
+    },
     "preferPackageJson": {
       "description": "When enabled, `deno add`, `deno install` and `deno remove` manage dependencies in package.json instead of deno.json, creating a package.json if one does not exist. Equivalent to passing `--package-json` to those commands.",
       "type": "boolean"

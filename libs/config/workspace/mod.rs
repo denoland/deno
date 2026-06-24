@@ -1773,6 +1773,15 @@ impl Workspace {
     self.root_deno_json().map(|c| with_root(c))
   }
 
+  /// Whether `jsr:` dependencies should be installed into `node_modules` via
+  /// JSR's npm compatibility registry (the `jsrDepsInNodeModules` config
+  /// option on the root deno.json).
+  pub fn jsr_deps_in_node_modules(&self) -> Option<bool> {
+    self
+      .root_deno_json()
+      .and_then(|c| c.json.jsr_deps_in_node_modules)
+  }
+
   pub fn node_modules_dir(
     &self,
   ) -> Result<Option<NodeModulesDirMode>, deno_json::NodeModulesDirParseError>
