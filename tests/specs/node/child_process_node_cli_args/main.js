@@ -152,6 +152,22 @@ async function testDenoSubcommandPassthrough() {
   console.log("passthrough:", result.stdout);
 }
 
+async function testPermissionPassthrough() {
+  // Regression test for #35441: spawning `deno run <script>` (deno-style args)
+  // without permission flags must still grant the Node-compat child full
+  // permissions, instead of dropping to no permissions and prompting/erroring.
+  const path = require("path");
+  const script = path.join(__dirname, "perm_child.js");
+
+  // No permission flags -> child should be granted -A.
+  const result = await runChild(["run", script]);
+  console.log("run without perms:", result.stdout);
+
+  // Explicit permission flag -> respected, child still has env access.
+  const result2 = await runChild(["run", "--allow-env", script]);
+  console.log("run with --allow-env:", result2.stdout);
+}
+
 async function main() {
   switch (testName) {
     case "eval":
@@ -180,6 +196,9 @@ async function main() {
       break;
     case "deno_subcommand":
       await testDenoSubcommandPassthrough();
+      break;
+    case "permission_passthrough":
+      await testPermissionPassthrough();
       break;
     default:
       console.error("Unknown test:", testName);

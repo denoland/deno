@@ -379,7 +379,7 @@ Deno.test(async function generateImportHmacJwk() {
   assertEquals(exportedKey.key_ops, ["sign"]);
   assertEquals(exportedKey.ext, true);
   assert(typeof exportedKey.k == "string");
-  assertEquals(exportedKey.k.length, 171);
+  assertEquals(exportedKey.k!.length, 171);
 });
 
 // 2048-bits publicExponent=65537
@@ -679,6 +679,55 @@ Deno.test(async function testDeriveKey() {
   assertEquals(algorithm.name, "HMAC");
   assertEquals(algorithm.hash.name, "SHA-256");
   assertEquals(algorithm.length, 512);
+});
+
+Deno.test(async function testDeriveKeyAesOcb() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const rawKey = crypto.getRandomValues(new Uint8Array(16));
+  const key = await subtle.importKey(
+    "raw",
+    rawKey,
+    "PBKDF2",
+    false,
+    ["deriveKey"],
+  );
+
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const derivedKey = await subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: 1000,
+      hash: "SHA-256",
+    },
+    key,
+    { name: "AES-OCB", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+
+  assert(derivedKey instanceof CryptoKey);
+  assertEquals(derivedKey.type, "secret");
+  assertEquals(derivedKey.extractable, false);
+  assertEquals(derivedKey.usages, ["encrypt", "decrypt"]);
+  const algorithm = derivedKey.algorithm as AesKeyAlgorithm;
+  assertEquals(algorithm.name, "AES-OCB");
+  assertEquals(algorithm.length, 256);
+
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode("Hello, world!");
+  const encrypted = await subtle.encrypt(
+    { name: "AES-OCB", iv },
+    derivedKey,
+    plaintext,
+  );
+  const decrypted = await subtle.decrypt(
+    { name: "AES-OCB", iv },
+    derivedKey,
+    encrypted,
+  );
+  assertEquals(new Uint8Array(decrypted), plaintext);
 });
 
 Deno.test(async function testAesCbcEncryptDecrypt() {
@@ -2908,6 +2957,393 @@ Deno.test(async function turboShakeDigest() {
   assert(differs);
 });
 
+Deno.test(async function kangarooTwelveDigest() {
+  const data = new TextEncoder().encode("hello");
+  const kt = new Uint8Array(
+    await crypto.subtle.digest(
+      { name: "KT128", outputLength: 256 } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(kt.length, 32);
+
+  const alias = new Uint8Array(
+    await crypto.subtle.digest(
+      { name: "KangarooTwelve", outputLength: 256 } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(alias, kt);
+
+  const customized = new Uint8Array(
+    await crypto.subtle.digest(
+      {
+        name: "KT128",
+        outputLength: 256,
+        customization: new TextEncoder().encode("Deno"),
+      } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(customized.length, kt.length);
+  assertNotEquals(customized, kt);
+
+  const kt256 = new Uint8Array(
+    await crypto.subtle.digest(
+      { name: "KT256", outputLength: 512 } as AnyAlg,
+      new Uint8Array(),
+    ),
+  );
+  assertEquals(
+    kt256,
+    new Uint8Array([
+      0xb2,
+      0x3d,
+      0x2e,
+      0x9c,
+      0xea,
+      0x9f,
+      0x49,
+      0x04,
+      0xe0,
+      0x2b,
+      0xec,
+      0x06,
+      0x81,
+      0x7f,
+      0xc1,
+      0x0c,
+      0xe3,
+      0x8c,
+      0xe8,
+      0xe9,
+      0x3e,
+      0xf4,
+      0xc8,
+      0x9e,
+      0x65,
+      0x37,
+      0x07,
+      0x6a,
+      0xf8,
+      0x64,
+      0x64,
+      0x04,
+      0xe3,
+      0xe8,
+      0xb6,
+      0x81,
+      0x07,
+      0xb8,
+      0x83,
+      0x3a,
+      0x5d,
+      0x30,
+      0x49,
+      0x0a,
+      0xa3,
+      0x34,
+      0x82,
+      0x35,
+      0x3f,
+      0xd4,
+      0xad,
+      0xc7,
+      0x14,
+      0x8e,
+      0xcb,
+      0x78,
+      0x28,
+      0x55,
+      0x00,
+      0x3a,
+      0xae,
+      0xbd,
+      0xe4,
+      0xa9,
+    ]),
+  );
+});
+
+Deno.test(async function kmacSignVerifyAndJwkRoundTrip() {
+  const data = new TextEncoder().encode("modern algorithms");
+  const params = {
+    name: "KMAC128",
+    outputLength: 256,
+    customization: new TextEncoder().encode("Deno"),
+  } as AnyAlg;
+  const key = await crypto.subtle.generateKey(
+    { name: "KMAC128", length: 128 } as AnyAlg,
+    true,
+    ["sign", "verify"],
+  ) as unknown as CryptoKey;
+  assertEquals(key.algorithm as AnyAlg, { name: "KMAC128", length: 128 });
+
+  const sig = await crypto.subtle.sign(params, key, data);
+  assertEquals(sig.byteLength, 32);
+  assert(await crypto.subtle.verify(params, key, sig, data));
+  assertEquals(
+    await crypto.subtle.verify(
+      params,
+      key,
+      sig,
+      new TextEncoder().encode("changed"),
+    ),
+    false,
+  );
+
+  const jwk = await crypto.subtle.exportKey("jwk", key);
+  assertEquals(jwk.kty, "oct");
+  assertEquals(jwk.alg, "K128");
+  assertEquals(jwk.key_ops, ["sign", "verify"]);
+  const imported = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "KMAC128", length: 128 } as AnyAlg,
+    true,
+    ["sign", "verify"],
+  );
+  assert(await crypto.subtle.verify(params, imported, sig, data));
+});
+
+Deno.test(async function slhDsaSignVerifyAndExportRoundTrips() {
+  const algorithm = "SLH-DSA-SHAKE-128f";
+  const pair = await crypto.subtle.generateKey(
+    algorithm,
+    true,
+    ["sign", "verify"],
+  ) as CryptoKeyPair;
+  const subtle = crypto.subtle as AnyAlg;
+  const data = new TextEncoder().encode("stateless hash signatures");
+  const params = {
+    name: algorithm,
+    context: new TextEncoder().encode("deno"),
+  } as AnyAlg;
+  const signature = await crypto.subtle.sign(params, pair.privateKey, data);
+  assert(await crypto.subtle.verify(params, pair.publicKey, signature, data));
+  assertEquals(
+    await crypto.subtle.verify(
+      params,
+      pair.publicKey,
+      signature,
+      new TextEncoder().encode("changed"),
+    ),
+    false,
+  );
+
+  const rawPublic = await subtle.exportKey(
+    "raw-public",
+    pair.publicKey,
+  ) as ArrayBuffer;
+  const rawPrivate = await subtle.exportKey(
+    "raw-private",
+    pair.privateKey,
+  ) as ArrayBuffer;
+  assertEquals(rawPublic.byteLength, 32);
+  assertEquals(rawPrivate.byteLength, 64);
+  const importedPublic = await subtle.importKey(
+    "raw-public",
+    rawPublic,
+    algorithm,
+    true,
+    ["verify"],
+  );
+  const importedPrivate = await subtle.importKey(
+    "raw-private",
+    rawPrivate,
+    algorithm,
+    true,
+    ["sign"],
+  );
+  assert(await crypto.subtle.verify(params, importedPublic, signature, data));
+  assertEquals(importedPrivate.type, "private");
+
+  const spki = await crypto.subtle.exportKey("spki", pair.publicKey);
+  const pkcs8 = await crypto.subtle.exportKey("pkcs8", pair.privateKey);
+  const spkiPublic = await crypto.subtle.importKey(
+    "spki",
+    spki,
+    algorithm,
+    true,
+    ["verify"],
+  );
+  const pkcs8Private = await crypto.subtle.importKey(
+    "pkcs8",
+    pkcs8,
+    algorithm,
+    true,
+    ["sign"],
+  );
+  assert(await crypto.subtle.verify(params, spkiPublic, signature, data));
+  assertEquals(pkcs8Private.type, "private");
+
+  const jwk = await crypto.subtle.exportKey("jwk", pair.privateKey) as AnyAlg;
+  assertEquals(jwk.kty, "AKP");
+  assertEquals(jwk.alg, algorithm);
+  assert(jwk.pub);
+  assert(jwk.priv);
+  const jwkPrivate = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    algorithm,
+    true,
+    ["sign"],
+  );
+  assertEquals(jwkPrivate.type, "private");
+
+  const derivedPublic = await subtle.getPublicKey(
+    pair.privateKey,
+    ["verify"],
+  );
+  assert(await crypto.subtle.verify(params, derivedPublic, signature, data));
+});
+
+Deno.test(async function argon2DeriveBitsRfcVectors() {
+  const password = new Uint8Array(32).fill(0x01);
+  const nonce = new Uint8Array(16).fill(0x02);
+  const secretValue = new Uint8Array(8).fill(0x03);
+  const associatedData = new Uint8Array(12).fill(0x04);
+  const vectors = [
+    {
+      name: "Argon2d",
+      expected: [
+        0x51,
+        0x2b,
+        0x39,
+        0x1b,
+        0x6f,
+        0x11,
+        0x62,
+        0x97,
+        0x53,
+        0x71,
+        0xd3,
+        0x09,
+        0x19,
+        0x73,
+        0x42,
+        0x94,
+        0xf8,
+        0x68,
+        0xe3,
+        0xbe,
+        0x39,
+        0x84,
+        0xf3,
+        0xc1,
+        0xa1,
+        0x3a,
+        0x4d,
+        0xb9,
+        0xfa,
+        0xbe,
+        0x4a,
+        0xcb,
+      ],
+    },
+    {
+      name: "Argon2i",
+      expected: [
+        0xc8,
+        0x14,
+        0xd9,
+        0xd1,
+        0xdc,
+        0x7f,
+        0x37,
+        0xaa,
+        0x13,
+        0xf0,
+        0xd7,
+        0x7f,
+        0x24,
+        0x94,
+        0xbd,
+        0xa1,
+        0xc8,
+        0xde,
+        0x6b,
+        0x01,
+        0x6d,
+        0xd3,
+        0x88,
+        0xd2,
+        0x99,
+        0x52,
+        0xa4,
+        0xc4,
+        0x67,
+        0x2b,
+        0x6c,
+        0xe8,
+      ],
+    },
+    {
+      name: "Argon2id",
+      expected: [
+        0x0d,
+        0x64,
+        0x0d,
+        0xf5,
+        0x8d,
+        0x78,
+        0x76,
+        0x6c,
+        0x08,
+        0xc0,
+        0x37,
+        0xa3,
+        0x4a,
+        0x8b,
+        0x53,
+        0xc9,
+        0xd0,
+        0x1e,
+        0xf0,
+        0x45,
+        0x2d,
+        0x75,
+        0xb6,
+        0x5e,
+        0xb5,
+        0x25,
+        0x20,
+        0xe9,
+        0x6b,
+        0x01,
+        0xe6,
+        0x59,
+      ],
+    },
+  ];
+
+  for (const vector of vectors) {
+    const key = await subtleAny.importKey(
+      "raw-secret",
+      password,
+      vector.name,
+      false,
+      ["deriveBits"],
+    );
+    const derived = new Uint8Array(
+      await crypto.subtle.deriveBits(
+        {
+          name: vector.name,
+          memory: 32,
+          passes: 3,
+          parallelism: 4,
+          nonce,
+          secretValue,
+          associatedData,
+        } as AnyAlg,
+        key,
+        256,
+      ),
+    );
+    assertEquals(derived, new Uint8Array(vector.expected));
+  }
+});
+
 Deno.test(async function shakeFamilyRequiresOutputLength() {
   // The modern WebCrypto algorithms spec renamed the output length dictionary
   // member from `length` to `outputLength`. Passing the legacy `length` member
@@ -2919,6 +3355,7 @@ Deno.test(async function shakeFamilyRequiresOutputLength() {
     "cSHAKE256",
     "TurboSHAKE128",
     "TurboSHAKE256",
+    "KT128",
   ];
   for (const name of names) {
     await assertRejects(
@@ -3644,6 +4081,34 @@ Deno.test(function subtleCryptoSupportsModernAlgorithms() {
   assert(
     supports("digest", { name: "TurboSHAKE128", outputLength: 256 }),
   );
+  assert(
+    supports("digest", { name: "KT128", outputLength: 256 }),
+  );
+  assert(
+    supports("digest", { name: "KT256", outputLength: 512 }),
+  );
+  assert(supports("generateKey", { name: "KMAC128", length: 128 }));
+  assert(supports("sign", { name: "KMAC128", outputLength: 256 }));
+  assert(supports("verify", { name: "KMAC256", outputLength: 512 }));
+  assert(supports("importKey", { name: "KMAC256", length: 256 }));
+  assert(supports("exportKey", "KMAC128"));
+  assert(supports("importKey", "Argon2id"));
+  assert(supports("deriveBits", "Argon2id", 256));
+  assert(
+    supports("deriveBits", {
+      name: "Argon2id",
+      memory: 32,
+      passes: 3,
+      parallelism: 4,
+      nonce: new Uint8Array(16),
+    }, 256),
+  );
+  assert(supports("generateKey", "SLH-DSA-SHAKE-128s"));
+  assert(supports("sign", { name: "SLH-DSA-SHAKE-128s" }));
+  assert(supports("verify", { name: "SLH-DSA-SHAKE-128s" }));
+  assert(supports("importKey", "SLH-DSA-SHAKE-128s"));
+  assert(supports("exportKey", "SLH-DSA-SHAKE-128s"));
+  assert(supports("getPublicKey", "SLH-DSA-SHAKE-128s"));
 });
 
 Deno.test(function subtleCryptoSupportsRejectsUnknown() {
@@ -3698,6 +4163,10 @@ Deno.test(function subtleCryptoSupportsAdditionalAlgorithm() {
   // deriveKey with target algorithm (the second-overload form).
   assert(supports("deriveKey", "HKDF", {
     name: "AES-GCM",
+    length: 256,
+  }));
+  assert(supports("deriveKey", "PBKDF2", {
+    name: "AES-OCB",
     length: 256,
   }));
   assert(supports("deriveKey", "PBKDF2", {

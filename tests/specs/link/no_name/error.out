@@ -1,0 +1,1 @@
+error: Cannot link './pkg': its deno.json has no "name" field. A linked package must declare a JSR-style "name" to be importable.

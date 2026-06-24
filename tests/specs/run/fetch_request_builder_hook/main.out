@@ -1,0 +1,3 @@
+[WILDCARD]fetch token set: true
+cdn-loop set: true
+spoofed token scrubbed: true

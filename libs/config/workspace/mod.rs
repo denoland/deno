@@ -48,7 +48,10 @@ use crate::deno_json::ConfigFile;
 use crate::deno_json::ConfigFileError;
 use crate::deno_json::ConfigFileRc;
 use crate::deno_json::ConfigFileReadError;
+use crate::deno_json::CoverageConfig;
+use crate::deno_json::CoverageThresholds;
 use crate::deno_json::DeployConfig;
+use crate::deno_json::DesktopConfig;
 use crate::deno_json::FmtConfig;
 use crate::deno_json::FmtOptionsConfig;
 use crate::deno_json::LinkConfigParseError;
@@ -253,6 +256,10 @@ pub enum WorkspaceDiagnosticKind {
     "Invalid version requirement '{version_req}' for catalog entry '{name}'."
   )]
   InvalidCatalogVersionReq { name: String, version_req: String },
+  #[error(
+    "\"imports\" and \"scopes\" in the config file are ignored for dependency management when \"preferPackageJson\" is enabled. Move these dependencies to package.json."
+  )]
+  PreferPackageJsonWithImports,
 }
 
 #[derive(Debug, Error, JsError, Clone, PartialEq, Eq)]
@@ -1280,6 +1287,12 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("allowScripts"),
         });
       }
+      if member_config.json.prefer_package_json.is_some() {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("preferPackageJson"),
+        });
+      }
       if let Some(value) = &member_config.json.lint
         && value.get("report").is_some()
       {
@@ -1288,6 +1301,16 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("lint.report"),
         });
       }
+    }
+
+    // Whether the config's `imports`/`scopes` contain `npm:`/`jsr:`
+    // dependency specifiers. Path-alias imports (e.g. `"#/": "./src/"`)
+    // can't move to package.json, so they shouldn't trigger the
+    // `preferPackageJson` warning.
+    fn has_dependency_imports(config: &ConfigFile) -> bool {
+      crate::import_map::imports_values(config.json.imports.as_ref())
+        .chain(crate::import_map::scope_values(config.json.scopes.as_ref()))
+        .any(|value| crate::import_map::value_to_dep_req(value).is_some())
     }
 
     fn check_all_configs(
@@ -1424,6 +1447,19 @@ impl Workspace {
             self.root_deno_json().map(|r| r.as_ref()),
             &mut diagnostics,
           );
+        }
+
+        // `preferPackageJson` is a root-only setting, so only warn about
+        // lingering dependency imports on the root config. Members that set it
+        // get a `RootOnlyOption` diagnostic instead.
+        if is_root
+          && config.json.prefer_package_json == Some(true)
+          && has_dependency_imports(config)
+        {
+          diagnostics.push(WorkspaceDiagnostic {
+            config_url: config.specifier.clone(),
+            kind: WorkspaceDiagnosticKind::PreferPackageJsonWithImports,
+          });
         }
 
         check_all_configs(config, &mut diagnostics);
@@ -1719,6 +1755,17 @@ impl Workspace {
       .unwrap_or(false)
   }
 
+  /// Whether dependencies should be managed via `package.json` rather than
+  /// `deno.json`, as configured by the `preferPackageJson` field in the root
+  /// `deno.json`.
+  pub fn prefer_package_json(&self) -> bool {
+    self
+      .with_root_config_only(|deno_json| {
+        deno_json.json.prefer_package_json.unwrap_or(false)
+      })
+      .unwrap_or(false)
+  }
+
   fn with_root_config_only<'a, R>(
     &'a self,
     with_root: impl Fn(&'a ConfigFile) -> R,
@@ -1824,6 +1871,7 @@ pub enum TsTypeLib {
   #[default]
   DenoWindow,
   DenoWorker,
+  DenoDesktop,
 }
 
 #[derive(Debug, Clone)]
@@ -1837,6 +1885,7 @@ struct CachedDirectoryValues {
   permissions: OnceLock<PermissionsConfig>,
   bench: OnceLock<BenchConfig>,
   compile: OnceLock<CompileConfig>,
+  desktop: OnceLock<DesktopConfig>,
   test: OnceLock<TestConfig>,
 }
 
@@ -2349,6 +2398,10 @@ impl WorkspaceDirectory {
           .options
           .sort_named_exports
           .or(root_config.options.sort_named_exports),
+        use_editor_config: member_config
+          .options
+          .use_editor_config
+          .or(root_config.options.use_editor_config),
       },
       files: combine_patterns(root_config.files, member_config.files),
     })
@@ -2363,6 +2416,30 @@ impl WorkspaceDirectory {
     combine_files_config_with_cli_args(&mut config.files, cli_args);
     self.append_workspace_members_to_exclude(&mut config.files);
     Ok(config)
+  }
+
+  /// Resolves the coverage config, merging the workspace root and member
+  /// `coverage` sections (member thresholds take precedence per metric).
+  pub fn to_coverage_config(
+    &self,
+  ) -> Result<CoverageConfig, ToInvalidConfigError> {
+    let member_config = match &self.deno_json.member {
+      Some(member) => member.to_coverage_config()?,
+      None => CoverageConfig::default(),
+    };
+    let root_config = match &self.deno_json.root {
+      Some(root) => root.to_coverage_config()?,
+      None => return Ok(member_config),
+    };
+    let root = root_config.thresholds;
+    let member = member_config.thresholds;
+    Ok(CoverageConfig {
+      thresholds: CoverageThresholds {
+        lines: member.lines.or(root.lines),
+        branches: member.branches.or(root.branches),
+        functions: member.functions.or(root.functions),
+      },
+    })
   }
 
   fn to_bench_config_inner(
@@ -2440,6 +2517,42 @@ impl WorkspaceDirectory {
         (Some(r), _) => Some(r),
         (None, None) => None,
       },
+    })
+  }
+
+  pub fn to_desktop_config(
+    &self,
+  ) -> Result<&DesktopConfig, ToInvalidConfigError> {
+    if let Some(config) = &self.cached.desktop.get() {
+      Ok(config)
+    } else {
+      let config = self.to_desktop_config_no_cache()?;
+      _ = self.cached.desktop.set(config);
+      Ok(self.cached.desktop.get().unwrap())
+    }
+  }
+
+  fn to_desktop_config_no_cache(
+    &self,
+  ) -> Result<DesktopConfig, ToInvalidConfigError> {
+    let member_config = match &self.deno_json.member {
+      Some(member) => member.to_desktop_config()?,
+      None => Default::default(),
+    };
+    let root_config = match &self.deno_json.root {
+      Some(root) => root.to_desktop_config()?,
+      None => Default::default(),
+    };
+    // Member config takes precedence over root for each field.
+    Ok(DesktopConfig {
+      app: member_config.app.or(root_config.app),
+      backend: member_config.backend.or(root_config.backend),
+      output: member_config.output.or(root_config.output),
+      release: member_config.release.or(root_config.release),
+      error_reporting: member_config
+        .error_reporting
+        .or(root_config.error_reporting),
+      macos: member_config.macos.or(root_config.macos),
     })
   }
 
@@ -4150,6 +4263,7 @@ pub mod test {
           angular_next_control_flow_same_line: None,
           sort_named_imports: None,
           sort_named_exports: None,
+          use_editor_config: None,
         },
         files: FilePatterns {
           base: root_dir().join("member"),
@@ -4197,6 +4311,7 @@ pub mod test {
           angular_next_control_flow_same_line: None,
           sort_named_imports: None,
           sort_named_exports: None,
+          use_editor_config: None,
         },
         files: FilePatterns {
           base: root_dir(),
@@ -4564,6 +4679,77 @@ pub mod test {
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::PkgJsonRootOnlyOption("overrides"),
         config_url: url_from_file_path(&root_dir().join("member/package.json"))
+          .unwrap(),
+      }]
+    );
+  }
+
+  #[test]
+  fn test_prefer_package_json_imports_warning() {
+    fn diagnostics_for(value: serde_json::Value) -> Vec<WorkspaceDiagnostic> {
+      let sys = InMemorySys::default();
+      sys.fs_insert_json(root_dir().join("deno.json"), value);
+      workspace_at_start_dir(&sys, &root_dir())
+        .workspace
+        .diagnostics()
+    }
+
+    let expected = vec![WorkspaceDiagnostic {
+      kind: WorkspaceDiagnosticKind::PreferPackageJsonWithImports,
+      config_url: url_from_file_path(&root_dir().join("deno.json")).unwrap(),
+    }];
+
+    // A `jsr:`/`npm:` dependency specifier in `imports` triggers the warning.
+    assert_eq!(
+      diagnostics_for(json!({
+        "preferPackageJson": true,
+        "imports": { "@std/assert": "jsr:@std/assert@^1" }
+      })),
+      expected
+    );
+    // A dependency specifier nested in `scopes` also triggers it.
+    assert_eq!(
+      diagnostics_for(json!({
+        "preferPackageJson": true,
+        "scopes": { "./sub/": { "chalk": "npm:chalk@5" } }
+      })),
+      expected
+    );
+    // Path-alias imports can't move to package.json, so they don't warn.
+    assert_eq!(
+      diagnostics_for(json!({
+        "preferPackageJson": true,
+        "imports": { "#utils": "./utils.ts", "@/": "./src/" }
+      })),
+      vec![]
+    );
+    // No warning when the setting is off.
+    assert_eq!(
+      diagnostics_for(json!({
+        "imports": { "@std/assert": "jsr:@std/assert@^1" }
+      })),
+      vec![]
+    );
+  }
+
+  #[test]
+  fn test_prefer_package_json_member_root_only() {
+    // `preferPackageJson` on a member is ignored (the setting is read from the
+    // root only), so it surfaces a `RootOnlyOption` diagnostic. The lingering
+    // imports warning must not fire on the member, since the setting has no
+    // effect there.
+    let workspace_dir = workspace_for_root_and_member(
+      json!({}),
+      json!({
+        "preferPackageJson": true,
+        "imports": { "@std/assert": "jsr:@std/assert@^1" }
+      }),
+    );
+    assert_eq!(
+      workspace_dir.workspace.diagnostics(),
+      vec![WorkspaceDiagnostic {
+        kind: WorkspaceDiagnosticKind::RootOnlyOption("preferPackageJson"),
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );

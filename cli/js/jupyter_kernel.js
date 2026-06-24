@@ -733,7 +733,7 @@ async function startJupyterKernel() {
 
     if (evalResult !== null && evalResult !== undefined) {
       // Check for exception
-      const exDetails = evalResult?.value?.exceptionDetails;
+      const exDetails = evalResult?.exceptionDetails;
       if (exDetails) {
         // Exception during execution
         const exception = exDetails.exception;
@@ -795,7 +795,7 @@ async function startJupyterKernel() {
         await socket.send(peerId, replyFrames);
       } else {
         // Success: publish the result
-        const result = evalResult?.value?.result;
+        const result = evalResult?.result;
         if (result && !silent) {
           const arg0 = { value: executionCount };
           const arg1 = result.objectId
@@ -1077,7 +1077,7 @@ async function startJupyterKernel() {
       const resp = await op_jupyter_repl_evaluate(
         `(${expr})`, // wrap to handle expressions like "globalThis"
       );
-      return resp?.value?.result?.objectId || null;
+      return resp?.result?.objectId || null;
     } catch {
       return null;
     }

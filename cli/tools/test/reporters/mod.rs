@@ -27,6 +27,27 @@ pub trait TestReporter {
     result: &TestResult,
     elapsed: Duration,
   );
+  /// Called when a test attempt failed but will be retried (`retry` option).
+  /// `attempt` is the zero-based index of the attempt that failed. This is
+  /// informational; the test's terminal result is still delivered via
+  /// [`Self::report_result`]. Defaults to a no-op.
+  fn report_retry(
+    &mut self,
+    _description: &TestDescription,
+    _attempt: u32,
+    _failure: &TestFailure,
+  ) {
+  }
+  /// Called when a test begins a fresh repetition (`repeats` option).
+  /// `repetition` is the one-based index of the repetition that is starting.
+  /// This lets a reporter discard the previous repetition's step results so
+  /// they aren't counted more than once. Defaults to a no-op.
+  fn report_repeat(
+    &mut self,
+    _description: &TestDescription,
+    _repetition: u32,
+  ) {
+  }
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>);
   fn report_step_register(&mut self, description: &TestStepDescription);
   fn report_step_wait(&mut self, description: &TestStepDescription);
@@ -38,6 +59,10 @@ pub trait TestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   );
+  /// Called after a test module ran with `--update-snapshots` and updated or
+  /// removed snapshots. Reporters that print a final summary should
+  /// accumulate these counts and include them there.
+  fn report_snapshot_summary(&mut self, _summary: &TestSnapshotSummary) {}
   fn report_summary(
     &mut self,
     elapsed: &Duration,

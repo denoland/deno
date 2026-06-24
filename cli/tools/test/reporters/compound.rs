@@ -54,6 +54,23 @@ impl TestReporter for CompoundTestReporter {
     }
   }
 
+  fn report_retry(
+    &mut self,
+    description: &TestDescription,
+    attempt: u32,
+    failure: &TestFailure,
+  ) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_retry(description, attempt, failure);
+    }
+  }
+
+  fn report_repeat(&mut self, description: &TestDescription, repetition: u32) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_repeat(description, repetition);
+    }
+  }
+
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>) {
     for reporter in &mut self.test_reporters {
       reporter.report_uncaught_error(origin, error.clone());
@@ -82,6 +99,12 @@ impl TestReporter for CompoundTestReporter {
   ) {
     for reporter in &mut self.test_reporters {
       reporter.report_step_result(desc, result, elapsed, tests, test_steps);
+    }
+  }
+
+  fn report_snapshot_summary(&mut self, summary: &TestSnapshotSummary) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_snapshot_summary(summary);
     }
   }
 

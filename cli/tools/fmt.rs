@@ -48,6 +48,7 @@ use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::sys::CliSys;
+use crate::tools::fmt_editorconfig::EditorConfigCache;
 use crate::util;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
@@ -235,6 +236,7 @@ async fn format_files(
   } else {
     Box::new(RealFormatter::default())
   };
+  let editorconfig_cache = Arc::new(EditorConfigCache::new());
   for paths_with_options in paths_with_options_batches {
     log::debug!(
       "Formatting {} file(s) in {}",
@@ -243,6 +245,11 @@ async fn format_files(
     );
     let fmt_options = paths_with_options.options;
     let paths = paths_with_options.paths;
+    // The DB key captures only the batch-level fmt options. Per-file
+    // `.editorconfig` options are not part of this key — instead they are
+    // folded into the hashed *text* of each file by `incremental_cache_text`
+    // below, so a file governed by an `.editorconfig` is re-evaluated when
+    // that file changes even though the batch key stays the same.
     let incremental_cache = Arc::new(IncrementalCache::new(
       caches.fmt_incremental_cache_db(),
       CacheDBHash::from_hashable((&fmt_options.options, &fmt_options.unstable)),
@@ -254,6 +261,7 @@ async fn format_files(
         fmt_options.options,
         fmt_options.unstable,
         incremental_cache.clone(),
+        editorconfig_cache.clone(),
         cli_options.ext_flag().clone(),
       )
       .await?;
@@ -827,10 +835,53 @@ trait Formatter {
     fmt_options: FmtOptionsConfig,
     unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    editorconfig_cache: Arc<EditorConfigCache>,
     ext: Option<String>,
   ) -> Result<(), AnyError>;
 
   fn finish(&self) -> Result<(), AnyError>;
+}
+
+/// Returns a per-file [`FmtOptionsConfig`], merging values from
+/// `.editorconfig` (lowest priority) under the resolved `base` config
+/// (which already incorporates `deno.json` plus CLI flags).
+fn resolve_per_file_options(
+  base: &FmtOptionsConfig,
+  editorconfig_cache: &EditorConfigCache,
+  file_path: &Path,
+) -> FmtOptionsConfig {
+  // `.editorconfig` reading is on by default; `useEditorConfig: false` in
+  // deno.json or `--no-editorconfig` on the CLI opts out (the latter takes
+  // precedence, resolved upstream in `resolve_fmt_options`).
+  if base.use_editor_config == Some(false) {
+    return base.clone();
+  }
+  let props = editorconfig_cache.resolve(file_path);
+  if props.is_empty() {
+    return base.clone();
+  }
+  let mut cfg = base.clone();
+  props.apply_to(&mut cfg);
+  cfg
+}
+
+/// Returns the value hashed by the incremental cache for a file. When
+/// `.editorconfig` contributes options that differ from the batch-level
+/// `base` config, those options are folded into the hashed value so that
+/// editing `.editorconfig` invalidates the cached "already formatted"
+/// result even when the file body itself is unchanged. When nothing was
+/// contributed the file text is hashed as-is, preserving existing cache
+/// entries and avoiding an allocation.
+fn incremental_cache_text<'a>(
+  per_file_options: &FmtOptionsConfig,
+  base: &FmtOptionsConfig,
+  text: &'a str,
+) -> Cow<'a, str> {
+  if per_file_options == base {
+    Cow::Borrowed(text)
+  } else {
+    Cow::Owned(format!("{per_file_options:?}\n{text}"))
+  }
 }
 
 struct CheckFormatter {
@@ -861,6 +912,7 @@ impl Formatter for CheckFormatter {
     fmt_options: FmtOptionsConfig,
     unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    editorconfig_cache: Arc<EditorConfigCache>,
     ext: Option<String>,
   ) -> Result<(), AnyError> {
     // prevent threads outputting at the same time
@@ -881,9 +933,17 @@ impl Formatter for CheckFormatter {
         checked_files_count.fetch_add(1, Ordering::Relaxed);
         let file = read_file_contents(&file_path)?;
 
+        let per_file_options = resolve_per_file_options(
+          &fmt_options,
+          &editorconfig_cache,
+          &file_path,
+        );
+        let cache_text =
+          incremental_cache_text(&per_file_options, &fmt_options, &file.text);
+
         // skip checking the file if we know it's formatted
         if !file.had_bom
-          && incremental_cache.is_file_same(&file_path, &file.text)
+          && incremental_cache.is_file_same(&file_path, &cache_text)
         {
           return Ok(());
         }
@@ -891,7 +951,7 @@ impl Formatter for CheckFormatter {
         match format_file(
           &file_path,
           &file,
-          &fmt_options,
+          &per_file_options,
           &unstable_options,
           ext.clone(),
         ) {
@@ -916,7 +976,7 @@ impl Formatter for CheckFormatter {
             // formatting here. Additionally, ensure this is done during check
             // so that CIs that cache the DENO_DIR will get the benefit of
             // incremental formatting
-            incremental_cache.update_file(&file_path, &file.text);
+            incremental_cache.update_file(&file_path, &cache_text);
           }
           Err(e) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
@@ -982,6 +1042,7 @@ impl Formatter for RealFormatter {
     fmt_options: FmtOptionsConfig,
     unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    editorconfig_cache: Arc<EditorConfigCache>,
     ext: Option<String>,
   ) -> Result<(), AnyError> {
     let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
@@ -994,9 +1055,17 @@ impl Formatter for RealFormatter {
         checked_files_count.fetch_add(1, Ordering::Relaxed);
         let file = read_file_contents(&file_path)?;
 
+        let per_file_options = resolve_per_file_options(
+          &fmt_options,
+          &editorconfig_cache,
+          &file_path,
+        );
+        let cache_text =
+          incremental_cache_text(&per_file_options, &fmt_options, &file.text);
+
         // skip formatting the file if we know it's formatted
         if !file.had_bom
-          && incremental_cache.is_file_same(&file_path, &file.text)
+          && incremental_cache.is_file_same(&file_path, &cache_text)
         {
           return Ok(());
         }
@@ -1005,20 +1074,27 @@ impl Formatter for RealFormatter {
           format_file(
             file_path,
             file,
-            &fmt_options,
+            &per_file_options,
             &unstable_options,
             ext.clone(),
           )
         }) {
           Ok(Some(formatted_text)) => {
-            incremental_cache.update_file(&file_path, &formatted_text);
+            incremental_cache.update_file(
+              &file_path,
+              &incremental_cache_text(
+                &per_file_options,
+                &fmt_options,
+                &formatted_text,
+              ),
+            );
             write_file_contents(&file_path, &formatted_text)?;
             formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock();
             info!("{}", file_path.to_string_lossy());
           }
           Ok(None) => {
-            incremental_cache.update_file(&file_path, &file.text);
+            incremental_cache.update_file(&file_path, &cache_text);
           }
           Err(e) => {
             failed_files_count.fetch_add(1, Ordering::Relaxed);
