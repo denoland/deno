@@ -1030,13 +1030,15 @@ async fn resolve_tarball_package(
       let cached_path = cache_dir.join(&filename);
       std::fs::write(&cached_path, &tarball_bytes)
         .context("Failed to cache tarball")?;
-      format!(
-        "file:{}",
-        cached_path
-          .strip_prefix(start_dir)
-          .unwrap_or(&cached_path)
-          .display()
-      )
+      // Use forward slashes in the file: reference so it stays valid when
+      // written into package.json. On Windows, path.display() emits
+      // backslashes, which are invalid JSON escapes and corrupt the file.
+      let rel_path = cached_path
+        .strip_prefix(start_dir)
+        .unwrap_or(&cached_path)
+        .to_string_lossy()
+        .replace('\\', "/");
+      format!("file:{rel_path}")
     }
   };
 
