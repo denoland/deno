@@ -2,18 +2,20 @@
 // `vm.SourceTextModule` with `import.meta` used to panic at
 // `host_initialize_import_meta_object_callback` (libs/core/runtime/bindings.rs)
 // because vm-created v8::Modules aren't registered in deno_core's module map.
-// The runtime now falls back to a hook registered by `node:vm`, which sets
-// `import.meta.url` from the module's `identifier` option and invokes the
-// user-supplied `initializeImportMeta` callback.
+// The runtime now falls back to a hook registered by `node:vm`, which invokes
+// the user-supplied `initializeImportMeta` callback (if any). Like Node's
+// `vm.SourceTextModule`, `import.meta` is otherwise left empty — `url` is
+// never auto-populated.
 
 import assert from "node:assert";
 import vm from "node:vm";
 
 // 1. `initializeImportMeta` is invoked and can set arbitrary properties.
+// Only the callback's own props are present — `url` is not auto-populated.
 {
   const context = vm.createContext({});
   const mod = new vm.SourceTextModule(
-    "export const captured = { url: import.meta.url, prop: import.meta.prop };",
+    "export const captured = { hasUrl: 'url' in import.meta, url: import.meta.url, prop: import.meta.prop };",
     {
       identifier: "vm:test-import-meta",
       context,
@@ -25,40 +27,44 @@ import vm from "node:vm";
   mod.linkRequests([]);
   mod.instantiate();
   await mod.evaluate();
-  assert.strictEqual(mod.namespace.captured.url, "vm:test-import-meta");
+  assert.strictEqual(mod.namespace.captured.hasUrl, false);
+  assert.strictEqual(mod.namespace.captured.url, undefined);
   assert.deepStrictEqual(mod.namespace.captured.prop, { extra: true });
   console.log("ok initializeImportMeta");
 }
 
-// 2. With no explicit `identifier`, `import.meta.url` falls back to the
-// `vm:module(N)` default V8 calls the host-initialize-import-meta callback
-// with.
+// 2. With no `initializeImportMeta` callback, `import.meta` is completely
+// empty (matches Node — it does not auto-populate `url`/`main`/`resolve`).
 {
   const context = vm.createContext({});
+  // Compute `keyCount` inside the module — `import.meta`'s keys array lives
+  // in the vm context's realm, so comparing it directly to a main-realm `[]`
+  // would trip `deepStrictEqual`'s prototype check.
   const mod = new vm.SourceTextModule(
-    "export const url = import.meta.url;",
+    "export const keyCount = Object.keys(import.meta).length; export const url = import.meta.url;",
     { context },
   );
   mod.linkRequests([]);
   mod.instantiate();
   await mod.evaluate();
-  assert.match(mod.namespace.url, /^vm:module\(\d+\)$/);
-  console.log("ok import.meta.url default");
+  assert.strictEqual(mod.namespace.keyCount, 0);
+  assert.strictEqual(mod.namespace.url, undefined);
+  console.log("ok import.meta empty");
 }
 
-// 3. Without an `initializeImportMeta` callback, `import.meta` still has
-// `url` set but no user-defined props.
+// 3. Supplying `identifier` does NOT seed `import.meta.url` — Node leaves
+// `import.meta` entirely under the user's control.
 {
   const context = vm.createContext({});
   const mod = new vm.SourceTextModule(
-    "export const meta = { url: import.meta.url, hasProp: 'prop' in import.meta };",
+    "export const meta = { hasUrl: 'url' in import.meta, url: import.meta.url };",
     { context, identifier: "vm:test-no-init" },
   );
   mod.linkRequests([]);
   mod.instantiate();
   await mod.evaluate();
-  assert.strictEqual(mod.namespace.meta.url, "vm:test-no-init");
-  assert.strictEqual(mod.namespace.meta.hasProp, false);
+  assert.strictEqual(mod.namespace.meta.hasUrl, false);
+  assert.strictEqual(mod.namespace.meta.url, undefined);
   console.log("ok no callback");
 }
 
