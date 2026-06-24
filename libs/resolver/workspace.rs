@@ -1091,7 +1091,22 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       // and bundled assets work). The local npm installer additionally writes a
       // `@jsr:registry` entry to `.npmrc` so that external tooling can resolve
       // the materialized packages.
-      if workspace.jsr_deps_in_node_modules() == Some(true) {
+      //
+      // The rewrite is only meaningful when a `node_modules` directory is
+      // actually in use: that is what materializes the packages, writes the
+      // alias symlinks, and writes the `.npmrc`. Without it the rewrite would
+      // resolve `jsr:` deps from the global npm cache with none of that, which
+      // contradicts the option's "requires a `node_modules` directory" meaning.
+      // So we couple the two and skip the rewrite when no `node_modules`
+      // directory is enabled.
+      let uses_node_modules_dir =
+        match workspace.node_modules_dir().unwrap_or_default() {
+          Some(mode) => mode.uses_node_modules_dir(),
+          None => workspace.root_pkg_json().is_some(),
+        };
+      if workspace.jsr_deps_in_node_modules() == Some(true)
+        && uses_node_modules_dir
+      {
         deno_config::import_map::rewrite_jsr_imports_to_npm(&mut import_map);
       }
       log::debug!(

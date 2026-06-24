@@ -971,7 +971,7 @@
       "type": "boolean"
     },
     "jsrDepsInNodeModules": {
-      "description": "Installs `jsr:` dependencies into the `node_modules` directory via JSR's npm compatibility registry (`@jsr/<scope>__<name>`), the same way pnpm and npm handle JSR packages. When enabled Deno also writes a `@jsr:registry` entry to a `.npmrc` file so external tooling can resolve these packages. Requires a `node_modules` directory.",
+      "description": "Installs `jsr:` dependencies into the `node_modules` directory via JSR's npm compatibility registry (`@jsr/<scope>__<name>`), the same way pnpm and npm handle JSR packages. When enabled Deno also writes a `@jsr:registry` entry to a `.npmrc` file in your project directory so external tooling can resolve these packages; this file is created on install and you may want to commit it (or add it to `.gitignore`). Has no effect unless a `node_modules` directory is in use.",
       "type": "boolean"
     },
     "preferPackageJson": {
