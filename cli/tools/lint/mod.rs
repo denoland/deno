@@ -4,6 +4,7 @@
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
 
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::fs;
 use std::io::Read;
 use std::io::stdin;
@@ -525,6 +526,7 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   );
   all_rules.sort_by_cached_key(|rule| rule.code().to_string());
 
+  let mut output = String::new();
   if json {
     let json_output = serde_json::json!({
       "version": JSON_SCHEMA_VERSION,
@@ -540,11 +542,16 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
         })
         .collect::<Vec<serde_json::Value>>(),
     });
-    display::write_json_to_stdout(&json_output).unwrap();
+    writeln!(
+      output,
+      "{}",
+      serde_json::to_string_pretty(&json_output).unwrap()
+    )
+    .unwrap();
   } else {
     // The rules should still be printed even if `--quiet` option is enabled,
-    // so use `println!` here instead of `info!`.
-    println!("Available rules:");
+    // so collect them into a buffer and write it to stdout below.
+    writeln!(output, "Available rules:").unwrap();
     for rule in all_rules.iter() {
       // TODO(bartlomieju): this is O(n) search, fix before landing
       let enabled = if configured_rules.rules.contains(rule) {
@@ -552,15 +559,18 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
       } else {
         ""
       };
-      println!("- {} {}", rule.code(), colors::green(enabled),);
-      println!(
+      writeln!(output, "- {} {}", rule.code(), colors::green(enabled)).unwrap();
+      writeln!(
+        output,
         "{}",
         colors::gray(format!("  help: {}", rule.help_docs_url()))
-      );
+      )
+      .unwrap();
       if rule.tags().is_empty() {
-        println!("  {}", colors::gray("tags:"));
+        writeln!(output, "  {}", colors::gray("tags:")).unwrap();
       } else {
-        println!(
+        writeln!(
+          output,
           "  {}",
           colors::gray(format!(
             "tags: {}",
@@ -571,11 +581,15 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
               .collect::<Vec<_>>()
               .join(", ")
           ))
-        );
+        )
+        .unwrap();
       }
-      println!();
+      writeln!(output).unwrap();
     }
   }
+  // Write all at once and ignore broken pipe errors, e.g. when the output is
+  // piped to a program that closes the pipe early like `head` (#30248).
+  let _ = display::write_to_stdout_ignore_sigpipe(output.as_bytes());
 }
 
 /// Lint stdin and write result to stdout.
