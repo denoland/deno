@@ -10,6 +10,8 @@ use indexmap::IndexMap;
 use v8::Local;
 use v8::Value;
 
+use crate::FastStaticString;
+
 #[derive(Debug, JsError)]
 #[class(type)]
 pub struct WebIdlError {
@@ -298,6 +300,23 @@ crate::v8_static_strings! {
   VALUE = "value",
 }
 
+/// Per-context cache of the `"next"`, `"done"`, and `"value"` property-name
+/// strings used by the sequence iterator protocol.
+///
+/// These are cached per-context (in [`crate::runtime::ContextState`]) rather
+/// than in a `thread_local`, because `v8` string handles are bound to the
+/// isolate that created them. `deno test` runs each test file in its own
+/// isolate on reused thread-pool threads, so a thread-local handle would
+/// dangle into a disposed isolate once a thread was reused, producing spurious
+/// "can not be converted to a sequence" errors and intermittent SIGSEGV. This
+/// mirrors how Blink keeps these strings per-isolate. See
+/// <https://github.com/denoland/deno/issues/35460>.
+pub(crate) struct WebIdlSequenceKeys {
+  pub(crate) next: v8::Global<v8::String>,
+  pub(crate) done: v8::Global<v8::String>,
+  pub(crate) value: v8::Global<v8::String>,
+}
+
 // helper for iterating over a sequence
 fn for_each_in_sequence<'a, 'b, 'i>(
   scope: &mut v8::PinScope<'a, 'i>,
@@ -334,29 +353,31 @@ fn for_each_in_sequence<'a, 'b, 'i>(
     ));
   };
 
-  // These keys must be materialized fresh for the current isolate on every
-  // call. They were previously cached in a `thread_local` `v8::Eternal`, but an
-  // `Eternal` handle is scoped to the isolate that created it. In `deno test`
-  // each test file runs in its own isolate, and those isolates are created on
-  // reused tokio blocking-pool threads, so a cached handle would dangle into a
-  // disposed isolate once a thread was reused. That manifested as spurious
-  // "can not be converted to a sequence" errors (and occasionally SIGSEGV)
-  // starting from the third test file. Re-creating the strings here is cheap:
-  // they are built once per sequence conversion, not once per element.
-  let next_key = NEXT
-    .v8_string(scope)
-    .map_err(|e| WebIdlError::other(prefix.clone(), context.borrowed(), e))?
-    .into();
-
-  let done_key = DONE
-    .v8_string(scope)
-    .map_err(|e| WebIdlError::other(prefix.clone(), context.borrowed(), e))?
-    .into();
-
-  let value_key = VALUE
-    .v8_string(scope)
-    .map_err(|e| WebIdlError::other(prefix.clone(), context.borrowed(), e))?
-    .into();
+  // The "next"/"done"/"value" iterator keys are cached per-context. They must
+  // not be cached in a `thread_local`, because the `v8::String` handles are
+  // bound to the isolate that created them: `deno test` reuses thread-pool
+  // threads across per-file isolates, so a thread-local handle would dangle
+  // into a disposed isolate (see `WebIdlSequenceKeys`). Materialize them lazily
+  // on the first sequence conversion in this context and reuse them afterwards.
+  let context_state = crate::runtime::JsRealm::state_from_scope(scope);
+  if context_state.webidl_sequence_keys.borrow().is_none() {
+    let make = |scope: &mut v8::PinScope<'a, 'i>, s: &FastStaticString| {
+      s.v8_string(scope)
+        .map(|str| v8::Global::new(scope, str))
+        .map_err(|e| WebIdlError::other(prefix.clone(), context.borrowed(), e))
+    };
+    let keys = WebIdlSequenceKeys {
+      next: make(scope, &NEXT)?,
+      done: make(scope, &DONE)?,
+      value: make(scope, &VALUE)?,
+    };
+    *context_state.webidl_sequence_keys.borrow_mut() = Some(keys);
+  }
+  let keys = context_state.webidl_sequence_keys.borrow();
+  let keys = keys.as_ref().unwrap();
+  let next_key = v8::Local::new(scope, &keys.next).into();
+  let done_key = v8::Local::new(scope, &keys.done).into();
+  let value_key = v8::Local::new(scope, &keys.value).into();
 
   let mut len = 0;
 
