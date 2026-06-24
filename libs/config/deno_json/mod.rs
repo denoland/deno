@@ -415,6 +415,9 @@ pub struct FmtOptionsConfig {
   pub space_surrounding_properties: Option<bool>,
   pub vue_component_case: Option<VueComponentCase>,
   pub angular_next_control_flow_same_line: Option<bool>,
+  /// Whether `deno fmt` should read `.editorconfig` files to fill in
+  /// options that are not otherwise set. Defaults to `true` when unset.
+  pub use_editor_config: Option<bool>,
 }
 
 impl FmtOptionsConfig {
@@ -442,6 +445,7 @@ impl FmtOptionsConfig {
       && self.space_surrounding_properties.is_none()
       && self.vue_component_case.is_none()
       && self.angular_next_control_flow_same_line.is_none()
+      && self.use_editor_config.is_none()
   }
 }
 
@@ -519,6 +523,7 @@ struct SerializedFmtConfig {
   pub space_surrounding_properties: Option<bool>,
   pub vue_component_case: Option<VueComponentCase>,
   pub angular_next_control_flow_same_line: Option<bool>,
+  pub use_editor_config: Option<bool>,
   #[serde(rename = "options")]
   pub deprecated_options: FmtOptionsConfig,
   pub include: Option<Vec<String>>,
@@ -560,6 +565,7 @@ impl SerializedFmtConfig {
       vue_component_case: self.vue_component_case,
       angular_next_control_flow_same_line: self
         .angular_next_control_flow_same_line,
+      use_editor_config: self.use_editor_config,
     };
     if !self.deprecated_files.is_null() {
       log::warn!(
@@ -1463,6 +1469,7 @@ pub struct ConfigFileJson {
   pub minimum_dependency_age: Option<Value>,
   pub node_modules_dir: Option<Value>,
   pub node_modules_linker: Option<Value>,
+  pub prefer_package_json: Option<bool>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,
   pub permissions: Option<Value>,
@@ -1829,6 +1836,10 @@ impl ConfigFile {
 
   pub fn vendor(&self) -> Option<bool> {
     self.json.vendor
+  }
+
+  pub fn prefer_package_json(&self) -> Option<bool> {
+    self.json.prefer_package_json
   }
 
   /// Resolves the import map potentially resolving the file specified
@@ -2857,7 +2868,8 @@ mod tests {
         "spaceAround": true,
         "spaceSurroundingProperties": true,
         "vueComponentCase": "pascal-case",
-        "angularNextControlFlowSameLine": false
+        "angularNextControlFlowSameLine": false,
+        "useEditorConfig": false
       },
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
@@ -2934,6 +2946,7 @@ mod tests {
           space_surrounding_properties: Some(true),
           vue_component_case: Some(VueComponentCase::PascalCase),
           angular_next_control_flow_same_line: Some(false),
+          use_editor_config: Some(false),
         },
       }
     );

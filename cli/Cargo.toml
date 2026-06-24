@@ -194,6 +194,7 @@ walkdir.workspace = true
 wasm_dep_analyzer = "0.4.0"
 wasmparser = "0.244.0"
 which = { workspace = true, features = ["real-sys"] }
+yaml_parser.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 

@@ -1195,7 +1195,7 @@ async fn package_windows_app_dir(
   let app_name = parts.app_name;
   let app_dir = parts.parent.join(&app_name);
 
-  let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
+  let backend = desktop_flags.backend.as_deref().unwrap_or("webview");
   let target = laufey_target_for(desktop_flags);
   let laufey_binary = laufey_resolver.find_binary(backend, target).await?;
   let laufey_dir = laufey_resolver.find_binary_dir(backend, target).await?;
@@ -1321,7 +1321,7 @@ async fn package_linux_app_dir(
     .unwrap_or(parts.app_name);
   let app_dir = parts.parent.join(&app_name);
 
-  let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
+  let backend = desktop_flags.backend.as_deref().unwrap_or("webview");
   let target = laufey_target_for(desktop_flags);
   let laufey_binary = laufey_resolver.find_binary(backend, target).await?;
   let laufey_dir = laufey_resolver.find_binary_dir(backend, target).await?;
@@ -2612,7 +2612,7 @@ async fn package_macos_app_bundle(
   let app_bundle = parts.parent.join(format!("{}.app", app_name));
 
   // Find the LAUFEY backend .app and its main executable.
-  let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
+  let backend = desktop_flags.backend.as_deref().unwrap_or("webview");
   let target = laufey_target_for(desktop_flags);
   let laufey_app = laufey_resolver.find_app_bundle(backend, target).await?;
   let laufey_executable_name = read_plist_string(
