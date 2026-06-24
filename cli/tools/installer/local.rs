@@ -3,12 +3,13 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_npm::NpmPackageId;
 use deno_resolver::workspace::WorkspaceResolver;
+use deno_runtime::deno_permissions::CheckSpecifierKind;
 
 use super::InstallReporter;
 use super::print_install_report;
@@ -158,7 +159,7 @@ async fn install_top_level(
   top_level_flags: InstallTopLevelFlags,
 ) -> Result<(), AnyError> {
   let start_instant = std::time::Instant::now();
-  let factory = CliFactory::from_flags(flags.clone());
+  let factory = CliFactory::from_flags(flags);
   // surface any errors in the package.json
   factory
     .npm_installer()
@@ -167,18 +168,22 @@ async fn install_top_level(
   let npm_installer = factory.npm_installer().await?;
   npm_installer.ensure_no_pkg_json_dep_errors()?;
 
-  // Check that any tarball URL deps in package.json are allowed by an explicit
-  // --allow-import flag. Do not use resolved permission options here because
-  // they include Deno's implicit trusted import hosts.
+  // Tarball URL deps in package.json are remote code, so they must be
+  // permitted by --allow-import just like any other remote import. Routing
+  // through check_specifier mirrors module import permissions, so the
+  // implicit trusted hosts (e.g. the npm registry) are honored.
   let tarball_pkgs = npm_installer.tarball_pkgs();
   if !tarball_pkgs.is_empty() {
-    let allowed_hosts = if flags.permissions.allow_all {
-      Some(&[] as &[String])
-    } else {
-      flags.permissions.allow_import.as_deref()
-    };
+    let permissions = factory.root_permissions_container()?;
     for tarball in tarball_pkgs {
-      check_tarball_url_allowed(&tarball.url, allowed_hosts)?;
+      permissions
+        .check_specifier(&tarball.url, CheckSpecifierKind::Static)
+        .with_context(|| {
+          format!(
+            "Cannot install tarball \"{}\" from package.json",
+            tarball.url
+          )
+        })?;
     }
   }
 
@@ -277,97 +282,4 @@ pub fn check_if_installs_a_single_package_globally(
     }
   }
   Ok(())
-}
-
-/// Check if a tarball URL is allowed by the --allow-import host list.
-/// When running bare `deno install` with tarball URL deps in package.json,
-/// the URL's host must be explicitly allowed via --allow-import to prevent
-/// data exfiltration. Explicit `deno install <url>` skips this check since
-/// the user directly provided the URL.
-fn check_tarball_url_allowed(
-  url: &Url,
-  allowed_hosts: Option<&[String]>,
-) -> Result<(), AnyError> {
-  let Some(allowed) = allowed_hosts else {
-    bail!(
-      "Tarball URL '{}' in package.json requires import access.\n  To allow this host, pass: --allow-import={}",
-      url,
-      host_port_for_url(url)?,
-    );
-  };
-
-  if allowed.is_empty() {
-    // Empty list means allow all (e.g., --allow-import with no args)
-    return Ok(());
-  }
-
-  let host = host_for_url(url)?;
-  let host_port = host_port_for_url(url)?;
-
-  if allowed.iter().any(|h| *h == host_port || *h == host) {
-    return Ok(());
-  }
-
-  bail!(
-    "Tarball URL '{}' in package.json is not allowed.\n  To allow this host, pass: --allow-import={}",
-    url,
-    host_port,
-  )
-}
-
-fn host_for_url(url: &Url) -> Result<&str, AnyError> {
-  url.host_str().ok_or_else(|| {
-    anyhow!("Cannot install tarball from URL without a host: {}", url)
-  })
-}
-
-fn host_port_for_url(url: &Url) -> Result<String, AnyError> {
-  let host = host_for_url(url)?;
-  let port = url.port().unwrap_or(match url.scheme() {
-    "https" => 443,
-    "http" => 80,
-    _ => 0,
-  });
-  Ok(format!("{}:{}", host, port))
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn check_tarball_url_allowed_requires_explicit_allow_import() {
-    let url = Url::parse("https://example.com/package.tgz").unwrap();
-    let err = check_tarball_url_allowed(&url, None).unwrap_err();
-    let message = err.to_string();
-    assert!(message.contains("requires import access"));
-    assert!(message.contains("--allow-import=example.com:443"));
-  }
-
-  #[test]
-  fn check_tarball_url_allowed_accepts_allow_all_imports() {
-    let url = Url::parse("https://example.com/package.tgz").unwrap();
-    check_tarball_url_allowed(&url, Some(&[])).unwrap();
-  }
-
-  #[test]
-  fn check_tarball_url_allowed_matches_host_or_host_port() {
-    let url = Url::parse("https://example.com/package.tgz").unwrap();
-    let allowed_hosts = vec!["example.com".to_string()];
-    check_tarball_url_allowed(&url, Some(&allowed_hosts)).unwrap();
-
-    let allowed_hosts = vec!["example.com:443".to_string()];
-    check_tarball_url_allowed(&url, Some(&allowed_hosts)).unwrap();
-  }
-
-  #[test]
-  fn check_tarball_url_allowed_rejects_other_hosts() {
-    let url = Url::parse("https://example.com/package.tgz").unwrap();
-    let allowed_hosts = vec!["other.example.com".to_string()];
-    let err =
-      check_tarball_url_allowed(&url, Some(&allowed_hosts)).unwrap_err();
-    let message = err.to_string();
-    assert!(message.contains("is not allowed"));
-    assert!(message.contains("--allow-import=example.com:443"));
-  }
 }

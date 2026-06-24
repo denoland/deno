@@ -13,6 +13,8 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::url::Url;
 use deno_path_util::url_to_file_path;
+use deno_runtime::deno_permissions::CheckSpecifierKind;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -520,12 +522,16 @@ pub async fn add(
         // Handle tarball specifiers immediately (they need async I/O
         // to fetch and extract package.json for name/version).
         if let AddRmPackageReqValue::Tarball(ref source) = add_req.value {
-          let selected =
-            resolve_tarball_package(source, &start_dir, http_client.clone())
-              .await
-              .with_context(|| {
-                format!("Failed to resolve tarball: {}", entry_text)
-              })?;
+          let selected = resolve_tarball_package(
+            source,
+            &start_dir,
+            http_client.clone(),
+            cli_factory.root_permissions_container()?,
+          )
+          .await
+          .with_context(|| {
+            format!("Failed to resolve tarball: {}", entry_text)
+          })?;
           selected_packages.push(selected);
         } else {
           package_reqs.push(add_req);
@@ -797,6 +803,7 @@ async fn resolve_tarball_package(
   source: &TarballSource,
   start_dir: &Path,
   http_client: Arc<crate::http_util::HttpClientProvider>,
+  permissions: &PermissionsContainer,
 ) -> Result<SelectedPackage, AnyError> {
   use std::io::Read;
 
@@ -815,6 +822,13 @@ async fn resolve_tarball_package(
       })?
     }
     TarballSource::Remote(url) => {
+      // A remote tarball is remote code, so gate the download behind
+      // --allow-import just like any other remote import. check_specifier
+      // mirrors module import permissions, honoring the implicit trusted
+      // hosts (e.g. the npm registry).
+      permissions
+        .check_specifier(url, CheckSpecifierKind::Static)
+        .with_context(|| format!("Cannot download tarball: {url}"))?;
       log::info!("Downloading {}", url);
       let client = http_client.get_or_create()?;
       client
