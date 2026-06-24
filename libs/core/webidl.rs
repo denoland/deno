@@ -1681,7 +1681,11 @@ mod tests {
       &Default::default(),
     )
     .unwrap_err();
-    assert!(err.to_string().contains("Expected next() function on iterator."));
+    assert!(
+      err
+        .to_string()
+        .contains("Expected next() function on iterator.")
+    );
   }
 
   #[test]
