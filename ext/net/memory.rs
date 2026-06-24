@@ -13,7 +13,9 @@
 use std::collections::HashMap;
 use std::io;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
@@ -101,20 +103,14 @@ impl AsyncWrite for MemoryStream {
 pub struct MemoryListener {
   name: String,
   rx: tokio::sync::Mutex<mpsc::UnboundedReceiver<MemoryStream>>,
-  next_id: AtomicU32,
 }
 
 impl MemoryListener {
   pub async fn accept(&self) -> io::Result<(MemoryStream, MemoryAddr)> {
     let mut rx = self.rx.lock().await;
     match rx.recv().await {
-      Some(mut stream) => {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let addr = MemoryAddr {
-          name: self.name.clone(),
-          id,
-        };
-        stream.addr = addr.clone();
+      Some(stream) => {
+        let addr = stream.addr.clone();
         Ok((stream, addr))
       }
       None => Err(io::Error::new(
@@ -137,60 +133,78 @@ impl Drop for MemoryListener {
     // Free the name so it can be reused; peers then see a closed channel.
     // A name is held by exactly one listener (listen_memory rejects
     // duplicates), so this entry is unambiguously ours.
-    registry().lock().unwrap().remove(&self.name);
+    registry_lock().remove(&self.name);
   }
 }
 
-type Registry = Mutex<HashMap<String, mpsc::UnboundedSender<MemoryStream>>>;
+struct RegistryEntry {
+  tx: mpsc::UnboundedSender<MemoryStream>,
+  next_id: Arc<AtomicU32>,
+}
+
+type Registry = Mutex<HashMap<String, RegistryEntry>>;
 
 fn registry() -> &'static Registry {
   static REGISTRY: OnceLock<Registry> = OnceLock::new();
   REGISTRY.get_or_init(Default::default)
 }
 
+fn registry_lock() -> MutexGuard<'static, HashMap<String, RegistryEntry>> {
+  registry().lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Create a memory listener registered under `name`. Fails if `name` is already
 /// in use.
 pub fn listen_memory(name: &str) -> io::Result<MemoryListener> {
   let (tx, rx) = mpsc::unbounded_channel();
-  let mut reg = registry().lock().unwrap();
+  let mut reg = registry_lock();
   if reg.contains_key(name) {
     return Err(io::Error::new(
       io::ErrorKind::AddrInUse,
       format!("memory address already in use: {name}"),
     ));
   }
-  reg.insert(name.to_string(), tx);
+  reg.insert(
+    name.to_string(),
+    RegistryEntry {
+      tx,
+      next_id: Arc::new(AtomicU32::new(1)),
+    },
+  );
   Ok(MemoryListener {
     name: name.to_string(),
     rx: tokio::sync::Mutex::new(rx),
-    next_id: AtomicU32::new(1),
   })
 }
 
 /// Whether a memory listener is currently registered under `name`. Used to
 /// wait for an in-process server to be ready before directing traffic at it
-/// (without creating a spurious connection the way [`connect_memory`] would).
+/// (without opening a real connection that the listener would need to accept).
 pub fn is_listening(name: &str) -> bool {
-  registry().lock().unwrap().contains_key(name)
+  registry_lock().contains_key(name)
 }
 
 /// Connect to the memory listener registered under `name`, returning the
 /// caller's (client) end of a fresh duplex connection. The server end is
 /// delivered to the listener's `accept`.
 pub fn connect_memory(name: &str) -> io::Result<MemoryStream> {
-  let tx = {
-    let reg = registry().lock().unwrap();
-    reg.get(name).cloned().ok_or_else(|| {
+  let (tx, id) = {
+    let reg = registry_lock();
+    let entry = reg.get(name).ok_or_else(|| {
       io::Error::new(
         io::ErrorKind::NotFound,
         format!("no memory listener registered for: {name}"),
       )
-    })?
+    })?;
+    (
+      entry.tx.clone(),
+      entry.next_id.fetch_add(1, Ordering::Relaxed),
+    )
   };
   let (server, client) = tokio::io::duplex(DUPLEX_BUF_SIZE);
   let addr = MemoryAddr {
     name: name.to_string(),
-    id: 0,
+    id,
   };
   tx.send(MemoryStream {
     inner: server,
@@ -220,6 +234,10 @@ mod tests {
     let (mut server, addr) = listener.accept().await.unwrap();
     assert_eq!(addr.name, "test-roundtrip");
     assert_eq!(addr.id, 1);
+    assert_eq!(server.local_addr().unwrap().id, 1);
+    assert_eq!(server.peer_addr().unwrap().id, 1);
+    assert_eq!(client.local_addr().unwrap().id, 1);
+    assert_eq!(client.peer_addr().unwrap().id, 1);
 
     // client -> server
     client.write_all(b"ping").await.unwrap();
