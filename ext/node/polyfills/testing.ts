@@ -2222,6 +2222,7 @@ const SUPPORTED_APIS = [
   "setInterval",
   "setImmediate",
   "Date",
+  "AbortSignal.timeout",
 ];
 
 class MockTimersHandle {
@@ -2276,6 +2277,10 @@ class MockTimers {
   _nextId = 1;
   #originals = new SafeMap();
   #mockedApis = new SafeMap();
+  // `AbortSignal.timeout` is a static method, not a `globalThis` binding, so it
+  // is saved/restored separately from `#originals` (which maps global names).
+  #abortSignalTimeoutOriginal = null;
+  #abortSignalTimeoutMocked = false;
 
   #mockGlobal(name, value) {
     if (!MapPrototypeHas(this.#originals, name)) {
@@ -2367,6 +2372,11 @@ class MockTimers {
           "clearImmediate",
           (handle) => this._clearTimer(handle),
         );
+      } else if (api === "AbortSignal.timeout") {
+        this.#abortSignalTimeoutOriginal = globalThis.AbortSignal.timeout;
+        this.#abortSignalTimeoutMocked = true;
+        globalThis.AbortSignal.timeout = (delay) =>
+          this.#mockedAbortSignalTimeout(delay);
       }
     }
 
@@ -2382,6 +2392,11 @@ class MockTimers {
       const { 0: name, 1: original } of new SafeMapIterator(this.#originals)
     ) {
       globalThis[name] = original;
+    }
+    if (this.#abortSignalTimeoutMocked) {
+      globalThis.AbortSignal.timeout = this.#abortSignalTimeoutOriginal;
+      this.#abortSignalTimeoutOriginal = null;
+      this.#abortSignalTimeoutMocked = false;
     }
     MapPrototypeClear(this.#originals);
     MapPrototypeClear(this.#mockedApis);
@@ -2445,6 +2460,24 @@ class MockTimers {
 
   [SymbolDispose]() {
     this.reset();
+  }
+
+  // Mirrors Node's mocked `AbortSignal.timeout`: the returned signal aborts
+  // with a `TimeoutError` once the virtual clock advances past `delay`, instead
+  // of using real time, so `tick()` / `runAll()` drive the timeout.
+  #mockedAbortSignalTimeout(delay) {
+    const controller = new AbortController();
+    this._setTimeout(
+      () => {
+        controller.abort(
+          new DOMException("The operation timed out.", "TimeoutError"),
+        );
+      },
+      delay,
+      [],
+      false,
+    );
+    return controller.signal;
   }
 
   _setTimeout(callback, delay, args, immediate) {

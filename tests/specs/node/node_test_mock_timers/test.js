@@ -238,6 +238,21 @@ test("setTime sets clock without firing timers", () => {
   mock.timers.reset();
 });
 
+test("AbortSignal.timeout aborts on tick", () => {
+  const original = AbortSignal.timeout;
+  mock.timers.enable({ apis: ["AbortSignal.timeout"] });
+  const signal = AbortSignal.timeout(50);
+  assert.strictEqual(signal.aborted, false);
+  mock.timers.tick(49);
+  assert.strictEqual(signal.aborted, false);
+  mock.timers.tick(1);
+  assert.strictEqual(signal.aborted, true);
+  assert.strictEqual(signal.reason.name, "TimeoutError");
+  mock.timers.reset();
+  // reset restores the real static method.
+  assert.strictEqual(AbortSignal.timeout, original);
+});
+
 test("reset restores original globals", () => {
   const realSetTimeout = globalThis.setTimeout;
   const realDate = globalThis.Date;
