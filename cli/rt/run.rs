@@ -1326,6 +1326,9 @@ pub async fn run_with_options(
       _ => entrypoint,
     }
   };
+  let maybe_npm_package_ref =
+    NpmPackageReqReference::from_specifier(&main_module).ok();
+  let is_npm_binary = maybe_npm_package_ref.is_some();
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
   let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
     sys.clone(),
@@ -1657,12 +1660,13 @@ pub async fn run_with_options(
     trace_ops: None,
     is_inspecting: options.is_inspecting,
     is_standalone: true,
+    is_npm_binary,
     auto_serve: options.auto_serve,
     skip_op_registration: true,
     location: metadata.location,
-    argv0: NpmPackageReqReference::from_specifier(&main_module)
-      .ok()
-      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref).to_string())
+    argv0: maybe_npm_package_ref
+      .as_ref()
+      .map(|req_ref| npm_pkg_req_ref_to_binary_command(req_ref).to_string())
       .or(std::env::args().next()),
     node_debug: std::env::var("NODE_DEBUG").ok(),
     node_cluster_unique_id: std::env::var("NODE_UNIQUE_ID").ok(),
@@ -1719,8 +1723,8 @@ pub async fn run_with_options(
   };
   deno_core::JsRuntime::init_platform(v8_platform);
 
-  let main_module = match NpmPackageReqReference::from_specifier(&main_module) {
-    Ok(package_ref) => {
+  let main_module = match maybe_npm_package_ref {
+    Some(package_ref) => {
       let pkg_folder = npm_resolver.resolve_pkg_folder_from_deno_module_req(
         package_ref.req(),
         &deno_path_util::url_from_file_path(&vfs.root().join("package.json"))?,
@@ -1728,7 +1732,7 @@ pub async fn run_with_options(
       worker_factory
         .resolve_npm_binary_entrypoint(&pkg_folder, package_ref.sub_path())?
     }
-    Err(_) => main_module,
+    None => main_module,
   };
 
   let preload_modules = metadata
