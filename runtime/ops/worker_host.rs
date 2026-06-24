@@ -24,6 +24,8 @@ use deno_core::ResourceId;
 use deno_core::op2;
 use deno_permissions::ChildPermissionsArg;
 use deno_permissions::PermissionsContainer;
+use deno_web::Blob;
+use deno_web::BlobStoreTrait;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
 use deno_web::Transferable;
@@ -66,6 +68,10 @@ pub struct CreateWebWorkerArgs {
   pub worker_type: WorkerThreadType,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  /// Captured root blob for `main_module`; paired with `main_module` by the
+  /// worker's loader/handle. Blob dependencies are intentionally resolved
+  /// normally by their own URLs.
+  pub maybe_main_module_blob: Option<Arc<Blob>>,
   pub resource_limits: Option<ResourceLimits>,
 }
 
@@ -276,6 +282,16 @@ fn op_create_worker(
   let worker_id = WorkerId::new();
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
+  // Synchronously capture the root blob so a racing `URL.revokeObjectURL`
+  // after `new Worker(blobUrl)` can't make the worker load fail (see #26142).
+  // This anchors only the worker root; blob URL dependencies still resolve
+  // through the normal blob store at load time.
+  let maybe_main_module_blob = if module_specifier.scheme() == "blob" {
+    let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
+    blob_store.get_object_url(module_specifier.clone())
+  } else {
+    None
+  };
   let worker_name = args_name.unwrap_or_default();
 
   let (handle_sender, handle_receiver) =
@@ -324,6 +340,7 @@ fn op_create_worker(
           worker_type,
           close_on_idle: args.close_on_idle,
           maybe_worker_metadata,
+          maybe_main_module_blob,
           resource_limits: args.resource_limits,
         });
 
