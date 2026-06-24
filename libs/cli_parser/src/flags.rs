@@ -178,6 +178,10 @@ pub struct CompileFlags {
   /// Bundle the entrypoint with esbuild before embedding it, instead of
   /// shipping the entire node_modules tree. Experimental.
   pub bundle: bool,
+  /// Stable identity for the compiled app. Determines where origin-bound
+  /// storage (default `Deno.openKv()`, `localStorage`, `caches`) is persisted.
+  /// Defaults to the output file name when not set.
+  pub app_name: Option<String>,
   /// Minify the bundle. Only meaningful with `bundle: true`.
   pub minify: bool,
   /// Prune the embedded managed npm snapshot to only those packages reachable
@@ -226,6 +230,12 @@ pub struct DesktopFlags {
   /// port is allocated. The user-visible inspector port (from `--inspect`) is
   /// separate and is carried on `Flags::inspect`.
   pub inspect_renderer: Option<SocketAddr>,
+  /// When set, emit a compressed distribution archive of the packaged app
+  /// next to it (`<output>.tar.xz` or `<output>.tar.zst`). The installed
+  /// `.app`/app dir is left untouched (and still code-signed); the archive is
+  /// just a small download artifact. Value is the compressor: `"xz"` (LZMA)
+  /// or `"zstd"`.
+  pub compress: Option<String>,
 }
 
 #[derive(Clone)]
@@ -340,6 +350,7 @@ pub struct FmtFlags {
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
+  pub no_editorconfig: bool,
   pub watch: Option<WatchFlags>,
   pub unstable_component: bool,
   pub unstable_sql: bool,
@@ -367,6 +378,15 @@ pub struct InitFlags {
 pub struct InfoFlags {
   pub json: bool,
   pub file: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ListFlags {
+  pub recursive: bool,
+  pub depth: u16,
+  pub prod: bool,
+  pub dev: bool,
+  pub filters: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -645,6 +665,13 @@ pub struct TestFlags {
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
+  /// Run only test modules affected by files changed in git.
+  /// `None` when `--changed` is absent, `Some(None)` for `--changed` with no
+  /// value (uncommitted changes), `Some(Some(ref))` for `--changed=<ref>`.
+  pub changed: Option<Option<String>>,
+  /// Run only test modules that depend on the given source files (`--related`).
+  pub related: Vec<String>,
+  pub update_snapshots: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -772,6 +799,7 @@ pub enum DenoSubcommand {
   Fmt(FmtFlags),
   Init(InitFlags),
   Info(InfoFlags),
+  List(ListFlags),
   Install(InstallFlags),
   JSONReference(JSONReferenceFlags),
   Jupyter(JupyterFlags),

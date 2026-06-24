@@ -427,7 +427,7 @@ jobs:
     needs:
       - build-debug-macos-x86_64
     runs-on: macos-15-intel
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -3292,7 +3292,7 @@ jobs:
     needs:
       - build-debug-windows-aarch64
     runs-on: windows-11-arm
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -4401,7 +4401,7 @@ jobs:
     needs:
       - build-release-linux-x86_64
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -5060,7 +5060,7 @@ jobs:
     needs:
       - build-debug-linux-x86_64
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash

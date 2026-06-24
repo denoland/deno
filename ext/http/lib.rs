@@ -180,7 +180,7 @@ static OTEL_COLLECTORS: OnceCell<OtelCollectors> = OnceCell::new();
 
 const HTTP2_PREFIX: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Options {
   /// By passing a hook function, the caller can customize various configuration
   /// options for the HTTP/2 server.
@@ -193,6 +193,19 @@ pub struct Options {
 
   /// If `false`, the server will abort the request when the response is dropped.
   pub no_legacy_abort: bool,
+
+  /// If `true`, responses may be compressed based on request and response headers.
+  pub automatic_compression: bool,
+}
+
+impl Default for Options {
+  fn default() -> Self {
+    Self {
+      http2_builder_hook: None,
+      no_legacy_abort: false,
+      automatic_compression: true,
+    }
+  }
 }
 
 #[cfg(not(feature = "default_property_extractor"))]
@@ -204,6 +217,7 @@ deno_core::extension!(
     op_http_accept,
     op_http_headers,
     op_http_serve_address_override,
+    op_http_serve_default_compression,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -269,6 +283,7 @@ deno_core::extension!(
     op_http_accept,
     op_http_headers,
     op_http_serve_address_override,
+    op_http_serve_default_compression,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -1839,6 +1854,14 @@ pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
   }
 
   (0, String::new(), 0, false)
+}
+
+#[op2(fast)]
+pub fn op_http_serve_default_compression() -> bool {
+  match std::env::var("DENO_SERVE_AUTOMATIC_COMPRESSION") {
+    Ok(value) => !matches!(value.to_ascii_lowercase().as_str(), "0" | "false"),
+    Err(_) => true,
+  }
 }
 
 fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {

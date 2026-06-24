@@ -643,7 +643,28 @@ pub fn cover_files(
 
   let proc_coverages: Vec<_> = script_coverages
     .into_iter()
-    .map(|cov| ProcessCoverage { result: vec![cov] })
+    .map(|mut cov| {
+      // Merge the same module loaded under different specifiers. Fragments
+      // never affect the source, so strip them for any file/http(s) URL.
+      // Query strings are only stripped for `file:` (same file on disk);
+      // http(s) servers can return different bytes per query and the cache
+      // keys on the full URL, so keep it there.
+      if let Ok(mut url) = Url::parse(&cov.url) {
+        let strip_fragment = matches!(url.scheme(), "file" | "http" | "https")
+          && url.fragment().is_some();
+        let strip_query = url.scheme() == "file" && url.query().is_some();
+        if strip_fragment {
+          url.set_fragment(None);
+        }
+        if strip_query {
+          url.set_query(None);
+        }
+        if strip_fragment || strip_query {
+          cov.url = url.to_string();
+        }
+      }
+      ProcessCoverage { result: vec![cov] }
+    })
     .collect();
 
   let script_coverages = if let Some(c) = merge::merge_processes(proc_coverages)
