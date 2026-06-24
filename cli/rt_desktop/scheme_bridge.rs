@@ -13,6 +13,14 @@
 use deno_net::memory::connect_memory;
 use http_body_util::BodyExt;
 use http_body_util::Full;
+use hyper::header::CONNECTION;
+use hyper::header::HOST;
+use hyper::header::PROXY_AUTHENTICATE;
+use hyper::header::PROXY_AUTHORIZATION;
+use hyper::header::TE;
+use hyper::header::TRAILER;
+use hyper::header::TRANSFER_ENCODING;
+use hyper::header::UPGRADE;
 use hyper_util::rt::TokioIo;
 use laufey::SchemeRequest;
 
@@ -97,8 +105,12 @@ async fn bridge(
     .method(method)
     .uri(path_and_query(url));
   for (name, value) in headers {
+    if should_skip_request_header(name) {
+      continue;
+    }
     builder = builder.header(name.as_str(), value.as_str());
   }
+  builder = builder.header(HOST, "desktop");
   let request = builder.body(Full::new(bytes::Bytes::from(body)))?;
 
   let response = sender.send_request(request).await?;
@@ -106,6 +118,9 @@ async fn bridge(
   let status = response.status().as_u16() as i32;
   let mut resp_headers = Vec::with_capacity(response.headers().len());
   for (name, value) in response.headers() {
+    if is_hop_by_hop_header(name.as_str()) {
+      continue;
+    }
     if let Ok(v) = value.to_str() {
       resp_headers.push((name.as_str().to_string(), v.to_string()));
     }
@@ -136,5 +151,40 @@ fn path_and_query(url: &str) -> String {
       None => "/".to_string(),
     },
     None => url.to_string(),
+  }
+}
+
+fn should_skip_request_header(name: &str) -> bool {
+  name.eq_ignore_ascii_case(HOST.as_str()) || is_hop_by_hop_header(name)
+}
+
+fn is_hop_by_hop_header(name: &str) -> bool {
+  name.eq_ignore_ascii_case(CONNECTION.as_str())
+    || name.eq_ignore_ascii_case("keep-alive")
+    || name.eq_ignore_ascii_case(PROXY_AUTHENTICATE.as_str())
+    || name.eq_ignore_ascii_case(PROXY_AUTHORIZATION.as_str())
+    || name.eq_ignore_ascii_case(TE.as_str())
+    || name.eq_ignore_ascii_case(TRAILER.as_str())
+    || name.eq_ignore_ascii_case(TRANSFER_ENCODING.as_str())
+    || name.eq_ignore_ascii_case(UPGRADE.as_str())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn path_and_query_preserves_path_query() {
+    assert_eq!(path_and_query("app://desktop/foo?bar=baz"), "/foo?bar=baz");
+    assert_eq!(path_and_query("app://desktop"), "/");
+  }
+
+  #[test]
+  fn bridge_header_filtering() {
+    assert!(should_skip_request_header("host"));
+    assert!(should_skip_request_header("Connection"));
+    assert!(is_hop_by_hop_header("transfer-encoding"));
+    assert!(!should_skip_request_header("accept-language"));
+    assert!(!is_hop_by_hop_header("content-type"));
   }
 }

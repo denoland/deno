@@ -1287,6 +1287,7 @@ function serve(arg1, arg2) {
         delete envOptions.cid;
         delete envOptions.port;
         delete envOptions.path;
+        break;
       }
     }
 
