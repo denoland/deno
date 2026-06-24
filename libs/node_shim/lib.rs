@@ -5129,7 +5129,6 @@ mod tests {
       svec![
         "run",
         "-A",
-        "--unstable-node-globals",
         "--unstable-bare-node-builtins",
         "--unstable-detect-cjs",
         "--unstable-sloppy-imports",
