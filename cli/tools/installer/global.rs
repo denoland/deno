@@ -395,6 +395,7 @@ async fn install_global_compiled(
     eszip: false,
     self_extracting: false,
     bundle: false,
+    app_name: None,
     minify: false,
     exclude_unused_npm: false,
   };

@@ -461,6 +461,7 @@ async fn compile_desktop(
     output: hmr_output_override
       .clone()
       .or_else(|| desktop_flags.output.clone()),
+    app_name: None,
     args: desktop_flags.args.clone(),
     target: desktop_flags.target.clone(),
     watch: None,
