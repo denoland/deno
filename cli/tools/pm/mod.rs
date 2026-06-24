@@ -1021,7 +1021,12 @@ async fn resolve_tarball_package(
       let cache_dir = start_dir.join(".deno_tarball_cache");
       std::fs::create_dir_all(&cache_dir)
         .context("Failed to create tarball cache directory")?;
-      let filename = format!("{}-{}-{}.tgz", name, version, hash_hex);
+      // Scoped package names (e.g. "@denotest/esm-basic") contain a slash,
+      // which would make the filename resolve into a non-existent
+      // subdirectory. Replace path separators so the cache filename stays a
+      // single flat entry under the cache directory.
+      let safe_name = name.replace(['/', '\\'], "+");
+      let filename = format!("{}-{}-{}.tgz", safe_name, version, hash_hex);
       let cached_path = cache_dir.join(&filename);
       std::fs::write(&cached_path, &tarball_bytes)
         .context("Failed to cache tarball")?;
