@@ -2752,6 +2752,10 @@ async fn package_macos_app_bundle(
     <key>NSAllowsLocalNetworking</key>
     <true/>
   </dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>{app_name} requires access to bluetooth</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>{app_name} requires access to bluetooth</string>
 </dict>
 </plist>
 "#,
