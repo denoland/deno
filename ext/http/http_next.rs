@@ -43,7 +43,9 @@ use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamReadHalf;
 use deno_net::raw::NetworkStreamWriteHalf;
+use deno_websocket::ServerWebSocket;
 use deno_websocket::ws_create_server_stream;
+use deno_websocket::ws_create_server_stream_with_guard;
 use fly_accept_encoding::Encoding;
 use hyper::StatusCode;
 use hyper::body::Incoming;
@@ -1103,6 +1105,7 @@ struct RawHttpRecordOptions {
   upgrade: Option<Rc<RawUpgrade>>,
   request_size: u64,
   automatic_compression: bool,
+  server_state: SignallingRc<HttpServerState>,
 }
 
 struct RawHttpRecordInner {
@@ -1128,11 +1131,19 @@ struct RawHttpRecordInner {
   response_body_waker: Option<std::task::Waker>,
   otel_info: Option<OtelInfo>,
   automatic_compression: bool,
+  /// Held so the websocket upgrade op can clone the per-server lifetime
+  /// guard (and reach the [`ActiveWebSockets`] registry) when promoting
+  /// this raw H1 record into a [`ServerWebSocket`].
+  server_state: SignallingRc<HttpServerState>,
 }
 
 struct RawHttpRecord(RefCell<RawHttpRecordInner>);
 
 impl RawHttpRecord {
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "Raw H1 request payload is constructed from parsed pieces plus the per-server lifetime token; bundling them adds indirection without aiding readability."
+  )]
   fn new(
     request_info: HttpConnectionProperties,
     method: RawMethod,
@@ -1180,7 +1191,12 @@ impl RawHttpRecord {
       response_body_waker: None,
       otel_info,
       automatic_compression: options.automatic_compression,
+      server_state: options.server_state,
     })))
+  }
+
+  fn server_state(&self) -> SignallingRc<HttpServerState> {
+    self.0.borrow().server_state.clone()
   }
 
   fn complete(&self) {
@@ -1702,33 +1718,67 @@ pub async fn op_http_upgrade_websocket_next(
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_upgrade_websocket_next") };
-  if let HttpRecordExternal::Raw(record) = http {
-    let Some(upgrade) = record.0.borrow().upgrade.clone() else {
-      return Err(raw_upgrade_unavailable());
-    };
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    *upgrade.websocket_tx.borrow_mut() = Some(tx);
-    let (stream, bytes) =
-      rx.await.map_err(|_| raw_h1_connection_closed())??;
-    return Ok(ws_create_server_stream(
-      &mut state.borrow_mut(),
-      stream,
-      bytes,
-    ));
+  match http {
+    HttpRecordExternal::Raw(record) => {
+      let Some(upgrade) = record.0.borrow().upgrade.clone() else {
+        return Err(raw_upgrade_unavailable());
+      };
+      let server_state = record.server_state();
+      let (tx, rx) = tokio::sync::oneshot::channel();
+      *upgrade.websocket_tx.borrow_mut() = Some(tx);
+      let (stream, bytes) =
+        rx.await.map_err(|_| raw_h1_connection_closed())??;
+      Ok(register_server_websocket(
+        &mut state.borrow_mut(),
+        stream,
+        bytes,
+        server_state,
+      ))
+    }
+    HttpRecordExternal::Hyper(record) => {
+      let server_state = record.server_state();
+      let upgrade = record.upgrade()?;
+      let upgraded = upgrade.await?;
+      let (stream, bytes) = extract_network_stream(upgraded);
+      Ok(register_server_websocket(
+        &mut state.borrow_mut(),
+        stream,
+        bytes,
+        server_state,
+      ))
+    }
   }
-  let upgrade = {
-    let http = http.into_hyper("op_http_upgrade_websocket_next")?;
-    http.upgrade()?
-  };
+}
 
-  let upgraded = upgrade.await?;
-  let (stream, bytes) = extract_network_stream(upgraded);
-
-  Ok(ws_create_server_stream(
-    &mut state.borrow_mut(),
-    stream,
-    bytes,
-  ))
+/// Create a server-side `ServerWebSocket` resource and register it on the
+/// per-server [`ActiveWebSockets`] registry so a subsequent
+/// `op_http_close` (graceful or forceful) can close it instead of leaking
+/// it as a `serverWebSocket` resource.
+///
+/// If the server has already entered shutdown by the time we get here
+/// (because a handler called `Deno.upgradeWebSocket` while the listener
+/// was already draining), `ActiveWebSockets::register` will immediately
+/// apply the recorded shutdown mode to this new socket so it does not
+/// pin the server alive past `shutdown()`.
+fn register_server_websocket(
+  state: &mut OpState,
+  transport: NetworkStream,
+  read_buf: Bytes,
+  server_state: SignallingRc<HttpServerState>,
+) -> ResourceId {
+  let registry = server_state.active_websockets();
+  let key = registry.next_key();
+  let guard = Box::new(crate::service::WebSocketGuard {
+    registry: registry.clone(),
+    key,
+    _server_state: server_state,
+  });
+  let rid =
+    ws_create_server_stream_with_guard(state, transport, read_buf, Some(guard));
+  if let Ok(ws) = state.resource_table.get::<ServerWebSocket>(rid) {
+    registry.register(key, &ws);
+  }
+  rid
 }
 
 /// Create a server WebSocket from a TCP stream resource (e.g. taken from a
@@ -4208,7 +4258,7 @@ async fn serve_http11_raw(
   request_info: HttpConnectionProperties,
   callback: Rc<ServerCallback>,
   cancel: Rc<CancelHandle>,
-  _server_state: SignallingRc<HttpServerState>,
+  server_state: SignallingRc<HttpServerState>,
   automatic_compression: bool,
 ) -> Result<(), HttpNextError> {
   let mut conn = h1::SharedConn::new(io);
@@ -4273,6 +4323,7 @@ async fn serve_http11_raw(
           upgrade: None,
           request_size: parsed.request_size,
           automatic_compression,
+          server_state: server_state.clone(),
         },
       );
       let mut record_cancel_guard =
@@ -4402,6 +4453,7 @@ async fn serve_http11_raw(
           upgrade: upgrade.clone(),
           request_size: parsed.request_size,
           automatic_compression,
+          server_state: server_state.clone(),
         },
       );
       let mut record_cancel_guard =
@@ -4593,6 +4645,7 @@ async fn serve_http11_raw(
         upgrade: None,
         request_size: parsed.request_size,
         automatic_compression,
+        server_state: server_state.clone(),
       },
     );
     let mut record_cancel_guard = RawHttpRecordCancelGuard::new(record.clone());
@@ -5304,11 +5357,28 @@ pub fn op_http_cancel(
 ) -> Result<(), deno_core::error::ResourceError> {
   let join_handle = state.resource_table.get::<HttpJoinHandle>(rid)?;
 
+  // `op_http_cancel` is called from the abort-signal path. Treat
+  // non-graceful cancellation as forceful: we will not wait on a Close
+  // frame that might hang if the peer's TCP send buffer is full.
+  // `begin_shutdown` also arms the registry so any websocket upgraded
+  // after this point is torn down immediately instead of holding the
+  // server alive.
+  let mode = if graceful {
+    crate::service::WsShutdownMode::Graceful
+  } else {
+    crate::service::WsShutdownMode::Forced
+  };
+  join_handle
+    .server_state
+    .active_websockets()
+    .begin_shutdown(mode);
+
   if graceful {
-    // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
+    // In a graceful shutdown, we close the listener and allow all the
+    // remaining connections to drain.
     join_handle.listen_cancel_handle().cancel();
   } else {
-    // In a forceful shutdown, we close everything
+    // In a forceful shutdown, we close everything.
     join_handle.listen_cancel_handle().cancel();
     join_handle.connection_cancel_handle().cancel();
   }
@@ -5329,7 +5399,18 @@ pub async fn op_http_close(
 
   if graceful {
     http_general_trace!("graceful shutdown");
-    // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
+    // Tell each upgraded server-side WebSocket to send a Close(1001 Going
+    // Away) frame and stop reading. `begin_shutdown` also arms the
+    // per-server registry, so a handler that calls
+    // `Deno.upgradeWebSocket` *after* this point — while in-flight
+    // requests are still draining — has its new websocket torn down on
+    // registration instead of holding the `poll_complete` below open
+    // forever. See deno#22387.
+    join_handle
+      .server_state
+      .active_websockets()
+      .begin_shutdown(crate::service::WsShutdownMode::Graceful);
+    // Close the listener and allow remaining connections to drain.
     join_handle.listen_cancel_handle().cancel();
     // Idle connections can still be waiting in protocol prefix detection and
     // are not represented in the active request set. Give them a turn to
@@ -5339,10 +5420,19 @@ pub async fn op_http_close(
     poll_fn(|cx| join_handle.server_state.poll_complete(cx)).await;
   } else {
     http_general_trace!("forceful shutdown");
-    // In a forceful shutdown, we close everything
+    // Force every upgraded server-side WebSocket to close synchronously
+    // (the connection-cancel handle doesn't reach websockets, since the
+    // stream was moved out of the hyper connection at upgrade time). We
+    // use the forced variant here so a peer with a full TCP send buffer
+    // can't block the shutdown by stalling our Close-frame write.
+    join_handle
+      .server_state
+      .active_websockets()
+      .begin_shutdown(crate::service::WsShutdownMode::Forced);
+    // In a forceful shutdown, we close everything.
     join_handle.listen_cancel_handle().cancel();
     join_handle.connection_cancel_handle().cancel();
-    // Give streaming responses a tick to close
+    // Give streaming responses a tick to close.
     tokio::task::yield_now().await;
   }
 
