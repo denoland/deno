@@ -3581,6 +3581,7 @@ for (const testCase of compressionTestCases) {
         const listeningDeferred = Promise.withResolvers<void>();
         const ac = new AbortController();
         await using server = Deno.serve({
+          automaticCompression: true,
           handler: async (_request) => {
             const f = await makeTempFile(testCase.length);
             deferred.resolve();
@@ -3642,6 +3643,7 @@ Deno.test(
     const ac = new AbortController();
 
     await using server = Deno.serve({
+      automaticCompression: true,
       handler: () => {
         return new Response(body, {
           headers: { "content-type": "text/plain" },
@@ -3670,14 +3672,13 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
-  async function httpServerAutomaticCompressionCanBeDisabled() {
+  async function httpServerAutomaticCompressionOffByDefault() {
     const body = "a".repeat(1000);
     const listeningDeferred = Promise.withResolvers<void>();
     const ac = new AbortController();
 
     await using server = Deno.serve({
-      automaticCompression: false,
-      handler: () => {
+      handler: (_request) => {
         return new Response(body, {
           headers: { "content-type": "text/plain" },
         });
@@ -3746,6 +3747,7 @@ Deno.test(
     const ac = new AbortController();
 
     await using server = Deno.serve({
+      automaticCompression: true,
       handler: (_request) => {
         return new Response(body, {
           headers: { "content-type": "text/plain" },
@@ -3816,6 +3818,7 @@ Deno.test(
           }
 
           await check({});
+          await check({ automaticCompression: false });
           await check({ automaticCompression: true });
         `,
         ],
@@ -3828,11 +3831,23 @@ Deno.test(
       return new TextDecoder().decode(stdout).trim().split("\n");
     }
 
+    assertEquals(await run("1"), [
+      "gzip",
+      "none",
+      "gzip",
+    ]);
+    assertEquals(await run("true"), [
+      "gzip",
+      "none",
+      "gzip",
+    ]);
     assertEquals(await run("0"), [
+      "none",
       "none",
       "gzip",
     ]);
     assertEquals(await run("False"), [
+      "none",
       "none",
       "gzip",
     ]);
@@ -3847,6 +3862,7 @@ Deno.test(
     const ac = new AbortController();
 
     await using server = Deno.serve({
+      automaticCompression: true,
       handler: () => {
         return new Response(body, {
           headers: { "content-type": "text/plain" },
