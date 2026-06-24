@@ -375,7 +375,7 @@ imara-diff = "=0.2.0"
 lax-css = "=0.2.4"
 lax-markup = "=0.2.5"
 lax-sql = "=0.2.1"
-libsui = "=0.15.0"
+libsui = "=0.16.0"
 malva = "=0.15.2"
 markup_fmt = "=0.27.3"
 object = { version = "0.36.3", default-features = false, features = ["read_core", "pe"] }
