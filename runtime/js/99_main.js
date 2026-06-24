@@ -1146,7 +1146,6 @@ function bootstrapWorkerRuntime(
       17: nodeClusterUniqueId,
       18: nodeClusterSchedPolicy,
       19: disableOffscreenCanvas,
-      20: isNpmBinary,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
