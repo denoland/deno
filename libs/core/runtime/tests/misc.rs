@@ -300,8 +300,13 @@ async fn test_resolve_value_generic(
   }
 }
 
-#[test]
-fn terminate_execution_webassembly() {
+// Uses `tokio::test` because, without `--wasm-test-streaming`, async
+// `WebAssembly.compile` finishes on a V8 background thread and posts a
+// foreground task to resolve the promise. The custom V8 platform only delivers
+// those foreground tasks when the isolate was created inside a tokio runtime
+// (see `register_isolate`), so `block_on` without tokio would hang.
+#[tokio::test]
+async fn terminate_execution_webassembly() {
   let (mut runtime, _dispatch_count) = setup(Mode::Async);
   let v8_isolate_handle = runtime.v8_isolate().thread_safe_handle();
 
@@ -321,7 +326,7 @@ fn terminate_execution_webassembly() {
                                 })()
                                     "#).unwrap();
   #[allow(deprecated, reason = "test code")]
-  futures::executor::block_on(runtime.resolve_value(promise)).unwrap();
+  runtime.resolve_value(promise).await.unwrap();
   let terminator_thread = std::thread::spawn(move || {
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
@@ -1876,4 +1881,40 @@ async fn test_nexttick_before_queue_microtask() {
     )
     .unwrap();
   runtime.run_event_loop(Default::default()).await.unwrap();
+}
+
+// Test that foreground tasks are delivered even when the isolate is
+// registered without a tokio handle.
+#[test]
+fn foreground_tasks_delivered_without_tokio_handle() {
+  let tokio_runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_all()
+    .build()
+    .unwrap();
+
+  // Created outside `block_on` so there is no tokio runtime context and
+  // the isolate is registered with `handle: None`.
+  let mut runtime = JsRuntime::new(Default::default());
+
+  tokio_runtime.block_on(async {
+    let promise = runtime
+      .execute_script(
+        "foreground_task_test.js",
+        r#"
+      (async () => {
+        const wasmCode = new Uint8Array([
+          0,   97,  115, 109, 1,   0,   0,   0,   1,  4,   1,
+          96,  0,   0,   3,   2,   1,   0,   7,   17, 1,   13,
+          105, 110, 102, 105, 110, 105, 116, 101, 95, 108, 111,
+          111, 112, 0,   0,   10,  9,   1,   7,   0,  3,   64,
+          12,  0,   11,  11,
+        ]);
+        await WebAssembly.compile(wasmCode);
+      })()
+    "#,
+      )
+      .unwrap();
+    #[allow(deprecated, reason = "test code")]
+    runtime.resolve_value(promise).await.unwrap();
+  });
 }

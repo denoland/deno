@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
@@ -127,6 +128,26 @@ pub fn get_package_api_url(
   format!("{}scopes/{}/packages/{}", registry_api_url, scope, package)
 }
 
+pub fn get_package_version_api_url(
+  registry_api_url: &Url,
+  scope: &str,
+  package: &str,
+  version: &str,
+  params: Option<&str>,
+) -> String {
+  if let Some(params) = params {
+    format!(
+      "{}scopes/{}/packages/{}/versions/{}?{}",
+      registry_api_url, scope, package, version, params
+    )
+  } else {
+    format!(
+      "{}scopes/{}/packages/{}/versions/{}",
+      registry_api_url, scope, package, version
+    )
+  }
+}
+
 pub async fn get_package(
   client: &HttpClient,
   registry_api_url: &Url,
@@ -136,6 +157,43 @@ pub async fn get_package(
   let package_url = get_package_api_url(registry_api_url, scope, package);
   let response = client.get(package_url.parse()?)?.send().await?;
   Ok(response)
+}
+
+/// Splits a fully qualified JSR package name (e.g. `@scope/package`) into its
+/// `(scope, package)` parts.
+pub fn parse_package_name(name: &str) -> Result<(&str, &str), AnyError> {
+  let Some((scope, package)) = name
+    .strip_prefix('@')
+    .and_then(|no_at| no_at.split_once('/'))
+  else {
+    bail!("Invalid package name, use '@<scope_name>/<package_name>' format");
+  };
+  Ok((scope, package))
+}
+
+/// Returns `true` if the given package version is already published to the
+/// registry.
+///
+/// Only a `200 OK` response is treated as "already published". A `404` (and any
+/// other non-success status) is treated as "not published" so that this
+/// up-front optimization never blocks a legitimate publish because of a
+/// transient registry error.
+pub async fn check_version_exists(
+  client: &HttpClient,
+  registry_api_url: &Url,
+  scope: &str,
+  package: &str,
+  version: &str,
+) -> Result<bool, AnyError> {
+  let url = get_package_version_api_url(
+    registry_api_url,
+    scope,
+    package,
+    version,
+    None,
+  );
+  let response = client.get(url.parse()?)?.send().await?;
+  Ok(response.status() == 200)
 }
 
 pub fn get_jsr_alternative(imported: &Url) -> Option<String> {
@@ -196,5 +254,12 @@ mod test {
       "https://deno.land/std@0.229.0/path/something_underscore.ts",
       Some("\"jsr:@std/path@1/something-underscore\""),
     );
+  }
+
+  #[test]
+  fn test_parse_package_name() {
+    assert_eq!(parse_package_name("@deno/doc").unwrap(), ("deno", "doc"));
+    assert!(parse_package_name("deno/doc").is_err());
+    assert!(parse_package_name("@deno").is_err());
   }
 }

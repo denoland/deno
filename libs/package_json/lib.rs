@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use boxed_error::Boxed;
 use deno_error::JsError;
 use deno_semver::StackString;
+use deno_semver::Version;
 use deno_semver::VersionReq;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
@@ -47,6 +48,51 @@ pub enum PackageJsonBins {
   Bins(BTreeMap<String, PathBuf>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EngineMismatchKind {
+  /// The current runtime version does not satisfy the declared range.
+  Unsatisfied,
+  /// The declared range itself failed to parse as an npm version requirement.
+  InvalidRequirement,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineMismatch {
+  /// The engine key from the `engines` object (e.g. "node" or "deno").
+  pub engine: String,
+  /// The version requirement string as written in package.json.
+  pub required: String,
+  /// The version of the engine as reported by the current runtime.
+  pub actual: String,
+  pub kind: EngineMismatchKind,
+}
+
+/// The value of the `sideEffects` field in a `package.json`.
+///
+/// See https://webpack.js.org/guides/tree-shaking/#mark-the-file-as-side-effect-free
+/// for details on how this field is interpreted by bundlers.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum PackageJsonSideEffects {
+  /// `false` means the package has no side effects;
+  /// `true` (or omitted) means every file may have side effects.
+  Bool(bool),
+  /// A list of glob patterns matching files that have side effects.
+  /// All other files in the package are treated as side-effect-free.
+  Patterns(Vec<String>),
+}
+
+/// An entry in the object form of `package.json`'s `browser` field.
+///
+/// A string value remaps the key to a different specifier; `false` marks the
+/// key as disabled (bundlers should substitute an empty module).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum BrowserMapEntry {
+  Replace(String),
+  Disabled,
+}
+
 #[derive(Debug, Clone, Error, JsError, PartialEq, Eq)]
 #[class(generic)]
 #[error("'{}' did not have a name", pkg_json_path.display())]
@@ -70,6 +116,9 @@ pub enum PackageJsonDepValueParseErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   JsrRequiresScope(#[from] JsrDepPackageParseError),
+  #[class(type)]
+  #[error("Package name must not be empty")]
+  EmptyName,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -146,7 +195,13 @@ pub fn parse_jsr_dep_value<'a>(
 pub enum PackageJsonDepValue {
   File(String),
   Req(PackageReq),
-  Workspace(PackageJsonDepWorkspaceReq),
+  Workspace {
+    /// Target workspace package name for pnpm-style aliased deps
+    /// (`workspace:<name>@<range>`). `None` means resolve using the
+    /// dependency key.
+    name: Option<StackString>,
+    version_req: PackageJsonDepWorkspaceReq,
+  },
   /// A tarball URL (http or https), e.g.
   /// `"dep": "https://example.com/pkg-1.0.0.tgz"`
   Tarball(String),
@@ -162,6 +217,9 @@ impl PackageJsonDepValue {
       name: StackString,
       version_req: &str,
     ) -> Result<PackageJsonDepValue, PackageJsonDepValueParseError> {
+      if name.is_empty() {
+        return Err(PackageJsonDepValueParseErrorKind::EmptyName.into_box());
+      }
       match VersionReq::parse_from_npm(version_req) {
         Ok(version_req) => {
           Ok(PackageJsonDepValue::Req(PackageReq { name, version_req }))
@@ -170,6 +228,10 @@ impl PackageJsonDepValue {
           Err(PackageJsonDepValueParseErrorKind::VersionReq(err).into_box())
         }
       }
+    }
+
+    if key.is_empty() {
+      return Err(PackageJsonDepValueParseErrorKind::EmptyName.into_box());
     }
 
     if let Some((scheme, value)) = value.split_once(':') {
@@ -203,14 +265,8 @@ impl PackageJsonDepValue {
           Ok(Self::Catalog(name))
         }
         "workspace" => {
-          let workspace_req = match value {
-            "~" => PackageJsonDepWorkspaceReq::Tilde,
-            "^" => PackageJsonDepWorkspaceReq::Caret,
-            _ => PackageJsonDepWorkspaceReq::VersionReq(
-              VersionReq::parse_from_npm(value)?,
-            ),
-          };
-          Ok(Self::Workspace(workspace_req))
+          let (name, version_req) = parse_workspace_dep_value(value)?;
+          Ok(Self::Workspace { name, version_req })
         }
         // Tarball URLs: http(s)://example.com/pkg.tgz
         "http" | "https" => {
@@ -226,6 +282,53 @@ impl PackageJsonDepValue {
       }
     } else {
       from_name_and_version_req(key.into(), value)
+    }
+  }
+}
+
+/// Parses the part after `workspace:` in a package.json dependency.
+///
+/// Besides the bare requirement forms (`workspace:*`, `workspace:~`,
+/// `workspace:^`, `workspace:1.2.3`), this also supports the pnpm-style alias
+/// form `workspace:<name>@<range>` (e.g. `workspace:foo@*` or
+/// `workspace:@scope/pkg@^1.2`), where the dependency is imported under its key
+/// but resolves to the workspace member named `<name>`.
+fn parse_workspace_dep_value(
+  value: &str,
+) -> Result<
+  (Option<StackString>, PackageJsonDepWorkspaceReq),
+  PackageJsonDepValueParseError,
+> {
+  fn parse_workspace_req(
+    range: &str,
+  ) -> Result<PackageJsonDepWorkspaceReq, PackageJsonDepValueParseError> {
+    Ok(match range {
+      "~" => PackageJsonDepWorkspaceReq::Tilde,
+      "^" => PackageJsonDepWorkspaceReq::Caret,
+      _ => PackageJsonDepWorkspaceReq::VersionReq(VersionReq::parse_from_npm(
+        range,
+      )?),
+    })
+  }
+
+  // Bare requirement forms (`*`, `~`, `^`, an explicit range) never contain an
+  // `@`, so try interpreting the whole value as one first.
+  match parse_workspace_req(value) {
+    Ok(version_req) => Ok((None, version_req)),
+    Err(bare_err) => {
+      // Otherwise this may be the pnpm-style alias form
+      // `workspace:<name>@<range>`. The name may be scoped (`@scope/name`), so
+      // split on the last `@`. Both the name and range must be non-empty;
+      // degenerate forms like `workspace:foo@` or `workspace:@scope/pkg` (no
+      // range) are rejected with the original requirement parse error.
+      if let Some((name, range)) = value.rsplit_once('@')
+        && !name.is_empty()
+        && !range.is_empty()
+      {
+        Ok((Some(name.into()), parse_workspace_req(range)?))
+      } else {
+        Err(bare_err)
+      }
     }
   }
 }
@@ -288,6 +391,8 @@ pub struct PackageJson {
   pub main: Option<String>,
   pub module: Option<String>,
   pub browser: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub browser_map: Option<IndexMap<String, BrowserMapEntry>>,
   pub name: Option<String>,
   pub version: Option<String>,
   #[serde(skip)]
@@ -304,15 +409,21 @@ pub struct PackageJson {
   pub optional_dependencies: Option<IndexMap<String, String>>,
   pub directories: Option<Map<String, Value>>,
   pub scripts: Option<IndexMap<String, String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub config: Option<Map<String, Value>>,
   pub workspaces: Option<Vec<String>>,
   pub os: Option<Vec<String>>,
   pub cpu: Option<Vec<String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub engines: Option<IndexMap<String, String>>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub overrides: Option<Map<String, Value>>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub catalog: Option<IndexMap<String, String>>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub catalogs: Option<IndexMap<String, IndexMap<String, String>>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub side_effects: Option<PackageJsonSideEffects>,
   #[serde(skip_serializing)]
   resolved_deps: PackageJsonDepsRcCell,
 }
@@ -367,6 +478,7 @@ impl PackageJson {
         version: None,
         module: None,
         browser: None,
+        browser_map: None,
         typ: "none".to_string(),
         types: None,
         types_versions: None,
@@ -381,12 +493,15 @@ impl PackageJson {
         optional_dependencies: None,
         directories: None,
         scripts: None,
+        config: None,
         workspaces: None,
         os: None,
         cpu: None,
+        engines: None,
         overrides: None,
         catalog: None,
         catalogs: None,
+        side_effects: None,
         resolved_deps: Default::default(),
       });
     }
@@ -484,7 +599,29 @@ impl PackageJson {
     let name = name_val.and_then(map_string);
     let version = version_val.and_then(map_string);
     let module = module_val.and_then(map_string);
-    let browser = browser_val.and_then(map_string);
+    let (browser, browser_map) = match browser_val {
+      Some(Value::String(s)) => (Some(s), None),
+      Some(Value::Object(map)) => {
+        let mut entries = IndexMap::with_capacity(map.len());
+        for (k, v) in map {
+          match v {
+            Value::String(s) => {
+              entries.insert(k, BrowserMapEntry::Replace(s));
+            }
+            Value::Bool(false) => {
+              entries.insert(k, BrowserMapEntry::Disabled);
+            }
+            _ => {}
+          }
+        }
+        if entries.is_empty() {
+          (None, None)
+        } else {
+          (None, Some(entries))
+        }
+      }
+      _ => (None, None),
+    };
 
     let dependencies = package_json
       .remove("dependencies")
@@ -508,6 +645,7 @@ impl PackageJson {
       package_json.remove("directories").and_then(map_object);
     let scripts: Option<IndexMap<String, String>> =
       package_json.remove("scripts").and_then(parse_string_map);
+    let config = package_json.remove("config").and_then(map_object);
 
     // Ignore unknown types for forwards compatibility
     let typ = if let Some(t) = type_val {
@@ -561,7 +699,16 @@ impl PackageJson {
       };
     let os = package_json.remove("os").and_then(parse_string_array);
     let cpu = package_json.remove("cpu").and_then(parse_string_array);
+    let engines = package_json.remove("engines").and_then(parse_string_map);
     let overrides = package_json.remove("overrides").and_then(map_object);
+    let side_effects =
+      package_json.remove("sideEffects").and_then(|v| match v {
+        Value::Bool(b) => Some(PackageJsonSideEffects::Bool(b)),
+        Value::Array(_) => {
+          parse_string_array(v).map(PackageJsonSideEffects::Patterns)
+        }
+        _ => None,
+      });
     // Top-level catalog/catalogs take precedence; fall back to those
     // extracted from the workspaces object form.
     let catalog = package_json
@@ -592,6 +739,7 @@ impl PackageJson {
       version,
       module,
       browser,
+      browser_map,
       typ,
       types,
       types_versions,
@@ -606,12 +754,15 @@ impl PackageJson {
       optional_dependencies,
       directories,
       scripts,
+      config,
       workspaces,
       os,
       cpu,
+      engines,
       overrides,
       catalog,
       catalogs,
+      side_effects,
       resolved_deps: Default::default(),
     })
   }
@@ -645,6 +796,61 @@ impl PackageJson {
         dev_dependencies: get_map(self.dev_dependencies.as_ref()),
       })
     })
+  }
+
+  /// Check the `engines` field of this package.json against the given runtime
+  /// versions. Returns one entry per declared engine that is either
+  /// unsatisfied or has an unparseable version requirement.
+  ///
+  /// Only the `node` and `deno` keys are checked. Other entries (`npm`,
+  /// `yarn`, `pnpm`, ...) are intentionally ignored — Deno cannot reason
+  /// about external package manager versions.
+  pub fn check_engines(
+    &self,
+    deno_version: &str,
+    node_version: &str,
+  ) -> Vec<EngineMismatch> {
+    let Some(engines) = self.engines.as_ref() else {
+      return Vec::new();
+    };
+    let mut mismatches = Vec::new();
+    for (engine, version_req) in engines {
+      let actual = match engine.as_str() {
+        "node" => node_version,
+        "deno" => deno_version,
+        _ => continue,
+      };
+      let parsed_req = match VersionReq::parse_from_npm(version_req) {
+        // `parse_from_npm` accepts bare dist-tags (e.g. "next"). Those don't
+        // make sense for an engine constraint, so flag them as invalid
+        // instead of letting `matches` panic later on.
+        Ok(req) if req.tag().is_none() => req,
+        _ => {
+          mismatches.push(EngineMismatch {
+            engine: engine.clone(),
+            required: version_req.clone(),
+            actual: actual.to_string(),
+            kind: EngineMismatchKind::InvalidRequirement,
+          });
+          continue;
+        }
+      };
+      let parsed_actual = match Version::parse_from_npm(
+        actual.strip_prefix('v').unwrap_or(actual),
+      ) {
+        Ok(v) => v,
+        Err(_) => continue,
+      };
+      if !parsed_req.matches(&parsed_actual) {
+        mismatches.push(EngineMismatch {
+          engine: engine.clone(),
+          required: version_req.clone(),
+          actual: actual.to_string(),
+          kind: EngineMismatchKind::Unsatisfied,
+        });
+      }
+    }
+    mismatches
   }
 
   pub fn resolve_default_bin_name(
@@ -823,6 +1029,28 @@ mod test {
   }
 
   #[test]
+  fn test_get_local_package_json_version_reqs_empty_name() {
+    let mut package_json =
+      PackageJson::load_from_string(PathBuf::from("/package.json"), "{}")
+        .unwrap();
+    package_json.dependencies = Some(IndexMap::from([
+      ("".to_string(), ".".to_string()),
+      ("npm-empty".to_string(), "npm:".to_string()),
+      ("ok".to_string(), "^1".to_string()),
+    ]));
+    let map = get_local_package_json_version_reqs_for_tests(&package_json);
+    assert_eq!(
+      map.get("").unwrap().as_ref().unwrap_err(),
+      &PackageJsonDepValueParseErrorKind::EmptyName,
+    );
+    assert_eq!(
+      map.get("npm-empty").unwrap().as_ref().unwrap_err(),
+      &PackageJsonDepValueParseErrorKind::EmptyName,
+    );
+    assert!(map.get("ok").unwrap().is_ok());
+  }
+
+  #[test]
   fn test_get_local_package_json_version_reqs_errors_non_npm_specifier() {
     let mut package_json =
       PackageJson::load_from_string(PathBuf::from("/package.json"), "{}")
@@ -838,6 +1066,40 @@ mod test {
     assert_eq!(
       format!("{}", err.source().unwrap()),
       concat!("Unexpected character.\n", "  %*(#$%()\n", "  ~")
+    );
+  }
+
+  #[test]
+  fn test_get_local_package_json_version_reqs_workspace_alias_degenerate() {
+    let mut package_json =
+      PackageJson::load_from_string(PathBuf::from("/package.json"), "{}")
+        .unwrap();
+    package_json.dependencies = Some(IndexMap::from([
+      // valid alias form for reference
+      ("ok".to_string(), "workspace:foo@*".to_string()),
+      // empty range after the alias `@`
+      ("empty-range".to_string(), "workspace:foo@".to_string()),
+      // scoped name with no range at all
+      ("no-range".to_string(), "workspace:@scope/pkg".to_string()),
+    ]));
+    let map = get_local_package_json_version_reqs_for_tests(&package_json);
+    assert_eq!(
+      map.get("ok").unwrap().as_ref().unwrap(),
+      &PackageJsonDepValue::Workspace {
+        name: Some("foo".into()),
+        version_req: PackageJsonDepWorkspaceReq::VersionReq(
+          VersionReq::parse_from_npm("*").unwrap()
+        )
+      }
+    );
+    // both degenerate forms are rejected rather than silently accepted
+    assert_eq!(
+      format!("{}", map.get("empty-range").unwrap().as_ref().unwrap_err()),
+      "Invalid version requirement"
+    );
+    assert_eq!(
+      format!("{}", map.get("no-range").unwrap().as_ref().unwrap_err()),
+      "Invalid version requirement"
     );
   }
 
@@ -943,6 +1205,22 @@ mod test {
       ("work-test-star".to_string(), "workspace:*".to_string()),
       ("work-test-tilde".to_string(), "workspace:~".to_string()),
       ("work-test-caret".to_string(), "workspace:^".to_string()),
+      (
+        "work-test-alias-star".to_string(),
+        "workspace:@scope/pkg@*".to_string(),
+      ),
+      (
+        "work-test-alias-tilde".to_string(),
+        "workspace:other@~".to_string(),
+      ),
+      (
+        "work-test-alias-caret".to_string(),
+        "workspace:other@^".to_string(),
+      ),
+      (
+        "work-test-alias-version".to_string(),
+        "workspace:other@1.1.1".to_string(),
+      ),
       ("catalog-test".to_string(), "catalog:".to_string()),
       (
         "catalog-default-test".to_string(),
@@ -969,31 +1247,67 @@ mod test {
         ),
         (
           "work-test-star".to_string(),
-          Ok(PackageJsonDepValue::Workspace(
-            PackageJsonDepWorkspaceReq::VersionReq(
+          Ok(PackageJsonDepValue::Workspace {
+            name: None,
+            version_req: PackageJsonDepWorkspaceReq::VersionReq(
               VersionReq::parse_from_npm("*").unwrap()
             )
-          ))
+          })
         ),
         (
           "work-test-version-req".to_string(),
-          Ok(PackageJsonDepValue::Workspace(
-            PackageJsonDepWorkspaceReq::VersionReq(
+          Ok(PackageJsonDepValue::Workspace {
+            name: None,
+            version_req: PackageJsonDepWorkspaceReq::VersionReq(
               VersionReq::parse_from_npm("1.1.1").unwrap()
             )
-          ))
+          })
         ),
         (
           "work-test-tilde".to_string(),
-          Ok(PackageJsonDepValue::Workspace(
-            PackageJsonDepWorkspaceReq::Tilde
-          ))
+          Ok(PackageJsonDepValue::Workspace {
+            name: None,
+            version_req: PackageJsonDepWorkspaceReq::Tilde
+          })
         ),
         (
           "work-test-caret".to_string(),
-          Ok(PackageJsonDepValue::Workspace(
-            PackageJsonDepWorkspaceReq::Caret
-          ))
+          Ok(PackageJsonDepValue::Workspace {
+            name: None,
+            version_req: PackageJsonDepWorkspaceReq::Caret
+          })
+        ),
+        (
+          "work-test-alias-star".to_string(),
+          Ok(PackageJsonDepValue::Workspace {
+            name: Some("@scope/pkg".into()),
+            version_req: PackageJsonDepWorkspaceReq::VersionReq(
+              VersionReq::parse_from_npm("*").unwrap()
+            )
+          })
+        ),
+        (
+          "work-test-alias-tilde".to_string(),
+          Ok(PackageJsonDepValue::Workspace {
+            name: Some("other".into()),
+            version_req: PackageJsonDepWorkspaceReq::Tilde
+          })
+        ),
+        (
+          "work-test-alias-caret".to_string(),
+          Ok(PackageJsonDepValue::Workspace {
+            name: Some("other".into()),
+            version_req: PackageJsonDepWorkspaceReq::Caret
+          })
+        ),
+        (
+          "work-test-alias-version".to_string(),
+          Ok(PackageJsonDepValue::Workspace {
+            name: Some("other".into()),
+            version_req: PackageJsonDepWorkspaceReq::VersionReq(
+              VersionReq::parse_from_npm("1.1.1").unwrap()
+            )
+          })
         ),
         (
           "catalog-test".to_string(),
@@ -1080,6 +1394,10 @@ mod test {
           "optional": true
         }
       },
+      "engines": {
+        "node": ">=18",
+        "deno": "^2"
+      },
     });
     let package_json = PackageJson::load_from_value(
       PathBuf::from("/package.json"),
@@ -1105,6 +1423,65 @@ mod test {
       ),
       Err(PackageJsonLoadError::InvalidExports)
     ));
+  }
+
+  #[test]
+  fn test_engines_parsing_and_check() {
+    let json_value = serde_json::json!({
+      "engines": {
+        "node": ">=18.0.0",
+        "deno": "^2.0.0",
+        "npm": ">=9",
+      },
+    });
+    let pj =
+      PackageJson::load_from_value(PathBuf::from("/package.json"), json_value)
+        .unwrap();
+    let engines = pj.engines.as_ref().unwrap();
+    assert_eq!(engines.get("node").unwrap(), ">=18.0.0");
+    assert_eq!(engines.get("deno").unwrap(), "^2.0.0");
+    assert_eq!(engines.get("npm").unwrap(), ">=9");
+
+    // satisfied for both engines we look at
+    let mismatches = pj.check_engines("2.1.0", "20.0.0");
+    assert!(
+      mismatches.is_empty(),
+      "expected no mismatches: {mismatches:?}"
+    );
+
+    // node too old; deno still satisfied; npm is ignored
+    let mismatches = pj.check_engines("2.1.0", "16.0.0");
+    assert_eq!(mismatches.len(), 1);
+    assert_eq!(mismatches[0].engine, "node");
+    assert_eq!(mismatches[0].kind, EngineMismatchKind::Unsatisfied);
+    assert_eq!(mismatches[0].required, ">=18.0.0");
+    assert_eq!(mismatches[0].actual, "16.0.0");
+
+    // tolerate a leading `v` on the runtime version (matches
+    // `process.version` format)
+    let mismatches = pj.check_engines("2.1.0", "v20.0.0");
+    assert!(mismatches.is_empty());
+
+    // unparseable range surfaces as InvalidRequirement, doesn't panic
+    let pj = PackageJson::load_from_value(
+      PathBuf::from("/package.json"),
+      serde_json::json!({
+        "engines": { "deno": "not-a-range" },
+      }),
+    )
+    .unwrap();
+    let mismatches = pj.check_engines("2.0.0", "20.0.0");
+    assert_eq!(mismatches.len(), 1);
+    assert_eq!(mismatches[0].kind, EngineMismatchKind::InvalidRequirement);
+
+    // absent engines field → no mismatches
+    let pj = PackageJson::load_from_value(
+      PathBuf::from("/package.json"),
+      serde_json::json!({ "name": "x" }),
+    )
+    .unwrap();
+    assert!(pj.engines.is_none());
+    assert!(pj.check_engines("2.0.0", "20.0.0").is_empty());
   }
 
   #[test]

@@ -43,7 +43,7 @@ pub type ForegroundTaskQueue = std::sync::Arc<Mutex<Vec<v8::Task>>>;
 /// push tasks and wake the event loop.
 struct IsolateEntry {
   waker: std::sync::Arc<AtomicWaker>,
-  handle: tokio::runtime::Handle,
+  handle: Option<tokio::runtime::Handle>,
   tasks: ForegroundTaskQueue,
 }
 
@@ -57,7 +57,7 @@ static ISOLATE_ENTRIES: std::sync::LazyLock<
 pub fn register_isolate(
   isolate_ptr: usize,
   waker: std::sync::Arc<AtomicWaker>,
-  handle: tokio::runtime::Handle,
+  handle: Option<tokio::runtime::Handle>,
   tasks: ForegroundTaskQueue,
 ) {
   let mut map = ISOLATE_ENTRIES.lock().unwrap();
@@ -87,18 +87,23 @@ fn queue_task(key: usize, task: v8::Task) {
 
 /// Spawn a delayed V8 foreground task on the isolate's tokio runtime.
 /// After the delay, the task is queued for synchronous draining (not
-/// run directly on the tokio worker thread).
+/// run directly on the tokio worker thread). Falls back to immediate
+/// queuing when no tokio handle is available.
 fn spawn_delayed_task(key: usize, task: v8::Task, delay_in_seconds: f64) {
   let map = ISOLATE_ENTRIES.lock().unwrap();
-  if let Some(entry) = map.get(&key) {
-    let tasks = entry.tasks.clone();
-    let waker = entry.waker.clone();
-    entry.handle.spawn(async move {
-      tokio::time::sleep(Duration::from_secs_f64(delay_in_seconds)).await;
-      tasks.lock().unwrap().push(task);
-      waker.wake();
-    });
-  }
+  let Some(entry) = map.get(&key) else { return };
+  let Some(handle) = entry.handle.as_ref() else {
+    entry.tasks.lock().unwrap().push(task);
+    entry.waker.wake();
+    return;
+  };
+  let tasks = entry.tasks.clone();
+  let waker = entry.waker.clone();
+  handle.spawn(async move {
+    tokio::time::sleep(Duration::from_secs_f64(delay_in_seconds)).await;
+    tasks.lock().unwrap().push(task);
+    waker.wake();
+  });
 }
 
 /// Custom V8 platform implementation that queues immediate foreground
@@ -148,7 +153,6 @@ fn v8_init(
   }
 
   let base_flags = concat!(
-    " --wasm-test-streaming",
     " --no-validate-asm",
     " --turbo_fast_api_calls",
     " --harmony-temporal",
@@ -279,6 +283,9 @@ pub fn create_isolate(
   );
   isolate.set_wasm_async_resolve_promise_callback(
     bindings::wasm_async_resolve_promise_callback,
+  );
+  isolate.set_wasm_streaming_callback(
+    crate::ops_builtin_v8::wasm_streaming_callback,
   );
 
   isolate

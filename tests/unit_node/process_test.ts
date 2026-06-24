@@ -116,7 +116,7 @@ Deno.test({
     assertEquals(typeof process.versions.nghttp2, "string");
     assertEquals(typeof process.versions.napi, "string");
     // Must match the NAPI_VERSION in ext/napi/js_native_api.rs
-    assertEquals(process.versions.napi, "9");
+    assertEquals(process.versions.napi, "10");
     assertEquals(typeof process.versions.llhttp, "string");
     assertEquals(typeof process.versions.openssl, "string");
     assertEquals(typeof process.versions.cldr, "string");
@@ -218,6 +218,44 @@ Deno.test({
 
     const decoder = new TextDecoder();
     assertEquals(stripAnsiCode(decoder.decode(stdout).trim()), "1\n2");
+  },
+});
+
+Deno.test({
+  // Regression test for https://github.com/denoland/deno/issues/24646: a
+  // spurious `ERR_MULTIPLE_CALLBACK` ("Callback called multiple times") was
+  // thrown from `onwrite` while doing many synchronous writes to
+  // `process.stdout`/`process.stderr` (e.g. commander.js help output under
+  // Jest). The full reproduction needs a test runner that evaluates files in
+  // separate module realms, but this at least exercises the stdio write path
+  // with the same empty-write / `isTTY` toggling pattern in a piped child.
+  name: "process.stdout/stderr survive many synchronous writes (#24646)",
+  async fn() {
+    const code = `
+      import process from "node:process";
+      for (let i = 0; i < 1000; i++) {
+        process.stdout.isTTY = i % 2 === 0;
+        process.stderr.isTTY = i % 2 === 0;
+        process.stdout.write("");
+        process.stderr.write("");
+        process.stdout.write("Usage: prog [options]\\n");
+        process.stderr.write("error: bad option\\n");
+      }
+      console.error("DONE_OK");
+    `;
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "--quiet", code],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const err = new TextDecoder().decode(stderr);
+    assert(
+      !err.includes("Callback called multiple times"),
+      "unexpected ERR_MULTIPLE_CALLBACK:\n" + err,
+    );
+    assert(err.includes("DONE_OK"), "child did not finish cleanly:\n" + err);
+    assertEquals(exitCode, 0);
   },
 });
 

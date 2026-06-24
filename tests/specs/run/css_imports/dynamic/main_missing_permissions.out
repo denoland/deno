@@ -1,0 +1,6 @@
+true
+.a { color: green; }
+error: Uncaught (in promise) TypeError: Requires read access to "[WILDLINE]other.css", run again with the --allow-read flag
+const { default: other } = await import(nonAnalyzablePath(), {
+                           ^
+    at async file:///[WILDLINE]/main.ts:[WILDLINE]

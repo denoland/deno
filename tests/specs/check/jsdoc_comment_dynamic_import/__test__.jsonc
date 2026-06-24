@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "comment_text": {
+      "args": "check main.js",
+      "output": "",
+      "exitCode": 0
+    },
+    "ts_nocheck": {
+      "args": "check ts_nocheck.js",
+      "output": "",
+      "exitCode": 0
+    }
+  }
+}

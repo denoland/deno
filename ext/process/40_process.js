@@ -23,6 +23,7 @@ const {
   TypedArrayPrototypeSet,
   Uint8Array,
   TypeError,
+  NumberIsFinite,
   ObjectEntries,
   SafeArrayIterator,
   String,
@@ -292,6 +293,7 @@ function nodeSpawnChild(command, {
   stdout = "piped",
   stderr = "piped",
   windowsRawArguments = false,
+  windowsHide = false,
   ipc = -1,
   serialization = "json",
   extraStdio = [],
@@ -311,6 +313,7 @@ function nodeSpawnChild(command, {
     stdout,
     stderr,
     windowsRawArguments,
+    windowsHide,
     ipc,
     serialization,
     extraStdio,
@@ -368,10 +371,12 @@ function nodeSpawnSyncChild({
   stderr,
   extraStdio = [],
   windowsRawArguments,
+  windowsHide = false,
   needsNpmProcessState,
   input,
   timeout,
   killSignal,
+  maxBuffer,
 }) {
   const spawnArgs = {
     cmd: pathFromURL(args[0]),
@@ -385,17 +390,28 @@ function nodeSpawnSyncChild({
     stdout,
     stderr,
     windowsRawArguments,
+    windowsHide,
     extraStdio,
     detached: false,
     needsNpmProcessState,
     input,
     argv0,
   };
-  if (timeout != null && timeout > 0) {
+  const hasTimeout = timeout != null && timeout > 0;
+  // Only forward a finite, non-negative `maxBuffer` to the op so that
+  // Infinity / missing values map to "no limit" on the Rust side.
+  const hasMaxBuffer = typeof maxBuffer === "number" &&
+    NumberIsFinite(maxBuffer) && maxBuffer >= 0;
+  if (hasTimeout) {
     spawnArgs.timeout = timeout;
-    if (killSignal != null) {
-      spawnArgs.killSignal = killSignal;
-    }
+  }
+  if (hasMaxBuffer) {
+    spawnArgs.maxBuffer = maxBuffer;
+  }
+  // killSignal applies to both `timeout` and `maxBuffer` kills, matching
+  // Node's behavior.
+  if (killSignal != null && (hasTimeout || hasMaxBuffer)) {
+    spawnArgs.killSignal = killSignal;
   }
   const result = op_spawn_sync(spawnArgs);
   return {
@@ -407,6 +423,7 @@ function nodeSpawnSyncChild({
     stderr: result.stderr,
     pid: result.pid,
     killedByTimeout: result.killedByTimeout,
+    killedByMaxBuffer: result.killedByMaxBuffer,
   };
 }
 

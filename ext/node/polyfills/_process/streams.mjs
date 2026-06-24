@@ -39,8 +39,16 @@ const { validateInteger } = core.loadExtScript(
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name, warmup = false) {
-  const stream = new (lazyStream().Writable)({
+  const Writable = lazyStream().Writable;
+  const stream = new Writable({
     emitClose: false,
+    // Store the WritableState bitfield behind an accessor for the stdio
+    // streams. They are long lived and, under test runners like Jest that run
+    // each test file in its own module realm, get exercised across a large
+    // number of realms; a synchronous write could otherwise read back a stale
+    // `kState` in `onwrite()` and throw a spurious `ERR_MULTIPLE_CALLBACK`.
+    // See denoland/deno#24646.
+    [Writable.kForceStableState]: true,
     write(buf, enc, cb) {
       if (!writer) {
         this.destroy(
