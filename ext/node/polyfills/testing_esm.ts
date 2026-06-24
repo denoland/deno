@@ -13,6 +13,7 @@ export const {
   beforeEach,
   afterEach,
   mock,
+  snapshot,
 } = mod;
 
 export default mod.default;
