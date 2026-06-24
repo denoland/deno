@@ -8,10 +8,12 @@ import {
   op_http_abort_response,
   op_http_close_after_finish,
   op_http_get_request_cancelled,
+  op_http_set_node_auto_headers,
   op_http_set_promise_complete,
   op_http_set_response_body_bytes,
   op_http_set_response_body_bytes_with_headers,
   op_http_set_response_body_resource,
+  op_http_set_response_body_static_with_content_type,
   op_http_set_response_body_text,
   op_http_set_response_body_text_with_headers,
   op_http_set_response_close_delimited,
@@ -189,30 +191,47 @@ function nativeWireHeaders(msg: any) {
   if (msg._nativeChunked) {
     ArrayPrototypePush(out, ["Transfer-Encoding", "chunked"]);
   }
-  // Node adds the Date header itself (honoring res.sendDate / removeHeader);
-  // the engine doesn't auto-add it for node responses (raw_response_headers).
-  if (!hasDate && msg.sendDate) {
-    ArrayPrototypePush(out, ["Date", utcDate()]);
-  }
-  // Node emits an explicit `Connection: keep-alive` (+ `Keep-Alive`) on HTTP/1.1
-  // keep-alive responses; the engine omits it (1.1 default) and only writes it
-  // for HTTP/1.0, so add it here for 1.1 only -- unless the handler removed or
-  // set its own connection header, or this is the last response on the socket.
+  // Node's formulaic Date / Connection: keep-alive / Keep-Alive headers are
+  // emitted by the engine (raw_response_headers, in Node's order + casing)
+  // instead of being marshaled into this header Vec on every response. Compute
+  // Node's exact conditions here and stash them on `msg`; nativeApplyAutoHeaders
+  // forwards them to op_http_set_node_auto_headers at commit time.
+  //
+  // Date: Node adds it honoring res.sendDate / removeHeader('Date').
+  msg._nativeAutoDate = !hasDate && msg.sendDate === true;
+  // Connection: Node emits an explicit `Connection: keep-alive` (+ `Keep-Alive`)
+  // on HTTP/1.1 keep-alive responses; the engine otherwise omits it (1.1 default)
+  // -- unless the handler removed or set its own connection header, or this is
+  // the last response on the socket.
+  let keepAliveConnection = false;
+  let keepAliveSecs = -1;
   const req = msg.req;
   if (
     !hasConnection && !msg._removedConnection && !msg._last &&
     msg.shouldKeepAlive && req !== undefined && req.httpVersionMinor === 1
   ) {
-    ArrayPrototypePush(out, ["Connection", "keep-alive"]);
+    keepAliveConnection = true;
     const kat = msg._keepAliveTimeout;
     if (!hasKeepAlive && typeof kat === "number" && kat > 0) {
-      ArrayPrototypePush(out, [
-        "Keep-Alive",
-        "timeout=" + MathFloor(kat / 1000),
-      ]);
+      keepAliveSecs = MathFloor(kat / 1000);
     }
   }
+  msg._nativeKeepAliveConnection = keepAliveConnection;
+  msg._nativeKeepAliveSecs = keepAliveSecs;
   return out.length === 0 ? null : out;
+}
+
+// Forward the engine-emitted auto-header decisions computed by nativeWireHeaders
+// to the record, before the body/headers commit op consumes the external.
+function nativeApplyAutoHeaders(msg: any, external: any) {
+  op_http_set_node_auto_headers(
+    external,
+    msg._nativeAutoDate === true,
+    msg._nativeKeepAliveConnection === true,
+    typeof msg._nativeKeepAliveSecs === "number"
+      ? msg._nativeKeepAliveSecs
+      : -1,
+  );
 }
 
 function nativeChunkToBuffer(chunk: any, encoding?: string | null) {
@@ -324,6 +343,15 @@ function nativeCommit(msg: any, body: any) {
     op_http_set_response_trailers(external, trailers);
   }
   const headers = nativeWireHeaders(msg);
+  nativeApplyAutoHeaders(msg, external);
+  // Fast path: once Date/Connection/Keep-Alive are engine-emitted, the common
+  // response carries a single `content-type` header. Route it through the
+  // static-content-type op (content-type as one onebyte value + body as a v8
+  // value) instead of marshaling a header-tuple Vec. Guarded on the lowercase
+  // name so the engine's lowercase `content-type` output stays byte-identical --
+  // Node preserves the user's casing, so a differently-cased name falls back.
+  const onlyContentType = headers !== null && headers.length === 1 &&
+    headers[0][0] === "content-type";
   if (
     body === undefined || body === null || body === "" ||
     msg._hasBody === false
@@ -333,7 +361,14 @@ function nativeCommit(msg: any, body: any) {
     }
     op_http_set_promise_complete(external, status);
   } else if (typeof body === "string") {
-    if (headers !== null) {
+    if (onlyContentType) {
+      op_http_set_response_body_static_with_content_type(
+        external,
+        body,
+        status,
+        headers[0][1],
+      );
+    } else if (headers !== null) {
       op_http_set_response_body_text_with_headers(
         external,
         body,
@@ -344,7 +379,14 @@ function nativeCommit(msg: any, body: any) {
       op_http_set_response_body_text(external, body, status);
     }
   } else {
-    if (headers !== null) {
+    if (onlyContentType) {
+      op_http_set_response_body_static_with_content_type(
+        external,
+        body,
+        status,
+        headers[0][1],
+      );
+    } else if (headers !== null) {
       op_http_set_response_body_bytes_with_headers(
         external,
         body,
@@ -535,6 +577,7 @@ function nativeStartStream(msg: any) {
   // writeHead() locks the status (see nativeCommit).
   const status = msg._nativeWriteHead ? msg._nativeStatus : msg.statusCode;
   const headers = nativeWireHeaders(msg);
+  nativeApplyAutoHeaders(msg, external);
   if (headers !== null) {
     op_http_set_response_headers(external, headers);
   }

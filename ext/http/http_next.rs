@@ -744,6 +744,13 @@ struct RawResponseParts {
   // node:http only: raw 1xx interim-response bytes (e.g. `103 Early Hints`)
   // written verbatim before the final response status line.
   interim_prefix: Vec<u8>,
+  // node:http only: the engine emits Node's formulaic Date header itself.
+  node_auto_date: bool,
+  // node:http only: emit `Connection: keep-alive` (Node emits it explicitly on
+  // HTTP/1.1 keep-alive; the engine otherwise omits it as the 1.1 default).
+  node_keep_alive_connection: bool,
+  // node:http only: when present, emit `Keep-Alive: <value>` (e.g. `timeout=5`).
+  node_keep_alive_value: Option<Vec<u8>>,
 }
 
 enum RawResponseBody {
@@ -1148,6 +1155,15 @@ struct RawHttpRecordInner {
   // node:http only: buffered 1xx interim-response bytes (writeEarlyHints etc.)
   // flushed ahead of the final response.
   response_interim: Vec<u8>,
+  // node:http only: the engine emits the formulaic Date / Connection: keep-alive
+  // / Keep-Alive headers itself (Node's order + casing) instead of JS marshaling
+  // them every response. JS computes Node's conditions and sets these via
+  // op_http_set_node_auto_headers. `auto_date`: emit a Date header.
+  // `keep_alive_connection`: emit `Connection: keep-alive`. `keep_alive_secs`:
+  // >= 0 also emits `Keep-Alive: timeout=<secs>` (< 0 = no Keep-Alive header).
+  response_node_auto_date: bool,
+  response_node_keep_alive_connection: bool,
+  response_node_keep_alive_secs: i32,
   response_body: Option<RawResponseBody>,
   request_body_taken_full: bool,
   request_cancelled: bool,
@@ -1213,6 +1229,9 @@ impl RawHttpRecord {
       response_force_close: false,
       response_close_delimited: false,
       response_interim: Vec::new(),
+      response_node_auto_date: false,
+      response_node_keep_alive_connection: false,
+      response_node_keep_alive_secs: -1,
       response_body: None,
       request_body_taken_full: false,
       request_cancelled: false,
@@ -1429,6 +1448,16 @@ impl RawHttpRecord {
           force_close: inner.response_force_close,
           close_delimited: inner.response_close_delimited,
           interim_prefix: std::mem::take(&mut inner.response_interim),
+          node_auto_date: inner.response_node_auto_date,
+          node_keep_alive_connection: inner.response_node_keep_alive_connection,
+          node_keep_alive_value: if inner.response_node_keep_alive_secs >= 0 {
+            Some(
+              format!("timeout={}", inner.response_node_keep_alive_secs)
+                .into_bytes(),
+            )
+          } else {
+            None
+          },
         },
         body,
       )
@@ -2776,6 +2805,32 @@ pub fn op_http_set_response_force_close(external: *const c_void) {
   }
 }
 
+/// node:http only: have the engine emit Node's formulaic Date / Connection:
+/// keep-alive / Keep-Alive headers itself (in Node's order + casing) instead of
+/// JS marshaling them into the response header Vec on every response. JS computes
+/// Node's exact conditions (res.sendDate, shouldKeepAlive, _last,
+/// _removedConnection, httpVersionMinor, user overrides) and passes the result:
+/// `auto_date` emits a Date header; `keep_alive_connection` emits
+/// `Connection: keep-alive`; `keep_alive_secs` >= 0 also emits
+/// `Keep-Alive: timeout=<keep_alive_secs>` (< 0 = no Keep-Alive header).
+#[op2(fast)]
+pub fn op_http_set_node_auto_headers(
+  external: *const c_void,
+  auto_date: bool,
+  keep_alive_connection: bool,
+  keep_alive_secs: i32,
+) {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_set_node_auto_headers") };
+  if let HttpRecordExternal::Raw(record) = http {
+    let mut inner = record.0.borrow_mut();
+    inner.response_node_auto_date = auto_date;
+    inner.response_node_keep_alive_connection = keep_alive_connection;
+    inner.response_node_keep_alive_secs = keep_alive_secs;
+  }
+}
+
 /// node:http only: mark the response close-delimited -- the handler removed both
 /// Content-Length and Transfer-Encoding, so the flat body is sent with no
 /// content-length and the connection closes to delimit it (implies force-close).
@@ -3705,6 +3760,10 @@ fn raw_response_from_direct_response(
     force_close: false,
     close_delimited: false,
     interim_prefix: Vec::new(),
+    // Deno.serve direct-response path: the node auto-header machinery is unused.
+    node_auto_date: false,
+    node_keep_alive_connection: false,
+    node_keep_alive_value: None,
   };
   match response.headers {
     DirectResponseHeaders::None => {}
@@ -4172,9 +4231,31 @@ fn raw_response_headers<'a>(
       value: value.as_slice(),
     });
   }
-  // node:http adds Date itself (honoring `res.sendDate` / removeHeader('Date'))
-  // in nativeWireHeaders, so the engine must not auto-add it in node mode.
-  if !has_date && !node_mode {
+  if node_mode {
+    // node:http: the engine emits Node's formulaic headers in Node's order and
+    // casing (Date, then Connection, then Keep-Alive) -- after the user headers,
+    // matching nativeWireHeaders' old output. JS decides whether each applies
+    // (see op_http_set_node_auto_headers) so no re-checking is needed here.
+    if parts.node_auto_date {
+      headers.push(h1::Header {
+        name: b"Date",
+        value: date,
+      });
+    }
+    if parts.node_keep_alive_connection {
+      headers.push(h1::Header {
+        name: b"Connection",
+        value: b"keep-alive",
+      });
+    }
+    if let Some(value) = &parts.node_keep_alive_value {
+      headers.push(h1::Header {
+        name: b"Keep-Alive",
+        value: value.as_slice(),
+      });
+    }
+  } else if !has_date {
+    // Deno.serve auto-adds a lowercase date after the framing headers.
     headers.push(h1::Header {
       name: b"date",
       value: date,
