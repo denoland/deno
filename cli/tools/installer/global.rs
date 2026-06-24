@@ -2452,6 +2452,7 @@ mod tests {
       registry_configs: Default::default(),
       min_release_age_days: None,
       trust_policy: Default::default(),
+      trust_policy_ignore_after_minutes: None,
     })
   }
 
@@ -2474,7 +2475,6 @@ mod tests {
           deprecated: false,
           scripts: false,
           bin: false,
-          trust: 0,
         },
       );
     }

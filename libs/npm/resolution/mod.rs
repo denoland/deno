@@ -15,6 +15,7 @@ pub use common::NpmPackageVersionResolutionError;
 pub use common::NpmPackageVersionResolver;
 pub use common::NpmTrustPolicy;
 pub use common::NpmVersionResolver;
+pub use common::TrustPolicyOptions;
 pub use graph::NpmResolutionError;
 pub use graph::Reporter;
 pub use graph::UnmetPeerDepDiagnostic;

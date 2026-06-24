@@ -852,7 +852,6 @@ impl<
           copy_index: 0,
           system: NpmResolutionPackageSystemInfo::default(),
           dist: None,
-          trust: Default::default(),
           dependencies,
           optional_dependencies: Default::default(),
           optional_peer_dependencies: Default::default(),

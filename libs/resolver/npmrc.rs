@@ -146,6 +146,9 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
       } else {
         home_rc.trust_policy
       },
+      trust_policy_ignore_after_minutes: project_rc
+        .trust_policy_ignore_after_minutes
+        .or(home_rc.trust_policy_ignore_after_minutes),
     }
   }
 
@@ -247,5 +250,6 @@ pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
     registry_configs: Default::default(),
     min_release_age_days: None,
     trust_policy: Default::default(),
+    trust_policy_ignore_after_minutes: None,
   }
 }

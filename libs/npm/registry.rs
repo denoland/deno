@@ -247,29 +247,25 @@ pub struct NpmPackageVersionInfo {
   #[serde(deserialize_with = "deserializers::string")]
   pub deprecated: Option<String>,
   /// The `_npmUser` field from the full packument. Identifies who published
-  /// the version and, when published via trusted publishing (OIDC), carries
-  /// a `trustedPublisher` object. Only present in the full packument.
+  /// the version and carries the `trustedPublisher` (OIDC trusted publishing)
+  /// and `approver` (staged publish) trust signals. Only present in the full
+  /// packument.
   #[serde(
     default,
     rename = "_npmUser",
     skip_serializing_if = "Option::is_none"
   )]
   pub npm_user: Option<NpmUser>,
-  /// The `approver` field marks a version that went through npm staged
-  /// publishing: a maintainer approved it with a live 2FA challenge before it
-  /// became installable. This is the strongest publishing-trust signal.
-  /// See https://docs.npmjs.com/staged-publishing/
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub approver: Option<Present>,
 }
 
 /// A presence marker for a registry field whose mere existence is the signal
-/// we care about (`approver`, `_npmUser.trustedPublisher`,
+/// we care about (`_npmUser.approver`, `_npmUser.trustedPublisher`,
 /// `dist.attestations.provenance`). The full packument carries large objects
-/// here, but [`NpmPackageVersionInfo::trust_level`] only checks whether they
-/// are present, so this discards the contents on deserialize and re-serializes
-/// compactly as `true`. That keeps the cached packument small even though
-/// `min-release-age` makes Deno fetch the full packument by default.
+/// here, but [`NpmPackageVersionInfo::get_trust_evidence`] only checks whether
+/// they are present, so this discards the contents on deserialize and
+/// re-serializes compactly as `true`. That keeps the cached packument small
+/// even though `min-release-age` makes Deno fetch the full packument by
+/// default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Present;
 
@@ -292,35 +288,37 @@ impl<'de> Deserialize<'de> for Present {
 }
 
 impl NpmPackageVersionInfo {
-  /// The publishing-trust level of this version, derived from registry
-  /// metadata signals (`approver`, `_npmUser.trustedPublisher`, and
-  /// `dist.attestations.provenance`). Used by the `no-downgrade` trust policy.
+  /// The strongest publishing-trust evidence this version exposes, derived
+  /// from registry metadata signals. Used by the `no-downgrade` trust policy.
   ///
-  /// Staged publishes (`approver`) rank above trusted publishing and
-  /// provenance, mirroring pnpm 11.5's ranking.
-  pub fn trust_level(&self) -> NpmTrustLevel {
-    if self.approver.is_some() {
-      return NpmTrustLevel::STAGED;
+  /// Mirrors pnpm's
+  /// [`getTrustEvidence`](https://github.com/pnpm/pnpm/blob/main/resolving/npm-resolver/src/trustChecks.ts).
+  /// The tiers are mutually exclusive: a staged publish (`_npmUser.approver`)
+  /// is strongest, then trusted publishing (`_npmUser.trustedPublisher`)
+  /// *backed by* a provenance attestation, then a provenance attestation on
+  /// its own. A `trustedPublisher` flag without a provenance attestation is
+  /// not counted: on its own it is just metadata a future staged-publish flow
+  /// could mint, so it only counts as the stronger signal when the version
+  /// also shipped provenance.
+  pub fn get_trust_evidence(&self) -> Option<TrustEvidence> {
+    let npm_user = self.npm_user.as_ref();
+    if npm_user.is_some_and(|u| u.approver.is_some()) {
+      return Some(TrustEvidence::StagedPublish);
     }
-    let mut rank = 0u8;
     let has_provenance = self
       .dist
       .as_ref()
       .and_then(|d| d.attestations.as_ref())
-      .map(|a| a.provenance.is_some())
-      .unwrap_or(false);
+      .is_some_and(|a| a.provenance.is_some());
+    let has_trusted_publisher =
+      npm_user.is_some_and(|u| u.trusted_publisher.is_some());
+    if has_trusted_publisher && has_provenance {
+      return Some(TrustEvidence::TrustedPublisher);
+    }
     if has_provenance {
-      rank += 1;
+      return Some(TrustEvidence::Provenance);
     }
-    let has_trusted_publisher = self
-      .npm_user
-      .as_ref()
-      .map(|u| u.trusted_publisher.is_some())
-      .unwrap_or(false);
-    if has_trusted_publisher {
-      rank += 2;
-    }
-    NpmTrustLevel(rank)
+    None
   }
 
   /// Helper for getting the bundle dependencies.
@@ -526,8 +524,8 @@ pub struct NpmPackageVersionDistInfo {
 }
 
 /// The `_npmUser` object from the full packument. Only the presence of
-/// `trustedPublisher` is a trust signal; the `name` and other fields are
-/// dropped on deserialize to keep the cached packument small.
+/// `trustedPublisher` and `approver` are trust signals; the `name` and other
+/// fields are dropped on deserialize to keep the cached packument small.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmUser {
   /// Present when the version was published via npm trusted publishing
@@ -538,6 +536,12 @@ pub struct NpmUser {
     skip_serializing_if = "Option::is_none"
   )]
   pub trusted_publisher: Option<Present>,
+  /// Present when the version went through npm staged publishing: a maintainer
+  /// approved it with a live 2FA challenge before it became installable. This
+  /// is the strongest publishing-trust signal.
+  /// See https://docs.npmjs.com/staged-publishing/
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub approver: Option<Present>,
 }
 
 /// The `dist.attestations` object from the full packument.
@@ -549,38 +553,45 @@ pub struct NpmAttestations {
   pub provenance: Option<Present>,
 }
 
-/// The publishing-trust level of a package version, derived from registry
-/// metadata. Higher is more trusted. The `no-downgrade` trust policy refuses
-/// to resolve a version whose trust level is lower than a previously locked
-/// version of the same package.
-#[derive(
-  Debug,
-  Default,
-  Clone,
-  Copy,
-  PartialEq,
-  Eq,
-  PartialOrd,
-  Ord,
-  Hash,
-  Serialize,
-  Deserialize,
-)]
-pub struct NpmTrustLevel(pub u8);
+/// The strongest publishing-trust evidence a package version exposes, derived
+/// from registry metadata. Variants are declared weakest-first so the derived
+/// `Ord` matches the trust rank. The `no-downgrade` trust policy refuses to
+/// resolve a version whose evidence is weaker than the strongest evidence on
+/// any earlier-published version of the same package.
+///
+/// "No evidence" is represented as `Option::None` rather than a variant here,
+/// matching pnpm's `undefined`; compare ranks via
+/// `Option::map_or(0, TrustEvidence::rank)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TrustEvidence {
+  /// `dist.attestations.provenance` is set (published with `--provenance`).
+  Provenance,
+  /// `_npmUser.trustedPublisher` is set alongside a provenance attestation:
+  /// published via OIDC-backed trusted publishing.
+  TrustedPublisher,
+  /// `_npmUser.approver` is set: a staged publish requiring a 2FA approval.
+  /// The strongest signal.
+  StagedPublish,
+}
 
-impl NpmTrustLevel {
-  /// A plain token publish with no extra signals (the default / unknown).
-  pub const PLAIN: NpmTrustLevel = NpmTrustLevel(0);
-  /// A staged publish approved by a human maintainer via a 2FA challenge.
-  /// Ranks above trusted publishing and provenance.
-  pub const STAGED: NpmTrustLevel = NpmTrustLevel(4);
-
+impl TrustEvidence {
+  /// The numeric trust rank, mirroring pnpm's `TRUST_RANK` weights. Higher is
+  /// more trusted; "no evidence" is rank `0`.
   pub fn rank(self) -> u8 {
-    self.0
+    match self {
+      TrustEvidence::Provenance => 1,
+      TrustEvidence::TrustedPublisher => 2,
+      TrustEvidence::StagedPublish => 3,
+    }
   }
 
-  pub fn is_default(&self) -> bool {
-    self.0 == 0
+  /// Human-readable description for diagnostics.
+  pub fn pretty(self) -> &'static str {
+    match self {
+      TrustEvidence::Provenance => "provenance attestation",
+      TrustEvidence::TrustedPublisher => "trusted publisher",
+      TrustEvidence::StagedPublish => "staged publish",
+    }
   }
 }
 
@@ -1253,52 +1264,63 @@ mod test {
   }
 
   #[test]
-  fn trust_level_ranking() {
-    fn trust_of(json: &str) -> NpmTrustLevel {
+  fn trust_evidence_ranking() {
+    fn trust_of(json: &str) -> Option<TrustEvidence> {
       let info: NpmPackageVersionInfo = serde_json::from_str(json).unwrap();
-      info.trust_level()
+      info.get_trust_evidence()
     }
 
     // plain token publish: no signals
-    let plain = trust_of(r#"{ "version": "1.0.0" }"#);
-    assert_eq!(plain, NpmTrustLevel::PLAIN);
+    assert_eq!(trust_of(r#"{ "version": "1.0.0" }"#), None);
 
     // provenance attestation only
-    let provenance = trust_of(
-      r#"{ "version": "1.0.0", "dist": { "tarball": "t", "attestations": { "provenance": { "predicateType": "x" } } } }"#,
+    assert_eq!(
+      trust_of(
+        r#"{ "version": "1.0.0", "dist": { "tarball": "t", "attestations": { "provenance": { "predicateType": "x" } } } }"#,
+      ),
+      Some(TrustEvidence::Provenance)
     );
 
-    // trusted publishing (OIDC) only
-    let trusted = trust_of(
-      r#"{ "version": "1.0.0", "_npmUser": { "name": "ci", "trustedPublisher": { "id": "github" } } }"#,
+    // trusted publishing WITHOUT a provenance attestation is not counted: on
+    // its own the flag is just metadata, mirroring pnpm's getTrustEvidence.
+    assert_eq!(
+      trust_of(
+        r#"{ "version": "1.0.0", "_npmUser": { "name": "ci", "trustedPublisher": { "id": "github" } } }"#,
+      ),
+      None
     );
 
-    // both provenance and trusted publishing
-    let both = trust_of(
-      r#"{ "version": "1.0.0", "_npmUser": { "trustedPublisher": { "id": "github" } }, "dist": { "tarball": "t", "attestations": { "provenance": {} } } }"#,
+    // trusted publishing backed by a provenance attestation
+    assert_eq!(
+      trust_of(
+        r#"{ "version": "1.0.0", "_npmUser": { "trustedPublisher": { "id": "github" } }, "dist": { "tarball": "t", "attestations": { "provenance": {} } } }"#,
+      ),
+      Some(TrustEvidence::TrustedPublisher)
     );
 
-    // staged publish (human-approved via 2FA)
-    let staged = trust_of(
-      r#"{ "version": "1.0.0", "approver": { "name": "maintainer" } }"#,
+    // staged publish (human-approved via 2FA) is strongest
+    assert_eq!(
+      trust_of(
+        r#"{ "version": "1.0.0", "_npmUser": { "approver": { "name": "maintainer" } } }"#,
+      ),
+      Some(TrustEvidence::StagedPublish)
     );
-    assert_eq!(staged, NpmTrustLevel::STAGED);
 
-    // staged must rank above everything else, and every signal beats plain.
-    assert!(plain < provenance);
-    assert!(plain < trusted);
-    assert!(provenance < both);
-    assert!(trusted < both);
-    assert!(both < staged);
+    // ranks are ordered: provenance < trusted publisher < staged publish
+    assert!(TrustEvidence::Provenance < TrustEvidence::TrustedPublisher);
+    assert!(TrustEvidence::TrustedPublisher < TrustEvidence::StagedPublish);
+    assert_eq!(TrustEvidence::Provenance.rank(), 1);
+    assert_eq!(TrustEvidence::TrustedPublisher.rank(), 2);
+    assert_eq!(TrustEvidence::StagedPublish.rank(), 3);
   }
 
   #[test]
   fn trust_signals_serialize_compactly() {
-    // The full packument carries large objects in `approver`,
+    // The full packument carries large objects in `_npmUser.approver`,
     // `_npmUser.trustedPublisher` and `dist.attestations.provenance`, but we
     // only care that they exist. Re-serializing (as the registry cache does)
     // must collapse them to compact markers and still preserve the trust
-    // level, so caching the full packument by default stays cheap.
+    // evidence, so caching the full packument by default stays cheap.
     let info: NpmPackageVersionInfo = serde_json::from_str(
       r#"{
         "version": "1.0.0",
@@ -1319,11 +1341,14 @@ mod test {
     assert!(!serialized.contains("predicateType"), "{serialized}");
     assert!(!serialized.contains("\"name\""), "{serialized}");
 
-    // and the trust level round-trips through the slimmed form
+    // and the trust evidence round-trips through the slimmed form
     let reparsed: NpmPackageVersionInfo =
       serde_json::from_str(&serialized).unwrap();
-    assert_eq!(reparsed.trust_level(), info.trust_level());
-    assert_eq!(reparsed.trust_level().rank(), 3);
+    assert_eq!(reparsed.get_trust_evidence(), info.get_trust_evidence());
+    assert_eq!(
+      reparsed.get_trust_evidence(),
+      Some(TrustEvidence::TrustedPublisher)
+    );
   }
 
   #[test]
@@ -1779,7 +1804,6 @@ mod test {
       has_install_script: Default::default(),
       deprecated: Default::default(),
       npm_user: Default::default(),
-      approver: Default::default(),
     };
     let text = serde_json::to_string(&data).unwrap();
     assert_eq!(text, r#"{"version":"1.0.0"}"#);

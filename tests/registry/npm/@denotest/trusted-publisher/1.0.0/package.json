@@ -9,5 +9,13 @@
       "id": "github",
       "oidcConfigId": "abc123"
     }
+  },
+  "dist": {
+    "attestations": {
+      "url": "https://example.com/attestations",
+      "provenance": {
+        "predicateType": "https://slsa.dev/provenance/v1"
+      }
+    }
   }
 }

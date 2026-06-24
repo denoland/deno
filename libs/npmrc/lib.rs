@@ -60,15 +60,17 @@ impl RegistryConfig {
   }
 }
 
-/// `trust-policy` value. Controls whether a resolved npm version may have a
-/// weaker publishing-trust level than a previously locked version.
+/// `trust-policy` value. Controls whether a resolved npm version may have
+/// weaker publishing-trust evidence than an earlier-published version of the
+/// same package. Mirrors pnpm's `trustPolicy`.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum TrustPolicyConfig {
-  /// Trust level is ignored during resolution (the default).
+  /// Trust evidence is ignored during resolution (the default).
   #[default]
   Off,
-  /// Refuse to resolve a version whose trust level is lower than the
-  /// previously locked version of the same package.
+  /// Refuse to resolve a version whose publishing-trust evidence is weaker
+  /// than the strongest evidence on any earlier-published version of the same
+  /// package.
   NoDowngrade,
 }
 
@@ -82,6 +84,10 @@ pub struct NpmRc {
   pub min_release_age_days: Option<u64>,
   /// `trust-policy` value (`off` or `no-downgrade`).
   pub trust_policy: TrustPolicyConfig,
+  /// `trust-policy-ignore-after` value in minutes: skip the `no-downgrade`
+  /// check for versions published more than this many minutes ago. Mirrors
+  /// pnpm's `trustPolicyIgnoreAfter`.
+  pub trust_policy_ignore_after_minutes: Option<u64>,
 }
 
 impl NpmRc {
@@ -95,6 +101,7 @@ impl NpmRc {
     let mut registry_configs: HashMap<String, RegistryConfig> = HashMap::new();
     let mut min_release_age_days: Option<u64> = None;
     let mut trust_policy = TrustPolicyConfig::default();
+    let mut trust_policy_ignore_after_minutes: Option<u64> = None;
 
     for kv_or_section in kv_or_sections {
       match kv_or_section {
@@ -171,6 +178,21 @@ impl NpmRc {
                 // unknown config values)
                 _ => TrustPolicyConfig::Off,
               };
+            } else if key == "trust-policy-ignore-after" {
+              // a number of minutes; ignore unparsable values (npm is lenient
+              // about unknown/invalid config values)
+              match &kv.value {
+                Value::Number(n) if *n >= 0 => {
+                  trust_policy_ignore_after_minutes = Some(*n as u64);
+                }
+                Value::String(text) => {
+                  let value = expand_vars(text, sys);
+                  if let Ok(minutes) = value.trim().parse::<u64>() {
+                    trust_policy_ignore_after_minutes = Some(minutes);
+                  }
+                }
+                _ => {}
+              }
             }
           }
         }
@@ -189,6 +211,7 @@ impl NpmRc {
         .collect(),
       min_release_age_days,
       trust_policy,
+      trust_policy_ignore_after_minutes,
     })
   }
 
@@ -226,6 +249,7 @@ impl NpmRc {
       registry_configs: self.registry_configs.clone(),
       min_release_age_days: self.min_release_age_days,
       trust_policy: self.trust_policy,
+      trust_policy_ignore_after_minutes: self.trust_policy_ignore_after_minutes,
     })
   }
 
@@ -302,6 +326,8 @@ pub struct ResolvedNpmRc {
   pub min_release_age_days: Option<u64>,
   /// `trust-policy` value (`off` or `no-downgrade`).
   pub trust_policy: TrustPolicyConfig,
+  /// `trust-policy-ignore-after` value in minutes.
+  pub trust_policy_ignore_after_minutes: Option<u64>,
 }
 
 impl ResolvedNpmRc {
@@ -593,6 +619,7 @@ registry=https://registry.npmjs.org/
         ]),
         min_release_age_days: None,
         trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
       }
     );
 
@@ -656,6 +683,7 @@ registry=https://registry.npmjs.org/
         registry_configs: npm_rc.registry_configs.clone(),
         min_release_age_days: None,
         trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
       }
     );
 
@@ -833,6 +861,7 @@ registry=${VAR_FOUND}
         ),]),
         min_release_age_days: None,
         trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
       }
     )
   }
@@ -903,6 +932,23 @@ registry=${VAR_FOUND}
     // unknown values fall back to off
     let npm_rc = NpmRc::parse(&sys, "trust-policy=bogus").unwrap();
     assert_eq!(npm_rc.trust_policy, TrustPolicyConfig::Off);
+
+    // trust-policy-ignore-after parses as a number of minutes and propagates
+    // through to the resolved npmrc
+    let npm_rc = NpmRc::parse(
+      &sys,
+      "trust-policy=no-downgrade\ntrust-policy-ignore-after=4320",
+    )
+    .unwrap();
+    assert_eq!(npm_rc.trust_policy_ignore_after_minutes, Some(4320));
+    let resolved = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    assert_eq!(resolved.trust_policy_ignore_after_minutes, Some(4320));
+
+    // unparsable values are ignored
+    let npm_rc = NpmRc::parse(&sys, "trust-policy-ignore-after=soon").unwrap();
+    assert_eq!(npm_rc.trust_policy_ignore_after_minutes, None);
   }
 
   #[test]

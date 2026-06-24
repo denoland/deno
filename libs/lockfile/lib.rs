@@ -80,9 +80,6 @@ pub struct NpmPackageLockfileInfo {
   pub deprecated: bool,
   pub scripts: bool,
   pub bin: bool,
-  /// Publishing-trust rank of the resolved version. `0` means plain/unknown.
-  /// Used as the baseline for the `no-downgrade` trust policy.
-  pub trust: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,8 +110,6 @@ pub struct NpmPackageInfo {
   pub scripts: bool,
   #[serde(default, skip_serializing_if = "is_false")]
   pub bin: bool,
-  #[serde(default, skip_serializing_if = "is_zero_u8")]
-  pub trust: u8,
 }
 
 impl NpmPackageInfo {
@@ -191,10 +186,6 @@ impl NpmPackageInfo {
     }
     true
   }
-}
-
-pub(crate) fn is_zero_u8(value: &u8) -> bool {
-  *value == 0
 }
 
 fn is_false(value: &bool) -> bool {
@@ -440,8 +431,6 @@ impl LockfileContent {
       pub scripts: bool,
       #[serde(default, skip_serializing_if = "is_false")]
       pub bin: bool,
-      #[serde(default)]
-      pub trust: u8,
     }
 
     #[derive(Debug, Deserialize)]
@@ -531,7 +520,6 @@ impl LockfileContent {
                 deprecated: value.deprecated,
                 scripts: value.scripts,
                 bin: value.bin,
-                trust: value.trust,
               },
             );
           }
@@ -1155,7 +1143,6 @@ impl Lockfile {
       deprecated: package_info.deprecated,
       scripts: package_info.scripts,
       bin: package_info.bin,
-      trust: package_info.trust,
     };
     match entry {
       BTreeMapEntry::Vacant(entry) => {
@@ -1790,7 +1777,6 @@ mod tests {
       deprecated: false,
       scripts: false,
       bin: false,
-      trust: 0,
     };
     lockfile.insert_npm_package(npm_package);
     assert!(!lockfile.has_content_changed);
@@ -1808,7 +1794,6 @@ mod tests {
       deprecated: false,
       scripts: false,
       bin: false,
-      trust: 0,
     };
     lockfile.insert_npm_package(npm_package);
     assert!(lockfile.has_content_changed);
@@ -1826,7 +1811,6 @@ mod tests {
       deprecated: false,
       scripts: false,
       bin: false,
-      trust: 0,
     };
     // Not present in lockfile yet, should be inserted
     lockfile.insert_npm_package(npm_package.clone());
@@ -1849,7 +1833,6 @@ mod tests {
       deprecated: false,
       scripts: false,
       bin: false,
-      trust: 0,
     };
     // Now present in lockfile, should be changed due to different integrity
     lockfile.insert_npm_package(npm_package);

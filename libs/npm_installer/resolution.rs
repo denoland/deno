@@ -369,7 +369,6 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
         bin: pkg.has_bin,
         scripts: pkg.has_scripts,
         optional_peers,
-        trust: pkg.trust.rank(),
       }
     }
 

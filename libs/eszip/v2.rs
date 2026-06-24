@@ -1792,7 +1792,6 @@ async fn read_npm_section<R: futures::io::AsyncRead + Unpin>(
       id: id.clone(),
       system: Default::default(),
       dist: Default::default(),
-      trust: Default::default(),
       dependencies,
       optional_dependencies: Default::default(),
       extra: Default::default(),
@@ -3982,7 +3981,6 @@ mod tests {
       has_bin: false,
       has_scripts: false,
       optional_peer_dependencies: Default::default(),
-      trust: Default::default(),
     }
   }
 

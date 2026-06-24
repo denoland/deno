@@ -1135,7 +1135,6 @@ fn deserialize_npm_snapshot(
         has_bin: false,
         has_scripts: false,
         is_deprecated: false,
-        trust: Default::default(),
         extra: Default::default(),
       },
     ))

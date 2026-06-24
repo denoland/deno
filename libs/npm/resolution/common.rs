@@ -18,20 +18,33 @@ use crate::registry::NpmPackageVersionInfo;
 use crate::registry::NpmPackageVersionInfosIterator;
 use crate::registry::NpmRegistryApi;
 use crate::registry::NpmRegistryPackageInfoLoadError;
-use crate::registry::NpmTrustLevel;
+use crate::registry::TrustEvidence;
 use crate::resolution::overrides::NpmOverrides;
 
-/// Policy controlling whether a resolved version may have a weaker publishing
-/// trust level than a previously locked version of the same package.
+/// Policy controlling whether a resolved version may have weaker publishing
+/// trust evidence than an earlier-published version of the same package.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum NpmTrustPolicy {
-  /// Trust level is ignored during resolution (the default).
+  /// Trust evidence is ignored during resolution (the default).
   #[default]
   Off,
-  /// Refuse to resolve a version whose trust level is lower than the
-  /// previously locked version of the same package. Mirrors pnpm's
-  /// `trustPolicy: no-downgrade`.
+  /// Refuse to resolve a version whose publishing-trust evidence is weaker
+  /// than the strongest evidence on any earlier-published version of the same
+  /// package. Mirrors pnpm's `trustPolicy: no-downgrade`.
   NoDowngrade,
+}
+
+/// The `trust-policy` configuration, resolved from `.npmrc`.
+#[derive(Debug, Default, Clone)]
+pub struct TrustPolicyOptions {
+  /// The active trust policy.
+  pub policy: NpmTrustPolicy,
+  /// `trust-policy-ignore-after` cutoff: a version published strictly before
+  /// this instant skips the downgrade check, on the theory that a genuine
+  /// downgrade would have surfaced by now. Also lets genuinely pre-provenance
+  /// releases install. Computed by the caller as `now - ignore_after`; `None`
+  /// means "always check".
+  pub ignore_after_cutoff: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Error that occurs when the version is not found in the package information.
@@ -84,11 +97,13 @@ pub enum NpmPackageVersionResolutionError {
   },
   #[class(type)]
   #[error(
-    "Refused to resolve npm package '{package_name}' matching '{version_req}' under the 'no-downgrade' trust policy.\n\nEvery matching version has a weaker publishing-trust level than what is recorded in the lockfile for this package. This usually means a new release was published with a less trusted method (for example a plain token publish instead of trusted publishing or provenance).\n\nReview the release, then either update the lockfile entry once you trust it or set 'trust-policy=off' in .npmrc to disable this check."
+    "High-risk trust downgrade for npm package '{package_name}@{version}' (possible package takeover).\n\nThe 'no-downgrade' trust policy is based solely on publish date, not semver: a version cannot be installed if an earlier-published version of the same package had stronger publishing-trust evidence. Earlier versions had {past_evidence}, but this version has {current_evidence}. A trust downgrade may indicate a supply chain incident.\n\nReview the release, then set 'trust-policy=off' in .npmrc once you trust it (or use 'trust-policy-ignore-after')."
   )]
   TrustPolicyDowngrade {
     package_name: StackString,
-    version_req: VersionReq,
+    version: Version,
+    past_evidence: &'static str,
+    current_evidence: &'static str,
   },
 }
 
@@ -143,10 +158,7 @@ pub struct NpmVersionResolver {
   /// npm overrides from the root package.json.
   pub overrides: Arc<NpmOverrides>,
   /// The active publishing-trust policy.
-  pub trust_policy: NpmTrustPolicy,
-  /// The trust level recorded in the lockfile for each package, used as the
-  /// baseline for the `no-downgrade` policy.
-  pub locked_trust: Arc<HashMap<PackageName, NpmTrustLevel>>,
+  pub trust_policy: TrustPolicyOptions,
 }
 
 impl NpmVersionResolver {
@@ -154,8 +166,10 @@ impl NpmVersionResolver {
     &'a self,
     info: &'a NpmPackageInfo,
   ) -> NpmPackageVersionResolver<'a> {
-    let min_trust = match self.trust_policy {
-      NpmTrustPolicy::NoDowngrade => self.locked_trust.get(&info.name).copied(),
+    let trust_check = match self.trust_policy.policy {
+      NpmTrustPolicy::NoDowngrade => Some(TrustDowngradeCheck {
+        ignore_after_cutoff: self.trust_policy.ignore_after_cutoff,
+      }),
       NpmTrustPolicy::Off => None,
     };
     NpmPackageVersionResolver {
@@ -164,18 +178,24 @@ impl NpmVersionResolver {
         .newest_dependency_date_options
         .get_for_package(&info.name),
       link_packages: self.link_packages.get(&info.name),
-      min_trust,
+      trust_check,
     }
   }
+}
+
+/// Per-package state for the `no-downgrade` trust policy.
+#[derive(Debug, Clone, Copy)]
+struct TrustDowngradeCheck {
+  ignore_after_cutoff: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub struct NpmPackageVersionResolver<'a> {
   info: &'a NpmPackageInfo,
   link_packages: Option<&'a Vec<NpmPackageVersionInfo>>,
   newest_dependency_date: Option<NewestDependencyDate>,
-  /// When set (no-downgrade policy), versions whose trust level is below this
-  /// are skipped during resolution.
-  min_trust: Option<NpmTrustLevel>,
+  /// When set (no-downgrade policy), a resolved registry version is rejected
+  /// if an earlier-published version had stronger trust evidence.
+  trust_check: Option<TrustDowngradeCheck>,
 }
 
 impl<'a> NpmPackageVersionResolver<'a> {
@@ -217,29 +237,90 @@ impl<'a> NpmPackageVersionResolver<'a> {
     }
   }
 
-  /// Gets if the provided version satisfies the active trust policy. Under
-  /// `no-downgrade`, a version whose trust level is below the previously
-  /// locked baseline is rejected.
-  pub fn matches_trust_policy(
+  /// Enforces the `no-downgrade` trust policy on a resolved registry version.
+  ///
+  /// Port of pnpm's
+  /// [`failIfTrustDowngraded`](https://github.com/pnpm/pnpm/blob/main/resolving/npm-resolver/src/trustChecks.ts):
+  /// a version is rejected when an *earlier-published* version of the same
+  /// package carried stronger publishing-trust evidence. The comparison is by
+  /// publish date, not semver. Prereleases are excluded from the historical
+  /// scan unless the resolved version is itself a prerelease.
+  ///
+  /// Fails open: if the policy is off, or the resolved version has no publish
+  /// timestamp, or no earlier version had any evidence, the version is
+  /// accepted.
+  fn check_trust_policy(
     &self,
     version_info: &NpmPackageVersionInfo,
-  ) -> bool {
-    match self.min_trust {
-      Some(min_trust) => version_info.trust_level() >= min_trust,
-      None => true,
+  ) -> Result<(), NpmPackageVersionResolutionError> {
+    let Some(check) = self.trust_check else {
+      return Ok(());
+    };
+    let version = &version_info.version;
+    // Without a publish timestamp we can't order the history, so fail open.
+    let Some(version_date) = self.info.time.get(version).copied() else {
+      return Ok(());
+    };
+    if let Some(cutoff) = check.ignore_after_cutoff
+      && version_date < cutoff
+    {
+      // published before the cutoff (older than the ignore-after window)
+      return Ok(());
     }
+    let exclude_prerelease = version.pre.is_empty();
+    let Some(strongest_prior) =
+      self.strongest_trust_evidence_before(version_date, exclude_prerelease)
+    else {
+      return Ok(());
+    };
+    let current = version_info.get_trust_evidence();
+    let current_rank = current.map_or(0, TrustEvidence::rank);
+    if current_rank < strongest_prior.rank() {
+      return Err(NpmPackageVersionResolutionError::TrustPolicyDowngrade {
+        package_name: self.info.name.clone(),
+        version: version.clone(),
+        past_evidence: strongest_prior.pretty(),
+        current_evidence: current
+          .map_or("no trust evidence", TrustEvidence::pretty),
+      });
+    }
+    Ok(())
   }
 
-  /// Like [`Self::matches_trust_policy`] but looks the version info up by
-  /// version. Unknown versions are not rejected.
-  fn matches_trust_policy_for_version(&self, version: &Version) -> bool {
-    if self.min_trust.is_none() {
-      return true;
+  /// Walks every version published strictly before `before_date` and returns
+  /// the strongest [`TrustEvidence`] seen. Prereleases are skipped when
+  /// `exclude_prerelease` is set. A version missing a publish timestamp is
+  /// skipped (matching pnpm's per-version timestamp check) rather than
+  /// aborting the walk.
+  fn strongest_trust_evidence_before(
+    &self,
+    before_date: chrono::DateTime<chrono::Utc>,
+    exclude_prerelease: bool,
+  ) -> Option<TrustEvidence> {
+    let mut best: Option<TrustEvidence> = None;
+    for version_info in self.info.versions.values() {
+      let version = &version_info.version;
+      if exclude_prerelease && !version.pre.is_empty() {
+        continue;
+      }
+      let Some(published_at) = self.info.time.get(version) else {
+        continue;
+      };
+      if *published_at >= before_date {
+        continue;
+      }
+      let Some(evidence) = version_info.get_trust_evidence() else {
+        continue;
+      };
+      if best.is_none_or(|current| evidence > current) {
+        best = Some(evidence);
+        // `StagedPublish` is the maximum rank, so we can stop early.
+        if evidence == TrustEvidence::StagedPublish {
+          return best;
+        }
+      }
     }
-    match self.info.versions.get(version) {
-      Some(version_info) => self.matches_trust_policy(version_info),
-      None => true,
-    }
+    best
   }
 
   /// Like `version_req_satisfies`, but also matches prerelease versions that
@@ -313,7 +394,10 @@ impl<'a> NpmPackageVersionResolver<'a> {
       .resolve_best_from_existing_versions(version_req, existing_versions)?
     {
       match self.info.versions.get(version) {
-        Some(version_info) => Ok(version_info),
+        Some(version_info) => {
+          self.check_trust_policy(version_info)?;
+          Ok(version_info)
+        }
         None => Err(NpmPackageVersionResolutionError::VersionNotFound(
           NpmPackageVersionNotFound(PackageNv {
             name: self.info.name.clone(),
@@ -331,7 +415,7 @@ impl<'a> NpmPackageVersionResolver<'a> {
     &self,
     version_req: &VersionReq,
   ) -> Result<&'a NpmPackageVersionInfo, NpmPackageVersionResolutionError> {
-    if let Some(tag) = version_req.tag() {
+    let version_info = if let Some(tag) = version_req.tag() {
       match self.tag_to_version_info(tag) {
         Ok(version_info) => Ok(version_info),
         Err(NpmPackageVersionResolutionError::DistTagVersionTooNew {
@@ -351,8 +435,7 @@ impl<'a> NpmPackageVersionResolver<'a> {
       && self.info
         .dist_tags
         .get("latest")
-        .filter(|version| self.matches_newest_dependency_date(version)
-          && self.matches_trust_policy_for_version(version))
+        .filter(|version| self.matches_newest_dependency_date(version))
         .map(|version| {
           *version_req == *WILDCARD_VERSION_REQ ||
           self.version_req_satisfies(version_req, version).ok().unwrap_or(false)
@@ -362,7 +445,10 @@ impl<'a> NpmPackageVersionResolver<'a> {
       self.tag_to_version_info("latest")
     } else {
       self.resolve_best_matching_version_info(version_req, version_req)
-    }
+    }?;
+    // enforce the `no-downgrade` trust policy on the chosen registry version
+    self.check_trust_policy(version_info)?;
+    Ok(version_info)
   }
 
   fn resolve_best_matching_version_info(
@@ -371,25 +457,18 @@ impl<'a> NpmPackageVersionResolver<'a> {
     error_version_req: &VersionReq,
   ) -> Result<&'a NpmPackageVersionInfo, NpmPackageVersionResolutionError> {
     let mut found_matching_version = false;
-    // a version matched the req and date but was rejected solely by the trust
-    // policy, so we can report that as the reason rather than a generic miss
-    let mut trust_rejected_match = false;
     let mut maybe_best_version: Option<&'a NpmPackageVersionInfo> = None;
     for version_info in self.info.versions.values() {
       let version = &version_info.version;
       if self.version_req_satisfies(matching_version_req, version)? {
         found_matching_version = true;
         if self.matches_newest_dependency_date(version) {
-          if self.matches_trust_policy(version_info) {
-            let is_best_version = maybe_best_version
-              .as_ref()
-              .map(|best_version| best_version.version.cmp(version).is_lt())
-              .unwrap_or(true);
-            if is_best_version {
-              maybe_best_version = Some(version_info);
-            }
-          } else {
-            trust_rejected_match = true;
+          let is_best_version = maybe_best_version
+            .as_ref()
+            .map(|best_version| best_version.version.cmp(version).is_lt())
+            .unwrap_or(true);
+          if is_best_version {
+            maybe_best_version = Some(version_info);
           }
         }
       }
@@ -397,14 +476,6 @@ impl<'a> NpmPackageVersionResolver<'a> {
 
     match maybe_best_version {
       Some(v) => Ok(v),
-      // the only thing standing between us and a match was the trust policy:
-      // give a targeted error instead of a confusing "version not found"
-      None if trust_rejected_match => {
-        Err(NpmPackageVersionResolutionError::TrustPolicyDowngrade {
-          package_name: self.info.name.clone(),
-          version_req: error_version_req.clone(),
-        })
-      }
       // Although it seems like we could make this smart by fetching the latest
       // information for this package here, we really need a full restart. There
       // could be very interesting bugs that occur if this package's version was
@@ -556,7 +627,6 @@ mod test {
       newest_dependency_date_options: Default::default(),
       overrides: Default::default(),
       trust_policy: Default::default(),
-      locked_trust: Default::default(),
     };
     let package_version_resolver = resolver.get_for_package(&package_info);
     let result = package_version_resolver
@@ -638,7 +708,6 @@ mod test {
       ),
       overrides: Default::default(),
       trust_policy: Default::default(),
-      locked_trust: Default::default(),
     };
     let version_resolver = resolver.get_for_package(&package_info);
     let result = version_resolver
@@ -648,110 +717,154 @@ mod test {
 
   #[test]
   fn test_trust_policy_no_downgrade() {
-    use crate::registry::NpmTrustLevel;
-
     fn version_info(json: &str) -> NpmPackageVersionInfo {
       serde_json::from_str(json).unwrap()
     }
+    fn ver(v: &str) -> Version {
+      Version::parse_from_npm(v).unwrap()
+    }
 
-    // 1.0.0 published with provenance (rank 1), 1.1.0 a plain token publish
-    // (rank 0), 1.2.0 with provenance + trusted publishing (rank 3).
+    // History, by publish date:
+    //   1.0.0 (2025-01-01) provenance only            -> rank 1
+    //   1.1.0 (2025-02-01) trusted publisher + provenance -> rank 2
+    //   1.2.0 (2025-03-01) plain token publish         -> rank 0 (downgrade!)
+    //   1.3.0 (2025-04-01) staged publish              -> rank 3
     let package_info = NpmPackageInfo {
       name: "test".into(),
       versions: HashMap::from([
         (
-          Version::parse_from_npm("1.0.0").unwrap(),
+          ver("1.0.0"),
           version_info(
             r#"{ "version": "1.0.0", "dist": { "tarball": "t", "attestations": { "provenance": {} } } }"#,
           ),
         ),
         (
-          Version::parse_from_npm("1.1.0").unwrap(),
-          version_info(r#"{ "version": "1.1.0" }"#),
-        ),
-        (
-          Version::parse_from_npm("1.2.0").unwrap(),
+          ver("1.1.0"),
           version_info(
-            r#"{ "version": "1.2.0", "_npmUser": { "trustedPublisher": {} }, "dist": { "tarball": "t", "attestations": { "provenance": {} } } }"#,
+            r#"{ "version": "1.1.0", "_npmUser": { "trustedPublisher": {} }, "dist": { "tarball": "t", "attestations": { "provenance": {} } } }"#,
+          ),
+        ),
+        (ver("1.2.0"), version_info(r#"{ "version": "1.2.0" }"#)),
+        (
+          ver("1.3.0"),
+          version_info(
+            r#"{ "version": "1.3.0", "_npmUser": { "approver": {} } }"#,
           ),
         ),
       ]),
       dist_tags: Default::default(),
-      time: Default::default(),
+      time: HashMap::from([
+        (ver("1.0.0"), "2025-01-01T00:00:00.000Z".parse().unwrap()),
+        (ver("1.1.0"), "2025-02-01T00:00:00.000Z".parse().unwrap()),
+        (ver("1.2.0"), "2025-03-01T00:00:00.000Z".parse().unwrap()),
+        (ver("1.3.0"), "2025-04-01T00:00:00.000Z".parse().unwrap()),
+      ]),
     };
 
-    let package_req = PackageReq::from_str("test@^1").unwrap();
-    // baseline: the lockfile recorded a provenance-backed version (rank 1)
-    let locked =
-      std::sync::Arc::new(HashMap::from([("test".into(), NpmTrustLevel(1))]));
-
-    let resolver = NpmVersionResolver {
-      trust_policy: NpmTrustPolicy::NoDowngrade,
-      locked_trust: locked.clone(),
+    let no_downgrade = NpmVersionResolver {
+      trust_policy: TrustPolicyOptions {
+        policy: NpmTrustPolicy::NoDowngrade,
+        ignore_after_cutoff: None,
+      },
       ..Default::default()
     };
-
-    // 1.1.0 (plain, rank 0) is a downgrade from the baseline and is skipped;
-    // 1.2.0 (rank 3) is the highest version that still meets it.
-    let vr = resolver.get_for_package(&package_info);
-    assert_eq!(
-      vr.get_resolved_package_version_and_info(&package_req.version_req)
-        .unwrap()
-        .version
-        .to_string(),
-      "1.2.0"
-    );
-
-    // without 1.2.0, it falls back to the locked 1.0.0 rather than the newer
-    // but lower-trust 1.1.0.
-    let mut without_120 = package_info.clone();
-    without_120
-      .versions
-      .remove(&Version::parse_from_npm("1.2.0").unwrap());
-    let vr = resolver.get_for_package(&without_120);
-    assert_eq!(
-      vr.get_resolved_package_version_and_info(&package_req.version_req)
-        .unwrap()
-        .version
-        .to_string(),
-      "1.0.0"
-    );
-
-    // with the policy off, the newest matching version wins even though it is
-    // a lower-trust publish.
-    let resolver_off = NpmVersionResolver {
-      trust_policy: NpmTrustPolicy::Off,
-      locked_trust: locked,
-      ..Default::default()
+    let resolve = |resolver: &NpmVersionResolver, req: &str| {
+      let package_req = PackageReq::from_str(req).unwrap();
+      resolver
+        .get_for_package(&package_info)
+        .get_resolved_package_version_and_info(&package_req.version_req)
+        .map(|info| info.version.to_string())
     };
-    let vr = resolver_off.get_for_package(&without_120);
-    assert_eq!(
-      vr.get_resolved_package_version_and_info(&package_req.version_req)
-        .unwrap()
-        .version
-        .to_string(),
-      "1.1.0"
-    );
 
-    // when every matching version is a downgrade, resolution fails with the
-    // targeted trust error rather than a generic "version not found".
-    let mut only_downgrade = package_info.clone();
-    only_downgrade
-      .versions
-      .remove(&Version::parse_from_npm("1.0.0").unwrap());
-    only_downgrade
-      .versions
-      .remove(&Version::parse_from_npm("1.2.0").unwrap());
-    let vr = resolver.get_for_package(&only_downgrade);
-    let err = vr
-      .get_resolved_package_version_and_info(&package_req.version_req)
-      .unwrap_err();
+    // `^1` picks the newest (1.3.0, staged, rank 3); the strongest earlier
+    // evidence is rank 2, so it's not a downgrade.
+    assert_eq!(resolve(&no_downgrade, "test@^1").unwrap(), "1.3.0");
+
+    // the first published version has no earlier history -> always allowed.
+    assert_eq!(resolve(&no_downgrade, "test@1.0.0").unwrap(), "1.0.0");
+
+    // 1.1.0 (rank 2) vs its only predecessor 1.0.0 (rank 1) -> not a downgrade.
+    assert_eq!(resolve(&no_downgrade, "test@1.1.0").unwrap(), "1.1.0");
+
+    // pinning to 1.2.0 (plain, rank 0) is a downgrade from 1.1.0 (rank 2):
+    // a dedicated error explaining the rejection, not a fallback to an older
+    // version (pnpm fails closed here too).
+    let err = resolve(&no_downgrade, "test@1.2.0").unwrap_err();
     assert!(
       matches!(
         err,
         NpmPackageVersionResolutionError::TrustPolicyDowngrade { .. }
       ),
       "expected TrustPolicyDowngrade, got {err:?}"
+    );
+    let msg = err.to_string();
+    assert!(msg.contains("trusted publisher"), "{msg}");
+    assert!(msg.contains("no trust evidence"), "{msg}");
+
+    // with the policy off, the same pin resolves without complaint.
+    let off = NpmVersionResolver::default();
+    assert_eq!(resolve(&off, "test@1.2.0").unwrap(), "1.2.0");
+
+    // `trust-policy-ignore-after` exempts versions published before the cutoff:
+    // 1.2.0 (2025-03-01) is before a 2025-06 cutoff, so it installs anyway.
+    let ignore_after = NpmVersionResolver {
+      trust_policy: TrustPolicyOptions {
+        policy: NpmTrustPolicy::NoDowngrade,
+        ignore_after_cutoff: Some("2025-06-01T00:00:00.000Z".parse().unwrap()),
+      },
+      ..Default::default()
+    };
+    assert_eq!(resolve(&ignore_after, "test@1.2.0").unwrap(), "1.2.0");
+  }
+
+  #[test]
+  fn test_trust_policy_excludes_prereleases_from_history() {
+    fn version_info(json: &str) -> NpmPackageVersionInfo {
+      serde_json::from_str(json).unwrap()
+    }
+    fn ver(v: &str) -> Version {
+      Version::parse_from_npm(v).unwrap()
+    }
+
+    // A prerelease carried a staged publish, then a plain stable shipped.
+    // Resolving the stable must NOT treat the prerelease as the baseline
+    // (pnpm excludes prereleases from the scan for a stable candidate).
+    let package_info = NpmPackageInfo {
+      name: "test".into(),
+      versions: HashMap::from([
+        (
+          ver("1.0.0-pre.1"),
+          version_info(
+            r#"{ "version": "1.0.0-pre.1", "_npmUser": { "approver": {} } }"#,
+          ),
+        ),
+        (ver("1.0.0"), version_info(r#"{ "version": "1.0.0" }"#)),
+      ]),
+      dist_tags: Default::default(),
+      time: HashMap::from([
+        (
+          ver("1.0.0-pre.1"),
+          "2025-01-01T00:00:00.000Z".parse().unwrap(),
+        ),
+        (ver("1.0.0"), "2025-02-01T00:00:00.000Z".parse().unwrap()),
+      ]),
+    };
+    let resolver = NpmVersionResolver {
+      trust_policy: TrustPolicyOptions {
+        policy: NpmTrustPolicy::NoDowngrade,
+        ignore_after_cutoff: None,
+      },
+      ..Default::default()
+    };
+    let package_req = PackageReq::from_str("test@1.0.0").unwrap();
+    assert_eq!(
+      resolver
+        .get_for_package(&package_info)
+        .get_resolved_package_version_and_info(&package_req.version_req)
+        .unwrap()
+        .version
+        .to_string(),
+      "1.0.0"
     );
   }
 
@@ -783,7 +896,6 @@ mod test {
       ),
       overrides: Default::default(),
       trust_policy: Default::default(),
-      locked_trust: Default::default(),
     };
     let version_resolver = resolver.get_for_package(&package_info);
     let result = version_resolver
@@ -826,7 +938,6 @@ mod test {
       newest_dependency_date_options: Default::default(),
       overrides: Default::default(),
       trust_policy: Default::default(),
-      locked_trust: Default::default(),
     };
     let version_resolver = resolver.get_for_package(&package_info);
     let result = version_resolver
@@ -885,7 +996,6 @@ mod test {
       newest_dependency_date_options: Default::default(),
       overrides: Default::default(),
       trust_policy: Default::default(),
-      locked_trust: Default::default(),
     };
 
     // check for when matches dist tag

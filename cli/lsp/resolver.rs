@@ -1118,7 +1118,6 @@ impl<'a> ResolverFactory<'a> {
         newest_dependency_date_options: Default::default(),
         overrides: Arc::new(overrides),
         trust_policy: Default::default(),
-        locked_trust: Default::default(),
       });
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
         Default::default(),
