@@ -1921,6 +1921,101 @@ fn lsp_hover() {
 }
 
 #[test(timeout = 300)]
+fn lsp_inferred_type() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"type Box<T> = { value: T; next?: Box<T> };
+const simple = 42;
+const unioned = Math.random() > 0.5
+  ? { kind: "a" as const, value: 1 }
+  : { kind: "b" as const, value: "two" };
+const generic = new Map<string, Promise<Array<Box<number | string>>>>();
+const inferred = {
+  alpha: { value: "alpha", nested: { count: 1, enabled: true } },
+  beta: { value: "beta", nested: { count: 2, enabled: false } },
+  gamma: { value: "gamma", nested: { count: 3, enabled: true } },
+  delta: { value: "delta", nested: { count: 4, enabled: false } },
+  epsilon: { value: "epsilon", nested: { count: 5, enabled: true } },
+  zeta: { value: "zeta", nested: { count: 6, enabled: false } },
+  eta: { value: "eta", nested: { count: 7, enabled: true } },
+  theta: { value: "theta", nested: { count: 8, enabled: false } },
+};
+"#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let mut assert_inferred_type_contains = |name: &str, expected: &[&str]| {
+    let res = client.write_request(
+      "deno/inferredType",
+      json!({
+        "textDocument": file.identifier(),
+        "position": file.range_of(name).start,
+      }),
+    );
+    let text = res["text"].as_str().unwrap();
+    for expected in expected {
+      assert!(text.contains(expected), "{text}");
+    }
+    assert_eq!(res["range"], json!(file.range_of(name)));
+  };
+  assert_inferred_type_contains("simple", &["const simple: 42"]);
+  assert_inferred_type_contains(
+    "unioned",
+    &["const unioned:", "kind: \"a\"", "kind: \"b\"", "|"],
+  );
+  assert_inferred_type_contains(
+    "generic",
+    &["const generic:", "Map<string", "Promise", "Box"],
+  );
+
+  let res = client.write_request(
+    "deno/inferredType",
+    json!({
+      "textDocument": file.identifier(),
+      "position": file.range_of("inferred").start,
+    }),
+  );
+  let text = res["text"].as_str().unwrap();
+  assert!(text.starts_with("const inferred: {"));
+  assert!(text.contains("alpha: {"));
+  assert!(text.contains("theta: {"));
+  assert!(text.len() > 500, "{text}");
+  assert_eq!(res["range"], json!(file.range_of("inferred")));
+
+  let code_actions = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": file.identifier(),
+      "range": file.range_of("inferred"),
+      "context": {
+        "diagnostics": [],
+        "only": ["refactor.extract.inferredType"],
+      }
+    }),
+  );
+  assert_eq!(
+    code_actions,
+    json!([{
+      "title": "Copy inferred type",
+      "kind": "refactor.extract.inferredType",
+      "command": {
+        "title": "Copy inferred type",
+        "command": "deno.inferredType",
+        "arguments": [{
+          "textDocument": file.identifier(),
+          "position": file.range_of("inferred").start,
+        }, res],
+      },
+    }])
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_hover_asset() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -17136,7 +17231,7 @@ fn lsp_node_modules_dir() {
   client.initialize_default();
   let file_url = temp_dir.url().join("file.ts").unwrap();
   let file_uri = url_to_uri(&file_url).unwrap();
-  client.did_open(json!({
+  let _initial_diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": file_uri,
       "languageId": "typescript",
