@@ -273,22 +273,35 @@ fn compress_sources(out_dir: &Path) {
 /// becomes a compile error instead of a first-launch failure.
 fn emit_laufey_version() {
   let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-  // Prefer the workspace lock file, but fall back to the crate-local Cargo.lock
-  // that `cargo package`/`publish` bundles into the verification tarball, where
-  // the build runs in an isolated dir without the workspace root present.
   let workspace_lock = Path::new(&manifest_dir).join("../Cargo.lock");
-  let local_lock = Path::new(&manifest_dir).join("Cargo.lock");
   println!("cargo:rerun-if-changed={}", workspace_lock.display());
-  println!("cargo:rerun-if-changed={}", local_lock.display());
 
-  let lock = match std::fs::read_to_string(&workspace_lock)
-    .or_else(|_| std::fs::read_to_string(&local_lock))
-  {
-    Ok(s) => s,
-    Err(_) => return,
-  };
+  // Prefer the workspace Cargo.lock as the source of truth: it pins the `laufey`
+  // crate version and we cross-check `cli/laufey_sums.lock` against it.
+  //
+  // During `cargo publish` the crate is verified in an isolated package dir
+  // where the workspace lock is absent. The crate-local `Cargo.lock` cargo
+  // bundles into the tarball is no help here either: `laufey` is a dependency
+  // of `denort_desktop`, not of the `deno` crate, so it never appears in the
+  // `deno` crate's own resolved lockfile. Fall back to the `# version:`
+  // directive committed in `cli/laufey_sums.lock`, which is always bundled into
+  // the published tarball.
+  if let Some(version) = laufey_version_from_lock(&workspace_lock) {
+    println!("cargo:rustc-env=LAUFEY_VERSION={version}");
+    check_laufey_pinned_sums_version(&manifest_dir, &version);
+    return;
+  }
 
-  let mut laufey_version = None;
+  if let Some(version) = laufey_version_from_sums(&manifest_dir) {
+    println!("cargo:rustc-env=LAUFEY_VERSION={version}");
+  }
+}
+
+/// Parse the pinned `laufey` crate version out of a Cargo.lock file. Returns
+/// `None` when the file is missing or has no `laufey` package entry.
+fn laufey_version_from_lock(lock_path: &Path) -> Option<String> {
+  let lock = std::fs::read_to_string(lock_path).ok()?;
+
   let mut in_laufey = false;
   for line in lock.lines() {
     if line == "name = \"laufey\"" {
@@ -299,35 +312,25 @@ fn emit_laufey_version() {
       if let Some(rest) = line.strip_prefix("version = \"")
         && let Some(version) = rest.strip_suffix('"')
       {
-        laufey_version = Some(version.to_string());
-        break;
+        return Some(version.to_string());
       }
       if line.starts_with("[[package]]") {
-        break;
+        return None;
       }
     }
   }
-
-  let Some(laufey_version) = laufey_version else {
-    return;
-  };
-  println!("cargo:rustc-env=LAUFEY_VERSION={laufey_version}");
-
-  check_laufey_pinned_sums_version(&manifest_dir, &laufey_version);
+  None
 }
 
-/// Confirm `cli/laufey_sums.lock` targets `laufey_version`. The lock file carries a
-/// `# version: vX.Y.Z` directive that must match the `laufey` crate version
-/// the binary is built against; a mismatch means the pinned digests are stale.
-fn check_laufey_pinned_sums_version(manifest_dir: &str, laufey_version: &str) {
+/// Read the `# version: vX.Y.Z` directive from `cli/laufey_sums.lock`. This file
+/// is committed and bundled into the published crate, so it is the version
+/// source of truth during the `cargo publish` verification build where no
+/// Cargo.lock pins `laufey`.
+fn laufey_version_from_sums(manifest_dir: &str) -> Option<String> {
   let sums_path = Path::new(manifest_dir).join("laufey_sums.lock");
   println!("cargo:rerun-if-changed={}", sums_path.display());
 
-  let sums = match std::fs::read_to_string(&sums_path) {
-    Ok(s) => s,
-    Err(_) => return,
-  };
-
+  let sums = std::fs::read_to_string(&sums_path).ok()?;
   for line in sums.lines() {
     let Some(rest) = line.trim_start().strip_prefix('#') else {
       continue;
@@ -336,19 +339,28 @@ fn check_laufey_pinned_sums_version(manifest_dir: &str, laufey_version: &str) {
       continue;
     };
     let pinned = version.trim().trim_start_matches('v');
-    if pinned.is_empty() {
-      panic!(
-        "cli/laufey_sums.lock has no pinned laufey version — populate it for \
-         v{laufey_version} before building"
-      );
+    if !pinned.is_empty() {
+      return Some(pinned.to_string());
     }
-    if pinned != laufey_version {
-      panic!(
-        "cli/laufey_sums.lock pins Laufey v{pinned} but this build expects \
-         v{laufey_version} — refresh the lock file from the upstream SHA256SUMS"
-      );
-    }
-    return;
+  }
+  None
+}
+
+/// Confirm `cli/laufey_sums.lock` targets `laufey_version`. The lock file carries a
+/// `# version: vX.Y.Z` directive that must match the `laufey` crate version
+/// the binary is built against; a mismatch means the pinned digests are stale.
+fn check_laufey_pinned_sums_version(manifest_dir: &str, laufey_version: &str) {
+  let Some(pinned) = laufey_version_from_sums(manifest_dir) else {
+    panic!(
+      "cli/laufey_sums.lock has no pinned laufey version — populate it for \
+       v{laufey_version} before building"
+    );
+  };
+  if pinned != laufey_version {
+    panic!(
+      "cli/laufey_sums.lock pins Laufey v{pinned} but this build expects \
+       v{laufey_version} — refresh the lock file from the upstream SHA256SUMS"
+    );
   }
 }
 
