@@ -1093,6 +1093,41 @@ pub async fn op_dns_resolve(
     }
   }
 
+  // Hickory uses unconnected UDP sockets and therefore never receives ICMP
+  // "port unreachable" notifications. Probe the custom server with a connected
+  // UDP socket so we can surface ECONNREFUSED immediately, matching the
+  // behaviour of Node.js/c-ares which uses connected sockets for DNS.
+  // This probe runs after the permission check so no network access happens
+  // before the user's permissions are verified.
+  if let Some(name_server) = options.as_ref().and_then(|o| o.name_server.as_ref()) {
+    let probe_addr: SocketAddr =
+      format!("{}:{}", name_server.ip_addr, name_server.port).parse()?;
+    let bind_addr: SocketAddr = if probe_addr.is_ipv4() {
+      "0.0.0.0:0".parse().unwrap()
+    } else {
+      "[::]:0".parse().unwrap()
+    };
+    if let Ok(sock) = UdpSocket::bind(bind_addr).await {
+      if sock.connect(probe_addr).await.is_ok() {
+        // Send a minimal probe packet; DNS servers will ignore or FORMERR it.
+        let _ = sock.send(&[0u8]).await;
+        let mut buf = [0u8; 1];
+        // A 5 ms window is sufficient for loopback ICMP round-trips;
+        // real servers won't reply in time so we simply proceed.
+        if let Ok(Err(e)) = tokio::time::timeout(
+          Duration::from_millis(5),
+          sock.recv(&mut buf),
+        )
+        .await
+        {
+          if e.kind() == std::io::ErrorKind::ConnectionRefused {
+            return Err(NetError::Io(e));
+          }
+        }
+      }
+    }
+  }
+
   let provider = TokioConnectionProvider::default();
   let resolver =
     hickory_resolver::Resolver::builder_with_config(config, provider)

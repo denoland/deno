@@ -345,7 +345,8 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
         if (
           code === 0 || code === codeMap.get("EAI_NODATA")! ||
-          code === "ETIMEOUT"
+          code === "ETIMEOUT" ||
+          code === codeMap.get("ECONNREFUSED")!
         ) {
           break;
         }
@@ -421,6 +422,14 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)
         ) {
           code = codeMap.get("EAI_NODATA")!;
+        } else if (
+          ObjectPrototypeIsPrototypeOf(
+            Deno.errors.ConnectionRefused.prototype,
+            e,
+          )
+        ) {
+          // No server is listening on the target address - don't retry.
+          code = codeMap.get("ECONNREFUSED")!;
         } else {
           // TODO(cmorten): map errors to appropriate error codes.
           code = codeMap.get("UNKNOWN")!;
