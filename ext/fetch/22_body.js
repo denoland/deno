@@ -515,12 +515,24 @@ function extractBody(object) {
     // reconstructed body would be served through the streaming (chunked) path,
     // losing Content-Length and the single-write fast response op. Recover the
     // original static body so the fast path is preserved.
+    //
+    // Only recover when the resulting length matches the original body's
+    // known-length semantics: a string source's byte length is genuinely known
+    // (just deferred to avoid an eager encode), and a Uint8Array source is only
+    // known-length if `staticBodyLength` was recorded for it. Recovering a
+    // Uint8Array whose length was *unknown* (e.g. a chunked request body the
+    // server buffered) would wrongly synthesize a Content-Length when the body
+    // is later sent, so leave those as a stream.
     const recoveredSource = WeakMapPrototypeGet(staticBodySource, object);
-    if (recoveredSource !== undefined) {
+    const knownLength = WeakMapPrototypeGet(staticBodyLength, object);
+    if (
+      recoveredSource !== undefined &&
+      (typeof recoveredSource === "string" || knownLength !== undefined)
+    ) {
       source = recoveredSource;
     } else {
       stream = object;
-      length = WeakMapPrototypeGet(staticBodyLength, object) ?? null;
+      length = knownLength ?? null;
     }
   } else if (object[webidl.AsyncIterable] === webidl.AsyncIterable) {
     // If the underlying body is a Node `Readable` running in binary mode
