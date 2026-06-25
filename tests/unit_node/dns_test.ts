@@ -266,7 +266,9 @@ Deno.test(
     resolver.setServers(["127.0.0.1:1"]);
 
     const start = Date.now();
-    const err = await resolver.resolve4("example.com").catch((e) => e);
+    const err = await resolver.resolve4("example.com").catch(
+      (e) => e as ErrnoException,
+    );
     const elapsed = Date.now() - start;
 
     assert(err instanceof Error, "expected an error");
