@@ -250,7 +250,7 @@ jsonc-parser = { version = "0.32.1", features = ["serde"] }
 lazy-regex = "3"
 libc = "0.2.168"
 libdeflater = "1.25.2"
-liblzma = "0.4.6"
+liblzma = { version = "0.4.6", features = ["static"] }
 libz-sys = { version = "1.1.20", default-features = false }
 log = { version = "0.4.28", features = ["kv"] }
 lsp-types = { package = "ls-types", version = "=0.0.3" }
