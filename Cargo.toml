@@ -188,7 +188,7 @@ async-stream = "0.3"
 async-trait = "0.1.73"
 aws-lc-rs = { version = "1.16.3" }
 aws-lc-sys = { version = "0.40.0", features = ["prebuilt-nasm"] }
-backhand = { version = "0.25.1", default-features = false, features = ["xz"] }
+backhand = { version = "0.25.1", default-features = false, features = ["zstd"] }
 base32 = "=0.5.1"
 base64 = "0.22.1"
 bencher = "0.1"
