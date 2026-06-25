@@ -987,26 +987,10 @@ async fn run_desktop_hmr(
     log::info!("{} desktop app under inspector", colors::green("Running"),);
   }
 
-  let mut cmd = std::process::Command::new(&laufey_backend);
-  cmd
-    .arg("--runtime")
-    .arg(&dylib_abs)
-    .env("LAUFEY_RUNTIME_PATH", &dylib_abs)
-    .current_dir(&source_abs);
-  #[cfg(target_os = "macos")]
-  if let Some(icon_path) = laufey_app_icon.as_ref() {
-    cmd.env("LAUFEY_APP_ICON", icon_path);
-  }
-  if let Some(name) = app_name.as_ref() {
-    cmd.env("LAUFEY_APP_NAME", name);
-  }
-  // Only enable the file watcher + setScriptSource pipeline when the user
-  // actually asked for HMR. `deno desktop --inspect` alone used to spin up
-  // both, surprising users (and burning the inspector channel on hot
-  // reloads they didn't request).
-  if desktop_flags.hmr {
-    cmd.env("DENO_DESKTOP_HMR", &source_abs);
-  }
+  // Extra environment collected for the child below. Kept separate from the
+  // command itself because the child may be relaunched (HMR top-level restart),
+  // so the command is rebuilt fresh on each spawn via `make_cmd`.
+  let mut extra_env: Vec<(&'static str, String)> = Vec::new();
 
   // Wire up the unified DevTools multiplexer when --inspect is set.
   // The mux runs in this (parent) process and fronts both the Deno runtime
@@ -1055,36 +1039,71 @@ async fn run_desktop_hmr(
       cef_internal,
     );
 
-    cmd
-      .env(
-        "DENO_DESKTOP_INSPECT_INTERNAL_PORT",
-        deno_internal.to_string(),
-      )
-      // Exposed so rt_desktop's `openDevtools()` can launch a browser
-      // pointed at the unified DevTools frontend instead of CEF's
-      // renderer-only native window.
-      .env("DENO_DESKTOP_MUX_WS", handle.listen.to_string())
-      .env(
-        "LAUFEY_REMOTE_DEBUGGING_PORT",
-        cef_internal.port().to_string(),
-      );
+    extra_env.push((
+      "DENO_DESKTOP_INSPECT_INTERNAL_PORT",
+      deno_internal.to_string(),
+    ));
+    // Exposed so rt_desktop's `openDevtools()` can launch a browser
+    // pointed at the unified DevTools frontend instead of CEF's
+    // renderer-only native window.
+    extra_env.push(("DENO_DESKTOP_MUX_WS", handle.listen.to_string()));
+    extra_env.push((
+      "LAUFEY_REMOTE_DEBUGGING_PORT",
+      cef_internal.port().to_string(),
+    ));
     if flags.inspect_brk.is_some() {
-      cmd.env("DENO_DESKTOP_INSPECT_BRK", "1");
+      extra_env.push(("DENO_DESKTOP_INSPECT_BRK", "1".to_string()));
     }
     if flags.inspect_wait.is_some() {
-      cmd.env("DENO_DESKTOP_INSPECT_WAIT", "1");
+      extra_env.push(("DENO_DESKTOP_INSPECT_WAIT", "1".to_string()));
     }
     Some(handle)
   } else {
     None
   };
 
-  // `kill_on_drop` is a safety net: if the parent panics or exits via any
-  // path that doesn't reach the explicit `wait` below, the LAUFEY backend
-  // (and its CEF renderer subprocesses) get SIGKILLed on `Child` drop
-  // rather than being orphaned. Normal Ctrl-C delivers SIGINT to the
-  // whole process group so this rarely matters in practice; it covers
-  // the abnormal-exit cases.
+  // Builds a fresh launch command. Called once per spawn so the child can be
+  // relaunched (HMR top-level restart) without reusing a consumed `Command`.
+  let make_cmd = || {
+    let mut cmd = std::process::Command::new(&laufey_backend);
+    cmd
+      .arg("--runtime")
+      .arg(&dylib_abs)
+      .env("LAUFEY_RUNTIME_PATH", &dylib_abs)
+      .current_dir(&source_abs);
+    #[cfg(target_os = "macos")]
+    if let Some(icon_path) = laufey_app_icon.as_ref() {
+      cmd.env("LAUFEY_APP_ICON", icon_path);
+    }
+    if let Some(name) = app_name.as_ref() {
+      cmd.env("LAUFEY_APP_NAME", name);
+    }
+    // Only enable the file watcher + setScriptSource pipeline when the user
+    // actually asked for HMR. `deno desktop --inspect` alone used to spin up
+    // both, surprising users (and burning the inspector channel on hot
+    // reloads they didn't request).
+    if desktop_flags.hmr {
+      cmd.env("DENO_DESKTOP_HMR", &source_abs);
+    }
+    for (key, value) in &extra_env {
+      cmd.env(key, value);
+    }
+    cmd
+  };
+
+  // The runtime exits with this code to request a full relaunch (e.g. an HMR
+  // top-level module change that can't be hot-patched). Kept in sync with
+  // `HMR_RESTART_EXIT_CODE` in `cli/rt_desktop/lib.rs`. The supervisor owns the
+  // relaunch — re-execing from inside the runtime would orphan the new process
+  // from the process group, Ctrl-C handling and temp-entrypoint cleanup.
+  const HMR_RESTART_EXIT_CODE: i32 = 75;
+
+  // Spawn, wait, and relaunch on the restart sentinel. `kill_on_drop` is a
+  // safety net: if the parent panics or exits via any path that doesn't reach
+  // the explicit `wait` below, the LAUFEY backend (and its CEF renderer
+  // subprocesses) get SIGKILLed on `Child` drop rather than being orphaned.
+  // Normal Ctrl-C delivers SIGINT to the whole process group so this rarely
+  // matters in practice; it covers the abnormal-exit cases.
   //
   // On macOS we go through posix_spawn with TCC responsibility disclaimed
   // (see `disclaim_spawn`) so the laufey child is its own permission principal.
@@ -1092,34 +1111,46 @@ async fn run_desktop_hmr(
   // to whatever started deno (typically the terminal), which has no bundle
   // id and causes `UNUserNotificationCenter.requestAuthorization` to fail
   // with UNErrorCodeNotificationsNotAllowed before any user prompt.
-  #[cfg(target_os = "macos")]
-  let status = {
-    let mut child = disclaim_spawn::spawn(&cmd).with_context(|| {
-      format!(
-        "Failed to launch LAUFEY backend: {}",
-        laufey_backend.display()
-      )
-    })?;
-    child
-      .wait()
-      .await
-      .context("Failed waiting for LAUFEY backend")?
-  };
-  #[cfg(not(target_os = "macos"))]
-  let status = {
-    let mut child = tokio::process::Command::from(cmd)
-      .kill_on_drop(true)
-      .spawn()
-      .with_context(|| {
+  let status = loop {
+    let cmd = make_cmd();
+    #[cfg(target_os = "macos")]
+    let status = {
+      let mut child = disclaim_spawn::spawn(&cmd).with_context(|| {
         format!(
           "Failed to launch LAUFEY backend: {}",
           laufey_backend.display()
         )
       })?;
-    child
-      .wait()
-      .await
-      .context("Failed waiting for LAUFEY backend")?
+      child
+        .wait()
+        .await
+        .context("Failed waiting for LAUFEY backend")?
+    };
+    #[cfg(not(target_os = "macos"))]
+    let status = {
+      let mut child = tokio::process::Command::from(cmd)
+        .kill_on_drop(true)
+        .spawn()
+        .with_context(|| {
+          format!(
+            "Failed to launch LAUFEY backend: {}",
+            laufey_backend.display()
+          )
+        })?;
+      child
+        .wait()
+        .await
+        .context("Failed waiting for LAUFEY backend")?
+    };
+
+    if status.code() == Some(HMR_RESTART_EXIT_CODE) {
+      log::info!(
+        "{} desktop app (HMR top-level change)",
+        colors::green("Restarting"),
+      );
+      continue;
+    }
+    break status;
   };
 
   // Keep the mux alive until the subprocess exits, then drop it.
