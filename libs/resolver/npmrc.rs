@@ -238,6 +238,6 @@ pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
       },
     )]),
     registry_configs: Default::default(),
-    min_release_age_days: None,
+    min_release_age_days: deno_npmrc::min_release_age_days_from_env(sys),
   }
 }
