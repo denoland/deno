@@ -49,6 +49,10 @@ pub async fn start() -> Result<(), AnyError> {
     lsp_custom::PERFORMANCE_REQUEST,
     LanguageServer::performance_request,
   )
+  .custom_method(
+    lsp_custom::INFERRED_TYPE_REQUEST,
+    LanguageServer::inferred_type,
+  )
   .custom_method(lsp_custom::TASK_REQUEST, LanguageServer::task_definitions)
   .custom_method(testing::TEST_RUN_REQUEST, LanguageServer::test_run_request)
   .custom_method(

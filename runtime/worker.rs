@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::sync::LazyLock;
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -35,6 +36,7 @@ use deno_core::error::JsError;
 use deno_core::v8;
 use deno_cron::CronHandler;
 use deno_cron::CronHandlerImpl;
+use deno_error::JsErrorBox;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
@@ -100,6 +102,21 @@ pub fn create_validate_import_attributes_callback(
     move |scope: &mut v8::PinScope<'_, '_>,
           attributes: &HashMap<String, String>,
           context: &deno_core::ImportAttributesContext| {
+      // If `module.registerHooks()` has installed user hooks, defer
+      // import-attribute validation to the user hooks so they can
+      // implement custom module types and attributes
+      // (e.g. `with { type: "x-css" }`). Without this, the builtin
+      // validator rejects anything outside the small allow-list before
+      // hooks ever get a chance to handle the import.
+      let op_state = JsRuntime::op_state_from(&*scope);
+      if let Ok(op_state) = op_state.try_borrow()
+        && let Some(registry) = op_state
+          .try_borrow::<deno_node::ops::module_hooks::LoaderHookRegistry>(
+        )
+        && registry.hooks_active.get()
+      {
+        return;
+      }
       let valid_attribute = |kind: &str| {
         matches!(kind, "json" | "text")
           || (enable_raw_imports.load(Ordering::Relaxed)
@@ -325,6 +342,48 @@ impl Default for WorkerOptions {
       unconfigured_runtime: None,
     }
   }
+}
+
+pub(crate) fn request_builder_hook(
+  request: &mut http::Request<deno_fetch::ReqBody>,
+) -> Result<(), JsErrorBox> {
+  const X_DENO_FETCH_TOKEN: http::HeaderName =
+    http::HeaderName::from_static("x-deno-fetch-token");
+  const CDN_LOOP: http::HeaderName = http::HeaderName::from_static("cdn-loop");
+  static X_DENO_FETCH_TOKEN_VALUE: OnceLock<Option<http::HeaderValue>> =
+    OnceLock::new();
+  static CDN_LOOP_VALUE: OnceLock<Option<http::HeaderValue>> = OnceLock::new();
+
+  // Scrub Deno-specific headers to prevent user code from spoofing them.
+  if let http::header::Entry::Occupied(entry) =
+    request.headers_mut().entry(X_DENO_FETCH_TOKEN)
+  {
+    entry.remove_entry_mult();
+  }
+
+  let maybe_x_deno_fetch_token = X_DENO_FETCH_TOKEN_VALUE.get_or_init(|| {
+    std::env::var("X_DENO_FETCH_TOKEN")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  });
+
+  if let Some(token) = maybe_x_deno_fetch_token {
+    request
+      .headers_mut()
+      .insert(X_DENO_FETCH_TOKEN, token.clone());
+  }
+
+  let cdn_loop_value = CDN_LOOP_VALUE.get_or_init(|| {
+    std::env::var("CDN_LOOP")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  });
+
+  if let Some(cdn_loop) = cdn_loop_value {
+    request.headers_mut().insert(CDN_LOOP, cdn_loop.clone());
+  }
+
+  Ok(())
 }
 
 pub fn create_op_metrics(
@@ -566,6 +625,7 @@ impl MainWorker {
             .clone(),
           file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
           resolver: services.fetch_dns_resolver,
+          request_builder_hook: Some(request_builder_hook),
           ..Default::default()
         }),
         deno_cache::deno_cache::args(create_cache),
@@ -757,6 +817,18 @@ impl MainWorker {
   }
 
   pub fn bootstrap(&mut self, options: BootstrapOptions) {
+    // Diagnostic env var; not on the sys_traits surface in this crate.
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "diagnostic env var; not part of the sys_traits surface"
+    )]
+    let phase_enabled = std::env::var_os("DENO_STARTUP_PHASES")
+      .is_some_and(|v| !v.is_empty() && v != "0");
+    let t0 = if phase_enabled {
+      Some(std::time::Instant::now())
+    } else {
+      None
+    };
     // Setup bootstrap options for ops.
     {
       let op_state = self.js_runtime.op_state();
@@ -777,6 +849,16 @@ impl MainWorker {
     if let Some(exception) = scope.exception() {
       let error = JsError::from_v8_exception(scope, exception);
       panic!("Bootstrap exception: {error}");
+    }
+    if let Some(t) = t0 {
+      #[allow(clippy::print_stderr, reason = "diagnostic")]
+      {
+        eprintln!(
+          "[startup] {:>32}  {:?}",
+          "MainWorker::bootstrap (99_main)",
+          t.elapsed()
+        );
+      }
     }
   }
 
@@ -1167,6 +1249,7 @@ fn common_extensions<
     ops::tty::deno_tty::init(),
     ops::http::deno_http_runtime::init(),
     deno_bundle_runtime::deno_bundle_runtime::lazy_init(),
+    ops::desktop::deno_desktop::init(),
     ops::bootstrap::deno_bootstrap::init(
       has_snapshot.then(Default::default),
       unconfigured_runtime,

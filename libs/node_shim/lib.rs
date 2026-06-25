@@ -3143,8 +3143,8 @@ pub struct TranslateOptions {
   /// Use "deno node" as base command (for standalone CLI)
   /// When false, uses "deno run" (for child_process spawning)
   pub use_node_subcommand: bool,
-  /// Add unstable Node.js compat flags (--unstable-node-globals,
-  /// --unstable-bare-node-builtins, --unstable-detect-cjs)
+  /// Add unstable Node.js compat flags (--unstable-bare-node-builtins,
+  /// --unstable-detect-cjs)
   pub add_unstable_flags: bool,
   /// Add standalone config overrides (--node-modules-dir=manual, --no-config)
   /// Only appropriate for the standalone node shim CLI, not for child processes
@@ -3260,6 +3260,164 @@ pub fn is_deno_subcommand(arg: &str) -> bool {
   DENO_SUBCOMMANDS.contains(&arg)
 }
 
+/// Subcommands that execute user code and accept permission flags. A spawned
+/// Node.js process has no permission model, so when one of these is produced by
+/// the node-compat translation without explicit permission flags, we grant `-A`
+/// to mirror Node.js behavior (and to match the non-pass-through script path).
+fn subcommand_runs_user_code(subcommand: &str) -> bool {
+  matches!(subcommand, "run" | "test" | "bench" | "serve")
+}
+
+/// Long-form permission flag names (without the leading `--`): allow/deny
+/// grants plus `--permission-set`. Mirrors the permission flags defined in the
+/// CLI parser (see `permission_args` in cli/args/flags.rs).
+const PERMISSION_LONG_FLAGS: &[&str] = &[
+  "allow-all",
+  "allow-read",
+  "allow-write",
+  "allow-net",
+  "allow-env",
+  "allow-run",
+  "allow-sys",
+  "allow-ffi",
+  "allow-import",
+  "deny-read",
+  "deny-write",
+  "deny-net",
+  "deny-env",
+  "deny-run",
+  "deny-sys",
+  "deny-ffi",
+  "deny-import",
+  "permission-set",
+];
+
+/// Short-form permission flag characters. Mirrors the `.short(...)` aliases in
+/// the CLI parser: -A/-R/-W/-N/-E/-S/-I plus -P for `--permission-set`.
+const PERMISSION_SHORT_FLAGS: &[char] =
+  &['A', 'R', 'W', 'N', 'E', 'S', 'I', 'P'];
+
+/// Whether `arg` is an explicit permission flag: long (`--allow-net`) or short
+/// (`-A`, `-RW`), with or without an `=value` (permission flags require `=` for
+/// values, so the value can be split off first).
+fn is_permission_flag(arg: &str) -> bool {
+  let flag = arg.split('=').next().unwrap_or(arg);
+  if let Some(long) = flag.strip_prefix("--") {
+    return PERMISSION_LONG_FLAGS.contains(&long);
+  }
+  if let Some(shorts) = flag.strip_prefix('-') {
+    // Short flags may be bundled (e.g. `-RW`); treat the arg as a permission
+    // flag if every character is an alphabetic short flag and at least one is a
+    // permission flag.
+    return !shorts.is_empty()
+      && shorts.chars().all(|c| c.is_ascii_alphabetic())
+      && shorts.chars().any(|c| PERMISSION_SHORT_FLAGS.contains(&c));
+  }
+  false
+}
+
+/// Whether the args already carry an explicit permission flag, in which case we
+/// must respect the caller's intent and not inject `-A`.
+fn has_permission_flag(args: &[String]) -> bool {
+  args.iter().any(|a| is_permission_flag(a))
+}
+
+/// Resolve a Node-style entrypoint to a specifier that Deno's `run` subcommand
+/// understands.
+///
+/// If the entrypoint is an absolute path, or a relative path that exists on
+/// disk, it is returned unchanged. Otherwise we shell out to `deno_exe` to
+/// resolve it using Node's module resolution semantics (via `resolve.js`).
+///
+/// `deno_exe` is the path or name used to invoke deno for the resolution
+/// fallback. The standalone shim passes `"deno"` (relying on PATH); callers
+/// running inside the deno process should pass `std::env::current_exe()`.
+///
+/// Infrastructure failures (no current dir, can't spawn deno, non-UTF8 output)
+/// fall back to returning the entrypoint unchanged, letting deno's own `run`
+/// resolution surface a normal error rather than panicking. A non-zero exit
+/// from the resolution script itself is still propagated via process exit, as
+/// that carries the user-facing "module not found" diagnostic.
+#[allow(
+  clippy::disallowed_methods,
+  reason = "CLI shim resolving a node entrypoint, mirrors the standalone binary"
+)]
+pub fn resolve_entrypoint(
+  deno_exe: &std::path::Path,
+  entrypoint: &str,
+) -> String {
+  use std::process::Stdio;
+
+  let Ok(cwd) = std::env::current_dir() else {
+    return entrypoint.to_string();
+  };
+  // If the entrypoint is either an absolute path, or a relative path that
+  // exists, return it as is.
+  if cwd.join(entrypoint).symlink_metadata().is_ok() {
+    return entrypoint.to_string();
+  }
+
+  let Ok(url) = url::Url::from_file_path(cwd.join("$file.js")) else {
+    return entrypoint.to_string();
+  };
+
+  // Otherwise, shell out to `deno` to try to resolve the entrypoint.
+  let mut command = std::process::Command::new(deno_exe);
+  command
+    .arg("eval")
+    .arg("--no-config")
+    .arg(include_str!("./resolve.js"))
+    .arg(url.to_string())
+    .arg(format!("./{}", entrypoint))
+    .env_clear()
+    .stdout(Stdio::piped())
+    .stderr(Stdio::inherit());
+  // A fully-cleared environment breaks process creation / DLL loading on
+  // Windows, so keep the essential system variables.
+  #[cfg(windows)]
+  for key in ["SystemRoot", "SystemDrive"] {
+    if let Some(value) = std::env::var_os(key) {
+      command.env(key, value);
+    }
+  }
+  let output = match command.output() {
+    Ok(output) => output,
+    Err(_) => return entrypoint.to_string(),
+  };
+  if !output.status.success() {
+    std::process::exit(output.status.code().unwrap_or(1));
+  }
+  match String::from_utf8(output.stdout) {
+    Ok(stdout) => stdout.trim().to_string(),
+    Err(_) => entrypoint.to_string(),
+  }
+}
+
+/// For a translated `deno run ...` argv, resolve the entrypoint argument in
+/// place using [`resolve_entrypoint`].
+///
+/// No-op unless `deno_args` is a `run` invocation with an entrypoint (the first
+/// non-flag argument after `run`). Shared by the standalone shim binary and the
+/// in-process arg0 dispatch so the entrypoint-finding logic lives in one place.
+pub fn resolve_run_entrypoint(
+  deno_exe: &std::path::Path,
+  deno_args: &mut [String],
+) {
+  if deno_args.len() < 3 || deno_args.get(1).map(|s| s.as_str()) != Some("run")
+  {
+    return;
+  }
+  let entrypoint_idx = deno_args
+    .iter()
+    .enumerate()
+    .skip(2)
+    .find(|(_, arg)| !arg.starts_with('-'))
+    .map(|(i, _)| i);
+  if let Some(idx) = entrypoint_idx {
+    deno_args[idx] = resolve_entrypoint(deno_exe, &deno_args[idx]);
+  }
+}
+
 /// Translate parsed Node.js CLI arguments to Deno CLI arguments.
 pub fn translate_to_deno_args(
   parsed_args: ParseResult,
@@ -3270,12 +3428,23 @@ pub fn translate_to_deno_args(
   let node_options = &mut result.node_options;
 
   // Check if the args already look like Deno args (e.g., from vitest workers)
-  // If the first remaining arg is a Deno subcommand, pass through unchanged
+  // If the first remaining arg is a Deno subcommand, pass through unchanged.
   if let Some(first_arg) = parsed_args.remaining_args.first()
     && is_deno_subcommand(first_arg)
   {
-    // Already Deno-style args, return unchanged
-    result.deno_args = parsed_args.remaining_args;
+    let mut deno_args = parsed_args.remaining_args;
+    // A spawned Node.js process has no permission model. When a tool detects it
+    // is running under Deno and spawns an execution subcommand (e.g.
+    // `deno run <script>`) without any permission flags, grant `-A` so the
+    // child behaves like Node.js instead of tripping a permission prompt. Tools
+    // that pass explicit permission flags (e.g. vitest workers spawn
+    // `run -A ...`) are left untouched. See #35441.
+    if subcommand_runs_user_code(&deno_args[0])
+      && !has_permission_flag(&deno_args)
+    {
+      deno_args.insert(1, "-A".to_string());
+    }
+    result.deno_args = deno_args;
     return result;
   }
 
@@ -3361,7 +3530,6 @@ pub fn translate_to_deno_args(
     // Note: deno eval has implicit permissions, so we don't add -A
 
     if options.add_unstable_flags {
-      deno_args.push("--unstable-node-globals".to_string());
       deno_args.push("--unstable-bare-node-builtins".to_string());
       deno_args.push("--unstable-detect-cjs".to_string());
     }
@@ -3441,7 +3609,6 @@ pub fn translate_to_deno_args(
     deno_args.push("-A".to_string());
 
     if options.add_unstable_flags {
-      deno_args.push("--unstable-node-globals".to_string());
       deno_args.push("--unstable-bare-node-builtins".to_string());
       deno_args.push("--unstable-detect-cjs".to_string());
     }
@@ -3488,7 +3655,6 @@ pub fn translate_to_deno_args(
   deno_args.push("-A".to_string());
 
   if options.add_unstable_flags {
-    deno_args.push("--unstable-node-globals".to_string());
     deno_args.push("--unstable-bare-node-builtins".to_string());
     deno_args.push("--unstable-detect-cjs".to_string());
   }
@@ -5123,7 +5289,6 @@ mod tests {
       "node",
       "run",
       "-A",
-      "--unstable-node-globals",
       "--unstable-bare-node-builtins",
       "--unstable-detect-cjs",
       "--node-modules-dir=manual",
@@ -5131,4 +5296,74 @@ mod tests {
       "foo.js"
     ]
   );
+
+  /// Helper for the deno-subcommand pass-through path (used when a tool spawns
+  /// Deno with deno-style args). Translation is mode-independent here, so use
+  /// the child_process options.
+  fn translate_passthrough(input: Vec<String>) -> Vec<String> {
+    let parsed_args = parse_args(input).unwrap();
+    let options = TranslateOptions::for_child_process();
+    translate_to_deno_args(parsed_args, &options).deno_args
+  }
+
+  #[test]
+  fn passthrough_run_without_perms_gets_allow_all() {
+    // Regression test for #35441: `deno run <script>` spawned without any
+    // permission flags must receive `-A` so the Node-compat child has full
+    // access instead of prompting.
+    assert_eq!(
+      translate_passthrough(svec!["run", "child.mjs"]),
+      svec!["run", "-A", "child.mjs"]
+    );
+    assert_eq!(
+      translate_passthrough(svec!["run", "npm:storybook", "init"]),
+      svec!["run", "-A", "npm:storybook", "init"]
+    );
+  }
+
+  #[test]
+  fn passthrough_run_with_explicit_perms_is_unchanged() {
+    // vitest workers and similar pass `-A` already; respect explicit flags,
+    // including long, short, bundled and `=value` forms.
+    for flags in [
+      svec!["-A"],
+      svec!["--allow-all"],
+      svec!["--allow-read"],
+      svec!["--allow-read=/etc"],
+      svec!["-R"],
+      svec!["-R=/etc"],
+      svec!["-RW"],
+      svec!["-N=localhost"],
+      svec!["--deny-net"],
+      svec!["-P=prod"],
+    ] {
+      let mut input = svec!["run"];
+      input.extend(flags.iter().cloned());
+      input.push("worker.mjs".to_string());
+      assert_eq!(
+        translate_passthrough(input.clone()),
+        input,
+        "expected {input:?} to pass through unchanged"
+      );
+    }
+  }
+
+  #[test]
+  fn passthrough_run_with_non_permission_short_flag_gets_allow_all() {
+    // `-q` (quiet) is not a permission flag, so `-A` is still injected.
+    assert_eq!(
+      translate_passthrough(svec!["run", "-q", "worker.mjs"]),
+      svec!["run", "-A", "-q", "worker.mjs"]
+    );
+  }
+
+  #[test]
+  fn passthrough_non_execution_subcommand_is_unchanged() {
+    // Non-execution subcommands don't take `-A`; leave them alone.
+    assert_eq!(translate_passthrough(svec!["install"]), svec!["install"]);
+    assert_eq!(
+      translate_passthrough(svec!["add", "npm:foo"]),
+      svec!["add", "npm:foo"]
+    );
+  }
 }
