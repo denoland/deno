@@ -499,6 +499,15 @@ impl FileSystem for RealFs {
   }
 }
 
+fn normalize_recursive_mkdir_path(path: &Path) -> Cow<'_, Path> {
+  let normalized_path = path.components().collect::<PathBuf>();
+  if normalized_path.as_os_str() == path.as_os_str() {
+    Cow::Borrowed(path)
+  } else {
+    Cow::Owned(normalized_path)
+  }
+}
+
 fn mkdir(path: &Path, recursive: bool, mode: Option<u32>) -> FsResult<()> {
   let mut builder = fs::DirBuilder::new();
   builder.recursive(recursive);
@@ -511,6 +520,11 @@ fn mkdir(path: &Path, recursive: bool, mode: Option<u32>) -> FsResult<()> {
   {
     _ = mode;
   }
+  let path = if recursive {
+    normalize_recursive_mkdir_path(path)
+  } else {
+    Cow::Borrowed(path)
+  };
   builder.create(path).map_err(Into::into)
 }
 
