@@ -1126,3 +1126,23 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "[node/worker_threads] exports `locks` (same as navigator.locks)",
+  fn() {
+    // `locks` is not in the vendored @types/node yet, and `navigator.locks`
+    // is currently untyped in Deno's lib, so reach through `unknown`.
+    const locks = (workerThreads as unknown as { locks: unknown }).locks;
+    const navLocks = (navigator as unknown as { locks: unknown }).locks;
+    assert(locks !== undefined, "worker_threads.locks should be defined");
+    assert(
+      locks === navLocks,
+      "worker_threads.locks should be the same object as navigator.locks",
+    );
+    assertEquals(
+      (locks as { constructor: { name: string } }).constructor.name,
+      "LockManager",
+    );
+    assertEquals(typeof (locks as { query: unknown }).query, "function");
+  },
+});
