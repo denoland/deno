@@ -1480,6 +1480,14 @@ fn serve_parse(
   flags.code_cache_enabled = !result.get_bool("no-code-cache");
   flags.tunnel = result.get_bool("tunnel");
 
+  let tls_cert = result.get_one("tls-cert");
+  let tls_key = result.get_one("tls-key");
+
+  let tls_cert_and_key = match (tls_cert, tls_key) {
+    (Some(cert), Some(key)) => Some((cert.to_owned(), key.to_owned())),
+    _ => None,
+  };
+
   let script = result
     .get_one("script_arg")
     .map(|s| s.to_string())
@@ -1495,6 +1503,7 @@ fn serve_parse(
     script,
     port,
     host,
+    tls_cert_and_key,
     parallel,
     open_site: result.get_bool("open"),
   });

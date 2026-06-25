@@ -745,6 +745,18 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
 .help("The TCP address to serve on, defaulting to 0.0.0.0 (all interfaces)"),
+    ArgDef::new("tls-cert")
+      .long("tls-cert")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .requires(&["tls-key"])
+      .help("Load TLS certificate from PEM encoded file"),
+    ArgDef::new("tls-key")
+      .long("tls-key")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .requires(&["tls-cert"])
+      .help("Load TLS private key from PEM encoded file"),
     ArgDef::new("open").long("open").set_true()
 .help("Open the browser on the address that the server is running on."),
     ArgDef::new("tunnel")
