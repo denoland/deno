@@ -190,16 +190,6 @@ Read more: http://deno.com/blog/v2.9
   (#35252)
 - fix(test): ignorelist leaks from sanitizer-ignoring tests (#35005)
 - fix(test): skip invalid doctest import bindings (#35382)
-- fix(test): use `#` instead of `# Releases
-
-Binary releases can be downloaded manually at:
-https://github.com/denoland/deno/releases
-
-We also have one-line install commands at:
-https://github.com/denoland/deno_install
-
-as the doc test virtual file sigil (#35095)
-
 - fix(test/node): mark test-worker-fshandles-open-close-on-termination as flaky
   (#35387)
 - fix(tests): skip npm/playwright_compat on windows-aarch64 (#35358)
