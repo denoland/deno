@@ -1446,12 +1446,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       );
     }
 
-    if options.is_synchronous {
-      if let Some(result) =
+    if options.is_synchronous
+      && let Some(result) =
         inner.try_load_inner_sync(&specifier, &options.requested_module_type)
-      {
-        return deno_core::ModuleLoadResponse::Sync(result);
-      }
+    {
+      return deno_core::ModuleLoadResponse::Sync(result);
     }
 
     deno_core::ModuleLoadResponse::Async(
