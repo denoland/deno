@@ -4143,6 +4143,10 @@ where
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NoData) => continue,
       RawResponseBodyEvent::Frame(ResponseStreamResult::Error(error)) => {
+        // The head (and any chunks coalesced so far) may still be buffered;
+        // flush best-effort so the client receives the committed response
+        // before the connection is torn down, then surface the body error.
+        let _ = poll_fn(|cx| conn.poll_flush_write_buf(cx, scratch)).await;
         finish.finish(false);
         return Err(HttpNextError::Other(error));
       }
@@ -4319,6 +4323,17 @@ where
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NoData) => continue,
       RawResponseBodyEvent::Frame(ResponseStreamResult::Error(error)) => {
+        // The head (and any chunks coalesced so far) may still be buffered;
+        // flush best-effort so the client receives the committed response
+        // before the connection is torn down, then surface the body error.
+        let _ = poll_fn(|cx| {
+          let mut conn = conn.borrow_mut();
+          let Some(conn) = conn.as_mut() else {
+            return Poll::Ready(Ok::<_, HttpNextError>(()));
+          };
+          conn.poll_flush(cx)
+        })
+        .await;
         finish.finish(false);
         return Err(HttpNextError::Other(error));
       }
