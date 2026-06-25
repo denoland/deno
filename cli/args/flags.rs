@@ -824,7 +824,7 @@ static ENV_VARS: &[EnvVar] = &[
   },
   EnvVar {
     name: "DENO_SERVE_AUTOMATIC_COMPRESSION",
-    description: "Set to 0 or false to disable automatic response body compression in Deno.serve by default.",
+    description: "Set to 1 or true to enable automatic response body compression in Deno.serve by default.",
     example: None,
   },
   EnvVar {
