@@ -719,30 +719,34 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
           url: url.clone(),
           source,
         })?;
-    match self.http_cache.get(&cache_key, None) {
+    let maybe_headers =
+      self.http_cache.read_headers(&cache_key).map_err(|source| {
+        CacheReadError {
+          url: url.clone(),
+          source,
+        }
+      })?;
+    if let Some(headers) = &maybe_headers
+      && headers.contains_key(NOT_FOUND_CACHE_HEADER)
+    {
+      let download_time = self
+        .http_cache
+        .read_download_time(&cache_key)
+        .map_err(|source| CacheReadError {
+          url: url.clone(),
+          source,
+        })?;
+      return if self.is_not_found_entry_fresh(download_time) {
+        Err(FetchCachedNoFollowErrorKind::NotFound(url.clone()).into_box())
+      } else {
+        // expired, treat as a cache miss so the URL is re-requested
+        Ok(None)
+      };
+    }
+
+    match self.http_cache.get(&cache_key, maybe_checksum) {
       Ok(Some(entry)) => {
-        if entry.metadata.headers.contains_key(NOT_FOUND_CACHE_HEADER) {
-          let download_time = entry
-            .metadata
-            .time
-            .map(|secs| SystemTime::UNIX_EPOCH + Duration::from_secs(secs));
-          return if self.is_not_found_entry_fresh(download_time) {
-            Err(FetchCachedNoFollowErrorKind::NotFound(url.clone()).into_box())
-          } else {
-            // expired, treat as a cache miss so the URL is re-requested
-            Ok(None)
-          };
-        }
-        let file_or_redirect =
-          FileOrRedirect::from_deno_cache_entry(url, entry)?;
-        if let Some(checksum) = maybe_checksum
-          && let FileOrRedirect::File(file) = &file_or_redirect
-        {
-          checksum.check(url, &file.source).map_err(|err| {
-            FetchCachedNoFollowErrorKind::ChecksumIntegrity(*err)
-          })?;
-        }
-        Ok(Some(file_or_redirect))
+        Ok(Some(FileOrRedirect::from_deno_cache_entry(url, entry)?))
       }
       Ok(None) => Ok(None),
       Err(CacheReadFileError::Io(source)) => Err(
