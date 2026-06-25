@@ -259,7 +259,7 @@ pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
       },
     )]),
     registry_configs: Default::default(),
-    min_release_age_days: None,
+    min_release_age_days: deno_npmrc::min_release_age_days_from_env(sys),
     trust_policy: Default::default(),
     trust_policy_ignore_after_minutes: None,
     trust_policy_exclude: Vec::new(),

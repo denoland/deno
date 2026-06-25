@@ -22372,6 +22372,48 @@ fn lsp_force_push_based_diagnostics_setting() {
   );
 }
 
+// Regression test for https://github.com/denoland/deno/issues/35225: a `.d.ts`
+// opened in the editor is an entrypoint, so its own unresolved bare imports must
+// be reported (as `deno check` does for `.d.ts` entrypoints, see #32794), even
+// under `skipLibCheck` where tsc would otherwise skip them.
+#[test(timeout = 300)]
+fn lsp_dts_entrypoint_unresolved_import() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "skipLibCheck": true,
+      }
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file(
+    "asdf.d.ts",
+    "import Foo from \"some-non-existent-package\";\nexport type F = typeof Foo;\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno").diagnostics),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 16 },
+          "end": { "line": 0, "character": 43 },
+        },
+        "severity": 1,
+        "code": "import-prefix-missing",
+        "source": "deno",
+        "message": "Import \"some-non-existent-package\" not a dependency\n  hint: If you want to use the npm package, try running `deno add npm:some-non-existent-package`",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_isolated_declarations() {
   let context = TestContextBuilder::new().use_temp_cwd().build();

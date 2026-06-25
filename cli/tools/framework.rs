@@ -3,7 +3,7 @@
 //! Framework detection for `deno compile .`.
 //!
 //! Detects web frameworks (Next.js, Astro, Remix, SvelteKit, Nuxt, Fresh,
-//! SolidStart, TanStack Start, Vite SSR) and generates the appropriate
+//! SolidStart, TanStack Start, Vite) and generates the appropriate
 //! entrypoint and include paths so that `deno compile .` just works.
 
 use std::path::Path;
@@ -133,11 +133,16 @@ pub fn detect_framework(
     }
   }
 
-  // --- Vite SSR (lower priority, needs a server.js) ---
-  if has_config_file(dir, "vite.config")
-    && let Some(detection) = detect_vite_ssr(dir)
-  {
-    return Ok(Some(detection));
+  // --- Vite (lowest priority among bundlers) ---
+  // A generic Vite project, recognized by its config file or a `vite`
+  // dependency. Many meta-frameworks build on Vite, but those are all matched
+  // earlier (by their own config file or framework dependency), so reaching
+  // here means a plain Vite app (SPA/MPA or a hand-rolled SSR server).
+  let has_vite_dep = read_package_deps(dir)
+    .map(|deps| deps.has("vite") || deps.has_dev("vite"))
+    .unwrap_or(false);
+  if has_config_file(dir, "vite.config") || has_vite_dep {
+    return Ok(Some(detect_vite(dir)));
   }
 
   // --- deno.json import-based detection ---
@@ -381,16 +386,53 @@ fn detect_nitro_framework(
   }
 }
 
-fn detect_vite_ssr(dir: &Path) -> Option<FrameworkDetection> {
-  let server_file = ["server.js", "server.ts", "server.mjs"]
+fn detect_vite(dir: &Path) -> FrameworkDetection {
+  // SSR: a hand-written server entrypoint (`server.{js,ts,mjs}`) that boots the
+  // Vite-built server bundle. Prefer it when present.
+  if let Some(server_file) = ["server.js", "server.ts", "server.mjs"]
     .iter()
-    .find(|f| dir.join(f).exists())?;
-  Some(FrameworkDetection {
+    .find(|f| dir.join(f).exists())
+  {
+    return FrameworkDetection {
+      name: "Vite",
+      entrypoint_code: format!("// @ts-nocheck\nimport \"./{server_file}\";\n"),
+      include_paths: vec!["dist".into()],
+      build_command: Some(deno_task_build()),
+    };
+  }
+
+  // SPA / MPA: no server entrypoint. `vite build` emits a static site to
+  // `dist/`; serve it over HTTP so the webview can load it, falling back to
+  // `index.html` for client-side routes so a hard refresh on a history-API
+  // route still resolves.
+  FrameworkDetection {
     name: "Vite",
-    entrypoint_code: format!("// @ts-nocheck\nimport \"./{server_file}\";\n"),
+    entrypoint_code: r#"// @ts-nocheck
+import { serveDir } from "jsr:@std/http/file-server";
+// `vite build` emits a static site into `dist/`. Resolve it against the VFS in
+// the compiled binary via import.meta.dirname rather than the runtime CWD.
+const fsRoot = import.meta.dirname + "/dist";
+Deno.serve(async (req) => {
+  const res = await serveDir(req, { fsRoot, quiet: true });
+  // SPA fallback: route unmatched HTML navigations back to index.html so
+  // client-side routers keep working after a hard refresh.
+  if (
+    res.status === 404 &&
+    req.method === "GET" &&
+    (req.headers.get("accept") ?? "").includes("text/html")
+  ) {
+    const index = new Request(new URL("/index.html", req.url), {
+      headers: req.headers,
+    });
+    return await serveDir(index, { fsRoot, quiet: true });
+  }
+  return res;
+});
+"#
+    .into(),
     include_paths: vec!["dist".into()],
     build_command: Some(deno_task_build()),
-  })
+  }
 }
 
 // --- Helpers ---
@@ -807,7 +849,7 @@ mod tests {
     assert_eq!(det.name, "TanStack Start");
   }
 
-  // --- Vite SSR ---
+  // --- Vite ---
 
   #[test]
   fn detects_vite_ssr_with_server_js() {
@@ -833,12 +875,49 @@ mod tests {
   }
 
   #[test]
-  fn vite_without_server_file_returns_none() {
+  fn detects_vite_spa_from_config_without_server_file() {
+    // A plain Vite SPA (config file, no server.{js,ts,mjs}) serves the static
+    // `dist/` build over HTTP rather than importing a server entrypoint.
     let dir = setup_dir();
     fs::write(dir.path().join("vite.config.js"), "").unwrap();
-    // no server.js/ts/mjs
-    let result = detect_framework(dir.path()).unwrap();
-    assert!(result.is_none());
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Vite");
+    assert!(det.entrypoint_code.contains("serveDir"));
+    assert!(det.entrypoint_code.contains("/dist"));
+    assert!(det.entrypoint_code.contains("Deno.serve"));
+    assert_eq!(det.include_paths, vec!["dist"]);
+    let cmd = det.build_command.unwrap();
+    assert_eq!(cmd[1..], vec!["task", "build"]);
+  }
+
+  #[test]
+  fn detects_vite_from_package_dep() {
+    // No config file, but `vite` in devDependencies — still a Vite project.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"devDependencies":{"vite":"^5.0.0"}}"#,
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Vite");
+    assert!(det.entrypoint_code.contains("serveDir"));
+    assert_eq!(det.include_paths, vec!["dist"]);
+  }
+
+  #[test]
+  fn detects_vite_ssr_when_dep_and_server_present() {
+    // `vite` dependency plus a server entrypoint resolves to the SSR variant.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"dependencies":{"vite":"^5.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(dir.path().join("server.ts"), "").unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Vite");
+    assert!(det.entrypoint_code.contains("server.ts"));
   }
 
   // --- deno.json import-based detection ---

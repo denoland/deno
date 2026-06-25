@@ -1438,6 +1438,22 @@ fn get_typescript_config_builder(
     );
   }
 
+  if let Some(sort_named_imports) = options.sort_named_imports {
+    builder.import_declaration_sort_named_imports(match sort_named_imports {
+      SortOrder::Maintain => dprint_config::SortOrder::Maintain,
+      SortOrder::CaseSensitive => dprint_config::SortOrder::CaseSensitive,
+      SortOrder::CaseInsensitive => dprint_config::SortOrder::CaseInsensitive,
+    });
+  }
+
+  if let Some(sort_named_exports) = options.sort_named_exports {
+    builder.export_declaration_sort_named_exports(match sort_named_exports {
+      SortOrder::Maintain => dprint_config::SortOrder::Maintain,
+      SortOrder::CaseSensitive => dprint_config::SortOrder::CaseSensitive,
+      SortOrder::CaseInsensitive => dprint_config::SortOrder::CaseInsensitive,
+    });
+  }
+
   builder
 }
 

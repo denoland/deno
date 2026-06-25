@@ -1773,6 +1773,15 @@ impl Workspace {
     self.root_deno_json().map(|c| with_root(c))
   }
 
+  /// Whether `jsr:` dependencies should be installed into `node_modules` via
+  /// JSR's npm compatibility registry (the `jsrDepsInNodeModules` config
+  /// option on the root deno.json).
+  pub fn jsr_deps_in_node_modules(&self) -> Option<bool> {
+    self
+      .root_deno_json()
+      .and_then(|c| c.json.jsr_deps_in_node_modules)
+  }
+
   pub fn node_modules_dir(
     &self,
   ) -> Result<Option<NodeModulesDirMode>, deno_json::NodeModulesDirParseError>
@@ -2390,6 +2399,14 @@ impl WorkspaceDirectory {
           .options
           .angular_next_control_flow_same_line
           .or(root_config.options.angular_next_control_flow_same_line),
+        sort_named_imports: member_config
+          .options
+          .sort_named_imports
+          .or(root_config.options.sort_named_imports),
+        sort_named_exports: member_config
+          .options
+          .sort_named_exports
+          .or(root_config.options.sort_named_exports),
         use_editor_config: member_config
           .options
           .use_editor_config
@@ -4253,6 +4270,8 @@ pub mod test {
           space_surrounding_properties: Some(true),
           vue_component_case: None,
           angular_next_control_flow_same_line: None,
+          sort_named_imports: None,
+          sort_named_exports: None,
           use_editor_config: None,
         },
         files: FilePatterns {
@@ -4299,6 +4318,8 @@ pub mod test {
           space_surrounding_properties: Some(false),
           vue_component_case: None,
           angular_next_control_flow_same_line: None,
+          sort_named_imports: None,
+          sort_named_exports: None,
           use_editor_config: None,
         },
         files: FilePatterns {

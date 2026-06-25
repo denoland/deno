@@ -389,6 +389,14 @@ pub enum VueComponentCase {
   KebabCase,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub enum SortOrder {
+  Maintain,
+  CaseSensitive,
+  CaseInsensitive,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
@@ -415,6 +423,8 @@ pub struct FmtOptionsConfig {
   pub space_surrounding_properties: Option<bool>,
   pub vue_component_case: Option<VueComponentCase>,
   pub angular_next_control_flow_same_line: Option<bool>,
+  pub sort_named_imports: Option<SortOrder>,
+  pub sort_named_exports: Option<SortOrder>,
   /// Whether `deno fmt` should read `.editorconfig` files to fill in
   /// options that are not otherwise set. Defaults to `true` when unset.
   pub use_editor_config: Option<bool>,
@@ -445,6 +455,8 @@ impl FmtOptionsConfig {
       && self.space_surrounding_properties.is_none()
       && self.vue_component_case.is_none()
       && self.angular_next_control_flow_same_line.is_none()
+      && self.sort_named_imports.is_none()
+      && self.sort_named_exports.is_none()
       && self.use_editor_config.is_none()
   }
 }
@@ -523,6 +535,8 @@ struct SerializedFmtConfig {
   pub space_surrounding_properties: Option<bool>,
   pub vue_component_case: Option<VueComponentCase>,
   pub angular_next_control_flow_same_line: Option<bool>,
+  pub sort_named_imports: Option<SortOrder>,
+  pub sort_named_exports: Option<SortOrder>,
   pub use_editor_config: Option<bool>,
   #[serde(rename = "options")]
   pub deprecated_options: FmtOptionsConfig,
@@ -565,6 +579,8 @@ impl SerializedFmtConfig {
       vue_component_case: self.vue_component_case,
       angular_next_control_flow_same_line: self
         .angular_next_control_flow_same_line,
+      sort_named_imports: self.sort_named_imports,
+      sort_named_exports: self.sort_named_exports,
       use_editor_config: self.use_editor_config,
     };
     if !self.deprecated_files.is_null() {
@@ -1491,6 +1507,7 @@ pub struct ConfigFileJson {
   pub minimum_dependency_age: Option<Value>,
   pub node_modules_dir: Option<Value>,
   pub node_modules_linker: Option<Value>,
+  pub jsr_deps_in_node_modules: Option<bool>,
   pub prefer_package_json: Option<bool>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,
@@ -1858,6 +1875,13 @@ impl ConfigFile {
 
   pub fn vendor(&self) -> Option<bool> {
     self.json.vendor
+  }
+
+  /// Whether `jsr:` dependencies should be installed into `node_modules` via
+  /// JSR's npm compatibility registry. See the `jsrDepsInNodeModules` config
+  /// option.
+  pub fn jsr_deps_in_node_modules(&self) -> Option<bool> {
+    self.json.jsr_deps_in_node_modules
   }
 
   pub fn prefer_package_json(&self) -> Option<bool> {
@@ -2622,9 +2646,15 @@ impl ConfigFile {
     {
       match value {
         serde_json::Value::Null => Ok(None),
-        serde_json::Value::Number(minutes) => Ok(Some(
-          NewestDependencyDate::Enabled(parse_number(minutes, sys)?),
-        )),
+        serde_json::Value::Number(minutes) => {
+          if minutes.as_i64() == Some(0) {
+            Ok(Some(NewestDependencyDate::Disabled))
+          } else {
+            Ok(Some(NewestDependencyDate::Enabled(parse_number(
+              minutes, sys,
+            )?)))
+          }
+        }
         serde_json::Value::String(value) => Ok(Some(
           crate::util::parse_minutes_duration_or_date(sys, value)?,
         )),
@@ -2891,6 +2921,8 @@ mod tests {
         "spaceSurroundingProperties": true,
         "vueComponentCase": "pascal-case",
         "angularNextControlFlowSameLine": false,
+        "sortNamedImports": "maintain",
+        "sortNamedExports": "caseSensitive",
         "useEditorConfig": false
       },
       "tasks": {
@@ -2968,6 +3000,8 @@ mod tests {
           space_surrounding_properties: Some(true),
           vue_component_case: Some(VueComponentCase::PascalCase),
           angular_next_control_flow_same_line: Some(false),
+          sort_named_imports: Some(SortOrder::Maintain),
+          sort_named_exports: Some(SortOrder::CaseSensitive),
           use_editor_config: Some(false),
         },
       }
@@ -3238,6 +3272,19 @@ mod tests {
     // Bare value still works.
     let config = parse(r#"{ "minimumDependencyAge": 120 }"#);
     assert!(config.age.is_some());
+    assert!(config.exclude.is_empty());
+
+    // Numeric 0 disables the filter.
+    let config = parse(r#"{ "minimumDependencyAge": 0 }"#);
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
+    assert!(config.exclude.is_empty());
+
+    let config = parse(r#"{ "minimumDependencyAge": "0" }"#);
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
+    assert!(config.exclude.is_empty());
+
+    let config = parse(r#"{ "minimumDependencyAge": false }"#);
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
     assert!(config.exclude.is_empty());
 
     // Unknown field still errors.
