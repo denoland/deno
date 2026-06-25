@@ -1693,6 +1693,73 @@ mod tests {
     }
   }
 
+  // A write sink that accepts at most `max_write` bytes per `poll_write` and
+  // returns `Pending` on every `pending_every`-th call (0 = never). Used to
+  // drive the buffered chunked response path through partial writes and
+  // re-polls, which the duplex/`FragmentIo`-backed tests never do (they always
+  // accept the whole buffer in a single `poll_write`).
+  struct ShortWriteIo {
+    written: Vec<u8>,
+    max_write: usize,
+    pending_every: usize,
+    calls: usize,
+  }
+
+  impl ShortWriteIo {
+    fn new(max_write: usize, pending_every: usize) -> Self {
+      Self {
+        written: Vec::new(),
+        max_write: max_write.max(1),
+        pending_every,
+        calls: 0,
+      }
+    }
+  }
+
+  impl AsyncRead for ShortWriteIo {
+    fn poll_read(
+      self: Pin<&mut Self>,
+      _cx: &mut Context<'_>,
+      _buf: &mut TokioReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+      Poll::Ready(Ok(()))
+    }
+  }
+
+  impl AsyncWrite for ShortWriteIo {
+    fn poll_write(
+      mut self: Pin<&mut Self>,
+      cx: &mut Context<'_>,
+      buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+      self.calls += 1;
+      if self.pending_every != 0 && self.calls % self.pending_every == 0 {
+        // Wake immediately so the executor re-polls: this is what forces the
+        // flush to resume from `write_flushed` (and the chunk writer to be
+        // re-polled with `buffered` already set) without re-sending bytes.
+        cx.waker().wake_by_ref();
+        return Poll::Pending;
+      }
+      let n = buf.len().min(self.max_write);
+      self.written.extend_from_slice(&buf[..n]);
+      Poll::Ready(Ok(n))
+    }
+
+    fn poll_flush(
+      self: Pin<&mut Self>,
+      _cx: &mut Context<'_>,
+    ) -> Poll<io::Result<()>> {
+      Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(
+      self: Pin<&mut Self>,
+      _cx: &mut Context<'_>,
+    ) -> Poll<io::Result<()>> {
+      Poll::Ready(Ok(()))
+    }
+  }
+
   async fn read_shared_body_from_fragments(
     fragments: &[&[u8]],
   ) -> TestResult<Vec<u8>> {
@@ -2032,6 +2099,101 @@ mod tests {
       response?,
       b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n3\r\nabc\r\n3\r\ndef\r\n0\r\nx-trailer: ok\r\n\r\n"
     );
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_chunked_response_coalesces_across_short_writes()
+  -> TestResult<()> {
+    // Flush the entire buffered head + chunks + terminator one byte at a time,
+    // with periodic `Pending`, so the coalesced write is delivered across many
+    // partial `poll_write`s. Exercises `poll_flush_write_buf`'s resume from
+    // `write_flushed` and the `buffered` re-poll guards. The output must still
+    // be byte-identical to the single-write case.
+    let mut conn = SharedConn::new(ShortWriteIo::new(1, 4));
+    let mut scratch = SharedScratch::default();
+
+    let mut head = SharedChunkedResponseHeadWriter::new(ResponseHead {
+      version: Version::Http11,
+      status: 200,
+      reason: b"OK",
+      headers: &[],
+      keep_alive: false,
+    });
+    std::future::poll_fn(|cx| {
+      conn.poll_start_chunked_response_with(cx, &mut scratch, &mut head)
+    })
+    .await?;
+
+    for chunk in [b"abc".as_slice(), b"def".as_slice()] {
+      let mut writer = SharedResponseChunkWriter::new(chunk);
+      std::future::poll_fn(|cx| {
+        conn.poll_write_response_chunk_with(cx, &mut scratch, &mut writer)
+      })
+      .await?;
+    }
+
+    let trailers = [Header {
+      name: b"x-trailer",
+      value: b"ok",
+    }];
+    let mut end = SharedResponseEndWriter::new(&trailers);
+    std::future::poll_fn(|cx| {
+      conn.poll_finish_response_with(cx, &mut scratch, &mut end)
+    })
+    .await?;
+
+    assert_eq!(
+      conn.into_inner().written,
+      b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n3\r\nabc\r\n3\r\ndef\r\n0\r\nx-trailer: ok\r\n\r\n"
+    );
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_chunked_threshold_flush_survives_short_writes()
+  -> TestResult<()> {
+    // A chunk larger than `CHUNKED_FLUSH_THRESHOLD` makes
+    // `poll_write_response_chunk_with` flush mid-stream. Under short writes that
+    // flush returns `Pending` and the chunk writer is re-polled many times; the
+    // `buffered` guard must keep it from appending (and thus re-sending) the
+    // chunk on each re-poll.
+    let mut conn = SharedConn::new(ShortWriteIo::new(1000, 3));
+    let mut scratch = SharedScratch::default();
+
+    let mut head = SharedChunkedResponseHeadWriter::new(ResponseHead {
+      version: Version::Http11,
+      status: 200,
+      reason: b"OK",
+      headers: &[],
+      keep_alive: false,
+    });
+    std::future::poll_fn(|cx| {
+      conn.poll_start_chunked_response_with(cx, &mut scratch, &mut head)
+    })
+    .await?;
+
+    let big = vec![b'x'; CHUNKED_FLUSH_THRESHOLD + 1024];
+    let mut writer = SharedResponseChunkWriter::new(&big);
+    std::future::poll_fn(|cx| {
+      conn.poll_write_response_chunk_with(cx, &mut scratch, &mut writer)
+    })
+    .await?;
+
+    let mut end = SharedResponseEndWriter::new(&[]);
+    std::future::poll_fn(|cx| {
+      conn.poll_finish_response_with(cx, &mut scratch, &mut end)
+    })
+    .await?;
+
+    let mut expected = Vec::new();
+    expected.extend_from_slice(
+      b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n",
+    );
+    expected.extend_from_slice(format!("{:x}\r\n", big.len()).as_bytes());
+    expected.extend_from_slice(&big);
+    expected.extend_from_slice(b"\r\n0\r\n\r\n");
+    assert_eq!(conn.into_inner().written, expected);
     Ok(())
   }
 
