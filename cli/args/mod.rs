@@ -34,6 +34,7 @@ use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_config::workspace::WorkspaceLintConfig;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -691,6 +692,37 @@ impl CliOptions {
       Some(flags.host.clone())
     } else {
       None
+    }
+  }
+
+  pub fn serve_cert(&self) -> Result<Option<String>, AnyError> {
+    if let DenoSubcommand::Serve(flags) = self.sub_command() {
+      flags
+        .tls_cert_and_key
+        .as_ref()
+        .map(|(cert, _key)| {
+          std::fs::read_to_string(cert).with_context(|| {
+            format!("Failed to read TLS certificate file: {cert:?}")
+          })
+        })
+        .transpose()
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn serve_key(&self) -> Result<Option<String>, AnyError> {
+    if let DenoSubcommand::Serve(flags) = self.sub_command() {
+      flags
+        .tls_cert_and_key
+        .as_ref()
+        .map(|(_cert, key)| {
+          std::fs::read_to_string(key)
+            .with_context(|| format!("Failed to read TLS key file: {key:?}"))
+        })
+        .transpose()
+    } else {
+      Ok(None)
     }
   }
 

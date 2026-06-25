@@ -576,6 +576,7 @@ pub struct ServeFlags {
   pub host: String,
   pub parallel: bool,
   pub open_site: bool,
+  pub tls_cert_and_key: Option<(String, String)>,
 }
 
 impl ServeFlags {
@@ -587,6 +588,7 @@ impl ServeFlags {
       host: host.to_owned(),
       parallel: false,
       open_site: false,
+      tls_cert_and_key: None,
     }
   }
 }
