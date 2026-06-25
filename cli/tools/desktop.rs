@@ -2713,51 +2713,10 @@ async fn package_macos_app_bundle(
   };
 
   // Generate Info.plist.
-  let has_icon = desktop_flags.icon.is_some();
-  let info_plist = format!(
-    r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDevelopmentRegion</key>
-  <string>en</string>
-  <key>CFBundleExecutable</key>
-  <string>{app_name}</string>
-  <key>CFBundleIconFile</key>
-  <string>{icon_file}</string>
-  <key>CFBundleIdentifier</key>
-  <string>{bundle_id}</string>
-  <key>CFBundleInfoDictionaryVersion</key>
-  <string>6.0</string>
-  <key>CFBundleName</key>
-  <string>{app_name}</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>1.0</string>
-  <key>CFBundleVersion</key>
-  <string>1.0.0</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>10.15</string>
-  <key>NSHighResolutionCapable</key>
-  <true/>
-  <key>NSSupportsAutomaticGraphicsSwitching</key>
-  <true/>
-  <key>NSAppTransportSecurity</key>
-  <dict>
-    <key>NSAllowsLocalNetworking</key>
-    <true/>
-  </dict>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>{app_name} requires access to bluetooth</string>
-	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>{app_name} requires access to bluetooth</string>
-</dict>
-</plist>
-"#,
-    app_name = app_name,
-    bundle_id = bundle_id,
-    icon_file = if has_icon { "AppIcon" } else { "" },
+  let info_plist = render_macos_info_plist(
+    &app_name,
+    &bundle_id,
+    desktop_flags.icon.is_some(),
   );
   std::fs::write(contents_dir.join("Info.plist"), info_plist)?;
 
@@ -2833,6 +2792,69 @@ async fn package_macos_app_bundle(
   let _ = std::fs::remove_file(dylib_path);
 
   Ok(app_bundle)
+}
+
+// Keep the generated bundle metadata aligned with laufey's macOS app plist,
+// while carrying the TCC usage-description keys desktop apps need for
+// microphone/camera/audio-capture prompts.
+fn render_macos_info_plist(
+  app_name: &str,
+  bundle_id: &str,
+  has_icon: bool,
+) -> String {
+  format!(
+    r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>{app_name}</string>
+  <key>CFBundleIconFile</key>
+  <string>{icon_file}</string>
+  <key>CFBundleIdentifier</key>
+  <string>{bundle_id}</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>{app_name}</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1.0.0</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>10.15</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSPrincipalClass</key>
+  <string>LaufeyApplication</string>
+  <key>NSSupportsAutomaticGraphicsSwitching</key>
+  <true/>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>{app_name} requires access to the microphone</string>
+  <key>NSCameraUsageDescription</key>
+  <string>{app_name} requires access to the camera</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>{app_name} requires access to audio capture</string>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>{app_name} requires access to Bluetooth</string>
+  <key>NSBluetoothPeripheralUsageDescription</key>
+  <string>{app_name} requires access to Bluetooth</string>
+</dict>
+</plist>
+"#,
+    app_name = app_name,
+    bundle_id = bundle_id,
+    icon_file = if has_icon { "AppIcon" } else { "" },
+  )
 }
 
 /// Wrap a macOS `.app` bundle in a drag-to-Applications `.dmg` installer.
@@ -5023,6 +5045,31 @@ mod disclaim_spawn {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  // --- macOS Info.plist ---
+
+  #[test]
+  fn macos_info_plist_includes_principal_class_and_tcc_usage_strings() {
+    let plist = render_macos_info_plist("Deno Demo", "com.deno.demo", true);
+    assert!(plist.contains("<string>LaufeyApplication</string>"));
+    assert!(
+      plist.contains("<key>NSMicrophoneUsageDescription</key>")
+        && plist.contains("Deno Demo requires access to the microphone")
+    );
+    assert!(
+      plist.contains("<key>NSCameraUsageDescription</key>")
+        && plist.contains("Deno Demo requires access to the camera")
+    );
+    assert!(
+      plist.contains("<key>NSAudioCaptureUsageDescription</key>")
+        && plist.contains("Deno Demo requires access to audio capture")
+    );
+    assert!(
+      plist.contains("<key>NSBluetoothAlwaysUsageDescription</key>")
+        && plist.contains("Deno Demo requires access to Bluetooth")
+    );
+    assert!(plist.contains("<string>AppIcon</string>"));
+  }
 
   // --- laufey_archive_name / laufey_release_url ---
 
