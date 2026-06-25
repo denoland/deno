@@ -1954,6 +1954,59 @@ console.log("done");
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/27383 —
+// `Deno.chdir()` inside a watched test must not break specifier
+// collection on restart. `deno test --watch test.ts` collects `test.ts`
+// relative to the original cwd; if the watcher doesn't restore cwd
+// before the second iteration, the specifier collection looks for
+// test.ts in the chdir'd directory and fails with "Module not found".
+#[test(flaky)]
+async fn test_watch_chdir() {
+  let t = TempDir::new();
+  let test_file = t.path().join("test.ts");
+  test_file.write(
+    r#"
+Deno.test("foo", () => {
+  Deno.chdir("temp");
+});
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("test")
+    .arg("--watch")
+    .arg("--no-check")
+    .arg("-L")
+    .arg("debug")
+    .arg(&test_file)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("foo ... ok", &mut stdout_lines).await;
+  wait_for_watcher("test.ts", &mut stderr_lines).await;
+
+  // Trigger a restart. The previous run did `Deno.chdir("temp")`
+  // inside the test; the watcher must restore cwd so the test file
+  // can be re-collected on the second iteration.
+  test_file.write(
+    r#"
+Deno.test("foo", () => {
+  Deno.chdir("temp");
+});
+Deno.test("bar", () => {});
+"#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("foo ... ok", &mut stdout_lines).await;
+  wait_contains("bar ... ok", &mut stdout_lines).await;
+  check_alive_then_kill(child);
+}
+
 #[cfg(unix)]
 #[test(flaky)]
 async fn test_watch_sigint() {
