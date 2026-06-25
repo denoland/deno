@@ -1180,6 +1180,10 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             now - chrono::Duration::minutes(minutes as i64)
           },
         ),
+        // `trust-policy-exclude[]` package names exempted from the policy
+        exclude: std::sync::Arc::new(
+          npmrc.trust_policy_exclude.iter().cloned().collect(),
+        ),
       };
 
       Ok(new_rc(NpmVersionResolver {

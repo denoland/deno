@@ -2453,6 +2453,7 @@ mod tests {
       min_release_age_days: None,
       trust_policy: Default::default(),
       trust_policy_ignore_after_minutes: None,
+      trust_policy_exclude: Vec::new(),
     })
   }
 

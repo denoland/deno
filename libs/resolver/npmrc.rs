@@ -149,6 +149,17 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
       trust_policy_ignore_after_minutes: project_rc
         .trust_policy_ignore_after_minutes
         .or(home_rc.trust_policy_ignore_after_minutes),
+      // union of project and home excludes (project entries first), so an
+      // exemption in either file applies
+      trust_policy_exclude: {
+        let mut excludes = project_rc.trust_policy_exclude;
+        for pkg in home_rc.trust_policy_exclude {
+          if !excludes.contains(&pkg) {
+            excludes.push(pkg);
+          }
+        }
+        excludes
+      },
     }
   }
 
@@ -251,5 +262,6 @@ pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
     min_release_age_days: None,
     trust_policy: Default::default(),
     trust_policy_ignore_after_minutes: None,
+    trust_policy_exclude: Vec::new(),
   }
 }

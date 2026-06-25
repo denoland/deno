@@ -45,6 +45,10 @@ pub struct TrustPolicyOptions {
   /// releases install. Computed by the caller as `now - ignore_after`; `None`
   /// means "always check".
   pub ignore_after_cutoff: Option<chrono::DateTime<chrono::Utc>>,
+  /// Package names exempted from the `no-downgrade` policy
+  /// (`trust-policy-exclude[]`). An excluded package resolves as if the policy
+  /// were off. Mirrors pnpm's `trustPolicyExclude`.
+  pub exclude: Arc<BTreeSet<String>>,
 }
 
 /// Error that occurs when the version is not found in the package information.
@@ -167,10 +171,16 @@ impl NpmVersionResolver {
     info: &'a NpmPackageInfo,
   ) -> NpmPackageVersionResolver<'a> {
     let trust_check = match self.trust_policy.policy {
-      NpmTrustPolicy::NoDowngrade => Some(TrustDowngradeCheck {
-        ignore_after_cutoff: self.trust_policy.ignore_after_cutoff,
-      }),
-      NpmTrustPolicy::Off => None,
+      // `trust-policy-exclude[]` packages are resolved as if the policy were
+      // off
+      NpmTrustPolicy::NoDowngrade
+        if !self.trust_policy.exclude.contains(info.name.as_str()) =>
+      {
+        Some(TrustDowngradeCheck {
+          ignore_after_cutoff: self.trust_policy.ignore_after_cutoff,
+        })
+      }
+      _ => None,
     };
     NpmPackageVersionResolver {
       info,
@@ -765,6 +775,7 @@ mod test {
       trust_policy: TrustPolicyOptions {
         policy: NpmTrustPolicy::NoDowngrade,
         ignore_after_cutoff: None,
+        exclude: Default::default(),
       },
       ..Default::default()
     };
@@ -811,10 +822,88 @@ mod test {
       trust_policy: TrustPolicyOptions {
         policy: NpmTrustPolicy::NoDowngrade,
         ignore_after_cutoff: Some("2025-06-01T00:00:00.000Z".parse().unwrap()),
+        exclude: Default::default(),
       },
       ..Default::default()
     };
     assert_eq!(resolve(&ignore_after, "test@1.2.0").unwrap(), "1.2.0");
+  }
+
+  #[test]
+  fn test_trust_policy_exclude_package() {
+    fn version_info(json: &str) -> NpmPackageVersionInfo {
+      serde_json::from_str(json).unwrap()
+    }
+    fn ver(v: &str) -> Version {
+      Version::parse_from_npm(v).unwrap()
+    }
+
+    // 1.0.0 is a staged publish (rank 3), 1.1.0 is a plain token publish
+    // (rank 0): resolving 1.1.0 is a downgrade and is normally rejected.
+    let package_info = NpmPackageInfo {
+      name: "test".into(),
+      versions: HashMap::from([
+        (
+          ver("1.0.0"),
+          version_info(
+            r#"{ "version": "1.0.0", "_npmUser": { "approver": {} } }"#,
+          ),
+        ),
+        (ver("1.1.0"), version_info(r#"{ "version": "1.1.0" }"#)),
+      ]),
+      dist_tags: Default::default(),
+      time: HashMap::from([
+        (ver("1.0.0"), "2025-01-01T00:00:00.000Z".parse().unwrap()),
+        (ver("1.1.0"), "2025-02-01T00:00:00.000Z".parse().unwrap()),
+      ]),
+    };
+    let resolve = |resolver: &NpmVersionResolver| {
+      let package_req = PackageReq::from_str("test@1.1.0").unwrap();
+      resolver
+        .get_for_package(&package_info)
+        .get_resolved_package_version_and_info(&package_req.version_req)
+        .map(|info| info.version.to_string())
+    };
+
+    // without an exclude, the downgrade is rejected
+    let enforced = NpmVersionResolver {
+      trust_policy: TrustPolicyOptions {
+        policy: NpmTrustPolicy::NoDowngrade,
+        ignore_after_cutoff: None,
+        exclude: Default::default(),
+      },
+      ..Default::default()
+    };
+    assert!(matches!(
+      resolve(&enforced).unwrap_err(),
+      NpmPackageVersionResolutionError::TrustPolicyDowngrade { .. }
+    ));
+
+    // with `test` in `trust-policy-exclude`, it resolves as if the policy were
+    // off
+    let excluded = NpmVersionResolver {
+      trust_policy: TrustPolicyOptions {
+        policy: NpmTrustPolicy::NoDowngrade,
+        ignore_after_cutoff: None,
+        exclude: Arc::new(BTreeSet::from(["test".to_string()])),
+      },
+      ..Default::default()
+    };
+    assert_eq!(resolve(&excluded).unwrap(), "1.1.0");
+
+    // an unrelated package in the exclude list does not exempt `test`
+    let other_excluded = NpmVersionResolver {
+      trust_policy: TrustPolicyOptions {
+        policy: NpmTrustPolicy::NoDowngrade,
+        ignore_after_cutoff: None,
+        exclude: Arc::new(BTreeSet::from(["other".to_string()])),
+      },
+      ..Default::default()
+    };
+    assert!(matches!(
+      resolve(&other_excluded).unwrap_err(),
+      NpmPackageVersionResolutionError::TrustPolicyDowngrade { .. }
+    ));
   }
 
   #[test]
@@ -853,6 +942,7 @@ mod test {
       trust_policy: TrustPolicyOptions {
         policy: NpmTrustPolicy::NoDowngrade,
         ignore_after_cutoff: None,
+        exclude: Default::default(),
       },
       ..Default::default()
     };

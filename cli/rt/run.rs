@@ -1362,6 +1362,7 @@ pub async fn run_with_options(
         min_release_age_days: None,
         trust_policy: Default::default(),
         trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       });
       let npm_cache_dir = Arc::new(NpmCacheDir::new(
         &sys,
@@ -1955,6 +1956,7 @@ fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
     min_release_age_days: None,
     trust_policy: Default::default(),
     trust_policy_ignore_after_minutes: None,
+    trust_policy_exclude: Vec::new(),
   })
 }
 

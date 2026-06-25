@@ -88,6 +88,10 @@ pub struct NpmRc {
   /// check for versions published more than this many minutes ago. Mirrors
   /// pnpm's `trustPolicyIgnoreAfter`.
   pub trust_policy_ignore_after_minutes: Option<u64>,
+  /// `trust-policy-exclude[]` values: package names exempted from the
+  /// `no-downgrade` trust policy. Mirrors pnpm's `trustPolicyExclude`. Set via
+  /// repeated `trust-policy-exclude[]=<package>` entries in `.npmrc`.
+  pub trust_policy_exclude: Vec<String>,
 }
 
 impl NpmRc {
@@ -102,6 +106,7 @@ impl NpmRc {
     let mut min_release_age_days: Option<u64> = None;
     let mut trust_policy = TrustPolicyConfig::default();
     let mut trust_policy_ignore_after_minutes: Option<u64> = None;
+    let mut trust_policy_exclude: Vec<String> = Vec::new();
 
     for kv_or_section in kv_or_sections {
       match kv_or_section {
@@ -194,6 +199,17 @@ impl NpmRc {
                 _ => {}
               }
             }
+          } else if let Key::Array(key) = &kv.key
+            && key == "trust-policy-exclude"
+            && let Value::String(text) = &kv.value
+          {
+            // repeated `trust-policy-exclude[]=<package>` entries, each adding
+            // one package name to exempt from the `no-downgrade` policy
+            let value = expand_vars(text, sys);
+            let value = value.trim();
+            if !value.is_empty() {
+              trust_policy_exclude.push(value.to_string());
+            }
           }
         }
         KeyValueOrSection::Section(_) => {
@@ -212,6 +228,7 @@ impl NpmRc {
       min_release_age_days,
       trust_policy,
       trust_policy_ignore_after_minutes,
+      trust_policy_exclude,
     })
   }
 
@@ -250,6 +267,7 @@ impl NpmRc {
       min_release_age_days: self.min_release_age_days,
       trust_policy: self.trust_policy,
       trust_policy_ignore_after_minutes: self.trust_policy_ignore_after_minutes,
+      trust_policy_exclude: self.trust_policy_exclude.clone(),
     })
   }
 
@@ -328,6 +346,9 @@ pub struct ResolvedNpmRc {
   pub trust_policy: TrustPolicyConfig,
   /// `trust-policy-ignore-after` value in minutes.
   pub trust_policy_ignore_after_minutes: Option<u64>,
+  /// `trust-policy-exclude[]` package names exempted from the `no-downgrade`
+  /// trust policy.
+  pub trust_policy_exclude: Vec<String>,
 }
 
 impl ResolvedNpmRc {
@@ -620,6 +641,7 @@ registry=https://registry.npmjs.org/
         min_release_age_days: None,
         trust_policy: Default::default(),
         trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       }
     );
 
@@ -684,6 +706,7 @@ registry=https://registry.npmjs.org/
         min_release_age_days: None,
         trust_policy: Default::default(),
         trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       }
     );
 
@@ -862,6 +885,7 @@ registry=${VAR_FOUND}
         min_release_age_days: None,
         trust_policy: Default::default(),
         trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       }
     )
   }
@@ -949,6 +973,29 @@ registry=${VAR_FOUND}
     // unparsable values are ignored
     let npm_rc = NpmRc::parse(&sys, "trust-policy-ignore-after=soon").unwrap();
     assert_eq!(npm_rc.trust_policy_ignore_after_minutes, None);
+
+    // repeated `trust-policy-exclude[]` entries accumulate into the exclude
+    // list and propagate through to the resolved npmrc
+    let npm_rc = NpmRc::parse(
+      &sys,
+      "trust-policy=no-downgrade\ntrust-policy-exclude[]=@scope/pkg\ntrust-policy-exclude[]=other",
+    )
+    .unwrap();
+    assert_eq!(
+      npm_rc.trust_policy_exclude,
+      vec!["@scope/pkg".to_string(), "other".to_string()]
+    );
+    let resolved = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    assert_eq!(
+      resolved.trust_policy_exclude,
+      vec!["@scope/pkg".to_string(), "other".to_string()]
+    );
+
+    // default is an empty exclude list
+    let npm_rc = NpmRc::parse(&sys, "").unwrap();
+    assert!(npm_rc.trust_policy_exclude.is_empty());
   }
 
   #[test]
