@@ -1113,6 +1113,17 @@ where
       Poll::Pending => Poll::Pending,
     }
   }
+
+  fn poll_flush(
+    &mut self,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), HttpNextError>> {
+    match self.conn.poll_flush_write_buf(cx, &mut self.scratch) {
+      Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+      Poll::Ready(Err(error)) => Poll::Ready(Err(error.into())),
+      Poll::Pending => Poll::Pending,
+    }
+  }
 }
 
 type RawH1ConnectionCell<I> = Rc<RefCell<Option<RawH1ConnectionState<I>>>>;
@@ -4078,9 +4089,20 @@ where
         Poll::Ready(Ok(false)) | Poll::Pending => {}
         Poll::Ready(Err(error)) => return Poll::Ready(Err(error.into())),
       }
-      Poll::Ready(Ok::<_, HttpNextError>(RawResponseBodyEvent::Frame(ready!(
-        poll_raw_response_body_frame(&mut body, cx)
-      ))))
+      match poll_raw_response_body_frame(&mut body, cx) {
+        Poll::Ready(frame) => Poll::Ready(Ok::<_, HttpNextError>(
+          RawResponseBodyEvent::Frame(frame),
+        )),
+        Poll::Pending => {
+          // Body source has nothing ready; flush buffered response bytes so the
+          // client isn't kept waiting (keeps incremental/SSE streams
+          // responsive). Synchronous chunk+EOF still coalesce at finish.
+          match conn.poll_flush_write_buf(cx, scratch) {
+            Poll::Ready(Err(error)) => Poll::Ready(Err(error.into())),
+            Poll::Ready(Ok(())) | Poll::Pending => Poll::Pending,
+          }
+        }
+      }
     })
     .await?;
     match event {
@@ -4217,9 +4239,24 @@ where
           Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
         }
       }
-      Poll::Ready(Ok::<_, HttpNextError>(RawResponseBodyEvent::Frame(ready!(
-        poll_raw_response_body_frame(&mut body, cx)
-      ))))
+      match poll_raw_response_body_frame(&mut body, cx) {
+        Poll::Ready(frame) => Poll::Ready(Ok::<_, HttpNextError>(
+          RawResponseBodyEvent::Frame(frame),
+        )),
+        Poll::Pending => {
+          // Body source has nothing ready; flush buffered response bytes so the
+          // client isn't kept waiting (keeps incremental/SSE streams
+          // responsive). Synchronous chunk+EOF still coalesce at finish.
+          let mut conn = conn.borrow_mut();
+          let Some(conn) = conn.as_mut() else {
+            return Poll::Ready(Err(raw_h1_connection_closed()));
+          };
+          match conn.poll_flush(cx) {
+            Poll::Ready(Err(error)) => Poll::Ready(Err(error)),
+            Poll::Ready(Ok(())) | Poll::Pending => Poll::Pending,
+          }
+        }
+      }
     })
     .await?;
     match event {

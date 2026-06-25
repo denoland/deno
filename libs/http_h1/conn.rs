@@ -38,6 +38,13 @@ use crate::write_response_head;
 const DEFAULT_READ_CAPACITY: usize = 1024;
 const DEFAULT_WRITE_CAPACITY: usize = 512;
 const MAX_HEAD_BYTES: usize = 64 * 1024;
+// Chunked responses accumulate the head, body chunks and terminator into a
+// single per-connection buffer (`SharedScratch::write_buf`) so a small response
+// is emitted in one write instead of three. Flush once the buffer reaches this
+// size to bound memory for large/streaming bodies, and shrink the buffer back
+// to `DEFAULT_WRITE_CAPACITY` after each response so idle connections don't
+// retain a large allocation.
+const CHUNKED_FLUSH_THRESHOLD: usize = 64 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -171,20 +178,20 @@ impl<'a> SharedFixedResponseHeadWriter<'a> {
 #[derive(Debug)]
 pub struct SharedResponseChunkWriter<'a> {
   chunk: &'a [u8],
-  prefix_written: usize,
+  // Used by the (non-buffered) Fixed / CloseDelimited body paths.
   body_written: usize,
-  suffix_written: usize,
-  coalesced_written: usize,
+  // For the buffered chunked path: whether this chunk's framing has already
+  // been appended to `write_buf` (so a re-poll after a partial flush does not
+  // append it again).
+  buffered: bool,
 }
 
 impl<'a> SharedResponseChunkWriter<'a> {
   pub fn new(chunk: &'a [u8]) -> Self {
     Self {
       chunk,
-      prefix_written: 0,
       body_written: 0,
-      suffix_written: 0,
-      coalesced_written: 0,
+      buffered: false,
     }
   }
 }
@@ -204,14 +211,16 @@ impl<'a> SharedResponseBodyWriter<'a> {
 #[derive(Debug)]
 pub struct SharedResponseEndWriter<'a> {
   trailers: &'a [Header<'a>],
-  written: usize,
+  // For the buffered chunked path: whether the terminating chunk has already
+  // been appended to `write_buf`.
+  buffered: bool,
 }
 
 impl<'a> SharedResponseEndWriter<'a> {
   pub fn new(trailers: &'a [Header<'a>]) -> Self {
     Self {
       trailers,
-      written: 0,
+      buffered: false,
     }
   }
 }
@@ -226,6 +235,10 @@ pub struct UpgradeParts<I> {
 pub struct SharedScratch {
   read_buf: Vec<u8>,
   write_buf: Vec<u8>,
+  // How many leading bytes of `write_buf` have already been flushed to the
+  // socket. Used to resume a partial flush of the buffered chunked response
+  // without re-sending bytes.
+  write_flushed: usize,
 }
 
 impl SharedScratch {
@@ -233,6 +246,7 @@ impl SharedScratch {
     Self {
       read_buf: vec![0; read_capacity],
       write_buf: Vec::with_capacity(write_capacity),
+      write_flushed: 0,
     }
   }
 
@@ -1132,18 +1146,39 @@ where
       return Poll::Ready(Err(Error::ResponseStreamActive));
     }
 
-    scratch.write_buf.clear();
-    write_chunked_response_head(
-      &mut scratch.write_buf,
-      ResponseHeader {
-        version: writer.response.version,
-        status: writer.response.status,
-        reason: writer.response.reason,
-        headers: writer.response.headers,
-        content_length: None,
-        keep_alive: writer.response.keep_alive,
-      },
-    );
+    if writer.written == 0 {
+      scratch.write_buf.clear();
+      scratch.write_flushed = 0;
+      write_chunked_response_head(
+        &mut scratch.write_buf,
+        ResponseHeader {
+          version: writer.response.version,
+          status: writer.response.status,
+          reason: writer.response.reason,
+          headers: writer.response.headers,
+          content_length: None,
+          keep_alive: writer.response.keep_alive,
+        },
+      );
+    }
+    let next_state = if status_allows_body(writer.response.status) {
+      if writer.response.version == Version::Http11 {
+        ResponseState::Chunked
+      } else {
+        ResponseState::CloseDelimited
+      }
+    } else {
+      ResponseState::NoBody
+    };
+    // For chunked (HTTP/1.1) responses, leave the head buffered in `write_buf`
+    // so it coalesces with the first body chunk and the terminator into a
+    // single write. CloseDelimited (HTTP/1.0) writes its body directly to the
+    // socket, and NoBody has no terminator to flush behind it, so both must
+    // flush the head now to preserve ordering.
+    if next_state == ResponseState::Chunked {
+      self.response_state = next_state;
+      return Poll::Ready(Ok(()));
+    }
     while writer.written < scratch.write_buf.len() {
       let written = ready!(
         Pin::new(&mut self.io)
@@ -1157,15 +1192,8 @@ where
       }
       writer.written += written;
     }
-    self.response_state = if status_allows_body(writer.response.status) {
-      if writer.response.version == Version::Http11 {
-        ResponseState::Chunked
-      } else {
-        ResponseState::CloseDelimited
-      }
-    } else {
-      ResponseState::NoBody
-    };
+    scratch.write_flushed = scratch.write_buf.len();
+    self.response_state = next_state;
     Poll::Ready(Ok(()))
   }
 
@@ -1296,74 +1324,47 @@ where
       return Poll::Ready(Ok(()));
     }
 
-    scratch.write_buf.clear();
-    append_chunk_prefix(&mut scratch.write_buf, writer.chunk.len());
-    let prefix_len = scratch.write_buf.len();
-    let coalesced_len = prefix_len + writer.chunk.len() + 2;
-    if writer.body_written == 0
-      && writer.suffix_written == 0
-      && coalesced_len <= scratch.write_buf.capacity()
-    {
+    // Append this chunk's framing (size prefix + data + CRLF) after the
+    // still-buffered head and any earlier chunks, so a small response coalesces
+    // into a single write. The buffer is flushed by `poll_finish_response_with`
+    // (terminator), by the driver when the body source would block, or here
+    // once it grows past the threshold.
+    if !writer.buffered {
+      append_chunk_prefix(&mut scratch.write_buf, writer.chunk.len());
       scratch.write_buf.extend_from_slice(writer.chunk);
       scratch.write_buf.extend_from_slice(b"\r\n");
-      while writer.coalesced_written < scratch.write_buf.len() {
-        let written = ready!(
-          Pin::new(&mut self.io)
-            .poll_write(cx, &scratch.write_buf[writer.coalesced_written..])
-        )?;
-        if written == 0 {
-          return Poll::Ready(Err(Error::Io(io::Error::new(
-            io::ErrorKind::WriteZero,
-            "failed to write response chunk",
-          ))));
-        }
-        writer.coalesced_written += written;
-      }
-      writer.prefix_written = prefix_len;
-      writer.body_written = writer.chunk.len();
-      writer.suffix_written = 2;
-      return Poll::Ready(Ok(()));
+      writer.buffered = true;
     }
+    if scratch.write_buf.len() >= CHUNKED_FLUSH_THRESHOLD {
+      return self.poll_flush_write_buf(cx, scratch);
+    }
+    Poll::Ready(Ok(()))
+  }
 
-    while writer.prefix_written < prefix_len {
+  /// Drains the buffered (but not yet sent) bytes of a chunked response in
+  /// `scratch.write_buf` to the socket, resuming from `scratch.write_flushed`
+  /// on a partial write. On completion the buffer is cleared so it can be
+  /// reused for the next chunk / response.
+  pub fn poll_flush_write_buf(
+    &mut self,
+    cx: &mut Context<'_>,
+    scratch: &mut SharedScratch,
+  ) -> Poll<Result<(), Error>> {
+    while scratch.write_flushed < scratch.write_buf.len() {
       let written = ready!(
         Pin::new(&mut self.io)
-          .poll_write(cx, &scratch.write_buf[writer.prefix_written..])
+          .poll_write(cx, &scratch.write_buf[scratch.write_flushed..])
       )?;
       if written == 0 {
         return Poll::Ready(Err(Error::Io(io::Error::new(
           io::ErrorKind::WriteZero,
-          "failed to write response chunk prefix",
+          "failed to write response chunk",
         ))));
       }
-      writer.prefix_written += written;
+      scratch.write_flushed += written;
     }
-    while writer.body_written < writer.chunk.len() {
-      let written = ready!(
-        Pin::new(&mut self.io)
-          .poll_write(cx, &writer.chunk[writer.body_written..])
-      )?;
-      if written == 0 {
-        return Poll::Ready(Err(Error::Io(io::Error::new(
-          io::ErrorKind::WriteZero,
-          "failed to write response chunk body",
-        ))));
-      }
-      writer.body_written += written;
-    }
-    while writer.suffix_written < 2 {
-      let written = ready!(
-        Pin::new(&mut self.io)
-          .poll_write(cx, &b"\r\n"[writer.suffix_written..])
-      )?;
-      if written == 0 {
-        return Poll::Ready(Err(Error::Io(io::Error::new(
-          io::ErrorKind::WriteZero,
-          "failed to write response chunk suffix",
-        ))));
-      }
-      writer.suffix_written += written;
-    }
+    scratch.write_buf.clear();
+    scratch.write_flushed = 0;
     Poll::Ready(Ok(()))
   }
 
@@ -1470,20 +1471,17 @@ where
       ResponseState::Chunked => {}
     }
 
-    scratch.write_buf.clear();
-    append_chunked_end(&mut scratch.write_buf, writer.trailers);
-    while writer.written < scratch.write_buf.len() {
-      let written = ready!(
-        Pin::new(&mut self.io)
-          .poll_write(cx, &scratch.write_buf[writer.written..])
-      )?;
-      if written == 0 {
-        return Poll::Ready(Err(Error::Io(io::Error::new(
-          io::ErrorKind::WriteZero,
-          "failed to finish response",
-        ))));
-      }
-      writer.written += written;
+    // Append the terminating chunk (and any trailers) after the still-buffered
+    // head and body chunks, then flush everything in one write.
+    if !writer.buffered {
+      append_chunked_end(&mut scratch.write_buf, writer.trailers);
+      writer.buffered = true;
+    }
+    ready!(self.poll_flush_write_buf(cx, scratch))?;
+    // Don't let a connection that served one large response retain an
+    // oversized buffer for the rest of its (idle) life.
+    if scratch.write_buf.capacity() > DEFAULT_WRITE_CAPACITY {
+      scratch.write_buf.shrink_to(DEFAULT_WRITE_CAPACITY);
     }
     self.response_state = ResponseState::Idle;
     Poll::Ready(Ok(()))
