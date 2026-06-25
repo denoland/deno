@@ -1177,6 +1177,10 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
           },
         ),
         // `trust-policy-exclude[]` package names exempted from the policy
+        #[allow(
+          clippy::disallowed_types,
+          reason = "Arc needed for shared exclude set"
+        )]
         exclude: std::sync::Arc::new(
           npmrc.trust_policy_exclude.iter().cloned().collect(),
         ),
