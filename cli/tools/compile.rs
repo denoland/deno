@@ -160,7 +160,7 @@ async fn compile_inner(
     } else {
       bail!(
         "Could not detect a supported framework in '{}'.\n\
-         Supported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite SSR\n\
+         Supported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\n\
          Provide an explicit entrypoint instead of a directory.",
         dir.display()
       );
