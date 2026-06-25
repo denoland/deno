@@ -483,7 +483,8 @@ export class Glob {
     const stat = this.#cache.statSync(fullpath);
     const last = pattern.last;
     const isDirectory = stat?.isDirectory() ||
-      (this.#followSymlinks && stat?.isSymbolicLink() && pattern.hasSeenSymlinks);
+      (this.#followSymlinks && stat?.isSymbolicLink() &&
+        pattern.hasSeenSymlinks);
     const isLast = pattern.isLast(isDirectory);
     const isFirst = pattern.isFirst();
 
@@ -612,7 +613,9 @@ export class Glob {
           }
           if (
             (nextMatches || pattern.partAt(0) === ".") &&
-            (entry.isDirectory() || (this.#followSymlinks && entry.isSymbolicLink())) && !fromSymlink
+            (entry.isDirectory() ||
+              (this.#followSymlinks && entry.isSymbolicLink())) &&
+            !fromSymlink
           ) {
             // If pattern after ** matches, or pattern starts with "."
             // and entry is a directory or symlink, add to potential patterns
@@ -731,7 +734,8 @@ export class Glob {
     const stat = await this.#cache.stat(fullpath);
     const last = pattern.last;
     const isDirectory = stat?.isDirectory() ||
-      (this.#followSymlinks && stat?.isSymbolicLink() && pattern.hasSeenSymlinks);
+      (this.#followSymlinks && stat?.isSymbolicLink() &&
+        pattern.hasSeenSymlinks);
     const isLast = pattern.isLast(isDirectory);
     const isFirst = pattern.isFirst();
 
@@ -874,7 +878,9 @@ export class Glob {
           }
           if (
             (nextMatches || pattern.partAt(0) === ".") &&
-            (entry.isDirectory() || (this.#followSymlinks && entry.isSymbolicLink())) && !fromSymlink
+            (entry.isDirectory() ||
+              (this.#followSymlinks && entry.isSymbolicLink())) &&
+            !fromSymlink
           ) {
             // If pattern after ** matches, or pattern starts with "."
             // and entry is a directory or symlink, add to potential patterns
