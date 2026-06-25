@@ -1823,6 +1823,8 @@ internals.__bootstrapNodeProcess = function (
         stderr = v;
       },
     });
+    core.loadExtScript("ext:deno_node/internal/console/constructor.mjs")
+      .bindStreamsLazy(globalThis.console, process);
 
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
