@@ -506,6 +506,37 @@ impl RawRequestHeaders {
     }
   }
 
+  /// Builds a minimal header set containing only the `accept-encoding`
+  /// header(s). Used by the zero-arg "no request" fast path, where the full
+  /// request is never exposed to JS but the response path still needs
+  /// `accept-encoding` to decide automatic compression.
+  fn from_h1_accept_encoding(headers: &[h1::Header<'_>]) -> Self {
+    let mut bytes = Vec::new();
+    let mut entries = Vec::new();
+    for header in headers {
+      if !header.name.eq_ignore_ascii_case(b"accept-encoding") {
+        continue;
+      }
+      let name_start = bytes.len();
+      bytes.extend_from_slice(header.name);
+      let value_start = bytes.len();
+      bytes.extend_from_slice(header.value);
+      entries.push(RawRequestHeader {
+        name_start,
+        name_len: header.name.len(),
+        value_start,
+        value_len: header.value.len(),
+      });
+    }
+    Self {
+      bytes,
+      entries,
+      host_index: None,
+      authorization_index: None,
+      authorization_multiple: false,
+    }
+  }
+
   fn len(&self) -> usize {
     self.entries.len()
   }
@@ -3294,9 +3325,14 @@ fn raw_request_target_to_string(target: &[u8]) -> String {
 fn raw_request_from_h1(
   request: h1::Request<'_>,
   store_request: bool,
+  automatic_compression: bool,
 ) -> RawParsedRequest {
   let headers = if store_request {
     RawRequestHeaders::from_h1(request.headers)
+  } else if automatic_compression {
+    // The full request isn't exposed to JS on the zero-arg fast path, but the
+    // response path still needs `accept-encoding` to decide compression.
+    RawRequestHeaders::from_h1_accept_encoding(request.headers)
   } else {
     RawRequestHeaders::empty()
   };
@@ -4268,7 +4304,7 @@ async fn serve_http11_raw(
   loop {
     let next_request = poll_fn(|cx| {
       conn.poll_next_request_with(cx, &mut scratch, |request| {
-        raw_request_from_h1(request, store_request)
+        raw_request_from_h1(request, store_request, automatic_compression)
       })
     })
     .or_cancel(cancel.clone())

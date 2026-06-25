@@ -5749,7 +5749,7 @@ declare namespace Deno {
      * Whether to automatically compress response bodies when the client accepts
      * a supported encoding and the response is compressible.
      *
-     * @default {true}
+     * @default {false}
      */
     automaticCompression?: boolean;
   }
