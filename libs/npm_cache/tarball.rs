@@ -215,7 +215,28 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       let maybe_bytes = match result {
         Ok(response) => match response {
           NpmCacheHttpClientResponse::NotModified => unreachable!(), // no e-tag
-          NpmCacheHttpClientResponse::NotFound => None,
+          NpmCacheHttpClientResponse::NotFound => {
+            // Some registries (e.g. GitLab instance-level npm registries) return
+            // 404 instead of 401 for unauthenticated requests to avoid disclosing
+            // whether a private package exists. Surface the same auth-mismatch hint
+            // that we show for 401 so users get an actionable message.
+            if maybe_registry_config.is_none()
+              && tarball_cache.npmrc.get_registry_config(&package_nv.name).auth_token.is_some()
+            {
+              return Err(JsErrorBox::generic(format!(
+                concat!(
+                  "No auth for tarball URI, but present for scoped registry.",
+                  " Registry responded with 404, which may indicate missing auth.\n\n",
+                  "Tarball URI: {}\n",
+                  "Scope URI: {}\n\n",
+                  "More info here: https://github.com/npm/cli/wiki/%22No-auth-for-URI,-but-auth-present-for-scoped-registry%22"
+                ),
+                dist.tarball,
+                registry_url,
+              )));
+            }
+            None
+          }
           NpmCacheHttpClientResponse::Bytes(r) => Some(r.bytes),
         },
         Err(err) => {
