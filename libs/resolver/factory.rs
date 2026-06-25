@@ -1154,6 +1154,38 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       let workspace = &self.workspace_factory.workspace_directory()?.workspace;
       let overrides = npm_overrides_from_workspace(workspace);
 
+      // the `trust-policy` / `trust-policy-ignore-after` npmrc settings drive
+      // the `no-downgrade` publishing-trust policy
+      let npmrc = self.workspace_factory.npmrc()?;
+      let trust_policy = deno_npm::resolution::TrustPolicyOptions {
+        policy: match npmrc.trust_policy {
+          deno_npmrc::TrustPolicyConfig::NoDowngrade => {
+            deno_npm::resolution::NpmTrustPolicy::NoDowngrade
+          }
+          deno_npmrc::TrustPolicyConfig::Off => {
+            deno_npm::resolution::NpmTrustPolicy::Off
+          }
+        },
+        // turn the relative `trust-policy-ignore-after` minutes into an
+        // absolute cutoff (`now - minutes`) so the resolver stays clock-free
+        ignore_after_cutoff: npmrc.trust_policy_ignore_after_minutes.map(
+          |minutes| {
+            let now = chrono::DateTime::<chrono::Utc>::from(
+              self.workspace_factory.sys().sys_time_now(),
+            );
+            now - chrono::Duration::minutes(minutes as i64)
+          },
+        ),
+        // `trust-policy-exclude[]` package names exempted from the policy
+        #[allow(
+          clippy::disallowed_types,
+          reason = "Arc needed for shared exclude set"
+        )]
+        exclude: std::sync::Arc::new(
+          npmrc.trust_policy_exclude.iter().cloned().collect(),
+        ),
+      };
+
       Ok(new_rc(NpmVersionResolver {
         newest_dependency_date_options:
           deno_npm::resolution::NewestDependencyDateOptions {
@@ -1179,6 +1211,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
           reason = "Arc needed for shared overrides"
         )]
         overrides: std::sync::Arc::new(overrides),
+        trust_policy,
       }))
     })
   }
