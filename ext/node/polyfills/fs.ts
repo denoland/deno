@@ -237,7 +237,6 @@ const {
   RegExpPrototype,
   RegExpPrototypeTest,
   SafeMap,
-  StringPrototypeSlice,
   StringPrototypeToString,
   SymbolAsyncIterator,
   SymbolDispose,
