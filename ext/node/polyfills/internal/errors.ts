@@ -366,6 +366,13 @@ const exceptionWithHostPort = hideStackFrames(
   },
 );
 
+// Whether `e` is a Deno `NotCapable` sandbox error (permission not granted).
+// Centralized so the rest of this module can detect it without repeating the
+// `Deno.*` access (see tools/lint_plugins/no_deno_api_in_polyfills.ts).
+function isNotCapable(e: unknown): boolean {
+  return ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e);
+}
+
 const handleDnsError = hideStackFrames(
   (err: Error, syscall: string, address: string) => {
     //@ts-expect-error code is safe to access with optional chaining
@@ -374,7 +381,7 @@ const handleDnsError = hideStackFrames(
       return dnsException(err?.uv_errcode, syscall, address);
     }
 
-    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, err)) {
+    if (isNotCapable(err)) {
       return dnsException(codeMap.get("EPERM")!, syscall, address);
     }
 
@@ -3091,7 +3098,7 @@ function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
     });
   }
 
-  if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
+  if (isNotCapable(e)) {
     return uvException({
       errno: codeMap.get("EACCES"),
       ...ctx,
@@ -3121,7 +3128,7 @@ function denoWriteFileErrorToNodeError(
     });
   }
 
-  if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
+  if (isNotCapable(e)) {
     return uvException({
       errno: codeMap.get("EACCES"),
       ...ctx,
