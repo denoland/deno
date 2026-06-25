@@ -2717,8 +2717,11 @@ async fn package_macos_app_bundle(
   };
 
   // Generate Info.plist.
-  let info_plist =
-    render_macos_info_plist(app_name, &bundle_id, desktop_flags.icon.is_some());
+  let info_plist = render_macos_info_plist(
+    &app_name,
+    &bundle_id,
+    desktop_flags.icon.is_some(),
+  );
   std::fs::write(contents_dir.join("Info.plist"), info_plist)?;
 
   // Rewrite each CEF helper's CFBundleIdentifier to be a strict suffix
