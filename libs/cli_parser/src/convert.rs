@@ -1408,6 +1408,7 @@ fn serve_parse(result: &ParseResult, flags: &mut Flags) {
     script,
     port,
     host,
+    tls_cert_and_key: None,
     parallel,
     open_site: result.get_bool("open"),
   });

@@ -1754,6 +1754,8 @@ async fn run_desktop(
     auto_serve: true,
     serve_port: Some(desktop_serve_port),
     serve_host: Some("127.0.0.1".to_string()),
+    serve_cert: None,
+    serve_key: None,
     hmr_watch_dir: if is_framework_dev {
       None
     } else {
