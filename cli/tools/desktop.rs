@@ -6281,12 +6281,13 @@ def456  other.zip
 
     let runtime_offset =
       appimage_runtime_for_target(target).unwrap().len() as u64;
-    let appimage = std::io::BufReader::new(
-      std::fs::File::open(&appimage_path).unwrap(),
-    );
-    let filesystem =
-      backhand::FilesystemReader::from_reader_with_offset(appimage, runtime_offset)
-        .unwrap();
+    let appimage =
+      std::io::BufReader::new(std::fs::File::open(&appimage_path).unwrap());
+    let filesystem = backhand::FilesystemReader::from_reader_with_offset(
+      appimage,
+      runtime_offset,
+    )
+    .unwrap();
     assert_eq!(
       filesystem.compressor,
       backhand::compression::Compressor::Zstd
