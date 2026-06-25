@@ -515,6 +515,33 @@ Deno.test({
   },
 });
 
+// #35449
+Deno.test({
+  name: "process.env is inspected like Node",
+  fn() {
+    Deno.env.set("HELLO", "WORLD");
+    const inspected = Deno.inspect(process.env);
+    // Renders the variables like Node, not the empty `{}` of issue #35449...
+    assert(inspected.includes('HELLO: "WORLD"'), inspected);
+    // ...as a plain object, not the null-prototype `Deno.env.toObject()`.
+    assert(inspected.startsWith("{"), inspected);
+    // The custom inspector must not leak into enumeration or spreads.
+    assert(
+      !Object.getOwnPropertySymbols(process.env).includes(
+        Symbol.for("nodejs.util.inspect.custom"),
+      ),
+    );
+    assertEquals(
+      Object.getOwnPropertyDescriptor(
+        process.env,
+        Symbol.for("nodejs.util.inspect.custom"),
+      ),
+      undefined,
+    );
+    delete process.env.HELLO;
+  },
+});
+
 // #30701
 Deno.test({
   name: "process.env handles falsy values correctly",
