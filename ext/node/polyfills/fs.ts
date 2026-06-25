@@ -237,7 +237,6 @@ const {
   RegExpPrototype,
   RegExpPrototypeTest,
   SafeMap,
-  StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   StringPrototypeToString,
   SymbolAsyncIterator,
@@ -1951,37 +1950,6 @@ function findFirstNonExistent(path: string): string | undefined {
   }
 }
 
-function isMkdirPathSeparator(code: number): boolean {
-  return code === 47 || (isWindows && code === 92);
-}
-
-function stripTrailingCurrentDirSegments(path: string): string {
-  let end = path.length;
-  while (
-    end > 0 &&
-    isMkdirPathSeparator(StringPrototypeCharCodeAt(path, end - 1))
-  ) {
-    end--;
-  }
-  while (
-    end > 0 &&
-    StringPrototypeCharCodeAt(path, end - 1) === 46 &&
-    (end === 1 ||
-      isMkdirPathSeparator(StringPrototypeCharCodeAt(path, end - 2)))
-  ) {
-    end--;
-    while (
-      end > 0 &&
-      isMkdirPathSeparator(StringPrototypeCharCodeAt(path, end - 1))
-    ) {
-      end--;
-    }
-  }
-  return end === path.length
-    ? path
-    : StringPrototypeSlice(path, 0, end) || path;
-}
-
 type MkdirOptions =
   | { recursive?: boolean; mode?: number | undefined }
   | number
@@ -2026,7 +1994,7 @@ function mkdir(
   }
 
   PromisePrototypeThen(
-    Deno.mkdir(recursive ? stripTrailingCurrentDirSegments(path) : path, {
+    Deno.mkdir(path, {
       recursive,
       mode,
     }),
@@ -2073,7 +2041,7 @@ function mkdirSync(
   let firstNonExistent: string | undefined;
   try {
     firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
-    Deno.mkdirSync(recursive ? stripTrailingCurrentDirSegments(path) : path, {
+    Deno.mkdirSync(path, {
       recursive,
       mode,
     });

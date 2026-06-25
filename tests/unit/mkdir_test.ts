@@ -97,6 +97,34 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, write: true } },
+  function mkdirSyncRecursivePathWithDotSegment() {
+    const testDir = Deno.makeTempDirSync();
+    try {
+      const path = testDir + "/nested/directory/.";
+      Deno.mkdirSync(path, { recursive: true });
+      assertDirectory(testDir + "/nested/directory");
+    } finally {
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function mkdirRecursivePathWithDotSegment() {
+    const testDir = Deno.makeTempDirSync();
+    try {
+      const path = testDir + "/nested/directory/.";
+      await Deno.mkdir(path, { recursive: true });
+      assertDirectory(testDir + "/nested/directory");
+    } finally {
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
   function mkdirSyncRecursiveMode() {
     const nested = Deno.makeTempDirSync() + "/nested";
     const path = nested + "/dir";
