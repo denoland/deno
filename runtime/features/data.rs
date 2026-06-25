@@ -67,6 +67,13 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     env_var: None,
   },
   UnstableFeatureDescription {
+    name: "html-rewriter",
+    help_text: "Enable unstable `HTMLRewriter` API",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Runtime,
+    env_var: None,
+  },
+  UnstableFeatureDescription {
     name: "http",
     help_text: "Enable unstable HTTP APIs",
     show_in_help: false,

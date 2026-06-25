@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-read --unstable-html-rewriter main.js",
+  "output": "main.out"
+}

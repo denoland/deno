@@ -115,6 +115,12 @@ const loadWebSocketStream = core.createLazyLoader(
 const loadWebTransport = core.createLazyLoader(
   "ext:deno_web/webtransport.js",
 );
+let _htmlRewriterMod;
+const loadHTMLRewriter = () =>
+  _htmlRewriterMod ??
+    (_htmlRewriterMod = core.loadExtScript(
+      "ext:deno_html_rewriter/01_html_rewriter.js",
+    ));
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {
@@ -558,6 +564,13 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   WebTransportError: core.propNonEnumerableLazyLoaded(
     (wt) => wt.WebTransportError,
     loadWebTransport,
+  ),
+};
+
+unstableForWindowOrWorkerGlobalScope[unstableIds.htmlRewriter] = {
+  HTMLRewriter: core.propNonEnumerableLazyLoaded(
+    (htmlRewriter) => htmlRewriter.HTMLRewriter,
+    loadHTMLRewriter,
   ),
 };
 
