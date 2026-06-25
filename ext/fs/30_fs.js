@@ -379,9 +379,12 @@ function createByteStruct(types) {
         offset += 2;
       }
     } else if (type == "date") {
+      // The timestamp is a signed i64 (milliseconds since Unix epoch) stored
+      // as two u32 words in two's-complement. Reconstruct the signed value by
+      // subtracting 2**64 when the high word indicates a negative number.
       str += `${name}: view[${offset}] === 0 ? null : new Date(view[${
         offset + 2
-      }] + view[${offset + 3}] * 2**32),`;
+      }] + view[${offset + 3}] * 2**32 + (view[${offset + 3}] >= 2**31 ? -2**64 : 0)),`;
       offset += 2;
     } else {
       if (!optionalLoose) {

@@ -1465,7 +1465,7 @@ pub fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
     if let Ok(file_info) = query_file_information(file_handle) {
       fsstat.ctime = Some(windows_time_to_unix_time_msec(
         &file_info.BasicInformation.ChangeTime,
-      ) as u64);
+      ));
 
       if file_info.BasicInformation.FileAttributes
         & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT
