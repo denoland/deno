@@ -1328,7 +1328,6 @@ pub async fn run_with_options(
   };
   let maybe_npm_package_ref =
     NpmPackageReqReference::from_specifier(&main_module).ok();
-  let is_npm_binary = maybe_npm_package_ref.is_some();
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
   let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
     sys.clone(),
@@ -1660,7 +1659,6 @@ pub async fn run_with_options(
     trace_ops: None,
     is_inspecting: options.is_inspecting,
     is_standalone: true,
-    is_npm_binary,
     auto_serve: options.auto_serve,
     skip_op_registration: true,
     location: metadata.location,

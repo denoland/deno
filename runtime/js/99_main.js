@@ -891,7 +891,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       17: nodeClusterUniqueId,
       18: nodeClusterSchedPolicy,
       19: disableOffscreenCanvas,
-      20: isNpmBinary,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -1078,8 +1077,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     const nodeBootstrapArgs = {
       usesLocalNodeModulesDir: hasNodeModulesDir,
       runningOnMainThread: true,
-      isNpmBinary,
-      moduleSpecifier: finalDenoNs.mainModule,
       argv0,
       nodeDebug,
       nodeClusterUniqueId,
@@ -1093,14 +1090,13 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     };
     if (nodeBootstrap) {
       nodeBootstrap(nodeBootstrapArgs);
-    } else if (op_node_has_child_ipc_pipe() || isNpmBinary) {
+    } else if (op_node_has_child_ipc_pipe()) {
       // node-defer: this main process is a forked child with an IPC pipe. It
       // needs the IPC channel (set up in the full `initialize`) ready
       // synchronously before its main module calls process.send /
       // process.on("message"). Run the full node bootstrap EAGERLY (like
-      // workers). npm binaries also need node:module before their main module
-      // runs so tool-generated ESM can fall through to global require.
-      // node:process first (fully evaluates), then node:module
+      // workers) -- a forked IPC child is a node process, so the deser win
+      // doesn't apply. node:process first (fully evaluates), then node:module
       // (its closure captures a finished node:process, so no cold-bootstrap
       // TDZ), then `initialize`.
       core.createLazyLoader("node:process")();
@@ -1245,7 +1241,6 @@ function bootstrapWorkerRuntime(
     const nodeBootstrapArgs = {
       usesLocalNodeModulesDir: hasNodeModulesDir,
       runningOnMainThread: false,
-      isNpmBinary: false,
       argv0,
       workerId,
       maybeWorkerMetadata: workerMetadata,

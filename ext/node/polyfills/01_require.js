@@ -3355,9 +3355,7 @@ function initialize(args) {
     nodeDebug,
     nodeClusterUniqueId,
     nodeClusterSchedPolicy,
-    isNpmBinary = false,
     warmup = false,
-    moduleSpecifier = null,
   } = args;
   if (!warmup) {
     if (initialized) {
@@ -3407,15 +3405,6 @@ function initialize(args) {
       globalThis.console,
       nativeModuleExports["process"],
     );
-    if (isNpmBinary && moduleSpecifier !== null) {
-      ObjectDefineProperty(globalThis, "require", {
-        __proto__: null,
-        configurable: true,
-        enumerable: false,
-        value: createRequire(moduleSpecifier),
-        writable: true,
-      });
-    }
   } else {
     internals.__bootstrapNodeProcess(
       undefined,
