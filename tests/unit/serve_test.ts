@@ -3636,11 +3636,14 @@ for (const testCase of compressionTestCases) {
 
 Deno.test(
   { permissions: { net: true } },
-  async function httpServerAutomaticCompressionSkippedForNoRequestFastPath() {
+  async function httpServerAutomaticCompressionAppliesForNoRequestFastPath() {
     const body = "a".repeat(1000);
     const listeningDeferred = Promise.withResolvers<void>();
     const ac = new AbortController();
 
+    // A zero-argument handler takes the native "no request" fast path, where
+    // the request is never exposed to JS. Automatic compression must still
+    // apply: `accept-encoding` is retained so the response can be compressed.
     await using server = Deno.serve({
       handler: () => {
         return new Response(body, {
@@ -3659,8 +3662,8 @@ Deno.test(
         headers: { "accept-encoding": "gzip" },
       });
       assertEquals(await resp.text(), body);
-      assertEquals(resp.headers.get("content-encoding"), null);
-      assertEquals(resp.headers.get("vary"), null);
+      assertEquals(resp.headers.get("content-encoding"), "gzip");
+      assertEquals(resp.headers.get("vary"), "Accept-Encoding");
     } finally {
       ac.abort();
       await server.finished;
