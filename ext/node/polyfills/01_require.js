@@ -3356,6 +3356,7 @@ function initialize(args) {
     nodeClusterUniqueId,
     nodeClusterSchedPolicy,
     warmup = false,
+    moduleSpecifier = null,
   } = args;
   if (!warmup) {
     if (initialized) {
