@@ -384,7 +384,7 @@ function createByteStruct(types) {
       // subtracting 2**64 when the high word indicates a negative number.
       str += `${name}: view[${offset}] === 0 ? null : new Date(view[${
         offset + 2
-      }] + view[${offset + 3}] * 2**32 + (view[${offset + 3}] >= 2**31 ? -2**64 : 0)),`;
+      }] + view[${offset + 3}] * 2**32 + (view[${offset + 3}] >= 2**31 ? -(2**64) : 0)),`;
       offset += 2;
     } else {
       if (!optionalLoose) {
