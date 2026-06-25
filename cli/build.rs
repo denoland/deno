@@ -273,10 +273,17 @@ fn compress_sources(out_dir: &Path) {
 /// becomes a compile error instead of a first-launch failure.
 fn emit_laufey_version() {
   let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-  let lock_path = Path::new(&manifest_dir).join("../Cargo.lock");
-  println!("cargo:rerun-if-changed={}", lock_path.display());
+  // Prefer the workspace lock file, but fall back to the crate-local Cargo.lock
+  // that `cargo package`/`publish` bundles into the verification tarball, where
+  // the build runs in an isolated dir without the workspace root present.
+  let workspace_lock = Path::new(&manifest_dir).join("../Cargo.lock");
+  let local_lock = Path::new(&manifest_dir).join("Cargo.lock");
+  println!("cargo:rerun-if-changed={}", workspace_lock.display());
+  println!("cargo:rerun-if-changed={}", local_lock.display());
 
-  let lock = match std::fs::read_to_string(&lock_path) {
+  let lock = match std::fs::read_to_string(&workspace_lock)
+    .or_else(|_| std::fs::read_to_string(&local_lock))
+  {
     Ok(s) => s,
     Err(_) => return,
   };
