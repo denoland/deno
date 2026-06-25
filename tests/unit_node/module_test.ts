@@ -362,6 +362,29 @@ Deno.test("[node/module require] throws ERR_INVALID_ARG_VALUE for empty string i
   );
 });
 
+Deno.test("[node/module require] loads more than 128 local TypeScript modules", async () => {
+  const tempDir = await Deno.makeTempDir();
+  try {
+    await Promise.all(
+      Array.from({ length: 200 }, (_, i) =>
+        Deno.writeTextFile(
+          path.join(tempDir, `mod_${i}.ts`),
+          `export const value = ${i};\n`,
+        )),
+    );
+
+    const require = createRequire(import.meta.url);
+    for (let i = 0; i < 200; i++) {
+      const mod = require(path.join(tempDir, `mod_${i}.ts`)) as {
+        value: number;
+      };
+      assertEquals(mod.value, i);
+    }
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
 Deno.test("[node/module Module._stat] default returns 0/1/<0 for file/dir/missing", async () => {
   const tmpDir = await Deno.makeTempDir();
   try {
