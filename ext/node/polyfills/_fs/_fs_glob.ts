@@ -4,6 +4,7 @@
 import { core, primordials } from "ext:core/mod.js";
 
 const {
+  validateBoolean,
   validateObject,
   validateString,
   validateStringArray,
@@ -55,6 +56,12 @@ interface GlobOptionsBase {
    * @since v22.2.0
    */
   withFileTypes?: boolean | undefined;
+  /**
+   * Whether to follow symbolic links.
+   * @default true
+   * @since v26.0.0
+   */
+  followSymlinks?: boolean | undefined;
   /**
    * Function to filter out files/directories. Return true to exclude the item, false to include it.
    */
@@ -351,12 +358,15 @@ export class Glob {
   #subpatterns = new SafeMap();
   #patterns;
   #withFileTypes;
+  #followSymlinks;
   #isExcluded = () => false;
   constructor(pattern, options = kEmptyObject) {
     validateObject(options, "options");
-    const { exclude, cwd, withFileTypes } = options;
+    const { exclude, cwd, withFileTypes, followSymlinks = true } = options;
+    validateBoolean(followSymlinks, "options.followSymlinks");
     this.#root = toPathIfFileURL(cwd) ?? ".";
     this.#withFileTypes = !!withFileTypes;
+    this.#followSymlinks = followSymlinks !== false;
     if (exclude != null) {
       validateStringArrayOrFunction(exclude, "options.exclude");
       if (ArrayIsArray(exclude)) {
@@ -473,7 +483,7 @@ export class Glob {
     const stat = this.#cache.statSync(fullpath);
     const last = pattern.last;
     const isDirectory = stat?.isDirectory() ||
-      (stat?.isSymbolicLink() && pattern.hasSeenSymlinks);
+      (this.#followSymlinks && stat?.isSymbolicLink() && pattern.hasSeenSymlinks);
     const isLast = pattern.isLast(isDirectory);
     const isFirst = pattern.isFirst();
 
@@ -602,14 +612,14 @@ export class Glob {
           }
           if (
             (nextMatches || pattern.partAt(0) === ".") &&
-            (entry.isDirectory() || entry.isSymbolicLink()) && !fromSymlink
+            (entry.isDirectory() || (this.#followSymlinks && entry.isSymbolicLink())) && !fromSymlink
           ) {
             // If pattern after ** matches, or pattern starts with "."
             // and entry is a directory or symlink, add to potential patterns
             subPatterns.add(nextIndex);
           }
 
-          if (entry.isSymbolicLink()) {
+          if (this.#followSymlinks && entry.isSymbolicLink()) {
             nSymlinks.add(index);
           }
 
@@ -721,7 +731,7 @@ export class Glob {
     const stat = await this.#cache.stat(fullpath);
     const last = pattern.last;
     const isDirectory = stat?.isDirectory() ||
-      (stat?.isSymbolicLink() && pattern.hasSeenSymlinks);
+      (this.#followSymlinks && stat?.isSymbolicLink() && pattern.hasSeenSymlinks);
     const isLast = pattern.isLast(isDirectory);
     const isFirst = pattern.isFirst();
 
@@ -864,14 +874,14 @@ export class Glob {
           }
           if (
             (nextMatches || pattern.partAt(0) === ".") &&
-            (entry.isDirectory() || entry.isSymbolicLink()) && !fromSymlink
+            (entry.isDirectory() || (this.#followSymlinks && entry.isSymbolicLink())) && !fromSymlink
           ) {
             // If pattern after ** matches, or pattern starts with "."
             // and entry is a directory or symlink, add to potential patterns
             subPatterns.add(nextIndex);
           }
 
-          if (entry.isSymbolicLink()) {
+          if (this.#followSymlinks && entry.isSymbolicLink()) {
             nSymlinks.add(index);
           }
 
