@@ -45,6 +45,7 @@ const mimesniff = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
 const {
   createProxy,
+  createReadableStream,
   errorReadableStream,
   isReadableStreamDisturbed,
   readableStreamClose,
@@ -55,8 +56,18 @@ const {
   readableStreamThrowIfErrored,
 } = core.loadExtScript("ext:deno_web/06_streams.js");
 
+const noop = () => {};
+
 /** @type {WeakMap<ReadableStream<Uint8Array>, number>} */
 const staticBodyLength = new SafeWeakMap();
+
+// Maps a ReadableStream that was materialized from a static body (a string or
+// Uint8Array passed to `new Response(...)` / `new Request(...)`) back to that
+// original static body. This lets `extractBody` recover the static body when a
+// body stream is round-tripped through a new Response/Request without being
+// read, preserving the fast (Content-Length, single-write) response path.
+/** @type {WeakMap<ReadableStream<Uint8Array>, Uint8Array | string>} */
+const staticBodySource = new SafeWeakMap();
 
 /**
  * @param {Uint8Array | string} chunk
@@ -103,15 +114,27 @@ class InnerBody {
         readableStreamClose(this.streamOrStatic);
       } else {
         const length = this.length;
-        const stream = new ReadableStream({
-          start(controller) {
+        // Materialize the static body into a stream lazily. With a high water
+        // mark of 0 the body is only encoded/enqueued once the stream is
+        // actually read. The very common pattern of round-tripping a body
+        // through a new Response/Request just to mutate headers recovers the
+        // static body in `extractBody` (below) and never reads this stream, so
+        // the encode is skipped entirely. `createReadableStream` also avoids
+        // the webidl UnderlyingSource conversion `new ReadableStream({...})`
+        // performs.
+        const stream = createReadableStream(
+          noop,
+          (controller) => {
             controller.enqueue(chunkToU8(body));
             controller.close();
           },
-        });
+          noop,
+          0,
+        );
         if (length !== null) {
           WeakMapPrototypeSet(staticBodyLength, stream, length);
         }
+        WeakMapPrototypeSet(staticBodySource, stream, body);
         this.streamOrStatic = stream;
       }
     }
@@ -482,10 +505,22 @@ function extractBody(object) {
     source = object.toString();
     contentType = "application/x-www-form-urlencoded;charset=UTF-8";
   } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
-    stream = object;
-    length = WeakMapPrototypeGet(staticBodyLength, object) ?? null;
     if (object.locked || isReadableStreamDisturbed(object)) {
       throw new TypeError("ReadableStream is locked or disturbed");
+    }
+    // Fast path: this stream was materialized from a static body and has not
+    // been read. A common framework pattern (e.g. Hono middleware) is to
+    // reconstruct a response via `new Response(oldResponse.body, oldResponse)`
+    // just to mutate headers. Without recovering the static body, the
+    // reconstructed body would be served through the streaming (chunked) path,
+    // losing Content-Length and the single-write fast response op. Recover the
+    // original static body so the fast path is preserved.
+    const recoveredSource = WeakMapPrototypeGet(staticBodySource, object);
+    if (recoveredSource !== undefined) {
+      source = recoveredSource;
+    } else {
+      stream = object;
+      length = WeakMapPrototypeGet(staticBodyLength, object) ?? null;
     }
   } else if (object[webidl.AsyncIterable] === webidl.AsyncIterable) {
     // If the underlying body is a Node `Readable` running in binary mode
