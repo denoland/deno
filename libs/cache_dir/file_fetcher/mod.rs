@@ -719,7 +719,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
           url: url.clone(),
           source,
         })?;
-    match self.http_cache.get(&cache_key, maybe_checksum) {
+    match self.http_cache.get(&cache_key, None) {
       Ok(Some(entry)) => {
         if entry.metadata.headers.contains_key(NOT_FOUND_CACHE_HEADER) {
           let download_time = entry
@@ -733,7 +733,16 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
             Ok(None)
           };
         }
-        Ok(Some(FileOrRedirect::from_deno_cache_entry(url, entry)?))
+        let file_or_redirect =
+          FileOrRedirect::from_deno_cache_entry(url, entry)?;
+        if let Some(checksum) = maybe_checksum
+          && let FileOrRedirect::File(file) = &file_or_redirect
+        {
+          checksum.check(url, &file.source).map_err(|err| {
+            FetchCachedNoFollowErrorKind::ChecksumIntegrity(*err)
+          })?;
+        }
+        Ok(Some(file_or_redirect))
       }
       Ok(None) => Ok(None),
       Err(CacheReadFileError::Io(source)) => Err(
