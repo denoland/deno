@@ -14,7 +14,9 @@ function check(label, fn) {
     // errno value is platform-specific (-13 on unix, -4092 on windows), so we
     // only assert it is present rather than its exact value.
     console.log(
-      `${label}: code=${e.code} errno_set=${typeof e.errno === "number"} syscall=${e.syscall}`,
+      `${label}: code=${e.code} errno_set=${
+        typeof e.errno === "number"
+      } syscall=${e.syscall}`,
     );
   }
 }
