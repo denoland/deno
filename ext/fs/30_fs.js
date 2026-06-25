@@ -354,7 +354,10 @@ function createByteStruct(types) {
   // types can be "date", "bool" or "u64".
   let offset = 0;
   let str =
-    'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux" || Deno.build.os === "android" || Deno.build.os === "openbsd" || Deno.build.os === "freebsd"; return {';
+    'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux" || Deno.build.os === "android" || Deno.build.os === "openbsd" || Deno.build.os === "freebsd";' +
+    // Two's-complement inversion avoids float64 precision loss near 2^64.
+    ' const readI64Ms = (lo, hi) => hi < 2147483648 ? lo + hi * 4294967296 : -((~hi >>> 0) * 4294967296 + (~lo >>> 0) + 1);' +
+    ' return {';
   const typeEntries = ObjectEntries(types);
   for (let i = 0; i < typeEntries.length; ++i) {
     let { 0: name, 1: type } = typeEntries[i];
@@ -379,14 +382,9 @@ function createByteStruct(types) {
         offset += 2;
       }
     } else if (type == "date") {
-      // The timestamp is a signed i64 (milliseconds since Unix epoch) stored
-      // as two u32 words in two's-complement. Reconstruct the signed value by
-      // subtracting 2**64 when the high word indicates a negative number.
-      str += `${name}: view[${offset}] === 0 ? null : new Date(view[${
+      str += `${name}: view[${offset}] === 0 ? null : new Date(readI64Ms(view[${
         offset + 2
-      }] + view[${offset + 3}] * 2**32 + (view[${
-        offset + 3
-      }] >= 2**31 ? -(2**64) : 0)),`;
+      }], view[${offset + 3}])),`;
       offset += 2;
     } else {
       if (!optionalLoose) {
