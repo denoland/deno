@@ -1384,9 +1384,19 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let state = JsRealm::state_from_scope(scope);
 
   let module_global = v8::Global::new(scope, module);
-  let name = module_map
-    .get_name_by_module(&module_global)
-    .expect("Module not found");
+  let Some(name) = module_map.get_name_by_module(&module_global) else {
+    // The module is not tracked by deno_core's module map. This is the
+    // happy path for `node:vm` `SourceTextModule`, whose v8::Module is
+    // created directly by the `node:vm` op and never registered. Delegate
+    // to the external hook (set by `node:vm`) if one is registered; if
+    // not, just leave `import.meta` empty rather than panicking — V8 will
+    // hand the empty object to user code.
+    let runtime_state = JsRuntime::state_from(scope);
+    if let Some(cb) = runtime_state.external_module_import_meta_cb.get() {
+      cb(scope, module, meta);
+    }
+    return;
+  };
   let module_type = module_map
     .get_type_by_module(&module_global)
     .expect("Module not found");
