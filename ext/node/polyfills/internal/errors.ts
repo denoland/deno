@@ -3091,6 +3091,13 @@ function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
     });
   }
 
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
+    return uvException({
+      errno: codeMap.get("EACCES"),
+      ...ctx,
+    });
+  }
+
   const errno = extractOsErrorNumberFromErrorMessage(e);
   if (typeof errno === "undefined") {
     return e;
@@ -3110,6 +3117,13 @@ function denoWriteFileErrorToNodeError(
   if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
     return uvException({
       errno: UV_EBADF,
+      ...ctx,
+    });
+  }
+
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
+    return uvException({
+      errno: codeMap.get("EACCES"),
       ...ctx,
     });
   }
