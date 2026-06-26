@@ -1,4 +1,2 @@
-error: Invalid "version" field "1.0" in [WILDCARD]deno.json
-
-Caused by:
+error: Invalid "version" field "1.0" in [WILDCARD]deno.json: Invalid version: Unexpected character.
 [WILDCARD]
