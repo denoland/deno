@@ -1832,11 +1832,13 @@ async fn test_timer_return_protocol_keeps_timers_armed_from_promise_hook() {
     )
     .await;
 
-    if let Ok(result) = run_result {
-      result.unwrap();
-    } else if !FIRED.load(Ordering::SeqCst) {
-      panic!("{name} timed out waiting for armed timer");
-    }
+    // The event loop must actually complete. Accepting a timeout (even with
+    // FIRED set) would let a regression that arms the timer but leaves the
+    // loop hung still pass.
+    let result = run_result.unwrap_or_else(|_| {
+      panic!("{name} timed out; event loop never completed")
+    });
+    result.unwrap();
 
     assert!(
       FIRED.load(Ordering::SeqCst),
@@ -1898,11 +1900,12 @@ async fn test_timer_return_protocol_keeps_timers_armed_from_run_next_ticks() {
   )
   .await;
 
-  if let Ok(result) = run_result {
-    result.unwrap();
-  } else if !FIRED.load(Ordering::SeqCst) {
-    panic!("timed out waiting for timer armed from runNextTicks");
-  }
+  // The event loop must actually complete. Accepting a timeout (even with
+  // FIRED set) would let a regression that arms the timer but leaves the
+  // loop hung still pass.
+  let result = run_result
+    .unwrap_or_else(|_| panic!("timed out; event loop never completed"));
+  result.unwrap();
 
   assert!(
     FIRED.load(Ordering::SeqCst),

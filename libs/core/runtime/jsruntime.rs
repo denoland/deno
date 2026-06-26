@@ -3380,6 +3380,14 @@ impl JsRuntime {
       return Ok(false);
     }
 
+    // `now` is passed to JS raw, with no clamp. The old single-function
+    // `__eventLoopTick(timerNow, ...)` protocol clamped `now <= 0.0` to
+    // `f64::EPSILON` so the timer argument could never collide with the
+    // negative "skip timers" sentinel it shared with op resolution. This
+    // protocol has no such sentinel: `__processTimers(now)` is a dedicated
+    // call made only when the timer is ready, and `processTimers` only
+    // compares `list.expiry > now` (every real timer's expiry exceeds a 0.0
+    // startup `now`), so a raw 0.0 cannot mis-fire a timer.
     let now = context_state.user_timer.now();
     v8::tc_scope!(let tc_scope, scope);
 
