@@ -95,3 +95,15 @@ Deno.test({
     uv.test_uv_threads();
   },
 });
+
+// Exercises the uv_cond_* polyfills end to end: a worker thread sets a
+// predicate under the mutex and signals a condition variable the main thread
+// is waiting on, then uv_cond_timedwait is checked to time out. If any of
+// these symbols are missing from the deno binary the addon would fail to load
+// and this test would error.
+Deno.test({
+  name: "napi uv condition variable",
+  fn: () => {
+    uv.test_uv_cond();
+  },
+});

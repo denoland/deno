@@ -1398,6 +1398,142 @@ unsafe extern "C" fn uv_thread_equal(t1: *const u64, t2: *const u64) -> c_int {
   (unsafe { *t1 == *t2 }) as c_int
 }
 
+// ---------- uv condition variable polyfills ----------
+//
+// libuv's condition variables pair with `uv_mutex_t` for the usual "wait until
+// a predicate holds" pattern, and native addons that link against libuv
+// directly (e.g. `@sap/hana-client`) use them for their own background work.
+// Like the semaphore/thread polyfills above, `uv_cond_t` is an opaque,
+// platform-specific struct the addon allocates itself (a `pthread_cond_t` on
+// unix, a pointer-sized `CONDITION_VARIABLE` on Windows), so we don't depend on
+// its layout: we stash a small integer token in it and keep the real state in a
+// process-global registry. The smallest `uv_cond_t` is Windows' pointer-sized
+// `CONDITION_VARIABLE`, so a `u32` token fits everywhere (matching `uv_sem_t`).
+//
+// The condvar is backed by its own internal mutex rather than the addon's
+// `uv_mutex_t`. `uv_cond_wait` takes the internal mutex, releases the addon
+// mutex, then blocks on the internal mutex; a concurrent `uv_cond_signal` /
+// `uv_cond_broadcast` must take that same internal mutex to notify and can't
+// acquire it until the waiter is actually parked, so no wakeup is lost.
+
+struct CondInner {
+  mutex: Mutex<()>,
+  condvar: deno_core::parking_lot::Condvar,
+}
+
+static CONDS: OnceLock<
+  Mutex<std::collections::HashMap<u32, std::sync::Arc<CondInner>>>,
+> = OnceLock::new();
+static COND_NEXT: std::sync::atomic::AtomicU32 =
+  std::sync::atomic::AtomicU32::new(1);
+
+fn conds()
+-> &'static Mutex<std::collections::HashMap<u32, std::sync::Arc<CondInner>>> {
+  CONDS.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+fn cond_lookup(cond: *const u32) -> Option<std::sync::Arc<CondInner>> {
+  if cond.is_null() {
+    return None;
+  }
+  let id = unsafe { *cond };
+  conds().lock().get(&id).cloned()
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_cond_init(cond: *mut u32) -> c_int {
+  if cond.is_null() {
+    return -1;
+  }
+  let id = COND_NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+  let inner = std::sync::Arc::new(CondInner {
+    mutex: Mutex::new(()),
+    condvar: deno_core::parking_lot::Condvar::new(),
+  });
+  conds().lock().insert(id, inner);
+  unsafe {
+    *cond = id;
+  }
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_cond_destroy(cond: *mut u32) {
+  if cond.is_null() {
+    return;
+  }
+  let id = unsafe { *cond };
+  conds().lock().remove(&id);
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_cond_signal(cond: *mut u32) {
+  if let Some(inner) = cond_lookup(cond) {
+    let _guard = inner.mutex.lock();
+    inner.condvar.notify_one();
+  }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_cond_broadcast(cond: *mut u32) {
+  if let Some(inner) = cond_lookup(cond) {
+    let _guard = inner.mutex.lock();
+    inner.condvar.notify_all();
+  }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_cond_wait(cond: *mut u32, mutex: *mut uv_mutex_t) {
+  let Some(inner) = cond_lookup(cond) else {
+    return;
+  };
+  let mut guard = inner.mutex.lock();
+  // Release the addon's mutex, mirroring uv_cond_wait's atomic "unlock and
+  // block". We already hold the internal mutex, so a signaler can't slip a
+  // notify past us before we park.
+  unsafe {
+    (*mutex).mutex.force_unlock();
+  }
+  inner.condvar.wait(&mut guard);
+  drop(guard);
+  // Re-acquire the addon mutex before returning; the caller still believes it
+  // holds it. Forget the guard like `uv_mutex_lock` so it stays locked until
+  // the addon calls `uv_mutex_unlock`.
+  unsafe {
+    std::mem::forget((*mutex).mutex.lock());
+  }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_cond_timedwait(
+  cond: *mut u32,
+  mutex: *mut uv_mutex_t,
+  timeout: u64, // nanoseconds
+) -> c_int {
+  let Some(inner) = cond_lookup(cond) else {
+    return -1;
+  };
+  let mut guard = inner.mutex.lock();
+  unsafe {
+    (*mutex).mutex.force_unlock();
+  }
+  let timed_out = inner
+    .condvar
+    .wait_for(&mut guard, std::time::Duration::from_nanos(timeout))
+    .timed_out();
+  drop(guard);
+  unsafe {
+    std::mem::forget((*mutex).mutex.lock());
+  }
+  if timed_out {
+    // UV_ETIMEDOUT. libuv uses platform-independent error codes; -4039 is its
+    // numbering for ETIMEDOUT.
+    -4039
+  } else {
+    0
+  }
+}
+
 unsafe extern "C" fn async_exec_wrap(_env: napi_env, data: *mut c_void) {
   let data: *mut uv_async_t = data.cast();
   unsafe {
@@ -1451,6 +1587,11 @@ mod tests {
       UV_WORK_SIZE
     );
     assert_eq!(std::mem::size_of::<uv_work_t>(), UV_WORK_SIZE);
+    // We store a u32 token in the addon-allocated `uv_cond_t`, so it must fit.
+    assert!(
+      std::mem::size_of::<u32>()
+        <= std::mem::size_of::<libuv_sys_lite::uv_cond_t>()
+    );
   }
 
   // Drives the uv_sem_* / uv_thread_* polyfills the way a native addon
@@ -1495,6 +1636,74 @@ mod tests {
       assert_ne!(uv_sem_trywait(sem_ptr), 0);
       assert_ne!(uv_thread_equal(tid_ptr, tid_ptr), 0);
       uv_sem_destroy(sem_ptr);
+    }
+  }
+
+  // Drives the uv_cond_* / uv_mutex_* polyfills the way a native addon would:
+  // the main thread waits on a condition variable until a worker sets a
+  // predicate (guarded by the mutex) and signals it.
+  #[test]
+  fn condition_variable() {
+    struct Shared {
+      mutex: *mut uv_mutex_t,
+      cond: *mut u32,
+      ready: bool,
+    }
+
+    unsafe extern "C" fn worker(arg: *mut c_void) {
+      let shared = arg as *mut Shared;
+      unsafe {
+        uv_mutex_lock((*shared).mutex);
+        (*shared).ready = true;
+        uv_cond_signal((*shared).cond);
+        uv_mutex_unlock((*shared).mutex);
+      }
+    }
+
+    unsafe {
+      let mut mtx = Box::new(MaybeUninit::<uv_mutex_t>::uninit());
+      let mtx_ptr = mtx.as_mut_ptr();
+      assert_eq!(uv_mutex_init(mtx_ptr), 0);
+      let mut cond: u32 = 0;
+      let cond_ptr: *mut u32 = &mut cond;
+      assert_eq!(uv_cond_init(cond_ptr), 0);
+
+      let mut shared = Shared {
+        mutex: mtx_ptr,
+        cond: cond_ptr,
+        ready: false,
+      };
+      let shared_ptr: *mut Shared = &mut shared;
+
+      // Hold the mutex, then spawn the worker — it blocks on the mutex until
+      // uv_cond_wait below releases it.
+      uv_mutex_lock(mtx_ptr);
+      let mut tid: u64 = 0;
+      let tid_ptr: *mut u64 = &mut tid;
+      assert_eq!(uv_thread_create(tid_ptr, worker, shared_ptr.cast()), 0);
+
+      while !(*shared_ptr).ready {
+        uv_cond_wait(cond_ptr, mtx_ptr);
+      }
+      uv_mutex_unlock(mtx_ptr);
+      assert_eq!(uv_thread_join(tid_ptr), 0);
+      assert!((*shared_ptr).ready);
+
+      // With nobody signaling, uv_cond_timedwait reports UV_ETIMEDOUT. Loop to
+      // tolerate spurious wakeups.
+      let start = Instant::now();
+      let rc = loop {
+        uv_mutex_lock(mtx_ptr);
+        let rc = uv_cond_timedwait(cond_ptr, mtx_ptr, 5_000_000);
+        uv_mutex_unlock(mtx_ptr);
+        if rc == -4039 || start.elapsed() > std::time::Duration::from_secs(5) {
+          break rc;
+        }
+      };
+      assert_eq!(rc, -4039);
+
+      uv_cond_destroy(cond_ptr);
+      uv_mutex_destroy(mtx_ptr);
     }
   }
 }
