@@ -127,6 +127,7 @@ const { buildAllowedFlags } = core.loadExtScript(
 const {
   getActiveHandles,
   getActiveRequests,
+  getActiveResourceNames,
 } = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
 const {
   getActiveResourcesInfo: getTimerActiveResourcesInfo,
@@ -149,6 +150,7 @@ const {
   ArrayIsArray,
   ArrayPrototypeConcat,
   ArrayPrototypeFind,
+  ArrayPrototypePush,
   BigInt,
   Error,
   ErrorCaptureStackTrace,
@@ -490,8 +492,37 @@ memoryUsage.rss = function (): number {
   return memoryUsage().rss;
 };
 
+// stdin/stdout/stderr are reported as "TTYWrap" when connected to a terminal,
+// matching Node, where the TTY handles keep the event loop alive. When they're
+// redirected to a pipe or file Node uses synchronous I/O without a libuv
+// handle, so nothing is reported.
+function getStdioActiveResources(): string[] {
+  const result: string[] = [];
+  const streams = [Deno.stdin, Deno.stdout, Deno.stderr];
+  for (const stream of new SafeArrayIterator(streams)) {
+    try {
+      if (stream && stream.isTerminal()) {
+        ArrayPrototypePush(result, "TTYWrap");
+      }
+    } catch {
+      // Stream may be closed or unavailable (e.g. in a worker); ignore.
+    }
+  }
+  return result;
+}
+
 export function getActiveResourcesInfo(): string[] {
-  return getTimerActiveResourcesInfo();
+  const result: string[] = [];
+  for (const name of new SafeArrayIterator(getStdioActiveResources())) {
+    ArrayPrototypePush(result, name);
+  }
+  for (const name of new SafeArrayIterator(getActiveResourceNames())) {
+    ArrayPrototypePush(result, name);
+  }
+  for (const name of new SafeArrayIterator(getTimerActiveResourcesInfo())) {
+    ArrayPrototypePush(result, name);
+  }
+  return result;
 }
 
 export function availableMemory(): number {
