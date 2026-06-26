@@ -1665,6 +1665,10 @@ async fn run_desktop(
   let auto_update_rolled_back =
     auto_update_state.as_ref().is_some_and(|s| s.rolled_back);
 
+  // App name (deno.json `desktop.app.name`, baked in at compile time) used as
+  // the default window title. Moved into the op_state_init closure below.
+  let app_name = data.metadata.app_name.clone();
+
   let run_opts = RunOptions {
     auto_serve: true,
     serve_port: Some(desktop_serve_port),
@@ -1707,6 +1711,15 @@ async fn run_desktop(
       let window_id = api.create_window(800, 600, false, false, false);
       initial_window_id.store(window_id, Ordering::Release);
 
+      // Title the initial window with the app name up front, so an app that
+      // never constructs its own `BrowserWindow` still shows "MyApp" rather
+      // than the backend's internal default (`laufey_webview`). The
+      // `BrowserWindow` constructor applies the same default to any further
+      // untitled windows via `DesktopAppName` in op state.
+      if let Some(name) = app_name.as_deref().filter(|n| !n.is_empty()) {
+        api.set_title(window_id, name);
+      }
+
       denort::desktop::init_desktop_state(
         state,
         Box::new(api),
@@ -1718,6 +1731,9 @@ async fn run_desktop(
       state.put(denort::desktop::InitialWindowId(std::sync::Mutex::new(
         Some(window_id),
       )));
+      if let Some(name) = app_name {
+        state.put(deno_runtime::ops::desktop::DesktopAppName(name));
+      }
     })),
     override_main_module: None,
     auto_update_version,
