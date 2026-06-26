@@ -160,7 +160,7 @@ async fn compile_inner(
     } else {
       bail!(
         "Could not detect a supported framework in '{}'.\n\
-         Supported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite SSR\n\
+         Supported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\n\
          Provide an explicit entrypoint instead of a directory.",
         dir.display()
       );
@@ -1414,6 +1414,7 @@ mod test {
         eszip: false,
         self_extracting: false,
         bundle: false,
+        app_name: None,
         minify: false,
         exclude_unused_npm: false,
       },
@@ -1444,6 +1445,7 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        app_name: None,
         minify: false,
         exclude_unused_npm: false,
       },
@@ -1481,6 +1483,7 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        app_name: None,
         minify: false,
         exclude_unused_npm: false,
       },

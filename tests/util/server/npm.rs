@@ -287,6 +287,16 @@ fn create_package_version_info(
   let package_json_text = String::from_utf8_lossy(&package_json_bytes);
   let mut version_info: serde_json::Map<String, serde_json::Value> =
     serde_json::from_str(&package_json_text)?;
+  // preserve `dist.attestations` from the fixture's package.json (used to test
+  // the publishing-trust signals) since the rest of `dist` is synthesized here
+  if let Some(attestations) = version_info
+    .get("dist")
+    .and_then(|d| d.as_object())
+    .and_then(|d| d.get("attestations"))
+    .cloned()
+  {
+    dist.insert("attestations".to_string(), attestations);
+  }
   version_info.insert("dist".to_string(), dist.into());
 
   // add a bin entry for a directories.bin package.json entry as this

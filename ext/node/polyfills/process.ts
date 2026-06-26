@@ -24,6 +24,7 @@ import {
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
+  op_node_process_resource_usage,
   op_node_process_set_title,
   op_node_process_setegid,
   op_node_process_seteuid,
@@ -154,6 +155,7 @@ const {
   ErrorCaptureStackTrace,
   ErrorPrototype,
   Float64Array,
+  FunctionPrototypeBind,
   FunctionPrototypeCall,
   MathFloor,
   Number,
@@ -167,9 +169,14 @@ const {
   ObjectFreeze,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  Proxy,
   RangeError,
   ReflectApply,
+  ReflectGet,
+  ReflectGetOwnPropertyDescriptor,
+  ReflectGetPrototypeOf,
   ReflectHas,
+  ReflectOwnKeys,
   SafeArrayIterator,
   SafeMap,
   SafeWeakMap,
@@ -494,6 +501,49 @@ export function availableMemory(): number {
 
 export function constrainedMemory(): number {
   return op_node_process_constrained_memory();
+}
+
+interface ResourceUsage {
+  userCPUTime: number;
+  systemCPUTime: number;
+  maxRSS: number;
+  sharedMemorySize: number;
+  unsharedDataSize: number;
+  unsharedStackSize: number;
+  minorPageFault: number;
+  majorPageFault: number;
+  swappedOut: number;
+  fsRead: number;
+  fsWrite: number;
+  ipcSent: number;
+  ipcReceived: number;
+  signalsCount: number;
+  voluntaryContextSwitches: number;
+  involuntaryContextSwitches: number;
+}
+
+const resourceUsageValues = new Float64Array(16);
+
+export function resourceUsage(): ResourceUsage {
+  op_node_process_resource_usage(resourceUsageValues);
+  return {
+    userCPUTime: resourceUsageValues[0],
+    systemCPUTime: resourceUsageValues[1],
+    maxRSS: resourceUsageValues[2],
+    sharedMemorySize: resourceUsageValues[3],
+    unsharedDataSize: resourceUsageValues[4],
+    unsharedStackSize: resourceUsageValues[5],
+    minorPageFault: resourceUsageValues[6],
+    majorPageFault: resourceUsageValues[7],
+    swappedOut: resourceUsageValues[8],
+    fsRead: resourceUsageValues[9],
+    fsWrite: resourceUsageValues[10],
+    ipcSent: resourceUsageValues[11],
+    ipcReceived: resourceUsageValues[12],
+    signalsCount: resourceUsageValues[13],
+    voluntaryContextSwitches: resourceUsageValues[14],
+    involuntaryContextSwitches: resourceUsageValues[15],
+  };
 }
 
 // Returns a negative error code than can be recognized by errnoException
@@ -930,10 +980,61 @@ const process = new Process();
 
 // `node:process` exposes `stdin`/`stdout`/`stderr` as ESM named exports. The
 // underlying streams are constructed lazily via accessor properties installed
-// on `process` in `__bootstrapNodeProcess`, so these `let` bindings stay
-// undefined until something touches `process.stdout` etc. The accessor writes
-// the materialized stream back into the binding, so `import { stdout }` sees
-// the real stream once `process.stdout` has been accessed.
+// on `process` in `__bootstrapNodeProcess`, so initialize the export bindings
+// with delegating proxies. Code like `import { stdin } from "node:process"`
+// can use the binding before anything has touched `process.stdin`; the proxy
+// forwards the operation to `process.stdin`, triggering lazy construction. The
+// accessor then writes the materialized stream back into the binding, so later
+// reads see the real stream directly.
+const streamDelegates = new SafeWeakSet<object>();
+
+function makeStreamDelegate(name: "stdin" | "stdout" | "stderr"): unknown {
+  const delegate = new Proxy(ObjectCreate(null), {
+    get(_target, prop) {
+      const real = process[name];
+      if (real == null) return undefined;
+      const value = ReflectGet(real, prop, real);
+      return typeof value === "function"
+        ? FunctionPrototypeBind(value, real)
+        : value;
+    },
+    set(_target, prop, value) {
+      const real = process[name];
+      if (real == null) return true;
+      real[prop] = value;
+      return true;
+    },
+    has(_target, prop) {
+      const real = process[name];
+      return real != null && ReflectHas(real, prop);
+    },
+    deleteProperty(_target, prop) {
+      const real = process[name];
+      if (real == null) return true;
+      delete real[prop];
+      return true;
+    },
+    ownKeys(_target) {
+      const real = process[name];
+      return real != null ? ReflectOwnKeys(real) : [];
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      const real = process[name];
+      return real != null
+        ? ReflectGetOwnPropertyDescriptor(real, prop)
+        : undefined;
+    },
+    getPrototypeOf(_target) {
+      const real = process[name];
+      return real != null ? ReflectGetPrototypeOf(real) : null;
+    },
+  });
+  streamDelegates.add(delegate);
+  return delegate;
+}
+stdin = makeStreamDelegate("stdin");
+stdout = makeStreamDelegate("stdout");
+stderr = makeStreamDelegate("stderr");
 
 /** https://nodejs.org/api/process.html#processrelease */
 ObjectDefineProperty(process, "release", {
@@ -1309,6 +1410,9 @@ process.kill = kill;
 process.memoryUsage = memoryUsage;
 process.availableMemory = availableMemory;
 process.constrainedMemory = constrainedMemory;
+
+/** https://nodejs.org/api/process.html#processresourceusage */
+process.resourceUsage = resourceUsage;
 
 /** https://nodejs.org/api/process.html#process_process_stderr */
 process.stderr = stderr;
@@ -1780,8 +1884,9 @@ internals.__bootstrapNodeProcess = function (
       configurable: true,
       enumerable: true,
       get() {
-        return stdout ??
-          (stdout = makeStdioWriteStream(1, io.stdout, "stdout"));
+        return stdout != null && !streamDelegates.has(stdout)
+          ? stdout
+          : (stdout = makeStdioWriteStream(1, io.stdout, "stdout"));
       },
       set(v) {
         stdout = v;
@@ -1792,13 +1897,16 @@ internals.__bootstrapNodeProcess = function (
       configurable: true,
       enumerable: true,
       get() {
-        return stderr ??
-          (stderr = makeStdioWriteStream(2, io.stderr, "stderr"));
+        return stderr != null && !streamDelegates.has(stderr)
+          ? stderr
+          : (stderr = makeStdioWriteStream(2, io.stderr, "stderr"));
       },
       set(v) {
         stderr = v;
       },
     });
+    core.loadExtScript("ext:deno_node/internal/console/constructor.mjs")
+      .bindStreamsLazy(globalThis.console, process);
 
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
@@ -1845,7 +1953,7 @@ internals.__bootstrapNodeProcess = function (
       configurable: true,
       enumerable: true,
       get() {
-        if (!stdinInitialized) {
+        if (!stdinInitialized || streamDelegates.has(stdin)) {
           stdinInitialized = true;
           // Replace stdin if it is not a terminal.
           const newStdin = lazyStreamsMod().initStdin();

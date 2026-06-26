@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.8.3"
+version = "2.9.0"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -100,7 +100,9 @@ bincode.workspace = true
 boxed_error.workspace = true
 bsdiff.workspace = true
 bytes.workspace = true
+cab.workspace = true
 capacity_builder.workspace = true
+cfb.workspace = true
 chrono = { workspace = true, features = ["now"] }
 clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context"] }
 clap_complete.workspace = true
@@ -138,11 +140,13 @@ lax-markup.workspace = true
 lax-sql.workspace = true
 lazy-regex.workspace = true
 libc.workspace = true
+liblzma.workspace = true
 libz-sys.workspace = true
 locked-tripwire = "0.1.1"
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 memchr.workspace = true
+msi.workspace = true
 notify.workspace = true
 once_cell.workspace = true
 open.workspace = true
@@ -185,11 +189,12 @@ tracing-subscriber = { workspace = true, features = ["env-filter"], optional = t
 twox-hash.workspace = true
 typed-arena.workspace = true
 unicode-width.workspace = true
-uuid = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["serde", "v5"] }
 walkdir.workspace = true
 wasm_dep_analyzer = "0.4.0"
 wasmparser = "0.244.0"
 which = { workspace = true, features = ["real-sys"] }
+yaml_parser.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 

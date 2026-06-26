@@ -88,6 +88,13 @@ pub struct ContextState {
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_wasm_streaming_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) wasm_instance_fn: RefCell<Option<v8::Global<v8::Function>>>,
+  // WeakMap<ModuleNamespace, WebAssembly.Instance.exports> shared by the
+  // synthetic modules rendered for `.wasm` files, so that a Wasm module
+  // importing a global from another Wasm module links against the original
+  // `WebAssembly.Global` object instead of the unwrapped snapshot value
+  // exposed to JS. Stands in for the [[Instance]] slot of the Wasm module
+  // record from the ESM integration proposal (same trick as Node.js).
+  pub(crate) wasm_instances_map: RefCell<Option<v8::Global<v8::Object>>>,
   pub(crate) unrefed_ops: UnrefedOps,
   pub(crate) activity_traces: RuntimeActivityTraces,
   pub(crate) pending_ops: Rc<OpDriverImpl>,
@@ -137,6 +144,12 @@ pub struct ContextState {
     RefCell<std::collections::HashMap<usize, (bool, bool)>>,
   pub(crate) external_ops_tracker: ExternalOpsTracker,
   pub(crate) ext_import_meta_proto: RefCell<Option<v8::Global<v8::Object>>>,
+  /// Lazily-cached "next"/"done"/"value" iterator keys used by the WebIDL
+  /// sequence converter. Cached per-context (not in a `thread_local`) because
+  /// `v8::String` handles are isolate-bound. See
+  /// [`crate::webidl::WebIdlSequenceKeys`].
+  pub(crate) webidl_sequence_keys:
+    RefCell<Option<crate::webidl::WebIdlSequenceKeys>>,
   /// Phase-specific state for the libuv-style event loop.
   pub event_loop_phases: RefCell<EventLoopPhases>,
   /// Pointer to the `UvLoopInner` for the libuv compat layer.
@@ -190,6 +203,7 @@ impl ContextState {
       run_immediate_callbacks_cb: Default::default(),
       js_wasm_streaming_cb: Default::default(),
       wasm_instance_fn: Default::default(),
+      wasm_instances_map: Default::default(),
       activity_traces: Default::default(),
       op_ctxs,
       op_method_decls,
@@ -205,6 +219,7 @@ impl ContextState {
       unrefed_ops,
       external_ops_tracker,
       ext_import_meta_proto: Default::default(),
+      webidl_sequence_keys: Default::default(),
       event_loop_phases: Default::default(),
       uv_loop_inner: Cell::new(None),
       uv_loop_ptr: Cell::new(None),

@@ -500,6 +500,127 @@ pub fn op_node_process_setgroups(
   Err(ProcessError::NotSupported)
 }
 
+/// Fills `out` with the 16 fields of `process.resourceUsage()`, in the same
+/// order as the returned object:
+///
+/// 0 userCPUTime, 1 systemCPUTime, 2 maxRSS, 3 sharedMemorySize,
+/// 4 unsharedDataSize, 5 unsharedStackSize, 6 minorPageFault, 7 majorPageFault,
+/// 8 swappedOut, 9 fsRead, 10 fsWrite, 11 ipcSent, 12 ipcReceived,
+/// 13 signalsCount, 14 voluntaryContextSwitches, 15 involuntaryContextSwitches.
+///
+/// CPU times are in microseconds. This mirrors libuv's `uv_getrusage`, which
+/// Node.js uses: on Unix the values come straight from `getrusage(2)`, and on
+/// platforms that don't provide a field it is reported as `0`.
+#[op2(fast)]
+pub fn op_node_process_resource_usage(#[buffer] out: &mut [f64]) {
+  if out.len() < 16 {
+    return;
+  }
+  let usage = get_resource_usage();
+  out[..16].copy_from_slice(&usage);
+}
+
+#[cfg(unix)]
+fn get_resource_usage() -> [f64; 16] {
+  let mut rusage = std::mem::MaybeUninit::uninit();
+
+  // SAFETY: libc call, rusage is initialized on success.
+  let ret = unsafe { libc::getrusage(libc::RUSAGE_SELF, rusage.as_mut_ptr()) };
+  if ret != 0 {
+    return [0.0; 16];
+  }
+
+  // SAFETY: getrusage returned 0, so rusage is initialized.
+  let r = unsafe { rusage.assume_init() };
+
+  let micros = |tv: libc::timeval| -> f64 {
+    (tv.tv_sec as f64) * 1_000_000.0 + (tv.tv_usec as f64)
+  };
+
+  [
+    micros(r.ru_utime),   // userCPUTime
+    micros(r.ru_stime),   // systemCPUTime
+    r.ru_maxrss as f64,   // maxRSS
+    r.ru_ixrss as f64,    // sharedMemorySize
+    r.ru_idrss as f64,    // unsharedDataSize
+    r.ru_isrss as f64,    // unsharedStackSize
+    r.ru_minflt as f64,   // minorPageFault
+    r.ru_majflt as f64,   // majorPageFault
+    r.ru_nswap as f64,    // swappedOut
+    r.ru_inblock as f64,  // fsRead
+    r.ru_oublock as f64,  // fsWrite
+    r.ru_msgsnd as f64,   // ipcSent
+    r.ru_msgrcv as f64,   // ipcReceived
+    r.ru_nsignals as f64, // signalsCount
+    r.ru_nvcsw as f64,    // voluntaryContextSwitches
+    r.ru_nivcsw as f64,   // involuntaryContextSwitches
+  ]
+}
+
+#[cfg(windows)]
+fn get_resource_usage() -> [f64; 16] {
+  use windows_sys::Win32::Foundation::FILETIME;
+  use windows_sys::Win32::System::ProcessStatus::GetProcessMemoryInfo;
+  use windows_sys::Win32::System::ProcessStatus::PROCESS_MEMORY_COUNTERS;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+  use windows_sys::Win32::System::Threading::GetProcessTimes;
+
+  let mut usage = [0.0f64; 16];
+
+  // CPU times via GetProcessTimes. FILETIME is in 100-nanosecond intervals.
+  let filetime_micros = |ft: FILETIME| -> f64 {
+    let ticks = ((ft.dwHighDateTime as u64) << 32) | (ft.dwLowDateTime as u64);
+    (ticks as f64) / 10.0
+  };
+
+  let mut creation_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+  let mut exit_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+  let mut kernel_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+  let mut user_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+
+  // SAFETY: Win32 call with valid out-pointers.
+  let ret = unsafe {
+    GetProcessTimes(
+      GetCurrentProcess(),
+      creation_time.as_mut_ptr(),
+      exit_time.as_mut_ptr(),
+      kernel_time.as_mut_ptr(),
+      user_time.as_mut_ptr(),
+    )
+  };
+  if ret != 0 {
+    // SAFETY: GetProcessTimes succeeded, both are initialized.
+    unsafe {
+      usage[0] = filetime_micros(user_time.assume_init()); // userCPUTime
+      usage[1] = filetime_micros(kernel_time.assume_init()); // systemCPUTime
+    }
+  }
+
+  // Memory counters via GetProcessMemoryInfo, matching libuv's uv_getrusage.
+  let mut counters = std::mem::MaybeUninit::<PROCESS_MEMORY_COUNTERS>::uninit();
+  // SAFETY: Win32 call with a properly sized PROCESS_MEMORY_COUNTERS buffer.
+  let mem_ret = unsafe {
+    GetProcessMemoryInfo(
+      GetCurrentProcess(),
+      counters.as_mut_ptr(),
+      std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+    )
+  };
+  if mem_ret != 0 {
+    // SAFETY: GetProcessMemoryInfo succeeded, so counters is initialized.
+    let counters = unsafe { counters.assume_init() };
+    usage[2] = (counters.PeakWorkingSetSize / 1024) as f64; // maxRSS (KB)
+    usage[7] = counters.PageFaultCount as f64; // majorPageFault
+  }
+
+  usage
+}
+
+#[cfg(not(any(unix, windows)))]
+fn get_resource_usage() -> [f64; 16] {
+  [0.0; 16]
+}
+
 /// Returns the cgroup-constrained memory limit, or 0 if unconstrained.
 /// This matches Node.js `process.constrainedMemory()` semantics.
 #[op2(fast)]

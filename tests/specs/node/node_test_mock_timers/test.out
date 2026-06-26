@@ -1,4 +1,4 @@
-running 31 tests from ./test.js
+running 32 tests from ./test.js
 reproducer from issue 32987 does not throw ... ok ([WILDLINE])
 setTimeout fires on tick ... ok ([WILDLINE])
 setInterval fires repeatedly on tick ... ok ([WILDLINE])
@@ -18,6 +18,7 @@ Date with `now` as Date instance ... ok ([WILDLINE])
 Date.parse and Date.UTC still work when mocked ... ok ([WILDLINE])
 tick advances Date when both are mocked ... ok ([WILDLINE])
 setTime sets clock without firing timers ... ok ([WILDLINE])
+AbortSignal.timeout aborts on tick ... ok ([WILDLINE])
 reset restores original globals ... ok ([WILDLINE])
 Symbol.dispose resets original globals ... ok ([WILDLINE])
 tick sets the clock to each timer's scheduled time ... ok ([WILDLINE])
@@ -31,5 +32,5 @@ throws ERR_INVALID_STATE when not enabled ... ok ([WILDLINE])
 throws ERR_INVALID_STATE when enabling twice ... ok ([WILDLINE])
 throws on invalid api name ... ok ([WILDLINE])
 
-ok | 31 passed | 0 failed ([WILDLINE])
+ok | 32 passed | 0 failed ([WILDLINE])
 

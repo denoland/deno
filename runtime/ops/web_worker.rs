@@ -58,7 +58,6 @@ fn op_worker_post_message_raw(
 }
 
 #[op2(async(lazy), fast)]
-#[serde]
 async fn op_worker_recv_message(
   state: Rc<RefCell<OpState>>,
 ) -> Result<Option<JsMessageData>, MessagePortError> {
@@ -74,7 +73,6 @@ async fn op_worker_recv_message(
 }
 
 #[op2]
-#[serde]
 fn op_worker_recv_message_sync(
   state: &mut OpState,
 ) -> Result<Option<JsMessageData>, MessagePortError> {

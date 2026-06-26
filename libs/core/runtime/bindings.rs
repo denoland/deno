@@ -1384,9 +1384,19 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let state = JsRealm::state_from_scope(scope);
 
   let module_global = v8::Global::new(scope, module);
-  let name = module_map
-    .get_name_by_module(&module_global)
-    .expect("Module not found");
+  let Some(name) = module_map.get_name_by_module(&module_global) else {
+    // The module is not tracked by deno_core's module map. This is the
+    // happy path for `node:vm` `SourceTextModule`, whose v8::Module is
+    // created directly by the `node:vm` op and never registered. Delegate
+    // to the external hook (set by `node:vm`) if one is registered; if
+    // not, just leave `import.meta` empty rather than panicking — V8 will
+    // hand the empty object to user code.
+    let runtime_state = JsRuntime::state_from(scope);
+    if let Some(cb) = runtime_state.external_module_import_meta_cb.get() {
+      cb(scope, module, meta);
+    }
+    return;
+  };
   let module_type = module_map
     .get_type_by_module(&module_global)
     .expect("Module not found");
@@ -1422,6 +1432,24 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
         scope.throw_exception(exception);
         return;
       }
+    }
+    // Registry of instance exports keyed by module namespace, used so that
+    // Wasm-to-Wasm global imports link against the original
+    // `WebAssembly.Global` object rather than the unwrapped snapshot value.
+    //
+    // Exposed only on `.wasm` modules' `import.meta` (this branch is gated on
+    // `ModuleType::Wasm`), since only the generated `.wasm` source reads it.
+    // The map itself is a per-realm `WeakMap` shared across all of them; Node
+    // keeps the equivalent registry in its translator closure rather than on
+    // `import.meta`, but our synthetic source reads it from `import.meta`.
+    if let Some(m) = state.wasm_instances_map.borrow().as_ref() {
+      let wasm_instances_key = WASM_INSTANCES.v8_string(scope).unwrap();
+      let wasm_instances_val = v8::Local::new(scope, m.clone());
+      meta.create_data_property(
+        scope,
+        wasm_instances_key.into(),
+        wasm_instances_val.into(),
+      );
     }
   }
 
