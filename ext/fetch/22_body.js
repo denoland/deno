@@ -18,6 +18,7 @@ const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  PromiseResolve,
   SafeWeakMap,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
@@ -57,6 +58,7 @@ const {
 } = core.loadExtScript("ext:deno_web/06_streams.js");
 
 const noop = () => {};
+const noopAsync = async () => {};
 
 /** @type {WeakMap<ReadableStream<Uint8Array>, number>} */
 const staticBodyLength = new SafeWeakMap();
@@ -122,13 +124,17 @@ class InnerBody {
         // the encode is skipped entirely. `createReadableStream` also avoids
         // the webidl UnderlyingSource conversion `new ReadableStream({...})`
         // performs.
+        // The pull and cancel algorithms must return promises (see
+        // `createReadableStream`): `readableStreamCancel` and the controller's
+        // pull machinery call `.then` on the returned value directly.
         const stream = createReadableStream(
           noop,
           (controller) => {
             controller.enqueue(chunkToU8(body));
             controller.close();
+            return PromiseResolve(undefined);
           },
-          noop,
+          noopAsync,
           0,
         );
         if (length !== null) {
