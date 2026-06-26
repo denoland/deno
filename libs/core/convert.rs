@@ -1362,6 +1362,51 @@ where
   }
 }
 
+impl<'s> FromV8<'s> for crate::JsBuffer {
+  type Error = DataError;
+
+  fn from_v8<'i>(
+    scope: &mut PinScope<'s, 'i>,
+    value: Local<'s, v8::Value>,
+  ) -> Result<Self, Self::Error> {
+    let (buf, range) =
+      if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
+        let (offset, len) = (view.byte_offset(), view.byte_length());
+        let buffer = view
+          .buffer(scope)
+          .ok_or(DataError(v8::DataError::NoData { expected: "buffer" }))?;
+        let buffer = v8::Local::new(scope, buffer);
+        (buffer, offset..offset + len)
+      } else if let Ok(b) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
+        let len = b.byte_length();
+        let b = v8::Local::new(scope, b);
+        (b, 0..len)
+      } else {
+        return Err(DataError(v8::DataError::BadType {
+          actual: value.type_repr(),
+          expected: "ArrayBufferView or ArrayBuffer",
+        }));
+      };
+    let store = buf.get_backing_store();
+    if store.is_resizable_by_user_javascript() {
+      return Err(DataError(v8::DataError::BadType {
+        actual: "ResizableBackingStore",
+        expected: "non-resizable ArrayBuffer",
+      }));
+    }
+    if store.is_shared() {
+      return Err(DataError(v8::DataError::BadType {
+        actual: "SharedArrayBuffer",
+        expected: "ArrayBuffer",
+      }));
+    }
+    // SAFETY: range came from the ArrayBufferView/ArrayBuffer bounds
+    Ok(serde_v8::JsBuffer::from(unsafe {
+      serde_v8::V8Slice::<u8>::from_parts(store, range)
+    }))
+  }
+}
+
 #[cfg(all(test, not(miri)))]
 mod tests {
   use std::collections::HashMap;

@@ -23,8 +23,8 @@ use deno_core::BufView;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::convert::FromV8;
 use deno_core::futures::task::AtomicWaker;
-use deno_core::serde_v8;
 use deno_core::v8;
 use deno_error::JsErrorBox;
 use http::request::Parts;
@@ -432,7 +432,7 @@ impl ServerCallback {
         v8_string_to_utf8_bytes(scope, text),
       )))
     } else {
-      let buffer = serde_v8::from_v8::<JsBuffer>(scope, body_value).ok()?;
+      let buffer = JsBuffer::from_v8(scope, body_value).ok()?;
       Some(DirectResponseBody::Bytes(BufView::from(buffer)))
     }
   }

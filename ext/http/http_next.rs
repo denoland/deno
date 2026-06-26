@@ -2957,9 +2957,7 @@ fn set_static_response_body_from_v8<'s>(
     } else {
       set_static_empty_response(http, status);
     }
-  } else if let Ok(buffer) =
-    deno_core::serde_v8::from_v8::<JsBuffer>(scope, body)
-  {
+  } else if let Ok(buffer) = JsBuffer::from_v8(scope, body) {
     if !buffer.is_empty() {
       set_static_response_bufview(http, buffer, status);
     } else {
@@ -2986,7 +2984,7 @@ fn direct_response_body_from_v8<'s>(
       )))
     }
   } else {
-    let buffer = deno_core::serde_v8::from_v8::<JsBuffer>(scope, body).ok()?;
+    let buffer = JsBuffer::from_v8(scope, body).ok()?;
     if buffer.is_empty() {
       Some(DirectResponseBody::Empty)
     } else {
