@@ -1733,7 +1733,9 @@ mod tests {
       buf: &[u8],
     ) -> Poll<io::Result<usize>> {
       self.calls += 1;
-      if self.pending_every != 0 && self.calls % self.pending_every == 0 {
+      if self.pending_every != 0
+        && self.calls.is_multiple_of(self.pending_every)
+      {
         // Wake immediately so the executor re-polls: this is what forces the
         // flush to resume from `write_flushed` (and the chunk writer to be
         // re-polled with `buffered` already set) without re-sending bytes.
