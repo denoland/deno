@@ -1724,6 +1724,62 @@ mod tests {
   }
 
   #[test]
+  fn sequence_caches_next_method() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let val = runtime
+      .execute_script(
+        "",
+        r#"
+        globalThis.nextReads = 0;
+        ({
+          [Symbol.iterator]() {
+            let index = 0;
+            return {
+              get next() {
+                // Regression guard: old behavior re-read `next` on each loop.
+                if (++globalThis.nextReads > 1) {
+                  throw new Error("next getter called twice");
+                }
+                return () => {
+                  index++;
+                  if (index === 1) {
+                    return { done: false, value: 1 };
+                  }
+                  if (index === 2) {
+                    return { done: false, value: 2 };
+                  }
+                  return { done: true, value: undefined };
+                };
+              },
+            };
+          },
+        })
+        "#,
+      )
+      .unwrap();
+
+    let converted = {
+      deno_core::scope!(scope, runtime);
+      let val = Local::new(scope, val);
+      Vec::<u8>::convert(
+        scope,
+        val,
+        "prefix".into(),
+        (|| "context".into()).into(),
+        &Default::default(),
+      )
+      .unwrap()
+    };
+    assert_eq!(converted, vec![1, 2]);
+
+    let next_reads =
+      runtime.execute_script("", "globalThis.nextReads").unwrap();
+    deno_core::scope!(scope, runtime);
+    let next_reads = Local::new(scope, next_reads);
+    assert_eq!(next_reads.uint32_value(scope).unwrap(), 1);
+  }
+
+  #[test]
   fn constrained_sequence_one_of() {
     let mut runtime = JsRuntime::new(Default::default());
     deno_core::scope!(scope, runtime);
