@@ -219,6 +219,27 @@ function appendHeaderToList(list, name, value) {
 // Used by constructors to initialize a fresh list. This intentionally appends
 // directly to `list`; callers must not use it to mutate guarded Headers.
 function fillHeaderList(list, object, prefix, context, opts) {
+  // Fast path: initializing from an existing `Headers` object, e.g.
+  // `new Response(body, otherResponse)` / `new Request(input, { headers })` /
+  // `new Headers(headers)`. This is extremely common (frameworks reconstruct
+  // responses just to tweak a header). The source's entries are already
+  // validated byte strings, so copy them directly and skip the expensive
+  // webidl `sequence<sequence<ByteString>>` conversion plus per-entry
+  // revalidation. `_iterableHeaders` yields the same combined+sorted entries
+  // the slow path would produce, so the result is identical.
+  if (ObjectPrototypeIsPrototypeOf(HeadersPrototype, object)) {
+    // `_iterableHeaders` yields already-combined, sorted, lowercased and
+    // validated entries (one per name, except set-cookie), which is exactly the
+    // shape `fillHeaderList` builds for a fresh list -- so push them straight in
+    // and skip both the webidl conversion and `appendHeaderToList`'s per-entry
+    // revalidation and casing dedup.
+    const entries = object[_iterableHeaders];
+    for (let i = 0; i < entries.length; ++i) {
+      const entry = entries[i];
+      ArrayPrototypePush(list, [entry[0], entry[1]]);
+    }
+    return;
+  }
   if (ArrayIsArray(object)) {
     for (let i = 0; i < object.length; ++i) {
       const header = webidlConverterSequenceByteString(
