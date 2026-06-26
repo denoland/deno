@@ -70,6 +70,7 @@ use self::util::env::resolve_cwd;
 use crate::args::CompletionsFlags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::FlagsExt;
 use crate::args::flags_from_vec_with_initial_cwd;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
@@ -227,6 +228,9 @@ async fn run_subcommand(
     DenoSubcommand::Info(info_flags) => spawn_subcommand(async {
       tools::info::info(Arc::new(flags), info_flags).await
     }),
+    DenoSubcommand::List(list_flags) => spawn_subcommand(async {
+      tools::pm::list(Arc::new(flags), list_flags).await
+    }),
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(Arc::new(flags), install_flags).await
     }),
@@ -291,6 +295,8 @@ async fn run_subcommand(
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
+          if_present: false,
         };
         let mut flags = flags;
         flags.subcommand = DenoSubcommand::Task(task_flags.clone());
@@ -403,6 +409,8 @@ async fn run_subcommand(
                   filter: None,
                   eval: false,
                   no_prefix: false,
+                  concurrency: None,
+                  if_present: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
                 let result = tools::task::execute_script(
@@ -526,7 +534,7 @@ async fn run_subcommand(
         },
       );
 
-      match stream.write_all(help_flags.help.ansi().to_string().as_bytes()) {
+      match stream.write_all(help_flags.help.as_bytes()) {
         Ok(()) => Ok(()),
         Err(e) => match e.kind() {
           std::io::ErrorKind::BrokenPipe => Ok(()),
@@ -663,7 +671,7 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 }
 
 fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
-  let error_string = match js_error_downcast_ref(&error) {
+  let mut error_string = match js_error_downcast_ref(&error) {
     Some(e) => {
       let initial_cwd = initial_cwd
         .and_then(|cwd| deno_path_util::url_from_directory_path(cwd).ok());
@@ -671,6 +679,17 @@ fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
     }
     None => format!("{error:?}"),
   };
+
+  // If this looks like a workspace/npm resolution failure and a
+  // pnpm-workspace.yaml is nearby, convert it into the equivalent deno.json
+  // fields and tell the user to run the command again, rather than leaving them
+  // with the misleading "run deno install" hint baked into the error.
+  if let Some(hint) = util::pnpm_workspace::maybe_auto_migrate_pnpm_workspace(
+    &error_string,
+    initial_cwd,
+  ) {
+    error_string.push_str(&hint);
+  }
 
   exit_with_message(&error_string, 1);
 }

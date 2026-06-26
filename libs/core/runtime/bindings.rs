@@ -606,22 +606,16 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 /// `FunctionTemplate::build` (no `Managed`) and survived the snapshot.
 pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  context: v8::Local<'s, v8::Context>,
+  // `Deno.core.ops` and `Deno.core.setUpAsyncStub`, passed in directly because
+  // `Deno.core` is scrubbed from the public `Deno` after bootstrap and the
+  // deferred caller can no longer read them from the global (see
+  // `snapshotted_fast_op_refs` / `ensure_fast_ops_upgraded`).
+  deno_core_ops_obj: v8::Local<'s, v8::Object>,
+  set_up_async_stub_fn: v8::Local<'s, v8::Function>,
   op_ctxs: &[OpCtx],
   op_method_decls: &[OpMethodDecl],
   methods_ctx_offset: usize,
 ) {
-  let global = context.global(scope);
-  let deno_obj = get(scope, global, DENO, "Deno");
-  let deno_core_obj = get(scope, deno_obj, CORE, "Deno.core");
-  let deno_core_ops_obj: v8::Local<v8::Object> =
-    get(scope, deno_core_obj, OPS, "Deno.core.ops");
-  let set_up_async_stub_fn: v8::Local<v8::Function> = get(
-    scope,
-    deno_core_obj,
-    SET_UP_ASYNC_STUB,
-    "Deno.core.setUpAsyncStub",
-  );
   let prototype_key = v8::String::new(scope, "prototype").unwrap();
   let undefined = v8::undefined(scope);
 
@@ -704,6 +698,58 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
 
     deno_core_ops_obj.set(scope, key.into(), op_fn.into());
   }
+}
+
+/// Run the deferred fast-call op upgrade exactly once, lazily. Called from the
+/// residual ext-module loaders (`op_lazy_load_esm` / `op_load_ext_script`)
+/// before the loaded module's body captures its op references, so runtime
+/// modules see the fast-call overloads. Programs that never load a residual
+/// module (e.g. `deno run empty.js`) never trigger it, saving the ~0.9ms pass.
+/// No-op during snapshot build / fresh-bind (flag pre-set in `new_inner`).
+/// Read `Deno.core.ops` + `Deno.core.setUpAsyncStub` from the global. Valid
+/// only while `Deno.core` is still present (during `new_inner`, before the
+/// bootstrap scrubs `Deno.core` from the public `Deno`). The deferred upgrade
+/// stashes the result (`ContextState::deferred_fast_ops`) for later use.
+pub(crate) fn snapshotted_fast_op_refs<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  context: v8::Local<'s, v8::Context>,
+) -> (v8::Local<'s, v8::Object>, v8::Local<'s, v8::Function>) {
+  let global = context.global(scope);
+  let deno_obj = get(scope, global, DENO, "Deno");
+  let deno_core_obj = get(scope, deno_obj, CORE, "Deno.core");
+  let deno_core_ops_obj: v8::Local<v8::Object> =
+    get(scope, deno_core_obj, OPS, "Deno.core.ops");
+  let set_up_async_stub_fn: v8::Local<v8::Function> = get(
+    scope,
+    deno_core_obj,
+    SET_UP_ASYNC_STUB,
+    "Deno.core.setUpAsyncStub",
+  );
+  (deno_core_ops_obj, set_up_async_stub_fn)
+}
+
+pub(crate) fn ensure_fast_ops_upgraded(scope: &mut v8::PinScope) {
+  let context_state = JsRealm::state_from_scope(scope);
+  if context_state.fast_ops_upgraded.get() {
+    return;
+  }
+  // Set the flag BEFORE running the upgrade so any reentrant residual load
+  // during the upgrade (which calls back into JS via setUpAsyncStub) no-ops.
+  context_state.fast_ops_upgraded.set(true);
+  let refs = context_state.deferred_fast_ops.borrow().clone();
+  let Some((ops_global, stub_global)) = refs else {
+    return;
+  };
+  let deno_core_ops_obj = v8::Local::new(scope, &ops_global);
+  let set_up_async_stub_fn = v8::Local::new(scope, &stub_global);
+  upgrade_snapshotted_ops_with_fast_calls(
+    scope,
+    deno_core_ops_obj,
+    set_up_async_stub_fn,
+    &context_state.op_ctxs,
+    &context_state.op_method_decls,
+    context_state.methods_ctx_offset,
+  );
 }
 
 fn method_needs_fast_call_upgrade(op_ctx: &OpCtx) -> bool {
@@ -1338,9 +1384,19 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let state = JsRealm::state_from_scope(scope);
 
   let module_global = v8::Global::new(scope, module);
-  let name = module_map
-    .get_name_by_module(&module_global)
-    .expect("Module not found");
+  let Some(name) = module_map.get_name_by_module(&module_global) else {
+    // The module is not tracked by deno_core's module map. This is the
+    // happy path for `node:vm` `SourceTextModule`, whose v8::Module is
+    // created directly by the `node:vm` op and never registered. Delegate
+    // to the external hook (set by `node:vm`) if one is registered; if
+    // not, just leave `import.meta` empty rather than panicking — V8 will
+    // hand the empty object to user code.
+    let runtime_state = JsRuntime::state_from(scope);
+    if let Some(cb) = runtime_state.external_module_import_meta_cb.get() {
+      cb(scope, module, meta);
+    }
+    return;
+  };
   let module_type = module_map
     .get_type_by_module(&module_global)
     .expect("Module not found");
@@ -1376,6 +1432,24 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
         scope.throw_exception(exception);
         return;
       }
+    }
+    // Registry of instance exports keyed by module namespace, used so that
+    // Wasm-to-Wasm global imports link against the original
+    // `WebAssembly.Global` object rather than the unwrapped snapshot value.
+    //
+    // Exposed only on `.wasm` modules' `import.meta` (this branch is gated on
+    // `ModuleType::Wasm`), since only the generated `.wasm` source reads it.
+    // The map itself is a per-realm `WeakMap` shared across all of them; Node
+    // keeps the equivalent registry in its translator closure rather than on
+    // `import.meta`, but our synthetic source reads it from `import.meta`.
+    if let Some(m) = state.wasm_instances_map.borrow().as_ref() {
+      let wasm_instances_key = WASM_INSTANCES.v8_string(scope).unwrap();
+      let wasm_instances_val = v8::Local::new(scope, m.clone());
+      meta.create_data_property(
+        scope,
+        wasm_instances_key.into(),
+        wasm_instances_val.into(),
+      );
     }
   }
 

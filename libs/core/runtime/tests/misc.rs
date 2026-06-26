@@ -2063,3 +2063,39 @@ async fn test_nexttick_before_queue_microtask() {
     .unwrap();
   runtime.run_event_loop(Default::default()).await.unwrap();
 }
+
+// Test that foreground tasks are delivered even when the isolate is
+// registered without a tokio handle.
+#[test]
+fn foreground_tasks_delivered_without_tokio_handle() {
+  let tokio_runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_all()
+    .build()
+    .unwrap();
+
+  // Created outside `block_on` so there is no tokio runtime context and
+  // the isolate is registered with `handle: None`.
+  let mut runtime = JsRuntime::new(Default::default());
+
+  tokio_runtime.block_on(async {
+    let promise = runtime
+      .execute_script(
+        "foreground_task_test.js",
+        r#"
+      (async () => {
+        const wasmCode = new Uint8Array([
+          0,   97,  115, 109, 1,   0,   0,   0,   1,  4,   1,
+          96,  0,   0,   3,   2,   1,   0,   7,   17, 1,   13,
+          105, 110, 102, 105, 110, 105, 116, 101, 95, 108, 111,
+          111, 112, 0,   0,   10,  9,   1,   7,   0,  3,   64,
+          12,  0,   11,  11,
+        ]);
+        await WebAssembly.compile(wasmCode);
+      })()
+    "#,
+      )
+      .unwrap();
+    #[allow(deprecated, reason = "test code")]
+    runtime.resolve_value(promise).await.unwrap();
+  });
+}

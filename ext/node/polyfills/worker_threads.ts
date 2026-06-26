@@ -78,7 +78,6 @@ const lazyModule = core.createLazyLoader("node:module");
 // it's used pervasively throughout this module. `Readable`/`Writable`,
 // `fileURLToPath`, and `createRequire` stay deferred via their `lazy*`
 // loaders.
-const process = lazyProcess().default;
 
 const {
   ArrayIsArray,
@@ -288,6 +287,15 @@ class NodeWorker extends EventEmitter {
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
 
+    // Ensure the creating thread is wired up to send/receive cross-thread
+    // `postMessageToThread` messages. On the main thread under the deferred
+    // node bootstrap `__initWorkerThreads` (which normally does this) never
+    // runs, so without this the main thread can neither be addressed by
+    // `postMessageToThread(0, ...)` nor have its `workerMessage` listeners
+    // counted. Idempotent, so the eager paths that already ran it are a
+    // no-op here.
+    setupCrossThreadMessaging();
+
     if (options?.execArgv) {
       validateArray(options.execArgv, "options.execArgv");
       if (options.execArgv.length > 0) {
@@ -306,7 +314,7 @@ class NodeWorker extends EventEmitter {
           if (workerSilentlyIgnoredFlags.has(flagName)) {
             continue;
           }
-          if (!process.allowedNodeEnvironmentFlags.has(flag)) {
+          if (!lazyProcess().default.allowedNodeEnvironmentFlags.has(flag)) {
             invalidFlags[invalidFlags.length] = flag;
             continue;
           }
@@ -340,7 +348,7 @@ class NodeWorker extends EventEmitter {
               continue;
             }
             if (
-              !process.allowedNodeEnvironmentFlags.has(part) ||
+              !lazyProcess().default.allowedNodeEnvironmentFlags.has(part) ||
               workerDisallowedFlags.has(partName)
             ) {
               hasInvalid = true;
@@ -397,7 +405,7 @@ class NodeWorker extends EventEmitter {
     // matching Node.js behavior.
 
     // Handle the `env` option following Node.js semantics:
-    // - undefined/null: snapshot current process.env (isolated copy)
+    // - undefined/null: snapshot current lazyProcess().default.env (isolated copy)
     // - SHARE_ENV: worker shares the parent's OS environment
     // - object: use that object, coercing values to strings
     // - anything else: throw ERR_INVALID_ARG_TYPE
@@ -413,7 +421,7 @@ class NodeWorker extends EventEmitter {
         );
       }
       // Snapshot the provided env, coercing values to strings like Node.js.
-      // This also handles passing `process.env` (a Proxy in Deno) by
+      // This also handles passing `lazyProcess().default.env` (a Proxy in Deno) by
       // producing a plain object that can be structured-cloned.
       const envObj = {};
       const keys = ObjectKeys(envOpt);
@@ -422,16 +430,16 @@ class NodeWorker extends EventEmitter {
       }
       env_ = envObj;
     } else if (envOpt !== SHARE_ENV) {
-      // Default: snapshot current process.env so the worker gets an
+      // Default: snapshot current lazyProcess().default.env so the worker gets an
       // isolated copy, not a live reference to the OS environment.
-      // Wrap in try/catch because accessing process.env requires
+      // Wrap in try/catch because accessing lazyProcess().default.env requires
       // --allow-env permission in Deno. If unavailable, fall back to
       // shared OS env (env_ stays undefined).
       try {
         const envObj = {};
-        const keys = ObjectKeys(process.env);
+        const keys = ObjectKeys(lazyProcess().default.env);
         for (let i = 0; i < keys.length; i++) {
-          envObj[keys[i]] = process.env[keys[i]];
+          envObj[keys[i]] = lazyProcess().default.env[keys[i]];
         }
         env_ = envObj;
       } catch {
@@ -439,7 +447,7 @@ class NodeWorker extends EventEmitter {
       }
     }
     // When envOpt === SHARE_ENV, env_ stays undefined and the worker
-    // will use the default process.env backed by Deno.env (shared OS env).
+    // will use the default lazyProcess().default.env backed by Deno.env (shared OS env).
 
     // Handle the `argv` option: must be an array or undefined.
     // Values are coerced to strings like Node.js does.
@@ -489,10 +497,10 @@ class NodeWorker extends EventEmitter {
       // See: https://github.com/denoland/deno/issues/26739
       sourceCode = `var __filename = ${
         // deno-lint-ignore prefer-primordials
-        JSON.stringify(process.cwd() + "/[worker eval]")};\n` +
+        JSON.stringify(lazyProcess().default.cwd() + "/[worker eval]")};\n` +
         `var __dirname = ${
           // deno-lint-ignore prefer-primordials
-          JSON.stringify(process.cwd())};\n` +
+          JSON.stringify(lazyProcess().default.cwd())};\n` +
         `var module = { exports: {} };\n` +
         `var exports = module.exports;\n` +
         code;
@@ -565,7 +573,9 @@ class NodeWorker extends EventEmitter {
 
     this.#pollControl();
     this.#messageLoopPromise = this.#pollMessages();
-    process.nextTick(() => process.emit("worker", this));
+    lazyProcess().default.nextTick(() =>
+      lazyProcess().default.emit("worker", this)
+    );
 
     if (workerThreadsChannel.hasSubscribers) {
       workerThreadsChannel.publish({ worker: this });
@@ -740,13 +750,22 @@ class NodeWorker extends EventEmitter {
         return;
       }
       if (!this.#dispatchWorkerThreadMessage(data)) return;
-      // Sync drain: process a limited batch of already-queued messages
-      // without going through the async op machinery. The batch limit
-      // prevents starvation of the event loop when message handlers
-      // synchronously post new messages (e.g. ping-pong patterns).
+      // Drain messages already queued on the host side instead of taking the
+      // async op + Promise path for each. The whole burst is processed within
+      // this event-loop turn; the batch limit prevents starving the event loop
+      // under a sustained flood.
       for (let i = 0; i < 1000 && this.#status !== "TERMINATED"; i++) {
         const syncData = op_host_recv_message_sync(this.#id);
         if (syncData === null) break;
+        // Each message dispatch is its own task. Yield a microtask before
+        // delivering this already-dequeued message so a handler that re-armed
+        // itself in a microtask after the previous dispatch (e.g. an
+        // `events.once` listener that re-attaches in a `.then`) is installed
+        // first -- otherwise the message reaches the stale handler and is
+        // lost. A synchronous checkpoint can't help: V8 won't run microtasks
+        // reentrantly while we are already inside one.
+        await new Promise((resolve) => queueMicrotask(() => resolve()));
+        if (this.#status === "TERMINATED") return;
         if (!this.#dispatchWorkerThreadMessage(syncData)) return;
       }
     }
@@ -1098,7 +1117,7 @@ internals.__initWorkerThreads = (
       threadName = metadata.name ?? "";
       const env = metadata.env;
       if (env) {
-        process.env = env;
+        lazyProcess().default.env = env;
       }
 
       // Get resolved resource limits from the Rust side (includes V8
@@ -1110,8 +1129,8 @@ internals.__initWorkerThreads = (
         resourceLimits = {};
       }
 
-      // Set process.argv for worker threads.
-      // In Node.js, worker process.argv is [execPath, scriptPath, ...argv].
+      // Set lazyProcess().default.argv for worker threads.
+      // In Node.js, worker lazyProcess().default.argv is [execPath, scriptPath, ...argv].
       if (isWorkerThread) {
         let scriptPath;
         if (metadata.isEval) {
@@ -1124,31 +1143,34 @@ internals.__initWorkerThreads = (
         } else {
           scriptPath = moduleSpecifier ?? "";
         }
-        process.argv = [process.execPath, scriptPath];
+        lazyProcess().default.argv = [
+          lazyProcess().default.execPath,
+          scriptPath,
+        ];
         if (metadata.argv) {
           for (let i = 0; i < metadata.argv.length; i++) {
-            process.argv[i + 2] = metadata.argv[i];
+            lazyProcess().default.argv[i + 2] = metadata.argv[i];
           }
         }
 
-        // Set process.execArgv for worker threads.
+        // Set lazyProcess().default.execArgv for worker threads.
         if (metadata.execArgv) {
-          process.execArgv = metadata.execArgv;
+          lazyProcess().default.execArgv = metadata.execArgv;
           core.loadExtScript(
             "ext:deno_node/internal_binding/node_options.ts",
           ).setOptionSourceExecArgv(metadata.execArgv);
           for (let i = 0; i < metadata.execArgv.length; i++) {
             if (metadata.execArgv[i] === "--trace-warnings") {
-              process.traceProcessWarnings = true;
+              lazyProcess().default.traceProcessWarnings = true;
             }
           }
         }
 
-        // Replace process.stdin with a Readable that receives
+        // Replace lazyProcess().default.stdin with a Readable that receives
         // data from the parent via WORKER_STDIN messages.
         if (metadata.hasStdin) {
           const workerStdin = new (lazyStream().Readable)({ read() {} });
-          process.stdin = workerStdin;
+          lazyProcess().default.stdin = workerStdin;
 
           // Register an early listener to intercept stdin messages
           // before any user-registered handlers. Remove the listener
@@ -1172,17 +1194,21 @@ internals.__initWorkerThreads = (
         // Forward stdout writes to the parent so worker.stdout
         // is readable from the host side.
         const origStdoutWrite = FunctionPrototypeBind(
-          process.stdout.write,
-          process.stdout,
+          lazyProcess().default.stdout.write,
+          lazyProcess().default.stdout,
         );
-        process.stdout.write = function (chunk, encoding, callback) {
+        lazyProcess().default.stdout.write = function (
+          chunk,
+          encoding,
+          callback,
+        ) {
           parentPort.postMessage({
             type: "WORKER_STDOUT",
             data: chunk,
           });
           return FunctionPrototypeCall(
             origStdoutWrite,
-            process.stdout,
+            lazyProcess().default.stdout,
             chunk,
             encoding,
             callback,
@@ -1192,17 +1218,21 @@ internals.__initWorkerThreads = (
         // Forward stderr writes to the parent so worker.stderr
         // is readable from the host side.
         const origStderrWrite = FunctionPrototypeBind(
-          process.stderr.write,
-          process.stderr,
+          lazyProcess().default.stderr.write,
+          lazyProcess().default.stderr,
         );
-        process.stderr.write = function (chunk, encoding, callback) {
+        lazyProcess().default.stderr.write = function (
+          chunk,
+          encoding,
+          callback,
+        ) {
           parentPort.postMessage({
             type: "WORKER_STDERR",
             data: chunk,
           });
           return FunctionPrototypeCall(
             origStderrWrite,
-            process.stderr,
+            lazyProcess().default.stderr,
             chunk,
             encoding,
             callback,
@@ -1390,6 +1420,7 @@ let threadMessageRid: number | undefined;
 let workerMessageListenerCount = 0;
 let nextThreadMessageId = 1;
 let crossThreadSetUp = false;
+let crossThreadMessagingSetUp = false;
 const pendingThreadMessages = new SafeMap<
   number,
   {
@@ -1478,7 +1509,11 @@ async function pollCrossThreadMessages() {
     // on `process`, then ack with whatever the listeners produced.
     let status = kAckStatusOk;
     try {
-      process.emit("workerMessage", envelope.payload);
+      lazyProcess().default.emit(
+        "workerMessage",
+        envelope.payload,
+        envelope.sender,
+      );
     } catch {
       status = kAckStatusError;
     }
@@ -1492,12 +1527,20 @@ async function pollCrossThreadMessages() {
 // touch `postMessageToThread` don't carry an extra entry in
 // `core.resources()` (which several finalization tests assert on).
 function setupCrossThreadMessaging() {
-  workerMessageListenerCount = process.listenerCount?.("workerMessage") ?? 0;
+  // Idempotent: under the deferred node bootstrap this is invoked lazily
+  // from the `Worker` constructor on the main thread (where `initialize()`
+  // -- and thus `__initWorkerThreads` -- never auto-runs), as well as
+  // eagerly from `__initWorkerThreads` on workers and the eager main path.
+  // Installing the `newListener` hook twice would double-count listeners.
+  if (crossThreadMessagingSetUp) return;
+  crossThreadMessagingSetUp = true;
+  workerMessageListenerCount =
+    lazyProcess().default.listenerCount?.("workerMessage") ?? 0;
   if (workerMessageListenerCount > 0) {
     ensureCrossThreadMessaging();
   }
 
-  process.on("newListener", (eventName: string) => {
+  lazyProcess().default.on("newListener", (eventName: string) => {
     if (eventName === "workerMessage") {
       workerMessageListenerCount++;
       ensureCrossThreadMessaging();
@@ -1507,7 +1550,7 @@ function setupCrossThreadMessaging() {
       );
     }
   });
-  process.on("removeListener", (eventName: string) => {
+  lazyProcess().default.on("removeListener", (eventName: string) => {
     if (eventName === "workerMessage") {
       if (workerMessageListenerCount > 0) workerMessageListenerCount--;
       if (crossThreadSetUp) {
@@ -2222,7 +2265,11 @@ ObjectAssign(exportsObj, {
   // Deno has no internal Node worker threads (e.g. module loader threads),
   // so this is always false in the main thread and user-created workers.
   isInternalThread: false,
-  resourceLimits: undefined,
+  // Main-thread default ({}). `__initWorkerThreads` overwrites it (with the
+  // worker's resolved limits in a worker). Under node-defer, if that init never
+  // runs for a worker_threads-only main program, this default still satisfies
+  // Node's contract (an empty resourceLimits on the main thread).
+  resourceLimits: {},
   threadName: "",
   markAsUncloneable,
   markAsUntransferable,
@@ -2234,5 +2281,34 @@ ObjectAssign(exportsObj, {
   setEnvironmentData,
   SHARE_ENV,
 });
+
+// node-defer: under deferred bootstrap, `__initWorkerThreads` may never run on
+// the main thread (it ran from 01_require.js's `initialize`, which now only
+// fires on a require/node:module path). The global MessageChannel/MessagePort
+// alias to the Node classes is observable as soon as node:worker_threads
+// itself is imported (e.g. `import * as wt from "node:worker_threads"` and
+// then `wt.MessagePort === MessagePort`), so install it here unconditionally
+// when this module loads. The other half of __initWorkerThreads (parentPort,
+// setupCrossThreadMessaging) still runs from initialize() / the worker eager
+// bootstrap path because it depends on node:process being bootstrapped.
+try {
+  ObjectDefineProperty(globalThis, "MessageChannel", {
+    __proto__: null,
+    value: NodeMessageChannel,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+  ObjectDefineProperty(globalThis, "MessagePort", {
+    __proto__: null,
+    value: NodeMessagePort,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+} catch {
+  // globalThis may be a sandbox without writable property descriptors; ignore.
+}
+
 return exportsObj;
 })();

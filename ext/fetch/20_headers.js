@@ -3,14 +3,16 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const {
+  ArrayFrom,
   ArrayIsArray,
   ArrayPrototypePush,
   ArrayPrototypeSort,
   ArrayPrototypeSplice,
-  ObjectFromEntries,
+  ObjectDefineProperty,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
+  SafeArrayIterator,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -608,9 +610,22 @@ class Headers {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     if (ObjectPrototypeIsPrototypeOf(HeadersPrototype, this)) {
-      return `${this.constructor.name} ${
-        inspect(ObjectFromEntries(this), inspectOptions)
-      }`;
+      const headers = {};
+      for (const entry of new SafeArrayIterator(ArrayFrom(this))) {
+        const name = entry[0];
+        let value = entry[1];
+        if (ObjectHasOwn(headers, name)) {
+          value = `${headers[name]}, ${value}`;
+        }
+        ObjectDefineProperty(headers, name, {
+          __proto__: null,
+          value,
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
+      }
+      return `${this.constructor.name} ${inspect(headers, inspectOptions)}`;
     } else {
       return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
     }

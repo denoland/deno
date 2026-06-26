@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 117;
+const cacheVersion = 118;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -905,6 +905,18 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 DENO_SNAPSHOT_MINIFY_SOURCES: "1",
               },
               run: [
+                // On macOS aarch64, link through lzld so system frameworks
+                // (CoreFoundation/Foundation/Security/CoreServices/Metal/...) are
+                // dlopen'd on first use instead of loaded at launch, cutting dyld
+                // startup cost. lzld needs an absolute -fuse-ld path (Apple clang
+                // rejects relative ones), so patch it in here rather than in the
+                // committed .cargo/config.toml. See tools/lzld.
+                'if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then',
+                "  git submodule update --init tools/lzld",
+                "  make -C tools/lzld",
+                "  sed -i '' \"s#-fuse-ld=lld #-fuse-ld=$GITHUB_WORKSPACE/tools/lzld/lzld -L$GITHUB_WORKSPACE/tools/lzld -llzld_arm64 #\" .cargo/config.toml",
+                "  grep -n fuse-ld .cargo/config.toml",
+                "fi",
                 // output fs space before and after building
                 "df -h",
                 `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
@@ -921,6 +933,21 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               run: [
                 "if strings target/release/deno | grep -F -- '--no-lazy --no-lazy-eval --no-lazy-streaming'; then",
                 '  echo "release deno binary contains eager snapshot flags"',
+                "  exit 1",
+                "fi",
+              ],
+            },
+            {
+              // Eager bootstrap modules must lazy-load node:/heavy closures via
+              // core.createLazyLoader, never a static `import`. A static import
+              // pulls the module's whole transitive closure into the startup
+              // snapshot (e.g. `import "node:buffer"` dragged ~22 node internal
+              // modules / ~700 SFIs in). Keep them out.
+              name: "Check eager bootstrap does not static-import node:",
+              if: isLinux,
+              run: [
+                "if grep -rEn '^import .* from \"node:' runtime/js/; then",
+                '  echo "eager bootstrap statically imports a node: module — use core.createLazyLoader so it stays out of the startup snapshot"',
                 "  exit 1",
                 "fi",
               ],
@@ -1154,6 +1181,17 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     // shard_index > 0 jobs only run on PRs (main runs unsharded)
     const isShardZero = testMatrix.shard_index.equals(0);
     const shouldRunShard = isShardZero.or(isPr);
+    // Some test shards can finish close to the default 30m job timeout
+    // and get cancelled during harness shutdown.
+    const timeoutMinutes = ((rawBuildItem.profile === "debug" &&
+        ((rawBuildItem.os === "windows" &&
+          rawBuildItem.arch === "aarch64") ||
+          (rawBuildItem.os === "macos" &&
+            rawBuildItem.arch === "x86_64"))) ||
+        (rawBuildItem.os === "linux" &&
+          rawBuildItem.arch === "x86_64"))
+      ? 60
+      : 30;
     additionalJobs.push(job(
       jobIdForJob("test"),
       {
@@ -1161,7 +1199,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           `test ${testMatrix.test_crate} ${testMatrix.shard_label}${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
-        timeoutMinutes: 30,
+        timeoutMinutes,
         defaults,
         env,
         strategy: {

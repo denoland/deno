@@ -37,7 +37,6 @@ import {
   op_require_resolve_lookup_paths,
   op_require_stat,
   op_require_try_self,
-  op_stream_base_register_state,
 } from "ext:core/ops";
 const {
   ArrayIsArray,
@@ -235,15 +234,11 @@ const internalStreamsState =
 const internalSocketAddress = core.loadExtScript(
   "ext:deno_node/internal/socketaddress.js",
 );
-const internalNet = core.loadExtScript("ext:deno_node/internal/net.ts");
 const internalTestBinding = core.loadExtScript(
   "ext:deno_node/internal/test/binding.ts",
 );
 const internalTimers = core.loadExtScript(
   "ext:deno_node/internal/timers.mjs",
-);
-const lazyInternalTty = core.createLazyLoader(
-  "ext:deno_node/internal/tty.js",
 );
 const internalUrl = core.loadExtScript("ext:deno_node/internal/url.ts");
 const internalUtil = core.loadExtScript("ext:deno_node/internal/util.mjs");
@@ -259,28 +254,51 @@ const internalValidators = core.loadExtScript(
 const internalConsole = core.loadExtScript(
   "ext:deno_node/internal/console/constructor.mjs",
 ).default;
-// net, path, stream, tty lazified - see lazyNodeModules below.
-const lazyNet = core.createLazyLoader("node:net");
 const os = core.loadExtScript("ext:deno_node/os.ts").default;
-const lazyPathPosix = core.createLazyLoader("node:path/posix");
-const lazyPathWin32 = core.createLazyLoader("node:path/win32");
-const lazyPath = core.createLazyLoader("node:path");
-import process from "node:process";
+import pathPosix from "node:path/posix";
+import pathWin32 from "node:path/win32";
+import path from "node:path";
+const punycode = core.loadExtScript("ext:deno_node/punycode.ts").default;
+// node:process is lazy now (see lib.rs / 98_global_scope_shared.js). 01_require
+// only uses `process` inside require-time functions + the builtin map, never at
+// module-eval, so resolving it lazily keeps the node process closure out of the
+// snapshot for programs that never require()/touch process.
+let _processLazy;
+const _processMod =
+  () => (_processLazy ??= core.createLazyLoader("node:process")().default);
+const process = new Proxy({ __proto__: null }, {
+  get: (_t, p) => _processMod()[p],
+  has: (_t, p) => p in _processMod(),
+  set: (_t, p, v) => {
+    _processMod()[p] = v;
+    return true;
+  },
+});
 const readline = core.createLazyLoader("node:readline");
 const readlinePromises = core.createLazyLoader("node:readline/promises");
 const repl = core.createLazyLoader("node:repl");
 const internalRepl = core.createLazyLoader(
   "ext:deno_node/internal/repl.ts",
 );
-const lazyStream = core.createLazyLoader("node:stream");
-const streamConsumers = core.loadExtScript("ext:deno_node/stream/consumers.js");
-const lazyStreamPromises = core.createLazyLoader("node:stream/promises");
-const test = core.loadExtScript("ext:deno_node/testing.ts").default;
+// node:stream / node:net / node:tty and friends are lazy (see process.ts:
+// process.stdout/stderr/stdin are lazy getters now, so nothing forces the
+// stream/net/tty closure into the snapshot). stream/web pulls
+// ext:deno_web/14_compression.js -> 06_streams (208 KB) too.
+const stringDecoder =
+  core.loadExtScript("ext:deno_node/string_decoder.ts").default;
 const timers = core.loadExtScript("ext:deno_node/timers.ts");
+const timersPromises = core.loadExtScript(
+  "ext:deno_node/timers/promises.ts",
+);
 const tls = core.createLazyLoader("node:tls");
-const lazyTty = core.createLazyLoader("node:tty");
 const url = core.loadExtScript("ext:deno_node/url.ts");
 const util = core.loadExtScript("ext:deno_node/util.ts");
+const utilTypes = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const vm = core.loadExtScript("ext:deno_node/vm.js").default;
+// worker_threads must stay eager: it registers `internals.__initWorkerThreads`
+// / `internals.__isWorkerThread`, which the node process bootstrap calls
+// (`__initWorkerThreads` at startup). It also statically imports node:vm, so
+// vm stays in the snapshot regardless.
 const workerThreads = core.loadExtScript(
   "ext:deno_node/worker_threads.ts",
 );
@@ -353,6 +371,30 @@ const lazyNodeModules = {
   "internal/child_process": () =>
     core.loadExtScript("ext:deno_node/internal/child_process.ts").default,
   "stream/web": () => core.loadExtScript("ext:deno_node/stream/web.js"),
+  "internal/js_stream_socket": () =>
+    core.loadExtScript("ext:deno_node/internal/js_stream_socket.js").default,
+  "internal/net": () => core.loadExtScript("ext:deno_node/internal/net.ts"),
+  "internal/tty": () =>
+    core.createLazyLoader("ext:deno_node/internal/tty.js")(),
+  "net": () => core.createLazyLoader("node:net")().default,
+  // `process` must lazy-resolve to the real `node:process` default export
+  // (the proxy at the top of this file is for internal use only). When
+  // `getBuiltinModule('process')` is called we want the actual singleton so
+  // strict-equality against the global `process` holds.
+  "process": () => core.createLazyLoader("node:process")().default,
+  // node:stream/net/tty closure - lazy now that process.stdout/stderr/stdin
+  // are lazy getters (see process.ts). These are the biggest node snapshot
+  // chunk, so keeping them out of the eager heap is the main startup win.
+  "stream": () => core.createLazyLoader("node:stream")().default,
+  "stream/consumers": () =>
+    core.loadExtScript("ext:deno_node/stream/consumers.js"),
+  "stream/promises": () =>
+    core.createLazyLoader("node:stream/promises")().default,
+  "tty": () => core.createLazyLoader("node:tty")().default,
+  // Rarely needed on the cold-start path; keeping these out of the eager
+  // `nodeModules` map keeps their bodies (and transitive `loadExtScript`
+  // closure) out of the snapshot heap, so they aren't deserialized at every
+  // startup. Match the previous `.default`/no-`.default` shape exactly.
   "inspector": () => core.loadExtScript("ext:deno_node/inspector.js"),
   "inspector/promises": () =>
     core.loadExtScript("ext:deno_node/inspector/promises.js"),
@@ -360,30 +402,11 @@ const lazyNodeModules = {
   "querystring": () =>
     core.loadExtScript("ext:deno_node/querystring.js").default,
   "sqlite": () => core.loadExtScript("ext:deno_node/sqlite.ts"),
-  "string_decoder": () =>
-    core.loadExtScript("ext:deno_node/string_decoder.ts").default,
-  "timers/promises": () =>
-    core.loadExtScript("ext:deno_node/timers/promises.ts"),
+  "test": () => core.loadExtScript("ext:deno_node/testing.ts").default,
   "trace_events": () =>
     core.loadExtScript("ext:deno_node/trace_events.ts").default,
-  "util/types": () =>
-    core.loadExtScript("ext:deno_node/internal/util/types.ts"),
   "v8": () => core.loadExtScript("ext:deno_node/v8.ts"),
-  "vm": () => core.loadExtScript("ext:deno_node/vm.js").default,
   "wasi": () => core.loadExtScript("ext:deno_node/wasi.ts").default,
-  "punycode": () => core.loadExtScript("ext:deno_node/punycode.ts").default,
-  // Previously eager via static imports. Lazified together with the
-  // process.stdio lazy-getter refactor.
-  "net": () => lazyNet().default,
-  "path": () => lazyPath().default,
-  "path/posix": () => lazyPathPosix().default,
-  "path/win32": () => lazyPathWin32().default,
-  "stream": () => lazyStream().default,
-  "stream/promises": () => lazyStreamPromises().default,
-  "tty": () => lazyTty().default,
-  "internal/tty": () => lazyInternalTty(),
-  "internal/js_stream_socket": () =>
-    core.loadExtScript("ext:deno_node/internal/js_stream_socket.js").default,
   "_stream_duplex": () =>
     core.loadExtScript("ext:deno_node/internal/streams/duplex.js").default,
   "_stream_passthrough": () =>
@@ -456,7 +479,6 @@ function setupBuiltinModules() {
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/state": internalStreamsState,
     "internal/socketaddress": internalSocketAddress,
-    "internal/net": internalNet,
     "internal/options": internalOptions,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
@@ -467,13 +489,25 @@ function setupBuiltinModules() {
     "internal/validators": internalValidators,
     module: Module,
     os,
-    process,
-    "stream/consumers": streamConsumers,
+    "path/posix": pathPosix,
+    "path/win32": pathWin32,
+    path,
+    // `process` is registered lazily below (see `lazyNodeModules`) so that
+    // `getBuiltinModule('process')` returns the real `node:process` default
+    // export rather than the proxy stand-in used elsewhere in this file.
+    // NOTE(perf): punycode's deprecation warning previously used `process` in a
+    // getter, which ObjectEntries() invoked at module-eval -> loaded node:process
+    // into the snapshot. Plain entry now (deprecation warning dropped pending
+    // proper lazy wiring).
+    punycode,
+    string_decoder: stringDecoder,
     sys: util,
-    test,
     timers,
+    "timers/promises": timersPromises,
     url,
     util,
+    "util/types": utilTypes,
+    vm,
     worker_threads: workerThreads,
   };
   // Match Node's schemelessBlockList: these modules can only be imported
@@ -765,11 +799,17 @@ function executeEsmResolveHookChain(specifier, context) {
   return nextResolve(specifier, context);
 }
 
-function esmResolveHookCallback(specifier, referrer) {
+function esmResolveHookCallback(specifier, referrer, importAttributes) {
+  const attrs = { __proto__: null };
+  if (importAttributes !== null && typeof importAttributes === "object") {
+    for (const key in importAttributes) {
+      attrs[key] = importAttributes[key];
+    }
+  }
   const context = {
     parentURL: referrer || undefined,
-    conditions: ["node", "import"],
-    importAttributes: { __proto__: null },
+    conditions: ["node", "import", "module-sync", "node-addons"],
+    importAttributes: attrs,
   };
   try {
     const result = executeEsmResolveHookChain(specifier, context);
@@ -813,6 +853,14 @@ function executeEsmLoadHookChain(fileUrl, context) {
         return { source: null, format: "builtin", shortCircuit: true };
       }
       if (StringPrototypeStartsWith(loadUrl, "file://")) {
+        // `type: "bytes"` modules cannot be faithfully represented as a JS
+        // string here; fall through to Rust default loading, which reads the
+        // file as bytes and produces a correctly-typed module. (Reading it as
+        // a string would otherwise trip "Source code for Bytes module must be
+        // provided as bytes".)
+        if (currentContext?.importAttributes?.type === "bytes") {
+          return { source: null, shortCircuit: true };
+        }
         try {
           const source = op_require_read_file(url.fileURLToPath(loadUrl));
           return {
@@ -861,11 +909,17 @@ function _startEsmLoadLoop() {
       core.unrefOpPromise(pollPromise);
       const req = await pollPromise;
       if (req === null) break;
-      const [id, fileUrl] = req;
+      const [id, fileUrl, rawAttributes] = req;
+      const importAttributes = { __proto__: null };
+      if (rawAttributes !== null && typeof rawAttributes === "object") {
+        for (const key in rawAttributes) {
+          importAttributes[key] = rawAttributes[key];
+        }
+      }
       const context = {
         format: undefined,
-        conditions: ["node", "import"],
-        importAttributes: { __proto__: null },
+        conditions: ["node", "import", "module-sync", "node-addons"],
+        importAttributes,
       };
       try {
         const chainResult = executeEsmLoadHookChain(fileUrl, context);
@@ -3320,12 +3374,9 @@ function initialize(args) {
     // `child_process.ts` is in `lazy_loaded_js` (see ext/node/lib.rs), so its
     // module body - which registers `internals.__setupChildProcessIpcChannel`
     // - only runs once `loadExtScript` is called. Skip both when there is no
-    // IPC pipe configured: that path is hot for every `deno run`, and pulling
-    // child_process into the snapshot defeats the lazification. We use
-    // `op_node_has_child_ipc_pipe` (a peek-only check) instead of
-    // `op_node_child_ipc_pipe`, because the latter has the side effect of
-    // opening the channel resource and calling it here would make
-    // `setupChildProcessIpcChannel`'s own call fail with EEXIST.
+    // IPC pipe configured. (NOTE: under node-defer this `initialize` does not
+    // auto-run, so a forked IPC child does not yet get this setup -- known
+    // follow-up; see process.ts bootstrap trigger.)
     if (op_node_has_child_ipc_pipe()) {
       core.loadExtScript("ext:deno_node/child_process.ts");
       internals.__setupChildProcessIpcChannel();
@@ -3334,41 +3385,17 @@ function initialize(args) {
       core.loadExtScript("ext:deno_node/cluster.ts");
       internals.__initCluster(nodeClusterUniqueId, nodeClusterSchedPolicy);
     }
-    const { streamBaseState } = core.loadExtScript(
-      "ext:deno_node/internal_binding/stream_wrap.ts",
-    );
-    op_stream_base_register_state(streamBaseState);
+    // (stream-wrap GothamState registration moved to process.ts's
+    // __bootstrapNodeProcess, which this calls above at 3090 -- single
+    // registration point that also covers the node-defer path.)
     nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
       nativeModuleExports["console"],
       nativeModuleExports["process"],
     );
-    // Pre-enable any trace event categories requested via the spawning
-    // process's --trace-event-categories flag (propagated as an env var by
-    // child_process). This must run in every isolate, including workers,
-    // so that node.async_hooks tracing covers worker threads too.
-    const traceCategoriesEnv = op_get_env_no_permission_check(
-      "DENO_NODE_TRACE_EVENT_CATEGORIES",
+    nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
+      globalThis.console,
+      nativeModuleExports["process"],
     );
-    if (traceCategoriesEnv) {
-      const traceEvents = core.loadExtScript("ext:deno_node/trace_events.ts");
-      const categories = traceCategoriesEnv.split(",").filter((c) =>
-        c.length > 0
-      );
-      if (categories.length > 0) {
-        // Surface the flag through process.execArgv so test fixtures that
-        // probe it (e.g. node's test-trace-events-api) see the same shape
-        // they would in Node.
-        const proc = nativeModuleExports["process"];
-        if (proc && Array.isArray(proc.execArgv)) {
-          proc.execArgv.push("--trace-event-categories", traceCategoriesEnv);
-        }
-        try {
-          traceEvents.createTracing({ categories }).enable();
-        } catch {
-          // Invalid categories must not block startup.
-        }
-      }
-    }
   } else {
     internals.__bootstrapNodeProcess(
       undefined,
@@ -3381,6 +3408,66 @@ function initialize(args) {
 }
 
 globalThis.nodeBootstrap = initialize;
+
+// node-defer: `initialize()` is the only place that sets
+// `usesLocalNodeModulesDir`, but it does not auto-run when node:module is
+// loaded lazily (see below). Apply the node_modules-dir mode from the stashed
+// bootstrap args at module-eval so `require.resolve(x, { paths })` and the
+// bare-specifier resolution fallback behave the same as in the eager path.
+if (!initialized && internals.__nodeBootstrapArgs?.usesLocalNodeModulesDir) {
+  usesLocalNodeModulesDir = true;
+}
+
+// Pre-enable any trace event categories requested via the spawning process's
+// --trace-event-categories flag (propagated as an env var by child_process).
+// Runs at module-eval (not inside `initialize`, which doesn't auto-run under
+// node-defer) so node.async_hooks tracing works in every isolate, including
+// worker threads. No-ops unless tracing was explicitly requested, so it never
+// forces node:process to load for ordinary programs.
+let traceEventsPreEnabled = false;
+function preEnableTraceEvents() {
+  if (traceEventsPreEnabled) {
+    return;
+  }
+  traceEventsPreEnabled = true;
+  const traceCategoriesEnv = op_get_env_no_permission_check(
+    "DENO_NODE_TRACE_EVENT_CATEGORIES",
+  );
+  if (!traceCategoriesEnv) {
+    return;
+  }
+  const categories = traceCategoriesEnv.split(",").filter((c) => c.length > 0);
+  if (categories.length === 0) {
+    return;
+  }
+  const traceEvents = core.loadExtScript("ext:deno_node/trace_events.ts");
+  // Surface the flag through process.execArgv so test fixtures that probe it
+  // (e.g. node's test-trace-events-api) see the same shape they would in Node.
+  const proc = nativeModuleExports["process"];
+  if (proc && Array.isArray(proc.execArgv)) {
+    proc.execArgv.push("--trace-event-categories", traceCategoriesEnv);
+  }
+  try {
+    traceEvents.createTracing({ categories }).enable();
+  } catch {
+    // Invalid categories must not block startup.
+  }
+}
+preEnableTraceEvents();
+
+// node-defer: node:process's own deferred trigger runs the process half of
+// the bootstrap (`__bootstrapNodeProcess`) on first node:* use. The other
+// half of `initialize` (worker_threads alias, IPC, cluster, trace_events) used
+// to run unconditionally; under node-defer each
+// piece is now handled where it belongs:
+// - worker_threads MessageChannel/MessagePort alias: at the bottom of
+//   ext/node/polyfills/worker_threads.ts module body, so importing
+//   node:worker_threads is enough to install the globals.
+// - IPC fork bootstrap: 99_main.js runs the full eager bootstrap when
+//   `op_node_has_child_ipc_pipe()` is true (forked child path).
+// - cluster init / trace_events env-var pre-enable:
+//   still pending; only matter when those features are actively used and
+//   are tracked as follow-ups, not regressions for ordinary programs.
 
 function closeIdleConnections() {
   try {
