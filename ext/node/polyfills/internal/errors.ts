@@ -3672,6 +3672,7 @@ return {
   handleDnsError,
   hideStackFrames,
   isErrorStackTraceLimitWritable,
+  isNotCapable,
   isStackOverflowError,
   uvException,
   uvExceptionWithHostPort,
