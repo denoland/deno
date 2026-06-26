@@ -356,8 +356,8 @@ function createByteStruct(types) {
   let str =
     'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux" || Deno.build.os === "android" || Deno.build.os === "openbsd" || Deno.build.os === "freebsd";' +
     // Two's-complement inversion avoids float64 precision loss near 2^64.
-    ' const readI64Ms = (lo, hi) => hi < 2147483648 ? lo + hi * 4294967296 : -((~hi >>> 0) * 4294967296 + (~lo >>> 0) + 1);' +
-    ' return {';
+    " const readI64Ms = (lo, hi) => hi < 2147483648 ? lo + hi * 4294967296 : -((~hi >>> 0) * 4294967296 + (~lo >>> 0) + 1);" +
+    " return {";
   const typeEntries = ObjectEntries(types);
   for (let i = 0; i < typeEntries.length; ++i) {
     let { 0: name, 1: type } = typeEntries[i];
