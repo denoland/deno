@@ -370,6 +370,7 @@ Deno.test("[node/module require] loads .node files through CJS addon path", asyn
 
     const require = createRequire(import.meta.url);
     const err = assertThrows(() => require(addonPath));
+    assert(err instanceof Error);
     assert(!err.message.includes("Cannot import native Node.js addon"));
   } finally {
     await Deno.remove(tempDir, { recursive: true });
