@@ -9,10 +9,12 @@
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 
 /// Result of framework detection.
+#[derive(Debug)]
 pub struct FrameworkDetection {
   /// Name of the detected framework (for display).
   pub name: &'static str,
@@ -104,15 +106,15 @@ pub fn detect_framework(
     return Ok(Some(detect_nuxt(dir)));
   }
 
-  // SvelteKit: svelte.config.{js,ts} — but only when there's positive
-  // evidence of a Deno-targeted adapter or a recognized server output
-  // shape. A bare svelte.config.* is not enough, since SvelteKit can be
-  // built with many adapters (node, vercel, cloudflare, static, ...) that
-  // do not produce `./.output/server/index.{ts,mjs}`.
-  if has_config_file(dir, "svelte.config")
-    && let Some(detection) = detect_sveltekit(dir)
-  {
-    return Ok(Some(detection));
+  // SvelteKit: svelte.config.{js,ts}. Once a svelte.config.* is present the
+  // project is a SvelteKit app and SvelteKit owns detection — we must NOT
+  // fall through to the generic Vite branch below (SvelteKit ships a
+  // vite.config + `vite` dependency, so it would otherwise be misdetected as
+  // a plain Vite SPA and bundle a non-existent `dist/`). `detect_sveltekit`
+  // resolves the adapter's output shape, or errors with an actionable hint
+  // when the configured adapter isn't one `deno desktop` can bundle.
+  if has_config_file(dir, "svelte.config") {
+    return detect_sveltekit(dir).map(Some);
   }
 
   // --- Package.json dependency-based detection ---
@@ -273,11 +275,11 @@ fn detect_nuxt(dir: &Path) -> FrameworkDetection {
   detect_nitro_framework(dir, "Nuxt")
 }
 
-fn detect_sveltekit(dir: &Path) -> Option<FrameworkDetection> {
+fn detect_sveltekit(dir: &Path) -> Result<FrameworkDetection, AnyError> {
   // Prefer post-build evidence of a supported output shape, since that
   // proves which adapter was actually used.
   if dir.join(".deno-deploy/server.ts").exists() {
-    return Some(FrameworkDetection {
+    return Ok(FrameworkDetection {
       name: "SvelteKit",
       entrypoint_code: "// @ts-nocheck\nimport \"./.deno-deploy/server.ts\";\n"
         .into(),
@@ -293,7 +295,7 @@ fn detect_sveltekit(dir: &Path) -> Option<FrameworkDetection> {
     } else {
       "mjs"
     };
-    return Some(FrameworkDetection {
+    return Ok(FrameworkDetection {
       name: "SvelteKit",
       entrypoint_code: format!(
         "// @ts-nocheck\nimport \"./.output/server/index.{ext}\";\n"
@@ -302,29 +304,30 @@ fn detect_sveltekit(dir: &Path) -> Option<FrameworkDetection> {
       build_command: Some(deno_task_build()),
     });
   }
-  // `svelte-adapter-deno` emits a `build/` directory whose `index.js`
-  // boots the server and whose `handler.js` serves the static assets from
-  // sibling `client`/`static`/`prerendered` directories. Those asset
-  // directories aren't part of the module graph, so they must be included
-  // explicitly or every request 404s in the compiled binary.
+  // `@sveltejs/adapter-node` and `svelte-adapter-deno` both emit a `build/`
+  // directory whose `index.js` boots the server and whose `handler.js` serves
+  // the static assets from sibling `client`/`static`/`prerendered`
+  // directories. Those asset directories aren't part of the module graph, so
+  // they must be included explicitly or every request 404s in the compiled
+  // binary. The adapter-node server runs under Deno via Node.js compatibility.
   if dir.join("build/index.js").exists()
     && dir.join("build/handler.js").exists()
   {
-    return Some(FrameworkDetection {
+    return Ok(FrameworkDetection {
       name: "SvelteKit",
       entrypoint_code: "// @ts-nocheck\nimport \"./build/index.js\";\n".into(),
       include_paths: sveltekit_build_includes(dir),
       build_command: Some(deno_task_build()),
     });
   }
-  // No build artifacts yet — fall back to config inspection. We only
-  // claim SvelteKit if the config references a supported adapter.
+  // No build artifacts yet — fall back to config inspection.
   let config_text =
     ["svelte.config.js", "svelte.config.ts", "svelte.config.mjs"]
       .iter()
-      .find_map(|f| std::fs::read_to_string(dir.join(f)).ok())?;
+      .find_map(|f| std::fs::read_to_string(dir.join(f)).ok())
+      .unwrap_or_default();
   if config_text.contains("@deno/svelte-adapter") {
-    return Some(FrameworkDetection {
+    return Ok(FrameworkDetection {
       name: "SvelteKit",
       entrypoint_code: "// @ts-nocheck\nimport \"./.deno-deploy/server.ts\";\n"
         .into(),
@@ -332,11 +335,16 @@ fn detect_sveltekit(dir: &Path) -> Option<FrameworkDetection> {
       build_command: Some(deno_task_build()),
     });
   }
-  if config_text.contains("svelte-adapter-deno") {
-    // Default `out` is `build`. Only `build/client` is guaranteed to exist
-    // after the build, so include just that here; the post-build branch
-    // above picks up `static`/`prerendered` when they're present.
-    return Some(FrameworkDetection {
+  // `@sveltejs/adapter-node` emits the same `build/index.js` shape as
+  // `svelte-adapter-deno` and runs under Deno via Node.js compatibility, so no
+  // Deno-specific adapter is required. Default `out` is `build`; only
+  // `build/client` is guaranteed to exist after the build, so include just
+  // that here — the post-build branch above picks up `static`/`prerendered`
+  // when they're present.
+  if config_text.contains("svelte-adapter-deno")
+    || config_text.contains("@sveltejs/adapter-node")
+  {
+    return Ok(FrameworkDetection {
       name: "SvelteKit",
       entrypoint_code: "// @ts-nocheck\nimport \"./build/index.js\";\n".into(),
       include_paths: vec!["build/client".into()],
@@ -344,7 +352,7 @@ fn detect_sveltekit(dir: &Path) -> Option<FrameworkDetection> {
     });
   }
   if config_text.contains("nitro") {
-    return Some(FrameworkDetection {
+    return Ok(FrameworkDetection {
       name: "SvelteKit",
       entrypoint_code:
         "// @ts-nocheck\nimport \"./.output/server/index.mjs\";\n".into(),
@@ -352,7 +360,23 @@ fn detect_sveltekit(dir: &Path) -> Option<FrameworkDetection> {
       build_command: Some(deno_task_build()),
     });
   }
-  None
+  // SvelteKit is present but the configured adapter isn't one we can locate a
+  // bundleable server output for (e.g. `adapter-auto`, `adapter-vercel`,
+  // `adapter-cloudflare`). `adapter-auto` is the `npx sv create` default and
+  // produces *no* local server output unless a known cloud platform is
+  // detected at build time, so point the user at a concrete adapter.
+  let auto_hint = if config_text.contains("adapter-auto") {
+    "`@sveltejs/adapter-auto` produces no local server output, so there is \
+     nothing to bundle. "
+  } else {
+    ""
+  };
+  bail!(
+    "SvelteKit detected, but no adapter that `deno desktop` can bundle is \
+     configured.\n{auto_hint}Configure a supported adapter in \
+     svelte.config.js:\n  - `@sveltejs/adapter-node` (runs under Deno via \
+     Node.js compatibility)\n  - `@deno/svelte-adapter` (for Deno Deploy)"
+  );
 }
 
 /// Existing asset directories under a `svelte-adapter-deno` `build/` output
@@ -768,17 +792,50 @@ mod tests {
   }
 
   #[test]
-  fn does_not_detect_sveltekit_with_unknown_adapter() {
-    // Regression: a SvelteKit project using e.g. adapter-vercel should
-    // NOT be claimed by our detector — it would generate a wrong
-    // entrypoint that imports a path that doesn't exist.
+  fn detects_sveltekit_adapter_node_from_config() {
+    // `@sveltejs/adapter-node` emits the `build/index.js` shape and runs under
+    // Deno via Node.js compatibility — no Deno-specific adapter required.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("svelte.config.js"),
+      "import adapter from '@sveltejs/adapter-node';\nexport default { kit: { adapter: adapter() } };\n",
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "SvelteKit");
+    assert!(det.entrypoint_code.contains("build/index.js"));
+    assert_eq!(det.include_paths, vec!["build/client"]);
+  }
+
+  #[test]
+  fn errors_on_sveltekit_with_unsupported_adapter() {
+    // A SvelteKit project using e.g. adapter-vercel must NOT fall through to
+    // the generic Vite branch (which would bundle a non-existent `dist/`).
+    // Instead we surface an actionable error.
     let dir = setup_dir();
     fs::write(
       dir.path().join("svelte.config.js"),
       "import adapter from '@sveltejs/adapter-vercel';\nexport default { kit: { adapter: adapter() } };\n",
     )
     .unwrap();
-    assert!(detect_framework(dir.path()).unwrap().is_none());
+    let err = detect_framework(dir.path()).unwrap_err().to_string();
+    assert!(err.contains("SvelteKit detected"));
+    assert!(err.contains("adapter-node"));
+  }
+
+  #[test]
+  fn errors_on_sveltekit_adapter_auto() {
+    // `adapter-auto` is the `sv create` default and produces no local server
+    // output, so we bail with a hint pointing at a concrete adapter.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("svelte.config.js"),
+      "import adapter from '@sveltejs/adapter-auto';\nexport default { kit: { adapter: adapter() } };\n",
+    )
+    .unwrap();
+    let err = detect_framework(dir.path()).unwrap_err().to_string();
+    assert!(err.contains("adapter-auto"));
+    assert!(err.contains("no local server output"));
   }
 
   // --- Package.json dependency-based detection ---
