@@ -730,14 +730,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     requested_module_type: &RequestedModuleType,
   ) -> Option<Result<ModuleSource, ModuleLoaderError>> {
     if specifier.path().ends_with(".node") {
-      return Some(Err(JsErrorBox::type_error(format!(
-        "Cannot import native Node.js addon \"{specifier}\" via ESM. \
-         Native `.node` addons can only be loaded through `require()`. \
-         Use `createRequire()` from `node:module`, e.g.:\n  \
-         import {{ createRequire }} from \"node:module\";\n  \
-         const require = createRequire(import.meta.url);\n  \
-         const addon = require(\"./addon.node\");"
-      ))));
+      return None;
     }
 
     let code_source = match self
