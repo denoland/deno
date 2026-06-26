@@ -1724,7 +1724,7 @@ mod tests {
   }
 
   #[test]
-  fn sequence_caches_next_method() {
+  fn sequence_check_next_method_once() {
     let mut runtime = JsRuntime::new(Default::default());
     let val = runtime
       .execute_script(
