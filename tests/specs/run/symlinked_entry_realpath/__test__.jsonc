@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "if": "unix",
+      "args": "run -A setup.js",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "unix",
+      "args": "run .bin/cli",
+      "output": "ok\n"
+    },
+    {
+      "if": "unix",
+      "args": "run pkg/bin/cli.js",
+      "output": "ok\n"
+    }
+  ]
+}

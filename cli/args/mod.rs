@@ -549,6 +549,21 @@ impl WorkspaceMainModuleResolver {
   }
 }
 
+fn canonicalize_existing_file_url(
+  url: ModuleSpecifier,
+) -> Result<ModuleSpecifier, AnyError> {
+  if url.scheme() != "file" {
+    return Ok(url);
+  }
+  let Ok(path) = deno_path_util::url_to_file_path(&url) else {
+    return Ok(url);
+  };
+  let Ok(path) = canonicalize_path(&path) else {
+    return Ok(url);
+  };
+  Ok(deno_path_util::url_from_file_path(&path)?)
+}
+
 /// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
 #[derive(Debug)]
@@ -860,15 +875,14 @@ impl CliOptions {
                   && url.scheme() == "file"
                   && MediaType::from_specifier(&url) == MediaType::Unknown
                 {
-                  Ok::<_, AnyError>(
-                    try_resolve_node_binary_main_entrypoint(
-                      &run_flags.script,
-                      self.initial_cwd(),
-                    )?
-                    .unwrap_or(url),
-                  )
+                  let url = try_resolve_node_binary_main_entrypoint(
+                    &run_flags.script,
+                    self.initial_cwd(),
+                  )?
+                  .unwrap_or(url);
+                  canonicalize_existing_file_url(url)
                 } else {
-                  Ok(url)
+                  canonicalize_existing_file_url(url)
                 }
               };
               self.resolve_main_module_with_resolver_if_bare(
