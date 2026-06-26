@@ -34,6 +34,7 @@ use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_config::workspace::WorkspaceLintConfig;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -1683,7 +1684,14 @@ pub fn config_to_deno_graph_workspace_member(
     None => bail!("Missing 'name' field in config file."),
   };
   let version = match &config.json.version {
-    Some(name) => Some(deno_semver::Version::parse_standard(name)?),
+    Some(version) => Some(
+      deno_semver::Version::parse_standard(version).with_context(|| {
+        format!(
+          "Invalid \"version\" field \"{}\" in {}",
+          version, config.specifier
+        )
+      })?,
+    ),
     None => None,
   };
   Ok(deno_graph::WorkspaceMember {

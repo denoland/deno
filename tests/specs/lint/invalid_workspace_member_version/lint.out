@@ -1,0 +1,4 @@
+error: Invalid "version" field "1.0" in [WILDCARD]deno.json
+
+Caused by:
+[WILDCARD]
