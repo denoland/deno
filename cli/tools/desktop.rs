@@ -3048,6 +3048,12 @@ fn create_linux_appimage(
   let runtime_elf = appimage_runtime_for_target(target)?;
 
   let mut writer = backhand::FilesystemWriter::default();
+  let compressor = backhand::FilesystemCompressor::new(
+    backhand::compression::Compressor::Zstd,
+    None,
+  )
+  .context("Failed to configure zstd SquashFS compressor")?;
+  writer.set_compressor(compressor);
 
   // Pack everything from the staged app dir into the SquashFS root.
   push_dir_contents_to_squashfs(&mut writer, app_dir)?;
@@ -6190,7 +6196,7 @@ def456  other.zip
     assert!(err.to_string().contains("CFBundleIdentifier"));
   }
 
-  // --- Linux .deb / .rpm packaging ---
+  // --- Linux packaging ---
 
   #[test]
   fn debian_package_name_sanitizes() {
@@ -6263,6 +6269,29 @@ def456  other.zip
     let mut out = Vec::new();
     dec.read_to_end(&mut out).unwrap();
     out
+  }
+
+  #[test]
+  fn appimage_uses_runtime_supported_zstd_squashfs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
+    let appimage_path = tmp.path().join("MyApp.AppImage");
+    let target = Some("x86_64-unknown-linux-gnu");
+    create_linux_appimage(&app_dir, &appimage_path, target).unwrap();
+
+    let runtime_offset =
+      appimage_runtime_for_target(target).unwrap().len() as u64;
+    let appimage =
+      std::io::BufReader::new(std::fs::File::open(&appimage_path).unwrap());
+    let filesystem = backhand::FilesystemReader::from_reader_with_offset(
+      appimage,
+      runtime_offset,
+    )
+    .unwrap();
+    assert_eq!(
+      filesystem.compressor,
+      backhand::compression::Compressor::Zstd
+    );
   }
 
   #[test]
