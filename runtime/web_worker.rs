@@ -776,8 +776,7 @@ impl WebWorker {
           data: data.buffer,
           transferables: js_transferables,
         };
-        worker_data =
-          deno_core::serde_v8::to_v8(scope, js_message_data).unwrap();
+        worker_data = js_message_data.to_v8(scope).unwrap();
       }
       let name_str: v8::Local<v8::Value> =
         v8::String::new(scope, &self.name).unwrap().into();
