@@ -2539,6 +2539,14 @@ supported framework (Next.js, Astro, etc.) in the current directory.
           .help_heading(DESKTOP_HEADING),
       )
       .arg(
+        Arg::new("check-only")
+          .long("check-only")
+          .help(cstr!("Type-check the app with the desktop type library and exit without building, packaging, or running it.
+  <p(245)>Use the desktop globals (e.g. Deno.BrowserWindow) when checking. Combine with --check=all to also type-check remote modules.</>"))
+          .action(ArgAction::SetTrue)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
         Arg::new("compress")
           .long("compress")
           .help(
@@ -6904,6 +6912,7 @@ fn desktop_parse(
   let hmr = matches.get_flag("hmr");
   let backend = matches.remove_one::<String>("backend");
   let all_targets = matches.get_flag("all-targets");
+  let check_only = matches.get_flag("check-only");
   // Self-extracting packaging is opt-in via `--compress [<fmt>]`. Bare
   // `--compress` defaults to xz (decompressed by the system `tar` with no
   // external tool); zstd is smaller/faster but needs the `zstd` binary at
@@ -6939,6 +6948,7 @@ fn desktop_parse(
     codesign_identity: None,
     inspect_renderer,
     compress,
+    check_only,
   });
 
   Ok(())
@@ -14056,6 +14066,41 @@ mod tests {
       panic!("expected desktop subcommand");
     };
     assert_eq!(desktop.backend.as_deref(), Some("cef"));
+  }
+
+  #[test]
+  fn desktop_check_only() {
+    let r =
+      flags_from_vec(svec!["deno", "desktop", "--check-only", "main.tsx"]);
+    let flags = r.unwrap();
+    let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    assert!(desktop.check_only);
+    // `--check-only` alone keeps the default local check scope.
+    assert_eq!(flags.type_check_mode, TypeCheckMode::Local);
+
+    // `--check-only` defaults to off.
+    let r = flags_from_vec(svec!["deno", "desktop", "main.tsx"]);
+    let DenoSubcommand::Desktop(desktop) = r.unwrap().subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    assert!(!desktop.check_only);
+
+    // `--check=all` composes to widen the check scope.
+    let r = flags_from_vec(svec![
+      "deno",
+      "desktop",
+      "--check-only",
+      "--check=all",
+      "main.tsx"
+    ]);
+    let flags = r.unwrap();
+    let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    assert!(desktop.check_only);
+    assert_eq!(flags.type_check_mode, TypeCheckMode::All);
   }
 
   #[test]

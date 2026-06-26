@@ -375,6 +375,14 @@ async fn compile_desktop(
     None
   };
 
+  // `--check-only`: type-check the resolved entrypoint with the desktop type
+  // library (so `Deno.BrowserWindow` & co. resolve) and stop here — no
+  // building, packaging, or running. The temp framework entrypoint (if any)
+  // stays alive until it drops at the end of this scope.
+  if desktop_flags.check_only {
+    return check_desktop_entrypoint(flags, &desktop_flags.source_file).await;
+  }
+
   let self_extracting = desktop_entrypoint_file.is_some();
   // `desktop_entrypoint_file` (a NamedTempFile) keeps the file alive while
   // `compile_binary` reads it. It is explicitly closed right after compilation
@@ -592,6 +600,43 @@ async fn compile_desktop(
   }
 
   Ok(())
+}
+
+/// Type-check a desktop entrypoint without building it.
+///
+/// Backs `deno desktop --check-only`. The key difference from `deno check` is
+/// `internal.is_desktop = true`, which selects the desktop type library
+/// (`lib.deno.desktop.d.ts`) so the desktop globals (e.g. `Deno.BrowserWindow`)
+/// resolve. Check scope (local vs. remote) is carried on `flags.type_check_mode`
+/// from the existing `--check[=all]` flag; if checking was disabled (e.g. the
+/// Next.js auto-detect path, or `--no-check`), fall back to a local check so
+/// `--check-only` always actually checks something.
+async fn check_desktop_entrypoint(
+  mut flags: Flags,
+  source_file: &str,
+) -> Result<(), AnyError> {
+  flags.internal.is_desktop = true;
+  if matches!(flags.type_check_mode, TypeCheckMode::None) {
+    flags.type_check_mode = TypeCheckMode::Local;
+  }
+
+  let factory = CliFactory::from_flags(Arc::new(flags));
+  let main_graph_container = factory.main_module_graph_container().await?;
+  let specifiers = main_graph_container.collect_specifiers(
+    &[source_file.to_string()],
+    crate::graph_container::CollectSpecifiersOptions {
+      include_ignored_specified: false,
+    },
+  )?;
+  main_graph_container
+    .check_specifiers(
+      &specifiers,
+      crate::graph_container::CheckSpecifiersOptions {
+        allow_unknown_media_types: true,
+        ..Default::default()
+      },
+    )
+    .await
 }
 
 /// Convert a packaged app bundle into a self-extracting one: the heavy payload
@@ -6260,6 +6305,7 @@ def456  other.zip
       codesign_identity: None,
       inspect_renderer: None,
       compress: None,
+      check_only: false,
     }
   }
 

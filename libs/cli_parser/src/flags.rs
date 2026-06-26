@@ -236,6 +236,11 @@ pub struct DesktopFlags {
   /// just a small download artifact. Value is the compressor: `"xz"` (LZMA)
   /// or `"zstd"`.
   pub compress: Option<String>,
+  /// When set, type-check the entrypoint with the desktop type library (so
+  /// `Deno.BrowserWindow` and friends resolve) and exit without building,
+  /// packaging, or running the app. Scope is controlled by the existing
+  /// `--check[=all]` flag.
+  pub check_only: bool,
 }
 
 #[derive(Clone)]
