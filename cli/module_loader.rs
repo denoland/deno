@@ -84,6 +84,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageJsonLoadError;
+use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 use sys_traits::FsRead;
@@ -1147,15 +1148,20 @@ impl<TGraphContainer: ModuleGraphContainer>
     // `file:///<project>/` mapping whose prefix match rewrites any file URL
     // outside the project root (such as the npm cache) to live underneath the
     // project directory, breaking the load. Such a package-internal main
-    // module is not a user source file and must not be remapped, so load it
-    // verbatim. A user-provided path entry (e.g. `deno run ./thing.ts`) is
+    // module is not a user source file and must not be remapped, so bypass the
+    // import map. A user-provided path entry (e.g. `deno run ./thing.ts`) is
     // intentionally left to the import map.
     if matches!(kind, deno_core::ResolutionKind::MainModule)
       && let Ok(url) = ModuleSpecifier::parse(raw_specifier)
       && url.scheme() == "file"
       && self.shared.in_npm_pkg_checker.in_npm_package(&url)
     {
-      return Ok(url);
+      let canonicalized_url = deno_path_util::url_to_file_path(&url)
+        .ok()
+        .and_then(|path| self.shared.sys.fs_canonicalize(&path).ok())
+        .and_then(|path| deno_path_util::url_from_file_path(&path).ok())
+        .unwrap_or(url);
+      return Ok(canonicalized_url);
     }
 
     let referrer = self
