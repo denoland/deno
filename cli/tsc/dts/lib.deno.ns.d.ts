@@ -6868,6 +6868,13 @@ declare namespace Deno {
     allowHost?: boolean;
     /** Sets the local address where the socket will connect from. */
     localAddress?: string;
+    /** Sets `TCP_NODELAY` on the underlying socket, disabling Nagle's
+     * algorithm. This can reduce latency for small writes at the cost of
+     * potentially more packets on the wire.
+     *
+     * @default {false}
+     */
+    noDelay?: boolean;
   }
 
   /**

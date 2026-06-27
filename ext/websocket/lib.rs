@@ -436,6 +436,7 @@ fn create_client_from_websocket_options(
       http2: true,
       local_address: None,
       client_builder_hook: options.client_builder_hook,
+      no_delay: false,
     },
   )
 }
