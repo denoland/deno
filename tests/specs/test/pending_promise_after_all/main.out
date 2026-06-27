@@ -1,0 +1,4 @@
+[WILDCARD]passes ... ok[WILDLINE]
+[WILDCARD]
+error: Promise resolution is still pending but the event loop has already resolved.
+[WILDCARD]--trace-leaks[WILDCARD]

@@ -367,6 +367,26 @@ pub enum TestFailure {
   HasSanitizersAndOverlaps(IndexSet<String>), // Long names of overlapped tests
 }
 
+/// Bare deadlock-detector message emitted by deno_core when a promise is still
+/// pending while the event loop has run out of work.
+const PENDING_PROMISE_RESOLUTION_MSG: &str = "Promise resolution is still pending but the event loop has already resolved.";
+
+/// Actionable guidance appended to [`PENDING_PROMISE_RESOLUTION_MSG`] so users
+/// aren't "flying blind" when a test (or a test hook/lifecycle handler) awaits a
+/// promise that can never settle. `--trace-leaks` is no help here because
+/// nothing was leaked. See denoland/deno#33852.
+const PENDING_PROMISE_RESOLUTION_HINT: &str = "The test (or something it awaited) is blocked on a promise that can never settle: \
+the event loop ran out of work while the promise was still pending. Common causes are \
+awaiting a promise that is settled by a worker, timer, stream, or callback that was \
+already torn down, or two promises deadlocked waiting on each other.\n\
+Note: `--trace-leaks` cannot point at this because nothing was leaked \u{2014} there is \
+simply no pending operation left that could resolve the promise.";
+
+/// The full, enriched message shown for a pending-promise deadlock during tests.
+fn pending_promise_resolution_message() -> String {
+  format!("{PENDING_PROMISE_RESOLUTION_MSG}\n{PENDING_PROMISE_RESOLUTION_HINT}")
+}
+
 impl TestFailure {
   pub fn format(
     &self,
@@ -383,9 +403,9 @@ impl TestFailure {
       TestFailure::IncompleteSteps => Cow::Borrowed(
         "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.",
       ),
-      TestFailure::PendingPromiseResolution => Cow::Borrowed(
-        "Promise resolution is still pending but the event loop has already resolved.",
-      ),
+      TestFailure::PendingPromiseResolution => {
+        Cow::Owned(pending_promise_resolution_message())
+      }
       TestFailure::Incomplete => Cow::Borrowed(
         "Didn't complete before parent. Await step with `await t.step(...)`.",
       ),
@@ -950,6 +970,14 @@ pub async fn test_specifier(
       CoreErrorKind::Js(err) => {
         event_tracker.uncaught_error(specifier.to_string(), err)?;
         Ok(())
+      }
+      // A pending-promise deadlock outside of a test body (e.g. in a
+      // `beforeAll`/`afterAll` hook or an `unload` handler) bubbles up here as a
+      // bare core error after the tests have already passed. Enrich it with the
+      // same actionable guidance the per-test failure gets so users aren't left
+      // "flying blind". See denoland/deno#33852.
+      CoreErrorKind::PendingPromiseResolution => {
+        Err(JsErrorBox::generic(pending_promise_resolution_message()).into())
       }
       err => Err(err.into_box().into()),
     },

@@ -144,6 +144,7 @@ error: "custom error"
 
 unfinished test with uncaughtException => ./test.js:466:1
 error: Promise resolution is still pending but the event loop has already resolved.
+[WILDCARD]--trace-leaks[WILDCARD]
 
 unfinished test with unhandledRejection => ./test.js:474:1
 error: Error: bar
