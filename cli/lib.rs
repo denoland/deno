@@ -191,7 +191,7 @@ async fn run_subcommand(
       tools::clean::clean(Arc::new(flags), clean_flags).await
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
-      tools::compile::compile(flags, compile_flags).await
+      Box::pin(tools::compile::compile(flags, compile_flags)).await
     }),
     DenoSubcommand::Desktop(desktop_flags) => spawn_subcommand(async {
       Box::pin(tools::desktop::desktop(flags, desktop_flags)).await
