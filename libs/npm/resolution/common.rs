@@ -177,8 +177,7 @@ impl NpmVersionResolver {
         if !self
           .trust_policy
           .exclude
-          .iter()
-          .any(|e| e.eq_ignore_ascii_case(info.name.as_str())) =>
+          .contains(&info.name.to_ascii_lowercase()) =>
       {
         Some(TrustDowngradeCheck {
           ignore_after_cutoff: self.trust_policy.ignore_after_cutoff,
@@ -1147,7 +1146,7 @@ mod test {
       trust_policy: TrustPolicyOptions {
         policy: NpmTrustPolicy::NoDowngrade,
         ignore_after_cutoff: None,
-        exclude: Arc::new(exclude.iter().map(|s| s.to_string()).collect()),
+        exclude: Arc::new(exclude.iter().map(|s| s.to_ascii_lowercase()).collect()),
       },
       ..Default::default()
     };
