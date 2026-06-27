@@ -855,7 +855,7 @@
           "default": "nextLine",
           "enum": ["maintain", "sameLine", "nextLine"]
         },
-        "jsx.forceNewLineSurroundingContent": {
+        "jsx.forceNewLinesSurroundingContent": {
           "description": "Forces newlines surrounding the content of JSX elements.",
           "default": false,
           "type": "boolean"
