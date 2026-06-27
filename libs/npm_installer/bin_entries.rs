@@ -632,8 +632,8 @@ mod test {
     .unwrap();
 
     assert!(matches!(outcome, EntrySetupOutcome::Success));
-    assert!(bin_dir.join("config-inspector").exists());
-    assert!(!bin_dir.join("@eslint").exists());
+    assert!(sys.fs_exists(bin_dir.join("config-inspector")).unwrap());
+    assert!(!sys.fs_exists(bin_dir.join("@eslint")).unwrap());
   }
 
   #[cfg(unix)]
