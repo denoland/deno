@@ -4928,6 +4928,7 @@ fn publish_subcommand() -> Command {
             .value_name("VERSION")
             .help_heading(PUBLISH_HEADING)
         )
+        .arg(import_map_arg())
         .arg(check_arg(/* type checks by default */ true))
         .arg(no_check_arg())
         .arg(env_file_arg())
@@ -8266,6 +8267,7 @@ fn publish_parse(
   check_arg_parse(flags, matches);
   config_args_parse(flags, matches);
   env_file_arg_parse(flags, matches);
+  import_map_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
@@ -15613,6 +15615,32 @@ mod tests {
           no_provenance: true,
           set_version: Some("1.0.1".to_string()),
         }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn publish_import_map() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "publish",
+      "--token=asdf",
+      "--import-map=import_map.json",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Publish(PublishFlags {
+          token: Some("asdf".to_string()),
+          dry_run: false,
+          allow_slow_types: false,
+          allow_dirty: false,
+          no_provenance: false,
+          set_version: None,
+        }),
+        import_map_path: Some("import_map.json".to_string()),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
       }
