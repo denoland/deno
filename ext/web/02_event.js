@@ -721,6 +721,83 @@ function dispatch(
   return !eventImpl.defaultPrevented;
 }
 
+// Fast path for dispatching a freshly-constructed, non-bubbling event to a
+// target that is not part of a DOM tree -- globalThis, `Worker` and
+// `MessagePort`, whose `getParent()` is always null, so the event path is just
+// the target itself. Used on the worker/port "message" receive hot path, which
+// dispatches one event per delivered message.
+//
+// It skips the generic `dispatch()`'s event-path construction (touch-target and
+// path arrays, the parent walk) and its two-phase capture/bubble traversal, and
+// instead invokes the single registered listener directly. The handler still
+// sees a spec-correct event: `target`/`currentTarget` are the target,
+// `eventPhase` is AT_TARGET, and `composedPath()` returns `[target]` via a
+// one-element path; the dispatch state is reset afterwards exactly as
+// `dispatch()` does.
+//
+// Returns true if it dispatched the event (including the no-listener case,
+// which mirrors the early return in `EventTarget.prototype.dispatchEvent`).
+// Returns false when the listener set is not the simple single, non-capturing,
+// non-once function-listener case, so the caller must fall back to the full
+// `dispatch()` to preserve every spec-observable behavior (multiple listeners,
+// capture/once, `handleEvent` objects, `stopImmediatePropagation`, etc.).
+function dispatchFast(target, eventImpl) {
+  const targetData = target[eventTargetData];
+  if (targetData === undefined) {
+    setTarget(eventImpl, target);
+    return true;
+  }
+  const listeners = targetData.listeners[eventImpl.type];
+  if (listeners === undefined || listeners.length === 0) {
+    setTarget(eventImpl, target);
+    return true;
+  }
+  if (listeners.length !== 1) {
+    return false;
+  }
+  const listener = listeners[0];
+  const options = listener.options;
+  const callback = listener.callback;
+  if (
+    typeof callback !== "function" ||
+    typeof options !== "object" ||
+    options.capture ||
+    options.once
+  ) {
+    return false;
+  }
+
+  setDispatched(eventImpl, true);
+  setTarget(eventImpl, target);
+  setPath(eventImpl, [
+    {
+      item: target,
+      itemInShadowTree: false,
+      target,
+      relatedTarget: null,
+      touchTargetList: [],
+      rootOfClosedTree: false,
+      slotInClosedTree: false,
+    },
+  ]);
+  setEventPhase(eventImpl, Event.AT_TARGET);
+  setCurrentTarget(eventImpl, target);
+
+  try {
+    FunctionPrototypeCall(callback, target, eventImpl);
+  } catch (error) {
+    reportException(error);
+  }
+
+  setEventPhase(eventImpl, Event.NONE);
+  setCurrentTarget(eventImpl, null);
+  setPath(eventImpl, []);
+  setDispatched(eventImpl, false);
+  eventImpl.cancelBubble = false;
+  setStopImmediatePropagation(eventImpl, false);
+  return true;
+}
+
 /** Inner invoking of the event listeners where the resolved listeners are
  * called.
  *
@@ -1705,6 +1782,7 @@ return {
   CustomEvent,
   defineEventHandler,
   dispatch,
+  dispatchFast,
   ErrorEvent,
   Event,
   eventTargetData,

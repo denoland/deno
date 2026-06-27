@@ -306,7 +306,13 @@ function dispatchWorkerMessage(data) {
   event.setIsTrusted(msgEvent, true);
 
   try {
-    globalDispatchEvent(msgEvent);
+    // Fast path: with a single `message` listener (the common
+    // `onmessage`/`addEventListener("message", ...)` case) and no ports, invoke
+    // it directly and skip the full event-path dispatch. Falls back to
+    // `globalDispatchEvent` for anything else.
+    if (!event.dispatchFast(globalThis, msgEvent)) {
+      globalDispatchEvent(msgEvent);
+    }
   } catch (e) {
     const errorEvent = new event.ErrorEvent("error", {
       cancelable: true,

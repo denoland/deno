@@ -53,6 +53,54 @@ Deno.test("messagechannel no-transferables ports is empty frozen array", async (
   mc.port2.close();
 });
 
+Deno.test("messagechannel single-listener dispatch fast path event state", async () => {
+  // With a single `message` listener and no transferables the dispatch takes
+  // the fast path that invokes the handler directly. The event the handler sees
+  // must still be spec-correct: `target`/`currentTarget` are the port,
+  // `eventPhase` is AT_TARGET during the call, `composedPath()` is `[port]`, and
+  // the dispatch state is reset afterwards.
+  const mc = new MessageChannel();
+  const { promise, resolve } = Promise.withResolvers<void>();
+  let event: MessageEvent;
+  mc.port2.onmessage = (e) => {
+    event = e;
+    assertEquals(e.target, mc.port2);
+    assertEquals(e.currentTarget, mc.port2);
+    assertEquals(e.eventPhase, Event.AT_TARGET);
+    assertEquals(e.composedPath(), [mc.port2]);
+    assert(e.isTrusted);
+    resolve();
+  };
+  mc.port1.postMessage("hello");
+  await promise;
+  // After dispatch the event state is reset.
+  assertEquals(event!.currentTarget, null);
+  assertEquals(event!.eventPhase, Event.NONE);
+  assertEquals(event!.composedPath(), []);
+  mc.port1.close();
+  mc.port2.close();
+});
+
+Deno.test("messagechannel multiple message listeners all fire (dispatch fallback)", async () => {
+  // More than one `message` listener forces the full event-dispatch machinery
+  // (the fast path only handles the single-listener case). All listeners, in
+  // registration order, must run.
+  const mc = new MessageChannel();
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const order: number[] = [];
+  mc.port2.addEventListener("message", () => order.push(1));
+  mc.port2.onmessage = () => order.push(2);
+  mc.port2.addEventListener("message", () => {
+    order.push(3);
+    resolve();
+  });
+  mc.port1.postMessage("hello");
+  await promise;
+  assertEquals(order, [1, 2, 3]);
+  mc.port1.close();
+  mc.port2.close();
+});
+
 Deno.test("messagechannel clone port", async () => {
   const mc = new MessageChannel();
   const mc2 = new MessageChannel();

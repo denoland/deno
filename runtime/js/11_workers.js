@@ -39,6 +39,7 @@ const { serializePermissions } = core.loadExtScript(
 const { log } = core.loadExtScript("ext:runtime/06_util.js");
 const {
   defineEventHandler,
+  dispatchFast,
   ErrorEvent,
   EventTarget,
   MessageEvent,
@@ -274,7 +275,13 @@ class Worker extends EventTarget {
       ),
     });
     setIsTrusted(event, true);
-    this.dispatchEvent(event);
+    // Fast path: with a single `message` listener (the common
+    // `onmessage`/`addEventListener("message", ...)` case) and no ports, invoke
+    // it directly and skip the full event-path dispatch. Falls back to
+    // `dispatchEvent` for anything else.
+    if (!dispatchFast(this, event)) {
+      this.dispatchEvent(event);
+    }
     return true;
   }
 

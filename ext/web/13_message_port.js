@@ -55,6 +55,7 @@ function getCreateFilteredInspectProxy() {
 
 const {
   defineEventHandler,
+  dispatchFast,
   EventTarget,
   MessageEvent,
   setEventTargetData,
@@ -182,7 +183,13 @@ function dispatchPortMessageData(target, data) {
     ),
   });
   setIsTrusted(event, true);
-  target.dispatchEvent(event);
+  // Fast path: with a single `message` listener (the common
+  // `onmessage`/`addEventListener("message", ...)` case) and no ports, invoke
+  // it directly and skip the full event-path dispatch. Falls back to
+  // `dispatchEvent` for anything else.
+  if (!dispatchFast(target, event)) {
+    target.dispatchEvent(event);
+  }
   return true;
 }
 
