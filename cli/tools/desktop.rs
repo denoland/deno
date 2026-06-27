@@ -2002,18 +2002,24 @@ fn laufey_dev_dir() -> Option<PathBuf> {
 /// Find a built backend binary inside a laufey checkout. Mirrors the well-known
 /// build-tree paths produced by laufey's Makefile + Nix flakes.
 fn locate_dev_backend_binary(laufey: &Path, backend: &str) -> Option<PathBuf> {
+  // The bare build-tree binaries carry the host executable suffix — `.exe` on
+  // Windows, empty elsewhere — so e.g. `cargo build` on Windows emits
+  // `laufey_winit.exe`. The macOS `.app` bundle paths never apply on Windows,
+  // so leaving them unsuffixed is fine.
+  let exe =
+    |rel: &str| laufey.join(format!("{rel}{}", std::env::consts::EXE_SUFFIX));
   let candidates: Vec<PathBuf> = match backend {
     "cef" => vec![
       laufey.join("result-cef/Applications/laufey.app/Contents/MacOS/laufey"),
       laufey.join("result/Applications/laufey.app/Contents/MacOS/laufey"),
       laufey.join("cef/build/Release/laufey.app/Contents/MacOS/laufey"),
       laufey.join("cef/build/laufey.app/Contents/MacOS/laufey"),
-      laufey.join("cef/build/Release/laufey"),
-      laufey.join("cef/build/laufey"),
+      exe("cef/build/Release/laufey"),
+      exe("cef/build/laufey"),
     ],
     "raw" => vec![
-      laufey.join("target/release/laufey_winit"),
-      laufey.join("target/debug/laufey_winit"),
+      exe("target/release/laufey_winit"),
+      exe("target/debug/laufey_winit"),
     ],
     _ => vec![
       laufey.join(
@@ -2022,7 +2028,7 @@ fn locate_dev_backend_binary(laufey: &Path, backend: &str) -> Option<PathBuf> {
       laufey
         .join("result/Applications/laufey_webview.app/Contents/MacOS/laufey_webview"),
       laufey.join("webview/build/laufey_webview.app/Contents/MacOS/laufey_webview"),
-      laufey.join("webview/build/laufey_webview"),
+      exe("webview/build/laufey_webview"),
     ],
   };
   candidates.into_iter().find(|p| p.exists())
@@ -6039,10 +6045,15 @@ def456  other.zip
   #[test]
   fn locate_dev_backend_winit_target_paths() {
     let tmp = tempfile::tempdir().unwrap();
-    let p = tmp.path().join("target/release/laufey_winit");
+    // `raw` is the public backend name; the dev binary is `laufey_winit`,
+    // carrying the host executable suffix (`.exe` on Windows) — without it
+    // LAUFEY_DEV_DIR could never resolve a backend on Windows.
+    let p = tmp.path().join(format!(
+      "target/release/laufey_winit{}",
+      std::env::consts::EXE_SUFFIX
+    ));
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(&p, b"binary").unwrap();
-    // `raw` is the public backend name; the binary file is `laufey_winit`.
     let found = locate_dev_backend_binary(tmp.path(), "raw");
     assert_eq!(found.as_deref(), Some(p.as_path()));
   }
