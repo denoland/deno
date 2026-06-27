@@ -7495,7 +7495,7 @@ mod test {
       .await;
       assert_eq!(
         err.to_string(),
-        "Failed resolving tag 'a@tag' mapped to 'a@1.0.2' because the package version was published at 2022-11-07 00:00:00 UTC, but dependencies newer than 2010-11-07 00:00:00 UTC are not allowed because it is newer than the specified minimum dependency date."
+        "Could not find npm package 'a' matching 'tag'.\n\nA newer matching version was found, but it was not used because it was newer than the specified minimum dependency date of 2010-11-07 00:00:00 UTC."
       );
     }
   }

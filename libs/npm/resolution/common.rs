@@ -430,8 +430,8 @@ impl<'a> NpmPackageVersionResolver<'a> {
         Ok(version_info) => Ok(version_info),
         Err(NpmPackageVersionResolutionError::DistTagVersionTooNew {
           ..
-        }) if tag == "latest" => self.resolve_best_matching_version_info(
-          &WILDCARD_VERSION_REQ,
+        }) => self.resolve_best_matching_dist_tag_fallback_version_info(
+          tag,
           version_req,
         ),
         Err(err) => Err(err),
@@ -459,6 +459,24 @@ impl<'a> NpmPackageVersionResolver<'a> {
     // enforce the `no-downgrade` trust policy on the chosen registry version
     self.check_trust_policy(version_info)?;
     Ok(version_info)
+  }
+
+  fn resolve_best_matching_dist_tag_fallback_version_info(
+    &self,
+    tag: &str,
+    error_version_req: &VersionReq,
+  ) -> Result<&'a NpmPackageVersionInfo, NpmPackageVersionResolutionError> {
+    let Some(tagged_version) = self.info.dist_tags.get(tag) else {
+      return Err(NpmPackageVersionResolutionError::DistTagNotFound {
+        package_name: self.info.name.clone(),
+        dist_tag: tag.to_string(),
+      });
+    };
+    // Match npm-pick-manifest/pnpm: when a dist-tag points to a version newer
+    // than the allowed publish date, retry as a semver `<= tagged_version`.
+    let fallback_req =
+      VersionReq::parse_from_npm(&format!("<={tagged_version}")).unwrap();
+    self.resolve_best_matching_version_info(&fallback_req, error_version_req)
   }
 
   fn resolve_best_matching_version_info(
@@ -618,6 +636,32 @@ mod test {
   use deno_semver::package::PackageReq;
 
   use super::*;
+
+  fn version(text: &str) -> Version {
+    Version::parse_from_npm(text).unwrap()
+  }
+
+  fn version_info(text: &str) -> NpmPackageVersionInfo {
+    NpmPackageVersionInfo {
+      version: version(text),
+      ..Default::default()
+    }
+  }
+
+  fn date(text: &str) -> chrono::DateTime<chrono::Utc> {
+    text.parse().unwrap()
+  }
+
+  fn resolver_with_newest_dependency_date(text: &str) -> NpmVersionResolver {
+    NpmVersionResolver {
+      link_packages: Default::default(),
+      newest_dependency_date_options: NewestDependencyDateOptions::from_date(
+        date(text),
+      ),
+      overrides: Default::default(),
+      trust_policy: Default::default(),
+    }
+  }
 
   #[test]
   fn test_get_resolved_package_version_and_info() {
@@ -959,40 +1003,118 @@ mod test {
   }
 
   #[test]
-  fn test_non_latest_tag_too_new_errors() {
+  fn test_stable_tag_too_new_uses_newest_allowed_lte_version() {
+    let package_req = PackageReq::from_str("test@stable").unwrap();
+    let package_info = NpmPackageInfo {
+      name: "test".into(),
+      versions: HashMap::from([
+        (version("1.9.0"), version_info("1.9.0")),
+        (version("2.0.0-beta.1"), version_info("2.0.0-beta.1")),
+        (version("2.0.0"), version_info("2.0.0")),
+        (version("2.1.0"), version_info("2.1.0")),
+      ]),
+      dist_tags: HashMap::from([("stable".into(), version("2.0.0"))]),
+      time: HashMap::from([
+        (version("1.9.0"), date("2025-05-15T00:00:00.000Z")),
+        (version("2.0.0-beta.1"), date("2025-05-15T00:00:00.000Z")),
+        (version("2.0.0"), date("2025-05-29T00:00:00.000Z")),
+        (version("2.1.0"), date("2025-05-15T00:00:00.000Z")),
+      ]),
+    };
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-20T00:00:00.000Z");
+    let version_resolver = resolver.get_for_package(&package_info);
+    let result = version_resolver
+      .get_resolved_package_version_and_info(&package_req.version_req);
+    assert_eq!(result.unwrap().version.to_string(), "1.9.0");
+  }
+
+  #[test]
+  fn test_prerelease_tag_too_new_uses_semver_lte_version() {
     let package_req = PackageReq::from_str("test@next").unwrap();
     let package_info = NpmPackageInfo {
       name: "test".into(),
-      versions: HashMap::from([(
-        Version::parse_from_npm("1.1.0").unwrap(),
-        NpmPackageVersionInfo {
-          version: Version::parse_from_npm("1.1.0").unwrap(),
-          ..Default::default()
-        },
-      )]),
+      versions: HashMap::from([
+        (version("1.0.0-beta.9"), version_info("1.0.0-beta.9")),
+        (version("1.0.0-next.2"), version_info("1.0.0-next.2")),
+        (version("1.0.0"), version_info("1.0.0")),
+      ]),
+      dist_tags: HashMap::from([("next".into(), version("1.0.0-next.2"))]),
+      time: HashMap::from([
+        (version("1.0.0-beta.9"), date("2025-05-15T00:00:00.000Z")),
+        (version("1.0.0-next.2"), date("2025-05-29T00:00:00.000Z")),
+        (version("1.0.0"), date("2025-05-15T00:00:00.000Z")),
+      ]),
+    };
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-20T00:00:00.000Z");
+    let version_resolver = resolver.get_for_package(&package_info);
+    let result = version_resolver
+      .get_resolved_package_version_and_info(&package_req.version_req);
+    assert_eq!(result.unwrap().version.to_string(), "1.0.0-beta.9");
+  }
+
+  #[test]
+  fn test_latest_prerelease_tag_too_new_uses_newest_allowed_lte_version() {
+    let package_req = PackageReq::from_str("test@latest").unwrap();
+    let package_info = NpmPackageInfo {
+      name: "test".into(),
+      versions: HashMap::from([
+        (
+          version("7.0.0-dev.20260624.1"),
+          version_info("7.0.0-dev.20260624.1"),
+        ),
+        (
+          version("7.0.0-dev.20260626.1"),
+          version_info("7.0.0-dev.20260626.1"),
+        ),
+      ]),
       dist_tags: HashMap::from([(
-        "next".into(),
-        Version::parse_from_npm("1.1.0").unwrap(),
+        "latest".into(),
+        version("7.0.0-dev.20260626.1"),
       )]),
-      time: HashMap::from([(
-        Version::parse_from_npm("1.1.0").unwrap(),
-        "2025-05-29T00:00:00.000Z".parse().unwrap(),
-      )]),
+      time: HashMap::from([
+        (
+          version("7.0.0-dev.20260624.1"),
+          date("2025-05-15T00:00:00.000Z"),
+        ),
+        (
+          version("7.0.0-dev.20260626.1"),
+          date("2025-05-29T00:00:00.000Z"),
+        ),
+      ]),
     };
-    let resolver = NpmVersionResolver {
-      link_packages: Default::default(),
-      newest_dependency_date_options: NewestDependencyDateOptions::from_date(
-        "2025-05-20T00:00:00.000Z".parse().unwrap(),
-      ),
-      overrides: Default::default(),
-      trust_policy: Default::default(),
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-20T00:00:00.000Z");
+    let version_resolver = resolver.get_for_package(&package_info);
+    let result = version_resolver
+      .get_resolved_package_version_and_info(&package_req.version_req);
+    assert_eq!(result.unwrap().version.to_string(), "7.0.0-dev.20260624.1");
+  }
+
+  #[test]
+  fn test_exact_version_too_new_does_not_use_lte_fallback() {
+    let package_req = PackageReq::from_str("test@2.0.0").unwrap();
+    let package_info = NpmPackageInfo {
+      name: "test".into(),
+      versions: HashMap::from([
+        (version("1.9.0"), version_info("1.9.0")),
+        (version("2.0.0"), version_info("2.0.0")),
+      ]),
+      dist_tags: HashMap::from([("latest".into(), version("2.0.0"))]),
+      time: HashMap::from([
+        (version("1.9.0"), date("2025-05-15T00:00:00.000Z")),
+        (version("2.0.0"), date("2025-05-29T00:00:00.000Z")),
+      ]),
     };
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-20T00:00:00.000Z");
     let version_resolver = resolver.get_for_package(&package_info);
     let result = version_resolver
       .get_resolved_package_version_and_info(&package_req.version_req);
     assert!(matches!(
       result,
-      Err(NpmPackageVersionResolutionError::DistTagVersionTooNew { .. })
+      Err(NpmPackageVersionResolutionError::VersionReqNotMatched { .. })
     ));
   }
 
