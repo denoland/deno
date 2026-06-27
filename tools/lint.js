@@ -428,7 +428,7 @@ async function ensureWorkflowYmlsUpToDate() {
     ".github/workflows/version_bump.ts",
   ];
 
-  for (const gen of generators) {
+  const pending = generators.map(async (gen) => {
     const cmd = new Deno.Command("deno", {
       cwd: ROOT_PATH,
       args: ["run", "--allow-read=.", "--allow-net=jsr.io", gen, "--lint"],
@@ -443,7 +443,9 @@ async function ensureWorkflowYmlsUpToDate() {
         `${ymlFile} is out of date. Run: ${gen}\n${decoder.decode(stderr)}`,
       );
     }
-  }
+  });
+
+  await Promise.all(pending);
 }
 
 /**
