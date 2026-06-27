@@ -1,6 +1,5 @@
 Check [WILDCARD]scoped.ts
 Check [WILDCARD]scoped.ts#6-10.ts
-running 0 tests from ./scoped.ts
 running 1 test from ./scoped.ts#6-10.ts
 [WILDCARD]/scoped.ts#6-10.ts ... FAILED ([WILDLINE])
 

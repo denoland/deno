@@ -14,6 +14,10 @@ pub struct PrettyTestReporter {
   phase: &'static str,
   filter: bool,
   repl: bool,
+  /// Whether `--doc` is enabled. When set, a plan reporting zero tests is
+  /// suppressed so that scanning a source file with no doc tests (and no
+  /// executable tests of its own) doesn't print `running 0 tests from <file>`.
+  doc: bool,
   scope_test_id: Option<usize>,
   cwd: Url,
   did_have_user_output: bool,
@@ -40,6 +44,7 @@ impl PrettyTestReporter {
     echo_output: bool,
     filter: bool,
     repl: bool,
+    doc: bool,
     cwd: Url,
     failure_format_options: TestFailureFormatOptions,
   ) -> PrettyTestReporter {
@@ -50,6 +55,7 @@ impl PrettyTestReporter {
       phase: "",
       filter,
       repl,
+      doc,
       scope_test_id: None,
       cwd,
       did_have_user_output: false,
@@ -204,6 +210,13 @@ impl TestReporter for PrettyTestReporter {
       return;
     }
     if self.parallel || (self.filter && plan.total == 0) {
+      return;
+    }
+    // With `--doc`, every source file is scanned for doc tests and the file
+    // itself is also run as a module. Files that have no doc tests and no
+    // executable tests of their own would otherwise print a noisy
+    // `running 0 tests from <file>` line, so suppress it.
+    if self.doc && plan.total == 0 {
       return;
     }
     let inflection = if plan.total == 1 { "test" } else { "tests" };

@@ -655,6 +655,11 @@ struct TestSpecifiersOptions {
   reporter: TestReporterConfig,
   junit_path: Option<String>,
   hide_stacktraces: bool,
+  /// Whether `--doc` is enabled. When set, the pretty reporter suppresses the
+  /// `running 0 tests from <file>` line for source files that contributed no
+  /// doc tests (and have no executable tests of their own), so that scanning a
+  /// file with no docs doesn't produce noise.
+  doc: bool,
   /// `(index, count)` with a 1-based index, from `--shard`. Selects a subset
   /// of test files so a run can be split across machines.
   shard: Option<(usize, usize)>,
@@ -718,6 +723,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
       options.log_level != Some(Level::Error),
       options.filter,
       false,
+      options.doc,
       options.cwd.clone(),
       failure_format_options,
     )),
@@ -2452,6 +2458,7 @@ pub async fn run_tests(
       junit_path: workspace_test_options.junit_path,
       hide_stacktraces: workspace_test_options.hide_stacktraces,
       shard: workspace_test_options.shard,
+      doc: workspace_test_options.doc,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&workspace_test_options.filter),
         shuffle: workspace_test_options.shuffle,
@@ -2716,6 +2723,7 @@ pub async fn run_tests_with_watch(
             junit_path: workspace_test_options.junit_path,
             hide_stacktraces: workspace_test_options.hide_stacktraces,
             shard: workspace_test_options.shard,
+            doc: workspace_test_options.doc,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&workspace_test_options.filter),
               shuffle: workspace_test_options.shuffle,

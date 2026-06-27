@@ -1,6 +1,5 @@
 Download [WILDCARD]
 Check [WILDCARD]
-running 0 tests from ./main.ts
 running 1 test from ./main.ts#11-20.ts
 [WILDLINE]/main.ts#11-20.ts ... ok ([WILDLINE])
 running 1 test from ./markdown.md#5-10.ts

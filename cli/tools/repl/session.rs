@@ -376,6 +376,7 @@ impl ReplSession {
           true,
           false,
           true,
+          false,
           cwd_url.clone(),
           TestFailureFormatOptions::default(),
         ))

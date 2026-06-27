@@ -1,7 +1,6 @@
 Check [WILDCARD]deny.ts
 Check [WILDCARD]deny.ts#5-9.ts
 Check [WILDCARD]deny.ts#12-16.ts
-running 0 tests from ./deny.ts
 running 1 test from ./deny.ts#5-9.ts
 [WILDCARD]/deny.ts#5-9.ts ... ok ([WILDLINE])
 running 1 test from ./deny.ts#12-16.ts
