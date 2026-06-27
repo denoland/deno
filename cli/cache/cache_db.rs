@@ -86,14 +86,43 @@ pub struct CacheDBConfiguration {
   pub on_failure: CacheFailure,
 }
 
+/// Which SQLite journal mode to use when opening a cache database.
+///
+/// WAL gives the best concurrency on most systems, but some filesystems
+/// (notably WSL-1's translation layer and certain network mounts) don't
+/// support the shared-memory locking WAL relies on. That surfaces as
+/// `SQLITE_PROTOCOL` (error code 15: "Database lock protocol error") when two
+/// Deno processes open the same cache DB at once, on which we fall back to
+/// TRUNCATE. See https://github.com/denoland/deno/issues/26441.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum CacheDbJournalMode {
+  Wal,
+  Truncate,
+}
+
+impl CacheDbJournalMode {
+  fn as_pragma(self) -> &'static str {
+    match self {
+      CacheDbJournalMode::Wal => "WAL",
+      CacheDbJournalMode::Truncate => "TRUNCATE",
+    }
+  }
+}
+
+/// The journal mode to attempt first. WSL-1 is detected up front so we skip the
+/// guaranteed-to-fail WAL attempt (and its error log) there; everything else
+/// starts with WAL and relies on the runtime fallback in [`open_connection`]
+/// for the rarer environments our detection doesn't recognize.
+fn default_journal_mode() -> CacheDbJournalMode {
+  if is_wsl1() {
+    CacheDbJournalMode::Truncate
+  } else {
+    CacheDbJournalMode::Wal
+  }
+}
+
 impl CacheDBConfiguration {
-  fn create_combined_sql(&self) -> String {
-    // WSL-1's filesystem translation layer doesn't support WAL's
-    // shared-memory locking, which surfaces as `SQLITE_PROTOCOL` (error
-    // code 15: "Database lock protocol error") when two Deno processes
-    // open the same cache DB at once. Fall back to TRUNCATE journal mode
-    // there. See https://github.com/denoland/deno/issues/26441.
-    let journal_mode = if is_wsl1() { "TRUNCATE" } else { "WAL" };
+  fn create_combined_sql(&self, journal_mode: CacheDbJournalMode) -> String {
     format!(
       "PRAGMA journal_mode={journal_mode};\
        PRAGMA synchronous=NORMAL;\
@@ -103,6 +132,7 @@ impl CacheDBConfiguration {
        PRAGMA optimize;\
        CREATE TABLE IF NOT EXISTS info (key TEXT PRIMARY KEY, value TEXT NOT NULL);\
        {table_initializer}",
+      journal_mode = journal_mode.as_pragma(),
       table_initializer = self.table_initializer
     )
   }
@@ -228,7 +258,13 @@ impl CacheDB {
       },
     };
 
-    Self::initialize_connection(self.config, &conn, version).unwrap();
+    Self::initialize_connection(
+      self.config,
+      &conn,
+      version,
+      default_journal_mode(),
+    )
+    .unwrap();
 
     let cell = OnceCell::new();
     _ = cell.set(ConnectionState::Connected(conn));
@@ -266,8 +302,9 @@ impl CacheDB {
     config: &CacheDBConfiguration,
     conn: &Connection,
     version: &str,
+    journal_mode: CacheDbJournalMode,
   ) -> Result<(), rusqlite::Error> {
-    let sql = config.create_combined_sql();
+    let sql = config.create_combined_sql(journal_mode);
     conn.execute_batch(&sql)?;
 
     // Check the version
@@ -299,18 +336,28 @@ impl CacheDB {
   fn open_connection_and_init(
     &self,
     path: Option<&Path>,
+    journal_mode: CacheDbJournalMode,
   ) -> Result<Connection, rusqlite::Error> {
     let conn = self.actually_open_connection(path)?;
-    Self::initialize_connection(self.config, &conn, self.version)?;
+    Self::initialize_connection(
+      self.config,
+      &conn,
+      self.version,
+      journal_mode,
+    )?;
     Ok(conn)
   }
 
   /// This function represents the policy for dealing with corrupted cache files. We try fairly aggressively
   /// to repair the situation, and if we can't, we prefer to log noisily and continue with in-memory caches.
   fn open_connection(&self) -> Result<ConnectionState, AnyError> {
-    open_connection(self.config, self.path.as_deref(), |maybe_path| {
-      self.open_connection_and_init(maybe_path)
-    })
+    open_connection(
+      self.config,
+      self.path.as_deref(),
+      |maybe_path, journal_mode| {
+        self.open_connection_and_init(maybe_path, journal_mode)
+      },
+    )
   }
 
   fn initialize<'a>(
@@ -404,10 +451,13 @@ fn open_connection(
   path: Option<&Path>,
   open_connection_and_init: impl Fn(
     Option<&Path>,
+    CacheDbJournalMode,
   ) -> Result<Connection, rusqlite::Error>,
 ) -> Result<ConnectionState, AnyError> {
+  let mut journal_mode = default_journal_mode();
+
   // Success on first try? We hope that this is the case.
-  let err = match open_connection_and_init(path) {
+  let err = match open_connection_and_init(path, journal_mode) {
     Ok(conn) => return Ok(ConnectionState::Connected(conn)),
     Err(err) => err,
   };
@@ -416,6 +466,33 @@ fn open_connection(
     // If an in-memory DB fails, that's game over
     log::error!("Failed to initialize in-memory cache database.");
     return Err(err.into());
+  };
+
+  // If we attempted WAL but the underlying filesystem doesn't support its
+  // shared-memory locking (SQLITE_PROTOCOL, "database lock protocol error"),
+  // retry the same on-disk database with TRUNCATE journal mode before resorting
+  // to deletion or an in-memory cache. This keeps a persistent, file-backed
+  // cache even in environments our up-front WSL-1 detection doesn't recognize
+  // (e.g. some network mounts). See https://github.com/denoland/deno/issues/26441.
+  let err = if journal_mode == CacheDbJournalMode::Wal
+    && is_wal_unsupported_error(&err)
+  {
+    journal_mode = CacheDbJournalMode::Truncate;
+    log::debug!(
+      "Cache database '{}' does not support WAL journal mode, retrying with TRUNCATE.",
+      path.display()
+    );
+    match open_connection_and_init(Some(path), journal_mode) {
+      Ok(conn) => return Ok(ConnectionState::Connected(conn)),
+      Err(err) => err,
+    }
+  } else {
+    err
+  };
+
+  // All subsequent open attempts reuse the journal mode settled on above.
+  let open_connection_and_init = |maybe_path: Option<&Path>| {
+    open_connection_and_init(maybe_path, journal_mode)
   };
 
   // reduce logging for readonly file system
@@ -511,6 +588,19 @@ fn is_lock_contention_error(err: &rusqlite::Error) -> bool {
         rusqlite::ErrorCode::DatabaseBusy
           | rusqlite::ErrorCode::DatabaseLocked
       )
+  )
+}
+
+/// Returns whether the error means the filesystem doesn't support WAL's
+/// shared-memory locking. This surfaces as `SQLITE_PROTOCOL`
+/// (`ErrorCode::FileLockingProtocolFailed`, code 15: "Database lock protocol
+/// error") and indicates the database should be reopened with a non-WAL journal
+/// mode rather than deleted. See https://github.com/denoland/deno/issues/26441.
+fn is_wal_unsupported_error(err: &rusqlite::Error) -> bool {
+  matches!(
+    err,
+    rusqlite::Error::SqliteFailure(ffi_err, _)
+      if ffi_err.code == rusqlite::ErrorCode::FileLockingProtocolFailed
   )
 }
 
@@ -668,14 +758,15 @@ mod tests {
   async fn failure_mode_in_memory() {
     let temp_dir = TempDir::new();
     let path = temp_dir.path().join("data").to_path_buf();
-    let state = open_connection(&TEST_DB, Some(path.as_path()), |maybe_path| {
-      match maybe_path {
-        // this error was chosen because it was an error easy to construct
-        Some(_) => Err(rusqlite::Error::SqliteSingleThreadedMode),
-        None => Ok(Connection::open_in_memory().unwrap()),
-      }
-    })
-    .unwrap();
+    let state =
+      open_connection(&TEST_DB, Some(path.as_path()), |maybe_path, _| {
+        match maybe_path {
+          // this error was chosen because it was an error easy to construct
+          Some(_) => Err(rusqlite::Error::SqliteSingleThreadedMode),
+          None => Ok(Connection::open_in_memory().unwrap()),
+        }
+      })
+      .unwrap();
     assert!(matches!(state, ConnectionState::Connected(_)));
   }
 
@@ -687,19 +778,20 @@ mod tests {
     let temp_dir = TempDir::new();
     let path = temp_dir.path().join("data").to_path_buf();
     let attempts = AtomicUsize::new(0);
-    let state = open_connection(&TEST_DB, Some(path.as_path()), |maybe_path| {
-      let n = attempts.fetch_add(1, Ordering::SeqCst);
-      if n < 2 {
-        // SQLITE_BUSY_RECOVERY (261): another process is recovering the WAL db.
-        Err(rusqlite::Error::SqliteFailure(
-          rusqlite::ffi::Error::new(261),
-          Some("recovering".to_string()),
-        ))
-      } else {
-        Connection::open(maybe_path.unwrap())
-      }
-    })
-    .unwrap();
+    let state =
+      open_connection(&TEST_DB, Some(path.as_path()), |maybe_path, _| {
+        let n = attempts.fetch_add(1, Ordering::SeqCst);
+        if n < 2 {
+          // SQLITE_BUSY_RECOVERY (261): another process is recovering the WAL db.
+          Err(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(261),
+            Some("recovering".to_string()),
+          ))
+        } else {
+          Connection::open(maybe_path.unwrap())
+        }
+      })
+      .unwrap();
     assert!(matches!(state, ConnectionState::Connected(_)));
     // The first open plus at least two retries should have happened.
     assert!(attempts.load(Ordering::SeqCst) >= 3);
@@ -713,17 +805,18 @@ mod tests {
     let path = temp_dir.path().join("data").to_path_buf();
     // Create a sentinel file so we can assert it is not deleted.
     std::fs::write(&path, b"not a real db").unwrap();
-    let state = open_connection(&TEST_DB, Some(path.as_path()), |maybe_path| {
-      match maybe_path {
-        // Always busy: simulate a database that never finishes recovering.
-        Some(_) => Err(rusqlite::Error::SqliteFailure(
-          rusqlite::ffi::Error::new(261),
-          Some("recovering".to_string()),
-        )),
-        None => Ok(Connection::open_in_memory().unwrap()),
-      }
-    })
-    .unwrap();
+    let state =
+      open_connection(&TEST_DB, Some(path.as_path()), |maybe_path, _| {
+        match maybe_path {
+          // Always busy: simulate a database that never finishes recovering.
+          Some(_) => Err(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(261),
+            Some("recovering".to_string()),
+          )),
+          None => Ok(Connection::open_in_memory().unwrap()),
+        }
+      })
+      .unwrap();
     // Falls back to the in-memory failure mode rather than erroring.
     assert!(matches!(state, ConnectionState::Connected(_)));
     // Crucially, the on-disk file owned by another process is preserved.
@@ -785,14 +878,78 @@ mod tests {
   }
 
   #[test]
-  fn combined_sql_uses_truncate_on_wsl1_only() {
-    let sql = TEST_DB.create_combined_sql();
-    if is_wsl1() {
-      assert!(sql.contains("PRAGMA journal_mode=TRUNCATE"));
-      assert!(!sql.contains("PRAGMA journal_mode=WAL"));
+  fn combined_sql_respects_journal_mode() {
+    let wal = TEST_DB.create_combined_sql(CacheDbJournalMode::Wal);
+    assert!(wal.contains("PRAGMA journal_mode=WAL"));
+    assert!(!wal.contains("PRAGMA journal_mode=TRUNCATE"));
+
+    let truncate = TEST_DB.create_combined_sql(CacheDbJournalMode::Truncate);
+    assert!(truncate.contains("PRAGMA journal_mode=TRUNCATE"));
+    assert!(!truncate.contains("PRAGMA journal_mode=WAL"));
+  }
+
+  #[test]
+  fn default_journal_mode_matches_wsl1_detection() {
+    let expected = if is_wsl1() {
+      CacheDbJournalMode::Truncate
     } else {
-      assert!(sql.contains("PRAGMA journal_mode=WAL"));
-      assert!(!sql.contains("PRAGMA journal_mode=TRUNCATE"));
+      CacheDbJournalMode::Wal
+    };
+    assert_eq!(default_journal_mode(), expected);
+  }
+
+  #[test]
+  fn detects_wal_unsupported_error() {
+    // SQLITE_PROTOCOL (15): the filesystem doesn't support WAL locking.
+    let protocol_err = rusqlite::Error::SqliteFailure(
+      rusqlite::ffi::Error::new(15),
+      Some("locking protocol".to_string()),
+    );
+    assert!(is_wal_unsupported_error(&protocol_err));
+
+    // SQLITE_BUSY_RECOVERY (261): lock contention, not a WAL-support problem.
+    let busy_err = rusqlite::Error::SqliteFailure(
+      rusqlite::ffi::Error::new(261),
+      Some("recovering".to_string()),
+    );
+    assert!(!is_wal_unsupported_error(&busy_err));
+  }
+
+  #[tokio::test]
+  async fn falls_back_to_truncate_when_wal_unsupported() {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
+    let temp_dir = TempDir::new();
+    let path = temp_dir.path().join("data").to_path_buf();
+    let wal_attempts = AtomicUsize::new(0);
+    let truncate_attempts = AtomicUsize::new(0);
+    let state =
+      open_connection(&TEST_DB, Some(path.as_path()), |maybe_path, mode| {
+        match mode {
+          CacheDbJournalMode::Wal => {
+            wal_attempts.fetch_add(1, Ordering::SeqCst);
+            // SQLITE_PROTOCOL (15): WAL locking unsupported by the filesystem.
+            Err(rusqlite::Error::SqliteFailure(
+              rusqlite::ffi::Error::new(15),
+              Some("locking protocol".to_string()),
+            ))
+          }
+          CacheDbJournalMode::Truncate => {
+            truncate_attempts.fetch_add(1, Ordering::SeqCst);
+            Connection::open(maybe_path.unwrap())
+          }
+        }
+      })
+      .unwrap();
+    assert!(matches!(state, ConnectionState::Connected(_)));
+    // The TRUNCATE retry must have run and succeeded.
+    assert_eq!(truncate_attempts.load(Ordering::SeqCst), 1);
+    // The file-backed cache must be kept, never deleted.
+    assert!(path.exists());
+    // The first attempt should only happen when WAL is the default mode.
+    if default_journal_mode() == CacheDbJournalMode::Wal {
+      assert_eq!(wal_attempts.load(Ordering::SeqCst), 1);
     }
   }
 
