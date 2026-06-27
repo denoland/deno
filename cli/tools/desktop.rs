@@ -1131,6 +1131,64 @@ async fn run_desktop_hmr(
   Ok(())
 }
 
+/// Marker file written into every generated desktop app directory/bundle so a
+/// later build can recognize its own previous output and clear it, while never
+/// touching unrelated user data that happens to share the inferred app name.
+const APP_DIR_MARKER: &str = ".deno-desktop-app";
+
+/// Prepare `app_dir` to receive a freshly built bundle.
+///
+/// The app name is inferred from the entrypoint (or, for generic names like
+/// `main.ts`, the project directory), so the output path can collide with an
+/// existing user directory of the same name (e.g. `helloworld/helloworld`).
+/// Blindly `remove_dir_all`-ing that path silently destroys the user's data
+/// (issue #35510). Instead, only remove a directory we previously created —
+/// identified by `APP_DIR_MARKER` — or one that is empty. Anything else is
+/// treated as user data and we bail with instructions rather than delete it.
+fn reserve_app_dir(app_dir: &Path) -> Result<(), AnyError> {
+  let meta = match std::fs::symlink_metadata(app_dir) {
+    // Nothing there yet (or unreadable) — let the build create it.
+    Err(_) => return Ok(()),
+    Ok(meta) => meta,
+  };
+
+  if !meta.is_dir() {
+    bail!(
+      "Refusing to overwrite '{}': a file with that name already exists. \
+       Pass --output to choose a different name.",
+      app_dir.display()
+    );
+  }
+
+  // A bundle we generated carries the marker (at the directory root for
+  // Linux/Windows, or under `Contents/Resources` for a macOS `.app`).
+  let is_ours = app_dir.join(APP_DIR_MARKER).exists()
+    || app_dir
+      .join("Contents")
+      .join("Resources")
+      .join(APP_DIR_MARKER)
+      .exists();
+  let is_empty = std::fs::read_dir(app_dir)
+    .map(|mut entries| entries.next().is_none())
+    .unwrap_or(false);
+
+  if !is_ours && !is_empty {
+    bail!(
+      "Refusing to delete existing directory '{}': it was not created by \
+       `deno desktop`. The app name was inferred from the entrypoint or the \
+       project directory and collided with this directory. Pass --output to \
+       choose a different name, or remove the directory yourself if it is a \
+       leftover from an older build.",
+      app_dir.display()
+    );
+  }
+
+  std::fs::remove_dir_all(app_dir).with_context(|| {
+    format!("failed to clear app directory {}", app_dir.display())
+  })?;
+  Ok(())
+}
+
 /// Package a compiled desktop dylib into a platform-specific app bundle.
 async fn package_desktop_app(
   dylib_path: &Path,
@@ -1206,12 +1264,11 @@ async fn package_windows_app_dir(
     .to_string_lossy()
     .to_string();
 
-  if app_dir.exists() {
-    std::fs::remove_dir_all(&app_dir)?;
-  }
+  reserve_app_dir(&app_dir)?;
 
   // Copy LAUFEY backend directory (binary + CEF support files) as the shell.
   crate::tools::compile::copy_dir_all(&laufey_dir, &app_dir)?;
+  std::fs::write(app_dir.join(APP_DIR_MARKER), b"")?;
 
   // Drop any self-extracting runtime cache dir that tagged along.
   let laufey_exe_stem = Path::new(&laufey_binary_name)
@@ -1332,12 +1389,11 @@ async fn package_linux_app_dir(
     .to_string_lossy()
     .to_string();
 
-  if app_dir.exists() {
-    std::fs::remove_dir_all(&app_dir)?;
-  }
+  reserve_app_dir(&app_dir)?;
 
   // Copy LAUFEY backend directory (binary + CEF support files) as the shell.
   crate::tools::compile::copy_dir_all(&laufey_dir, &app_dir)?;
+  std::fs::write(app_dir.join(APP_DIR_MARKER), b"")?;
 
   // Drop any self-extracting runtime cache dir that tagged along.
   let laufey_exe_stem = Path::new(&laufey_binary_name)
@@ -2627,10 +2683,9 @@ async fn package_macos_app_bundle(
     );
   }
 
-  // Remove existing bundle.
-  if app_bundle.exists() {
-    std::fs::remove_dir_all(&app_bundle)?;
-  }
+  // Remove an existing bundle we previously built; never delete unrelated
+  // user data that collided with the inferred `<name>.app` (issue #35510).
+  reserve_app_dir(&app_bundle)?;
 
   // Copy the entire LAUFEY .app as the shell (CEF needs Frameworks/, Resources/, etc.).
   crate::tools::compile::copy_dir_all(&laufey_app, &app_bundle)?;
@@ -2639,6 +2694,9 @@ async fn package_macos_app_bundle(
   let macos_dir = contents_dir.join("MacOS");
   let resources_dir = contents_dir.join("Resources");
   std::fs::create_dir_all(&resources_dir)?;
+  // Marker lives under Resources/ (not the bundle root) so it is sealed as a
+  // normal resource when the bundle is codesigned below.
+  std::fs::write(resources_dir.join(APP_DIR_MARKER), b"")?;
 
   // The backend binary extracts its self-extracting VFS to a sibling
   // `.<exe>` dir on first run. If the source laufey.app was ever run, that dir
@@ -6720,5 +6778,74 @@ def456  other.zip
       .collect();
     assert!(actions.iter().any(|a| a == "CreateShortcuts"));
     assert!(actions.iter().any(|a| a == "RemoveShortcuts"));
+  }
+
+  #[test]
+  fn reserve_app_dir_ok_when_missing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("app");
+    reserve_app_dir(&app_dir).unwrap();
+    assert!(!app_dir.exists());
+  }
+
+  #[test]
+  fn reserve_app_dir_clears_empty_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("app");
+    std::fs::create_dir(&app_dir).unwrap();
+    reserve_app_dir(&app_dir).unwrap();
+    assert!(!app_dir.exists());
+  }
+
+  #[test]
+  fn reserve_app_dir_clears_previous_build() {
+    // A directory carrying our marker is a prior `deno desktop` output and
+    // may be replaced.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("app");
+    std::fs::create_dir(&app_dir).unwrap();
+    std::fs::write(app_dir.join("laufey"), b"binary").unwrap();
+    std::fs::write(app_dir.join(APP_DIR_MARKER), b"").unwrap();
+    reserve_app_dir(&app_dir).unwrap();
+    assert!(!app_dir.exists());
+  }
+
+  #[test]
+  fn reserve_app_dir_clears_previous_macos_bundle() {
+    // A `.app` bundle's marker lives under Contents/Resources/.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("App.app");
+    let resources = app_dir.join("Contents").join("Resources");
+    std::fs::create_dir_all(&resources).unwrap();
+    std::fs::write(resources.join(APP_DIR_MARKER), b"").unwrap();
+    reserve_app_dir(&app_dir).unwrap();
+    assert!(!app_dir.exists());
+  }
+
+  #[test]
+  fn reserve_app_dir_refuses_user_data() {
+    // The crux of issue #35510: an inferred app name collides with an
+    // existing user directory. We must error, not delete it.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("helloworld");
+    std::fs::create_dir(&app_dir).unwrap();
+    let precious = app_dir.join("precious.txt");
+    std::fs::write(&precious, b"do not delete").unwrap();
+
+    let err = reserve_app_dir(&app_dir).unwrap_err();
+    assert!(err.to_string().contains("not created by"));
+    // The user's data survives untouched.
+    assert!(precious.exists());
+    assert_eq!(std::fs::read(&precious).unwrap(), b"do not delete");
+  }
+
+  #[test]
+  fn reserve_app_dir_refuses_existing_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("app");
+    std::fs::write(&path, b"i am a file").unwrap();
+    let err = reserve_app_dir(&path).unwrap_err();
+    assert!(err.to_string().contains("a file with that name"));
+    assert!(path.exists());
   }
 }
