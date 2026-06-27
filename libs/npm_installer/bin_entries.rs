@@ -40,12 +40,15 @@ fn default_bin_name(package: &NpmResolutionPackage) -> &str {
 }
 
 fn normalize_bin_name(bin_name: &str) -> &str {
-  let bin_name = bin_name.trim_end_matches(['/', '\\']);
-  bin_name
+  let trimmed = bin_name.trim_end_matches(['/', '\\']);
+  // Leave validation of empty or special path component names to package
+  // metadata handling. This only prevents embedded separators from creating
+  // directories inside node_modules/.bin.
+  trimmed
     .rsplit(['/', '\\'])
     .next()
     .filter(|name| !name.is_empty())
-    .unwrap_or(bin_name)
+    .unwrap_or(trimmed)
 }
 
 pub fn warn_missing_entrypoint(

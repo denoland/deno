@@ -134,12 +134,6 @@ echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-${llvmVersion} main" |
 curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-# The ubuntu-24.04 runner image can include an azure-cli apt source that is
-# unrelated to this job and occasionally returns 403, causing apt-get update to
-# fail before the LLVM repository can be used.
-while IFS= read -r source_file; do
-  sudo mv "$source_file" "$source_file.disabled"
-done < <(sudo grep -rl "packages.microsoft.com/repos/azure-cli" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true)
 sudo apt-get update
 # this was unreliable sometimes, so try again if it fails
 ${installPkgsCommand} || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand})
