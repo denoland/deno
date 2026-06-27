@@ -156,6 +156,8 @@
               export NIX_DYNAMIC_LINKER=$(patchelf --print-interpreter /usr/bin/env)
               export NIX_DONT_SET_RPATH=1
               export NIX_LDFLAGS="$@"
+              # Nix's libclang is incompatible with system glibc (non-NixOS Linux)
+              unset LIBCLANG_PATH
             fi
           '';
         };
