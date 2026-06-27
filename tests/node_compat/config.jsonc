@@ -3603,6 +3603,7 @@
       "flaky": true
     },
     "parallel/test-stringbytes-external.js": {},
+    "parallel/test-structuredClone-domexception.js": {},
     "parallel/test-sync-fileread.js": {},
     "parallel/test-sys.js": {},
     "parallel/test-tcp-wrap-connect.js": {},

@@ -252,7 +252,7 @@ class MessagePort extends _MessagePortBase {
   postMessage(message, transferOrOptions = { __proto__: null }) {
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
+    webidl.requiredArguments(arguments.length, 1, prefix, ["value"]);
     const portClosed = this[_id] === null;
     // Fast path: no transferables - serialize and send in one shot,
     // bypassing the JsMessageData serde overhead
@@ -702,7 +702,11 @@ function serializeJsMessageData(data, transferables) {
     const transferable = transferables[i];
     if (transferable[core.hostObjectBrand]) {
       const type = transferable[core.hostObjectBrand];
-      const rid = core.getTransferableResource(type).send(transferable);
+      const transferableResource = core.getTransferableResource(type);
+      if (!transferableResource) {
+        throw new DOMException("Value not transferable", "DataCloneError");
+      }
+      const rid = transferableResource.send(transferable);
       if (typeof rid === "number") {
         ArrayPrototypePush(serializedTransferables, {
           kind: "resource",
@@ -848,7 +852,7 @@ function structuredClone(value, options) {
   }
 
   const prefix = "Failed to execute 'structuredClone'";
-  webidl.requiredArguments(arguments.length, 1, prefix);
+  webidl.requiredArguments(arguments.length, 1, prefix, ["value"]);
   options = webidl.converters.StructuredSerializeOptions(
     options,
     prefix,
