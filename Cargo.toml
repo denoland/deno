@@ -329,7 +329,7 @@ tower = { version = "0.5.2", default-features = false, features = ["retry", "uti
 tower-lsp = { package = "deno_tower_lsp", version = "=0.5.0", features = ["proposed"] }
 tower-service = "0.3.2"
 tracing = "0.1"
-tracing-opentelemetry = "0.28.0"
+tracing-opentelemetry = "0.33.0"
 tracing-subscriber = "0.3.20"
 twox-hash = { version = "2.1.0", features = ["std", "xxhash64"], default-features = false }
 typed-arena = "=2.0.2"
@@ -345,12 +345,12 @@ yoke = { version = "0.7.4", features = ["derive"] }
 zeromq = "0.6"
 zip = { version = "2.4.1", default-features = false, features = ["flate2"] }
 
-opentelemetry = "0.27.0"
-opentelemetry-http = "0.27.0"
-opentelemetry-otlp = { version = "0.27.0", default-features = false, features = ["logs", "metrics", "trace", "http-proto", "http-json", "internal-logs", "populate-logs-event-name"] }
-opentelemetry-proto = { version = "0.27.0", default-features = false, features = ["gen-tonic-messages", "trace", "logs", "metrics"] }
-opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_experimental"] }
-opentelemetry_sdk = { version = "0.27.0", features = ["rt-tokio", "trace"] }
+opentelemetry = "0.32.0"
+opentelemetry-http = "0.32.0"
+opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["logs", "metrics", "trace", "http-proto", "http-json", "internal-logs"] }
+opentelemetry-proto = { version = "0.32.0", default-features = false, features = ["gen-tonic-messages", "trace", "logs", "metrics"] }
+opentelemetry-semantic-conventions = { version = "0.32.0", features = ["semconv_experimental"] }
+opentelemetry_sdk = { version = "0.32.0", features = ["rt-tokio", "trace", "experimental_trace_batch_span_processor_with_async_runtime", "experimental_logs_batch_log_processor_with_async_runtime", "experimental_metrics_custom_reader"] }
 
 # canvas
 image = { version = "0.25.4", default-features = false }
