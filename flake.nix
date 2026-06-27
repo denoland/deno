@@ -39,7 +39,7 @@
           url = "https://github.com/denoland/rusty_v8/releases/download/v${rustyV8Version}/librusty_v8_simdutf_release_${rustyV8Target}.a.gz";
           sha256 =
             {
-              "x86_64-linux" = "sha256-Uzfff0kIk7MAVpOZmFn7Pb24QPYsyTXJi/WcnL7kiVc=";
+              "x86_64-linux" = "sha256-qjDxmLbnviGI32SY+VBTxMBS8hIDegHywxQU16yoS1M";
               "aarch64-linux" = "sha256-eWUL59b9TQH111GE1ZaUS9SS7XD5ruBheojHT7klTiY=";
               "x86_64-darwin" = "sha256-1yHm1WslC1CbXIjSxNI1mEJqqq7SRAVByO8BkS1Tk5s=";
               "aarch64-darwin" = "sha256-W8fpKRWz6LgAB8Tu1501Ky8L2FOn4rGocDVHV3UN7Jk=";
