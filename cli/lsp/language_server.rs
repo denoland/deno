@@ -637,6 +637,7 @@ impl Inner {
         link_packages: Default::default(),
         newest_dependency_date_options: Default::default(),
         overrides: Default::default(),
+        trust_policy: Default::default(),
       }),
     );
     let config = Config::default();
@@ -864,6 +865,7 @@ impl Inner {
         link_packages: Default::default(),
         newest_dependency_date_options: Default::default(),
         overrides: Default::default(),
+        trust_policy: Default::default(),
       }),
     );
     self.performance.measure(mark);
@@ -4272,7 +4274,8 @@ impl Inner {
       let options = DidChangeWatchedFilesRegistrationOptions {
         watchers: vec![FileSystemWatcher {
           glob_pattern: GlobPattern::String(
-            "**/*.{json,jsonc,lock,js,mjs,cjs,jsx,ts,mts,cts,tsx}".to_string(),
+            "**/*.{json,jsonc,lock,js,mjs,cjs,jsx,ts,mts,cts,tsx,wasm}"
+              .to_string(),
           ),
           kind: None,
         }],

@@ -819,12 +819,12 @@ static ENV_VARS: &[EnvVar] = &[
     name: "DENO_SERVE_ADDRESS",
     description: "Override address for Deno.serve",
     example: Some(
-      r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678")"#,
+      r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", "vsock:1234:5678", or "memory:my-app")"#,
     ),
   },
   EnvVar {
     name: "DENO_SERVE_AUTOMATIC_COMPRESSION",
-    description: "Set to 0 or false to disable automatic response body compression in Deno.serve by default.",
+    description: "Set to 1 or true to enable automatic response body compression in Deno.serve by default.",
     example: None,
   },
   EnvVar {

@@ -145,12 +145,23 @@ pub fn run_wrap_key(
     return Err(invalid_access("Key is not extractable".into()));
   }
   let exported = run_export_key(format, key)?;
-  let bytes = match exported {
+  let mut bytes = match exported {
     ExportKeyOutput::Bytes(b) => b,
     ExportKeyOutput::Jwk(jwk) => jwk_to_utf8(&jwk),
   };
   match wrap_params {
-    WrapParams::AesKw => aes_kw_wrap(&wrapping_key, &bytes),
+    WrapParams::AesKw => {
+      // AES-KW requires plaintext to be a multiple of 8 bytes. For JWK
+      // format, pad the UTF-8 JSON serialization with ASCII spaces to the
+      // next multiple of 8 — matches the de-facto behavior of Node.js,
+      // Chrome, and Firefox. JSON.parse on unwrap accepts the trailing
+      // whitespace.
+      if matches!(format, KeyFormat::Jwk) {
+        let pad = (8 - bytes.len() % 8) % 8;
+        bytes.resize(bytes.len() + pad, b' ');
+      }
+      aes_kw_wrap(&wrapping_key, &bytes)
+    }
     WrapParams::Encrypt(params) => {
       // The legacy JS constructed a fresh `CryptoKey` with `["encrypt"]`
       // usages to satisfy the encrypt path; in Rust the encrypt path

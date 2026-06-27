@@ -3054,10 +3054,21 @@ function createServerLengthTest(name: string, testCase: TestCase) {
   });
 }
 
-// Quick and dirty way to make a readable stream from a string. Alternatively,
-// `readableStreamFromReader(file)` could be used.
+// Make a genuinely-opaque readable stream from a string, i.e. one whose total
+// length is not known ahead of time. Note: `new Response(s).body` can no longer
+// be used here -- a body stream materialized from a static string is now
+// recovered and served with a Content-Length (see `recoveredStaticStreamBody`
+// below), so it would no longer exercise the chunked path these tests target.
 function stream(s: string): ReadableStream<Uint8Array> {
-  return new Response(s).body!;
+  const bytes = new TextEncoder().encode(s);
+  return new ReadableStream({
+    pull(controller) {
+      if (bytes.byteLength > 0) {
+        controller.enqueue(bytes);
+      }
+      controller.close();
+    },
+  });
 }
 
 createServerLengthTest("fixedResponseKnown", {
@@ -3124,6 +3135,16 @@ createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
   body: stream(""),
   expectsChunked: true,
   expectsConnLen: false,
+});
+
+// A body stream that was materialized from a static string and not read (the
+// common `new Response(oldResponse.body, oldResponse)` framework pattern, e.g.
+// Hono header middleware) is recovered to its static body and served on the
+// fast path with a Content-Length, rather than being downgraded to chunked.
+createServerLengthTest("recoveredStaticStreamBody", {
+  body: new Response("foo bar baz").body!,
+  expectsChunked: false,
+  expectsConnLen: true,
 });
 
 Deno.test(
@@ -3581,6 +3602,7 @@ for (const testCase of compressionTestCases) {
         const listeningDeferred = Promise.withResolvers<void>();
         const ac = new AbortController();
         await using server = Deno.serve({
+          automaticCompression: true,
           handler: async (_request) => {
             const f = await makeTempFile(testCase.length);
             deferred.resolve();
@@ -3636,12 +3658,16 @@ for (const testCase of compressionTestCases) {
 
 Deno.test(
   { permissions: { net: true } },
-  async function httpServerAutomaticCompressionSkippedForNoRequestFastPath() {
+  async function httpServerAutomaticCompressionAppliesForNoRequestFastPath() {
     const body = "a".repeat(1000);
     const listeningDeferred = Promise.withResolvers<void>();
     const ac = new AbortController();
 
+    // A zero-argument handler takes the native "no request" fast path, where
+    // the request is never exposed to JS. Automatic compression must still
+    // apply: `accept-encoding` is retained so the response can be compressed.
     await using server = Deno.serve({
+      automaticCompression: true,
       handler: () => {
         return new Response(body, {
           headers: { "content-type": "text/plain" },
@@ -3659,8 +3685,8 @@ Deno.test(
         headers: { "accept-encoding": "gzip" },
       });
       assertEquals(await resp.text(), body);
-      assertEquals(resp.headers.get("content-encoding"), null);
-      assertEquals(resp.headers.get("vary"), null);
+      assertEquals(resp.headers.get("content-encoding"), "gzip");
+      assertEquals(resp.headers.get("vary"), "Accept-Encoding");
     } finally {
       ac.abort();
       await server.finished;
@@ -3670,14 +3696,13 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
-  async function httpServerAutomaticCompressionCanBeDisabled() {
+  async function httpServerAutomaticCompressionOffByDefault() {
     const body = "a".repeat(1000);
     const listeningDeferred = Promise.withResolvers<void>();
     const ac = new AbortController();
 
     await using server = Deno.serve({
-      automaticCompression: false,
-      handler: () => {
+      handler: (_request) => {
         return new Response(body, {
           headers: { "content-type": "text/plain" },
         });
@@ -3746,6 +3771,7 @@ Deno.test(
     const ac = new AbortController();
 
     await using server = Deno.serve({
+      automaticCompression: true,
       handler: (_request) => {
         return new Response(body, {
           headers: { "content-type": "text/plain" },
@@ -3816,6 +3842,7 @@ Deno.test(
           }
 
           await check({});
+          await check({ automaticCompression: false });
           await check({ automaticCompression: true });
         `,
         ],
@@ -3828,11 +3855,23 @@ Deno.test(
       return new TextDecoder().decode(stdout).trim().split("\n");
     }
 
+    assertEquals(await run("1"), [
+      "gzip",
+      "none",
+      "gzip",
+    ]);
+    assertEquals(await run("true"), [
+      "gzip",
+      "none",
+      "gzip",
+    ]);
     assertEquals(await run("0"), [
+      "none",
       "none",
       "gzip",
     ]);
     assertEquals(await run("False"), [
+      "none",
       "none",
       "gzip",
     ]);
@@ -3847,6 +3886,7 @@ Deno.test(
     const ac = new AbortController();
 
     await using server = Deno.serve({
+      automaticCompression: true,
       handler: () => {
         return new Response(body, {
           headers: { "content-type": "text/plain" },

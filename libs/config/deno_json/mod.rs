@@ -2646,9 +2646,15 @@ impl ConfigFile {
     {
       match value {
         serde_json::Value::Null => Ok(None),
-        serde_json::Value::Number(minutes) => Ok(Some(
-          NewestDependencyDate::Enabled(parse_number(minutes, sys)?),
-        )),
+        serde_json::Value::Number(minutes) => {
+          if minutes.as_i64() == Some(0) {
+            Ok(Some(NewestDependencyDate::Disabled))
+          } else {
+            Ok(Some(NewestDependencyDate::Enabled(parse_number(
+              minutes, sys,
+            )?)))
+          }
+        }
         serde_json::Value::String(value) => Ok(Some(
           crate::util::parse_minutes_duration_or_date(sys, value)?,
         )),
@@ -3266,6 +3272,19 @@ mod tests {
     // Bare value still works.
     let config = parse(r#"{ "minimumDependencyAge": 120 }"#);
     assert!(config.age.is_some());
+    assert!(config.exclude.is_empty());
+
+    // Numeric 0 disables the filter.
+    let config = parse(r#"{ "minimumDependencyAge": 0 }"#);
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
+    assert!(config.exclude.is_empty());
+
+    let config = parse(r#"{ "minimumDependencyAge": "0" }"#);
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
+    assert!(config.exclude.is_empty());
+
+    let config = parse(r#"{ "minimumDependencyAge": false }"#);
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
     assert!(config.exclude.is_empty());
 
     // Unknown field still errors.

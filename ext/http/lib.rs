@@ -180,7 +180,7 @@ static OTEL_COLLECTORS: OnceCell<OtelCollectors> = OnceCell::new();
 
 const HTTP2_PREFIX: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Options {
   /// By passing a hook function, the caller can customize various configuration
   /// options for the HTTP/2 server.
@@ -196,16 +196,6 @@ pub struct Options {
 
   /// If `true`, responses may be compressed based on request and response headers.
   pub automatic_compression: bool,
-}
-
-impl Default for Options {
-  fn default() -> Self {
-    Self {
-      http2_builder_hook: None,
-      no_legacy_abort: false,
-      automatic_compression: true,
-    }
-  }
 }
 
 #[cfg(not(feature = "default_property_extractor"))]
@@ -1860,7 +1850,7 @@ pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
 pub fn op_http_serve_default_compression() -> bool {
   match std::env::var("DENO_SERVE_AUTOMATIC_COMPRESSION") {
     Ok(value) => !matches!(value.to_ascii_lowercase().as_str(), "0" | "false"),
-    Err(_) => true,
+    Err(_) => false,
   }
 }
 
@@ -1922,6 +1912,15 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
       }
     }
     Some(("tunnel", _)) => (4, String::new(), 0, duplicate),
+    Some(("memory", name)) => {
+      // In-process byte channel. `name` identifies the listener; the peer
+      // (e.g. the desktop runtime) connects to it by the same name.
+      if name.is_empty() {
+        log::error!("DENO_SERVE_ADDRESS: empty memory name");
+        return (0, String::new(), 0, duplicate);
+      }
+      (5, name.to_string(), 0, duplicate)
+    }
     Some((_, _)) | None => {
       log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
       (0, String::new(), 0, false)
