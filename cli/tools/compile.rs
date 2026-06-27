@@ -230,26 +230,42 @@ async fn compile_inner(
     }
     let BundleForCompileResult {
       path: bundle_path,
-      needs_npm_embed,
+      mut needs_npm_embed,
       referenced_abs_paths,
       extra_cleanup,
     } = run_bundle_for_compile(&flags, &compile_flags)
       .boxed_local()
       .await?;
+    let npm_referenced_paths = if referenced_abs_paths.is_empty() {
+      HashSet::new()
+    } else {
+      let factory =
+        if let Some(watcher_communicator) = watcher_communicator.clone() {
+          CliFactory::from_flags_for_watcher(
+            Arc::new(flags.clone()),
+            watcher_communicator,
+          )
+        } else {
+          CliFactory::from_flags(Arc::new(flags.clone()))
+        };
+      crate::standalone::native_addons::resolve_bundle_npm_referenced_paths(
+        factory.npm_resolver().await?,
+        &referenced_abs_paths,
+      )?
+    };
+    needs_npm_embed |= !npm_referenced_paths.is_empty();
     flags.internal.compile_bundle_embed_node_modules = needs_npm_embed;
     flags.internal.compile_bundle_original_source_file =
       Some(original_source_file);
-    // Referenced files that live inside a `node_modules` tree are npm
-    // packages, embedded by the binary writer's npm path. The rest are local
-    // project files the bundle externalized (e.g. a sibling `.cjs` imported
-    // from ESM, which the CJS-from-ESM wrapper turns into a runtime
-    // require()). Those aren't covered by the npm embed, so add them to the
-    // include set to ship them in the VFS at their real path — that's where
-    // `__internalResolveBundlePath` looks for them at runtime.
+    // Referenced files that live inside npm packages are embedded by the
+    // binary writer's npm path. The rest are local project files the bundle
+    // externalized (e.g. a sibling `.cjs` imported from ESM, which the
+    // CJS-from-ESM wrapper turns into a runtime require()). Those aren't
+    // covered by the npm embed, so add them to the include set to ship them in
+    // the VFS at their real path — that's where `__internalResolveBundlePath`
+    // looks for them at runtime.
     for path in &referenced_abs_paths {
-      let in_node_modules =
-        path.components().any(|c| c.as_os_str() == "node_modules");
-      if !in_node_modules {
+      if !npm_referenced_paths.contains(path) {
         let included = path.display().to_string();
         if !compile_flags.include.contains(&included) {
           compile_flags.include.push(included);
