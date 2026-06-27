@@ -966,18 +966,29 @@ pub async fn test_specifier(
   match result {
     Ok(()) => Ok(()),
     Err(_) if isolate_exited => Ok(()),
+    // A pending-promise deadlock outside of a test body (e.g. in a
+    // `beforeAll`/`afterAll` hook or an `unload` handler) surfaces here as a
+    // bare core error after the tests have already passed. Enrich it with the
+    // same actionable guidance the per-test failure gets so users aren't left
+    // "flying blind". The error may arrive wrapped as either `Core` (lifecycle
+    // dispatch) or `RunTestsForWorker` (a hook run by the test loop). See
+    // denoland/deno#33852.
+    Err(TestSpecifierError::Core(err))
+      if matches!(err.as_kind(), CoreErrorKind::PendingPromiseResolution) =>
+    {
+      Err(JsErrorBox::generic(pending_promise_resolution_message()).into())
+    }
+    Err(TestSpecifierError::RunTestsForWorker(RunTestsForWorkerErr::Core(
+      err,
+    )))
+      if matches!(err.as_kind(), CoreErrorKind::PendingPromiseResolution) =>
+    {
+      Err(JsErrorBox::generic(pending_promise_resolution_message()).into())
+    }
     Err(TestSpecifierError::Core(err)) => match err.into_kind() {
       CoreErrorKind::Js(err) => {
         event_tracker.uncaught_error(specifier.to_string(), err)?;
         Ok(())
-      }
-      // A pending-promise deadlock outside of a test body (e.g. in a
-      // `beforeAll`/`afterAll` hook or an `unload` handler) bubbles up here as a
-      // bare core error after the tests have already passed. Enrich it with the
-      // same actionable guidance the per-test failure gets so users aren't left
-      // "flying blind". See denoland/deno#33852.
-      CoreErrorKind::PendingPromiseResolution => {
-        Err(JsErrorBox::generic(pending_promise_resolution_message()).into())
       }
       err => Err(err.into_box().into()),
     },
