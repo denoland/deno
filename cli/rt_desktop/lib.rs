@@ -1731,7 +1731,7 @@ async fn run_desktop(
       state.put(denort::desktop::InitialWindowId(std::sync::Mutex::new(
         Some(window_id),
       )));
-      if let Some(name) = app_name {
+      if let Some(name) = app_name.filter(|n| !n.is_empty()) {
         state.put(deno_runtime::ops::desktop::DesktopAppName(name));
       }
     })),
