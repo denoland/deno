@@ -220,17 +220,21 @@ pub fn resolve_bundle_npm_referenced_paths(
           folders.push(folder);
         }
       }
-      Ok(referenced_paths
-        .iter()
-        .filter(|path| folders.iter().any(|folder| path.starts_with(folder)))
-        .cloned()
-        .collect())
+      Ok(
+        referenced_paths
+          .iter()
+          .filter(|path| folders.iter().any(|folder| path.starts_with(folder)))
+          .cloned()
+          .collect(),
+      )
     }
-    CliNpmResolver::Byonm(_) => Ok(referenced_paths
-      .iter()
-      .filter(|path| path_is_in_node_modules(path))
-      .cloned()
-      .collect()),
+    CliNpmResolver::Byonm(_) => Ok(
+      referenced_paths
+        .iter()
+        .filter(|path| path_is_in_node_modules(path))
+        .cloned()
+        .collect(),
+    ),
   }
 }
 
