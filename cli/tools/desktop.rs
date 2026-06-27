@@ -1429,6 +1429,7 @@ async fn package_linux_app_dir(
     format!(
       "#!/bin/sh\n\
        DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
+       export LAUFEY_RUNTIME_PATH=\"$DIR/{dylib}\"\n\
        exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
       laufey_binary = laufey_binary_name,
       dylib = dylib_filename_str,
