@@ -5109,6 +5109,23 @@ mod tests {
   }
 
   #[test]
+  fn dev_backend_binary_uses_host_exe_suffix() {
+    // Regression: locate_dev_backend_binary must look for the host executable
+    // suffix. On Windows the dev build is `laufey_winit.exe`; without the
+    // suffix LAUFEY_DEV_DIR could never resolve a backend there.
+    let tmp = tempfile::tempdir().unwrap();
+    let bin_dir = tmp.path().join("target/release");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin =
+      bin_dir.join(format!("laufey_winit{}", std::env::consts::EXE_SUFFIX));
+    std::fs::write(&bin, b"").unwrap();
+    assert_eq!(
+      locate_dev_backend_binary(tmp.path(), "raw").as_deref(),
+      Some(bin.as_path())
+    );
+  }
+
+  #[test]
   fn release_url_uses_v_prefix() {
     let url = laufey_release_url("laufey-cef-aarch64-apple-darwin.tar.gz");
     assert!(
