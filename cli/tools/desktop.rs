@@ -5109,23 +5109,6 @@ mod tests {
   }
 
   #[test]
-  fn dev_backend_binary_uses_host_exe_suffix() {
-    // Regression: locate_dev_backend_binary must look for the host executable
-    // suffix. On Windows the dev build is `laufey_winit.exe`; without the
-    // suffix LAUFEY_DEV_DIR could never resolve a backend there.
-    let tmp = tempfile::tempdir().unwrap();
-    let bin_dir = tmp.path().join("target/release");
-    std::fs::create_dir_all(&bin_dir).unwrap();
-    let bin =
-      bin_dir.join(format!("laufey_winit{}", std::env::consts::EXE_SUFFIX));
-    std::fs::write(&bin, b"").unwrap();
-    assert_eq!(
-      locate_dev_backend_binary(tmp.path(), "raw").as_deref(),
-      Some(bin.as_path())
-    );
-  }
-
-  #[test]
   fn release_url_uses_v_prefix() {
     let url = laufey_release_url("laufey-cef-aarch64-apple-darwin.tar.gz");
     assert!(
@@ -6004,10 +5987,15 @@ def456  other.zip
   #[test]
   fn locate_dev_backend_winit_target_paths() {
     let tmp = tempfile::tempdir().unwrap();
-    let p = tmp.path().join("target/release/laufey_winit");
+    // `raw` is the public backend name; the dev binary is `laufey_winit`,
+    // carrying the host executable suffix (`.exe` on Windows) — without it
+    // LAUFEY_DEV_DIR could never resolve a backend on Windows.
+    let p = tmp.path().join(format!(
+      "target/release/laufey_winit{}",
+      std::env::consts::EXE_SUFFIX
+    ));
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(&p, b"binary").unwrap();
-    // `raw` is the public backend name; the binary file is `laufey_winit`.
     let found = locate_dev_backend_binary(tmp.path(), "raw");
     assert_eq!(found.as_deref(), Some(p.as_path()));
   }
