@@ -21258,6 +21258,80 @@ fn lsp_wasm_module_multi_value_return() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/28334: when a
+// local `.wasm` file is recompiled on disk to export a new function, a
+// `workspace/didChangeWatchedFiles` change notification must evict the stale
+// generated types so dependents pick up the new exports without having to
+// delete and recreate the file. This relies on `.wasm` being included in the
+// file watcher glob registered in `language_server.rs`.
+#[test(timeout = 300)]
+fn lsp_wasm_module_change_watched() {
+  // A minimal wasm module exporting a single `() => i32` function. The only
+  // difference between the two is the export name (`sub` vs `add`).
+  fn wasm_exporting(name: &str) -> Vec<u8> {
+    let name = name.as_bytes();
+    let mut bytes = Vec::new();
+    // Header.
+    bytes.extend_from_slice(&[0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+    // Type section: a single `() -> i32` signature.
+    bytes.extend_from_slice(&[0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7f]);
+    // Function section: function 0 has type 0.
+    bytes.extend_from_slice(&[0x03, 0x02, 0x01, 0x00]);
+    // Export section: export function 0 under `name`.
+    bytes.extend_from_slice(&[
+      0x07,
+      (name.len() + 4) as u8,
+      0x01,
+      name.len() as u8,
+    ]);
+    bytes.extend_from_slice(name);
+    bytes.extend_from_slice(&[0x00, 0x00]);
+    // Code section: the function body returns the constant 42.
+    bytes.extend_from_slice(&[0x0a, 0x06, 0x01, 0x04, 0x00, 0x41, 0x2a, 0x0b]);
+    bytes
+  }
+
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  // Initially the wasm module does not export `add`.
+  temp_dir.write("mod.wasm", wasm_exporting("sub"));
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let main_uri = url_to_uri(&temp_dir.url().join("main.ts").unwrap()).unwrap();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": main_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { add } from \"./mod.wasm\";\nconsole.log(add());\n"
+    }
+  }));
+  // `add` isn't exported yet, so this is an error.
+  assert_eq!(diagnostics.all().len(), 1);
+  assert_json_subset(
+    json!(diagnostics.all()),
+    json!([{ "code": 2305, "source": "deno-ts" }]),
+  );
+
+  // Recompile the wasm file on disk so it now exports `add`, then notify the
+  // LSP of the change.
+  temp_dir.write("mod.wasm", wasm_exporting("add"));
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": url_to_uri(&temp_dir.url().join("mod.wasm").unwrap()).unwrap(),
+      "type": 2
+    }]
+  }));
+
+  // The stale types should have been evicted and the diagnostic cleared.
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(json!(diagnostics.all()), json!([]));
+
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn wildcard_augment() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
