@@ -3357,6 +3357,7 @@ const mock = {
   },
 
   reset: () => {
+    mockTimers.reset();
     ArrayPrototypeForEach(activeMocks, (ctx) => {
       ctx.resetCalls();
     });
