@@ -1086,7 +1086,8 @@
     "parallel/test-dns-resolvens-typeerror.js": {},
     "parallel/test-dns-resolver-max-timeout.js": {
       "flaky": true,
-      "windows": false // incredibly flaky in CI
+      "windows": false, // incredibly flaky in CI
+      "darwin": false // timing assertion `timeout1 > timeout2` fails under CI load when both measurements come out equal; see denoland/deno#35066
     },
     "parallel/test-dns-resolvesrv.js": {},
     "parallel/test-dns-resolvesrv-econnrefused.js": {},
