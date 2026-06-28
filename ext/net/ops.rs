@@ -1094,38 +1094,16 @@ pub async fn op_dns_resolve(
   }
 
   // Hickory uses unconnected UDP sockets and therefore never receives ICMP
-  // "port unreachable" notifications. Probe the custom server with a connected
-  // UDP socket so we can surface ECONNREFUSED immediately, matching the
-  // behaviour of Node.js/c-ares which uses connected sockets for DNS.
-  // This probe runs after the permission check so no network access happens
-  // before the user's permissions are verified.
-  if let Some(name_server) =
-    options.as_ref().and_then(|o| o.name_server.as_ref())
-  {
-    let probe_addr: SocketAddr =
-      format!("{}:{}", name_server.ip_addr, name_server.port).parse()?;
-    let bind_addr: SocketAddr = if probe_addr.is_ipv4() {
-      "0.0.0.0:0".parse().unwrap()
-    } else {
-      "[::]:0".parse().unwrap()
-    };
-    if let Ok(sock) = UdpSocket::bind(bind_addr).await
-      && sock.connect(probe_addr).await.is_ok()
-    {
-      // Send a minimal probe packet; DNS servers will ignore or FORMERR it.
-      let _ = sock.send(&[0u8]).await;
-      let mut buf = [0u8; 1];
-      // A 5 ms window is sufficient for loopback ICMP round-trips;
-      // real servers won't reply in time so we simply proceed.
-      if let Ok(Err(e)) =
-        tokio::time::timeout(Duration::from_millis(5), sock.recv(&mut buf))
-          .await
-        && e.kind() == std::io::ErrorKind::ConnectionRefused
-      {
-        return Err(NetError::Io(e));
-      }
-    }
-  }
+  // "port unreachable" notifications. We race a connected-socket probe against
+  // the Hickory lookup: the probe detects ECONNREFUSED from the kernel ICMP
+  // delivery and wins the race before Hickory's internal timeout fires.
+  // This matches Node.js / c-ares behaviour (c-ares uses connected UDP sockets).
+  // The probe address is captured here, after the permission check above, so
+  // no network I/O occurs before the user's permissions are verified.
+  let probe_addr_opt: Option<SocketAddr> = options
+    .as_ref()
+    .and_then(|o| o.name_server.as_ref())
+    .and_then(|ns| format!("{}:{}", ns.ip_addr, ns.port).parse().ok());
 
   let provider = TokioConnectionProvider::default();
   let resolver =
@@ -1143,18 +1121,62 @@ pub async fn op_dns_resolve(
       .ok()
   });
 
-  let lookup = if let Some(cancel_handle) = cancel_handle {
-    let lookup_rv = lookup_fut.or_cancel(cancel_handle).await;
-
-    if let Some(cancel_rid) = cancel_rid
-      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
-    {
-      res.close();
+  // Probe future: sends one byte to the custom nameserver on a connected UDP
+  // socket, then waits up to 2 s for ICMP "port unreachable" → ECONNREFUSED.
+  // The 2 s cap is generous for any CI environment yet short enough that a
+  // real (reachable) nameserver always wins the tokio::select! race below.
+  // If there is no custom nameserver the probe immediately resolves to None.
+  let probe_fut = async move {
+    let Some(probe_addr) = probe_addr_opt else {
+      return None::<std::io::Error>;
     };
+    let bind_addr: SocketAddr = if probe_addr.is_ipv4() {
+      "0.0.0.0:0".parse().unwrap()
+    } else {
+      "[::]:0".parse().unwrap()
+    };
+    if let Ok(sock) = UdpSocket::bind(bind_addr).await
+      && sock.connect(probe_addr).await.is_ok()
+    {
+      let _ = sock.send(&[0u8]).await;
+      let mut buf = [0u8; 512];
+      if let Ok(Err(e)) =
+        tokio::time::timeout(Duration::from_secs(2), sock.recv(&mut buf))
+          .await
+        && e.kind() == std::io::ErrorKind::ConnectionRefused
+      {
+        return Some(e);
+      }
+    }
+    None
+  };
 
-    lookup_rv?
+  let lookup = if let Some(cancel_handle) = cancel_handle {
+    tokio::select! {
+      lookup_rv = lookup_fut.or_cancel(cancel_handle) => {
+        if let Some(cancel_rid) = cancel_rid
+          && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+        {
+          res.close();
+        };
+        lookup_rv?
+      },
+      Some(e) = probe_fut => {
+        if let Some(cancel_rid) = cancel_rid
+          && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+        {
+          res.close();
+        };
+        return Err(NetError::Io(e));
+      },
+    }
   } else {
-    lookup_fut.await
+    tokio::select! {
+      result = lookup_fut => result,
+      Some(e) = probe_fut => {
+        return Err(NetError::Io(e));
+      },
+    }
   };
 
   lookup
