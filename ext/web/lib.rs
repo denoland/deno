@@ -4,7 +4,6 @@ mod blob;
 
 mod broadcast_channel;
 pub mod canvas2d;
-mod canvas2d_renderer;
 mod compression;
 mod console;
 pub mod css;
@@ -224,7 +223,7 @@ deno_core::extension!(deno_web,
     state.put(geometry::State::new(options.enable_css_parser_features));
     state.put(options.bc);
     state.put(broadcast_channel::BroadcastSabStash::default());
-    let renderer = canvas2d_renderer::init_canvas_renderer();
+    let renderer = canvas2d::renderer::init_canvas_renderer();
     state.put(Arc::new(OnceLock::from(renderer)));
     state.put(Arc::new(Mutex::new(cosmic_text::FontSystem::new_with_fonts(std::iter::empty()))));
     state.put(Arc::new(Mutex::new(cosmic_text::SwashCache::new())));

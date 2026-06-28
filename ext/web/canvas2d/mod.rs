@@ -2,6 +2,7 @@
 
 pub mod gradient;
 pub mod pattern;
+pub(crate) mod renderer;
 
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -41,12 +42,17 @@ use self::gradient::build_radial_gradient;
 use self::gradient::parse_color_stop;
 use self::gradient::validate_color_stop_offset;
 use self::pattern::parse_repetition;
-use crate::canvas2d_renderer::DenoCanvasBackend;
-use crate::canvas2d_renderer::SharedRenderer;
-use crate::canvas2d_renderer::render_scene;
-use crate::canvas2d_renderer::render_scene_to_texture_view;
+use self::renderer::DenoCanvasBackend;
+use self::renderer::SharedRenderer;
+use self::renderer::render_scene;
+use self::renderer::render_scene_to_texture_view;
+use crate::css::color::Color;
+use crate::css::color::color_to_css_string;
+use crate::css::color::is_color_transparent;
 use crate::css::color::parse_css_color;
-use crate::css::color::rgba8_to_css;
+use crate::css::filter::CssFilterFunction;
+use crate::css::filter::FilterValueListParser;
+use crate::css::filter::ParserInput as FilterParserInput;
 use crate::css::font::FontKerning;
 use crate::css::font::FontState;
 use crate::css::font::TextDirection;
@@ -180,7 +186,7 @@ pub enum Canvas2DError {
   TypeMismatch(String),
   #[class(generic)]
   #[error("{0}")]
-  Render(#[from] crate::canvas2d_renderer::RenderError),
+  Render(#[from] self::renderer::RenderError),
   #[class(generic)]
   #[error("canvas2d not initialized")]
   NotInitialized,
@@ -200,7 +206,7 @@ pub enum Canvas2DError {
 
 #[derive(Clone)]
 enum FillStrokeStyle {
-  Color([u8; 4]),
+  Color(Color),
   Gradient(v8::Global<v8::Object>),
   Pattern(v8::Global<v8::Object>),
 }
@@ -280,6 +286,73 @@ enum LineJoin {
   Miter,
 }
 
+#[derive(WebIDL, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[webidl(enum)]
+enum GlobalCompositeOperation {
+  #[default]
+  SourceOver,
+  SourceIn,
+  SourceOut,
+  SourceAtop,
+  DestinationOver,
+  DestinationIn,
+  DestinationOut,
+  DestinationAtop,
+  Lighter,
+  Copy,
+  Xor,
+  Multiply,
+  Screen,
+  Overlay,
+  Darken,
+  Lighten,
+  ColorDodge,
+  ColorBurn,
+  HardLight,
+  SoftLight,
+  Difference,
+  Exclusion,
+  Hue,
+  Saturation,
+  Color,
+  Luminosity,
+}
+
+impl GlobalCompositeOperation {
+  fn to_blend_mode(self) -> peniko::BlendMode {
+    use peniko::Compose;
+    use peniko::Mix;
+    match self {
+      Self::SourceOver => peniko::BlendMode::default(),
+      Self::SourceIn => Compose::SrcIn.into(),
+      Self::SourceOut => Compose::SrcOut.into(),
+      Self::SourceAtop => Compose::SrcAtop.into(),
+      Self::DestinationOver => Compose::DestOver.into(),
+      Self::DestinationIn => Compose::DestIn.into(),
+      Self::DestinationOut => Compose::DestOut.into(),
+      Self::DestinationAtop => Compose::DestAtop.into(),
+      Self::Lighter => Compose::PlusLighter.into(),
+      Self::Copy => Compose::Copy.into(),
+      Self::Xor => Compose::Xor.into(),
+      Self::Multiply => Mix::Multiply.into(),
+      Self::Screen => Mix::Screen.into(),
+      Self::Overlay => Mix::Overlay.into(),
+      Self::Darken => Mix::Darken.into(),
+      Self::Lighten => Mix::Lighten.into(),
+      Self::ColorDodge => Mix::ColorDodge.into(),
+      Self::ColorBurn => Mix::ColorBurn.into(),
+      Self::HardLight => Mix::HardLight.into(),
+      Self::SoftLight => Mix::SoftLight.into(),
+      Self::Difference => Mix::Difference.into(),
+      Self::Exclusion => Mix::Exclusion.into(),
+      Self::Hue => Mix::Hue.into(),
+      Self::Saturation => Mix::Saturation.into(),
+      Self::Color => Mix::Color.into(),
+      Self::Luminosity => Mix::Luminosity.into(),
+    }
+  }
+}
+
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 #[allow(
@@ -347,8 +420,9 @@ struct DrawingState {
   text_align: TextAlign,
   text_baseline: TextBaseline,
   lang: String,
-  global_composite_operation: String,
-  filter: String,
+  global_composite_operation: GlobalCompositeOperation,
+  filter_string: String,
+  filter: Vec<CssFilterFunction>,
   image_smoothing_enabled: bool,
   image_smoothing_quality: ImageSmoothingQuality,
   line_width: f64,
@@ -359,6 +433,7 @@ struct DrawingState {
   line_dash: Vec<f64>,
   shadow_blur: f64,
   shadow_color: String,
+  shadow_color_rgba: Color,
   shadow_offset_x: f64,
   shadow_offset_y: f64,
   transform: kurbo::Affine,
@@ -368,15 +443,16 @@ struct DrawingState {
 impl Default for DrawingState {
   fn default() -> Self {
     Self {
-      fill_style: FillStrokeStyle::Color([0, 0, 0, 255]),
-      stroke_style: FillStrokeStyle::Color([0, 0, 0, 255]),
+      fill_style: FillStrokeStyle::Color(Color::BLACK),
+      stroke_style: FillStrokeStyle::Color(Color::BLACK),
       global_alpha: 1.0,
       font_state: FontState::default(),
       text_align: TextAlign::default(),
       text_baseline: TextBaseline::default(),
       lang: String::from("inherit"),
-      global_composite_operation: String::from("source-over"),
-      filter: String::from("none"),
+      global_composite_operation: GlobalCompositeOperation::default(),
+      filter_string: String::from("none"),
+      filter: Vec::new(),
       image_smoothing_enabled: true,
       image_smoothing_quality: ImageSmoothingQuality::default(),
       line_width: 1.0,
@@ -387,6 +463,7 @@ impl Default for DrawingState {
       line_dash: Vec::new(),
       shadow_blur: 0.0,
       shadow_color: String::from("rgba(0, 0, 0, 0)"),
+      shadow_color_rgba: Color::TRANSPARENT,
       shadow_offset_x: 0.0,
       shadow_offset_y: 0.0,
       transform: kurbo::Affine::IDENTITY,
@@ -829,7 +906,7 @@ impl OffscreenCanvasRenderingContext2D {
   ) -> v8::Local<'a, v8::Value> {
     match &self.state.borrow().fill_style {
       FillStrokeStyle::Color(c) => {
-        let s = rgba8_to_css(*c);
+        let s = color_to_css_string(*c);
         v8::String::new(scope, &s).unwrap().into()
       }
       FillStrokeStyle::Gradient(g) | FillStrokeStyle::Pattern(g) => {
@@ -856,7 +933,7 @@ impl OffscreenCanvasRenderingContext2D {
   ) -> v8::Local<'a, v8::Value> {
     match &self.state.borrow().stroke_style {
       FillStrokeStyle::Color(c) => {
-        let s = rgba8_to_css(*c);
+        let s = color_to_css_string(*c);
         v8::String::new(scope, &s).unwrap().into()
       }
       FillStrokeStyle::Gradient(g) | FillStrokeStyle::Pattern(g) => {
@@ -1119,22 +1196,42 @@ impl OffscreenCanvasRenderingContext2D {
       return;
     }
     let state = self.state.borrow();
-    let (brush, brush_transform) = self.resolve_brush(
-      scope,
-      &state.fill_style,
-      state.global_alpha,
-      state.transform,
-    );
+    let op = state.global_composite_operation;
+    let alpha = state.global_alpha;
+    let shadow = Self::has_shadow(&state);
+    let shadow_brush = if shadow {
+      Some(Self::shadow_brush(&state))
+    } else {
+      None
+    };
+    let shadow_xform = if shadow {
+      Some(Self::shadow_transform(&state, state.transform))
+    } else {
+      None
+    };
+    let (brush, brush_transform) =
+      self.resolve_brush(scope, &state.fill_style, 1.0, state.transform);
     let transform = state.transform;
     drop(state);
     let rect = kurbo::Rect::new(*x, *y, *x + *w, *y + *h);
-    self.apply_fill_paint(
+    let (width, height) = self.data.dimensions();
+    let mut drawing = self.drawing.borrow_mut();
+    let has_layer =
+      Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
+    if let (Some(sb), Some(st)) = (shadow_brush, shadow_xform) {
+      Self::fill_on(&mut drawing, &rect, peniko::Fill::NonZero, st, sb, None);
+    }
+    Self::fill_on(
+      &mut drawing,
       &rect,
       peniko::Fill::NonZero,
       transform,
       brush,
       brush_transform,
     );
+    if has_layer {
+      Self::pop_compositing_layer(&mut drawing);
+    }
   }
 
   #[fast]
@@ -1198,58 +1295,66 @@ impl OffscreenCanvasRenderingContext2D {
     )
   }
 
-  // TODO(petamoriken): the following accessors only store their values; they are
-  // not yet honored during rendering.
   #[getter]
   #[string]
-  fn global_composite_operation(&self) -> String {
-    self.state.borrow().global_composite_operation.clone()
+  fn global_composite_operation(&self) -> &'static str {
+    self.state.borrow().global_composite_operation.as_str()
   }
 
   #[setter]
   fn global_composite_operation(&self, #[webidl] value: String) {
-    if matches!(
-      value.as_str(),
-      "color"
-        | "color-burn"
-        | "color-dodge"
-        | "copy"
-        | "darken"
-        | "destination-atop"
-        | "destination-in"
-        | "destination-out"
-        | "destination-over"
-        | "difference"
-        | "exclusion"
-        | "hard-light"
-        | "hue"
-        | "lighten"
-        | "lighter"
-        | "luminosity"
-        | "multiply"
-        | "overlay"
-        | "saturation"
-        | "screen"
-        | "soft-light"
-        | "source-atop"
-        | "source-in"
-        | "source-out"
-        | "source-over"
-        | "xor"
-    ) {
-      self.state.borrow_mut().global_composite_operation = value;
-    }
+    let op = match value.as_str() {
+      "source-over" => GlobalCompositeOperation::SourceOver,
+      "source-in" => GlobalCompositeOperation::SourceIn,
+      "source-out" => GlobalCompositeOperation::SourceOut,
+      "source-atop" => GlobalCompositeOperation::SourceAtop,
+      "destination-over" => GlobalCompositeOperation::DestinationOver,
+      "destination-in" => GlobalCompositeOperation::DestinationIn,
+      "destination-out" => GlobalCompositeOperation::DestinationOut,
+      "destination-atop" => GlobalCompositeOperation::DestinationAtop,
+      "lighter" => GlobalCompositeOperation::Lighter,
+      "copy" => GlobalCompositeOperation::Copy,
+      "xor" => GlobalCompositeOperation::Xor,
+      "multiply" => GlobalCompositeOperation::Multiply,
+      "screen" => GlobalCompositeOperation::Screen,
+      "overlay" => GlobalCompositeOperation::Overlay,
+      "darken" => GlobalCompositeOperation::Darken,
+      "lighten" => GlobalCompositeOperation::Lighten,
+      "color-dodge" => GlobalCompositeOperation::ColorDodge,
+      "color-burn" => GlobalCompositeOperation::ColorBurn,
+      "hard-light" => GlobalCompositeOperation::HardLight,
+      "soft-light" => GlobalCompositeOperation::SoftLight,
+      "difference" => GlobalCompositeOperation::Difference,
+      "exclusion" => GlobalCompositeOperation::Exclusion,
+      "hue" => GlobalCompositeOperation::Hue,
+      "saturation" => GlobalCompositeOperation::Saturation,
+      "color" => GlobalCompositeOperation::Color,
+      "luminosity" => GlobalCompositeOperation::Luminosity,
+      _ => return,
+    };
+    self.state.borrow_mut().global_composite_operation = op;
   }
 
+  // TODO(petamoriken): apply CSS filters once Vello GPU supports filter effects
   #[getter]
   #[string]
   fn filter(&self) -> String {
-    self.state.borrow().filter.clone()
+    self.state.borrow().filter_string.clone()
   }
 
   #[setter]
   fn filter(&self, #[webidl] value: String) {
-    self.state.borrow_mut().filter = value;
+    let functions = {
+      let mut parser_input = FilterParserInput::new(&value);
+      let result: Result<Vec<_>, _> =
+        FilterValueListParser::new(&mut parser_input).collect();
+      result.ok()
+    };
+    if let Some(functions) = functions {
+      let mut state = self.state.borrow_mut();
+      state.filter_string = value;
+      state.filter = functions;
+    }
   }
 
   #[getter]
@@ -1366,8 +1471,10 @@ impl OffscreenCanvasRenderingContext2D {
 
   #[setter]
   fn shadow_color(&self, #[webidl] value: String) {
-    if parse_css_color(&value).is_ok() {
-      self.state.borrow_mut().shadow_color = value;
+    if let Ok(rgba) = parse_css_color(&value) {
+      let mut state = self.state.borrow_mut();
+      state.shadow_color = value;
+      state.shadow_color_rgba = rgba;
     }
   }
 
@@ -2120,8 +2227,11 @@ impl OffscreenCanvasRenderingContext2D {
     } else {
       &state.fill_style
     };
+    let op = state.global_composite_operation;
+    let global_alpha = state.global_alpha;
+    // TODO(petamoriken): apply text shadow once Vello GPU supports filter effects
     let (brush, brush_transform) =
-      self.resolve_brush(scope, style, state.global_alpha, state.transform);
+      self.resolve_brush(scope, style, 1.0, state.transform);
     let text_align = state.text_align;
     let text_baseline = state.text_baseline;
     let transform = state.transform;
@@ -2176,7 +2286,16 @@ impl OffscreenCanvasRenderingContext2D {
     };
     let draw_x = x as f32 + x_offset;
 
-    match &mut *self.drawing.borrow_mut() {
+    let (canvas_w, canvas_h) = self.data.dimensions();
+    let mut drawing = self.drawing.borrow_mut();
+    let has_layer = Self::push_compositing_layer(
+      &mut drawing,
+      op,
+      global_alpha,
+      canvas_w,
+      canvas_h,
+    );
+    match &mut *drawing {
       DrawingBackend::Vello(scene) => {
         for run in buf.layout_runs() {
           if run.glyphs.is_empty() {
@@ -2276,6 +2395,9 @@ impl OffscreenCanvasRenderingContext2D {
         }
       }
     }
+    if has_layer {
+      Self::pop_compositing_layer(&mut drawing);
+    }
   }
 
   /// Clears the accumulated scene and updates the canvas dimensions.
@@ -2329,7 +2451,7 @@ impl OffscreenCanvasRenderingContext2D {
   /// as this context's renderer. Does nothing when no backend is available.
   pub fn render_to_texture_view(
     &self,
-    view: &crate::canvas2d_renderer::wgpu::TextureView,
+    view: &self::renderer::wgpu::TextureView,
   ) -> Result<(), Canvas2DError> {
     let (width, height) = self.data.dimensions();
     let base_color = if self.settings.alpha {
@@ -2692,12 +2814,21 @@ impl OffscreenCanvasRenderingContext2D {
       return;
     }
     let state = self.state.borrow();
-    let (brush, brush_transform) = self.resolve_brush(
-      scope,
-      &state.fill_style,
-      state.global_alpha,
-      state.transform,
-    );
+    let op = state.global_composite_operation;
+    let alpha = state.global_alpha;
+    let shadow = Self::has_shadow(&state);
+    let shadow_brush = if shadow {
+      Some(Self::shadow_brush(&state))
+    } else {
+      None
+    };
+    let shadow_xform = if shadow {
+      Some(Self::shadow_transform(&state, state.transform))
+    } else {
+      None
+    };
+    let (brush, brush_transform) =
+      self.resolve_brush(scope, &state.fill_style, 1.0, state.transform);
     let transform = state.transform;
     let fill = if rule == "evenodd" {
       peniko::Fill::EvenOdd
@@ -2706,7 +2837,17 @@ impl OffscreenCanvasRenderingContext2D {
     };
     drop(state);
 
-    self.apply_fill_paint(&path, fill, transform, brush, brush_transform);
+    let (width, height) = self.data.dimensions();
+    let mut drawing = self.drawing.borrow_mut();
+    let has_layer =
+      Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
+    if let (Some(sb), Some(st)) = (shadow_brush, shadow_xform) {
+      Self::fill_on(&mut drawing, &path, fill, st, sb, None);
+    }
+    Self::fill_on(&mut drawing, &path, fill, transform, brush, brush_transform);
+    if has_layer {
+      Self::pop_compositing_layer(&mut drawing);
+    }
   }
 
   fn draw_path_stroke(
@@ -2718,12 +2859,21 @@ impl OffscreenCanvasRenderingContext2D {
       return;
     }
     let state = self.state.borrow();
-    let (brush, brush_transform) = self.resolve_brush(
-      scope,
-      &state.stroke_style,
-      state.global_alpha,
-      state.transform,
-    );
+    let op = state.global_composite_operation;
+    let alpha = state.global_alpha;
+    let shadow = Self::has_shadow(&state);
+    let shadow_brush = if shadow {
+      Some(Self::shadow_brush(&state))
+    } else {
+      None
+    };
+    let shadow_xform = if shadow {
+      Some(Self::shadow_transform(&state, state.transform))
+    } else {
+      None
+    };
+    let (brush, brush_transform) =
+      self.resolve_brush(scope, &state.stroke_style, 1.0, state.transform);
     let transform = state.transform;
 
     let mut stroke =
@@ -2759,7 +2909,24 @@ impl OffscreenCanvasRenderingContext2D {
     }
     drop(state);
 
-    self.apply_stroke_paint(&path, &stroke, transform, brush, brush_transform);
+    let (width, height) = self.data.dimensions();
+    let mut drawing = self.drawing.borrow_mut();
+    let has_layer =
+      Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
+    if let (Some(sb), Some(st)) = (shadow_brush, shadow_xform) {
+      Self::stroke_on(&mut drawing, &path, &stroke, st, sb, None);
+    }
+    Self::stroke_on(
+      &mut drawing,
+      &path,
+      &stroke,
+      transform,
+      brush,
+      brush_transform,
+    );
+    if has_layer {
+      Self::pop_compositing_layer(&mut drawing);
+    }
   }
 
   fn stroke_shape(
@@ -2815,12 +2982,12 @@ impl OffscreenCanvasRenderingContext2D {
     _ctm: kurbo::Affine,
   ) -> (peniko::Brush, Option<kurbo::Affine>) {
     match style {
-      FillStrokeStyle::Color([r, g, b, a]) => {
-        let alpha = (*a as f32 / 255.0 * global_alpha * 255.0).round() as u8;
-        (
-          peniko::Brush::Solid(peniko::Color::from_rgba8(*r, *g, *b, alpha)),
-          None,
-        )
+      FillStrokeStyle::Color(c) => {
+        let rgba = c.to_rgba8();
+        let alpha =
+          (rgba.a as f32 / 255.0 * global_alpha * 255.0).round() as u8;
+        let color = peniko::Color::from_rgba8(rgba.r, rgba.g, rgba.b, alpha);
+        (peniko::Brush::Solid(color), None)
       }
       FillStrokeStyle::Gradient(obj) => {
         let local = v8::Local::new(scope, obj);
@@ -2886,15 +3053,71 @@ impl OffscreenCanvasRenderingContext2D {
     }
   }
 
-  fn apply_fill_paint(
-    &self,
+  fn push_compositing_layer(
+    drawing: &mut DrawingBackend,
+    op: GlobalCompositeOperation,
+    alpha: f32,
+    width: u32,
+    height: u32,
+  ) -> bool {
+    if op == GlobalCompositeOperation::SourceOver && alpha == 1.0 {
+      return false;
+    }
+    let blend = op.to_blend_mode();
+    match drawing {
+      DrawingBackend::Vello(scene) => {
+        let clip = kurbo::Rect::new(0.0, 0.0, width as f64, height as f64);
+        scene.push_layer(
+          peniko::Fill::NonZero,
+          blend,
+          alpha,
+          kurbo::Affine::IDENTITY,
+          &clip,
+        );
+      }
+      DrawingBackend::VelloCpu(ctx, _) => {
+        ctx.push_layer(None, Some(blend), Some(alpha), None, None);
+      }
+    }
+    true
+  }
+
+  fn pop_compositing_layer(drawing: &mut DrawingBackend) {
+    match drawing {
+      DrawingBackend::Vello(scene) => scene.pop_layer(),
+      DrawingBackend::VelloCpu(ctx, _) => ctx.pop_layer(),
+    }
+  }
+
+  fn has_shadow(state: &DrawingState) -> bool {
+    !is_color_transparent(state.shadow_color_rgba)
+      && (state.shadow_blur > 0.0
+        || state.shadow_offset_x != 0.0
+        || state.shadow_offset_y != 0.0)
+  }
+
+  fn shadow_brush(state: &DrawingState) -> peniko::Brush {
+    peniko::Brush::Solid(state.shadow_color_rgba)
+  }
+
+  fn shadow_transform(
+    state: &DrawingState,
+    transform: kurbo::Affine,
+  ) -> kurbo::Affine {
+    // TODO(petamoriken): apply shadowBlur once Vello GPU supports filter effects
+    kurbo::Affine::translate((state.shadow_offset_x, state.shadow_offset_y))
+      * transform
+  }
+
+  fn fill_on(
+    drawing: &mut DrawingBackend,
     shape: &impl kurbo::Shape,
     fill: peniko::Fill,
     transform: kurbo::Affine,
     brush: peniko::Brush,
     brush_transform: Option<kurbo::Affine>,
   ) {
-    match &mut *self.drawing.borrow_mut() {
+    match drawing {
       DrawingBackend::Vello(scene) => {
         scene.fill(fill, transform, &brush, brush_transform, shape);
       }
@@ -2912,15 +3135,15 @@ impl OffscreenCanvasRenderingContext2D {
     }
   }
 
-  fn apply_stroke_paint(
-    &self,
+  fn stroke_on(
+    drawing: &mut DrawingBackend,
     path: &kurbo::BezPath,
     stroke: &kurbo::Stroke,
     transform: kurbo::Affine,
     brush: peniko::Brush,
     brush_transform: Option<kurbo::Affine>,
   ) {
-    match &mut *self.drawing.borrow_mut() {
+    match drawing {
       DrawingBackend::Vello(scene) => {
         scene.stroke(stroke, transform, &brush, brush_transform, path);
       }
