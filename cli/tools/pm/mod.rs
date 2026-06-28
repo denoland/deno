@@ -889,6 +889,14 @@ async fn find_package_and_select_version_for_req(
       || req.version_req.version_text() == nv.version.to_string()
     {
       ""
+    } else if !nv.version.pre.is_empty() {
+      // Pin pre-release versions exactly. A caret range over a pre-release
+      // matches every pre-release sharing the same major.minor.patch and
+      // resolves to the lexicographically greatest one. For hash based
+      // pre-release identifiers (e.g. an npm dist-tag like `@insiders` that
+      // resolves to `0.0.0-insiders.<hash>`) that is not the newest build and
+      // not what the user asked to install. See #35577.
+      ""
     } else {
       "^"
     };
