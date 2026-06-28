@@ -1,0 +1,2 @@
+[WILDCARD]Initialize @denotest/lifecycle-scripts-with-dep@1.0.0: running 'postinstall' script
+[WILDCARD]postinstall works with dep add(1, 2) = 3

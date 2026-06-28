@@ -1493,6 +1493,22 @@ impl<
       );
       return;
     }
+    // The snapshot and restore both go through `clone_dir_recursive` /
+    // `copy_dir_recursive`, which copy or hard-link regular files and
+    // directories but SILENTLY SKIP symlinks (see `crate::fs`). If the build
+    // script created a symlink inside the package directory, snapshotting it
+    // would drop the link, and a later cache hit would restore a directory that
+    // is missing it (the package would fail to resolve through that link). We
+    // can't faithfully capture such a package, so — exactly like the
+    // writes-outside-its-directory case above — we decline to cache it and let
+    // its scripts re-run on every install. Staleness-safe by construction.
+    if dir_contains_symlink(&self.sys, &plan.pkg_dir) {
+      log::debug!(
+        "npm:{} build produced a symlink inside its package directory, which the side-effects cache can't represent; not caching its build output (its scripts will re-run on future installs).",
+        plan.nv
+      );
+      return;
+    }
     if let Err(err) = self.snapshot_built_output(plan) {
       log::debug!("Failed to cache build output for npm:{}: {err}", plan.nv);
     } else {
@@ -1877,6 +1893,42 @@ fn built_cache_ready_marker(built_variant: &Path) -> PathBuf {
   let mut marker = built_variant.as_os_str().to_os_string();
   marker.push(".ready");
   PathBuf::from(marker)
+}
+
+/// Returns true if `dir` contains (recursively) any symlink or junction.
+///
+/// The side-effects build cache snapshots and restores a package directory with
+/// `clone_dir_recursive` / `copy_dir_recursive`, neither of which can represent
+/// symlinks — they copy or hard-link regular files and directories and silently
+/// skip symlink entries (see `crate::fs`). A package whose build script creates
+/// a symlink inside its own directory therefore can't be faithfully cached, so
+/// `persist_built_output` uses this to leave it uncacheable instead of
+/// publishing a variant that would lose the link on restore.
+///
+/// `fs_read_link` (rather than `file_type().is_symlink()`) is used to detect the
+/// link because Windows junctions report `is_symlink() == false`, matching the
+/// detection in `remove_unused_node_modules_symlinks`.
+fn dir_contains_symlink<TSys: FsReadDir + sys_traits::FsReadLink>(
+  sys: &TSys,
+  dir: &Path,
+) -> bool {
+  let Ok(read_dir) = sys.fs_read_dir(dir) else {
+    return false;
+  };
+  for entry in read_dir.flatten() {
+    let path = dir.join(entry.file_name());
+    if sys.fs_read_link(&path).is_ok() {
+      return true;
+    }
+    // Only descend into real directories — a symlinked directory was already
+    // caught by the `fs_read_link` check above and never reached here.
+    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+      && dir_contains_symlink(sys, &path)
+    {
+      return true;
+    }
+  }
+  false
 }
 
 /// Computes a cheap content signature (relative path + size + mtime of every
