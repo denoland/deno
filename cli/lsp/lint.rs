@@ -154,6 +154,7 @@ impl LspLinterResolver {
           fix: false,
           deno_lint_config,
           maybe_plugin_runner: plugin_runner,
+          write_fixes: true,
         });
         Arc::new(LspLinter { inner, lint_config })
       })

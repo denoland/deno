@@ -655,6 +655,7 @@ impl CliFactory {
             | DenoSubcommand::Jupyter { .. }
             | DenoSubcommand::Lsp
             | DenoSubcommand::Lint { .. }
+            | DenoSubcommand::Codemod { .. }
             | DenoSubcommand::Repl { .. }
             | DenoSubcommand::Run { .. }
             | DenoSubcommand::Serve { .. }

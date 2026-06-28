@@ -639,6 +639,9 @@ impl FlagsExt for Flags {
       Lint(LintFlags { files, .. }) => {
         Some(resolve_multiple_files(&files.include, current_dir))
       }
+      Codemod(CodemodFlags { files, .. }) => {
+        Some(resolve_multiple_files(&files.include, current_dir))
+      }
       Run(RunFlags { script, .. })
       | Compile(CompileFlags {
         source_file: script,
@@ -1302,6 +1305,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "json_reference" => json_reference_parse(&mut flags, &mut m, app),
         "jupyter" => jupyter_parse(&mut flags, &mut m),
         "lint" => lint_parse(&mut flags, &mut m)?,
+        "codemod" => codemod_parse(&mut flags, &mut m)?,
         "lsp" => lsp_parse(&mut flags, &mut m),
         "outdated" => outdated_parse(&mut flags, &mut m, false)?,
         "repl" => repl_parse(&mut flags, &mut m)?,
@@ -1587,6 +1591,7 @@ pub fn clap_root() -> Command {
         .subcommand(unlink_subcommand())
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
+        .subcommand(codemod_subcommand())
         .subcommand(publish_subcommand())
         .subcommand(pack_subcommand())
         .subcommand(repl_subcommand())
@@ -3902,6 +3907,70 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
+      .arg(allow_import_arg())
+      .arg(deny_import_arg())
+  })
+}
+
+fn codemod_subcommand() -> Command {
+  command(
+    "codemod",
+    cstr!("Run a codemod over JavaScript/TypeScript source code.
+
+A codemod is a <p(245)>Deno.lint.Plugin</> whose rules report fixes. Unlike
+<p(245)>deno lint</>, every reported fix is applied to your source files. This is
+handy for one-off, automated refactors (for example migrating away from a
+deprecated API).
+
+  <p(245)>deno codemod ./my-codemod.ts</>
+  <p(245)>deno codemod ./my-codemod.ts src/ main.ts</>
+
+Preview the changes without writing them:
+  <p(245)>deno codemod --dry-run ./my-codemod.ts</>
+
+<y>Note:</> this is an unstable, experimental subcommand and may change.
+"),
+    UnstableArgsConfig::ResolutionOnly,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("plugin")
+          .required_unless_present("help")
+          .value_name("PLUGIN")
+          .help("Path or URL of the codemod plugin to run")
+          .value_hint(ValueHint::AnyPath),
+      )
+      .arg(
+        Arg::new("dry-run")
+          .long("dry-run")
+          .help("Report what would change without writing any files")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("ext")
+          .long("ext")
+          .require_equals(true)
+          .value_name("EXT")
+          .help("Specify the file extension for files without one"),
+      )
+      .arg(no_config_arg())
+      .arg(config_arg())
+      .arg(
+        Arg::new("ignore")
+          .long("ignore")
+          .num_args(1..)
+          .action(ArgAction::Append)
+          .require_equals(true)
+          .help("Skip running the codemod on particular source files")
+          .value_hint(ValueHint::AnyPath),
+      )
+      .arg(
+        Arg::new("files")
+          .num_args(1..)
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::AnyPath),
+      )
       .arg(allow_import_arg())
       .arg(deny_import_arg())
   })
@@ -7689,6 +7758,39 @@ fn lint_parse(
     json,
     compact,
     watch: watch_arg_parse(matches)?,
+  });
+  Ok(())
+}
+
+fn codemod_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
+  ext_arg_parse(flags, matches);
+  config_args_parse(flags, matches);
+  allow_and_deny_import_parse(flags, matches)?;
+
+  let plugin = matches.remove_one::<String>("plugin").unwrap_or_default();
+  let files = match matches.remove_many::<String>("files") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
+  let ignore = match matches.remove_many::<String>("ignore") {
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?,
+    None => vec![],
+  };
+  let dry_run = matches.get_flag("dry-run");
+
+  flags.subcommand = DenoSubcommand::Codemod(CodemodFlags {
+    plugin,
+    files: FileFlags {
+      include: files,
+      ignore,
+    },
+    dry_run,
   });
   Ok(())
 }

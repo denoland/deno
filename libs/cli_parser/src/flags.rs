@@ -493,6 +493,16 @@ impl LintFlags {
   }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CodemodFlags {
+  /// Specifier of the codemod plugin to run (a `Deno.lint.Plugin`).
+  pub plugin: String,
+  /// Files or directories the codemod is applied to.
+  pub files: FileFlags,
+  /// When true, report the changes that would be made without writing them.
+  pub dry_run: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,
@@ -808,6 +818,7 @@ pub enum DenoSubcommand {
   Unlink(UnlinkFlags),
   Lsp,
   Lint(LintFlags),
+  Codemod(CodemodFlags),
   Repl(ReplFlags),
   Run(RunFlags),
   Serve(ServeFlags),
