@@ -32,6 +32,7 @@ use deno_npm_cache::NpmCacheSys;
 use deno_npm_cache::TarballCache;
 use deno_npm_cache::hard_link_file;
 use deno_path_util::fs::atomic_write_file_with_retries;
+use deno_path_util::get_atomic_path;
 use deno_resolver::npm::get_package_folder_id_folder_name;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_semver::StackString;
@@ -984,7 +985,15 @@ impl<
           &input_hash,
         );
         let ready_marker = built_cache_ready_marker(&built_variant);
-        if !self.sys.fs_exists_no_err(&ready_marker) {
+        // A variant is only usable when BOTH the completion marker AND the
+        // directory itself are present. Publishing writes the marker last and
+        // never replaces an in-place marked variant (see `snapshot_built_output`),
+        // so a present marker always implies a complete directory — except for a
+        // stale marker left after the dir went missing, which we treat as a miss
+        // here and let the build pass republish (and self-heal) below.
+        if !self.sys.fs_exists_no_err(&ready_marker)
+          || !self.sys.fs_exists_no_err(&built_variant)
+        {
           continue; // cache miss — handled by the build pass after step 9
         }
         // Cache hit. The allowlist was already enforced (membership in
@@ -1413,21 +1422,125 @@ impl<
     }
   }
 
-  /// Snapshots a built package directory into the global cache. The completion
-  /// marker is written last so a concurrent install never observes (and reuses)
-  /// a partially-written variant.
+  /// Publishes a freshly-built package directory into the SHARED global
+  /// side-effects cache so other projects can reuse it.
+  ///
+  /// Concurrency contract: different projects share one global npm cache but
+  /// hold only their own local `node_modules` lock, so two first installs for
+  /// the same package + input hash can run this at the same time. Publication
+  /// is made atomic with respect to a concurrent reader (the restore pass) by:
+  ///
+  /// 1. Snapshotting into a UNIQUE sibling temp dir (same parent ⇒ same
+  ///    filesystem ⇒ the move is a real `rename`), reusing the established npm
+  ///    cache convention (`deno_path_util::get_atomic_path` +
+  ///    rename-with-retries, exactly as `tarball_extract.rs` extracts tarballs).
+  /// 2. Atomically `rename`-ing the temp dir into `built_variant`, so the
+  ///    directory appears at its final path complete and all-at-once — a reader
+  ///    never sees a half-written directory.
+  /// 3. Writing the `.ready` marker LAST — only after the directory is fully in
+  ///    place. So a reader either sees no marker (and treats it as a miss), or
+  ///    sees a marker with a complete directory behind it.
+  ///
+  /// Idempotent & self-healing:
+  /// - First writer wins: if a complete variant (dir + marker) already exists we
+  ///   leave it untouched and just clean up our temp dir.
+  /// - A stale marker (marker present but dir missing) is repaired: the marker
+  ///   is removed first (so no reader trusts it), then we republish.
+  /// - An orphan directory (dir present but no marker, e.g. a publish that
+  ///   crashed before step 3) is replaced. Replacing is safe because, with no
+  ///   marker, no reader will ever read that directory; and every variant for a
+  ///   given (package, input hash) has identical content by construction, so any
+  ///   complete variant is interchangeable.
+  ///
+  /// We never remove or replace a directory while its `.ready` marker exists —
+  /// that is the one operation that could expose a reader to a vanishing or
+  /// half-replaced variant.
   fn snapshot_built_output(
     &self,
     plan: &BuildSnapshotPlan,
   ) -> Result<(), std::io::Error> {
-    if self.sys.fs_exists_no_err(&plan.ready_marker) {
-      // Already cached by a concurrent install — leave the complete variant be.
+    let marker_exists = self.sys.fs_exists_no_err(&plan.ready_marker);
+    let variant_exists = self.sys.fs_exists_no_err(&plan.built_variant);
+    if marker_exists && variant_exists {
+      // First writer wins: a complete variant is already published. Leave it be.
       return Ok(());
     }
-    let _ = self.sys.fs_remove_dir_all(&plan.built_variant);
-    clone_dir_recursive(&self.sys, &plan.pkg_dir, &plan.built_variant)?;
+    if marker_exists && !variant_exists {
+      // Stale marker: the directory it vouches for is gone. Drop the marker
+      // first so no concurrent reader trusts it, then republish below.
+      let _ = self.sys.fs_remove_file(&plan.ready_marker);
+    }
+
+    // Snapshot into a unique sibling temp dir on the same filesystem so the
+    // publish is a same-filesystem rename (atomic move into place).
+    let temp_dir = get_atomic_path(&self.sys, &plan.built_variant);
+    if let Err(err) = clone_dir_recursive(&self.sys, &plan.pkg_dir, &temp_dir) {
+      let _ = self.sys.fs_remove_dir_all(&temp_dir);
+      return Err(err);
+    }
+
+    // Move the directory into place (before the marker). Cleans up the temp dir
+    // on any outcome that doesn't consume it.
+    if let Err(err) = self.publish_built_variant(
+      &temp_dir,
+      &plan.built_variant,
+      &plan.ready_marker,
+    ) {
+      let _ = self.sys.fs_remove_dir_all(&temp_dir);
+      return Err(err);
+    }
+
+    // Directory is fully in place; mark it complete LAST. `create_initialized_file`
+    // is idempotent, so re-creating a marker we dropped above (stale-marker
+    // repair) is fine.
     create_initialized_file(&self.sys, &plan.ready_marker)?;
     Ok(())
+  }
+
+  /// Atomically moves a snapshot temp dir into the variant destination,
+  /// mirroring the npm cache's tarball-extract rename-with-retries convention.
+  ///
+  /// `rename` onto a non-empty directory fails on some platforms, so an orphan
+  /// destination (present but with no `.ready` marker) is removed before
+  /// retrying. A destination that becomes complete underneath us (another writer
+  /// published it, marker now present) is left untouched — first writer wins and
+  /// we just drop our temp copy.
+  fn publish_built_variant(
+    &self,
+    temp_dir: &Path,
+    built_variant: &Path,
+    ready_marker: &Path,
+  ) -> Result<(), std::io::Error> {
+    let mut count = 0;
+    loop {
+      match self.sys.fs_rename(temp_dir, built_variant) {
+        Ok(()) => return Ok(()),
+        Err(err) => {
+          let dest_exists = err.kind() == std::io::ErrorKind::AlreadyExists
+            || self.sys.fs_exists_no_err(built_variant);
+          if dest_exists {
+            if self.sys.fs_exists_no_err(ready_marker) {
+              // Another writer published a complete variant first. Identical
+              // content by construction, so keep theirs and drop ours.
+              let _ = self.sys.fs_remove_dir_all(temp_dir);
+              return Ok(());
+            }
+            // Orphan directory with no marker: not reader-visible, so it's safe
+            // to clear out of the way and retry the rename.
+            let _ = self.sys.fs_remove_dir_all(built_variant);
+          }
+          count += 1;
+          if count > 5 {
+            return Err(err);
+          }
+          // Brief backoff; contention here is rare (only racing first installs).
+          let sleep_ms = std::cmp::min(100, 20 * count);
+          self
+            .sys
+            .thread_sleep(std::time::Duration::from_millis(sleep_ms));
+        }
+      }
+    }
   }
 
   fn resolve_workspace_lifecycle_packages(
