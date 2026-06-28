@@ -937,14 +937,38 @@ impl<
     // the same full collision context. Cache MISSES are handled after step 9
     // (see the build pass below), so their `pre_build_signature` is taken after
     // any `chmod` the bin pass performs.
+    //
+    // Patched packages are EXCLUDED from the side-effects cache (both passes).
+    // The patch was applied into `.deno` earlier (step 3), but the cache input
+    // key does NOT include the patch contents. The "pristine exists" gate below
+    // can't be relied on to skip them: a patched package's pristine global-cache
+    // directory may still exist (e.g. another project sharing the same global
+    // cache installed that name@version unpatched). Were a patched package ever
+    // processed, restoring a built variant over it would drop the patch, and
+    // rebuilding from the pristine copy would discard the patch and snapshot
+    // unpatched output under a key that doesn't distinguish it. So a patched
+    // package keeps its current behavior: apply the patch and re-run its
+    // lifecycle scripts every install, never restored from / written to the
+    // cache.
+    let patched_nvs: HashSet<&PackageNv> = self
+      .npm_install_deps_provider
+      .patch_pkgs()
+      .iter()
+      .map(|p| &p.nv)
+      .collect();
     let mut restored: HashSet<NpmPackageId> = HashSet::new();
     {
       let lifecycle_scripts = lifecycle_scripts.borrow();
       for pkg in lifecycle_scripts.packages_with_scripts() {
         let package = pkg.package;
+        // Patch contents aren't in the input key, so a patched package must
+        // never be served from the side-effects cache (see `patched_nvs`).
+        if patched_nvs.contains(&package.id.nv) {
+          continue;
+        }
         // Only registry packages extracted into the global cache can be
-        // restored. Skips workspace members and patched packages, whose sources
-        // don't live in the content-addressed global cache.
+        // restored. Skips workspace members, whose sources don't live in the
+        // content-addressed global cache.
         let pristine = self.npm_cache.package_folder_for_nv(&package.id.nv);
         if !self.sys.fs_exists_no_err(&pristine) {
           continue;
@@ -1227,9 +1251,16 @@ impl<
       HashMap::new();
     for pkg in lifecycle_scripts_to_run.packages_with_scripts() {
       let package = pkg.package;
+      // Patch contents aren't in the input key, so a patched package must never
+      // be snapshotted (rebuilding from a pristine copy would also drop the
+      // applied patch). Keep its scripts running every install (see
+      // `patched_nvs`).
+      if patched_nvs.contains(&package.id.nv) {
+        continue;
+      }
       // Only registry packages that were extracted into the global cache can
-      // be snapshotted. Skips workspace members and patched packages, whose
-      // sources don't live in the content-addressed global cache.
+      // be snapshotted. Skips workspace members, whose sources don't live in
+      // the content-addressed global cache.
       let pristine = self.npm_cache.package_folder_for_nv(&package.id.nv);
       if !self.sys.fs_exists_no_err(&pristine) {
         continue;
