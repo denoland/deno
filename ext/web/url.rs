@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::op2;
@@ -84,7 +86,12 @@ fn parse_url(
   base_href: Option<&Url>,
   buf: &mut [u32],
 ) -> u32 {
-  match Url::options().base_url(base_href).parse(href) {
+  let href_to_parse = match base_href {
+    Some(base_url) => normalize_special_scheme_relative_url(href, base_url),
+    None => Cow::Borrowed(href),
+  };
+
+  match Url::options().base_url(base_href).parse(&href_to_parse) {
     Ok(url) => {
       let inner_url = quirks::internal_components(&url);
 
@@ -106,6 +113,21 @@ fn parse_url(
     }
     Err(_) => ParseStatus::Err as u32,
   }
+}
+
+fn normalize_special_scheme_relative_url<'a>(
+  href: &'a str,
+  base_url: &Url,
+) -> Cow<'a, str> {
+  // WHATWG resolves extra-leading-slash network-path references like
+  // `///host` to the base's special scheme, but rust-url rejects them.
+  if !href.as_bytes().starts_with(b"///")
+    || !matches!(base_url.scheme(), "ftp" | "http" | "https" | "ws" | "wss")
+  {
+    return Cow::Borrowed(href);
+  }
+
+  Cow::Owned(format!("//{}", href.trim_start_matches('/')))
 }
 
 // Keep in sync with parseSimpleSpecialUrl() in ext/web/00_url.js.
