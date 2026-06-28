@@ -256,7 +256,11 @@ class Cache {
     if (cached) {
       return cached;
     }
-    const promise = PromisePrototypeThen(getFollowDirent(path), null, () => null);
+    const promise = PromisePrototypeThen(
+      getFollowDirent(path),
+      null,
+      () => null,
+    );
     this.#followStatsCache.set(path, promise);
     return promise;
   }
@@ -346,7 +350,13 @@ class Pattern {
   realpaths;
   last;
 
-  constructor(pattern, globStrings, indexes, symlinks, realpaths = new SafeSet()) {
+  constructor(
+    pattern,
+    globStrings,
+    indexes,
+    symlinks,
+    realpaths = new SafeSet(),
+  ) {
     this.#pattern = pattern;
     this.#globStrings = globStrings;
     this.indexes = indexes;
@@ -374,7 +384,13 @@ class Pattern {
     return ArrayPrototypeAt(this.#pattern, index);
   }
   child(indexes, symlinks = new SafeSet(), realpaths = this.realpaths) {
-    return new Pattern(this.#pattern, this.#globStrings, indexes, symlinks, realpaths);
+    return new Pattern(
+      this.#pattern,
+      this.#globStrings,
+      indexes,
+      symlinks,
+      realpaths,
+    );
   }
   test(index, path) {
     if (index > this.#pattern.length) {
@@ -495,13 +511,17 @@ export class Glob {
   #isDirectorySync(path, stat, pattern) {
     if (stat?.isDirectory()) return true;
     if (!stat?.isSymbolicLink()) return false;
-    if (this.#followSymlinks) return !!this.#cache.followStatSync(path)?.isDirectory();
+    if (this.#followSymlinks) {
+      return !!this.#cache.followStatSync(path)?.isDirectory();
+    }
     return pattern.hasSeenSymlinks;
   }
   async #isDirectory(path, stat, pattern) {
     if (stat?.isDirectory()) return true;
     if (!stat?.isSymbolicLink()) return false;
-    if (this.#followSymlinks) return !!(await this.#cache.followStat(path))?.isDirectory();
+    if (this.#followSymlinks) {
+      return !!(await this.#cache.followStat(path))?.isDirectory();
+    }
     return pattern.hasSeenSymlinks;
   }
   #isCyclicSync(path, isDirectory, pattern) {
@@ -655,7 +675,11 @@ export class Glob {
       return;
     }
 
-    const nextRealpaths = this.#nextRealpathsSync(fullpath, isDirectory, pattern);
+    const nextRealpaths = this.#nextRealpathsSync(
+      fullpath,
+      isDirectory,
+      pattern,
+    );
 
     let children;
     const firstPattern = pattern.indexes.size === 1 &&
@@ -687,7 +711,8 @@ export class Glob {
         const current = pattern.partAt(index);
         const nextIndex = index + 1;
         const next = pattern.partAt(nextIndex);
-        const fromSymlink = !this.#followSymlinks && pattern.symlinks.has(index);
+        const fromSymlink = !this.#followSymlinks &&
+          pattern.symlinks.has(index);
 
         if (current === lazyMinimatch().default.GLOBSTAR) {
           const isDot = entry.name[0] === ".";
@@ -814,7 +839,10 @@ export class Glob {
       }
       if (subPatterns.size > 0) {
         // If there are potential patterns, add to queue
-        this.#addSubpattern(entryPath, pattern.child(subPatterns, nSymlinks, nextRealpaths));
+        this.#addSubpattern(
+          entryPath,
+          pattern.child(subPatterns, nSymlinks, nextRealpaths),
+        );
       }
     }
   }
@@ -919,7 +947,11 @@ export class Glob {
       return;
     }
 
-    const nextRealpaths = await this.#nextRealpaths(fullpath, isDirectory, pattern);
+    const nextRealpaths = await this.#nextRealpaths(
+      fullpath,
+      isDirectory,
+      pattern,
+    );
 
     let children;
     const firstPattern = pattern.indexes.size === 1 &&
@@ -951,7 +983,8 @@ export class Glob {
         const current = pattern.partAt(index);
         const nextIndex = index + 1;
         const next = pattern.partAt(nextIndex);
-        const fromSymlink = !this.#followSymlinks && pattern.symlinks.has(index);
+        const fromSymlink = !this.#followSymlinks &&
+          pattern.symlinks.has(index);
 
         if (current === lazyMinimatch().default.GLOBSTAR) {
           const isDot = entry.name[0] === ".";
@@ -1102,7 +1135,10 @@ export class Glob {
       }
       if (subPatterns.size > 0) {
         // If there are potential patterns, add to queue
-        this.#addSubpattern(entryPath, pattern.child(subPatterns, nSymlinks, nextRealpaths));
+        this.#addSubpattern(
+          entryPath,
+          pattern.child(subPatterns, nSymlinks, nextRealpaths),
+        );
       }
     }
   }
