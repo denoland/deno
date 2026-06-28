@@ -48,6 +48,7 @@ const {
 } = primordials;
 const { isTypedArray } = core;
 const {
+  op_fs_read_file_sync,
   op_node_in_npm_package,
   op_node_ipc_buffer_constructor,
   op_node_ipc_read_advanced,
@@ -59,6 +60,7 @@ const {
   op_node_parse_shell_args,
   op_node_translate_cli_args,
 } = core.ops;
+const utf8Decoder = new TextDecoder("utf-8", { fatal: false });
 const {
   ArrayIsArray,
   ArrayPrototypeFilter,
@@ -1492,6 +1494,81 @@ function escapeShellArg(arg) {
 }
 
 /**
+ * Detect whether `file` is a thin shell-script (or .cmd) wrapper whose only
+ * job is to `exec` the Deno binary with passthrough args - the pattern that
+ * tools like `yarn` write to make a Deno-as-Node bridge available on PATH
+ * for npm lifecycle scripts. If `file` doesn't exist or doesn't match the
+ * pattern, returns `null`.
+ *
+ * Detecting these wrappers lets us treat the spawn as if it directly
+ * targeted Deno, so the normal Node.js to Deno arg translation runs and
+ * propagates `-A` and other compat flags down to the child. Otherwise the
+ * wrapper execs `deno postinstall.js` with default (no) permissions and
+ * any sys/read/write access in the script throws `NotCapable`.
+ */
+function detectDenoExecWrapper(file: string): string | null {
+  let content: string;
+  try {
+    const bytes = op_fs_read_file_sync(file);
+    if (bytes.length === 0 || bytes.length > 4096) {
+      return null;
+    }
+    content = utf8Decoder.decode(bytes);
+  } catch {
+    return null;
+  }
+  // POSIX wrapper: `#!/bin/sh\n\nexec "<deno>" "$@"` (yarn 1's exact form).
+  // Tolerate optional env-var prefix and either form of "$@" quoting.
+  const unix = content.match(
+    /^#![^\n]*\n[\s\S]*?\bexec\s+(?:[A-Za-z_][A-Za-z0-9_]*="[^"]*"\s+)*"([^"\n]+)"(?:\s+"?\$@"?)?\s*$/m,
+  );
+  if (unix) {
+    return unix[1];
+  }
+  // Windows .cmd wrapper: `@"<deno>" %*` (yarn 1's form on Windows).
+  const cmd = content.match(
+    /^@(?:[A-Za-z_][A-Za-z0-9_]*="[^"]*"\s+)*"([^"\r\n]+)"[^\r\n]*%\*\s*$/m,
+  );
+  if (cmd) {
+    return cmd[1];
+  }
+  return null;
+}
+
+/**
+ * Look up a bare command name on env.PATH and return the first existing
+ * candidate path, or null if not found. Mirrors basic `execvp` lookup
+ * semantics. Existence is probed via a sync read attempt (lighter than
+ * adding a stat op for one consumer; the caller re-reads the file anyway).
+ */
+// deno-lint-ignore no-explicit-any
+function resolveCommandOnPath(cmd: string, env: any): string | null {
+  if (cmd.includes("/") || (isWindows && cmd.includes("\\"))) {
+    return null;
+  }
+  const pathVar = env?.PATH ?? env?.Path ?? env?.path;
+  if (typeof pathVar !== "string" || pathVar.length === 0) {
+    return null;
+  }
+  const sep = isWindows ? ";" : ":";
+  const extensions = isWindows ? [".cmd", ".bat", ".exe", ""] : [""];
+  const dirs = pathVar.split(sep);
+  for (const dir of dirs) {
+    if (!dir) continue;
+    for (const ext of extensions) {
+      const candidate = `${dir}/${cmd}${ext}`;
+      try {
+        op_fs_read_file_sync(candidate);
+        return candidate;
+      } catch {
+        // try next
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Transforms a shell command that invokes Deno with Node.js flags into Deno-compatible flags.
  * Uses the Rust CLI parser (op_node_translate_cli_args) to handle argument translation,
  * including subcommand detection, -c/--check flag handling, and adding "run -A".
@@ -1532,6 +1609,25 @@ function transformDenoShellCommand(
         startsWithDeno = true;
         shellVarPrefix = shellVarMatch[0];
         denoPathLength = shellVarMatch[0].length;
+      }
+    }
+  }
+
+  // If the command's first word is a bare bin name that resolves on
+  // env.PATH to a thin shell wrapper around the Deno binary (yarn 1's
+  // generated `node` wrapper, etc.), rewrite the command to invoke Deno
+  // directly so the translation below can add `-A` and friends.
+  if (!startsWithDeno && env) {
+    const firstWord = command.match(/^[^\s]+/);
+    if (firstWord) {
+      const resolved = resolveCommandOnPath(firstWord[0], env);
+      if (resolved && detectDenoExecWrapper(resolved) === denoPath) {
+        startsWithDeno = true;
+        denoPathLength = firstWord[0].length;
+        // Rebuild the command with the literal deno path in place of the
+        // wrapper name so downstream quoting/splicing works the same way.
+        command = denoPath + command.slice(firstWord[0].length);
+        denoPathLength = denoPath.length;
       }
     }
   }
@@ -1695,7 +1791,15 @@ function buildCommand(
   env,
 ) {
   let includeNpmProcessState = false;
-  if (file === Deno.execPath() && !Deno.build.standalone) {
+  const denoPath = Deno.execPath();
+  // If `file` is a thin shell wrapper around the Deno binary (e.g. yarn 1's
+  // generated `node` wrapper that does `exec "<deno>" "$@"`), treat the
+  // spawn as if it directly targeted Deno so the Node.js arg translation
+  // below adds `-A`, `--unstable-bare-node-builtins`, etc.
+  if (file !== denoPath && detectDenoExecWrapper(file) === denoPath) {
+    file = denoPath;
+  }
+  if (file === denoPath && !Deno.build.standalone) {
     // Ensure all args are strings (Node allows numbers in args array)
     args = ArrayPrototypeMap(args, (arg) => String(arg));
 
