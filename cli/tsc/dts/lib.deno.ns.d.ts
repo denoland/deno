@@ -6039,10 +6039,18 @@ declare namespace Deno {
    * Deno.serve({ cert, key }, (_req) => new Response("Hello, world"));
    * ```
    *
+   * Alternatively, a `resolveCertificate` callback may be provided to select
+   * the certificate per connection based on the requested server name (SNI).
+   * This requires the `--unstable-net` flag. See
+   * {@linkcode Deno.TlsCertificateResolverOption}.
+   *
    * @category HTTP Server
    */
   export function serve(
-    options: ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyPem),
+    options:
+      | ServeTcpOptions
+      | (ServeTcpOptions & TlsCertifiedKeyPem)
+      | (ServeTcpOptions & TlsCertificateResolverOption),
     handler: ServeHandler<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
   /** Serves HTTP requests with the given option bag.
@@ -6130,7 +6138,11 @@ declare namespace Deno {
    */
   export function serve(
     options:
-      & (ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyPem))
+      & (
+        | ServeTcpOptions
+        | (ServeTcpOptions & TlsCertifiedKeyPem)
+        | (ServeTcpOptions & TlsCertificateResolverOption)
+      )
       & ServeInit<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
 

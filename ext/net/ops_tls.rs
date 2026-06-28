@@ -270,8 +270,10 @@ pub fn op_tls_key_static(
 
 #[op2]
 pub fn op_tls_cert_resolver_create<'s>(
+  state: &OpState,
   scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Array> {
+  super::check_unstable(state, "Deno.listenTls({ resolveCertificate })");
   let (resolver, lookup) = new_resolver();
   let resolver = deno_core::cppgc::make_cppgc_object(
     scope,
@@ -281,34 +283,61 @@ pub fn op_tls_cert_resolver_create<'s>(
   v8::Array::new_with_elements(scope, &[resolver.into(), lookup.into()])
 }
 
+/// The parts of a client's TLS ClientHello surfaced to a `resolveCertificate`
+/// callback. The numeric fields are raw IANA TLS code points.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientHelloInfo {
+  alpn_protocols: Vec<String>,
+  cipher_suites: Vec<u16>,
+  signature_schemes: Vec<u16>,
+  supported_groups: Vec<u16>,
+}
+
+/// Returns `(resolutionId, serverName, clientHello)` for the next TLS
+/// handshake waiting on a certificate, or `null` when the listener is gone.
 #[op2]
-#[string]
+#[serde]
 pub async fn op_tls_cert_resolver_poll(
   #[cppgc] lookup: &TlsKeyLookup,
-) -> Option<String> {
-  lookup.poll().await
+) -> Option<(String, String, ClientHelloInfo)> {
+  let (id, hello) = lookup.poll().await?;
+  Some((
+    id,
+    hello.sni,
+    ClientHelloInfo {
+      alpn_protocols: hello
+        .alpn
+        .iter()
+        .map(|p| String::from_utf8_lossy(p).into_owned())
+        .collect(),
+      cipher_suites: hello.cipher_suites,
+      signature_schemes: hello.signature_schemes,
+      supported_groups: hello.supported_groups,
+    },
+  ))
 }
 
 #[op2(fast)]
 pub fn op_tls_cert_resolver_resolve(
   #[cppgc] lookup: &TlsKeyLookup,
-  #[string] sni: String,
+  #[string] id: String,
   #[cppgc] key: &TlsKeysHolder,
 ) -> Result<(), NetError> {
   let TlsKeys::Static(key) = key.take() else {
     return Err(NetError::UnexpectedKeyType);
   };
-  lookup.resolve(sni, Ok(key));
+  lookup.resolve(id, Ok(key));
   Ok(())
 }
 
 #[op2(fast)]
 pub fn op_tls_cert_resolver_resolve_error(
   #[cppgc] lookup: &TlsKeyLookup,
-  #[string] sni: String,
+  #[string] id: String,
   #[string] error: String,
 ) {
-  lookup.resolve(sni, Err(error))
+  lookup.resolve(id, Err(error))
 }
 
 #[op2(stack_trace)]
