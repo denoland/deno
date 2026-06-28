@@ -2282,6 +2282,20 @@ ObjectAssign(exportsObj, {
   SHARE_ENV,
 });
 
+// Node exposes the Web Locks API `LockManager` (the very same instance as
+// `navigator.locks`) as `worker_threads.locks`. Expose it lazily through a
+// getter: this module is evaluated eagerly during bootstrap, so reading
+// `navigator.locks` here directly could run before the global scope (and thus
+// `navigator`) is set up.
+ObjectDefineProperty(exportsObj, "locks", {
+  __proto__: null,
+  configurable: true,
+  enumerable: true,
+  get() {
+    return globalThis.navigator?.locks;
+  },
+});
+
 // node-defer: under deferred bootstrap, `__initWorkerThreads` may never run on
 // the main thread (it ran from 01_require.js's `initialize`, which now only
 // fires on a require/node:module path). The global MessageChannel/MessagePort
