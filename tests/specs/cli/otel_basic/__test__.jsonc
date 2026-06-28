@@ -216,6 +216,13 @@
         "OTEL_TRACES_SAMPLER": "parentbased_always_off"
       },
       "output": "traces_sampler_off.out"
+    },
+    "span_link_limit": {
+      "args": "run -A main.ts span_link_limit.ts",
+      "envs": {
+        "OTEL_SPAN_LINK_COUNT_LIMIT": "2"
+      },
+      "output": "span_link_limit.out"
     }
   }
 }

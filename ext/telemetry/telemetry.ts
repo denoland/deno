@@ -490,7 +490,7 @@ class Span {
 
   addLink(link: Link): this {
     if (!this.#otelSpan) return this;
-    const valid = op_otel_span_add_link(
+    const recorded = op_otel_span_add_link(
       this.#otelSpan,
       link.context.traceId,
       link.context.spanId,
@@ -498,14 +498,16 @@ class Span {
       link.context.isRemote ?? false,
       link.droppedAttributesCount ?? 0,
     );
-    if (link.attributes) {
+    // Only attach attributes when the link was actually recorded; otherwise
+    // (invalid context, or dropped by OTEL_SPAN_LINK_COUNT_LIMIT) they would
+    // be misattributed to the previous link.
+    if (recorded && link.attributes) {
       spanAddAttributes(
         this.#otelSpan,
         SpanAttributesLocation.LAST_LINK,
         link.attributes,
       );
     }
-    if (!valid) return this;
     return this;
   }
 
