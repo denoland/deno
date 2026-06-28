@@ -967,6 +967,23 @@ impl<
         if patched_nvs.contains(&package.id.nv) {
           continue;
         }
+        // Honor the npm cache setting exactly as the materialization path does
+        // (see the `should_use_for_npm_package` check above). `--reload` /
+        // `--reload=npm:<pkg>` disables cache use for the package, which forces
+        // a fresh pristine re-extraction earlier in this method. The
+        // side-effects key only covers name/version/scripts/deps/platform/ABI,
+        // so a stale older `.build_<hash>` variant would still "match" and, if
+        // restored, would overwrite that freshly-reloaded extraction — defeating
+        // the reload. Skip restore here so the package falls through to the
+        // build pass below: its lifecycle scripts re-run against the reloaded
+        // extraction and republish a fresh variant.
+        if !self
+          .npm_cache
+          .cache_setting()
+          .should_use_for_npm_package(&package.id.nv.name)
+        {
+          continue;
+        }
         // Only registry packages extracted into the global cache can be
         // restored. Skips workspace members, whose sources don't live in the
         // content-addressed global cache.
