@@ -156,6 +156,8 @@ type RequestRedirect = "error" | "follow" | "manual";
 /** @category Fetch */
 type RequestPriority = "auto" | "high" | "low";
 /** @category Fetch */
+type RequestDuplex = "half";
+/** @category Fetch */
 type ReferrerPolicy =
   | ""
   | "no-referrer"
@@ -242,6 +244,11 @@ interface RequestInit {
    * priority.
    */
   priority?: RequestPriority;
+  /**
+   * A string indicating the request must be sent with a half-duplex body. This
+   * is required when the request body is a {@linkcode ReadableStream}.
+   */
+  duplex?: RequestDuplex;
   /**
    * A string indicating whether request follows redirects, results in an error
    * upon encountering a redirect, or returns the redirect (in an opaque
