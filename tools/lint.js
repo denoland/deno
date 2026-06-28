@@ -706,6 +706,7 @@ async function ensureNoNewTopLevelEntries() {
     ".devcontainer",
     ".github",
     "x",
+    "x.bat",
     "cli",
     "ext",
     "libs",
