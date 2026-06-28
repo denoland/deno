@@ -1,1 +1,0 @@
-await Deno.loadSystemFonts();

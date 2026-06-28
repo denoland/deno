@@ -370,7 +370,7 @@ pub struct WebWorkerServiceOptions<
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
-  pub shared_system_font_db: deno_web::SharedSystemFontDb,
+  pub shared_local_font_db: deno_web::SharedLocalFontDb,
   pub bundle_provider: Option<Arc<dyn deno_bundle_runtime::BundleProvider>>,
 }
 
@@ -532,7 +532,7 @@ impl WebWorker {
         Some(options.main_module.clone()),
         Default::default(),
         services.broadcast_channel,
-        services.shared_system_font_db,
+        services.shared_local_font_db,
       ),
       deno_webgpu::deno_webgpu::init(),
       deno_image::deno_image::init(),

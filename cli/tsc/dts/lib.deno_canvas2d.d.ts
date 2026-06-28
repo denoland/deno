@@ -138,24 +138,6 @@ type GlobalCompositeOperation =
 type ImageSmoothingQuality = "high" | "low" | "medium";
 
 /**
- * @experimental **UNSTABLE**: New API, yet to be vetted.
- * @category Canvas 2D
- */
-type FontDisplay = "auto" | "block" | "fallback" | "optional" | "swap";
-
-/**
- * @experimental **UNSTABLE**: New API, yet to be vetted.
- * @category Canvas 2D
- */
-type FontFaceLoadStatus = "error" | "loaded" | "loading" | "unloaded";
-
-/**
- * @experimental **UNSTABLE**: New API, yet to be vetted.
- * @category Canvas 2D
- */
-type FontFaceSetLoadStatus = "loaded" | "loading";
-
-/**
  * Settings passed as the second argument to
  * `OffscreenCanvas.getContext("2d", settings)`.
  *
@@ -826,164 +808,60 @@ declare var OffscreenCanvasRenderingContext2D: {
 };
 
 /**
- * Descriptor fields passed to the `FontFace` constructor.
+ * Options for {@linkcode queryLocalFonts}.
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
  */
-interface FontFaceDescriptors {
-  ascentOverride?: string;
-  descentOverride?: string;
-  display?: FontDisplay;
-  featureSettings?: string;
-  lineGapOverride?: string;
-  stretch?: string;
-  style?: string;
-  unicodeRange?: string;
-  variationSettings?: string;
-  weight?: string;
+interface QueryOptions {
+  /** Filter results to fonts with matching PostScript names. */
+  postscriptNames?: string[];
 }
 
 /**
- * Represents a single font face that can be loaded and added to the
- * `FontFaceSet` (`Deno.fonts`).
+ * Represents metadata about a locally installed font.
  *
- * @see https://developer.mozilla.org/en-US/docs/Web/API/FontFace
+ * @see https://wicg.github.io/local-font-access/#fontdata
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
  */
-interface FontFace {
-  ascentOverride: string;
-  descentOverride: string;
-  display: FontDisplay;
-  family: string;
-  featureSettings: string;
-  lineGapOverride: string;
-  readonly loaded: Promise<FontFace>;
-  readonly status: FontFaceLoadStatus;
-  stretch: string;
-  style: string;
-  unicodeRange: string;
-  variationSettings: string;
-  weight: string;
-  load(): Promise<FontFace>;
+interface FontData {
+  /** The PostScript name of the font face. */
+  readonly postscriptName: string;
+  /** The full name of the font face. */
+  readonly fullName: string;
+  /** The family name of the font face. */
+  readonly family: string;
+  /** The style/subfamily name of the font face (e.g., "Regular", "Bold Italic"). */
+  readonly style: string;
+  /** Returns a Promise that resolves to a Blob containing the raw font data. */
+  blob(): Promise<Blob>;
 }
 
 /**
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
  */
-declare var FontFace: {
-  prototype: FontFace;
-  /**
-   * `ArrayBuffer` or `ArrayBufferView` instead.
-   */
-  new (
-    family: string,
-    source: BufferSource,
-    descriptors?: FontFaceDescriptors,
-  ): FontFace;
+declare var FontData: {
+  prototype: FontData;
+  new (): never;
 };
 
 /**
- * @experimental **UNSTABLE**: New API, yet to be vetted.
- * @category Canvas 2D
- */
-interface FontFaceSetLoadEventInit extends EventInit {
-  fontfaces?: FontFace[];
-}
-
-/**
- * Event fired by `FontFaceSet` when fonts finish loading.
+ * Queries locally installed fonts. Requires `--allow-sys=localFonts` permission.
  *
- * @see https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSetLoadEvent
- * @experimental **UNSTABLE**: New API, yet to be vetted.
- * @category Canvas 2D
- */
-interface FontFaceSetLoadEvent extends Event {
-  readonly fontfaces: ReadonlyArray<FontFace>;
-}
-
-/**
- * @experimental **UNSTABLE**: New API, yet to be vetted.
- * @category Canvas 2D
- */
-declare var FontFaceSetLoadEvent: {
-  prototype: FontFaceSetLoadEvent;
-  new (
-    type: string,
-    eventInitDict?: FontFaceSetLoadEventInit,
-  ): FontFaceSetLoadEvent;
-};
-
-/**
- * @experimental **UNSTABLE**: New API, yet to be vetted.
- * @category Canvas 2D
- */
-interface FontFaceSetEventMap {
-  loading: FontFaceSetLoadEvent;
-  loadingdone: FontFaceSetLoadEvent;
-  loadingerror: FontFaceSetLoadEvent;
-}
-
-/**
- * A set of `FontFace` objects. The global instance is `Deno.fonts`.
+ * Returns an array of {@linkcode FontData} objects sorted by PostScript name.
  *
- * @see https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet
+ * @example
+ * ```ts
+ * const fonts = await queryLocalFonts();
+ * for (const font of fonts) {
+ *   console.log(font.postscriptName, font.fullName, font.family, font.style);
+ * }
+ * ```
+ *
+ * @see https://wicg.github.io/local-font-access/
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
  */
-interface FontFaceSet extends EventTarget {
-  onloading: ((this: FontFaceSet, ev: FontFaceSetLoadEvent) => any) | null;
-  onloadingdone: ((this: FontFaceSet, ev: FontFaceSetLoadEvent) => any) | null;
-  onloadingerror: ((this: FontFaceSet, ev: FontFaceSetLoadEvent) => any) | null;
-
-  readonly size: number;
-  readonly status: FontFaceSetLoadStatus;
-  readonly ready: Promise<FontFaceSet>;
-
-  add(font: FontFace): FontFaceSet;
-  delete(font: FontFace): boolean;
-  has(font: FontFace): boolean;
-  clear(): void;
-  load(font: string, text?: string): Promise<FontFace[]>;
-  check(font: string, text?: string): boolean;
-
-  forEach(
-    callbackfn: (value: FontFace, key: FontFace, parent: FontFaceSet) => void,
-    thisArg?: any,
-  ): void;
-  values(): IterableIterator<FontFace>;
-  keys(): IterableIterator<FontFace>;
-  entries(): IterableIterator<[FontFace, FontFace]>;
-  [Symbol.iterator](): IterableIterator<FontFace>;
-
-  addEventListener<K extends keyof FontFaceSetEventMap>(
-    type: K,
-    listener: (this: FontFaceSet, ev: FontFaceSetEventMap[K]) => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  addEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  removeEventListener<K extends keyof FontFaceSetEventMap>(
-    type: K,
-    listener: (this: FontFaceSet, ev: FontFaceSetEventMap[K]) => any,
-    options?: boolean | EventListenerOptions,
-  ): void;
-  removeEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | EventListenerOptions,
-  ): void;
-}
-
-/**
- * @experimental **UNSTABLE**: New API, yet to be vetted.
- * @category Canvas 2D
- */
-declare var FontFaceSet: {
-  prototype: FontFaceSet;
-};
+declare function queryLocalFonts(options?: QueryOptions): Promise<FontData[]>;

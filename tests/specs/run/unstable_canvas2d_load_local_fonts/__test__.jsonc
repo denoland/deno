@@ -6,7 +6,7 @@
       "exitCode": 1
     },
     "allowed": {
-      "args": "run --quiet --unstable-canvas2d --allow-sys=systemFonts allowed.js",
+      "args": "run --quiet --unstable-canvas2d --allow-sys=localFonts allowed.js",
       "output": "allowed.out"
     }
   }
