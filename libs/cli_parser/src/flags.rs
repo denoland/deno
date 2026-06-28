@@ -620,6 +620,10 @@ pub struct TaskFlags {
   pub filter: Option<String>,
   pub eval: bool,
   pub no_prefix: bool,
+  /// Resume a workspace run from the given package, running it and all
+  /// topologically-later packages while skipping earlier ones. Implies
+  /// `--recursive`.
+  pub resume_from: Option<String>,
   /// Maximum number of workspace tasks to run concurrently. Overrides the
   /// `DENO_JOBS` env var and the `available_parallelism()` default. Only
   /// meaningful for multi-task (`-r`/`--filter`) runs.
