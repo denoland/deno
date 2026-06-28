@@ -37,11 +37,24 @@ const {
   SymbolFor,
   SymbolIterator,
   SymbolToStringTag,
+  TypedArrayPrototypeGetBuffer,
   TypeError,
+  Uint8Array,
+  Uint32Array,
 } = primordials;
+const { op_now } = core.ops;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+
+// Returns a DOMHighResTimeStamp (milliseconds relative to the time origin),
+// matching `performance.now()`. Used to initialize `Event.timeStamp`.
+const hrU8 = new Uint8Array(8);
+const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
+function eventTimeStamp() {
+  op_now(hrU8);
+  return hr[0] * 1000 + hr[1] / 1e6;
+}
 
 // Lazy-load createFilteredInspectProxy from console to avoid
 // circular dependency at load time. Only needed for custom inspect.
@@ -170,7 +183,7 @@ class Event {
       currentTarget: null,
       eventPhase: Event.NONE,
       target: null,
-      timeStamp: 0,
+      timeStamp: eventTimeStamp(),
     };
   }
 
