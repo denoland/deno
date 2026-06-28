@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use cosmic_text::fontdb;
 use cssparser::Token;
 use cssparser::match_ignore_ascii_case;
 use deno_core::WebIDL;
@@ -66,6 +65,56 @@ pub enum TextRendering {
   GeometricPrecision,
 }
 
+/// CSS font-style values.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum CssFontStyle {
+  #[default]
+  Normal,
+  Italic,
+  Oblique,
+}
+
+/// CSS font-stretch values.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum CssFontStretch {
+  UltraCondensed,
+  ExtraCondensed,
+  Condensed,
+  SemiCondensed,
+  #[default]
+  Normal,
+  SemiExpanded,
+  Expanded,
+  ExtraExpanded,
+  UltraExpanded,
+}
+
+impl CssFontStyle {
+  pub fn to_parley(self) -> parley::FontStyle {
+    match self {
+      CssFontStyle::Normal => parley::FontStyle::Normal,
+      CssFontStyle::Italic => parley::FontStyle::Italic,
+      CssFontStyle::Oblique => parley::FontStyle::Oblique(None),
+    }
+  }
+}
+
+impl CssFontStretch {
+  pub fn to_parley(self) -> parley::FontWidth {
+    match self {
+      CssFontStretch::UltraCondensed => parley::FontWidth::ULTRA_CONDENSED,
+      CssFontStretch::ExtraCondensed => parley::FontWidth::EXTRA_CONDENSED,
+      CssFontStretch::Condensed => parley::FontWidth::CONDENSED,
+      CssFontStretch::SemiCondensed => parley::FontWidth::SEMI_CONDENSED,
+      CssFontStretch::Normal => parley::FontWidth::NORMAL,
+      CssFontStretch::SemiExpanded => parley::FontWidth::SEMI_EXPANDED,
+      CssFontStretch::Expanded => parley::FontWidth::EXPANDED,
+      CssFontStretch::ExtraExpanded => parley::FontWidth::EXTRA_EXPANDED,
+      CssFontStretch::UltraExpanded => parley::FontWidth::ULTRA_EXPANDED,
+    }
+  }
+}
+
 /// Parses a CSS `<length>` value for `letterSpacing` / `wordSpacing`.
 ///
 /// Font-relative units are kept in their original unit (resolved lazily against
@@ -93,9 +142,9 @@ pub fn parse_css_spacing(s: &str) -> Option<Length> {
 
 #[derive(Clone, Debug)]
 pub struct FontState {
-  pub style: cosmic_text::Style,
+  pub style: CssFontStyle,
   pub weight: u16,
-  pub stretch: cosmic_text::Stretch,
+  pub stretch: CssFontStretch,
   pub size: f32,
   pub line_height: Option<f32>,
   pub families: Vec<String>,
@@ -112,9 +161,9 @@ pub struct FontState {
 impl Default for FontState {
   fn default() -> Self {
     Self {
-      style: cosmic_text::Style::Normal,
+      style: CssFontStyle::Normal,
       weight: 400,
-      stretch: cosmic_text::Stretch::Normal,
+      stretch: CssFontStretch::Normal,
       size: 10.0,
       line_height: None,
       families: vec!["sans-serif".to_string()],
@@ -132,9 +181,9 @@ impl FontState {
   /// Returns the CSS font shorthand string for this state.
   pub fn to_css_string(&self) -> String {
     let style = match self.style {
-      cosmic_text::Style::Normal => String::new(),
-      cosmic_text::Style::Italic => "italic ".to_string(),
-      cosmic_text::Style::Oblique => "oblique ".to_string(),
+      CssFontStyle::Normal => String::new(),
+      CssFontStyle::Italic => "italic ".to_string(),
+      CssFontStyle::Oblique => "oblique ".to_string(),
     };
     let variant = match self.font_variant_caps {
       FontVariantCaps::SmallCaps => "small-caps ",
@@ -146,15 +195,15 @@ impl FontState {
       String::new()
     };
     let stretch = match self.stretch {
-      cosmic_text::Stretch::Normal => String::new(),
-      cosmic_text::Stretch::UltraCondensed => "ultra-condensed ".to_string(),
-      cosmic_text::Stretch::ExtraCondensed => "extra-condensed ".to_string(),
-      cosmic_text::Stretch::Condensed => "condensed ".to_string(),
-      cosmic_text::Stretch::SemiCondensed => "semi-condensed ".to_string(),
-      cosmic_text::Stretch::SemiExpanded => "semi-expanded ".to_string(),
-      cosmic_text::Stretch::Expanded => "expanded ".to_string(),
-      cosmic_text::Stretch::ExtraExpanded => "extra-expanded ".to_string(),
-      cosmic_text::Stretch::UltraExpanded => "ultra-expanded ".to_string(),
+      CssFontStretch::Normal => String::new(),
+      CssFontStretch::UltraCondensed => "ultra-condensed ".to_string(),
+      CssFontStretch::ExtraCondensed => "extra-condensed ".to_string(),
+      CssFontStretch::Condensed => "condensed ".to_string(),
+      CssFontStretch::SemiCondensed => "semi-condensed ".to_string(),
+      CssFontStretch::SemiExpanded => "semi-expanded ".to_string(),
+      CssFontStretch::Expanded => "expanded ".to_string(),
+      CssFontStretch::ExtraExpanded => "extra-expanded ".to_string(),
+      CssFontStretch::UltraExpanded => "ultra-expanded ".to_string(),
     };
     let size = if self.size == self.size.floor() {
       format!("{}px", self.size as u32)
@@ -193,16 +242,16 @@ fn serialize_font_family(family: &str) -> String {
   }
 }
 
-/// Parses a CSS `font-style` value into a `fontdb::Style`.
+/// Parses a CSS `font-style` value.
 /// Returns `None` for unrecognized values.
 ///
 /// See <https://drafts.csswg.org/css-fonts-4/#font-style-prop>
-pub fn parse_css_style(s: &str) -> Option<fontdb::Style> {
+pub fn parse_css_style(s: &str) -> Option<CssFontStyle> {
   let s = s.trim();
   match s {
-    "italic" => Some(fontdb::Style::Italic),
-    "oblique" => Some(fontdb::Style::Oblique),
-    "normal" => Some(fontdb::Style::Normal),
+    "italic" => Some(CssFontStyle::Italic),
+    "oblique" => Some(CssFontStyle::Oblique),
+    "normal" => Some(CssFontStyle::Normal),
     _ => None,
   }
 }
@@ -220,47 +269,47 @@ pub fn parse_css_weight(s: &str) -> Option<u16> {
   }
 }
 
-/// Parses a CSS `font-stretch` keyword into a `fontdb::Stretch`.
+/// Parses a CSS `font-stretch` keyword.
 /// Returns `None` for unrecognized values.
 ///
 /// See <https://drafts.csswg.org/css-fonts-4/#font-stretch-prop>
-pub fn parse_css_stretch(s: &str) -> Option<fontdb::Stretch> {
+pub fn parse_css_stretch(s: &str) -> Option<CssFontStretch> {
   let s = s.trim();
   match s {
-    "ultra-condensed" => Some(fontdb::Stretch::UltraCondensed),
-    "extra-condensed" => Some(fontdb::Stretch::ExtraCondensed),
-    "condensed" => Some(fontdb::Stretch::Condensed),
-    "semi-condensed" => Some(fontdb::Stretch::SemiCondensed),
-    "normal" => Some(fontdb::Stretch::Normal),
-    "semi-expanded" => Some(fontdb::Stretch::SemiExpanded),
-    "expanded" => Some(fontdb::Stretch::Expanded),
-    "extra-expanded" => Some(fontdb::Stretch::ExtraExpanded),
-    "ultra-expanded" => Some(fontdb::Stretch::UltraExpanded),
+    "ultra-condensed" => Some(CssFontStretch::UltraCondensed),
+    "extra-condensed" => Some(CssFontStretch::ExtraCondensed),
+    "condensed" => Some(CssFontStretch::Condensed),
+    "semi-condensed" => Some(CssFontStretch::SemiCondensed),
+    "normal" => Some(CssFontStretch::Normal),
+    "semi-expanded" => Some(CssFontStretch::SemiExpanded),
+    "expanded" => Some(CssFontStretch::Expanded),
+    "extra-expanded" => Some(CssFontStretch::ExtraExpanded),
+    "ultra-expanded" => Some(CssFontStretch::UltraExpanded),
     _ => None,
   }
 }
 
-/// Returns the CSS string representation of a `fontdb::Style`.
-pub fn style_to_css_str(style: fontdb::Style) -> &'static str {
+/// Returns the CSS string representation of a font style.
+pub fn style_to_css_str(style: CssFontStyle) -> &'static str {
   match style {
-    fontdb::Style::Normal => "normal",
-    fontdb::Style::Italic => "italic",
-    fontdb::Style::Oblique => "oblique",
+    CssFontStyle::Normal => "normal",
+    CssFontStyle::Italic => "italic",
+    CssFontStyle::Oblique => "oblique",
   }
 }
 
-/// Returns the CSS string representation of a `fontdb::Stretch`.
-pub fn stretch_to_css_str(stretch: fontdb::Stretch) -> &'static str {
+/// Returns the CSS string representation of a font stretch.
+pub fn stretch_to_css_str(stretch: CssFontStretch) -> &'static str {
   match stretch {
-    fontdb::Stretch::UltraCondensed => "ultra-condensed",
-    fontdb::Stretch::ExtraCondensed => "extra-condensed",
-    fontdb::Stretch::Condensed => "condensed",
-    fontdb::Stretch::SemiCondensed => "semi-condensed",
-    fontdb::Stretch::Normal => "normal",
-    fontdb::Stretch::SemiExpanded => "semi-expanded",
-    fontdb::Stretch::Expanded => "expanded",
-    fontdb::Stretch::ExtraExpanded => "extra-expanded",
-    fontdb::Stretch::UltraExpanded => "ultra-expanded",
+    CssFontStretch::UltraCondensed => "ultra-condensed",
+    CssFontStretch::ExtraCondensed => "extra-condensed",
+    CssFontStretch::Condensed => "condensed",
+    CssFontStretch::SemiCondensed => "semi-condensed",
+    CssFontStretch::Normal => "normal",
+    CssFontStretch::SemiExpanded => "semi-expanded",
+    CssFontStretch::Expanded => "expanded",
+    CssFontStretch::ExtraExpanded => "extra-expanded",
+    CssFontStretch::UltraExpanded => "ultra-expanded",
   }
 }
 
@@ -295,9 +344,9 @@ const EM_BASE_PX: f64 = 10.0;
 
 /// Result of attempting to parse one optional prefix keyword in the font shorthand.
 enum PrefixValue {
-  Style(fontdb::Style),
+  Style(CssFontStyle),
   Weight(u16),
-  Stretch(fontdb::Stretch),
+  Stretch(CssFontStretch),
   /// `small-caps`, the only font-variant value allowed in the shorthand.
   SmallCaps,
   Neutral,
@@ -312,8 +361,8 @@ fn parse_prefix<'i, 't>(
   match &tok {
     Token::Ident(ident) => {
       match_ignore_ascii_case! { ident,
-        "italic" => Ok(PrefixValue::Style(fontdb::Style::Italic)),
-        "oblique" => Ok(PrefixValue::Style(fontdb::Style::Oblique)),
+        "italic" => Ok(PrefixValue::Style(CssFontStyle::Italic)),
+        "oblique" => Ok(PrefixValue::Style(CssFontStyle::Oblique)),
         "bold" => Ok(PrefixValue::Weight(700)),
         "normal" => Ok(PrefixValue::Neutral),
         "small-caps" => Ok(PrefixValue::SmallCaps),
@@ -336,9 +385,9 @@ fn parse_prefix<'i, 't>(
 fn parse_css_font_inner<'i, 't>(
   input: &mut Parser<'i, 't>,
 ) -> Option<FontState> {
-  let mut style = fontdb::Style::Normal;
+  let mut style = CssFontStyle::Normal;
   let mut weight: u16 = 400;
-  let mut stretch = fontdb::Stretch::Normal;
+  let mut stretch = CssFontStretch::Normal;
   let mut variant_caps = FontVariantCaps::Normal;
 
   // Parse optional leading keywords (style, weight, stretch may appear in any order).
@@ -505,7 +554,7 @@ mod tests {
     assert_eq!(f.size, 16.0);
     assert_eq!(f.families, vec!["serif"]);
     assert_eq!(f.weight, 400);
-    assert_eq!(f.style, cosmic_text::Style::Normal);
+    assert_eq!(f.style, CssFontStyle::Normal);
   }
 
   #[test]
@@ -525,7 +574,7 @@ mod tests {
   #[test]
   fn italic_style() {
     let f = parse("italic 12px sans-serif").unwrap();
-    assert_eq!(f.style, cosmic_text::Style::Italic);
+    assert_eq!(f.style, CssFontStyle::Italic);
   }
 
   #[test]
@@ -563,7 +612,7 @@ mod tests {
   #[test]
   fn style_weight_size_family() {
     let f = parse("italic bold 16px serif").unwrap();
-    assert_eq!(f.style, cosmic_text::Style::Italic);
+    assert_eq!(f.style, CssFontStyle::Italic);
     assert_eq!(f.weight, 700);
     assert_eq!(f.size, 16.0);
   }

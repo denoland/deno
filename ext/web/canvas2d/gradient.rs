@@ -86,11 +86,9 @@ pub fn parse_color_stop(
   offset: f32,
   color: &str,
 ) -> Result<peniko::ColorStop, ColorStopError> {
-  let [r, g, b, a] =
-    parse_css_color(color).map_err(|_| ColorStopError::Syntax)?;
-  let c = peniko::Color::from_rgba8(r, g, b, a);
+  let parsed = parse_css_color(color).map_err(|_| ColorStopError::Syntax)?;
   Ok(peniko::ColorStop {
     offset,
-    color: peniko::color::DynamicColor::from_alpha_color(c),
+    color: peniko::color::DynamicColor::from_alpha_color(parsed),
   })
 }

@@ -69,7 +69,7 @@ const lazySurface = () =>
     (_surface = core.loadExtScript("ext:deno_canvas/02_surface.js"));
 let _telemetry;
 let _canvas2dMod;
-const loadCanvas2d = () =>
+const lazyCanvas2d = () =>
   _canvas2dMod ??
     (_canvas2dMod = core.loadExtScript("ext:deno_web/18_canvas2d.js"));
 const lazyTelemetry = () =>
@@ -391,11 +391,8 @@ core.defineGlobalProperties(denoNsUnstableById[unstableIds.webgpu], {
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.canvas2d] = {
-  get fonts() {
-    return loadCanvas2d().fonts;
-  },
-  loadSystemFonts() {
-    return loadCanvas2d().loadSystemFonts();
+  loadLocalFonts() {
+    return lazyCanvas2d().loadLocalFonts();
   },
 };
 

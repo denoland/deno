@@ -13,15 +13,13 @@ use crate::css::error::CSSParseError;
 use crate::f64::maximum;
 use crate::f64::minimum;
 
-#[derive(Clone, Copy, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Length {
   value: f64,
   unit: LengthUnit,
 }
 
-#[derive(Clone, Copy, Debug)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum LengthUnit {
   // https://www.w3.org/TR/css-values-4/#absolute-lengths
   Cm,
@@ -74,16 +72,16 @@ impl Length {
   const ROOT_FONT_SIZE_PX: f64 = 16.0;
 
   #[inline]
+  pub(crate) fn zero() -> Self {
+    Self::from_pixels(0.0)
+  }
+
+  #[inline]
   pub(crate) fn from_pixels(value: f64) -> Self {
     Self {
       value,
       unit: LengthUnit::Px,
     }
-  }
-
-  #[inline]
-  pub(crate) fn zero() -> Self {
-    Self::from_pixels(0.0)
   }
 
   fn resolve(&self, font_size: f64) -> f64 {
@@ -130,15 +128,13 @@ impl Length {
   }
 }
 
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Angle {
   value: f64,
   unit: AngleUnit,
 }
 
-#[derive(Clone, Copy, Debug)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum AngleUnit {
   Deg,
   Grad,
@@ -149,6 +145,11 @@ enum AngleUnit {
 impl Angle {
   const TURN_TO_DEG: f64 = 360.0;
   const TURN_TO_GRAD: f64 = 400.0;
+
+  #[inline]
+  pub(crate) fn zero() -> Self {
+    Self::from_degrees(0.0)
+  }
 
   #[inline]
   fn from_degrees(value: f64) -> Self {
@@ -898,21 +899,6 @@ impl ParseState {
       em_base: opts.em_base,
     }
   }
-}
-
-macro_rules! try_extract {
-  ($expr:expr, $method:ident($($arg:expr),*), $input:expr) => {
-    match $expr.$method($($arg),*) {
-      Ok(v) => v,
-      Err(e) => return Err($input.new_custom_error(e)),
-    }
-  };
-  ($expr:expr, $method:ident($($arg:expr),*), $map:ident(), $input:expr) => {
-    match $expr.$method($($arg),*) {
-      Ok(v) => v.$map(),
-      Err(e) => return Err($input.new_custom_error(e)),
-    }
-  };
 }
 
 macro_rules! extract_as_raw {

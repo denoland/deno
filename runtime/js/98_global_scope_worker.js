@@ -28,7 +28,7 @@ import {
   navigatorUAData,
 } from "ext:runtime/97_navigator_user_agent_data.js";
 let _canvas2dMod;
-function loadCanvas2d() {
+function lazyCanvas2d() {
   return _canvas2dMod ??
     (_canvas2dMod = core.loadExtScript("ext:deno_web/18_canvas2d.js"));
 }
@@ -206,7 +206,14 @@ const workerRuntimeGlobalProperties = {
 
 const unstableForWorkerGlobalScope = { __proto__: null };
 unstableForWorkerGlobalScope[unstableIds.canvas2d] = {
-  fonts: core.propNonEnumerableLazyLoaded((c) => c.fonts, loadCanvas2d),
+  FontData: core.propNonEnumerableLazyLoaded(
+    (c) => c.FontData,
+    lazyCanvas2d,
+  ),
+  queryLocalFonts: core.propWritableLazyLoaded(
+    (c) => c.queryLocalFonts,
+    lazyCanvas2d,
+  ),
 };
 
 export { unstableForWorkerGlobalScope, workerRuntimeGlobalProperties };
