@@ -1305,27 +1305,35 @@ impl<
       let pkg_dir = pkg.package_folder.clone();
       // Cache miss: build on a true copy, remembering enough to snapshot the
       // result once the scripts have run.
-      match self.rebuild_package_as_copy(&pristine, &pkg_dir) {
-        Ok(()) => {
-          let pre_build_signature = dir_content_signature(&self.sys, &pkg_dir);
-          build_cache_plans.insert(
-            package.id.clone(),
-            BuildSnapshotPlan {
-              nv: package.id.nv.clone(),
-              built_variant,
-              ready_marker,
-              pkg_dir,
-              pre_build_signature,
-            },
-          );
-        }
-        Err(err) => {
-          log::debug!(
-            "Failed to prepare a build copy for npm:{}: {err}",
+      //
+      // Fail-closed: if preparing the true copy fails, the package's `.deno`
+      // files are still hardlinks into the shared pristine global cache. Running
+      // its build scripts now would let an in-place edit corrupt that shared
+      // cache for every other project — the exact corruption this cache exists
+      // to prevent. So surface the failure (disk full, permissions, …) and
+      // abort the install *before* reaching the lifecycle-scripts executor
+      // below, rather than silently running scripts on hardlinked pristine
+      // files. This only affects cache-miss packages going through
+      // `rebuild_package_as_copy`; packages not on this path are unaffected.
+      if let Err(err) = self.rebuild_package_as_copy(&pristine, &pkg_dir) {
+        return Err(SyncResolutionWithFsError::Other(JsErrorBox::generic(
+          format!(
+            "Failed to prepare an isolated build copy for npm:{}: {err}",
             package.id.nv
-          );
-        }
+          ),
+        )));
       }
+      let pre_build_signature = dir_content_signature(&self.sys, &pkg_dir);
+      build_cache_plans.insert(
+        package.id.clone(),
+        BuildSnapshotPlan {
+          nv: package.id.nv.clone(),
+          built_variant,
+          ready_marker,
+          pkg_dir,
+          pre_build_signature,
+        },
+      );
     }
 
     let packages_with_scripts =
