@@ -921,6 +921,70 @@ impl<
       }
     }
 
+    // Side-effects build cache (issue #16164) — restore pass.
+    //
+    // Restore previously-built output for cache HITS *before* the `.bin` setup
+    // (step 9) below runs. A package whose lifecycle script GENERATES the file
+    // its `package.json` `bin` points to has no entrypoint on disk until either
+    // the script runs or its built output is restored. The `.bin` setup ignores
+    // such a missing entrypoint (expecting the script to create it), and the
+    // lifecycle scripts executor only relinks bin entries for packages whose
+    // scripts it actually runs — but restored packages are dropped from that run
+    // list. So if we restored *after* the bin pass, a restored package's
+    // generated bin would be left unlinked (`node_modules/.bin/<cmd>` missing or
+    // dangling). Restoring here means the generated entrypoint already exists on
+    // disk when step 9 links it, exactly as for a freshly-built package and with
+    // the same full collision context. Cache MISSES are handled after step 9
+    // (see the build pass below), so their `pre_build_signature` is taken after
+    // any `chmod` the bin pass performs.
+    let mut restored: HashSet<NpmPackageId> = HashSet::new();
+    {
+      let lifecycle_scripts = lifecycle_scripts.borrow();
+      for pkg in lifecycle_scripts.packages_with_scripts() {
+        let package = pkg.package;
+        // Only registry packages extracted into the global cache can be
+        // restored. Skips workspace members and patched packages, whose sources
+        // don't live in the content-addressed global cache.
+        let pristine = self.npm_cache.package_folder_for_nv(&package.id.nv);
+        if !self.sys.fs_exists_no_err(&pristine) {
+          continue;
+        }
+        let input_hash = side_effects_cache_input_hash(
+          package,
+          &pkg.scripts,
+          snapshot,
+          &self.node_version,
+        );
+        let built_variant = self.npm_cache.built_package_folder_for_id(
+          &package.get_package_cache_folder_id(),
+          &input_hash,
+        );
+        let ready_marker = built_cache_ready_marker(&built_variant);
+        if !self.sys.fs_exists_no_err(&ready_marker) {
+          continue; // cache miss — handled by the build pass after step 9
+        }
+        // Cache hit. The allowlist was already enforced (membership in
+        // `packages_with_scripts`), so restoring never runs a build the user
+        // didn't permit.
+        match self.restore_built_output(&built_variant, &pkg.package_folder) {
+          Ok(()) => {
+            let _ = create_initialized_file(
+              &self.sys,
+              &ran_scripts_file(&deno_local_registry_dir, package),
+            );
+            log::info!("Reusing cached build output for npm:{}", package.id.nv);
+            restored.insert(package.id.clone());
+          }
+          Err(err) => {
+            log::debug!(
+              "Failed to restore cached build output for npm:{}: {err}",
+              package.id.nv
+            );
+          }
+        }
+      }
+    }
+
     // 9. Set up `node_modules/.bin` entries for packages that need it.
     {
       let bin_entries = match Rc::try_unwrap(bin_entries) {
@@ -1145,92 +1209,65 @@ impl<
     drop(lifecycle_scripts);
     lifecycle_scripts_to_run.warn_not_run_scripts()?;
 
-    // Side-effects build cache (issue #16164). For every package whose build
-    // scripts are about to run (these are already allowlist-gated — only
-    // packages the user permitted via `--allow-scripts`/the deno.json allow
-    // list reach `packages_with_scripts`), either:
-    //   * restore previously-built output from the global cache and drop the
-    //     package from the run list (cache hit), or
-    //   * build it on a true copy so the build can be snapshotted afterwards
-    //     (cache miss) — see `rebuild_package_as_copy` for why the copy is
-    //     required for correctness on Linux.
+    // Side-effects build cache (issue #16164) — build pass.
+    //
+    // Cache HITS were already restored before the `.bin` pass above, so drop
+    // them from the run list now (their scripts must not run again). The
+    // remaining packages whose build scripts are about to run (these are already
+    // allowlist-gated — only packages the user permitted via
+    // `--allow-scripts`/the deno.json allow list reach `packages_with_scripts`)
+    // are cache MISSES: build each on a true copy so the build can be
+    // snapshotted afterwards — see `rebuild_package_as_copy` for why the copy is
+    // required for correctness on Linux.
+    if !restored.is_empty() {
+      lifecycle_scripts_to_run
+        .retain_packages_with_scripts(|p| !restored.contains(&p.package.id));
+    }
     let mut build_cache_plans: HashMap<NpmPackageId, BuildSnapshotPlan> =
       HashMap::new();
-    {
-      let mut restored: HashSet<NpmPackageId> = HashSet::new();
-      for pkg in lifecycle_scripts_to_run.packages_with_scripts() {
-        let package = pkg.package;
-        // Only registry packages that were extracted into the global cache can
-        // be snapshotted. Skips workspace members and patched packages, whose
-        // sources don't live in the content-addressed global cache.
-        let pristine = self.npm_cache.package_folder_for_nv(&package.id.nv);
-        if !self.sys.fs_exists_no_err(&pristine) {
-          continue;
-        }
-        let input_hash = side_effects_cache_input_hash(
-          package,
-          &pkg.scripts,
-          &self.node_version,
-        );
-        let built_variant = self.npm_cache.built_package_folder_for_id(
-          &package.get_package_cache_folder_id(),
-          &input_hash,
-        );
-        let ready_marker = built_cache_ready_marker(&built_variant);
-        let pkg_dir = pkg.package_folder.clone();
-        if self.sys.fs_exists_no_err(&ready_marker) {
-          // Cache hit. The allowlist was already enforced above (membership in
-          // `packages_with_scripts`), so restoring never runs a build the user
-          // didn't permit.
-          match self.restore_built_output(&built_variant, &pkg_dir) {
-            Ok(()) => {
-              let _ = create_initialized_file(
-                &self.sys,
-                &ran_scripts_file(&deno_local_registry_dir, package),
-              );
-              log::info!(
-                "Reusing cached build output for npm:{}",
-                package.id.nv
-              );
-              restored.insert(package.id.clone());
-              continue;
-            }
-            Err(err) => {
-              log::debug!(
-                "Failed to restore cached build output for npm:{}: {err}",
-                package.id.nv
-              );
-            }
-          }
-        }
-        // Cache miss: build on a true copy, remembering enough to snapshot the
-        // result once the scripts have run.
-        match self.rebuild_package_as_copy(&pristine, &pkg_dir) {
-          Ok(()) => {
-            let pre_build_signature =
-              dir_content_signature(&self.sys, &pkg_dir);
-            build_cache_plans.insert(
-              package.id.clone(),
-              BuildSnapshotPlan {
-                nv: package.id.nv.clone(),
-                built_variant,
-                ready_marker,
-                pkg_dir,
-                pre_build_signature,
-              },
-            );
-          }
-          Err(err) => {
-            log::debug!(
-              "Failed to prepare a build copy for npm:{}: {err}",
-              package.id.nv
-            );
-          }
-        }
+    for pkg in lifecycle_scripts_to_run.packages_with_scripts() {
+      let package = pkg.package;
+      // Only registry packages that were extracted into the global cache can
+      // be snapshotted. Skips workspace members and patched packages, whose
+      // sources don't live in the content-addressed global cache.
+      let pristine = self.npm_cache.package_folder_for_nv(&package.id.nv);
+      if !self.sys.fs_exists_no_err(&pristine) {
+        continue;
       }
-      if !restored.is_empty() {
-        lifecycle_scripts_to_run
-          .retain_packages_with_scripts(|p| !restored.contains(&p.package.id));
+      let input_hash = side_effects_cache_input_hash(
+        package,
+        &pkg.scripts,
+        snapshot,
+        &self.node_version,
+      );
+      let built_variant = self.npm_cache.built_package_folder_for_id(
+        &package.get_package_cache_folder_id(),
+        &input_hash,
+      );
+      let ready_marker = built_cache_ready_marker(&built_variant);
+      let pkg_dir = pkg.package_folder.clone();
+      // Cache miss: build on a true copy, remembering enough to snapshot the
+      // result once the scripts have run.
+      match self.rebuild_package_as_copy(&pristine, &pkg_dir) {
+        Ok(()) => {
+          let pre_build_signature = dir_content_signature(&self.sys, &pkg_dir);
+          build_cache_plans.insert(
+            package.id.clone(),
+            BuildSnapshotPlan {
+              nv: package.id.nv.clone(),
+              built_variant,
+              ready_marker,
+              pkg_dir,
+              pre_build_signature,
+            },
+          );
+        }
+        Err(err) => {
+          log::debug!(
+            "Failed to prepare a build copy for npm:{}: {err}",
+            package.id.nv
+          );
+        }
       }
     }
 
