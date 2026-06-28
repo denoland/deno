@@ -1035,6 +1035,74 @@ impl<
       }
     }
 
+    // Side-effects build cache (issue #16164) — break hardlinks for cache
+    // MISSES *before* the `.bin` setup (step 9).
+    //
+    // For a cache-miss package whose lifecycle scripts will run, step 9's
+    // `.bin` pass calls `make_executable_if_exists`, which chmods the package's
+    // bin entrypoint *inside* its `.deno` directory. At this point that
+    // directory is still hardlinked into the shared pristine global-cache
+    // extraction (from the earlier `clone_dir_recursive`), so the chmod would
+    // mutate the shared inode and corrupt the pristine cache for every other
+    // project — even before any build script runs. Break those hardlinks now by
+    // re-materializing the package as a true copy, so step 9's chmod (and the
+    // build) operate on a private inode. The pre-build signature and snapshot
+    // plan are captured AFTER step 9 (build pass below) so that chmod isn't
+    // mistaken for a script-made change (which would make an unchanged package
+    // look cacheable).
+    //
+    // This pass selects exactly the same packages the build pass below does:
+    //   - Cache HITS were already restored above (their pkg_dir now hardlinks
+    //     the built variant, whose bin mode already satisfies the chmod check,
+    //     so step 9's `make_executable_if_exists` is a no-op for them) — skipped
+    //     via `restored` so they're never double-handled.
+    //   - Patched packages are excluded (their patch isn't in the input key; see
+    //     `patched_nvs`).
+    //   - Packages with no pristine global-cache dir are skipped (workspace
+    //     members, whose sources don't live in the content-addressed cache).
+    // It does NOT consult `should_use_for_npm_package`: a reload package was
+    // skipped by the restore pass (so it's absent from `restored`) precisely so
+    // it falls through to the build pass and re-runs its scripts — its hardlinks
+    // must be broken here too.
+    //
+    // Fail-closed: if preparing the true copy fails, the package's `.deno` files
+    // are still hardlinks into the shared pristine cache. Running its build
+    // scripts (or even letting step 9 chmod them) would corrupt that shared
+    // cache, so surface the failure and abort the install *before* step 9 and
+    // the lifecycle-scripts executor, rather than silently mutating hardlinked
+    // pristine files.
+    let mut rebuilt_as_copy: HashSet<NpmPackageId> = HashSet::new();
+    {
+      let lifecycle_scripts = lifecycle_scripts.borrow();
+      for pkg in lifecycle_scripts.packages_with_scripts() {
+        let package = pkg.package;
+        if patched_nvs.contains(&package.id.nv) {
+          continue;
+        }
+        // Cache hits were already restored above; their scripts won't run and
+        // their pkg_dir hardlinks the built variant rather than the pristine
+        // cache, so they must not be re-copied here.
+        if restored.contains(&package.id) {
+          continue;
+        }
+        let pristine = self.npm_cache.package_folder_for_nv(&package.id.nv);
+        if !self.sys.fs_exists_no_err(&pristine) {
+          continue;
+        }
+        if let Err(err) =
+          self.rebuild_package_as_copy(&pristine, &pkg.package_folder)
+        {
+          return Err(SyncResolutionWithFsError::Other(JsErrorBox::generic(
+            format!(
+              "Failed to prepare an isolated build copy for npm:{}: {err}",
+              package.id.nv
+            ),
+          )));
+        }
+        rebuilt_as_copy.insert(package.id.clone());
+      }
+    }
+
     // 9. Set up `node_modules/.bin` entries for packages that need it.
     {
       let bin_entries = match Rc::try_unwrap(bin_entries) {
@@ -1266,9 +1334,12 @@ impl<
     // remaining packages whose build scripts are about to run (these are already
     // allowlist-gated — only packages the user permitted via
     // `--allow-scripts`/the deno.json allow list reach `packages_with_scripts`)
-    // are cache MISSES: build each on a true copy so the build can be
-    // snapshotted afterwards — see `rebuild_package_as_copy` for why the copy is
-    // required for correctness on Linux.
+    // are cache MISSES. Their hardlinks into the pristine global cache were
+    // already broken (`rebuild_package_as_copy`) by the pre-bin copy pass above,
+    // so step 9's `.bin` chmod mutated a private copy, not the shared cache. Now
+    // capture each one's pre-build signature (taken AFTER that chmod, so the
+    // chmod isn't mistaken for a script-made change) and a snapshot plan so the
+    // build can be cached once its scripts run.
     if !restored.is_empty() {
       lifecycle_scripts_to_run
         .retain_packages_with_scripts(|p| !restored.contains(&p.package.id));
@@ -1277,18 +1348,17 @@ impl<
       HashMap::new();
     for pkg in lifecycle_scripts_to_run.packages_with_scripts() {
       let package = pkg.package;
-      // Patch contents aren't in the input key, so a patched package must never
-      // be snapshotted (rebuilding from a pristine copy would also drop the
-      // applied patch). Keep its scripts running every install (see
-      // `patched_nvs`).
-      if patched_nvs.contains(&package.id.nv) {
-        continue;
-      }
-      // Only registry packages that were extracted into the global cache can
-      // be snapshotted. Skips workspace members, whose sources don't live in
-      // the content-addressed global cache.
-      let pristine = self.npm_cache.package_folder_for_nv(&package.id.nv);
-      if !self.sys.fs_exists_no_err(&pristine) {
+      // Only packages whose hardlinks were broken before step 9 (the pre-bin
+      // copy pass above) may be built and snapshotted. That pass already
+      // excluded patched packages and packages with no pristine global-cache
+      // dir, applied the same fail-closed handling, and selects exactly the
+      // same set this loop iterates — so a package present here in
+      // `rebuilt_as_copy` is guaranteed to be a real, isolated copy. A package
+      // absent from it (e.g. a patched package, a workspace member, or one
+      // added to the run list after the pre-bin pass) must NOT be snapshotted:
+      // its files may still be hardlinks, so skip it (its scripts still run,
+      // it's just never cached).
+      if !rebuilt_as_copy.contains(&package.id) {
         continue;
       }
       let input_hash = side_effects_cache_input_hash(
@@ -1303,26 +1373,6 @@ impl<
       );
       let ready_marker = built_cache_ready_marker(&built_variant);
       let pkg_dir = pkg.package_folder.clone();
-      // Cache miss: build on a true copy, remembering enough to snapshot the
-      // result once the scripts have run.
-      //
-      // Fail-closed: if preparing the true copy fails, the package's `.deno`
-      // files are still hardlinks into the shared pristine global cache. Running
-      // its build scripts now would let an in-place edit corrupt that shared
-      // cache for every other project — the exact corruption this cache exists
-      // to prevent. So surface the failure (disk full, permissions, …) and
-      // abort the install *before* reaching the lifecycle-scripts executor
-      // below, rather than silently running scripts on hardlinked pristine
-      // files. This only affects cache-miss packages going through
-      // `rebuild_package_as_copy`; packages not on this path are unaffected.
-      if let Err(err) = self.rebuild_package_as_copy(&pristine, &pkg_dir) {
-        return Err(SyncResolutionWithFsError::Other(JsErrorBox::generic(
-          format!(
-            "Failed to prepare an isolated build copy for npm:{}: {err}",
-            package.id.nv
-          ),
-        )));
-      }
       let pre_build_signature = dir_content_signature(&self.sys, &pkg_dir);
       build_cache_plans.insert(
         package.id.clone(),
@@ -1404,10 +1454,13 @@ impl<
   /// pristine global-cache extraction, breaking any hardlinks into it.
   ///
   /// On Linux `clone_dir_recursive` hardlinks the `.deno` package files to the
-  /// shared pristine extraction in the global cache. A build script that edits
-  /// a file in place would then mutate that shared inode and corrupt the
-  /// global cache for every other project. Building on a true copy prevents
-  /// that, and gives us an isolated directory to snapshot afterwards.
+  /// shared pristine extraction in the global cache. Any in-place mutation of
+  /// those files — a build script editing one, or the `.bin` setup chmodding a
+  /// bin entrypoint to make it executable — would then change that shared inode
+  /// and corrupt the global cache for every other project. Building on a true
+  /// copy prevents that, and gives us an isolated directory to snapshot
+  /// afterwards. Call this BEFORE the `.bin` chmod pass (step 9) so the chmod
+  /// also lands on the private copy.
   fn rebuild_package_as_copy(
     &self,
     pristine: &Path,
