@@ -53,6 +53,7 @@ const {
   Error,
   Int16Array,
   ObjectDefineProperties,
+  ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
   StringPrototypeEndsWith,
   StringPrototypeSlice,
@@ -198,10 +199,25 @@ function setPriority(pid, priority) {
   }
 }
 
+// Node's `os.tmpdir()` reads environment variables without requiring any
+// permission. In Deno reading the environment requires `--allow-env`, so fall
+// back to treating the variable as unset (like Node when it is missing) instead
+// of throwing when the permission has not been granted.
+function getEnvNoThrow(key: string): string | undefined {
+  try {
+    return Deno.env.get(key);
+  } catch (e) {
+    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
+      return undefined;
+    }
+    throw e;
+  }
+}
+
 function tmpdir() {
   if (isWindows) {
-    let temp = Deno.env.get("TEMP") || Deno.env.get("TMP") ||
-      (Deno.env.get("SystemRoot") || Deno.env.get("windir")) + "\\temp";
+    let temp = getEnvNoThrow("TEMP") || getEnvNoThrow("TMP") ||
+      (getEnvNoThrow("SystemRoot") || getEnvNoThrow("windir") || "") + "\\temp";
     if (
       temp.length > 1 && StringPrototypeEndsWith(temp, "\\") &&
       !StringPrototypeEndsWith(temp, ":\\")
@@ -211,8 +227,8 @@ function tmpdir() {
 
     return temp;
   } else {
-    let temp = Deno.env.get("TMPDIR") || Deno.env.get("TMP") ||
-      Deno.env.get("TEMP") || "/tmp";
+    let temp = getEnvNoThrow("TMPDIR") || getEnvNoThrow("TMP") ||
+      getEnvNoThrow("TEMP") || "/tmp";
     if (temp.length > 1 && StringPrototypeEndsWith(temp, "/")) {
       temp = StringPrototypeSlice(temp, 0, -1);
     }
