@@ -59,6 +59,9 @@ pub struct NpmInstallerFactoryOptions {
   /// must not silently rewrite the user's lockfile.
   pub dedup_lockfile_peer_variants: bool,
   pub lifecycle_scripts_config: LifecycleScriptsConfig,
+  /// The Node.js version Deno emulates. Used to key native-addon build output
+  /// in the npm build side-effects cache.
+  pub node_version: String,
   /// Only install production dependencies (excludes devDependencies).
   pub production: bool,
   /// Exclude @types/* packages from installation.
@@ -397,6 +400,7 @@ impl<
               linker_mode: workspace_factory.node_modules_linker_mode()?,
               lifecycle_scripts: self.lifecycle_scripts_config()?.clone(),
               system_info: self.resolver_factory.npm_system_info().clone(),
+              node_version: self.options.node_version.clone(),
               workspace_link_packages: workspace_npm_link_packages.clone(),
               jsr_deps_in_node_modules: workspace_factory
                 .workspace_directory()?

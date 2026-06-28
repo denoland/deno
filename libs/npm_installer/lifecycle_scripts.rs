@@ -162,6 +162,69 @@ pub fn member_dep_init_cwds(
     .collect()
 }
 
+/// The lifecycle scripts that produce build output we may want to cache.
+const BUILD_SCRIPT_NAMES: [&str; 3] = ["preinstall", "install", "postinstall"];
+
+/// Number of leading hex characters of the SHA-512 input digest used to key a
+/// built variant in the global cache. 32 hex chars (128 bits) is far beyond
+/// what's needed to avoid collisions while keeping the directory name short.
+const SIDE_EFFECTS_CACHE_HASH_LEN: usize = 32;
+
+/// Computes the input hash that keys a package's *built* output in the global
+/// side-effects cache. Two installs whose package produces the same hash can
+/// safely reuse the same built output (e.g. a compiled native addon) instead of
+/// re-running the build script.
+///
+/// Keyed **generously** on purpose: under-keying would let build output produced
+/// in one environment be reused in an incompatible one (e.g. a native binary
+/// built for the wrong platform/arch or Node ABI). The hash covers:
+/// - the package name + version,
+/// - the package's own lifecycle build script command strings
+///   (preinstall/install/postinstall),
+/// - the resolved `name@version` of every direct dependency,
+/// - the target platform (`OS` + `ARCH`),
+/// - the Node ABI version Deno emulates (native addons are ABI-specific).
+///
+/// Lives here (rather than in a linker-specific module) so the isolated and
+/// hoisted installers can share it.
+pub fn side_effects_cache_input_hash(
+  package: &NpmResolutionPackage,
+  scripts: &HashMap<SmallStackString, String>,
+  node_version: &str,
+) -> String {
+  use std::fmt::Write;
+
+  let mut input = String::new();
+  let _ = writeln!(input, "name:{}", package.id.nv.name);
+  let _ = writeln!(input, "version:{}", package.id.nv.version);
+
+  // build script command strings, in a fixed order for determinism
+  for name in BUILD_SCRIPT_NAMES {
+    if let Some(script) = scripts.get(name) {
+      let _ = writeln!(input, "script:{name}={script}");
+    }
+  }
+
+  // resolved direct dependency versions, sorted for determinism
+  let mut deps: Vec<String> = package
+    .dependencies
+    .values()
+    .map(|id| format!("{}@{}", id.nv.name, id.nv.version))
+    .collect();
+  deps.sort();
+  for dep in deps {
+    let _ = writeln!(input, "dep:{dep}");
+  }
+
+  let _ = writeln!(input, "os:{}", std::env::consts::OS);
+  let _ = writeln!(input, "arch:{}", std::env::consts::ARCH);
+  let _ = writeln!(input, "node:{node_version}");
+
+  let mut hash = deno_npm_cache::sha512_hex(input.as_bytes());
+  hash.truncate(SIDE_EFFECTS_CACHE_HASH_LEN);
+  hash
+}
+
 pub fn has_lifecycle_scripts(
   sys: &impl FsMetadata,
   extra: &NpmPackageExtraInfo,
@@ -303,6 +366,16 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
 
   pub fn packages_with_scripts(&self) -> &[PackageWithScript<'a>] {
     &self.packages_with_scripts
+  }
+
+  /// Drops the packages for which `keep` returns false from the set that will
+  /// have its lifecycle scripts run. Used by the side-effects cache to remove
+  /// packages whose build output was restored from the global cache.
+  pub fn retain_packages_with_scripts(
+    &mut self,
+    mut keep: impl FnMut(&PackageWithScript<'a>) -> bool,
+  ) {
+    self.packages_with_scripts.retain(|pkg| keep(pkg));
   }
 }
 

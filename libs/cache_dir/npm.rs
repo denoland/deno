@@ -108,6 +108,35 @@ impl NpmCacheDir {
     }
   }
 
+  /// The global-cache folder holding a *built* variant of a package: the
+  /// snapshot of a package directory taken after its lifecycle (build) scripts
+  /// ran, keyed by an input hash so the same build can be reused across
+  /// projects (pnpm's "side effects cache").
+  ///
+  /// This lives beside `package_folder_for_id`'s `{version}` /
+  /// `{version}_{copy_index}` folders, using a `.build_{input_hash}` suffix.
+  /// The `.` ensures it can never collide with the `_{copy_index}` variant
+  /// naming: `resolve_package_folder_id_from_specifier` parses the trailing
+  /// `_{n}` as a `u8` copy index, and `{version}.build_{hash}` fails that
+  /// parse, so a built variant is never mistaken for a package folder.
+  pub fn package_folder_for_id_built(
+    &self,
+    package_name: &str,
+    package_version: &str,
+    package_copy_index: u8,
+    input_hash: &str,
+    registry_url: &Url,
+  ) -> PathBuf {
+    let base = if package_copy_index == 0 {
+      package_version.to_string()
+    } else {
+      format!("{}_{}", package_version, package_copy_index)
+    };
+    self
+      .package_name_folder(package_name, registry_url)
+      .join(format!("{base}.build_{input_hash}"))
+  }
+
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
     let mut dir = self.registry_folder(registry_url);
     if name.to_lowercase() != name {
@@ -367,6 +396,63 @@ mod test {
         .join("registry.npmjs.org")
         .join("_ib2hs4dfomxuuu2pjy")
         .join("2.1.5"),
+    );
+  }
+
+  #[test]
+  fn should_get_built_package_folder() {
+    let sys = sys_traits::impls::InMemorySys::default();
+    let root_dir = if cfg!(windows) {
+      PathBuf::from("C:\\cache")
+    } else {
+      PathBuf::from("/cache")
+    };
+    sys.fs_create_dir_all(&root_dir).unwrap();
+    let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
+    let cache =
+      NpmCacheDir::new(&sys, root_dir.clone(), vec![registry_url.clone()]);
+
+    // The `.build_<hash>` suffix sits beside the pristine `{version}` folder.
+    assert_eq!(
+      cache.package_folder_for_id_built(
+        "json",
+        "1.2.5",
+        0,
+        "abc123",
+        &registry_url
+      ),
+      root_dir
+        .join("registry.npmjs.org")
+        .join("json")
+        .join("1.2.5.build_abc123"),
+    );
+
+    // A copy index is preserved before the `.build_` suffix.
+    assert_eq!(
+      cache.package_folder_for_id_built(
+        "json",
+        "1.2.5",
+        2,
+        "abc123",
+        &registry_url
+      ),
+      root_dir
+        .join("registry.npmjs.org")
+        .join("json")
+        .join("1.2.5_2.build_abc123"),
+    );
+
+    // A built-variant directory name must not be parsed back as a package
+    // folder id (the `.` makes the copy-index parse fail), so it can never be
+    // confused with a real package version or `_{copy_index}` variant.
+    let specifier = cache
+      .root_dir_url()
+      .join("registry.npmjs.org/json/1.2.5.build_abc123/")
+      .unwrap();
+    assert!(
+      cache
+        .resolve_package_folder_id_from_specifier(&specifier)
+        .is_none()
     );
   }
 
