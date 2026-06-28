@@ -119,9 +119,10 @@ function wrap(
     let flushPending = false;
     let writeInFlight = false;
     // Set when a graceful TLS shutdown (close_notify) has been requested.
-    // Once all buffered encrypted output (including the close_notify) has
-    // been flushed to the underlying stream, we end that stream so the peer
-    // observes EOF -- mirroring `uv_shutdown` on the native (uv) path.
+    // Once the handshake has completed and all buffered encrypted output
+    // (including the close_notify) has been flushed, we end the underlying
+    // stream so the peer observes EOF -- mirroring `uv_shutdown` on the
+    // native (uv) path.
     let shuttingDown = false;
     let underlyingEnded = false;
     const pump = () => {
@@ -134,10 +135,13 @@ function wrap(
         res.readBuffer(new Uint8Array(0));
         data = res.drainEncOut();
         if (!data || data.byteLength === 0) {
-          // Everything has been flushed. If a TLS shutdown was requested,
-          // end the underlying stream now (after the close_notify) so the
-          // peer receives EOF instead of hanging.
-          if (shuttingDown && !underlyingEnded) {
+          // Everything buffered is flushed: end the underlying stream so the
+          // peer sees EOF. Gate on the handshake being complete -- `.end()`
+          // mid-handshake defers the close_notify, so ending now would tear
+          // the transport down before it is sent. (`_owner` is the TLSSocket.)
+          if (
+            shuttingDown && !underlyingEnded && res._owner?._secureEstablished
+          ) {
             underlyingEnded = true;
             jsStreamOwner.stream.end();
           }
