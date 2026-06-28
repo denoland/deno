@@ -19786,6 +19786,25 @@ fn lsp_tsconfig_module_resolution_bundler_dir_import() {
 }
 
 #[test(timeout = 300)]
+fn lsp_fetch_request_init_uses_deno_global() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"
+      const init: Parameters<typeof fetch>[1] = {};
+      new Request("https://deno.com", init);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_tsconfig_root_dirs() {
   let context = TestContextBuilder::new()
     .use_http_server()
