@@ -87,6 +87,87 @@ Deno.test("tls over js-backed duplex pair does not panic", async () => {
   server.close();
 });
 
+// Regression test: a server-side TLSSocket running over a back-to-back Duplex
+// pair (JSStreamSocket path, like tedious/mssql TLS-over-TDS) must send the TLS
+// close_notify and end the underlying stream when `.end()` is called. Otherwise
+// the peer never observes EOF and hangs (surfaces in tedious/Prisma as
+// "Connection lost - socket hang up").
+Deno.test("tls js-backed duplex server propagates close_notify on end()", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<string>();
+
+  // Back-to-back Duplex pair (mimics native-duplexpair).
+  const makeDuplexPair = () => {
+    const socket1 = new stream.Duplex({
+      read() {},
+      write(chunk: Uint8Array, _enc: string, cb: () => void) {
+        socket2.push(chunk);
+        cb();
+      },
+      final(cb: () => void) {
+        socket2.push(null);
+        cb();
+      },
+    });
+    const socket2 = new stream.Duplex({
+      read() {},
+      write(chunk: Uint8Array, _enc: string, cb: () => void) {
+        socket1.push(chunk);
+        cb();
+      },
+      final(cb: () => void) {
+        socket1.push(null);
+        cb();
+      },
+    });
+    return { socket1, socket2 };
+  };
+
+  const rawServer = net.createServer((raw: net.Socket) => {
+    const { socket1, socket2 } = makeDuplexPair();
+    // The TLSSocket runs over socket1 (encrypted transport); socket2 is bridged
+    // to the raw TCP socket. This forces the JSStreamSocket path because
+    // socket1 is a plain Duplex, not a net.Socket.
+    const serverTls = new tls.TLSSocket(socket1 as net.Socket, {
+      isServer: true,
+      key,
+      cert,
+    });
+    raw.pipe(socket2);
+    socket2.pipe(raw);
+    serverTls.on("error", () => {});
+    raw.on("error", () => {});
+    serverTls.on("secure", () => {
+      serverTls.write("hello from server");
+      serverTls.end();
+    });
+  });
+
+  rawServer.listen(0, () => {
+    const { port } = rawServer.address() as net.AddressInfo;
+    // Native (net.Socket-backed) client connecting directly over TCP.
+    const client = tls.connect({
+      port,
+      host: "localhost",
+      rejectUnauthorized: false,
+    });
+    let data = "";
+    client.on("error", reject);
+    client.on("data", (chunk: Uint8Array) => {
+      data += chunk.toString();
+    });
+    // If close_notify/EOF is not propagated, "end" never fires and the test
+    // times out via the harness (the regression this guards against).
+    client.on("end", () => {
+      client.destroy();
+      resolve(data);
+    });
+  });
+
+  const received = await promise;
+  assertEquals(received, "hello from server");
+  rawServer.close();
+});
+
 for (
   const [alpnServer, alpnClient, expected] of [
     [["a", "b"], ["a"], ["a"]],

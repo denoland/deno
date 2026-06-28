@@ -118,6 +118,12 @@ function wrap(
     const jsStreamOwner = nativeHandle[kOwner];
     let flushPending = false;
     let writeInFlight = false;
+    // Set when a graceful TLS shutdown (close_notify) has been requested.
+    // Once all buffered encrypted output (including the close_notify) has
+    // been flushed to the underlying stream, we end that stream so the peer
+    // observes EOF -- mirroring `uv_shutdown` on the native (uv) path.
+    let shuttingDown = false;
+    let underlyingEnded = false;
     const pump = () => {
       if (writeInFlight || !jsStreamOwner?.stream) return;
       let data = res.drainEncOut();
@@ -127,7 +133,16 @@ function wrap(
         // more encrypted output if clear_in() was rate-limited.
         res.readBuffer(new Uint8Array(0));
         data = res.drainEncOut();
-        if (!data || data.byteLength === 0) return;
+        if (!data || data.byteLength === 0) {
+          // Everything has been flushed. If a TLS shutdown was requested,
+          // end the underlying stream now (after the close_notify) so the
+          // peer receives EOF instead of hanging.
+          if (shuttingDown && !underlyingEnded) {
+            underlyingEnded = true;
+            jsStreamOwner.stream.end();
+          }
+          return;
+        }
       }
       writeInFlight = true;
       jsStreamOwner.stream.write(new Uint8Array(data), () => {
@@ -145,6 +160,22 @@ function wrap(
         pump();
       });
     };
+
+    // For JS-backed streams the native `shutdown` op produces the TLS
+    // close_notify into the pull-based `pending_enc_out` buffer, but nothing
+    // flushes it to the underlying stream or ends it (the uv path relies on
+    // `uv_shutdown`, which is a no-op here). Wrap `shutdown` so that after the
+    // native op runs we drain the close_notify and then end the underlying
+    // stream, propagating EOF to the peer.
+    const origShutdown = res.shutdown;
+    if (typeof origShutdown === "function") {
+      res.shutdown = function (...args: any[]) {
+        const ret = origShutdown.apply(res, args);
+        shuttingDown = true;
+        flushEncOut();
+        return ret;
+      };
+    }
 
     // Wire up readBuffer/emitEOF: JSStreamSocket calls these when the
     // underlying Duplex stream produces data or ends.
