@@ -113,6 +113,12 @@ Deno.test("[node/dns] getDefaultResultOrder returns valid order", () => {
   assertEquals(dnsPromises.getDefaultResultOrder(), order);
 });
 
+Deno.test("[node/dns] getDefaultResultOrder defaults to verbatim", () => {
+  // Node.js defaults to "verbatim" since v17 (no IPv4-first reordering),
+  // unless `--dns-result-order` is passed. Regression test for #34781.
+  assertEquals(getDefaultResultOrder(), "verbatim");
+});
+
 Deno.test("[node/dns] getDefaultResultOrder reflects setDefaultResultOrder", () => {
   const original = dns.getDefaultResultOrder();
   try {

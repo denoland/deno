@@ -55,7 +55,13 @@ Deno.test("[node/http listen]", async () => {
 
     server.listen(42453, "localhost", () => {
       // @ts-ignore address() is not a string
-      assertEquals(server.address()!.address, "127.0.0.1");
+      const address = server.address()!.address;
+      // With the default "verbatim" DNS order (matching Node), "localhost"
+      // may resolve to either IPv4 or IPv6 first depending on the host.
+      assert(
+        address === "127.0.0.1" || address === "::1",
+        `unexpected address: ${address}`,
+      );
       server.close();
     });
     server.on("close", () => {

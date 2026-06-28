@@ -440,7 +440,7 @@ let dnsOrder: string | undefined;
 
 function ensureDnsOrder(): string {
   if (dnsOrder === undefined) {
-    dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
+    dnsOrder = getOptionValue("--dns-result-order") || "verbatim";
   }
   return dnsOrder;
 }
