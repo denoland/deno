@@ -753,6 +753,14 @@ pub fn main() {
     deno_subprocess_windows::disable_stdio_inheritance();
     colors::enable_ansi(); // For Windows 10
   }
+  // Strip ANSI color from Deno's own status/log messages when stderr is not a
+  // terminal (e.g. redirected to a file or pipe), unless color is explicitly
+  // forced via `FORCE_COLOR`. These messages are emitted with the global color
+  // state, which otherwise only honors `NO_COLOR`/`FORCE_COLOR` and ignores
+  // whether the stream is a TTY.
+  if !colors::force_color() && !deno_terminal::is_stderr_tty() {
+    colors::set_use_color(false);
+  }
   deno_runtime::deno_permissions::prompter::set_prompt_callbacks(
     Box::new(util::draw_thread::DrawThread::hide),
     Box::new(util::draw_thread::DrawThread::show),
