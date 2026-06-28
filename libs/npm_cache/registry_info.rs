@@ -283,7 +283,9 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         Some(cached_info) => (cached_info.etag, Some(cached_info.info)),
         None => (None, None)
       };
-      let maybe_etag = if force_reload_package {
+      let maybe_etag = if force_reload_package
+        && should_skip_etag_for_force_reload(&package_url)
+      {
         None
       } else {
         maybe_etag
@@ -452,6 +454,13 @@ pub fn get_package_url(npmrc: &ResolvedNpmRc, name: &str) -> Url {
     .unwrap()
 }
 
+fn should_skip_etag_for_force_reload(package_url: &Url) -> bool {
+  // Some private registries incorrectly keep a stable etag after packument
+  // contents change. Keep honoring correct etags from the public npm registry
+  // so internal force-reload retries can still get cheap 304 responses.
+  package_url.host_str() != Some("registry.npmjs.org")
+}
+
 #[cfg(test)]
 mod tests {
   use std::sync::Arc;
@@ -500,8 +509,9 @@ mod tests {
     serde_json::from_slice(&package_info_bytes(name)).unwrap()
   }
 
-  #[tokio::test]
-  async fn force_reload_does_not_send_cached_etag() {
+  async fn force_reload_etags_for_registry(
+    registry_url: Url,
+  ) -> Vec<Option<String>> {
     let sys = InMemorySys::default();
     let root_dir = if cfg!(windows) {
       std::path::PathBuf::from("C:\\cache")
@@ -510,7 +520,6 @@ mod tests {
     };
     sys.fs_create_dir_all(&root_dir).unwrap();
 
-    let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
     let npmrc = Arc::new(
       NpmRc::parse(&sys, "")
         .unwrap()
@@ -553,6 +562,27 @@ mod tests {
       .unwrap()
       .unwrap();
 
-    assert_eq!(&*http_client.etags.lock(), &[None]);
+    http_client.etags.lock().clone()
+  }
+
+  #[tokio::test]
+  async fn force_reload_sends_cached_etag_for_public_npm_registry() {
+    let etags = force_reload_etags_for_registry(
+      Url::parse("https://registry.npmjs.org/").unwrap(),
+    )
+    .await;
+
+    assert_eq!(etags, &[Some("stale-etag".to_string())]);
+  }
+
+  #[tokio::test]
+  async fn force_reload_does_not_send_cached_etag_for_private_registry() {
+    let etags = force_reload_etags_for_registry(
+      Url::parse("https://gitlab.example.com/api/v4/projects/1/packages/npm/")
+        .unwrap(),
+    )
+    .await;
+
+    assert_eq!(etags, &[None]);
   }
 }
