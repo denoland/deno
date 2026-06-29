@@ -28,6 +28,7 @@ encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 fontdb.workspace = true
 futures.workspace = true
+half = "2.7"
 log.workspace = true
 parley.workspace = true
 serde.workspace = true

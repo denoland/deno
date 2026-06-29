@@ -3644,6 +3644,7 @@ dependencies = [
  "flate2",
  "fontdb",
  "futures",
+ "half",
  "log",
  "parley",
  "serde",

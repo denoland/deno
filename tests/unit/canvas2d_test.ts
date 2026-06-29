@@ -1244,3 +1244,144 @@ Deno.test(
     );
   },
 );
+
+// === Phase 5: Image Operations ===
+
+Deno.test(function canvas2dCreateImageDataWithDimensions() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const data = ctx.createImageData(5, 3);
+  assertEquals(data.width, 5);
+  assertEquals(data.height, 3);
+  assertEquals(data.data.length, 5 * 3 * 4);
+  assert(data.data.every((v: number) => v === 0));
+});
+
+Deno.test(function canvas2dCreateImageDataNegativeDimensions() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const data = ctx.createImageData(-4, -6);
+  assertEquals(data.width, 4);
+  assertEquals(data.height, 6);
+});
+
+Deno.test(function canvas2dCreateImageDataZeroThrows() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  assertThrows(() => ctx.createImageData(0, 5), DOMException);
+  assertThrows(() => ctx.createImageData(5, 0), DOMException);
+});
+
+Deno.test(function canvas2dCreateImageDataFromImageData() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const src = new ImageData(7, 4);
+  src.data[0] = 255;
+  const copy = ctx.createImageData(src);
+  assertEquals(copy.width, 7);
+  assertEquals(copy.height, 4);
+  assertEquals(copy.data[0], 0);
+});
+
+Deno.test(
+  { ignore: !hasCanvasRenderer },
+  function canvas2dPutImageDataBasic() {
+    const canvas = new OffscreenCanvas(4, 4);
+    const ctx = canvas.getContext("2d")!;
+    const imgData = ctx.createImageData(2, 2);
+    imgData.data.set([
+      255,
+      0,
+      0,
+      255,
+      0,
+      255,
+      0,
+      255,
+      0,
+      0,
+      255,
+      255,
+      128,
+      128,
+      128,
+      255,
+    ]);
+    ctx.putImageData(imgData, 1, 1);
+    const result = ctx.getImageData(1, 1, 2, 2);
+    assertEquals(result.data[0], 255);
+    assertEquals(result.data[1], 0);
+    assertEquals(result.data[2], 0);
+    assertEquals(result.data[3], 255);
+  },
+);
+
+Deno.test(
+  { ignore: !hasCanvasRenderer },
+  function canvas2dPutImageDataBypassesTransform() {
+    const canvas = new OffscreenCanvas(4, 4);
+    const ctx = canvas.getContext("2d")!;
+    ctx.translate(2, 2);
+    ctx.globalAlpha = 0.5;
+    const imgData = ctx.createImageData(2, 2);
+    for (let i = 0; i < imgData.data.length; i += 4) {
+      imgData.data[i] = 255;
+      imgData.data[i + 3] = 255;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    const result = ctx.getImageData(0, 0, 2, 2);
+    assertEquals(result.data[0], 255);
+    assertEquals(result.data[3], 255);
+  },
+);
+
+Deno.test(
+  { ignore: !hasCanvasRenderer },
+  function canvas2dPutImageDataDirtyRect() {
+    const canvas = new OffscreenCanvas(4, 4);
+    const ctx = canvas.getContext("2d")!;
+    const imgData = ctx.createImageData(2, 2);
+    for (let i = 0; i < imgData.data.length; i += 4) {
+      imgData.data[i] = 255;
+      imgData.data[i + 3] = 255;
+    }
+    ctx.putImageData(imgData, 0, 0, 1, 0, 1, 2);
+    const r00 = ctx.getImageData(0, 0, 1, 1);
+    assertEquals(r00.data[0], 0);
+    const r10 = ctx.getImageData(1, 0, 1, 1);
+    assertEquals(r10.data[0], 255);
+  },
+);
+
+Deno.test(function canvas2dDrawImageNullThrows() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  assertThrows(
+    // deno-lint-ignore no-explicit-any
+    () => (ctx as any).drawImage(null, 0, 0),
+    TypeError,
+  );
+});
+
+Deno.test(
+  { ignore: !hasCanvasRenderer },
+  function canvas2dDrawImageBasic() {
+    const canvas = new OffscreenCanvas(4, 4);
+    const ctx = canvas.getContext("2d")!;
+    const src = new OffscreenCanvas(2, 2);
+    const srcCtx = src.getContext("2d")!;
+    srcCtx.fillStyle = "red";
+    srcCtx.fillRect(0, 0, 2, 2);
+    const bitmap = src.transferToImageBitmap();
+    ctx.drawImage(bitmap, 1, 1);
+    const result = ctx.getImageData(1, 1, 1, 1);
+    assertEquals(result.data[0], 255);
+    assertEquals(result.data[1], 0);
+    assertEquals(result.data[2], 0);
+    assertEquals(result.data[3], 255);
+  },
+);
+
+Deno.test(function canvas2dDrawImageNonFiniteSilent() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const src = new OffscreenCanvas(2, 2);
+  src.getContext("2d");
+  const bitmap = src.transferToImageBitmap();
+  ctx.drawImage(bitmap, NaN, 0);
+  ctx.drawImage(bitmap, 0, Infinity);
+});

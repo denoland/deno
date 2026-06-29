@@ -17,7 +17,6 @@ use deno_core::v8::cppgc::Visitor;
 use deno_core::webidl::UnrestrictedDouble;
 use deno_core::webidl::WebIdlConverter;
 use deno_error::JsErrorBox;
-use deno_error::JsErrorClass;
 use deno_image::bitmap::ImageBitmap;
 use deno_image::image::DynamicImage;
 use deno_image::image::GenericImageView;
@@ -65,6 +64,67 @@ use crate::text_metrics::TextMetrics;
 pub const CONTEXT_ID: &str = "2d";
 pub const UNSTABLE_FEATURE_NAME: &str = "canvas2d";
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum Canvas2DError {
+  #[class(type)]
+  #[error("Illegal constructor")]
+  IllegalConstructor,
+  #[class("DOMExceptionIndexSizeError")]
+  #[error("The radius provided ({0}) is negative")]
+  NegativeRadius(f64),
+  #[class("DOMExceptionIndexSizeError")]
+  #[error("The source width or height is zero")]
+  ZeroSourceSize,
+  #[class("DOMExceptionInvalidStateError")]
+  #[error("The image source is detached")]
+  ImageSourceDetached,
+  #[class("DOMExceptionInvalidStateError")]
+  #[error("The image source has zero width or height")]
+  ImageSourceZeroDimensions,
+  #[class("DOMExceptionInvalidStateError")]
+  #[error("{0}")]
+  InvalidState(String),
+  #[class(type)]
+  #[error("The provided value is non-finite")]
+  NonFinite,
+  #[class(type)]
+  #[error("The argument is not of type 'CanvasImageSource'")]
+  NotCanvasImageSource,
+  #[class(type)]
+  #[error("The argument is not of type 'ImageData'")]
+  NotImageData,
+  #[class(type)]
+  #[error("{required} argument required, but only {provided} present")]
+  MissingArgument { required: u32, provided: u32 },
+  #[class(generic)]
+  #[error(transparent)]
+  Render(#[from] self::renderer::RenderError),
+  #[class(generic)]
+  #[error("canvas2d not initialized")]
+  NotInitialized,
+  #[class(inherit)]
+  #[error(transparent)]
+  ColorStop(#[from] self::gradient::ColorStopError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Pattern(#[from] self::pattern::PatternError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Geometry(#[from] crate::geometry::GeometryError),
+  #[class(inherit)]
+  #[error(transparent)]
+  WebIdl(#[from] deno_core::webidl::WebIdlError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ImageData(#[from] crate::image_data::ImageDataError),
+}
+
+impl From<Canvas2DError> for JsErrorBox {
+  fn from(err: Canvas2DError) -> Self {
+    JsErrorBox::from_err(err)
+  }
+}
+
 /// RGBA8 pixel buffer extracted from a CanvasImageSource.
 pub struct ResolvedCanvasImage {
   pub width: u32,
@@ -92,16 +152,12 @@ fn resolve_offscreen_canvas_image<'a>(
   state: &OpState,
   scope: &mut v8::PinScope<'a, 'a>,
   image: v8::Local<'a, v8::Value>,
-) -> Result<ResolvedCanvasImage, JsErrorBox> {
+) -> Result<ResolvedCanvasImage, Canvas2DError> {
   let sync = state
     .try_borrow::<OffscreenCanvasPixelSync>()
-    .ok_or_else(|| {
-      JsErrorBox::new(
-        "TypeError",
-        "Failed to execute 'createPattern' on 'OffscreenCanvasRenderingContext2D': parameter 1 is not of type 'CanvasImageSource'.",
-      )
-    })?;
-  let (width, height, pixels) = sync.0(scope, image)?;
+    .ok_or(Canvas2DError::NotCanvasImageSource)?;
+  let (width, height, pixels) = sync.0(scope, image)
+    .map_err(|e| Canvas2DError::InvalidState(e.to_string()))?;
   Ok(ResolvedCanvasImage {
     width,
     height,
@@ -114,30 +170,21 @@ pub fn resolve_canvas_image_source<'a>(
   state: &OpState,
   scope: &mut v8::PinScope<'a, 'a>,
   image: v8::Local<'a, v8::Value>,
-) -> Result<ResolvedCanvasImage, JsErrorBox> {
+) -> Result<ResolvedCanvasImage, Canvas2DError> {
   if image.is_null_or_undefined() {
-    return Err(JsErrorBox::new(
-      "TypeError",
-      "Failed to execute 'createPattern' on 'OffscreenCanvasRenderingContext2D': parameter 1 is not of type 'CanvasImageSource'.",
-    ));
+    return Err(Canvas2DError::NotCanvasImageSource);
   }
 
   if let Some(bitmap) =
     deno_core::cppgc::try_unwrap_cppgc_object::<ImageBitmap>(scope, image)
   {
     if bitmap.detached.get().is_some() {
-      return Err(JsErrorBox::new(
-        "DOMExceptionInvalidStateError",
-        "The image source is detached.",
-      ));
+      return Err(Canvas2DError::ImageSourceDetached);
     }
     let data = bitmap.data.borrow();
     let (width, height) = data.dimensions();
     if width == 0 || height == 0 {
-      return Err(JsErrorBox::new(
-        "DOMExceptionInvalidStateError",
-        "The image source has zero width or height.",
-      ));
+      return Err(Canvas2DError::ImageSourceZeroDimensions);
     }
     return Ok(ResolvedCanvasImage {
       width,
@@ -163,46 +210,6 @@ pub fn image_data_from_pixels(
     width,
     height,
   }
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum Canvas2DError {
-  #[class(type)]
-  #[error("Illegal constructor")]
-  IllegalConstructor,
-  #[class("DOMExceptionNotSupportedError")]
-  #[error("OffscreenCanvasRenderingContext2D.{0}() is not yet implemented")]
-  NotSupported(&'static str),
-  #[class("DOMExceptionIndexSizeError")]
-  #[error("{0}")]
-  IndexSize(String),
-  #[class("DOMExceptionInvalidStateError")]
-  #[error("{0}")]
-  InvalidState(String),
-  #[class(type)]
-  #[error("The provided value is non-finite.")]
-  NonFinite,
-  #[class(type)]
-  #[error("{0}")]
-  TypeMismatch(String),
-  #[class(generic)]
-  #[error("{0}")]
-  Render(#[from] self::renderer::RenderError),
-  #[class(generic)]
-  #[error("canvas2d not initialized")]
-  NotInitialized,
-  #[class(inherit)]
-  #[error(transparent)]
-  ColorStop(#[from] self::gradient::ColorStopError),
-  #[class(inherit)]
-  #[error(transparent)]
-  Pattern(#[from] self::pattern::PatternError),
-  #[class(inherit)]
-  #[error(transparent)]
-  Geometry(#[from] crate::geometry::GeometryError),
-  #[class(inherit)]
-  #[error(transparent)]
-  WebIdl(#[from] deno_core::webidl::WebIdlError),
 }
 
 #[derive(Clone)]
@@ -696,10 +703,7 @@ impl Path2D {
   ) -> Result<(), Canvas2DError> {
     let counterclockwise = counterclockwise.unwrap_or(false);
     if *radius < 0.0 {
-      return Err(Canvas2DError::IndexSize(format!(
-        "Failed to execute 'arc': The radius provided ({}) is negative.",
-        *radius
-      )));
+      return Err(Canvas2DError::NegativeRadius(*radius));
     }
     if !x.is_finite()
       || !y.is_finite()
@@ -743,10 +747,7 @@ impl Path2D {
     #[webidl] radius: UnrestrictedDouble,
   ) -> Result<(), Canvas2DError> {
     if *radius < 0.0 {
-      return Err(Canvas2DError::IndexSize(format!(
-        "Failed to execute 'arcTo': The radius provided ({}) is negative.",
-        *radius
-      )));
+      return Err(Canvas2DError::NegativeRadius(*radius));
     }
     if !x1.is_finite()
       || !y1.is_finite()
@@ -778,16 +779,10 @@ impl Path2D {
   ) -> Result<(), Canvas2DError> {
     let counterclockwise = counterclockwise.unwrap_or(false);
     if *radius_x < 0.0 {
-      return Err(Canvas2DError::IndexSize(format!(
-        "Failed to execute 'ellipse': The major-axis radius provided ({}) is negative.",
-        *radius_x
-      )));
+      return Err(Canvas2DError::NegativeRadius(*radius_x));
     }
     if *radius_y < 0.0 {
-      return Err(Canvas2DError::IndexSize(format!(
-        "Failed to execute 'ellipse': The minor-axis radius provided ({}) is negative.",
-        *radius_y
-      )));
+      return Err(Canvas2DError::NegativeRadius(*radius_y));
     }
     if !x.is_finite()
       || !y.is_finite()
@@ -1603,10 +1598,7 @@ impl OffscreenCanvasRenderingContext2D {
   ) -> Result<(), Canvas2DError> {
     let counterclockwise = counterclockwise.unwrap_or(false);
     if *radius < 0.0 {
-      return Err(Canvas2DError::IndexSize(format!(
-        "Failed to execute 'arc': The radius provided ({}) is negative.",
-        *radius
-      )));
+      return Err(Canvas2DError::NegativeRadius(*radius));
     }
     if !x.is_finite()
       || !y.is_finite()
@@ -1653,10 +1645,7 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] radius: UnrestrictedDouble,
   ) -> Result<(), Canvas2DError> {
     if *radius < 0.0 {
-      return Err(Canvas2DError::IndexSize(format!(
-        "Failed to execute 'arcTo': The radius provided ({}) is negative.",
-        *radius
-      )));
+      return Err(Canvas2DError::NegativeRadius(*radius));
     }
     if !x1.is_finite()
       || !y1.is_finite()
@@ -1688,16 +1677,10 @@ impl OffscreenCanvasRenderingContext2D {
   ) -> Result<(), Canvas2DError> {
     let counterclockwise = counterclockwise.unwrap_or(false);
     if *radius_x < 0.0 {
-      return Err(Canvas2DError::IndexSize(format!(
-        "Failed to execute 'ellipse': The major-axis radius provided ({}) is negative.",
-        *radius_x
-      )));
+      return Err(Canvas2DError::NegativeRadius(*radius_x));
     }
     if *radius_y < 0.0 {
-      return Err(Canvas2DError::IndexSize(format!(
-        "Failed to execute 'ellipse': The minor-axis radius provided ({}) is negative.",
-        *radius_y
-      )));
+      return Err(Canvas2DError::NegativeRadius(*radius_y));
     }
     if !x.is_finite()
       || !y.is_finite()
@@ -2044,6 +2027,7 @@ impl OffscreenCanvasRenderingContext2D {
     })
   }
 
+  #[required(1)]
   #[cppgc]
   fn create_pattern<'a>(
     &self,
@@ -2051,13 +2035,8 @@ impl OffscreenCanvasRenderingContext2D {
     scope: &mut v8::PinScope<'a, 'a>,
     #[varargs] args: Option<&v8::FunctionCallbackArguments<'a>>,
   ) -> Result<CanvasPattern, Canvas2DError> {
-    let num_args = args.map(|a| a.length()).unwrap_or(0);
-    if num_args < 1 {
-      return Err(Canvas2DError::TypeMismatch(
-        "Failed to execute 'createPattern' on 'OffscreenCanvasRenderingContext2D': 1 argument required, but only 0 present.".to_string(),
-      ));
-    }
-    let args = args.expect("checked above");
+    let args = args.expect("#[required(1)] ensures args");
+    let num_args = args.length();
     let image = args.get(0);
     let repetition = match num_args {
       1 => String::new(),
@@ -2075,17 +2054,7 @@ impl OffscreenCanvasRenderingContext2D {
     };
     let repetition = parse_repetition(&repetition)?;
 
-    let resolved =
-      resolve_canvas_image_source(state, scope, image).map_err(|e| match e
-        .get_class()
-        .as_ref()
-      {
-        "TypeError" => Canvas2DError::TypeMismatch(e.get_message().to_string()),
-        "DOMExceptionInvalidStateError" => {
-          Canvas2DError::InvalidState(e.get_message().to_string())
-        }
-        _ => Canvas2DError::TypeMismatch(e.get_message().to_string()),
-      })?;
+    let resolved = resolve_canvas_image_source(state, scope, image)?;
 
     let image_data =
       image_data_from_pixels(resolved.pixels, resolved.width, resolved.height);
@@ -2098,14 +2067,197 @@ impl OffscreenCanvasRenderingContext2D {
     })
   }
 
-  #[fast]
-  fn draw_image(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("drawImage"))
+  #[required(3)]
+  fn draw_image<'a>(
+    &self,
+    state: &OpState,
+    scope: &mut v8::PinScope<'a, 'a>,
+    image: v8::Local<'a, v8::Value>,
+    #[webidl] a1: UnrestrictedDouble,
+    #[webidl] a2: UnrestrictedDouble,
+    a3: Option<v8::Local<'a, v8::Value>>,
+    a4: Option<v8::Local<'a, v8::Value>>,
+    a5: Option<v8::Local<'a, v8::Value>>,
+    a6: Option<v8::Local<'a, v8::Value>>,
+    a7: Option<v8::Local<'a, v8::Value>>,
+    a8: Option<v8::Local<'a, v8::Value>>,
+  ) -> Result<(), Canvas2DError> {
+    let resolved = resolve_canvas_image_source(state, scope, image)?;
+
+    let has_a3 = a3.as_ref().map(|v| !v.is_undefined()).unwrap_or(false);
+    let has_a5 = a5.as_ref().map(|v| !v.is_undefined()).unwrap_or(false);
+
+    let (sx, sy, sw, sh, dx, dy, dw, dh) = if has_a5 {
+      // 9-arg: (image, sx, sy, sw, sh, dx, dy, dw, dh)
+      let sx = *a1;
+      let sy = *a2;
+      let sw = a3.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
+      let sh = a4.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
+      let dx = a5.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
+      let dy = a6.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
+      let dw = a7.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
+      let dh = a8.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
+      if !sx.is_finite()
+        || !sy.is_finite()
+        || !sw.is_finite()
+        || !sh.is_finite()
+        || !dx.is_finite()
+        || !dy.is_finite()
+        || !dw.is_finite()
+        || !dh.is_finite()
+      {
+        return Ok(());
+      }
+      if sw == 0.0 || sh == 0.0 {
+        return Ok(());
+      }
+      (sx, sy, sw, sh, dx, dy, dw, dh)
+    } else if has_a3 {
+      // 5-arg: (image, dx, dy, dw, dh)
+      let dx = *a1;
+      let dy = *a2;
+      let dw = a3.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
+      let dh = a4.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
+      if !dx.is_finite()
+        || !dy.is_finite()
+        || !dw.is_finite()
+        || !dh.is_finite()
+      {
+        return Ok(());
+      }
+      let iw = resolved.width as f64;
+      let ih = resolved.height as f64;
+      (0.0, 0.0, iw, ih, dx, dy, dw, dh)
+    } else {
+      // 3-arg: (image, dx, dy)
+      let dx = *a1;
+      let dy = *a2;
+      if !dx.is_finite() || !dy.is_finite() {
+        return Ok(());
+      }
+      let iw = resolved.width as f64;
+      let ih = resolved.height as f64;
+      (0.0, 0.0, iw, ih, dx, dy, iw, ih)
+    };
+
+    if dw == 0.0 || dh == 0.0 {
+      return Ok(());
+    }
+
+    let (src_pixels, src_w, src_h) = Self::extract_sub_image(
+      &resolved.pixels,
+      resolved.width,
+      resolved.height,
+      sx,
+      sy,
+      sw,
+      sh,
+    );
+    if src_w == 0 || src_h == 0 {
+      return Ok(());
+    }
+
+    let img = image_data_from_pixels(src_pixels, src_w, src_h);
+
+    let ds = self.state.borrow();
+    let quality = if ds.image_smoothing_enabled {
+      match ds.image_smoothing_quality {
+        ImageSmoothingQuality::Low => peniko::ImageQuality::Low,
+        ImageSmoothingQuality::Medium => peniko::ImageQuality::Medium,
+        ImageSmoothingQuality::High => peniko::ImageQuality::High,
+      }
+    } else {
+      peniko::ImageQuality::Low
+    };
+
+    let image_brush = peniko::ImageBrush::new(img).with_quality(quality);
+    let brush = peniko::Brush::Image(image_brush);
+
+    let scale_x = dw / src_w as f64;
+    let scale_y = dh / src_h as f64;
+    let image_transform = ds.transform
+      * kurbo::Affine::translate((dx, dy))
+      * kurbo::Affine::scale_non_uniform(scale_x, scale_y);
+
+    let op = ds.global_composite_operation;
+    let alpha = ds.global_alpha;
+    let shadow = Self::has_shadow(&ds);
+    let shadow_brush = if shadow {
+      Some(Self::shadow_brush(&ds))
+    } else {
+      None
+    };
+    let shadow_xform = if shadow {
+      Some(Self::shadow_transform(&ds, image_transform))
+    } else {
+      None
+    };
+    drop(ds);
+
+    let rect = kurbo::Rect::new(0.0, 0.0, src_w as f64, src_h as f64);
+    let (width, height) = self.data.dimensions();
+    let mut drawing = self.drawing.borrow_mut();
+    let has_layer =
+      Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
+    if let (Some(sb), Some(st)) = (shadow_brush, shadow_xform) {
+      Self::fill_on(&mut drawing, &rect, peniko::Fill::NonZero, st, sb, None);
+    }
+    Self::fill_on(
+      &mut drawing,
+      &rect,
+      peniko::Fill::NonZero,
+      image_transform,
+      brush,
+      None,
+    );
+    if has_layer {
+      Self::pop_compositing_layer(&mut drawing);
+    }
+    Ok(())
   }
 
-  #[fast]
-  fn create_image_data(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("createImageData"))
+  #[required(1)]
+  #[cppgc]
+  fn create_image_data<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, 'a>,
+    #[varargs] args: Option<&v8::FunctionCallbackArguments<'a>>,
+  ) -> Result<ImageData, Canvas2DError> {
+    let args = args.expect("#[required(1)] ensures args");
+    let arg0 = args.get(0);
+
+    if let Some(imagedata) =
+      deno_core::cppgc::try_unwrap_cppgc_object::<ImageData>(scope, arg0)
+    {
+      let w = imagedata.get_width();
+      let h = imagedata.get_height();
+      let pixels = vec![0u8; w as usize * h as usize * 4];
+      return Ok(ImageData::new_rgba_unorm8(scope, w, h, &pixels)?);
+    }
+
+    if args.length() < 2 {
+      return Err(Canvas2DError::MissingArgument {
+        required: 2,
+        provided: 1,
+      });
+    }
+
+    let sw = arg0.number_value(scope).map(|v| v as i32).unwrap_or(0);
+    let sh = args
+      .get(1)
+      .number_value(scope)
+      .map(|v| v as i32)
+      .unwrap_or(0);
+
+    let w = sw.unsigned_abs();
+    let h = sh.unsigned_abs();
+
+    if w == 0 || h == 0 {
+      return Err(Canvas2DError::ZeroSourceSize);
+    }
+
+    let pixels = vec![0u8; w as usize * h as usize * 4];
+    Ok(ImageData::new_rgba_unorm8(scope, w, h, &pixels)?)
   }
 
   #[cppgc]
@@ -2116,14 +2268,12 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] sy: i32,
     #[webidl] sw: i32,
     #[webidl] sh: i32,
-  ) -> Result<ImageData, JsErrorBox> {
+  ) -> Result<ImageData, Canvas2DError> {
     if sw == 0 || sh == 0 {
-      return Err(JsErrorBox::from_err(Canvas2DError::IndexSize(
-        "The source width or height is zero.".to_string(),
-      )));
+      return Err(Canvas2DError::ZeroSourceSize);
     }
 
-    let full = self.render_to_bytes().map_err(JsErrorBox::from_err)?;
+    let full = self.render_to_bytes()?;
     let (canvas_w, canvas_h) = self.data.dimensions();
 
     let (sx, sw) = if sw < 0 { (sx + sw, -sw) } else { (sx, sw) };
@@ -2148,15 +2298,129 @@ impl OffscreenCanvasRenderingContext2D {
       }
     }
 
-    let img = ImageData::new_rgba_unorm8(scope, out_w, out_h, &sub)
-      .map_err(JsErrorBox::from_err)?;
-
-    Ok(img)
+    Ok(ImageData::new_rgba_unorm8(scope, out_w, out_h, &sub)?)
   }
 
-  #[fast]
-  fn put_image_data(&self) -> Result<(), Canvas2DError> {
-    Err(Canvas2DError::NotSupported("putImageData"))
+  #[required(3)]
+  fn put_image_data(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    imagedata_val: v8::Local<'_, v8::Value>,
+    #[webidl] dx: i32,
+    #[webidl] dy: i32,
+    dirty_x_val: Option<v8::Local<'_, v8::Value>>,
+    dirty_y_val: Option<v8::Local<'_, v8::Value>>,
+    dirty_w_val: Option<v8::Local<'_, v8::Value>>,
+    dirty_h_val: Option<v8::Local<'_, v8::Value>>,
+  ) -> Result<(), Canvas2DError> {
+    let imagedata = deno_core::cppgc::try_unwrap_cppgc_object::<ImageData>(
+      scope,
+      imagedata_val,
+    )
+    .ok_or(Canvas2DError::NotImageData)?;
+
+    let src_w = imagedata.get_width() as i32;
+    let src_h = imagedata.get_height() as i32;
+
+    let has_dirty = dirty_x_val
+      .as_ref()
+      .map(|v| !v.is_undefined())
+      .unwrap_or(false);
+
+    let (mut dirty_x, mut dirty_y, mut dirty_w, mut dirty_h) = if has_dirty {
+      let dx_val = dirty_x_val
+        .and_then(|v| v.number_value(scope))
+        .unwrap_or(f64::NAN);
+      let dy_val = dirty_y_val
+        .and_then(|v| v.number_value(scope))
+        .unwrap_or(f64::NAN);
+      let dw_val = dirty_w_val
+        .and_then(|v| v.number_value(scope))
+        .unwrap_or(f64::NAN);
+      let dh_val = dirty_h_val
+        .and_then(|v| v.number_value(scope))
+        .unwrap_or(f64::NAN);
+      if !dx_val.is_finite()
+        || !dy_val.is_finite()
+        || !dw_val.is_finite()
+        || !dh_val.is_finite()
+      {
+        return Ok(());
+      }
+      (dx_val as i32, dy_val as i32, dw_val as i32, dh_val as i32)
+    } else {
+      (0, 0, src_w, src_h)
+    };
+
+    if dirty_w < 0 {
+      dirty_x += dirty_w;
+      dirty_w = -dirty_w;
+    }
+    if dirty_h < 0 {
+      dirty_y += dirty_h;
+      dirty_h = -dirty_h;
+    }
+
+    if dirty_x < 0 {
+      dirty_w += dirty_x;
+      dirty_x = 0;
+    }
+    if dirty_y < 0 {
+      dirty_h += dirty_y;
+      dirty_y = 0;
+    }
+    if dirty_x + dirty_w > src_w {
+      dirty_w = src_w - dirty_x;
+    }
+    if dirty_y + dirty_h > src_h {
+      dirty_h = src_h - dirty_y;
+    }
+    if dirty_w <= 0 || dirty_h <= 0 {
+      return Ok(());
+    }
+
+    let src_pixels = imagedata.read_pixels_rgba8(scope);
+    let src_stride = imagedata.get_width() as usize;
+
+    let (canvas_w, canvas_h) = self.data.dimensions();
+    let mut pixels = self.render_to_bytes()?;
+
+    for row in 0..dirty_h {
+      let sy = (dirty_y + row) as usize;
+      let canvas_y = dy + dirty_y + row;
+      if canvas_y < 0 || canvas_y >= canvas_h as i32 {
+        continue;
+      }
+      for col in 0..dirty_w {
+        let sx = (dirty_x + col) as usize;
+        let canvas_x = dx + dirty_x + col;
+        if canvas_x < 0 || canvas_x >= canvas_w as i32 {
+          continue;
+        }
+        let src_idx = (sy * src_stride + sx) * 4;
+        let dst_idx =
+          (canvas_y as usize * canvas_w as usize + canvas_x as usize) * 4;
+        pixels[dst_idx..dst_idx + 4]
+          .copy_from_slice(&src_pixels[src_idx..src_idx + 4]);
+      }
+    }
+
+    let img = image_data_from_pixels(pixels, canvas_w, canvas_h);
+    let image_brush = peniko::ImageBrush::new(img);
+    let brush = peniko::Brush::Image(image_brush);
+    let rect = kurbo::Rect::new(0.0, 0.0, canvas_w as f64, canvas_h as f64);
+
+    let mut drawing = self.drawing.borrow_mut();
+    drawing.reset(canvas_w, canvas_h);
+    Self::fill_on(
+      &mut drawing,
+      &rect,
+      peniko::Fill::NonZero,
+      kurbo::Affine::IDENTITY,
+      brush,
+      None,
+    );
+    Ok(())
   }
 
   fn get_line_dash(&self) -> Vec<f64> {
@@ -2628,15 +2892,15 @@ pub fn create_context<'s>(
     let state = state.borrow();
     let renderer = state
       .try_borrow::<SharedRenderer>()
-      .ok_or_else(|| JsErrorBox::from_err(Canvas2DError::NotInitialized))?
+      .ok_or(Canvas2DError::NotInitialized)?
       .clone();
     let font_ctx = state
       .try_borrow::<Arc<Mutex<FontContext>>>()
-      .ok_or_else(|| JsErrorBox::from_err(Canvas2DError::NotInitialized))?
+      .ok_or(Canvas2DError::NotInitialized)?
       .clone();
     let layout_ctx = state
       .try_borrow::<Arc<Mutex<LayoutContext<()>>>>()
-      .ok_or_else(|| JsErrorBox::from_err(Canvas2DError::NotInitialized))?
+      .ok_or(Canvas2DError::NotInitialized)?
       .clone();
     (renderer, font_ctx, layout_ctx)
   };
@@ -2648,7 +2912,7 @@ pub fn create_context<'s>(
     (|| context.into()).into(),
     &(),
   )
-  .map_err(JsErrorBox::from_err)?;
+  .map_err(Canvas2DError::from)?;
 
   let ctx = OffscreenCanvasRenderingContext2D {
     canvas,
@@ -3023,6 +3287,40 @@ impl OffscreenCanvasRenderingContext2D {
       * transform
   }
 
+  fn extract_sub_image(
+    pixels: &[u8],
+    img_w: u32,
+    img_h: u32,
+    sx: f64,
+    sy: f64,
+    sw: f64,
+    sh: f64,
+  ) -> (Vec<u8>, u32, u32) {
+    let (sx, sw) = if sw < 0.0 { (sx + sw, -sw) } else { (sx, sw) };
+    let (sy, sh) = if sh < 0.0 { (sy + sh, -sh) } else { (sy, sh) };
+
+    let x0 = (sx.max(0.0) as u32).min(img_w);
+    let y0 = (sy.max(0.0) as u32).min(img_h);
+    let x1 = ((sx + sw) as u32).min(img_w);
+    let y1 = ((sy + sh) as u32).min(img_h);
+    let out_w = x1.saturating_sub(x0);
+    let out_h = y1.saturating_sub(y0);
+
+    if out_w == 0 || out_h == 0 {
+      return (vec![], 0, 0);
+    }
+
+    let mut sub = vec![0u8; out_w as usize * out_h as usize * 4];
+    for row in 0..out_h {
+      let src_offset = ((y0 + row) as usize * img_w as usize + x0 as usize) * 4;
+      let dst_offset = row as usize * out_w as usize * 4;
+      let len = out_w as usize * 4;
+      sub[dst_offset..dst_offset + len]
+        .copy_from_slice(&pixels[src_offset..src_offset + len]);
+    }
+    (sub, out_w, out_h)
+  }
+
   fn fill_on(
     drawing: &mut DrawingBackend,
     shape: &impl kurbo::Shape,
@@ -3147,18 +3445,12 @@ impl OffscreenCanvasRenderingContext2D {
       }
       if b.is_some() {
         // 2-3 args with null/undefined first: isPointInPath(x, y [, fillRule])
-        let y =
-          b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+        let y = b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
         let rule = c
           .map(|v| v.to_rust_string_lossy(scope))
           .unwrap_or_else(|| "nonzero".into());
         validate_fill_rule("parameter 3", &rule)?;
-        return Ok((
-          self.current_path.borrow().clone(),
-          f64::NAN,
-          y,
-          rule,
-        ));
+        return Ok((self.current_path.borrow().clone(), f64::NAN, y, rule));
       }
       return Ok((
         self.current_path.borrow().clone(),
@@ -3206,15 +3498,10 @@ impl OffscreenCanvasRenderingContext2D {
       }
       if b.is_some() {
         // 2 args with null/undefined first: isPointInStroke(x, y)
-        let y =
-          b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+        let y = b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
         return Ok((self.current_path.borrow().clone(), f64::NAN, y));
       }
-      return Ok((
-        self.current_path.borrow().clone(),
-        f64::NAN,
-        f64::NAN,
-      ));
+      return Ok((self.current_path.borrow().clone(), f64::NAN, f64::NAN));
     };
     if let Some(p) =
       deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, a)
