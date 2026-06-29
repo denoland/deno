@@ -10395,7 +10395,7 @@ dependencies = [
  "parking_lot",
  "percent-encoding",
  "pretty_assertions",
- "prost 0.13.3",
+ "prost 0.14.4",
  "reqwest",
  "rustls",
  "rustls-pemfile",
