@@ -628,12 +628,27 @@ declare var name: string;
 // makes those probes resolve to Deno's own globals. Each marker itself uses the
 // document-deferral form so it still merges cleanly when real lib.dom is loaded.
 // (Worker context already declares `onmessage`; these are for the main scope.)
+
+/** Marker used so that `@types/node` defers its web-platform globals to Deno's.
+ * The main scope has no message event handler, so this is `null`.
+ *
+ * @category Platform */
 declare var onmessage: typeof globalThis extends
   { document: any; onmessage: infer T } ? T
   : ((this: void, ev: MessageEvent) => unknown) | null;
+
+/** Marker used so that `@types/node` defers its `Storage` global to Deno's.
+ * The main scope has no abort event handler, so this is `null`.
+ *
+ * @category Platform */
 declare var onabort: typeof globalThis extends
   { document: any; onabort: infer T } ? T
   : ((this: void, ev: Event) => unknown) | null;
+
+/** Marker used so that `@types/node` defers its `CompressionStream` and
+ * `DecompressionStream` globals to Deno's.
+ *
+ * @category Platform */
 declare var ReportingObserver: typeof globalThis extends
   { document: any; ReportingObserver: infer T } ? T
   : { readonly prototype: unknown; new (...args: any[]): unknown };

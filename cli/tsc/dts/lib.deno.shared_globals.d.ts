@@ -991,6 +991,81 @@ declare var PerformanceMeasure: typeof globalThis extends
   new (): never;
 };
 
+/** The callback invoked when observed performance entries are recorded.
+ *
+ * @category Performance
+ */
+interface PerformanceObserverCallback {
+  (list: PerformanceObserverEntryList, observer: PerformanceObserver): void;
+}
+
+/** A list of {@linkcode PerformanceEntry} objects passed to a
+ * {@linkcode PerformanceObserver} callback.
+ *
+ * @category Performance
+ */
+interface PerformanceObserverEntryList {
+  getEntries(): PerformanceEntry[];
+  getEntriesByName(name: string, type?: string): PerformanceEntry[];
+  getEntriesByType(type: string): PerformanceEntry[];
+}
+
+/** A list of {@linkcode PerformanceEntry} objects passed to a
+ * {@linkcode PerformanceObserver} callback.
+ *
+ * @category Performance
+ */
+declare var PerformanceObserverEntryList: typeof globalThis extends
+  { document: any; PerformanceObserverEntryList: infer T } ? T : {
+  readonly prototype: PerformanceObserverEntryList;
+  new (): never;
+};
+
+/** Observes performance measurement events and is notified of new
+ * {@linkcode PerformanceEntry} objects as they are recorded.
+ *
+ * @category Performance
+ */
+interface PerformanceObserver {
+  disconnect(): void;
+  observe(
+    options?: { entryTypes?: string[]; type?: string; buffered?: boolean },
+  ): void;
+  takeRecords(): PerformanceEntry[];
+}
+
+/** Observes performance measurement events and is notified of new
+ * {@linkcode PerformanceEntry} objects as they are recorded.
+ *
+ * @category Performance
+ */
+declare var PerformanceObserver: typeof globalThis extends
+  { document: any; PerformanceObserver: infer T } ? T : {
+  readonly prototype: PerformanceObserver;
+  readonly supportedEntryTypes: readonly string[];
+  new (callback: PerformanceObserverCallback): PerformanceObserver;
+};
+
+/** Detailed network timing data for the fetching of a resource, an entry in
+ * the performance timeline with an `entryType` of `"resource"`.
+ *
+ * @category Performance
+ */
+interface PerformanceResourceTiming extends PerformanceEntry {
+  readonly entryType: "resource";
+}
+
+/** Detailed network timing data for the fetching of a resource, an entry in
+ * the performance timeline with an `entryType` of `"resource"`.
+ *
+ * @category Performance
+ */
+declare var PerformanceResourceTiming: typeof globalThis extends
+  { document: any; PerformanceResourceTiming: infer T } ? T : {
+  readonly prototype: PerformanceResourceTiming;
+  new (): never;
+};
+
 /** @category Events */
 interface CustomEventInit<T = any> extends EventInit {
   detail?: T;
