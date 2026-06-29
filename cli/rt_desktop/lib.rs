@@ -598,6 +598,14 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     laufey::prompt(title, message, default_value)
   }
 
+  fn read_clipboard_text(&self) -> Option<String> {
+    laufey::read_clipboard_text()
+  }
+
+  fn write_clipboard_text(&self, text: &str) {
+    laufey::write_clipboard_text(text);
+  }
+
   fn set_dock_badge(&self, text: &str) {
     laufey::set_dock_badge(if text.is_empty() { None } else { Some(text) });
   }

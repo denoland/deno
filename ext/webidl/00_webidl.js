@@ -1529,6 +1529,18 @@ function setlikeObjectWrap(objPrototype, readonly) {
 }
 
 internals.webidlBrand = brand;
+// Expose the subset of webidl needed by post-bootstrap classic scripts that
+// can't `import` this module (e.g. the `deno desktop` init script, which
+// defines web interfaces like `navigator.clipboard`).
+internals.webidl = {
+  assertBranded,
+  brand,
+  configureInterface,
+  converters,
+  createBranded,
+  illegalConstructor,
+  requiredArguments,
+};
 
 return {
   assertBranded,
