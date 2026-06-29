@@ -6024,6 +6024,7 @@ fn no_check_arg() -> Arg {
     .num_args(0..=1)
     .require_equals(true)
     .value_name("NO_CHECK_TYPE")
+    .value_parser(["remote"])
     .long("no-check")
     .help("Skip type-checking. If the value of \"remote\" is supplied, diagnostic errors from remote modules will be ignored")
     .help_heading(TYPE_CHECKING_HEADING)
@@ -6053,6 +6054,7 @@ fn check_arg(checks_local_by_default: bool) -> Arg {
     .num_args(0..=1)
     .require_equals(true)
     .value_name("CHECK_TYPE")
+    .value_parser(["all"])
     .help_heading(TYPE_CHECKING_HEADING);
 
   if checks_local_by_default {
@@ -12321,6 +12323,12 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    // An invalid --no-check value is rejected instead of being silently ignored.
+    let r = flags_from_vec(svec!["deno", "run", "--no-check=foo", "script.ts"]);
+    let err = r.unwrap_err();
+    assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue);
+    assert!(err.to_string().contains("[possible values: remote]"));
   }
 
   #[test]
@@ -14931,22 +14939,12 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "--check=foo", "script.ts",]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags {
-          script: "script.ts".to_string(),
-          watch: None,
-          bare: true,
-          coverage_dir: None,
-          print_task_list: false,
-        }),
-        type_check_mode: TypeCheckMode::None,
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
+    // An invalid --check value is rejected instead of being silently ignored
+    // (which used to disable type-checking without any error).
+    let r = flags_from_vec(svec!["deno", "run", "--check=foo", "script.ts",]);
+    let err = r.unwrap_err();
+    assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue);
+    assert!(err.to_string().contains("[possible values: all]"));
 
     let r = flags_from_vec(svec![
       "deno",

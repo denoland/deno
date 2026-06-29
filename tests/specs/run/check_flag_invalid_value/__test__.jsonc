@@ -1,0 +1,29 @@
+{
+  "tests": {
+    "check_invalid_value_errors": {
+      "args": "run --check=local main.ts",
+      "output": "check_invalid.out",
+      "exitCode": 1
+    },
+    "check_all_is_accepted": {
+      "args": "run --check=all main.ts",
+      "output": "[WILDCARD]hello\n",
+      "exitCode": 0
+    },
+    "check_bare_is_accepted": {
+      "args": "run --check main.ts",
+      "output": "[WILDCARD]hello\n",
+      "exitCode": 0
+    },
+    "no_check_invalid_value_errors": {
+      "args": "run --no-check=local main.ts",
+      "output": "no_check_invalid.out",
+      "exitCode": 1
+    },
+    "no_check_remote_is_accepted": {
+      "args": "run --no-check=remote main.ts",
+      "output": "[WILDCARD]hello\n",
+      "exitCode": 0
+    }
+  }
+}
