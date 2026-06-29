@@ -4,9 +4,14 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use deno_semver::CowVec;
+use deno_semver::RangeBound;
 use deno_semver::RangeSetOrTag;
+use deno_semver::SmallStackString;
 use deno_semver::StackString;
 use deno_semver::Version;
+use deno_semver::VersionRange;
+use deno_semver::VersionRangeSet;
 use deno_semver::VersionReq;
 use deno_semver::WILDCARD_VERSION_REQ;
 use deno_semver::package::PackageName;
@@ -467,6 +472,9 @@ impl<'a> NpmPackageVersionResolver<'a> {
     error_version_req: &VersionReq,
   ) -> Result<&'a NpmPackageVersionInfo, NpmPackageVersionResolutionError> {
     let Some(tagged_version) = self.info.dist_tags.get(tag) else {
+      // Unreachable in practice: this fn is only called after
+      // `tag_to_version_info` returned `DistTagVersionTooNew`, which already
+      // found the tag in `dist_tags`. Kept as defensive code.
       return Err(NpmPackageVersionResolutionError::DistTagNotFound {
         package_name: self.info.name.clone(),
         dist_tag: tag.to_string(),
@@ -474,8 +482,18 @@ impl<'a> NpmPackageVersionResolver<'a> {
     };
     // Match npm-pick-manifest/pnpm: when a dist-tag points to a version newer
     // than the allowed publish date, retry as a semver `<= tagged_version`.
-    let fallback_req =
-      VersionReq::parse_from_npm(&format!("<={tagged_version}")).unwrap();
+    // Build the range directly from the parsed `Version` rather than
+    // formatting and reparsing, which avoids an `unwrap` and any round-trip
+    // edge cases (e.g. build metadata like `1.0.0+build`).
+    let fallback_req = VersionReq::from_raw_text_and_inner(
+      SmallStackString::from_string(format!("<={tagged_version}")),
+      RangeSetOrTag::RangeSet(VersionRangeSet(CowVec::from(vec![
+        VersionRange {
+          start: RangeBound::Unbounded,
+          end: RangeBound::inclusive(tagged_version.clone()),
+        },
+      ]))),
+    );
     self.resolve_best_matching_version_info(&fallback_req, error_version_req)
   }
 
