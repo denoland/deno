@@ -10,7 +10,7 @@
       "output": ""
     },
     {
-      "args": "run out.js",
+      "args": "run --unstable-raw-imports out.js",
       "output": "expected_output.out"
     }
   ]
