@@ -1259,46 +1259,45 @@ function resOnFinish(req, res, socket, state, server) {
       socket.end();
     }
   } else if (state.outgoing.length === 0) {
-    // If the server is closing, destroy the socket instead of
-    // setting a keep-alive timeout (prevents timer leaks).
-    if (!server.listening) {
-      socket.destroy();
-    } else {
-      const keepAliveTimeout = NumberIsFinite(server.keepAliveTimeout) &&
-          server.keepAliveTimeout >= 0
-        ? server.keepAliveTimeout
-        : 0;
+    // Keep the connection alive so it can serve subsequent requests. This
+    // matches Node: server.close() stops accepting new connections but lets
+    // existing keep-alive connections drain, including requests that arrive
+    // after close() while the connection is still open. The keep-alive
+    // timeout (or a Connection: close request) eventually ends the socket.
+    const keepAliveTimeout = NumberIsFinite(server.keepAliveTimeout) &&
+        server.keepAliveTimeout >= 0
+      ? server.keepAliveTimeout
+      : 0;
 
-      if (keepAliveTimeout) {
-        const timeoutMsecs = keepAliveTimeout + 1000;
-        const suspendedTimeout = state.keepAliveTimeout;
-        if (
-          state.keepAliveTimeoutSuspended &&
-          socket.setTimeout === net.Socket.prototype.setTimeout &&
-          socket[kTimeout] === null &&
-          state.keepAliveTimeoutMsecs === timeoutMsecs
-        ) {
-          socket[kTimeout] = suspendedTimeout;
-          socket.timeout = timeoutMsecs;
-          suspendedTimeout.refresh();
-        } else {
-          if (state.keepAliveTimeoutSuspended) {
-            suspendedTimeout[kDestroy]();
-          }
-          socket.setTimeout(timeoutMsecs);
-          state.keepAliveTimeout = socket[kTimeout];
-          state.keepAliveTimeoutMsecs = timeoutMsecs;
-        }
-        state.keepAliveTimeoutSet = true;
-        state.keepAliveTimeoutSuspended = false;
-      } else if (
-        state.keepAliveTimeoutSuspended
+    if (keepAliveTimeout) {
+      const timeoutMsecs = keepAliveTimeout + 1000;
+      const suspendedTimeout = state.keepAliveTimeout;
+      if (
+        state.keepAliveTimeoutSuspended &&
+        socket.setTimeout === net.Socket.prototype.setTimeout &&
+        socket[kTimeout] === null &&
+        state.keepAliveTimeoutMsecs === timeoutMsecs
       ) {
-        state.keepAliveTimeout[kDestroy]();
-        state.keepAliveTimeout = null;
-        state.keepAliveTimeoutMsecs = 0;
-        state.keepAliveTimeoutSuspended = false;
+        socket[kTimeout] = suspendedTimeout;
+        socket.timeout = timeoutMsecs;
+        suspendedTimeout.refresh();
+      } else {
+        if (state.keepAliveTimeoutSuspended) {
+          suspendedTimeout[kDestroy]();
+        }
+        socket.setTimeout(timeoutMsecs);
+        state.keepAliveTimeout = socket[kTimeout];
+        state.keepAliveTimeoutMsecs = timeoutMsecs;
       }
+      state.keepAliveTimeoutSet = true;
+      state.keepAliveTimeoutSuspended = false;
+    } else if (
+      state.keepAliveTimeoutSuspended
+    ) {
+      state.keepAliveTimeout[kDestroy]();
+      state.keepAliveTimeout = null;
+      state.keepAliveTimeoutMsecs = 0;
+      state.keepAliveTimeoutSuspended = false;
     }
   } else {
     const m = ArrayPrototypeShift(state.outgoing);
