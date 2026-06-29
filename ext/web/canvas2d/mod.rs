@@ -8,15 +8,6 @@ use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use cosmic_text::Attrs;
-use cosmic_text::Buffer;
-use cosmic_text::Family;
-use cosmic_text::FeatureTag;
-use cosmic_text::FontFeatures;
-use cosmic_text::Metrics;
-use cosmic_text::Shaping;
-use cosmic_text::SwashCache;
-use cosmic_text::Weight;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::WebIDL;
@@ -32,6 +23,16 @@ use deno_image::image::DynamicImage;
 use deno_image::image::GenericImageView;
 use deno_image::image::Rgba;
 use deno_image::image::RgbaImage;
+use parley::FontContext;
+use parley::Layout;
+use parley::LayoutContext;
+use parley::PositionedLayoutItem;
+use parley::StyleProperty;
+use parley::style::FontFamily;
+use parley::style::FontFeature;
+use parley::style::FontFeatures;
+use parley::style::FontWeight;
+use parley::style::GenericFamily;
 use vello::kurbo;
 use vello::kurbo::Shape;
 use vello::peniko;
@@ -480,9 +481,8 @@ pub struct OffscreenCanvasRenderingContext2D {
 
   renderer: SharedRenderer,
 
-  font_system: Arc<Mutex<cosmic_text::FontSystem>>,
-  #[allow(dead_code, reason = "reserved for text rasterization")]
-  swash_cache: Arc<Mutex<SwashCache>>,
+  font_ctx: Arc<Mutex<FontContext>>,
+  layout_ctx: Arc<Mutex<LayoutContext<()>>>,
 
   state: RefCell<DrawingState>,
   state_stack: RefCell<Vec<DrawingState>>,
@@ -1080,17 +1080,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn font_stretch(&self) -> &'static str {
-    match self.state.borrow().font_state.stretch {
-      cosmic_text::Stretch::UltraCondensed => "ultra-condensed",
-      cosmic_text::Stretch::ExtraCondensed => "extra-condensed",
-      cosmic_text::Stretch::Condensed => "condensed",
-      cosmic_text::Stretch::SemiCondensed => "semi-condensed",
-      cosmic_text::Stretch::Normal => "normal",
-      cosmic_text::Stretch::SemiExpanded => "semi-expanded",
-      cosmic_text::Stretch::Expanded => "expanded",
-      cosmic_text::Stretch::ExtraExpanded => "extra-expanded",
-      cosmic_text::Stretch::UltraExpanded => "ultra-expanded",
-    }
+    crate::css::font::stretch_to_css_str(self.state.borrow().font_state.stretch)
   }
 
   #[setter]
@@ -1291,7 +1281,8 @@ impl OffscreenCanvasRenderingContext2D {
       text,
       &self.state.borrow().font_state,
       self.state.borrow().text_align,
-      &self.font_system,
+      &self.font_ctx,
+      &self.layout_ctx,
     )
   }
 
@@ -2211,15 +2202,9 @@ impl OffscreenCanvasRenderingContext2D {
       return;
     }
     let fstate = self.state.borrow().font_state.clone();
-    let mut fs = self.font_system.lock().unwrap();
-
-    let metrics = Metrics::new(fstate.size, fstate.size * 1.2);
-    let mut buf = Buffer::new(&mut fs, metrics);
-    buf.set_size(None, None);
-
-    let attrs = build_text_attrs(&fstate);
-    buf.set_text(text, &attrs, Shaping::Advanced, None);
-    buf.shape_until_scroll(&mut fs, false);
+    let mut fc = self.font_ctx.lock().unwrap();
+    let mut lc = self.layout_ctx.lock().unwrap();
+    let layout = build_text_layout(&mut fc, &mut lc, text, &fstate);
 
     let state = self.state.borrow();
     let style = if stroke {
@@ -2237,31 +2222,20 @@ impl OffscreenCanvasRenderingContext2D {
     let transform = state.transform;
     drop(state);
 
-    let baseline_y = compute_baseline_y(y, &buf, text_baseline);
+    let baseline_y = compute_baseline_y(y, &layout, text_baseline);
 
-    // wordSpacing is not supported by cosmic-text, so the advance of each
-    // word separator is widened manually by shifting the following glyphs.
-    let word_spacing_px =
-      fstate.word_spacing.resolve_to_pixels(fstate.size as f64) as f32;
-    let separator_indices = word_separator_indices(text, word_spacing_px);
-    let word_offset = |glyph_start: usize| -> f32 {
-      word_spacing_px
-        * separator_indices
-          .iter()
-          .take_while(|&&i| i < glyph_start)
-          .count() as f32
-    };
+    let layout_baseline = layout
+      .lines()
+      .next()
+      .map(|line| line.metrics().baseline)
+      .unwrap_or(0.0);
 
     // Compute total line width for text-align adjustment.
-    let line_width: f32 = buf
-      .layout_runs()
+    let line_width: f32 = layout
+      .lines()
       .next()
-      .and_then(|run| {
-        let last = run.glyphs.last()?;
-        Some(last.x + last.w)
-      })
-      .unwrap_or(0.0)
-      + word_spacing_px * separator_indices.len() as f32;
+      .map(|line| line.metrics().advance - line.metrics().trailing_whitespace)
+      .unwrap_or(0.0);
 
     // Condense the text horizontally when it is wider than maxWidth.
     // TODO(petamoriken): only the glyph advances are compressed for now,
@@ -2297,41 +2271,18 @@ impl OffscreenCanvasRenderingContext2D {
     );
     match &mut *drawing {
       DrawingBackend::Vello(scene) => {
-        for run in buf.layout_runs() {
-          if run.glyphs.is_empty() {
-            continue;
-          }
-
-          // Group consecutive glyphs by font_id and render each group with the
-          // correct font. A single LayoutRun may span multiple font faces when
-          // fallback fonts are used for individual characters.
-          let mut start = 0;
-          while start < run.glyphs.len() {
-            let font_id = run.glyphs[start].font_id;
-            let font_size = run.glyphs[start].font_size;
-
-            // Find the end of this same-font segment.
-            let end = run.glyphs[start..]
-              .iter()
-              .position(|g| g.font_id != font_id)
-              .map_or(run.glyphs.len(), |pos| start + pos);
-
-            let Some(font) =
-              fs.db().with_face_data(font_id, |data, face_index| {
-                let bytes: Arc<dyn AsRef<[u8]> + Send + Sync> =
-                  Arc::new(data.to_vec());
-                let blob = peniko::Blob::new(bytes);
-                peniko::FontData::new(blob, face_index)
-              })
-            else {
-              start = end;
+        for line in layout.lines() {
+          for item in line.items() {
+            let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
               continue;
             };
+            let font = peniko::FontData::clone(glyph_run.run().font());
+            let font_size = glyph_run.run().font_size();
 
-            let glyphs = run.glyphs[start..end].iter().map(|g| vello::Glyph {
-              id: g.glyph_id as u32,
-              x: draw_x + (g.x + g.x_offset + word_offset(g.start)) * x_scale,
-              y: baseline_y as f32 + g.y_offset,
+            let glyphs = glyph_run.positioned_glyphs().map(|g| vello::Glyph {
+              id: g.id,
+              x: draw_x + g.x * x_scale,
+              y: baseline_y as f32 + g.y - layout_baseline,
             });
 
             let mut glyph_draw = scene
@@ -2343,54 +2294,29 @@ impl OffscreenCanvasRenderingContext2D {
               glyph_draw = glyph_draw.brush_transform(Some(bt));
             }
             glyph_draw.draw(peniko::Fill::NonZero, glyphs);
-
-            start = end;
           }
         }
       }
       DrawingBackend::VelloCpu(ctx, resources) => {
-        for run in buf.layout_runs() {
-          if run.glyphs.is_empty() {
-            continue;
-          }
+        for line in layout.lines() {
+          for item in line.items() {
+            let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+              continue;
+            };
+            let font = peniko::FontData::clone(glyph_run.run().font());
+            let font_size = glyph_run.run().font_size();
 
-          // Group consecutive glyphs by font_id and render each group with the
-          // correct font. A single LayoutRun may span multiple font faces when
-          // fallback fonts are used for individual characters.
-          let mut start = 0;
-          while start < run.glyphs.len() {
-            let font_id = run.glyphs[start].font_id;
-            let font_size = run.glyphs[start].font_size;
-
-            // Find the end of this same-font segment.
-            let end = run.glyphs[start..]
-              .iter()
-              .position(|g| g.font_id != font_id)
-              .map_or(run.glyphs.len(), |pos| start + pos);
-
-            if let Some(font) =
-              fs.db().with_face_data(font_id, |data, face_index| {
-                let bytes: Arc<dyn AsRef<[u8]> + Send + Sync> =
-                  Arc::new(data.to_vec());
-                let blob = peniko::Blob::new(bytes);
-                peniko::FontData::new(blob, face_index)
-              })
-            {
-              Self::apply_cpu_paint(ctx, brush.clone(), brush_transform);
-              ctx
-                .glyph_run(resources, &font)
-                .font_size(font_size)
-                .fill_glyphs(run.glyphs[start..end].iter().map(|g| {
-                  vello_cpu::Glyph {
-                    id: g.glyph_id as u32,
-                    x: draw_x
-                      + (g.x + g.x_offset + word_offset(g.start)) * x_scale,
-                    y: baseline_y as f32 + g.y_offset,
-                  }
-                }));
-            }
-
-            start = end;
+            Self::apply_cpu_paint(ctx, brush.clone(), brush_transform);
+            ctx
+              .glyph_run(resources, &font)
+              .font_size(font_size)
+              .fill_glyphs(glyph_run.positioned_glyphs().map(|g| {
+                vello_cpu::Glyph {
+                  id: g.id,
+                  x: draw_x + g.x * x_scale,
+                  y: baseline_y as f32 + g.y - layout_baseline,
+                }
+              }));
           }
         }
       }
@@ -2545,76 +2471,74 @@ impl OffscreenCanvasRenderingContext2D {
   }
 }
 
-/// Parses a CSS `<length>` value that uses only `px` units, returning pixels.
-/// Returns `None` for invalid or unsupported values.
-/// Builds cosmic-text shaping attributes from the current font state.
-fn build_text_attrs(fstate: &FontState) -> Attrs<'_> {
-  let family = match fstate.families.first().map(|s| s.as_str()) {
-    Some("serif") => Family::Serif,
-    Some("sans-serif") | None => Family::SansSerif,
-    Some("monospace") => Family::Monospace,
-    Some("cursive") => Family::Cursive,
-    Some("fantasy") => Family::Fantasy,
-    Some(name) => Family::Name(name),
-  };
-  let mut attrs = Attrs::new()
-    .family(family)
-    .weight(Weight(fstate.weight))
-    .style(fstate.style)
-    .stretch(fstate.stretch);
+fn build_text_layout(
+  font_ctx: &mut FontContext,
+  layout_ctx: &mut LayoutContext<()>,
+  text: &str,
+  fstate: &FontState,
+) -> Layout<()> {
+  use std::borrow::Cow;
 
-  // cosmic-text letter spacing is specified in em units.
+  use parley::style::FontFamilyName;
+
+  let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, true);
+
+  let family: FontFamily<'_> = match fstate.families.first().map(|s| s.as_str())
+  {
+    Some("serif") => GenericFamily::Serif.into(),
+    Some("sans-serif") | None => GenericFamily::SansSerif.into(),
+    Some("monospace") => GenericFamily::Monospace.into(),
+    Some("cursive") => GenericFamily::Cursive.into(),
+    Some("fantasy") => GenericFamily::Fantasy.into(),
+    Some(name) => {
+      FontFamily::Single(FontFamilyName::Named(Cow::Borrowed(name)))
+    }
+  };
+  builder.push_default(StyleProperty::FontFamily(family));
+  builder.push_default(StyleProperty::FontSize(fstate.size));
+  builder.push_default(StyleProperty::FontWeight(FontWeight::new(
+    fstate.weight as f32,
+  )));
+  builder.push_default(StyleProperty::FontStyle(fstate.style.to_parley()));
+  builder.push_default(StyleProperty::FontWidth(fstate.stretch.to_parley()));
+
   let letter_spacing_px =
     fstate.letter_spacing.resolve_to_pixels(fstate.size as f64) as f32;
-  if letter_spacing_px != 0.0 && fstate.size > 0.0 {
-    attrs = attrs.letter_spacing(letter_spacing_px / fstate.size);
+  if letter_spacing_px != 0.0 {
+    builder.push_default(StyleProperty::LetterSpacing(letter_spacing_px));
+  }
+
+  let word_spacing_px =
+    fstate.word_spacing.resolve_to_pixels(fstate.size as f64) as f32;
+  if word_spacing_px != 0.0 {
+    builder.push_default(StyleProperty::WordSpacing(word_spacing_px));
   }
 
   if fstate.font_kerning == FontKerning::None {
-    let mut features = FontFeatures::new();
-    features.disable(FeatureTag::KERNING);
-    attrs = attrs.font_features(features);
+    let kern_off = FontFeature::new(parley::setting::Tag::new(b"kern"), 0);
+    builder.push_default(StyleProperty::FontFeatures(FontFeatures::List(
+      Cow::Owned(vec![kern_off]),
+    )));
   }
 
-  attrs
-}
-
-/// Returns the byte indices of word separators in `text`, used to apply
-/// wordSpacing manually. Returns an empty list when spacing is zero.
-/// See <https://html.spec.whatwg.org/multipage/canvas.html#text-preparation-algorithm>
-fn word_separator_indices(text: &str, word_spacing_px: f32) -> Vec<usize> {
-  if word_spacing_px == 0.0 {
-    return Vec::new();
-  }
-  text
-    .char_indices()
-    .filter(|(_, c)| {
-      matches!(
-        c,
-        '\u{0020}'
-          | '\u{00A0}'
-          | '\u{1361}'
-          | '\u{10100}'
-          | '\u{10101}'
-          | '\u{1039F}'
-          | '\u{1091F}'
-      )
-    })
-    .map(|(i, _)| i)
-    .collect()
+  let mut layout = builder.build(text);
+  layout.break_all_lines(None);
+  layout.align(
+    parley::Alignment::Start,
+    parley::AlignmentOptions::default(),
+  );
+  layout
 }
 
 /// Adjusts the canvas-space y for textBaseline alignment.
 fn compute_baseline_y(
   fill_y: f64,
-  buf: &Buffer,
+  layout: &Layout<()>,
   baseline: TextBaseline,
 ) -> f64 {
-  let first_run = buf.layout_runs().next();
-  let (ascent, descent) = if let Some(run) = first_run {
-    let asc = (run.line_y - run.line_top) as f64;
-    let desc = (run.line_top + run.line_height - run.line_y) as f64;
-    (asc, desc)
+  let (ascent, descent) = if let Some(line) = layout.lines().next() {
+    let m = line.metrics();
+    (m.ascent as f64, m.descent as f64)
   } else {
     (0.0, 0.0)
   };
@@ -2633,33 +2557,23 @@ fn compute_text_metrics(
   text: &str,
   fstate: &FontState,
   text_align: TextAlign,
-  font_system: &Arc<Mutex<cosmic_text::FontSystem>>,
+  font_ctx: &Arc<Mutex<FontContext>>,
+  layout_ctx: &Arc<Mutex<LayoutContext<()>>>,
 ) -> TextMetrics {
-  let mut fs = font_system.lock().unwrap();
-  let metrics = Metrics::new(fstate.size, fstate.size * 1.2);
-  let mut buf = Buffer::new(&mut fs, metrics);
-  buf.set_size(None, None);
-
-  let attrs = build_text_attrs(fstate);
-  buf.set_text(text, &attrs, Shaping::Advanced, None);
-  buf.shape_until_scroll(&mut fs, false);
-
-  let word_spacing_px =
-    fstate.word_spacing.resolve_to_pixels(fstate.size as f64) as f32;
-  let separator_count = word_separator_indices(text, word_spacing_px).len();
+  let mut fc = font_ctx.lock().unwrap();
+  let mut lc = layout_ctx.lock().unwrap();
+  let layout = build_text_layout(&mut fc, &mut lc, text, fstate);
 
   let mut width = 0.0f64;
   let mut font_bb_ascent = 0.0f64;
   let mut font_bb_descent = 0.0f64;
 
-  for run in buf.layout_runs() {
-    width = width.max(run.line_w as f64);
-    let ascent = (run.line_y - run.line_top) as f64;
-    let descent = (run.line_top + run.line_height - run.line_y) as f64;
-    font_bb_ascent = font_bb_ascent.max(ascent);
-    font_bb_descent = font_bb_descent.max(descent);
+  for line in layout.lines() {
+    let m = line.metrics();
+    width = width.max((m.advance - m.trailing_whitespace) as f64);
+    font_bb_ascent = font_bb_ascent.max(m.ascent as f64);
+    font_bb_descent = font_bb_descent.max(m.descent as f64);
   }
-  width += (word_spacing_px as f64) * separator_count as f64;
 
   let em_ascent = fstate.size as f64 * 0.8;
   let em_descent = fstate.size as f64 * 0.2;
@@ -2710,21 +2624,21 @@ pub fn create_context<'s>(
   context: &'static str,
 ) -> Result<v8::Global<v8::Value>, JsErrorBox> {
   let (width, height) = data.dimensions();
-  let (renderer, font_system, swash_cache) = {
+  let (renderer, font_ctx, layout_ctx) = {
     let state = state.borrow();
     let renderer = state
       .try_borrow::<SharedRenderer>()
       .ok_or_else(|| JsErrorBox::from_err(Canvas2DError::NotInitialized))?
       .clone();
-    let font_system = state
-      .try_borrow::<Arc<Mutex<cosmic_text::FontSystem>>>()
+    let font_ctx = state
+      .try_borrow::<Arc<Mutex<FontContext>>>()
       .ok_or_else(|| JsErrorBox::from_err(Canvas2DError::NotInitialized))?
       .clone();
-    let swash_cache = state
-      .try_borrow::<Arc<Mutex<SwashCache>>>()
+    let layout_ctx = state
+      .try_borrow::<Arc<Mutex<LayoutContext<()>>>>()
       .ok_or_else(|| JsErrorBox::from_err(Canvas2DError::NotInitialized))?
       .clone();
-    (renderer, font_system, swash_cache)
+    (renderer, font_ctx, layout_ctx)
   };
 
   let settings = Canvas2DSettings::convert(
@@ -2746,8 +2660,8 @@ pub fn create_context<'s>(
       }
     }),
     renderer,
-    font_system,
-    swash_cache,
+    font_ctx,
+    layout_ctx,
     state: RefCell::new(DrawingState::default()),
     state_stack: RefCell::new(Vec::new()),
     current_path: RefCell::new(kurbo::BezPath::new()),
@@ -3227,6 +3141,25 @@ impl OffscreenCanvasRenderingContext2D {
       };
 
     let Some(a) = a else {
+      if d.is_some() {
+        // 4 args: isPointInPath(path, x, y, fillRule) — null/undefined is not Path2D
+        return Err(Self::type_error_not_path2d(PREFIX, "parameter 1"));
+      }
+      if b.is_some() {
+        // 2-3 args with null/undefined first: isPointInPath(x, y [, fillRule])
+        let y =
+          b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+        let rule = c
+          .map(|v| v.to_rust_string_lossy(scope))
+          .unwrap_or_else(|| "nonzero".into());
+        validate_fill_rule("parameter 3", &rule)?;
+        return Ok((
+          self.current_path.borrow().clone(),
+          f64::NAN,
+          y,
+          rule,
+        ));
+      }
       return Ok((
         self.current_path.borrow().clone(),
         f64::NAN,
@@ -3267,7 +3200,21 @@ impl OffscreenCanvasRenderingContext2D {
   ) -> Result<(kurbo::BezPath, f64, f64), Canvas2DError> {
     const PREFIX: &str = "Failed to execute 'isPointInStroke' on 'OffscreenCanvasRenderingContext2D'";
     let Some(a) = a else {
-      return Ok((self.current_path.borrow().clone(), f64::NAN, f64::NAN));
+      if c.is_some() {
+        // 3 args: isPointInStroke(path, x, y) — null/undefined is not Path2D
+        return Err(Self::type_error_not_path2d(PREFIX, "parameter 1"));
+      }
+      if b.is_some() {
+        // 2 args with null/undefined first: isPointInStroke(x, y)
+        let y =
+          b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+        return Ok((self.current_path.borrow().clone(), f64::NAN, y));
+      }
+      return Ok((
+        self.current_path.borrow().clone(),
+        f64::NAN,
+        f64::NAN,
+      ));
     };
     if let Some(p) =
       deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, a)

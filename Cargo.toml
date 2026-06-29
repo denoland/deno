@@ -452,8 +452,9 @@ napi_sys = { version = "0.1.0", path = "./libs/napi_sys" }
 
 # canvas2d, geometry
 color = "0.3.3"
-cosmic-text = "0.19.0"
 cssparser = "0.36.0"
+fontdb = "0.23.0"
+parley = "0.11.0"
 ttf-parser = "0.25.1"
 vello = { version = "0.9.0", default-features = false, features = ["wgpu"] }
 vello_cpu = "0.0.9"

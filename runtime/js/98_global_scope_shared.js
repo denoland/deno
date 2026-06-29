@@ -571,18 +571,6 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.canvas2d] = {
     (c) => c.OffscreenCanvasRenderingContext2D,
     loadCanvas2d,
   ),
-  FontFace: core.propNonEnumerableLazyLoaded(
-    (c) => c.FontFace,
-    loadCanvas2d,
-  ),
-  FontFaceSet: core.propNonEnumerableLazyLoaded(
-    (c) => c.FontFaceSet,
-    loadCanvas2d,
-  ),
-  FontFaceSetLoadEvent: core.propNonEnumerableLazyLoaded(
-    (c) => c.FontFaceSetLoadEvent,
-    loadCanvas2d,
-  ),
   TextMetrics: core.propNonEnumerableLazyLoaded(
     (c) => c.TextMetrics,
     loadCanvas2d,
@@ -597,6 +585,14 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.canvas2d] = {
   ),
   CanvasPattern: core.propNonEnumerableLazyLoaded(
     (c) => c.CanvasPattern,
+    loadCanvas2d,
+  ),
+  FontData: core.propNonEnumerableLazyLoaded(
+    (c) => c.FontData,
+    loadCanvas2d,
+  ),
+  queryLocalFonts: core.propWritableLazyLoaded(
+    (c) => c.queryLocalFonts,
     loadCanvas2d,
   ),
 };

@@ -709,7 +709,7 @@ mod tests {
         root_cert_store_provider: Default::default(),
         fetch_dns_resolver: Default::default(),
         shared_array_buffer_store: Default::default(),
-        shared_system_font_db: Default::default(),
+        shared_local_font_db: Default::default(),
         compiled_wasm_module_store: Default::default(),
         v8_code_cache: Default::default(),
         fs,
