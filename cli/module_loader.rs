@@ -721,6 +721,35 @@ impl<TGraphContainer: ModuleGraphContainer>
       .await
       .map_err(JsErrorBox::from_err)?;
 
+    self.code_source_to_module_source(specifier, code_source)
+  }
+
+  fn try_load_inner_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+    requested_module_type: &RequestedModuleType,
+  ) -> Option<Result<ModuleSource, ModuleLoaderError>> {
+    if specifier.path().ends_with(".node") {
+      return None;
+    }
+
+    let code_source = match self
+      .try_load_code_source_sync(specifier, requested_module_type)
+      .map_err(JsErrorBox::from_err)
+    {
+      Ok(Some(code_source)) => code_source,
+      Ok(None) => return None,
+      Err(err) => return Some(Err(err)),
+    };
+
+    Some(self.code_source_to_module_source(specifier, code_source))
+  }
+
+  fn code_source_to_module_source(
+    &self,
+    specifier: &ModuleSpecifier,
+    code_source: ModuleCodeStringSource,
+  ) -> Result<ModuleSource, ModuleLoaderError> {
     let code = if self.shared.is_inspecting
       || code_source.module_type == ModuleType::Wasm
     {
@@ -773,6 +802,37 @@ impl<TGraphContainer: ModuleGraphContainer>
       &code_source.found_url,
       code_cache,
     ))
+  }
+
+  fn try_load_code_source_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+    requested_module_type: &RequestedModuleType,
+  ) -> Result<Option<ModuleCodeStringSource>, CliModuleLoaderError> {
+    if NpmPackageReqReference::from_specifier(specifier).is_ok()
+      || self.shared.in_npm_pkg_checker.in_npm_package(specifier)
+      || self.hook_registry.load_active.get()
+    {
+      return Ok(None);
+    }
+
+    let graph = self.graph_container.graph();
+    let deno_resolver_requested_module_type =
+      as_deno_resolver_requested_module_type(requested_module_type);
+    let Some(prepared_module) =
+      self.shared.module_loader.try_load_prepared_module_sync(
+        &graph,
+        specifier,
+        &deno_resolver_requested_module_type,
+      )?
+    else {
+      return Ok(None);
+    };
+
+    Ok(Some(self.loaded_module_to_module_code_string_source(
+      prepared_module,
+      requested_module_type,
+    )))
   }
 
   async fn load_code_source(
@@ -1377,6 +1437,13 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         }
         .boxed_local(),
       );
+    }
+
+    if options.is_synchronous
+      && let Some(result) =
+        inner.try_load_inner_sync(&specifier, &options.requested_module_type)
+    {
+      return deno_core::ModuleLoadResponse::Sync(result);
     }
 
     deno_core::ModuleLoadResponse::Async(

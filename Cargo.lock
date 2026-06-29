@@ -519,12 +519,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72e7812fe72262dd26c2b4309c8e8f2c028db1ffbeb21054f009f847f09ca92c"
 dependencies = [
  "deku",
- "liblzma",
  "no_std_io2",
  "solana-nohash-hasher",
  "thiserror 2.0.12",
  "tracing",
  "xxhash-rust",
+ "zstd",
+ "zstd-safe",
 ]
 
 [[package]]
@@ -3816,13 +3817,18 @@ dependencies = [
 name = "denort_desktop"
 version = "2.7.4"
 dependencies = [
+ "bytes",
  "deno_core",
  "deno_error",
  "deno_lib",
+ "deno_net",
  "deno_runtime",
  "deno_snapshots",
  "deno_terminal",
  "denort",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "laufey",
  "libsui",
  "log",
@@ -6395,9 +6401,9 @@ dependencies = [
 
 [[package]]
 name = "laufey"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "872324bd361ae02376a671c546ebed814e008e63d433e5dbed8d0d9f37168564"
+checksum = "6c7f33dc9932b2f679c9d5bd2858c986ec10b6014eaa17c83439db5aa4370ddf"
 dependencies = [
  "bindgen 0.72.1",
  "tokio",
@@ -6595,7 +6601,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6033b77c21d1f56deeae8014eb9fbe7bdf1765185a6c508b5ca82eeaed7f899"
 dependencies = [
  "liblzma-sys",
- "num_cpus",
 ]
 
 [[package]]

@@ -188,7 +188,7 @@ async-stream = "0.3"
 async-trait = "0.1.73"
 aws-lc-rs = { version = "1.16.3" }
 aws-lc-sys = { version = "0.40.0", features = ["prebuilt-nasm"] }
-backhand = { version = "0.25.1", default-features = false, features = ["xz"] }
+backhand = { version = "0.25.1", default-features = false, features = ["zstd"] }
 base32 = "=0.5.1"
 base64 = "0.22.1"
 bencher = "0.1"
@@ -250,7 +250,7 @@ jsonc-parser = { version = "0.32.1", features = ["serde"] }
 lazy-regex = "3"
 libc = "0.2.168"
 libdeflater = "1.25.2"
-liblzma = "0.4.6"
+liblzma = { version = "0.4.6", features = ["static"] }
 libz-sys = { version = "1.1.20", default-features = false }
 log = { version = "0.4.28", features = ["kv"] }
 lsp-types = { package = "ls-types", version = "=0.0.3" }
