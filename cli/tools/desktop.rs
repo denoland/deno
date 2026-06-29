@@ -527,13 +527,6 @@ async fn compile_desktop(
     )
     .await?;
 
-    // Register any deep-link URL schemes with the OS-specific app metadata
-    // (macOS Info.plist, Linux .desktop, Windows registry script) before
-    // the bundle gets compressed or wrapped into an installer.
-    if !desktop_flags.deep_links.is_empty() {
-      register_deep_links(&bundle_path, &desktop_flags)?;
-    }
-
     // Optionally make the bundle self-extracting: the heavy payload is
     // compressed inside the shipped app and unpacked on first launch. This
     // shrinks the distributed artifact (the installed footprint is restored
@@ -643,8 +636,9 @@ fn make_self_extracting(
 
 /// Validate a deep-link URL scheme. Follows the RFC 3986 `scheme` grammar:
 /// `ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`. We additionally reject the
-/// `http`/`https`/`file` schemes since registering those as app handlers is
-/// almost never intended and would hijack normal browsing.
+/// common reserved schemes (`http`, `https`, `file`, `ftp`, `ws`, `wss`) since
+/// registering those as app handlers is almost never intended and would hijack
+/// normal browsing.
 fn validate_url_scheme(scheme: &str) -> Result<(), AnyError> {
   let reserved = ["http", "https", "file", "ftp", "ws", "wss"];
   let bail = |reason: &str| {
@@ -1574,6 +1568,9 @@ async fn package_windows_app_dir(
     }
   }
 
+  // Drop the deep-link registration script next to the launcher.
+  register_deep_links(&app_dir, desktop_flags)?;
+
   // Remove the standalone dylib (it's now inside the app dir).
   let _ = std::fs::remove_file(dylib_path);
 
@@ -1737,6 +1734,9 @@ async fn package_linux_app_dir(
       desktop_entry,
     )?;
   }
+
+  // Merge any deep-link schemes into the `.desktop` entry written above.
+  register_deep_links(&app_dir, desktop_flags)?;
 
   // Remove the standalone dylib (it's now inside the app dir).
   let _ = std::fs::remove_file(dylib_path);
@@ -3039,6 +3039,12 @@ async fn package_macos_app_bundle(
   //     persistent identity rather than re-prompting on every rebuild.
   // We skip on non-macOS hosts (cross-build) since `codesign(1)` only
   // exists on macOS.
+  //
+  // Register any deep-link URL schemes before signing: codesign seals the
+  // bundle contents, so mutating `Info.plist` afterwards would invalidate
+  // the signature and the app would be rejected on launch.
+  register_deep_links(&app_bundle, desktop_flags)?;
+
   let codesign_identity = desktop_flags.codesign_identity.as_deref().or(
     if cfg!(target_os = "macos") {
       Some("-")
