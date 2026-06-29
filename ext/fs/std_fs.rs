@@ -499,6 +499,9 @@ impl FileSystem for RealFs {
   }
 }
 
+// Works around `DirBuilder::create` failing on trailing dot-segments (e.g.
+// `foo/.`) when creating directories recursively. See
+// https://github.com/denoland/deno/issues/35450.
 fn normalize_recursive_mkdir_path(path: &Path) -> Cow<'_, Path> {
   let normalized_path = path.components().collect::<PathBuf>();
   if normalized_path.as_os_str() == path.as_os_str() {
