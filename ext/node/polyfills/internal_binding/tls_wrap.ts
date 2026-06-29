@@ -139,8 +139,12 @@ function wrap(
           // peer sees EOF. Gate on the handshake being complete -- `.end()`
           // mid-handshake defers the close_notify, so ending now would tear
           // the transport down before it is sent. (`_owner` is the TLSSocket.)
+          // Skip if the stream is already torn down; end()-after-destroy is a
+          // no-op in Node streams, but there's no reason to touch it.
           if (
-            shuttingDown && !underlyingEnded && res._owner?._secureEstablished
+            shuttingDown && !underlyingEnded &&
+            res._owner?._secureEstablished &&
+            !jsStreamOwner.stream.destroyed
           ) {
             underlyingEnded = true;
             jsStreamOwner.stream.end();

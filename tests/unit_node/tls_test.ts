@@ -7,6 +7,7 @@ import {
   assertStringIncludes,
   assertThrows,
 } from "@std/assert";
+import { deadline } from "@std/async/deadline";
 import { delay } from "@std/async/delay";
 import { dirname, fromFileUrl, join } from "@std/path";
 import * as tls from "node:tls";
@@ -141,157 +142,173 @@ function wrapJsBackedTls(
 // (JSStreamSocket path, like tedious/mssql TLS-over-TDS) must send the TLS
 // close_notify and end the underlying stream when `.end()` is called. Otherwise
 // the peer never observes EOF and hangs (surfaces in tedious/Prisma as
-// "Connection lost - socket hang up").
-Deno.test("tls js-backed duplex server propagates close_notify on end()", async () => {
-  const { promise, resolve, reject } = Promise.withResolvers<string>();
-  let serverTls: tls.TLSSocket | undefined;
-  let serverRaw: net.Socket | undefined;
-  let clientTls: tls.TLSSocket | undefined;
-  let clientRaw: net.Socket | undefined;
+// "Connection lost - socket hang up"). Covered under TLS 1.2 (what tedious/MSSQL
+// negotiates) and the default TLS 1.3.
+for (const maxVersion of ["TLSv1.2", "TLSv1.3"] as const) {
+  Deno.test(
+    `tls js-backed duplex server propagates close_notify on end() (${maxVersion})`,
+    async () => {
+      const { promise, resolve, reject } = Promise.withResolvers<string>();
+      let serverTls: tls.TLSSocket | undefined;
+      let serverRaw: net.Socket | undefined;
+      let clientTls: tls.TLSSocket | undefined;
+      let clientRaw: net.Socket | undefined;
 
-  const server = net.createServer((raw: net.Socket) => {
-    serverRaw = raw;
-    serverTls = wrapJsBackedTls(raw, {
-      isServer: true,
-      key,
-      cert,
-      maxVersion: "TLSv1.2",
-    });
-    serverTls.on("secure", () => {
-      serverTls!.write("hello from server");
-      // Close on a later tick, so the connection is idle when `.end()` runs
-      // (the pooled-connection pattern). Ending synchronously here would let
-      // the close_notify ride the write's flush and mask the bug.
-      setImmediate(() => serverTls!.end());
-    });
-  });
-
-  server.listen(0, () => {
-    const { port } = server.address() as net.AddressInfo;
-    clientRaw = net.connect(port, "localhost", () => {
-      clientTls = wrapJsBackedTls(clientRaw!, {
-        servername: "localhost",
-        rejectUnauthorized: false,
-        maxVersion: "TLSv1.2",
+      const server = net.createServer((raw: net.Socket) => {
+        serverRaw = raw;
+        serverTls = wrapJsBackedTls(raw, {
+          isServer: true,
+          key,
+          cert,
+          maxVersion,
+        });
+        serverTls.on("secure", () => {
+          serverTls!.write("hello from server");
+          // Close on a later tick, so the connection is idle when `.end()` runs
+          // (the pooled-connection pattern). Ending synchronously here would let
+          // the close_notify ride the write's flush and mask the bug.
+          setImmediate(() => serverTls!.end());
+        });
       });
-      let data = "";
-      clientTls.on("data", (chunk: Uint8Array) => {
-        data += chunk.toString();
-      });
-      // If close_notify/EOF is not propagated, "end" never fires and the test
-      // times out via the harness (the regression this guards against).
-      clientTls.on("end", () => resolve(data));
-    });
-    clientRaw.on("error", reject);
-  });
 
-  const received = await promise;
-  assertEquals(received, "hello from server");
-  clientTls?.destroy();
-  serverTls?.destroy();
-  clientRaw?.destroy();
-  serverRaw?.destroy();
-  server.close();
-});
+      server.listen(0, () => {
+        const { port } = server.address() as net.AddressInfo;
+        clientRaw = net.connect(port, "localhost", () => {
+          clientTls = wrapJsBackedTls(clientRaw!, {
+            servername: "localhost",
+            rejectUnauthorized: false,
+            maxVersion,
+          });
+          let data = "";
+          clientTls.on("data", (chunk: Uint8Array) => {
+            data += chunk.toString();
+          });
+          // If close_notify/EOF is not propagated, "end" never fires and the
+          // deadline below fails the test fast instead of hanging.
+          clientTls.on("end", () => resolve(data));
+        });
+        clientRaw.on("error", reject);
+      });
+
+      const received = await deadline(promise, 10_000);
+      assertEquals(received, "hello from server");
+      clientTls?.destroy();
+      serverTls?.destroy();
+      clientRaw?.destroy();
+      serverRaw?.destroy();
+      server.close();
+    },
+  );
+}
 
 // Symmetric to the above: a client-side TLSSocket over a JS-backed Duplex pair
 // must also propagate close_notify/EOF on `.end()` so the peer sees the end.
-Deno.test("tls js-backed duplex client propagates close_notify on end()", async () => {
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
-  let serverTls: tls.TLSSocket | undefined;
-  let serverRaw: net.Socket | undefined;
-  let clientTls: tls.TLSSocket | undefined;
-  let clientRaw: net.Socket | undefined;
+for (const maxVersion of ["TLSv1.2", "TLSv1.3"] as const) {
+  Deno.test(
+    `tls js-backed duplex client propagates close_notify on end() (${maxVersion})`,
+    async () => {
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      let serverTls: tls.TLSSocket | undefined;
+      let serverRaw: net.Socket | undefined;
+      let clientTls: tls.TLSSocket | undefined;
+      let clientRaw: net.Socket | undefined;
 
-  const server = net.createServer((raw: net.Socket) => {
-    serverRaw = raw;
-    serverTls = wrapJsBackedTls(raw, {
-      isServer: true,
-      key,
-      cert,
-      maxVersion: "TLSv1.2",
-    });
-    serverTls.resume();
-    // The client's close_notify/EOF must surface here as "end".
-    serverTls.on("end", () => resolve());
-  });
-
-  server.listen(0, () => {
-    const { port } = server.address() as net.AddressInfo;
-    clientRaw = net.connect(port, "localhost", () => {
-      clientTls = wrapJsBackedTls(clientRaw!, {
-        servername: "localhost",
-        rejectUnauthorized: false,
-        maxVersion: "TLSv1.2",
+      const server = net.createServer((raw: net.Socket) => {
+        serverRaw = raw;
+        serverTls = wrapJsBackedTls(raw, {
+          isServer: true,
+          key,
+          cert,
+          maxVersion,
+        });
+        serverTls.resume();
+        // The client's close_notify/EOF must surface here as "end".
+        serverTls.on("end", () => resolve());
       });
-      clientTls.on("secureConnect", () => {
-        clientTls!.write("hello from client");
-        // Close on a later tick (idle connection); see the server-side test.
-        setImmediate(() => clientTls!.end());
-      });
-    });
-    clientRaw.on("error", reject);
-  });
 
-  await promise;
-  clientTls?.destroy();
-  serverTls?.destroy();
-  clientRaw?.destroy();
-  serverRaw?.destroy();
-  server.close();
-});
+      server.listen(0, () => {
+        const { port } = server.address() as net.AddressInfo;
+        clientRaw = net.connect(port, "localhost", () => {
+          clientTls = wrapJsBackedTls(clientRaw!, {
+            servername: "localhost",
+            rejectUnauthorized: false,
+            maxVersion,
+          });
+          clientTls.on("secureConnect", () => {
+            clientTls!.write("hello from client");
+            // Close on a later tick (idle connection); see the server-side test.
+            setImmediate(() => clientTls!.end());
+          });
+        });
+        clientRaw.on("error", reject);
+      });
+
+      await deadline(promise, 10_000);
+      clientTls?.destroy();
+      serverTls?.destroy();
+      clientRaw?.destroy();
+      serverRaw?.destroy();
+      server.close();
+    },
+  );
+}
 
 // `.end()` called before the handshake completes: the native shutdown defers
 // the close_notify until the handshake finishes, so the underlying stream must
 // only be ended afterwards. Ending it eagerly would tear the transport down
 // mid-handshake and the peer would never see EOF.
-Deno.test("tls js-backed duplex client end() during handshake still sends close_notify", async () => {
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
-  let sawSecure = false;
-  let serverTls: tls.TLSSocket | undefined;
-  let serverRaw: net.Socket | undefined;
-  let clientTls: tls.TLSSocket | undefined;
-  let clientRaw: net.Socket | undefined;
+for (const maxVersion of ["TLSv1.2", "TLSv1.3"] as const) {
+  Deno.test(
+    `tls js-backed duplex client end() during handshake still sends close_notify (${maxVersion})`,
+    async () => {
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      let sawSecure = false;
+      let serverTls: tls.TLSSocket | undefined;
+      let serverRaw: net.Socket | undefined;
+      let clientTls: tls.TLSSocket | undefined;
+      let clientRaw: net.Socket | undefined;
 
-  const server = net.createServer((raw: net.Socket) => {
-    serverRaw = raw;
-    serverTls = wrapJsBackedTls(raw, {
-      isServer: true,
-      key,
-      cert,
-      maxVersion: "TLSv1.2",
-    });
-    serverTls.resume();
-    // Reached only if the handshake completed and the deferred close_notify
-    // was produced and flushed (not if the transport was torn down early).
-    serverTls.on("end", () => resolve());
-  });
-
-  server.listen(0, () => {
-    const { port } = server.address() as net.AddressInfo;
-    clientRaw = net.connect(port, "localhost", () => {
-      clientTls = wrapJsBackedTls(clientRaw!, {
-        servername: "localhost",
-        rejectUnauthorized: false,
-        maxVersion: "TLSv1.2",
+      const server = net.createServer((raw: net.Socket) => {
+        serverRaw = raw;
+        serverTls = wrapJsBackedTls(raw, {
+          isServer: true,
+          key,
+          cert,
+          maxVersion,
+        });
+        serverTls.resume();
+        // Reached only if the handshake completed and the deferred close_notify
+        // was produced and flushed (not if the transport was torn down early).
+        serverTls.on("end", () => resolve());
       });
-      clientTls.on("secureConnect", () => {
-        sawSecure = true;
-      });
-      // Ends before the handshake can complete, exercising the deferred path.
-      clientTls.end();
-    });
-    clientRaw.on("error", reject);
-  });
 
-  await promise;
-  assert(sawSecure, "handshake should complete before EOF is propagated");
-  clientTls?.destroy();
-  serverTls?.destroy();
-  clientRaw?.destroy();
-  serverRaw?.destroy();
-  server.close();
-});
+      server.listen(0, () => {
+        const { port } = server.address() as net.AddressInfo;
+        clientRaw = net.connect(port, "localhost", () => {
+          clientTls = wrapJsBackedTls(clientRaw!, {
+            servername: "localhost",
+            rejectUnauthorized: false,
+            maxVersion,
+          });
+          clientTls.on("secureConnect", () => {
+            sawSecure = true;
+          });
+          // Ends before the handshake can complete, exercising the deferred path.
+          clientTls.end();
+        });
+        clientRaw.on("error", reject);
+      });
+
+      await deadline(promise, 10_000);
+      assert(sawSecure, "handshake should complete before EOF is propagated");
+      clientTls?.destroy();
+      serverTls?.destroy();
+      clientRaw?.destroy();
+      serverRaw?.destroy();
+      server.close();
+    },
+  );
+}
 
 for (
   const [alpnServer, alpnClient, expected] of [
