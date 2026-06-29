@@ -1153,6 +1153,42 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
   // handle the request for that module here.
   } else if load_specifier == MISSING_DEPENDENCY_SPECIFIER {
     None
+  } else if load_specifier == "asset:///lib.node.d.ts" {
+    // With a single global symbol table, loading both the built-in `@types/node`
+    // and a user-installed one duplicates every node declaration. If the user
+    // provides their own `@types/node`, reference that resolved file directly so
+    // exactly one copy is in the program; otherwise serve the built-in. We
+    // reference the resolved path rather than `types="npm:@types/node"` because
+    // the latter would be re-resolved relative to this asset file, which fails
+    // for cache-only / frozen installs.
+    let user_types_node = maybe_npm.and_then(|npm| {
+      let referrer =
+        deno_path_util::resolve_url_or_path("./", current_dir).ok()?;
+      let (spec, _) = resolve_non_graph_specifier_types(
+        "npm:@types/node",
+        &referrer,
+        ResolutionMode::Import,
+        Some(npm),
+      )
+      .ok()
+      .flatten()?;
+      spec
+        .to_file_path()
+        .ok()
+        .filter(|p| p.exists())
+        .map(|_| spec)
+    });
+    let source: Arc<str> = match user_types_node {
+      Some(spec) => format!(
+        "/// <reference no-default-lib=\"true\"/>\n/// <reference path=\"{}\" />\n",
+        spec.as_str(),
+      )
+      .into(),
+      None => get_lazily_loaded_asset("lib.node.d.ts").unwrap_or_default().into(),
+    };
+    hash = get_maybe_hash(Some(source.as_ref()), hash_data);
+    media_type = MediaType::Dts;
+    Some(T::from_arc_str(source))
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, hash_data);
