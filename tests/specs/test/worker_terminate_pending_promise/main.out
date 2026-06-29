@@ -5,7 +5,8 @@ pending promise waits for worker termination ... FAILED ([WILDCARD])
 
 pending promise waits for worker termination => ./main.ts:1:6
 error: Promise resolution is still pending but the event loop has already resolved.
-[WILDCARD]--trace-leaks[WILDCARD]
+A promise was awaited that can never settle: no remaining async work (timer, I/O, worker, etc.) can resolve it.
+Note: `--trace-leaks` cannot help here because nothing was leaked; there is no pending operation left that could resolve the promise.
 
  FAILURES 
 

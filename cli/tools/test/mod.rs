@@ -375,12 +375,8 @@ const PENDING_PROMISE_RESOLUTION_MSG: &str = "Promise resolution is still pendin
 /// aren't "flying blind" when a test (or a test hook/lifecycle handler) awaits a
 /// promise that can never settle. `--trace-leaks` is no help here because
 /// nothing was leaked. See denoland/deno#33852.
-const PENDING_PROMISE_RESOLUTION_HINT: &str = "The test (or something it awaited) is blocked on a promise that can never settle: \
-the event loop ran out of work while the promise was still pending. Common causes are \
-awaiting a promise that is settled by a worker, timer, stream, or callback that was \
-already torn down, or two promises deadlocked waiting on each other.\n\
-Note: `--trace-leaks` cannot point at this because nothing was leaked \u{2014} there is \
-simply no pending operation left that could resolve the promise.";
+const PENDING_PROMISE_RESOLUTION_HINT: &str = "A promise was awaited that can never settle: no remaining async work (timer, I/O, worker, etc.) can resolve it.\n\
+Note: `--trace-leaks` cannot help here because nothing was leaked; there is no pending operation left that could resolve the promise.";
 
 /// The full, enriched message shown for a pending-promise deadlock during tests.
 fn pending_promise_resolution_message() -> String {
@@ -973,16 +969,10 @@ pub async fn test_specifier(
     // "flying blind". The error may arrive wrapped as either `Core` (lifecycle
     // dispatch) or `RunTestsForWorker` (a hook run by the test loop). See
     // denoland/deno#33852.
-    Err(TestSpecifierError::Core(err))
-      if matches!(err.as_kind(), CoreErrorKind::PendingPromiseResolution) =>
-    {
-      Err(JsErrorBox::generic(pending_promise_resolution_message()).into())
-    }
-    Err(TestSpecifierError::RunTestsForWorker(RunTestsForWorkerErr::Core(
-      err,
-    )))
-      if matches!(err.as_kind(), CoreErrorKind::PendingPromiseResolution) =>
-    {
+    Err(
+      TestSpecifierError::Core(err)
+      | TestSpecifierError::RunTestsForWorker(RunTestsForWorkerErr::Core(err)),
+    ) if matches!(err.as_kind(), CoreErrorKind::PendingPromiseResolution) => {
       Err(JsErrorBox::generic(pending_promise_resolution_message()).into())
     }
     Err(TestSpecifierError::Core(err)) => match err.into_kind() {
