@@ -118,13 +118,6 @@ function wrap(
     const jsStreamOwner = nativeHandle[kOwner];
     let flushPending = false;
     let writeInFlight = false;
-    // Set when a graceful TLS shutdown (close_notify) has been requested.
-    // Once the handshake has completed and all buffered encrypted output
-    // (including the close_notify) has been flushed, we end the underlying
-    // stream so the peer observes EOF -- mirroring `uv_shutdown` on the
-    // native (uv) path.
-    let shuttingDown = false;
-    let underlyingEnded = false;
     const pump = () => {
       if (writeInFlight || !jsStreamOwner?.stream) return;
       let data = res.drainEncOut();
@@ -134,23 +127,7 @@ function wrap(
         // more encrypted output if clear_in() was rate-limited.
         res.readBuffer(new Uint8Array(0));
         data = res.drainEncOut();
-        if (!data || data.byteLength === 0) {
-          // Everything buffered is flushed: end the underlying stream so the
-          // peer sees EOF. Gate on the handshake being complete -- `.end()`
-          // mid-handshake defers the close_notify, so ending now would tear
-          // the transport down before it is sent. (`_owner` is the TLSSocket.)
-          // Skip if the stream is already torn down; end()-after-destroy is a
-          // no-op in Node streams, but there's no reason to touch it.
-          if (
-            shuttingDown && !underlyingEnded &&
-            res._owner?._secureEstablished &&
-            !jsStreamOwner.stream.destroyed
-          ) {
-            underlyingEnded = true;
-            jsStreamOwner.stream.end();
-          }
-          return;
-        }
+        if (!data || data.byteLength === 0) return;
       }
       writeInFlight = true;
       jsStreamOwner.stream.write(new Uint8Array(data), () => {
@@ -169,17 +146,18 @@ function wrap(
       });
     };
 
-    // For JS-backed streams the native `shutdown` op produces the TLS
-    // close_notify into the pull-based `pending_enc_out` buffer, but nothing
-    // flushes it to the underlying stream or ends it (the uv path relies on
-    // `uv_shutdown`, which is a no-op here). Wrap `shutdown` so that after the
-    // native op runs we drain the close_notify and then end the underlying
-    // stream, propagating EOF to the peer.
+    // For JS-backed streams the native `shutdown` op buffers the TLS
+    // close_notify into `pending_enc_out` but never flushes it (the uv path
+    // relies on `uv_shutdown`, a no-op here), so the peer hangs waiting for an
+    // EOF. Wrap `shutdown` to drain the close_notify through the pump; the
+    // peer's TLS layer turns that into an EOF. We deliberately do NOT end the
+    // underlying stream: a half-open peer (e.g. `tls.connect({ socket })` that
+    // calls `.end()` but is still reading the reply) must keep its read side
+    // open, and ending its transport here would race that read.
     const origShutdown = res.shutdown;
     if (typeof origShutdown === "function") {
       res.shutdown = function (...args: any[]) {
         const ret = origShutdown.apply(res, args);
-        shuttingDown = true;
         flushEncOut();
         return ret;
       };
