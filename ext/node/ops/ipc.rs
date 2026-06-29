@@ -88,17 +88,19 @@ mod impl_ {
         ser.serialize_f64(num_value)
       }
     } else if value.is_string() {
-      let str = deno_core::serde_v8::to_utf8(value.try_into().unwrap(), scope);
+      let str = v8::Local::<v8::String>::try_from(value)
+        .unwrap()
+        .to_rust_string_lossy(scope);
       ser.serialize_str(&str)
     } else if value.is_string_object() {
-      let str = deno_core::serde_v8::to_utf8(
-        value.to_string(scope).ok_or_else(|| {
+      let str = value
+        .to_string(scope)
+        .ok_or_else(|| {
           S::Error::custom(deno_error::JsErrorBox::generic(
             "toString on string object failed",
           ))
-        })?,
-        scope,
-      );
+        })?
+        .to_rust_string_lossy(scope);
       ser.serialize_str(&str)
     } else if value.is_boolean() {
       ser.serialize_bool(value.is_true())
@@ -857,8 +859,7 @@ mod impl_ {
       self,
       scope: &mut v8::PinScope<'a, '_>,
     ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
-      let msg = deno_core::serde_v8::to_v8(scope, self.msg)
-        .expect("serde_json::Value to_v8");
+      let msg = self.msg.to_v8(scope).expect("serde_json::Value to_v8");
       Ok(make_msg_with_fd_array(scope, msg, self.raw_fd))
     }
   }
