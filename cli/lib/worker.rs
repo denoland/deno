@@ -525,6 +525,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(
           &shared.sys,
         ),
+        wait_for_debugger_on_start: args.wait_for_debugger_on_start,
       };
 
       let has_resource_limits = args.resource_limits.is_some();

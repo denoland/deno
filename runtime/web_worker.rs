@@ -405,6 +405,7 @@ pub struct WebWorkerOptions {
   pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub enable_raw_imports: bool,
   pub enable_stack_trace_arg_in_ops: bool,
+  pub wait_for_debugger_on_start: bool,
 }
 
 /// This struct is an implementation of `Worker` Web API
@@ -431,6 +432,7 @@ pub struct WebWorker {
   /// Set to `true` by the near-heap-limit callback when resource limits
   /// are exceeded, so the error handler can emit `ERR_WORKER_OUT_OF_MEMORY`.
   pub oom_triggered: Arc<AtomicBool>,
+  wait_for_debugger_on_start: bool,
 }
 
 impl Drop for WebWorker {
@@ -748,6 +750,7 @@ impl WebWorker {
         maybe_cpu_prof_config: options.maybe_cpu_prof_config,
         bootstrap_error: None,
         oom_triggered: Arc::new(AtomicBool::new(false)),
+        wait_for_debugger_on_start: options.wait_for_debugger_on_start,
       },
       external_handle,
       options.bootstrap,
@@ -1120,6 +1123,13 @@ pub async fn run_web_worker(
       .post_event(WorkerControlEvent::TerminalError(error, 1))
       .expect("Failed to post message to host");
     return Ok(());
+  }
+
+  if worker.wait_for_debugger_on_start {
+    worker
+      .js_runtime
+      .inspector()
+      .wait_for_runtime_run_if_waiting_for_debugger();
   }
 
   // Execute provided source code immediately via V8 script evaluation

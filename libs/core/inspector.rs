@@ -456,7 +456,9 @@ struct JsRuntimeInspectorState {
   is_dispatching_message: Rc<RefCell<bool>>,
   pending_worker_messages: Arc<Mutex<Vec<(String, String)>>>,
   nodeworker_enabled: Rc<Cell<bool>>,
+  nodeworker_wait_for_debugger_on_start: Rc<Cell<bool>>,
   auto_attach_enabled: Rc<Cell<bool>>,
+  auto_attach_wait_for_debugger_on_start: Rc<Cell<bool>>,
   discover_targets_enabled: Rc<Cell<bool>>,
   /// Shared buffer of captured Network.* request/response bodies, populated
   /// from `op_inspector_emit_protocol_event` and read by the dispatcher
@@ -616,26 +618,30 @@ impl JsRuntimeInspectorState {
 
                 if self.auto_attach_enabled.get() {
                   ts.attached.set(true);
+                  let waiting_for_debugger =
+                    self.auto_attach_wait_for_debugger_on_start.get();
                   (main_session.state.send)(InspectorMsg::notification(
                     json!({
                       "method": "Target.attachedToTarget",
                       "params": {
                         "sessionId": ts.session_id,
                         "targetInfo": ts.target_info(true),
-                        "waitingForDebugger": false
+                        "waitingForDebugger": waiting_for_debugger
                       }
                     }),
                   ));
                 }
 
                 if self.nodeworker_enabled.get() {
+                  let waiting_for_debugger =
+                    self.nodeworker_wait_for_debugger_on_start.get();
                   (main_session.state.send)(InspectorMsg::notification(
                     json!({
                       "method": "NodeWorker.attachedToWorker",
                       "params": {
                         "sessionId": ts.session_id,
                         "workerInfo": ts.worker_info(),
-                        "waitingForDebugger": false
+                        "waitingForDebugger": waiting_for_debugger
                       }
                     }),
                   ));
@@ -657,7 +663,9 @@ impl JsRuntimeInspectorState {
                 self.sessions.clone(),
                 self.pending_worker_messages.clone(),
                 self.nodeworker_enabled.clone(),
+                self.nodeworker_wait_for_debugger_on_start.clone(),
                 self.auto_attach_enabled.clone(),
+                self.auto_attach_wait_for_debugger_on_start.clone(),
                 self.discover_targets_enabled.clone(),
                 self.flags.clone(),
                 self.network_data.clone(),
@@ -887,7 +895,9 @@ impl JsRuntimeInspector {
       is_dispatching_message: Default::default(),
       pending_worker_messages: Arc::new(Mutex::new(Vec::new())),
       nodeworker_enabled: Rc::new(Cell::new(false)),
+      nodeworker_wait_for_debugger_on_start: Rc::new(Cell::new(false)),
       auto_attach_enabled: Rc::new(Cell::new(false)),
+      auto_attach_wait_for_debugger_on_start: Rc::new(Cell::new(false)),
       discover_targets_enabled: Rc::new(Cell::new(false)),
       network_data: Rc::new(RefCell::new(NetworkDataBuffer::default())),
     });
@@ -912,12 +922,15 @@ impl JsRuntimeInspector {
     // NOTE(bartlomieju): this is what Node.js does and it turns out some
     // debuggers (like VSCode) rely on this information to disconnect after
     // program completes.
-    // The auxData structure should match {isDefault: boolean, type: 'default'|'isolated'|'worker'}
-    // For Chrome DevTools to properly show workers in the execution context dropdown.
+    // The auxData structure should match
+    // {isDefault: boolean, type: 'default'|'isolated'|'worker'}.
+    // `isDefault` means this is the default context for its target, not
+    // whether the target is the main runtime. Chrome DevTools treats
+    // non-default contexts as content scripts and may blackbox them.
     let aux_data = if is_main_runtime {
       r#"{"isDefault": true, "type": "default"}"#
     } else {
-      r#"{"isDefault": false, "type": "worker"}"#
+      r#"{"isDefault": true, "type": "worker"}"#
     };
     let aux_data_view = v8::inspector::StringView::from(aux_data.as_bytes());
     v8_inspector.context_created(
@@ -1114,6 +1127,25 @@ impl JsRuntimeInspector {
     self.state.flags.borrow_mut().resumed_by_session_id = None;
   }
 
+  pub fn wait_for_runtime_run_if_waiting_for_debugger(&self) {
+    self.state.flags.borrow_mut().paused_on_start = true;
+    loop {
+      if !self.state.flags.borrow().paused_on_start {
+        break;
+      }
+      self.state.flags.borrow_mut().waiting_for_session = true;
+      let _ = self.state.poll_sessions(None).unwrap();
+    }
+    self.state.flags.borrow_mut().resumed_by_session_id = None;
+  }
+
+  pub fn should_wait_for_debugger_on_worker_start(&self) -> bool {
+    self.state.auto_attach_enabled.get()
+      && self.state.auto_attach_wait_for_debugger_on_start.get()
+      || self.state.nodeworker_enabled.get()
+        && self.state.nodeworker_wait_for_debugger_on_start.get()
+  }
+
   /// Obtain a sender for proxy channels.
   pub fn get_session_sender(&self) -> UnboundedSender<InspectorSessionProxy> {
     self.new_session_tx.clone()
@@ -1294,7 +1326,15 @@ impl JsRuntimeInspector {
         sessions.clone(),
         inspector.state.pending_worker_messages.clone(),
         inspector.state.nodeworker_enabled.clone(),
+        inspector
+          .state
+          .nodeworker_wait_for_debugger_on_start
+          .clone(),
         inspector.state.auto_attach_enabled.clone(),
+        inspector
+          .state
+          .auto_attach_wait_for_debugger_on_start
+          .clone(),
         inspector.state.discover_targets_enabled.clone(),
         inspector.state.flags.clone(),
         inspector.state.network_data.clone(),
@@ -1559,6 +1599,17 @@ impl SessionContainer {
     }
     false
   }
+
+  fn target_session_by_target_id(
+    &self,
+    target_id: &str,
+  ) -> Option<Rc<TargetSession>> {
+    self
+      .target_sessions
+      .values()
+      .find(|ts| ts.target_id == target_id)
+      .cloned()
+  }
 }
 
 struct InspectorWakerInner {
@@ -1656,8 +1707,10 @@ struct InspectorSessionState {
   pending_worker_messages: Arc<Mutex<Vec<(String, String)>>>,
   // Track whether NodeWorker.enable has been called (enables VSCode-style worker debugging)
   nodeworker_enabled: Rc<Cell<bool>>,
+  nodeworker_wait_for_debugger_on_start: Rc<Cell<bool>>,
   // Track whether Target.setAutoAttach has been called (enables worker auto-attach)
   auto_attach_enabled: Rc<Cell<bool>>,
+  auto_attach_wait_for_debugger_on_start: Rc<Cell<bool>>,
   // Track whether Target.setDiscoverTargets has been called (enables target discovery)
   discover_targets_enabled: Rc<Cell<bool>>,
   // Track whether Network.enable has been called (per-session, not shared)
@@ -1699,7 +1752,9 @@ impl InspectorSession {
     sessions: Rc<RefCell<SessionContainer>>,
     pending_worker_messages: Arc<Mutex<Vec<(String, String)>>>,
     nodeworker_enabled: Rc<Cell<bool>>,
+    nodeworker_wait_for_debugger_on_start: Rc<Cell<bool>>,
     auto_attach_enabled: Rc<Cell<bool>>,
+    auto_attach_wait_for_debugger_on_start: Rc<Cell<bool>>,
     discover_targets_enabled: Rc<Cell<bool>>,
     flags: Rc<RefCell<InspectorFlags>>,
     network_data: Rc<RefCell<NetworkDataBuffer>>,
@@ -1712,7 +1767,9 @@ impl InspectorSession {
       sessions,
       pending_worker_messages,
       nodeworker_enabled,
+      nodeworker_wait_for_debugger_on_start,
       auto_attach_enabled,
+      auto_attach_wait_for_debugger_on_start,
       discover_targets_enabled,
       network_enabled: Cell::new(false),
       dom_storage_enabled: Cell::new(false),
@@ -1926,13 +1983,19 @@ async fn pump_inspector_session_messages(
       }
       "NodeWorker.enable" => {
         session.state.nodeworker_enabled.set(true);
-        session.notify_workers(|ts, send| {
+        session
+          .state
+          .nodeworker_wait_for_debugger_on_start
+          .set(get_bool_param(&params, "waitForDebuggerOnStart"));
+        let waiting_for_debugger =
+          session.state.nodeworker_wait_for_debugger_on_start.get();
+        session.notify_workers(move |ts, send| {
           send(InspectorMsg::notification(json!({
             "method": "NodeWorker.attachedToWorker",
             "params": {
               "sessionId": ts.session_id,
               "workerInfo": ts.worker_info(),
-              "waitingForDebugger": false
+              "waitingForDebugger": waiting_for_debugger
             }
           })));
         });
@@ -1956,11 +2019,86 @@ async fn pump_inspector_session_messages(
           });
         }
       }
+      "Target.getTargets" => {
+        if let Some(id) = msg_id {
+          let call_id = id.as_i64().unwrap_or(0) as i32;
+          let send = session.state.send.clone();
+          let sessions = session.state.sessions.clone();
+          deno_core::unsync::spawn(async move {
+            let sessions = sessions.borrow();
+            let target_infos = sessions
+              .target_sessions
+              .values()
+              .map(|ts| ts.target_info(ts.attached.get()))
+              .collect::<Vec<_>>();
+            send(InspectorMsg {
+              kind: InspectorMsgKind::Message(call_id),
+              content: json!({
+                "id": id,
+                "result": {
+                  "targetInfos": target_infos
+                }
+              })
+              .to_string(),
+            });
+          });
+        }
+        continue;
+      }
+      "Target.attachToTarget" => {
+        let target_id = get_str_param(&params, "targetId");
+        if let Some(id) = msg_id {
+          let call_id = id.as_i64().unwrap_or(0) as i32;
+          let send = session.state.send.clone();
+          let sessions = session.state.sessions.clone();
+          deno_core::unsync::spawn(async move {
+            let target_session =
+              sessions.borrow().target_session_by_target_id(&target_id);
+            let content = if let Some(ts) = target_session {
+              ts.attached.set(true);
+              json!({
+                "id": id,
+                "result": {
+                  "sessionId": ts.session_id
+                }
+              })
+            } else {
+              json!({
+                "id": id,
+                "error": {
+                  "code": -32602,
+                  "message": "No target with given id found"
+                }
+              })
+            };
+            send(InspectorMsg {
+              kind: InspectorMsgKind::Message(call_id),
+              content: content.to_string(),
+            });
+          });
+        }
+        continue;
+      }
+      "Target.detachFromTarget" => {
+        let session_id = get_str_param(&params, "sessionId");
+        let sessions = session.state.sessions.clone();
+        deno_core::unsync::spawn(async move {
+          if let Some(ts) = sessions.borrow().target_sessions.get(&session_id) {
+            ts.attached.set(false);
+          }
+        });
+      }
       "Target.setAutoAttach" => {
         let auto_attach = get_bool_param(&params, "autoAttach");
+        let wait_for_debugger_on_start =
+          get_bool_param(&params, "waitForDebuggerOnStart");
         let send = session.state.send.clone();
         let sessions = session.state.sessions.clone();
         session.state.auto_attach_enabled.set(auto_attach);
+        session
+          .state
+          .auto_attach_wait_for_debugger_on_start
+          .set(wait_for_debugger_on_start);
         if auto_attach {
           deno_core::unsync::spawn(async move {
             let sessions = sessions.borrow();
@@ -1973,7 +2111,7 @@ async fn pump_inspector_session_messages(
                 "params": {
                   "sessionId": ts.session_id,
                   "targetInfo": ts.target_info(true),
-                  "waitingForDebugger": false
+                  "waitingForDebugger": wait_for_debugger_on_start
                 }
               })));
             }

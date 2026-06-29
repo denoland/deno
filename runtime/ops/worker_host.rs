@@ -16,6 +16,7 @@ use deno_core::CancelHandle;
 use deno_core::DetachedBuffer;
 use deno_core::FromV8;
 use deno_core::JsBuffer;
+use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -73,6 +74,7 @@ pub struct CreateWebWorkerArgs {
   /// normally by their own URLs.
   pub maybe_main_module_blob: Option<Arc<Blob>>,
   pub resource_limits: Option<ResourceLimits>,
+  pub wait_for_debugger_on_start: bool,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -279,6 +281,10 @@ fn op_create_worker(
   let parent_permissions = parent_permissions.clone();
   let create_web_worker_cb = state.borrow::<CreateWebWorkerCbHolder>().clone();
   let format_js_error_fn = state.borrow::<FormatJsErrorFnHolder>().clone();
+  let wait_for_debugger_on_start = state
+    .try_borrow::<Rc<JsRuntimeInspector>>()
+    .map(|inspector| inspector.should_wait_for_debugger_on_worker_start())
+    .unwrap_or(false);
   let worker_id = WorkerId::new();
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
@@ -342,6 +348,7 @@ fn op_create_worker(
           maybe_worker_metadata,
           maybe_main_module_blob,
           resource_limits: args.resource_limits,
+          wait_for_debugger_on_start,
         });
 
       // Send thread safe handle from newly created worker to host thread
