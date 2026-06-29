@@ -2,6 +2,8 @@
 #[cfg(target_family = "windows")]
 use std::sync::Once;
 
+use deno_core::ToV8;
+
 type LoadAvg = (f64, f64, f64);
 const DEFAULT_LOADAVG: LoadAvg = (0.0, 0.0, 0.0);
 
@@ -105,22 +107,19 @@ pub fn os_release() -> String {
   }
   #[cfg(target_family = "windows")]
   {
-    use ntapi::ntrtl::RtlGetVersion;
-    use winapi::shared::ntdef::NT_SUCCESS;
-    use winapi::um::winnt::RTL_OSVERSIONINFOEXW;
+    use windows_sys::Wdk::System::SystemServices::RtlGetVersion;
+    use windows_sys::Win32::System::SystemInformation::OSVERSIONINFOEXW;
 
-    let mut version_info =
-      std::mem::MaybeUninit::<RTL_OSVERSIONINFOEXW>::uninit();
+    let mut version_info = std::mem::MaybeUninit::<OSVERSIONINFOEXW>::uninit();
     // SAFETY: we need to initialize dwOSVersionInfoSize.
     unsafe {
       (*version_info.as_mut_ptr()).dwOSVersionInfoSize =
-        std::mem::size_of::<RTL_OSVERSIONINFOEXW>() as u32;
+        std::mem::size_of::<OSVERSIONINFOEXW>() as u32;
     }
-    // SAFETY: `version_info` is pointer to a valid `RTL_OSVERSIONINFOEXW` struct and
-    // dwOSVersionInfoSize  is set to the size of RTL_OSVERSIONINFOEXW.
-    if !NT_SUCCESS(unsafe {
-      RtlGetVersion(version_info.as_mut_ptr() as *mut _)
-    }) {
+    // SAFETY: `version_info` is pointer to a valid `OSVERSIONINFOEXW` struct and
+    // dwOSVersionInfoSize  is set to the size of OSVERSIONINFOEXW.
+    // RtlGetVersion returns an NTSTATUS; a negative value indicates failure.
+    if unsafe { RtlGetVersion(version_info.as_mut_ptr() as *mut _) } < 0 {
       String::from("")
     } else {
       // SAFETY: we assume that RtlGetVersion() initializes the fields.
@@ -160,18 +159,18 @@ pub fn hostname() -> String {
     use std::mem;
     use std::os::windows::ffi::OsStringExt;
 
-    use winapi::shared::minwindef::MAKEWORD;
-    use winapi::um::winsock2::GetHostNameW;
-    use winapi::um::winsock2::WSAStartup;
+    use windows_sys::Win32::Networking::WinSock::GetHostNameW;
+    use windows_sys::Win32::Networking::WinSock::WSAStartup;
 
     let namelen = 256;
     let mut name: Vec<u16> = vec![0u16; namelen];
     // Start winsock to make `GetHostNameW` work correctly
     // https://github.com/retep998/winapi-rs/issues/296
-    // SAFETY: winapi call
+    // SAFETY: Win32 call
     WINSOCKET_INIT.call_once(|| unsafe {
       let mut data = mem::zeroed();
-      let wsa_startup_result = WSAStartup(MAKEWORD(2, 2), &mut data);
+      // MAKEWORD(2, 2)
+      let wsa_startup_result = WSAStartup(0x0202, &mut data);
       if wsa_startup_result != 0 {
         panic!("Failed to start winsocket");
       }
@@ -193,8 +192,7 @@ pub fn hostname() -> String {
   }
 }
 
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct MemInfo {
   pub total: u64,
   pub free: u64,
@@ -309,18 +307,18 @@ pub fn mem_info() -> Option<MemInfo> {
   unsafe {
     use std::mem;
 
-    use winapi::shared::minwindef;
-    use winapi::um::psapi::GetPerformanceInfo;
-    use winapi::um::psapi::PERFORMANCE_INFORMATION;
-    use winapi::um::sysinfoapi;
+    use windows_sys::Win32::Foundation::TRUE;
+    use windows_sys::Win32::System::ProcessStatus::GetPerformanceInfo;
+    use windows_sys::Win32::System::ProcessStatus::PERFORMANCE_INFORMATION;
+    use windows_sys::Win32::System::SystemInformation;
 
     let mut mem_status =
-      mem::MaybeUninit::<sysinfoapi::MEMORYSTATUSEX>::uninit();
-    let length =
-      mem::size_of::<sysinfoapi::MEMORYSTATUSEX>() as minwindef::DWORD;
+      mem::MaybeUninit::<SystemInformation::MEMORYSTATUSEX>::uninit();
+    let length = mem::size_of::<SystemInformation::MEMORYSTATUSEX>() as u32;
     (*mem_status.as_mut_ptr()).dwLength = length;
 
-    let result = sysinfoapi::GlobalMemoryStatusEx(mem_status.as_mut_ptr());
+    let result =
+      SystemInformation::GlobalMemoryStatusEx(mem_status.as_mut_ptr());
     if result != 0 {
       let stat = mem_status.assume_init();
       mem_info.total = stat.ullTotalPhys;
@@ -337,9 +335,9 @@ pub fn mem_info() -> Option<MemInfo> {
       let mut perf_info = mem::MaybeUninit::<PERFORMANCE_INFORMATION>::uninit();
       let result = GetPerformanceInfo(
         perf_info.as_mut_ptr(),
-        mem::size_of::<PERFORMANCE_INFORMATION>() as minwindef::DWORD,
+        mem::size_of::<PERFORMANCE_INFORMATION>() as u32,
       );
-      if result == minwindef::TRUE {
+      if result == TRUE {
         let perf_info = perf_info.assume_init();
         let swap_total = perf_info.PageSize
           * perf_info
@@ -422,7 +420,8 @@ pub fn os_uptime() -> u64 {
   unsafe {
     // Windows is the only one that returns `uptime` in millisecond precision,
     // so we need to get the seconds out of it to be in sync with other envs.
-    uptime = winapi::um::sysinfoapi::GetTickCount64() / 1000;
+    uptime =
+      windows_sys::Win32::System::SystemInformation::GetTickCount64() / 1000;
   }
 
   uptime

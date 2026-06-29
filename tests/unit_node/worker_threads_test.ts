@@ -9,6 +9,7 @@ import {
 } from "@std/assert";
 import { fromFileUrl, relative, SEPARATOR } from "@std/path";
 import * as workerThreads from "node:worker_threads";
+import { isInternalThread } from "node:worker_threads";
 import { EventEmitter, once } from "node:events";
 import process from "node:process";
 
@@ -29,6 +30,17 @@ Deno.test({
   name: "[node/worker_threads] isMainThread",
   fn() {
     assertEquals(workerThreads.isMainThread, true);
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] isInternalThread",
+  fn() {
+    // Both the named export and the property on the module object must
+    // resolve, and be false in the main thread (Deno has no internal
+    // Node worker threads). Regression test for #35149.
+    assertEquals(isInternalThread, false);
+    assertEquals(workerThreads.isInternalThread, false);
   },
 });
 
@@ -298,7 +310,9 @@ Deno.test({
         eval: true,
       },
     );
-    assertEquals((await once(worker, "message"))[0], true);
+    // parentPort is a delegate object that forwards to globalThis,
+    // so it is not an instance of EventTarget or EventEmitter.
+    assertEquals((await once(worker, "message"))[0], false);
     assertEquals((await once(worker, "message"))[0], false);
     assert(worker instanceof EventEmitter);
     assert(!(worker instanceof EventTarget));
@@ -573,6 +587,72 @@ Deno.test({
     assertEquals(output, ["hi!", "hi!2", "hi!3"]);
     port2.close();
     port1.close();
+  },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33373
+// Node's MessagePort.on('message', fn) deduplicates by listener
+// reference. Registering the same function multiple times must
+// deliver only once, and `.off` must clean up the listener fully.
+Deno.test({
+  name: "[node/worker_threads] MessagePort.on deduplicates listeners",
+  async fn() {
+    const output: string[] = [];
+    const { port1, port2 } = new workerThreads.MessageChannel();
+    const onMessage = (msg: string) => output.push(msg);
+
+    port1.on("message", onMessage);
+    port1.on("message", onMessage);
+    port1.on("message", onMessage);
+
+    const first = Promise.withResolvers<void>();
+    port1.on("message", () => first.resolve());
+    port2.postMessage("hi");
+    await first.promise;
+    assertEquals(output, ["hi"]);
+
+    port1.off("message", onMessage);
+    const second = Promise.withResolvers<void>();
+    port1.on("message", () => second.resolve());
+    port2.postMessage("again");
+    await second.promise;
+    assertEquals(output, ["hi"]);
+
+    port1.close();
+    port2.close();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] MessagePort.on dedup is per-event-name and per-port",
+  async fn() {
+    const events: string[] = [];
+    const { port1, port2 } = new workerThreads.MessageChannel();
+    const handler = (_: unknown) => events.push("hit");
+
+    // Same fn for different event names registers independently.
+    port1.on("message", handler);
+    port1.on("message", handler);
+    port1.on("close", handler);
+    port1.on("close", handler);
+
+    const messageDone = Promise.withResolvers<void>();
+    port1.on("message", () => messageDone.resolve());
+    port2.postMessage("m");
+    await messageDone.promise;
+    assertEquals(events, ["hit"]);
+
+    // off("message", handler) must not remove the "close" registration.
+    port1.off("message", handler);
+
+    const closeDone = Promise.withResolvers<void>();
+    port1.on("close", () => closeDone.resolve());
+    port1.close();
+    port2.close();
+    await closeDone.promise;
+    // One delivery for "message", one for "close".
+    assertEquals(events, ["hit", "hit"]);
   },
 });
 
@@ -965,5 +1045,84 @@ Deno.test({
     assertEquals(gotOnline, true);
 
     await worker.terminate();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] V8 profiling flags in execArgv are accepted and ignored",
+  async fn() {
+    const profilingFlags = [
+      "--heap-prof",
+      "--heap-prof-interval=1000",
+      "--heap-prof-name=foo.heapprofile",
+      "--heap-prof-dir=/tmp",
+      "--cpu-prof",
+      "--cpu-prof-interval=1000",
+      "--cpu-prof-name=foo.cpuprofile",
+      "--cpu-prof-dir=/tmp",
+    ];
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      parentPort.postMessage("ok");
+      `,
+      { eval: true, execArgv: profilingFlags },
+    );
+    const msg = await once(worker, "message");
+    assertEquals(msg[0], "ok");
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] V8 profiling flags in NODE_OPTIONS env are accepted",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      parentPort.postMessage("ok");
+      `,
+      {
+        eval: true,
+        env: { NODE_OPTIONS: "--heap-prof --cpu-prof-interval=1000" },
+      },
+    );
+    const msg = await once(worker, "message");
+    assertEquals(msg[0], "ok");
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] unknown execArgv flags still throw ERR_WORKER_INVALID_EXEC_ARGV",
+  fn() {
+    assertThrows(
+      () =>
+        new workerThreads.Worker("/*noop*/", {
+          eval: true,
+          execArgv: ["--this-flag-does-not-exist"],
+        }),
+      Error,
+      "Initiated Worker with invalid execArgv flags",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] disallowed NODE_OPTIONS flag with =value is still rejected",
+  fn() {
+    assertThrows(
+      () =>
+        new workerThreads.Worker("/*noop*/", {
+          eval: true,
+          env: { NODE_OPTIONS: "--title=foo" },
+        }),
+      Error,
+      "invalid NODE_OPTIONS env variable",
+    );
   },
 });

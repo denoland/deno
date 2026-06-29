@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   createTimer: createTimer_,
   cancelTimer: cancelTimer_,
@@ -13,38 +14,53 @@ const {
   immediateRefCount,
 } = core;
 const {
+  ArrayPrototypePush,
+  DateNow,
   FunctionPrototypeCall,
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeSet,
   NumberIsFinite,
+  NumberIsNaN,
   ObjectDefineProperty,
   ReflectApply,
   SafeArrayIterator,
+  SafeMapIterator,
   SafeMap,
   Symbol,
+  SymbolDispose,
   SymbolToPrimitive,
 } = primordials;
-import {
+const {
+  emitAfter,
+  emitBefore,
+  emitDestroy,
   emitInit,
+  enabledHooksExist,
   executionAsyncId,
-  newAsyncId as nextAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
-import {
+  newAsyncId: nextAsyncId,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const { inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const {
   validateFunction,
   validateNumber,
-} from "ext:deno_node/internal/validators.mjs";
-import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
-import { emitWarning } from "node:process";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { ERR_OUT_OF_RANGE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const lazyProcess = core.createLazyLoader("node:process");
 
 // Timeout values > TIMEOUT_MAX are set to 1.
-export const TIMEOUT_MAX = 2 ** 31 - 1;
+const TIMEOUT_MAX = 2 ** 31 - 1;
 
-export const kDestroy = Symbol("destroy");
-export const kTimerId = Symbol("timerId");
-export const kTimeout = Symbol("timeout");
-export const kRefed = core.kRefed;
+const kDestroy = Symbol("destroy");
+const kTimerId = Symbol("timerId");
+const kSystem = Symbol("system");
+const kTimeout = Symbol("timeout");
+const kSuspended = Symbol("suspended");
+const kRefed = core.kRefed;
 const createTimer = Symbol("createTimer");
 
 /**
@@ -59,50 +75,175 @@ const activeTimers = new SafeMap();
  * @param {number} id
  * @returns {Timeout | undefined}
  */
-export function getActiveTimer(id) {
+function getActiveTimer(id) {
   return MapPrototypeGet(activeTimers, id);
 }
 
+function getActiveResourcesInfo() {
+  const resources = [];
+  for (const { 1: timeout } of new SafeMapIterator(activeTimers)) {
+    if (timeout[kRefed]) {
+      ArrayPrototypePush(resources, "Timeout");
+    }
+  }
+  return resources;
+}
+
+let warnedNegativeNumber = false;
+let warnedNotNumber = false;
+
 // Timer constructor function.
-export function Timeout(callback, after, args, isRepeat, isRefed) {
-  if (typeof after === "number" && after > TIMEOUT_MAX) {
+// isSystem marks the timer as runtime-internal (e.g. setUnrefTimeout's
+// keep-alive timers); leak/sanitizer machinery skips these so an
+// internal timer doesn't surface as a user-visible leak.
+function Timeout(callback, after, args, isRepeat, isRefed, isSystem) {
+  if (after === undefined) {
+    after = 1;
+  } else {
+    after *= 1; // Coalesce to number or NaN
+  }
+
+  if (!(after >= 1 && after <= TIMEOUT_MAX)) {
+    if (after > TIMEOUT_MAX) {
+      lazyProcess().default.emitWarning(
+        `${after} does not fit into a 32-bit signed integer.` +
+          "\nTimeout duration was set to 1.",
+        "TimeoutOverflowWarning",
+      );
+    } else if (after < 0 && !warnedNegativeNumber) {
+      warnedNegativeNumber = true;
+      lazyProcess().default.emitWarning(
+        `${after} is a negative number.` +
+          "\nTimeout duration was set to 1.",
+        "TimeoutNegativeWarning",
+      );
+    } else if (NumberIsNaN(after) && !warnedNotNumber) {
+      warnedNotNumber = true;
+      lazyProcess().default.emitWarning(
+        `${after} is not a number.` +
+          "\nTimeout duration was set to 1.",
+        "TimeoutNaNWarning",
+      );
+    }
     after = 1;
   }
   this._idleTimeout = after;
+  this._idleStart = DateNow();
+  this._idlePrev = null;
+  this._idleNext = null;
   this._onTimeout = callback;
   this._timerArgs = args;
-  this._isRepeat = isRepeat;
+  this._repeat = isRepeat;
   this._destroyed = false;
+  ObjectDefineProperty(this, kSuspended, {
+    __proto__: null,
+    value: false,
+    writable: true,
+  });
   this[kRefed] = isRefed;
+  // Non-enumerable: this is a runtime-internal marker and must not leak into
+  // `util.inspect(timer)` output (node has no such property).
+  ObjectDefineProperty(this, kSystem, {
+    __proto__: null,
+    value: !!isSystem,
+    writable: true,
+  });
+
+  const asyncId = nextAsyncId();
+  const triggerAsyncId = executionAsyncId();
+  this._asyncId = asyncId;
+  this._triggerAsyncId = triggerAsyncId;
+  this._asyncDestroyed = false;
+
   this[kTimerId] = this[createTimer]();
+
+  // Match node: only emit async_hooks init if there are live hooks.
+  // emitInit does non-trivial work (try/finally, empty-array loop,
+  // lookupPublicResource) that's pure overhead in the common case.
+  if (enabledHooksExist()) {
+    emitInit(asyncId, "Timeout", triggerAsyncId, this);
+  }
 }
 
 Timeout.prototype[createTimer] = function () {
   const self = this;
   const callback = this._onTimeout;
   const asyncContext = getAsyncContext();
-  const cb = function () {
-    const oldContext = getAsyncContext();
-    try {
-      setAsyncContext(asyncContext);
-      if (!self._isRepeat) {
-        MapPrototypeDelete(activeTimers, self[kTimerId]);
+  const asyncId = this._asyncId;
+  const triggerAsyncId = this._triggerAsyncId;
+  // Fast path: when no async_hooks are registered, the emit* calls are
+  // pure overhead (array push/pop + empty-array iteration). Keep the
+  // outer closure (ALS context must still propagate) but elide the
+  // hook machinery.
+  let cb;
+  function invokeCallback() {
+    const wasRepeat = self._repeat;
+    if (!wasRepeat) {
+      MapPrototypeDelete(activeTimers, self[kTimerId]);
+    } else {
+      const currentCb = self._onTimeout;
+      if (currentCb === null) {
+        self[kDestroy]();
+        return;
       }
-      const args = self._timerArgs;
-      if (args !== undefined && args.length > 0) {
-        return ReflectApply(callback, self, args);
-      }
-      return FunctionPrototypeCall(callback, self);
-    } finally {
-      setAsyncContext(oldContext);
     }
-  };
+    const currentCb = wasRepeat ? self._onTimeout : callback;
+    const args = self._timerArgs;
+    let ret;
+    if (args !== undefined && args.length > 0) {
+      ret = ReflectApply(currentCb, self, args);
+    } else {
+      ret = FunctionPrototypeCall(currentCb, self);
+    }
+    if (wasRepeat) {
+      if (self._idleTimeout < 0 || self._onTimeout === null) {
+        self[kDestroy]();
+      }
+    } else if (self._repeat) {
+      // timeout was converted to interval inside callback
+      self[kTimerId] = self[createTimer]();
+    } else {
+      self._destroyed = true;
+    }
+    return ret;
+  }
+  if (enabledHooksExist()) {
+    cb = function () {
+      const oldContext = getAsyncContext();
+      try {
+        setAsyncContext(asyncContext);
+        emitBefore(asyncId, triggerAsyncId, self);
+        const ret = invokeCallback();
+        // Only emit after/destroy on success. On error, the domain's
+        // uncaught exception handler manages the stack cleanup.
+        emitAfter(asyncId);
+        if (!self._repeat && !self._asyncDestroyed) {
+          self._asyncDestroyed = true;
+          emitDestroy(asyncId);
+        }
+        return ret;
+      } finally {
+        setAsyncContext(oldContext);
+      }
+    };
+  } else {
+    cb = function () {
+      const oldContext = getAsyncContext();
+      try {
+        setAsyncContext(asyncContext);
+        return invokeCallback();
+      } finally {
+        setAsyncContext(oldContext);
+      }
+    };
+  }
   const timer = createTimer_(
     cb,
     this._idleTimeout,
     undefined,
-    this._isRepeat,
+    this._repeat,
     this[kRefed],
+    this[kSystem],
   );
   ObjectDefineProperty(this, "_timer", {
     __proto__: null,
@@ -117,10 +258,22 @@ Timeout.prototype[createTimer] = function () {
 };
 
 Timeout.prototype[kDestroy] = function () {
-  if (!this._destroyed) {
+  if (!this._destroyed || this[kSuspended]) {
     this._destroyed = true;
+    this[kSuspended] = false;
+    this._idleTimeout = -1;
+    this._idleStart = DateNow();
+    this._onTimeout = null;
     cancelTimer_(this._timer);
     MapPrototypeDelete(activeTimers, this[kTimerId]);
+    if (
+      this._asyncId !== undefined &&
+      !this._asyncDestroyed &&
+      enabledHooksExist()
+    ) {
+      this._asyncDestroyed = true;
+      emitDestroy(this._asyncId);
+    }
   }
 };
 
@@ -136,9 +289,19 @@ Timeout.prototype[inspect.custom] = function (_, options) {
 };
 
 Timeout.prototype.refresh = function () {
-  if (!this._destroyed) {
+  if (this._destroyed) {
+    // Reactivate a timer that fired naturally (callback still set).
+    // Do NOT reactivate a timer cancelled via clearTimeout (callback
+    // nulled by kDestroy or _onTimeout explicitly cleared).
+    if (this._onTimeout !== null) {
+      this._destroyed = false;
+      this[kSuspended] = false;
+      this[kTimerId] = this[createTimer]();
+    }
+  } else {
     refreshTimer_(this._timer);
   }
+  this._idleStart = DateNow();
   return this;
 };
 
@@ -162,6 +325,15 @@ Timeout.prototype.ref = function () {
   return this;
 };
 
+Timeout.prototype.close = function () {
+  this[kDestroy]();
+  return this;
+};
+
+Timeout.prototype[SymbolDispose] = function () {
+  this[kDestroy]();
+};
+
 Timeout.prototype.hasRef = function () {
   return this[kRefed];
 };
@@ -175,7 +347,7 @@ Timeout.prototype[SymbolToPrimitive] = function () {
  * @param {string} name
  * @returns
  */
-export function getTimerDuration(msecs, name) {
+function getTimerDuration(msecs, name) {
   validateNumber(msecs, name);
 
   if (msecs < 0 || !NumberIsFinite(msecs)) {
@@ -184,7 +356,7 @@ export function getTimerDuration(msecs, name) {
 
   // Ensure that msecs fits into signed int32
   if (msecs > TIMEOUT_MAX) {
-    emitWarning(
+    lazyProcess().default.emitWarning(
       `${msecs} does not fit into a 32-bit signed integer.` +
         `\nTimer duration was truncated to ${TIMEOUT_MAX}.`,
       "TimeoutOverflowWarning",
@@ -196,23 +368,40 @@ export function getTimerDuration(msecs, name) {
   return msecs;
 }
 
-export function setUnrefTimeout(callback, timeout, ...args) {
+function setUnrefTimeout(callback, timeout, ...args) {
   validateFunction(callback, "callback");
-  return new Timeout(callback, timeout, args, false, false);
+  // isSystem=true: this is a runtime-internal timer (keep-alive, socket
+  // timeouts, idle eviction etc.). The leak sanitizer skips system timers
+  // so e.g. Agent.keepSocketAlive's 5000 ms unref'd timer stays invisible
+  // to Deno.test's `sanitizeOps`.
+  return new Timeout(callback, timeout, args, false, false, true);
+}
+
+function suspendTimeout(timeout) {
+  if (timeout !== null && timeout !== undefined && !timeout._destroyed) {
+    timeout._destroyed = true;
+    timeout[kSuspended] = true;
+    timeout._idleStart = DateNow();
+    cancelTimer_(timeout._timer);
+    MapPrototypeDelete(activeTimers, timeout[kTimerId]);
+  }
 }
 
 // Re-export immediate queue and runImmediates from core for consumers
-export const immediateQueue = core.immediateQueue;
-export const runImmediates = core.runImmediates;
+const immediateQueue = core.immediateQueue;
+const runImmediates = core.runImmediates;
 
-export class Immediate {
+class Immediate {
   constructor(unboundCallback, ...args) {
     const asyncContext = getAsyncContext();
+    // Match Node's `immediate._onImmediate(...argv)` invocation: the callback's
+    // `this` is the Immediate instance, not the global.
+    const self = this;
     const callback = (...argv) => {
       const oldContext = getAsyncContext();
       try {
         setAsyncContext(asyncContext);
-        return ReflectApply(unboundCallback, globalThis, argv);
+        return ReflectApply(unboundCallback, self, argv);
       } finally {
         setAsyncContext(oldContext);
       }
@@ -255,6 +444,10 @@ export class Immediate {
     return !!this[kRefed];
   }
 
+  [SymbolDispose]() {
+    core.clearImmediate(this);
+  }
+
   [inspect.custom] = function (_, options) {
     return inspect(this, {
       ...options,
@@ -266,11 +459,20 @@ export class Immediate {
   };
 }
 
-export default {
-  getTimerDuration,
+return {
+  TIMEOUT_MAX,
+  kDestroy,
   kTimerId,
   kTimeout,
-  setUnrefTimeout,
+  kRefed,
+  getActiveTimer,
+  getActiveResourcesInfo,
   Timeout,
-  TIMEOUT_MAX,
+  getTimerDuration,
+  setUnrefTimeout,
+  suspendTimeout,
+  immediateQueue,
+  runImmediates,
+  Immediate,
 };
+})();

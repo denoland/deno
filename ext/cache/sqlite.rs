@@ -9,8 +9,8 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use deno_core::BufMutView;
-use deno_core::ByteString;
 use deno_core::Resource;
+use deno_core::convert::ByteString;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
 use rusqlite::Connection;
@@ -209,6 +209,23 @@ impl SqliteBackedCache {
         }
       }
       Ok::<bool, CacheError>(maybe_cache_id.is_some())
+    })
+    .await?
+  }
+
+  /// List all cache names.
+  pub async fn storage_keys(&self) -> Result<Vec<String>, CacheError> {
+    let db = self.connection.clone();
+    spawn_blocking(move || {
+      let db = db.lock();
+      let mut stmt =
+        db.prepare("SELECT cache_name FROM cache_storage ORDER BY id")?;
+      let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+      let mut names = Vec::new();
+      for row in rows {
+        names.push(row?);
+      }
+      Ok::<Vec<String>, CacheError>(names)
     })
     .await?
   }

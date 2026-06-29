@@ -32,6 +32,23 @@ fn napi_module_register(module: *const NapiModule) -> napi_status {
   napi_ok
 }
 
+// Legacy `NODE_MODULE` (V8/nan) addons register themselves through this symbol
+// from a static constructor at `dlopen` time. Deno does not support the legacy
+// V8 native addon ABI (only Node-API is supported), but if this symbol is not
+// exported the addon crashes hard with a cryptic `dyld: missing symbol called`
+// abort before we ever get a chance to report a useful error. By accepting the
+// registration here we let `op_napi_open` inspect `nm_version` and surface a
+// clear, actionable error instead. See denoland/deno#26656.
+#[napi_sym]
+fn node_module_register(module: *const NapiModule) -> napi_status {
+  MODULE_TO_REGISTER.with(|cell| {
+    let mut slot = cell.borrow_mut();
+    let prev = slot.replace(module);
+    assert!(prev.is_none());
+  });
+  napi_ok
+}
+
 #[napi_sym]
 fn napi_add_env_cleanup_hook(
   env: *mut Env,
@@ -158,7 +175,7 @@ fn napi_fatal_error(
         std::ffi::CStr::from_ptr(location).to_str().unwrap()
       } else {
         let slice = std::slice::from_raw_parts(
-          location as *const u8,
+          location as *const _,
           location_len as usize,
         );
         std::str::from_utf8(slice).unwrap()
@@ -170,7 +187,7 @@ fn napi_fatal_error(
     unsafe { std::ffi::CStr::from_ptr(message).to_str().unwrap() }
   } else {
     let slice = unsafe {
-      std::slice::from_raw_parts(message as *const u8, message_len as usize)
+      std::slice::from_raw_parts(message as *const _, message_len as usize)
     };
     std::str::from_utf8(slice).unwrap()
   };
@@ -184,21 +201,47 @@ fn napi_fatal_error(
   std::process::abort();
 }
 
+/// Internal state for an open callback scope. Stores the async_id so
+/// that napi_close_callback_scope can emit the async_hooks after event.
+///
+/// Unlike Node.js's `CallbackScope` which manages InternalCallbackScope
+/// state, we only need to track async hooks here. We intentionally do
+/// NOT create a V8 HandleScope -- doing so would invalidate any
+/// napi_value handles created between open and close (since they'd be
+/// allocated in the scope's handle table and freed on drop).
+struct NapiCallbackScope {
+  async_id: i64,
+}
+
 #[napi_sym]
 fn napi_open_callback_scope(
   env: *mut Env,
   _resource_object: napi_value,
-  _context: napi_value,
+  context: napi_async_context,
   result: *mut napi_callback_scope,
 ) -> napi_status {
   let env = check_env!(env);
   check_arg!(env, result);
 
-  // we open scope automatically when it's needed
-  unsafe {
-    *result = std::ptr::null_mut();
+  let async_id = if !context.is_null() {
+    let ctx = unsafe { &*(context as *const NapiAsyncContext) };
+    ctx.async_id
+  } else {
+    0
+  };
+
+  // Emit before hook
+  if async_id > 0 {
+    v8::callback_scope!(unsafe scope, env.context());
+    let before_fn = v8::Local::new(scope, &env.async_hooks_before);
+    let undef = v8::undefined(scope).into();
+    let id_val = v8::Number::new(scope, async_id as f64).into();
+    let _ = before_fn.call(scope, undef, &[id_val]);
   }
 
+  let cb_scope = Box::new(NapiCallbackScope { async_id });
+  unsafe { *result = Box::into_raw(cb_scope) as napi_callback_scope }
+  env.open_callback_scopes += 1;
   napi_clear_last_error(env)
 }
 
@@ -208,23 +251,95 @@ fn napi_close_callback_scope(
   scope: napi_callback_scope,
 ) -> napi_status {
   let env = check_env!(env);
-  // we close scope automatically when it's needed
-  assert!(scope.is_null());
+  check_arg!(env, scope);
+  if env.open_callback_scopes == 0 {
+    return napi_set_last_error(env, napi_callback_scope_mismatch);
+  }
+
+  env.open_callback_scopes -= 1;
+  let cb_scope = unsafe { Box::from_raw(scope as *mut NapiCallbackScope) };
+  let async_id = cb_scope.async_id;
+  drop(cb_scope);
+
+  // Emit after hook
+  if async_id > 0 {
+    v8::callback_scope!(unsafe scope, env.context());
+    let after_fn = v8::Local::new(scope, &env.async_hooks_after);
+    let undef = v8::undefined(scope).into();
+    let id_val = v8::Number::new(scope, async_id as f64).into();
+    let _ = after_fn.call(scope, undef, &[id_val]);
+  }
+
   napi_clear_last_error(env)
 }
 
-// NOTE: we don't support "async_hooks::AsyncContext" so these APIs are noops.
+/// Opaque async context that mirrors Node.js async_hooks semantics.
+/// Stores an async_id and the resource object. The async_id is used
+/// to emit async_hooks init/before/after/destroy events so that
+/// native addons integrate with Node.js async_hooks and
+/// AsyncLocalStorage.
+struct NapiAsyncContext {
+  #[allow(dead_code, reason = "prevents GC of the resource object")]
+  resource: v8::Global<v8::Object>,
+  async_id: i64,
+}
+
 #[napi_sym]
 fn napi_async_init(
   env: *mut Env,
-  _async_resource: napi_value,
-  _async_resource_name: napi_value,
+  async_resource: napi_value,
+  async_resource_name: napi_value,
   result: *mut napi_async_context,
 ) -> napi_status {
   let env = check_env!(env);
-  unsafe {
-    *result = ptr::null_mut();
-  }
+  check_arg!(env, result);
+  // Node.js requires async_resource_name to be provided.
+  check_arg!(env, async_resource_name);
+
+  let async_id = env.next_async_id;
+  env.next_async_id += 1;
+
+  let resource = {
+    v8::callback_scope!(unsafe scope, env.context());
+
+    let obj = if async_resource.is_none() {
+      // If no resource provided, create a new empty object (matching Node.js)
+      v8::Object::new(scope)
+    } else {
+      // Node.js applies ToObject() coercion. If it fails (e.g. null/undefined),
+      // propagate the error rather than silently substituting {}.
+      let resource_local = async_resource.unwrap();
+      match resource_local.to_object(scope) {
+        Some(obj) => obj,
+        None => {
+          return napi_set_last_error(env, napi_object_expected);
+        }
+      }
+    };
+
+    // Node.js coerces async_resource_name to a string via ToString().
+    let name_local: v8::Local<v8::Value> = (*async_resource_name).unwrap();
+    let type_name: v8::Local<v8::Value> = match name_local.to_string(scope) {
+      Some(s) => s.into(),
+      None => {
+        return napi_set_last_error(env, napi_string_expected);
+      }
+    };
+
+    // Emit async_hooks init event
+    let init_fn = v8::Local::new(scope, &env.async_hooks_init);
+    let recv = v8::undefined(scope).into();
+    let id = v8::Number::new(scope, async_id as f64).into();
+    // triggerAsyncId = 0 means use the current execution async ID
+    let trigger = v8::Number::new(scope, 0.0).into();
+    let resource_val: v8::Local<v8::Value> = obj.into();
+    let _ = init_fn.call(scope, recv, &[id, type_name, trigger, resource_val]);
+
+    v8::Global::new(scope, obj)
+  };
+
+  let ctx = Box::new(NapiAsyncContext { resource, async_id });
+  unsafe { *result = Box::into_raw(ctx) as napi_async_context }
   napi_clear_last_error(env)
 }
 
@@ -234,14 +349,27 @@ fn napi_async_destroy(
   async_context: napi_async_context,
 ) -> napi_status {
   let env = check_env!(env);
-  assert!(async_context.is_null());
+  check_arg!(env, async_context);
+
+  let ctx = unsafe { Box::from_raw(async_context as *mut NapiAsyncContext) };
+
+  // Emit async_hooks destroy event
+  {
+    v8::callback_scope!(unsafe scope, env.context());
+    let destroy_fn = v8::Local::new(scope, &env.async_hooks_destroy);
+    let recv = v8::undefined(scope).into();
+    let id = v8::Number::new(scope, ctx.async_id as f64).into();
+    let _ = destroy_fn.call(scope, recv, &[id]);
+  }
+
+  drop(ctx);
   napi_clear_last_error(env)
 }
 
 #[napi_sym]
 fn napi_make_callback<'s>(
   env: &'s mut Env,
-  _async_context: napi_async_context,
+  async_context: napi_async_context,
   recv: napi_value,
   func: napi_value,
   argc: usize,
@@ -255,13 +383,42 @@ fn napi_make_callback<'s>(
 
   v8::callback_scope!(unsafe scope, env.context());
 
+  // Get async_id from context if provided
+  let async_id = if !async_context.is_null() {
+    let ctx = unsafe { &*(async_context as *const NapiAsyncContext) };
+    Some(ctx.async_id)
+  } else {
+    None
+  };
+
+  // Emit before hook
+  if let Some(id) = async_id {
+    let before_fn = v8::Local::new(scope, &env.async_hooks_before);
+    let undef = v8::undefined(scope).into();
+    let id_val = v8::Number::new(scope, id as f64).into();
+    let _ = before_fn.call(scope, undef, &[id_val]);
+  }
+
   let Some(recv) = recv.and_then(|v| v.to_object(scope)) else {
+    // Emit after hook even on error
+    if let Some(id) = async_id {
+      let after_fn = v8::Local::new(scope, &env.async_hooks_after);
+      let undef = v8::undefined(scope).into();
+      let id_val = v8::Number::new(scope, id as f64).into();
+      let _ = after_fn.call(scope, undef, &[id_val]);
+    }
     return napi_object_expected;
   };
 
   let Some(func) =
     func.and_then(|v| v8::Local::<v8::Function>::try_from(v).ok())
   else {
+    if let Some(id) = async_id {
+      let after_fn = v8::Local::new(scope, &env.async_hooks_after);
+      let undef = v8::undefined(scope).into();
+      let id_val = v8::Number::new(scope, id as f64).into();
+      let _ = after_fn.call(scope, undef, &[id_val]);
+    }
     return napi_function_expected;
   };
 
@@ -273,9 +430,17 @@ fn napi_make_callback<'s>(
     &[]
   };
 
-  // TODO: async_context
+  let call_result = func.call(scope, recv.into(), args);
 
-  let Some(v) = func.call(scope, recv.into(), args) else {
+  // Emit after hook
+  if let Some(id) = async_id {
+    let after_fn = v8::Local::new(scope, &env.async_hooks_after);
+    let undef = v8::undefined(scope).into();
+    let id_val = v8::Number::new(scope, id as f64).into();
+    let _ = after_fn.call(scope, undef, &[id_val]);
+  }
+
+  let Some(v) = call_result else {
     return napi_generic_failure;
   };
 
@@ -393,6 +558,55 @@ fn napi_create_buffer_copy<'s>(
 }
 
 #[napi_sym]
+fn node_api_create_buffer_from_arraybuffer<'s>(
+  env: &'s mut Env,
+  arraybuffer: napi_value<'s>,
+  byte_offset: usize,
+  byte_length: usize,
+  result: *mut napi_value<'s>,
+) -> napi_status {
+  // Raw handle for last-error bookkeeping on the paths below where `env` is
+  // still borrowed by the callback scope.
+  let env_ptr: *mut Env = &mut *env;
+
+  check_arg!(env, result);
+
+  // `arraybuffer` must be an ArrayBuffer.
+  let Some(ab) =
+    arraybuffer.and_then(|v| v8::Local::<v8::ArrayBuffer>::try_from(v).ok())
+  else {
+    return napi_set_last_error(env, napi_invalid_arg);
+  };
+
+  // The requested [byte_offset, byte_offset + byte_length) range must lie
+  // within the bounds of the ArrayBuffer.
+  let in_bounds = byte_offset
+    .checked_add(byte_length)
+    .is_some_and(|end| end <= ab.byte_length());
+  if !in_bounds {
+    return napi_set_last_error(env, napi_invalid_arg);
+  }
+
+  v8::callback_scope!(unsafe scope, env.context());
+
+  let create_buffer = v8::Local::new(scope, &env.create_buffer);
+  let recv = v8::null(scope).into();
+  let offset = v8::Number::new(scope, byte_offset as f64).into();
+  let length = v8::Number::new(scope, byte_length as f64).into();
+  let Some(buffer) =
+    create_buffer.call(scope, recv, &[ab.into(), offset, length])
+  else {
+    return napi_set_last_error(env_ptr, napi_generic_failure);
+  };
+
+  unsafe {
+    *result = buffer.into();
+  }
+
+  napi_clear_last_error(env_ptr)
+}
+
+#[napi_sym]
 fn napi_is_buffer(
   env: *mut Env,
   value: napi_value,
@@ -450,10 +664,34 @@ fn napi_get_node_version(
   let env = check_env!(env);
   check_arg!(env, result);
 
+  // Derive major/minor/patch at compile time from `deno_node::NODE_VERSION`,
+  // the single source of truth for the emulated Node.js version, so the value
+  // reported to native addons via `napi_get_node_version()` stays in sync with
+  // `process.version` / `process.versions.node`.
+  const fn parse_part(part: usize) -> u32 {
+    let bytes = deno_node::NODE_VERSION.as_bytes();
+    let mut seen_dots = 0;
+    let mut value = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+      let b = bytes[i];
+      if b == b'.' {
+        seen_dots += 1;
+        if seen_dots > part {
+          break;
+        }
+      } else if seen_dots == part && b.is_ascii_digit() {
+        value = value * 10 + (b - b'0') as u32;
+      }
+      i += 1;
+    }
+    value
+  }
+
   const NODE_VERSION: napi_node_version = napi_node_version {
-    major: 20,
-    minor: 11,
-    patch: 1,
+    major: parse_part(0),
+    minor: parse_part(1),
+    patch: parse_part(2),
     release: c"Deno".as_ptr(),
   };
 
@@ -824,15 +1062,24 @@ impl TsFn {
     let data = SendPtr(data);
     let context = SendPtr(self.context);
     let call_js_cb = self.call_js_cb;
+    // Capture env so we can pass it even after the tsfn is freed. The env
+    // pointer is always valid here because it was created via Box::into_raw
+    // in op_napi_open and is intentionally leaked (never freed).
+    let env = SendPtr(self.env);
 
     self.sender.spawn(move |scope: &mut v8::PinScope<'_, '_>| {
       let data = data.take();
 
-      // if is_closed then tsfn is freed, don't read from it.
+      // If is_closed then the TsFn struct has been freed. Don't read from
+      // the tsfn pointer. We still pass the real env (not null) because:
+      // 1. The env is valid (leaked via Box::into_raw, never freed)
+      // 2. V8 is alive (we're running on the V8 thread with a scope)
+      // 3. Many native addons (e.g. node-pty) dereference env without a
+      //    null check, causing SIGSEGV if we pass null
       if is_closed.load(Ordering::Relaxed) {
         unsafe {
           call_js_cb(
-            std::ptr::null_mut(),
+            env.take() as _,
             None::<v8::Local<v8::Value>>.into(),
             context.take() as _,
             data as _,

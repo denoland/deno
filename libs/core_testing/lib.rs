@@ -47,6 +47,7 @@ macro_rules! integration_test {
 unit_test!(
   encode_decode_test,
   error_test,
+  immediate_test,
   microtask_test,
   ops_async_test,
   ops_buffer_test,
@@ -69,6 +70,7 @@ integration_test!(
   dyn_import_op,
   dyn_import_no_hang,
   dyn_import_pending_tla,
+  import_defer,
   error_async_stack,
   error_callsite,
   error_non_existent_eval_source,

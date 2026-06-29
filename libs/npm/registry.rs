@@ -17,6 +17,7 @@ use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::Value;
 use thiserror::Error;
 
 use crate::resolution::NewestDependencyDate;
@@ -131,6 +132,11 @@ pub enum NpmDependencyEntryErrorSource {
 
 To work around this, you can use a package.json and install the dependencies via `npm install`.", .specifier)]
   RemoteDependency { specifier: String },
+  /// A `file:` or `link:` dependency that references a local path.
+  /// These are typically used during development and should be bundled
+  /// in the published package tarball. We silently skip them.
+  #[error("Unsupported local dependency: {specifier}")]
+  LocalDependency { specifier: String },
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -197,6 +203,8 @@ pub enum NpmPackageVersionBinEntry {
 pub struct NpmPackageVersionInfo {
   pub version: Version,
   #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub exports: Option<Value>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
   pub dist: Option<NpmPackageVersionDistInfo>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub bin: Option<NpmPackageVersionBinEntry>,
@@ -238,9 +246,81 @@ pub struct NpmPackageVersionInfo {
   #[serde(default, skip_serializing_if = "Option::is_none")]
   #[serde(deserialize_with = "deserializers::string")]
   pub deprecated: Option<String>,
+  /// The `_npmUser` field from the full packument. Identifies who published
+  /// the version and carries the `trustedPublisher` (OIDC trusted publishing)
+  /// and `approver` (staged publish) trust signals. Only present in the full
+  /// packument.
+  #[serde(
+    default,
+    rename = "_npmUser",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub npm_user: Option<NpmUser>,
+}
+
+/// A presence marker for a registry field whose mere existence is the signal
+/// we care about (`_npmUser.approver`, `_npmUser.trustedPublisher`,
+/// `dist.attestations.provenance`). The full packument carries large objects
+/// here, but [`NpmPackageVersionInfo::get_trust_evidence`] only checks whether
+/// they are present, so this discards the contents on deserialize and
+/// re-serializes compactly as `true`. That keeps the cached packument small
+/// even though `min-release-age` makes Deno fetch the full packument by
+/// default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Present;
+
+impl Serialize for Present {
+  fn serialize<S: serde::Serializer>(
+    &self,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error> {
+    serializer.serialize_bool(true)
+  }
+}
+
+impl<'de> Deserialize<'de> for Present {
+  fn deserialize<D: serde::Deserializer<'de>>(
+    deserializer: D,
+  ) -> Result<Self, D::Error> {
+    serde::de::IgnoredAny::deserialize(deserializer)?;
+    Ok(Present)
+  }
 }
 
 impl NpmPackageVersionInfo {
+  /// The strongest publishing-trust evidence this version exposes, derived
+  /// from registry metadata signals. Used by the `no-downgrade` trust policy.
+  ///
+  /// Mirrors pnpm's
+  /// [`getTrustEvidence`](https://github.com/pnpm/pnpm/blob/main/resolving/npm-resolver/src/trustChecks.ts).
+  /// The tiers are mutually exclusive: a staged publish (`_npmUser.approver`)
+  /// is strongest, then trusted publishing (`_npmUser.trustedPublisher`)
+  /// *backed by* a provenance attestation, then a provenance attestation on
+  /// its own. A `trustedPublisher` flag without a provenance attestation is
+  /// not counted: on its own it is just metadata a future staged-publish flow
+  /// could mint, so it only counts as the stronger signal when the version
+  /// also shipped provenance.
+  pub fn get_trust_evidence(&self) -> Option<TrustEvidence> {
+    let npm_user = self.npm_user.as_ref();
+    if npm_user.is_some_and(|u| u.approver.is_some()) {
+      return Some(TrustEvidence::StagedPublish);
+    }
+    let has_provenance = self
+      .dist
+      .as_ref()
+      .and_then(|d| d.attestations.as_ref())
+      .is_some_and(|a| a.provenance.is_some());
+    let has_trusted_publisher =
+      npm_user.is_some_and(|u| u.trusted_publisher.is_some());
+    if has_trusted_publisher && has_provenance {
+      return Some(TrustEvidence::TrustedPublisher);
+    }
+    if has_provenance {
+      return Some(TrustEvidence::Provenance);
+    }
+    None
+  }
+
   /// Helper for getting the bundle dependencies.
   ///
   /// Unfortunately due to limitations in serde, it's not
@@ -281,9 +361,11 @@ impl NpmPackageVersionInfo {
       parent_nv: (&str, &Version),
       key_value: (&StackString, &StackString),
       kind: NpmDependencyEntryKind,
-    ) -> Result<NpmDependencyEntry, Box<NpmDependencyEntryError>> {
-      parse_dep_entry_inner(key_value, kind).map_err(|source| {
-        Box::new(NpmDependencyEntryError {
+    ) -> Result<Option<NpmDependencyEntry>, Box<NpmDependencyEntryError>> {
+      match parse_dep_entry_inner(key_value, kind) {
+        Ok(entry) => Ok(Some(entry)),
+        Err(NpmDependencyEntryErrorSource::LocalDependency { .. }) => Ok(None),
+        Err(source) => Err(Box::new(NpmDependencyEntryError {
           parent_nv: PackageNv {
             name: parent_nv.0.into(),
             version: parent_nv.1.clone(),
@@ -291,8 +373,8 @@ impl NpmPackageVersionInfo {
           key: key_value.0.to_string(),
           value: key_value.1.to_string(),
           source,
-        })
-      })
+        })),
+      }
     }
 
     let normalized_dependencies = if self
@@ -333,18 +415,21 @@ impl NpmPackageVersionInfo {
         true => NpmDependencyEntryKind::OptionalPeer,
         false => NpmDependencyEntryKind::Peer,
       };
-      let entry = parse_dep_entry(nv, entry, kind)?;
-      result.insert(entry.bare_specifier.clone(), entry);
+      if let Some(entry) = parse_dep_entry(nv, entry, kind)? {
+        result.insert(entry.bare_specifier.clone(), entry);
+      }
     }
     for entry in normalized_dependencies.iter() {
       let entry = parse_dep_entry(nv, entry, NpmDependencyEntryKind::Dep)?;
-      // people may define a dependency as a peer dependency as well,
-      // so in those cases, attempt to resolve as a peer dependency,
-      // but then use this dependency version requirement otherwise
-      if let Some(peer_dep_entry) = result.get_mut(&entry.bare_specifier) {
-        peer_dep_entry.peer_dep_version_req = Some(entry.version_req);
-      } else {
-        result.insert(entry.bare_specifier.clone(), entry);
+      if let Some(entry) = entry {
+        // people may define a dependency as a peer dependency as well,
+        // so in those cases, attempt to resolve as a peer dependency,
+        // but then use this dependency version requirement otherwise
+        if let Some(peer_dep_entry) = result.get_mut(&entry.bare_specifier) {
+          peer_dep_entry.peer_dep_version_req = Some(entry.version_req);
+        } else {
+          result.insert(entry.bare_specifier.clone(), entry);
+        }
       }
     }
     Ok(result.into_values().collect())
@@ -379,6 +464,11 @@ fn parse_dep_entry_name_and_raw_version<'a>(
     || version_req.starts_with("git+")
   {
     Err(NpmDependencyEntryErrorSource::RemoteDependency {
+      specifier: version_req.to_string(),
+    })
+  } else if version_req.starts_with("file:") || version_req.starts_with("link:")
+  {
+    Err(NpmDependencyEntryErrorSource::LocalDependency {
       specifier: version_req.to_string(),
     })
   } else {
@@ -427,6 +517,82 @@ pub struct NpmPackageVersionDistInfo {
   pub(crate) shasum: Option<String>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub(crate) integrity: Option<String>,
+  /// Cryptographic attestations for this version (provenance, publish).
+  /// Only present in the full packument.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub attestations: Option<NpmAttestations>,
+}
+
+/// The `_npmUser` object from the full packument. Only the presence of
+/// `trustedPublisher` and `approver` are trust signals; the `name` and other
+/// fields are dropped on deserialize to keep the cached packument small.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NpmUser {
+  /// Present when the version was published via npm trusted publishing
+  /// (OIDC). Its contents identify the CI provider and workflow.
+  #[serde(
+    default,
+    rename = "trustedPublisher",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub trusted_publisher: Option<Present>,
+  /// Present when the version went through npm staged publishing: a maintainer
+  /// approved it with a live 2FA challenge before it became installable. This
+  /// is the strongest publishing-trust signal.
+  /// See https://docs.npmjs.com/staged-publishing/
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub approver: Option<Present>,
+}
+
+/// The `dist.attestations` object from the full packument.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NpmAttestations {
+  /// SLSA provenance attestation linking the package to the source commit and
+  /// build. Present when the version was published with `--provenance`.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub provenance: Option<Present>,
+}
+
+/// The strongest publishing-trust evidence a package version exposes, derived
+/// from registry metadata. Variants are declared weakest-first so the derived
+/// `Ord` matches the trust rank. The `no-downgrade` trust policy refuses to
+/// resolve a version whose evidence is weaker than the strongest evidence on
+/// any earlier-published version of the same package.
+///
+/// "No evidence" is represented as `Option::None` rather than a variant here,
+/// matching pnpm's `undefined`; compare ranks via
+/// `Option::map_or(0, TrustEvidence::rank)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TrustEvidence {
+  /// `dist.attestations.provenance` is set (published with `--provenance`).
+  Provenance,
+  /// `_npmUser.trustedPublisher` is set alongside a provenance attestation:
+  /// published via OIDC-backed trusted publishing.
+  TrustedPublisher,
+  /// `_npmUser.approver` is set: a staged publish requiring a 2FA approval.
+  /// The strongest signal.
+  StagedPublish,
+}
+
+impl TrustEvidence {
+  /// The numeric trust rank, mirroring pnpm's `TRUST_RANK` weights. Higher is
+  /// more trusted; "no evidence" is rank `0`.
+  pub fn rank(self) -> u8 {
+    match self {
+      TrustEvidence::Provenance => 1,
+      TrustEvidence::TrustedPublisher => 2,
+      TrustEvidence::StagedPublish => 3,
+    }
+  }
+
+  /// Human-readable description for diagnostics.
+  pub fn pretty(self) -> &'static str {
+    match self {
+      TrustEvidence::Provenance => "provenance attestation",
+      TrustEvidence::TrustedPublisher => "trusted publisher",
+      TrustEvidence::StagedPublish => "staged publish",
+    }
+  }
 }
 
 impl NpmPackageVersionDistInfo {
@@ -1090,9 +1256,98 @@ mod test {
           tarball: "value".to_string(),
           shasum: None,
           integrity: None,
+          attestations: None,
         }),
         ..Default::default()
       }
+    );
+  }
+
+  #[test]
+  fn trust_evidence_ranking() {
+    fn trust_of(json: &str) -> Option<TrustEvidence> {
+      let info: NpmPackageVersionInfo = serde_json::from_str(json).unwrap();
+      info.get_trust_evidence()
+    }
+
+    // plain token publish: no signals
+    assert_eq!(trust_of(r#"{ "version": "1.0.0" }"#), None);
+
+    // provenance attestation only
+    assert_eq!(
+      trust_of(
+        r#"{ "version": "1.0.0", "dist": { "tarball": "t", "attestations": { "provenance": { "predicateType": "x" } } } }"#,
+      ),
+      Some(TrustEvidence::Provenance)
+    );
+
+    // trusted publishing WITHOUT a provenance attestation is not counted: on
+    // its own the flag is just metadata, mirroring pnpm's getTrustEvidence.
+    assert_eq!(
+      trust_of(
+        r#"{ "version": "1.0.0", "_npmUser": { "name": "ci", "trustedPublisher": { "id": "github" } } }"#,
+      ),
+      None
+    );
+
+    // trusted publishing backed by a provenance attestation
+    assert_eq!(
+      trust_of(
+        r#"{ "version": "1.0.0", "_npmUser": { "trustedPublisher": { "id": "github" } }, "dist": { "tarball": "t", "attestations": { "provenance": {} } } }"#,
+      ),
+      Some(TrustEvidence::TrustedPublisher)
+    );
+
+    // staged publish (human-approved via 2FA) is strongest
+    assert_eq!(
+      trust_of(
+        r#"{ "version": "1.0.0", "_npmUser": { "approver": { "name": "maintainer" } } }"#,
+      ),
+      Some(TrustEvidence::StagedPublish)
+    );
+
+    // ranks are ordered: provenance < trusted publisher < staged publish
+    assert!(TrustEvidence::Provenance < TrustEvidence::TrustedPublisher);
+    assert!(TrustEvidence::TrustedPublisher < TrustEvidence::StagedPublish);
+    assert_eq!(TrustEvidence::Provenance.rank(), 1);
+    assert_eq!(TrustEvidence::TrustedPublisher.rank(), 2);
+    assert_eq!(TrustEvidence::StagedPublish.rank(), 3);
+  }
+
+  #[test]
+  fn trust_signals_serialize_compactly() {
+    // The full packument carries large objects in `_npmUser.approver`,
+    // `_npmUser.trustedPublisher` and `dist.attestations.provenance`, but we
+    // only care that they exist. Re-serializing (as the registry cache does)
+    // must collapse them to compact markers and still preserve the trust
+    // evidence, so caching the full packument by default stays cheap.
+    let info: NpmPackageVersionInfo = serde_json::from_str(
+      r#"{
+        "version": "1.0.0",
+        "_npmUser": { "name": "ci", "trustedPublisher": { "id": "github", "oidcConfigId": "abc" } },
+        "dist": { "tarball": "t", "attestations": { "url": "https://example/att", "provenance": { "predicateType": "https://slsa.dev/provenance/v1" } } }
+      }"#,
+    )
+    .unwrap();
+
+    let serialized = serde_json::to_string(&info).unwrap();
+    assert!(
+      serialized.contains(r#""trustedPublisher":true"#),
+      "{serialized}"
+    );
+    assert!(serialized.contains(r#""provenance":true"#), "{serialized}");
+    // none of the dropped sub-fields survive
+    assert!(!serialized.contains("oidcConfigId"), "{serialized}");
+    assert!(!serialized.contains("predicateType"), "{serialized}");
+    assert!(!serialized.contains("\"name\""), "{serialized}");
+
+    // and the trust evidence round-trips through the slimmed form
+    let reparsed: NpmPackageVersionInfo =
+      serde_json::from_str(&serialized).unwrap();
+    assert_eq!(reparsed.get_trust_evidence(), info.get_trust_evidence());
+    assert_eq!(
+      reparsed.get_trust_evidence(),
+      Some(TrustEvidence::TrustedPublisher)
     );
   }
 
@@ -1130,6 +1385,7 @@ mod test {
           tarball: "value".to_string(),
           shasum: Some("test".to_string()),
           integrity: None,
+          attestations: None,
         }),
         dependencies: HashMap::new(),
         deprecated: Some("aa".to_string()),
@@ -1167,6 +1423,7 @@ mod test {
             tarball: "value".to_string(),
             shasum: Some("test".to_string()),
             integrity: None,
+            attestations: None,
           }),
           dependencies: HashMap::new(),
           deprecated: None,
@@ -1451,6 +1708,45 @@ mod test {
   }
 
   #[test]
+  fn test_parse_dep_entry_name_and_raw_version_local_dep() {
+    for specifier in ["file:./rtt-plugin", "file:rust-client", "link:../foo"] {
+      let err = parse_dep_entry_name_and_raw_version(
+        &StackString::from("test"),
+        &StackString::from(specifier),
+      )
+      .unwrap_err();
+      match err {
+        NpmDependencyEntryErrorSource::LocalDependency {
+          specifier: err_specifier,
+        } => assert_eq!(err_specifier, specifier),
+        _ => unreachable!(),
+      }
+    }
+  }
+
+  #[test]
+  fn local_deps_as_entries_are_skipped() {
+    for specifier in [
+      "file:./rtt-plugin",
+      "file:rust-client",
+      "file:components/tryghost-parse-email-address-6.22.0.tgz",
+      "link:../foo",
+    ] {
+      let deps = NpmPackageVersionInfo {
+        dependencies: HashMap::from([
+          ("a".into(), "^1.0.0".into()),
+          ("local-dep".into(), specifier.into()),
+        ]),
+        ..Default::default()
+      };
+      let entries = deps.dependencies_as_entries("pkg-name").unwrap();
+      // The local dependency should be skipped, only "a" remains
+      assert_eq!(entries.len(), 1);
+      assert_eq!(entries[0].bare_specifier.as_str(), "a");
+    }
+  }
+
+  #[test]
   fn example_deserialization_fail() {
     #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct SerializedCachedPackageInfo {
@@ -1493,6 +1789,7 @@ mod test {
   fn minimize_serialization_version_info() {
     let data = NpmPackageVersionInfo {
       version: Version::parse_from_npm("1.0.0").unwrap(),
+      exports: Default::default(),
       dist: Default::default(),
       bin: Default::default(),
       dependencies: Default::default(),
@@ -1506,6 +1803,7 @@ mod test {
       scripts: Default::default(),
       has_install_script: Default::default(),
       deprecated: Default::default(),
+      npm_user: Default::default(),
     };
     let text = serde_json::to_string(&data).unwrap();
     assert_eq!(text, r#"{"version":"1.0.0"}"#);
@@ -1517,6 +1815,7 @@ mod test {
       tarball: "test".to_string(),
       shasum: None,
       integrity: None,
+      attestations: None,
     };
     let text = serde_json::to_string(&data).unwrap();
     assert_eq!(text, r#"{"tarball":"test"}"#);

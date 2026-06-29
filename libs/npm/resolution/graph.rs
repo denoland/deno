@@ -31,6 +31,7 @@ use thiserror::Error;
 use super::common::NpmPackageVersionResolutionError;
 use super::common::NpmPackageVersionResolver;
 use super::common::NpmVersionResolver;
+use super::common::package_info_or_link_fallback;
 use super::overrides::NpmOverrides;
 use super::snapshot::NpmResolutionSnapshot;
 use crate::NpmPackageId;
@@ -827,7 +828,9 @@ impl Graph {
       }
 
       pending_futures.push_back(async move {
-        let package_info = api.package_info(&pkg_id.nv.name).await?;
+        let package_info =
+          package_info_or_link_fallback(api, &pkg_id.nv.name, link_packages)
+            .await?;
         Ok::<_, NpmRegistryPackageInfoLoadError>((
           pkg_id,
           dependencies,
@@ -1039,7 +1042,7 @@ impl Graph {
       .keys()
       .copied()
       .collect::<Vec<_>>();
-    node_ids.sort_by(|a, b| a.0.cmp(&b.0));
+    node_ids.sort_by_key(|a| a.0);
     for node_id in node_ids {
       Self::output_node_with_ids(&self.nodes, &pkg_ids, node_id, true);
     }
@@ -1508,7 +1511,13 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       }
 
       // Resolve from registry and add to fallback (not root_packages)
-      let package_info = match self.api.package_info(name.as_str()).await {
+      let package_info = match package_info_or_link_fallback(
+        self.api,
+        name.as_str(),
+        &self.version_resolver.link_packages,
+      )
+      .await
+      {
         Ok(info) => info,
         Err(_) => continue,
       };
@@ -2493,6 +2502,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       parent_id: usize,
       work: &mut FuturesUnordered<WorkFuture<'a>>,
       api: &'a (impl NpmRegistryApi + ?Sized),
+      link_packages: &'a HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
     ) {
       for (dep_index, dep) in deps.iter().enumerate() {
         let name = overrides
@@ -2500,7 +2510,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           .cloned()
           .unwrap_or_else(|| dep.name.clone());
         work.push(Box::pin(async move {
-          let result = api.package_info(&name).await;
+          let result =
+            package_info_or_link_fallback(api, &name, link_packages).await;
           FetchEvent::DepInfo {
             parent_id,
             dep_index,
@@ -2518,6 +2529,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       work: &mut FuturesUnordered<WorkFuture<'a>>,
       trackers: &mut Vec<ParentState>,
       api: &'a (impl NpmRegistryApi + ?Sized),
+      link_packages: &'a HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
     ) {
       while let Some(parent_path) = pending.pop_front() {
         let node_id = parent_path.node_id();
@@ -2540,6 +2552,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             parent_id,
             work,
             api,
+            link_packages,
           );
           trackers.push(ParentState::Pending {
             path: parent_path,
@@ -2552,7 +2565,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           trackers.push(ParentState::AwaitingParentInfo);
           let nv = pkg_nv;
           work.push(Box::pin(async move {
-            let result = api.package_info(&nv.name).await;
+            let result =
+              package_info_or_link_fallback(api, &nv.name, link_packages).await;
             FetchEvent::ParentInfo {
               id: parent_id,
               path: parent_path,
@@ -2565,6 +2579,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     }
 
     let api = self.api;
+    let link_packages = &*self.version_resolver.link_packages;
     let mut work: FuturesUnordered<WorkFuture<'_>> = FuturesUnordered::new();
     let mut trackers: Vec<ParentState> = Vec::new();
     let mut next_to_retire: usize = 0;
@@ -2576,6 +2591,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       &mut work,
       &mut trackers,
       api,
+      link_packages,
     );
 
     while let Some(event) = work.next().await {
@@ -2603,6 +2619,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
               id,
               &mut work,
               api,
+              link_packages,
             );
             trackers[id] = ParentState::Pending {
               path,
@@ -2682,6 +2699,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             &mut work,
             &mut trackers,
             api,
+            link_packages,
           );
         }
         next_to_retire += 1;
@@ -3033,8 +3051,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           pending_dep_entries.push_back((node_id, deps.clone()));
         } else {
           let api = self.api;
+          let link_pkgs = &*self.version_resolver.link_packages;
           futures.push(async move {
-            let package_info = api.package_info(&nv.name).await?;
+            let package_info =
+              package_info_or_link_fallback(api, &nv.name, link_pkgs).await?;
             Result::<_, NpmResolutionError>::Ok((node_id, nv, package_info))
           });
         }
@@ -3288,7 +3308,13 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     by_version: &BTreeMap<Version, Vec<VersionReq>>,
   ) -> HashMap<VersionReq, Version> {
     // this should already be cached
-    let package_info = self.api.package_info(package_name).await.unwrap();
+    let package_info = package_info_or_link_fallback(
+      self.api,
+      package_name,
+      &self.version_resolver.link_packages,
+    )
+    .await
+    .unwrap();
     let version_resolver = self.version_resolver.get_for_package(&package_info);
 
     // collect unique reqs across all versions
@@ -6085,6 +6111,32 @@ mod test {
   }
 
   #[tokio::test]
+  async fn skips_file_dep() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "*"));
+    api.add_dependency(
+      ("package-b", "1.0.0"),
+      ("local-pkg", "file:./local-pkg"),
+    );
+    // Should resolve successfully, skipping the file: dependency
+    let snapshot =
+      run_resolver_and_get_snapshot(api, vec!["package-a@1.0.0"]).await;
+    let packages = package_names_with_info(
+      &snapshot,
+      &NpmSystemInfo {
+        os: "darwin".into(),
+        cpu: "x86_64".into(),
+      },
+    );
+    assert_eq!(
+      packages,
+      vec!["package-a@1.0.0".to_string(), "package-b@1.0.0".to_string(),]
+    );
+  }
+
+  #[tokio::test]
   async fn peer_dep_on_self() {
     let api = TestNpmRegistryApi::default();
     api.ensure_package_version("package-a", "1.0.0");
@@ -6469,6 +6521,7 @@ mod test {
             tarball: "https://example.com/package-0@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -6505,6 +6558,7 @@ mod test {
             tarball: "https://example.com/package-a@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -6522,6 +6576,7 @@ mod test {
             tarball: "https://example.com/package-b@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -6641,6 +6696,142 @@ mod test {
     assert_eq!(
       package_reqs,
       vec![("package-a@1.0.0".to_string(), "package-a@1.0.0".to_string())]
+    );
+  }
+
+  #[tokio::test]
+  async fn link_package_not_on_registry() {
+    // Test that a package which only exists as a link (not published to npm)
+    // can be resolved successfully. This is the scenario from issue #33010.
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    // package-a depends on local-only-pkg which is NOT on the registry
+    api.add_dependency(("package-a", "1.0.0"), ("local-only-pkg", "^1.0.0"));
+
+    let link_packages = HashMap::from([(
+      PackageName::from_static("local-only-pkg"),
+      vec![NpmPackageVersionInfo {
+        version: Version::parse_standard("1.0.0").unwrap(),
+        ..Default::default()
+      }],
+    )]);
+
+    let (packages, package_reqs) = run_resolver_with_options_and_get_output(
+      api,
+      RunResolverOptions {
+        reqs: vec!["package-a@1.0.0"],
+        link_packages: Some(&link_packages),
+        ..Default::default()
+      },
+    )
+    .await;
+
+    assert_eq!(
+      packages,
+      vec![
+        TestNpmResolutionPackage {
+          pkg_id: "local-only-pkg@1.0.0".to_string(),
+          copy_index: 0,
+          dependencies: Default::default(),
+        },
+        TestNpmResolutionPackage {
+          pkg_id: "package-a@1.0.0".to_string(),
+          copy_index: 0,
+          dependencies: BTreeMap::from([(
+            "local-only-pkg".to_string(),
+            "local-only-pkg@1.0.0".to_string(),
+          )]),
+        },
+      ]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![("package-a@1.0.0".to_string(), "package-a@1.0.0".to_string())]
+    );
+  }
+
+  #[tokio::test]
+  async fn link_package_not_on_registry_as_root() {
+    // Test that a link-only package can be resolved when it is the
+    // root/top-level package requirement.
+    let api = TestNpmRegistryApi::default();
+
+    let link_packages = HashMap::from([(
+      PackageName::from_static("my-local-pkg"),
+      vec![NpmPackageVersionInfo {
+        version: Version::parse_standard("2.0.0").unwrap(),
+        ..Default::default()
+      }],
+    )]);
+
+    let (packages, package_reqs) = run_resolver_with_options_and_get_output(
+      api,
+      RunResolverOptions {
+        reqs: vec!["my-local-pkg@^2.0.0"],
+        link_packages: Some(&link_packages),
+        ..Default::default()
+      },
+    )
+    .await;
+
+    assert_eq!(
+      packages,
+      vec![TestNpmResolutionPackage {
+        pkg_id: "my-local-pkg@2.0.0".to_string(),
+        copy_index: 0,
+        dependencies: Default::default(),
+      }]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![(
+        "my-local-pkg@^2.0.0".to_string(),
+        "my-local-pkg@2.0.0".to_string()
+      )]
+    );
+  }
+
+  #[tokio::test]
+  async fn link_package_prerelease_as_root() {
+    // A link package with a prerelease version should be selected for a bare
+    // `*` requirement, even though the registry also publishes a stable
+    // version that a `*` range would normally prefer (npm semver excludes
+    // prereleases). The explicitly linked local package wins.
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("my-local-pkg", "0.1.4");
+
+    let link_packages = HashMap::from([(
+      PackageName::from_static("my-local-pkg"),
+      vec![NpmPackageVersionInfo {
+        version: Version::parse_from_npm("0.40.0-pre").unwrap(),
+        ..Default::default()
+      }],
+    )]);
+
+    let (packages, package_reqs) = run_resolver_with_options_and_get_output(
+      api,
+      RunResolverOptions {
+        reqs: vec!["my-local-pkg@*"],
+        link_packages: Some(&link_packages),
+        ..Default::default()
+      },
+    )
+    .await;
+
+    assert_eq!(
+      packages,
+      vec![TestNpmResolutionPackage {
+        pkg_id: "my-local-pkg@0.40.0-pre".to_string(),
+        copy_index: 0,
+        dependencies: Default::default(),
+      }]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![(
+        "my-local-pkg".to_string(),
+        "my-local-pkg@0.40.0-pre".to_string()
+      )]
     );
   }
 
@@ -7649,7 +7840,7 @@ mod test {
         )
       })
       .collect::<Vec<_>>();
-    package_reqs.sort_by(|a, b| a.0.to_string().cmp(&b.0.to_string()));
+    package_reqs.sort_by_key(|a| a.0.to_string());
 
     let packages = packages
       .into_iter()
@@ -7751,6 +7942,7 @@ mod test {
       link_packages: link_packages.clone(),
       newest_dependency_date_options: options.newest_dependency_date,
       overrides: Arc::new(options.overrides),
+      trust_policy: Default::default(),
     };
     let mut resolver = GraphDependencyResolver::new(
       &mut graph,
@@ -7764,8 +7956,10 @@ mod test {
 
     for req in options.reqs {
       let req = PackageReq::from_str(req).unwrap();
-      resolver
-        .add_package_req(&req, &api.package_info(&req.name).await.unwrap())?;
+      let info = package_info_or_link_fallback(api, &req.name, &link_packages)
+        .await
+        .unwrap();
+      resolver.add_package_req(&req, &info)?;
     }
 
     resolver.resolve_pending().await?;
@@ -8010,6 +8204,7 @@ mod test {
       link_packages: Default::default(),
       newest_dependency_date_options: Default::default(),
       overrides: Default::default(),
+      trust_policy: Default::default(),
     };
     let mut resolver = GraphDependencyResolver::new(
       &mut graph,
@@ -8034,8 +8229,12 @@ mod test {
   fn make_overrides(
     json: serde_json::Value,
   ) -> crate::resolution::NpmOverrides {
-    crate::resolution::NpmOverrides::from_value(json, &Default::default())
-      .unwrap()
+    crate::resolution::NpmOverrides::from_value(
+      json,
+      &Default::default(),
+      &Default::default(),
+    )
+    .unwrap()
   }
 
   fn make_overrides_with_root_deps(
@@ -8045,7 +8244,12 @@ mod test {
       deno_semver::StackString,
     >,
   ) -> crate::resolution::NpmOverrides {
-    crate::resolution::NpmOverrides::from_value(json, &root_deps).unwrap()
+    crate::resolution::NpmOverrides::from_value(
+      json,
+      &root_deps,
+      &Default::default(),
+    )
+    .unwrap()
   }
 
   #[tokio::test]

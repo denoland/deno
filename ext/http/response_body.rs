@@ -20,6 +20,25 @@ use hyper::body::Frame;
 use hyper::body::SizeHint;
 use pin_project::pin_project;
 
+const BROTLI_COMPRESSION_QUALITY: u32 = 6;
+const BROTLI_COMPRESSION_LGWIN: u32 = 22;
+
+// Quality level 6 is based on google's nginx default value for on-the-fly
+// compression:
+// https://github.com/google/ngx_brotli#brotli_comp_level
+// lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes (~4MB).
+#[inline(never)]
+pub(crate) fn brotli_compressor(
+  buffer_size: usize,
+) -> brotli::CompressorWriter<Vec<u8>> {
+  brotli::CompressorWriter::new(
+    Vec::new(),
+    buffer_size,
+    BROTLI_COMPRESSION_QUALITY,
+    BROTLI_COMPRESSION_LGWIN,
+  )
+}
+
 /// Simplification for nested types we use for our streams. We provide a way to convert from
 /// this type into Hyper's body [`Frame`].
 pub enum ResponseStreamResult {
@@ -163,13 +182,7 @@ impl ResponseBytesInner {
         Self::Bytes(BufView::from(writer.finish().unwrap()))
       }
       Compression::Brotli => {
-        // quality level 6 is based on google's nginx default value for
-        // on-the-fly compression
-        // https://github.com/google/ngx_brotli#brotli_comp_level
-        // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes
-        // (~4MB)
-        let mut writer =
-          brotli::CompressorWriter::new(Vec::new(), 65 * 1024, 6, 22);
+        let mut writer = brotli_compressor(65 * 1024);
         writer.write_all(&buf).unwrap();
         writer.flush().unwrap();
         Self::Bytes(BufView::from(writer.into_inner()))
@@ -187,8 +200,7 @@ impl ResponseBytesInner {
         Self::Bytes(BufView::from(writer.finish().unwrap()))
       }
       Compression::Brotli => {
-        let mut writer =
-          brotli::CompressorWriter::new(Vec::new(), 65 * 1024, 6, 22);
+        let mut writer = brotli_compressor(65 * 1024);
         writer.write_all(&vec).unwrap();
         writer.flush().unwrap();
         Self::Bytes(BufView::from(writer.into_inner()))
@@ -464,11 +476,14 @@ pub struct BrotliResponseStream {
 impl BrotliResponseStream {
   pub fn new(underlying: ResponseStream) -> Self {
     let mut stm = BrotliEncoderStateStruct::new(StandardAlloc::default());
-    // Quality level 6 is based on google's nginx default value for on-the-fly compression
-    // https://github.com/google/ngx_brotli#brotli_comp_level
-    // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes (~4MB)
-    stm.set_parameter(BrotliEncoderParameter::BROTLI_PARAM_QUALITY, 6);
-    stm.set_parameter(BrotliEncoderParameter::BROTLI_PARAM_LGWIN, 22);
+    stm.set_parameter(
+      BrotliEncoderParameter::BROTLI_PARAM_QUALITY,
+      BROTLI_COMPRESSION_QUALITY,
+    );
+    stm.set_parameter(
+      BrotliEncoderParameter::BROTLI_PARAM_LGWIN,
+      BROTLI_COMPRESSION_LGWIN,
+    );
     Self {
       stm,
       state: BrotliState::Streaming,

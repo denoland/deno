@@ -9,6 +9,8 @@
     ErrorCaptureStackTrace,
     FunctionPrototypeBind,
     ObjectAssign,
+    ObjectDefineProperties,
+    ObjectDefineProperty,
     ObjectFreeze,
     ObjectFromEntries,
     ObjectKeys,
@@ -59,6 +61,8 @@
     op_get_ext_import_meta_proto,
     op_drain_pending_rejections,
     op_lazy_load_esm,
+    op_load_ext_script,
+    op_set_captured_bootstrap,
     op_memory_usage,
     op_op_names,
     op_print,
@@ -78,6 +82,7 @@
     op_leak_tracing_submit,
     op_leak_tracing_get_all,
     op_leak_tracing_get,
+    op_immediate_check,
 
     op_is_any_array_buffer,
     op_is_arguments_object,
@@ -189,8 +194,12 @@
     immediate._destroyed = true;
     if (immediate[kRefed]) {
       immediateInfo[kImmRefCount]--;
+      if (immediateInfo[kImmRefCount] === 0) {
+        op_immediate_check(false);
+      }
     }
     immediate[kRefed] = null;
+    emitDestroy(immediate.asyncId);
     immediate._onImmediate = null;
     immediateQueue.remove(immediate);
   }
@@ -224,6 +233,9 @@
       immediateInfo[kImmCount]--;
       if (immediate[kRefed]) {
         immediateInfo[kImmRefCount]--;
+        if (immediateInfo[kImmRefCount] === 0) {
+          op_immediate_check(false);
+        }
       }
       immediate[kRefed] = null;
 
@@ -396,17 +408,32 @@
     setHasRejectionToWarn(false);
   }
 
-  // Matches Node.js runNextTicks() from
-  // lib/internal/process/task_queues.js
-  function runNextTicks() {
+  // Flush microtasks and drain the nextTick queue if work is pending.
+  // Under Explicit microtask policy, microtasks (promise continuations)
+  // don't run automatically. We flush them here so that any ticks they
+  // schedule are discovered and drained in the same iteration.
+  //
+  // IMPORTANT: When ticks are already scheduled, we skip the microtask
+  // flush and go straight to processTicksAndRejections, which drains
+  // ticks BEFORE running microtasks. This preserves the Node.js
+  // invariant that nextTick callbacks fire before Promise.then
+  // continuations in the same event loop phase.
+  //
+  // This is the single drain function used by: __eventLoopTick (from
+  // Rust), __drainNextTickAndMacrotasks (I/O tight loop), runNextTicks
+  // (interleaved between timer/immediate callbacks), and runImmediates.
+  function drainTicks() {
     if (!hasTickScheduled() && !hasRejectionToWarn()) {
       op_run_microtasks();
-    }
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      return;
+      if (!hasTickScheduled() && !hasRejectionToWarn()) {
+        return;
+      }
     }
     processTicksAndRejections();
   }
+
+  // Alias for timer/immediate interleaving (matches Node.js name).
+  const runNextTicks = drainTicks;
 
   // Wire runNextTicks into the timer module so processTimers can
   // interleave nextTick drains between timer callbacks.
@@ -416,14 +443,20 @@
   // Use a wrapper since reportExceptionCallback is defined later.
   __timers.setReportException((e) => reportExceptionCallback(e));
 
-  // Called from Rust at phase 1c of the event loop when the user timer fires.
+  // Called from Rust when the native user timer fires.
   function __processTimers(now) {
     return __timers.processTimers(now);
   }
 
-  // Phase 2: Resolve completed async ops. Called from Rust with flat args:
-  // (promiseId, isOk, res, promiseId, isOk, res, ...)
-  function __resolveOps() {
+  // Resolve completed async ops.
+  // Called from Rust with args: (promiseId, isOk, res, ...)
+  //
+  // NOTE: This does NOT drain ticks. Under Explicit microtask policy,
+  // microtasks from op resolution are deferred. Rust calls
+  // __drainNextTickAndMacrotasks separately after this returns,
+  // with the correct microtask checkpoint ordering to preserve
+  // the nextTick-before-then invariant.
+  function __eventLoopTick() {
     for (let i = 0; i < arguments.length; i += 3) {
       const promiseId = arguments[i];
       const isOk = arguments[i + 1];
@@ -432,17 +465,10 @@
     }
   }
 
-  // Matches Node.js runNextTicks() from
-  // lib/internal/process/task_queues.js.
-  // Called from Rust at phase 2c of the event loop.
+  // Drain nextTick/microtask queues only (no timers or ops).
+  // Used in the I/O tight loop and when ticks are pending without ops.
   function __drainNextTickAndMacrotasks() {
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      op_run_microtasks();
-    }
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      return;
-    }
-    processTicksAndRejections();
+    drainTicks();
   }
 
   // Phase 2: Handle unhandled promise rejections.
@@ -649,6 +675,7 @@
   const {
     op_close: close,
     op_try_close: tryClose,
+    op_cancel_read: cancelRead,
     op_read: read,
     op_read_all: readAll,
     op_write: write,
@@ -809,50 +836,79 @@
     };
   }
 
-  function propWritableLazyLoaded(getter, loadFn) {
-    let valueIsSet = false;
-    let value;
+  // Marker symbol identifying a lazy-loaded property descriptor. The property
+  // name is filled in by `defineGlobalProperties` at install time so the
+  // setter can mimic data-property [[Set]] semantics (define an own data
+  // property on the receiver) instead of mutating a closure shared across all
+  // receivers - see denoland/deno#34403.
+  const lazyNameSym = Symbol("lazyName");
 
-    return {
+  function propWritableLazyLoaded(getter, loadFn) {
+    const desc = {
       get() {
-        const loadedValue = loadFn();
-        if (valueIsSet) {
-          return value;
-        } else {
-          return getter(loadedValue);
-        }
+        return getter(loadFn());
       },
       set(v) {
-        loadFn();
-        valueIsSet = true;
-        value = v;
+        ObjectDefineProperty(this, desc[lazyNameSym], {
+          value: v,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
       },
       enumerable: true,
       configurable: true,
+      [lazyNameSym]: undefined,
     };
+    return desc;
   }
 
   function propNonEnumerableLazyLoaded(getter, loadFn) {
-    let valueIsSet = false;
-    let value;
-
-    return {
+    const desc = {
       get() {
-        const loadedValue = loadFn();
-        if (valueIsSet) {
-          return value;
-        } else {
-          return getter(loadedValue);
-        }
+        return getter(loadFn());
       },
       set(v) {
-        loadFn();
-        valueIsSet = true;
-        value = v;
+        const name = desc[lazyNameSym];
+        // Match OrdinarySetWithOwnDescriptor semantics for an inherited
+        // writable data property: a direct set on the holder updates the
+        // value in place (preserving enumerable: false), while an inherited
+        // set creates a new enumerable own data property on the receiver.
+        if (ObjectHasOwn(this, name)) {
+          ObjectDefineProperty(this, name, {
+            value: v,
+            writable: true,
+            enumerable: false,
+            configurable: true,
+          });
+        } else {
+          ObjectDefineProperty(this, name, {
+            value: v,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+          });
+        }
       },
       enumerable: false,
       configurable: true,
+      [lazyNameSym]: undefined,
     };
+    return desc;
+  }
+
+  // Like `Object.defineProperties`, but also stamps the property name into any
+  // lazy-loaded descriptors so their setters can target the correct receiver.
+  function defineGlobalProperties(target, props) {
+    const keys = ObjectKeys(props);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const desc = props[key];
+      if (desc !== null && typeof desc === "object" && lazyNameSym in desc) {
+        desc[lazyNameSym] = key;
+      }
+    }
+    ObjectDefineProperties(target, props);
   }
 
   function createLazyLoader(specifier) {
@@ -866,8 +922,35 @@
     };
   }
 
+  const loadedScripts = { __proto__: null };
+
+  // Note: the Rust side of `op_load_ext_script` (in `libs/core/modules/map.rs`)
+  // temporarily reinstalls a captured snapshot-time view of `__bootstrap`
+  // on `globalThis` for the duration of each script evaluation if
+  // `__bootstrap` isn't already on the global. Every `lazy_loaded_js`
+  // polyfill's IIFE preamble destructures `globalThis.__bootstrap` and
+  // `__bootstrap.core.ops`, but at runtime (`runtime/js/99_main.js`) the
+  // harness deletes `globalThis.__bootstrap` and `removeImportedOps()`
+  // strips most entries out of `Deno.core.ops`. The captured view (a
+  // shallow clone of `core.ops` immune to `removeImportedOps`) is
+  // registered via `op_set_captured_bootstrap` at the end of this IIFE.
+  // Doing the install in Rust means the `synthetic_esm` dispatch path
+  // (which calls `load_ext_script` directly without going through this
+  // wrapper) gets the same treatment without leaving `__bootstrap`
+  // permanently on the global (where user code can observe it via
+  // `Object.keys`).
+  function loadExtScript(specifier) {
+    if (specifier in loadedScripts) {
+      return loadedScripts[specifier];
+    }
+    const result = op_load_ext_script(specifier);
+    loadedScripts[specifier] = result;
+    return result;
+  }
+
   const getAsyncContext = getContinuationPreservedEmbedderData;
   const setAsyncContext = setContinuationPreservedEmbedderData;
+  const kNoAsyncContextRestore = Symbol("Deno.core.noAsyncContextRestore");
 
   function scopeAsyncContext(ctx) {
     const old = getAsyncContext();
@@ -887,6 +970,24 @@
 
     enter(value) {
       const previousContextMapping = getAsyncContext();
+      this.#enterWithPreviousContext(value, previousContextMapping);
+      return previousContextMapping;
+    }
+
+    enterIfActive(value) {
+      const previousContextMapping = getAsyncContext();
+      if (
+        previousContextMapping === null ||
+        previousContextMapping === undefined ||
+        ObjectKeys(previousContextMapping).length === 0
+      ) {
+        return kNoAsyncContextRestore;
+      }
+      this.#enterWithPreviousContext(value, previousContextMapping);
+      return previousContextMapping;
+    }
+
+    #enterWithPreviousContext(value, previousContextMapping) {
       const entry = { id: this.#id };
       const asyncContextMapping = {
         __proto__: null,
@@ -895,7 +996,6 @@
       };
       this.#data.set(entry, value);
       setAsyncContext(asyncContextMapping);
-      return previousContextMapping;
     }
 
     get() {
@@ -913,7 +1013,8 @@
     internalRidSymbol: Symbol("Deno.internal.rid"),
     internalFdSymbol: Symbol("Deno.internal.fd"),
     resources,
-    __resolveOps,
+    __eventLoopTick,
+    __processTimers,
     __setTickInfo(buf) {
       tickInfo = buf;
     },
@@ -923,13 +1024,18 @@
     __drainNextTickAndMacrotasks,
     __handleRejections,
     __reportException,
-    __processTimers,
     __setTimerInfo: __timers.__setTimerInfo,
     immediateRefCount(increase) {
       if (increase) {
+        if (immediateInfo[kImmRefCount] === 0) {
+          op_immediate_check(true);
+        }
         immediateInfo[kImmRefCount]++;
       } else {
         immediateInfo[kImmRefCount]--;
+        if (immediateInfo[kImmRefCount] === 0) {
+          op_immediate_check(false);
+        }
       }
     },
     runImmediateCallbacks,
@@ -946,6 +1052,7 @@
     consoleStringify,
     close,
     tryClose,
+    cancelRead,
     read,
     readAll,
     write,
@@ -1111,6 +1218,18 @@
     refreshTimer: __timers.refreshTimer,
     refTimer: __timers.refTimer,
     unrefTimer: __timers.unrefTimer,
+    // System timers bypass Deno's test sanitizer resource tracking.
+    createSystemTimer: (callback, after, isRefed) =>
+      __timers.createTimer(callback, after, undefined, false, !!isRefed, true),
+    createSystemInterval: (callback, interval, isRefed) =>
+      __timers.createTimer(
+        callback,
+        interval,
+        undefined,
+        true,
+        !!isRefed,
+        true,
+      ),
     currentUserCallSite,
     wrapConsole,
     v8Console,
@@ -1120,18 +1239,37 @@
     propGetterOnly,
     propWritableLazyLoaded,
     propNonEnumerableLazyLoaded,
+    defineGlobalProperties,
     createLazyLoader,
+    loadExtScript,
     createCancelHandle: () => op_cancel_handle(),
     getAsyncContext,
     setAsyncContext,
     scopeAsyncContext,
     AsyncVariable,
+    kNoAsyncContextRestore,
   });
 
   const internals = {};
   ObjectAssign(globalThis.__bootstrap, { core, internals });
   ObjectAssign(globalThis.Deno, { core });
   ObjectFreeze(globalThis.__bootstrap.core);
+
+  // Build the snapshot-time view of __bootstrap and hand it off to Rust.
+  // The Rust `load_ext_script` (libs/core/modules/map.rs) temporarily
+  // installs this on `globalThis.__bootstrap` for each script evaluation
+  // when the live `__bootstrap` has already been deleted (i.e. after
+  // runtime bootstrap). See the comment above `loadExtScript` earlier in
+  // this file for context.
+  const capturedCore = ObjectAssign({ __proto__: null }, core);
+  capturedCore.ops = ObjectAssign({ __proto__: null }, core.ops);
+  const capturedBootstrap = {
+    __proto__: null,
+    primordials: globalThis.__bootstrap.primordials,
+    core: capturedCore,
+    internals,
+  };
+  op_set_captured_bootstrap(capturedBootstrap);
 
   // Direct bindings on `globalThis`
   ObjectAssign(globalThis, { queueMicrotask });

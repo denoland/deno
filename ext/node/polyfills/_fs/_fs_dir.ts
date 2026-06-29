@@ -1,22 +1,26 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   type Dirent,
   direntFromDeno,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import assert from "node:assert";
-import { ERR_MISSING_ARGS } from "ext:deno_node/internal/errors.ts";
-import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+const { ERR_MISSING_ARGS, ERR_DIR_CLOSED } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const { TextDecoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
 
 const {
   Promise,
+  ReflectApply,
   ObjectPrototypeIsPrototypeOf,
   Uint8ArrayPrototype,
   PromisePrototypeThen,
   SymbolAsyncIterator,
+  SymbolAsyncDispose,
+  SymbolDispose,
   ArrayIteratorPrototypeNext,
-  AsyncGeneratorPrototypeNext,
   SymbolIterator,
 } = primordials;
 
@@ -24,6 +28,7 @@ export default class Dir {
   #dirPath: string | Uint8Array;
   #syncIterator!: Iterator<Deno.DirEntry, undefined> | null;
   #asyncIterator!: AsyncIterator<Deno.DirEntry, undefined> | null;
+  #closed = false;
 
   constructor(path: string | Uint8Array) {
     if (!path) {
@@ -42,12 +47,22 @@ export default class Dir {
   // deno-lint-ignore no-explicit-any
   read(callback?: (...args: any[]) => void): Promise<Dirent | null> {
     return new Promise((resolve, reject) => {
+      if (this.#closed) {
+        const err = new ERR_DIR_CLOSED();
+        if (callback) {
+          callback(err);
+          resolve(null);
+        } else {
+          reject(err);
+        }
+        return;
+      }
       if (!this.#asyncIterator) {
         this.#asyncIterator = Deno.readDir(this.path)[SymbolAsyncIterator]();
       }
       assert(this.#asyncIterator);
       PromisePrototypeThen(
-        AsyncGeneratorPrototypeNext(this.#asyncIterator),
+        ReflectApply(this.#asyncIterator.next, this.#asyncIterator, []),
         (iteratorResult) => {
           resolve(
             iteratorResult.done
@@ -74,6 +89,9 @@ export default class Dir {
   }
 
   readSync(): Dirent | null {
+    if (this.#closed) {
+      throw new ERR_DIR_CLOSED();
+    }
     if (!this.#syncIterator) {
       this.#syncIterator = Deno.readDirSync(this.path)![SymbolIterator]();
     }
@@ -94,6 +112,7 @@ export default class Dir {
   // deno-lint-ignore no-explicit-any
   close(callback?: (...args: any[]) => void): Promise<void> {
     return new Promise((resolve) => {
+      this.#closed = true;
       if (callback) {
         callback(null);
       }
@@ -107,7 +126,15 @@ export default class Dir {
    * finished reading
    */
   closeSync() {
-    //No op
+    this.#closed = true;
+  }
+
+  [SymbolDispose]() {
+    this.closeSync();
+  }
+
+  [SymbolAsyncDispose](): Promise<void> {
+    return this.close();
   }
 
   async *[SymbolAsyncIterator](): AsyncIterableIterator<Dirent> {

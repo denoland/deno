@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::mem::MaybeUninit;
 use std::rc::Rc;
 
 use aes::cipher::BlockDecryptMut;
@@ -18,8 +19,493 @@ use subtle::ConstantTimeEq;
 
 type Tag = Option<Vec<u8>>;
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum AesWrapError {
+  #[class(range)]
+  #[error("Invalid key length")]
+  InvalidKeyLength,
+  #[class(type)]
+  #[error("Invalid initialization vector")]
+  InvalidIv,
+  #[class(range)]
+  #[error("Invalid input length")]
+  InvalidInputLength,
+  #[class(type)]
+  #[error("AES wrap failed")]
+  WrapFailed,
+  #[class(type)]
+  #[error("AES unwrap failed")]
+  UnwrapFailed,
+}
+
+/// AES Key Wrap (RFC 3394) with optional custom IV.
+///
+/// For standard wrap (`aes128-wrap`, `aes192-wrap`, `aes256-wrap`):
+///   - iv: 8-byte IV (NULL → default 0xA6A6A6A6A6A6A6A6)
+///   - input must be a multiple of 8 and at least 16 bytes
+///   - output = input_len + 8
+///
+/// For padded wrap (`id-aes128-wrap-pad`, `id-aes192-wrap-pad`, `id-aes256-wrap-pad`):
+///   - iv: 4-byte constant (prepended; padded AIV = iv || MLI)
+///   - input can be any length >= 1
+///   - output = ceil(input_len / 8) * 8 + 8
+pub fn aes_wrap_key(
+  algorithm: &str,
+  key: &[u8],
+  iv: &[u8],
+  data: &[u8],
+) -> Result<Vec<u8>, AesWrapError> {
+  let bits = match key.len() {
+    16 => 128,
+    24 => 192,
+    32 => 256,
+    _ => return Err(AesWrapError::InvalidKeyLength),
+  };
+
+  // SAFETY: AES_KEY is an opaque type; MaybeUninit lets us avoid zeroing.
+  let mut aes_key = MaybeUninit::<aws_lc_sys::AES_KEY>::uninit();
+  // SAFETY: key slice is valid and bits matches key.len().
+  let ret = unsafe {
+    aws_lc_sys::AES_set_encrypt_key(key.as_ptr(), bits, aes_key.as_mut_ptr())
+  };
+  if ret != 0 {
+    return Err(AesWrapError::InvalidKeyLength);
+  }
+  // SAFETY: AES_set_encrypt_key succeeded so aes_key is fully initialised.
+  let aes_key = unsafe { aes_key.assume_init() };
+
+  let is_pad = algorithm.ends_with("-pad");
+
+  if is_pad {
+    // Padded wrap (RFC 5649). iv must be 4 bytes (the constant part of AIV).
+    if iv.len() != 4 {
+      return Err(AesWrapError::InvalidIv);
+    }
+    if data.is_empty() {
+      return Err(AesWrapError::InvalidInputLength);
+    }
+    let mli = data.len() as u32;
+
+    // AIV = iv_constant || MLI (big-endian)
+    let mut aiv = [0u8; 8];
+    aiv[..4].copy_from_slice(iv);
+    aiv[4..].copy_from_slice(&mli.to_be_bytes());
+
+    if data.len() <= 8 {
+      // Single-block case: wrap = AES_encrypt(AIV || data_padded).
+      // AES_wrap_key requires padded_len >= 16, so handle this explicitly.
+      let mut block = [0u8; 16];
+      block[..8].copy_from_slice(&aiv);
+      block[8..8 + data.len()].copy_from_slice(data);
+      let mut out = vec![0u8; 16];
+      // SAFETY: aes_key is initialised; block and out are 16 bytes.
+      unsafe {
+        aws_lc_sys::AES_encrypt(block.as_ptr(), out.as_mut_ptr(), &aes_key);
+      }
+      return Ok(out);
+    }
+
+    let padded_len = data.len().next_multiple_of(8);
+    let mut padded = vec![0u8; padded_len];
+    padded[..data.len()].copy_from_slice(data);
+
+    let out_len = padded_len + 8;
+    let mut out = vec![0u8; out_len];
+    // SAFETY: aes_key is initialised; aiv, out, padded are valid slices.
+    let ret = unsafe {
+      aws_lc_sys::AES_wrap_key(
+        &aes_key,
+        aiv.as_ptr(),
+        out.as_mut_ptr(),
+        padded.as_ptr(),
+        padded_len,
+      )
+    };
+    if ret < 0 {
+      return Err(AesWrapError::WrapFailed);
+    }
+    Ok(out)
+  } else {
+    // Standard wrap (RFC 3394). iv must be 8 bytes or empty (→ default IV).
+    if !iv.is_empty() && iv.len() != 8 {
+      return Err(AesWrapError::InvalidIv);
+    }
+    if data.len() < 16 || !data.len().is_multiple_of(8) {
+      return Err(AesWrapError::InvalidInputLength);
+    }
+    let iv_ptr = if iv.is_empty() {
+      std::ptr::null()
+    } else {
+      iv.as_ptr()
+    };
+    let out_len = data.len() + 8;
+    let mut out = vec![0u8; out_len];
+    // SAFETY: aes_key is initialised; pointers and lengths are valid.
+    let ret = unsafe {
+      aws_lc_sys::AES_wrap_key(
+        &aes_key,
+        iv_ptr,
+        out.as_mut_ptr(),
+        data.as_ptr(),
+        data.len(),
+      )
+    };
+    if ret < 0 {
+      return Err(AesWrapError::WrapFailed);
+    }
+    Ok(out)
+  }
+}
+
+// RFC 3394 / 5649 inverse step: unwrap n+1 blocks → n plaintext blocks
+// and the recovered AIV. Mirrors aws-lc's static `aes_unwrap_key_inner`
+// (crypto/fipsmodule/aes/key_wrap.c) so we can validate the AIV ourselves
+// in constant time — needed because `AES_unwrap_key` does the IV check
+// internally and rejects any non-default AIV.
+fn aes_unwrap_inner(
+  key: &aws_lc_sys::AES_KEY,
+  data: &[u8],
+) -> (Vec<u8>, [u8; 8]) {
+  debug_assert!(data.len().is_multiple_of(8) && data.len() >= 24);
+  let n = data.len() / 8 - 1;
+  let mut out = vec![0u8; data.len() - 8];
+  let mut a = [0u8; 8];
+  a.copy_from_slice(&data[..8]);
+  out.copy_from_slice(&data[8..]);
+
+  let mut block = [0u8; 16];
+  for j in (0..6u32).rev() {
+    for i in (1..=n).rev() {
+      let t = (n as u32) * j + i as u32;
+      a[7] ^= (t & 0xff) as u8;
+      a[6] ^= ((t >> 8) & 0xff) as u8;
+      a[5] ^= ((t >> 16) & 0xff) as u8;
+      a[4] ^= ((t >> 24) & 0xff) as u8;
+      block[..8].copy_from_slice(&a);
+      block[8..].copy_from_slice(&out[(i - 1) * 8..i * 8]);
+      // SAFETY: key is initialised; block is a valid 16-byte buffer.
+      unsafe {
+        aws_lc_sys::AES_decrypt(block.as_ptr(), block.as_mut_ptr(), key);
+      }
+      a.copy_from_slice(&block[..8]);
+      out[(i - 1) * 8..i * 8].copy_from_slice(&block[8..]);
+    }
+  }
+  (out, a)
+}
+
+/// AES Key Unwrap (RFC 3394 / RFC 5649) with optional custom IV.
+pub fn aes_unwrap_key(
+  algorithm: &str,
+  key: &[u8],
+  iv: &[u8],
+  data: &[u8],
+) -> Result<Vec<u8>, AesWrapError> {
+  let bits = match key.len() {
+    16 => 128,
+    24 => 192,
+    32 => 256,
+    _ => return Err(AesWrapError::InvalidKeyLength),
+  };
+
+  // SAFETY: AES_KEY is an opaque type; MaybeUninit avoids zeroing.
+  let mut aes_key = MaybeUninit::<aws_lc_sys::AES_KEY>::uninit();
+  // SAFETY: key slice and bits are valid.
+  let ret = unsafe {
+    aws_lc_sys::AES_set_decrypt_key(key.as_ptr(), bits, aes_key.as_mut_ptr())
+  };
+  if ret != 0 {
+    return Err(AesWrapError::InvalidKeyLength);
+  }
+  // SAFETY: AES_set_decrypt_key succeeded so aes_key is initialised.
+  let aes_key = unsafe { aes_key.assume_init() };
+
+  let is_pad = algorithm.ends_with("-pad");
+
+  if is_pad {
+    // Padded unwrap (RFC 5649). iv is the 4-byte AIV constant.
+    if iv.len() != 4 {
+      return Err(AesWrapError::InvalidIv);
+    }
+    if data.len() < 16 || !data.len().is_multiple_of(8) {
+      return Err(AesWrapError::InvalidInputLength);
+    }
+
+    // Decrypt once, recover AIV. Two cases per RFC 5649:
+    //   - len == 16: single-block (MLI ≤ 8); decrypt one block, AIV is high
+    //     half, plaintext (zero-padded to 8 bytes) is low half.
+    //   - len  > 16: standard unwrap inverse, AIV is the recovered A.
+    let (mut out, recovered_aiv) = if data.len() == 16 {
+      let mut block = [0u8; 16];
+      // SAFETY: aes_key is initialised; data and block are 16 bytes.
+      unsafe {
+        aws_lc_sys::AES_decrypt(data.as_ptr(), block.as_mut_ptr(), &aes_key);
+      }
+      let mut aiv = [0u8; 8];
+      aiv.copy_from_slice(&block[..8]);
+      let mut pt = vec![0u8; 8];
+      pt.copy_from_slice(&block[8..]);
+      (pt, aiv)
+    } else {
+      aes_unwrap_inner(&aes_key, data)
+    };
+
+    // Validate AIV constant in constant time.
+    let constant_ok = recovered_aiv[..4].ct_eq(iv).unwrap_u8();
+    let mli = u32::from_be_bytes([
+      recovered_aiv[4],
+      recovered_aiv[5],
+      recovered_aiv[6],
+      recovered_aiv[7],
+    ]) as usize;
+
+    // MLI must satisfy: (n-1)*8 < MLI <= n*8, where n = ceil(MLI/8) blocks.
+    // i.e. ceil(MLI/8) == out.len()/8, and MLI >= 1.
+    let n_blocks = out.len() / 8;
+    let mli_blocks = mli.div_ceil(8);
+    let len_ok = (mli >= 1 && mli_blocks == n_blocks) as u8;
+
+    // Padding bytes (out[mli..]) must all be zero.
+    let pad_ok = if mli <= out.len() {
+      let mut acc = 0u8;
+      for &b in &out[mli.min(out.len())..] {
+        acc |= b;
+      }
+      (acc == 0) as u8
+    } else {
+      0
+    };
+
+    if (constant_ok & len_ok & pad_ok) != 1 {
+      return Err(AesWrapError::UnwrapFailed);
+    }
+    out.truncate(mli);
+    Ok(out)
+  } else {
+    // Standard unwrap (RFC 3394). iv must be 8 bytes or empty (→ default IV).
+    if !iv.is_empty() && iv.len() != 8 {
+      return Err(AesWrapError::InvalidIv);
+    }
+    if data.len() < 24 || !data.len().is_multiple_of(8) {
+      return Err(AesWrapError::InvalidInputLength);
+    }
+    let (out, recovered_aiv) = aes_unwrap_inner(&aes_key, data);
+    let expected: &[u8] = if iv.is_empty() { &[0xa6; 8] } else { iv };
+    if recovered_aiv.ct_eq(expected).unwrap_u8() != 1 {
+      return Err(AesWrapError::UnwrapFailed);
+    }
+    Ok(out)
+  }
+}
+
 type Aes128Gcm = aead_gcm_stream::AesGcm<aes::Aes128>;
 type Aes256Gcm = aead_gcm_stream::AesGcm<aes::Aes256>;
+
+enum CipherInitError {
+  ContextAllocation,
+  InitFailed,
+}
+
+/// ChaCha20-Poly1305 cipher backed by aws-lc-sys (BoringSSL).
+///
+/// Uses the streaming EVP_CIPHER API for hardware-accelerated performance
+/// on all platforms (NEON on aarch64, AVX2/SSE on x86_64).
+struct ChaCha20Poly1305Cipher {
+  ctx: *mut aws_lc_sys::EVP_CIPHER_CTX,
+  aad_buf: Vec<u8>,
+  aad_flushed: bool,
+  auth_tag_length: usize,
+}
+
+// SAFETY: ChaCha20Poly1305Cipher is only accessed from a single thread
+// (via RefCell in CipherContext/DecipherContext). The EVP_CIPHER_CTX
+// pointer is exclusively owned by this struct.
+unsafe impl Send for ChaCha20Poly1305Cipher {}
+
+impl ChaCha20Poly1305Cipher {
+  fn new(
+    key: &[u8],
+    iv: &[u8],
+    auth_tag_length: usize,
+    encrypting: bool,
+  ) -> Result<Self, CipherInitError> {
+    // SAFETY: We allocate a new EVP_CIPHER_CTX and initialize it with
+    // validated key/iv. The ctx is exclusively owned by this struct and
+    // freed in Drop.
+    unsafe {
+      let ctx = aws_lc_sys::EVP_CIPHER_CTX_new();
+      if ctx.is_null() {
+        return Err(CipherInitError::ContextAllocation);
+      }
+
+      let cipher = aws_lc_sys::EVP_chacha20_poly1305();
+      let enc = if encrypting { 1 } else { 0 };
+      let ret = aws_lc_sys::EVP_CipherInit_ex(
+        ctx,
+        cipher,
+        std::ptr::null_mut(),
+        key.as_ptr(),
+        iv.as_ptr(),
+        enc,
+      );
+      if ret != 1 {
+        aws_lc_sys::EVP_CIPHER_CTX_free(ctx);
+        return Err(CipherInitError::InitFailed);
+      }
+
+      Ok(ChaCha20Poly1305Cipher {
+        ctx,
+        aad_buf: Vec::new(),
+        aad_flushed: false,
+        auth_tag_length,
+      })
+    }
+  }
+
+  fn set_aad(&mut self, aad: &[u8]) {
+    self.aad_buf.extend_from_slice(aad);
+  }
+
+  /// Flush buffered AAD to EVP context. Called lazily before the first
+  /// encrypt/decrypt so that multiple setAAD() calls are concatenated.
+  fn flush_aad(&mut self) {
+    if !self.aad_flushed {
+      self.aad_flushed = true;
+      if !self.aad_buf.is_empty() {
+        // SAFETY: ctx is valid, aad_buf is a valid slice. Passing NULL
+        // output tells EVP this is AAD, not plaintext/ciphertext.
+        // Length is validated to fit in i32 before casting.
+        unsafe {
+          let aad_len: i32 = self
+            .aad_buf
+            .len()
+            .try_into()
+            .expect("AAD length exceeds i32::MAX");
+          let mut outl: i32 = 0;
+          let ret = aws_lc_sys::EVP_CipherUpdate(
+            self.ctx,
+            std::ptr::null_mut(),
+            &mut outl,
+            self.aad_buf.as_ptr(),
+            aad_len,
+          );
+          assert_eq!(ret, 1, "EVP_CipherUpdate for AAD failed");
+        }
+      }
+    }
+  }
+
+  fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
+    assert!(output.len() >= input.len());
+    self.flush_aad();
+    // SAFETY: ctx is valid and initialized for encryption. output is
+    // caller-provided with at least input.len() bytes. EVP_CipherUpdate
+    // writes at most input.len() bytes for a stream cipher.
+    // Length is validated to fit in i32 before casting.
+    unsafe {
+      let input_len: i32 = input
+        .len()
+        .try_into()
+        .expect("input length exceeds i32::MAX");
+      let mut outl: i32 = 0;
+      let ret = aws_lc_sys::EVP_CipherUpdate(
+        self.ctx,
+        output.as_mut_ptr(),
+        &mut outl,
+        input.as_ptr(),
+        input_len,
+      );
+      assert_eq!(ret, 1, "EVP_CipherUpdate for encryption failed");
+    }
+  }
+
+  fn decrypt(&mut self, input: &[u8], output: &mut [u8]) {
+    assert!(output.len() >= input.len());
+    self.flush_aad();
+    // SAFETY: ctx is valid and initialized for decryption. output is
+    // caller-provided with at least input.len() bytes.
+    // Length is validated to fit in i32 before casting.
+    unsafe {
+      let input_len: i32 = input
+        .len()
+        .try_into()
+        .expect("input length exceeds i32::MAX");
+      let mut outl: i32 = 0;
+      let ret = aws_lc_sys::EVP_CipherUpdate(
+        self.ctx,
+        output.as_mut_ptr(),
+        &mut outl,
+        input.as_ptr(),
+        input_len,
+      );
+      assert_eq!(ret, 1, "EVP_CipherUpdate for decryption failed");
+    }
+  }
+
+  fn compute_tag(mut self) -> Vec<u8> {
+    self.flush_aad();
+    // SAFETY: ctx is valid. CipherFinal_ex finalizes the AEAD operation,
+    // then CTRL_AEAD_GET_TAG retrieves the computed authentication tag.
+    // The tag buffer is freshly allocated with the correct length
+    // (validated to 1..=16 at construction).
+    unsafe {
+      let mut outl: i32 = 0;
+      let ret = aws_lc_sys::EVP_CipherFinal_ex(
+        self.ctx,
+        std::ptr::null_mut(),
+        &mut outl,
+      );
+      assert_eq!(ret, 1, "EVP_CipherFinal_ex failed");
+
+      let mut tag = vec![0u8; self.auth_tag_length];
+      let ret = aws_lc_sys::EVP_CIPHER_CTX_ctrl(
+        self.ctx,
+        aws_lc_sys::EVP_CTRL_AEAD_GET_TAG,
+        self.auth_tag_length as i32,
+        tag.as_mut_ptr() as *mut std::ffi::c_void,
+      );
+      assert_eq!(ret, 1, "EVP_CTRL_AEAD_GET_TAG failed");
+
+      tag
+    }
+  }
+
+  fn verify_tag(mut self, auth_tag: &[u8]) -> bool {
+    self.flush_aad();
+    // SAFETY: ctx is valid and initialized for decryption. We set the
+    // expected tag via CTRL_AEAD_SET_TAG, then CipherFinal_ex performs
+    // constant-time tag comparison internally, returning 0 on mismatch.
+    unsafe {
+      let ret = aws_lc_sys::EVP_CIPHER_CTX_ctrl(
+        self.ctx,
+        aws_lc_sys::EVP_CTRL_AEAD_SET_TAG,
+        auth_tag.len() as i32,
+        auth_tag.as_ptr() as *mut std::ffi::c_void,
+      );
+      if ret != 1 {
+        return false;
+      }
+
+      let mut outl: i32 = 0;
+      let ret = aws_lc_sys::EVP_CipherFinal_ex(
+        self.ctx,
+        std::ptr::null_mut(),
+        &mut outl,
+      );
+      ret == 1
+    }
+  }
+}
+
+impl Drop for ChaCha20Poly1305Cipher {
+  fn drop(&mut self) {
+    // SAFETY: ctx was allocated by EVP_CIPHER_CTX_new and is exclusively
+    // owned by this struct. This is the only place it is freed.
+    unsafe {
+      aws_lc_sys::EVP_CIPHER_CTX_free(self.ctx);
+    }
+  }
+}
 
 enum Cipher {
   Aes128Cbc(Box<cbc::Encryptor<aes::Aes128>>),
@@ -33,6 +519,7 @@ enum Cipher {
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
   Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   DesEde3Cbc(Box<cbc::Encryptor<des::TdesEde3>>),
+  ChaCha20Poly1305(Box<ChaCha20Poly1305Cipher>),
   // TODO(kt3k): add more algorithms Aes192Cbc, etc.
 }
 
@@ -48,6 +535,7 @@ enum Decipher {
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
   Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   DesEde3Cbc(Box<cbc::Decryptor<des::TdesEde3>>),
+  ChaCha20Poly1305(Box<ChaCha20Poly1305Cipher>, Option<usize>),
   // TODO(kt3k): add more algorithms Aes192Cbc, Aes128GCM, etc.
 }
 
@@ -211,6 +699,10 @@ pub enum CipherError {
   InvalidAuthTag(usize),
 }
 
+fn is_valid_chacha20_poly1305_tag_length(tag_len: usize) -> bool {
+  (1..=16).contains(&tag_len)
+}
+
 impl Cipher {
   fn new(
     algorithm_name: &str,
@@ -233,11 +725,17 @@ impl Cipher {
         if key.len() != 16 {
           return Err(CipherError::InvalidKeyLength);
         }
+        if !iv.is_empty() {
+          return Err(CipherError::InvalidInitializationVector);
+        }
         Aes128Ecb(Box::new(ecb::Encryptor::new(key.into())))
       }
       "aes-192-ecb" => {
         if key.len() != 24 {
           return Err(CipherError::InvalidKeyLength);
+        }
+        if !iv.is_empty() {
+          return Err(CipherError::InvalidInitializationVector);
         }
         Aes192Ecb(Box::new(ecb::Encryptor::new(key.into())))
       }
@@ -245,11 +743,17 @@ impl Cipher {
         if key.len() != 32 {
           return Err(CipherError::InvalidKeyLength);
         }
+        if !iv.is_empty() {
+          return Err(CipherError::InvalidInitializationVector);
+        }
         Aes256Ecb(Box::new(ecb::Encryptor::new(key.into())))
       }
       "aes-128-gcm" => {
         if key.len() != aes::Aes128::key_size() {
           return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.is_empty() {
+          return Err(CipherError::InvalidInitializationVector);
         }
 
         if let Some(tag_len) = auth_tag_length
@@ -266,6 +770,9 @@ impl Cipher {
       "aes-256-gcm" => {
         if key.len() != aes::Aes256::key_size() {
           return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.is_empty() {
+          return Err(CipherError::InvalidInitializationVector);
         }
 
         if let Some(tag_len) = auth_tag_length
@@ -325,6 +832,28 @@ impl Cipher {
         }
         DesEde3Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
+      "chacha20-poly1305" => {
+        if key.len() != 32 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 12 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
+        let tag_len = auth_tag_length.unwrap_or(16);
+        if !is_valid_chacha20_poly1305_tag_length(tag_len) {
+          return Err(CipherError::InvalidAuthTag(tag_len));
+        }
+        ChaCha20Poly1305(Box::new(
+          ChaCha20Poly1305Cipher::new(key, iv, tag_len, true).map_err(|e| {
+            match e {
+              CipherInitError::ContextAllocation => {
+                panic!("Failed to allocate EVP_CIPHER_CTX")
+              }
+              CipherInitError::InitFailed => CipherError::InvalidKeyLength,
+            }
+          })?,
+        ))
+      }
       _ => return Err(CipherError::UnknownCipher(algorithm_name.to_string())),
     })
   }
@@ -336,6 +865,9 @@ impl Cipher {
         cipher.set_aad(aad);
       }
       Aes256Gcm(cipher, _) => {
+        cipher.set_aad(aad);
+      }
+      ChaCha20Poly1305(cipher) => {
         cipher.set_aad(aad);
       }
       _ => {}
@@ -398,6 +930,9 @@ impl Cipher {
         for (input, output) in input.chunks(8).zip(output.chunks_mut(8)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
+      }
+      ChaCha20Poly1305(cipher) => {
+        cipher.encrypt(input, output);
       }
     }
   }
@@ -491,6 +1026,10 @@ impl Cipher {
         Ok(None)
       }
       (Aes256Ctr(_) | Aes128Ctr(_) | Aes192Ctr(_), _) => Ok(None),
+      (ChaCha20Poly1305(cipher), _) => {
+        let tag = cipher.compute_tag();
+        Ok(Some(tag))
+      }
       (DesEde3Cbc(encryptor), true) => {
         let _ = (*encryptor)
           .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
@@ -524,6 +1063,10 @@ impl Cipher {
         }
         Some(tag)
       }
+      ChaCha20Poly1305(cipher) => {
+        let tag = cipher.compute_tag();
+        Some(tag)
+      }
       _ => None,
     }
   }
@@ -553,7 +1096,7 @@ pub enum DecipherError {
   #[error("bad decrypt")]
   CannotUnpadInputData,
   #[class(type)]
-  #[error("Failed to authenticate data")]
+  #[error("Unsupported state or unable to authenticate data")]
   DataAuthenticationFailed,
   #[class(type)]
   #[error("Unknown cipher {0}")]
@@ -626,11 +1169,17 @@ impl Decipher {
         if key.len() != 16 {
           return Err(DecipherError::InvalidKeyLength);
         }
+        if !iv.is_empty() {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
         Aes128Ecb(Box::new(ecb::Decryptor::new(key.into())))
       }
       "aes-192-ecb" => {
         if key.len() != 24 {
           return Err(DecipherError::InvalidKeyLength);
+        }
+        if !iv.is_empty() {
+          return Err(DecipherError::InvalidInitializationVector);
         }
         Aes192Ecb(Box::new(ecb::Decryptor::new(key.into())))
       }
@@ -638,11 +1187,17 @@ impl Decipher {
         if key.len() != 32 {
           return Err(DecipherError::InvalidKeyLength);
         }
+        if !iv.is_empty() {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
         Aes256Ecb(Box::new(ecb::Decryptor::new(key.into())))
       }
       "aes-128-gcm" => {
         if key.len() != aes::Aes128::key_size() {
           return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.is_empty() {
+          return Err(DecipherError::InvalidInitializationVector);
         }
 
         if let Some(tag_len) = auth_tag_length
@@ -659,6 +1214,9 @@ impl Decipher {
       "aes-256-gcm" => {
         if key.len() != aes::Aes256::key_size() {
           return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.is_empty() {
+          return Err(DecipherError::InvalidInitializationVector);
         }
 
         if let Some(tag_len) = auth_tag_length
@@ -718,6 +1276,31 @@ impl Decipher {
         }
         DesEde3Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
+      "chacha20-poly1305" => {
+        if key.len() != 32 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 12 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
+        let tag_len = auth_tag_length.unwrap_or(16);
+        if !is_valid_chacha20_poly1305_tag_length(tag_len) {
+          return Err(DecipherError::InvalidAuthTag(tag_len));
+        }
+        ChaCha20Poly1305(
+          Box::new(
+            ChaCha20Poly1305Cipher::new(key, iv, tag_len, false).map_err(
+              |e| match e {
+                CipherInitError::ContextAllocation => {
+                  panic!("Failed to allocate EVP_CIPHER_CTX")
+                }
+                CipherInitError::InitFailed => DecipherError::InvalidKeyLength,
+              },
+            )?,
+          ),
+          auth_tag_length,
+        )
+      }
       _ => {
         return Err(DecipherError::UnknownCipher(algorithm_name.to_string()));
       }
@@ -727,10 +1310,22 @@ impl Decipher {
   fn validate_auth_tag(&self, length: usize) -> Result<(), DecipherError> {
     match self {
       Decipher::Aes128Gcm(_, Some(tag_len))
-      | Decipher::Aes256Gcm(_, Some(tag_len)) => {
-        if *tag_len != length {
-          return Err(DecipherError::InvalidAuthTag(length));
-        }
+      | Decipher::Aes256Gcm(_, Some(tag_len))
+        if *tag_len != length =>
+      {
+        return Err(DecipherError::InvalidAuthTag(length));
+      }
+      Decipher::Aes128Gcm(_, None) | Decipher::Aes256Gcm(_, None)
+        if !is_valid_gcm_tag_length(length) =>
+      {
+        return Err(DecipherError::InvalidAuthTag(length));
+      }
+      Decipher::ChaCha20Poly1305(_, Some(tag_len)) if *tag_len != length => {
+        return Err(DecipherError::InvalidAuthTag(length));
+      }
+      Decipher::ChaCha20Poly1305(_, None) if length != 16 => {
+        // Default tag length is 16; reject anything else
+        return Err(DecipherError::InvalidAuthTag(length));
       }
       _ => {}
     }
@@ -744,6 +1339,9 @@ impl Decipher {
         decipher.set_aad(aad);
       }
       Aes256Gcm(decipher, _) => {
+        decipher.set_aad(aad);
+      }
+      ChaCha20Poly1305(decipher, _) => {
         decipher.set_aad(aad);
       }
       _ => {}
@@ -807,6 +1405,9 @@ impl Decipher {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
+      ChaCha20Poly1305(decipher, _) => {
+        decipher.decrypt(input, output);
+      }
     }
   }
 
@@ -828,6 +1429,7 @@ impl Decipher {
           | Aes256Ecb(..)
           | Aes128Gcm(..)
           | Aes256Gcm(..)
+          | ChaCha20Poly1305(..)
       )
     {
       return Ok(());
@@ -925,6 +1527,16 @@ impl Decipher {
           tag_slice
         };
         if truncated_tag.ct_eq(auth_tag).into() {
+          Ok(())
+        } else {
+          Err(DecipherError::DataAuthenticationFailed)
+        }
+      }
+      (ChaCha20Poly1305(decipher, _), _) => {
+        if auth_tag.is_empty() {
+          return Err(DecipherError::DataAuthenticationFailed);
+        }
+        if decipher.verify_tag(auth_tag) {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)

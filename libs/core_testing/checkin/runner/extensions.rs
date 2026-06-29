@@ -25,6 +25,7 @@ deno_core::extension!(
     ops::op_stats_delete,
     ops::op_nop_generic<P>,
     ops_io::op_pipe_create,
+    ops_io::op_constructable_test,
     ops_io::op_file_open,
     ops_io::op_path_to_url,
     ops_async::op_task_submit,

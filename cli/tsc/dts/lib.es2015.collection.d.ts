@@ -7,16 +7,17 @@ License at http://www.apache.org/licenses/LICENSE-2.0
 THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
 WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
-MERCHANTABLITY OR NON-INFRINGEMENT.
+MERCHANTABILITY OR NON-INFRINGEMENT.
 
 See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
 
-/// <reference no-default-lib="true"/>
-
 interface Map<K, V> {
+    /**
+     * Removes all elements from the Map.
+     */
     clear(): void;
     /**
      * @returns true if an element in the Map existed and has been removed, or false if the element does not exist.
@@ -91,7 +92,9 @@ interface Set<T> {
      * Appends a new element with a specified value to the end of the Set.
      */
     add(value: T): this;
-
+    /**
+     * Removes all elements from the Set.
+     */
     clear(): void;
     /**
      * Removes a specified value from the Set.

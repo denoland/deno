@@ -67,7 +67,6 @@ pub(crate) type UnrefedOps =
   Rc<RefCell<HashSet<i32, BuildHasherDefault<IdentityHasher>>>>;
 
 /// Indices into the shared immediate_info buffer (Uint32Array).
-#[allow(dead_code, reason = "documents the layout; used only from JS")]
 pub(crate) const IMM_IDX_COUNT: usize = 0;
 pub(crate) const IMM_IDX_REF_COUNT: usize = 1;
 pub(crate) const IMM_IDX_HAS_OUTSTANDING: usize = 2;
@@ -75,16 +74,28 @@ pub(crate) const IMM_IDX_HAS_OUTSTANDING: usize = 2;
 pub struct ContextState {
   pub(crate) task_spawner_factory: Arc<V8TaskSpawnerFactory>,
   pub(crate) user_timer: UserTimer<DefaultReactor>,
-  // Per-phase JS callbacks (replacing monolithic eventLoopTick)
-  pub(crate) js_resolve_ops_cb: RefCell<Option<v8::Global<v8::Function>>>,
+  // Per-phase JS callbacks for the event loop.
+  // js_event_loop_tick_cb: resolves completed async ops in one
+  // Rust-to-JS call. Tick draining is handled separately by
+  // js_drain_next_tick_and_macrotasks_cb.
+  pub(crate) js_event_loop_tick_cb: RefCell<Option<v8::Global<v8::Function>>>,
+  pub(crate) js_process_timers_cb: RefCell<Option<v8::Global<v8::Function>>>,
+  // js_drain_next_tick_and_macrotasks_cb: drains nextTick/microtask queues
+  // only (used in the I/O tight loop where timers/ops are not involved).
   pub(crate) js_drain_next_tick_and_macrotasks_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_handle_rejections_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) run_immediate_callbacks_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
-  pub(crate) js_process_timers_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_wasm_streaming_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) wasm_instance_fn: RefCell<Option<v8::Global<v8::Function>>>,
+  // WeakMap<ModuleNamespace, WebAssembly.Instance.exports> shared by the
+  // synthetic modules rendered for `.wasm` files, so that a Wasm module
+  // importing a global from another Wasm module links against the original
+  // `WebAssembly.Global` object instead of the unwrapped snapshot value
+  // exposed to JS. Stands in for the [[Instance]] slot of the Wasm module
+  // record from the ESM integration proposal (same trick as Node.js).
+  pub(crate) wasm_instances_map: RefCell<Option<v8::Global<v8::Object>>>,
   pub(crate) unrefed_ops: UnrefedOps,
   pub(crate) activity_traces: RuntimeActivityTraces,
   pub(crate) pending_ops: Rc<OpDriverImpl>,
@@ -93,6 +104,20 @@ pub struct ContextState {
   pub(crate) op_ctxs: Box<[OpCtx]>,
   pub(crate) op_method_decls: Vec<OpMethodDecl>,
   pub(crate) methods_ctx_offset: usize,
+  /// Snapshots built against V8 14.9+ bake the *slow* version of each op
+  /// (see `op_ctx_template`); fast-call overloads are re-attached at runtime
+  /// by `upgrade_snapshotted_ops_with_fast_calls`. That pass creates ~1.6k V8
+  /// functions (~0.9ms). It only benefits ops accessed at runtime (baked
+  /// modules captured their slow refs at snapshot eval), so we DEFER it until
+  /// the first residual ext-module load — a program that never loads a
+  /// residual module (e.g. `deno run empty.js`) never pays for it.
+  pub(crate) fast_ops_upgraded: Cell<bool>,
+  /// `(Deno.core.ops, Deno.core.setUpAsyncStub)` captured at `new_inner` time,
+  /// because `Deno.core` is scrubbed from the public `Deno` after bootstrap and
+  /// the deferred upgrade (which runs post-bootstrap) can no longer read them
+  /// from the global. `None` when the upgrade isn't deferred.
+  pub(crate) deferred_fast_ops:
+    RefCell<Option<(v8::Global<v8::Object>, v8::Global<v8::Function>)>>,
   pub(crate) isolate: Option<v8::UnsafeRawIsolatePtr>,
   pub(crate) exception_state: Rc<ExceptionState>,
   /// Shared tick info buffer exposed to JS as a Uint8Array.
@@ -112,8 +137,14 @@ pub struct ContextState {
     RefCell<std::collections::HashMap<usize, (bool, bool)>>,
   pub(crate) external_ops_tracker: ExternalOpsTracker,
   pub(crate) ext_import_meta_proto: RefCell<Option<v8::Global<v8::Object>>>,
+  /// Lazily-cached "next"/"done"/"value" iterator keys used by the WebIDL
+  /// sequence converter. Cached per-context (not in a `thread_local`) because
+  /// `v8::String` handles are isolate-bound. See
+  /// [`crate::webidl::WebIdlSequenceKeys`].
+  pub(crate) webidl_sequence_keys:
+    RefCell<Option<crate::webidl::WebIdlSequenceKeys>>,
   /// Phase-specific state for the libuv-style event loop.
-  pub(crate) event_loop_phases: RefCell<EventLoopPhases>,
+  pub event_loop_phases: RefCell<EventLoopPhases>,
   /// Pointer to the `UvLoopInner` for the libuv compat layer.
   /// Set via [`JsRuntime::register_uv_loop`] when a `uv_loop_t` is
   /// associated with this context.
@@ -132,6 +163,12 @@ pub struct ContextState {
   /// # Safety
   /// Same lifetime requirements as `uv_loop_inner` above.
   pub(crate) uv_loop_ptr: Cell<Option<*mut crate::uv_compat::uv_loop_t>>,
+  /// Two-handle setImmediate mechanism (matching Node.js): a check handle
+  /// (always running, always unref'd) and an idle handle that controls
+  /// event loop liveness for refed immediates. `None` when no uv loop is
+  /// registered (e.g. during snapshotting).
+  pub(crate) immediate_check_handle:
+    RefCell<Option<crate::uv_compat::ImmediateCheckHandle>>,
 }
 
 impl ContextState {
@@ -153,17 +190,20 @@ impl ContextState {
       exception_state: Default::default(),
       tick_info: Box::new([0u8; 2]),
       immediate_info: Box::new([0u32; 3]),
-      js_resolve_ops_cb: Default::default(),
+      js_event_loop_tick_cb: Default::default(),
+      js_process_timers_cb: Default::default(),
       js_drain_next_tick_and_macrotasks_cb: Default::default(),
       js_handle_rejections_cb: Default::default(),
       run_immediate_callbacks_cb: Default::default(),
-      js_process_timers_cb: Default::default(),
       js_wasm_streaming_cb: Default::default(),
       wasm_instance_fn: Default::default(),
+      wasm_instances_map: Default::default(),
       activity_traces: Default::default(),
       op_ctxs,
       op_method_decls,
       methods_ctx_offset,
+      fast_ops_upgraded: Cell::new(false),
+      deferred_fast_ops: RefCell::new(None),
       pending_ops: op_driver,
       task_spawner_factory: Default::default(),
       user_timer: Default::default(),
@@ -172,9 +212,11 @@ impl ContextState {
       unrefed_ops,
       external_ops_tracker,
       ext_import_meta_proto: Default::default(),
+      webidl_sequence_keys: Default::default(),
       event_loop_phases: Default::default(),
       uv_loop_inner: Cell::new(None),
       uv_loop_ptr: Cell::new(None),
+      immediate_check_handle: RefCell::new(None),
     }
   }
 }
@@ -260,6 +302,12 @@ impl JsRealmInner {
     // SAFETY: We know the isolate outlives the realm
     let mut isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(raw_ptr) };
 
+    // Close the immediate check/idle handles before the uv loop is dropped.
+    // SAFETY: The uv loop is still alive (op_state hasn't been cleared yet).
+    if let Some(handle) = state.immediate_check_handle.borrow_mut().take() {
+      unsafe { handle.close() };
+    }
+
     if let Some(loop_ptr) = state.uv_loop_ptr.get() {
       // SAFETY: `loop_ptr` is valid for the lifetime of the runtime
       // (guaranteed by `register_uv_loop`). `data` was set to a
@@ -281,7 +329,8 @@ impl JsRealmInner {
     v8::scope!(let scope, &mut isolate);
     // These globals will prevent snapshots from completing, take them
     state.exception_state.prepare_to_destroy();
-    std::mem::take(&mut *state.js_resolve_ops_cb.borrow_mut());
+    std::mem::take(&mut *state.js_event_loop_tick_cb.borrow_mut());
+    std::mem::take(&mut *state.js_process_timers_cb.borrow_mut());
     std::mem::take(
       &mut *state.js_drain_next_tick_and_macrotasks_cb.borrow_mut(),
     );
@@ -556,53 +605,6 @@ impl JsRealm {
     count.set(count.get() + 1)
   }
 
-  /// Asynchronously load specified module and all of its dependencies.
-  ///
-  /// The module will be marked as "main", and because of that
-  /// "import.meta.main" will return true when checked inside that module.
-  ///
-  /// User must call [`ModuleMap::mod_evaluate`] with returned `ModuleId`
-  /// manually after load is finished.
-  pub(crate) async fn load_main_es_module_from_code(
-    &self,
-    isolate: &mut v8::Isolate,
-    specifier: &ModuleSpecifier,
-    code: Option<ModuleCodeString>,
-  ) -> Result<ModuleId, CoreError> {
-    let module_map_rc = self.0.module_map();
-    if let Some(code) = code {
-      context_scope!(scope, self, isolate);
-      // true for main module
-      module_map_rc
-        .new_es_module(
-          scope,
-          true,
-          specifier.to_string().into(),
-          code,
-          false,
-          None,
-        )
-        .map_err(|e| e.into_error(scope, false, false))?;
-    }
-
-    let root_id =
-      RecursiveModuleLoad::main(specifier.to_string(), module_map_rc.clone())
-        .await?
-        .run_to_completion(|load, request, source| {
-          context_scope!(scope, self, isolate);
-          load
-            .register_and_recurse(scope, request, source)
-            .map_err(|e| e.into_error(scope, false, false))
-        })
-        .await?;
-    context_scope!(scope, self, isolate);
-    self.instantiate_module(scope, root_id).map_err(|e| {
-      let exception = v8::Local::new(scope, e);
-      exception_to_err(scope, exception, false, false)
-    })?;
-    Ok(root_id)
-  }
-
   /// Asynchronously load specified ES module and all of its dependencies.
   ///
   /// This method is meant to be used when loading some utility code that
@@ -636,11 +638,16 @@ impl JsRealm {
       None,
     )
     .await?
-    .run_to_completion(|load, request, source| {
+    .run_to_completion(|load, step| {
       context_scope!(scope, self, isolate);
-      load
-        .register_and_recurse(scope, request, source)
-        .map_err(|e| e.into_error(scope, false, false))
+      match step {
+        crate::modules::recursive_load::RegisterStep::Register {
+          request,
+          source,
+        } => load
+          .register_and_recurse(scope, request, source)
+          .map_err(|e| e.into_error(scope, false, false)),
+      }
     })
     .await?;
     context_scope!(scope, self, isolate);

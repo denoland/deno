@@ -1,0 +1,10 @@
+Check [WILDCARD]mod.test.ts
+running 1 test from ./my-pkg/mod.test.ts
+add ...
+------- output -------
+adding 1 and 2
+----- output end -----
+add ... ok ([WILDLINE])
+
+ok | 1 passed | 0 failed ([WILDLINE])
+

@@ -1,8 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
-
-import { primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   op_blocklist_add_address,
   op_blocklist_add_range,
   op_blocklist_add_subnet,
@@ -10,26 +10,83 @@ import {
   op_blocklist_new,
   op_socket_address_get_serialization,
   op_socket_address_parse,
-} from "ext:core/ops";
+} = core.ops;
 
-import {
+const {
   validateInt32,
   validateObject,
   validatePort,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
-import { customInspectSymbol } from "ext:deno_node/internal/util.mjs";
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { customInspectSymbol, kEmptyObject } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const { inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const { isIP, isIPv6 } = core.loadExtScript(
+  "ext:deno_node/internal/net.ts",
+);
 
-const { Symbol } = primordials;
+const {
+  ArrayIsArray,
+  ArrayPrototypeUnshift,
+  JSONParse,
+  NumberParseInt,
+  ObjectDefineProperties,
+  RegExpPrototypeExec,
+  SafeArrayIterator,
+  SafeRegExp,
+  StringPrototypeEndsWith,
+  StringPrototypeIncludes,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
+  Symbol,
+} = primordials;
+
+const kIPv4SubnetRe = new SafeRegExp(
+  "Subnet: IPv4 (\\d{1,3}(?:\\.\\d{1,3}){3})\\/(\\d{1,2})",
+);
+const kIPv4AddressRe = new SafeRegExp(
+  "Address: IPv4 (\\d{1,3}(?:\\.\\d{1,3}){3})",
+);
+const kIPv4RangeRe = new SafeRegExp(
+  "Range: IPv4 (\\d{1,3}(?:\\.\\d{1,3}){3})-(\\d{1,3}(?:\\.\\d{1,3}){3})",
+);
+const kIPv6SubnetRe = new SafeRegExp(
+  "Subnet: IPv6 ([0-9a-fA-F:]{1,39})\\/([0-9]{1,3})",
+  "i",
+);
+const kIPv6AddressRe = new SafeRegExp(
+  "Address: IPv6 ([0-9a-fA-F:]{1,39})",
+  "i",
+);
+const kIPv6RangeRe = new SafeRegExp(
+  "Range: IPv6 ([0-9a-fA-F:]{1,39})-([0-9a-fA-F:]{1,39})",
+  "i",
+);
 
 const internalBlockList = Symbol("blocklist");
+const kRules = Symbol("rules");
+
+function formatFamily(family) {
+  return family === "ipv6" ? "IPv6" : "IPv4";
+}
 
 class BlockList {
   constructor() {
     this[internalBlockList] = op_blocklist_new();
+    this[kRules] = [];
+  }
+
+  static isBlockList(value) {
+    return value?.[internalBlockList] !== undefined;
   }
 
   [customInspectSymbol](depth, options) {
@@ -44,7 +101,7 @@ class BlockList {
 
     return `BlockList ${
       inspect({
-        rules: [], // TODO(satyarohith): provide the actual rules
+        rules: this[kRules],
       }, opts)
     }`;
   }
@@ -58,9 +115,14 @@ class BlockList {
         family,
       });
     } else {
+      family = address.family;
       address = address.address;
     }
     op_blocklist_add_address(this[internalBlockList], address);
+    ArrayPrototypeUnshift(
+      this[kRules],
+      `Address: ${formatFamily(StringPrototypeToLowerCase(family))} ${address}`,
+    );
   }
 
   addRange(start, end, family = "ipv4") {
@@ -72,6 +134,7 @@ class BlockList {
         family,
       });
     } else {
+      family = start.family;
       start = start.address;
     }
     if (!SocketAddress.isSocketAddress(end)) {
@@ -88,6 +151,12 @@ class BlockList {
     if (ret === false) {
       throw new ERR_INVALID_ARG_VALUE("start", start, "must come before end");
     }
+    ArrayPrototypeUnshift(
+      this[kRules],
+      `Range: ${
+        formatFamily(StringPrototypeToLowerCase(family))
+      } ${start}-${end}`,
+    );
   }
 
   addSubnet(network, prefix, family = "ipv4") {
@@ -99,9 +168,10 @@ class BlockList {
         family,
       });
     } else {
-      network = network.address;
       family = network.family;
+      network = network.address;
     }
+    family = StringPrototypeToLowerCase(family);
     switch (family) {
       case "ipv4":
         validateInt32(prefix, "prefix", 0, 32);
@@ -111,6 +181,10 @@ class BlockList {
         break;
     }
     op_blocklist_add_subnet(this[internalBlockList], network, prefix);
+    ArrayPrototypeUnshift(
+      this[kRules],
+      `Subnet: ${formatFamily(family)} ${network}/${prefix}`,
+    );
   }
 
   check(address, family = "ipv4") {
@@ -140,8 +214,77 @@ class BlockList {
   }
 
   get rules() {
-    // TODO(satyarohith): return the actual rules
-    return [];
+    return this[kRules];
+  }
+
+  toJSON() {
+    return this[kRules];
+  }
+
+  fromJSON(data) {
+    if (ArrayIsArray(data)) {
+      for (const n of new SafeArrayIterator(data)) {
+        if (typeof n !== "string") {
+          throw new ERR_INVALID_ARG_TYPE("data", ["string", "string[]"], data);
+        }
+      }
+    } else if (typeof data !== "string") {
+      throw new ERR_INVALID_ARG_TYPE("data", ["string", "string[]"], data);
+    } else {
+      data = JSONParse(data);
+      if (!ArrayIsArray(data)) {
+        throw new ERR_INVALID_ARG_TYPE("data", ["string", "string[]"], data);
+      }
+      for (const n of new SafeArrayIterator(data)) {
+        if (typeof n !== "string") {
+          throw new ERR_INVALID_ARG_TYPE("data", ["string", "string[]"], data);
+        }
+      }
+    }
+    parseIPInfo(this, data);
+  }
+}
+
+function parseIPInfo(self, data) {
+  for (const item of new SafeArrayIterator(data)) {
+    if (StringPrototypeIncludes(item, "IPv4")) {
+      const subnetMatch = RegExpPrototypeExec(kIPv4SubnetRe, item);
+      if (subnetMatch) {
+        self.addSubnet(subnetMatch[1], NumberParseInt(subnetMatch[2]));
+        continue;
+      }
+      const addressMatch = RegExpPrototypeExec(kIPv4AddressRe, item);
+      if (addressMatch) {
+        self.addAddress(addressMatch[1]);
+        continue;
+      }
+      const rangeMatch = RegExpPrototypeExec(kIPv4RangeRe, item);
+      if (rangeMatch) {
+        self.addRange(rangeMatch[1], rangeMatch[2]);
+        continue;
+      }
+    }
+    if (StringPrototypeIncludes(item, "IPv6")) {
+      const ipv6SubnetMatch = RegExpPrototypeExec(kIPv6SubnetRe, item);
+      if (ipv6SubnetMatch) {
+        self.addSubnet(
+          ipv6SubnetMatch[1],
+          NumberParseInt(ipv6SubnetMatch[2]),
+          "ipv6",
+        );
+        continue;
+      }
+      const ipv6AddressMatch = RegExpPrototypeExec(kIPv6AddressRe, item);
+      if (ipv6AddressMatch) {
+        self.addAddress(ipv6AddressMatch[1], "ipv6");
+        continue;
+      }
+      const ipv6RangeMatch = RegExpPrototypeExec(kIPv6RangeRe, item);
+      if (ipv6RangeMatch) {
+        self.addRange(ipv6RangeMatch[1], ipv6RangeMatch[2], "ipv6");
+        continue;
+      }
+    }
   }
 }
 
@@ -149,7 +292,44 @@ const kDetail = Symbol("kDetail");
 
 class SocketAddress {
   static isSocketAddress(value) {
-    return value?.[kDetail] !== undefined;
+    if (value === null || typeof value !== "object") {
+      return false;
+    }
+    if (value[kDetail] !== undefined) {
+      return true;
+    }
+    // After a structured clone (e.g. postMessage), the symbol-keyed marker is
+    // lost. Fall back to a duck-type check on the cloned data shape.
+    return typeof value.address === "string" &&
+      typeof value.port === "number" &&
+      (value.family === "ipv4" || value.family === "ipv6") &&
+      typeof value.flowlabel === "number";
+  }
+
+  static parse(input) {
+    validateString(input, "input");
+    let url;
+    try {
+      url = new URL(`http://${input}`);
+    } catch {
+      return undefined;
+    }
+    const hostname = url.hostname;
+    const portStr = url.port;
+    const port = portStr === "" ? 0 : NumberParseInt(portStr, 10);
+    if (isIP(hostname) === 4) {
+      return new SocketAddress({ address: hostname, port });
+    }
+    if (
+      StringPrototypeStartsWith(hostname, "[") &&
+      StringPrototypeEndsWith(hostname, "]")
+    ) {
+      const addr = StringPrototypeSlice(hostname, 1, -1);
+      if (isIPv6(addr)) {
+        return new SocketAddress({ address: addr, family: "ipv6", port });
+      }
+    }
+    return undefined;
   }
 
   constructor(options = kEmptyObject) {
@@ -161,7 +341,7 @@ class SocketAddress {
       flowlabel = 0,
     } = options;
 
-    if (typeof family?.toLowerCase === "function") {
+    if (typeof family === "string") {
       // deno-lint-ignore prefer-primordials
       family = family.toLowerCase();
     }
@@ -178,12 +358,8 @@ class SocketAddress {
     validatePort(port, "options.port");
     validateUint32(flowlabel, "options.flowlabel", false);
 
-    this[kDetail] = {
-      address,
-      port,
-      family,
-      flowlabel,
-    };
+    let normalizedAddress = address;
+    let normalizedFamily = family;
     const useInput = op_socket_address_parse(
       address,
       port,
@@ -191,27 +367,50 @@ class SocketAddress {
     );
     if (!useInput) {
       const { 0: address_, 1: family_ } = op_socket_address_get_serialization();
-      this[kDetail].address = address_;
-      this[kDetail].family = family_;
+      normalizedAddress = address_;
+      normalizedFamily = family_;
     }
-  }
 
-  get address() {
-    return this[kDetail].address;
-  }
+    this[kDetail] = {
+      address: normalizedAddress,
+      port,
+      family: normalizedFamily,
+      flowlabel,
+    };
 
-  get port() {
-    return this[kDetail].port;
-  }
-
-  get family() {
-    return this[kDetail].family;
-  }
-
-  get flowlabel() {
-    // TODO(satyarohith): Implement this in Rust.
-    // The flow label can be changed internally.
-    return this[kDetail].flowlabel;
+    // Expose the data as own enumerable string-keyed properties so that the
+    // instance survives structured clone (e.g. postMessage): symbol-keyed
+    // properties are not preserved by HTML structured clone.
+    ObjectDefineProperties(this, {
+      address: {
+        __proto__: null,
+        value: normalizedAddress,
+        enumerable: true,
+        writable: false,
+        configurable: false,
+      },
+      port: {
+        __proto__: null,
+        value: port,
+        enumerable: true,
+        writable: false,
+        configurable: false,
+      },
+      family: {
+        __proto__: null,
+        value: normalizedFamily,
+        enumerable: true,
+        writable: false,
+        configurable: false,
+      },
+      flowlabel: {
+        __proto__: null,
+        value: flowlabel,
+        enumerable: true,
+        writable: false,
+        configurable: false,
+      },
+    });
   }
 
   toJSON() {
@@ -224,4 +423,8 @@ class SocketAddress {
   }
 }
 
-export { BlockList, SocketAddress };
+return {
+  BlockList,
+  SocketAddress,
+};
+})();

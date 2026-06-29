@@ -1,0 +1,2 @@
+INNER_QUOTES="1: foo'bar"baz`qux"
+INNER_QUOTES_WITH_NEWLINE="2: foo bar\ni am "on" newline, 'yo'"

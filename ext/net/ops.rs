@@ -7,6 +7,7 @@ use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::time::Duration;
 
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -61,7 +62,7 @@ pub struct TlsHandshakeInfo {
     Option<Vec<rustls::pki_types::CertificateDer<'static>>>,
 }
 
-#[derive(Debug, FromV8, ToV8, Deserialize, Serialize)]
+#[derive(Debug, FromV8, ToV8)]
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
@@ -83,6 +84,27 @@ impl From<TunnelAddr> for IpAddr {
       port: addr.port(),
     }
   }
+}
+
+/// Options for TCP connection (used by Deno.connect and node:net)
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TcpConnectOptions {
+  /// Enable Happy Eyeballs (auto select family). Default: true
+  #[serde(default = "default_auto_select_family")]
+  pub auto_select_family: bool,
+
+  /// Delay in milliseconds between connection attempts. Default: 250
+  #[serde(default = "default_attempt_delay")]
+  pub auto_select_family_attempt_delay: u64,
+}
+
+fn default_auto_select_family() -> bool {
+  true
+}
+
+fn default_attempt_delay() -> u64 {
+  crate::happy_eyeballs::DEFAULT_ATTEMPT_DELAY_MS
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -227,7 +249,6 @@ pub async fn op_net_accept_tcp(
 }
 
 #[op2]
-#[serde]
 pub async fn op_net_recv_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -266,6 +287,17 @@ pub async fn op_net_send_udp(
     .await?
     .next()
     .ok_or(NetError::NoResolvedAddress)?;
+
+  {
+    state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(
+        &addr.ip(),
+        addr.port(),
+        "Deno.DatagramConn.send()",
+      )?;
+  }
 
   let resource = state
     .borrow_mut()
@@ -464,6 +496,18 @@ impl NetPermToken {
   pub fn includes(&self, addr: &str) -> bool {
     self.resolved_ips.iter().any(|ip| ip == addr)
   }
+
+  /// Returns the host that `--allow-net` should be checked against for a
+  /// connection to `address`: the token's original hostname when `address` is
+  /// one of the IPs this token resolved, otherwise the literal `address`. This
+  /// keeps the hostname from being grafted onto an unrelated IP.
+  pub fn check_host<'a>(&'a self, address: &'a str) -> &'a str {
+    if self.includes(address) {
+      &self.hostname
+    } else {
+      address
+    }
+  }
 }
 
 #[op2]
@@ -479,8 +523,16 @@ pub async fn op_net_connect_tcp(
   #[scoped] addr: IpAddr,
   #[cppgc] net_perm_token: Option<&NetPermToken>,
   #[smi] resource_abort_id: Option<ResourceId>,
+  #[serde] options: Option<TcpConnectOptions>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
-  op_net_connect_tcp_inner(state, addr, net_perm_token, resource_abort_id).await
+  op_net_connect_tcp_inner(
+    state,
+    addr,
+    net_perm_token,
+    resource_abort_id,
+    options,
+  )
+  .await
 }
 
 #[inline]
@@ -489,24 +541,56 @@ pub async fn op_net_connect_tcp_inner(
   addr: IpAddr,
   net_perm_token: Option<&NetPermToken>,
   resource_abort_id: Option<ResourceId>,
+  options: Option<TcpConnectOptions>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   {
     let mut state_ = state.borrow_mut();
     // If token exists and the address matches to its resolved ips,
     // then we can check net permission against token.hostname, instead of addr.hostname
     let hostname_to_check = match net_perm_token {
-      Some(token) if token.includes(&addr.hostname) => token.hostname.clone(),
-      _ => addr.hostname.clone(),
+      Some(token) => token.check_host(&addr.hostname).to_string(),
+      None => addr.hostname.clone(),
     };
     state_
       .borrow_mut::<PermissionsContainer>()
       .check_net(&(&hostname_to_check, Some(addr.port)), "Deno.connect()")?;
   }
 
-  let addr = resolve_addr(&addr.hostname, addr.port)
-    .await?
-    .next()
-    .ok_or_else(|| NetError::NoResolvedAddress)?;
+  let options = options.unwrap_or_default();
+
+  // Resolve all addresses for Happy Eyeballs
+  let addrs: Vec<SocketAddr> =
+    resolve_addr(&addr.hostname, addr.port).await?.collect();
+
+  if addrs.is_empty() {
+    return Err(NetError::NoResolvedAddress);
+  }
+
+  // Happy Eyeballs races every resolved candidate, so it may connect to any of
+  // them; the non-racing path only ever connects to `addrs[0]`.
+  let use_happy_eyeballs = options.auto_select_family && addrs.len() > 1;
+
+  // Post-resolution deny check: verify the IPs we may actually connect to are
+  // not denied. This prevents bypassing IP-literal deny rules via numeric
+  // hostname aliases (e.g. 2130706433 → 127.0.0.1). Only the candidates we may
+  // attempt are checked: all of them when Happy Eyeballs races them, otherwise
+  // just the single address that will be used.
+  {
+    let mut state_ = state.borrow_mut();
+    let permissions = state_.borrow_mut::<PermissionsContainer>();
+    let checked = if use_happy_eyeballs {
+      &addrs[..]
+    } else {
+      &addrs[..1]
+    };
+    for addr in checked {
+      permissions.check_net_resolved(
+        &addr.ip(),
+        addr.port(),
+        "Deno.connect()",
+      )?;
+    }
+  }
 
   let cancel_handle = resource_abort_id.and_then(|rid| {
     state
@@ -516,10 +600,29 @@ pub async fn op_net_connect_tcp_inner(
       .ok()
   });
 
-  let tcp_stream_result = if let Some(cancel_handle) = &cancel_handle {
-    TcpStream::connect(&addr).or_cancel(cancel_handle).await?
+  // Use Happy Eyeballs if enabled and multiple addresses available
+  let tcp_stream_result = if use_happy_eyeballs {
+    let attempt_delay =
+      Duration::from_millis(options.auto_select_family_attempt_delay);
+    crate::happy_eyeballs::connect_happy_eyeballs(
+      addrs,
+      attempt_delay,
+      cancel_handle.clone(),
+    )
+    .await
+    .map(|result| result.stream)
+    .map_err(NetError::Io)
   } else {
-    TcpStream::connect(&addr).await
+    // Single address or Happy Eyeballs disabled - use first address
+    let addr = addrs[0];
+    if let Some(cancel_handle) = &cancel_handle {
+      match TcpStream::connect(&addr).or_cancel(cancel_handle).await {
+        Ok(result) => result.map_err(NetError::Io),
+        Err(err) => Err(NetError::Canceled(err)),
+      }
+    } else {
+      TcpStream::connect(&addr).await.map_err(NetError::Io)
+    }
   };
 
   if let Some(cancel_rid) = resource_abort_id
@@ -528,10 +631,7 @@ pub async fn op_net_connect_tcp_inner(
     res.close();
   }
 
-  let tcp_stream = match tcp_stream_result {
-    Ok(tcp_stream) => tcp_stream,
-    Err(e) => return Err(NetError::Io(e)),
-  };
+  let tcp_stream = tcp_stream_result?;
 
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
@@ -576,6 +676,9 @@ pub fn op_net_listen_tcp(
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(&addr.ip(), addr.port(), "Deno.listen()")?;
 
   let listener = if load_balanced {
     TcpListener::bind_load_balanced(addr, tcp_backlog)
@@ -601,6 +704,9 @@ fn net_listen_udp(
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(&addr.ip(), addr.port(), "Deno.listenDatagram()")?;
 
   let domain = if addr.is_ipv4() {
     Domain::IPV4
@@ -722,8 +828,7 @@ pub async fn op_net_connect_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_net_connect_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -764,8 +869,7 @@ pub fn op_net_listen_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_net_listen_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -813,8 +917,7 @@ pub async fn op_net_accept_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_net_accept_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -832,6 +935,19 @@ pub fn op_net_listen_tunnel(
     .resource_table
     .add(crate::raw::NetworkListenerResource::new(listener));
   Ok((rid, local_addr))
+}
+
+#[op2]
+pub fn op_net_listen_memory(
+  state: &mut OpState,
+  #[string] name: String,
+) -> Result<(ResourceId, String, u32), NetError> {
+  let listener = crate::memory::listen_memory(&name)?;
+  let local_addr = listener.local_addr()?;
+  let rid = state
+    .resource_table
+    .add(crate::raw::NetworkListenerResource::new(listener));
+  Ok((rid, local_addr.name, local_addr.id))
 }
 
 #[op2]
@@ -862,8 +978,8 @@ pub async fn op_net_accept_tunnel(
   Ok((rid, local_addr.into(), remote_addr.into()))
 }
 
-#[derive(Serialize, Eq, PartialEq, Debug)]
-#[serde(untagged)]
+#[derive(ToV8, Eq, PartialEq, Debug)]
+#[to_v8(untagged)]
 pub enum DnsRecordData {
   A(String),
   Aaaa(String),
@@ -908,8 +1024,11 @@ pub enum DnsRecordData {
 
 #[derive(ToV8, Eq, PartialEq, Debug)]
 pub struct DnsRecordWithTtl {
-  #[to_v8(serde)]
   pub data: DnsRecordData,
+  /// Record type name, populated for ANY queries to distinguish
+  /// untagged string variants (A vs AAAA vs NS vs PTR vs CNAME).
+  #[to_v8(serde)]
+  pub record_type: Option<String>,
   pub ttl: u32,
 }
 
@@ -947,7 +1066,7 @@ pub async fn op_dns_resolve(
     cancel_rid,
   } = args;
 
-  let (config, opts) = if let Some(name_server) =
+  let (config, mut opts) = if let Some(name_server) =
     options.as_ref().and_then(|o| o.name_server.as_ref())
   {
     let group = NameServerConfigGroup::from_ips_clear(
@@ -965,6 +1084,14 @@ pub async fn op_dns_resolve(
   } else {
     system_conf::read_system_conf()?
   };
+
+  // When a cancel handle is provided, use a short resolver timeout so
+  // that hickory's background connection tasks clean up quickly after
+  // cancellation (they are not aborted by the cancel handle itself).
+  if cancel_rid.is_some() {
+    opts.timeout = std::time::Duration::from_secs(1);
+    opts.attempts = 1;
+  }
 
   {
     let mut s = state.borrow_mut();
@@ -1031,10 +1158,22 @@ pub async fn op_dns_resolve(
     .records()
     .iter()
     .filter_map(|rec| {
-      let r = format_rdata(record_type)(rec.data()).transpose();
+      let is_any = record_type == RecordType::ANY;
+      // For ANY queries, use each record's actual type for formatting
+      let effective_type = if is_any {
+        rec.record_type()
+      } else {
+        record_type
+      };
+      let r = format_rdata(effective_type)(rec.data()).transpose();
       r.map(|maybe_data| {
         maybe_data.map(|data| DnsRecordWithTtl {
           data,
+          record_type: if is_any {
+            Some(effective_type.to_string())
+          } else {
+            None
+          },
           ttl: rec.ttl(),
         })
       })
@@ -1447,7 +1586,8 @@ mod tests {
     };
 
     let mut connect_fut =
-      op_net_connect_tcp_inner(conn_state, ip_addr, None, None).boxed_local();
+      op_net_connect_tcp_inner(conn_state, ip_addr, None, None, None)
+        .boxed_local();
     let mut rid = None;
 
     tokio::select! {

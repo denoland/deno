@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_npm::registry::NpmRegistryApi;
-use deno_npm::resolution::NpmPackageVersionResolver;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_semver::npm::NpmPackageReqReference;
 
@@ -109,40 +108,86 @@ impl<'a> BinNameResolver<'a> {
     Some(stem.to_string())
   }
 
-  async fn resolve_name_from_npm(
+  /// Fetches and resolves the bin entries for an npm package.
+  /// Returns all (bin_name, script_path) pairs.
+  async fn resolve_npm_bin_entries(
     &self,
     npm_ref: &NpmPackageReqReference,
-  ) -> Result<Option<String>, AnyError> {
+  ) -> Result<Option<Vec<(String, String)>>, AnyError> {
     let package_info = self
       .npm_registry_api
       .package_info(&npm_ref.req().name)
       .await?;
     let version_resolver =
       self.npm_version_resolver.get_for_package(&package_info);
-    Ok(self.resolve_name_from_npm_package_info(&version_resolver, npm_ref))
-  }
-
-  fn resolve_name_from_npm_package_info(
-    &self,
-    version_resolver: &NpmPackageVersionResolver,
-    npm_ref: &NpmPackageReqReference,
-  ) -> Option<String> {
     let version_info = version_resolver
       .resolve_best_package_version_info(
         &npm_ref.req().version_req,
         Vec::new().into_iter(),
       )
-      .ok()?;
-    let bin_entries = version_info.bin.as_ref()?;
+      .ok();
+    let Some(version_info) = version_info else {
+      return Ok(None);
+    };
+    let Some(bin_entries) = version_info.bin.as_ref() else {
+      return Ok(None);
+    };
     match bin_entries {
-      deno_npm::registry::NpmPackageVersionBinEntry::String(_) => {}
-      deno_npm::registry::NpmPackageVersionBinEntry::Map(data) => {
-        if data.len() == 1 {
-          return Some(data.keys().next().unwrap().clone());
-        }
+      deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
+        let name = &npm_ref.req().name;
+        let bin_name = name.rsplit('/').next().unwrap_or(name.as_str());
+        Ok(Some(vec![(bin_name.to_string(), script.clone())]))
+      }
+      deno_npm::registry::NpmPackageVersionBinEntry::Map(data) => Ok(Some(
+        data.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+      )),
+    }
+  }
+
+  async fn resolve_name_from_npm(
+    &self,
+    npm_ref: &NpmPackageReqReference,
+  ) -> Result<Option<String>, AnyError> {
+    let entries = self.resolve_npm_bin_entries(npm_ref).await?;
+    Ok(Self::infer_name_from_bin_entries(
+      entries.as_deref(),
+      npm_ref,
+    ))
+  }
+
+  fn infer_name_from_bin_entries(
+    entries: Option<&[(String, String)]>,
+    npm_ref: &NpmPackageReqReference,
+  ) -> Option<String> {
+    let entries = entries?;
+    if entries.len() == 1 {
+      return Some(entries[0].0.clone());
+    }
+    if entries.len() > 1 {
+      // When there are multiple bin entries, check if one matches the
+      // package name (the npm default bin convention). For scoped packages
+      // like @scope/name, check the unscoped portion.
+      let pkg_name = &npm_ref.req().name;
+      let unscoped_name = pkg_name
+        .strip_prefix('@')
+        .and_then(|s| s.split_once('/'))
+        .map(|(_, name)| name)
+        .unwrap_or(pkg_name.as_str());
+      if entries.iter().any(|(name, _)| name == unscoped_name) {
+        return Some(unscoped_name.to_string());
       }
     }
     None
+  }
+
+  /// Resolves all bin entries for an npm package URL.
+  /// Returns a list of (bin_name, script_path) pairs.
+  pub async fn resolve_all_bin_entries_from_npm(
+    &self,
+    url: &Url,
+  ) -> Option<Vec<(String, String)>> {
+    let npm_ref = NpmPackageReqReference::from_specifier(url).ok()?;
+    self.resolve_npm_bin_entries(&npm_ref).await.ok().flatten()
   }
 }
 
@@ -311,6 +356,95 @@ mod test {
     assert_eq!(
       infer_name_from_url(&Url::parse("npm:@google/gemini-cli").unwrap()).await,
       Some("gemini".to_string())
+    );
+  }
+
+  #[tokio::test]
+  async fn install_infer_name_multi_bin_npm() {
+    // Package with multiple bins where one matches the package name
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let http_client = HttpClientProvider::new(None, None);
+    let registry_api = TestNpmRegistryApi::default();
+    registry_api.with_version_info(("pyright", "1.0.0"), |info| {
+      info.bin = Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(
+        HashMap::from([
+          ("pyright".to_string(), "index.js".to_string()),
+          (
+            "pyright-langserver".to_string(),
+            "langserver.index.js".to_string(),
+          ),
+        ]),
+      ))
+    });
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
+
+    // Should infer "pyright" as the primary name since it matches the package name
+    let name = resolver
+      .infer_name_from_url(&Url::parse("npm:pyright").unwrap())
+      .await;
+    assert_eq!(name, Some("pyright".to_string()));
+  }
+
+  #[tokio::test]
+  async fn install_infer_name_multi_bin_scoped_npm() {
+    // Scoped package with multiple bins where one matches the unscoped package name
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let http_client = HttpClientProvider::new(None, None);
+    let registry_api = TestNpmRegistryApi::default();
+    registry_api.with_version_info(("@denotest/multi-bin", "1.0.0"), |info| {
+      info.bin = Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(
+        HashMap::from([
+          ("multi-bin".to_string(), "./cli.mjs".to_string()),
+          ("multi-bin-server".to_string(), "./server.mjs".to_string()),
+        ]),
+      ))
+    });
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
+
+    // Should infer "multi-bin" as the primary name
+    let name = resolver
+      .infer_name_from_url(&Url::parse("npm:@denotest/multi-bin").unwrap())
+      .await;
+    assert_eq!(name, Some("multi-bin".to_string()));
+  }
+
+  #[tokio::test]
+  async fn resolve_all_bin_entries_multi_bin() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let http_client = HttpClientProvider::new(None, None);
+    let registry_api = TestNpmRegistryApi::default();
+    registry_api.with_version_info(("pyright", "1.0.0"), |info| {
+      info.bin = Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(
+        HashMap::from([
+          ("pyright".to_string(), "index.js".to_string()),
+          (
+            "pyright-langserver".to_string(),
+            "langserver.index.js".to_string(),
+          ),
+        ]),
+      ))
+    });
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
+
+    let entries = resolver
+      .resolve_all_bin_entries_from_npm(&Url::parse("npm:pyright").unwrap())
+      .await;
+    let mut entries = entries.unwrap();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0], ("pyright".to_string(), "index.js".to_string()));
+    assert_eq!(
+      entries[1],
+      (
+        "pyright-langserver".to_string(),
+        "langserver.index.js".to_string()
+      )
     );
   }
 }
