@@ -2724,40 +2724,17 @@ async fn package_macos_app_bundle(
   // Strip unnecessary bulk from the CEF framework.
   strip_cef_bloat(&contents_dir);
 
-  // Copy the compiled dylib.
-  let dylib_filename = parts.file_name;
-  let dest_dylib = macos_dir.join(dylib_filename);
+  // Copy the compiled dylib under the name laufey's bundle-relative search
+  // looks for (`Contents/MacOS/libruntime.dylib`). We deliberately do NOT
+  // write a shell-script launcher that execs the backend with `--runtime`:
+  // under LaunchServices (`open`/Finder/double-click) that `exec` breaks the
+  // app's foreground-GUI registration, so an `NSStatusItem` (tray icon) is
+  // created but never attaches to the menu bar. Instead the laufey backend
+  // binary is the bundle's CFBundleExecutable directly (see Info.plist
+  // below); it resolves the runtime via `[NSBundle mainBundle]`, which is
+  // relocation-safe and needs no argument. See denoland/deno#35619.
+  let dest_dylib = macos_dir.join("libruntime.dylib");
   std::fs::copy(dylib_path, &dest_dylib)?;
-
-  // Create launcher script as the main executable. Validate every name
-  // we interpolate: bash expands `$VAR`, backticks, and `$(...)` even
-  // inside `"..."`.
-  let dylib_filename_str = dylib_filename.to_string_lossy();
-  validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(
-    &laufey_executable_name,
-    "LAUFEY backend executable name",
-  )?;
-  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
-  let launcher_path = macos_dir.join(&app_name);
-  std::fs::write(
-    &launcher_path,
-    format!(
-      "#!/bin/sh\n\
-       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
-       exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
-      laufey_binary = laufey_executable_name,
-      dylib = dylib_filename_str,
-    ),
-  )?;
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(
-      &launcher_path,
-      std::fs::Permissions::from_mode(0o755),
-    )?;
-  }
 
   // Resolve the bundle identifier. The user-configured `identifier` is
   // preferred; otherwise we synthesize one from the app name. The
@@ -2777,10 +2754,13 @@ async fn package_macos_app_bundle(
     }
   };
 
-  // Generate Info.plist.
+  // Generate Info.plist. The backend binary is the CFBundleExecutable so
+  // there is no shell-script `exec` between LaunchServices and the GUI
+  // process (which would break tray registration — see above).
   let info_plist = render_macos_info_plist(
     &app_name,
     &bundle_id,
+    &laufey_executable_name,
     desktop_flags.icon.is_some(),
   );
   std::fs::write(contents_dir.join("Info.plist"), info_plist)?;
@@ -2865,6 +2845,7 @@ async fn package_macos_app_bundle(
 fn render_macos_info_plist(
   app_name: &str,
   bundle_id: &str,
+  executable_name: &str,
   has_icon: bool,
 ) -> String {
   format!(
@@ -2875,7 +2856,7 @@ fn render_macos_info_plist(
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleExecutable</key>
-  <string>{app_name}</string>
+  <string>{executable_name}</string>
   <key>CFBundleIconFile</key>
   <string>{icon_file}</string>
   <key>CFBundleIdentifier</key>
@@ -2918,6 +2899,7 @@ fn render_macos_info_plist(
 "#,
     app_name = app_name,
     bundle_id = bundle_id,
+    executable_name = executable_name,
     icon_file = if has_icon { "AppIcon" } else { "" },
   )
 }
@@ -5121,8 +5103,19 @@ mod tests {
 
   #[test]
   fn macos_info_plist_includes_principal_class_and_tcc_usage_strings() {
-    let plist = render_macos_info_plist("Deno Demo", "com.deno.demo", true);
+    let plist = render_macos_info_plist(
+      "Deno Demo",
+      "com.deno.demo",
+      "laufey_webview",
+      true,
+    );
     assert!(plist.contains("<string>LaufeyApplication</string>"));
+    // The backend binary must be the CFBundleExecutable (not a shell-script
+    // launcher named after the app) so LaunchServices launches the GUI
+    // process directly — otherwise the tray icon never attaches. #35619.
+    assert!(plist.contains(
+      "<key>CFBundleExecutable</key>\n  <string>laufey_webview</string>"
+    ));
     assert!(
       plist.contains("<key>NSMicrophoneUsageDescription</key>")
         && plist.contains("Deno Demo requires access to the microphone")
