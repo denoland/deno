@@ -852,13 +852,12 @@ interface URLPattern {
  *
  * @category URL
  */
-declare var URLPattern: typeof globalThis extends
-  { document: any; URLPattern: infer T } ? T : {
-  readonly prototype: URLPattern;
-  new (
-    input: URLPatternInput,
-    baseURL: string,
-    options?: URLPatternOptions,
-  ): URLPattern;
-  new (input?: URLPatternInput, options?: URLPatternOptions): URLPattern;
-};
+// NOTE: the `URLPattern` constructor value is intentionally provided by
+// `@types/node` rather than declared here. Unlike its sibling web globals,
+// `@types/node` declares `var URLPattern` *unconditionally* (no
+// `typeof globalThis extends { onmessage: any; ... }` guard, unlike
+// `URLSearchParams`), so it cannot defer to a Deno declaration and a second
+// `declare var URLPattern` here would collide (TS2403) - this also breaks
+// stock `@types/node` + `lib.dom`. Deno keeps the `URLPattern` interface (the
+// instance type) and lets `@types/node` own the constructor. See
+// https://github.com/microsoft/typescript-go and the @types/node url typings.
