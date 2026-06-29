@@ -45,28 +45,32 @@ try {
   }
 }
 
-// The `limits.attach` constructor option must not raise the attach cap.
-{
-  const db = new DatabaseSync(allowedDb, { limits: { attach: 1 } });
-  try {
-    db.exec(`ATTACH DATABASE '${deniedDb}' AS denied`);
-    console.log("limits-attach-UNEXPECTED-OK");
-  } catch {
-    console.log("limits-attach-blocked");
-  } finally {
-    db.close();
-  }
+// The `limits.attach` constructor option must not raise the attach cap: the
+// constructor rejects raising it with ERR_ACCESS_DENIED.
+try {
+  new DatabaseSync(allowedDb, { limits: { attach: 1 } });
+  console.log("limits-attach-UNEXPECTED-OK");
+} catch (e) {
+  console.log(
+    e?.code === "ERR_ACCESS_DENIED"
+      ? "limits-attach-blocked"
+      : "limits-attach-OTHER:" + e.name,
+  );
 }
 
-// The `db.limits.attach` setter must not raise the attach cap.
+// The `db.limits.attach` setter must not raise the attach cap: the setter
+// rejects raising it with ERR_ACCESS_DENIED.
 {
   const db = new DatabaseSync(allowedDb);
   try {
     db.limits.attach = 1;
-    db.exec(`ATTACH DATABASE '${deniedDb}' AS denied`);
     console.log("setter-attach-UNEXPECTED-OK");
-  } catch {
-    console.log("setter-attach-blocked");
+  } catch (e) {
+    console.log(
+      e?.code === "ERR_ACCESS_DENIED"
+        ? "setter-attach-blocked"
+        : "setter-attach-OTHER:" + e.name,
+    );
   } finally {
     db.close();
   }

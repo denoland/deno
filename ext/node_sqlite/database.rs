@@ -675,14 +675,19 @@ fn apply_initial_limits(
   disable_attach: bool,
 ) -> Result<(), SqliteError> {
   for (idx, &(_js_name, limit)) in LIMIT_MAPPING.iter().enumerate() {
-    // When the process lacks full permissions for the database path, the
-    // attach limit is a security cap held at 0: ATTACH DATABASE can reach
-    // files outside the database path, so it must not be raised through the
-    // user-controlled `limits.attach` option.
-    if disable_attach && matches!(limit, Limit::SQLITE_LIMIT_ATTACHED) {
-      continue;
-    }
     if let Some(value) = options.initial_limits[idx] {
+      // When the process lacks full permissions for the database path, the
+      // attach limit is a security cap held at 0: ATTACH DATABASE can reach
+      // files outside the database path, so it must not be raised through the
+      // user-controlled `limits.attach` option. Reject raising it above 0,
+      // mirroring the `db.limits.attach` setter. A value of 0 (keeping it
+      // disabled) is still accepted.
+      if disable_attach
+        && matches!(limit, Limit::SQLITE_LIMIT_ATTACHED)
+        && value > 0
+      {
+        return Err(SqliteError::AttachLimitDenied);
+      }
       conn.set_limit(limit, value)?;
     }
   }
@@ -2950,6 +2955,27 @@ fn throw_type_error_with_code(
   scope.throw_exception(error);
 }
 
+// Throws a plain `Error` carrying `code`. Used for conditions that are not
+// `TypeError`s or `RangeError`s, such as the ATTACH_DATABASE access boundary.
+fn throw_error_with_code(
+  scope: &mut v8::PinScope<'_, '_>,
+  message: &str,
+  code: &str,
+) {
+  let msg = v8::String::new(scope, message).unwrap();
+  let error = v8::Exception::error(scope, msg);
+
+  v8_static_strings!(CODE = "code");
+  let code_key = CODE.v8_string(scope).unwrap();
+  let code_value = v8::String::new(scope, code).unwrap();
+  let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
+  error_obj
+    .set(scope, code_key.into(), code_value.into())
+    .unwrap();
+
+  scope.throw_exception(error);
+}
+
 /// Object representing SQLite database limits.
 /// This is returned by DatabaseSync.limits getter.
 pub struct DatabaseSyncLimits {
@@ -3151,10 +3177,12 @@ impl DatabaseSyncLimits {
     // for the database path. Refuse to raise the cap above 0 so the limit
     // setter cannot re-enable attach and bypass that boundary. A value of 0
     // (keeping it disabled) is allowed and falls through to the normal setter.
+    // Malformed values also fall through so set_limit_value reports the right
+    // ERR_INVALID_ARG_* error.
     if self.disable_attach
       && matches!(coerce_limit_value(scope, value), Ok(v) if v > 0)
     {
-      throw_type_error_with_code(
+      throw_error_with_code(
         scope,
         "Cannot raise the \"attach\" limit: ATTACH DATABASE is disabled \
          without full permissions for the database path.",
