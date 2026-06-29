@@ -182,16 +182,10 @@ function isNodeSourceFile(sourceFile) {
   return isNodeSourceFile;
 }
 
-// EXPERIMENT (feat/stock-globals-experiment): collapse the fork's dual
-// node/deno global symbol tables into a single table by telling the global
-// router that no file is a "node" file. This makes `mergeGlobalSymbolTable`
-// merge every file's globals into the one table and routes all name resolution
-// there, which renders NODE_ONLY_GLOBALS / TYPES_NODE_IGNORABLE_NAMES inert.
-// Web-global coexistence with @types/node is instead handled in the libs via
-// the lib.dom-style conditional-deferral pattern. NOTE: the `isNodeSourceFile`
-// function itself is still used for node-file diagnostic suppression below, so
-// only the global-routing callback is neutralized here.
-ts.deno.setIsNodeSourceFileCallback(() => false);
+// NOTE: Deno now uses a stock (unforked) TypeScript build, which has a single
+// global symbol table. Web-global coexistence with @types/node is handled in
+// the libs via the lib.dom-style conditional-deferral pattern, so the fork's
+// dual node/deno global tables and the `ts.deno.*` global hooks are gone.
 
 /**
  * @param msg {string}
@@ -314,10 +308,6 @@ const CACHE_URL_PREFIX = "cache:///";
  * Deno, as they provide misleading or incorrect information. */
 const TSC_CONSTANTS = ops.op_tsc_constants();
 const IGNORED_DIAGNOSTICS = TSC_CONSTANTS.ignoredDiagnosticCodes;
-const TYPES_NODE_IGNORABLE_NAMES = new Set(
-  TSC_CONSTANTS.typesNodeIgnorableNames,
-);
-const NODE_ONLY_GLOBALS = new Set(TSC_CONSTANTS.nodeOnlyGlobals);
 
 // todo(dsherret): can we remove this and just use ts.OperationCanceledException?
 /** Error thrown on cancellation. */
@@ -889,18 +879,6 @@ function isJSDocDynamicImportDiagnostic(diagnostic) {
     text.slice(openBrace + 1, closeBrace),
   );
 }
-
-// list of globals that should be kept in Node's globalThis
-ts.deno.setNodeOnlyGlobalNames(
-  NODE_ONLY_GLOBALS,
-);
-// List of globals in @types/node that collide with Deno's types.
-// When the `@types/node` package attempts to assign to these types
-// if the type is already in the global symbol table, then assignment
-// will be a no-op, but if the global type does not exist then the package can
-// create the global.
-const setTypesNodeIgnorableNames = TYPES_NODE_IGNORABLE_NAMES;
-ts.deno.setTypesNodeIgnorableNames(setTypesNodeIgnorableNames);
 
 /**
  * @param {ts.StringLiteralLike} node
