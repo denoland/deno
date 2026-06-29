@@ -1525,6 +1525,45 @@ Deno.test("importedCpuUsage", () => {
   assert(importedCpuUsage === process.cpuUsage);
 });
 
+Deno.test("process.resourceUsage()", () => {
+  const usage = process.resourceUsage();
+  // All 16 fields documented at
+  // https://nodejs.org/api/process.html#processresourceusage must be present
+  // and numeric.
+  for (
+    const field of [
+      "userCPUTime",
+      "systemCPUTime",
+      "maxRSS",
+      "sharedMemorySize",
+      "unsharedDataSize",
+      "unsharedStackSize",
+      "minorPageFault",
+      "majorPageFault",
+      "swappedOut",
+      "fsRead",
+      "fsWrite",
+      "ipcSent",
+      "ipcReceived",
+      "signalsCount",
+      "voluntaryContextSwitches",
+      "involuntaryContextSwitches",
+    ] as const
+  ) {
+    assert(typeof usage[field] === "number", `${field} should be a number`);
+    assert(usage[field] >= 0, `${field} should be non-negative`);
+  }
+  // CPU time should be monotonically non-decreasing.
+  const later = process.resourceUsage();
+  assert(later.userCPUTime >= usage.userCPUTime);
+  assert(later.systemCPUTime >= usage.systemCPUTime);
+});
+
+Deno.test("importedResourceUsage", async () => {
+  const { resourceUsage } = await import("node:process");
+  assert(resourceUsage === process.resourceUsage);
+});
+
 Deno.test("process.stdout.columns writable", () => {
   process.stdout.columns = 80;
   assertEquals(process.stdout.columns, 80);

@@ -262,6 +262,30 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
     }
   }
 
+  pub fn try_load_prepared_module_sync<'graph>(
+    &self,
+    graph: &'graph ModuleGraph,
+    specifier: &Url,
+    requested_module_type: &RequestedModuleType<'_>,
+  ) -> Result<Option<LoadedModule<'graph>>, LoadCodeSourceError> {
+    let Some(loaded_module) = self
+      .prepared_module_loader
+      .try_load_prepared_module_sync(graph, specifier, requested_module_type)
+      .map_err(LoadCodeSourceError::from)?
+    else {
+      return Ok(None);
+    };
+
+    if loaded_module.media_type == MediaType::Json
+      && !matches!(requested_module_type, RequestedModuleType::Json)
+      && matches!(self.allow_json_imports, AllowJsonImports::WithAttribute)
+    {
+      return Err(LoadCodeSourceErrorKind::MissingJsonAttribute.into_box());
+    }
+
+    Ok(Some(loaded_module))
+  }
+
   pub fn load_prepared_module_for_source_map_sync<'graph>(
     &self,
     graph: &'graph ModuleGraph,
@@ -340,6 +364,47 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
         }))
       }
       None => Ok(None),
+    }
+  }
+
+  pub fn try_load_prepared_module_sync<'graph>(
+    &self,
+    graph: &'graph ModuleGraph,
+    specifier: &Url,
+    requested_module_type: &RequestedModuleType<'_>,
+  ) -> Result<Option<LoadedModule<'graph>>, LoadPreparedModuleError> {
+    // Note: keep this in sync with the async version above
+    match self.load_prepared_module_or_defer_emit(
+      graph,
+      specifier,
+      requested_module_type,
+    )? {
+      Some(CodeOrDeferredEmit::Source(source)) => Ok(Some(source)),
+      Some(CodeOrDeferredEmit::DeferredEmit {
+        specifier,
+        media_type,
+        source,
+      }) => {
+        let transpile_result = self.emitter.maybe_emit_source_sync(
+          specifier,
+          media_type,
+          ModuleKind::Esm,
+          source,
+        )?;
+
+        // at this point, we no longer need the parsed source in memory, so free it
+        self.parsed_source_cache.free(specifier);
+
+        Ok(Some(LoadedModule {
+          // note: it's faster to provide a string if we know it's a string
+          source: LoadedModuleSource::ArcStr(transpile_result),
+          specifier: Cow::Borrowed(specifier),
+          media_type,
+        }))
+      }
+      Some(CodeOrDeferredEmit::Cjs { .. })
+      | Some(CodeOrDeferredEmit::ExternalAsset { .. })
+      | None => Ok(None),
     }
   }
 

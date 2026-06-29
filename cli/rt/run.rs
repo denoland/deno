@@ -79,6 +79,7 @@ use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_web::Blob;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_semver::npm::NpmPackageReqReference;
@@ -155,6 +156,11 @@ struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
   hook_registry: LoaderHookRegistry,
   sys: DenoRtSys,
+  /// For blob/object-URL module workers, the captured root blob and its
+  /// specifier. Used so the worker's root module load resolves from the
+  /// synchronously-captured blob even if `URL.revokeObjectURL` has since
+  /// removed it from the blob store.
+  maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 }
 
 impl std::fmt::Debug for EmbeddedModuleLoader {
@@ -771,8 +777,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
     if original_specifier.scheme() == "blob" {
       let specifier = original_specifier.clone();
-      let Some(blob) = self.shared.blob_store.get_object_url(specifier.clone())
-      else {
+      // Prefer the synchronously-captured root blob (if this is the worker's
+      // main module) so a racing `URL.revokeObjectURL` can't make the load
+      // fail; otherwise look the object URL up in the blob store.
+      let maybe_blob = self
+        .maybe_main_module_blob
+        .as_ref()
+        .filter(|(blob_specifier, _)| *blob_specifier == specifier)
+        .map(|(_, blob)| blob.clone())
+        .or_else(|| self.shared.blob_store.get_object_url(specifier.clone()));
+      let Some(blob) = maybe_blob else {
         return deno_core::ModuleLoadResponse::Sync(Err(
           JsErrorBox::type_error(format!("Blob URL not found: {specifier}")),
         ));
@@ -1126,12 +1140,16 @@ struct StandaloneModuleLoaderFactory {
 }
 
 impl StandaloneModuleLoaderFactory {
-  pub fn create_result(&self) -> CreateModuleLoaderResult {
+  pub fn create_result(
+    &self,
+    maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
+  ) -> CreateModuleLoaderResult {
     let hook_registry = LoaderHookRegistry::default();
     let loader = Rc::new(EmbeddedModuleLoader {
       shared: self.shared.clone(),
       hook_registry: hook_registry.clone(),
       sys: self.sys.clone(),
+      maybe_main_module_blob,
     });
     {
       let loader = loader.clone();
@@ -1157,15 +1175,16 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
     &self,
     _root_permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult {
-    self.create_result()
+    self.create_result(None)
   }
 
   fn create_for_worker(
     &self,
     _parent_permissions: PermissionsContainer,
     _permissions: PermissionsContainer,
+    maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult {
-    self.create_result()
+    self.create_result(maybe_main_module_blob)
   }
 }
 
@@ -1341,6 +1360,9 @@ pub async fn run_with_options(
         scopes: Default::default(),
         registry_configs: Default::default(),
         min_release_age_days: None,
+        trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       });
       let npm_cache_dir = Arc::new(NpmCacheDir::new(
         &sys,
@@ -1932,6 +1954,9 @@ fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
     scopes: Default::default(),
     registry_configs: Default::default(),
     min_release_age_days: None,
+    trust_policy: Default::default(),
+    trust_policy_ignore_after_minutes: None,
+    trust_policy_exclude: Vec::new(),
   })
 }
 

@@ -1732,6 +1732,187 @@ async fn test_nexttick_before_promise_then() {
   runtime.run_event_loop(Default::default()).await.unwrap();
 }
 
+#[tokio::test]
+async fn test_timer_return_protocol_keeps_timers_armed_from_promise_hook() {
+  static FIRED: AtomicBool = AtomicBool::new(false);
+
+  #[op2(fast)]
+  fn op_mark_timer_race_fired() {
+    FIRED.store(true, Ordering::SeqCst);
+  }
+
+  #[op2]
+  async fn op_async_sleep(#[number] delay_ms: u64) -> Result<(), JsErrorBox> {
+    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+    Ok(())
+  }
+
+  deno_core::extension!(
+    timer_return_protocol_ext,
+    ops = [op_mark_timer_race_fired, op_async_sleep]
+  );
+
+  let cases = [
+    (
+      "stale_zero",
+      r#"
+        Deno.core.createTimer(() => {}, 20, undefined, false, true, false);
+      "#,
+    ),
+    (
+      "stale_negative_unrefed_later",
+      r#"
+        Deno.core.createTimer(() => {}, 20, undefined, false, true, false);
+        laterTimer = Deno.core.createTimer(
+          () => {},
+          1000,
+          undefined,
+          false,
+          false,
+          false,
+        );
+      "#,
+    ),
+    (
+      "stale_positive_refed_later",
+      r#"
+        Deno.core.createTimer(() => {}, 20, undefined, false, true, false);
+        laterTimer = Deno.core.createTimer(
+          () => {},
+          1000,
+          undefined,
+          false,
+          true,
+          false,
+        );
+      "#,
+    ),
+  ];
+
+  for (name, timer_setup) in cases {
+    FIRED.store(false, Ordering::SeqCst);
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![timer_return_protocol_ext::init()],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        name,
+        format!(
+          r#"
+          const {{ op_mark_timer_race_fired, op_async_sleep }} =
+            Deno.core.ops;
+          let armed = false;
+          let laterTimer;
+
+          Deno.core.setPromiseHooks(null, null, null, () => {{
+            if (armed) return;
+            armed = true;
+            Deno.core.createTimer(() => {{
+              if (laterTimer !== undefined) {{
+                Deno.core.cancelTimer(laterTimer);
+              }}
+              op_mark_timer_race_fired();
+            }}, 5, undefined, false, true, false);
+          }});
+
+          {timer_setup}
+
+          op_async_sleep(20);
+          "#,
+        ),
+      )
+      .unwrap();
+
+    let run_result = tokio::time::timeout(
+      Duration::from_millis(250),
+      runtime.run_event_loop(Default::default()),
+    )
+    .await;
+
+    // The event loop must actually complete. Accepting a timeout (even with
+    // FIRED set) would let a regression that arms the timer but leaves the
+    // loop hung still pass.
+    let result = run_result.unwrap_or_else(|_| {
+      panic!("{name} timed out; event loop never completed")
+    });
+    result.unwrap();
+
+    assert!(
+      FIRED.load(Ordering::SeqCst),
+      "{name} did not fire the timer armed by the promise hook"
+    );
+  }
+}
+
+#[tokio::test]
+async fn test_timer_return_protocol_keeps_timers_armed_from_run_next_ticks() {
+  static FIRED: AtomicBool = AtomicBool::new(false);
+
+  #[op2(fast)]
+  fn op_mark_run_next_ticks_timer_fired() {
+    FIRED.store(true, Ordering::SeqCst);
+  }
+
+  deno_core::extension!(
+    timer_run_next_ticks_ext,
+    ops = [op_mark_run_next_ticks_timer_fired]
+  );
+
+  FIRED.store(false, Ordering::SeqCst);
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![timer_run_next_ticks_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "timer_return_protocol_run_next_ticks.js",
+      r#"
+      const { op_mark_run_next_ticks_timer_fired } = Deno.core.ops;
+      let armed = false;
+
+      Deno.core.setPromiseHooks(null, () => {
+        if (armed) return;
+        armed = true;
+        Deno.core.createTimer(() => {
+          op_mark_run_next_ticks_timer_fired();
+        }, 5, undefined, false, true, false);
+      }, null, null);
+
+      // These timers share a timeout list. processTimers() drains ticks and
+      // microtasks between callbacks, so the Promise callback below runs from
+      // processTimers()'s runNextTicks() path before the second timer fires.
+      Deno.core.createTimer(() => {
+        Promise.resolve().then(() => {});
+      }, 1, undefined, false, true, false);
+      Deno.core.createTimer(() => {}, 1, undefined, false, true, false);
+      "#,
+    )
+    .unwrap();
+
+  let run_result = tokio::time::timeout(
+    Duration::from_millis(250),
+    runtime.run_event_loop(Default::default()),
+  )
+  .await;
+
+  // The event loop must actually complete. Accepting a timeout (even with
+  // FIRED set) would let a regression that arms the timer but leaves the
+  // loop hung still pass.
+  let result = run_result
+    .unwrap_or_else(|_| panic!("timed out; event loop never completed"));
+  result.unwrap();
+
+  assert!(
+    FIRED.load(Ordering::SeqCst),
+    "timer armed during runNextTicks did not fire"
+  );
+}
+
 /// Test that multiple nextTick callbacks all run before any Promise.then
 /// callbacks, and that promises queued during nextTick run after all ticks.
 #[tokio::test]

@@ -819,8 +819,13 @@ static ENV_VARS: &[EnvVar] = &[
     name: "DENO_SERVE_ADDRESS",
     description: "Override address for Deno.serve",
     example: Some(
-      r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678")"#,
+      r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", "vsock:1234:5678", or "memory:my-app")"#,
     ),
+  },
+  EnvVar {
+    name: "DENO_SERVE_AUTOMATIC_COMPRESSION",
+    description: "Set to 1 or true to enable automatic response body compression in Deno.serve by default.",
+    example: None,
   },
   EnvVar {
     name: "DENO_AUTO_SERVE",
@@ -951,6 +956,8 @@ static DENO_HELP: &str = cstr!(
                   <p(245)>deno run main.ts  |  deno run --allow-net=google.com main.ts  |  deno main.ts</>
     <g>serve</>        Run a server
                   <p(245)>deno serve main.ts</>
+    <g>watch</>        Run a program, watching for changes and hot-replacing modules
+                  <p(245)>deno watch main.ts</>
     <g>task</>         Run a task defined in the configuration file
                   <p(245)>deno task dev</>
     <g>repl</>         Start an interactive Read-Eval-Print Loop (REPL) for Deno
@@ -1298,7 +1305,8 @@ pub fn flags_from_vec_with_initial_cwd(
         "lsp" => lsp_parse(&mut flags, &mut m),
         "outdated" => outdated_parse(&mut flags, &mut m, false)?,
         "repl" => repl_parse(&mut flags, &mut m)?,
-        "run" => run_parse(&mut flags, &mut m, app, false)?,
+        "run" => run_parse(&mut flags, &mut m, app, false, false)?,
+        "watch" => run_parse(&mut flags, &mut m, app, false, true)?,
         "serve" => serve_parse(&mut flags, &mut m, app)?,
         "task" => task_parse(&mut flags, &mut m, app)?,
         "test" => test_parse(&mut flags, &mut m)?,
@@ -1329,7 +1337,7 @@ pub fn flags_from_vec_with_initial_cwd(
         });
 
       if has_non_globals || matches.contains_id("script_arg") {
-        run_parse(&mut flags, &mut matches, app, true)?;
+        run_parse(&mut flags, &mut matches, app, true, false)?;
       } else {
         handle_repl_flags(
           &mut flags,
@@ -1543,6 +1551,7 @@ pub fn clap_root() -> Command {
         .global(true),
     )
     .subcommand(run_subcommand())
+    .subcommand(watch_subcommand())
     .subcommand(serve_subcommand())
     .defer(|cmd| {
       let cmd = cmd
@@ -4074,6 +4083,18 @@ Grant all permissions:
 
 Specifying the filename '-' to read the file from stdin.
   <p(245)>curl https://docs.deno.com/hello_world.ts | deno run -</>
+
+<y>Read more:</> <c>https://docs.deno.com/go/run</>"), UnstableArgsConfig::ResolutionAndRuntime), false)
+}
+
+fn watch_subcommand() -> Command {
+  run_args(command("watch", cstr!("Run a JavaScript or TypeScript program, watching for file changes and hot-replacing modules.
+
+This is an alias for <c>deno run --watch-hmr</>. The process restarts if hot replacement fails.
+  <p(245)>deno watch main.ts</>
+
+Local files from the entry point module graph are watched by default. Additional paths can be passed with <c>--watch-hmr</>:
+  <p(245)>deno watch --watch-hmr=./templates main.ts</>
 
 <y>Read more:</> <c>https://docs.deno.com/go/run</>"), UnstableArgsConfig::ResolutionAndRuntime), false)
 }
@@ -7720,6 +7741,7 @@ fn run_parse(
   matches: &mut ArgMatches,
   app: Command,
   bare: bool,
+  force_hmr: bool,
 ) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true, true)?;
   ext_arg_parse(flags, matches);
@@ -7743,7 +7765,30 @@ fn run_parse(
     Some(mut script_arg) => {
       let script = script_arg.next().unwrap();
       flags.argv.extend(script_arg);
-      let watch = watch_arg_parse_with_paths(matches)?;
+      let mut watch = watch_arg_parse_with_paths(matches)?;
+      // `deno watch` is an alias for `deno run --watch-hmr`, so enable hot
+      // module replacement watching by default when no explicit watch flag was
+      // passed.
+      if force_hmr {
+        match &mut watch {
+          Some(watch) => watch.hmr = true,
+          None => {
+            watch = Some(WatchFlagsWithPaths {
+              hmr: true,
+              paths: vec![],
+              no_clear_screen: matches.get_flag("no-clear-screen"),
+              exclude: matches
+                .remove_many::<String>("watch-exclude")
+                .map(|f| {
+                  f.flat_map(flat_escape_split_commas)
+                    .collect::<Result<_, _>>()
+                })
+                .transpose()?
+                .unwrap_or_default(),
+            });
+          }
+        }
+      }
       if script == "-" && watch.is_some() {
         return Err(clap::Error::raw(
           clap::error::ErrorKind::ArgumentConflict,
@@ -9178,6 +9223,94 @@ mod tests {
 
     let r =
       flags_from_vec(svec!["deno", "run", "--hmr", "--watch", "script.ts"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn watch_subcommand() {
+    // `deno watch script.ts` is an alias for `deno run --watch-hmr script.ts`.
+    let r = flags_from_vec(svec!["deno", "watch", "script.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: true,
+            paths: vec![],
+            no_clear_screen: false,
+            exclude: vec![],
+          }),
+          bare: false,
+          coverage_dir: None,
+          print_task_list: false,
+        }),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+
+    // Additional watched paths and watch options are still respected.
+    let r = flags_from_vec(svec![
+      "deno",
+      "watch",
+      "--watch-hmr=foo.txt",
+      "--no-clear-screen",
+      "--watch-exclude=bar.txt",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: true,
+            paths: vec![String::from("foo.txt")],
+            no_clear_screen: true,
+            exclude: vec![String::from("bar.txt")],
+          }),
+          bare: false,
+          coverage_dir: None,
+          print_task_list: false,
+        }),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+
+    // `--watch-exclude` is honored even without an explicit `--watch-hmr` flag.
+    let r = flags_from_vec(svec![
+      "deno",
+      "watch",
+      "--watch-exclude=bar.txt",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: true,
+            paths: vec![],
+            no_clear_screen: false,
+            exclude: vec![String::from("bar.txt")],
+          }),
+          bare: false,
+          coverage_dir: None,
+          print_task_list: false,
+        }),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+
+    // Reading from stdin while watching is not supported.
+    let r = flags_from_vec(svec!["deno", "watch", "-"]);
     assert!(r.is_err());
   }
 
