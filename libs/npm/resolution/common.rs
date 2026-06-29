@@ -174,7 +174,10 @@ impl NpmVersionResolver {
       // `trust-policy-exclude[]` packages are resolved as if the policy were
       // off
       NpmTrustPolicy::NoDowngrade
-        if !self.trust_policy.exclude.contains(info.name.as_str()) =>
+        if !self
+          .trust_policy
+          .exclude
+          .contains(&info.name.to_ascii_lowercase()) =>
       {
         Some(TrustDowngradeCheck {
           ignore_after_cutoff: self.trust_policy.ignore_after_cutoff,
@@ -1103,5 +1106,119 @@ mod test {
     let result = version_resolver
       .get_resolved_package_version_and_info(&package_req.version_req);
     assert_eq!(result.unwrap().version.to_string(), "0.1.0-beta.2");
+  }
+
+  // Tests for case-insensitive `trust-policy-exclude[]` matching.
+  // npm package names are case-insensitive by specification; the exclude check
+  // must use `eq_ignore_ascii_case` rather than an exact `BTreeSet::contains`.
+
+  // shared helper — builds a simple 1.0.0 (staged) → 1.1.0 (plain) package
+  fn make_downgrade_package(name: &str) -> NpmPackageInfo {
+    fn vi(json: &str) -> NpmPackageVersionInfo {
+      serde_json::from_str(json).unwrap()
+    }
+    fn ver(v: &str) -> Version {
+      Version::parse_from_npm(v).unwrap()
+    }
+    NpmPackageInfo {
+      name: name.into(),
+      versions: HashMap::from([
+        (
+          ver("1.0.0"),
+          vi(r#"{ "version": "1.0.0", "_npmUser": { "approver": {} } }"#),
+        ),
+        (ver("1.1.0"), vi(r#"{ "version": "1.1.0" }"#)),
+      ]),
+      dist_tags: Default::default(),
+      time: HashMap::from([
+        (ver("1.0.0"), "2025-01-01T00:00:00.000Z".parse().unwrap()),
+        (ver("1.1.0"), "2025-02-01T00:00:00.000Z".parse().unwrap()),
+      ]),
+    }
+  }
+
+  fn resolve_with_exclude(
+    package_info: &NpmPackageInfo,
+    req: &str,
+    exclude: &[&str],
+  ) -> Result<String, NpmPackageVersionResolutionError> {
+    let resolver = NpmVersionResolver {
+      trust_policy: TrustPolicyOptions {
+        policy: NpmTrustPolicy::NoDowngrade,
+        ignore_after_cutoff: None,
+        exclude: Arc::new(
+          exclude.iter().map(|s| s.to_ascii_lowercase()).collect(),
+        ),
+      },
+      ..Default::default()
+    };
+    let package_req = PackageReq::from_str(req).unwrap();
+    resolver
+      .get_for_package(package_info)
+      .get_resolved_package_version_and_info(&package_req.version_req)
+      .map(|info| info.version.to_string())
+  }
+
+  #[test]
+  fn test_trust_policy_exclude_case_insensitive_simple_name() {
+    // EC1: .npmrc has uppercase `TEST`, package name from registry is `test`.
+    // npm names are case-insensitive — the exclude should match regardless of case.
+    let pkg = make_downgrade_package("test");
+
+    // baseline: exact-case exclude works
+    assert_eq!(
+      resolve_with_exclude(&pkg, "test@1.1.0", &["test"]).unwrap(),
+      "1.1.0",
+      "EC5 baseline: exact-case lowercase exclude should allow the downgrade"
+    );
+
+    // EC1: uppercase exclude in .npmrc should still match
+    let result = resolve_with_exclude(&pkg, "test@1.1.0", &["TEST"]);
+    assert_eq!(
+      result.unwrap(),
+      "1.1.0",
+      "EC1: uppercase exclude 'TEST' should match lowercase package 'test' (npm is case-insensitive)"
+    );
+  }
+
+  #[test]
+  fn test_trust_policy_exclude_case_insensitive_mixed_case() {
+    // EC2: .npmrc has mixed-case `Test`, registry name is `test`.
+    let pkg = make_downgrade_package("test");
+    let result = resolve_with_exclude(&pkg, "test@1.1.0", &["Test"]);
+    assert_eq!(
+      result.unwrap(),
+      "1.1.0",
+      "EC2: mixed-case exclude 'Test' should match registry name 'test'"
+    );
+  }
+
+  #[test]
+  fn test_trust_policy_exclude_case_insensitive_scoped_package() {
+    // EC3: scoped package — user writes @MyScope/MyPkg in .npmrc,
+    // registry returns @myscope/mypkg (npm normalises scopes to lowercase).
+    // The exclude check must be case-insensitive for scoped names too.
+    let pkg = make_downgrade_package("@myscope/mypkg");
+    let result =
+      resolve_with_exclude(&pkg, "@myscope/mypkg@1.1.0", &["@MyScope/MyPkg"]);
+    assert_eq!(
+      result.unwrap(),
+      "1.1.0",
+      "EC3: mixed-case scoped exclude '@MyScope/MyPkg' should match '@myscope/mypkg'"
+    );
+  }
+
+  #[test]
+  fn test_trust_policy_exclude_case_insensitive_registry_uppercase() {
+    // EC4: reverse — registry name has mixed-case (unusual but valid for some
+    // private registries), user wrote lowercase in .npmrc exclude.
+    // Both directions must work after the fix.
+    let pkg = make_downgrade_package("MyPkg");
+    let result = resolve_with_exclude(&pkg, "MyPkg@1.1.0", &["mypkg"]);
+    assert_eq!(
+      result.unwrap(),
+      "1.1.0",
+      "EC4: lowercase exclude 'mypkg' should match mixed-case registry name 'MyPkg'"
+    );
   }
 }
