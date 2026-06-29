@@ -24,6 +24,7 @@ import {
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
+  op_node_process_resource_usage,
   op_node_process_set_title,
   op_node_process_setegid,
   op_node_process_seteuid,
@@ -501,6 +502,49 @@ export function constrainedMemory(): number {
   return op_node_process_constrained_memory();
 }
 
+interface ResourceUsage {
+  userCPUTime: number;
+  systemCPUTime: number;
+  maxRSS: number;
+  sharedMemorySize: number;
+  unsharedDataSize: number;
+  unsharedStackSize: number;
+  minorPageFault: number;
+  majorPageFault: number;
+  swappedOut: number;
+  fsRead: number;
+  fsWrite: number;
+  ipcSent: number;
+  ipcReceived: number;
+  signalsCount: number;
+  voluntaryContextSwitches: number;
+  involuntaryContextSwitches: number;
+}
+
+const resourceUsageValues = new Float64Array(16);
+
+export function resourceUsage(): ResourceUsage {
+  op_node_process_resource_usage(resourceUsageValues);
+  return {
+    userCPUTime: resourceUsageValues[0],
+    systemCPUTime: resourceUsageValues[1],
+    maxRSS: resourceUsageValues[2],
+    sharedMemorySize: resourceUsageValues[3],
+    unsharedDataSize: resourceUsageValues[4],
+    unsharedStackSize: resourceUsageValues[5],
+    minorPageFault: resourceUsageValues[6],
+    majorPageFault: resourceUsageValues[7],
+    swappedOut: resourceUsageValues[8],
+    fsRead: resourceUsageValues[9],
+    fsWrite: resourceUsageValues[10],
+    ipcSent: resourceUsageValues[11],
+    ipcReceived: resourceUsageValues[12],
+    signalsCount: resourceUsageValues[13],
+    voluntaryContextSwitches: resourceUsageValues[14],
+    involuntaryContextSwitches: resourceUsageValues[15],
+  };
+}
+
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
   const maybeMapErrno = (res: number) =>
@@ -589,7 +633,17 @@ if (!isWindows) {
   }
 }
 
-export { getegid, geteuid, getgid, getuid, setegid, seteuid, setgid, setuid };
+export {
+  getegid,
+  geteuid,
+  getgid,
+  getuid,
+  report,
+  setegid,
+  seteuid,
+  setgid,
+  setuid,
+};
 
 const ALLOWED_FLAGS = buildAllowedFlags();
 
@@ -1336,6 +1390,9 @@ process.memoryUsage = memoryUsage;
 process.availableMemory = availableMemory;
 process.constrainedMemory = constrainedMemory;
 
+/** https://nodejs.org/api/process.html#processresourceusage */
+process.resourceUsage = resourceUsage;
+
 /** https://nodejs.org/api/process.html#process_process_stderr */
 process.stderr = stderr;
 
@@ -1823,6 +1880,8 @@ internals.__bootstrapNodeProcess = function (
         stderr = v;
       },
     });
+    core.loadExtScript("ext:deno_node/internal/console/constructor.mjs")
+      .bindStreamsLazy(globalThis.console, process);
 
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;

@@ -819,12 +819,12 @@ static ENV_VARS: &[EnvVar] = &[
     name: "DENO_SERVE_ADDRESS",
     description: "Override address for Deno.serve",
     example: Some(
-      r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678")"#,
+      r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", "vsock:1234:5678", or "memory:my-app")"#,
     ),
   },
   EnvVar {
     name: "DENO_SERVE_AUTOMATIC_COMPRESSION",
-    description: "Set to 0 or false to disable automatic response body compression in Deno.serve by default.",
+    description: "Set to 1 or true to enable automatic response body compression in Deno.serve by default.",
     example: None,
   },
   EnvVar {
@@ -16088,6 +16088,36 @@ mod tests {
         .to_string()
         .contains("Usage: deno [OPTIONS] [COMMAND] [SCRIPT_ARG]...")
     );
+  }
+
+  #[test]
+  fn subcommands_recognized_by_node_shim() {
+    // When `deno <subcommand>` is spawned via `node:child_process`, the args
+    // are passed through unchanged only if node_shim recognizes the
+    // subcommand. Otherwise it is misinterpreted as a script for `deno run`
+    // (see #35591). This test fails if a subcommand is added to the CLI
+    // without also adding it to `DENO_SUBCOMMANDS` in `libs/node_shim/lib.rs`.
+    //
+    // Most subcommands are registered lazily via clap's `.defer(...)`, so the
+    // command must be built before they show up in `get_subcommands()`.
+    let mut root = clap_root();
+    root.build();
+    for command in root.get_subcommands() {
+      let name = command.get_name();
+      assert!(
+        node_shim::is_deno_subcommand(name),
+        "subcommand `{name}` is missing from node_shim's DENO_SUBCOMMANDS list; \
+         add it to `libs/node_shim/lib.rs` so it is passed through when spawned \
+         via node:child_process",
+      );
+      for alias in command.get_visible_aliases() {
+        assert!(
+          node_shim::is_deno_subcommand(alias),
+          "visible alias `{alias}` of subcommand `{name}` is missing from \
+           node_shim's DENO_SUBCOMMANDS list; add it to `libs/node_shim/lib.rs`",
+        );
+      }
+    }
   }
 
   #[test]

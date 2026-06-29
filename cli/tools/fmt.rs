@@ -633,20 +633,21 @@ fn format_embedded_html(
   // the result, so the text must be dedented first to make the round trip a
   // fixed point
   let dedented = dedent_embedded(text);
-  let Some(formatted) = lax_markup::format_text_with_external(
+  let formatted = match lax_markup::format_text_with_external(
     Path::new("embedded.html"),
     &dedented,
     &markup_config,
     &external,
-  )?
-  else {
-    return Ok(if dedented == text {
-      None
-    } else {
-      Some(dedented)
-    });
+  )? {
+    Some(formatted) => formatted,
+    None => dedented,
   };
-  let formatted = formatted.trim_end_matches('\n');
+  // the typescript formatter frames the contents on their own lines between the
+  // opening and closing backticks, so any leading or trailing blank line would
+  // be re-added on every pass and the format would never reach a fixed point.
+  // unlike lax-css, lax-markup keeps leading blank lines verbatim, so trim both
+  // ends here.
+  let formatted = formatted.trim_matches('\n');
   Ok(if formatted == text {
     None
   } else {
@@ -1436,6 +1437,22 @@ fn get_typescript_config_builder(
     builder.export_declaration_space_surrounding_named_exports(
       space_surrounding_properties,
     );
+  }
+
+  if let Some(sort_named_imports) = options.sort_named_imports {
+    builder.import_declaration_sort_named_imports(match sort_named_imports {
+      SortOrder::Maintain => dprint_config::SortOrder::Maintain,
+      SortOrder::CaseSensitive => dprint_config::SortOrder::CaseSensitive,
+      SortOrder::CaseInsensitive => dprint_config::SortOrder::CaseInsensitive,
+    });
+  }
+
+  if let Some(sort_named_exports) = options.sort_named_exports {
+    builder.export_declaration_sort_named_exports(match sort_named_exports {
+      SortOrder::Maintain => dprint_config::SortOrder::Maintain,
+      SortOrder::CaseSensitive => dprint_config::SortOrder::CaseSensitive,
+      SortOrder::CaseInsensitive => dprint_config::SortOrder::CaseInsensitive,
+    });
   }
 
   builder

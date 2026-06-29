@@ -862,7 +862,7 @@
           "default": "nextLine",
           "enum": ["maintain", "sameLine", "nextLine"]
         },
-        "jsx.forceNewLineSurroundingContent": {
+        "jsx.forceNewLinesSurroundingContent": {
           "description": "Forces newlines surrounding the content of JSX elements.",
           "default": false,
           "type": "boolean"
@@ -896,6 +896,16 @@
           "description": "Whether Angular next control-flow clauses stay on the same line.",
           "default": true,
           "type": "boolean"
+        },
+        "sortNamedImports": {
+          "description": "How to sort named imports within an import statement. \"caseInsensitive\" (the default) sorts ignoring case, \"caseSensitive\" sorts with uppercase before lowercase, and \"maintain\" preserves the source order.",
+          "default": "caseInsensitive",
+          "enum": ["maintain", "caseSensitive", "caseInsensitive"]
+        },
+        "sortNamedExports": {
+          "description": "How to sort named exports within an export statement. \"caseInsensitive\" (the default) sorts ignoring case, \"caseSensitive\" sorts with uppercase before lowercase, and \"maintain\" preserves the source order.",
+          "default": "caseInsensitive",
+          "enum": ["maintain", "caseSensitive", "caseInsensitive"]
         },
         "useEditorConfig": {
           "description": "Whether `deno fmt` reads `.editorconfig` files to fill in formatting options that are not otherwise set. Defaults to true.",
@@ -975,6 +985,10 @@
     },
     "vendor": {
       "description": "Enables or disables the use of a local vendor folder as a local cache for remote modules and node_modules folder for npm packages. Alternatively, use the `--vendor` flag or override the config via `--vendor=false`. Requires Deno 1.36.1 or later.",
+      "type": "boolean"
+    },
+    "jsrDepsInNodeModules": {
+      "description": "Installs `jsr:` dependencies into the `node_modules` directory via JSR's npm compatibility registry (`@jsr/<scope>__<name>`), the same way pnpm and npm handle JSR packages. When enabled Deno also writes a `@jsr:registry` entry to a `.npmrc` file in your project directory so external tooling can resolve these packages; this file is created on install and you may want to commit it (or add it to `.gitignore`). Has no effect unless a `node_modules` directory is in use.",
       "type": "boolean"
     },
     "preferPackageJson": {

@@ -2492,6 +2492,7 @@
     "parallel/test-microtask-queue-run.js": {},
     "parallel/test-mime-api.js": {},
     "parallel/test-mime-whatwg.js": {},
+    "parallel/test-mock-timers-abortsignal-timeout.js": {},
     "parallel/test-module-cache.js": {
       "flaky": true
     },
@@ -3181,6 +3182,7 @@
     // "parallel/test-runner-coverage-thresholds.js": {},
     "parallel/test-runner-enable-source-maps-issue.js": {},
     "parallel/test-runner-filter-warning.js": {},
+    "parallel/test-runner-mock-timers-with-timeout.js": {},
     "parallel/test-runner-root-after-with-refed-handles.js": {},
     "parallel/test-runner-snapshot-file-tests.js": {
       "ignore": true,

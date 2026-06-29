@@ -492,6 +492,12 @@ pub enum PermissionState {
 /// window; subsequent constructors create new windows.
 pub struct InitialWindowId(pub std::sync::Mutex<Option<u32>>);
 
+/// The compiled app's name (from deno.json `desktop.app.name`, falling back to
+/// the output file name). Used as the default window title so a window the app
+/// doesn't explicitly title shows the app name instead of the backend's
+/// internal default (`laufey_webview`).
+pub struct DesktopAppName(pub String);
+
 struct BrowserWindow {
   api: Arc<dyn DesktopApi>,
   window_id: u32,
@@ -564,6 +570,17 @@ impl BrowserWindow {
           transparent_titlebar,
         )
       });
+
+    // Default the window title to the app name when the app doesn't set one,
+    // so the window shows e.g. "MyApp" instead of the backend's internal
+    // default (`laufey_webview`). An explicit `title` option below overrides
+    // this, and a page that sets `document.title` overrides it at the OS level.
+    if options.as_ref().and_then(|o| o.title.as_ref()).is_none()
+      && let Some(name) = state.try_borrow::<DesktopAppName>()
+      && !name.0.is_empty()
+    {
+      api.set_title(window_id, &name.0);
+    }
 
     if let Some(options) = &options {
       if let Some(title) = &options.title {

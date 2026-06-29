@@ -4,6 +4,7 @@
 "use strict";
 const { core, primordials } = __bootstrap;
 const {
+  ArrayIsArray,
   ArrayPrototypeForEach,
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
@@ -201,6 +202,7 @@ const {
   validateInteger,
   validateNumber,
   validateObject,
+  validateString,
   validateStringArray,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const nodeErrors = core.loadExtScript("ext:deno_node/internal/errors.ts");
@@ -245,8 +247,165 @@ function getAssertObject() {
     ArrayPrototypeForEach(methodsToCopy, (method) => {
       assertObject[method] = assert[method];
     });
+    assertObject.fileSnapshot = fileSnapshot;
   }
   return assertObject;
+}
+
+// Lazy access so `node:fs` and `node:path` polyfills are pulled in only on the
+// first `fileSnapshot()` call, mirroring the other lazy loaders in this file
+// and avoiding circular init during snapshot build.
+let _fsForSnapshot = null;
+function getFsForSnapshot() {
+  if (_fsForSnapshot === null) {
+    _fsForSnapshot = core.loadExtScript("ext:deno_node/fs.ts");
+  }
+  return _fsForSnapshot;
+}
+let _pathForSnapshot = null;
+function getPathForSnapshot() {
+  if (_pathForSnapshot === null) {
+    _pathForSnapshot = core.loadExtScript("ext:deno_node/path/mod.ts");
+  }
+  return _pathForSnapshot;
+}
+
+// Resolve update-snapshot mode lazily so the env / Rust op is read at most
+// once. We accept either Deno's own `--update-snapshots` flag (when running
+// under `deno test`) or Node's `--test-update-snapshots` propagated via
+// NODE_OPTIONS, so the polyfill behaves the same way the rest of the Node
+// compat surface does for reporter detection above.
+//
+// The deno_test extension's ops are registered at runtime - after this
+// polyfill's snapshot is built - so they are not on the captured `core.ops`.
+// They are however reachable via `Deno[Deno.internal].core.ops`, which the
+// test runner exposes for cli/js code; we look them up lazily through there.
+let _fileSnapshotUpdateMode = undefined;
+function isFileSnapshotUpdateMode() {
+  if (_fileSnapshotUpdateMode !== undefined) return _fileSnapshotUpdateMode;
+  const denoInternal = globalThis.Deno?.[globalThis.Deno.internal];
+  const op = denoInternal?.core?.ops?.op_test_snapshot_in_update_mode;
+  if (typeof op === "function") {
+    try {
+      if (op()) {
+        _fileSnapshotUpdateMode = true;
+        return true;
+      }
+    } catch { /* op not wired up; not running under `deno test` */ }
+  }
+  let nodeOptions = "";
+  try {
+    nodeOptions = globalThis.Deno?.env?.get("NODE_OPTIONS") || "";
+  } catch { /* permission denied */ }
+  if (
+    nodeOptions &&
+    RegExpPrototypeTest(
+      new SafeRegExp(/(?:^|\s)--test-update-snapshots(?:\s|=|$)/),
+      nodeOptions,
+    )
+  ) {
+    _fileSnapshotUpdateMode = true;
+    return true;
+  }
+  _fileSnapshotUpdateMode = false;
+  return false;
+}
+
+// Default serializer pipeline: matches Node's `t.assert.fileSnapshot` default
+// (`JSON.stringify(value, null, 2)`).
+function defaultFileSnapshotSerializer(value) {
+  return JSONStringify(value, null, 2);
+}
+
+// `t.assert.fileSnapshot(value, path[, options])`.
+//
+// Without `--test-update-snapshots`, serializes `value` and compares against
+// the contents of the file at `path` using `assert.strictEqual`. With the
+// flag, writes the serialized value to `path` (creating parent directories
+// as needed). Both file paths are CWD-relative, matching Node.
+function fileSnapshot(actual, path, options) {
+  validateString(path, "path");
+  if (options === undefined) {
+    options = { __proto__: null };
+  } else {
+    validateObject(options, "options");
+  }
+  let serializers;
+  if (options.serializers === undefined) {
+    serializers = [defaultFileSnapshotSerializer];
+  } else {
+    if (!ArrayIsArray(options.serializers)) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "options.serializers",
+        "Array",
+        options.serializers,
+      );
+    }
+    serializers = options.serializers;
+    for (let i = 0; i < serializers.length; i++) {
+      if (typeof serializers[i] !== "function") {
+        throw new ERR_INVALID_ARG_TYPE(
+          `options.serializers[${i}]`,
+          "function",
+          serializers[i],
+        );
+      }
+    }
+  }
+  let value = actual;
+  try {
+    for (let i = 0; i < serializers.length; i++) {
+      value = serializers[i](value);
+    }
+  } catch (err) {
+    const e = new ERR_INVALID_STATE(
+      "The provided serializers did not generate a string.",
+    );
+    e.cause = err;
+    e.input = actual;
+    throw e;
+  }
+  if (typeof value !== "string") {
+    const e = new ERR_INVALID_STATE(
+      "The provided serializers did not generate a string.",
+    );
+    e.input = actual;
+    throw e;
+  }
+
+  const fs = getFsForSnapshot();
+  if (isFileSnapshotUpdateMode()) {
+    try {
+      const parent = getPathForSnapshot().dirname(path);
+      fs.mkdirSync(parent, { __proto__: null, recursive: true });
+      fs.writeFileSync(path, value, "utf8");
+    } catch (err) {
+      const e = new ERR_INVALID_STATE(
+        `Cannot write snapshot file '${path}'.`,
+      );
+      e.cause = err;
+      e.filename = path;
+      throw e;
+    }
+    return;
+  }
+
+  let expected;
+  try {
+    expected = fs.readFileSync(path, "utf8");
+  } catch (err) {
+    const isMissing = err && err.code === "ENOENT";
+    const message = isMissing
+      ? `Cannot read snapshot file '${path}'. Missing snapshots can be ` +
+        "generated by rerunning the command with the --test-update-snapshots " +
+        "flag."
+      : `Cannot read snapshot file '${path}'.`;
+    const e = new ERR_INVALID_STATE(message);
+    e.cause = err;
+    e.filename = path;
+    throw e;
+  }
+  assert.strictEqual(value, expected);
 }
 
 // Lazy access to other node polyfills; loading these eagerly at module
@@ -1210,6 +1369,10 @@ class NodeTestContext {
             return ReflectApply(base[method], this, args);
           };
         });
+        wrapped.fileSnapshot = function (...args) {
+          plan.increment();
+          return ReflectApply(base.fileSnapshot, this, args);
+        };
         this.#planAssert = wrapped;
       }
       return this.#planAssert;
@@ -2222,6 +2385,7 @@ const SUPPORTED_APIS = [
   "setInterval",
   "setImmediate",
   "Date",
+  "AbortSignal.timeout",
 ];
 
 class MockTimersHandle {
@@ -2276,6 +2440,10 @@ class MockTimers {
   _nextId = 1;
   #originals = new SafeMap();
   #mockedApis = new SafeMap();
+  // `AbortSignal.timeout` is a static method, not a `globalThis` binding, so it
+  // is saved/restored separately from `#originals` (which maps global names).
+  #abortSignalTimeoutOriginal = null;
+  #abortSignalTimeoutMocked = false;
 
   #mockGlobal(name, value) {
     if (!MapPrototypeHas(this.#originals, name)) {
@@ -2367,6 +2535,11 @@ class MockTimers {
           "clearImmediate",
           (handle) => this._clearTimer(handle),
         );
+      } else if (api === "AbortSignal.timeout") {
+        this.#abortSignalTimeoutOriginal = globalThis.AbortSignal.timeout;
+        this.#abortSignalTimeoutMocked = true;
+        globalThis.AbortSignal.timeout = (delay) =>
+          this.#mockedAbortSignalTimeout(delay);
       }
     }
 
@@ -2382,6 +2555,11 @@ class MockTimers {
       const { 0: name, 1: original } of new SafeMapIterator(this.#originals)
     ) {
       globalThis[name] = original;
+    }
+    if (this.#abortSignalTimeoutMocked) {
+      globalThis.AbortSignal.timeout = this.#abortSignalTimeoutOriginal;
+      this.#abortSignalTimeoutOriginal = null;
+      this.#abortSignalTimeoutMocked = false;
     }
     MapPrototypeClear(this.#originals);
     MapPrototypeClear(this.#mockedApis);
@@ -2445,6 +2623,24 @@ class MockTimers {
 
   [SymbolDispose]() {
     this.reset();
+  }
+
+  // Mirrors Node's mocked `AbortSignal.timeout`: the returned signal aborts
+  // with a `TimeoutError` once the virtual clock advances past `delay`, instead
+  // of using real time, so `tick()` / `runAll()` drive the timeout.
+  #mockedAbortSignalTimeout(delay) {
+    const controller = new AbortController();
+    this._setTimeout(
+      () => {
+        controller.abort(
+          new DOMException("The operation timed out.", "TimeoutError"),
+        );
+      },
+      delay,
+      [],
+      false,
+    );
+    return controller.signal;
   }
 
   _setTimeout(callback, delay, args, immediate) {
@@ -3161,6 +3357,7 @@ const mock = {
   },
 
   reset: () => {
+    mockTimers.reset();
     ArrayPrototypeForEach(activeMocks, (ctx) => {
       ctx.resetCalls();
     });
