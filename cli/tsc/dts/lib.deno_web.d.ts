@@ -741,6 +741,9 @@ interface Blob {
   slice(start?: number, end?: number, contentType?: string): Blob;
   stream(): ReadableStream<Uint8Array<ArrayBuffer>>;
   text(): Promise<string>;
+  /** Returns a `ReadableStream<string>` that streams the blob's data decoded
+   * as UTF-8 text. */
+  textStream(): ReadableStream<string>;
 }
 
 /** A file-like object of immutable, raw data. Blobs represent data that isn't

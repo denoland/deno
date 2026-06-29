@@ -82,6 +82,9 @@ interface Body {
    * that resolves with a `USVString` (text).
    */
   text(): Promise<string>;
+  /** Takes a `Response` body stream and returns a `ReadableStream<string>`
+   * that streams the body decoded as UTF-8 text. */
+  textStream(): ReadableStream<string>;
 }
 
 /** @category Fetch */

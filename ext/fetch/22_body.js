@@ -56,6 +56,9 @@ const {
   readableStreamTee,
   readableStreamThrowIfErrored,
 } = core.loadExtScript("ext:deno_web/06_streams.js");
+const { TextDecoderStream } = core.loadExtScript(
+  "ext:deno_web/08_text_encoding.js",
+);
 
 const noop = () => {};
 const noopAsync = async () => {};
@@ -397,6 +400,30 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       /** @returns {Promise<string>} */
       value: function text() {
         return consumeBody(this, "text");
+      },
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    },
+    textStream: {
+      __proto__: null,
+      /** @returns {ReadableStream<string>} */
+      value: function textStream() {
+        webidl.assertBranded(this, prototype);
+        const inner = this[bodySymbol];
+        if (inner !== null && inner.unusable()) {
+          throw new TypeError("Body already consumed.");
+        }
+        let stream;
+        if (inner !== null) {
+          stream = inner.stream;
+        } else {
+          // A null body yields an empty, already-closed stream so that reading
+          // it to completion produces "".
+          stream = new ReadableStream();
+          readableStreamClose(stream);
+        }
+        return stream.pipeThrough(new TextDecoderStream());
       },
       writable: true,
       configurable: true,
