@@ -618,3 +618,22 @@ declare var location: Location;
  *
  * @category Platform */
 declare var name: string;
+
+// EXPERIMENT (feat/stock-globals-experiment): phantom global markers so stock
+// @types/node defers its web-platform globals to Deno's, mirroring how it
+// defers to lib.dom. @types/node guards each web global with
+// `typeof globalThis extends { <marker>; <Name>: infer T } ? T : <fallback>`,
+// where the markers are `onmessage` (most), `onabort` (Storage) and
+// `ReportingObserver` (Compression/DecompressionStream). Declaring them here
+// makes those probes resolve to Deno's own globals. Each marker itself uses the
+// document-deferral form so it still merges cleanly when real lib.dom is loaded.
+// (Worker context already declares `onmessage`; these are for the main scope.)
+declare var onmessage: typeof globalThis extends
+  { document: any; onmessage: infer T } ? T
+  : ((this: void, ev: MessageEvent) => unknown) | null;
+declare var onabort: typeof globalThis extends
+  { document: any; onabort: infer T } ? T
+  : ((this: void, ev: Event) => unknown) | null;
+declare var ReportingObserver: typeof globalThis extends
+  { document: any; ReportingObserver: infer T } ? T
+  : { readonly prototype: unknown; new (...args: any[]): unknown };
