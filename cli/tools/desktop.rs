@@ -6874,4 +6874,231 @@ def456  other.zip
     assert!(actions.iter().any(|a| a == "CreateShortcuts"));
     assert!(actions.iter().any(|a| a == "RemoveShortcuts"));
   }
+
+  // --- deep links ---
+
+  #[test]
+  fn validate_url_scheme_accepts_canonical() {
+    for ok in &["acme", "my-app", "x", "com.acme.app", "a1+2.3-4", "App"] {
+      assert!(validate_url_scheme(ok).is_ok(), "{ok:?} should be accepted");
+    }
+  }
+
+  #[test]
+  fn validate_url_scheme_rejects_bad_shapes() {
+    let cases = &[
+      ("", "empty"),
+      ("1acme", "leading digit"),
+      ("-acme", "leading hyphen"),
+      (".acme", "leading dot"),
+      ("acme app", "space"),
+      ("acme/app", "slash"),
+      ("acme://", "colon and slashes"),
+      ("acme_app", "underscore"),
+      ("acmé", "non-ascii"),
+    ];
+    for (bad, why) in cases {
+      assert!(
+        validate_url_scheme(bad).is_err(),
+        "{bad:?} should be rejected ({why})"
+      );
+    }
+  }
+
+  #[test]
+  fn validate_url_scheme_rejects_reserved() {
+    // Registering these as app handlers would hijack normal browsing.
+    for reserved in &["http", "https", "file", "ftp", "ws", "wss"] {
+      assert!(
+        validate_url_scheme(reserved).is_err(),
+        "{reserved:?} must be rejected as reserved"
+      );
+    }
+  }
+
+  /// Build a minimal macOS `.app` skeleton with an `Info.plist` carrying the
+  /// given bundle id, returning the bundle root.
+  fn fake_macos_bundle(
+    parent: &std::path::Path,
+    bundle_id: &str,
+  ) -> std::path::PathBuf {
+    let bundle = parent.join("MyApp.app");
+    let contents = bundle.join("Contents");
+    std::fs::create_dir_all(&contents).unwrap();
+    write_helper_plist(&contents.join("Info.plist"), bundle_id);
+    bundle
+  }
+
+  #[test]
+  fn deep_links_macos_writes_cfbundleurltypes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let bundle = fake_macos_bundle(tmp.path(), "com.acme.myapp");
+    register_deep_links_macos(
+      &bundle,
+      &["acme".to_string(), "acme-beta".to_string()],
+    )
+    .unwrap();
+
+    let dict: plist::Dictionary =
+      plist::from_file(bundle.join("Contents/Info.plist")).unwrap();
+    let url_types = dict
+      .get("CFBundleURLTypes")
+      .and_then(|v| v.as_array())
+      .expect("CFBundleURLTypes array");
+    assert_eq!(url_types.len(), 1);
+    let url_type = url_types[0].as_dictionary().unwrap();
+    // The URL name is keyed off the bundle id so multiple apps don't collide.
+    assert_eq!(
+      url_type.get("CFBundleURLName").and_then(|v| v.as_string()),
+      Some("com.acme.myapp")
+    );
+    assert_eq!(
+      url_type.get("CFBundleTypeRole").and_then(|v| v.as_string()),
+      Some("Viewer")
+    );
+    let schemes: Vec<&str> = url_type
+      .get("CFBundleURLSchemes")
+      .and_then(|v| v.as_array())
+      .unwrap()
+      .iter()
+      .map(|v| v.as_string().unwrap())
+      .collect();
+    assert_eq!(schemes, ["acme", "acme-beta"]);
+  }
+
+  /// Write a minimal Linux `.desktop` entry into `dir` and return its path.
+  fn fake_desktop_file(
+    dir: &std::path::Path,
+    body: &str,
+  ) -> std::path::PathBuf {
+    let path = dir.join("myapp.desktop");
+    std::fs::write(&path, body).unwrap();
+    path
+  }
+
+  #[test]
+  fn deep_links_linux_adds_mimetype_and_url_field_code() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = fake_desktop_file(
+      tmp.path(),
+      "[Desktop Entry]\nName=MyApp\nExec=/opt/myapp/myapp\nType=Application\n",
+    );
+    register_deep_links_linux(
+      tmp.path(),
+      &["acme".to_string(), "acme-beta".to_string()],
+    )
+    .unwrap();
+
+    let out = std::fs::read_to_string(&path).unwrap();
+    // The launcher must receive the URL, so `%u` is appended exactly once.
+    assert!(
+      out.contains("Exec=/opt/myapp/myapp %u"),
+      "Exec should gain a %u field code; got:\n{out}"
+    );
+    assert!(
+      out
+        .contains("MimeType=x-scheme-handler/acme;x-scheme-handler/acme-beta;"),
+      "MimeType should list every scheme handler; got:\n{out}"
+    );
+  }
+
+  #[test]
+  fn deep_links_linux_does_not_duplicate_field_code() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = fake_desktop_file(
+      tmp.path(),
+      "[Desktop Entry]\nExec=/opt/myapp/myapp %U\nType=Application\n",
+    );
+    register_deep_links_linux(tmp.path(), &["acme".to_string()]).unwrap();
+
+    let out = std::fs::read_to_string(&path).unwrap();
+    // An existing `%U` (or `%u`) already forwards the URL — don't add another.
+    assert!(
+      out.contains("Exec=/opt/myapp/myapp %U\n"),
+      "existing field code should be left untouched; got:\n{out}"
+    );
+    assert!(!out.contains("%U %u") && !out.contains("%u %U"));
+  }
+
+  #[test]
+  fn deep_links_linux_merges_into_existing_mimetype() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = fake_desktop_file(
+      tmp.path(),
+      "[Desktop Entry]\nExec=/opt/myapp/myapp\nMimeType=text/html\n",
+    );
+    register_deep_links_linux(tmp.path(), &["acme".to_string()]).unwrap();
+
+    let out = std::fs::read_to_string(&path).unwrap();
+    assert!(
+      out.contains("MimeType=text/html;x-scheme-handler/acme;"),
+      "existing MimeType entries should be preserved; got:\n{out}"
+    );
+  }
+
+  #[test]
+  fn deep_links_windows_writes_registry_script() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("MyApp.bat"), "@echo off\r\n").unwrap();
+    register_deep_links_windows(
+      tmp.path(),
+      &["acme".to_string(), "acme-beta".to_string()],
+    )
+    .unwrap();
+
+    let script =
+      std::fs::read_to_string(tmp.path().join("register-deep-links.bat"))
+        .unwrap();
+    for scheme in &["acme", "acme-beta"] {
+      assert!(
+        script
+          .contains(&format!("reg add \"HKCU\\Software\\Classes\\{scheme}\"")),
+        "script should register {scheme}; got:\n{script}"
+      );
+    }
+    // The protocol handler must point back at the packaged launcher.
+    assert!(
+      script.contains("MyApp.bat"),
+      "handler should invoke the launcher; got:\n{script}"
+    );
+  }
+
+  #[test]
+  fn register_deep_links_lowercases_and_dispatches_by_target() {
+    // Drives the top-level entry point with an explicit target so the test
+    // exercises the macOS path on any host. Mixed-case input must be
+    // normalized to lowercase before it reaches the plist.
+    let tmp = tempfile::tempdir().unwrap();
+    let bundle = fake_macos_bundle(tmp.path(), "com.acme.myapp");
+    let mut flags = empty_desktop_flags();
+    flags.target = Some("aarch64-apple-darwin".to_string());
+    flags.deep_links = vec!["  ACME  ".to_string(), "".to_string()];
+    register_deep_links(&bundle, &flags).unwrap();
+
+    let dict: plist::Dictionary =
+      plist::from_file(bundle.join("Contents/Info.plist")).unwrap();
+    let schemes: Vec<&str> = dict
+      .get("CFBundleURLTypes")
+      .and_then(|v| v.as_array())
+      .unwrap()[0]
+      .as_dictionary()
+      .unwrap()
+      .get("CFBundleURLSchemes")
+      .and_then(|v| v.as_array())
+      .unwrap()
+      .iter()
+      .map(|v| v.as_string().unwrap())
+      .collect();
+    assert_eq!(schemes, ["acme"]);
+  }
+
+  #[test]
+  fn register_deep_links_rejects_reserved_scheme() {
+    let tmp = tempfile::tempdir().unwrap();
+    let bundle = fake_macos_bundle(tmp.path(), "com.acme.myapp");
+    let mut flags = empty_desktop_flags();
+    flags.target = Some("aarch64-apple-darwin".to_string());
+    flags.deep_links = vec!["https".to_string()];
+    assert!(register_deep_links(&bundle, &flags).is_err());
+  }
 }
