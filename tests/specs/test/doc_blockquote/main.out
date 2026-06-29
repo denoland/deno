@@ -1,11 +1,11 @@
 Check [WILDCARD]main.ts
-Check [WILDCARD]main.ts$2-5.ts
-Check [WILDCARD]main.ts$9-12.ts
+Check [WILDCARD]main.ts#2-5.ts
+Check [WILDCARD]main.ts#9-12.ts
 running 0 tests from ./main.ts
-running 1 test from ./main.ts$2-5.ts
-[WILDCARD]/main.ts$2-5.ts ... ok ([WILDLINE])
-running 1 test from ./main.ts$9-12.ts
-[WILDCARD]/main.ts$9-12.ts ... ok ([WILDLINE])
+running 1 test from ./main.ts#2-5.ts
+[WILDCARD]/main.ts#2-5.ts ... ok ([WILDLINE])
+running 1 test from ./main.ts#9-12.ts
+[WILDCARD]/main.ts#9-12.ts ... ok ([WILDLINE])
 
 ok | 2 passed | 0 failed ([WILDLINE])
 

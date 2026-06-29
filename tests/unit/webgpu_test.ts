@@ -810,6 +810,65 @@ Deno.test({
   device.destroy();
 });
 
+// Regression test for https://github.com/denoland/deno/issues/33956.
+// Before the fix, the Uint32Array fast path of setBindGroup sliced the
+// backing ArrayBuffer with an unchecked `&data[start..start+len]`. An
+// out-of-range length panicked inside the op's `extern "C"` callback,
+// which crosses the C ABI as a process abort. After the fix, the
+// bounds-check surfaces a GPUValidationError instead.
+Deno.test({
+  permissions: { read: true, env: true },
+  ignore: isWsl || isCIWithoutGPU,
+}, async function webgpuSetBindGroupBoundsCheck() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+
+  const layout = device.createBindGroupLayout({ entries: [] });
+  const bg = device.createBindGroup({ layout, entries: [] });
+
+  // ComputePass.setBindGroup: out-of-range len pushes a validation
+  // error instead of aborting the process.
+  {
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    device.pushErrorScope("validation");
+    pass.setBindGroup(0, bg, new Uint32Array(4), 0, 1_000_000);
+    pass.end();
+    const err = await device.popErrorScope();
+    assert(err, "expected GPUValidationError on out-of-range setBindGroup");
+  }
+
+  // RenderBundleEncoder.setBindGroup: same input shape, different code
+  // path (returns the validation as a thrown JS error, since there is
+  // no error_handler.push_error at this site).
+  {
+    const bundleEncoder = device.createRenderBundleEncoder({
+      colorFormats: ["rgba8unorm"],
+    });
+    let threw = false;
+    try {
+      bundleEncoder.setBindGroup(0, bg, new Uint32Array(4), 0, 1_000_000);
+    } catch (_) {
+      threw = true;
+    }
+    assert(
+      threw,
+      "expected setBindGroup on a RenderBundleEncoder to throw on out-of-range args",
+    );
+  }
+
+  // Sanity: valid args still work (no regression on the happy path).
+  {
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setBindGroup(0, bg, new Uint32Array(4), 0, 0);
+    pass.end();
+  }
+
+  device.destroy();
+});
+
 async function checkIsWsl() {
   return Deno.build.os === "linux" && await hasMicrosoftProcVersion();
 

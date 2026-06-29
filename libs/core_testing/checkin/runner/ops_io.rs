@@ -72,6 +72,9 @@ pub fn op_pipe_create(op_state: &mut OpState) -> (ResourceId, ResourceId) {
   (rid1, rid2)
 }
 
+#[op2(constructable, fast)]
+pub fn op_constructable_test() {}
+
 struct FileResource {
   handle: deno_core::ResourceHandle,
 }

@@ -172,7 +172,11 @@ function dispatchPortMessageData(target, data) {
   }
   const event = new MessageEvent("message", {
     data: message,
-    ports: ArrayPrototypeFilter(
+    // Skip the transferables filter for the common no-transferables case.
+    // Passing `undefined` lets the MessageEvent constructor take its cheap
+    // `ports == null` branch (a single frozen empty array, no iterator
+    // validation) instead of allocating a filtered array per message.
+    ports: transferables.length === 0 ? undefined : ArrayPrototypeFilter(
       transferables,
       (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
     ),

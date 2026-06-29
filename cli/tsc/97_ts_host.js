@@ -895,7 +895,7 @@ ts.deno.setTypesNodeIgnorableNames(setTypesNodeIgnorableNames);
 
 /**
  * @param {ts.StringLiteralLike} node
- * @returns {"text" | "bytes" | undefined}
+ * @returns {"text" | "bytes" | "css" | undefined}
  */
 function getModuleLiteralImportKind(node) {
   const parent = node.parent;
@@ -951,7 +951,7 @@ function getModuleLiteralImportKind(node) {
 
 /**
  * @param {string} specifier
- * @param {"bytes" | "text"} rawKind
+ * @param {"bytes" | "text" | "css"} rawKind
  */
 function appendRawImportFragment(specifier, rawKind) {
   const fragmentIndex = specifier.indexOf("#");
@@ -978,11 +978,11 @@ function getRawImportAttributeValue(node) {
 
 /**
  * @param {ts.Node} node
- * @returns {"bytes" | "text" | undefined}
+ * @returns {"bytes" | "text" | "css" | undefined}
  */
 function getRawTypeValue(node) {
   return ts.isStringLiteral(node) &&
-      (node.text === "bytes" || node.text === "text")
+      (node.text === "bytes" || node.text === "text" || node.text === "css")
     ? node.text
     : undefined;
 }

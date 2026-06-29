@@ -443,30 +443,21 @@
   // Use a wrapper since reportExceptionCallback is defined later.
   __timers.setReportException((e) => reportExceptionCallback(e));
 
-  // Shared buffer for timer next-expiry, backed by ContextState::timer_expiry.
-  // JS writes after processing timers; Rust reads to schedule next wake-up.
-  //   positive = next expiry (has refed timers)
-  //   negative = next expiry negated (only unrefed timers)
-  //   0.0 = no timers remain
-  let timerExpiry;
+  // Called from Rust when the native user timer fires.
+  function __processTimers(now) {
+    return __timers.processTimers(now);
+  }
 
-  // Combined event loop tick: process timers + resolve ops.
-  // Called from Rust with args: (timerNow, promiseId, isOk, res, ...)
-  // timerNow > 0 means timers should be processed; 0 means skip.
-  // Remaining args are completed async op results in triplets.
+  // Resolve completed async ops.
+  // Called from Rust with args: (promiseId, isOk, res, ...)
   //
   // NOTE: This does NOT drain ticks. Under Explicit microtask policy,
   // microtasks from op resolution are deferred. Rust calls
   // __drainNextTickAndMacrotasks separately after this returns,
   // with the correct microtask checkpoint ordering to preserve
   // the nextTick-before-then invariant.
-  function __eventLoopTick(timerNow) {
-    // 1. Process expired timers if the timer deadline fired
-    if (timerNow >= 0) {
-      timerExpiry[0] = __timers.processTimers(timerNow);
-    }
-    // 2. Resolve all completed async ops (args after timerNow)
-    for (let i = 1; i < arguments.length; i += 3) {
+  function __eventLoopTick() {
+    for (let i = 0; i < arguments.length; i += 3) {
       const promiseId = arguments[i];
       const isOk = arguments[i + 1];
       const res = arguments[i + 2];
@@ -684,6 +675,7 @@
   const {
     op_close: close,
     op_try_close: tryClose,
+    op_cancel_read: cancelRead,
     op_read: read,
     op_read_all: readAll,
     op_write: write,
@@ -1022,14 +1014,12 @@
     internalFdSymbol: Symbol("Deno.internal.fd"),
     resources,
     __eventLoopTick,
+    __processTimers,
     __setTickInfo(buf) {
       tickInfo = buf;
     },
     __setImmediateInfo(buf) {
       immediateInfo = buf;
-    },
-    __setTimerExpiry(buf) {
-      timerExpiry = buf;
     },
     __drainNextTickAndMacrotasks,
     __handleRejections,
@@ -1062,6 +1052,7 @@
     consoleStringify,
     close,
     tryClose,
+    cancelRead,
     read,
     readAll,
     write,

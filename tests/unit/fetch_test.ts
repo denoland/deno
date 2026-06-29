@@ -9,7 +9,9 @@ import {
   assertStringIncludes,
   assertThrows,
   delay,
+  execCode3,
   fail,
+  tmpUnixSocketPath,
   unimplemented,
 } from "./test_util.ts";
 import { Buffer } from "@std/io/buffer";
@@ -61,9 +63,7 @@ function findClosedPortInRange(
 }
 
 Deno.test(
-  // TODO(bartlomieju): reenable this test
-  // https://github.com/denoland/deno/issues/18350
-  { ignore: Deno.build.os === "windows", permissions: { net: true } },
+  { permissions: { net: true } },
   async function fetchConnectionError() {
     const port = findClosedPortInRange(4000, 9999);
     await assertRejects(
@@ -1931,9 +1931,7 @@ Deno.test(
 );
 
 Deno.test(
-  // TODO(bartlomieju): reenable this test
-  // https://github.com/denoland/deno/issues/18350
-  { ignore: Deno.build.os === "windows", permissions: { net: true } },
+  { permissions: { net: true } },
   async function fetchWithInvalidContentLength(): Promise<
     void
   > {
@@ -2333,6 +2331,92 @@ Deno.test(
   },
 );
 
+// A Unix-socket proxy is an outbound network primitive, so it requires an
+// `--allow-net=unix:<path>` rule in addition to filesystem access on the
+// socket path. Filesystem read/write alone must not let a custom client route
+// fetch traffic to a local Unix socket.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  function fetchUnixProxyRequiresAllowNet() {
+    const socketPath = tmpUnixSocketPath();
+    assertThrows(
+      () =>
+        Deno.createHttpClient({
+          proxy: { transport: "unix", path: socketPath },
+        }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+// The scoped form must match the exact path: an `--allow-net=unix:<path>` rule
+// for a different socket does not grant the Unix proxy access to this one.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: {
+      read: true,
+      write: true,
+      net: ["unix:/some/other/path.sock"],
+    },
+  },
+  function fetchUnixProxyScopedAllowNetMatchesExactly() {
+    const socketPath = tmpUnixSocketPath();
+    assertThrows(
+      () =>
+        Deno.createHttpClient({
+          proxy: { transport: "unix", path: socketPath },
+        }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+// An `--allow-net=unix:<path>` rule scoped to the exact socket path grants the
+// Unix proxy access. Run in a subprocess so the dynamic socket path can be
+// passed in the allow-net rule. The temp dir is canonicalized up front so the
+// resolved socket path matches the rule exactly. The `localhost` grant is also
+// required: routing through the Unix proxy still issues `fetch()` against the
+// request URL, whose host (`localhost`) goes through the normal net check.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true, run: true },
+  },
+  async function fetchUnixProxyScopedAllowNetGrantsAccess() {
+    const folder = Deno.realPathSync(Deno.makeTempDirSync());
+    const socketPath = `${folder}/socket`;
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      await using _server = Deno.serve({
+        path: ${JSON.stringify(socketPath)},
+        transport: "unix",
+        onListen: () => {},
+      }, () => new Response("OK"));
+      using client = Deno.createHttpClient({
+        proxy: { transport: "unix", path: ${JSON.stringify(socketPath)} },
+      });
+      const resp = await fetch("http://localhost/", { client });
+      console.log(await resp.text());
+      `,
+    );
+    const [status, output] = await execCode3(Deno.execPath(), [
+      "run",
+      "--allow-read",
+      "--allow-write",
+      `--allow-net=unix:${socketPath},localhost`,
+      scriptPath,
+    ]).finished();
+    assertEquals(status, 0);
+    assertStringIncludes(output, "OK");
+  },
+);
+
 // Regression test for https://github.com/denoland/deno/issues/29281
 // A server advertising `Content-Encoding: gzip` (or br) while returning an
 // empty body should not fail decompression with "unexpected end of file".
@@ -2355,6 +2439,90 @@ Deno.test(
         ac.abort();
         await server.finished;
       }
+    }
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/20548
+// `content-encoding` and `content-length` response headers must stay visible
+// when the body is transparently decompressed; only the body is decoded.
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchPreservesContentEncodingHeader() {
+    const compressed = await new Response(
+      new Blob(["hello world"]).stream().pipeThrough(
+        new CompressionStream("gzip"),
+      ),
+    ).bytes();
+    const ac = new AbortController();
+    const server = Deno.serve(
+      { port: listenPort, signal: ac.signal, onListen() {} },
+      () =>
+        new Response(compressed, {
+          headers: {
+            "content-encoding": "gzip",
+            "content-length": String(compressed.length),
+          },
+        }),
+    );
+    try {
+      const resp = await fetch(`http://localhost:${listenPort}/`);
+      assertEquals(resp.headers.get("content-encoding"), "gzip");
+      assertEquals(
+        resp.headers.get("content-length"),
+        String(compressed.length),
+      );
+      assertEquals(await resp.text(), "hello world");
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+// The flip side of the regression test above: when a fetch response with a
+// transparently decompressed body is re-serialized by an HTTP server
+// (`return fetch(...)` proxying), the retained `content-encoding` and
+// `content-length` headers describe the original wire body, not the decoded
+// one, and must not be forwarded with it.
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchProxyingDecompressedResponseStripsWireHeaders() {
+    const compressed = await new Response(
+      new Blob(["hello world"]).stream().pipeThrough(
+        new CompressionStream("gzip"),
+      ),
+    ).bytes();
+    const ac = new AbortController();
+    const upstream = Deno.serve(
+      { port: listenPort, signal: ac.signal, onListen() {} },
+      () =>
+        new Response(compressed, {
+          headers: {
+            "content-encoding": "gzip",
+            "content-length": String(compressed.length),
+          },
+        }),
+    );
+    const { promise: proxyPort, resolve } = Promise.withResolvers<number>();
+    const proxy = Deno.serve(
+      {
+        port: 0,
+        signal: ac.signal,
+        onListen({ port }) {
+          resolve(port);
+        },
+      },
+      () => fetch(`http://localhost:${listenPort}/`),
+    );
+    try {
+      const resp = await fetch(`http://localhost:${await proxyPort}/`);
+      assertEquals(resp.headers.get("content-encoding"), null);
+      assertEquals(await resp.text(), "hello world");
+    } finally {
+      ac.abort();
+      await upstream.finished;
+      await proxy.finished;
     }
   },
 );

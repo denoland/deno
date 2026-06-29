@@ -3,10 +3,11 @@
 //! Framework detection for `deno compile .`.
 //!
 //! Detects web frameworks (Next.js, Astro, Remix, SvelteKit, Nuxt, Fresh,
-//! SolidStart, TanStack Start, Vite SSR) and generates the appropriate
+//! SolidStart, TanStack Start, Vite) and generates the appropriate
 //! entrypoint and include paths so that `deno compile .` just works.
 
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -22,6 +23,54 @@ pub struct FrameworkDetection {
   /// Optional build command to run before compilation (e.g. "next build").
   /// The command is run with the detected directory as cwd.
   pub build_command: Option<Vec<String>>,
+}
+
+impl FrameworkDetection {
+  /// Directories (relative to the project root) where the framework keeps
+  /// static assets like favicons. Used to auto-detect a desktop app icon
+  /// when the user didn't supply `--icon`.
+  pub fn static_asset_dirs(&self) -> &'static [&'static str] {
+    match self.name {
+      // Next.js App Router puts `favicon.ico` / `icon.*` directly in `app/`
+      // (or `src/app/`); the Pages Router and older versions use `public/`.
+      "Next.js" => &["public", "app", "src/app"],
+      "Fresh" | "SvelteKit" => &["static"],
+      _ => &["public"],
+    }
+  }
+}
+
+/// Search a framework's static asset directories for a favicon that can
+/// double as the desktop app icon. Returns the first match in priority
+/// order, restricted to file formats supported by `target_os` (so we
+/// don't pick a `.png` for a Windows build where bundling would silently
+/// drop it).
+pub fn find_framework_favicon(
+  dir: &Path,
+  detection: &FrameworkDetection,
+  target_os: &str,
+) -> Option<PathBuf> {
+  let exts: &[&str] = match target_os {
+    "macos" => &["icns", "png"],
+    "windows" => &["ico"],
+    _ => &["png"],
+  };
+  let names = ["icon", "favicon", "apple-touch-icon", "logo"];
+  for sub in detection.static_asset_dirs() {
+    let base = dir.join(sub);
+    if !base.is_dir() {
+      continue;
+    }
+    for name in names {
+      for ext in exts {
+        let candidate = base.join(format!("{name}.{ext}"));
+        if candidate.is_file() {
+          return Some(candidate);
+        }
+      }
+    }
+  }
+  None
 }
 
 /// Detect a web framework in the given directory.
@@ -70,7 +119,7 @@ pub fn detect_framework(
   if let Some(deps) = read_package_deps(dir) {
     // Remix
     if deps.has("@remix-run/react") || deps.has_dev("@remix-run/dev") {
-      return Ok(Some(detect_remix()));
+      return Ok(Some(detect_remix(dir)));
     }
 
     // SolidStart
@@ -84,11 +133,16 @@ pub fn detect_framework(
     }
   }
 
-  // --- Vite SSR (lower priority, needs a server.js) ---
-  if has_config_file(dir, "vite.config")
-    && let Some(detection) = detect_vite_ssr(dir)
-  {
-    return Ok(Some(detection));
+  // --- Vite (lowest priority among bundlers) ---
+  // A generic Vite project, recognized by its config file or a `vite`
+  // dependency. Many meta-frameworks build on Vite, but those are all matched
+  // earlier (by their own config file or framework dependency), so reaching
+  // here means a plain Vite app (SPA/MPA or a hand-rolled SSR server).
+  let has_vite_dep = read_package_deps(dir)
+    .map(|deps| deps.has("vite") || deps.has_dev("vite"))
+    .unwrap_or(false);
+  if has_config_file(dir, "vite.config") || has_vite_dep {
+    return Ok(Some(detect_vite(dir)));
   }
 
   // --- deno.json import-based detection ---
@@ -133,10 +187,17 @@ if (!Deno.env.get("NODE_CHANNEL_FD")) {{
 }}
 "#,
   );
+  // `next-server` serves files in `public/` at the URL root; without it
+  // shipped, every `<img src="/foo.png">` 404s. Optional in the project
+  // (some apps put nothing there), so only include when present.
+  let mut include_paths = vec![".next".into()];
+  if dir.join("public").is_dir() {
+    include_paths.push("public".into());
+  }
   Ok(FrameworkDetection {
     name: "Next.js",
     entrypoint_code: entrypoint,
-    include_paths: vec![".next".into()],
+    include_paths,
     build_command: Some(deno_task_build()),
   })
 }
@@ -160,6 +221,17 @@ fn detect_fresh(dir: &Path) -> FrameworkDetection {
       .map(|imports| imports.iter().any(|i| i.starts_with("@fresh/core")))
       .unwrap_or(false);
   if is_fresh2 {
+    // `_fresh/snapshot.js` records static assets as `filePath:
+    // "static/foo.png"` and `_fresh/server.js` constructs the
+    // ProdBuildCache with `root = path.join(import.meta.dirname, "..")`,
+    // so the runtime reads them via `<root>/static/...`. The `static/`
+    // directory must therefore land in the VFS alongside `_fresh/` or
+    // every image / font / video 404s. `static/` is conventional for
+    // Fresh; if it doesn't exist the include is a harmless no-op.
+    let mut include_paths = vec!["_fresh".into()];
+    if dir.join("static").is_dir() {
+      include_paths.push("static".into());
+    }
     FrameworkDetection {
       name: "Fresh",
       entrypoint_code: r#"// @ts-nocheck
@@ -167,7 +239,7 @@ const mod = await import("./_fresh/server.js");
 Deno.serve(mod.default.fetch);
 "#
       .into(),
-      include_paths: vec!["_fresh".into()],
+      include_paths,
       build_command: Some(vec![deno_exe(), "task".into(), "build".into()]),
     }
   } else {
@@ -181,12 +253,18 @@ Deno.serve(mod.default.fetch);
   }
 }
 
-fn detect_remix() -> FrameworkDetection {
+fn detect_remix(dir: &Path) -> FrameworkDetection {
+  // `remix-serve` serves files from `public/` at the URL root; ship it
+  // when present so static assets resolve.
+  let mut include_paths = vec!["build".into()];
+  if dir.join("public").is_dir() {
+    include_paths.push("public".into());
+  }
   FrameworkDetection {
     name: "Remix",
     entrypoint_code:
       "// @ts-nocheck\nimport \"./node_modules/.bin/remix-serve\";\n".into(),
-    include_paths: vec!["build".into()],
+    include_paths,
     build_command: Some(deno_task_build()),
   }
 }
@@ -308,16 +386,53 @@ fn detect_nitro_framework(
   }
 }
 
-fn detect_vite_ssr(dir: &Path) -> Option<FrameworkDetection> {
-  let server_file = ["server.js", "server.ts", "server.mjs"]
+fn detect_vite(dir: &Path) -> FrameworkDetection {
+  // SSR: a hand-written server entrypoint (`server.{js,ts,mjs}`) that boots the
+  // Vite-built server bundle. Prefer it when present.
+  if let Some(server_file) = ["server.js", "server.ts", "server.mjs"]
     .iter()
-    .find(|f| dir.join(f).exists())?;
-  Some(FrameworkDetection {
+    .find(|f| dir.join(f).exists())
+  {
+    return FrameworkDetection {
+      name: "Vite",
+      entrypoint_code: format!("// @ts-nocheck\nimport \"./{server_file}\";\n"),
+      include_paths: vec!["dist".into()],
+      build_command: Some(deno_task_build()),
+    };
+  }
+
+  // SPA / MPA: no server entrypoint. `vite build` emits a static site to
+  // `dist/`; serve it over HTTP so the webview can load it, falling back to
+  // `index.html` for client-side routes so a hard refresh on a history-API
+  // route still resolves.
+  FrameworkDetection {
     name: "Vite",
-    entrypoint_code: format!("// @ts-nocheck\nimport \"./{server_file}\";\n"),
+    entrypoint_code: r#"// @ts-nocheck
+import { serveDir } from "jsr:@std/http/file-server";
+// `vite build` emits a static site into `dist/`. Resolve it against the VFS in
+// the compiled binary via import.meta.dirname rather than the runtime CWD.
+const fsRoot = import.meta.dirname + "/dist";
+Deno.serve(async (req) => {
+  const res = await serveDir(req, { fsRoot, quiet: true });
+  // SPA fallback: route unmatched HTML navigations back to index.html so
+  // client-side routers keep working after a hard refresh.
+  if (
+    res.status === 404 &&
+    req.method === "GET" &&
+    (req.headers.get("accept") ?? "").includes("text/html")
+  ) {
+    const index = new Request(new URL("/index.html", req.url), {
+      headers: req.headers,
+    });
+    return await serveDir(index, { fsRoot, quiet: true });
+  }
+  return res;
+});
+"#
+    .into(),
     include_paths: vec!["dist".into()],
     build_command: Some(deno_task_build()),
-  })
+  }
 }
 
 // --- Helpers ---
@@ -734,7 +849,7 @@ mod tests {
     assert_eq!(det.name, "TanStack Start");
   }
 
-  // --- Vite SSR ---
+  // --- Vite ---
 
   #[test]
   fn detects_vite_ssr_with_server_js() {
@@ -760,12 +875,49 @@ mod tests {
   }
 
   #[test]
-  fn vite_without_server_file_returns_none() {
+  fn detects_vite_spa_from_config_without_server_file() {
+    // A plain Vite SPA (config file, no server.{js,ts,mjs}) serves the static
+    // `dist/` build over HTTP rather than importing a server entrypoint.
     let dir = setup_dir();
     fs::write(dir.path().join("vite.config.js"), "").unwrap();
-    // no server.js/ts/mjs
-    let result = detect_framework(dir.path()).unwrap();
-    assert!(result.is_none());
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Vite");
+    assert!(det.entrypoint_code.contains("serveDir"));
+    assert!(det.entrypoint_code.contains("/dist"));
+    assert!(det.entrypoint_code.contains("Deno.serve"));
+    assert_eq!(det.include_paths, vec!["dist"]);
+    let cmd = det.build_command.unwrap();
+    assert_eq!(cmd[1..], vec!["task", "build"]);
+  }
+
+  #[test]
+  fn detects_vite_from_package_dep() {
+    // No config file, but `vite` in devDependencies — still a Vite project.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"devDependencies":{"vite":"^5.0.0"}}"#,
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Vite");
+    assert!(det.entrypoint_code.contains("serveDir"));
+    assert_eq!(det.include_paths, vec!["dist"]);
+  }
+
+  #[test]
+  fn detects_vite_ssr_when_dep_and_server_present() {
+    // `vite` dependency plus a server entrypoint resolves to the SSR variant.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"dependencies":{"vite":"^5.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(dir.path().join("server.ts"), "").unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Vite");
+    assert!(det.entrypoint_code.contains("server.ts"));
   }
 
   // --- deno.json import-based detection ---
@@ -957,5 +1109,111 @@ mod tests {
     let dir = setup_dir();
     fs::write(dir.path().join("deno.json"), r#"{"tasks":{}}"#).unwrap();
     assert!(read_deno_json_imports(dir.path()).is_none());
+  }
+
+  // --- Favicon discovery ---
+
+  fn nextjs_detection() -> FrameworkDetection {
+    FrameworkDetection {
+      name: "Next.js",
+      entrypoint_code: String::new(),
+      include_paths: vec![],
+      build_command: None,
+    }
+  }
+
+  fn fresh_detection() -> FrameworkDetection {
+    FrameworkDetection {
+      name: "Fresh",
+      entrypoint_code: String::new(),
+      include_paths: vec![],
+      build_command: None,
+    }
+  }
+
+  #[test]
+  fn finds_favicon_in_public_for_linux() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("public")).unwrap();
+    fs::write(dir.path().join("public/favicon.png"), "").unwrap();
+    let det = nextjs_detection();
+    let p = find_framework_favicon(dir.path(), &det, "linux").unwrap();
+    assert_eq!(p, dir.path().join("public/favicon.png"));
+  }
+
+  #[test]
+  fn finds_ico_for_windows_but_not_png() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("public")).unwrap();
+    fs::write(dir.path().join("public/favicon.png"), "").unwrap();
+    let det = nextjs_detection();
+    assert!(find_framework_favicon(dir.path(), &det, "windows").is_none());
+    fs::write(dir.path().join("public/favicon.ico"), "").unwrap();
+    let p = find_framework_favicon(dir.path(), &det, "windows").unwrap();
+    assert_eq!(p, dir.path().join("public/favicon.ico"));
+  }
+
+  #[test]
+  fn macos_prefers_icns_over_png() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("public")).unwrap();
+    fs::write(dir.path().join("public/icon.png"), "").unwrap();
+    fs::write(dir.path().join("public/icon.icns"), "").unwrap();
+    let det = nextjs_detection();
+    let p = find_framework_favicon(dir.path(), &det, "macos").unwrap();
+    assert_eq!(p, dir.path().join("public/icon.icns"));
+  }
+
+  #[test]
+  fn icon_name_preferred_over_favicon() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("public")).unwrap();
+    fs::write(dir.path().join("public/favicon.png"), "").unwrap();
+    fs::write(dir.path().join("public/icon.png"), "").unwrap();
+    let det = nextjs_detection();
+    let p = find_framework_favicon(dir.path(), &det, "linux").unwrap();
+    assert_eq!(p, dir.path().join("public/icon.png"));
+  }
+
+  #[test]
+  fn nextjs_app_router_favicon_in_app_dir() {
+    let dir = setup_dir();
+    // No public/, but app/favicon.ico — Next 13+ App Router layout.
+    fs::create_dir_all(dir.path().join("app")).unwrap();
+    fs::write(dir.path().join("app/favicon.ico"), "").unwrap();
+    let det = nextjs_detection();
+    let p = find_framework_favicon(dir.path(), &det, "windows").unwrap();
+    assert_eq!(p, dir.path().join("app/favicon.ico"));
+  }
+
+  #[test]
+  fn fresh_uses_static_dir() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("static")).unwrap();
+    fs::write(dir.path().join("static/favicon.png"), "").unwrap();
+    let det = fresh_detection();
+    let p = find_framework_favicon(dir.path(), &det, "linux").unwrap();
+    assert_eq!(p, dir.path().join("static/favicon.png"));
+  }
+
+  #[test]
+  fn no_favicon_returns_none() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("public")).unwrap();
+    let det = nextjs_detection();
+    assert!(find_framework_favicon(dir.path(), &det, "linux").is_none());
+  }
+
+  #[test]
+  fn public_takes_priority_over_app_for_nextjs() {
+    let dir = setup_dir();
+    fs::create_dir_all(dir.path().join("public")).unwrap();
+    fs::create_dir_all(dir.path().join("app")).unwrap();
+    fs::write(dir.path().join("public/favicon.png"), "").unwrap();
+    fs::write(dir.path().join("app/icon.png"), "").unwrap();
+    let det = nextjs_detection();
+    let p = find_framework_favicon(dir.path(), &det, "linux").unwrap();
+    // public/ is checked before app/.
+    assert_eq!(p, dir.path().join("public/favicon.png"));
   }
 }

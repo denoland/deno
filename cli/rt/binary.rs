@@ -7,6 +7,7 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use deno_core::FastString;
 use deno_core::ModuleCodeBytes;
@@ -59,7 +60,17 @@ pub struct StandaloneData {
 pub fn extract_standalone(
   cli_args: Cow<[OsString]>,
 ) -> Result<StandaloneData, AnyError> {
-  let data = find_section()?;
+  extract_standalone_with_finder(cli_args, find_section)
+}
+
+/// Like `extract_standalone`, but allows providing a custom section finder.
+/// This is used by the desktop cdylib to search its own image rather than
+/// the main executable.
+pub fn extract_standalone_with_finder(
+  cli_args: Cow<[OsString]>,
+  section_finder: fn() -> Result<&'static [u8], AnyError>,
+) -> Result<StandaloneData, AnyError> {
+  let data = section_finder()?;
 
   // read metadata first to determine the root path
   let (mut metadata, remaining) = read_section_metadata(data)?;
@@ -221,7 +232,7 @@ fn choose_and_create_extraction_dir(
   Ok(dir)
 }
 
-fn get_data_local_dir() -> Option<PathBuf> {
+pub(crate) fn get_data_local_dir() -> Option<PathBuf> {
   #[cfg(target_os = "windows")]
   {
     std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
@@ -690,6 +701,12 @@ impl StandaloneModules {
 /// TypeScript that it builds or discovers while running. `deno_ast` is already
 /// linked into the binary via `ext/node`, so transpiling here adds no extra
 /// binary size.
+///
+/// JSX configuration (`jsx`, `jsxImportSource`, `jsxFactory`, etc.) is
+/// discovered by walking up from the source file to find the user's
+/// `deno.json` / `deno.jsonc` once and caching the result. Without this,
+/// every `.tsx` from a Preact-based project would be emitted as
+/// `React.createElement(...)` and fail at runtime with `React is not defined`.
 pub(crate) fn transpile_runtime_module(
   specifier: &Url,
   media_type: MediaType,
@@ -714,12 +731,10 @@ pub(crate) fn transpile_runtime_module(
     maybe_syntax: None,
   })
   .map_err(JsErrorBox::from_err)?;
+  let opts = runtime_transpile_options(specifier);
   let transpiled = parsed
     .transpile(
-      &deno_ast::TranspileOptions {
-        imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
-        ..Default::default()
-      },
+      opts,
       &deno_ast::TranspileModuleOptions { module_kind: None },
       &deno_ast::EmitOptions {
         source_map: deno_ast::SourceMapOption::Inline,
@@ -728,6 +743,132 @@ pub(crate) fn transpile_runtime_module(
     )
     .map_err(JsErrorBox::from_err)?;
   Ok(transpiled.into_source().text)
+}
+
+/// Resolved JSX/decorator options for runtime transpiles, discovered lazily
+/// from the user's project `deno.json[c]` and cached for the lifetime of the
+/// process.
+static RUNTIME_TRANSPILE_OPTIONS: OnceLock<deno_ast::TranspileOptions> =
+  OnceLock::new();
+
+/// Walk up from `specifier`'s parent directory looking for `deno.json` or
+/// `deno.jsonc`, parse `compilerOptions.jsx` + related, and return a matching
+/// `TranspileOptions`. Falls back to defaults (with `ImportsNotUsedAsValues::Remove`)
+/// if no config is found or parsing fails — those are non-fatal here.
+fn runtime_transpile_options(
+  specifier: &Url,
+) -> &'static deno_ast::TranspileOptions {
+  RUNTIME_TRANSPILE_OPTIONS.get_or_init(|| {
+    let fallback = deno_ast::TranspileOptions {
+      imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+      ..Default::default()
+    };
+    let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
+      return fallback;
+    };
+    let Some(mut dir) = path.parent().map(|p| p.to_path_buf()) else {
+      return fallback;
+    };
+    let cfg_path = 'outer: loop {
+      for name in ["deno.json", "deno.jsonc"] {
+        let candidate = dir.join(name);
+        if candidate.exists() {
+          break 'outer Some(candidate);
+        }
+      }
+      if !dir.pop() {
+        break 'outer None;
+      }
+    };
+    let Some(cfg_path) = cfg_path else {
+      return fallback;
+    };
+    let Ok(text) = std::fs::read_to_string(&cfg_path) else {
+      return fallback;
+    };
+    let Some(json) =
+      jsonc_parser::parse_to_serde_value(&text, &Default::default())
+        .ok()
+        .flatten()
+    else {
+      return fallback;
+    };
+    let json: &serde_json::Value = &json;
+    transpile_options_from_compiler_options(
+      json.get("compilerOptions"),
+      &fallback,
+    )
+  })
+}
+
+/// Lower the relevant subset of `compilerOptions` (the same one
+/// `cli/tools/pack/mod.rs::create_transpile_options` handles) into
+/// `TranspileOptions`. Anything missing falls back to `fallback`.
+fn transpile_options_from_compiler_options(
+  compiler_options: Option<&serde_json::Value>,
+  fallback: &deno_ast::TranspileOptions,
+) -> deno_ast::TranspileOptions {
+  let get_str = |key: &str| -> Option<String> {
+    compiler_options?.get(key)?.as_str().map(|s| s.to_string())
+  };
+  let get_bool = |key: &str| -> bool {
+    compiler_options
+      .and_then(|opts| opts.get(key))
+      .and_then(|v| v.as_bool())
+      .unwrap_or(false)
+  };
+  let jsx = get_str("jsx");
+  let jsx_import_source = get_str("jsxImportSource");
+  let jsx_factory = get_str("jsxFactory");
+  let jsx_fragment_factory = get_str("jsxFragmentFactory");
+  let jsx_runtime = match jsx.as_deref() {
+    Some("react") => {
+      Some(deno_ast::JsxRuntime::Classic(deno_ast::JsxClassicOptions {
+        factory: jsx_factory
+          .unwrap_or_else(|| "React.createElement".to_string()),
+        fragment_factory: jsx_fragment_factory
+          .unwrap_or_else(|| "React.Fragment".to_string()),
+      }))
+    }
+    Some("react-jsx") => Some(deno_ast::JsxRuntime::Automatic(
+      deno_ast::JsxAutomaticOptions {
+        development: false,
+        import_source: jsx_import_source,
+      },
+    )),
+    Some("react-jsxdev") => Some(deno_ast::JsxRuntime::Automatic(
+      deno_ast::JsxAutomaticOptions {
+        development: true,
+        import_source: jsx_import_source,
+      },
+    )),
+    Some("precompile") => Some(deno_ast::JsxRuntime::Precompile(
+      deno_ast::JsxPrecompileOptions {
+        automatic: deno_ast::JsxAutomaticOptions {
+          development: false,
+          import_source: jsx_import_source,
+        },
+        skip_elements: None,
+        dynamic_props: None,
+      },
+    )),
+    _ => fallback.jsx.clone(),
+  };
+  let experimental_decorators = get_bool("experimentalDecorators");
+  let emit_decorator_metadata = get_bool("emitDecoratorMetadata");
+  deno_ast::TranspileOptions {
+    jsx: jsx_runtime,
+    decorators: if experimental_decorators {
+      deno_ast::DecoratorsTranspileOption::LegacyTypeScript {
+        emit_metadata: emit_decorator_metadata,
+      }
+    } else {
+      deno_ast::DecoratorsTranspileOption::Ecma
+    },
+    imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+    var_decl_imports: false,
+    verbatim_module_syntax: false,
+  }
 }
 
 pub struct DenoCompileModuleData<'a> {

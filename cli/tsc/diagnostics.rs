@@ -202,7 +202,10 @@ impl Diagnostic {
     }
   }
 
-  pub fn maybe_from_resolution_error(error: &ResolutionError) -> Option<Self> {
+  pub fn maybe_from_resolution_error(
+    error: &ResolutionError,
+    bare_importable_pkg_names: &[String],
+  ) -> Option<Self> {
     /// Some node resolution errors say "imported from '...'", but it's not
     /// very useful in a tsc diagnostic because it already has the referrer
     /// context, so remove that text
@@ -224,7 +227,8 @@ impl Diagnostic {
         None,
       ))
     } else {
-      let mut message = enhanced_resolution_error_message(error);
+      let mut message =
+        enhanced_resolution_error_message(error, bare_importable_pkg_names);
       // the diagnostic already shows the location, so this is redundant
       remove_imported_from(&mut message);
       Some(Self::from_missing_error_with_message(
@@ -239,9 +243,11 @@ impl Diagnostic {
   pub fn include_when_remote(&self) -> bool {
     /// TS6133: value is declared but its value is never read (noUnusedParameters and noUnusedLocals)
     const TS6133: u64 = 6133;
+    /// TS6205: All type parameters are unused (noUnusedParameters and noUnusedLocals)
+    const TS6205: u64 = 6205;
     /// TS4114: This member must have an 'override' modifier because it overrides a member in the base class 'X'.
     const TS4114: u64 = 4114;
-    !matches!(self.code, TS6133 | TS4114)
+    !matches!(self.code, TS6133 | TS6205 | TS4114)
   }
 
   fn fmt_category_and_code(&self, f: &mut fmt::Formatter) -> fmt::Result {

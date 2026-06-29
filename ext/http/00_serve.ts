@@ -25,6 +25,7 @@ const {
   op_http_request_on_cancel,
   op_http_serve,
   op_http_serve_address_override,
+  op_http_serve_default_compression,
   op_http_serve_on,
   op_http_set_promise_complete,
   op_http_set_response_native,
@@ -52,6 +53,7 @@ const {
   ArrayPrototypePush,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
+  PromisePrototype,
   PromisePrototypeCatch,
   PromiseResolve,
   SafeArrayIterator,
@@ -89,6 +91,7 @@ const {
   SERVE_FAST_HEADER_DEFAULT_TEXT,
   SERVE_FAST_HEADER_NONE,
   toInnerResponse,
+  wireHeaderList,
 } = core.loadExtScript("ext:deno_fetch/23_response.js");
 const {
   abortRequest,
@@ -108,6 +111,7 @@ const {
 } = core.loadExtScript("ext:deno_web/06_streams.js");
 const {
   listen,
+  listenMemory,
   listenOptionApiName,
   UpgradedConn,
 } = core.loadExtScript("ext:deno_net/01_net.js");
@@ -128,6 +132,8 @@ const {
 } = core.loadExtScript("ext:deno_telemetry/util.ts");
 
 const _upgraded = Symbol("_upgraded");
+
+let legacyAbortWarned = false;
 
 function internalServerError() {
   // "Internal Server Error"
@@ -187,6 +193,7 @@ class InnerRequest {
   #upgraded;
   #urlValue;
   #completed;
+  #signalAccessed;
   request;
 
   constructor(external, context) {
@@ -194,6 +201,7 @@ class InnerRequest {
     this.#context = context;
     this.#upgraded = false;
     this.#completed = undefined;
+    this.#signalAccessed = false;
   }
 
   close(success = true) {
@@ -215,6 +223,13 @@ class InnerRequest {
       }
     }
     if (this.#context.legacyAbort) {
+      if (success && this.#signalAccessed && !legacyAbortWarned) {
+        legacyAbortWarned = true;
+        // deno-lint-ignore no-console
+        console.warn(
+          "Deno.serve: request.signal aborts on successful responses (legacy behavior, see https://github.com/denoland/deno/issues/29111). Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/runtime/reference/migrate-deprecations/",
+        );
+      }
       abortRequest(this.request);
     }
     this.#external = null;
@@ -434,6 +449,7 @@ class InnerRequest {
   }
 
   onCancel(callback) {
+    this.#signalAccessed = true;
     if (this.#external === null) {
       if (this.#context.legacyAbort) callback();
       return;
@@ -562,12 +578,37 @@ function trySetServeFastStaticResponse(
   }
 }
 
+// Report an error that was thrown while a streaming response body was being
+// drained. The response status/headers are already on the wire at this point,
+// so the value returned from `onError` can no longer be used; we route the
+// error through the handler purely so it is observed (the default handler logs
+// a stack trace) instead of being silently swallowed.
+function reportResponseStreamError(onError, error) {
+  let result;
+  try {
+    result = onError(error);
+  } catch (e) {
+    internals.log("error", "Exception in onError while handling exception", e);
+    return;
+  }
+  if (ObjectPrototypeIsPrototypeOf(PromisePrototype, result)) {
+    PromisePrototypeThen(result, undefined, (e) => {
+      internals.log(
+        "error",
+        "Exception in onError while handling exception",
+        e,
+      );
+    });
+  }
+}
+
 function fastSyncResponseOrStream(
   req,
   respBody,
   status,
   innerRequest: InnerRequest,
   headers,
+  onError,
 ) {
   if (respBody === null || respBody === undefined) {
     // Don't set the body
@@ -661,7 +702,13 @@ function fastSyncResponseOrStream(
     rid = resourceBacking.rid;
     autoClose = resourceBacking.autoClose;
   } else {
-    rid = resourceForReadableStream(stream);
+    // The response headers/status have already been committed by the time the
+    // body stream starts producing chunks, so an error thrown while draining
+    // the stream (e.g. inside a `TransformStream` transformer) can no longer
+    // change the response. Report it through the server's error handler so it
+    // is not silently swallowed and a stack trace implicating the faulty
+    // callback is surfaced. See https://github.com/denoland/deno/issues/19867.
+    rid = resourceForReadableStream(stream, undefined, onError);
     autoClose = true;
   }
   PromisePrototypeThen(
@@ -822,7 +869,7 @@ function mapToCallback(context, callback, onError) {
 
     inner = toInnerResponse(response);
     const status = inner.status;
-    const headers = inner.headerList;
+    const headers = wireHeaderList(inner);
     const respBody = inner.body;
     fastSyncResponseOrStream(
       req,
@@ -830,6 +877,7 @@ function mapToCallback(context, callback, onError) {
       status,
       innerRequest,
       headers,
+      (error) => reportResponseStreamError(onError, error),
     );
   };
 
@@ -994,7 +1042,8 @@ function mapToNativeResponseCallback(context, callback, onError) {
       inner.body,
       inner.status,
       innerRequest,
-      inner.headerList,
+      wireHeaderList(inner),
+      (error) => reportResponseStreamError(onError, error),
     );
     return undefined;
   }
@@ -1102,9 +1151,15 @@ type RawServeOptions = {
   onError?: (error: unknown) => Response | Promise<Response>;
   onListen?: (params: { hostname: string; port: number }) => void;
   handler?: RawHandler;
+  automaticCompression?: boolean;
 };
 
 const kLoadBalanced = Symbol("kLoadBalanced");
+
+// Module-private marker for the internal in-process `memory:` serve transport.
+// Only the `DENO_SERVE_ADDRESS=memory:<name>` env path sets it; it is not a
+// user-reachable `Deno.serve` option (the symbol can't be forged by callers).
+const kMemoryServe = Symbol("kMemoryServe");
 
 function formatHostName(hostname: string): string {
   // If the hostname is "0.0.0.0", we display "localhost" in console
@@ -1167,7 +1222,12 @@ function serve(arg1, arg2) {
     serveAddressOverrideConsumed = true;
 
     let envOptions = duplicateListener
-      ? { __proto__: null, signal: options.signal, onError: options.onError }
+      ? {
+        __proto__: null,
+        signal: options.signal,
+        onError: options.onError,
+        automaticCompression: options.automaticCompression,
+      }
       : options;
 
     switch (overrideKind) {
@@ -1214,6 +1274,20 @@ function serve(arg1, arg2) {
         delete envOptions.cid;
         delete envOptions.port;
         delete envOptions.path;
+        break;
+      }
+      case 5: {
+        // Memory (in-process byte channel). Internal-only: keyed by a private
+        // symbol, not a public `memory` option.
+        envOptions = {
+          ...envOptions,
+          [kMemoryServe]: overrideHost,
+        };
+        delete envOptions.hostname;
+        delete envOptions.cid;
+        delete envOptions.port;
+        delete envOptions.path;
+        break;
       }
     }
 
@@ -1258,6 +1332,9 @@ function serveInner(options, handler) {
   const wantsUnix = ObjectHasOwn(options, "path");
   const wantsVsock = ObjectHasOwn(options, "cid");
   const wantsTunnel = options.tunnel === true;
+  const wantsMemory = options[kMemoryServe] !== undefined;
+  const automaticCompression = options.automaticCompression ??
+    op_http_serve_default_compression();
   const signal = options.signal;
   const onError = options.onError ??
     function (error) {
@@ -1272,13 +1349,20 @@ function serveInner(options, handler) {
       [listenOptionApiName]: "Deno.serve",
     });
     const path = listener.addr.path;
-    return serveHttpOnListener(listener, signal, handler, onError, () => {
-      if (options.onListen) {
-        options.onListen(listener.addr);
-      } else {
-        internals.log("info", `Listening on ${path}`);
-      }
-    });
+    return serveHttpOnListener(
+      listener,
+      signal,
+      handler,
+      onError,
+      () => {
+        if (options.onListen) {
+          options.onListen(listener.addr);
+        } else {
+          internals.log("info", `Listening on ${path}`);
+        }
+      },
+      automaticCompression,
+    );
   }
 
   if (wantsVsock) {
@@ -1289,13 +1373,39 @@ function serveInner(options, handler) {
       [listenOptionApiName]: "Deno.serve",
     });
     const { cid, port } = listener.addr;
-    return serveHttpOnListener(listener, signal, handler, onError, () => {
-      if (options.onListen) {
-        options.onListen(listener.addr);
-      } else {
-        internals.log("info", `Listening on vsock:${cid}:${port}`);
-      }
-    });
+    return serveHttpOnListener(
+      listener,
+      signal,
+      handler,
+      onError,
+      () => {
+        if (options.onListen) {
+          options.onListen(listener.addr);
+        } else {
+          internals.log("info", `Listening on vsock:${cid}:${port}`);
+        }
+      },
+      automaticCompression,
+    );
+  }
+
+  if (wantsMemory) {
+    const listener = listenMemory(options[kMemoryServe]);
+    const name = listener.addr.name;
+    return serveHttpOnListener(
+      listener,
+      signal,
+      handler,
+      onError,
+      () => {
+        if (options.onListen) {
+          options.onListen(listener.addr);
+        } else {
+          internals.log("info", `Listening on memory:${name}`);
+        }
+      },
+      automaticCompression,
+    );
   }
 
   if (wantsTunnel) {
@@ -1303,21 +1413,28 @@ function serveInner(options, handler) {
       transport: "tunnel",
       [listenOptionApiName]: "Deno.serve",
     });
-    return serveHttpOnListener(listener, signal, handler, onError, () => {
-      if (options.onListen) {
-        options.onListen(listener.addr);
-      } else {
-        const additional = listener.addr.port === 443
-          ? ""
-          : `:${listener.addr.port}`;
-        internals.log(
-          "info",
-          `Listening on https://${
-            formatHostName(listener.addr.hostname)
-          }${additional}`,
-        );
-      }
-    });
+    return serveHttpOnListener(
+      listener,
+      signal,
+      handler,
+      onError,
+      () => {
+        if (options.onListen) {
+          options.onListen(listener.addr);
+        } else {
+          const additional = listener.addr.port === 443
+            ? ""
+            : `:${listener.addr.port}`;
+          internals.log(
+            "info",
+            `Listening on https://${
+              formatHostName(listener.addr.hostname)
+            }${additional}`,
+          );
+        }
+      },
+      automaticCompression,
+    );
   }
 
   const listenOpts = {
@@ -1374,13 +1491,27 @@ function serveInner(options, handler) {
     }
   };
 
-  return serveHttpOnListener(listener, signal, handler, onError, onListen);
+  return serveHttpOnListener(
+    listener,
+    signal,
+    handler,
+    onError,
+    onListen,
+    automaticCompression,
+  );
 }
 
 /**
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary listener.
  */
-function serveHttpOnListener(listener, signal, handler, onError, onListen) {
+function serveHttpOnListener(
+  listener,
+  signal,
+  handler,
+  onError,
+  onListen,
+  automaticCompression = op_http_serve_default_compression(),
+) {
   let serverContext = undefined;
   let callback = undefined;
   let nativeCallback = undefined;
@@ -1409,6 +1540,7 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
     signal,
     op_http_serve(
       listener[internalRidSymbol],
+      automaticCompression,
       dispatch,
       rawNoRequest,
       nativeDispatch,
@@ -1457,10 +1589,12 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
     return nativeCallback(req, undefined);
   };
   const rawNoRequest = handler.length === 0 && nativeFastPath;
+  const automaticCompression = op_http_serve_default_compression();
   serverContext = new CallbackContext(
     signal,
     op_http_serve_on(
       connection[internalRidSymbol],
+      automaticCompression,
       dispatch,
       rawNoRequest,
       nativeDispatch,
@@ -1575,6 +1709,9 @@ internals.addTrailers = addTrailers;
 internals.upgradeHttpRaw = upgradeHttpRaw;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
+internals.resetLegacyAbortWarning = () => {
+  legacyAbortWarned = false;
+};
 
 function registerDeclarativeServer(exports) {
   if (!ObjectHasOwn(exports, "fetch")) return;
@@ -1594,7 +1731,7 @@ function registerDeclarativeServer(exports) {
     serveHost,
     workerCountWhenMain,
   }) => {
-    Deno.serve({
+    const server = Deno.serve({
       port: servePort,
       hostname: serveHost,
       [kLoadBalanced]: workerCountWhenMain == null
@@ -1640,6 +1777,28 @@ function registerDeclarativeServer(exports) {
         return exports.fetch(req, connInfo);
       },
     });
+
+    // Wire SIGTERM/SIGINT to a graceful server shutdown so that `deno serve`
+    // drains in-flight requests and exits cleanly (exit code 0) instead of
+    // being terminated by the OS default signal handler (exit code 143/130),
+    // e.g. when a container is redeployed.
+    const shutdownHandler = () => {
+      // Stop listening for the signal so a second SIGTERM/SIGINT falls through
+      // to the default handler and forcibly terminates a server that is slow
+      // to drain.
+      Deno.removeSignalListener("SIGTERM", shutdownHandler);
+      Deno.removeSignalListener("SIGINT", shutdownHandler);
+      // `shutdown()` already swallows the errors from an interrupted server,
+      // but guard against any rejection becoming unhandled.
+      PromisePrototypeCatch(server.shutdown(), () => {});
+    };
+    try {
+      Deno.addSignalListener("SIGTERM", shutdownHandler);
+      Deno.addSignalListener("SIGINT", shutdownHandler);
+    } catch {
+      // Adding signal listeners can fail in restricted environments; fall back
+      // to the default behavior in that case.
+    }
   };
 }
 

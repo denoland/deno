@@ -26,7 +26,7 @@ use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
 use deno_config::workspace::TsTypeLib;
-use deno_core::anyhow::Context;
+use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::Mutex;
@@ -35,7 +35,9 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorClass;
+use deno_graph::GraphKind;
 use deno_graph::ModuleErrorKind;
+use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::cache::ParsedSourceCache;
@@ -61,11 +63,15 @@ use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageSubpathResolveError;
 pub use provider::CliBundleProvider;
+use sys_traits::PathsInErrorsExt;
 
 use crate::args::BundleFlags;
 use crate::args::Flags;
+use crate::args::TypeCheckMode;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
+use crate::graph_container::CheckSpecifiersOptions;
+use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
@@ -305,6 +311,29 @@ pub async fn bundle(
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
   }
+  // `--check[=all]` is documented in `bundle --help`; honour it before we
+  // hand the graph to esbuild so type errors surface alongside (and not
+  // after) the bundle output (denoland/deno#30159).
+  if !matches!(flags.type_check_mode, TypeCheckMode::None) {
+    let check_factory = CliFactory::from_flags(flags.clone());
+    let main_graph_container =
+      check_factory.main_module_graph_container().await?;
+    let specifiers = main_graph_container.collect_specifiers(
+      &bundle_flags.entrypoints,
+      CollectSpecifiersOptions {
+        include_ignored_specified: false,
+      },
+    )?;
+    main_graph_container
+      .check_specifiers(
+        &specifiers,
+        CheckSpecifiersOptions {
+          allow_unknown_media_types: true,
+          ..Default::default()
+        },
+      )
+      .await?;
+  }
   let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
   let init_cwd = bundler.cwd.clone();
   let start = std::time::Instant::now();
@@ -350,6 +379,10 @@ pub async fn bundle(
       bundle_flags.output_dir.as_ref().map(Path::new),
     )?;
 
+    if bundle_flags.declaration {
+      emit_bundle_declarations(flags.clone(), &bundle_flags, &init_cwd).await?;
+    }
+
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
       print_finished_message(&metafile, &output_infos, duration)?;
     }
@@ -360,6 +393,438 @@ pub async fn bundle(
   }
 
   Ok(())
+}
+
+async fn emit_bundle_declarations(
+  flags: Arc<Flags>,
+  bundle_flags: &BundleFlags,
+  init_cwd: &Path,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let real_sys = factory.sys();
+  let sys = real_sys.with_paths_in_errors();
+
+  // Resolve entrypoints to specifiers
+  let resolver = factory.resolver().await?;
+  let entrypoint_specifiers =
+    resolve_entrypoints(resolver, init_cwd, &bundle_flags.entrypoints)?;
+
+  // Determine root names with media types
+  let root_names: Vec<(ModuleSpecifier, MediaType)> = entrypoint_specifiers
+    .iter()
+    .map(|s| (s.clone(), MediaType::from_specifier(s)))
+    .collect();
+
+  let specifiers: Vec<ModuleSpecifier> =
+    root_names.iter().map(|(s, _)| s.clone()).collect();
+
+  // Build the module graph for type checking
+  let mut graph = ModuleGraph::new(GraphKind::All);
+  let module_graph_builder = factory.module_graph_builder().await?;
+  module_graph_builder
+    .build_graph_roots_with_npm_resolution(
+      &mut graph,
+      specifiers,
+      crate::graph_util::BuildGraphWithNpmOptions {
+        is_dynamic: false,
+        loader: None,
+        npm_caching: cli_options.default_npm_caching_strategy(),
+      },
+    )
+    .await?;
+
+  // Run type checker to emit declaration files
+  let type_checker = factory.type_checker().await?;
+  let result = type_checker.emit_declarations(
+    Arc::new(graph),
+    root_names,
+    cli_options.ts_type_lib_window(),
+  )?;
+
+  if result.diagnostics.has_diagnostic() {
+    deno_core::anyhow::bail!(
+      "Type checking failed when generating declarations:\n{}",
+      result.diagnostics
+    );
+  }
+
+  // Index emitted .d.ts files by their original source specifier
+  // TSC emits keys like "file:///path/to/file.d.ts" - map them back to source paths
+  let mut dts_by_source: std::collections::HashMap<String, String> =
+    std::collections::HashMap::new();
+  for (file_name, content) in &result.emitted_files {
+    // Map "file:///path/to/mod.d.ts" -> normalized source path
+    if let Ok(specifier) = Url::parse(file_name)
+      && let Ok(file_path) = specifier.to_file_path()
+    {
+      let source_path = file_path.to_string_lossy().to_string();
+      dts_by_source.insert(source_path, content.clone());
+    }
+  }
+
+  // For each entry point, produce a single rolled-up .d.ts
+  for entry_specifier in &entrypoint_specifiers {
+    let entry_path = entry_specifier.to_file_path().map_err(|_| {
+      deno_core::anyhow::anyhow!(
+        "Entry point must be a file: {}",
+        entry_specifier
+      )
+    })?;
+
+    // Find the .d.ts for this entry point
+    let dts_path = to_dts_path(&entry_path);
+    let entry_dts = dts_by_source
+      .get(&dts_path.to_string_lossy().to_string())
+      .ok_or_else(|| {
+        deno_core::anyhow::anyhow!(
+          "No declaration file emitted for entry point: {}",
+          entry_specifier
+        )
+      })?;
+
+    // Flatten: resolve all `export ... from "..."` re-exports by inlining
+    // the referenced declarations from other .d.ts files.
+    let flattened =
+      flatten_declarations(entry_dts, &entry_path, &dts_by_source);
+
+    // Determine output path for the rolled-up .d.ts
+    let dts_output_path = if let Some(ref output) = bundle_flags.output_path {
+      let js_path = init_cwd.join(output);
+      to_dts_path(&js_path)
+    } else if let Some(ref outdir) = bundle_flags.output_dir {
+      let outdir = PathBuf::from(outdir);
+      let stem = entry_path.file_stem().unwrap_or_default();
+      outdir.join(format!("{}.d.ts", stem.to_string_lossy()))
+    } else {
+      to_dts_path(&entry_path)
+    };
+
+    if let Some(parent) = dts_output_path.parent() {
+      sys.fs_create_dir_all(parent).with_context(|| {
+        format!("Failed to create directory {}", parent.display())
+      })?;
+    }
+
+    sys
+      .fs_write(&dts_output_path, flattened.as_bytes())
+      .with_context(|| {
+        format!("Failed to write {}", dts_output_path.display())
+      })?;
+    log::info!(
+      "{} {}",
+      deno_terminal::colors::green("Emit"),
+      dts_output_path.display()
+    );
+  }
+
+  Ok(())
+}
+
+/// Convert a source file path to its corresponding declaration file path.
+///
+/// Mirrors TSC's declaration emit: `.mts`/`.mjs` sources produce `.d.mts`,
+/// `.cts`/`.cjs` produce `.d.cts`, and everything else produces `.d.ts`. Using
+/// the wrong extension here would make the rolled-up output reference a
+/// declaration file that was never emitted.
+fn to_dts_path(source_path: &Path) -> PathBuf {
+  let stem = source_path.file_stem().unwrap_or_default();
+  let parent = source_path.parent().unwrap_or(Path::new(""));
+  let dts_ext = match source_path.extension().and_then(|e| e.to_str()) {
+    Some("mts" | "mjs") => "d.mts",
+    Some("cts" | "cjs") => "d.cts",
+    _ => "d.ts",
+  };
+  parent.join(format!("{}.{}", stem.to_string_lossy(), dts_ext))
+}
+
+/// Join multi-line `export { ... } from "..."` and `import type { ... } from "..."`
+/// statements into single lines so that line-based parsing can handle them.
+fn join_multiline_statements(content: &str) -> String {
+  let mut result = Vec::new();
+  let mut accumulator: Option<String> = None;
+
+  for line in content.lines() {
+    if let Some(ref mut acc) = accumulator {
+      // We're inside a multi-line statement, keep accumulating
+      acc.push(' ');
+      acc.push_str(line.trim());
+      if line.contains(';') {
+        // Statement is complete
+        result.push(acc.clone());
+        accumulator = None;
+      }
+    } else {
+      let trimmed = line.trim();
+      // Detect start of a multi-line export/import that has `{` but no closing `}`
+      let is_export_or_import =
+        trimmed.starts_with("export ") || trimmed.starts_with("import ");
+      if is_export_or_import && trimmed.contains('{') && !trimmed.contains('}')
+      {
+        accumulator = Some(line.trim().to_string());
+      } else {
+        result.push(line.to_string());
+      }
+    }
+  }
+
+  // If there's an unterminated accumulator, flush it
+  if let Some(acc) = accumulator {
+    result.push(acc);
+  }
+
+  result.join("\n")
+}
+
+/// Warn that a relative re-export could not be inlined, so the rolled-up
+/// declaration file keeps a dangling `from "./..."` reference.
+fn warn_dangling_reexport(reexport_path: &str, source_path: &Path) {
+  log::warn!(
+    "{} could not inline re-exported declarations from {:?} in {}; the generated .d.ts will keep a dangling relative reference",
+    deno_terminal::colors::yellow("warning:"),
+    reexport_path,
+    source_path.display(),
+  );
+}
+
+/// Flatten a .d.ts file by resolving all `export ... from "..."` re-exports,
+/// inlining the referenced declarations from other emitted .d.ts files.
+///
+/// This produces a single self-contained .d.ts file with no relative imports.
+fn flatten_declarations(
+  entry_dts_content: &str,
+  entry_source_path: &Path,
+  dts_by_source: &std::collections::HashMap<String, String>,
+) -> String {
+  let entry_dir = entry_source_path.parent().unwrap_or(Path::new(""));
+  let mut output_lines: Vec<String> = Vec::new();
+  // Track which declarations have already been inlined to avoid duplicates
+  let mut inlined_files: std::collections::HashSet<String> =
+    std::collections::HashSet::new();
+
+  // The set of files whose declarations actually get inlined into the output,
+  // i.e. everything transitively reachable from the entry via `export ... from`
+  // chains. An `import ... from "./relative"` line may only be dropped when its
+  // target is in this set; otherwise the imported symbol would have no
+  // declaration in the rolled-up output. (Membership in `dts_by_source` is not
+  // enough: a module can be emitted yet never inlined because nothing
+  // re-exports it.)
+  let reexport_closure =
+    collect_reexport_closure(entry_dts_content, entry_dir, dts_by_source);
+
+  let joined = join_multiline_statements(entry_dts_content);
+
+  for line in joined.lines() {
+    let trimmed = line.trim();
+
+    // Skip amd-module directives
+    if trimmed.starts_with("/// <amd-module") {
+      continue;
+    }
+
+    // Handle: export { Name1, Name2 } from "./relative";
+    // Handle: export type { Name1, Name2 } from "./relative";
+    if let Some(from_path) = extract_reexport_path(trimmed) {
+      // Resolve the relative path to absolute
+      let resolved = resolve_relative_dts_path(entry_dir, &from_path);
+      let resolved_str = resolved.to_string_lossy().to_string();
+
+      if let Some(referenced_dts) = dts_by_source.get(&resolved_str) {
+        if !inlined_files.contains(&resolved_str) {
+          inlined_files.insert(resolved_str.clone());
+          // Inline all declarations from the referenced file
+          inline_declarations(
+            referenced_dts,
+            &resolved,
+            dts_by_source,
+            &reexport_closure,
+            &mut output_lines,
+            &mut inlined_files,
+          );
+        }
+        // The re-export line is replaced by the inlined content
+        continue;
+      }
+      // A relative re-export whose declaration file was not emitted. Keeping
+      // the line leaves a dangling `from "./..."` in the supposedly
+      // self-contained output, so warn rather than silently shipping it.
+      warn_dangling_reexport(&from_path, entry_source_path);
+    }
+
+    // Drop an `import ... from "./relative"` whose target is inlined into the
+    // output (its declarations are already present). A target that is not in
+    // the closure is left as-is rather than deleted, so we never strip an
+    // import whose symbol has no inlined declaration.
+    if let Some(import_path) = extract_import_path(trimmed) {
+      let resolved = resolve_relative_dts_path(entry_dir, &import_path);
+      let resolved_str = resolved.to_string_lossy().to_string();
+      if reexport_closure.contains(&resolved_str) {
+        continue;
+      }
+    }
+
+    output_lines.push(line.to_string());
+  }
+
+  output_lines.join("\n") + "\n"
+}
+
+/// Collect the set of `.d.ts` files (keyed as in `dts_by_source`) that are
+/// transitively reachable from the entry through `export ... from "./relative"`
+/// re-export chains. These are exactly the files whose declarations get inlined
+/// into the rolled-up output by [`inline_declarations`].
+fn collect_reexport_closure(
+  entry_dts_content: &str,
+  entry_dir: &Path,
+  dts_by_source: &std::collections::HashMap<String, String>,
+) -> std::collections::HashSet<String> {
+  let mut closure = std::collections::HashSet::new();
+  let mut stack: Vec<(String, PathBuf)> =
+    vec![(entry_dts_content.to_string(), entry_dir.to_path_buf())];
+
+  while let Some((content, dir)) = stack.pop() {
+    let joined = join_multiline_statements(&content);
+    for line in joined.lines() {
+      let trimmed = line.trim();
+      if let Some(from_path) = extract_reexport_path(trimmed) {
+        let resolved = resolve_relative_dts_path(&dir, &from_path);
+        let resolved_str = resolved.to_string_lossy().to_string();
+        if !closure.contains(&resolved_str)
+          && let Some(referenced_dts) = dts_by_source.get(&resolved_str)
+        {
+          closure.insert(resolved_str.clone());
+          let child_dir =
+            resolved.parent().unwrap_or(Path::new("")).to_path_buf();
+          stack.push((referenced_dts.clone(), child_dir));
+        }
+      }
+    }
+  }
+
+  closure
+}
+
+/// Extract the relative path from an `export ... from "..."` line.
+/// Returns None if the line is not a re-export or uses a non-relative path.
+fn extract_reexport_path(line: &str) -> Option<String> {
+  // Match patterns like:
+  //   export { X } from "./foo";
+  //   export { X, Y } from "./foo.ts";
+  //   export type { X } from "./foo";
+  let trimmed = line.trim();
+  if !trimmed.starts_with("export ") || !trimmed.contains(" from ") {
+    return None;
+  }
+  // Extract the path between quotes after "from"
+  let from_idx = trimmed.find(" from ")?;
+  let after_from = &trimmed[from_idx + 6..];
+  let quote_char = after_from.chars().next()?;
+  if quote_char != '"' && quote_char != '\'' {
+    return None;
+  }
+  let end_quote = after_from[1..].find(quote_char)?;
+  let path = &after_from[1..1 + end_quote];
+
+  // Only resolve relative paths (starting with ./ or ../)
+  if path.starts_with("./") || path.starts_with("../") {
+    Some(path.to_string())
+  } else {
+    None
+  }
+}
+
+/// Resolve a relative .d.ts path from the given directory.
+fn resolve_relative_dts_path(base_dir: &Path, relative: &str) -> PathBuf {
+  let mut resolved = base_dir.join(relative);
+  // The reference might be "./lib.ts" but the actual .d.ts is at the
+  // path with .d.ts extension
+  resolved = to_dts_path(&resolved);
+  deno_path_util::normalize_path(Cow::Owned(resolved)).into_owned()
+}
+
+/// Extract a relative path from an `import ... from "..."` line.
+fn extract_import_path(line: &str) -> Option<String> {
+  let trimmed = line.trim();
+  if !trimmed.starts_with("import ") || !trimmed.contains(" from ") {
+    return None;
+  }
+  let from_idx = trimmed.find(" from ")?;
+  let after_from = &trimmed[from_idx + 6..];
+  let quote_char = after_from.chars().next()?;
+  if quote_char != '"' && quote_char != '\'' {
+    return None;
+  }
+  let end_quote = after_from[1..].find(quote_char)?;
+  let path = &after_from[1..1 + end_quote];
+  if path.starts_with("./") || path.starts_with("../") {
+    Some(path.to_string())
+  } else {
+    None
+  }
+}
+
+/// Inline declarations from a .d.ts file into the output, recursively
+/// resolving any re-exports in the referenced file.
+fn inline_declarations(
+  dts_content: &str,
+  source_path: &Path,
+  dts_by_source: &std::collections::HashMap<String, String>,
+  reexport_closure: &std::collections::HashSet<String>,
+  output_lines: &mut Vec<String>,
+  inlined_files: &mut std::collections::HashSet<String>,
+) {
+  let source_dir = source_path.parent().unwrap_or(Path::new(""));
+
+  let joined = join_multiline_statements(dts_content);
+
+  for line in joined.lines() {
+    let trimmed = line.trim();
+
+    // Skip amd-module directives
+    if trimmed.starts_with("/// <amd-module") {
+      continue;
+    }
+
+    // Recursively resolve re-exports from this file too
+    if let Some(from_path) = extract_reexport_path(trimmed) {
+      let resolved = resolve_relative_dts_path(source_dir, &from_path);
+      let resolved_str = resolved.to_string_lossy().to_string();
+
+      if let Some(referenced_dts) = dts_by_source.get(&resolved_str) {
+        if !inlined_files.contains(&resolved_str) {
+          inlined_files.insert(resolved_str.clone());
+          inline_declarations(
+            referenced_dts,
+            &resolved,
+            dts_by_source,
+            reexport_closure,
+            output_lines,
+            inlined_files,
+          );
+        }
+        continue;
+      }
+      // A relative re-export whose declaration file was not emitted; warn so a
+      // dangling reference in the output does not pass by unnoticed.
+      warn_dangling_reexport(&from_path, source_path);
+    }
+
+    // Strip `import type ... from "./relative"` / `import { ... } from
+    // "./relative"` lines only when the referenced file is actually inlined
+    // into this rolled-up output (it's in the re-export closure). The imported
+    // symbol's declaration is then present directly. A target that is emitted
+    // but never inlined is intentionally left untouched, so we don't delete an
+    // import whose symbol would otherwise vanish.
+    if let Some(import_path) = extract_import_path(trimmed) {
+      let resolved = resolve_relative_dts_path(source_dir, &import_path);
+      let resolved_str = resolved.to_string_lossy().to_string();
+      if reexport_closure.contains(&resolved_str) {
+        continue; // skip - declarations are inlined
+      }
+    }
+
+    output_lines.push(line.to_string());
+  }
 }
 
 /// Bundle a single entrypoint for `deno compile --bundle` and return the
@@ -382,6 +847,7 @@ pub async fn bundle_for_compile(
     entrypoints: vec![entrypoint],
     output_path: None,
     output_dir: None,
+    declaration: false,
     external,
     format: BundleFormat::Esm,
     minify,
@@ -547,7 +1013,9 @@ async fn bundle_watch(
             watcher_communicator.watch_paths(current_roots.borrow().clone());
         }
 
-        Ok(())
+        // `deno bundle --watch` has no per-run exit code (and disables the
+        // "finished" message above), so report 0 to the watcher.
+        Ok(0)
       })
     },
   )
@@ -1592,6 +2060,7 @@ impl DenoPluginHandler {
           allow_unknown_media_types: true,
           skip_graph_roots_validation: true,
           file_content_overrides: Default::default(),
+          file_header_overrides: Default::default(),
         },
       )
       .await?;
@@ -2373,7 +2842,7 @@ fn print_finished_message(
     deno_terminal::colors::green("Bundled"),
     metafile.inputs.len(),
     if metafile.inputs.len() == 1 { "" } else { "s" },
-    crate::display::human_elapsed(duration.as_millis()),
+    crate::display::human_elapsed(duration),
   ));
 
   let longest = output_infos
@@ -2404,4 +2873,82 @@ fn print_finished_message(
   log::info!("{}", output);
 
   Ok(())
+}
+
+#[cfg(test)]
+mod declaration_flatten_tests {
+  use std::collections::HashMap;
+  use std::path::Path;
+
+  use super::flatten_declarations;
+  use super::resolve_relative_dts_path;
+
+  fn dts_key(dir: &Path, rel: &str) -> String {
+    resolve_relative_dts_path(dir, rel)
+      .to_string_lossy()
+      .to_string()
+  }
+
+  // A re-export chain is inlined into a single self-contained file: the
+  // referenced declarations are pulled in and the now-redundant relative
+  // `import type` / re-export lines are removed.
+  #[test]
+  fn flatten_inlines_reexport_chain_and_strips_import() {
+    let entry = Path::new("/proj/mod.ts");
+    let dir = entry.parent().unwrap();
+    let mut map = HashMap::new();
+    map.insert(
+      dts_key(dir, "./lib.ts"),
+      "import type { Config } from \"./types.ts\";\n\
+       export declare class Client {\n}\n"
+        .to_string(),
+    );
+    map.insert(
+      dts_key(dir, "./types.ts"),
+      "export interface Config {\n}\n".to_string(),
+    );
+    let entry_dts = "export { Client } from \"./lib.ts\";\n\
+                     export type { Config } from \"./types.ts\";\n";
+
+    let out = flatten_declarations(entry_dts, entry, &map);
+
+    assert!(out.contains("declare class Client"));
+    assert!(out.contains("interface Config"));
+    assert!(
+      !out.contains("from \"./"),
+      "flattened output should have no relative imports:\n{out}"
+    );
+  }
+
+  // Regression for the over-strip bug: a bare `import` of an in-graph module
+  // that is emitted but never re-exported (so its declarations are NOT inlined)
+  // must be left intact. Stripping it on the mere presence of the file in the
+  // emitted set would leave the imported symbol undefined in the output.
+  #[test]
+  fn flatten_keeps_import_of_non_reexported_module() {
+    let entry = Path::new("/proj/mod.ts");
+    let dir = entry.parent().unwrap();
+    let mut map = HashMap::new();
+    map.insert(
+      dts_key(dir, "./lib.ts"),
+      "import { Widget } from \"./internal.ts\";\n\
+       export declare class Client {\n    widget(): Widget;\n}\n"
+        .to_string(),
+    );
+    // Emitted but only imported (for a return type), never re-exported.
+    map.insert(
+      dts_key(dir, "./internal.ts"),
+      "export declare class Widget {\n}\n".to_string(),
+    );
+    let entry_dts = "export { Client } from \"./lib.ts\";\n";
+
+    let out = flatten_declarations(entry_dts, entry, &map);
+
+    assert!(out.contains("declare class Client"));
+    assert!(
+      out.contains("import { Widget }"),
+      "import of a non-re-exported module must be preserved so the symbol \
+       still resolves:\n{out}"
+    );
+  }
 }

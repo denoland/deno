@@ -116,7 +116,7 @@ Deno.test({
     assertEquals(typeof process.versions.nghttp2, "string");
     assertEquals(typeof process.versions.napi, "string");
     // Must match the NAPI_VERSION in ext/napi/js_native_api.rs
-    assertEquals(process.versions.napi, "9");
+    assertEquals(process.versions.napi, "10");
     assertEquals(typeof process.versions.llhttp, "string");
     assertEquals(typeof process.versions.openssl, "string");
     assertEquals(typeof process.versions.cldr, "string");
@@ -1507,6 +1507,45 @@ Deno.test("process.cpuUsage()", () => {
 
 Deno.test("importedCpuUsage", () => {
   assert(importedCpuUsage === process.cpuUsage);
+});
+
+Deno.test("process.resourceUsage()", () => {
+  const usage = process.resourceUsage();
+  // All 16 fields documented at
+  // https://nodejs.org/api/process.html#processresourceusage must be present
+  // and numeric.
+  for (
+    const field of [
+      "userCPUTime",
+      "systemCPUTime",
+      "maxRSS",
+      "sharedMemorySize",
+      "unsharedDataSize",
+      "unsharedStackSize",
+      "minorPageFault",
+      "majorPageFault",
+      "swappedOut",
+      "fsRead",
+      "fsWrite",
+      "ipcSent",
+      "ipcReceived",
+      "signalsCount",
+      "voluntaryContextSwitches",
+      "involuntaryContextSwitches",
+    ] as const
+  ) {
+    assert(typeof usage[field] === "number", `${field} should be a number`);
+    assert(usage[field] >= 0, `${field} should be non-negative`);
+  }
+  // CPU time should be monotonically non-decreasing.
+  const later = process.resourceUsage();
+  assert(later.userCPUTime >= usage.userCPUTime);
+  assert(later.systemCPUTime >= usage.systemCPUTime);
+});
+
+Deno.test("importedResourceUsage", async () => {
+  const { resourceUsage } = await import("node:process");
+  assert(resourceUsage === process.resourceUsage);
 });
 
 Deno.test("process.stdout.columns writable", () => {

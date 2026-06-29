@@ -22,6 +22,7 @@ const {
   op_net_join_multi_v6_udp,
   op_net_leave_multi_v4_udp,
   op_net_leave_multi_v6_udp,
+  op_net_listen_memory,
   op_net_listen_tcp,
   op_net_listen_tunnel,
   op_net_listen_unix,
@@ -592,7 +593,7 @@ const listenOptionApiName = Symbol("listenOptionApiName");
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      const port = validatePort(args.port);
+      const port = validatePort(args.port, true);
       const { 0: rid, 1: addr } = op_net_listen_tcp(
         {
           hostname: args.hostname ?? "0.0.0.0",
@@ -637,7 +638,23 @@ function listen(args) {
   }
 }
 
-function validatePort(maybePort) {
+// Internal: the in-process `memory:` transport is not a public `Deno.listen`
+// transport. It backs the desktop runtime's `DENO_SERVE_ADDRESS=memory:<name>`
+// serve path only, so it is exposed to `ext:deno_http/00_serve.js` but never
+// reachable through `Deno.listen`/`Deno.serve`.
+function listenMemory(name) {
+  const { 0: rid, 1: resolvedName, 2: id } = op_net_listen_memory(name);
+  const addr = { transport: "memory", name: resolvedName, id };
+  return new Listener(rid, addr, "memory");
+}
+
+function validatePort(maybePort, isServer = false) {
+  // A missing port means "any available port" (port 0) for servers. Clients
+  // must always specify a port to connect to, so a missing port is left as-is
+  // and rejected below.
+  if (isServer && (maybePort === null || maybePort === undefined)) {
+    maybePort = 0;
+  }
   if (typeof maybePort !== "number" && typeof maybePort !== "string") {
     throw new TypeError(`Invalid port (expected number): ${maybePort}`);
   }
@@ -649,7 +666,8 @@ function validatePort(maybePort) {
     } else {
       throw new TypeError(`Invalid port: ${maybePort}`);
     }
-  } else if (port < 0 || port > 65535) {
+  } else if (port < (isServer ? 0 : 1) || port > 65535) {
+    // Servers may bind to port 0 (OS-assigned), clients may not connect to it.
     throw new RangeError(`Invalid port (out of range): ${maybePort}`);
   }
   return port;
@@ -659,7 +677,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
   return function listenDatagram(args) {
     switch (args.transport) {
       case "udp": {
-        const port = validatePort(args.port);
+        const port = validatePort(args.port, true);
         const { 0: rid, 1: addr } = udpOpFn(
           {
             hostname: args.hostname ?? "0.0.0.0",
@@ -707,6 +725,11 @@ async function connect(args) {
             },
             undefined,
             cancelRid,
+            {
+              autoSelectFamily: args.autoSelectFamily ?? true,
+              autoSelectFamilyAttemptDelay: args.autoSelectFamilyAttemptDelay ??
+                250,
+            },
           );
         localAddr.transport = "tcp";
         remoteAddr.transport = "tcp";
@@ -749,6 +772,7 @@ return {
   createListenDatagram,
   dropMembership,
   listen,
+  listenMemory,
   Listener,
   listenOptionApiName,
   resolveDns,

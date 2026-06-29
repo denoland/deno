@@ -558,6 +558,55 @@ fn napi_create_buffer_copy<'s>(
 }
 
 #[napi_sym]
+fn node_api_create_buffer_from_arraybuffer<'s>(
+  env: &'s mut Env,
+  arraybuffer: napi_value<'s>,
+  byte_offset: usize,
+  byte_length: usize,
+  result: *mut napi_value<'s>,
+) -> napi_status {
+  // Raw handle for last-error bookkeeping on the paths below where `env` is
+  // still borrowed by the callback scope.
+  let env_ptr: *mut Env = &mut *env;
+
+  check_arg!(env, result);
+
+  // `arraybuffer` must be an ArrayBuffer.
+  let Some(ab) =
+    arraybuffer.and_then(|v| v8::Local::<v8::ArrayBuffer>::try_from(v).ok())
+  else {
+    return napi_set_last_error(env, napi_invalid_arg);
+  };
+
+  // The requested [byte_offset, byte_offset + byte_length) range must lie
+  // within the bounds of the ArrayBuffer.
+  let in_bounds = byte_offset
+    .checked_add(byte_length)
+    .is_some_and(|end| end <= ab.byte_length());
+  if !in_bounds {
+    return napi_set_last_error(env, napi_invalid_arg);
+  }
+
+  v8::callback_scope!(unsafe scope, env.context());
+
+  let create_buffer = v8::Local::new(scope, &env.create_buffer);
+  let recv = v8::null(scope).into();
+  let offset = v8::Number::new(scope, byte_offset as f64).into();
+  let length = v8::Number::new(scope, byte_length as f64).into();
+  let Some(buffer) =
+    create_buffer.call(scope, recv, &[ab.into(), offset, length])
+  else {
+    return napi_set_last_error(env_ptr, napi_generic_failure);
+  };
+
+  unsafe {
+    *result = buffer.into();
+  }
+
+  napi_clear_last_error(env_ptr)
+}
+
+#[napi_sym]
 fn napi_is_buffer(
   env: *mut Env,
   value: napi_value,
@@ -615,10 +664,34 @@ fn napi_get_node_version(
   let env = check_env!(env);
   check_arg!(env, result);
 
+  // Derive major/minor/patch at compile time from `deno_node::NODE_VERSION`,
+  // the single source of truth for the emulated Node.js version, so the value
+  // reported to native addons via `napi_get_node_version()` stays in sync with
+  // `process.version` / `process.versions.node`.
+  const fn parse_part(part: usize) -> u32 {
+    let bytes = deno_node::NODE_VERSION.as_bytes();
+    let mut seen_dots = 0;
+    let mut value = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+      let b = bytes[i];
+      if b == b'.' {
+        seen_dots += 1;
+        if seen_dots > part {
+          break;
+        }
+      } else if seen_dots == part && b.is_ascii_digit() {
+        value = value * 10 + (b - b'0') as u32;
+      }
+      i += 1;
+    }
+    value
+  }
+
   const NODE_VERSION: napi_node_version = napi_node_version {
-    major: 20,
-    minor: 11,
-    patch: 1,
+    major: parse_part(0),
+    minor: parse_part(1),
+    patch: parse_part(2),
     release: c"Deno".as_ptr(),
   };
 

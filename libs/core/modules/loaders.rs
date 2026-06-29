@@ -81,14 +81,31 @@ pub trait ModuleLoader {
   /// Most loaders should use the default implementation. Embedders that need
   /// to synchronously call JavaScript during resolution, such as Node
   /// `module.registerHooks()`, can override this method.
+  ///
+  /// `import_attributes` carries the static-import attributes from the
+  /// `with { ... }` clause; the default implementation ignores them.
   fn resolve_with_scope(
     &self,
     _scope: &mut v8::PinScope,
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
+    _import_attributes: &HashMap<String, String>,
   ) -> ModuleResolveResponse {
     self.resolve(specifier, referrer, kind)
+  }
+
+  /// Whether driving an ES module load to completion should also pump the V8
+  /// event loop. Loaders that satisfy module loads via asynchronous
+  /// JavaScript, such as Node `module.registerHooks()` load hooks (which run
+  /// on an async polling task), must return `true`: otherwise the recursive
+  /// load awaits a hook response that can never be delivered and deadlocks.
+  ///
+  /// Defaults to `false` so ordinary module loads are driven on their own
+  /// without running unrelated event-loop work mid-load, preserving execution
+  /// ordering for non-hooked module graphs.
+  fn pump_event_loop_during_load(&self) -> bool {
+    false
   }
 
   /// Override to customize the behavior of `import.meta.resolve` resolution.
@@ -162,6 +179,20 @@ pub trait ModuleLoader {
     _code_cache: &[u8],
   ) -> Pin<Box<dyn Future<Output = ()>>> {
     async {}.boxed_local()
+  }
+
+  /// Read a persisted V8 code cache for a residual lazy ext-script that is
+  /// compiled via `compile_function` during bootstrap (not loaded through
+  /// `load()`, so its cache cannot ride on a `ModuleSource`). Returns the
+  /// stored bytes + source hash so the compile can consume the cache.
+  ///
+  /// It's not required to implement this method.
+  fn get_code_cache(
+    &self,
+    _specifier: &ModuleSpecifier,
+    _source: &v8::String,
+  ) -> Option<SourceCodeCacheInfo> {
+    None
   }
 
   /// Called when V8 code cache should be ignored for this module. This can happen

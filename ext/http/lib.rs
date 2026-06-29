@@ -111,6 +111,45 @@ pub use request_properties::HttpPropertyExtractor;
 pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
 
+fn preferred_supported_encoding(
+  encodings: impl Iterator<
+    Item = Result<(Option<Encoding>, f32), fly_accept_encoding::EncodingError>,
+  >,
+) -> Encoding {
+  let mut best_brotli_qval = 0.0;
+  let mut best_gzip_qval = 0.0;
+  let mut best_identity_qval = 0.0;
+
+  for encoding in encodings {
+    let Ok((encoding, qval)) = encoding else {
+      continue;
+    };
+    match encoding {
+      Some(Encoding::Brotli) if qval > best_brotli_qval => {
+        best_brotli_qval = qval;
+      }
+      Some(Encoding::Gzip) if qval > best_gzip_qval => {
+        best_gzip_qval = qval;
+      }
+      Some(Encoding::Identity) if qval > best_identity_qval => {
+        best_identity_qval = qval;
+      }
+      _ => {}
+    }
+  }
+
+  if best_brotli_qval >= best_gzip_qval
+    && best_brotli_qval >= best_identity_qval
+    && best_brotli_qval > 0.0
+  {
+    Encoding::Brotli
+  } else if best_gzip_qval >= best_identity_qval && best_gzip_qval > 0.0 {
+    Encoding::Gzip
+  } else {
+    Encoding::Identity
+  }
+}
+
 fn cache_control_has_no_transform(value: &str) -> Option<bool> {
   let mut no_transform = false;
   for token in value.split(',') {
@@ -154,6 +193,9 @@ pub struct Options {
 
   /// If `false`, the server will abort the request when the response is dropped.
   pub no_legacy_abort: bool,
+
+  /// If `true`, responses may be compressed based on request and response headers.
+  pub automatic_compression: bool,
 }
 
 #[cfg(not(feature = "default_property_extractor"))]
@@ -165,6 +207,7 @@ deno_core::extension!(
     op_http_accept,
     op_http_headers,
     op_http_serve_address_override,
+    op_http_serve_default_compression,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -230,6 +273,7 @@ deno_core::extension!(
     op_http_accept,
     op_http_headers,
     op_http_serve_address_override,
+    op_http_serve_default_compression,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -805,14 +849,8 @@ impl HttpConnResource {
       let request = request_rx.await.ok()?;
       let accept_encoding = {
         let encodings =
-          fly_accept_encoding::encodings_iter_http(request.headers()).filter(
-            |r| matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _))),
-          );
-
-        fly_accept_encoding::preferred(encodings)
-          .ok()
-          .flatten()
-          .unwrap_or(Encoding::Identity)
+          fly_accept_encoding::encodings_iter_http(request.headers());
+        preferred_supported_encoding(encodings)
       };
 
       let otel_info =
@@ -1808,6 +1846,14 @@ pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
   (0, String::new(), 0, false)
 }
 
+#[op2(fast)]
+pub fn op_http_serve_default_compression() -> bool {
+  match std::env::var("DENO_SERVE_AUTOMATIC_COMPRESSION") {
+    Ok(value) => !matches!(value.to_ascii_lowercase().as_str(), "0" | "false"),
+    Err(_) => false,
+  }
+}
+
 fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
   let (input, duplicate) = match input.strip_prefix("duplicate,") {
     Some(input) => (input, true),
@@ -1866,6 +1912,15 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
       }
     }
     Some(("tunnel", _)) => (4, String::new(), 0, duplicate),
+    Some(("memory", name)) => {
+      // In-process byte channel. `name` identifies the listener; the peer
+      // (e.g. the desktop runtime) connects to it by the same name.
+      if name.is_empty() {
+        log::error!("DENO_SERVE_ADDRESS: empty memory name");
+        return (0, String::new(), 0, duplicate);
+      }
+      (5, name.to_string(), 0, duplicate)
+    }
     Some((_, _)) | None => {
       log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
       (0, String::new(), 0, false)
