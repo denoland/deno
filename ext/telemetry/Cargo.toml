@@ -35,9 +35,6 @@ opentelemetry-proto.workspace = true
 opentelemetry-semantic-conventions.workspace = true
 opentelemetry_sdk.workspace = true
 pin-project.workspace = true
-# opentelemetry-proto 0.32 uses prost 0.14, which is newer than the workspace
-# prost (0.13) still used by deno_kv, so depend on 0.14 directly here so the
-# `prost::Message` bound in the gRPC framing matches the generated proto types.
 prost = "0.14"
 serde.workspace = true
 sys_traits.workspace = true
