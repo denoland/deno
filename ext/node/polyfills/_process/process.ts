@@ -115,7 +115,10 @@ ReflectDefineProperty(envTarget, SymbolFor("nodejs.util.inspect.custom"), {
   __proto__: null,
   value(this: Record<string | symbol, string>, depth: number) {
     if (typeof depth === "number" && depth < 0) {
-      return this;
+      // Past the inspect depth limit; match Node's `[Object]` placeholder
+      // rather than returning the Proxy (which re-pierces to the empty
+      // target and renders `{}`).
+      return "[Object]";
     }
     try {
       // `this` is the env Proxy; spread it (via the traps) into a plain object
