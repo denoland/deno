@@ -433,11 +433,14 @@ impl<'a> NpmPackageVersionResolver<'a> {
     let version_info = if let Some(tag) = version_req.tag() {
       match self.tag_to_version_info(tag) {
         Ok(version_info) => Ok(version_info),
-        Err(NpmPackageVersionResolutionError::DistTagVersionTooNew {
-          ..
-        }) => self.resolve_best_matching_dist_tag_fallback_version_info(
+        Err(
+          err @ NpmPackageVersionResolutionError::DistTagVersionTooNew {
+            ..
+          },
+        ) => self.resolve_best_matching_dist_tag_fallback_version_info(
           tag,
           version_req,
+          err,
         ),
         Err(err) => Err(err),
       }
@@ -470,6 +473,7 @@ impl<'a> NpmPackageVersionResolver<'a> {
     &self,
     tag: &str,
     error_version_req: &VersionReq,
+    too_new_error: NpmPackageVersionResolutionError,
   ) -> Result<&'a NpmPackageVersionInfo, NpmPackageVersionResolutionError> {
     let Some(tagged_version) = self.info.dist_tags.get(tag) else {
       // Unreachable in practice: this fn is only called after
@@ -494,7 +498,19 @@ impl<'a> NpmPackageVersionResolver<'a> {
         },
       ]))),
     );
-    self.resolve_best_matching_version_info(&fallback_req, error_version_req)
+    match self
+      .resolve_best_matching_version_info(&fallback_req, error_version_req)
+    {
+      Ok(version_info) => Ok(version_info),
+      // No version at or below the tagged version satisfies the minimum
+      // dependency age either. Surface the original error, which names the
+      // tag and the too-new version it maps to, rather than the generic
+      // "version req not matched" message for the synthesized `<=` range.
+      Err(NpmPackageVersionResolutionError::VersionReqNotMatched {
+        ..
+      }) => Err(too_new_error),
+      Err(err) => Err(err),
+    }
   }
 
   fn resolve_best_matching_version_info(
@@ -1133,6 +1149,62 @@ mod test {
     assert!(matches!(
       result,
       Err(NpmPackageVersionResolutionError::VersionReqNotMatched { .. })
+    ));
+  }
+
+  #[test]
+  fn test_tag_too_new_with_build_metadata_uses_lte_version() {
+    // The fallback range is built directly from the parsed tagged `Version`,
+    // so a tag pointing at a version carrying build metadata resolves without
+    // a format/reparse round-trip. Regression guard for that construction.
+    let package_req = PackageReq::from_str("test@latest").unwrap();
+    let package_info = NpmPackageInfo {
+      name: "test".into(),
+      versions: HashMap::from([
+        (version("1.9.0"), version_info("1.9.0")),
+        (version("2.0.0+build.5"), version_info("2.0.0+build.5")),
+      ]),
+      dist_tags: HashMap::from([("latest".into(), version("2.0.0+build.5"))]),
+      time: HashMap::from([
+        (version("1.9.0"), date("2025-05-15T00:00:00.000Z")),
+        (version("2.0.0+build.5"), date("2025-05-29T00:00:00.000Z")),
+      ]),
+    };
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-20T00:00:00.000Z");
+    let version_resolver = resolver.get_for_package(&package_info);
+    let result = version_resolver
+      .get_resolved_package_version_and_info(&package_req.version_req);
+    assert_eq!(result.unwrap().version.to_string(), "1.9.0");
+  }
+
+  #[test]
+  fn test_tag_too_new_with_no_allowed_lower_version_reports_tag_error() {
+    // When nothing at or below the tagged version satisfies the minimum
+    // dependency age, the error names the dist-tag and the version it maps to
+    // rather than the synthesized `<=` range.
+    let package_req = PackageReq::from_str("test@latest").unwrap();
+    let package_info = NpmPackageInfo {
+      name: "test".into(),
+      versions: HashMap::from([
+        (version("1.9.0"), version_info("1.9.0")),
+        (version("2.0.0"), version_info("2.0.0")),
+      ]),
+      dist_tags: HashMap::from([("latest".into(), version("2.0.0"))]),
+      time: HashMap::from([
+        (version("1.9.0"), date("2025-05-29T00:00:00.000Z")),
+        (version("2.0.0"), date("2025-05-30T00:00:00.000Z")),
+      ]),
+    };
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-20T00:00:00.000Z");
+    let version_resolver = resolver.get_for_package(&package_info);
+    let err = version_resolver
+      .get_resolved_package_version_and_info(&package_req.version_req)
+      .unwrap_err();
+    assert!(matches!(
+      err,
+      NpmPackageVersionResolutionError::DistTagVersionTooNew { .. }
     ));
   }
 
