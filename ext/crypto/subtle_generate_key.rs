@@ -63,12 +63,17 @@ pub enum GenerateKeyAlgorithm {
     hash: String,
     length: Option<u32>,
   },
+  Kmac {
+    name: String,
+    length: Option<u32>,
+  },
   ChaCha20Poly1305,
   Ed25519,
   X25519,
   X448,
   MlKem(crate::mlkem::MlKemVariant),
   MlDsa(u8, String),
+  SlhDsa(crate::slhdsa::SlhDsaVariantId),
   /// Captured for any algorithm name not registered under `generateKey`.
   /// Deferring the error to [`run`] lets us reject with `NotSupportedError`
   /// (the WebCrypto spec's `normalizeAlgorithm` outcome) rather than the
@@ -166,6 +171,15 @@ impl<'a> WebIdlConverter<'a> for GenerateKeyAlgorithm {
           length,
         }
       }
+      "KMAC128" | "KMAC256" => {
+        let length = obj
+          .as_ref()
+          .and_then(|o| read_u32_member(scope, **o, b"length"));
+        Self::Kmac {
+          name: canonical,
+          length,
+        }
+      }
       "ChaCha20-Poly1305" => Self::ChaCha20Poly1305,
       "Ed25519" => Self::Ed25519,
       "X25519" => Self::X25519,
@@ -176,6 +190,9 @@ impl<'a> WebIdlConverter<'a> for GenerateKeyAlgorithm {
       "ML-DSA-44" => Self::MlDsa(0, canonical),
       "ML-DSA-65" => Self::MlDsa(1, canonical),
       "ML-DSA-87" => Self::MlDsa(2, canonical),
+      _ if let Some(variant) = crate::slhdsa::variant_from_name(&canonical) => {
+        Self::SlhDsa(variant)
+      }
       _ => Self::Unknown(canonical),
     })
   }
@@ -428,6 +445,23 @@ pub async fn run(
         extractable,
       })
     }
+    GenerateKeyAlgorithm::Kmac { name, length } => {
+      check_usages(&usages, &["sign", "verify"])?;
+      let length = length.unwrap_or(if name == "KMAC128" { 128 } else { 256 });
+      if length == 0 || !length.is_multiple_of(8) {
+        return Err(op_error("Invalid length".into()));
+      }
+      let mut bytes = vec![0u8; (length / 8) as usize];
+      crate::rand::thread_rng().fill(&mut bytes[..]);
+      Ok(GenerateKeyOutput::Symmetric {
+        algorithm_name: name,
+        length: Some(length),
+        hash_name: None,
+        bytes,
+        usages,
+        extractable,
+      })
+    }
     GenerateKeyAlgorithm::ChaCha20Poly1305 => {
       check_usages(&usages, &["encrypt", "decrypt", "wrapKey", "unwrapKey"])?;
       let bytes = generate_aes(256)
@@ -540,6 +574,25 @@ pub async fn run(
         priv_raw: RawKeyData::SeededPrivate {
           seed: Some(seed.into_boxed_slice()),
           private_key: res.private_key.into_boxed_slice(),
+        },
+        extractable,
+      })
+    }
+    GenerateKeyAlgorithm::SlhDsa(variant) => {
+      check_usages(&usages, &["sign", "verify"])?;
+      let (public_key, private_key) = crate::slhdsa::generate(variant)
+        .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))?;
+      let alg = AlgorithmDict::new(crate::slhdsa::params(variant).name);
+      let pub_us = filter_usages(&usages, &["verify"]);
+      let priv_us = filter_usages(&usages, &["sign"]);
+      Ok(GenerateKeyOutput::Pair {
+        algorithm: alg,
+        pub_usages: pub_us,
+        priv_usages: priv_us,
+        pub_raw: RawKeyData::Raw(public_key.into_boxed_slice()),
+        priv_raw: RawKeyData::SeededPrivate {
+          seed: None,
+          private_key: private_key.into_boxed_slice(),
         },
         extractable,
       })

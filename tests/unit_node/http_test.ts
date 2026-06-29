@@ -333,6 +333,34 @@ Deno.test("[node/http] multiple set-cookie headers", async () => {
   await promise;
 });
 
+Deno.test("[node/http] ServerResponse.setHeaders preserves Headers set-cookie entries", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = http.createServer((_req, res) => {
+    res.setHeaders(
+      new Headers([
+        ["Set-Cookie", "foo=bar"],
+        ["Set-Cookie", "bar=foo"],
+      ]),
+    );
+    res.end();
+  });
+
+  server.listen(async () => {
+    const res = await fetch(
+      // deno-lint-ignore no-explicit-any
+      `http://127.0.0.1:${(server.address() as any).port}/`,
+    );
+    assert(res.ok);
+    assertEquals(res.headers.getSetCookie(), ["foo=bar", "bar=foo"]);
+
+    await res.body!.cancel();
+    server.close(() => resolve());
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
 
@@ -3137,6 +3165,68 @@ Deno.test(
       );
       req.on("error", reject);
       req.end();
+    });
+
+    await promise;
+  },
+);
+
+// Regression test: requestTimeout only covers receiving the full request from
+// the client, not the response lifetime. A response that streams for longer
+// than requestTimeout (SSE/proxy) must not be aborted, mirroring Node which
+// stops the requestTimeout clock once the request message is fully received.
+// Previously the ConnectionsList watchdog kept firing requestTimeout against
+// the active entry until the response finished, killing long-lived streams.
+// https://github.com/denoland/deno/issues/35289
+Deno.test(
+  "[node/http] streaming response does not trigger spurious requestTimeout",
+  async () => {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    const writeCount = 20;
+    const writeInterval = 50;
+    // requestTimeout is far shorter than the total streaming duration
+    // (20 * 50ms = ~1s) so the bug would abort the response mid-stream.
+    const server = http.createServer({
+      requestTimeout: 300,
+      connectionsCheckingInterval: 50,
+    }, (_req, res) => {
+      res.writeHead(200, { "content-type": "text/plain" });
+      let n = 0;
+      const interval = setInterval(() => {
+        n++;
+        res.write(`chunk ${n}\n`);
+        if (n === writeCount) {
+          clearInterval(interval);
+          res.end("done\n");
+        }
+      }, writeInterval);
+      res.on("close", () => clearInterval(interval));
+    });
+
+    server.on("clientError", (err: Error & { code?: string }) => {
+      reject(new Error(`unexpected clientError: ${err.code ?? err.message}`));
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      const req = http.get({ port, host: "127.0.0.1", path: "/" }, (res) => {
+        let data = "";
+        res.setEncoding("utf8");
+        res.on("data", (d) => data += d);
+        res.on("aborted", () => reject(new Error("response was aborted")));
+        res.on("end", () => {
+          assertEquals(res.statusCode, 200);
+          // All chunks plus the final "done" line must have arrived intact.
+          assertEquals(
+            data.trim().split("\n").filter(Boolean).length,
+            writeCount + 1,
+          );
+          assertStringIncludes(data, "done");
+          server.close(() => resolve());
+        });
+      });
+      req.on("error", reject);
     });
 
     await promise;

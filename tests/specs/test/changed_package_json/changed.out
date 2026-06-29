@@ -1,0 +1,7 @@
+running 1 test from ./math_test.ts
+add ... ok ([WILDCARD])
+running 1 test from ./util_test.ts
+id ... ok ([WILDCARD])
+
+ok | 2 passed | 0 failed ([WILDCARD])
+

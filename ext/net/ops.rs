@@ -7,6 +7,7 @@ use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::time::Duration;
 
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -34,6 +35,7 @@ use hickory_resolver::config::ResolverOpts;
 use hickory_resolver::name_server::TokioConnectionProvider;
 use hickory_resolver::system_conf;
 use quinn::rustls;
+use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
 use socket2::Protocol;
@@ -82,6 +84,27 @@ impl From<TunnelAddr> for IpAddr {
       port: addr.port(),
     }
   }
+}
+
+/// Options for TCP connection (used by Deno.connect and node:net)
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TcpConnectOptions {
+  /// Enable Happy Eyeballs (auto select family). Default: true
+  #[serde(default = "default_auto_select_family")]
+  pub auto_select_family: bool,
+
+  /// Delay in milliseconds between connection attempts. Default: 250
+  #[serde(default = "default_attempt_delay")]
+  pub auto_select_family_attempt_delay: u64,
+}
+
+fn default_auto_select_family() -> bool {
+  true
+}
+
+fn default_attempt_delay() -> u64 {
+  crate::happy_eyeballs::DEFAULT_ATTEMPT_DELAY_MS
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -473,6 +496,18 @@ impl NetPermToken {
   pub fn includes(&self, addr: &str) -> bool {
     self.resolved_ips.iter().any(|ip| ip == addr)
   }
+
+  /// Returns the host that `--allow-net` should be checked against for a
+  /// connection to `address`: the token's original hostname when `address` is
+  /// one of the IPs this token resolved, otherwise the literal `address`. This
+  /// keeps the hostname from being grafted onto an unrelated IP.
+  pub fn check_host<'a>(&'a self, address: &'a str) -> &'a str {
+    if self.includes(address) {
+      &self.hostname
+    } else {
+      address
+    }
+  }
 }
 
 #[op2]
@@ -488,8 +523,16 @@ pub async fn op_net_connect_tcp(
   #[scoped] addr: IpAddr,
   #[cppgc] net_perm_token: Option<&NetPermToken>,
   #[smi] resource_abort_id: Option<ResourceId>,
+  #[serde] options: Option<TcpConnectOptions>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
-  op_net_connect_tcp_inner(state, addr, net_perm_token, resource_abort_id).await
+  op_net_connect_tcp_inner(
+    state,
+    addr,
+    net_perm_token,
+    resource_abort_id,
+    options,
+  )
+  .await
 }
 
 #[inline]
@@ -498,33 +541,55 @@ pub async fn op_net_connect_tcp_inner(
   addr: IpAddr,
   net_perm_token: Option<&NetPermToken>,
   resource_abort_id: Option<ResourceId>,
+  options: Option<TcpConnectOptions>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   {
     let mut state_ = state.borrow_mut();
     // If token exists and the address matches to its resolved ips,
     // then we can check net permission against token.hostname, instead of addr.hostname
     let hostname_to_check = match net_perm_token {
-      Some(token) if token.includes(&addr.hostname) => token.hostname.clone(),
-      _ => addr.hostname.clone(),
+      Some(token) => token.check_host(&addr.hostname).to_string(),
+      None => addr.hostname.clone(),
     };
     state_
       .borrow_mut::<PermissionsContainer>()
       .check_net(&(&hostname_to_check, Some(addr.port)), "Deno.connect()")?;
   }
 
-  let addr = resolve_addr(&addr.hostname, addr.port)
-    .await?
-    .next()
-    .ok_or_else(|| NetError::NoResolvedAddress)?;
+  let options = options.unwrap_or_default();
 
-  // Post-resolution deny check: verify the resolved IP is not denied.
-  // This prevents bypassing IP-literal deny rules via numeric hostname
-  // aliases (e.g. 2130706433 → 127.0.0.1).
+  // Resolve all addresses for Happy Eyeballs
+  let addrs: Vec<SocketAddr> =
+    resolve_addr(&addr.hostname, addr.port).await?.collect();
+
+  if addrs.is_empty() {
+    return Err(NetError::NoResolvedAddress);
+  }
+
+  // Happy Eyeballs races every resolved candidate, so it may connect to any of
+  // them; the non-racing path only ever connects to `addrs[0]`.
+  let use_happy_eyeballs = options.auto_select_family && addrs.len() > 1;
+
+  // Post-resolution deny check: verify the IPs we may actually connect to are
+  // not denied. This prevents bypassing IP-literal deny rules via numeric
+  // hostname aliases (e.g. 2130706433 → 127.0.0.1). Only the candidates we may
+  // attempt are checked: all of them when Happy Eyeballs races them, otherwise
+  // just the single address that will be used.
   {
-    state
-      .borrow_mut()
-      .borrow_mut::<PermissionsContainer>()
-      .check_net_resolved(&addr.ip(), addr.port(), "Deno.connect()")?;
+    let mut state_ = state.borrow_mut();
+    let permissions = state_.borrow_mut::<PermissionsContainer>();
+    let checked = if use_happy_eyeballs {
+      &addrs[..]
+    } else {
+      &addrs[..1]
+    };
+    for addr in checked {
+      permissions.check_net_resolved(
+        &addr.ip(),
+        addr.port(),
+        "Deno.connect()",
+      )?;
+    }
   }
 
   let cancel_handle = resource_abort_id.and_then(|rid| {
@@ -535,10 +600,29 @@ pub async fn op_net_connect_tcp_inner(
       .ok()
   });
 
-  let tcp_stream_result = if let Some(cancel_handle) = &cancel_handle {
-    TcpStream::connect(&addr).or_cancel(cancel_handle).await?
+  // Use Happy Eyeballs if enabled and multiple addresses available
+  let tcp_stream_result = if use_happy_eyeballs {
+    let attempt_delay =
+      Duration::from_millis(options.auto_select_family_attempt_delay);
+    crate::happy_eyeballs::connect_happy_eyeballs(
+      addrs,
+      attempt_delay,
+      cancel_handle.clone(),
+    )
+    .await
+    .map(|result| result.stream)
+    .map_err(NetError::Io)
   } else {
-    TcpStream::connect(&addr).await
+    // Single address or Happy Eyeballs disabled - use first address
+    let addr = addrs[0];
+    if let Some(cancel_handle) = &cancel_handle {
+      match TcpStream::connect(&addr).or_cancel(cancel_handle).await {
+        Ok(result) => result.map_err(NetError::Io),
+        Err(err) => Err(NetError::Canceled(err)),
+      }
+    } else {
+      TcpStream::connect(&addr).await.map_err(NetError::Io)
+    }
   };
 
   if let Some(cancel_rid) = resource_abort_id
@@ -547,10 +631,7 @@ pub async fn op_net_connect_tcp_inner(
     res.close();
   }
 
-  let tcp_stream = match tcp_stream_result {
-    Ok(tcp_stream) => tcp_stream,
-    Err(e) => return Err(NetError::Io(e)),
-  };
+  let tcp_stream = tcp_stream_result?;
 
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
@@ -854,6 +935,19 @@ pub fn op_net_listen_tunnel(
     .resource_table
     .add(crate::raw::NetworkListenerResource::new(listener));
   Ok((rid, local_addr))
+}
+
+#[op2]
+pub fn op_net_listen_memory(
+  state: &mut OpState,
+  #[string] name: String,
+) -> Result<(ResourceId, String, u32), NetError> {
+  let listener = crate::memory::listen_memory(&name)?;
+  let local_addr = listener.local_addr()?;
+  let rid = state
+    .resource_table
+    .add(crate::raw::NetworkListenerResource::new(listener));
+  Ok((rid, local_addr.name, local_addr.id))
 }
 
 #[op2]
@@ -1492,7 +1586,8 @@ mod tests {
     };
 
     let mut connect_fut =
-      op_net_connect_tcp_inner(conn_state, ip_addr, None, None).boxed_local();
+      op_net_connect_tcp_inner(conn_state, ip_addr, None, None, None)
+        .boxed_local();
     let mut rid = None;
 
     tokio::select! {

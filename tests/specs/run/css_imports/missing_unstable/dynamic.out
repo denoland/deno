@@ -1,0 +1,5 @@
+undefined
+error: Uncaught (in promise) TypeError: "css" is not a valid module type.
+    type: typeCss,
+          ^
+    at file:///[WILDLINE]/dynamic.ts:10:11

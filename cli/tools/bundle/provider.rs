@@ -21,26 +21,6 @@ impl CliBundleProvider {
   }
 }
 
-impl From<RtBundleOptions> for crate::args::BundleFlags {
-  fn from(value: RtBundleOptions) -> Self {
-    Self {
-      entrypoints: value.entrypoints,
-      output_path: value.output_path,
-      output_dir: value.output_dir,
-      external: value.external,
-      format: value.format,
-      minify: value.minify,
-      keep_names: value.keep_names,
-      code_splitting: value.code_splitting,
-      platform: value.platform,
-      watch: false,
-      sourcemap: value.sourcemap,
-      inline_imports: value.inline_imports,
-      packages: value.packages,
-    }
-  }
-}
-
 fn convert_note(note: esbuild_client::protocol::Note) -> rt_bundle::Note {
   rt_bundle::Note {
     text: note.text,

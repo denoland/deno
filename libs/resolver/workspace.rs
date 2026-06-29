@@ -1078,11 +1078,37 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
           child_import_map_config(sys, config, workspace.catalogs())
         })
         .collect::<Result<Vec<_>, _>>()?;
-      let (import_map_url, import_map) =
+      let (import_map_url, mut import_map) =
         ::import_map::ext::create_synthetic_import_map(
           base_import_map_config,
           child_import_map_configs,
         );
+      // When `jsrDepsInNodeModules` is enabled, install and resolve `jsr:`
+      // dependencies through the npm machinery by rewriting them to their
+      // npm-compat (`@jsr/scope__name`) form. This mirrors how pnpm/npm install
+      // JSR packages and ensures they end up in `node_modules` (so external
+      // tooling can find them) and resolve from disk (so `import.meta.dirname`
+      // and bundled assets work). The local npm installer additionally writes a
+      // `@jsr:registry` entry to `.npmrc` so that external tooling can resolve
+      // the materialized packages.
+      //
+      // The rewrite is only meaningful when a `node_modules` directory is
+      // actually in use: that is what materializes the packages, writes the
+      // alias symlinks, and writes the `.npmrc`. Without it the rewrite would
+      // resolve `jsr:` deps from the global npm cache with none of that, which
+      // contradicts the option's "requires a `node_modules` directory" meaning.
+      // So we couple the two and skip the rewrite when no `node_modules`
+      // directory is enabled.
+      let uses_node_modules_dir =
+        match workspace.node_modules_dir().unwrap_or_default() {
+          Some(mode) => mode.uses_node_modules_dir(),
+          None => workspace.root_pkg_json().is_some(),
+        };
+      if workspace.jsr_deps_in_node_modules() == Some(true)
+        && uses_node_modules_dir
+      {
+        deno_config::import_map::rewrite_jsr_imports_to_npm(&mut import_map);
+      }
       log::debug!(
         "Workspace config generated this import map {}",
         serde_json::to_string_pretty(&import_map).unwrap()
@@ -1454,12 +1480,15 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         );
       }
 
-      // 2.1. Try to resolve the bare specifier to a workspace member.
-      // Linked packages are not resolved here — using a linked package
-      // requires a `jsr:` specifier or an import map entry, otherwise the
-      // bare specifier would resolve even when no JSR or import map
-      // declaration exists.
-      for member in self.jsr_pkgs.iter().filter(|p| !p.is_link) {
+      // 2.1. Try to resolve the bare specifier to a workspace member or a
+      // linked package. Linked packages resolve by bare name just like
+      // workspace members do: a link is effectively a workspace member that
+      // lives outside the workspace tree (a sibling directory, an absolute
+      // path, or a private package not published to any registry). This is
+      // also what lets a linked package's own files import a sibling linked
+      // package by bare name. Workspace members come first in `jsr_pkgs`, so
+      // they take precedence over a link with the same name.
+      for member in self.jsr_pkgs.iter() {
         if let Some(path) = specifier.strip_prefix(&member.name)
           && (path.is_empty() || path.starts_with('/'))
         {
@@ -1978,6 +2007,9 @@ fn pkg_json_to_version_info(
     // not worth increasing memory for showing a deprecated
     // message for linked packages
     deprecated: None,
+    // linked/workspace packages from a package.json carry no registry
+    // trust signals
+    npm_user: None,
   })
 }
 
@@ -3429,16 +3461,20 @@ mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     let resolver = create_resolver(&workspace_dir);
     let root = url_from_directory_path(&root_dir()).unwrap();
-    // Linked packages do not resolve via bare specifier — a `jsr:` specifier
-    // or an import map entry is required.
-    let err = resolver
+    // Linked packages resolve via bare specifier, just like workspace members.
+    match resolver
       .resolve(
         "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
-      .unwrap_err();
-    assert!(err.is_unmapped_bare_specifier());
+      .unwrap()
+    {
+      MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
+        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
+      }
+      _ => unreachable!(),
+    }
     // matching version
     match resolver
       .resolve(
@@ -3503,16 +3539,20 @@ mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     let resolver = create_resolver(&workspace_dir);
     let root = url_from_directory_path(&root_dir()).unwrap();
-    // Linked packages do not resolve via bare specifier — a `jsr:` specifier
-    // or an import map entry is required.
-    let err = resolver
+    // Linked packages resolve via bare specifier, just like workspace members.
+    match resolver
       .resolve(
         "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
-      .unwrap_err();
-    assert!(err.is_unmapped_bare_specifier());
+      .unwrap()
+    {
+      MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
+        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
+      }
+      _ => unreachable!(),
+    }
     // always resolves, no matter what version
     match resolver
       .resolve(
@@ -3857,6 +3897,7 @@ mod test {
         ]),
         // we don't bother ever setting this because we don't store it in deno_package_json
         deprecated: None,
+        npm_user: None,
       }
     );
 

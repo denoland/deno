@@ -1,0 +1,8 @@
+{
+  "envs": {
+    "DENO_SERVE_ADDRESS": "duplicate,tcp:127.0.0.1:12471"
+  },
+  "args": "run -A main.ts",
+  "output": "main.out",
+  "exitCode": 0
+}
