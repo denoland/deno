@@ -20,6 +20,7 @@ import process, {
   setegid,
   seteuid,
   setgid,
+  setgroups,
   setuid,
 } from "node:process";
 
@@ -1737,6 +1738,61 @@ Deno.test({
   ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
   fn() {
     assertEquals(process.setuid, undefined);
+  },
+});
+
+// Regression tests for https://github.com/denoland/deno/issues/35073
+Deno.test({
+  name: "process.setgroups is a function on supported platforms",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    // setgroups must exist and be a function (non-root can't call it, but
+    // the API must be present and importable as a named export)
+    assert(typeof process.setgroups === "function");
+    assert(typeof setgroups === "function");
+    assert(setgroups === process.setgroups);
+  },
+});
+
+Deno.test({
+  name: "process.setgroups throws TypeError for non-array argument",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        // deno-lint-ignore no-explicit-any
+        (process.setgroups as any)("not-an-array");
+      },
+      TypeError,
+    );
+  },
+});
+
+Deno.test({
+  name: "process.setgroups requires --allow-sys=setgroups permission",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  async fn() {
+    const cwd = path.dirname(path.fromFileUrl(import.meta.url));
+    const { code, stdout } = await new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--allow-sys=setgroups",
+        "./testdata/process_setgroups_permission.ts",
+      ],
+      cwd,
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assertEquals(new TextDecoder().decode(stdout).trim(), "function");
+    assertEquals(code, 0);
+  },
+});
+
+Deno.test({
+  name: "process.setgroups should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.setgroups, undefined);
   },
 });
 
