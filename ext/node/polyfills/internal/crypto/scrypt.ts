@@ -199,7 +199,7 @@ function validateScryptParams(
     128n * NBig * rBig >= maxmemBig
   ) {
     throw new ERR_CRYPTO_INVALID_SCRYPT_PARAMS(
-      "error:030000AC:digital envelope routines::memory limit exceeded",
+      "error:1C800066:Provider routines::MEMORY_LIMIT_EXCEEDED",
     );
   }
 }

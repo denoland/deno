@@ -193,6 +193,9 @@ pub struct Options {
 
   /// If `false`, the server will abort the request when the response is dropped.
   pub no_legacy_abort: bool,
+
+  /// If `true`, responses may be compressed based on request and response headers.
+  pub automatic_compression: bool,
 }
 
 #[cfg(not(feature = "default_property_extractor"))]
@@ -204,6 +207,7 @@ deno_core::extension!(
     op_http_accept,
     op_http_headers,
     op_http_serve_address_override,
+    op_http_serve_default_compression,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -269,6 +273,7 @@ deno_core::extension!(
     op_http_accept,
     op_http_headers,
     op_http_serve_address_override,
+    op_http_serve_default_compression,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -1841,6 +1846,14 @@ pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
   (0, String::new(), 0, false)
 }
 
+#[op2(fast)]
+pub fn op_http_serve_default_compression() -> bool {
+  match std::env::var("DENO_SERVE_AUTOMATIC_COMPRESSION") {
+    Ok(value) => !matches!(value.to_ascii_lowercase().as_str(), "0" | "false"),
+    Err(_) => false,
+  }
+}
+
 fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
   let (input, duplicate) = match input.strip_prefix("duplicate,") {
     Some(input) => (input, true),
@@ -1899,6 +1912,15 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
       }
     }
     Some(("tunnel", _)) => (4, String::new(), 0, duplicate),
+    Some(("memory", name)) => {
+      // In-process byte channel. `name` identifies the listener; the peer
+      // (e.g. the desktop runtime) connects to it by the same name.
+      if name.is_empty() {
+        log::error!("DENO_SERVE_ADDRESS: empty memory name");
+        return (0, String::new(), 0, duplicate);
+      }
+      (5, name.to_string(), 0, duplicate)
+    }
     Some((_, _)) | None => {
       log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
       (0, String::new(), 0, false)

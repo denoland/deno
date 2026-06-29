@@ -53,7 +53,19 @@ fn macos_shared_libraries() {
   // 	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1319.0.0)
   // 	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
 
+  // On aarch64 the *release* binary is linked through lzld (see tools/lzld),
+  // which defers the system frameworks to first use, leaving only these three.
+  // Asserting the exact set guards against a framework creeping back in. Debug
+  // builds (and local non-lzld builds) still link the full set below.
+  #[cfg(all(target_arch = "aarch64", not(debug_assertions)))]
+  const EXPECTED: [(&str, bool); 3] = [
+    ("/usr/lib/libiconv.2.dylib", false),
+    ("/usr/lib/libSystem.B.dylib", false),
+    ("/usr/lib/libobjc.A.dylib", false),
+  ];
+
   // path and whether its weak or not
+  #[cfg(not(all(target_arch = "aarch64", not(debug_assertions))))]
   const EXPECTED: [(&str, bool); 11] = [
     (
       "/System/Library/Frameworks/Security.framework/Versions/A/Security",

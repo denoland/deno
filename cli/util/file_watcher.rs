@@ -35,6 +35,7 @@ use tokio::time::sleep;
 
 use super::env::WatchEnvTracker;
 use crate::args::Flags;
+use crate::args::FlagsExt;
 use crate::colors;
 use crate::util::fs::canonicalize_path;
 

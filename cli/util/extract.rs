@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::sync::Arc;
@@ -118,23 +119,147 @@ fn extract_files_from_fenced_blocks(
   source: &str,
   media_type: MediaType,
 ) -> Result<Vec<TestOrSnippet>, AnyError> {
-  // The pattern matches code blocks as well as anything in HTML comment syntax,
-  // but it stores the latter without any capturing groups. This way, a simple
-  // check can be done to see if a block is inside a comment (and skip typechecking)
-  // or not by checking for the presence of capturing groups in the matches.
-  let blocks_regex = lazy_regex::regex!(
-    r"(?m)<!--[\S\s]*?-->|^[ \t]*(?P<blockquote>(?:>[ \t]?)*)```(?P<attributes>[^\r\n]*)\r?\n(?P<body>[\S\s]*?)^[ \t]*(?:>[ \t]?)*```"
-  );
   let lines_regex = lazy_regex::regex!(r"(((#!+).*)|(?:# ?)?(.*))");
 
-  extract_files_from_regex_blocks(
-    specifier,
-    source,
-    media_type,
-    /* file line index */ 0,
-    blocks_regex,
-    lines_regex,
+  Ok(
+    extract_markdown_fenced_blocks(source)
+      .into_iter()
+      .filter_map(|block| {
+        let file_media_type =
+          media_type_from_fence_attributes(block.attributes, media_type)?;
+        extract_file_from_block(
+          specifier,
+          file_media_type,
+          /* file line index */ 0,
+          block.line_offset,
+          block.line_count,
+          block.body,
+          block.is_markdown_blockquote,
+          lines_regex,
+        )
+      })
+      .collect(),
   )
+}
+
+struct MarkdownFence<'a> {
+  attributes: &'a str,
+  body: &'a str,
+  line_offset: usize,
+  line_count: usize,
+  is_markdown_blockquote: bool,
+}
+
+fn extract_markdown_fenced_blocks(source: &str) -> Vec<MarkdownFence<'_>> {
+  let mut lines = Vec::new();
+  let mut offset = 0;
+  for line in source.split_inclusive('\n') {
+    let line_start = offset;
+    offset += line.len();
+    let line = line.strip_suffix('\n').unwrap_or(line);
+    let line = line.strip_suffix('\r').unwrap_or(line);
+    lines.push((line_start, line));
+  }
+  if offset < source.len() {
+    lines.push((offset, &source[offset..]));
+  }
+
+  let mut blocks = Vec::new();
+  let mut line_index = 0;
+  let mut in_html_comment = false;
+  while line_index < lines.len() {
+    if in_html_comment {
+      if lines[line_index].1.contains("-->") {
+        in_html_comment = false;
+      }
+      line_index += 1;
+      continue;
+    }
+    let line = lines[line_index].1.trim_start_matches([' ', '\t']);
+    if line.starts_with("<!--") {
+      if !line.contains("-->") {
+        in_html_comment = true;
+      }
+      line_index += 1;
+      continue;
+    }
+
+    let Some(opening) = parse_markdown_fence_opening(lines[line_index].1)
+    else {
+      line_index += 1;
+      continue;
+    };
+
+    let mut closing_line_index = line_index + 1;
+    while closing_line_index < lines.len() {
+      if is_markdown_fence_closing(
+        lines[closing_line_index].1,
+        opening.tick_count,
+      ) {
+        let body_start = lines
+          .get(line_index + 1)
+          .map(|(offset, _)| *offset)
+          .unwrap_or(source.len());
+        let body_end = lines[closing_line_index].0;
+        blocks.push(MarkdownFence {
+          attributes: opening.attributes,
+          body: &source[body_start..body_end],
+          line_offset: line_index,
+          line_count: closing_line_index - line_index + 1,
+          is_markdown_blockquote: opening.is_markdown_blockquote,
+        });
+        line_index = closing_line_index + 1;
+        break;
+      }
+      closing_line_index += 1;
+    }
+
+    if closing_line_index == lines.len() {
+      line_index += 1;
+    }
+  }
+
+  blocks
+}
+
+struct MarkdownFenceOpening<'a> {
+  attributes: &'a str,
+  tick_count: usize,
+  is_markdown_blockquote: bool,
+}
+
+fn parse_markdown_fence_opening(
+  line: &str,
+) -> Option<MarkdownFenceOpening<'_>> {
+  let (line, is_markdown_blockquote) = strip_markdown_fence_prefix(line);
+  let tick_count = line.bytes().take_while(|b| *b == b'`').count();
+  if tick_count < 3 {
+    return None;
+  }
+  Some(MarkdownFenceOpening {
+    attributes: &line[tick_count..],
+    tick_count,
+    is_markdown_blockquote,
+  })
+}
+
+fn is_markdown_fence_closing(line: &str, opening_tick_count: usize) -> bool {
+  let (line, _) = strip_markdown_fence_prefix(line);
+  let tick_count = line.bytes().take_while(|b| *b == b'`').count();
+  tick_count >= opening_tick_count
+    && line[tick_count..].bytes().all(|b| b == b' ' || b == b'\t')
+}
+
+fn strip_markdown_fence_prefix(line: &str) -> (&str, bool) {
+  let mut line = line.trim_start_matches([' ', '\t']);
+  let mut is_markdown_blockquote = false;
+  while let Some(after_marker) = line.strip_prefix('>') {
+    is_markdown_blockquote = true;
+    line = after_marker
+      .strip_prefix([' ', '\t'])
+      .unwrap_or(after_marker);
+  }
+  (line, is_markdown_blockquote)
 }
 
 fn extract_files_from_source_comments(
@@ -190,8 +315,6 @@ fn extract_files_from_regex_blocks(
   blocks_regex: &Regex,
   lines_regex: &Regex,
 ) -> Result<Vec<TestOrSnippet>, AnyError> {
-  let tests_regex = lazy_regex::regex!(r"(?m)^\s*Deno\.test\(");
-
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
@@ -204,27 +327,8 @@ fn extract_files_from_regex_blocks(
         .name("attributes")
         .map(|attributes| attributes.as_str().split(' ').collect());
 
-      let file_media_type = if let Some(attributes) = maybe_attributes {
-        if attributes.contains(&"ignore") {
-          return None;
-        }
-
-        match attributes.first() {
-          Some(&"js") => MediaType::JavaScript,
-          Some(&"javascript") => MediaType::JavaScript,
-          Some(&"mjs") => MediaType::Mjs,
-          Some(&"cjs") => MediaType::Cjs,
-          Some(&"jsx") => MediaType::Jsx,
-          Some(&"ts") => MediaType::TypeScript,
-          Some(&"typescript") => MediaType::TypeScript,
-          Some(&"mts") => MediaType::Mts,
-          Some(&"cts") => MediaType::Cts,
-          Some(&"tsx") => MediaType::Tsx,
-          _ => MediaType::Unknown,
-        }
-      } else {
-        media_type
-      };
+      let file_media_type =
+        media_type_from_attributes(maybe_attributes, media_type)?;
 
       if file_media_type == MediaType::Unknown {
         return None;
@@ -238,60 +342,139 @@ fn extract_files_from_regex_blocks(
       let line_count = block.get(0).unwrap().as_str().split('\n').count();
 
       let body = block.name("body").unwrap();
-      let text = body.as_str();
-
-      // TODO(caspervonb) generate an inline source map
-      let mut file_source = String::new();
-      let mut shebang = None;
-      let mut is_first_line = true;
-      for line in text.lines() {
-        let line = if is_markdown_blockquote {
-          strip_markdown_blockquote_marker(line)
-        } else {
-          line
-        };
-        let Some(line) = lines_regex.captures(line) else {
-          continue;
-        };
-        let text = line.get(1).or_else(|| line.get(3)).unwrap().as_str();
-        // Strip shebang from the very first line to forward it to `Deno.test`.
-        if is_first_line && text.starts_with("#!") {
-          shebang = Some(parse_shebang(text));
-          is_first_line = false;
-          continue;
-        }
-        is_first_line = false;
-        writeln!(file_source, "{}", text).unwrap();
-      }
-
-      let file_specifier = ModuleSpecifier::parse(&format!(
-        "{}${}-{}",
+      extract_file_from_block(
         specifier,
-        file_line_index + line_offset + 1,
-        file_line_index + line_offset + line_count + 1,
-      ))
-      .unwrap();
-      let file_specifier =
-        mapped_specifier_for_tsc(&file_specifier, file_media_type)
-          .map(|s| ModuleSpecifier::parse(&s).unwrap())
-          .unwrap_or(file_specifier);
-      let has_deno_test = tests_regex.is_match(&file_source);
-      let file = File {
-        url: file_specifier,
-        mtime: None,
-        maybe_headers: None,
-        source: file_source.into_bytes().into(),
-        loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
-      };
-      Some(TestOrSnippet {
-        file,
-        has_deno_test,
-        shebang,
-      })
+        file_media_type,
+        file_line_index,
+        line_offset,
+        line_count,
+        body.as_str(),
+        is_markdown_blockquote,
+        lines_regex,
+      )
     })
     .collect();
 
   Ok(files)
+}
+
+fn media_type_from_fence_attributes(
+  attributes: &str,
+  fallback_media_type: MediaType,
+) -> Option<MediaType> {
+  media_type_from_attributes(
+    Some(attributes.split(' ').collect()),
+    fallback_media_type,
+  )
+}
+
+fn media_type_from_attributes(
+  maybe_attributes: Option<Vec<&str>>,
+  fallback_media_type: MediaType,
+) -> Option<MediaType> {
+  let Some(attributes) = maybe_attributes else {
+    return Some(fallback_media_type);
+  };
+  if attributes.contains(&"ignore") {
+    return None;
+  }
+
+  Some(match attributes.first() {
+    Some(&"js") => MediaType::JavaScript,
+    Some(&"javascript") => MediaType::JavaScript,
+    Some(&"mjs") => MediaType::Mjs,
+    Some(&"cjs") => MediaType::Cjs,
+    Some(&"jsx") => MediaType::Jsx,
+    Some(&"ts") => MediaType::TypeScript,
+    Some(&"typescript") => MediaType::TypeScript,
+    Some(&"mts") => MediaType::Mts,
+    Some(&"cts") => MediaType::Cts,
+    Some(&"tsx") => MediaType::Tsx,
+    _ => MediaType::Unknown,
+  })
+}
+
+#[allow(
+  clippy::too_many_arguments,
+  reason = "Keeps source location metadata explicit for both markdown and JSDoc extraction callers."
+)]
+fn extract_file_from_block(
+  specifier: &ModuleSpecifier,
+  file_media_type: MediaType,
+  file_line_index: usize,
+  line_offset: usize,
+  line_count: usize,
+  text: &str,
+  is_markdown_blockquote: bool,
+  lines_regex: &Regex,
+) -> Option<TestOrSnippet> {
+  let tests_regex = lazy_regex::regex!(r"(?m)^\s*Deno\.test\(");
+
+  if file_media_type == MediaType::Unknown {
+    return None;
+  }
+
+  // TODO(caspervonb) generate an inline source map
+  let mut file_source = String::new();
+  let mut shebang = None;
+  let mut is_first_line = true;
+  for line in text.lines() {
+    let line = if is_markdown_blockquote {
+      strip_markdown_blockquote_marker(line)
+    } else {
+      line
+    };
+    let Some(line) = lines_regex.captures(line) else {
+      continue;
+    };
+    let text = line.get(1).or_else(|| line.get(3)).unwrap().as_str();
+    // Strip shebang from the very first line to forward it to `Deno.test`.
+    if is_first_line && text.starts_with("#!") {
+      shebang = Some(parse_shebang(text));
+      is_first_line = false;
+      continue;
+    }
+    is_first_line = false;
+    writeln!(file_source, "{}", text).unwrap();
+  }
+
+  let file_specifier = ModuleSpecifier::parse(&format!(
+    "{}#{}-{}",
+    specifier,
+    file_line_index + line_offset + 1,
+    file_line_index + line_offset + line_count + 1,
+  ))
+  .unwrap();
+  let file_specifier =
+    mapped_specifier_for_tsc(&file_specifier, file_media_type)
+      .map(|s| ModuleSpecifier::parse(&s).unwrap())
+      .unwrap_or_else(|| {
+        // The tsc mapping only appends an extension when the path's media
+        // type differs; do it here too so every virtual file keeps one.
+        ModuleSpecifier::parse(&format!(
+          "{}{}",
+          file_specifier,
+          file_media_type.as_ts_extension()
+        ))
+        .unwrap()
+      });
+  let has_deno_test = tests_regex.is_match(&file_source);
+  let file = File {
+    url: file_specifier,
+    mtime: None,
+    // The fragment (line range + extension) is ignored when inferring the
+    // media type from the path, so carry it via a content-type header.
+    maybe_headers: file_media_type.as_content_type().map(|content_type| {
+      HashMap::from([("content-type".to_string(), content_type.to_string())])
+    }),
+    source: file_source.into_bytes().into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
+  };
+  Some(TestOrSnippet {
+    file,
+    has_deno_test,
+    shebang,
+  })
 }
 
 fn strip_markdown_blockquote_marker(line: &str) -> &str {
@@ -455,6 +638,9 @@ impl ExportCollector {
       if symbols_to_exclude.contains(named_export) {
         continue;
       }
+      if !is_importable_binding_identifier(named_export) {
+        continue;
+      }
 
       import_specifiers.push(ast::ImportSpecifier::Named(
         ast::ImportNamedSpecifier {
@@ -473,6 +659,10 @@ impl ExportCollector {
 
     import_specifiers
   }
+}
+
+fn is_importable_binding_identifier(name: &Atom) -> bool {
+  swc_utils::is_valid_ident(name.as_ref())
 }
 
 impl Visit for ExportCollector {
@@ -669,7 +859,7 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
 /// import { assertEquals } from "@std/assert/equals";
 /// import { increment, SOME_CONST } from "./base.ts";
 ///
-/// Deno.test("./base.ts$1-3.ts", async () => {
+/// Deno.test("./base.ts#1-3.ts", async () => {
 ///   assertEquals(increment(1), 2);
 /// });
 /// ```
@@ -689,7 +879,7 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
 /// import { assertEquals } from "@std/assert/equals";
 /// import { doSomething } from "./some_external_module.ts";
 ///
-/// Deno.test("./base.ts$1-3.ts", async () => {
+/// Deno.test("./base.ts#1-3.ts", async () => {
 ///   assertEquals(doSomething(1), 2);
 /// });
 /// ```
@@ -713,7 +903,7 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
 /// file would look like:
 ///
 /// ```ts
-/// Deno.test("./base.ts$1-7.ts", async () => {
+/// Deno.test("./base.ts#1-7.ts", async () => {
 ///   const logger = createLogger("my-awesome-module");
 ///
 ///   export function sum(a: number, b: number): number {
@@ -730,7 +920,7 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
 /// stay in the `Deno.test` block's scope:
 ///
 /// ```ts
-/// Deno.test("./base.ts$1-7.ts", async () => {
+/// Deno.test("./base.ts#1-7.ts", async () => {
 ///   const logger = createLogger("my-awesome-module");
 ///
 ///   function sum(a: number, b: number): number {
@@ -785,7 +975,11 @@ fn generate_pseudo_file(
   Ok(File {
     url: file.specifier,
     mtime: None,
-    maybe_headers: None,
+    // The fragment (line range + extension) is ignored when inferring the
+    // media type from the path, so carry it via a content-type header.
+    maybe_headers: file.media_type.as_content_type().map(|content_type| {
+      HashMap::from([("content-type".to_string(), content_type.to_string())])
+    }),
     source: source.into_bytes().into(),
     loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
   })
@@ -1189,11 +1383,11 @@ export function add(a: number, b: number): number {
         expected: vec![Expected {
           source: r#"import { assertEquals } from "@std/assert/equal";
 import { add } from "file:///main.ts";
-Deno.test("file:///main.ts$3-8.ts", async ()=>{
+Deno.test("file:///main.ts#3-8.ts", async ()=>{
     assertEquals(add(1, 2), 3);
 });
 "#,
-          specifier: "file:///main.ts$3-8.ts",
+          specifier: "file:///main.ts#3-8.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1213,11 +1407,11 @@ export default class Bar {}
         },
         expected: vec![Expected {
           source: r#"import Bar, { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-6.ts", async ()=>{
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts#3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1238,14 +1432,14 @@ export type Args = { a: number };
         },
         expected: vec![Expected {
           source: r#"import { type Args, foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", async ()=>{
+Deno.test("file:///main.ts#3-7.ts", async ()=>{
     const input = {
         a: 42
     } satisfies Args;
     foo(input);
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1269,7 +1463,7 @@ export function foo(s: string) {
         },
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$6-10.ts", {
+Deno.test("file:///main.ts#6-10.ts", {
     permissions: {
         read: "inherit"
     }
@@ -1277,7 +1471,7 @@ Deno.test("file:///main.ts$6-10.ts", {
     foo("bar");
 });
 "#,
-          specifier: "file:///main.ts$6-10.ts",
+          specifier: "file:///main.ts#6-10.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1297,11 +1491,11 @@ Deno.test("file:///main.ts$6-10.ts", {
           specifier: "file:///main.ts",
         },
         expected: vec![Expected {
-          source: r#"Deno.test("file:///main.ts$5-8.ts", async ()=>{
+          source: r#"Deno.test("file:///main.ts#5-8.ts", async ()=>{
     foo();
 });
 "#,
-          specifier: "file:///main.ts$5-8.ts",
+          specifier: "file:///main.ts#5-8.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1334,20 +1528,20 @@ export * from "./other.ts";
         expected: vec![
           Expected {
             source: r#"import MyClass, { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$5-8.js", async ()=>{
+Deno.test("file:///main.ts#5-8.js", async ()=>{
     const cls = new MyClass();
 });
 "#,
-            specifier: "file:///main.ts$5-8.js",
+            specifier: "file:///main.ts#5-8.js",
             media_type: MediaType::JavaScript,
           },
           Expected {
             source: r#"import MyClass, { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$13-16.ts", async ()=>{
+Deno.test("file:///main.ts#13-16.ts", async ()=>{
     foo();
 });
 "#,
-            specifier: "file:///main.ts$13-16.ts",
+            specifier: "file:///main.ts#13-16.ts",
             media_type: MediaType::TypeScript,
           },
         ],
@@ -1370,11 +1564,11 @@ export default TWO;
         },
         expected: vec![Expected {
           source: r#"import TWO, { ONE, foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-6.ts", async ()=>{
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts#3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1406,11 +1600,11 @@ export { DUPLICATE3 };
 import * as DUPLICATE2 from "./other2.js";
 import { foo as DUPLICATE3 } from "./other3.tsx";
 import { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-10.ts", async ()=>{
+Deno.test("file:///main.ts#3-10.ts", async ()=>{
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-10.ts",
+          specifier: "file:///main.ts#3-10.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1434,12 +1628,12 @@ export const foo = () => "foo";
         },
         expected: vec![Expected {
           source: r#"import { createFoo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", async ()=>{
+Deno.test("file:///main.ts#3-7.ts", async ()=>{
     const foo = createFoo();
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1472,14 +1666,14 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
         },
         expected: vec![Expected {
           source: r#"import { getLogger } from "@std/log";
-Deno.test("file:///main.ts$3-12.ts", async ()=>{
+Deno.test("file:///main.ts#3-12.ts", async ()=>{
     const logger = getLogger("my-awesome-module");
     function foo() {
         logger.debug("hello");
     }
 });
 "#,
-          specifier: "file:///main.ts$3-12.ts",
+          specifier: "file:///main.ts#3-12.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1502,12 +1696,50 @@ assertEquals(add(1, 2), 3);
         expected: vec![Expected {
           source: r#"import { assertEquals } from "@std/assert/equal";
 import { add } from "jsr:@deno/non-existent";
-Deno.test("file:///README.md$6-12.js", async ()=>{
+Deno.test("file:///README.md#6-12.js", async ()=>{
     assertEquals(add(1, 2), 3);
 });
 "#,
-          specifier: "file:///README.md$6-12.js",
+          specifier: "file:///README.md#6-12.js",
           media_type: MediaType::JavaScript,
+        }],
+      },
+      // https://github.com/denoland/deno/issues/11640
+      Test {
+        input: Input {
+          source: r#"
+````
+```ts
+````
+
+
+````
+```ts
+##
+````
+"#,
+          specifier: "file:///README.md",
+        },
+        expected: vec![],
+      },
+      Test {
+        input: Input {
+          source: r#"
+# Header
+
+````ts
+console.log("ts");
+````
+"#,
+          specifier: "file:///README.md",
+        },
+        expected: vec![Expected {
+          source: r#"Deno.test("file:///README.md#4-7.ts", async ()=>{
+    console.log("ts");
+});
+"#,
+          specifier: "file:///README.md#4-7.ts",
+          media_type: MediaType::TypeScript,
         }],
       },
       // https://github.com/denoland/deno/issues/24164
@@ -1526,11 +1758,11 @@ Deno.test("file:///README.md$6-12.js", async ()=>{
         },
         expected: vec![Expected {
           source: r#"import { assertEquals } from "@std/assert/equals";
-Deno.test("file:///README.md$4-9.ts", async ()=>{
+Deno.test("file:///README.md#4-9.ts", async ()=>{
     assertEquals(1 + 2, 3);
 });
 "#,
-          specifier: "file:///README.md$4-9.ts",
+          specifier: "file:///README.md#4-9.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1550,11 +1782,11 @@ export default Foo
         },
         expected: vec![Expected {
           source: r#"import { Foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-6.ts", async ()=>{
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
     console.log(Foo);
 });
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts#3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1576,12 +1808,12 @@ export function add(first: number, second: number) {
         },
         expected: vec![Expected {
           source: r#"import { add } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", async ()=>{
+Deno.test("file:///main.ts#3-7.ts", async ()=>{
     // @ts-expect-error: can only add numbers
     add('1', '2');
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1607,7 +1839,7 @@ Deno.test("add", ()=>{
     assertEquals(1 + 2, 3);
 });
 "#,
-          specifier: "file:///main.md$4-11.ts",
+          specifier: "file:///main.md#4-11.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1636,7 +1868,7 @@ Deno.test("add", ()=>{
     assertEquals(add(1, 2), 3);
 });
 "#,
-          specifier: "file:///main.ts$3-10.ts",
+          specifier: "file:///main.ts#3-10.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1660,12 +1892,12 @@ export function add(a: number, b: number): number {
         expected: vec![Expected {
           source: r#"import { assertEquals } from "@std/assert/equals";
 import { add } from "file:///main.ts";
-Deno.test("file:///main.ts$3-8.ts", async ()=>{
+Deno.test("file:///main.ts#3-8.ts", async ()=>{
     // Deno.test("add", () => {});
     assertEquals(add(1, 2), 3);
 });
 "#,
-          specifier: "file:///main.ts$3-8.ts",
+          specifier: "file:///main.ts#3-8.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1685,13 +1917,13 @@ export function foo() {}
         },
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", {
+Deno.test("file:///main.ts#3-7.ts", {
     permissions: "inherit"
 }, async ()=>{
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1711,13 +1943,13 @@ export function foo() {}
         },
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", {
+Deno.test("file:///main.ts#3-7.ts", {
     permissions: "none"
 }, async ()=>{
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1737,7 +1969,7 @@ export function foo() {}
         },
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", {
+Deno.test("file:///main.ts#3-7.ts", {
     permissions: {
         read: "inherit"
     }
@@ -1745,7 +1977,7 @@ Deno.test("file:///main.ts$3-7.ts", {
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1765,7 +1997,7 @@ export function foo() {}
         },
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", {
+Deno.test("file:///main.ts#3-7.ts", {
     permissions: {
         read: [
             "/tmp",
@@ -1776,7 +2008,7 @@ Deno.test("file:///main.ts$3-7.ts", {
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1796,12 +2028,12 @@ export function foo() {}
         },
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", async ()=>{
+Deno.test("file:///main.ts#3-7.ts", async ()=>{
     throw new Error("invalid doc test hashbang: #!/bin/sh (binary basename needs to be 'deno')");
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1822,12 +2054,12 @@ export function foo() {}
         },
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", async ()=>{
+Deno.test("file:///main.ts#3-7.ts", async ()=>{
     throw new Error("invalid doc test hashbang: #!/usr/bin/env -S deno run --allow-read --deny-read=/etc (scoped --deny-* flags aren't supported yet, either remove them or ignore the test)");
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1848,7 +2080,7 @@ export function foo() {}
         },
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", {
+Deno.test("file:///main.ts#3-7.ts", {
     permissions: {
         env: false,
         read: "inherit"
@@ -1857,7 +2089,7 @@ Deno.test("file:///main.ts$3-7.ts", {
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1877,7 +2109,7 @@ export function foo() {}
         },
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", {
+Deno.test("file:///main.ts#3-7.ts", {
     permissions: {
         read: [
             "/tmp/with space"
@@ -1887,7 +2119,7 @@ Deno.test("file:///main.ts$3-7.ts", {
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1904,7 +2136,7 @@ foo();
           specifier: "file:///README.md",
         },
         expected: vec![Expected {
-          source: r#"Deno.test("file:///README.md$3-7.ts", {
+          source: r#"Deno.test("file:///README.md#3-7.ts", {
     permissions: {
         net: [
             "example.com"
@@ -1914,7 +2146,7 @@ foo();
     foo();
 });
 "#,
-          specifier: "file:///README.md$3-7.ts",
+          specifier: "file:///README.md#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1938,11 +2170,62 @@ export class Quux {}
         },
         expected: vec![Expected {
           source: r#"import { type Bar, type Foo, Quux, useFoo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-6.ts", async ()=>{
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
     useFoo();
 });
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts#3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Regression test for https://github.com/denoland/deno/issues/35177
+      // Export names can be reserved words or string-literal names that cannot
+      // be used as local import bindings in the generated doc-test module.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * useFoo();
+ * ```
+ */
+export function useFoo() {}
+const null_ = null;
+const dashed = 1;
+export { null_ as null, dashed as "key-with-hyphens" };
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { useFoo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
+    useFoo();
+});
+"#,
+          specifier: "file:///main.ts#3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * useFoo();
+ * ```
+ */
+export function useFoo() {}
+export { nullValue as null, dashed as "key-with-hyphens" } from "./deps.ts";
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { useFoo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
+    useFoo();
+});
+"#,
+          specifier: "file:///main.ts#3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1967,11 +2250,11 @@ export const Foo = 1;
         },
         expected: vec![Expected {
           source: r#"import { Foo, doSomething } from "file:///main.ts";
-Deno.test("file:///main.ts$3-6.ts", async ()=>{
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
     doSomething();
 });
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts#3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -2048,7 +2331,7 @@ export function add(a: number, b: number): number {
 import { add } from "file:///main.ts";
 assertEquals(add(1, 2), 3);
 "#,
-          specifier: "file:///main.ts$3-8.ts",
+          specifier: "file:///main.ts#3-8.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -2077,7 +2360,7 @@ import { DUPLICATE } from "./other.ts";
 import { add } from "file:///main.ts";
 assertEquals(add(1, 2), 3);
 "#,
-          specifier: "file:///main.ts$3-9.ts",
+          specifier: "file:///main.ts#3-9.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -2105,7 +2388,7 @@ export const foo = () => "foo";
 const foo = createFoo();
 foo();
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -2137,7 +2420,7 @@ export function foo() {
 }
 const logger = getLogger("my-awesome-module");
 "#,
-          specifier: "file:///main.ts$3-12.ts",
+          specifier: "file:///main.ts#3-12.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -2162,7 +2445,7 @@ assertEquals(add(1, 2), 3);
 import { add } from "jsr:@deno/non-existent";
 assertEquals(add(1, 2), 3);
 "#,
-          specifier: "file:///README.md$6-12.js",
+          specifier: "file:///README.md#6-12.js",
           media_type: MediaType::JavaScript,
         }],
       },
@@ -2184,7 +2467,7 @@ export default Foo
           source: r#"import { Foo } from "file:///main.ts";
 console.log(Foo);
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts#3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -2209,7 +2492,7 @@ export function add(first: number, second: number) {
 // @ts-expect-error: can only add numbers
 add('1', '2');
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -2239,6 +2522,21 @@ add('1', '2');
         .collect::<Vec<_>>();
       assert_eq!(got_decoded, expected);
     }
+  }
+
+  #[test]
+  fn test_is_importable_binding_identifier() {
+    assert!(is_importable_binding_identifier(&"foo".into()));
+    assert!(is_importable_binding_identifier(&"$foo".into()));
+    assert!(is_importable_binding_identifier(&"_foo".into()));
+    assert!(is_importable_binding_identifier(&"async".into()));
+    assert!(!is_importable_binding_identifier(&"null".into()));
+    assert!(!is_importable_binding_identifier(&"default".into()));
+    assert!(!is_importable_binding_identifier(
+      &"key-with-hyphens".into()
+    ));
+    assert!(!is_importable_binding_identifier(&"with spaces".into()));
+    assert!(!is_importable_binding_identifier(&"".into()));
   }
 
   #[test]
@@ -2385,6 +2683,11 @@ add('1', '2');
       Test {
         input: r#"export { foo, bar as barAlias };"#,
         named_expected: atom_set!("foo", "barAlias"),
+        default_expected: None,
+      },
+      Test {
+        input: r#"export { foo as null, bar as "key-with-hyphens" };"#,
+        named_expected: atom_set!("null", "key-with-hyphens"),
         default_expected: None,
       },
       Test {

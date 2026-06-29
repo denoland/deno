@@ -1,0 +1,9 @@
+status: 200
+x-echo-method: POST
+body: {"url":"/some/path?q=1","bodyLen":10,"pseudo":[],"rawPseudo":[],"host":"127.0.0.1:12471"}
+status: 200
+x-echo-method: POST
+body: {"url":"/chunked","bodyLen":16,"pseudo":[],"rawPseudo":[],"host":"127.0.0.1:12471"}
+status: 200
+x-echo-method: GET
+body: {"url":"/get","bodyLen":0,"pseudo":[],"rawPseudo":[],"host":"127.0.0.1:12471"}

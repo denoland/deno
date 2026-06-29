@@ -93,6 +93,8 @@ use crate::workspace::SloppyImportsOptions;
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
 use crate::workspace::WorkspaceResolver;
 
+const DEFAULT_MINIMUM_DEPENDENCY_AGE_MINUTES: i64 = 1440;
+
 // todo(https://github.com/rust-lang/rust/issues/109737): remove once_cell after get_or_try_init is stabilized
 #[cfg(feature = "sync")]
 type Deferred<T> = once_cell::sync::OnceCell<T>;
@@ -213,6 +215,9 @@ pub struct WorkspaceFactoryOptions {
   pub node_modules_linker: Option<NodeModulesLinkerMode>,
   pub no_lock: bool,
   pub no_npm: bool,
+  /// When no `deno.lock` exists, attempt to seed one by translating a
+  /// sibling `package-lock.json`. Currently set by `deno install`.
+  pub import_npm_lockfile: bool,
   /// The process state if using ext/node and the current process was "forked".
   /// This value is found at `deno_lib::args::NPM_PROCESS_STATE`
   /// but in most scenarios this can probably just be `None`.
@@ -547,6 +552,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
               ConfigDiscoveryOption::Disabled
             ),
             no_npm: self.options.no_npm,
+            import_npm_lockfile: self.options.import_npm_lockfile,
           },
           &workspace_directory.workspace,
           maybe_external_import_map.as_ref().map(|v| &v.value),
@@ -716,8 +722,6 @@ pub struct ResolverFactoryOptions {
   pub package_json_cache: Option<node_resolver::PackageJsonCacheRc>,
   pub package_json_dep_resolution: Option<PackageJsonDepResolution>,
   pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
-  /// Whether to resolve bare node builtins (ex. "path" as "node:path").
-  pub bare_node_builtins: bool,
   pub unstable_sloppy_imports: bool,
   #[cfg(feature = "graph")]
   pub on_mapped_resolution_diagnostic:
@@ -835,7 +839,6 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
                 npm_req_resolver: self.npm_req_resolver()?.clone(),
               })
             },
-            bare_node_builtins: self.bare_node_builtins()?,
             is_byonm: self.use_byonm()?,
             maybe_vendor_dir: self
               .workspace_factory
@@ -1014,20 +1017,14 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         let workspace = &workspace_factory.workspace_directory()?.workspace;
         workspace.minimum_dependency_age(workspace_factory.sys())?
       };
-      // fall back to .npmrc's `min-release-age` when not configured in deno.json
-      if config.age.is_none()
-        && let Some(days) = workspace_factory.npmrc()?.min_release_age_days
-      {
-        let now = chrono::DateTime::<chrono::Utc>::from(
-          workspace_factory.sys().sys_time_now(),
+      if config.age.is_none() {
+        apply_minimum_dependency_age_fallbacks(
+          &mut config,
+          workspace_factory.npmrc()?.min_release_age_days,
+          chrono::DateTime::<chrono::Utc>::from(
+            workspace_factory.sys().sys_time_now(),
+          ),
         );
-        config.age = Some(if days == 0 {
-          NewestDependencyDate::Disabled
-        } else {
-          NewestDependencyDate::Enabled(
-            now - chrono::Duration::days(days as i64),
-          )
-        });
       }
       if let Some(newest_dependency_date) =
         config.age.and_then(|d| d.into_option())
@@ -1157,6 +1154,38 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       let workspace = &self.workspace_factory.workspace_directory()?.workspace;
       let overrides = npm_overrides_from_workspace(workspace);
 
+      // the `trust-policy` / `trust-policy-ignore-after` npmrc settings drive
+      // the `no-downgrade` publishing-trust policy
+      let npmrc = self.workspace_factory.npmrc()?;
+      let trust_policy = deno_npm::resolution::TrustPolicyOptions {
+        policy: match npmrc.trust_policy {
+          deno_npmrc::TrustPolicyConfig::NoDowngrade => {
+            deno_npm::resolution::NpmTrustPolicy::NoDowngrade
+          }
+          deno_npmrc::TrustPolicyConfig::Off => {
+            deno_npm::resolution::NpmTrustPolicy::Off
+          }
+        },
+        // turn the relative `trust-policy-ignore-after` minutes into an
+        // absolute cutoff (`now - minutes`) so the resolver stays clock-free
+        ignore_after_cutoff: npmrc.trust_policy_ignore_after_minutes.map(
+          |minutes| {
+            let now = chrono::DateTime::<chrono::Utc>::from(
+              self.workspace_factory.sys().sys_time_now(),
+            );
+            now - chrono::Duration::minutes(minutes as i64)
+          },
+        ),
+        // `trust-policy-exclude[]` package names exempted from the policy
+        #[allow(
+          clippy::disallowed_types,
+          reason = "Arc needed for shared exclude set"
+        )]
+        exclude: std::sync::Arc::new(
+          npmrc.trust_policy_exclude.iter().cloned().collect(),
+        ),
+      };
+
       Ok(new_rc(NpmVersionResolver {
         newest_dependency_date_options:
           deno_npm::resolution::NewestDependencyDateOptions {
@@ -1182,6 +1211,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
           reason = "Arc needed for shared overrides"
         )]
         overrides: std::sync::Arc::new(overrides),
+        trust_policy,
       }))
     })
   }
@@ -1293,17 +1323,6 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       .await
   }
 
-  pub fn bare_node_builtins(&self) -> Result<bool, anyhow::Error> {
-    Ok(
-      self.options.bare_node_builtins
-        || self
-          .workspace_factory
-          .workspace_directory()?
-          .workspace
-          .has_unstable("bare-node-builtins"),
-    )
-  }
-
   pub fn npm_system_info(&self) -> &NpmSystemInfo {
     &self.options.npm_system_info
   }
@@ -1314,6 +1333,29 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         == NodeModulesDirMode::Manual,
     )
   }
+}
+
+fn apply_minimum_dependency_age_fallbacks(
+  config: &mut MinimumDependencyAgeConfig,
+  npmrc_min_release_age_days: Option<u64>,
+  now: chrono::DateTime<chrono::Utc>,
+) {
+  if config.age.is_some() {
+    return;
+  }
+
+  // Fall back to .npmrc's `min-release-age` when not configured in deno.json.
+  config.age = Some(if let Some(days) = npmrc_min_release_age_days {
+    if days == 0 {
+      NewestDependencyDate::Disabled
+    } else {
+      NewestDependencyDate::Enabled(now - chrono::Duration::days(days as i64))
+    }
+  } else {
+    NewestDependencyDate::Enabled(
+      now - chrono::Duration::minutes(DEFAULT_MINIMUM_DEPENDENCY_AGE_MINUTES),
+    )
+  });
 }
 
 /// Parses npm overrides from a workspace's root package.json.
@@ -1342,5 +1384,68 @@ pub fn npm_overrides_from_workspace(
       );
       NpmOverrides::default()
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use chrono::TimeZone;
+  use deno_config::deno_json::MinimumDependencyAgeConfig;
+  use deno_config::deno_json::NewestDependencyDate;
+
+  use super::apply_minimum_dependency_age_fallbacks;
+
+  fn now() -> chrono::DateTime<chrono::Utc> {
+    chrono::Utc.with_ymd_and_hms(2025, 6, 1, 0, 0, 0).unwrap()
+  }
+
+  #[test]
+  fn minimum_dependency_age_falls_back_to_default() {
+    let mut config = MinimumDependencyAgeConfig::default();
+    apply_minimum_dependency_age_fallbacks(&mut config, None, now());
+    assert_eq!(
+      config.age,
+      Some(NewestDependencyDate::Enabled(
+        now() - chrono::Duration::minutes(1440)
+      ))
+    );
+  }
+
+  #[test]
+  fn minimum_dependency_age_preserves_exclude_with_default() {
+    let mut config = MinimumDependencyAgeConfig {
+      age: None,
+      exclude: vec!["npm:chalk".to_string()],
+    };
+    apply_minimum_dependency_age_fallbacks(&mut config, None, now());
+    assert_eq!(
+      config.age,
+      Some(NewestDependencyDate::Enabled(
+        now() - chrono::Duration::minutes(1440)
+      ))
+    );
+    assert_eq!(config.exclude, vec!["npm:chalk".to_string()]);
+  }
+
+  #[test]
+  fn minimum_dependency_age_prefers_npmrc_over_default() {
+    let mut config = MinimumDependencyAgeConfig::default();
+    apply_minimum_dependency_age_fallbacks(&mut config, Some(2), now());
+    assert_eq!(
+      config.age,
+      Some(NewestDependencyDate::Enabled(
+        now() - chrono::Duration::days(2)
+      ))
+    );
+  }
+
+  #[test]
+  fn minimum_dependency_age_preserves_explicit_disable() {
+    let mut config = MinimumDependencyAgeConfig {
+      age: Some(NewestDependencyDate::Disabled),
+      exclude: Vec::new(),
+    };
+    apply_minimum_dependency_age_fallbacks(&mut config, Some(2), now());
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
   }
 }
