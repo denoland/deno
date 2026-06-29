@@ -350,7 +350,7 @@ opentelemetry-http = "0.27.0"
 opentelemetry-otlp = { version = "0.27.0", default-features = false, features = ["logs", "metrics", "trace", "http-proto", "http-json", "internal-logs", "populate-logs-event-name"] }
 opentelemetry-proto = { version = "0.27.0", default-features = false, features = ["gen-tonic-messages", "trace", "logs", "metrics"] }
 opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_experimental"] }
-opentelemetry_sdk = { version = "0.27.0", features = ["rt-tokio", "trace"] }
+opentelemetry_sdk = { version = "0.32.1", features = ["rt-tokio", "trace"] }
 
 # canvas
 image = { version = "0.25.4", default-features = false }
