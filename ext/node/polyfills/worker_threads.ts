@@ -25,6 +25,7 @@ const {
 } = core.ops;
 const {
   deserializeJsMessageData,
+  isUncloneable,
   markAsUncloneable: webMarkAsUncloneable,
   MessageChannel,
   MessagePort,
@@ -781,6 +782,15 @@ class NodeWorker extends EventEmitter {
       transferOrOptions === null ||
       (arguments.length <= 1)
     ) {
+      // Reject non-serializable values (e.g. URL) and per-instance
+      // markAsUncloneable values before V8's serializer silently turns them
+      // into `{}`, matching the web MessagePort path and Node's behavior.
+      if (isUncloneable(message)) {
+        throw new DOMException(
+          "Cannot clone object of unsupported type.",
+          "DataCloneError",
+        );
+      }
       op_host_post_message_raw(
         this.#id,
         core.serialize(message),
