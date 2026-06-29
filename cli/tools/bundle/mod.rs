@@ -2226,6 +2226,19 @@ impl DenoPluginHandler {
       Some(RequestedModuleType::Json) => {
         return Ok((source.to_vec(), esbuild_client::BuiltinLoader::Json));
       }
+      // `import sheet from "./a.css" with { type: "css" }` evaluates to a
+      // `CSSStyleSheet` at runtime (see the custom module evaluation callback
+      // in `runtime/worker.rs`). esbuild has no builtin loader that mirrors
+      // this, so synthesize an equivalent JS module instead of routing the
+      // source through esbuild's CSS loader (which would otherwise leave the
+      // default import as an empty object).
+      Some(RequestedModuleType::Other(ty)) if *ty == "css" => {
+        let text = String::from_utf8_lossy(source);
+        return Ok((
+          render_css_module(&text).into_bytes(),
+          esbuild_client::BuiltinLoader::Js,
+        ));
+      }
       Some(RequestedModuleType::Other(_) | RequestedModuleType::None)
       | None => {}
     }
@@ -2415,6 +2428,18 @@ fn file_path_or_url(
   } else {
     Ok(url.into())
   }
+}
+
+/// Renders a `with { type: "css" }` import as a JS module that constructs a
+/// constructable `CSSStyleSheet`, mirroring the runtime's custom module
+/// evaluation for CSS imports.
+fn render_css_module(text: &str) -> String {
+  // `serde_json::to_string` produces a valid JS string literal with the CSS
+  // text safely escaped.
+  let literal = serde_json::to_string(text).unwrap();
+  format!(
+    "const sheet = new CSSStyleSheet();\nsheet.replaceSync({literal});\nexport default sheet;\n"
+  )
 }
 
 fn media_type_to_loader(
