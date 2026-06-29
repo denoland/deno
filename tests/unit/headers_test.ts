@@ -1,5 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assert, assertEquals, assertThrows } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+} from "./test_util.ts";
 const {
   inspectArgs,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
@@ -95,6 +100,32 @@ Deno.test(function headerDeleteSuccess() {
     headers.delete(name);
     assert(!headers.has(name), "headers do not have anymore a header: " + name);
   }
+});
+
+// Regression test: set/delete on a list with many entries that share a name
+// must run in linear time. A quadratic implementation would take many seconds
+// (or minutes) at this size; the linear implementation finishes in
+// milliseconds. The 5s bound is intentionally loose to avoid CI flakes.
+Deno.test(function headerSetDeleteManyDuplicatesIsLinear() {
+  const N = 20_000;
+  const init: [string, string][] = [];
+  for (let i = 0; i < N; i++) init.push(["x-dup", String(i)]);
+
+  const a = new Headers(init);
+  const t1 = performance.now();
+  a.delete("x-dup");
+  assert(performance.now() - t1 < 5_000);
+  assertEquals(a.get("x-dup"), null);
+
+  const b = new Headers(init);
+  const t2 = performance.now();
+  b.set("x-dup", "final");
+  assert(performance.now() - t2 < 5_000);
+  assertEquals(b.get("x-dup"), "final");
+  // Single entry remains after set.
+  let count = 0;
+  for (const _ of b) count++;
+  assertEquals(count, 1);
 });
 
 Deno.test(function headerGetSuccess() {
@@ -399,6 +430,20 @@ Deno.test(function customInspectReturnsCorrectHeadersFormat() {
   assertEquals(
     stringify(multiParamHeader),
     `Headers { "content-length": "1337", "content-type": "application/json" }`,
+  );
+  const duplicateSetCookieHeaders = new Headers([
+    ["Set-Cookie", "foo=bar; Expires=Wed, 21 Oct 2015 07:28:00 GMT"],
+    ["Set-Cookie", "bar=baz; Expires=Thu, 22 Oct 2015 07:28:00 GMT"],
+  ]);
+  const actual = stringify(duplicateSetCookieHeaders);
+  assertStringIncludes(actual, "Headers {");
+  assertStringIncludes(
+    actual,
+    `"set-cookie": "foo=bar; Expires=Wed, 21 Oct 2015 07:28:00 GMT`,
+  );
+  assertStringIncludes(
+    actual,
+    `bar=baz; Expires=Thu, 22 Oct 2015 07:28:00 GMT"`,
   );
 });
 

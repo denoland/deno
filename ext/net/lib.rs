@@ -1,12 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+pub mod happy_eyeballs;
 pub mod io;
+pub mod memory;
 pub mod ops;
 pub mod ops_tls;
 #[cfg(unix)]
 pub mod ops_unix;
-#[cfg(windows)]
-mod ops_win_pipe;
 mod quic;
 pub mod raw;
 pub mod resolve_addr;
@@ -82,6 +82,7 @@ deno_core::extension!(deno_net,
     ops::op_net_connect_vsock,
     ops::op_net_listen_tunnel,
     ops::op_net_accept_tunnel,
+    ops::op_net_listen_memory,
 
     ops_tls::op_tls_key_null,
     ops_tls::op_tls_key_static,
@@ -102,11 +103,6 @@ deno_core::extension!(deno_net,
     ops_unix::op_node_unstable_net_listen_unixpacket,
     ops_unix::op_net_recv_unixpacket,
     ops_unix::op_net_send_unixpacket,
-    ops_unix::op_net_unix_stream_from_fd,
-
-    ops_win_pipe::op_pipe_open,
-    ops_win_pipe::op_pipe_connect,
-    ops_win_pipe::op_pipe_windows_wait,
 
     quic::op_quic_connecting_0rtt,
     quic::op_quic_connecting_1rtt,
@@ -144,8 +140,8 @@ deno_core::extension!(deno_net,
     quic::webtransport::op_webtransport_accept,
     quic::webtransport::op_webtransport_connect,
   ],
-  esm = [ "01_net.js", "02_tls.js" ],
   lazy_loaded_esm = [ "03_quic.js" ],
+  lazy_loaded_js = [ "01_net.js", "02_tls.js" ],
   options = {
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -188,39 +184,4 @@ mod ops_unix {
   stub_op!(op_node_unstable_net_listen_unixpacket);
   stub_op!(op_net_recv_unixpacket);
   stub_op!(op_net_send_unixpacket);
-  stub_op!(op_net_unix_stream_from_fd);
-}
-
-/// Stub ops for non-windows platforms.
-#[cfg(not(windows))]
-mod ops_win_pipe {
-  use deno_core::op2;
-
-  use crate::ops::NetError;
-
-  #[op2(fast)]
-  #[smi]
-  pub fn op_pipe_open() -> Result<u32, NetError> {
-    Err(NetError::Io(std::io::Error::new(
-      std::io::ErrorKind::Unsupported,
-      "Windows named pipes are not supported on this platform",
-    )))
-  }
-
-  #[op2(fast)]
-  #[smi]
-  pub fn op_pipe_connect() -> Result<u32, NetError> {
-    Err(NetError::Io(std::io::Error::new(
-      std::io::ErrorKind::Unsupported,
-      "Windows named pipes are not supported on this platform",
-    )))
-  }
-
-  #[op2(fast)]
-  pub fn op_pipe_windows_wait() -> Result<(), NetError> {
-    Err(NetError::Io(std::io::Error::new(
-      std::io::ErrorKind::Unsupported,
-      "Windows named pipes are not supported on this platform",
-    )))
-  }
 }

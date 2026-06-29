@@ -1,0 +1,31 @@
+{
+  "tempDir": true,
+  "tests": {
+    // With no real `node` on PATH, Deno provides itself as `node`, so a native
+    // PATH-based spawn of `node` succeeds.
+    "provides_node_when_absent": {
+      "if": "unix",
+      "args": "run -A spawn_node.mjs",
+      "envs": {
+        "PATH": ""
+      },
+      "output": "spawn_node.out"
+    },
+    // With the feature disabled, the spawn fails because there is no `node`.
+    "opt_out": {
+      "if": "unix",
+      "args": "run -A spawn_node.mjs",
+      "envs": {
+        "PATH": "",
+        "DENO_DISABLE_NODE_SHIM": "1"
+      },
+      "output": "spawn_node_disabled.out"
+    },
+    // A real `node` already on PATH must never be shadowed by the shim.
+    "real_node_not_shadowed": {
+      "if": "unix",
+      "args": "run -A real_node_not_shadowed.mjs",
+      "output": "real_node_not_shadowed.out"
+    }
+  }
+}

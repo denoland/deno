@@ -5,7 +5,13 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category Crypto */
+/** The global instance of {@linkcode Crypto} that provides access to the Web
+ * Crypto API, including cryptographically secure random number generation via
+ * {@linkcode Crypto.getRandomValues}, random UUID generation via
+ * {@linkcode Crypto.randomUUID}, and the low-level primitives exposed by
+ * {@linkcode SubtleCrypto} through {@linkcode Crypto.subtle}.
+ *
+ * @category Crypto */
 declare var crypto: Crypto;
 
 /** @category Crypto */
@@ -210,7 +216,13 @@ interface CryptoKey {
   readonly usages: KeyUsage[];
 }
 
-/** @category Crypto */
+/** The constructor object for {@linkcode CryptoKey}.
+ *
+ * `CryptoKey` instances cannot be created directly; they are produced by
+ * {@linkcode SubtleCrypto} methods such as `generateKey`, `importKey`, and
+ * `deriveKey`, so calling the constructor throws.
+ *
+ * @category Crypto */
 declare var CryptoKey: {
   readonly prototype: CryptoKey;
   new (): never;
@@ -226,7 +238,13 @@ interface CryptoKeyPair {
   publicKey: CryptoKey;
 }
 
-/** @category Crypto */
+/** The constructor object for {@linkcode CryptoKeyPair}.
+ *
+ * `CryptoKeyPair` objects are returned by {@linkcode SubtleCrypto.generateKey}
+ * for asymmetric algorithms and cannot be constructed directly, so calling the
+ * constructor throws.
+ *
+ * @category Crypto */
 declare var CryptoKeyPair: {
   readonly prototype: CryptoKeyPair;
   new (): never;
@@ -625,13 +643,60 @@ interface SubtleCrypto {
   ): Promise<CryptoKey>;
 }
 
-/** @category Crypto */
+/** The constructor object for {@linkcode SubtleCrypto}.
+ *
+ * The `SubtleCrypto` instance is accessed via {@linkcode Crypto.subtle}
+ * (`crypto.subtle`) rather than constructed directly, so calling the
+ * constructor throws.
+ *
+ * @category Crypto */
 declare var SubtleCrypto: {
   readonly prototype: SubtleCrypto;
   new (): never;
+  /**
+   * Synchronous feature detection for Web Crypto algorithm/operation
+   * combinations, per the WICG "Modern Algorithms in the Web Crypto API"
+   * proposal. Returns `true` when this runtime implements the requested
+   * combination, `false` otherwise.
+   *
+   * The third argument is interpreted as the derived-bit length when it is
+   * a number (relevant for `"deriveBits"`), and as a related algorithm —
+   * e.g. the derived-key algorithm for `"deriveKey"`, the wrapped/unwrapped
+   * key algorithm for `"wrapKey"` / `"unwrapKey"`, or the shared-key
+   * algorithm for `"encapsulateKey"` / `"decapsulateKey"` — otherwise.
+   *
+   * @see https://wicg.github.io/webcrypto-modern-algos/#dom-subtlecrypto-supports
+   */
+  supports(
+    operation:
+      | "encrypt"
+      | "decrypt"
+      | "sign"
+      | "verify"
+      | "digest"
+      | "generateKey"
+      | "deriveKey"
+      | "deriveBits"
+      | "importKey"
+      | "exportKey"
+      | "wrapKey"
+      | "unwrapKey"
+      | "encapsulateKey"
+      | "encapsulateBits"
+      | "decapsulateKey"
+      | "decapsulateBits"
+      | "getPublicKey",
+    algorithm: string | object,
+    lengthOrHash?: number | string | object | null,
+  ): boolean;
 };
 
-/** @category Crypto */
+/** This Web Crypto API interface provides basic cryptographic functionality.
+ * It is accessed via the global {@linkcode crypto} property, which gives access
+ * to cryptographically strong random number generation and to the low-level
+ * primitives exposed by {@linkcode SubtleCrypto} through {@linkcode Crypto.subtle}.
+ *
+ * @category Crypto */
 interface Crypto {
   readonly subtle: SubtleCrypto;
 
@@ -686,7 +751,12 @@ interface Crypto {
   randomUUID(): `${string}-${string}-${string}-${string}-${string}`;
 }
 
-/** @category Crypto */
+/** The constructor object for {@linkcode Crypto}.
+ *
+ * The `Crypto` instance is accessed via the global {@linkcode crypto} property
+ * rather than constructed directly, so calling the constructor throws.
+ *
+ * @category Crypto */
 declare var Crypto: {
   readonly prototype: Crypto;
   new (): never;

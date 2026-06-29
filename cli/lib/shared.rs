@@ -24,6 +24,14 @@ pub enum ReleaseChannel {
   /// Release candidate, eg. 1.46.0-rc.0, 2.0.0-rc.1
   #[allow(unused, reason = "shared between build script and binaries")]
   Rc,
+
+  /// Alpha release, eg. 2.8.0-alpha.0
+  #[allow(unused, reason = "shared between build script and binaries")]
+  Alpha,
+
+  /// Beta release, eg. 2.8.0-beta.0
+  #[allow(unused, reason = "shared between build script and binaries")]
+  Beta,
 }
 
 impl ReleaseChannel {
@@ -34,6 +42,8 @@ impl ReleaseChannel {
       Self::Canary => "canary",
       Self::Rc => "release candidate",
       Self::Lts => "long term support",
+      Self::Alpha => "alpha",
+      Self::Beta => "beta",
     }
   }
 
@@ -46,6 +56,8 @@ impl ReleaseChannel {
       Self::Canary => "canary",
       Self::Rc => "rc",
       Self::Lts => "lts",
+      Self::Alpha => "alpha",
+      Self::Beta => "beta",
     }
     .to_string()
   }
@@ -61,6 +73,8 @@ impl ReleaseChannel {
       "canary" => Self::Canary,
       "rc" => Self::Rc,
       "lts" => Self::Lts,
+      "alpha" => Self::Alpha,
+      "beta" => Self::Beta,
       unknown => {
         return Err(UnrecognizedReleaseChannelError(unknown.to_string()));
       }

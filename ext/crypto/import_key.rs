@@ -2,14 +2,13 @@
 
 use base64::Engine;
 use deno_core::JsBuffer;
-use deno_core::ToJsBuffer;
-use deno_core::op2;
+use deno_core::ToV8;
+use deno_core::convert::Uint8Array;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use p256::pkcs8::EncodePrivateKey;
 use rsa::pkcs1::UintRef;
 use rsa::pkcs8::der::Encode;
 use serde::Deserialize;
-use serde::Serialize;
 use spki::der::Decode;
 
 use crate::shared::*;
@@ -86,7 +85,51 @@ pub enum ImportKeyError {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Internal bytes shape used by [`op_crypto_import_key_inner`]. The
+/// op-facing wire shape ([`KeyDataWire`]) deserializes a `JsBuffer`
+/// (a JS BufferSource), but the Rust-native dispatcher in
+/// [`crate::subtle_import_key`] constructs bytes directly, so this enum
+/// owns a `Vec<u8>` payload that can be supplied either way.
 pub enum KeyData {
+  Spki(Vec<u8>),
+  Pkcs8(Vec<u8>),
+  Raw(Vec<u8>),
+  JwkSecret {
+    k: String,
+  },
+  JwkPublicRsa {
+    n: String,
+    e: String,
+  },
+  JwkPrivateRsa {
+    n: String,
+    e: String,
+    d: String,
+    p: String,
+    q: String,
+    dp: String,
+    dq: String,
+    qi: String,
+  },
+  JwkPublicEc {
+    x: String,
+    y: String,
+  },
+  JwkPrivateEc {
+    #[allow(dead_code, reason = "deserialized but not directly read")]
+    x: String,
+    #[allow(dead_code, reason = "deserialized but not directly read")]
+    y: String,
+    d: String,
+  },
+}
+
+/// Op-facing wire shape that matches the existing JS dispatcher's
+/// `{ spki | pkcs8 | raw | jwkSecret | ... }` JSON shape. Converted into
+/// [`KeyData`] before dispatch.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum KeyDataWire {
   Spki(JsBuffer),
   Pkcs8(JsBuffer),
   Raw(JsBuffer),
@@ -120,6 +163,41 @@ pub enum KeyData {
   },
 }
 
+impl From<KeyDataWire> for KeyData {
+  fn from(w: KeyDataWire) -> Self {
+    match w {
+      KeyDataWire::Spki(b) => KeyData::Spki(b.as_ref().to_vec()),
+      KeyDataWire::Pkcs8(b) => KeyData::Pkcs8(b.as_ref().to_vec()),
+      KeyDataWire::Raw(b) => KeyData::Raw(b.as_ref().to_vec()),
+      KeyDataWire::JwkSecret { k } => KeyData::JwkSecret { k },
+      KeyDataWire::JwkPublicRsa { n, e } => KeyData::JwkPublicRsa { n, e },
+      KeyDataWire::JwkPrivateRsa {
+        n,
+        e,
+        d,
+        p,
+        q,
+        dp,
+        dq,
+        qi,
+      } => KeyData::JwkPrivateRsa {
+        n,
+        e,
+        d,
+        p,
+        q,
+        dp,
+        dq,
+        qi,
+      },
+      KeyDataWire::JwkPublicEc { x, y } => KeyData::JwkPublicEc { x, y },
+      KeyDataWire::JwkPrivateEc { x, y, d } => {
+        KeyData::JwkPrivateEc { x, y, d }
+      }
+    }
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", tag = "algorithm")]
 pub enum ImportKeyOptions {
@@ -139,29 +217,34 @@ pub enum ImportKeyOptions {
   Hmac {},
 }
 
-#[derive(Serialize)]
-#[serde(untagged)]
+#[derive(ToV8)]
+#[to_v8(untagged)]
 pub enum ImportKeyResult {
-  #[serde(rename_all = "camelCase")]
   Rsa {
     raw_data: RustRawKeyData,
     modulus_length: usize,
-    public_exponent: ToJsBuffer,
+    public_exponent: Uint8Array,
   },
-  #[serde(rename_all = "camelCase")]
-  Ec { raw_data: RustRawKeyData },
-  #[serde(rename_all = "camelCase")]
+  Ec {
+    raw_data: RustRawKeyData,
+  },
   #[allow(dead_code, reason = "variant kept for completeness")]
-  Aes { raw_data: RustRawKeyData },
-  #[serde(rename_all = "camelCase")]
-  Hmac { raw_data: RustRawKeyData },
+  Aes {
+    raw_data: RustRawKeyData,
+  },
+  Hmac {
+    raw_data: RustRawKeyData,
+  },
 }
 
-#[op2]
-#[serde]
-pub fn op_crypto_import_key(
-  #[serde] opts: ImportKeyOptions,
-  #[serde] key_data: KeyData,
+/// Body of [`op_crypto_import_key`] callable from sibling Rust crates --
+/// in particular the Rust-native `SubtleCrypto.importKey` dispatcher in
+/// [`crate::subtle_import_key`] -- without round-tripping through the op
+/// layer (which would force a JS-bound bookkeeping cost we do not need
+/// when the caller is already in Rust).
+pub fn op_crypto_import_key_inner(
+  opts: ImportKeyOptions,
+  key_data: KeyData,
 ) -> Result<ImportKeyResult, ImportKeyError> {
   match opts {
     ImportKeyOptions::RsassaPkcs1v15 {} => import_key_rsassa(key_data),

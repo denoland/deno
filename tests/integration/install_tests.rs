@@ -177,6 +177,106 @@ fn install_basic_global() {
   assert!(!file_path.exists());
 }
 
+// Regression test for #32798: a relative `--import-map` passed to a global
+// install (typically via `deno task`) must resolve against the user's cwd,
+// not the generated `~/.deno/bin/.<name>/` install dir.
+#[test]
+fn install_global_from_task_with_relative_import_map() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "tasks": {
+    "install": "deno install -A --global --root ./root --import-map imports.json -n test main.ts"
+  }
+}
+"#,
+  );
+  temp_dir.write(
+    "imports.json",
+    r#"{
+  "imports": {
+    "@fixture": "./fixture.ts"
+  }
+}
+"#,
+  );
+  temp_dir.write("fixture.ts", "export const value = 1;\n");
+  temp_dir.write(
+    "main.ts",
+    "import { value } from \"@fixture\";\nconsole.log(value);\n",
+  );
+
+  let output = context.new_command().args("task install").run();
+
+  output.assert_exit_code(0);
+  let output_text = output.combined_output();
+  assert_contains!(output_text, "✅ Successfully installed test");
+  assert_not_contains!(output_text, ".test/imports.json");
+
+  let mut file_path = temp_dir.path().join("root/bin/test");
+  if cfg!(windows) {
+    file_path = file_path.with_extension("cmd");
+  }
+  assert!(file_path.exists());
+}
+
+// Companion to the regression test above. An absolute `--import-map` is *not*
+// affected by the #32798 cwd swap (there is no relative path to re-anchor), so
+// this test passes with or without the fix. Its purpose is to guard against a
+// future refactor breaking the `resolve_url_or_path` round-trip for absolute
+// paths: `main.ts` resolves `@fixture` through the import map during the
+// install-time dependency cache, so a mangled path would fail the install here.
+#[test]
+fn install_global_with_absolute_import_map() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  temp_dir.write(
+    "imports.json",
+    r#"{
+  "imports": {
+    "@fixture": "./fixture.ts"
+  }
+}
+"#,
+  );
+  temp_dir.write("fixture.ts", "export const value = 1;\n");
+  temp_dir.write(
+    "main.ts",
+    "import { value } from \"@fixture\";\nconsole.log(value);\n",
+  );
+
+  let import_map_path = temp_dir.path().join("imports.json");
+  let output = context
+    .new_command()
+    .args_vec([
+      "install",
+      "-A",
+      "--global",
+      "--root",
+      "./root",
+      "--import-map",
+      import_map_path.to_string().as_str(),
+      "-n",
+      "test",
+      "main.ts",
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  let output_text = output.combined_output();
+  assert_contains!(output_text, "✅ Successfully installed test");
+
+  let mut file_path = temp_dir.path().join("root/bin/test");
+  if cfg!(windows) {
+    file_path = file_path.with_extension("cmd");
+  }
+  assert!(file_path.exists());
+}
+
 #[test]
 fn install_custom_dir_env_var() {
   let context = TestContext::with_http_server();
@@ -417,7 +517,9 @@ fn check_local_by_default2() {
 }
 
 #[test]
-fn show_prefix_hint_on_global_install() {
+fn unprefixed_global_install_defaults_to_npm() {
+  // Unprefixed package names in `deno install -g` default to the npm
+  // registry, matching `deno add` and local `deno install`.
   let context = TestContextBuilder::new()
     .add_npm_env_vars()
     .add_jsr_env_vars()
@@ -433,45 +535,27 @@ fn show_prefix_hint_on_global_install() {
     ("DENO_INSTALL_ROOT", ""),
   ];
 
-  for pkg_req in ["npm:@denotest/bin", "jsr:@denotest/add"] {
-    let name = pkg_req.split_once('/').unwrap().1;
-    let pkg = pkg_req.split_once(':').unwrap().1;
+  // Bare npm name (no prefix) installs successfully from npm.
+  context
+    .new_command()
+    .args_vec(["install", "-g", "--name", "bin", "@denotest/bin"])
+    .envs(env_vars)
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
 
-    // try with prefix and ensure that the installation succeeds
-    context
-      .new_command()
-      .args_vec(["install", "-g", "--name", name, pkg_req])
-      .envs(env_vars)
-      .run()
-      .skip_output_check()
-      .assert_exit_code(0);
-
-    // try without the prefix and ensure that the installation fails with the appropriate error
-    // message
-    let output = context
-      .new_command()
-      .args_vec(["install", "-g", "--name", name, pkg])
-      .envs(env_vars)
-      .run();
-    output.assert_exit_code(1);
-
-    let output_text = output.combined_output();
-    let expected_text = format!(
-      "error: {pkg} is missing a prefix. Did you mean `deno install -g {pkg_req}`?"
-    );
-    assert_contains!(output_text, &expected_text);
-  }
-
-  // try a pckage not in npm and jsr to make sure the appropriate error message still appears
+  // A package that doesn't exist on npm produces the npm "does not exist"
+  // error rather than the legacy "missing a prefix" hint.
   let output = context
     .new_command()
     .args_vec(["install", "-g", "package-that-does-not-exist"])
     .envs(env_vars)
     .run();
   output.assert_exit_code(1);
-
-  let output_text = output.combined_output();
-  assert_contains!(output_text, "error: Module not found");
+  assert_contains!(
+    output.combined_output(),
+    "npm package 'package-that-does-not-exist' does not exist"
+  );
 }
 
 #[test]
@@ -504,14 +588,16 @@ fn installer_second_module_looks_like_script_argument() {
     .use_http_server()
     .use_temp_cwd()
     .build();
-  // in Deno < 3.0, we didn't require `--` before script arguments, so we try to provide a helpful
-  // error message for people migrating
+  // in Deno < 3.0, we didn't require `--` before script arguments, so we try
+  // to provide a helpful error message for people migrating. Validation
+  // happens up-front for the whole entry list, so the migration error fires
+  // before any entry is installed.
   context
     .new_command()
     .args("install --root ./root -g http://localhost:4545/echo.ts non_existent")
     .run()
     .assert_matches_text(concat!(
-      "[WILDCARD]Successfully installed echo[WILDCARD]error: non_existent is missing a prefix. ",
+      "error: non_existent is missing a prefix. ",
       "Deno 3.0 requires `--` before script arguments in `deno install -g`. ",
       "Did you mean `deno install -g http://localhost:4545/echo.ts -- non_existent`? ",
       "Or maybe provide a `jsr:` or `npm:` prefix?\n"

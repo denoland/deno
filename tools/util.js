@@ -11,6 +11,7 @@ import {
   SEPARATOR,
   toFileUrl,
 } from "@std/path";
+import { existsSync } from "@std/fs";
 export { dirname, extname, fromFileUrl, join, resolve, SEPARATOR, toFileUrl };
 export { existsSync, expandGlobSync, walk } from "@std/fs";
 export { TextLineStream } from "@std/streams/text-line-stream";
@@ -26,6 +27,15 @@ const versions = {
 const compressed = new Set(["ld64.lld", "rcodesign"]);
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
+
+let isKnownJjRepo = undefined;
+function isJjRepo() {
+  if (isKnownJjRepo !== undefined) {
+    return isKnownJjRepo;
+  }
+  isKnownJjRepo = existsSync(join(ROOT_PATH, ".jj"));
+  return isKnownJjRepo;
+}
 
 async function getFilesFromGit(baseDir, args) {
   const { success, stdout } = await new Deno.Command("git", {
@@ -52,7 +62,104 @@ async function getFilesFromGit(baseDir, args) {
   return files;
 }
 
+// Translate a single git pathspec into an equivalent jj `glob:` pattern. git
+// pathspec wildcards match across `/` (fnmatch without FNM_PATHNAME) and a
+// trailing directory matches everything under it, but jj's `glob:` `*` stops at
+// `/`. So map the directory-recursive forms to `**`.
+function normalizeGitGlob(glob) {
+  // `*.ext` matches at any depth in git.
+  const extMatch = glob.match(/^\*(\..+)/);
+  if (extMatch) {
+    return "**/*" + extMatch[1];
+  }
+  // A trailing directory (`foo/`) is a recursive prefix match.
+  if (glob.endsWith("/")) {
+    return glob + "**";
+  }
+  // A trailing `foo/*` matches recursively in git (the `*` crosses `/`).
+  if (glob.endsWith("/*")) {
+    return glob.slice(0, -1) + "**";
+  }
+  return glob;
+}
+
+function gitGlobsToJjFileset(patterns) {
+  if (patterns.length === 0) {
+    return ['glob:"*"'];
+  }
+  let output = "";
+  const negative = [];
+  /** @type {string[]} */
+  const positive = [];
+  for (let i = 0; i < patterns.length; i++) {
+    if (patterns[i].startsWith(":!:")) {
+      negative.push(patterns[i].replace(/^:!:/, ""));
+    } else {
+      positive.push(patterns[i]);
+    }
+  }
+  for (let i = 0; i < positive.length; i++) {
+    const glob = normalizeGitGlob(positive[i]);
+    if (i === 0) {
+      output += `(glob-i:"${glob}"`;
+    } else {
+      output += ' | glob-i:"' + glob + '"';
+    }
+  }
+  output += ")";
+  if (negative.length) {
+    output += " ~ ";
+  }
+  for (let i = 0; i < negative.length; i++) {
+    const glob = normalizeGitGlob(negative[i]);
+    if (i === 0) {
+      output += `(glob-i:"${glob}"`;
+    } else {
+      output += ' | glob-i:"' + glob + '"';
+    }
+  }
+  if (negative.length) {
+    output += ")";
+  }
+  return [output];
+}
+
+async function getFilesFromJj(baseDir, patterns) {
+  baseDir = Deno.realPathSync(baseDir);
+  const jjPatterns = gitGlobsToJjFileset(patterns);
+  const cmd = [
+    "file",
+    "list",
+    ...jjPatterns,
+  ];
+  const { success, stdout } = await new Deno.Command(
+    "jj",
+    {
+      stderr: "inherit",
+      args: cmd,
+      cwd: baseDir,
+    },
+  ).output();
+  const output = new TextDecoder().decode(stdout);
+  if (!success) {
+    throw new Error("getFilesFromJj failed");
+  }
+  const files = output.split("\n").filter((line) => line.length > 0)
+    .map((filePath) => {
+      try {
+        return Deno.realPathSync(join(baseDir, filePath));
+      } catch {
+        return null;
+      }
+    })
+    .filter((filePath) => filePath !== null);
+  return files;
+}
+
 export function gitLsFiles(baseDir, patterns) {
+  if (isJjRepo()) {
+    return getFilesFromJj(baseDir, patterns);
+  }
   baseDir = Deno.realPathSync(baseDir);
   const cmd = [
     "-C",
@@ -187,7 +294,7 @@ export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
 }
 
-const commitId = "aa25a37b0f2bdadc83e99e625e8a074d56d1febd";
+const commitId = "e593815dcfe5d260b27e6556cc9e44dcfcaeda3d";
 const downloadUrl =
   `https://raw.githubusercontent.com/denoland/deno_third_party/${commitId}/prebuilt/${platformDirName}`;
 

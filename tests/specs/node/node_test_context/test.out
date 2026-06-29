@@ -1,0 +1,35 @@
+running 10 tests from ./test.js
+t.name returns the test name ... ok ([WILDLINE])
+t.fullName with nested tests ...
+  child ...
+    grandchild ... ok ([WILDLINE])
+  child ... ok ([WILDLINE])
+t.fullName with nested tests ... ok ([WILDLINE])
+t.signal is an AbortSignal ... ok ([WILDLINE])
+t.plan with assertions passes ... ok ([WILDLINE])
+t.plan with subtests passes ...
+  sub 1 ... ok ([WILDLINE])
+  sub 2 ... ok ([WILDLINE])
+t.plan with subtests passes ... ok ([WILDLINE])
+t.plan fails on count mismatch ... FAILED ([WILDLINE])
+suite with hooks ...
+  hook test 1 ... ok ([WILDLINE])
+  hook test 2 ... ok ([WILDLINE])
+suite with hooks ... ok ([WILDLINE])
+t.beforeEach and t.afterEach ...
+  sub 1 ... ok ([WILDLINE])
+  sub 2 ... ok ([WILDLINE])
+t.beforeEach and t.afterEach ... ok ([WILDLINE])
+t.before and t.after run once ...
+  sub 1 ... ok ([WILDLINE])
+  sub 2 ... ok ([WILDLINE])
+t.before and t.after run once ... ok ([WILDLINE])
+cascade outer ...
+  cascade inner ...
+    runs every enclosing beforeEach, outermost-first ... ok ([WILDLINE])
+  cascade inner ... ok ([WILDLINE])
+cascade outer ... ok ([WILDLINE])
+[WILDCARD] ERRORS [WILDCARD] FAILURES [WILDCARD]
+FAILED | 9 passed (12 steps) | 1 failed ([WILDLINE])
+
+error: Test failed

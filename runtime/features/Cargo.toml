@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_features"
-version = "0.39.0"
+version = "0.49.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,7 +15,3 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
-
-[build-dependencies]
-serde.workspace = true
-serde_json.workspace = true

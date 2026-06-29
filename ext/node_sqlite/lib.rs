@@ -10,6 +10,7 @@ mod validators;
 
 pub use backup::op_node_database_backup;
 pub use database::DatabaseSync;
+pub use database::DatabaseSyncLimits;
 pub use session::Session;
 pub use sql_tag_store::SQLTagStore;
 pub use statement::StatementSync;
@@ -17,7 +18,13 @@ pub use statement::StatementSync;
 deno_core::extension!(
   deno_node_sqlite,
   ops = [op_node_database_backup,],
-  objects = [DatabaseSync, Session, SQLTagStore, StatementSync,],
+  objects = [
+    DatabaseSync,
+    DatabaseSyncLimits,
+    Session,
+    SQLTagStore,
+    StatementSync,
+  ],
 );
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -130,6 +137,16 @@ pub enum SqliteError {
   #[error("statement has been finalized")]
   #[property("code" = self.code())]
   StatementFinalized,
+  #[class(generic)]
+  #[error("cannot close database while a user-defined callback is running")]
+  #[property("code" = self.code())]
+  ActiveCallback,
+  #[class(generic)]
+  #[error(
+    "Cannot raise the \"attach\" limit: ATTACH DATABASE is disabled without full permissions for the database path."
+  )]
+  #[property("code" = self.code())]
+  AttachLimitDenied,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -142,6 +159,7 @@ enum ErrorCode {
   ERR_LOAD_SQLITE_EXTENSION,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_ACCESS_DENIED,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -160,6 +178,7 @@ impl ErrorCode {
       Self::ERR_INVALID_STATE => "ERR_INVALID_STATE",
       Self::ERR_OUT_OF_RANGE => "ERR_OUT_OF_RANGE",
       Self::ERR_LOAD_SQLITE_EXTENSION => "ERR_LOAD_SQLITE_EXTENSION",
+      Self::ERR_ACCESS_DENIED => "ERR_ACCESS_DENIED",
     }
   }
 }
@@ -189,9 +208,11 @@ impl SqliteError {
       | Self::AlreadyClosed
       | Self::InUse
       | Self::AlreadyOpen
-      | Self::StatementFinalized => ErrorCode::ERR_INVALID_STATE,
+      | Self::StatementFinalized
+      | Self::ActiveCallback => ErrorCode::ERR_INVALID_STATE,
       Self::NumberTooLarge(_) => ErrorCode::ERR_OUT_OF_RANGE,
       Self::LoadExensionFailed(_) => ErrorCode::ERR_LOAD_SQLITE_EXTENSION,
+      Self::AttachLimitDenied => ErrorCode::ERR_ACCESS_DENIED,
       _ => ErrorCode::ERR_SQLITE_ERROR,
     }
   }

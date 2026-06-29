@@ -36,7 +36,6 @@ pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
-pub use consts::tsgo_prebuilt_path;
 pub use fs::PathRef;
 pub use fs::TempDir;
 #[cfg(feature = "lsp")]
@@ -64,6 +63,7 @@ pub static IS_CI: Lazy<bool> = Lazy::new(|| std::env::var("CI").is_ok());
 pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("NPM_CONFIG_MIN_RELEASE_AGE".to_string(), "0".to_string()),
     ("JSR_NPM_URL".to_string(), npm_jsr_registry_url()),
     ("NODEJS_ORG_MIRROR".to_string(), nodejs_org_mirror_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
@@ -138,6 +138,7 @@ pub fn env_vars_for_jsr_provenance_tests() -> Vec<(String, String)> {
 pub fn env_vars_for_jsr_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("NPM_CONFIG_MIN_RELEASE_AGE".to_string(), "0".to_string()),
     ("JSR_NPM_URL".to_string(), npm_jsr_registry_url()),
     ("JSR_URL".to_string(), jsr_registry_url()),
     (

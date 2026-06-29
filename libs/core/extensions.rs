@@ -59,6 +59,7 @@ impl std::fmt::Debug for ExtensionFileSourceCode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExtensionSourceType {
   LazyEsm,
+  LazyJs,
   Js,
   Esm,
 }
@@ -110,6 +111,23 @@ impl ExtensionFileSource {
       specifier,
       code: ExtensionFileSourceCode::LoadedFromMemoryDuringSnapshot(code),
       _unconstructable_use_new: PhantomData,
+    }
+  }
+
+  /// Whether this source's bytes are reachable at runtime without an external
+  /// table (e.g. from a snapshot build's residual sources). True for inline
+  /// or compile-time embedded sources, false for paths that were only valid
+  /// on the build machine.
+  pub fn is_runtime_loadable(&self) -> bool {
+    #[allow(
+      deprecated,
+      reason = "matching deprecated variant we still inspect"
+    )]
+    match &self.code {
+      ExtensionFileSourceCode::IncludedInBinary(_)
+      | ExtensionFileSourceCode::LoadedFromMemoryDuringSnapshot(_)
+      | ExtensionFileSourceCode::Computed(_) => true,
+      ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(_) => false,
     }
   }
 
@@ -217,6 +235,7 @@ pub struct OpDecl {
   pub accessor_type: AccessorType,
   pub arg_count: u8,
   pub no_side_effects: bool,
+  pub constructable: bool,
   /// The slow dispatch call. If metrics are disabled, the `v8::Function` is created with this callback.
   pub(crate) slow_fn: OpFnRef,
   /// The slow dispatch implementation, returning a status code. Used by the shared
@@ -243,6 +262,7 @@ impl OpDecl {
     symbol_for: bool,
     arg_count: u8,
     no_side_effects: bool,
+    constructable: bool,
     slow_fn: OpFnRef,
     slow_fn_impl: SlowFnImplRef,
     accessor_type: AccessorType,
@@ -259,6 +279,7 @@ impl OpDecl {
       symbol_for,
       arg_count,
       no_side_effects,
+      constructable,
       slow_fn,
       slow_fn_impl,
       slow_fn_with_metrics: crate::ops_metrics::slow_metrics_dispatch,
@@ -414,6 +435,13 @@ macro_rules! or {
 ///  * esm: a comma-separated list of ESM module filenames (see [`include_js_files`]), eg: `esm = [ dir "dir", "my_file.js" ]`
 ///  * lazy_loaded_esm: a comma-separated list of ESM module filenames (see [`include_js_files`]), that will be included in
 ///    the produced binary, but not automatically evaluated. Eg: `lazy_loaded_esm = [ dir "dir", "my_file.js" ]`
+///  * lazy_loaded_js: a comma-separated list of JS script filenames that will be included in
+///    the produced binary, but not automatically evaluated. Loaded on demand via `Deno.core.loadExtScript()`.
+///    Eg: `lazy_loaded_js = [ dir "dir", "my_file.js" ]`
+///  * synthetic_esm: a comma-separated list of `"module_specifier" = "backing_script_specifier"` pairs.
+///    Imports of `module_specifier` resolve to a synthetic ESM module whose exports are derived from
+///    the exports object returned by the IIFE in `backing_script_specifier` (which must be declared
+///    in `lazy_loaded_js`). Eg: `synthetic_esm = [ "node:zlib" = "ext:deno_node/zlib.js" ]`
 ///  * js: a comma-separated list of JS filenames (see [`include_js_files`]), eg: `js = [ dir "dir", "my_file.js" ]`
 ///  * config: a structure-like definition for configuration parameters which will be required when initializing this extension, eg: `config = { my_param: Option<usize> }`
 ///  * middleware: an [`OpDecl`] middleware function with the signature `fn (OpDecl) -> OpDecl`
@@ -434,6 +462,8 @@ macro_rules! extension {
     $(, esm_entry_point = $esm_entry_point:expr_2021 )?
     $(, esm = [ $($esm:tt)* ] )?
     $(, lazy_loaded_esm = [ $($lazy_loaded_esm:tt)* ] )?
+    $(, lazy_loaded_js = [ $($lazy_loaded_js:tt)* ] )?
+    $(, synthetic_esm = [ $( $synthetic_esm_module:literal = $synthetic_esm_backing:literal ),* $(,)? ] )?
     $(, js = [ $($js:tt)* ] )?
     $(, options = { $( $options_id:ident : $options_type:ty ),* $(,)? } )?
     $(, middleware = $middleware_fn:expr_2021 )?
@@ -485,6 +515,16 @@ macro_rules! extension {
           lazy_loaded_esm_files: {
             const JS: &'static [$crate::ExtensionFileSource] = &$crate::include_lazy_loaded_js_files!( $name $($($lazy_loaded_esm)*)? );
             ::std::borrow::Cow::Borrowed(JS)
+          },
+          lazy_loaded_js_files: {
+            const JS: &'static [$crate::ExtensionFileSource] = &$crate::include_lazy_loaded_js_files!( $name $($($lazy_loaded_js)*)? );
+            ::std::borrow::Cow::Borrowed(JS)
+          },
+          synthetic_esm_modules: {
+            const MAPPINGS: &'static [(&'static str, &'static str)] = &[
+              $($(($synthetic_esm_module, $synthetic_esm_backing)),*)?
+            ];
+            ::std::borrow::Cow::Borrowed(MAPPINGS)
           },
           esm_entry_point: {
             const V: ::std::option::Option<&'static ::std::primitive::str> = $crate::or!($(::std::option::Option::Some($esm_entry_point))?, ::std::option::Option::None);
@@ -639,6 +679,13 @@ pub struct Extension {
   pub js_files: Cow<'static, [ExtensionFileSource]>,
   pub esm_files: Cow<'static, [ExtensionFileSource]>,
   pub lazy_loaded_esm_files: Cow<'static, [ExtensionFileSource]>,
+  pub lazy_loaded_js_files: Cow<'static, [ExtensionFileSource]>,
+  /// `(module_specifier, backing_script_specifier)` pairs. At extension
+  /// init, each pair is registered so that imports of `module_specifier`
+  /// resolve to a synthetic ESM module built from the exports object
+  /// returned by the IIFE in `backing_script_specifier` (which must be
+  /// declared in `lazy_loaded_js_files`).
+  pub synthetic_esm_modules: Cow<'static, [(&'static str, &'static str)]>,
   pub esm_entry_point: Option<&'static str>,
   pub ops: Cow<'static, [OpDecl]>,
   pub objects: Cow<'static, [OpMethodDecl]>,
@@ -665,6 +712,8 @@ impl Extension {
       js_files: Cow::Borrowed(&[]),
       esm_files: Cow::Borrowed(&[]),
       lazy_loaded_esm_files: Cow::Borrowed(&[]),
+      lazy_loaded_js_files: Cow::Borrowed(&[]),
+      synthetic_esm_modules: Cow::Borrowed(&[]),
       esm_entry_point: None,
       ops: self.ops.clone(),
       objects: self.objects.clone(),
@@ -684,6 +733,8 @@ impl Default for Extension {
       js_files: Cow::Borrowed(&[]),
       esm_files: Cow::Borrowed(&[]),
       lazy_loaded_esm_files: Cow::Borrowed(&[]),
+      lazy_loaded_js_files: Cow::Borrowed(&[]),
+      synthetic_esm_modules: Cow::Borrowed(&[]),
       esm_entry_point: None,
       ops: Cow::Borrowed(&[]),
       objects: Cow::Borrowed(&[]),
@@ -892,7 +943,7 @@ macro_rules! include_lazy_loaded_js_files {
     $(with_specifier $s2:literal)?
     $(= $config:tt)?
   ),* $(,)?) => {
-    $crate::__extension_include_js_files_inner!(mode=included, name=$name, dir=$crate::__extension_root_dir!($($dir)?), $([
+    $crate::__extension_include_js_files_inner!(mode=loaded, name=$name, dir=$crate::__extension_root_dir!($($dir)?), $([
       // These entries will be parsed in __extension_include_js_files_inner
       $s1 $(with_specifier $s2)? $(= $config)?
     ]),*)
@@ -914,22 +965,11 @@ macro_rules! include_js_files_doctest {
   };
 }
 
-/// When `#[cfg(not(feature = "include_js_files_for_snapshotting"))]` matches, ie: the `include_js_files_for_snapshotting`
-/// feature is not set, we want all JS files to be included.
-///
-/// Maps `(...)` to `(mode=included, ...)`
-#[cfg(not(feature = "include_js_files_for_snapshotting"))]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __extension_include_js_files_detect {
-  ($($rest:tt)*) => { $crate::__extension_include_js_files_inner!(mode=included, $($rest)*) };
-}
-
-/// When `#[cfg(feature = "include_js_files_for_snapshotting")]` matches, ie: the `include_js_files_for_snapshotting`
-/// feature is set, we want the pathnames for the JS files to be included and not the file contents.
-///
-/// Maps `(...)` to `(mode=loaded, ...)`
-#[cfg(feature = "include_js_files_for_snapshotting")]
+/// Source files declared on an extension are recorded by absolute path; their
+/// bytes are read from disk during snapshot creation and never embedded in the
+/// final binary. With a startup snapshot, the source is reachable via the
+/// snapshot bytes (for `esm`/`js`) or the residual lazy table emitted by the
+/// snapshot build (for `lazy_loaded_*`).
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __extension_include_js_files_detect {

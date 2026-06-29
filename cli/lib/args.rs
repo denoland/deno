@@ -2,6 +2,7 @@
 
 use std::io::BufReader;
 use std::io::Cursor;
+use std::path::Path;
 use std::path::PathBuf;
 
 use base64::prelude::BASE64_STANDARD;
@@ -13,6 +14,7 @@ use deno_npm_installer::process_state::NpmProcessStateFromEnvVarSys;
 use deno_npm_installer::process_state::NpmProcessStateKind;
 use deno_runtime::UNSTABLE_ENV_VAR_NAMES;
 use deno_runtime::colors;
+use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -38,6 +40,46 @@ pub fn has_flag_env_var(sys: &impl EnvVar, name: &str) -> bool {
   match sys.env_var_os(name) {
     Some(value) => value == "1",
     None => false,
+  }
+}
+
+/// Reads the node IPC channel configuration that `node:child_process.fork()`
+/// passes to a child process through `NODE_CHANNEL_FD` (and the optional
+/// `NODE_CHANNEL_SERIALIZATION_MODE`), returning the channel fd and
+/// serialization mode so the child can wire up `process.send()` /
+/// `process.on("message")`. The env vars are removed once read so they don't
+/// leak into grandchild processes. Returns `Ok(None)` when no channel was set.
+///
+/// Shared by the `deno` CLI and the standalone (`denort`) runtime so the two
+/// entry points can't drift; the latter relies on this for IPC to work in a
+/// compiled binary's forked child (issue #26304).
+pub fn node_ipc_init(
+  sys: &impl EnvVar,
+) -> Result<
+  Option<(i64, ChildIpcSerialization)>,
+  deno_runtime::deno_core::anyhow::Error,
+> {
+  let maybe_node_channel_fd = sys.env_var("NODE_CHANNEL_FD").ok();
+  let maybe_node_channel_serialization =
+    if let Ok(serialization) = sys.env_var("NODE_CHANNEL_SERIALIZATION_MODE") {
+      Some(serialization.parse::<ChildIpcSerialization>()?)
+    } else {
+      None
+    };
+  if let Some(node_channel_fd) = maybe_node_channel_fd {
+    // Remove so that child processes don't inherit these environment variables.
+    // SAFETY: single-threaded at this point in startup
+    unsafe {
+      std::env::remove_var("NODE_CHANNEL_FD");
+      std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
+    }
+    let node_channel_fd = node_channel_fd.parse::<i64>()?;
+    Ok(Some((
+      node_channel_fd,
+      maybe_node_channel_serialization.unwrap_or(ChildIpcSerialization::Json),
+    )))
+  } else {
+    Ok(None)
   }
 }
 
@@ -72,6 +114,14 @@ pub enum RootCertStoreLoadError {
   CaFileOpenError(String),
   #[error("Failed to load platform certificates: {0}")]
   FailedNativeCerts(String),
+}
+
+fn load_pem_certs(
+  path: &Path,
+) -> Result<Vec<rustls::pki_types::CertificateDer<'static>>, std::io::Error> {
+  let file: std::fs::File = std::fs::File::open(path)?;
+  let mut reader: BufReader<std::fs::File> = BufReader::new(file);
+  rustls_pemfile::certs(&mut reader).collect()
 }
 
 /// Create and populate a root cert store based on the passed options and
@@ -159,6 +209,26 @@ pub fn get_root_cert_store(
     }
   }
 
+  if let Ok(extra_ca_certs_path) = sys.env_var("NODE_EXTRA_CA_CERTS")
+    && !extra_ca_certs_path.is_empty()
+  {
+    let path: PathBuf = maybe_root_path.as_ref().map_or_else(
+      || PathBuf::from(&extra_ca_certs_path),
+      |root| root.join(&extra_ca_certs_path),
+    );
+    match load_pem_certs(&path) {
+      Ok(certs) => {
+        root_cert_store.add_parsable_certificates(certs);
+      }
+      Err(e) => log::warn!(
+        "{}",
+        colors::yellow(&format!(
+          "Warning: Ignoring extra certs from \"{extra_ca_certs_path}\", load failed: {e}"
+        ))
+      ),
+    }
+  }
+
   Ok(root_cert_store)
 }
 
@@ -204,7 +274,6 @@ pub fn resolve_npm_resolution_snapshot(
 pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
-  pub bare_node_builtins: bool,
   pub detect_cjs: bool,
   pub lazy_dynamic_imports: bool,
   pub raw_imports: bool,
@@ -222,11 +291,6 @@ impl UnstableConfig {
       }
     }
 
-    maybe_set(
-      sys,
-      &mut self.bare_node_builtins,
-      UNSTABLE_ENV_VAR_NAMES.bare_node_builtins,
-    );
     maybe_set(
       sys,
       &mut self.lazy_dynamic_imports,
@@ -251,7 +315,6 @@ impl UnstableConfig {
   }
 
   pub fn enable_node_compat(&mut self) {
-    self.bare_node_builtins = true;
     self.sloppy_imports = true;
     self.detect_cjs = true;
     if !self.features.iter().any(|f| f == "node-globals") {

@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // No deno.lock, package-lock.json, or pnpm-lock.yaml. `deno install`
+      // should seed deno.lock from bun.lock, including the workspace member's
+      // deps (bun records every workspace's requirements under `workspaces`).
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('deno.lock').trim())"
+      ],
+      "output": "deno.lock.out"
+    }
+  ]
+}

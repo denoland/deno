@@ -10,6 +10,7 @@ import { stripAnsiCode } from "@std/fmt/colors";
 import * as util from "node:util";
 import utilDefault from "node:util";
 import { Buffer } from "node:buffer";
+import process from "node:process";
 
 Deno.test({
   name: "[util] format",
@@ -40,6 +41,30 @@ Deno.test({
   1, 2, 3, 4,
   5, 6, 7
 ]`,
+    );
+  },
+});
+
+Deno.test({
+  // https://github.com/denoland/deno/issues/26355
+  name: "[util] inspect on Proxy doesn't invoke traps",
+  fn() {
+    assertEquals(
+      stripAnsiCode(util.inspect(
+        // deno-lint-ignore no-explicit-any
+        new Proxy({ x: 1 }, { ownKeys: (() => undefined) as any }),
+      )),
+      "{ x: 1 }",
+    );
+    assertEquals(
+      stripAnsiCode(util.inspect(
+        new Proxy({}, {
+          get() {
+            throw new Error("should not be invoked");
+          },
+        }),
+      )),
+      "{}",
     );
   },
 });
@@ -222,14 +247,102 @@ Deno.test("[util] aborted()", async () => {
   assertEquals(done, true);
 });
 
+Deno.test("[util] aborted() drops pending promise when resource is GCed", async () => {
+  const command = new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--quiet",
+      "--v8-flags=--expose-gc",
+      "tests/unit_node/testdata/util_aborted_gc.ts",
+    ],
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const { code, stderr } = await command.output();
+  assertEquals(code, 0, new TextDecoder().decode(stderr));
+});
+
 Deno.test("[util] styleText()", () => {
-  const redText = util.styleText("red", "error");
+  const redText = util.styleText("red", "error", { validateStream: false });
   assertEquals(redText, "\x1B[31merror\x1B[39m");
 });
 
 Deno.test("[util] styleText() with array of formats", () => {
-  const colored = util.styleText(["red", "green"], "error");
-  assertEquals(colored, "\x1b[32m\x1b[31merror\x1b[39m\x1b[39m");
+  const colored = util.styleText(["red", "green"], "error", {
+    validateStream: false,
+  });
+  assertEquals(colored, "\x1b[31m\x1b[32merror\x1b[39m\x1b[39m");
+});
+
+Deno.test("[util] styleText() respects stream.isTTY", () => {
+  const streamTTY = {
+    write() {},
+    isTTY: true,
+  } as unknown as NodeJS.WritableStream;
+  const streamNoTTY = {
+    write() {},
+    isTTY: false,
+  } as unknown as NodeJS.WritableStream;
+
+  const redText = util.styleText("red", "TTY", { stream: streamTTY });
+  assertEquals(redText, "\x1b[31mTTY\x1b[39m");
+
+  const plainText = util.styleText("blue", "No TTY", { stream: streamNoTTY });
+  const greenText = util.styleText("green", "No TTY", {
+    stream: streamNoTTY,
+    validateStream: false,
+  });
+  assertEquals(plainText, "No TTY");
+  assertEquals(greenText, "\x1b[32mNo TTY\x1b[39m");
+});
+
+Deno.test("[util] styleText() falls back to process.stdout when no stream given", () => {
+  const orig = process.env.FORCE_COLOR;
+  try {
+    process.env.FORCE_COLOR = "0";
+    assertEquals(util.styleText("red", "no stream"), "no stream");
+
+    process.env.FORCE_COLOR = "1";
+    assertEquals(
+      util.styleText("red", "no stream"),
+      "\x1b[31mno stream\x1b[39m",
+    );
+  } finally {
+    if (orig === undefined) {
+      delete process.env.FORCE_COLOR;
+    } else {
+      process.env.FORCE_COLOR = orig;
+    }
+  }
+});
+
+Deno.test("[util] styleText() validates stream type before format", () => {
+  // When both the stream and the format are invalid, ERR_INVALID_ARG_TYPE
+  // (bad stream) must be thrown before ERR_INVALID_ARG_VALUE (bad format),
+  // matching Node's argument-validation order.
+  const streamErr = assertThrows(
+    () =>
+      // @ts-expect-error: intentionally invalid format and stream to test validation order
+      util.styleText("not_a_valid_format", "text", { stream: "not-a-stream" }),
+    TypeError,
+  );
+  assertEquals(
+    (streamErr as unknown as { code: string }).code,
+    "ERR_INVALID_ARG_TYPE",
+  );
+
+  // With a structurally-valid stream (has .write), the format check fires next
+  // and ERR_INVALID_ARG_VALUE is thrown.
+  const formatErr = assertThrows(
+    () =>
+      // @ts-expect-error: intentionally invalid format to test validation order
+      util.styleText("not_a_valid_format", "text", { stream: { write() {} } }),
+    TypeError,
+  );
+  assertEquals(
+    (formatErr as unknown as { code: string }).code,
+    "ERR_INVALID_ARG_VALUE",
+  );
 });
 
 Deno.test("[util] stripVTControlCharacters() removes OSC 8 hyperlinks", () => {
@@ -244,6 +357,24 @@ Deno.test("[util] stripVTControlCharacters() removes OSC 8 hyperlinks", () => {
   assertEquals(util.stripVTControlCharacters(inputBel), "This is a link hello");
 });
 
+Deno.test("[util] queryObjects() counts instances", () => {
+  class UtilQueryObjectsFixture {}
+  // util.queryObjects is not declared on the bundled @types/node yet, but the
+  // runtime exposes it (mirroring v8.queryObjects).
+  // deno-lint-ignore no-explicit-any
+  const queryObjects = (util as any).queryObjects as (
+    ctor: unknown,
+    options?: { format?: "count" | "summary" },
+  ) => number | string[];
+  const before = queryObjects(UtilQueryObjectsFixture, { format: "count" });
+  const refs = [];
+  for (let i = 0; i < 25; i++) refs.push(new UtilQueryObjectsFixture());
+  const after = queryObjects(UtilQueryObjectsFixture, { format: "count" });
+  assertEquals(typeof before, "number");
+  assertEquals((after as number) - (before as number) >= 25, true);
+  assertEquals(refs.length, 25);
+});
+
 Deno.test("[util] parseEnv()", () => {
   const env =
     "KEY1=VALUE1\nKEY2='VALUE2'\nKEYÄ3=\"VALUE3\"\nKEY4=VALÜE4\nKEY5='VALUE6'INVALID_LINE\nKEY6=A";
@@ -256,4 +387,49 @@ Deno.test("[util] parseEnv()", () => {
     KEY5: "VALUE6",
     KEY6: "A",
   });
+});
+
+Deno.test("[util] getSystemErrorMap()", () => {
+  const map = util.getSystemErrorMap();
+  assert(map instanceof Map);
+  // The map must agree with getSystemErrorName / getSystemErrorMessage on
+  // every entry it returns.
+  for (const [code, [name, message]] of map) {
+    assertStrictEquals(util.getSystemErrorName(code), name);
+    assertStrictEquals(util.getSystemErrorMessage(code), message);
+  }
+  // Smoke-check a couple of well-known platform-independent codes.
+  const eaddrinuse = Deno.build.os === "windows" ? -4091 : -98;
+  if (Deno.build.os === "darwin") {
+    assertStrictEquals(map.get(-48)?.[0], "EADDRINUSE");
+  } else {
+    assertStrictEquals(map.get(eaddrinuse)?.[0], "EADDRINUSE");
+  }
+});
+
+Deno.test("[util] transferableAbortController() returns an AbortController", () => {
+  const ac = util.transferableAbortController();
+  assert(ac instanceof AbortController);
+  assert(ac.signal instanceof AbortSignal);
+  assertEquals(ac.signal.aborted, false);
+  ac.abort("reason");
+  assertEquals(ac.signal.aborted, true);
+  assertEquals(ac.signal.reason, "reason");
+});
+
+Deno.test("[util] transferableAbortSignal() returns the given signal", () => {
+  const ac = new AbortController();
+  assertStrictEquals(util.transferableAbortSignal(ac.signal), ac.signal);
+  // Also accepts already-aborted signals.
+  const aborted = AbortSignal.abort("boom");
+  assertStrictEquals(util.transferableAbortSignal(aborted), aborted);
+});
+
+Deno.test("[util] transferableAbortSignal() throws on non-AbortSignal", () => {
+  // deno-lint-ignore no-explicit-any
+  const fn = util.transferableAbortSignal as (signal: any) => unknown;
+  assertThrows(() => fn(undefined), TypeError);
+  assertThrows(() => fn(null), TypeError);
+  assertThrows(() => fn({}), TypeError);
+  assertThrows(() => fn("signal"), TypeError);
 });

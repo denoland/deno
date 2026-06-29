@@ -1,6 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::rc::Rc;
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::num::NonZeroI32;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -11,10 +15,47 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
 
-use crate::create_host_defined_options;
+use crate::create_vm_dynamic_import_callback_host_defined_options;
+use crate::create_vm_dynamic_import_missing_host_defined_options;
+
+/// Build the host-defined options to attach to a `node:vm`-compiled
+/// script/function/module. `-1` means the script was created with
+/// `importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER`
+/// — return `None` so dynamic `import()` falls through to the host's
+/// regular module loader. `0` means no callback was provided and returns the
+/// marker that makes the dynamic-import host callback reject with
+/// `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`. Wiring up a user-provided
+/// callback uses a positive registry key.
+fn vm_host_defined_options<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback_id: i32,
+) -> Option<v8::Local<'s, v8::Data>> {
+  match callback_id {
+    -1 => None,
+    0 => Some(create_vm_dynamic_import_missing_host_defined_options(scope)),
+    id if id > 0 => Some(
+      create_vm_dynamic_import_callback_host_defined_options(scope, id as u32),
+    ),
+    _ => Some(create_vm_dynamic_import_missing_host_defined_options(scope)),
+  }
+}
+
+#[op2(fast)]
+pub fn op_vm_dynamic_import_callback_register(
+  scope: &mut v8::PinScope<'_, '_>,
+  callback: v8::Local<v8::Function>,
+) -> u32 {
+  deno_core::register_vm_dynamic_import_callback(scope, callback)
+}
 
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");
+
+// Private symbol used to anchor the `ContextifyContext` wrapper on the
+// v8::Context's global object so that the context keeps the wrapper alive for
+// its entire lifetime. See `keep_wrapper_alive` for why this is necessary.
+const CONTEXTIFY_WRAPPER_SYMBOL_NAME: v8::OneByteConst =
+  v8::String::create_external_onebyte_const(b"node:contextify:wrapper");
 
 /// An unbounded script that can be run in a context.
 pub struct ContextifyScript {
@@ -43,6 +84,7 @@ impl ContextifyScript {
     cached_data: Option<JsBuffer>,
     produce_cached_data: bool,
     parsing_context: Option<v8::Local<'s, v8::Object>>,
+    import_module_dynamically_id: i32,
   ) -> Option<CompileResult<'s>> {
     let context = if let Some(parsing_context) = parsing_context {
       let Some(context) =
@@ -63,7 +105,8 @@ impl ContextifyScript {
     };
 
     let scope = &mut v8::ContextScope::new(scope, context);
-    let host_defined_options = create_host_defined_options(scope);
+    let host_defined_options =
+      vm_host_defined_options(scope, import_module_dynamically_id);
     let origin = v8::ScriptOrigin::new(
       scope,
       filename,
@@ -75,7 +118,7 @@ impl ContextifyScript {
       false,
       false,
       false,
-      Some(host_defined_options),
+      host_defined_options,
     );
 
     let mut source = if let Some(cached_data) = cached_data {
@@ -176,7 +219,7 @@ impl ContextifyScript {
     scope: &mut v8::PinScope<'s, 'i>,
     context: v8::Local<'s, v8::Context>,
     timeout: i64,
-    _display_errors: bool,
+    display_errors: bool,
     _break_on_sigint: bool,
     microtask_queue: Option<&v8::MicrotaskQueue>,
   ) -> Option<v8::Local<'s, v8::Value>> {
@@ -249,6 +292,55 @@ impl ContextifyScript {
     }
 
     if scope.has_caught() {
+      // When displayErrors is true (the default), decorate the error's stack
+      // with source location info prepended, matching Node.js behaviour.
+      if display_errors
+        && !scope.has_terminated()
+        && let Some(msg) = scope.message()
+        && let Some(exception) = scope.exception()
+        && let Ok(exc_obj) = v8::Local::<v8::Object>::try_from(exception)
+      {
+        let filename = if let Some(v) = msg.get_script_resource_name(scope) {
+          if let Some(s) = v.to_string(scope) {
+            s.to_rust_string_lossy(scope)
+          } else {
+            String::new()
+          }
+        } else {
+          String::new()
+        };
+        let line_number = msg.get_line_number(scope).unwrap_or(1);
+        let source_line = if let Some(s) = msg.get_source_line(scope) {
+          s.to_rust_string_lossy(scope)
+        } else {
+          String::new()
+        };
+        if !filename.is_empty() {
+          let start_col = msg.get_start_column();
+          let arrow = format!("{}^", " ".repeat(start_col));
+          let preamble = format!(
+            "{}:{}\n{}\n{}\n\n",
+            filename, line_number, source_line, arrow
+          );
+
+          let stack_key =
+            v8::String::new_external_onebyte_static(scope, b"stack").unwrap();
+          let current_stack =
+            if let Some(v) = exc_obj.get(scope, stack_key.into()) {
+              if let Some(s) = v.to_string(scope) {
+                s.to_rust_string_lossy(scope)
+              } else {
+                String::new()
+              }
+            } else {
+              String::new()
+            };
+          let new_stack = format!("{}{}", preamble, current_stack);
+          if let Some(new_stack_str) = v8::String::new(scope, &new_stack) {
+            exc_obj.set(scope, stack_key.into(), new_stack_str.into());
+          }
+        }
+      }
       // If there was an exception thrown during script execution, re-throw it.
       if !scope.has_terminated() {
         scope.rethrow();
@@ -265,6 +357,7 @@ pub struct ContextifyContext {
   microtask_queue: *mut v8::MicrotaskQueue,
   context: v8::TracedReference<v8::Context>,
   sandbox: v8::TracedReference<v8::Object>,
+  allow_code_gen_wasm: bool,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -290,16 +383,78 @@ impl Drop for ContextifyContext {
   }
 }
 
-struct AllowCodeGenWasm(bool);
+// A unique tag pointer used as a marker in embedder slot
+// `CONTEXTIFY_TAG_SLOT` to identify v8::Context instances created by
+// `ContextifyContext::attach` / `attach_vanilla`. The wasm code generation
+// callback runs for every context (it is an isolate-wide hook), and reads
+// embedder data from arbitrary contexts where the slots may contain
+// unrelated data — without a tag we cannot tell whether the value at
+// `CONTEXTIFY_CTX_SLOT` is a `ContextifyContext` pointer or random bytes.
+// The tag must be at least pointer-aligned because V8's
+// `SetAlignedPointerInEmbedderData` requires aligned values.
+#[repr(align(8))]
+struct ContextifyTag(
+  #[allow(dead_code, reason = "only its address is used as a sentinel")] u8,
+);
+static CONTEXTIFY_TAG: ContextifyTag = ContextifyTag(0);
+const CONTEXTIFY_TAG_SLOT: i32 = 4;
+const CONTEXTIFY_CTX_SLOT: i32 = 3;
 
 extern "C" fn allow_wasm_code_gen(
   context: v8::Local<v8::Context>,
   _source: v8::Local<v8::String>,
 ) -> bool {
-  match context.get_slot::<AllowCodeGenWasm>() {
-    Some(b) => b.0,
-    None => true,
+  // Verify this is a contextified context by checking the tag slot. Reading
+  // raw embedder data from a non-contextified context (such as deno_core's
+  // main context) would otherwise return arbitrary bytes — V8 stores SMI-
+  // tagged values in unused slots, which are misaligned when interpreted as
+  // pointers.
+  let tag_ptr =
+    context.get_aligned_pointer_from_embedder_data(CONTEXTIFY_TAG_SLOT);
+  if tag_ptr != &raw const CONTEXTIFY_TAG as *mut _ {
+    return true;
   }
+  let context_ptr =
+    context.get_aligned_pointer_from_embedder_data(CONTEXTIFY_CTX_SLOT);
+  if context_ptr.is_null() {
+    return true;
+  }
+  // SAFETY: The tag match guarantees this slot was populated by
+  // `attach`/`attach_vanilla`, so it points at a valid ContextifyContext.
+  // The ContextifyContext is anchored on this context's global object (see
+  // `keep_wrapper_alive`), so it stays alive for at least as long as the
+  // v8::Context we just read it from.
+  let ctx = unsafe { &*(context_ptr as *const ContextifyContext) };
+  ctx.allow_code_gen_wasm
+}
+
+// Keep the `ContextifyContext` wrapper alive for as long as the v8::Context
+// itself is alive.
+//
+// The context stores a raw pointer to the wrapper in its embedder data
+// (`CONTEXTIFY_CTX_SLOT`), but a raw pointer is not a GC root. For a
+// contextified sandbox the only strong reference to the wrapper is a private
+// symbol on the sandbox object. If user code drops the sandbox while keeping
+// the context alive (for example via a function extracted from the context),
+// the wrapper would be garbage collected and that raw pointer would dangle,
+// causing a use-after-free the next time an interceptor (or the wasm code-gen
+// callback) dereferences it.
+//
+// Anchoring the wrapper in a private symbol on the context's global object
+// makes the context a strong root for the wrapper: while the context is alive
+// its global is alive, which keeps the wrapper alive, which in turn traces the
+// sandbox `TracedReference`, keeping the sandbox alive too. When the context
+// finally becomes unreachable the whole cycle is collected together.
+fn keep_wrapper_alive(
+  scope: &mut v8::PinScope<'_, '_>,
+  context: v8::Local<v8::Context>,
+  wrapper: v8::Local<v8::Object>,
+) {
+  let global = context.global(scope);
+  let symbol_str =
+    v8::String::new_from_onebyte_const(scope, &CONTEXTIFY_WRAPPER_SYMBOL_NAME);
+  let symbol = v8::Private::for_api(scope, symbol_str);
+  global.set_private(scope, symbol, wrapper.into());
 }
 
 impl ContextifyContext {
@@ -350,7 +505,6 @@ impl ContextifyContext {
 
     scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
     context.set_allow_generation_from_strings(allow_code_gen_strings);
-    context.set_slot(Rc::new(AllowCodeGenWasm(allow_code_gen_wasm)));
 
     let wrapper = {
       let context = v8::TracedReference::new(scope, context);
@@ -361,21 +515,42 @@ impl ContextifyContext {
           context,
           sandbox,
           microtask_queue,
+          allow_code_gen_wasm,
         },
       )
     };
     let ptr =
       deno_core::cppgc::try_unwrap_cppgc_object::<Self>(scope, wrapper.into());
 
-    // SAFETY: We are storing a pointer to the ContextifyContext
-    // in the embedder data of the v8::Context. The contextified wrapper
-    // lives longer than the execution context, so this should be safe.
+    // SAFETY: We are storing a pointer to the ContextifyContext in the
+    // embedder data of the v8::Context. `keep_wrapper_alive` (called below)
+    // anchors the wrapper on the context's global object, so the wrapper
+    // outlives the context and this pointer never dangles.
+    // The tag slot is set to a static sentinel so `allow_wasm_code_gen`,
+    // which runs for every context, can distinguish contextified contexts
+    // from non-contextified ones.
     unsafe {
       context.set_aligned_pointer_in_embedder_data(
-        3,
+        CONTEXTIFY_CTX_SLOT,
         &*ptr.unwrap() as *const ContextifyContext as _,
       );
+      context.set_aligned_pointer_in_embedder_data(
+        CONTEXTIFY_TAG_SLOT,
+        &raw const CONTEXTIFY_TAG as *mut _,
+      );
     }
+
+    keep_wrapper_alive(scope, context, wrapper);
+
+    // Drop the v8::Context annex (created by `set_aligned_pointer_in_embedder_data`).
+    // The annex holds a `Weak<Context>` with a guaranteed finalizer. If left in
+    // place, the Weak is not reset before isolate teardown's final GC (because
+    // `dispose_annex` nulls the isolate pointer before running remaining
+    // finalizers, which causes `Weak::drop` to skip `v8__Global__Reset`), and
+    // V8's final GC then fires the weak callback on freed memory and panics.
+    // Dropping the annex here, while the isolate is still alive, ensures the
+    // Weak is reset cleanly through `Weak::drop`'s normal path.
+    context.clear_all_slots();
 
     let private_str =
       v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
@@ -440,7 +615,7 @@ impl ContextifyContext {
 
     scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
     context.set_allow_generation_from_strings(allow_code_gen_strings);
-    context.set_slot(Rc::new(AllowCodeGenWasm(allow_code_gen_wasm)));
+    crate::ops::v8::install_gc_if_exposed(scope, context);
 
     // For vanilla contexts, the sandbox IS the global proxy
     let sandbox_obj = context.global(scope);
@@ -454,21 +629,33 @@ impl ContextifyContext {
           context,
           sandbox,
           microtask_queue,
+          allow_code_gen_wasm,
         },
       )
     };
     let ptr =
       deno_core::cppgc::try_unwrap_cppgc_object::<Self>(scope, wrapper.into());
 
-    // SAFETY: We are storing a pointer to the ContextifyContext
-    // in the embedder data of the v8::Context. The contextified wrapper
-    // lives longer than the execution context, so this should be safe.
+    // SAFETY: We are storing a pointer to the ContextifyContext in the
+    // embedder data of the v8::Context. `keep_wrapper_alive` (called below)
+    // anchors the wrapper on the context's global object, so the wrapper
+    // outlives the context and this pointer never dangles.
+    // See `attach` for the tag slot.
     unsafe {
       context.set_aligned_pointer_in_embedder_data(
-        3,
+        CONTEXTIFY_CTX_SLOT,
         &*ptr.unwrap() as *const ContextifyContext as _,
       );
+      context.set_aligned_pointer_in_embedder_data(
+        CONTEXTIFY_TAG_SLOT,
+        &raw const CONTEXTIFY_TAG as *mut _,
+      );
     }
+
+    keep_wrapper_alive(scope, context, wrapper);
+
+    // See `attach` for why we clear the annex here.
+    context.clear_all_slots();
 
     let private_str =
       v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
@@ -546,8 +733,10 @@ impl ContextifyContext {
     if context_ptr.is_null() {
       return None;
     }
-    // SAFETY: We are storing a pointer to the ContextifyContext
-    // in the embedder data of the v8::Context during creation.
+    // SAFETY: We store a pointer to the ContextifyContext in the embedder data
+    // of the v8::Context during creation, and anchor the wrapper on the
+    // context's global object (see `keep_wrapper_alive`) so it remains valid
+    // for as long as the context is alive.
     Some(unsafe { &*(context_ptr as *const ContextifyContext) })
   }
 }
@@ -598,6 +787,8 @@ pub fn create_v8_context<'a>(
     ctx
   };
 
+  crate::ops::v8::install_gc_if_exposed(scope, context);
+
   scope.escape(context)
 }
 
@@ -628,7 +819,11 @@ pub fn init_global_template<'a>(
 
 // Using thread_local! to get around compiler bug.
 //
-// See NOTE in ext/node/global.rs#L12
+// NOTE(bartlomieju): somehow calling `.map_fn_to()` multiple times on a
+// function returns two different pointers. That shouldn't be the case as
+// `.map_fn_to()` creates a thin wrapper that is a pure function.
+// @piscisaureus suggests it might be a bug in Rust compiler; so for now we
+// just create and store these mapped functions per-thread.
 thread_local! {
   pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback = property_query.map_fn_to();
   pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback = property_getter.map_fn_to();
@@ -718,15 +913,26 @@ fn property_query<'s>(
     return v8::Intercepted::kNo;
   };
 
-  match sandbox.has_real_named_property(scope, property) {
+  // Use `Has` rather than `HasRealNamedProperty` for the sandbox so the
+  // `in` operator walks the sandbox's prototype chain, matching Node's
+  // behaviour. With the own-only check, a user that does
+  // `Object.setPrototypeOf(sandbox, someProto)` would not see properties
+  // from `someProto` reachable via `propName in window` inside the vm
+  // context.
+  //
+  // The fallback path on the global proxy keeps using
+  // `HasRealNamedProperty` to avoid recursing back into this interceptor:
+  // the global proxy carries the named-property handler that brought us
+  // here, so a regular `Has` would re-enter `property_query` infinitely.
+  let property_value: v8::Local<v8::Value> = property.into();
+  match sandbox.has(scope, property_value) {
     None => v8::Intercepted::kNo,
     Some(true) => {
-      let Some(attr) =
-        sandbox.get_real_named_property_attributes(scope, property)
-      else {
-        return v8::Intercepted::kNo;
-      };
-      rv.set_uint32(attr.as_u32());
+      let attr = sandbox
+        .get_property_attributes(scope, property_value)
+        .map(|a| a.as_u32())
+        .unwrap_or(0);
+      rv.set_uint32(attr);
       v8::Intercepted::kYes
     }
     Some(false) => {
@@ -1180,6 +1386,7 @@ pub fn op_vm_create_script<'a>(
   #[buffer] cached_data: Option<JsBuffer>,
   produce_cached_data: bool,
   parsing_context: Option<v8::Local<'a, v8::Object>>,
+  import_module_dynamically_id: i32,
 ) -> Option<CompileResult<'a>> {
   ContextifyScript::create(
     scope,
@@ -1190,6 +1397,7 @@ pub fn op_vm_create_script<'a>(
     cached_data,
     produce_cached_data,
     parsing_context,
+    import_module_dynamically_id,
   )
 }
 
@@ -1289,6 +1497,7 @@ pub fn op_vm_compile_function<'s>(
   parsing_context: Option<v8::Local<'s, v8::Object>>,
   context_extensions: Option<v8::Local<'s, v8::Array>>,
   params: Option<v8::Local<'s, v8::Array>>,
+  import_module_dynamically_id: i32,
 ) -> Option<CompileResult<'s>> {
   let context = if let Some(parsing_context) = parsing_context {
     let Some(context) =
@@ -1305,7 +1514,8 @@ pub fn op_vm_compile_function<'s>(
   };
 
   let scope = &mut v8::ContextScope::new(scope, context);
-  let host_defined_options = create_host_defined_options(scope);
+  let host_defined_options =
+    vm_host_defined_options(scope, import_module_dynamically_id);
   let origin = v8::ScriptOrigin::new(
     scope,
     filename,
@@ -1317,7 +1527,7 @@ pub fn op_vm_compile_function<'s>(
     false,
     false,
     false,
-    Some(host_defined_options),
+    host_defined_options,
   );
 
   let mut source = if let Some(cached_data) = cached_data {
@@ -1421,4 +1631,745 @@ pub fn op_vm_script_create_cached_data<'s>(
   let backing_store = v8::ArrayBuffer::new_backing_store_from_vec(data);
   v8::ArrayBuffer::with_backing_store(scope, &backing_store.make_shared())
     .into()
+}
+
+/// Wraps a v8::Module compiled in a contextified context.
+pub struct ContextifyModule {
+  module: v8::TracedReference<v8::Module>,
+  context: v8::TracedReference<v8::Context>,
+  // SAFETY invariant: `microtask_queue` aliases the `MicrotaskQueue` owned
+  // by the `ContextifyContext` of `context`. The queue is a separate C++
+  // allocation, but `ContextifyContext` keeps it alive for as long as the
+  // context is reachable, and the `TracedReference<v8::Context>` above
+  // keeps the context reachable for this module's lifetime. Dereferencing
+  // is therefore safe as long as no code path drops the `ContextifyContext`
+  // while a `ContextifyModule` is still live.
+  microtask_queue: *mut v8::MicrotaskQueue,
+  identifier: String,
+  /// Map of import specifier -> resolved ContextifyModule wrapper object.
+  /// Populated by `op_vm_module_link` before instantiation, and consumed by
+  /// the resolve callback during `instantiate_module`. Stored as the cppgc
+  /// wrapper object so we can unwrap to the resolved `ContextifyModule` and
+  /// recursively walk the link graph during instantiation.
+  resolutions: RefCell<HashMap<String, v8::TracedReference<v8::Object>>>,
+  /// Whether this module has been linked (either via `linkRequests` /
+  /// `op_vm_module_link`, or via the legacy `link()` callback flow). Used
+  /// to surface `ERR_VM_MODULE_LINK_FAILURE` when `instantiate()` is called
+  /// without first linking.
+  is_linked: Cell<bool>,
+  /// If this is a synthetic module, the V8 identity hash used as the key in
+  /// `SYNTHETIC_CALLBACKS`. Stored separately so `Drop` can clean up the
+  /// registry entry without needing a v8 scope.
+  synthetic_identity_hash: Option<NonZeroI32>,
+  /// V8 identity hash used as the key in `IMPORT_META_CALLBACKS`. Stored so
+  /// `Drop` can clean up the registry entry without needing a v8 scope.
+  /// `None` unless this module was created with an `initializeImportMeta`
+  /// callback (synthetic modules and modules without the callback have no
+  /// entry to clean up).
+  import_meta_identity_hash: Option<NonZeroI32>,
+}
+
+// SAFETY: all v8 references are visited during cppgc trace.
+unsafe impl v8::cppgc::GarbageCollected for ContextifyModule {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    visitor.trace(&self.module);
+    visitor.trace(&self.context);
+    for r in self.resolutions.borrow().values() {
+      visitor.trace(r);
+    }
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ContextifyModule"
+  }
+}
+
+impl Drop for ContextifyModule {
+  fn drop(&mut self) {
+    if let Some(hash) = self.synthetic_identity_hash {
+      SYNTHETIC_CALLBACKS.with(|m| {
+        m.borrow_mut().remove(&hash);
+      });
+    }
+    if let Some(hash) = self.import_meta_identity_hash {
+      IMPORT_META_CALLBACKS.with(|m| {
+        m.borrow_mut().remove(&hash);
+      });
+    }
+  }
+}
+
+/// Per-synthetic-module entry: the user-provided evaluation callback and the
+/// JS Module wrapper passed as `this` when V8 invokes the steps.
+struct SyntheticCallbackEntry {
+  callback: v8::Global<v8::Function>,
+  this_obj: v8::Global<v8::Object>,
+}
+
+thread_local! {
+  /// Map from V8 Module identity hash -> synthetic evaluation steps. The
+  /// extern "C" callback registered with V8 has no closure state, so it
+  /// looks up the user callback here using the Module passed by V8.
+  static SYNTHETIC_CALLBACKS: RefCell<HashMap<NonZeroI32, SyntheticCallbackEntry>> =
+    RefCell::new(HashMap::new());
+
+  /// Map from V8 Module identity hash -> the user's `initializeImportMeta`
+  /// callback for vm modules that supplied one. Populated by
+  /// `op_vm_module_create_source_text_module` and consumed by
+  /// `external_import_meta_hook` when V8 fires the host-initialize-import-meta
+  /// callback. Cleaned up in `ContextifyModule::drop`. Modules created
+  /// without an `initializeImportMeta` callback have no entry here.
+  static IMPORT_META_CALLBACKS: RefCell<HashMap<NonZeroI32, v8::Global<v8::Function>>> =
+    RefCell::new(HashMap::new());
+}
+
+/// Hook registered with deno_core so V8's host-initialize-import-meta
+/// callback can drive `import.meta` for `node:vm` modules. Like Node's
+/// `vm.SourceTextModule`, `import.meta` is left entirely under the user's
+/// control: this only invokes the user's `initializeImportMeta(meta)`
+/// callback (if one was provided) and otherwise leaves `meta` empty. In
+/// particular `meta.url` is *not* auto-populated, matching Node.
+fn external_import_meta_hook<'s, 'i, 'm, 'o>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  module: v8::Local<'m, v8::Module>,
+  meta: v8::Local<'o, v8::Object>,
+) {
+  let hash = module.get_identity_hash();
+  let callback_global =
+    IMPORT_META_CALLBACKS.with(|m| m.borrow().get(&hash).cloned());
+  let Some(cb_global) = callback_global else {
+    return;
+  };
+
+  let callback = v8::Local::new(scope, &cb_global);
+  v8::tc_scope!(tc_scope, scope);
+  let recv: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
+  let _ = callback.call(tc_scope, recv, &[meta.into()]);
+  if tc_scope.has_caught() && !tc_scope.has_terminated() {
+    tc_scope.rethrow();
+  }
+}
+
+/// Register the import-meta hook with deno_core. Called on each vm module
+/// creation so it's wired up by the time V8 fires the
+/// host-initialize-import-meta callback. The per-isolate callback slot is a
+/// `Cell<Option<fn>>`, so re-registering just stores the same fn pointer
+/// again — cheap and idempotent.
+fn ensure_external_import_meta_hook_registered(
+  scope: &mut v8::PinScope<'_, '_>,
+) {
+  deno_core::register_external_module_import_meta_cb(
+    scope,
+    external_import_meta_hook,
+  );
+}
+
+#[op2]
+#[cppgc]
+pub fn op_vm_module_create_source_text_module<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  source: v8::Local<'a, v8::String>,
+  #[string] identifier: String,
+  line_offset: i32,
+  column_offset: i32,
+  context_object: Option<v8::Local<'a, v8::Object>>,
+  import_module_dynamically_id: i32,
+  initialize_import_meta: Option<v8::Local<'a, v8::Function>>,
+) -> Option<ContextifyModule> {
+  ensure_external_import_meta_hook_registered(scope);
+
+  let (context, microtask_queue) =
+    resolve_module_context(scope, context_object)?;
+
+  let import_meta_callback =
+    initialize_import_meta.map(|f| v8::Global::new(scope, f));
+
+  let scope = &mut v8::ContextScope::new(scope, context);
+  let host_defined_options =
+    vm_host_defined_options(scope, import_module_dynamically_id);
+  let filename = v8::String::new(scope, &identifier)?;
+  let origin = v8::ScriptOrigin::new(
+    scope,
+    filename.into(),
+    line_offset,
+    column_offset,
+    true,
+    -1,
+    None,
+    false,
+    false,
+    true, // is_module
+    host_defined_options,
+  );
+
+  let mut compile_source =
+    v8::script_compiler::Source::new(source, Some(&origin));
+
+  v8::tc_scope!(scope, scope);
+  let module = v8::script_compiler::compile_module(scope, &mut compile_source);
+  if scope.has_caught() {
+    scope.rethrow();
+    return None;
+  }
+  let module = module?;
+
+  // Only track an import-meta entry when the user supplied an
+  // `initializeImportMeta` callback. Without one there's nothing to do —
+  // `import.meta` is left empty, matching Node's `vm.SourceTextModule`.
+  let identity_hash = module.get_identity_hash();
+  let import_meta_identity_hash = import_meta_callback.map(|cb| {
+    IMPORT_META_CALLBACKS.with(|m| {
+      m.borrow_mut().insert(identity_hash, cb);
+    });
+    identity_hash
+  });
+
+  Some(ContextifyModule {
+    module: v8::TracedReference::new(scope, module),
+    context: v8::TracedReference::new(scope, context),
+    microtask_queue,
+    identifier,
+    resolutions: RefCell::new(HashMap::new()),
+    is_linked: Cell::new(false),
+    synthetic_identity_hash: None,
+    import_meta_identity_hash,
+  })
+}
+
+/// Resolves the context for a new module: if `context_object` is provided,
+/// looks it up as a contextified sandbox; otherwise falls back to the
+/// current context (matching Node's behavior when `options.context` is
+/// omitted).
+fn resolve_module_context<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  context_object: Option<v8::Local<'s, v8::Object>>,
+) -> Option<(v8::Local<'s, v8::Context>, *mut v8::MicrotaskQueue)> {
+  if let Some(context_object) = context_object {
+    let contextify =
+      ContextifyContext::from_sandbox_obj(scope, context_object)?;
+    Some((contextify.context(scope), contextify.microtask_queue))
+  } else {
+    Some((scope.get_current_context(), std::ptr::null_mut()))
+  }
+}
+
+#[op2]
+#[cppgc]
+pub fn op_vm_module_create_synthetic_module<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[string] identifier: String,
+  export_names: v8::Local<'a, v8::Array>,
+  context_object: Option<v8::Local<'a, v8::Object>>,
+  evaluate_callback: v8::Local<'a, v8::Function>,
+  this_obj: v8::Local<'a, v8::Object>,
+) -> Option<ContextifyModule> {
+  let (context, microtask_queue) =
+    resolve_module_context(scope, context_object)?;
+
+  let scope = &mut v8::ContextScope::new(scope, context);
+
+  let len = export_names.length();
+  let mut names: Vec<v8::Local<v8::String>> = Vec::with_capacity(len as usize);
+  for i in 0..len {
+    let item = export_names.get_index(scope, i)?;
+    let s: v8::Local<v8::String> = item.try_into().ok()?;
+    names.push(s);
+  }
+
+  let module_name = v8::String::new(scope, &identifier)?;
+  let module = v8::Module::create_synthetic_module(
+    scope,
+    module_name,
+    &names,
+    synthetic_evaluation_steps_callback,
+  );
+
+  let hash = module.get_identity_hash();
+  SYNTHETIC_CALLBACKS.with(|m| {
+    m.borrow_mut().insert(
+      hash,
+      SyntheticCallbackEntry {
+        callback: v8::Global::new(scope, evaluate_callback),
+        this_obj: v8::Global::new(scope, this_obj),
+      },
+    );
+  });
+
+  Some(ContextifyModule {
+    module: v8::TracedReference::new(scope, module),
+    context: v8::TracedReference::new(scope, context),
+    microtask_queue,
+    identifier,
+    resolutions: RefCell::new(HashMap::new()),
+    // Synthetic modules have no dependencies; they're considered linked
+    // from creation so `op_vm_module_instantiate` doesn't reject them.
+    is_linked: Cell::new(true),
+    synthetic_identity_hash: Some(hash),
+    // Synthetic modules don't have a body so `import.meta` never runs,
+    // but V8 may still hit the host-initialize-import-meta callback (the
+    // module map lookup would then fall through to the external hook).
+    // Skip registering an import-meta entry — there's nothing to do.
+    import_meta_identity_hash: None,
+  })
+}
+
+/// V8 invokes this for a SyntheticModule's evaluation step. We call the
+/// user-provided JS callback (with the JS Module wrapper as `this`),
+/// propagate any exception, and return a Promise synchronously resolved to
+/// `undefined` (matching Node's wrapper, which discards the callback's
+/// return value).
+fn synthetic_evaluation_steps_callback<'s>(
+  context: v8::Local<'s, v8::Context>,
+  module: v8::Local<'s, v8::Module>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  // SAFETY: callback runs inside an active V8 callback context.
+  let mut scope_storage = unsafe { v8::CallbackScope::new(context) };
+  // SAFETY: `scope_storage` is a local that must not be moved after this
+  // point; the `Pin` below relies on its address staying stable for the
+  // rest of this function.
+  let mut scope_pin =
+    unsafe { std::pin::Pin::new_unchecked(&mut scope_storage) };
+  let scope = &mut scope_pin.as_mut().init();
+
+  let hash = module.get_identity_hash();
+  let entry = SYNTHETIC_CALLBACKS.with(|m| {
+    m.borrow().get(&hash).map(|e| {
+      (
+        v8::Local::new(scope, &e.callback),
+        v8::Local::new(scope, &e.this_obj),
+      )
+    })
+  });
+  let Some((callback, this_obj)) = entry else {
+    let message =
+      v8::String::new(scope, "synthetic module evaluation callback missing")?;
+    let exception = v8::Exception::error(scope, message);
+    scope.throw_exception(exception);
+    return None;
+  };
+
+  v8::tc_scope!(tc_scope, scope);
+  let _ = callback.call(tc_scope, this_obj.into(), &[]);
+  if tc_scope.has_caught() {
+    if !tc_scope.has_terminated() {
+      tc_scope.rethrow();
+    }
+    return None;
+  }
+
+  // Always return a Promise synchronously resolved to undefined, matching
+  // Node.js. V8's SyntheticModule.Evaluate consumes this and produces a
+  // synchronously-resolved top-level capability.
+  let resolver = v8::PromiseResolver::new(tc_scope)?;
+  let promise = resolver.get_promise(tc_scope);
+  let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
+  resolver.resolve(tc_scope, undefined)?;
+  Some(promise.into())
+}
+
+#[op2(fast)]
+pub fn op_vm_module_set_synthetic_export<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[cppgc] this: &ContextifyModule,
+  name: v8::Local<'a, v8::String>,
+  value: v8::Local<'a, v8::Value>,
+) {
+  let module = this.module.get(scope).unwrap();
+  let context = this.context.get(scope).unwrap();
+  let scope = &mut v8::ContextScope::new(scope, context);
+  v8::tc_scope!(scope, scope);
+  let _ = module.set_synthetic_module_export(scope, name, value);
+  if scope.has_caught() && !scope.has_terminated() {
+    scope.rethrow();
+  }
+}
+
+#[op2(fast)]
+pub fn op_vm_module_link<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[cppgc] this: &ContextifyModule,
+  specifiers: v8::Local<'a, v8::Array>,
+  modules: v8::Local<'a, v8::Array>,
+) -> bool {
+  let len = specifiers.length();
+  if modules.length() != len {
+    let message = v8::String::new(
+      scope,
+      "specifiers and modules arrays must have the same length",
+    )
+    .unwrap();
+    let exception = v8::Exception::error(scope, message);
+    scope.throw_exception(exception);
+    return false;
+  }
+
+  let mut resolutions = this.resolutions.borrow_mut();
+  resolutions.clear();
+  for i in 0..len {
+    let Some(specifier) = specifiers.get_index(scope, i) else {
+      return false;
+    };
+    let Some(module_obj) = modules.get_index(scope, i) else {
+      return false;
+    };
+    let specifier_str = specifier.to_rust_string_lossy(scope);
+    let Ok(module_obj): Result<v8::Local<v8::Object>, _> =
+      module_obj.try_into()
+    else {
+      let message =
+        v8::String::new(scope, "expected ContextifyModule").unwrap();
+      let exception = v8::Exception::error(scope, message);
+      scope.throw_exception(exception);
+      return false;
+    };
+    let other = deno_core::cppgc::try_unwrap_cppgc_object::<ContextifyModule>(
+      scope,
+      module_obj.into(),
+    );
+    if other.is_none() {
+      let message =
+        v8::String::new(scope, "expected ContextifyModule").unwrap();
+      let exception = v8::Exception::error(scope, message);
+      scope.throw_exception(exception);
+      return false;
+    }
+    resolutions
+      .insert(specifier_str, v8::TracedReference::new(scope, module_obj));
+  }
+  this.is_linked.set(true);
+  true
+}
+
+/// Recursively populates the `MODULE_RESOLUTIONS` and `MODULE_IDENTIFIERS`
+/// thread-locals for `cm` and every linked module reachable from it. The
+/// resolutions map is keyed by referrer identity hash so V8's
+/// resolve callback can look up the right module for each specifier.
+fn collect_link_graph<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  cm: &ContextifyModule,
+  visited: &mut HashSet<NonZeroI32>,
+) {
+  let module = match cm.module.get(scope) {
+    Some(m) => m,
+    None => return,
+  };
+  let hash = module.get_identity_hash();
+  if !visited.insert(hash) {
+    return;
+  }
+
+  MODULE_IDENTIFIERS.with(|r| {
+    r.borrow_mut().insert(hash, cm.identifier.clone());
+  });
+
+  if !cm.is_linked.get() {
+    return;
+  }
+
+  let mut specifier_to_module: HashMap<String, v8::Global<v8::Module>> =
+    HashMap::new();
+
+  // Snapshot the keys + targets into locals so we don't keep `resolutions`
+  // borrowed while we recurse into children.
+  let children: Vec<(String, v8::Local<v8::Object>)> = {
+    let resolutions = cm.resolutions.borrow();
+    let mut out = Vec::with_capacity(resolutions.len());
+    for (spec, tref) in resolutions.iter() {
+      if let Some(obj) = tref.get(scope) {
+        out.push((spec.clone(), obj));
+      }
+    }
+    out
+  };
+
+  for (spec, obj) in &children {
+    let Some(child) = deno_core::cppgc::try_unwrap_cppgc_object::<
+      ContextifyModule,
+    >(scope, (*obj).into()) else {
+      continue;
+    };
+    if let Some(child_module) = child.module.get(scope) {
+      specifier_to_module
+        .insert(spec.clone(), v8::Global::new(scope, child_module));
+    }
+    collect_link_graph(scope, &child, visited);
+  }
+
+  MODULE_RESOLUTIONS.with(|r| {
+    r.borrow_mut().insert(hash, specifier_to_module);
+  });
+}
+
+#[op2(fast, reentrant)]
+pub fn op_vm_module_instantiate(
+  scope: &mut v8::PinScope<'_, '_>,
+  #[cppgc] this: &ContextifyModule,
+) -> bool {
+  // `linkRequests` (or the legacy `.link(linker)` flow) must run before
+  // instantiation. Match Node's behavior: surface this as
+  // ERR_VM_MODULE_LINK_FAILURE rather than letting V8 fail opaquely later.
+  if !this.is_linked.get() {
+    throw_link_failure(
+      scope,
+      &format!(
+        "request can not be resolved on module '{}' that is not linked",
+        this.identifier,
+      ),
+    );
+    return false;
+  }
+
+  let context = this.context.get(scope).unwrap();
+  let module = this.module.get(scope).unwrap();
+
+  // Walk the link graph for this module and stash referrer-keyed
+  // resolutions + identifiers for use by the resolve callback. We track
+  // every hash we add so we can clear them afterwards.
+  let mut visited = HashSet::new();
+  collect_link_graph(scope, this, &mut visited);
+
+  let scope = &mut v8::ContextScope::new(scope, context);
+  v8::tc_scope!(scope, scope);
+
+  let result = module.instantiate_module(scope, module_resolve_callback);
+
+  MODULE_RESOLUTIONS.with(|r| {
+    let mut map = r.borrow_mut();
+    for h in &visited {
+      map.remove(h);
+    }
+  });
+  MODULE_IDENTIFIERS.with(|r| {
+    let mut map = r.borrow_mut();
+    for h in &visited {
+      map.remove(h);
+    }
+  });
+
+  if scope.has_caught() {
+    scope.rethrow();
+    return false;
+  }
+
+  result.unwrap_or(false)
+}
+
+thread_local! {
+  /// Map from referrer module identity hash -> (specifier -> resolved module global).
+  /// Populated only for the duration of an instantiate_module call.
+  static MODULE_RESOLUTIONS: RefCell<HashMap<NonZeroI32, HashMap<String, v8::Global<v8::Module>>>> =
+    RefCell::new(HashMap::new());
+  /// Map from module identity hash -> user-facing identifier. Populated for
+  /// the duration of an instantiate_module call so the resolve callback can
+  /// produce Node-compatible error messages that name the referring module.
+  static MODULE_IDENTIFIERS: RefCell<HashMap<NonZeroI32, String>> =
+    RefCell::new(HashMap::new());
+}
+
+fn throw_link_failure<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  message: &str,
+) -> Option<()> {
+  let msg = v8::String::new(scope, message)?;
+  let exception = v8::Exception::error(scope, msg);
+  let exception_obj: v8::Local<v8::Object> = exception.try_into().ok()?;
+  let code_key = v8::String::new(scope, "code")?;
+  let code_val = v8::String::new(scope, "ERR_VM_MODULE_LINK_FAILURE")?;
+  exception_obj.set(scope, code_key.into(), code_val.into())?;
+  scope.throw_exception(exception);
+  Some(())
+}
+
+fn module_resolve_callback<'s>(
+  context: v8::Local<'s, v8::Context>,
+  specifier: v8::Local<'s, v8::String>,
+  _import_attributes: v8::Local<'s, v8::FixedArray>,
+  referrer: v8::Local<'s, v8::Module>,
+) -> Option<v8::Local<'s, v8::Module>> {
+  // SAFETY: callback runs inside an active V8 callback context.
+  let mut scope_storage = unsafe { v8::CallbackScope::new(context) };
+  // SAFETY: `scope_storage` is a local that must not be moved after this
+  // point; the `Pin` below relies on its address staying stable for the
+  // rest of this function.
+  let mut scope_pin =
+    unsafe { std::pin::Pin::new_unchecked(&mut scope_storage) };
+  let scope = &mut scope_pin.as_mut().init();
+
+  let specifier_str = specifier.to_rust_string_lossy(scope);
+  let referrer_hash = referrer.get_identity_hash();
+
+  let resolved_local = MODULE_RESOLUTIONS.with(|r| {
+    let map = r.borrow();
+    let resolved_global = map
+      .get(&referrer_hash)
+      .and_then(|m| m.get(&specifier_str))?;
+    Some(v8::Local::new(scope, resolved_global))
+  });
+
+  if let Some(local) = resolved_local {
+    return Some(local);
+  }
+
+  // Try to surface the referring module's identifier so the error message
+  // matches Node's: `request for 'X' can not be resolved on module 'ID'
+  // that is not linked`.
+  let identifier =
+    MODULE_IDENTIFIERS.with(|r| r.borrow().get(&referrer_hash).cloned());
+
+  let message = match identifier {
+    Some(id) => format!(
+      "request for '{specifier_str}' can not be resolved on module '{id}' that is not linked"
+    ),
+    None => format!(
+      "Cannot find module '{specifier_str}' (linker did not provide it)"
+    ),
+  };
+  throw_link_failure(scope, &message);
+  None
+}
+
+#[op2(reentrant)]
+pub fn op_vm_module_evaluate<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[cppgc] this: &ContextifyModule,
+) -> Option<v8::Local<'a, v8::Value>> {
+  let inner_context = this.context.get(scope).unwrap();
+  let module = this.module.get(scope).unwrap();
+  let outer_context = scope.get_current_context();
+
+  // Enter the module's context, evaluate the module, then come back out.
+  let inner_result = {
+    let scope = &mut v8::ContextScope::new(scope, inner_context);
+    v8::tc_scope!(scope, scope);
+    let r = module.evaluate(scope);
+    if scope.has_caught() {
+      scope.rethrow();
+      return None;
+    }
+    r
+  };
+  let inner_result = inner_result?;
+
+  // If the module's context has its own microtask queue (microtaskMode:
+  // "afterEvaluate"), wrap the inner promise in an outer-context promise so
+  // that `await` from the outer context isn't queued on the inner queue and
+  // silently dropped (https://github.com/nodejs/node/issues/59541).
+  let returned: v8::Local<v8::Value> = if !this.microtask_queue.is_null()
+    && let Ok(inner_promise) = v8::Local::<v8::Promise>::try_from(inner_result)
+  {
+    // We're currently in `outer_context` (we exited the inner ContextScope).
+    let resolver = v8::PromiseResolver::new(scope)?;
+    let outer_promise = resolver.get_promise(scope);
+    resolver.resolve(scope, inner_promise.into())?;
+
+    // Drain the inner microtask queue so the resolution chain can progress.
+    // SAFETY: pointer is validated as non-null above.
+    let mtask_queue = unsafe { &*this.microtask_queue };
+    mtask_queue.perform_checkpoint(scope);
+
+    outer_promise.into()
+  } else {
+    inner_result
+  };
+
+  // Suppress unused warning when both contexts are the same.
+  let _ = outer_context;
+  Some(returned)
+}
+
+#[op2(fast)]
+pub fn op_vm_module_get_status(
+  #[cppgc] this: &ContextifyModule,
+  scope: &mut v8::PinScope<'_, '_>,
+) -> u32 {
+  let module = this.module.get(scope).unwrap();
+  module.get_status() as u32
+}
+
+#[op2]
+pub fn op_vm_module_get_namespace<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[cppgc] this: &ContextifyModule,
+) -> v8::Local<'a, v8::Value> {
+  let module = this.module.get(scope).unwrap();
+  module.get_module_namespace()
+}
+
+#[op2]
+pub fn op_vm_module_get_exception<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[cppgc] this: &ContextifyModule,
+) -> v8::Local<'a, v8::Value> {
+  let module = this.module.get(scope).unwrap();
+  if module.get_status() != v8::ModuleStatus::Errored {
+    return v8::undefined(scope).into();
+  }
+  module.get_exception()
+}
+
+#[derive(serde::Serialize)]
+pub struct ModuleRequestInfo {
+  pub specifier: String,
+  pub attributes: HashMap<String, String>,
+  pub phase: &'static str,
+}
+
+#[op2]
+#[serde]
+pub fn op_vm_module_get_module_requests(
+  scope: &mut v8::PinScope<'_, '_>,
+  #[cppgc] this: &ContextifyModule,
+) -> Vec<ModuleRequestInfo> {
+  let module = this.module.get(scope).unwrap();
+  let requests = module.get_module_requests();
+  let len = requests.length();
+  let mut out = Vec::with_capacity(len);
+  for i in 0..len {
+    let Some(req) = requests.get(scope, i) else {
+      continue;
+    };
+    let req: v8::Local<v8::ModuleRequest> = req.cast();
+    let specifier = req.get_specifier().to_rust_string_lossy(scope);
+    // Import attributes for static imports are encoded as (key, value,
+    // source_offset) triples in a FixedArray.
+    let attrs_array = req.get_import_attributes();
+    let attrs_len = attrs_array.length();
+    let mut attributes: HashMap<String, String> = HashMap::new();
+    if attrs_len.is_multiple_of(3) {
+      let count = attrs_len / 3;
+      for j in 0..count {
+        let Some(key) = attrs_array.get(scope, j * 3) else {
+          continue;
+        };
+        let Some(value) = attrs_array.get(scope, j * 3 + 1) else {
+          continue;
+        };
+        let key_val: v8::Local<v8::Value> = key.cast();
+        let value_val: v8::Local<v8::Value> = value.cast();
+        attributes.insert(
+          key_val.to_rust_string_lossy(scope),
+          value_val.to_rust_string_lossy(scope),
+        );
+      }
+    }
+    let phase = match req.get_phase() {
+      v8::ModuleImportPhase::kSource => "source",
+      v8::ModuleImportPhase::kDefer => "defer",
+      v8::ModuleImportPhase::kEvaluation => "evaluation",
+    };
+    out.push(ModuleRequestInfo {
+      specifier,
+      attributes,
+      phase,
+    });
+  }
+  out
+}
+
+#[op2]
+pub fn op_vm_module_get_identifier<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[cppgc] this: &ContextifyModule,
+) -> v8::Local<'a, v8::String> {
+  v8::String::new(scope, &this.identifier).unwrap()
 }

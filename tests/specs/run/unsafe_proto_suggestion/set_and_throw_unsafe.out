@@ -1,0 +1,4 @@
+error: Uncaught (in promise) Error: boom
+throw new Error("boom");
+      ^
+    at [WILDCARD]set_and_throw.js:7:7

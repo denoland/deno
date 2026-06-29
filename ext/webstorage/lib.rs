@@ -41,7 +41,7 @@ deno_core::extension!(deno_webstorage,
   objects = [
     Storage
   ],
-  esm = [ "01_webstorage.js" ],
+  lazy_loaded_js = [ "01_webstorage.js" ],
   options = {
       origin_storage_dir: Option<PathBuf>
   },

@@ -8,9 +8,11 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::Infallible;
 use std::ffi::c_void;
+use std::fs;
 use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -24,6 +26,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::anyhow::anyhow;
+use deno_core::convert::Number;
 use deno_core::convert::Smi;
 use deno_core::convert::ToV8;
 use deno_core::error::AnyError;
@@ -40,6 +43,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_v8;
 use deno_core::url::Url;
 use deno_core::v8;
+use deno_error::JsErrorBox;
 use deno_graph::source::Resolver;
 use deno_lib::util::result::InfallibleResultExt;
 use deno_lib::worker::create_isolate_create_params;
@@ -102,10 +106,15 @@ use crate::util::path::relative_specifier;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::v8::convert;
 
+const QUICK_INFO_MAX_LENGTH: u32 = 1_000_000;
+
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
 static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}"m);
 static HTTP_RE: Lazy<Regex> = lazy_regex!(r#"(?i)^https?:"#);
+static SIMPLE_NAMED_IMPORT_RE: Lazy<Regex> = lazy_regex!(
+  r#"(?s)^\s*import\s+(?P<type>type\s+)?\{\s*(?P<names>[^{}]+?)\s*\}\s+from\s+["'](?P<specifier>[^"']+)["'];?\s*$"#
+);
 static JSDOC_LINKS_RE: Lazy<Regex> = lazy_regex!(
   r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}"
 );
@@ -716,6 +725,7 @@ impl TsJsServer {
         .specifier_map
         .denormalize(&module.specifier, module.media_type),
       position,
+      QUICK_INFO_MAX_LENGTH,
     ));
     self
       .request(
@@ -2076,36 +2086,6 @@ fn display_parts_to_string<'a>(
         // should decode percent-encoding string when hovering over the right edge of module specifier like below
         // module "file:///path/to/🦕"
         to_percent_decoded_str(&part.text),
-        // NOTE: The reason why an example above that lacks `.ts` extension is caused by the implementation of tsc itself.
-        // The request `tsc.request.getQuickInfoAtPosition` receives the payload from tsc host as follows.
-        // {
-        //   text_span: {
-        //     start: 19,
-        //     length: 9,
-        //   },
-        //   displayParts:
-        //     [
-        //       {
-        //         text: "module",
-        //         kind: "keyword",
-        //         target: null,
-        //       },
-        //       {
-        //         text: " ",
-        //         kind: "space",
-        //         target: null,
-        //       },
-        //       {
-        //         text: "\"file:///path/to/%F0%9F%A6%95\"",
-        //         kind: "stringLiteral",
-        //         target: null,
-        //       },
-        //     ],
-        //   documentation: [],
-        //   tags: null,
-        // }
-        //
-        // related issue: https://github.com/denoland/deno/issues/16058
       ),
     }
   }
@@ -2114,18 +2094,29 @@ fn display_parts_to_string<'a>(
 }
 
 impl QuickInfo {
+  pub fn display_string(
+    &self,
+    module: &DocumentModule,
+    snapshot: &StateSnapshot,
+  ) -> Option<String> {
+    self
+      .display_parts
+      .as_ref()
+      .map(|p| display_parts_to_string(p, module, snapshot))
+      .filter(|s| !s.is_empty())
+  }
+
+  pub fn to_range(&self, module: &DocumentModule) -> lsp::Range {
+    self.text_span.to_range(&module.line_index)
+  }
+
   pub fn to_hover(
     &self,
     module: &DocumentModule,
     snapshot: &StateSnapshot,
   ) -> lsp::Hover {
     let mut value = String::new();
-    if let Some(display_string) = self
-      .display_parts
-      .clone()
-      .map(|p| display_parts_to_string(&p, module, snapshot))
-      && !display_string.is_empty()
-    {
+    if let Some(display_string) = self.display_string(module, snapshot) {
       value.push_str("```tsx\n");
       value.push_str(&display_string);
       value.push_str("\n```\n");
@@ -2208,7 +2199,8 @@ impl DocumentSpan {
       };
     let link = lsp::LocationLink {
       origin_selection_range,
-      target_uri: target_module.uri.as_ref().clone(),
+      target_uri: target_uri_for_client(&target_module, snapshot)
+        .unwrap_or_else(|| target_module.uri.as_ref().clone()),
       target_range,
       target_selection_range,
     };
@@ -2259,6 +2251,74 @@ impl DocumentSpan {
     }
     Ok(Some(lsp::GotoDefinitionResponse::Link(links)))
   }
+}
+
+fn target_uri_for_client(
+  target_module: &DocumentModule,
+  snapshot: &StateSnapshot,
+) -> Option<Uri> {
+  if !snapshot.client_needs_file_uris_for_virtual_documents
+    || !target_module
+      .uri
+      .scheme()
+      .as_str()
+      .eq_ignore_ascii_case("deno")
+  {
+    return None;
+  }
+  let file_path = virtual_document_file_path(target_module, snapshot)?;
+  if let Some(parent) = file_path.parent() {
+    fs::create_dir_all(parent).ok()?;
+  }
+  fs::write(&file_path, target_module.text.as_bytes()).ok()?;
+  url_to_uri(&Url::from_file_path(file_path).ok()?).ok()
+}
+
+fn virtual_document_file_path(
+  target_module: &DocumentModule,
+  snapshot: &StateSnapshot,
+) -> Option<PathBuf> {
+  let checksum =
+    deno_lib::util::checksum::r#gen(&[target_module.uri.as_str().as_bytes()]);
+  let mut file_name = target_module
+    .uri
+    .path()
+    .as_str()
+    .rsplit('/')
+    .next()
+    .filter(|s| !s.is_empty())
+    .map(sanitize_virtual_document_file_name)
+    .filter(|s| !s.is_empty())
+    .unwrap_or_else(|| "mod.ts".to_string());
+  if !file_name.contains('.') {
+    let extension = target_module.media_type.as_ts_extension();
+    if !extension.is_empty() {
+      file_name.push_str(extension);
+    }
+  }
+  Some(
+    snapshot
+      .cache
+      .deno_dir()
+      .root
+      .join("lsp")
+      .join("virtual_documents")
+      .join(checksum)
+      .join(file_name),
+  )
+}
+
+fn sanitize_virtual_document_file_name(value: &str) -> String {
+  value
+    .chars()
+    .map(|c| {
+      if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+        c
+      } else {
+        '_'
+      }
+    })
+    .collect()
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
@@ -3152,6 +3212,8 @@ pub fn file_text_changes_to_workspace_edit<'a>(
 pub struct RefactorEditInfo {
   pub edits: Vec<FileTextChanges>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub rename_filename: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub rename_location: Option<u32>,
 }
 
@@ -3162,6 +3224,11 @@ impl RefactorEditInfo {
   ) -> Result<(), AnyError> {
     for changes in &mut self.edits {
       changes.normalize(specifier_map)?;
+    }
+    if let Some(rename_filename) = &mut self.rename_filename {
+      *rename_filename = specifier_map
+        .normalize(rename_filename.as_str())?
+        .to_string();
     }
     Ok(())
   }
@@ -3177,6 +3244,43 @@ impl RefactorEditInfo {
       snapshot,
       token,
     )
+  }
+
+  pub fn to_rename_command(
+    &self,
+    module: &Arc<DocumentModule>,
+    snapshot: &StateSnapshot,
+  ) -> Option<lsp::Command> {
+    let rename_location = self.rename_location?;
+    let rename_filename = self.rename_filename.as_ref()?;
+    let target_specifier = resolve_url(rename_filename).ok()?;
+    let target_module = snapshot.document_modules.module_for_specifier(
+      &target_specifier,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )?;
+    let changes = self
+      .edits
+      .iter()
+      .find(|c| &c.file_name == rename_filename)?;
+    let mut text = target_module.text.to_string();
+    for change in changes.text_changes.iter().rev() {
+      let range = change.span.to_range(&target_module.line_index);
+      let start = target_module.line_index.offset(range.start).ok()?;
+      let end = target_module.line_index.offset(range.end).ok()?;
+      text.replace_range(
+        u32::from(start) as usize..u32::from(end) as usize,
+        &change.new_text,
+      );
+    }
+    Some(lsp::Command {
+      title: "".to_string(),
+      command: "editor.action.rename".to_string(),
+      arguments: Some(vec![json!([
+        target_module.uri.as_ref(),
+        LineIndex::new(&text).position_utf16(rename_location.into())
+      ])]),
+    })
   }
 }
 
@@ -3533,18 +3637,10 @@ fn parse_code_actions(
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
             let mut text_edit = tc.as_text_edit(&module.line_index);
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
-              let specifier_index = text_edit
-                .new_text
-                .char_indices()
-                .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
-              if let Some(i) = specifier_index {
-                let mut specifier_part = text_edit.new_text.split_off(i);
-                specifier_part = specifier_part.replace(
-                  &specifier_rewrite.old_specifier,
-                  &specifier_rewrite.new_specifier,
-                );
-                text_edit.new_text.push_str(&specifier_part);
-              }
+              rewrite_first_quoted_specifier(
+                &mut text_edit.new_text,
+                &specifier_rewrite.new_specifier,
+              );
               if let Some(deno_types_specifier) =
                 &specifier_rewrite.new_deno_types_specifier
               {
@@ -3554,6 +3650,7 @@ fn parse_code_actions(
                 );
               }
             }
+            merge_completion_import_edit(&mut text_edit, module);
             text_edit
           }));
         } else {
@@ -3598,6 +3695,224 @@ fn parse_code_actions(
   } else {
     Ok((None, None))
   }
+}
+
+fn merge_completion_import_edit(
+  text_edit: &mut lsp::TextEdit,
+  module: &DocumentModule,
+) {
+  let Some(new_import) = parse_simple_named_import(&text_edit.new_text) else {
+    return;
+  };
+  let Some(existing_import) =
+    find_mergeable_named_import(&module.text, &new_import)
+  else {
+    return;
+  };
+  text_edit.range = lsp::Range {
+    start: byte_offset_to_position(&module.text, existing_import.insert_offset),
+    end: byte_offset_to_position(&module.text, existing_import.insert_offset),
+  };
+  text_edit.new_text = existing_import.new_text;
+}
+
+struct SimpleNamedImport<'a> {
+  is_type_only: bool,
+  specifier: &'a str,
+  names: Vec<&'a str>,
+}
+
+struct ExistingNamedImport {
+  insert_offset: usize,
+  new_text: String,
+}
+
+fn parse_simple_named_import(text: &str) -> Option<SimpleNamedImport<'_>> {
+  let captures = SIMPLE_NAMED_IMPORT_RE.captures(text)?;
+  let names = captures
+    .name("names")?
+    .as_str()
+    .split(',')
+    .map(str::trim)
+    .filter(|name| !name.is_empty())
+    .collect::<Vec<_>>();
+  if names.is_empty() {
+    return None;
+  }
+  Some(SimpleNamedImport {
+    is_type_only: captures.name("type").is_some(),
+    specifier: captures.name("specifier")?.as_str(),
+    names,
+  })
+}
+
+fn find_mergeable_named_import(
+  text: &str,
+  new_import: &SimpleNamedImport,
+) -> Option<ExistingNamedImport> {
+  for quote in ['"', '\''] {
+    let needle = format!("from {}{}{}", quote, new_import.specifier, quote);
+    let mut search_start = 0;
+    while let Some(relative_index) = text[search_start..].find(&needle) {
+      let from_index = search_start + relative_index;
+      search_start = from_index + needle.len();
+      let Some(import_start) = find_import_start(text, from_index) else {
+        continue;
+      };
+      let statement_before_from = &text[import_start..from_index];
+      if statement_before_from.contains(';') {
+        continue;
+      }
+      let Some(import_clause) =
+        statement_before_from.trim_start().strip_prefix("import ")
+      else {
+        continue;
+      };
+      let is_type_only = import_clause.trim_start().starts_with("type ");
+      if is_type_only && !new_import.is_type_only {
+        continue;
+      }
+      let Some(close_brace) = statement_before_from.rfind('}') else {
+        continue;
+      };
+      let close_brace = import_start + close_brace;
+      let Some(open_brace) = text[import_start..close_brace].rfind('{') else {
+        continue;
+      };
+      let open_brace = import_start + open_brace;
+      let existing_names = &text[open_brace + 1..close_brace];
+      if new_import
+        .names
+        .iter()
+        .any(|name| import_list_contains_name(existing_names, name))
+      {
+        continue;
+      }
+      let insert_offset =
+        import_list_insert_offset(text, open_brace, close_brace);
+      let names = new_import
+        .names
+        .iter()
+        .map(|name| {
+          if new_import.is_type_only && !is_type_only {
+            format!("type {name}")
+          } else {
+            (*name).to_string()
+          }
+        })
+        .collect::<Vec<_>>();
+      return Some(ExistingNamedImport {
+        insert_offset,
+        new_text: format_import_list_insertion(
+          text,
+          open_brace,
+          close_brace,
+          &names,
+        ),
+      });
+    }
+  }
+  None
+}
+
+fn find_import_start(text: &str, from_index: usize) -> Option<usize> {
+  let mut line_start = text[..from_index].rfind('\n').map_or(0, |i| i + 1);
+  loop {
+    let line = &text[line_start..from_index];
+    if line.trim_start().starts_with("import ") {
+      return Some(line_start);
+    }
+    if line_start == 0 {
+      return None;
+    }
+    line_start = text[..line_start - 1].rfind('\n').map_or(0, |i| i + 1);
+  }
+}
+
+fn import_list_contains_name(existing_names: &str, name: &str) -> bool {
+  let name = name.trim_start_matches("type ").trim();
+  existing_names.split(',').any(|existing_name| {
+    let existing_name = existing_name.trim().trim_start_matches("type ").trim();
+    existing_name
+      .split_once(" as ")
+      .map(|(_, alias)| alias.trim())
+      .unwrap_or(existing_name)
+      == name
+  })
+}
+
+fn format_import_list_insertion(
+  text: &str,
+  open_brace: usize,
+  close_brace: usize,
+  names: &[String],
+) -> String {
+  let existing_names = &text[open_brace + 1..close_brace];
+  if existing_names.contains('\n') {
+    let close_line_start = text[..close_brace].rfind('\n').map_or(0, |i| i + 1);
+    let indent = text[close_line_start..close_brace]
+      .chars()
+      .take_while(|c| c.is_whitespace())
+      .collect::<String>();
+    names
+      .iter()
+      .map(|name| format!("{indent}{name},\n"))
+      .collect()
+  } else if existing_names.trim().is_empty() {
+    names.join(", ")
+  } else {
+    format!(", {}", names.join(", "))
+  }
+}
+
+fn import_list_insert_offset(
+  text: &str,
+  open_brace: usize,
+  close_brace: usize,
+) -> usize {
+  let existing_names = &text[open_brace + 1..close_brace];
+  if existing_names.contains('\n') {
+    close_brace
+  } else {
+    close_brace
+      - existing_names
+        .chars()
+        .rev()
+        .take_while(|c| c.is_whitespace())
+        .map(char::len_utf8)
+        .sum::<usize>()
+  }
+}
+
+fn byte_offset_to_position(text: &str, offset: usize) -> lsp::Position {
+  let mut line = 0;
+  let mut character = 0;
+  for ch in text[..offset].chars() {
+    if ch == '\n' {
+      line += 1;
+      character = 0;
+    } else {
+      character += ch.len_utf16() as u32;
+    }
+  }
+  lsp::Position { line, character }
+}
+
+fn rewrite_first_quoted_specifier(text: &mut String, new_specifier: &str) {
+  let Some((quote_start, quote)) = text
+    .char_indices()
+    .find_map(|(i, c)| (c == '\'' || c == '"').then_some((i, c)))
+  else {
+    return;
+  };
+  let specifier_start = quote_start + quote.len_utf8();
+  let Some(quote_end) = text[specifier_start..]
+    .char_indices()
+    .find_map(|(i, c)| (c == quote).then_some(specifier_start + i))
+  else {
+    return;
+  };
+  text.replace_range(specifier_start..quote_end, new_specifier);
 }
 
 // Based on https://github.com/microsoft/vscode/blob/1.81.1/extensions/typescript-language-features/src/languageFeatures/util/snippetForFunctionCall.ts#L49.
@@ -3725,17 +4040,10 @@ impl CompletionEntryDetails {
       .collect::<Vec<_>>();
     if let Some(specifier_rewrite) = &data.specifier_rewrite {
       for description in &mut code_action_descriptions {
-        let specifier_index = description
-          .char_indices()
-          .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
-        if let Some(i) = specifier_index {
-          let mut specifier_part = description.to_mut().split_off(i);
-          specifier_part = specifier_part.replace(
-            &specifier_rewrite.old_specifier,
-            &specifier_rewrite.new_specifier,
-          );
-          description.to_mut().push_str(&specifier_part);
-        }
+        rewrite_first_quoted_specifier(
+          description.to_mut(),
+          &specifier_rewrite.new_specifier,
+        );
       }
       if let Some(text_edit) = &mut text_edit {
         let new_text = match text_edit {
@@ -3744,17 +4052,10 @@ impl CompletionEntryDetails {
             &mut insert_replace_edit.new_text
           }
         };
-        let specifier_index = new_text
-          .char_indices()
-          .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
-        if let Some(i) = specifier_index {
-          let mut specifier_part = new_text.split_off(i);
-          specifier_part = specifier_part.replace(
-            &specifier_rewrite.old_specifier,
-            &specifier_rewrite.new_specifier,
-          );
-          new_text.push_str(&specifier_part);
-        }
+        rewrite_first_quoted_specifier(
+          new_text,
+          &specifier_rewrite.new_specifier,
+        );
         if let Some(deno_types_specifier) =
           &specifier_rewrite.new_deno_types_specifier
         {
@@ -3776,7 +4077,7 @@ impl CompletionEntryDetails {
     let (command, additional_text_edits) =
       parse_code_actions(self.code_actions.as_ref(), data, module)?;
     let mut insert_text_format = original_item.insert_text_format;
-    let insert_text = if data.use_code_snippet {
+    let mut insert_text = if data.use_code_snippet {
       insert_text_format = Some(lsp::InsertTextFormat::SNIPPET);
       Some(format!(
         "{}({})",
@@ -3789,6 +4090,21 @@ impl CompletionEntryDetails {
     } else {
       original_item.insert_text.clone()
     };
+    let mut filter_text = original_item.filter_text.clone();
+    if let Some(specifier_rewrite) = &data.specifier_rewrite {
+      if let Some(insert_text) = &mut insert_text {
+        rewrite_first_quoted_specifier(
+          insert_text,
+          &specifier_rewrite.new_specifier,
+        );
+      }
+      if let Some(filter_text) = &mut filter_text {
+        rewrite_first_quoted_specifier(
+          filter_text,
+          &specifier_rewrite.new_specifier,
+        );
+      }
+    }
 
     Ok(lsp::CompletionItem {
       data: None,
@@ -3799,6 +4115,7 @@ impl CompletionEntryDetails {
       additional_text_edits,
       insert_text,
       insert_text_format,
+      filter_text,
       // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
       // but when `completionItem/resolve` is called, we get a list of commit chars
       // even though we might have returned an empty list in `completion` request.
@@ -3889,7 +4206,6 @@ impl CompletionInfo {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CompletionSpecifierRewrite {
-  old_specifier: String,
   new_specifier: String,
   new_deno_types_specifier: Option<String>,
 }
@@ -4233,10 +4549,23 @@ impl CompletionEntry {
           || new_deno_types_specifier.is_some()
         {
           specifier_rewrite = Some(CompletionSpecifierRewrite {
-            old_specifier: import_data.raw.module_specifier.clone(),
             new_specifier,
             new_deno_types_specifier,
           });
+        }
+      }
+      if let Some(specifier_rewrite) = &specifier_rewrite {
+        if let Some(insert_text) = &mut insert_text {
+          rewrite_first_quoted_specifier(
+            insert_text,
+            &specifier_rewrite.new_specifier,
+          );
+        }
+        if let Some(filter_text) = &mut filter_text {
+          rewrite_first_quoted_specifier(
+            filter_text,
+            &specifier_rewrite.new_specifier,
+          );
         }
       }
       // We want relative or bare (import-mapped or otherwise) specifiers to
@@ -4251,18 +4580,25 @@ impl CompletionEntry {
         .description = Some(display_source);
     }
 
-    let text_edit =
-      if let (Some(text_span), Some(new_text)) = (range, &insert_text) {
-        let range = text_span.to_range(line_index);
-        let insert_replace_edit = lsp::InsertReplaceEdit {
-          new_text: new_text.clone(),
-          insert: range,
-          replace: range,
-        };
-        Some(insert_replace_edit.into())
-      } else {
-        None
+    let text_edit = if let Some(text_span) = &range {
+      let range = text_span.to_range(line_index);
+      // TSC may provide a `replacementSpan` without a corresponding
+      // `insertText` (e.g. for string union literal members). In that case
+      // fall back to the entry name as the text to insert, matching the
+      // behavior of VSCode's TypeScript integration. Without this, the editor
+      // is left to apply its own word-based replacement, which breaks on
+      // string values containing characters like `.` (the part before the
+      // last dot is forgotten).
+      let new_text = insert_text.clone().unwrap_or_else(|| self.name.clone());
+      let insert_replace_edit = lsp::InsertReplaceEdit {
+        new_text,
+        insert: range,
+        replace: range,
       };
+      Some(insert_replace_edit.into())
+    } else {
+      None
+    };
 
     let data = TsJsCompletionItemData {
       uri: module.uri.as_ref().clone(),
@@ -4546,7 +4882,7 @@ impl SelectionRange {
 #[derive(Debug, Default)]
 pub struct TscSpecifierMap {
   normalized_specifiers: DashMap<String, ModuleSpecifier>,
-  denormalized_specifiers: DashMap<ModuleSpecifier, String>,
+  denormalized_specifiers: DashMap<(ModuleSpecifier, bool), String>,
 }
 
 impl TscSpecifierMap {
@@ -4562,12 +4898,39 @@ impl TscSpecifierMap {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
   ) -> String {
+    self.denormalize_inner(specifier, media_type, false)
+  }
+
+  /// Denormalizes a specifier while hiding `node_modules` from TypeScript.
+  ///
+  /// TypeScript suppresses auto-import candidates from `node_modules/.deno`,
+  /// so direct package entry points that should be auto-importable are exposed
+  /// under a synthetic `$node_modules` path. Avoid using this for every
+  /// node_modules file, as that makes TypeScript treat the whole dependency
+  /// tree like user code.
+  pub fn denormalize_with_node_modules_alias(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+  ) -> String {
+    self.denormalize_inner(specifier, media_type, true)
+  }
+
+  fn denormalize_inner(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    alias_node_modules: bool,
+  ) -> String {
     let original = specifier;
-    if let Some(specifier) = self.denormalized_specifiers.get(original) {
+    if let Some(specifier) = self
+      .denormalized_specifiers
+      .get(&(original.clone(), alias_node_modules))
+    {
       return specifier.to_string();
     }
     let mut specifier = original.to_string();
-    if !specifier.contains("/node_modules/@types/node/") {
+    if alias_node_modules && !specifier.contains("/node_modules/@types/node/") {
       // The ts server doesn't give completions from files in
       // `node_modules/.deno/`. We work around it like this.
       specifier = specifier.replace("/node_modules/", "/$node_modules/");
@@ -4600,9 +4963,10 @@ impl TscSpecifierMap {
       .replace("$node_modules", "node_modules");
     let specifier = ModuleSpecifier::parse(&specifier_str)?;
     if specifier.as_str() != original {
-      self
-        .denormalized_specifiers
-        .insert(specifier.clone(), original.to_string());
+      self.denormalized_specifiers.insert(
+        (specifier.clone(), original.contains("$node_modules")),
+        original.to_string(),
+      );
     }
     Ok(specifier)
   }
@@ -4621,10 +4985,20 @@ struct State {
   last_scope: Option<Arc<Url>>,
   last_notebook_uri: Option<Arc<Uri>>,
   token: CancellationToken,
+  // Shared with the isolate's near-heap-limit callback so that a runaway
+  // request can be cancelled when the TSC isolate is about to run out of
+  // memory, instead of crashing the whole language server. See
+  // `run_tsc_thread`.
+  request_cancellation: Arc<Mutex<CancellationToken>>,
   pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
   context: Option<super::trace::Context>,
   enable_tracing: Arc<AtomicBool>,
+  // Whether a real request has been serviced since the last idle memory
+  // release. Used by `op_poll_requests` to arm the idle timer only when there's
+  // actually something to release, so a quiescent language server doesn't keep
+  // waking up to run GCs forever.
+  serviced_since_idle_release: bool,
 }
 
 impl State {
@@ -4634,6 +5008,7 @@ impl State {
     performance: Arc<Performance>,
     pending_requests: UnboundedReceiver<Request>,
     enable_tracing: Arc<AtomicBool>,
+    request_cancellation: Arc<Mutex<CancellationToken>>,
   ) -> Self {
     Self {
       last_id: 1,
@@ -4645,10 +5020,12 @@ impl State {
       last_scope: None,
       last_notebook_uri: None,
       token: Default::default(),
+      request_cancellation,
       mark: None,
       pending_requests: Some(pending_requests),
       context: None,
       enable_tracing,
+      serviced_since_idle_release: false,
     }
   }
 
@@ -4707,11 +5084,10 @@ enum LoadError {
   UrlParse(#[from] deno_core::url::ParseError),
   #[error("{0}")]
   #[class(inherit)]
-  SerdeV8(#[from] serde_v8::Error),
+  JsErrorBox(#[from] deno_error::JsErrorBox),
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, deno_core::ToV8)]
 struct LoadResponse {
   data: DocumentText,
   script_kind: i32,
@@ -4764,7 +5140,7 @@ fn op_load<'s>(
         }
       })
     };
-  let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
+  let serialized = maybe_load_response.to_v8(scope)?;
   state.performance.measure(mark);
   Ok(serialized)
 }
@@ -4809,7 +5185,7 @@ struct TscRequestArray {
 }
 
 impl<'a> ToV8<'a> for TscRequestArray {
-  type Error = serde_v8::Error;
+  type Error = JsErrorBox;
 
   fn to_v8(
     self,
@@ -4817,7 +5193,7 @@ impl<'a> ToV8<'a> for TscRequestArray {
   ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
     let id = self.id.to_v8(scope).unwrap_infallible();
 
-    let (method_name, args) = self.request.to_server_request(scope)?;
+    let (method_name, args) = self.request.into_server_request(scope)?;
 
     let method_name = deno_core::FastString::from_static(method_name)
       .v8_string(scope)
@@ -4825,8 +5201,10 @@ impl<'a> ToV8<'a> for TscRequestArray {
       .into();
     let args = args.unwrap_or_else(|| v8::Array::new(scope, 0).into());
     let compiler_options_key =
-      serde_v8::to_v8(scope, self.compiler_options_key)?;
-    let notebook_uri = serde_v8::to_v8(scope, self.notebook_uri)?;
+      serde_v8::to_v8(scope, self.compiler_options_key)
+        .map_err(JsErrorBox::from_err)?;
+    let notebook_uri = serde_v8::to_v8(scope, self.notebook_uri)
+      .map_err(JsErrorBox::from_err)?;
 
     let change = self.change.to_v8(scope).unwrap_infallible();
 
@@ -4847,18 +5225,76 @@ impl<'a> ToV8<'a> for TscRequestArray {
   }
 }
 
+/// How long the TSC isolate sits without a request before it prompts V8 to
+/// collect garbage and return memory to the OS. Kept comfortably longer than
+/// typical bursts of editor activity so we don't run a collection in the middle
+/// of someone's editing session. Overridable via the
+/// `DENO_LSP_IDLE_MEMORY_RELEASE_MS` env var (mainly so tests don't have to wait
+/// out the full delay; a very large value effectively disables the behavior).
+static IDLE_MEMORY_RELEASE_DELAY: std::sync::LazyLock<std::time::Duration> =
+  std::sync::LazyLock::new(|| {
+    const DEFAULT_MS: u64 = 5000;
+    let ms = std::env::var("DENO_LSP_IDLE_MEMORY_RELEASE_MS")
+      .ok()
+      .and_then(|s| s.parse::<u64>().ok())
+      .unwrap_or(DEFAULT_MS);
+    std::time::Duration::from_millis(ms)
+  });
+
 #[op2]
 async fn op_poll_requests(
   state: Rc<RefCell<OpState>>,
 ) -> convert::OptionNull<TscRequestArray> {
-  let mut pending_requests = {
+  let (mut pending_requests, arm_idle_timer) = {
     let mut state = state.borrow_mut();
     let state = state.try_borrow_mut::<State>().unwrap();
-    state.pending_requests.take().unwrap()
+    (
+      state.pending_requests.take().unwrap(),
+      state.serviced_since_idle_release,
+    )
   };
 
   // clear the resolution cache after each request
   NodeResolutionThreadLocalCache::clear();
+
+  // While the language server sits idle the TSC isolate can hold on to a lot of
+  // dead type-checker allocations (and the V8 heap pages behind them) that won't
+  // be handed back to the OS until something forces a collection. If we've
+  // serviced a request since the last release, wait for the next one with a
+  // timeout; when it elapses, ask the JS side to prompt V8 to collect and return
+  // that memory. See denoland/deno#23577.
+  let next_request = if arm_idle_timer {
+    match tokio::time::timeout(
+      *IDLE_MEMORY_RELEASE_DELAY,
+      pending_requests.recv(),
+    )
+    .await
+    {
+      Ok(maybe_request) => maybe_request,
+      Err(_) => {
+        let mut state = state.borrow_mut();
+        let state = state.try_borrow_mut::<State>().unwrap();
+        state.pending_requests = Some(pending_requests);
+        // Only fire once per idle period; the next real request re-arms it.
+        state.serviced_since_idle_release = false;
+        // Measurement is finalized in `op_lsp_release_memory`.
+        let mark = state
+          .performance
+          .mark(format!("tsc.host.{}", TscRequest::ReleaseMemory.method()));
+        state.mark = Some(mark);
+        return Some(TscRequestArray {
+          request: TscRequest::ReleaseMemory,
+          compiler_options_key: Default::default(),
+          notebook_uri: None,
+          id: Smi(0),
+          change: None.into(),
+        })
+        .into();
+      }
+    }
+  } else {
+    pending_requests.recv().await
+  };
 
   let Some((
     request,
@@ -4870,7 +5306,7 @@ async fn op_poll_requests(
     token,
     change,
     context,
-  )) = pending_requests.recv().await
+  )) = next_request
   else {
     return None.into();
   };
@@ -4878,7 +5314,14 @@ async fn op_poll_requests(
   let mut state = state.borrow_mut();
   let state = state.try_borrow_mut::<State>().unwrap();
   state.pending_requests = Some(pending_requests);
+  // We've done real work; arm the idle timer so memory is released once the
+  // language server goes quiet again.
+  state.serviced_since_idle_release = true;
   state.state_snapshot = snapshot;
+  // Publish this request's cancellation token so the isolate's
+  // near-heap-limit callback can cancel it if we're about to run out of
+  // memory while servicing it.
+  *state.request_cancellation.lock() = token.clone();
   state.token = token;
   state.response_tx = Some(response_tx);
   let id = state.last_id;
@@ -4926,11 +5369,13 @@ fn op_resolve_inner(
     .map(|o| {
       o.map(|(s, mt)| {
         (
-          state.specifier_map.denormalize(&s, mt),
-          if matches!(mt, MediaType::Unknown) {
-            None
-          } else {
-            Some(mt.as_ts_extension().to_string())
+          denormalize_with_auto_import_alias(state, &s, mt, Some(&referrer)),
+          match mt {
+            MediaType::Unknown => None,
+            // surface these as .js for typescript so side-effect imports
+            // (e.g. `import "./styles.css"`) don't trigger TS6263
+            MediaType::Css => Some(".js".to_string()),
+            _ => Some(mt.as_ts_extension().to_string()),
           },
         )
       })
@@ -4966,6 +5411,22 @@ fn op_respond(
   }
 }
 
+/// Prompt V8 to free as much memory as it can and hand it back to the OS.
+/// Called from the JS side during an idle memory release (see
+/// `op_poll_requests` and `serverMainLoop`). This is a stop-the-world
+/// collection, so it must only run when the isolate would otherwise be idle.
+#[op2(fast)]
+fn op_lsp_release_memory(state: &mut OpState, scope: &mut v8::PinScope) {
+  scope.low_memory_notification();
+  // Finalize the measurement started in `op_poll_requests` for this idle
+  // release. Done here (rather than via `op_respond`, which an idle release
+  // never reaches) so the work shows up in the perf log.
+  let state = state.borrow_mut::<State>();
+  if let Some(mark) = state.mark.take() {
+    state.performance.measure(mark);
+  }
+}
+
 struct TracingSpan(
   #[allow(dead_code, reason = "unsupported")] Option<super::trace::EnteredSpan>,
 );
@@ -4988,6 +5449,37 @@ fn span_with_context(
   #[cfg(not(feature = "lsp-tracing"))]
   {
     span.entered()
+  }
+}
+
+fn should_alias_node_modules_for_auto_import(
+  state: &State,
+  specifier: &ModuleSpecifier,
+  scope: Option<&ModuleSpecifier>,
+) -> bool {
+  if !state.state_snapshot.resolver.in_node_modules(specifier) {
+    return false;
+  }
+  let scoped_resolver =
+    state.state_snapshot.resolver.get_scoped_resolver(scope);
+  let referrer = scope.unwrap_or(specifier);
+  scoped_resolver
+    .resource_url_to_configured_dep_key(specifier, referrer)
+    .is_some()
+}
+
+fn denormalize_with_auto_import_alias(
+  state: &State,
+  specifier: &ModuleSpecifier,
+  media_type: MediaType,
+  scope: Option<&ModuleSpecifier>,
+) -> String {
+  if should_alias_node_modules_for_auto_import(state, specifier, scope) {
+    state
+      .specifier_map
+      .denormalize_with_node_modules_alias(specifier, media_type)
+  } else {
+    state.specifier_map.denormalize(specifier, media_type)
   }
 }
 
@@ -5039,6 +5531,59 @@ struct ScriptNames {
   by_notebook_uri: BTreeMap<Arc<Uri>, IndexSet<String>>,
 }
 
+fn insert_root_module_script_names(
+  state: &State,
+  script_names: &mut IndexSet<String>,
+  module: &DocumentModule,
+  scope: Option<&ModuleSpecifier>,
+  is_open: bool,
+) {
+  let types_entry = (|| {
+    let types_specifier = module
+      .types_dependency
+      .as_ref()?
+      .dependency
+      .maybe_specifier()?;
+    state.state_snapshot.document_modules.resolve_dependency(
+      types_specifier,
+      &module.specifier,
+      module.resolution_mode,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )
+  })();
+  // If there is a types dep, use that as the root instead. But if the doc
+  // is open, include both as roots.
+  if let Some((types_specifier, types_media_type, _)) = &types_entry {
+    script_names.insert(denormalize_with_auto_import_alias(
+      state,
+      types_specifier,
+      *types_media_type,
+      scope,
+    ));
+  }
+  if types_entry.is_none() || is_open {
+    script_names.insert(denormalize_with_auto_import_alias(
+      state,
+      &module.specifier,
+      module.media_type,
+      scope,
+    ));
+    // The auto-import alias hides `node_modules/.deno` from tsc, but
+    // requests for open documents (diagnostics, hover, etc.) use the
+    // unaliased name. Include it as a root too so they don't fail with
+    // "Could not find source file". See
+    // https://github.com/denoland/deno/issues/35170.
+    if is_open {
+      script_names.insert(
+        state
+          .specifier_map
+          .denormalize(&module.specifier, module.media_type),
+      );
+    }
+  }
+}
+
 #[op2]
 #[serde]
 fn op_script_names(state: &mut OpState) -> ScriptNames {
@@ -5073,6 +5618,31 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .state_snapshot
       .resolver
       .get_scoped_resolver(scope.as_deref());
+    for specifier in scoped_resolver.configured_auto_import_roots() {
+      if specifier.scheme() != "jsr"
+        && !specifier.as_str().starts_with(jsr_url().as_str())
+      {
+        continue;
+      }
+      let referrer = compiler_options_data
+        .workspace_dir_or_source_url
+        .as_deref()
+        .or(scope.as_deref())
+        .unwrap_or(&specifier);
+      let Some((specifier, media_type, _)) =
+        state.state_snapshot.document_modules.resolve_dependency(
+          &specifier,
+          referrer,
+          ResolutionMode::Import,
+          scope.as_deref(),
+          Some(compiler_options_key),
+        )
+      else {
+        continue;
+      };
+      script_names
+        .insert(state.specifier_map.denormalize(&specifier, media_type));
+    }
     if scopes_with_node_specifier.contains(&scope) {
       script_names.insert("asset:///reference_types_node.d.ts".to_string());
     }
@@ -5142,12 +5712,37 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         else {
           continue;
         };
-        script_names.insert(
-          state
-            .specifier_map
-            .denormalize(&module.specifier, module.media_type),
-        );
+        script_names.insert(denormalize_with_auto_import_alias(
+          state,
+          &module.specifier,
+          module.media_type,
+          scope.as_deref(),
+        ));
       }
+    }
+    for specifier in compiler_options_data.ts_config_roots.iter() {
+      let scope = state
+        .state_snapshot
+        .config
+        .tree
+        .scope_for_specifier(specifier)
+        .cloned();
+      let Some(module) =
+        state.state_snapshot.document_modules.module_for_specifier(
+          specifier,
+          scope.as_deref(),
+          Some(compiler_options_key),
+        )
+      else {
+        continue;
+      };
+      insert_root_module_script_names(
+        state,
+        script_names,
+        &module,
+        scope.as_deref(),
+        false,
+      );
     }
   }
 
@@ -5184,11 +5779,12 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         .state_snapshot
         .document_modules
         .module(&document, scope.map(|s| s.as_ref()))?;
-      Some(
-        state
-          .specifier_map
-          .denormalize(&module.specifier, module.media_type),
-      )
+      Some(denormalize_with_auto_import_alias(
+        state,
+        &module.specifier,
+        module.media_type,
+        scope.map(|s| s.as_ref()),
+      ))
     }));
 
     result
@@ -5197,48 +5793,24 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   }
 
   // finally include the documents
-  for modules in state
+  for (scope, modules) in state
     .state_snapshot
     .document_modules
     .workspace_file_modules_by_scope()
-    .into_values()
+    .into_iter()
   {
     for module in modules {
-      let is_open = module.open_data.is_some();
-      let types_entry = (|| {
-        let types_specifier = module
-          .types_dependency
-          .as_ref()?
-          .dependency
-          .maybe_specifier()?;
-        state.state_snapshot.document_modules.resolve_dependency(
-          types_specifier,
-          &module.specifier,
-          module.resolution_mode,
-          module.scope.as_deref(),
-          Some(&module.compiler_options_key),
-        )
-      })();
       let script_names = result
         .by_compiler_options_key
         .entry(module.compiler_options_key.clone())
         .or_default();
-      // If there is a types dep, use that as the root instead. But if the doc
-      // is open, include both as roots.
-      if let Some((types_specifier, types_media_type, _)) = &types_entry {
-        script_names.insert(
-          state
-            .specifier_map
-            .denormalize(types_specifier, *types_media_type),
-        );
-      }
-      if types_entry.is_none() || is_open {
-        script_names.insert(
-          state
-            .specifier_map
-            .denormalize(&module.specifier, module.media_type),
-        );
-      }
+      insert_root_module_script_names(
+        state,
+        script_names,
+        &module,
+        scope.as_deref(),
+        module.open_data.is_some(),
+      );
     }
   }
 
@@ -5271,7 +5843,6 @@ fn op_project_version(state: &mut OpState) -> usize {
 }
 
 #[op2]
-#[serde]
 fn op_tsc_constants() -> crate::tsc::TscConstants {
   crate::tsc::TscConstants::new()
 }
@@ -5314,6 +5885,9 @@ fn run_tsc_thread(
   enable_tracing: Arc<AtomicBool>,
 ) {
   let has_inspector_server = maybe_inspector_server.is_some();
+  // Shared with the isolate's near-heap-limit callback. `op_poll_requests`
+  // keeps this updated with the in-flight request's cancellation token.
+  let request_cancellation: Arc<Mutex<CancellationToken>> = Default::default();
   let mut extensions =
     deno_runtime::snapshot_info::get_extensions_in_snapshot();
   extensions.push(deno_tsc::init(
@@ -5321,14 +5895,57 @@ fn run_tsc_thread(
     specifier_map,
     request_rx,
     enable_tracing,
+    request_cancellation.clone(),
   ));
-  let tsc_runtime = JsRuntime::new(RuntimeOptions {
+  let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions,
     create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     inspector: has_inspector_server,
+    // See cli/tsc/js.rs: the LSP TSC isolate shares CLI_SNAPSHOT and needs
+    // the residual lazy-ESM/JS sources for node:* lookups (e.g. `process`).
+    residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
+    residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
     ..Default::default()
   });
+
+  // The TSC isolate runs the TypeScript language service, whose type checker
+  // can occasionally blow up to many gigabytes for pathological inputs (e.g.
+  // deeply recursive library types while a file is mid-edit). Without
+  // intervention V8 aborts the whole process with a fatal OOM, taking the
+  // entire language server down and forcing a slow restart + reindex. Install
+  // a near-heap-limit callback that instead cancels the in-flight request
+  // (the language service host polls this token via `op_is_cancelled`, so the
+  // computation unwinds with an `OperationCanceledError` that's already
+  // handled gracefully) and grants a bounded amount of extra headroom so the
+  // unwinding has room to run. See denoland/deno#25613.
+  {
+    // Extra heap we're willing to hand out, total, before giving up and
+    // letting V8 OOM as a last resort (better than exhausting all of system
+    // memory). Granted in steps so we never overshoot by much.
+    const HEADROOM_BYTES: usize = 1024 * 1024 * 1024;
+    const STEP_BYTES: usize = 128 * 1024 * 1024;
+    let request_cancellation = request_cancellation.clone();
+    tsc_runtime.add_near_heap_limit_callback(
+      move |current_limit, initial_limit| {
+        // Cancel the request being serviced so the language service unwinds
+        // at its next cancellation checkpoint and frees the memory.
+        request_cancellation.lock().cancel();
+        let ceiling = initial_limit.saturating_add(HEADROOM_BYTES);
+        if current_limit >= ceiling {
+          lsp_warn!(
+            "TSC isolate exceeded its heap headroom; cancelling the request. The language server may run out of memory."
+          );
+          current_limit
+        } else {
+          lsp_warn!(
+            "TSC isolate is near its heap limit; cancelling the in-flight request to recover."
+          );
+          (current_limit + STEP_BYTES).min(ceiling)
+        }
+      },
+    );
+  }
 
   if let Some(server) = maybe_inspector_server {
     server.register_inspector(
@@ -5401,6 +6018,7 @@ deno_core::extension!(deno_tsc,
     op_release,
     op_resolve,
     op_respond,
+    op_lsp_release_memory,
     op_script_names,
     op_script_version,
     op_project_version,
@@ -5415,6 +6033,7 @@ deno_core::extension!(deno_tsc,
     specifier_map: Arc<TscSpecifierMap>,
     request_rx: UnboundedReceiver<Request>,
     enable_tracing: Arc<AtomicBool>,
+    request_cancellation: Arc<Mutex<CancellationToken>>,
   },
   state = |state, options| {
     state.put(State::new(
@@ -5423,6 +6042,7 @@ deno_core::extension!(deno_tsc,
       options.performance,
       options.request_rx,
       options.enable_tracing,
+      options.request_cancellation,
     ));
   },
   customizer = |ext: &mut deno_core::Extension| {
@@ -5709,14 +6329,18 @@ impl UserPreferences {
   }
 }
 
-#[derive(Debug, Clone, Serialize)]
+// `Serialize` is retained because the whole `TscRequest` is serialized to a
+// JSON performance-trace via `Performance::mark_with_args`; `ToV8` is what
+// actually crosses the V8 boundary in `into_server_request`.
+#[derive(Debug, Clone, Serialize, deno_core::ToV8)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItemsOptions {
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub trigger_reason: Option<SignatureHelpTriggerReason>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, deno_core::ToV8)]
 pub enum SignatureHelpTriggerKind {
   #[serde(rename = "characterTyped")]
   CharacterTyped,
@@ -5739,11 +6363,12 @@ impl From<lsp::SignatureHelpTriggerKind> for SignatureHelpTriggerKind {
   }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, deno_core::ToV8)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpTriggerReason {
   pub kind: SignatureHelpTriggerKind,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub trigger_character: Option<String>,
 }
 
@@ -5797,13 +6422,17 @@ enum TscRequest {
 
   GetAmbientModules,
   CleanupSemanticCache,
+  /// Synthesized by `op_poll_requests` when the language server has been idle.
+  /// Not a real client request: the JS main loop prompts V8 to collect and
+  /// return memory, and never sends a response.
+  ReleaseMemory,
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6230
   FindReferences((String, u32)),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6235
   GetNavigationTree((String,)),
   GetSupportedCodeFixes,
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6214
-  GetQuickInfoAtPosition((String, u32)),
+  GetQuickInfoAtPosition((String, u32, u32)),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6257
   GetCodeFixesAtPosition(
     Box<(
@@ -5913,105 +6542,132 @@ impl TscRequest {
   /// Converts the request into a tuple containing the method name and the
   /// arguments (in the form of a V8 value) to be passed to the server request
   /// function
-  fn to_server_request<'s>(
-    &self,
+  fn into_server_request<'s>(
+    self,
     scope: &mut v8::PinScope<'s, '_>,
-  ) -> Result<(&'static str, Option<v8::Local<'s, v8::Value>>), serde_v8::Error>
-  {
+  ) -> Result<(&'static str, Option<v8::Local<'s, v8::Value>>), JsErrorBox> {
+    // Requests whose arguments are positional tuples of primitives serialize to
+    // a `v8::Array` via the `ToV8` derives/impls (matching serde's tuple
+    // encoding). Bare integers are wrapped in `Number` so they map to a JS
+    // `number` exactly as serde did. Requests carrying richer config structs
+    // (`UserPreferences`, `FormatCodeSettings`, …) or `#[serde(flatten)]` stay
+    // on `serde_v8::to_v8` until those types grow `ToV8` impls.
     let args = match self {
-      TscRequest::GetDiagnostics(args) => {
-        ("$getDiagnostics", Some(serde_v8::to_v8(scope, args)?))
-      }
+      TscRequest::GetDiagnostics(args) => (
+        "$getDiagnostics",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
       TscRequest::GetAmbientModules => ("$getAmbientModules", None),
-      TscRequest::FindReferences(args) => {
-        ("findReferences", Some(serde_v8::to_v8(scope, args)?))
-      }
+      TscRequest::FindReferences((specifier, position)) => (
+        "findReferences",
+        Some((specifier, Number(position)).to_v8(scope)?),
+      ),
       TscRequest::GetNavigationTree(args) => {
-        ("getNavigationTree", Some(serde_v8::to_v8(scope, args)?))
+        ("getNavigationTree", Some(args.to_v8(scope)?))
       }
       TscRequest::GetSupportedCodeFixes => ("$getSupportedCodeFixes", None),
-      TscRequest::GetQuickInfoAtPosition(args) => (
+      TscRequest::GetQuickInfoAtPosition((
+        specifier,
+        position,
+        maximum_length,
+      )) => (
         "getQuickInfoAtPosition",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some(
+          (specifier, Number(position), Number(maximum_length)).to_v8(scope)?,
+        ),
       ),
       TscRequest::GetCodeFixesAtPosition(args) => (
         "getCodeFixesAtPosition",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
       ),
       TscRequest::GetApplicableRefactors(args) => (
         "getApplicableRefactors",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
       ),
-      TscRequest::GetCombinedCodeFix(args) => {
-        ("getCombinedCodeFix", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::GetEditsForRefactor(args) => {
-        ("getEditsForRefactor", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::GetEditsForFileRename(args) => {
-        ("getEditsForFileRename", Some(serde_v8::to_v8(scope, args)?))
-      }
+      TscRequest::GetCombinedCodeFix(args) => (
+        "getCombinedCodeFix",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
+      TscRequest::GetEditsForRefactor(args) => (
+        "getEditsForRefactor",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
+      TscRequest::GetEditsForFileRename(args) => (
+        "getEditsForFileRename",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
       TscRequest::GetDocumentHighlights(args) => {
-        ("getDocumentHighlights", Some(serde_v8::to_v8(scope, args)?))
+        let (specifier, position, files_to_search) = *args;
+        (
+          "getDocumentHighlights",
+          Some((specifier, Number(position), files_to_search).to_v8(scope)?),
+        )
       }
-      TscRequest::GetDefinitionAndBoundSpan(args) => (
+      TscRequest::GetDefinitionAndBoundSpan((specifier, position)) => (
         "getDefinitionAndBoundSpan",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some((specifier, Number(position)).to_v8(scope)?),
       ),
-      TscRequest::GetTypeDefinitionAtPosition(args) => (
+      TscRequest::GetTypeDefinitionAtPosition((specifier, position)) => (
         "getTypeDefinitionAtPosition",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some((specifier, Number(position)).to_v8(scope)?),
       ),
       TscRequest::GetCompletionsAtPosition(args) => (
         "getCompletionsAtPosition",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
       ),
       TscRequest::GetCompletionEntryDetails(args) => (
         "getCompletionEntryDetails",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
       ),
-      TscRequest::GetImplementationAtPosition(args) => (
+      TscRequest::GetImplementationAtPosition((specifier, position)) => (
         "getImplementationAtPosition",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some((specifier, Number(position)).to_v8(scope)?),
       ),
       TscRequest::GetOutliningSpans(args) => {
-        ("getOutliningSpans", Some(serde_v8::to_v8(scope, args)?))
+        ("getOutliningSpans", Some(args.to_v8(scope)?))
       }
-      TscRequest::ProvideCallHierarchyIncomingCalls(args) => (
+      TscRequest::ProvideCallHierarchyIncomingCalls((specifier, position)) => (
         "provideCallHierarchyIncomingCalls",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some((specifier, Number(position)).to_v8(scope)?),
       ),
-      TscRequest::ProvideCallHierarchyOutgoingCalls(args) => (
+      TscRequest::ProvideCallHierarchyOutgoingCalls((specifier, position)) => (
         "provideCallHierarchyOutgoingCalls",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some((specifier, Number(position)).to_v8(scope)?),
       ),
-      TscRequest::PrepareCallHierarchy(args) => {
-        ("prepareCallHierarchy", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::FindRenameLocations(args) => {
-        ("findRenameLocations", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::GetSmartSelectionRange(args) => (
+      TscRequest::PrepareCallHierarchy((specifier, position)) => (
+        "prepareCallHierarchy",
+        Some((specifier, Number(position)).to_v8(scope)?),
+      ),
+      TscRequest::FindRenameLocations(args) => (
+        "findRenameLocations",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
+      TscRequest::GetSmartSelectionRange((specifier, position)) => (
         "getSmartSelectionRange",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some((specifier, Number(position)).to_v8(scope)?),
       ),
       TscRequest::GetEncodedSemanticClassifications(args) => (
         "getEncodedSemanticClassifications",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
       ),
-      TscRequest::GetSignatureHelpItems(args) => {
-        ("getSignatureHelpItems", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::GetNavigateToItems(args) => {
-        ("getNavigateToItems", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::ProvideInlayHints(args) => {
-        ("provideInlayHints", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::OrganizeImports(args) => {
-        ("organizeImports", Some(serde_v8::to_v8(scope, args)?))
-      }
+      TscRequest::GetSignatureHelpItems((specifier, position, options)) => (
+        "getSignatureHelpItems",
+        Some((specifier, Number(position), options).to_v8(scope)?),
+      ),
+      TscRequest::GetNavigateToItems((search, max_result_count, file)) => (
+        "getNavigateToItems",
+        Some((search, max_result_count.map(Number), file).to_v8(scope)?),
+      ),
+      TscRequest::ProvideInlayHints(args) => (
+        "provideInlayHints",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
+      TscRequest::OrganizeImports(args) => (
+        "organizeImports",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
       TscRequest::CleanupSemanticCache => ("$cleanupSemanticCache", None),
+      TscRequest::ReleaseMemory => ("$releaseMemory", None),
     };
 
     Ok(args)
@@ -6022,6 +6678,7 @@ impl TscRequest {
       TscRequest::GetDiagnostics(_) => "$getDiagnostics",
       TscRequest::GetAmbientModules => "$getAmbientModules",
       TscRequest::CleanupSemanticCache => "$cleanupSemanticCache",
+      TscRequest::ReleaseMemory => "$releaseMemory",
       TscRequest::FindReferences(_) => "findReferences",
       TscRequest::GetNavigationTree(_) => "getNavigationTree",
       TscRequest::GetSupportedCodeFixes => "$getSupportedCodeFixes",
@@ -6079,6 +6736,34 @@ mod tests {
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
 
+  #[test]
+  fn test_find_mergeable_named_import() {
+    let new_import =
+      parse_simple_named_import("import { think } from \"cowsay\";\n\n")
+        .unwrap();
+    let existing_import = find_mergeable_named_import(
+      "import { say } from \"cowsay\";\n\nthink();\n",
+      &new_import,
+    )
+    .unwrap();
+    assert_eq!(existing_import.insert_offset, 12);
+    assert_eq!(existing_import.new_text, ", think");
+  }
+
+  #[test]
+  fn test_find_mergeable_named_import_multiline() {
+    let new_import =
+      parse_simple_named_import("import { think } from \"cowsay\";\n\n")
+        .unwrap();
+    let existing_import = find_mergeable_named_import(
+      "import {\n  say,\n} from \"cowsay\";\n\nthink();\n",
+      &new_import,
+    )
+    .unwrap();
+    assert_eq!(existing_import.insert_offset, 16);
+    assert_eq!(existing_import.new_text, "think,\n");
+  }
+
   async fn setup(
     deno_json_content: Value,
     sources: &[(&str, &str, i32, LanguageId)],
@@ -6099,7 +6784,7 @@ mod tests {
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
-      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver, None));
     resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
     let linter_resolver = Arc::new(LspLinterResolver::new(
       &config,
@@ -6132,6 +6817,7 @@ mod tests {
       linter_resolver,
       resolver,
       cache: Arc::new(cache),
+      client_needs_file_uris_for_virtual_documents: false,
     });
     let performance = Arc::new(Performance::default());
     let ts_server = TsJsServer::new(performance);
@@ -6158,6 +6844,7 @@ mod tests {
       Default::default(),
       rx,
       Arc::new(AtomicBool::new(true)),
+      Default::default(),
     );
     let mut op_state = OpState::new(None);
     op_state.put(state);
@@ -6177,6 +6864,17 @@ mod tests {
     let actual =
       replace_links(r"test {@linkcode http://deno.land/x/mod.ts a link} test");
     assert_eq!(actual, r"test [`a link`](http://deno.land/x/mod.ts) test");
+  }
+
+  #[test]
+  fn test_rewrite_first_quoted_specifier() {
+    let mut text = r#"import { rollup } from "";"#.to_string();
+    rewrite_first_quoted_specifier(&mut text, "$rollup");
+    assert_eq!(text, r#"import { rollup } from "$rollup";"#);
+
+    let mut text = r#"import { rollup } from "npm:rollup";"#.to_string();
+    rewrite_first_quoted_specifier(&mut text, "$rollup");
+    assert_eq!(text, r#"import { rollup } from "$rollup";"#);
   }
 
   #[tokio::test]
@@ -6567,6 +7265,8 @@ mod tests {
       json!(diagnostics),
       json!([
         {
+          "category": 1,
+          "code": 2339,
           "start": {
             "line": 2,
             "character": 16,
@@ -6575,11 +7275,9 @@ mod tests {
             "line": 2,
             "character": 17
           },
-          "fileName": specifier,
-          "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a\")\'.",
+          "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a.ts\", { with: { \"resolution-mode\": \"import\" } })\'.",
           "sourceLine": "          if (a.a === \"b\") {",
-          "code": 2339,
-          "category": 1,
+          "fileName": specifier,
         }
       ]),
     );
@@ -6656,6 +7354,26 @@ mod tests {
     };
     let actual = fixture.get_filter_text(None);
     assert_eq!(actual, Some("abc".to_string()));
+  }
+
+  #[test]
+  fn test_tsc_specifier_map_node_modules_alias_is_opt_in() {
+    let map = TscSpecifierMap::new();
+    let specifier = ModuleSpecifier::parse(
+      "file:///project/node_modules/.deno/pkg@1.0.0/node_modules/pkg/mod.d.ts",
+    )
+    .unwrap();
+
+    let denormalized = map.denormalize(&specifier, MediaType::Dts);
+    assert_eq!(denormalized, specifier.as_str());
+
+    let aliased =
+      map.denormalize_with_node_modules_alias(&specifier, MediaType::Dts);
+    assert_eq!(
+      aliased,
+      "file:///project/$node_modules/.deno/pkg@1.0.0/$node_modules/pkg/mod.d.ts",
+    );
+    assert_eq!(map.normalize(&aliased).unwrap(), specifier);
   }
 
   #[tokio::test]

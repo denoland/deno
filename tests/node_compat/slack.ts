@@ -2,8 +2,10 @@
 // deno-lint-ignore-file no-console
 
 import { LogLevel, WebClient } from "npm:@slack/web-api@7.8.0";
-import type { MonthSummary } from "./add_day_summary_to_month_summary.ts";
-import { toJson } from "@std/streams/to-json";
+import {
+  fetchReport,
+  type MonthSummary,
+} from "./add_day_summary_to_month_summary.ts";
 import { parse as parseJsonc } from "@std/jsonc";
 
 const token = Deno.env.get("SLACK_TOKEN");
@@ -116,18 +118,7 @@ async function fetchFullReport(
   date: string,
   os: OSName,
 ): Promise<FullReport | undefined> {
-  try {
-    const res = await fetch(
-      `https://dl.deno.land/node-compat-test/${date}/report-${os}.json.gz`,
-    );
-    if (res.status === 404) return undefined;
-    return await toJson(
-      res.body!.pipeThrough(new DecompressionStream("gzip")),
-    ) as FullReport;
-  } catch (e) {
-    console.error(`Failed to fetch report for ${date}/${os}:`, e);
-    return undefined;
-  }
+  return await fetchReport(date, os) as FullReport | undefined;
 }
 
 type TestStatus = "pass" | "fail" | "ignore" | "missing";
