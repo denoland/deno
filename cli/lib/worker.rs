@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use boxed_error::Boxed;
 use deno_bundle_runtime::BundleProvider;
+use deno_core::ModuleSpecifier;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
 use deno_node::ops::ipc::ChildIpcSerialization;
@@ -40,6 +41,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::deno_web::Blob;
 use deno_runtime::deno_web::BlobStoreTrait;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
@@ -75,6 +77,7 @@ pub trait ModuleLoaderFactory: Send + Sync {
     &self,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
+    maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult;
 }
 
@@ -102,6 +105,19 @@ impl StorageKeyResolver {
 
   pub fn from_config_file_url(url: &Url) -> Self {
     Self(StorageKeyResolverStrategy::Specified(Some(url.to_string())))
+  }
+
+  /// Storage key for a compiled binary. Keyed by the stable app name so each
+  /// app gets a single persistent store, independent of the main module URL
+  /// (which is not stable across differently named binaries). The `app:`
+  /// prefix namespaces this key from URL-derived keys so a compiled app and a
+  /// `deno run` of the same origin can't collide in the shared, temp-backed
+  /// `caches` directory (which is keyed by the hash of this string rather than
+  /// by the per-app data directory).
+  pub fn from_compile_app_name(app_name: &str) -> Self {
+    Self(StorageKeyResolverStrategy::Specified(Some(format!(
+      "app:{app_name}"
+    ))))
   }
 
   pub fn new_use_main_module() -> Self {
@@ -277,6 +293,8 @@ pub struct LibMainWorkerOptions {
   pub serve_host: Option<String>,
   pub close_on_idle: bool,
   pub maybe_initial_cwd: Option<Url>,
+  /// When true, the `OffscreenCanvas` global is removed at bootstrap.
+  pub disable_offscreen_canvas: bool,
 }
 
 #[derive(Default, Clone)]
@@ -348,6 +366,10 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       } = shared.module_loader_factory.create_for_worker(
         args.parent_permissions.clone(),
         args.permissions.clone(),
+        args
+          .maybe_main_module_blob
+          .clone()
+          .map(|blob| (args.main_module.clone(), blob)),
       );
       let create_web_worker_cb =
         shared.create_web_worker_callback(stdio.clone());
@@ -474,6 +496,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           otel_config: shared.options.otel_config.clone(),
           no_legacy_abort: shared.options.no_legacy_abort,
           close_on_idle: args.close_on_idle,
+          disable_offscreen_canvas: shared.options.disable_offscreen_canvas,
         },
         extensions: vec![],
         startup_snapshot: shared.options.startup_snapshot,
@@ -495,6 +518,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         trace_ops: shared.options.trace_ops.clone(),
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
+        maybe_main_module_blob: args.maybe_main_module_blob,
         maybe_coverage_dir: shared.maybe_coverage_dir.clone(),
         maybe_cpu_prof_config: shared.maybe_cpu_prof_config.clone(),
         enable_raw_imports: shared.options.enable_raw_imports,
@@ -717,6 +741,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         serve_host: shared.options.serve_host.clone(),
         otel_config: shared.options.otel_config.clone(),
         close_on_idle: shared.options.close_on_idle,
+        disable_offscreen_canvas: shared.options.disable_offscreen_canvas,
       },
       extensions: custom_extensions,
       startup_snapshot: shared.options.startup_snapshot,

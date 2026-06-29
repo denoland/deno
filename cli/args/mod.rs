@@ -18,6 +18,7 @@ use deno_cache_dir::file_fetcher::CacheSetting;
 pub use deno_config::deno_json::BenchConfig;
 pub use deno_config::deno_json::CompilerOptions;
 pub use deno_config::deno_json::ConfigFile;
+pub use deno_config::deno_json::CoverageThresholds;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
 pub use deno_config::deno_json::LintRulesConfig;
@@ -191,6 +192,13 @@ fn resolve_fmt_options(
     options.semi_colons = Some(!no_semis);
   }
 
+  // `--no-editorconfig` takes precedence over the deno.json
+  // `useEditorConfig` field. When the flag is absent the config value
+  // (or its `None` default of "on") is left untouched.
+  if fmt_flags.no_editorconfig {
+    options.use_editor_config = Some(false);
+  }
+
   options
 }
 
@@ -212,6 +220,7 @@ pub struct WorkspaceTestOptions {
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
+  pub update_snapshots: bool,
 }
 
 impl WorkspaceTestOptions {
@@ -253,6 +262,7 @@ impl WorkspaceTestOptions {
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path.clone(),
       hide_stacktraces: test_flags.hide_stacktraces,
+      update_snapshots: test_flags.update_snapshots,
     }
   }
 }
@@ -1018,6 +1028,14 @@ impl CliOptions {
     Ok(result)
   }
 
+  /// Resolves the coverage thresholds configured in `deno.json`'s `coverage`
+  /// section. CLI flags are layered on top of this by the caller.
+  pub fn resolve_coverage_thresholds(
+    &self,
+  ) -> Result<CoverageThresholds, AnyError> {
+    Ok(self.start_dir.to_coverage_config()?.thresholds)
+  }
+
   pub fn resolve_workspace_test_options(
     &self,
     test_flags: &TestFlags,
@@ -1579,6 +1597,7 @@ impl CliOptions {
           }),
         _,
       )) | DenoSubcommand::Add(_)
+        | DenoSubcommand::List(_)
         | DenoSubcommand::Outdated(_)
     ) {
       NpmCachingStrategy::Manual

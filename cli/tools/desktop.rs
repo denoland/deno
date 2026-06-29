@@ -212,6 +212,86 @@ async fn compile_desktop(
     });
   }
 
+  // Same for Linux `.deb` / `.rpm` package installers — strip the extension
+  // for the intermediate compile/bundle step, then wrap the staged app dir in
+  // the chosen package at the end. Both wrap the same tree produced by
+  // `package_linux_app_dir`.
+  let deb_output = desktop_flags
+    .output
+    .as_ref()
+    .filter(|o| o.to_lowercase().ends_with(".deb"))
+    .cloned();
+  let rpm_output = desktop_flags
+    .output
+    .as_ref()
+    .filter(|o| o.to_lowercase().ends_with(".rpm"))
+    .cloned();
+  if let Some(ref pkg) = deb_output.as_ref().or(rpm_output.as_ref()) {
+    // `.deb`/`.rpm` wrap the staged Linux app dir, so the build must target
+    // Linux. The package itself is assembled in pure Rust and cross-compiles
+    // from any host — only the target OS matters. (Unlike `.dmg`, which is
+    // gated on a macOS *host* because it shells out to hdiutil.)
+    let targets_linux = match desktop_flags.target.as_deref() {
+      Some(t) => t.contains("linux"),
+      None => cfg!(target_os = "linux"),
+    };
+    if !targets_linux {
+      bail!(
+        "Building a {ext} requires a Linux target. Requested output: {pkg}. \
+         Pass --target <linux-triple> (e.g. x86_64-unknown-linux-gnu) or build \
+         on Linux.",
+        ext = if deb_output.is_some() { ".deb" } else { ".rpm" },
+      );
+    }
+    let stem = Path::new(pkg)
+      .file_stem()
+      .map(|s| s.to_string_lossy().into_owned())
+      .unwrap_or_else(|| "App".to_string());
+    let parent = Path::new(pkg)
+      .parent()
+      .filter(|p| !p.as_os_str().is_empty());
+    desktop_flags.output = Some(match parent {
+      Some(p) => p.join(&stem).to_string_lossy().into_owned(),
+      None => stem,
+    });
+  }
+
+  // Same for a Windows `.msi` installer — strip the extension for the
+  // intermediate compile/bundle step, then wrap the staged Windows app dir in
+  // an MSI at the end. The MSI is authored entirely in pure Rust (`msi` +
+  // `cab`), so it cross-compiles from any host — only the *target* must be
+  // Windows. (Unlike `.dmg`, which is gated on a macOS host because it shells
+  // out to hdiutil.)
+  let msi_output = desktop_flags
+    .output
+    .as_ref()
+    .filter(|o| o.to_lowercase().ends_with(".msi"))
+    .cloned();
+  if let Some(ref msi) = msi_output {
+    let targets_windows = match desktop_flags.target.as_deref() {
+      Some(t) => t.contains("windows"),
+      None => cfg!(target_os = "windows"),
+    };
+    if !targets_windows {
+      bail!(
+        "Building a .msi requires a Windows target. Requested output: {msi}. \
+         Pass --target <windows-triple> (e.g. x86_64-pc-windows-msvc) or build \
+         on Windows.",
+      );
+    }
+    let stem = Path::new(msi)
+      .file_stem()
+      .map(|s| s.to_string_lossy().into_owned())
+      .unwrap_or_else(|| "App".to_string());
+    let parent = Path::new(msi)
+      .parent()
+      .filter(|p| !p.as_os_str().is_empty());
+    desktop_flags.output = Some(match parent {
+      Some(p) => p.join(&stem).to_string_lossy().into_owned(),
+      None => stem,
+    });
+  }
+
   // Desktop framework detection: when --desktop is used and the source is
   // "." (a directory), detect the framework and generate the entrypoint.
   // The cwd resolved from CliOptions is reused for the HMR launch below so
@@ -288,7 +368,7 @@ async fn compile_desktop(
       Some(entrypoint_temp)
     } else {
       bail!(
-        "Could not detect a supported framework in the current directory.\nSupported frameworks: Next.js, Astro\nProvide an explicit entrypoint instead."
+        "Could not detect a supported framework in the current directory.\nSupported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\nProvide an explicit entrypoint instead."
       );
     }
   } else {
@@ -381,6 +461,7 @@ async fn compile_desktop(
     output: hmr_output_override
       .clone()
       .or_else(|| desktop_flags.output.clone()),
+    app_name: None,
     args: desktop_flags.args.clone(),
     target: desktop_flags.target.clone(),
     watch: None,
@@ -440,6 +521,15 @@ async fn compile_desktop(
     )
     .await?;
 
+    // Optionally make the bundle self-extracting: the heavy payload is
+    // compressed inside the shipped app and unpacked on first launch. This
+    // shrinks the distributed artifact (the installed footprint is restored
+    // on first run). Done before any .dmg/.deb/.AppImage wrapping so the
+    // installer wraps the compact, self-extracting app.
+    if let Some(format) = desktop_flags.compress.as_deref() {
+      make_self_extracting(&bundle_path, format, &desktop_flags)?;
+    }
+
     // If the user requested a .dmg, wrap the .app in one and report the DMG.
     // If the user requested a .AppImage, wrap the Linux app dir in one.
     let final_path = if let Some(dmg) = dmg_output.as_deref() {
@@ -454,6 +544,33 @@ async fn compile_desktop(
         desktop_flags.target.as_deref(),
       )?;
       appimage_abs
+    } else if let Some(deb) = deb_output.as_deref() {
+      let deb_abs = cli_options.initial_cwd().join(deb);
+      create_linux_deb(
+        &bundle_path,
+        &deb_abs,
+        &desktop_flags,
+        desktop_flags.target.as_deref(),
+      )?;
+      deb_abs
+    } else if let Some(rpm) = rpm_output.as_deref() {
+      let rpm_abs = cli_options.initial_cwd().join(rpm);
+      create_linux_rpm(
+        &bundle_path,
+        &rpm_abs,
+        &desktop_flags,
+        desktop_flags.target.as_deref(),
+      )?;
+      rpm_abs
+    } else if let Some(msi) = msi_output.as_deref() {
+      let msi_abs = cli_options.initial_cwd().join(msi);
+      create_windows_msi(
+        &bundle_path,
+        &msi_abs,
+        &desktop_flags,
+        desktop_flags.target.as_deref(),
+      )?;
+      msi_abs
     } else {
       bundle_path
     };
@@ -475,6 +592,295 @@ async fn compile_desktop(
   }
 
   Ok(())
+}
+
+/// Convert a packaged app bundle into a self-extracting one: the heavy payload
+/// is compressed inside the shipped bundle and unpacked to a per-user data
+/// directory on first launch, then the real app is exec'd from there.
+///
+/// This shrinks the distributed artifact (the installed footprint is restored
+/// on first run, cached and reused on subsequent launches). The transform is
+/// in place at `bundle_path`. `format` is `"xz"` (LZMA, smallest, decompressed
+/// everywhere by libarchive `tar`) or `"zstd"` (faster, slightly larger).
+fn make_self_extracting(
+  bundle_path: &Path,
+  format: &str,
+  desktop_flags: &DesktopFlags,
+) -> Result<(), AnyError> {
+  let target_os = match desktop_flags.target.as_deref() {
+    Some(t) if t.contains("apple-darwin") => "macos",
+    Some(t) if t.contains("windows") => "windows",
+    Some(_) => "linux",
+    None => {
+      if cfg!(target_os = "macos") {
+        "macos"
+      } else if cfg!(target_os = "windows") {
+        "windows"
+      } else {
+        "linux"
+      }
+    }
+  };
+  match target_os {
+    "macos" => make_self_extracting_macos(bundle_path, format, desktop_flags),
+    "windows" => make_self_extracting_dir(bundle_path, format, true),
+    _ => make_self_extracting_dir(bundle_path, format, false),
+  }
+}
+
+/// Tar `parent/entry_name` (preserving symlinks and modes) into `dest_file`,
+/// compressed with `format`. Returns `(uncompressed, compressed)` byte sizes.
+fn write_tar_compressed(
+  parent: &Path,
+  entry_name: &str,
+  dest_file: &Path,
+  format: &str,
+) -> Result<(u64, u64), AnyError> {
+  use std::io::Write;
+  let mut tar_buf = Vec::new();
+  {
+    let mut builder = tar::Builder::new(&mut tar_buf);
+    builder.follow_symlinks(false);
+    builder.append_dir_all(entry_name, parent.join(entry_name))?;
+    builder.finish()?;
+  }
+  let raw_len = tar_buf.len() as u64;
+
+  let out = std::fs::File::create(dest_file).with_context(|| {
+    format!("failed to create payload {}", dest_file.display())
+  })?;
+  let out = std::io::BufWriter::new(out);
+  match format {
+    "xz" | "lzma" => {
+      // Preset 9 ≈ `xz -9`; PRESET_EXTREME trades a lot of CPU for a few
+      // percent, so stick to plain 9 for build-time sanity.
+      let mut enc = liblzma::write::XzEncoder::new(out, 9);
+      enc.write_all(&tar_buf)?;
+      enc.finish()?.flush()?;
+    }
+    "zstd" => {
+      let mut enc = zstd::stream::write::Encoder::new(out, 19)?;
+      enc.write_all(&tar_buf)?;
+      enc.finish()?.flush()?;
+    }
+    other => bail!("unknown --compress format '{other}' (use xz or zstd)"),
+  }
+  let comp_len = std::fs::metadata(dest_file).map(|m| m.len()).unwrap_or(0);
+  Ok((raw_len, comp_len))
+}
+
+/// Short, stable cache key derived from the payload bytes — bumps the
+/// extraction directory whenever the app contents change.
+fn payload_hash(payload: &Path) -> Result<String, AnyError> {
+  let bytes = std::fs::read(payload)?;
+  let digest = sha2::Sha256::digest(&bytes);
+  Ok(faster_hex::hex_string(&digest)[..16].to_string())
+}
+
+fn payload_ext(format: &str) -> &'static str {
+  match format {
+    "zstd" => "tar.zst",
+    _ => "tar.xz",
+  }
+}
+
+/// macOS: replace `MyApp.app` with a thin `.app` whose `Resources/` holds the
+/// compressed real bundle. The `Contents/MacOS/<App>` launcher extracts it to
+/// `~/Library/Application Support/<bundle-id>/<hash>/` on first run and execs
+/// the real backend from there.
+fn make_self_extracting_macos(
+  bundle_path: &Path,
+  format: &str,
+  desktop_flags: &DesktopFlags,
+) -> Result<(), AnyError> {
+  let app_name = bundle_path
+    .file_stem()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| "App".to_string());
+  validate_launcher_name(&app_name, "app name")?;
+
+  let contents = bundle_path.join("Contents");
+  let bundle_id =
+    read_plist_string(&contents.join("Info.plist"), "CFBundleIdentifier")
+      .unwrap_or_else(|| {
+        format!("com.deno.desktop.{}", app_name.to_lowercase())
+      });
+  validate_bundle_identifier(&bundle_id)?;
+
+  // Capture the bits we re-create in the thin bundle before moving the real
+  // one out of the way.
+  let info_plist = std::fs::read(contents.join("Info.plist"))?;
+  let icon_src = contents.join("Resources").join("AppIcon.icns");
+  let icon = icon_src
+    .exists()
+    .then(|| std::fs::read(&icon_src))
+    .transpose()?;
+
+  // Move the full, signed bundle into a staging dir as `<App>.app`.
+  let parent = bundle_path.parent().unwrap_or_else(|| Path::new("."));
+  let staging = tempfile::Builder::new()
+    .prefix(".selfextract-")
+    .tempdir_in(parent)?;
+  let inner_name = format!("{app_name}.app");
+  let inner = staging.path().join(&inner_name);
+  std::fs::rename(bundle_path, &inner)?;
+
+  // Build the thin bundle in place.
+  let macos_dir = contents.join("MacOS");
+  let resources_dir = contents.join("Resources");
+  std::fs::create_dir_all(&macos_dir)?;
+  std::fs::create_dir_all(&resources_dir)?;
+
+  let payload_name = format!("payload.{}", payload_ext(format));
+  let payload = resources_dir.join(&payload_name);
+  let (raw, comp) =
+    write_tar_compressed(staging.path(), &inner_name, &payload, format)?;
+  let hash = payload_hash(&payload)?;
+
+  let launcher = format!(
+    "#!/bin/sh\n\
+     set -e\n\
+     DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
+     DEST=\"$HOME/Library/Application Support/{bundle_id}/{hash}\"\n\
+     APP=\"$DEST/{inner_name}\"\n\
+     if [ ! -x \"$APP/Contents/MacOS/{app_name}\" ]; then\n\
+     \u{20} mkdir -p \"$DEST\"\n\
+     \u{20} tar -xf \"$DIR/../Resources/{payload_name}\" -C \"$DEST\"\n\
+     fi\n\
+     exec \"$APP/Contents/MacOS/{app_name}\" \"$@\"\n",
+  );
+  let launcher_path = macos_dir.join(&app_name);
+  std::fs::write(&launcher_path, launcher)?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(
+      &launcher_path,
+      std::fs::Permissions::from_mode(0o755),
+    )?;
+  }
+
+  std::fs::write(contents.join("Info.plist"), info_plist)?;
+  if let Some(icon) = icon {
+    std::fs::write(resources_dir.join("AppIcon.icns"), icon)?;
+  }
+
+  // Re-sign the thin bundle (the inner one keeps its own signature inside the
+  // archive). Ad-hoc on a macOS host when no identity was given.
+  let codesign_identity = desktop_flags.codesign_identity.as_deref().or(
+    if cfg!(target_os = "macos") {
+      Some("-")
+    } else {
+      None
+    },
+  );
+  if let Some(identity) = codesign_identity {
+    codesign_macos_bundle(bundle_path, identity)?;
+  }
+
+  log::info!(
+    "{} {} ({} -> {}, {})",
+    colors::green("Self-extract"),
+    app_name,
+    human_size(raw),
+    human_size(comp),
+    format,
+  );
+  Ok(())
+}
+
+/// Linux / Windows: replace the app directory with a thin one holding the
+/// compressed payload plus a launcher that extracts to a per-user data dir
+/// (`$XDG_DATA_HOME` / `%LOCALAPPDATA%`) on first run and execs the real app.
+fn make_self_extracting_dir(
+  bundle_path: &Path,
+  format: &str,
+  windows: bool,
+) -> Result<(), AnyError> {
+  let app_name = bundle_path
+    .file_name()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| "App".to_string());
+  validate_launcher_name(&app_name, "app name")?;
+  let id = format!("com.deno.desktop.{}", app_name.to_lowercase());
+
+  let parent = bundle_path.parent().unwrap_or_else(|| Path::new("."));
+  let staging = tempfile::Builder::new()
+    .prefix(".selfextract-")
+    .tempdir_in(parent)?;
+  let inner = staging.path().join(&app_name);
+  std::fs::rename(bundle_path, &inner)?;
+
+  std::fs::create_dir_all(bundle_path)?;
+  let payload_name = format!("payload.{}", payload_ext(format));
+  let payload = bundle_path.join(&payload_name);
+  let (raw, comp) =
+    write_tar_compressed(staging.path(), &app_name, &payload, format)?;
+  let hash = payload_hash(&payload)?;
+
+  if windows {
+    let launcher = format!(
+      "@echo off\r\n\
+       setlocal\r\n\
+       set \"DIR=%~dp0\"\r\n\
+       set \"DEST=%LOCALAPPDATA%\\{id}\\{hash}\"\r\n\
+       if not exist \"%DEST%\\{app_name}\\{app_name}.bat\" (\r\n\
+       \u{20} mkdir \"%DEST%\" 2>nul\r\n\
+       \u{20} tar -xf \"%DIR%{payload_name}\" -C \"%DEST%\"\r\n\
+       )\r\n\
+       call \"%DEST%\\{app_name}\\{app_name}.bat\" %*\r\n",
+    );
+    std::fs::write(bundle_path.join(format!("{app_name}.bat")), launcher)?;
+  } else {
+    let launcher = format!(
+      "#!/bin/sh\n\
+       set -e\n\
+       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
+       DEST=\"${{XDG_DATA_HOME:-$HOME/.local/share}}/{id}/{hash}\"\n\
+       APP=\"$DEST/{app_name}\"\n\
+       if [ ! -x \"$APP/{app_name}\" ]; then\n\
+       \u{20} mkdir -p \"$DEST\"\n\
+       \u{20} tar -xf \"$DIR/{payload_name}\" -C \"$DEST\"\n\
+       fi\n\
+       exec \"$APP/{app_name}\" \"$@\"\n",
+    );
+    let launcher_path = bundle_path.join(&app_name);
+    std::fs::write(&launcher_path, launcher)?;
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      std::fs::set_permissions(
+        &launcher_path,
+        std::fs::Permissions::from_mode(0o755),
+      )?;
+    }
+  }
+
+  log::info!(
+    "{} {} ({} -> {}, {})",
+    colors::green("Self-extract"),
+    app_name,
+    human_size(raw),
+    human_size(comp),
+    format,
+  );
+  Ok(())
+}
+
+/// Format a byte count as a short human-readable size (e.g. `66.0M`).
+fn human_size(bytes: u64) -> String {
+  const UNITS: [&str; 5] = ["B", "K", "M", "G", "T"];
+  let mut size = bytes as f64;
+  let mut unit = 0;
+  while size >= 1024.0 && unit < UNITS.len() - 1 {
+    size /= 1024.0;
+    unit += 1;
+  }
+  if unit == 0 {
+    format!("{}{}", bytes, UNITS[unit])
+  } else {
+    format!("{:.1}{}", size, UNITS[unit])
+  }
 }
 
 /// Resolve `icon` (a `.png` or `.icns` path, possibly relative to
@@ -725,6 +1131,64 @@ async fn run_desktop_hmr(
   Ok(())
 }
 
+/// Marker file written into every generated desktop app directory/bundle so a
+/// later build can recognize its own previous output and clear it, while never
+/// touching unrelated user data that happens to share the inferred app name.
+const APP_DIR_MARKER: &str = ".deno-desktop-app";
+
+/// Prepare `app_dir` to receive a freshly built bundle.
+///
+/// The app name is inferred from the entrypoint (or, for generic names like
+/// `main.ts`, the project directory), so the output path can collide with an
+/// existing user directory of the same name (e.g. `helloworld/helloworld`).
+/// Blindly `remove_dir_all`-ing that path silently destroys the user's data
+/// (issue #35510). Instead, only remove a directory we previously created —
+/// identified by `APP_DIR_MARKER` — or one that is empty. Anything else is
+/// treated as user data and we bail with instructions rather than delete it.
+fn reserve_app_dir(app_dir: &Path) -> Result<(), AnyError> {
+  let meta = match std::fs::symlink_metadata(app_dir) {
+    // Nothing there yet (or unreadable) — let the build create it.
+    Err(_) => return Ok(()),
+    Ok(meta) => meta,
+  };
+
+  if !meta.is_dir() {
+    bail!(
+      "Refusing to overwrite '{}': a file with that name already exists. \
+       Pass --output to choose a different name.",
+      app_dir.display()
+    );
+  }
+
+  // A bundle we generated carries the marker (at the directory root for
+  // Linux/Windows, or under `Contents/Resources` for a macOS `.app`).
+  let is_ours = app_dir.join(APP_DIR_MARKER).exists()
+    || app_dir
+      .join("Contents")
+      .join("Resources")
+      .join(APP_DIR_MARKER)
+      .exists();
+  let is_empty = std::fs::read_dir(app_dir)
+    .map(|mut entries| entries.next().is_none())
+    .unwrap_or(false);
+
+  if !is_ours && !is_empty {
+    bail!(
+      "Refusing to delete existing directory '{}': it was not created by \
+       `deno desktop`. The app name was inferred from the entrypoint or the \
+       project directory and collided with this directory. Pass --output to \
+       choose a different name, or remove the directory yourself if it is a \
+       leftover from an older build.",
+      app_dir.display()
+    );
+  }
+
+  std::fs::remove_dir_all(app_dir).with_context(|| {
+    format!("failed to clear app directory {}", app_dir.display())
+  })?;
+  Ok(())
+}
+
 /// Package a compiled desktop dylib into a platform-specific app bundle.
 async fn package_desktop_app(
   dylib_path: &Path,
@@ -790,7 +1254,7 @@ async fn package_windows_app_dir(
   let app_name = parts.app_name;
   let app_dir = parts.parent.join(&app_name);
 
-  let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
+  let backend = desktop_flags.backend.as_deref().unwrap_or("webview");
   let target = laufey_target_for(desktop_flags);
   let laufey_binary = laufey_resolver.find_binary(backend, target).await?;
   let laufey_dir = laufey_resolver.find_binary_dir(backend, target).await?;
@@ -800,12 +1264,11 @@ async fn package_windows_app_dir(
     .to_string_lossy()
     .to_string();
 
-  if app_dir.exists() {
-    std::fs::remove_dir_all(&app_dir)?;
-  }
+  reserve_app_dir(&app_dir)?;
 
   // Copy LAUFEY backend directory (binary + CEF support files) as the shell.
   crate::tools::compile::copy_dir_all(&laufey_dir, &app_dir)?;
+  std::fs::write(app_dir.join(APP_DIR_MARKER), b"")?;
 
   // Drop any self-extracting runtime cache dir that tagged along.
   let laufey_exe_stem = Path::new(&laufey_binary_name)
@@ -834,12 +1297,21 @@ async fn package_windows_app_dir(
   validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
   validate_launcher_name(&dylib_filename_str, "dylib filename")?;
   let launcher_path = app_dir.join(format!("{}.bat", app_name));
+  // Pass the runtime dylib to laufey by its bare filename, not a full path. The
+  // laufey backend mishandles a `--runtime` path that contains a space (it fails
+  // to load the dylib with error 126, ERROR_MOD_NOT_FOUND, when it re-launches),
+  // which broke every install location with a space in it — most importantly the
+  // default MSI target `C:\Program Files\`. laufey resolves a bare dylib name
+  // against its own executable's directory (where the dylib is co-located), so a
+  // plain filename loads correctly regardless of the install path or the current
+  // working directory. The laufey binary itself is launched by cmd with normal
+  // quoting, which handles spaces fine.
   std::fs::write(
     &launcher_path,
     format!(
       "@echo off\r\n\
        set DIR=%~dp0\r\n\
-       \"%DIR%{laufey_binary}\" --runtime \"%DIR%{dylib}\" %*\r\n",
+       \"%DIR%{laufey_binary}\" --runtime \"{dylib}\" %*\r\n",
       laufey_binary = laufey_binary_name,
       dylib = dylib_filename_str,
     ),
@@ -907,7 +1379,7 @@ async fn package_linux_app_dir(
     .unwrap_or(parts.app_name);
   let app_dir = parts.parent.join(&app_name);
 
-  let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
+  let backend = desktop_flags.backend.as_deref().unwrap_or("webview");
   let target = laufey_target_for(desktop_flags);
   let laufey_binary = laufey_resolver.find_binary(backend, target).await?;
   let laufey_dir = laufey_resolver.find_binary_dir(backend, target).await?;
@@ -917,12 +1389,11 @@ async fn package_linux_app_dir(
     .to_string_lossy()
     .to_string();
 
-  if app_dir.exists() {
-    std::fs::remove_dir_all(&app_dir)?;
-  }
+  reserve_app_dir(&app_dir)?;
 
   // Copy LAUFEY backend directory (binary + CEF support files) as the shell.
   crate::tools::compile::copy_dir_all(&laufey_dir, &app_dir)?;
+  std::fs::write(app_dir.join(APP_DIR_MARKER), b"")?;
 
   // Drop any self-extracting runtime cache dir that tagged along.
   let laufey_exe_stem = Path::new(&laufey_binary_name)
@@ -944,10 +1415,7 @@ async fn package_linux_app_dir(
   std::fs::copy(dylib_path, &dest_dylib)?;
 
   // Create a shell launcher that invokes the backend with --runtime.
-  // --ozone-platform=x11 forces CEF to create X11 windows (via XWayland on
-  // Wayland sessions). The Linux LAUFEY mouse/focus/resize event monitor uses
-  // XI2 on X11 and does not support Wayland.
-  // GDK_BACKEND=x11 aligns GDK with Ozone so GDK_IS_X11_DISPLAY is true.
+  // laufey auto-detects Wayland vs X11 at runtime.
   //
   // Validate every name we interpolate: bash expands `$VAR`, backticks,
   // and `$(...)` even inside `"..."`.
@@ -961,8 +1429,8 @@ async fn package_linux_app_dir(
     format!(
       "#!/bin/sh\n\
        DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
-       export GDK_BACKEND=x11\n\
-       exec \"$DIR/{laufey_binary}\" --ozone-platform=x11 --runtime \"$DIR/{dylib}\" \"$@\"\n",
+       export LAUFEY_RUNTIME_PATH=\"$DIR/{dylib}\"\n\
+       exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
       laufey_binary = laufey_binary_name,
       dylib = dylib_filename_str,
     ),
@@ -1535,18 +2003,24 @@ fn laufey_dev_dir() -> Option<PathBuf> {
 /// Find a built backend binary inside a laufey checkout. Mirrors the well-known
 /// build-tree paths produced by laufey's Makefile + Nix flakes.
 fn locate_dev_backend_binary(laufey: &Path, backend: &str) -> Option<PathBuf> {
+  // The bare build-tree binaries carry the host executable suffix — `.exe` on
+  // Windows, empty elsewhere — so e.g. `cargo build` on Windows emits
+  // `laufey_winit.exe`. The macOS `.app` bundle paths never apply on Windows,
+  // so leaving them unsuffixed is fine.
+  let exe =
+    |rel: &str| laufey.join(format!("{rel}{}", std::env::consts::EXE_SUFFIX));
   let candidates: Vec<PathBuf> = match backend {
     "cef" => vec![
       laufey.join("result-cef/Applications/laufey.app/Contents/MacOS/laufey"),
       laufey.join("result/Applications/laufey.app/Contents/MacOS/laufey"),
       laufey.join("cef/build/Release/laufey.app/Contents/MacOS/laufey"),
       laufey.join("cef/build/laufey.app/Contents/MacOS/laufey"),
-      laufey.join("cef/build/Release/laufey"),
-      laufey.join("cef/build/laufey"),
+      exe("cef/build/Release/laufey"),
+      exe("cef/build/laufey"),
     ],
     "raw" => vec![
-      laufey.join("target/release/laufey_winit"),
-      laufey.join("target/debug/laufey_winit"),
+      exe("target/release/laufey_winit"),
+      exe("target/debug/laufey_winit"),
     ],
     _ => vec![
       laufey.join(
@@ -1555,7 +2029,7 @@ fn locate_dev_backend_binary(laufey: &Path, backend: &str) -> Option<PathBuf> {
       laufey
         .join("result/Applications/laufey_webview.app/Contents/MacOS/laufey_webview"),
       laufey.join("webview/build/laufey_webview.app/Contents/MacOS/laufey_webview"),
-      laufey.join("webview/build/laufey_webview"),
+      exe("webview/build/laufey_webview"),
     ],
   };
   candidates.into_iter().find(|p| p.exists())
@@ -2198,7 +2672,7 @@ async fn package_macos_app_bundle(
   let app_bundle = parts.parent.join(format!("{}.app", app_name));
 
   // Find the LAUFEY backend .app and its main executable.
-  let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
+  let backend = desktop_flags.backend.as_deref().unwrap_or("webview");
   let target = laufey_target_for(desktop_flags);
   let laufey_app = laufey_resolver.find_app_bundle(backend, target).await?;
   let laufey_executable_name = read_plist_string(
@@ -2216,10 +2690,9 @@ async fn package_macos_app_bundle(
     );
   }
 
-  // Remove existing bundle.
-  if app_bundle.exists() {
-    std::fs::remove_dir_all(&app_bundle)?;
-  }
+  // Remove an existing bundle we previously built; never delete unrelated
+  // user data that collided with the inferred `<name>.app` (issue #35510).
+  reserve_app_dir(&app_bundle)?;
 
   // Copy the entire LAUFEY .app as the shell (CEF needs Frameworks/, Resources/, etc.).
   crate::tools::compile::copy_dir_all(&laufey_app, &app_bundle)?;
@@ -2228,6 +2701,9 @@ async fn package_macos_app_bundle(
   let macos_dir = contents_dir.join("MacOS");
   let resources_dir = contents_dir.join("Resources");
   std::fs::create_dir_all(&resources_dir)?;
+  // Marker lives under Resources/ (not the bundle root) so it is sealed as a
+  // normal resource when the bundle is codesigned below.
+  std::fs::write(resources_dir.join(APP_DIR_MARKER), b"")?;
 
   // The backend binary extracts its self-extracting VFS to a sibling
   // `.<exe>` dir on first run. If the source laufey.app was ever run, that dir
@@ -2302,47 +2778,10 @@ async fn package_macos_app_bundle(
   };
 
   // Generate Info.plist.
-  let has_icon = desktop_flags.icon.is_some();
-  let info_plist = format!(
-    r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDevelopmentRegion</key>
-  <string>en</string>
-  <key>CFBundleExecutable</key>
-  <string>{app_name}</string>
-  <key>CFBundleIconFile</key>
-  <string>{icon_file}</string>
-  <key>CFBundleIdentifier</key>
-  <string>{bundle_id}</string>
-  <key>CFBundleInfoDictionaryVersion</key>
-  <string>6.0</string>
-  <key>CFBundleName</key>
-  <string>{app_name}</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>1.0</string>
-  <key>CFBundleVersion</key>
-  <string>1.0.0</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>10.15</string>
-  <key>NSHighResolutionCapable</key>
-  <true/>
-  <key>NSSupportsAutomaticGraphicsSwitching</key>
-  <true/>
-  <key>NSAppTransportSecurity</key>
-  <dict>
-    <key>NSAllowsLocalNetworking</key>
-    <true/>
-  </dict>
-</dict>
-</plist>
-"#,
-    app_name = app_name,
-    bundle_id = bundle_id,
-    icon_file = if has_icon { "AppIcon" } else { "" },
+  let info_plist = render_macos_info_plist(
+    &app_name,
+    &bundle_id,
+    desktop_flags.icon.is_some(),
   );
   std::fs::write(contents_dir.join("Info.plist"), info_plist)?;
 
@@ -2418,6 +2857,69 @@ async fn package_macos_app_bundle(
   let _ = std::fs::remove_file(dylib_path);
 
   Ok(app_bundle)
+}
+
+// Keep the generated bundle metadata aligned with laufey's macOS app plist,
+// while carrying the TCC usage-description keys desktop apps need for
+// microphone/camera/audio-capture prompts.
+fn render_macos_info_plist(
+  app_name: &str,
+  bundle_id: &str,
+  has_icon: bool,
+) -> String {
+  format!(
+    r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>{app_name}</string>
+  <key>CFBundleIconFile</key>
+  <string>{icon_file}</string>
+  <key>CFBundleIdentifier</key>
+  <string>{bundle_id}</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>{app_name}</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1.0.0</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>10.15</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSPrincipalClass</key>
+  <string>LaufeyApplication</string>
+  <key>NSSupportsAutomaticGraphicsSwitching</key>
+  <true/>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>{app_name} requires access to the microphone</string>
+  <key>NSCameraUsageDescription</key>
+  <string>{app_name} requires access to the camera</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>{app_name} requires access to audio capture</string>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>{app_name} requires access to Bluetooth</string>
+  <key>NSBluetoothPeripheralUsageDescription</key>
+  <string>{app_name} requires access to Bluetooth</string>
+</dict>
+</plist>
+"#,
+    app_name = app_name,
+    bundle_id = bundle_id,
+    icon_file = if has_icon { "AppIcon" } else { "" },
+  )
 }
 
 /// Wrap a macOS `.app` bundle in a drag-to-Applications `.dmg` installer.
@@ -2611,6 +3113,12 @@ fn create_linux_appimage(
   let runtime_elf = appimage_runtime_for_target(target)?;
 
   let mut writer = backhand::FilesystemWriter::default();
+  let compressor = backhand::FilesystemCompressor::new(
+    backhand::compression::Compressor::Zstd,
+    None,
+  )
+  .context("Failed to configure zstd SquashFS compressor")?;
+  writer.set_compressor(compressor);
 
   // Pack everything from the staged app dir into the SquashFS root.
   push_dir_contents_to_squashfs(&mut writer, app_dir)?;
@@ -2688,6 +3196,1541 @@ fn create_linux_appimage(
   }
 
   Ok(())
+}
+
+/// CEF/Chromium shared-library runtime dependencies, as
+/// `(soname, debian package)` pairs.
+///
+/// The Debian package names go into the `.deb` `Depends` field. The sonames go
+/// into the `.rpm` `Requires` field: every RPM auto-`Provides` the sonames of
+/// the shared libraries it ships, so a soname `Requires` resolves correctly on
+/// Fedora, openSUSE, etc. without hard-coding each distro's divergent package
+/// names. Too loose a list crashes the app on launch with a missing `.so`; too
+/// strict blocks install on otherwise-fine systems — this is the curated middle
+/// covering CEF's GTK/X11/NSS/audio needs.
+const CEF_RUNTIME_DEPS: &[(&str, &str)] = &[
+  ("libgtk-3.so.0", "libgtk-3-0"),
+  ("libnss3.so", "libnss3"),
+  ("libasound.so.2", "libasound2"),
+  ("libX11.so.6", "libx11-6"),
+  ("libXcomposite.so.1", "libxcomposite1"),
+  ("libXdamage.so.1", "libxdamage1"),
+  ("libXext.so.6", "libxext6"),
+  ("libXfixes.so.3", "libxfixes3"),
+  ("libXrandr.so.2", "libxrandr2"),
+  ("libgbm.so.1", "libgbm1"),
+  ("libxkbcommon.so.0", "libxkbcommon0"),
+  ("libpango-1.0.so.0", "libpango-1.0-0"),
+  ("libcairo.so.2", "libcairo2"),
+  ("libatk-1.0.so.0", "libatk1.0-0"),
+  ("libdbus-1.so.3", "libdbus-1-3"),
+  ("libexpat.so.1", "libexpat1"),
+  ("libxcb.so.1", "libxcb1"),
+  ("libdrm.so.2", "libdrm2"),
+];
+
+/// Default package version when no version is configured. Matches the macOS
+/// bundle's hard-coded `CFBundleVersion`.
+const LINUX_PACKAGE_VERSION: &str = "1.0.0";
+
+/// Metadata shared by the `.deb` and `.rpm` builders, derived from the staged
+/// app dir name and the desktop flags. Avoids new config fields — the package
+/// name comes from the app dir, the identifier from `--identifier` (or the same
+/// synthetic `com.deno.desktop.<slug>` default the `.desktop` writer uses).
+struct LinuxPackageMeta {
+  /// Sanitized lowercase package name (Debian rules: `[a-z0-9][a-z0-9+.-]+`).
+  /// Used as the package name, the `/usr/bin` symlink, and the icon/`.desktop`
+  /// basenames.
+  package: String,
+  /// Human display name (the staged app dir's name), used for `Name=` in the
+  /// `.desktop` entry and the package summary.
+  app_name: String,
+  version: String,
+  maintainer: String,
+  summary: String,
+  /// Reverse-DNS identifier for the `.desktop` `StartupWMClass`.
+  identifier: String,
+}
+
+/// Sanitize an app name into a Debian-style package name: lowercase, only
+/// `[a-z0-9+.-]`, and a leading alphanumeric (Debian forbids a leading `+`/`-`/
+/// `.`). Falls back to `app` when nothing usable remains.
+fn debian_package_name(app_name: &str) -> String {
+  let mut out = String::with_capacity(app_name.len());
+  for c in app_name.to_lowercase().chars() {
+    if c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-') {
+      out.push(c);
+    } else {
+      out.push('-');
+    }
+  }
+  let trimmed = out.trim_start_matches(|c: char| !c.is_ascii_alphanumeric());
+  let trimmed = trimmed.trim_end_matches('-');
+  if trimmed.len() < 2 {
+    "app".to_string()
+  } else {
+    trimmed.to_string()
+  }
+}
+
+fn linux_package_meta(
+  app_dir: &Path,
+  desktop_flags: &DesktopFlags,
+) -> LinuxPackageMeta {
+  let app_name = app_dir
+    .file_name()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| "App".to_string());
+  let package = debian_package_name(&app_name);
+  let identifier = desktop_flags
+    .identifier
+    .clone()
+    .unwrap_or_else(|| format!("com.deno.desktop.{package}"));
+  LinuxPackageMeta {
+    summary: format!("{app_name} desktop application"),
+    maintainer: format!("{app_name} <noreply@deno.com>"),
+    version: LINUX_PACKAGE_VERSION.to_string(),
+    package,
+    app_name,
+    identifier,
+  }
+}
+
+/// Map a target triple (or the host arch when `target` is None) to a Debian
+/// architecture name. Debian arch names differ from the triple's leading
+/// component (`x86_64` → `amd64`, `aarch64` → `arm64`).
+fn debian_arch_for_target(
+  target: Option<&str>,
+) -> Result<&'static str, AnyError> {
+  let arch = target
+    .and_then(|t| t.split('-').next())
+    .unwrap_or(std::env::consts::ARCH);
+  match arch {
+    "x86_64" => Ok("amd64"),
+    "aarch64" => Ok("arm64"),
+    other => bail!(
+      "No Debian architecture mapping for arch '{other}'; supported: x86_64, aarch64"
+    ),
+  }
+}
+
+/// Map a target triple (or the host arch) to an RPM architecture name. RPM
+/// keeps the triple's arch names (`x86_64`, `aarch64`).
+fn rpm_arch_for_target(target: Option<&str>) -> Result<&'static str, AnyError> {
+  let arch = target
+    .and_then(|t| t.split('-').next())
+    .unwrap_or(std::env::consts::ARCH);
+  match arch {
+    "x86_64" => Ok("x86_64"),
+    "aarch64" => Ok("aarch64"),
+    other => bail!(
+      "No RPM architecture mapping for arch '{other}'; supported: x86_64, aarch64"
+    ),
+  }
+}
+
+/// `.desktop` entry installed at `/usr/share/applications/<pkg>.desktop`.
+///
+/// Unlike the in-app-dir `.desktop` (whose `Exec`/`Icon` are relative), this
+/// one points `Exec` at the package name (resolved via PATH from the
+/// `/usr/bin/<pkg>` symlink) and `Icon` at the installed hicolor icon name.
+fn system_desktop_entry(meta: &LinuxPackageMeta) -> String {
+  format!(
+    "[Desktop Entry]\n\
+     Type=Application\n\
+     Name={app_name}\n\
+     Exec={package}\n\
+     Icon={package}\n\
+     StartupWMClass={identifier}\n\
+     Categories=Utility;\n",
+    app_name = meta.app_name,
+    package = meta.package,
+    identifier = meta.identifier,
+  )
+}
+
+/// Wrap a Linux app directory in a Debian `.deb` package.
+///
+/// A `.deb` is an `ar` archive of three members: `debian-binary` (`2.0\n`),
+/// `control.tar.gz` (metadata) and `data.tar.gz` (the install tree at absolute
+/// paths). Built entirely in Rust (`tar` + `flate2`, plus a hand-written `ar`
+/// header) so it cross-compiles from any build host. Install layout:
+///
+/// ```text
+/// /usr/lib/<pkg>/            ← staged app dir contents
+/// /usr/bin/<pkg>             ← symlink → ../lib/<pkg>/<launcher>
+/// /usr/share/applications/<pkg>.desktop
+/// /usr/share/icons/hicolor/512x512/apps/<pkg>.png
+/// ```
+fn create_linux_deb(
+  app_dir: &Path,
+  deb_path: &Path,
+  desktop_flags: &DesktopFlags,
+  target: Option<&str>,
+) -> Result<(), AnyError> {
+  let meta = linux_package_meta(app_dir, desktop_flags);
+  let arch = debian_arch_for_target(target)?;
+
+  let data_tar_gz = build_deb_data_tar(app_dir, &meta)?;
+  let installed_size_kib = data_tar_gz.installed_size_kib;
+
+  let depends = CEF_RUNTIME_DEPS
+    .iter()
+    .map(|(_, pkg)| *pkg)
+    .collect::<Vec<_>>()
+    .join(", ");
+  let control = format!(
+    "Package: {package}\n\
+     Version: {version}\n\
+     Architecture: {arch}\n\
+     Maintainer: {maintainer}\n\
+     Installed-Size: {size}\n\
+     Depends: {depends}\n\
+     Section: utils\n\
+     Priority: optional\n\
+     Description: {summary}\n",
+    package = meta.package,
+    version = meta.version,
+    maintainer = meta.maintainer,
+    size = installed_size_kib,
+    summary = meta.summary,
+  );
+  let control_tar_gz = build_deb_control_tar(&control)?;
+
+  // Assemble the ar archive: global header then the three members in the
+  // order dpkg expects (debian-binary, control, data).
+  let mut out = Vec::new();
+  out.extend_from_slice(b"!<arch>\n");
+  ar_append_member(&mut out, "debian-binary", b"2.0\n");
+  ar_append_member(&mut out, "control.tar.gz", &control_tar_gz);
+  ar_append_member(&mut out, "data.tar.gz", &data_tar_gz.bytes);
+
+  if let Some(parent) = deb_path.parent()
+    && !parent.as_os_str().is_empty()
+  {
+    std::fs::create_dir_all(parent)?;
+  }
+  std::fs::write(deb_path, &out).with_context(|| {
+    format!("Failed to write .deb at {}", deb_path.display())
+  })?;
+  Ok(())
+}
+
+/// Append one member to an `ar` archive. The 60-byte header is the common
+/// `ar` format dpkg uses: name (space-padded), mtime, uid/gid, mode, decimal
+/// size, then the `` `\n `` magic. Member data is padded to an even length
+/// with a trailing newline (per the `ar` spec).
+fn ar_append_member(out: &mut Vec<u8>, name: &str, data: &[u8]) {
+  let mut header = [b' '; 60];
+  let name_bytes = name.as_bytes();
+  header[..name_bytes.len()].copy_from_slice(name_bytes);
+  // mtime (16..28), uid (28..34), gid (34..40)
+  header[16..16 + 1].copy_from_slice(b"0");
+  header[28..28 + 1].copy_from_slice(b"0");
+  header[34..34 + 1].copy_from_slice(b"0");
+  // mode (40..48), octal
+  let mode = b"100644";
+  header[40..40 + mode.len()].copy_from_slice(mode);
+  // size (48..58), decimal
+  let size = data.len().to_string();
+  header[48..48 + size.len()].copy_from_slice(size.as_bytes());
+  // magic (58..60)
+  header[58] = b'`';
+  header[59] = b'\n';
+  out.extend_from_slice(&header);
+  out.extend_from_slice(data);
+  if data.len() % 2 == 1 {
+    out.push(b'\n');
+  }
+}
+
+struct DebDataTar {
+  bytes: Vec<u8>,
+  /// Sum of regular-file sizes rounded up to KiB, for the control file's
+  /// `Installed-Size:` field.
+  installed_size_kib: u64,
+}
+
+/// Build the `data.tar.gz`: the install tree at absolute (`./`-prefixed) paths.
+fn build_deb_data_tar(
+  app_dir: &Path,
+  meta: &LinuxPackageMeta,
+) -> Result<DebDataTar, AnyError> {
+  use flate2::Compression;
+  use flate2::write::GzEncoder;
+
+  let mut tar_buf: Vec<u8> = Vec::new();
+  let mut installed_size: u64 = 0;
+  {
+    let mut builder = tar::Builder::new(&mut tar_buf);
+
+    let push_dir = |b: &mut tar::Builder<&mut Vec<u8>>,
+                    path: &str|
+     -> Result<(), AnyError> {
+      let mut h = tar::Header::new_gnu();
+      h.set_entry_type(tar::EntryType::Directory);
+      h.set_mode(0o755);
+      h.set_uid(0);
+      h.set_gid(0);
+      h.set_mtime(0);
+      h.set_size(0);
+      h.set_cksum();
+      b.append_data(&mut h, path, std::io::empty())?;
+      Ok(())
+    };
+
+    // Intermediate directories the package owns or shares. The `./` prefix is
+    // conventional for `data.tar`; the `tar` crate strips it (it skips
+    // `CurDir` components), leaving root-relative `usr/...` entries, which dpkg
+    // installs to `/usr/...` identically.
+    for dir in [
+      "./usr/",
+      "./usr/bin/",
+      "./usr/lib/",
+      &format!("./usr/lib/{}/", meta.package),
+      "./usr/share/",
+      "./usr/share/applications/",
+      "./usr/share/icons/",
+      "./usr/share/icons/hicolor/",
+      "./usr/share/icons/hicolor/512x512/",
+      "./usr/share/icons/hicolor/512x512/apps/",
+    ] {
+      push_dir(&mut builder, dir)?;
+    }
+
+    // Copy the staged app dir under /usr/lib/<pkg>/.
+    let lib_prefix = format!("./usr/lib/{}", meta.package);
+    let mut stack = vec![app_dir.to_path_buf()];
+    let mut files: Vec<PathBuf> = Vec::new();
+    while let Some(dir) = stack.pop() {
+      let mut entries: Vec<_> =
+        std::fs::read_dir(&dir)?.collect::<Result<_, _>>()?;
+      entries.sort_by_key(|e| e.file_name());
+      for entry in entries {
+        files.push(entry.path());
+        if std::fs::symlink_metadata(entry.path())?.is_dir() {
+          stack.push(entry.path());
+        }
+      }
+    }
+    files.sort();
+    for path in files {
+      let rel = path.strip_prefix(app_dir)?;
+      let arc_path = format!("{}/{}", lib_prefix, rel.to_string_lossy());
+      let meta_fs = std::fs::symlink_metadata(&path)?;
+      let mode = unix_mode_of(&meta_fs) as u32;
+      let mut h = tar::Header::new_gnu();
+      h.set_uid(0);
+      h.set_gid(0);
+      h.set_mtime(0);
+      if meta_fs.is_dir() {
+        h.set_entry_type(tar::EntryType::Directory);
+        h.set_mode(if mode == 0 { 0o755 } else { mode });
+        h.set_size(0);
+        h.set_cksum();
+        builder.append_data(
+          &mut h,
+          format!("{arc_path}/"),
+          std::io::empty(),
+        )?;
+      } else if meta_fs.file_type().is_symlink() {
+        let link = std::fs::read_link(&path)?;
+        h.set_entry_type(tar::EntryType::Symlink);
+        h.set_mode(0o777);
+        h.set_size(0);
+        h.set_link_name(&link)?;
+        h.set_cksum();
+        builder.append_data(&mut h, &arc_path, std::io::empty())?;
+      } else {
+        let data = std::fs::read(&path)?;
+        installed_size += data.len() as u64;
+        h.set_entry_type(tar::EntryType::Regular);
+        h.set_mode(if mode == 0 { 0o644 } else { mode });
+        h.set_size(data.len() as u64);
+        h.set_cksum();
+        builder.append_data(&mut h, &arc_path, &data[..])?;
+      }
+    }
+
+    // /usr/bin/<pkg> → ../lib/<pkg>/<launcher>
+    {
+      let mut h = tar::Header::new_gnu();
+      h.set_entry_type(tar::EntryType::Symlink);
+      h.set_mode(0o777);
+      h.set_uid(0);
+      h.set_gid(0);
+      h.set_mtime(0);
+      h.set_size(0);
+      h.set_link_name(format!("../lib/{}/{}", meta.package, meta.app_name))?;
+      h.set_cksum();
+      builder.append_data(
+        &mut h,
+        format!("./usr/bin/{}", meta.package),
+        std::io::empty(),
+      )?;
+    }
+
+    // /usr/share/applications/<pkg>.desktop
+    {
+      let desktop = system_desktop_entry(meta).into_bytes();
+      installed_size += desktop.len() as u64;
+      let mut h = tar::Header::new_gnu();
+      h.set_entry_type(tar::EntryType::Regular);
+      h.set_mode(0o644);
+      h.set_uid(0);
+      h.set_gid(0);
+      h.set_mtime(0);
+      h.set_size(desktop.len() as u64);
+      h.set_cksum();
+      builder.append_data(
+        &mut h,
+        format!("./usr/share/applications/{}.desktop", meta.package),
+        &desktop[..],
+      )?;
+    }
+
+    // /usr/share/icons/.../<pkg>.png (if the app dir carries an icon)
+    let icon_src = app_dir.join("AppIcon.png");
+    if icon_src.exists() {
+      let data = std::fs::read(&icon_src)?;
+      installed_size += data.len() as u64;
+      let mut h = tar::Header::new_gnu();
+      h.set_entry_type(tar::EntryType::Regular);
+      h.set_mode(0o644);
+      h.set_uid(0);
+      h.set_gid(0);
+      h.set_mtime(0);
+      h.set_size(data.len() as u64);
+      h.set_cksum();
+      builder.append_data(
+        &mut h,
+        format!(
+          "./usr/share/icons/hicolor/512x512/apps/{}.png",
+          meta.package
+        ),
+        &data[..],
+      )?;
+    }
+
+    builder.finish()?;
+  }
+
+  let mut gz = Vec::new();
+  let mut enc = GzEncoder::new(&mut gz, Compression::default());
+  std::io::Write::write_all(&mut enc, &tar_buf)?;
+  enc.finish()?;
+  Ok(DebDataTar {
+    bytes: gz,
+    installed_size_kib: installed_size.div_ceil(1024).max(1),
+  })
+}
+
+/// Build the `control.tar.gz` carrying the single `./control` file.
+fn build_deb_control_tar(control: &str) -> Result<Vec<u8>, AnyError> {
+  use flate2::Compression;
+  use flate2::write::GzEncoder;
+
+  let mut tar_buf: Vec<u8> = Vec::new();
+  {
+    let mut builder = tar::Builder::new(&mut tar_buf);
+    let body = control.as_bytes();
+    let mut h = tar::Header::new_gnu();
+    h.set_entry_type(tar::EntryType::Regular);
+    h.set_mode(0o644);
+    h.set_uid(0);
+    h.set_gid(0);
+    h.set_mtime(0);
+    h.set_size(body.len() as u64);
+    h.set_cksum();
+    builder.append_data(&mut h, "./control", body)?;
+    builder.finish()?;
+  }
+  let mut gz = Vec::new();
+  let mut enc = GzEncoder::new(&mut gz, Compression::default());
+  std::io::Write::write_all(&mut enc, &tar_buf)?;
+  enc.finish()?;
+  Ok(gz)
+}
+
+/// Wrap a Linux app directory in an RPM `.rpm` package via the pure-Rust `rpm`
+/// crate (no `rpmbuild`, so it cross-compiles). Same install layout as the
+/// `.deb`. `Requires` is expressed as CEF shared-library sonames, which resolve
+/// across RPM distros without hard-coding each one's package names.
+fn create_linux_rpm(
+  app_dir: &Path,
+  rpm_path: &Path,
+  desktop_flags: &DesktopFlags,
+  target: Option<&str>,
+) -> Result<(), AnyError> {
+  let meta = linux_package_meta(app_dir, desktop_flags);
+  let arch = rpm_arch_for_target(target)?;
+
+  // Zstd payload (see Cargo.toml: gzip would pull flate2's zlib-rs shim, which
+  // link-clashes with deno's zlib-ng), plus a pinned source date for
+  // reproducible builds — mirrors the `mtime: 0` used in the AppImage/`.deb`
+  // paths so identical inputs yield identical packages.
+  let config = rpm::BuildConfig::default()
+    .compression(rpm::CompressionType::Zstd)
+    .source_date(0u32);
+
+  let mut builder = rpm::PackageBuilder::new(
+    &meta.package,
+    &meta.version,
+    "MIT",
+    arch,
+    &meta.summary,
+  );
+  builder.using_config(config);
+  builder.description(&meta.summary);
+  builder.vendor(&meta.maintainer);
+
+  // Own /usr/lib/<pkg>/** (the staged app dir). Standard dirs (/usr, /usr/bin,
+  // /usr/share, …) are deliberately not owned — they belong to the filesystem
+  // package.
+  builder
+    .with_dir(app_dir, format!("/usr/lib/{}", meta.package), |o| o)
+    .context("failed to add app directory to rpm")?;
+
+  // /usr/bin/<pkg> → ../lib/<pkg>/<launcher>
+  builder
+    .with_symlink(rpm::FileOptions::symlink(
+      format!("/usr/bin/{}", meta.package),
+      format!("../lib/{}/{}", meta.package, meta.app_name),
+    ))
+    .context("failed to add launcher symlink to rpm")?;
+
+  // /usr/share/applications/<pkg>.desktop — staged to a temp file because the
+  // rpm builder reads file content from disk.
+  let staging = tempfile::Builder::new()
+    .prefix(".deno-desktop-rpm-")
+    .tempdir()?;
+  let desktop_path = staging.path().join("app.desktop");
+  std::fs::write(&desktop_path, system_desktop_entry(&meta))?;
+  builder
+    .with_file(
+      &desktop_path,
+      rpm::FileOptions::new(format!(
+        "/usr/share/applications/{}.desktop",
+        meta.package
+      )),
+    )
+    .context("failed to add .desktop file to rpm")?;
+
+  // /usr/share/icons/.../<pkg>.png (if present)
+  let icon_src = app_dir.join("AppIcon.png");
+  if icon_src.exists() {
+    builder
+      .with_file(
+        &icon_src,
+        rpm::FileOptions::new(format!(
+          "/usr/share/icons/hicolor/512x512/apps/{}.png",
+          meta.package
+        )),
+      )
+      .context("failed to add icon to rpm")?;
+  }
+
+  // RPM auto-`Provides` 64-bit ELF sonames with an `()(64bit)` class suffix
+  // (e.g. `libgtk-3.so.0()(64bit)`), so a bare-soname `Requires` would not
+  // match. Both supported arches (x86_64, aarch64) are 64-bit ELF, so always
+  // append the suffix.
+  for (soname, _) in CEF_RUNTIME_DEPS {
+    builder.requires(rpm::Dependency::any(format!("{soname}()(64bit)")));
+  }
+
+  let package = builder.build().context("failed to build rpm package")?;
+
+  if let Some(parent) = rpm_path.parent()
+    && !parent.as_os_str().is_empty()
+  {
+    std::fs::create_dir_all(parent)?;
+  }
+  let mut out = std::fs::File::create(rpm_path).with_context(|| {
+    format!("Failed to create .rpm at {}", rpm_path.display())
+  })?;
+  package.write(&mut out).with_context(|| {
+    format!("Failed to write .rpm at {}", rpm_path.display())
+  })?;
+  Ok(())
+}
+
+// ===================== Windows .msi installer =========================== //
+
+/// Fixed namespace for deriving deterministic MSI GUIDs (ProductCode,
+/// UpgradeCode, package code, component GUIDs) from the app identity via
+/// UUIDv5. Deterministic GUIDs keep `.msi` builds reproducible (an
+/// identical app produces an identical installer) and give a stable
+/// `UpgradeCode` across versions so newer installers can detect and replace
+/// older ones — mirroring the `source_date(0)` / `mtime: 0` reproducibility of
+/// the `.rpm` / `.deb` / AppImage paths.
+const MSI_GUID_NAMESPACE: uuid::Uuid =
+  uuid::Uuid::from_u128(0x6f1d3c8a_4b2e_4f5a_9c7d_8e0f1a2b3c4d);
+
+/// Format a UUID as an MSI registry-format GUID: braced, uppercase, hyphenated
+/// (e.g. `{6F1D3C8A-4B2E-4F5A-9C7D-8E0F1A2B3C4D}`). This is what the `GUID`
+/// column category requires (38 chars, no lowercase).
+fn msi_guid(uuid: uuid::Uuid) -> String {
+  format!("{{{}}}", uuid.as_hyphenated().to_string().to_uppercase())
+}
+
+/// Derive a deterministic GUID for a given role (e.g. "product:1.0.0",
+/// "upgrade", "package", "component:c0") of the named app.
+fn msi_derive_guid(identifier: &str, role: &str) -> String {
+  let name = format!("{identifier}\0{role}");
+  msi_guid(uuid::Uuid::new_v5(&MSI_GUID_NAMESPACE, name.as_bytes()))
+}
+
+/// Map a target triple (or the host arch) to the MSI summary-info architecture
+/// string used in the `Template` field. Both supported arches are 64-bit.
+fn msi_arch_for_target(target: Option<&str>) -> Result<&'static str, AnyError> {
+  let arch = target
+    .and_then(|t| t.split('-').next())
+    .unwrap_or(std::env::consts::ARCH);
+  match arch {
+    "x86_64" => Ok("x64"),
+    "aarch64" => Ok("Arm64"),
+    other => bail!(
+      "No MSI architecture mapping for arch '{other}'; supported: x86_64, aarch64"
+    ),
+  }
+}
+
+/// Lowercase base36 encoding of a counter, used to mint unique 8.3 short names.
+fn base36(mut n: u32) -> String {
+  if n == 0 {
+    return "0".to_string();
+  }
+  const DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+  let mut out = Vec::new();
+  while n > 0 {
+    out.push(DIGITS[(n % 36) as usize]);
+    n /= 36;
+  }
+  out.reverse();
+  String::from_utf8(out).unwrap()
+}
+
+/// Mint a unique DOS 8.3 short name for the MSI `DefaultDir` / `File.FileName`
+/// "short|long" syntax. The long name carries the real (possibly long) name;
+/// the short name only has to be a unique, valid 8.3 token within its
+/// directory. We derive it from a monotonically increasing counter (globally
+/// unique ⇒ unique within any directory) so we never have to reconcile
+/// collisions: `F<base36>` (files, ≤8 chars) plus the real extension truncated
+/// to 3 uppercased alphanumerics, or `D<base36>` (directories, no extension).
+fn msi_short_name(counter: u32, long: &str, is_dir: bool) -> String {
+  let token = base36(counter).to_uppercase();
+  if is_dir {
+    format!("D{token}")
+  } else {
+    let ext: String = long
+      .rsplit_once('.')
+      .map(|(_, e)| e)
+      .unwrap_or("")
+      .chars()
+      .filter(|c| c.is_ascii_alphanumeric())
+      .take(3)
+      .collect::<String>()
+      .to_uppercase();
+    if ext.is_empty() {
+      format!("F{token}")
+    } else {
+      format!("F{token}.{ext}")
+    }
+  }
+}
+
+/// A staged file destined for both the embedded cabinet and the MSI `File`
+/// table.
+struct MsiFile {
+  /// MSI `File` primary key (also the file's name inside the cabinet).
+  key: String,
+  /// Component the file belongs to (one per install directory).
+  component: String,
+  /// `short|long` `FileName` value.
+  file_name: String,
+  size: u64,
+  abs_path: PathBuf,
+}
+
+/// Wrap a Windows app directory in a Windows Installer `.msi` package.
+///
+/// The MSI database is authored entirely in pure Rust via the `msi` crate, with
+/// the file payload stored in an embedded MSZIP cabinet (`cab` crate), so it
+/// cross-compiles from any host — only the *target* must be Windows. The app is
+/// installed per-machine under `ProgramFiles64Folder\<AppName>\`, mirroring the
+/// staged app-dir tree exactly; uninstall removes it. Layout:
+///
+/// ```text
+/// %ProgramFiles%\<AppName>\
+///   <AppName>.bat          (launcher)
+///   laufey.exe             (CEF backend)
+///   libcef.dll, ...        (CEF support files)
+///   denort.dll             (compiled runtime + user code)
+///   ...                    (nested dirs preserved)
+/// ```
+fn create_windows_msi(
+  app_dir: &Path,
+  msi_path: &Path,
+  desktop_flags: &DesktopFlags,
+  target: Option<&str>,
+) -> Result<(), AnyError> {
+  use msi::CodePage;
+  use msi::Column;
+  use msi::Insert;
+  use msi::Package;
+  use msi::PackageType;
+  use msi::Value;
+
+  let app_name = app_dir
+    .file_name()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| "App".to_string());
+  // Version default matches the macOS bundle's CFBundleVersion and the
+  // Linux package default.
+  let version = "1.0.0";
+  let identifier = desktop_flags
+    .identifier
+    .clone()
+    .unwrap_or_else(|| format!("com.deno.desktop.{}", app_name.to_lowercase()));
+  let manufacturer = "Deno";
+  let arch = msi_arch_for_target(target)?;
+
+  // --- Walk the staged tree: register every directory, then every file. ----
+  // Directories are keyed by their path relative to `app_dir` ("" = the
+  // install root, INSTALLDIR). Sorted traversal keeps IDs deterministic.
+  let mut rel_files: Vec<(PathBuf, u64)> = Vec::new();
+  let mut rel_dirs: std::collections::BTreeSet<PathBuf> =
+    std::collections::BTreeSet::new();
+  let mut stack = vec![app_dir.to_path_buf()];
+  while let Some(dir) = stack.pop() {
+    let mut entries: Vec<_> =
+      std::fs::read_dir(&dir)?.collect::<Result<_, _>>()?;
+    entries.sort_by_key(|e| e.file_name());
+    for entry in entries {
+      let path = entry.path();
+      let md = std::fs::symlink_metadata(&path)?;
+      if md.is_dir() {
+        rel_dirs.insert(path.strip_prefix(app_dir)?.to_path_buf());
+        stack.push(path);
+      } else if md.is_file() {
+        let rel = path.strip_prefix(app_dir)?.to_path_buf();
+        rel_files.push((rel, md.len()));
+      }
+      // Symlinks are not expected in a Windows app dir (copy_dir_all
+      // dereferences) — skip anything else.
+    }
+  }
+  rel_files.sort();
+
+  // Assign a Directory id to every directory. Root → INSTALLDIR; nested dirs →
+  // d0, d1, … in sorted order.
+  let mut dir_ids: std::collections::BTreeMap<PathBuf, String> =
+    std::collections::BTreeMap::new();
+  dir_ids.insert(PathBuf::new(), "INSTALLDIR".to_string());
+  for (i, dir) in rel_dirs.iter().enumerate() {
+    dir_ids.insert(dir.clone(), format!("d{i}"));
+  }
+
+  // The Program Files (64-bit) root that hosts the install dir. Both supported
+  // arches are 64-bit, so we always target the 64-bit Program Files.
+  let pf_folder = "ProgramFiles64Folder";
+
+  // --- Directory table rows. ----------------------------------------------
+  let mut short_counter: u32 = 0;
+  let mut directory_rows: Vec<Vec<Value>> = vec![
+    vec![
+      Value::Str("TARGETDIR".to_string()),
+      Value::Null,
+      Value::Str("SourceDir".to_string()),
+    ],
+    vec![
+      Value::Str(pf_folder.to_string()),
+      Value::Str("TARGETDIR".to_string()),
+      Value::Str(".".to_string()),
+    ],
+    vec![
+      Value::Str("INSTALLDIR".to_string()),
+      Value::Str(pf_folder.to_string()),
+      Value::Str(format!(
+        "{}|{}",
+        msi_short_name(
+          {
+            short_counter += 1;
+            short_counter
+          },
+          &app_name,
+          true
+        ),
+        app_name
+      )),
+    ],
+  ];
+  for dir in &rel_dirs {
+    let id = dir_ids[dir].clone();
+    let parent = dir_ids[dir.parent().unwrap_or(Path::new(""))].clone();
+    let name = dir
+      .file_name()
+      .map(|s| s.to_string_lossy().into_owned())
+      .unwrap_or_else(|| id.clone());
+    short_counter += 1;
+    directory_rows.push(vec![
+      Value::Str(id),
+      Value::Str(parent),
+      Value::Str(format!(
+        "{}|{}",
+        msi_short_name(short_counter, &name, true),
+        name
+      )),
+    ]);
+  }
+
+  // --- Components: one per directory that directly contains files. ---------
+  // A component's KeyPath is its first (sorted) file. Files inherit their
+  // directory's component, so files always install next to their siblings.
+  let mut comp_for_dir: std::collections::BTreeMap<PathBuf, String> =
+    std::collections::BTreeMap::new();
+  let mut files: Vec<MsiFile> = Vec::new();
+  for (rel, size) in &rel_files {
+    let dir = rel.parent().unwrap_or(Path::new("")).to_path_buf();
+    let next_comp = format!("c{}", comp_for_dir.len());
+    let component =
+      comp_for_dir.entry(dir.clone()).or_insert(next_comp).clone();
+    let key = format!("f{}", files.len());
+    let long = rel
+      .file_name()
+      .map(|s| s.to_string_lossy().into_owned())
+      .unwrap_or_else(|| key.clone());
+    short_counter += 1;
+    files.push(MsiFile {
+      key,
+      component,
+      file_name: format!(
+        "{}|{}",
+        msi_short_name(short_counter, &long, false),
+        long
+      ),
+      size: *size,
+      abs_path: app_dir.join(rel),
+    });
+  }
+  if files.is_empty() {
+    bail!("Cannot build a .msi from an empty app directory");
+  }
+
+  // Locate the laufey launcher in the install root so we can author a Start Menu
+  // shortcut to it (otherwise the installed app is not discoverable — there is no
+  // icon anywhere, only files under Program Files). The shortcut targets the
+  // laufey exe directly with `--runtime <dylib>` so launching it opens the app's
+  // window with no console, mirroring the `.bat` launcher. laufey resolves the
+  // bare dylib name against its own directory, so no path (and no space) is
+  // needed in the arguments.
+  let shortcut_target = rel_files
+    .iter()
+    .zip(files.iter())
+    .find(|((rel, _), _)| {
+      rel.parent() == Some(Path::new(""))
+        && rel.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+          let n = n.to_ascii_lowercase();
+          n.starts_with("laufey") && n.ends_with(".exe")
+        })
+    })
+    .map(|(_, f)| (f.key.clone(), f.component.clone()));
+  let dylib_name = format!("{app_name}.dll");
+
+  // The all-users Start Menu folder that hosts the app shortcut. Only added when
+  // we found a launcher to point at.
+  if shortcut_target.is_some() {
+    directory_rows.push(vec![
+      Value::Str("ProgramMenuFolder".to_string()),
+      Value::Str("TARGETDIR".to_string()),
+      Value::Str(".".to_string()),
+    ]);
+  }
+
+  // msidbComponentAttributes64bit (256): mark components 64-bit so they
+  // resolve ProgramFiles64Folder and the 64-bit registry view.
+  const COMPONENT_64BIT: i32 = 256;
+  let component_rows: Vec<Vec<Value>> = comp_for_dir
+    .iter()
+    .map(|(dir, comp)| {
+      let dir_id = dir_ids[dir].clone();
+      let keypath = files
+        .iter()
+        .find(|f| &f.component == comp)
+        .map(|f| f.key.clone())
+        .unwrap();
+      vec![
+        Value::Str(comp.clone()),
+        Value::Str(msi_derive_guid(&identifier, &format!("component:{comp}"))),
+        Value::Str(dir_id),
+        Value::Int(COMPONENT_64BIT),
+        Value::Null,
+        Value::Str(keypath),
+      ]
+    })
+    .collect();
+
+  // --- File table + cabinet payload (shared 1-based sequence). -------------
+  // msidbFileAttributesVital (512): a failed file install aborts the
+  // transaction. The summary Word Count marks the source compressed, so no
+  // per-file Compressed attribute is needed.
+  const FILE_VITAL: i32 = 512;
+  let file_rows: Vec<Vec<Value>> = files
+    .iter()
+    .enumerate()
+    .map(|(i, f)| {
+      vec![
+        Value::Str(f.key.clone()),
+        Value::Str(f.component.clone()),
+        Value::Str(f.file_name.clone()),
+        Value::Int(f.size as i32),
+        Value::Null, // Version (not a tracked-version file)
+        Value::Null, // Language
+        Value::Int(FILE_VITAL),
+        Value::Int(1 + i as i32), // Sequence
+      ]
+    })
+    .collect();
+
+  // Build the embedded cabinet: a single MSZIP folder holding every file,
+  // named by its MSI `File` key, in sequence order.
+  let cab_bytes = build_msi_cabinet(&files)?;
+
+  // --- Author the MSI database. -------------------------------------------
+  let mut cursor = std::io::Cursor::new(Vec::<u8>::new());
+  let mut package = Package::create(PackageType::Installer, &mut cursor)?;
+
+  // The `msi` crate defaults both the database string pool and the summary
+  // info to the UTF-8 codepage (65001). Windows Installer (msiexec) rejects a
+  // UTF-8 database outright — "This installation package could not be opened"
+  // — because an MSI codepage must be a valid ANSI codepage (or neutral). All
+  // our strings are ASCII (file names, GUIDs, ids), so Windows-1252 encodes
+  // them identically and is universally accepted. Set the database codepage
+  // here and the summary-info codepage below.
+  package.set_database_codepage(CodePage::Windows1252);
+
+  {
+    let summary = package.summary_info_mut();
+    summary.set_codepage(CodePage::Windows1252);
+    summary.set_title(format!("{app_name} Installer"));
+    summary.set_subject(app_name.clone());
+    summary.set_author(manufacturer.to_string());
+    summary.set_comments(format!("{app_name} desktop application"));
+    summary.set_arch(arch);
+    summary.set_languages(&[msi::Language::from_code(1033)]);
+    summary.set_creating_application("deno desktop");
+    // Package code: a fresh GUID identifying this exact package build.
+    summary.set_uuid(uuid::Uuid::new_v5(
+      &MSI_GUID_NAMESPACE,
+      format!("{identifier}\0package:{version}").as_bytes(),
+    ));
+    // Word Count bit 1 (2) = source files are compressed (in cabinets); bit 0
+    // clear = long file names allowed.
+    summary.set_word_count(2);
+    // Page Count = minimum Windows Installer version (2.00).
+    summary.set_page_count(200);
+    // Fixed creation time (2020-01-01) for reproducible output.
+    summary.set_creation_time(
+      std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_577_836_800),
+    );
+  }
+
+  // Table schemas (subset of the Windows Installer schema needed to install
+  // and uninstall a per-machine app).
+  package.create_table(
+    "Directory",
+    vec![
+      Column::build("Directory").primary_key().id_string(72),
+      Column::build("Directory_Parent").nullable().id_string(72),
+      Column::build("DefaultDir")
+        .category(msi::Category::DefaultDir)
+        .string(255),
+    ],
+  )?;
+  package.create_table(
+    "Component",
+    vec![
+      Column::build("Component").primary_key().id_string(72),
+      Column::build("ComponentId")
+        .nullable()
+        .category(msi::Category::Guid)
+        .string(38),
+      Column::build("Directory_").id_string(72),
+      Column::build("Attributes").int16(),
+      Column::build("Condition")
+        .nullable()
+        .category(msi::Category::Condition)
+        .string(255),
+      Column::build("KeyPath").nullable().id_string(72),
+    ],
+  )?;
+  package.create_table(
+    "Feature",
+    vec![
+      Column::build("Feature").primary_key().id_string(38),
+      Column::build("Feature_Parent").nullable().id_string(38),
+      Column::build("Title").nullable().text_string(64),
+      Column::build("Description").nullable().text_string(255),
+      Column::build("Display").nullable().int16(),
+      Column::build("Level").int16(),
+      Column::build("Directory_").nullable().id_string(72),
+      Column::build("Attributes").int16(),
+    ],
+  )?;
+  package.create_table(
+    "FeatureComponents",
+    vec![
+      Column::build("Feature_").primary_key().id_string(38),
+      Column::build("Component_").primary_key().id_string(72),
+    ],
+  )?;
+  package.create_table(
+    "File",
+    vec![
+      Column::build("File").primary_key().id_string(72),
+      Column::build("Component_").id_string(72),
+      Column::build("FileName")
+        .category(msi::Category::Filename)
+        .string(255),
+      Column::build("FileSize").int32(),
+      Column::build("Version")
+        .nullable()
+        .category(msi::Category::Version)
+        .string(72),
+      Column::build("Language").nullable().string(20),
+      Column::build("Attributes").nullable().int16(),
+      Column::build("Sequence").int16(),
+    ],
+  )?;
+  package.create_table(
+    "Media",
+    vec![
+      Column::build("DiskId").primary_key().int16(),
+      Column::build("LastSequence").int16(),
+      Column::build("DiskPrompt").nullable().text_string(64),
+      Column::build("Cabinet")
+        .nullable()
+        .category(msi::Category::Cabinet)
+        .string(255),
+      Column::build("VolumeLabel").nullable().text_string(32),
+      Column::build("Source")
+        .nullable()
+        .category(msi::Category::Property)
+        .string(72),
+    ],
+  )?;
+  package.create_table(
+    "Property",
+    vec![
+      Column::build("Property").primary_key().id_string(72),
+      Column::build("Value").text_string(0),
+    ],
+  )?;
+  if shortcut_target.is_some() {
+    package.create_table(
+      "Shortcut",
+      vec![
+        Column::build("Shortcut").primary_key().id_string(72),
+        Column::build("Directory_").id_string(72),
+        Column::build("Name")
+          .category(msi::Category::Filename)
+          .string(128),
+        Column::build("Component_").id_string(72),
+        Column::build("Target")
+          .category(msi::Category::Shortcut)
+          .string(72),
+        Column::build("Arguments")
+          .nullable()
+          .category(msi::Category::Formatted)
+          .string(255),
+        Column::build("Description").nullable().text_string(255),
+        Column::build("Hotkey").nullable().int16(),
+        Column::build("Icon_").nullable().id_string(72),
+        Column::build("IconIndex").nullable().int16(),
+        Column::build("ShowCmd").nullable().int16(),
+        Column::build("WkDir").nullable().id_string(72),
+      ],
+    )?;
+  }
+  for table in ["InstallExecuteSequence", "InstallUISequence"] {
+    package.create_table(
+      table,
+      vec![
+        Column::build("Action").primary_key().id_string(72),
+        Column::build("Condition")
+          .nullable()
+          .category(msi::Category::Condition)
+          .string(255),
+        Column::build("Sequence").nullable().int16(),
+      ],
+    )?;
+  }
+
+  // --- Populate tables. ----------------------------------------------------
+  package.insert_rows(Insert::into("Directory").rows(directory_rows))?;
+  package.insert_rows(Insert::into("Component").rows(component_rows))?;
+  package.insert_rows(Insert::into("Feature").row(vec![
+    Value::Str("MainFeature".to_string()),
+    Value::Null,
+    Value::Str(app_name.clone()),
+    Value::Null,
+    Value::Int(1),
+    Value::Int(1),
+    Value::Str("INSTALLDIR".to_string()),
+    Value::Int(0),
+  ]))?;
+  package.insert_rows(
+    Insert::into("FeatureComponents").rows(
+      comp_for_dir
+        .values()
+        .map(|c| {
+          vec![Value::Str("MainFeature".to_string()), Value::Str(c.clone())]
+        })
+        .collect(),
+    ),
+  )?;
+  package.insert_rows(Insert::into("File").rows(file_rows))?;
+  package.insert_rows(Insert::into("Media").row(vec![
+    Value::Int(1),
+    Value::Int(files.len() as i32),
+    Value::Null,
+    Value::Str("#appcab".to_string()),
+    Value::Null,
+    Value::Null,
+  ]))?;
+  if let Some((launcher_key, launcher_comp)) = &shortcut_target {
+    short_counter += 1;
+    let short_name = msi_short_name(short_counter, &app_name, false);
+    package.insert_rows(Insert::into("Shortcut").row(vec![
+      Value::Str("AppShortcut".to_string()),
+      Value::Str("ProgramMenuFolder".to_string()),
+      Value::Str(format!("{short_name}|{app_name}")),
+      Value::Str(launcher_comp.clone()),
+      // Non-advertised shortcut: `[#key]` resolves to the installed exe's path.
+      Value::Str(format!("[#{launcher_key}]")),
+      Value::Str(format!("--runtime \"{dylib_name}\"")),
+      Value::Null,                          // Description
+      Value::Null,                          // Hotkey
+      Value::Null,                          // Icon_
+      Value::Null,                          // IconIndex
+      Value::Null,                          // ShowCmd
+      Value::Str("INSTALLDIR".to_string()), // WkDir
+    ]))?;
+  }
+
+  let product_code =
+    msi_derive_guid(&identifier, &format!("product:{version}"));
+  let upgrade_code = msi_derive_guid(&identifier, "upgrade");
+  package.insert_rows(Insert::into("Property").rows(vec![
+    vec![
+      Value::Str("ProductCode".to_string()),
+      Value::Str(product_code),
+    ],
+    vec![
+      Value::Str("ProductName".to_string()),
+      Value::Str(app_name.clone()),
+    ],
+    vec![
+      Value::Str("ProductVersion".to_string()),
+      Value::Str(version.to_string()),
+    ],
+    vec![
+      Value::Str("ProductLanguage".to_string()),
+      Value::Str("1033".to_string()),
+    ],
+    vec![
+      Value::Str("Manufacturer".to_string()),
+      Value::Str(manufacturer.to_string()),
+    ],
+    vec![
+      Value::Str("UpgradeCode".to_string()),
+      Value::Str(upgrade_code),
+    ],
+    // Per-machine install (into Program Files).
+    vec![
+      Value::Str("ALLUSERS".to_string()),
+      Value::Str("1".to_string()),
+    ],
+  ]))?;
+
+  // Standard action sequences for a basic per-machine install + uninstall.
+  let mut exec_seq: Vec<(&str, i32)> = vec![
+    ("CostInitialize", 800),
+    ("FileCost", 900),
+    ("CostFinalize", 1000),
+    ("InstallValidate", 1400),
+    ("InstallInitialize", 1500),
+    ("ProcessComponents", 1600),
+    ("UnpublishFeatures", 1800),
+    ("RemoveFiles", 3500),
+    ("InstallFiles", 4000),
+    ("RegisterProduct", 6100),
+    ("PublishFeatures", 6300),
+    ("PublishProduct", 6400),
+    ("InstallFinalize", 6600),
+  ];
+  if shortcut_target.is_some() {
+    // RemoveShortcuts on uninstall; CreateShortcuts after the files land.
+    exec_seq.push(("RemoveShortcuts", 3800));
+    exec_seq.push(("CreateShortcuts", 4500));
+  }
+  package.insert_rows(
+    Insert::into("InstallExecuteSequence").rows(
+      exec_seq
+        .iter()
+        .map(|(a, s)| {
+          vec![Value::Str(a.to_string()), Value::Null, Value::Int(*s)]
+        })
+        .collect(),
+    ),
+  )?;
+  let ui_seq: &[(&str, i32)] = &[
+    ("CostInitialize", 800),
+    ("FileCost", 900),
+    ("CostFinalize", 1000),
+    ("ExecuteAction", 1300),
+  ];
+  package.insert_rows(
+    Insert::into("InstallUISequence").rows(
+      ui_seq
+        .iter()
+        .map(|(a, s)| {
+          vec![Value::Str(a.to_string()), Value::Null, Value::Int(*s)]
+        })
+        .collect(),
+    ),
+  )?;
+
+  // Embed the cabinet as a stream named to match Media.Cabinet ("#appcab").
+  {
+    use std::io::Write as _;
+    let mut stream = package.write_stream("appcab")?;
+    stream.write_all(&cab_bytes)?;
+  }
+
+  package.flush()?;
+  drop(package);
+
+  if let Some(parent) = msi_path.parent()
+    && !parent.as_os_str().is_empty()
+  {
+    std::fs::create_dir_all(parent)?;
+  }
+  std::fs::write(msi_path, cursor.into_inner()).with_context(|| {
+    format!("Failed to write .msi at {}", msi_path.display())
+  })?;
+
+  // The `msi` crate emits each table's rows in the order they were inserted (and
+  // the auto-generated system tables `_Tables`/`_Columns`/`_Validation` in
+  // table-name order), but Windows Installer requires every table's rows to be
+  // sorted ascending by primary key — and for string-typed keys that ordering is
+  // by the row's *string-pool id*, not the string's text. When the two orders
+  // disagree (e.g. `_Validation` has a low string id yet sorts late
+  // alphabetically) real `msiexec` rejects the database at open time with error
+  // 2219 "Invalid Installer database format", even though the file is a valid
+  // compound document and round-trips through the `msi` crate's own reader. Fix
+  // this up in place by re-sorting every persistent table by its primary-key
+  // columns in string-id order. See `msi_sort_tables_by_string_id`.
+  msi_sort_tables_by_string_id(msi_path).with_context(|| {
+    format!("Failed to finalize .msi at {}", msi_path.display())
+  })?;
+  Ok(())
+}
+
+/// Decode a Windows Installer stream name back to its logical table name.
+///
+/// MSI stores each table in a compound-file stream whose name is encoded with a
+/// custom base-64 scheme: code points in `0x3800..0x4800` carry two base-64
+/// digits and `0x4800..0x4840` carry one, over the alphabet
+/// `0-9 A-Z a-z . _`. Table-data streams are additionally prefixed with the
+/// sentinel `0x4840`, which falls outside both ranges; we return that prefix as
+/// a leading NUL so callers can tell a real table stream apart from the special
+/// `\u{5}SummaryInformation` stream.
+fn msi_demangle_stream_name(name: &str) -> String {
+  const B64: &[u8] =
+    b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz._";
+  let mut out = String::new();
+  for c in name.chars() {
+    let v = c as u32;
+    if (0x3800..0x4800).contains(&v) {
+      let n = v - 0x3800;
+      out.push(B64[(n & 0x3f) as usize] as char);
+      out.push(B64[((n >> 6) & 0x3f) as usize] as char);
+    } else if (0x4800..0x4840).contains(&v) {
+      let n = v - 0x4800;
+      out.push(B64[(n & 0x3f) as usize] as char);
+    } else if v == 0x4840 {
+      out.push('\0');
+    } else {
+      out.push(c);
+    }
+  }
+  out
+}
+
+/// Re-sort the rows of a column-major MSI table stream by the given key columns.
+///
+/// `widths` is the byte width of every column (a stream is laid out column by
+/// column: all of column 0's values, then all of column 1's, …). `keys` lists
+/// the column indices to sort by, in priority order. Stored values are compared
+/// as little-endian unsigned integers, which matches MSI's ordering for both
+/// integer columns and string columns (whose stored value is the string-pool
+/// id).
+fn msi_resort_stream(data: &[u8], widths: &[usize], keys: &[usize]) -> Vec<u8> {
+  let row_width: usize = widths.iter().sum();
+  if row_width == 0 {
+    return data.to_vec();
+  }
+  let rows = data.len() / row_width;
+  if rows <= 1 {
+    return data.to_vec();
+  }
+  // Byte offset where each column's run of values begins.
+  let mut col_off = vec![0usize; widths.len()];
+  let mut acc = 0;
+  for (c, &w) in widths.iter().enumerate() {
+    col_off[c] = acc;
+    acc += rows * w;
+  }
+  let read = |row: usize, col: usize| -> u64 {
+    let base = col_off[col] + row * widths[col];
+    let mut v = 0u64;
+    for k in 0..widths[col] {
+      v |= (data[base + k] as u64) << (8 * k);
+    }
+    v
+  };
+  let mut order: Vec<usize> = (0..rows).collect();
+  order.sort_by(|&a, &b| {
+    for &k in keys {
+      match read(a, k).cmp(&read(b, k)) {
+        std::cmp::Ordering::Equal => continue,
+        ord => return ord,
+      }
+    }
+    a.cmp(&b)
+  });
+  let mut out = vec![0u8; data.len()];
+  for (c, &w) in widths.iter().enumerate() {
+    for (new_row, &old_row) in order.iter().enumerate() {
+      let src = col_off[c] + old_row * w;
+      let dst = col_off[c] + new_row * w;
+      out[dst..dst + w].copy_from_slice(&data[src..src + w]);
+    }
+  }
+  out
+}
+
+/// Sort every persistent table in a freshly written `.msi` by primary key in
+/// string-pool-id order, as Windows Installer requires (see the call site for
+/// why the `msi` crate's output needs this). Operates in place on the compound
+/// file, rewriting only the small metadata/table streams — the embedded cabinet
+/// stream is left untouched.
+fn msi_sort_tables_by_string_id(msi_path: &Path) -> Result<(), AnyError> {
+  use std::io::Read;
+  use std::io::Write;
+
+  let mut comp = cfb::open_rw(msi_path)?;
+  let names: Vec<String> = comp
+    .read_storage("/")?
+    .map(|e| e.name().to_string())
+    .collect();
+  let read_stream = |comp: &mut cfb::CompoundFile<std::fs::File>,
+                     raw: &str|
+   -> Result<Vec<u8>, AnyError> {
+    let mut s = comp.open_stream(format!("/{raw}"))?;
+    let mut b = Vec::new();
+    s.read_to_end(&mut b)?;
+    Ok(b)
+  };
+  let write_stream = |comp: &mut cfb::CompoundFile<std::fs::File>,
+                      raw: &str,
+                      bytes: &[u8]|
+   -> Result<(), AnyError> {
+    let mut s = comp.open_stream(format!("/{raw}"))?;
+    s.write_all(bytes)?;
+    Ok(())
+  };
+  let find_raw = |suffix: &str| -> Option<String> {
+    names
+      .iter()
+      .find(|n| msi_demangle_stream_name(n).ends_with(suffix))
+      .cloned()
+  };
+
+  // The string-pool header's top bit selects 3-byte string references; tiny
+  // databases use 2-byte refs, but honor the flag to stay correct at any size.
+  let pool_raw = find_raw("_StringPool").ok_or_else(|| {
+    deno_core::anyhow::anyhow!("malformed .msi: no _StringPool stream")
+  })?;
+  let pool = read_stream(&mut comp, &pool_raw)?;
+  let str_w: usize = if pool.len() >= 4 && (pool[3] & 0x80) != 0 {
+    3
+  } else {
+    2
+  };
+
+  // Map every string-pool id to its text so data-table streams (named by table
+  // text) can be matched to their column schema (keyed by table string id).
+  let data_raw = find_raw("_StringData").ok_or_else(|| {
+    deno_core::anyhow::anyhow!("malformed .msi: no _StringData stream")
+  })?;
+  let str_data = read_stream(&mut comp, &data_raw)?;
+  let mut strings = vec![String::new()]; // 1-based; index 0 is unused.
+  {
+    let mut off = 0usize;
+    let mut i = 4;
+    while i + 4 <= pool.len() {
+      let len = u16::from_le_bytes([pool[i], pool[i + 1]]) as usize;
+      let end = (off + len).min(str_data.len());
+      strings.push(String::from_utf8_lossy(&str_data[off..end]).into_owned());
+      off += len;
+      i += 4;
+    }
+  }
+  let id_of = |text: &str| -> Option<u64> {
+    strings.iter().position(|s| s == text).map(|i| i as u64)
+  };
+
+  // System tables have a fixed schema not described in `_Columns`; their
+  // string-typed columns use the same `str_w` reference width.
+  let system_tables: &[(&str, Vec<usize>, Vec<usize>)] = &[
+    ("_Tables", vec![str_w], vec![0]),
+    ("_Columns", vec![str_w, 2, str_w, 2], vec![0, 1]),
+    (
+      "_Validation",
+      vec![str_w, str_w, str_w, 4, 4, str_w, 2, str_w, str_w, str_w],
+      vec![0, 1],
+    ),
+  ];
+  for (name, widths, keys) in system_tables {
+    if let Some(raw) = find_raw(name) {
+      let bytes = read_stream(&mut comp, &raw)?;
+      let sorted = msi_resort_stream(&bytes, widths, keys);
+      write_stream(&mut comp, &raw, &sorted)?;
+    }
+  }
+
+  // Parse the (now sorted) `_Columns` table to recover every persistent table's
+  // column widths and which columns are primary keys.
+  let columns_raw = find_raw("_Columns").ok_or_else(|| {
+    deno_core::anyhow::anyhow!("malformed .msi: no _Columns stream")
+  })?;
+  let columns = read_stream(&mut comp, &columns_raw)?;
+  let col_row_w = str_w + 2 + str_w + 2; // Table, Number, Name, Type
+  let ncol = columns.len() / col_row_w;
+  let read_col = |arr_off: usize, row: usize, w: usize| -> u64 {
+    let base = arr_off + row * w;
+    let mut v = 0u64;
+    for k in 0..w {
+      v |= (columns[base + k] as u64) << (8 * k);
+    }
+    v
+  };
+  let off_table = 0usize;
+  let off_number = ncol * str_w;
+  let off_type = off_number + ncol * 2 + ncol * str_w;
+  // A column Type word: 0x8000 marks the stored value present (always set here);
+  // 0x0800 marks a string type; 0x2000 marks a primary-key column; for integer
+  // columns the low byte is the storage size (2 or 4 bytes).
+  let width_of = |ty: u64| -> usize {
+    let t = (ty ^ 0x8000) & 0xffff;
+    if (t & 0x0800) != 0 {
+      str_w
+    } else if (t & 0xff) == 4 {
+      4
+    } else {
+      2
+    }
+  };
+  let is_key = |ty: u64| -> bool { ((ty ^ 0x8000) & 0x2000) != 0 };
+  let mut table_columns: std::collections::BTreeMap<u64, Vec<(u64, u64)>> =
+    std::collections::BTreeMap::new();
+  for r in 0..ncol {
+    let table_id = read_col(off_table, r, str_w);
+    let number = read_col(off_number, r, 2) ^ 0x8000;
+    let ty = read_col(off_type, r, 2);
+    table_columns
+      .entry(table_id)
+      .or_default()
+      .push((number, ty));
+  }
+  for cols in table_columns.values_mut() {
+    cols.sort_by_key(|&(number, _)| number);
+  }
+
+  // Re-sort each persistent data-table stream by its primary-key columns.
+  for raw in &names {
+    let demangled = msi_demangle_stream_name(raw);
+    // Table-data streams carry the 0x4840 sentinel (decoded as a leading NUL);
+    // skip the summary-information stream and the already-handled system tables.
+    let Some(table_name) = demangled.strip_prefix('\0') else {
+      continue;
+    };
+    if table_name.starts_with('_') {
+      continue;
+    }
+    let Some(table_id) = id_of(table_name) else {
+      continue;
+    };
+    let Some(cols) = table_columns.get(&table_id) else {
+      continue;
+    };
+    let widths: Vec<usize> = cols.iter().map(|&(_, ty)| width_of(ty)).collect();
+    let keys: Vec<usize> = cols
+      .iter()
+      .enumerate()
+      .filter(|&(_, &(_, ty))| is_key(ty))
+      .map(|(i, _)| i)
+      .collect();
+    if keys.is_empty() {
+      continue;
+    }
+    let bytes = read_stream(&mut comp, raw)?;
+    let sorted = msi_resort_stream(&bytes, &widths, &keys);
+    write_stream(&mut comp, raw, &sorted)?;
+  }
+
+  comp.flush()?;
+  Ok(())
+}
+
+/// Build the embedded MSZIP cabinet carrying every install file, named by its
+/// MSI `File` key, in sequence order.
+fn build_msi_cabinet(files: &[MsiFile]) -> Result<Vec<u8>, AnyError> {
+  use std::io::Write as _;
+
+  let mut builder = cab::CabinetBuilder::new();
+  {
+    let folder = builder.add_folder(cab::CompressionType::MsZip);
+    for f in files {
+      folder.add_file(f.key.clone());
+    }
+  }
+
+  let cursor = std::io::Cursor::new(Vec::<u8>::new());
+  let mut writer = builder
+    .build(cursor)
+    .context("failed to start cabinet for .msi")?;
+  // Files come back in the order they were added; read each one's bytes by its
+  // cab name (the MSI File key) to stay robust to ordering.
+  let by_key: std::collections::HashMap<&str, &MsiFile> =
+    files.iter().map(|f| (f.key.as_str(), f)).collect();
+  while let Some(mut file_writer) = writer
+    .next_file()
+    .context("failed to advance cabinet writer")?
+  {
+    let name = file_writer.file_name().to_string();
+    let f = by_key.get(name.as_str()).ok_or_else(|| {
+      deno_core::anyhow::anyhow!("cabinet file {name} missing")
+    })?;
+    let data = std::fs::read(&f.abs_path).with_context(|| {
+      format!("failed to read {} for .msi cabinet", f.abs_path.display())
+    })?;
+    file_writer.write_all(&data)?;
+  }
+  let cursor = writer.finish().context("failed to finish cabinet")?;
+  Ok(cursor.into_inner())
 }
 
 /// Recursively copy a directory tree, ensuring writable permissions on the
@@ -3073,6 +5116,31 @@ mod disclaim_spawn {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  // --- macOS Info.plist ---
+
+  #[test]
+  fn macos_info_plist_includes_principal_class_and_tcc_usage_strings() {
+    let plist = render_macos_info_plist("Deno Demo", "com.deno.demo", true);
+    assert!(plist.contains("<string>LaufeyApplication</string>"));
+    assert!(
+      plist.contains("<key>NSMicrophoneUsageDescription</key>")
+        && plist.contains("Deno Demo requires access to the microphone")
+    );
+    assert!(
+      plist.contains("<key>NSCameraUsageDescription</key>")
+        && plist.contains("Deno Demo requires access to the camera")
+    );
+    assert!(
+      plist.contains("<key>NSAudioCaptureUsageDescription</key>")
+        && plist.contains("Deno Demo requires access to audio capture")
+    );
+    assert!(
+      plist.contains("<key>NSBluetoothAlwaysUsageDescription</key>")
+        && plist.contains("Deno Demo requires access to Bluetooth")
+    );
+    assert!(plist.contains("<string>AppIcon</string>"));
+  }
 
   // --- laufey_archive_name / laufey_release_url ---
 
@@ -3978,10 +6046,15 @@ def456  other.zip
   #[test]
   fn locate_dev_backend_winit_target_paths() {
     let tmp = tempfile::tempdir().unwrap();
-    let p = tmp.path().join("target/release/laufey_winit");
+    // `raw` is the public backend name; the dev binary is `laufey_winit`,
+    // carrying the host executable suffix (`.exe` on Windows) — without it
+    // LAUFEY_DEV_DIR could never resolve a backend on Windows.
+    let p = tmp.path().join(format!(
+      "target/release/laufey_winit{}",
+      std::env::consts::EXE_SUFFIX
+    ));
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(&p, b"binary").unwrap();
-    // `raw` is the public backend name; the binary file is `laufey_winit`.
     let found = locate_dev_backend_binary(tmp.path(), "raw");
     assert_eq!(found.as_deref(), Some(p.as_path()));
   }
@@ -4191,5 +6264,600 @@ def456  other.zip
     let err =
       rewrite_helper_plist_identifier(&p, "com.acme.myapp").unwrap_err();
     assert!(err.to_string().contains("CFBundleIdentifier"));
+  }
+
+  // --- Linux packaging ---
+
+  #[test]
+  fn debian_package_name_sanitizes() {
+    assert_eq!(debian_package_name("MyApp"), "myapp");
+    assert_eq!(debian_package_name("My App!"), "my-app");
+    // Leading non-alphanumerics are stripped (Debian forbids leading -/+/.).
+    assert_eq!(debian_package_name("--foo"), "foo");
+    assert_eq!(debian_package_name("a"), "app", "too short falls back");
+    assert_eq!(debian_package_name("___"), "app", "nothing usable");
+    // Allowed punctuation is preserved.
+    assert_eq!(debian_package_name("a.b+c-d"), "a.b+c-d");
+  }
+
+  #[test]
+  fn package_arch_mappings() {
+    assert_eq!(
+      debian_arch_for_target(Some("x86_64-unknown-linux-gnu")).unwrap(),
+      "amd64"
+    );
+    assert_eq!(
+      debian_arch_for_target(Some("aarch64-unknown-linux-gnu")).unwrap(),
+      "arm64"
+    );
+    assert!(debian_arch_for_target(Some("riscv64-unknown-linux-gnu")).is_err());
+    assert_eq!(
+      rpm_arch_for_target(Some("x86_64-unknown-linux-gnu")).unwrap(),
+      "x86_64"
+    );
+    assert_eq!(
+      rpm_arch_for_target(Some("aarch64-unknown-linux-gnu")).unwrap(),
+      "aarch64"
+    );
+    assert!(rpm_arch_for_target(Some("mips-unknown-linux-gnu")).is_err());
+  }
+
+  /// Build a minimal staged Linux app dir like `package_linux_app_dir` does:
+  /// a launcher script named after the app, a fake runtime lib, and an icon.
+  fn fake_linux_app_dir(parent: &Path, app_name: &str) -> PathBuf {
+    let app_dir = parent.join(app_name);
+    std::fs::create_dir_all(&app_dir).unwrap();
+    std::fs::write(app_dir.join(app_name), "#!/bin/sh\nexec ./laufey\n")
+      .unwrap();
+    std::fs::write(app_dir.join("libdenort.so"), b"\x7fELFfake").unwrap();
+    std::fs::write(app_dir.join("AppIcon.png"), STUB_ICON_PNG).unwrap();
+    app_dir
+  }
+
+  fn empty_desktop_flags() -> DesktopFlags {
+    DesktopFlags {
+      source_file: String::new(),
+      output: None,
+      args: vec![],
+      target: None,
+      icon: None,
+      include: vec![],
+      exclude: vec![],
+      hmr: false,
+      backend: None,
+      all_targets: false,
+      identifier: None,
+      codesign_identity: None,
+      inspect_renderer: None,
+      compress: None,
+    }
+  }
+
+  /// Read a gzip-compressed buffer to bytes.
+  fn gunzip(data: &[u8]) -> Vec<u8> {
+    let mut dec = flate2::read::GzDecoder::new(data);
+    let mut out = Vec::new();
+    dec.read_to_end(&mut out).unwrap();
+    out
+  }
+
+  #[test]
+  fn appimage_uses_runtime_supported_zstd_squashfs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
+    let appimage_path = tmp.path().join("MyApp.AppImage");
+    let target = Some("x86_64-unknown-linux-gnu");
+    create_linux_appimage(&app_dir, &appimage_path, target).unwrap();
+
+    let runtime_offset =
+      appimage_runtime_for_target(target).unwrap().len() as u64;
+    let appimage =
+      std::io::BufReader::new(std::fs::File::open(&appimage_path).unwrap());
+    let filesystem = backhand::FilesystemReader::from_reader_with_offset(
+      appimage,
+      runtime_offset,
+    )
+    .unwrap();
+    assert_eq!(
+      filesystem.compressor,
+      backhand::compression::Compressor::Zstd
+    );
+  }
+
+  #[test]
+  fn deb_has_ar_members_and_control_fields() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
+    let deb = tmp.path().join("MyApp.deb");
+    let flags = empty_desktop_flags();
+    create_linux_deb(&app_dir, &deb, &flags, Some("x86_64-unknown-linux-gnu"))
+      .unwrap();
+
+    let bytes = std::fs::read(&deb).unwrap();
+    assert!(bytes.starts_with(b"!<arch>\n"), "missing ar global header");
+
+    // Walk the ar members in order and collect (name, data).
+    let mut members: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut pos = 8; // after "!<arch>\n"
+    while pos + 60 <= bytes.len() {
+      let header = &bytes[pos..pos + 60];
+      let name = String::from_utf8_lossy(&header[..16]).trim().to_string();
+      let size: usize = String::from_utf8_lossy(&header[48..58])
+        .trim()
+        .parse()
+        .unwrap();
+      assert_eq!(&header[58..60], b"`\n", "bad ar member magic");
+      let data_start = pos + 60;
+      members.push((name, bytes[data_start..data_start + size].to_vec()));
+      // members are padded to an even length
+      pos = data_start + size + (size % 2);
+    }
+    let names: Vec<&str> = members.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(
+      names,
+      vec!["debian-binary", "control.tar.gz", "data.tar.gz"],
+      "members must appear in dpkg's expected order"
+    );
+    assert_eq!(members[0].1, b"2.0\n");
+
+    // control.tar.gz → ./control with the required fields.
+    let control_tar = gunzip(&members[1].1);
+    let mut archive = tar::Archive::new(&control_tar[..]);
+    let mut control = String::new();
+    for entry in archive.entries().unwrap() {
+      let mut entry = entry.unwrap();
+      if entry.path().unwrap().ends_with("control") {
+        entry.read_to_string(&mut control).unwrap();
+      }
+    }
+    assert!(control.contains("Package: myapp\n"), "control:\n{control}");
+    assert!(control.contains("Architecture: amd64\n"));
+    assert!(control.contains("Version: 1.0.0\n"));
+    assert!(control.contains("Depends: libgtk-3-0,"));
+    assert!(control.contains("Installed-Size: "));
+
+    // data.tar.gz install layout. The `tar` crate strips the conventional
+    // leading `./` (it skips `CurDir` path components), leaving root-relative
+    // `usr/...` paths — which dpkg unpacks to `/usr/...` all the same.
+    let data_tar = gunzip(&members[2].1);
+    let mut archive = tar::Archive::new(&data_tar[..]);
+    let mut paths: Vec<String> = Vec::new();
+    let mut bin_link_target: Option<String> = None;
+    for entry in archive.entries().unwrap() {
+      let entry = entry.unwrap();
+      let p = entry.path().unwrap().to_string_lossy().into_owned();
+      if p == "usr/bin/myapp" {
+        bin_link_target = entry
+          .link_name()
+          .unwrap()
+          .map(|l| l.to_string_lossy().into_owned());
+      }
+      paths.push(p);
+    }
+    assert!(paths.iter().any(|p| p == "usr/lib/myapp/MyApp"));
+    assert!(paths.iter().any(|p| p == "usr/lib/myapp/libdenort.so"));
+    assert!(
+      paths
+        .iter()
+        .any(|p| p == "usr/share/applications/myapp.desktop")
+    );
+    assert!(
+      paths
+        .iter()
+        .any(|p| p == "usr/share/icons/hicolor/512x512/apps/myapp.png")
+    );
+    assert_eq!(
+      bin_link_target.as_deref(),
+      Some("../lib/myapp/MyApp"),
+      "/usr/bin symlink must point at the staged launcher"
+    );
+  }
+
+  #[test]
+  fn rpm_parses_with_expected_metadata() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
+    let rpm_path = tmp.path().join("MyApp.rpm");
+    let flags = empty_desktop_flags();
+    create_linux_rpm(
+      &app_dir,
+      &rpm_path,
+      &flags,
+      Some("aarch64-unknown-linux-gnu"),
+    )
+    .unwrap();
+
+    let bytes = std::fs::read(&rpm_path).unwrap();
+    let pkg = rpm::Package::parse(&mut &bytes[..]).unwrap();
+    assert_eq!(pkg.metadata.get_name().unwrap(), "myapp");
+    assert_eq!(pkg.metadata.get_version().unwrap(), "1.0.0");
+    assert_eq!(pkg.metadata.get_arch().unwrap(), "aarch64");
+
+    let requires: Vec<String> = pkg
+      .metadata
+      .get_requires()
+      .unwrap()
+      .into_iter()
+      .map(|d| d.name)
+      .collect();
+    assert!(
+      requires.iter().any(|r| r == "libgtk-3.so.0()(64bit)"),
+      "rpm Requires must carry CEF sonames with the 64-bit ELF class suffix, got: {requires:?}"
+    );
+
+    let files: Vec<String> = pkg
+      .metadata
+      .get_file_paths()
+      .unwrap()
+      .into_iter()
+      .map(|p| p.to_string_lossy().into_owned())
+      .collect();
+    assert!(files.iter().any(|f| f == "/usr/lib/myapp/MyApp"));
+    assert!(files.iter().any(|f| f == "/usr/bin/myapp"));
+    assert!(
+      files
+        .iter()
+        .any(|f| f == "/usr/share/applications/myapp.desktop")
+    );
+  }
+
+  // --- Windows .msi packaging ---
+
+  #[test]
+  fn msi_arch_mappings() {
+    assert_eq!(
+      msi_arch_for_target(Some("x86_64-pc-windows-msvc")).unwrap(),
+      "x64"
+    );
+    assert_eq!(
+      msi_arch_for_target(Some("aarch64-pc-windows-msvc")).unwrap(),
+      "Arm64"
+    );
+    assert!(msi_arch_for_target(Some("i686-pc-windows-msvc")).is_err());
+  }
+
+  #[test]
+  fn msi_guids_are_deterministic_and_valid() {
+    let a = msi_derive_guid("com.acme.myapp", "product:1.0.0");
+    let b = msi_derive_guid("com.acme.myapp", "product:1.0.0");
+    let c = msi_derive_guid("com.acme.myapp", "upgrade");
+    assert_eq!(a, b, "same inputs must yield the same GUID");
+    assert_ne!(a, c, "different roles must yield different GUIDs");
+    // Registry-format GUID: 38 chars, braced, uppercase.
+    assert_eq!(a.len(), 38);
+    assert!(a.starts_with('{') && a.ends_with('}'));
+    assert!(
+      msi::Category::Guid.validate(&a),
+      "must satisfy GUID category"
+    );
+  }
+
+  #[test]
+  fn msi_short_names_are_valid_8_3() {
+    let d = msi_short_name(1, "Some Long Folder Name", true);
+    assert_eq!(d, "D1");
+    let f = msi_short_name(42, "libcef.dll", false);
+    assert_eq!(f, "F16.DLL");
+    // No extension → no dot.
+    assert_eq!(msi_short_name(2, "LICENSE", false), "F2");
+  }
+
+  /// Build a minimal staged Windows app dir with a nested subdirectory, like
+  /// `package_windows_app_dir` would produce.
+  fn fake_windows_app_dir(parent: &Path, app_name: &str) -> PathBuf {
+    let app_dir = parent.join(app_name);
+    std::fs::create_dir_all(&app_dir).unwrap();
+    std::fs::write(
+      app_dir.join(format!("{app_name}.bat")),
+      "@echo off\r\nlaufey.exe --runtime denort.dll %*\r\n",
+    )
+    .unwrap();
+    std::fs::write(app_dir.join("laufey.exe"), b"MZfake-exe").unwrap();
+    std::fs::write(app_dir.join("denort.dll"), b"MZfake-dll").unwrap();
+    let locales = app_dir.join("locales");
+    std::fs::create_dir_all(&locales).unwrap();
+    std::fs::write(locales.join("en-US.pak"), b"pakdata").unwrap();
+    app_dir
+  }
+
+  #[test]
+  fn msi_parses_with_expected_tables_and_payload() {
+    use std::io::Read as _;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_windows_app_dir(tmp.path(), "MyApp");
+    let msi_path = tmp.path().join("MyApp.msi");
+    let flags = empty_desktop_flags();
+    create_windows_msi(
+      &app_dir,
+      &msi_path,
+      &flags,
+      Some("x86_64-pc-windows-msvc"),
+    )
+    .unwrap();
+
+    let mut package = msi::open(&msi_path).unwrap();
+    assert_eq!(package.summary_info().arch(), Some("x64"));
+    // Windows Installer rejects a UTF-8 (65001) database codepage with "could
+    // not be opened"; both the database and summary-info codepage must be a
+    // valid ANSI codepage. We author Windows-1252.
+    assert_eq!(package.database_codepage(), msi::CodePage::Windows1252);
+    assert_eq!(
+      package.summary_info().codepage(),
+      msi::CodePage::Windows1252
+    );
+
+    // Property table: product identity.
+    let mut props = std::collections::HashMap::new();
+    for row in package.select_rows(msi::Select::table("Property")).unwrap() {
+      props.insert(
+        row["Property"].as_str().unwrap().to_string(),
+        row["Value"].as_str().unwrap().to_string(),
+      );
+    }
+    assert_eq!(props.get("ProductName").map(String::as_str), Some("MyApp"));
+    assert_eq!(
+      props.get("ProductVersion").map(String::as_str),
+      Some("1.0.0")
+    );
+    assert_eq!(props.get("ALLUSERS").map(String::as_str), Some("1"));
+    assert!(
+      msi::Category::Guid.validate(props.get("ProductCode").unwrap()),
+      "ProductCode must be a valid GUID"
+    );
+    assert!(msi::Category::Guid.validate(props.get("UpgradeCode").unwrap()));
+
+    // Directory table: the install root and the nested locales dir.
+    let dirs: Vec<String> = package
+      .select_rows(msi::Select::table("Directory"))
+      .unwrap()
+      .map(|r| r["Directory"].as_str().unwrap().to_string())
+      .collect();
+    assert!(dirs.iter().any(|d| d == "INSTALLDIR"));
+    assert!(dirs.iter().any(|d| d == "ProgramFiles64Folder"));
+
+    // File table: every staged file, with a 1..N sequence.
+    let mut files: Vec<(String, String, i32)> = package
+      .select_rows(msi::Select::table("File"))
+      .unwrap()
+      .map(|r| {
+        (
+          r["File"].as_str().unwrap().to_string(),
+          r["FileName"].as_str().unwrap().to_string(),
+          r["Sequence"].as_int().unwrap(),
+        )
+      })
+      .collect();
+    files.sort_by_key(|f| f.2);
+    assert_eq!(files.len(), 4, "4 files staged: {files:?}");
+    let long_names: Vec<&str> = files
+      .iter()
+      .map(|(_, name, _)| name.rsplit('|').next().unwrap())
+      .collect();
+    assert!(long_names.contains(&"MyApp.bat"));
+    assert!(long_names.contains(&"laufey.exe"));
+    assert!(long_names.contains(&"denort.dll"));
+    assert!(long_names.contains(&"en-US.pak"));
+    let seqs: Vec<i32> = files.iter().map(|f| f.2).collect();
+    assert_eq!(seqs, vec![1, 2, 3, 4], "sequence must be contiguous 1..N");
+
+    // Two components: one for the root dir, one for locales/.
+    let comps: Vec<String> = package
+      .select_rows(msi::Select::table("Component"))
+      .unwrap()
+      .map(|r| r["Component"].as_str().unwrap().to_string())
+      .collect();
+    assert_eq!(comps.len(), 2, "root + locales components: {comps:?}");
+
+    // The embedded cabinet referenced by Media.Cabinet.
+    let cabinet = package
+      .select_rows(msi::Select::table("Media"))
+      .unwrap()
+      .map(|r| r["Cabinet"].as_str().unwrap().to_string())
+      .next()
+      .unwrap();
+    assert_eq!(cabinet, "#appcab");
+
+    // Read the cabinet back and confirm a file's bytes round-trip. The cab
+    // member name is the MSI File key.
+    let key_for_dll = files
+      .iter()
+      .find(|(_, name, _)| name.ends_with("denort.dll"))
+      .map(|(key, _, _)| key.clone())
+      .unwrap();
+    let mut cab_bytes = Vec::new();
+    package
+      .read_stream("appcab")
+      .unwrap()
+      .read_to_end(&mut cab_bytes)
+      .unwrap();
+    let mut cabinet =
+      cab::Cabinet::new(std::io::Cursor::new(cab_bytes)).unwrap();
+    let mut content = Vec::new();
+    cabinet
+      .read_file(&key_for_dll)
+      .unwrap()
+      .read_to_end(&mut content)
+      .unwrap();
+    assert_eq!(content, b"MZfake-dll");
+  }
+
+  #[test]
+  fn msi_tables_sorted_by_string_id() {
+    use std::io::Read as _;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_windows_app_dir(tmp.path(), "SortApp");
+    let msi_path = tmp.path().join("SortApp.msi");
+    create_windows_msi(
+      &app_dir,
+      &msi_path,
+      &empty_desktop_flags(),
+      Some("x86_64-pc-windows-msvc"),
+    )
+    .unwrap();
+
+    // Windows Installer requires every table's rows to be ordered ascending by
+    // primary key, and for string-typed keys that ordering is by the row's
+    // string-pool id (not the string's text). The `msi` crate does not emit the
+    // system tables in that order, so `create_windows_msi` re-sorts them; real
+    // `msiexec` rejects the database with error 2219 otherwise. Verify the
+    // invariant on the `_Tables` stream, whose single column is the table name's
+    // string id, and on the `Directory` data table's primary-key column.
+    let mut comp = cfb::open(&msi_path).unwrap();
+    let names: Vec<String> = comp
+      .read_storage("/")
+      .unwrap()
+      .map(|e| e.name().to_string())
+      .collect();
+    let read_ids =
+      |comp: &mut cfb::CompoundFile<std::fs::File>, suffix: &str| -> Vec<u16> {
+        let raw = names
+          .iter()
+          .find(|n| msi_demangle_stream_name(n).ends_with(suffix))
+          .cloned()
+          .unwrap();
+        let mut s = comp.open_stream(format!("/{raw}")).unwrap();
+        let mut b = Vec::new();
+        s.read_to_end(&mut b).unwrap();
+        b.chunks_exact(2)
+          .map(|c| u16::from_le_bytes([c[0], c[1]]))
+          .collect()
+      };
+
+    let table_ids = read_ids(&mut comp, "_Tables");
+    assert!(table_ids.len() > 1, "expected multiple tables");
+    assert!(
+      table_ids.windows(2).all(|w| w[0] < w[1]),
+      "_Tables must be strictly ascending by string id: {table_ids:?}"
+    );
+
+    // The Directory table's first column is its primary key (the directory id).
+    // Its run of values (the table is stored column-major, key column first)
+    // must be ascending by string id.
+    let dir_keys = read_ids(&mut comp, "\0Directory");
+    let dir_rows = dir_keys.len() / 3; // Directory, Directory_Parent, DefaultDir
+    let pk: Vec<u16> = dir_keys.into_iter().take(dir_rows).collect();
+    assert!(
+      pk.windows(2).all(|w| w[0] < w[1]),
+      "Directory primary key must be ascending by string id: {pk:?}"
+    );
+  }
+
+  #[test]
+  fn msi_authors_start_menu_shortcut() {
+    let tmp = tempfile::tempdir().unwrap();
+    // fake_windows_app_dir stages a `laufey.exe`, which is detected as the
+    // launcher the shortcut points at.
+    let app_dir = fake_windows_app_dir(tmp.path(), "MyApp");
+    let msi_path = tmp.path().join("MyApp.msi");
+    create_windows_msi(
+      &app_dir,
+      &msi_path,
+      &empty_desktop_flags(),
+      Some("x86_64-pc-windows-msvc"),
+    )
+    .unwrap();
+    let mut package = msi::open(&msi_path).unwrap();
+
+    // The all-users Start Menu folder must exist for the shortcut to land in it.
+    let dirs: Vec<String> = package
+      .select_rows(msi::Select::table("Directory"))
+      .unwrap()
+      .map(|r| r["Directory"].as_str().unwrap().to_string())
+      .collect();
+    assert!(dirs.iter().any(|d| d == "ProgramMenuFolder"));
+
+    // Exactly one shortcut, targeting the laufey launcher (`[#fkey]`) with
+    // `--runtime "<app>.dll"` and running from INSTALLDIR — no console window and
+    // no spaced path handed to laufey.
+    let shortcuts: Vec<_> = package
+      .select_rows(msi::Select::table("Shortcut"))
+      .unwrap()
+      .collect();
+    assert_eq!(shortcuts.len(), 1);
+    let s = &shortcuts[0];
+    assert_eq!(s["Directory_"].as_str(), Some("ProgramMenuFolder"));
+    assert_eq!(s["Arguments"].as_str(), Some("--runtime \"MyApp.dll\""));
+    assert_eq!(s["WkDir"].as_str(), Some("INSTALLDIR"));
+    assert!(s["Target"].as_str().unwrap().starts_with("[#"));
+
+    // CreateShortcuts/RemoveShortcuts must be sequenced or the table is ignored.
+    let actions: Vec<String> = package
+      .select_rows(msi::Select::table("InstallExecuteSequence"))
+      .unwrap()
+      .map(|r| r["Action"].as_str().unwrap().to_string())
+      .collect();
+    assert!(actions.iter().any(|a| a == "CreateShortcuts"));
+    assert!(actions.iter().any(|a| a == "RemoveShortcuts"));
+  }
+
+  #[test]
+  fn reserve_app_dir_ok_when_missing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("app");
+    reserve_app_dir(&app_dir).unwrap();
+    assert!(!app_dir.exists());
+  }
+
+  #[test]
+  fn reserve_app_dir_clears_empty_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("app");
+    std::fs::create_dir(&app_dir).unwrap();
+    reserve_app_dir(&app_dir).unwrap();
+    assert!(!app_dir.exists());
+  }
+
+  #[test]
+  fn reserve_app_dir_clears_previous_build() {
+    // A directory carrying our marker is a prior `deno desktop` output and
+    // may be replaced.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("app");
+    std::fs::create_dir(&app_dir).unwrap();
+    std::fs::write(app_dir.join("laufey"), b"binary").unwrap();
+    std::fs::write(app_dir.join(APP_DIR_MARKER), b"").unwrap();
+    reserve_app_dir(&app_dir).unwrap();
+    assert!(!app_dir.exists());
+  }
+
+  #[test]
+  fn reserve_app_dir_clears_previous_macos_bundle() {
+    // A `.app` bundle's marker lives under Contents/Resources/.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("App.app");
+    let resources = app_dir.join("Contents").join("Resources");
+    std::fs::create_dir_all(&resources).unwrap();
+    std::fs::write(resources.join(APP_DIR_MARKER), b"").unwrap();
+    reserve_app_dir(&app_dir).unwrap();
+    assert!(!app_dir.exists());
+  }
+
+  #[test]
+  fn reserve_app_dir_refuses_user_data() {
+    // The crux of issue #35510: an inferred app name collides with an
+    // existing user directory. We must error, not delete it.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("helloworld");
+    std::fs::create_dir(&app_dir).unwrap();
+    let precious = app_dir.join("precious.txt");
+    std::fs::write(&precious, b"do not delete").unwrap();
+
+    let err = reserve_app_dir(&app_dir).unwrap_err();
+    assert!(err.to_string().contains("not created by"));
+    // The user's data survives untouched.
+    assert!(precious.exists());
+    assert_eq!(std::fs::read(&precious).unwrap(), b"do not delete");
+  }
+
+  #[test]
+  fn reserve_app_dir_refuses_existing_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("app");
+    std::fs::write(&path, b"i am a file").unwrap();
+    let err = reserve_app_dir(&path).unwrap_err();
+    assert!(err.to_string().contains("a file with that name"));
+    assert!(path.exists());
   }
 }

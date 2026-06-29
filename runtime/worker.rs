@@ -102,6 +102,21 @@ pub fn create_validate_import_attributes_callback(
     move |scope: &mut v8::PinScope<'_, '_>,
           attributes: &HashMap<String, String>,
           context: &deno_core::ImportAttributesContext| {
+      // If `module.registerHooks()` has installed user hooks, defer
+      // import-attribute validation to the user hooks so they can
+      // implement custom module types and attributes
+      // (e.g. `with { type: "x-css" }`). Without this, the builtin
+      // validator rejects anything outside the small allow-list before
+      // hooks ever get a chance to handle the import.
+      let op_state = JsRuntime::op_state_from(&*scope);
+      if let Ok(op_state) = op_state.try_borrow()
+        && let Some(registry) = op_state
+          .try_borrow::<deno_node::ops::module_hooks::LoaderHookRegistry>(
+        )
+        && registry.hooks_active.get()
+      {
+        return;
+      }
       let valid_attribute = |kind: &str| {
         matches!(kind, "json" | "text")
           || (enable_raw_imports.load(Ordering::Relaxed)
@@ -802,6 +817,18 @@ impl MainWorker {
   }
 
   pub fn bootstrap(&mut self, options: BootstrapOptions) {
+    // Diagnostic env var; not on the sys_traits surface in this crate.
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "diagnostic env var; not part of the sys_traits surface"
+    )]
+    let phase_enabled = std::env::var_os("DENO_STARTUP_PHASES")
+      .is_some_and(|v| !v.is_empty() && v != "0");
+    let t0 = if phase_enabled {
+      Some(std::time::Instant::now())
+    } else {
+      None
+    };
     // Setup bootstrap options for ops.
     {
       let op_state = self.js_runtime.op_state();
@@ -822,6 +849,16 @@ impl MainWorker {
     if let Some(exception) = scope.exception() {
       let error = JsError::from_v8_exception(scope, exception);
       panic!("Bootstrap exception: {error}");
+    }
+    if let Some(t) = t0 {
+      #[allow(clippy::print_stderr, reason = "diagnostic")]
+      {
+        eprintln!(
+          "[startup] {:>32}  {:?}",
+          "MainWorker::bootstrap (99_main)",
+          t.elapsed()
+        );
+      }
     }
   }
 

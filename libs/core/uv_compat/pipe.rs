@@ -593,8 +593,6 @@ fn make_sockaddr_un(
 /// `pipe` must be a valid pointer to an initialized `uv_pipe_t`.
 pub unsafe fn uv_pipe_bind(pipe: *mut uv_pipe_t, path: &str) -> c_int {
   unsafe {
-    (*pipe).internal_bind_path = Some(path.to_string());
-
     // On Unix, create a socket and bind it now (matching libuv).
     // The socket is NOT listening yet - that happens in uv_pipe_listen.
     // The fd is available immediately for the `fd` property.
@@ -624,6 +622,12 @@ pub unsafe fn uv_pipe_bind(pipe: *mut uv_pipe_t, path: &str) -> c_int {
 
       (*pipe).internal_fd = Some(fd);
     }
+
+    // Record the bound path only after the bind succeeds. libuv stores the
+    // path on the handle on success only; recording it earlier would let a
+    // failed bind (e.g. EADDRINUSE against an existing file) arm the
+    // fchmod/unlink-on-close paths against a path that was never bound.
+    (*pipe).internal_bind_path = Some(path.to_string());
   }
   0
 }

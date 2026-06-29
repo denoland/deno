@@ -80,8 +80,13 @@ DIAGNOSTIC: this subtest should make its parent test fail
 subtest sync throw fail ... FAILED (due to 1 failed step) ([WILDLINE])
 sync throw non-error fail ... FAILED ([WILDLINE])
 level 0a ...
-  level 1a ... INCOMPLETE
-level 0a ... FAILED ([WILDLINE])
+[UNORDERED_START]
+  level 1a ... ok ([WILDLINE])
+  level 1b ... ok ([WILDLINE])
+  level 1c ... ok ([WILDLINE])
+  level 1d ... ok ([WILDLINE])
+[UNORDERED_END]
+level 0a ... ok ([WILDLINE])
 top level ...
   +long running ... INCOMPLETE
   +short running ...
@@ -125,8 +130,8 @@ subtest sync throw fails ...
   sync throw fails at first ... FAILED ([WILDLINE])
   sync throw fails at second ... FAILED ([WILDLINE])
 subtest sync throw fails ... FAILED (due to 2 failed steps) ([WILDLINE])
-timed out async test ... ok ([WILDLINE])
-timed out callback test ... ok ([WILDLINE])
+timed out async test ... FAILED ([WILDLINE])
+timed out callback test ... FAILED ([WILDLINE])
 large timeout async test is ok ... ok ([WILDLINE])
 large timeout callback test is ok ... ok ([WILDLINE])
 successful thenable ... ok ([WILDLINE])
@@ -141,13 +146,12 @@ unfinished test with uncaughtException => ./test.js:466:1
 error: Promise resolution is still pending but the event loop has already resolved.
 
 unfinished test with unhandledRejection => ./test.js:474:1
-error: Promise resolution is still pending but the event loop has already resolved.
-
+error: Error: bar
 [WILDCARD] FAILURES [WILDCARD]
 rejected thenable => ./test.js:455:1
 unfinished test with uncaughtException => ./test.js:466:1
 unfinished test with unhandledRejection => ./test.js:474:1
 
-FAILED | 42 passed (23 steps) | 20 failed (12 steps) | 7 ignored ([WILDLINE])
+FAILED | 41 passed (27 steps) | 21 failed (11 steps) | 7 ignored ([WILDLINE])
 
 error: Test failed

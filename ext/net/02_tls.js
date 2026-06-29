@@ -186,6 +186,7 @@ function listenTls({
     { alpnProtocols, reusePort, tcpBacklog },
     keyPair,
   );
+  localAddr.transport = transport;
   return new TlsListener(rid, localAddr);
 }
 

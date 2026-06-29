@@ -9,6 +9,10 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 
 use bytes::Bytes;
+use deno_permissions::Permissions;
+use deno_permissions::PermissionsContainer;
+use deno_permissions::PermissionsOptions;
+use deno_permissions::RuntimePermissionDescriptorParser;
 use deno_tls::rustls::pki_types::PrivateKeyDer;
 use fast_socks5::server::Config as Socks5Config;
 use fast_socks5::server::Socks5Socket;
@@ -19,6 +23,7 @@ use http::header::HeaderValue;
 use http::header::RANGE;
 use http::header::TRANSFER_ENCODING;
 use http_body_util::BodyExt;
+use hyper_util::client::legacy::connect::dns::Name;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
@@ -162,6 +167,7 @@ async fn run_test_client_with_resolver(
       pool_max_idle_per_host: None,
       pool_idle_timeout: None,
       dns_resolver: resolver,
+      permissions: None,
       http1: true,
       http2: true,
       local_address: None,
@@ -195,6 +201,85 @@ async fn run_test_client(
     Default::default(),
   )
   .await
+}
+
+/// A resolver that resolves any name to a single fixed address.
+#[derive(Debug)]
+struct FixedResolver(SocketAddr);
+
+impl dns::Resolve for FixedResolver {
+  fn resolve(&self, _name: Name) -> dns::Resolving {
+    let addr = self.0;
+    Box::pin(async move { Ok(vec![addr].into_iter()) })
+  }
+}
+
+fn deny_net_permissions(deny: &[&str]) -> PermissionsContainer {
+  let parser =
+    RuntimePermissionDescriptorParser::new(sys_traits::impls::RealSys);
+  let perms = Permissions::from_options(
+    &parser,
+    &PermissionsOptions {
+      allow_net: Some(vec![]),
+      deny_net: Some(deny.iter().map(|s| s.to_string()).collect()),
+      ..Default::default()
+    },
+  )
+  .unwrap();
+  PermissionsContainer::new(Arc::new(parser), perms)
+}
+
+// A destination routed through a proxy must still be checked against the net
+// deny list. The connection the connector opens is to the proxy, so without a
+// separate destination check an IP-level `--deny-net` rule could be bypassed by
+// routing through an (allowed) proxy. Here the proxy lives on loopback
+// (allowed) while the destination hostname resolves to a denied IP, so the
+// request must be denied before any socket is opened.
+#[tokio::test]
+async fn test_http_proxy_denies_destination_resolving_to_denied_ip() {
+  let src_addr = create_https_server(true, Ipv4Addr::LOCALHOST.into()).await;
+  let prx_addr = create_http_proxy(src_addr).await;
+
+  // RFC 5737 TEST-NET-1: never routed, and never actually connected to here
+  // since the deny check fails first.
+  let denied_ip = "192.0.2.1";
+  let resolver = dns::Resolver::custom(Arc::new(FixedResolver(
+    format!("{denied_ip}:0").parse().unwrap(),
+  )));
+
+  let client = create_http_client(
+    "fetch/test",
+    CreateHttpClientOptions {
+      root_cert_store: None,
+      ca_certs: vec![],
+      proxy: Some(deno_tls::Proxy::Http {
+        url: format!("http://{}", prx_addr),
+        basic_auth: None,
+      }),
+      unsafely_ignore_certificate_errors: Some(vec![]),
+      client_cert_chain_and_key: None,
+      pool_max_idle_per_host: None,
+      pool_idle_timeout: None,
+      dns_resolver: resolver,
+      permissions: Some(deny_net_permissions(&[denied_ip])),
+      http1: true,
+      http2: true,
+      local_address: None,
+      client_builder_hook: None,
+    },
+  )
+  .unwrap();
+
+  let req = http::Request::builder()
+    .uri("https://denied.example/foo")
+    .body(crate::ReqBody::empty())
+    .unwrap();
+  let err = client.send(req).await.unwrap_err();
+  let msg = err.to_string().to_lowercase();
+  assert!(
+    msg.contains("net access") && msg.contains(denied_ip),
+    "expected a net-deny error for the destination IP, got: {err}"
+  );
 }
 
 #[tokio::test]
@@ -515,6 +600,7 @@ fn create_http_test_client() -> crate::Client {
       http2: true,
       local_address: None,
       client_builder_hook: None,
+      permissions: None,
     },
   )
   .unwrap()

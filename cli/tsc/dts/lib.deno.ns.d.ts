@@ -774,6 +774,76 @@ declare namespace Deno {
      * ```
      */
     step(fn: (t: TestContext) => void | Promise<void>): Promise<boolean>;
+
+    /** Assert that `actual` matches a snapshot stored in a snapshot file.
+     *
+     * The snapshot is stored in `__snapshots__/<test file name>.snap` next
+     * to the test file, under a key derived from the test (and step) name.
+     * On the first run, create the snapshot file by running the tests with
+     * the `--update-snapshots` flag; commit it alongside the test. On
+     * subsequent runs the assertion fails if the serialized value no longer
+     * matches the stored snapshot. To intentionally change snapshots, run
+     * the tests with `--update-snapshots` again.
+     *
+     * No read or write permissions are needed for snapshot files in the
+     * default location; a custom `dir` or `path` requires them.
+     *
+     * The snapshot file format is compatible with
+     * `assertSnapshot` from
+     * [`@std/testing/snapshot`](https://jsr.io/@std/testing/doc/snapshot).
+     *
+     * ```ts
+     * Deno.test("matches snapshot", async (t) => {
+     *   await t.assertSnapshot({ hello: "world", example: 123 });
+     * });
+     * ```
+     */
+    assertSnapshot<T>(
+      actual: T,
+      options?: TestSnapshotOptions<T>,
+    ): Promise<void>;
+
+    /** Assert that `actual` matches a snapshot stored in a snapshot file,
+     * using `message` as the failure message if it does not.
+     *
+     * ```ts
+     * Deno.test("matches snapshot", async (t) => {
+     *   await t.assertSnapshot(2 + 3, "should be five");
+     * });
+     * ```
+     */
+    assertSnapshot<T>(actual: T, message?: string): Promise<void>;
+  }
+
+  /** Options which can be set when calling
+   * {@linkcode Deno.TestContext.assertSnapshot}.
+   *
+   * @category Testing */
+  export interface TestSnapshotOptions<T = unknown> {
+    /** Snapshot output directory, relative to the directory of the test
+     * file (or absolute). Snapshot files are written to this directory
+     * instead of the default `__snapshots__` directory. Requires read (and,
+     * with `--update-snapshots`, write) permission for the directory.
+     *
+     * If both `dir` and `path` are specified, `dir` is ignored. */
+    dir?: string;
+    /** Snapshot output path, relative to the directory of the test file (or
+     * absolute). The snapshot is stored in this file instead of the default
+     * `__snapshots__/<test file name>.snap` file. Requires read (and, with
+     * `--update-snapshots`, write) permission for the file.
+     *
+     * If both `dir` and `path` are specified, `dir` is ignored. */
+    path?: string;
+    /** Name of the snapshot to use in the snapshot file instead of the
+     * name derived from the test and step names. */
+    name?: string;
+    /** Failure message to use when the assertion fails, instead of the
+     * generated diff message. */
+    msg?: string;
+    /** Function used to serialize the value to a string before comparing it
+     * with the stored snapshot. Defaults to a `Deno.inspect()`-based
+     * serializer. */
+    serializer?: (actual: T) => string;
   }
 
   /** @category Testing */
@@ -1465,6 +1535,14 @@ declare namespace Deno {
   /**
    * Register a benchmark test which will be run when `deno bench` is used on
    * the command line and the containing module looks like a bench module.
+   *
+   * A module "looks like a bench module" when `deno bench` selects it for
+   * execution. When you pass explicit file paths to `deno bench`, those files
+   * are always run. When you run `deno bench` without paths, it walks the
+   * directory looking for files whose name (ignoring the extension) ends with
+   * `_bench` or `.bench`, or is exactly `bench`. Examples are `foo_bench.ts`,
+   * `foo.bench.js`, or `bench.ts`. Supported extensions are the same as for
+   * tests (`.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.mts`, `.cjs`, `.cts`).
    *
    * If the test function (`fn`) returns a promise or is async, the test runner
    * will await resolution to consider the test complete.
@@ -3118,12 +3196,18 @@ declare namespace Deno {
   ): Promise<void>;
 
   /** Asynchronously reads and returns the entire contents of a file as an UTF-8
-   *  decoded string. Reading a directory throws an error.
+   *  decoded string.
    *
    * ```ts
    * const data = await Deno.readTextFile("hello.txt");
    * console.log(data);
    * ```
+   *
+   * The returned promise rejects if the operation fails, for example with
+   * {@linkcode Deno.errors.NotFound} if the file does not exist,
+   * {@linkcode Deno.errors.IsADirectory} if `path` refers to a directory, or
+   * {@linkcode Deno.errors.PermissionDenied} if the required permission has not
+   * been granted.
    *
    * Requires `allow-read` permission.
    *
@@ -3136,12 +3220,18 @@ declare namespace Deno {
   ): Promise<string>;
 
   /** Synchronously reads and returns the entire contents of a file as an UTF-8
-   *  decoded string. Reading a directory throws an error.
+   *  decoded string.
    *
    * ```ts
    * const data = Deno.readTextFileSync("hello.txt");
    * console.log(data);
    * ```
+   *
+   * Throws if the operation fails, for example with
+   * {@linkcode Deno.errors.NotFound} if the file does not exist,
+   * {@linkcode Deno.errors.IsADirectory} if `path` refers to a directory, or
+   * {@linkcode Deno.errors.PermissionDenied} if the required permission has not
+   * been granted.
    *
    * Requires `allow-read` permission.
    *
@@ -3593,6 +3683,13 @@ declare namespace Deno {
    * await Deno.writeTextFile("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
    * ```
    *
+   * The data is written to the file and the file is closed, but this does not
+   * guarantee that the contents have been flushed from the operating system's
+   * buffers to the physical storage device. If you need such a durability
+   * guarantee (for example before signalling that a write has been committed),
+   * open the file with {@linkcode Deno.open} and call
+   * {@linkcode Deno.FsFile.sync} before closing it.
+   *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is
    * `false`.
    *
@@ -3611,6 +3708,12 @@ declare namespace Deno {
    * ```ts
    * Deno.writeTextFileSync("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
    * ```
+   *
+   * As with {@linkcode Deno.writeTextFile}, the data is written and the file is
+   * closed, but this does not guarantee the contents have been flushed from the
+   * operating system's buffers to the physical storage device. If you need such
+   * a durability guarantee, open the file with {@linkcode Deno.openSync} and
+   * call {@linkcode Deno.FsFile.syncSync} before closing it.
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is
    * `false`.
@@ -3971,7 +4074,11 @@ declare namespace Deno {
     get stdout(): SubprocessReadableStream;
     get stderr(): SubprocessReadableStream;
     readonly pid: number;
-    /** Get the status of the child. */
+    /** A promise that resolves once the child process has exited, with its
+     * exit code and terminating signal (if any). The promise never rejects; if
+     * the process is still running the promise is pending. Accessing this
+     * property does not, on its own, prevent the Deno process from exiting -
+     * see {@linkcode ChildProcess.ref}. */
     readonly status: Promise<CommandStatus>;
 
     /** Waits for the child to exit completely, returning all its output and
@@ -5258,12 +5365,17 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
+   * The `"A"`, `"AAAA"`, `"ANAME"`, `"CNAME"`, `"NS"` and `"PTR"` record types
+   * resolve to an array of strings.
+   *
    * ```ts
    * const a = await Deno.resolveDns("example.com", "A");
+   * // ["93.184.215.14"]
    *
    * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
    *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
    * });
+   * // ["2606:2800:21f:cb07:6820:80da:af6b:8b2c"]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5288,12 +5400,12 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * The `"CAA"` record type resolves to an array of
+   * {@linkcode Deno.CaaRecord} objects.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
-   * });
+   * ```ts
+   * const caa = await Deno.resolveDns("example.com", "CAA");
+   * // [{ critical: false, tag: "issue", value: "letsencrypt.org" }]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5318,12 +5430,12 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * The `"MX"` record type resolves to an array of
+   * {@linkcode Deno.MxRecord} objects.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
-   * });
+   * ```ts
+   * const mx = await Deno.resolveDns("example.com", "MX");
+   * // [{ preference: 10, exchange: "mail.example.com" }]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5348,12 +5460,19 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * The `"NAPTR"` record type resolves to an array of
+   * {@linkcode Deno.NaptrRecord} objects.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
-   * });
+   * ```ts
+   * const naptr = await Deno.resolveDns("example.com", "NAPTR");
+   * // [{
+   * //   order: 100,
+   * //   preference: 10,
+   * //   flags: "S",
+   * //   services: "SIP+D2U",
+   * //   regexp: "",
+   * //   replacement: "_sip._udp.example.com",
+   * // }]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5378,12 +5497,20 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * The `"SOA"` record type resolves to an array of
+   * {@linkcode Deno.SoaRecord} objects.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
-   * });
+   * ```ts
+   * const soa = await Deno.resolveDns("example.com", "SOA");
+   * // [{
+   * //   mname: "ns.example.com",
+   * //   rname: "hostmaster.example.com",
+   * //   serial: 2024010101,
+   * //   refresh: 7200,
+   * //   retry: 3600,
+   * //   expire: 1209600,
+   * //   minimum: 3600,
+   * // }]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5408,12 +5535,12 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * The `"SRV"` record type resolves to an array of
+   * {@linkcode Deno.SrvRecord} objects.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
-   * });
+   * ```ts
+   * const srv = await Deno.resolveDns("_sip._tcp.example.com", "SRV");
+   * // [{ priority: 10, weight: 5, port: 5060, target: "sip.example.com" }]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5438,12 +5565,12 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * The `"TXT"` record type resolves to an array of string arrays, since a
+   * single TXT record can be split into multiple character strings.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
-   * });
+   * ```ts
+   * const txt = await Deno.resolveDns("example.com", "TXT");
+   * // [["v=spf1 include:_spf.example.com ~all"]]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5468,10 +5595,14 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * This overload is selected when the record type is only known at runtime. The
+   * shape of each resolved record depends on the {@linkcode Deno.RecordType}
+   * that was requested - see the more specific overloads above for the exact
+   * return type of each record type.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   * ```ts
+   * const recordType: Deno.RecordType = "A";
+   * const records = await Deno.resolveDns("example.com", recordType, {
    *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
    * });
    * ```
@@ -5550,6 +5681,12 @@ declare namespace Deno {
 
   /** A handler for HTTP requests. Consumes a request and returns a response.
    *
+   * The `request` argument is a standard Web platform {@linkcode Request}, and
+   * the handler must return a standard Web platform {@linkcode Response} (or a
+   * promise resolving to one). These are the same `Request` and `Response`
+   * classes available as globals in Deno and in browsers, so the body, headers,
+   * URL, and method can all be read from the incoming `Request`.
+   *
    * If a handler throws, the server calling the handler will assume the impact
    * of the error is isolated to the individual request. It will catch the error
    * and if necessary will close the underlying connection.
@@ -5607,6 +5744,14 @@ declare namespace Deno {
 
     /** The callback which is called when the server starts listening. */
     onListen?: (localAddr: Addr) => void;
+
+    /**
+     * Whether to automatically compress response bodies when the client accepts
+     * a supported encoding and the response is compressible.
+     *
+     * @default {false}
+     */
+    automaticCompression?: boolean;
   }
 
   /**

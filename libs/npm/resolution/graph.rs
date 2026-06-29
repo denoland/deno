@@ -6521,6 +6521,7 @@ mod test {
             tarball: "https://example.com/package-0@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -6557,6 +6558,7 @@ mod test {
             tarball: "https://example.com/package-a@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -6574,6 +6576,7 @@ mod test {
             tarball: "https://example.com/package-b@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -7939,6 +7942,7 @@ mod test {
       link_packages: link_packages.clone(),
       newest_dependency_date_options: options.newest_dependency_date,
       overrides: Arc::new(options.overrides),
+      trust_policy: Default::default(),
     };
     let mut resolver = GraphDependencyResolver::new(
       &mut graph,
@@ -8200,6 +8204,7 @@ mod test {
       link_packages: Default::default(),
       newest_dependency_date_options: Default::default(),
       overrides: Default::default(),
+      trust_policy: Default::default(),
     };
     let mut resolver = GraphDependencyResolver::new(
       &mut graph,

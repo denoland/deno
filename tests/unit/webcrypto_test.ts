@@ -681,6 +681,55 @@ Deno.test(async function testDeriveKey() {
   assertEquals(algorithm.length, 512);
 });
 
+Deno.test(async function testDeriveKeyAesOcb() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const rawKey = crypto.getRandomValues(new Uint8Array(16));
+  const key = await subtle.importKey(
+    "raw",
+    rawKey,
+    "PBKDF2",
+    false,
+    ["deriveKey"],
+  );
+
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const derivedKey = await subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: 1000,
+      hash: "SHA-256",
+    },
+    key,
+    { name: "AES-OCB", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+
+  assert(derivedKey instanceof CryptoKey);
+  assertEquals(derivedKey.type, "secret");
+  assertEquals(derivedKey.extractable, false);
+  assertEquals(derivedKey.usages, ["encrypt", "decrypt"]);
+  const algorithm = derivedKey.algorithm as AesKeyAlgorithm;
+  assertEquals(algorithm.name, "AES-OCB");
+  assertEquals(algorithm.length, 256);
+
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode("Hello, world!");
+  const encrypted = await subtle.encrypt(
+    { name: "AES-OCB", iv },
+    derivedKey,
+    plaintext,
+  );
+  const decrypted = await subtle.decrypt(
+    { name: "AES-OCB", iv },
+    derivedKey,
+    encrypted,
+  );
+  assertEquals(new Uint8Array(decrypted), plaintext);
+});
+
 Deno.test(async function testAesCbcEncryptDecrypt() {
   const key = await crypto.subtle.generateKey(
     { name: "AES-CBC", length: 128 },
@@ -954,6 +1003,55 @@ Deno.test(async function testUnwrapKey() {
   assertEquals(unwrappedKey.type, "secret");
   assertEquals(unwrappedKey.extractable, false);
   assertEquals(unwrappedKey.usages, ["encrypt", "decrypt"]);
+});
+
+// Regression for https://github.com/denoland/deno/issues/35416 — wrapping a
+// JWK with AES-KW used to throw `TypeError: Data must be multiple of 8 bytes`
+// because the UTF-8 JSON serialization of the JWK is generally not a multiple
+// of 8 bytes. Browsers and Node.js pad the JSON with ASCII spaces before
+// running AES-KW; we now do the same.
+Deno.test(async function testWrapUnwrapJwkAesKw() {
+  const subtle = crypto.subtle;
+  for (const hash of ["SHA-1", "SHA-256", "SHA-384", "SHA-512"] as const) {
+    const key = await subtle.generateKey(
+      { name: "HMAC", hash },
+      true,
+      ["sign", "verify"],
+    );
+    const wrappingKey = await subtle.generateKey(
+      { name: "AES-KW", length: 256 },
+      true,
+      ["wrapKey", "unwrapKey"],
+    );
+
+    const wrapped = await subtle.wrapKey(
+      "jwk",
+      key,
+      wrappingKey,
+      "AES-KW",
+    );
+    assert(wrapped instanceof ArrayBuffer);
+    assertEquals(wrapped.byteLength % 8, 0);
+
+    const unwrapped = await subtle.unwrapKey(
+      "jwk",
+      wrapped,
+      wrappingKey,
+      "AES-KW",
+      { name: "HMAC", hash },
+      true,
+      ["sign", "verify"],
+    );
+    assert(unwrapped instanceof CryptoKey);
+    assertEquals(unwrapped.type, "secret");
+    assertEquals(unwrapped.usages, ["sign", "verify"]);
+
+    // Round-trip: the unwrapped key must produce the same MAC as the original.
+    const data = new TextEncoder().encode("hello, wrap-key");
+    const sig1 = new Uint8Array(await subtle.sign("HMAC", key, data));
+    const sig2 = new Uint8Array(await subtle.sign("HMAC", unwrapped, data));
+    assertEquals(sig1, sig2);
+  }
 });
 
 Deno.test(async function testDecryptWithInvalidIntializationVector() {
@@ -4114,6 +4212,10 @@ Deno.test(function subtleCryptoSupportsAdditionalAlgorithm() {
   // deriveKey with target algorithm (the second-overload form).
   assert(supports("deriveKey", "HKDF", {
     name: "AES-GCM",
+    length: 256,
+  }));
+  assert(supports("deriveKey", "PBKDF2", {
+    name: "AES-OCB",
     length: 256,
   }));
   assert(supports("deriveKey", "PBKDF2", {
