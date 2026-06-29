@@ -308,6 +308,11 @@ async fn compile_desktop(
       let entrypoint_code = detection.entrypoint_code.clone();
       let includes = detection.include_paths.clone();
       log::info!("Detected {} framework", detection.name);
+      // Run the framework's build step (e.g. `deno task build`) before its
+      // build output (`dist`, `.next`, etc.) is added to the compile includes
+      // below; otherwise the include points at a directory that doesn't exist
+      // yet and the compile fails (#35535). Mirrors `deno compile .`.
+      super::framework::run_build_command(detection, cwd)?;
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
       if detection.name == "Next.js"

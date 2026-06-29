@@ -9,6 +9,7 @@
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 
@@ -71,6 +72,41 @@ pub fn find_framework_favicon(
     }
   }
   None
+}
+
+/// Run the framework's build step (e.g. `deno task build`) with `dir` as the
+/// working directory, if the detection specifies one. This must run before the
+/// framework's `include_paths` are bundled, since they point at the build
+/// output (`dist`, `.next`, etc.) which doesn't exist until the build runs.
+///
+/// Shared by `deno compile .` and `deno desktop .` so the two can't drift.
+pub fn run_build_command(
+  detection: &FrameworkDetection,
+  dir: &Path,
+) -> Result<(), AnyError> {
+  let Some(build_cmd) = &detection.build_command else {
+    return Ok(());
+  };
+  log::info!(
+    "{} {} project...",
+    deno_terminal::colors::green("Building"),
+    detection.name,
+  );
+  let status = std::process::Command::new(&build_cmd[0])
+    .args(&build_cmd[1..])
+    .current_dir(dir)
+    .status()
+    .with_context(|| {
+      format!("Failed to run build command: {}", build_cmd.join(" "))
+    })?;
+  if !status.success() {
+    deno_core::anyhow::bail!(
+      "{} build failed (exit code: {})",
+      detection.name,
+      status.code().unwrap_or(-1)
+    );
+  }
+  Ok(())
 }
 
 /// Detect a web framework in the given directory.
@@ -1215,5 +1251,47 @@ mod tests {
     let p = find_framework_favicon(dir.path(), &det, "linux").unwrap();
     // public/ is checked before app/.
     assert_eq!(p, dir.path().join("public/favicon.png"));
+  }
+
+  // --- run_build_command ---
+
+  #[test]
+  fn run_build_command_none_is_noop() {
+    let dir = setup_dir();
+    let mut det = nextjs_detection();
+    det.build_command = None;
+    // No command to run, so this must succeed without doing anything.
+    run_build_command(&det, dir.path()).unwrap();
+  }
+
+  #[test]
+  fn run_build_command_runs_in_dir() {
+    // The build command runs with the detected directory as cwd. Use a
+    // shell command that writes the framework's build output so we can assert
+    // it ran in the right place (a regression test for #35535, where the
+    // build step was skipped and the include path didn't exist).
+    let dir = setup_dir();
+    let mut det = nextjs_detection();
+    det.include_paths = vec!["dist".into()];
+    det.build_command = if cfg!(windows) {
+      Some(vec!["cmd".into(), "/C".into(), "mkdir dist".into()])
+    } else {
+      Some(vec!["sh".into(), "-c".into(), "mkdir dist".into()])
+    };
+    run_build_command(&det, dir.path()).unwrap();
+    assert!(dir.path().join("dist").is_dir());
+  }
+
+  #[test]
+  fn run_build_command_propagates_failure() {
+    let dir = setup_dir();
+    let mut det = nextjs_detection();
+    det.build_command = if cfg!(windows) {
+      Some(vec!["cmd".into(), "/C".into(), "exit 1".into()])
+    } else {
+      Some(vec!["sh".into(), "-c".into(), "exit 1".into()])
+    };
+    let err = run_build_command(&det, dir.path()).unwrap_err();
+    assert!(err.to_string().contains("build failed"));
   }
 }
