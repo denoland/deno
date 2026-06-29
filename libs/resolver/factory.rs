@@ -1182,7 +1182,11 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
           reason = "Arc needed for shared exclude set"
         )]
         exclude: std::sync::Arc::new(
-          npmrc.trust_policy_exclude.iter().map(|s| s.to_ascii_lowercase()).collect(),
+          npmrc
+            .trust_policy_exclude
+            .iter()
+            .map(|s| s.to_ascii_lowercase())
+            .collect(),
         ),
       };
 

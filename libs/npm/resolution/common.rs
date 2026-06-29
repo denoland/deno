@@ -1146,7 +1146,9 @@ mod test {
       trust_policy: TrustPolicyOptions {
         policy: NpmTrustPolicy::NoDowngrade,
         ignore_after_cutoff: None,
-        exclude: Arc::new(exclude.iter().map(|s| s.to_ascii_lowercase()).collect()),
+        exclude: Arc::new(
+          exclude.iter().map(|s| s.to_ascii_lowercase()).collect(),
+        ),
       },
       ..Default::default()
     };
