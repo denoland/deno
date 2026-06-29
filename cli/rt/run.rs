@@ -79,6 +79,7 @@ use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_web::Blob;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_semver::npm::NpmPackageReqReference;
@@ -155,6 +156,11 @@ struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
   hook_registry: LoaderHookRegistry,
   sys: DenoRtSys,
+  /// For blob/object-URL module workers, the captured root blob and its
+  /// specifier. Used so the worker's root module load resolves from the
+  /// synchronously-captured blob even if `URL.revokeObjectURL` has since
+  /// removed it from the blob store.
+  maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 }
 
 impl std::fmt::Debug for EmbeddedModuleLoader {
@@ -771,8 +777,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
     if original_specifier.scheme() == "blob" {
       let specifier = original_specifier.clone();
-      let Some(blob) = self.shared.blob_store.get_object_url(specifier.clone())
-      else {
+      // Prefer the synchronously-captured root blob (if this is the worker's
+      // main module) so a racing `URL.revokeObjectURL` can't make the load
+      // fail; otherwise look the object URL up in the blob store.
+      let maybe_blob = self
+        .maybe_main_module_blob
+        .as_ref()
+        .filter(|(blob_specifier, _)| *blob_specifier == specifier)
+        .map(|(_, blob)| blob.clone())
+        .or_else(|| self.shared.blob_store.get_object_url(specifier.clone()));
+      let Some(blob) = maybe_blob else {
         return deno_core::ModuleLoadResponse::Sync(Err(
           JsErrorBox::type_error(format!("Blob URL not found: {specifier}")),
         ));
@@ -1126,12 +1140,16 @@ struct StandaloneModuleLoaderFactory {
 }
 
 impl StandaloneModuleLoaderFactory {
-  pub fn create_result(&self) -> CreateModuleLoaderResult {
+  pub fn create_result(
+    &self,
+    maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
+  ) -> CreateModuleLoaderResult {
     let hook_registry = LoaderHookRegistry::default();
     let loader = Rc::new(EmbeddedModuleLoader {
       shared: self.shared.clone(),
       hook_registry: hook_registry.clone(),
       sys: self.sys.clone(),
+      maybe_main_module_blob,
     });
     {
       let loader = loader.clone();
@@ -1157,15 +1175,16 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
     &self,
     _root_permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult {
-    self.create_result()
+    self.create_result(None)
   }
 
   fn create_for_worker(
     &self,
     _parent_permissions: PermissionsContainer,
     _permissions: PermissionsContainer,
+    maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult {
-    self.create_result()
+    self.create_result(maybe_main_module_blob)
   }
 }
 
@@ -1341,6 +1360,9 @@ pub async fn run_with_options(
         scopes: Default::default(),
         registry_configs: Default::default(),
         min_release_age_days: None,
+        trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       });
       let npm_cache_dir = Arc::new(NpmCacheDir::new(
         &sys,
@@ -1594,6 +1616,40 @@ pub async fn run_with_options(
     }
     checker
   });
+  // Resolve a persistent, per-app data directory so origin-bound storage such
+  // as the default `Deno.openKv()`, `localStorage` and `caches` persists to
+  // disk instead of silently falling back to an in-memory database. A compiled
+  // binary is a standalone app, so we store under the platform's app data
+  // directory (`%LOCALAPPDATA%`, `~/Library/Application Support`,
+  // `$XDG_DATA_HOME`) keyed by the app name, rather than polluting `DENO_DIR`.
+  //
+  // The app name is baked in at compile time (`--app-name`, otherwise the
+  // output file name), so it is stable across runs and even if the binary is
+  // later renamed. Recompiling with a different `--output`/`--app-name` starts
+  // a fresh store. If we can't resolve a data directory we leave both pieces
+  // unset and keep the in-memory fallback.
+  //
+  // `metadata.app_name` is always set by binaries this version produces; the
+  // fallback to the executable file stem only matters for binaries compiled
+  // before the field existed.
+  let app_name = metadata.app_name.unwrap_or_else(|| {
+    std::env::current_exe()
+      .ok()
+      .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+      .unwrap_or_else(|| "deno-compile".to_string())
+  });
+  // `--app-name` is validated at compile time (see `validate_app_name`), so it
+  // is safe to use directly as a single directory component here.
+  let origin_data_folder_path =
+    crate::binary::get_data_local_dir().map(|dir| dir.join(&app_name));
+  // Only enable persistent storage when we resolved a data directory. The
+  // storage key resolver must stay empty otherwise, because the worker unwraps
+  // `origin_data_folder_path` whenever the key resolves to a value.
+  let storage_key_resolver = if origin_data_folder_path.is_some() {
+    StorageKeyResolver::from_compile_app_name(&app_name)
+  } else {
+    StorageKeyResolver::empty()
+  };
   let lib_main_worker_options = LibMainWorkerOptions {
     argv: metadata.argv,
     log_level: WorkerLogLevel::Info,
@@ -1614,7 +1670,7 @@ pub async fn run_with_options(
     node_debug: std::env::var("NODE_DEBUG").ok(),
     node_cluster_unique_id: std::env::var("NODE_UNIQUE_ID").ok(),
     node_cluster_sched_policy: std::env::var("NODE_CLUSTER_SCHED_POLICY").ok(),
-    origin_data_folder_path: None,
+    origin_data_folder_path,
     seed: metadata.seed,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
@@ -1647,7 +1703,7 @@ pub async fn run_with_options(
     create_npm_process_state_provider(&npm_resolver),
     pkg_json_resolver,
     root_cert_store_provider,
-    StorageKeyResolver::empty(),
+    storage_key_resolver,
     sys.clone(),
     lib_main_worker_options,
     Default::default(),
@@ -1898,6 +1954,9 @@ fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
     scopes: Default::default(),
     registry_configs: Default::default(),
     min_release_age_days: None,
+    trust_policy: Default::default(),
+    trust_policy_ignore_after_minutes: None,
+    trust_policy_exclude: Vec::new(),
   })
 }
 

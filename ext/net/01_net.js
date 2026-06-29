@@ -22,6 +22,7 @@ const {
   op_net_join_multi_v6_udp,
   op_net_leave_multi_v4_udp,
   op_net_leave_multi_v6_udp,
+  op_net_listen_memory,
   op_net_listen_tcp,
   op_net_listen_tunnel,
   op_net_listen_unix,
@@ -637,6 +638,16 @@ function listen(args) {
   }
 }
 
+// Internal: the in-process `memory:` transport is not a public `Deno.listen`
+// transport. It backs the desktop runtime's `DENO_SERVE_ADDRESS=memory:<name>`
+// serve path only, so it is exposed to `ext:deno_http/00_serve.js` but never
+// reachable through `Deno.listen`/`Deno.serve`.
+function listenMemory(name) {
+  const { 0: rid, 1: resolvedName, 2: id } = op_net_listen_memory(name);
+  const addr = { transport: "memory", name: resolvedName, id };
+  return new Listener(rid, addr, "memory");
+}
+
 function validatePort(maybePort, isServer = false) {
   // A missing port means "any available port" (port 0) for servers. Clients
   // must always specify a port to connect to, so a missing port is left as-is
@@ -761,6 +772,7 @@ return {
   createListenDatagram,
   dropMembership,
   listen,
+  listenMemory,
   Listener,
   listenOptionApiName,
   resolveDns,

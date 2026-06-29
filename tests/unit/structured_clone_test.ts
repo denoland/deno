@@ -60,6 +60,21 @@ Deno.test("correct DataCloneError message", () => {
   structuredClone(ab2, { transfer: [ab2] });
 });
 
+Deno.test("structuredClone URL throws DataCloneError", () => {
+  // URL is not [Serializable] per the WHATWG/HTML spec, so cloning it must
+  // throw a DataCloneError rather than silently producing an empty object.
+  assertThrows(
+    () => structuredClone(new URL("https://example.com/")),
+    DOMException,
+    "Cannot clone object of unsupported type.",
+  );
+  assertThrows(
+    () => structuredClone(new URLSearchParams("a=1&b=2")),
+    DOMException,
+    "Cannot clone object of unsupported type.",
+  );
+});
+
 Deno.test("structuredClone CryptoKey", async () => {
   // AES key
   const aesKey = await crypto.subtle.generateKey(

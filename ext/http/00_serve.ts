@@ -25,6 +25,7 @@ const {
   op_http_request_on_cancel,
   op_http_serve,
   op_http_serve_address_override,
+  op_http_serve_default_compression,
   op_http_serve_on,
   op_http_set_promise_complete,
   op_http_set_response_native,
@@ -110,6 +111,7 @@ const {
 } = core.loadExtScript("ext:deno_web/06_streams.js");
 const {
   listen,
+  listenMemory,
   listenOptionApiName,
   UpgradedConn,
 } = core.loadExtScript("ext:deno_net/01_net.js");
@@ -1149,9 +1151,15 @@ type RawServeOptions = {
   onError?: (error: unknown) => Response | Promise<Response>;
   onListen?: (params: { hostname: string; port: number }) => void;
   handler?: RawHandler;
+  automaticCompression?: boolean;
 };
 
 const kLoadBalanced = Symbol("kLoadBalanced");
+
+// Module-private marker for the internal in-process `memory:` serve transport.
+// Only the `DENO_SERVE_ADDRESS=memory:<name>` env path sets it; it is not a
+// user-reachable `Deno.serve` option (the symbol can't be forged by callers).
+const kMemoryServe = Symbol("kMemoryServe");
 
 function formatHostName(hostname: string): string {
   // If the hostname is "0.0.0.0", we display "localhost" in console
@@ -1214,7 +1222,12 @@ function serve(arg1, arg2) {
     serveAddressOverrideConsumed = true;
 
     let envOptions = duplicateListener
-      ? { __proto__: null, signal: options.signal, onError: options.onError }
+      ? {
+        __proto__: null,
+        signal: options.signal,
+        onError: options.onError,
+        automaticCompression: options.automaticCompression,
+      }
       : options;
 
     switch (overrideKind) {
@@ -1261,6 +1274,20 @@ function serve(arg1, arg2) {
         delete envOptions.cid;
         delete envOptions.port;
         delete envOptions.path;
+        break;
+      }
+      case 5: {
+        // Memory (in-process byte channel). Internal-only: keyed by a private
+        // symbol, not a public `memory` option.
+        envOptions = {
+          ...envOptions,
+          [kMemoryServe]: overrideHost,
+        };
+        delete envOptions.hostname;
+        delete envOptions.cid;
+        delete envOptions.port;
+        delete envOptions.path;
+        break;
       }
     }
 
@@ -1305,6 +1332,9 @@ function serveInner(options, handler) {
   const wantsUnix = ObjectHasOwn(options, "path");
   const wantsVsock = ObjectHasOwn(options, "cid");
   const wantsTunnel = options.tunnel === true;
+  const wantsMemory = options[kMemoryServe] !== undefined;
+  const automaticCompression = options.automaticCompression ??
+    op_http_serve_default_compression();
   const signal = options.signal;
   const onError = options.onError ??
     function (error) {
@@ -1319,13 +1349,20 @@ function serveInner(options, handler) {
       [listenOptionApiName]: "Deno.serve",
     });
     const path = listener.addr.path;
-    return serveHttpOnListener(listener, signal, handler, onError, () => {
-      if (options.onListen) {
-        options.onListen(listener.addr);
-      } else {
-        internals.log("info", `Listening on ${path}`);
-      }
-    });
+    return serveHttpOnListener(
+      listener,
+      signal,
+      handler,
+      onError,
+      () => {
+        if (options.onListen) {
+          options.onListen(listener.addr);
+        } else {
+          internals.log("info", `Listening on ${path}`);
+        }
+      },
+      automaticCompression,
+    );
   }
 
   if (wantsVsock) {
@@ -1336,13 +1373,39 @@ function serveInner(options, handler) {
       [listenOptionApiName]: "Deno.serve",
     });
     const { cid, port } = listener.addr;
-    return serveHttpOnListener(listener, signal, handler, onError, () => {
-      if (options.onListen) {
-        options.onListen(listener.addr);
-      } else {
-        internals.log("info", `Listening on vsock:${cid}:${port}`);
-      }
-    });
+    return serveHttpOnListener(
+      listener,
+      signal,
+      handler,
+      onError,
+      () => {
+        if (options.onListen) {
+          options.onListen(listener.addr);
+        } else {
+          internals.log("info", `Listening on vsock:${cid}:${port}`);
+        }
+      },
+      automaticCompression,
+    );
+  }
+
+  if (wantsMemory) {
+    const listener = listenMemory(options[kMemoryServe]);
+    const name = listener.addr.name;
+    return serveHttpOnListener(
+      listener,
+      signal,
+      handler,
+      onError,
+      () => {
+        if (options.onListen) {
+          options.onListen(listener.addr);
+        } else {
+          internals.log("info", `Listening on memory:${name}`);
+        }
+      },
+      automaticCompression,
+    );
   }
 
   if (wantsTunnel) {
@@ -1350,21 +1413,28 @@ function serveInner(options, handler) {
       transport: "tunnel",
       [listenOptionApiName]: "Deno.serve",
     });
-    return serveHttpOnListener(listener, signal, handler, onError, () => {
-      if (options.onListen) {
-        options.onListen(listener.addr);
-      } else {
-        const additional = listener.addr.port === 443
-          ? ""
-          : `:${listener.addr.port}`;
-        internals.log(
-          "info",
-          `Listening on https://${
-            formatHostName(listener.addr.hostname)
-          }${additional}`,
-        );
-      }
-    });
+    return serveHttpOnListener(
+      listener,
+      signal,
+      handler,
+      onError,
+      () => {
+        if (options.onListen) {
+          options.onListen(listener.addr);
+        } else {
+          const additional = listener.addr.port === 443
+            ? ""
+            : `:${listener.addr.port}`;
+          internals.log(
+            "info",
+            `Listening on https://${
+              formatHostName(listener.addr.hostname)
+            }${additional}`,
+          );
+        }
+      },
+      automaticCompression,
+    );
   }
 
   const listenOpts = {
@@ -1421,13 +1491,27 @@ function serveInner(options, handler) {
     }
   };
 
-  return serveHttpOnListener(listener, signal, handler, onError, onListen);
+  return serveHttpOnListener(
+    listener,
+    signal,
+    handler,
+    onError,
+    onListen,
+    automaticCompression,
+  );
 }
 
 /**
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary listener.
  */
-function serveHttpOnListener(listener, signal, handler, onError, onListen) {
+function serveHttpOnListener(
+  listener,
+  signal,
+  handler,
+  onError,
+  onListen,
+  automaticCompression = op_http_serve_default_compression(),
+) {
   let serverContext = undefined;
   let callback = undefined;
   let nativeCallback = undefined;
@@ -1456,6 +1540,7 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
     signal,
     op_http_serve(
       listener[internalRidSymbol],
+      automaticCompression,
       dispatch,
       rawNoRequest,
       nativeDispatch,
@@ -1571,10 +1656,12 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
     return nativeCallback(req, undefined);
   };
   const rawNoRequest = handler.length === 0 && nativeFastPath;
+  const automaticCompression = op_http_serve_default_compression();
   serverContext = new CallbackContext(
     signal,
     op_http_serve_on(
       connection[internalRidSymbol],
+      automaticCompression,
       dispatch,
       rawNoRequest,
       nativeDispatch,

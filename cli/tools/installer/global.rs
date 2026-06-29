@@ -395,6 +395,7 @@ async fn install_global_compiled(
     eszip: false,
     self_extracting: false,
     bundle: false,
+    app_name: None,
     minify: false,
     exclude_unused_npm: false,
   };
@@ -2450,6 +2451,9 @@ mod tests {
       scopes,
       registry_configs: Default::default(),
       min_release_age_days: None,
+      trust_policy: Default::default(),
+      trust_policy_ignore_after_minutes: None,
+      trust_policy_exclude: Vec::new(),
     })
   }
 

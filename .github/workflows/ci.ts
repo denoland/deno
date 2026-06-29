@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 117;
+const cacheVersion = 118;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -1181,6 +1181,17 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     // shard_index > 0 jobs only run on PRs (main runs unsharded)
     const isShardZero = testMatrix.shard_index.equals(0);
     const shouldRunShard = isShardZero.or(isPr);
+    // Some test shards can finish close to the default 30m job timeout
+    // and get cancelled during harness shutdown.
+    const timeoutMinutes = ((rawBuildItem.profile === "debug" &&
+        ((rawBuildItem.os === "windows" &&
+          rawBuildItem.arch === "aarch64") ||
+          (rawBuildItem.os === "macos" &&
+            rawBuildItem.arch === "x86_64"))) ||
+        (rawBuildItem.os === "linux" &&
+          rawBuildItem.arch === "x86_64"))
+      ? 60
+      : 30;
     additionalJobs.push(job(
       jobIdForJob("test"),
       {
@@ -1188,7 +1199,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           `test ${testMatrix.test_crate} ${testMatrix.shard_label}${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
-        timeoutMinutes: 30,
+        timeoutMinutes,
         defaults,
         env,
         strategy: {

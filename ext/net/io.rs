@@ -222,6 +222,28 @@ impl Resource for UnixStreamResource {
   }
 }
 
+pub type MemoryStreamResource = FullDuplexResource<
+  tokio::io::ReadHalf<crate::memory::MemoryStream>,
+  tokio::io::WriteHalf<crate::memory::MemoryStream>,
+>;
+
+impl Resource for MemoryStreamResource {
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
+
+  fn name(&self) -> Cow<'_, str> {
+    "memoryStream".into()
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel_read_ops();
+  }
+}
+
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 pub type VsockStreamResource =
   FullDuplexResource<tokio_vsock::OwnedReadHalf, tokio_vsock::OwnedWriteHalf>;

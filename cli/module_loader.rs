@@ -75,6 +75,7 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
 use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_web::Blob;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
@@ -83,6 +84,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageJsonLoadError;
+use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 use sys_traits::FsRead;
@@ -155,6 +157,10 @@ pub struct PrepareModuleLoadOptions<'a> {
   /// graph back, reload some specifiers in it, then do graph validation).
   pub skip_graph_roots_validation: bool,
   pub file_content_overrides: HashMap<ModuleSpecifier, Arc<[u8]>>,
+  /// Per-specifier response header overrides (e.g. `content-type`) applied to
+  /// the graph loader. Used to preserve a blob's media type when its content
+  /// is supplied out-of-band via `file_content_overrides`.
+  pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
 }
 
 impl ModuleLoadPreparer {
@@ -194,6 +200,7 @@ impl ModuleLoadPreparer {
       allow_unknown_media_types,
       skip_graph_roots_validation,
       file_content_overrides,
+      file_header_overrides,
     } = options;
     let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
@@ -202,6 +209,9 @@ impl ModuleLoadPreparer {
       .create_graph_loader_with_permissions(permissions);
     if !file_content_overrides.is_empty() {
       loader.set_file_content_overrides(file_content_overrides);
+    }
+    for (specifier, headers) in file_header_overrides {
+      loader.insert_file_header_override(specifier, headers);
     }
     if let Some(ext) = ext_overwrite {
       let maybe_content_type = match ext.as_str() {
@@ -457,6 +467,7 @@ impl CliModuleLoaderFactory {
     }
   }
 
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   fn create_with_lib<TGraphContainer: ModuleGraphContainer>(
     &self,
     graph_container: TGraphContainer,
@@ -464,6 +475,7 @@ impl CliModuleLoaderFactory {
     is_worker: bool,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
+    maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult {
     let hook_registry =
       deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry::default();
@@ -477,6 +489,7 @@ impl CliModuleLoaderFactory {
         shared: self.shared.clone(),
         loaded_files: Default::default(),
         hook_registry: hook_registry.clone(),
+        maybe_main_module_blob,
       })));
     {
       let inner = module_loader.0.clone();
@@ -526,6 +539,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
       /* is worker */ false,
       root_permissions.clone(),
       root_permissions,
+      None,
     )
   }
 
@@ -533,6 +547,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
     &self,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
+    maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult {
     self.create_with_lib(
       // create a fresh module graph for the worker
@@ -543,6 +558,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
       /* is worker */ true,
       parent_permissions,
       permissions,
+      maybe_main_module_blob,
     )
   }
 }
@@ -565,6 +581,12 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   graph_container: TGraphContainer,
   loaded_files: RefCell<HashSet<ModuleSpecifier>>,
   hook_registry: deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry,
+  /// For blob/object-URL module workers, the captured root blob and its
+  /// specifier. Captured synchronously at worker construction so that a
+  /// subsequent `URL.revokeObjectURL` cannot race the worker's module load.
+  /// Its content and media type are injected into the graph during
+  /// `prepare_load`.
+  maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -670,6 +692,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           allow_unknown_media_types: false,
           skip_graph_roots_validation: true,
           file_content_overrides: HashMap::new(),
+          file_header_overrides: HashMap::new(),
         },
       )
       .await;
@@ -699,6 +722,35 @@ impl<TGraphContainer: ModuleGraphContainer>
       .await
       .map_err(JsErrorBox::from_err)?;
 
+    self.code_source_to_module_source(specifier, code_source)
+  }
+
+  fn try_load_inner_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+    requested_module_type: &RequestedModuleType,
+  ) -> Option<Result<ModuleSource, ModuleLoaderError>> {
+    if specifier.path().ends_with(".node") {
+      return None;
+    }
+
+    let code_source = match self
+      .try_load_code_source_sync(specifier, requested_module_type)
+      .map_err(JsErrorBox::from_err)
+    {
+      Ok(Some(code_source)) => code_source,
+      Ok(None) => return None,
+      Err(err) => return Some(Err(err)),
+    };
+
+    Some(self.code_source_to_module_source(specifier, code_source))
+  }
+
+  fn code_source_to_module_source(
+    &self,
+    specifier: &ModuleSpecifier,
+    code_source: ModuleCodeStringSource,
+  ) -> Result<ModuleSource, ModuleLoaderError> {
     let code = if self.shared.is_inspecting
       || code_source.module_type == ModuleType::Wasm
     {
@@ -751,6 +803,37 @@ impl<TGraphContainer: ModuleGraphContainer>
       &code_source.found_url,
       code_cache,
     ))
+  }
+
+  fn try_load_code_source_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+    requested_module_type: &RequestedModuleType,
+  ) -> Result<Option<ModuleCodeStringSource>, CliModuleLoaderError> {
+    if NpmPackageReqReference::from_specifier(specifier).is_ok()
+      || self.shared.in_npm_pkg_checker.in_npm_package(specifier)
+      || self.hook_registry.load_active.get()
+    {
+      return Ok(None);
+    }
+
+    let graph = self.graph_container.graph();
+    let deno_resolver_requested_module_type =
+      as_deno_resolver_requested_module_type(requested_module_type);
+    let Some(prepared_module) =
+      self.shared.module_loader.try_load_prepared_module_sync(
+        &graph,
+        specifier,
+        &deno_resolver_requested_module_type,
+      )?
+    else {
+      return Ok(None);
+    };
+
+    Ok(Some(self.loaded_module_to_module_code_string_source(
+      prepared_module,
+      requested_module_type,
+    )))
   }
 
   async fn load_code_source(
@@ -1065,15 +1148,20 @@ impl<TGraphContainer: ModuleGraphContainer>
     // `file:///<project>/` mapping whose prefix match rewrites any file URL
     // outside the project root (such as the npm cache) to live underneath the
     // project directory, breaking the load. Such a package-internal main
-    // module is not a user source file and must not be remapped, so load it
-    // verbatim. A user-provided path entry (e.g. `deno run ./thing.ts`) is
+    // module is not a user source file and must not be remapped, so bypass the
+    // import map. A user-provided path entry (e.g. `deno run ./thing.ts`) is
     // intentionally left to the import map.
     if matches!(kind, deno_core::ResolutionKind::MainModule)
       && let Ok(url) = ModuleSpecifier::parse(raw_specifier)
       && url.scheme() == "file"
       && self.shared.in_npm_pkg_checker.in_npm_package(&url)
     {
-      return Ok(url);
+      let canonicalized_url = deno_path_util::url_to_file_path(&url)
+        .ok()
+        .and_then(|path| self.shared.sys.fs_canonicalize(&path).ok())
+        .and_then(|path| deno_path_util::url_from_file_path(&path).ok())
+        .unwrap_or(url);
+      return Ok(canonicalized_url);
     }
 
     let referrer = self
@@ -1357,6 +1445,13 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       );
     }
 
+    if options.is_synchronous
+      && let Some(result) =
+        inner.try_load_inner_sync(&specifier, &options.requested_module_type)
+    {
+      return deno_core::ModuleLoadResponse::Sync(result);
+    }
+
     deno_core::ModuleLoadResponse::Async(
       async move {
         // A `registerHooks` resolve hook may have rewritten this specifier
@@ -1520,11 +1615,38 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let is_dynamic = options.is_dynamic_import || inner.is_worker; // consider workers as dynamic for permissions
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
-      let file_overrides = maybe_code
-        .map(|code| {
-          HashMap::from([(specifier.clone(), Arc::from(code.into_bytes()))])
-        })
-        .unwrap_or_default();
+      // For a blob/object-URL worker root, inject the captured blob's content
+      // and media type so the graph builds from the synchronously-captured
+      // bytes even if the object URL has since been revoked. Otherwise fall
+      // back to any caller-provided source code.
+      let captured_blob =
+        inner
+          .maybe_main_module_blob
+          .as_ref()
+          .filter(|(blob_specifier, _)| {
+            maybe_code.is_none() && *blob_specifier == specifier
+          });
+      let (file_overrides, header_overrides) =
+        if let Some((blob_specifier, blob)) = captured_blob {
+          let bytes = blob.read_all().await;
+          (
+            HashMap::from([(blob_specifier.clone(), Arc::from(bytes))]),
+            HashMap::from([(
+              blob_specifier.clone(),
+              HashMap::from([(
+                "content-type".to_string(),
+                blob.media_type.clone(),
+              )]),
+            )]),
+          )
+        } else {
+          let file_overrides = maybe_code
+            .map(|code| {
+              HashMap::from([(specifier.clone(), Arc::from(code.into_bytes()))])
+            })
+            .unwrap_or_default();
+          (file_overrides, HashMap::new())
+        };
       let specifiers = &[specifier];
       {
         let graph = update_permit.graph_mut();
@@ -1540,6 +1662,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               allow_unknown_media_types: false,
               skip_graph_roots_validation: is_dynamic,
               file_content_overrides: file_overrides,
+              file_header_overrides: header_overrides,
             },
           )
           .await

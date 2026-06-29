@@ -756,17 +756,27 @@ Deno.test(async function readableStreamEmittingManyChunks() {
       Deno.exit(1);
     }
   `;
-  const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-N", "-"],
-    stdin: "piped",
-  });
+  // The in-process heap-growth heuristic above is sensitive to GC timing and
+  // can transiently exceed the 2x ratio on some platforms (observed on
+  // macOS aarch64 in release mode) even without a real leak. A genuine
+  // unbounded leak grows >>2x and reproduces on every run, so retry a few
+  // times and only fail if every attempt reports a leak. See #35353.
+  let codeResult = 1;
+  for (let attempt = 0; attempt < 3 && codeResult !== 0; attempt++) {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["run", "-N", "-"],
+      stdin: "piped",
+    });
 
-  await using child = command.spawn();
-  await ReadableStream.from([code])
-    .pipeThrough(new TextEncoderStream())
-    .pipeTo(child.stdin);
+    await using child = command.spawn();
+    await ReadableStream.from([code])
+      .pipeThrough(new TextEncoderStream())
+      .pipeTo(child.stdin);
 
-  assertEquals((await child.status).code, 0, "memory leak");
+    codeResult = (await child.status).code;
+  }
+
+  assertEquals(codeResult, 0, "memory leak");
 });
 
 // Regression test for https://github.com/denoland/deno/issues/33476
