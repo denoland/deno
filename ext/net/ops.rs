@@ -3,11 +3,15 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::future::Future;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::task::Context;
+use std::task::Poll;
 use std::time::Duration;
 
 use deno_core::AsyncRefCell;
@@ -24,15 +28,20 @@ use deno_core::ResourceId;
 use deno_core::ToV8;
 use deno_core::op2;
 use deno_permissions::PermissionsContainer;
+use hickory_proto::op::ResponseCode;
 use hickory_proto::rr::RData;
 use hickory_proto::rr::RecordType;
+use hickory_resolver::ConnectionProvider;
 use hickory_resolver::config::ConnectionConfig;
 use hickory_resolver::config::NameServerConfig;
 use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::config::ResolverOpts;
 use hickory_resolver::net::DnsError;
 use hickory_resolver::net::NetError as ResolveError;
+use hickory_resolver::net::runtime::DnsUdpSocket;
+use hickory_resolver::net::runtime::RuntimeProvider;
 use hickory_resolver::net::runtime::TokioRuntimeProvider;
+use hickory_resolver::net::runtime::TokioTime;
 use hickory_resolver::system_conf;
 use quinn::rustls;
 use serde::Deserialize;
@@ -154,9 +163,15 @@ pub enum NetError {
   #[class("NotConnected")]
   #[error("{0}")]
   DnsNotConnected(ResolveError),
+  #[class("ConnectionRefused")]
+  #[error("{0}")]
+  DnsConnectionRefused(ResolveError),
   #[class("TimedOut")]
   #[error("{0}")]
   DnsTimedOut(ResolveError),
+  #[class("InvalidData")]
+  #[error("{0}")]
+  DnsBadResponse(ResolveError),
   #[class(generic)]
   #[error("{0}")]
   Dns(#[from] ResolveError),
@@ -1081,64 +1096,115 @@ fn read_system_dns_conf() -> Result<(ResolverConfig, ResolverOpts), NetError> {
   system_conf::read_system_conf().map_err(Into::into)
 }
 
-#[op2(stack_trace)]
-pub async fn op_dns_resolve(
-  state: Rc<RefCell<OpState>>,
-  #[scoped] args: ResolveAddrArgs,
-  use_edns: bool,
-) -> Result<Vec<DnsRecordWithTtl>, NetError> {
-  let ResolveAddrArgs {
-    query,
-    record_type,
-    options,
-    cancel_rid,
-  } = args;
+/// A hickory [`RuntimeProvider`] that hands out UDP sockets which are
+/// `connect()`ed to the name server.
+///
+/// hickory's default UDP socket is unconnected, so when the configured name
+/// server refuses the connection the ICMP "port unreachable" response is never
+/// delivered to the socket and the query silently times out. Connecting the
+/// socket makes the kernel surface that as `ECONNREFUSED`, matching the
+/// behaviour of c-ares (used by Node.js). This is used for the `node:dns`
+/// `Resolver.setServers()` code path.
+#[derive(Clone, Default)]
+struct ConnectedUdpRuntimeProvider(TokioRuntimeProvider);
 
-  let (config, mut opts) = if let Some(name_server) =
-    options.as_ref().and_then(|o| o.name_server.as_ref())
-  {
-    let ns_config = NameServerConfig::new(
-      name_server.ip_addr.parse()?,
-      true,
-      vec![{
-        let mut c = ConnectionConfig::new(name_server.protocol.into());
-        c.port = name_server.port;
-        c
-      }],
-    );
-    (ResolverConfig::from_parts(None, vec![], vec![ns_config]), {
-      let mut opts = ResolverOpts::default();
-      if use_edns {
-        opts.edns0 = true;
-      }
-      opts
+impl RuntimeProvider for ConnectedUdpRuntimeProvider {
+  type Handle = <TokioRuntimeProvider as RuntimeProvider>::Handle;
+  type Timer = <TokioRuntimeProvider as RuntimeProvider>::Timer;
+  type Udp = ConnectedUdpSocket;
+  type Tcp = <TokioRuntimeProvider as RuntimeProvider>::Tcp;
+
+  fn create_handle(&self) -> Self::Handle {
+    self.0.create_handle()
+  }
+
+  fn connect_tcp(
+    &self,
+    server_addr: SocketAddr,
+    bind_addr: Option<SocketAddr>,
+    timeout: Option<Duration>,
+  ) -> Pin<Box<dyn Send + Future<Output = std::io::Result<Self::Tcp>>>> {
+    self.0.connect_tcp(server_addr, bind_addr, timeout)
+  }
+
+  fn bind_udp(
+    &self,
+    local_addr: SocketAddr,
+    server_addr: SocketAddr,
+  ) -> Pin<Box<dyn Send + Future<Output = std::io::Result<Self::Udp>>>> {
+    Box::pin(async move {
+      let socket = tokio::net::UdpSocket::bind(local_addr).await?;
+      socket.connect(server_addr).await?;
+      Ok(ConnectedUdpSocket(socket))
     })
-  } else {
-    read_system_dns_conf()?
-  };
+  }
+}
 
-  // When a cancel handle is provided, use a short resolver timeout so
-  // that hickory's background connection tasks clean up quickly after
-  // cancellation (they are not aborted by the cancel handle itself).
-  if cancel_rid.is_some() {
-    opts.timeout = std::time::Duration::from_secs(1);
-    opts.attempts = 1;
+/// A connected UDP socket adapter for [`ConnectedUdpRuntimeProvider`].
+struct ConnectedUdpSocket(tokio::net::UdpSocket);
+
+impl DnsUdpSocket for ConnectedUdpSocket {
+  type Time = TokioTime;
+
+  fn poll_recv_from(
+    &self,
+    cx: &mut Context<'_>,
+    buf: &mut [u8],
+  ) -> Poll<std::io::Result<(usize, SocketAddr)>> {
+    let mut read_buf = tokio::io::ReadBuf::new(buf);
+    std::task::ready!(self.0.poll_recv(cx, &mut read_buf))?;
+    let len = read_buf.filled().len();
+    // The socket is connected, so all datagrams come from the name server.
+    let addr = self.0.peer_addr()?;
+    Poll::Ready(Ok((len, addr)))
   }
 
-  {
-    let mut s = state.borrow_mut();
-    let perm = s.borrow_mut::<PermissionsContainer>();
+  fn poll_send_to(
+    &self,
+    cx: &mut Context<'_>,
+    buf: &[u8],
+    _target: SocketAddr,
+  ) -> Poll<std::io::Result<usize>> {
+    // The socket is connected, so the target is implied.
+    self.0.poll_send(cx, buf)
+  }
+}
 
-    // Checks permission against the name servers which will be actually queried.
-    for ns in config.name_servers() {
-      let ip = ns.ip.to_string();
-      for conn in &ns.connections {
-        perm.check_net(&(&ip, Some(conn.port)), "Deno.resolveDns()")?;
-      }
+fn map_resolve_error(e: ResolveError) -> NetError {
+  match &e {
+    ResolveError::Dns(DnsError::NoRecordsFound(_)) => NetError::DnsNotFound(e),
+    // hickory 0.26 split REFUSED responses out of `NoRecordsFound` into their
+    // own variant; keep treating them as "not found" to preserve behavior.
+    ResolveError::Dns(DnsError::ResponseCode(ResponseCode::Refused)) => {
+      NetError::DnsNotFound(e)
     }
+    ResolveError::NoConnections => NetError::DnsNotConnected(e),
+    // A connected UDP socket surfaces a refused name server as an
+    // `ECONNREFUSED` io error (see `ConnectedUdpRuntimeProvider`).
+    ResolveError::Io(io)
+      if io.kind() == std::io::ErrorKind::ConnectionRefused =>
+    {
+      NetError::DnsConnectionRefused(e)
+    }
+    ResolveError::Timeout => NetError::DnsTimedOut(e),
+    // A protocol error after the query was sent means the server's response
+    // could not be decoded (e.g. a malformed packet with a bad answer count).
+    ResolveError::Proto(_) => NetError::DnsBadResponse(e),
+    _ => NetError::Dns(e),
   }
+}
 
-  let provider = TokioRuntimeProvider::default();
+/// Builds a resolver from `provider`, runs a single lookup (respecting an
+/// optional cancel handle), and maps hickory errors onto [`NetError`].
+async fn resolve_lookup<P: ConnectionProvider>(
+  state: &Rc<RefCell<OpState>>,
+  provider: P,
+  config: ResolverConfig,
+  opts: ResolverOpts,
+  query: String,
+  record_type: RecordType,
+  cancel_rid: Option<ResourceId>,
+) -> Result<hickory_resolver::lookup::Lookup, NetError> {
   let resolver =
     hickory_resolver::Resolver::builder_with_config(config, provider)
       .with_options(opts)
@@ -1168,12 +1234,107 @@ pub async fn op_dns_resolve(
     lookup_fut.await
   };
 
-  let lookup = lookup.map_err(|e| match e {
-    ResolveError::Dns(DnsError::NoRecordsFound(_)) => NetError::DnsNotFound(e),
-    ResolveError::NoConnections => NetError::DnsNotConnected(e),
-    ResolveError::Timeout => NetError::DnsTimedOut(e),
-    _ => NetError::Dns(e),
-  })?;
+  lookup.map_err(map_resolve_error)
+}
+
+#[op2(stack_trace)]
+pub async fn op_dns_resolve(
+  state: Rc<RefCell<OpState>>,
+  #[scoped] args: ResolveAddrArgs,
+  use_edns: bool,
+) -> Result<Vec<DnsRecordWithTtl>, NetError> {
+  let ResolveAddrArgs {
+    query,
+    record_type,
+    options,
+    cancel_rid,
+  } = args;
+
+  let has_custom_name_server = options
+    .as_ref()
+    .and_then(|o| o.name_server.as_ref())
+    .is_some();
+
+  let (config, mut opts) = if let Some(name_server) =
+    options.as_ref().and_then(|o| o.name_server.as_ref())
+  {
+    let ns_config = NameServerConfig::new(
+      name_server.ip_addr.parse()?,
+      true,
+      vec![{
+        let mut c = ConnectionConfig::new(name_server.protocol.into());
+        c.port = name_server.port;
+        c
+      }],
+    );
+    (ResolverConfig::from_parts(None, vec![], vec![ns_config]), {
+      let mut opts = ResolverOpts::default();
+      // hickory enables EDNS by default; only send an EDNS OPT record when
+      // the caller explicitly asks for it (matches the previous behavior and
+      // keeps queries compatible with servers that don't speak EDNS).
+      opts.edns0 = use_edns;
+      opts
+    })
+  } else {
+    read_system_dns_conf()?
+  };
+
+  // When a cancel handle is provided, use a short resolver timeout so
+  // that hickory's background connection tasks clean up quickly after
+  // cancellation (they are not aborted by the cancel handle itself).
+  if cancel_rid.is_some() {
+    opts.timeout = std::time::Duration::from_secs(1);
+    // For the connected-UDP path (an explicit name server), perform a single
+    // attempt with no internal retry. hickory's `RetryDnsHandle` reports the
+    // *last* attempt's error, so a refused server can surface `ECONNREFUSED`
+    // on the first attempt only to have an immediate second attempt time out
+    // (Linux rate-limits the ICMP "port unreachable") and clobber it with a
+    // timeout. c-ares (used by Node.js) instead preserves the connection
+    // error and only times out when no real error occurred. The `node:dns`
+    // layer already retries, so dropping the redundant internal retry both
+    // fixes the error reporting and avoids a wasted, rate-limited retry.
+    opts.attempts = if has_custom_name_server { 0 } else { 1 };
+  }
+
+  {
+    let mut s = state.borrow_mut();
+    let perm = s.borrow_mut::<PermissionsContainer>();
+
+    // Checks permission against the name servers which will be actually queried.
+    for ns in config.name_servers() {
+      let ip = ns.ip.to_string();
+      for conn in &ns.connections {
+        perm.check_net(&(&ip, Some(conn.port)), "Deno.resolveDns()")?;
+      }
+    }
+  }
+
+  // When the caller configured an explicit name server (e.g. via `node:dns`
+  // `Resolver.setServers()`), use a connected UDP socket so that a refused
+  // connection surfaces as `ECONNREFUSED` instead of timing out.
+  let lookup = if has_custom_name_server {
+    resolve_lookup(
+      &state,
+      ConnectedUdpRuntimeProvider::default(),
+      config,
+      opts,
+      query,
+      record_type,
+      cancel_rid,
+    )
+    .await?
+  } else {
+    resolve_lookup(
+      &state,
+      TokioRuntimeProvider::default(),
+      config,
+      opts,
+      query,
+      record_type,
+      cancel_rid,
+    )
+    .await?
+  };
   lookup
     .answers()
     .iter()
