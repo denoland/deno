@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicI32;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::task::Context;
@@ -187,6 +188,8 @@ pub struct WebWorkerInternalHandle {
   pub cancel: Rc<CancelHandle>,
   termination_signal: Arc<AtomicBool>,
   has_terminated: Arc<AtomicBool>,
+  close_requested: Arc<AtomicBool>,
+  close_code: Arc<AtomicI32>,
   terminate_waker: Arc<AtomicWaker>,
   isolate_handle: v8::IsolateHandle,
   pub name: String,
@@ -225,16 +228,14 @@ impl WebWorkerInternalHandle {
     let has_terminated = self.is_terminated();
 
     if !has_terminated && self.termination_signal.load(Ordering::SeqCst) {
-      self.terminate();
+      self.terminate_execution();
       return true;
     }
 
     has_terminated
   }
 
-  /// Terminate the worker
-  /// This function will set terminated to true, terminate the isolate and close the message channel
-  pub fn terminate(&mut self) {
+  fn terminate_execution(&mut self) {
     self.cancel.cancel();
     self.terminate_waker.wake();
 
@@ -247,7 +248,24 @@ impl WebWorkerInternalHandle {
       // Stop javascript execution
       self.isolate_handle.terminate_execution();
     }
+  }
 
+  pub fn close(&mut self, exit_code: i32) {
+    self.close_code.store(exit_code, Ordering::SeqCst);
+    self.close_requested.store(true, Ordering::SeqCst);
+    self.terminate_execution();
+  }
+
+  pub fn post_close_event_if_requested(&self) {
+    if self.close_requested.swap(false, Ordering::SeqCst) {
+      let exit_code = self.close_code.load(Ordering::SeqCst);
+      let _ = self.post_event(WorkerControlEvent::Close(exit_code));
+    }
+  }
+
+  /// Terminate the worker and close the control channel.
+  pub fn terminate(&mut self) {
+    self.terminate_execution();
     // Wake parent by closing the channel
     self.sender.close_channel();
   }
@@ -324,12 +342,16 @@ fn create_handles(
   let (ctrl_tx, ctrl_rx) = mpsc::channel::<WorkerControlEvent>(1);
   let termination_signal = Arc::new(AtomicBool::new(false));
   let has_terminated = Arc::new(AtomicBool::new(false));
+  let close_requested = Arc::new(AtomicBool::new(false));
+  let close_code = Arc::new(AtomicI32::new(0));
   let terminate_waker = Arc::new(AtomicWaker::new());
   let internal_handle = WebWorkerInternalHandle {
     name,
     port: Rc::new(parent_port),
     termination_signal: termination_signal.clone(),
     has_terminated,
+    close_requested,
+    close_code,
     terminate_waker: terminate_waker.clone(),
     isolate_handle,
     cancel: CancelHandle::new_rc(),
@@ -1106,6 +1128,26 @@ fn print_worker_error(
   );
 }
 
+fn stop_worker_activity(
+  maybe_coverage_collector: &mut Option<CoverageCollector>,
+  maybe_cpu_profiler: &mut Option<CpuProfiler>,
+) -> Result<(), CoreError> {
+  let mut result = Ok(());
+
+  if let Some(mut coverage_collector) = maybe_coverage_collector.take() {
+    result = coverage_collector.stop_collecting();
+  }
+
+  if let Some(mut cpu_profiler) = maybe_cpu_profiler.take() {
+    let profiler_result = cpu_profiler.stop_profiling();
+    if result.is_ok() {
+      result = profiler_result;
+    }
+  }
+
+  result
+}
+
 /// This function should be called from a thread dedicated to this worker.
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
 // TODO(bartlomieju): run following block using "select!"
@@ -1119,6 +1161,9 @@ pub async fn run_web_worker(
   worker.setup_memory_trim_handler();
   let mut maybe_coverage_collector = worker.maybe_setup_coverage_collector();
   let mut maybe_cpu_profiler = worker.maybe_setup_cpu_profiler();
+  let mut stop_activity = || {
+    stop_worker_activity(&mut maybe_coverage_collector, &mut maybe_cpu_profiler)
+  };
 
   let name = worker.name.to_string();
   let mut internal_handle = worker.internal_handle.clone();
@@ -1126,9 +1171,11 @@ pub async fn run_web_worker(
   // If the bootstrap failed, report it as a terminal error.
   if let Some(error) = worker.bootstrap_error.take() {
     print_worker_error(&error, &name, format_js_error_fn.as_deref());
+    let cleanup_result = stop_activity();
     internal_handle
       .post_event(WorkerControlEvent::TerminalError(error, 1))
       .expect("Failed to post message to host");
+    cleanup_result?;
     return Ok(());
   }
 
@@ -1168,28 +1215,18 @@ pub async fn run_web_worker(
   // If sender is closed it means that worker has already been closed from
   // within using "globalThis.close()"
   if internal_handle.is_terminated() {
-    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-      coverage_collector.stop_collecting()?;
-    }
-    if let Some(cpu_profiler) = maybe_cpu_profiler.as_mut() {
-      let _ = cpu_profiler.stop_profiling();
-    }
+    let cleanup_result = stop_activity();
+    internal_handle.post_close_event_if_requested();
+    cleanup_result?;
     return Ok(());
   }
 
   let result = if result.is_ok() {
-    let r = worker
+    worker
       .run_event_loop(PollEventLoopOptions {
         wait_for_inspector: true,
       })
-      .await;
-    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-      coverage_collector.stop_collecting()?;
-    }
-    if let Some(cpu_profiler) = maybe_cpu_profiler.as_mut() {
-      let _ = cpu_profiler.stop_profiling();
-    }
-    r
+      .await
   } else {
     result
   };
@@ -1207,9 +1244,11 @@ pub async fn run_web_worker(
         ),
       )
       .into_box();
+      let cleanup_result = stop_activity();
       internal_handle
         .post_event(WorkerControlEvent::TerminalError(oom_error, 1))
         .expect("Failed to post message to host");
+      cleanup_result?;
       return Ok(());
     }
 
@@ -1278,14 +1317,18 @@ pub async fn run_web_worker(
     // Exit code 6 means _fatalException was not a function. In Node.js
     // this causes a clean exit without emitting 'error' on the parent Worker.
     if exit_code == 6 {
+      let cleanup_result = stop_activity();
       let _ = internal_handle.post_event(WorkerControlEvent::Close(exit_code));
       internal_handle.terminate();
+      cleanup_result?;
       return Ok(());
     }
 
+    let cleanup_result = stop_activity();
     internal_handle
       .post_event(WorkerControlEvent::TerminalError(e, exit_code))
       .expect("Failed to post message to host");
+    cleanup_result?;
 
     // Failure to execute script is a terminal error, bye, bye.
     return Ok(());
@@ -1316,9 +1359,16 @@ pub async fn run_web_worker(
       .try_borrow::<deno_os::ExitCode>()
       .map(|e| e.get())
       .unwrap_or(0);
+    let cleanup_result = stop_activity();
     let _ = internal_handle.post_event(WorkerControlEvent::Close(exit_code));
     internal_handle.terminate();
+    cleanup_result?;
+    return Ok(());
   }
+
+  let cleanup_result = stop_activity();
+  internal_handle.post_close_event_if_requested();
+  cleanup_result?;
 
   debug!("Worker thread shuts down {}", &name);
   Ok(())
