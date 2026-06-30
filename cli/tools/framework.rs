@@ -106,14 +106,20 @@ pub fn detect_framework(
     return Ok(Some(detect_nuxt(dir)));
   }
 
-  // SvelteKit: svelte.config.{js,ts}. Once a svelte.config.* is present the
-  // project is a SvelteKit app and SvelteKit owns detection — we must NOT
-  // fall through to the generic Vite branch below (SvelteKit ships a
-  // vite.config + `vite` dependency, so it would otherwise be misdetected as
-  // a plain Vite SPA and bundle a non-existent `dist/`). `detect_sveltekit`
-  // resolves the adapter's output shape, or errors with an actionable hint
-  // when the configured adapter isn't one `deno desktop` can bundle.
-  if has_config_file(dir, "svelte.config") {
+  // SvelteKit: svelte.config.{js,ts} plus a `@sveltejs/kit` dependency. Once
+  // SvelteKit owns detection we must NOT fall through to the generic Vite
+  // branch below (SvelteKit ships a vite.config + `vite` dependency, so it
+  // would otherwise be misdetected as a plain Vite SPA and bundle a
+  // non-existent `dist/`). `detect_sveltekit` resolves the adapter's output
+  // shape, or errors with an actionable hint when the configured adapter isn't
+  // one `deno desktop` can bundle. A bare `svelte.config.*` is not enough on
+  // its own: the Vite Svelte template ships a `svelte.config.js` with only
+  // `vitePreprocess()` and no SvelteKit, and such plain Svelte SPAs must keep
+  // falling through to the Vite branch that bundles `dist/`.
+  let has_sveltekit = read_package_deps(dir)
+    .map(|deps| deps.has("@sveltejs/kit") || deps.has_dev("@sveltejs/kit"))
+    .unwrap_or(false);
+  if has_config_file(dir, "svelte.config") && has_sveltekit {
     return detect_sveltekit(dir).map(Some);
   }
 
@@ -556,6 +562,16 @@ mod tests {
     tempfile::tempdir().unwrap()
   }
 
+  /// Write a minimal `package.json` declaring `@sveltejs/kit` so the SvelteKit
+  /// detection gate (which requires positive SvelteKit evidence) fires.
+  fn write_sveltekit_pkg(dir: &Path) {
+    fs::write(
+      dir.join("package.json"),
+      r#"{"devDependencies":{"@sveltejs/kit":"^2.0.0"}}"#,
+    )
+    .unwrap();
+  }
+
   #[test]
   fn no_framework_empty_dir() {
     let dir = setup_dir();
@@ -735,6 +751,7 @@ mod tests {
   #[test]
   fn detects_sveltekit_deno_deploy() {
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(dir.path().join("svelte.config.js"), "").unwrap();
     fs::create_dir_all(dir.path().join(".deno-deploy")).unwrap();
     fs::write(dir.path().join(".deno-deploy/server.ts"), "").unwrap();
@@ -749,6 +766,7 @@ mod tests {
   #[test]
   fn detects_sveltekit_nitro_from_built_output() {
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(dir.path().join("svelte.config.ts"), "").unwrap();
     fs::create_dir_all(dir.path().join(".output/server")).unwrap();
     fs::write(dir.path().join(".output/server/index.mjs"), "").unwrap();
@@ -762,6 +780,7 @@ mod tests {
   fn detects_sveltekit_adapter_deno_from_config() {
     // `svelte-adapter-deno` emits a `build/` directory (not `.output`).
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(
       dir.path().join("svelte.config.js"),
       "import adapter from 'svelte-adapter-deno';\nexport default { kit: { adapter: adapter() } };\n",
@@ -778,6 +797,7 @@ mod tests {
     // Post-build evidence: `build/index.js` + `build/handler.js` is the
     // `svelte-adapter-deno` output shape. Existing asset dirs are included.
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(dir.path().join("svelte.config.js"), "").unwrap();
     fs::create_dir_all(dir.path().join("build/client")).unwrap();
     fs::create_dir_all(dir.path().join("build/prerendered")).unwrap();
@@ -793,6 +813,7 @@ mod tests {
   #[test]
   fn detects_sveltekit_nitro_from_config() {
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(
       dir.path().join("svelte.config.js"),
       "// uses a nitro-based adapter\nexport default { kit: {} };\n",
@@ -808,6 +829,7 @@ mod tests {
     // `@sveltejs/adapter-node` emits the `build/index.js` shape and runs under
     // Deno via Node.js compatibility — no Deno-specific adapter required.
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(
       dir.path().join("svelte.config.js"),
       "import adapter from '@sveltejs/adapter-node';\nexport default { kit: { adapter: adapter() } };\n",
@@ -824,6 +846,7 @@ mod tests {
     // `svelte.config.mts` passes the presence gate, so its text must be read
     // too — otherwise a valid adapter-node config reads as empty and bails.
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(
       dir.path().join("svelte.config.mts"),
       "import adapter from '@sveltejs/adapter-node';\nexport default { kit: { adapter: adapter() } };\n",
@@ -841,6 +864,7 @@ mod tests {
     // the generic Vite branch (which would bundle a non-existent `dist/`).
     // Instead we surface an actionable error.
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(
       dir.path().join("svelte.config.js"),
       "import adapter from '@sveltejs/adapter-vercel';\nexport default { kit: { adapter: adapter() } };\n",
@@ -856,6 +880,7 @@ mod tests {
     // `adapter-auto` is the `sv create` default and produces no local server
     // output, so we bail with a hint pointing at a concrete adapter.
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(
       dir.path().join("svelte.config.js"),
       "import adapter from '@sveltejs/adapter-auto';\nexport default { kit: { adapter: adapter() } };\n",
@@ -864,6 +889,30 @@ mod tests {
     let err = detect_framework(dir.path()).unwrap_err().to_string();
     assert!(err.contains("adapter-auto"));
     assert!(err.contains("no local server output"));
+  }
+
+  #[test]
+  fn plain_svelte_spa_falls_through_to_vite() {
+    // The Vite Svelte template (`npm create vite -- --template svelte`) ships a
+    // `svelte.config.js` with only `vitePreprocess()` and no `@sveltejs/kit`.
+    // Without positive SvelteKit evidence it must NOT be taken over by
+    // SvelteKit detection (which would bail on the missing adapter) — it stays
+    // on the Vite path that bundles `dist/`.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("svelte.config.js"),
+      "import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';\nexport default { preprocess: vitePreprocess() };\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("vite.config.js"), "").unwrap();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"devDependencies":{"svelte":"^5.0.0","vite":"^5.0.0"}}"#,
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Vite");
+    assert_eq!(det.include_paths, vec!["dist"]);
   }
 
   // --- Package.json dependency-based detection ---
