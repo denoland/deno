@@ -69,7 +69,7 @@ Each test entry can include the following optional configuration properties:
 
 ## Add test case entry to CI check
 
-If you fixed some Node.js compabitility and some test cases started passing,
+If you fixed some Node.js compatibility and some test cases started passing,
 then add those cases to `config.jsonc`. The items listed in there are checked in
 CI check.
 
