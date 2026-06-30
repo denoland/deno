@@ -1376,6 +1376,114 @@ setInterval(() => {}, 1000);
   }
 });
 
+Deno.test("inspector_worker_step_over_creation_waits_for_debugger", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const mainScript = `${tempDir}/main.js`;
+  const workerScript = `${tempDir}/worker.js`;
+  await Deno.writeTextFile(
+    mainScript,
+    `
+const worker = new Worker(new URL("./worker.js", import.meta.url).href, {
+  type: "module",
+});
+
+worker.postMessage("start");
+setInterval(() => {}, 1000);
+`,
+  );
+  await Deno.writeTextFile(
+    workerScript,
+    `
+self.onmessage = (e) => {
+  debugger;
+  console.log("Worker received:", e.data);
+  console.log("aa");
+};
+setInterval(() => {}, 1000);
+`,
+  );
+
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-brk=0", mainScript],
+    { notificationFilter: ignoreScriptParsed, timeout: 5_000 },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "Target.setAutoAttach",
+        params: {
+          autoAttach: true,
+          waitForDebuggerOnStart: false,
+          flatten: true,
+        },
+      },
+      { id: 4, method: "Runtime.runIfWaitingForDebugger" },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+    await tester.expectResponse(4);
+    await tester.expectNotification("Runtime.executionContextCreated");
+    await tester.expectNotification("Debugger.paused");
+
+    tester.send({ id: 5, method: "Debugger.stepOver" });
+    await tester.expectResponse(5);
+    await tester.expectNotification("Debugger.resumed");
+    await tester.expectNotification("Debugger.paused");
+
+    await new Promise((resolve) => setTimeout(resolve, 750));
+
+    tester.send({ id: 6, method: "Debugger.resume" });
+    await tester.expectResponse(6);
+    await tester.expectNotification("Debugger.resumed");
+
+    const attached = await tester.expectNotification("Target.attachedToTarget");
+    const attachedParams = attached.params as Record<string, unknown>;
+    assertEquals(attachedParams.waitingForDebugger, false);
+    const sessionId = attachedParams.sessionId as string;
+    assert(sessionId, "attachedToTarget should include sessionId");
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    tester.sendMany([
+      { id: 7, sessionId, method: "Page.waitForDebugger" },
+      { id: 8, sessionId, method: "Runtime.enable" },
+      { id: 9, sessionId, method: "Debugger.enable" },
+      {
+        id: 10,
+        sessionId,
+        method: "Runtime.runIfWaitingForDebugger",
+      },
+    ]);
+    await tester.expectResponse(7);
+    await tester.expectResponse(8);
+    await tester.expectResponse(9);
+    await tester.expectResponse(10);
+
+    await tester.expectNotificationMatching(
+      (msg) => msg.sessionId === sessionId && msg.method === "Debugger.paused",
+      "worker Debugger.paused",
+    );
+
+    tester.send({ id: 11, sessionId, method: "Debugger.resume" });
+    await tester.expectResponse(11);
+    assertEquals(await tester.nextStdoutLine(), "Worker received: start");
+    assertEquals(await tester.nextStdoutLine(), "aa");
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
 // Regression test for https://github.com/denoland/deno/issues/34291
 // vscode-js-debug calls NodeWorker.enable before the user script runs, so
 // any Worker constructor fires *after* NodeWorker.enable has been processed.

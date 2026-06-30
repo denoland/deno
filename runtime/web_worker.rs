@@ -709,6 +709,9 @@ impl WebWorker {
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       op_state.put(internal_handle.clone());
+      op_state.put(crate::ops::web_worker::WaitForWorkerDebuggerOnMessage(
+        options.wait_for_page_wait_for_debugger,
+      ));
       (internal_handle, external_handle)
     };
 

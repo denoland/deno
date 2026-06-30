@@ -1197,6 +1197,24 @@ impl JsRuntimeInspector {
       && !self.should_wait_for_debugger_on_worker_start()
   }
 
+  pub fn wait_for_debugger_enabled_for_worker_message(&self) {
+    const WORKER_MESSAGE_DEBUGGER_GRACE_PERIOD: std::time::Duration =
+      std::time::Duration::from_millis(500);
+
+    let deadline =
+      std::time::Instant::now() + WORKER_MESSAGE_DEBUGGER_GRACE_PERIOD;
+    loop {
+      if self.state.flags.borrow().debugger_enabled_session_count > 0 {
+        break;
+      }
+      if std::time::Instant::now() >= deadline {
+        break;
+      }
+      let _ = self.state.poll_sessions(None).unwrap();
+      std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+  }
+
   /// Obtain a sender for proxy channels.
   pub fn get_session_sender(&self) -> UnboundedSender<InspectorSessionProxy> {
     self.new_session_tx.clone()
@@ -1420,6 +1438,7 @@ struct InspectorFlags {
   /// Tracks which session sent Runtime.runIfWaitingForDebugger,
   /// so schedule_pause_on_next_statement targets the correct session.
   resumed_by_session_id: Option<i32>,
+  debugger_enabled_session_count: usize,
 }
 
 #[derive(Debug)]
@@ -1582,6 +1601,12 @@ impl SessionContainer {
     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&message)
       && let Some(method) = parsed.get("method").and_then(|m| m.as_str())
     {
+      match method {
+        "Debugger.enable" => session.set_debugger_enabled(true),
+        "Debugger.disable" => session.set_debugger_enabled(false),
+        _ => {}
+      }
+
       if method == "Page.waitForDebugger" {
         session.wait_for_debugger();
         if let Some(id) = parsed.get("id") {
@@ -1794,6 +1819,7 @@ struct InspectorSessionState {
   // Runtime.executionContextDestroyed) to this session at exit, and waits for
   // the session to disconnect before terminating the process.
   notify_waiting_for_disconnect: Cell<bool>,
+  debugger_enabled: Cell<bool>,
   // Inspector flags (shared with JsRuntimeInspectorState) for checking waiting_for_session
   flags: Rc<RefCell<InspectorFlags>>,
   // Shared body buffer used by the Network.* command handlers.
@@ -1843,6 +1869,7 @@ impl InspectorSession {
       dom_storage_enabled: Cell::new(false),
       noderuntime_enabled: Cell::new(false),
       notify_waiting_for_disconnect: Cell::new(false),
+      debugger_enabled: Cell::new(false),
       flags,
       network_data,
     };
@@ -1870,6 +1897,19 @@ impl InspectorSession {
     flags.paused_on_start = true;
     flags.waiting_for_session = true;
     flags.page_wait_for_debugger_received = true;
+  }
+
+  fn set_debugger_enabled(&self, enabled: bool) {
+    if self.state.debugger_enabled.replace(enabled) == enabled {
+      return;
+    }
+    let mut flags = self.state.flags.borrow_mut();
+    if enabled {
+      flags.debugger_enabled_session_count += 1;
+    } else {
+      flags.debugger_enabled_session_count =
+        flags.debugger_enabled_session_count.saturating_sub(1);
+    }
   }
 
   /// Queue a message to be sent to a worker
@@ -2020,6 +2060,16 @@ async fn pump_inspector_session_messages(
     }
 
     match method {
+      "Debugger.enable" => {
+        session.set_debugger_enabled(true);
+        session.dispatch_message(msg);
+        continue;
+      }
+      "Debugger.disable" => {
+        session.set_debugger_enabled(false);
+        session.dispatch_message(msg);
+        continue;
+      }
       "NodeRuntime.enable" => {
         session.state.noderuntime_enabled.set(true);
         // If the runtime is paused on start (--inspect-brk), emit
