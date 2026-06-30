@@ -1,0 +1,4 @@
+error: The import attribute type of "toml" is unsupported.
+  Specifier: file:///[WILDLINE]/settings.toml
+  hint: run with --unstable-raw-imports
+    at file:///[WILDLINE]/attr.ts:1:18

@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "attribute": {
+      "args": "run attr.ts",
+      "exitCode": 1,
+      "output": "attr.out"
+    }
+  }
+}

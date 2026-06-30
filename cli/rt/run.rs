@@ -733,6 +733,49 @@ impl ModuleLoader for EmbeddedModuleLoader {
     maybe_referrer: Option<&ModuleLoadReferrer>,
     options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
+    // A config import (yaml/toml/json5/jsonc) is resolved to the plain config
+    // file, since the `with { type }` attribute is invisible to `resolve`.
+    // Redirect it to the same `data:` wrapper used at compile time, mirroring
+    // the CLI module loader (see `CliModuleLoader::load_code_source`). The
+    // wrapper's parser dependency and the file's bytes are embedded in the
+    // graph; regenerating the wrapper here against the *runtime* file specifier
+    // means the path it embeds matches the relocated VFS root rather than the
+    // (now stale) compile-time path baked into the embedded wrapper.
+    if original_specifier.scheme() != "data"
+      && let RequestedModuleType::Other(kind) = &options.requested_module_type
+      && let Some(wrapper) =
+        deno_resolver::graph::maybe_config_import_wrapper_specifier(
+          original_specifier,
+          kind,
+        )
+    {
+      let raw_data_url =
+        match deno_media_type::data_url::RawDataUrl::parse(&wrapper) {
+          Ok(raw) => raw,
+          Err(err) => {
+            return deno_core::ModuleLoadResponse::Sync(Err(
+              JsErrorBox::type_error(format!("{:#}", err)),
+            ));
+          }
+        };
+      let code = match raw_data_url.decode() {
+        Ok(text) => text,
+        Err(err) => {
+          return deno_core::ModuleLoadResponse::Sync(Err(
+            JsErrorBox::type_error(format!("{:#}", err)),
+          ));
+        }
+      };
+      return deno_core::ModuleLoadResponse::Sync(Ok(
+        deno_core::ModuleSource::new(
+          deno_core::ModuleType::JavaScript,
+          ModuleSourceCode::String(code.into()),
+          original_specifier,
+          None,
+        ),
+      ));
+    }
+
     if original_specifier.scheme() == "data" {
       let raw_data_url = match deno_media_type::data_url::RawDataUrl::parse(
         original_specifier,

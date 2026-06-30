@@ -852,6 +852,7 @@ impl ModuleGraphBuilder {
       // behaviour of the managed npm resolver. See:
       // https://github.com/denoland/deno/issues/23507
       NpmTypesResolutionMode::FallbackToExecution,
+      self.cli_options.unstable_raw_imports(),
     );
     let maybe_reporter = self.maybe_reporter.as_deref();
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
@@ -879,6 +880,7 @@ impl ModuleGraphBuilder {
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
           unstable_text_imports: true,
           unstable_css_imports: self.cli_options.unstable_raw_imports(),
+          unstable_config_imports: self.cli_options.unstable_raw_imports(),
         }
       };
     }
@@ -906,6 +908,7 @@ impl ModuleGraphBuilder {
           &jsx_import_source_config_resolver,
           Some(&cloned_graph),
           NpmTypesResolutionMode::FallbackToExecution,
+          self.cli_options.unstable_raw_imports(),
         );
 
         graph
@@ -1106,6 +1109,7 @@ impl ModuleGraphBuilder {
       &jsx_import_source_config_resolver,
       None,
       NpmTypesResolutionMode::Strict,
+      self.cli_options.unstable_raw_imports(),
     );
 
     graph.build_fast_check_type_graph(

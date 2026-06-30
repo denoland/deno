@@ -1587,7 +1587,24 @@ impl ModuleMap {
       },
     };
 
-    if let Some(id) = self.get_id(resolved_specifier.as_str(), module_type)
+    // A requested module type may be materialized by the loader as a plain
+    // module rather than the requested one. This is the case for config
+    // imports such as `with { type: "yaml" }`, which deno_graph rewrites into a
+    // JavaScript module that parses the file. Such a module is registered under
+    // its concrete (`None`) type, so if the lookup by the requested type
+    // misses, fall back to the plain module. A genuine module of the requested
+    // type (e.g. a real `.json` or `.css`) is registered under that type and is
+    // found by the first lookup, so this fallback never affects it.
+    let resolved_id = self
+      .get_id(resolved_specifier.as_str(), &module_type)
+      .or_else(|| {
+        if matches!(module_type, RequestedModuleType::Other(_)) {
+          self.get_id(resolved_specifier.as_str(), &RequestedModuleType::None)
+        } else {
+          None
+        }
+      });
+    if let Some(id) = resolved_id
       && let Some(handle) = self.get_handle(id)
     {
       return Some(v8::Local::new(scope, handle));

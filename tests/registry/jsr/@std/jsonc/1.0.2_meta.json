@@ -1,0 +1,6 @@
+{
+  "exports": {
+    ".": "./mod.ts",
+    "./parse": "./parse.ts"
+  }
+}

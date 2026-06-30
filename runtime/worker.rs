@@ -120,7 +120,10 @@ pub fn create_validate_import_attributes_callback(
       let valid_attribute = |kind: &str| {
         matches!(kind, "json" | "text")
           || (enable_raw_imports.load(Ordering::Relaxed)
-            && matches!(kind, "bytes" | "css"))
+            && matches!(
+              kind,
+              "bytes" | "css" | "yaml" | "toml" | "json5" | "jsonc"
+            ))
       };
       for (key, value) in attributes {
         let msg = if key != "type" {

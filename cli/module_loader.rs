@@ -873,6 +873,38 @@ impl<TGraphContainer: ModuleGraphContainer>
     };
 
     let graph = self.graph_container.graph();
+
+    // A non-analyzable dynamic import of a config file (e.g.
+    // `import(expr, { with: { type: "yaml" } })`) resolves to the file itself
+    // at runtime, since `resolve` does not see the import attribute. Redirect it
+    // here to the same `data:` wrapper that static/analyzable config imports use
+    // (see `DenoGraphResolverAdapter::resolve_attribute_type_import`). The
+    // wrapper (already prepared into the graph) text-imports the file and parses
+    // it. The `data:` guard avoids re-wrapping the wrapper itself.
+    if specifier.scheme() != "data"
+      && let RequestedModuleType::Other(kind) = requested_module_type
+      && let Some(wrapper) =
+        deno_resolver::graph::maybe_config_import_wrapper_specifier(
+          &specifier, kind,
+        )
+      && let LoadedModuleOrAsset::Module(loaded) = self
+        .shared
+        .module_loader
+        .load(
+          &graph,
+          &wrapper,
+          maybe_referrer,
+          &deno_resolver::loader::RequestedModuleType::None,
+        )
+        .await?
+    {
+      return Ok(ModuleCodeStringSource {
+        code: loaded_module_source_to_module_source_code(loaded.source),
+        found_url: specifier.into_owned(),
+        module_type: ModuleType::JavaScript,
+      });
+    }
+
     let deno_resolver_requested_module_type =
       as_deno_resolver_requested_module_type(requested_module_type);
     match self
@@ -1519,12 +1551,21 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     // decremented unconditionally in "finish_load"
     self.0.shared.in_flight_loads_tracker.increase();
 
-    if matches!(
-      options.requested_module_type,
-      RequestedModuleType::Text
-        | RequestedModuleType::Bytes
-        | RequestedModuleType::Other(_)
-    ) {
+    // Config imports (yaml/toml/json5/jsonc) are rewritten into JavaScript
+    // modules by deno_graph, so unlike text/bytes/css they must go through
+    // graph preparation rather than being loaded as external assets. They are
+    // intentionally excluded here so the normal graph-building path below
+    // handles them; otherwise a non-analyzable dynamic import of a config file
+    // would never be added to the graph and fail with "Loading unprepared
+    // module".
+    let skip_graph_preparation = match &options.requested_module_type {
+      RequestedModuleType::Text | RequestedModuleType::Bytes => true,
+      RequestedModuleType::Other(kind) => {
+        !matches!(kind.as_ref(), "yaml" | "toml" | "json5" | "jsonc")
+      }
+      _ => false,
+    };
+    if skip_graph_preparation {
       // Text/Bytes imports skip graph preparation, so the file watcher's
       // graph reporter never sees them. For dynamic imports, register the
       // file directly with the watcher so editing it triggers a reload.
@@ -1540,6 +1581,21 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       }
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
+
+    // A non-analyzable dynamic import of a config file resolves to the file
+    // itself (the attribute is invisible to `resolve`). Prepare the `data:`
+    // wrapper instead, so the graph gains the wrapper plus its parser
+    // dependency; `load_code_source` redirects the matching load to it.
+    let config_wrapper = if specifier.scheme() != "data"
+      && let RequestedModuleType::Other(kind) = &options.requested_module_type
+    {
+      deno_resolver::graph::maybe_config_import_wrapper_specifier(
+        specifier, kind,
+      )
+    } else {
+      None
+    };
+    let specifier = config_wrapper.as_ref().unwrap_or(specifier);
 
     // When ESM hooks are active, attempt graph preparation best-effort.
     // A user hook may have resolved this specifier to a virtual URL the
