@@ -95,6 +95,10 @@ impl WorkerId {
     let id = WORKER_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
     WorkerId(id)
   }
+
+  pub fn as_u32(self) -> u32 {
+    self.0
+  }
 }
 impl fmt::Display for WorkerId {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

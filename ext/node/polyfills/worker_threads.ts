@@ -20,6 +20,10 @@ const {
   op_node_worker_thread_recv_message,
   op_node_worker_thread_register,
   op_node_worker_thread_set_listener_count,
+  op_node_locks_cancel_request,
+  op_node_locks_query,
+  op_node_locks_release,
+  op_node_locks_request,
   op_worker_get_resource_limits,
   op_worker_threads_filename,
 } = core.ops;
@@ -2222,6 +2226,139 @@ class BroadcastChannel extends WebBroadcastChannel {
   }
 }
 
+const kLockId = Symbol("kLockId");
+const kLockName = Symbol("kLockName");
+const kLockMode = Symbol("kLockMode");
+let nextLockRequestId = 1;
+
+class Lock {
+  [kLockId]: number;
+  [kLockName]: string;
+  [kLockMode]: string;
+
+  constructor(id: number, name: string, mode: string) {
+    this[kLockId] = id;
+    this[kLockName] = name;
+    this[kLockMode] = mode;
+  }
+
+  get name() {
+    return this[kLockName];
+  }
+
+  get mode() {
+    return this[kLockMode];
+  }
+}
+
+function validateLockMode(mode) {
+  if (mode !== "exclusive" && mode !== "shared") {
+    throw new TypeError(
+      "The property 'options.mode' must be one of: 'exclusive', 'shared'",
+    );
+  }
+}
+
+class LockManager {
+  async request(name, optionsOrCallback, maybeCallback) {
+    if (typeof name === "symbol") {
+      throw new ERR_INVALID_ARG_TYPE("name", "string", name);
+    }
+    name = String(name);
+
+    let options;
+    let callback;
+    if (typeof optionsOrCallback === "function") {
+      options = {};
+      callback = optionsOrCallback;
+    } else {
+      options = optionsOrCallback ?? {};
+      callback = maybeCallback;
+    }
+
+    if (typeof callback !== "function") {
+      throw new ERR_INVALID_ARG_TYPE("callback", "function", callback);
+    }
+    validateObject(options, "options");
+
+    const mode = options.mode ?? "exclusive";
+    validateLockMode(mode);
+    const ifAvailable = options.ifAvailable === true;
+    const steal = options.steal === true;
+    if (ifAvailable && steal) {
+      throw new DOMException(
+        "'ifAvailable' and 'steal' cannot both be true",
+        "NotSupportedError",
+      );
+    }
+
+    const signal = options.signal;
+    if (signal !== undefined) {
+      if (typeof signal !== "object" || signal === null) {
+        throw new ERR_INVALID_ARG_TYPE("options.signal", "AbortSignal", signal);
+      }
+      if (signal.aborted) {
+        throw new DOMException("The operation was aborted", "AbortError");
+      }
+    }
+
+    const requestId = nextLockRequestId++;
+    let aborted = false;
+    let abortHandler;
+    if (signal !== undefined) {
+      abortHandler = () => {
+        aborted = true;
+        op_node_locks_cancel_request(requestId);
+      };
+      signal.addEventListener("abort", abortHandler, {
+        __proto__: null,
+        once: true,
+      });
+    }
+
+    let grant;
+    try {
+      grant = await op_node_locks_request(
+        threadId,
+        requestId,
+        name,
+        mode,
+        ifAvailable,
+        steal,
+      );
+    } finally {
+      if (signal !== undefined) {
+        signal.removeEventListener("abort", abortHandler);
+      }
+    }
+
+    if (grant == null) {
+      if (ifAvailable && !aborted) {
+        return await callback(null);
+      }
+      throw new DOMException("The operation was aborted", "AbortError");
+    }
+
+    if (signal?.aborted) {
+      op_node_locks_release(grant.id);
+      throw new DOMException("The operation was aborted", "AbortError");
+    }
+
+    const lock = new Lock(grant.id, grant.name, grant.mode);
+    try {
+      return await callback(lock);
+    } finally {
+      op_node_locks_release(lock[kLockId]);
+    }
+  }
+
+  async query() {
+    return op_node_locks_query();
+  }
+}
+
+const locks = new LockManager();
+
 // Node's `worker_threads.MessagePort` is a function (not a class) that throws
 // `ERR_CONSTRUCT_CALL_INVALID` whether called as `MessagePort()` or
 // `new MessagePort()`. Mirror that here while keeping
@@ -2271,6 +2408,7 @@ ObjectAssign(exportsObj, {
   // Node's contract (an empty resourceLimits on the main thread).
   resourceLimits: {},
   threadName: "",
+  locks,
   markAsUncloneable,
   markAsUntransferable,
   isMarkedAsUntransferable,
