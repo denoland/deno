@@ -4,10 +4,14 @@
 import { core, primordials } from "ext:core/mod.js";
 
 const {
+  validateBoolean,
   validateObject,
   validateString,
   validateStringArray,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+// Lazily resolve the symlink-following `statSync` so glob (which is itself
+// lazy-loaded by fs.ts) does not eagerly pull in the whole fs module graph.
+const lazyFs = core.createLazyLoader("ext:deno_node/fs.ts");
 const { isMacOS, isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const lazyProcess = core.createLazyLoader("node:process");
@@ -56,6 +60,11 @@ interface GlobOptionsBase {
    */
   withFileTypes?: boolean | undefined;
   /**
+   * `true` if the glob should follow symlinks while walking directories.
+   * @default false
+   */
+  followSymlinks?: boolean | undefined;
+  /**
    * Function to filter out files/directories. Return true to exclude the item, false to include it.
    */
   // deno-lint-ignore no-explicit-any
@@ -98,6 +107,7 @@ const {
   MapPrototypeForEach,
   PromisePrototype,
   PromisePrototypeThen,
+  PromiseResolve,
   SafeMap,
   SafeSet,
   SafeSetIterator,
@@ -143,6 +153,64 @@ function getDirentSync(path) {
 }
 
 /**
+ * Stat a path while following symlinks (unlike getDirent, which lstats).
+ * Returns Node Stats (with isDirectory()), or null if the path is unreachable.
+ * @param {string} path
+ * @returns {Stats|null}
+ */
+function getFollowStatSync(path) {
+  try {
+    const stat = lazyFs().statSync(path, {
+      __proto__: null,
+      throwIfNoEntry: false,
+    });
+    return stat ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Async counterpart of getFollowStatSync.
+ * @param {string} path
+ * @returns {Promise<Stats|null>}
+ */
+function getFollowStat(path) {
+  return PromiseResolve(getFollowStatSync(path));
+}
+
+/**
+ * Resolve the canonical path (following symlinks), or null if unreachable.
+ * Used for symlink-cycle detection when followSymlinks is enabled.
+ * @param {string} path
+ * @returns {string|null}
+ */
+function getRealpathSync(path) {
+  try {
+    return lazyFs().realpathSync(path);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Async counterpart of getRealpathSync.
+ * @param {string} path
+ * @returns {Promise<string|null>}
+ */
+function getRealpath(path) {
+  return PromiseResolve(getRealpathSync(path));
+}
+
+function cloneSet(values) {
+  const cloned = new SafeSet();
+  for (const value of new SafeSetIterator(values)) {
+    cloned.add(value);
+  }
+  return cloned;
+}
+
+/**
  * @callback validateStringArrayOrFunction
  * @param {*} value
  * @param {string} name
@@ -184,6 +252,8 @@ function createMatcher(pattern, options = kEmptyObject) {
 class Cache {
   #cache = new SafeMap();
   #statsCache = new SafeMap();
+  #followStatsCache = new SafeMap();
+  #realpathCache = new SafeMap();
   #readdirCache = new SafeMap();
 
   stat(path) {
@@ -207,6 +277,44 @@ class Cache {
   }
   addToStatCache(path, val) {
     this.#statsCache.set(path, val);
+  }
+  followStat(path) {
+    const cached = this.#followStatsCache.get(path);
+    if (cached) {
+      return cached;
+    }
+    const promise = getFollowStat(path);
+    this.#followStatsCache.set(path, promise);
+    return promise;
+  }
+  followStatSync(path) {
+    const cached = this.#followStatsCache.get(path);
+    // Do not return a promise from a sync function.
+    if (cached && !ObjectPrototypeIsPrototypeOf(PromisePrototype, cached)) {
+      return cached;
+    }
+    const val = getFollowStatSync(path);
+    this.#followStatsCache.set(path, val);
+    return val;
+  }
+  realpath(path) {
+    const cached = this.#realpathCache.get(path);
+    if (cached) {
+      return cached;
+    }
+    const promise = getRealpath(path);
+    this.#realpathCache.set(path, promise);
+    return promise;
+  }
+  realpathSync(path) {
+    const cached = this.#realpathCache.get(path);
+    // Do not return a promise from a sync function.
+    if (cached && !ObjectPrototypeIsPrototypeOf(PromisePrototype, cached)) {
+      return cached;
+    }
+    const val = getRealpathSync(path);
+    this.#realpathCache.set(path, val);
+    return val;
   }
   readdir(path) {
     const cached = this.#readdirCache.get(path);
@@ -264,13 +372,21 @@ class Pattern {
   #globStrings;
   indexes;
   symlinks;
+  realpaths;
   last;
 
-  constructor(pattern, globStrings, indexes, symlinks) {
+  constructor(
+    pattern,
+    globStrings,
+    indexes,
+    symlinks,
+    realpaths = new SafeSet(),
+  ) {
     this.#pattern = pattern;
     this.#globStrings = globStrings;
     this.indexes = indexes;
     this.symlinks = symlinks;
+    this.realpaths = realpaths;
     this.last = pattern.length - 1;
   }
 
@@ -292,8 +408,14 @@ class Pattern {
   partAt(index) {
     return ArrayPrototypeAt(this.#pattern, index);
   }
-  child(indexes, symlinks = new SafeSet()) {
-    return new Pattern(this.#pattern, this.#globStrings, indexes, symlinks);
+  child(indexes, symlinks = new SafeSet(), realpaths = this.realpaths) {
+    return new Pattern(
+      this.#pattern,
+      this.#globStrings,
+      indexes,
+      symlinks,
+      realpaths,
+    );
   }
   test(index, path) {
     if (index > this.#pattern.length) {
@@ -351,12 +473,17 @@ export class Glob {
   #subpatterns = new SafeMap();
   #patterns;
   #withFileTypes;
+  #followSymlinks = false;
   #isExcluded = () => false;
   constructor(pattern, options = kEmptyObject) {
     validateObject(options, "options");
-    const { exclude, cwd, withFileTypes } = options;
+    const { exclude, cwd, followSymlinks, withFileTypes } = options;
     this.#root = toPathIfFileURL(cwd) ?? ".";
     this.#withFileTypes = !!withFileTypes;
+    if (followSymlinks != null) {
+      validateBoolean(followSymlinks, "options.followSymlinks");
+      this.#followSymlinks = followSymlinks;
+    }
     if (exclude != null) {
       validateStringArrayOrFunction(exclude, "options.exclude");
       if (ArrayIsArray(exclude)) {
@@ -404,6 +531,71 @@ export class Glob {
             ),
         ),
     );
+  }
+
+  #isDirectorySync(path, stat, pattern) {
+    if (stat?.isDirectory()) {
+      return true;
+    }
+    if (!stat?.isSymbolicLink()) {
+      return false;
+    }
+    if (this.#followSymlinks) {
+      return !!this.#cache.followStatSync(path)?.isDirectory();
+    }
+    return pattern.hasSeenSymlinks;
+  }
+  async #isDirectory(path, stat, pattern) {
+    if (stat?.isDirectory()) {
+      return true;
+    }
+    if (!stat?.isSymbolicLink()) {
+      return false;
+    }
+    if (this.#followSymlinks) {
+      return !!(await this.#cache.followStat(path))?.isDirectory();
+    }
+    return pattern.hasSeenSymlinks;
+  }
+
+  #isCyclicSync(path, isDirectory, pattern) {
+    if (!this.#followSymlinks || !isDirectory) {
+      return false;
+    }
+    const real = this.#cache.realpathSync(path);
+    return real !== null && pattern.realpaths.has(real);
+  }
+  async #isCyclic(path, isDirectory, pattern) {
+    if (!this.#followSymlinks || !isDirectory) {
+      return false;
+    }
+    const real = await this.#cache.realpath(path);
+    return real !== null && pattern.realpaths.has(real);
+  }
+
+  #nextRealpathsSync(path, isDirectory, pattern) {
+    if (!this.#followSymlinks || !isDirectory) {
+      return pattern.realpaths;
+    }
+    const real = this.#cache.realpathSync(path);
+    if (real === null) {
+      return pattern.realpaths;
+    }
+    const realpaths = cloneSet(pattern.realpaths);
+    realpaths.add(real);
+    return realpaths;
+  }
+  async #nextRealpaths(path, isDirectory, pattern) {
+    if (!this.#followSymlinks || !isDirectory) {
+      return pattern.realpaths;
+    }
+    const real = await this.#cache.realpath(path);
+    if (real === null) {
+      return pattern.realpaths;
+    }
+    const realpaths = cloneSet(pattern.realpaths);
+    realpaths.add(real);
+    return realpaths;
   }
 
   globSync() {
@@ -472,8 +664,7 @@ export class Glob {
     const fullpath = resolve(this.#root, path);
     const stat = this.#cache.statSync(fullpath);
     const last = pattern.last;
-    const isDirectory = stat?.isDirectory() ||
-      (stat?.isSymbolicLink() && pattern.hasSeenSymlinks);
+    const isDirectory = this.#isDirectorySync(fullpath, stat, pattern);
     const isLast = pattern.isLast(isDirectory);
     const isFirst = pattern.isFirst();
 
@@ -526,9 +717,14 @@ export class Glob {
       this.#results.add(path);
     }
 
-    if (!isDirectory) {
+    if (!isDirectory || this.#isCyclicSync(fullpath, isDirectory, pattern)) {
       return;
     }
+    const nextRealpaths = this.#nextRealpathsSync(
+      fullpath,
+      isDirectory,
+      pattern,
+    );
 
     let children;
     const firstPattern = pattern.indexes.size === 1 &&
@@ -548,7 +744,11 @@ export class Glob {
     for (let i = 0; i < children.length; i++) {
       const entry = children[i];
       const entryPath = join(path, entry.name);
-      this.#cache.addToStatCache(join(fullpath, entry.name), entry);
+      const entryFullpath = join(fullpath, entry.name);
+      this.#cache.addToStatCache(entryFullpath, entry);
+      const entryIsDirectory = entry.isDirectory() ||
+        (this.#followSymlinks && entry.isSymbolicLink() &&
+          !!this.#cache.followStatSync(entryFullpath)?.isDirectory());
 
       const subPatterns = new SafeSet();
       const nSymlinks = new SafeSet();
@@ -556,7 +756,8 @@ export class Glob {
         const current = pattern.partAt(index);
         const nextIndex = index + 1;
         const next = pattern.partAt(nextIndex);
-        const fromSymlink = pattern.symlinks.has(index);
+        const fromSymlink = !this.#followSymlinks &&
+          pattern.symlinks.has(index);
 
         if (current === lazyMinimatch().default.GLOBSTAR) {
           const isDot = entry.name[0] === ".";
@@ -581,7 +782,7 @@ export class Glob {
           ) {
             continue;
           }
-          if (!fromSymlink && entry.isDirectory()) {
+          if (!fromSymlink && entryIsDirectory) {
             // If directory, add ** to its potential patterns
             subPatterns.add(index);
           } else if (!fromSymlink && index === last) {
@@ -594,7 +795,7 @@ export class Glob {
           if (nextMatches && nextIndex === last && !isLast) {
             // If next pattern is the last one, add to results
             this.#results.add(entryPath);
-          } else if (nextMatches && entry.isDirectory()) {
+          } else if (nextMatches && entryIsDirectory) {
             // Pattern matched, meaning two patterns forward
             // are also potential patterns
             // e.g **/b/c when entry is a/b - add c to potential patterns
@@ -602,14 +803,14 @@ export class Glob {
           }
           if (
             (nextMatches || pattern.partAt(0) === ".") &&
-            (entry.isDirectory() || entry.isSymbolicLink()) && !fromSymlink
+            (entryIsDirectory || entry.isSymbolicLink()) && !fromSymlink
           ) {
             // If pattern after ** matches, or pattern starts with "."
             // and entry is a directory or symlink, add to potential patterns
             subPatterns.add(nextIndex);
           }
 
-          if (entry.isSymbolicLink()) {
+          if (!this.#followSymlinks && entry.isSymbolicLink()) {
             nSymlinks.add(index);
           }
 
@@ -675,14 +876,17 @@ export class Glob {
           // add next pattern to potential patterns, or to results if it's the last pattern
           if (index === last) {
             this.#results.add(entryPath);
-          } else if (entry.isDirectory()) {
+          } else if (entryIsDirectory) {
             subPatterns.add(nextIndex);
           }
         }
       }
       if (subPatterns.size > 0) {
         // If there are potential patterns, add to queue
-        this.#addSubpattern(entryPath, pattern.child(subPatterns, nSymlinks));
+        this.#addSubpattern(
+          entryPath,
+          pattern.child(subPatterns, nSymlinks, nextRealpaths),
+        );
       }
     }
   }
@@ -720,8 +924,7 @@ export class Glob {
     const fullpath = resolve(this.#root, path);
     const stat = await this.#cache.stat(fullpath);
     const last = pattern.last;
-    const isDirectory = stat?.isDirectory() ||
-      (stat?.isSymbolicLink() && pattern.hasSeenSymlinks);
+    const isDirectory = await this.#isDirectory(fullpath, stat, pattern);
     const isLast = pattern.isLast(isDirectory);
     const isFirst = pattern.isFirst();
 
@@ -784,9 +987,16 @@ export class Glob {
       }
     }
 
-    if (!isDirectory) {
+    if (
+      !isDirectory || await this.#isCyclic(fullpath, isDirectory, pattern)
+    ) {
       return;
     }
+    const nextRealpaths = await this.#nextRealpaths(
+      fullpath,
+      isDirectory,
+      pattern,
+    );
 
     let children;
     const firstPattern = pattern.indexes.size === 1 &&
@@ -806,7 +1016,11 @@ export class Glob {
     for (let i = 0; i < children.length; i++) {
       const entry = children[i];
       const entryPath = join(path, entry.name);
-      this.#cache.addToStatCache(join(fullpath, entry.name), entry);
+      const entryFullpath = join(fullpath, entry.name);
+      this.#cache.addToStatCache(entryFullpath, entry);
+      const entryIsDirectory = entry.isDirectory() ||
+        (this.#followSymlinks && entry.isSymbolicLink() &&
+          !!(await this.#cache.followStat(entryFullpath))?.isDirectory());
 
       const subPatterns = new SafeSet();
       const nSymlinks = new SafeSet();
@@ -814,7 +1028,8 @@ export class Glob {
         const current = pattern.partAt(index);
         const nextIndex = index + 1;
         const next = pattern.partAt(nextIndex);
-        const fromSymlink = pattern.symlinks.has(index);
+        const fromSymlink = !this.#followSymlinks &&
+          pattern.symlinks.has(index);
 
         if (current === lazyMinimatch().default.GLOBSTAR) {
           const isDot = entry.name[0] === ".";
@@ -839,7 +1054,7 @@ export class Glob {
           ) {
             continue;
           }
-          if (!fromSymlink && entry.isDirectory()) {
+          if (!fromSymlink && entryIsDirectory) {
             // If directory, add ** to its potential patterns
             subPatterns.add(index);
           } else if (!fromSymlink && index === last) {
@@ -856,7 +1071,7 @@ export class Glob {
             if (!this.#results.has(entryPath) && this.#results.add(entryPath)) {
               yield this.#withFileTypes ? entry : entryPath;
             }
-          } else if (nextMatches && entry.isDirectory()) {
+          } else if (nextMatches && entryIsDirectory) {
             // Pattern matched, meaning two patterns forward
             // are also potential patterns
             // e.g **/b/c when entry is a/b - add c to potential patterns
@@ -864,14 +1079,14 @@ export class Glob {
           }
           if (
             (nextMatches || pattern.partAt(0) === ".") &&
-            (entry.isDirectory() || entry.isSymbolicLink()) && !fromSymlink
+            (entryIsDirectory || entry.isSymbolicLink()) && !fromSymlink
           ) {
             // If pattern after ** matches, or pattern starts with "."
             // and entry is a directory or symlink, add to potential patterns
             subPatterns.add(nextIndex);
           }
 
-          if (entry.isSymbolicLink()) {
+          if (!this.#followSymlinks && entry.isSymbolicLink()) {
             nSymlinks.add(index);
           }
 
@@ -957,14 +1172,17 @@ export class Glob {
                 yield this.#withFileTypes ? entry : entryPath;
               }
             }
-          } else if (entry.isDirectory()) {
+          } else if (entryIsDirectory) {
             subPatterns.add(nextIndex);
           }
         }
       }
       if (subPatterns.size > 0) {
         // If there are potential patterns, add to queue
-        this.#addSubpattern(entryPath, pattern.child(subPatterns, nSymlinks));
+        this.#addSubpattern(
+          entryPath,
+          pattern.child(subPatterns, nSymlinks, nextRealpaths),
+        );
       }
     }
   }
