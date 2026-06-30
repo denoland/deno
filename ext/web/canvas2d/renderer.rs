@@ -17,28 +17,12 @@ pub struct GpuRenderer {
   renderer: Mutex<vello::Renderer>,
 }
 
-/// Hybrid software backend — runs vello's GPU compute pipeline on a wgpu
-/// software adapter (not a CPU rasterizer; the GPU shaders are emulated).
-///
-/// This requires wgpu to be available and find a software adapter.
-/// On macOS, Metal has no software fallback, so this path is effectively
-/// Windows-only (WARP) or Linux with lavapipe/llvmpipe.
-pub struct HybridRenderer {
-  device: wgpu::Device,
-  queue: wgpu::Queue,
-  // TODO(petamoriken): Replace this software-adapter approach with the dedicated
-  // `vello_hybrid::Renderer` (a sparse-strips renderer that offloads work to the
-  // GPU) once it stabilizes.
-  renderer: Mutex<vello::Renderer>,
-}
-
 /// Pure-CPU backend — uses vello_cpu::RenderContext with no wgpu dependency.
 /// Always available; used as the final fallback when wgpu cannot be initialized.
 pub struct CpuRenderer;
 
 pub enum DenoCanvasBackend {
-  Gpu(GpuRenderer),
-  Hybrid(HybridRenderer),
+  Gpu(Box<GpuRenderer>),
   Cpu(CpuRenderer),
 }
 
@@ -49,8 +33,7 @@ pub type SharedRenderer =
 /// Always returns `Some` — falls back to pure-CPU if wgpu is unavailable.
 pub fn init_canvas_renderer() -> Option<DenoCanvasBackend> {
   try_init_gpu()
-    .map(DenoCanvasBackend::Gpu)
-    .or_else(|| try_init_hybrid().map(DenoCanvasBackend::Hybrid))
+    .map(|renderer| DenoCanvasBackend::Gpu(Box::new(renderer)))
     .or(Some(DenoCanvasBackend::Cpu(CpuRenderer)))
 }
 
@@ -60,13 +43,20 @@ fn try_init_gpu() -> Option<GpuRenderer> {
   }
   futures::executor::block_on(async {
     let instance = wgpu::Instance::default();
-    let adapter = instance
-      .request_adapter(&wgpu::RequestAdapterOptions {
-        force_fallback_adapter: false,
-        ..Default::default()
-      })
-      .await
-      .ok()?;
+    let adapter = instance.request_adapter(&Default::default()).await.ok()?;
+    if !adapter
+      .get_downlevel_capabilities()
+      .flags
+      .contains(wgpu::DownlevelFlags::COMPUTE_SHADERS)
+    {
+      return None;
+    }
+    if !adapter
+      .limits()
+      .check_limits(&wgpu::Limits::downlevel_defaults())
+    {
+      return None;
+    }
     let (device, queue) = adapter
       .request_device(&wgpu::DeviceDescriptor::default())
       .await
@@ -88,46 +78,12 @@ fn try_init_gpu() -> Option<GpuRenderer> {
   })
 }
 
-fn try_init_hybrid() -> Option<HybridRenderer> {
-  if wgpu::Instance::enabled_backend_features().is_empty() {
-    return None;
-  }
-  futures::executor::block_on(async {
-    let instance = wgpu::Instance::default();
-    let adapter = instance
-      .request_adapter(&wgpu::RequestAdapterOptions {
-        force_fallback_adapter: true,
-        ..Default::default()
-      })
-      .await
-      .ok()?;
-    let (device, queue) = adapter
-      .request_device(&wgpu::DeviceDescriptor::default())
-      .await
-      .ok()?;
-    let renderer = vello::Renderer::new(
-      &device,
-      RendererOptions {
-        use_cpu: true,
-        antialiasing_support: AaSupport::area_only(),
-        ..Default::default()
-      },
-    )
-    .ok()?;
-    Some(HybridRenderer {
-      device,
-      queue,
-      renderer: Mutex::new(renderer),
-    })
-  })
-}
-
 /// Renders a vello Scene directly to a caller-provided TextureView.
 ///
 /// Unlike [`render_scene`], this does not perform a CPU readback.
 /// The view must have been created from a texture that belongs to the same
 /// wgpu device as the backend.
-/// Only valid for `Gpu` and `Hybrid` backends.
+/// Only valid for `Gpu` backends.
 pub fn render_scene_to_texture_view(
   backend: &DenoCanvasBackend,
   scene: &vello::Scene,
@@ -143,9 +99,9 @@ pub fn render_scene_to_texture_view(
 }
 
 /// Renders a vello Scene to RGBA8 bytes.
-/// Only valid for `Gpu` and `Hybrid` backends; the `Cpu` backend renders
-/// directly via `vello_cpu::RenderContext::render_to_buffer` (see the
-/// `DrawingBackend::VelloCpu` arm in `canvas2d.rs`).
+/// Only valid for `Gpu` backends; the `Cpu` backend renders directly
+/// via `vello_cpu::RenderContext::render_to_buffer` (see the
+/// `DrawingBackend::VelloCpu` arm in `state.rs`).
 pub fn render_scene(
   backend: &DenoCanvasBackend,
   scene: &vello::Scene,
@@ -162,7 +118,6 @@ fn wgpu_renderer(
 ) -> (&wgpu::Device, &wgpu::Queue, &Mutex<vello::Renderer>) {
   match backend {
     DenoCanvasBackend::Gpu(r) => (&r.device, &r.queue, &r.renderer),
-    DenoCanvasBackend::Hybrid(r) => (&r.device, &r.queue, &r.renderer),
     DenoCanvasBackend::Cpu(_) => {
       unreachable!("wgpu_renderer called on Cpu backend")
     }
