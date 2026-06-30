@@ -1639,6 +1639,18 @@ function nativeIncomingRead(_n) {
         nativePush(self, null);
         return;
       }
+      // Body data arrived: reset the synthetic socket's inactivity timeout.
+      // Node resets the socket timeout on read/write activity, so an active
+      // upload (data flowing faster than the timeout) never fires 'timeout'
+      // (test-http-upload-timeout). The engine owns the real I/O, so we re-arm
+      // the coarse timer here on each chunk.
+      const sock = self.socket;
+      if (
+        sock !== undefined && sock !== null &&
+        sock._nativeRearmTimeout !== undefined
+      ) {
+        sock._nativeRearmTimeout();
+      }
       // Push the chunk. `push()` returns true while the consumer still wants
       // data; when it does, self-pump the next read directly rather than
       // relying on the Readable's `maybeReadMore` (which does not re-arm an
@@ -1779,6 +1791,14 @@ class NativeFakeSocket extends Duplex {
       }
     }
     return this;
+  }
+
+  // Re-arm the inactivity timer (called on body-read activity, mirroring how
+  // Node resets a socket timeout on I/O). No-op if no timeout is configured.
+  _nativeRearmTimeout() {
+    if (this.timeout > 0) {
+      this.setTimeout(this.timeout);
+    }
   }
 
   _onTimeout() {}
