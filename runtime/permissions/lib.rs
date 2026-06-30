@@ -75,6 +75,192 @@ pub struct PermissionDeniedError {
   pub state: PermissionState,
 }
 
+/// The capabilities granted to a single package by a per-package policy. Maps
+/// onto a subset of the process-wide permission flags. Unset fields default to
+/// "not granted".
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackagePermissions {
+  /// Whether the package may read from the filesystem.
+  #[serde(default)]
+  pub read: bool,
+  /// Net allow-list entries for the package (for example `:8080`), intersected
+  /// with the process net grant. Empty means no net access.
+  #[serde(default)]
+  pub net: Vec<String>,
+}
+
+/// Prototype per-package permission table (see
+/// `docs/proposals/per-module-permissions.md`, sections 10 and 11).
+///
+/// The policy is a map from package identifier (for example `npm:express`) to a
+/// [`PackagePermissions`] grant. A package that is not listed, or is listed with
+/// an empty grant, receives nothing. First-party code (modules not resolved
+/// inside a package) is unrestricted and governed by the process-wide grant.
+///
+/// Per-package grants only ever narrow the process-wide permissions; they cannot
+/// escalate. Enforcement happens at permission-bearing ops, which resolve the
+/// first user stack frame to a module specifier, map it to a package id, and
+/// consult this table.
+///
+/// In this prototype the policy is sourced from the `DENO_PER_PACKAGE_PERMISSIONS`
+/// environment variable (a JSON object), standing in for the eventual
+/// `permissions.perPackage` field in `deno.json`.
+#[derive(Debug, Default)]
+pub struct PerModulePermissions {
+  enabled: bool,
+  per_package: std::collections::HashMap<String, PackagePermissions>,
+  // Stable per-module ids written into host-defined options at instantiation.
+  // Retained for the managed-globals-style fast path; the op path resolves
+  // packages by stack-frame script name instead (see proposal section 10).
+  next_id: u32,
+  by_specifier: std::collections::HashMap<String, u32>,
+}
+
+impl PerModulePermissions {
+  /// Build the table from the `DENO_PER_PACKAGE_PERMISSIONS` environment
+  /// variable (a JSON object mapping package id to grant). When unset, empty, or
+  /// invalid, the feature is disabled and the table never denies anything.
+  pub fn from_env() -> Self {
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "prototype env-var policy source; will move to deno.json config"
+    )]
+    let var = std::env::var("DENO_PER_PACKAGE_PERMISSIONS");
+    let Ok(json) = var else {
+      return Self::default();
+    };
+    if json.trim().is_empty() {
+      return Self::default();
+    }
+    match serde_json::from_str::<
+      std::collections::HashMap<String, PackagePermissions>,
+    >(&json)
+    {
+      Ok(per_package) => Self {
+        enabled: true,
+        per_package,
+        ..Default::default()
+      },
+      Err(err) => {
+        log::warn!("ignoring invalid DENO_PER_PACKAGE_PERMISSIONS: {err}");
+        Self::default()
+      }
+    }
+  }
+
+  pub fn enabled(&self) -> bool {
+    self.enabled
+  }
+
+  /// Assign (or fetch) a stable id for a module specifier.
+  pub fn assign(&mut self, specifier: &str) -> u32 {
+    if let Some(id) = self.by_specifier.get(specifier) {
+      return *id;
+    }
+    let id = self.next_id;
+    self.next_id += 1;
+    self.by_specifier.insert(specifier.to_string(), id);
+    id
+  }
+
+  /// Whether the module at `specifier` is denied filesystem read access.
+  ///
+  /// First-party modules (not in a package) are never denied here. A package
+  /// module is denied unless its package is listed and grants `read`.
+  pub fn is_read_denied_specifier(&self, specifier: &str) -> bool {
+    let Some(package) = package_id_of(specifier) else {
+      return false;
+    };
+    match self.per_package.get(&package) {
+      Some(grant) => !grant.read,
+      None => true,
+    }
+  }
+
+  /// The error to raise when a module is denied read access by this table.
+  pub fn read_denied_error(&self) -> PermissionDeniedError {
+    PermissionDeniedError {
+      access: "denied by per-package permission policy".to_string(),
+      name: "read",
+      custom_message: Some(
+        "this package is not allowed filesystem read access".to_string(),
+      ),
+      state: PermissionState::Denied,
+    }
+  }
+
+  /// Whether the module at `specifier` is denied network access to
+  /// `host`:`port` under the current policy.
+  ///
+  /// First-party modules (not in a package) are never denied here. A package
+  /// module is denied unless its package's `net` allow-list matches the target.
+  pub fn is_net_denied_specifier(
+    &self,
+    specifier: &str,
+    host: &str,
+    port: u16,
+  ) -> bool {
+    let Some(package) = package_id_of(specifier) else {
+      return false;
+    };
+    match self.per_package.get(&package) {
+      Some(grant) => !grant
+        .net
+        .iter()
+        .any(|entry| net_entry_matches(entry, host, port)),
+      None => true,
+    }
+  }
+
+  /// The error to raise when a module is denied net access by this table.
+  pub fn net_denied_error(
+    &self,
+    host: &str,
+    port: u16,
+  ) -> PermissionDeniedError {
+    PermissionDeniedError {
+      access: format!("denied by per-package permission policy: {host}:{port}"),
+      name: "net",
+      custom_message: Some(
+        "this package is not allowed network access to this address"
+          .to_string(),
+      ),
+      state: PermissionState::Denied,
+    }
+  }
+}
+
+/// Match a per-package net allow-list entry against a target host and port.
+/// Entry forms: `host:port` (exact), `:port` (any host on that port), `host`
+/// (any port on that host). IPv6 literals are not handled in this prototype.
+fn net_entry_matches(entry: &str, host: &str, port: u16) -> bool {
+  let (entry_host, entry_port) = match entry.rsplit_once(':') {
+    Some((h, p)) => (h, p.parse::<u16>().ok()),
+    None => (entry, None),
+  };
+  let host_ok = entry_host.is_empty() || entry_host == host;
+  let port_ok = entry_port.is_none_or(|p| p == port);
+  host_ok && port_ok
+}
+
+/// Map a module specifier to a package identifier, or `None` for first-party
+/// code. Recognizes npm packages by their `node_modules/<name>` (or
+/// `node_modules/@scope/name`) path segment. JSR and a resolver-backed lookup
+/// are future work (see proposal section 11b).
+pub fn package_id_of(specifier: &str) -> Option<String> {
+  let idx = specifier.rfind("/node_modules/")?;
+  let rest = &specifier[idx + "/node_modules/".len()..];
+  let mut parts = rest.split('/').filter(|s| !s.is_empty());
+  let first = parts.next()?;
+  if first.starts_with('@') {
+    let second = parts.next()?;
+    Some(format!("npm:{first}/{second}"))
+  } else {
+    Some(format!("npm:{first}"))
+  }
+}
+
 fn format_permission_error(name: &'static str) -> String {
   if is_standalone() {
     format!(
