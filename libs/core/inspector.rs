@@ -453,6 +453,7 @@ struct JsRuntimeInspectorState {
   flags: Rc<RefCell<InspectorFlags>>,
   waker: Arc<InspectorWaker>,
   sessions: Rc<RefCell<SessionContainer>>,
+  active_session_count: Rc<Cell<usize>>,
   is_dispatching_message: Rc<RefCell<bool>>,
   pending_worker_messages: Arc<Mutex<Vec<(String, String)>>>,
   nodeworker_enabled: Rc<Cell<bool>>,
@@ -559,7 +560,7 @@ impl JsRuntimeInspectorState {
           // to yield back its ID).
           if fut.poll_unpin(cx).is_pending() {
             sessions.established.push(fut);
-            sessions.local.insert(id, session);
+            sessions.insert_local_session(id, session);
 
             // Track the first session as the main session for Target events
             if sessions.main_session_id.is_none() {
@@ -783,7 +784,7 @@ impl JsRuntimeInspectorState {
             // A session's pump future completed (WS disconnected).
             // Remove it from local so sessions_state() no longer
             // reports it as active.
-            sessions.local.remove(&completed_id);
+            sessions.remove_local_session(completed_id);
             // If this was the main session, promote another session
             // or clear, so new connections can become main and
             // Target/worker notifications continue to work.
@@ -884,14 +885,16 @@ impl JsRuntimeInspector {
       mpsc::unbounded::<InspectorSessionProxy>();
 
     let waker = InspectorWaker::new(scope.thread_safe_handle());
+    let active_session_count = Rc::new(Cell::new(0));
     let state = Rc::new(JsRuntimeInspectorState {
       waker,
       flags: Default::default(),
       isolate_ptr,
       context: v8::Global::new(scope, context),
-      sessions: Rc::new(
-        RefCell::new(SessionContainer::temporary_placeholder()),
-      ),
+      sessions: Rc::new(RefCell::new(SessionContainer::temporary_placeholder(
+        active_session_count.clone(),
+      ))),
+      active_session_count,
       is_dispatching_message: Default::default(),
       pending_worker_messages: Arc::new(Mutex::new(Vec::new())),
       nodeworker_enabled: Rc::new(Cell::new(false)),
@@ -908,8 +911,11 @@ impl JsRuntimeInspector {
       v8_inspector_client,
     ));
 
-    *state.sessions.borrow_mut() =
-      SessionContainer::new(v8_inspector.clone(), new_session_rx);
+    *state.sessions.borrow_mut() = SessionContainer::new(
+      v8_inspector.clone(),
+      new_session_rx,
+      state.active_session_count.clone(),
+    );
 
     // Tell the inspector about the main realm.
     let context_name_bytes = if is_main_runtime {
@@ -1193,7 +1199,7 @@ impl JsRuntimeInspector {
   }
 
   pub fn should_wait_for_page_wait_for_debugger_on_worker_start(&self) -> bool {
-    self.state.sessions.borrow().sessions_state().has_active
+    self.state.active_session_count.get() > 0
       && !self.should_wait_for_debugger_on_worker_start()
   }
 
@@ -1413,7 +1419,7 @@ impl JsRuntimeInspector {
         let mut s = sessions.borrow_mut();
         let id = s.next_local_id;
         s.next_local_id += 1;
-        assert!(s.local.insert(id, inspector_session).is_none());
+        assert!(s.insert_local_session(id, inspector_session).is_none());
         id
       };
 
@@ -1458,6 +1464,7 @@ pub struct SessionContainer {
   established: FuturesUnordered<InspectorSessionPumpMessages>,
   next_local_id: i32,
   local: HashMap<i32, Rc<InspectorSession>>,
+  active_session_count: Rc<Cell<usize>>,
 
   target_sessions: HashMap<String, Rc<TargetSession>>, // sessionId -> TargetSession
   main_session_id: Option<i32>, // The first session that should receive Target events
@@ -1519,6 +1526,7 @@ impl SessionContainer {
   fn new(
     v8_inspector: Rc<v8::inspector::V8Inspector>,
     new_session_rx: UnboundedReceiver<InspectorSessionProxy>,
+    active_session_count: Rc<Cell<usize>>,
   ) -> Self {
     Self {
       v8_inspector: Some(v8_inspector),
@@ -1527,6 +1535,7 @@ impl SessionContainer {
       established: FuturesUnordered::new(),
       next_local_id: 1,
       local: HashMap::new(),
+      active_session_count,
 
       target_sessions: HashMap::new(),
       main_session_id: None,
@@ -1543,6 +1552,31 @@ impl SessionContainer {
     self.handshake.take();
     self.established.clear();
     self.local.clear();
+    self.active_session_count.set(0);
+  }
+
+  fn insert_local_session(
+    &mut self,
+    id: i32,
+    session: Rc<InspectorSession>,
+  ) -> Option<Rc<InspectorSession>> {
+    let previous = self.local.insert(id, session);
+    if previous.is_none() {
+      self
+        .active_session_count
+        .set(self.active_session_count.get() + 1);
+    }
+    previous
+  }
+
+  fn remove_local_session(&mut self, id: i32) -> Option<Rc<InspectorSession>> {
+    let removed = self.local.remove(&id);
+    if removed.is_some() {
+      self
+        .active_session_count
+        .set(self.active_session_count.get().saturating_sub(1));
+    }
+    removed
   }
 
   fn sessions_state(&self) -> SessionsState {
@@ -1572,7 +1606,7 @@ impl SessionContainer {
   /// instance of V8Inspector is created. It's used in favor
   /// of `Default` implementation to signal that it's not meant
   /// for actual use.
-  fn temporary_placeholder() -> Self {
+  fn temporary_placeholder(active_session_count: Rc<Cell<usize>>) -> Self {
     let (_tx, rx) = mpsc::unbounded::<InspectorSessionProxy>();
     Self {
       v8_inspector: Default::default(),
@@ -1581,6 +1615,7 @@ impl SessionContainer {
       established: FuturesUnordered::new(),
       next_local_id: 1,
       local: HashMap::new(),
+      active_session_count,
 
       target_sessions: HashMap::new(),
       main_session_id: None,
@@ -2313,7 +2348,7 @@ impl LocalInspectorSession {
 impl Drop for LocalInspectorSession {
   fn drop(&mut self) {
     let mut sessions = self.sessions.borrow_mut();
-    sessions.local.remove(&self.session_id);
+    sessions.remove_local_session(self.session_id);
     if sessions.main_session_id == Some(self.session_id) {
       sessions.main_session_id = sessions.local.keys().next().copied();
     }
