@@ -1,25 +1,17 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::cell::RefCell;
 use std::f64::consts::TAU;
 
+use deno_core::GarbageCollected;
+use deno_core::op2;
+use deno_core::v8::cppgc::Visitor;
 use vello::kurbo::Point;
 use vello::peniko;
 use vello::peniko::InterpolationAlphaSpace;
 
+use crate::canvas2d::error::Canvas2DError;
 use crate::css::color::parse_css_color;
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum ColorStopError {
-  #[class("DOMExceptionIndexSizeError")]
-  #[error("The index is not in the allowed range.")]
-  IndexSize,
-  #[class("DOMExceptionSyntaxError")]
-  #[error("Failed to parse color")]
-  Syntax,
-  #[class(type)]
-  #[error("The provided value is non-finite.")]
-  TypeError,
-}
 
 fn canvas_gradient_base(mut gradient: peniko::Gradient) -> peniko::Gradient {
   gradient.interpolation_alpha_space = InterpolationAlphaSpace::Unpremultiplied;
@@ -71,12 +63,12 @@ pub fn build_conic_gradient(
 }
 
 /// Validates a color-stop offset per Canvas 2D addColorStop().
-pub fn validate_color_stop_offset(offset: f64) -> Result<f32, ColorStopError> {
+pub fn validate_color_stop_offset(offset: f64) -> Result<f32, Canvas2DError> {
   if !offset.is_finite() {
-    return Err(ColorStopError::TypeError);
+    return Err(Canvas2DError::ColorStopTypeError);
   }
   if !(0.0..=1.0).contains(&offset) {
-    return Err(ColorStopError::IndexSize);
+    return Err(Canvas2DError::ColorStopIndexSize);
   }
   Ok(offset as f32)
 }
@@ -85,10 +77,45 @@ pub fn validate_color_stop_offset(offset: f64) -> Result<f32, ColorStopError> {
 pub fn parse_color_stop(
   offset: f32,
   color: &str,
-) -> Result<peniko::ColorStop, ColorStopError> {
-  let parsed = parse_css_color(color).map_err(|_| ColorStopError::Syntax)?;
+) -> Result<peniko::ColorStop, Canvas2DError> {
+  let parsed =
+    parse_css_color(color).map_err(|_| Canvas2DError::ColorStopSyntax)?;
   Ok(peniko::ColorStop {
     offset,
     color: peniko::color::DynamicColor::from_alpha_color(parsed),
   })
+}
+
+pub struct CanvasGradient {
+  pub(super) gradient: RefCell<peniko::Gradient>,
+}
+
+// SAFETY: CanvasGradient is only accessed from the JS thread.
+unsafe impl GarbageCollected for CanvasGradient {
+  fn trace(&self, _visitor: &mut Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"CanvasGradient"
+  }
+}
+
+#[op2]
+impl CanvasGradient {
+  #[constructor]
+  #[cppgc]
+  fn new() -> Result<CanvasGradient, Canvas2DError> {
+    Err(Canvas2DError::IllegalConstructor)
+  }
+
+  #[undefined]
+  fn add_color_stop(
+    &self,
+    #[webidl] offset: f64,
+    #[webidl] color: String,
+  ) -> Result<(), Canvas2DError> {
+    let offset = validate_color_stop_offset(offset)?;
+    let stop = parse_color_stop(offset, &color)?;
+    self.gradient.borrow_mut().stops.push(stop);
+    Ok(())
+  }
 }

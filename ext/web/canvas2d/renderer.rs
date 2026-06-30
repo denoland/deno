@@ -8,9 +8,7 @@ use vello::RendererOptions;
 use vello::peniko;
 pub use vello::wgpu;
 
-#[derive(Debug, thiserror::Error)]
-#[error(transparent)]
-pub struct RenderError(#[from] vello::Error);
+use crate::canvas2d::error::RenderError;
 
 /// GPU compute backend — uses a real GPU hardware adapter.
 pub struct GpuRenderer {
