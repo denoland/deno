@@ -49,5 +49,5 @@ sha2.workspace = true
 sha1.workspace = true
 
 [dev-dependencies]
-sys_traits = { workspace = true, features = ["real"] }
+sys_traits = { workspace = true, features = ["real", "memory"] }
 tempfile.workspace = true
