@@ -1326,6 +1326,11 @@ where
       }
       writer.written += written;
     }
+    // The head was written directly to the socket above; mark `write_buf` as
+    // fully flushed so a later `poll_flush_write_buf` (the stream loop flushes
+    // buffered bytes for incremental responsiveness) doesn't re-send the head.
+    // Mirrors the chunked path's direct-write branch.
+    scratch.write_flushed = scratch.write_buf.len();
     self.response_state = if status_allows_body(writer.response.status) {
       ResponseState::Fixed {
         remaining: writer.content_length,
