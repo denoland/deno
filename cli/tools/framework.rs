@@ -321,11 +321,7 @@ fn detect_sveltekit(dir: &Path) -> Result<FrameworkDetection, AnyError> {
     });
   }
   // No build artifacts yet — fall back to config inspection.
-  let config_text =
-    ["svelte.config.js", "svelte.config.ts", "svelte.config.mjs"]
-      .iter()
-      .find_map(|f| std::fs::read_to_string(dir.join(f)).ok())
-      .unwrap_or_default();
+  let config_text = read_config_text(dir, "svelte.config");
   if config_text.contains("@deno/svelte-adapter") {
     return Ok(FrameworkDetection {
       name: "SvelteKit",
@@ -373,8 +369,8 @@ fn detect_sveltekit(dir: &Path) -> Result<FrameworkDetection, AnyError> {
   };
   bail!(
     "SvelteKit detected, but no adapter that `deno desktop` can bundle is \
-     configured.\n{auto_hint}Configure a supported adapter in \
-     svelte.config.js:\n  - `@sveltejs/adapter-node` (runs under Deno via \
+     configured.\n{auto_hint}Configure a supported adapter in your \
+     svelte.config:\n  - `@sveltejs/adapter-node` (runs under Deno via \
      Node.js compatibility)\n  - `@deno/svelte-adapter` (for Deno Deploy)"
   );
 }
@@ -462,10 +458,26 @@ Deno.serve(async (req) => {
 // --- Helpers ---
 
 /// Check if a config file exists with any common extension.
+/// Config-file extensions framework detection recognizes. Used both to detect
+/// a config's presence and to read its text, so the two can't drift.
+const CONFIG_EXTENSIONS: [&str; 5] = ["js", "mjs", "ts", "mts", "cjs"];
+
 fn has_config_file(dir: &Path, base_name: &str) -> bool {
-  ["js", "mjs", "ts", "mts", "cjs"]
+  CONFIG_EXTENSIONS
     .iter()
     .any(|ext| dir.join(format!("{base_name}.{ext}")).exists())
+}
+
+/// Read the text of the first matching `base_name.<ext>` config file, trying
+/// the same extension set as [`has_config_file`] so a config that passes the
+/// presence gate is never read as empty.
+fn read_config_text(dir: &Path, base_name: &str) -> String {
+  CONFIG_EXTENSIONS
+    .iter()
+    .find_map(|ext| {
+      std::fs::read_to_string(dir.join(format!("{base_name}.{ext}"))).ok()
+    })
+    .unwrap_or_default()
 }
 
 /// Read package.json dependencies.
@@ -798,6 +810,22 @@ mod tests {
     let dir = setup_dir();
     fs::write(
       dir.path().join("svelte.config.js"),
+      "import adapter from '@sveltejs/adapter-node';\nexport default { kit: { adapter: adapter() } };\n",
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "SvelteKit");
+    assert!(det.entrypoint_code.contains("build/index.js"));
+    assert_eq!(det.include_paths, vec!["build/client"]);
+  }
+
+  #[test]
+  fn detects_sveltekit_adapter_node_from_mts_config() {
+    // `svelte.config.mts` passes the presence gate, so its text must be read
+    // too — otherwise a valid adapter-node config reads as empty and bails.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("svelte.config.mts"),
       "import adapter from '@sveltejs/adapter-node';\nexport default { kit: { adapter: adapter() } };\n",
     )
     .unwrap();
