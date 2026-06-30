@@ -264,11 +264,13 @@ class NodeWorker extends EventEmitter {
   #messagePromise = undefined;
   #controlPromise = undefined;
   #messageLoopPromise = undefined;
+  #terminationPromise = undefined;
   #workerOnline = false;
   #exited = false;
-  // "RUNNING" | "CLOSED" | "TERMINATED"
-  // "TERMINATED" means that any controls or messages received will be
-  // discarded. "CLOSED" means that we have received a control
+  // "RUNNING" | "CLOSED" | "TERMINATING" | "TERMINATED"
+  // "TERMINATING" means termination was requested and the close event still
+  // needs to be received. "TERMINATED" means that any controls or messages
+  // received will be discarded. "CLOSED" means that we have received a control
   // indicating that the worker is no longer running, but there might
   // still be messages left to receive.
   #status = "RUNNING";
@@ -612,6 +614,10 @@ class NodeWorker extends EventEmitter {
     this.emit("error", err);
   }
 
+  #hasTerminationBeenRequested() {
+    return this.#status === "TERMINATING" || this.#status === "TERMINATED";
+  }
+
   #closeStdio() {
     if (!this.stdout.readableEnded) {
       FunctionPrototypeCall(
@@ -641,11 +647,12 @@ class NodeWorker extends EventEmitter {
       if (this.#status === "TERMINATED") {
         return;
       }
+      const isTerminating = this.#status === "TERMINATING";
 
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
-          if (this.listenerCount("error") > 0) {
+          if (!isTerminating && this.listenerCount("error") > 0) {
             const errMsg = data.errorMessage ?? data.message;
             const errName = data.name;
             let err;
@@ -749,7 +756,7 @@ class NodeWorker extends EventEmitter {
         core.unrefOpPromise(this.#messagePromise);
       }
       const data = await this.#messagePromise;
-      if (this.#status === "TERMINATED" || data === null) {
+      if (this.#hasTerminationBeenRequested() || data === null) {
         return;
       }
       if (!this.#dispatchWorkerThreadMessage(data)) return;
@@ -757,7 +764,11 @@ class NodeWorker extends EventEmitter {
       // async op + Promise path for each. The whole burst is processed within
       // this event-loop turn; the batch limit prevents starving the event loop
       // under a sustained flood.
-      for (let i = 0; i < 1000 && this.#status !== "TERMINATED"; i++) {
+      for (
+        let i = 0;
+        i < 1000 && !this.#hasTerminationBeenRequested();
+        i++
+      ) {
         const syncData = op_host_recv_message_sync(this.#id);
         if (syncData === null) break;
         // Each message dispatch is its own task. Yield a microtask before
@@ -768,7 +779,9 @@ class NodeWorker extends EventEmitter {
         // lost. A synchronous checkpoint can't help: V8 won't run microtasks
         // reentrantly while we are already inside one.
         await new Promise((resolve) => queueMicrotask(() => resolve()));
-        if (this.#status === "TERMINATED") return;
+        if (this.#hasTerminationBeenRequested()) {
+          return;
+        }
         if (!this.#dispatchWorkerThreadMessage(syncData)) return;
       }
     }
@@ -826,23 +839,26 @@ class NodeWorker extends EventEmitter {
 
   // https://nodejs.org/api/worker_threads.html#workerterminate
   terminate() {
-    if (this.#status === "TERMINATED") {
+    if (this.#status === "CLOSED" || this.#status === "TERMINATED") {
       return PromiseResolve(undefined);
     }
-
-    this.#status = "TERMINATED";
-    op_host_terminate_worker(this.#id);
-    this.#closeStdio();
-
-    if (!this.#exited) {
-      this.#exited = true;
-      this.emit("exit", 1);
-      return PromiseResolve(1);
+    if (this.#terminationPromise !== undefined) {
+      return this.#terminationPromise;
     }
 
-    // Worker already exited - Node.js returns undefined in this case
-    // (the internal handle is already null).
-    return PromiseResolve(undefined);
+    this.#terminationPromise = new Promise((resolve) => {
+      this.once("exit", resolve);
+    });
+
+    this.#status = "TERMINATING";
+    if (this.#controlPromise) {
+      core.refOpPromise(this.#controlPromise);
+    }
+    if (this.#messagePromise) {
+      core.refOpPromise(this.#messagePromise);
+    }
+    op_host_terminate_worker(this.#id);
+    return this.#terminationPromise;
   }
 
   async [SymbolAsyncDispose]() {
