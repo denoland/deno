@@ -75,6 +75,7 @@ pub struct CreateWebWorkerArgs {
   pub maybe_main_module_blob: Option<Arc<Blob>>,
   pub resource_limits: Option<ResourceLimits>,
   pub wait_for_debugger_on_start: bool,
+  pub wait_for_page_wait_for_debugger: bool,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -285,6 +286,12 @@ fn op_create_worker(
     .try_borrow::<Rc<JsRuntimeInspector>>()
     .map(|inspector| inspector.should_wait_for_debugger_on_worker_start())
     .unwrap_or(false);
+  let wait_for_page_wait_for_debugger = state
+    .try_borrow::<Rc<JsRuntimeInspector>>()
+    .map(|inspector| {
+      inspector.should_wait_for_page_wait_for_debugger_on_worker_start()
+    })
+    .unwrap_or(false);
   let worker_id = WorkerId::new();
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
@@ -349,6 +356,7 @@ fn op_create_worker(
           maybe_main_module_blob,
           resource_limits: args.resource_limits,
           wait_for_debugger_on_start,
+          wait_for_page_wait_for_debugger,
         });
 
       // Send thread safe handle from newly created worker to host thread

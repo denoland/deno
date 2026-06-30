@@ -526,6 +526,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           &shared.sys,
         ),
         wait_for_debugger_on_start: args.wait_for_debugger_on_start,
+        wait_for_page_wait_for_debugger: args.wait_for_page_wait_for_debugger,
       };
 
       let has_resource_limits = args.resource_limits.is_some();

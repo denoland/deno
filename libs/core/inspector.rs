@@ -1139,11 +1139,62 @@ impl JsRuntimeInspector {
     self.state.flags.borrow_mut().resumed_by_session_id = None;
   }
 
+  pub fn wait_for_page_wait_for_debugger(&self) {
+    const PAGE_WAIT_GRACE_PERIOD: std::time::Duration =
+      std::time::Duration::from_millis(500);
+
+    {
+      let mut flags = self.state.flags.borrow_mut();
+      flags.paused_on_start = true;
+      flags.waiting_for_session = false;
+      flags.page_wait_for_debugger_received = false;
+    }
+
+    let deadline = std::time::Instant::now() + PAGE_WAIT_GRACE_PERIOD;
+    loop {
+      {
+        let flags = self.state.flags.borrow();
+        if !flags.paused_on_start || flags.page_wait_for_debugger_received {
+          break;
+        }
+      }
+      if std::time::Instant::now() >= deadline {
+        let mut flags = self.state.flags.borrow_mut();
+        if !flags.page_wait_for_debugger_received {
+          flags.paused_on_start = false;
+          flags.waiting_for_session = false;
+          flags.resumed_by_session_id = None;
+          break;
+        }
+      }
+      let _ = self.state.poll_sessions(None).unwrap();
+      std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+
+    if self.state.flags.borrow().paused_on_start {
+      loop {
+        if !self.state.flags.borrow().paused_on_start {
+          break;
+        }
+        self.state.flags.borrow_mut().waiting_for_session = true;
+        let _ = self.state.poll_sessions(None).unwrap();
+      }
+      let mut flags = self.state.flags.borrow_mut();
+      flags.page_wait_for_debugger_received = false;
+      flags.resumed_by_session_id = None;
+    }
+  }
+
   pub fn should_wait_for_debugger_on_worker_start(&self) -> bool {
     self.state.auto_attach_enabled.get()
       && self.state.auto_attach_wait_for_debugger_on_start.get()
       || self.state.nodeworker_enabled.get()
         && self.state.nodeworker_wait_for_debugger_on_start.get()
+  }
+
+  pub fn should_wait_for_page_wait_for_debugger_on_worker_start(&self) -> bool {
+    self.state.auto_attach_enabled.get()
+      && !self.state.auto_attach_wait_for_debugger_on_start.get()
   }
 
   /// Obtain a sender for proxy channels.
@@ -1364,6 +1415,8 @@ struct InspectorFlags {
   /// Runtime.runIfWaitingForDebugger is received, allowing
   /// NodeRuntime.waitingForDebugger to be emitted.
   paused_on_start: bool,
+  /// Set when a frontend explicitly sends Page.waitForDebugger.
+  page_wait_for_debugger_received: bool,
   /// Tracks which session sent Runtime.runIfWaitingForDebugger,
   /// so schedule_pause_on_next_statement targets the correct session.
   resumed_by_session_id: Option<i32>,
@@ -1816,6 +1869,7 @@ impl InspectorSession {
     let mut flags = self.state.flags.borrow_mut();
     flags.paused_on_start = true;
     flags.waiting_for_session = true;
+    flags.page_wait_for_debugger_received = true;
   }
 
   /// Queue a message to be sent to a worker
