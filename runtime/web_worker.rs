@@ -343,6 +343,7 @@ impl WebWorkerHandle {
     self.port.disentangle();
 
     if schedule_termination {
+      self.isolate_handle.terminate_execution();
       // Wake up the worker's event loop so it can terminate.
       self.terminate_waker.wake();
     }
@@ -1237,8 +1238,9 @@ pub async fn run_web_worker(
   };
 
   // If sender is closed it means that worker has already been closed from
-  // within using "globalThis.close()"
-  if internal_handle.is_terminated() {
+  // within using "globalThis.close()". Termination may also interrupt initial
+  // script/module evaluation before the event loop starts polling.
+  if internal_handle.terminate_if_needed() {
     let cleanup_result = stop_activity();
     internal_handle.post_close_event_if_requested();
     cleanup_result?;
