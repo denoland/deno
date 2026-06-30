@@ -655,6 +655,14 @@ interface CanvasShadowStyles {
  */
 interface CanvasState {
   /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/beginLayer)
+   */
+  beginLayer(options?: BeginLayerOptions): void;
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/endLayer)
+   */
+  endLayer(): void;
+  /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/isContextLost)
    */
   isContextLost(): boolean;
@@ -670,6 +678,16 @@ interface CanvasState {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/save)
    */
   save(): void;
+}
+
+/**
+ * Options for the `beginLayer()` method.
+ *
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+interface BeginLayerOptions {
+  filter?: string;
 }
 
 /**

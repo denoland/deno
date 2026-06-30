@@ -154,6 +154,22 @@ impl ImageData {
     height: u32,
     pixels: &[u8],
   ) -> Result<Self, ImageDataError> {
+    Self::new_rgba_unorm8_with_color_space(
+      scope,
+      width,
+      height,
+      pixels,
+      PredefinedColorSpace::Srgb,
+    )
+  }
+
+  pub fn new_rgba_unorm8_with_color_space(
+    scope: &mut v8::PinScope<'_, '_>,
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+    color_space: PredefinedColorSpace,
+  ) -> Result<Self, ImageDataError> {
     if pixels.len() != (width as usize * height as usize * 4) {
       return Err(ImageDataError::PixelDataMismatch);
     }
@@ -175,7 +191,7 @@ impl ImageData {
       width,
       height,
       pixel_format: ImageDataPixelFormat::RgbaUnorm8,
-      color_space: PredefinedColorSpace::Srgb,
+      color_space,
       data: v8::TracedReference::new(scope, data_obj),
     })
   }

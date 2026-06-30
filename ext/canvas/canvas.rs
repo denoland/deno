@@ -187,6 +187,12 @@ impl OffscreenCanvas {
     match &context {
       Context::Bitmap(_) => {}
       Context::Canvas2D(context) => {
+        if context.has_open_layers() {
+          return Err(JsErrorBox::new(
+            "DOMExceptionInvalidStateError",
+            "transferToImageBitmap called while layers are open",
+          ));
+        }
         context.flush_to_image(&mut self.data.borrow_mut())
       }
       Context::WebGPU(context) => context.bitmap_read_hook(scope)?,
@@ -253,6 +259,12 @@ impl OffscreenCanvas {
     match get_context(&active_context.0, scope, active_context_local) {
       Context::Bitmap(_) => {}
       Context::Canvas2D(context) => {
+        if context.has_open_layers() {
+          return Err(JsErrorBox::new(
+            "DOMExceptionInvalidStateError",
+            "convertToBlob called while layers are open",
+          ));
+        }
         context.flush_to_image(&mut self.data.borrow_mut())
       }
       Context::WebGPU(context) => context.bitmap_read_hook(scope)?,
@@ -339,6 +351,12 @@ impl OffscreenCanvas {
       match &context {
         Context::Bitmap(_) => {}
         Context::Canvas2D(ctx) => {
+          if ctx.has_open_layers() {
+            return Err(JsErrorBox::new(
+              "DOMExceptionInvalidStateError",
+              "Canvas source has open layers",
+            ));
+          }
           ctx.flush_to_image(&mut self.data.borrow_mut());
         }
         Context::WebGPU(ctx) => {
