@@ -116,7 +116,7 @@ const { binCrates, libCrates } = resolveWorkspaceCrates(
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
 const llvmVersion = 22;
 const installPkgsCommand =
-  `sudo apt-get install -y --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
+  `sudo apt-get install -y --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion} libfontconfig-dev`;
 const sysRootConfig = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Setting up sysroot
@@ -673,6 +673,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     if: buildItem.use_sysroot,
     ...sysRootConfig,
   });
+  const installFontconfigStep = step({
+    name: "Install fontconfig",
+    if: isLinux,
+    run: "sudo apt-get install -y --no-install-recommends libfontconfig-dev",
+  });
   const buildJob = job(
     jobIdForJob("build"),
     {
@@ -995,6 +1000,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             restoreCacheStep,
             installRustStep,
             sysRootStep,
+            installFontconfigStep,
           )
           .comesAfter(tarSourcePublishStep)(
             {
@@ -1352,6 +1358,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         installRustStep,
         installLldStep,
         sysRootStep,
+        installFontconfigStep,
         denoArtifact.download(),
         testServerArtifact.download(),
         {
@@ -1385,6 +1392,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         cloneRepoStep,
         installRustStep,
         restoreCacheStep,
+        installFontconfigStep,
         installWasmStep,
         // we want these crates to be Wasm compatible
         {
