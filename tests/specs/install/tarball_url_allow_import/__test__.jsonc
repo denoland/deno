@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // A remote tarball is remote code, so installing one without
+      // --allow-import must fail, just like importing from a remote URL.
+      "args": "install https://example.com/pkg.tgz",
+      "output": "denied.out",
+      "exitCode": 1
+    },
+    {
+      // Passing --allow-import for the host opens the gate, so the tarball
+      // downloads and installs.
+      "args": "install --allow-import=localhost:4260 http://localhost:4260/@denotest/esm-basic/1.0.0.tgz",
+      "output": "allowed.out"
+    }
+  ]
+}

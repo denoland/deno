@@ -36,7 +36,7 @@ mod registry_info;
 mod remote;
 mod rt;
 mod tarball;
-mod tarball_extract;
+pub mod tarball_extract;
 
 pub use fs_util::hard_link_dir_recursive;
 pub use fs_util::hard_link_file;

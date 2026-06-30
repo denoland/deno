@@ -685,6 +685,7 @@ fn package_json_dep_import_entries(module_url: &Url) -> Vec<(String, String)> {
         }
         Ok(
           PackageJsonDepValue::File(_)
+          | PackageJsonDepValue::Tarball(_)
           | PackageJsonDepValue::Workspace { .. }
           | PackageJsonDepValue::Catalog(_),
         )
