@@ -835,6 +835,12 @@ ObjectDefineProperties(
             this.req._nativeResponded = true;
           }
           op_http_abort_response(ext);
+          // Free the external. Unlike a committed response (whose body-commit op
+          // consumes it) or a streaming response (nativeStartStream's
+          // op_http_close_after_finish), an uncommitted abort has no op that
+          // consumes it -- without this the record (and its server_state clone)
+          // leaks, so the server never drains and the event loop hangs.
+          op_http_close_after_finish(ext);
         }
       }
 
