@@ -412,6 +412,38 @@ Deno.test({ permissions: { net: true } }, async function netTcpSetKeepAlive() {
 });
 
 Deno.test(
+  { permissions: { net: true } },
+  async function netTcpSetKeepAliveOptions() {
+    const listener = Deno.listen({ port: 0 });
+    const { port } = listener.addr as Deno.NetAddr;
+    const accepted = listener.accept().then((conn) => conn.close());
+    const conn = await Deno.connect({ hostname: "127.0.0.1", port });
+
+    // Enabling with tuning options (and partial / empty objects) is allowed.
+    conn.setKeepAlive({ time: 1000, interval: 1000, retries: 3 });
+    conn.setKeepAlive({ time: 5000 });
+    conn.setKeepAlive({});
+    // Disabling still works.
+    conn.setKeepAlive(false);
+
+    // time/interval below 1000ms, non-positive retries, and non-integers throw.
+    assertThrows(() => conn.setKeepAlive({ time: 500 }), TypeError);
+    assertThrows(() => conn.setKeepAlive({ interval: 0 }), TypeError);
+    assertThrows(() => conn.setKeepAlive({ retries: 0 }), TypeError);
+    assertThrows(() => conn.setKeepAlive({ time: 1.5 }), TypeError);
+    assertThrows(
+      // deno-lint-ignore no-explicit-any
+      () => conn.setKeepAlive(null as any),
+      TypeError,
+    );
+
+    conn.close();
+    listener.close();
+    await accepted;
+  },
+);
+
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true, net: true },
