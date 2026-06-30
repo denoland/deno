@@ -1193,8 +1193,8 @@ impl JsRuntimeInspector {
   }
 
   pub fn should_wait_for_page_wait_for_debugger_on_worker_start(&self) -> bool {
-    self.state.auto_attach_enabled.get()
-      && !self.state.auto_attach_wait_for_debugger_on_start.get()
+    self.state.sessions.borrow().sessions_state().has_active
+      && !self.should_wait_for_debugger_on_worker_start()
   }
 
   /// Obtain a sender for proxy channels.
