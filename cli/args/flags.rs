@@ -8471,7 +8471,10 @@ fn permission_args_parse(
   }
 
   if let Some(read_wl) = matches.remove_many::<String>("ignore-read") {
-    flags.permissions.ignore_read = Some(read_wl.collect());
+    let read_wl = read_wl
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?;
+    flags.permissions.ignore_read = Some(read_wl);
     debug!("read ignorelist: {:#?}", &flags.permissions.ignore_read);
   }
 
@@ -11168,6 +11171,30 @@ mod tests {
       "run",
       "--ignore-read=something.txt",
       "--ignore-read=something2.txt",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        permissions: PermissionFlags {
+          ignore_read: Some(svec!["something.txt", "something2.txt"]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn ignore_read_ignorelist_comma_separated() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--ignore-read=something.txt,something2.txt",
       "script.ts"
     ]);
     assert_eq!(
