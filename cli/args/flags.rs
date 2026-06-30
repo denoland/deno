@@ -643,12 +643,23 @@ impl FlagsExt for Flags {
       | Compile(CompileFlags {
         source_file: script,
         ..
-      })
-      | Desktop(DesktopFlags {
-        source_file: script,
-        ..
       }) => resolve_single_folder_path(script, current_dir, |mut p| {
         if p.pop() { Some(p) } else { None }
+      })
+      .map(|p| vec![p]),
+      Desktop(DesktopFlags {
+        source_file: script,
+        ..
+      }) => resolve_single_folder_path(script, current_dir, |p| {
+        // The desktop entrypoint is commonly a directory (e.g. `deno desktop
+        // .` for framework detection), in which case the config lives in that
+        // directory itself — don't pop up to its parent. Only pop when the
+        // entrypoint is a file.
+        if p.is_dir() {
+          Some(p)
+        } else {
+          p.parent().map(|parent| parent.to_path_buf())
+        }
       })
       .map(|p| vec![p]),
       Task(TaskFlags {
@@ -14313,6 +14324,20 @@ mod tests {
         cwd.join("dir/b.js")
       ])
     );
+
+    // `deno desktop .` (and bare `deno desktop`) runs framework detection on
+    // the current directory, so config discovery must start in that directory
+    // rather than its parent. See issue #35653.
+    let flags = flags_from_vec(svec!["deno", "desktop", "."]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
+    let flags = flags_from_vec(svec!["deno", "desktop"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
+    // An explicit file entrypoint resolves to its containing directory.
+    let flags =
+      flags_from_vec(svec!["deno", "desktop", "sub/main.ts"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.join("sub")]));
   }
 
   #[test]
