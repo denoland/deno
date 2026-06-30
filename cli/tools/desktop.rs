@@ -1652,8 +1652,13 @@ async fn package_linux_app_dir(
   std::fs::write(
     &launcher_path,
     format!(
+      // Resolve `$0` through symlinks before deriving DIR: `.deb`/`.rpm`
+      // install the real launcher under `/usr/lib/<pkg>/` and expose it via a
+      // `/usr/bin/<pkg>` symlink, so a bare `$0` would resolve DIR to
+      // `/usr/bin` and look for the backend binary there (issue #35623).
+      // `readlink -f` is fine here: this launcher only ships on Linux.
       "#!/bin/sh\n\
-       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
+       DIR=\"$(cd \"$(dirname \"$(readlink -f \"$0\")\")\" && pwd)\"\n\
        export LAUFEY_RUNTIME_PATH=\"$DIR/{dylib}\"\n\
        exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
       laufey_binary = laufey_binary_name,
