@@ -140,6 +140,7 @@ const {
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const {
   enterAsyncResourceIfActive,
   exitAsyncResourceIfActive,
@@ -2264,12 +2265,34 @@ function tryListenNative(server, args) {
 
   let listener;
   try {
-    listener = denoListen({
-      hostname: parsed.host ?? "0.0.0.0",
-      port: parsed.port,
-      transport: "tcp",
-      reusePort: parsed.reusePort ?? false,
-    });
+    if (parsed.host !== undefined && parsed.host !== null) {
+      listener = denoListen({
+        hostname: parsed.host,
+        port: parsed.port,
+        transport: "tcp",
+        reusePort: parsed.reusePort ?? false,
+      });
+    } else {
+      // No host: match Node/net.ts -- prefer the IPv6 wildcard "::" (dual-stack,
+      // also accepts IPv4) so the server is reachable via ::1 AND 127.0.0.1,
+      // falling back to the IPv4 wildcard if the IPv6 bind fails. Windows stays
+      // IPv4-only (its dual-stack socket doesn't reliably accept IPv4; see
+      // net.ts / denoland/deno#10762).
+      const listenOpts = {
+        port: parsed.port,
+        transport: "tcp",
+        reusePort: parsed.reusePort ?? false,
+      };
+      if (isWindows) {
+        listener = denoListen({ hostname: "0.0.0.0", ...listenOpts });
+      } else {
+        try {
+          listener = denoListen({ hostname: "::", ...listenOpts });
+        } catch {
+          listener = denoListen({ hostname: "0.0.0.0", ...listenOpts });
+        }
+      }
+    }
   } catch {
     // Couldn't bind natively (e.g. unsupported option); fall back.
     return false;
