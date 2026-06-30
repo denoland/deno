@@ -192,16 +192,14 @@ pub(super) enum FillStrokeStyle {
 // `DrawingBackend` abstracts over two unrelated vello renderer families that do
 // not share a scene type today:
 //
-//   vello::Scene             -> vello::Renderer  (Gpu / Hybrid; GPU compute via wgpu)
+//   vello::Scene             -> vello::Renderer  (Gpu; GPU compute via wgpu)
 //   vello_cpu::RenderContext -> vello_cpu        (Cpu; pure software, no wgpu)
 //
-// The sparse-strips renderers (vello_cpu / vello_hybrid) share a common
-// experimental `vello_api::Scene` interface, but it lacks glyph/text rendering,
-// and the GPU-compute `vello` crate does not use it at all. Once `vello_api`
-// stabilizes with text support, the Cpu and Hybrid backends could be unified
-// behind a single `vello_api::Scene`; revisit `DrawingBackend` then.
+// Once the Vello ecosystem stabilizes and provides a unified scene interface
+// across both implementations, the Cpu and Gpu backends could be unified
+// behind a single scene type; revisit `DrawingBackend` then.
 pub(super) enum DrawingBackend {
-  // Shared by Gpu and Hybrid
+  // Shared by Gpu
   Vello(vello::Scene),
   VelloCpu(vello_cpu::RenderContext, Box<vello_cpu::Resources>),
 }
@@ -213,11 +211,11 @@ impl DrawingBackend {
     height: u32,
   ) -> Self {
     match backend {
+      DenoCanvasBackend::Gpu(_) => DrawingBackend::Vello(vello::Scene::new()),
       DenoCanvasBackend::Cpu(_) => DrawingBackend::VelloCpu(
         vello_cpu::RenderContext::new(width as u16, height as u16),
         Box::new(vello_cpu::Resources::new()),
       ),
-      _ => DrawingBackend::Vello(vello::Scene::new()),
     }
   }
 
