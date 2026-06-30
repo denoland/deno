@@ -276,6 +276,7 @@ pub struct SendableWebWorkerHandle {
   receiver: mpsc::Receiver<WorkerControlEvent>,
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
+  isolate_handle: v8::IsolateHandle,
 }
 
 impl From<SendableWebWorkerHandle> for WebWorkerHandle {
@@ -285,6 +286,7 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
       port: Rc::new(handle.port),
       termination_signal: handle.termination_signal,
       terminate_waker: handle.terminate_waker,
+      isolate_handle: handle.isolate_handle,
     }
   }
 }
@@ -302,6 +304,7 @@ pub struct WebWorkerHandle {
   receiver: Rc<RefCell<mpsc::Receiver<WorkerControlEvent>>>,
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
+  isolate_handle: v8::IsolateHandle,
 }
 
 impl WebWorkerHandle {
@@ -326,6 +329,7 @@ impl WebWorkerHandle {
     self.port.disentangle();
 
     if schedule_termination {
+      self.isolate_handle.terminate_execution();
       // Wake up the worker's event loop so it can terminate.
       self.terminate_waker.wake();
     }
@@ -353,7 +357,7 @@ fn create_handles(
     close_requested,
     close_code,
     terminate_waker: terminate_waker.clone(),
-    isolate_handle,
+    isolate_handle: isolate_handle.clone(),
     cancel: CancelHandle::new_rc(),
     sender: ctrl_tx,
     worker_type,
@@ -364,6 +368,7 @@ fn create_handles(
     port: worker_port,
     termination_signal,
     terminate_waker,
+    isolate_handle,
   };
   (internal_handle, external_handle)
 }
@@ -1213,8 +1218,9 @@ pub async fn run_web_worker(
   };
 
   // If sender is closed it means that worker has already been closed from
-  // within using "globalThis.close()"
-  if internal_handle.is_terminated() {
+  // within using "globalThis.close()". Termination may also interrupt initial
+  // script/module evaluation before the event loop starts polling.
+  if internal_handle.terminate_if_needed() {
     let cleanup_result = stop_activity();
     internal_handle.post_close_event_if_requested();
     cleanup_result?;
