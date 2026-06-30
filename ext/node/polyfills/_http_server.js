@@ -26,6 +26,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_get_env_no_permission_check,
   op_http_abort_response,
+  op_http_close_after_finish,
   op_http_get_request_headers,
   op_http_get_request_http_minor_version,
   op_http_get_request_method,
@@ -117,6 +118,7 @@ import { IncomingMessage } from "node:_http_incoming";
 const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
+  ERR_HTTP_INVALID_STATUS_CODE,
   ERR_HTTP_TRAILER_INVALID,
   ERR_HTTP_SOCKET_ASSIGNED,
   ERR_INVALID_ARG_TYPE,
@@ -573,13 +575,10 @@ ServerResponse.prototype.writeHead = function writeHead(
     demoteNativeResponse(this);
   }
 
+  const originalStatusCode = statusCode;
   statusCode |= 0;
   if (statusCode < 100 || statusCode > 999) {
-    throw new ERR_INVALID_ARG_TYPE(
-      "statusCode",
-      "integer [100, 999]",
-      statusCode,
-    );
+    throw new ERR_HTTP_INVALID_STATUS_CODE(originalStatusCode);
   }
 
   if (typeof reason === "string") {
@@ -2205,7 +2204,15 @@ function makeNativeOnRequest(server) {
       socketDestroyedBeforeDispatch && !res.finished &&
       res[kNativeExternal] !== null && res[kNativeExternal] !== undefined
     ) {
+      res[kNativeExternal] = null;
+      if (res.req !== undefined && res.req !== null) {
+        res.req._nativeResponded = true;
+      }
       op_http_abort_response(external);
+      // Free the external (see ServerResponse.destroy): the abort op completes
+      // the record but doesn't consume it, so without this the record (and its
+      // server_state clone) leaks and the server never drains.
+      op_http_close_after_finish(external);
       return;
     }
     // If the handler returned without committing a response, watch for a client
@@ -2233,7 +2240,14 @@ function makeNativeOnRequest(server) {
           // server.close() can complete, without surfacing an unhandled 'error'.
           const ext = res[kNativeExternal];
           if (ext !== null && ext !== undefined) {
+            res[kNativeExternal] = null;
+            if (res.req !== undefined && res.req !== null) {
+              res.req._nativeResponded = true;
+            }
             op_http_abort_response(ext);
+            // Free the external so the record (and its server_state clone) is
+            // released; otherwise the server never drains. See above.
+            op_http_close_after_finish(ext);
           }
         },
       );
