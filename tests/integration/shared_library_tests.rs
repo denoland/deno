@@ -66,7 +66,7 @@ fn macos_shared_libraries() {
 
   // path and whether its weak or not
   #[cfg(not(all(target_arch = "aarch64", not(debug_assertions))))]
-  const EXPECTED: [(&str, bool); 11] = [
+  const EXPECTED: [(&str, bool); 12] = [
     (
       "/System/Library/Frameworks/Security.framework/Versions/A/Security",
       false,
@@ -77,6 +77,10 @@ fn macos_shared_libraries() {
     ),
     (
       "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+      false,
+    ),
+    (
+      "/System/Library/Frameworks/CoreText.framework/Versions/A/CoreText",
       false,
     ),
     (
