@@ -752,12 +752,11 @@ fn resolve_with_compiler_options_paths(
   Some(Err(matched_key))
 }
 
-fn resolve_with_compiler_options_root_dirs(
+fn resolve_types_with_compiler_options_root_dirs(
   specifier: &Url,
   referrer: &Url,
   root_dirs: &[Url],
   sloppy_imports_resolver: &SloppyImportsResolver<impl FsMetadata>,
-  resolution_kind: ResolutionKind,
 ) -> Option<(Url, Option<SloppyImportsResolutionReason>)> {
   if specifier.scheme() != "file" || referrer.scheme() != "file" {
     return None;
@@ -785,7 +784,7 @@ fn resolve_with_compiler_options_root_dirs(
       sloppy_imports_resolver.resolve(
         &candidate_specifier,
         referrer,
-        resolution_kind,
+        ResolutionKind::Types,
       )
     {
       return Some((candidate_specifier, Some(sloppy_reason)));
@@ -1243,16 +1242,15 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
               // unchanged and continue with it
             }
           }
-        } else {
+        } else if resolution_kind.is_types() {
           // 1.2. Try to match the resolved specifier against
           // `compilerOptions.rootDirs`
           if let Some((probed_specifier, probed_sloppy_reason)) =
-            resolve_with_compiler_options_root_dirs(
+            resolve_types_with_compiler_options_root_dirs(
               &resolved_specifier,
               referrer,
               compiler_options_data.root_dirs(),
               &self.sloppy_imports_resolver,
-              resolution_kind,
             )
           {
             used_compiler_options_root_dirs = true;
@@ -2700,7 +2698,7 @@ mod test {
     assert_eq!(sloppy_reason, &None);
     assert!(used_compiler_options_root_dirs);
 
-    // Support rootDirs for `ResolutionKind::Execution`.
+    // Ignore rootDirs for `ResolutionKind::Execution`.
     let referrer = root_dir_url.join("member/foo/mod.ts").unwrap();
     let resolution = resolver
       .resolve("./import.ts", &referrer, ResolutionKind::Execution)
@@ -2716,15 +2714,12 @@ mod test {
     };
     assert_eq!(
       specifier.as_str(),
-      root_dir_url
-        .join("member/foo_types/import.ts")
-        .unwrap()
-        .as_str()
+      root_dir_url.join("member/foo/import.ts").unwrap().as_str()
     );
     assert_eq!(sloppy_reason, &None);
-    assert!(used_compiler_options_root_dirs);
+    assert!(!used_compiler_options_root_dirs);
 
-    // Support rootDirs for `ResolutionKind::Execution`.
+    // Ignore rootDirs for `ResolutionKind::Execution`.
     let referrer = root_dir_url.join("member2/mod.ts").unwrap();
     let resolution = resolver
       .resolve("./import.ts", &referrer, ResolutionKind::Execution)
@@ -2740,13 +2735,10 @@ mod test {
     };
     assert_eq!(
       specifier.as_str(),
-      root_dir_url
-        .join("member2_types/import.ts")
-        .unwrap()
-        .as_str()
+      root_dir_url.join("member2/import.ts").unwrap().as_str()
     );
     assert_eq!(sloppy_reason, &None);
-    assert!(used_compiler_options_root_dirs);
+    assert!(!used_compiler_options_root_dirs);
   }
 
   #[test]
