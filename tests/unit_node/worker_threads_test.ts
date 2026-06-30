@@ -4,6 +4,7 @@ import {
   assert,
   assertEquals,
   assertObjectMatch,
+  assertRejects,
   assertThrows,
   fail,
 } from "@std/assert";
@@ -1124,5 +1125,74 @@ Deno.test({
       Error,
       "invalid NODE_OPTIONS env variable",
     );
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker.startCpuProfile",
+  // TODO(#35250): re-enable once CPU profiling keeps the worker alive while a
+  // profile is active. The worker used here registers no "message" listener,
+  // so it now idle-terminates before the profile control messages are
+  // exchanged and `startCpuProfile()`/`stop()` never resolve. This previously
+  // "worked" only because the internal profiling listener kept every worker
+  // alive forever, which broke worker idle-termination (see node_compat
+  // worker tests).
+  ignore: true,
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      let x = 0;
+      for (let i = 0; i < 1e6; i++) x += i;
+      parentPort.postMessage(x);
+      `,
+      { eval: true },
+    );
+    await once(worker, "online");
+
+    const handle = await worker.startCpuProfile();
+    const profile = await handle.stop();
+
+    assert(Array.isArray(profile.nodes), "profile has nodes array");
+    assert(Array.isArray(profile.samples), "profile has samples array");
+    assert(Array.isArray(profile.timeDeltas), "profile has timeDeltas array");
+    assertEquals(typeof profile.startTime, "number");
+    assertEquals(typeof profile.endTime, "number");
+
+    // Calling stop() again returns the same (already-resolved) promise.
+    const again = await handle.stop();
+    assertEquals(again, profile);
+
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker.startCpuProfile after terminate rejects",
+  async fn() {
+    const worker = new workerThreads.Worker("/*noop*/", { eval: true });
+    await once(worker, "online");
+    await worker.terminate();
+
+    await assertRejects(
+      () => worker.startCpuProfile(),
+      Error,
+      "Worker instance not running",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker.startCpuProfile validates options",
+  async fn() {
+    const worker = new workerThreads.Worker("/*noop*/", { eval: true });
+    await once(worker, "online");
+
+    await assertRejects(
+      () => worker.startCpuProfile({ sampleInterval: -1 }),
+      RangeError,
+    );
+
+    await worker.terminate();
   },
 });

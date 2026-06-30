@@ -310,6 +310,52 @@ declare module "worker_threads" {
          */
         stackSizeMb?: number | undefined;
     }
+    interface CpuProfileOptions {
+        /**
+         * The sampling interval in milliseconds. Defaults to V8's internal value.
+         */
+        sampleInterval?: number | undefined;
+        /**
+         * The maximum number of samples to collect. Defaults to unlimited.
+         */
+        maxBufferSize?: number | undefined;
+    }
+    interface CpuProfileNode {
+        id: number;
+        hitCount?: number | undefined;
+        callFrame: {
+            functionName: string;
+            scriptId: string | number;
+            url: string;
+            lineNumber: number;
+            columnNumber: number;
+        };
+        children?: number[] | undefined;
+        [key: string]: unknown;
+    }
+    /**
+     * A V8 CPU profile, as produced by {@link CPUProfileHandle.stop}. Matches the
+     * `Profiler.Profile` shape from the Chrome DevTools Protocol.
+     */
+    interface CpuProfile {
+        nodes: CpuProfileNode[];
+        startTime: number;
+        endTime: number;
+        samples: number[];
+        timeDeltas: number[];
+        [key: string]: unknown;
+    }
+    /**
+     * A handle to an in-progress CPU profile started via {@link Worker.startCpuProfile}.
+     */
+    interface CPUProfileHandle {
+        /**
+         * Stops the CPU profile and resolves with the collected V8 CPU profile.
+         * Calling `stop()` more than once returns the same promise.
+         */
+        stop(): Promise<CpuProfile>;
+        [Symbol.asyncDispose](): Promise<void>;
+    }
     /**
      * The `Worker` class represents an independent JavaScript execution thread.
      * Most Node.js APIs are available inside of it.
@@ -482,6 +528,16 @@ declare module "worker_threads" {
          * @since v24.0.0
          */
         getHeapStatistics(): Promise<HeapInfo>;
+        /**
+         * Starts a CPU profile on the worker thread and returns a `Promise` that
+         * resolves to a handle. Call `handle.stop()` to stop profiling and obtain
+         * the collected V8 CPU profile.
+         *
+         * If the Worker thread is no longer running, the returned `Promise` is
+         * rejected with an `ERR_WORKER_NOT_RUNNING` error.
+         * @since v24.7.0
+         */
+        startCpuProfile(options?: CpuProfileOptions): Promise<CPUProfileHandle>;
         /**
          * Calls `worker.terminate()` when the dispose scope is exited.
          *

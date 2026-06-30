@@ -16,6 +16,7 @@ use deno_core::CancelHandle;
 use deno_core::DetachedBuffer;
 use deno_core::FromV8;
 use deno_core::JsBuffer;
+use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -36,6 +37,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::unbounded_channel;
 
+use crate::cpu_profiler::WorkerCpuProfileSession;
 use crate::ops::TestingFeaturesEnabled;
 use crate::tokio_util::create_and_run_current_thread;
 use crate::web_worker::SendableWebWorkerHandle;
@@ -188,6 +190,8 @@ deno_core::extension!(
     op_node_worker_thread_set_listener_count,
     op_node_worker_thread_post_message,
     op_node_worker_thread_recv_message,
+    op_worker_thread_cpu_profile_start,
+    op_worker_thread_cpu_profile_stop,
   ],
   options = {
     create_web_worker_cb: Arc<CreateWebWorkerCb>,
@@ -195,6 +199,7 @@ deno_core::extension!(
   },
   state = |state, options| {
     state.put::<WorkersTable>(WorkersTable::default());
+    state.put::<WorkerCpuProfilers>(WorkerCpuProfilers::default());
 
     let create_web_worker_cb_holder =
       CreateWebWorkerCbHolder(options.create_web_worker_cb);
@@ -726,6 +731,78 @@ fn op_host_get_worker_cpu_usage(
   }
   out[0] = 0.0;
   out[1] = 0.0;
+}
+
+// ============================================================
+// Worker CPU profiling (Node `worker.startCpuProfile()`)
+// ============================================================
+//
+// These ops run *inside* a worker isolate (driven by the
+// `node:worker_threads` polyfill in response to control messages from the
+// host). Each `startCpuProfile` request opens a local inspector session that
+// profiles the worker's own isolate; the matching stop returns the profile
+// JSON, which the polyfill relays back to the parent thread.
+
+/// Active worker CPU profiling sessions, keyed by an id handed back to JS.
+#[derive(Default)]
+struct WorkerCpuProfilers {
+  next_id: u32,
+  sessions: HashMap<u32, WorkerCpuProfileSession>,
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum WorkerCpuProfileError {
+  #[class(generic)]
+  #[error("CPU profile session not found")]
+  NotFound,
+  #[class(generic)]
+  #[error("Failed to collect CPU profile")]
+  Failed,
+  #[class(generic)]
+  #[error(transparent)]
+  Serde(#[from] deno_core::serde_json::Error),
+}
+
+/// Start CPU profiling in the current (worker) isolate. Returns an id used to
+/// stop the profile and retrieve its data.
+#[op2(fast)]
+fn op_worker_thread_cpu_profile_start(
+  state: &mut OpState,
+  sampling_interval_micros: u32,
+  // V8's inspector-based profiler has no max-samples knob; accepted for
+  // Node API parity and ignored.
+  _max_samples: u32,
+) -> u32 {
+  let inspector = state.borrow::<Rc<JsRuntimeInspector>>().clone();
+  let session =
+    WorkerCpuProfileSession::start(inspector, sampling_interval_micros);
+  let profilers = state.borrow_mut::<WorkerCpuProfilers>();
+  profilers.next_id += 1;
+  let id = profilers.next_id;
+  profilers.sessions.insert(id, session);
+  id
+}
+
+/// Stop a CPU profile started with `op_worker_thread_cpu_profile_start` and
+/// return the collected profile as a JSON string.
+#[op2]
+#[string]
+async fn op_worker_thread_cpu_profile_stop(
+  state: Rc<RefCell<OpState>>,
+  id: u32,
+) -> Result<String, WorkerCpuProfileError> {
+  let session = state
+    .borrow_mut()
+    .borrow_mut::<WorkerCpuProfilers>()
+    .sessions
+    .remove(&id);
+  let Some(session) = session else {
+    return Err(WorkerCpuProfileError::NotFound);
+  };
+  match session.stop().await {
+    Some(profile) => Ok(deno_core::serde_json::to_string(&profile)?),
+    None => Err(WorkerCpuProfileError::Failed),
+  }
 }
 
 #[op2(fast)]
