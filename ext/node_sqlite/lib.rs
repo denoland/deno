@@ -141,6 +141,12 @@ pub enum SqliteError {
   #[error("cannot close database while a user-defined callback is running")]
   #[property("code" = self.code())]
   ActiveCallback,
+  #[class(generic)]
+  #[error(
+    "Cannot raise the \"attach\" limit: ATTACH DATABASE is disabled without full permissions for the database path."
+  )]
+  #[property("code" = self.code())]
+  AttachLimitDenied,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -153,6 +159,7 @@ enum ErrorCode {
   ERR_LOAD_SQLITE_EXTENSION,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_ACCESS_DENIED,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -171,6 +178,7 @@ impl ErrorCode {
       Self::ERR_INVALID_STATE => "ERR_INVALID_STATE",
       Self::ERR_OUT_OF_RANGE => "ERR_OUT_OF_RANGE",
       Self::ERR_LOAD_SQLITE_EXTENSION => "ERR_LOAD_SQLITE_EXTENSION",
+      Self::ERR_ACCESS_DENIED => "ERR_ACCESS_DENIED",
     }
   }
 }
@@ -204,6 +212,7 @@ impl SqliteError {
       | Self::ActiveCallback => ErrorCode::ERR_INVALID_STATE,
       Self::NumberTooLarge(_) => ErrorCode::ERR_OUT_OF_RANGE,
       Self::LoadExensionFailed(_) => ErrorCode::ERR_LOAD_SQLITE_EXTENSION,
+      Self::AttachLimitDenied => ErrorCode::ERR_ACCESS_DENIED,
       _ => ErrorCode::ERR_SQLITE_ERROR,
     }
   }

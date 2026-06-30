@@ -10,6 +10,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_config::deno_json::CompilerOptions;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::TsTypeLib;
@@ -329,6 +331,8 @@ pub fn get_base_compiler_options_for_emit(
         (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::TsConfig) => vec!["deno.window", "deno.unstable", "dom", "node"],
         (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::DenoJson) => vec!["deno.worker", "deno.unstable", "node"],
         (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom", "node"],
+        (TsTypeLib::DenoDesktop, CompilerOptionsSourceKind::DenoJson) => vec!["deno.desktop", "deno.unstable", "node"],
+        (TsTypeLib::DenoDesktop, CompilerOptionsSourceKind::TsConfig) => vec!["deno.desktop", "deno.unstable", "dom", "node"],
       },
       "module": "NodeNext",
       "moduleDetection": "force",
@@ -490,6 +494,8 @@ struct MemoizedValues {
     OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
   deno_worker_check_compiler_options:
     OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
+  deno_desktop_check_compiler_options:
+    OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
   emit_compiler_options:
     OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
   #[cfg(feature = "deno_ast")]
@@ -520,6 +526,17 @@ pub struct CompilerOptionsOverrides {
   ///
   /// This may be useful when bundling.
   pub preserve_jsx: bool,
+  /// Ignore the user's `verbatimModuleSyntax` and transpile as if it were
+  /// off.
+  ///
+  /// Untyped execution environments (e.g. isolates that run with
+  /// `--no-check`) cannot honor verbatim semantics safely: a type-only
+  /// import that is re-exported without the `type` modifier
+  /// (`import { type X }` + `export { X }`) is left as a dangling value
+  /// export and crashes at runtime. Falling back to heuristic import
+  /// elision matches the `deno compile` runtime, which forces verbatim
+  /// off too.
+  pub force_disable_verbatim_module_syntax: bool,
 }
 
 #[derive(Debug)]
@@ -583,6 +600,9 @@ impl CompilerOptionsData {
       CompilerOptionsType::Check {
         lib: TsTypeLib::DenoWorker,
       } => &self.memoized.deno_worker_check_compiler_options,
+      CompilerOptionsType::Check {
+        lib: TsTypeLib::DenoDesktop,
+      } => &self.memoized.deno_desktop_check_compiler_options,
       CompilerOptionsType::Emit => &self.memoized.emit_compiler_options,
     };
     let result = cell.get_or_init(|| {
@@ -979,6 +999,25 @@ impl TsConfigFileFilter {
       return true;
     }
     false
+  }
+
+  fn file_patterns(&self) -> FilePatterns {
+    FilePatterns {
+      base: self.dir_path.clone(),
+      include: self
+        .files
+        .as_ref()
+        .map(|(_, files)| {
+          PathOrPatternSet::new(
+            files
+              .iter()
+              .map(|file| PathOrPattern::Path(file.absolute_path.clone()))
+              .collect(),
+          )
+        })
+        .or_else(|| self.include.clone()),
+      exclude: self.exclude.clone().unwrap_or_default(),
+    }
   }
 }
 
@@ -1529,6 +1568,17 @@ impl CompilerOptionsResolver {
       }))
   }
 
+  pub fn ts_config_file_patterns(
+    &self,
+  ) -> impl Iterator<Item = (CompilerOptionsKey, FilePatterns)> + '_ {
+    self.ts_configs.iter().enumerate().map(|(i, ts_config)| {
+      (
+        CompilerOptionsKey::TsConfig(i),
+        ts_config.filter.file_patterns(),
+      )
+    })
+  }
+
   pub fn size(&self) -> usize {
     self.workspace_configs.count() + self.ts_configs.len()
   }
@@ -1771,7 +1821,9 @@ fn compiler_options_to_transpile_and_emit_options(
     imports_not_used_as_values,
     jsx,
     var_decl_imports: false,
-    verbatim_module_syntax: options.verbatim_module_syntax,
+    // See `CompilerOptionsOverrides::force_disable_verbatim_module_syntax`.
+    verbatim_module_syntax: options.verbatim_module_syntax
+      && !overrides.force_disable_verbatim_module_syntax,
   };
   let emit = deno_ast::EmitOptions {
     inline_sources: options.inline_sources,

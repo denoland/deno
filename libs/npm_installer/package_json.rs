@@ -44,10 +44,23 @@ pub enum InstallWorkspacePkgDep {
   Workspace { alias: StackString, nv: PackageNv },
 }
 
+impl InstallWorkspacePkgDep {
+  /// The name the dependency is linked under in the member's `node_modules`.
+  pub fn alias(&self) -> &StackString {
+    match self {
+      InstallWorkspacePkgDep::Remote { alias, .. } => alias,
+      InstallWorkspacePkgDep::Workspace { alias, .. } => alias,
+    }
+  }
+}
+
 #[derive(Debug)]
 pub struct InstallWorkspacePkg {
   pub nv: PackageNv,
   pub target_dir: PathBuf,
+  /// Whether this package is the workspace root. The root's `node_modules`
+  /// is set up separately, so the per-member linking must skip it.
+  pub is_root: bool,
   pub scripts: std::collections::HashMap<SmallStackString, String>,
   pub deps: Vec<InstallWorkspacePkgDep>,
 }
@@ -159,7 +172,8 @@ impl NpmInstallDepsProvider {
     let mut workspace_member_version_errors = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
 
-    for (_, folder) in workspace.config_folders() {
+    for (folder_url, folder) in workspace.config_folders() {
+      let is_root = folder_url == workspace.root_dir_url();
       // deal with the deno.json first because it takes precedence during resolution
       if let Some(deno_json) = &folder.deno_json {
         // don't bother with externally referenced import maps as users
@@ -397,6 +411,7 @@ impl NpmInstallDepsProvider {
         workspace_pkgs.push(InstallWorkspacePkg {
           nv: package_json_to_lifecycle_nv(pkg_json),
           target_dir: pkg_json.dir_path().to_path_buf(),
+          is_root,
           scripts: pkg_json
             .scripts
             .as_ref()
@@ -411,6 +426,24 @@ impl NpmInstallDepsProvider {
             .unwrap_or_default(),
           deps: workspace_pkg_deps,
         });
+
+        // Also symlink each non-root workspace member that is itself an npm
+        // package (has a `name`) into the root `node_modules` under its real
+        // package name. This mirrors npm/pnpm: a member referenced only by bare
+        // specifier (not declared as a dependency, not via an `npm:` import map
+        // value) would otherwise land only in `workspace_pkgs` and never be
+        // linked into the root `node_modules`, so external Node tooling that
+        // resolves through `node_modules` fails with MODULE_NOT_FOUND (#35359).
+        // Keyed on the member's real package.json `name` (never an import-map
+        // alias) so arbitrary `"foo": "npm:..."` aliases stay unlinked (#25542,
+        // #25538). A non-empty `local_pkgs` also defeats the installers'
+        // `has_no_packages` early-return so `node_modules` is created.
+        if !is_root && let Some(name) = pkg_json.name.as_ref() {
+          local_pkgs.push(InstallLocalPkg {
+            alias: Some(StackString::from_str(name)),
+            target_dir: pkg_json.dir_path().to_path_buf(),
+          });
+        }
       }
     }
 

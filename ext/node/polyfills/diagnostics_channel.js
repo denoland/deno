@@ -380,7 +380,10 @@ class TracingChannel {
     function reject(err) {
       context.error = err;
       error.publish(context);
-      asyncStart.publish(context);
+      // Run (not just publish) the asyncStart stores so transforms bound via
+      // bindStore are invoked. Promises have no "after" continuation point, so
+      // the stores only wrap a no-op rather than the rest of the chain.
+      asyncStart.runStores(context, () => {});
       // TODO: Is there a way to have asyncEnd _after_ the continuation?
       asyncEnd.publish(context);
       return PromiseReject(err);
@@ -388,7 +391,7 @@ class TracingChannel {
 
     function resolve(result) {
       context.result = result;
-      asyncStart.publish(context);
+      asyncStart.runStores(context, () => {});
       // TODO: Is there a way to have asyncEnd _after_ the continuation?
       asyncEnd.publish(context);
       return result;

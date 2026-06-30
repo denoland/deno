@@ -407,6 +407,22 @@ declare namespace Deno {
     transport?: "tcp";
     /** An {@linkcode AbortSignal} to close the tcp connection. */
     signal?: AbortSignal;
+    /**
+     * Enable Happy Eyeballs algorithm (RFC 8305) for automatic address family
+     * selection. When enabled, the connection will try both IPv6 and IPv4
+     * addresses with interleaving for faster connection establishment.
+     *
+     * @default {true}
+     */
+    autoSelectFamily?: boolean;
+    /**
+     * Delay in milliseconds between starting new connection attempts when
+     * using Happy Eyeballs. A new connection attempt is started every
+     * `autoSelectFamilyAttemptDelay` milliseconds until one succeeds.
+     *
+     * @default {250}
+     */
+    autoSelectFamilyAttemptDelay?: number;
   }
 
   /**
@@ -455,17 +471,30 @@ declare namespace Deno {
    * @category Network */
   export interface TcpConn extends Conn<NetAddr> {
     /**
-     * Enable/disable the use of Nagle's algorithm.
+     * Sets the `TCP_NODELAY` option on this connection, which controls whether
+     * Nagle's algorithm is used.
      *
-     * @param [noDelay=true]
+     * Note that the boolean is `noDelay`, not "enable Nagle", so the sense is
+     * the opposite of enabling the algorithm:
+     *
+     * - `setNoDelay(true)` (the default) sets `TCP_NODELAY`, which **disables**
+     *   Nagle's algorithm. Small writes are sent immediately with lower latency,
+     *   at the cost of potentially more, smaller packets.
+     * - `setNoDelay(false)` clears `TCP_NODELAY`, which **enables** Nagle's
+     *   algorithm. Small writes may be buffered and coalesced to reduce the
+     *   number of packets sent.
+     *
+     * @param [noDelay=true] When `true`, disables Nagle's algorithm.
      */
     setNoDelay(noDelay?: boolean): void;
-    /** Enable or disable keep-alive functionality, optionally tuning the
-     * keep-alive timers.
+    /**
+     * Enable or disable TCP keep-alive probes on this connection, optionally
+     * tuning the keep-alive timers.
      *
-     * Pass `true` (or an options object) to enable keep-alive, or `false` to
-     * disable it. Passing a {@linkcode Deno.TcpKeepAliveOptions} object always
-     * enables keep-alive and applies the provided timers. */
+     * Pass `true` (or a {@linkcode Deno.TcpKeepAliveOptions} object) to enable
+     * keep-alive, or `false` to disable it. Passing an options object always
+     * enables keep-alive and applies the provided timers.
+     */
     setKeepAlive(keepAlive?: boolean | TcpKeepAliveOptions): void;
   }
 
@@ -578,6 +607,22 @@ declare namespace Deno {
      * @default {false}
      */
     unsafelyDisableHostnameVerification?: boolean;
+    /**
+     * Enable Happy Eyeballs algorithm (RFC 8305) for automatic address family
+     * selection. When enabled, the connection will try both IPv6 and IPv4
+     * addresses with interleaving for faster connection establishment.
+     *
+     * @default {true}
+     */
+    autoSelectFamily?: boolean;
+    /**
+     * Delay in milliseconds between starting new connection attempts when
+     * using Happy Eyeballs. A new connection attempt is started every
+     * `autoSelectFamilyAttemptDelay` milliseconds until one succeeds.
+     *
+     * @default {250}
+     */
+    autoSelectFamilyAttemptDelay?: number;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using

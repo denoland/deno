@@ -266,11 +266,17 @@ pub fn run<'s>(
       extractable,
       usages,
     ),
-    "HKDF" => {
-      import_key_kdf(scope, "HKDF", format, key_data, extractable, usages)
-    }
-    "PBKDF2" => {
-      import_key_kdf(scope, "PBKDF2", format, key_data, extractable, usages)
+    "KMAC128" | "KMAC256" => import_key_kmac(
+      scope,
+      name,
+      algorithm.length,
+      format,
+      key_data,
+      extractable,
+      usages,
+    ),
+    "HKDF" | "PBKDF2" | "Argon2i" | "Argon2d" | "Argon2id" => {
+      import_key_kdf(scope, name, format, key_data, extractable, usages)
     }
     "Ed25519" => import_key_okp(
       scope,
@@ -319,6 +325,9 @@ pub fn run<'s>(
     }
     "ML-DSA-44" | "ML-DSA-65" | "ML-DSA-87" => {
       import_key_ml_dsa(scope, name, format, key_data, extractable, usages)
+    }
+    _ if crate::slhdsa::variant_from_name(name).is_some() => {
+      import_key_slh_dsa(scope, name, format, key_data, extractable, usages)
     }
     // Spec: any algorithm not recognized for `importKey` triggers
     // `normalizeAlgorithm` to throw `NotSupportedError: Unrecognized
@@ -894,6 +903,119 @@ fn import_key_ml_dsa<'s>(
       }
     }
     _ => Err(not_supported("Unsupported key format for ML-DSA".into())),
+  }
+}
+
+fn import_key_slh_dsa<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  name: &str,
+  format: KeyFormat,
+  key_data: ImportKeyData,
+  extractable: bool,
+  usages: &[String],
+) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+  let variant = crate::slhdsa::variant_from_name(name).unwrap();
+  let params = crate::slhdsa::params(variant);
+  let allowed_usages: Vec<&str> = filter_usages(usages, ALL_USAGES);
+  let make_public = |scope: &mut v8::PinScope<'s, '_>,
+                     bytes: Vec<u8>|
+   -> v8::Local<'s, v8::Object> {
+    make_crypto_key(
+      scope,
+      CryptoKeyType::Public,
+      extractable,
+      &allowed_usages,
+      AlgorithmDict::new(name),
+      RawKeyData::Raw(bytes.into_boxed_slice()),
+    )
+  };
+  let make_private = |scope: &mut v8::PinScope<'s, '_>,
+                      private_key: Vec<u8>|
+   -> v8::Local<'s, v8::Object> {
+    make_crypto_key(
+      scope,
+      CryptoKeyType::Private,
+      extractable,
+      &allowed_usages,
+      AlgorithmDict::new(name),
+      RawKeyData::SeededPrivate {
+        seed: None,
+        private_key: private_key.into_boxed_slice(),
+      },
+    )
+  };
+  match (format, key_data) {
+    (KeyFormat::RawPublic, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &["verify"])?;
+      if b.len() != params.public_key_len {
+        return Err(data_error("Invalid key data".into()));
+      }
+      Ok(make_public(scope, b))
+    }
+    (KeyFormat::RawPrivate, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &["sign"])?;
+      if b.len() != params.private_key_len {
+        return Err(data_error("Invalid key data".into()));
+      }
+      crate::slhdsa::public_from_private(variant, &b)
+        .map_err(|_| data_error("Invalid key data".into()))?;
+      Ok(make_private(scope, b))
+    }
+    (KeyFormat::Spki, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &["verify"])?;
+      let public_key = crate::slhdsa::import_spki(variant, &b)
+        .map_err(|_| data_error("Invalid key data".into()))?;
+      Ok(make_public(scope, public_key))
+    }
+    (KeyFormat::Pkcs8, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &["sign"])?;
+      let private_key = crate::slhdsa::import_pkcs8(variant, &b)
+        .map_err(|_| data_error("Invalid key data".into()))?;
+      Ok(make_private(scope, private_key))
+    }
+    (KeyFormat::Jwk, ImportKeyData::Jwk(jwk_g)) => {
+      let jwk = v8::Local::new(scope, &jwk_g);
+      let wants_private = read_string_member(scope, jwk, b"priv").is_some();
+      let expected: &[&str] = if wants_private {
+        &["sign"]
+      } else {
+        &["verify"]
+      };
+      check_usages_subset(usages, expected)?;
+      validate_jwk_akp(scope, jwk, name, "sig", usages, extractable)?;
+      if wants_private {
+        let priv_s = read_string_member(scope, jwk, b"priv").unwrap();
+        let private_key = BASE64_URL_SAFE_NO_PAD
+          .decode(priv_s.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid private key data".into()))?;
+        if private_key.len() != params.private_key_len {
+          return Err(data_error("Invalid private key data".into()));
+        }
+        let expected_public =
+          crate::slhdsa::public_from_private(variant, &private_key)
+            .map_err(|_| data_error("Invalid private key data".into()))?;
+        let pub_s = read_string_member(scope, jwk, b"pub")
+          .ok_or_else(|| data_error("Invalid public key data".into()))?;
+        let public_key = BASE64_URL_SAFE_NO_PAD
+          .decode(pub_s.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid public key data".into()))?;
+        if public_key != expected_public {
+          return Err(data_error("Invalid public key data".into()));
+        }
+        Ok(make_private(scope, private_key))
+      } else {
+        let pub_s = read_string_member(scope, jwk, b"pub")
+          .ok_or_else(|| data_error("Invalid public key data".into()))?;
+        let public_key = BASE64_URL_SAFE_NO_PAD
+          .decode(pub_s.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid public key data".into()))?;
+        if public_key.len() != params.public_key_len {
+          return Err(data_error("Invalid public key data".into()));
+        }
+        Ok(make_public(scope, public_key))
+      }
+    }
+    _ => Err(not_supported("Unsupported key format for SLH-DSA".into())),
   }
 }
 
@@ -1540,6 +1662,82 @@ fn import_key_hmac<'s>(
   ))
 }
 
+fn import_key_kmac<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  name: &str,
+  length: Option<u32>,
+  format: KeyFormat,
+  key_data: ImportKeyData,
+  extractable: bool,
+  usages: &[String],
+) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+  check_usages_subset(usages, &["sign", "verify"])?;
+  let data = match (format, key_data) {
+    (KeyFormat::RawSecret | KeyFormat::Raw, ImportKeyData::Buffer(b)) => b,
+    (KeyFormat::Jwk, ImportKeyData::Jwk(jwk_g)) => {
+      let jwk = v8::Local::new(scope, &jwk_g);
+      if read_string_member(scope, jwk, b"kty").as_deref() != Some("oct") {
+        return Err(data_error("Invalid key type".into()));
+      }
+      let expected_alg = if name == "KMAC128" { "K128" } else { "K256" };
+      if let Some(alg) = read_string_member(scope, jwk, b"alg")
+        && alg != expected_alg
+      {
+        return Err(data_error("Invalid JWK alg".into()));
+      }
+      if !usages.is_empty()
+        && let Some(use_) = read_string_member(scope, jwk, b"use")
+        && use_ != "sig"
+      {
+        return Err(data_error("Invalid JWK use".into()));
+      }
+      if let Some(key_ops) = read_string_array_member(scope, jwk, b"key_ops") {
+        for u in &key_ops {
+          if !ALL_USAGES.contains(&u.as_str()) {
+            return Err(data_error("Invalid JWK key_ops".into()));
+          }
+        }
+        for u in usages {
+          if !key_ops.iter().any(|k| k == u) {
+            return Err(data_error("Invalid JWK key_ops".into()));
+          }
+        }
+      }
+      if read_bool_member(scope, jwk, b"ext") == Some(false) && extractable {
+        return Err(data_error("Invalid JWK ext".into()));
+      }
+      let k = read_string_member(scope, jwk, b"k")
+        .ok_or_else(|| data_error("Missing JWK key data".into()))?;
+      BASE64_JWK_FORGIVING
+        .decode(k)
+        .map_err(|_| data_error("Invalid JWK key data".into()))?
+    }
+    _ => return Err(not_supported("Unsupported key format for KMAC".into())),
+  };
+  let data_len_bits = (data.len() * 8) as u32;
+  let length = if let Some(length) = length {
+    if length > data_len_bits || length <= data_len_bits.saturating_sub(8) {
+      return Err(data_error("Invalid KMAC key length".into()));
+    }
+    length
+  } else {
+    data_len_bits
+  };
+  if length == 0 || !length.is_multiple_of(8) {
+    return Err(data_error("Invalid KMAC key length".into()));
+  }
+  let bytes = data[..(length / 8) as usize].to_vec();
+  let allowed_usages: Vec<&str> = filter_usages(usages, ALL_USAGES);
+  Ok(make_crypto_key(
+    scope,
+    CryptoKeyType::Secret,
+    extractable,
+    &allowed_usages,
+    AlgorithmDict::new(name).with_length(length),
+    RawKeyData::Secret(bytes.into_boxed_slice()),
+  ))
+}
+
 fn import_key_kdf<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   name: &str,
@@ -1556,6 +1754,9 @@ fn import_key_kdf<'s>(
     _ => return Err(not_supported("Not implemented".into())),
   };
   check_usages_subset(usages, &["deriveKey", "deriveBits"])?;
+  if usages.is_empty() {
+    return Err(syntax_error("Invalid key usage".into()));
+  }
   let allowed_usages: Vec<&str> = filter_usages(usages, ALL_USAGES);
   // Per spec, HKDF/PBKDF2 imported keys must not be extractable. The JS
   // caller's `extractable` argument is ignored.

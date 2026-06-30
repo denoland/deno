@@ -1775,3 +1775,98 @@ Deno.test(
     assertStringIncludes(output, "OK");
   },
 );
+
+Deno.test(
+  { permissions: { net: true } },
+  async function netTcpCloseCancelsPendingReadAndSendsFin() {
+    // Regression test for #35292: closing a TCP conn while a read is in flight
+    // must cancel that read and send a FIN, so the peer observes EOF. The
+    // Resource trait's default `cancel_read_ops` is a no-op; net resources must
+    // override it, otherwise `close()` leaves the socket open until the process
+    // exits.
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+
+    const serverSawEof = (async () => {
+      const conn = await listener.accept();
+      const buf = new Uint8Array(64);
+      const n = await conn.read(buf);
+      conn.close();
+      return n === null;
+    })();
+
+    const conn = await Deno.connect({ hostname: "127.0.0.1", port });
+    // Put a read in flight, then close while it is pending.
+    const reader = conn.readable.getReader();
+    const pendingRead = reader.read().catch(() => {});
+    await delay(100);
+    conn.close();
+
+    // Abort the timeout once the race settles so the test sanitizer does not
+    // report a leaked timer.
+    const ac = new AbortController();
+    const sawEof = await Promise.race([
+      serverSawEof,
+      delay(2000, { signal: ac.signal }).then(() => false, () => false),
+    ]);
+    ac.abort();
+    assert(
+      sawEof,
+      "peer did not observe FIN after conn.close() with a pending read",
+    );
+
+    await pendingRead;
+    try {
+      reader.releaseLock();
+    } catch {
+      // already released
+    }
+    listener.close();
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true, net: true },
+  },
+  async function netUnixCloseCancelsPendingReadAndSendsEof() {
+    // Same as the TCP regression test above, for Unix domain sockets
+    // (UnixStreamResource shares the same fix).
+    const filePath = tmpUnixSocketPath();
+    const listener = Deno.listen({ path: filePath, transport: "unix" });
+
+    const serverSawEof = (async () => {
+      const conn = await listener.accept();
+      const buf = new Uint8Array(64);
+      const n = await conn.read(buf);
+      conn.close();
+      return n === null;
+    })();
+
+    const conn = await Deno.connect({ path: filePath, transport: "unix" });
+    const reader = conn.readable.getReader();
+    const pendingRead = reader.read().catch(() => {});
+    await delay(100);
+    conn.close();
+
+    const ac = new AbortController();
+    const sawEof = await Promise.race([
+      serverSawEof,
+      delay(2000, { signal: ac.signal }).then(() => false, () => false),
+    ]);
+    ac.abort();
+    assert(
+      sawEof,
+      "peer did not observe EOF after conn.close() with a pending read",
+    );
+
+    await pendingRead;
+    try {
+      reader.releaseLock();
+    } catch {
+      // already released
+    }
+    listener.close();
+  },
+);

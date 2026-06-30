@@ -231,7 +231,6 @@ mod tests {
       svec![
         "run",
         "-A",
-        "--unstable-node-globals",
         "--unstable-bare-node-builtins",
         "--unstable-detect-cjs",
         "script.js"
@@ -387,6 +386,20 @@ mod tests {
     let result = translate_to_deno_args(parsed, false, true);
     assert!(result.deno_args.contains(&"test".to_string()));
     assert!(result.deno_args.contains(&"--watch".to_string()));
+  }
+
+  #[test]
+  fn test_translate_subcommand_passthrough() {
+    // Deno subcommands spawned via node:child_process should be passed through
+    // unchanged rather than being treated as a script for `deno run`. See
+    // #35591.
+    for subcommand in ["bundle", "serve", "fmt", "compile", "lint"] {
+      let parsed =
+        parse_args(svec![subcommand, "jsr:@std/http/file-server"]).unwrap();
+      let result = translate_to_deno_args(parsed, false, true);
+      assert_eq!(result.deno_args[0], subcommand);
+      assert!(!result.deno_args.contains(&"run".to_string()));
+    }
   }
 
   #[test]

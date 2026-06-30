@@ -299,6 +299,7 @@ async fn run_resolver_and_get_snapshot(
     link_packages: Default::default(),
     newest_dependency_date_options: Default::default(),
     overrides: Default::default(),
+    trust_policy: Default::default(),
   };
   let result = snapshot
     .add_pkg_reqs(

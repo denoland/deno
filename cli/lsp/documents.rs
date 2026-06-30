@@ -68,6 +68,7 @@ use crate::graph_util::CliJsrUrlProvider;
 use crate::lsp::compiler_options::LspCompilerOptionsData;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::tsc::BYTES_IMPORT_SOURCE;
+use crate::tsc::CSS_IMPORT_SOURCE;
 use crate::tsc::RawImportKind;
 use crate::tsc::TEXT_IMPORT_SOURCE;
 
@@ -272,6 +273,9 @@ static TEXT_IMPORT_SOURCE_LINE_INDEX: Lazy<Arc<LineIndex>> =
 static BYTES_IMPORT_SOURCE_LINE_INDEX: Lazy<Arc<LineIndex>> =
   Lazy::new(|| Arc::new(LineIndex::new(BYTES_IMPORT_SOURCE)));
 
+static CSS_IMPORT_SOURCE_LINE_INDEX: Lazy<Arc<LineIndex>> =
+  Lazy::new(|| Arc::new(LineIndex::new(CSS_IMPORT_SOURCE)));
+
 #[derive(Debug)]
 pub struct ServerDocument {
   pub uri: Arc<Uri>,
@@ -404,6 +408,19 @@ impl ServerDocument {
         },
       });
     }
+    if uri
+      .as_str()
+      .strip_prefix("deno:/css-import-types/")
+      .and_then(|s| s.strip_suffix(".ts"))
+      .is_some()
+    {
+      return Some(ServerDocument {
+        uri: Arc::new(uri.clone()),
+        kind: ServerDocumentKind::RawImportTypes {
+          kind: RawImportKind::Css,
+        },
+      });
+    }
     None
   }
 
@@ -435,6 +452,10 @@ impl ServerDocument {
         kind: RawImportKind::Bytes,
         ..
       } => DocumentText::Static(BYTES_IMPORT_SOURCE),
+      ServerDocumentKind::RawImportTypes {
+        kind: RawImportKind::Css,
+        ..
+      } => DocumentText::Static(CSS_IMPORT_SOURCE),
     }
   }
 
@@ -452,6 +473,10 @@ impl ServerDocument {
         kind: RawImportKind::Bytes,
         ..
       } => &BYTES_IMPORT_SOURCE_LINE_INDEX,
+      ServerDocumentKind::RawImportTypes {
+        kind: RawImportKind::Css,
+        ..
+      } => &CSS_IMPORT_SOURCE_LINE_INDEX,
     }
   }
 
@@ -1969,7 +1994,6 @@ pub enum LanguageId {
   Html,
   Css,
   Scss,
-  Sass,
   Less,
   Yaml,
   Sql,
@@ -1994,7 +2018,6 @@ impl LanguageId {
       LanguageId::Html => Some("html"),
       LanguageId::Css => Some("css"),
       LanguageId::Scss => Some("scss"),
-      LanguageId::Sass => Some("sass"),
       LanguageId::Less => Some("less"),
       LanguageId::Yaml => Some("yaml"),
       LanguageId::Sql => Some("sql"),
@@ -2018,7 +2041,6 @@ impl LanguageId {
       LanguageId::Html => Some("text/html"),
       LanguageId::Css => Some("text/css"),
       LanguageId::Scss => None,
-      LanguageId::Sass => None,
       LanguageId::Less => None,
       LanguageId::Yaml => Some("application/yaml"),
       LanguageId::Sql => None,
@@ -2054,7 +2076,6 @@ impl FromStr for LanguageId {
       "html" => Ok(Self::Html),
       "css" => Ok(Self::Css),
       "scss" => Ok(Self::Scss),
-      "sass" => Ok(Self::Sass),
       "less" => Ok(Self::Less),
       "yaml" => Ok(Self::Yaml),
       "sql" => Ok(Self::Sql),
@@ -2368,7 +2389,7 @@ mod tests {
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
-      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver, None));
     resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
@@ -2535,7 +2556,7 @@ const Counter = () => {
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
       let compiler_options_resolver =
-        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver, None));
       resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
       document_modules.update_config(
         &config,
@@ -2581,7 +2602,7 @@ const Counter = () => {
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
       let compiler_options_resolver =
-        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver, None));
       resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
       document_modules.update_config(
         &config,
