@@ -1246,6 +1246,7 @@ where
       }
       writer.written += written;
     }
+    scratch.write_flushed = scratch.write_buf.len();
     self.response_state = if status_allows_body(writer.response.status) {
       ResponseState::Fixed {
         remaining: writer.content_length,
