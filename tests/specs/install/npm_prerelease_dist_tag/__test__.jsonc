@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install -D npm:@denotest/insiders-tag@insiders",
+      "output": "install.out"
+    },
+    {
+      "args": "eval globalThis.console.log(Deno.readTextFileSync('package.json'))",
+      "output": "package_json.out"
+    },
+    {
+      "args": "eval globalThis.console.log(Deno.readTextFileSync('deno.lock'))",
+      "output": "lock.out"
+    }
+  ]
+}
