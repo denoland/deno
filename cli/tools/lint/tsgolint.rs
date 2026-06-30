@@ -385,7 +385,7 @@ struct HeadlessRange {
 
 #[derive(Deserialize)]
 struct HeadlessMessage {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "deserialized from tsgolint output but unused")]
   id: String,
   description: String,
   #[serde(default)]
