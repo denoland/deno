@@ -1606,6 +1606,8 @@ function serveHttpOnListenerForNode(
     signal,
     op_http_serve(
       listener[internalRidSymbol],
+      // node:http never auto-compresses (Node doesn't); only Deno.serve does.
+      false,
       dispatch,
       false,
       dispatch,
