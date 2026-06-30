@@ -735,7 +735,30 @@ pub const DESKTOP_JS: &str = r#"
           }
           case "bindCall": {
             const callbacks = windowBindCallbacks.get(ev.windowId);
-            const fn_ = callbacks?.get(ev.name);
+            let fn_ = callbacks?.get(ev.name);
+            // Fallback: the backend may report a window id for the calling
+            // renderer that doesn't line up with the id the binding was
+            // registered under (observed on the CEF/Windows backend when an
+            // entrypoint with extra modules — e.g. a `jsr:` import — delays
+            // startup; see denoland/deno#35647). The window->callback map and
+            // the native binding registry are both keyed by the same window
+            // id, so a miss here means the call arrived under a different id
+            // than `bind()` saw. When exactly one window has a callback for
+            // this name the target is unambiguous, so route to it rather than
+            // dropping the call. (Per-window same-named bindings keep strict
+            // matching: ambiguous names fall through to the rejection below.)
+            if (!fn_) {
+              let match = null;
+              let count = 0;
+              for (const map of windowBindCallbacks.values()) {
+                const candidate = map.get(ev.name);
+                if (candidate) {
+                  match = candidate;
+                  if (++count > 1) break;
+                }
+              }
+              if (count === 1) fn_ = match;
+            }
             if (!fn_) {
               op_desktop_reject_bind_call(ev.callId, "No callback bound for: " + ev.name);
               break;
@@ -1278,6 +1301,23 @@ mod tests {
     assert!(DESKTOP_JS.contains("navigator"));
     assert!(DESKTOP_JS.contains("permissions"));
     assert!(DESKTOP_JS.contains("PermissionStatus"));
+  }
+
+  #[test]
+  fn desktop_js_bind_call_falls_back_on_window_id_mismatch() {
+    // Regression guard for denoland/deno#35647: the CEF/Windows backend can
+    // deliver a `bindCall` whose window id doesn't match the id the binding
+    // was registered under. The dispatcher must not give up on the first
+    // window-scoped miss — it falls back to an unambiguous name match so the
+    // call still reaches its callback instead of erroring with
+    // "No callback bound for".
+    assert!(
+      DESKTOP_JS.contains("windowBindCallbacks.values()"),
+      "bindCall must scan all windows when the window-scoped lookup misses"
+    );
+    // The fallback only fires when exactly one window registered the name, so
+    // per-window same-named bindings keep strict routing.
+    assert!(DESKTOP_JS.contains("count === 1"));
   }
 
   #[test]
