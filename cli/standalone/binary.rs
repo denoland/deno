@@ -1129,20 +1129,51 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     )
     .context("Serializing binary data section.")?;
 
+    let hs = |n: usize| crate::util::display::human_size(n as f64);
+    let runtime_size = original_bin.len();
+    let payload_size = data_section_bytes.len();
+    let total_size = runtime_size + payload_size;
+
+    // Payload breakdown: the data appended on top of the embedded runtime.
+    // Zero-valued sections are omitted to avoid noise (e.g. a script with no
+    // remote modules).
+    log::info!("\n{} {}", crate::colors::bold("Payload"), hs(payload_size));
+    if section_sizes.vfs > 0 {
+      log::info!(
+        "  {}  {}",
+        crate::colors::gray("Source files  "),
+        hs(section_sizes.vfs)
+      );
+    }
+    if section_sizes.remote_modules > 0 {
+      log::info!(
+        "  {}  {}",
+        crate::colors::gray("Remote modules"),
+        hs(section_sizes.remote_modules)
+      );
+    }
+    if section_sizes.metadata > 0 {
+      log::info!(
+        "  {}  {}",
+        crate::colors::gray("Metadata      "),
+        hs(section_sizes.metadata)
+      );
+    }
+
+    // Headline: the actual on-disk size of the produced executable, split
+    // into the runtime base and the user payload so the total is explained
+    // rather than surprising. "\u{2192}" is an arrow, "\u{b7}" a middot.
     log::info!(
-      "\n{} {}",
-      crate::colors::bold("Files:"),
-      crate::util::display::human_size(section_sizes.vfs as f64)
-    );
-    log::info!(
-      "{} {}",
-      crate::colors::bold("Metadata:"),
-      crate::util::display::human_size(section_sizes.metadata as f64)
-    );
-    log::info!(
-      "{} {}\n",
-      crate::colors::bold("Remote modules:"),
-      crate::util::display::human_size(section_sizes.remote_modules as f64)
+      "\n{} {} {} {}",
+      crate::colors::green("Compiled"),
+      display_output_filename,
+      crate::colors::bold(format!("\u{2192} {}", hs(total_size))),
+      crate::colors::gray(format!(
+        "({} runtime + {} payload \u{b7} {})",
+        hs(runtime_size),
+        hs(payload_size),
+        compile_flags.resolve_target(),
+      )),
     );
 
     write_binary_bytes(writer, original_bin, data_section_bytes, compile_flags)
