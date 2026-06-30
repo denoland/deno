@@ -1528,21 +1528,36 @@ impl SessionContainer {
     // and skip V8 entirely.
     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&message)
       && let Some(method) = parsed.get("method").and_then(|m| m.as_str())
-      && let Some(outcome) = dispatch_custom_domain(method, &parsed, session)
     {
-      if let Some(id) = parsed.get("id") {
-        let call_id = id.as_i64().unwrap_or(0) as i32;
-        let content = match outcome {
-          CustomDomainOutcome::Empty => make_cdp_ok_response(id, json!({})),
-          CustomDomainOutcome::Result(v) => make_cdp_ok_response(id, v),
-          CustomDomainOutcome::Error(err) => make_cdp_error_response(id, &err),
-        };
-        (session.state.send)(InspectorMsg {
-          kind: InspectorMsgKind::Message(call_id),
-          content,
-        });
+      if method == "Page.waitForDebugger" {
+        session.wait_for_debugger();
+        if let Some(id) = parsed.get("id") {
+          let call_id = id.as_i64().unwrap_or(0) as i32;
+          (session.state.send)(InspectorMsg {
+            kind: InspectorMsgKind::Message(call_id),
+            content: make_cdp_ok_response(id, json!({})),
+          });
+        }
+        return;
       }
-      return;
+
+      if let Some(outcome) = dispatch_custom_domain(method, &parsed, session) {
+        if let Some(id) = parsed.get("id") {
+          let call_id = id.as_i64().unwrap_or(0) as i32;
+          let content = match outcome {
+            CustomDomainOutcome::Empty => make_cdp_ok_response(id, json!({})),
+            CustomDomainOutcome::Result(v) => make_cdp_ok_response(id, v),
+            CustomDomainOutcome::Error(err) => {
+              make_cdp_error_response(id, &err)
+            }
+          };
+          (session.state.send)(InspectorMsg {
+            kind: InspectorMsgKind::Message(call_id),
+            content,
+          });
+        }
+        return;
+      }
     }
 
     session.dispatch_message(message);
@@ -1797,6 +1812,12 @@ impl InspectorSession {
     *self.state.is_dispatching_message.borrow_mut() = false;
   }
 
+  fn wait_for_debugger(&self) {
+    let mut flags = self.state.flags.borrow_mut();
+    flags.paused_on_start = true;
+    flags.waiting_for_session = true;
+  }
+
   /// Queue a message to be sent to a worker
   fn queue_worker_message(&self, session_id: &str, message: String) {
     self
@@ -1980,6 +2001,9 @@ async fn pump_inspector_session_messages(
         // Forward to V8 for actual processing
         session.dispatch_message(msg);
         continue;
+      }
+      "Page.waitForDebugger" => {
+        session.wait_for_debugger();
       }
       "NodeWorker.enable" => {
         session.state.nodeworker_enabled.set(true);
