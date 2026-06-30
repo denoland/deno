@@ -30,9 +30,9 @@ import {
   op_http_get_request_headers,
   op_http_get_request_http_minor_version,
   op_http_get_request_method,
+  op_http_get_request_raw_target,
   op_http_get_request_remote_addr,
   op_http_get_request_trailers,
-  op_http_get_request_url,
   op_http_read_request_body,
   op_http_reclaim_socket,
   op_http_request_on_cancel,
@@ -1683,14 +1683,6 @@ function nativeDiscardBody() {
   nativePush(this, null);
 }
 
-// Strip the origin from an absolute URL to get Node's req.url (request target).
-function nativeRequestTarget(full) {
-  const schemeEnd = StringPrototypeIndexOf(full, "://");
-  if (schemeEnd === -1) return full;
-  const pathStart = StringPrototypeIndexOf(full, "/", schemeEnd + 3);
-  return pathStart === -1 ? "/" : StringPrototypeSlice(full, pathStart);
-}
-
 // Build a real IncomingMessage backed by the native request `external` so that
 // frameworks which re-parent onto http.IncomingMessage.prototype keep working.
 // Synthetic socket exposed as `req.socket` / `res.socket` on the native path.
@@ -1947,7 +1939,7 @@ function createNativeIncomingMessage(
   req.httpVersionMinor = minor;
   req.httpVersion = minor === 0 ? "1.0" : "1.1";
   req.method = op_http_get_request_method(external);
-  req.url = nativeRequestTarget(op_http_get_request_url(external));
+  req.url = op_http_get_request_raw_target(external);
   // `server.maxHeadersCount` limits how many request headers are parsed (the
   // classic path caps llhttp at `maxHeadersCount << 1` pairs). The flat array
   // holds 2 entries (name, value) per header, so truncate to that many entries.

@@ -2137,6 +2137,37 @@ fn push_url_from_parts(
   out.push_str(path);
 }
 
+/// node:http `req.url` is the RAW request-target verbatim (origin-form `/path`,
+/// absolute-form `http://host/path` for proxy requests, authority-form
+/// `host:port` for CONNECT, `*` for OPTIONS). op_http_get_request_url instead
+/// synthesizes a full URL (Deno.serve / fetch semantics), which collapses an
+/// absolute-form proxy target back to origin-form -- so node:http uses this.
+#[op2]
+pub fn op_http_get_request_raw_target<'scope>(
+  scope: &mut v8::PinScope<'scope, '_>,
+  external: *const c_void,
+) -> v8::Local<'scope, v8::String> {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_get_request_raw_target") };
+  match http {
+    HttpRecordExternal::Raw(http) => {
+      let inner = http.0.borrow();
+      v8_string_from_bytes(scope, inner.path.as_bytes())
+    }
+    HttpRecordExternal::Hyper(http) => {
+      // node:http only ever uses the Raw path; this is a defensive fallback.
+      let request_parts = http.request_parts();
+      let target = request_parts
+        .uri
+        .path_and_query()
+        .map(|pq| pq.as_str().to_owned())
+        .unwrap_or_else(|| "/".to_owned());
+      v8_string_from_bytes(scope, target.as_bytes())
+    }
+  }
+}
+
 fn raw_request_url_v8<'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
   http: &RawHttpRecord,
