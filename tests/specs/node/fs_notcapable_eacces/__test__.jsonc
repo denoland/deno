@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "run --allow-read --allow-write=./allowed main.mjs",
+  "output": "main.out"
+}

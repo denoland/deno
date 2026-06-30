@@ -1,0 +1,3 @@
+writeFileSync: code=EACCES errno_set=true syscall=open
+openSync: code=EACCES errno_set=true syscall=open
+mkdirSync: code=EACCES errno_set=true syscall=mkdir

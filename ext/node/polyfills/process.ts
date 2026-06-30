@@ -65,6 +65,7 @@ const {
   ERR_UNKNOWN_SIGNAL,
   ERR_WORKER_UNSUPPORTED_OPERATION,
   errnoException,
+  isNotCapable,
   NodeTypeError,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { getOptionValue } = core.loadExtScript(
@@ -1490,6 +1491,12 @@ export function loadEnvFile(path = ".env") {
         "ERR_INVALID_ARG_TYPE",
         `Contents of '${path}' should be a valid string.`,
       );
+    }
+    // Preserve the original permission error: a denied env file load can fail
+    // on env access (not just file access), so the raw NotCapable carries the
+    // accurate "Requires <x> access" message rather than a misleading EACCES.
+    if (isNotCapable(err)) {
+      throw err;
     }
     throw denoErrorToNodeError(err as Error, { syscall: "open", path });
   }

@@ -164,9 +164,12 @@ Deno.test({
   name: "writeHeapSnapshot requires write permission",
   permissions: { write: false },
   fn() {
-    assertThrows(() => {
+    // A denied write is surfaced as a Node-compatible EACCES error rather than
+    // a raw Deno.errors.NotCapable (see denoland/deno#32583).
+    const err = assertThrows(() => {
       v8.writeHeapSnapshot("test.heapsnapshot");
-    }, Deno.errors.NotCapable);
+    }, Error) as { code?: string };
+    assertEquals(err.code, "EACCES");
   },
 });
 
