@@ -22,7 +22,7 @@ const isCIWithoutGPU = (Deno.build.os === "linux" ||
   (Deno.build.os === "darwin" && Deno.build.arch === "x86_64")) && isCI;
 const isWsl = await checkIsWsl();
 
-// Detect whether any canvas2d renderer (Gpu, Hybrid, or Cpu fallback) is functional.
+// Detect whether any canvas2d renderer (Gpu or Cpu fallback) is functional.
 const hasCanvasRenderer = await detectCanvasRenderer();
 
 async function detectCanvasRenderer(): Promise<boolean> {
