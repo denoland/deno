@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -15,10 +16,12 @@ use std::time::UNIX_EPOCH;
 
 use deno_core::FastString;
 use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
+use deno_permissions::PermissionsContainer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
@@ -288,10 +291,15 @@ extern "C" fn near_heap_limit_snapshot_callback(
 
 #[op2(nofast)]
 pub fn op_v8_set_heap_snapshot_near_heap_limit(
+  state: &mut OpState,
   scope: &mut v8::PinScope<'_, '_>,
   #[smi] limit: u32,
-) {
+) -> Result<(), deno_permissions::PermissionCheckError> {
   let dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+  let dir = state
+    .borrow_mut::<PermissionsContainer>()
+    .check_write(Cow::Owned(dir), "v8.setHeapSnapshotNearHeapLimit")?
+    .into_owned_path();
   // SAFETY: capture the raw pointer of the current isolate so the extern "C"
   // callback (which is not passed an isolate) can take a snapshot. The isolate
   // outlives the callback, so the pointer stays valid whenever it runs.
@@ -308,6 +316,7 @@ pub fn op_v8_set_heap_snapshot_near_heap_limit(
   // Leak the state so it outlives the isolate (see the struct doc comment).
   let data = Box::into_raw(state) as *mut c_void;
   scope.add_near_heap_limit_callback(near_heap_limit_snapshot_callback, data);
+  Ok(())
 }
 
 // Walks the V8 heap snapshot and counts nodes that look like instances of a

@@ -3,7 +3,12 @@
 // directly) while itself exiting cleanly. The child writes the `.heapsnapshot`
 // into the shared cwd, which the next step asserts on.
 const cmd = new Deno.Command(Deno.execPath(), {
-  args: ["run", "--v8-flags=--max-old-space-size=20", "oom.mjs"],
+  args: [
+    "run",
+    "--allow-write=.",
+    "--v8-flags=--max-old-space-size=20",
+    "oom.mjs",
+  ],
   stdout: "null",
   stderr: "piped",
 });

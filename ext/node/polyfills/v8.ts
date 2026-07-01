@@ -257,12 +257,12 @@ let heapSnapshotNearHeapLimitSet = false;
 // Installs a V8 near-heap-limit callback that writes a `.heapsnapshot` file to
 // disk (up to `limit` times) right before the process would run out of memory.
 function setHeapSnapshotNearHeapLimit(limit: number) {
-  validateUint32(limit, "limit");
+  validateUint32(limit, "limit", true);
   if (heapSnapshotNearHeapLimitSet) {
     return;
   }
-  heapSnapshotNearHeapLimitSet = true;
   op_v8_set_heap_snapshot_near_heap_limit(limit);
+  heapSnapshotNearHeapLimitSet = true;
 }
 
 // https://nodejs.org/api/v8.html#v8queryobjectsctor-options
