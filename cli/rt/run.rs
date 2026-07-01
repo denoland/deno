@@ -1180,6 +1180,7 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
 
   fn create_for_worker(
     &self,
+    _inherit_static_imports: bool,
     _parent_permissions: PermissionsContainer,
     _permissions: PermissionsContainer,
     maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,

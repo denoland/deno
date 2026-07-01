@@ -4693,6 +4693,21 @@ interface WorkerOptions {
   deno?: {
     /** Set to `"none"` to disable all the permissions in the worker. */
     permissions?: Deno.PermissionOptions;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * When `true`, the worker may statically import remote modules it does not
+     * itself have import permission for, as long as the module is already a
+     * dependency of the main thread (i.e. already present in the main thread's
+     * module graph). New remote modules that the main thread has not loaded
+     * still require the worker's own import permission.
+     *
+     * This is useful to run a worker with restricted (or no) import permission
+     * while still letting it reuse dependencies the main thread already
+     * resolved.
+     *
+     * Defaults to `false`.
+     */
+    inheritStaticImports?: boolean;
   };
 }
 

@@ -75,6 +75,7 @@ pub trait ModuleLoaderFactory: Send + Sync {
 
   fn create_for_worker(
     &self,
+    inherit_static_imports: bool,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
     maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
@@ -364,6 +365,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         node_require_loader,
         hook_registry,
       } = shared.module_loader_factory.create_for_worker(
+        args.inherit_static_imports,
         args.parent_permissions.clone(),
         args.permissions.clone(),
         args
