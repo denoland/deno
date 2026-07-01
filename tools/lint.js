@@ -707,6 +707,7 @@ async function ensureNoNewTopLevelEntries() {
     ".github",
     "x",
     "cli",
+    "doc",
     "ext",
     "libs",
     "runtime",

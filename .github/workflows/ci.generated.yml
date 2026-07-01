@@ -26,6 +26,7 @@ jobs:
     outputs:
       skip_build: '${{ steps.check.outputs.skip_build }}'
       skip_deno_core_test: '${{ steps.deno_core_changes.outputs.skip_deno_core_test }}'
+      docs_only: '${{ steps.docs_only_changes.outputs.docs_only }}'
     steps:
       - name: Configure git
         if: github.event_name == 'pull_request'
@@ -54,11 +55,14 @@ jobs:
         run: |-
           git fetch --depth=1 origin ${{ github.event.pull_request.base.sha }}
           deno run -A tools/check_deno_core_changes.js ${{ github.event.pull_request.base.sha }}
+      - id: docs_only_changes
+        if: github.event_name == 'pull_request'
+        run: 'deno run -A tools/check_docs_only_changes.js ${{ github.event.pull_request.base.sha }}'
   bench:
     name: bench release linux-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     defaults:
@@ -276,7 +280,7 @@ jobs:
     name: build debug macos-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: macos-15-intel
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -642,7 +646,7 @@ jobs:
     name: build release macos-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-15-intel'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -1135,7 +1139,7 @@ jobs:
     name: build debug macos-aarch64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: macos-14
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -1668,7 +1672,7 @@ jobs:
     name: build release macos-aarch64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-14'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -2180,7 +2184,7 @@ jobs:
     name: build debug windows-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: windows-2022
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -2650,7 +2654,7 @@ jobs:
     name: build release windows-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -3147,7 +3151,7 @@ jobs:
     name: build debug windows-aarch64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: windows-11-arm
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -3498,7 +3502,7 @@ jobs:
     name: build release windows-aarch64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''windows-11-arm'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -3995,7 +3999,7 @@ jobs:
     name: build release linux-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -4818,7 +4822,7 @@ jobs:
     name: build debug linux-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -5371,7 +5375,7 @@ jobs:
     name: build libs debug linux-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -5487,7 +5491,7 @@ jobs:
     name: build debug linux-aarch64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04-arm
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -5975,7 +5979,7 @@ jobs:
     name: build release linux-aarch64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ubuntu-24.04-arm64-xl'' || ''ubuntu-24.04-arm'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -6790,7 +6794,7 @@ jobs:
     name: deno_core test linux-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.skip_deno_core_test != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.skip_deno_core_test != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
@@ -7018,7 +7022,7 @@ jobs:
     name: deno_core miri linux-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
