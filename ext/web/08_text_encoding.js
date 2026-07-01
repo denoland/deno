@@ -71,6 +71,15 @@ class TextDecoder {
    * @param {TextDecoderOptions} options
    */
   constructor(label = "utf-8", options = { __proto__: null }) {
+    // No-arg fast path.
+    if (arguments.length === 0) {
+      this.#encoding = "utf-8";
+      this.#fatal = false;
+      this.#ignoreBOM = false;
+      this.#utf8SinglePass = true;
+      this[webidl.brand] = webidl.brand;
+      return;
+    }
     const prefix = "Failed to construct 'TextDecoder'";
     label = webidl.converters.DOMString(label, prefix, "Argument 1");
     options = webidl.converters.TextDecoderOptions(

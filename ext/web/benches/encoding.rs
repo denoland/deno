@@ -70,6 +70,13 @@ fn bench_encode_into_short(b: &mut Bencher) {
   bench_js_sync(b, r#"encInto.encodeInto(helloShort, dest);"#, setup);
 }
 
+fn bench_text_decoder_construct_noarg(b: &mut Bencher) {
+  // `new TextDecoder()` -- the no-arg fast path. Used by every
+  // TextDecoderStream, every fetch body parse, every JSON parse via
+  // `decode(bytes)` shape.
+  bench_js_sync(b, r#"new TextDecoder();"#, setup);
+}
+
 benchmark_group!(
   benches,
   bench_encode_12kb,
@@ -78,5 +85,6 @@ benchmark_group!(
   bench_decode_120b_reused,
   bench_decode_utf8_2k_reused,
   bench_encode_into_short,
+  bench_text_decoder_construct_noarg,
 );
 bench_or_profile!(benches);
