@@ -375,6 +375,7 @@ pub struct InitFlags {
   pub lib: bool,
   pub serve: bool,
   pub empty: bool,
+  pub desktop: bool,
   pub yes: bool,
 }
 
