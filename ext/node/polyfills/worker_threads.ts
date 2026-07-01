@@ -582,6 +582,27 @@ class NodeWorker extends EventEmitter {
     }
   }
 
+  // Whether the message promise should keep the event loop alive.
+  // True when the worker is refed OR when there are "message" listeners
+  // (matching Node.js behavior where message listeners keep the event
+  // loop alive even after worker.unref()).
+  #messageRefed = true;
+
+  #updateMessageRef() {
+    const shouldRef = this.#refed || this.listenerCount("message") > 0;
+    if (shouldRef === this.#messageRefed) {
+      return;
+    }
+    this.#messageRefed = shouldRef;
+    if (this.#messagePromise) {
+      if (shouldRef) {
+        core.refOpPromise(this.#messagePromise);
+      } else {
+        core.unrefOpPromise(this.#messagePromise);
+      }
+    }
+  }
+
   [privateWorkerRef](ref) {
     if (ref === this.#refed) {
       return;
@@ -592,17 +613,12 @@ class NodeWorker extends EventEmitter {
       if (this.#controlPromise) {
         core.refOpPromise(this.#controlPromise);
       }
-      if (this.#messagePromise) {
-        core.refOpPromise(this.#messagePromise);
-      }
     } else {
       if (this.#controlPromise) {
         core.unrefOpPromise(this.#controlPromise);
       }
-      if (this.#messagePromise) {
-        core.unrefOpPromise(this.#messagePromise);
-      }
     }
+    this.#updateMessageRef();
   }
 
   #handleError(err) {
@@ -742,7 +758,7 @@ class NodeWorker extends EventEmitter {
   #pollMessages = async () => {
     while (this.#status !== "TERMINATED") {
       this.#messagePromise = op_host_recv_message(this.#id);
-      if (!this.#refed) {
+      if (!this.#messageRefed) {
         core.unrefOpPromise(this.#messagePromise);
       }
       const data = await this.#messagePromise;
@@ -843,6 +859,32 @@ class NodeWorker extends EventEmitter {
 
   unref() {
     this[privateWorkerRef](false);
+  }
+
+  on(event, listener) {
+    super.on(event, listener);
+    if (event === "message") this.#updateMessageRef();
+    return this;
+  }
+
+  addListener(event, listener) {
+    return this.on(event, listener);
+  }
+
+  off(event, listener) {
+    super.off(event, listener);
+    if (event === "message") this.#updateMessageRef();
+    return this;
+  }
+
+  removeListener(event, listener) {
+    return this.off(event, listener);
+  }
+
+  removeAllListeners(event?) {
+    super.removeAllListeners(event);
+    if (event === undefined || event === "message") this.#updateMessageRef();
+    return this;
   }
 
   cpuUsage(prevValue?: { user: number; system: number }) {
