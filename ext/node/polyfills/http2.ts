@@ -16,7 +16,9 @@ const {
   ArrayPrototypeUnshift,
   ArrayBuffer,
   ArrayBufferIsView,
+  ArrayPrototypeSlice,
   Error,
+  FunctionPrototypeApply,
   FunctionPrototypeBind,
   FunctionPrototypeCall,
   MathMin,
@@ -67,9 +69,13 @@ const http = lazyHttp().default;
 const { AsyncResource } = core.loadExtScript("ext:deno_node/async_hooks.ts");
 const {
   _connectionListener: httpConnectionListener,
+  applyAddressOverride,
   httpServerPreClose,
   kIncomingMessage,
   kServerResponse,
+  notifyAddressOverrideServing,
+  SERVER_KIND_NODE_HTTP2,
+  startOverrideListener,
   Server: HttpServer,
   setupConnectionsTracking,
   STATUS_CODES,
@@ -5190,6 +5196,60 @@ class Http2Server extends net.Server {
     http2ServerOnCaptureRejection(net.Server, this, err, event, args);
   }
 }
+
+// Applies the DENO_SERVE_ADDRESS override before delegating to
+// net.Server.prototype.listen, like node:http's Server.listen does.
+//
+// Connections accepted from the override listener carry the sniffed
+// protocol as `socket.alpnProtocol`, so `connectionListener` performs the
+// same h2 / http1.1 routing it would for a TLS+ALPN connection. HTTP/2
+// stays HTTP/2 end-to-end (native trailers and flow control).
+Http2Server.prototype.listen = function listen(...args) {
+  const applied = applyAddressOverride();
+
+  switch (applied.mode) {
+    case "none":
+      return FunctionPrototypeApply(net.Server.prototype.listen, this, args);
+
+    case "tcp": {
+      let cb;
+      const last = args[args.length - 1];
+      if (typeof last === "function") {
+        cb = last;
+        args = ArrayPrototypeSlice(args, 0, -1);
+      }
+      const rewritten = [{ host: applied.host, port: applied.port }];
+      if (cb) ArrayPrototypePush(rewritten, cb);
+      this.once(
+        "listening",
+        () => notifyAddressOverrideServing(SERVER_KIND_NODE_HTTP2),
+      );
+      return FunctionPrototypeApply(
+        net.Server.prototype.listen,
+        this,
+        rewritten,
+      );
+    }
+
+    case "override-only": {
+      const last = args[args.length - 1];
+      if (typeof last === "function") this.once("listening", last);
+      this._handle = {
+        close() {},
+        ref() {},
+        unref() {},
+      };
+      startOverrideListener(this, applied.override, connectionListener, true);
+      process.nextTick(() => this.emit("listening"));
+      return this;
+    }
+
+    case "duplicate": {
+      startOverrideListener(this, applied.override, connectionListener, true);
+      return FunctionPrototypeApply(net.Server.prototype.listen, this, args);
+    }
+  }
+};
 
 function createSecureServer(options, handler) {
   return new Http2SecureServer(options, handler);

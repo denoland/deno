@@ -1,0 +1,45 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "tests": {
+    // Regression test for denoland/deno#35348: `--lockfile-only` must bump the
+    // lockfile to the newer in-range version (0.1.0 -> 0.1.1) even when the
+    // cached npm registry packument is stale and predates 0.1.1. `setup.ts`
+    // simulates that stale cache by dropping 0.1.1/0.2.0 from the cached
+    // registry.json and pinning the lock back at 0.1.0. Before the fix the
+    // installer re-resolved against the stale cache and reported "Updated 0
+    // dependencies"; now it refetches metadata for the updated package.
+    "stale_npm_cache": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A setup.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "update --lockfile-only",
+          "output": "update.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./deno.lock').trim());"
+          ],
+          "output": "deno.lock.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./package.json').trim());"
+          ],
+          "output": "package.json.out"
+        }
+      ]
+    }
+  }
+}

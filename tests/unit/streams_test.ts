@@ -743,21 +743,40 @@ Deno.test(async function readableStreamEmittingManyChunks() {
     await startClient();
     stopSignal.abort();
     console.log(\`\${after} / \${before} = \${after / before}\`);
-    if (after / before > 1.5) {
+    // This guards against a per-chunk leak: a real leak over 30k chunks grows
+    // the heap many-fold, so the threshold only needs to exclude the fixed
+    // streaming overhead (~1.8 MB here, constant regardless of chunk count).
+    // It's a ratio rather than an absolute so the baseline heap size doesn't
+    // need hardcoding — but that makes it sensitive to baseline shrinkage:
+    // deferring the node-polyfill foundation out of the startup snapshot
+    // lowered \`before\` (~4.4 -> ~3.7 MB) while absolute growth was unchanged,
+    // pushing the ratio from ~1.42 to ~1.50. Use 2x, which still flags any real
+    // unbounded leak (those are >>2x) and is robust to baseline size.
+    if (after / before > 2) {
       Deno.exit(1);
     }
   `;
-  const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-N", "-"],
-    stdin: "piped",
-  });
+  // The in-process heap-growth heuristic above is sensitive to GC timing and
+  // can transiently exceed the 2x ratio on some platforms (observed on
+  // macOS aarch64 in release mode) even without a real leak. A genuine
+  // unbounded leak grows >>2x and reproduces on every run, so retry a few
+  // times and only fail if every attempt reports a leak. See #35353.
+  let codeResult = 1;
+  for (let attempt = 0; attempt < 3 && codeResult !== 0; attempt++) {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["run", "-N", "-"],
+      stdin: "piped",
+    });
 
-  await using child = command.spawn();
-  await ReadableStream.from([code])
-    .pipeThrough(new TextEncoderStream())
-    .pipeTo(child.stdin);
+    await using child = command.spawn();
+    await ReadableStream.from([code])
+      .pipeThrough(new TextEncoderStream())
+      .pipeTo(child.stdin);
 
-  assertEquals((await child.status).code, 0, "memory leak");
+    codeResult = (await child.status).code;
+  }
+
+  assertEquals(codeResult, 0, "memory leak");
 });
 
 // Regression test for https://github.com/denoland/deno/issues/33476

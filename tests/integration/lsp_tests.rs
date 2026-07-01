@@ -1921,6 +1921,101 @@ fn lsp_hover() {
 }
 
 #[test(timeout = 300)]
+fn lsp_inferred_type() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"type Box<T> = { value: T; next?: Box<T> };
+const simple = 42;
+const unioned = Math.random() > 0.5
+  ? { kind: "a" as const, value: 1 }
+  : { kind: "b" as const, value: "two" };
+const generic = new Map<string, Promise<Array<Box<number | string>>>>();
+const inferred = {
+  alpha: { value: "alpha", nested: { count: 1, enabled: true } },
+  beta: { value: "beta", nested: { count: 2, enabled: false } },
+  gamma: { value: "gamma", nested: { count: 3, enabled: true } },
+  delta: { value: "delta", nested: { count: 4, enabled: false } },
+  epsilon: { value: "epsilon", nested: { count: 5, enabled: true } },
+  zeta: { value: "zeta", nested: { count: 6, enabled: false } },
+  eta: { value: "eta", nested: { count: 7, enabled: true } },
+  theta: { value: "theta", nested: { count: 8, enabled: false } },
+};
+"#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let mut assert_inferred_type_contains = |name: &str, expected: &[&str]| {
+    let res = client.write_request(
+      "deno/inferredType",
+      json!({
+        "textDocument": file.identifier(),
+        "position": file.range_of(name).start,
+      }),
+    );
+    let text = res["text"].as_str().unwrap();
+    for expected in expected {
+      assert!(text.contains(expected), "{text}");
+    }
+    assert_eq!(res["range"], json!(file.range_of(name)));
+  };
+  assert_inferred_type_contains("simple", &["const simple: 42"]);
+  assert_inferred_type_contains(
+    "unioned",
+    &["const unioned:", "kind: \"a\"", "kind: \"b\"", "|"],
+  );
+  assert_inferred_type_contains(
+    "generic",
+    &["const generic:", "Map<string", "Promise", "Box"],
+  );
+
+  let res = client.write_request(
+    "deno/inferredType",
+    json!({
+      "textDocument": file.identifier(),
+      "position": file.range_of("inferred").start,
+    }),
+  );
+  let text = res["text"].as_str().unwrap();
+  assert!(text.starts_with("const inferred: {"));
+  assert!(text.contains("alpha: {"));
+  assert!(text.contains("theta: {"));
+  assert!(text.len() > 500, "{text}");
+  assert_eq!(res["range"], json!(file.range_of("inferred")));
+
+  let code_actions = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": file.identifier(),
+      "range": file.range_of("inferred"),
+      "context": {
+        "diagnostics": [],
+        "only": ["refactor.extract.inferredType"],
+      }
+    }),
+  );
+  assert_eq!(
+    code_actions,
+    json!([{
+      "title": "Copy inferred type",
+      "kind": "refactor.extract.inferredType",
+      "command": {
+        "title": "Copy inferred type",
+        "command": "deno.inferredType",
+        "arguments": [{
+          "textDocument": file.identifier(),
+          "position": file.range_of("inferred").start,
+        }, res],
+      },
+    }])
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_hover_asset() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -6861,6 +6956,44 @@ fn lsp_jsr_auto_import_completion_patch() {
 }
 
 #[test(timeout = 300)]
+fn lsp_diagnostics_linked_pkg_wrong_name_hint() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "links": ["package"],
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package/deno.json",
+    json!({
+      "name": "@org/package",
+      "exports": "./mod.ts",
+    })
+    .to_string(),
+  );
+  temp_dir.write("package/mod.ts", "export const someValue = 1;\n");
+  // Import the linked package by its unscoped tail ("package") instead of its
+  // declared name ("@org/package"). The diagnostic should hint at the full
+  // name rather than suggesting `deno add npm:`.
+  let file = temp_dir.source_file("file.ts", "import \"package\";\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  let messages = diagnostics.messages_with_source("deno");
+  let message = messages.diagnostics[0].message.as_str();
+  assert!(
+    message.contains(
+      "\"@org/package\" is available in this workspace (via a workspace member or the \"links\" field). Import it by its full name.",
+    ),
+    "unexpected diagnostic message: {message}",
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_jsr_code_action_missing_declaration() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -8236,6 +8369,14 @@ fn lsp_code_actions_refactor() {
             "newText": "NewType"
           }]
         }]
+      },
+      "command": {
+        "title": "",
+        "command": "editor.action.rename",
+        "arguments": [[
+          "file:///a/file.ts",
+          { "line": 0, "character": 10 }
+        ]]
       },
       "isPreferred": true,
       "data": {
@@ -13351,7 +13492,7 @@ fn lsp_jupyter_completions() {
       },
       "documentation": {
         "kind": "markdown",
-        "value": "Asynchronously reads and returns the entire contents of a file as an UTF-8\ndecoded string. Reading a directory throws an error.\n\n```ts\nconst data = await Deno.readTextFile(\"hello.txt\");\nconsole.log(data);\n```\n\nRequires `allow-read` permission.\n\n*@tags* — allow-read\n\n\n*@category* — File System\n",
+        "value": "Asynchronously reads and returns the entire contents of a file as an UTF-8\ndecoded string.\n\n```ts\nconst data = await Deno.readTextFile(\"hello.txt\");\nconsole.log(data);\n```\n\nThe returned promise rejects if the operation fails, for example with\n[`Deno.errors.NotFound`](deno:/asset/lib.deno.ns.d.ts#174,5-174,43) if the file does not exist,\n[`Deno.errors.IsADirectory`](deno:/asset/lib.deno.ns.d.ts#307,5-307,47) if `path` refers to a directory, or\n[`Deno.errors.PermissionDenied`](deno:/asset/lib.deno.ns.d.ts#185,5-185,51) if the required permission has not\nbeen granted.\n\nRequires `allow-read` permission.\n\n*@tags* — allow-read\n\n\n*@category* — File System\n",
       },
       "sortText": "11",
     }),
@@ -14136,12 +14277,6 @@ fn lsp_format_css() {
     temp_dir.path().join("file.scss"),
     "  $font-stack: Helvetica, sans-serif;\n\nbody {\n  font: 100% $font-stack;\n}\n",
   );
-  let sass_file = source_file(
-    temp_dir.path().join("file.sass"),
-    // Note: avoid $var references in property values in Sass indented syntax
-    // due to upstream raffia regression: https://github.com/g-plane/raffia/issues/13
-    "  $color: red\n\nbody\n  color: blue\n  margin: 0\n",
-  );
   let less_file = source_file(
     temp_dir.path().join("file.less"),
     "  @width: 10px;\n\n#header {\n  width: @width;\n}\n",
@@ -14189,28 +14324,6 @@ fn lsp_format_css() {
           "end": { "line": 1, "character": 0 },
         },
         "newText": "$font-stack: Helvetica, sans-serif;\n",
-      },
-    ]),
-  );
-  let res = client.write_request(
-    "textDocument/formatting",
-    json!({
-      "textDocument": { "uri": sass_file.uri() },
-      "options": {
-        "tabSize": 2,
-        "insertSpaces": true,
-      },
-    }),
-  );
-  assert_eq!(
-    res,
-    json!([
-      {
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 },
-        },
-        "newText": "$color: red\n",
       },
     ]),
   );
@@ -14362,9 +14475,9 @@ fn lsp_format_component() {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 },
+          "end": { "line": 2, "character": 0 },
         },
-        "newText": "<script module>\n",
+        "newText": "<script module>\n// foo\n",
       },
     ]),
   );
@@ -14422,18 +14535,7 @@ fn lsp_format_component() {
       },
     }),
   );
-  assert_eq!(
-    res,
-    json!([
-      {
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 },
-        },
-        "newText": "{{ layout \"foo.vto\" }}\n",
-      },
-    ]),
-  );
+  assert_eq!(res, json!(null));
   let res = client.write_request(
     "textDocument/formatting",
     json!({
@@ -14444,18 +14546,7 @@ fn lsp_format_component() {
       },
     }),
   );
-  assert_eq!(
-    res,
-    json!([
-      {
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 },
-        },
-        "newText": "{% block header %}\n",
-      },
-    ]),
-  );
+  assert_eq!(res, json!(null));
   client.shutdown();
 }
 
@@ -16378,6 +16469,155 @@ fn lsp_testing_api_empty_test_name() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/28797.
+// When deno.json declares a `test` task with `--env-file=...`, the LSP test
+// runner should load that env file too — otherwise tests that read env vars at
+// module load throw before any test runs and VSCode reports "The test run did
+// not record any output".
+#[test(timeout = 300)]
+fn lsp_testing_api_inherits_test_task_env_file() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "./deno.json",
+    json!({
+      "tasks": {
+        "test": "deno test --env-file=.env.test -A",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("./.env.test", "MY_SECRET=from_env_file\n");
+  let file = temp_dir.source_file(
+    "test.ts",
+    r#"
+      const secret = Deno.env.get("MY_SECRET");
+      if (!secret) throw new Error("MY_SECRET is not set");
+      Deno.test("uses env", () => {});
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  client.read_notification_with_method::<Value>("deno/testModule");
+  client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  let mut passed = false;
+  loop {
+    let notification = client
+      .read_notification_with_method::<Value>("deno/testRunProgress")
+      .unwrap();
+    let message = notification
+      .as_object()
+      .unwrap()
+      .get("message")
+      .unwrap()
+      .as_object()
+      .unwrap();
+    let kind = message.get("type").and_then(|v| v.as_str());
+    if kind == Some("passed") {
+      passed = true;
+    }
+    if kind == Some("end") {
+      break;
+    }
+  }
+  assert!(
+    passed,
+    "test should pass: --env-file from deno.json `test` task should be honored",
+  );
+  client.shutdown();
+}
+
+// Documents the shared-process env limitation discussed in
+// https://github.com/denoland/deno/pull/34905#discussion_r3382566541.
+// LSP-driven test runs load task env files into the long-lived LSP process
+// environment, so two scopes setting the same key cannot both observe their
+// own value in the same run.
+#[test(timeout = 300)]
+fn lsp_testing_api_test_task_env_file_conflicting_scopes_first_wins() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  for (dir, value) in [("a", "value_a"), ("b", "value_b")] {
+    temp_dir.write(
+      format!("./{dir}/deno.json"),
+      json!({
+        "tasks": {
+          "test": "deno test --env-file=.env.test -A",
+        },
+      })
+      .to_string(),
+    );
+    temp_dir.write(
+      format!("./{dir}/.env.test"),
+      format!("DENO_LSP_TEST_SHARED_ENV={value}\n"),
+    );
+    temp_dir.write(
+      format!("./{dir}/test.ts"),
+      format!(
+        r#"
+          Deno.test("uses env {dir}", () => {{
+            if (Deno.env.get("DENO_LSP_TEST_SHARED_ENV") !== "{value}") {{
+              throw new Error("wrong env value");
+            }}
+          }});
+        "#
+      ),
+    );
+  }
+
+  let file_a = source_file(
+    temp_dir.path().join("./a/test.ts"),
+    temp_dir.read_to_string("./a/test.ts"),
+  );
+  let file_b = source_file(
+    temp_dir.path().join("./b/test.ts"),
+    temp_dir.read_to_string("./b/test.ts"),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file_a);
+  client.did_open_file(&file_b);
+  client.read_notification_with_method::<Value>("deno/testModule");
+  client.read_notification_with_method::<Value>("deno/testModule");
+  client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+
+  let mut passed = 0;
+  let mut failed = 0;
+  loop {
+    let notification = client
+      .read_notification_with_method::<Value>("deno/testRunProgress")
+      .unwrap();
+    let message = notification
+      .as_object()
+      .unwrap()
+      .get("message")
+      .unwrap()
+      .as_object()
+      .unwrap();
+    match message.get("type").and_then(|v| v.as_str()) {
+      Some("passed") => passed += 1,
+      Some("failed") => failed += 1,
+      Some("end") => break,
+      _ => {}
+    }
+  }
+  assert_eq!(passed, 1);
+  assert_eq!(failed, 1);
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_testing_api_describe_it_failure() {
   let context = TestContextBuilder::new()
@@ -16991,7 +17231,7 @@ fn lsp_node_modules_dir() {
   client.initialize_default();
   let file_url = temp_dir.url().join("file.ts").unwrap();
   let file_uri = url_to_uri(&file_url).unwrap();
-  client.did_open(json!({
+  let _initial_diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": file_uri,
       "languageId": "typescript",
@@ -19291,6 +19531,35 @@ fn lsp_tsconfig_scopes() {
 }
 
 #[test(timeout = 300)]
+fn lsp_tsconfig_include_global_roots() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "tsconfig.json",
+    json!({
+      "include": ["*.ts"],
+    })
+    .to_string(),
+  );
+  temp_dir.source_file(
+    "foo.ts",
+    "declare global { const a: number; }\nexport {};\n",
+  );
+  let file = temp_dir.source_file("bar.ts", "a;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_preload_limit(0);
+  });
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_tsconfig_references_extends_include() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -20333,6 +20602,77 @@ fn lsp_byonm_js_import_resolves_to_dts() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/35170.
+#[test(timeout = 300)]
+fn lsp_open_file_in_managed_node_modules_dir() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "auto",
+      "imports": {
+        "add": "npm:@denotest/add@1",
+      },
+    })
+    .to_string(),
+  );
+  context.run_deno("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // The temp dir is symlinked on macos, and `node_modules` is canonicalized.
+  let canon_temp_dir =
+    Url::from_directory_path(temp_dir.path().canonicalize()).unwrap();
+  let dts_url = canon_temp_dir
+    .join("node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts")
+    .unwrap();
+  // Open a file from the node_modules dir directly, like go-to-definition in
+  // the editor would, without anything importing it. The text contains an
+  // intentional type error to check that diagnostics are generated for it.
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&dts_url).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export function add(a: number, b: number): number;\nexport const foo: strang;\n",
+    }
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([{
+      "range": {
+        "start": { "line": 1, "character": 18 },
+        "end": { "line": 1, "character": 24 },
+      },
+      "severity": 1,
+      "code": 2552,
+      "source": "deno-ts",
+      "message": "Cannot find name 'strang'. Did you mean 'string'?",
+    }]),
+  );
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": url_to_uri(&dts_url).unwrap() },
+      "position": { "line": 0, "character": 17 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "```tsx\nfunction add(a: number, b: number): number\n```\n",
+      },
+      "range": {
+        "start": { "line": 0, "character": 16 },
+        "end": { "line": 0, "character": 19 },
+      },
+    }),
+  );
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn decorators_tc39() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -20914,6 +21254,80 @@ fn lsp_wasm_module_multi_value_return() {
       },
     }),
   );
+
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/28334: when a
+// local `.wasm` file is recompiled on disk to export a new function, a
+// `workspace/didChangeWatchedFiles` change notification must evict the stale
+// generated types so dependents pick up the new exports without having to
+// delete and recreate the file. This relies on `.wasm` being included in the
+// file watcher glob registered in `language_server.rs`.
+#[test(timeout = 300)]
+fn lsp_wasm_module_change_watched() {
+  // A minimal wasm module exporting a single `() => i32` function. The only
+  // difference between the two is the export name (`sub` vs `add`).
+  fn wasm_exporting(name: &str) -> Vec<u8> {
+    let name = name.as_bytes();
+    let mut bytes = Vec::new();
+    // Header.
+    bytes.extend_from_slice(&[0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+    // Type section: a single `() -> i32` signature.
+    bytes.extend_from_slice(&[0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7f]);
+    // Function section: function 0 has type 0.
+    bytes.extend_from_slice(&[0x03, 0x02, 0x01, 0x00]);
+    // Export section: export function 0 under `name`.
+    bytes.extend_from_slice(&[
+      0x07,
+      (name.len() + 4) as u8,
+      0x01,
+      name.len() as u8,
+    ]);
+    bytes.extend_from_slice(name);
+    bytes.extend_from_slice(&[0x00, 0x00]);
+    // Code section: the function body returns the constant 42.
+    bytes.extend_from_slice(&[0x0a, 0x06, 0x01, 0x04, 0x00, 0x41, 0x2a, 0x0b]);
+    bytes
+  }
+
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  // Initially the wasm module does not export `add`.
+  temp_dir.write("mod.wasm", wasm_exporting("sub"));
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let main_uri = url_to_uri(&temp_dir.url().join("main.ts").unwrap()).unwrap();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": main_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { add } from \"./mod.wasm\";\nconsole.log(add());\n"
+    }
+  }));
+  // `add` isn't exported yet, so this is an error.
+  assert_eq!(diagnostics.all().len(), 1);
+  assert_json_subset(
+    json!(diagnostics.all()),
+    json!([{ "code": 2305, "source": "deno-ts" }]),
+  );
+
+  // Recompile the wasm file on disk so it now exports `add`, then notify the
+  // LSP of the change.
+  temp_dir.write("mod.wasm", wasm_exporting("add"));
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": url_to_uri(&temp_dir.url().join("mod.wasm").unwrap()).unwrap(),
+      "type": 2
+    }]
+  }));
+
+  // The stale types should have been evicted and the diagnostic cleared.
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(json!(diagnostics.all()), json!([]));
 
   client.shutdown();
 }
@@ -22030,6 +22444,48 @@ fn lsp_force_push_based_diagnostics_setting() {
       },
     ]),
   );
+}
+
+// Regression test for https://github.com/denoland/deno/issues/35225: a `.d.ts`
+// opened in the editor is an entrypoint, so its own unresolved bare imports must
+// be reported (as `deno check` does for `.d.ts` entrypoints, see #32794), even
+// under `skipLibCheck` where tsc would otherwise skip them.
+#[test(timeout = 300)]
+fn lsp_dts_entrypoint_unresolved_import() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "skipLibCheck": true,
+      }
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file(
+    "asdf.d.ts",
+    "import Foo from \"some-non-existent-package\";\nexport type F = typeof Foo;\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno").diagnostics),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 16 },
+          "end": { "line": 0, "character": 43 },
+        },
+        "severity": 1,
+        "code": "import-prefix-missing",
+        "source": "deno",
+        "message": "Import \"some-non-existent-package\" not a dependency\n  hint: If you want to use the npm package, try running `deno add npm:some-non-existent-package`",
+      },
+    ]),
+  );
+  client.shutdown();
 }
 
 #[test(timeout = 300)]

@@ -80,7 +80,6 @@ use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
-use http::header::TRANSFER_ENCODING;
 use http::header::USER_AGENT;
 use http_body_util::BodyDataStream;
 use http_body_util::BodyExt;
@@ -90,7 +89,6 @@ use hyper::body::Frame;
 use hyper::body::Incoming;
 use hyper_util::client::legacy::Builder as HyperClientBuilder;
 use hyper_util::client::legacy::connect::Connection;
-use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::HttpInfo;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
@@ -190,6 +188,9 @@ pub enum FetchError {
   #[class(type)]
   #[error("NetworkError when attempting to fetch resource")]
   NetworkError,
+  #[class(type)]
+  #[error("Error fetching file '{0}': {1}")]
+  FileFetch(String, deno_fs::FsError),
   #[class(type)]
   #[error("Fetching files only supports the GET method: received {0}")]
   FsNotGet(Method),
@@ -324,10 +325,6 @@ pub fn create_client_from_options(
   options: &Options,
   permissions: Option<PermissionsContainer>,
 ) -> Result<Client, HttpClientCreateError> {
-  let dns_resolver = match permissions {
-    Some(p) => options.resolver.clone().with_permissions(p),
-    None => options.resolver.clone(),
-  };
   create_http_client(
     &options.user_agent,
     CreateHttpClientOptions {
@@ -336,7 +333,8 @@ pub fn create_client_from_options(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs: vec![],
       proxy: options.proxy.clone(),
-      dns_resolver,
+      dns_resolver: options.resolver.clone(),
+      permissions,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -603,6 +601,11 @@ pub struct FetchResponse {
   pub url: String,
   pub response_rid: ResourceId,
   pub content_length: Option<u64>,
+  /// Whether the body was transparently decompressed, in which case the
+  /// `content-encoding`/`content-length`/`transfer-encoding` entries in
+  /// `headers` describe the encoded wire body, not the body behind
+  /// `response_rid`.
+  pub body_decoded: bool,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.
   /// In the tuple, the first element is an error message and the second one is
@@ -656,6 +659,7 @@ pub async fn op_fetch_send(
   }
 
   let content_length = hyper::body::Body::size_hint(res.body()).exact();
+  let body_decoded = res.extensions().get::<BodyDecoded>().is_some();
 
   let response_rid = state
     .borrow_mut()
@@ -669,6 +673,7 @@ pub async fn op_fetch_send(
     url,
     response_rid,
     content_length,
+    body_decoded,
     error: None,
   })
 }
@@ -872,6 +877,13 @@ pub fn op_fetch_custom_client(
             Some("Deno.createHttpClient()"),
           )?
           .into_path();
+        // Unix sockets are an outbound network primitive, so a Unix proxy
+        // requires an `--allow-net=unix:<path>` rule in addition to the
+        // filesystem check above, mirroring the direct Unix socket ops.
+        permissions.check_net_unix_socket(
+          &resolved_path,
+          Some("Deno.createHttpClient()"),
+        )?;
         if path != resolved_path {
           *original_path = resolved_path.to_string_lossy().into_owned();
         }
@@ -899,7 +911,8 @@ pub fn op_fetch_custom_client(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
-      dns_resolver: dns::Resolver::default().with_permissions(permissions),
+      dns_resolver: dns::Resolver::default(),
+      permissions: Some(permissions),
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -934,6 +947,9 @@ pub struct CreateHttpClientOptions {
   pub ca_certs: Vec<Vec<u8>>,
   pub proxy: Option<Proxy>,
   pub dns_resolver: dns::Resolver,
+  /// When set, every connection runs the net-deny check against the IP it
+  /// actually connected to, mirroring `Deno.connect`.
+  pub permissions: Option<PermissionsContainer>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<TlsKey>,
   pub pool_max_idle_per_host: Option<usize>,
@@ -951,6 +967,7 @@ impl Default for CreateHttpClientOptions {
       ca_certs: vec![],
       proxy: None,
       dns_resolver: dns::Resolver::default(),
+      permissions: None,
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       pool_max_idle_per_host: None,
@@ -1019,16 +1036,19 @@ pub fn create_http_client(
   tls_config.alpn_protocols = alpn_protocols;
   let tls_config = Arc::from(tls_config);
 
-  let mut http_connector =
-    HttpConnector::new_with_resolver(options.dns_resolver.clone());
-  http_connector.enforce_http(false);
-  if let Some(local_address) = options.local_address {
-    let local_addr = local_address
-      .parse::<IpAddr>()
-      .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))?;
-    http_connector.set_local_address(Some(local_addr));
-  }
-  let http_connector = dns::PermissionedHttpConnector::new(http_connector);
+  let local_address = options
+    .local_address
+    .map(|local_address| {
+      local_address
+        .parse::<IpAddr>()
+        .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))
+    })
+    .transpose()?;
+  let http_connector = dns::PermissionedHttpConnector::new(
+    options.dns_resolver.clone(),
+    local_address,
+    options.permissions,
+  );
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
@@ -1211,7 +1231,7 @@ where
 }
 
 fn decompress_response(
-  mut resp: http::Response<Incoming>,
+  resp: http::Response<Incoming>,
   skip_decompression: bool,
 ) -> http::Response<ResBody> {
   if skip_decompression {
@@ -1227,7 +1247,7 @@ fn decompress_response(
     .and_then(|v| v.parse::<u64>().ok())
     == Some(0);
   if is_empty {
-    resp.headers_mut().remove(CONTENT_ENCODING);
+    return resp.map(box_raw_body);
   }
 
   match resp
@@ -1260,14 +1280,23 @@ enum DecodeKind {
   Brotli,
 }
 
+/// Marker inserted into the response extensions when the body was
+/// transparently decompressed, so consumers know the `Content-Encoding`,
+/// `Content-Length` and `Transfer-Encoding` headers describe the encoded
+/// wire body rather than the body in the response.
+#[derive(Clone, Copy)]
+pub struct BodyDecoded;
+
 fn decode_response(
   resp: http::Response<Incoming>,
   kind: DecodeKind,
 ) -> http::Response<ResBody> {
+  // Per the fetch spec, handling content codings only decodes the body; the
+  // header list keeps `Content-Encoding` and `Content-Length` as received
+  // (the latter describes the encoded body, not the decoded one). See
+  // https://github.com/denoland/deno/issues/20548.
   let (mut parts, body) = resp.into_parts();
-  parts.headers.remove(CONTENT_ENCODING);
-  parts.headers.remove(CONTENT_LENGTH);
-  parts.headers.remove(TRANSFER_ENCODING);
+  parts.extensions.insert(BodyDecoded);
 
   let stream = BodyDataStream::new(
     body.map_err(|err| std::io::Error::other(err.to_string())),
@@ -1349,9 +1378,7 @@ impl Client {
   }
 }
 
-type Connector = proxy::ProxyConnector<
-  dns::PermissionedHttpConnector<HttpConnector<dns::Resolver>>,
->;
+type Connector = proxy::ProxyConnector<dns::PermissionedHttpConnector>;
 
 #[allow(
   clippy::declare_interior_mutable_const,

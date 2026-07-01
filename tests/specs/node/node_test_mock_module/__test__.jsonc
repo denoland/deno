@@ -1,0 +1,32 @@
+{
+  "tests": {
+    "esm_importer": {
+      "args": "run -A main_esm.mjs",
+      "output": "main_esm.out"
+    },
+    "js_format": {
+      "args": "run -A main_js.mjs",
+      "output": "main_js.out"
+    },
+    "cjs_importer": {
+      "args": "run -A main_cjs.cjs",
+      "output": "main_cjs.out"
+    },
+    "cache_option": {
+      "args": "run -A main_cache.mjs",
+      "output": "main_cache.out"
+    },
+    "reset_and_restore": {
+      "args": "run -A main_reset.mjs",
+      "output": "main_reset.out"
+    },
+    "validation": {
+      "args": "run -A main_validation.mjs",
+      "output": "main_validation.out"
+    },
+    "exports_option": {
+      "args": "run -A main_exports.mjs",
+      "output": "main_exports.out"
+    }
+  }
+}

@@ -349,14 +349,30 @@ impl PipeWrap {
     ret
   }
 
-  #[fast]
-  fn bind(&self, #[string] path: &str) -> i32 {
+  #[nofast]
+  fn bind(
+    &self,
+    state: &mut OpState,
+    #[string] path: &str,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    // Binding a unix-domain socket creates a socket inode on disk (and arms
+    // the fchmod/unlink-on-close that operate on the bound path), so it
+    // requires filesystem read+write permission for the path -- matching
+    // `connect()` above and `Deno.listen({ transport: "unix" })`. Checking
+    // here (rather than only in `listen()`) ensures the path is never bound,
+    // chmod'd, or unlinked by permission-less code.
+    state.borrow_mut::<PermissionsContainer>().check_open(
+      std::borrow::Cow::Borrowed(std::path::Path::new(path)),
+      deno_permissions::OpenAccessKind::ReadWriteNoFollow,
+      Some("node:net.Server.listen()"),
+    )?;
+
     let pipe = self.pipe_ptr();
     if pipe.is_null() {
-      return uv_compat::UV_EBADF;
+      return Ok(uv_compat::UV_EBADF);
     }
     // SAFETY: pipe is valid (null-checked above).
-    unsafe { uv_compat::uv_pipe_bind(pipe, path) }
+    Ok(unsafe { uv_compat::uv_pipe_bind(pipe, path) })
   }
 
   #[nofast]
