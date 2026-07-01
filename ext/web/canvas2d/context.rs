@@ -499,8 +499,6 @@ impl OffscreenCanvasRenderingContext2D {
     *image = DynamicImage::ImageRgba8(rgba);
   }
 
-  // --- Internal helpers for Phase 2 paths ---
-
   fn resolve_optional_path(
     &self,
     scope: &mut v8::PinScope<'_, '_>,

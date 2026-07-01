@@ -162,6 +162,13 @@ echo "Done."
 echo "sysroot env:"
 cat /sysroot/.env
 . /sysroot/.env
+case "$(uname -m)" in
+  x86_64) gccTriple=x86_64-linux-gnu ;;
+  aarch64) gccTriple=aarch64-linux-gnu ;;
+  *) echo "Unsupported architecture for GCC toolchain lookup"; exit 1 ;;
+esac
+gccVersion="$(ls -1 /sysroot/usr/lib/gcc/\${gccTriple} | sort -V | tail -n 1)"
+gccInstallDir="/sysroot/usr/lib/gcc/\${gccTriple}/\${gccVersion}"
 
 # Important notes:
 #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
@@ -175,6 +182,7 @@ CARGO_PROFILE_RELEASE_INCREMENTAL=false
 RUSTFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
+  -C link-arg=--gcc-install-dir=\${gccInstallDir}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=-Wl,--icf=safe
   -C link-arg=-ldl
@@ -194,6 +202,7 @@ __1
 RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
+  -C link-arg=--gcc-install-dir=\${gccInstallDir}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=-Wl,--icf=safe
   -C link-arg=-ldl
@@ -292,6 +301,12 @@ const installDenoStep = step({
   uses: "denoland/setup-deno@v2",
   with: { "deno-version": "v2.x" },
 });
+const installFontconfigStep = (ifCondition: Condition | ExpressionValue) =>
+  step({
+    name: "Install fontconfig",
+    if: ifCondition,
+    run: "sudo apt-get install -y --no-install-recommends libfontconfig-dev",
+  });
 const installNodeStep = step({
   name: "Install Node",
   uses: "actions/setup-node@v6",
@@ -673,11 +688,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     if: buildItem.use_sysroot,
     ...sysRootConfig,
   });
-  const installFontconfigStep = step({
-    name: "Install fontconfig",
-    if: isLinux,
-    run: "sudo apt-get install -y --no-install-recommends libfontconfig-dev",
-  });
   const buildJob = job(
     jobIdForJob("build"),
     {
@@ -1000,7 +1010,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             restoreCacheStep,
             installRustStep,
             sysRootStep,
-            installFontconfigStep,
+            installFontconfigStep(isLinux),
           )
           .comesAfter(tarSourcePublishStep)(
             {
@@ -1358,7 +1368,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         installRustStep,
         installLldStep,
         sysRootStep,
-        installFontconfigStep,
+        installFontconfigStep(isLinux),
         denoArtifact.download(),
         testServerArtifact.download(),
         {
@@ -1392,7 +1402,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         cloneRepoStep,
         installRustStep,
         restoreCacheStep,
-        installFontconfigStep,
+        installFontconfigStep(isLinux),
         installWasmStep,
         // we want these crates to be Wasm compatible
         {
@@ -1654,6 +1664,7 @@ const lintJob = job("lint", {
       restoreCacheStep,
       installRustStep,
       installDenoStep,
+      installFontconfigStep(lintMatrix.os.equals("linux")),
       step.if(lintMatrix.os.equals("linux"))(
         {
           name: "test_format.js",

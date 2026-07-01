@@ -3,7 +3,6 @@
 const scope = import.meta.url.slice(-7) === "#worker" ? "worker" : "main";
 
 console.log(scope, globalThis.OffscreenCanvasRenderingContext2D);
-console.log(scope, globalThis.fonts);
 const canvas = new OffscreenCanvas(100, 100);
 console.log(scope, canvas.getContext("2d"));
 

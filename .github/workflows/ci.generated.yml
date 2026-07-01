@@ -175,6 +175,13 @@ jobs:
           echo "sysroot env:"
           cat /sysroot/.env
           . /sysroot/.env
+          case "$(uname -m)" in
+            x86_64) gccTriple=x86_64-linux-gnu ;;
+            aarch64) gccTriple=aarch64-linux-gnu ;;
+            *) echo "Unsupported architecture for GCC toolchain lookup"; exit 1 ;;
+          esac
+          gccVersion="$(ls -1 /sysroot/usr/lib/gcc/${gccTriple} | sort -V | tail -n 1)"
+          gccInstallDir="/sysroot/usr/lib/gcc/${gccTriple}/${gccVersion}"
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
@@ -188,6 +195,7 @@ jobs:
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -207,6 +215,7 @@ jobs:
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -4144,6 +4153,13 @@ jobs:
           echo "sysroot env:"
           cat /sysroot/.env
           . /sysroot/.env
+          case "$(uname -m)" in
+            x86_64) gccTriple=x86_64-linux-gnu ;;
+            aarch64) gccTriple=aarch64-linux-gnu ;;
+            *) echo "Unsupported architecture for GCC toolchain lookup"; exit 1 ;;
+          esac
+          gccVersion="$(ls -1 /sysroot/usr/lib/gcc/${gccTriple} | sort -V | tail -n 1)"
+          gccInstallDir="/sysroot/usr/lib/gcc/${gccTriple}/${gccVersion}"
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
@@ -4157,6 +4173,7 @@ jobs:
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -4176,6 +4193,7 @@ jobs:
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -4588,6 +4606,13 @@ jobs:
           echo "sysroot env:"
           cat /sysroot/.env
           . /sysroot/.env
+          case "$(uname -m)" in
+            x86_64) gccTriple=x86_64-linux-gnu ;;
+            aarch64) gccTriple=aarch64-linux-gnu ;;
+            *) echo "Unsupported architecture for GCC toolchain lookup"; exit 1 ;;
+          esac
+          gccVersion="$(ls -1 /sysroot/usr/lib/gcc/${gccTriple} | sort -V | tail -n 1)"
+          gccInstallDir="/sysroot/usr/lib/gcc/${gccTriple}/${gccVersion}"
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
@@ -4601,6 +4626,7 @@ jobs:
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -4620,6 +4646,7 @@ jobs:
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -4959,6 +4986,13 @@ jobs:
           echo "sysroot env:"
           cat /sysroot/.env
           . /sysroot/.env
+          case "$(uname -m)" in
+            x86_64) gccTriple=x86_64-linux-gnu ;;
+            aarch64) gccTriple=aarch64-linux-gnu ;;
+            *) echo "Unsupported architecture for GCC toolchain lookup"; exit 1 ;;
+          esac
+          gccVersion="$(ls -1 /sysroot/usr/lib/gcc/${gccTriple} | sort -V | tail -n 1)"
+          gccInstallDir="/sysroot/usr/lib/gcc/${gccTriple}/${gccVersion}"
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
@@ -4972,6 +5006,7 @@ jobs:
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -4991,6 +5026,7 @@ jobs:
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -5249,6 +5285,13 @@ jobs:
           echo "sysroot env:"
           cat /sysroot/.env
           . /sysroot/.env
+          case "$(uname -m)" in
+            x86_64) gccTriple=x86_64-linux-gnu ;;
+            aarch64) gccTriple=aarch64-linux-gnu ;;
+            *) echo "Unsupported architecture for GCC toolchain lookup"; exit 1 ;;
+          esac
+          gccVersion="$(ls -1 /sysroot/usr/lib/gcc/${gccTriple} | sort -V | tail -n 1)"
+          gccInstallDir="/sysroot/usr/lib/gcc/${gccTriple}/${gccVersion}"
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
@@ -5262,6 +5305,7 @@ jobs:
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -5281,6 +5325,7 @@ jobs:
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -6139,6 +6184,13 @@ jobs:
           echo "sysroot env:"
           cat /sysroot/.env
           . /sysroot/.env
+          case "$(uname -m)" in
+            x86_64) gccTriple=x86_64-linux-gnu ;;
+            aarch64) gccTriple=aarch64-linux-gnu ;;
+            *) echo "Unsupported architecture for GCC toolchain lookup"; exit 1 ;;
+          esac
+          gccVersion="$(ls -1 /sysroot/usr/lib/gcc/${gccTriple} | sort -V | tail -n 1)"
+          gccInstallDir="/sysroot/usr/lib/gcc/${gccTriple}/${gccVersion}"
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
@@ -6152,6 +6204,7 @@ jobs:
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -6171,6 +6224,7 @@ jobs:
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -6570,6 +6624,13 @@ jobs:
           echo "sysroot env:"
           cat /sysroot/.env
           . /sysroot/.env
+          case "$(uname -m)" in
+            x86_64) gccTriple=x86_64-linux-gnu ;;
+            aarch64) gccTriple=aarch64-linux-gnu ;;
+            *) echo "Unsupported architecture for GCC toolchain lookup"; exit 1 ;;
+          esac
+          gccVersion="$(ls -1 /sysroot/usr/lib/gcc/${gccTriple} | sort -V | tail -n 1)"
+          gccInstallDir="/sysroot/usr/lib/gcc/${gccTriple}/${gccVersion}"
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
@@ -6583,6 +6644,7 @@ jobs:
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -6602,6 +6664,7 @@ jobs:
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -6772,6 +6835,9 @@ jobs:
         uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282
         with:
           deno-version: v2.x
+      - name: Install fontconfig
+        if: matrix.os == 'linux'
+        run: sudo apt-get install -y --no-install-recommends libfontconfig-dev
       - name: test_format.js
         if: matrix.os == 'linux'
         run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
@@ -6937,6 +7003,13 @@ jobs:
           echo "sysroot env:"
           cat /sysroot/.env
           . /sysroot/.env
+          case "$(uname -m)" in
+            x86_64) gccTriple=x86_64-linux-gnu ;;
+            aarch64) gccTriple=aarch64-linux-gnu ;;
+            *) echo "Unsupported architecture for GCC toolchain lookup"; exit 1 ;;
+          esac
+          gccVersion="$(ls -1 /sysroot/usr/lib/gcc/${gccTriple} | sort -V | tail -n 1)"
+          gccInstallDir="/sysroot/usr/lib/gcc/${gccTriple}/${gccVersion}"
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
@@ -6950,6 +7023,7 @@ jobs:
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
@@ -6969,6 +7043,7 @@ jobs:
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-22
+            -C link-arg=--gcc-install-dir=${gccInstallDir}
             -C link-arg=-fuse-ld=lld-22
             -C link-arg=-Wl,--icf=safe
             -C link-arg=-ldl
