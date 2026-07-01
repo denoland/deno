@@ -6,7 +6,6 @@ use dashmap::DashMap;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::serde_json::Value;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_npmrc::NpmRc;
 use deno_npmrc::NpmRegistryUrl;
@@ -121,28 +120,12 @@ impl PackageSearchApi for CliNpmSearchApi {
     let mut exports = version_info
       .exports
       .as_ref()
-      .map(exports_from_package_json_value)
+      .map(|exports| exports.as_slice().to_vec())
       .unwrap_or_default();
     exports.sort();
     let exports = Arc::new(exports);
     self.exports_cache.insert(nv.clone(), exports.clone());
     Ok(exports)
-  }
-}
-
-fn exports_from_package_json_value(value: &Value) -> Vec<String> {
-  match value {
-    Value::String(_) => vec![".".to_string()],
-    Value::Object(obj) => obj
-      .keys()
-      .filter(|key| {
-        key.as_str() == "."
-          || (key.starts_with("./")
-            && key.chars().filter(|c| *c == '*').count() != 1)
-      })
-      .cloned()
-      .collect(),
-    _ => Vec::new(),
   }
 }
 
@@ -192,21 +175,30 @@ mod tests {
   }
 
   #[test]
-  fn test_exports_from_package_json_value() {
-    let exports = exports_from_package_json_value(&serde_json::json!({
-      ".": "./index.js",
-      "./client": "./client.js",
-      "./server": {
-        "types": "./server.d.ts",
-        "default": "./server.js"
-      },
-      "./features/*": "./features/*.js",
-      "import": "./index.mjs"
-    }));
-    assert_eq!(exports, vec![".", "./client", "./server"]);
+  fn test_export_keys_from_registry_value() {
+    use deno_npm::registry::NpmPackageExportKeys;
 
-    let exports =
-      exports_from_package_json_value(&serde_json::json!("./index.js"));
-    assert_eq!(exports, vec!["."]);
+    // Only the completion-relevant subpath keys are kept; condition names
+    // (`import`) and single-`*` glob subpaths are dropped, and nested values
+    // are never materialized.
+    let exports: NpmPackageExportKeys =
+      serde_json::from_value(serde_json::json!({
+        ".": "./index.js",
+        "./client": "./client.js",
+        "./server": {
+          "types": "./server.d.ts",
+          "default": "./server.js"
+        },
+        "./features/*": "./features/*.js",
+        "import": "./index.mjs"
+      }))
+      .unwrap();
+    let mut keys = exports.0.clone();
+    keys.sort();
+    assert_eq!(keys, vec![".", "./client", "./server"]);
+
+    let exports: NpmPackageExportKeys =
+      serde_json::from_value(serde_json::json!("./index.js")).unwrap();
+    assert_eq!(exports.0, vec!["."]);
   }
 }

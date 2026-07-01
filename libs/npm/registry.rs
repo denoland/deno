@@ -198,12 +198,135 @@ pub enum NpmPackageVersionBinEntry {
   Map(HashMap<String, String>),
 }
 
+/// Whether an `exports` key names an import subpath the LSP can complete
+/// (`"."` or `"./..."`, excluding single-`*` glob patterns), as opposed to a
+/// condition name (`"import"`, `"node"`, ...) or other entry.
+fn is_export_completion_key(key: &str) -> bool {
+  key == "."
+    || (key.starts_with("./") && key.chars().filter(|c| *c == '*').count() != 1)
+}
+
+/// The export subpath keys from a package's `exports` field (e.g. `"."`,
+/// `"./feature"`), retained solely for npm import-specifier completion in the
+/// LSP.
+///
+/// Only the keys are kept. The full `exports` value is intentionally discarded
+/// while deserializing registry metadata: retaining it as a `serde_json::Value`
+/// for the `exports` of every version of every npm package kept hundreds of MB
+/// alive for a plain `deno run`, and leaked that much per `--watch` reload (see
+/// denoland/deno#35664). The keys are the only thing any consumer reads.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct NpmPackageExportKeys(pub Vec<String>);
+
+impl NpmPackageExportKeys {
+  /// Extract the completion-relevant subpath keys from a `package.json`
+  /// `exports` object.
+  pub fn from_exports_object(exports: &serde_json::Map<String, Value>) -> Self {
+    NpmPackageExportKeys(
+      exports
+        .keys()
+        .filter(|k| is_export_completion_key(k))
+        .cloned()
+        .collect(),
+    )
+  }
+
+  pub fn as_slice(&self) -> &[String] {
+    &self.0
+  }
+}
+
+impl Serialize for NpmPackageExportKeys {
+  fn serialize<S: serde::Serializer>(
+    &self,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeMap;
+    // Serialize back into an object shape so a round-trip re-parses through
+    // the deserializer below and yields the same keys.
+    let mut map = serializer.serialize_map(Some(self.0.len()))?;
+    for key in &self.0 {
+      map.serialize_entry(key, &true)?;
+    }
+    map.end()
+  }
+}
+
+impl<'de> Deserialize<'de> for NpmPackageExportKeys {
+  fn deserialize<D: serde::Deserializer<'de>>(
+    deserializer: D,
+  ) -> Result<Self, D::Error> {
+    struct ExportKeysVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for ExportKeysVisitor {
+      type Value = NpmPackageExportKeys;
+
+      fn expecting(
+        &self,
+        formatter: &mut std::fmt::Formatter,
+      ) -> std::fmt::Result {
+        formatter.write_str("a package.json `exports` value")
+      }
+
+      fn visit_str<E>(self, _v: &str) -> Result<Self::Value, E> {
+        // `"exports": "./index.js"` — a bare root export.
+        Ok(NpmPackageExportKeys(vec![".".to_string()]))
+      }
+
+      fn visit_map<M: serde::de::MapAccess<'de>>(
+        self,
+        mut map: M,
+      ) -> Result<Self::Value, M::Error> {
+        let mut keys = Vec::new();
+        while let Some(key) = map.next_key::<String>()? {
+          // Skip the value entirely — we never need to materialize it.
+          map.next_value::<serde::de::IgnoredAny>()?;
+          if is_export_completion_key(&key) {
+            keys.push(key);
+          }
+        }
+        Ok(NpmPackageExportKeys(keys))
+      }
+
+      fn visit_seq<A: serde::de::SeqAccess<'de>>(
+        self,
+        mut seq: A,
+      ) -> Result<Self::Value, A::Error> {
+        // A fallback-target array carries no subpath keys.
+        while seq.next_element::<serde::de::IgnoredAny>()?.is_some() {}
+        Ok(NpmPackageExportKeys::default())
+      }
+
+      fn visit_bool<E>(self, _v: bool) -> Result<Self::Value, E> {
+        Ok(NpmPackageExportKeys::default())
+      }
+      fn visit_i64<E>(self, _v: i64) -> Result<Self::Value, E> {
+        Ok(NpmPackageExportKeys::default())
+      }
+      fn visit_u64<E>(self, _v: u64) -> Result<Self::Value, E> {
+        Ok(NpmPackageExportKeys::default())
+      }
+      fn visit_f64<E>(self, _v: f64) -> Result<Self::Value, E> {
+        Ok(NpmPackageExportKeys::default())
+      }
+      fn visit_unit<E>(self) -> Result<Self::Value, E> {
+        Ok(NpmPackageExportKeys::default())
+      }
+      fn visit_none<E>(self) -> Result<Self::Value, E> {
+        Ok(NpmPackageExportKeys::default())
+      }
+    }
+
+    deserializer.deserialize_any(ExportKeysVisitor)
+  }
+}
+
 #[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct NpmPackageVersionInfo {
   pub version: Version,
   #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub exports: Option<Value>,
+  pub exports: Option<NpmPackageExportKeys>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub dist: Option<NpmPackageVersionDistInfo>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1807,6 +1930,50 @@ mod test {
     };
     let text = serde_json::to_string(&data).unwrap();
     assert_eq!(text, r#"{"version":"1.0.0"}"#);
+  }
+
+  #[test]
+  fn export_keys_deserialize_keeps_only_subpath_keys() {
+    // Registry `exports` is deserialized down to the completion subpath keys
+    // only — the (potentially large) nested value is never retained.
+    let keys: NpmPackageExportKeys =
+      serde_json::from_value(serde_json::json!({
+        ".": "./index.js",
+        "./client": "./client.js",
+        "./server": { "types": "./server.d.ts", "default": "./server.js" },
+        "./features/*": "./features/*.js",
+        "import": "./index.mjs"
+      }))
+      .unwrap();
+    let mut sorted = keys.0.clone();
+    sorted.sort();
+    assert_eq!(sorted, vec![".", "./client", "./server"]);
+
+    // String / array / absent forms.
+    assert_eq!(
+      serde_json::from_value::<NpmPackageExportKeys>(serde_json::json!(
+        "./index.js"
+      ))
+      .unwrap()
+      .0,
+      vec!["."]
+    );
+    assert!(
+      serde_json::from_value::<NpmPackageExportKeys>(serde_json::json!([
+        "./a.js", "./b.js"
+      ]))
+      .unwrap()
+      .0
+      .is_empty()
+    );
+
+    // Round-trips through serialize -> deserialize.
+    let text = serde_json::to_string(&keys).unwrap();
+    let mut round_tripped = serde_json::from_str::<NpmPackageExportKeys>(&text)
+      .unwrap()
+      .0;
+    round_tripped.sort();
+    assert_eq!(round_tripped, sorted);
   }
 
   #[test]
