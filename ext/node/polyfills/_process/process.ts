@@ -17,6 +17,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   ReflectDefineProperty,
   ReflectHas,
+  SymbolFor,
   TypeError,
   TypeErrorPrototype,
 } = primordials;
@@ -101,13 +102,46 @@ function denoEnvGet(name: string) {
 }
 
 const OBJECT_PROTO_PROP_NAMES = ObjectGetOwnPropertyNames(ObjectPrototype);
+
+// `console.log(process.env)` should print the environment variables, matching
+// Node. The inspector pierces a Proxy to its target, and the env Proxy's target
+// is empty, so without help it renders as `{}`. Attach a custom inspect on the
+// target that snapshots the live environment; the inspector invokes it with
+// `this` set to the Proxy. Defined on the target (not via the traps) so it is
+// found after piercing, and kept off the trap-reported keys so it never leaks
+// into enumeration or spreads.
+const envTarget = Object();
+ReflectDefineProperty(envTarget, SymbolFor("nodejs.util.inspect.custom"), {
+  __proto__: null,
+  value(this: Record<string | symbol, string>, depth: number) {
+    if (typeof depth === "number" && depth < 0) {
+      // Past the inspect depth limit; match Node's `[Object]` placeholder
+      // rather than returning the Proxy (which re-pierces to the empty
+      // target and renders `{}`).
+      return "[Object]";
+    }
+    try {
+      // `this` is the env Proxy; spread it (via the traps) into a plain object
+      // so it renders as `{ KEY: "value" }` like Node, rather than the
+      // null-prototype object the underlying snapshot is.
+      return { ...this };
+    } catch {
+      // Reading the environment requires --allow-env; fall back to the default
+      // rendering instead of throwing from within `console.log`.
+      return this;
+    }
+  },
+  enumerable: false,
+  configurable: true,
+});
+
 /**
  * https://nodejs.org/api/process.html#process_process_env
  * Requires env permissions
  */
 const env:
   & InstanceType<ObjectConstructor>
-  & Record<string | symbol, string> = new Proxy(Object(), {
+  & Record<string | symbol, string> = new Proxy(envTarget, {
     get: (target, prop) => {
       if (typeof prop === "symbol") {
         return target[prop];
