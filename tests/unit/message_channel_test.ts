@@ -53,6 +53,79 @@ Deno.test("messagechannel no-transferables ports is empty frozen array", async (
   mc.port2.close();
 });
 
+Deno.test("messagechannel primitive fast path", async () => {
+  // Primitives take a custom encoding that bypasses V8's structured-clone
+  // serializer; verify a representative spread round-trips exactly, including
+  // the tricky cases (-0, NaN, +/-Infinity, int32 boundaries, strings with
+  // lone surrogates) and a bigint that intentionally falls back to V8.
+  const mc = new MessageChannel();
+  const values: unknown[] = [
+    undefined,
+    null,
+    true,
+    false,
+    0,
+    -0,
+    1,
+    -1,
+    42,
+    -42,
+    2147483647, // int32 max
+    -2147483648, // int32 min
+    2147483648, // just past int32 -> double path
+    -2147483649,
+    0.5,
+    -0.5,
+    3.141592653589793,
+    1e308,
+    -1e308,
+    Number.MAX_SAFE_INTEGER,
+    Number.MIN_SAFE_INTEGER,
+    Infinity,
+    -Infinity,
+    NaN,
+    "",
+    "hello world",
+    "\uD800",
+    "\uDC00",
+    "\uD83D\uDE00",
+    123n, // bigint -> V8 fallback
+  ];
+  // Expected received values. These match `values` except for `undefined`:
+  // dispatch builds the delivered event via `new MessageEvent("message",
+  // { data })`, and a WebIDL dictionary member whose value is `undefined`
+  // falls back to its default, which for `MessageEvent.data` is `null`. So
+  // posting `undefined` is observably delivered as `null` -- this is
+  // pre-existing Deno behavior, independent of the fast path, and the fast
+  // path must preserve it.
+  const expected = values.map((v) => v === undefined ? null : v);
+
+  const received: unknown[] = [];
+  const { promise, resolve } = Promise.withResolvers<void>();
+  mc.port2.onmessage = (e) => {
+    received.push(e.data);
+    if (received.length === values.length) resolve();
+  };
+
+  for (let i = 0; i < values.length; i++) {
+    mc.port1.postMessage(values[i]);
+  }
+
+  await promise;
+
+  assertEquals(received.length, expected.length);
+  for (let i = 0; i < expected.length; i++) {
+    // Object.is distinguishes -0/+0 and treats NaN as equal to itself.
+    assert(
+      Object.is(received[i], expected[i]),
+      `index ${i}: got ${String(received[i])}, expected ${String(expected[i])}`,
+    );
+  }
+
+  mc.port1.close();
+  mc.port2.close();
+});
+
 Deno.test("messagechannel clone port", async () => {
   const mc = new MessageChannel();
   const mc2 = new MessageChannel();
