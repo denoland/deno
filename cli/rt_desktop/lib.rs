@@ -47,7 +47,7 @@ use denort::run::RunOptions;
 /// makes the failure mode obvious instead of "the desktop app silently won't
 /// launch".
 const _: () = assert!(
-  laufey::LAUFEY_API_VERSION == 26,
+  laufey::LAUFEY_API_VERSION == 29,
   "LAUFEY_API_VERSION mismatch: update this assert and the prebuilt backend release pin in cli/tools/desktop.rs when laufey bumps its API version",
 );
 
@@ -227,6 +227,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         frameless,
         no_activate,
         transparent_titlebar,
+        ..Default::default()
       },
     );
     let window = self.setup_window_events(window);
@@ -811,6 +812,9 @@ fn desktop_menu_item_to_laufey_menu_item(
       id,
       accelerator,
       enabled,
+      checked: false,
+      icon: None,
+      tooltip: None,
     },
     denort::desktop::MenuItem::Submenu { label, items } => {
       laufey::MenuItem::Submenu {
