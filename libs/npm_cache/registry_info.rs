@@ -174,9 +174,32 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         cache_item.clone()
       } else {
         let value_creator = MultiRuntimeAsyncValueCreator::new({
-          let downloader = self.clone();
+          // Capture a weak reference here. The value creator is stored in
+          // `memory_cache` (a field of `self`) for the lifetime of this
+          // provider, so capturing a strong `Arc<Self>` would form a reference
+          // cycle (`self` -> `memory_cache` -> value creator -> `self`) that
+          // keeps the whole provider — and every package's cached registry
+          // metadata — alive for the life of the process. Under `deno run
+          // --watch` that leaks one full registry cache per reload (see
+          // denoland/deno#35664). `create_load_future` re-clones a strong
+          // reference for the duration of an in-flight load, which is fine.
+          let downloader = Arc::downgrade(self);
           let name = name.to_string();
-          Box::new(move || downloader.create_load_future(&name))
+          Box::new(move || match downloader.upgrade() {
+            Some(downloader) => downloader.create_load_future(&name),
+            None => {
+              let name = name.clone();
+              async move {
+                Err(Arc::new(JsErrorBox::new(
+                  "Error",
+                  format!(
+                    "npm registry info provider was dropped while loading '{name}'"
+                  ),
+                )))
+              }
+              .boxed_local()
+            }
+          })
         });
         let cache_item = MemoryCacheItem::Pending(Arc::new(value_creator));
         mem_cache.insert(name.to_string(), cache_item.clone());
