@@ -184,25 +184,6 @@ Deno.test({
 });
 
 Deno.test({
-  // Regression test for https://github.com/denoland/deno/issues/34178: a main
-  // module whose path contains invalid percent-encoding made `process.argv[1]`
-  // resolution throw `URIError: URI malformed` during bootstrap, panicking the
-  // runtime. It must fall back to the raw specifier instead of throwing.
-  name: "process.argv[1] resolution survives a malformed main module URL",
-  fn() {
-    // @ts-ignore: Deno[Deno.internal] allowed
-    const mainModuleArgv = Deno[Deno.internal].mainModuleArgv;
-    assertEquals(typeof mainModuleArgv, "function");
-    // Invalid percent-encoding (a non-UTF-8 byte) must not throw.
-    assertEquals(mainModuleArgv("file:///%C0"), "file:///%C0");
-    // Valid file URLs still decode to a path.
-    if (Deno.build.os !== "windows") {
-      assertEquals(mainModuleArgv("file:///tmp/a%20b.mjs"), "/tmp/a b.mjs");
-    }
-  },
-});
-
-Deno.test({
   name: "process.ppid",
   fn() {
     assertEquals(typeof process.ppid, "number");

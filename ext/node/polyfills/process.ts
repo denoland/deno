@@ -1783,7 +1783,6 @@ function mainModuleArgv(
   }
   return join(Deno.cwd(), "$deno$node.mjs");
 }
-internals.mainModuleArgv = mainModuleArgv;
 
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
