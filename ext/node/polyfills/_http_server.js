@@ -1564,7 +1564,13 @@ function parseTcpListenArgs(args) {
     if (first.port === undefined) return null;
     const port = Number(first.port);
     if (!NumberIsFinite(port)) return null;
-    return { port, host: first.host, cb, reusePort: first.reusePort };
+    return {
+      port,
+      host: first.host,
+      cb,
+      reusePort: first.reusePort,
+      signal: first.signal,
+    };
   }
   return null;
 }
@@ -2354,6 +2360,22 @@ function tryListenNative(server, args) {
       family: StringPrototypeIncludes(addr.hostname, ":") ? "IPv6" : "IPv4",
     };
   };
+  // Honor `listen({ signal })`. The classic path wires this via net.Server's
+  // `_addAbortSignalOption`, which the native path bypasses; replicate it so an
+  // aborted signal closes the server.
+  const signal = parsed.signal;
+  if (signal !== undefined && signal !== null) {
+    if (signal.aborted) {
+      nextTick(() => server.close());
+    } else {
+      const onAborted = () => server.close();
+      signal.addEventListener("abort", onAborted);
+      server.once(
+        "close",
+        () => signal.removeEventListener("abort", onAborted),
+      );
+    }
+  }
   // `server.listening` is a getter derived from `_handle` (set above).
   if (parsed.cb) {
     server.once("listening", parsed.cb);

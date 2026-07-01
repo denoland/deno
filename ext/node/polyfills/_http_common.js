@@ -305,8 +305,13 @@ function checkInvalidHeaderChar(val, lenient = false) {
   const table = lenient
     ? lenientInvalidHeaderCharTable
     : invalidHeaderCharTable;
-  for (let i = 0; i < val.length; i++) {
-    const code = StringPrototypeCharCodeAt(val, i);
+  // Node validates via a regex, which coerces its argument to a string; a
+  // non-string value (e.g. setHeader(name, null) or a number) is stringified
+  // rather than throwing on a missing `.length`. Match that instead of the
+  // char-table scan choking on `null.length`.
+  const str = typeof val === "string" ? val : String(val);
+  for (let i = 0; i < str.length; i++) {
+    const code = StringPrototypeCharCodeAt(str, i);
     if (code > 0xff || table[code] === 1) {
       return true;
     }
