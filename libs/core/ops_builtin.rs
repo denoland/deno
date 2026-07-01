@@ -316,12 +316,14 @@ pub fn op_wasm_streaming_set_url(
 /// with `read()`, which hands back the resource's own buffer (zero-copy for the
 /// network fetch body and wrapped `ReadableStream` sources that back wasm
 /// streaming) so the only copy is the unavoidable one into the compiler.
+///
+/// The caller owns the lifetime of `stream_rid`: it keeps the backing stream
+/// alive for the duration of the feed and closes the resource afterwards.
 #[op2]
 async fn op_wasm_streaming_stream_feed(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[smi] stream_rid: ResourceId,
-  auto_close: bool,
 ) -> Result<(), JsErrorBox> {
   let wasm_streaming = state
     .borrow()
@@ -343,10 +345,6 @@ async fn op_wasm_streaming_stream_feed(
     }
 
     wasm_streaming.0.borrow_mut().on_bytes_received(&buf);
-  }
-
-  if auto_close {
-    let _ = state.borrow_mut().resource_table.take_any(stream_rid);
   }
 
   Ok(())

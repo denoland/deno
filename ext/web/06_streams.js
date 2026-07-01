@@ -7714,6 +7714,7 @@ return {
   kNodeWebStreamsType,
   kNodeMessagingTransfer,
   // Exposed in global runtime scope
+  acquireReadableStreamDefaultReader,
   ByteLengthQueuingStrategy,
   CountQueuingStrategy,
   createProxy,

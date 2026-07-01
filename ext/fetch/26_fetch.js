@@ -38,8 +38,11 @@ const {
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { byteLowerCase } = core.loadExtScript("ext:deno_web/00_infra.js");
 const {
+  acquireReadableStreamDefaultReader,
   errorReadableStream,
   getReadableStreamResourceBacking,
+  readableStreamClose,
+  readableStreamDisturb,
   readableStreamForRid,
   ReadableStreamPrototype,
   resourceForReadableStream,
@@ -1061,22 +1064,36 @@ function handleWasmStreaming(source, rid) {
       // per chunk, hand the underlying stream resource to Rust and let a single
       // async op pump the bytes straight into V8's streaming compiler.
       const stream = res.body;
-      let streamRid, autoClose;
       const resourceBacking = getReadableStreamResourceBacking(stream);
+      let streamRid;
       if (resourceBacking) {
+        // Fast path: feed straight from the body's backing resource. Acquire a
+        // reader and mark the stream disturbed (as the response-body fast path
+        // does) so nothing else consumes it and, crucially, so the stream stays
+        // referenced until we're done. Otherwise it could be GC'd mid-feed and
+        // its finalizer would close (and thereby cancel the read of) the backing
+        // resource out from under us.
+        acquireReadableStreamDefaultReader(stream);
+        readableStreamDisturb(stream);
         streamRid = resourceBacking.rid;
-        autoClose = resourceBacking.autoClose;
       } else {
         streamRid = resourceForReadableStream(stream);
-        autoClose = true;
       }
 
       PromisePrototypeThen(
-        op_wasm_streaming_stream_feed(rid, streamRid, autoClose),
+        op_wasm_streaming_stream_feed(rid, streamRid),
         // 2.7
-        () => core.close(rid),
+        () => {
+          if (resourceBacking) readableStreamClose(stream);
+          core.tryClose(streamRid);
+          core.close(rid);
+        },
         // 2.8
-        (err) => core.abortWasmStreaming(rid, err),
+        (err) => {
+          if (resourceBacking) readableStreamClose(stream);
+          core.tryClose(streamRid);
+          core.abortWasmStreaming(rid, err);
+        },
       );
     } else {
       // 2.7
