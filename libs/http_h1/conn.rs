@@ -519,7 +519,11 @@ where
     self.finish_previous_request().await?;
 
     let head_end = loop {
-      if let Some(head_end) = find_double_crlf(self.read_buf.filled()) {
+      // Empty lines before the request line are skipped by the parser and
+      // must not satisfy the readiness gate (see `leading_crlf_len`).
+      let skip = leading_crlf_len(self.read_buf.filled());
+      if let Some(head_end) = find_double_crlf(&self.read_buf.filled()[skip..])
+      {
         break head_end;
       }
       if self.read_buf.len() >= MAX_HEAD_BYTES {
@@ -858,6 +862,14 @@ where
     F: for<'a> FnMut(Request<'a>) -> R,
   {
     loop {
+      // Discard empty lines before the request line like llhttp does; they
+      // must not count as head bytes, satisfy the readiness gate below, or
+      // make an idle keep-alive connection look like a partial request to
+      // `buffered_is_empty` callers.
+      let skip = leading_crlf_len(&self.buffered);
+      if skip > 0 {
+        self.buffered.drain(..skip);
+      }
       if let Some(head_end) = find_double_crlf(&self.buffered) {
         if head_end > MAX_HEAD_BYTES {
           return Poll::Ready(Err(Error::HeadTooLarge));
@@ -893,7 +905,8 @@ where
       }
 
       if self.buffered.is_empty() {
-        let scratch_head_end = find_double_crlf(&scratch.read_buf[..read]);
+        let skip = leading_crlf_len(&scratch.read_buf[..read]);
+        let scratch_head_end = find_double_crlf(&scratch.read_buf[skip..read]);
         if let Some(head_end) = scratch_head_end
           && head_end > MAX_HEAD_BYTES
         {
@@ -1637,6 +1650,21 @@ fn upgrade_kind_from_core(upgrade: CoreUpgradeKind) -> UpgradeKind {
   }
 }
 
+/// Complete `\r\n` pairs at the start of a request-head buffer. httparse (like
+/// llhttp) skips empty lines before the request line, so they must not satisfy
+/// the double-CRLF readiness gate: trailing CRLF junk after a pipelined request
+/// would otherwise read as a complete-but-unparseable head and become a 400
+/// instead of waiting for the next request. A trailing lone `\r` is not counted
+/// (its `\n` may still be in flight); bare `\n` empty lines are left to the
+/// parse layer, which node:http rejects (`reject_bare_lf`).
+fn leading_crlf_len(buf: &[u8]) -> usize {
+  let mut len = 0;
+  while buf.len() >= len + 2 && buf[len] == b'\r' && buf[len + 1] == b'\n' {
+    len += 2;
+  }
+  len
+}
+
 fn find_double_crlf(buf: &[u8]) -> Option<usize> {
   // This is only a readiness gate. `Protocol`/httparse remains authoritative
   // for the actual request-head parse and consumed byte count.
@@ -1983,6 +2011,67 @@ mod tests {
     .await?
     .unwrap();
     assert_eq!(method, b"GET");
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_skips_empty_lines_between_pipelined_requests()
+  -> TestResult<()> {
+    let (mut client, server) = tokio::io::duplex(64 * 1024);
+    let mut conn = SharedConn::new(server);
+    let mut scratch = SharedScratch::default();
+    // Empty lines between (and after) pipelined requests are discarded like
+    // llhttp does: they are neither a request head nor a reason to treat the
+    // next head as complete-but-invalid (a 400).
+    client
+      .write_all(
+        b"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 5\r\n\r\nhello\r\n\r\n\r\nGET /next HTTP/1.1\r\nHost: example.com\r\n\r\n\r\n\r\n\r\n",
+      )
+      .await?;
+
+    let body_kind = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| request.body)
+    })
+    .await?
+    .unwrap();
+    assert_eq!(body_kind, BodyKind::ContentLength(5));
+    assert_eq!(conn.try_take_full_body()?.as_deref(), Some(&b"hello"[..]));
+
+    let method = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| {
+        request.method.to_vec()
+      })
+    })
+    .await?
+    .unwrap();
+    assert_eq!(method, b"GET");
+
+    // Only the trailing empty-line junk remains: that is an idle keep-alive
+    // connection, and EOF reads as a clean close.
+    drop(client);
+    let next = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| request.body)
+    })
+    .await?;
+    assert!(next.is_none());
+    assert!(conn.buffered_is_empty());
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_empty_lines_only_is_not_a_request() -> TestResult<()> {
+    let (mut client, server) = tokio::io::duplex(64 * 1024);
+    let mut conn = SharedConn::new(server);
+    let mut scratch = SharedScratch::default();
+    client.write_all(b"\r\n\r\n\r\n").await?;
+    drop(client);
+
+    let next = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| request.body)
+    })
+    .await?;
+    assert!(next.is_none());
+    assert!(conn.buffered_is_empty());
     Ok(())
   }
 

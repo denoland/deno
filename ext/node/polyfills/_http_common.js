@@ -29,6 +29,7 @@ const {
   SafeArrayIterator,
   RegExpPrototypeTest,
   SafeRegExp,
+  String,
   StringFromCharCode,
   StringPrototypeCharCodeAt,
   Symbol,
