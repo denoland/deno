@@ -234,8 +234,10 @@ fn register_inherited_extra_stdio_fds(fd_table: &mut FdTable) {
   // (`Deno.env.toObject()`) and get inherited by grandchildren spawned through
   // paths that bypass `create_command` (FFI exec, embedders, native modules),
   // where the stale fd numbers would no longer be valid.
-  // SAFETY: extension init runs before user code or other threads can observe
-  // the process environment.
+  // SAFETY: this runs synchronously on the main thread during extension init,
+  // before any user JS (or worker/FFI/native code) that could read or write the
+  // environment runs, so there is no concurrent access to race with. This is
+  // the same startup env-mutation invariant Deno relies on elsewhere.
   unsafe {
     std::env::remove_var(DENO_EXTRA_STDIO_FDS_ENV_VAR);
   }

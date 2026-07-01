@@ -10,8 +10,16 @@ pub enum FdOwnership {
   /// FdTable owns the File; dropping the entry closes the fd.
   /// Used by fs.openSync, stdio fds 0/1/2, etc.
   TableOwned(Rc<dyn File>),
-  /// An inherited extra stdio fd that can be used by node:fs, but may
-  /// still be claimed later by libuv APIs such as net.Socket({ fd }).
+  /// An inherited extra stdio fd (fd >= 3 installed by the Node
+  /// `child_process` spawn path) that can be used by node:fs, but may still be
+  /// claimed later by libuv APIs such as net.Socket({ fd }).
+  ///
+  /// The `File` here is a `dup()` of the inherited descriptor, not the original
+  /// numeric fd. Dropping this entry closes only the dup, so the original fd
+  /// stays open and remains claimable by libuv (this is what lets node:fs and a
+  /// later `net.Socket({ fd })` both work). The trade-off is that the original
+  /// fd is retained for the process lifetime unless libuv reclaims it, which
+  /// differs from Node, where node:fs `autoClose` closes the real fd.
   InheritedExtraStdio(Rc<dyn File>),
   /// A uv handle (e.g. uv_pipe_t) owns the fd; FdTable just tracks
   /// that it exists for duplicate detection. The entry is removed
