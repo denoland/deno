@@ -572,6 +572,13 @@ impl DiagnosticsByFolderRealIterator<'_> {
       graph_walker.add_config_import(import, &check_group.referrer);
     }
 
+    if let Some(root) = check_group.roots.first() {
+      let compiler_options_data =
+        self.compiler_options_resolver.for_specifier(root);
+      graph_walker
+        .add_compiler_options_types_import_diagnostics(compiler_options_data);
+    }
+
     for root in &check_group.roots {
       graph_walker.add_root(root);
     }
@@ -945,6 +952,40 @@ impl<'a> GraphWalker<'a> {
             is_root: false,
           });
           self.resolve_pending();
+        }
+      }
+    }
+  }
+
+  /// Surface `compilerOptions.types` entries that could not be resolved as
+  /// `TS2307`, matching `tsc` which reports a missing type definition file.
+  ///
+  /// A resolved but missing entry (e.g. `"./nonexistent.d.ts"`) is already
+  /// reported when it is walked as a config import, but an entry that fails to
+  /// resolve at all (e.g. a bare `"asdfasdf"`) is recorded by deno_graph as a
+  /// `Resolution::Err` on the config import and is otherwise dropped without a
+  /// diagnostic.
+  pub fn add_compiler_options_types_import_diagnostics(
+    &mut self,
+    compiler_options_data: &CompilerOptionsData,
+  ) {
+    for (referrer, types) in
+      compiler_options_data.compiler_options_types().iter()
+    {
+      let Some(graph_import) = self.graph.imports.get(referrer) else {
+        continue;
+      };
+      for type_import in types {
+        let Some(dep) = graph_import.dependencies.get(type_import) else {
+          continue;
+        };
+        if let deno_graph::Resolution::Err(resolution_error) = &dep.maybe_type
+          && let Some(diagnostic) = tsc::Diagnostic::maybe_from_resolution_error(
+            resolution_error,
+            self.bare_importable_pkg_names,
+          )
+        {
+          self.missing_diagnostics.push(diagnostic);
         }
       }
     }

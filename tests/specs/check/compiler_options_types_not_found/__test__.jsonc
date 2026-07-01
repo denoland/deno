@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "not_found": {
+      "args": "check ./main.ts",
+      "output": "check.out",
+      "exitCode": 1
+    }
+  }
+}

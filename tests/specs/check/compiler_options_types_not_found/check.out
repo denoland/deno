@@ -1,0 +1,6 @@
+Check [WILDCARD]main.ts
+TS2307 [ERROR]: Import "asdfasdf" not a dependency
+  hint: If you want to use the npm package, try running `deno add npm:asdfasdf`
+    at [WILDCARD]deno.json:1:1
+
+error: Type checking failed.
