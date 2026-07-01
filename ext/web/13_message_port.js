@@ -795,6 +795,13 @@ function markAsUncloneable(target) {
   });
 }
 
+// Returns true when `value` must raise a `DataCloneError` if it appears at the
+// top level of a `postMessage()` or `structuredClone()` call. This covers both
+// non-serializable Web API platform types (marked on their prototype via
+// `markNotSerializable`, e.g. URL / Headers / Request) and values flagged
+// per-instance by `worker_threads.markAsUncloneable`. Both must be rejected
+// before V8's ValueSerializer runs, since it can't see these JS-only symbols
+// and would otherwise silently round-trip them as `{}`.
 function isUncloneable(value) {
   if (value === null) return false;
   const t = typeof value;
@@ -807,6 +814,12 @@ function isUncloneable(value) {
   // approximate the brand check by treating `value.constructor.prototype
   // === value` as "this is a prototype object, allow cloning unless the
   // marker is set on the value itself".
+  if (
+    value[kNotSerializable] === true &&
+    !isOwnPrototypeObject(value, kNotSerializable)
+  ) {
+    return true;
+  }
   if (
     value[kUncloneable] === true &&
     !isOwnPrototypeObject(value, kUncloneable)
@@ -864,20 +877,13 @@ function structuredClone(value, options) {
   // transferring is not the same as serializing.
   if (
     value !== null && typeof value === "object" &&
-    !ArrayPrototypeIncludes(options.transfer, value)
+    !ArrayPrototypeIncludes(options.transfer, value) &&
+    isUncloneable(value)
   ) {
-    // Same prototype-object exemption as in isUncloneable: a marker on a
-    // class's prototype means "instances are uncloneable", not "the
-    // prototype object itself is".
-    const blocked = (value[kNotSerializable] === true &&
-      !isOwnPrototypeObject(value, kNotSerializable)) ||
-      isUncloneable(value);
-    if (blocked) {
-      throw new DOMException(
-        "Cannot clone object of unsupported type.",
-        "DataCloneError",
-      );
-    }
+    throw new DOMException(
+      "Cannot clone object of unsupported type.",
+      "DataCloneError",
+    );
   }
 
   // Fast-path, avoiding round-trip serialization and deserialization
@@ -898,6 +904,7 @@ function structuredClone(value, options) {
 
 return {
   deserializeJsMessageData,
+  isUncloneable,
   markAsUncloneable,
   markNotSerializable,
   MessageChannel,

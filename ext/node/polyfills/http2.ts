@@ -74,6 +74,7 @@ const {
   kIncomingMessage,
   kServerResponse,
   notifyAddressOverrideServing,
+  SERVER_KIND_NODE_HTTP2,
   startOverrideListener,
   Server: HttpServer,
   setupConnectionsTracking,
@@ -5219,7 +5220,10 @@ Http2Server.prototype.listen = function listen(...args) {
       }
       const rewritten = [{ host: applied.host, port: applied.port }];
       if (cb) ArrayPrototypePush(rewritten, cb);
-      this.once("listening", notifyAddressOverrideServing);
+      this.once(
+        "listening",
+        () => notifyAddressOverrideServing(SERVER_KIND_NODE_HTTP2),
+      );
       return FunctionPrototypeApply(
         net.Server.prototype.listen,
         this,

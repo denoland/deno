@@ -643,12 +643,23 @@ impl FlagsExt for Flags {
       | Compile(CompileFlags {
         source_file: script,
         ..
-      })
-      | Desktop(DesktopFlags {
-        source_file: script,
-        ..
       }) => resolve_single_folder_path(script, current_dir, |mut p| {
         if p.pop() { Some(p) } else { None }
+      })
+      .map(|p| vec![p]),
+      Desktop(DesktopFlags {
+        source_file: script,
+        ..
+      }) => resolve_single_folder_path(script, current_dir, |p| {
+        // The desktop entrypoint is commonly a directory (e.g. `deno desktop
+        // .` for framework detection), in which case the config lives in that
+        // directory itself — don't pop up to its parent. Only pop when the
+        // entrypoint is a file.
+        if p.is_dir() {
+          Some(p)
+        } else {
+          p.parent().map(|parent| parent.to_path_buf())
+        }
       })
       .map(|p| vec![p]),
       Task(TaskFlags {
@@ -791,6 +802,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "DENO_KV_REQUIRES_DISTRIBUTED_DATABASE",
+    description: "Require Deno.openKv() to resolve to a distributed (remote) database.\nWhen set to \"error\", Deno.openKv() is always exposed and rejects with a\nclear message unless the resolved path is remote. When set to \"warn\", a\nlocal/in-memory fallback is allowed but logs a warning. Used by Deno\nDeploy to surface a clear error when no KV database is attached.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_EMIT_CACHE_MODE",
     description: "Control if the transpiled sources should be cached.",
     example: None,
@@ -819,7 +835,7 @@ static ENV_VARS: &[EnvVar] = &[
     name: "DENO_SERVE_ADDRESS",
     description: "Override address for Deno.serve",
     example: Some(
-      r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", "vsock:1234:5678", or "memory:my-app")"#,
+      r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678")"#,
     ),
   },
   EnvVar {
@@ -2271,6 +2287,13 @@ Unless --reload is specified, this command will not re-download already cached d
               "Enable type-checking of JavaScript files (equivalent to `compilerOptions.checkJs: true`)",
             )
             .action(ArgAction::SetTrue)
+        )
+        .arg(
+          Arg::new("desktop")
+            .long("desktop")
+            .help("Type-check using the type definitions for `deno desktop`")
+            .action(ArgAction::SetTrue)
+            .help_heading(DESKTOP_HEADING)
         )
         .arg(
           Arg::new("file")
@@ -6778,6 +6801,9 @@ fn check_parse(
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
+  if matches.get_flag("desktop") {
+    flags.internal.is_desktop = true;
+  }
   flags.subcommand = DenoSubcommand::Check(CheckFlags {
     files,
     doc: matches.get_flag("doc"),
@@ -6936,6 +6962,7 @@ fn desktop_parse(
     backend,
     all_targets,
     identifier: None,
+    deep_links: Vec::new(),
     codesign_identity: None,
     inspect_renderer,
     compress,
@@ -10670,6 +10697,27 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "check", "--desktop", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.ts"],
+          doc: false,
+          doc_only: false,
+          check_js: false,
+          watch: None,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        internal: InternalFlags {
+          is_desktop: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
@@ -14312,6 +14360,20 @@ mod tests {
         cwd.join("dir/b.js")
       ])
     );
+
+    // `deno desktop .` (and bare `deno desktop`) runs framework detection on
+    // the current directory, so config discovery must start in that directory
+    // rather than its parent. See issue #35653.
+    let flags = flags_from_vec(svec!["deno", "desktop", "."]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
+    let flags = flags_from_vec(svec!["deno", "desktop"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
+    // An explicit file entrypoint resolves to its containing directory.
+    let flags =
+      flags_from_vec(svec!["deno", "desktop", "sub/main.ts"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.join("sub")]));
   }
 
   #[test]

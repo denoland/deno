@@ -7,11 +7,13 @@ import {
   assertStringIncludes,
   assertThrows,
 } from "@std/assert";
+import { deadline } from "@std/async/deadline";
 import { delay } from "@std/async/delay";
 import { dirname, fromFileUrl, join } from "@std/path";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
+import { setImmediate } from "node:timers";
 import { Buffer } from "node:buffer";
 import { execCode } from "../unit/test_util.ts";
 
@@ -86,6 +88,227 @@ Deno.test("tls over js-backed duplex pair does not panic", async () => {
   rawSocket.destroy();
   server.close();
 });
+
+// Back-to-back Duplex pair (mimics native-duplexpair used by tedious/mssql):
+// bytes written to one end surface as "data" on the other. A TLSSocket over
+// one end (a plain Duplex, not a net.Socket) takes the JSStreamSocket path.
+function backToBackDuplexPair() {
+  const socket1 = new stream.Duplex({
+    read() {},
+    write(chunk: Uint8Array, _enc: string, cb: () => void) {
+      socket2.push(chunk);
+      cb();
+    },
+    final(cb: () => void) {
+      socket2.push(null);
+      cb();
+    },
+  });
+  const socket2 = new stream.Duplex({
+    read() {},
+    write(chunk: Uint8Array, _enc: string, cb: () => void) {
+      socket1.push(chunk);
+      cb();
+    },
+    final(cb: () => void) {
+      socket1.push(null);
+      cb();
+    },
+  });
+  return { socket1, socket2 };
+}
+
+// Wrap a raw socket's transport in a TLSSocket that runs over a back-to-back
+// Duplex pair (the JSStreamSocket path). Both peers in the tests below use this
+// so close_notify propagation is actually exercised: a native peer would still
+// observe the TCP FIN even when the close_notify is dropped, hiding the bug.
+function wrapJsBackedTls(
+  raw: net.Socket,
+  // deno-lint-ignore no-explicit-any
+  options: any,
+): tls.TLSSocket {
+  const { socket1, socket2 } = backToBackDuplexPair();
+  raw.pipe(socket2);
+  socket2.pipe(raw);
+  raw.on("error", () => {});
+  const sock = options.isServer
+    ? new tls.TLSSocket(socket1 as net.Socket, options)
+    : tls.connect({ socket: socket1 as net.Socket, ...options });
+  sock.on("error", () => {});
+  return sock;
+}
+
+// Regression test: a server-side TLSSocket over a JS-backed Duplex pair
+// (JSStreamSocket path, like tedious/mssql TLS-over-TDS) must send the TLS
+// close_notify and end the underlying stream when `.end()` is called. Otherwise
+// the peer never observes EOF and hangs (surfaces in tedious/Prisma as
+// "Connection lost - socket hang up"). Covered under TLS 1.2 (what tedious/MSSQL
+// negotiates) and the default TLS 1.3.
+for (const maxVersion of ["TLSv1.2", "TLSv1.3"] as const) {
+  Deno.test(
+    `tls js-backed duplex server propagates close_notify on end() (${maxVersion})`,
+    async () => {
+      const { promise, resolve, reject } = Promise.withResolvers<string>();
+      let serverTls: tls.TLSSocket | undefined;
+      let serverRaw: net.Socket | undefined;
+      let clientTls: tls.TLSSocket | undefined;
+      let clientRaw: net.Socket | undefined;
+
+      const server = net.createServer((raw: net.Socket) => {
+        serverRaw = raw;
+        serverTls = wrapJsBackedTls(raw, {
+          isServer: true,
+          key,
+          cert,
+          maxVersion,
+        });
+        serverTls.on("secure", () => {
+          serverTls!.write("hello from server");
+          // Close on a later tick, so the connection is idle when `.end()` runs
+          // (the pooled-connection pattern). Ending synchronously here would let
+          // the close_notify ride the write's flush and mask the bug.
+          setImmediate(() => serverTls!.end());
+        });
+      });
+
+      server.listen(0, () => {
+        const { port } = server.address() as net.AddressInfo;
+        clientRaw = net.connect(port, "localhost", () => {
+          clientTls = wrapJsBackedTls(clientRaw!, {
+            servername: "localhost",
+            rejectUnauthorized: false,
+            maxVersion,
+          });
+          let data = "";
+          clientTls.on("data", (chunk: Uint8Array) => {
+            data += chunk.toString();
+          });
+          // If close_notify/EOF is not propagated, "end" never fires and the
+          // deadline below fails the test fast instead of hanging.
+          clientTls.on("end", () => resolve(data));
+        });
+        clientRaw.on("error", reject);
+      });
+
+      const received = await deadline(promise, 10_000);
+      assertEquals(received, "hello from server");
+      clientTls?.destroy();
+      serverTls?.destroy();
+      clientRaw?.destroy();
+      serverRaw?.destroy();
+      server.close();
+    },
+  );
+}
+
+// Symmetric to the above: a client-side TLSSocket over a JS-backed Duplex pair
+// must also propagate close_notify/EOF on `.end()` so the peer sees the end.
+for (const maxVersion of ["TLSv1.2", "TLSv1.3"] as const) {
+  Deno.test(
+    `tls js-backed duplex client propagates close_notify on end() (${maxVersion})`,
+    async () => {
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      let serverTls: tls.TLSSocket | undefined;
+      let serverRaw: net.Socket | undefined;
+      let clientTls: tls.TLSSocket | undefined;
+      let clientRaw: net.Socket | undefined;
+
+      const server = net.createServer((raw: net.Socket) => {
+        serverRaw = raw;
+        serverTls = wrapJsBackedTls(raw, {
+          isServer: true,
+          key,
+          cert,
+          maxVersion,
+        });
+        serverTls.resume();
+        // The client's close_notify/EOF must surface here as "end".
+        serverTls.on("end", () => resolve());
+      });
+
+      server.listen(0, () => {
+        const { port } = server.address() as net.AddressInfo;
+        clientRaw = net.connect(port, "localhost", () => {
+          clientTls = wrapJsBackedTls(clientRaw!, {
+            servername: "localhost",
+            rejectUnauthorized: false,
+            maxVersion,
+          });
+          clientTls.on("secureConnect", () => {
+            clientTls!.write("hello from client");
+            // Close on a later tick (idle connection); see the server-side test.
+            setImmediate(() => clientTls!.end());
+          });
+        });
+        clientRaw.on("error", reject);
+      });
+
+      await deadline(promise, 10_000);
+      clientTls?.destroy();
+      serverTls?.destroy();
+      clientRaw?.destroy();
+      serverRaw?.destroy();
+      server.close();
+    },
+  );
+}
+
+// `.end()` called before the handshake completes: the native shutdown defers
+// the close_notify until the handshake finishes, so the underlying stream must
+// only be ended afterwards. Ending it eagerly would tear the transport down
+// mid-handshake and the peer would never see EOF.
+for (const maxVersion of ["TLSv1.2", "TLSv1.3"] as const) {
+  Deno.test(
+    `tls js-backed duplex client end() during handshake still sends close_notify (${maxVersion})`,
+    async () => {
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      let sawSecure = false;
+      let serverTls: tls.TLSSocket | undefined;
+      let serverRaw: net.Socket | undefined;
+      let clientTls: tls.TLSSocket | undefined;
+      let clientRaw: net.Socket | undefined;
+
+      const server = net.createServer((raw: net.Socket) => {
+        serverRaw = raw;
+        serverTls = wrapJsBackedTls(raw, {
+          isServer: true,
+          key,
+          cert,
+          maxVersion,
+        });
+        serverTls.resume();
+        // Reached only if the handshake completed and the deferred close_notify
+        // was produced and flushed (not if the transport was torn down early).
+        serverTls.on("end", () => resolve());
+      });
+
+      server.listen(0, () => {
+        const { port } = server.address() as net.AddressInfo;
+        clientRaw = net.connect(port, "localhost", () => {
+          clientTls = wrapJsBackedTls(clientRaw!, {
+            servername: "localhost",
+            rejectUnauthorized: false,
+            maxVersion,
+          });
+          clientTls.on("secureConnect", () => {
+            sawSecure = true;
+          });
+          // Ends before the handshake can complete, exercising the deferred path.
+          clientTls.end();
+        });
+        clientRaw.on("error", reject);
+      });
+
+      await deadline(promise, 10_000);
+      assert(sawSecure, "handshake should complete before EOF is propagated");
+      clientTls?.destroy();
+      serverTls?.destroy();
+      clientRaw?.destroy();
+      serverRaw?.destroy();
+      server.close();
+    },
+  );
+}
 
 for (
   const [alpnServer, alpnClient, expected] of [

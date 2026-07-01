@@ -106,6 +106,12 @@ pub async fn desktop(
     {
       desktop_flags.identifier = Some(identifier);
     }
+
+    if let Some(deep_links) = app_config.deep_links
+      && desktop_flags.deep_links.is_empty()
+    {
+      desktop_flags.deep_links = deep_links;
+    }
   }
 
   if let Some(backend) = desktop_config.backend
@@ -631,6 +637,222 @@ fn make_self_extracting(
     "windows" => make_self_extracting_dir(bundle_path, format, true),
     _ => make_self_extracting_dir(bundle_path, format, false),
   }
+}
+
+/// Validate a deep-link URL scheme. Follows the RFC 3986 `scheme` grammar:
+/// `ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`. We additionally reject the
+/// common reserved schemes (`http`, `https`, `file`, `ftp`, `ws`, `wss`) since
+/// registering those as app handlers is almost never intended and would hijack
+/// normal browsing.
+fn validate_url_scheme(scheme: &str) -> Result<(), AnyError> {
+  let reserved = ["http", "https", "file", "ftp", "ws", "wss"];
+  let bail = |reason: &str| {
+    Err(deno_core::anyhow::anyhow!(
+      "Invalid deep-link scheme {scheme:?}: {reason}."
+    ))
+  };
+  match scheme.chars().next() {
+    None => return bail("scheme is empty"),
+    Some(c) if !c.is_ascii_alphabetic() => {
+      return bail("scheme must start with an ASCII letter");
+    }
+    _ => {}
+  }
+  if !scheme
+    .chars()
+    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+  {
+    return bail("scheme may only contain letters, digits, '+', '-', and '.'");
+  }
+  if reserved.contains(&scheme) {
+    return bail("scheme is reserved and cannot be used as a deep link");
+  }
+  Ok(())
+}
+
+/// Register the configured deep-link URL schemes with the OS-specific app
+/// metadata so the system routes `<scheme>://...` links to this app.
+///
+/// First pass: this writes the declarative registration into the bundle
+/// (macOS `CFBundleURLTypes`, Linux `.desktop` `MimeType` + `Exec %u`,
+/// Windows `.reg`/`.bat` helper). Delivering the opened URL into the running
+/// app (single-instance forwarding, the macOS `openURLs` Apple Event, and the
+/// `open-url` JS event) is tracked separately in the issue.
+fn register_deep_links(
+  bundle_path: &Path,
+  desktop_flags: &DesktopFlags,
+) -> Result<(), AnyError> {
+  let schemes: Vec<String> = desktop_flags
+    .deep_links
+    .iter()
+    .map(|s| s.trim().to_ascii_lowercase())
+    .filter(|s| !s.is_empty())
+    .collect();
+  if schemes.is_empty() {
+    return Ok(());
+  }
+  for scheme in &schemes {
+    validate_url_scheme(scheme)?;
+  }
+
+  let target_os = match desktop_flags.target.as_deref() {
+    Some(t) if t.contains("apple-darwin") => "macos",
+    Some(t) if t.contains("windows") => "windows",
+    Some(_) => "linux",
+    None => {
+      if cfg!(target_os = "macos") {
+        "macos"
+      } else if cfg!(target_os = "windows") {
+        "windows"
+      } else {
+        "linux"
+      }
+    }
+  };
+  match target_os {
+    "macos" => register_deep_links_macos(bundle_path, &schemes)?,
+    "windows" => register_deep_links_windows(bundle_path, &schemes)?,
+    _ => register_deep_links_linux(bundle_path, &schemes)?,
+  }
+
+  log::info!(
+    "{} {}",
+    colors::green("Deep links"),
+    schemes
+      .iter()
+      .map(|s| format!("{s}://"))
+      .collect::<Vec<_>>()
+      .join(", "),
+  );
+  Ok(())
+}
+
+/// macOS: add a single `CFBundleURLTypes` entry carrying every scheme to the
+/// bundle `Info.plist`.
+fn register_deep_links_macos(
+  bundle_path: &Path,
+  schemes: &[String],
+) -> Result<(), AnyError> {
+  let plist_path = bundle_path.join("Contents").join("Info.plist");
+  let mut dict: plist::Dictionary = plist::from_file(&plist_path)
+    .with_context(|| format!("failed to parse {}", plist_path.display()))?;
+
+  let url_name = dict
+    .get("CFBundleIdentifier")
+    .and_then(|v| v.as_string())
+    .unwrap_or("")
+    .to_string();
+
+  let mut url_type = plist::Dictionary::new();
+  url_type.insert(
+    "CFBundleURLName".to_string(),
+    plist::Value::String(url_name),
+  );
+  url_type.insert(
+    "CFBundleTypeRole".to_string(),
+    plist::Value::String("Viewer".to_string()),
+  );
+  url_type.insert(
+    "CFBundleURLSchemes".to_string(),
+    plist::Value::Array(
+      schemes.iter().cloned().map(plist::Value::String).collect(),
+    ),
+  );
+  dict.insert(
+    "CFBundleURLTypes".to_string(),
+    plist::Value::Array(vec![plist::Value::Dictionary(url_type)]),
+  );
+
+  plist::to_file_xml(&plist_path, &dict)
+    .with_context(|| format!("failed to write {}", plist_path.display()))?;
+  Ok(())
+}
+
+/// Linux: add `x-scheme-handler/<scheme>` MIME types to the `.desktop` entry
+/// and make sure `Exec=` forwards the opened URL via the `%u` field code.
+fn register_deep_links_linux(
+  bundle_path: &Path,
+  schemes: &[String],
+) -> Result<(), AnyError> {
+  let desktop_file = std::fs::read_dir(bundle_path)?
+    .filter_map(|e| e.ok().map(|e| e.path()))
+    .find(|p| p.extension().is_some_and(|e| e == "desktop"))
+    .ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "no .desktop file found in {}",
+        bundle_path.display()
+      )
+    })?;
+
+  let contents = std::fs::read_to_string(&desktop_file)?;
+  let mime = schemes
+    .iter()
+    .map(|s| format!("x-scheme-handler/{s};"))
+    .collect::<String>();
+
+  let mut out = String::with_capacity(contents.len() + mime.len() + 16);
+  let mut wrote_mime = false;
+  for line in contents.lines() {
+    if let Some(rest) = line.strip_prefix("Exec=") {
+      // The launcher must receive the URL as an argument, so ensure a `%u`
+      // field code is present exactly once.
+      if rest.contains("%u") || rest.contains("%U") {
+        out.push_str(line);
+      } else {
+        out.push_str(&format!("Exec={} %u", rest.trim_end()));
+      }
+      out.push('\n');
+    } else if let Some(rest) = line.strip_prefix("MimeType=") {
+      // Merge into the existing MimeType list.
+      out.push_str("MimeType=");
+      out.push_str(rest.trim_end());
+      if !rest.trim_end().ends_with(';') && !rest.trim_end().is_empty() {
+        out.push(';');
+      }
+      out.push_str(&mime);
+      out.push('\n');
+      wrote_mime = true;
+    } else {
+      out.push_str(line);
+      out.push('\n');
+    }
+  }
+  if !wrote_mime {
+    out.push_str(&format!("MimeType={mime}\n"));
+  }
+
+  std::fs::write(&desktop_file, out)?;
+  Ok(())
+}
+
+/// Windows: there is no in-bundle declarative registration for protocol
+/// handlers, so drop a `register-deep-links.bat` next to the launcher that
+/// writes the `HKCU\Software\Classes\<scheme>` keys. An installer (or the
+/// user) runs it once after install; the keys point back at the launcher in
+/// its install location (`%~dp0`).
+fn register_deep_links_windows(
+  bundle_path: &Path,
+  schemes: &[String],
+) -> Result<(), AnyError> {
+  // The launcher written by the Windows packaging step is `<app>.bat`.
+  let launcher = std::fs::read_dir(bundle_path)?
+    .filter_map(|e| e.ok().map(|e| e.path()))
+    .find(|p| p.extension().is_some_and(|e| e == "bat"))
+    .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+    .unwrap_or_else(|| "launcher.bat".to_string());
+
+  let mut script = String::from("@echo off\r\nsetlocal\r\n");
+  for scheme in schemes {
+    script.push_str(&format!(
+      "reg add \"HKCU\\Software\\Classes\\{scheme}\" /ve /d \"URL:{scheme}\" /f\r\n\
+       reg add \"HKCU\\Software\\Classes\\{scheme}\" /v \"URL Protocol\" /d \"\" /f\r\n\
+       reg add \"HKCU\\Software\\Classes\\{scheme}\\shell\\open\\command\" /ve /d \"\\\"%~dp0{launcher}\\\" \\\"%%1\\\"\" /f\r\n",
+    ));
+  }
+  script.push_str("endlocal\r\n");
+
+  std::fs::write(bundle_path.join("register-deep-links.bat"), script)?;
+  Ok(())
 }
 
 /// Tar `parent/entry_name` (preserving symlinks and modes) into `dest_file`,
@@ -1351,6 +1573,9 @@ async fn package_windows_app_dir(
     }
   }
 
+  // Drop the deep-link registration script next to the launcher.
+  register_deep_links(&app_dir, desktop_flags)?;
+
   // Remove the standalone dylib (it's now inside the app dir).
   let _ = std::fs::remove_file(dylib_path);
 
@@ -1432,8 +1657,13 @@ async fn package_linux_app_dir(
   std::fs::write(
     &launcher_path,
     format!(
+      // Resolve `$0` through symlinks before deriving DIR: `.deb`/`.rpm`
+      // install the real launcher under `/usr/lib/<pkg>/` and expose it via a
+      // `/usr/bin/<pkg>` symlink, so a bare `$0` would resolve DIR to
+      // `/usr/bin` and look for the backend binary there (issue #35623).
+      // `readlink -f` is fine here: this launcher only ships on Linux.
       "#!/bin/sh\n\
-       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
+       DIR=\"$(cd \"$(dirname \"$(readlink -f \"$0\")\")\" && pwd)\"\n\
        export LAUFEY_RUNTIME_PATH=\"$DIR/{dylib}\"\n\
        exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
       laufey_binary = laufey_binary_name,
@@ -1514,6 +1744,9 @@ async fn package_linux_app_dir(
       desktop_entry,
     )?;
   }
+
+  // Merge any deep-link schemes into the `.desktop` entry written above.
+  register_deep_links(&app_dir, desktop_flags)?;
 
   // Remove the standalone dylib (it's now inside the app dir).
   let _ = std::fs::remove_file(dylib_path);
@@ -2652,19 +2885,34 @@ fn dylib_parts(dylib_path: &Path) -> Result<DylibParts<'_>, AnyError> {
   })
 }
 
+/// The runtime dylib filename each macOS LAUFEY backend resolves when the
+/// backend binary is the bundle's CFBundleExecutable (i.e. no `--runtime`
+/// argument is passed). The two macOS backends use different conventions:
+/// - `webview` searches a hardcoded `libruntime.dylib` via [NSBundle mainBundle]
+///   (laufey `webview/src/main_mac.mm`).
+/// - `cef` derives `<backend-executable-basename>.dylib` next to the binary
+///   (laufey `LaufeyFindColocatedRuntime`, `cef/src/runtime_loader.cc`).
+fn macos_runtime_dylib_name(backend: &str, laufey_exe_stem: &str) -> String {
+  if backend == "cef" {
+    format!("{laufey_exe_stem}.dylib")
+  } else {
+    "libruntime.dylib".to_string()
+  }
+}
+
 /// Create a macOS .app bundle from the compiled desktop dylib.
 ///
 /// Bundle structure:
 /// ```text
 /// AppName.app/
 ///   Contents/
-///     Info.plist
+///     Info.plist          (CFBundleExecutable = the LAUFEY backend binary)
 ///     MacOS/
-///       AppName          (launcher script)
-///       laufey_webview      (LAUFEY backend binary)
-///       libapp.dylib     (compiled Deno runtime + user code)
+///       laufey_webview    (LAUFEY backend binary; the bundle executable)
+///       libruntime.dylib  (compiled Deno runtime + user code; the `cef`
+///                          backend uses `<backend-executable>.dylib` instead)
 ///     Resources/
-///       AppIcon.icns     (optional)
+///       AppIcon.icns      (optional)
 /// ```
 async fn package_macos_app_bundle(
   dylib_path: &Path,
@@ -2674,6 +2922,11 @@ async fn package_macos_app_bundle(
 ) -> Result<PathBuf, AnyError> {
   let parts = dylib_parts(dylib_path)?;
   let app_name = parts.app_name.clone();
+  // app_name (from the --output stem) flows unescaped into the Info.plist XML
+  // and the synthesized bundle id, so reject anything outside the safe charset
+  // (the same guard the removed shell launcher applied) instead of emitting a
+  // malformed plist that silently fails to launch.
+  validate_launcher_name(&app_name, "app name")?;
   let app_bundle = parts.parent.join(format!("{}.app", app_name));
 
   // Find the LAUFEY backend .app and its main executable.
@@ -2729,40 +2982,17 @@ async fn package_macos_app_bundle(
   // Strip unnecessary bulk from the CEF framework.
   strip_cef_bloat(&contents_dir);
 
-  // Copy the compiled dylib.
-  let dylib_filename = parts.file_name;
-  let dest_dylib = macos_dir.join(dylib_filename);
+  // Copy the compiled dylib under the name the active backend resolves without
+  // a `--runtime` argument (see `macos_runtime_dylib_name`). We deliberately do
+  // NOT write a shell-script launcher that execs the backend with `--runtime`:
+  // under LaunchServices (open / Finder / double-click) that `exec` breaks the
+  // app's foreground-GUI registration, so an `NSStatusItem` (Deno.Tray) is
+  // created but never attaches to the menu bar. Instead the backend binary is
+  // the bundle's CFBundleExecutable directly (see Info.plist below), so the
+  // process LaunchServices launches IS the GUI process. See denoland/deno#35619.
+  let dest_dylib =
+    macos_dir.join(macos_runtime_dylib_name(backend, &laufey_exe_stem));
   std::fs::copy(dylib_path, &dest_dylib)?;
-
-  // Create launcher script as the main executable. Validate every name
-  // we interpolate: bash expands `$VAR`, backticks, and `$(...)` even
-  // inside `"..."`.
-  let dylib_filename_str = dylib_filename.to_string_lossy();
-  validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(
-    &laufey_executable_name,
-    "LAUFEY backend executable name",
-  )?;
-  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
-  let launcher_path = macos_dir.join(&app_name);
-  std::fs::write(
-    &launcher_path,
-    format!(
-      "#!/bin/sh\n\
-       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
-       exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
-      laufey_binary = laufey_executable_name,
-      dylib = dylib_filename_str,
-    ),
-  )?;
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(
-      &launcher_path,
-      std::fs::Permissions::from_mode(0o755),
-    )?;
-  }
 
   // Resolve the bundle identifier. The user-configured `identifier` is
   // preferred; otherwise we synthesize one from the app name. The
@@ -2782,10 +3012,13 @@ async fn package_macos_app_bundle(
     }
   };
 
-  // Generate Info.plist.
+  // Generate Info.plist. The backend binary is the CFBundleExecutable so
+  // there is no shell-script `exec` between LaunchServices and the GUI
+  // process (which would break tray registration — see above).
   let info_plist = render_macos_info_plist(
     &app_name,
     &bundle_id,
+    &laufey_executable_name,
     desktop_flags.icon.is_some(),
   );
   std::fs::write(contents_dir.join("Info.plist"), info_plist)?;
@@ -2816,6 +3049,12 @@ async fn package_macos_app_bundle(
   //     persistent identity rather than re-prompting on every rebuild.
   // We skip on non-macOS hosts (cross-build) since `codesign(1)` only
   // exists on macOS.
+  //
+  // Register any deep-link URL schemes before signing: codesign seals the
+  // bundle contents, so mutating `Info.plist` afterwards would invalidate
+  // the signature and the app would be rejected on launch.
+  register_deep_links(&app_bundle, desktop_flags)?;
+
   let codesign_identity = desktop_flags.codesign_identity.as_deref().or(
     if cfg!(target_os = "macos") {
       Some("-")
@@ -2870,6 +3109,7 @@ async fn package_macos_app_bundle(
 fn render_macos_info_plist(
   app_name: &str,
   bundle_id: &str,
+  executable_name: &str,
   has_icon: bool,
 ) -> String {
   format!(
@@ -2880,7 +3120,7 @@ fn render_macos_info_plist(
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleExecutable</key>
-  <string>{app_name}</string>
+  <string>{executable_name}</string>
   <key>CFBundleIconFile</key>
   <string>{icon_file}</string>
   <key>CFBundleIdentifier</key>
@@ -2923,6 +3163,7 @@ fn render_macos_info_plist(
 "#,
     app_name = app_name,
     bundle_id = bundle_id,
+    executable_name = executable_name,
     icon_file = if has_icon { "AppIcon" } else { "" },
   )
 }
@@ -5126,8 +5367,19 @@ mod tests {
 
   #[test]
   fn macos_info_plist_includes_principal_class_and_tcc_usage_strings() {
-    let plist = render_macos_info_plist("Deno Demo", "com.deno.demo", true);
+    let plist = render_macos_info_plist(
+      "Deno Demo",
+      "com.deno.demo",
+      "laufey_webview",
+      true,
+    );
     assert!(plist.contains("<string>LaufeyApplication</string>"));
+    // The backend binary must be the CFBundleExecutable (not a shell-script
+    // launcher named after the app) so LaunchServices launches the GUI
+    // process directly — otherwise the tray icon never attaches. #35619.
+    assert!(plist.contains(
+      "<key>CFBundleExecutable</key>\n  <string>laufey_webview</string>"
+    ));
     assert!(
       plist.contains("<key>NSMicrophoneUsageDescription</key>")
         && plist.contains("Deno Demo requires access to the microphone")
@@ -5145,6 +5397,20 @@ mod tests {
         && plist.contains("Deno Demo requires access to Bluetooth")
     );
     assert!(plist.contains("<string>AppIcon</string>"));
+  }
+
+  #[test]
+  fn macos_runtime_dylib_name_is_backend_specific() {
+    // webview resolves a hardcoded libruntime.dylib via [NSBundle mainBundle];
+    // cef resolves <executable-basename>.dylib next to the backend binary.
+    assert_eq!(
+      macos_runtime_dylib_name("webview", "laufey_webview"),
+      "libruntime.dylib"
+    );
+    assert_eq!(
+      macos_runtime_dylib_name("cef", "laufey_cef"),
+      "laufey_cef.dylib"
+    );
   }
 
   // --- laufey_archive_name / laufey_release_url ---
@@ -6332,6 +6598,7 @@ def456  other.zip
       backend: None,
       all_targets: false,
       identifier: None,
+      deep_links: Vec::new(),
       codesign_identity: None,
       inspect_renderer: None,
       compress: None,
@@ -6795,6 +7062,233 @@ def456  other.zip
       .collect();
     assert!(actions.iter().any(|a| a == "CreateShortcuts"));
     assert!(actions.iter().any(|a| a == "RemoveShortcuts"));
+  }
+
+  // --- deep links ---
+
+  #[test]
+  fn validate_url_scheme_accepts_canonical() {
+    for ok in &["acme", "my-app", "x", "com.acme.app", "a1+2.3-4", "App"] {
+      assert!(validate_url_scheme(ok).is_ok(), "{ok:?} should be accepted");
+    }
+  }
+
+  #[test]
+  fn validate_url_scheme_rejects_bad_shapes() {
+    let cases = &[
+      ("", "empty"),
+      ("1acme", "leading digit"),
+      ("-acme", "leading hyphen"),
+      (".acme", "leading dot"),
+      ("acme app", "space"),
+      ("acme/app", "slash"),
+      ("acme://", "colon and slashes"),
+      ("acme_app", "underscore"),
+      ("acmé", "non-ascii"),
+    ];
+    for (bad, why) in cases {
+      assert!(
+        validate_url_scheme(bad).is_err(),
+        "{bad:?} should be rejected ({why})"
+      );
+    }
+  }
+
+  #[test]
+  fn validate_url_scheme_rejects_reserved() {
+    // Registering these as app handlers would hijack normal browsing.
+    for reserved in &["http", "https", "file", "ftp", "ws", "wss"] {
+      assert!(
+        validate_url_scheme(reserved).is_err(),
+        "{reserved:?} must be rejected as reserved"
+      );
+    }
+  }
+
+  /// Build a minimal macOS `.app` skeleton with an `Info.plist` carrying the
+  /// given bundle id, returning the bundle root.
+  fn fake_macos_bundle(
+    parent: &std::path::Path,
+    bundle_id: &str,
+  ) -> std::path::PathBuf {
+    let bundle = parent.join("MyApp.app");
+    let contents = bundle.join("Contents");
+    std::fs::create_dir_all(&contents).unwrap();
+    write_helper_plist(&contents.join("Info.plist"), bundle_id);
+    bundle
+  }
+
+  #[test]
+  fn deep_links_macos_writes_cfbundleurltypes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let bundle = fake_macos_bundle(tmp.path(), "com.acme.myapp");
+    register_deep_links_macos(
+      &bundle,
+      &["acme".to_string(), "acme-beta".to_string()],
+    )
+    .unwrap();
+
+    let dict: plist::Dictionary =
+      plist::from_file(bundle.join("Contents/Info.plist")).unwrap();
+    let url_types = dict
+      .get("CFBundleURLTypes")
+      .and_then(|v| v.as_array())
+      .expect("CFBundleURLTypes array");
+    assert_eq!(url_types.len(), 1);
+    let url_type = url_types[0].as_dictionary().unwrap();
+    // The URL name is keyed off the bundle id so multiple apps don't collide.
+    assert_eq!(
+      url_type.get("CFBundleURLName").and_then(|v| v.as_string()),
+      Some("com.acme.myapp")
+    );
+    assert_eq!(
+      url_type.get("CFBundleTypeRole").and_then(|v| v.as_string()),
+      Some("Viewer")
+    );
+    let schemes: Vec<&str> = url_type
+      .get("CFBundleURLSchemes")
+      .and_then(|v| v.as_array())
+      .unwrap()
+      .iter()
+      .map(|v| v.as_string().unwrap())
+      .collect();
+    assert_eq!(schemes, ["acme", "acme-beta"]);
+  }
+
+  /// Write a minimal Linux `.desktop` entry into `dir` and return its path.
+  fn fake_desktop_file(
+    dir: &std::path::Path,
+    body: &str,
+  ) -> std::path::PathBuf {
+    let path = dir.join("myapp.desktop");
+    std::fs::write(&path, body).unwrap();
+    path
+  }
+
+  #[test]
+  fn deep_links_linux_adds_mimetype_and_url_field_code() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = fake_desktop_file(
+      tmp.path(),
+      "[Desktop Entry]\nName=MyApp\nExec=/opt/myapp/myapp\nType=Application\n",
+    );
+    register_deep_links_linux(
+      tmp.path(),
+      &["acme".to_string(), "acme-beta".to_string()],
+    )
+    .unwrap();
+
+    let out = std::fs::read_to_string(&path).unwrap();
+    // The launcher must receive the URL, so `%u` is appended exactly once.
+    assert!(
+      out.contains("Exec=/opt/myapp/myapp %u"),
+      "Exec should gain a %u field code; got:\n{out}"
+    );
+    assert!(
+      out
+        .contains("MimeType=x-scheme-handler/acme;x-scheme-handler/acme-beta;"),
+      "MimeType should list every scheme handler; got:\n{out}"
+    );
+  }
+
+  #[test]
+  fn deep_links_linux_does_not_duplicate_field_code() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = fake_desktop_file(
+      tmp.path(),
+      "[Desktop Entry]\nExec=/opt/myapp/myapp %U\nType=Application\n",
+    );
+    register_deep_links_linux(tmp.path(), &["acme".to_string()]).unwrap();
+
+    let out = std::fs::read_to_string(&path).unwrap();
+    // An existing `%U` (or `%u`) already forwards the URL — don't add another.
+    assert!(
+      out.contains("Exec=/opt/myapp/myapp %U\n"),
+      "existing field code should be left untouched; got:\n{out}"
+    );
+    assert!(!out.contains("%U %u") && !out.contains("%u %U"));
+  }
+
+  #[test]
+  fn deep_links_linux_merges_into_existing_mimetype() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = fake_desktop_file(
+      tmp.path(),
+      "[Desktop Entry]\nExec=/opt/myapp/myapp\nMimeType=text/html\n",
+    );
+    register_deep_links_linux(tmp.path(), &["acme".to_string()]).unwrap();
+
+    let out = std::fs::read_to_string(&path).unwrap();
+    assert!(
+      out.contains("MimeType=text/html;x-scheme-handler/acme;"),
+      "existing MimeType entries should be preserved; got:\n{out}"
+    );
+  }
+
+  #[test]
+  fn deep_links_windows_writes_registry_script() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("MyApp.bat"), "@echo off\r\n").unwrap();
+    register_deep_links_windows(
+      tmp.path(),
+      &["acme".to_string(), "acme-beta".to_string()],
+    )
+    .unwrap();
+
+    let script =
+      std::fs::read_to_string(tmp.path().join("register-deep-links.bat"))
+        .unwrap();
+    for scheme in &["acme", "acme-beta"] {
+      assert!(
+        script
+          .contains(&format!("reg add \"HKCU\\Software\\Classes\\{scheme}\"")),
+        "script should register {scheme}; got:\n{script}"
+      );
+    }
+    // The protocol handler must point back at the packaged launcher.
+    assert!(
+      script.contains("MyApp.bat"),
+      "handler should invoke the launcher; got:\n{script}"
+    );
+  }
+
+  #[test]
+  fn register_deep_links_lowercases_and_dispatches_by_target() {
+    // Drives the top-level entry point with an explicit target so the test
+    // exercises the macOS path on any host. Mixed-case input must be
+    // normalized to lowercase before it reaches the plist.
+    let tmp = tempfile::tempdir().unwrap();
+    let bundle = fake_macos_bundle(tmp.path(), "com.acme.myapp");
+    let mut flags = empty_desktop_flags();
+    flags.target = Some("aarch64-apple-darwin".to_string());
+    flags.deep_links = vec!["  ACME  ".to_string(), "".to_string()];
+    register_deep_links(&bundle, &flags).unwrap();
+
+    let dict: plist::Dictionary =
+      plist::from_file(bundle.join("Contents/Info.plist")).unwrap();
+    let schemes: Vec<&str> = dict
+      .get("CFBundleURLTypes")
+      .and_then(|v| v.as_array())
+      .unwrap()[0]
+      .as_dictionary()
+      .unwrap()
+      .get("CFBundleURLSchemes")
+      .and_then(|v| v.as_array())
+      .unwrap()
+      .iter()
+      .map(|v| v.as_string().unwrap())
+      .collect();
+    assert_eq!(schemes, ["acme"]);
+  }
+
+  #[test]
+  fn register_deep_links_rejects_reserved_scheme() {
+    let tmp = tempfile::tempdir().unwrap();
+    let bundle = fake_macos_bundle(tmp.path(), "com.acme.myapp");
+    let mut flags = empty_desktop_flags();
+    flags.target = Some("aarch64-apple-darwin".to_string());
+    flags.deep_links = vec!["https".to_string()];
+    assert!(register_deep_links(&bundle, &flags).is_err());
   }
 
   #[test]

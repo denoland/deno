@@ -5244,6 +5244,7 @@
       "darwin": false,
       "reason": "error: Uncaught AssertionError: ifError got unwanted exception: ifError got unwa"
     },
+    "parallel/test-runner-get-test-context.js": {},
     "parallel/test-runner-global-setup-watch-mode.mjs": {
       "linux": false,
       "darwin": false,
