@@ -71,6 +71,7 @@ const {
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
+  kPermTokenSink,
 } = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
 const { domainToASCII } = core.loadExtScript(
   "ext:deno_node/internal/idna.ts",
@@ -93,12 +94,19 @@ function onlookup(
     return this.callback(dnsException(err, "getaddrinfo", this.hostname));
   }
 
-  this.callback(
-    null,
-    addresses[0],
-    this.family || isIP(addresses[0]),
-    netPermToken,
-  );
+  // The NetPermToken is only handed to net.connect's built-in lookup, which
+  // tags its callback with `kPermTokenSink`. User-supplied callbacks never
+  // bear the marker and so never observe the token (GHSA-fhjh-jqv7-m238).
+  if (this.callback[kPermTokenSink]) {
+    this.callback(
+      null,
+      addresses[0],
+      this.family || isIP(addresses[0]),
+      netPermToken,
+    );
+  } else {
+    this.callback(null, addresses[0], this.family || isIP(addresses[0]));
+  }
 }
 
 function onlookupall(
@@ -122,7 +130,9 @@ function onlookupall(
     };
   }
 
-  if (this.callback.length > 1) {
+  // Only net.connect's built-in lookup (tagged with `kPermTokenSink`) is given
+  // the NetPermToken; user-supplied callbacks never observe it.
+  if (this.callback[kPermTokenSink]) {
     this.callback(null, parsedAddresses, undefined, netPermToken);
   } else {
     this.callback(null, parsedAddresses);

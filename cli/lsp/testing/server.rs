@@ -228,9 +228,17 @@ impl TestServer {
     &self,
     params: lsp_custom::TestRunRequestParams,
     workspace_settings: config::WorkspaceSettings,
+    config_tree: &config::ConfigTree,
   ) -> LspResult<Option<Value>> {
-    let test_run =
-      { TestRun::init(&params, self.tests.clone(), workspace_settings).await };
+    let test_run = {
+      TestRun::init(
+        &params,
+        self.tests.clone(),
+        workspace_settings,
+        config_tree,
+      )
+      .await
+    };
     let enqueued = test_run.as_enqueued().await;
     {
       let mut runs = self.runs.lock();

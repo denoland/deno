@@ -300,9 +300,11 @@ function deserialize(buffer: Buffer | ArrayBufferView | DataView) {
 }
 
 const kHandle = Symbol("kHandle");
+const kHeaderWritten = Symbol("kHeaderWritten");
 
 class Serializer {
   [kHandle]: object;
+  [kHeaderWritten] = false;
   constructor() {
     this[kHandle] = op_v8_new_serializer(this);
   }
@@ -312,7 +314,22 @@ class Serializer {
   }
 
   releaseBuffer(): Buffer {
-    return Buffer.from(op_v8_release_buffer(this[kHandle]));
+    const buf = Buffer.from(op_v8_release_buffer(this[kHandle]));
+    // V8 14.9 bumped the ValueSerializer wire format version from 15 to
+    // 16 to support ArrayBuffers larger than 4GB. Node.js cannot
+    // deserialize format 16, which breaks consumers that feed
+    // `v8.serialize` output to a Node.js process. For payloads smaller
+    // than 4GB both formats encode identical bytes after the two-byte
+    // header, so relabel the header as version 15 to keep the output
+    // readable by Node.js. See
+    // https://github.com/denoland/deno/issues/35113.
+    if (
+      this[kHeaderWritten] && getViewByteLength(buf) < 0x100000000 &&
+      buf[0] === 0xFF && buf[1] === 0x10
+    ) {
+      buf[1] = 0x0F;
+    }
+    return buf;
   }
 
   transferArrayBuffer(_id: number, _arrayBuffer: ArrayBuffer): void {
@@ -325,6 +342,7 @@ class Serializer {
 
   writeHeader(): void {
     op_v8_write_header(this[kHandle]);
+    this[kHeaderWritten] = true;
   }
 
   writeRawBytes(source: ArrayBufferView): void {

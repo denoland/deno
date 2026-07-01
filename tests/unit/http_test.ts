@@ -548,10 +548,19 @@ Deno.test(
   { permissions: { net: true } },
   // Issue: https://github.com/denoland/deno/issues/10870
   async function httpServerHang() {
-    // Quick and dirty way to make a readable stream from a string. Alternatively,
-    // `readableStreamFromReader(file)` could be used.
+    // A genuinely-opaque streaming body (unknown length -> chunked response),
+    // which is what this test exercises. Note: `new Response(s).body` can no
+    // longer be used here -- a body stream materialized from a static string is
+    // now recovered to a fixed-length body, so it would be sent with a
+    // Content-Length and skip the streaming path this test targets.
     function stream(s: string): ReadableStream<Uint8Array> {
-      return new Response(s).body!;
+      const bytes = new TextEncoder().encode(s);
+      return new ReadableStream({
+        pull(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        },
+      });
     }
 
     // deno-lint-ignore no-explicit-any
@@ -1334,7 +1343,7 @@ function tmpUnixSocketPath(): string {
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function httpServerOnUnixSocket() {
     const filePath = tmpUnixSocketPath();
@@ -2386,7 +2395,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function httpServerWithoutExclusiveAccessToUnixSocket() {
     const filePath = tmpUnixSocketPath();

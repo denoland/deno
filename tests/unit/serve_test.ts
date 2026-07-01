@@ -31,6 +31,7 @@ const {
   serveHttpOnListener,
   serveHttpOnConnection,
   getCachedAbortSignal,
+  resetLegacyAbortWarning,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
@@ -496,13 +497,15 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
     },
     port: servePort,
     signal: ac.signal,
-    onListen: (addr) => listeningDeferred.resolve(addr),
+    onListen: listeningDeferred.resolve,
     onError: createOnErrorCb(ac),
   });
 
   const addr = await listeningDeferred.promise;
   assertEquals(addr.hostname, server.addr.hostname);
   assertEquals(addr.port, server.addr.port);
+  assertEquals(addr.transport, server.addr.transport);
+  assertEquals(addr.transport, "tcp");
   const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
     headers: { "connection": "close" },
   });
@@ -1814,6 +1817,249 @@ Deno.test(
   },
 );
 
+// Regression test for https://github.com/denoland/deno/issues/22387:
+// `await server.shutdown()` used to leave upgraded `serverWebSocket`
+// resources alive (failing the post-test resource sanitizer), because
+// nothing tore down the active WebSocket when the listener stopped.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketShutdownNoLeak() {
+    const wsOpen = Promise.withResolvers<void>();
+    const wsClose = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const server = Deno.serve({
+      handler: (request) => {
+        const { response, socket } = Deno.upgradeWebSocket(request);
+        socket.onopen = () => wsOpen.resolve();
+        socket.onclose = () => wsClose.resolve();
+        return response;
+      },
+      port: servePort,
+      onListen: onListen(listeningDeferred.resolve),
+    });
+
+    await listeningDeferred.promise;
+
+    const clientClose = Promise.withResolvers<void>();
+    const ws = new WebSocket(`ws://localhost:${servePort}`);
+    ws.onclose = () => clientClose.resolve();
+    await wsOpen.promise;
+
+    // Without the leak fix this would either hang (graceful waits forever)
+    // or return immediately and leave the serverWebSocket resource alive.
+    await server.shutdown();
+
+    // The server-initiated Close(1001) should drive both ends to close.
+    await wsClose.promise;
+    await clientClose.promise;
+    await server.finished;
+  },
+);
+
+// Same regression as `httpServerWebSocketShutdownNoLeak` but via the abort
+// signal path (`signal.abort()` -> `op_http_cancel`), which is a separate op
+// from `op_http_close` and must also drive open websockets to close.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketAbortNoLeak() {
+    const wsOpen = Promise.withResolvers<void>();
+    const wsClose = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler: (request) => {
+        const { response, socket } = Deno.upgradeWebSocket(request);
+        socket.onopen = () => wsOpen.resolve();
+        socket.onclose = () => wsClose.resolve();
+        return response;
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+    });
+
+    await listeningDeferred.promise;
+
+    const clientClose = Promise.withResolvers<void>();
+    const ws = new WebSocket(`ws://localhost:${servePort}`);
+    ws.onclose = () => clientClose.resolve();
+    await wsOpen.promise;
+
+    ac.abort();
+
+    await wsClose.promise;
+    await clientClose.promise;
+    await server.finished;
+  },
+);
+
+// Gap from PR review: a handler that calls `Deno.upgradeWebSocket` *during*
+// the graceful shutdown drain — after the listener has been cancelled and
+// (in the original implementation) the websocket registry snapshot already
+// taken — must still have its new websocket torn down. Without the
+// `shutting_down` flag the late socket pinned the server alive forever and
+// `await server.shutdown()` hung.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketUpgradeDuringShutdown() {
+    const handlerEntered = Promise.withResolvers<void>();
+    const releaseHandler = Promise.withResolvers<void>();
+    const wsOpen = Promise.withResolvers<void>();
+    const wsClose = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const server = Deno.serve({
+      handler: async (request) => {
+        // Block inside the handler so `server.shutdown()` runs before the
+        // websocket upgrade response is returned. The upgrade — and the
+        // subsequent registration — therefore happen *after* the shutdown
+        // flag has been set and the listener has been cancelled.
+        handlerEntered.resolve();
+        await releaseHandler.promise;
+        const { response, socket } = Deno.upgradeWebSocket(request);
+        socket.onopen = () => wsOpen.resolve();
+        socket.onclose = () => wsClose.resolve();
+        return response;
+      },
+      port: servePort,
+      onListen: onListen(listeningDeferred.resolve),
+    });
+
+    await listeningDeferred.promise;
+
+    const clientClose = Promise.withResolvers<void>();
+    const ws = new WebSocket(`ws://localhost:${servePort}`);
+    ws.onclose = () => clientClose.resolve();
+    await handlerEntered.promise;
+
+    // Begin graceful shutdown while the handler is still inside its
+    // pre-upgrade await. Then let the handler return the upgrade response,
+    // which triggers `register_server_websocket` *after* shutdown began.
+    const shutdownPromise = server.shutdown();
+    // Yield to the event loop so the shutdown op has a chance to set the
+    // `shutting_down` flag and cancel the listener before the handler
+    // resumes. We use multiple microtask hops rather than a timer so the
+    // resource sanitizer stays happy.
+    for (let i = 0; i < 16; i++) await Promise.resolve();
+    releaseHandler.resolve();
+
+    // If the late-registered socket weren't auto-shut-down by the
+    // `shutting_down` flag, `shutdownPromise` would never resolve.
+    await shutdownPromise;
+
+    await wsClose.promise;
+    await clientClose.promise;
+    await server.finished;
+  },
+);
+
+// Gap from PR review: `begin_shutdown` used to overwrite an already-recorded
+// `Forced` mode with `Graceful` when both `signal.abort()` and
+// `server.shutdown()` are called. The user-visible failure is that a websocket
+// upgraded during the small window between the abort and the graceful
+// shutdown would be put back onto the graceful path (whose Close-frame write
+// could hang). Calling abort + shutdown back-to-back must still drain
+// cleanly and not regress the abort path.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketAbortThenShutdownNoHang() {
+    const wsOpen = Promise.withResolvers<void>();
+    const wsClose = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler: (request) => {
+        const { response, socket } = Deno.upgradeWebSocket(request);
+        socket.onopen = () => wsOpen.resolve();
+        socket.onclose = () => wsClose.resolve();
+        return response;
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+    });
+
+    await listeningDeferred.promise;
+
+    const clientClose = Promise.withResolvers<void>();
+    const ws = new WebSocket(`ws://localhost:${servePort}`);
+    ws.onclose = () => clientClose.resolve();
+    await wsOpen.promise;
+
+    ac.abort();
+    // Calling shutdown after abort previously overwrote the registry's
+    // recorded mode (`Forced` → `Graceful`). Now it must be a no-op for
+    // the mode and not put open websockets back onto the graceful path.
+    await server.shutdown();
+
+    await wsClose.promise;
+    await clientClose.promise;
+    await server.finished;
+  },
+);
+
+// Gap from PR review: a websocket that has already started its own close
+// handshake from the server side (handler called `socket.close()`) must
+// not block graceful `server.shutdown()` if the peer never sends the
+// close ack. Before the fix, `server_shutdown()` early-returned for
+// already-closed sockets and left the pending read alive forever.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketShutdownAfterServerClose() {
+    const wsOpen = Promise.withResolvers<void>();
+    const wsCloseStarted = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    let serverSocket: WebSocket | undefined;
+    const server = Deno.serve({
+      handler: (request) => {
+        const { response, socket } = Deno.upgradeWebSocket(request);
+        serverSocket = socket;
+        socket.onopen = () => {
+          // Initiate the close handshake from the server side and then
+          // resolve so the test can proceed to call `server.shutdown()`
+          // while the socket is still in `CLOSING` state.
+          socket.close();
+          wsCloseStarted.resolve();
+          wsOpen.resolve();
+        };
+        return response;
+      },
+      port: servePort,
+      onListen: onListen(listeningDeferred.resolve),
+    });
+
+    await listeningDeferred.promise;
+
+    // Build a raw TCP client that completes the WS upgrade but never
+    // replies with a Close frame. This wedges the socket in CLOSING
+    // until the server gives up reading.
+    const conn = await Deno.connect({ port: servePort });
+    const key = "dGhlIHNhbXBsZSBub25jZQ==";
+    const handshake =
+      `GET / HTTP/1.1\r\nHost: localhost:${servePort}\r\nUpgrade: websocket\r\n` +
+      `Connection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\n` +
+      `Sec-WebSocket-Version: 13\r\n\r\n`;
+    await conn.write(new TextEncoder().encode(handshake));
+    // Drain the handshake response so the server-side upgrade completes.
+    const responseBuf = new Uint8Array(1024);
+    await conn.read(responseBuf);
+
+    await wsOpen.promise;
+    await wsCloseStarted.promise;
+
+    // Without the mid-close fix, this would hang forever because the
+    // pending `op_ws_next_event` read never observed any data and the
+    // duplicate-Close-frame early return left no one to cancel it.
+    await server.shutdown();
+    try {
+      conn.close();
+    } catch { /* already closed */ }
+    await server.finished;
+    // Silence unused-variable lint; the server-side WebSocket reference
+    // is here to make the test intent obvious.
+    void serverSocket;
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpServerWebSocketCanAccessRequest() {
@@ -2808,10 +3054,21 @@ function createServerLengthTest(name: string, testCase: TestCase) {
   });
 }
 
-// Quick and dirty way to make a readable stream from a string. Alternatively,
-// `readableStreamFromReader(file)` could be used.
+// Make a genuinely-opaque readable stream from a string, i.e. one whose total
+// length is not known ahead of time. Note: `new Response(s).body` can no longer
+// be used here -- a body stream materialized from a static string is now
+// recovered and served with a Content-Length (see `recoveredStaticStreamBody`
+// below), so it would no longer exercise the chunked path these tests target.
 function stream(s: string): ReadableStream<Uint8Array> {
-  return new Response(s).body!;
+  const bytes = new TextEncoder().encode(s);
+  return new ReadableStream({
+    pull(controller) {
+      if (bytes.byteLength > 0) {
+        controller.enqueue(bytes);
+      }
+      controller.close();
+    },
+  });
 }
 
 createServerLengthTest("fixedResponseKnown", {
@@ -2878,6 +3135,16 @@ createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
   body: stream(""),
   expectsChunked: true,
   expectsConnLen: false,
+});
+
+// A body stream that was materialized from a static string and not read (the
+// common `new Response(oldResponse.body, oldResponse)` framework pattern, e.g.
+// Hono header middleware) is recovered to its static body and served on the
+// fast path with a Content-Length, rather than being downgraded to chunked.
+createServerLengthTest("recoveredStaticStreamBody", {
+  body: new Response("foo bar baz").body!,
+  expectsChunked: false,
+  expectsConnLen: true,
 });
 
 Deno.test(
@@ -3335,6 +3602,7 @@ for (const testCase of compressionTestCases) {
         const listeningDeferred = Promise.withResolvers<void>();
         const ac = new AbortController();
         await using server = Deno.serve({
+          automaticCompression: true,
           handler: async (_request) => {
             const f = await makeTempFile(testCase.length);
             deferred.resolve();
@@ -3368,10 +3636,15 @@ for (const testCase of compressionTestCases) {
               testCase.out["Content-Encoding"] || null,
             );
           } else if (testCase.expect == "gzip" || testCase.expect == "br") {
-            // Note the fetch will transparently decompress this response, BUT we can detect that a response
-            // was compressed by the lack of a content length.
+            // The fetch will transparently decompress this response. Per the
+            // fetch spec the `content-encoding` header stays visible;
+            // `content-length` is absent because the server streams the
+            // compressed body with chunked transfer encoding.
             assertEquals(body.byteLength, testCase.length);
-            assertEquals(resp.headers.get("content-encoding"), null);
+            assertEquals(
+              resp.headers.get("content-encoding"),
+              testCase.expect,
+            );
             assertEquals(resp.headers.get("content-length"), null);
           }
         } finally {
@@ -3385,12 +3658,235 @@ for (const testCase of compressionTestCases) {
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServerAutomaticCompressionAppliesForNoRequestFastPath() {
+    const body = "a".repeat(1000);
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    // A zero-argument handler takes the native "no request" fast path, where
+    // the request is never exposed to JS. Automatic compression must still
+    // apply: `accept-encoding` is retained so the response can be compressed.
+    await using server = Deno.serve({
+      automaticCompression: true,
+      handler: () => {
+        return new Response(body, {
+          headers: { "content-type": "text/plain" },
+        });
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    try {
+      await listeningDeferred.promise;
+      const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+        headers: { "accept-encoding": "gzip" },
+      });
+      assertEquals(await resp.text(), body);
+      assertEquals(resp.headers.get("content-encoding"), "gzip");
+      assertEquals(resp.headers.get("vary"), "Accept-Encoding");
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerAutomaticCompressionOffByDefault() {
+    const body = "a".repeat(1000);
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      handler: (_request) => {
+        return new Response(body, {
+          headers: { "content-type": "text/plain" },
+        });
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    try {
+      await listeningDeferred.promise;
+      const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+        headers: { "accept-encoding": "gzip" },
+      });
+      assertEquals(await resp.text(), body);
+      assertEquals(resp.headers.get("content-encoding"), null);
+      assertEquals(resp.headers.get("vary"), null);
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerAutomaticCompressionCanBeDisabledHyper() {
+    const body = "a".repeat(1000);
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      automaticCompression: false,
+      handler: (_request) => {
+        return new Response(body, {
+          headers: { "content-type": "text/plain" },
+        });
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    try {
+      await listeningDeferred.promise;
+      const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+        headers: { "accept-encoding": "gzip" },
+      });
+      assertEquals(await resp.text(), body);
+      assertEquals(resp.headers.get("content-encoding"), null);
+      assertEquals(resp.headers.get("vary"), null);
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerAutomaticCompressionPostBodyDirectResponseCloses() {
+    const body = "a".repeat(1000);
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      automaticCompression: true,
+      handler: (_request) => {
+        return new Response(body, {
+          headers: { "content-type": "text/plain" },
+        });
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+    const conn = await Deno.connect({ port: servePort });
+    const encoder = new TextEncoder();
+    await writeAll(
+      conn,
+      encoder.encode(
+        `POST / HTTP/1.1\r\nHost: example.domain\r\nAccept-Encoding: gzip\r\nContent-Length: 5\r\n\r\n`,
+      ),
+    );
+
+    const reader = new BufReader(conn);
+    const textProtoReader = new TextProtoReader(reader);
+    const statusLine = await textProtoReader.readLine();
+    assertEquals(statusLine, "HTTP/1.1 200 OK");
+    const headers = await textProtoReader.readMimeHeader();
+    assert(headers !== null);
+    assertEquals(headers.get("content-encoding"), "gzip");
+    assertEquals(headers.get("transfer-encoding"), "chunked");
+    assertEquals(headers.get("connection"), "close");
+
+    conn.close();
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  async function httpServerAutomaticCompressionEnvDefault() {
+    async function run(envValue: string): Promise<string[]> {
+      const { success, stdout } = await new Deno.Command(Deno.execPath(), {
+        args: [
+          "eval",
+          `
+          async function check(options) {
+            let server;
+            const finished = Promise.withResolvers();
+            server = Deno.serve({
+              ...options,
+              port: 0,
+              onListen: async ({ port }) => {
+                const resp = await fetch("http://127.0.0.1:" + port + "/", {
+                  headers: { "accept-encoding": "gzip" },
+                });
+                console.log(resp.headers.get("content-encoding") ?? "none");
+                await resp.text();
+                await server.shutdown();
+                finished.resolve();
+              },
+            }, (_request) => {
+              return new Response("a".repeat(1000), {
+                headers: { "content-type": "text/plain" },
+              });
+            });
+            await finished.promise;
+            await server.finished;
+          }
+
+          await check({});
+          await check({ automaticCompression: false });
+          await check({ automaticCompression: true });
+        `,
+        ],
+        env: { DENO_SERVE_AUTOMATIC_COMPRESSION: envValue },
+        stdout: "piped",
+        stderr: "inherit",
+      }).output();
+
+      assert(success);
+      return new TextDecoder().decode(stdout).trim().split("\n");
+    }
+
+    assertEquals(await run("1"), [
+      "gzip",
+      "none",
+      "gzip",
+    ]);
+    assertEquals(await run("true"), [
+      "gzip",
+      "none",
+      "gzip",
+    ]);
+    assertEquals(await run("0"), [
+      "none",
+      "none",
+      "gzip",
+    ]);
+    assertEquals(await run("False"), [
+      "none",
+      "none",
+      "gzip",
+    ]);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServerHttp2Compression() {
     const body = "a".repeat(1000);
     const listeningDeferred = Promise.withResolvers<void>();
     const ac = new AbortController();
 
     await using server = Deno.serve({
+      automaticCompression: true,
       handler: () => {
         return new Response(body, {
           headers: { "content-type": "text/plain" },
@@ -3431,6 +3927,64 @@ Deno.test(
       assertEquals(headers["vary"], "Accept-Encoding");
       assertEquals(headers["content-length"], `${compressedLength}`);
       assert(compressedLength < body.length);
+    } finally {
+      client.close();
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerHttp2AutomaticCompressionCanBeDisabled() {
+    const body = "a".repeat(1000);
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      automaticCompression: false,
+      handler: () => {
+        return new Response(body, {
+          headers: { "content-type": "text/plain" },
+        });
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+    const client = http2.connect(`http://localhost:${servePort}`);
+    try {
+      const req = client.request({
+        ":path": "/",
+        "accept-encoding": "br",
+      });
+      let headers: http2.IncomingHttpHeaders | undefined;
+      let responseBody = "";
+      req.setEncoding("utf8");
+      req.on("response", (responseHeaders) => {
+        headers = responseHeaders;
+      });
+      req.on("data", (chunk) => {
+        responseBody += chunk;
+      });
+
+      req.end();
+      await new Promise<void>((resolve, reject) => {
+        req.on("end", resolve);
+        req.on("error", reject);
+        client.on("error", reject);
+      });
+
+      assert(headers);
+      assertEquals(Number(headers[":status"]), 200);
+      assertEquals(headers["content-encoding"], undefined);
+      assertEquals(headers["vary"], undefined);
+      assertEquals(headers["content-length"], `${body.length}`);
+      assertEquals(responseBody, body);
     } finally {
       client.close();
       ac.abort();
@@ -3673,21 +4227,25 @@ Deno.test(
   { permissions: { read: true, net: true } },
   async function httpServerWithTls() {
     const ac = new AbortController();
-    const { promise, resolve } = Promise.withResolvers<void>();
     const hostname = "127.0.0.1";
+    const listeningDeferred = Promise.withResolvers<Deno.NetAddr>();
 
     await using server = Deno.serve({
       handler: () => new Response("Hello World"),
       hostname,
       port: servePort,
       signal: ac.signal,
-      onListen: onListen(resolve),
+      onListen: listeningDeferred.resolve,
       onError: createOnErrorCb(ac),
       cert: Deno.readTextFileSync("tests/testdata/tls/localhost.crt"),
       key: Deno.readTextFileSync("tests/testdata/tls/localhost.key"),
     });
 
-    await promise;
+    const addr = await listeningDeferred.promise;
+    assertEquals(addr.hostname, server.addr.hostname);
+    assertEquals(addr.port, server.addr.port);
+    assertEquals(addr.transport, server.addr.transport);
+    assertEquals(addr.transport, "tcp");
     const caCert = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
     const resp = await fetch(`https://localhost:${servePort}/`, {
@@ -4866,7 +5424,7 @@ Deno.test("Deno.HttpServer is not thenable", async () => {
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { run: true, read: true, write: true },
+    permissions: { run: true, read: true, write: true, net: true },
   },
   async function httpServerUnixDomainSocket() {
     const { promise, resolve } = Promise.withResolvers<Deno.UnixAddr>();
@@ -5431,5 +5989,106 @@ Deno.test(
     await serverWebSocketClosed.promise;
     ac.abort();
     await server.finished;
+  },
+);
+
+async function captureLegacyAbortWarnings(
+  fn: () => Promise<void>,
+): Promise<string[]> {
+  resetLegacyAbortWarning();
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    if (typeof args[0] === "string" && args[0].includes("request.signal")) {
+      warnings.push(args[0]);
+      return;
+    }
+    originalWarn(...args);
+  };
+  try {
+    await fn();
+  } finally {
+    console.warn = originalWarn;
+    resetLegacyAbortWarning();
+  }
+  return warnings;
+}
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerLegacyAbortWarningFiresOnce() {
+    const warnings = await captureLegacyAbortWarnings(async () => {
+      const { finished, shutdown } = await makeServer((req) => {
+        req.signal.addEventListener("abort", () => {});
+        return new Response("ok");
+      });
+      for (let i = 0; i < 3; i++) {
+        await (await fetch(`http://localhost:${servePort}`)).text();
+      }
+      await shutdown();
+      await finished;
+    });
+    assertEquals(warnings.length, 1);
+    assertStringIncludes(warnings[0], "request.signal");
+    assertStringIncludes(warnings[0], "--unstable-no-legacy-abort");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerLegacyAbortWarningSkipsWhenSignalUntouched() {
+    const warnings = await captureLegacyAbortWarnings(async () => {
+      const { finished, shutdown } = await makeServer(() => {
+        return new Response("ok");
+      });
+      for (let i = 0; i < 3; i++) {
+        await (await fetch(`http://localhost:${servePort}`)).text();
+      }
+      await shutdown();
+      await finished;
+    });
+    assertEquals(warnings.length, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, run: true, read: true } },
+  async function httpServerLegacyAbortWarningSilentUnderUnstableFlag() {
+    const subprocessPort = servePort + 1;
+    const code = `
+      const originalWarn = console.warn;
+      let warned = false;
+      console.warn = (...args) => {
+        if (typeof args[0] === "string" && args[0].includes("request.signal")) {
+          warned = true;
+        }
+        originalWarn(...args);
+      };
+      const { promise, resolve } = Promise.withResolvers();
+      const server = Deno.serve({
+        port: ${subprocessPort},
+        handler: (req) => {
+          req.signal.addEventListener("abort", () => {});
+          return new Response("ok");
+        },
+        onListen: resolve,
+      });
+      await promise;
+      for (let i = 0; i < 3; i++) {
+        await (await fetch("http://localhost:${subprocessPort}")).text();
+      }
+      console.log(warned ? "WARNED" : "QUIET");
+      await server.shutdown();
+    `;
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "--unstable-no-legacy-abort", code],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code: exitCode, stdout } = await command.output();
+    const output = new TextDecoder().decode(stdout);
+    assertEquals(exitCode, 0);
+    assertStringIncludes(output, "QUIET");
+    assert(!output.includes("WARNED"));
   },
 );

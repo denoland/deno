@@ -135,7 +135,6 @@
     "es-module/test-typescript-commonjs.mjs": {},
     "es-module/test-typescript-eval.mjs": {},
     "es-module/test-typescript-module.mjs": {},
-    "es-module/test-typescript-transform.mjs": {},
     "es-module/test-typescript.mjs": {},
     "es-module/test-vm-compile-function-lineoffset.js": {},
     "es-module/test-vm-source-text-module-leak.js": {},
@@ -193,10 +192,6 @@
     "parallel/test-als-defaultvalue.js": {},
     "parallel/test-arm-math-illegal-instruction.js": {},
     "parallel/test-assert-async.js": {},
-    "parallel/test-assert-calltracker-calls.js": {},
-    "parallel/test-assert-calltracker-getCalls.js": {},
-    "parallel/test-assert-calltracker-report.js": {},
-    "parallel/test-assert-calltracker-verify.js": {},
     "parallel/test-assert-checktag.js": {
       "ignore": true,
       "reason": "globalThis is now deeply equal to a plain object copy because Node.js timers are used as default globals, eliminating the proxy-based timer function difference that previously made them unequal"
@@ -204,16 +199,21 @@
     "parallel/test-assert-class-destructuring.js": {},
     "parallel/test-assert-class.js": {},
     "parallel/test-assert-deep-with-error.js": {},
-    "parallel/test-assert-deep.js": {},
+    "parallel/test-assert-deep.js": {
+      "ignore": true,
+      "reason": "assert.deepStrictEqual diff output for shared array elements after memoized cycle detection does not match Node's formatting (2 subtests)"
+    },
     "parallel/test-assert-esm-cjs-message-verify.js": {},
-    "parallel/test-assert-fail-deprecation.js": {},
     "parallel/test-assert-fail.js": {},
     "parallel/test-assert-first-line.js": {},
     "parallel/test-assert-if-error.js": {},
     "parallel/test-assert-myers-diff.js": {},
     "parallel/test-assert-partial-deep-equal.js": {},
     "parallel/test-assert-typedarray-deepequal.js": {},
-    "parallel/test-assert.js": {},
+    "parallel/test-assert.js": {
+      "ignore": true,
+      "reason": "Node 26 assert: function/printf-style error-message arguments not yet implemented"
+    },
     "parallel/test-als-defaultvalue-original.js": {},
     "parallel/test-async-hooks-close-during-destroy.js": {
       "windows": false,
@@ -289,7 +289,10 @@
     "parallel/test-buffer-from.js": {},
     "parallel/test-buffer-generic-methods.js": {},
     "parallel/test-buffer-includes.js": {},
-    "parallel/test-buffer-indexof.js": {},
+    "parallel/test-buffer-indexof.js": {
+      "ignore": true,
+      "reason": "Node 26 added a byteLength/length parameter to Buffer.indexOf/lastIndexOf/includes not yet implemented"
+    },
     "parallel/test-buffer-inheritance.js": {},
     "parallel/test-buffer-inspect.js": {},
     "parallel/test-buffer-isascii.js": {},
@@ -628,9 +631,7 @@
     },
     "parallel/test-compile-cache-typescript-commonjs.js": {},
     "parallel/test-compile-cache-typescript-esm.js": {},
-    "parallel/test-compile-cache-typescript-strip-miss.js": {},
     "parallel/test-compile-cache-typescript-strip-sourcemaps.js": {},
-    "parallel/test-compile-cache-typescript-transform.js": {},
     "parallel/test-console-assign-undefined.js": {},
     "parallel/test-console-async-write-error.js": {},
     "parallel/test-console-formatTime.js": {},
@@ -647,22 +648,28 @@
     "parallel/test-console-tty-colors.js": {},
     "parallel/test-console-with-frozen-intrinsics.js": {},
     "parallel/test-coverage-with-inspector-disabled.js": {},
-    "parallel/test-crypto.js": {},
+    "parallel/test-crypto.js": {
+      "ignore": true,
+      "reason": "BoringSSL reports an oversized RSA signing digest as ERR_OSSL_RSA_DIGEST_TOO_BIG_FOR_RSA_KEY, where OpenSSL/Node expects ERR_OSSL_EVP_DECODE_ERROR"
+    },
     "parallel/test-crypto-aes-wrap.js": {},
     "parallel/test-crypto-argon2.js": {},
-    "parallel/test-crypto-async-sign-verify.js": {},
+    "parallel/test-crypto-async-sign-verify.js": {
+      "ignore": true,
+      "reason": "Expects the BoringSSL-specific ERR_OSSL_EVP_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE error; Deno does not surface this error for the unsupported keytype/digest combination"
+    },
     "parallel/test-crypto-authenticated-stream.js": {},
     "parallel/test-crypto-classes.js": {},
     "parallel/test-crypto-certificate.js": {},
-    "parallel/test-crypto-cipheriv-decipheriv.js": {
-      "exitCode": 1,
-      "output": "[WILDCARD]Unknown cipher id-aes128-wrap[WILDCARD]"
-    },
+    "parallel/test-crypto-cipheriv-decipheriv.js": {},
     "parallel/test-crypto-default-shake-lengths.js": {},
     "parallel/test-crypto-default-shake-lengths-oneshot.js": {},
     "parallel/test-crypto-des3-wrap.js": {},
     "parallel/test-crypto-dh-constructor.js": {},
-    "parallel/test-crypto-dh-curves.js": {},
+    "parallel/test-crypto-dh-curves.js": {
+      "ignore": true,
+      "reason": "Requires DH_check() results exposed via DiffieHellman.verifyError for invalid groups, which Deno's BoringSSL-backed crypto does not expose"
+    },
     "parallel/test-crypto-dh-errors.js": {},
     "parallel/test-crypto-dh-generate-keys.js": {},
     "parallel/test-crypto-dh-group-setters.js": {},
@@ -672,9 +679,14 @@
     "parallel/test-crypto-dh-odd-key.js": {},
     "parallel/test-crypto-dh-padding.js": {},
     "parallel/test-crypto-dh-shared.js": {},
-    "parallel/test-crypto-dh-stateless-async.js": {},
-    "parallel/test-crypto-dh-stateless.js": {},
-    "parallel/test-crypto-dh.js": {},
+    "parallel/test-crypto-dh-stateless.js": {
+      "ignore": true,
+      "reason": "Node 26 BoringSSL branch expects ERR_INVALID_ARG_VALUE naming options.privateKey.format/type; Deno's stateless diffieHellman reports a different objName/error"
+    },
+    "parallel/test-crypto-dh.js": {
+      "ignore": true,
+      "reason": "Node 26 BoringSSL branch expects createDiffieHellman with generator 0 to throw ERR_CRYPTO_OPERATION_FAILED; Deno's DH backend accepts it"
+    },
     "parallel/test-crypto-domain.js": {},
     "parallel/test-crypto-domains.js": {},
     "parallel/test-crypto-ecdh-convert-key.js": {},
@@ -690,13 +702,15 @@
     "parallel/test-crypto-getcipherinfo.js": {},
     "parallel/test-crypto-hash-stream-pipe.js": {},
     "parallel/test-crypto-hash.js": {
-      "exitCode": 1,
-      "output": "[WILDCARD]Mismatched <anonymous> function calls. Expected exactly 2, actual 1.[WILDCARD]",
-      "reason": "Test's expectWarning expects DEP0198 to fire, but the SHAKE128/256 block is gated on `!process.features.openssl_is_boringssl`; Deno reports BoringSSL=true so the SHAKE block — and thus the DEP0198 emit — is skipped"
+      "ignore": true,
+      "reason": "Flaky on CI (intermittently exits non-zero with no captured output) although it passes locally; the test's expectWarning/SHAKE handling races with async deprecation-warning delivery under CI concurrency"
     },
     "parallel/test-crypto-hkdf.js": {},
     "parallel/test-crypto-hmac.js": {},
-    "parallel/test-crypto-keygen.js": {},
+    "parallel/test-crypto-keygen.js": {
+      "ignore": true,
+      "reason": "Node 26 BoringSSL branch expects a synchronous RangeError 'publicExponent is invalid' for invalid RSA publicExponent which Deno validates asynchronously in the op"
+    },
     "parallel/test-crypto-keygen-async-dsa.js": {
       "flaky": true,
       "reason": "Pure-Rust DSA 2048/256 keygen is CPU-heavy and can exceed the per-test timeout when scheduled alongside test-crypto-keygen-async-dsa-key-object.js (which also generates a DSA 2048/256 key)"
@@ -713,19 +727,35 @@
     "parallel/test-crypto-keygen-async-named-elliptic-curve-encrypted-p256.js": {},
     "parallel/test-crypto-keygen-async-rsa.js": {},
     "parallel/test-crypto-keygen-bit-length.js": {},
-    "parallel/test-crypto-keygen-deprecation.js": {},
     "parallel/test-crypto-keygen-dh-classic.js": {},
-    "parallel/test-crypto-keygen-duplicate-deprecated-option.js": {},
     "parallel/test-crypto-keygen-eddsa.js": {},
     "parallel/test-crypto-pbkdf2.js": {},
-    "parallel/test-crypto-pqc-key-objects-ml-dsa.js": {},
-    "parallel/test-crypto-pqc-key-objects-ml-kem.js": {},
+    "parallel/test-crypto-pqc-key-objects-ml-dsa.js": {
+      "ignore": true,
+      "reason": "ML-DSA post-quantum keys are not supported by node:crypto createPublicKey/createPrivateKey (KeyObject layer)"
+    },
+    "parallel/test-crypto-pqc-key-objects-ml-kem.js": {
+      "ignore": true,
+      "reason": "ML-KEM post-quantum keys are not supported by node:crypto createPublicKey/createPrivateKey (KeyObject layer)"
+    },
     "parallel/test-crypto-pqc-key-objects-slh-dsa.js": {},
-    "parallel/test-crypto-pqc-keygen-ml-dsa.js": {},
-    "parallel/test-crypto-pqc-keygen-ml-kem.js": {},
+    "parallel/test-crypto-pqc-keygen-ml-dsa.js": {
+      "ignore": true,
+      "reason": "node:crypto generateKeyPair does not support ML-DSA post-quantum key types"
+    },
+    "parallel/test-crypto-pqc-keygen-ml-kem.js": {
+      "ignore": true,
+      "reason": "node:crypto generateKeyPair does not support ML-KEM post-quantum key types"
+    },
     "parallel/test-crypto-pqc-keygen-slh-dsa.js": {},
-    "parallel/test-crypto-pqc-sign-verify-ml-dsa.js": {},
-    "parallel/test-crypto-sign-verify.js": {},
+    "parallel/test-crypto-pqc-sign-verify-ml-dsa.js": {
+      "ignore": true,
+      "reason": "node:crypto sign/verify does not support ML-DSA post-quantum keys"
+    },
+    "parallel/test-crypto-sign-verify.js": {
+      "ignore": true,
+      "reason": "Uses the Node 26 raw-private/raw-public KeyObject export format, which Deno does not implement"
+    },
     "parallel/test-crypto-keygen-empty-passphrase-no-error.js": {},
     "parallel/test-crypto-keygen-empty-passphrase-no-prompt.js": {},
     "parallel/test-crypto-keygen-invalid-parameter-encoding-dsa.js": {},
@@ -740,13 +770,15 @@
     "parallel/test-crypto-keygen-rfc8017-a-2-3.js": {},
     "parallel/test-crypto-keygen-rsa-pss.js": {},
     "parallel/test-crypto-keygen-sync.js": {},
-    "parallel/test-crypto-key-objects.js": {},
+    "parallel/test-crypto-key-objects.js": {
+      "ignore": true,
+      "reason": "Deno does not validate RSA JWK modulus consistency (n == p*q) on import"
+    },
     "parallel/test-crypto-scrypt.js": {},
     "parallel/test-crypto-key-objects-messageport.js": {},
     "parallel/test-crypto-key-objects-to-crypto-key.js": {
-      "exitCode": 1,
-      "output": "[WILDCARD]NotSupportedError: Unrecognized algorithm name[WILDCARD]",
-      "reason": "Ed448/X448 toCryptoKey not supported by WebCrypto"
+      "ignore": true,
+      "reason": "Uses ML-DSA (post-quantum) keygen + toCryptoKey, a new Node 26 algorithm not yet supported by Deno"
     },
     "parallel/test-crypto-lazy-transform-writable.js": {},
     "parallel/test-crypto-oneshot-hash.js": {},
@@ -759,9 +791,6 @@
     },
     "parallel/test-crypto-padding.js": {},
     "parallel/test-crypto-padding-aes256.js": {},
-    "parallel/test-crypto-pqc-key-objects-ml-dsa.js": {},
-    "parallel/test-crypto-pqc-key-objects-ml-kem.js": {},
-    "parallel/test-crypto-pqc-key-objects-slh-dsa.js": {},
     "parallel/test-crypto-private-decrypt-gh32240.js": {},
     "parallel/test-crypto-psychic-signatures.js": {},
     // TODO(bartlomieju): requires encrypted PEM export (cipher+passphrase in privateKeyEncoding)
@@ -937,7 +966,6 @@
     "parallel/test-dgram-connect.js": {},
     "parallel/test-dgram-createSocket-type.js": {},
     "parallel/test-dgram-custom-lookup.js": {},
-    "parallel/test-dgram-deprecation-error.js": {},
     "parallel/test-dgram-error-message-address.js": {},
     "parallel/test-dgram-implicit-bind.js": {},
     "parallel/test-dgram-ipv6only.js": {},
@@ -1353,7 +1381,10 @@
     "parallel/test-fs-fmap.js": {},
     "parallel/test-fs-fsync.js": {},
     "parallel/test-fs-glob-throw.mjs": {},
-    "parallel/test-fs-glob.mjs": {},
+    "parallel/test-fs-glob.mjs": {
+      "ignore": true,
+      "reason": "New Node 26 glob followSymlinks option not yet implemented"
+    },
     "parallel/test-fs-internal-assertencoding.js": {},
     "parallel/test-fs-lchmod.js": {},
     "parallel/test-fs-lchown-negative-one.js": {
@@ -1939,7 +1970,10 @@
     "parallel/test-http2-capture-rejection.js": {},
     "parallel/test-http2-clean-output.js": {},
     "parallel/test-http2-client-connection-tunnelling.js": {},
-    "parallel/test-http2-client-destroy.js": {},
+    "parallel/test-http2-client-destroy.js": {
+      "ignore": true,
+      "reason": "Requires Node's deferred-destroy session semantics where request() on a destroying session returns a stream that errors asynchronously instead of throwing synchronously"
+    },
     "parallel/test-http2-client-http1-server.js": {},
     "parallel/test-http2-client-onconnect-errors.js": {},
     "parallel/test-http2-client-port-80.js": {},
@@ -2055,8 +2089,14 @@
     "parallel/test-http2-max-session-memory-leak.js": {},
     "parallel/test-http2-max-settings.js": {},
     "parallel/test-http2-methods.js": {},
-    "parallel/test-http2-misbehaving-flow-control.js": {},
-    "parallel/test-http2-misbehaving-flow-control-paused.js": {},
+    "parallel/test-http2-misbehaving-flow-control.js": {
+      "ignore": true,
+      "reason": "Node 26 changed expected stream error from ERR_HTTP2_STREAM_ERROR to session-level ERR_HTTP2_ERROR on flow-control GOAWAY teardown"
+    },
+    "parallel/test-http2-misbehaving-flow-control-paused.js": {
+      "ignore": true,
+      "reason": "Node 26 changed expected stream error from ERR_HTTP2_STREAM_ERROR to session-level ERR_HTTP2_ERROR on flow-control GOAWAY teardown"
+    },
     "parallel/test-http2-misbehaving-multiplex.js": {},
     "parallel/test-http2-misc-util.js": {},
     "parallel/test-http2-misused-pseudoheaders.js": {},
@@ -2069,7 +2109,10 @@
     "parallel/test-http2-no-wanttrailers-listener.js": {},
     "parallel/test-http2-onping.js": {},
     "parallel/test-http2-options-max-headers-block-length.js": {},
-    "parallel/test-http2-options-max-headers-exceeds-nghttp2.js": {},
+    "parallel/test-http2-options-max-headers-exceeds-nghttp2.js": {
+      "ignore": true,
+      "reason": "Deno does not surface a client-side ERR_HTTP2_ERROR when the peer sends an oversized header block via additionalHeaders"
+    },
     "parallel/test-http2-options-server-request.js": {},
     "parallel/test-http2-options-server-response.js": {},
     "parallel/test-http2-origin.js": {},
@@ -2343,10 +2386,6 @@
       "ignore": true,
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
     },
-    "parallel/test-internal-encoding-binding.js": {
-      "ignore": true,
-      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
-    },
     "parallel/test-internal-error-original-names.js": {
       "ignore": true,
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
@@ -2390,10 +2429,6 @@
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
     },
     "parallel/test-internal-util-assertCrypto.js": {
-      "ignore": true,
-      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
-    },
-    "parallel/test-internal-util-classwrapper.js": {
       "ignore": true,
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
     },
@@ -2457,6 +2492,7 @@
     "parallel/test-microtask-queue-run.js": {},
     "parallel/test-mime-api.js": {},
     "parallel/test-mime-whatwg.js": {},
+    "parallel/test-mock-timers-abortsignal-timeout.js": {},
     "parallel/test-module-cache.js": {
       "flaky": true
     },
@@ -2594,7 +2630,10 @@
     "parallel/test-net-socket-setnodelay.js": {},
     "parallel/test-net-socket-timeout-unref.js": {},
     "parallel/test-net-socket-timeout.js": {},
-    "parallel/test-net-socket-write-after-close.js": {},
+    "parallel/test-net-socket-write-after-close.js": {
+      "windows": false,
+      "reason": "On Windows Deno reports a write after close as EBADF where Node/libuv reports EPIPE"
+    },
     "parallel/test-net-socket-write-error.js": {},
     "parallel/test-net-stream.js": {},
     "parallel/test-net-sync-cork.js": {},
@@ -2630,10 +2669,6 @@
       "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
     },
     "parallel/test-node-output-sourcemaps.mjs": {
-      "ignore": true,
-      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
-    },
-    "parallel/test-node-output-v8-warning.mjs": {
       "ignore": true,
       "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
     },
@@ -3048,7 +3083,10 @@
     "parallel/test-repl-tab-complete-buffer.js": {},
     "parallel/test-repl-tab-complete-crash.js": {},
     "parallel/test-repl-tab-complete-custom-completer.js": {},
-    "parallel/test-repl-tab-complete-nested-repls.js": {},
+    "parallel/test-repl-tab-complete-nested-repls.js": {
+      "ignore": true,
+      "reason": "REPL uncaught-exception capture hook swallows errors thrown from completion callbacks (exit code not propagated)"
+    },
     "parallel/test-repl-tab-complete-new-expression.js": {},
     "parallel/test-repl-tab-complete-no-warn.js": {},
     "parallel/test-repl-tab-complete-nosideeffects.js": {},
@@ -3144,6 +3182,7 @@
     // "parallel/test-runner-coverage-thresholds.js": {},
     "parallel/test-runner-enable-source-maps-issue.js": {},
     "parallel/test-runner-filter-warning.js": {},
+    "parallel/test-runner-mock-timers-with-timeout.js": {},
     "parallel/test-runner-root-after-with-refed-handles.js": {},
     "parallel/test-runner-snapshot-file-tests.js": {
       "ignore": true,
@@ -3310,12 +3349,12 @@
     "parallel/test-sqlite-config.js": {},
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
-    "parallel/test-sqlite-database-sync-dispose.js": {},
     "parallel/test-sqlite-database-sync.js": {},
     "parallel/test-sqlite-limits.js": {},
     "parallel/test-sqlite-named-parameters.js": {},
     "parallel/test-sqlite-session.js": {
-      "flaky": true
+      "ignore": true,
+      "reason": "malformed-changeset subtest crashes in the shared SQLite; Node skips it unless using its bundled SQLite session fix (node_shared_sqlite)"
     },
     "parallel/test-sqlite-statement-sync-columns.js": {},
     "parallel/test-sqlite-statement-sync.js": {},
@@ -3352,7 +3391,6 @@
     "parallel/test-stdout-stderr-write.js": {},
     "parallel/test-stdout-to-file.js": {},
     "parallel/test-stream-add-abort-signal.js": {},
-    "parallel/test-stream-aliases-legacy.js": {},
     "parallel/test-stream-auto-destroy.js": {},
     "parallel/test-stream-await-drain-writers-in-synchronously-recursion-write.js": {},
     "parallel/test-stream-backpressure.js": {},
@@ -3360,7 +3398,6 @@
     "parallel/test-stream-big-packet.js": {},
     "parallel/test-stream-big-push.js": {},
     "parallel/test-stream-catch-rejections.js": {},
-    "parallel/test-stream-compose-operator.js": {},
     "parallel/test-stream-compose.js": {},
     "parallel/test-stream-construct.js": {},
     "parallel/test-stream-consumers.js": {},
@@ -3375,7 +3412,10 @@
     "parallel/test-stream-duplex-readable-end.js": {},
     "parallel/test-stream-duplex-readable-writable.js": {},
     "parallel/test-stream-duplex-writable-finished.js": {},
-    "parallel/test-stream-duplex.js": {},
+    "parallel/test-stream-duplex.js": {
+      "ignore": true,
+      "reason": "Requires the new Node 26 DEP0201 deprecation warning for Duplex.toWeb({ type }) which Deno does not emit"
+    },
     "parallel/test-stream-duplexpair.js": {},
     "parallel/test-stream-end-of-streams.js": {},
     "parallel/test-stream-end-paused.js": {},
@@ -3384,7 +3424,10 @@
     "parallel/test-stream-event-names.js": {},
     "parallel/test-stream-events-prepend.js": {},
     "parallel/test-stream-filter.js": {},
-    "parallel/test-stream-finished.js": {},
+    "parallel/test-stream-finished.js": {
+      "ignore": true,
+      "reason": "Uses the new Node 26 internal API internal/streams/end-of-stream kEosNodeSynchronousCallback which Deno does not expose"
+    },
     "parallel/test-stream-flatMap.js": {},
     "parallel/test-stream-forEach.js": {},
     "parallel/test-stream-inheritance.js": {},
@@ -3419,7 +3462,10 @@
     "parallel/test-stream-pipeline-queued-end-in-destroy.js": {},
     "parallel/test-stream-pipeline-uncaught.js": {},
     "parallel/test-stream-pipeline-with-empty-string.js": {},
-    "parallel/test-stream-pipeline.js": {},
+    "parallel/test-stream-pipeline.js": {
+      "ignore": true,
+      "reason": "pipeline over an infinite stream with .map() throwing surfaces AbortError instead of the original error"
+    },
     "parallel/test-stream-preprocess.js": {},
     "parallel/test-stream-promises.js": {},
     "parallel/test-stream-push-order.js": {},
@@ -3643,7 +3689,10 @@
     "parallel/test-tls-check-server-identity.js": {},
     "parallel/test-tls-client-abort.js": {},
     "parallel/test-tls-client-abort2.js": {},
-    "parallel/test-tls-client-auth.js": {},
+    "parallel/test-tls-client-auth.js": {
+      "ignore": true,
+      "reason": "rustls reports the TLS 1.3 cert-required alert as ERR_SSL_TLSV13_ALERT_CERTIFICATE_REQUIRED whereas Node's BoringSSL build reports the TLSV1 variant"
+    },
     "parallel/test-tls-client-reject.js": {},
     "parallel/test-tls-client-reject-12.js": {},
     "parallel/test-tls-client-renegotiation-limit.js": {},
@@ -3667,12 +3716,18 @@
     "parallel/test-tls-destroy-stream-12.js": {},
     "parallel/test-tls-destroy-stream.js": {},
     "parallel/test-tls-destroy-whilst-write.js": {},
-    "parallel/test-tls-dhe.js": {},
+    "parallel/test-tls-dhe.js": {
+      "ignore": true,
+      "reason": "Deno's rustls stack has no finite-field DHE ciphers and does not reject DHE-only cipher lists at secure-context creation like BoringSSL"
+    },
     "parallel/test-tls-ecdh-auto.js": {},
     "parallel/test-tls-ecdh-multiple.js": {},
     "parallel/test-tls-ecdh.js": {},
     "parallel/test-tls-econnreset.js": {},
-    "parallel/test-tls-empty-sni-context.js": {},
+    "parallel/test-tls-empty-sni-context.js": {
+      "ignore": true,
+      "reason": "BoringSSL surfaces the empty-SNI handshake failure as ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE, where OpenSSL/Node expects ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR"
+    },
     "parallel/test-tls-enable-trace-cli.js": {},
     "parallel/test-tls-enable-trace.js": {},
     "parallel/test-tls-error-stack.js": {},
@@ -3723,8 +3778,14 @@
     "parallel/test-tls-peer-certificate-encoding.js": {},
     "parallel/test-tls-peer-certificate-multi-keys.js": {},
     "parallel/test-tls-peer-certificate.js": {},
-    "parallel/test-tls-psk-server.js": {},
-    "parallel/test-tls-reduced-SECLEVEL-in-cipher.js": {},
+    "parallel/test-tls-psk-server.js": {
+      "ignore": true,
+      "reason": "PSK cipher suites are unsupported by Deno's rustls TLS backend"
+    },
+    "parallel/test-tls-reduced-SECLEVEL-in-cipher.js": {
+      "ignore": true,
+      "reason": "Deno emulates OpenSSL security levels (key-too-small and @SECLEVEL handling) rather than BoringSSL's no-security-levels behavior"
+    },
     "parallel/test-tls-reinitialize-listeners.js": {},
     "parallel/test-tls-request-timeout.js": {},
     "parallel/test-tls-reuse-host-from-socket.js": {},
@@ -3738,7 +3799,10 @@
     "parallel/test-tls-secure-session.js": {},
     "parallel/test-tls-session-cache.js": {},
     "parallel/test-tls-session-timeout-errors.js": {},
-    "parallel/test-tls-set-ciphers-error.js": {},
+    "parallel/test-tls-set-ciphers-error.js": {
+      "ignore": true,
+      "reason": "Deno's cipher-list validation is syntactic and does not reject individual unsupported legacy ciphers like DES-CBC-SHA as no_cipher_match"
+    },
     "parallel/test-tls-socket-failed-handshake-emits-error.js": {},
     "parallel/test-tls-set-default-ca-certificates-array-buffer.js": {},
     "parallel/test-tls-set-default-ca-certificates-basic.js": {},
@@ -3911,11 +3975,6 @@
     "parallel/test-vm-util-lazy-properties.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-warn-sigprof.js": {},
-    "parallel/test-warn-stream-duplex-deprecation.js": {},
-    "parallel/test-warn-stream-passthrough-deprecation.js": {},
-    "parallel/test-warn-stream-readable-deprecation.js": {},
-    "parallel/test-warn-stream-transform-deprecation.js": {},
-    "parallel/test-warn-stream-writable-deprecation.js": {},
     "parallel/test-warn-tls-common-deprecation.js": {},
     "parallel/test-warn-tls-wrap-deprecation.js": {},
     "parallel/test-wasm.mjs": {},
@@ -3923,19 +3982,40 @@
     "parallel/test-webcrypto-cryptokey-workers.js": {},
     "parallel/test-webcrypto-derivebits-argon2.js": {},
     "parallel/test-webcrypto-derivebits.js": {},
-    "parallel/test-webcrypto-encap-decap-ml-kem.js": {},
-    "parallel/test-webcrypto-encrypt-decrypt-chacha20-poly1305.js": {},
-    "parallel/test-webcrypto-encrypt-decrypt-rsa.js": {},
-    "parallel/test-webcrypto-encrypt-decrypt.js": {},
-    "parallel/test-webcrypto-export-import-ml-dsa.js": {},
-    "parallel/test-webcrypto-export-import-ml-kem.js": {},
+    "parallel/test-webcrypto-encap-decap-ml-kem.js": {
+      "ignore": true,
+      "reason": "node:crypto createPublicKey/createPrivateKey does not support ML-KEM post-quantum keys used to seed the test"
+    },
+    "parallel/test-webcrypto-encrypt-decrypt-chacha20-poly1305.js": {
+      "ignore": true,
+      "reason": "Deno's WebCrypto uses a generic operation-not-valid message instead of Node's per-operation 'Unable to use this key to encrypt/decrypt' wording"
+    },
+    "parallel/test-webcrypto-encrypt-decrypt-rsa.js": {
+      "ignore": true,
+      "reason": "Expects Node's custom WebCrypto error message ('Unable to use this key to decrypt/encrypt'); Deno emits the spec-aligned 'The requested operation is not valid for the provided key'"
+    },
+    "parallel/test-webcrypto-encrypt-decrypt.js": {
+      "ignore": true,
+      "reason": "Deno's WebCrypto uses a generic operation-not-valid message instead of Node's per-operation 'Unable to use this key to encrypt/decrypt' wording"
+    },
+    "parallel/test-webcrypto-export-import-ml-dsa.js": {
+      "ignore": true,
+      "reason": "Deno WebCrypto returns a generic 'Unsupported key format' message instead of Node's 'Unable to import ... using raw format' for plain raw ML-DSA import"
+    },
+    "parallel/test-webcrypto-export-import-ml-kem.js": {
+      "ignore": true,
+      "reason": "ML-KEM post-quantum WebCrypto import/export is not implemented in Deno"
+    },
     "parallel/test-webcrypto-getRandomValues.js": {},
     "parallel/test-webcrypto-random.js": {},
     "parallel/test-webcrypto-keygen-kmac.js": {
       "ignore": true,
       "reason": "Tests SubtleCrypto generateKey for KMAC128 / KMAC256, a Node-specific WebCrypto extension that requires OpenSSL >= 3 (test gates on hasOpenSSL(3)); Deno's ext/crypto/ does not register KMAC as a recognised SubtleCrypto algorithm. Could be revisited if KMAC is added — a SHA-3-based KMAC is implementable via the sha3 / cshake Rust crates"
     },
-    "parallel/test-webcrypto-sign-verify-ml-dsa.js": {},
+    "parallel/test-webcrypto-sign-verify-ml-dsa.js": {
+      "ignore": true,
+      "reason": "node:crypto createPublicKey/createPrivateKey does not support ML-DSA keys used to seed the WebCrypto verify test"
+    },
     "parallel/test-webcrypto-util.js": {
       "ignore": true,
       "reason": "Runs with --expose-internals and requires Node's internal/crypto/util JS module to whitebox-test the internal normalizeAlgorithm() helper; Deno's WebCrypto is implemented in Rust (ext/crypto/) and does not expose this Node-internal module"
@@ -3971,7 +4051,10 @@
     "parallel/test-whatwg-events-eventtarget-this-of-listener.js": {},
     "parallel/test-whatwg-readablebytestreambyob.js": {},
     "parallel/test-whatwg-readablestream.mjs": {},
-    "parallel/test-whatwg-webstreams-adapters-to-readablestream.js": {},
+    "parallel/test-whatwg-webstreams-adapters-to-readablestream.js": {
+      "ignore": true,
+      "reason": "Node 26 rewrote the to-ReadableStream adapter to attach a deduplicated error listener even for already-destroyed Readables; Deno short-circuits destroyed streams"
+    },
     "parallel/test-whatwg-transformstream-cancel-write-race.js": {},
     "parallel/test-whatwg-url-custom-deepequal.js": {},
     "parallel/test-whatwg-url-custom-global.js": {},
@@ -4366,7 +4449,10 @@
     // "sequential/test-runner-run-inspect.mjs": {},
     "sequential/test-stream2-fs.js": {},
     "sequential/test-tls-lookup.js": {},
-    "sequential/test-tls-psk-client.js": {},
+    "sequential/test-tls-psk-client.js": {
+      "ignore": true,
+      "reason": "PSK cipher suites are unsupported by Deno's rustls TLS backend"
+    },
     "sequential/test-tls-session-timeout.js": {},
     "sequential/test-vm-break-on-sigint.js": {},
     "sequential/test-vm-timeout-rethrow.js": {},
@@ -4438,10 +4524,6 @@
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
     },
     "test-runner/test-output-tap-escape.mjs": {},
-    "test-runner/test-output-tap-reporter.mjs": {
-      "exitCode": 1,
-      "reason": "Runs without the previous missing test.expectFailure TypeError, but reporter snapshot output still differs from Node"
-    },
     "test-runner/test-output-typescript-coverage.mjs": {},
     "test-runner/test-run-watch-cwd-isolation-none.mjs": {},
     "test-runner/test-run-watch-cwd-isolation-process.mjs": {},
@@ -4450,9 +4532,10 @@
     "test-runner/test-run-watch-no-emit-restarted-disabled.mjs": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-watch-mode-inspect.mjs": {},
-    // TODO(bartlomieju): this test is very flaky on CI, especially on Windows ARM
-    // "sequential/test-worker-fshandles-open-close-on-termination.js": {},
-    "wasm-allocation/test-wasm-allocation.js": {},
+    "wasm-allocation/test-wasm-allocation.js": {
+      "ignore": true,
+      "reason": "Relies on an RLIMIT_AS virtual-memory ulimit (declared in the test header) to force WebAssembly.Memory allocation failures; Deno's node_compat runner does not apply that rlimit"
+    },
 
     "wasi/test-wasi-options-validation.js": {},
     "wasi/test-wasi-start-validation.js": {},
@@ -4906,8 +4989,8 @@
       "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep"
     },
     "parallel/test-fs-stat-date.mjs": {
-      "darwin": false,
-      "reason": "error: Uncaught (in promise) AssertionError: expected -40691 \u00b1 1.000000000000000"
+      "ignore": true,
+      "reason": "Deno's FsStat represents file timestamps as unsigned milliseconds, so pre-1970 (negative) atime/mtime values lose their sign when read back via stat"
     },
     "parallel/test-fs-watch-close-when-destroyed.js": {
       "windows": false,
@@ -5100,11 +5183,6 @@
       "darwin": false,
       "reason": "Expected values to be strictly equal"
     },
-    "parallel/test-process-execve-abort.js": {
-      "linux": false,
-      "darwin": false,
-      "reason": "process.execve is not a function"
-    },
     "parallel/test-process-execve-on-exit.js": {
       "linux": false,
       "darwin": false,
@@ -5166,6 +5244,7 @@
       "darwin": false,
       "reason": "error: Uncaught AssertionError: ifError got unwanted exception: ifError got unwa"
     },
+    "parallel/test-runner-get-test-context.js": {},
     "parallel/test-runner-global-setup-watch-mode.mjs": {
       "linux": false,
       "darwin": false,
@@ -5437,7 +5516,11 @@
     "sequential/test-timers-block-eventloop.js": {},
     "sequential/test-timers-set-interval-excludes-callback-duration.js": {},
     "sequential/test-tls-connect.js": {},
-    "sequential/test-worker-fshandles-open-close-on-termination.js": {},
+    "sequential/test-worker-fshandles-open-close-on-termination.js": {
+      "flaky": true,
+      "windows": false,
+      "reason": "times out on Windows; flaky on other platforms"
+    },
     "sequential/test-zlib-crc32-fast-api.js": {},
     "test-runner/test-output-default-output.mjs": {
       "linux": false,

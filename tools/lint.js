@@ -62,6 +62,9 @@ async function dlint() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
+    ":!:cli/bench/testdata/npm/**",
+    ":!:cli/bench/testdata/express-router.js",
+    ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tools/coverage/script.js",
     ":!:runtime/cpu_profiler/flamegraph.js",
@@ -425,10 +428,10 @@ async function ensureWorkflowYmlsUpToDate() {
     ".github/workflows/version_bump.ts",
   ];
 
-  const pending = generators.map(async (gen) => {
+  for (const gen of generators) {
     const cmd = new Deno.Command("deno", {
       cwd: ROOT_PATH,
-      args: ["run", "--allow-read=.", gen, "--lint"],
+      args: ["run", "--allow-read=.", "--allow-net=jsr.io", gen, "--lint"],
       stderr: "piped",
       stdout: "piped",
     });
@@ -440,9 +443,7 @@ async function ensureWorkflowYmlsUpToDate() {
         `${ymlFile} is out of date. Run: ${gen}\n${decoder.decode(stderr)}`,
       );
     }
-  });
-
-  await Promise.all(pending);
+  }
 }
 
 /**
@@ -706,6 +707,7 @@ async function ensureNoNewTopLevelEntries() {
     ".github",
     "x",
     "cli",
+    "doc",
     "ext",
     "libs",
     "runtime",

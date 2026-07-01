@@ -1,0 +1,11 @@
+{
+  "steps": [{
+    "args": "doc event.ts",
+    "output": "event.out",
+    "exitCode": 0
+  }, {
+    "args": "doc --json event.ts",
+    "output": "event.json.out",
+    "exitCode": 0
+  }]
+}

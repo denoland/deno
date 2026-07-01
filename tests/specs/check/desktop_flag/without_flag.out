@@ -1,0 +1,4 @@
+Check [WILDCARD]main.ts
+TS2304 [ERROR]: Cannot find name 'Notification'.
+[WILDCARD]
+error: Type checking failed.

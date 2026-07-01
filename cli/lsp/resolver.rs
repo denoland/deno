@@ -1117,6 +1117,7 @@ impl<'a> ResolverFactory<'a> {
         link_packages: link_packages.0.clone(),
         newest_dependency_date_options: Default::default(),
         overrides: Arc::new(overrides),
+        trust_policy: Default::default(),
       });
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
         Default::default(),
@@ -1146,6 +1147,9 @@ impl<'a> ResolverFactory<'a> {
           lifecycle_scripts: Arc::new(LifecycleScriptsConfig::default()),
           system_info: NpmSystemInfo::default(),
           workspace_link_packages: link_packages,
+          // The LSP does not materialize packages into node_modules, so it never
+          // writes a `.npmrc` or alias symlinks.
+          jsr_deps_in_node_modules: false,
         },
       ));
       self.set_npm_installer(npm_installer);
@@ -1201,9 +1205,6 @@ impl<'a> ResolverFactory<'a> {
             _ => None,
           },
           workspace_resolver: self.workspace_resolver().clone(),
-          bare_node_builtins: self
-            .config_data
-            .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
           is_byonm: self.config_data.map(|d| d.byonm).unwrap_or(false),
           maybe_vendor_dir: self
             .config_data
