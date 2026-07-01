@@ -287,10 +287,10 @@ impl NpmFetchResolver {
     }
   }
 
-  /// Retain the `exports` subpath keys of each package version when parsing
+  /// Fill in the `exports` subpath keys of each package version when parsing
   /// registry metadata. Only the LSP needs them (for npm import-specifier
   /// completion); every other consumer leaves them off so nothing is retained.
-  /// See [`deno_npm::registry::with_export_keys_deserialization`].
+  /// See [`deno_npm::registry::NpmPackageInfo::fill_export_keys`].
   pub fn with_export_keys(mut self) -> Self {
     self.deserialize_export_keys = true;
     self
@@ -408,15 +408,17 @@ impl NpmFetchResolver {
       )
       .await
       .map_err(|e| format!("{e:#}"))?;
-    let parse = || {
-      serde_json::from_slice::<NpmPackageInfo>(&file.source)
-        .map_err(|e| format!("failed to parse package metadata: {e}"))
-    };
+    let mut info = serde_json::from_slice::<NpmPackageInfo>(&file.source)
+      .map_err(|e| format!("failed to parse package metadata: {e}"))?;
     if self.deserialize_export_keys {
-      deno_npm::registry::with_export_keys_deserialization(parse)
-    } else {
-      parse()
+      // `exports` subpath keys are skipped by the shared parse; the LSP is the
+      // only consumer, so fill them in here rather than making every command
+      // retain them (see denoland/deno#35664).
+      info
+        .fill_export_keys(&file.source)
+        .map_err(|e| format!("failed to parse package metadata: {e}"))?;
     }
+    Ok(info)
   }
 
   pub fn applicable_version_infos<'a>(
