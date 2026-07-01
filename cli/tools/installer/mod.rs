@@ -9,7 +9,6 @@ use deno_core::url::Url;
 use deno_lib::version::DENO_VERSION;
 use deno_lib::version::NODE_VERSION;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsWarning;
-use deno_package_json::EngineMismatchKind;
 use deno_resolver::workspace::WorkspaceResolver;
 
 pub use self::bin_name_resolver::BinNameResolver;
@@ -405,28 +404,6 @@ pub fn print_install_report(
 fn warn_on_engines_mismatch(workspace: &WorkspaceResolver<CliSys>) {
   for pkg_json in workspace.package_jsons() {
     let mismatches = pkg_json.check_engines(DENO_VERSION, NODE_VERSION);
-    if mismatches.is_empty() {
-      continue;
-    }
-    let display_path = pkg_json.path.display();
-    for m in mismatches {
-      let warning_label = deno_terminal::colors::yellow("Warning");
-      let required = deno_terminal::colors::cyan(&m.required);
-      let actual = deno_terminal::colors::cyan(&m.actual);
-      match m.kind {
-        EngineMismatchKind::Unsatisfied => {
-          log::warn!(
-            "{warning_label} {display_path}: engines.{engine} \"{required}\" is not satisfied by current {engine} version {actual}",
-            engine = m.engine,
-          );
-        }
-        EngineMismatchKind::InvalidRequirement => {
-          log::warn!(
-            "{warning_label} {display_path}: engines.{engine} value \"{required}\" is not a valid version range",
-            engine = m.engine,
-          );
-        }
-      }
-    }
+    crate::util::engines::warn_engine_mismatches(&pkg_json.path, &mismatches);
   }
 }
