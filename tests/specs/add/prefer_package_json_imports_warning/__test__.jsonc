@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  "tests": {
+    // When "preferPackageJson" is enabled but the deno.json still has an
+    // "imports" field, a warning is printed pointing the user at package.json.
+    "warns_on_imports": {
+      "args": "add npm:@denotest/esm-basic",
+      "output": "add.out"
+    }
+  }
+}

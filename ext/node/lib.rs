@@ -10,6 +10,7 @@
 use std::borrow::Cow;
 use std::env;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_core::FastString;
 use deno_core::OpState;
@@ -43,6 +44,15 @@ pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 
+/// The Node.js version that Deno emulates. This is the single source of truth
+/// for the value reported through `process.version` / `process.versions.node`:
+/// the `__NODE_VERSION__` token in `_process/process.ts` is substituted with it
+/// at snapshot build time (see `maybe_transpile_source` in
+/// `runtime/transpile.rs`). Rust consumers can read it directly.
+///
+/// When bumping the emulated Node version, change it here only.
+pub const NODE_VERSION: &str = "26.3.0";
+
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
 }
@@ -66,8 +76,28 @@ pub trait NodeRequireLoader {
   fn is_maybe_cjs(&self, specifier: &Url)
   -> Result<bool, PackageJsonLoadError>;
 
+  /// Get if a module loaded via `require()` should first be compiled as CJS.
+  fn is_maybe_cjs_from_require(
+    &self,
+    specifier: &Url,
+  ) -> Result<bool, PackageJsonLoadError>;
+
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
     default_resolve_require_node_module_paths(from)
+  }
+
+  /// Attempts to resolve an npm package by bare specifier from the global
+  /// cache when there is no usable referrer context (e.g. a `require` call
+  /// made from a file outside of the global cache directory while running
+  /// in `--no-node-modules-dir` mode). Returns the package folder for the
+  /// top-level dependency matching `package_name`, or `None` if it can't be
+  /// resolved or if the runtime is configured to use a local
+  /// `node_modules` directory.
+  fn resolve_package_folder_from_name(
+    &self,
+    _package_name: &str,
+  ) -> Option<PathBuf> {
+    None
   }
 }
 
@@ -113,8 +143,11 @@ fn op_node_load_env_file(
   #[string] path: &str,
 ) -> Result<(), DotEnvLoadErr> {
   let fs = state.borrow::<deno_fs::FileSystemRc>().clone();
-  let path = state
-    .borrow::<PermissionsContainer>()
+  let permissions = state.borrow::<PermissionsContainer>().clone();
+  permissions
+    .check_env_all()
+    .map_err(DotEnvLoadErr::Permission)?;
+  let path = permissions
     .check_open(
       Cow::Borrowed(Path::new(path)),
       OpenAccessKind::ReadNoFollow,
@@ -190,7 +223,7 @@ deno_core::extension!(deno_node,
     ops::buffer::op_node_buffer_compare,
     ops::buffer::op_node_buffer_compare_offset,
     ops::constant::op_node_fs_constants,
-    ops::buffer::op_node_decode_utf8,
+    ops::buffer::op_node_encoding_slice,
     ops::dns::op_node_getaddrinfo,
     ops::dns::op_node_getnameinfo,
     ops::fs::op_node_fs_exists_sync,
@@ -241,6 +274,7 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_cp_validate_and_prepare,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
+    ops::v8::op_v8_set_flags_from_string,
     ops::v8::op_v8_get_heap_statistics,
     ops::v8::op_v8_number_of_heap_spaces,
     ops::v8::op_v8_update_heap_space_statistics,
@@ -277,6 +311,7 @@ deno_core::extension!(deno_node,
     ops::vm::op_vm_compile_function,
     ops::vm::op_vm_script_get_source_map_url,
     ops::vm::op_vm_script_create_cached_data,
+    ops::vm::op_vm_dynamic_import_callback_register,
     ops::vm::op_vm_module_create_source_text_module,
     ops::vm::op_vm_module_create_synthetic_module,
     ops::vm::op_vm_module_set_synthetic_export,
@@ -297,6 +332,7 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_crc32,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
+    ops::http::op_node_http_check_proxy_net,
     ops::http2::op_http2_callbacks,
     // Keep the HTTP/2 error-string op wired so `internal/test/binding`
     // can mirror Node's `internalBinding('http2').nghttp2ErrorString()`
@@ -315,6 +351,7 @@ deno_core::extension!(deno_node,
     ops::os::op_homedir,
     op_node_build_os,
     op_node_load_env_file,
+    ops::module::op_node_strip_typescript_types,
     ops::require::op_require_can_parse_as_esm,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<TSys>,
@@ -331,7 +368,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_stat<TSys>,
     ops::require::op_require_path_resolve,
     ops::require::op_require_path_basename,
-    ops::require::op_require_read_file,
+    ops::require::op_require_read_file<TSys>,
     ops::require::op_require_as_file_path,
     ops::require::op_require_resolve_exports<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_read_package_scope<TSys>,
@@ -362,6 +399,7 @@ deno_core::extension!(deno_node,
     ops::process::op_node_process_setuid,
     ops::process::op_process_abort,
     ops::process::op_node_process_constrained_memory<TSys>,
+    ops::process::op_node_process_resource_usage,
     ops::node_cli_parser::op_node_translate_cli_args,
     ops::shell::op_node_parse_shell_args,
     ops::tls::op_get_root_certificates,
@@ -376,10 +414,12 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_url,
     ops::inspector::op_inspector_wait,
     ops::inspector::op_inspector_connect,
+    ops::inspector::op_node_repl_inspector_connect,
     ops::inspector::op_inspector_dispatch,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
+    ops::inspector::op_inspector_port,
     ops::udp::op_node_udp_bind,
     ops::udp::op_node_udp_join_multi_v4,
     ops::udp::op_node_udp_leave_multi_v4,
@@ -419,28 +459,38 @@ deno_core::extension!(deno_node,
     ops::http2::Http2Session,
     ops::http2::Http2Stream,
   ],
-  esm_entry_point = "node:module",
+  // All node polyfills are registered via `dir "polyfills"` as *available*
+  // (resolvable) modules without forcing eager evaluation. There is no
+  // explicit eager `esm` entry: the whole node process closure
+  // (module / process / stream / net / tty / ...) is moved to
+  // `lazy_loaded_esm` and only deserialized on first node:* use, so non-node
+  // `deno run` programs never pay for it in the snapshot. An explicit entry
+  // here that no eager module imports would land in the module map
+  // unevaluated and fail snapshot validation with `NonEvaluatedModules`.
   esm = [
     dir "polyfills",
-    "internal/compile_cache.js",
-    "internal_binding/mod.ts",
-    "node:module" = "01_require.js",
-    "node:process" = "process.ts",
-    // node:stream + node:stream/promises stay eager: every Deno program
-    // pays their parse/compile cost at runtime startup via
-    // `__bootstrapNodeProcess` -> `createWritableStdioStream` -> Writable,
-    // so keeping them in the snapshot is a net startup-time win even
-    // though most programs never directly require('stream').
-    "node:stream" = "stream.ts",
-    "node:stream/promises" = "stream/promises.js",
-    // node:net and node:tty are needed at every TTY-stdout startup via
-    // internal/tty.js's TTYWriteStream constructor extending net.Socket.
-    // Keeping them eager is a startup-time win for interactive runs.
-    "node:net" = "net_esm.ts",
-    "node:tty" = "tty_esm.ts",
   ],
+  // Keep the rest of the node-polyfill closures (process / module / net /
+  // tty / 01_require) out of the eager evaluation graph: their foundational
+  // SFIs and context state are loaded only on first node:* use, so non-node
+  // `deno run` paths skip ~2 MB of node-polyfill deserialization.
+  // node:module previously had to stay eager because lazy bootstrap shifted
+  // Agent.keepSocketAlive's setUnrefTimeout(5000) into test execution where
+  // the sanitizer saw it as a leak; the timer is now marked is_system in
+  // internal/timers.mjs so the sanitizer skips it correctly and node:module
+  // can stay lazy again.
   lazy_loaded_esm = [
     dir "polyfills",
+    "node:module" = "01_require.js",
+    "node:process" = "process.ts",
+    // Previously eager. Combined with the lazy stdio refactor in
+    // process.ts (process.stdout/stderr/stdin are accessor properties),
+    // these modules only load when a script actually touches stdio or
+    // requires node:stream/net/tty directly.
+    "node:stream" = "stream.ts",
+    "node:stream/promises" = "stream/promises.js",
+    "node:net" = "net_esm.ts",
+    "node:tty" = "tty_esm.ts",
     "internal/streams/compose.js",
     "internal/streams/duplexpair.js",
     "internal/streams/lazy_transform.js",
@@ -458,9 +508,15 @@ deno_core::extension!(deno_node,
     "internal/fs/promises.ts",
     "internal/fs/stat_utils.ts",
     "internal/event_target.mjs",
+    // node:process / node:stream statically import this ESM module; it must be
+    // registered as lazy_loaded_esm (not lazy_loaded_js, where `dir "polyfills"`
+    // would otherwise place it) so the static import resolves when those
+    // modules are deserialized on demand.
+    "internal_binding/mod.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
     "internal/fs/handle.ts",
+    "internal/http/address_override.js",
     "internal/repl.ts",
     "_readline.mjs",
     "internal/streams/duplexify.js",
@@ -475,6 +531,7 @@ deno_core::extension!(deno_node,
     "node:_http_common" = "_http_common.js",
     "node:_http_incoming" = "_http_incoming.js",
     "node:_http_outgoing" = "_http_outgoing.ts",
+    "node:_http_proxy" = "_http_proxy.js",
     "node:_http_server" = "_http_server.js",
     "node:path" = "path.ts",
     "node:path/posix" = "path/posix.ts",
@@ -499,6 +556,7 @@ deno_core::extension!(deno_node,
     "node:stream/web" = "stream/web_esm.js",
     "node:string_decoder" = "string_decoder_esm.ts",
     "node:test" = "testing_esm.ts",
+    "node:test/reporters" = "test/reporters_esm.ts",
     "node:cluster" = "cluster_esm.ts",
     "node:console" = "console_esm.ts",
     "node:constants" = "constants_esm.ts",
@@ -530,6 +588,7 @@ deno_core::extension!(deno_node,
   ],
   lazy_loaded_js = [
     dir "polyfills",
+    "02_register_cloneable.js",
     "cluster.ts",
     "console.ts",
     "constants.ts",
@@ -557,6 +616,7 @@ deno_core::extension!(deno_node,
     "inspector.js",
     "inspector_network_bridge.js",
     "inspector/promises.js",
+    "_repl_preview.js",
     "internal/streams/duplex.js",
     "internal/streams/passthrough.js",
     "internal/streams/readable.js",
@@ -576,6 +636,7 @@ deno_core::extension!(deno_node,
     "internal_binding/constants.ts",
     "internal_binding/_libuv_winerror.ts",
     "internal_binding/uv.ts",
+    "internal/util/colorize.mjs",
     "internal/util/inspect.mjs",
     "internal/errors.ts",
     "internal/errors/error_source.ts",
@@ -679,6 +740,7 @@ deno_core::extension!(deno_node,
     "internal/streams/add-abort-signal.js",
     "internal/streams/utils.js",
     "internal/test/binding.ts",
+    "internal/test/reporters.ts",
     "internal/timers.mjs",
     "internal/url.ts",
     "internal/util/colors.ts",
@@ -719,6 +781,7 @@ deno_core::extension!(deno_node,
     "stream/web.js",
     "string_decoder.ts",
     "testing.ts",
+    "test/reporters.ts",
     "_fs/_fs_common.ts",
     "_fs/_fs_cp.ts",
     "_fs/_fs_fstat.ts",
@@ -878,4 +941,31 @@ pub fn create_host_defined_options<'s>(
   let value = v8::Boolean::new(scope, true);
   host_defined_options.set(scope, 0, value.into());
   host_defined_options.into()
+}
+
+/// Build host-defined options that mark a script as having been compiled
+/// by `node:vm` (e.g. via `vm.Script`, `vm.runInThisContext`,
+/// `vm.compileFunction`, `vm.SourceTextModule`) without an
+/// `importModuleDynamically` callback. When V8 invokes the dynamic-import
+/// host callback for such a script, the runtime rejects the import with
+/// `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`, matching Node.js. Without
+/// this marker, sandboxed `vm` code could escape via `import()`.
+pub fn create_vm_dynamic_import_missing_host_defined_options<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Data> {
+  deno_core::create_host_defined_options_with_kind(
+    scope,
+    deno_core::host_defined_options_kind::VM_DYNAMIC_IMPORT_MISSING,
+  )
+}
+
+pub fn create_vm_dynamic_import_callback_host_defined_options<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback_id: u32,
+) -> v8::Local<'s, v8::Data> {
+  deno_core::create_host_defined_options_with_kind_and_key(
+    scope,
+    deno_core::host_defined_options_kind::VM_DYNAMIC_IMPORT_CALLBACK,
+    callback_id,
+  )
 }

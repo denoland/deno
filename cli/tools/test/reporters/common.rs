@@ -4,6 +4,69 @@ use super::fmt::format_test_error;
 use super::fmt::to_relative_path_or_remote_url;
 use super::*;
 
+/// Step results are tallied into the summary only once the owning (root) test
+/// produces a terminal result. This lets a retried attempt's step results be
+/// discarded instead of counted, while the steps are still printed live as they
+/// run. Keyed by the root test id.
+pub(super) type PendingStepTally =
+  HashMap<usize, Vec<(TestStepResult, Option<TestFailureDescription>)>>;
+
+/// Buffers a step result for its root test instead of tallying it immediately.
+pub(super) fn record_step_result(
+  pending: &mut PendingStepTally,
+  desc: &TestStepDescription,
+  result: &TestStepResult,
+  tests: &IndexMap<usize, TestDescription>,
+  test_steps: &IndexMap<usize, TestStepDescription>,
+) {
+  let failure_desc = match result {
+    TestStepResult::Failed(_) => Some(TestFailureDescription {
+      id: desc.id,
+      name: format_test_step_ancestry(desc, tests, test_steps),
+      origin: desc.origin.clone(),
+      location: desc.location.clone(),
+    }),
+    _ => None,
+  };
+  pending
+    .entry(desc.root_id)
+    .or_default()
+    .push((result.clone(), failure_desc));
+}
+
+/// Commits the buffered step results for a root test into the summary. Called
+/// when the test produces its terminal result.
+pub(super) fn commit_step_results(
+  pending: &mut PendingStepTally,
+  summary: &mut TestSummary,
+  root_id: usize,
+) {
+  let Some(steps) = pending.remove(&root_id) else {
+    return;
+  };
+  for (result, failure_desc) in steps {
+    match result {
+      TestStepResult::Ok => summary.passed_steps += 1,
+      TestStepResult::Ignored => summary.ignored_steps += 1,
+      TestStepResult::Failed(failure) => {
+        summary.failed_steps += 1;
+        if let Some(failure_desc) = failure_desc {
+          summary.failures.push((failure_desc, failure));
+        }
+      }
+    }
+  }
+}
+
+/// Discards the buffered step results for a root test that is being retried, so
+/// the failed attempt's steps don't count toward the summary.
+pub(super) fn discard_step_results(
+  pending: &mut PendingStepTally,
+  root_id: usize,
+) {
+  pending.remove(&root_id);
+}
+
 pub(super) fn format_test_step_ancestry(
   desc: &TestStepDescription,
   tests: &IndexMap<usize, TestDescription>,
@@ -100,6 +163,66 @@ pub(super) fn report_sigint(
   writeln!(writer).ok();
 }
 
+pub(super) fn report_exit(
+  writer: &mut dyn std::io::Write,
+  cwd: &Url,
+  exit_code: i32,
+  tests_pending: &HashSet<usize>,
+  tests: &IndexMap<usize, TestDescription>,
+  test_steps: &IndexMap<usize, TestStepDescription>,
+) {
+  writeln!(
+    writer,
+    "\n{} A test called Deno.exit({}) while the exit sanitizer was disabled (sanitizeExit: false). Aborting the test run.",
+    colors::yellow("warning"),
+    exit_code,
+  )
+  .ok();
+
+  if tests_pending.is_empty() {
+    writeln!(writer).ok();
+    return;
+  }
+
+  let mut formatted_pending = BTreeSet::new();
+  for id in tests_pending {
+    if let Some(desc) = tests.get(id) {
+      formatted_pending.insert(format_test_for_summary(cwd, &desc.into()));
+    }
+    if let Some(desc) = test_steps.get(id) {
+      formatted_pending
+        .insert(format_test_step_for_summary(cwd, desc, tests, test_steps));
+    }
+  }
+  writeln!(writer, "\nThe following tests were pending:\n").ok();
+  for entry in formatted_pending {
+    writeln!(writer, "{}", entry).ok();
+  }
+  writeln!(writer).ok();
+}
+
+pub(super) fn report_isolate_exit(
+  writer: &mut dyn std::io::Write,
+  cwd: &Url,
+  origin: &str,
+  exit_code: i32,
+) {
+  let location = to_relative_path_or_remote_url(cwd, origin);
+  let label = if exit_code == 0 {
+    colors::yellow("note")
+  } else {
+    colors::red("error")
+  };
+  writeln!(
+    writer,
+    "\n{} {} called `Deno.exit({})` from outside any test. The isolate was terminated; remaining test files will continue.",
+    label,
+    location,
+    exit_code,
+  )
+  .ok();
+}
+
 pub(super) fn report_summary(
   writer: &mut dyn std::io::Write,
   cwd: &Url,
@@ -177,6 +300,43 @@ pub(super) fn report_summary(
     }
   }
 
+  if summary.snapshots_updated > 0 {
+    writeln!(
+      writer,
+      "\n{}",
+      colors::green_bold(format!(
+        " > {} {} updated.",
+        summary.snapshots_updated,
+        if summary.snapshots_updated == 1 {
+          "snapshot"
+        } else {
+          "snapshots"
+        }
+      ))
+    )
+    .ok();
+  }
+  if !summary.snapshots_removed.is_empty() {
+    writeln!(
+      writer,
+      "\n{}",
+      colors::red_bold(format!(
+        " > {} {} removed.",
+        summary.snapshots_removed.len(),
+        if summary.snapshots_removed.len() == 1 {
+          "snapshot"
+        } else {
+          "snapshots"
+        }
+      ))
+    )
+    .ok();
+    for snapshot_name in &summary.snapshots_removed {
+      writeln!(writer, "{}", colors::red(format!("   • {}", snapshot_name)))
+        .ok();
+    }
+  }
+
   let status = if summary.has_failed() {
     colors::red("FAILED").to_string()
   } else {
@@ -205,6 +365,10 @@ pub(super) fn report_summary(
   )
   .ok();
 
+  if summary.flaky > 0 {
+    write!(summary_result, " | {} flaky", summary.flaky).ok();
+  }
+
   let ignored_steps = get_steps_text(summary.ignored_steps);
   if summary.ignored > 0 || !ignored_steps.is_empty() {
     write!(
@@ -223,12 +387,18 @@ pub(super) fn report_summary(
     write!(summary_result, " | {} filtered out", summary.filtered_out).ok();
   };
 
+  // The summary is a whole-suite aggregate, so it stays at millisecond
+  // granularity. Sub-millisecond precision here would be noise and would make
+  // the output non-deterministic for fast or empty runs.
   writeln!(
     writer,
     "\n{} | {} {}",
     status,
     summary_result,
-    colors::gray(format!("({})", display::human_elapsed(elapsed.as_millis()))),
+    colors::gray(format!(
+      "({})",
+      display::human_elapsed_with_ms_limit(elapsed.as_millis(), 1_000)
+    )),
   )
   .ok();
 }

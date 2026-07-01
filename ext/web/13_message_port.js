@@ -172,7 +172,11 @@ function dispatchPortMessageData(target, data) {
   }
   const event = new MessageEvent("message", {
     data: message,
-    ports: ArrayPrototypeFilter(
+    // Skip the transferables filter for the common no-transferables case.
+    // Passing `undefined` lets the MessageEvent constructor take its cheap
+    // `ports == null` branch (a single frozen empty array, no iterator
+    // validation) instead of allocating a filtered array per message.
+    ports: transferables.length === 0 ? undefined : ArrayPrototypeFilter(
       transferables,
       (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
     ),
@@ -538,6 +542,20 @@ function opCreateEntangledMessagePort() {
  */
 const emptyTransferables = ObjectFreeze([]);
 
+// The web-streams transferable resources (ReadableStream/WritableStream/
+// TransformStream) are registered as a side effect of evaluating
+// ext:deno_web/06_streams.js, which is lazy. A realm (e.g. a worker) that
+// receives a transferred stream may not have loaded that module yet, so on a
+// miss force-load it (loadExtScript is idempotent) before resolving.
+function resolveTransferableResource(type) {
+  let resource = core.getTransferableResource(type);
+  if (resource === undefined) {
+    core.loadExtScript("ext:deno_web/06_streams.js");
+    resource = core.getTransferableResource(type);
+  }
+  return resource;
+}
+
 function deserializeJsMessageData(messageData) {
   // Fast path: no transferables (most common case)
   if (messageData.transferables.length === 0) {
@@ -561,14 +579,14 @@ function deserializeJsMessageData(messageData) {
       switch (transferable.kind) {
         case "resource": {
           const { 0: type, 1: rid } = transferable.data;
-          const hostObj = core.getTransferableResource(type).receive(rid);
+          const hostObj = resolveTransferableResource(type).receive(rid);
           ArrayPrototypePush(transferables, hostObj);
           ArrayPrototypePush(hostObjects, hostObj);
           break;
         }
         case "multiResource": {
           const { 0: type, 1: rids } = transferable.data;
-          const hostObj = core.getTransferableResource(type).receive(rids);
+          const hostObj = resolveTransferableResource(type).receive(rids);
           ArrayPrototypePush(transferables, hostObj);
           ArrayPrototypePush(hostObjects, hostObj);
           break;
@@ -889,7 +907,17 @@ return {
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
   nodeWorkerThreadCloseCbInvoked,
-  refedMessagePortsCount,
+  // `refedMessagePortsCount` is a mutable module-level counter. Before
+  // ext/web was converted to lazy-loaded IIFE scripts (#33760), this module
+  // used real ESM `export`s, so consumers (runtime/js/99_main.js'
+  // `hasMessageEventListener()`) observed a *live binding* that tracked the
+  // counter. A plain `refedMessagePortsCount` property here would instead
+  // capture a one-time snapshot of `0`, silently breaking the worker
+  // idle-termination check for refed Node message ports (#23169). Expose it
+  // as a getter to restore the live-binding behavior.
+  get refedMessagePortsCount() {
+    return refedMessagePortsCount;
+  },
   refMessagePort,
   serializeJsMessageData,
   structuredClone,

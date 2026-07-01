@@ -4,6 +4,7 @@ use std::convert::Infallible;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::sync::Arc;
 
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
@@ -465,6 +466,17 @@ impl<'s> ToV8<'s> for &'static str {
 }
 
 impl<'s> ToV8<'s> for Box<str> {
+  type Error = Infallible;
+  #[inline]
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'s, 'i>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    Ok(v8::String::new(scope, &self).unwrap().into()) // TODO
+  }
+}
+
+impl<'s> ToV8<'s> for Arc<str> {
   type Error = Infallible;
   #[inline]
   fn to_v8<'i>(
@@ -1084,6 +1096,34 @@ where
       Some(value) => value.to_v8(scope),
       None => Ok(v8::null(scope).into()),
     }
+  }
+}
+
+impl<'s, T> ToV8<'s> for Box<T>
+where
+  T: ToV8<'s>,
+{
+  type Error = T::Error;
+
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'s, 'i>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    (*self).to_v8(scope)
+  }
+}
+
+impl<'s, T> FromV8<'s> for Box<T>
+where
+  T: FromV8<'s>,
+{
+  type Error = T::Error;
+
+  fn from_v8<'i>(
+    scope: &mut v8::PinScope<'s, 'i>,
+    value: v8::Local<'s, v8::Value>,
+  ) -> Result<Self, Self::Error> {
+    T::from_v8(scope, value).map(Box::new)
   }
 }
 
@@ -2038,6 +2078,29 @@ function equal(a, b) {
 
     let from = ToV8::to_v8(TupleSingle(1), scope).unwrap();
     assert_eq!(from.number_value(scope).unwrap(), 1.0);
+  }
+
+  #[test]
+  fn test_box_roundtrip() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    // Box<T> forwards to T's ToV8/FromV8 — JS sees the inner shape, never
+    // a wrapper.
+    let inner: Box<String> = Box::new("hello".to_string());
+    let v = inner.clone().to_v8(scope).unwrap();
+    let s = v8::Local::<v8::String>::try_from(v).unwrap();
+    assert_eq!(s.to_rust_string_lossy(scope), "hello");
+
+    let back: Box<String> = FromV8::from_v8(scope, v).unwrap();
+    assert_eq!(back, inner);
+
+    // Box<Box<T>> collapses on the wire.
+    let nested: Box<Box<u32>> = Box::new(Box::new(42));
+    let v = nested.clone().to_v8(scope).unwrap();
+    assert_eq!(v.number_value(scope).unwrap(), 42.0);
+    let back: Box<Box<u32>> = FromV8::from_v8(scope, v).unwrap();
+    assert_eq!(back, nested);
   }
 
   #[test]

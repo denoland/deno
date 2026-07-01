@@ -57,7 +57,9 @@ const TIMEOUT_MAX = 2 ** 31 - 1;
 
 const kDestroy = Symbol("destroy");
 const kTimerId = Symbol("timerId");
+const kSystem = Symbol("system");
 const kTimeout = Symbol("timeout");
+const kSuspended = Symbol("suspended");
 const kRefed = core.kRefed;
 const createTimer = Symbol("createTimer");
 
@@ -91,7 +93,10 @@ let warnedNegativeNumber = false;
 let warnedNotNumber = false;
 
 // Timer constructor function.
-function Timeout(callback, after, args, isRepeat, isRefed) {
+// isSystem marks the timer as runtime-internal (e.g. setUnrefTimeout's
+// keep-alive timers); leak/sanitizer machinery skips these so an
+// internal timer doesn't surface as a user-visible leak.
+function Timeout(callback, after, args, isRepeat, isRefed, isSystem) {
   if (after === undefined) {
     after = 1;
   } else {
@@ -130,7 +135,19 @@ function Timeout(callback, after, args, isRepeat, isRefed) {
   this._timerArgs = args;
   this._repeat = isRepeat;
   this._destroyed = false;
+  ObjectDefineProperty(this, kSuspended, {
+    __proto__: null,
+    value: false,
+    writable: true,
+  });
   this[kRefed] = isRefed;
+  // Non-enumerable: this is a runtime-internal marker and must not leak into
+  // `util.inspect(timer)` output (node has no such property).
+  ObjectDefineProperty(this, kSystem, {
+    __proto__: null,
+    value: !!isSystem,
+    writable: true,
+  });
 
   const asyncId = nextAsyncId();
   const triggerAsyncId = executionAsyncId();
@@ -226,6 +243,7 @@ Timeout.prototype[createTimer] = function () {
     undefined,
     this._repeat,
     this[kRefed],
+    this[kSystem],
   );
   ObjectDefineProperty(this, "_timer", {
     __proto__: null,
@@ -240,8 +258,9 @@ Timeout.prototype[createTimer] = function () {
 };
 
 Timeout.prototype[kDestroy] = function () {
-  if (!this._destroyed) {
+  if (!this._destroyed || this[kSuspended]) {
     this._destroyed = true;
+    this[kSuspended] = false;
     this._idleTimeout = -1;
     this._idleStart = DateNow();
     this._onTimeout = null;
@@ -276,6 +295,7 @@ Timeout.prototype.refresh = function () {
     // nulled by kDestroy or _onTimeout explicitly cleared).
     if (this._onTimeout !== null) {
       this._destroyed = false;
+      this[kSuspended] = false;
       this[kTimerId] = this[createTimer]();
     }
   } else {
@@ -350,7 +370,21 @@ function getTimerDuration(msecs, name) {
 
 function setUnrefTimeout(callback, timeout, ...args) {
   validateFunction(callback, "callback");
-  return new Timeout(callback, timeout, args, false, false);
+  // isSystem=true: this is a runtime-internal timer (keep-alive, socket
+  // timeouts, idle eviction etc.). The leak sanitizer skips system timers
+  // so e.g. Agent.keepSocketAlive's 5000 ms unref'd timer stays invisible
+  // to Deno.test's `sanitizeOps`.
+  return new Timeout(callback, timeout, args, false, false, true);
+}
+
+function suspendTimeout(timeout) {
+  if (timeout !== null && timeout !== undefined && !timeout._destroyed) {
+    timeout._destroyed = true;
+    timeout[kSuspended] = true;
+    timeout._idleStart = DateNow();
+    cancelTimer_(timeout._timer);
+    MapPrototypeDelete(activeTimers, timeout[kTimerId]);
+  }
 }
 
 // Re-export immediate queue and runImmediates from core for consumers
@@ -436,6 +470,7 @@ return {
   Timeout,
   getTimerDuration,
   setUnrefTimeout,
+  suspendTimeout,
   immediateQueue,
   runImmediates,
   Immediate,

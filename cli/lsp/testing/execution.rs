@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -44,6 +45,8 @@ use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestFailure;
 use crate::tools::test::TestFailureFormatOptions;
 use crate::tools::test::create_test_event_channel;
+use crate::util::env::WatchEnvTracker;
+use crate::util::env::resolve_cwd_or_fallback;
 
 /// Logic to convert a test request into a set of test modules to be tested and
 /// any filters to be applied to those tests
@@ -165,6 +168,9 @@ pub struct TestRun {
   tests: TestServerTests,
   token: CancellationToken,
   workspace_settings: config::WorkspaceSettings,
+  /// `--env-file` paths inherited from the `test` task in deno.json. Resolved
+  /// once at run construction so `get_args` doesn't depend on the config tree.
+  test_task_env_files: Vec<PathBuf>,
 }
 
 impl TestRun {
@@ -172,11 +178,14 @@ impl TestRun {
     params: &lsp_custom::TestRunRequestParams,
     tests: TestServerTests,
     workspace_settings: config::WorkspaceSettings,
+    config_tree: &config::ConfigTree,
   ) -> Self {
     let (queue, filters) = {
       let tests = tests.lock().await;
       as_queue_and_filters(params, &tests)
     };
+
+    let test_task_env_files = collect_test_task_env_files(&queue, config_tree);
 
     Self {
       id: params.id,
@@ -186,6 +195,7 @@ impl TestRun {
       tests,
       token: CancellationToken::new(),
       workspace_settings,
+      test_task_env_files,
     }
   }
 
@@ -232,6 +242,34 @@ impl TestRun {
     let flags = Arc::new(flags_from_vec(
       args.into_iter().map(|s| From::from(s.as_ref())).collect(),
     )?);
+    // The CLI loads `--env-file` paths in `cli::lib::main`, before the
+    // subcommand factory runs. The LSP test runner bypasses that, so apply
+    // them here against the process environment before constructing the
+    // worker factory. Without this, tests that read env vars at module load
+    // wouldn't see values from a deno.json `test` task's `--env-file`.
+    //
+    // We use the stateful `WatchEnvTracker` so that re-runs after edits to
+    // the env file or task definition refresh values rather than seeing the
+    // first-run snapshot for the lifetime of the LSP. Caveats that callers
+    // should be aware of:
+    //   * All test runs share the long-lived LSP's single process env. When
+    //     two workspace scopes set the same key to different values, the
+    //     first file wins and the other scope silently runs with the wrong
+    //     value until the LSP restarts.
+    //   * Variables that were present in the process environment *before*
+    //     any env file was loaded keep precedence over env files, matching
+    //     the CLI's `load_env_variables_from_env_files`.
+    //   * Concurrent `deno/testRun` requests racing on the shared global env
+    //     can interleave; this is the same hazard the CLI has when running
+    //     multiple `deno test` invocations in one process.
+    if let Some(env_files) = &flags.env_file {
+      let cwd = resolve_cwd_or_fallback(flags.initial_cwd.as_deref());
+      WatchEnvTracker::snapshot().load_env_variables_from_env_files(
+        &cwd,
+        env_files,
+        flags.log_level,
+      );
+    }
     let factory = CliFactory::from_flags(flags);
     let cli_options = factory.cli_options()?;
     let permission_desc_parser = factory.permission_desc_parser()?;
@@ -330,12 +368,15 @@ impl TestRun {
             test::TestSpecifierOptions {
               filter,
               shuffle: None,
+              retry: 0,
+              repeats: 0,
               trace_leaks: false,
               // LSP-driven test runs intentionally disable sanitizers — the
               // LSP UI doesn't surface op/resource leak failures usefully
               // and they'd generate noise in the test gutter.
               sanitize_ops: false,
               sanitize_resources: false,
+              update_snapshots: false,
             },
           ))
         }
@@ -408,7 +449,7 @@ impl TestRun {
               }
             }
             test::TestEvent::UncaughtError(origin, error) => {
-              reporter.report_uncaught_error(&origin, &error);
+              reporter.report_uncaught_error(&origin, &error).await;
               summary.failed += 1;
               summary.uncaught_errors.push((origin, error));
             }
@@ -439,11 +480,19 @@ impl TestRun {
                 );
               }
             }
+            test::TestEvent::Retry(..) | test::TestEvent::Repeat(..) => {
+              // Informational only; the test's terminal result is reported via
+              // `TestEvent::Result`.
+            }
             test::TestEvent::Completed => {
               reporter.report_completed();
             }
+            // LSP-driven test runs never use `--update-snapshots`.
+            test::TestEvent::SnapshotSummary(_) => {}
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
+            test::TestEvent::Exit(_) => {}
+            test::TestEvent::IsolateExit(_, _) => {}
           }
         }
 
@@ -512,8 +561,117 @@ impl TestRun {
     {
       args.push(Cow::Borrowed("--inspect"));
     }
+    // Inherit `--env-file` paths from the `test` task in deno.json when the
+    // user hasn't already supplied one via `deno.testing.args`. Without this,
+    // running tests from VSCode wouldn't see env vars that `deno task test`
+    // loads (see https://github.com/denoland/deno/issues/28797).
+    let has_env_file_arg = args.iter().any(|a| {
+      let a = a.as_ref();
+      a == "--env-file"
+        || a == "--env"
+        || a.starts_with("--env-file=")
+        || a.starts_with("--env=")
+    });
+    if !has_env_file_arg {
+      for env_file in &self.test_task_env_files {
+        let Some(env_file) = env_file.to_str() else {
+          lsp_log!(
+            "Skipping non-UTF8 env file path from deno.json `test` task: {}",
+            env_file.display()
+          );
+          continue;
+        };
+        args.push(Cow::Owned(format!("--env-file={env_file}")));
+      }
+    }
     args
   }
+}
+
+/// Walks each unique scope reached by the queued specifiers and harvests
+/// `--env-file` paths from its deno.json `test` task. Each path is resolved
+/// against the deno.json's directory (matching how `deno task test` reads
+/// them) so the LSP process's cwd doesn't change the answer. Scopes are
+/// deduplicated so a workspace with one shared deno.json is processed once.
+fn collect_test_task_env_files(
+  queue: &HashSet<ModuleSpecifier>,
+  config_tree: &config::ConfigTree,
+) -> Vec<PathBuf> {
+  let mut env_files = Vec::new();
+  let mut seen_scopes: HashSet<Arc<deno_core::url::Url>> = HashSet::new();
+  let mut seen_env_files: HashSet<PathBuf> = HashSet::new();
+  for specifier in queue {
+    let Some(data) = config_tree.data_for_specifier(specifier) else {
+      continue;
+    };
+    if !seen_scopes.insert(data.scope.clone()) {
+      continue;
+    }
+    let Some(config_file) = data.maybe_deno_json() else {
+      continue;
+    };
+    let Ok(Some(tasks)) = config_file.to_tasks_config() else {
+      continue;
+    };
+    let Some(task) = tasks.get("test") else {
+      continue;
+    };
+    let Some(command) = &task.command else {
+      continue;
+    };
+    let config_dir = config_file
+      .specifier
+      .to_file_path()
+      .ok()
+      .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+    for env_file in extract_env_files_from_command(command) {
+      let resolved = match &config_dir {
+        Some(dir) => dir.join(&env_file),
+        None => PathBuf::from(env_file),
+      };
+      if seen_env_files.insert(resolved.clone()) {
+        env_files.push(resolved);
+      }
+    }
+  }
+  env_files
+}
+
+/// Scans a task command string for `--env-file`/`--env` flags and returns the
+/// associated file paths. A bare `--env-file` flag (no value) defaults to
+/// `.env` to match the CLI behavior. In compound task commands, only `deno
+/// test ...` command segments are scanned so env files belonging to unrelated
+/// commands are not inherited by the LSP test runner.
+fn extract_env_files_from_command(command: &str) -> Vec<String> {
+  let Some(tokens) = shlex::split(command) else {
+    return Vec::new();
+  };
+  let mut env_files = Vec::new();
+  let mut index = 0;
+  while index + 1 < tokens.len() {
+    if tokens[index] == "deno" && tokens[index + 1] == "test" {
+      index += 2;
+      while index < tokens.len() && !is_shell_command_separator(&tokens[index])
+      {
+        let token = &tokens[index];
+        if let Some(rest) = token.strip_prefix("--env-file=") {
+          env_files.push(rest.to_string());
+        } else if let Some(rest) = token.strip_prefix("--env=") {
+          env_files.push(rest.to_string());
+        } else if token == "--env-file" || token == "--env" {
+          env_files.push(".env".to_string());
+        }
+        index += 1;
+      }
+    } else {
+      index += 1;
+    }
+  }
+  env_files
+}
+
+fn is_shell_command_separator(token: &str) -> bool {
+  matches!(token, "&&" | "||" | ";" | "|")
 }
 
 #[derive(Debug, PartialEq)]
@@ -583,6 +741,11 @@ struct LspTestReporter {
   files: TestServerTests,
   tests: IndexMap<usize, LspTestDescription>,
   current_test: Option<usize>,
+  /// Counts of dynamic test registrations per `(parent_static_id, name)` for
+  /// the current run, used to assign a `name_index` that matches the static
+  /// collector's numbering when multiple tests share the same name under the
+  /// same parent. See https://github.com/denoland/deno/issues/20371.
+  dynamic_name_indices: HashMap<(Option<String>, String), u32>,
 }
 
 impl LspTestReporter {
@@ -599,7 +762,20 @@ impl LspTestReporter {
       files,
       tests: Default::default(),
       current_test: Default::default(),
+      dynamic_name_indices: HashMap::new(),
     }
+  }
+
+  fn next_dynamic_name_index(
+    &mut self,
+    parent_static_id: Option<&str>,
+    name: &str,
+  ) -> u32 {
+    let key = (parent_static_id.map(str::to_owned), name.to_string());
+    let entry = self.dynamic_name_indices.entry(key).or_insert(0);
+    let index = *entry;
+    *entry += 1;
+    index
   }
 
   fn progress(&self, message: lsp_custom::TestRunProgressMessage) {
@@ -616,6 +792,7 @@ impl LspTestReporter {
   fn report_plan(&mut self, _plan: &test::TestPlan) {}
 
   async fn report_register(&mut self, desc: &test::TestDescription) {
+    let name_index = self.next_dynamic_name_index(None, &desc.name);
     let mut files = self.files.lock().await;
     let specifier = ModuleSpecifier::parse(&desc.location.file_name).unwrap();
     let (test_module, _) = files
@@ -624,7 +801,7 @@ impl LspTestReporter {
     let Ok(uri) = url_to_uri(&test_module.specifier) else {
       return;
     };
-    let (static_id, is_new) = test_module.register_dynamic(desc);
+    let (static_id, is_new) = test_module.register_dynamic(desc, name_index);
     self.tests.insert(
       desc.id,
       LspTestDescription::TestDescription(desc.clone(), static_id.clone()),
@@ -650,7 +827,8 @@ impl LspTestReporter {
     self.progress(lsp_custom::TestRunProgressMessage::Started { test });
   }
 
-  fn report_slow(&mut self, _desc: &test::TestDescription, _elapsed: u64) {}
+  fn report_slow(&mut self, _desc: &test::TestDescription, _elapsed: Duration) {
+  }
 
   fn report_output(&mut self, output: &[u8]) {
     let test = self
@@ -670,15 +848,16 @@ impl LspTestReporter {
     &mut self,
     desc: &test::TestDescription,
     result: &test::TestResult,
-    elapsed: u64,
+    elapsed: Duration,
   ) {
     self.current_test = None;
+    let elapsed = elapsed.as_millis() as u32;
     match result {
       test::TestResult::Ok => {
         let desc = self.tests.get(&desc.id).unwrap();
         self.progress(lsp_custom::TestRunProgressMessage::Passed {
           test: desc.as_test_identifier(&self.tests),
-          duration: Some(elapsed as u32),
+          duration: Some(elapsed),
         })
       }
       test::TestResult::Ignored => {
@@ -692,7 +871,7 @@ impl LspTestReporter {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
           messages: vec![failure_to_test_message(failure)],
-          duration: Some(elapsed as u32),
+          duration: Some(elapsed),
         })
       }
       test::TestResult::Cancelled => {
@@ -700,13 +879,13 @@ impl LspTestReporter {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
           messages: vec![],
-          duration: Some(elapsed as u32),
+          duration: Some(elapsed),
         })
       }
     }
   }
 
-  fn report_uncaught_error(&mut self, origin: &str, js_error: &JsError) {
+  async fn report_uncaught_error(&mut self, origin: &str, js_error: &JsError) {
     self.current_test = None;
     let err_string = format!(
       "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
@@ -725,38 +904,93 @@ impl LspTestReporter {
       actual_output: None,
       location: None,
     }];
+    let mut reported = false;
     for desc in self.tests.values().filter(|d| d.origin() == origin) {
       self.progress(lsp_custom::TestRunProgressMessage::Failed {
         test: desc.as_test_identifier(&self.tests),
         messages: messages.clone(),
         duration: None,
       });
+      reported = true;
+    }
+    if reported {
+      return;
+    }
+    // No individual test was registered for this origin at runtime. This happens
+    // when the module throws while evaluating, before (or instead of) any test
+    // runs — for example `Deno.test("")` throws "The test name can't be empty".
+    // Surface the failure against the module's statically-collected tests (which
+    // were already enqueued on the client) so the run still reports the error
+    // instead of silently completing. See
+    // https://github.com/denoland/deno/issues/17119.
+    let Ok(specifier) = ModuleSpecifier::parse(origin) else {
+      return;
+    };
+    let Ok(uri) = url_to_uri(&specifier) else {
+      return;
+    };
+    {
+      let files = self.files.lock().await;
+      if let Some((test_module, _)) = files.get(&specifier) {
+        for id in test_module
+          .defs
+          .iter()
+          .filter(|(_, d)| d.parent_id.is_none())
+          .map(|(id, _)| id.clone())
+        {
+          self.progress(lsp_custom::TestRunProgressMessage::Failed {
+            test: lsp_custom::TestIdentifier {
+              text_document: lsp::TextDocumentIdentifier { uri: uri.clone() },
+              id: Some(id),
+              step_id: None,
+            },
+            messages: messages.clone(),
+            duration: None,
+          });
+          reported = true;
+        }
+      }
+    }
+    // As a last resort (e.g. the module has no statically-collected tests),
+    // report against the module itself so the error is never dropped.
+    if !reported {
+      self.progress(lsp_custom::TestRunProgressMessage::Failed {
+        test: lsp_custom::TestIdentifier {
+          text_document: lsp::TextDocumentIdentifier { uri },
+          id: None,
+          step_id: None,
+        },
+        messages,
+        duration: None,
+      });
     }
   }
 
   async fn report_step_register(&mut self, desc: &test::TestStepDescription) {
-    let mut files = self.files.lock().await;
-    let file_name = self
-      .current_test
-      .and_then(|i| {
-        let mut root_desc = self.tests.get(&i)?;
+    let Some((parent_static_id, file_name)) =
+      self.tests.get(&desc.parent_id).and_then(|parent_desc| {
+        let parent_static_id = parent_desc.static_id().to_string();
+        let mut root_desc = parent_desc;
         while let Some(parent_id) = root_desc.parent_id() {
           root_desc = self.tests.get(&parent_id)?;
         }
-        Some(&root_desc.location().file_name)
+        Some((parent_static_id, root_desc.location().file_name.clone()))
       })
-      .unwrap_or(&desc.location.file_name);
-    let specifier = ModuleSpecifier::parse(file_name).unwrap();
+    else {
+      return;
+    };
+    let name_index =
+      self.next_dynamic_name_index(Some(&parent_static_id), &desc.name);
+    let mut files = self.files.lock().await;
+    let specifier = ModuleSpecifier::parse(&file_name).unwrap();
     let (test_module, _) = files
       .entry(specifier.clone())
       .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));
     let Ok(uri) = url_to_uri(&test_module.specifier) else {
       return;
     };
-    let (static_id, is_new) = test_module.register_step_dynamic(
-      desc,
-      self.tests.get(&desc.parent_id).unwrap().static_id(),
-    );
+    let (static_id, is_new) =
+      test_module.register_step_dynamic(desc, &parent_static_id, name_index);
     self.tests.insert(
       desc.id,
       LspTestDescription::TestStepDescription(desc.clone(), static_id.clone()),
@@ -788,8 +1022,9 @@ impl LspTestReporter {
     &mut self,
     desc: &test::TestStepDescription,
     result: &test::TestStepResult,
-    elapsed: u64,
+    elapsed: Duration,
   ) {
+    let elapsed = elapsed.as_millis() as u32;
     if self.current_test == Some(desc.id) {
       self.current_test = Some(desc.parent_id);
     }
@@ -798,7 +1033,7 @@ impl LspTestReporter {
       test::TestStepResult::Ok => {
         self.progress(lsp_custom::TestRunProgressMessage::Passed {
           test: desc.as_test_identifier(&self.tests),
-          duration: Some(elapsed as u32),
+          duration: Some(elapsed),
         })
       }
       test::TestStepResult::Ignored => {
@@ -810,7 +1045,7 @@ impl LspTestReporter {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
           messages: vec![failure_to_test_message(failure)],
-          duration: Some(elapsed as u32),
+          duration: Some(elapsed),
         })
       }
     }
@@ -877,6 +1112,7 @@ mod tests {
       id: "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94"
         .to_string(),
       name: "test a".to_string(),
+      name_index: 0,
       range: Some(new_range(1, 5, 1, 9)),
       is_dynamic: false,
       parent_id: None,
@@ -886,6 +1122,7 @@ mod tests {
       id: "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f"
         .to_string(),
       name: "test b".to_string(),
+      name_index: 0,
       range: Some(new_range(2, 5, 2, 9)),
       is_dynamic: false,
       parent_id: None,
@@ -929,6 +1166,67 @@ mod tests {
         "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94"
           .to_string()
       ]
+    );
+  }
+
+  #[test]
+  fn test_extract_env_files_from_command() {
+    // Plain `deno test --env-file=.env.test -A` (the case from
+    // https://github.com/denoland/deno/issues/28797).
+    assert_eq!(
+      extract_env_files_from_command("deno test --env-file=.env.test -A"),
+      vec![".env.test".to_string()],
+    );
+    // Bare `--env-file` defaults to `.env` (matches CLI default).
+    assert_eq!(
+      extract_env_files_from_command("deno test --env-file -A"),
+      vec![".env".to_string()],
+    );
+    // `--env` alias.
+    assert_eq!(
+      extract_env_files_from_command("deno test --env=.env.local"),
+      vec![".env.local".to_string()],
+    );
+    // Multiple env files, possibly amid other args.
+    assert_eq!(
+      extract_env_files_from_command(
+        "deno test --env-file=.env --env-file=.env.test -A"
+      ),
+      vec![".env".to_string(), ".env.test".to_string()],
+    );
+    // Compound shell commands — we still extract the env file the user
+    // intended for the test run.
+    assert_eq!(
+      extract_env_files_from_command(
+        "deno fmt && deno test --env-file=.env.test"
+      ),
+      vec![".env.test".to_string()],
+    );
+    // Env files belonging to other commands in a compound task are ignored.
+    assert_eq!(
+      extract_env_files_from_command(
+        "deno run --env-file=.env.prod setup.ts && deno test --env-file=.env.test"
+      ),
+      vec![".env.test".to_string()],
+    );
+    assert!(
+      extract_env_files_from_command(
+        "deno run --env-file=.env.prod setup.ts && deno test"
+      )
+      .is_empty()
+    );
+    // Quoted path containing whitespace is preserved by the shlex split.
+    assert_eq!(
+      extract_env_files_from_command(
+        "deno test --env-file=\"my env/.env.test\""
+      ),
+      vec!["my env/.env.test".to_string()],
+    );
+    // No env-file flag.
+    assert!(extract_env_files_from_command("deno test -A").is_empty());
+    // Malformed command (unterminated quote) is treated as no env files.
+    assert!(
+      extract_env_files_from_command("deno test --env-file=\"foo").is_empty()
     );
   }
 }

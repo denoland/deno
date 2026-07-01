@@ -6521,6 +6521,7 @@ mod test {
             tarball: "https://example.com/package-0@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -6557,6 +6558,7 @@ mod test {
             tarball: "https://example.com/package-a@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -6574,6 +6576,7 @@ mod test {
             tarball: "https://example.com/package-b@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -6784,6 +6787,50 @@ mod test {
       vec![(
         "my-local-pkg@^2.0.0".to_string(),
         "my-local-pkg@2.0.0".to_string()
+      )]
+    );
+  }
+
+  #[tokio::test]
+  async fn link_package_prerelease_as_root() {
+    // A link package with a prerelease version should be selected for a bare
+    // `*` requirement, even though the registry also publishes a stable
+    // version that a `*` range would normally prefer (npm semver excludes
+    // prereleases). The explicitly linked local package wins.
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("my-local-pkg", "0.1.4");
+
+    let link_packages = HashMap::from([(
+      PackageName::from_static("my-local-pkg"),
+      vec![NpmPackageVersionInfo {
+        version: Version::parse_from_npm("0.40.0-pre").unwrap(),
+        ..Default::default()
+      }],
+    )]);
+
+    let (packages, package_reqs) = run_resolver_with_options_and_get_output(
+      api,
+      RunResolverOptions {
+        reqs: vec!["my-local-pkg@*"],
+        link_packages: Some(&link_packages),
+        ..Default::default()
+      },
+    )
+    .await;
+
+    assert_eq!(
+      packages,
+      vec![TestNpmResolutionPackage {
+        pkg_id: "my-local-pkg@0.40.0-pre".to_string(),
+        copy_index: 0,
+        dependencies: Default::default(),
+      }]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![(
+        "my-local-pkg".to_string(),
+        "my-local-pkg@0.40.0-pre".to_string()
       )]
     );
   }
@@ -7895,6 +7942,7 @@ mod test {
       link_packages: link_packages.clone(),
       newest_dependency_date_options: options.newest_dependency_date,
       overrides: Arc::new(options.overrides),
+      trust_policy: Default::default(),
     };
     let mut resolver = GraphDependencyResolver::new(
       &mut graph,
@@ -8156,6 +8204,7 @@ mod test {
       link_packages: Default::default(),
       newest_dependency_date_options: Default::default(),
       overrides: Default::default(),
+      trust_policy: Default::default(),
     };
     let mut resolver = GraphDependencyResolver::new(
       &mut graph,

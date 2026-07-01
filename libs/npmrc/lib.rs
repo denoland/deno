@@ -46,6 +46,34 @@ pub struct RegistryConfig {
   pub keyfile: Option<String>,
 }
 
+impl RegistryConfig {
+  /// Whether this config carries credentials usable for authentication.
+  ///
+  /// Mirrors the cases that `maybe_auth_header_value_for_npm_registry` turns
+  /// into a header, including treating `email` as a username substitute, so the
+  /// two never disagree.
+  pub fn has_auth(&self) -> bool {
+    self.auth_token.is_some()
+      || self.auth.is_some()
+      || ((self.username.is_some() || self.email.is_some())
+        && self.password.is_some())
+  }
+}
+
+/// `trust-policy` value. Controls whether a resolved npm version may have
+/// weaker publishing-trust evidence than an earlier-published version of the
+/// same package. Mirrors pnpm's `trustPolicy`.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum TrustPolicyConfig {
+  /// Trust evidence is ignored during resolution (the default).
+  #[default]
+  Off,
+  /// Refuse to resolve a version whose publishing-trust evidence is weaker
+  /// than the strongest evidence on any earlier-published version of the same
+  /// package.
+  NoDowngrade,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct NpmRc {
   pub registry: Option<String>,
@@ -54,6 +82,16 @@ pub struct NpmRc {
   /// `min-release-age` value in days. See
   /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
   pub min_release_age_days: Option<u64>,
+  /// `trust-policy` value (`off` or `no-downgrade`).
+  pub trust_policy: TrustPolicyConfig,
+  /// `trust-policy-ignore-after` value in minutes: skip the `no-downgrade`
+  /// check for versions published more than this many minutes ago. Mirrors
+  /// pnpm's `trustPolicyIgnoreAfter`.
+  pub trust_policy_ignore_after_minutes: Option<u64>,
+  /// `trust-policy-exclude[]` values: package names exempted from the
+  /// `no-downgrade` trust policy. Mirrors pnpm's `trustPolicyExclude`. Set via
+  /// repeated `trust-policy-exclude[]=<package>` entries in `.npmrc`.
+  pub trust_policy_exclude: Vec<String>,
 }
 
 impl NpmRc {
@@ -65,7 +103,10 @@ impl NpmRc {
     let mut registry = None;
     let mut scope_registries: HashMap<String, String> = HashMap::new();
     let mut registry_configs: HashMap<String, RegistryConfig> = HashMap::new();
-    let mut min_release_age_days: Option<u64> = None;
+    let mut min_release_age_days = min_release_age_days_from_env(sys);
+    let mut trust_policy = TrustPolicyConfig::default();
+    let mut trust_policy_ignore_after_minutes: Option<u64> = None;
+    let mut trust_policy_exclude: Vec<String> = Vec::new();
 
     for kv_or_section in kv_or_sections {
       match kv_or_section {
@@ -132,6 +173,42 @@ impl NpmRc {
                 }
                 _ => {}
               }
+            } else if key == "trust-policy"
+              && let Value::String(text) = &kv.value
+            {
+              let value = expand_vars(text, sys);
+              trust_policy = match value.trim() {
+                "no-downgrade" => TrustPolicyConfig::NoDowngrade,
+                // unknown/`off` values fall back to off (npm is lenient about
+                // unknown config values)
+                _ => TrustPolicyConfig::Off,
+              };
+            } else if key == "trust-policy-ignore-after" {
+              // a number of minutes; ignore unparsable values (npm is lenient
+              // about unknown/invalid config values)
+              match &kv.value {
+                Value::Number(n) if *n >= 0 => {
+                  trust_policy_ignore_after_minutes = Some(*n as u64);
+                }
+                Value::String(text) => {
+                  let value = expand_vars(text, sys);
+                  if let Ok(minutes) = value.trim().parse::<u64>() {
+                    trust_policy_ignore_after_minutes = Some(minutes);
+                  }
+                }
+                _ => {}
+              }
+            }
+          } else if let Key::Array(key) = &kv.key
+            && key == "trust-policy-exclude"
+            && let Value::String(text) = &kv.value
+          {
+            // repeated `trust-policy-exclude[]=<package>` entries, each adding
+            // one package name to exempt from the `no-downgrade` policy
+            let value = expand_vars(text, sys);
+            let value = value.trim();
+            if !value.is_empty() {
+              trust_policy_exclude.push(value.to_string());
             }
           }
         }
@@ -149,6 +226,9 @@ impl NpmRc {
         .map(|(k, v)| (k, Arc::new(v)))
         .collect(),
       min_release_age_days,
+      trust_policy,
+      trust_policy_ignore_after_minutes,
+      trust_policy_exclude,
     })
   }
 
@@ -185,6 +265,9 @@ impl NpmRc {
       scopes,
       registry_configs: self.registry_configs.clone(),
       min_release_age_days: self.min_release_age_days,
+      trust_policy: self.trust_policy,
+      trust_policy_ignore_after_minutes: self.trust_policy_ignore_after_minutes,
+      trust_policy_exclude: self.trust_policy_exclude.clone(),
     })
   }
 
@@ -240,6 +323,19 @@ impl NpmRc {
   }
 }
 
+pub fn min_release_age_days_from_env(sys: &impl EnvVar) -> Option<u64> {
+  for env_var_name in
+    ["NPM_CONFIG_MIN_RELEASE_AGE", "npm_config_min_release_age"]
+  {
+    if let Ok(value) = sys.env_var(env_var_name)
+      && let Ok(days) = value.trim().parse::<u64>()
+    {
+      return Some(days);
+    }
+  }
+  None
+}
+
 fn get_scope_name(package_name: &str) -> Option<&str> {
   let no_at_pkg_name = package_name.strip_prefix('@')?;
   no_at_pkg_name.split_once('/').map(|(scope, _)| scope)
@@ -259,6 +355,13 @@ pub struct ResolvedNpmRc {
   /// `min-release-age` value in days. See
   /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
   pub min_release_age_days: Option<u64>,
+  /// `trust-policy` value (`off` or `no-downgrade`).
+  pub trust_policy: TrustPolicyConfig,
+  /// `trust-policy-ignore-after` value in minutes.
+  pub trust_policy_ignore_after_minutes: Option<u64>,
+  /// `trust-policy-exclude[]` package names exempted from the `no-downgrade`
+  /// trust policy.
+  pub trust_policy_exclude: Vec<String>,
 }
 
 impl ResolvedNpmRc {
@@ -316,6 +419,45 @@ impl ResolvedNpmRc {
       }
     }
     best_match.map(|(_, config)| config)
+  }
+
+  /// Like [`Self::tarball_config`], but falls back to the scoped registry's
+  /// config for `package_name` when the tarball is served from the same origin
+  /// as that registry.
+  ///
+  /// Some registries (e.g. GitLab instance-level npm registries) serve tarballs
+  /// from a different path than the registry endpoint, so a plain path-prefix
+  /// match against the tarball URL misses the auth that is configured for the
+  /// registry. See https://github.com/denoland/deno/issues/27759
+  pub fn tarball_config_for_package(
+    &self,
+    tarball_url: &Url,
+    package_name: &str,
+  ) -> Option<&Arc<RegistryConfig>> {
+    if let Some(config) = self.tarball_config(tarball_url) {
+      return Some(config);
+    }
+    // Mirror get_registry_config/get_registry_url: a scoped-but-unconfigured
+    // package resolves through the default registry, so its tarball auth must
+    // come from default_config too (still gated by same-origin + has_auth
+    // below). Bailing out here would re-introduce the 404 this method fixes for
+    // a default instance-level registry.
+    let scope_registry = get_scope_name(package_name)
+      .and_then(|scope| self.scopes.get(scope))
+      .unwrap_or(&self.default_config);
+    // Only fall back when the tarball is served from the same origin as the
+    // registry the package was resolved from, and that registry actually has
+    // credentials. This keeps the token from leaking to unrelated hosts.
+    let registry_url = &scope_registry.registry_url;
+    let same_origin = registry_url.scheme() == tarball_url.scheme()
+      && registry_url.host_str() == tarball_url.host_str()
+      && registry_url.port_or_known_default()
+        == tarball_url.port_or_known_default();
+    if same_origin && scope_registry.config.has_auth() {
+      Some(&scope_registry.config)
+    } else {
+      None
+    }
   }
 }
 
@@ -510,6 +652,9 @@ registry=https://registry.npmjs.org/
           ),
         ]),
         min_release_age_days: None,
+        trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       }
     );
 
@@ -572,6 +717,9 @@ registry=https://registry.npmjs.org/
         ]),
         registry_configs: npm_rc.registry_configs.clone(),
         min_release_age_days: None,
+        trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       }
     );
 
@@ -748,6 +896,9 @@ registry=${VAR_FOUND}
           })
         ),]),
         min_release_age_days: None,
+        trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       }
     )
   }
@@ -798,6 +949,76 @@ registry=${VAR_FOUND}
     sys.env_set_var("MIN_AGE", "7");
     let npm_rc = NpmRc::parse(&sys, "min-release-age=${MIN_AGE}").unwrap();
     assert_eq!(npm_rc.min_release_age_days, Some(7));
+
+    // npm config environment variable
+    let sys = InMemorySys::default();
+    sys.env_set_var("NPM_CONFIG_MIN_RELEASE_AGE", "4");
+    let npm_rc = NpmRc::parse(&sys, "").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, Some(4));
+
+    // .npmrc value takes precedence over the environment fallback.
+    let npm_rc = NpmRc::parse(&sys, "min-release-age=5").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, Some(5));
+  }
+
+  #[test]
+  fn test_parse_trust_policy() {
+    let sys = InMemorySys::default();
+
+    // default is off
+    let npm_rc = NpmRc::parse(&sys, "").unwrap();
+    assert_eq!(npm_rc.trust_policy, TrustPolicyConfig::Off);
+
+    let npm_rc = NpmRc::parse(&sys, "trust-policy=no-downgrade").unwrap();
+    assert_eq!(npm_rc.trust_policy, TrustPolicyConfig::NoDowngrade);
+    let resolved = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    assert_eq!(resolved.trust_policy, TrustPolicyConfig::NoDowngrade);
+
+    // unknown values fall back to off
+    let npm_rc = NpmRc::parse(&sys, "trust-policy=bogus").unwrap();
+    assert_eq!(npm_rc.trust_policy, TrustPolicyConfig::Off);
+
+    // trust-policy-ignore-after parses as a number of minutes and propagates
+    // through to the resolved npmrc
+    let npm_rc = NpmRc::parse(
+      &sys,
+      "trust-policy=no-downgrade\ntrust-policy-ignore-after=4320",
+    )
+    .unwrap();
+    assert_eq!(npm_rc.trust_policy_ignore_after_minutes, Some(4320));
+    let resolved = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    assert_eq!(resolved.trust_policy_ignore_after_minutes, Some(4320));
+
+    // unparsable values are ignored
+    let npm_rc = NpmRc::parse(&sys, "trust-policy-ignore-after=soon").unwrap();
+    assert_eq!(npm_rc.trust_policy_ignore_after_minutes, None);
+
+    // repeated `trust-policy-exclude[]` entries accumulate into the exclude
+    // list and propagate through to the resolved npmrc
+    let npm_rc = NpmRc::parse(
+      &sys,
+      "trust-policy=no-downgrade\ntrust-policy-exclude[]=@scope/pkg\ntrust-policy-exclude[]=other",
+    )
+    .unwrap();
+    assert_eq!(
+      npm_rc.trust_policy_exclude,
+      vec!["@scope/pkg".to_string(), "other".to_string()]
+    );
+    let resolved = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    assert_eq!(
+      resolved.trust_policy_exclude,
+      vec!["@scope/pkg".to_string(), "other".to_string()]
+    );
+
+    // default is an empty exclude list
+    let npm_rc = NpmRc::parse(&sys, "").unwrap();
+    assert!(npm_rc.trust_policy_exclude.is_empty());
   }
 
   #[test]
@@ -932,6 +1153,202 @@ registry=${VAR_FOUND}
     assert_eq!(
       resolved.default_config.registry_url.as_str(),
       "http://npmrc.registry.example.com/"
+    );
+  }
+
+  #[test]
+  fn test_gitlab_instance_level_tarball_auth() {
+    // GitLab "instance-level" npm registries serve tarballs from a different
+    // path than the registry endpoint:
+    //   registry: https://gitlab.example.com/api/v4/packages/npm/
+    //   tarball:  https://gitlab.example.com/api/v4/projects/4055/packages/npm/@scope/pkg/-/...tgz
+    // The auth token is scoped to the registry path, so a plain path-prefix
+    // match against the tarball URL fails. See
+    // https://github.com/denoland/deno/issues/27759
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+@myscope:registry=https://gitlab.example.com/api/v4/packages/npm/
+//gitlab.example.com/api/v4/packages/npm/:_authToken=GITLABTOKEN
+"#,
+    )
+    .unwrap();
+    let resolved_npm_rc = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+
+    let tarball_url = Url::parse(
+      "https://gitlab.example.com/api/v4/projects/4055/packages/npm/@myscope/pkg/-/@myscope/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+
+    // Plain path-prefix matching (npm-compatible) does not find the auth,
+    // because the tarball path differs from the registry path.
+    assert_eq!(resolved_npm_rc.tarball_config(&tarball_url), None);
+
+    // Package-aware lookup falls back to the scoped registry's auth because the
+    // tarball is served from the same host as the scope's registry.
+    assert_eq!(
+      resolved_npm_rc
+        .tarball_config_for_package(&tarball_url, "@myscope/pkg")
+        .unwrap()
+        .auth_token
+        .as_deref(),
+      Some("GITLABTOKEN"),
+    );
+
+    // The fallback must not apply a scope's token to an unrelated host.
+    let other_host = Url::parse(
+      "https://evil.example.org/api/v4/projects/4055/packages/npm/@myscope/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&other_host, "@myscope/pkg"),
+      None,
+    );
+
+    // Same host but a different port is a different origin: no fallback.
+    let other_port = Url::parse(
+      "https://gitlab.example.com:8443/api/v4/projects/4055/packages/npm/@myscope/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&other_port, "@myscope/pkg"),
+      None,
+    );
+
+    // Same host but a downgraded scheme is a different origin: the token must
+    // not be sent over http when the registry is https.
+    let other_scheme = Url::parse(
+      "http://gitlab.example.com/api/v4/projects/4055/packages/npm/@myscope/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&other_scheme, "@myscope/pkg"),
+      None,
+    );
+
+    // A package whose scope has no configured registry does not fall back to an
+    // unrelated scope's auth.
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&tarball_url, "@other/pkg"),
+      None,
+    );
+  }
+
+  #[test]
+  fn test_tarball_config_for_package_default_scope() {
+    // An instance-level registry configured as the default (unscoped) registry
+    // serves tarballs from a different path; the fallback resolves through
+    // `default_config` for unscoped packages.
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+registry=https://gitlab.example.com/api/v4/packages/npm/
+//gitlab.example.com/api/v4/packages/npm/:_authToken=GITLABTOKEN
+"#,
+    )
+    .unwrap();
+    let resolved_npm_rc = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+
+    let tarball_url = Url::parse(
+      "https://gitlab.example.com/api/v4/projects/4055/packages/npm/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(resolved_npm_rc.tarball_config(&tarball_url), None);
+    assert_eq!(
+      resolved_npm_rc
+        .tarball_config_for_package(&tarball_url, "pkg")
+        .unwrap()
+        .auth_token
+        .as_deref(),
+      Some("GITLABTOKEN"),
+    );
+  }
+
+  #[test]
+  fn test_tarball_config_for_package_scoped_unconfigured_default() {
+    // A scoped package whose scope is not separately configured resolves
+    // through the default instance-level registry, so its same-origin tarball
+    // auth must fall back to `default_config` rather than bailing out (which
+    // would re-introduce the 404 this method fixes).
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+registry=https://gitlab.example.com/api/v4/packages/npm/
+//gitlab.example.com/api/v4/packages/npm/:_authToken=GITLABTOKEN
+"#,
+    )
+    .unwrap();
+    let resolved_npm_rc = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+
+    let tarball_url = Url::parse(
+      "https://gitlab.example.com/api/v4/projects/4055/packages/npm/@foo/bar/-/bar-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(resolved_npm_rc.tarball_config(&tarball_url), None);
+    assert_eq!(
+      resolved_npm_rc
+        .tarball_config_for_package(&tarball_url, "@foo/bar")
+        .unwrap()
+        .auth_token
+        .as_deref(),
+      Some("GITLABTOKEN"),
+    );
+  }
+
+  #[test]
+  fn test_has_auth() {
+    let with = |f: fn(&mut RegistryConfig)| {
+      let mut config = RegistryConfig::default();
+      f(&mut config);
+      config.has_auth()
+    };
+    assert!(with(|c| c.auth_token = Some("t".into())));
+    assert!(with(|c| c.auth = Some("a".into())));
+    assert!(with(|c| {
+      c.username = Some("u".into());
+      c.password = Some("p".into());
+    }));
+    // email substitutes for username, matching
+    // maybe_auth_header_value_for_npm_registry.
+    assert!(with(|c| {
+      c.email = Some("e".into());
+      c.password = Some("p".into());
+    }));
+    // Incomplete credentials don't count.
+    assert!(!with(|_| {}));
+    assert!(!with(|c| c.username = Some("u".into())));
+    assert!(!with(|c| c.password = Some("p".into())));
+    assert!(!with(|c| c.email = Some("e".into())));
+  }
+
+  #[test]
+  fn test_tarball_config_for_package_no_auth() {
+    // Same-origin tarball but the registry carries no credentials: there is
+    // nothing to fall back to, so no config is returned.
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+@myscope:registry=https://gitlab.example.com/api/v4/packages/npm/
+"#,
+    )
+    .unwrap();
+    let resolved_npm_rc = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+
+    let tarball_url = Url::parse(
+      "https://gitlab.example.com/api/v4/projects/4055/packages/npm/@myscope/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&tarball_url, "@myscope/pkg"),
+      None,
     );
   }
 

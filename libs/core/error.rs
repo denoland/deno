@@ -268,12 +268,108 @@ pub fn throw_js_error_class(
   scope: &mut v8::PinScope,
   error: &dyn JsErrorClass,
 ) {
-  let exception = js_class_and_message_to_exception(
-    scope,
-    &error.get_class(),
-    &error.get_message(),
-  );
+  let exception = build_js_error_class_exception(scope, error);
   scope.throw_exception(exception);
+}
+
+/// Builds a JS exception for `error` using only native V8 APIs, without
+/// re-entering JavaScript.
+///
+/// This mirrors what the JS `Deno.core.buildCustomError` callback does
+/// (restoring the registered error class so `instanceof` holds, and attaching
+/// the additional properties), but never invokes user-reachable JS. That makes
+/// it safe to call from inside a V8 fast call, where re-entering JS is
+/// forbidden: the callback could run an attacker-controlled prototype setter
+/// that detaches an `ArrayBuffer` argument out from under the JIT, a
+/// use-after-free (GHSA-p4r3-6jgx-4cj5).
+///
+/// Reading data properties off the cached `errorConstructors` map and calling
+/// `SetPrototype` / `CreateDataProperty` / `DefineOwnProperty` never execute
+/// user JS, so the fast-call contract is upheld.
+fn build_js_error_class_exception<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  error: &dyn JsErrorClass,
+) -> v8::Local<'s, v8::Value> {
+  let class = error.get_class();
+  let message = v8::String::new(scope, &error.get_message()).unwrap();
+  let exception = v8::Exception::error(scope, message);
+
+  // `v8::Exception::error` always produces an object, but be defensive.
+  let Ok(exception_obj) = TryInto::<v8::Local<v8::Object>>::try_into(exception)
+  else {
+    return exception;
+  };
+
+  // Restore the exact registered error class (e.g. `RangeError`,
+  // `Deno.errors.NotFound`) by re-parenting the prototype, so that
+  // `err instanceof Deno.errors.NotFound` holds. We never call the class
+  // constructor (that would run JS); we only borrow its `.prototype`.
+  let constructors = JsRealm::exception_state_from_scope(scope)
+    .js_error_constructors
+    .borrow()
+    .clone();
+  if let Some(constructors) = constructors {
+    let constructors = v8::Local::new(scope, constructors);
+    let class_key = v8::String::new(scope, &class).unwrap();
+    if let Some(ctor) = constructors.get(scope, class_key.into())
+      && let Ok(ctor) = TryInto::<v8::Local<v8::Object>>::try_into(ctor)
+    {
+      let prototype_key = v8::String::new(scope, "prototype").unwrap();
+      if let Some(prototype) = ctor.get(scope, prototype_key.into())
+        && prototype.is_object()
+      {
+        exception_obj.set_prototype(scope, prototype);
+      }
+    }
+  }
+
+  // Set `name` explicitly. The registered classes assign `this.name` in their
+  // constructor (an own property), which the prototype swap above does not
+  // reproduce since we never run the constructor. The registration key matches
+  // that assigned name, so using the class here mirrors `new ErrorClass(...)`.
+  let name_key = v8::String::new(scope, "name").unwrap();
+  let class_value = v8::String::new(scope, &class).unwrap();
+  exception_obj.create_data_property(
+    scope,
+    name_key.into(),
+    class_value.into(),
+  );
+
+  // Copy the additional properties (e.g. `code`) and record their keys under
+  // the same symbol `buildCustomError` uses, so the error round-trips back to
+  // Rust via `JsError::from_v8_exception`.
+  let mut added_keys = vec![];
+  for (key, value) in error.get_additional_properties() {
+    let key = v8::String::new(scope, &key).unwrap();
+    // Match `buildCustomError`: don't clobber a property the class defines.
+    if exception_obj.has(scope, key.into()) == Some(true) {
+      continue;
+    }
+    let value = match value {
+      PropertyValue::String(value) => {
+        v8::String::new(scope, &value).unwrap().into()
+      }
+      PropertyValue::Number(value) => v8::Number::new(scope, value).into(),
+    };
+    exception_obj.create_data_property(scope, key.into(), value);
+    added_keys.push(v8::Local::<v8::Value>::from(key));
+  }
+  if !added_keys.is_empty() {
+    let keys_array = v8::Array::new_with_elements(scope, &added_keys);
+    let symbol_name =
+      v8::String::new(scope, "errorAdditionalPropertyKeys").unwrap();
+    let symbol = v8::Symbol::for_key(scope, symbol_name);
+    exception_obj.define_own_property(
+      scope,
+      symbol.into(),
+      keys_array.into(),
+      v8::PropertyAttribute::READ_ONLY
+        | v8::PropertyAttribute::DONT_ENUM
+        | v8::PropertyAttribute::DONT_DELETE,
+    );
+  }
+
+  exception
 }
 
 fn js_class_and_message_to_exception<'s, 'i>(
@@ -386,7 +482,15 @@ pub(crate) fn call_site_evals_key<'s, 'i>(
 /// the one defined here, that adds source map support and colorful formatting.
 /// When updating this struct, also update errors_are_equal_without_cause() in
 /// fmt_error.rs.
-#[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(
+  Debug,
+  PartialEq,
+  Clone,
+  serde::Deserialize,
+  serde::Serialize,
+  deno_ops::FromV8,
+  deno_ops::ToV8,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct JsError {
   pub name: Option<String>,
@@ -399,6 +503,12 @@ pub struct JsError {
   pub source_line_frame_index: Option<usize>,
   pub aggregated: Option<Vec<JsError>>,
   pub additional_properties: Vec<(String, String)>,
+  /// True when the error's `.stack` was not produced by our
+  /// `prepareStackTrace` (e.g. a custom getter from libraries like Effect, or
+  /// a manually assigned value). In that case the structured `frames` are not
+  /// authoritative and formatters should preserve the custom `.stack` string.
+  #[serde(default)]
+  pub stack_is_custom: bool,
 }
 
 impl JsErrorClass for JsError {
@@ -439,7 +549,16 @@ impl JsErrorClass for JsError {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(
+  Debug,
+  Eq,
+  PartialEq,
+  Clone,
+  serde::Deserialize,
+  serde::Serialize,
+  deno_ops::FromV8,
+  deno_ops::ToV8,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct JsStackFrame {
   pub type_name: Option<String>,
@@ -452,6 +571,7 @@ pub struct JsStackFrame {
   // Warning! isToplevel has inconsistent snake<>camel case, "typo" originates in v8:
   // https://source.chromium.org/search?q=isToplevel&sq=&ss=chromium%2Fchromium%2Fsrc:v8%2F
   #[serde(rename = "isToplevel")]
+  #[v8(rename = "isToplevel")]
   pub is_top_level: Option<bool>,
   pub is_eval: bool,
   pub is_native: bool,
@@ -838,6 +958,7 @@ impl JsError {
       stack: None,
       aggregated: None,
       additional_properties: vec![],
+      stack_is_custom: false,
     })
   }
 
@@ -915,6 +1036,31 @@ impl JsError {
       // Ignore non-array values
       let frames_v8: Option<v8::Local<v8::Array>> =
         frames_v8.and_then(|a| a.try_into().ok());
+
+      // If accessing `.stack` above did not populate `#callSiteEvals`, the
+      // error's stack was not produced by our `prepareStackTrace`. This happens
+      // when the user overrides `.stack` with a custom getter (e.g. Effect,
+      // fiber runtimes) or assigns a plain string. In that case the structured
+      // frames are not authoritative, so we mark the stack as custom and let
+      // formatters preserve the `.stack` string.
+      //
+      // V8's default `.stack` for a frame-less error is exactly its
+      // "name: message" string (and `message` may itself be multi-line). We
+      // only treat the stack as custom when it carries content beyond that
+      // header, so a multi-line *message* isn't mistaken for a stack.
+      let default_stack = if message_prop.is_empty() {
+        name.clone()
+      } else if name.is_empty() {
+        message_prop.clone()
+      } else {
+        format!("{name}: {message_prop}")
+      };
+      let has_structured_frames =
+        frames_v8.map(|a| a.length() > 0).unwrap_or(false);
+      let stack_is_custom = !has_structured_frames
+        && stack.as_ref().is_some_and(|s| {
+          s.lines().count() > 1 && s.trim_end() != default_stack.trim_end()
+        });
 
       // Convert them into Vec<JsStackFrame>
       let mut frames: Vec<JsStackFrame> = match frames_v8 {
@@ -1047,6 +1193,7 @@ impl JsError {
         stack,
         aggregated,
         additional_properties,
+        stack_is_custom,
       }
     } else {
       let exception_message = exception_message
@@ -1065,6 +1212,7 @@ impl JsError {
         stack: None,
         aggregated: None,
         additional_properties: vec![],
+        stack_is_custom: false,
       }
     }
   }
@@ -2246,6 +2394,48 @@ pub fn throw_error_one_byte<'s, 'i>(
   scope.throw_exception(exc);
 }
 
+/// Throw a Node-flavoured `ERR_INVALID_THIS` `TypeError` -- a plain
+/// `TypeError` whose `code` own-property is `"ERR_INVALID_THIS"`. The op2
+/// macro uses this to report cppgc brand-check failures so that the thrown
+/// error matches the `webidl.assertBranded` shape expected by web platform
+/// and Node compat tests.
+pub fn throw_invalid_this_error_one_byte_info(
+  info: &v8::FunctionCallbackInfo,
+  message: &str,
+) {
+  v8::callback_scope!(unsafe scope, info);
+  throw_invalid_this_error_one_byte(scope, message);
+}
+
+pub fn throw_invalid_this_error_one_byte<'s, 'i>(
+  scope: &mut v8::PinCallbackScope<'s, 'i>,
+  message: &str,
+) {
+  let msg = deno_core::v8::String::new_from_one_byte(
+    scope,
+    message.as_bytes(),
+    deno_core::v8::NewStringType::Normal,
+  )
+  .unwrap();
+  let exc = deno_core::v8::Exception::type_error(scope, msg);
+  if let Some(exc_obj) = exc.to_object(scope) {
+    let code_key = deno_core::v8::String::new_from_one_byte(
+      scope,
+      b"code",
+      deno_core::v8::NewStringType::Normal,
+    )
+    .unwrap();
+    let code_val = deno_core::v8::String::new_from_one_byte(
+      scope,
+      b"ERR_INVALID_THIS",
+      deno_core::v8::NewStringType::Normal,
+    )
+    .unwrap();
+    exc_obj.set(scope, code_key.into(), code_val.into());
+  }
+  scope.throw_exception(exc);
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -2460,5 +2650,118 @@ mod tests {
       .expect("should fall back to message string");
 
     assert_eq!(value.to_rust_string_lossy(scope), expected_message);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_v8_roundtrip_preserves_shape() {
+    use crate::convert::FromV8;
+    use crate::convert::ToV8;
+
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let frame = JsStackFrame {
+      type_name: Some("Foo".to_string()),
+      function_name: Some("bar".to_string()),
+      method_name: None,
+      file_name: Some("file:///a.ts".to_string()),
+      line_number: Some(10),
+      column_number: Some(5),
+      eval_origin: None,
+      is_top_level: Some(true),
+      is_eval: false,
+      is_native: false,
+      is_constructor: false,
+      is_async: false,
+      is_promise_all: false,
+      is_wasm: false,
+      promise_index: None,
+    };
+    let cause = JsError {
+      name: Some("Error".to_string()),
+      message: Some("inner".to_string()),
+      stack: None,
+      cause: None,
+      exception_message: "Error: inner".to_string(),
+      frames: vec![],
+      source_line: None,
+      source_line_frame_index: None,
+      aggregated: None,
+      additional_properties: vec![],
+      stack_is_custom: false,
+    };
+    let err = JsError {
+      name: Some("TypeError".to_string()),
+      message: Some("boom".to_string()),
+      stack: Some(
+        "TypeError: boom\n    at Foo.bar (file:///a.ts:10:5)".to_string(),
+      ),
+      cause: Some(Box::new(cause)),
+      exception_message: "TypeError: boom".to_string(),
+      frames: vec![frame],
+      source_line: Some("throw new TypeError('boom');".to_string()),
+      source_line_frame_index: Some(0),
+      aggregated: None,
+      additional_properties: vec![("code".to_string(), "X1".to_string())],
+      stack_is_custom: false,
+    };
+
+    let v = err.clone().to_v8(scope).unwrap();
+
+    // Lock in JS-visible field names: serde-emitted shape (camelCase, with
+    // the `isToplevel` quirk preserved) must match what the derive emits.
+    let obj = v8::Local::<v8::Object>::try_from(v).expect("object");
+    let expected_keys = [
+      "name",
+      "message",
+      "stack",
+      "cause",
+      "exceptionMessage",
+      "frames",
+      "sourceLine",
+      "sourceLineFrameIndex",
+      "aggregated",
+      "additionalProperties",
+      "stackIsCustom",
+    ];
+    for key in expected_keys {
+      let key_v = v8::String::new(scope, key).unwrap();
+      assert!(
+        obj.has(scope, key_v.into()).unwrap(),
+        "JsError v8 shape missing key {key}",
+      );
+    }
+
+    let frames_key = v8::String::new(scope, "frames").unwrap();
+    let frames_v = obj.get(scope, frames_key.into()).unwrap();
+    let frames = v8::Local::<v8::Array>::try_from(frames_v).unwrap();
+    let frame0 = frames.get_index(scope, 0).unwrap();
+    let frame0 = v8::Local::<v8::Object>::try_from(frame0).unwrap();
+    let frame_keys = [
+      "typeName",
+      "functionName",
+      "fileName",
+      "lineNumber",
+      "columnNumber",
+      // serde rename for the v8 "typo"; must be `isToplevel`, not `isTopLevel`.
+      "isToplevel",
+      "isEval",
+      "isNative",
+      "isConstructor",
+      "isAsync",
+      "isPromiseAll",
+      "isWasm",
+    ];
+    for key in frame_keys {
+      let key_v = v8::String::new(scope, key).unwrap();
+      assert!(
+        frame0.has(scope, key_v.into()).unwrap(),
+        "JsStackFrame v8 shape missing key {key}",
+      );
+    }
+
+    let back = JsError::from_v8(scope, v).unwrap();
+    assert_eq!(err, back);
   }
 }
