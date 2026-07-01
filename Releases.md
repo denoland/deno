@@ -69,8 +69,6 @@ https://github.com/denoland/deno_install
   (#35507)
 - fix: show clear error when V8 fails to create worker threads (#32856)
 - perf(core/webidl): check `next` method outside of iterator loop (#35480)
-- perf(desktop): serve over in-process memory channel instead of TCP loopback
-  (#35272)
 - perf(ext/fetch): fast-path Response reconstruction (#35495)
 - perf(ext/http): coalesce chunked response writes into a single write (#35523)
 
