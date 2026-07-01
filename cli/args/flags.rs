@@ -3693,12 +3693,12 @@ packages a project declares as dependencies, similar to <p(245)>npm ls</> / <p(2
 fn uninstall_subcommand() -> Command {
   command(
     "uninstall",
-    cstr!("Uninstalls a dependency or an executable script in the installation root's bin directory.
+    cstr!("Uninstalls dependencies or an executable script in the installation root's bin directory.
   <p(245)>deno uninstall @std/dotenv chalk</>
   <p(245)>deno uninstall --global file_server</>
 
 To change the installation root, use <c>--root</> flag:
-  <p(245)>deno uninstall --global --root /usr/local serve</>
+  <p(245)>deno uninstall --global --root /usr/local cowsay serve</>
 
 The installation root is determined, in order of precedence:
   - <p(245)>--root</> option
@@ -3720,13 +3720,12 @@ The installation root is determined, in order of precedence:
         Arg::new("global")
           .long("global")
           .short('g')
-          .help("Remove globally installed package or module")
+          .help("Remove globally installed packages or modules")
           .action(ArgAction::SetTrue),
       )
       .arg(
         Arg::new("additional-packages")
           .help("List of additional packages to remove")
-          .conflicts_with("global")
           .num_args(1..)
           .action(ArgAction::Append)
       )
@@ -6536,25 +6535,19 @@ fn remove_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   lock_args_parse(flags, matches);
-  let mut packages = matches.remove_many::<String>("packages").unwrap();
+  let packages = matches.remove_many::<String>("packages").unwrap();
 
-  // `deno remove --global <name>` is an alias for `deno uninstall --global
-  // <name>`: it removes a globally installed executable rather than a
-  // dependency from the configuration file, so route it through the same
+  // `deno remove --global <name>...` is an alias for `deno uninstall --global
+  // <name>...`: it removes globally installed executables rather than
+  // dependencies from the configuration file, so route it through the same
   // subcommand the uninstaller uses.
   if matches.get_flag("global") {
-    let name = packages.next().unwrap();
-    // A global removal targets a single executable, matching
-    // `deno uninstall --global`, so reject any extra names.
-    if packages.next().is_some() {
-      return Err(clap::Error::raw(
-        clap::error::ErrorKind::ArgumentConflict,
-        "--global only removes a single executable, but multiple packages were provided\n",
-      ));
-    }
     let root = matches.remove_one::<String>("root");
     flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags {
-      kind: UninstallKind::Global(UninstallFlagsGlobal { name, root }),
+      kind: UninstallKind::Global(UninstallFlagsGlobal {
+        packages: packages.collect(),
+        root,
+      }),
     });
     return Ok(());
   }
@@ -7634,19 +7627,19 @@ fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   lock_args_parse(flags, matches);
   let name = matches.remove_one::<String>("name-or-package").unwrap();
+  let packages: Vec<_> = vec![name]
+    .into_iter()
+    .chain(
+      matches
+        .remove_many::<String>("additional-packages")
+        .unwrap_or_default(),
+    )
+    .collect();
 
   let kind = if matches.get_flag("global") {
     let root = matches.remove_one::<String>("root");
-    UninstallKind::Global(UninstallFlagsGlobal { name, root })
+    UninstallKind::Global(UninstallFlagsGlobal { packages, root })
   } else {
-    let packages: Vec<_> = vec![name]
-      .into_iter()
-      .chain(
-        matches
-          .remove_many::<String>("additional-packages")
-          .unwrap_or_default(),
-      )
-      .collect();
     UninstallKind::Local(RemoveFlags {
       packages,
       lockfile_only: matches.get_flag("lockfile-only"),
@@ -12154,7 +12147,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
           kind: UninstallKind::Global(UninstallFlagsGlobal {
-            name: "file_server".to_string(),
+            packages: svec!["file_server"],
             root: None,
           }),
         }),
@@ -12175,7 +12168,29 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
           kind: UninstallKind::Global(UninstallFlagsGlobal {
-            name: "file_server".to_string(),
+            packages: svec!["file_server"],
+            root: Some("/user/foo/bar".to_string()),
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "uninstall",
+      "-g",
+      "--root",
+      "/user/foo/bar",
+      "cowsay",
+      "file_server"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Uninstall(UninstallFlags {
+          kind: UninstallKind::Global(UninstallFlagsGlobal {
+            packages: svec!["cowsay", "file_server"],
             root: Some("/user/foo/bar".to_string()),
           }),
         }),
@@ -15856,7 +15871,7 @@ mod tests {
         Flags {
           subcommand: DenoSubcommand::Uninstall(UninstallFlags {
             kind: UninstallKind::Global(UninstallFlagsGlobal {
-              name: "file_server".to_string(),
+              packages: svec!["file_server"],
               root: None,
             }),
           }),
@@ -15879,7 +15894,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
           kind: UninstallKind::Global(UninstallFlagsGlobal {
-            name: "file_server".to_string(),
+            packages: svec!["file_server"],
             root: Some("/user/foo/bar".to_string()),
           }),
         }),
@@ -15887,10 +15902,22 @@ mod tests {
       }
     );
 
-    // A global removal targets a single executable; extra names are rejected.
+    // A global removal accepts multiple executables, like `deno uninstall
+    // --global`.
     let r =
       flags_from_vec(svec!["deno", "remove", "-g", "file_server", "chalk"]);
-    assert!(r.is_err());
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Uninstall(UninstallFlags {
+          kind: UninstallKind::Global(UninstallFlagsGlobal {
+            packages: svec!["file_server", "chalk"],
+            root: None,
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
 
     // `--root` requires `--global`.
     let r =
