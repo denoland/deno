@@ -5229,6 +5229,15 @@ declare namespace Deno {
    *
    * As a special case, a signal of 0 can be used to test for the existence of a process.
    *
+   * On Windows, `"SIGINT"`, `"SIGQUIT"`, `"SIGKILL"`, `"SIGTERM"` and
+   * `"SIGABRT"` terminate the process. `"SIGBREAK"` is delivered as a console
+   * control event instead: a `pid` of 0 signals every process attached to the
+   * current console, while a positive `pid` signals the process group with
+   * that id (its leader must have been spawned with the
+   * `CREATE_NEW_PROCESS_GROUP` flag). Similarly, `"SIGINT"` with a `pid` of 0
+   * delivers a Ctrl+C event to all processes attached to the current console,
+   * including the current process.
+   *
    * Requires `allow-run` permission.
    *
    * @tags allow-run
