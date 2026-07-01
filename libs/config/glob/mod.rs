@@ -252,9 +252,14 @@ impl FilePatterns {
     for base_path in include_patterns_by_base_path.keys() {
       let applicable_excludes = get_applicable_excludes(base_path);
       let mut applicable_includes = Vec::new();
+      // whether any ancestor contributed a candidate include pattern before the
+      // `can_match_under` filter dropped it; distinguishes "no patterns cover
+      // this base at all" from "patterns exist but none can match here".
+      let mut had_candidate_patterns = false;
       // get all patterns that apply to the current or ancestor directories
       for ancestor in base_path.ancestors() {
         if let Some(patterns) = include_patterns_by_base_path.get(ancestor) {
+          had_candidate_patterns |= !patterns.is_empty();
           // `ancestor` is an ancestor (or equal) of `base_path`, so this strip
           // always succeeds and yields `base_path` relative to the shared base
           // these patterns are anchored at. Skip patterns that can never match
@@ -270,20 +275,33 @@ impl FilePatterns {
           );
         }
       }
+      let include = if self.include.is_none() {
+        None
+      } else if applicable_includes.is_empty()
+        && self
+          .include
+          .as_ref()
+          .map(|i| !i.0.is_empty())
+          .unwrap_or(false)
+      {
+        if had_candidate_patterns {
+          // Candidate include patterns exist for this base but `can_match_under`
+          // pruned every one, so nothing under this base can match the include
+          // set. Keep a closed (empty) include set rather than falling through
+          // to `None`, which would include everything under the base.
+          Some(PathOrPatternSet::new(Vec::new()))
+        } else {
+          // No include pattern is anchored at or above this base (e.g. a broad
+          // path include covers it), so keep the existing include-everything
+          // behavior for the base.
+          None
+        }
+      } else {
+        Some(PathOrPatternSet::new(applicable_includes))
+      };
       result.push(Self {
         base: base_path.clone(),
-        include: if self.include.is_none()
-          || applicable_includes.is_empty()
-            && self
-              .include
-              .as_ref()
-              .map(|i| !i.0.is_empty())
-              .unwrap_or(false)
-        {
-          None
-        } else {
-          Some(PathOrPatternSet::new(applicable_includes))
-        },
+        include,
         exclude: PathOrPatternSet::new(applicable_excludes),
       });
     }
@@ -1074,6 +1092,37 @@ mod test {
     let shallow = GlobPattern::new("/root/*.ts").unwrap();
     assert!(shallow.can_match_under(Path::new("")));
     assert!(!shallow.can_match_under(Path::new("nested")));
+  }
+
+  #[test]
+  fn file_patterns_split_by_base_dir_pruned_to_empty() {
+    // A negated exclude creates a base (`src/bbb`) whose only inherited include
+    // pattern (`src/a*/**/*.ts`) can never match under it, so `can_match_under`
+    // prunes it away. The pruned base must keep a closed (empty) include set:
+    // collapsing it to `None` would flip the closed include set into
+    // include-everything and collect files that were never included.
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path().to_string_lossy().replace('\\', "/");
+    let patterns = FilePatterns {
+      base: temp_dir.path().to_path_buf(),
+      include: Some(PathOrPatternSet::new(vec![PathOrPattern::Pattern(
+        GlobPattern::new(&format!("{}/src/a*/**/*.ts", root)).unwrap(),
+      )])),
+      exclude: PathOrPatternSet::new(vec![
+        PathOrPattern::from_relative(temp_dir.path(), "!./src/bbb/*.log")
+          .unwrap(),
+      ]),
+    };
+    let split = ComparableFilePatterns::from_split(
+      temp_dir.path(),
+      &patterns.split_by_base(),
+    );
+    let bbb = split
+      .iter()
+      .find(|p| p.base == "src/bbb")
+      .expect("expected a split base for the negated exclude");
+    // closed empty set, not `None`
+    assert_eq!(bbb.include, Some(vec![]));
   }
 
   #[test]
