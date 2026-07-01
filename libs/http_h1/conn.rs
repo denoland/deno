@@ -2309,6 +2309,48 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn shared_conn_fixed_response_flush_after_head_does_not_resend_head()
+  -> TestResult<()> {
+    // Regression for #35648. The serve loop flushes buffered bytes whenever a
+    // streaming body source yields `Pending`. For a fixed-length response the
+    // head is written directly to the socket in
+    // `poll_start_fixed_response_with`, so that flush must be a no-op and must
+    // NOT re-send the still-buffered head as body. Without
+    // `write_flushed = write_buf.len()` it re-sent the head into the body.
+    let io = FragmentIo::new(&[]);
+    let mut conn = SharedConn::new(io);
+    let mut scratch = SharedScratch::default();
+
+    let mut head = SharedFixedResponseHeadWriter::new(
+      ResponseHead {
+        version: Version::Http11,
+        status: 200,
+        reason: b"OK",
+        headers: &[],
+        keep_alive: true,
+      },
+      3,
+    );
+    std::future::poll_fn(|cx| {
+      conn.poll_start_fixed_response_with(cx, &mut scratch, &mut head)
+    })
+    .await?;
+
+    // Body source has nothing ready yet: the driver flushes buffered bytes.
+    std::future::poll_fn(|cx| conn.poll_flush_write_buf(cx, &mut scratch))
+      .await?;
+
+    conn.write_response_body_with_scratch(b"abc").await?;
+    conn.finish_response_with_scratch(&mut scratch, &[]).await?;
+
+    assert_eq!(
+      conn.into_inner().written,
+      b"HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nabc"
+    );
+    Ok(())
+  }
+
+  #[tokio::test]
   async fn shared_conn_fixed_streaming_response_rejects_overflow()
   -> TestResult<()> {
     let io = FragmentIo::new(&[]);
