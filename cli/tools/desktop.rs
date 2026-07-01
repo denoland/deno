@@ -2880,19 +2880,34 @@ fn dylib_parts(dylib_path: &Path) -> Result<DylibParts<'_>, AnyError> {
   })
 }
 
+/// The runtime dylib filename each macOS LAUFEY backend resolves when the
+/// backend binary is the bundle's CFBundleExecutable (i.e. no `--runtime`
+/// argument is passed). The two macOS backends use different conventions:
+/// - `webview` searches a hardcoded `libruntime.dylib` via [NSBundle mainBundle]
+///   (laufey `webview/src/main_mac.mm`).
+/// - `cef` derives `<backend-executable-basename>.dylib` next to the binary
+///   (laufey `LaufeyFindColocatedRuntime`, `cef/src/runtime_loader.cc`).
+fn macos_runtime_dylib_name(backend: &str, laufey_exe_stem: &str) -> String {
+  if backend == "cef" {
+    format!("{laufey_exe_stem}.dylib")
+  } else {
+    "libruntime.dylib".to_string()
+  }
+}
+
 /// Create a macOS .app bundle from the compiled desktop dylib.
 ///
 /// Bundle structure:
 /// ```text
 /// AppName.app/
 ///   Contents/
-///     Info.plist
+///     Info.plist          (CFBundleExecutable = the LAUFEY backend binary)
 ///     MacOS/
-///       AppName          (launcher script)
-///       laufey_webview      (LAUFEY backend binary)
-///       libapp.dylib     (compiled Deno runtime + user code)
+///       laufey_webview    (LAUFEY backend binary; the bundle executable)
+///       libruntime.dylib  (compiled Deno runtime + user code; the `cef`
+///                          backend uses `<backend-executable>.dylib` instead)
 ///     Resources/
-///       AppIcon.icns     (optional)
+///       AppIcon.icns      (optional)
 /// ```
 async fn package_macos_app_bundle(
   dylib_path: &Path,
@@ -2902,6 +2917,11 @@ async fn package_macos_app_bundle(
 ) -> Result<PathBuf, AnyError> {
   let parts = dylib_parts(dylib_path)?;
   let app_name = parts.app_name.clone();
+  // app_name (from the --output stem) flows unescaped into the Info.plist XML
+  // and the synthesized bundle id, so reject anything outside the safe charset
+  // (the same guard the removed shell launcher applied) instead of emitting a
+  // malformed plist that silently fails to launch.
+  validate_launcher_name(&app_name, "app name")?;
   let app_bundle = parts.parent.join(format!("{}.app", app_name));
 
   // Find the LAUFEY backend .app and its main executable.
@@ -2957,40 +2977,17 @@ async fn package_macos_app_bundle(
   // Strip unnecessary bulk from the CEF framework.
   strip_cef_bloat(&contents_dir);
 
-  // Copy the compiled dylib.
-  let dylib_filename = parts.file_name;
-  let dest_dylib = macos_dir.join(dylib_filename);
+  // Copy the compiled dylib under the name the active backend resolves without
+  // a `--runtime` argument (see `macos_runtime_dylib_name`). We deliberately do
+  // NOT write a shell-script launcher that execs the backend with `--runtime`:
+  // under LaunchServices (open / Finder / double-click) that `exec` breaks the
+  // app's foreground-GUI registration, so an `NSStatusItem` (Deno.Tray) is
+  // created but never attaches to the menu bar. Instead the backend binary is
+  // the bundle's CFBundleExecutable directly (see Info.plist below), so the
+  // process LaunchServices launches IS the GUI process. See denoland/deno#35619.
+  let dest_dylib =
+    macos_dir.join(macos_runtime_dylib_name(backend, &laufey_exe_stem));
   std::fs::copy(dylib_path, &dest_dylib)?;
-
-  // Create launcher script as the main executable. Validate every name
-  // we interpolate: bash expands `$VAR`, backticks, and `$(...)` even
-  // inside `"..."`.
-  let dylib_filename_str = dylib_filename.to_string_lossy();
-  validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(
-    &laufey_executable_name,
-    "LAUFEY backend executable name",
-  )?;
-  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
-  let launcher_path = macos_dir.join(&app_name);
-  std::fs::write(
-    &launcher_path,
-    format!(
-      "#!/bin/sh\n\
-       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
-       exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
-      laufey_binary = laufey_executable_name,
-      dylib = dylib_filename_str,
-    ),
-  )?;
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(
-      &launcher_path,
-      std::fs::Permissions::from_mode(0o755),
-    )?;
-  }
 
   // Resolve the bundle identifier. The user-configured `identifier` is
   // preferred; otherwise we synthesize one from the app name. The
@@ -3010,10 +3007,13 @@ async fn package_macos_app_bundle(
     }
   };
 
-  // Generate Info.plist.
+  // Generate Info.plist. The backend binary is the CFBundleExecutable so
+  // there is no shell-script `exec` between LaunchServices and the GUI
+  // process (which would break tray registration — see above).
   let info_plist = render_macos_info_plist(
     &app_name,
     &bundle_id,
+    &laufey_executable_name,
     desktop_flags.icon.is_some(),
   );
   std::fs::write(contents_dir.join("Info.plist"), info_plist)?;
@@ -3104,6 +3104,7 @@ async fn package_macos_app_bundle(
 fn render_macos_info_plist(
   app_name: &str,
   bundle_id: &str,
+  executable_name: &str,
   has_icon: bool,
 ) -> String {
   format!(
@@ -3114,7 +3115,7 @@ fn render_macos_info_plist(
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleExecutable</key>
-  <string>{app_name}</string>
+  <string>{executable_name}</string>
   <key>CFBundleIconFile</key>
   <string>{icon_file}</string>
   <key>CFBundleIdentifier</key>
@@ -3157,6 +3158,7 @@ fn render_macos_info_plist(
 "#,
     app_name = app_name,
     bundle_id = bundle_id,
+    executable_name = executable_name,
     icon_file = if has_icon { "AppIcon" } else { "" },
   )
 }
@@ -5360,8 +5362,19 @@ mod tests {
 
   #[test]
   fn macos_info_plist_includes_principal_class_and_tcc_usage_strings() {
-    let plist = render_macos_info_plist("Deno Demo", "com.deno.demo", true);
+    let plist = render_macos_info_plist(
+      "Deno Demo",
+      "com.deno.demo",
+      "laufey_webview",
+      true,
+    );
     assert!(plist.contains("<string>LaufeyApplication</string>"));
+    // The backend binary must be the CFBundleExecutable (not a shell-script
+    // launcher named after the app) so LaunchServices launches the GUI
+    // process directly — otherwise the tray icon never attaches. #35619.
+    assert!(plist.contains(
+      "<key>CFBundleExecutable</key>\n  <string>laufey_webview</string>"
+    ));
     assert!(
       plist.contains("<key>NSMicrophoneUsageDescription</key>")
         && plist.contains("Deno Demo requires access to the microphone")
@@ -5379,6 +5392,20 @@ mod tests {
         && plist.contains("Deno Demo requires access to Bluetooth")
     );
     assert!(plist.contains("<string>AppIcon</string>"));
+  }
+
+  #[test]
+  fn macos_runtime_dylib_name_is_backend_specific() {
+    // webview resolves a hardcoded libruntime.dylib via [NSBundle mainBundle];
+    // cef resolves <executable-basename>.dylib next to the backend binary.
+    assert_eq!(
+      macos_runtime_dylib_name("webview", "laufey_webview"),
+      "libruntime.dylib"
+    );
+    assert_eq!(
+      macos_runtime_dylib_name("cef", "laufey_cef"),
+      "laufey_cef.dylib"
+    );
   }
 
   // --- laufey_archive_name / laufey_release_url ---
