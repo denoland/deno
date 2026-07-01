@@ -432,12 +432,60 @@ function nativeEnd(msg: any, chunk: any, encoding: any, callback: any) {
     );
   }
 
-  let body;
   const buffered = msg[kNativeWriteBuf];
-  if (buffered !== undefined && buffered !== null) {
-    if (chunk !== undefined && chunk !== null && chunk !== "") {
-      ArrayPrototypePush(buffered, nativeChunkToBuffer(chunk, encoding));
+  // Fold the final end() chunk into the buffered writes so it participates in
+  // the framing / coalescing decisions below.
+  if (
+    buffered !== undefined && buffered !== null &&
+    chunk !== undefined && chunk !== null && chunk !== ""
+  ) {
+    ArrayPrototypePush(buffered, nativeChunkToBuffer(chunk, encoding));
+    chunk = null;
+  }
+  // Node frames a write()d response chunked (it can't know the total length at
+  // write() time) unless the handler set an explicit Content-Length or
+  // Transfer-Encoding. (write() created kNativeWriteBuf; end()-only did not.)
+  const willChunk = buffered !== undefined && buffered !== null &&
+    msg._hasBody !== false &&
+    msg.req !== undefined && msg.req.httpVersionMinor === 1 &&
+    !msg.hasHeader("content-length") && !msg.hasHeader("transfer-encoding") &&
+    !msg._removedTE;
+
+  // Each write() must stay its own HTTP chunk on the wire -- Node frames one
+  // chunk per write(), and clients that treat each chunk as a record (e.g. the
+  // ReadableStream pipeline in test-webstreams-pipeline) observe those
+  // boundaries. Coalescing 2+ writes into one flat body would merge them into a
+  // single chunk, so route the multi-write chunked case through the streaming
+  // body, which frames per enqueued buffer (nativeStartStream flushes
+  // kNativeWriteBuf one enqueue at a time with aggregation disabled). A single
+  // buffered chunk has no boundary to preserve, so it stays on the faster
+  // single-op flat path.
+  if (willChunk && buffered.length >= 2) {
+    if (!msg._header) {
+      msg._header = NATIVE_HEADER_SENT;
     }
+    msg.finished = true;
+    const reqEnd = msg.req;
+    if (reqEnd !== undefined && reqEnd !== null && reqEnd._nativeDiscardBody) {
+      reqEnd._nativeDiscardBody();
+    }
+    // Commit headers + flush the buffered writes into the body stream, then
+    // close the controller so the engine finishes the (chunked) body. The
+    // resource body drains asynchronously and frees the external on completion.
+    nativeStartStream(msg);
+    const controller = msg[kNativeStream];
+    msg[kNativeStream] = null;
+    if (controller !== undefined && controller !== null) {
+      try {
+        controller.close();
+      } catch { /* already errored/closed */ }
+    }
+    nativeEmitFinish(msg, callback, msg._nativeAborted);
+    return msg;
+  }
+
+  let body;
+  if (buffered !== undefined && buffered !== null) {
     msg[kNativeWriteBuf] = null;
     // The buffered writes are now committed into the flat body.
     msg[kChunkedLength] = 0;
@@ -465,12 +513,7 @@ function nativeEnd(msg: any, chunk: any, encoding: any, callback: any) {
   // write() time) when no explicit Content-Length/Transfer-Encoding was set; our
   // flat coalescing path would otherwise send Content-Length. Opt into chunked
   // framing to match. (write() created kNativeWriteBuf; end()-only did not.)
-  if (
-    buffered !== undefined && buffered !== null && msg._hasBody !== false &&
-    msg.req !== undefined && msg.req.httpVersionMinor === 1 &&
-    !msg.hasHeader("content-length") && !msg.hasHeader("transfer-encoding") &&
-    !msg._removedTE
-  ) {
+  if (willChunk) {
     msg._nativeChunked = true;
   }
   // Was the client already gone? Check before nativeCommit consumes the
