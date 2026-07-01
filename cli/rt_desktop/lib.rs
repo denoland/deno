@@ -1678,6 +1678,8 @@ async fn run_desktop(
     // (DENO_SERVE_ADDRESS=memory:…), so there is no TCP serve port/host.
     serve_port: None,
     serve_host: None,
+    serve_cert: None,
+    serve_key: None,
     hmr_watch_dir: if is_framework_dev {
       None
     } else {

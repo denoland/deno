@@ -1729,11 +1729,15 @@ function registerDeclarativeServer(exports) {
   return ({
     servePort,
     serveHost,
+    serveCert,
+    serveKey,
     workerCountWhenMain,
   }) => {
     const server = Deno.serve({
       port: servePort,
       hostname: serveHost,
+      cert: serveCert ?? undefined,
+      key: serveKey ?? undefined,
       [kLoadBalanced]: workerCountWhenMain == null
         ? true
         : workerCountWhenMain > 0,
@@ -1746,11 +1750,13 @@ function registerDeclarativeServer(exports) {
 
           let target;
           switch (localAddr.transport) {
-            case "tcp":
-              target = `http://${
+            case "tcp": {
+              const protocol = serveCert === null ? "http" : "https";
+              target = `${protocol}://${
                 formatHostName(localAddr.hostname)
               }:${localAddr.port}/`;
               break;
+            }
             case "unix":
               target = localAddr.path;
               break;

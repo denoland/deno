@@ -69,7 +69,11 @@ pub async fn serve(
   );
 
   if serve_flags.open_site {
-    let url = resolve_serve_url(serve_flags.host, serve_flags.port);
+    let url = resolve_serve_url(
+      serve_flags.host,
+      serve_flags.port,
+      serve_flags.tls_cert_and_key.is_some(),
+    );
     let _ = open::that_detached(url);
   }
 
@@ -232,7 +236,7 @@ async fn serve_with_watch(
   Ok(0)
 }
 
-fn resolve_serve_url(host: String, port: u16) -> String {
+fn resolve_serve_url(host: String, port: u16, https: bool) -> String {
   let host = if matches!(host.as_str(), "0.0.0.0" | "::") {
     "127.0.0.1".to_string()
   } else if std::net::Ipv6Addr::from_str(&host).is_ok() {
@@ -240,10 +244,12 @@ fn resolve_serve_url(host: String, port: u16) -> String {
   } else {
     host
   };
-  if port == 80 {
-    format!("http://{host}/")
+  let (scheme, default_port) =
+    if https { ("https", 443) } else { ("http", 80) };
+  if port == default_port {
+    format!("{scheme}://{host}/")
   } else {
-    format!("http://{host}:{port}/")
+    format!("{scheme}://{host}:{port}/")
   }
 }
 
@@ -254,17 +260,36 @@ mod test {
   #[test]
   fn test_resolve_serve_url() {
     assert_eq!(
-      resolve_serve_url("localhost".to_string(), 80),
+      resolve_serve_url("localhost".to_string(), 80, false),
       "http://localhost/"
     );
     assert_eq!(
-      resolve_serve_url("0.0.0.0".to_string(), 80),
+      resolve_serve_url("0.0.0.0".to_string(), 80, false),
       "http://127.0.0.1/"
     );
-    assert_eq!(resolve_serve_url("::".to_string(), 80), "http://127.0.0.1/");
     assert_eq!(
-      resolve_serve_url("::".to_string(), 90),
+      resolve_serve_url("::".to_string(), 80, false),
+      "http://127.0.0.1/"
+    );
+    assert_eq!(
+      resolve_serve_url("::".to_string(), 90, false),
       "http://127.0.0.1:90/"
+    );
+    assert_eq!(
+      resolve_serve_url("localhost".to_string(), 443, true),
+      "https://localhost/"
+    );
+    assert_eq!(
+      resolve_serve_url("0.0.0.0".to_string(), 443, true),
+      "https://127.0.0.1/"
+    );
+    assert_eq!(
+      resolve_serve_url("::".to_string(), 443, true),
+      "https://127.0.0.1/"
+    );
+    assert_eq!(
+      resolve_serve_url("::".to_string(), 90, true),
+      "https://127.0.0.1:90/"
     );
   }
 }

@@ -1223,6 +1223,8 @@ pub struct RunOptions {
   pub auto_serve: bool,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub serve_cert: Option<String>,
+  pub serve_key: Option<String>,
   /// Enable HMR file watching from this directory.
   pub hmr_watch_dir: Option<PathBuf>,
   /// Callback invoked after each successful HMR replacement.
@@ -1677,6 +1679,8 @@ pub async fn run_with_options(
     node_ipc_init: deno_lib::args::node_ipc_init(&sys)?,
     serve_port: options.serve_port,
     serve_host: options.serve_host,
+    serve_cert: options.serve_cert,
+    serve_key: options.serve_key,
     otel_config: metadata.otel_config,
     no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,

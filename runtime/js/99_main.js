@@ -886,14 +886,16 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       8: mode,
       9: servePort,
       10: serveHost,
-      11: serveIsMain,
-      12: serveWorkerCountOrIndex,
-      13: otelConfig,
-      15: standalone,
-      16: autoServe,
-      17: nodeClusterUniqueId,
-      18: nodeClusterSchedPolicy,
-      19: disableOffscreenCanvas,
+      11: serveCert,
+      12: serveKey,
+      13: serveIsMain,
+      14: serveWorkerCountOrIndex,
+      15: otelConfig,
+      17: standalone,
+      18: autoServe,
+      19: nodeClusterUniqueId,
+      20: nodeClusterSchedPolicy,
+      21: disableOffscreenCanvas,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -965,6 +967,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
             serve({
               servePort,
               serveHost,
+              serveCert,
+              serveKey,
               workerCountWhenMain: serveIsMain_
                 ? serveWorkerCountOrIndex_
                 : undefined,
@@ -1140,16 +1144,16 @@ function bootstrapWorkerRuntime(
       5: hasNodeModulesDir,
       6: argv0,
       7: nodeDebug,
-      13: otelConfig,
-      15: standalone,
-      17: nodeClusterUniqueId,
-      18: nodeClusterSchedPolicy,
-      19: disableOffscreenCanvas,
+      15: otelConfig,
+      17: standalone,
+      19: nodeClusterUniqueId,
+      20: nodeClusterSchedPolicy,
+      21: disableOffscreenCanvas,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
 
-    closeOnIdle = runtimeOptions[14];
+    closeOnIdle = runtimeOptions[16];
 
     performance.setTimeOrigin();
     globalThis_ = globalThis;
