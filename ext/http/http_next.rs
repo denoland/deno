@@ -5079,35 +5079,63 @@ async fn serve_http11_raw_inner(
         Some((ms, is_request_timeout)) => {
           match tokio::time::timeout(Duration::from_millis(ms), wait).await {
             Ok(result) => result,
-            Err(_elapsed) => {
-              // node:http: keepAliveTimeout governs only the IDLE wait between
-              // requests. If header bytes for the next request started arriving
-              // during that window, Node switches to the (longer) headersTimeout
-              // rather than closing. Loop back so the next iteration recomputes
-              // `partial` and waits with headersTimeout. (`is_request_timeout`
-              // is false only for the idle keep-alive/headers head wait.)
-              if node_http.enabled
-                && !is_request_timeout
-                && !conn.buffered_is_empty()
-              {
+            // This arm is node:http-only: the deadline is `Some` only when
+            // `node_http.enabled` (both head_ms and req_ms are node-gated).
+            Err(_elapsed) if !is_request_timeout => {
+              // Node processes pending socket I/O before firing the idle
+              // keep-alive timeout, and resets that timer on read activity --
+              // so a next request whose bytes raced the deadline is handled
+              // rather than closing the connection (which the client would
+              // observe as an ECONNRESET when it writes the racing request to
+              // the just-closed socket). The bytes can land a hair after the
+              // deadline (the idle timer starts when we finish writing the
+              // response, a network hop before the client sees it and pipelines
+              // the next request), so give the racing request a brief grace to
+              // arrive -- bounded so a genuinely idle connection still closes
+              // promptly (a small fraction of keepAliveTimeout, capped).
+              let grace_ms = core::cmp::min(ms.div_ceil(2).max(1), 25);
+              let raced = tokio::time::timeout(
+                Duration::from_millis(grace_ms),
+                poll_fn(|cx| {
+                  conn.poll_next_request_with(cx, &mut scratch, |request| {
+                    raw_request_from_h1(
+                      request,
+                      store_request,
+                      automatic_compression,
+                    )
+                  })
+                }),
+              )
+              .await
+              .ok();
+              if let Some(result) = raced {
+                // A request (or EOF) raced the deadline -- handle it below.
+                Ok(result)
+              } else if !conn.buffered_is_empty() {
+                // Only a partial head arrived: switch to headersTimeout (Node
+                // does the same) by looping back to recompute `partial`.
                 continue;
+              } else {
+                // Truly idle: fire the connection's 'timeout' event (Node's
+                // server.keepAliveTimeout) then close. The JS handler may run
+                // user code (e.g. socket.end()/server.close()) before we close.
+                if keep_alive_wait {
+                  // SAFETY: the isolate stays valid while the serve future
+                  // (holding this callback) is running.
+                  unsafe { callback.dispatch_connection_timeout(conn_id) };
+                }
+                let mut io = conn.into_inner();
+                io.shutdown().await?;
+                return Ok(());
               }
-              // node:http: an idle keep-alive timeout fires the connection's
-              // 'timeout' event before the connection is closed (Node's
-              // server.keepAliveTimeout). The JS handler may run user code
-              // (e.g. socket.end()/server.close()); we still close below.
-              if node_http.enabled && keep_alive_wait && !is_request_timeout {
-                // SAFETY: the isolate stays valid while the serve future
-                // (holding this callback) is running.
-                unsafe { callback.dispatch_connection_timeout(conn_id) };
-              }
+            }
+            Err(_elapsed) => {
+              // requestTimeout on a partially-received request: reply 408.
               let mut io = conn.into_inner();
-              if is_request_timeout {
-                io.write_all(
-                  b"HTTP/1.1 408 Request Timeout\r\nConnection: close\r\n\r\n",
-                )
-                .await?;
-              }
+              io.write_all(
+                b"HTTP/1.1 408 Request Timeout\r\nConnection: close\r\n\r\n",
+              )
+              .await?;
               io.shutdown().await?;
               return Ok(());
             }
