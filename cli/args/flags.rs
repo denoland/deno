@@ -802,6 +802,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "DENO_KV_REQUIRES_DISTRIBUTED_DATABASE",
+    description: "Require Deno.openKv() to resolve to a distributed (remote) database.\nWhen set to \"error\", Deno.openKv() is always exposed and rejects with a\nclear message unless the resolved path is remote. When set to \"warn\", a\nlocal/in-memory fallback is allowed but logs a warning. Used by Deno\nDeploy to surface a clear error when no KV database is attached.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_EMIT_CACHE_MODE",
     description: "Control if the transpiled sources should be cached.",
     example: None,
