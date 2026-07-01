@@ -17,6 +17,7 @@ const {
 const {
   // TODO(mmastrac): use readAll
   op_read_all,
+  op_pipe,
   op_readable_stream_resource_allocate,
   op_readable_stream_resource_allocate_sized,
   op_readable_stream_resource_await_close,
@@ -2854,6 +2855,66 @@ function readableStreamHasDefaultReader(stream) {
 }
 
 /**
+ * Fast path for `readableStreamPipeTo` when both the source and the sink are
+ * backed by a `deno_core::Resource`. The entire byte pump happens in Rust via
+ * `op_pipe`, avoiding a copy of every chunk into and back out of JavaScript.
+ * Close / abort / cancel semantics are handled here to match the generic
+ * algorithm.
+ *
+ * @param {ReadableStream} source
+ * @param {WritableStream} dest
+ * @param {{ rid: number }} srcBacking
+ * @param {{ rid: number }} dstBacking
+ * @param {boolean} preventClose
+ * @param {boolean} preventAbort
+ * @param {boolean} preventCancel
+ */
+async function fastPipeTo(
+  source,
+  dest,
+  srcBacking,
+  dstBacking,
+  preventClose,
+  preventAbort,
+  preventCancel,
+) {
+  // Lock both streams for the duration of the transfer, matching the
+  // preconditions of the generic algorithm. We never issue reads/writes
+  // through these handles; the byte pump happens entirely in `op_pipe`.
+  const reader = acquireReadableStreamDefaultReader(source);
+  const writer = acquireWritableStreamDefaultWriter(dest);
+  source[_disturbed] = true;
+  try {
+    await op_pipe(srcBacking.rid, dstBacking.rid);
+  } catch (error) {
+    // We can't tell from here whether the read (source) or write (sink) side
+    // failed, so we tear down both ends, subject to the prevent* flags.
+    if (preventAbort === false) {
+      try {
+        await writableStreamDefaultWriterAbort(writer, error);
+      } catch { /* keep the original error */ }
+    }
+    if (preventCancel === false) {
+      try {
+        await readableStreamCancel(source, error);
+      } catch { /* keep the original error */ }
+    }
+    writableStreamDefaultWriterRelease(writer);
+    readableStreamDefaultReaderRelease(reader);
+    throw error;
+  }
+
+  // The source reached EOF and every chunk has been flushed to the sink.
+  if (preventClose === false) {
+    await writableStreamDefaultWriterClose(writer);
+  }
+  writableStreamDefaultWriterRelease(writer);
+  // Close the source, releasing its underlying resource (honors autoClose).
+  await readableStreamCancel(source, undefined);
+  readableStreamDefaultReaderRelease(reader);
+}
+
+/**
  * @template T
  * @param {ReadableStream<T>} source
  * @param {WritableStream<T>} dest
@@ -2883,6 +2944,23 @@ function readableStreamPipeTo(
   );
   assert(!isReadableStreamLocked(source));
   assert(!isWritableStreamLocked(dest));
+
+  // Fast path: when both ends are resource-backed and there is no abort signal
+  // to observe mid-stream, offload the whole streaming operation to Rust.
+  const srcBacking = getReadableStreamResourceBacking(source);
+  const dstBacking = getWritableStreamResourceBacking(dest);
+  if (srcBacking && dstBacking && signal === undefined) {
+    return fastPipeTo(
+      source,
+      dest,
+      srcBacking,
+      dstBacking,
+      preventClose,
+      preventAbort,
+      preventCancel,
+    );
+  }
+
   // We use acquireReadableStreamDefaultReader even in case of ReadableByteStreamController
   // as the spec allows us, and the only reason to use BYOBReader is to do some smart things
   // with it, but the spec does not specify what things, so to simplify we stick to DefaultReader.

@@ -943,3 +943,53 @@ Deno.test(
     listener.close();
   },
 );
+
+// When both the source and the sink are resource-backed (here a file readable
+// piped into a file writable), `pipeTo` takes the Rust `op_pipe` fast path.
+// This exercises byte-exact transfer and the default close behavior.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function pipeToResourceBackedFastPath() {
+    const input = await Deno.makeTempFile();
+    const output = await Deno.makeTempFile();
+    try {
+      const data = new Uint8Array(1024 * 1024);
+      for (let i = 0; i < data.length; i++) data[i] = i % 251;
+      await Deno.writeFile(input, data);
+
+      using src = await Deno.open(input, { read: true });
+      using dst = await Deno.open(output, { write: true });
+      await src.readable.pipeTo(dst.writable);
+
+      assertEquals(await Deno.readFile(output), data);
+    } finally {
+      await Deno.remove(input);
+      await Deno.remove(output);
+    }
+  },
+);
+
+// With `preventClose: true` the resource-backed sink must stay writable after
+// the fast-path pipe completes.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function pipeToResourceBackedPreventClose() {
+    const input = await Deno.makeTempFile();
+    const output = await Deno.makeTempFile();
+    try {
+      await Deno.writeTextFile(input, "hello ");
+      using src = await Deno.open(input, { read: true });
+      const dst = await Deno.open(output, { write: true });
+      await src.readable.pipeTo(dst.writable, { preventClose: true });
+
+      const writer = dst.writable.getWriter();
+      await writer.write(new TextEncoder().encode("world"));
+      await writer.close();
+
+      assertEquals(await Deno.readTextFile(output), "hello world");
+    } finally {
+      await Deno.remove(input);
+      await Deno.remove(output);
+    }
+  },
+);

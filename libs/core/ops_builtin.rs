@@ -63,6 +63,7 @@ builtin_ops! {
   op_read_sync,
   op_write_sync,
   op_write_all,
+  op_pipe,
   op_write_type_error,
   op_shutdown,
   op_str_byte_length,
@@ -472,6 +473,48 @@ async fn op_write_all(
     .map_err(JsErrorBox::from_err)?;
   let view = BufView::from(buf);
   resource.write_all(view).await?;
+  Ok(())
+}
+
+/// Pipe all data from a source resource to a sink resource, entirely in Rust.
+///
+/// This is the fast path for `ReadableStream#pipeTo` when both the source and
+/// the sink are backed by a `deno_core::Resource` (see
+/// `getReadableStreamResourceBacking` / `getWritableStreamResourceBacking` in
+/// `ext/web/06_streams.js`). It avoids copying every chunk into and back out of
+/// JavaScript. Close / abort / cancel semantics are handled by the JS caller.
+#[op2(promise_id)]
+async fn op_pipe(
+  state: Rc<RefCell<OpState>>,
+  #[smi] promise_id: i32,
+  #[smi] src_rid: ResourceId,
+  #[smi] dst_rid: ResourceId,
+) -> Result<(), JsErrorBox> {
+  // Unref bookkeeping is keyed off the source, since that is what we await on.
+  let src = get_resource(state.clone(), src_rid, promise_id)?;
+  let dst = state
+    .borrow()
+    .resource_table
+    .get_any(dst_rid)
+    .map_err(JsErrorBox::from_err)?;
+
+  // Reuse the same adaptive sizing strategy as `op_read_all`.
+  let (min, maybe_max) = src.size_hint();
+  let mut buffer_strategy =
+    AdaptiveBufferStrategy::new_from_hint_u64(min, maybe_max);
+
+  loop {
+    let buf = BufMutView::new(buffer_strategy.buffer_size());
+    let (n, mut buf) = src.clone().read_byob(buf).await?;
+    if n == 0 {
+      break; // source reached EOF
+    }
+    buffer_strategy.notify_read(n);
+    // Keep only the bytes that were read, then hand ownership to the sink.
+    buf.truncate(n);
+    dst.clone().write_all(buf.into_view()).await?;
+  }
+
   Ok(())
 }
 
