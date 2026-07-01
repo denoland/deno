@@ -1961,6 +1961,7 @@ mod tests {
         id,
         accelerator,
         enabled,
+        ..
       } => {
         assert_eq!(label, "Save");
         assert_eq!(id.as_deref(), Some("file.save"));
