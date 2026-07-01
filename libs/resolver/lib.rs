@@ -708,7 +708,11 @@ impl<
       return None;
     }
     // Determine the npm package (name@version) the referrer belongs to by
-    // reading its closest package.json.
+    // reading its closest package.json. The `package.json` reads are memoized
+    // by the node_resolver's thread-local `PackageJsonCache`, so repeat walks
+    // hit cache rather than disk; if the upward directory walk itself ever
+    // shows up in a profile, memoizing referrer-dir -> `npm:<name>@<version>`
+    // here would remove the residual per-specifier work.
     let node_resolver = &self.node_and_npm_resolver.as_ref()?.node_resolver;
     let referrer_ref = UrlOrPathRef::from_url(referrer);
     let referrer_path = referrer_ref.path().ok()?;
