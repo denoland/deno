@@ -43,7 +43,8 @@ interface DOMException extends Error {
  * the legacy numeric error code constants (e.g. `ABORT_ERR`).
  *
  * @category Platform */
-declare var DOMException: {
+declare var DOMException: typeof globalThis extends
+  { document: any; DOMException: infer T } ? T : {
   readonly prototype: DOMException;
   new (message?: string, name?: string): DOMException;
   readonly INDEX_SIZE_ERR: 1;
@@ -93,7 +94,8 @@ interface QuotaExceededError extends DOMException {
  * an error thrown when an operation would exceed an enforced quota.
  *
  * @category Platform */
-declare var QuotaExceededError: {
+declare var QuotaExceededError: typeof globalThis extends
+  { document: any; QuotaExceededError: infer T } ? T : {
   readonly prototype: QuotaExceededError;
   new (
     message?: string,
@@ -180,14 +182,16 @@ interface Event {
  *
  * @category Events
  */
-declare var Event: {
-  readonly prototype: Event;
-  new (type: string, eventInitDict?: EventInit): Event;
-  readonly NONE: 0;
-  readonly CAPTURING_PHASE: 1;
-  readonly AT_TARGET: 2;
-  readonly BUBBLING_PHASE: 3;
-};
+declare var Event: typeof globalThis extends { document: any; Event: infer T }
+  ? T
+  : {
+    readonly prototype: Event;
+    new (type: string, eventInitDict?: EventInit): Event;
+    readonly NONE: 0;
+    readonly CAPTURING_PHASE: 1;
+    readonly AT_TARGET: 2;
+    readonly BUBBLING_PHASE: 3;
+  };
 
 /**
  * EventTarget is a DOM interface implemented by objects that can receive events
@@ -243,7 +247,8 @@ interface EventTarget {
  *
  * @category Events
  */
-declare var EventTarget: {
+declare var EventTarget: typeof globalThis extends
+  { document: any; EventTarget: infer T } ? T : {
   readonly prototype: EventTarget;
   new (): EventTarget;
 };
@@ -467,7 +472,8 @@ interface TextDecoder extends TextDecoderCommon {
  * strings.
  *
  * @category Encoding */
-declare var TextDecoder: {
+declare var TextDecoder: typeof globalThis extends
+  { document: any; TextDecoder: infer T } ? T : {
   readonly prototype: TextDecoder;
   new (label?: string, options?: TextDecoderOptions): TextDecoder;
 };
@@ -517,7 +523,8 @@ interface TextEncoder extends TextEncoderCommon {
  * encoder that turns strings into UTF-8 encoded bytes.
  *
  * @category Encoding */
-declare var TextEncoder: {
+declare var TextEncoder: typeof globalThis extends
+  { document: any; TextEncoder: infer T } ? T : {
   readonly prototype: TextEncoder;
   new (): TextEncoder;
 };
@@ -538,7 +545,8 @@ interface TextDecoderStream extends GenericTransformStream, TextDecoderCommon {
  * transform stream that decodes a stream of bytes into a stream of strings.
  *
  * @category Encoding */
-declare var TextDecoderStream: {
+declare var TextDecoderStream: typeof globalThis extends
+  { document: any; TextDecoderStream: infer T } ? T : {
   readonly prototype: TextDecoderStream;
   new (label?: string, options?: TextDecoderOptions): TextDecoderStream;
 };
@@ -554,7 +562,8 @@ interface TextEncoderStream extends GenericTransformStream, TextEncoderCommon {
  * bytes.
  *
  * @category Encoding */
-declare var TextEncoderStream: {
+declare var TextEncoderStream: typeof globalThis extends
+  { document: any; TextEncoderStream: infer T } ? T : {
   readonly prototype: TextEncoderStream;
   new (): TextEncoderStream;
 };
@@ -577,7 +586,8 @@ interface AbortController {
  *
  * @category Platform
  */
-declare var AbortController: {
+declare var AbortController: typeof globalThis extends
+  { document: any; AbortController: infer T } ? T : {
   readonly prototype: AbortController;
   new (): AbortController;
 };
@@ -631,7 +641,8 @@ interface AbortSignal extends EventTarget {
  * directly, so calling the constructor throws.
  *
  * @category Platform */
-declare var AbortSignal: {
+declare var AbortSignal: typeof globalThis extends
+  { document: any; AbortSignal: infer T } ? T : {
   readonly prototype: AbortSignal;
   new (): never;
   abort(reason?: any): AbortSignal;
@@ -750,10 +761,11 @@ interface Blob {
  *
  * @category File
  */
-declare var Blob: {
-  readonly prototype: Blob;
-  new (blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
-};
+declare var Blob: typeof globalThis extends { document: any; Blob: infer T } ? T
+  : {
+    readonly prototype: Blob;
+    new (blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
+  };
 
 /** @category File */
 interface FilePropertyBag extends BlobPropertyBag {
@@ -776,10 +788,15 @@ interface File extends Blob {
  *
  * @category File
  */
-declare var File: {
-  readonly prototype: File;
-  new (fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
-};
+declare var File: typeof globalThis extends { document: any; File: infer T } ? T
+  : {
+    readonly prototype: File;
+    new (
+      fileBits: BlobPart[],
+      fileName: string,
+      options?: FilePropertyBag,
+    ): File;
+  };
 
 /** @category Streams */
 type ReadableStreamReader<T> =
@@ -826,7 +843,8 @@ interface ReadableStreamDefaultReader<R = any>
  * code obtains one via {@linkcode ReadableStream.getReader} instead.
  *
  * @category Streams */
-declare var ReadableStreamDefaultReader: {
+declare var ReadableStreamDefaultReader: typeof globalThis extends
+  { document: any; ReadableStreamDefaultReader: infer T } ? T : {
   readonly prototype: ReadableStreamDefaultReader;
   new <R = any>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
 };
@@ -850,7 +868,8 @@ interface ReadableStreamBYOBReader extends ReadableStreamGenericReader {
  * code obtains one via `ReadableStream.getReader({ mode: "byob" })` instead.
  *
  * @category Streams */
-declare var ReadableStreamBYOBReader: {
+declare var ReadableStreamBYOBReader: typeof globalThis extends
+  { document: any; ReadableStreamBYOBReader: infer T } ? T : {
   readonly prototype: ReadableStreamBYOBReader;
   new (
     stream: ReadableStream<Uint8Array<ArrayBuffer>>,
@@ -870,7 +889,8 @@ interface ReadableStreamBYOBRequest {
  * directly, so calling the constructor throws.
  *
  * @category Streams */
-declare var ReadableStreamBYOBRequest: {
+declare var ReadableStreamBYOBRequest: typeof globalThis extends
+  { document: any; ReadableStreamBYOBRequest: infer T } ? T : {
   readonly prototype: ReadableStreamBYOBRequest;
   new (): never;
 };
@@ -945,7 +965,8 @@ interface ReadableStreamDefaultController<R = any> {
  * throws.
  *
  * @category Streams */
-declare var ReadableStreamDefaultController: {
+declare var ReadableStreamDefaultController: typeof globalThis extends
+  { document: any; ReadableStreamDefaultController: infer T } ? T : {
   readonly prototype: ReadableStreamDefaultController;
   new (): never;
 };
@@ -966,7 +987,8 @@ interface ReadableByteStreamController {
  * constructor throws.
  *
  * @category Streams */
-declare var ReadableByteStreamController: {
+declare var ReadableByteStreamController: typeof globalThis extends
+  { document: any; ReadableByteStreamController: infer T } ? T : {
   readonly prototype: ReadableByteStreamController;
   new (): never;
 };
@@ -1005,7 +1027,8 @@ interface CountQueuingStrategy extends QueuingStrategy {
  * high water mark.
  *
  * @category Streams */
-declare var CountQueuingStrategy: {
+declare var CountQueuingStrategy: typeof globalThis extends
+  { document: any; CountQueuingStrategy: infer T } ? T : {
   readonly prototype: CountQueuingStrategy;
   new (init: QueuingStrategyInit): CountQueuingStrategy;
 };
@@ -1021,7 +1044,8 @@ interface ByteLengthQueuingStrategy extends QueuingStrategy<ArrayBufferView> {
  * the stream's high water mark.
  *
  * @category Streams */
-declare var ByteLengthQueuingStrategy: {
+declare var ByteLengthQueuingStrategy: typeof globalThis extends
+  { document: any; ByteLengthQueuingStrategy: infer T } ? T : {
   readonly prototype: ByteLengthQueuingStrategy;
   new (init: QueuingStrategyInit): ByteLengthQueuingStrategy;
 };
@@ -1063,7 +1087,8 @@ interface ReadableStream<R = any> {
  * consumed.
  *
  * @category Streams */
-declare var ReadableStream: {
+declare var ReadableStream: typeof globalThis extends
+  { document: any; ReadableStream: infer T } ? T : {
   readonly prototype: ReadableStream;
   new (
     underlyingSource: UnderlyingByteSource,
@@ -1142,7 +1167,8 @@ interface WritableStream<W = any> {
  * handled.
  *
  * @category Streams */
-declare var WritableStream: {
+declare var WritableStream: typeof globalThis extends
+  { document: any; WritableStream: infer T } ? T : {
   readonly prototype: WritableStream;
   new <W = any>(
     underlyingSink?: UnderlyingSink<W>,
@@ -1169,7 +1195,8 @@ interface WritableStreamDefaultController {
  * throws.
  *
  * @category Streams */
-declare var WritableStreamDefaultController: {
+declare var WritableStreamDefaultController: typeof globalThis extends
+  { document: any; WritableStreamDefaultController: infer T } ? T : {
   readonly prototype: WritableStreamDefaultController;
   new (): never;
 };
@@ -1196,7 +1223,8 @@ interface WritableStreamDefaultWriter<W = any> {
  * obtains one via {@linkcode WritableStream.getWriter} instead.
  *
  * @category Streams */
-declare var WritableStreamDefaultWriter: {
+declare var WritableStreamDefaultWriter: typeof globalThis extends
+  { document: any; WritableStreamDefaultWriter: infer T } ? T : {
   readonly prototype: WritableStreamDefaultWriter;
   new <W = any>(stream: WritableStream<W>): WritableStreamDefaultWriter<W>;
 };
@@ -1212,7 +1240,8 @@ interface TransformStream<I = any, O = any> {
  * writable side are transformed before appearing on its readable side.
  *
  * @category Streams */
-declare var TransformStream: {
+declare var TransformStream: typeof globalThis extends
+  { document: any; TransformStream: infer T } ? T : {
   readonly prototype: TransformStream;
   new <I = any, O = any>(
     transformer?: Transformer<I, O>,
@@ -1235,7 +1264,8 @@ interface TransformStreamDefaultController<O = any> {
  * rather than constructed directly, so calling the constructor throws.
  *
  * @category Streams */
-declare var TransformStreamDefaultController: {
+declare var TransformStreamDefaultController: typeof globalThis extends
+  { document: any; TransformStreamDefaultController: infer T } ? T : {
   readonly prototype: TransformStreamDefaultController;
   new (): never;
 };
@@ -1328,7 +1358,8 @@ interface MessageEvent<T = any> extends Event {
  * `MessagePort`, and `Worker` messaging.
  *
  * @category Events */
-declare var MessageEvent: {
+declare var MessageEvent: typeof globalThis extends
+  { document: any; MessageEvent: infer T } ? T : {
   readonly prototype: MessageEvent;
   new <T>(type: string, eventInitDict?: MessageEventInit<T>): MessageEvent<T>;
 };
@@ -1398,7 +1429,8 @@ interface MessageChannel {
  *
  * @category Messaging
  */
-declare var MessageChannel: {
+declare var MessageChannel: typeof globalThis extends
+  { document: any; MessageChannel: infer T } ? T : {
   readonly prototype: MessageChannel;
   new (): MessageChannel;
 };
@@ -1465,7 +1497,8 @@ interface MessagePort extends EventTarget {
  *
  * @category Messaging
  */
-declare var MessagePort: {
+declare var MessagePort: typeof globalThis extends
+  { document: any; MessagePort: infer T } ? T : {
   readonly prototype: MessagePort;
   new (): never;
 };
@@ -1534,7 +1567,8 @@ type CompressionFormat = "deflate" | "deflate-raw" | "gzip" | "brotli";
  *
  * @category Streams
  */
-declare var CompressionStream: {
+declare var CompressionStream: typeof globalThis extends
+  { document: any; CompressionStream: infer T } ? T : {
   readonly prototype: CompressionStream;
   /**
    * Creates a new `CompressionStream` object which compresses a stream of
@@ -1581,7 +1615,8 @@ interface DecompressionStream extends GenericTransformStream {
  *
  * @category Streams
  */
-declare var DecompressionStream: {
+declare var DecompressionStream: typeof globalThis extends
+  { document: any; DecompressionStream: infer T } ? T : {
   readonly prototype: DecompressionStream;
   /**
    * Creates a new `DecompressionStream` object which decompresses a stream of

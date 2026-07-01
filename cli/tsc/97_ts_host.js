@@ -182,7 +182,16 @@ function isNodeSourceFile(sourceFile) {
   return isNodeSourceFile;
 }
 
-ts.deno.setIsNodeSourceFileCallback(isNodeSourceFile);
+// EXPERIMENT (feat/stock-globals-experiment): collapse the fork's dual
+// node/deno global symbol tables into a single table by telling the global
+// router that no file is a "node" file. This makes `mergeGlobalSymbolTable`
+// merge every file's globals into the one table and routes all name resolution
+// there, which renders NODE_ONLY_GLOBALS / TYPES_NODE_IGNORABLE_NAMES inert.
+// Web-global coexistence with @types/node is instead handled in the libs via
+// the lib.dom-style conditional-deferral pattern. NOTE: the `isNodeSourceFile`
+// function itself is still used for node-file diagnostic suppression below, so
+// only the global-routing callback is neutralized here.
+ts.deno.setIsNodeSourceFileCallback(() => false);
 
 /**
  * @param msg {string}
