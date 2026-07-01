@@ -239,10 +239,18 @@ impl TypeChecker {
     graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<Arc<ModuleGraph>, CheckError> {
-    let mut diagnostics = self.check_diagnostics(graph, options)?;
+    let mut diagnostics_iter = self.check_diagnostics(graph, options)?;
+    // Drain the iterator first so that all the "Check ..." lines (which are
+    // printed while type checking each folder) are emitted before any
+    // diagnostics. Otherwise, in a workspace with multiple folders, errors
+    // from one folder would be printed in the middle of the "Check ..." lines
+    // of the following folders.
+    let mut all_diagnostics = Vec::new();
+    for result in diagnostics_iter.by_ref() {
+      all_diagnostics.push(result?);
+    }
     let mut failed = false;
-    for result in diagnostics.by_ref() {
-      let mut diagnostics = result?;
+    for mut diagnostics in all_diagnostics {
       diagnostics.emit_warnings();
       if diagnostics.has_diagnostic() {
         failed = true;
@@ -260,7 +268,7 @@ impl TypeChecker {
         .into(),
       )
     } else {
-      Ok(diagnostics.into_graph())
+      Ok(diagnostics_iter.into_graph())
     }
   }
 
