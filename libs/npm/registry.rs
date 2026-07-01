@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -206,15 +207,58 @@ fn is_export_completion_key(key: &str) -> bool {
     || (key.starts_with("./") && key.chars().filter(|c| *c == '*').count() != 1)
 }
 
+thread_local! {
+  /// Whether to deserialize npm `exports` subpath keys (see
+  /// [`NpmPackageExportKeys`]) on this thread.
+  ///
+  /// Only the LSP reads these keys (for npm import-specifier completion), so
+  /// deserialization is off by default and every other command — most
+  /// importantly `deno run` — discards the `exports` value without retaining
+  /// anything. The registry packument for a package is cached for the whole
+  /// process with all of its versions, so keeping even the keys of every
+  /// version's `exports` adds up on a large graph (see denoland/deno#35664).
+  ///
+  /// The LSP opts in by wrapping its parsing in
+  /// [`with_export_keys_deserialization`].
+  static DESERIALIZE_EXPORT_KEYS: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Run `f` with npm `exports` subpath-key deserialization enabled on the current
+/// thread. See [`DESERIALIZE_EXPORT_KEYS`].
+pub fn with_export_keys_deserialization<R>(f: impl FnOnce() -> R) -> R {
+  let prev = DESERIALIZE_EXPORT_KEYS.with(|c| c.replace(true));
+  let result = f();
+  DESERIALIZE_EXPORT_KEYS.with(|c| c.set(prev));
+  result
+}
+
+fn deserialize_maybe_export_keys<'de, D>(
+  deserializer: D,
+) -> Result<Option<NpmPackageExportKeys>, D::Error>
+where
+  D: serde::Deserializer<'de>,
+{
+  if DESERIALIZE_EXPORT_KEYS.with(|c| c.get()) {
+    Option::<NpmPackageExportKeys>::deserialize(deserializer)
+  } else {
+    // Discard the value without materializing anything (not even the keys) for
+    // every non-LSP command. See DESERIALIZE_EXPORT_KEYS.
+    deserializer.deserialize_ignored_any(serde::de::IgnoredAny)?;
+    Ok(None)
+  }
+}
+
 /// The export subpath keys from a package's `exports` field (e.g. `"."`,
 /// `"./feature"`), retained solely for npm import-specifier completion in the
 /// LSP.
 ///
-/// Only the keys are kept. The full `exports` value is intentionally discarded
-/// while deserializing registry metadata: retaining it as a `serde_json::Value`
-/// for the `exports` of every version of every npm package kept hundreds of MB
-/// alive for a plain `deno run`, and leaked that much per `--watch` reload (see
-/// denoland/deno#35664). The keys are the only thing any consumer reads.
+/// Only the keys are kept, and only when deserialization is explicitly enabled
+/// via [`with_export_keys_deserialization`]. The full `exports` value is
+/// intentionally discarded while deserializing registry metadata: retaining it
+/// as a `serde_json::Value` for the `exports` of every version of every npm
+/// package kept hundreds of MB alive for a plain `deno run`, and leaked that
+/// much per `--watch` reload (see denoland/deno#35664). The keys are the only
+/// thing any consumer reads.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct NpmPackageExportKeys(pub Vec<String>);
 
@@ -325,7 +369,11 @@ impl<'de> Deserialize<'de> for NpmPackageExportKeys {
 #[serde(rename_all = "camelCase")]
 pub struct NpmPackageVersionInfo {
   pub version: Version,
-  #[serde(default, skip_serializing_if = "Option::is_none")]
+  #[serde(
+    default,
+    deserialize_with = "deserialize_maybe_export_keys",
+    skip_serializing_if = "Option::is_none"
+  )]
   pub exports: Option<NpmPackageExportKeys>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub dist: Option<NpmPackageVersionDistInfo>,
@@ -1974,6 +2022,26 @@ mod test {
       .0;
     round_tripped.sort();
     assert_eq!(round_tripped, sorted);
+  }
+
+  #[test]
+  fn version_info_exports_gated_by_thread_local() {
+    let text = r#"{ "version": "1.0.0", "exports": { ".": "./index.js", "./client": "./client.js" } }"#;
+
+    // Off by default (e.g. `deno run`): the value is discarded, nothing kept.
+    let info: NpmPackageVersionInfo = serde_json::from_str(text).unwrap();
+    assert_eq!(info.exports, None);
+
+    // The LSP opts in and gets the subpath keys back.
+    let info: NpmPackageVersionInfo =
+      with_export_keys_deserialization(|| serde_json::from_str(text).unwrap());
+    let mut keys = info.exports.unwrap().0;
+    keys.sort();
+    assert_eq!(keys, vec![".", "./client"]);
+
+    // The opt-in is scoped: it reverts once the closure returns.
+    let info: NpmPackageVersionInfo = serde_json::from_str(text).unwrap();
+    assert_eq!(info.exports, None);
   }
 
   #[test]

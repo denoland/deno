@@ -34,11 +34,15 @@ impl CliNpmSearchApi {
     file_fetcher: Arc<CliFileFetcher>,
     npm_version_resolver: Arc<NpmVersionResolver>,
   ) -> Self {
+    // The LSP is the only consumer of npm `exports` subpath keys (import
+    // specifier completion), so it opts into deserializing them; every other
+    // command discards them to avoid retaining them for the whole process.
     let resolver = NpmFetchResolver::new(
       file_fetcher.clone(),
       Arc::new(NpmRc::default().as_resolved(npm_registry_url()).unwrap()),
       npm_version_resolver,
-    );
+    )
+    .with_export_keys();
     Self {
       file_fetcher,
       resolver,

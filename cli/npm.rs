@@ -268,6 +268,7 @@ pub struct NpmFetchResolver {
   file_fetcher: Arc<CliFileFetcher>,
   npmrc: Arc<ResolvedNpmRc>,
   version_resolver: Arc<NpmVersionResolver>,
+  deserialize_export_keys: bool,
 }
 
 impl NpmFetchResolver {
@@ -282,7 +283,17 @@ impl NpmFetchResolver {
       file_fetcher,
       npmrc,
       version_resolver,
+      deserialize_export_keys: false,
     }
+  }
+
+  /// Retain the `exports` subpath keys of each package version when parsing
+  /// registry metadata. Only the LSP needs them (for npm import-specifier
+  /// completion); every other consumer leaves them off so nothing is retained.
+  /// See [`deno_npm::registry::with_export_keys_deserialization`].
+  pub fn with_export_keys(mut self) -> Self {
+    self.deserialize_export_keys = true;
+    self
   }
 
   pub async fn req_to_nv(
@@ -397,8 +408,15 @@ impl NpmFetchResolver {
       )
       .await
       .map_err(|e| format!("{e:#}"))?;
-    serde_json::from_slice::<NpmPackageInfo>(&file.source)
-      .map_err(|e| format!("failed to parse package metadata: {e}"))
+    let parse = || {
+      serde_json::from_slice::<NpmPackageInfo>(&file.source)
+        .map_err(|e| format!("failed to parse package metadata: {e}"))
+    };
+    if self.deserialize_export_keys {
+      deno_npm::registry::with_export_keys_deserialization(parse)
+    } else {
+      parse()
+    }
   }
 
   pub fn applicable_version_infos<'a>(
