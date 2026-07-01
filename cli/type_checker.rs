@@ -245,7 +245,7 @@ impl TypeChecker {
     // diagnostics. Otherwise, in a workspace with multiple folders, errors
     // from one folder would be printed in the middle of the "Check ..." lines
     // of the following folders.
-    let mut all_diagnostics = Vec::new();
+    let mut all_diagnostics = Vec::with_capacity(diagnostics_iter.remaining());
     for result in diagnostics_iter.by_ref() {
       all_diagnostics.push(result?);
     }
@@ -447,6 +447,17 @@ pub struct DiagnosticsByFolderIterator<'a>(
 );
 
 impl DiagnosticsByFolderIterator<'_> {
+  /// Number of folders remaining to be checked, i.e. the exact number of items
+  /// this iterator will still yield.
+  pub fn remaining(&self) -> usize {
+    match &self.0 {
+      DiagnosticsByFolderIteratorInner::Empty(_) => 0,
+      DiagnosticsByFolderIteratorInner::Real(r) => {
+        r.groups.len().saturating_sub(r.current_group_index)
+      }
+    }
+  }
+
   pub fn into_graph(self) -> Arc<ModuleGraph> {
     match self.0 {
       DiagnosticsByFolderIteratorInner::Empty(module_graph) => module_graph,
