@@ -1843,6 +1843,30 @@ async fn run_desktop(
     // Deno.serve to bind the in-process channel before navigating.
     scheme_bridge::register();
 
+    // Also bind a WebSocket-only loopback proxy. Modern webviews route `ws://`
+    // through their own network stack, not through custom scheme handlers, so
+    // user code like `new WebSocket("ws://" + window.location.host)` can't
+    // reach `Deno.serve` via `app://`. We navigate to `app://127.0.0.1:PORT/`
+    // instead of a cosmetic authority — `window.location.host` becomes the
+    // loopback address and the browser's WebSocket lands on this proxy, which
+    // forwards the bytes into the same in-process listener. The proxy rejects
+    // anything other than a `Upgrade: websocket` handshake so plain HTTP does
+    // NOT get a second entry point.
+    let ws_loopback_port = match scheme_bridge::spawn_ws_loopback_proxy().await
+    {
+      Ok(port) => port,
+      Err(e) => {
+        log::error!(
+          "[desktop] failed to bind WebSocket loopback proxy: {e}; \
+           WebSocket connections from user code will fail"
+        );
+        // Fall back to a cosmetic port so the URL still parses; HTTP will
+        // still work over the memory transport.
+        0
+      }
+    };
+    let navigate_url = scheme_bridge::app_url(ws_loopback_port);
+
     let id = initial_window_id_for_navigate.load(Ordering::Acquire);
     let mut server_ready = false;
     for i in 0..60 {
@@ -1850,7 +1874,7 @@ async fn run_desktop(
         log::debug!(
           "[desktop] Server ready after {} attempts, navigating to {}",
           i + 1,
-          scheme_bridge::APP_URL
+          navigate_url
         );
         server_ready = true;
         break;
@@ -1860,7 +1884,7 @@ async fn run_desktop(
     if !server_ready {
       log::warn!("Server not ready after 15s, navigating anyway");
     }
-    laufey::Window::from_id(id).navigate(scheme_bridge::APP_URL);
+    laufey::Window::from_id(id).navigate(&navigate_url);
 
     // The window was created hidden and is normally revealed from its
     // `on_page_load` handler the moment content paints. If that load never
