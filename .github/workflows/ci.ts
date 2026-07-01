@@ -163,12 +163,19 @@ echo "sysroot env:"
 cat /sysroot/.env
 . /sysroot/.env
 case "$(uname -m)" in
-  x86_64) gccTriple=x86_64-linux-gnu ;;
-  aarch64) gccTriple=aarch64-linux-gnu ;;
-  *) echo "Unsupported architecture for GCC toolchain lookup"; exit 1 ;;
+ x86_64) gccTriple=x86_64-linux-gnu ;;
+ aarch64) gccTriple=aarch64-linux-gnu ;;
+ *) echo "Unsupported architecture for GCC toolchain lookup"; exit 1 ;;
 esac
-gccVersion="$(ls -1 /sysroot/usr/lib/gcc/\${gccTriple} | sort -V | tail -n 1)"
-gccInstallDir="/sysroot/usr/lib/gcc/\${gccTriple}/\${gccVersion}"
+gccInstallDir="$(
+  find /sysroot/usr/lib/gcc/\${gccTriple} -mindepth 2 -maxdepth 2 -name crtbegin.o -printf '%h\\n' |
+    sort -V |
+    tail -n 1
+)"
+if [ -z "\${gccInstallDir}" ]; then
+  echo "Could not find a valid GCC installation under /sysroot/usr/lib/gcc/\${gccTriple}" >&2
+  exit 1
+fi
 
 # Important notes:
 #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
