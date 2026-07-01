@@ -8,8 +8,11 @@
 //! shared library and provides the browser/window layer.
 //!
 //! The user's code uses `Deno.serve()` or `export default { fetch }`
-//! to serve an HTTP app. The desktop runtime starts it on a local port
-//! and navigates the webview to it.
+//! to serve an HTTP app. The desktop runtime starts it on an in-process
+//! memory channel and navigates the webview to `app://`, whose requests are
+//! bridged into that channel by [`scheme_bridge`] — there is no TCP loopback.
+
+mod scheme_bridge;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -30,7 +33,6 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::v8;
-use deno_lib::util::net::allocate_random_port;
 use deno_lib::util::result::js_error_downcast_ref;
 use deno_lib::version::otel_runtime_config;
 use deno_runtime::fmt_errors::format_js_error;
@@ -45,7 +47,7 @@ use denort::run::RunOptions;
 /// makes the failure mode obvious instead of "the desktop app silently won't
 /// launch".
 const _: () = assert!(
-  laufey::LAUFEY_API_VERSION == 26,
+  laufey::LAUFEY_API_VERSION == 29,
   "LAUFEY_API_VERSION mismatch: update this assert and the prebuilt backend release pin in cli/tools/desktop.rs when laufey bumps its API version",
 );
 
@@ -207,6 +209,45 @@ impl WefDesktopApi {
         );
       })
   }
+
+  /// Create the bootstrap window for the app. Unlike windows constructed from
+  /// JS via `BrowserWindow`, this one is created *hidden* and revealed only once
+  /// its first navigation has finished loading (wired here via `on_page_load`).
+  ///
+  /// The runtime navigates this window to `app://` only after the in-process
+  /// server is listening, so creating it visible up front would leave the user
+  /// staring at an empty webview — which paints solid black on Wayland, where
+  /// the compositor presents the pre-load frame verbatim. Deferring the reveal
+  /// to load-finished means the window's first visible frame already has
+  /// content. See https://github.com/denoland/deno/issues/35530.
+  fn create_initial_window(&self, width: i32, height: i32) -> u32 {
+    let window = laufey::Window::new_with_options(
+      width,
+      height,
+      laufey::WindowOptions {
+        frameless: false,
+        no_activate: false,
+        transparent_titlebar: false,
+        hidden: true,
+        transparent: false,
+      },
+    );
+    let window = self.setup_window_events(window);
+    let id = window.id();
+
+    // Reveal the window once content has painted. `on_page_load` fires for
+    // every completed navigation, but we only want to show it the first time;
+    // later in-app navigations must not re-show a window the app has hidden.
+    let shown = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    window.on_page_load(move |ev| {
+      if !shown.swap(true, Ordering::AcqRel) {
+        laufey::Window::from_id(ev.window_id).show();
+      }
+    });
+
+    self.open_windows.lock().unwrap().insert(id);
+    id
+  }
 }
 
 impl denort::desktop::DesktopApi for WefDesktopApi {
@@ -225,6 +266,8 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         frameless,
         no_activate,
         transparent_titlebar,
+        hidden: false,
+        transparent: false,
       },
     );
     let window = self.setup_window_events(window);
@@ -809,6 +852,9 @@ fn desktop_menu_item_to_laufey_menu_item(
       id,
       accelerator,
       enabled,
+      checked: false,
+      icon: None,
+      tooltip: None,
     },
     denort::desktop::MenuItem::Submenu { label, items } => {
       laufey::MenuItem::Submenu {
@@ -1211,26 +1257,24 @@ laufey::main!(|| {
 
   laufey::set_js_namespace("bindings");
 
-  // Allocate the desktop serve port and publish it via DENO_SERVE_ADDRESS
-  // BEFORE the tokio runtime is built. Once the runtime spins up its
-  // mio IO thread (and, optionally, the inspector server thread),
-  // `setenv` is no longer thread-safe on glibc — Rust 1.81+ marks it
-  // unsafe for that reason. We're still single-threaded up to here:
-  // the worker-fork path has already returned, and the init calls
-  // above (init_logging, mark_standalone, rustls install_default,
-  // set_js_namespace) don't spawn threads.
-  let desktop_serve_port = match allocate_random_port() {
-    Ok(p) => p,
-    Err(e) => {
-      log::error!("[desktop] failed to allocate serve port: {}", e);
-      return;
-    }
-  };
+  // Serve over an in-process memory channel — there is no TCP loopback for the
+  // desktop app at all. No port allocation, no localhost exposure, no kernel
+  // networking. The webview reaches the server through the `app://` scheme
+  // handler registered below, which bridges each browser request into this
+  // named in-memory channel.
+  //
+  // Publish DENO_SERVE_ADDRESS BEFORE the tokio runtime is built. Once the
+  // runtime spins up its mio IO thread (and, optionally, the inspector server
+  // thread), `setenv` is no longer thread-safe on glibc — Rust 1.81+ marks it
+  // unsafe for that reason. We're still single-threaded up to here: the
+  // worker-fork path has already returned, and the init calls above
+  // (init_logging, mark_standalone, rustls install_default, set_js_namespace)
+  // don't spawn threads.
   // SAFETY: see the block comment above — single-threaded at this point.
   unsafe {
     std::env::set_var(
       "DENO_SERVE_ADDRESS",
-      format!("tcp:127.0.0.1:{}", desktop_serve_port),
+      format!("memory:{}", scheme_bridge::DESKTOP_SERVE_NAME),
     );
   }
 
@@ -1276,7 +1320,7 @@ laufey::main!(|| {
 
   rt.block_on(async {
     log::debug!("[desktop] run_desktop starting");
-    match run_desktop(update_rolled_back, desktop_serve_port, data).await {
+    match run_desktop(update_rolled_back, data).await {
       Ok(()) => log::debug!("[desktop] run_desktop completed OK"),
       Err(error) => {
         let is_js_error = js_error_downcast_ref(&error).is_some();
@@ -1523,7 +1567,6 @@ fn find_section_in_dylib() -> Result<&'static [u8], AnyError> {
 
 async fn run_desktop(
   update_rolled_back: bool,
-  desktop_serve_port: u16,
   data: denort::binary::StandaloneData,
 ) -> Result<(), AnyError> {
   // Make the error reporting URL available to the panic hook.
@@ -1591,9 +1634,9 @@ async fn run_desktop(
     log::debug!("[desktop] inspector server bound on {addr}");
   }
 
-  // DENO_SERVE_ADDRESS is published by `laufey::main!` before the
-  // tokio runtime is built — see the comment there for why we can't
-  // do it from here. `desktop_serve_port` is the port we put into it.
+  // DENO_SERVE_ADDRESS (an in-process `memory:` channel) is published by
+  // `laufey::main!` before the tokio runtime is built — see the comment there
+  // for why we can't do it from here.
 
   // Enable HMR if DENO_DESKTOP_HMR is set to a directory path
   // (set by `deno compile --desktop --hmr`).
@@ -1665,10 +1708,16 @@ async fn run_desktop(
   let auto_update_rolled_back =
     auto_update_state.as_ref().is_some_and(|s| s.rolled_back);
 
+  // App name (deno.json `desktop.app.name`, baked in at compile time) used as
+  // the default window title. Moved into the op_state_init closure below.
+  let app_name = data.metadata.app_name.clone();
+
   let run_opts = RunOptions {
     auto_serve: true,
-    serve_port: Some(desktop_serve_port),
-    serve_host: Some("127.0.0.1".to_string()),
+    // The desktop app serves over an in-process memory channel
+    // (DENO_SERVE_ADDRESS=memory:…), so there is no TCP serve port/host.
+    serve_port: None,
+    serve_host: None,
     hmr_watch_dir: if is_framework_dev {
       None
     } else {
@@ -1703,9 +1752,20 @@ async fn run_desktop(
         });
       }
 
-      // Create the initial window and wire up event handlers.
-      let window_id = api.create_window(800, 600, false, false, false);
+      // Create the initial window (hidden) and wire up event handlers. It is
+      // revealed from its `on_page_load` handler once content has painted, so
+      // the user never sees the empty pre-navigation frame (issue #35530).
+      let window_id = api.create_initial_window(800, 600);
       initial_window_id.store(window_id, Ordering::Release);
+
+      // Title the initial window with the app name up front, so an app that
+      // never constructs its own `BrowserWindow` still shows "MyApp" rather
+      // than the backend's internal default (`laufey_webview`). The
+      // `BrowserWindow` constructor applies the same default to any further
+      // untitled windows via `DesktopAppName` in op state.
+      if let Some(name) = app_name.as_deref().filter(|n| !n.is_empty()) {
+        api.set_title(window_id, name);
+      }
 
       denort::desktop::init_desktop_state(
         state,
@@ -1718,6 +1778,9 @@ async fn run_desktop(
       state.put(denort::desktop::InitialWindowId(std::sync::Mutex::new(
         Some(window_id),
       )));
+      if let Some(name) = app_name.filter(|n| !n.is_empty()) {
+        state.put(deno_runtime::ops::desktop::DesktopAppName(name));
+      }
     })),
     override_main_module: None,
     auto_update_version,
@@ -1732,7 +1795,6 @@ async fn run_desktop(
   // Run the Deno runtime and Laufey event loop concurrently.
   // We spawn the runtime first, wait for the server to be ready,
   // then navigate the webview.
-  let url = format!("http://127.0.0.1:{}", desktop_serve_port);
   log::debug!("[desktop] starting runtime and laufey event loop");
   let run_fut =
     denort::run::run_with_options(Arc::new(sys.clone()), sys, data, run_opts);
@@ -1776,40 +1838,37 @@ async fn run_desktop(
       }
     }
 
+    // Register the app:// scheme handler now that we're running on the Deno
+    // tokio runtime (the bridge spawns request tasks onto it), then wait for
+    // Deno.serve to bind the in-process channel before navigating.
+    scheme_bridge::register();
+
+    let id = initial_window_id_for_navigate.load(Ordering::Acquire);
+    let mut server_ready = false;
     for i in 0..60 {
-      if let Ok(mut stream) =
-        tokio::net::TcpStream::connect(("127.0.0.1", desktop_serve_port)).await
-      {
-        let req = format!(
-          "GET / HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
-          desktop_serve_port
+      if deno_net::memory::is_listening(scheme_bridge::DESKTOP_SERVE_NAME) {
+        log::debug!(
+          "[desktop] Server ready after {} attempts, navigating to {}",
+          i + 1,
+          scheme_bridge::APP_URL
         );
-        if stream.write_all(req.as_bytes()).await.is_ok() {
-          let mut buf = vec![0u8; 256];
-          if let Ok(n) = stream.read(&mut buf).await {
-            let response = String::from_utf8_lossy(&buf[..n]);
-            if response.starts_with("HTTP/1.1 2")
-              || response.starts_with("HTTP/1.1 3")
-              || response.starts_with("HTTP/1.0 2")
-              || response.starts_with("HTTP/1.0 3")
-            {
-              log::debug!(
-                "[desktop] Server ready after {} attempts, navigating to {}",
-                i + 1,
-                &url
-              );
-              let id = initial_window_id_for_navigate.load(Ordering::Acquire);
-              laufey::Window::from_id(id).navigate(&url);
-              return;
-            }
-          }
-        }
+        server_ready = true;
+        break;
       }
       tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
-    log::warn!("Server not ready after 15s, navigating anyway");
-    let id = initial_window_id_for_navigate.load(Ordering::Acquire);
-    laufey::Window::from_id(id).navigate(&url);
+    if !server_ready {
+      log::warn!("Server not ready after 15s, navigating anyway");
+    }
+    laufey::Window::from_id(id).navigate(scheme_bridge::APP_URL);
+
+    // The window was created hidden and is normally revealed from its
+    // `on_page_load` handler the moment content paints. If that load never
+    // finishes (e.g. the initial navigation errors), fall back to showing it
+    // anyway so the user isn't left with no window at all. `show()` is
+    // idempotent, so racing the on_page_load reveal is harmless.
+    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+    laufey::Window::from_id(id).show();
   };
 
   // Hold the JoinHandle so we can abort it when the runtime / Laufey
@@ -1954,6 +2013,7 @@ mod tests {
         id,
         accelerator,
         enabled,
+        ..
       } => {
         assert_eq!(label, "Save");
         assert_eq!(id.as_deref(), Some("file.save"));

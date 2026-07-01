@@ -916,6 +916,13 @@ struct SerializedDesktopAppConfig {
   /// AppUserModelID. Optional; when omitted a synthetic
   /// `com.deno.desktop.<slug>` is generated from the app name.
   pub identifier: Option<String>,
+  /// Custom URL schemes (deep links) the app registers with the OS, e.g.
+  /// `["acme"]` to handle `acme://...` links. Each entry is a bare scheme
+  /// (no `://`). Registered as `CFBundleURLTypes` (macOS), an
+  /// `x-scheme-handler/<scheme>` MIME type (Linux `.desktop`), and an
+  /// `HKCU\Software\Classes\<scheme>` protocol handler (Windows).
+  #[serde(rename = "deepLinks")]
+  pub deep_links: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -968,6 +975,7 @@ impl SerializedDesktopConfig {
       app: self.app.map(|a| DesktopAppConfig {
         name: a.name,
         identifier: a.identifier,
+        deep_links: a.deep_links,
         icons: a.icons.map(|i| {
           fn resolve_icon_value(
             v: SerializedDesktopIconValue,
@@ -1041,6 +1049,7 @@ pub struct DesktopAppConfig {
   pub name: Option<String>,
   pub identifier: Option<String>,
   pub icons: Option<DesktopIconsConfig>,
+  pub deep_links: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -2646,9 +2655,15 @@ impl ConfigFile {
     {
       match value {
         serde_json::Value::Null => Ok(None),
-        serde_json::Value::Number(minutes) => Ok(Some(
-          NewestDependencyDate::Enabled(parse_number(minutes, sys)?),
-        )),
+        serde_json::Value::Number(minutes) => {
+          if minutes.as_i64() == Some(0) {
+            Ok(Some(NewestDependencyDate::Disabled))
+          } else {
+            Ok(Some(NewestDependencyDate::Enabled(parse_number(
+              minutes, sys,
+            )?)))
+          }
+        }
         serde_json::Value::String(value) => Ok(Some(
           crate::util::parse_minutes_duration_or_date(sys, value)?,
         )),
@@ -3266,6 +3281,19 @@ mod tests {
     // Bare value still works.
     let config = parse(r#"{ "minimumDependencyAge": 120 }"#);
     assert!(config.age.is_some());
+    assert!(config.exclude.is_empty());
+
+    // Numeric 0 disables the filter.
+    let config = parse(r#"{ "minimumDependencyAge": 0 }"#);
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
+    assert!(config.exclude.is_empty());
+
+    let config = parse(r#"{ "minimumDependencyAge": "0" }"#);
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
+    assert!(config.exclude.is_empty());
+
+    let config = parse(r#"{ "minimumDependencyAge": false }"#);
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
     assert!(config.exclude.is_empty());
 
     // Unknown field still errors.
