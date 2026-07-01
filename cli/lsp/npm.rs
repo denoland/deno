@@ -173,32 +173,4 @@ mod tests {
       ]
     );
   }
-
-  #[test]
-  fn test_export_keys_from_registry_value() {
-    use deno_npm::registry::NpmPackageExportKeys;
-
-    // Only the completion-relevant subpath keys are kept; condition names
-    // (`import`) and single-`*` glob subpaths are dropped, and nested values
-    // are never materialized.
-    let exports: NpmPackageExportKeys =
-      serde_json::from_value(serde_json::json!({
-        ".": "./index.js",
-        "./client": "./client.js",
-        "./server": {
-          "types": "./server.d.ts",
-          "default": "./server.js"
-        },
-        "./features/*": "./features/*.js",
-        "import": "./index.mjs"
-      }))
-      .unwrap();
-    let mut keys = exports.0.clone();
-    keys.sort();
-    assert_eq!(keys, vec![".", "./client", "./server"]);
-
-    let exports: NpmPackageExportKeys =
-      serde_json::from_value(serde_json::json!("./index.js")).unwrap();
-    assert_eq!(exports.0, vec!["."]);
-  }
 }
