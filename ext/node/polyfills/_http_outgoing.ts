@@ -63,6 +63,7 @@ import { Stream } from "node:stream";
 const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 import type { Socket } from "node:net";
 const {
+  kNativeCancelWatch,
   kNativeExternal,
   kNativeWriteBuf,
   kNeedDrain,
@@ -467,7 +468,7 @@ function nativeEnd(msg: any, chunk: any, encoding: any, callback: any) {
     msg.finished = true;
     const reqEnd = msg.req;
     if (reqEnd !== undefined && reqEnd !== null && reqEnd._nativeDiscardBody) {
-      reqEnd._nativeDiscardBody();
+      reqEnd._nativeDiscardBody(msg);
     }
     // Commit headers + flush the buffered writes into the body stream, then
     // close the controller so the engine finishes the (chunked) body. The
@@ -480,7 +481,7 @@ function nativeEnd(msg: any, chunk: any, encoding: any, callback: any) {
         controller.close();
       } catch { /* already errored/closed */ }
     }
-    nativeEmitFinish(msg, callback, msg._nativeAborted);
+    nativeFinishOrWatch(msg, callback, msg._nativeAborted === true);
     return msg;
   }
 
@@ -529,11 +530,30 @@ function nativeEnd(msg: any, chunk: any, encoding: any, callback: any) {
   // touch the just-consumed external.
   const reqEnd = msg.req;
   if (reqEnd !== undefined && reqEnd !== null && reqEnd._nativeDiscardBody) {
-    reqEnd._nativeDiscardBody();
+    reqEnd._nativeDiscardBody(msg);
   }
   nativeCommit(msg, body);
-  nativeEmitFinish(msg, callback, aborted);
+  nativeFinishOrWatch(msg, callback, aborted);
   return msg;
+}
+
+// Emit finish/close for a committed response. When the request's cancel
+// watcher is armed (the handler returned before end(); see makeNativeOnRequest)
+// the commit can race a client teardown the engine has not observed yet, so
+// the 'finish'-vs-'close' choice defers to the watcher's verdict: it resolves
+// true when the client went away before the engine flushed the response --
+// Node never emits 'finish' for those -- and false once the body is written.
+// The sync fast path (no watcher) keeps the immediate emission.
+function nativeFinishOrWatch(msg: any, callback: any, aborted: boolean) {
+  const watch = msg[kNativeCancelWatch];
+  if (aborted || watch === undefined || watch === null) {
+    nativeEmitFinish(msg, callback, aborted);
+    return;
+  }
+  msg[kNativeCancelWatch] = null;
+  PromisePrototypeThen(watch, (cancelled: boolean) => {
+    nativeEmitFinish(msg, callback, cancelled === true);
+  });
 }
 
 // Emit prefinish/finish asynchronously (once) for a committed native response.
@@ -705,9 +725,9 @@ function nativeEndStream(msg: any, chunk: any, encoding: any, callback: any) {
   // Discard an unread request body on finish (Node dumps it), same as nativeEnd.
   const reqEnd = msg.req;
   if (reqEnd !== undefined && reqEnd !== null && reqEnd._nativeDiscardBody) {
-    reqEnd._nativeDiscardBody();
+    reqEnd._nativeDiscardBody(msg);
   }
-  nativeEmitFinish(msg, callback, msg._nativeAborted);
+  nativeFinishOrWatch(msg, callback, msg._nativeAborted === true);
   return msg;
 }
 

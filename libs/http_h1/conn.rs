@@ -1096,6 +1096,14 @@ where
     }
   }
 
+  /// Shut down the write side (SHUT_WR): flushes any kernel-buffered response
+  /// bytes and queues the FIN ahead of a later `close()`, so an unread request
+  /// tail can't turn the close into an RST that discards the response.
+  pub async fn shutdown_write(&mut self) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt;
+    self.io.shutdown().await
+  }
+
   pub async fn write_response_with_scratch(
     &mut self,
     scratch: &mut SharedScratch,

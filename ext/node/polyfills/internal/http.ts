@@ -33,6 +33,12 @@ const kNeedDrain = Symbol("kNeedDrain");
 // of serializing to a socket. Set by the node:http native dispatch.
 const kNativeExternal = Symbol("kNativeExternal");
 const kNativeWriteBuf = Symbol("kNativeWriteBuf");
+// The request's cancel watcher (op_http_request_on_cancel promise), armed when
+// a handler returns without committing its response. An end() on such a
+// response defers the 'finish'/'close' choice to this verdict: it resolves
+// true when the client went away before the engine flushed the response
+// (Node never emits 'finish' for those), false once the body is written.
+const kNativeCancelWatch = Symbol("kNativeCancelWatch");
 
 const _defaultExport = {
   utcDate,
@@ -40,6 +46,7 @@ const _defaultExport = {
   kNeedDrain,
   kNativeExternal,
   kNativeWriteBuf,
+  kNativeCancelWatch,
 };
 
 return {
@@ -48,6 +55,7 @@ return {
   kNeedDrain,
   kNativeExternal,
   kNativeWriteBuf,
+  kNativeCancelWatch,
   default: _defaultExport,
 };
 })();

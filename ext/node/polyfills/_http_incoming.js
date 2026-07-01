@@ -235,11 +235,16 @@ IncomingMessage.prototype._destroy = function _destroy(err, cb) {
   //   autoDestroy (which passes no error and must not abort an in-flight async
   //   response that hasn't committed yet);
   // - `_nativeResponded` false, since once a response op consumed the external,
-  //   touching it again is a use-after-free.
+  //   touching it again is a use-after-free;
+  // - `socket` still attached: stream `destroyer()` (pipeline teardown,
+  //   Readable.toWeb cancel) detaches it first precisely because the request
+  //   teardown must NOT take the connection down (Node's connection drop flows
+  //   through socket.destroy, which the detach prevents).
   const ext = this[kNativeExternal];
   if (
     err !== null && err !== undefined && ext !== undefined && ext !== null &&
-    !this._nativeResponded && !this._nativeAbortSent
+    !this._nativeResponded && !this._nativeAbortSent &&
+    this.socket !== null && this.socket !== undefined
   ) {
     this._nativeAbortSent = true;
     // Defer the connection drop: a handler may still commit a response on the

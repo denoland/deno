@@ -4247,6 +4247,7 @@ async fn wait_raw_response_ready_or_closed<I>(
   record: &RawHttpRecord,
   conn: &mut h1::SharedConn<I>,
   scratch: &mut h1::SharedScratch,
+  commit_eof_probe: Option<deno_net::raw::PeerEofProbe>,
 ) -> Result<bool, HttpNextError>
 where
   I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
@@ -4259,13 +4260,43 @@ where
   let allow_half_open = record.allow_half_open();
   let mut peer_closed = false;
   let mut stop_poll = false;
+  let mut waited = false;
   poll_fn(|cx| {
-    {
+    let response_ready = {
       let mut inner = record.0.borrow_mut();
-      if inner.response_ready {
-        return Poll::Ready(Ok(peer_closed));
+      if !inner.response_ready {
+        inner.response_ready_waker = Some(cx.waker().clone());
       }
-      inner.response_ready_waker = Some(cx.waker().clone());
+      inner.response_ready
+    };
+
+    if response_ready {
+      // node:http: an async handler's end() can race the client's teardown --
+      // the FIN may already be in the kernel while this future was parked and
+      // never re-polled (and a poll here can miss it: tokio's cached readiness
+      // is only updated when the reactor runs, hence the raw-socket probe).
+      // Surface it as a cancel SIGNAL only: the response is still written (a
+      // half-closing client still receives it, like Node's socket.end()
+      // flush), but the JS side withholds 'finish' and aborts the req,
+      // matching Node, where a socket that closed before the response flushed
+      // never 'finish'es. Skipped for the sync fast path (`waited`): a handler
+      // that replied in its dispatch tick beat any EOF processing, which Node
+      // serves too. Buffered bytes (a pipelined request) suppress the signal:
+      // an EOF behind data is not an abort of this response.
+      if let Some(probe) = commit_eof_probe
+        && waited
+        && !stop_poll
+        && !allow_half_open
+      {
+        let engine_saw = matches!(
+          conn.poll_peer_closed_with(cx, scratch),
+          Poll::Ready(Ok(true)) | Poll::Ready(Err(_))
+        );
+        if engine_saw || (conn.buffered_is_empty() && probe.eof_pending()) {
+          record.cancel_request();
+        }
+      }
+      return Poll::Ready(Ok(peer_closed));
     }
 
     if !stop_poll {
@@ -4282,9 +4313,44 @@ where
       }
     }
 
+    waited = true;
     Poll::Pending
   })
   .await
+}
+
+/// Drain an unconsumed request body after its response was written. The drain
+/// protects response delivery: closing with unread data in the socket RSTs
+/// the connection, which can discard the just-written response from the send
+/// buffer before it reaches the client. A graceful close (`cancel`) must not
+/// wait forever for a client that streams an unconsumed body indefinitely, so
+/// once the cancel fires the drain consumes only what is already available
+/// (one poll: a finite in-flight tail such as a payload sitting in socket
+/// buffers drains to completion; the first would-block stops it), then the
+/// write side is shut down so the response and FIN flush ahead of any
+/// close-triggered RST.
+async fn discard_request_body_bounded<I>(
+  conn: &mut h1::SharedConn<I>,
+  scratch: &mut h1::SharedScratch,
+  cancel: &Rc<CancelHandle>,
+) where
+  I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+  {
+    let discard = conn.discard_body_with_scratch(scratch);
+    if discard.or_cancel(cancel.clone()).await.is_ok() {
+      return;
+    }
+  }
+  {
+    let mut discard = std::pin::pin!(conn.discard_body_with_scratch(scratch));
+    poll_fn(|cx| {
+      let _ = discard.as_mut().poll(cx);
+      Poll::Ready(())
+    })
+    .await;
+  }
+  let _ = conn.shutdown_write().await;
 }
 
 fn raw_upgrade_unavailable() -> HttpNextError {
@@ -4972,11 +5038,19 @@ async fn serve_http11_raw_inner(
   automatic_compression: bool,
   conn_id: f64,
 ) -> Result<(), HttpNextError> {
+  // Raw handle for the commit-time peer-close probe (see
+  // wait_raw_response_ready_or_closed); captured before `conn` takes `io`.
+  let peer_eof_probe = io.get_ref().peer_eof_probe();
   let mut conn = h1::SharedConn::new(io);
   conn.set_allow_missing_host(true);
   let mut scratch = h1::SharedScratch::default();
   let store_request = !callback.raw_no_request();
   let node_http = callback.node_http();
+  let commit_eof_probe = if node_http.enabled {
+    peer_eof_probe
+  } else {
+    None
+  };
   let explicit_keep_alive = node_http.enabled;
   // node:http preserves a user-set content-length on bodiless statuses (304);
   // Deno.serve strips it. The write path reads this off the connection.
@@ -5287,8 +5361,13 @@ async fn serve_http11_raw_inner(
         }
         continue;
       }
-      if wait_raw_response_ready_or_closed(&record, &mut conn, &mut scratch)
-        .await?
+      if wait_raw_response_ready_or_closed(
+        &record,
+        &mut conn,
+        &mut scratch,
+        commit_eof_probe,
+      )
+      .await?
       {
         if let Some((_, RawResponseBody::Stream(mut body))) =
           record.clone().into_flat_response()
@@ -5437,7 +5516,8 @@ async fn serve_http11_raw_inner(
             || cancel.is_canceled()
           {
             if parsed.has_body {
-              let _ = conn.discard_body_with_scratch(&mut scratch).await;
+              discard_request_body_bounded(&mut conn, &mut scratch, &cancel)
+                .await;
             }
             return Ok(());
           }
@@ -5627,7 +5707,7 @@ async fn serve_http11_raw_inner(
         || (!explicit_keep_alive && cancel.is_canceled())
       {
         if parsed.has_body {
-          let _ = conn.discard_body_with_scratch(&mut scratch).await;
+          discard_request_body_bounded(&mut conn, &mut scratch, &cancel).await;
         }
         record_cancel_guard.disarm();
         return Ok(());
@@ -5716,8 +5796,13 @@ async fn serve_http11_raw_inner(
       }
       continue;
     }
-    if wait_raw_response_ready_or_closed(&record, &mut conn, &mut scratch)
-      .await?
+    if wait_raw_response_ready_or_closed(
+      &record,
+      &mut conn,
+      &mut scratch,
+      commit_eof_probe,
+    )
+    .await?
     {
       if let Some((_, RawResponseBody::Stream(mut body))) =
         record.clone().into_flat_response()

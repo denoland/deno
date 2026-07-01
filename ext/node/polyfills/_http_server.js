@@ -86,12 +86,8 @@ const {
 
 import net from "node:net";
 import { Duplex } from "node:stream";
-import { AsyncResource } from "node:async_hooks";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { ok: assert } = core.loadExtScript("ext:deno_node/assert.ts");
-const { enabledHooksExist } = core.loadExtScript(
-  "ext:deno_node/internal/async_hooks.ts",
-);
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   chunkExpression,
@@ -110,7 +106,8 @@ import {
   validateHeaderName,
   validateHeaderValue,
 } from "node:_http_outgoing";
-const { kNativeExternal, kNeedDrain, kOutHeaders } = core
+const { getAsyncContext, setAsyncContext } = core;
+const { kNativeCancelWatch, kNativeExternal, kNeedDrain, kOutHeaders } = core
   .loadExtScript(
     "ext:deno_node/internal/http.ts",
   );
@@ -129,8 +126,12 @@ const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const {
   kDestroy,
   kTimeout,
+  setUnrefTimeout,
   suspendTimeout,
 } = core.loadExtScript("ext:deno_node/internal/timers.mjs");
+const { enabledHooksExist } = core.loadExtScript(
+  "ext:deno_node/internal/async_hooks.ts",
+);
 const {
   validateBoolean,
   validateFunction,
@@ -1689,8 +1690,16 @@ function nativeIncomingRead(_n) {
 // mark the body done, and queue EOF -- WITHOUT touching the external (the
 // response commit may have freed it). Only acts on a not-yet-started body, so a
 // handler that is actively reading (streaming) or already finished is untouched.
-function nativeDiscardBody() {
+function nativeDiscardBody(res) {
   if (this._nativeBodyState !== BODY_NOT_STARTED) {
+    // The handler started consuming the body but the response finished before
+    // the body completed (e.g. Readable.toWeb(req) cancelled mid-stream, or
+    // the request was destroyed). The remaining bytes can't be skipped
+    // reliably, so Node tears such connections down; tell the engine to close
+    // after this response instead of trying to reuse the connection.
+    if (!this.complete && res !== undefined && res !== null) {
+      res._nativeForceClose = true;
+    }
     return;
   }
   this._nativeBodyState = BODY_DONE;
@@ -2017,6 +2026,24 @@ function demoteNativeResponse(res) {
   });
 }
 
+// async_hooks parity for the native fast path: Node arms a keep-alive Timeout
+// (`keepAliveTimeout + 1000`) on the socket after each response, observable via
+// init/destroy hooks with that exact `_idleTimeout`. The engine owns the real
+// idle timing, so this is bookkeeping only: one unref'd noop system timer per
+// idle keep-alive connection, destroyed with the connection. Only created when
+// hooks are active, so the fast path allocates nothing.
+const kNativeKeepAliveTimer = Symbol("nativeKeepAliveTimer");
+
+function nativeKeepAliveTimerNoop() {}
+
+function destroyNativeKeepAliveTimer(socket) {
+  const timer = socket[kNativeKeepAliveTimer];
+  if (timer !== undefined && timer !== null) {
+    socket[kNativeKeepAliveTimer] = null;
+    timer[kDestroy]();
+  }
+}
+
 function makeNativeOnRequest(server) {
   // connId -> the one synthetic socket shared by every request on that H1
   // connection (Node gives all keep-alive requests the same `req.socket`). The
@@ -2042,6 +2069,7 @@ function makeNativeOnRequest(server) {
       const socket = MapPrototypeGet(sockets, connId);
       if (socket !== undefined) {
         MapPrototypeDelete(sockets, connId);
+        destroyNativeKeepAliveTimer(socket);
         // Free the parser stand-in like Node's freeParser does on close (some
         // handlers override socket.parser.free and expect it to run).
         const parser = socket.parser;
@@ -2154,62 +2182,100 @@ function makeNativeOnRequest(server) {
       req[kPerfStartTime] = performance.now();
       res.once("finish", () => emitServerHttpPerfEntry(req, res));
     }
-    // RFC 7230 5.4: an HTTP/1.1 request without a Host header is a 400 (the
-    // handler must not run). Mirrors the classic path; gated on requireHostHeader.
-    if (
-      req.httpVersionMajor === 1 && req.httpVersionMinor === 1 &&
-      server.requireHostHeader !== false && req.headers.host === undefined
-    ) {
-      res.writeHead(400, ["Connection", "close"]);
-      res.end();
-      return;
-    }
-    // Expect header (RFC 7231 5.1.1): an HTTP/1.1 request with an Expect value
-    // other than 100-continue must not run the request handler -- emit
-    // `checkExpectation` if anyone listens, else auto-417 Expectation Failed.
-    // (100-continue is handled by the engine / checkContinue eligibility.)
-    const expectHeader = req.headers.expect;
-    if (
-      expectHeader !== undefined && req.httpVersionMajor === 1 &&
-      req.httpVersionMinor === 1 &&
-      !StringPrototypeIncludes(
-        StringPrototypeToLowerCase(expectHeader),
-        "100-continue",
-      )
-    ) {
-      if (server.listenerCount("checkExpectation") > 0) {
-        server.emit("checkExpectation", req, res);
-      } else {
-        res.writeHead(417);
-        res.end();
-      }
-      return;
-    }
-    try {
-      // node:http runs each request handler inside its own async resource so
-      // async_hooks / executionAsyncResource() observe per-request context (the
-      // classic path runs in the IncomingMessage's async resource). Gated on
-      // active hooks so the no-hook fast path stays allocation-free.
-      if (enabledHooksExist()) {
-        new AsyncResource("HTTPINCOMINGMESSAGE").runInAsyncScope(() => {
-          server.emit("request", req, res);
+    // Keep-alive Timeout emulation for async_hooks (see kNativeKeepAliveTimer):
+    // armed when the response finishes and the connection goes idle.
+    if (enabledHooksExist() && res.shouldKeepAlive) {
+      const kaTimeout = server.keepAliveTimeout;
+      if (typeof kaTimeout === "number" && kaTimeout > 0) {
+        res.once("finish", () => {
+          if (socket.destroyed) {
+            return;
+          }
+          const existing = socket[kNativeKeepAliveTimer];
+          if (
+            existing === undefined || existing === null || existing._destroyed
+          ) {
+            socket[kNativeKeepAliveTimer] = setUnrefTimeout(
+              nativeKeepAliveTimerNoop,
+              kaTimeout + 1000,
+            );
+          }
         });
-      } else {
-        server.emit("request", req, res);
       }
-    } catch (err) {
-      // Always finish the response so the connection can't hang. If headers
-      // weren't sent yet we can still turn it into a 500; if they were (e.g. the
-      // handler threw after writeHead), just end it so the request completes.
-      try {
-        if (!res.headersSent) {
-          res.statusCode = 500;
-        }
-        if (!res.finished) {
+    }
+    // Each dispatch gets its own async-context scope: a request.start
+    // subscriber's or handler's AsyncLocalStorage.enterWith() must reach this
+    // request's handler but not leak into later requests on the connection
+    // (each classic-path dispatch originates from its own parser context).
+    const prevAsyncContext = getAsyncContext();
+    try {
+      // diagnostics_channel: published synchronously before the handler runs so
+      // a subscriber's AsyncLocalStorage.enterWith() context reaches the handler
+      // (same position as parserOnIncoming on the classic path).
+      if (onServerRequestStartChannel.hasSubscribers) {
+        onServerRequestStartChannel.publish({
+          request: req,
+          response: res,
+          socket,
+          server,
+        });
+      }
+      // RFC 7230 5.4: an HTTP/1.1 request without a Host header is a 400 (the
+      // handler must not run). Mirrors the classic path; gated on requireHostHeader.
+      if (
+        req.httpVersionMajor === 1 && req.httpVersionMinor === 1 &&
+        server.requireHostHeader !== false && req.headers.host === undefined
+      ) {
+        res.writeHead(400, ["Connection", "close"]);
+        res.end();
+        return;
+      }
+      // Expect header (RFC 7231 5.1.1): an HTTP/1.1 request with an Expect value
+      // other than 100-continue must not run the request handler -- emit
+      // `checkExpectation` if anyone listens, else auto-417 Expectation Failed.
+      // (100-continue is handled by the engine / checkContinue eligibility.)
+      const expectHeader = req.headers.expect;
+      if (
+        expectHeader !== undefined && req.httpVersionMajor === 1 &&
+        req.httpVersionMinor === 1 &&
+        !StringPrototypeIncludes(
+          StringPrototypeToLowerCase(expectHeader),
+          "100-continue",
+        )
+      ) {
+        if (server.listenerCount("checkExpectation") > 0) {
+          server.emit("checkExpectation", req, res);
+        } else {
+          res.writeHead(417);
           res.end();
         }
-      } catch { /* external already consumed */ }
-      internals.log("error", "Error in node:http request handler", err);
+        return;
+      }
+      // node:http runs each request handler inside the IncomingMessage's async
+      // resource, so async_hooks / executionAsyncResource() observe per-request
+      // context (same as the classic path's parserOnIncoming). No-op (and
+      // allocation-free) when no hooks are active.
+      const prevAsyncResource = enterAsyncResourceIfActive(req);
+      try {
+        server.emit("request", req, res);
+      } catch (err) {
+        // Always finish the response so the connection can't hang. If headers
+        // weren't sent yet we can still turn it into a 500; if they were (e.g. the
+        // handler threw after writeHead), just end it so the request completes.
+        try {
+          if (!res.headersSent) {
+            res.statusCode = 500;
+          }
+          if (!res.finished) {
+            res.end();
+          }
+        } catch { /* external already consumed */ }
+        internals.log("error", "Error in node:http request handler", err);
+      } finally {
+        exitAsyncResourceIfActive(prevAsyncResource);
+      }
+    } finally {
+      setAsyncContext(prevAsyncContext);
     }
     // A prior pipelined handler may have destroyed the (shared, per-connection)
     // socket. Since socket.destroy() on an already-destroyed Duplex is a no-op,
@@ -2237,8 +2303,13 @@ function makeNativeOnRequest(server) {
     // abort. The hot path (sync res.end) already consumed the external, so this
     // op is only armed for still-open (async/streaming/no-reply) responses.
     if (res[kNativeExternal] !== null && res[kNativeExternal] !== undefined) {
+      const cancelWatch = op_http_request_on_cancel(external);
+      // Share the watcher with the response: an end() on it defers the
+      // 'finish'/'close' choice to this verdict (see nativeEmitFinish), since
+      // the commit can race a client teardown the engine hasn't observed yet.
+      res[kNativeCancelWatch] = cancelWatch;
       PromisePrototypeThen(
-        op_http_request_on_cancel(external),
+        cancelWatch,
         (cancelled) => {
           if (!cancelled || req.destroyed) {
             return;
