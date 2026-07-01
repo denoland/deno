@@ -14,6 +14,7 @@ export const {
   afterEach,
   mock,
   snapshot,
+  getTestContext,
 } = mod;
 
 export default mod.default;

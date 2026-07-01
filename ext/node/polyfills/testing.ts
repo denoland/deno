@@ -1814,7 +1814,12 @@ class NodeTestContext {
                 parentContext.#beforeEachHooks,
               )
             ) {
-              await hook();
+              // `t.beforeEach()` hooks run in the parent test's context, so
+              // `getTestContext()` inside them observes the parent (Node).
+              await runInTestContext(
+                parentContext,
+                () => hook(newNodeTextContext),
+              );
             }
             await runPossiblyExpectingFailure(
               prepared.fn,
@@ -1841,7 +1846,11 @@ class NodeTestContext {
                 parentContext.#afterEachHooks,
               )
             ) {
-              await hook();
+              // `t.afterEach()` hooks likewise run in the parent's context.
+              await runInTestContext(
+                parentContext,
+                () => hook(newNodeTextContext),
+              );
             }
           }
         },
@@ -1920,8 +1929,10 @@ class NodeTestContext {
   async _runBeforeHooksOnce() {
     if (this.#beforeHooksRun) return;
     this.#beforeHooksRun = true;
+    // deno-lint-ignore no-this-alias
+    const ctx = this;
     for (const hook of new SafeArrayIterator(this.#beforeHooks)) {
-      await hook();
+      await runInTestContext(ctx, () => hook(ctx));
     }
   }
 
@@ -1931,8 +1942,10 @@ class NodeTestContext {
   async _runAfterHooksOnce() {
     if (this.#afterHooksRun) return;
     this.#afterHooksRun = true;
+    // deno-lint-ignore no-this-alias
+    const ctx = this;
     for (const hook of new SafeArrayIterator(this.#afterHooks)) {
-      await hook();
+      await runInTestContext(ctx, () => hook(ctx));
     }
   }
 }
@@ -1965,6 +1978,24 @@ function getTestContextALS() {
 function getCurrentTestContext() {
   if (testContextALS === null) return null;
   return testContextALS.getStore() ?? null;
+}
+
+// node:test `getTestContext()` (Node v26.1.0+). Returns the TestContext /
+// SuiteContext of the test, subtest, or hook currently executing, or
+// `undefined` when called outside of any test. It reads the same
+// AsyncLocalStorage that routes nested `test()` calls (see getTestContextALS):
+// every test/it body runs within it, and each hook is executed inside the ALS
+// scope of the context it was registered on (see runInTestContext) so a hook
+// observes its owning test/suite context rather than the subtest it runs for.
+function getTestContext() {
+  return getCurrentTestContext() ?? undefined;
+}
+
+// Runs `fn` with `ctx` installed as the current test context for the duration
+// of the call, including across its `await` points, so that `getTestContext()`
+// (and nested `test()` routing) observe `ctx` while a hook runs.
+function runInTestContext(ctx, fn) {
+  return getTestContextALS().run(ctx, fn);
 }
 
 const rootBeforeHooks = [];
@@ -2043,13 +2074,19 @@ class TestSuite {
         }
         try {
           for (const hook of new SafeArrayIterator(rootBeforeEachHooks)) {
-            await hook(newNodeTextContext);
+            await runInTestContext(
+              newNodeTextContext,
+              () => hook(newNodeTextContext),
+            );
           }
           for (let i = suiteChain.length - 1; i >= 0; i--) {
+            // A suite's beforeEach() runs in that suite's context, so
+            // `getTestContext()` observes the suite, not the subtest (Node).
+            const suiteCtx = suiteChain[i].nodeTestContext;
             for (
               const hook of new SafeArrayIterator(suiteChain[i].beforeEachHooks)
             ) {
-              await hook(newNodeTextContext);
+              await runInTestContext(suiteCtx, () => hook(newNodeTextContext));
             }
           }
           return await runPossiblyExpectingFailure(
@@ -2065,17 +2102,24 @@ class TestSuite {
           }
         } finally {
           for (let i = 0; i < suiteChain.length; i++) {
+            const suiteCtx = suiteChain[i].nodeTestContext;
             for (
               const hook of new SafeArrayIterator(suiteChain[i].afterEachHooks)
             ) {
               try {
-                await hook(newNodeTextContext);
+                await runInTestContext(
+                  suiteCtx,
+                  () => hook(newNodeTextContext),
+                );
               } catch { /* ignore */ }
             }
           }
           for (const hook of new SafeArrayIterator(rootAfterEachHooks)) {
             try {
-              await hook(newNodeTextContext);
+              await runInTestContext(
+                newNodeTextContext,
+                () => hook(newNodeTextContext),
+              );
             } catch { /* ignore */ }
           }
         }
@@ -2152,7 +2196,7 @@ function wrapTestFn(fn, resolve, name, options) {
     try {
       await runRootBeforeOnce();
       for (const hook of new SafeArrayIterator(rootBeforeEachHooks)) {
-        await hook(nodeTestContext);
+        await runInTestContext(nodeTestContext, () => hook(nodeTestContext));
       }
       beforeEachOk = true;
       await runPossiblyExpectingFailure(fn, nodeTestContext, options);
@@ -2170,7 +2214,10 @@ function wrapTestFn(fn, resolve, name, options) {
       if (beforeEachOk) {
         for (const hook of new SafeArrayIterator(rootAfterEachHooks)) {
           try {
-            await hook(nodeTestContext);
+            await runInTestContext(
+              nodeTestContext,
+              () => hook(nodeTestContext),
+            );
           } catch { /* swallow to match node behavior on hook error */ }
         }
       }
@@ -2219,19 +2266,26 @@ function wrapSuiteFn(fn, resolve, name, parentNodeContext, parentSuite) {
       parentSuite,
     );
     try {
-      fn(suiteNodeContext);
+      // Run the suite body in the suite's context so `getTestContext()` inside
+      // it (and any synchronously-registered hook bodies) observes the suite.
+      runInTestContext(suiteNodeContext, () => fn(suiteNodeContext));
     } finally {
       currentSuite = prevSuite;
     }
     try {
+      // Suite-level before()/after() hooks run in the suite's context and
+      // receive it as their argument, matching Node.
       for (const hook of new SafeArrayIterator(suite.beforeAllHooks)) {
-        await hook();
+        await runInTestContext(suiteNodeContext, () => hook(suiteNodeContext));
       }
       await suite.execute();
     } finally {
       try {
         for (const hook of new SafeArrayIterator(suite.afterAllHooks)) {
-          await hook();
+          await runInTestContext(
+            suiteNodeContext,
+            () => hook(suiteNodeContext),
+          );
         }
       } finally {
         if (isTopLevel) {
@@ -2400,6 +2454,7 @@ test.before = before;
 test.after = after;
 test.beforeEach = beforeEach;
 test.afterEach = afterEach;
+test.getTestContext = getTestContext;
 
 const activeMocks = [];
 
@@ -3768,6 +3823,7 @@ return {
   afterEach,
   mock,
   snapshot,
+  getTestContext,
   default: test,
 };
 })();
