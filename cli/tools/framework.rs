@@ -434,7 +434,9 @@ fn detect_vite(dir: &Path) -> FrameworkDetection {
   FrameworkDetection {
     name: "Vite",
     entrypoint_code: r#"// @ts-nocheck
-import { serveDir } from "jsr:@std/http/file-server";
+// Pin the major version so the compiled binary is reproducible and doesn't pick
+// up a breaking `@std/http` release on a later rebuild.
+import { serveDir } from "jsr:@std/http@^1/file-server";
 // `vite build` emits a static site into `dist/`. Resolve it against the VFS in
 // the compiled binary via import.meta.dirname rather than the runtime CWD.
 const fsRoot = import.meta.dirname + "/dist";
@@ -1019,6 +1021,9 @@ mod tests {
     assert!(det.entrypoint_code.contains("serveDir"));
     assert!(det.entrypoint_code.contains("/dist"));
     assert!(det.entrypoint_code.contains("Deno.serve"));
+    // The remote `@std/http` dependency must be version-pinned so the compiled
+    // binary is reproducible.
+    assert!(det.entrypoint_code.contains("jsr:@std/http@^1/file-server"));
     assert_eq!(det.include_paths, vec!["dist"]);
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
