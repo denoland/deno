@@ -47,7 +47,7 @@ use denort::run::RunOptions;
 /// makes the failure mode obvious instead of "the desktop app silently won't
 /// launch".
 const _: () = assert!(
-  laufey::LAUFEY_API_VERSION == 26,
+  laufey::LAUFEY_API_VERSION == 29,
   "LAUFEY_API_VERSION mismatch: update this assert and the prebuilt backend release pin in cli/tools/desktop.rs when laufey bumps its API version",
 );
 
@@ -209,6 +209,45 @@ impl WefDesktopApi {
         );
       })
   }
+
+  /// Create the bootstrap window for the app. Unlike windows constructed from
+  /// JS via `BrowserWindow`, this one is created *hidden* and revealed only once
+  /// its first navigation has finished loading (wired here via `on_page_load`).
+  ///
+  /// The runtime navigates this window to `app://` only after the in-process
+  /// server is listening, so creating it visible up front would leave the user
+  /// staring at an empty webview — which paints solid black on Wayland, where
+  /// the compositor presents the pre-load frame verbatim. Deferring the reveal
+  /// to load-finished means the window's first visible frame already has
+  /// content. See https://github.com/denoland/deno/issues/35530.
+  fn create_initial_window(&self, width: i32, height: i32) -> u32 {
+    let window = laufey::Window::new_with_options(
+      width,
+      height,
+      laufey::WindowOptions {
+        frameless: false,
+        no_activate: false,
+        transparent_titlebar: false,
+        hidden: true,
+        transparent: false,
+      },
+    );
+    let window = self.setup_window_events(window);
+    let id = window.id();
+
+    // Reveal the window once content has painted. `on_page_load` fires for
+    // every completed navigation, but we only want to show it the first time;
+    // later in-app navigations must not re-show a window the app has hidden.
+    let shown = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    window.on_page_load(move |ev| {
+      if !shown.swap(true, Ordering::AcqRel) {
+        laufey::Window::from_id(ev.window_id).show();
+      }
+    });
+
+    self.open_windows.lock().unwrap().insert(id);
+    id
+  }
 }
 
 impl denort::desktop::DesktopApi for WefDesktopApi {
@@ -228,8 +267,8 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         frameless,
         no_activate,
         transparent_titlebar,
+        hidden: false,
         transparent,
-        ..Default::default()
       },
     );
     let window = self.setup_window_events(window);
@@ -822,6 +861,9 @@ fn desktop_menu_item_to_laufey_menu_item(
       id,
       accelerator,
       enabled,
+      checked: false,
+      icon: None,
+      tooltip: None,
     },
     denort::desktop::MenuItem::Submenu { label, items } => {
       laufey::MenuItem::Submenu {
@@ -1719,8 +1761,10 @@ async fn run_desktop(
         });
       }
 
-      // Create the initial window and wire up event handlers.
-      let window_id = api.create_window(800, 600, false, false, false, false);
+      // Create the initial window (hidden) and wire up event handlers. It is
+      // revealed from its `on_page_load` handler once content has painted, so
+      // the user never sees the empty pre-navigation frame (issue #35530).
+      let window_id = api.create_initial_window(800, 600);
       initial_window_id.store(window_id, Ordering::Release);
 
       // Title the initial window with the app name up front, so an app that
@@ -1808,6 +1852,8 @@ async fn run_desktop(
     // Deno.serve to bind the in-process channel before navigating.
     scheme_bridge::register();
 
+    let id = initial_window_id_for_navigate.load(Ordering::Acquire);
+    let mut server_ready = false;
     for i in 0..60 {
       if deno_net::memory::is_listening(scheme_bridge::DESKTOP_SERVE_NAME) {
         log::debug!(
@@ -1815,15 +1861,23 @@ async fn run_desktop(
           i + 1,
           scheme_bridge::APP_URL
         );
-        let id = initial_window_id_for_navigate.load(Ordering::Acquire);
-        laufey::Window::from_id(id).navigate(scheme_bridge::APP_URL);
-        return;
+        server_ready = true;
+        break;
       }
       tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
-    log::warn!("Server not ready after 15s, navigating anyway");
-    let id = initial_window_id_for_navigate.load(Ordering::Acquire);
+    if !server_ready {
+      log::warn!("Server not ready after 15s, navigating anyway");
+    }
     laufey::Window::from_id(id).navigate(scheme_bridge::APP_URL);
+
+    // The window was created hidden and is normally revealed from its
+    // `on_page_load` handler the moment content paints. If that load never
+    // finishes (e.g. the initial navigation errors), fall back to showing it
+    // anyway so the user isn't left with no window at all. `show()` is
+    // idempotent, so racing the on_page_load reveal is harmless.
+    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+    laufey::Window::from_id(id).show();
   };
 
   // Hold the JoinHandle so we can abort it when the runtime / Laufey
@@ -1968,6 +2022,7 @@ mod tests {
         id,
         accelerator,
         enabled,
+        ..
       } => {
         assert_eq!(label, "Save");
         assert_eq!(id.as_deref(), Some("file.save"));

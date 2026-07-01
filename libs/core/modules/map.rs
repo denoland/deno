@@ -3307,6 +3307,13 @@ impl ModuleMap {
   pub(crate) fn set_captured_bootstrap(&self, value: v8::Global<v8::Value>) {
     *self.data.borrow().captured_bootstrap.borrow_mut() = Some(value);
   }
+
+  /// The snapshot-time `__bootstrap` view stashed by `set_captured_bootstrap`,
+  /// if any. Used by the deferred fast-call upgrade to also update the cloned
+  /// `core.ops` that residual ext modules read through.
+  pub(crate) fn captured_bootstrap(&self) -> Option<v8::Global<v8::Value>> {
+    self.data.borrow().captured_bootstrap.borrow().clone()
+  }
 }
 
 /// Skip past a lazy-loaded script's leading prologue (line/block comments and
