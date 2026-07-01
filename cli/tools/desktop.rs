@@ -1106,10 +1106,11 @@ fn human_size(bytes: u64) -> String {
 }
 
 /// Resolve `icon` (a `.png` or `.icns` path, possibly relative to
-/// `initial_cwd`) into an absolute path suitable for `LAUFEY_APP_ICON`, which
-/// laufey passes to `-[NSImage initWithContentsOfFile:]` (both formats are
-/// accepted, so no conversion is needed).
-#[cfg(target_os = "macos")]
+/// `initial_cwd`) into an absolute path suitable for `LAUFEY_APP_ICON`. macOS
+/// passes it to `-[NSImage initWithContentsOfFile:]` (both formats accepted);
+/// Linux loads it with gdk-pixbuf via `gtk_window_set_default_icon_from_file`
+/// (`.png` only — an `.icns` simply fails to load there, which is harmless).
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn resolve_hmr_icon_path(
   icon: &crate::args::IconConfig,
   initial_cwd: &Path,
@@ -1164,7 +1165,7 @@ async fn run_desktop_hmr(
   // `laufey.icns` (LaunchServices caches the icon for an already-registered
   // bundle id), so instead we pass the icon path to laufey and let it call
   // `-[NSApp setApplicationIconImage:]` at launch, which bypasses both.
-  #[cfg(target_os = "macos")]
+  #[cfg(any(target_os = "macos", target_os = "linux"))]
   let laufey_app_icon = desktop_flags.icon.as_ref().and_then(|icon| {
     resolve_hmr_icon_path(icon, &source_abs)
       .map_err(|e| log::warn!("Could not apply custom icon: {e}"))
@@ -1215,12 +1216,36 @@ async fn run_desktop_hmr(
     .arg(&dylib_abs)
     .env("LAUFEY_RUNTIME_PATH", &dylib_abs)
     .current_dir(&source_abs);
-  #[cfg(target_os = "macos")]
+  #[cfg(any(target_os = "macos", target_os = "linux"))]
   if let Some(icon_path) = laufey_app_icon.as_ref() {
     cmd.env("LAUFEY_APP_ICON", icon_path);
   }
   if let Some(name) = app_name.as_ref() {
     cmd.env("LAUFEY_APP_NAME", name);
+  }
+  // App id for the window manager's icon/taskbar attribution (see the
+  // `LAUFEY_APP_ID` handling in the packaged launcher). Mirror the packaged
+  // build's id so a dev run matches the same installed `.desktop` file when one
+  // exists. On X11 the icon shows from `LAUFEY_APP_ICON` regardless; on Wayland
+  // the compositor still needs an installed desktop file to resolve the icon.
+  // `app_id` is a Wayland/X11 concept, so this is Linux-only — there's nothing
+  // to attribute on macOS or Windows.
+  #[cfg(target_os = "linux")]
+  if let Some(id) = desktop_flags.identifier.clone().or_else(|| {
+    app_name
+      .as_deref()
+      .map(|name| format!("com.deno.desktop.{}", name.to_lowercase()))
+  }) {
+    // Match the packaged path: warn (rather than silently drop) when an
+    // explicit `--identifier` fails the reverse-DNS check, so a typo surfaces.
+    match validate_bundle_identifier(&id) {
+      Ok(()) => {
+        cmd.env("LAUFEY_APP_ID", &id);
+      }
+      Err(e) => log::warn!(
+        "skipping LAUFEY_APP_ID: {e} (app IDs follow the same reverse-DNS rules as macOS bundle IDs)"
+      ),
+    }
   }
   // Only enable the file watcher + setScriptSource pipeline when the user
   // actually asked for HMR. `deno desktop --inspect` alone used to spin up
@@ -1577,6 +1602,37 @@ async fn package_windows_app_dir(
   Ok(app_dir)
 }
 
+/// Build the `/bin/sh` launcher that a packaged Linux app ships as its entry
+/// point. When `app_id` is `Some`, it exports `LAUFEY_APP_ID` so the backend's
+/// window app_id / WM_CLASS matches the installed `.desktop` file's
+/// `StartupWMClass` (issue #35500).
+///
+/// `app_id` is expected to have already passed `validate_bundle_identifier`,
+/// which restricts it to reverse-DNS characters (alphanumerics, `.`, `-`), so
+/// interpolating it into the shell script needs no further quoting.
+fn linux_launcher_script(
+  laufey_binary: &str,
+  dylib: &str,
+  app_id: Option<&str>,
+) -> String {
+  let app_id_export = match app_id {
+    Some(id) => format!("export LAUFEY_APP_ID=\"{id}\"\n"),
+    None => String::new(),
+  };
+  format!(
+    // Resolve `$0` through symlinks before deriving DIR: `.deb`/`.rpm`
+    // install the real launcher under `/usr/lib/<pkg>/` and expose it via a
+    // `/usr/bin/<pkg>` symlink, so a bare `$0` would resolve DIR to
+    // `/usr/bin` and look for the backend binary there (issue #35623).
+    // `readlink -f` is fine here: this launcher only ships on Linux.
+    "#!/bin/sh\n\
+     DIR=\"$(cd \"$(dirname \"$(readlink -f \"$0\")\")\" && pwd)\"\n\
+     export LAUFEY_RUNTIME_PATH=\"$DIR/{dylib}\"\n\
+     {app_id_export}\
+     exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
+  )
+}
+
 /// Create a Linux app directory from the compiled desktop dylib.
 ///
 /// Directory structure:
@@ -1648,21 +1704,34 @@ async fn package_linux_app_dir(
   validate_launcher_name(&app_name, "app name")?;
   validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
   validate_launcher_name(&dylib_filename_str, "dylib filename")?;
+
+  // Reverse-DNS id shared by the `.desktop` filename, its `StartupWMClass`, and
+  // the `LAUFEY_APP_ID` we hand the backend below. The compositor maps a window
+  // to its desktop file (and thus its icon) by matching the window's Wayland
+  // app_id / X11 WM_CLASS against `StartupWMClass`; laufey defaults that to the
+  // backend binary name, so without passing the id the icon falls back to a
+  // generic placeholder on Wayland (issue #35500). `None` when the id fails the
+  // reverse-DNS check — we then skip both the export and the `.desktop` file.
+  let desktop_id = desktop_flags
+    .identifier
+    .clone()
+    .unwrap_or_else(|| format!("com.deno.desktop.{}", app_name.to_lowercase()));
+  let desktop_id = match validate_bundle_identifier(&desktop_id) {
+    Ok(()) => Some(desktop_id),
+    Err(e) => {
+      log::warn!(
+        "skipping .desktop file: {e} (desktop file IDs follow the same reverse-DNS rules as macOS bundle IDs)"
+      );
+      None
+    }
+  };
   let launcher_path = app_dir.join(&app_name);
   std::fs::write(
     &launcher_path,
-    format!(
-      // Resolve `$0` through symlinks before deriving DIR: `.deb`/`.rpm`
-      // install the real launcher under `/usr/lib/<pkg>/` and expose it via a
-      // `/usr/bin/<pkg>` symlink, so a bare `$0` would resolve DIR to
-      // `/usr/bin` and look for the backend binary there (issue #35623).
-      // `readlink -f` is fine here: this launcher only ships on Linux.
-      "#!/bin/sh\n\
-       DIR=\"$(cd \"$(dirname \"$(readlink -f \"$0\")\")\" && pwd)\"\n\
-       export LAUFEY_RUNTIME_PATH=\"$DIR/{dylib}\"\n\
-       exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
-      laufey_binary = laufey_binary_name,
-      dylib = dylib_filename_str,
+    linux_launcher_script(
+      &laufey_binary_name,
+      &dylib_filename_str,
+      desktop_id.as_deref(),
     ),
   )?;
   #[cfg(unix)]
@@ -1714,17 +1783,11 @@ async fn package_linux_app_dir(
   // the app dir into `~/.local/share/applications/` gets the right
   // name/icon attribution on notifications and in the taskbar. laufey
   // doesn't read this file — only the OS does — but libnotify and
-  // GNOME Shell key notification attribution on the desktop file's
-  // `StartupWMClass` and `Icon` fields.
-  let desktop_id = desktop_flags
-    .identifier
-    .clone()
-    .unwrap_or_else(|| format!("com.deno.desktop.{}", app_name.to_lowercase()));
-  if let Err(e) = validate_bundle_identifier(&desktop_id) {
-    log::warn!(
-      "skipping .desktop file: {e} (desktop file IDs follow the same reverse-DNS rules as macOS bundle IDs)"
-    );
-  } else {
+  // GNOME Shell key notification attribution (and the Wayland window icon)
+  // on the desktop file's `StartupWMClass` and `Icon` fields. The launcher
+  // above hands the backend the same `desktop_id` as `LAUFEY_APP_ID` so the
+  // window's app_id matches this `StartupWMClass`.
+  if let Some(desktop_id) = desktop_id.as_deref() {
     let desktop_entry = format!(
       "[Desktop Entry]\n\
        Type=Application\n\
@@ -5544,6 +5607,44 @@ def456  other.zip
     assert!(
       validate_bundle_identifier(&just_too_long).is_err(),
       "ids longer than 155 chars must be rejected (Apple receipt limit)"
+    );
+  }
+
+  // --- linux_launcher_script ---
+
+  #[test]
+  fn launcher_script_exports_app_id_when_present() {
+    let script = linux_launcher_script(
+      "laufey",
+      "libapp.so",
+      Some("com.deno.desktop.my-app"),
+    );
+    assert!(
+      script.contains("export LAUFEY_APP_ID=\"com.deno.desktop.my-app\"\n"),
+      "launcher should export the app id:\n{script}"
+    );
+    // The export must precede `exec` so the backend inherits it.
+    let app_id_at = script.find("LAUFEY_APP_ID").unwrap();
+    let exec_at = script.find("exec ").unwrap();
+    assert!(app_id_at < exec_at);
+    // Runtime path and backend invocation are still wired up.
+    assert!(script.contains("export LAUFEY_RUNTIME_PATH=\"$DIR/libapp.so\"\n"));
+    assert!(
+      script
+        .contains("exec \"$DIR/laufey\" --runtime \"$DIR/libapp.so\" \"$@\"\n")
+    );
+  }
+
+  #[test]
+  fn launcher_script_omits_app_id_when_absent() {
+    let script = linux_launcher_script("laufey", "libapp.so", None);
+    assert!(
+      !script.contains("LAUFEY_APP_ID"),
+      "launcher should not export an app id when none is given:\n{script}"
+    );
+    assert!(
+      script
+        .contains("exec \"$DIR/laufey\" --runtime \"$DIR/libapp.so\" \"$@\"\n")
     );
   }
 
