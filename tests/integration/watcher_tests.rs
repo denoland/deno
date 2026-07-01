@@ -162,6 +162,47 @@ where
   })
 }
 
+async fn wait_for_listening_and_watcher<R>(
+  file_name: &str,
+  stderr_lines: &mut LoggingLines<R>,
+) -> String
+where
+  R: tokio::io::AsyncBufRead + Unpin,
+{
+  let timeout = tokio::time::Duration::from_secs(60);
+
+  tokio::time::timeout(timeout, async {
+    let mut listening_line = None;
+    let mut watcher_ready = false;
+    while listening_line.is_none() || !watcher_ready {
+      let line = stderr_lines
+        .next_line()
+        .await
+        .unwrap()
+        .unwrap_or_else(|| {
+          panic!(
+            "Output ended before the server started listening and watcher started watching file \"{}\"",
+            file_name
+          )
+        });
+      if line.contains("Listening on") {
+        listening_line = Some(line);
+      } else if line.contains("Watching paths") && line.contains(file_name) {
+        watcher_ready = true;
+      }
+    }
+    listening_line.unwrap()
+  })
+  .await
+  .unwrap_or_else(|_| {
+    panic!(
+      "Server did not start listening and watcher did not start for file \"{}\" after {} seconds",
+      file_name,
+      timeout.as_secs()
+    )
+  })
+}
+
 fn check_alive_then_kill(mut child: DenoChild) {
   assert!(child.try_wait().unwrap().is_none());
   child.kill().unwrap();
@@ -897,6 +938,8 @@ async fn serve_watch_parallel_stops_old_workers() {
     .arg("--watch")
     .arg("--port")
     .arg("0")
+    .arg("-L")
+    .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .env("DENO_JOBS", "4")
@@ -932,7 +975,11 @@ async fn serve_watch_parallel_stops_old_workers_inner(
   let port_regex =
     regex::Regex::new(r"Listening on https?:[^:]+:(\d+)/").unwrap();
 
-  let line = wait_contains("Listening on", &mut stderr_lines).await;
+  let line = wait_for_listening_and_watcher(
+    "server_file_to_watch.js",
+    &mut stderr_lines,
+  )
+  .await;
   let old_port = port_regex.captures(&line).unwrap()[1].to_string();
 
   let client = reqwest::Client::builder()
