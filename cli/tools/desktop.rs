@@ -1228,17 +1228,24 @@ async fn run_desktop_hmr(
   // build's id so a dev run matches the same installed `.desktop` file when one
   // exists. On X11 the icon shows from `LAUFEY_APP_ICON` regardless; on Wayland
   // the compositor still needs an installed desktop file to resolve the icon.
-  let desktop_id = desktop_flags
-    .identifier
-    .clone()
-    .or_else(|| {
-      app_name
-        .as_deref()
-        .map(|name| format!("com.deno.desktop.{}", name.to_lowercase()))
-    })
-    .filter(|id| validate_bundle_identifier(id).is_ok());
-  if let Some(id) = desktop_id.as_ref() {
-    cmd.env("LAUFEY_APP_ID", id);
+  // `app_id` is a Wayland/X11 concept, so this is Linux-only — there's nothing
+  // to attribute on macOS or Windows.
+  #[cfg(target_os = "linux")]
+  if let Some(id) = desktop_flags.identifier.clone().or_else(|| {
+    app_name
+      .as_deref()
+      .map(|name| format!("com.deno.desktop.{}", name.to_lowercase()))
+  }) {
+    // Match the packaged path: warn (rather than silently drop) when an
+    // explicit `--identifier` fails the reverse-DNS check, so a typo surfaces.
+    match validate_bundle_identifier(&id) {
+      Ok(()) => {
+        cmd.env("LAUFEY_APP_ID", &id);
+      }
+      Err(e) => log::warn!(
+        "skipping LAUFEY_APP_ID: {e} (app IDs follow the same reverse-DNS rules as macOS bundle IDs)"
+      ),
+    }
   }
   // Only enable the file watcher + setScriptSource pipeline when the user
   // actually asked for HMR. `deno desktop --inspect` alone used to spin up
@@ -1595,6 +1602,37 @@ async fn package_windows_app_dir(
   Ok(app_dir)
 }
 
+/// Build the `/bin/sh` launcher that a packaged Linux app ships as its entry
+/// point. When `app_id` is `Some`, it exports `LAUFEY_APP_ID` so the backend's
+/// window app_id / WM_CLASS matches the installed `.desktop` file's
+/// `StartupWMClass` (issue #35500).
+///
+/// `app_id` is expected to have already passed `validate_bundle_identifier`,
+/// which restricts it to reverse-DNS characters (alphanumerics, `.`, `-`), so
+/// interpolating it into the shell script needs no further quoting.
+fn linux_launcher_script(
+  laufey_binary: &str,
+  dylib: &str,
+  app_id: Option<&str>,
+) -> String {
+  let app_id_export = match app_id {
+    Some(id) => format!("export LAUFEY_APP_ID=\"{id}\"\n"),
+    None => String::new(),
+  };
+  format!(
+    // Resolve `$0` through symlinks before deriving DIR: `.deb`/`.rpm`
+    // install the real launcher under `/usr/lib/<pkg>/` and expose it via a
+    // `/usr/bin/<pkg>` symlink, so a bare `$0` would resolve DIR to
+    // `/usr/bin` and look for the backend binary there (issue #35623).
+    // `readlink -f` is fine here: this launcher only ships on Linux.
+    "#!/bin/sh\n\
+     DIR=\"$(cd \"$(dirname \"$(readlink -f \"$0\")\")\" && pwd)\"\n\
+     export LAUFEY_RUNTIME_PATH=\"$DIR/{dylib}\"\n\
+     {app_id_export}\
+     exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
+  )
+}
+
 /// Create a Linux app directory from the compiled desktop dylib.
 ///
 /// Directory structure:
@@ -1687,30 +1725,13 @@ async fn package_linux_app_dir(
       None
     }
   };
-  // `validate_bundle_identifier` restricts the id to reverse-DNS characters
-  // (alphanumerics, `.`, `-`), so it's safe to interpolate into the shell
-  // launcher without further quoting concerns.
-  let app_id_export = match &desktop_id {
-    Some(id) => format!("export LAUFEY_APP_ID=\"{id}\"\n"),
-    None => String::new(),
-  };
-
   let launcher_path = app_dir.join(&app_name);
   std::fs::write(
     &launcher_path,
-    format!(
-      // Resolve `$0` through symlinks before deriving DIR: `.deb`/`.rpm`
-      // install the real launcher under `/usr/lib/<pkg>/` and expose it via a
-      // `/usr/bin/<pkg>` symlink, so a bare `$0` would resolve DIR to
-      // `/usr/bin` and look for the backend binary there (issue #35623).
-      // `readlink -f` is fine here: this launcher only ships on Linux.
-      "#!/bin/sh\n\
-       DIR=\"$(cd \"$(dirname \"$(readlink -f \"$0\")\")\" && pwd)\"\n\
-       export LAUFEY_RUNTIME_PATH=\"$DIR/{dylib}\"\n\
-       {app_id_export}\
-       exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
-      laufey_binary = laufey_binary_name,
-      dylib = dylib_filename_str,
+    linux_launcher_script(
+      &laufey_binary_name,
+      &dylib_filename_str,
+      desktop_id.as_deref(),
     ),
   )?;
   #[cfg(unix)]
@@ -5559,6 +5580,44 @@ def456  other.zip
     assert!(
       validate_bundle_identifier(&just_too_long).is_err(),
       "ids longer than 155 chars must be rejected (Apple receipt limit)"
+    );
+  }
+
+  // --- linux_launcher_script ---
+
+  #[test]
+  fn launcher_script_exports_app_id_when_present() {
+    let script = linux_launcher_script(
+      "laufey",
+      "libapp.so",
+      Some("com.deno.desktop.my-app"),
+    );
+    assert!(
+      script.contains("export LAUFEY_APP_ID=\"com.deno.desktop.my-app\"\n"),
+      "launcher should export the app id:\n{script}"
+    );
+    // The export must precede `exec` so the backend inherits it.
+    let app_id_at = script.find("LAUFEY_APP_ID").unwrap();
+    let exec_at = script.find("exec ").unwrap();
+    assert!(app_id_at < exec_at);
+    // Runtime path and backend invocation are still wired up.
+    assert!(script.contains("export LAUFEY_RUNTIME_PATH=\"$DIR/libapp.so\"\n"));
+    assert!(
+      script
+        .contains("exec \"$DIR/laufey\" --runtime \"$DIR/libapp.so\" \"$@\"\n")
+    );
+  }
+
+  #[test]
+  fn launcher_script_omits_app_id_when_absent() {
+    let script = linux_launcher_script("laufey", "libapp.so", None);
+    assert!(
+      !script.contains("LAUFEY_APP_ID"),
+      "launcher should not export an app id when none is given:\n{script}"
+    );
+    assert!(
+      script
+        .contains("exec \"$DIR/laufey\" --runtime \"$DIR/libapp.so\" \"$@\"\n")
     );
   }
 
