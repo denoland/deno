@@ -265,7 +265,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         || downloader.previously_loaded_packages.lock().contains(&name)
       {
         // attempt to load from the file cache
-        match downloader.cache.load_package_info(&name).await.map_err(JsErrorBox::from_err)? { Some(cached_info) => {
+        match downloader.cache.load_package_info(&name, downloader.packument_format).await.map_err(JsErrorBox::from_err)? { Some(cached_info) => {
           if downloader.packument_format == NpmPackumentFormat::Full && cached_info.info.time.is_empty() && !cached_info.info.versions.is_empty() {
             // Cached data is from the abbreviated install manifest which
             // doesn't include the `time` field. Since minimumDependencyAge
@@ -279,7 +279,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           None
         }}
       } else {
-        downloader.cache.load_package_info(&name).await.ok().flatten()
+        downloader.cache.load_package_info(&name, downloader.packument_format).await.ok().flatten()
       };
 
       if *downloader.cache.cache_setting() == NpmCacheSetting::Only {
@@ -319,29 +319,22 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         },
         NpmCacheHttpClientResponse::NotFound => Ok(FutureResult::PackageNotExists),
         NpmCacheHttpClientResponse::Bytes(response) => {
-          let packument_format = downloader.packument_format;
           let future_result = spawn_blocking(
             move || -> Result<FutureResult, JsErrorBox> {
-              let mut package_info: SerializedCachedPackageInfo = serde_json::from_slice(&response.bytes).map_err(JsErrorBox::from_err)?;
-              package_info.etag = response.etag;
-              if packument_format == NpmPackumentFormat::Full {
-                // The full packument is only requested because the abbreviated
-                // install manifest omits the `time` field needed by
-                // `minimumDependencyAge`. The full format additionally carries a
-                // complete `scripts` map for every version, which for frequently
-                // published packages can balloon the cached `registry.json` to
-                // hundreds of megabytes and spike RSS when it's reparsed on every
-                // run. Reduce each version to the abbreviated shape (drop
-                // `scripts`, keep a `hasInstallScript` flag) so only the `time`
-                // field is retained on top of what the abbreviated format would
-                // have stored. The installer reads the real scripts from the
-                // extracted package.json, exactly as it does for the abbreviated
-                // format.
-                slim_full_packument(&mut package_info.info);
-              }
-              match downloader.cache.save_package_info(&name, &package_info) {
+              let package_info_bytes = downloader.cache
+                .build_package_info_cache_bytes(
+                  &response.bytes,
+                  response.etag.as_deref(),
+                )?;
+              let package_info =
+                NpmPackageInfo::from_packument_slice(&package_info_bytes)
+                  .map_err(JsErrorBox::generic)?;
+              match downloader.cache.save_package_info_bytes(
+                &name,
+                &package_info_bytes,
+              ) {
                 Ok(()) => {
-                  Ok(FutureResult::SavedFsCache(Arc::new(package_info.info)))
+                  Ok(FutureResult::SavedFsCache(Arc::new(package_info)))
                 }
                 Err(err) => {
                   log::debug!(
@@ -349,7 +342,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
                     name,
                     err
                   );
-                  Ok(FutureResult::ErroredFsCache(Arc::new(package_info.info)))
+                  Ok(FutureResult::ErroredFsCache(Arc::new(package_info)))
                 }
               }
             },
@@ -379,29 +372,6 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     } else {
       false
     }
-  }
-}
-
-/// Reduces a full packument to the same shape as the abbreviated install
-/// manifest, keeping only the additional `time` field that the abbreviated
-/// format omits. For every version this drops the `scripts` map (replacing it
-/// with a `hasInstallScript` flag derived from the install lifecycle scripts),
-/// matching what the npm registry returns for the abbreviated format. This
-/// keeps the cached `registry.json` small for packages with many versions while
-/// still providing the publish dates needed by `minimumDependencyAge`.
-fn slim_full_packument(info: &mut NpmPackageInfo) {
-  for version in info.versions.values_mut() {
-    if version.scripts.is_empty() {
-      continue;
-    }
-    if version.has_install_script.is_none() {
-      version.has_install_script = Some(
-        version.scripts.contains_key("preinstall")
-          || version.scripts.contains_key("install")
-          || version.scripts.contains_key("postinstall"),
-      );
-    }
-    version.scripts.clear();
   }
 }
 

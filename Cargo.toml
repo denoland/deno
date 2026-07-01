@@ -45,6 +45,7 @@ members = [
   "libs/dcore",
   "libs/dotenv",
   "libs/eszip",
+  "libs/fast-registry-json",
   "libs/http_h1",
   "libs/inspector_server",
   "libs/lockfile",
@@ -217,6 +218,7 @@ encoding_rs = "=0.8.35"
 error_reporter = "1"
 fast-socks5 = "0.9.6"
 faster-hex = "0.10.0"
+fast-registry-json = { path = "./libs/fast-registry-json" }
 fastrand = "2"
 fastwebsockets = { version = "^0.8.1", features = ["upgrade", "unstable-split"] }
 file_test_runner = "0.12.1"
@@ -302,7 +304,7 @@ scopeguard = "1.2.0"
 semver = "=1.0.25"
 serde = { version = "1.0.149", features = ["derive"] }
 serde_bytes = "0.11"
-serde_json = "1.0.85"
+serde_json = { version = "1.0.85", features = ["raw_value"] }
 serde_repr = "=0.1.19"
 shlex = "1.3.0"
 signal-hook = "0.3"

@@ -1,0 +1,31 @@
+[package]
+name = "fast-registry-json"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+arrayref = "0.3.9"
+bytemuck = { workspace = true, features = [
+  "aarch64_simd",
+  "avx512_simd",
+  "must_cast",
+] }
+rustc-hash.workspace = true
+wide = "0.7.32"
+
+[features]
+default = ["simd"]
+simd = []
+
+[dev-dependencies]
+deno_npm.workspace = true
+deno_semver.workspace = true
+divan = "0.1.17"
+paste.workspace = true
+pretty_assertions.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[[bench]]
+name = "benchmark"
+harness = false
