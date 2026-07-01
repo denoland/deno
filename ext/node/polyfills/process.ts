@@ -498,7 +498,7 @@ memoryUsage.rss = function (): number {
 // handle, so nothing is reported.
 function getStdioActiveResources(): string[] {
   const result: string[] = [];
-  const streams = [Deno.stdin, Deno.stdout, Deno.stderr];
+  const streams = [io.stdin, io.stdout, io.stderr];
   for (const stream of new SafeArrayIterator(streams)) {
     try {
       if (stream && stream.isTerminal()) {
