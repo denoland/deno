@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/node-eval-lifecycle-script",
+  "version": "1.0.0",
+  "scripts": {
+    "postinstall": "node -e \"const fs = require('fs'); const path = require('path'); fs.writeFileSync(path.join(process.env.INIT_CWD, 'node_eval_ran.txt'), 'hello from node -e ' + (typeof Deno));\""
+  },
+  "exports": "./index.js"
+}
