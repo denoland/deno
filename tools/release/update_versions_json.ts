@@ -3,16 +3,14 @@
 // deno-lint-ignore-file no-console
 
 // Fetches the current versions.json from the bucket, prepends the given
-// release version to the "cli" list (if not already present), writes the
-// result to versions.json and prints the file name to stdout.
+// release version to the "cli" list (if not already present), and writes the
+// result to versions.json.
 
 const version = Deno.args[0];
 if (!version) {
   console.error("Usage: update_versions_json.ts <version-tag>");
   Deno.exit(1);
 }
-
-const outFile = "versions.json";
 
 interface Versions {
   cli: string[];
@@ -40,7 +38,4 @@ if (!versions.cli.includes(version)) {
 console.error("Adding version:", version);
 console.error("Total versions:", versions.cli.length);
 
-Deno.writeTextFileSync(outFile, JSON.stringify(versions) + "\n");
-
-// Print the file name so the caller knows what to upload.
-console.log(outFile);
+Deno.writeTextFileSync("versions.json", JSON.stringify(versions) + "\n");

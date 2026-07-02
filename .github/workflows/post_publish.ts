@@ -48,8 +48,8 @@ const workflow = createWorkflow({
         },
         run: [
           "VERSION=${GITHUB_REF#refs/*/}",
-          'VERSIONS_FILE=$(deno run --allow-net --allow-write tools/release/update_versions_json.ts "$VERSION")',
-          'aws s3 cp "$VERSIONS_FILE" "s3://dl-deno-land/$VERSIONS_FILE" --content-type application/json',
+          'deno run --allow-net --allow-write tools/release/update_versions_json.ts "$VERSION"',
+          "aws s3 cp versions.json s3://dl-deno-land/versions.json --content-type application/json",
           'LATEST_FILE=$(deno run --allow-net --allow-write tools/release/upload_version_file.ts "$VERSION" || exit 0)',
           '[ -z "$LATEST_FILE" ] && exit 0',
           'aws s3 cp "$LATEST_FILE" "s3://dl-deno-land/$LATEST_FILE"',
