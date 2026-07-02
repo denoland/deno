@@ -196,9 +196,7 @@ impl CliMainWorker {
 
     deno_core::unsync::spawn(async move {
       tokio::time::sleep(GRACE_PERIOD).await;
-      let Ok(mut sigusr1) = tokio::signal::unix::signal(
-        tokio::signal::unix::SignalKind::user_defined1(),
-      ) else {
+      let Ok(mut sigusr1) = deno_signals::signal_stream(libc::SIGUSR1) else {
         return;
       };
       while sigusr1.recv().await.is_some() {
