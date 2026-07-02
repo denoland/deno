@@ -677,15 +677,14 @@ const FAST_INT32 = 4;
 const FAST_DOUBLE = 5;
 const FAST_STRING = 6;
 const FAST_STRING_LATIN1 = 7;
-const FAST_STRING_CHUNK = 0x8000;
-// Above this many code units a two-byte (non-Latin1) string is cheaper to hand
-// to V8's ValueSerializer, which blits two-byte strings with a native memcpy,
-// than to walk per-char in the JS loop below. Measured crossover on x86_64
-// Linux: the JS loop wins up to ~128 code units and loses beyond it (+19% at
-// 256, far worse for larger). All-Latin1 strings stay on the fast path
-// regardless of length (1 byte/char keeps them competitive and halves the
-// buffer).
-const FAST_STRING_2BYTE_MAX = 128;
+// Above this many code units, hand the string to V8's ValueSerializer, which
+// blits string contents with a native memcpy, rather than walking per-char in
+// the JS loops below. Measured crossover on x86_64 Linux (ping-pong vs V8):
+// the JS path wins up to ~128 code units for both 1-byte (Latin1) and 2-byte
+// strings and loses beyond it (roughly break-even at 256, +100%+ by a few KiB).
+// The fast path targets small latency-bound messages; larger strings are
+// structured-clone-bound and better served by V8.
+const FAST_STRING_MAX = 128;
 
 // Scratch union buffer used to read/write the raw bytes of an f64. Sender and
 // receiver always run on the same machine, so native byte order is consistent
@@ -734,10 +733,12 @@ function fastSerialize(value) {
     }
     case "string": {
       const length = value.length;
+      // Long strings lose to V8's native memcpy; let the serializer take them.
+      if (length > FAST_STRING_MAX) return undefined;
       // Optimistically encode as Latin1 (1 byte/code unit). Most real payloads
       // (JSON, URLs, identifiers) are ASCII, so this halves both the buffer
-      // size and the decode work, and stays competitive with V8 even for large
-      // strings. Bail to the two-byte path on the first code unit >= 256.
+      // size and the decode work. Bail to the two-byte path on the first code
+      // unit >= 256.
       const b = new Uint8Array(6 + length);
       b[0] = FAST_MARKER;
       b[1] = FAST_STRING_LATIN1;
@@ -755,9 +756,6 @@ function fastSerialize(value) {
         b[j] = code;
       }
       if (latin1) return b;
-      // Non-Latin1: long two-byte strings lose to V8's native memcpy, so hand
-      // them back to the serializer (see FAST_STRING_2BYTE_MAX).
-      if (length > FAST_STRING_2BYTE_MAX) return undefined;
       const b2 = new Uint8Array(6 + length * 2);
       b2[0] = FAST_MARKER;
       b2[1] = FAST_STRING;
@@ -804,40 +802,25 @@ function fastDeserialize(buffer) {
       fastF64Bytes[7] = buffer[9];
       return fastF64[0];
     case FAST_STRING_LATIN1: {
+      // Strings are capped at FAST_STRING_MAX code units on encode, so a
+      // single `apply` is always well within the argument limit. Pre-size and
+      // index-assign rather than push, to avoid array growth on this hot path.
       const length = (buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) |
         (buffer[5] << 24)) >>> 0;
-      let result = "";
-      // Decode in bounded chunks: `String.fromCharCode.apply` with a huge
-      // argument array can overflow the call stack, so cap the spread width.
-      for (let i = 0, j = 6; i < length;) {
-        const chunkLength = length - i > FAST_STRING_CHUNK
-          ? FAST_STRING_CHUNK
-          : length - i;
-        // Pre-size and index-assign rather than push, to avoid per-char array
-        // growth on this hot path.
-        const codes = new Array(chunkLength);
-        for (let k = 0; k < chunkLength; k++, i++, j++) {
-          codes[k] = buffer[j];
-        }
-        result += ReflectApply(StringFromCharCode, null, codes);
+      const codes = new Array(length);
+      for (let i = 0, j = 6; i < length; i++, j++) {
+        codes[i] = buffer[j];
       }
-      return result;
+      return ReflectApply(StringFromCharCode, null, codes);
     }
     case FAST_STRING: {
       const length = (buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) |
         (buffer[5] << 24)) >>> 0;
-      let result = "";
-      for (let i = 0, j = 6; i < length;) {
-        const chunkLength = length - i > FAST_STRING_CHUNK
-          ? FAST_STRING_CHUNK
-          : length - i;
-        const codes = new Array(chunkLength);
-        for (let k = 0; k < chunkLength; k++, i++, j += 2) {
-          codes[k] = buffer[j] | (buffer[j + 1] << 8);
-        }
-        result += ReflectApply(StringFromCharCode, null, codes);
+      const codes = new Array(length);
+      for (let i = 0, j = 6; i < length; i++, j += 2) {
+        codes[i] = buffer[j] | (buffer[j + 1] << 8);
       }
-      return result;
+      return ReflectApply(StringFromCharCode, null, codes);
     }
     default:
       throw new TypeError("Invalid fast message encoding");
