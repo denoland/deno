@@ -307,6 +307,16 @@ declare namespace Deno {
     resizable?: boolean;
     /** @default {false} */
     alwaysOnTop?: boolean;
+    /** Overall window opacity as a uniform factor in the range `0`–`1`, where
+     * `1` is fully opaque (the default) and `0` is fully transparent. Fades the
+     * entire window — web content and native chrome alike — like CSS `opacity`.
+     * This is distinct from {@linkcode transparent}, which makes the background
+     * transparent while honoring the page's own per-pixel alpha. Out-of-range
+     * values are clamped. Can also be changed at runtime with
+     * {@linkcode BrowserWindow.setOpacity}.
+     *
+     * @default {1} */
+    opacity?: number;
     /** Remove the title bar and standard window chrome (border, traffic
      * light / caption buttons). Set at creation time only.
      *
@@ -322,6 +332,18 @@ declare namespace Deno {
      * @default {false} */
     noActivate?: boolean;
     transparentTitlebar?: boolean;
+    /** Give the window a transparent background so the web content's own alpha
+     * composites against whatever is behind the window. Any region the page
+     * leaves transparent (e.g. a `transparent` root background) shows the
+     * desktop through it. Often combined with {@linkcode frameless}. Distinct
+     * from {@linkcode opacity}, which uniformly fades the whole window. Set at
+     * creation time only.
+     *
+     * Supported on macOS and Linux with the system WebView; ignored on Windows
+     * and with the CEF backend, which paint an opaque window background.
+     *
+     * @default {false} */
+    transparent?: boolean;
   }
 
   interface BrowserWindowObject {
@@ -464,6 +486,16 @@ declare namespace Deno {
 
     isAlwaysOnTop(): boolean;
     setAlwaysOnTop(alwaysOnTop: boolean): void;
+
+    /** Get the window's overall opacity, a uniform factor in the range `0`–`1`
+     * where `1` is fully opaque. */
+    getOpacity(): number;
+    /** Set the window's overall opacity, a uniform factor in the range `0`–`1`
+     * where `1` is fully opaque (the default) and `0` is fully transparent.
+     * Fades the entire window — web content and native chrome alike — like CSS
+     * `opacity`. Out-of-range values are clamped. No-op on backends without
+     * opacity support. */
+    setOpacity(opacity: number): void;
 
     isClosed(): boolean;
     close(): void;
