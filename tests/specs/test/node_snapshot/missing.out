@@ -1,0 +1,5 @@
+running 1 test from ./missing_test.js
+no snapshot file yet ... FAILED ([WILDLINE])
+[WILDCARD]error: [WILDCARD]Cannot read snapshot file [WILDCARD]--update-snapshots flag.[WILDCARD]
+FAILED | 0 passed | 1 failed ([WILDLINE])
+[WILDCARD]
