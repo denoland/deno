@@ -485,13 +485,15 @@ unsafe fn do_emit_read(
     let onread_fn = v8::Local::new(scope, onread);
 
     if let Some(bytes) = data {
-      let len = bytes.len();
-      let store = v8::ArrayBuffer::new(scope, len);
-      let backing = store.get_backing_store();
-      for (i, byte) in bytes.iter().enumerate() {
-        backing[i].set(*byte);
-      }
-      let ab: v8::Local<v8::Value> = store.into();
+      // Single memcpy into a fresh backing store; ArrayBuffer::new would
+      // zero-initialize first and the old byte-wise Cell writes made this
+      // hot path two passes over every decrypted chunk.
+      let store = v8::ArrayBuffer::new_backing_store_from_bytes(
+        bytes.to_vec().into_boxed_slice(),
+      )
+      .make_shared();
+      let ab: v8::Local<v8::Value> =
+        v8::ArrayBuffer::with_backing_store(scope, &store).into();
       onread_fn.call(scope, recv.into(), &[ab]);
     } else {
       let undef = v8::undefined(scope);
@@ -684,11 +686,11 @@ unsafe fn do_enc_out_js(ctx: &EmitCtx, enc_data: Vec<u8>) {
     if let Some(val) = this.get(scope, key.into())
       && let Ok(func) = v8::Local::<v8::Function>::try_from(val)
     {
-      let ab = v8::ArrayBuffer::new(scope, enc_data.len());
-      let backing = ab.get_backing_store();
-      for (i, byte) in enc_data.iter().enumerate() {
-        backing[i].set(*byte);
-      }
+      // Zero-copy: move the encrypted bytes into the ArrayBuffer's
+      // backing store instead of copying byte-by-byte.
+      let store =
+        v8::ArrayBuffer::new_backing_store_from_vec(enc_data).make_shared();
+      let ab = v8::ArrayBuffer::with_backing_store(scope, &store);
       func.call(scope, this.into(), &[ab.into()]);
     }
   }
@@ -869,7 +871,6 @@ struct EncryptedWriteReq {
   /// If non-null, invoke_queued will be called on this TLSWrapInner
   /// when the encrypted write completes.
   tls_wrap_inner: *mut TLSWrapInner,
-  has_write_callback: bool,
   /// Shared flag that is set to `false` when the owning TLSWrapInner is
   /// destroyed.  Checked in `enc_write_cb` before dereferencing
   /// `tls_wrap_inner` to avoid use-after-free when GC collects the
@@ -896,7 +897,6 @@ struct TLSWrapInner {
   shutdown: bool,
   eof: bool,
   cycling: bool,
-  session_was_set: bool,
   /// Set by clear_out when it emitted data — indicates rustls may have
   /// more buffered plaintext. Cleared when clear_out returns no data.
   has_buffered_cleartext: bool,
@@ -912,8 +912,12 @@ struct TLSWrapInner {
   /// invoke_queued must wait until this drops to zero.
   enc_writes_in_flight: u32,
 
-  // Pending cleartext from DoWrite that SSL_write couldn't accept yet
-  pending_cleartext: Option<Vec<u8>>,
+  // Pending cleartext from DoWrite that SSL_write couldn't accept yet.
+  // `pending_cleartext_offset` tracks how much of the buffer has already
+  // been fed to rustls, so clear_in's chunked feeding doesn't re-allocate
+  // and copy the remaining tail on every chunk (O(n²) for large writes).
+  pending_cleartext: Vec<u8>,
+  pending_cleartext_offset: usize,
 
   // Buffered encrypted output that failed to write (e.g. EBADF because the
   // underlying stream wasn't connected yet).  Retried on the next enc_out().
@@ -1090,14 +1094,14 @@ impl TLSWrapInner {
       shutdown: false,
       eof: false,
       cycling: false,
-      session_was_set: false,
       has_buffered_cleartext: false,
       pending_clear_out: Vec::new(),
       pending_eof: false,
       in_dowrite: false,
       write_callback_scheduled: false,
       enc_writes_in_flight: 0,
-      pending_cleartext: None,
+      pending_cleartext: Vec::new(),
+      pending_cleartext_offset: 0,
       pending_enc_out: Vec::new(),
       underlying: UnderlyingStream::None,
       js_handle: None,
@@ -1267,10 +1271,10 @@ impl TLSWrapInner {
       return;
     };
 
-    let Some(data) = self.pending_cleartext.take() else {
-      return;
-    };
-
+    debug_assert!(
+      self.pending_cleartext_offset <= self.pending_cleartext.len()
+    );
+    let data = &self.pending_cleartext[self.pending_cleartext_offset..];
     if data.is_empty() {
       return;
     }
@@ -1279,6 +1283,8 @@ impl TLSWrapInner {
     // at once would produce a huge encrypted buffer that saturates
     // the TCP send buffer, causing deadlocks with echo patterns.
     // This matches Node.js where SSL_write processes incrementally.
+    // Consumed bytes are tracked via pending_cleartext_offset instead of
+    // re-allocating the unwritten tail on every chunk.
     const MAX_CLEAR_IN: usize = 48 * 1024;
     let feed_end = data.len().min(MAX_CLEAR_IN);
     let mut offset = 0;
@@ -1295,9 +1301,14 @@ impl TLSWrapInner {
         }
       }
     }
-    if offset < data.len() && !write_error {
-      // Save only the unwritten portion for retry
-      self.pending_cleartext = Some(data[offset..].to_vec());
+    self.pending_cleartext_offset += offset;
+    if write_error
+      || self.pending_cleartext_offset >= self.pending_cleartext.len()
+    {
+      // Fully consumed (or dropped on write error, matching the previous
+      // behavior of not restoring the tail) — release the buffer.
+      self.pending_cleartext = Vec::new();
+      self.pending_cleartext_offset = 0;
     }
   }
 
@@ -1427,13 +1438,12 @@ impl TLSWrapInner {
       return EncOutAction::None;
     };
 
-    // Collect ALL encrypted output from rustls into pending buffer.
+    // Collect ALL encrypted output from rustls into the pending buffer.
+    // Vec's io::Write impl appends, so write_tls can serialize directly
+    // into pending_enc_out without a temporary buffer + copy.
     while conn.wants_write() {
-      let mut tmp = Vec::with_capacity(16384);
-      match conn.write_tls(&mut tmp) {
-        Ok(n) if n > 0 => {
-          self.pending_enc_out.extend_from_slice(&tmp);
-        }
+      match conn.write_tls(&mut self.pending_enc_out) {
+        Ok(n) if n > 0 => {}
         _ => break,
       }
     }
@@ -1472,11 +1482,8 @@ impl TLSWrapInner {
       return;
     };
     while conn.wants_write() {
-      let mut tmp = Vec::with_capacity(16384);
-      match conn.write_tls(&mut tmp) {
-        Ok(n) if n > 0 => {
-          self.pending_enc_out.extend_from_slice(&tmp);
-        }
+      match conn.write_tls(&mut self.pending_enc_out) {
+        Ok(n) if n > 0 => {}
         _ => break,
       }
     }
@@ -1623,13 +1630,11 @@ impl TLSWrapInner {
   /// Write encrypted data to the underlying uv stream.
   fn enc_out_uv(&mut self) {
     let enc_data = std::mem::take(&mut self.pending_enc_out);
-    let has_write_cb = self.write_callback_scheduled;
     let self_ptr = self as *mut TLSWrapInner;
     let write_req = Box::new(EncryptedWriteReq {
       uv_req: uv_compat::new_write(),
       _data: enc_data,
       tls_wrap_inner: self_ptr,
-      has_write_callback: has_write_cb,
       alive: self.alive.clone(),
     });
 
@@ -1792,11 +1797,7 @@ unsafe extern "C" fn enc_write_cb(req: *mut uv_write_t, status: i32) {
         // pending cleartext, drain the next chunk now. Without
         // this the remaining bytes are never fed to rustls and the
         // peer never receives the full body ("socket hang up").
-        if (*ptr)
-          .pending_cleartext
-          .as_ref()
-          .is_some_and(|v| !v.is_empty())
-        {
+        if (*ptr).pending_cleartext.len() > (*ptr).pending_cleartext_offset {
           (*ptr).clear_in();
         }
         let enc_action = (*ptr).enc_out_collect();
@@ -1879,8 +1880,7 @@ impl TLSWrap {
         inner.current_write_obj = Some(v8::Global::new(scope, req_wrap_obj));
         inner.current_write_bytes = byte_length;
         inner.write_callback_scheduled = true;
-        let existing = inner.pending_cleartext.get_or_insert_with(Vec::new);
-        existing.extend_from_slice(data);
+        inner.pending_cleartext.extend_from_slice(data);
 
         let state_global = &op_state.borrow::<StreamBaseState>().array;
         let state_array = v8::Local::new(scope, state_global);
@@ -1917,7 +1917,9 @@ impl TLSWrap {
     // Store all cleartext as pending, then drain a limited amount.
     // clear_in() feeds up to 48KB to rustls per call, preventing
     // the TCP send buffer from being overwhelmed.
-    inner.pending_cleartext = Some(data.to_vec());
+    inner.pending_cleartext.clear();
+    inner.pending_cleartext.extend_from_slice(data);
+    inner.pending_cleartext_offset = 0;
     inner.in_dowrite = true;
     inner.clear_in();
     let enc_action = inner.enc_out_collect();
@@ -3012,14 +3014,12 @@ impl TLSWrap {
   }
 
   /// Set the serialized TLS session for client resumption.
-  /// With the shared session store, rustls handles resumption automatically.
-  /// This is still needed to signal that a session was provided (so JS
-  /// can check isSessionReused after handshake).
+  /// With the shared session store, rustls handles resumption
+  /// automatically, so this is a no-op; it only exists because the JS
+  /// layer calls it. isSessionReused() reports resumption based on the
+  /// negotiated handshake kind instead.
   #[fast]
-  fn set_session(&self, #[buffer] _session: &[u8]) {
-    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
-    inner.session_was_set = true;
-  }
+  fn set_session(&self, #[buffer] _session: &[u8]) {}
 
   /// Check if the TLS session was resumed (reused from a previous connection).
   #[fast]
@@ -4619,5 +4619,102 @@ mod tests {
     assert!(inner.cycling);
     inner.cycling = false;
     assert!(!inner.cycling);
+  }
+
+  /// Build a TLSWrapInner with a real (unconnected) rustls client
+  /// connection, using the same config builder as `build_client_config`.
+  fn test_client_inner() -> TLSWrapInner {
+    // In workspace-wide builds feature unification enables both of rustls'
+    // crypto backends, so the process-level provider must be set explicitly.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let config = rustls::ClientConfig::builder_with_protocol_versions(&[
+      &rustls::version::TLS13,
+      &rustls::version::TLS12,
+    ])
+    .with_root_certificates(rustls::RootCertStore::empty())
+    .with_no_client_auth();
+    let conn = rustls::ClientConnection::new(
+      Arc::new(config),
+      rustls::pki_types::ServerName::try_from("localhost").unwrap(),
+    )
+    .unwrap();
+    let mut inner = TLSWrapInner::new(Kind::Client);
+    inner.tls_conn = Some(TlsConnection::Client(conn));
+    inner
+  }
+
+  /// enc_out_collect must gather rustls' encrypted output (the ClientHello
+  /// for a fresh client connection) directly into pending_enc_out.
+  #[test]
+  fn enc_out_collect_gathers_encrypted_output() {
+    let mut inner = test_client_inner();
+    let action = inner.enc_out_collect();
+    // No underlying stream is attached, so no write action is requested...
+    assert!(matches!(action, EncOutAction::None));
+    // ...but the encrypted ClientHello was collected.
+    assert!(!inner.pending_enc_out.is_empty());
+    // TLS record header: content type 0x16 (handshake).
+    assert_eq!(inner.pending_enc_out[0], 0x16);
+
+    // A second collect with nothing more to write must not duplicate data.
+    let len = inner.pending_enc_out.len();
+    let _ = inner.enc_out_collect();
+    assert_eq!(inner.pending_enc_out.len(), len);
+  }
+
+  /// clear_in must feed pending cleartext to rustls in bounded chunks,
+  /// advancing pending_cleartext_offset without mutating or losing the
+  /// unconsumed remainder, and must release the buffer once consumed.
+  #[test]
+  fn clear_in_chunks_pending_cleartext_via_offset() {
+    const MAX_CLEAR_IN: usize = 48 * 1024;
+
+    let mut inner = test_client_inner();
+    // Bypass the handshake gate; rustls buffers pre-handshake plaintext
+    // writes internally, which is all this test needs.
+    inner.established = true;
+
+    let payload: Vec<u8> = (0..200 * 1024).map(|i| (i % 251) as u8).collect();
+    inner.pending_cleartext = payload.clone();
+    inner.pending_cleartext_offset = 0;
+
+    // The first call must feed a chunk without error.
+    inner.clear_in();
+    assert!(inner.error.is_none());
+    assert!(
+      inner.pending_cleartext_offset > 0,
+      "first clear_in call made no progress"
+    );
+
+    let mut prev_offset = inner.pending_cleartext_offset;
+    for _ in 0..64 {
+      if inner.pending_cleartext.is_empty() {
+        break;
+      }
+      // The buffer is never mutated while partially consumed.
+      assert_eq!(inner.pending_cleartext, payload);
+      assert!(inner.pending_cleartext_offset <= payload.len());
+
+      inner.clear_in();
+      assert!(inner.error.is_none());
+      let offset = inner.pending_cleartext_offset;
+      if inner.pending_cleartext.is_empty() {
+        break;
+      }
+      assert!(offset >= prev_offset, "offset must be monotonic");
+      // At most one MAX_CLEAR_IN chunk per call.
+      assert!(offset - prev_offset <= MAX_CLEAR_IN);
+      if offset == prev_offset {
+        // rustls' internal plaintext buffer is full (the handshake never
+        // completes in this isolated test) — no further progress possible.
+        break;
+      }
+      prev_offset = offset;
+    }
+
+    // Once fully consumed, the buffer must be released and offset reset.
+    if inner.pending_cleartext.is_empty() {
+      assert_eq!(inner.pending_cleartext_offset, 0);
+    }
   }
 }
