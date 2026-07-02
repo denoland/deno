@@ -1394,7 +1394,7 @@ fn run_headless_worker() {
       // VFS should already be extracted by the parent process.
       // In dev mode, keep the source directory as CWD (inherited from parent).
       // In production mode, set CWD to extraction directory.
-      if env::var("DENO_DESKTOP_DEV").is_err() {
+      if env::var("DENO_DESKTOP_DEV_URL").is_err() {
         let _ = std::env::set_current_dir(&data.root_path);
       }
       denort::file_system::DenoRtSys::new_self_extracting(data.vfs.clone())
@@ -1645,7 +1645,7 @@ async fn run_desktop(
 
   // Framework dev servers handle their own HMR via websocket.
   // For non-framework apps, V8-level HMR reloads the webview.
-  let is_framework_dev = env::var("DENO_DESKTOP_DEV").is_ok();
+  let is_framework_dev = env::var("DENO_DESKTOP_DEV_URL").is_ok();
 
   // In dev mode, restore CWD to the source directory so the framework
   // dev server watches the original source files, not the extracted VFS.
@@ -1794,7 +1794,8 @@ async fn run_desktop(
   // Run the Deno runtime and Laufey event loop concurrently.
   // We spawn the runtime first, wait for the server to be ready,
   // then navigate the webview.
-  let url = format!("http://127.0.0.1:{}", desktop_serve_port);
+  let url = env::var("DENO_DESKTOP_DEV_URL")
+    .unwrap_or_else(|_| format!("http://127.0.0.1:{}", desktop_serve_port));
   log::debug!("[desktop] starting runtime and laufey event loop");
   let run_fut =
     denort::run::run_with_options(Arc::new(sys.clone()), sys, data, run_opts);
@@ -1839,39 +1840,41 @@ async fn run_desktop(
     }
 
     let id = initial_window_id_for_navigate.load(Ordering::Acquire);
-    let mut server_ready = false;
-    for i in 0..60 {
-      if let Ok(mut stream) =
-        tokio::net::TcpStream::connect(("127.0.0.1", desktop_serve_port)).await
-      {
-        let req = format!(
-          "GET / HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
-          desktop_serve_port
-        );
-        if stream.write_all(req.as_bytes()).await.is_ok() {
-          let mut buf = vec![0u8; 256];
-          if let Ok(n) = stream.read(&mut buf).await {
-            let response = String::from_utf8_lossy(&buf[..n]);
-            if response.starts_with("HTTP/1.1 2")
-              || response.starts_with("HTTP/1.1 3")
-              || response.starts_with("HTTP/1.0 2")
-              || response.starts_with("HTTP/1.0 3")
-            {
-              log::debug!(
-                "[desktop] Server ready after {} attempts, navigating to {}",
-                i + 1,
-                &url
-              );
-              server_ready = true;
-              break;
+    if !is_framework_dev {
+      let mut server_ready = false;
+      for i in 0..60 {
+        if let Ok(mut stream) =
+          tokio::net::TcpStream::connect(("127.0.0.1", desktop_serve_port)).await
+        {
+          let req = format!(
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+            desktop_serve_port
+          );
+          if stream.write_all(req.as_bytes()).await.is_ok() {
+            let mut buf = vec![0u8; 256];
+            if let Ok(n) = stream.read(&mut buf).await {
+              let response = String::from_utf8_lossy(&buf[..n]);
+              if response.starts_with("HTTP/1.1 2")
+                || response.starts_with("HTTP/1.1 3")
+                || response.starts_with("HTTP/1.0 2")
+                || response.starts_with("HTTP/1.0 3")
+              {
+                log::debug!(
+                  "[desktop] Server ready after {} attempts, navigating to {}",
+                  i + 1,
+                  &url
+                );
+                server_ready = true;
+                break;
+              }
             }
           }
         }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
       }
-      tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-    }
-    if !server_ready {
-      log::warn!("Server not ready after 15s, navigating anyway");
+      if !server_ready {
+        log::warn!("Server not ready after 15s, navigating anyway");
+      }
     }
     laufey::Window::from_id(id).navigate(&url);
 
