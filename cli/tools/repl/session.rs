@@ -189,6 +189,23 @@ pub struct ReplSession {
   test_event_receiver: Option<TestEventReceiver>,
   jsx: deno_ast::JsxRuntime,
   decorators: deno_ast::DecoratorsTranspileOption,
+  /// While set, each `evaluate_ts_expression` call produces a source map
+  /// for the transpiled code and stores it in `source_maps` under the key
+  /// V8 uses for evaluated scripts (`<anonymous>`). Always toggled via
+  /// `evaluate_line_with_source_map_tracking` so the set+await+clear
+  /// pair lives in one method (no caller can forget to flip it back).
+  /// Intentionally not self-clearing on the inner method —
+  /// `evaluate_line_with_object_wrapping` may re-call
+  /// `evaluate_ts_expression` with a `( … )` retry wrapper, and that
+  /// retry needs source-map tracking too so the map matches whichever
+  /// source actually ran.
+  track_source_maps: bool,
+  source_maps: HashMap<String, Arc<deno_core::sourcemap::SourceMap>>,
+  /// Cached cell source per `source_maps` key. Populated alongside
+  /// `source_maps` so `apply_source_map_to_stack` can echo the user's
+  /// original source line for each remapped frame — Python/IPython-style,
+  /// since Jupyter cells don't show line numbers by default.
+  cell_sources: HashMap<String, Arc<str>>,
 }
 
 // TODO: duplicated in `cli/tools/run/hmr.rs`
@@ -384,6 +401,9 @@ impl ReplSession {
       test_event_receiver: Some(test_event_receiver),
       jsx: transpile_options.jsx.clone().unwrap_or_default(),
       decorators: transpile_options.decorators.clone(),
+      track_source_maps: false,
+      source_maps: HashMap::new(),
+      cell_sources: HashMap::new(),
     };
 
     // inject prelude
@@ -629,6 +649,31 @@ impl ReplSession {
     result
   }
 
+  /// Like `evaluate_line_with_object_wrapping`, but the transpiled JS is
+  /// emitted with a source map and the parsed map is stashed under the
+  /// `<anonymous>` key so `apply_source_map_to_stack` can remap stack
+  /// frames back to the user's TypeScript. After the await we re-pin the
+  /// user's original `line` as the echoed source — `( … )` retry wrappers
+  /// would otherwise leave the wrapped form in `cell_sources`, bleeding
+  /// parens into the snippet. Wrapping inserts no newlines, so the line
+  /// numbers stay aligned. Set+await+clear is consolidated here so the
+  /// flag can never leak out into non-Jupyter callers (and an early
+  /// return from the inner call still resets it before returning).
+  pub async fn evaluate_line_with_source_map_tracking(
+    &mut self,
+    line: &str,
+  ) -> Result<TsEvaluateResponse, AnyError> {
+    self.track_source_maps = true;
+    let result = self.evaluate_line_with_object_wrapping(line).await;
+    self.track_source_maps = false;
+    if self.source_maps.contains_key("<anonymous>") {
+      self
+        .cell_sources
+        .insert("<anonymous>".to_string(), Arc::from(line));
+    }
+    result
+  }
+
   pub async fn set_last_thrown_error(
     &mut self,
     error: &cdp::RemoteObject,
@@ -829,7 +874,13 @@ impl ReplSession {
 
     self.analyze_and_handle_jsx(&parsed_source);
 
-    let transpiled_src = parsed_source
+    let want_source_map = self.track_source_maps;
+    let original_source: Option<Arc<str>> = if want_source_map {
+      Some(Arc::from(parsed_source.text().as_ref()))
+    } else {
+      None
+    };
+    let emitted = parsed_source
       .transpile(
         &deno_ast::TranspileOptions {
           decorators: self.decorators.clone(),
@@ -842,21 +893,189 @@ impl ReplSession {
           module_kind: Some(ModuleKind::Esm),
         },
         &deno_ast::EmitOptions {
-          source_map: deno_ast::SourceMapOption::None,
+          source_map: if want_source_map {
+            deno_ast::SourceMapOption::Separate
+          } else {
+            deno_ast::SourceMapOption::None
+          },
           source_map_base: None,
           source_map_file: None,
           inline_sources: false,
           remove_comments: false,
         },
       )?
-      .into_source()
-      .text;
+      .into_source();
+    let transpiled_src = emitted.text;
 
-    let value = self
-      .evaluate_expression(&format!("'use strict'; void 0;{transpiled_src}"))
-      .await?;
+    if want_source_map
+      && let Some(source_map) = emitted.source_map.as_ref()
+      && let Ok(parsed_map) =
+        deno_core::sourcemap::SourceMap::from_slice(source_map.as_bytes())
+    {
+      // Keyed by V8's reported file name (always `<anonymous>` for
+      // `Runtime.evaluate`). Each cell's source map replaces the previous
+      // one, so frames coming from earlier cells will get remapped against
+      // the current cell's map. That's a known limitation — V8 doesn't
+      // surface per-script identifiers in `err.stack` for evaluate-style
+      // inputs, so we can't tell apart frames from prior cells.
+      self
+        .source_maps
+        .insert("<anonymous>".to_string(), Arc::new(parsed_map));
+      if let Some(original) = original_source {
+        self
+          .cell_sources
+          .insert("<anonymous>".to_string(), original);
+      }
+    }
+
+    // V8's `Runtime.evaluate` (with replMode) reports stack frames as
+    // `<anonymous>:LINE:COL` and does not honour `//# sourceURL=` magic
+    // comments injected into the evaluated script (the inspector treats
+    // the script as anonymous regardless). So instead of trying to
+    // surface a stable URL through V8, we always register the current
+    // cell's source map under the `<anonymous>` key and apply it to any
+    // `<anonymous>` frames in the stack. This matches V8's reported
+    // script name and handles the common case where the thrown exception
+    // originates in the cell that's currently executing. Frames from
+    // earlier cells (function definitions that live across cells) still
+    // get remapped through the latest source map — that's not strictly
+    // correct, but it's far better than reporting the transpiled JS
+    // line numbers, and lining them up correctly would require V8 to
+    // surface per-script identifiers in `err.stack`.
+    // NB: this 21-char prefix is concatenated onto whatever `transpiled_src`
+    // starts with, so V8's reported column on line 1 of the evaluated script
+    // is offset by 21 relative to the source map (which only covers
+    // `transpiled_src`). Today this is harmless because SWC's ESM output
+    // always begins with `"use strict";\n`, so the prefix collides with that
+    // prelude line and the user's code lives on line 2 onwards — line-1
+    // frames only ever land inside prelude code, which has no source-map
+    // entry. If a future emit option drops the SWC prelude, the column
+    // lookup for line-1 frames will need to subtract this 21-char offset
+    // before consulting the source map.
+    let script = format!("'use strict'; void 0;{transpiled_src}");
+
+    let value = self.evaluate_expression(&script).await?;
 
     Ok(TsEvaluateResponse { value })
+  }
+
+  /// Walks a JavaScript stack trace string and rewrites the position of any
+  /// frame whose URL we have a registered source map for. Lines that don't
+  /// match the `at FILE:LINE:COL` / `at NAME (FILE:LINE:COL)` shapes are
+  /// passed through unchanged. When a cached cell source is available for
+  /// the frame's file, the user's original source line is echoed beneath
+  /// the frame (Python/IPython-style) — Jupyter cells don't show line
+  /// numbers by default, so just printing a remapped line/column number
+  /// would leave users counting lines in their cell.
+  pub fn apply_source_map_to_stack(&self, stack: &str) -> String {
+    if self.source_maps.is_empty() {
+      return stack.to_string();
+    }
+
+    static STACK_FRAME_RE: Lazy<Regex> = Lazy::new(|| {
+      // Two capture shapes:
+      //   `    at FILE:LINE:COL`
+      //   `    at NAME (FILE:LINE:COL)`
+      // The file portion can itself contain colons (eg. `<jupyter:cell:1>`),
+      // so we lazy-match it and let the anchored `:LINE:COL[)]$` tail force
+      // backtracking onto the correct boundary.
+      Regex::new(r"^(?P<prefix>\s*at (?:.+? \()?)(?P<file>.+?):(?P<line>\d+):(?P<col>\d+)(?P<suffix>\)?)\s*$").unwrap()
+    });
+
+    // Cap echoed source lines so a pathological 50KB minified line can't
+    // explode the traceback we hand back to Jupyter.
+    const MAX_SNIPPET_LEN: usize = 200;
+
+    let mut out = String::with_capacity(stack.len());
+    let mut last_snippet_line: Option<(String, u32)> = None;
+    for (idx, line) in stack.lines().enumerate() {
+      if idx > 0 {
+        out.push('\n');
+      }
+      let Some(caps) = STACK_FRAME_RE.captures(line) else {
+        out.push_str(line);
+        continue;
+      };
+      let file = caps.name("file").unwrap().as_str();
+      let Some(source_map) = self.source_maps.get(file).cloned() else {
+        out.push_str(line);
+        continue;
+      };
+      let line_num: u32 = match caps["line"].parse() {
+        Ok(n) => n,
+        Err(_) => {
+          out.push_str(line);
+          continue;
+        }
+      };
+      let col_num: u32 = match caps["col"].parse() {
+        Ok(n) => n,
+        Err(_) => {
+          out.push_str(line);
+          continue;
+        }
+      };
+      // SourceMap::lookup_token expects 0-based positions; the lookup token
+      // returns 0-based source positions which we convert back to 1-based.
+      let lookup_line = line_num.saturating_sub(1);
+      let lookup_col = col_num.saturating_sub(1);
+      let Some(token) = source_map.lookup_token(lookup_line, lookup_col) else {
+        out.push_str(line);
+        continue;
+      };
+      let new_line = token.get_src_line() + 1;
+      let new_col = token.get_src_col() + 1;
+      // Don't risk silently swapping the URL out: keeping the V8-reported
+      // file name avoids visually surprising callers who only have a single
+      // cell anyway. Only rewrite the line and column.
+      let prefix = caps.name("prefix").unwrap().as_str();
+      out.push_str(prefix);
+      out.push_str(file);
+      out.push(':');
+      out.push_str(&new_line.to_string());
+      out.push(':');
+      out.push_str(&new_col.to_string());
+      out.push_str(caps.name("suffix").unwrap().as_str());
+
+      // Skip the snippet if we already echoed the same line for the
+      // previous frame (recursive calls land on the same source line and
+      // would just produce N copies of the same text).
+      if last_snippet_line.as_ref() == Some(&(file.to_string(), new_line)) {
+        continue;
+      }
+
+      if let Some(source) = self.cell_sources.get(file).cloned()
+        && let Some(snippet) =
+          source.lines().nth((new_line as usize).saturating_sub(1))
+      {
+        let trimmed = snippet.trim_end();
+        if !trimmed.is_empty() {
+          // Indent the snippet beneath the `at ` prefix so it visually
+          // nests under the frame.
+          let indent = prefix
+            .chars()
+            .take_while(|c| c.is_whitespace())
+            .collect::<String>();
+          out.push('\n');
+          out.push_str(&indent);
+          out.push_str("    ");
+          if trimmed.len() > MAX_SNIPPET_LEN {
+            // Step backwards to the nearest UTF-8 char boundary so we
+            // don't split a multi-byte codepoint.
+            let mut cut = MAX_SNIPPET_LEN;
+            while cut > 0 && !trimmed.is_char_boundary(cut) {
+              cut -= 1;
+            }
+            out.push_str(&trimmed[..cut]);
+            out.push_str("...");
+          } else {
+            out.push_str(trimmed);
+          }
+        }
+        last_snippet_line = Some((file.to_string(), new_line));
+      }
+    }
+    out
   }
 
   fn analyze_and_handle_jsx(&mut self, parsed_source: &ParsedSource) {
