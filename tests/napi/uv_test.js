@@ -107,3 +107,13 @@ Deno.test({
     uv.test_uv_cond();
   },
 });
+
+// Exercises uv_cond_broadcast: several worker threads park in uv_cond_wait on
+// the same condition variable and the main thread wakes them all with a single
+// broadcast once they are all parked.
+Deno.test({
+  name: "napi uv condition variable broadcast",
+  fn: () => {
+    uv.test_uv_cond_broadcast();
+  },
+});
