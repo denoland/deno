@@ -123,6 +123,13 @@ pub struct Options {
   pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
   pub resolver: dns::Resolver,
+  /// Sets `TCP_NODELAY` on outbound connections opened by the default
+  /// `fetch()` client, disabling Nagle's algorithm so small writes (such as a
+  /// short request after the TLS handshake) aren't delayed.
+  ///
+  /// Clients created with `Deno.createHttpClient()` set this independently
+  /// through the `noDelay` option.
+  pub no_delay: bool,
 }
 
 impl Options {
@@ -146,6 +153,7 @@ impl Default for Options {
       client_cert_chain_and_key: TlsKeys::Null,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
       resolver: dns::Resolver::default(),
+      no_delay: false,
     }
   }
 }
@@ -349,6 +357,7 @@ pub fn create_client_from_options(
       http2: true,
       local_address: None,
       client_builder_hook: options.client_builder_hook,
+      no_delay: options.no_delay,
     },
   )
 }
@@ -845,6 +854,8 @@ pub struct CreateHttpClientArgs {
   #[from_v8(default)]
   allow_host: bool,
   local_address: Option<String>,
+  #[from_v8(default)]
+  no_delay: bool,
 }
 
 #[op2(stack_trace)]
@@ -932,6 +943,7 @@ pub fn op_fetch_custom_client(
       http2: args.http2,
       local_address: args.local_address,
       client_builder_hook: options.client_builder_hook,
+      no_delay: args.no_delay,
     },
   )?;
 
@@ -958,6 +970,9 @@ pub struct CreateHttpClientOptions {
   pub http2: bool,
   pub local_address: Option<String>,
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
+  /// Sets `TCP_NODELAY` on the connection's socket, disabling Nagle's
+  /// algorithm.
+  pub no_delay: bool,
 }
 
 impl Default for CreateHttpClientOptions {
@@ -976,6 +991,7 @@ impl Default for CreateHttpClientOptions {
       http2: true,
       local_address: None,
       client_builder_hook: None,
+      no_delay: false,
     }
   }
 }
@@ -1048,6 +1064,7 @@ pub fn create_http_client(
     options.dns_resolver.clone(),
     local_address,
     options.permissions,
+    options.no_delay,
   );
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
