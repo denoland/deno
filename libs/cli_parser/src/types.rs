@@ -96,6 +96,9 @@ pub struct ArgDef {
   pub trailing: bool,
   /// Hint for shell completions.
   pub value_name: Option<&'static str>,
+  /// Names of args that cannot be used together with this one. If both are
+  /// present, parsing fails (mirrors clap's `conflicts_with`).
+  pub conflicts: &'static [&'static str],
 }
 
 impl ArgDef {
@@ -118,7 +121,16 @@ impl ArgDef {
       positional: false,
       trailing: false,
       value_name: None,
+      conflicts: &[],
     }
+  }
+
+  pub const fn conflicts_with(
+    mut self,
+    conflicts: &'static [&'static str],
+  ) -> Self {
+    self.conflicts = conflicts;
+    self
   }
 
   pub const fn long(mut self, long: &'static str) -> Self {

@@ -1383,6 +1383,11 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Exact(1)),
     ArgDef::new("force").short('f').long("force").set_true(),
     ArgDef::new("dev").short('D').long("dev").set_true(),
+    ArgDef::new("prod")
+      .long("prod")
+      .set_true()
+      .conflicts_with(&["global", "dev"]),
+    ArgDef::new("skip-types").long("skip-types").set_true(),
     ArgDef::new("entrypoint")
       .short('e')
       .long("entrypoint")

@@ -2010,7 +2010,7 @@ fn install_parse(
   }
 
   let lockfile_only = result.get_bool("lockfile-only");
-  let production = result.get_bool("production");
+  let production = result.get_bool("prod");
   let skip_types = result.get_bool("skip-types");
   let npm_target = NpmInstallTargetFlags {
     os: result.get_one("os").map(|s| s.to_string()),

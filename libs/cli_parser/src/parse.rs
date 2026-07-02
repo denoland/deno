@@ -279,6 +279,23 @@ fn parse_args(
     }
   }
 
+  // Enforce mutually exclusive args (clap's `conflicts_with`).
+  for arg_def in cmd_def.all_args() {
+    if result.contains(arg_def.name) {
+      for other in arg_def.conflicts {
+        if result.contains(other) {
+          return Err(CliError::new(
+            CliErrorKind::InvalidValue,
+            format!(
+              "the argument '{}' cannot be used with '{}'",
+              arg_def.name, other
+            ),
+          ));
+        }
+      }
+    }
+  }
+
   Ok(())
 }
 
