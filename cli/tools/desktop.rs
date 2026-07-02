@@ -834,12 +834,12 @@ fn register_deep_links_windows(
   bundle_path: &Path,
   schemes: &[String],
 ) -> Result<(), AnyError> {
-  // The launcher written by the Windows packaging step is `<app>.bat`.
-  let launcher = std::fs::read_dir(bundle_path)?
-    .filter_map(|e| e.ok().map(|e| e.path()))
-    .find(|p| p.extension().is_some_and(|e| e == "bat"))
-    .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-    .unwrap_or_else(|| "launcher.bat".to_string());
+  // The launcher written by the Windows packaging step is `<app>.exe` (the
+  // backend binary renamed to the bundle/app name).
+  let launcher = bundle_path
+    .file_name()
+    .map(|n| format!("{}.exe", n.to_string_lossy()))
+    .unwrap_or_else(|| "launcher.exe".to_string());
 
   let mut script = String::from("@echo off\r\nsetlocal\r\n");
   for scheme in schemes {
@@ -1051,11 +1051,11 @@ fn make_self_extracting_dir(
        setlocal\r\n\
        set \"DIR=%~dp0\"\r\n\
        set \"DEST=%LOCALAPPDATA%\\{id}\\{hash}\"\r\n\
-       if not exist \"%DEST%\\{app_name}\\{app_name}.bat\" (\r\n\
+       if not exist \"%DEST%\\{app_name}\\{app_name}.exe\" (\r\n\
        \u{20} mkdir \"%DEST%\" 2>nul\r\n\
        \u{20} tar -xf \"%DIR%{payload_name}\" -C \"%DEST%\"\r\n\
        )\r\n\
-       call \"%DEST%\\{app_name}\\{app_name}.bat\" %*\r\n",
+       \"%DEST%\\{app_name}\\{app_name}.exe\" %*\r\n",
     );
     std::fs::write(bundle_path.join(format!("{app_name}.bat")), launcher)?;
   } else {
@@ -1465,12 +1465,14 @@ async fn package_desktop_app(
 /// Directory structure:
 /// ```text
 /// AppName/
-///   AppName.bat         (launcher)
-///   laufey.exe             (LAUFEY backend binary)
+///   AppName.exe         (LAUFEY backend binary, renamed to the app name)
 ///   libcef.dll, ...     (CEF support files, if any)
-///   denort.dll          (compiled Deno runtime + user code)
+///   AppName.dll         (compiled Deno runtime + user code)
 ///   AppIcon.ico         (optional)
 /// ```
+///
+/// The backend binary is renamed to `AppName.exe` so it auto-loads the
+/// co-located `AppName.dll` runtime — no `.bat` launcher is needed.
 async fn package_windows_app_dir(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
@@ -1516,33 +1518,22 @@ async fn package_windows_app_dir(
   let dest_dylib = app_dir.join(dylib_filename);
   std::fs::copy(dylib_path, &dest_dylib)?;
 
-  // Create a .bat launcher that invokes the backend with --runtime.
-  // Validate every name we interpolate: cmd.exe expands `%VAR%` and
-  // treats `^` `&` etc. as command separators even inside `"..."`.
-  let dylib_filename_str = dylib_filename.to_string_lossy();
+  // Rename the LAUFEY backend binary to the app name (`<app>.exe`) so it sits
+  // next to `<app>.dll` and auto-loads it: laufey's LaufeyFindColocatedRuntime
+  // resolves a runtime library whose base name matches the executable's, in the
+  // executable's own directory. A bare double-click of `<app>.exe` therefore
+  // "just works" with no `.bat` wrapper and no `--runtime` argument.
+  //
+  // This also fixes runtime loading from paths containing a space (e.g. the
+  // default MSI target `C:\Program Files\`): laufey resolves the co-located
+  // runtime from its own module path rather than a `--runtime` string, avoiding
+  // the historical `ERROR_MOD_NOT_FOUND` (126) failure on such paths.
   validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
-  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
-  let launcher_path = app_dir.join(format!("{}.bat", app_name));
-  // Pass the runtime dylib to laufey by its bare filename, not a full path. The
-  // laufey backend mishandles a `--runtime` path that contains a space (it fails
-  // to load the dylib with error 126, ERROR_MOD_NOT_FOUND, when it re-launches),
-  // which broke every install location with a space in it — most importantly the
-  // default MSI target `C:\Program Files\`. laufey resolves a bare dylib name
-  // against its own executable's directory (where the dylib is co-located), so a
-  // plain filename loads correctly regardless of the install path or the current
-  // working directory. The laufey binary itself is launched by cmd with normal
-  // quoting, which handles spaces fine.
-  std::fs::write(
-    &launcher_path,
-    format!(
-      "@echo off\r\n\
-       set DIR=%~dp0\r\n\
-       \"%DIR%{laufey_binary}\" --runtime \"{dylib}\" %*\r\n",
-      laufey_binary = laufey_binary_name,
-      dylib = dylib_filename_str,
-    ),
-  )?;
+  let launcher_path = app_dir.join(format!("{}.exe", app_name));
+  let staged_backend = app_dir.join(&laufey_binary_name);
+  if staged_backend != launcher_path {
+    std::fs::rename(&staged_backend, &launcher_path)?;
+  }
 
   // Handle icon — drop an .ico next to the launcher. Embedding the icon
   // into the .exe itself requires rcedit or equivalent and is out of scope.
@@ -4265,23 +4256,21 @@ fn create_windows_msi(
 
   // Locate the laufey launcher in the install root so we can author a Start Menu
   // shortcut to it (otherwise the installed app is not discoverable — there is no
-  // icon anywhere, only files under Program Files). The shortcut targets the
-  // laufey exe directly with `--runtime <dylib>` so launching it opens the app's
-  // window with no console, mirroring the `.bat` launcher. laufey resolves the
-  // bare dylib name against its own directory, so no path (and no space) is
-  // needed in the arguments.
+  // icon anywhere, only files under Program Files). The launcher is the backend
+  // binary renamed to `<app>.exe`; it auto-loads the co-located `<app>.dll`
+  // runtime, so the shortcut targets it directly with no arguments.
+  let launcher_exe = format!("{app_name}.exe").to_ascii_lowercase();
   let shortcut_target = rel_files
     .iter()
     .zip(files.iter())
     .find(|((rel, _), _)| {
       rel.parent() == Some(Path::new(""))
-        && rel.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-          let n = n.to_ascii_lowercase();
-          n.starts_with("laufey") && n.ends_with(".exe")
-        })
+        && rel
+          .file_name()
+          .and_then(|n| n.to_str())
+          .is_some_and(|n| n.to_ascii_lowercase() == launcher_exe)
     })
     .map(|(_, f)| (f.key.clone(), f.component.clone()));
-  let dylib_name = format!("{app_name}.dll");
 
   // The all-users Start Menu folder that hosts the app shortcut. Only added when
   // we found a launcher to point at.
@@ -4554,7 +4543,7 @@ fn create_windows_msi(
       Value::Str(launcher_comp.clone()),
       // Non-advertised shortcut: `[#key]` resolves to the installed exe's path.
       Value::Str(format!("[#{launcher_key}]")),
-      Value::Str(format!("--runtime \"{dylib_name}\"")),
+      Value::Null,                          // Arguments (co-located auto-load)
       Value::Null,                          // Description
       Value::Null,                          // Hotkey
       Value::Null,                          // Icon_
