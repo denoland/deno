@@ -2030,7 +2030,19 @@ impl ModuleMap {
     // Under Explicit microtask policy, V8 won't drain microtasks after
     // module.evaluate(). We must do it ourselves so that the module
     // evaluation promise resolves for synchronous modules.
-    tc_scope.perform_microtask_checkpoint();
+    //
+    // However, skip the checkpoint when we are inside a top-level
+    // `module.evaluate()` call (i.e. `evaluating_top_level` is set), e.g.
+    // when a CJS `require()` of an ES module fires while V8 is evaluating
+    // an async module graph. Draining microtasks at that point can resume
+    // a suspended TLA dependency while its parent module is still in the
+    // Evaluating state on the stack; V8 then cannot propagate the
+    // completion to the parent and the graph's evaluation promise stays
+    // Pending forever. The module evaluated here has a synchronous graph
+    // (checked above), so its promise settles without a checkpoint.
+    if !self.evaluating_top_level.get() {
+      tc_scope.perform_microtask_checkpoint();
+    }
 
     if let Some(exception) = tc_scope.exception() {
       return Err(
