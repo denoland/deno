@@ -1271,6 +1271,9 @@ impl TLSWrapInner {
       return;
     };
 
+    debug_assert!(
+      self.pending_cleartext_offset <= self.pending_cleartext.len()
+    );
     let data = &self.pending_cleartext[self.pending_cleartext_offset..];
     if data.is_empty() {
       return;
