@@ -81,10 +81,11 @@ pub async fn format(
     );
   }
 
-  if let Some(watch_flags) = &fmt_flags.watch {
+  if let Some(watch_flags) = &flags.watch {
+    let no_clear_screen = watch_flags.no_clear_screen;
     file_watcher::watch_func(
       flags,
-      file_watcher::PrintConfig::new("Fmt", !watch_flags.no_clear_screen),
+      file_watcher::PrintConfig::new("Fmt", !no_clear_screen),
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
         watcher_communicator.show_path_changed(changed_paths.clone());

@@ -81,7 +81,7 @@ pub async fn lint(
   flags: Arc<Flags>,
   lint_flags: LintFlags,
 ) -> Result<(), AnyError> {
-  if lint_flags.watch.is_some() {
+  if flags.watch.is_some() {
     if lint_flags.is_stdin() {
       return Err(anyhow!("Lint watch on standard input is not supported.",));
     }
@@ -197,11 +197,14 @@ async fn lint_with_watch(
   flags: Arc<Flags>,
   lint_flags: LintFlags,
 ) -> Result<(), AnyError> {
-  let watch_flags = lint_flags.watch.as_ref().unwrap();
+  let no_clear_screen = flags
+    .watch
+    .as_ref()
+    .is_some_and(|watch| watch.no_clear_screen);
 
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig::new("Lint", !watch_flags.no_clear_screen),
+    file_watcher::PrintConfig::new("Lint", !no_clear_screen),
     move |flags, watcher_communicator, changed_paths| {
       let lint_flags = lint_flags.clone();
       watcher_communicator.show_path_changed(changed_paths.clone());
