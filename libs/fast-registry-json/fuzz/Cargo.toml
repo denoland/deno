@@ -1,3 +1,5 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
 [package]
 name = "fast-registry-json-fuzz"
 version = "0.0.0"
