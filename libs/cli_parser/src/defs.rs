@@ -1134,6 +1134,19 @@ pub static TASK_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
     ArgDef::new("eval").long("eval").set_true(),
+    ArgDef::new("if-present").long("if-present").set_true(),
+    ArgDef::new("no-prefix").long("no-prefix").set_true(),
+    ArgDef::new("jobs")
+      .long("jobs")
+      .long_aliases(&["concurrency"])
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
     ArgDef::new("node-modules-dir")
       .long("node-modules-dir")
       .action(ArgAction::Set)

@@ -1787,6 +1787,7 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) {
   config_args_parse(result, flags);
   node_modules_arg_parse(result, flags);
   lock_args_parse(result, flags);
+  env_file_arg_parse(result, flags);
 
   let mut recursive = result.get_bool("recursive");
   let filter =
