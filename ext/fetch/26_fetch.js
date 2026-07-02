@@ -1065,7 +1065,7 @@ function handleWasmStreaming(source, rid) {
       // async op pump the bytes straight into V8's streaming compiler.
       const stream = res.body;
       const resourceBacking = getReadableStreamResourceBacking(stream);
-      let streamRid;
+      let streamRid, closeStreamRid;
       if (resourceBacking) {
         // Fast path: feed straight from the body's backing resource. Acquire a
         // reader and mark the stream disturbed (as the response-body fast path
@@ -1076,8 +1076,13 @@ function handleWasmStreaming(source, rid) {
         acquireReadableStreamDefaultReader(stream);
         readableStreamDisturb(stream);
         streamRid = resourceBacking.rid;
+        // Only close the resource if the stream owns it (mirrors the fast path
+        // in `readableStreamCollectIntoUint8Array`).
+        closeStreamRid = resourceBacking.autoClose;
       } else {
+        // We allocated the resource, so we own it and must close it.
         streamRid = resourceForReadableStream(stream);
+        closeStreamRid = true;
       }
 
       PromisePrototypeThen(
@@ -1085,13 +1090,13 @@ function handleWasmStreaming(source, rid) {
         // 2.7
         () => {
           if (resourceBacking) readableStreamClose(stream);
-          core.tryClose(streamRid);
+          if (closeStreamRid) core.tryClose(streamRid);
           core.close(rid);
         },
         // 2.8
         (err) => {
           if (resourceBacking) readableStreamClose(stream);
-          core.tryClose(streamRid);
+          if (closeStreamRid) core.tryClose(streamRid);
           core.abortWasmStreaming(rid, err);
         },
       );
