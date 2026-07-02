@@ -1,0 +1,6 @@
+{
+  "workspace": [
+    "./member_a",
+    "./member_b"
+  ]
+}
