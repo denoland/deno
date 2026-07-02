@@ -729,6 +729,10 @@ pub struct ResolverFactoryOptions {
   pub allow_json_imports: AllowJsonImports,
   /// Modules loaded via --require flag that should always be treated as CommonJS
   pub require_modules: Vec<Url>,
+  /// When `true`, TypeScript-family modules emitted under the inspector are
+  /// padded after transpile so the Chrome DevTools profiler reports
+  /// source-accurate line numbers. See denoland/deno#25349.
+  pub line_preserving_emit: bool,
 }
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
@@ -926,6 +930,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.workspace_factory.emit_cache()?.clone(),
         self.parsed_source_cache().clone(),
         self.compiler_options_resolver()?.clone(),
+        self.options.line_preserving_emit,
       )))
     })
   }
