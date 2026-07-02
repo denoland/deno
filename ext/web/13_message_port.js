@@ -16,6 +16,7 @@ const {
   op_message_port_recv_message_sync,
 } = core.ops;
 const {
+  Array,
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
@@ -675,7 +676,16 @@ const FAST_TRUE = 3;
 const FAST_INT32 = 4;
 const FAST_DOUBLE = 5;
 const FAST_STRING = 6;
+const FAST_STRING_LATIN1 = 7;
 const FAST_STRING_CHUNK = 0x8000;
+// Above this many code units a two-byte (non-Latin1) string is cheaper to hand
+// to V8's ValueSerializer, which blits two-byte strings with a native memcpy,
+// than to walk per-char in the JS loop below. Measured crossover on x86_64
+// Linux: the JS loop wins up to ~128 code units and loses beyond it (+19% at
+// 256, far worse for larger). All-Latin1 strings stay on the fast path
+// regardless of length (1 byte/char keeps them competitive and halves the
+// buffer).
+const FAST_STRING_2BYTE_MAX = 128;
 
 // Scratch union buffer used to read/write the raw bytes of an f64. Sender and
 // receiver always run on the same machine, so native byte order is consistent
@@ -724,19 +734,43 @@ function fastSerialize(value) {
     }
     case "string": {
       const length = value.length;
-      const b = new Uint8Array(6 + length * 2);
+      // Optimistically encode as Latin1 (1 byte/code unit). Most real payloads
+      // (JSON, URLs, identifiers) are ASCII, so this halves both the buffer
+      // size and the decode work, and stays competitive with V8 even for large
+      // strings. Bail to the two-byte path on the first code unit >= 256.
+      const b = new Uint8Array(6 + length);
       b[0] = FAST_MARKER;
-      b[1] = FAST_STRING;
+      b[1] = FAST_STRING_LATIN1;
       b[2] = length & 0xFF;
       b[3] = (length >>> 8) & 0xFF;
       b[4] = (length >>> 16) & 0xFF;
       b[5] = (length >>> 24) & 0xFF;
+      let latin1 = true;
+      for (let i = 0, j = 6; i < length; i++, j++) {
+        const code = StringPrototypeCharCodeAt(value, i);
+        if (code >= 256) {
+          latin1 = false;
+          break;
+        }
+        b[j] = code;
+      }
+      if (latin1) return b;
+      // Non-Latin1: long two-byte strings lose to V8's native memcpy, so hand
+      // them back to the serializer (see FAST_STRING_2BYTE_MAX).
+      if (length > FAST_STRING_2BYTE_MAX) return undefined;
+      const b2 = new Uint8Array(6 + length * 2);
+      b2[0] = FAST_MARKER;
+      b2[1] = FAST_STRING;
+      b2[2] = length & 0xFF;
+      b2[3] = (length >>> 8) & 0xFF;
+      b2[4] = (length >>> 16) & 0xFF;
+      b2[5] = (length >>> 24) & 0xFF;
       for (let i = 0, j = 6; i < length; i++, j += 2) {
         const code = StringPrototypeCharCodeAt(value, i);
-        b[j] = code & 0xFF;
-        b[j + 1] = code >>> 8;
+        b2[j] = code & 0xFF;
+        b2[j + 1] = code >>> 8;
       }
-      return b;
+      return b2;
     }
     default:
       return undefined;
@@ -769,6 +803,26 @@ function fastDeserialize(buffer) {
       fastF64Bytes[6] = buffer[8];
       fastF64Bytes[7] = buffer[9];
       return fastF64[0];
+    case FAST_STRING_LATIN1: {
+      const length = (buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) |
+        (buffer[5] << 24)) >>> 0;
+      let result = "";
+      // Decode in bounded chunks: `String.fromCharCode.apply` with a huge
+      // argument array can overflow the call stack, so cap the spread width.
+      for (let i = 0, j = 6; i < length;) {
+        const chunkLength = length - i > FAST_STRING_CHUNK
+          ? FAST_STRING_CHUNK
+          : length - i;
+        // Pre-size and index-assign rather than push, to avoid per-char array
+        // growth on this hot path.
+        const codes = new Array(chunkLength);
+        for (let k = 0; k < chunkLength; k++, i++, j++) {
+          codes[k] = buffer[j];
+        }
+        result += ReflectApply(StringFromCharCode, null, codes);
+      }
+      return result;
+    }
     case FAST_STRING: {
       const length = (buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) |
         (buffer[5] << 24)) >>> 0;
@@ -777,9 +831,9 @@ function fastDeserialize(buffer) {
         const chunkLength = length - i > FAST_STRING_CHUNK
           ? FAST_STRING_CHUNK
           : length - i;
-        const codes = [];
+        const codes = new Array(chunkLength);
         for (let k = 0; k < chunkLength; k++, i++, j += 2) {
-          ArrayPrototypePush(codes, buffer[j] | (buffer[j + 1] << 8));
+          codes[k] = buffer[j] | (buffer[j + 1] << 8);
         }
         result += ReflectApply(StringFromCharCode, null, codes);
       }

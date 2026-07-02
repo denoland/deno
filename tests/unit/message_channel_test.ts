@@ -56,8 +56,10 @@ Deno.test("messagechannel no-transferables ports is empty frozen array", async (
 Deno.test("messagechannel primitive fast path", async () => {
   // Primitives take a custom encoding that bypasses V8's structured-clone
   // serializer; verify a representative spread round-trips exactly, including
-  // the tricky cases (-0, NaN, +/-Infinity, int32 boundaries, strings with
-  // lone surrogates) and a bigint that intentionally falls back to V8.
+  // the tricky cases (-0, NaN, +/-Infinity, int32 boundaries, lone surrogates),
+  // every string sub-path (1-byte Latin1, 2-byte, the two-byte length cap and
+  // its V8 fallback, and chunked decode past FAST_STRING_CHUNK), and a bigint
+  // that intentionally falls back to V8.
   const mc = new MessageChannel();
   const values: unknown[] = [
     undefined,
@@ -89,6 +91,13 @@ Deno.test("messagechannel primitive fast path", async () => {
     "\uD800",
     "\uDC00",
     "\uD83D\uDE00",
+    "caf\u00E9 \u00FF\u0080", // high-Latin1 code units (128..255) -> 1-byte path
+    "abc\u20AC", // starts ASCII then hits a >=256 unit -> bails to 2-byte path
+    "\u20AC".repeat(128), // two-byte at the fast-path cap
+    "\u20AC".repeat(129), // just past the cap -> V8 fallback (still exact)
+    "x".repeat(40000), // ASCII > FAST_STRING_CHUNK (32768) -> chunked 1-byte decode
+    "\u0100".repeat(40000), // >256 code units, > chunk size -> V8 fallback, exact
+    "a".repeat(32767) + "\uD83D\uDE00", // large mixed string with a surrogate pair -> V8, exact
     123n, // bigint -> V8 fallback
   ];
   // Expected received values. These match `values` except for `undefined`:
