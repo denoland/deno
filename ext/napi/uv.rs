@@ -1416,6 +1416,23 @@ unsafe extern "C" fn uv_thread_equal(t1: *const u64, t2: *const u64) -> c_int {
 // `uv_cond_broadcast` must take that same internal mutex to notify and can't
 // acquire it until the waiter is actually parked, so no wakeup is lost.
 
+// `uv_cond_timedwait` returns `UV_ETIMEDOUT` on timeout. That value is
+// platform specific: libuv's `uv/errno.h` defines it as `-ETIMEDOUT` on unix
+// (`-110` on Linux, `-60` on macOS) and only falls back to the placeholder
+// `-4039` on Windows (and other platforms without `ETIMEDOUT`). Addons compare
+// the return against their own `UV_ETIMEDOUT`, so we must match per platform
+// rather than always returning `-4039`.
+const UV_ETIMEDOUT: c_int = {
+  #[cfg(windows)]
+  {
+    -4039
+  }
+  #[cfg(not(windows))]
+  {
+    -libc::ETIMEDOUT
+  }
+};
+
 struct CondInner {
   mutex: Mutex<()>,
   condvar: deno_core::parking_lot::Condvar,
@@ -1525,13 +1542,7 @@ unsafe extern "C" fn uv_cond_timedwait(
   unsafe {
     std::mem::forget((*mutex).mutex.lock());
   }
-  if timed_out {
-    // UV_ETIMEDOUT. libuv uses platform-independent error codes; -4039 is its
-    // numbering for ETIMEDOUT.
-    -4039
-  } else {
-    0
-  }
+  if timed_out { UV_ETIMEDOUT } else { 0 }
 }
 
 unsafe extern "C" fn async_exec_wrap(_env: napi_env, data: *mut c_void) {
@@ -1636,74 +1647,6 @@ mod tests {
       assert_ne!(uv_sem_trywait(sem_ptr), 0);
       assert_ne!(uv_thread_equal(tid_ptr, tid_ptr), 0);
       uv_sem_destroy(sem_ptr);
-    }
-  }
-
-  // Drives the uv_cond_* / uv_mutex_* polyfills the way a native addon would:
-  // the main thread waits on a condition variable until a worker sets a
-  // predicate (guarded by the mutex) and signals it.
-  #[test]
-  fn condition_variable() {
-    struct Shared {
-      mutex: *mut uv_mutex_t,
-      cond: *mut u32,
-      ready: bool,
-    }
-
-    unsafe extern "C" fn worker(arg: *mut c_void) {
-      let shared = arg as *mut Shared;
-      unsafe {
-        uv_mutex_lock((*shared).mutex);
-        (*shared).ready = true;
-        uv_cond_signal((*shared).cond);
-        uv_mutex_unlock((*shared).mutex);
-      }
-    }
-
-    unsafe {
-      let mut mtx = Box::new(MaybeUninit::<uv_mutex_t>::uninit());
-      let mtx_ptr = mtx.as_mut_ptr();
-      assert_eq!(uv_mutex_init(mtx_ptr), 0);
-      let mut cond: u32 = 0;
-      let cond_ptr: *mut u32 = &mut cond;
-      assert_eq!(uv_cond_init(cond_ptr), 0);
-
-      let mut shared = Shared {
-        mutex: mtx_ptr,
-        cond: cond_ptr,
-        ready: false,
-      };
-      let shared_ptr: *mut Shared = &mut shared;
-
-      // Hold the mutex, then spawn the worker — it blocks on the mutex until
-      // uv_cond_wait below releases it.
-      uv_mutex_lock(mtx_ptr);
-      let mut tid: u64 = 0;
-      let tid_ptr: *mut u64 = &mut tid;
-      assert_eq!(uv_thread_create(tid_ptr, worker, shared_ptr.cast()), 0);
-
-      while !(*shared_ptr).ready {
-        uv_cond_wait(cond_ptr, mtx_ptr);
-      }
-      uv_mutex_unlock(mtx_ptr);
-      assert_eq!(uv_thread_join(tid_ptr), 0);
-      assert!((*shared_ptr).ready);
-
-      // With nobody signaling, uv_cond_timedwait reports UV_ETIMEDOUT. Loop to
-      // tolerate spurious wakeups.
-      let start = Instant::now();
-      let rc = loop {
-        uv_mutex_lock(mtx_ptr);
-        let rc = uv_cond_timedwait(cond_ptr, mtx_ptr, 5_000_000);
-        uv_mutex_unlock(mtx_ptr);
-        if rc == -4039 || start.elapsed() > std::time::Duration::from_secs(5) {
-          break rc;
-        }
-      };
-      assert_eq!(rc, -4039);
-
-      uv_cond_destroy(cond_ptr);
-      uv_mutex_destroy(mtx_ptr);
     }
   }
 }

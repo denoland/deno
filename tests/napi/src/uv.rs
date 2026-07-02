@@ -788,18 +788,21 @@ extern "C" fn test_uv_cond(
     assert_eq!(uv_thread_join(tid_ptr), 0);
     assert!(ready);
 
-    // With nobody signaling, uv_cond_timedwait must report a non-zero error
-    // (UV_ETIMEDOUT). Loop to tolerate spurious wakeups.
+    // With nobody signaling, uv_cond_timedwait must report the platform's
+    // UV_ETIMEDOUT (the value the addon itself is compiled against), not just a
+    // non-zero code. Loop to tolerate spurious (rc == 0) wakeups.
+    let uv_etimedout = libuv_sys_lite::uv_errno_t::UV_ETIMEDOUT.0;
     let start = Instant::now();
-    loop {
+    let rc = loop {
       uv_mutex_lock(mutex_ptr);
       let rc = uv_cond_timedwait(cond_ptr, mutex_ptr, 5_000_000);
       uv_mutex_unlock(mutex_ptr);
       if rc != 0 {
-        break;
+        break rc;
       }
       assert!(start.elapsed() < Duration::from_secs(5));
-    }
+    };
+    assert_eq!(rc, uv_etimedout);
 
     uv_cond_destroy(cond_ptr);
     uv_mutex_destroy(mutex_ptr);
