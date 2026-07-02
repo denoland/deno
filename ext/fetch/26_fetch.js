@@ -41,8 +41,10 @@ const {
   acquireReadableStreamDefaultReader,
   errorReadableStream,
   getReadableStreamResourceBacking,
+  getReadableStreamStoredError,
   readableStreamClose,
   readableStreamDisturb,
+  readableStreamError,
   readableStreamForRid,
   ReadableStreamPrototype,
   resourceForReadableStream,
@@ -1085,21 +1087,39 @@ function handleWasmStreaming(source, rid) {
         closeStreamRid = true;
       }
 
-      PromisePrototypeThen(
-        op_wasm_streaming_stream_feed(rid, streamRid),
-        // 2.7
-        () => {
+      // Pump the bytes in Rust, then reconcile the stream and the wasm
+      // streaming resource. This is wrapped in an async IIFE (rather than a
+      // `.then`/`.catch` pair) so that nothing thrown while handling the
+      // result can escape as an unhandled rejection.
+      PromisePrototypeThen((async () => {
+        let feedError;
+        try {
+          await op_wasm_streaming_stream_feed(rid, streamRid);
+        } catch (err) {
+          feedError = err;
+        }
+        if (closeStreamRid) core.tryClose(streamRid);
+
+        // If the request was aborted, the body stream was errored with the
+        // abort reason (e.g. an AbortError). Surface that reason rather than
+        // the op's generic cancellation error, and don't try to close an
+        // already-errored stream (which would assert).
+        const storedError = resourceBacking
+          ? getReadableStreamStoredError(stream)
+          : undefined;
+        if (storedError !== undefined) {
+          // 2.8
+          core.abortWasmStreaming(rid, storedError);
+        } else if (feedError !== undefined) {
+          // 2.8
+          if (resourceBacking) readableStreamError(stream, feedError);
+          core.abortWasmStreaming(rid, feedError);
+        } else {
+          // 2.7
           if (resourceBacking) readableStreamClose(stream);
-          if (closeStreamRid) core.tryClose(streamRid);
           core.close(rid);
-        },
-        // 2.8
-        (err) => {
-          if (resourceBacking) readableStreamClose(stream);
-          if (closeStreamRid) core.tryClose(streamRid);
-          core.abortWasmStreaming(rid, err);
-        },
-      );
+        }
+      })());
     } else {
       // 2.7
       core.close(rid);
