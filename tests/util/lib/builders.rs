@@ -41,6 +41,7 @@ use crate::jsr_registry_unset_url;
 #[cfg(feature = "lsp")]
 use crate::lsp::LspClientBuilder;
 use crate::nodejs_org_mirror_unset_url;
+use crate::npm_jsr_registry_unset_url;
 use crate::npm_registry_unset_url;
 use crate::print::spawn_thread;
 use crate::println;
@@ -971,6 +972,12 @@ impl TestCommandBuilder {
     }
     if !envs.contains_key("JSR_URL") {
       envs.insert("JSR_URL".to_string(), jsr_registry_unset_url());
+    }
+    if !envs.contains_key("DENO_NPM_JSR_REGISTRY") {
+      envs.insert(
+        "DENO_NPM_JSR_REGISTRY".to_string(),
+        npm_jsr_registry_unset_url(),
+      );
     }
     if !envs.contains_key("NODEJS_ORG_MIRROR") {
       envs.insert(
