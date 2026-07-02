@@ -416,8 +416,9 @@ Deno.test(
   async function netTcpSetKeepAliveOptions() {
     const listener = Deno.listen({ port: 0 });
     const { port } = listener.addr as Deno.NetAddr;
-    const accepted = listener.accept().then((conn) => conn.close());
-    const conn = await Deno.connect({ hostname: "127.0.0.1", port });
+    const connPromise = Deno.connect({ hostname: "127.0.0.1", port });
+    const accepted = await listener.accept();
+    const conn = await connPromise;
 
     // Enabling with tuning options (and partial / empty objects) is allowed.
     conn.setKeepAlive({ time: 1000, interval: 1000, retries: 3 });
@@ -438,8 +439,8 @@ Deno.test(
     );
 
     conn.close();
+    accepted.close();
     listener.close();
-    await accepted;
   },
 );
 

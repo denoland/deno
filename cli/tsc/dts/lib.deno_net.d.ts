@@ -446,9 +446,10 @@ declare namespace Deno {
   /** Options for tuning TCP keep-alive behavior, passed to
    * {@linkcode Deno.TcpConn.setKeepAlive}.
    *
-   * Durations are in milliseconds and are floored to whole seconds by the
-   * operating system, so `time` and `interval` must be at least `1000`.
-   * Per-field platform support (unsupported fields are ignored):
+   * Durations are in milliseconds and must be at least `1000`. On Unix the
+   * operating system floors them to whole seconds. Fields left unspecified
+   * keep their operating system defaults. Per-field platform support
+   * (unsupported fields are ignored):
    *
    * - `time`: all platforms (`TCP_KEEPIDLE`).
    * - `interval`: Unix and Windows (`TCP_KEEPINTVL`).
