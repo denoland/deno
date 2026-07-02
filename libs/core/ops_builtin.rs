@@ -307,41 +307,44 @@ pub fn op_wasm_streaming_set_url(
   Ok(())
 }
 
+/// Pump the bytes of a readable stream resource straight into V8's WebAssembly
+/// streaming compiler, entirely on the Rust side.
+///
+/// Compared to feeding one chunk at a time from JS via `op_wasm_streaming_feed`,
+/// this avoids a JS round-trip (and the ReadableStream reader machinery) per
+/// chunk. The stream resource is looked up once up front, and each chunk is read
+/// with `read()`, which hands back the resource's own buffer (zero-copy for the
+/// network fetch body and wrapped `ReadableStream` sources that back wasm
+/// streaming) so the only copy is the unavoidable one into the compiler.
+///
+/// The caller owns the lifetime of `stream_rid`: it keeps the backing stream
+/// alive for the duration of the feed and closes the resource afterwards.
 #[op2]
 async fn op_wasm_streaming_stream_feed(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[smi] stream_rid: ResourceId,
-  auto_close: bool,
 ) -> Result<(), JsErrorBox> {
   let wasm_streaming = state
-    .borrow_mut()
+    .borrow()
     .resource_table
     .get::<WasmStreamingResource>(rid)
     .map_err(|_| JsErrorBox::type_error("stream not found"))?;
+  let resource = state
+    .borrow()
+    .resource_table
+    .get_any(stream_rid)
+    .map_err(|_| JsErrorBox::type_error("stream not found"))?;
 
   loop {
-    let resource = state
-      .borrow()
-      .resource_table
-      .get_any(stream_rid)
-      .map_err(|_| JsErrorBox::type_error("stream not found"))?;
-    let view = deno_core::BufMutView::new(65536);
-    let (bytes, view) = resource.read_byob(view).await?;
+    let buf = resource.clone().read(65536).await?;
 
     /* EOF */
-    if bytes == 0 {
+    if buf.is_empty() {
       break;
     }
 
-    wasm_streaming
-      .0
-      .borrow_mut()
-      .on_bytes_received(&view[..bytes]);
-  }
-
-  if auto_close {
-    let _ = state.borrow_mut().resource_table.take_any(stream_rid);
+    wasm_streaming.0.borrow_mut().on_bytes_received(&buf);
   }
 
   Ok(())

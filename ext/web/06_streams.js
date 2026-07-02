@@ -1396,6 +1396,15 @@ function readableStreamThrowIfErrored(stream) {
 }
 
 /**
+ * Returns the stream's stored error if it is errored, otherwise `undefined`.
+ * @param {ReadableStream} stream
+ * @returns {any}
+ */
+function getReadableStreamStoredError(stream) {
+  return stream[_state] === "errored" ? stream[_storedError] : undefined;
+}
+
+/**
  * @param {unknown} value
  * @returns {value is WritableStream}
  */
@@ -7714,6 +7723,7 @@ return {
   kNodeWebStreamsType,
   kNodeMessagingTransfer,
   // Exposed in global runtime scope
+  acquireReadableStreamDefaultReader,
   ByteLengthQueuingStrategy,
   CountQueuingStrategy,
   createProxy,
@@ -7722,6 +7732,7 @@ return {
   Deferred,
   errorReadableStream,
   getReadableStreamResourceBacking,
+  getReadableStreamStoredError,
   getWritableStreamResourceBacking,
   isReadableByteStreamController,
   isReadableStream,
@@ -7773,6 +7784,7 @@ return {
   readableStreamDefaultControllerShouldCallPull,
   ReadableStreamDefaultReader,
   readableStreamDisturb,
+  readableStreamError,
   readableStreamForRid,
   readableStreamForRidUnrefable,
   readableStreamForRidUnrefableRef,
