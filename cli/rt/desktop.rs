@@ -206,6 +206,38 @@ pub const DESKTOP_JS: &str = r#"
   // Per-window bind callback registry: windowId -> Map<name, fn>
   const windowBindCallbacks = new Map();
 
+  // Resolve the callback for an incoming bindCall. Kept as a standalone,
+  // closure-free function (the registry is passed in) so it can be executed
+  // directly in a unit test — see `resolve_bind_callback_*` in this file.
+  //
+  // The backend may report a window id for the calling renderer that doesn't
+  // line up with the id the binding was registered under (observed on the
+  // CEF/Windows backend when an entrypoint with extra modules — e.g. a `jsr:`
+  // import — delays startup; see denoland/deno#35647). `windowBindCallbacks`
+  // and the native binding registry are both keyed by the same window id, so a
+  // window-scoped miss means the call arrived under a different id than
+  // `bind()` saw. When exactly one window registered a callback for this name
+  // the target is unambiguous, so route to it rather than dropping the call.
+  // Per-window same-named bindings keep strict matching: ambiguous names
+  // return null so the caller still rejects.
+  // TEST-EXTRACT:resolveBindCallback:START
+  function resolveBindCallback(registry, windowId, name) {
+    const callbacks = registry.get(windowId);
+    const scoped = callbacks?.get(name);
+    if (scoped) return scoped;
+    let match = null;
+    let count = 0;
+    for (const map of registry.values()) {
+      const candidate = map.get(name);
+      if (candidate) {
+        match = candidate;
+        if (++count > 1) return null;
+      }
+    }
+    return count === 1 ? match : null;
+  }
+  // TEST-EXTRACT:resolveBindCallback:END
+
   // Binding-call correlation: when --inspect is active, both the Deno
   // and renderer consoles emit matching console.debug messages so the
   // developer can trace a binding call across isolates.
@@ -734,8 +766,11 @@ pub const DESKTOP_JS: &str = r#"
             break;
           }
           case "bindCall": {
-            const callbacks = windowBindCallbacks.get(ev.windowId);
-            const fn_ = callbacks?.get(ev.name);
+            const fn_ = resolveBindCallback(
+              windowBindCallbacks,
+              ev.windowId,
+              ev.name,
+            );
             if (!fn_) {
               op_desktop_reject_bind_call(ev.callId, "No callback bound for: " + ev.name);
               break;
@@ -1278,6 +1313,73 @@ mod tests {
     assert!(DESKTOP_JS.contains("navigator"));
     assert!(DESKTOP_JS.contains("permissions"));
     assert!(DESKTOP_JS.contains("PermissionStatus"));
+  }
+
+  #[test]
+  fn resolve_bind_callback_behaves() {
+    // Regression test for denoland/deno#35647. Runs the *actual*
+    // `resolveBindCallback` shipped in DESKTOP_JS (extracted between its
+    // TEST-EXTRACT markers) in a real V8 isolate and asserts its routing
+    // behaviour, rather than grepping the source for substrings.
+    let resolver = extract_marked(DESKTOP_JS, "resolveBindCallback");
+    let harness = format!(
+      r#"
+{resolver}
+
+// Tag each callback with the value it returns so we can assert identity.
+const tag = (v) => () => v;
+
+// Registry: window 7 bound "ping"; window 3 bound "other".
+const reg = new Map([
+  [7, new Map([["ping", tag("win7")]])],
+  [3, new Map([["other", tag("win3")]])],
+]);
+
+const check = (got, want, msg) => {{
+  if (got !== want) throw new Error(msg + ": got " + JSON.stringify(got));
+}};
+
+// 1) Exact window match resolves that window's callback.
+check(resolveBindCallback(reg, 7, "ping")(), "win7", "exact match");
+
+// 2) The #35647 case: the call arrives under a window id that never bound
+//    anything, but exactly one window bound "ping" -> route to it.
+check(resolveBindCallback(reg, 999, "ping")(), "win7", "unique fallback");
+
+// 3) Unknown binding name never resolves.
+check(resolveBindCallback(reg, 999, "missing"), null, "unknown name");
+check(resolveBindCallback(reg, 7, "missing"), null, "unknown name on real window");
+
+// 4) Ambiguous: two windows bound the same name. Exact id still matches its
+//    own callback, but a mismatched id must NOT guess between them.
+const reg2 = new Map([
+  [1, new Map([["ping", tag("a")]])],
+  [2, new Map([["ping", tag("b")]])],
+]);
+check(resolveBindCallback(reg2, 1, "ping")(), "a", "ambiguous exact w1");
+check(resolveBindCallback(reg2, 2, "ping")(), "b", "ambiguous exact w2");
+check(resolveBindCallback(reg2, 999, "ping"), null, "ambiguous fallback");
+
+"ok"
+"#
+    );
+
+    let mut runtime =
+      deno_core::JsRuntime::new(deno_core::RuntimeOptions::default());
+    runtime
+      .execute_script("[resolve_bind_callback_test]", harness)
+      .expect("resolveBindCallback assertions failed");
+  }
+
+  /// Pull the text between `// TEST-EXTRACT:<name>:START` and `:END` out of
+  /// `hay`. Lets a test run a self-contained slice of DESKTOP_JS (the real
+  /// shipped bytes) instead of asserting on substrings.
+  fn extract_marked(hay: &str, name: &str) -> String {
+    let start = format!("// TEST-EXTRACT:{name}:START");
+    let end = format!("// TEST-EXTRACT:{name}:END");
+    let from = hay.find(&start).expect("start marker present") + start.len();
+    let to = hay[from..].find(&end).expect("end marker present") + from;
+    hay[from..to].to_string()
   }
 
   #[test]
