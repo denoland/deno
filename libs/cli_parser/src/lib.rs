@@ -15,8 +15,8 @@ pub mod flags;
 pub mod completions;
 pub mod convert;
 pub mod defs;
-pub mod help;
 mod error;
+pub mod help;
 mod parse;
 mod types;
 
