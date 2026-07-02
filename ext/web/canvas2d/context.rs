@@ -24,6 +24,7 @@ use parley::FontContext;
 use parley::LayoutContext;
 use parley::PositionedLayoutItem;
 use vello::kurbo;
+use vello::kurbo::PathEl;
 use vello::kurbo::Shape;
 use vello::peniko;
 
@@ -153,6 +154,93 @@ unsafe impl GarbageCollected for OffscreenCanvasRenderingContext2D {
 }
 
 impl OffscreenCanvasRenderingContext2D {
+  fn transform_path(
+    path: &kurbo::BezPath,
+    transform: kurbo::Affine,
+  ) -> kurbo::BezPath {
+    if transform == kurbo::Affine::IDENTITY {
+      return path.clone();
+    }
+
+    let mut transformed = kurbo::BezPath::new();
+    transformed.extend(path.iter().map(|el| match el {
+      PathEl::MoveTo(p) => {
+        PathEl::MoveTo(Self::transform_point_or_original(transform, p))
+      }
+      PathEl::LineTo(p) => {
+        PathEl::LineTo(Self::transform_point_or_original(transform, p))
+      }
+      PathEl::QuadTo(p1, p2) => PathEl::QuadTo(
+        Self::transform_point_or_original(transform, p1),
+        Self::transform_point_or_original(transform, p2),
+      ),
+      PathEl::CurveTo(p1, p2, p3) => PathEl::CurveTo(
+        Self::transform_point_or_original(transform, p1),
+        Self::transform_point_or_original(transform, p2),
+        Self::transform_point_or_original(transform, p3),
+      ),
+      PathEl::ClosePath => PathEl::ClosePath,
+    }));
+    transformed
+  }
+
+  fn transform_point_or_original(
+    transform: kurbo::Affine,
+    point: kurbo::Point,
+  ) -> kurbo::Point {
+    let p = transform * point;
+    if p.x.is_finite() && p.y.is_finite() {
+      p
+    } else {
+      point
+    }
+  }
+
+  fn append_transformed_path(
+    &self,
+    path: &kurbo::BezPath,
+    transform: kurbo::Affine,
+  ) {
+    self
+      .current_path
+      .borrow_mut()
+      .extend(Self::transform_path(path, transform).iter());
+  }
+
+  /// Appends a shape (built in the local coordinate space corresponding to
+  /// `transform`, starting with a `MoveTo`) to the current default path. Per
+  /// spec, `arc()`, `ellipse()`, and `arcTo()` join to an existing subpath
+  /// with a straight line instead of starting a new one, so when the
+  /// current default path is non-empty, the shape's leading `MoveTo` is
+  /// downgraded to a `LineTo`.
+  fn append_shape_path(&self, path: &kurbo::BezPath, transform: kurbo::Affine) {
+    let transformed = Self::transform_path(path, transform);
+    let mut current = self.current_path.borrow_mut();
+    if current.elements().is_empty() {
+      current.extend(transformed.iter());
+      return;
+    }
+    let mut iter = transformed.iter();
+    if let Some(PathEl::MoveTo(p)) = iter.next() {
+      current.push(PathEl::LineTo(p));
+    }
+    current.extend(iter);
+  }
+
+  /// Returns the last on-path point of `path` in the same coordinate space
+  /// the path is stored in, or `None` if the path has no subpath yet (i.e.
+  /// it is empty or ends with `ClosePath`, which per spec is equivalent to
+  /// having no current point for arcTo()'s purposes).
+  fn last_path_point(path: &kurbo::BezPath) -> Option<kurbo::Point> {
+    match path.elements().last()? {
+      PathEl::MoveTo(p) => Some(*p),
+      PathEl::LineTo(p) => Some(*p),
+      PathEl::QuadTo(_, p) => Some(*p),
+      PathEl::CurveTo(_, _, p) => Some(*p),
+      PathEl::ClosePath => None,
+    }
+  }
+
   fn draw_text(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -568,14 +656,14 @@ impl OffscreenCanvasRenderingContext2D {
     &self,
     scope: &mut v8::PinScope<'_, '_>,
     arg: Option<v8::Local<'_, v8::Value>>,
-  ) -> kurbo::BezPath {
+  ) -> (kurbo::BezPath, bool) {
     if let Some(v) = arg
       && let Some(p) =
         deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, v)
     {
-      return p.path.borrow().clone();
+      return (p.path.borrow().clone(), true);
     }
-    self.current_path.borrow().clone()
+    (self.current_path.borrow().clone(), false)
   }
 
   fn resolve_path_and_fill_rule(
@@ -583,22 +671,22 @@ impl OffscreenCanvasRenderingContext2D {
     scope: &mut v8::PinScope<'_, '_>,
     first: Option<v8::Local<'_, v8::Value>>,
     second: Option<String>,
-  ) -> (kurbo::BezPath, String) {
+  ) -> (kurbo::BezPath, String, bool) {
     // first may be Path2D or fillRule string
     if let Some(v) = first {
       if v.is_string() {
         let rule = v.to_rust_string_lossy(scope);
-        return (self.current_path.borrow().clone(), rule);
+        return (self.current_path.borrow().clone(), rule, false);
       }
       if let Some(p) =
         deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, v)
       {
         let rule = second.unwrap_or_else(|| "nonzero".to_string());
-        return (p.path.borrow().clone(), rule);
+        return (p.path.borrow().clone(), rule, true);
       }
     }
     let rule = second.unwrap_or_else(|| "nonzero".to_string());
-    (self.current_path.borrow().clone(), rule)
+    (self.current_path.borrow().clone(), rule, false)
   }
 
   fn draw_path_fill(
@@ -606,6 +694,7 @@ impl OffscreenCanvasRenderingContext2D {
     scope: &mut v8::PinScope<'_, '_>,
     path: kurbo::BezPath,
     rule: String,
+    transform: kurbo::Affine,
   ) {
     if path.is_empty() {
       return;
@@ -620,13 +709,12 @@ impl OffscreenCanvasRenderingContext2D {
       None
     };
     let shadow_xform = if shadow {
-      Some(Self::shadow_transform(&state, state.transform))
+      Some(Self::shadow_transform(&state, transform))
     } else {
       None
     };
     let (brush, brush_transform) =
       self.resolve_brush(scope, &state.fill_style, 1.0);
-    let transform = state.transform;
     let fill = if rule == "evenodd" {
       peniko::Fill::EvenOdd
     } else {
@@ -657,6 +745,8 @@ impl OffscreenCanvasRenderingContext2D {
     &self,
     scope: &mut v8::PinScope<'_, '_>,
     path: kurbo::BezPath,
+    transform: kurbo::Affine,
+    is_path2d: bool,
   ) {
     if path.is_empty() {
       return;
@@ -671,14 +761,12 @@ impl OffscreenCanvasRenderingContext2D {
       None
     };
     let shadow_xform = if shadow {
-      Some(Self::shadow_transform(&state, state.transform))
+      Some(Self::shadow_transform(&state, transform))
     } else {
       None
     };
     let (brush, brush_transform) =
       self.resolve_brush(scope, &state.stroke_style, 1.0);
-    let transform = state.transform;
-
     let mut stroke =
       kurbo::Stroke::new(state.line_width).with_miter_limit(state.miter_limit);
     match state.line_join {
@@ -712,6 +800,12 @@ impl OffscreenCanvasRenderingContext2D {
     }
     drop(state);
 
+    let path = if is_path2d {
+      path
+    } else {
+      Self::transform_path(&path, transform.inverse())
+    };
+
     let (width, height) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
     let has_layer =
@@ -744,7 +838,8 @@ impl OffscreenCanvasRenderingContext2D {
     shape: &impl kurbo::Shape,
   ) {
     let path: kurbo::BezPath = shape.path_elements(0.1).collect();
-    self.draw_path_stroke(scope, path);
+    let transform = self.state.borrow().transform;
+    self.draw_path_stroke(scope, path, transform, true);
   }
 
   fn require_finite(
@@ -1014,7 +1109,12 @@ impl OffscreenCanvasRenderingContext2D {
     }
   }
 
-  fn apply_clip(&self, path: kurbo::BezPath, rule: String) {
+  fn apply_clip(
+    &self,
+    path: kurbo::BezPath,
+    rule: String,
+    transform: kurbo::Affine,
+  ) {
     if path.is_empty() {
       return;
     }
@@ -1023,8 +1123,6 @@ impl OffscreenCanvasRenderingContext2D {
     } else {
       peniko::Fill::NonZero
     };
-    let transform = self.state.borrow().transform;
-
     match &mut *self.drawing.borrow_mut() {
       DrawingBackend::Vello(scene) => {
         scene.push_clip_layer(fill, transform, &path);
@@ -1073,7 +1171,7 @@ impl OffscreenCanvasRenderingContext2D {
     b: Option<v8::Local<'_, v8::Value>>,
     c: Option<v8::Local<'_, v8::Value>>,
     d: Option<String>,
-  ) -> Result<(kurbo::BezPath, f64, f64, String), Canvas2DError> {
+  ) -> Result<(kurbo::BezPath, f64, f64, String, bool), Canvas2DError> {
     const PREFIX: &str = "Failed to execute 'isPointInPath' on 'OffscreenCanvasRenderingContext2D'";
 
     let validate_fill_rule =
@@ -1103,13 +1201,20 @@ impl OffscreenCanvasRenderingContext2D {
           .map(|v| v.to_rust_string_lossy(scope))
           .unwrap_or_else(|| "nonzero".into());
         validate_fill_rule("parameter 3", &rule)?;
-        return Ok((self.current_path.borrow().clone(), f64::NAN, y, rule));
+        return Ok((
+          self.current_path.borrow().clone(),
+          f64::NAN,
+          y,
+          rule,
+          false,
+        ));
       }
       return Ok((
         self.current_path.borrow().clone(),
         f64::NAN,
         f64::NAN,
         "nonzero".into(),
+        false,
       ));
     };
     if let Some(p) =
@@ -1120,7 +1225,7 @@ impl OffscreenCanvasRenderingContext2D {
       let y = c.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
       let rule = d.unwrap_or_else(|| "nonzero".into());
       validate_fill_rule("parameter 4", &rule)?;
-      return Ok((p.path.borrow().clone(), x, y, rule));
+      return Ok((p.path.borrow().clone(), x, y, rule, true));
     }
     if a.is_number() {
       // isPointInPath(x, y [, fillRule])
@@ -1130,7 +1235,7 @@ impl OffscreenCanvasRenderingContext2D {
         .map(|v| v.to_rust_string_lossy(scope))
         .unwrap_or_else(|| "nonzero".into());
       validate_fill_rule("parameter 3", &rule)?;
-      return Ok((self.current_path.borrow().clone(), x, y, rule));
+      return Ok((self.current_path.borrow().clone(), x, y, rule, false));
     }
     Err(Self::type_error_not_path2d(PREFIX, "parameter 1"))
   }
@@ -1142,7 +1247,7 @@ impl OffscreenCanvasRenderingContext2D {
     a: Option<v8::Local<'_, v8::Value>>,
     b: Option<v8::Local<'_, v8::Value>>,
     c: Option<v8::Local<'_, v8::Value>>,
-  ) -> Result<(kurbo::BezPath, f64, f64), Canvas2DError> {
+  ) -> Result<(kurbo::BezPath, f64, f64, bool), Canvas2DError> {
     const PREFIX: &str = "Failed to execute 'isPointInStroke' on 'OffscreenCanvasRenderingContext2D'";
     let Some(a) = a else {
       if c.is_some() {
@@ -1152,9 +1257,14 @@ impl OffscreenCanvasRenderingContext2D {
       if b.is_some() {
         // 2 args with null/undefined first: isPointInStroke(x, y)
         let y = b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
-        return Ok((self.current_path.borrow().clone(), f64::NAN, y));
+        return Ok((self.current_path.borrow().clone(), f64::NAN, y, false));
       }
-      return Ok((self.current_path.borrow().clone(), f64::NAN, f64::NAN));
+      return Ok((
+        self.current_path.borrow().clone(),
+        f64::NAN,
+        f64::NAN,
+        false,
+      ));
     };
     if let Some(p) =
       deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, a)
@@ -1162,13 +1272,13 @@ impl OffscreenCanvasRenderingContext2D {
       // isPointInStroke(path, x, y)
       let x = b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
       let y = c.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
-      return Ok((p.path.borrow().clone(), x, y));
+      return Ok((p.path.borrow().clone(), x, y, true));
     }
     if a.is_number() {
       // isPointInStroke(x, y)
       let x = Self::v8_to_f64(scope, a);
       let y = b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
-      return Ok((self.current_path.borrow().clone(), x, y));
+      return Ok((self.current_path.borrow().clone(), x, y, false));
     }
     Err(Self::type_error_not_path2d(PREFIX, "parameter 1"))
   }
@@ -1988,7 +2098,9 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] y: UnrestrictedDouble,
   ) {
     if x.is_finite() && y.is_finite() {
-      self.current_path.borrow_mut().move_to((*x, *y));
+      let transform = self.state.borrow().transform;
+      let mut path = self.current_path.borrow_mut();
+      path.move_to(transform * kurbo::Point::new(*x, *y));
     }
   }
 
@@ -2000,12 +2112,14 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] y: UnrestrictedDouble,
   ) {
     if x.is_finite() && y.is_finite() {
+      let transform = self.state.borrow().transform;
+      let p =
+        Self::transform_point_or_original(transform, kurbo::Point::new(*x, *y));
       let mut path = self.current_path.borrow_mut();
       if path.elements().is_empty() {
-        path.move_to((*x, *y));
-      } else {
-        path.line_to((*x, *y));
+        path.move_to(p);
       }
+      path.line_to(p);
     }
   }
 
@@ -2027,11 +2141,22 @@ impl OffscreenCanvasRenderingContext2D {
       && x.is_finite()
       && y.is_finite()
     {
+      let transform = self.state.borrow().transform;
+      let cp1 = Self::transform_point_or_original(
+        transform,
+        kurbo::Point::new(*cp1x, *cp1y),
+      );
+      let cp2 = Self::transform_point_or_original(
+        transform,
+        kurbo::Point::new(*cp2x, *cp2y),
+      );
+      let p =
+        Self::transform_point_or_original(transform, kurbo::Point::new(*x, *y));
       let mut path = self.current_path.borrow_mut();
       if path.elements().is_empty() {
-        path.move_to((*cp1x, *cp1y));
+        path.move_to(cp1);
       }
-      path.curve_to((*cp1x, *cp1y), (*cp2x, *cp2y), (*x, *y));
+      path.curve_to(cp1, cp2, p);
     }
   }
 
@@ -2045,11 +2170,18 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] y: UnrestrictedDouble,
   ) {
     if cpx.is_finite() && cpy.is_finite() && x.is_finite() && y.is_finite() {
+      let transform = self.state.borrow().transform;
+      let cp = Self::transform_point_or_original(
+        transform,
+        kurbo::Point::new(*cpx, *cpy),
+      );
+      let p =
+        Self::transform_point_or_original(transform, kurbo::Point::new(*x, *y));
       let mut path = self.current_path.borrow_mut();
       if path.elements().is_empty() {
-        path.move_to((*cpx, *cpy));
+        path.move_to(cp);
       }
-      path.quad_to((*cpx, *cpy), (*x, *y));
+      path.quad_to(cp, p);
     }
   }
 
@@ -2079,7 +2211,8 @@ impl OffscreenCanvasRenderingContext2D {
 
     let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
 
-    let mut path = self.current_path.borrow_mut();
+    let transform = self.state.borrow().transform;
+    let mut path = kurbo::BezPath::new();
     let arc = kurbo::Arc {
       center: kurbo::Point::new(*x, *y),
       radii: kurbo::Vec2::new(*radius, *radius),
@@ -2093,14 +2226,11 @@ impl OffscreenCanvasRenderingContext2D {
         *radius * start_angle.cos(),
         *radius * start_angle.sin(),
       );
-    if path.is_empty() {
-      path.move_to(start_pt);
-    } else {
-      path.line_to(start_pt);
-    }
+    path.move_to(start_pt);
     arc.to_cubic_beziers(0.1, |p1, p2, p3| {
       path.curve_to(p1, p2, p3);
     });
+    self.append_shape_path(&path, transform);
     Ok(())
   }
 
@@ -2125,12 +2255,29 @@ impl OffscreenCanvasRenderingContext2D {
     {
       return Ok(());
     }
-    let mut path = self.current_path.borrow_mut();
-    if path.is_empty() {
+    let transform = self.state.borrow().transform;
+    // Per spec, arcTo() behaves like moveTo(x1, y1) when there is no
+    // current subpath to compute the tangent circle from.
+    let Some(current_canvas_pt) =
+      Self::last_path_point(&self.current_path.borrow())
+    else {
+      let mut path = kurbo::BezPath::new();
       path.move_to((*x1, *y1));
+      self.append_transformed_path(&path, transform);
+      return Ok(());
+    };
+    // arc_to_impl's tangent-circle math assumes a Euclidean coordinate
+    // system, so it must run in user space: the current point is mapped
+    // back through the inverse CTM, and the resulting path is transformed
+    // forward again before being joined onto the current default path.
+    if transform.determinant() == 0.0 {
       return Ok(());
     }
+    let user_current = transform.inverse() * current_canvas_pt;
+    let mut path = kurbo::BezPath::new();
+    path.move_to(user_current);
     arc_to_impl(&mut path, *x1, *y1, *x2, *y2, *radius);
+    self.append_shape_path(&path, transform);
     Ok(())
   }
 
@@ -2167,7 +2314,8 @@ impl OffscreenCanvasRenderingContext2D {
 
     let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
 
-    let mut path = self.current_path.borrow_mut();
+    let transform = self.state.borrow().transform;
+    let mut path = kurbo::BezPath::new();
     let arc = kurbo::Arc {
       center: kurbo::Point::new(*x, *y),
       radii: kurbo::Vec2::new(*radius_x, *radius_y),
@@ -2184,14 +2332,11 @@ impl OffscreenCanvasRenderingContext2D {
       *x + dx * cos_r - dy * sin_r,
       *y + dx * sin_r + dy * cos_r,
     );
-    if path.is_empty() {
-      path.move_to(start_pt);
-    } else {
-      path.line_to(start_pt);
-    }
+    path.move_to(start_pt);
     arc.to_cubic_beziers(0.1, |p1, p2, p3| {
       path.curve_to(p1, p2, p3);
     });
+    self.append_shape_path(&path, transform);
     Ok(())
   }
 
@@ -2207,12 +2352,14 @@ impl OffscreenCanvasRenderingContext2D {
     if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
       return;
     }
-    let mut path = self.current_path.borrow_mut();
+    let transform = self.state.borrow().transform;
+    let mut path = kurbo::BezPath::new();
     path.move_to((*x, *y));
     path.line_to((*x + *w, *y));
     path.line_to((*x + *w, *y + *h));
     path.line_to((*x, *y + *h));
     path.close_path();
+    self.append_transformed_path(&path, transform);
   }
 
   #[reentrant]
@@ -2232,8 +2379,10 @@ impl OffscreenCanvasRenderingContext2D {
     }
     let radii_val = radii.unwrap_or_else(|| v8::undefined(scope).into());
     let corner_radii = parse_round_rect_radii(scope, radii_val)?;
-    let mut path = self.current_path.borrow_mut();
+    let transform = self.state.borrow().transform;
+    let mut path = kurbo::BezPath::new();
     build_round_rect_path(&mut path, *x, *y, *w, *h, &corner_radii);
+    self.append_transformed_path(&path, transform);
     Ok(())
   }
 
@@ -2267,11 +2416,17 @@ impl OffscreenCanvasRenderingContext2D {
     first: Option<v8::Local<'_, v8::Value>>,
     #[string] second: Option<String>,
   ) {
-    let (path, rule) = self.resolve_path_and_fill_rule(scope, first, second);
+    let (path, rule, is_path2d) =
+      self.resolve_path_and_fill_rule(scope, first, second);
     if path.is_empty() {
       return;
     }
-    self.draw_path_fill(scope, path, rule);
+    let transform = if is_path2d {
+      self.state.borrow().transform
+    } else {
+      kurbo::Affine::IDENTITY
+    };
+    self.draw_path_fill(scope, path, rule, transform);
   }
 
   #[fast]
@@ -2281,11 +2436,12 @@ impl OffscreenCanvasRenderingContext2D {
     scope: &mut v8::PinScope<'_, '_>,
     path: Option<v8::Local<'_, v8::Value>>,
   ) {
-    let path = self.resolve_optional_path(scope, path);
+    let (path, is_path2d) = self.resolve_optional_path(scope, path);
     if path.is_empty() {
       return;
     }
-    self.draw_path_stroke(scope, path);
+    let transform = self.state.borrow().transform;
+    self.draw_path_stroke(scope, path, transform, is_path2d);
   }
 
   #[undefined]
@@ -2295,11 +2451,17 @@ impl OffscreenCanvasRenderingContext2D {
     first: Option<v8::Local<'_, v8::Value>>,
     #[string] second: Option<String>,
   ) {
-    let (path, rule) = self.resolve_path_and_fill_rule(scope, first, second);
+    let (path, rule, is_path2d) =
+      self.resolve_path_and_fill_rule(scope, first, second);
     if path.is_empty() {
       return;
     }
-    self.apply_clip(path, rule);
+    let transform = if is_path2d {
+      self.state.borrow().transform
+    } else {
+      kurbo::Affine::IDENTITY
+    };
+    self.apply_clip(path, rule, transform);
   }
 
   fn is_point_in_path(
@@ -2310,13 +2472,17 @@ impl OffscreenCanvasRenderingContext2D {
     c: Option<v8::Local<'_, v8::Value>>,
     #[string] d: Option<String>,
   ) -> Result<bool, Canvas2DError> {
-    let (path, x, y, rule) =
+    let (path, x, y, rule, is_path2d) =
       self.resolve_point_in_path_args(scope, a, b, c, d)?;
     if !x.is_finite() || !y.is_finite() {
       return Ok(false);
     }
-    let transform = self.state.borrow().transform;
-    let p = transform.inverse() * kurbo::Point::new(x, y);
+    let p = if is_path2d {
+      let transform = self.state.borrow().transform;
+      transform.inverse() * kurbo::Point::new(x, y)
+    } else {
+      kurbo::Point::new(x, y)
+    };
     Ok(self.test_point_in_path(path, p.x, p.y, rule))
   }
 
@@ -2328,12 +2494,17 @@ impl OffscreenCanvasRenderingContext2D {
     b: Option<v8::Local<'_, v8::Value>>,
     c: Option<v8::Local<'_, v8::Value>>,
   ) -> Result<bool, Canvas2DError> {
-    let (path, x, y) = self.resolve_point_in_stroke_args(scope, a, b, c)?;
+    let (path, x, y, is_path2d) =
+      self.resolve_point_in_stroke_args(scope, a, b, c)?;
     if !x.is_finite() || !y.is_finite() {
       return Ok(false);
     }
-    let transform = self.state.borrow().transform;
-    let p = transform.inverse() * kurbo::Point::new(x, y);
+    let p = if is_path2d {
+      let transform = self.state.borrow().transform;
+      transform.inverse() * kurbo::Point::new(x, y)
+    } else {
+      kurbo::Point::new(x, y)
+    };
     Ok(self.test_point_in_stroke(path, p.x, p.y))
   }
 
