@@ -2861,6 +2861,10 @@ function readableStreamHasDefaultReader(stream) {
  * Close / abort / cancel semantics are handled here to match the generic
  * algorithm.
  *
+ * When a `signal` is supplied it is wired to a `deno_core` cancel handle so an
+ * abort mid-pump unblocks `op_pipe` promptly; the aborted transfer then tears
+ * down both ends with `signal.reason`, honoring the prevent* flags.
+ *
  * @param {ReadableStream} source
  * @param {WritableStream} dest
  * @param {{ rid: number }} srcBacking
@@ -2868,6 +2872,7 @@ function readableStreamHasDefaultReader(stream) {
  * @param {boolean} preventClose
  * @param {boolean} preventAbort
  * @param {boolean} preventCancel
+ * @param {AbortSignal=} signal
  */
 async function fastPipeTo(
   source,
@@ -2877,6 +2882,7 @@ async function fastPipeTo(
   preventClose,
   preventAbort,
   preventCancel,
+  signal,
 ) {
   // Lock both streams for the duration of the transfer, matching the
   // preconditions of the generic algorithm. We never issue reads/writes
@@ -2884,11 +2890,27 @@ async function fastPipeTo(
   const reader = acquireReadableStreamDefaultReader(source);
   const writer = acquireWritableStreamDefaultWriter(dest);
   source[_disturbed] = true;
+
+  // Wire the abort signal (if any) to a cancel handle that `op_pipe` races its
+  // reads/writes against. The caller guarantees `signal` is not already aborted.
+  let cancelRid;
+  let abortHandler;
+  if (signal !== undefined) {
+    cancelRid = core.createCancelHandle();
+    abortHandler = () => core.tryClose(cancelRid);
+    signal[add](abortHandler);
+  }
+
   try {
-    await op_pipe(srcBacking.rid, dstBacking.rid);
-  } catch (error) {
-    // We can't tell from here whether the read (source) or write (sink) side
-    // failed, so we tear down both ends, subject to the prevent* flags.
+    await op_pipe(srcBacking.rid, dstBacking.rid, cancelRid);
+  } catch (e) {
+    // On abort, propagate the signal's reason (matching the generic algorithm);
+    // otherwise surface the underlying resource error. We can't tell from here
+    // whether the read (source) or write (sink) side failed, so we tear down
+    // both ends, subject to the prevent* flags.
+    const error = signal !== undefined && signal.aborted
+      ? signal.reason
+      : annotateResourceStreamError(e);
     if (preventAbort === false) {
       try {
         await writableStreamDefaultWriterAbort(writer, error);
@@ -2902,6 +2924,13 @@ async function fastPipeTo(
     writableStreamDefaultWriterRelease(writer);
     readableStreamDefaultReaderRelease(reader);
     throw error;
+  } finally {
+    if (signal !== undefined) {
+      signal[remove](abortHandler);
+      // `op_pipe` consumes the handle, but close defensively in case it errored
+      // out before reaching that point. `tryClose` is a no-op if already gone.
+      core.tryClose(cancelRid);
+    }
   }
 
   // The source reached EOF and every chunk has been flushed to the sink.
@@ -2945,16 +2974,18 @@ function readableStreamPipeTo(
   assert(!isReadableStreamLocked(source));
   assert(!isWritableStreamLocked(dest));
 
-  // Fast path: when both ends are resource-backed and there is no abort signal
-  // to observe mid-stream, offload the whole streaming operation to Rust.
-  // Both streams must be in their active state: an already closed or errored
-  // stream carries spec-mandated behavior (a specific stored error, or closing
-  // the destination when the source is already closed) that only the slow path
-  // below implements, so we defer those cases to it.
+  // Fast path: when both ends are resource-backed, offload the whole streaming
+  // operation to Rust. An `AbortSignal` is supported via a cancel handle, but
+  // an already-aborted one is left to the slow path so its synchronous teardown
+  // matches the spec exactly. Both streams must also be in their active state:
+  // an already closed or errored stream carries spec-mandated behavior (a
+  // specific stored error, or closing the destination when the source is
+  // already closed) that only the slow path below implements.
   const srcBacking = getReadableStreamResourceBacking(source);
   const dstBacking = getWritableStreamResourceBacking(dest);
   if (
-    srcBacking && dstBacking && signal === undefined &&
+    srcBacking && dstBacking &&
+    (signal === undefined || !signal.aborted) &&
     source[_state] === "readable" && dest[_state] === "writable"
   ) {
     return fastPipeTo(
@@ -2965,6 +2996,7 @@ function readableStreamPipeTo(
       preventClose,
       preventAbort,
       preventCancel,
+      signal,
     );
   }
 

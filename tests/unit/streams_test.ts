@@ -993,3 +993,60 @@ Deno.test(
     }
   },
 );
+
+// A present-but-never-aborted signal still takes the fast path (exercising the
+// cancel-handle wiring) and completes normally, byte-exact.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function pipeToResourceBackedSignalNotAborted() {
+    const input = await Deno.makeTempFile();
+    const output = await Deno.makeTempFile();
+    try {
+      const data = new Uint8Array(128 * 1024);
+      for (let i = 0; i < data.length; i++) data[i] = i % 251;
+      await Deno.writeFile(input, data);
+
+      using src = await Deno.open(input, { read: true });
+      using dst = await Deno.open(output, { write: true });
+      const ac = new AbortController();
+      await src.readable.pipeTo(dst.writable, { signal: ac.signal });
+
+      assertEquals(await Deno.readFile(output), data);
+    } finally {
+      await Deno.remove(input);
+      await Deno.remove(output);
+    }
+  },
+);
+
+// Aborting the signal mid-pump must unblock `op_pipe` (the source never
+// produces data, so without cancellation the pipe would hang forever), reject
+// with the abort reason, and tear both ends down.
+Deno.test(
+  { permissions: { net: true, read: true, write: true } },
+  async function pipeToResourceBackedAbortSignal() {
+    const listener = Deno.listen({ port: 0 });
+    const connectPromise = Deno.connect({ port: listener.addr.port });
+    const server = await listener.accept();
+    const client = await connectPromise;
+    listener.close();
+
+    // The server never writes, so the resource-backed read blocks; only the
+    // abort signal (via op_pipe cancellation) can unblock it.
+    const outPath = await Deno.makeTempFile();
+    const out = await Deno.open(outPath, { write: true });
+
+    const ac = new AbortController();
+    const piped = client.readable.pipeTo(out.writable, { signal: ac.signal });
+    const timer = setTimeout(() => ac.abort(), 50);
+
+    const error = await assertRejects(() => piped, DOMException);
+    assertEquals(error.name, "AbortError");
+
+    clearTimeout(timer);
+    // The abort cancelled `client.readable` (closing the conn) and aborted
+    // `out.writable` (closing the file); only the server remains open.
+    server.close();
+    await Deno.remove(outPath);
+  },
+);
