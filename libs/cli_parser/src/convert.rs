@@ -145,6 +145,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("audit") => audit_parse(&result, &mut flags),
     Some("why") => why_parse(&result, &mut flags),
     Some("transpile") => transpile_parse(&result, &mut flags),
+    Some("bump-version") => bump_version_parse(&result, &mut flags)?,
     Some("x") => x_parse(&result, &mut flags),
     Some("json_reference") => json_reference_parse(&mut flags),
     Some("help") => help_subcommand_parse(&result, &mut flags),
@@ -2264,6 +2265,48 @@ fn add_parse(result: &ParseResult, flags: &mut Flags) {
     save_exact: result.get_bool("save-exact"),
     package_json: result.get_bool("package-json"),
   });
+}
+
+fn bump_version_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
+  let increment = match result.get_one("increment") {
+    None => None,
+    Some(s) => Some(match s {
+      "major" => VersionIncrement::Major,
+      "minor" => VersionIncrement::Minor,
+      "patch" => VersionIncrement::Patch,
+      "premajor" => VersionIncrement::Premajor,
+      "preminor" => VersionIncrement::Preminor,
+      "prepatch" => VersionIncrement::Prepatch,
+      "prerelease" => VersionIncrement::Prerelease,
+      other => {
+        return Err(CliError::new(
+          CliErrorKind::InvalidValue,
+          format!("invalid value '{other}' for '[increment]'"),
+        ));
+      }
+    }),
+  };
+  let workspace = if result.get_bool("workspace") {
+    Some(true)
+  } else if result.get_bool("no-workspace") {
+    Some(false)
+  } else {
+    None
+  };
+  flags.subcommand = DenoSubcommand::BumpVersion(VersionFlags {
+    increment,
+    workspace,
+    start: result.get_one("start").map(|s| s.to_string()),
+    base: result.get_one("base").map(|s| s.to_string()),
+    import_map: result.get_one("import-map").map(|s| s.to_string()),
+    release_notes: result.get_one("release-notes").map(|s| s.to_string()),
+    dry_run: result.get_bool("dry-run"),
+    config: result.get_one("config").map(|s| s.to_string()),
+  });
+  Ok(())
 }
 
 fn transpile_parse(result: &ParseResult, flags: &mut Flags) {

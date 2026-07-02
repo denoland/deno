@@ -1995,6 +1995,50 @@ pub static GLOBAL_ARGS: &[ArgDef] = &[
     .global(),
 ];
 
+pub static BUMP_VERSION_SUBCOMMAND: CommandDef = CommandDef {
+  name: "bump-version",
+  about: "Update version in the configuration file",
+  aliases: &[],
+  args: &[
+    ArgDef::new("increment")
+      .positional()
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional),
+    ArgDef::new("workspace")
+      .long("workspace")
+      .short('w')
+      .set_true(),
+    ArgDef::new("no-workspace").long("no-workspace").set_true(),
+    ArgDef::new("dry-run").long("dry-run").set_true(),
+    ArgDef::new("start")
+      .long("start")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("base")
+      .long("base")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("import-map")
+      .long("import-map")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("release-notes")
+      .long("release-notes")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("config")
+      .short('c')
+      .long("config")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+  ],
+  arg_groups: &[],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
+
 pub static TRANSPILE_SUBCOMMAND: CommandDef = CommandDef {
   name: "transpile",
   about: "Transpile TypeScript/JSX/TSX files to JavaScript",
@@ -2093,6 +2137,7 @@ pub static DENO_ROOT: CommandDef = CommandDef {
     AUDIT_SUBCOMMAND,
     WHY_SUBCOMMAND,
     TRANSPILE_SUBCOMMAND,
+    BUMP_VERSION_SUBCOMMAND,
     X_SUBCOMMAND,
     JSON_REFERENCE_SUBCOMMAND,
     HELP_SUBCOMMAND,
