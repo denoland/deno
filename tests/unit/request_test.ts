@@ -190,3 +190,38 @@ Deno.test(function requestCloneCopiesAllProperties() {
   assertEquals(cloned.referrer, "http://example.com/");
   assertEquals(cloned.referrerPolicy, "strict-origin");
 });
+
+Deno.test(function requestDuplexOption() {
+  // A streaming body requires `duplex: "half"`.
+  assertThrows(
+    () =>
+      new Request("http://foo/", {
+        method: "POST",
+        body: new ReadableStream(),
+      }),
+    TypeError,
+    "duplex",
+  );
+  // With `duplex: "half"` a stream body is accepted.
+  const req = new Request("http://foo/", {
+    method: "POST",
+    body: new ReadableStream(),
+    duplex: "half",
+  });
+  assertEquals(req.method, "POST");
+
+  // Non-stream bodies don't require duplex.
+  new Request("http://foo/", { method: "POST", body: "hello" });
+
+  // "full" is not a valid RequestDuplex value.
+  assertThrows(
+    () =>
+      new Request("http://foo/", {
+        method: "POST",
+        body: "hello",
+        duplex: "full",
+      }),
+    TypeError,
+    "RequestDuplex",
+  );
+});
