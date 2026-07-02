@@ -110,7 +110,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("eval") => eval_parse(&result, &mut flags),
     Some("fmt") => fmt_parse(&result, &mut flags),
     Some("lint") => lint_parse(&result, &mut flags),
-    Some("test") => test_parse(&result, &mut flags),
+    Some("test") => test_parse(&result, &mut flags)?,
     Some("upgrade") => upgrade_parse(&result, &mut flags)?,
     Some("cache") => cache_parse(&result, &mut flags),
     Some("check") => check_parse(&result, &mut flags),
@@ -1434,7 +1434,7 @@ fn lint_parse(result: &ParseResult, flags: &mut Flags) {
   });
 }
 
-fn test_parse(result: &ParseResult, flags: &mut Flags) {
+fn test_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(result, flags, true, true, true);
   ext_arg_parse(result, flags);
@@ -1458,9 +1458,34 @@ fn test_parse(result: &ParseResult, flags: &mut Flags) {
       .get_one("fail-fast")
       .and_then(|s| s.parse::<usize>().ok())
       .unwrap_or(1);
-    NonZeroUsize::new(val)
+    match NonZeroUsize::new(val) {
+      Some(n) => Some(n),
+      None => {
+        return Err(CliError::new(
+          CliErrorKind::InvalidValue,
+          "the value of --fail-fast must be greater than 0",
+        ));
+      }
+    }
   } else {
     None
+  };
+
+  let shard = match result.get_one("shard") {
+    Some(s) => match parse_shard(s) {
+      Some((index, count)) if index >= 1 && count >= 1 && index <= count => {
+        Some((index, count))
+      }
+      _ => {
+        return Err(CliError::new(
+          CliErrorKind::InvalidValue,
+          format!(
+            "invalid value '{s}' for '--shard': expected INDEX/COUNT with 1 <= INDEX <= COUNT"
+          ),
+        ));
+      }
+    },
+    None => None,
   };
 
   let shuffle = if result.contains("shuffle") {
@@ -1530,7 +1555,7 @@ fn test_parse(result: &ParseResult, flags: &mut Flags) {
       .get_one("repeats")
       .and_then(|s| s.parse().ok())
       .unwrap_or(0),
-    shard: result.get_one("shard").and_then(parse_shard),
+    shard,
     watch: watch_arg_parse_with_paths(result),
     reporter,
     junit_path,
@@ -1546,6 +1571,7 @@ fn test_parse(result: &ParseResult, flags: &mut Flags) {
       .unwrap_or_default(),
     update_snapshots: result.get_bool("update-snapshots"),
   });
+  Ok(())
 }
 
 /// Parse a `--shard` value of the form `index/count` (1-based index).
