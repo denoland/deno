@@ -624,11 +624,14 @@ pub(super) fn build_round_rect_path(
   let cw = abs_w;
   let ch = abs_h;
 
-  // clockwise path
+  // Clockwise path. Each corner sweeps a full quarter-turn (90 degrees):
+  // top-right from 270deg to 360deg, bottom-right from 0deg to 90deg,
+  // bottom-left from 90deg to 180deg, top-left from 180deg to 270deg
+  // (angles measured with 0deg = +x axis, increasing towards +y).
   path.move_to((cx + tl.0, cy));
   path.line_to((cx + cw - tr.0, cy));
   if tr.0 > 0.0 || tr.1 > 0.0 {
-    add_elliptical_arc(path, cx + cw - tr.0, cy + tr.1, tr.0, tr.1, 1.5, 2.0);
+    add_elliptical_arc(path, cx + cw - tr.0, cy + tr.1, tr.0, tr.1, 3.0, 4.0);
   }
   path.line_to((cx + cw, cy + ch - br.1));
   if br.0 > 0.0 || br.1 > 0.0 {
@@ -639,16 +642,16 @@ pub(super) fn build_round_rect_path(
       br.0,
       br.1,
       0.0,
-      0.5,
+      1.0,
     );
   }
   path.line_to((cx + bl.0, cy + ch));
   if bl.0 > 0.0 || bl.1 > 0.0 {
-    add_elliptical_arc(path, cx + bl.0, cy + ch - bl.1, bl.0, bl.1, 0.5, 1.0);
+    add_elliptical_arc(path, cx + bl.0, cy + ch - bl.1, bl.0, bl.1, 1.0, 2.0);
   }
   path.line_to((cx, cy + tl.1));
   if tl.0 > 0.0 || tl.1 > 0.0 {
-    add_elliptical_arc(path, cx + tl.0, cy + tl.1, tl.0, tl.1, 1.0, 1.5);
+    add_elliptical_arc(path, cx + tl.0, cy + tl.1, tl.0, tl.1, 2.0, 3.0);
   }
   path.close_path();
 }
