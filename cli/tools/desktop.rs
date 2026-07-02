@@ -487,7 +487,7 @@ async fn compile_desktop(
     self_extracting,
     bundle: false,
     minify: false,
-    exclude_unused_npm: false,
+    exclude_unused_npm: desktop_flags.exclude_unused_npm,
   };
 
   let mut temp_flags = flags.clone();
@@ -6580,6 +6580,7 @@ def456  other.zip
       codesign_identity: None,
       inspect_renderer: None,
       compress: None,
+      exclude_unused_npm: false,
     }
   }
 

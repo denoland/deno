@@ -240,6 +240,10 @@ pub struct DesktopFlags {
   /// just a small download artifact. Value is the compressor: `"xz"` (LZMA)
   /// or `"zstd"`.
   pub compress: Option<String>,
+  /// Embed only the npm packages reachable from the module graph instead of
+  /// the full managed snapshot. Same opt-in semantics as
+  /// `deno compile --exclude-unused-npm`.
+  pub exclude_unused_npm: bool,
 }
 
 #[derive(Clone)]

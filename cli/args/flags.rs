@@ -2516,6 +2516,17 @@ supported framework (Next.js, Astro, etc.) in the current directory.
           .help_heading(DESKTOP_HEADING),
       )
       .arg(
+        Arg::new("exclude-unused-npm")
+          .long("exclude-unused-npm")
+          .help(cstr!("Embed only the npm packages reachable from the module graph (managed npm; no <c>node_modules</> directory).
+  <p(245)>Without this flag the full managed npm snapshot from the lockfile / package.json is embedded.
+  Reduces app size when the lockfile contains packages the entrypoint does not import.
+  Skips packages that are only reached through non-statically-analyzable dynamic imports;
+  pass those with <c>--include npm:<<pkg></> if needed.</>"))
+          .action(ArgAction::SetTrue)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
         Arg::new("output")
           .long("output")
           .short('o')
@@ -6939,6 +6950,7 @@ fn desktop_parse(
     .remove_many::<String>("exclude")
     .map(|f| f.collect::<Vec<_>>())
     .unwrap_or_default();
+  let exclude_unused_npm = matches.get_flag("exclude-unused-npm");
   ext_arg_parse(flags, matches);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
@@ -6959,6 +6971,7 @@ fn desktop_parse(
     codesign_identity: None,
     inspect_renderer,
     compress,
+    exclude_unused_npm,
   });
 
   Ok(())
@@ -14119,6 +14132,28 @@ mod tests {
       panic!("expected desktop subcommand");
     };
     assert_eq!(desktop.backend.as_deref(), Some("cef"));
+  }
+
+  #[test]
+  fn desktop_exclude_unused_npm() {
+    let r = flags_from_vec(svec!["deno", "desktop", "main.tsx"]);
+    let DenoSubcommand::Desktop(desktop) = r.unwrap().subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    // Off by default: the full managed npm snapshot keeps
+    // non-statically-analyzable dynamic imports working.
+    assert!(!desktop.exclude_unused_npm);
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "desktop",
+      "--exclude-unused-npm",
+      "main.tsx"
+    ]);
+    let DenoSubcommand::Desktop(desktop) = r.unwrap().subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    assert!(desktop.exclude_unused_npm);
   }
 
   #[test]
