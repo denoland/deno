@@ -1578,12 +1578,14 @@ async fn package_windows_app_dir(
 /// Directory structure:
 /// ```text
 /// AppName/
-///   AppName             (launcher shell script)
-///   laufey                 (LAUFEY backend binary)
+///   AppName             (LAUFEY backend binary, renamed to the app name)
 ///   libcef.so, ...      (CEF support files, if any)
-///   libdenort.so        (compiled Deno runtime + user code)
+///   AppName.so          (compiled Deno runtime + user code)
 ///   AppIcon.png         (optional)
 /// ```
+///
+/// The backend binary is renamed to `AppName` so it auto-loads the co-located
+/// `AppName.so` runtime — no launcher shell script is needed.
 async fn package_linux_app_dir(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
@@ -1630,37 +1632,22 @@ async fn package_linux_app_dir(
     let _ = std::fs::remove_file(&cache_file);
   }
 
-  // Copy the compiled dylib alongside the backend binary.
-  let dylib_filename = parts.file_name;
-  let dest_dylib = app_dir.join(dylib_filename);
+  // Copy the compiled dylib as `<app>.so` so the renamed backend binary
+  // auto-loads it: laufey's LaufeyFindColocatedRuntime resolves `<exe-base>.so`
+  // next to the binary. It reads the real path via `/proc/self/exe`, which
+  // follows the `/usr/bin/<pkg>` -> `/usr/lib/<pkg>/<app>` symlink that
+  // `.deb`/`.rpm` install (issue #35623), so no wrapper script is needed.
+  validate_launcher_name(&app_name, "app name")?;
+  let dest_dylib = app_dir.join(format!("{}.so", app_name));
   std::fs::copy(dylib_path, &dest_dylib)?;
 
-  // Create a shell launcher that invokes the backend with --runtime.
-  // laufey auto-detects Wayland vs X11 at runtime.
-  //
-  // Validate every name we interpolate: bash expands `$VAR`, backticks,
-  // and `$(...)` even inside `"..."`.
-  let dylib_filename_str = dylib_filename.to_string_lossy();
-  validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
-  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
+  // Rename the LAUFEY backend binary to the app name so `<app>` is the launcher
+  // the user runs directly — no `--runtime` argument and no shell wrapper.
   let launcher_path = app_dir.join(&app_name);
-  std::fs::write(
-    &launcher_path,
-    format!(
-      // Resolve `$0` through symlinks before deriving DIR: `.deb`/`.rpm`
-      // install the real launcher under `/usr/lib/<pkg>/` and expose it via a
-      // `/usr/bin/<pkg>` symlink, so a bare `$0` would resolve DIR to
-      // `/usr/bin` and look for the backend binary there (issue #35623).
-      // `readlink -f` is fine here: this launcher only ships on Linux.
-      "#!/bin/sh\n\
-       DIR=\"$(cd \"$(dirname \"$(readlink -f \"$0\")\")\" && pwd)\"\n\
-       export LAUFEY_RUNTIME_PATH=\"$DIR/{dylib}\"\n\
-       exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
-      laufey_binary = laufey_binary_name,
-      dylib = dylib_filename_str,
-    ),
-  )?;
+  let staged_backend = app_dir.join(&laufey_binary_name);
+  if staged_backend != launcher_path {
+    std::fs::rename(&staged_backend, &launcher_path)?;
+  }
   #[cfg(unix)]
   {
     use std::os::unix::fs::PermissionsExt;
@@ -4543,12 +4530,12 @@ fn create_windows_msi(
       Value::Str(launcher_comp.clone()),
       // Non-advertised shortcut: `[#key]` resolves to the installed exe's path.
       Value::Str(format!("[#{launcher_key}]")),
-      Value::Null,                          // Arguments (co-located auto-load)
-      Value::Null,                          // Description
-      Value::Null,                          // Hotkey
-      Value::Null,                          // Icon_
-      Value::Null,                          // IconIndex
-      Value::Null,                          // ShowCmd
+      Value::Null, // Arguments (co-located auto-load)
+      Value::Null, // Description
+      Value::Null, // Hotkey
+      Value::Null, // Icon_
+      Value::Null, // IconIndex
+      Value::Null, // ShowCmd
       Value::Str("INSTALLDIR".to_string()), // WkDir
     ]))?;
   }
@@ -6567,9 +6554,11 @@ def456  other.zip
   fn fake_linux_app_dir(parent: &Path, app_name: &str) -> PathBuf {
     let app_dir = parent.join(app_name);
     std::fs::create_dir_all(&app_dir).unwrap();
-    std::fs::write(app_dir.join(app_name), "#!/bin/sh\nexec ./laufey\n")
+    // The backend binary is renamed to `<app>` and auto-loads the co-located
+    // `<app>.so`; there is no launcher shell script.
+    std::fs::write(app_dir.join(app_name), b"\x7fELFfake-bin").unwrap();
+    std::fs::write(app_dir.join(format!("{app_name}.so")), b"\x7fELFfake")
       .unwrap();
-    std::fs::write(app_dir.join("libdenort.so"), b"\x7fELFfake").unwrap();
     std::fs::write(app_dir.join("AppIcon.png"), STUB_ICON_PNG).unwrap();
     app_dir
   }
@@ -6696,7 +6685,7 @@ def456  other.zip
       paths.push(p);
     }
     assert!(paths.iter().any(|p| p == "usr/lib/myapp/MyApp"));
-    assert!(paths.iter().any(|p| p == "usr/lib/myapp/libdenort.so"));
+    assert!(paths.iter().any(|p| p == "usr/lib/myapp/MyApp.so"));
     assert!(
       paths
         .iter()
@@ -6808,13 +6797,12 @@ def456  other.zip
   fn fake_windows_app_dir(parent: &Path, app_name: &str) -> PathBuf {
     let app_dir = parent.join(app_name);
     std::fs::create_dir_all(&app_dir).unwrap();
-    std::fs::write(
-      app_dir.join(format!("{app_name}.bat")),
-      "@echo off\r\nlaufey.exe --runtime denort.dll %*\r\n",
-    )
-    .unwrap();
-    std::fs::write(app_dir.join("laufey.exe"), b"MZfake-exe").unwrap();
-    std::fs::write(app_dir.join("denort.dll"), b"MZfake-dll").unwrap();
+    // The backend binary is renamed to `<app>.exe` and auto-loads the
+    // co-located `<app>.dll`; there is no `.bat` wrapper.
+    std::fs::write(app_dir.join(format!("{app_name}.exe")), b"MZfake-exe")
+      .unwrap();
+    std::fs::write(app_dir.join(format!("{app_name}.dll")), b"MZfake-dll")
+      .unwrap();
     let locales = app_dir.join("locales");
     std::fs::create_dir_all(&locales).unwrap();
     std::fs::write(locales.join("en-US.pak"), b"pakdata").unwrap();
@@ -6890,17 +6878,16 @@ def456  other.zip
       })
       .collect();
     files.sort_by_key(|f| f.2);
-    assert_eq!(files.len(), 4, "4 files staged: {files:?}");
+    assert_eq!(files.len(), 3, "3 files staged: {files:?}");
     let long_names: Vec<&str> = files
       .iter()
       .map(|(_, name, _)| name.rsplit('|').next().unwrap())
       .collect();
-    assert!(long_names.contains(&"MyApp.bat"));
-    assert!(long_names.contains(&"laufey.exe"));
-    assert!(long_names.contains(&"denort.dll"));
+    assert!(long_names.contains(&"MyApp.exe"));
+    assert!(long_names.contains(&"MyApp.dll"));
     assert!(long_names.contains(&"en-US.pak"));
     let seqs: Vec<i32> = files.iter().map(|f| f.2).collect();
-    assert_eq!(seqs, vec![1, 2, 3, 4], "sequence must be contiguous 1..N");
+    assert_eq!(seqs, vec![1, 2, 3], "sequence must be contiguous 1..N");
 
     // Two components: one for the root dir, one for locales/.
     let comps: Vec<String> = package
@@ -6923,7 +6910,7 @@ def456  other.zip
     // member name is the MSI File key.
     let key_for_dll = files
       .iter()
-      .find(|(_, name, _)| name.ends_with("denort.dll"))
+      .find(|(_, name, _)| name.ends_with("MyApp.dll"))
       .map(|(key, _, _)| key.clone())
       .unwrap();
     let mut cab_bytes = Vec::new();
@@ -7008,8 +6995,8 @@ def456  other.zip
   #[test]
   fn msi_authors_start_menu_shortcut() {
     let tmp = tempfile::tempdir().unwrap();
-    // fake_windows_app_dir stages a `laufey.exe`, which is detected as the
-    // launcher the shortcut points at.
+    // fake_windows_app_dir stages `MyApp.exe`, the renamed backend binary the
+    // shortcut points at.
     let app_dir = fake_windows_app_dir(tmp.path(), "MyApp");
     let msi_path = tmp.path().join("MyApp.msi");
     create_windows_msi(
@@ -7029,9 +7016,9 @@ def456  other.zip
       .collect();
     assert!(dirs.iter().any(|d| d == "ProgramMenuFolder"));
 
-    // Exactly one shortcut, targeting the laufey launcher (`[#fkey]`) with
-    // `--runtime "<app>.dll"` and running from INSTALLDIR — no console window and
-    // no spaced path handed to laufey.
+    // Exactly one shortcut, targeting `<app>.exe` (`[#fkey]`) with no arguments
+    // (it auto-loads the co-located `<app>.dll`) and running from INSTALLDIR —
+    // no console window.
     let shortcuts: Vec<_> = package
       .select_rows(msi::Select::table("Shortcut"))
       .unwrap()
@@ -7039,7 +7026,7 @@ def456  other.zip
     assert_eq!(shortcuts.len(), 1);
     let s = &shortcuts[0];
     assert_eq!(s["Directory_"].as_str(), Some("ProgramMenuFolder"));
-    assert_eq!(s["Arguments"].as_str(), Some("--runtime \"MyApp.dll\""));
+    assert_eq!(s["Arguments"].as_str(), None);
     assert_eq!(s["WkDir"].as_str(), Some("INSTALLDIR"));
     assert!(s["Target"].as_str().unwrap().starts_with("[#"));
 
@@ -7217,16 +7204,18 @@ def456  other.zip
   #[test]
   fn deep_links_windows_writes_registry_script() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("MyApp.bat"), "@echo off\r\n").unwrap();
+    // The launcher is `<bundle-dir-name>.exe`, so the bundle dir must be named
+    // after the app.
+    let bundle = tmp.path().join("MyApp");
+    std::fs::create_dir_all(&bundle).unwrap();
     register_deep_links_windows(
-      tmp.path(),
+      &bundle,
       &["acme".to_string(), "acme-beta".to_string()],
     )
     .unwrap();
 
     let script =
-      std::fs::read_to_string(tmp.path().join("register-deep-links.bat"))
-        .unwrap();
+      std::fs::read_to_string(bundle.join("register-deep-links.bat")).unwrap();
     for scheme in &["acme", "acme-beta"] {
       assert!(
         script
@@ -7234,9 +7223,9 @@ def456  other.zip
         "script should register {scheme}; got:\n{script}"
       );
     }
-    // The protocol handler must point back at the packaged launcher.
+    // The protocol handler must point back at the renamed launcher exe.
     assert!(
-      script.contains("MyApp.bat"),
+      script.contains("MyApp.exe"),
       "handler should invoke the launcher; got:\n{script}"
     );
   }
