@@ -1885,7 +1885,10 @@
     "parallel/test-http-res-write-end-dont-take-array.js": {},
     "parallel/test-http-response-add-header-after-sent.js": {},
     "parallel/test-http-response-close.js": {},
-    "parallel/test-http-response-cork.js": {},
+    "parallel/test-http-response-cork.js": {
+      "windows": false,
+      "reason": "Depends on native http socket reclaim (op_http_reclaim_socket), which is not supported on Windows"
+    },
     "parallel/test-http-response-multiheaders.js": {},
     "parallel/test-http-response-no-headers.js": {},
     "parallel/test-http-response-readable.js": {},

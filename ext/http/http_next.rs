@@ -3807,6 +3807,12 @@ fn reclaimable_stream_type(
   stream_type: deno_net::raw::NetworkStreamType,
 ) -> bool {
   match stream_type {
+    // Windows adoption of a tokio-originated SOCKET (uv_tcp_open in the JS
+    // TCP wrap's `open`) hard-crashes the process with no output (observed on
+    // Windows CI via test-http-response-cork); until that is debugged on a
+    // Windows machine, reclaim reports unsupported there and the response
+    // stays native.
+    #[cfg(unix)]
     deno_net::raw::NetworkStreamType::Tcp => true,
     #[cfg(unix)]
     deno_net::raw::NetworkStreamType::Unix => true,
