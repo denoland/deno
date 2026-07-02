@@ -326,33 +326,34 @@ pub(super) fn compute_arc_sweep(
   end_angle: f64,
   counterclockwise: bool,
 ) -> f64 {
+  // Mirrors the normalization algorithm in the HTML spec for arc()/ellipse():
+  // for a clockwise sweep, endAngle is advanced until it is not less than
+  // startAngle (sweep in [0, 2*PI)); for a counterclockwise sweep, endAngle
+  // is retreated until it is not greater than startAngle (sweep in
+  // (-2*PI, 0]). Either way, a request for a full lap in the sweep
+  // direction (or more) is clamped to exactly one full turn, and
+  // startAngle == endAngle always yields a zero-length sweep.
   let two_pi = 2.0 * std::f64::consts::PI;
-  let mut delta = end_angle - start_angle;
 
-  if counterclockwise {
-    if delta >= two_pi {
-      delta = two_pi;
-    } else if delta <= 0.0 {
-      while delta <= 0.0 {
-        delta += two_pi;
-      }
-      if delta > two_pi {
-        delta = two_pi;
-      }
+  if !counterclockwise {
+    if end_angle - start_angle >= two_pi {
+      return two_pi;
     }
+    let mut end = end_angle;
+    while end < start_angle {
+      end += two_pi;
+    }
+    end - start_angle
   } else {
-    if delta <= -two_pi {
-      delta = -two_pi;
-    } else if delta >= 0.0 {
-      while delta >= 0.0 {
-        delta -= two_pi;
-      }
-      if delta < -two_pi {
-        delta = -two_pi;
-      }
+    if start_angle - end_angle >= two_pi {
+      return -two_pi;
     }
+    let mut end = end_angle;
+    while end > start_angle {
+      end -= two_pi;
+    }
+    end - start_angle
   }
-  delta
 }
 
 pub(super) fn arc_to_impl(
@@ -412,7 +413,6 @@ pub(super) fn arc_to_impl(
     return;
   }
 
-  let sign = if cross < 0.0 { 1.0 } else { -1.0 };
   let center = kurbo::Point::new(
     p1.x + cx_dir.x / cx_len * (d * d + radius * radius).sqrt(),
     p1.y + cx_dir.y / cx_len * (d * d + radius * radius).sqrt(),
@@ -421,8 +421,21 @@ pub(super) fn arc_to_impl(
   let start_angle = (t0.y - center.y).atan2(t0.x - center.x);
   let end_angle = (t1.y - center.y).atan2(t1.x - center.x);
 
-  let counterclockwise = sign > 0.0;
-  let sweep = compute_arc_sweep(start_angle, end_angle, counterclockwise);
+  // Unlike arc()/ellipse(), a corner fillet never needs to wrap more than
+  // half a turn: the swept angle is always `PI` minus the angle between the
+  // two tangent lines, i.e. strictly between 0 and PI in magnitude. So the
+  // correct sweep is simply the shortest signed angular distance from
+  // start_angle to end_angle, normalized to (-PI, PI] -- no need for
+  // compute_arc_sweep's full-turn/direction-clamping semantics, which are
+  // specific to the public arc()/ellipse() `counterclockwise` argument.
+  let two_pi = 2.0 * std::f64::consts::PI;
+  let mut sweep = end_angle - start_angle;
+  while sweep <= -std::f64::consts::PI {
+    sweep += two_pi;
+  }
+  while sweep > std::f64::consts::PI {
+    sweep -= two_pi;
+  }
 
   path.line_to(t0);
   let arc = kurbo::Arc {
