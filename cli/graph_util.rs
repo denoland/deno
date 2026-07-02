@@ -80,6 +80,48 @@ use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 use crate::util::progress_bar::ProgressBar;
 
+/// Embedded source of the in-binary JSX bridge served for the default
+/// `deno-jsx:preact/jsx-runtime` import source. See `jsx_bridge.js`.
+const JSX_BRIDGE_SOURCE: &str = include_str!("jsx_bridge.js");
+/// Development variant served for `deno-jsx:preact/jsx-dev-runtime`.
+const JSX_BRIDGE_DEV_SOURCE: &str = include_str!("jsx_bridge_dev.js");
+
+/// Wraps a `deno_graph` loader to serve the in-binary Preact JSX bridge for the
+/// reserved `deno-jsx:` scheme. Everything else is delegated to the inner
+/// loader unchanged. This makes the default JSX import source resolve to an
+/// embedded module instead of hitting the network.
+struct JsxBridgeLoader<'a>(&'a dyn Loader);
+
+impl Loader for JsxBridgeLoader<'_> {
+  fn load(
+    &self,
+    specifier: &ModuleSpecifier,
+    options: deno_graph::source::LoadOptions,
+  ) -> deno_graph::source::LoadFuture {
+    if specifier.scheme() == deno_resolver::deno_json::DENO_JSX_SCHEME {
+      let source = if specifier.as_str().ends_with("jsx-dev-runtime") {
+        JSX_BRIDGE_DEV_SOURCE
+      } else {
+        JSX_BRIDGE_SOURCE
+      };
+      let mut headers = std::collections::HashMap::with_capacity(1);
+      headers.insert(
+        "content-type".to_string(),
+        "application/javascript".to_string(),
+      );
+      return Box::pin(std::future::ready(Ok(Some(
+        deno_graph::source::LoadResponse::Module {
+          content: source.as_bytes().into(),
+          mtime: None,
+          specifier: specifier.clone(),
+          maybe_headers: Some(headers),
+        },
+      ))));
+    }
+    self.0.load(specifier, options)
+  }
+}
+
 #[derive(Clone)]
 pub struct GraphValidOptions<'a> {
   pub check_js: CheckJsOption<'a>,
@@ -887,7 +929,7 @@ impl ModuleGraphBuilder {
       .build_graph_with_npm_resolution_and_build_options(
         graph,
         request,
-        loader.as_loader(),
+        &JsxBridgeLoader(loader.as_loader()),
         build_options!(Some(self.npm_graph_resolver.as_ref()), &graph_resolver),
         options.npm_caching,
       )
@@ -912,7 +954,7 @@ impl ModuleGraphBuilder {
           .build_npm_packages(
             self.cli_options.start_dir.dir_url(),
             deno_graph::source::ResolutionKind::Types,
-            loader.as_loader(),
+            &JsxBridgeLoader(loader.as_loader()),
             build_options!(None, &graph_resolver),
           )
           .await;
