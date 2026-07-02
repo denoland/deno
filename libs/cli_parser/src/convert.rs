@@ -146,6 +146,8 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("why") => why_parse(&result, &mut flags),
     Some("transpile") => transpile_parse(&result, &mut flags),
     Some("bump-version") => bump_version_parse(&result, &mut flags)?,
+    Some("ci") => ci_parse(&result, &mut flags),
+    Some("desktop") => desktop_parse(&result, &mut flags),
     Some("x") => x_parse(&result, &mut flags),
     Some("json_reference") => json_reference_parse(&mut flags),
     Some("help") => help_subcommand_parse(&result, &mut flags),
@@ -2264,6 +2266,31 @@ fn add_parse(result: &ParseResult, flags: &mut Flags) {
     lockfile_only: result.get_bool("lockfile-only"),
     save_exact: result.get_bool("save-exact"),
     package_json: result.get_bool("package-json"),
+  });
+}
+
+fn desktop_parse(result: &ParseResult, flags: &mut Flags) {
+  let mut script = result
+    .get_many("script_arg")
+    .map(|v| v.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+    .unwrap_or_default()
+    .into_iter();
+  let source_file = script.next().unwrap_or_else(|| ".".to_string());
+  let args = script.collect();
+  flags.subcommand = DenoSubcommand::Desktop(DesktopFlags {
+    source_file,
+    args,
+    backend: Some(result.get_one("backend").unwrap_or("webview").to_string()),
+    ..Default::default()
+  });
+}
+
+fn ci_parse(result: &ParseResult, flags: &mut Flags) {
+  env_file_arg_parse(result, flags);
+  flags.frozen_lockfile = Some(true);
+  flags.subcommand = DenoSubcommand::Ci(CiFlags {
+    production: result.get_bool("prod"),
+    skip_types: result.get_bool("skip-types"),
   });
 }
 

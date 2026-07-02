@@ -1995,6 +1995,49 @@ pub static GLOBAL_ARGS: &[ArgDef] = &[
     .global(),
 ];
 
+pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
+  name: "desktop",
+  about: "Compile a script into a desktop application",
+  aliases: &[],
+  args: &[
+    ArgDef::new("script_arg")
+      .positional()
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore),
+    ArgDef::new("backend")
+      .long("backend")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .default_value("webview"),
+  ],
+  arg_groups: &[UNSTABLE_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: true,
+  passthrough: false,
+};
+
+pub static CI_SUBCOMMAND: CommandDef = CommandDef {
+  name: "ci",
+  about: "Install dependencies from a lockfile in a frozen state",
+  aliases: &[],
+  args: &[
+    ArgDef::new("prod").long("prod").set_true(),
+    ArgDef::new("skip-types").long("skip-types").set_true(),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+  ],
+  arg_groups: &[UNSTABLE_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
+
 pub static BUMP_VERSION_SUBCOMMAND: CommandDef = CommandDef {
   name: "bump-version",
   about: "Update version in the configuration file",
@@ -2138,6 +2181,8 @@ pub static DENO_ROOT: CommandDef = CommandDef {
     WHY_SUBCOMMAND,
     TRANSPILE_SUBCOMMAND,
     BUMP_VERSION_SUBCOMMAND,
+    CI_SUBCOMMAND,
+    DESKTOP_SUBCOMMAND,
     X_SUBCOMMAND,
     JSON_REFERENCE_SUBCOMMAND,
     HELP_SUBCOMMAND,
