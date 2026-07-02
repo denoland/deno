@@ -37,6 +37,41 @@ pub struct NpmPackageInfo {
 }
 
 impl NpmPackageInfo {
+  /// Fill in each version's `exports` subpath keys from the raw packument JSON
+  /// this info was parsed from.
+  ///
+  /// The keys are `skip_deserializing` in the normal parse because only the LSP
+  /// (npm import-specifier completion) reads them and retaining them for every
+  /// version of every package regressed `deno run` memory badly (see
+  /// denoland/deno#35664). The LSP calls this to populate them for its own use;
+  /// no other command pays for it.
+  pub fn fill_export_keys(
+    &mut self,
+    packument_json: &[u8],
+  ) -> Result<(), serde_json::Error> {
+    #[derive(Deserialize)]
+    struct Packument {
+      #[serde(default)]
+      versions: HashMap<Version, VersionExports>,
+    }
+    #[derive(Deserialize)]
+    struct VersionExports {
+      #[serde(default)]
+      exports: Option<NpmPackageExportKeys>,
+    }
+
+    let packument: Packument = serde_json::from_slice(packument_json)?;
+    for (version, version_exports) in packument.versions {
+      let Some(keys) = version_exports.exports else {
+        continue;
+      };
+      if let Some(version_info) = self.versions.get_mut(&version) {
+        version_info.exports = Some(keys);
+      }
+    }
+    Ok(())
+  }
+
   pub fn version_info<'a>(
     &'a self,
     nv: &PackageNv,
@@ -210,11 +245,12 @@ fn is_export_completion_key(key: &str) -> bool {
 /// `"./feature"`), retained solely for npm import-specifier completion in the
 /// LSP.
 ///
-/// Only the keys are kept. The full `exports` value is intentionally discarded
-/// while deserializing registry metadata: retaining it as a `serde_json::Value`
-/// for the `exports` of every version of every npm package kept hundreds of MB
-/// alive for a plain `deno run`, and leaked that much per `--watch` reload (see
-/// denoland/deno#35664). The keys are the only thing any consumer reads.
+/// This is never deserialized as part of the normal packument parse (the
+/// `exports` field on [`NpmPackageVersionInfo`] is `skip_deserializing`).
+/// Retaining even the keys for the `exports` of every version of every npm
+/// package regressed `deno run` memory and leaked per `--watch` reload (see
+/// denoland/deno#35664), and only the LSP reads them. The LSP fills them in on
+/// demand via [`NpmPackageInfo::fill_export_keys`].
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct NpmPackageExportKeys(pub Vec<String>);
 
@@ -325,7 +361,15 @@ impl<'de> Deserialize<'de> for NpmPackageExportKeys {
 #[serde(rename_all = "camelCase")]
 pub struct NpmPackageVersionInfo {
   pub version: Version,
-  #[serde(default, skip_serializing_if = "Option::is_none")]
+  /// Skipped during the normal parse — only the LSP consumes these keys, and
+  /// retaining them for every version of every package regressed `deno run`
+  /// memory (see denoland/deno#35664). The LSP fills them in via
+  /// [`NpmPackageInfo::fill_export_keys`].
+  #[serde(
+    default,
+    skip_deserializing,
+    skip_serializing_if = "Option::is_none"
+  )]
   pub exports: Option<NpmPackageExportKeys>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub dist: Option<NpmPackageVersionDistInfo>,
@@ -1974,6 +2018,47 @@ mod test {
       .0;
     round_tripped.sort();
     assert_eq!(round_tripped, sorted);
+  }
+
+  #[test]
+  fn version_info_exports_skipped_by_default() {
+    // The normal parse (e.g. `deno run`) discards `exports` entirely — nothing
+    // is retained, not even the subpath keys.
+    let text = r#"{ "version": "1.0.0", "exports": { ".": "./index.js", "./client": "./client.js" } }"#;
+    let info: NpmPackageVersionInfo = serde_json::from_str(text).unwrap();
+    assert_eq!(info.exports, None);
+  }
+
+  #[test]
+  fn fill_export_keys_populates_from_packument() {
+    let text = r#"{
+      "name": "pkg",
+      "versions": {
+        "1.0.0": { "version": "1.0.0", "exports": { ".": "./index.js", "./client": "./client.js", "import": "./index.mjs" } },
+        "2.0.0": { "version": "2.0.0" }
+      }
+    }"#;
+    let mut info: NpmPackageInfo = serde_json::from_str(text).unwrap();
+    // Skipped during the normal parse.
+    assert_eq!(
+      info.versions[&Version::parse_from_npm("1.0.0").unwrap()].exports,
+      None
+    );
+
+    info.fill_export_keys(text.as_bytes()).unwrap();
+
+    let mut keys = info.versions[&Version::parse_from_npm("1.0.0").unwrap()]
+      .exports
+      .clone()
+      .unwrap()
+      .0;
+    keys.sort();
+    assert_eq!(keys, vec![".", "./client"]);
+    // A version without `exports` stays empty.
+    assert_eq!(
+      info.versions[&Version::parse_from_npm("2.0.0").unwrap()].exports,
+      None
+    );
   }
 
   #[test]

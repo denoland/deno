@@ -8,11 +8,8 @@
 //! shared library and provides the browser/window layer.
 //!
 //! The user's code uses `Deno.serve()` or `export default { fetch }`
-//! to serve an HTTP app. The desktop runtime starts it on an in-process
-//! memory channel and navigates the webview to `app://`, whose requests are
-//! bridged into that channel by [`scheme_bridge`] — there is no TCP loopback.
-
-mod scheme_bridge;
+//! to serve an HTTP app. The desktop runtime starts it on a local port
+//! and navigates the webview to it.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -33,6 +30,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::v8;
+use deno_lib::util::net::allocate_random_port;
 use deno_lib::util::result::js_error_downcast_ref;
 use deno_lib::version::otel_runtime_config;
 use deno_runtime::fmt_errors::format_js_error;
@@ -1257,24 +1255,26 @@ laufey::main!(|| {
 
   laufey::set_js_namespace("bindings");
 
-  // Serve over an in-process memory channel — there is no TCP loopback for the
-  // desktop app at all. No port allocation, no localhost exposure, no kernel
-  // networking. The webview reaches the server through the `app://` scheme
-  // handler registered below, which bridges each browser request into this
-  // named in-memory channel.
-  //
-  // Publish DENO_SERVE_ADDRESS BEFORE the tokio runtime is built. Once the
-  // runtime spins up its mio IO thread (and, optionally, the inspector server
-  // thread), `setenv` is no longer thread-safe on glibc — Rust 1.81+ marks it
-  // unsafe for that reason. We're still single-threaded up to here: the
-  // worker-fork path has already returned, and the init calls above
-  // (init_logging, mark_standalone, rustls install_default, set_js_namespace)
-  // don't spawn threads.
+  // Allocate the desktop serve port and publish it via DENO_SERVE_ADDRESS
+  // BEFORE the tokio runtime is built. Once the runtime spins up its
+  // mio IO thread (and, optionally, the inspector server thread),
+  // `setenv` is no longer thread-safe on glibc — Rust 1.81+ marks it
+  // unsafe for that reason. We're still single-threaded up to here:
+  // the worker-fork path has already returned, and the init calls
+  // above (init_logging, mark_standalone, rustls install_default,
+  // set_js_namespace) don't spawn threads.
+  let desktop_serve_port = match allocate_random_port() {
+    Ok(p) => p,
+    Err(e) => {
+      log::error!("[desktop] failed to allocate serve port: {}", e);
+      return;
+    }
+  };
   // SAFETY: see the block comment above — single-threaded at this point.
   unsafe {
     std::env::set_var(
       "DENO_SERVE_ADDRESS",
-      format!("memory:{}", scheme_bridge::DESKTOP_SERVE_NAME),
+      format!("tcp:127.0.0.1:{}", desktop_serve_port),
     );
   }
 
@@ -1320,7 +1320,7 @@ laufey::main!(|| {
 
   rt.block_on(async {
     log::debug!("[desktop] run_desktop starting");
-    match run_desktop(update_rolled_back, data).await {
+    match run_desktop(update_rolled_back, desktop_serve_port, data).await {
       Ok(()) => log::debug!("[desktop] run_desktop completed OK"),
       Err(error) => {
         let is_js_error = js_error_downcast_ref(&error).is_some();
@@ -1567,6 +1567,7 @@ fn find_section_in_dylib() -> Result<&'static [u8], AnyError> {
 
 async fn run_desktop(
   update_rolled_back: bool,
+  desktop_serve_port: u16,
   data: denort::binary::StandaloneData,
 ) -> Result<(), AnyError> {
   // Make the error reporting URL available to the panic hook.
@@ -1634,9 +1635,9 @@ async fn run_desktop(
     log::debug!("[desktop] inspector server bound on {addr}");
   }
 
-  // DENO_SERVE_ADDRESS (an in-process `memory:` channel) is published by
-  // `laufey::main!` before the tokio runtime is built — see the comment there
-  // for why we can't do it from here.
+  // DENO_SERVE_ADDRESS is published by `laufey::main!` before the
+  // tokio runtime is built — see the comment there for why we can't
+  // do it from here. `desktop_serve_port` is the port we put into it.
 
   // Enable HMR if DENO_DESKTOP_HMR is set to a directory path
   // (set by `deno compile --desktop --hmr`).
@@ -1714,10 +1715,8 @@ async fn run_desktop(
 
   let run_opts = RunOptions {
     auto_serve: true,
-    // The desktop app serves over an in-process memory channel
-    // (DENO_SERVE_ADDRESS=memory:…), so there is no TCP serve port/host.
-    serve_port: None,
-    serve_host: None,
+    serve_port: Some(desktop_serve_port),
+    serve_host: Some("127.0.0.1".to_string()),
     hmr_watch_dir: if is_framework_dev {
       None
     } else {
@@ -1795,6 +1794,7 @@ async fn run_desktop(
   // Run the Deno runtime and Laufey event loop concurrently.
   // We spawn the runtime first, wait for the server to be ready,
   // then navigate the webview.
+  let url = format!("http://127.0.0.1:{}", desktop_serve_port);
   log::debug!("[desktop] starting runtime and laufey event loop");
   let run_fut =
     denort::run::run_with_options(Arc::new(sys.clone()), sys, data, run_opts);
@@ -1838,29 +1838,42 @@ async fn run_desktop(
       }
     }
 
-    // Register the app:// scheme handler now that we're running on the Deno
-    // tokio runtime (the bridge spawns request tasks onto it), then wait for
-    // Deno.serve to bind the in-process channel before navigating.
-    scheme_bridge::register();
-
     let id = initial_window_id_for_navigate.load(Ordering::Acquire);
     let mut server_ready = false;
     for i in 0..60 {
-      if deno_net::memory::is_listening(scheme_bridge::DESKTOP_SERVE_NAME) {
-        log::debug!(
-          "[desktop] Server ready after {} attempts, navigating to {}",
-          i + 1,
-          scheme_bridge::APP_URL
+      if let Ok(mut stream) =
+        tokio::net::TcpStream::connect(("127.0.0.1", desktop_serve_port)).await
+      {
+        let req = format!(
+          "GET / HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+          desktop_serve_port
         );
-        server_ready = true;
-        break;
+        if stream.write_all(req.as_bytes()).await.is_ok() {
+          let mut buf = vec![0u8; 256];
+          if let Ok(n) = stream.read(&mut buf).await {
+            let response = String::from_utf8_lossy(&buf[..n]);
+            if response.starts_with("HTTP/1.1 2")
+              || response.starts_with("HTTP/1.1 3")
+              || response.starts_with("HTTP/1.0 2")
+              || response.starts_with("HTTP/1.0 3")
+            {
+              log::debug!(
+                "[desktop] Server ready after {} attempts, navigating to {}",
+                i + 1,
+                &url
+              );
+              server_ready = true;
+              break;
+            }
+          }
+        }
       }
       tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
     if !server_ready {
       log::warn!("Server not ready after 15s, navigating anyway");
     }
-    laufey::Window::from_id(id).navigate(scheme_bridge::APP_URL);
+    laufey::Window::from_id(id).navigate(&url);
 
     // The window was created hidden and is normally revealed from its
     // `on_page_load` handler the moment content paints. If that load never

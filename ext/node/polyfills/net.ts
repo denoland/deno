@@ -2233,7 +2233,12 @@ ObjectDefineProperty(Socket.prototype, "_handle", {
     if (this[kHandle] && !v) {
       unregisterActiveHandle(this);
     } else if (!this[kHandle] && v) {
-      registerActiveHandle(this);
+      registerActiveHandle(
+        this,
+        ObjectPrototypeIsPrototypeOf(TCP.prototype, v)
+          ? "TCPSocketWrap"
+          : "PipeWrap",
+      );
     }
     this[kHandle] = v;
   },
@@ -2664,6 +2669,14 @@ function _onconnectionImpl(this: any, err: number, clientHandle?: Handle) {
   }
 }
 
+// The libuv-style wrap name Node reports for a server handle from
+// `process.getActiveResourcesInfo()`.
+function _serverWrapName(handle: Handle) {
+  return ObjectPrototypeIsPrototypeOf(TCP.prototype, handle)
+    ? "TCPServerWrap"
+    : "PipeWrap";
+}
+
 function _setupListenHandle(
   this: Server,
   address: string | null,
@@ -2679,7 +2692,7 @@ function _setupListenHandle(
   // In the case of a server sent via IPC, we don't need to do this.
   if (this._handle) {
     debug("setupListenHandle: have a handle already");
-    registerActiveHandle(this);
+    registerActiveHandle(this, _serverWrapName(this._handle));
   } else {
     debug("setupListenHandle: create a handle");
 
@@ -2730,7 +2743,7 @@ function _setupListenHandle(
     }
 
     this._handle = rval;
-    registerActiveHandle(this);
+    registerActiveHandle(this, _serverWrapName(this._handle));
   }
 
   this[asyncIdSymbol] = _getNewAsyncId(this._handle);

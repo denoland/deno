@@ -461,7 +461,7 @@ pub struct JupyterFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UninstallFlagsGlobal {
-  pub name: String,
+  pub packages: Vec<String>,
   pub root: Option<String>,
 }
 
