@@ -2947,9 +2947,16 @@ function readableStreamPipeTo(
 
   // Fast path: when both ends are resource-backed and there is no abort signal
   // to observe mid-stream, offload the whole streaming operation to Rust.
+  // Both streams must be in their active state: an already closed or errored
+  // stream carries spec-mandated behavior (a specific stored error, or closing
+  // the destination when the source is already closed) that only the slow path
+  // below implements, so we defer those cases to it.
   const srcBacking = getReadableStreamResourceBacking(source);
   const dstBacking = getWritableStreamResourceBacking(dest);
-  if (srcBacking && dstBacking && signal === undefined) {
+  if (
+    srcBacking && dstBacking && signal === undefined &&
+    source[_state] === "readable" && dest[_state] === "writable"
+  ) {
     return fastPipeTo(
       source,
       dest,
