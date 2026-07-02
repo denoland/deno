@@ -70,11 +70,9 @@ macro_rules! eprintln {
 
 #[cfg(test)]
 mod tests {
-  // shadow the std prelude macros like consumers of this crate would
-  use crate::eprint;
-  use crate::eprintln;
-  use crate::print;
-  use crate::println;
+  // within the defining crate the macros are already in textual scope, so
+  // no `use` is needed here; consumer-style prelude shadowing via
+  // `use deno_print::println;` is exercised by the doc test above
 
   #[test]
   fn all_macro_forms_expand() {
