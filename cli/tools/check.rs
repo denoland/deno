@@ -89,5 +89,12 @@ async fn check_with_factory(
         ..Default::default()
       },
     )
-    .await
+    .await?;
+
+  match specifiers_for_typecheck.len() {
+    1 => log::info!("Checked 1 file"),
+    n => log::info!("Checked {} files", n),
+  }
+
+  Ok(())
 }

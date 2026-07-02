@@ -2,12 +2,12 @@
   "tests": {
     "star": {
       "args": "check *.ts",
-      "output": "Check [WILDCARD]main.ts\n",
+      "output": "Check [WILDCARD]main.ts\nChecked 1 file\n",
       "exitCode": 0
     },
     "star_not_found": {
       "args": "check *.js",
-      "output": "Warning No matching files found.\n",
+      "output": "Warning No matching files found.\nChecked 0 files\n",
       "exitCode": 0
     },
     "glob_star": {
