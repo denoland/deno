@@ -266,6 +266,19 @@ fn parse_args(
     }
   }
 
+  // Enforce required args: every arg marked `required` must have been provided.
+  for arg_def in cmd_def.all_args() {
+    if arg_def.required && !result.contains(arg_def.name) {
+      return Err(CliError::new(
+        CliErrorKind::MissingRequired,
+        format!(
+          "the following required arguments were not provided: {}",
+          arg_def.name
+        ),
+      ));
+    }
+  }
+
   Ok(())
 }
 

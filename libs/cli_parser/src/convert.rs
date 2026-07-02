@@ -143,6 +143,8 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("sandbox") => deploy_parse(&result, &mut flags, true),
     Some("bundle") => bundle_parse(&result, &mut flags),
     Some("audit") => audit_parse(&result, &mut flags),
+    Some("why") => why_parse(&result, &mut flags),
+    Some("transpile") => transpile_parse(&result, &mut flags),
     Some("x") => x_parse(&result, &mut flags),
     Some("json_reference") => json_reference_parse(&mut flags),
     Some("help") => help_subcommand_parse(&result, &mut flags),
@@ -2261,6 +2263,34 @@ fn add_parse(result: &ParseResult, flags: &mut Flags) {
     lockfile_only: result.get_bool("lockfile-only"),
     save_exact: result.get_bool("save-exact"),
     package_json: result.get_bool("package-json"),
+  });
+}
+
+fn transpile_parse(result: &ParseResult, flags: &mut Flags) {
+  let files = result
+    .get_many("file")
+    .map(|v| v.iter().map(|s| s.to_string()).collect())
+    .unwrap_or_default();
+  let source_map = match result.get_one("source-map") {
+    Some("inline") => SourceMapMode::Inline,
+    Some("separate") => SourceMapMode::Separate,
+    _ => SourceMapMode::None,
+  };
+  flags.subcommand = DenoSubcommand::Transpile(TranspileFlags {
+    files,
+    output: result.get_one("output").map(|s| s.to_string()),
+    output_dir: result.get_one("outdir").map(|s| s.to_string()),
+    declaration: result.get_bool("declaration"),
+    source_map,
+  });
+}
+
+fn why_parse(result: &ParseResult, flags: &mut Flags) {
+  lock_args_parse(result, flags);
+  env_file_arg_parse(result, flags);
+  let package = result.get_one("package").map(|s| s.to_string());
+  flags.subcommand = DenoSubcommand::Why(WhyFlags {
+    package: package.unwrap_or_default(),
   });
 }
 

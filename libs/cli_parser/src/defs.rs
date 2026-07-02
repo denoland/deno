@@ -1995,6 +1995,59 @@ pub static GLOBAL_ARGS: &[ArgDef] = &[
     .global(),
 ];
 
+pub static TRANSPILE_SUBCOMMAND: CommandDef = CommandDef {
+  name: "transpile",
+  about: "Transpile TypeScript/JSX/TSX files to JavaScript",
+  aliases: &[],
+  args: &[
+    ArgDef::new("file")
+      .positional()
+      .action(ArgAction::Append)
+      .num_args(NumArgs::OneOrMore)
+      .required(),
+    ArgDef::new("output")
+      .long("output")
+      .short('o')
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("outdir")
+      .long("outdir")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("source-map")
+      .long("source-map")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .default_value("none"),
+    ArgDef::new("declaration").long("declaration").set_true(),
+  ],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
+
+pub static WHY_SUBCOMMAND: CommandDef = CommandDef {
+  name: "why",
+  about: "Show why a package is installed",
+  aliases: &[],
+  args: &[
+    ArgDef::new("package").positional().required(),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+  ],
+  arg_groups: &[LOCK_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
+
 pub static DENO_ROOT: CommandDef = CommandDef {
   name: "deno",
   about: "A modern JavaScript and TypeScript runtime",
@@ -2038,6 +2091,8 @@ pub static DENO_ROOT: CommandDef = CommandDef {
     VENDOR_SUBCOMMAND,
     BUNDLE_SUBCOMMAND,
     AUDIT_SUBCOMMAND,
+    WHY_SUBCOMMAND,
+    TRANSPILE_SUBCOMMAND,
     X_SUBCOMMAND,
     JSON_REFERENCE_SUBCOMMAND,
     HELP_SUBCOMMAND,
