@@ -1847,13 +1847,17 @@ impl TLSWrap {
   /// Safe to call from cppgc Drop.
   fn teardown(&self) {
     let inner = unsafe { self.inner.as_mut() };
+
+    // Mark as dead so in-flight enc_write_cb callbacks won't dereference
+    // the TLSWrapInner pointer after it is freed. This must happen even
+    // when no TLS connection was ever created: encrypted writes can be
+    // in flight without one (e.g. the finish_accept error path flushes
+    // a TLS alert via enc_out_uv before tls_conn is set).
+    inner.alive.set(false);
+
     if inner.tls_conn.is_none() {
       return;
     }
-
-    // Mark as dead so in-flight enc_write_cb callbacks won't dereference
-    // the TLSWrapInner pointer after it is freed.
-    inner.alive.set(false);
 
     inner.tls_conn = None;
     inner.js_handle = None;
