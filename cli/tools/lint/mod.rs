@@ -444,6 +444,7 @@ impl WorkspaceLinter {
               packages: &packages,
               build_fast_check_graph: true,
               validate_graph: false,
+              skip_unanalyzable_exports: true,
             })
             .await
             .map(Rc::new)
