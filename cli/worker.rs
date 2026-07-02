@@ -145,6 +145,11 @@ impl CliMainWorker {
       self.install_watcher_exit_handle();
     }
 
+    // Like Node.js, allow activating the inspector on an already running
+    // process by sending it SIGUSR1.
+    #[cfg(unix)]
+    self.spawn_sigusr1_inspector_listener();
+
     let mut result = self
       .run_to_completion(&mut maybe_hmr_runner, has_coverage)
       .await;
@@ -170,6 +175,59 @@ impl CliMainWorker {
 
     result?;
     Ok(self.worker.exit_code())
+  }
+
+  /// Starts listening for SIGUSR1 and activates the inspector server when
+  /// the signal is received, mirroring Node.js behavior. Listening starts
+  /// after a short grace period so that short-lived programs don't pay the
+  /// cost of installing a process-wide signal handler.
+  #[cfg(unix)]
+  fn spawn_sigusr1_inspector_listener(&mut self) {
+    use deno_runtime::deno_inspector_server::InspectPublishUid;
+    use deno_runtime::deno_inspector_server::create_inspector_server;
+    use deno_runtime::deno_inspector_server::get_inspector_server;
+
+    const GRACE_PERIOD: std::time::Duration =
+      std::time::Duration::from_millis(500);
+
+    let inspector = self.worker.js_runtime().inspector();
+    let op_state = self.worker.js_runtime().op_state();
+    let main_module = self.worker.main_module().to_string();
+
+    deno_core::unsync::spawn(async move {
+      tokio::time::sleep(GRACE_PERIOD).await;
+      let Ok(mut sigusr1) = tokio::signal::unix::signal(
+        tokio::signal::unix::SignalKind::user_defined1(),
+      ) else {
+        return;
+      };
+      while sigusr1.recv().await.is_some() {
+        // No-op when the inspector server is already running (an
+        // `--inspect*` flag, `node:inspector`'s `open()`, or a previous
+        // SIGUSR1).
+        if get_inspector_server().is_some() {
+          continue;
+        }
+        let host = std::net::SocketAddr::from(([127, 0, 0, 1], 9229));
+        match create_inspector_server(
+          host,
+          deno_lib::version::DENO_VERSION_INFO.user_agent,
+          InspectPublishUid::default(),
+        ) {
+          Ok(server) => {
+            let url = server.register_inspector(
+              main_module.clone(),
+              inspector.clone(),
+              false,
+            );
+            op_state.borrow_mut().put(url);
+          }
+          Err(err) => {
+            log::error!("Failed to start inspector server: {}", err);
+          }
+        }
+      }
+    });
   }
 
   /// Runs the main module to completion: preload + main module, lifecycle
