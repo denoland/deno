@@ -92,6 +92,7 @@ pub async fn format(
           let factory = CliFactory::from_flags(flags);
           let cli_options = factory.cli_options()?;
           let caches = factory.caches()?;
+          let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
           let mut paths_with_options_batches =
             resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
 

@@ -145,7 +145,7 @@ pub struct BenchFlags {
   pub json: bool,
   pub no_run: bool,
   pub permit_no_files: bool,
-  pub watch: Option<WatchFlags>,
+  pub watch: Option<WatchFlagsWithPaths>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -355,7 +355,7 @@ pub struct FmtFlags {
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
   pub no_editorconfig: bool,
-  pub watch: Option<WatchFlags>,
+  pub watch: Option<WatchFlagsWithPaths>,
   pub unstable_component: bool,
   pub unstable_sql: bool,
 }
@@ -487,7 +487,7 @@ pub struct LintFlags {
   pub permit_no_files: bool,
   pub json: bool,
   pub compact: bool,
-  pub watch: Option<WatchFlags>,
+  pub watch: Option<WatchFlagsWithPaths>,
 }
 
 impl LintFlags {
@@ -841,17 +841,17 @@ impl DenoSubcommand {
       })
       | Self::Test(TestFlags {
         watch: Some(flags), ..
-      }) => Some(WatchFlagsRef::WithPaths(flags)),
-      Self::Bench(BenchFlags {
-        watch: Some(flags), ..
       })
-      | Self::Check(CheckFlags {
+      | Self::Bench(BenchFlags {
         watch: Some(flags), ..
       })
       | Self::Lint(LintFlags {
         watch: Some(flags), ..
       })
       | Self::Fmt(FmtFlags {
+        watch: Some(flags), ..
+      }) => Some(WatchFlagsRef::WithPaths(flags)),
+      Self::Check(CheckFlags {
         watch: Some(flags), ..
       })
       | Self::Compile(CompileFlags {

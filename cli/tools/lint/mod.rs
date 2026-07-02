@@ -142,6 +142,7 @@ async fn lint_with_watch_inner(
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
+  let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
   let mut paths_with_options_batches =
     resolve_paths_with_options_batches(cli_options, &lint_flags)?;
   for paths_with_options in &mut paths_with_options_batches {
