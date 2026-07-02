@@ -1,6 +1,46 @@
 main [Function: OffscreenCanvasRenderingContext2D]
-main undefined
-main OffscreenCanvasRenderingContext2D {[WILDCARD]}
+main OffscreenCanvasRenderingContext2D {
+  canvas: OffscreenCanvas {},
+  fillStyle: "#000000",
+  strokeStyle: "#000000",
+  globalAlpha: 1,
+  font: "10px sans-serif",
+  textAlign: "start",
+  textBaseline: "alphabetic",
+  globalCompositeOperation: "source-over",
+  filter: "none",
+  imageSmoothingEnabled: true,
+  imageSmoothingQuality: "low",
+  lineWidth: 1,
+  lineCap: "butt",
+  lineJoin: "miter",
+  miterLimit: 10,
+  lineDashOffset: 0,
+  shadowBlur: 0,
+  shadowColor: "rgba(0, 0, 0, 0)",
+  shadowOffsetX: 0,
+  shadowOffsetY: 0
+}
 worker [Function: OffscreenCanvasRenderingContext2D]
-worker FontFaceSet {[WILDCARD]}
-worker OffscreenCanvasRenderingContext2D {[WILDCARD]}
+worker OffscreenCanvasRenderingContext2D {
+  canvas: OffscreenCanvas {},
+  fillStyle: "#000000",
+  strokeStyle: "#000000",
+  globalAlpha: 1,
+  font: "10px sans-serif",
+  textAlign: "start",
+  textBaseline: "alphabetic",
+  globalCompositeOperation: "source-over",
+  filter: "none",
+  imageSmoothingEnabled: true,
+  imageSmoothingQuality: "low",
+  lineWidth: 1,
+  lineCap: "butt",
+  lineJoin: "miter",
+  miterLimit: 10,
+  lineDashOffset: 0,
+  shadowBlur: 0,
+  shadowColor: "rgba(0, 0, 0, 0)",
+  shadowOffsetX: 0,
+  shadowOffsetY: 0
+}

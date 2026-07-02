@@ -29,6 +29,9 @@ pub enum Canvas2DError {
   #[error("{0}")]
   InvalidState(String),
   #[class(type)]
+  #[error("Invalid beginLayer filter option")]
+  InvalidBeginLayerFilter,
+  #[class(type)]
   #[error("The provided value is non-finite")]
   NonFinite,
   #[class(type)]

@@ -73,7 +73,11 @@ pub fn resolve_canvas_image_source<'a>(
     return Ok(ResolvedCanvasImage {
       width,
       height,
-      pixels: data.as_bytes().to_vec(),
+      // `DynamicImage::as_bytes()` returns whatever the decoder's native
+      // color type is (e.g. 3 bytes/pixel for opaque PNGs/JPEGs), so the
+      // buffer must be normalized to RGBA8 before callers assume a 4-byte
+      // stride.
+      pixels: data.to_rgba8().into_raw(),
     });
   }
 
