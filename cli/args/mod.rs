@@ -705,6 +705,16 @@ impl CliOptions {
     self.flags.internal.compile_bundle_embed_node_modules
   }
 
+  /// The user-facing source passed to `deno compile --bundle`, before
+  /// compilation rewrote it to a temporary `.deno_compile_bundle_*.mjs`.
+  pub fn compile_bundle_original_source_file(&self) -> Option<&str> {
+    self
+      .flags
+      .internal
+      .compile_bundle_original_source_file
+      .as_deref()
+  }
+
   /// Absolute paths the `--bundle` rewriter pointed at — the on-disk
   /// locations the compiled binary expects to require() at runtime. The
   /// binary writer maps these back to npm packages so it can ship only

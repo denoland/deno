@@ -957,6 +957,10 @@ pub struct InternalFlags {
   /// binary writer embeds (a subset of) the npm tree. Pure-ESM bundles
   /// leave this false and ship a tiny binary.
   pub compile_bundle_embed_node_modules: bool,
+  /// Original `deno compile --bundle` source before it was rewritten to the
+  /// temporary bundle file. Output-name inference still needs the user-facing
+  /// source, especially for npm package/bin names.
+  pub compile_bundle_original_source_file: Option<String>,
   /// Absolute paths the bundle path-rewriter resolved at build time —
   /// the on-disk files the compiled binary will require() at runtime.
   /// The standalone binary writer maps these back to npm packages so
