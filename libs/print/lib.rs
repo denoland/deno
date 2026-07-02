@@ -87,6 +87,10 @@ mod tests {
   }
 
   #[test]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "test spawns itself as a child process"
+  )]
   fn does_not_panic_on_closed_stdout() {
     if std::env::var_os("DENO_PRINT_TEST_CHILD").is_some() {
       // more than any pipe buffer holds, so writes keep happening after
