@@ -499,7 +499,10 @@ impl BiPipeWrite {
   /// e.g. `process.send(...); process.exit(0)` doesn't drop the message
   /// before Tokio gets a chance to poll the write future.
   ///
-  /// On Unix this delegates to `tokio::net::unix::OwnedWriteHalf::try_write`.
+  /// On Unix this issues a raw `write(2)` on the (non-blocking) fd rather
+  /// than using `tokio::net::unix::OwnedWriteHalf::try_write`, since the
+  /// latter consults Tokio's cached readiness and returns `WouldBlock` until
+  /// the socket has been polled writable at least once.
   /// On Windows the underlying named-pipe split doesn't expose a `try_write`,
   /// so this currently always returns `Err(WouldBlock)` on Windows; callers
   /// should fall back to the async write path.
