@@ -7,69 +7,38 @@ const {
   op_otel_enable_isolate_metrics,
   op_otel_log,
   op_otel_log_foreign,
-  op_otel_metric_attribute3,
-  op_otel_metric_observable_record0,
-  op_otel_metric_observable_record1,
-  op_otel_metric_observable_record2,
-  op_otel_metric_observable_record3,
   op_otel_metric_observation_done,
-  op_otel_metric_record0,
-  op_otel_metric_record1,
-  op_otel_metric_record2,
-  op_otel_metric_record3,
+  op_otel_metric_run_observations,
   op_otel_metric_wait_to_observe,
+  op_otel_span_add_event,
   op_otel_span_add_link,
   op_otel_span_attribute1,
-  op_otel_span_attribute2,
-  op_otel_span_attribute3,
+  op_otel_span_attributes,
+  op_otel_span_end,
+  op_otel_span_record_exception,
   op_otel_span_update_name,
+  OtelContext,
   OtelMeter,
   OtelTracer,
+  OtelW3CTraceContextPropagator,
+  OtelW3CBaggagePropagator,
+  OtelCompositePropagator,
 } = core.ops;
 const { Console } = core.loadExtScript("ext:deno_web/01_console.js");
 
 const {
-  ArrayFrom,
   ArrayIsArray,
-  ArrayPrototypeConcat,
   ArrayPrototypeFilter,
-  ArrayPrototypeForEach,
-  ArrayPrototypeJoin,
   ArrayPrototypeMap,
-  ArrayPrototypePush,
-  ArrayPrototypeReduce,
-  ArrayPrototypeReverse,
-  ArrayPrototypeShift,
-  ArrayPrototypeSlice,
   DatePrototype,
   DatePrototypeGetTime,
-  decodeURIComponent,
-  encodeURIComponent,
   Error,
-  MapPrototypeEntries,
-  MapPrototypeKeys,
-  Number,
-  NumberParseInt,
-  NumberPrototypeToString,
-  ObjectAssign,
   ObjectDefineProperty,
-  ObjectEntries,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ObjectValues,
   ReflectApply,
-  SafeArrayIterator,
-  SafeMap,
-  SafeMapIterator,
   SafePromiseAll,
-  SafeRegExp,
-  SafeSet,
-  SafeWeakSet,
-  StringPrototypeIndexOf,
-  StringPrototypeSlice,
-  StringPrototypeSplit,
-  StringPrototypeSubstring,
-  StringPrototypeTrim,
   SymbolFor,
   TypeError,
 } = primordials;
@@ -90,6 +59,8 @@ enum SpanKind {
   CONSUMER = 4,
 }
 
+// The `TraceState` object is Rust-backed (see ext/telemetry/propagation.rs);
+// this interface only describes the shape attached to a `SpanContext`.
 interface TraceState {
   set(key: string, value: string): TraceState;
   unset(key: string): TraceState;
@@ -180,11 +151,6 @@ function hrToMs(hr: [number, number]): number {
   return (hr[0] * 1e3 + hr[1] / 1e6);
 }
 
-function isTimeInput(input: unknown): input is TimeInput {
-  return typeof input === "number" ||
-    (input && (ArrayIsArray(input) || isDate(input)));
-}
-
 function timeInputToMs(input?: TimeInput): number | undefined {
   if (input === undefined) return;
   if (ArrayIsArray(input)) {
@@ -208,7 +174,7 @@ function enterSpan(
   context?: Context,
 ): AsyncContextSnapshot | undefined {
   if (!span.isRecording()) return undefined;
-  context = (context ?? CURRENT.get() ?? ROOT_CONTEXT)
+  context = (context ?? CURRENT.get() ?? rootContext())
     .setValue(SPAN_KEY, span);
   return CURRENT.enter(context);
 }
@@ -250,60 +216,13 @@ interface OtelSpan {
 
   spanContext(): SpanContext;
   setStatus(status: SpanStatusCode, errorDescription: string): void;
-  addEvent(
-    name: string,
-    startTime: number,
-  ): void;
   dropEvent(): void;
-  end(endTime: number): void;
 }
 
 enum SpanAttributesLocation {
   SELF = 0,
   LAST_EVENT = 1,
   LAST_LINK = 2,
-}
-
-function spanAddAttributes(
-  span: OtelSpan,
-  attributesLocation: SpanAttributesLocation,
-  attributes: Attributes,
-) {
-  const attributeKvs = ObjectEntries(attributes);
-  let i = 0;
-  while (i < attributeKvs.length) {
-    if (i + 2 < attributeKvs.length) {
-      op_otel_span_attribute3(
-        span,
-        attributesLocation,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
-        attributeKvs[i + 1][0],
-        attributeKvs[i + 1][1],
-        attributeKvs[i + 2][0],
-        attributeKvs[i + 2][1],
-      );
-      i += 3;
-    } else if (i + 1 < attributeKvs.length) {
-      op_otel_span_attribute2(
-        span,
-        attributesLocation,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
-        attributeKvs[i + 1][0],
-        attributeKvs[i + 1][1],
-      );
-      i += 2;
-    } else {
-      op_otel_span_attribute1(
-        span,
-        attributesLocation,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
-      );
-      i += 1;
-    }
-  }
 }
 
 interface TracerOptions {
@@ -370,9 +289,9 @@ class Tracer {
       throw new Error("startActiveSpan requires a function argument");
     }
     if (options?.root) {
-      context = ROOT_CONTEXT;
+      context = rootContext();
     } else {
-      context = context ?? CURRENT.get() ?? ROOT_CONTEXT;
+      context = context ?? CURRENT.get() ?? rootContext();
     }
     const span = this.startSpan(name, options, context);
     const ctx = CURRENT.enter(context.setValue(SPAN_KEY, span));
@@ -466,46 +385,18 @@ class Span {
     startTime?: TimeInput,
   ): this {
     if (!this.#otelSpan) return this;
-    let attributes: Attributes | undefined;
-    if (isTimeInput(attributesOrStartTime)) {
-      startTime = attributesOrStartTime;
-    } else {
-      attributes = attributesOrStartTime;
-    }
-    const startTimeMs = timeInputToMs(startTime);
-
-    this.#otelSpan.addEvent(
+    op_otel_span_add_event(
+      this.#otelSpan,
       name,
-      startTimeMs ?? NaN,
+      attributesOrStartTime,
+      startTime,
     );
-    if (attributes) {
-      spanAddAttributes(
-        this.#otelSpan,
-        SpanAttributesLocation.LAST_EVENT,
-        attributes,
-      );
-    }
     return this;
   }
 
   addLink(link: Link): this {
     if (!this.#otelSpan) return this;
-    const valid = op_otel_span_add_link(
-      this.#otelSpan,
-      link.context.traceId,
-      link.context.spanId,
-      link.context.traceFlags,
-      link.context.isRemote ?? false,
-      link.droppedAttributesCount ?? 0,
-    );
-    if (link.attributes) {
-      spanAddAttributes(
-        this.#otelSpan,
-        SpanAttributesLocation.LAST_LINK,
-        link.attributes,
-      );
-    }
-    if (!valid) return this;
+    op_otel_span_add_link(this.#otelSpan, link);
     return this;
   }
 
@@ -517,7 +408,8 @@ class Span {
   }
 
   end(endTime?: TimeInput): void {
-    this.#otelSpan?.end(timeInputToMs(endTime) || NaN);
+    if (!this.#otelSpan) return;
+    op_otel_span_end(this.#otelSpan, endTime);
   }
 
   isRecording(): boolean {
@@ -525,32 +417,8 @@ class Span {
   }
 
   recordException(exception: string | Exception, time?: TimeInput): void {
-    if (typeof exception === "string") {
-      this.addEvent("exception", {
-        "exception.message": exception,
-      }, time);
-      return;
-    }
-    const attributes: Attributes = {};
-
-    if (exception.code) {
-      if (typeof exception.code === "number") {
-        attributes["exception.type"] = NumberPrototypeToString(exception.code);
-      } else {
-        attributes["exception.type"] = exception.code;
-      }
-    } else if (exception.name) {
-      attributes["exception.type"] = exception.name;
-    }
-
-    if (exception.message) {
-      attributes["exception.message"] = exception.message;
-    }
-    if (exception.stack) {
-      attributes["exception.stacktrace"] = exception.stack;
-    }
-
-    this.addEvent("exception", attributes, time);
+    if (!this.#otelSpan) return;
+    op_otel_span_record_exception(this.#otelSpan, exception, time);
   }
 
   setAttribute(key: string, value: AttributeValue): this {
@@ -566,7 +434,11 @@ class Span {
 
   setAttributes(attributes: Attributes): this {
     if (!this.#otelSpan) return this;
-    spanAddAttributes(this.#otelSpan, SpanAttributesLocation.SELF, attributes);
+    op_otel_span_attributes(
+      this.#otelSpan,
+      SpanAttributesLocation.SELF,
+      attributes,
+    );
     return this;
   }
 
@@ -584,34 +456,26 @@ class Span {
 
 const CURRENT = new AsyncVariable();
 
-class Context {
-  // @ts-ignore __proto__ is not supported in TypeScript
-  #data: Record<symbol, unknown> = { __proto__: null };
-
-  constructor(data?: Record<symbol, unknown> | null | undefined) {
-    // @ts-ignore __proto__ is not supported in TypeScript
-    this.#data = { __proto__: null, ...data };
-  }
-
-  getValue(key: symbol): unknown {
-    return this.#data[key];
-  }
-
-  setValue(key: symbol, value: unknown): Context {
-    const c = new Context(this.#data);
-    c.#data[key] = value;
-    return c;
-  }
-
-  deleteValue(key: symbol): Context {
-    const c = new Context(this.#data);
-    delete c.#data[key];
-    return c;
-  }
+// The `Context` storage is Rust-backed (`OtelContext` in
+// ext/telemetry/propagation.rs): symbol keys and their values are held as
+// traced V8 references, and `setValue`/`deleteValue` return a fresh immutable
+// copy. This interface only describes the shape exposed to consumers (the
+// `@opentelemetry/api` `Context`).
+interface Context {
+  getValue(key: symbol): unknown;
+  setValue(key: symbol, value: unknown): Context;
+  deleteValue(key: symbol): Context;
 }
 
 // TODO(lucacasonato): @opentelemetry/api defines it's own ROOT_CONTEXT
-const ROOT_CONTEXT = new Context();
+//
+// `OtelContext` is a Rust `cppgc` object, which cannot be constructed while the
+// startup snapshot is being created (there is no cpp heap yet). The root
+// context is therefore created lazily on first use, at runtime.
+let ROOT_CONTEXT_INSTANCE: Context | undefined;
+function rootContext(): Context {
+  return ROOT_CONTEXT_INSTANCE ??= new OtelContext();
+}
 
 // Context manager for opentelemetry js library
 class ContextManager {
@@ -620,7 +484,7 @@ class ContextManager {
   }
 
   static active(): Context {
-    return CURRENT.get() ?? ROOT_CONTEXT;
+    return CURRENT.get() ?? rootContext();
   }
 
   static with<A extends unknown[], F extends (...args: A) => ReturnType<F>>(
@@ -690,36 +554,32 @@ interface MetricAdvice {
   explicitBucketBoundaries?: number[];
 }
 
-interface OtelMeter {
-  __key: "meter";
-  createCounter(name: string, description?: string, unit?: string): Instrument;
-  createUpDownCounter(
-    name: string,
-    description?: string,
-    unit?: string,
-  ): Instrument;
-  createGauge(name: string, description?: string, unit?: string): Instrument;
-  createHistogram(
-    name: string,
-    description?: string,
-    unit?: string,
-    explicitBucketBoundaries?: number[],
-  ): Instrument;
-  createObservableCounter(
-    name: string,
-    description?: string,
-    unit?: string,
-  ): Instrument;
+// The `Meter` returned by `getMeter` and the instruments it creates are
+// Rust-backed cppgc objects (see ext/telemetry/lib.rs, `OtelMeter` /
+// `OtelCounter` / `OtelGauge` / `OtelHistogram` / `OtelObservable`). valueType
+// validation, the `METRICS_ENABLED` no-op behavior, option extraction
+// (`description` / `unit` / histogram `explicitBucketBoundaries`), wrapper
+// construction, and the batch callback add/remove logic all live in Rust now;
+// these interfaces only describe the shapes for the annotations below.
+interface Meter {
+  createCounter(name: string, options?: MetricOptions): Counter;
+  createUpDownCounter(name: string, options?: MetricOptions): Counter;
+  createGauge(name: string, options?: MetricOptions): Gauge;
+  createHistogram(name: string, options?: MetricOptions): Histogram;
+  createObservableCounter(name: string, options?: MetricOptions): Observable;
   createObservableUpDownCounter(
     name: string,
-    description?: string,
-    unit?: string,
-  ): Instrument;
-  createObservableGauge(
-    name: string,
-    description?: string,
-    unit?: string,
-  ): Instrument;
+    options?: MetricOptions,
+  ): Observable;
+  createObservableGauge(name: string, options?: MetricOptions): Observable;
+  addBatchObservableCallback(
+    callback: BatchObservableCallback,
+    observables: Observable[],
+  ): void;
+  removeBatchObservableCallback(
+    callback: BatchObservableCallback,
+    observables: Observable[],
+  ): void;
 }
 
 class MeterProvider {
@@ -732,435 +592,62 @@ class MeterProvider {
     version?: string,
     options?: MeterOptions,
   ): Meter {
-    const meter = new OtelMeter(name, version, options?.schemaUrl);
-    return new Meter(meter);
+    return new OtelMeter(name, version, options?.schemaUrl) as Meter;
   }
 }
 
 type MetricAttributes = Attributes;
 
-type Instrument = { __key: "instrument" };
-
-let batchResultHasObservables: (
-  res: BatchObservableResult,
-  observables: Observable[],
-) => boolean;
-
-class BatchObservableResult {
-  #observables: WeakSet<Observable>;
-
-  constructor(observables: WeakSet<Observable>) {
-    this.#observables = observables;
-  }
-
-  static {
-    batchResultHasObservables = (cb, observables) => {
-      for (const observable of new SafeArrayIterator(observables)) {
-        if (!cb.#observables.has(observable)) return false;
-      }
-      return true;
-    };
-  }
-
+interface Counter {
+  add(value: number, attributes?: MetricAttributes, _context?: Context): void;
+}
+interface Gauge {
+  record(
+    value: number,
+    attributes?: MetricAttributes,
+    _context?: Context,
+  ): void;
+}
+interface Histogram {
+  record(
+    value: number,
+    attributes?: MetricAttributes,
+    _context?: Context,
+  ): void;
+}
+interface Observable {
+  addCallback(callback: ObservableCallback): void;
+  removeCallback(callback: ObservableCallback): void;
+}
+interface ObservableResult {
+  observe(value: number, attributes?: MetricAttributes): void;
+}
+interface BatchObservableResult {
   observe(
     metric: Observable,
     value: number,
     attributes?: MetricAttributes,
-  ): void {
-    if (!this.#observables.has(metric)) return;
-    getObservableResult(metric).observe(value, attributes);
-  }
-}
-
-const BATCH_CALLBACKS = new SafeMap<
-  BatchObservableCallback,
-  BatchObservableResult
->();
-const INDIVIDUAL_CALLBACKS = new SafeMap<Observable, Set<ObservableCallback>>();
-
-class Meter {
-  #meter: OtelMeter;
-
-  constructor(meter: OtelMeter) {
-    this.#meter = meter;
-  }
-
-  createCounter(name: string, options?: MetricOptions): Counter {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) return new Counter(null, false);
-    const instrument = this.#meter.createCounter(
-      name,
-      // deno-lint-ignore prefer-primordials
-      options?.description,
-      options?.unit,
-    ) as Instrument;
-    return new Counter(instrument, false);
-  }
-
-  createUpDownCounter(name: string, options?: MetricOptions): Counter {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) return new Counter(null, true);
-    const instrument = this.#meter.createUpDownCounter(
-      name,
-      // deno-lint-ignore prefer-primordials
-      options?.description,
-      options?.unit,
-    ) as Instrument;
-    return new Counter(instrument, true);
-  }
-
-  createGauge(name: string, options?: MetricOptions): Gauge {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) return new Gauge(null);
-    const instrument = this.#meter.createGauge(
-      name,
-      // deno-lint-ignore prefer-primordials
-      options?.description,
-      options?.unit,
-    ) as Instrument;
-    return new Gauge(instrument);
-  }
-
-  createHistogram(name: string, options?: MetricOptions): Histogram {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) return new Histogram(null);
-    const instrument = this.#meter.createHistogram(
-      name,
-      // deno-lint-ignore prefer-primordials
-      options?.description,
-      options?.unit,
-      options?.advice?.explicitBucketBoundaries,
-    ) as Instrument;
-    return new Histogram(instrument);
-  }
-
-  createObservableCounter(name: string, options?: MetricOptions): Observable {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, true));
-    const instrument = this.#meter.createObservableCounter(
-      name,
-      // deno-lint-ignore prefer-primordials
-      options?.description,
-      options?.unit,
-    ) as Instrument;
-    return new Observable(new ObservableResult(instrument, true));
-  }
-
-  createObservableUpDownCounter(
-    name: string,
-    options?: MetricOptions,
-  ): Observable {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
-    const instrument = this.#meter.createObservableUpDownCounter(
-      name,
-      // deno-lint-ignore prefer-primordials
-      options?.description,
-      options?.unit,
-    ) as Instrument;
-    return new Observable(new ObservableResult(instrument, false));
-  }
-
-  createObservableGauge(name: string, options?: MetricOptions): Observable {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
-    const instrument = this.#meter.createObservableGauge(
-      name,
-      // deno-lint-ignore prefer-primordials
-      options?.description,
-      options?.unit,
-    ) as Instrument;
-    return new Observable(new ObservableResult(instrument, false));
-  }
-
-  addBatchObservableCallback(
-    callback: BatchObservableCallback,
-    observables: Observable[],
-  ): void {
-    if (!METRICS_ENABLED) return;
-    const result = new BatchObservableResult(new SafeWeakSet(observables));
-    startObserving();
-    BATCH_CALLBACKS.set(callback, result);
-  }
-
-  removeBatchObservableCallback(
-    callback: BatchObservableCallback,
-    observables: Observable[],
-  ): void {
-    if (!METRICS_ENABLED) return;
-    const result = BATCH_CALLBACKS.get(callback);
-    if (result && batchResultHasObservables(result, observables)) {
-      BATCH_CALLBACKS.delete(callback);
-    }
-  }
-}
-
-type BatchObservableCallback = (
-  observableResult: BatchObservableResult,
-) => void | Promise<void>;
-
-function record(
-  instrument: Instrument | null,
-  value: number,
-  attributes?: MetricAttributes,
-) {
-  if (instrument === null) return;
-  if (attributes === undefined) {
-    op_otel_metric_record0(instrument, value);
-  } else {
-    const attrs = ObjectEntries(attributes);
-    if (attrs.length === 0) {
-      op_otel_metric_record0(instrument, value);
-    }
-    let i = 0;
-    while (i < attrs.length) {
-      const remaining = attrs.length - i;
-      if (remaining > 3) {
-        op_otel_metric_attribute3(
-          attrs.length,
-          attrs[i][0],
-          attrs[i][1],
-          attrs[i + 1][0],
-          attrs[i + 1][1],
-          attrs[i + 2][0],
-          attrs[i + 2][1],
-        );
-        i += 3;
-      } else if (remaining === 3) {
-        op_otel_metric_record3(
-          instrument,
-          value,
-          attrs[i][0],
-          attrs[i][1],
-          attrs[i + 1][0],
-          attrs[i + 1][1],
-          attrs[i + 2][0],
-          attrs[i + 2][1],
-        );
-        i += 3;
-      } else if (remaining === 2) {
-        op_otel_metric_record2(
-          instrument,
-          value,
-          attrs[i][0],
-          attrs[i][1],
-          attrs[i + 1][0],
-          attrs[i + 1][1],
-        );
-        i += 2;
-      } else if (remaining === 1) {
-        op_otel_metric_record1(instrument, value, attrs[i][0], attrs[i][1]);
-        i += 1;
-      }
-    }
-  }
-}
-
-function recordObservable(
-  instrument: Instrument | null,
-  value: number,
-  attributes?: MetricAttributes,
-) {
-  if (instrument === null) return;
-  if (attributes === undefined) {
-    op_otel_metric_observable_record0(instrument, value);
-  } else {
-    const attrs = ObjectEntries(attributes);
-    if (attrs.length === 0) {
-      op_otel_metric_observable_record0(instrument, value);
-    }
-    let i = 0;
-    while (i < attrs.length) {
-      const remaining = attrs.length - i;
-      if (remaining > 3) {
-        op_otel_metric_attribute3(
-          attrs.length,
-          attrs[i][0],
-          attrs[i][1],
-          attrs[i + 1][0],
-          attrs[i + 1][1],
-          attrs[i + 2][0],
-          attrs[i + 2][1],
-        );
-        i += 3;
-      } else if (remaining === 3) {
-        op_otel_metric_observable_record3(
-          instrument,
-          value,
-          attrs[i][0],
-          attrs[i][1],
-          attrs[i + 1][0],
-          attrs[i + 1][1],
-          attrs[i + 2][0],
-          attrs[i + 2][1],
-        );
-        i += 3;
-      } else if (remaining === 2) {
-        op_otel_metric_observable_record2(
-          instrument,
-          value,
-          attrs[i][0],
-          attrs[i][1],
-          attrs[i + 1][0],
-          attrs[i + 1][1],
-        );
-        i += 2;
-      } else if (remaining === 1) {
-        op_otel_metric_observable_record1(
-          instrument,
-          value,
-          attrs[i][0],
-          attrs[i][1],
-        );
-        i += 1;
-      }
-    }
-  }
-}
-
-class Counter {
-  #instrument: Instrument | null;
-  #upDown: boolean;
-
-  constructor(instrument: Instrument | null, upDown: boolean) {
-    this.#instrument = instrument;
-    this.#upDown = upDown;
-  }
-
-  add(value: number, attributes?: MetricAttributes, _context?: Context): void {
-    if (value < 0 && !this.#upDown) {
-      throw new Error("Counter can only be incremented");
-    }
-    record(this.#instrument, value, attributes);
-  }
-}
-
-class Gauge {
-  #instrument: Instrument | null;
-
-  constructor(instrument: Instrument | null) {
-    this.#instrument = instrument;
-  }
-
-  record(
-    value: number,
-    attributes?: MetricAttributes,
-    _context?: Context,
-  ): void {
-    record(this.#instrument, value, attributes);
-  }
-}
-
-class Histogram {
-  #instrument: Instrument | null;
-
-  constructor(instrument: Instrument | null) {
-    this.#instrument = instrument;
-  }
-
-  record(
-    value: number,
-    attributes?: MetricAttributes,
-    _context?: Context,
-  ): void {
-    record(this.#instrument, value, attributes);
-  }
+  ): void;
 }
 
 type ObservableCallback = (
   observableResult: ObservableResult,
 ) => void | Promise<void>;
 
-let getObservableResult: (observable: Observable) => ObservableResult;
+type BatchObservableCallback = (
+  observableResult: BatchObservableResult,
+) => void | Promise<void>;
 
-class Observable {
-  #result: ObservableResult;
-
-  constructor(result: ObservableResult) {
-    this.#result = result;
-  }
-
-  static {
-    getObservableResult = (observable) => observable.#result;
-  }
-
-  addCallback(callback: ObservableCallback): void {
-    const res = INDIVIDUAL_CALLBACKS.get(this);
-    if (res) res.add(callback);
-    else INDIVIDUAL_CALLBACKS.set(this, new SafeSet([callback]));
-    startObserving();
-  }
-
-  removeCallback(callback: ObservableCallback): void {
-    const res = INDIVIDUAL_CALLBACKS.get(this);
-    if (res) res.delete(callback);
-    if (res?.size === 0) INDIVIDUAL_CALLBACKS.delete(this);
-  }
-}
-
-class ObservableResult {
-  #instrument: Instrument | null;
-  #isRegularCounter: boolean;
-
-  constructor(instrument: Instrument | null, isRegularCounter: boolean) {
-    this.#instrument = instrument;
-    this.#isRegularCounter = isRegularCounter;
-  }
-
-  observe(
-    this: ObservableResult,
-    value: number,
-    attributes?: MetricAttributes,
-  ): void {
-    if (this.#isRegularCounter) {
-      if (value < 0) {
-        throw new Error("Observable counters can only be incremented");
-      }
-    }
-    recordObservable(this.#instrument, value, attributes);
-  }
-}
-
+// The callback invocation happens in Rust (`op_otel_metric_run_observations`),
+// which calls every registered individual and batch callback and returns the
+// array of their results. We still await them here with `SafePromiseAll`,
+// preserving the original `Promise.try(callback, result)` + `SafePromiseAll`
+// behavior, because `startObserving` drives the async collection loop in JS.
 async function observe(): Promise<void> {
   if (ISOLATE_METRICS) {
     op_otel_collect_isolate_metrics();
   }
-
-  const promises: Promise<void>[] = [];
-  // Primordials are not needed, because this is a SafeMap.
-  // deno-lint-ignore prefer-primordials
-  for (const { 0: observable, 1: callbacks } of INDIVIDUAL_CALLBACKS) {
-    const result = getObservableResult(observable);
-    // Primordials are not needed, because this is a SafeSet.
-    // deno-lint-ignore prefer-primordials
-    for (const callback of callbacks) {
-      // PromiseTry is not in primordials?
-      // deno-lint-ignore prefer-primordials
-      ArrayPrototypePush(promises, Promise.try(callback, result));
-    }
-  }
-  // Primordials are not needed, because this is a SafeMap.
-  // deno-lint-ignore prefer-primordials
-  for (const { 0: callback, 1: result } of BATCH_CALLBACKS) {
-    // PromiseTry is not in primordials?
-    // deno-lint-ignore prefer-primordials
-    ArrayPrototypePush(promises, Promise.try(callback, result));
-  }
-  await SafePromiseAll(promises);
+  await SafePromiseAll(op_otel_metric_run_observations());
 }
 
 let isObserving = false;
@@ -1246,32 +733,11 @@ function otelLog(message: string, level: number) {
  * limitations under the License.
  */
 
-const VERSION = "00";
-const VERSION_PART = "(?!ff)[\\da-f]{2}";
-const TRACE_ID_PART = "(?![0]{32})[\\da-f]{32}";
-const PARENT_ID_PART = "(?![0]{16})[\\da-f]{16}";
-const FLAGS_PART = "[\\da-f]{2}";
-const TRACE_PARENT_REGEX = new SafeRegExp(
-  `^\\s?(${VERSION_PART})-(${TRACE_ID_PART})-(${PARENT_ID_PART})-(${FLAGS_PART})(-.*)?\\s?$`,
-);
-const VALID_TRACEID_REGEX = new SafeRegExp("^([0-9a-f]{32})$", "i");
-const VALID_SPANID_REGEX = new SafeRegExp("^[0-9a-f]{16}$", "i");
-const MAX_TRACE_STATE_ITEMS = 32;
-const MAX_TRACE_STATE_LEN = 512;
-const LIST_MEMBERS_SEPARATOR = ",";
-const LIST_MEMBER_KEY_VALUE_SPLITTER = "=";
-const VALID_KEY_CHAR_RANGE = "[_0-9a-z-*/]";
-const VALID_KEY = `[a-z]${VALID_KEY_CHAR_RANGE}{0,255}`;
-const VALID_VENDOR_KEY =
-  `[a-z0-9]${VALID_KEY_CHAR_RANGE}{0,240}@[a-z]${VALID_KEY_CHAR_RANGE}{0,13}`;
-const VALID_KEY_REGEX = new SafeRegExp(
-  `^(?:${VALID_KEY}|${VALID_VENDOR_KEY})$`,
-);
-const VALID_VALUE_BASE_REGEX = new SafeRegExp("^[ -~]{0,255}[!-~]$");
-const INVALID_VALUE_COMMA_EQUAL_REGEX = new SafeRegExp(",|=");
-
-const TRACE_PARENT_HEADER = "traceparent";
-const TRACE_STATE_HEADER = "tracestate";
+// The W3C propagators, the `TraceState`/`Baggage` objects and all
+// trace-context / baggage parsing, validation and (de)serialization now live in
+// Rust (see ext/telemetry/propagation.rs). `NonRecordingSpan` (an inert span
+// shell) and `baggageEntryMetadataFromString` remain here because the Rust
+// propagators construct them via these JS helpers on extraction.
 const INVALID_TRACEID = "00000000000000000000000000000000";
 const INVALID_SPANID = "0000000000000000";
 const INVALID_SPAN_CONTEXT: SpanContext = {
@@ -1279,13 +745,6 @@ const INVALID_SPAN_CONTEXT: SpanContext = {
   spanId: INVALID_SPANID,
   traceFlags: 0,
 };
-const BAGGAGE_KEY_PAIR_SEPARATOR = "=";
-const BAGGAGE_PROPERTIES_SEPARATOR = ";";
-const BAGGAGE_ITEMS_SEPARATOR = ",";
-const BAGGAGE_HEADER = "baggage";
-const BAGGAGE_MAX_NAME_VALUE_PAIRS = 180;
-const BAGGAGE_MAX_PER_NAME_VALUE_PAIRS = 4096;
-const BAGGAGE_MAX_TOTAL_LENGTH = 8192;
 
 class NonRecordingSpan implements Span {
   constructor(
@@ -1340,22 +799,6 @@ const otelPropagators = {
   none: 2,
 };
 
-function parseTraceParent(traceParent: string): SpanContext | null {
-  const match = TRACE_PARENT_REGEX.exec(traceParent);
-  if (!match) return null;
-
-  // According to the specification the implementation should be compatible
-  // with future versions. If there are more parts, we only reject it if it's using version 00
-  // See https://www.w3.org/TR/trace-context/#versioning-of-traceparent
-  if (match[1] === "00" && match[5]) return null;
-
-  return {
-    traceId: match[2],
-    spanId: match[3],
-    traceFlags: NumberParseInt(match[4], 16),
-  };
-}
-
 // deno-lint-ignore no-explicit-any
 interface TextMapSetter<Carrier = any> {
   set(carrier: Carrier, key: string, value: string): void;
@@ -1382,185 +825,6 @@ interface TextMapGetter<Carrier = any> {
   get(carrier: Carrier, key: string): undefined | string | string[];
 }
 
-function isTracingSuppressed(context: Context): boolean {
-  return context.getValue(
-    SymbolFor("OpenTelemetry SDK Context Key SUPPRESS_TRACING"),
-  ) === true;
-}
-
-function isValidTraceId(traceId: string): boolean {
-  return VALID_TRACEID_REGEX.test(traceId) && traceId !== INVALID_TRACEID;
-}
-
-function isValidSpanId(spanId: string): boolean {
-  return VALID_SPANID_REGEX.test(spanId) && spanId !== INVALID_SPANID;
-}
-
-function isSpanContextValid(spanContext: SpanContext): boolean {
-  return (
-    isValidTraceId(spanContext.traceId) && isValidSpanId(spanContext.spanId)
-  );
-}
-
-function validateKey(key: string): boolean {
-  return VALID_KEY_REGEX.test(key);
-}
-
-function validateValue(value: string): boolean {
-  return (
-    VALID_VALUE_BASE_REGEX.test(value) &&
-    !INVALID_VALUE_COMMA_EQUAL_REGEX.test(value)
-  );
-}
-
-class TraceStateClass implements TraceState {
-  private _internalState: Map<string, string> = new SafeMap();
-
-  constructor(rawTraceState?: string) {
-    if (rawTraceState) this._parse(rawTraceState);
-  }
-
-  set(key: string, value: string): TraceStateClass {
-    const traceState = this._clone();
-    if (traceState._internalState.has(key)) {
-      traceState._internalState.delete(key);
-    }
-    traceState._internalState.set(key, value);
-    return traceState;
-  }
-
-  unset(key: string): TraceStateClass {
-    const traceState = this._clone();
-    traceState._internalState.delete(key);
-    return traceState;
-  }
-
-  get(key: string): string | undefined {
-    return this._internalState.get(key);
-  }
-
-  serialize(): string {
-    return ArrayPrototypeJoin(
-      ArrayPrototypeReduce(this._keys(), (agg: string[], key) => {
-        ArrayPrototypePush(
-          agg,
-          key + LIST_MEMBER_KEY_VALUE_SPLITTER + this.get(key),
-        );
-        return agg;
-      }, []),
-      LIST_MEMBERS_SEPARATOR,
-    );
-  }
-
-  private _parse(rawTraceState: string) {
-    if (rawTraceState.length > MAX_TRACE_STATE_LEN) return;
-    this._internalState = ArrayPrototypeReduce(
-      ArrayPrototypeReverse(
-        StringPrototypeSplit(rawTraceState, LIST_MEMBERS_SEPARATOR),
-      ),
-      (agg: Map<string, string>, part: string) => {
-        const listMember = StringPrototypeTrim(part); // Optional Whitespace (OWS) handling
-        const i = StringPrototypeIndexOf(
-          listMember,
-          LIST_MEMBER_KEY_VALUE_SPLITTER,
-        );
-        if (i !== -1) {
-          const key = StringPrototypeSlice(listMember, 0, i);
-          const value = StringPrototypeSlice(listMember, i + 1, part.length);
-          if (validateKey(key) && validateValue(value)) {
-            agg.set(key, value);
-          }
-        }
-        return agg;
-      },
-      new SafeMap(),
-    );
-
-    // Because of the reverse() requirement, trunc must be done after map is created
-    if (this._internalState.size > MAX_TRACE_STATE_ITEMS) {
-      this._internalState = new SafeMap(
-        ArrayPrototypeSlice(
-          ArrayPrototypeReverse(
-            ArrayFrom(MapPrototypeEntries(this._internalState)),
-          ),
-          0,
-          MAX_TRACE_STATE_ITEMS,
-        ),
-      );
-    }
-  }
-
-  private _keys(): string[] {
-    return ArrayPrototypeReverse(
-      ArrayFrom(MapPrototypeKeys(this._internalState)),
-    );
-  }
-
-  private _clone(): TraceStateClass {
-    const traceState = new TraceStateClass();
-    traceState._internalState = new SafeMap(this._internalState);
-    return traceState;
-  }
-}
-
-class W3CTraceContextPropagator implements TextMapPropagator {
-  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
-    const spanContext = (context.getValue(SPAN_KEY) as Span | undefined)
-      ?.spanContext();
-    if (
-      !spanContext ||
-      isTracingSuppressed(context) ||
-      !isSpanContextValid(spanContext)
-    ) {
-      return;
-    }
-
-    const traceParent =
-      `${VERSION}-${spanContext.traceId}-${spanContext.spanId}-0${
-        NumberPrototypeToString(Number(spanContext.traceFlags || 0), 16)
-      }`;
-
-    setter.set(carrier, TRACE_PARENT_HEADER, traceParent);
-    if (spanContext.traceState) {
-      setter.set(
-        carrier,
-        TRACE_STATE_HEADER,
-        spanContext.traceState.serialize(),
-      );
-    }
-  }
-
-  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
-    const traceParentHeader = getter.get(carrier, TRACE_PARENT_HEADER);
-    if (!traceParentHeader) return context;
-    const traceParent = ArrayIsArray(traceParentHeader)
-      ? traceParentHeader[0]
-      : traceParentHeader;
-    if (typeof traceParent !== "string") return context;
-    const spanContext = parseTraceParent(traceParent);
-    if (!spanContext) return context;
-
-    spanContext.isRemote = true;
-
-    const traceStateHeader = getter.get(carrier, TRACE_STATE_HEADER);
-    if (traceStateHeader) {
-      // If more than one `tracestate` header is found, we merge them into a
-      // single header.
-      const state = ArrayIsArray(traceStateHeader)
-        ? ArrayPrototypeJoin(traceStateHeader, ",")
-        : traceStateHeader;
-      spanContext.traceState = new TraceStateClass(
-        typeof state === "string" ? state : undefined,
-      );
-    }
-    return context.setValue(SPAN_KEY, new NonRecordingSpan(spanContext));
-  }
-
-  fields(): string[] {
-    return [TRACE_PARENT_HEADER, TRACE_STATE_HEADER];
-  }
-}
-
 const baggageEntryMetadataSymbol = SymbolFor("BaggageEntryMetadata");
 
 type BaggageEntryMetadata = { toString(): string } & {
@@ -1570,12 +834,6 @@ type BaggageEntryMetadata = { toString(): string } & {
 interface BaggageEntry {
   value: string;
   metadata?: BaggageEntryMetadata;
-}
-
-interface ParsedBaggageKeyValue {
-  key: string;
-  value: string;
-  metadata: BaggageEntryMetadata | undefined;
 }
 
 interface Baggage {
@@ -1602,225 +860,16 @@ function baggageEntryMetadataFromString(
   };
 }
 
-function serializeKeyPairs(keyPairs: string[]): string {
-  return ArrayPrototypeReduce(keyPairs, (hValue: string, current: string) => {
-    const value = `${hValue}${
-      hValue !== "" ? BAGGAGE_ITEMS_SEPARATOR : ""
-    }${current}`;
-    return value.length > BAGGAGE_MAX_TOTAL_LENGTH ? hValue : value;
-  }, "");
-}
-
-function getKeyPairs(baggage: Baggage): string[] {
-  return ArrayPrototypeMap(baggage.getAllEntries(), (baggageEntry) => {
-    let entry = `${encodeURIComponent(baggageEntry[0])}=${
-      encodeURIComponent(baggageEntry[1].value)
-    }`;
-
-    // include opaque metadata if provided
-    // NOTE: we intentionally don't URI-encode the metadata - that responsibility falls on the metadata implementation
-    if (baggageEntry[1].metadata !== undefined) {
-      entry += BAGGAGE_PROPERTIES_SEPARATOR +
-        // deno-lint-ignore prefer-primordials
-        baggageEntry[1].metadata.toString();
-    }
-
-    return entry;
-  });
-}
-
-function parsePairKeyValue(
-  entry: string,
-): ParsedBaggageKeyValue | undefined {
-  const valueProps = StringPrototypeSplit(entry, BAGGAGE_PROPERTIES_SEPARATOR);
-  if (valueProps.length <= 0) return;
-  const keyPairPart = ArrayPrototypeShift(valueProps);
-  if (!keyPairPart) return;
-  const separatorIndex = StringPrototypeIndexOf(
-    keyPairPart,
-    BAGGAGE_KEY_PAIR_SEPARATOR,
-  );
-  if (separatorIndex <= 0) return;
-  const key = decodeURIComponent(
-    StringPrototypeTrim(
-      StringPrototypeSubstring(keyPairPart, 0, separatorIndex),
-    ),
-  );
-  const value = decodeURIComponent(
-    StringPrototypeTrim(
-      StringPrototypeSubstring(keyPairPart, separatorIndex + 1),
-    ),
-  );
-  let metadata;
-  if (valueProps.length > 0) {
-    metadata = baggageEntryMetadataFromString(
-      ArrayPrototypeJoin(valueProps, BAGGAGE_PROPERTIES_SEPARATOR),
-    );
-  }
-  return { key, value, metadata };
-}
-
-class BaggageImpl implements Baggage {
-  #entries: Map<string, BaggageEntry>;
-
-  constructor(entries?: Map<string, BaggageEntry>) {
-    this.#entries = new SafeMap();
-    // The `SafeMap` constructor that takes an iterable doesn't work for non Array iterables correctly.
-    if (entries) {
-      for (const { 0: key, 1: entry } of new SafeMapIterator(entries)) {
-        this.#entries.set(key, ObjectAssign({}, entry));
-      }
-    }
-  }
-
-  getEntry(key: string): BaggageEntry | undefined {
-    const entry = this.#entries.get(key);
-    if (!entry) {
-      return undefined;
-    }
-
-    return ObjectAssign({}, entry);
-  }
-
-  getAllEntries(): [string, BaggageEntry][] {
-    return ArrayPrototypeMap(
-      ArrayFrom(MapPrototypeEntries(this.#entries)),
-      (entry) => [entry[0], entry[1]],
-    );
-  }
-
-  setEntry(key: string, entry: BaggageEntry): BaggageImpl {
-    const newBaggage = new BaggageImpl(this.#entries);
-    newBaggage.#entries.set(key, entry);
-    return newBaggage;
-  }
-
-  removeEntry(key: string): BaggageImpl {
-    const newBaggage = new BaggageImpl(this.#entries);
-    newBaggage.#entries.delete(key);
-    return newBaggage;
-  }
-
-  removeEntries(...keys: string[]): BaggageImpl {
-    const newBaggage = new BaggageImpl(this.#entries);
-    for (const key of new SafeArrayIterator(keys)) {
-      newBaggage.#entries.delete(key);
-    }
-    return newBaggage;
-  }
-
-  clear(): BaggageImpl {
-    return new BaggageImpl();
-  }
-}
-
-const BAGGAGE_KEY = SymbolFor("OpenTelemetry Baggage Key");
-
-class W3CBaggagePropagator implements TextMapPropagator {
-  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
-    const baggage = context.getValue(BAGGAGE_KEY) as
-      | Baggage
-      | undefined;
-    if (!baggage || isTracingSuppressed(context)) return;
-    const keyPairs = ArrayPrototypeSlice(
-      ArrayPrototypeFilter(getKeyPairs(baggage), (pair: string) => {
-        return pair.length <= BAGGAGE_MAX_PER_NAME_VALUE_PAIRS;
-      }),
-      0,
-      BAGGAGE_MAX_NAME_VALUE_PAIRS,
-    );
-    const headerValue = serializeKeyPairs(keyPairs);
-    if (headerValue.length > 0) {
-      setter.set(carrier, BAGGAGE_HEADER, headerValue);
-    }
-  }
-
-  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
-    const headerValue = getter.get(carrier, BAGGAGE_HEADER);
-    const baggageString = ArrayIsArray(headerValue)
-      ? ArrayPrototypeJoin(headerValue, BAGGAGE_ITEMS_SEPARATOR)
-      : headerValue;
-    if (!baggageString) return context;
-    const baggage: Record<string, BaggageEntry> = {};
-    const pairs = StringPrototypeSplit(baggageString, BAGGAGE_ITEMS_SEPARATOR);
-    ArrayPrototypeForEach(pairs, (entry) => {
-      const keyPair = parsePairKeyValue(entry);
-      if (keyPair) {
-        const baggageEntry: BaggageEntry = { value: keyPair.value };
-        if (keyPair.metadata) {
-          baggageEntry.metadata = keyPair.metadata;
-        }
-        baggage[keyPair.key] = baggageEntry;
-      }
-    });
-    if (ObjectEntries(baggage).length === 0) {
-      return context;
-    }
-
-    return context.setValue(
-      BAGGAGE_KEY,
-      new BaggageImpl(new SafeMap(ObjectEntries(baggage))),
-    );
-  }
-
-  fields(): string[] {
-    return [BAGGAGE_HEADER];
-  }
-}
-
-class CompositePropagator implements TextMapPropagator {
-  #propagators: TextMapPropagator[];
-  #fields: string[];
-
-  constructor(propagators: TextMapPropagator[]) {
-    this.#propagators = propagators;
-    this.#fields = ArrayFrom(
-      new SafeSet(
-        ArrayPrototypeReduce(
-          ArrayPrototypeMap(
-            this.#propagators,
-            (p) => p.fields(),
-          ),
-          (x, y) => ArrayPrototypeConcat(x, y),
-          [],
-        ),
-      ),
-    );
-  }
-
-  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
-    for (const propagator of new SafeArrayIterator(this.#propagators)) {
-      try {
-        propagator.inject(context, carrier, setter);
-      } catch (err) {
-        // deno-lint-ignore no-console
-        console.warn(
-          `Failed to inject with ${propagator.constructor.name}.`,
-          err,
-        );
-      }
-    }
-  }
-
-  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
-    return ArrayPrototypeReduce(this.#propagators, (ctx, propagator) => {
-      try {
-        return propagator.extract(ctx, carrier, getter);
-      } catch (err) {
-        // deno-lint-ignore no-console
-        console.warn(
-          `Failed to extract with ${propagator.constructor.name}.`,
-          err,
-        );
-      }
-      return ctx;
-    }, context);
-  }
-
-  fields(): string[] {
-    return ArrayPrototypeSlice(this.#fields);
-  }
-}
+// Rust-backed W3C propagators (see ext/telemetry/propagation.rs). The
+// inject/extract/fields logic and all getter/setter callback invocation now run
+// in Rust; these JS names are aliases to the Rust cppgc constructors, kept for
+// compatibility. The trace-context propagator is constructed with the
+// `NonRecordingSpan` constructor and the baggage propagator with
+// `baggageEntryMetadataFromString`, because the Rust code creates those objects
+// (on extraction) through these JS helpers.
+const W3CTraceContextPropagator = OtelW3CTraceContextPropagator;
+const W3CBaggagePropagator = OtelW3CBaggagePropagator;
+const CompositePropagator = OtelCompositePropagator;
 
 let builtinTracerCache: Tracer;
 
@@ -1868,9 +917,9 @@ function bootstrap(
     (propagator) => {
       switch (propagator) {
         case otelPropagators.traceContext:
-          return new W3CTraceContextPropagator();
+          return new W3CTraceContextPropagator(NonRecordingSpan);
         case otelPropagators.baggage:
-          return new W3CBaggagePropagator();
+          return new W3CBaggagePropagator(baggageEntryMetadataFromString);
       }
     },
   );
