@@ -267,12 +267,11 @@ class NodeWorker extends EventEmitter {
   #terminationPromise = undefined;
   #workerOnline = false;
   #exited = false;
-  // "RUNNING" | "CLOSED" | "TERMINATING" | "TERMINATED"
+  // "RUNNING" | "CLOSED" | "TERMINATING"
   // "TERMINATING" means termination was requested and the close event still
-  // needs to be received. "TERMINATED" means that any controls or messages
-  // received will be discarded. "CLOSED" means that we have received a control
-  // indicating that the worker is no longer running, but there might
-  // still be messages left to receive.
+  // needs to be received. "CLOSED" means that we have received a control
+  // indicating that the worker is no longer running, but there might still be
+  // messages left to receive.
   #status = "RUNNING";
 
   // https://nodejs.org/api/worker_threads.html#workerthreadid
@@ -614,10 +613,6 @@ class NodeWorker extends EventEmitter {
     this.emit("error", err);
   }
 
-  #hasTerminationBeenRequested() {
-    return this.#status === "TERMINATING" || this.#status === "TERMINATED";
-  }
-
   #closeStdio() {
     if (!this.stdout.readableEnded) {
       FunctionPrototypeCall(
@@ -643,10 +638,6 @@ class NodeWorker extends EventEmitter {
       }
       const { 0: type, 1: data } = await this.#controlPromise;
 
-      // If terminate was called then we ignore all messages
-      if (this.#status === "TERMINATED") {
-        return;
-      }
       const isTerminating = this.#status === "TERMINATING";
 
       switch (type) {
@@ -750,13 +741,13 @@ class NodeWorker extends EventEmitter {
   }
 
   #pollMessages = async () => {
-    while (this.#status !== "TERMINATED") {
+    while (this.#status !== "TERMINATING") {
       this.#messagePromise = op_host_recv_message(this.#id);
       if (!this.#refed) {
         core.unrefOpPromise(this.#messagePromise);
       }
       const data = await this.#messagePromise;
-      if (this.#hasTerminationBeenRequested() || data === null) {
+      if (this.#status === "TERMINATING" || data === null) {
         return;
       }
       if (!this.#dispatchWorkerThreadMessage(data)) return;
@@ -766,7 +757,7 @@ class NodeWorker extends EventEmitter {
       // under a sustained flood.
       for (
         let i = 0;
-        i < 1000 && !this.#hasTerminationBeenRequested();
+        i < 1000 && this.#status !== "TERMINATING";
         i++
       ) {
         const syncData = op_host_recv_message_sync(this.#id);
@@ -779,7 +770,7 @@ class NodeWorker extends EventEmitter {
         // lost. A synchronous checkpoint can't help: V8 won't run microtasks
         // reentrantly while we are already inside one.
         await new Promise((resolve) => queueMicrotask(() => resolve()));
-        if (this.#hasTerminationBeenRequested()) {
+        if (this.#status === "TERMINATING") {
           return;
         }
         if (!this.#dispatchWorkerThreadMessage(syncData)) return;
@@ -839,7 +830,7 @@ class NodeWorker extends EventEmitter {
 
   // https://nodejs.org/api/worker_threads.html#workerterminate
   terminate() {
-    if (this.#status === "CLOSED" || this.#status === "TERMINATED") {
+    if (this.#status === "CLOSED") {
       return PromiseResolve(undefined);
     }
     if (this.#terminationPromise !== undefined) {
