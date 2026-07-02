@@ -82,10 +82,28 @@ impl NpmPackageInfo {
     Self::from_packument_slice_with_etag(bytes).map(|(info, _)| info)
   }
 
+  pub fn from_packument_bytes(bytes: Vec<u8>) -> Result<Self, String> {
+    Self::from_packument_bytes_with_etag(bytes).map(|(info, _)| info)
+  }
+
   pub fn from_packument_slice_with_etag(
     bytes: &[u8],
   ) -> Result<(Self, Option<String>), String> {
     let text = std::str::from_utf8(bytes).map_err(|err| err.to_string())?;
+    Self::from_packument_source_with_etag(Arc::new(text.to_owned()))
+  }
+
+  pub fn from_packument_bytes_with_etag(
+    bytes: Vec<u8>,
+  ) -> Result<(Self, Option<String>), String> {
+    let text = String::from_utf8(bytes).map_err(|err| err.to_string())?;
+    Self::from_packument_source_with_etag(Arc::new(text))
+  }
+
+  fn from_packument_source_with_etag(
+    source: Arc<String>,
+  ) -> Result<(Self, Option<String>), String> {
+    let text = source.as_str();
     let index = fast_registry_json::pluck_packument_index(text)
       .map_err(|err| format!("error indexing npm packument: {err:?}"))?;
     let deno_etag = index
@@ -161,7 +179,7 @@ impl NpmPackageInfo {
       Self {
         name,
         versions: NpmPackageVersionInfos::lazy(
-          Arc::from(text),
+          source,
           version_ranges,
           trust_evidence,
         ),
@@ -170,6 +188,10 @@ impl NpmPackageInfo {
       },
       deno_etag,
     ))
+  }
+
+  pub fn lazy_packument_source_bytes(&self) -> Option<&[u8]> {
+    self.versions.lazy_source_bytes()
   }
 
   pub fn version_info<'a>(
@@ -221,7 +243,7 @@ impl Default for NpmPackageVersionInfosInner {
 
 #[derive(Debug)]
 struct NpmLazyPackageVersionInfos {
-  source: Arc<str>,
+  source: Arc<String>,
   entries: HashMap<Version, NpmLazyPackageVersionInfo>,
   trust_evidence: HashMap<Version, TrustEvidence>,
 }
@@ -301,7 +323,7 @@ impl<'de> Deserialize<'de> for NpmPackageVersionInfos {
 
 impl NpmPackageVersionInfos {
   fn lazy(
-    source: Arc<str>,
+    source: Arc<String>,
     version_ranges: HashMap<Version, Range<usize>>,
     trust_evidence: HashMap<Version, TrustEvidence>,
   ) -> Self {
@@ -322,6 +344,13 @@ impl NpmPackageVersionInfos {
           })
           .collect(),
       }),
+    }
+  }
+
+  fn lazy_source_bytes(&self) -> Option<&[u8]> {
+    match &self.inner {
+      NpmPackageVersionInfosInner::Materialized(_) => None,
+      NpmPackageVersionInfosInner::Lazy(lazy) => Some(lazy.source.as_bytes()),
     }
   }
 
@@ -1893,6 +1922,27 @@ mod test {
     assert_eq!(
       info.versions.get(&version).unwrap().get_trust_evidence(),
       Some(TrustEvidence::Provenance)
+    );
+  }
+
+  #[test]
+  fn from_packument_bytes_reuses_lazy_source_allocation() {
+    let bytes = br#"{
+      "name": "pkg",
+      "dist-tags": { "latest": "1.0.0" },
+      "versions": { "1.0.0": { "version": "1.0.0" } },
+      "time": { "1.0.0": "2024-01-02T00:00:00.000Z" }
+    }"#
+      .to_vec();
+    let bytes_ptr = bytes.as_ptr();
+
+    let info = NpmPackageInfo::from_packument_bytes(bytes).unwrap();
+
+    assert_eq!(
+      info
+        .lazy_packument_source_bytes()
+        .map(|bytes| bytes.as_ptr()),
+      Some(bytes_ptr)
     );
   }
 

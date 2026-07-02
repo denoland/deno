@@ -337,8 +337,8 @@ impl<TSys: NpmCacheSys> NpmCache<TSys> {
 
     spawn_blocking(move || {
       let (info, etag) =
-        deno_npm::registry::NpmPackageInfo::from_packument_slice_with_etag(
-          &file_bytes,
+        deno_npm::registry::NpmPackageInfo::from_packument_bytes_with_etag(
+          file_bytes.into_owned(),
         )
         .map_err(|err| serde_json::Error::io(std::io::Error::other(err)))?;
       Ok(Some(SerializedCachedPackageInfo { info, etag }))

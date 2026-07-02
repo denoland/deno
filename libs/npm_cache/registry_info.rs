@@ -327,11 +327,15 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
                   response.etag.as_deref(),
                 )?;
               let package_info =
-                NpmPackageInfo::from_packument_slice(&package_info_bytes)
+                NpmPackageInfo::from_packument_bytes(package_info_bytes)
                   .map_err(JsErrorBox::generic)?;
+              let package_info_bytes =
+                package_info.lazy_packument_source_bytes().ok_or_else(|| {
+                  JsErrorBox::generic("npm packument was not lazily parsed")
+                })?;
               match downloader.cache.save_package_info_bytes(
                 &name,
-                &package_info_bytes,
+                package_info_bytes,
               ) {
                 Ok(()) => {
                   Ok(FutureResult::SavedFsCache(Arc::new(package_info)))

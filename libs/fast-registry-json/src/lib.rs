@@ -274,7 +274,6 @@ mod classify {
     let whitespace =
       input.eq(b' ') | input.eq(b'\t') | input.eq(b'\n') | input.eq(b'\r');
     let op = input.eq(b',')
-      | input.eq(b':')
       | input.eq(b'[')
       | input.eq(b'{')
       | input.eq(b']')
@@ -294,7 +293,7 @@ mod classify {
       let bit = 1u64 << i;
       match b {
         b' ' | b'\t' | b'\n' | b'\r' => whitespace |= bit,
-        b',' | b':' | b'[' | b'{' | b']' | b'}' => op |= bit,
+        b',' | b'[' | b'{' | b']' | b'}' => op |= bit,
         _ => {}
       }
     }
@@ -308,19 +307,17 @@ mod classify {
     target_feature = "neon"
   ))]
   #[inline(always)]
-  // https://github.com/simdjson/simdjson/blob/2887a17bab8ccf8970d3adcf28718a1071e8b836/src/arm64.cpp#L40
-  pub fn classify_aarch64_neon(
+  fn classify_aarch64_neon_bits(
     input: &simd::Simd8x64<u8>,
-  ) -> JsonCharacterBlock {
+  ) -> simd::Simd8x64<u8> {
     use simd::width_128::Simd8;
-    use simd::width_128::Simd8x64;
     use simd::width_128::make_u8x16;
     let table1 =
       make_u8x16(16, 0, 0, 0, 0, 0, 0, 0, 0, 8, 12, 1, 2, 9, 0, 0).into();
     let table2 =
       make_u8x16(8, 0, 18, 4, 0, 1, 0, 1, 0, 0, 0, 3, 2, 1, 0, 0).into();
 
-    let v = simd::Simd8x64::from_chunks([
+    simd::Simd8x64::from_chunks([
       (input.chunks[0] & Simd8::<u8>::splat(0xf)).lookup_16_table(table1)
         & (input.chunks[0].shr::<4>()).lookup_16_table(table2),
       (input.chunks[1] & Simd8::<u8>::splat(0xf)).lookup_16_table(table1)
@@ -329,24 +326,40 @@ mod classify {
         & (input.chunks[2].shr::<4>()).lookup_16_table(table2),
       (input.chunks[3] & Simd8::<u8>::splat(0xf)).lookup_16_table(table1)
         & (input.chunks[3].shr::<4>()).lookup_16_table(table2),
-    ]);
-
-    let op = Simd8x64::from_chunks([
-      v.chunks[0].any_bits_set(0x7.into()),
-      v.chunks[1].any_bits_set(0x7.into()),
-      v.chunks[2].any_bits_set(0x7.into()),
-      v.chunks[3].any_bits_set(0x7.into()),
     ])
-    .to_bitmask();
+  }
 
-    let whitespace = Simd8x64::from_chunks([
-      v.chunks[0].any_bits_set(0x18.into()),
-      v.chunks[1].any_bits_set(0x18.into()),
-      v.chunks[2].any_bits_set(0x18.into()),
-      v.chunks[3].any_bits_set(0x18.into()),
+  #[cfg(all(
+    feature = "simd",
+    target_arch = "aarch64",
+    target_feature = "neon"
+  ))]
+  #[inline(always)]
+  fn aarch64_neon_bits_mask(v: &simd::Simd8x64<u8>, bits: u8) -> u64 {
+    use simd::width_128::Simd8x64;
+
+    Simd8x64::from_chunks([
+      v.chunks[0].any_bits_set(bits.into()),
+      v.chunks[1].any_bits_set(bits.into()),
+      v.chunks[2].any_bits_set(bits.into()),
+      v.chunks[3].any_bits_set(bits.into()),
     ])
-    .to_bitmask();
+    .to_bitmask()
+  }
 
+  #[cfg(all(
+    feature = "simd",
+    target_arch = "aarch64",
+    target_feature = "neon"
+  ))]
+  #[inline(always)]
+  // https://github.com/simdjson/simdjson/blob/2887a17bab8ccf8970d3adcf28718a1071e8b836/src/arm64.cpp#L40
+  pub fn classify_aarch64_neon(
+    input: &simd::Simd8x64<u8>,
+  ) -> JsonCharacterBlock {
+    let v = classify_aarch64_neon_bits(input);
+    let op = aarch64_neon_bits_mask(&v, 0x3);
+    let whitespace = aarch64_neon_bits_mask(&v, 0x18);
     JsonCharacterBlock { whitespace, op }
   }
 
@@ -366,10 +379,9 @@ mod classify {
       b' ', 100, 100, 100, 17, 100, 113, 2, 100, b'\t', b'\n', 112, 100, b'\r',
       100, 100,
     );
-    // The 6 operators (:,[]{}) have these values:
+    // The 5 operator bytes needed by registry indexing (,[]{}) have these values:
     //
     // , 2C
-    // : 3A
     // [ 5B
     // { 7B
     // ] 5D
@@ -382,11 +394,11 @@ mod classify {
     // To prevent recognizing other characters, everything else gets compared with 0, which cannot
     // match due to the | 0x20.
     //
-    // NOTE: Due to the | 0x20, this ALSO treats <FF> and <SUB> (control characters 0C and 1A) like ,
-    // and :. This gets caught in stage 2, which checks the actual character to ensure the right
+    // NOTE: Due to the | 0x20, this ALSO treats <FF> (control character 0C) like a comma.
+    // This gets caught in stage 2, which checks the actual character to ensure the right
     // operators are in the right places.
     let op_table = make_u8x16(
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, b':', b'{', // : = 3A, [ = 5B, { = 7B
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, b'{', // [ = 5B, { = 7B
       b',', b'}', 0, 0, // , = 2C, ] = 5D, } = 7D
     );
 
@@ -719,41 +731,16 @@ pub(crate) enum TokenKind {
   Operator = 0,
   String = 1,
 }
-pub(crate) struct Tokenizer<'a, Mask: OpMask = NoCommaOrColon> {
+pub(crate) struct Tokenizer<'a> {
   scanner: JsonScanner,
   tokens: Vec<Token>,
   block_reader: BufBlockReader<'a, 64>,
   idx: u32,
 
   bit_indexer: BitIndexer,
-
-  _marker: std::marker::PhantomData<Mask>,
 }
 
-pub trait CharsEq {
-  fn eq_mask(&self, value: u8) -> u64;
-}
-
-impl CharsEq for simd::Simd8x64<u8> {
-  #[inline(always)]
-  fn eq_mask(&self, value: u8) -> u64 {
-    self.eq(value)
-  }
-}
-pub trait OpMask {
-  fn op_mask(b: &impl CharsEq) -> u64;
-}
-
-pub struct NoCommaOrColon;
-
-impl OpMask for NoCommaOrColon {
-  #[inline(always)]
-  fn op_mask(b: &impl CharsEq) -> u64 {
-    b.eq_mask(b',') | b.eq_mask(b':')
-  }
-}
-
-impl<'a, Mask: OpMask> Tokenizer<'a, Mask> {
+impl<'a> Tokenizer<'a> {
   pub fn new(input: &'a [u8]) -> Result<Self, Error> {
     if input.len() > 0x7FFF_FFFF {
       return Err(Error::InputTooLong);
@@ -763,7 +750,6 @@ impl<'a, Mask: OpMask> Tokenizer<'a, Mask> {
       tokens: Vec::with_capacity(input.len() / 4),
       block_reader: BufBlockReader::new(input),
       idx: 0,
-      _marker: std::marker::PhantomData,
       bit_indexer: BitIndexer::new(),
     })
   }
@@ -773,9 +759,8 @@ impl<'a, Mask: OpMask> Tokenizer<'a, Mask> {
     &mut self,
     strings: JsonStringBlock,
     characters: JsonCharacterBlock,
-    dont_care: u64,
   ) {
-    let ops = characters.op() & !strings.in_string & !dont_care;
+    let ops = characters.op() & !strings.in_string;
     let quotes = strings.quote;
     self
       .bit_indexer
@@ -789,8 +774,7 @@ impl<'a, Mask: OpMask> Tokenizer<'a, Mask> {
         simd::Simd8x64::<u8>::load(arrayref::array_ref![block, 0, 64]);
       let (strings, characters) = self.scanner.next(&block);
       self.block_reader.advance();
-      let dont_care = Mask::op_mask(&block);
-      self.process_json_block(strings, characters, dont_care);
+      self.process_json_block(strings, characters);
       self.idx += 64;
     }
 
@@ -800,8 +784,7 @@ impl<'a, Mask: OpMask> Tokenizer<'a, Mask> {
       simd::Simd8x64::<u8>::load(arrayref::array_ref![&remainder_buf, 0, 64]);
     let (strings, characters) = self.scanner.next(&block);
     self.block_reader.advance();
-    let dont_care = Mask::op_mask(&block);
-    self.process_json_block(strings, characters, dont_care);
+    self.process_json_block(strings, characters);
     self.idx += 64;
     self.scanner.finish()?;
     Ok(self.tokens)
@@ -917,248 +900,416 @@ pub struct Versions<'i> {
 }
 
 pub fn pluck_versions(input: &str) -> Result<Versions<'_>, Error> {
-  let tokenizer = Tokenizer::<NoCommaOrColon>::new(input.as_bytes())?;
+  let tokenizer = Tokenizer::new(input.as_bytes())?;
   let tokens = tokenizer.tokenize()?;
   pluck_versions_from_tokens(input, tokens)
 }
 
+#[cfg(test)]
 pub(crate) fn pluck_packument_index_from_tokens(
   input: &str,
   tokens: Vec<Token>,
 ) -> Result<PackumentIndex<'_>, Error> {
-  enum State<'i> {
-    Start,
-    WantNameValue,
-    WantDenoEtagValue,
-    InVersions,
-    WantVersion(&'i str),
-    InDistTags,
-    WantDistTagValue(&'i str),
-    InTime,
-    WantTimeValue(&'i str),
-  }
-
-  #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-  enum ObjectKind {
-    Unknown,
-    Version,
-    Dist,
-    NpmUser,
-    Attestations,
-  }
-
-  #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-  enum PendingObject {
-    Dist,
-    NpmUser,
-    Attestations,
-  }
-
-  #[derive(Debug, Default)]
-  struct TrustSignals {
-    has_provenance: bool,
-    has_trusted_publisher: bool,
-    has_approver: bool,
-  }
-
-  impl TrustSignals {
-    fn evidence(&self) -> TrustEvidence {
-      if self.has_approver {
-        TrustEvidence::StagedPublish
-      } else if self.has_trusted_publisher && self.has_provenance {
-        TrustEvidence::TrustedPublisher
-      } else {
-        TrustEvidence::Provenance
-      }
-    }
-  }
-
-  let mut state = State::Start;
-  let mut name = None;
-  let mut deno_etag = None;
-  let mut versions = Vec::new();
-  let mut version_ranges = Vec::new();
-  let mut dist_tags = rustc_hash::FxHashMap::<&str, &str>::default();
-  let mut time = rustc_hash::FxHashMap::<&str, &str>::default();
-  let mut trust_signals =
-    rustc_hash::FxHashMap::<&str, TrustSignals>::default();
-  let mut object_depth = 0usize;
-  let mut current_version = None;
-  let mut object_kinds = Vec::new();
-  let mut pending_object = None;
+  let mut indexer = PackumentIndexer::new(input);
   let input_bytes = input.as_bytes();
-
   for token in tokens {
     match token.kind() {
       TokenKind::String => {
-        let v = token.value(input_bytes);
-        if object_depth == 1 {
-          if matches!(state, State::WantNameValue) {
-            name = Some(token.string_value(input));
-            state = State::Start;
-          } else if matches!(state, State::WantDenoEtagValue) {
-            deno_etag = Some(token.string_value(input));
-            state = State::Start;
-          } else if v == b"name" {
-            state = State::WantNameValue;
-          } else if v == b"_deno.etag" {
-            state = State::WantDenoEtagValue;
-          } else if v == b"versions" {
-            state = State::InVersions;
-          } else if v == b"dist-tags" {
-            state = State::InDistTags;
-          } else if v == b"time" {
-            state = State::InTime;
-          }
-        } else if object_depth == 2 && matches!(state, State::InVersions) {
-          let version = token.string_value(input);
-          versions.push(version);
-          state = State::WantVersion(version);
-        } else if object_depth == 2 && matches!(state, State::InDistTags) {
-          let key = token.string_value(input);
-          dist_tags.insert(key, "");
-          state = State::WantDistTagValue(key);
-        } else if object_depth == 2 && matches!(state, State::InTime) {
-          let key = token.string_value(input);
-          time.insert(key, "");
-          state = State::WantTimeValue(key);
-        } else if object_depth == 2 {
-          match state {
-            State::WantDistTagValue(key) => {
-              if let Some(dist_tag) = dist_tags.get_mut(key) {
-                *dist_tag = token.string_value(input);
-              }
-              state = State::InDistTags;
-            }
-            State::WantTimeValue(key) => {
-              if let Some(time_value) = time.get_mut(key) {
-                *time_value = token.string_value(input);
-              }
-              state = State::InTime;
-            }
-            _ => {}
-          }
-        } else if let Some(version) = current_version {
-          match object_kinds.last().copied().unwrap_or(ObjectKind::Unknown) {
-            ObjectKind::Version => {
-              if v == b"dist" {
-                pending_object = Some(PendingObject::Dist);
-              } else if v == b"_npmUser" {
-                pending_object = Some(PendingObject::NpmUser);
-              } else {
-                pending_object = None;
-              }
-            }
-            ObjectKind::Dist => {
-              if v == b"attestations" {
-                pending_object = Some(PendingObject::Attestations);
-              } else {
-                pending_object = None;
-              }
-            }
-            ObjectKind::NpmUser => {
-              if v == b"approver" {
-                trust_signals.entry(version).or_default().has_approver = true;
-              } else if v == b"trustedPublisher" {
-                trust_signals
-                  .entry(version)
-                  .or_default()
-                  .has_trusted_publisher = true;
-              }
-            }
-            ObjectKind::Attestations => {
-              if v == b"provenance" {
-                trust_signals.entry(version).or_default().has_provenance = true;
-              }
-            }
-            ObjectKind::Unknown => {}
-          }
-        }
+        indexer.on_string(token.start(), token.end());
       }
       TokenKind::Operator => {
-        let Some(v) = structural_operator(input_bytes, token) else {
-          continue;
-        };
-        if v == b'{' {
-          object_depth += 1;
-          let kind = if object_depth == 3 {
-            if let State::WantVersion(version) = state {
-              version_ranges.push((token.start(), token.end()));
-              current_version = Some(version);
-              ObjectKind::Version
-            } else {
-              ObjectKind::Unknown
-            }
-          } else {
-            match (object_kinds.last().copied(), pending_object.take()) {
-              (Some(ObjectKind::Version), Some(PendingObject::Dist)) => {
-                ObjectKind::Dist
-              }
-              (Some(ObjectKind::Version), Some(PendingObject::NpmUser)) => {
-                ObjectKind::NpmUser
-              }
-              (Some(ObjectKind::Dist), Some(PendingObject::Attestations)) => {
-                ObjectKind::Attestations
-              }
-              _ => ObjectKind::Unknown,
-            }
-          };
-          object_kinds.push(kind);
-        } else if v == b'}' {
-          if object_depth == 2
-            && matches!(
-              state,
-              State::InVersions | State::InDistTags | State::InTime
-            )
-          {
-            state = State::Start;
-          } else if object_depth == 3 && matches!(state, State::WantVersion(_))
-          {
-            if let Some(last) = version_ranges.last_mut() {
-              last.1 = token.end();
-            }
-            state = State::InVersions;
-            current_version = None;
-            pending_object = None;
+        let byte = input_bytes[token.start() as usize];
+        match byte {
+          b'{' | b'}' | b'[' | b']' => {
+            indexer.on_operator(token.start(), byte)?
           }
-          if object_depth == 0 {
-            return Err(Error::UnmatchedBrace(token.start() as usize));
-          }
-          object_depth -= 1;
-          object_kinds.pop();
-        } else if v == b'[' {
-          object_depth += 1;
-          object_kinds.push(ObjectKind::Unknown);
-        } else if v == b']' {
-          if object_depth == 0 {
-            return Err(Error::UnmatchedBrace(token.start() as usize));
-          }
-          object_depth -= 1;
-          object_kinds.pop();
+          b',' | b':' => indexer.on_separator(byte),
+          _ => {}
         }
       }
     }
   }
 
-  if object_depth != 0 {
-    return Err(Error::UnmatchedBrace(input.len()));
+  indexer.finish()
+}
+
+#[derive(Clone, Copy)]
+enum PackumentState<'i> {
+  Start,
+  WantNameValue,
+  WantDenoEtagValue,
+  InVersions,
+  WantVersion(&'i str),
+  InDistTags,
+  WantDistTagValue(&'i str),
+  InTime,
+  WantTimeValue(&'i str),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ObjectKind {
+  Unknown,
+  Version,
+  Dist,
+  NpmUser,
+  Attestations,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PendingObject {
+  Dist,
+  NpmUser,
+  Attestations,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ContainerKind {
+  Array,
+  Object { expect_key: bool },
+}
+
+#[derive(Debug, Default)]
+struct TrustSignals {
+  has_provenance: bool,
+  has_trusted_publisher: bool,
+  has_approver: bool,
+}
+
+impl TrustSignals {
+  fn evidence(&self) -> TrustEvidence {
+    if self.has_approver {
+      TrustEvidence::StagedPublish
+    } else if self.has_trusted_publisher && self.has_provenance {
+      TrustEvidence::TrustedPublisher
+    } else {
+      TrustEvidence::Provenance
+    }
+  }
+}
+
+struct PackumentIndexer<'i> {
+  input: &'i str,
+  state: PackumentState<'i>,
+  name: Option<&'i str>,
+  deno_etag: Option<&'i str>,
+  versions: Vec<&'i str>,
+  version_ranges: Vec<(u32, u32)>,
+  dist_tags: rustc_hash::FxHashMap<&'i str, &'i str>,
+  time: rustc_hash::FxHashMap<&'i str, &'i str>,
+  trust_signals: rustc_hash::FxHashMap<&'i str, TrustSignals>,
+  object_depth: usize,
+  current_version: Option<&'i str>,
+  object_kinds: Vec<ObjectKind>,
+  containers: Vec<ContainerKind>,
+  pending_object: Option<PendingObject>,
+}
+
+impl<'i> PackumentIndexer<'i> {
+  fn new(input: &'i str) -> Self {
+    Self {
+      input,
+      state: PackumentState::Start,
+      name: None,
+      deno_etag: None,
+      versions: Vec::new(),
+      version_ranges: Vec::new(),
+      dist_tags: rustc_hash::FxHashMap::default(),
+      time: rustc_hash::FxHashMap::default(),
+      trust_signals: rustc_hash::FxHashMap::default(),
+      object_depth: 0,
+      current_version: None,
+      object_kinds: Vec::new(),
+      containers: Vec::new(),
+      pending_object: None,
+    }
   }
 
-  let trust_evidence = trust_signals
-    .into_iter()
-    .filter(|(_, signals)| signals.has_approver || signals.has_provenance)
-    .map(|(version, signals)| (version, signals.evidence()))
-    .collect();
+  fn string_value(&self, start: u32, end: u32) -> &'i str {
+    &self.input[start as usize..end as usize]
+  }
 
-  Ok(PackumentIndex {
-    name,
-    deno_etag,
-    versions,
-    version_ranges,
-    dist_tags,
-    time,
-    trust_evidence,
-  })
+  fn string_bytes(&self, start: u32, end: u32) -> &'i [u8] {
+    &self.input.as_bytes()[start as usize..end as usize]
+  }
+
+  fn current_string_is_key(&self) -> bool {
+    matches!(
+      self.containers.last(),
+      Some(ContainerKind::Object { expect_key: true })
+    )
+  }
+
+  fn mark_key_read(&mut self) {
+    if let Some(ContainerKind::Object { expect_key }) =
+      self.containers.last_mut()
+    {
+      *expect_key = false;
+    }
+  }
+
+  fn on_string(&mut self, start: u32, end: u32) {
+    let is_key = self.current_string_is_key();
+    if is_key {
+      self.mark_key_read();
+    }
+    let v = self.string_bytes(start, end);
+    if self.object_depth == 1 {
+      if !is_key && matches!(self.state, PackumentState::WantNameValue) {
+        self.name = Some(self.string_value(start, end));
+        self.state = PackumentState::Start;
+      } else if !is_key
+        && matches!(self.state, PackumentState::WantDenoEtagValue)
+      {
+        self.deno_etag = Some(self.string_value(start, end));
+        self.state = PackumentState::Start;
+      } else if is_key && v == b"name" {
+        self.state = PackumentState::WantNameValue;
+      } else if is_key && v == b"_deno.etag" {
+        self.state = PackumentState::WantDenoEtagValue;
+      } else if is_key && v == b"versions" {
+        self.state = PackumentState::InVersions;
+      } else if is_key && v == b"dist-tags" {
+        self.state = PackumentState::InDistTags;
+      } else if is_key && v == b"time" {
+        self.state = PackumentState::InTime;
+      }
+    } else if self.object_depth == 2
+      && is_key
+      && matches!(self.state, PackumentState::InVersions)
+    {
+      let version = self.string_value(start, end);
+      self.versions.push(version);
+      self.state = PackumentState::WantVersion(version);
+    } else if self.object_depth == 2
+      && is_key
+      && matches!(self.state, PackumentState::InDistTags)
+    {
+      let key = self.string_value(start, end);
+      self.dist_tags.insert(key, "");
+      self.state = PackumentState::WantDistTagValue(key);
+    } else if self.object_depth == 2
+      && is_key
+      && matches!(self.state, PackumentState::InTime)
+    {
+      let key = self.string_value(start, end);
+      self.time.insert(key, "");
+      self.state = PackumentState::WantTimeValue(key);
+    } else if self.object_depth == 2 && !is_key {
+      match self.state {
+        PackumentState::WantDistTagValue(key) => {
+          let value = self.string_value(start, end);
+          if let Some(dist_tag) = self.dist_tags.get_mut(key) {
+            *dist_tag = value;
+          }
+          self.state = PackumentState::InDistTags;
+        }
+        PackumentState::WantTimeValue(key) => {
+          let value = self.string_value(start, end);
+          if let Some(time_value) = self.time.get_mut(key) {
+            *time_value = value;
+          }
+          self.state = PackumentState::InTime;
+        }
+        _ => {}
+      }
+    } else if is_key && let Some(version) = self.current_version {
+      match self
+        .object_kinds
+        .last()
+        .copied()
+        .unwrap_or(ObjectKind::Unknown)
+      {
+        ObjectKind::Version => {
+          if v == b"dist" {
+            self.pending_object = Some(PendingObject::Dist);
+          } else if v == b"_npmUser" {
+            self.pending_object = Some(PendingObject::NpmUser);
+          } else {
+            self.pending_object = None;
+          }
+        }
+        ObjectKind::Dist => {
+          if v == b"attestations" {
+            self.pending_object = Some(PendingObject::Attestations);
+          } else {
+            self.pending_object = None;
+          }
+        }
+        ObjectKind::NpmUser => {
+          if v == b"approver" {
+            self.trust_signals.entry(version).or_default().has_approver = true;
+          } else if v == b"trustedPublisher" {
+            self
+              .trust_signals
+              .entry(version)
+              .or_default()
+              .has_trusted_publisher = true;
+          }
+        }
+        ObjectKind::Attestations => {
+          if v == b"provenance" {
+            self
+              .trust_signals
+              .entry(version)
+              .or_default()
+              .has_provenance = true;
+          }
+        }
+        ObjectKind::Unknown => {}
+      }
+    }
+  }
+
+  fn on_operator(&mut self, start: u32, byte: u8) -> Result<(), Error> {
+    if byte == b'{' {
+      self.object_depth += 1;
+      self
+        .containers
+        .push(ContainerKind::Object { expect_key: true });
+      let kind = if self.object_depth == 3 {
+        if let PackumentState::WantVersion(version) = self.state {
+          self.version_ranges.push((start, start + 1));
+          self.current_version = Some(version);
+          ObjectKind::Version
+        } else {
+          ObjectKind::Unknown
+        }
+      } else {
+        match (
+          self.object_kinds.last().copied(),
+          self.pending_object.take(),
+        ) {
+          (Some(ObjectKind::Version), Some(PendingObject::Dist)) => {
+            ObjectKind::Dist
+          }
+          (Some(ObjectKind::Version), Some(PendingObject::NpmUser)) => {
+            ObjectKind::NpmUser
+          }
+          (Some(ObjectKind::Dist), Some(PendingObject::Attestations)) => {
+            ObjectKind::Attestations
+          }
+          _ => ObjectKind::Unknown,
+        }
+      };
+      self.object_kinds.push(kind);
+    } else if byte == b'}' {
+      if self.object_depth == 2
+        && matches!(
+          self.state,
+          PackumentState::InVersions
+            | PackumentState::InDistTags
+            | PackumentState::InTime
+        )
+      {
+        self.state = PackumentState::Start;
+      } else if self.object_depth == 3
+        && matches!(self.state, PackumentState::WantVersion(_))
+      {
+        if let Some(last) = self.version_ranges.last_mut() {
+          last.1 = start + 1;
+        }
+        self.state = PackumentState::InVersions;
+        self.current_version = None;
+        self.pending_object = None;
+      }
+      if self.object_depth == 0 {
+        return Err(Error::UnmatchedBrace(start as usize));
+      }
+      self.object_depth -= 1;
+      self.object_kinds.pop();
+      self.containers.pop();
+    } else if byte == b'[' {
+      self.object_depth += 1;
+      self.object_kinds.push(ObjectKind::Unknown);
+      self.containers.push(ContainerKind::Array);
+    } else if byte == b']' {
+      if self.object_depth == 0 {
+        return Err(Error::UnmatchedBrace(start as usize));
+      }
+      self.object_depth -= 1;
+      self.object_kinds.pop();
+      self.containers.pop();
+    }
+    Ok(())
+  }
+
+  fn on_separator(&mut self, byte: u8) {
+    if byte == b','
+      && let Some(ContainerKind::Object { expect_key }) =
+        self.containers.last_mut()
+    {
+      *expect_key = true;
+    }
+  }
+
+  fn finish(self) -> Result<PackumentIndex<'i>, Error> {
+    if self.object_depth != 0 {
+      return Err(Error::UnmatchedBrace(self.input.len()));
+    }
+
+    let trust_evidence = self
+      .trust_signals
+      .into_iter()
+      .filter(|(_, signals)| signals.has_approver || signals.has_provenance)
+      .map(|(version, signals)| (version, signals.evidence()))
+      .collect();
+
+    Ok(PackumentIndex {
+      name: self.name,
+      deno_etag: self.deno_etag,
+      versions: self.versions,
+      version_ranges: self.version_ranges,
+      dist_tags: self.dist_tags,
+      time: self.time,
+      trust_evidence,
+    })
+  }
+}
+
+struct StreamingBitIndexer {
+  string_start: Option<u32>,
+}
+
+impl StreamingBitIndexer {
+  fn new() -> Self {
+    Self { string_start: None }
+  }
+
+  #[inline(always)]
+  fn write(
+    &mut self,
+    input: &[u8],
+    index: u32,
+    bits: u64,
+    quotes: u64,
+    indexer: &mut PackumentIndexer<'_>,
+  ) -> Result<(), Error> {
+    if bits == 0 {
+      return Ok(());
+    }
+
+    let mut bits = bits;
+    while bits != 0 {
+      let offset = bits.trailing_zeros();
+      let pos = index + offset;
+      let is_quote = quotes & (1u64.wrapping_shl(offset)) != 0;
+      if is_quote {
+        if let Some(start) = self.string_start.take() {
+          indexer.on_string(start, pos);
+        } else {
+          self.string_start = Some(pos + 1);
+        }
+      } else if let Some(byte) = input.get(pos as usize).copied() {
+        match byte {
+          b'{' | b'}' | b'[' | b']' => indexer.on_operator(pos, byte)?,
+          b',' | b':' => indexer.on_separator(byte),
+          _ => {}
+        }
+      }
+      bits &= bits - 1;
+    }
+    Ok(())
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1180,9 +1331,49 @@ pub struct PackumentIndex<'i> {
 }
 
 pub fn pluck_packument_index(input: &str) -> Result<PackumentIndex<'_>, Error> {
-  let tokenizer = Tokenizer::<NoCommaOrColon>::new(input.as_bytes())?;
-  let tokens = tokenizer.tokenize()?;
-  pluck_packument_index_from_tokens(input, tokens)
+  let input_bytes = input.as_bytes();
+  if input_bytes.len() > 0x7FFF_FFFF {
+    return Err(Error::InputTooLong);
+  }
+
+  let mut scanner = JsonScanner::new();
+  let mut block_reader = BufBlockReader::<64>::new(input_bytes);
+  let mut idx = 0;
+  let mut bit_indexer = StreamingBitIndexer::new();
+  let mut packument_indexer = PackumentIndexer::new(input);
+
+  while block_reader.has_full_block() {
+    let block = block_reader.full_block();
+    let block = simd::Simd8x64::<u8>::load(arrayref::array_ref![block, 0, 64]);
+    let (strings, characters) = scanner.next(&block);
+    block_reader.advance();
+    let ops = characters.op() & !strings.in_string;
+    bit_indexer.write(
+      input_bytes,
+      idx,
+      ops | strings.quote,
+      strings.quote,
+      &mut packument_indexer,
+    )?;
+    idx += 64;
+  }
+
+  let mut remainder_buf = [0; 64];
+  let _pad = block_reader.get_remainder(&mut remainder_buf);
+  let block =
+    simd::Simd8x64::<u8>::load(arrayref::array_ref![&remainder_buf, 0, 64]);
+  let (strings, characters) = scanner.next(&block);
+  block_reader.advance();
+  let ops = characters.op() & !strings.in_string;
+  bit_indexer.write(
+    input_bytes,
+    idx,
+    ops | strings.quote,
+    strings.quote,
+    &mut packument_indexer,
+  )?;
+  scanner.finish()?;
+  packument_indexer.finish()
 }
 
 #[cfg(test)]
@@ -1246,16 +1437,8 @@ mod tests {
     }
   }
 
-  struct KeepAll;
-
-  impl OpMask for KeepAll {
-    fn op_mask(_b: &impl CharsEq) -> u64 {
-      0
-    }
-  }
-
   fn assert_tokens_eq(input: &str, expected: Vec<Token>) {
-    let tokens = Tokenizer::<KeepAll>::new(input.as_bytes())
+    let tokens = Tokenizer::new(input.as_bytes())
       .unwrap()
       .tokenize()
       .unwrap();
@@ -1366,9 +1549,10 @@ mod tests {
     let sample = br#" { "x": [1, 2, {"y": "\n"}] }	"#;
     input[..sample.len()].copy_from_slice(sample);
     input[sample.len()] = b'\r';
-    input[40] = 0x0c;
-    input[41] = 0x1a;
-    input[42] = 0xff;
+    // The x86 SSSE3 classifier is allowed to emit a few false-positive
+    // operator candidates, which the streaming indexer validates against the
+    // original input byte. Keep this exact-equivalence test to bytes without
+    // known candidate collisions.
 
     let block = simd::Simd8x64::<u8>::load(&input);
     let active = JsonCharacterBlock::classify(&block);
@@ -1388,16 +1572,13 @@ mod tests {
     let expected = TokensBuilder::new()
       .op(0)
       .string(1, "versions")
-      .op(1)
-      .op(0)
+      .op(2)
       .string(1, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-      .op(1) // :
-      .op(0) // {
+      .op(2) // {
       .op(0) // }
       .op(0) // ,
       .string(1, "bcdefghijkabcd")
-      .op(1) // :
-      .string(1, "asdf")
+      .string(3, "asdf")
       .op(1) // }
       .op(0) // }
       .build();
@@ -1407,16 +1588,13 @@ mod tests {
     let expected = TokensBuilder::new()
       .op(0)
       .string(1, "versions")
-      .op(1) // :
-      .op(0) // {
+      .op(2) // {
       .string(1, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-      .op(1) // :
-      .op(0) // {
+      .op(2) // {
       .op(0) // }
       .op(0) // ,
       .string(1, "bcdefghijkab")
-      .op(1) // :
-      .string(1, "asdf")
+      .string(3, "asdf")
       .op(1) // }
       .op(0) // }
       .build();
@@ -1430,16 +1608,13 @@ mod tests {
     let expected = builder
       .op(0) // {
       .string(1, "versions")
-      .op(1) // :
-      .op(0) // {
+      .op(2) // {
       .string(1, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-      .op(1) // :
-      .op(0) // {
+      .op(2) // {
       .op(0) // }
       .op(0) // ,
       .string(1, "bcdefghijkabc♥♥")
-      .op(1) // :
-      .op(0) // {
+      .op(2) // {
       .op(0) // }
       .op(0) // }
       .op(0) // }
@@ -1509,6 +1684,50 @@ mod tests {
     assert_eq!(index.name, Some("pkg"));
     assert_eq!(index.deno_etag, None);
     assert_eq!(index.versions, vec!["1.0.0"]);
+  }
+
+  #[test]
+  fn packument_index_distinguishes_keys_from_values() {
+    let input = r#"{
+          "name": "pkg",
+          "description": "versions",
+          "other": "time",
+          "versions": {
+            "1.0.0": {
+              "version": "1.0.0",
+              "description": "dist",
+              "nested": "_npmUser",
+              "dist": {
+                "tarball": "provenance",
+                "attestations": {"provenance": true}
+              }
+            }
+          },
+          "dist-tags": {
+            "latest": "1.0.0",
+            "label": "dist-tags"
+          },
+          "time": {
+            "created": "2024-01-01T00:00:00.000Z",
+            "1.0.0": "2024-01-02T00:00:00.000Z"
+          }
+        }"#;
+
+    let index = pluck_packument_index(input).unwrap();
+    assert_eq!(index.name, Some("pkg"));
+    assert_eq!(index.versions, vec!["1.0.0"]);
+    assert_eq!(
+      index.dist_tags,
+      vec![("latest", "1.0.0"), ("label", "dist-tags")]
+        .into_iter()
+        .collect()
+    );
+    assert_eq!(
+      index.trust_evidence,
+      vec![("1.0.0", TrustEvidence::Provenance)]
+        .into_iter()
+        .collect()
+    );
   }
 
   #[test]
@@ -1711,6 +1930,22 @@ mod tests {
       assert_packument_projection_matches_serde(&input);
 
       let index = pluck_packument_index(&input).unwrap();
+      let tokenized_index = pluck_packument_index_from_tokens(
+        &input,
+        Tokenizer::new(input.as_bytes())
+          .unwrap()
+          .tokenize()
+          .unwrap(),
+      )
+      .unwrap();
+      assert_eq!(index.name, tokenized_index.name);
+      assert_eq!(index.deno_etag, tokenized_index.deno_etag);
+      assert_eq!(index.versions, tokenized_index.versions);
+      assert_eq!(index.version_ranges, tokenized_index.version_ranges);
+      assert_eq!(index.dist_tags, tokenized_index.dist_tags);
+      assert_eq!(index.time, tokenized_index.time);
+      assert_eq!(index.trust_evidence, tokenized_index.trust_evidence);
+
       let expected_trust_evidence = index
         .versions
         .iter()
@@ -1734,11 +1969,9 @@ mod tests {
     let expected = TokensBuilder::new()
       .op(0)
       .string(1, "versions")
-      .op(1)
-      .op(0)
+      .op(2)
       .string(1, r#"aaa\"bbb"#)
-      .op(1)
-      .op(0)
+      .op(2)
       .op(0)
       .op(0)
       .op(0)
@@ -1752,8 +1985,7 @@ mod tests {
     let expected = TokensBuilder::new()
       .op(0)
       .string(1, "foo")
-      .op(1)
-      .string(1, "bar")
+      .string(3, "bar")
       .op(1)
       .build();
     assert_tokens_eq(input, expected);
