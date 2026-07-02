@@ -134,3 +134,122 @@ Deno.test("[node/dns] lookup accepts string family values", async () => {
   const ipv6Result = await lookupPromise("localhost", { family: "IPv6" });
   assertEquals(ipv6Result.family, 6);
 });
+
+// Regression test for https://github.com/denoland/deno/issues/25927
+// `dns.lookup` must consult the operating system resolver (which reads the
+// hosts file, e.g. /etc/hosts) rather than querying DNS servers directly.
+// `localhost` is present in the hosts file on every supported platform and is
+// not resolvable through public DNS, so it exercises that path.
+Deno.test("[node/dns] lookup uses the system resolver / hosts file", async () => {
+  const { address, family } = await new Promise<
+    { address: string; family: number }
+  >((resolve, reject) => {
+    dns.lookup("localhost", (err, address, family) => {
+      if (err) reject(err);
+      else resolve({ address, family });
+    });
+  });
+  assert(
+    address === "127.0.0.1" || address === "::1",
+    `unexpected address for localhost: ${address}`,
+  );
+  assert(family === 4 || family === 6, `unexpected family: ${family}`);
+
+  const all = await lookupPromise("localhost", { all: true });
+  assert(Array.isArray(all) && all.length > 0, "expected at least one address");
+  assert(
+    all.every(({ address }) => address === "127.0.0.1" || address === "::1"),
+    `unexpected addresses for localhost: ${JSON.stringify(all)}`,
+  );
+});
+
+// Regression test for https://github.com/denoland/deno/issues/34801
+// `dns.lookup` must follow Node.js behavior when `hostname` is falsy
+// (undefined / null / empty string): the callback is invoked with
+// (null, null, family) instead of throwing synchronously.
+Deno.test("[node/dns] lookup with falsy hostname invokes callback", async () => {
+  for (const hostname of [undefined, null, ""]) {
+    const result = await new Promise<
+      { error: unknown; address: unknown; family: unknown }
+    >((resolve) => {
+      // deno-lint-ignore no-explicit-any
+      dns.lookup(hostname as any, (error, address, family) => {
+        resolve({ error, address, family });
+      });
+    });
+    assertEquals(result, { error: null, address: null, family: 4 });
+  }
+
+  // family argument is honored when 6.
+  const result6 = await new Promise<
+    { error: unknown; address: unknown; family: unknown }
+  >((resolve) => {
+    dns.lookup(
+      // deno-lint-ignore no-explicit-any
+      undefined as any,
+      6,
+      (error, address, family) => resolve({ error, address, family }),
+    );
+  });
+  assertEquals(result6, { error: null, address: null, family: 6 });
+
+  // options.family = 6
+  const resultOpt6 = await new Promise<
+    { error: unknown; address: unknown; family: unknown }
+  >((resolve) => {
+    dns.lookup(
+      // deno-lint-ignore no-explicit-any
+      undefined as any,
+      { family: 6 },
+      (error, address, family) => resolve({ error, address, family }),
+    );
+  });
+  assertEquals(resultOpt6, { error: null, address: null, family: 6 });
+
+  // options.all = true returns an empty array via the callback.
+  const resultAll = await new Promise<
+    { error: unknown; addresses: unknown }
+  >((resolve) => {
+    dns.lookup(
+      // deno-lint-ignore no-explicit-any
+      undefined as any,
+      { all: true },
+      // deno-lint-ignore no-explicit-any
+      (error, addresses: any) => resolve({ error, addresses }),
+    );
+  });
+  assertEquals(resultAll, { error: null, addresses: [] });
+});
+
+Deno.test("[node/dns] promises.lookup with falsy hostname resolves", async () => {
+  for (const hostname of [undefined, null, ""]) {
+    // deno-lint-ignore no-explicit-any
+    const result = await lookupPromise(hostname as any);
+    assertEquals(result as unknown, { address: null, family: 4 });
+  }
+
+  // deno-lint-ignore no-explicit-any
+  const result6 = await lookupPromise(undefined as any, { family: 6 });
+  assertEquals(result6 as unknown, { address: null, family: 6 });
+
+  // deno-lint-ignore no-explicit-any
+  const resultAll = await lookupPromise(undefined as any, { all: true });
+  assertEquals(resultAll, []);
+});
+
+// Regression test for https://github.com/denoland/deno/issues/25927
+// A failed `dns.lookup` must report the real libuv error code and errno
+// (ENOTFOUND / -3008) like Node.js, instead of flattening every failure to
+// EAI_NODATA (-3007).
+Deno.test("[node/dns] lookup of a missing host reports ENOTFOUND", async () => {
+  const err = await new Promise<ErrnoException>((resolve) => {
+    dns.lookup("nonexistent-host.invalid", (err) => {
+      resolve(err as unknown as ErrnoException);
+    });
+  });
+  assert(err, "expected an error for an unresolvable host");
+  assertEquals(err.code, "ENOTFOUND");
+  assertEquals(err.errno, -3008);
+  assertEquals(err.syscall, "getaddrinfo");
+  assertEquals(err.hostname, "nonexistent-host.invalid");
+});

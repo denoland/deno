@@ -10,7 +10,8 @@
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
+const { op_get_env_no_permission_check } = core.ops;
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const lazyChildProcess = core.createLazyLoader("node:child_process");
 const lazyPath = core.createLazyLoader("node:path");
@@ -40,6 +41,17 @@ const {
 const SCHED_NONE = 1;
 const SCHED_RR = 2;
 
+// Inspector port range and per-worker offset, mirroring
+// lib/internal/cluster/primary.js. When the inspector is activated, each
+// worker needs a distinct port so they don't collide on the default (9229).
+const minPort = 1024;
+const maxPort = 65535;
+// Matches the inspector activation/port flags Node looks for. Mirrors the
+// `debugArgRegex` in lib/internal/cluster/primary.js, which also matches
+// `--inspect-wait` via its `--inspect` prefix.
+const debugArgRegex = /--inspect(?:-brk|-port|-wait)?|--debug-port/;
+let debugPortOffset = 1;
+
 let initialized = false;
 
 // Initialize primary-side state and methods on the shared cluster object.
@@ -67,8 +79,11 @@ function init(cluster: any) {
   let setupCalled = false;
 
   // Read the policy from env, mirroring lib/internal/cluster/primary.js.
+  // Use the no-permission-check op (Node reads this unconditionally at
+  // cluster init): the now-lazy node bootstrap can run this in the worker
+  // path where `process.env` access would otherwise require `--allow-env`.
   let schedulingPolicy: number;
-  const env = (process as any).env.NODE_CLUSTER_SCHED_POLICY;
+  const env = op_get_env_no_permission_check("NODE_CLUSTER_SCHED_POLICY");
   if (env === "rr") {
     schedulingPolicy = SCHED_RR;
   } else if (env === "none") {
@@ -123,6 +138,42 @@ function init(cluster: any) {
     }
 
     const execArgv = [...(cluster.settings.execArgv || [])];
+
+    // If the inspector is activated (via execArgv or the inherited
+    // NODE_OPTIONS), give each worker its own port so they don't all try to
+    // bind the default 9229. Node appends `--inspect-port=<port>` to execArgv
+    // and lets it combine with the NODE_OPTIONS activation flag. Deno doesn't
+    // carry `--inspect-port` as a runtime flag, so we instead append an
+    // activating `--inspect[-brk|-wait]=host:port`; an explicit CLI inspector
+    // flag takes precedence over the inherited NODE_OPTIONS one, so the worker
+    // ends up bound to the unique port.
+    const nodeOptions = (process as any).env.NODE_OPTIONS ?? "";
+    const inspectSource =
+      execArgv.find((arg: string) => debugArgRegex.test(arg)) ??
+        (debugArgRegex.test(nodeOptions) ? nodeOptions : undefined);
+    if (inspectSource !== undefined) {
+      let inspectPort;
+      if ("inspectPort" in cluster.settings) {
+        inspectPort = typeof cluster.settings.inspectPort === "function"
+          ? cluster.settings.inspectPort()
+          : cluster.settings.inspectPort;
+      } else {
+        inspectPort = (process as any).debugPort + debugPortOffset;
+        if (inspectPort > maxPort) {
+          inspectPort = inspectPort - maxPort + minPort - 1;
+        }
+        debugPortOffset++;
+      }
+      // A falsy port (e.g. 0) means "pick a free port"; leave it to the worker.
+      if (inspectPort) {
+        const flag = /--inspect-brk\b/.test(inspectSource)
+          ? "--inspect-brk"
+          : /--inspect-wait\b/.test(inspectSource)
+          ? "--inspect-wait"
+          : "--inspect";
+        execArgv.push(`${flag}=127.0.0.1:${inspectPort}`);
+      }
+    }
 
     return lazyChildProcess().fork(
       cluster.settings.exec,

@@ -20,15 +20,22 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  ArrayPrototypeForEach,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  ArrayPrototypePush,
+  ArrayPrototypeToString,
+  NumberParseInt,
+  SafeRegExp,
+  StringPrototypeMatch,
+  StringPrototypeReplace,
+} = primordials;
 const { getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
-const lazyProcess = core.createLazyLoader("node:process");
 const {
   AI_ADDRCONFIG,
   AI_ALL,
@@ -225,8 +232,8 @@ function isResolveCallback(
 }
 
 const IANA_DNS_PORT = 53;
-const IPv6RE = /^\[([^[\]]*)\]/;
-const addrSplitRE = /(^.+?)(?::(\d+))?$/;
+const IPv6RE = new SafeRegExp("^\\[([^[\\]]*)\\]");
+const addrSplitRE = new SafeRegExp("(^.+?)(?::(\\d+))?$");
 
 function validateTimeout(options?: { timeout?: number }) {
   const { timeout = -1 } = { ...options };
@@ -310,7 +317,7 @@ class Resolver {
 
   getServers(): string[] {
     const servers = this._handle.getServers() || [];
-    return servers.map((val: [string, number]) => {
+    return ArrayPrototypeMap(servers, (val: [string, number]) => {
       if (!val[1] || val[1] === IANA_DNS_PORT) {
         return val[0];
       }
@@ -329,30 +336,31 @@ class Resolver {
     const orig = this._handle.getServers();
     const newSet: [number, string, number][] = [];
 
-    servers.forEach((serv, index) => {
+    ArrayPrototypeForEach(servers, (serv, index) => {
       validateString(serv, `servers[${index}]`);
       let ipVersion = isIP(serv);
 
       if (ipVersion !== 0) {
-        return newSet.push([ipVersion, serv, IANA_DNS_PORT]);
+        return ArrayPrototypePush(newSet, [ipVersion, serv, IANA_DNS_PORT]);
       }
 
-      const match = serv.match(IPv6RE);
+      const match = StringPrototypeMatch(serv, IPv6RE);
 
       // Check for an IPv6 in brackets.
       if (match) {
         ipVersion = isIP(match[1]);
 
         if (ipVersion !== 0) {
-          const port = Number.parseInt(serv.replace(addrSplitRE, "$2")) ||
+          const port =
+            NumberParseInt(StringPrototypeReplace(serv, addrSplitRE, "$2")) ||
             IANA_DNS_PORT;
 
-          return newSet.push([ipVersion, match[1], port]);
+          return ArrayPrototypePush(newSet, [ipVersion, match[1], port]);
         }
       }
 
       // addr::port
-      const addrSplitMatch = serv.match(addrSplitRE);
+      const addrSplitMatch = StringPrototypeMatch(serv, addrSplitRE);
 
       if (addrSplitMatch) {
         const hostIP = addrSplitMatch[1];
@@ -361,7 +369,11 @@ class Resolver {
         ipVersion = isIP(hostIP);
 
         if (ipVersion !== 0) {
-          return newSet.push([ipVersion, hostIP, Number.parseInt(port)]);
+          return ArrayPrototypePush(newSet, [
+            ipVersion,
+            hostIP,
+            NumberParseInt(port),
+          ]);
         }
       }
 
@@ -372,10 +384,13 @@ class Resolver {
 
     if (errorNumber !== 0) {
       // Reset the servers to the old servers, because ares probably unset them.
-      this._handle.setServers(orig.join(","));
+      this._handle.setServers(ArrayPrototypeJoin(orig, ","));
       const err = strerror(errorNumber);
 
-      throw new ERR_DNS_SET_SERVERS_FAILED(err, servers.toString());
+      throw new ERR_DNS_SET_SERVERS_FAILED(
+        err,
+        ArrayPrototypeToString(servers),
+      );
     }
   }
 
@@ -419,23 +434,6 @@ function validateHints(hints: number) {
   if ((hints & ~(AI_ADDRCONFIG | AI_ALL | AI_V4MAPPED)) !== 0) {
     throw new ERR_INVALID_ARG_VALUE("hints", hints, "is invalid");
   }
-}
-
-let invalidHostnameWarningEmitted = false;
-
-function emitInvalidHostnameWarning(hostname: string) {
-  if (invalidHostnameWarningEmitted) {
-    return;
-  }
-
-  invalidHostnameWarningEmitted = true;
-
-  lazyProcess().default.emitWarning(
-    `The provided hostname "${hostname}" is not a valid ` +
-      "hostname, and is supported in the dns module solely for compatibility.",
-    "DeprecationWarning",
-    "DEP0118",
-  );
 }
 
 let dnsOrder: string | undefined;
@@ -492,7 +490,6 @@ return {
   getDefaultResolver,
   setDefaultResolver,
   validateHints,
-  emitInvalidHostnameWarning,
   getDefaultDnsOrder,
   validDnsOrders,
   dnsOrderToNumber,

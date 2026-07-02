@@ -14,16 +14,19 @@ use std::sync::atomic::Ordering;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::DetachedBuffer;
+use deno_core::FromV8;
 use deno_core::JsBuffer;
+use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
-use deno_core::serde::Deserialize;
 use deno_permissions::ChildPermissionsArg;
 use deno_permissions::PermissionsContainer;
+use deno_web::Blob;
+use deno_web::BlobStoreTrait;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
 use deno_web::Transferable;
@@ -49,8 +52,7 @@ use crate::worker::FormatJsErrorFn;
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
 /// V8 resource limits for worker isolates, matching Node.js `resourceLimits`.
-#[derive(Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8, Default, Clone)]
 pub struct ResourceLimits {
   pub max_young_generation_size_mb: Option<usize>,
   pub max_old_generation_size_mb: Option<usize>,
@@ -67,7 +69,13 @@ pub struct CreateWebWorkerArgs {
   pub worker_type: WorkerThreadType,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  /// Captured root blob for `main_module`; paired with `main_module` by the
+  /// worker's loader/handle. Blob dependencies are intentionally resolved
+  /// normally by their own URLs.
+  pub maybe_main_module_blob: Option<Arc<Blob>>,
   pub resource_limits: Option<ResourceLimits>,
+  pub wait_for_debugger_on_start: bool,
+  pub wait_for_page_wait_for_debugger: bool,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -86,6 +94,7 @@ struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
 
 pub struct WorkerThread {
   worker_handle: WebWorkerHandle,
+  worker_type: WorkerThreadType,
   cancel_handle: Rc<CancelHandle>,
   cpu_thread_handle: Arc<AtomicU64>,
 
@@ -94,10 +103,16 @@ pub struct WorkerThread {
   // control and message channels. See `close_channel`.
   ctrl_closed: bool,
   message_closed: bool,
+  termination_requested: bool,
 }
 
 impl WorkerThread {
-  fn terminate(self) {
+  fn request_termination(&mut self) {
+    self.termination_requested = true;
+    self.worker_handle.clone().terminate();
+  }
+
+  fn finish_termination(self) {
     // Cancel recv ops when terminating the worker, so they don't show up as
     // pending ops.
     self.cancel_handle.cancel();
@@ -193,14 +208,15 @@ deno_core::extension!(
   },
 );
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct CreateWorkerArgs {
   has_source_code: bool,
   name: Option<String>,
+  #[from_v8(serde)]
   permissions: Option<ChildPermissionsArg>,
   source_code: String,
   specifier: String,
+  #[from_v8(serde)]
   worker_type: WorkerThreadType,
   close_on_idle: bool,
   resource_limits: Option<ResourceLimits>,
@@ -227,10 +243,9 @@ pub enum CreateWorkerError {
 
 /// Create worker as the host
 #[op2(stack_trace)]
-#[serde]
 fn op_create_worker(
   state: &mut OpState,
-  #[serde] args: CreateWorkerArgs,
+  #[scoped] args: CreateWorkerArgs,
   #[serde] maybe_worker_metadata: Option<JsMessageData>,
 ) -> Result<WorkerId, CreateWorkerError> {
   let specifier = args.specifier.clone();
@@ -267,9 +282,29 @@ fn op_create_worker(
   let parent_permissions = parent_permissions.clone();
   let create_web_worker_cb = state.borrow::<CreateWebWorkerCbHolder>().clone();
   let format_js_error_fn = state.borrow::<FormatJsErrorFnHolder>().clone();
+  let wait_for_debugger_on_start = state
+    .try_borrow::<Rc<JsRuntimeInspector>>()
+    .map(|inspector| inspector.should_wait_for_debugger_on_worker_start())
+    .unwrap_or(false);
+  let wait_for_page_wait_for_debugger = state
+    .try_borrow::<Rc<JsRuntimeInspector>>()
+    .map(|inspector| {
+      inspector.should_wait_for_page_wait_for_debugger_on_worker_start()
+    })
+    .unwrap_or(false);
   let worker_id = WorkerId::new();
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
+  // Synchronously capture the root blob so a racing `URL.revokeObjectURL`
+  // after `new Worker(blobUrl)` can't make the worker load fail (see #26142).
+  // This anchors only the worker root; blob URL dependencies still resolve
+  // through the normal blob store at load time.
+  let maybe_main_module_blob = if module_specifier.scheme() == "blob" {
+    let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
+    blob_store.get_object_url(module_specifier.clone())
+  } else {
+    None
+  };
   let worker_name = args_name.unwrap_or_default();
 
   let (handle_sender, handle_receiver) =
@@ -318,7 +353,10 @@ fn op_create_worker(
           worker_type,
           close_on_idle: args.close_on_idle,
           maybe_worker_metadata,
+          maybe_main_module_blob,
           resource_limits: args.resource_limits,
+          wait_for_debugger_on_start,
+          wait_for_page_wait_for_debugger,
         });
 
       // Send thread safe handle from newly created worker to host thread
@@ -363,10 +401,12 @@ fn op_create_worker(
 
   let worker_thread = WorkerThread {
     worker_handle: worker_handle.into(),
+    worker_type: args.worker_type,
     cancel_handle: CancelHandle::new_rc(),
     cpu_thread_handle,
     ctrl_closed: false,
     message_closed: false,
+    termination_requested: false,
   };
 
   // At this point all interactions with worker happen using thread
@@ -379,12 +419,16 @@ fn op_create_worker(
 }
 
 #[op2]
-fn op_host_terminate_worker(state: &mut OpState, #[serde] id: WorkerId) {
-  match state.borrow_mut::<WorkersTable>().remove(&id) {
-    Some(worker_thread) => {
-      worker_thread.terminate();
+fn op_host_terminate_worker(state: &mut OpState, #[scoped] id: WorkerId) {
+  match state.borrow_mut::<WorkersTable>().entry(id) {
+    std::collections::hash_map::Entry::Occupied(mut entry) => {
+      if matches!(entry.get().worker_type, WorkerThreadType::Node) {
+        entry.remove().finish_termination();
+      } else {
+        entry.get_mut().request_termination();
+      }
     }
-    _ => {
+    std::collections::hash_map::Entry::Vacant(_) => {
       debug!("tried to terminate non-existent worker {}", id);
     }
   }
@@ -395,8 +439,8 @@ enum WorkerChannel {
   Messages,
 }
 
-/// Close a worker's channel. If this results in both of a worker's channels
-/// being closed, the worker will be removed from the workers table.
+/// Close a worker's channel. If this results in a worker no longer needing
+/// host-side receive ops, the worker will be removed from the workers table.
 fn close_channel(
   state: Rc<RefCell<OpState>>,
   id: WorkerId,
@@ -410,22 +454,22 @@ fn close_channel(
   // `Worker.terminate()` might have been called already, meaning that we won't
   // find the worker in the table - in that case ignore.
   if let Entry::Occupied(mut entry) = workers.entry(id) {
-    let terminate = {
+    let remove = {
       let worker_thread = entry.get_mut();
       match channel {
         WorkerChannel::Ctrl => {
           worker_thread.ctrl_closed = true;
-          worker_thread.message_closed
+          worker_thread.termination_requested || worker_thread.message_closed
         }
         WorkerChannel::Messages => {
           worker_thread.message_closed = true;
-          worker_thread.ctrl_closed
+          !worker_thread.termination_requested && worker_thread.ctrl_closed
         }
       }
     };
 
-    if terminate {
-      entry.remove().terminate();
+    if remove {
+      entry.remove().finish_termination();
     }
   }
 }
@@ -435,7 +479,7 @@ fn close_channel(
 #[serde]
 async fn op_host_recv_ctrl(
   state: Rc<RefCell<OpState>>,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
 ) -> WorkerControlEvent {
   let (worker_handle, cancel_handle) = {
     let state = state.borrow();
@@ -477,10 +521,9 @@ async fn op_host_recv_ctrl(
 }
 
 #[op2]
-#[serde]
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
 ) -> Result<Option<JsMessageData>, MessagePortError> {
   let (worker_handle, cancel_handle) = {
     let s = state.borrow();
@@ -515,10 +558,9 @@ async fn op_host_recv_message(
 }
 
 #[op2]
-#[serde]
 fn op_host_recv_message_sync(
   state: &mut OpState,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
 ) -> Result<Option<JsMessageData>, MessagePortError> {
   let worker_handle = {
     let workers_table = state.borrow::<WorkersTable>();
@@ -534,7 +576,7 @@ fn op_host_recv_message_sync(
 #[op2]
 fn op_host_post_message(
   state: &mut OpState,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
   #[serde] data: JsMessageData,
 ) -> Result<(), MessagePortError> {
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
@@ -552,7 +594,7 @@ fn op_host_post_message(
 #[op2]
 fn op_host_post_message_raw(
   state: &mut OpState,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
   #[buffer(detach)] data: JsBuffer,
 ) -> Result<(), MessagePortError> {
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
@@ -647,7 +689,6 @@ fn op_node_worker_thread_post_message(
 /// Resolves to `None` when the channel is closed (i.e. the thread is
 /// being torn down), at which point the JS-side poll loop terminates.
 #[op2]
-#[serde]
 async fn op_node_worker_thread_recv_message(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -686,7 +727,7 @@ async fn op_node_worker_thread_recv_message(
 #[op2]
 fn op_host_get_worker_cpu_usage(
   state: &mut OpState,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
   #[buffer] out: &mut [f64],
 ) {
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
@@ -809,17 +850,17 @@ fn get_thread_cpu_usage_by_handle(handle: u64) -> (f64, f64) {
 #[cfg(windows)]
 fn capture_current_thread_handle() -> u64 {
   // SAFETY: Returns the thread ID of the calling thread.
-  unsafe { winapi::um::processthreadsapi::GetCurrentThreadId() as u64 }
+  unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() as u64 }
 }
 
 #[cfg(windows)]
 fn get_thread_cpu_usage_by_handle(handle: u64) -> (f64, f64) {
-  use winapi::shared::minwindef::FALSE;
-  use winapi::shared::minwindef::FILETIME;
-  use winapi::um::handleapi::CloseHandle;
-  use winapi::um::processthreadsapi::GetThreadTimes;
-  use winapi::um::processthreadsapi::OpenThread;
-  use winapi::um::winnt::THREAD_QUERY_INFORMATION;
+  use windows_sys::Win32::Foundation::CloseHandle;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::Foundation::FILETIME;
+  use windows_sys::Win32::System::Threading::GetThreadTimes;
+  use windows_sys::Win32::System::Threading::OpenThread;
+  use windows_sys::Win32::System::Threading::THREAD_QUERY_INFORMATION;
 
   let thread_id = handle as u32;
 

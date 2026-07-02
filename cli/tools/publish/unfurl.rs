@@ -334,7 +334,6 @@ pub struct SpecifierUnfurler<TSys: SpecifierUnfurlerSys = CliSys> {
   pkg_json_resolver: Arc<CliPackageJsonResolver<TSys>>,
   workspace_dir: Arc<WorkspaceDirectory>,
   workspace_resolver: Arc<WorkspaceResolver<TSys>>,
-  bare_node_builtins: bool,
 }
 
 impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
@@ -344,7 +343,6 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     pkg_json_resolver: Arc<CliPackageJsonResolver<TSys>>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_resolver: Arc<WorkspaceResolver<TSys>>,
-    bare_node_builtins: bool,
   ) -> Self {
     debug_assert_eq!(
       workspace_resolver.pkg_json_dep_resolution(),
@@ -356,7 +354,6 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
       pkg_json_resolver,
       workspace_dir,
       workspace_resolver,
-      bare_node_builtins,
     }
   }
 
@@ -526,16 +523,19 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   None => None,
                 }
               }
-              PackageJsonDepValue::Workspace(workspace_version_req) => {
-                let version_req = match workspace_version_req {
+              PackageJsonDepValue::Workspace { name, version_req } => {
+                // The member is looked up by its own package name, which for
+                // pnpm-style aliases differs from the import alias (the key).
+                let target_name = name.as_deref().unwrap_or(alias);
+                let version_req = match version_req {
                   PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
                     Cow::Borrowed(version_req)
                   }
                   PackageJsonDepWorkspaceReq::Caret => {
                     let version = self
-                      .find_workspace_npm_dep_version(alias)
+                      .find_workspace_npm_dep_version(target_name)
                       .map_err(|err| UnfurlSpecifierError::Workspace {
-                        package_name: alias.to_string(),
+                        package_name: target_name.to_string(),
                         reason: err.to_string(),
                       })?;
                     // version was validated, so ok to unwrap
@@ -546,9 +546,9 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   }
                   PackageJsonDepWorkspaceReq::Tilde => {
                     let version = self
-                      .find_workspace_npm_dep_version(alias)
+                      .find_workspace_npm_dep_version(target_name)
                       .map_err(|err| UnfurlSpecifierError::Workspace {
-                        package_name: alias.to_string(),
+                        package_name: target_name.to_string(),
                         reason: err.to_string(),
                       })?;
                     // version was validated, so ok to unwrap
@@ -562,7 +562,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                 // people to map the specifiers in the import map
                 ModuleSpecifier::parse(&format!(
                   "npm:{}@{}{}",
-                  alias,
+                  target_name,
                   version_req,
                   sub_path
                     .as_ref()
@@ -584,7 +584,8 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
               PackageJsonDepValueParseErrorKind::VersionReq { .. }
               | PackageJsonDepValueParseErrorKind::JsrRequiresScope {
                 ..
-              } => {
+              }
+              | PackageJsonDepValueParseErrorKind::EmptyName => {
                 log::warn!(
                   "Ignoring failed to resolve package.json dependency. {:#}",
                   err
@@ -610,7 +611,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     };
     let resolved = match resolved {
       Some(resolved) => resolved,
-      None if self.bare_node_builtins && is_builtin_node_module(specifier) => {
+      None if is_builtin_node_module(specifier) => {
         format!("node:{specifier}").parse().unwrap()
       }
       None => match ModuleSpecifier::options()
@@ -722,7 +723,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     ];
     for deno_json in deno_jsons.iter().flatten() {
       let deps = deno_json
-        .dependencies()
+        .dependencies(self.workspace_dir.workspace.catalogs())
         .into_iter()
         .collect::<BTreeSet<_>>();
       for dep in deps {
@@ -1734,7 +1735,6 @@ export * from "jsr:@std/semver@1";
         .unwrap()
         .clone(),
       resolver_factory.workspace_resolver().await.unwrap().clone(),
-      true,
     )
   }
 

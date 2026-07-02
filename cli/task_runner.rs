@@ -30,9 +30,11 @@ use crate::util::fs::canonicalize_path;
 pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
   let additional_args = argv
     .iter()
-    // surround all the additional arguments in double quotes
-    // and sanitize any command substitution
-    .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
+    // Wrap each argument in single quotes so the shell preserves the
+    // content literally (including backslashes, $, `, etc.). For an
+    // argument containing a single quote, splice in a double-quoted `'`
+    // using the POSIX idiom `'foo'"'"'bar'`.
+    .map(|a| format!("'{}'", a.replace('\'', "'\"'\"'")))
     .collect::<Vec<_>>()
     .join(" ");
 
@@ -158,7 +160,9 @@ pub struct RunTaskOptions<'a> {
   pub env_vars: HashMap<OsString, OsString>,
   pub argv: &'a [String],
   pub custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
-  pub root_node_modules_dir: Option<&'a Path>,
+  /// Directories to prepend to `PATH` for the duration of the task,
+  /// ordered closest-first (closest entry ends up first in `PATH`).
+  pub node_modules_bin_dirs: &'a [PathBuf],
   pub stdio: Option<TaskIo>,
   pub kill_signal: KillSignal,
 }
@@ -178,7 +182,7 @@ pub async fn run_task(
   let seq_list = deno_task_shell::parser::parse(&script)
     .with_context(|| format!("Error parsing script '{}'.", opts.task_name))?;
   let env_vars =
-    prepare_env_vars(opts.env_vars, opts.init_cwd, opts.root_node_modules_dir);
+    prepare_env_vars(opts.env_vars, opts.init_cwd, opts.node_modules_bin_dirs);
   if !opts.custom_commands.contains_key("deno") {
     opts
       .custom_commands
@@ -237,7 +241,7 @@ pub async fn run_task(
 fn prepare_env_vars(
   mut env_vars: HashMap<OsString, OsString>,
   initial_cwd: &Path,
-  node_modules_dir: Option<&Path>,
+  node_modules_bin_dirs: &[PathBuf],
 ) -> HashMap<OsString, OsString> {
   const INIT_CWD_NAME: &str = "INIT_CWD";
   if !env_vars.contains_key(OsStr::new(INIT_CWD_NAME)) {
@@ -255,11 +259,9 @@ fn prepare_env_vars(
       crate::npm::get_npm_config_user_agent().into(),
     );
   }
-  if let Some(node_modules_dir) = node_modules_dir {
-    prepend_to_path(
-      &mut env_vars,
-      node_modules_dir.join(".bin").into_os_string(),
-    );
+  // Prepend in reverse so the closest dir ends up first in `PATH`.
+  for bin_dir in node_modules_bin_dirs.iter().rev() {
+    prepend_to_path(&mut env_vars, bin_dir.as_os_str().to_os_string());
   }
   env_vars
 }
@@ -526,12 +528,20 @@ impl ShellCommand for NodeModulesFileRunCommand {
 pub fn resolve_custom_commands(
   node_resolver: &CliNodeResolver,
   npm_resolver: &CliNpmResolver,
+  bin_dirs: &[PathBuf],
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut commands = match npm_resolver {
-    CliNpmResolver::Byonm(npm_resolver) => {
-      let node_modules_dir = npm_resolver.root_node_modules_path().unwrap();
-      let bin_dir = node_modules_dir.join(".bin");
-      resolve_npm_commands_from_bin_dir(&bin_dir, node_resolver)
+    CliNpmResolver::Byonm(_) => {
+      // Walk the bin dirs in order (closest first) and merge; closest wins.
+      let mut commands: HashMap<String, Rc<dyn ShellCommand>> = HashMap::new();
+      for bin_dir in bin_dirs {
+        for (name, cmd) in
+          resolve_npm_commands_from_bin_dir(bin_dir, node_resolver)
+        {
+          commands.entry(name).or_insert(cmd);
+        }
+      }
+      commands
     }
     CliNpmResolver::Managed(npm_resolver) => {
       resolve_managed_npm_commands(node_resolver, npm_resolver)?
@@ -539,6 +549,28 @@ pub fn resolve_custom_commands(
   };
   commands.insert("npm".to_string(), Rc::new(NpmCommand));
   Ok(commands)
+}
+
+/// Builds the list of `node_modules/.bin` directories to consult for a task.
+///
+/// For BYONM this walks up the filesystem from `cwd` collecting every
+/// `<ancestor>/node_modules/.bin` directory (matching how Node, npm, and pnpm
+/// resolve bin commands). For the managed npm resolver there is only ever a
+/// single `node_modules/.bin`.
+pub fn resolve_task_node_modules_bin_dirs(
+  npm_resolver: &CliNpmResolver,
+  cwd: &Path,
+) -> Vec<PathBuf> {
+  match npm_resolver {
+    CliNpmResolver::Byonm(_) => cwd
+      .ancestors()
+      .map(|dir| dir.join("node_modules").join(".bin"))
+      .collect(),
+    CliNpmResolver::Managed(npm_resolver) => npm_resolver
+      .root_node_modules_path()
+      .map(|p| vec![p.join(".bin")])
+      .unwrap_or_default(),
+  }
 }
 
 pub fn resolve_npm_commands_from_bin_dir(
@@ -605,12 +637,21 @@ pub async fn run_future_forwarding_signals<TOutput>(
     });
   }
 
+  // Save the terminal mode up front so it can be restored once the task (and
+  // all of its child processes) have finished. A child process such as a dev
+  // server may switch the terminal into raw mode and, when terminated via
+  // Ctrl+C, leave it in a broken state (no echo, no line editing). Declared
+  // first so it is dropped last, i.e. after the children have been torn down by
+  // the kill-signal drop guards below.
+  let terminal_mode_guard = crate::util::console::TerminalModeGuard::acquire();
+  let saved_terminal_mode = terminal_mode_guard.saved();
+
   let token = CancellationToken::new();
   let _token_drop_guard = token.clone().drop_guard();
   let _drop_guard = kill_signal.clone().drop_guard();
 
   spawn_future_with_cancellation(
-    listen_ctrl_c(kill_signal.clone()),
+    listen_ctrl_c(kill_signal.clone(), saved_terminal_mode),
     token.clone(),
   );
   #[cfg(unix)]
@@ -622,13 +663,23 @@ pub async fn run_future_forwarding_signals<TOutput>(
   future.await
 }
 
-async fn listen_ctrl_c(kill_signal: KillSignal) {
+async fn listen_ctrl_c(
+  kill_signal: KillSignal,
+  saved_terminal_mode: crate::util::console::SavedTerminalMode,
+) {
   while let Ok(()) = deno_signals::ctrl_c().await {
     // On windows, ctrl+c is sent to the process group, so the signal would
     // have already been sent to the child process. We still want to listen
     // for ctrl+c here to keep the process alive when receiving it, but no
     // need to forward the signal because it's already been sent.
-    if !cfg!(windows) {
+    if cfg!(windows) {
+      // A child (e.g. a dev server) may have put the terminal into raw mode.
+      // Restore it now so that input echoes again — for instance at cmd.exe's
+      // "Terminate batch job (Y/N)?" prompt that appears for `.cmd` scripts.
+      // The TerminalModeGuard still restores once more when the task ends, in
+      // case the child re-enters raw mode before exiting.
+      saved_terminal_mode.restore();
+    } else {
       kill_signal.send(deno_task_shell::SignalKind::SIGINT)
     }
   }
@@ -694,5 +745,27 @@ mod test {
       env_vars,
       HashMap::from([("PATH".into(), "/example".into())])
     );
+  }
+
+  #[test]
+  fn test_get_script_with_args() {
+    let cases: &[(&[&str], &str)] = &[
+      (&[], "echo"),
+      (&["hello"], "echo 'hello'"),
+      (&["hello", "world"], "echo 'hello' 'world'"),
+      // Windows path with trailing backslash (issue #31453).
+      (&[".\\dist\\"], "echo '.\\dist\\'"),
+      // Dollar sign and backtick must not be expanded.
+      (&["$HOME"], "echo '$HOME'"),
+      (&["`cmd`"], "echo '`cmd`'"),
+      // Double quotes pass through literally.
+      (&["foo\"bar"], "echo 'foo\"bar'"),
+      // Single quote uses the POSIX `'"'"'` idiom.
+      (&["it's"], "echo 'it'\"'\"'s'"),
+    ];
+    for (argv, expected) in cases {
+      let argv: Vec<String> = argv.iter().map(|s| s.to_string()).collect();
+      assert_eq!(get_script_with_args("echo", &argv), *expected);
+    }
   }
 }

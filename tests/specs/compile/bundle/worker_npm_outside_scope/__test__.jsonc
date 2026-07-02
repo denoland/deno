@@ -1,0 +1,44 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "cwd": "entry",
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "cwd": "entry",
+    "args": "compile --bundle --no-check --allow-all --output app main.ts",
+    "output": "compile.out"
+  }, {
+    "if": "unix",
+    "cwd": "entry",
+    "commandName": "./app",
+    "args": [],
+    "output": "run.out",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "cwd": "entry",
+    "args": "compile --bundle --no-check --allow-all --output app.exe main.ts",
+    "output": "compile.out"
+  }, {
+    "if": "windows",
+    "cwd": "entry",
+    "commandName": "./app.exe",
+    "args": [],
+    "output": "run.out",
+    "exitCode": 0
+  }, {
+    "if": "unix",
+    "cwd": "entry",
+    "args": "compile --bundle --no-check --allow-all --output app_unknown main_unknown.ts",
+    "output": "compile_unknown.out",
+    "exitCode": 1
+  }, {
+    "if": "windows",
+    "cwd": "entry",
+    "args": "compile --bundle --no-check --allow-all --output app_unknown.exe main_unknown.ts",
+    "output": "compile_unknown.out",
+    "exitCode": 1
+  }]
+}

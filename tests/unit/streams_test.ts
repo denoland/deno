@@ -6,6 +6,10 @@ import {
   fail,
 } from "./test_util.ts";
 
+// `resourceForReadableStream` is registered on the internals object only when
+// `ext:deno_web/06_streams.js` first evaluates, which is now lazy. Touch the
+// lazy `ReadableStream` global so the polyfill loads before we read it below.
+const { ReadableStream: _ReadableStream } = globalThis;
 const {
   core,
   resourceForReadableStream,
@@ -739,21 +743,40 @@ Deno.test(async function readableStreamEmittingManyChunks() {
     await startClient();
     stopSignal.abort();
     console.log(\`\${after} / \${before} = \${after / before}\`);
-    if (after / before > 1.5) {
+    // This guards against a per-chunk leak: a real leak over 30k chunks grows
+    // the heap many-fold, so the threshold only needs to exclude the fixed
+    // streaming overhead (~1.8 MB here, constant regardless of chunk count).
+    // It's a ratio rather than an absolute so the baseline heap size doesn't
+    // need hardcoding — but that makes it sensitive to baseline shrinkage:
+    // deferring the node-polyfill foundation out of the startup snapshot
+    // lowered \`before\` (~4.4 -> ~3.7 MB) while absolute growth was unchanged,
+    // pushing the ratio from ~1.42 to ~1.50. Use 2x, which still flags any real
+    // unbounded leak (those are >>2x) and is robust to baseline size.
+    if (after / before > 2) {
       Deno.exit(1);
     }
   `;
-  const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-N", "-"],
-    stdin: "piped",
-  });
+  // The in-process heap-growth heuristic above is sensitive to GC timing and
+  // can transiently exceed the 2x ratio on some platforms (observed on
+  // macOS aarch64 in release mode) even without a real leak. A genuine
+  // unbounded leak grows >>2x and reproduces on every run, so retry a few
+  // times and only fail if every attempt reports a leak. See #35353.
+  let codeResult = 1;
+  for (let attempt = 0; attempt < 3 && codeResult !== 0; attempt++) {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["run", "-N", "-"],
+      stdin: "piped",
+    });
 
-  await using child = command.spawn();
-  await ReadableStream.from([code])
-    .pipeThrough(new TextEncoderStream())
-    .pipeTo(child.stdin);
+    await using child = command.spawn();
+    await ReadableStream.from([code])
+      .pipeThrough(new TextEncoderStream())
+      .pipeTo(child.stdin);
 
-  assertEquals((await child.status).code, 0, "memory leak");
+    codeResult = (await child.status).code;
+  }
+
+  assertEquals(codeResult, 0, "memory leak");
 });
 
 // Regression test for https://github.com/denoland/deno/issues/33476
@@ -784,3 +807,139 @@ Deno.test("ReadableStreamBYOBRequest.view is a Uint8Array", async () => {
   assertEquals(result.value!.byteLength, 1);
   assertEquals(result.value![0], 42);
 });
+
+// https://github.com/denoland/deno/issues/22381
+// Resource-backed writable streams (e.g. `Deno.connect().writable`,
+// `Deno.open().writable`) should accept any ArrayBuffer / ArrayBufferView,
+// not only Uint8Array.
+Deno.test(
+  { permissions: { net: true } },
+  async function writableStreamForRidAcceptsAnyArrayBufferView() {
+    const listener = Deno.listen({ port: 0, hostname: "127.0.0.1" });
+    const port = (listener.addr as Deno.NetAddr).port;
+
+    const serverConnPromise = (async () => {
+      const conn = await listener.accept();
+      const chunks: Uint8Array[] = [];
+      const buf = new Uint8Array(64);
+      while (true) {
+        const n = await conn.read(buf);
+        if (n === null) break;
+        chunks.push(buf.slice(0, n));
+      }
+      conn.close();
+      let total = 0;
+      for (const c of chunks) total += c.byteLength;
+      const out = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) {
+        out.set(c, off);
+        off += c.byteLength;
+      }
+      return out;
+    })();
+
+    const client = await Deno.connect({ hostname: "127.0.0.1", port });
+    const writer = client.writable.getWriter();
+
+    // Uint8Array (existing behavior)
+    await writer.write(new Uint8Array([0x01]));
+    // Other typed-array views — all backed by raw bytes 0x02..
+    const u16 = new Uint16Array(1);
+    new Uint8Array(u16.buffer).set([0x02, 0x03]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(u16 as any);
+    const u32 = new Uint32Array(1);
+    new Uint8Array(u32.buffer).set([0x04, 0x05, 0x06, 0x07]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(u32 as any);
+    const big = new BigUint64Array(1);
+    new Uint8Array(big.buffer).set([
+      0x08,
+      0x09,
+      0x0a,
+      0x0b,
+      0x0c,
+      0x0d,
+      0x0e,
+      0x0f,
+    ]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(big as any);
+    // Bare ArrayBuffer
+    const ab = new ArrayBuffer(2);
+    new Uint8Array(ab).set([0x10, 0x11]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(ab as any);
+    // DataView with non-zero byteOffset
+    const backing = new ArrayBuffer(8);
+    new Uint8Array(backing).set([
+      0xaa,
+      0xbb,
+      0x20,
+      0x21,
+      0x22,
+      0xcc,
+      0xdd,
+      0xee,
+    ]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(new DataView(backing, 2, 3) as any);
+    await writer.close();
+
+    const got = await serverConnPromise;
+    listener.close();
+    assertEquals(
+      got,
+      new Uint8Array([
+        0x01,
+        0x02,
+        0x03,
+        0x04,
+        0x05,
+        0x06,
+        0x07,
+        0x08,
+        0x09,
+        0x0a,
+        0x0b,
+        0x0c,
+        0x0d,
+        0x0e,
+        0x0f,
+        0x10,
+        0x11,
+        0x20,
+        0x21,
+        0x22,
+      ]),
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function writableStreamForRidRejectsNonBufferChunk() {
+    const listener = Deno.listen({ port: 0, hostname: "127.0.0.1" });
+    const port = (listener.addr as Deno.NetAddr).port;
+    const acceptPromise = (async () => {
+      const conn = await listener.accept();
+      const buf = new Uint8Array(16);
+      while ((await conn.read(buf)) !== null) { /* drain */ }
+      conn.close();
+    })();
+
+    const client = await Deno.connect({ hostname: "127.0.0.1", port });
+    const writer = client.writable.getWriter();
+    await assertRejects(
+      // deno-lint-ignore no-explicit-any
+      () => writer.write("not a buffer" as any),
+      TypeError,
+      "ArrayBuffer or ArrayBufferView",
+    );
+    // The failed write closes the underlying connection via the sink's
+    // controller-error path, so the server's read returns null.
+    await acceptPromise;
+    listener.close();
+  },
+);

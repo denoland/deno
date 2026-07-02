@@ -2,7 +2,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const lazyProcess = core.createLazyLoader("node:process");
 const process = lazyProcess().default;
 const { EventEmitter: EE } = core.loadExtScript("ext:deno_node/_events.mjs");
@@ -46,9 +46,8 @@ const lazyFrom = core.createLazyLoader(
   "ext:deno_node/internal/streams/from.js",
 );
 const _mod2 = core.loadExtScript("ext:deno_node/internal/util/debuglog.ts");
-const lazyWebStreamsAdapters = core.createLazyLoader(
-  "ext:deno_node/internal/webstreams/adapters.js",
-);
+const webStreamsAdaptersSpecifier =
+  "ext:deno_node/internal/webstreams/adapters.js";
 
 const {
   AbortError,
@@ -692,6 +691,10 @@ function howMuchToRead(n, state) {
     if ((state[kState] & kFlowing) !== 0 && state.length) {
       return state.buffer[state.bufferIndex].length;
     }
+    // Fast path for buffers.
+    if ((state[kState] & kDecoder) === 0 && state.length) {
+      return state.buffer[state.bufferIndex].length;
+    }
     return state.length;
   }
   if (n <= state.length) {
@@ -1318,6 +1321,9 @@ function nReadingNextTick(self) {
 // If the user uses them, then switch into old mode.
 Readable.prototype.resume = function () {
   const state = this._readableState;
+  if ((state[kState] & kDestroyed) !== 0) {
+    return this;
+  }
   if ((state[kState] & kFlowing) === 0) {
     debug("resume");
     // We flow only if there is no one listening
@@ -1359,6 +1365,9 @@ function resume_(stream, state) {
 
 Readable.prototype.pause = function () {
   const state = this._readableState;
+  if ((state[kState] & kDestroyed) !== 0) {
+    return this;
+  }
   debug("call pause");
   if ((state[kState] & (kHasFlowing | kFlowing)) !== kHasFlowing) {
     debug("pause");
@@ -1838,7 +1847,7 @@ let webStreamsAdapters;
 // Lazy to avoid circular references
 function lazyWebStreams() {
   if (webStreamsAdapters === undefined) {
-    webStreamsAdapters = lazyWebStreamsAdapters();
+    webStreamsAdapters = core.loadExtScript(webStreamsAdaptersSpecifier);
   }
   return webStreamsAdapters;
 }

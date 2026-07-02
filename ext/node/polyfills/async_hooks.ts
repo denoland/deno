@@ -1,11 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   validateFunction,
   validateObject,
@@ -16,7 +13,10 @@ const {
   emitBefore,
   emitDestroy: emitDestroyHook,
   emitInit,
+  enterAsyncResource,
+  exitAsyncResource,
   executionAsyncId: internalExecutionAsyncId,
+  executionAsyncResource: internalExecutionAsyncResource,
   newAsyncId,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 
@@ -26,6 +26,8 @@ const {
   FunctionPrototypeBind,
   ArrayPrototypeUnshift,
   ObjectFreeze,
+  SafeFinalizationRegistry,
+  SafeArrayIterator,
 } = primordials;
 
 const {
@@ -36,7 +38,7 @@ const {
 
 // FinalizationRegistry to emit the async hook destroy callback when an
 // AsyncResource is garbage collected, matching Node.js behaviour.
-const asyncResourceRegistry = new FinalizationRegistry(
+const asyncResourceRegistry = new SafeFinalizationRegistry(
   (asyncId: number) => emitDestroyHook(asyncId),
 );
 
@@ -53,8 +55,9 @@ class AsyncResource {
     // receive this resource, matching Node.js behaviour.
     emitInit(this.#asyncId, type, internalExecutionAsyncId(), this);
     // Register with the FinalizationRegistry so emitDestroy is called when
-    // this object is garbage collected.
-    asyncResourceRegistry.register(this, this.#asyncId);
+    // this object is garbage collected. Pass `this` as the unregister token so
+    // emitDestroy() can cancel the finalizer.
+    asyncResourceRegistry.register(this, this.#asyncId, this);
   }
 
   asyncId() {
@@ -70,7 +73,14 @@ class AsyncResource {
     emitBefore(this.#asyncId);
     try {
       setAsyncContext(this.#snapshot);
-      return ReflectApply(fn, thisArg, args);
+      // Enter this resource as the current executionAsyncResource() so that
+      // user code inside the scope observes `this` as the active resource.
+      const prevResource = enterAsyncResource(this);
+      try {
+        return ReflectApply(fn, thisArg, args);
+      } finally {
+        exitAsyncResource(prevResource);
+      }
     } finally {
       setAsyncContext(previousContext);
       emitAfter(this.#asyncId);
@@ -114,6 +124,7 @@ class AsyncResource {
     thisArg?: AsyncResource,
   ) {
     type = type || fn.name || "bound-anonymous-fn";
+    // deno-lint-ignore prefer-primordials -- `bind` is AsyncResource's own method, not Function.prototype.bind
     return (new AsyncResource(type)).bind(fn, thisArg);
   }
 }
@@ -125,7 +136,9 @@ class AsyncLocalStorage {
   #name = "";
   enabled = false;
 
-  constructor(options: { defaultValue?: unknown; name?: string } = {}) {
+  constructor(
+    options: { defaultValue?: unknown; name?: string } = { __proto__: null },
+  ) {
     validateObject(options, "options");
     this.#defaultValue = options.defaultValue;
     if (options.name !== undefined) {
@@ -180,13 +193,21 @@ class AsyncLocalStorage {
   }
 
   static bind(fn: (...args: unknown[]) => unknown) {
+    // deno-lint-ignore prefer-primordials -- `bind` is AsyncResource's own static method, not Function.prototype.bind
     return AsyncResource.bind(fn);
   }
 
   static snapshot() {
     const resource = new AsyncResource("AsyncLocalStorage.snapshot");
-    return function (cb: (...args: unknown[]) => unknown, ...args: unknown[]) {
-      return resource.runInAsyncScope(cb, null, ...args);
+    return function (
+      cb: (...args: unknown[]) => unknown,
+      ...args: unknown[]
+    ) {
+      return resource.runInAsyncScope(
+        cb,
+        null,
+        ...new SafeArrayIterator(args),
+      );
     };
   }
 }
@@ -198,9 +219,7 @@ function triggerAsyncId() {
   return 0;
 }
 
-function executionAsyncResource() {
-  return {};
-}
+const executionAsyncResource = internalExecutionAsyncResource;
 
 const asyncWrapProviders = ObjectFreeze({
   __proto__: null,

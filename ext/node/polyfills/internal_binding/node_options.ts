@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 (function () {
-const { primordials } = globalThis.__bootstrap;
+const { primordials } = __bootstrap;
 const {
   SafeMap,
   ArrayPrototypeForEach,
@@ -68,6 +68,7 @@ function createDefaultOptions() {
   return new SafeMap([
     ["--warnings", { value: true }],
     ["--pending-deprecation", { value: false }],
+    ["--expose-internals", { value: false }],
     ["--title", { value: "" }],
   ]);
 }
@@ -89,6 +90,10 @@ function parseOption(options: Map<string, OptionValue>, arg: string) {
       break;
     case "--pending-deprecation":
       options.set("--pending-deprecation", { value: true });
+      break;
+    case "--expose-internals":
+    case "--expose_internals":
+      options.set("--expose-internals", { value: true });
       break;
     case "--tls-min-v1.0":
     case "--tls-min-v1.1":
@@ -141,7 +146,20 @@ function parseOption(options: Map<string, OptionValue>, arg: string) {
 }
 
 function getExecArgv() {
-  return execArgvSnapshot ?? globalThis.process?.execArgv ?? [];
+  if (execArgvSnapshot) {
+    return execArgvSnapshot;
+  }
+  // `globalThis.process` is a lazy getter that loads `node:process`. During
+  // node:process's OWN cold bootstrap (when the require system is deferred
+  // out of the snapshot), reading it re-enters that load and the `default`
+  // export is still in the temporal dead zone -- accessing the getter throws
+  // rather than yielding undefined, so `?.` doesn't help. Guard it: no exec
+  // args are available pre-bootstrap anyway, so fall back to `[]`.
+  try {
+    return globalThis.process?.execArgv ?? [];
+  } catch {
+    return [];
+  }
 }
 
 function getOptions() {

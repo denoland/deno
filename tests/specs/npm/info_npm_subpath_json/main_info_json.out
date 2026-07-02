@@ -44,7 +44,8 @@
       "dependencies": [
         [WILDCARD]
       ],
-      "registryUrl": "http://localhost:4260/"
+      "registryUrl": "http://localhost:4260/",
+      "localPath": "[WILDLINE]"
     },
     [WILDCARD]
   }

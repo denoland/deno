@@ -3,7 +3,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 
 const { internalRidSymbol } = core;
 const {
@@ -595,6 +595,14 @@ class Http2ServerResponse extends lazyStream().default {
     return this[kStream].writableLength;
   }
 
+  get writableObjectMode() {
+    return this[kStream].writableObjectMode;
+  }
+
+  get writableNeedDrain() {
+    return this[kStream].writableNeedDrain;
+  }
+
   set statusCode(code) {
     code |= 0;
     if (code >= 100 && code < 200) {
@@ -744,6 +752,12 @@ class Http2ServerResponse extends lazyStream().default {
     if (!state.closed && !this[kStream].headersSent) {
       this.writeHead(state.statusCode);
     }
+  }
+
+  // Express and middleware like `compression` call this to flush implicit
+  // headers; node's Http2ServerResponse provides it for http1 compat.
+  _implicitHeader() {
+    this.writeHead(this[kState].statusCode);
   }
 
   writeHead(statusCode, statusMessage, headers) {

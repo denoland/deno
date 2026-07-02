@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 
 // Alphabet chars.

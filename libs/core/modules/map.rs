@@ -12,6 +12,7 @@ use std::task::Context;
 use std::task::Poll;
 
 use capacity_builder::StringBuilder;
+use deno_core::FastString;
 use deno_core::error::CoreError;
 use deno_error::JsErrorBox;
 use futures::StreamExt;
@@ -28,6 +29,7 @@ use v8::PromiseState;
 use wasm_dep_analyzer::WasmDeps;
 
 use super::CustomModuleEvaluationKind;
+use super::ImportAttributesContext;
 use super::IntoModuleCodeString;
 use super::IntoModuleName;
 use super::LazyEsmModuleLoader;
@@ -40,6 +42,7 @@ use crate::FastStaticString;
 use crate::JsRuntime;
 use crate::ModuleCodeBytes;
 use crate::ModuleLoadResponse;
+use crate::ModuleResolveResponse;
 use crate::ModuleSource;
 use crate::ModuleSourceCode;
 use crate::ModuleSpecifier;
@@ -64,6 +67,7 @@ use crate::modules::get_requested_module_type_from_attributes;
 use crate::modules::module_map_data::ModuleSourceKey;
 use crate::modules::parse_import_attributes;
 use crate::modules::recursive_load::RecursiveModuleLoad;
+use crate::modules::recursive_load::RegisterOutcome;
 use crate::runtime::JsRealm;
 use crate::runtime::SnapshotLoadDataStore;
 use crate::runtime::SnapshotStoreDataStore;
@@ -255,6 +259,19 @@ pub(crate) struct ModuleMap {
   pub(crate) import_sync_eval_stack: RefCell<Vec<ModuleId>>,
 }
 
+/// Outcome of compiling a module's source.
+pub(crate) enum NewModuleResult {
+  Ready(ModuleId),
+}
+
+impl NewModuleResult {
+  fn into_ready(self) -> ModuleId {
+    match self {
+      NewModuleResult::Ready(id) => id,
+    }
+  }
+}
+
 impl ModuleMap {
   /// There is a circular Rc reference between the module map and the futures,
   /// so when destroying the module map we need to clear the pending futures.
@@ -358,6 +375,22 @@ impl ModuleMap {
     self.data.borrow().get_id(name, requested_module_type)
   }
 
+  /// Register an additional `(name, requested_module_type) -> module_id`
+  /// mapping for an already-registered module. See
+  /// `ModuleMapData::register_under_type`.
+  pub(crate) fn register_under_type(
+    &self,
+    name: FastString,
+    requested_module_type: &RequestedModuleType,
+    module_id: ModuleId,
+  ) {
+    self.data.borrow_mut().register_under_type(
+      name,
+      requested_module_type,
+      module_id,
+    );
+  }
+
   pub(crate) fn is_main_module(&self, global: &v8::Global<v8::Module>) -> bool {
     self.data.borrow().is_main_module(global)
   }
@@ -417,6 +450,7 @@ impl ModuleMap {
     self.data.borrow().assert_module_map(modules);
   }
 
+  #[cfg(all(test, not(miri)))]
   pub(crate) fn new_module(
     &self,
     scope: &mut v8::PinScope,
@@ -424,6 +458,20 @@ impl ModuleMap {
     dynamic: bool,
     module_source: ModuleSource,
   ) -> Result<ModuleId, ModuleError> {
+    Ok(
+      self
+        .new_module_with_pending(scope, main, dynamic, module_source)?
+        .into_ready(),
+    )
+  }
+
+  pub(crate) fn new_module_with_pending(
+    &self,
+    scope: &mut v8::PinScope,
+    main: bool,
+    dynamic: bool,
+    module_source: ModuleSource,
+  ) -> Result<NewModuleResult, ModuleError> {
     let ModuleSource {
       code,
       module_type,
@@ -457,7 +505,7 @@ impl ModuleMap {
     let maybe_module_id = self.get_id(&module_url_found, requested_module_type);
 
     if let Some(module_id) = maybe_module_id {
-      return Ok(module_id);
+      return Ok(NewModuleResult::Ready(module_id));
     }
     let module_id = match module_type {
       ModuleType::JavaScript => {
@@ -483,15 +531,17 @@ impl ModuleMap {
             (None, module_url_found)
           };
 
-        self.new_module_from_js_source(
-          scope,
-          main,
-          ModuleType::JavaScript,
-          module_url_found,
-          code,
-          dynamic,
-          code_cache_info,
-        )?
+        self
+          .new_module_from_js_source_with_pending(
+            scope,
+            main,
+            ModuleType::JavaScript,
+            module_url_found,
+            code,
+            dynamic,
+            code_cache_info,
+          )?
+          .into_ready()
       }
       ModuleType::Wasm => {
         self.new_wasm_module(scope, module_url_found, code, dynamic)?
@@ -586,20 +636,22 @@ impl ModuleMap {
               (None, url2)
             };
 
-            self.new_module_from_js_source(
-              scope,
-              main,
-              ModuleType::Other(module_type.clone()),
-              url2,
-              computed_src,
-              dynamic,
-              code_cache_info,
-            )?
+            self
+              .new_module_from_js_source_with_pending(
+                scope,
+                main,
+                ModuleType::Other(module_type.clone()),
+                url2,
+                computed_src,
+                dynamic,
+                code_cache_info,
+              )?
+              .into_ready()
           }
         }
       }
     };
-    Ok(module_id)
+    Ok(NewModuleResult::Ready(module_id))
   }
 
   /// Creates a synthetic module whose exports mirror the own string-keyed
@@ -798,6 +850,8 @@ impl ModuleMap {
   /// and attached to associated [`ModuleInfo`].
   ///
   /// Returns an ID of newly created module.
+  ///
+  /// Sync call sites can use this directly.
   #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub(crate) fn new_module_from_js_source(
     &self,
@@ -807,8 +861,35 @@ impl ModuleMap {
     name: ModuleName,
     source: ModuleCodeString,
     is_dynamic_import: bool,
-    mut code_cache_info: Option<CodeCacheInfo>,
+    code_cache_info: Option<CodeCacheInfo>,
   ) -> Result<ModuleId, ModuleError> {
+    Ok(
+      self
+        .new_module_from_js_source_with_pending(
+          scope,
+          main,
+          module_type,
+          name,
+          source,
+          is_dynamic_import,
+          code_cache_info,
+        )?
+        .into_ready(),
+    )
+  }
+
+  /// Same as [`new_module_from_js_source`] but returns [`NewModuleResult`].
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
+  pub(crate) fn new_module_from_js_source_with_pending(
+    &self,
+    scope: &mut v8::PinScope,
+    main: bool,
+    module_type: ModuleType,
+    name: ModuleName,
+    source: ModuleCodeString,
+    is_dynamic_import: bool,
+    mut code_cache_info: Option<CodeCacheInfo>,
+  ) -> Result<NewModuleResult, ModuleError> {
     if main {
       let data = self.data.borrow();
       if let Some(main_module) = data.main_module_id {
@@ -969,7 +1050,16 @@ impl ModuleMap {
         if let Some(validate_import_attributes_cb) =
           &state.validate_import_attributes_cb
         {
-          (validate_import_attributes_cb)(tc_scope, &attributes);
+          let location = module
+            .source_offset_to_location(module_request.get_source_offset());
+          let context = ImportAttributesContext {
+            referrer: name.as_str().to_string(),
+            specifier: import_specifier.to_string(),
+            // V8 reports 0-based line/column; report them 1-based.
+            line_number: Some(location.get_line_number() as u32 + 1),
+            column_number: Some(location.get_column_number() as u32 + 1),
+          };
+          (validate_import_attributes_cb)(tc_scope, &attributes, &context);
         }
       }
 
@@ -979,17 +1069,32 @@ impl ModuleMap {
         return Err(ModuleError::Exception(exception));
       }
 
-      let module_specifier = match self.resolve(
+      let resolve_kind = if is_dynamic_import {
+        ResolutionKind::DynamicImport
+      } else {
+        ResolutionKind::Import
+      };
+      let module_specifier = match self.resolve_with_scope(
+        tc_scope,
         &import_specifier,
         name.as_ref(),
-        if is_dynamic_import {
-          ResolutionKind::DynamicImport
-        } else {
-          ResolutionKind::Import
-        },
+        resolve_kind,
+        &attributes,
       ) {
         Ok(s) => s,
-        Err(e) => return Err(ModuleError::Core(e)),
+        Err(e) => {
+          // Fall back to lazy ESM sources for bare internal specifiers (e.g.
+          // `node:_http_common` from `node:_http_outgoing`) that the
+          // user-facing loader doesn't know about. If the specifier matches
+          // a registered lazy ESM entry, use it verbatim.
+          if self.has_lazy_esm_source(&import_specifier)
+            && let Ok(parsed) = ModuleSpecifier::parse(&import_specifier)
+          {
+            parsed
+          } else {
+            return Err(ModuleError::Core(e.into()));
+          }
+        }
       };
       let requested_module_type =
         get_requested_module_type_from_attributes(&attributes);
@@ -1001,6 +1106,12 @@ impl ModuleMap {
       } else {
         Some(module_request.get_source_offset())
       };
+      if crate::modules::import_graph::is_enabled() {
+        crate::modules::import_graph::record_esm_import(
+          name.as_ref(),
+          module_specifier.as_str(),
+        );
+      }
       let request = ModuleRequest {
         reference: ModuleReference {
           specifier: module_specifier,
@@ -1025,8 +1136,7 @@ impl ModuleMap {
       main,
       requests,
     );
-
-    Ok(id)
+    Ok(NewModuleResult::Ready(id))
   }
 
   pub(crate) fn new_wasm_module_source(
@@ -1064,9 +1174,7 @@ impl ModuleMap {
       );
     };
     let wasm_module_object: v8::Local<v8::Object> = wasm_module.into();
-    let wasm_module_object_global = v8::Global::new(scope, wasm_module_object);
-
-    let source = Rc::new(wasm_module_object_global);
+    let source = v8::Global::new(scope, wasm_module_object);
     {
       let mut data = self.data.borrow_mut();
       data.sources.insert(reference_key, source.clone());
@@ -1261,11 +1369,30 @@ impl ModuleMap {
       import_attributes,
       ImportAttributesKind::StaticImport,
     );
+    let requested_module_type =
+      get_requested_module_type_from_attributes(&attributes);
+    let pre_resolved_specifier = {
+      let module_map_data = module_map.data.borrow();
+      let referrer_info = module_map_data
+        .get_info_by_module(&referrer_global)
+        .expect("ModuleInfo not found");
+      referrer_info
+        .requests
+        .iter()
+        .find(|r| {
+          r.specifier_key
+            .as_ref()
+            .is_some_and(|s| s == &specifier_str)
+            && r.reference.requested_module_type == requested_module_type
+        })
+        .map(|r| r.reference.specifier.clone())
+    };
     let maybe_module = module_map.resolve_callback(
       scope,
       &specifier_str,
       &referrer_name,
       attributes,
+      pre_resolved_specifier,
     );
     if let Some(module) = maybe_module {
       return Some(module);
@@ -1322,7 +1449,7 @@ impl ModuleMap {
     };
     let key = ModuleSourceKey::from_reference(&module_reference);
     if let Some(entry) = module_map.data.borrow().sources.get(&key) {
-      Some(v8::Local::new(scope, entry.as_ref()))
+      Some(v8::Local::new(scope, entry))
     } else {
       let message = v8::String::new(
         scope,
@@ -1337,13 +1464,14 @@ impl ModuleMap {
 
   /// Resolve provided module. This function calls out to `loader.resolve`,
   /// but applies some additional checks that disallow resolving/importing
-  /// certain modules (eg. `ext:` or `node:` modules)
+  /// certain modules (eg. `ext:` or `node:` modules).
+  ///
   pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, CoreError> {
+  ) -> ModuleResolveResponse {
     if specifier.starts_with("ext:")
       && !referrer.starts_with("ext:")
       && !referrer.starts_with("node:")
@@ -1360,14 +1488,46 @@ impl ModuleMap {
         "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
         specifier, referrer
       );
-      return Err(JsErrorBox::type_error(msg).into());
+      return Err(JsErrorBox::type_error(msg));
     }
 
-    self
-      .loader
-      .borrow()
-      .resolve(specifier, referrer, kind)
-      .map_err(|e| e.into())
+    self.loader.borrow().resolve(specifier, referrer, kind)
+  }
+
+  pub fn resolve_with_scope(
+    &self,
+    scope: &mut v8::PinScope,
+    specifier: &str,
+    referrer: &str,
+    kind: ResolutionKind,
+    import_attributes: &HashMap<String, String>,
+  ) -> ModuleResolveResponse {
+    if specifier.starts_with("ext:")
+      && !referrer.starts_with("ext:")
+      && !referrer.starts_with("node:")
+      && !referrer.starts_with("checkin:")
+      && referrer != "."
+      && kind != ResolutionKind::MainModule
+    {
+      let referrer = if referrer.is_empty() {
+        "(no referrer)"
+      } else {
+        referrer
+      };
+      let msg = format!(
+        "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
+        specifier, referrer
+      );
+      return Err(JsErrorBox::type_error(msg));
+    }
+
+    self.loader.borrow().resolve_with_scope(
+      scope,
+      specifier,
+      referrer,
+      kind,
+      import_attributes,
+    )
   }
 
   /// Called by `module_resolve_callback` during module instantiation.
@@ -1377,6 +1537,7 @@ impl ModuleMap {
     specifier: &str,
     referrer: &str,
     import_attributes: HashMap<String, String>,
+    pre_resolved_specifier: Option<ModuleSpecifier>,
   ) -> Option<v8::Local<'s, v8::Module>> {
     // Synthetic ESM dispatch first, by raw specifier. The active loader
     // may not know about the spec (e.g. `LazyEsmModuleLoader` only
@@ -1395,17 +1556,36 @@ impl ModuleMap {
       }
     }
 
-    let resolved_specifier =
-      match self.resolve(specifier, referrer, ResolutionKind::Import) {
-        Ok(s) => s,
-        Err(e) => {
-          crate::error::throw_js_error_class(scope, &e);
-          return None;
-        }
-      };
-
     let module_type =
       get_requested_module_type_from_attributes(&import_attributes);
+    let resolved_specifier = match pre_resolved_specifier {
+      Some(specifier) => specifier,
+      None => match self.resolve_with_scope(
+        scope,
+        specifier,
+        referrer,
+        ResolutionKind::Import,
+        &import_attributes,
+      ) {
+        Ok(s) => s,
+        Err(e) => {
+          // Fall back to lazy ESM sources for bare internal specifiers like
+          // `node:_http_common` that the runtime's user-facing loader
+          // doesn't know how to resolve (only public `node:` modules go
+          // through the normal path). The lazy_esm registry has them by
+          // exact specifier, so if the specifier is a registered lazy ESM
+          // entry, use it verbatim instead of erroring.
+          if self.has_lazy_esm_source(specifier)
+            && let Ok(parsed) = ModuleSpecifier::parse(specifier)
+          {
+            parsed
+          } else {
+            crate::error::throw_js_error_class(scope, &e);
+            return None;
+          }
+        }
+      },
+    };
 
     if let Some(id) = self.get_id(resolved_specifier.as_str(), module_type)
       && let Some(handle) = self.get_handle(id)
@@ -1470,11 +1650,19 @@ impl ModuleMap {
     resolver_handle: v8::Global<v8::PromiseResolver>,
     cped_handle: v8::Global<v8::Value>,
   ) -> bool {
-    let resolve_result =
-      self.resolve(&specifier, &referrer, ResolutionKind::DynamicImport);
+    let resolve_response = self.resolve_with_scope(
+      scope,
+      &specifier,
+      &referrer,
+      ResolutionKind::DynamicImport,
+      &HashMap::new(),
+    );
 
+    // Fast path: if the module is already loaded, resolve the import
+    // immediately without async work.
     if phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = &resolve_result
+      && let ref resolve_result = resolve_response
+      && let Ok(module_specifier) = resolve_result
       && let Some(id) = self
         .data
         .borrow()
@@ -1518,7 +1706,8 @@ impl ModuleMap {
     // Fast path for lazy-loaded ESM: load synchronously and resolve
     // immediately, avoiding the async RecursiveModuleLoad path entirely.
     if phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = &resolve_result
+      && let ref resolve_result = resolve_response
+      && let Ok(module_specifier) = resolve_result
       && self.has_lazy_esm_source(module_specifier.as_str())
     {
       match self.lazy_load_esm_module(scope, module_specifier.as_str()) {
@@ -1542,8 +1731,13 @@ impl ModuleMap {
     // synthetic module synchronously and resolve immediately, same
     // pattern as the lazy ESM fast path above.
     if phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = &resolve_result
+      && let ref resolve_result = resolve_response
+      && let Ok(module_specifier) = resolve_result
       && self.has_synthetic_esm_module(module_specifier.as_str())
+      && !self
+        .loader
+        .borrow()
+        .should_load_synthetic_esm(module_specifier.as_str())
     {
       match self
         .lazy_load_synthetic_esm_module(scope, module_specifier.as_str())
@@ -1564,12 +1758,13 @@ impl ModuleMap {
       }
     }
 
-    let load = RecursiveModuleLoad::dynamic_import(
+    let load = RecursiveModuleLoad::new_dynamic_import(
       specifier,
       referrer,
       requested_module_type,
       phase,
       self.clone(),
+      resolve_response,
     );
 
     self.dynamic_import_map.borrow_mut().insert(
@@ -1582,14 +1777,11 @@ impl ModuleMap {
     );
 
     let load_id = load.id();
-    let fut = match resolve_result {
-      Ok(_) => async move {
-        let mut load = load;
-        (load_id, load.prepare().await.map(|()| load))
-      }
-      .boxed_local(),
-      Err(error) => async move { (load_id, Err(error)) }.boxed_local(),
-    };
+    let fut = async move {
+      let mut load = load;
+      (load_id, load.prepare().await.map(|()| load))
+    }
+    .boxed_local();
 
     self.preparing_dynamic_imports.push(fut);
 
@@ -1838,7 +2030,19 @@ impl ModuleMap {
     // Under Explicit microtask policy, V8 won't drain microtasks after
     // module.evaluate(). We must do it ourselves so that the module
     // evaluation promise resolves for synchronous modules.
-    tc_scope.perform_microtask_checkpoint();
+    //
+    // However, skip the checkpoint when we are inside a top-level
+    // `module.evaluate()` call (i.e. `evaluating_top_level` is set), e.g.
+    // when a CJS `require()` of an ES module fires while V8 is evaluating
+    // an async module graph. Draining microtasks at that point can resume
+    // a suspended TLA dependency while its parent module is still in the
+    // Evaluating state on the stack; V8 then cannot propagate the
+    // completion to the parent and the graph's evaluation promise stays
+    // Pending forever. The module evaluated here has a synchronous graph
+    // (checked above), so its promise settles without a checkpoint.
+    if !self.evaluating_top_level.get() {
+      tc_scope.perform_microtask_checkpoint();
+    }
 
     if let Some(exception) = tc_scope.exception() {
       return Err(
@@ -1918,7 +2122,17 @@ impl ModuleMap {
     tc_scope.set_continuation_preserved_embedder_data(cped);
 
     let module = v8::Local::new(tc_scope, &module_handle);
+    // Set `evaluating_top_level` so that any nested `lazy_load_esm_module`
+    // calls (triggered e.g. by CJS `require()` chains under
+    // `npm:` packages) skip their post-evaluate `perform_microtask_checkpoint`.
+    // Draining microtasks while V8 is inside `module.evaluate()` on an
+    // async module graph leaves the evaluation promise permanently
+    // Pending — V8 advances AsyncModuleExecutionFulfilled for the resumed
+    // TLA dep but cannot then run `ExecuteModule` on the still-evaluating
+    // parent.
+    self.evaluating_top_level.set(true);
     let maybe_value = module.evaluate(tc_scope);
+    self.evaluating_top_level.set(false);
 
     // Update status after evaluating.
     let status = module.get_status();
@@ -2200,7 +2414,7 @@ impl ModuleMap {
           // fetched. Create and register it, and if successful, poll for the
           // next recursive-load event related to this dynamic import.
           match load.register_and_recurse(scope, &request, info) {
-            Ok(()) => {
+            Ok(RegisterOutcome::Done) => {
               // Keep importing until it's fully drained
               self
                 .pending_dynamic_imports
@@ -2344,7 +2558,7 @@ impl ModuleMap {
               let key = ModuleSourceKey::from_reference(module_reference);
               let source = {
                 let data = self.data.borrow();
-                let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.").as_ref();
+                let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.");
                 v8::Local::new(scope, source).into()
               };
               let resolver = state.resolver.open(scope);
@@ -2552,21 +2766,31 @@ impl ModuleMap {
       .contains(specifier)
   }
 
-  /// Try to take a lazy-loaded ESM source by specifier. Returns the source
-  /// code if found, removing it from the lazy sources map.
+  /// Get a lazy-loaded ESM source by specifier. Returns a cheap clone of the
+  /// source code if found, keeping it in the lazy sources map so concurrent
+  /// loads of the same lazy specifier from independent `RecursiveModuleLoad`
+  /// instances each get their own copy. The duplicate `ModuleSource`s are
+  /// deduplicated by `new_module_with_pending`'s `get_id` check at register
+  /// time.
   pub(crate) fn take_lazy_esm_source(
     &self,
     specifier: &str,
   ) -> Option<ModuleCodeString> {
     let data = self.data.borrow();
-    let source = data.lazy_esm_sources.borrow_mut().remove(specifier);
-    if source.is_some() {
-      data
-        .consumed_lazy_specifiers
-        .borrow_mut()
-        .insert(specifier.to_string());
-    }
-    source
+    let mut sources = data.lazy_esm_sources.borrow_mut();
+    let entry = sources.get_mut(specifier)?;
+    // `into_cheap_copy` always returns two cheap handles to the same backing
+    // storage (Arc or Static), so we can keep one in the map and return the
+    // other. The Owned variant gets promoted to Arc in the process.
+    let placeholder = ModuleCodeString::from_static("");
+    let owned = std::mem::replace(entry, placeholder);
+    let (keep, give) = owned.into_cheap_copy();
+    *entry = keep;
+    data
+      .consumed_lazy_specifiers
+      .borrow_mut()
+      .insert(specifier.to_string());
+    Some(give)
   }
 
   pub(crate) fn add_lazy_loaded_esm_source(
@@ -2649,38 +2873,59 @@ impl ModuleMap {
     let lazy_esm_sources = self.data.borrow().lazy_esm_sources.clone();
     let loader = LazyEsmModuleLoader::new(lazy_esm_sources);
 
-    // Check if this module has already been loaded.
-    {
+    // Check if this module has already been loaded. We release the
+    // `self.data` borrow before doing anything that could re-enter the
+    // module map (notably `module.evaluate(scope)`, which can recursively
+    // compile dependent modules and would otherwise panic with a
+    // `RefCell already borrowed` at `new_module_from_js_source`).
+    let cached_id_and_handle = {
       let module_map_data = self.data.borrow();
-      if let Some(id) =
-        module_map_data.get_id(module_specifier, RequestedModuleType::None)
-      {
-        let handle = module_map_data.get_handle(id).unwrap();
-        let handle_local = v8::Local::new(scope, handle);
-        // The module may be present in the map but not yet evaluated — e.g.
-        // when this lazy load fires from a sibling ES module that V8 is
-        // evaluating earlier in DFS post-order. Returning the namespace
-        // before evaluation leaves `export const` bindings in the temporal
-        // dead zone, so trigger evaluation here.
-        if handle_local.get_status() == v8::ModuleStatus::Instantiated {
-          let value = handle_local.evaluate(scope).unwrap();
-          if !self.evaluating_top_level.get() {
-            scope.perform_microtask_checkpoint();
-          }
-          let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-          let result = promise.result(scope);
-          if !result.is_undefined() {
-            return Err(
-              CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-                .into_box(),
-            );
-          }
-        }
-        let module =
-          v8::Global::new(scope, handle_local.get_module_namespace());
-        return Ok(module);
+      module_map_data
+        .get_id(module_specifier, RequestedModuleType::None)
+        .and_then(|id| module_map_data.get_handle(id).map(|h| (id, h)))
+    };
+    if let Some((cached_id, handle)) = cached_id_and_handle {
+      crate::modules::import_graph::record_lazy_esm_cached(
+        scope,
+        module_specifier,
+      );
+      let handle_local = v8::Local::new(scope, handle);
+      // The module may be present in the map but not yet instantiated --
+      // e.g. when this lazy load fires from inside a sibling module's
+      // resolve-callback (a `synthetic_esm` backing script synchronously
+      // calling `op_lazy_load_esm` for a peer that the surrounding
+      // `RecursiveModuleLoad` has registered but not yet instantiated).
+      // `get_module_namespace` requires Instantiated+, so drive the module
+      // forward synchronously here.
+      if handle_local.get_status() == v8::ModuleStatus::Uninstantiated {
+        self.instantiate_module(scope, cached_id).map_err(|e| {
+          let exception = v8::Local::new(scope, e);
+          exception_to_err(scope, exception, false, true)
+        })?;
       }
+      // Returning the namespace before evaluation leaves `export const`
+      // bindings in the temporal dead zone, so trigger evaluation here.
+      if handle_local.get_status() == v8::ModuleStatus::Instantiated {
+        let value = handle_local.evaluate(scope).unwrap();
+        if !self.evaluating_top_level.get() {
+          scope.perform_microtask_checkpoint();
+        }
+        let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
+        let result = promise.result(scope);
+        if !result.is_undefined() {
+          return Err(
+            CoreErrorKind::Js(exception_to_err(scope, result, false, true))
+              .into_box(),
+          );
+        }
+      }
+      let module = v8::Global::new(scope, handle_local.get_module_namespace());
+      return Ok(module);
     }
+
+    // Cache miss: real load incoming. This is the call that pays the
+    // parse/compile/evaluate cost at runtime.
+    crate::modules::import_graph::record_lazy_esm(scope, module_specifier);
 
     let specifier = ModuleSpecifier::parse(module_specifier)?;
 
@@ -2699,21 +2944,39 @@ impl ModuleMap {
       ModuleLoadResponse::Async(fut) => futures::executor::block_on(fut),
     }?;
 
+    // `LazyEsmModuleLoader` only knows the in-binary static sources and has no
+    // DENO_DIR access, so `source.code_cache` is always `None` here. Read the
+    // persisted V8 code cache from the REAL loader (Cli/EmbeddedModuleLoader)
+    // instead — the same seam the residual `lazy_loaded_js` path uses. Without
+    // this, residual ESM (node:process, node:module, the stream/net/tty
+    // closure) re-pays parse+compile in every isolate on every cold start.
+    let source_code = ModuleSource::get_string_source(source.code);
+    // Hash key for the on-disk cache. `v8_string` borrows `&source_code`, so it
+    // stays usable for the compile below.
+    let v8_source = source_code.v8_string(scope).unwrap();
+    // Build a `CodeCacheInfo` whenever the loader returns `Some` — even when
+    // `data` is `None` (cold run). The `Some`-with-`data: None` case is what
+    // arms the write side so the first run stores; warm runs consume.
+    let code_cache_info = self
+      .loader
+      .borrow()
+      .get_code_cache(&specifier, &v8_source)
+      .map(|info| {
+        let loader = self.loader.borrow().clone();
+        CodeCacheInfo {
+          data: info.data,
+          // `specifier` is unused after this, so move it straight in.
+          ready_callback: Box::new(move |cache| {
+            loader.code_cache_ready(specifier, info.hash, cache)
+          }),
+        }
+      });
+
     self.lazy_load_es_module_with_code(
       scope,
       module_specifier,
-      ModuleSource::get_string_source(source.code),
-      if let Some(code_cache) = source.code_cache {
-        let loader = self.loader.borrow().clone();
-        Some(CodeCacheInfo {
-          data: code_cache.data,
-          ready_callback: Box::new(move |cache| {
-            loader.code_cache_ready(specifier, code_cache.hash, cache)
-          }),
-        })
-      } else {
-        None
-      },
+      source_code,
+      code_cache_info,
     )
   }
 
@@ -2834,6 +3097,7 @@ impl ModuleMap {
     scope: &mut v8::PinScope,
     specifier: &str,
   ) -> Result<v8::Global<v8::Value>, CoreError> {
+    crate::modules::import_graph::record_lazy_script(scope, specifier);
     let specifier_str = String::from(specifier);
     let data = self.data.borrow();
 
@@ -2894,10 +3158,15 @@ impl ModuleMap {
     // may call back into `load_ext_script` for its own dependencies.
     drop(data);
 
-    // Execute the script as-is. Scripts are expected to be manually wrapped
-    // in an IIFE and use `return` to provide their exports.
-    let source_str =
-      ModuleSource::get_string_source(ModuleSourceCode::String(source));
+    // Each script's IIFE preamble destructures the snapshot-time
+    // `__bootstrap` view (a frozen clone of `core.ops` captured before
+    // `removeImportedOps()` runs). To avoid leaving `__bootstrap` on
+    // `globalThis` (where user code or `Object.keys` would see it), we
+    // compile the source as the body of a function with one named
+    // parameter `__bootstrap` and invoke it with the captured value. The
+    // script's `(function () { ... })()` is the function body's single
+    // expression, so we wrap it with `return ( ... );` to surface the
+    // IIFE's result as the function's return value.
     let name = v8::String::new(scope, specifier).unwrap();
     let origin = v8::ScriptOrigin::new(
       scope,
@@ -2915,10 +3184,60 @@ impl ModuleMap {
 
     v8::tc_scope!(let tc_scope, scope);
 
-    let v8_source =
-      v8::String::new(tc_scope, AsRef::<str>::as_ref(&source_str)).unwrap();
-    let script = match v8::Script::compile(tc_scope, v8_source, Some(&origin)) {
-      Some(script) => script,
+    // The compile_function body is `"use strict"; return (<IIFE>);`. For
+    // residual lazy scripts this wrapping is performed at build time
+    // (`cli/snapshot/build.rs`), so `source` is a `&'static` external string we
+    // can hand to V8 without an owned heap copy (avoiding a per-script source
+    // string in the V8 heap). Sources that arrive unwrapped (e.g. consumed
+    // during snapshot creation, before that path is build-time wrapped) are
+    // wrapped here at runtime via `wrap_lazy_ext_script`.
+    let v8_source = if AsRef::<str>::as_ref(&source)
+      .starts_with("\"use strict\"; return (")
+    {
+      // Build-time wrapped residual: hand V8 the `&'static` external string
+      // directly so the source stays off the V8 heap (file-backed/clean).
+      source.v8_string(tc_scope).unwrap()
+    } else {
+      // Unwrapped (e.g. consumed during snapshot creation): wrap at runtime.
+      let wrapped_source = wrap_lazy_ext_script(AsRef::<str>::as_ref(&source));
+      v8::String::new(tc_scope, &wrapped_source).unwrap()
+    };
+    let bootstrap_param = v8::String::new(tc_scope, "__bootstrap").unwrap();
+    // Persist a V8 code cache for this residual `lazy_loaded_js` module through
+    // the same on-disk (DENO_DIR) cache user scripts use, keyed by specifier +
+    // source hash. Residuals ship source-only in the binary, so without this a
+    // node-heavy program re-pays parse+compile of the whole node-polyfill
+    // closure at runtime on every cold start. The first run compiles and
+    // stores; warm runs consume and skip parse+compile. Producing and consuming
+    // binary are identical, so the cache is always accepted.
+    let cache_specifier = crate::ModuleSpecifier::parse(&specifier_str).ok();
+    let code_cache_info = cache_specifier
+      .as_ref()
+      .and_then(|spec| self.loader.borrow().get_code_cache(spec, &v8_source));
+    let (mut compile_source, compile_options) =
+      match code_cache_info.as_ref().and_then(|i| i.data.as_ref()) {
+        Some(data) => (
+          v8::script_compiler::Source::new_with_cached_data(
+            v8_source,
+            Some(&origin),
+            v8::CachedData::new(data),
+          ),
+          v8::script_compiler::CompileOptions::ConsumeCodeCache,
+        ),
+        None => (
+          v8::script_compiler::Source::new(v8_source, Some(&origin)),
+          v8::script_compiler::CompileOptions::NoCompileOptions,
+        ),
+      };
+    let function = match v8::script_compiler::compile_function(
+      tc_scope,
+      &mut compile_source,
+      &[bootstrap_param],
+      &[],
+      compile_options,
+      v8::script_compiler::NoCacheReason::NoReason,
+    ) {
+      Some(f) => f,
       None => {
         let exception = tc_scope.exception().unwrap();
         let err = JsError::from_v8_exception(tc_scope, exception);
@@ -2931,7 +3250,36 @@ impl ModuleMap {
         return Err(CoreErrorKind::Js(err).into_box());
       }
     };
-    let result = match script.run(tc_scope) {
+    // Store the freshly-compiled cache on the first run (cold), or if V8
+    // rejected the existing cache (e.g. the source changed).
+    let rejected = compile_source
+      .get_cached_data()
+      .map(|d| d.rejected())
+      .unwrap_or(true);
+    let had_data = code_cache_info
+      .as_ref()
+      .map(|i| i.data.is_some())
+      .unwrap_or(false);
+    if (!had_data || rejected)
+      && let (Some(spec), Some(info)) =
+        (cache_specifier.as_ref(), code_cache_info.as_ref())
+      && let Some(cache) = function.create_code_cache()
+    {
+      let fut = self.loader.borrow().code_cache_ready(
+        spec.clone(),
+        info.hash,
+        &cache[..],
+      );
+      self.code_cache_ready_futs.push(fut);
+    }
+
+    let captured = self.data.borrow().captured_bootstrap.borrow().clone();
+    let bootstrap_arg = match &captured {
+      Some(global) => v8::Local::new(tc_scope, global),
+      None => v8::undefined(tc_scope).into(),
+    };
+    let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
+    let result = match function.call(tc_scope, undefined, &[bootstrap_arg]) {
       Some(value) => v8::Global::new(tc_scope, value),
       None => {
         assert!(tc_scope.has_caught());
@@ -2962,6 +3310,83 @@ impl ModuleMap {
 
     Ok(result)
   }
+
+  /// Stash the snapshot-time `__bootstrap` view registered from JS via
+  /// `op_set_captured_bootstrap`. `load_ext_script` injects this value as
+  /// the `__bootstrap` parameter when invoking each lazy script's compiled
+  /// function — keeping the value off `globalThis` so user code never sees
+  /// it.
+  pub(crate) fn set_captured_bootstrap(&self, value: v8::Global<v8::Value>) {
+    *self.data.borrow().captured_bootstrap.borrow_mut() = Some(value);
+  }
+
+  /// The snapshot-time `__bootstrap` view stashed by `set_captured_bootstrap`,
+  /// if any. Used by the deferred fast-call upgrade to also update the cloned
+  /// `core.ops` that residual ext modules read through.
+  pub(crate) fn captured_bootstrap(&self) -> Option<v8::Global<v8::Value>> {
+    self.data.borrow().captured_bootstrap.borrow().clone()
+  }
+}
+
+/// Skip past a lazy-loaded script's leading prologue (line/block comments and
+/// directive prologue like `"use strict";`) and return a slice that starts at
+/// the IIFE's opening `(function`. Returns `None` if no such opener is found
+/// — callers fall back to using the original source unchanged.
+fn strip_script_prologue(source: &str) -> Option<&str> {
+  let mut rest = source;
+  loop {
+    let trimmed = rest.trim_start();
+    if let Some(after) = trimmed.strip_prefix("//") {
+      // Line comment — skip to end of line.
+      let nl = after.find('\n').map(|i| i + 1).unwrap_or(after.len());
+      rest = &after[nl..];
+      continue;
+    }
+    if let Some(after) = trimmed.strip_prefix("/*") {
+      // Block comment — skip to closing `*/`.
+      let end = after.find("*/").map(|i| i + 2).unwrap_or(after.len());
+      rest = &after[end..];
+      continue;
+    }
+    // Directive prologue: `"use strict";` or `'use strict';` (or any other
+    // string-literal directive). A directive is a string literal followed
+    // by a `;`/newline at the statement boundary.
+    if trimmed.starts_with('"') || trimmed.starts_with('\'') {
+      let quote = trimmed.as_bytes()[0];
+      let after_quote = &trimmed[1..];
+      if let Some(close) = after_quote.find(quote as char) {
+        let after_str = after_quote[close + 1..].trim_start();
+        if let Some(after_semi) = after_str.strip_prefix(';') {
+          rest = after_semi;
+          continue;
+        }
+      }
+    }
+    if trimmed.starts_with("(function") {
+      return Some(trimmed);
+    }
+    return None;
+  }
+}
+
+/// Wrap a lazy ext-script (`loadExtScript`) source into the `compile_function`
+/// body we evaluate at load time: `"use strict"; return (<IIFE>);`.
+///
+/// The IIFE's completion value is the script's exports object (what the
+/// original `Script::run` produced). We strip the leading prologue (comments +
+/// any `"use strict";` directive — a bare directive is a statement and can't
+/// sit inside `return ( ... )`) and the trailing `;`/whitespace so the IIFE is
+/// the single operand of `return ( ... )`, and re-emit `"use strict";` at the
+/// head so the body still runs in strict mode.
+///
+/// Performed at build time for residual lazy scripts so the stored source is a
+/// `&'static` string that compiles without an owned heap copy; also used as the
+/// runtime fallback for sources that arrive unwrapped.
+pub fn wrap_lazy_ext_script(source: &str) -> String {
+  let expr_start = strip_script_prologue(source).unwrap_or(source);
+  let trimmed =
+    expr_start.trim_end_matches(|c: char| c.is_whitespace() || c == ';');
+  format!("\"use strict\"; return ({trimmed});")
 }
 
 // Clippy thinks the return value doesn't need to be an Option, it's unaware
@@ -3030,10 +3455,42 @@ pub fn script_origin<'s, 'i>(
   )
 }
 
+/// Helper injected into the synthetic module for `.wasm` files that have global
+/// exports. Per the Wasm ESM integration, a global export is unwrapped to its
+/// underlying JS value (e.g. an `i32` global exports the number directly)
+/// instead of being exposed as a `WebAssembly.Global` object, matching Node.js.
+/// Reading `.value` throws for `v128` globals, so we fall back to the
+/// `WebAssembly.Global` object in that case. The value is read once at
+/// instantiation (a snapshot), so a later mutation of a mutable global is not
+/// reflected in the export, which also matches Node. Wasm modules importing
+/// the global are not affected by the snapshot: they link against the
+/// original `WebAssembly.Global` via `import.meta.wasmInstances`.
+const WASM_GLOBAL_UNWRAP_HELPER: &str = "const unwrapWasmGlobal = (g) => { try { return g.value; } catch { return g; } };\n";
+
+/// Whether a Wasm export is a global. The export kind is read directly from the
+/// export section, so this is reliable even though we parse the module with
+/// `skip_types: true` and never resolve the global's value type.
+fn is_wasm_global_export(export_type: &wasm_dep_analyzer::ExportType) -> bool {
+  matches!(export_type, wasm_dep_analyzer::ExportType::Global(_))
+}
+
+/// Whether a Wasm import is a global. Like [`is_wasm_global_export`], the import
+/// kind is read directly from the import section, independent of the global's
+/// value type.
+fn is_wasm_global_import(import_type: &wasm_dep_analyzer::ImportType) -> bool {
+  matches!(import_type, wasm_dep_analyzer::ImportType::Global(_))
+}
+
 fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
+  struct NamedImport {
+    escaped_name: String,
+    is_global: bool,
+  }
+
   struct ImportInfo {
     key_escaped: String,
-    escaped_named_imports: Vec<String>,
+    named_imports: Vec<NamedImport>,
+    has_global_import: bool,
   }
 
   fn aggregate_wasm_module_imports<'a>(
@@ -3047,43 +3504,65 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
           .entry(import.module)
           .or_insert_with(|| ImportInfo {
             key_escaped: import.module.escape_default().to_string(),
-            escaped_named_imports: Vec::new(),
+            named_imports: Vec::new(),
+            has_global_import: false,
           });
-      entry
-        .escaped_named_imports
-        .push(import.name.escape_default().to_string());
+      let is_global = is_wasm_global_import(&import.import_type);
+      entry.has_global_import |= is_global;
+      entry.named_imports.push(NamedImport {
+        escaped_name: import.name.escape_default().to_string(),
+        is_global,
+      });
     }
 
     imports_map
   }
 
   let aggregated_imports = aggregate_wasm_module_imports(&wasm_deps.imports);
-  let escaped_export_names = wasm_deps
+  let exports = wasm_deps
     .exports
     .iter()
     .map(|e| {
-      if e.name == "default" {
+      let escaped_name = if e.name == "default" {
         Cow::Borrowed(e.name)
       } else {
         Cow::Owned(e.name.escape_default().to_string())
-      }
+      };
+      (escaped_name, is_wasm_global_export(&e.export_type))
     })
     .collect::<Vec<_>>();
+  let has_global_export = exports.iter().any(|(_, is_global)| *is_global);
 
   StringBuilder::build(|builder| {
     builder.append("import source wasmMod from \"");
     builder.append(specifier);
     builder.append("\";\n");
 
+    // A module with global exports registers its instance exports under its
+    // own namespace in `import.meta.wasmInstances`, so that an importing Wasm
+    // module can link against the original `WebAssembly.Global` objects.
+    if has_global_export {
+      builder.append("import * as selfNs from \"");
+      builder.append(specifier);
+      builder.append("\";\n");
+    }
+
     if !aggregated_imports.is_empty() {
       for (i, (_, import_info)) in aggregated_imports.iter().enumerate() {
+        if import_info.has_global_import {
+          builder.append("import * as import_ns_");
+          builder.append(i);
+          builder.append(" from \"");
+          builder.append(&import_info.key_escaped);
+          builder.append("\";\n");
+        }
         builder.append("import { ");
-        for (name_index, named_import) in import_info.escaped_named_imports.iter().enumerate() {
+        for (name_index, named_import) in import_info.named_imports.iter().enumerate() {
           if name_index > 0 {
             builder.append(", ");
           }
           builder.append('"');
-          builder.append(named_import);
+          builder.append(&named_import.escaped_name);
           builder.append("\" as import_");
           builder.append(i);
           builder.append('_');
@@ -3094,6 +3573,25 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
         builder.append("\";\n");
       }
 
+      // For global-typed imports, prefer the original `WebAssembly.Global`
+      // from the dependency's instance when the dependency is itself a Wasm
+      // module, so that mutable globals stay direct references between Wasm
+      // modules. The JS binding only carries the unwrapped snapshot value.
+      //
+      // Limitation: for a circular Wasm<->Wasm mutable-global import the
+      // dependency may not be evaluated yet when this `.get()` runs, so it
+      // returns `undefined` and we fall back to the snapshot number, which
+      // fails instantiation with a `LinkError`. Node.js has the same gap.
+      for (i, (_, import_info)) in aggregated_imports.iter().enumerate() {
+        if import_info.has_global_import {
+          builder.append("const wasmExports_");
+          builder.append(i);
+          builder.append(" = import.meta.wasmInstances.get(import_ns_");
+          builder.append(i);
+          builder.append(");\n");
+        }
+      }
+
       builder.append("const importsObject = {\n");
 
       for (i, (_, import_info)) in aggregated_imports.iter().enumerate() {
@@ -3101,13 +3599,28 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
         builder.append(&import_info.key_escaped);
         builder.append("\": {\n");
 
-        for (name_index, named_import) in import_info.escaped_named_imports.iter().enumerate() {
+        for (name_index, named_import) in import_info.named_imports.iter().enumerate() {
           builder.append("    \"");
-          builder.append(named_import);
-          builder.append("\": import_");
-          builder.append(i);
-          builder.append('_');
-          builder.append(name_index);
+          builder.append(&named_import.escaped_name);
+          builder.append("\": ");
+          if named_import.is_global {
+            builder.append("wasmExports_");
+            builder.append(i);
+            builder.append(" === undefined ? import_");
+            builder.append(i);
+            builder.append('_');
+            builder.append(name_index);
+            builder.append(" : wasmExports_");
+            builder.append(i);
+            builder.append("[\"");
+            builder.append(&named_import.escaped_name);
+            builder.append("\"]");
+          } else {
+            builder.append("import_");
+            builder.append(i);
+            builder.append('_');
+            builder.append(name_index);
+          }
           builder.append(",\n");
         }
 
@@ -3123,17 +3636,44 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
       );
     }
 
-    for (idx, escaped_name) in escaped_export_names.iter().enumerate() {
+    if has_global_export {
+      // The generated source assumes `import.meta.wasmInstances` is present
+      // whenever a module uses globals. The map shares `import.meta.WasmInstance`'s
+      // lifecycle: both are absent only when WebAssembly is unavailable or during
+      // snapshotting, where the `new import.meta.WasmInstance(...)` call above
+      // would already have thrown. So if we reach here, the map exists.
+      builder.append(
+        "import.meta.wasmInstances.set(selfNs, modInstance.exports);\n",
+      );
+      builder.append(WASM_GLOBAL_UNWRAP_HELPER);
+    }
+
+    for (idx, (escaped_name, is_global)) in exports.iter().enumerate() {
       if escaped_name == "default" {
-        builder.append("export default modInstance.exports.");
-        builder.append(escaped_name);
+        builder.append("export default ");
+        if *is_global {
+          builder.append("unwrapWasmGlobal(modInstance.exports.");
+          builder.append(escaped_name);
+          builder.append(")");
+        } else {
+          builder.append("modInstance.exports.");
+          builder.append(escaped_name);
+        }
         builder.append(";\n");
       } else {
         builder.append("const export");
         builder.append(idx);
-        builder.append(" = modInstance.exports[\"");
-        builder.append(escaped_name);
-        builder.append("\"];\nexport { export");
+        builder.append(" = ");
+        if *is_global {
+          builder.append("unwrapWasmGlobal(modInstance.exports[\"");
+          builder.append(escaped_name);
+          builder.append("\"])");
+        } else {
+          builder.append("modInstance.exports[\"");
+          builder.append(escaped_name);
+          builder.append("\"]");
+        }
+        builder.append(";\nexport { export");
         builder.append(idx);
         builder.append(" as \"");
         builder.append(escaped_name);
@@ -3242,6 +3782,7 @@ const modInstance = new import.meta.WasmInstance(wasmMod);
   pretty_assertions::assert_eq!(
     rendered,
     r#"import source wasmMod from "./foo.wasm";
+import * as selfNs from "./foo.wasm";
 import { "foo" as import_0_0, "bar" as import_0_1, "fizz" as import_0_2 } from "./import.js";
 import { "buzz" as import_1_0 } from "./buzz.js";
 const importsObject = {
@@ -3255,13 +3796,15 @@ const importsObject = {
   },
 };
 const modInstance = new import.meta.WasmInstance(wasmMod, importsObject);
+import.meta.wasmInstances.set(selfNs, modInstance.exports);
+const unwrapWasmGlobal = (g) => { try { return g.value; } catch { return g; } };
 const export0 = modInstance.exports["export1"];
 export { export0 as "export1" };
 const export1 = modInstance.exports["export2"];
 export { export1 as "export2" };
 const export2 = modInstance.exports["export3"];
 export { export2 as "export3" };
-const export3 = modInstance.exports["export4"];
+const export3 = unwrapWasmGlobal(modInstance.exports["export4"]);
 export { export3 as "export4" };
 const export4 = modInstance.exports["export5"];
 export { export4 as "export5" };
@@ -3301,6 +3844,157 @@ const importsObject = {
 const modInstance = new import.meta.WasmInstance(wasmMod, importsObject);
 const export0 = modInstance.exports["\n"];
 export { export0 as "\n" };
+"#,
+  );
+}
+
+#[test]
+fn test_render_js_wasm_module_global_unwrap() {
+  fn global(
+    value_type: wasm_dep_analyzer::ValueType,
+    mutability: bool,
+  ) -> wasm_dep_analyzer::ExportType {
+    wasm_dep_analyzer::ExportType::Global(Ok(wasm_dep_analyzer::GlobalType {
+      value_type,
+      mutability,
+    }))
+  }
+
+  let deps = WasmDeps {
+    imports: vec![],
+    exports: vec![
+      // immutable numeric global -> unwrapped to its value at runtime
+      wasm_dep_analyzer::Export {
+        name: "answer",
+        index: 0,
+        export_type: global(wasm_dep_analyzer::ValueType::I32, false),
+      },
+      // mutable numeric global -> still unwrapped (snapshot at instantiation)
+      wasm_dep_analyzer::Export {
+        name: "counter",
+        index: 1,
+        export_type: global(wasm_dep_analyzer::ValueType::I64, true),
+      },
+      // unresolved value type (e.g. v128 / reference type) is still a global
+      // by kind, so it is wrapped; the helper falls back to the
+      // WebAssembly.Global object if reading `.value` throws (v128).
+      wasm_dep_analyzer::Export {
+        name: "vec",
+        index: 2,
+        export_type: global(wasm_dep_analyzer::ValueType::Unknown, false),
+      },
+      // global whose value type failed to parse -> still wrapped by kind
+      wasm_dep_analyzer::Export {
+        name: "broken",
+        index: 3,
+        export_type: wasm_dep_analyzer::ExportType::Global(Err(
+          wasm_dep_analyzer::ParseError::UnresolvedExportType,
+        )),
+      },
+      // non-global export is left untouched
+      wasm_dep_analyzer::Export {
+        name: "fn_export",
+        index: 4,
+        export_type: wasm_dep_analyzer::ExportType::Function(Ok(
+          wasm_dep_analyzer::FunctionSignature {
+            params: vec![],
+            returns: vec![],
+          },
+        )),
+      },
+      // default export that is a global -> unwrapped
+      wasm_dep_analyzer::Export {
+        name: "default",
+        index: 5,
+        export_type: global(wasm_dep_analyzer::ValueType::F64, false),
+      },
+    ],
+  };
+  let rendered = render_js_wasm_module("./globals.wasm", deps);
+  pretty_assertions::assert_eq!(
+    rendered,
+    r#"import source wasmMod from "./globals.wasm";
+import * as selfNs from "./globals.wasm";
+const modInstance = new import.meta.WasmInstance(wasmMod);
+import.meta.wasmInstances.set(selfNs, modInstance.exports);
+const unwrapWasmGlobal = (g) => { try { return g.value; } catch { return g; } };
+const export0 = unwrapWasmGlobal(modInstance.exports["answer"]);
+export { export0 as "answer" };
+const export1 = unwrapWasmGlobal(modInstance.exports["counter"]);
+export { export1 as "counter" };
+const export2 = unwrapWasmGlobal(modInstance.exports["vec"]);
+export { export2 as "vec" };
+const export3 = unwrapWasmGlobal(modInstance.exports["broken"]);
+export { export3 as "broken" };
+const export4 = modInstance.exports["fn_export"];
+export { export4 as "fn_export" };
+export default unwrapWasmGlobal(modInstance.exports.default);
+"#,
+  );
+}
+
+#[test]
+fn test_render_js_wasm_module_global_import() {
+  let deps = WasmDeps {
+    imports: vec![
+      // global-typed import -> linked against the original
+      // `WebAssembly.Global` when the dependency is itself a Wasm module
+      // (found in `import.meta.wasmInstances`), falling back to the JS
+      // binding otherwise
+      wasm_dep_analyzer::Import {
+        name: "counter",
+        module: "./dep.wasm",
+        import_type: wasm_dep_analyzer::ImportType::Global(
+          wasm_dep_analyzer::GlobalType {
+            value_type: wasm_dep_analyzer::ValueType::I32,
+            mutability: true,
+          },
+        ),
+      },
+      // non-global import from the same module is untouched
+      wasm_dep_analyzer::Import {
+        name: "bump",
+        module: "./dep.wasm",
+        import_type: wasm_dep_analyzer::ImportType::Function(0),
+      },
+      // module with no global imports gets no namespace import or lookup
+      wasm_dep_analyzer::Import {
+        name: "log",
+        module: "./util.js",
+        import_type: wasm_dep_analyzer::ImportType::Function(1),
+      },
+    ],
+    exports: vec![wasm_dep_analyzer::Export {
+      name: "read",
+      index: 0,
+      export_type: wasm_dep_analyzer::ExportType::Function(Ok(
+        wasm_dep_analyzer::FunctionSignature {
+          params: vec![],
+          returns: vec![wasm_dep_analyzer::ValueType::I32],
+        },
+      )),
+    }],
+  };
+  let rendered = render_js_wasm_module("./main.wasm", deps);
+  pretty_assertions::assert_eq!(
+    rendered,
+    r#"import source wasmMod from "./main.wasm";
+import * as import_ns_0 from "./dep.wasm";
+import { "counter" as import_0_0, "bump" as import_0_1 } from "./dep.wasm";
+import { "log" as import_1_0 } from "./util.js";
+const wasmExports_0 = import.meta.wasmInstances.get(import_ns_0);
+const importsObject = {
+  "./dep.wasm": {
+    "counter": wasmExports_0 === undefined ? import_0_0 : wasmExports_0["counter"],
+    "bump": import_0_1,
+  },
+  "./util.js": {
+    "log": import_1_0,
+  },
+};
+const modInstance = new import.meta.WasmInstance(wasmMod, importsObject);
+const export0 = modInstance.exports["read"];
+export { export0 as "read" };
 "#,
   );
 }

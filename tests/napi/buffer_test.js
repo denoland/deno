@@ -25,6 +25,26 @@ Deno.test("napi create_buffer_copy", function () {
   assertEquals(buf[4], 50);
 });
 
+Deno.test("napi create_buffer_from_arraybuffer", function () {
+  const buf = lib.test_create_buffer_from_arraybuffer();
+  assertEquals(buf instanceof Buffer, true);
+  // Views bytes [2, 6) of an ArrayBuffer filled with 0..8.
+  assertEquals(buf.length, 4);
+  // Index 0 reflects a write made to the underlying ArrayBuffer *after* the
+  // Buffer was created, proving it is a view over the shared backing store
+  // rather than a copy.
+  assertEquals(buf[0], 0xFF);
+  assertEquals(buf[1], 3);
+  assertEquals(buf[2], 4);
+  assertEquals(buf[3], 5);
+});
+
+Deno.test("napi create_buffer_from_arraybuffer invalid args", function () {
+  // Out-of-range view and non-ArrayBuffer argument both return
+  // napi_invalid_arg (asserted inside the addon).
+  assertEquals(lib.test_create_buffer_from_arraybuffer_invalid(), true);
+});
+
 Deno.test("napi get_buffer_info", function () {
   const len = lib.test_get_buffer_info();
   assertEquals(len, 3);

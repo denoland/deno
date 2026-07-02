@@ -161,7 +161,7 @@ deno_core::extension!(
     keys::op_node_get_symmetric_key_size,
     keys::op_node_key_equals,
     keys::op_node_key_type,
-    keys::op_node_validate_pfx,
+    keys::op_node_load_pfx,
     keys::op_node_validate_crl,
     x509::op_node_x509_parse,
     x509::op_node_x509_ca,
@@ -680,6 +680,9 @@ pub fn op_node_cipheriv_encrypt(
     Ok(context) => context,
     Err(_) => return false,
   };
+  if output.len() < input.len() {
+    return false;
+  }
   context.encrypt(input, output);
   true
 }
@@ -766,6 +769,9 @@ pub fn op_node_decipheriv_decrypt(
     Ok(context) => context,
     Err(_) => return false,
   };
+  if output.len() < input.len() {
+    return false;
+  }
   context.decrypt(input, output);
   true
 }

@@ -223,7 +223,15 @@ pub(crate) struct ModuleMapData {
     Rc<RefCell<HashMap<ModuleName, ModuleName>>>,
   /// Set of scripts currently being loaded (for circular dep detection).
   pub(crate) lazy_script_loading: Rc<RefCell<HashSet<ModuleName>>>,
-  pub(crate) sources: HashMap<ModuleSourceKey, Rc<v8::Global<v8::Object>>>,
+  /// Snapshot-time `__bootstrap` view (frozen clone of `core.ops` etc.)
+  /// registered from JS via `op_set_captured_bootstrap`. `load_ext_script`
+  /// temporarily installs this on `globalThis.__bootstrap` for the duration
+  /// of each script evaluation if `__bootstrap` isn't already on the global
+  /// — every lazy_loaded_js polyfill's IIFE preamble destructures it, and
+  /// the `synthetic_esm` dispatch goes straight through Rust without the
+  /// JS `core.loadExtScript` wrapper. Runtime-only — not snapshotted.
+  pub(crate) captured_bootstrap: RefCell<Option<v8::Global<v8::Value>>>,
+  pub(crate) sources: HashMap<ModuleSourceKey, v8::Global<v8::Object>>,
   /// Specifiers of `lazy_loaded_esm` / `lazy_loaded_js` files whose source
   /// was actually compiled by V8 during snapshot creation. Their bytes live
   /// in the snapshot blob; the binary does not need a separate copy.
@@ -251,6 +259,12 @@ pub(crate) struct ModuleMapSnapshotData {
   /// registered `internals.__*` hooks and duplicate class identities.
   #[serde(default)]
   loaded_script_results: Vec<(FastString, SnapshotDataId)>,
+  /// Snapshot of the captured `__bootstrap` view registered via
+  /// `op_set_captured_bootstrap` at the end of `01_core.js`. Restored
+  /// at runtime so the Rust `load_ext_script` can reinstall it on
+  /// `globalThis.__bootstrap` during each script evaluation.
+  #[serde(default)]
+  captured_bootstrap: Option<SnapshotDataId>,
 }
 
 impl ModuleMapData {
@@ -324,6 +338,26 @@ impl ModuleMapData {
       requested_module_type,
       name,
       SymbolicModule::Alias(target),
+    );
+  }
+
+  /// Register an additional `(name, requested_module_type) -> module_id`
+  /// mapping for a module that was already registered under a different
+  /// requested module type. Used to make modules visible to imports whose
+  /// `with { type: ... }` attribute doesn't match the loaded module's
+  /// actual type — for example when a `module.registerHooks()` load hook
+  /// returns `format: "module"` for an import with a custom type
+  /// attribute like `with { type: "x-css" }`.
+  pub(crate) fn register_under_type(
+    &mut self,
+    name: FastString,
+    requested_module_type: &RequestedModuleType,
+    module_id: ModuleId,
+  ) {
+    self.by_name.insert(
+      requested_module_type,
+      name,
+      SymbolicModule::Mod(module_id),
     );
   }
 
@@ -434,6 +468,11 @@ impl ModuleMapData {
       .map(|(name, value)| (name, data_store.register(value)))
       .collect();
 
+    ser.captured_bootstrap = self
+      .captured_bootstrap
+      .into_inner()
+      .map(|value| data_store.register(value));
+
     ser
   }
 
@@ -472,6 +511,12 @@ impl ModuleMapData {
     for (name, id) in data.loaded_script_results {
       let value = data_store.get::<v8::Value>(scope, id);
       cached_results.insert(name, value);
+    }
+    drop(cached_results);
+
+    if let Some(id) = data.captured_bootstrap {
+      let value = data_store.get::<v8::Value>(scope, id);
+      *self.captured_bootstrap.borrow_mut() = Some(value);
     }
   }
 

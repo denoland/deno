@@ -6,9 +6,13 @@ use std::mem::MaybeUninit;
 use std::ops::Deref;
 
 use deno_error::JsError;
+use deno_error::JsErrorBox;
 use indexmap::IndexMap;
 use v8::Local;
 use v8::Value;
+
+use crate::FastStaticString;
+use crate::error::exception_to_err;
 
 #[derive(Debug, JsError)]
 #[class(type)]
@@ -298,10 +302,21 @@ crate::v8_static_strings! {
   VALUE = "value",
 }
 
-thread_local! {
-  static NEXT_ETERNAL: v8::Eternal<v8::String> = v8::Eternal::empty();
-  static DONE_ETERNAL: v8::Eternal<v8::String> = v8::Eternal::empty();
-  static VALUE_ETERNAL: v8::Eternal<v8::String> = v8::Eternal::empty();
+/// Per-context cache of the `"next"`, `"done"`, and `"value"` property-name
+/// strings used by the sequence iterator protocol.
+///
+/// These are cached per-context (in [`crate::runtime::ContextState`]) rather
+/// than in a `thread_local`, because `v8` string handles are bound to the
+/// isolate that created them. `deno test` runs each test file in its own
+/// isolate on reused thread-pool threads, so a thread-local handle would
+/// dangle into a disposed isolate once a thread was reused, producing spurious
+/// "can not be converted to a sequence" errors and intermittent SIGSEGV. This
+/// mirrors how Blink keeps these strings per-isolate. See
+/// <https://github.com/denoland/deno/issues/35460>.
+pub(crate) struct WebIdlSequenceKeys {
+  pub(crate) next: v8::Global<v8::String>,
+  pub(crate) done: v8::Global<v8::String>,
+  pub(crate) value: v8::Global<v8::String>,
 }
 
 // helper for iterating over a sequence
@@ -340,55 +355,80 @@ fn for_each_in_sequence<'a, 'b, 'i>(
     ));
   };
 
-  let next_key = NEXT_ETERNAL
-    .with(|eternal| {
-      if let Some(key) = eternal.get(scope) {
-        Ok(key)
-      } else {
-        let key = NEXT.v8_string(scope).map_err(|e| {
-          WebIdlError::other(prefix.clone(), context.borrowed(), e)
-        })?;
-        eternal.set(scope, key);
-        Ok(key)
-      }
-    })?
-    .into();
+  // The "next"/"done"/"value" iterator keys are cached per-context. They must
+  // not be cached in a `thread_local`, because the `v8::String` handles are
+  // bound to the isolate that created them: `deno test` reuses thread-pool
+  // threads across per-file isolates, so a thread-local handle would dangle
+  // into a disposed isolate (see `WebIdlSequenceKeys`). Materialize them lazily
+  // on the first sequence conversion in this context and reuse them afterwards.
+  let context_state = crate::runtime::JsRealm::state_from_scope(scope);
+  if context_state.webidl_sequence_keys.borrow().is_none() {
+    let make = |scope: &mut v8::PinScope<'a, 'i>, s: &FastStaticString| {
+      s.v8_string(scope)
+        .map(|str| v8::Global::new(scope, str))
+        .map_err(|e| WebIdlError::other(prefix.clone(), context.borrowed(), e))
+    };
+    let keys = WebIdlSequenceKeys {
+      next: make(scope, &NEXT)?,
+      done: make(scope, &DONE)?,
+      value: make(scope, &VALUE)?,
+    };
+    *context_state.webidl_sequence_keys.borrow_mut() = Some(keys);
+  }
+  let keys = context_state.webidl_sequence_keys.borrow();
+  let keys = keys.as_ref().unwrap();
+  let next_key = v8::Local::new(scope, &keys.next).into();
+  let done_key = v8::Local::new(scope, &keys.done).into();
+  let value_key = v8::Local::new(scope, &keys.value).into();
 
-  let done_key = DONE_ETERNAL
-    .with(|eternal| {
-      if let Some(key) = eternal.get(scope) {
-        Ok(key)
-      } else {
-        let key = DONE.v8_string(scope).map_err(|e| {
-          WebIdlError::other(prefix.clone(), context.borrowed(), e)
-        })?;
-        eternal.set(scope, key);
-        Ok(key)
+  // Match GetIteratorFromMethod's Iterator Record by reading `next` once and
+  // reusing that nextMethod for the rest of the iteration.
+  // https://tc39.es/ecma262/#sec-getiteratorfrommethod
+  let next_method = {
+    // Read `iterator.next` under `TryCatch` so an exception thrown by a getter
+    // is preserved and converted into the original JS error.
+    v8::tc_scope!(let tc_scope, scope);
+    match iter.get(tc_scope, next_key) {
+      Some(next_method) => Ok(v8::Global::new(tc_scope, next_method)),
+      None => {
+        if tc_scope.has_caught() {
+          let exception = tc_scope.exception().unwrap();
+          Err(WebIdlError::other(
+            prefix.clone(),
+            context.borrowed(),
+            exception_to_err(tc_scope, exception, false, false),
+          ))
+        } else {
+          // This fallback is only kept for the unlikely case where V8 returns
+          // an empty `MaybeLocal` without surfacing an exception.
+          Err(WebIdlError::other(
+            prefix.clone(),
+            context.borrowed(),
+            JsErrorBox::type_error("Failed to read iterator.next."),
+          ))
+        }
       }
-    })?
-    .into();
-
-  let value_key = VALUE_ETERNAL
-    .with(|eternal| {
-      if let Some(key) = eternal.get(scope) {
-        Ok(key)
-      } else {
-        let key = VALUE.v8_string(scope).map_err(|e| {
-          WebIdlError::other(prefix.clone(), context.borrowed(), e)
-        })?;
-        eternal.set(scope, key);
-        Ok(key)
-      }
-    })?
-    .into();
+    }
+  }?;
+  // The `TryCatch` scope above cannot outlive this block, so keep the value in
+  // a `Global` and reopen it in the outer scope before validating/calling it.
+  let next_method = v8::Local::new(scope, next_method);
+  // TODO: Keep this as a `v8::Value` like an ECMAScript
+  // Iterator Record's [[NextMethod]], and defer the callable check to the call
+  // site so `for_each_in_sequence()` can mirror IteratorNext more closely.
+  let next_method = next_method.try_cast::<v8::Function>().map_err(|_| {
+    WebIdlError::other(
+      prefix.clone(),
+      context.borrowed(),
+      JsErrorBox::type_error("Expected next() function on iterator."),
+    )
+  })?;
 
   let mut len = 0;
 
   loop {
-    let Some(res) = iter
-      .get(scope, next_key)
-      .and_then(|next| next.try_cast::<v8::Function>().ok())
-      .and_then(|next| next.call(scope, iter.cast(), &[]))
+    let Some(res) = next_method
+      .call(scope, iter.cast(), &[])
       .and_then(|res| res.to_object(scope))
     else {
       return Err(WebIdlError::new(
@@ -1613,6 +1653,130 @@ mod tests {
       &Default::default(),
     );
     assert_eq!(converted.unwrap(), vec![1, 2]);
+  }
+
+  #[test]
+  fn sequence_next_method_must_be_callable() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let val = runtime
+      .execute_script(
+        "",
+        r#"
+        ({
+          [Symbol.iterator]() {
+            return { next: 1 };
+          },
+        })
+        "#,
+      )
+      .unwrap();
+
+    deno_core::scope!(scope, runtime);
+    let val = Local::new(scope, val);
+    let err = Vec::<u8>::convert(
+      scope,
+      val,
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    )
+    .unwrap_err();
+    assert!(
+      err
+        .to_string()
+        .contains("Expected next() function on iterator.")
+    );
+  }
+
+  #[test]
+  fn sequence_propagates_next_getter_exception() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let val = runtime
+      .execute_script(
+        "",
+        r#"
+        ({
+          [Symbol.iterator]() {
+            return {
+              get next() {
+                throw new TypeError("boom");
+              },
+            };
+          },
+        })
+        "#,
+      )
+      .unwrap();
+
+    let err = {
+      deno_core::scope!(scope, runtime);
+      let val = Local::new(scope, val);
+      Vec::<u8>::convert(
+        scope,
+        val,
+        "prefix".into(),
+        (|| "context".into()).into(),
+        &Default::default(),
+      )
+      .unwrap_err()
+    };
+    assert!(err.to_string().contains("boom"));
+  }
+
+  #[test]
+  fn sequence_check_next_method_once() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let val = runtime
+      .execute_script(
+        "",
+        r#"
+        globalThis.nextReads = 0;
+        ({
+          [Symbol.iterator]() {
+            let index = 0;
+            return {
+              get next() {
+                // Regression guard: old behavior re-read `next` on each loop.
+                if (++globalThis.nextReads > 1) {
+                  throw new Error("next getter called twice");
+                }
+                return () => {
+                  index++;
+                  if (index === 1) {
+                    return { done: false, value: 1 };
+                  }
+                  if (index === 2) {
+                    return { done: false, value: 2 };
+                  }
+                  return { done: true, value: undefined };
+                };
+              },
+            };
+          },
+        })
+        "#,
+      )
+      .unwrap();
+
+    let converted = {
+      deno_core::scope!(scope, runtime);
+      let val = Local::new(scope, val);
+      Vec::<u8>::convert(
+        scope,
+        val,
+        "prefix".into(),
+        (|| "context".into()).into(),
+        &Default::default(),
+      )
+      .unwrap()
+    };
+    assert_eq!(converted, vec![1, 2]);
+
+    let next_reads =
+      runtime.execute_script("", "globalThis.nextReads").unwrap();
+    deno_core::scope!(scope, runtime);
+    let next_reads = Local::new(scope, next_reads);
+    assert_eq!(next_reads.uint32_value(scope).unwrap(), 1);
   }
 
   #[test]

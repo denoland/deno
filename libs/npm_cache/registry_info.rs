@@ -174,9 +174,32 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         cache_item.clone()
       } else {
         let value_creator = MultiRuntimeAsyncValueCreator::new({
-          let downloader = self.clone();
+          // Capture a weak reference here. The value creator is stored in
+          // `memory_cache` (a field of `self`) for the lifetime of this
+          // provider, so capturing a strong `Arc<Self>` would form a reference
+          // cycle (`self` -> `memory_cache` -> value creator -> `self`) that
+          // keeps the whole provider — and every package's cached registry
+          // metadata — alive for the life of the process. Under `deno run
+          // --watch` that leaks one full registry cache per reload (see
+          // denoland/deno#35664). `create_load_future` re-clones a strong
+          // reference for the duration of an in-flight load, which is fine.
+          let downloader = Arc::downgrade(self);
           let name = name.to_string();
-          Box::new(move || downloader.create_load_future(&name))
+          Box::new(move || match downloader.upgrade() {
+            Some(downloader) => downloader.create_load_future(&name),
+            None => {
+              let name = name.clone();
+              async move {
+                Err(Arc::new(JsErrorBox::new(
+                  "Error",
+                  format!(
+                    "npm registry info provider was dropped while loading '{name}'"
+                  ),
+                )))
+              }
+              .boxed_local()
+            }
+          })
         });
         let cache_item = MemoryCacheItem::Pending(Arc::new(value_creator));
         mem_cache.insert(name.to_string(), cache_item.clone());
@@ -296,10 +319,26 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         },
         NpmCacheHttpClientResponse::NotFound => Ok(FutureResult::PackageNotExists),
         NpmCacheHttpClientResponse::Bytes(response) => {
+          let packument_format = downloader.packument_format;
           let future_result = spawn_blocking(
             move || -> Result<FutureResult, JsErrorBox> {
               let mut package_info: SerializedCachedPackageInfo = serde_json::from_slice(&response.bytes).map_err(JsErrorBox::from_err)?;
               package_info.etag = response.etag;
+              if packument_format == NpmPackumentFormat::Full {
+                // The full packument is only requested because the abbreviated
+                // install manifest omits the `time` field needed by
+                // `minimumDependencyAge`. The full format additionally carries a
+                // complete `scripts` map for every version, which for frequently
+                // published packages can balloon the cached `registry.json` to
+                // hundreds of megabytes and spike RSS when it's reparsed on every
+                // run. Reduce each version to the abbreviated shape (drop
+                // `scripts`, keep a `hasInstallScript` flag) so only the `time`
+                // field is retained on top of what the abbreviated format would
+                // have stored. The installer reads the real scripts from the
+                // extracted package.json, exactly as it does for the abbreviated
+                // format.
+                slim_full_packument(&mut package_info.info);
+              }
               match downloader.cache.save_package_info(&name, &package_info) {
                 Ok(()) => {
                   Ok(FutureResult::SavedFsCache(Arc::new(package_info.info)))
@@ -343,6 +382,29 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
   }
 }
 
+/// Reduces a full packument to the same shape as the abbreviated install
+/// manifest, keeping only the additional `time` field that the abbreviated
+/// format omits. For every version this drops the `scripts` map (replacing it
+/// with a `hasInstallScript` flag derived from the install lifecycle scripts),
+/// matching what the npm registry returns for the abbreviated format. This
+/// keeps the cached `registry.json` small for packages with many versions while
+/// still providing the publish dates needed by `minimumDependencyAge`.
+fn slim_full_packument(info: &mut NpmPackageInfo) {
+  for version in info.versions.values_mut() {
+    if version.scripts.is_empty() {
+      continue;
+    }
+    if version.has_install_script.is_none() {
+      version.has_install_script = Some(
+        version.scripts.contains_key("preinstall")
+          || version.scripts.contains_key("install")
+          || version.scripts.contains_key("postinstall"),
+      );
+    }
+    version.scripts.clear();
+  }
+}
+
 /// Downloads packuments from the npm registry.
 ///
 /// This is shared amongst all the workers.
@@ -375,6 +437,14 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
   /// Clears the internal memory cache.
   pub fn clear_memory_cache(&self) {
     self.0.memory_cache.lock().clear();
+  }
+
+  /// Whether only cached registry data may be used (the `--cached-only`
+  /// setting). In this mode fetching missing registry metadata is an error, so
+  /// callers should avoid triggering a re-resolution when the lockfile already
+  /// satisfies the requirements.
+  pub fn is_cached_only(&self) -> bool {
+    *self.0.cache.cache_setting() == NpmCacheSetting::Only
   }
 
   pub async fn maybe_package_info(

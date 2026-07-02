@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   createTimer: createTimer_,
   cancelTimer: cancelTimer_,
@@ -14,6 +14,7 @@ const {
   immediateRefCount,
 } = core;
 const {
+  ArrayPrototypePush,
   DateNow,
   FunctionPrototypeCall,
   MapPrototypeDelete,
@@ -24,6 +25,7 @@ const {
   ObjectDefineProperty,
   ReflectApply,
   SafeArrayIterator,
+  SafeMapIterator,
   SafeMap,
   Symbol,
   SymbolDispose,
@@ -55,7 +57,9 @@ const TIMEOUT_MAX = 2 ** 31 - 1;
 
 const kDestroy = Symbol("destroy");
 const kTimerId = Symbol("timerId");
+const kSystem = Symbol("system");
 const kTimeout = Symbol("timeout");
+const kSuspended = Symbol("suspended");
 const kRefed = core.kRefed;
 const createTimer = Symbol("createTimer");
 
@@ -75,11 +79,30 @@ function getActiveTimer(id) {
   return MapPrototypeGet(activeTimers, id);
 }
 
+function getActiveResourcesInfo() {
+  const resources = [];
+  for (const { 1: timeout } of new SafeMapIterator(activeTimers)) {
+    if (timeout[kRefed]) {
+      ArrayPrototypePush(resources, "Timeout");
+    }
+  }
+  // Immediates aren't tracked in a JS-side collection: they're queued into and
+  // consumed by core, which keeps the count of refed (loop-alive) immediates.
+  const immediateCount = core.getActiveImmediateCount();
+  for (let i = 0; i < immediateCount; i++) {
+    ArrayPrototypePush(resources, "Immediate");
+  }
+  return resources;
+}
+
 let warnedNegativeNumber = false;
 let warnedNotNumber = false;
 
 // Timer constructor function.
-function Timeout(callback, after, args, isRepeat, isRefed) {
+// isSystem marks the timer as runtime-internal (e.g. setUnrefTimeout's
+// keep-alive timers); leak/sanitizer machinery skips these so an
+// internal timer doesn't surface as a user-visible leak.
+function Timeout(callback, after, args, isRepeat, isRefed, isSystem) {
   if (after === undefined) {
     after = 1;
   } else {
@@ -118,7 +141,19 @@ function Timeout(callback, after, args, isRepeat, isRefed) {
   this._timerArgs = args;
   this._repeat = isRepeat;
   this._destroyed = false;
+  ObjectDefineProperty(this, kSuspended, {
+    __proto__: null,
+    value: false,
+    writable: true,
+  });
   this[kRefed] = isRefed;
+  // Non-enumerable: this is a runtime-internal marker and must not leak into
+  // `util.inspect(timer)` output (node has no such property).
+  ObjectDefineProperty(this, kSystem, {
+    __proto__: null,
+    value: !!isSystem,
+    writable: true,
+  });
 
   const asyncId = nextAsyncId();
   const triggerAsyncId = executionAsyncId();
@@ -149,9 +184,7 @@ Timeout.prototype[createTimer] = function () {
   let cb;
   function invokeCallback() {
     const wasRepeat = self._repeat;
-    if (!wasRepeat) {
-      MapPrototypeDelete(activeTimers, self[kTimerId]);
-    } else {
+    if (wasRepeat) {
       const currentCb = self._onTimeout;
       if (currentCb === null) {
         self[kDestroy]();
@@ -160,23 +193,30 @@ Timeout.prototype[createTimer] = function () {
     }
     const currentCb = wasRepeat ? self._onTimeout : callback;
     const args = self._timerArgs;
-    let ret;
-    if (args !== undefined && args.length > 0) {
-      ret = ReflectApply(currentCb, self, args);
-    } else {
-      ret = FunctionPrototypeCall(currentCb, self);
-    }
-    if (wasRepeat) {
-      if (self._idleTimeout < 0 || self._onTimeout === null) {
-        self[kDestroy]();
+    try {
+      if (args !== undefined && args.length > 0) {
+        return ReflectApply(currentCb, self, args);
+      } else {
+        return FunctionPrototypeCall(currentCb, self);
       }
-    } else if (self._repeat) {
-      // timeout was converted to interval inside callback
-      self[kTimerId] = self[createTimer]();
-    } else {
-      self._destroyed = true;
+    } finally {
+      // Cleanup runs after the callback (in a `finally` so it happens even if
+      // the callback throws). Node keeps a one-shot Timeout reported as an
+      // active resource during its own callback and only drops it afterwards,
+      // so `activeTimers` must retain it for the duration of the call.
+      if (wasRepeat) {
+        if (self._idleTimeout < 0 || self._onTimeout === null) {
+          self[kDestroy]();
+        }
+      } else if (self._repeat) {
+        // timeout was converted to interval inside callback
+        MapPrototypeDelete(activeTimers, self[kTimerId]);
+        self[kTimerId] = self[createTimer]();
+      } else {
+        MapPrototypeDelete(activeTimers, self[kTimerId]);
+        self._destroyed = true;
+      }
     }
-    return ret;
   }
   if (enabledHooksExist()) {
     cb = function () {
@@ -214,6 +254,7 @@ Timeout.prototype[createTimer] = function () {
     undefined,
     this._repeat,
     this[kRefed],
+    this[kSystem],
   );
   ObjectDefineProperty(this, "_timer", {
     __proto__: null,
@@ -228,8 +269,9 @@ Timeout.prototype[createTimer] = function () {
 };
 
 Timeout.prototype[kDestroy] = function () {
-  if (!this._destroyed) {
+  if (!this._destroyed || this[kSuspended]) {
     this._destroyed = true;
+    this[kSuspended] = false;
     this._idleTimeout = -1;
     this._idleStart = DateNow();
     this._onTimeout = null;
@@ -264,6 +306,7 @@ Timeout.prototype.refresh = function () {
     // nulled by kDestroy or _onTimeout explicitly cleared).
     if (this._onTimeout !== null) {
       this._destroyed = false;
+      this[kSuspended] = false;
       this[kTimerId] = this[createTimer]();
     }
   } else {
@@ -338,7 +381,21 @@ function getTimerDuration(msecs, name) {
 
 function setUnrefTimeout(callback, timeout, ...args) {
   validateFunction(callback, "callback");
-  return new Timeout(callback, timeout, args, false, false);
+  // isSystem=true: this is a runtime-internal timer (keep-alive, socket
+  // timeouts, idle eviction etc.). The leak sanitizer skips system timers
+  // so e.g. Agent.keepSocketAlive's 5000 ms unref'd timer stays invisible
+  // to Deno.test's `sanitizeOps`.
+  return new Timeout(callback, timeout, args, false, false, true);
+}
+
+function suspendTimeout(timeout) {
+  if (timeout !== null && timeout !== undefined && !timeout._destroyed) {
+    timeout._destroyed = true;
+    timeout[kSuspended] = true;
+    timeout._idleStart = DateNow();
+    cancelTimer_(timeout._timer);
+    MapPrototypeDelete(activeTimers, timeout[kTimerId]);
+  }
 }
 
 // Re-export immediate queue and runImmediates from core for consumers
@@ -420,9 +477,11 @@ return {
   kTimeout,
   kRefed,
   getActiveTimer,
+  getActiveResourcesInfo,
   Timeout,
   getTimerDuration,
   setUnrefTimeout,
+  suspendTimeout,
   immediateQueue,
   runImmediates,
   Immediate,

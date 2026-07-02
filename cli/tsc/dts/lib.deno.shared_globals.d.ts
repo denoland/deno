@@ -17,7 +17,16 @@
 /// <reference lib="deno.broadcast_channel" />
 /// <reference lib="node" />
 
-/** @category Wasm */
+/** The `WebAssembly` JavaScript object acts as the namespace for all
+ * [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly)-related
+ * functionality. Unlike most global objects, it is not a constructor; it groups
+ * the functions used to compile and instantiate WebAssembly modules together
+ * with the classes (`Module`, `Instance`, `Memory`, `Table`, `Global`) and
+ * error types used to work with them.
+ *
+ * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly)
+ *
+ * @category Wasm */
 declare namespace WebAssembly {
   /**
    * The `WebAssembly.CompileError` object indicates an error during WebAssembly decoding or validation.
@@ -187,7 +196,10 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface GlobalDescriptor {
+    /** Whether the global variable can be modified after creation. Defaults to
+     * `false`. */
     mutable?: boolean;
+    /** The data type of the global variable. */
     value: ValueType;
   }
 
@@ -197,8 +209,14 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface MemoryDescriptor {
+    /** The initial size of the memory, in units of WebAssembly pages (64KB
+     * each). */
     initial: number;
+    /** The maximum size the memory is allowed to grow to, in units of
+     * WebAssembly pages. */
     maximum?: number;
+    /** Whether the memory is shared between agents (backed by a
+     * `SharedArrayBuffer`). Defaults to `false`. */
     shared?: boolean;
   }
 
@@ -208,7 +226,9 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface ModuleExportDescriptor {
+    /** The kind of entity being exported. */
     kind: ImportExportKind;
+    /** The name under which the entity is exported. */
     name: string;
   }
 
@@ -218,8 +238,11 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface ModuleImportDescriptor {
+    /** The kind of entity being imported. */
     kind: ImportExportKind;
+    /** The name of the module the entity is imported from. */
     module: string;
+    /** The name of the imported entity within its module. */
     name: string;
   }
 
@@ -229,8 +252,11 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface TableDescriptor {
+    /** The type of value stored in the table. */
     element: TableKind;
+    /** The initial number of elements in the table. */
     initial: number;
+    /** The maximum number of elements the table is allowed to grow to. */
     maximum?: number;
   }
 
@@ -239,7 +265,7 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface WebAssemblyInstantiatedSource {
-    /* A `WebAssembly.Instance` object that contains all the exported WebAssembly functions. */
+    /** A `WebAssembly.Instance` object that contains all the exported WebAssembly functions. */
     instance: Instance;
 
     /**
@@ -249,21 +275,39 @@ declare namespace WebAssembly {
     module: Module;
   }
 
-  /** @category Wasm */
+  /** The kind of entity referenced by a module import or export descriptor.
+   *
+   * @category Wasm */
   export type ImportExportKind = "function" | "global" | "memory" | "table";
-  /** @category Wasm */
+  /** The type of value stored in a `WebAssembly.Table`.
+   *
+   * @category Wasm */
   export type TableKind = "anyfunc";
-  /** @category Wasm */
+  /** The data type of a WebAssembly value, used to describe globals.
+   *
+   * @category Wasm */
   export type ValueType = "f32" | "f64" | "i32" | "i64";
-  /** @category Wasm */
+  /** A value that can be exported from a WebAssembly module instance.
+   *
+   * @category Wasm */
   export type ExportValue = Function | Global | Memory | Table;
-  /** @category Wasm */
+  /** The set of values exported by a WebAssembly module instance, keyed by
+   * export name.
+   *
+   * @category Wasm */
   export type Exports = Record<string, ExportValue>;
-  /** @category Wasm */
+  /** A value that can be supplied to a WebAssembly module as an import.
+   *
+   * @category Wasm */
   export type ImportValue = ExportValue | number;
-  /** @category Wasm */
+  /** The set of values imported from a single module, keyed by import name.
+   *
+   * @category Wasm */
   export type ModuleImports = Record<string, ImportValue>;
-  /** @category Wasm */
+  /** The import object supplied when instantiating a WebAssembly module,
+   * grouping imported values by module name.
+   *
+   * @category Wasm */
   export type Imports = Record<string, ModuleImports>;
 
   /**
@@ -404,6 +448,84 @@ declare function dispatchEvent(event: Event): boolean;
  */
 declare var console: Console;
 
+/**
+ * A brand and version pair describing a user agent, as returned by
+ * {@linkcode NavigatorUAData}.
+ *
+ * @category Platform
+ */
+interface NavigatorUABrandVersion {
+  readonly brand: string;
+  readonly version: string;
+}
+
+/**
+ * The values returned by {@linkcode NavigatorUAData.getHighEntropyValues}.
+ *
+ * @category Platform
+ */
+interface UADataValues {
+  readonly brands?: NavigatorUABrandVersion[];
+  readonly mobile?: boolean;
+  readonly platform?: string;
+  readonly architecture?: string;
+  readonly bitness?: string;
+  readonly formFactors?: string[];
+  readonly fullVersionList?: NavigatorUABrandVersion[];
+  readonly model?: string;
+  readonly platformVersion?: string;
+  readonly uaFullVersion?: string;
+  readonly wow64?: boolean;
+}
+
+/**
+ * The low-entropy values returned by {@linkcode NavigatorUAData.toJSON}.
+ *
+ * @category Platform
+ */
+interface UALowEntropyJSON {
+  readonly brands: NavigatorUABrandVersion[];
+  readonly mobile: boolean;
+  readonly platform: string;
+}
+
+/**
+ * Gives access to information about the runtime's user agent, exposed via
+ * {@linkcode Navigator.userAgentData}. This is the
+ * [User-Agent Client Hints API](https://developer.mozilla.org/en-US/docs/Web/API/NavigatorUAData).
+ *
+ * @category Platform
+ */
+interface NavigatorUAData {
+  /** A list of the runtime's brand and major version. */
+  readonly brands: NavigatorUABrandVersion[];
+  /** Whether the runtime reports itself as a mobile device. Always `false` in Deno. */
+  readonly mobile: boolean;
+  /** The platform the runtime is running on (e.g. `"Linux"`, `"macOS"`, `"Windows"`). */
+  readonly platform: string;
+  /**
+   * Resolves with the requested high-entropy values. Unrecognized hints are
+   * ignored. The low-entropy values (`brands`, `mobile`, `platform`) are always
+   * included.
+   */
+  getHighEntropyValues(hints: string[]): Promise<UADataValues>;
+  /** Returns a JSON representation of the low-entropy values. */
+  toJSON(): UALowEntropyJSON;
+}
+
+/**
+ * Constructor for {@linkcode NavigatorUAData} objects.
+ *
+ * Note: This constructor cannot be used to create new `NavigatorUAData`
+ * instances in Deno.
+ *
+ * @category Platform
+ */
+declare var NavigatorUAData: {
+  readonly prototype: NavigatorUAData;
+  new (): never;
+};
+
 /** @category Platform */
 interface DOMStringList {
   /** Returns the number of strings in strings. */
@@ -439,7 +561,11 @@ interface ErrorEvent extends Event {
   readonly error: any;
 }
 
-/** @category Events */
+/** The constructor object for {@linkcode ErrorEvent}, used to construct an
+ * event describing an uncaught error, such as the one dispatched on the global
+ * scope as `error`.
+ *
+ * @category Events */
 declare var ErrorEvent: {
   readonly prototype: ErrorEvent;
   new (type: string, eventInitDict?: ErrorEventInit): ErrorEvent;
@@ -457,7 +583,11 @@ interface PromiseRejectionEvent extends Event {
   readonly reason: any;
 }
 
-/** @category Events */
+/** The constructor object for {@linkcode PromiseRejectionEvent}, used to
+ * construct the event dispatched on the global scope as `unhandledrejection`
+ * and `rejectionhandled` when a promise is rejected without a handler.
+ *
+ * @category Events */
 declare var PromiseRejectionEvent: {
   readonly prototype: PromiseRejectionEvent;
   new (
@@ -737,13 +867,22 @@ interface Performance extends EventTarget {
   toJSON(): any;
 }
 
-/** @category Performance */
+/** The constructor object for {@linkcode Performance}.
+ *
+ * The `Performance` instance is accessed via the global {@linkcode performance}
+ * property rather than constructed directly, so calling the constructor throws.
+ *
+ * @category Performance */
 declare var Performance: {
   readonly prototype: Performance;
   new (): never;
 };
 
-/** @category Performance */
+/** The global {@linkcode Performance} instance, providing access to
+ * high-resolution timing via `performance.now()` and the user-timing marks and
+ * measures APIs.
+ *
+ * @category Performance */
 declare var performance: Performance;
 
 /** @category Performance */
@@ -846,6 +985,71 @@ declare var PerformanceMeasure: {
   new (): never;
 };
 
+/** A list of {@linkcode PerformanceEntry} objects passed to a
+ * {@linkcode PerformanceObserver} callback via its `observe()` method.
+ *
+ * @category Performance
+ */
+interface PerformanceObserverEntryList {
+  /** Returns all explicitly observed performance entries. */
+  getEntries(): PerformanceEntry[];
+  /** Returns the observed performance entries with the given name. */
+  getEntriesByName(name: string, type?: string): PerformanceEntry[];
+  /** Returns the observed performance entries with the given entry type. */
+  getEntriesByType(type: string): PerformanceEntry[];
+}
+
+/** A list of {@linkcode PerformanceEntry} objects passed to a
+ * {@linkcode PerformanceObserver} callback via its `observe()` method.
+ *
+ * @category Performance
+ */
+declare var PerformanceObserverEntryList: {
+  readonly prototype: PerformanceObserverEntryList;
+  new (): never;
+};
+
+/** The callback invoked when the observed set of performance entries grows.
+ *
+ * @category Performance
+ */
+interface PerformanceObserverCallback {
+  (list: PerformanceObserverEntryList, observer: PerformanceObserver): void;
+}
+
+/** Observes performance measurement events and is notified of new
+ * {@linkcode PerformanceEntry} objects as they are recorded in the performance
+ * timeline.
+ *
+ * @category Performance
+ */
+interface PerformanceObserver {
+  /** Stops the observer from receiving any further performance entries. */
+  disconnect(): void;
+  /** Specifies the set of performance entry types to observe. */
+  observe(
+    options?: {
+      entryTypes?: string[];
+      type?: string;
+      buffered?: boolean;
+    },
+  ): void;
+  /** Returns the current list of buffered performance entries, emptying it. */
+  takeRecords(): PerformanceEntry[];
+}
+
+/** Observes performance measurement events and is notified of new
+ * {@linkcode PerformanceEntry} objects as they are recorded in the performance
+ * timeline.
+ *
+ * @category Performance
+ */
+declare var PerformanceObserver: {
+  readonly prototype: PerformanceObserver;
+  readonly supportedEntryTypes: readonly string[];
+  new (callback: PerformanceObserverCallback): PerformanceObserver;
+};
+
 /** @category Events */
 interface CustomEventInit<T = any> extends EventInit {
   detail?: T;
@@ -858,7 +1062,11 @@ interface CustomEvent<T = any> extends Event {
   readonly detail: T;
 }
 
-/** @category Events */
+/** The constructor object for {@linkcode CustomEvent}, used to construct an
+ * event that can carry arbitrary application-defined data via its `detail`
+ * property.
+ *
+ * @category Events */
 declare var CustomEvent: {
   readonly prototype: CustomEvent;
   new <T>(typeArg: string, eventInitDict?: CustomEventInit<T>): CustomEvent<T>;
@@ -884,3 +1092,40 @@ declare function fetch(
   input: RequestInfo | URL,
   init?: RequestInit & { client?: Deno.HttpClient },
 ): Promise<Response>;
+
+/** @category Platform */
+interface Math {
+  /**
+   * Returns the sum of the given values using a more precise algorithm than a
+   * naive `+`-based reduction, avoiding the floating-point rounding errors
+   * that accumulate when summing many numbers.
+   *
+   * [MDN Reference](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/sumPrecise)
+   */
+  sumPrecise(values: Iterable<number>): number;
+}
+
+/** The `Intl` namespace groups the
+ * [ECMAScript Internationalization API](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl)
+ * constructors and functions.
+ *
+ * This declaration augments the standard `Intl` namespace with members that are
+ * not yet part of the bundled TypeScript library definitions.
+ *
+ * @category Intl */
+declare namespace Intl {
+  /** Augments the standard {@linkcode Intl.Locale} interface with members not
+   * yet present in the bundled TypeScript library definitions.
+   *
+   * @category Intl */
+  export interface Locale {
+    /**
+     * Returns the variant subtags of the locale as a single string, with
+     * subtags separated by `-`. Returns `undefined` if the locale has no
+     * variant subtags.
+     *
+     * [MDN Reference](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Locale/variants)
+     */
+    readonly variants: string | undefined;
+  }
+}

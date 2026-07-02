@@ -309,6 +309,77 @@ Deno.test("createPublicKey() RSA", () => {
   assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
 });
 
+// The modulus in this SPKI is 32 bytes starting with 0xDF (high bit set),
+// and lacks the leading 0x00 byte that strict DER requires for positive
+// INTEGERs. Node/OpenSSL accept it; this exercises the lenient fallback.
+const nonCanonicalRsaSpki =
+  "MDswDQYJKoZIhvcNAQEBBQADKgAwJwIg3wUvyMOfq7G6dT5bIM6keoShd9YGwP7PIc2Tfa8Q99ECAwEAAQ==";
+
+Deno.test("createPublicKey() accepts non-canonical RSA SPKI", () => {
+  const spki = Buffer.from(nonCanonicalRsaSpki, "base64");
+  const key = createPublicKey({ key: spki, format: "der", type: "spki" });
+
+  assertEquals(key.type, "public");
+  assertEquals(key.asymmetricKeyType, "rsa");
+  assertEquals(key.asymmetricKeyDetails?.modulusLength, 256);
+  assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
+
+  // Round-trip through JWK to confirm the modulus parsed as the expected
+  // unsigned 32-byte value (base64url of the leading 0xDF... bytes).
+  const jwk = key.export({ format: "jwk" });
+  assertEquals(jwk.kty, "RSA");
+  assertEquals(
+    jwk.n,
+    "3wUvyMOfq7G6dT5bIM6keoShd9YGwP7PIc2Tfa8Q99E",
+  );
+  assertEquals(jwk.e, "AQAB");
+});
+
+// A real 2048-bit RSA SPKI with the modulus INTEGER's leading 0x00 stripped
+// (payload starts 0xC1, high bit set). Unlike the 256-bit fixture above, the
+// inner SEQUENCE and modulus INTEGER use long-form DER lengths (> 127 bytes),
+// exercising the multi-byte length-decoding path of the lenient parser.
+const nonCanonicalRsaSpki2048 =
+  "MIIBITANBgkqhkiG9w0BAQEFAAOCAQ4AMIIBCQKCAQDBrXYgS+MmJHsQV/SJhI1iOx9rEDKpbxx8L224GWBYRL+18/9n/hV+WrJlHj8YR+9oFy5k+cb/oTfOuU0Sa/imxZsHt8DYqQsSBiefKvZ8/OgrhUapnXIs3uh2Qg6ck0RoFksAAvpck1nAxwL9tIc32Z1qesIgAO8U+PyhJEUpv1cYvNpACVRnaNx9izlLGjvlhilwB4UQxDZDGCahnsig5UTt+24K3thJTt6aYAYyHA/9aPLBJn0D2l7GM9IpTeaX5YQr+qjyLMzjK5rKZHhP9GxyobGtFCr2v/qmpnd6J7LD+xWr4STI3iEHOFxmsbd/f/tYrdgpxnmakOZgxuChAgMBAAE=";
+
+Deno.test("createPublicKey() accepts non-canonical RSA SPKI (long-form lengths)", () => {
+  const spki = Buffer.from(nonCanonicalRsaSpki2048, "base64");
+  const key = createPublicKey({ key: spki, format: "der", type: "spki" });
+
+  assertEquals(key.type, "public");
+  assertEquals(key.asymmetricKeyType, "rsa");
+  assertEquals(key.asymmetricKeyDetails?.modulusLength, 2048);
+  assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
+
+  const jwk = key.export({ format: "jwk" });
+  assertEquals(jwk.kty, "RSA");
+  assertEquals(
+    jwk.n,
+    "wa12IEvjJiR7EFf0iYSNYjsfaxAyqW8cfC9tuBlgWES_tfP_Z_4VflqyZR4_GEfvaBcuZPnG_6E3zrlNEmv4psWbB7fA2KkLEgYnnyr2fPzoK4VGqZ1yLN7odkIOnJNEaBZLAAL6XJNZwMcC_bSHN9mdanrCIADvFPj8oSRFKb9XGLzaQAlUZ2jcfYs5Sxo75YYpcAeFEMQ2QxgmoZ7IoOVE7ftuCt7YSU7emmAGMhwP_WjywSZ9A9pexjPSKU3ml-WEK_qo8izM4yuaymR4T_RscqGxrRQq9r_6pqZ3eieyw_sVq-EkyN4hBzhcZrG3f3_7WK3YKcZ5mpDmYMbgoQ",
+  );
+  assertEquals(jwk.e, "AQAB");
+});
+
+Deno.test("createPublicKey() rejects malformed non-canonical RSA SPKI", () => {
+  const spki = Buffer.from(nonCanonicalRsaSpki, "base64");
+  // Append a trailing NULL inside the inner RSAPublicKey SEQUENCE, growing the
+  // enclosing lengths by 2 to keep the outer SPKI structurally valid so it
+  // reaches the lenient parser (rather than being rejected earlier by the SPKI
+  // decoder). The lenient parser must then reject it via its pos != sequence_end
+  // check. Offsets in this fixture: [1] outer SEQUENCE length, [18] BIT STRING
+  // length, [21] inner SEQUENCE length (byte [19] is the BIT STRING unused-bits
+  // count and byte [22] is the modulus INTEGER tag, so neither is a length).
+  spki[1] += 2;
+  spki[18] += 2;
+  spki[21] += 2;
+  const malformed = Buffer.concat([spki, Buffer.from([0x05, 0x00])]);
+
+  assertThrows(
+    () => createPublicKey({ key: malformed, format: "der", type: "spki" }),
+    Error,
+  );
+});
+
 // openssl ecparam -name prime256v1 -genkey -noout -out a.pem
 // openssl ec -in a.pem -pubout -out b.pem
 const ecPublicKey = Deno.readTextFileSync(

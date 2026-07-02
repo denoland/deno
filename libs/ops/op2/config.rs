@@ -30,6 +30,8 @@ pub struct MacroConfig {
   pub async_lazy: bool,
   /// Marks a deferred async function (async must also be true).
   pub async_deferred: bool,
+  /// Marks a top-level op as requiring a JS function prototype.
+  pub constructable: bool,
   /// Marks an op as re-entrant (can safely call other ops).
   pub reentrant: bool,
   /// Marks an op as a method on a wrapped object.
@@ -102,6 +104,7 @@ impl MacroConfig {
       let flag = parse2::<Flags>(meta.to_token_stream())?;
 
       match &flag {
+        Flags::Constructable => config.constructable = true,
         Flags::Constructor => config.constructor = true,
         Flags::Getter => config.getter = true,
         Flags::Setter => config.setter = true,
@@ -186,6 +189,7 @@ enum AsyncMode {
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 enum Flags {
   Async(AsyncMode),
+  Constructable,
   Constructor,
   Fast(Option<String>),
   Getter,
@@ -235,6 +239,9 @@ impl Parse for Flags {
     let flag = if lookahead.peek(kw::static_method) {
       input.parse::<kw::static_method>()?;
       Flags::StaticMethod
+    } else if lookahead.peek(kw::constructable) {
+      input.parse::<kw::constructable>()?;
+      Flags::Constructable
     } else if lookahead.peek(kw::constructor) {
       input.parse::<kw::constructor>()?;
       Flags::Constructor
@@ -402,6 +409,7 @@ mod kw {
   use syn::custom_keyword;
 
   custom_keyword!(constructor);
+  custom_keyword!(constructable);
   custom_keyword!(static_method);
   custom_keyword!(getter);
   custom_keyword!(setter);
@@ -467,6 +475,13 @@ mod tests {
       "(promise_id)",
       MacroConfig {
         promise_id: true,
+        ..Default::default()
+      },
+    );
+    test_parse(
+      "(constructable)",
+      MacroConfig {
+        constructable: true,
         ..Default::default()
       },
     );

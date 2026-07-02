@@ -412,6 +412,10 @@ Deno.test(
     const webStream = fileHandle.readableWebStream();
 
     assert(webStream instanceof ReadableStream);
+    assertEquals(
+      Deno.inspect(webStream),
+      'ReadableStream { locked: false, state: "readable", supportsBYOB: true }',
+    );
 
     const reader = webStream.getReader();
     const chunks: Uint8Array[] = [];

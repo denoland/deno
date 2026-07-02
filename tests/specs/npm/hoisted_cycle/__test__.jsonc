@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "tests": {
+    "cycle_does_not_hang_nested_walk": {
+      // Root directly requires hoisted-cycle-a@2.0.0 and
+      // hoisted-cycle-b@2.0.0, so both hoist to the top level. The
+      // transitive trigger@1.0.0 pulls in a@1.0.0 and b@1.0.0, which
+      // form a cycle (a@1 deps b@1, b@1 deps a@1) and neither wins
+      // hoisting. Regression test: without ancestor walk-up the BFS
+      // would keep producing deeper paths
+      // (.../trigger/node_modules/a/node_modules/b/node_modules/a/...)
+      // and hang. The ancestor check should short-circuit when a
+      // package's dep is already provided by an ancestor on the path.
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run --allow-read main.ts",
+        "output": "top a: 2.0.0\ntop b: 2.0.0\nnested a: 1.0.0\nnested b: 1.0.0\n"
+      }]
+    }
+  }
+}

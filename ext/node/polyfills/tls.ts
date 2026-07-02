@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const { getExecArgvOptionValue, getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
@@ -319,7 +319,7 @@ function validateDefaultCACertificates(certs: string[]) {
         );
       }
       throw makeNodeCryptoError(
-        "ERR_OSSL_PEM_ASN1_LIB",
+        "ERR_OSSL_PEM_ASN.1_ENCODING_ROUTINES",
         "error:0680009B:asn1 encoding routines::too long",
       );
     }

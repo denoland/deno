@@ -1,11 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials ban-untagged-todo
+// deno-lint-ignore-file ban-untagged-todo
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -18,26 +17,38 @@ const {
   ArrayPrototypeAt,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypePushApply,
+  ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   ObjectDefineProperty,
   ObjectGetPrototypeOf,
+  ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
-  Promise,
+  PromisePrototype,
   PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
   ReflectApply,
+  SafeArrayIterator,
   SafeFinalizationRegistry,
   SafeMap,
+  SafeMapIterator,
   SymbolHasInstance,
 } = primordials;
-const { WeakReference } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { WeakReference } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 
 // Can't delete when weakref count reaches 0 as it could increment again.
 // Only GC can be used as a valid time to clean up the channels map.
 class WeakRefMap extends SafeMap {
   #finalizers = new SafeFinalizationRegistry((key) => {
-    this.delete(key);
+    // Finalization can run after a new Channel for the same key has already
+    // replaced the previous WeakRef (test-diagnostics-channel-gc-race-
+    // condition exercises this race). Only drop the entry if the live
+    // WeakRef is empty; otherwise the new Channel would be orphaned and
+    // `channel(name)` would hand out a fresh one, breaking identity.
+    if (!this.has(key)) this.delete(key);
   });
 
   set(key, value) {
@@ -47,6 +58,10 @@ class WeakRefMap extends SafeMap {
 
   get(key) {
     return super.get(key)?.get();
+  }
+
+  has(key) {
+    return !!this.get(key);
   }
 
   incRef(key) {
@@ -99,6 +114,10 @@ function wrapStoreRun(store, data, next, transform = defaultTransform) {
 class ActiveChannel {
   subscribe(subscription) {
     validateFunction(subscription, "subscription");
+    // Replace the subscriber array with a copy so any in-flight publish that
+    // captured the previous reference keeps iterating over the snapshot
+    // it started with.
+    this._subscribers = ArrayPrototypeSlice(this._subscribers);
     ArrayPrototypePush(this._subscribers, subscription);
     channels.incRef(this.name);
   }
@@ -107,7 +126,14 @@ class ActiveChannel {
     const index = ArrayPrototypeIndexOf(this._subscribers, subscription);
     if (index === -1) return false;
 
-    ArrayPrototypeSplice(this._subscribers, index, 1);
+    // Build a new array via slice + pushApply so a concurrent publish keeps
+    // iterating over its original snapshot - matches Node and lets
+    // unsubscribe-during-publish still deliver to the remaining subscribers
+    // in that publish call.
+    const before = ArrayPrototypeSlice(this._subscribers, 0, index);
+    const after = ArrayPrototypeSlice(this._subscribers, index + 1);
+    this._subscribers = before;
+    ArrayPrototypePushApply(this._subscribers, after);
 
     channels.decRef(this.name);
     maybeMarkInactive(this);
@@ -139,9 +165,13 @@ class ActiveChannel {
   }
 
   publish(data) {
-    for (let i = 0; i < (this._subscribers?.length || 0); i++) {
+    // Capture the subscriber array up front so that subscribe/unsubscribe
+    // calls from inside a handler (which replace `this._subscribers` with a
+    // new array) don't shift or shrink the array we're walking.
+    const subscribers = this._subscribers;
+    for (let i = 0; i < (subscribers?.length || 0); i++) {
       try {
-        const onMessage = this._subscribers[i];
+        const onMessage = subscribers[i];
         onMessage(data, this.name);
       } catch (err) {
         nextTick(() => {
@@ -160,7 +190,7 @@ class ActiveChannel {
       return ReflectApply(fn, thisArg, args);
     };
 
-    for (const entry of this._stores.entries()) {
+    for (const entry of new SafeMapIterator(this._stores)) {
       const store = entry[0];
       const transform = entry[1];
       run = wrapStoreRun(store, data, run, transform);
@@ -251,6 +281,10 @@ const traceEvents = [
 ];
 
 function assertChannel(value, name) {
+  // Channel defines a custom [Symbol.hasInstance] (accepting both Channel and
+  // ActiveChannel prototypes), so this instanceof must stay to preserve that
+  // behavior; ObjectPrototypeIsPrototypeOf would bypass it.
+  // deno-lint-ignore prefer-primordials
   if (!(value instanceof Channel)) {
     throw new ERR_INVALID_ARG_TYPE(name, ["Channel"], value);
   }
@@ -270,13 +304,13 @@ function tracingChannelFrom(nameOrChannels, name) {
   throw new ERR_INVALID_ARG_TYPE("nameOrChannels", [
     "string",
     "object",
-    "Channel",
+    "TracingChannel",
   ], nameOrChannels);
 }
 
 class TracingChannel {
   constructor(nameOrChannels) {
-    for (const eventName of traceEvents) {
+    for (const eventName of new SafeArrayIterator(traceEvents)) {
       ObjectDefineProperty(this, eventName, {
         __proto__: null,
         value: tracingChannelFrom(nameOrChannels, eventName),
@@ -293,7 +327,7 @@ class TracingChannel {
   }
 
   subscribe(handlers) {
-    for (const name of traceEvents) {
+    for (const name of new SafeArrayIterator(traceEvents)) {
       if (!handlers[name]) continue;
 
       this[name]?.subscribe(handlers[name]);
@@ -303,7 +337,7 @@ class TracingChannel {
   unsubscribe(handlers) {
     let done = true;
 
-    for (const name of traceEvents) {
+    for (const name of new SafeArrayIterator(traceEvents)) {
       if (!handlers[name]) continue;
 
       if (!this[name]?.unsubscribe(handlers[name])) {
@@ -314,7 +348,7 @@ class TracingChannel {
     return done;
   }
 
-  traceSync(fn, context = {}, thisArg, ...args) {
+  traceSync(fn, context = { __proto__: null }, thisArg, ...args) {
     if (!this.hasSubscribers) {
       return ReflectApply(fn, thisArg, args);
     }
@@ -336,7 +370,7 @@ class TracingChannel {
     });
   }
 
-  tracePromise(fn, context = {}, thisArg, ...args) {
+  tracePromise(fn, context = { __proto__: null }, thisArg, ...args) {
     if (!this.hasSubscribers) {
       return ReflectApply(fn, thisArg, args);
     }
@@ -346,7 +380,10 @@ class TracingChannel {
     function reject(err) {
       context.error = err;
       error.publish(context);
-      asyncStart.publish(context);
+      // Run (not just publish) the asyncStart stores so transforms bound via
+      // bindStore are invoked. Promises have no "after" continuation point, so
+      // the stores only wrap a no-op rather than the rest of the chain.
+      asyncStart.runStores(context, () => {});
       // TODO: Is there a way to have asyncEnd _after_ the continuation?
       asyncEnd.publish(context);
       return PromiseReject(err);
@@ -354,7 +391,7 @@ class TracingChannel {
 
     function resolve(result) {
       context.result = result;
-      asyncStart.publish(context);
+      asyncStart.runStores(context, () => {});
       // TODO: Is there a way to have asyncEnd _after_ the continuation?
       asyncEnd.publish(context);
       return result;
@@ -364,7 +401,7 @@ class TracingChannel {
       try {
         let promise = ReflectApply(fn, thisArg, args);
         // Convert thenables to native promises
-        if (!(promise instanceof Promise)) {
+        if (!ObjectPrototypeIsPrototypeOf(PromisePrototype, promise)) {
           promise = PromiseResolve(promise);
         }
         return PromisePrototypeThen(promise, resolve, reject);
@@ -378,7 +415,13 @@ class TracingChannel {
     });
   }
 
-  traceCallback(fn, position = -1, context = {}, thisArg, ...args) {
+  traceCallback(
+    fn,
+    position = -1,
+    context = { __proto__: null },
+    thisArg,
+    ...args
+  ) {
     if (!this.hasSubscribers) {
       return ReflectApply(fn, thisArg, args);
     }

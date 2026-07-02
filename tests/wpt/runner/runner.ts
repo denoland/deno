@@ -7,7 +7,7 @@ import {
   toFileUrl,
 } from "../../../tools/util.js";
 import { assert, denoBinary, ManifestTestOptions, runPy } from "./utils.ts";
-import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
+import { DOMParser } from "jsr:@b-fuze/deno-dom@0.1.56/wasm";
 
 export async function runWithTestUtil<T>(
   verbose: boolean,
@@ -179,7 +179,12 @@ async function runSingleTestInner(
     interval = setInterval(() => {
       const passedTime = performance.now() - start;
       if (passedTime > timeout) {
-        proc.kill("SIGINT");
+        try {
+          proc.kill("SIGINT");
+        } catch {
+          // Race: proc may have terminated between the for-await loop
+          // draining stderr and `clearInterval` running in `finally`.
+        }
       }
     }, 1000);
     for await (const line of lines as AsyncIterable<string>) {
