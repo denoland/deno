@@ -101,6 +101,10 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
   // Global flags (log-level, quiet)
   global_args_parse(&result, &mut flags);
 
+  // --env-file is accepted globally; parse it here so every subcommand that
+  // supports it picks it up (no-op when absent).
+  env_file_arg_parse(&result, &mut flags);
+
   // Unstable feature flags (applies to all subcommands)
   unstable_args_parse(&result, &mut flags);
 
@@ -148,6 +152,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("bump-version") => bump_version_parse(&result, &mut flags)?,
     Some("ci") => ci_parse(&result, &mut flags),
     Some("desktop") => desktop_parse(&result, &mut flags),
+    Some("pack") => pack_parse(&result, &mut flags),
     Some("x") => x_parse(&result, &mut flags),
     Some("json_reference") => json_reference_parse(&mut flags),
     Some("help") => help_subcommand_parse(&result, &mut flags),
@@ -2293,6 +2298,28 @@ fn add_parse(result: &ParseResult, flags: &mut Flags) {
     lockfile_only: result.get_bool("lockfile-only"),
     save_exact: result.get_bool("save-exact"),
     package_json: result.get_bool("package-json"),
+  });
+}
+
+fn pack_parse(result: &ParseResult, flags: &mut Flags) {
+  config_args_parse(result, flags);
+  env_file_arg_parse(result, flags);
+  let include = result
+    .get_many("files")
+    .map(|v| v.iter().map(|s| s.to_string()).collect())
+    .unwrap_or_default();
+  let ignore = result
+    .get_many("ignore")
+    .map(|v| v.iter().map(|s| s.to_string()).collect())
+    .unwrap_or_default();
+  flags.subcommand = DenoSubcommand::Pack(PackFlags {
+    files: FileFlags { include, ignore },
+    output: result.get_one("output").map(|s| s.to_string()),
+    dry_run: result.get_bool("dry-run"),
+    allow_slow_types: result.get_bool("allow-slow-types"),
+    allow_dirty: result.get_bool("allow-dirty"),
+    set_version: result.get_one("set-version").map(|s| s.to_string()),
+    no_source_maps: result.get_bool("no-source-maps"),
   });
 }
 

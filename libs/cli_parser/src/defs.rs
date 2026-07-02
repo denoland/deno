@@ -2022,6 +2022,13 @@ pub static HELP_SUBCOMMAND: CommandDef = CommandDef {
 // ============================================================
 
 pub static GLOBAL_ARGS: &[ArgDef] = &[
+  ArgDef::new("env-file")
+    .long("env-file")
+    .long_aliases(&["env"])
+    .action(ArgAction::Append)
+    .num_args(NumArgs::Optional)
+    .require_equals()
+    .global(),
   ArgDef::new("help")
     .short('h')
     .long("help")
@@ -2067,6 +2074,60 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: true,
+  passthrough: false,
+};
+
+pub static PACK_SUBCOMMAND: CommandDef = CommandDef {
+  name: "pack",
+  about: "Create a tarball of the package",
+  aliases: &[],
+  args: &[
+    ArgDef::new("files")
+      .positional()
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore),
+    ArgDef::new("output")
+      .long("output")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("dry-run").long("dry-run").set_true(),
+    ArgDef::new("allow-slow-types")
+      .long("allow-slow-types")
+      .set_true(),
+    ArgDef::new("allow-dirty").long("allow-dirty").set_true(),
+    ArgDef::new("set-version")
+      .long("set-version")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("no-source-maps")
+      .long("no-source-maps")
+      .set_true(),
+    ArgDef::new("ignore")
+      .long("ignore")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("config")
+      .short('c')
+      .long("config")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("no-config")
+      .long("no-config")
+      .set_true()
+      .conflicts_with(&["config"]),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+  ],
+  arg_groups: &[UNSTABLE_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
   passthrough: false,
 };
 
@@ -2236,6 +2297,7 @@ pub static DENO_ROOT: CommandDef = CommandDef {
     BUMP_VERSION_SUBCOMMAND,
     CI_SUBCOMMAND,
     DESKTOP_SUBCOMMAND,
+    PACK_SUBCOMMAND,
     X_SUBCOMMAND,
     JSON_REFERENCE_SUBCOMMAND,
     HELP_SUBCOMMAND,
