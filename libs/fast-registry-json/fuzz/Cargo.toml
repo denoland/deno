@@ -1,0 +1,19 @@
+[package]
+name = "fast-registry-json-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+fast-registry-json = { path = ".." }
+libfuzzer-sys = "0.4"
+
+[[bin]]
+name = "packument_index"
+path = "fuzz_targets/packument_index.rs"
+test = false
+doc = false
+bench = false
