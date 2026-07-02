@@ -1529,6 +1529,18 @@ impl CliOptions {
     | DenoSubcommand::Test(TestFlags {
       watch: Some(WatchFlagsWithPaths { paths, .. }),
       ..
+    })
+    | DenoSubcommand::Bench(BenchFlags {
+      watch: Some(WatchFlagsWithPaths { paths, .. }),
+      ..
+    })
+    | DenoSubcommand::Fmt(FmtFlags {
+      watch: Some(WatchFlagsWithPaths { paths, .. }),
+      ..
+    })
+    | DenoSubcommand::Lint(LintFlags {
+      watch: Some(WatchFlagsWithPaths { paths, .. }),
+      ..
     }) = &self.flags.subcommand
     {
       full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));

@@ -2008,7 +2008,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
           .action(ArgAction::SetTrue),
       )
       .arg(permit_no_files_arg())
-      .arg(watch_arg(false))
+      .arg(watch_arg(true))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
       .arg(script_arg().last(true))
@@ -2983,7 +2983,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .value_hint(ValueHint::AnyPath),
       )
       .arg(permit_no_files_arg())
-      .arg(watch_arg(false))
+      .arg(watch_arg(true))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
       .arg(
@@ -3921,7 +3921,7 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
           .value_hint(ValueHint::AnyPath),
       )
       .arg(permit_no_files_arg())
-      .arg(watch_arg(false))
+      .arg(watch_arg(true))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
       .arg(allow_import_arg())
@@ -6721,7 +6721,7 @@ fn bench_parse(
     json,
     no_run,
     permit_no_files: permit_no_files_parse(matches),
-    watch: watch_arg_parse(matches)?,
+    watch: watch_arg_parse_with_paths(matches)?,
   });
 
   Ok(())
@@ -7226,7 +7226,7 @@ fn fmt_parse(
     prose_wrap,
     no_semicolons,
     no_editorconfig,
-    watch: watch_arg_parse(matches)?,
+    watch: watch_arg_parse_with_paths(matches)?,
     unstable_component,
     unstable_sql,
   });
@@ -7708,7 +7708,7 @@ fn lint_parse(
     permit_no_files: permit_no_files_parse(matches),
     json,
     compact,
-    watch: watch_arg_parse(matches)?,
+    watch: watch_arg_parse_with_paths(matches)?,
   });
   Ok(())
 }
@@ -9964,6 +9964,23 @@ mod tests {
       }
     );
 
+    let r = flags_from_vec(svec!["deno", "fmt", "--watch=foo,bar"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt(FmtFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo"), String::from("bar")],
+            no_clear_screen: false,
+            exclude: vec![],
+          }),
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+
     let r = flags_from_vec(svec![
       "deno",
       "fmt",
@@ -9995,8 +10012,9 @@ mod tests {
           no_editorconfig: false,
           unstable_component: true,
           unstable_sql: true,
-          watch: Some(WatchFlags {
+          watch: Some(WatchFlagsWithPaths {
             hmr: false,
+            paths: vec![],
             no_clear_screen: true,
             exclude: vec![],
           })
@@ -10294,6 +10312,23 @@ mod tests {
       }
     );
 
+    let r = flags_from_vec(svec!["deno", "lint", "--watch=foo,bar"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint(LintFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo"), String::from("bar")],
+            no_clear_screen: false,
+            exclude: vec![],
+          }),
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+
     let r = flags_from_vec(svec![
       "deno",
       "lint",
@@ -10318,8 +10353,9 @@ mod tests {
           permit_no_files: false,
           json: false,
           compact: false,
-          watch: Some(WatchFlags {
+          watch: Some(WatchFlagsWithPaths {
             hmr: false,
+            paths: vec![],
             no_clear_screen: true,
             exclude: vec![],
           }),
@@ -14942,6 +14978,31 @@ mod tests {
           },
           watch: Some(Default::default()),
           permit_no_files: false
+        }),
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bench_watch_with_paths() {
+    let r = flags_from_vec(svec!["deno", "bench", "--watch=foo,bar"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Bench(BenchFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo"), String::from("bar")],
+            no_clear_screen: false,
+            exclude: vec![],
+          }),
+          ..Default::default()
         }),
         permissions: PermissionFlags {
           no_prompt: true,
