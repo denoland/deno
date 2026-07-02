@@ -63,3 +63,7 @@ harness = false
 [[bench]]
 name = "body"
 harness = false
+
+[[bench]]
+name = "formdata"
+harness = false

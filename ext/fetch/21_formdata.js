@@ -313,32 +313,30 @@ function formDataToBlob(formData) {
   );
   const chunks = [];
   const prefix = `--${boundary}\r\nContent-Disposition: form-data; name="`;
+  // Each extra string part passed to the Blob constructor adds per-chunk
+  // overhead, so coalesce contiguous text and only break on Blob/File values.
+  let textBuf = "";
 
   // deno-lint-ignore prefer-primordials
   for (const { 0: name, 1: value } of formData) {
     if (typeof value === "string") {
-      ArrayPrototypePush(
-        chunks,
-        prefix + escape(name) + '"' + CRLF + CRLF +
-          StringPrototypeReplace(
-            value,
-            FORM_DETA_SERIALIZE_PATTERN,
-            CRLF,
-          ) + CRLF,
-      );
+      textBuf += prefix + escape(name) + '"' + CRLF + CRLF +
+        StringPrototypeReplace(
+          value,
+          FORM_DETA_SERIALIZE_PATTERN,
+          CRLF,
+        ) + CRLF;
     } else {
-      ArrayPrototypePush(
-        chunks,
-        prefix + escape(name) + `"; filename="${escape(value.name, true)}"` +
-          CRLF +
-          `Content-Type: ${value.type || "application/octet-stream"}\r\n\r\n`,
-        value,
-        CRLF,
-      );
+      textBuf += prefix + escape(name) +
+        `"; filename="${escape(value.name, true)}"` + CRLF +
+        `Content-Type: ${value.type || "application/octet-stream"}\r\n\r\n`;
+      ArrayPrototypePush(chunks, textBuf, value);
+      textBuf = CRLF;
     }
   }
 
-  ArrayPrototypePush(chunks, `--${boundary}--`);
+  textBuf += `--${boundary}--`;
+  ArrayPrototypePush(chunks, textBuf);
 
   return new Blob(chunks, {
     type: "multipart/form-data; boundary=" + boundary,
