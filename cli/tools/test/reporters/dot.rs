@@ -1,5 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use deno_print::print;
+use deno_print::println;
+
 use super::common;
 use super::fmt::to_relative_path_or_remote_url;
 use super::*;
@@ -14,7 +17,6 @@ pub struct DotTestReporter {
   failure_format_options: TestFailureFormatOptions,
 }
 
-#[allow(clippy::print_stdout, reason = "test reporter")]
 impl DotTestReporter {
   pub fn new(
     cwd: Url,
@@ -90,7 +92,6 @@ fn fmt_cancelled() -> String {
   colors::gray("!").to_string()
 }
 
-#[allow(clippy::print_stdout, reason = "test reporter")]
 impl TestReporter for DotTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 

@@ -59,6 +59,7 @@ members = [
   "libs/ops",
   "libs/ops/compile_test_runner",
   "libs/package_json",
+  "libs/print",
   "libs/resolver",
   "libs/serde_v8",
   "libs/typescript_go_client",
@@ -164,6 +165,7 @@ deno_npmrc = { version = "0.14.0", path = "./libs/npmrc" }
 deno_ops = { version = "0.282.0", path = "./libs/ops" }
 deno_package_json = { version = "0.55.0", default-features = false, path = "./libs/package_json" }
 deno_permissions = { version = "0.112.0", path = "./runtime/permissions" }
+deno_print = { version = "0.1.0", path = "./libs/print" }
 deno_resolver = { version = "0.84.0", path = "./libs/resolver" }
 deno_runtime = { version = "0.261.0", path = "./runtime" }
 deno_snapshots = { version = "0.68.0", path = "./cli/snapshot" }
