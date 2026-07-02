@@ -15,6 +15,7 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
+use deno_graph::ResolutionError;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsParseError;
@@ -238,10 +239,18 @@ impl TypeChecker {
     graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<Arc<ModuleGraph>, CheckError> {
-    let mut diagnostics = self.check_diagnostics(graph, options)?;
+    let mut diagnostics_iter = self.check_diagnostics(graph, options)?;
+    // Drain the iterator first so that all the "Check ..." lines (which are
+    // printed while type checking each folder) are emitted before any
+    // diagnostics. Otherwise, in a workspace with multiple folders, errors
+    // from one folder would be printed in the middle of the "Check ..." lines
+    // of the following folders.
+    let mut all_diagnostics = Vec::with_capacity(diagnostics_iter.remaining());
+    for result in diagnostics_iter.by_ref() {
+      all_diagnostics.push(result?);
+    }
     let mut failed = false;
-    for result in diagnostics.by_ref() {
-      let mut diagnostics = result?;
+    for mut diagnostics in all_diagnostics {
       diagnostics.emit_warnings();
       if diagnostics.has_diagnostic() {
         failed = true;
@@ -259,7 +268,7 @@ impl TypeChecker {
         .into(),
       )
     } else {
-      Ok(diagnostics.into_graph())
+      Ok(diagnostics_iter.into_graph())
     }
   }
 
@@ -309,6 +318,7 @@ impl TypeChecker {
         &mut graph,
         BuildFastCheckGraphOptions {
           workspace_fast_check: deno_graph::WorkspaceFastCheckOption::Disabled,
+          fast_check_dts: false,
         },
       )?;
     }
@@ -348,6 +358,12 @@ impl TypeChecker {
           self.cli_options.initial_cwd(),
         )
         .map_err(|e| CheckErrorKind::Other(JsErrorBox::from_err(e)))?,
+        bare_importable_pkg_names: self
+          .cli_options
+          .workspace()
+          .resolver_jsr_pkgs()
+          .map(|pkg| pkg.name)
+          .collect(),
       }),
     ))
   }
@@ -431,6 +447,17 @@ pub struct DiagnosticsByFolderIterator<'a>(
 );
 
 impl DiagnosticsByFolderIterator<'_> {
+  /// Number of folders remaining to be checked, i.e. the exact number of items
+  /// this iterator will still yield.
+  pub fn remaining(&self) -> usize {
+    match &self.0 {
+      DiagnosticsByFolderIteratorInner::Empty(_) => 0,
+      DiagnosticsByFolderIteratorInner::Real(r) => {
+        r.groups.len().saturating_sub(r.current_group_index)
+      }
+    }
+  }
+
   pub fn into_graph(self) -> Arc<ModuleGraph> {
     match self.0 {
       DiagnosticsByFolderIteratorInner::Empty(module_graph) => module_graph,
@@ -478,6 +505,9 @@ struct DiagnosticsByFolderRealIterator<'a> {
   code_cache: Option<Arc<crate::cache::CodeCache>>,
   initial_cwd: PathBuf,
   current_dir: Url,
+  /// Names of packages importable by bare specifier (workspace members and
+  /// packages linked via the "links" field), used to enhance import errors.
+  bare_importable_pkg_names: Vec<String>,
 }
 
 impl Iterator for DiagnosticsByFolderRealIterator<'_> {
@@ -552,6 +582,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
       self.node_resolver,
       self.npm_resolver,
       self.compiler_options_resolver,
+      &self.bare_importable_pkg_names,
       self.npm_check_state_hash,
       check_group.compiler_options,
       self.options.type_check_mode,
@@ -564,14 +595,22 @@ impl DiagnosticsByFolderRealIterator<'_> {
       graph_walker.add_root(root);
     }
 
+    // Add JSX runtime types to the roots so that TS can resolve
+    // the jsx-runtime module during type checking. Without this,
+    // TS 6.0+ emits TS2875 because it validates that the JSX
+    // runtime module actually exports the JSX namespace.
+    self.add_jsx_runtime_types(&mut graph_walker, check_group);
+
     let TscRoots {
       roots: root_names,
       missing_diagnostics,
+      used_ts_expect_error_directives,
       maybe_check_hash,
     } = graph_walker.into_tsc_roots();
 
     let mut missing_diagnostics = missing_diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
+        && !self.is_untagged_jsdoc_dynamic_import_diagnostic(d)
     });
     missing_diagnostics.apply_fast_check_source_maps(&self.graph);
 
@@ -660,8 +699,12 @@ impl DiagnosticsByFolderRealIterator<'_> {
 
     let mut response_diagnostics = response.diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
+        && !self.is_untagged_jsdoc_dynamic_import_diagnostic(d)
     });
     response_diagnostics.apply_fast_check_source_maps(&self.graph);
+    response_diagnostics.retain(|d| {
+      !is_used_ts_expect_error_diagnostic(d, &used_ts_expect_error_directives)
+    });
     let mut diagnostics = missing_diagnostics.filter(|d| {
       if let Some(ambient_modules_regex) = &ambient_modules_regex
         && let Some(missing_specifier) = &d.missing_specifier
@@ -704,6 +747,89 @@ impl DiagnosticsByFolderRealIterator<'_> {
     }
   }
 
+  fn is_untagged_jsdoc_dynamic_import_diagnostic(
+    &self,
+    d: &tsc::Diagnostic,
+  ) -> bool {
+    if d.code != 2307 {
+      return false;
+    }
+    let Some(file_name) = &d.file_name else {
+      return false;
+    };
+    let Ok(specifier) = ModuleSpecifier::parse(file_name) else {
+      return false;
+    };
+    let Ok(Some(Module::Js(module))) = self.graph.try_get(&specifier) else {
+      return false;
+    };
+    if !matches!(
+      module.media_type,
+      MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs | MediaType::Jsx
+    ) {
+      return false;
+    }
+    let Some(start) = &d.start else {
+      return false;
+    };
+    is_untagged_jsdoc_dynamic_import_position(
+      &module.source.text,
+      deno_graph::Position::new(start.line as usize, start.character as usize),
+    )
+  }
+
+  fn add_jsx_runtime_types(
+    &self,
+    graph_walker: &mut GraphWalker,
+    check_group: &CheckGroup,
+  ) {
+    // Check each root to see if it has a jsxImportSource config.
+    // If so, resolve the jsx-runtime types and add to roots.
+    let mut seen_jsx_sources = HashSet::new();
+    for root in &check_group.roots {
+      let Some(jsx_config) =
+        self.jsx_import_source_config_resolver.for_specifier(root)
+      else {
+        continue;
+      };
+      let Some(specifier) = jsx_config.specifier() else {
+        continue;
+      };
+      if !seen_jsx_sources.insert(specifier.to_string()) {
+        continue;
+      }
+      // Construct the jsx-runtime specifier (e.g., "npm:react/jsx-runtime")
+      let jsx_runtime_specifier = format!("{specifier}/jsx-runtime");
+      let Ok(npm_ref) = deno_semver::npm::NpmPackageReqReference::from_str(
+        &jsx_runtime_specifier,
+      ) else {
+        continue;
+      };
+      // Try to resolve the package folder and then the subpath
+      let Ok(pkg_folder) = self
+        .npm_resolver
+        .resolve_pkg_folder_from_deno_module_req(npm_ref.req(), root)
+      else {
+        continue;
+      };
+      let Ok(resolved) =
+        self.node_resolver.resolve_package_subpath_from_deno_module(
+          &pkg_folder,
+          npm_ref.sub_path(),
+          Some(root),
+          node_resolver::ResolutionMode::Import,
+          node_resolver::NodeResolutionKind::Types,
+        )
+      else {
+        continue;
+      };
+      if let Ok(url) = resolved.into_url() {
+        let mt = MediaType::from_specifier(&url);
+        graph_walker.roots.push((url, mt));
+      }
+    }
+  }
+
   fn is_remote_diagnostic(&self, d: &tsc::Diagnostic) -> bool {
     let Some(file_name) = &d.file_name else {
       return false;
@@ -722,7 +848,26 @@ impl DiagnosticsByFolderRealIterator<'_> {
 struct TscRoots {
   roots: Vec<(ModuleSpecifier, MediaType)>,
   missing_diagnostics: tsc::Diagnostics,
+  used_ts_expect_error_directives: HashSet<TsDirective>,
   maybe_check_hash: Option<CacheDBHash>,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct TsDirective {
+  // The module specifier as a graph URL string. Recorded from
+  // `deno_graph::Range::specifier` and later matched against
+  // `tsc::Diagnostic::file_name`, which is the same canonical form.
+  specifier: String,
+  // 0-indexed source line of the directive comment. This must use the same
+  // line numbering as both `deno_graph::Range::start::line` (where the
+  // directive is recorded) and `tsc::Position::line` (where the TS2578 lookup
+  // happens) so the two sides match. Both are 0-indexed.
+  line: u64,
+}
+
+enum TsSuppressionComment {
+  Ignore,
+  ExpectError(TsDirective),
 }
 
 struct GraphWalker<'a> {
@@ -731,12 +876,22 @@ struct GraphWalker<'a> {
   node_resolver: &'a CliNodeResolver,
   npm_resolver: &'a CliNpmResolver,
   compiler_options_resolver: &'a CompilerOptionsResolver,
+  /// Names of packages importable by bare specifier (workspace members and
+  /// packages linked via the "links" field), used to enhance import errors.
+  bare_importable_pkg_names: &'a [String],
   maybe_hasher: Option<FastInsecureHasher>,
   seen: HashSet<&'a Url>,
-  pending: VecDeque<(&'a Url, bool)>,
+  pending: VecDeque<PendingGraphWalkSpecifier<'a>>,
   has_seen_node_builtin: bool,
   roots: Vec<(ModuleSpecifier, MediaType)>,
   missing_diagnostics: tsc::Diagnostics,
+  used_ts_expect_error_directives: HashSet<TsDirective>,
+}
+
+struct PendingGraphWalkSpecifier<'a> {
+  specifier: &'a Url,
+  is_dynamic: bool,
+  is_root: bool,
 }
 
 impl<'a> GraphWalker<'a> {
@@ -747,6 +902,7 @@ impl<'a> GraphWalker<'a> {
     node_resolver: &'a CliNodeResolver,
     npm_resolver: &'a CliNpmResolver,
     compiler_options_resolver: &'a CompilerOptionsResolver,
+    bare_importable_pkg_names: &'a [String],
     npm_cache_state_hash: Option<u64>,
     compiler_options: &CompilerOptions,
     type_check_mode: TypeCheckMode,
@@ -769,6 +925,7 @@ impl<'a> GraphWalker<'a> {
       node_resolver,
       npm_resolver,
       compiler_options_resolver,
+      bare_importable_pkg_names,
       maybe_hasher,
       seen: HashSet::with_capacity(
         graph.imports.len() + graph.specifiers_count(),
@@ -777,6 +934,7 @@ impl<'a> GraphWalker<'a> {
       has_seen_node_builtin: false,
       roots: Vec::with_capacity(graph.imports.len() + graph.specifiers_count()),
       missing_diagnostics: Default::default(),
+      used_ts_expect_error_directives: Default::default(),
     }
   }
 
@@ -800,7 +958,11 @@ impl<'a> GraphWalker<'a> {
           }
         },
         _ => {
-          self.pending.push_back((specifier, false));
+          self.pending.push_back(PendingGraphWalkSpecifier {
+            specifier,
+            is_dynamic: false,
+            is_root: false,
+          });
           self.resolve_pending();
         }
       }
@@ -810,7 +972,11 @@ impl<'a> GraphWalker<'a> {
   pub fn add_root(&mut self, root: &'a Url) {
     let specifier = self.graph.resolve(root);
     if self.seen.insert(specifier) {
-      self.pending.push_back((specifier, false));
+      self.pending.push_back(PendingGraphWalkSpecifier {
+        specifier,
+        is_dynamic: false,
+        is_root: true,
+      });
     }
 
     self.resolve_pending()
@@ -833,12 +999,58 @@ impl<'a> GraphWalker<'a> {
     TscRoots {
       roots: self.roots,
       missing_diagnostics: self.missing_diagnostics,
+      used_ts_expect_error_directives: self.used_ts_expect_error_directives,
       maybe_check_hash: self.maybe_hasher.map(|h| CacheDBHash::new(h.finish())),
     }
   }
 
+  fn source_text_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&str> {
+    self
+      .graph
+      .try_get_prefer_types(specifier)
+      .ok()
+      .flatten()
+      .and_then(|m| m.js())
+      .map(|m| m.source.text.as_ref())
+  }
+
+  fn maybe_ts_suppression_comment(
+    &self,
+    range: &deno_graph::Range,
+  ) -> Option<TsSuppressionComment> {
+    maybe_ts_suppression_comment(
+      range.specifier.as_str(),
+      self.source_text_for_specifier(&range.specifier)?,
+      range.range.start.line,
+    )
+  }
+
+  fn push_missing_diagnostic(
+    &mut self,
+    diagnostic: tsc::Diagnostic,
+    maybe_range: Option<&deno_graph::Range>,
+  ) {
+    if let Some(range) = maybe_range
+      && let Some(comment) = self.maybe_ts_suppression_comment(range)
+    {
+      if let TsSuppressionComment::ExpectError(directive) = comment {
+        self.used_ts_expect_error_directives.insert(directive);
+      }
+      return;
+    }
+    self.missing_diagnostics.push(diagnostic);
+  }
+
   fn resolve_pending(&mut self) {
-    while let Some((specifier, is_dynamic)) = self.pending.pop_front() {
+    while let Some(PendingGraphWalkSpecifier {
+      specifier,
+      is_dynamic,
+      is_root,
+    }) = self.pending.pop_front()
+    {
       let module = match self.graph.try_get(specifier) {
         Ok(Some(module)) => module,
         Ok(None) => continue,
@@ -846,16 +1058,17 @@ impl<'a> GraphWalker<'a> {
           if !is_dynamic
             && let Some(err) = module_error_for_tsc_diagnostic(self.sys, err)
           {
-            self
-              .missing_diagnostics
-              .push(tsc::Diagnostic::from_missing_error(
+            self.push_missing_diagnostic(
+              tsc::Diagnostic::from_missing_error(
                 err.specifier.as_str(),
                 err.maybe_range,
                 maybe_additional_sloppy_imports_message(
                   self.sys,
                   err.specifier,
                 ),
-              ));
+              ),
+              err.maybe_range,
+            );
           }
           continue;
         }
@@ -866,13 +1079,22 @@ impl<'a> GraphWalker<'a> {
       if let Some(entry) = self.maybe_get_check_entry(module) {
         self.roots.push(entry);
       }
+      let is_js_module = matches!(
+        module.media_type(),
+        MediaType::JavaScript
+          | MediaType::Mjs
+          | MediaType::Cjs
+          | MediaType::Jsx
+      );
 
       let mut maybe_module_dependencies = None;
       let mut maybe_types_dependency = None;
+      let mut maybe_js_source_text = None;
       match module {
         Module::Js(module) => {
           maybe_module_dependencies =
             Some(module.dependencies_prefer_fast_check());
+          maybe_js_source_text = Some(module.source.text.as_ref());
           maybe_types_dependency = module
             .maybe_types_dependency
             .as_ref()
@@ -897,6 +1119,16 @@ impl<'a> GraphWalker<'a> {
       }
 
       if module.media_type().is_declaration() {
+        // When a `.d.ts` is itself a check root (an explicit entrypoint), its
+        // own unresolved imports should surface as `TS2307`. deno_graph records
+        // a bare specifier in a `.d.ts` as `Resolution::None`, which both the
+        // missing-import loop below and tsc (under `skipLibCheck`) ignore, so
+        // handle it explicitly here regardless of `skipLibCheck`. Dependency
+        // `.d.ts` files reached transitively are not roots and keep being
+        // skipped under `skipLibCheck`.
+        if is_root && let Module::Js(module) = module {
+          self.add_unresolved_dts_entrypoint_imports(module);
+        }
         let compiler_options_data = self
           .compiler_options_resolver
           .for_specifier(module.specifier());
@@ -920,6 +1152,9 @@ impl<'a> GraphWalker<'a> {
           if dep.is_dynamic {
             continue;
           }
+          if is_js_module && dep.maybe_code.is_none() {
+            continue;
+          }
           // only surface the code error if there's no type
           let dep_to_check_error = if dep.maybe_type.is_none() {
             &dep.maybe_code
@@ -928,10 +1163,23 @@ impl<'a> GraphWalker<'a> {
           };
           if let deno_graph::Resolution::Err(resolution_error) =
             dep_to_check_error
+            && !(is_js_module
+              && maybe_js_source_text.is_some_and(|text| {
+                is_untagged_jsdoc_dynamic_import_range(
+                  text,
+                  resolution_error.range(),
+                )
+              }))
             && let Some(diagnostic) =
-              tsc::Diagnostic::maybe_from_resolution_error(resolution_error)
+              tsc::Diagnostic::maybe_from_resolution_error(
+                resolution_error,
+                self.bare_importable_pkg_names,
+              )
           {
-            self.missing_diagnostics.push(diagnostic);
+            self.push_missing_diagnostic(
+              diagnostic,
+              Some(resolution_error.range()),
+            );
           }
         }
       }
@@ -1041,10 +1289,89 @@ impl<'a> GraphWalker<'a> {
     let specifier = self.graph.resolve(specifier);
     if is_dynamic {
       if !self.seen.contains(specifier) {
-        self.pending.push_back((specifier, true));
+        self.pending.push_back(PendingGraphWalkSpecifier {
+          specifier,
+          is_dynamic: true,
+          is_root: false,
+        });
       }
     } else if self.seen.insert(specifier) {
-      self.pending.push_back((specifier, false));
+      self.pending.push_back(PendingGraphWalkSpecifier {
+        specifier,
+        is_dynamic: false,
+        is_root: false,
+      });
+    }
+  }
+
+  /// Surface unresolved imports of a `.d.ts` check root as `TS2307`.
+  ///
+  /// An explicit `.d.ts` entrypoint should report its own unresolved imports,
+  /// but deno_graph records a bare specifier in a `.d.ts` as `Resolution::None`
+  /// (a `.ts` file records `Resolution::Err`). The missing-import loop only
+  /// turns `Resolution::Err` into diagnostics, so a `.d.ts` entrypoint's bare
+  /// imports are otherwise swallowed whether or not `skipLibCheck` is set.
+  ///
+  /// Only `Resolution::None` deps are handled here. Resolved (`Ok`) and errored
+  /// (`Err`) deps are already surfaced by the missing-import loop when
+  /// `skipLibCheck` is off, so handling them here too would double report. The
+  /// import range deno_graph already parsed is reused, so there's no need to
+  /// re-parse the source.
+  fn add_unresolved_dts_entrypoint_imports(
+    &mut self,
+    module: &'a deno_graph::JsModule,
+  ) {
+    for dep in module.dependencies_prefer_fast_check().values() {
+      // Only handle imports deno_graph left fully unresolved; a bare specifier
+      // in a `.d.ts` lands here as `None`/`None`.
+      if !matches!(dep.maybe_code, deno_graph::Resolution::None)
+        || !matches!(dep.maybe_type, deno_graph::Resolution::None)
+      {
+        continue;
+      }
+      for import in &dep.imports {
+        // Only surface real `import`/`export`/`import =` statements. Triple
+        // slash `/// <reference />` directives, JSDoc and `@jsxImportSource`
+        // imports are intentionally left to tsc's `skipLibCheck` handling.
+        if !matches!(
+          import.kind,
+          deno_graph::ImportKind::Es
+            | deno_graph::ImportKind::TsType
+            | deno_graph::ImportKind::Require
+        ) {
+          continue;
+        }
+        let range = import.specifier_range.clone();
+        match deno_path_util::resolve_import(
+          &import.specifier,
+          &module.specifier,
+        ) {
+          Ok(specifier) => {
+            let specifier = self.graph.resolve(&specifier);
+            if self.graph.try_get(specifier).ok().flatten().is_none() {
+              self.missing_diagnostics.push(
+                tsc::Diagnostic::from_missing_error(
+                  specifier.as_str(),
+                  Some(&range),
+                  maybe_additional_sloppy_imports_message(self.sys, specifier),
+                ),
+              );
+            }
+          }
+          Err(error) => {
+            let resolution_error =
+              ResolutionError::InvalidSpecifier { error, range };
+            if let Some(diagnostic) =
+              tsc::Diagnostic::maybe_from_resolution_error(
+                &resolution_error,
+                self.bare_importable_pkg_names,
+              )
+            {
+              self.missing_diagnostics.push(diagnostic);
+            }
+          }
+        }
+      }
     }
   }
 
@@ -1071,6 +1398,186 @@ impl<'a> GraphWalker<'a> {
       .ok()?;
     resolved.into_url().ok()
   }
+}
+
+fn is_used_ts_expect_error_diagnostic(
+  diagnostic: &tsc::Diagnostic,
+  used_ts_expect_error_directives: &HashSet<TsDirective>,
+) -> bool {
+  const TS_UNUSED_EXPECT_ERROR: u64 = 2578;
+  if diagnostic.code != TS_UNUSED_EXPECT_ERROR {
+    return false;
+  }
+  let Some(file_name) = &diagnostic.file_name else {
+    return false;
+  };
+  // Prefer `original_source_start`: `apply_fast_check_source_maps` may have
+  // rewritten `start` to point into generated fast-check output, whereas the
+  // directive was recorded against the original source position. This mirrors
+  // how the diagnostic's own display picks its position.
+  let Some(position) = diagnostic
+    .original_source_start
+    .as_ref()
+    .or(diagnostic.start.as_ref())
+  else {
+    return false;
+  };
+  used_ts_expect_error_directives.contains(&TsDirective {
+    specifier: file_name.to_string(),
+    line: position.line,
+  })
+}
+
+/// Looks for a `@ts-ignore` / `@ts-expect-error` directive suppressing a
+/// diagnostic recorded at `diagnostic_line` (0-indexed).
+///
+/// The graph records a missing-module diagnostic at the *specifier*, which for
+/// a multi-line `import`/`export ... from "..."` sits below the statement
+/// start. tsc instead reports its own diagnostics at the statement start and
+/// anchors a preceding directive to that line, so we first walk up to the line
+/// that begins the import/export statement.
+///
+/// From there this mirrors TypeScript's own `markPrecedingCommentDirectiveLine`:
+/// starting on the line above the statement, scan upwards skipping blank lines
+/// and any `//` comment lines, and stop at the first line of actual code. The
+/// directive only needs to be the nearest comment above the statement, not
+/// strictly on the immediately preceding line. Keeping this in sync with tsc
+/// matters so a graph-derived missing-module diagnostic is suppressed in
+/// exactly the cases tsc would suppress its own diagnostics.
+fn maybe_ts_suppression_comment(
+  specifier: &str,
+  source_text: &str,
+  diagnostic_line: usize,
+) -> Option<TsSuppressionComment> {
+  // We only ever scan upward from the diagnostic, so there's no need to
+  // materialize the rest of the file (imports sit near the top).
+  let lines = source_text
+    .lines()
+    .take(diagnostic_line + 1)
+    .collect::<Vec<_>>();
+
+  // Walk up from the specifier to the line that begins its import/export
+  // statement. A bare comment line (e.g. a `/// <reference />`) or anything
+  // that isn't a resolvable multi-line import body falls back to the
+  // diagnostic line, preserving the single-line behavior.
+  let mut anchor = diagnostic_line;
+  loop {
+    let trimmed = lines.get(anchor)?.trim_start();
+    if trimmed.starts_with("import") || trimmed.starts_with("export") {
+      break;
+    }
+    if anchor == 0 || trimmed.is_empty() || trimmed.starts_with("//") {
+      anchor = diagnostic_line;
+      break;
+    }
+    anchor -= 1;
+  }
+
+  let mut line_index = anchor.checked_sub(1)?;
+  loop {
+    let line = lines.get(line_index)?.trim();
+    if let Some(directive) = line.strip_prefix("//").and_then(|line| {
+      line
+        .strip_prefix('/')
+        .unwrap_or(line)
+        .trim_start()
+        .strip_prefix('@')
+    }) {
+      if directive.starts_with("ts-ignore") {
+        return Some(TsSuppressionComment::Ignore);
+      }
+      if directive.starts_with("ts-expect-error") {
+        return Some(TsSuppressionComment::ExpectError(TsDirective {
+          specifier: specifier.to_string(),
+          line: line_index as u64,
+        }));
+      }
+    }
+
+    if !line.is_empty() && !line.starts_with("//") {
+      return None;
+    }
+
+    line_index = line_index.checked_sub(1)?;
+  }
+}
+
+static JSDOC_DYNAMIC_IMPORT_RE: Lazy<Regex> =
+  lazy_regex::lazy_regex!(r#"(?s)(?:^|[^\w$])import\s*\(\s*["'][^"']+["']"#);
+static JSDOC_TYPED_TAG_RE: Lazy<Regex> = lazy_regex::lazy_regex!(
+  r#"@(?:augments|extends|implements|import|param|returns?|satisfies|template|typedef|type)\b"#
+);
+
+fn is_untagged_jsdoc_dynamic_import_range(
+  text: &str,
+  range: &deno_graph::Range,
+) -> bool {
+  is_untagged_jsdoc_dynamic_import_position(text, range.range.start)
+}
+
+fn is_untagged_jsdoc_dynamic_import_position(
+  text: &str,
+  position: deno_graph::Position,
+) -> bool {
+  let Some(start) = position_to_byte_index(text, position) else {
+    return false;
+  };
+  let Some(comment_start) = text[..start].rfind("/**") else {
+    return false;
+  };
+  if text[..start]
+    .rfind("*/")
+    .is_some_and(|comment_end| comment_end > comment_start)
+  {
+    return false;
+  }
+
+  let Some(open_brace) = text[..start].rfind('{') else {
+    return false;
+  };
+  if open_brace <= comment_start
+    || text[..start]
+      .rfind('}')
+      .is_some_and(|close_brace| close_brace > open_brace)
+  {
+    return false;
+  }
+  if JSDOC_TYPED_TAG_RE.is_match(&text[comment_start..open_brace]) {
+    return false;
+  }
+
+  let Some(close_brace) = text[start..].find('}').map(|i| start + i) else {
+    return false;
+  };
+  if text[start..]
+    .find("*/")
+    .is_some_and(|comment_end| start + comment_end < close_brace)
+  {
+    return false;
+  }
+
+  JSDOC_DYNAMIC_IMPORT_RE.is_match(&text[open_brace + 1..close_brace])
+}
+
+fn position_to_byte_index(
+  text: &str,
+  position: deno_graph::Position,
+) -> Option<usize> {
+  let mut line = 0;
+  let mut character = 0;
+  for (index, c) in text.char_indices() {
+    if line == position.line && character == position.character {
+      return Some(index);
+    }
+    if c == '\n' {
+      line += 1;
+      character = 0;
+    } else {
+      character += 1;
+    }
+  }
+  (line == position.line && character == position.character)
+    .then_some(text.len())
 }
 
 /// Matches the `@ts-check` pragma.

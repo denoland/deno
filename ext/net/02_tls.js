@@ -1,8 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = __bootstrap;
 const { internalRidSymbol } = core;
-import {
+const {
   op_net_accept_tls,
   op_net_connect_tls,
   op_net_listen_tls,
@@ -15,7 +16,7 @@ import {
   op_tls_key_static,
   op_tls_peer_certificate,
   op_tls_start,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ObjectDefineProperty,
   TypeError,
@@ -23,7 +24,9 @@ const {
   SymbolFor,
 } = primordials;
 
-import { Conn, Listener, validatePort } from "ext:deno_net/01_net.js";
+const { Conn, Listener, validatePort } = core.loadExtScript(
+  "ext:deno_net/01_net.js",
+);
 
 const _getPeerCertificate = Symbol("getPeerCertificate");
 
@@ -59,6 +62,8 @@ async function connectTls({
   cert = undefined,
   key = undefined,
   unsafelyDisableHostnameVerification = false,
+  autoSelectFamily = true,
+  autoSelectFamilyAttemptDelay = 250,
 }) {
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
@@ -76,6 +81,7 @@ async function connectTls({
     { hostname, port },
     { caCerts, alpnProtocols, serverName, unsafelyDisableHostnameVerification },
     keyPair,
+    { autoSelectFamily, autoSelectFamilyAttemptDelay },
   );
   localAddr.transport = "tcp";
   remoteAddr.transport = "tcp";
@@ -157,7 +163,7 @@ function loadTlsKeyPair(api, {
 }
 
 function listenTls({
-  port,
+  port = 0,
   hostname = "0.0.0.0",
   transport = "tcp",
   alpnProtocols = undefined,
@@ -167,7 +173,7 @@ function listenTls({
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
-  port = validatePort(port);
+  port = validatePort(port, true);
 
   if (!hasTlsKeyPairOptions(arguments[0])) {
     throw new TypeError(
@@ -180,6 +186,7 @@ function listenTls({
     { alpnProtocols, reusePort, tcpBacklog },
     keyPair,
   );
+  localAddr.transport = transport;
   return new TlsListener(rid, localAddr);
 }
 
@@ -255,7 +262,7 @@ internals.serverNameSymbol = serverNameSymbol;
 internals.createTlsKeyResolver = createTlsKeyResolver;
 internals.getPeerCertificate = _getPeerCertificate;
 
-export {
+return {
   connectTls,
   hasTlsKeyPairOptions,
   listenTls,
@@ -265,3 +272,4 @@ export {
   TlsConn,
   TlsListener,
 };
+})();

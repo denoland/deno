@@ -20,27 +20,37 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file no-explicit-any
 
-import { BlockList, SocketAddress } from "ext:deno_node/internal/blocklist.mjs";
+(function () {
+const { core, primordials } = __bootstrap;
 
-import { EventEmitter } from "node:events";
-import {
+const { BlockList, SocketAddress } = core.loadExtScript(
+  "ext:deno_node/internal/blocklist.mjs",
+);
+
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const {
   isIP,
   isIPv4,
   isIPv6,
   kReinitializeHandle,
+  kSetKeepAlive,
+  kSetKeepAliveInitialDelay,
+  kSetNoDelay,
   normalizedArgsSymbol,
-} from "ext:deno_node/internal/net.ts";
-import { Duplex } from "node:stream";
-import {
+} = core.loadExtScript("ext:deno_node/internal/net.ts");
+const { Duplex } = core.createLazyLoader("node:stream")();
+const {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
+  emitDestroy,
+  emitInit,
+  executionAsyncId,
   newAsyncId,
   ownerSymbol,
-} from "ext:deno_node/internal/async_hooks.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const {
   AbortError,
   ERR_INVALID_ADDRESS_FAMILY,
   ERR_INVALID_ARG_TYPE,
@@ -59,10 +69,9 @@ import {
   genericNodeError,
   NodeAggregateError,
   uvExceptionWithHostPort,
-} from "ext:deno_node/internal/errors.ts";
-import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+type ErrnoException = any;
+const {
   kAfterAsyncWrite,
   kBuffer,
   kBufferCb,
@@ -73,16 +82,67 @@ import {
   setStreamTimeout,
   writeGeneric,
   writevGeneric,
-} from "ext:deno_node/internal/stream_base_commons.ts";
-import { kDestroy, kTimeout } from "ext:deno_node/internal/timers.mjs";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/stream_base_commons.ts");
+const { kDestroy, kTimeout } = core.loadExtScript(
+  "ext:deno_node/internal/timers.mjs",
+);
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const {
   DTRACE_NET_SERVER_CONNECTION,
   DTRACE_NET_STREAM_END,
-} from "ext:deno_node/internal/dtrace.ts";
-import { Buffer } from "node:buffer";
-import type { LookupOneOptions } from "ext:deno_node/internal/dns/utils.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/dtrace.ts");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+type LookupOneOptions = any;
+const {
+  constants: TCPConstants,
+  setupListenWrap,
+  TCP,
+  TCPConnectWrap,
+} = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
+const {
+  constants: PipeConstants,
+  Pipe,
+  PipeConnectWrap,
+  setupListenWrap: setupPipeListenWrap,
+} = core.loadExtScript("ext:deno_node/internal_binding/pipe_wrap.ts");
+const { ShutdownWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/stream_wrap.ts",
+);
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { ADDRCONFIG, lookup: dnsLookup } = core.createLazyLoader("node:dns")()
+  .default;
+const { kPermTokenSink } = core.loadExtScript(
+  "ext:deno_node/internal_binding/cares_wrap.ts",
+);
+const {
+  codeMap,
+  UV_ECANCELED,
+  UV_ETIMEDOUT,
+} = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const { guessHandleType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
+const { debuglog } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
+type DuplexOptions = any;
+type BufferEncoding = any;
+type Abortable = any;
+const { channel, tracingChannel } = core.loadExtScript(
+  "ext:deno_node/diagnostics_channel.js",
+);
+const {
+  registerActiveHandle,
+  unregisterActiveHandle,
+} = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
+// Lazily resolved at call sites via `lazyCluster()` to break the cluster
+// <-> net cycle. Only used inside `_listenInCluster()`.
+const lazyCluster = core.createLazyLoader("node:cluster");
+const { isUint8Array } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
@@ -90,41 +150,32 @@ import {
   validateNumber,
   validatePort,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import {
-  constants as TCPConstants,
-  setupListenWrap,
-  TCP,
-  TCPConnectWrap,
-} from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import {
-  constants as PipeConstants,
-  Pipe,
-  PipeConnectWrap,
-  setupListenWrap as setupPipeListenWrap,
-} from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import assert from "node:assert";
-import { isWindows } from "ext:deno_node/_util/os.ts";
-import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
-import {
-  codeMap,
-  UV_ECANCELED,
-  UV_ETIMEDOUT,
-} from "ext:deno_node/internal_binding/uv.ts";
-import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
-import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
-import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
-import type { Abortable } from "ext:deno_node/_events.d.ts";
-import { channel } from "node:diagnostics_channel";
-import { core, primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const {
+  ArrayIsArray,
   ArrayPrototypeIncludes,
+  ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypeSplice,
+  Boolean,
   FunctionPrototypeBind,
+  FunctionPrototypeCall,
   MathMax,
+  Number,
+  NumberIsNaN,
+  NumberParseInt,
+  ObjectDefineProperty,
+  ObjectHasOwn,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  Promise,
+  PromiseWithResolvers,
+  ReflectHas,
+  SafeArrayIterator,
+  StringPrototypeCharCodeAt,
+  Symbol,
+  SymbolAsyncDispose,
 } = primordials;
 
 let debug = debuglog("net", (fn) => {
@@ -132,11 +183,32 @@ let debug = debuglog("net", (fn) => {
 });
 
 const kLastWriteQueueSize = Symbol("lastWriteQueueSize");
-const kSetNoDelay = Symbol("kSetNoDelay");
-const kSetKeepAlive = Symbol("kSetKeepAlive");
-const kSetKeepAliveInitialDelay = Symbol("kSetKeepAliveInitialDelay");
 const kBytesRead = Symbol("kBytesRead");
 const kBytesWritten = Symbol("kBytesWritten");
+// Holds the async context (AsyncLocalStorage / async_hooks) snapshot captured
+// when a connect request or listening handle is set up. The native libuv
+// callbacks in tcp_wrap/pipe_wrap invoke the completion callbacks directly,
+// outside of any microtask or nextTick, so the snapshot has to be captured at
+// registration time and restored before dispatching. Otherwise
+// `AsyncLocalStorage.getStore()` returns `undefined` inside `connect` and
+// `connection` handlers. See https://github.com/denoland/deno/issues/35154.
+const kAsyncContext = Symbol("kAsyncContext");
+
+// Runs `run` with the async context snapshot that was active when the
+// operation was initiated, restoring the previous context afterwards.
+function _runInAsyncContext(snapshot: any, run: () => void) {
+  if (snapshot === undefined) {
+    run();
+    return;
+  }
+  const prior = core.getAsyncContext();
+  core.setAsyncContext(snapshot);
+  try {
+    run();
+  } finally {
+    core.setAsyncContext(prior);
+  }
+}
 
 const DEFAULT_IPV4_ADDR = "0.0.0.0";
 const DEFAULT_IPV6_ADDR = "::";
@@ -249,9 +321,80 @@ interface IpcSocketConnectOptions extends ConnectOptions {
 type SocketConnectOptions = TcpSocketConnectOptions | IpcSocketConnectOptions;
 
 function _getNewAsyncId(handle?: Handle): number {
-  return !handle || typeof handle.getAsyncId !== "function"
-    ? newAsyncId()
-    : handle.getAsyncId();
+  if (!handle || typeof handle.getAsyncId !== "function") {
+    return newAsyncId();
+  }
+  // Node's ASSIGN_OR_RETURN_UNWRAP in the C++ AsyncWrap::GetAsyncId returns
+  // silently if the receiver isn't a real AsyncWrap, so user-land handles that
+  // expose `getAsyncId` borrowed from a prototype (or that have been wrapped
+  // by libraries like pg/sequelize across socket reuse) don't crash on Node.
+  // Deno's op2 brand check throws `TypeError: expected AsyncWrap` in the same
+  // shape, so match Node's tolerance by falling back to a fresh async id.
+  try {
+    return handle.getAsyncId();
+  } catch {
+    return newAsyncId();
+  }
+}
+
+const providerTypeNames = [
+  "NONE",
+  "DIRHANDLE",
+  "DNSCHANNEL",
+  "ELDHISTOGRAM",
+  "FILEHANDLE",
+  "FILEHANDLECLOSEREQ",
+  "FIXEDSIZEBLOBCOPY",
+  "FSEVENTWRAP",
+  "FSREQCALLBACK",
+  "FSREQPROMISE",
+  "GETADDRINFOREQWRAP",
+  "GETNAMEINFOREQWRAP",
+  "HEAPSNAPSHOT",
+  "HTTP2SESSION",
+  "HTTP2STREAM",
+  "HTTP2PING",
+  "HTTP2SETTINGS",
+  "HTTPINCOMINGMESSAGE",
+  "HTTPCLIENTREQUEST",
+  "JSSTREAM",
+  "JSUDPWRAP",
+  "MESSAGEPORT",
+  "PIPECONNECTWRAP",
+  "PIPESERVERWRAP",
+  "PIPEWRAP",
+  "PROCESSWRAP",
+  "PROMISE",
+  "QUERYWRAP",
+  "SHUTDOWNWRAP",
+  "SIGNALWRAP",
+  "STATWATCHER",
+  "STREAMPIPE",
+  "TCPCONNECTWRAP",
+  "TCPSERVERWRAP",
+  "TCPWRAP",
+  "TLSWRAP",
+  "TTYWRAP",
+  "UDPSENDWRAP",
+  "UDPWRAP",
+  "SIGINTWATCHDOG",
+  "WORKER",
+  "WORKERHEAPSNAPSHOT",
+  "WRITEWRAP",
+  "ZLIB",
+];
+
+function _emitHandleInit(handle: Handle, asyncId: number) {
+  if (typeof (handle as any).getProviderType !== "function") {
+    return;
+  }
+  const providerType = (handle as any).getProviderType();
+  emitInit(
+    asyncId,
+    providerTypeNames[providerType] || "UNKNOWN",
+    executionAsyncId(),
+    handle,
+  );
 }
 
 interface NormalizedArgs {
@@ -266,6 +409,7 @@ const _noop = (_arrayBuffer: Uint8Array, _nread: number): undefined => {
 
 const netClientSocketChannel = channel("net.client.socket");
 const netServerSocketChannel = channel("net.server.socket");
+const netServerListenChannel = tracingChannel("net.server.listen");
 
 function _toNumber(x: unknown): number | false {
   return (x = Number(x)) >= 0 ? (x as number) : false;
@@ -301,7 +445,7 @@ function _createHandle(fd: number, isServer: boolean): Handle {
 // For `Socket.prototype.connect()`, the [...] part is ignored
 // For `Server.prototype.listen()`, the [...] part is [, backlog]
 // but will not be handled here (handled in listen())
-export function _normalizeArgs(args: unknown[]): NormalizedArgs {
+function _normalizeArgs(args: unknown[]): NormalizedArgs {
   let arr: NormalizedArgs;
 
   if (args.length === 0) {
@@ -344,7 +488,19 @@ export function _normalizeArgs(args: unknown[]): NormalizedArgs {
 
 function _afterConnect(
   status: number,
-  // deno-lint-ignore no-explicit-any
+  handle: any,
+  req: PipeConnectWrap | TCPConnectWrap,
+  readable: boolean,
+  writable: boolean,
+) {
+  _runInAsyncContext(
+    handle?.[kAsyncContext],
+    () => _afterConnectImpl(status, handle, req, readable, writable),
+  );
+}
+
+function _afterConnectImpl(
+  status: number,
   handle: any,
   req: PipeConnectWrap | TCPConnectWrap,
   readable: boolean,
@@ -370,6 +526,7 @@ function _afterConnect(
 
   if (status === 0) {
     if (socket.readable && !readable) {
+      // deno-lint-ignore prefer-primordials -- Readable stream method, not Array.prototype.push
       socket.push(null);
       socket.read();
     }
@@ -518,7 +675,10 @@ function _internalConnectMultipleTimeout(context, req, handle) {
   );
 
   req.oncomplete = undefined;
-  ArrayPrototypePush(context.errors, _createConnectionError(req, UV_ETIMEDOUT));
+  ArrayPrototypePush(
+    context.errors,
+    _createConnectionError(req, UV_ETIMEDOUT),
+  );
   handle.close();
 
   // Try the next address, unless we were aborted
@@ -547,7 +707,7 @@ function _checkBindError(err: number, port: number, handle: TCP) {
 function _isPipe(
   options: Partial<SocketConnectOptions>,
 ): options is IpcSocketConnectOptions {
-  return "path" in options && !!options.path;
+  return ObjectHasOwn(options, "path") && !!options.path;
 }
 
 function _connectErrorNT(socket: Socket, err: Error) {
@@ -578,6 +738,7 @@ function _internalConnect(
     localPort = (localPort ?? 0) | 0;
     if (addressType === 4) {
       localAddress = localAddress || DEFAULT_IPV4_ADDR;
+      // deno-lint-ignore prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
       err = (socket._handle as TCP).bind(localAddress, localPort);
     } else {
       // addressType === 6
@@ -678,6 +839,7 @@ function _internalConnectMultiple(context, canceled?: boolean) {
   if (localPort) {
     if (addressType === 4) {
       localAddress = DEFAULT_IPV4_ADDR;
+      // deno-lint-ignore prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
       err = self._handle.bind(localAddress, localPort);
     } else {
       // addressType === 6
@@ -784,7 +946,6 @@ function _internalConnectMultiple(context, canceled?: boolean) {
 // is overly vague, and makes it seem like the user's code is to blame.
 function _writeAfterFIN(
   this: Socket,
-  // deno-lint-ignore no-explicit-any
   chunk: any,
   encoding?:
     | BufferEncoding
@@ -793,7 +954,8 @@ function _writeAfterFIN(
   cb?: (error: Error | null | undefined) => void,
 ): boolean {
   if (!this.writableEnded) {
-    return Duplex.prototype.write.call(
+    return FunctionPrototypeCall(
+      Duplex.prototype.write,
       this,
       chunk,
       encoding as BufferEncoding | null,
@@ -861,10 +1023,10 @@ function _initSocketHandle(socket: Socket) {
 
   // Handle creation may be deferred to bind() or connect() time.
   if (socket._handle) {
-    // deno-lint-ignore no-explicit-any
     (socket._handle as any)[ownerSymbol] = socket;
     socket._handle.onread = onStreamRead;
     socket[asyncIdSymbol] = _getNewAsyncId(socket._handle);
+    _emitHandleInit(socket._handle, socket[asyncIdSymbol]);
 
     let userBuf = socket[kBuffer];
 
@@ -964,7 +1126,6 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
     family: options.family,
     hints: options.hints || 0,
     all: false,
-    port,
   };
 
   if (
@@ -979,7 +1140,25 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   debug("connect: find host", host);
   debug("connect: dns options", dnsOpts);
   self._host = host;
+  // Only the built-in DNS lookup is trusted to install a NetPermToken on the
+  // handle (so `--allow-net=<host>` keeps authorizing the IPs Deno resolved
+  // for it). A custom `lookup` returns arbitrary IPs, so its result is checked
+  // against the literal IP with no hostname substitution (GHSA-fhjh-jqv7-m238).
+  // This must stay in sync with the `lookup` selection below: any falsy
+  // `options.lookup` falls back to the built-in resolver, so it is also the
+  // default-lookup path for token purposes.
   const lookup = options.lookup || dnsLookup;
+  const usingDefaultLookup = lookup === dnsLookup;
+  const getLookupDnsOpts = () => {
+    if (usingDefaultLookup) {
+      return { ...dnsOpts, port };
+    }
+    return {
+      family: dnsOpts.family,
+      hints: dnsOpts.hints,
+      all: dnsOpts.all,
+    };
+  };
 
   if (
     dnsOpts.family !== 4 &&
@@ -997,11 +1176,12 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
         lookup,
         host,
         options,
-        dnsOpts,
+        getLookupDnsOpts(),
         port,
         localAddress,
         localPort,
         autoSelectFamilyAttemptTimeout,
+        usingDefaultLookup,
       );
     });
 
@@ -1009,73 +1189,79 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   }
 
   defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
-    lookup(
-      host,
-      dnsOpts,
-      function emitLookup(
-        err: ErrnoException | null,
-        ip: string,
-        addressType: number,
-        netPermToken,
+    function emitLookup(
+      err: ErrnoException | null,
+      ip: string,
+      addressType: number,
+      netPermToken,
+    ) {
+      // Store the permission token from the built-in DNS lookup so connect()
+      // checks permissions against the original hostname instead of the
+      // resolved IP. Only honored on the default-lookup path; a custom lookup
+      // never installs a token (its IPs are checked literally).
+      if (
+        usingDefaultLookup && netPermToken && self._handle?.setNetPermToken
       ) {
-        // Store the permission token from DNS lookup so connect() checks
-        // permissions against the original hostname instead of the resolved IP.
-        if (netPermToken && self._handle?.setNetPermToken) {
-          self._handle.setNetPermToken(netPermToken);
-        }
-        self.emit("lookup", err, ip, addressType, host);
+        self._handle.setNetPermToken(netPermToken);
+      }
+      self.emit("lookup", err, ip, addressType, host);
 
-        // It's possible we were destroyed while looking this up.
-        // XXX it would be great if we could cancel the promise returned by
-        // the look up.
-        if (!self.connecting) {
-          return;
-        }
+      // It's possible we were destroyed while looking this up.
+      // XXX it would be great if we could cancel the promise returned by
+      // the look up.
+      if (!self.connecting) {
+        return;
+      }
 
-        if (err) {
-          // net.createConnection() creates a net.Socket object and immediately
-          // calls net.Socket.connect() on it (that's us). There are no event
-          // listeners registered yet so defer the error event to the next tick.
-          nextTick(_connectErrorNT, self, err);
-        } else if (!isIP(ip)) {
-          err = new ERR_INVALID_IP_ADDRESS(ip);
+      if (err) {
+        // net.createConnection() creates a net.Socket object and immediately
+        // calls net.Socket.connect() on it (that's us). There are no event
+        // listeners registered yet so defer the error event to the next tick.
+        nextTick(_connectErrorNT, self, err);
+      } else if (!isIP(ip)) {
+        err = new ERR_INVALID_IP_ADDRESS(ip);
 
-          nextTick(_connectErrorNT, self, err);
-        } else if (addressType !== 4 && addressType !== 6) {
-          err = new ERR_INVALID_ADDRESS_FAMILY(
-            `${addressType}`,
-            options.host!,
-            options.port,
-          );
+        nextTick(_connectErrorNT, self, err);
+      } else if (addressType !== 4 && addressType !== 6) {
+        err = new ERR_INVALID_ADDRESS_FAMILY(
+          `${addressType}`,
+          options.host!,
+          options.port,
+        );
 
-          nextTick(_connectErrorNT, self, err);
-        } else {
-          self._unrefTimer();
+        nextTick(_connectErrorNT, self, err);
+      } else {
+        self._unrefTimer();
 
-          defaultTriggerAsyncIdScope(self[asyncIdSymbol], nextTick, () => {
-            if (self.connecting) {
-              defaultTriggerAsyncIdScope(
-                self[asyncIdSymbol],
-                _internalConnect,
-                self,
-                ip,
-                port,
-                addressType,
-                localAddress,
-                localPort,
-              );
-            }
-          });
-        }
-      },
-    );
+        defaultTriggerAsyncIdScope(self[asyncIdSymbol], nextTick, () => {
+          if (self.connecting) {
+            defaultTriggerAsyncIdScope(
+              self[asyncIdSymbol],
+              _internalConnect,
+              self,
+              ip,
+              port,
+              addressType,
+              localAddress,
+              localPort,
+            );
+          }
+        });
+      }
+    }
+
+    // Tag the trusted callback so the built-in dns.lookup hands it the
+    // NetPermToken; user-supplied lookups never receive it.
+    if (usingDefaultLookup) {
+      emitLookup[kPermTokenSink] = true;
+    }
+    lookup(host, getLookupDnsOpts(), emitLookup);
   });
 }
 
 function _lookupAndConnectMultiple(
   self: Socket,
   asyncIdSymbol: number,
-  // deno-lint-ignore no-explicit-any
   lookup: any,
   host: string,
   options: TcpSocketConnectOptions,
@@ -1084,10 +1270,14 @@ function _lookupAndConnectMultiple(
   localAddress: string,
   localPort: number,
   timeout: number | undefined,
+  usingDefaultLookup: boolean,
 ) {
-  defaultTriggerAsyncIdScope(self[asyncIdSymbol], function emitLookup() {
-    lookup(host, dnsopts, function emitLookup(err, addresses, _, netPermToken) {
-      if (netPermToken && self._handle?.setNetPermToken) {
+  defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
+    function emitLookup(err, addresses, _, netPermToken) {
+      // Only the built-in lookup installs a token (see _lookupAndConnect).
+      if (
+        usingDefaultLookup && netPermToken && self._handle?.setNetPermToken
+      ) {
         self._handle.setNetPermToken(netPermToken);
       }
       // It's possible we were destroyed while looking this up.
@@ -1159,10 +1349,10 @@ function _lookupAndConnectMultiple(
         i < l;
         i++
       ) {
-        if (i in validAddresses[0]) {
+        if (ObjectHasOwn(validAddresses[0], i)) {
           ArrayPrototypePush(toAttempt, validAddresses[0][i]);
         }
-        if (i in validAddresses[1]) {
+        if (ObjectHasOwn(validAddresses[1], i)) {
           ArrayPrototypePush(toAttempt, validAddresses[1][i]);
         }
       }
@@ -1189,7 +1379,10 @@ function _lookupAndConnectMultiple(
       }
 
       self.autoSelectFamilyAttemptedAddresses = [];
-      debug("connect/multiple: will try the following addresses", toAttempt);
+      debug(
+        "connect/multiple: will try the following addresses",
+        toAttempt,
+      );
 
       const context = {
         socket: self,
@@ -1209,12 +1402,18 @@ function _lookupAndConnectMultiple(
         _internalConnectMultiple,
         context,
       );
-    });
+    }
+
+    // Tag the trusted callback so the built-in dns.lookup hands it the
+    // NetPermToken; user-supplied lookups never receive it.
+    if (usingDefaultLookup) {
+      emitLookup[kPermTokenSink] = true;
+    }
+    lookup(host, dnsopts, emitLookup);
   });
 }
 
 function _afterShutdown(this: ShutdownWrap<TCP>) {
-  // deno-lint-ignore no-explicit-any
   const self: any = this.handle[ownerSymbol];
 
   debug("afterShutdown destroyed=%j", self.destroyed, self._readableState);
@@ -1263,8 +1462,8 @@ function _addClientAbortSignalOption(socket: Socket, signal: AbortSignal) {
  * is received. For example, it is passed to the listeners of a `"connection"` event emitted on a `Server`, so the user can use
  * it to interact with the client.
  */
-export function Socket(options) {
-  if (!(this instanceof Socket)) {
+function Socket(options) {
+  if (!ObjectPrototypeIsPrototypeOf(Socket.prototype, this)) {
     return new Socket(options);
   }
 
@@ -1305,7 +1504,7 @@ export function Socket(options) {
   // Handle strings directly.
   options.decodeStrings = false;
 
-  Duplex.call(this, options);
+  FunctionPrototypeCall(Duplex, this, options);
 
   this[asyncIdSymbol] = -1;
   this[kHandle] = null;
@@ -1337,6 +1536,7 @@ export function Socket(options) {
   if (options.handle) {
     this._handle = options.handle;
     this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+    _emitHandleInit(this._handle, this[asyncIdSymbol]);
   } else if (options.fd !== undefined) {
     const { fd } = options;
 
@@ -1354,10 +1554,11 @@ export function Socket(options) {
     }
 
     this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+    _emitHandleInit(this._handle, this[asyncIdSymbol]);
 
     if (
       (fd === 1 || fd === 2) &&
-      this._handle instanceof Pipe &&
+      ObjectPrototypeIsPrototypeOf(Pipe.prototype, this._handle) &&
       isWindows
     ) {
       // Make stdout and stderr blocking on Windows
@@ -1372,17 +1573,22 @@ export function Socket(options) {
 
   if (
     onread !== null &&
-    typeof onread === "object" &&
-    (isUint8Array(onread.buffer) || typeof onread.buffer === "function") &&
-    typeof onread.callback === "function"
+    typeof onread === "object"
   ) {
-    if (typeof onread.buffer === "function") {
-      this[kBuffer] = true;
-      this[kBufferGen] = onread.buffer;
-    } else {
-      this[kBuffer] = onread.buffer;
+    // deno-lint-ignore prefer-primordials -- user option object property, not TypedArray#buffer
+    const onreadBuffer = onread.buffer;
+    if (
+      (isUint8Array(onreadBuffer) || typeof onreadBuffer === "function") &&
+      typeof onread.callback === "function"
+    ) {
+      if (typeof onreadBuffer === "function") {
+        this[kBuffer] = true;
+        this[kBufferGen] = onreadBuffer;
+      } else {
+        this[kBuffer] = onreadBuffer;
+      }
+      this[kBufferCb] = onread.callback;
     }
-    this[kBufferCb] = onread.callback;
   }
 
   this.on("end", _onReadableStreamEnd);
@@ -1403,13 +1609,13 @@ export function Socket(options) {
     _addClientAbortSignalOption(this, options.signal);
   }
 }
-Object.setPrototypeOf(Socket.prototype, Duplex.prototype);
-Object.setPrototypeOf(Socket, Duplex);
+ObjectSetPrototypeOf(Socket.prototype, Duplex.prototype);
+ObjectSetPrototypeOf(Socket, Duplex);
 
 Socket.prototype.connect = function (...args) {
   let normalized;
 
-  if (Array.isArray(args[0]) && args[0][normalizedArgsSymbol]) {
+  if (ArrayIsArray(args[0]) && args[0][normalizedArgsSymbol]) {
     normalized = args[0];
   } else {
     normalized = _normalizeArgs(args);
@@ -1420,6 +1626,12 @@ Socket.prototype.connect = function (...args) {
 
   if (options.port === undefined && options.path == null) {
     throw new ERR_MISSING_ARGS(["options", "port", "path"]);
+  }
+
+  if (netClientSocketChannel.hasSubscribers) {
+    netClientSocketChannel.publish({
+      socket: this,
+    });
   }
 
   if (this.write !== Socket.prototype.write) {
@@ -1444,6 +1656,11 @@ Socket.prototype.connect = function (...args) {
     _initSocketHandle(this);
   }
 
+  // Capture the async context now, while we are still running synchronously
+  // inside the caller's context. The DNS lookup that precedes the actual
+  // connect is async and would otherwise drop it before `_afterConnect` runs.
+  this._handle[kAsyncContext] = core.getAsyncContext();
+
   if (cb !== null) {
     this.once("connect", cb);
   }
@@ -1461,6 +1678,15 @@ Socket.prototype.connect = function (...args) {
       path,
     );
   } else {
+    if (options.keepAlive !== undefined) {
+      this.setKeepAlive(
+        !!options.keepAlive,
+        options.keepAliveInitialDelay,
+      );
+    }
+    if (options.noDelay !== undefined) {
+      this.setNoDelay(options.noDelay);
+    }
     _lookupAndConnect(this, options);
   }
 
@@ -1480,7 +1706,7 @@ Socket.prototype.pause = function () {
     }
   }
 
-  return Duplex.prototype.pause.call(this);
+  return FunctionPrototypeCall(Duplex.prototype.pause, this);
 };
 
 Socket.prototype.resume = function () {
@@ -1488,7 +1714,7 @@ Socket.prototype.resume = function () {
     _tryReadStart(this);
   }
 
-  return Duplex.prototype.resume.call(this);
+  return FunctionPrototypeCall(Duplex.prototype.resume, this);
 };
 
 Socket.prototype.setTimeout = setStreamTimeout;
@@ -1505,13 +1731,11 @@ Socket.prototype.setNoDelay = function (noDelay) {
 
   const newValue = noDelay === undefined ? true : !!noDelay;
 
-  if (
-    "setNoDelay" in this._handle &&
-    this._handle.setNoDelay &&
-    newValue !== this[kSetNoDelay]
-  ) {
+  if (newValue !== this[kSetNoDelay]) {
     this[kSetNoDelay] = newValue;
-    this._handle.setNoDelay(newValue);
+    if (ReflectHas(this._handle, "setNoDelay") && this._handle.setNoDelay) {
+      this._handle.setNoDelay(newValue);
+    }
   }
 
   return this;
@@ -1528,14 +1752,16 @@ Socket.prototype.setKeepAlive = function (enable, initialDelay) {
   const newDelay = ~~(initialDelay / 1000);
 
   if (
-    "setKeepAlive" in this._handle &&
-    this._handle.setKeepAlive &&
-    (newEnable !== this[kSetKeepAlive] ||
-      newDelay !== this[kSetKeepAliveInitialDelay])
+    newEnable !== this[kSetKeepAlive] ||
+    newDelay !== this[kSetKeepAliveInitialDelay]
   ) {
     this[kSetKeepAlive] = newEnable;
     this[kSetKeepAliveInitialDelay] = newDelay;
-    this._handle.setKeepAlive(newEnable, newDelay);
+    if (
+      ReflectHas(this._handle, "setKeepAlive") && this._handle.setKeepAlive
+    ) {
+      this._handle.setKeepAlive(newEnable, newDelay);
+    }
   }
 
   return this;
@@ -1580,7 +1806,7 @@ Socket.prototype.resetAndDestroy = function () {
 
   if (
     !this._handle ||
-    !(this._handle instanceof TCP)
+    !ObjectPrototypeIsPrototypeOf(TCP.prototype, this._handle)
   ) {
     this.destroy(
       new ERR_SOCKET_CLOSED(),
@@ -1603,17 +1829,18 @@ Socket.prototype._reset = function () {
   this.destroy();
 };
 
-Object.defineProperty(Socket.prototype, "bufferSize", {
+ObjectDefineProperty(Socket.prototype, "bufferSize", {
+  __proto__: null,
   get: function () {
     if (this._handle) {
       return this.writableLength;
     }
-
-    return 0;
+    return undefined;
   },
 });
 
-Object.defineProperty(Socket.prototype, "bytesRead", {
+ObjectDefineProperty(Socket.prototype, "bytesRead", {
+  __proto__: null,
   get: function () {
     return this._handle
       ? (this._handle.getBytesRead?.() ?? this._handle.bytesRead ?? 0)
@@ -1621,7 +1848,8 @@ Object.defineProperty(Socket.prototype, "bytesRead", {
   },
 });
 
-Object.defineProperty(Socket.prototype, "bytesWritten", {
+ObjectDefineProperty(Socket.prototype, "bytesWritten", {
+  __proto__: null,
   get: function () {
     let bytes = this._bytesDispatched;
     const data = this._pendingData;
@@ -1632,17 +1860,20 @@ Object.defineProperty(Socket.prototype, "bytesWritten", {
       return undefined;
     }
 
-    for (const el of writableBuffer) {
-      bytes += el.chunk instanceof Buffer
+    for (const el of new SafeArrayIterator(writableBuffer)) {
+      bytes += ObjectPrototypeIsPrototypeOf(Buffer.prototype, el.chunk)
         ? el.chunk.length
         : Buffer.byteLength(el.chunk, el.encoding);
     }
 
-    if (Array.isArray(data)) {
+    if (ArrayIsArray(data)) {
       for (let i = 0; i < data.length; i++) {
         const chunk = data[i];
 
-        if (data.allBuffers || chunk instanceof Buffer) {
+        if (
+          data.allBuffers ||
+          ObjectPrototypeIsPrototypeOf(Buffer.prototype, chunk)
+        ) {
           bytes += chunk.length;
         } else {
           bytes += Buffer.byteLength(chunk.chunk, chunk.encoding);
@@ -1660,49 +1891,57 @@ Object.defineProperty(Socket.prototype, "bytesWritten", {
   },
 });
 
-Object.defineProperty(Socket.prototype, "localAddress", {
+ObjectDefineProperty(Socket.prototype, "localAddress", {
+  __proto__: null,
   get: function () {
     return this._getsockname().address;
   },
 });
 
-Object.defineProperty(Socket.prototype, "localPort", {
+ObjectDefineProperty(Socket.prototype, "localPort", {
+  __proto__: null,
   get: function () {
     return this._getsockname().port;
   },
 });
 
-Object.defineProperty(Socket.prototype, "localFamily", {
+ObjectDefineProperty(Socket.prototype, "localFamily", {
+  __proto__: null,
   get: function () {
     return this._getsockname().family;
   },
 });
 
-Object.defineProperty(Socket.prototype, "remoteAddress", {
+ObjectDefineProperty(Socket.prototype, "remoteAddress", {
+  __proto__: null,
   get: function () {
     return this._getpeername().address;
   },
 });
 
-Object.defineProperty(Socket.prototype, "remoteFamily", {
+ObjectDefineProperty(Socket.prototype, "remoteFamily", {
+  __proto__: null,
   get: function () {
     return this._getpeername().family;
   },
 });
 
-Object.defineProperty(Socket.prototype, "remotePort", {
+ObjectDefineProperty(Socket.prototype, "remotePort", {
+  __proto__: null,
   get: function () {
     return this._getpeername().port;
   },
 });
 
-Object.defineProperty(Socket.prototype, "pending", {
+ObjectDefineProperty(Socket.prototype, "pending", {
+  __proto__: null,
   get: function () {
     return !this._handle || this.connecting;
   },
 });
 
-Object.defineProperty(Socket.prototype, "readyState", {
+ObjectDefineProperty(Socket.prototype, "readyState", {
+  __proto__: null,
   get: function () {
     if (this.connecting) {
       return "opening";
@@ -1718,7 +1957,7 @@ Object.defineProperty(Socket.prototype, "readyState", {
 });
 
 Socket.prototype.end = function (data, encoding, cb) {
-  Duplex.prototype.end.call(this, data, encoding, cb);
+  FunctionPrototypeCall(Duplex.prototype.end, this, data, encoding, cb);
   DTRACE_NET_STREAM_END(this);
 
   return this;
@@ -1734,7 +1973,7 @@ Socket.prototype.read = function (size) {
     _tryReadStart(this);
   }
 
-  return Duplex.prototype.read.call(this, size);
+  return FunctionPrototypeCall(Duplex.prototype.read, this, size);
 };
 
 Socket.prototype.destroySoon = function () {
@@ -1759,7 +1998,7 @@ Socket.prototype._unrefTimer = function () {
 };
 
 Socket.prototype._final = function (cb) {
-  if (this.pending) {
+  if (this.connecting) {
     debug("_final: not yet connected");
     return this.once("connect", () => this._final(cb));
   }
@@ -1848,6 +2087,9 @@ Socket.prototype._destroy = function (exception, cb) {
     cb(exception);
     handle.close(() => {
       handle.onread = _noop;
+      if (this[asyncIdSymbol] > 0) {
+        emitDestroy(this[asyncIdSymbol]);
+      }
 
       debug("emit close");
       this.emit("close", isException);
@@ -1859,16 +2101,34 @@ Socket.prototype._destroy = function (exception, cb) {
 
   if (this._server) {
     debug("has server");
-    this._server._connections--;
+    const server = this._server;
+    server._connections--;
 
-    if (this._server._emitCloseIfDrained) {
-      this._server._emitCloseIfDrained();
+    if (server._emitCloseIfDrained) {
+      if (
+        !server._handle &&
+        server._connections === 0 &&
+        this._httpMessageDetached === true &&
+        !this._httpMessage
+      ) {
+        defaultTriggerAsyncIdScope(
+          server[asyncIdSymbol],
+          nextTick,
+          _emitCloseNT,
+          server,
+        );
+      } else {
+        server._emitCloseIfDrained();
+      }
     }
   }
 };
 
 Socket.prototype._getpeername = function () {
-  if (!this._handle || !("getpeername" in this._handle) || this.connecting) {
+  if (
+    !this._handle || !ReflectHas(this._handle, "getpeername") ||
+    this.connecting
+  ) {
     return this._peername || {};
   } else if (!this._peername) {
     this._peername = {};
@@ -1879,7 +2139,7 @@ Socket.prototype._getpeername = function () {
 };
 
 Socket.prototype._getsockname = function () {
-  if (!this._handle || !("getsockname" in this._handle)) {
+  if (!this._handle || !ReflectHas(this._handle, "getsockname")) {
     return {};
   } else if (!this._sockname) {
     this._sockname = {};
@@ -1941,19 +2201,22 @@ Socket.prototype[kAfterAsyncWrite] = function () {
   this[kLastWriteQueueSize] = 0;
 };
 
-Object.defineProperty(Socket.prototype, kUpdateTimer, {
+ObjectDefineProperty(Socket.prototype, kUpdateTimer, {
+  __proto__: null,
   get: function () {
     return this._unrefTimer;
   },
 });
 
-Object.defineProperty(Socket.prototype, "_connecting", {
+ObjectDefineProperty(Socket.prototype, "_connecting", {
+  __proto__: null,
   get: function () {
     return this.connecting;
   },
 });
 
-Object.defineProperty(Socket.prototype, "_bytesDispatched", {
+ObjectDefineProperty(Socket.prototype, "_bytesDispatched", {
+  __proto__: null,
   get: function () {
     return this._handle
       ? (this._handle.getBytesWritten?.() ?? this._handle.bytesWritten ?? 0)
@@ -1961,11 +2224,22 @@ Object.defineProperty(Socket.prototype, "_bytesDispatched", {
   },
 });
 
-Object.defineProperty(Socket.prototype, "_handle", {
+ObjectDefineProperty(Socket.prototype, "_handle", {
+  __proto__: null,
   get: function () {
     return this[kHandle];
   },
   set: function (v) {
+    if (this[kHandle] && !v) {
+      unregisterActiveHandle(this);
+    } else if (!this[kHandle] && v) {
+      registerActiveHandle(
+        this,
+        ObjectPrototypeIsPrototypeOf(TCP.prototype, v)
+          ? "TCPSocketWrap"
+          : "PipeWrap",
+      );
+    }
     this[kHandle] = v;
   },
 });
@@ -1975,7 +2249,7 @@ Socket.prototype[kReinitializeHandle] = function (handle) {
 
   // Make sure TLS wrap works after reinitialize.
   if (typeof this._handle?.afterConnectTls === "function") {
-    const { promise, resolve } = Promise.withResolvers();
+    const { promise, resolve } = PromiseWithResolvers();
     handle.afterConnectTls = this._handle.afterConnectTls;
     handle.afterConnectTlsResolve = resolve;
     handle.upgrading = promise;
@@ -1990,7 +2264,7 @@ Socket.prototype[kReinitializeHandle] = function (handle) {
   _initSocketHandle(this);
 };
 
-export const Stream = Socket;
+const Stream = Socket;
 
 // Target API:
 //
@@ -2004,55 +2278,52 @@ export const Stream = Socket;
 // connect(port, [host], [cb])
 // connect(path, [cb]);
 //
-export function connect(
+function connect(
   options: NetConnectOptions,
   connectionListener?: () => void,
 ): Socket;
-export function connect(
+function connect(
   port: number,
   host?: string,
   connectionListener?: () => void,
 ): Socket;
-export function connect(path: string, connectionListener?: () => void): Socket;
-export function connect(...args: unknown[]) {
+function connect(path: string, connectionListener?: () => void): Socket;
+function connect(...args: unknown[]) {
   const normalized = _normalizeArgs(args);
   const options = normalized[0] as Partial<NetConnectOptions>;
   debug("createConnection", normalized);
   const socket = new Socket(options);
 
-  if (netClientSocketChannel.hasSubscribers) {
-    netClientSocketChannel.publish({
-      socket,
-    });
-  }
-
   if (options.timeout) {
     socket.setTimeout(options.timeout);
   }
 
+  // `Socket.prototype.connect` publishes `net.client.socket` so that all
+  // entry points (net.connect, net.createConnection, new net.Socket().connect,
+  // tls.connect via TLSSocket extending Socket) emit exactly once.
   return socket.connect(normalized);
 }
 
-export const createConnection = connect;
+const createConnection = connect;
 
 /** https://docs.deno.com/api/node/net/#namespace_getdefaultautoselectfamily */
-export function getDefaultAutoSelectFamily() {
+function getDefaultAutoSelectFamily() {
   return autoSelectFamilyDefault;
 }
 
 /** https://docs.deno.com/api/node/net/#namespace_setdefaultautoselectfamily */
-export function setDefaultAutoSelectFamily(value: boolean) {
+function setDefaultAutoSelectFamily(value: boolean) {
   validateBoolean(value, "value");
   autoSelectFamilyDefault = value;
 }
 
 /** https://docs.deno.com/api/node/net/#namespace_getdefaultautoselectfamilyattempttimeout */
-export function getDefaultAutoSelectFamilyAttemptTimeout() {
+function getDefaultAutoSelectFamilyAttemptTimeout() {
   return autoSelectFamilyAttemptTimeoutDefault;
 }
 
 /** https://docs.deno.com/api/node/net/#namespace_setdefaultautoselectfamilyattempttimeout */
-export function setDefaultAutoSelectFamilyAttemptTimeout(value: number) {
+function setDefaultAutoSelectFamilyAttemptTimeout(value: number) {
   validateInt32(value, "value", 1);
 
   if (value < 10) {
@@ -2062,7 +2333,7 @@ export function setDefaultAutoSelectFamilyAttemptTimeout(value: number) {
   autoSelectFamilyAttemptTimeoutDefault = value;
 }
 
-export interface ListenOptions extends Abortable {
+interface ListenOptions extends Abortable {
   fd?: number;
   port?: number | undefined;
   host?: string | undefined;
@@ -2090,6 +2361,12 @@ interface ServerOptions {
    * Default: false
    */
   pauseOnConnect?: boolean | undefined;
+  /**
+   * If set to true, it disables the use of Nagle's algorithm immediately
+   * after a new incoming connection is received.
+   * Default: false
+   */
+  noDelay?: boolean | undefined;
 }
 
 function _isServerSocketOptions(
@@ -2131,22 +2408,53 @@ function _listenInCluster(
 ) {
   exclusive = !!exclusive;
 
-  // TODO(cmorten): here we deviate somewhat from the Node implementation which
-  // makes use of the https://nodejs.org/api/cluster.html module to run servers
-  // across a "cluster" of Node processes to take advantage of multi-core
-  // systems.
-  //
-  // Though Deno has has a Worker capability from which we could simulate this,
-  // for now we assert that we are _always_ on the primary process.
-  const isPrimary = true;
-
-  if (isPrimary || exclusive) {
-    // Will create a new handle
-    // _listen2 sets up the listened handle, it is still named like this
-    // to avoid breaking code that wraps this method
+  // Resolved lazily to break the cluster <-> net cycle; by the time a server
+  // is being listen()ed on, both modules are evaluated.
+  const cluster = lazyCluster().default;
+  if (cluster.isPrimary || exclusive) {
     server._listen2(address, port, addressType, backlog, fd, flags);
-
     return;
+  }
+
+  const serverQuery = {
+    address,
+    port,
+    addressType,
+    // Match Node: pass `undefined` (not null) when no fd was provided so
+    // the primary's `RoundRobinHandle`'s `fd >= 0` check (where `null >= 0`
+    // is `true` in JS) doesn't take the fd branch.
+    fd: fd == null ? undefined : fd,
+    flags,
+    backlog,
+  };
+  const listeningId = server._listeningId;
+  // Get the primary's server handle, and listen on it.
+  cluster._getServer(server, serverQuery, listenOnPrimaryHandle);
+
+  function listenOnPrimaryHandle(err: number, handle: Handle) {
+    if (listeningId !== server._listeningId) {
+      if (handle) handle.close();
+      return;
+    }
+    // Mirrors Node: a SharedHandle bind failure is deferred by libuv (it
+    // returns 0 from bind() and stashes EADDRINUSE for the listen syscall).
+    // Once the worker dups the fd, that delayed_error is gone -- the new
+    // wrap is a fresh tcp_t. Detect the bind failure here by comparing the
+    // expected port against what `getsockname()` actually reports (a failed
+    // bind followed by listen would have the kernel auto-bind to port 0).
+    err = _checkBindError(err, port as number, handle as TCP);
+    if (err) {
+      const ex = uvExceptionWithHostPort(err, "bind", address, port);
+      unregisterActiveHandle(server);
+      server.emit("error", ex);
+      return;
+    }
+    if (server._handle) {
+      server._handle.close();
+      unregisterActiveHandle(server);
+    }
+    server._handle = handle;
+    server._listen2(address, port, addressType, backlog, fd, flags);
   }
 }
 
@@ -2199,12 +2507,15 @@ function _addAbortSignalOption(server: Server, options: ListenOptions) {
     nextTick(onAborted);
   } else {
     signal.addEventListener("abort", onAborted);
-    server.once("close", () => signal.removeEventListener("abort", onAborted));
+    server.once(
+      "close",
+      () => signal.removeEventListener("abort", onAborted),
+    );
   }
 }
 
 // Returns handle if it can be created, or error code if it can't
-export function _createServerHandle(
+function _createServerHandle(
   address: string | null,
   port: number | null,
   addressType: number | null,
@@ -2237,11 +2548,11 @@ export function _createServerHandle(
     handle = new Pipe(PipeConstants.SERVER);
 
     if (isWindows) {
-      const instances = Number.parseInt(
+      const instances = NumberParseInt(
         Deno.env.get("NODE_PENDING_PIPE_INSTANCES") ?? "",
       );
 
-      if (!Number.isNaN(instances)) {
+      if (!NumberIsNaN(instances)) {
         handle.setPendingInstances!(instances);
       }
     }
@@ -2278,6 +2589,7 @@ export function _createServerHandle(
     } else if (isTCP) {
       err = (handle as TCP).bindWithFlags(address, port ?? 0, flags ?? 0);
     } else {
+      // deno-lint-ignore prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
       err = handle.bind(address);
     }
   }
@@ -2302,8 +2614,16 @@ function _emitListeningNT(server: Server) {
   }
 }
 
-// deno-lint-ignore no-explicit-any
 function _onconnection(this: any, err: number, clientHandle?: Handle) {
+  // deno-lint-ignore no-this-alias
+  const handle = this;
+  _runInAsyncContext(
+    handle[kAsyncContext],
+    () => FunctionPrototypeCall(_onconnectionImpl, handle, err, clientHandle),
+  );
+}
+
+function _onconnectionImpl(this: any, err: number, clientHandle?: Handle) {
   // deno-lint-ignore no-this-alias
   const handle = this;
   const self = handle[ownerSymbol];
@@ -2349,6 +2669,14 @@ function _onconnection(this: any, err: number, clientHandle?: Handle) {
   }
 }
 
+// The libuv-style wrap name Node reports for a server handle from
+// `process.getActiveResourcesInfo()`.
+function _serverWrapName(handle: Handle) {
+  return ObjectPrototypeIsPrototypeOf(TCP.prototype, handle)
+    ? "TCPServerWrap"
+    : "PipeWrap";
+}
+
 function _setupListenHandle(
   this: Server,
   address: string | null,
@@ -2364,6 +2692,7 @@ function _setupListenHandle(
   // In the case of a server sent via IPC, we don't need to do this.
   if (this._handle) {
     debug("setupListenHandle: have a handle already");
+    registerActiveHandle(this, _serverWrapName(this._handle));
   } else {
     debug("setupListenHandle: create a handle");
 
@@ -2400,24 +2729,34 @@ function _setupListenHandle(
 
     if (typeof rval === "number") {
       const error = uvExceptionWithHostPort(rval, "listen", address, port);
+      // Publish to the `net.server.listen` tracingChannel synchronously
+      // (before the deferred error emit) so subscribers see the result
+      // even if a caller immediately unsubscribes after `Server.listen()`
+      // returns -- mirrors Node, which the test-diagnostics-channel-net
+      // failing-listen subscribe/unsubscribe pattern relies on.
+      if (netServerListenChannel.hasSubscribers) {
+        netServerListenChannel.error.publish({ server: this, error });
+      }
       nextTick(_emitErrorNT, this, error);
 
       return;
     }
 
     this._handle = rval;
+    registerActiveHandle(this, _serverWrapName(this._handle));
   }
 
   this[asyncIdSymbol] = _getNewAsyncId(this._handle);
   this._handle.onconnection = _onconnection;
+  this._handle[kAsyncContext] = core.getAsyncContext();
   this._handle[ownerSymbol] = this;
 
   // For TCP and Pipe handles, wrap the onconnection callback to create
   // client handles and call uv_accept before forwarding to
   // _onconnection(status, clientHandle).
-  if (this._handle instanceof TCP) {
+  if (ObjectPrototypeIsPrototypeOf(TCP.prototype, this._handle)) {
     setupListenWrap(this._handle);
-  } else if (this._handle instanceof Pipe) {
+  } else if (ObjectPrototypeIsPrototypeOf(Pipe.prototype, this._handle)) {
     setupPipeListenWrap(this._handle);
   }
 
@@ -2430,7 +2769,14 @@ function _setupListenHandle(
     const ex = uvExceptionWithHostPort(err, "listen", address, port);
     this._handle.close();
     this._handle = null;
+    unregisterActiveHandle(this);
 
+    // Synchronous channel publish (see comment above on the bind/handle
+    // failure path) -- the deferred `_emitErrorNT` runs after callers have
+    // already unsubscribed.
+    if (netServerListenChannel.hasSubscribers) {
+      netServerListenChannel.error.publish({ server: this, error: ex });
+    }
     defaultTriggerAsyncIdScope(
       this[asyncIdSymbol],
       nextTick,
@@ -2450,6 +2796,11 @@ function _setupListenHandle(
     this.unref();
   }
 
+  // Synchronous asyncEnd publish so subscribers that unsubscribe right
+  // after `Server.listen()` returns still observe the success result.
+  if (netServerListenChannel.hasSubscribers) {
+    netServerListenChannel.asyncEnd.publish({ server: this });
+  }
   defaultTriggerAsyncIdScope(
     this[asyncIdSymbol],
     nextTick,
@@ -2474,24 +2825,25 @@ function _setupListenHandle(
  * - `"listening"` - Emitted when the server has been bound after calling
  * `server.listen()`.
  */
-export function Server(connectionListener?: ConnectionListener);
-export function Server(
+function Server(connectionListener?: ConnectionListener);
+function Server(
   options?: ServerOptions,
   connectionListener?: ConnectionListener,
 );
-export function Server(
+function Server(
   options?: ServerOptions | ConnectionListener,
   connectionListener?: ConnectionListener,
 ) {
-  if (!(this instanceof Server)) {
+  if (!ObjectPrototypeIsPrototypeOf(Server.prototype, this)) {
     return new Server(options, connectionListener);
   }
 
-  EventEmitter.call(this);
+  FunctionPrototypeCall(EventEmitter, this);
 
   this[asyncIdSymbol] = -1;
   this.allowHalfOpen = false;
   this.pauseOnConnect = false;
+  this.noDelay = false;
   this._handle = null;
   this._connections = 0;
   this._usingWorkers = false;
@@ -2506,6 +2858,7 @@ export function Server(
   } else if (_isServerSocketOptions(options)) {
     this.allowHalfOpen = options?.allowHalfOpen || false;
     this.pauseOnConnect = !!options?.pauseOnConnect;
+    this.noDelay = Boolean(options?.noDelay);
 
     if (options?.blockList) {
       this.blockList = options.blockList;
@@ -2518,8 +2871,8 @@ export function Server(
     throw new ERR_INVALID_ARG_TYPE("options", "Object", options);
   }
 }
-Object.setPrototypeOf(Server.prototype, EventEmitter.prototype);
-Object.setPrototypeOf(Server, EventEmitter);
+ObjectSetPrototypeOf(Server.prototype, EventEmitter.prototype);
+ObjectSetPrototypeOf(Server, EventEmitter);
 
 /**
  * Start a server listening for connections. A `net.Server` can be a TCP or
@@ -2565,17 +2918,33 @@ Server.prototype.listen = function (...args: unknown[]) {
     this.once("listening", cb);
   }
 
+  // The 'net.server.listen' tracingChannel publishes the user-visible
+  // listen() options. Doing it here (after _normalizeArgs but before any
+  // pre-existing-handle short-circuits return) lets subscribers see the same
+  // options the caller passed in (including ad-hoc fields like
+  // `customOption` used by test-diagnostics-channel-net to verify the
+  // payload is the original options object).
+  if (netServerListenChannel.hasSubscribers) {
+    netServerListenChannel.asyncStart.publish({ server: this, options });
+  }
+
   const backlogFromArgs: number =
     // (handle, backlog) or (path, backlog) or (port, backlog)
     _toNumber(args.length > 1 && args[1]) ||
     (_toNumber(args.length > 2 && args[2]) as number); // (port, host, backlog)
 
-  // deno-lint-ignore no-explicit-any
   options = (options as any)._handle || (options as any).handle || options;
   const flags = _getFlags(options.ipv6Only, options.reusePort);
 
-  // (handle[, backlog][, cb]) where handle is an object with a handle
-  if (options instanceof TCP) {
+  // (handle[, backlog][, cb]) where handle is an object with a handle.
+  // A Pipe wrap exposes an `fd` getter, so it must be matched here before
+  // the `options.fd` branch below -- otherwise the already-opened fd would
+  // be re-opened and rejected (EEXIST). This is the path taken when a
+  // unix-socket server is transferred over IPC (ChildProcess.send).
+  if (
+    ObjectPrototypeIsPrototypeOf(TCP.prototype, options) ||
+    ObjectPrototypeIsPrototypeOf(Pipe.prototype, options)
+  ) {
     this._handle = options;
     this[asyncIdSymbol] = this._handle.getAsyncId();
 
@@ -2600,7 +2969,7 @@ Server.prototype.listen = function (...args: unknown[]) {
   if (
     args.length === 0 ||
     typeof args[0] === "function" ||
-    (typeof options.port === "undefined" && "port" in options) ||
+    (typeof options.port === "undefined" && ObjectHasOwn(options, "port")) ||
     options.port === null
   ) {
     options.port = 0;
@@ -2653,6 +3022,19 @@ Server.prototype.listen = function (...args: unknown[]) {
     const pipeName = (this._pipeName = options.path);
     backlog = options.backlog || backlogFromArgs;
 
+    // Abstract Unix sockets (path starts with \0) have no filesystem
+    // entry, so readableAll/writableAll (which use chmod) are invalid.
+    if (
+      (options.readableAll === true || options.writableAll === true) &&
+      StringPrototypeCharCodeAt(pipeName, 0) === 0
+    ) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options",
+        options,
+        "can not set readableAll or writableAllt to true when path is abstract unix socket",
+      );
+    }
+
     _listenInCluster(
       this,
       pipeName,
@@ -2693,7 +3075,7 @@ Server.prototype.listen = function (...args: unknown[]) {
     return this;
   }
 
-  if (!("port" in options || "path" in options)) {
+  if (!(ObjectHasOwn(options, "port") || ObjectHasOwn(options, "path"))) {
     throw new ERR_INVALID_ARG_VALUE(
       "options",
       options,
@@ -2730,6 +3112,7 @@ Server.prototype.close = function (cb?: (err?: Error) => void) {
   if (this._handle) {
     (this._handle as TCP).close();
     this._handle = null;
+    unregisterActiveHandle(this);
   }
 
   if (this._usingWorkers) {
@@ -2758,7 +3141,7 @@ Server.prototype.close = function (cb?: (err?: Error) => void) {
   return this;
 };
 
-Server.prototype[Symbol.asyncDispose] = function () {
+Server.prototype[SymbolAsyncDispose] = function () {
   return new Promise((resolve) => {
     this.close(() => resolve());
   });
@@ -2873,7 +3256,8 @@ Server.prototype.ref = function () {
   return this;
 };
 
-Object.defineProperty(Server.prototype, "listening", {
+ObjectDefineProperty(Server.prototype, "listening", {
+  __proto__: null,
   get: function () {
     return !!this._handle;
   },
@@ -2888,7 +3272,10 @@ Server.prototype._createSocket = function (clientHandle) {
     writable: true,
   });
 
-  // TODO(@bartlomieju): implement noDelay and setKeepAlive
+  if (this.noDelay && clientHandle.setNoDelay) {
+    socket[kSetNoDelay] = true;
+    clientHandle.setNoDelay(true);
+  }
 
   socket.server = this;
   socket._server = this;
@@ -2927,12 +3314,11 @@ Server.prototype._emitCloseIfDrained = function () {
 
 Server.prototype._setupWorker = function (socketList: EventEmitter) {
   this._usingWorkers = true;
-  this._workers.push(socketList);
+  ArrayPrototypePush(this._workers, socketList);
 
-  // deno-lint-ignore no-explicit-any
   socketList.once("exit", (socketList: any) => {
-    const index = this._workers.indexOf(socketList);
-    this._workers.splice(index, 1);
+    const index = ArrayPrototypeIndexOf(this._workers, socketList);
+    ArrayPrototypeSplice(this._workers, index, 1);
   });
 };
 
@@ -2988,31 +3374,49 @@ Server.prototype[EventEmitter.captureRejectionSymbol] = function (
  * @param connectionListener Automatically set as a listener for the `"connection"` event.
  * @return A `net.Server`.
  */
-export function createServer(
+function createServer(
   options?: ServerOptions,
   connectionListener?: ConnectionListener,
 ): Server {
   return new Server(options, connectionListener);
 }
 
-export { BlockList, isIP, isIPv4, isIPv6, SocketAddress };
-
-export default {
+return {
+  BlockList,
+  isIP,
+  isIPv4,
+  isIPv6,
+  SocketAddress,
   _createServerHandle,
   _normalizeArgs,
-  BlockList,
   connect,
   createConnection,
   createServer,
   getDefaultAutoSelectFamily,
   getDefaultAutoSelectFamilyAttemptTimeout,
-  isIP,
-  isIPv4,
-  isIPv6,
   Server,
   setDefaultAutoSelectFamily,
   setDefaultAutoSelectFamilyAttemptTimeout,
   Socket,
-  SocketAddress,
   Stream,
+  default: {
+    _createServerHandle,
+    _normalizeArgs,
+    BlockList,
+    connect,
+    createConnection,
+    createServer,
+    getDefaultAutoSelectFamily,
+    getDefaultAutoSelectFamilyAttemptTimeout,
+    isIP,
+    isIPv4,
+    isIPv6,
+    Server,
+    setDefaultAutoSelectFamily,
+    setDefaultAutoSelectFamilyAttemptTimeout,
+    Socket,
+    SocketAddress,
+    Stream,
+  },
 };
+})();

@@ -160,8 +160,22 @@ pub fn op_node_udp_leave_multi_v4(
 }
 
 /// Resolve an IPv6 interface address to an interface index.
-/// If the address contains a zone ID (e.g. "fe80::1%eth0"), use that.
-/// Otherwise, try to find the interface by matching the address.
+///
+/// This mirrors libuv's `uv_ip6_addr()`, which Node.js uses to translate the
+/// `multicastInterface` argument of `addMembership()`/`dropMembership()` into
+/// an interface index (the `sin6_scope_id` of the parsed address):
+///
+/// - The interface is selected by the zone id following `%`. On Windows the
+///   zone is a numeric index (`atoi`), while on Unix it is an interface *name*
+///   resolved via `if_nametoindex()`.
+/// - An unknown zone id resolves to index `0`, which the kernel treats as
+///   "use the default interface". Node.js silently accepts such values rather
+///   than failing, so `"::%12"` (no interface literally named `12`) joins on
+///   the default interface instead of raising `EINVAL`.
+///
+/// As an extension over libuv, when no zone id is supplied we additionally try
+/// to map a bare interface address (e.g. `"fe80::1"`) to its index by scanning
+/// the local interfaces, falling back to the default interface.
 fn resolve_ipv6_interface(
   interface_addr: Option<&str>,
 ) -> Result<u32, NodeUdpError> {
@@ -169,35 +183,36 @@ fn resolve_ipv6_interface(
     return Ok(0);
   };
 
-  // Check if the address contains a zone ID (e.g. "fe80::1%eth0" or "::1%1")
+  // Check if the address contains a zone ID (e.g. "fe80::1%eth0" or "::1%12")
   if let Some(zone_idx) = addr_str.find('%') {
+    // The address part must be a valid IPv6 address (libuv calls
+    // `uv_inet_pton` and reports `EINVAL` when it fails to parse).
+    Ipv6Addr::from_str(&addr_str[..zone_idx])?;
+
     let zone_id = &addr_str[zone_idx + 1..];
-    // Try parsing as numeric first
-    if let Ok(idx) = zone_id.parse::<u32>() {
-      return Ok(idx);
+    #[cfg(windows)]
+    {
+      // `atoi`-style parsing: a non-numeric zone yields the default interface.
+      return Ok(zone_id.parse::<u32>().unwrap_or(0));
     }
-    // Otherwise try as interface name
     #[cfg(unix)]
     {
       use std::ffi::CString;
-      if let Ok(c_name) = CString::new(zone_id) {
+      // Resolve the zone as an interface name. `if_nametoindex` returns 0 for
+      // unknown interfaces (including numeric strings that aren't names),
+      // which is silently treated as the default interface.
+      let idx = CString::new(zone_id)
+        .ok()
         // SAFETY: if_nametoindex is safe to call with a valid C string
-        let idx = unsafe { libc::if_nametoindex(c_name.as_ptr()) };
-        if idx != 0 {
-          return Ok(idx);
-        }
-      }
+        .map(|name| unsafe { libc::if_nametoindex(name.as_ptr()) })
+        .unwrap_or(0);
+      return Ok(idx);
     }
-    #[cfg(windows)]
-    {
-      // On Windows, try parsing as numeric index
-      if let Ok(idx) = zone_id.parse::<u32>() {
-        return Ok(idx);
-      }
-    }
+    #[cfg(not(any(unix, windows)))]
+    return Ok(0);
   }
 
-  // Try to find interface by matching the address
+  // No zone id was provided. Try to find interface by matching the address.
   #[cfg(unix)]
   {
     use std::ffi::CStr;
@@ -618,4 +633,67 @@ pub async fn op_node_udp_recv(
     hostname: remote_addr.ip().to_string(),
     port: remote_addr.port(),
   })
+}
+
+/// Return an owned dup of the bound UDP socket's file descriptor, for use as
+/// the payload of an SCM_RIGHTS cmsg on an IPC channel.  The caller owns the
+/// returned fd and must close it after `sendmsg` has attached it to the IPC
+/// message.  Returns -1 on platforms that don't support fd-passing (Windows).
+#[op2(fast)]
+#[smi]
+pub fn op_node_udp_fd_for_ipc(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<i32, NodeUdpError> {
+  let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::io::AsRawFd;
+    let fd = resource.socket.as_raw_fd();
+    if fd < 0 {
+      return Ok(-1);
+    }
+    // SAFETY: fd is a valid open file descriptor. F_DUPFD_CLOEXEC
+    // atomically dups and sets CLOEXEC, avoiding a race window.
+    let dup = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
+    Ok(dup)
+  }
+  #[cfg(not(unix))]
+  {
+    let _ = resource;
+    Ok(-1)
+  }
+}
+
+/// Adopt an existing file descriptor as a UDP socket resource.  Used on the
+/// receiving side of IPC handle passing.
+#[op2]
+#[serde]
+pub fn op_node_udp_open(
+  state: &mut OpState,
+  #[smi] fd: i32,
+) -> Result<(ResourceId, String, u16), NodeUdpError> {
+  #[cfg(unix)]
+  {
+    use std::os::unix::io::FromRawFd;
+    // SAFETY: The fd was received via SCM_RIGHTS and is a valid, open socket.
+    let std_socket = unsafe { std::net::UdpSocket::from_raw_fd(fd) };
+    std_socket.set_nonblocking(true)?;
+    let local_addr = std_socket.local_addr()?;
+    let socket = UdpSocket::from_std(std_socket)?;
+    let resource = NodeUdpSocketResource {
+      socket,
+      cancel: Default::default(),
+    };
+    let rid = state.resource_table.add(resource);
+    Ok((rid, local_addr.ip().to_string(), local_addr.port()))
+  }
+  #[cfg(not(unix))]
+  {
+    let _ = (state, fd);
+    Err(NodeUdpError::Io(std::io::Error::new(
+      std::io::ErrorKind::Unsupported,
+      "UDP socket IPC handle passing is not supported on this platform",
+    )))
+  }
 }

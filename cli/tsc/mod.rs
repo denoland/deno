@@ -213,6 +213,7 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.deno.webgpu.d.ts", "lib.deno_webgpu.d.ts"),
     maybe_compressed_lib!("lib.deno.window.d.ts"),
     maybe_compressed_lib!("lib.deno.worker.d.ts"),
+    maybe_compressed_lib!("lib.deno.desktop.d.ts"),
     maybe_compressed_lib!("lib.deno.shared_globals.d.ts"),
     maybe_compressed_lib!("lib.deno.ns.d.ts"),
     maybe_compressed_lib!("lib.deno.unstable.d.ts"),
@@ -282,6 +283,7 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.es2022.intl.d.ts"),
     maybe_compressed_lib!("lib.es2022.object.d.ts"),
     maybe_compressed_lib!("lib.es2022.regexp.d.ts"),
+    maybe_compressed_lib!("lib.es2022.sharedmemory.d.ts"),
     maybe_compressed_lib!("lib.es2022.string.d.ts"),
     maybe_compressed_lib!("lib.es2023.array.d.ts"),
     maybe_compressed_lib!("lib.es2023.collection.d.ts"),
@@ -314,12 +316,13 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.decorators.d.ts"),
     maybe_compressed_lib!("lib.esnext.disposable.d.ts"),
     maybe_compressed_lib!("lib.esnext.error.d.ts"),
-    maybe_compressed_lib!("lib.esnext.float16.d.ts"),
     maybe_compressed_lib!("lib.esnext.full.d.ts"),
     maybe_compressed_lib!("lib.esnext.intl.d.ts"),
-    maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
+    maybe_compressed_lib!("lib.esnext.object.d.ts"),
     maybe_compressed_lib!("lib.esnext.promise.d.ts"),
+    maybe_compressed_lib!("lib.esnext.regexp.d.ts"),
     maybe_compressed_lib!("lib.esnext.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.esnext.string.d.ts"),
     maybe_compressed_lib!("lib.esnext.temporal.d.ts"),
     maybe_compressed_lib!("lib.esnext.typedarrays.d.ts"),
     maybe_compressed_lib!("lib.node.d.ts"),
@@ -595,12 +598,15 @@ pub static BYTES_IMPORT_SOURCE: &str =
   "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n";
 pub static TEXT_IMPORT_SOURCE: &str =
   "const data: string;\nexport default data;\n";
+pub static CSS_IMPORT_SOURCE: &str =
+  "const sheet: CSSStyleSheet;\nexport default sheet;\n";
 
 pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
   let raw_import = get_specifier_raw_import(specifier)?;
   let source = match raw_import {
     RawImportKind::Bytes => BYTES_IMPORT_SOURCE,
     RawImportKind::Text => TEXT_IMPORT_SOURCE,
+    RawImportKind::Css => CSS_IMPORT_SOURCE,
   };
   Some(source)
 }
@@ -609,6 +615,7 @@ pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
 pub enum RawImportKind {
   Bytes,
   Text,
+  Css,
 }
 
 /// We store the raw import kind in the fragment of the Url
@@ -627,6 +634,8 @@ fn get_specifier_raw_import(specifier: &Url) -> Option<RawImportKind> {
     Some(RawImportKind::Text)
   } else if remaining.starts_with("bytes") {
     Some(RawImportKind::Bytes)
+  } else if remaining.starts_with("css") {
+    Some(RawImportKind::Css)
   } else {
     None
   }
@@ -1281,6 +1290,10 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
       // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
       // so we will ignore complaints about this compiler setting.
       5070,
+      // TS6200: Definitions of the following identifiers conflict with those in another file.
+      // Deno provides its own web API types (WebAssembly, BufferSource, etc.) that intentionally
+      // overlap with lib.dom.d.ts or @types/node. This is expected when both are loaded together.
+      6200,
       // TS7016: Could not find a declaration file for module '...'. '...'
       // implicitly has an 'any' type.  This is due to `allowJs` being off by
       // default but importing of a JavaScript module.
@@ -1294,6 +1307,15 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
     .collect()
   });
 
+// Names of globals that `@types/node` redeclares but that Deno already
+// declares natively (typically in `lib.deno.web.d.ts`). When the TypeScript
+// fork merges `@types/node` into the global symbol table, declarations for
+// these names are dropped so the user-visible global remains Deno's.
+//
+// This keeps `new AbortController().signal` assignable to the `AbortSignal`
+// parameters of `node:fs`, `node:timers/promises`, etc., and avoids the
+// `TS2300` / `TS2320` duplicate-identifier diagnostics reported in
+// https://github.com/denoland/deno/issues/19527.
 pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "AbortController",
   "AbortSignal",
@@ -1346,7 +1368,9 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "ReadableStreamDefaultReader",
   "ReadonlyArray",
   "Request",
+  "RequestInit",
   "Response",
+  "ResponseInit",
   "Storage",
   "SubtleCrypto",
   "TextDecoder",
@@ -1365,27 +1389,10 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
 ];
 
 pub static NODE_ONLY_GLOBALS: &[&str] = &[
-  "__dirname",
-  "__filename",
-  "\"buffer\"",
-  "Buffer",
-  "BufferConstructor",
-  "BufferEncoding",
-  "clearImmediate",
-  "clearInterval",
-  "clearTimeout",
   "console",
   "Console",
   "crypto",
-  "ErrorConstructor",
   "gc",
-  "Global",
   "localStorage",
-  "queueMicrotask",
-  "RequestInit",
-  "ResponseInit",
   "sessionStorage",
-  "setImmediate",
-  "setInterval",
-  "setTimeout",
 ];

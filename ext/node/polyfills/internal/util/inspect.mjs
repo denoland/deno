@@ -20,7 +20,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   ArrayIsArray,
   ArrayPrototypeFilter,
@@ -53,21 +54,24 @@ const {
   StringPrototypeSplit,
   SymbolFor,
 } = primordials;
-import {
+const {
   validateBoolean,
   validateObject,
   validateOneOf,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { codes } from "ext:deno_node/internal/error_codes.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
+const { shouldColorize } = core.loadExtScript(
+  "ext:deno_node/internal/util/colorize.mjs",
+);
+const {
   colors,
   createStylizeWithColor,
   formatBigInt,
   formatNumber,
   formatValue,
   styles,
-} from "ext:deno_web/01_console.js";
+} = core.loadExtScript("ext:deno_web/01_console.js");
 
 // Set Graphics Rendition https://en.wikipedia.org/wiki/ANSI_escape_code#graphics
 // Each color consists of an array with the color code as first entry and the
@@ -207,7 +211,7 @@ const inspectDefaultOptions = {
  * in the best way possible given the different types.
  */
 /* Legacy: value, showHidden, depth, colors */
-export function inspect(value, opts) {
+function inspect(value, opts) {
   // Default options
   const ctx = {
     budget: {},
@@ -294,7 +298,7 @@ const reEmojiPresentation = new SafeRegExp("^\\p{Emoji_Presentation}$", "u");
 /**
  * Returns the number of columns required to display the given string.
  */
-export function getStringWidth(str, removeControlChars = true) {
+function getStringWidth(str, removeControlChars = true) {
   let width = 0;
 
   if (removeControlChars) {
@@ -443,11 +447,11 @@ function tryStringify(arg) {
   }
 }
 
-export function format(...args) {
+function format(...args) {
   return formatWithOptionsInternal(undefined, args);
 }
 
-export function formatWithOptions(inspectOptions, ...args) {
+function formatWithOptions(inspectOptions, ...args) {
   if (typeof inspectOptions !== "object" || inspectOptions === null) {
     throw new codes.ERR_INVALID_ARG_TYPE(
       "inspectOptions",
@@ -609,7 +613,7 @@ function formatWithOptionsInternal(inspectOptions, args) {
 /**
  * Remove all VT control characters. Use to estimate displayed string width.
  */
-export function stripVTControlCharacters(str) {
+function stripVTControlCharacters(str) {
   validateString(str, "str");
 
   return StringPrototypeReplace(str, ansi, "");
@@ -621,7 +625,7 @@ export function stripVTControlCharacters(str) {
 // `text` are rewritten so subsequent text keeps the outer style ("dim" and
 // "bold" share close 22, so those close sequences are kept and the outer
 // style is re-opened immediately afterward).
-const kStyleTextEscape = "[";
+const kStyleTextEscape = "\x1b[";
 const kStyleTextEscapeEnd = "m";
 const kStyleTextDimCode = 2;
 const kStyleTextBoldCode = 1;
@@ -649,7 +653,7 @@ function replaceCloseCode(str, closeSeq, openSeq, keepClose) {
   return result + StringPrototypeSlice(str, lastIndex);
 }
 
-export function styleText(format, text, options) {
+function styleText(format, text, options) {
   validateString(text, "text");
   if (options !== undefined) {
     validateObject(options, "options");
@@ -657,27 +661,49 @@ export function styleText(format, text, options) {
   const validateStream = options?.validateStream ?? true;
   validateBoolean(validateStream, "options.validateStream");
 
+  // Match node: validate stream before any format validation, so any
+  // ERR_INVALID_ARG_TYPE always gets throws regardless of
+  // `ERR_INVALID_ARG_VALUE` errors.
   if (validateStream) {
     const stream = options?.stream;
-    if (
-      stream !== undefined && stream !== null &&
-      // Match Node's lib/util.js: bail when `stream` is not a Readable/
-      // Writable/Node Stream. Approximate the duck-type used in those checks.
-      !(typeof stream === "object" && (
-        typeof stream.read === "function" ||
-        typeof stream.write === "function" ||
-        typeof stream.pipe === "function"
-      ))
-    ) {
-      throw new codes.ERR_INVALID_ARG_TYPE(
-        "stream",
-        ["ReadableStream", "WritableStream", "Stream"],
-        stream,
-      );
+    if (stream !== undefined && stream !== null) {
+      // Match Node: bail when `stream` is not a Readable/Writable/Node Stream.
+      // Approximate the duck-type used in those checks.
+      if (
+        !(typeof stream === "object" && (
+          typeof stream.read === "function" ||
+          typeof stream.write === "function" ||
+          typeof stream.pipe === "function"
+        ))
+      ) {
+        throw new codes.ERR_INVALID_ARG_TYPE(
+          "stream",
+          ["ReadableStream", "WritableStream", "Stream"],
+          stream,
+        );
+      }
     }
   }
 
+  // Match Node: validate format even when colorizing is skipped, so
+  // ERR_INVALID_ARG_VALUE is always thrown regardless of TTY state.
   const formatArray = ArrayIsArray(format) ? format : [format];
+  for (let i = 0; i < formatArray.length; i++) {
+    const key = formatArray[i];
+    if (key === "none") continue;
+    if (inspect.colors[key] == null) {
+      validateOneOf(key, "format", ObjectKeys(inspect.colors));
+    }
+  }
+
+  if (validateStream) {
+    // Match Node defaulting stream to process.stdout: when no stream is
+    // provided the colorize check still runs against stdout.
+    const effectiveStream = options?.stream ?? globalThis.process?.stdout;
+    if (!shouldColorize(effectiveStream)) {
+      return text;
+    }
+  }
 
   let openCodes = "";
   let closeCodes = "";
@@ -688,9 +714,6 @@ export function styleText(format, text, options) {
     if (key === "none") continue;
 
     const formatCodes = inspect.colors[key];
-    if (formatCodes == null) {
-      validateOneOf(key, "format", ObjectKeys(inspect.colors));
-    }
     const openNum = formatCodes[0];
     const closeNum = formatCodes[1];
     const openSeq = kStyleTextEscape + openNum + kStyleTextEscapeEnd;
@@ -710,11 +733,20 @@ export function styleText(format, text, options) {
   return `${openCodes}${processedText}${closeCodes}`;
 }
 
-export default {
+return {
   format,
   getStringWidth,
   inspect,
   stripVTControlCharacters,
   formatWithOptions,
   styleText,
+  default: {
+    format,
+    getStringWidth,
+    inspect,
+    stripVTControlCharacters,
+    formatWithOptions,
+    styleText,
+  },
 };
+})();

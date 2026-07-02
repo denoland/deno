@@ -54,9 +54,13 @@ use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
 #[cfg(windows)]
-use winapi::um::processenv::GetStdHandle;
+use windows_sys::Win32::System::Console::GetStdHandle;
 #[cfg(windows)]
-use winapi::um::winbase;
+use windows_sys::Win32::System::Console::STD_ERROR_HANDLE;
+#[cfg(windows)]
+use windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
+#[cfg(windows)]
+use windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE;
 
 mod fd_table;
 pub mod fs;
@@ -199,9 +203,9 @@ fn stdio_fd(fd: i32) -> StdFile {
 #[cfg(windows)]
 fn stdio_fd(fd: i32) -> StdFile {
   let std_handle = match fd {
-    0 => winbase::STD_INPUT_HANDLE,
-    1 => winbase::STD_OUTPUT_HANDLE,
-    2 => winbase::STD_ERROR_HANDLE,
+    0 => STD_INPUT_HANDLE,
+    1 => STD_OUTPUT_HANDLE,
+    2 => STD_ERROR_HANDLE,
     _ => panic!("Invalid stdio fd {fd}"),
   };
   // SAFETY: GetStdHandle returns a valid handle for the given std device.
@@ -210,7 +214,7 @@ fn stdio_fd(fd: i32) -> StdFile {
 
 deno_core::extension!(deno_io,
   deps = [ deno_web ],
-  esm = [ "12_io.js" ],
+  lazy_loaded_js = [ "12_io.js" ],
   options = {
     stdio: Option<Stdio>,
   },
@@ -467,6 +471,14 @@ impl Resource for ChildStdoutResource {
   fn close(self: Rc<Self>) {
     self.cancel_read_ops();
   }
+
+  // Override the trait's no-op default so `self.cancel_read_ops()` reaches the
+  // inherent cancellation rather than `Resource`'s empty default (which the
+  // by-value `Rc<Self>` receiver would otherwise resolve to). Without this,
+  // closing the resource with a read in flight never cancels it.
+  fn cancel_read_ops(self: Rc<Self>) {
+    ChildStdoutResource::cancel_read_ops(&self);
+  }
 }
 
 pub type ChildStderrResource = ReadOnlyResource<process::ChildStderr>;
@@ -481,6 +493,11 @@ impl Resource for ChildStderrResource {
   fn close(self: Rc<Self>) {
     self.cancel_read_ops();
   }
+
+  // See the note on ChildStdoutResource::cancel_read_ops.
+  fn cancel_read_ops(self: Rc<Self>) {
+    ChildStderrResource::cancel_read_ops(&self);
+  }
 }
 
 #[cfg(windows)]
@@ -489,7 +506,7 @@ pub struct WinTtyState {
   pub cancelled: bool,
   pub reading: bool,
   pub screen_buffer_info:
-    Option<winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO>,
+    Option<windows_sys::Win32::System::Console::CONSOLE_SCREEN_BUFFER_INFO>,
   pub cvar: Arc<Condvar>,
 }
 
@@ -646,7 +663,13 @@ impl StdFileResourceInner {
     loop {
       let state = state.clone();
 
+      #[allow(
+        clippy::result_large_err,
+        reason = "error carries the buffer back for reuse"
+      )]
       let fut = self.with_inner_blocking_task(move |file| {
+        let _terminal_input_guard =
+          deno_permissions::prompter::lock_terminal_input();
         /* Start reading, and set the reading flag to true */
         state.lock().reading = true;
         let nread = match file.read(&mut buf) {
@@ -661,20 +684,20 @@ impl StdFileResourceInner {
         the screen state to undo the visual effect of the VK_RETURN event */
         if state.cancelled {
           if let Some(screen_buffer_info) = state.screen_buffer_info {
-            // SAFETY: WinAPI calls to open conout$ and restore visual state.
+            // SAFETY: Win32 calls to open conout$ and restore visual state.
             unsafe {
-              let handle = winapi::um::fileapi::CreateFileW(
+              let handle = windows_sys::Win32::Storage::FileSystem::CreateFileW(
                 "conout$"
                   .encode_utf16()
                   .chain(Some(0))
                   .collect::<Vec<_>>()
                   .as_ptr(),
-                winapi::um::winnt::GENERIC_READ
-                  | winapi::um::winnt::GENERIC_WRITE,
-                winapi::um::winnt::FILE_SHARE_READ
-                  | winapi::um::winnt::FILE_SHARE_WRITE,
-                std::ptr::null_mut(),
-                winapi::um::fileapi::OPEN_EXISTING,
+                windows_sys::Win32::Foundation::GENERIC_READ
+                  | windows_sys::Win32::Foundation::GENERIC_WRITE,
+                windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ
+                  | windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE,
+                std::ptr::null(),
+                windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING,
                 0,
                 std::ptr::null_mut(),
               );
@@ -688,8 +711,10 @@ impl StdFileResourceInner {
                 pos.Y -= 1;
               }
 
-              winapi::um::wincon::SetConsoleCursorPosition(handle, pos);
-              winapi::um::handleapi::CloseHandle(handle);
+              windows_sys::Win32::System::Console::SetConsoleCursorPosition(
+                handle, pos,
+              );
+              windows_sys::Win32::Foundation::CloseHandle(handle);
             }
           }
 
@@ -760,6 +785,8 @@ impl crate::fs::File for StdFileResourceInner {
         // Since O_NONBLOCK is per-file-description, it affects all users
         // of fd 0. Retry on WouldBlock to avoid surfacing EAGAIN to JS.
         self.with_sync(|file| {
+          let _terminal_input_guard =
+            deno_permissions::prompter::lock_terminal_input();
           loop {
             match file.read(buf) {
               Ok(nread) => return Ok(nread),
@@ -1208,6 +1235,8 @@ impl crate::fs::File for StdFileResourceInner {
         // Retry on WouldBlock (see read_sync comment for details).
         self
           .with_inner_blocking_task(|file| {
+            let _terminal_input_guard =
+              deno_permissions::prompter::lock_terminal_input();
             loop {
               match file.read(&mut buf) {
                 Ok(nread) => return Ok((nread, buf)),
@@ -1357,13 +1386,13 @@ pub fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
   use std::os::windows::io::AsRawHandle;
 
   unsafe fn get_dev(
-    handle: winapi::shared::ntdef::HANDLE,
+    handle: windows_sys::Win32::Foundation::HANDLE,
   ) -> std::io::Result<u64> {
-    use winapi::shared::minwindef::FALSE;
-    use winapi::um::fileapi::BY_HANDLE_FILE_INFORMATION;
-    use winapi::um::fileapi::GetFileInformationByHandle;
+    use windows_sys::Win32::Foundation::FALSE;
+    use windows_sys::Win32::Storage::FileSystem::BY_HANDLE_FILE_INFORMATION;
+    use windows_sys::Win32::Storage::FileSystem::GetFileInformationByHandle;
 
-    // SAFETY: winapi calls
+    // SAFETY: Win32 calls
     unsafe {
       let info = {
         let mut info =
@@ -1391,14 +1420,14 @@ pub fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
   use windows_sys::Win32::Foundation::NTSTATUS;
 
   unsafe fn query_file_information(
-    handle: winapi::shared::ntdef::HANDLE,
+    handle: windows_sys::Win32::Foundation::HANDLE,
   ) -> Result<FILE_ALL_INFORMATION, NTSTATUS> {
     use windows_sys::Wdk::Storage::FileSystem::NtQueryInformationFile;
     use windows_sys::Win32::Foundation::ERROR_MORE_DATA;
     use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
     use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 
-    // SAFETY: winapi calls
+    // SAFETY: Win32 calls
     unsafe {
       let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
       let mut io_status_block =
@@ -1427,7 +1456,7 @@ pub fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
     }
   }
 
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   unsafe {
     let file_handle = file.as_raw_handle();
 
@@ -1439,14 +1468,14 @@ pub fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
       ) as u64);
 
       if file_info.BasicInformation.FileAttributes
-        & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT
+        & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT
         != 0
       {
         fsstat.is_symlink = true;
       }
 
       if file_info.BasicInformation.FileAttributes
-        & winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY
+        & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_DIRECTORY
         != 0
       {
         fsstat.mode |= libc::S_IFDIR as u32;
@@ -1457,7 +1486,7 @@ pub fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
       }
 
       if file_info.BasicInformation.FileAttributes
-        & winapi::um::winnt::FILE_ATTRIBUTE_READONLY
+        & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_READONLY
         != 0
       {
         fsstat.mode |=

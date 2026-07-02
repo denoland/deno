@@ -22,27 +22,49 @@
 
 // Ported from Node.js lib/_http_client.js
 
-// deno-lint-ignore-file prefer-primordials no-this-alias no-inner-declarations
+// deno-lint-ignore-file no-this-alias no-inner-declarations
 
-import { primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
+import { op_node_http_check_proxy_net } from "ext:core/ops";
 const {
   ArrayIsArray,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypePush,
+  ArrayPrototypeSplice,
   Boolean,
-  Error,
+  DateNow,
+  ErrorPrototype,
+  FunctionPrototypeCall,
   NumberIsFinite,
+  NumberParseInt,
   ObjectAssign,
   ObjectDefineProperty,
   ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   ReflectApply,
+  SafeArrayIterator,
+  SafeRegExp,
   String,
+  StringPrototypeCharCodeAt,
+  StringPrototypeIncludes,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
+  StringPrototypeToUpperCase,
+  StringPrototypeTrim,
   Symbol,
 } = primordials;
 
 import net from "node:net";
-import { ok as assert } from "node:assert";
-import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
+const { ok: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+const { kEmptyObject, once } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 import {
+  _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,
   freeParser,
   HTTPParser,
@@ -57,10 +79,13 @@ import {
   parseUniqueHeadersOption,
 } from "node:_http_outgoing";
 import httpAgent from "node:_http_agent";
-import { Buffer } from "node:buffer";
-import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
-import { kOutHeaders } from "ext:deno_node/internal/http.ts";
-import {
+import httpProxy from "node:_http_proxy";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { urlToHttpOptions } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
+const { kOutHeaders } = core.loadExtScript("ext:deno_node/internal/http.ts");
+const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
   ERR_INVALID_ARG_TYPE,
@@ -68,37 +93,319 @@ import {
   ERR_INVALID_PROTOCOL,
   ERR_INVALID_URL,
   ERR_UNESCAPED_CHARACTERS,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   validateBoolean,
   validateInteger,
-} from "ext:deno_node/internal/validators.mjs";
-import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { getTimerDuration } = core.loadExtScript(
+  "ext:deno_node/internal/timers.mjs",
+);
 import { addAbortSignal, finished } from "node:stream";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { defaultTriggerAsyncIdScope } from "ext:deno_node/internal/async_hooks.ts";
-import { kNeedDrain } from "ext:deno_node/internal/http.ts";
-import { channel } from "node:diagnostics_channel";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { defaultTriggerAsyncIdScope } = core.loadExtScript(
+  "ext:deno_node/internal/async_hooks.ts",
+);
+const { kNeedDrain } = core.loadExtScript("ext:deno_node/internal/http.ts");
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
+const { enqueueNodePerformanceEntry } = core.loadExtScript(
+  "ext:deno_node/perf_hooks.js",
+);
 
 const onClientRequestCreatedChannel = channel("http.client.request.created");
 const onClientRequestStartChannel = channel("http.client.request.start");
 const onClientRequestErrorChannel = channel("http.client.request.error");
 const onClientResponseFinishChannel = channel("http.client.response.finish");
-import { updateSpanFromError } from "ext:deno_telemetry/util.ts";
-import {
+const { updateSpanFromError } = core.loadExtScript(
+  "ext:deno_telemetry/util.ts",
+);
+const {
+  otelState,
   builtinTracer,
   ContextManager,
-  PROPAGATORS,
   SPAN_KEY,
-  TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 
-const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
+const INVALID_PATH_REGEX = new SafeRegExp(/[^\u0021-\u00ff]/);
 const kError = Symbol("kError");
 const kPath = Symbol("kPath");
 const kOtelSpan = Symbol("kOtelSpan");
+const kPerfStartTime = Symbol("kPerfStartTime");
 const kRetryData = Symbol("kRetryData");
+const kRetryDataSize = Symbol("kRetryDataSize");
 const kRetryOptions = Symbol("kRetryOptions");
+const kProxy = Symbol("kProxy");
+const kProxyTargetHost = Symbol("kProxyTargetHost");
+const kProxyTargetPort = Symbol("kProxyTargetPort");
+const kInspectorRequestId = Symbol("kInspectorRequestId");
+const kInspectorNetwork = Symbol("kInspectorNetwork");
+const kInspectorUrl = Symbol("kInspectorUrl");
+const kInspectorCompleted = Symbol("kInspectorCompleted");
+// Bound replay buffering for stale keep-alive retry. Larger streaming uploads
+// keep constant-memory behavior and surface the socket error instead.
+const MAX_RETRY_DATA_SIZE = 1024 * 1024;
+
+// ============================================================================
+// Inspector Network domain instrumentation (Chrome DevTools Protocol).
+//
+// When `node:inspector` has been loaded and `--inspect` is active, node:http
+// client requests emit `Network.requestWillBeSent` / `responseReceived` /
+// `dataReceived` / `loadingFinished` / `loadingFailed` events. The emitters
+// and a monotonic requestId generator are installed by
+// `ext/node/polyfills/inspector.js` onto `internals.__inspectorNetwork`,
+// so this layer is one `isEnabled()` check when the inspector is detached.
+//
+// Mirrors the implementation in ext/fetch/26_fetch.js. Differences:
+//   - `type: "Other"` rather than `"Fetch"` (matches Chrome DevTools' contract
+//     for non-fetch HTTP).
+//   - Request headers are read from `kOutHeaders` rather than a flat list.
+//   - Response body bytes are observed by wrapping `res.push`, not by teeing
+//     a ReadableStream, since IncomingMessage is a Node Readable. The wrapper
+//     stays out of the read pipeline so the response remains paused until the
+//     consumer attaches a `data` listener (asserted by the upstream test).
+// ============================================================================
+function getInspectorNetwork() {
+  const ins = internals.__inspectorNetwork;
+  if (ins && ins.isEnabled()) return ins;
+  return null;
+}
+
+function safeEmit(fn, params) {
+  try {
+    fn(params);
+  } catch {
+    // Inspector emission is purely observational - never surface as an
+    // http error to user code.
+  }
+}
+
+function joinRequestHeadersForCdp(req) {
+  const out = { __proto__: null };
+  const headers = req[kOutHeaders];
+  if (!headers) return out;
+  const keys = ObjectKeys(headers);
+  for (let i = 0; i < keys.length; i++) {
+    const lower = keys[i]; // kOutHeaders keys are already lowercase
+    const entry = headers[lower];
+    if (!entry) continue;
+    const value = entry[1];
+    let separator;
+    if (lower === "cookie") {
+      separator = "; ";
+    } else if (lower === "set-cookie") {
+      separator = "\n";
+    } else {
+      separator = ", ";
+    }
+    if (ArrayIsArray(value)) {
+      let joined = "";
+      for (let j = 0; j < value.length; j++) {
+        if (j > 0) joined += separator;
+        joined += String(value[j]);
+      }
+      out[lower] = joined;
+    } else {
+      out[lower] = String(value);
+    }
+  }
+  return out;
+}
+
+function joinResponseHeadersForCdp(rawHeaders) {
+  const out = { __proto__: null };
+  if (!rawHeaders) return out;
+  for (let i = 0; i < rawHeaders.length; i += 2) {
+    const rawName = rawHeaders[i];
+    const value = String(rawHeaders[i + 1]);
+    const lower = StringPrototypeToLowerCase(String(rawName));
+    let separator;
+    if (lower === "cookie") {
+      separator = "; ";
+    } else if (lower === "set-cookie") {
+      separator = "\n";
+    } else {
+      separator = ", ";
+    }
+    if (out[lower] === undefined) {
+      out[lower] = value;
+    } else {
+      out[lower] = out[lower] + separator + value;
+    }
+  }
+  return out;
+}
+
+function parseContentTypeFromRawHeaders(rawHeaders) {
+  let raw = null;
+  if (rawHeaders) {
+    for (let i = 0; i < rawHeaders.length; i += 2) {
+      if (
+        StringPrototypeToLowerCase(String(rawHeaders[i])) === "content-type"
+      ) {
+        raw = String(rawHeaders[i + 1]);
+        break;
+      }
+    }
+  }
+  if (raw === null) return { mimeType: "", charset: "" };
+  const semi = StringPrototypeIndexOf(raw, ";");
+  const mimeType = semi === -1
+    ? StringPrototypeTrim(raw)
+    : StringPrototypeTrim(StringPrototypeSlice(raw, 0, semi));
+  let charset = "";
+  if (semi !== -1) {
+    const rest = StringPrototypeSlice(raw, semi + 1);
+    const parts = StringPrototypeSplit(rest, ";");
+    for (let i = 0; i < parts.length; i++) {
+      const p = StringPrototypeTrim(parts[i]);
+      if (
+        StringPrototypeStartsWith(StringPrototypeToLowerCase(p), "charset=")
+      ) {
+        charset = StringPrototypeTrim(StringPrototypeSlice(p, 8));
+        if (
+          charset.length >= 2 && charset[0] === '"' &&
+          charset[charset.length - 1] === '"'
+        ) {
+          charset = StringPrototypeSlice(charset, 1, charset.length - 1);
+        }
+        break;
+      }
+    }
+  }
+  return { mimeType, charset };
+}
+
+function buildInspectorRequestUrl(protocol, host, port, path) {
+  if (
+    path && (StringPrototypeStartsWith(path, "http://") ||
+      StringPrototypeStartsWith(path, "https://"))
+  ) {
+    return path;
+  }
+  let hostPart = host || "localhost";
+  if (
+    StringPrototypeIndexOf(hostPart, ":") !== -1 &&
+    StringPrototypeCharCodeAt(hostPart, 0) !== 91 /* '[' */
+  ) {
+    hostPart = `[${hostPart}]`;
+  }
+  const proto = protocol || "http:";
+  const defaultPort = proto === "https:" ? 443 : 80;
+  const portStr = port && +port !== defaultPort ? `:${port}` : "";
+  return `${proto}//${hostPart}${portStr}${path || "/"}`;
+}
+
+function inspectorEmitRequestWillBeSent(req, port) {
+  const ins = getInspectorNetwork();
+  if (!ins) return;
+  const requestId = ins.nextRequestId();
+  req[kInspectorRequestId] = requestId;
+  req[kInspectorNetwork] = ins;
+  const url = buildInspectorRequestUrl(
+    req.protocol,
+    req.host,
+    port,
+    req[kPath],
+  );
+  req[kInspectorUrl] = url;
+  const headers = joinRequestHeadersForCdp(req);
+  const now = DateNow() / 1000;
+  safeEmit(ins.requestWillBeSent, {
+    requestId,
+    timestamp: now,
+    wallTime: now,
+    type: "Other",
+    request: {
+      url,
+      method: req.method,
+      headers,
+      hasPostData: false,
+    },
+  });
+}
+
+function inspectorEmitResponseReceived(req, res) {
+  const ins = req[kInspectorNetwork];
+  const requestId = req[kInspectorRequestId];
+  if (!ins || !requestId) return;
+  const rawHeaders = res.rawHeaders;
+  const headers = joinResponseHeadersForCdp(rawHeaders);
+  const { mimeType, charset } = parseContentTypeFromRawHeaders(rawHeaders);
+  safeEmit(ins.responseReceived, {
+    requestId,
+    timestamp: DateNow() / 1000,
+    type: "Other",
+    response: {
+      url: req[kInspectorUrl],
+      status: res.statusCode,
+      statusText: res.statusMessage || "",
+      headers,
+      mimeType,
+      charset,
+    },
+  });
+
+  // Wrap res.push to observe body chunks and the end-of-stream sentinel
+  // (parserOnBody -> stream.push(buf); parserOnMessageComplete ->
+  // stream.push(null)). Going through `data` events would put the stream
+  // in flowing mode, breaking the upstream test that requires it to stay
+  // paused until the consumer attaches a `data` listener.
+  let totalLength = 0;
+  const origPush = res.push;
+  res.push = function inspectorPush(chunk, encoding) {
+    if (chunk === null) {
+      if (!req[kInspectorCompleted]) {
+        req[kInspectorCompleted] = true;
+        safeEmit(ins.loadingFinished, {
+          requestId,
+          timestamp: DateNow() / 1000,
+          encodedDataLength: totalLength,
+        });
+      }
+    } else if (chunk) {
+      let len;
+      if (typeof chunk === "string") {
+        len = chunk.length;
+        // deno-lint-ignore prefer-primordials
+      } else if (chunk.byteLength !== undefined) {
+        // deno-lint-ignore prefer-primordials
+        len = chunk.byteLength;
+      } else {
+        len = 0;
+      }
+      if (len > 0) {
+        totalLength += len;
+        safeEmit(ins.dataReceived, {
+          requestId,
+          timestamp: DateNow() / 1000,
+          dataLength: len,
+          encodedDataLength: len,
+          data: chunk,
+        });
+      }
+    }
+    return FunctionPrototypeCall(origPush, this, chunk, encoding);
+  };
+}
+
+function inspectorEmitLoadingFailed(req, error) {
+  const ins = req[kInspectorNetwork];
+  const requestId = req[kInspectorRequestId];
+  if (!ins || !requestId || req[kInspectorCompleted]) return;
+  req[kInspectorCompleted] = true;
+  let errorText;
+  if (error && typeof error === "object" && error.message !== undefined) {
+    errorText = String(error.message);
+  } else {
+    errorText = String(error);
+  }
+  safeEmit(ins.loadingFailed, {
+    requestId,
+    timestamp: DateNow() / 1000,
+    type: "Other",
+    errorText,
+  });
+}
 
 const kLenientAll = HTTPParser.kLenientAll | 0;
 const kLenientNone = HTTPParser.kLenientNone | 0;
@@ -128,15 +435,19 @@ function emitErrorEvent(request, error) {
       error,
     });
   }
+  // ---- Inspector: Network.loadingFailed ----------------------------------
+  // Fired before the user's `error` listener so DevTools sees the failure
+  // even if the listener throws.
+  inspectorEmitLoadingFailed(request, error);
   request.emit("error", error);
 }
 
 function isURL(input) {
-  return input instanceof URL;
+  return ObjectPrototypeIsPrototypeOf(URL.prototype, input);
 }
 
 function ClientRequest(input, options, cb) {
-  OutgoingMessage.call(this);
+  FunctionPrototypeCall(OutgoingMessage, this);
 
   if (typeof input === "string") {
     const urlStr = input;
@@ -205,10 +516,70 @@ function ClientRequest(input, options, cb) {
 
   const optsWithoutSignal = { __proto__: null, ...options };
 
+  // The `_proxy*` fields are internal transport details set only by the proxy
+  // selection below. A caller must not be able to supply them directly: doing
+  // so would route the request through an arbitrary proxy while bypassing the
+  // target permission check that the proxy branch performs. Strip any that came
+  // in via `options` so only the values computed here are honored.
+  delete optsWithoutSignal._proxy;
+  delete optsWithoutSignal._proxyTargetHost;
+  delete optsWithoutSignal._proxyTargetPort;
+  delete optsWithoutSignal._proxyProtocol;
+  delete optsWithoutSignal._proxyUseProxyConnection;
+
   const port = optsWithoutSignal.port = options.port || defaultPort || 80;
   const host = optsWithoutSignal.host =
     validateHost(options.hostname, "hostname") ||
     validateHost(options.host, "host") || "localhost";
+
+  // Proxy detection: if an env-derived proxy applies to this request,
+  // either rewrite to absolute URL (http target) or set up a CONNECT tunnel
+  // via a custom createConnection (https target). The agent's socket pool
+  // is keyed by target host:port so users can look it up the same way as
+  // a direct connection - the proxy is a transport detail tracked under
+  // _proxy on the options.
+  const proxyConfig = httpProxy.resolveAgentProxyConfig(this.agent);
+  const proxyEntry = httpProxy.selectProxy(
+    proxyConfig,
+    protocol,
+    host,
+    port,
+  );
+  if (proxyEntry) {
+    // A proxied request connects only to the proxy, so the target host would
+    // otherwise never be permission-checked. Enforce --allow-net for the
+    // target here, matching fetch(), before routing through the proxy.
+    //
+    // A host or port carrying invalid header characters (e.g. CR/LF) is not a
+    // reachable target: node:http rejects it with ERR_INVALID_CHAR while
+    // building the request. Skip the permission check for those so the op does
+    // not pre-empt that error with a parse/permission failure. Every other
+    // target is permission-checked and a denial fails closed, like fetch().
+    if (
+      !checkInvalidHeaderChar(host) && !checkInvalidHeaderChar(String(port))
+    ) {
+      // `port` may be a numeric string; coerce and clamp to the op's u16 range
+      // so the argument conversion never throws.
+      const targetPort = NumberParseInt(port, 10);
+      op_node_http_check_proxy_net(
+        host,
+        NumberIsFinite(targetPort) && targetPort >= 0 && targetPort <= 65535
+          ? targetPort
+          : 0,
+        protocol === "https:" ? "node:https.request()" : "node:http.request()",
+      );
+    }
+    this[kProxy] = proxyEntry;
+    this[kProxyTargetHost] = host;
+    this[kProxyTargetPort] = port;
+    optsWithoutSignal._proxy = proxyEntry;
+    optsWithoutSignal._proxyTargetHost = host;
+    optsWithoutSignal._proxyTargetPort = port;
+    optsWithoutSignal._proxyProtocol = protocol;
+    optsWithoutSignal._proxyUseProxyConnection =
+      !(this.agent && this.agent.__proxyConfig !== undefined) ||
+      this.agent?.keepAlive === true;
+  }
 
   const setHost = options.setHost !== undefined
     ? Boolean(options.setHost)
@@ -240,7 +611,7 @@ function ClientRequest(input, options, cb) {
     if (!checkIsHttpToken(method)) {
       throw new ERR_INVALID_HTTP_TOKEN("Method", method);
     }
-    method = this.method = method.toUpperCase();
+    method = this.method = StringPrototypeToUpperCase(method);
   } else {
     method = this.method = "GET";
   }
@@ -266,6 +637,20 @@ function ClientRequest(input, options, cb) {
   this.joinDuplicateHeaders = options.joinDuplicateHeaders;
 
   this[kPath] = options.path || "/";
+
+  // For HTTP via HTTP proxy, rewrite path to an absolute URL so the proxy
+  // knows where to forward the request.
+  if (this[kProxy] && protocol === "http:") {
+    const t = this[kProxyTargetHost];
+    const formattedHost = t && StringPrototypeIndexOf(t, ":") !== -1 &&
+        StringPrototypeCharCodeAt(t, 0) !== 91
+      ? `[${t}]`
+      : t;
+    this[kPath] = `http://${formattedHost}:${this[kProxyTargetPort]}${
+      options.path || "/"
+    }`;
+  }
+
   if (cb) {
     this.once("response", cb);
   }
@@ -293,6 +678,7 @@ function ClientRequest(input, options, cb) {
   this.reusedSocket = false;
   this.host = host;
   this.protocol = protocol;
+  this[kPerfStartTime] = performance.now();
 
   if (this.agent) {
     if (!this.agent.keepAlive && !NumberIsFinite(this.agent.maxSockets)) {
@@ -317,11 +703,11 @@ function ClientRequest(input, options, cb) {
     if (host && !this.getHeader("host") && setHost) {
       let hostHeader = host;
 
-      const posColon = hostHeader.indexOf(":");
+      const posColon = StringPrototypeIndexOf(hostHeader, ":");
       if (
         posColon !== -1 &&
-        hostHeader.includes(":", posColon + 1) &&
-        hostHeader.charCodeAt(0) !== 91 /* '[' */
+        StringPrototypeIncludes(hostHeader, ":", posColon + 1) &&
+        StringPrototypeCharCodeAt(hostHeader, 0) !== 91 /* '[' */
       ) {
         hostHeader = `[${hostHeader}]`;
       }
@@ -335,8 +721,24 @@ function ClientRequest(input, options, cb) {
     if (options.auth && !this.getHeader("Authorization")) {
       this.setHeader(
         "Authorization",
+        // deno-lint-ignore prefer-primordials
         "Basic " + Buffer.from(options.auth).toString("base64"),
       );
+    }
+
+    if (this[kProxy] && protocol === "http:") {
+      // Mirror what _storeHeader will pick for Connection: when shouldKeepAlive
+      // is true, both Connection and Proxy-Connection are "keep-alive"; when
+      // false, both are "close". Matches Node's wire format on the proxy hop.
+      if (!this.getHeader("proxy-connection")) {
+        this.setHeader(
+          "Proxy-Connection",
+          this.shouldKeepAlive ? "keep-alive" : "close",
+        );
+      }
+      if (this[kProxy].auth && !this.getHeader("proxy-authorization")) {
+        this.setHeader("Proxy-Authorization", this[kProxy].auth);
+      }
     }
 
     if (this.getHeader("expect")) {
@@ -402,6 +804,13 @@ function ClientRequest(input, options, cb) {
       request: this,
     });
   }
+  // ---- Inspector: Network.requestWillBeSent ------------------------------
+  // Fire here so the user-code call site (e.g. `http.get(...)`) is still on
+  // the stack - `op_inspector_emit_protocol_event` captures it as the
+  // `initiator` for DevTools. Any setHeader() the caller does between the
+  // constructor returning and `req.end()` would be missed; the upstream
+  // node:http inspector implementation behaves the same way.
+  inspectorEmitRequestWillBeSent(this, port);
 }
 ObjectSetPrototypeOf(ClientRequest.prototype, OutgoingMessage.prototype);
 ObjectSetPrototypeOf(ClientRequest, OutgoingMessage);
@@ -423,7 +832,7 @@ ObjectDefineProperty(ClientRequest.prototype, "path", {
 });
 
 ClientRequest.prototype._finish = function _finish() {
-  OutgoingMessage.prototype._finish.call(this);
+  FunctionPrototypeCall(OutgoingMessage.prototype._finish, this);
   if (onClientRequestStartChannel.hasSubscribers) {
     onClientRequestStartChannel.publish({
       request: this,
@@ -437,14 +846,16 @@ ClientRequest.prototype._implicitHeader = function _implicitHeader() {
   }
 
   // Start OTel client span and inject propagation headers before serialization
-  if (TRACING_ENABLED && !this[kOtelSpan]) {
+  if (otelState.TRACING_ENABLED && !this[kOtelSpan]) {
     const span = builtinTracer().startSpan(this.method, { kind: 2 }); // Kind 2 = Client
     this[kOtelSpan] = span;
 
     // Build a context with this span for propagation injection,
     // without entering it into the async context
     const spanContext = ContextManager.active().setValue(SPAN_KEY, span);
-    for (const propagator of PROPAGATORS) {
+    for (
+      const propagator of new SafeArrayIterator(otelState.PROPAGATORS)
+    ) {
       propagator.inject(spanContext, this, {
         set(carrier, key, value) {
           carrier.setHeader(key, value);
@@ -461,9 +872,12 @@ ClientRequest.prototype._implicitHeader = function _implicitHeader() {
       const parsedUrl = new URL(fullUrl);
       span.setAttribute("http.request.method", this.method);
       span.setAttribute("url.full", parsedUrl.href);
-      span.setAttribute("url.scheme", parsedUrl.protocol.slice(0, -1));
+      span.setAttribute(
+        "url.scheme",
+        StringPrototypeSlice(parsedUrl.protocol, 0, -1),
+      );
       span.setAttribute("url.path", parsedUrl.pathname);
-      span.setAttribute("url.query", parsedUrl.search.slice(1));
+      span.setAttribute("url.query", StringPrototypeSlice(parsedUrl.search, 1));
     } catch {
       span.setAttribute("http.request.method", this.method);
       span.setAttribute("url.full", fullUrl);
@@ -513,15 +927,48 @@ function ondrain() {
   }
 }
 
+function canRetryRequest(req) {
+  return req.reusedSocket && !req.res && req.agent && !req._retrying &&
+    req[kRetryData] !== null;
+}
+
+function getRetryDataSize(data, encoding) {
+  if (typeof data === "string") {
+    return Buffer.byteLength(data, encoding || undefined);
+  }
+  // deno-lint-ignore prefer-primordials
+  return data?.byteLength ?? data?.length ?? 0;
+}
+
+function cloneOutputDataForRetry(req) {
+  const retryData = [];
+  let retryDataSize = 0;
+  for (let i = 0; i < req.outputData.length; i++) {
+    const item = req.outputData[i];
+    retryDataSize += getRetryDataSize(item.data, item.encoding);
+    if (retryDataSize > MAX_RETRY_DATA_SIZE) {
+      req[kRetryData] = null;
+      req[kRetryDataSize] = 0;
+      return;
+    }
+    ArrayPrototypePush(retryData, {
+      data: item.data,
+      encoding: item.encoding,
+      callback: item.callback,
+    });
+  }
+  req[kRetryData] = retryData;
+  req[kRetryDataSize] = retryDataSize;
+}
+
 // Transparently retry a request on a new connection when the reused
 // keepalive socket turns out to be stale (server closed it while idle).
 function maybeRetryRequest(req, socket) {
-  if (!req.reusedSocket || req.res || !req.agent || req._retrying) {
-    return false;
-  }
+  if (!canRetryRequest(req)) return false;
 
   req._retrying = true;
   const agent = req.agent;
+  const retryHeader = req._header;
 
   // Clean up parser on the old socket
   const parser = socket.parser;
@@ -549,8 +996,8 @@ function maybeRetryRequest(req, socket) {
   const name = agent.getName(retryOpts);
   const sockets = agent.sockets[name];
   if (sockets) {
-    const idx = sockets.indexOf(socket);
-    if (idx !== -1) sockets.splice(idx, 1);
+    const idx = ArrayPrototypeIndexOf(sockets, socket);
+    if (idx !== -1) ArrayPrototypeSplice(sockets, idx, 1);
     if (!sockets.length) delete agent.sockets[name];
   }
 
@@ -565,11 +1012,19 @@ function maybeRetryRequest(req, socket) {
   req._headerSent = false;
   req.destroyed = false;
   req._closed = false;
+  // The first attempt set reusedSocket on the stale socket. The retry runs
+  // through addRequest again, which will call agent.reuseSocket() if it
+  // happens to land on another pooled free socket. Otherwise the request
+  // goes to a brand-new connection and the flag must stay false.
+  req.reusedSocket = false;
 
   // Restore output data saved before the first flush attempt
   if (req[kRetryData]) {
     req.outputData = req[kRetryData];
     req[kRetryData] = null;
+    req[kRetryDataSize] = 0;
+    req._header = retryHeader;
+    req._headerSent = true;
   }
 
   // Re-queue through agent to get a fresh socket
@@ -610,6 +1065,7 @@ function socketCloseListener() {
     req._closed = true;
     req.emit("close");
     if (!res.aborted && res.readable) {
+      // deno-lint-ignore prefer-primordials
       res.push(null);
     }
   } else {
@@ -688,7 +1144,7 @@ function socketOnData(d) {
   assert(parser && parser.socket === socket);
 
   const ret = parser.execute(d);
-  if (ret instanceof Error) {
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, ret)) {
     prepareError(ret, parser, d);
     freeParser(parser, req, socket);
     socket.removeListener("data", socketOnData);
@@ -712,6 +1168,7 @@ function socketOnData(d) {
     parser.finish();
     freeParser(parser, req, socket);
 
+    // deno-lint-ignore prefer-primordials
     const bodyHead = d.slice(bytesParsed, d.length);
 
     const eventName = req.method === "CONNECT" ? "connect" : "upgrade";
@@ -793,7 +1250,33 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
   }
 
   req.res = res;
+  req[kRetryData] = null;
+  req[kRetryDataSize] = 0;
   res.req = req;
+
+  // Emit HttpClient perf entry (at response-header time)
+  const perfStartTime = req[kPerfStartTime];
+  if (perfStartTime !== undefined) {
+    const host = req.getHeader("host") || req.host || "localhost";
+    enqueueNodePerformanceEntry({
+      name: "HttpClient",
+      entryType: "http",
+      startTime: perfStartTime,
+      duration: performance.now() - perfStartTime,
+      detail: {
+        req: {
+          method: req.method,
+          url: `${req.protocol || "http:"}//${host}${req.path || "/"}`,
+          headers: req.getHeaders(),
+        },
+        res: {
+          statusCode: res.statusCode,
+          statusMessage: res.statusMessage || "",
+          headers: res.headers,
+        },
+      },
+    });
+  }
 
   if (onClientResponseFinishChannel.hasSubscribers) {
     onClientResponseFinishChannel.publish({
@@ -801,6 +1284,11 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
       response: res,
     });
   }
+
+  // ---- Inspector: Network.responseReceived -------------------------------
+  // Also installs the `res.push` wrapper that emits `Network.dataReceived`
+  // and `Network.loadingFinished` once body bytes start flowing.
+  inspectorEmitResponseReceived(req, res);
 
   // Set OTel response attributes
   const span = req[kOtelSpan];
@@ -975,6 +1463,9 @@ function listenSocketTimeout(req) {
 }
 
 ClientRequest.prototype.onSocket = function onSocket(socket, err) {
+  if (socket && !err && socket.destroyed && socket.errored) {
+    err = socket.errored;
+  }
   if (socket && !err) {
     socket._httpMessage = this;
     socket.on("error", socketErrorListener);
@@ -1016,12 +1507,8 @@ function onSocketNT(req, socket, err) {
     tickOnSocket(req, socket);
     // Save output data before flushing so it can be replayed on retry
     // if this reused keepalive socket turns out to be stale.
-    if (req.reusedSocket && req.outputData.length > 0) {
-      req[kRetryData] = req.outputData.map((item) => ({
-        data: item.data,
-        encoding: item.encoding,
-        callback: item.callback,
-      }));
+    if (canRetryRequest(req) && req.outputData.length > 0) {
+      cloneOutputDataForRetry(req);
     }
     req._flush();
   }
@@ -1091,6 +1578,28 @@ ClientRequest.prototype.setSocketKeepAlive = function setSocketKeepAlive(
 
 ClientRequest.prototype.clearTimeout = function clearTimeout(cb) {
   this.setTimeout(0, cb);
+};
+
+ClientRequest.prototype._recordRetryData = function _recordRetryData(
+  data,
+  encoding,
+  callback,
+) {
+  if (!canRetryRequest(this)) return;
+
+  const dataSize = getRetryDataSize(data, encoding);
+  const retryDataSize = (this[kRetryDataSize] ?? 0) + dataSize;
+  if (retryDataSize > MAX_RETRY_DATA_SIZE) {
+    this[kRetryData] = null;
+    this[kRetryDataSize] = 0;
+    return;
+  }
+
+  if (this[kRetryData] === null || this[kRetryData] === undefined) {
+    this[kRetryData] = [];
+  }
+  ArrayPrototypePush(this[kRetryData], { data, encoding, callback });
+  this[kRetryDataSize] = retryDataSize;
 };
 
 export { ClientRequest };

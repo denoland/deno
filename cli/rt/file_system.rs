@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::SystemTime;
 
@@ -27,13 +28,17 @@ use deno_lib::standalone::virtual_fs::VirtualFile;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_fs::FsFileType;
+use deno_runtime::deno_fs::FsReadDir;
+use deno_runtime::deno_fs::FsReadDirRc;
 use deno_runtime::deno_fs::OpenOptions;
 use deno_runtime::deno_fs::RealFs;
+use deno_runtime::deno_fs::sync::new_rc;
 use deno_runtime::deno_io;
 use deno_runtime::deno_io::fs::File as DenoFile;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
+use deno_runtime::deno_io::fs::FsStatFs;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoader;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_runtime::deno_permissions::CheckedPath;
@@ -139,8 +144,24 @@ impl FileSystem for DenoRtSys {
   }
 
   fn chdir(&self, path: &CheckedPath) -> FsResult<()> {
-    self.error_if_in_vfs(path)?;
-    RealFs.chdir(path)
+    if self.is_vfs_path(path) {
+      // The process working directory can't actually be changed to a path
+      // inside the embedded virtual file system, but applications (e.g.
+      // Next.js standalone builds) commonly chdir into their own directory.
+      // Verify the target exists and is a directory in the VFS and treat the
+      // change as a no-op rather than failing with NotSupported. Note that
+      // Deno.cwd() still reports the previous (real) working directory.
+      if self.vfs.stat(path)?.as_fs_stat().is_directory {
+        Ok(())
+      } else {
+        Err(FsError::Io(std::io::Error::new(
+          ErrorKind::NotADirectory,
+          "Not a directory",
+        )))
+      }
+    } else {
+      RealFs.chdir(path)
+    }
   }
 
   fn umask(&self, mask: Option<u32>) -> FsResult<u32> {
@@ -383,6 +404,33 @@ impl FileSystem for DenoRtSys {
     }
   }
 
+  fn statfs_sync(
+    &self,
+    path: &CheckedPath,
+    bigint: bool,
+  ) -> FsResult<FsStatFs> {
+    if self.is_vfs_path(path) {
+      // the entry must exist within the embedded read-only file system
+      self.vfs.stat(path)?;
+      Ok(vfs_statfs())
+    } else {
+      RealFs.statfs_sync(path, bigint)
+    }
+  }
+  async fn statfs_async(
+    &self,
+    path: CheckedPathBuf,
+    bigint: bool,
+  ) -> FsResult<FsStatFs> {
+    if self.is_vfs_path(&path) {
+      // the entry must exist within the embedded read-only file system
+      self.vfs.stat(&path)?;
+      Ok(vfs_statfs())
+    } else {
+      RealFs.statfs_async(path, bigint).await
+    }
+  }
+
   fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
     if self.is_vfs_path(path) {
       Ok(self.vfs.canonicalize(path)?)
@@ -408,9 +456,11 @@ impl FileSystem for DenoRtSys {
   async fn read_dir_async(
     &self,
     path: CheckedPathBuf,
-  ) -> FsResult<Vec<FsDirEntry>> {
+  ) -> FsResult<FsReadDirRc> {
     if self.is_vfs_path(&path) {
-      Ok(self.vfs.read_dir(&path)?)
+      Ok(new_rc(VfsReadDir(Mutex::new(
+        self.vfs.read_dir(&path)?.into_iter(),
+      ))))
     } else {
       RealFs.read_dir_async(path).await
     }
@@ -554,6 +604,16 @@ impl FileSystem for DenoRtSys {
   }
 }
 
+#[derive(Debug)]
+struct VfsReadDir(Mutex<std::vec::IntoIter<FsDirEntry>>);
+
+#[async_trait::async_trait(?Send)]
+impl FsReadDir for VfsReadDir {
+  async fn next(&self) -> FsResult<Option<FsDirEntry>> {
+    Ok(self.0.try_lock().map_err(|_| FsError::FileBusy)?.next())
+  }
+}
+
 impl sys_traits::BaseFsHardLink for DenoRtSys {
   #[inline]
   fn base_fs_hard_link(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -664,6 +724,14 @@ impl sys_traits::FsMetadataValue for FileBackedVfsMetadata {
   fn file_attributes(&self) -> std::io::Result<u32> {
     Ok(0)
   }
+}
+
+/// `statfs` result for a path within the embedded read-only file system.
+///
+/// There is no real backing device, so this reports an empty read-only file
+/// system (no free space) rather than failing or leaking host disk stats.
+fn vfs_statfs() -> FsStatFs {
+  FsStatFs::default()
 }
 
 fn not_supported(name: &str) -> std::io::Error {
@@ -1180,9 +1248,19 @@ impl VfsRoot {
     let relative_path = match path.strip_prefix(&self.root_path) {
       Ok(p) => p,
       Err(_) => {
+        // "outside root" is the common host-FS fallback path in
+        // desktop --hmr / runtime-dynamic imports. Don't print at all
+        // by default; the caller falls through to a real filesystem
+        // read. Set DENO_LOG=denort=debug to see it.
+        log::debug!(
+          target: "denort",
+          "[VFS] path outside root '{}': {}",
+          self.root_path.display(),
+          path.display(),
+        );
         return Err(std::io::Error::new(
           std::io::ErrorKind::NotFound,
-          "path not found",
+          format!("path not found (outside root): {}", path.display()),
         ));
       }
     };
@@ -1208,7 +1286,7 @@ impl VfsRoot {
             _ => {
               return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                "path not found",
+                format!("path not found (symlink not dir): {}", path.display()),
               ));
             }
           }
@@ -1216,7 +1294,7 @@ impl VfsRoot {
         _ => {
           return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            "path not found",
+            format!("path not found (not dir): {}", path.display()),
           ));
         }
       };
@@ -1225,7 +1303,10 @@ impl VfsRoot {
         .entries
         .get_by_name(&component, case_sensitivity)
         .ok_or_else(|| {
-          std::io::Error::new(std::io::ErrorKind::NotFound, "path not found")
+          std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("path not found (entry missing): {}", path.display()),
+          )
         })?
         .as_ref();
     }
@@ -1290,6 +1371,15 @@ impl FileBackedVfsFile {
       read_pos
     };
     self.vfs.read_file(&self.file, read_pos, buf)
+  }
+
+  fn metadata(&self) -> FileBackedVfsMetadata {
+    FileBackedVfsMetadata {
+      name: self.file.name.clone(),
+      file_type: sys_traits::FileType::File,
+      len: self.file.offset.len,
+      mtime: self.file.mtime,
+    }
   }
 
   fn read_to_end(&self) -> FsResult<Cow<'static, [u8]>> {
@@ -1407,10 +1497,10 @@ impl deno_io::fs::File for FileBackedVfsFile {
   }
 
   fn stat_sync(self: Rc<Self>) -> FsResult<FsStat> {
-    Err(FsError::NotSupported)
+    Ok(self.metadata().as_fs_stat())
   }
   async fn stat_async(self: Rc<Self>) -> FsResult<FsStat> {
-    Err(FsError::NotSupported)
+    Ok(self.metadata().as_fs_stat())
   }
 
   fn lock_sync(self: Rc<Self>, _exclusive: bool) -> FsResult<()> {
@@ -1538,6 +1628,17 @@ impl FileBackedVfsMetadata {
 
   pub fn as_fs_stat(&self) -> FsStat {
     // to use lower overhead, use mtime instead of all time params
+    //
+    // VFS files are always readable. Directories also get execute (traverse).
+    // Symlinks get 0o777 per Unix convention (target permissions matter).
+    // This ensures node:fs access() checks succeed for embedded files.
+    let mode = if self.file_type == sys_traits::FileType::Dir {
+      0o555 // r-xr-xr-x
+    } else if self.file_type == sys_traits::FileType::Symlink {
+      0o777 // rwxrwxrwx (conventional for symlinks)
+    } else {
+      0o444 // r--r--r--
+    };
     FsStat {
       is_directory: self.file_type == sys_traits::FileType::Dir,
       is_file: self.file_type == sys_traits::FileType::File,
@@ -1550,7 +1651,7 @@ impl FileBackedVfsMetadata {
       size: self.len,
       dev: 0,
       ino: None,
-      mode: 0,
+      mode,
       nlink: None,
       uid: 0,
       gid: 0,

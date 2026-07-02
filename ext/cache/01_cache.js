@@ -1,6 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { core, primordials } from "ext:core/mod.js";
-import {
+
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   op_cache_delete,
   op_cache_match,
   op_cache_put,
@@ -8,7 +10,7 @@ import {
   op_cache_storage_has,
   op_cache_storage_keys,
   op_cache_storage_open,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
@@ -20,20 +22,21 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import {
+const {
   Request,
   RequestPrototype,
   toInnerRequest,
-} from "ext:deno_fetch/23_request.js";
-import { toInnerResponse } from "ext:deno_fetch/23_response.js";
-import { URLPrototype } from "ext:deno_web/00_url.js";
-import { getHeader } from "ext:deno_fetch/20_headers.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_request.js");
+const { toInnerResponse, wireHeaderList } = core.loadExtScript(
+  "ext:deno_fetch/23_response.js",
+);
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
+const { getHeader } = core.loadExtScript("ext:deno_fetch/20_headers.js");
+const {
   getReadableStreamResourceBacking,
   readableStreamForRid,
   resourceForReadableStream,
-} from "ext:deno_web/06_streams.js";
-
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 class CacheStorage {
   constructor() {
     webidl.illegalConstructor();
@@ -195,7 +198,7 @@ class Cache {
         cacheId: this[_id],
         // deno-lint-ignore prefer-primordials
         requestUrl: reqUrl.toString(),
-        responseHeaders: innerResponse.headerList,
+        responseHeaders: wireHeaderList(innerResponse),
         requestHeaders: innerRequest.headerList,
         responseStatus: innerResponse.status,
         responseStatusText: innerResponse.statusMessage,
@@ -338,4 +341,5 @@ function cacheStorage() {
   return cacheStorageStorage;
 }
 
-export { Cache, CacheStorage, cacheStorage };
+return { Cache, CacheStorage, cacheStorage };
+})();

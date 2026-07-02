@@ -120,6 +120,12 @@ async fn write_with_optional_fd(
       // The fd has already been delivered with the first sendmsg. If the rest
       // of the frame fails, the reader must close the received fd while
       // discarding the malformed message.
+      // TODO(nathanwhit): the receiver path (`IpcJsonStream::read_msg_inner`)
+      // does not currently detect a truncated frame after an fd was attached.
+      // If the writer half is dropped mid-message, the receiver will close
+      // the IPC channel without explicitly closing the orphan fd. In practice
+      // truncation here only happens on connection teardown, where the parent
+      // process exit reaps everything anyway, so the leak window is bounded.
       write_half.write_all(&msg[nwritten..]).await?;
     }
     return Ok(());
@@ -210,11 +216,8 @@ pub const INITIAL_CAPACITY: usize = 1024 * 64;
 /// A buffer for reading from the IPC pipe.
 /// Similar to the internal buffer of `tokio::io::BufReader`.
 ///
-/// This exists to provide buffered reading while granting mutable access
-/// to the internal buffer (which isn't exposed through `tokio::io::BufReader`
-/// or the `AsyncBufRead` trait). `simd_json` requires mutable access to an input
-/// buffer for parsing, so this allows us to use the read buffer directly as the
-/// input buffer without a copy (provided the message fits).
+/// This exists to provide buffered reading while avoiding a copy when a
+/// delimited message fits entirely in the read buffer.
 struct ReadBuffer {
   buffer: Box<[u8]>,
   pos: usize,
@@ -300,7 +303,7 @@ pub enum IpcJsonStreamError {
   Io(#[source] std::io::Error),
   #[class(generic)]
   #[error("{0}")]
-  SimdJson(#[source] simd_json::Error),
+  Json(#[source] serde_json::Error),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -536,8 +539,8 @@ impl IpcJsonStream {
       let (done, used) = if let Some(i) = memchr(b'\n', available) {
         if read == 0 {
           json.replace(
-            simd_json::from_slice(&mut available[..i + 1])
-              .map_err(IpcJsonStreamError::SimdJson)?,
+            serde_json::from_slice(&available[..i + 1])
+              .map_err(IpcJsonStreamError::Json)?,
           );
         } else {
           self.buffer.extend_from_slice(&available[..=i]);
@@ -554,8 +557,8 @@ impl IpcJsonStream {
       if done {
         let json = match json {
           Some(v) => v,
-          None => simd_json::from_slice(&mut self.buffer[..read])
-            .map_err(IpcJsonStreamError::SimdJson)?,
+          None => serde_json::from_slice(&self.buffer[..read])
+            .map_err(IpcJsonStreamError::Json)?,
         };
 
         // Safety: Same as `Vec::clear` but without the `drop_in_place` for

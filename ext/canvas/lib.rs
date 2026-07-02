@@ -5,7 +5,7 @@ use deno_core::op2;
 use deno_core::v8;
 
 mod bitmaprenderer;
-mod byow;
+pub mod byow;
 mod canvas;
 
 deno_core::extension!(
@@ -17,8 +17,8 @@ deno_core::extension!(
     canvas::OffscreenCanvas,
     byow::UnsafeWindowSurface,
   ],
-  esm = ["02_surface.js"],
   lazy_loaded_esm = ["01_canvas.js"],
+  lazy_loaded_js = ["02_surface.js"],
 );
 
 #[op2(fast)]

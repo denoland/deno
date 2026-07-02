@@ -1,0 +1,18 @@
+Check [WILDCARD]missing_entry_test.ts
+running 1 test from ./missing_entry_test.ts
+missing entry ... FAILED ([WILDLINE])
+
+ ERRORS 
+
+missing entry => ./missing_entry_test.ts:1:6
+error: AssertionError: Missing snapshot: missing entry 1
+  await t.assertSnapshot(1);
+          ^
+[WILDCARD]
+ FAILURES 
+
+missing entry => ./missing_entry_test.ts:1:6
+
+FAILED | 0 passed | 1 failed ([WILDLINE])
+
+error: Test failed

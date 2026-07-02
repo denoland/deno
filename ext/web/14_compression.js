@@ -5,12 +5,13 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   op_compression_finish,
   op_compression_new,
   op_compression_write,
-} from "ext:core/ops";
+} = core.ops;
 const {
   SymbolFor,
   ObjectPrototypeIsPrototypeOf,
@@ -18,8 +19,10 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { createFilteredInspectProxy } from "./01_console.js";
-import { TransformStream } from "./06_streams.js";
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { TransformStream } = core.loadExtScript("ext:deno_web/06_streams.js");
 
 webidl.converters.CompressionFormat = webidl.createEnumConverter(
   "CompressionFormat",
@@ -161,4 +164,5 @@ function maybeEnqueue(controller, output) {
 webidl.configureInterface(DecompressionStream);
 const DecompressionStreamPrototype = DecompressionStream.prototype;
 
-export { CompressionStream, DecompressionStream };
+return { CompressionStream, DecompressionStream };
+})();

@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // An explicit `workspace:<range>` whose local member version doesn't
+      // satisfy the range is a hard error during `deno install`, the same way
+      // pnpm rejects it (and the same way `deno run` rejects it at resolution
+      // time) instead of silently linking the member or falling back to the
+      // registry.
+      "args": "install",
+      "output": "mismatch.out",
+      "exitCode": 1
+    }
+  ]
+}

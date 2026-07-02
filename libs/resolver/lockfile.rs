@@ -18,8 +18,10 @@ use deno_npm::resolution::DefaultTarballUrlProvider;
 use deno_npm::resolution::NpmRegistryDefaultTarballUrlProvider;
 use deno_package_json::PackageJsonDepValue;
 use deno_path_util::fs::atomic_write_file_with_retries;
+use deno_semver::VersionReq;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use futures::TryStreamExt;
 use futures::stream::FuturesOrdered;
 use indexmap::IndexMap;
@@ -27,7 +29,11 @@ use node_resolver::PackageJson;
 use parking_lot::Mutex;
 use parking_lot::MutexGuard;
 
+use crate::bun_lockfile_import::bun_lock_to_deno_lock_v5;
+use crate::npm_lockfile_import::package_lock_to_deno_lock_v5;
+use crate::pnpm_lockfile_import::pnpm_lock_to_deno_lock_v5;
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
+use crate::yarn_lockfile_import::yarn_lock_to_deno_lock_v5;
 
 pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
 
@@ -142,12 +148,16 @@ pub struct LockfileReadFromPathOptions {
   pub frozen: bool,
   /// Causes the lockfile to only be read from, but not written to.
   pub skip_write: bool,
+  /// If true and `file_path` does not exist, attempt to seed the lockfile by
+  /// translating a sibling `package-lock.json`.
+  pub import_npm_lockfile: bool,
 }
 
 #[sys_traits::auto_impl]
 pub trait LockfileSys:
   deno_path_util::fs::AtomicWriteFileWithRetriesSys
   + sys_traits::FsRead
+  + sys_traits::FsCanonicalize
   + std::fmt::Debug
 {
 }
@@ -178,6 +188,10 @@ pub struct LockfileFlags {
   pub skip_write: bool,
   pub no_config: bool,
   pub no_npm: bool,
+  /// When no `deno.lock` exists in the workspace, attempt to seed one by
+  /// translating a sibling `package-lock.json`. Currently only set by
+  /// `deno install`.
+  pub import_npm_lockfile: bool,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -257,16 +271,23 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     let Some(bytes) = lockfile.resolve_write_bytes() else {
       return Ok(()); // nothing to do
     };
+    // If the lockfile path is a symlink, resolve it to its target so the
+    // atomic write below replaces the target file rather than clobbering the
+    // symlink with a freshly created regular file. This matches how the
+    // deno.json/package.json writes follow symlinks (they write in place).
+    let write_path = if self.sys.fs_is_symlink_no_err(&lockfile.filename) {
+      self
+        .sys
+        .fs_canonicalize(&lockfile.filename)
+        .unwrap_or_else(|_| lockfile.filename.clone())
+    } else {
+      lockfile.filename.clone()
+    };
     // do an atomic write to reduce the chance of multiple deno
     // processes corrupting the file
     const CACHE_PERM: u32 = 0o644;
-    atomic_write_file_with_retries(
-      &self.sys,
-      &lockfile.filename,
-      &bytes,
-      CACHE_PERM,
-    )
-    .map_err(LockfileWriteError::Io)?;
+    atomic_write_file_with_retries(&self.sys, &write_path, &bytes, CACHE_PERM)
+      .map_err(LockfileWriteError::Io)?;
     lockfile.has_content_changed = false;
     Ok(())
   }
@@ -280,6 +301,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
   ) -> Result<Option<Self>, AnyError> {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
+      catalogs: &IndexMap<String, IndexMap<String, String>>,
     ) -> HashSet<JsrDepPackageReq> {
       let Some(pkg_json) = maybe_pkg_json else {
         return Default::default();
@@ -288,10 +310,10 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
 
       deps
         .dependencies
-        .values()
-        .chain(deps.dev_dependencies.values())
-        .filter_map(|dep| dep.as_ref().ok())
-        .filter_map(|dep| match dep {
+        .iter()
+        .chain(deps.dev_dependencies.iter())
+        .filter_map(|(alias, dep)| dep.as_ref().ok().map(|d| (alias, d)))
+        .filter_map(|(alias, dep)| match dep {
           PackageJsonDepValue::File(_) => {
             // ignored because this will have its own separate lockfile
             None
@@ -299,7 +321,17 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
-          PackageJsonDepValue::Workspace(_) => None,
+          PackageJsonDepValue::Workspace { .. } => None,
+          PackageJsonDepValue::Catalog(catalog_name) => {
+            let catalog = catalogs.get(catalog_name.as_str())?;
+            let version_req_str = catalog.get(alias.as_str())?;
+            let version_req =
+              VersionReq::parse_from_npm(version_req_str).ok()?;
+            Some(JsrDepPackageReq::npm(PackageReq {
+              name: alias.clone(),
+              version_req,
+            }))
+          }
         })
         .collect()
     }
@@ -328,6 +360,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
         file_path,
         frozen,
         skip_write: flags.skip_write,
+        import_npm_lockfile: flags.import_npm_lockfile,
       },
       api,
     )
@@ -335,7 +368,10 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     let root_url = workspace.root_dir_url();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
-        package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
+        package_json_deps: pkg_json_deps(
+          root_folder.pkg_json.as_deref(),
+          workspace.catalogs(),
+        ),
         dependencies: if let Some(map) = maybe_external_import_map {
           deno_config::import_map::import_map_deps_from_value(map)
             .collect::<HashSet<_>>()
@@ -343,7 +379,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           root_folder
             .deno_json
             .as_deref()
-            .map(|d| d.dependencies())
+            .map(|d| d.dependencies(workspace.catalogs()))
             .unwrap_or_default()
         },
       },
@@ -365,11 +401,14 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
             },
             {
               let config = WorkspaceMemberConfig {
-                package_json_deps: pkg_json_deps(folder.pkg_json.as_deref()),
+                package_json_deps: pkg_json_deps(
+                  folder.pkg_json.as_deref(),
+                  workspace.catalogs(),
+                ),
                 dependencies: folder
                   .deno_json
                   .as_deref()
-                  .map(|d| d.dependencies())
+                  .map(|d| d.dependencies(workspace.catalogs()))
                   .unwrap_or_default(),
               };
               if config.package_json_deps.is_empty()
@@ -399,7 +438,8 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                     }
                     // not supported
                     PackageJsonDepValue::File(_)
-                    | PackageJsonDepValue::Workspace(_) => None,
+                    | PackageJsonDepValue::Workspace { .. }
+                    | PackageJsonDepValue::Catalog(_) => None,
                   })
                   .collect()
               })
@@ -446,7 +486,8 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           })
           .unwrap();
           let value = deno_lockfile::LockfileLinkContent {
-            dependencies: deno_json.dependencies(),
+            // not this workspace's catalogs, so don't resolve against them
+            dependencies: deno_json.dependencies(&Default::default()),
             optional_dependencies: Default::default(),
             peer_dependencies: Default::default(),
             peer_dependencies_meta: Default::default(),
@@ -484,7 +525,18 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
         .await?
       }
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        Lockfile::new_empty(opts.file_path, false)
+        // Box the seeding future so its (multi-candidate) size stays off the
+        // stack of every caller that awaits a lockfile read, which would
+        // otherwise trip clippy's `large_futures` lint.
+        if opts.import_npm_lockfile
+          && let Some(seeded) =
+            Box::pin(try_import_npm_lockfile(&sys, &opts.file_path, api))
+              .await?
+        {
+          seeded
+        } else {
+          Lockfile::new_empty(opts.file_path, false)
+        }
       }
       Err(err) => {
         return Err(err).with_context(|| {
@@ -533,6 +585,86 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       Ok(())
     }
   }
+}
+
+/// Attempt to translate a sibling `package-lock.json`, `pnpm-lock.yaml`,
+/// `yarn.lock`, or `bun.lock` into a seed `Lockfile`. Returns `Ok(None)` when
+/// no usable lockfile is present (so the caller falls back to creating an empty
+/// lockfile). The returned lockfile is flagged as changed so the next write
+/// persists it to disk.
+///
+/// When several are present, the first in the order
+/// `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` wins.
+async fn try_import_npm_lockfile<TSys: LockfileSys>(
+  sys: &TSys,
+  deno_lock_path: &std::path::Path,
+  api: &dyn deno_lockfile::NpmPackageInfoProvider,
+) -> Result<Option<Lockfile>, AnyError> {
+  let Some(parent) = deno_lock_path.parent() else {
+    return Ok(None);
+  };
+
+  type Translator = fn(&str) -> Result<String, String>;
+  let candidates: [(&str, Translator); 4] = [
+    ("package-lock.json", |s| {
+      package_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
+    }),
+    ("pnpm-lock.yaml", |s| {
+      pnpm_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
+    }),
+    ("yarn.lock", |s| {
+      yarn_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
+    }),
+    ("bun.lock", |s| {
+      bun_lock_to_deno_lock_v5(s).map_err(|e| e.to_string())
+    }),
+  ];
+
+  for (file_name, translate) in candidates {
+    let path = parent.join(file_name);
+    let text = match sys.fs_read_to_string(&path) {
+      Ok(text) => text,
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+      Err(err) => {
+        return Err(err)
+          .with_context(|| format!("Failed reading '{}'", path.display()));
+      }
+    };
+    let deno_lock_text = match translate(&text) {
+      Ok(text) => text,
+      Err(err) => {
+        log::warn!(
+          "Failed to import {} at {}: {}. Trying the next candidate.",
+          file_name,
+          path.display(),
+          err
+        );
+        continue;
+      }
+    };
+    let mut lockfile = Lockfile::new(
+      deno_lockfile::NewLockfileOptions {
+        file_path: deno_lock_path.to_path_buf(),
+        content: &deno_lock_text,
+        overwrite: false,
+      },
+      api,
+    )
+    .await?;
+    // Only announce the import when the translation actually produced
+    // content. A foreign lockfile whose deps are all unsupported (e.g. only
+    // `file:`/`link:` entries) translates to an empty lockfile, and claiming
+    // we seeded it would be misleading.
+    if !lockfile.content.is_empty() {
+      log::info!("Seeded deno.lock from {}", path.display());
+    }
+    // Force write on first save so the imported state is persisted even if
+    // no subsequent resolution mutates the lockfile.
+    lockfile.has_content_changed = true;
+    return Ok(Some(lockfile));
+  }
+
+  Ok(None)
 }
 
 /// An adapter to use the lockfile with `deno_graph`.

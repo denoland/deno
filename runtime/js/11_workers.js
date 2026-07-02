@@ -1,19 +1,24 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   op_create_worker,
   op_host_post_message,
   op_host_post_message_raw,
   op_host_recv_ctrl,
   op_host_recv_message,
+  op_host_recv_message_sync,
   op_host_terminate_worker,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeJoin,
   Error,
+  JSONStringify,
   ObjectPrototypeIsPrototypeOf,
+  Promise,
+  queueMicrotask,
   String,
   StringPrototypeStartsWith,
   Symbol,
@@ -23,24 +28,30 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { URL } from "ext:deno_web/00_url.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
-import { serializePermissions } from "ext:runtime/10_permissions.js";
-import { log } from "ext:runtime/06_util.js";
-import {
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
+const { serializePermissions } = core.loadExtScript(
+  "ext:runtime/10_permissions.js",
+);
+const { log } = core.loadExtScript("ext:runtime/06_util.js");
+const {
   defineEventHandler,
   ErrorEvent,
   EventTarget,
   MessageEvent,
   setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import {
+} = core.loadExtScript("ext:deno_web/02_event.js");
+const {
   deserializeJsMessageData,
   MessagePortPrototype,
   serializeJsMessageData,
-} from "ext:deno_web/13_message_port.js";
-const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+} = core.loadExtScript("ext:deno_web/13_message_port.js");
+const { DOMException } = core.loadExtScript(
+  "ext:deno_web/01_dom_exception.js",
+);
 
 function createWorker(
   specifier,
@@ -135,7 +146,7 @@ class Worker extends EventTarget {
     let hasSourceCode, sourceCode;
     if (workerType === "classic") {
       hasSourceCode = true;
-      sourceCode = `importScripts("#");`;
+      sourceCode = `importScripts(${JSONStringify(specifier)});`;
     } else {
       hasSourceCode = false;
       sourceCode = "";
@@ -253,7 +264,11 @@ class Worker extends EventTarget {
     const event = new MessageEvent("message", {
       cancelable: false,
       data: message,
-      ports: ArrayPrototypeFilter(
+      // Skip the transferables filter for the common no-transferables case.
+      // Passing `undefined` lets the MessageEvent constructor take its cheap
+      // `ports == null` branch (a single frozen empty array, no iterator
+      // validation) instead of allocating a filtered array per message.
+      ports: transferables.length === 0 ? undefined : ArrayPrototypeFilter(
         transferables,
         (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
       ),
@@ -274,6 +289,26 @@ class Worker extends EventTarget {
         return;
       }
       if (!this.#dispatchWorkerMessage(data)) return;
+      // Drain messages already queued on the host side instead of taking the
+      // async op + Promise path for each, mirroring the worker global
+      // (99_main.js) and node:worker_threads receive loops. The whole burst is
+      // processed within this event-loop turn; the batch limit prevents
+      // starving the event loop under a sustained flood.
+      for (let i = 0; i < 1000 && this.#status !== "TERMINATED"; i++) {
+        const syncData = op_host_recv_message_sync(this.#id);
+        if (syncData === null) break;
+        // Each message dispatch is its own task. Yield a microtask before
+        // delivering this already-dequeued message so a handler that re-armed
+        // itself in a microtask after the previous dispatch (e.g. reassigning
+        // `onmessage` inside a `.then`, as WPT
+        // workers/Worker-structure-message.html does) is installed first --
+        // otherwise the message reaches the stale handler and is lost. A
+        // synchronous checkpoint can't help here: V8 won't run microtasks
+        // reentrantly while we are already inside one.
+        await new Promise((resolve) => queueMicrotask(() => resolve()));
+        if (this.#status === "TERMINATED") return;
+        if (!this.#dispatchWorkerMessage(syncData)) return;
+      }
     }
   };
 
@@ -356,4 +391,5 @@ webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
   "module",
 ]);
 
-export { Worker };
+return { Worker };
+})();

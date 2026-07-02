@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { AsyncLocalStorage, AsyncResource } from "node:async_hooks";
+import { AsyncLocalStorage, AsyncResource, createHook } from "node:async_hooks";
 import process from "node:process";
-import { setImmediate } from "node:timers";
+import { clearImmediate, setImmediate } from "node:timers";
 import { assert, assertEquals } from "@std/assert";
 
 Deno.test(async function foo() {
@@ -138,6 +138,54 @@ Deno.test(function emitDestroyStub() {
   assert(typeof resource.emitDestroy === "function");
 });
 
+Deno.test(function runInAsyncScopeFiresBeforeAndAfter() {
+  const events: string[] = [];
+  const resource = new AsyncResource("MYRES");
+  const targetId = resource.asyncId();
+  const hook = createHook({
+    before(asyncId) {
+      if (asyncId === targetId) events.push("before");
+    },
+    after(asyncId) {
+      if (asyncId === targetId) events.push("after");
+    },
+  });
+  hook.enable();
+  try {
+    resource.runInAsyncScope(() => {
+      events.push("fn");
+    }, null);
+  } finally {
+    hook.disable();
+  }
+  assertEquals(events, ["before", "fn", "after"]);
+});
+
+Deno.test(function clearImmediateEmitsDestroy() {
+  let immediateAsyncId: number | undefined;
+  const destroyed: number[] = [];
+  const hook = createHook({
+    init(asyncId, type) {
+      if (type === "Immediate") {
+        immediateAsyncId = asyncId;
+      }
+    },
+    destroy(asyncId) {
+      destroyed.push(asyncId);
+    },
+  });
+
+  hook.enable();
+  try {
+    const immediate = setImmediate(() => {});
+    assert(typeof immediateAsyncId === "number");
+    clearImmediate(immediate);
+    assert(destroyed.includes(immediateAsyncId!));
+  } finally {
+    hook.disable();
+  }
+});
+
 Deno.test(async function worksWithAsyncAPIs() {
   const store = new AsyncLocalStorage();
   const test = () => assertEquals(store.getStore(), "data");
@@ -209,4 +257,50 @@ Deno.test(async function asyncLocalStoragePreservedInStreamFinished() {
   });
 
   await promise;
+});
+
+// Regression test for https://github.com/denoland/deno/issues/35154. The
+// native libuv callbacks for node:net connect/accept invoke their completion
+// callbacks directly, so the async context that was active when the operation
+// was started has to be captured and restored, otherwise it is lost inside the
+// `connect` and `connection` handlers.
+Deno.test(async function asyncLocalStoragePreservedInNetCallbacks() {
+  const net = await import("node:net");
+  const als = new AsyncLocalStorage();
+  const observed: { serverConnection: unknown; clientConnect: unknown } = {
+    serverConnection: null,
+    clientConnect: null,
+  };
+
+  await new Promise<void>((resolve, reject) => {
+    als.run("server-context", () => {
+      const server = net.createServer((socket) => {
+        observed.serverConnection = als.getStore() ?? null;
+        socket.end("ok");
+        server.close();
+      });
+
+      server.once("error", reject);
+      server.listen(0, () => {
+        const { port } = server.address() as { port: number };
+
+        als.run("client-context", () => {
+          const client = net.connect({ port }, () => {
+            observed.clientConnect = als.getStore() ?? null;
+          });
+
+          client.once("error", reject);
+          client.once("data", () => {
+            client.destroy();
+            resolve();
+          });
+        });
+      });
+    });
+  });
+
+  assertEquals(observed, {
+    serverConnection: "server-context",
+    clientConnect: "client-context",
+  });
 });

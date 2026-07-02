@@ -9,24 +9,28 @@
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   isDataView,
   isSharedArrayBuffer,
   isTypedArray,
 } = core;
-import {
+const {
   op_encoding_decode,
   op_encoding_decode_single,
   op_encoding_decode_utf8,
+  op_encoding_decode_utf8_ascii_only,
   op_encoding_encode_into,
+  op_encoding_encode_into_fallback,
   op_encoding_new_decoder,
   op_encoding_normalize_label,
-} from "ext:core/ops";
+} = core.ops;
 const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
+  MathTrunc,
   ObjectPrototypeIsPrototypeOf,
   PromiseReject,
   PromiseResolve,
@@ -45,7 +49,9 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { createFilteredInspectProxy } from "./01_console.js";
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 
 class TextDecoder {
   /** @type {string} */
@@ -112,6 +118,19 @@ class TextDecoder {
    */
   decode(input = new Uint8Array(), options = undefined) {
     webidl.assertBranded(this, TextDecoderPrototype);
+    // Hyper-fast path: handles the dominant case of
+    // `new TextDecoder().decode(bytes)` on a regular (non-SAB) Uint8Array.
+    // Skips the second buffer/SAB lookup, the options/stream branches and the
+    // try/finally that the slow path needs.
+    if (
+      options === undefined &&
+      this.#utf8SinglePass &&
+      this.#handle === null &&
+      TypedArrayPrototypeGetSymbolToStringTag(input) === "Uint8Array" &&
+      !isSharedArrayBuffer(TypedArrayPrototypeGetBuffer(input))
+    ) {
+      return op_encoding_decode_utf8(input, this.#ignoreBOM);
+    }
     if (input !== undefined) {
       // Fast path: skip full BufferSource validation for Uint8Array
       if (
@@ -191,6 +210,19 @@ class TextDecoder {
           this.#fatal,
           this.#ignoreBOM,
         );
+      }
+
+      // Streaming UTF-8 fast path. While the decoder has no pending state
+      // (`#handle === null`), an ASCII-only chunk decodes the same way
+      // single-pass would: there are no partial codepoints to carry over,
+      // so we can hand V8 the bytes directly as a one-byte string and skip
+      // both the `Vec<u16>` allocation and the UTF-8 -> UTF-16 conversion
+      // in `op_encoding_decode`. `op_encoding_decode_utf8_ascii_only`
+      // returns `null` for any non-ASCII byte, in which case we fall
+      // through to the general streaming op (which will create the handle).
+      if (stream && this.#utf8SinglePass && this.#handle === null) {
+        const ascii = op_encoding_decode_utf8_ascii_only(input);
+        if (ascii !== null) return ascii;
       }
 
       if (this.#handle === null) {
@@ -282,10 +314,18 @@ class TextEncoder {
         encodeIntoOpts,
       );
     }
-    op_encoding_encode_into(source, destination, encodeIntoBuf);
+    const packed = op_encoding_encode_into(source, destination);
+    if (packed === ENCODE_INTO_PACKED_SENTINEL) {
+      op_encoding_encode_into_fallback(source, destination, encodeIntoBuf);
+      return {
+        read: encodeIntoBuf[0],
+        written: encodeIntoBuf[1],
+      };
+    }
+    const read = MathTrunc(packed / ENCODE_INTO_PACKED_MULTIPLIER);
     return {
-      read: encodeIntoBuf[0],
-      written: encodeIntoBuf[1],
+      read,
+      written: packed - read * ENCODE_INTO_PACKED_MULTIPLIER,
     };
   }
 
@@ -303,6 +343,8 @@ class TextEncoder {
 
 const encodeIntoBuf = new Uint32Array(2);
 const encodeIntoOpts = { __proto__: null, allowShared: true };
+const ENCODE_INTO_PACKED_SENTINEL = -1;
+const ENCODE_INTO_PACKED_MULTIPLIER = 0x100000000;
 
 webidl.configureInterface(TextEncoder);
 const TextEncoderPrototype = TextEncoder.prototype;
@@ -562,10 +604,11 @@ function BOMSniff(bytes) {
   return null;
 }
 
-export {
+return {
   decode,
   TextDecoder,
   TextDecoderStream,
   TextEncoder,
   TextEncoderStream,
 };
+})();

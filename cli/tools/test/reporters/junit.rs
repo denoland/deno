@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::VecDeque;
+use std::io::Write;
 
 use console_static_text::ansi::strip_ansi_codes;
 use deno_core::anyhow::Context;
@@ -12,7 +13,7 @@ pub struct JunitTestReporter {
   cwd: Url,
   output_path: String,
   // Stores TestCases (i.e. Tests) by the Test ID
-  cases: IndexMap<usize, quick_junit::TestCase>,
+  cases: IndexMap<usize, JunitTestCase>,
   // Stores nodes representing test cases in such a way that can be traversed
   // from child to parent to build the full test name that reflects the test
   // hierarchy.
@@ -38,23 +39,30 @@ impl JunitTestReporter {
   fn convert_status(
     status: &TestResult,
     failure_format_options: &TestFailureFormatOptions,
-  ) -> quick_junit::TestCaseStatus {
+  ) -> JunitTestCaseStatus {
     match status {
-      TestResult::Ok => quick_junit::TestCaseStatus::success(),
-      TestResult::Ignored => quick_junit::TestCaseStatus::skipped(),
-      TestResult::Failed(failure) => quick_junit::TestCaseStatus::NonSuccess {
-        kind: quick_junit::NonSuccessKind::Failure,
-        message: Some(failure.overview()),
-        ty: None,
-        description: Some(failure.format(failure_format_options).into_owned()),
-        reruns: vec![],
-      },
-      TestResult::Cancelled => quick_junit::TestCaseStatus::NonSuccess {
-        kind: quick_junit::NonSuccessKind::Error,
+      TestResult::Ok => JunitTestCaseStatus::success(),
+      TestResult::Ignored => JunitTestCaseStatus::skipped(),
+      TestResult::Failed(failure) => {
+        let message = if failure_format_options.strip_ascii_color {
+          strip_ansi_codes(&failure.overview()).to_string()
+        } else {
+          failure.overview()
+        };
+        JunitTestCaseStatus::NonSuccess {
+          kind: JunitNonSuccessKind::Failure,
+          message: Some(message),
+          ty: None,
+          description: Some(
+            failure.format(failure_format_options).into_owned(),
+          ),
+        }
+      }
+      TestResult::Cancelled => JunitTestCaseStatus::NonSuccess {
+        kind: JunitNonSuccessKind::Error,
         message: Some("Cancelled".to_string()),
         ty: None,
         description: None,
-        reruns: vec![],
       },
     }
   }
@@ -62,24 +70,23 @@ impl JunitTestReporter {
   fn convert_step_status(
     status: &TestStepResult,
     failure_format_options: &TestFailureFormatOptions,
-  ) -> quick_junit::TestCaseStatus {
+  ) -> JunitTestCaseStatus {
     match status {
-      TestStepResult::Ok => quick_junit::TestCaseStatus::success(),
-      TestStepResult::Ignored => quick_junit::TestCaseStatus::skipped(),
+      TestStepResult::Ok => JunitTestCaseStatus::success(),
+      TestStepResult::Ignored => JunitTestCaseStatus::skipped(),
       TestStepResult::Failed(failure) => {
         let message = if failure_format_options.strip_ascii_color {
           strip_ansi_codes(&failure.overview()).to_string()
         } else {
           failure.overview()
         };
-        quick_junit::TestCaseStatus::NonSuccess {
-          kind: quick_junit::NonSuccessKind::Failure,
+        JunitTestCaseStatus::NonSuccess {
+          kind: JunitNonSuccessKind::Failure,
           message: Some(message),
           ty: None,
           description: Some(
             failure.format(failure_format_options).into_owned(),
           ),
-          reruns: vec![],
         }
       }
     }
@@ -88,9 +95,9 @@ impl JunitTestReporter {
 
 impl TestReporter for JunitTestReporter {
   fn report_register(&mut self, description: &TestDescription) {
-    let mut case = quick_junit::TestCase::new(
+    let mut case = JunitTestCase::new(
       description.name.clone(),
-      quick_junit::TestCaseStatus::skipped(),
+      JunitTestCaseStatus::skipped(),
     );
     case.classname = Some(to_relative_path_or_remote_url(
       &self.cwd,
@@ -111,7 +118,12 @@ impl TestReporter for JunitTestReporter {
 
   fn report_plan(&mut self, _plan: &TestPlan) {}
 
-  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
+  fn report_slow(
+    &mut self,
+    _description: &TestDescription,
+    _elapsed: Duration,
+  ) {
+  }
   fn report_wait(&mut self, _description: &TestDescription) {}
 
   fn report_output(&mut self, _output: &[u8]) {
@@ -127,11 +139,11 @@ impl TestReporter for JunitTestReporter {
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    elapsed: u64,
+    elapsed: Duration,
   ) {
     if let Some(case) = self.cases.get_mut(&description.id) {
       case.status = Self::convert_status(result, &self.failure_format_options);
-      case.set_time(Duration::from_millis(elapsed));
+      case.set_time(elapsed);
     }
   }
 
@@ -142,10 +154,8 @@ impl TestReporter for JunitTestReporter {
     let test_case_name =
       self.test_name_tree.construct_full_test_name(description.id);
 
-    let mut case = quick_junit::TestCase::new(
-      test_case_name,
-      quick_junit::TestCaseStatus::skipped(),
-    );
+    let mut case =
+      JunitTestCase::new(test_case_name, JunitTestCaseStatus::skipped());
     case.classname = Some(to_relative_path_or_remote_url(
       &self.cwd,
       &description.location.file_name,
@@ -167,14 +177,14 @@ impl TestReporter for JunitTestReporter {
     &mut self,
     description: &TestStepDescription,
     result: &TestStepResult,
-    elapsed: u64,
+    elapsed: Duration,
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
     if let Some(case) = self.cases.get_mut(&description.id) {
       case.status =
         Self::convert_step_status(result, &self.failure_format_options);
-      case.set_time(Duration::from_millis(elapsed));
+      case.set_time(elapsed);
     }
   }
 
@@ -194,9 +204,36 @@ impl TestReporter for JunitTestReporter {
   ) {
     for id in tests_pending {
       if let Some(description) = tests.get(id) {
-        self.report_result(description, &TestResult::Cancelled, 0)
+        self.report_result(
+          description,
+          &TestResult::Cancelled,
+          Duration::default(),
+        )
       }
     }
+  }
+
+  fn report_exit(
+    &mut self,
+    _exit_code: i32,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    _test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    for id in tests_pending {
+      if let Some(description) = tests.get(id) {
+        self.report_result(
+          description,
+          &TestResult::Cancelled,
+          Duration::default(),
+        )
+      }
+    }
+  }
+
+  fn report_isolate_exit(&mut self, _origin: &str, _exit_code: i32) {
+    // JUnit reporters are file-oriented; we surface the isolate exit via the
+    // overall test run failure status rather than emitting a synthetic case.
   }
 
   fn report_completed(&mut self) {
@@ -210,7 +247,7 @@ impl TestReporter for JunitTestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) -> anyhow::Result<()> {
-    let mut suites: IndexMap<String, quick_junit::TestSuite> = IndexMap::new();
+    let mut suites: IndexMap<String, JunitTestSuite> = IndexMap::new();
     for (id, case) in &self.cases {
       let abs_filename = match (tests.get(id), test_steps.get(id)) {
         (Some(test), _) => &test.location.file_name,
@@ -228,16 +265,13 @@ impl TestReporter for JunitTestReporter {
           s.add_test_case(case.clone());
         })
         .or_insert_with(|| {
-          let mut suite = quick_junit::TestSuite::new(filename);
+          let mut suite = JunitTestSuite::new(filename);
           suite.add_test_case(case.clone());
           suite
         });
     }
 
-    let mut report = quick_junit::Report::new("deno test");
-    report
-      .set_time(*elapsed)
-      .add_test_suites(suites.into_values());
+    let report = JunitReport::new("deno test", *elapsed, suites.into_values());
 
     if self.output_path == "-" {
       report
@@ -253,6 +287,264 @@ impl TestReporter for JunitTestReporter {
 
     Ok(())
   }
+}
+
+struct JunitReport {
+  name: String,
+  time: Duration,
+  tests: usize,
+  failures: usize,
+  errors: usize,
+  test_suites: Vec<JunitTestSuite>,
+}
+
+impl JunitReport {
+  fn new(
+    name: impl Into<String>,
+    time: Duration,
+    test_suites: impl IntoIterator<Item = JunitTestSuite>,
+  ) -> Self {
+    let test_suites = test_suites.into_iter().collect::<Vec<_>>();
+    Self {
+      name: name.into(),
+      time,
+      tests: test_suites.iter().map(|suite| suite.tests).sum(),
+      failures: test_suites.iter().map(|suite| suite.failures).sum(),
+      errors: test_suites.iter().map(|suite| suite.errors).sum(),
+      test_suites,
+    }
+  }
+
+  fn serialize(&self, mut writer: impl Write) -> std::io::Result<()> {
+    writeln!(writer, r#"<?xml version="1.0" encoding="UTF-8"?>"#)?;
+    write!(writer, "<testsuites")?;
+    write_attr(&mut writer, "name", &self.name)?;
+    write_attr(&mut writer, "tests", &self.tests.to_string())?;
+    write_attr(&mut writer, "failures", &self.failures.to_string())?;
+    write_attr(&mut writer, "errors", &self.errors.to_string())?;
+    write_attr(&mut writer, "time", &format_time(self.time))?;
+    writeln!(writer, ">")?;
+    for test_suite in &self.test_suites {
+      test_suite.serialize(&mut writer)?;
+    }
+    writeln!(writer, "</testsuites>")
+  }
+}
+
+struct JunitTestSuite {
+  name: String,
+  tests: usize,
+  disabled: usize,
+  errors: usize,
+  failures: usize,
+  test_cases: Vec<JunitTestCase>,
+}
+
+impl JunitTestSuite {
+  fn new(name: impl Into<String>) -> Self {
+    Self {
+      name: name.into(),
+      tests: 0,
+      disabled: 0,
+      errors: 0,
+      failures: 0,
+      test_cases: vec![],
+    }
+  }
+
+  fn add_test_case(&mut self, test_case: JunitTestCase) {
+    self.tests += 1;
+    match &test_case.status {
+      JunitTestCaseStatus::Success => {}
+      JunitTestCaseStatus::NonSuccess { kind, .. } => match kind {
+        JunitNonSuccessKind::Failure => self.failures += 1,
+        JunitNonSuccessKind::Error => self.errors += 1,
+      },
+      JunitTestCaseStatus::Skipped { .. } => self.disabled += 1,
+    }
+    self.test_cases.push(test_case);
+  }
+
+  fn serialize(&self, mut writer: impl Write) -> std::io::Result<()> {
+    write!(writer, "    <testsuite")?;
+    write_attr(&mut writer, "name", &self.name)?;
+    write_attr(&mut writer, "tests", &self.tests.to_string())?;
+    write_attr(&mut writer, "disabled", &self.disabled.to_string())?;
+    write_attr(&mut writer, "errors", &self.errors.to_string())?;
+    write_attr(&mut writer, "failures", &self.failures.to_string())?;
+    writeln!(writer, ">")?;
+    for test_case in &self.test_cases {
+      test_case.serialize(&mut writer)?;
+    }
+    writeln!(writer, "    </testsuite>")
+  }
+}
+
+#[derive(Clone)]
+struct JunitTestCase {
+  name: String,
+  classname: Option<String>,
+  time: Option<Duration>,
+  status: JunitTestCaseStatus,
+  extra: IndexMap<String, String>,
+}
+
+impl JunitTestCase {
+  fn new(name: impl Into<String>, status: JunitTestCaseStatus) -> Self {
+    Self {
+      name: name.into(),
+      classname: None,
+      time: None,
+      status,
+      extra: IndexMap::new(),
+    }
+  }
+
+  fn set_time(&mut self, time: Duration) {
+    self.time = Some(time);
+  }
+
+  fn serialize(&self, mut writer: impl Write) -> std::io::Result<()> {
+    write!(writer, "        <testcase")?;
+    write_attr(&mut writer, "name", &self.name)?;
+    if let Some(classname) = &self.classname {
+      write_attr(&mut writer, "classname", classname)?;
+    }
+    if let Some(time) = self.time {
+      write_attr(&mut writer, "time", &format_time(time))?;
+    }
+    for (key, value) in &self.extra {
+      write_attr(&mut writer, key, value)?;
+    }
+    writeln!(writer, ">")?;
+    self.status.serialize(&mut writer)?;
+    writeln!(writer, "        </testcase>")
+  }
+}
+
+#[derive(Clone)]
+enum JunitTestCaseStatus {
+  Success,
+  NonSuccess {
+    kind: JunitNonSuccessKind,
+    message: Option<String>,
+    ty: Option<String>,
+    description: Option<String>,
+  },
+  Skipped {
+    message: Option<String>,
+    ty: Option<String>,
+    description: Option<String>,
+  },
+}
+
+impl JunitTestCaseStatus {
+  fn success() -> Self {
+    Self::Success
+  }
+
+  fn skipped() -> Self {
+    Self::Skipped {
+      message: None,
+      ty: None,
+      description: None,
+    }
+  }
+
+  fn serialize(&self, mut writer: impl Write) -> std::io::Result<()> {
+    match self {
+      Self::Success => Ok(()),
+      Self::NonSuccess {
+        kind,
+        message,
+        ty,
+        description,
+      } => serialize_status(
+        &mut writer,
+        kind.tag_name(),
+        message.as_deref(),
+        ty.as_deref(),
+        description.as_deref(),
+      ),
+      Self::Skipped {
+        message,
+        ty,
+        description,
+      } => serialize_status(
+        &mut writer,
+        "skipped",
+        message.as_deref(),
+        ty.as_deref(),
+        description.as_deref(),
+      ),
+    }
+  }
+}
+
+#[derive(Clone)]
+enum JunitNonSuccessKind {
+  Failure,
+  Error,
+}
+
+impl JunitNonSuccessKind {
+  fn tag_name(&self) -> &'static str {
+    match self {
+      Self::Failure => "failure",
+      Self::Error => "error",
+    }
+  }
+}
+
+fn serialize_status(
+  mut writer: impl Write,
+  tag_name: &str,
+  message: Option<&str>,
+  ty: Option<&str>,
+  description: Option<&str>,
+) -> std::io::Result<()> {
+  write!(writer, "            <{tag_name}")?;
+  if let Some(message) = message {
+    write_attr(&mut writer, "message", message)?;
+  }
+  if let Some(ty) = ty {
+    write_attr(&mut writer, "type", ty)?;
+  }
+  if let Some(description) = description {
+    write!(writer, ">")?;
+    write_escaped(&mut writer, description)?;
+    writeln!(writer, "</{tag_name}>")
+  } else {
+    writeln!(writer, "/>")
+  }
+}
+
+fn write_attr(
+  mut writer: impl Write,
+  name: &str,
+  value: &str,
+) -> std::io::Result<()> {
+  write!(writer, " {name}=\"")?;
+  write_escaped(&mut writer, value)?;
+  write!(writer, "\"")
+}
+
+fn write_escaped(mut writer: impl Write, value: &str) -> std::io::Result<()> {
+  for ch in value.chars() {
+    match ch {
+      '<' => write!(writer, "&lt;")?,
+      '>' => write!(writer, "&gt;")?,
+      '&' => write!(writer, "&amp;")?,
+      '\'' => write!(writer, "&apos;")?,
+      '"' => write!(writer, "&quot;")?,
+      _ => write!(writer, "{ch}")?,
+    }
+  }
+  Ok(())
+}
+
+fn format_time(time: Duration) -> String {
+  format!("{:.3}", time.as_secs_f64())
 }
 
 #[derive(Debug, Default)]
@@ -277,11 +569,7 @@ impl TestNameTree {
     let mut current_id = Some(id);
     let mut name_pieces = VecDeque::new();
 
-    loop {
-      let Some(id) = current_id else {
-        break;
-      };
-
+    while let Some(id) = current_id {
       let Some(node) = self.0.get(&id) else {
         // The ID specified as a parent node by the child node should exist in
         // the tree, but it doesn't. In this case we give up constructing the
@@ -463,6 +751,7 @@ mod tests {
       cause: None,
       aggregated: None,
       additional_properties: vec![],
+      stack_is_custom: false,
     };
 
     let step_result =
@@ -475,7 +764,7 @@ mod tests {
         ..Default::default()
       },
     );
-    if let quick_junit::TestCaseStatus::NonSuccess {
+    if let JunitTestCaseStatus::NonSuccess {
       description,
       message,
       ..

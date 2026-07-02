@@ -774,6 +774,76 @@ declare namespace Deno {
      * ```
      */
     step(fn: (t: TestContext) => void | Promise<void>): Promise<boolean>;
+
+    /** Assert that `actual` matches a snapshot stored in a snapshot file.
+     *
+     * The snapshot is stored in `__snapshots__/<test file name>.snap` next
+     * to the test file, under a key derived from the test (and step) name.
+     * On the first run, create the snapshot file by running the tests with
+     * the `--update-snapshots` flag; commit it alongside the test. On
+     * subsequent runs the assertion fails if the serialized value no longer
+     * matches the stored snapshot. To intentionally change snapshots, run
+     * the tests with `--update-snapshots` again.
+     *
+     * No read or write permissions are needed for snapshot files in the
+     * default location; a custom `dir` or `path` requires them.
+     *
+     * The snapshot file format is compatible with
+     * `assertSnapshot` from
+     * [`@std/testing/snapshot`](https://jsr.io/@std/testing/doc/snapshot).
+     *
+     * ```ts
+     * Deno.test("matches snapshot", async (t) => {
+     *   await t.assertSnapshot({ hello: "world", example: 123 });
+     * });
+     * ```
+     */
+    assertSnapshot<T>(
+      actual: T,
+      options?: TestSnapshotOptions<T>,
+    ): Promise<void>;
+
+    /** Assert that `actual` matches a snapshot stored in a snapshot file,
+     * using `message` as the failure message if it does not.
+     *
+     * ```ts
+     * Deno.test("matches snapshot", async (t) => {
+     *   await t.assertSnapshot(2 + 3, "should be five");
+     * });
+     * ```
+     */
+    assertSnapshot<T>(actual: T, message?: string): Promise<void>;
+  }
+
+  /** Options which can be set when calling
+   * {@linkcode Deno.TestContext.assertSnapshot}.
+   *
+   * @category Testing */
+  export interface TestSnapshotOptions<T = unknown> {
+    /** Snapshot output directory, relative to the directory of the test
+     * file (or absolute). Snapshot files are written to this directory
+     * instead of the default `__snapshots__` directory. Requires read (and,
+     * with `--update-snapshots`, write) permission for the directory.
+     *
+     * If both `dir` and `path` are specified, `dir` is ignored. */
+    dir?: string;
+    /** Snapshot output path, relative to the directory of the test file (or
+     * absolute). The snapshot is stored in this file instead of the default
+     * `__snapshots__/<test file name>.snap` file. Requires read (and, with
+     * `--update-snapshots`, write) permission for the file.
+     *
+     * If both `dir` and `path` are specified, `dir` is ignored. */
+    path?: string;
+    /** Name of the snapshot to use in the snapshot file instead of the
+     * name derived from the test and step names. */
+    name?: string;
+    /** Failure message to use when the assertion fails, instead of the
+     * generated diff message. */
+    msg?: string;
+    /** Function used to serialize the value to a string before comparing it
+     * with the stored snapshot. Defaults to a `Deno.inspect()`-based
+     * serializer. */
+    serializer?: (actual: T) => string;
   }
 
   /** @category Testing */
@@ -831,13 +901,23 @@ declare namespace Deno {
      * not await. This helps in preventing logic errors and memory leaks
      * in the application code.
      *
-     * @default {true} */
+     * Can also be enabled globally with the `--sanitize-ops` CLI flag,
+     * the `DENO_TEST_SANITIZE_OPS=1` environment variable, or the
+     * `test.sanitizeOps` option in `deno.json`. Can be set per-module
+     * with {@linkcode Deno.test.sanitizer}.
+     *
+     * @default {false} */
     sanitizeOps?: boolean;
     /** Ensure the test step does not "leak" resources - like open files or
      * network connections - by ensuring the open resources at the start of the
      * test match the open resources at the end of the test.
      *
-     * @default {true} */
+     * Can also be enabled globally with the `--sanitize-resources` CLI flag,
+     * the `DENO_TEST_SANITIZE_RESOURCES=1` environment variable, or the
+     * `test.sanitizeResources` option in `deno.json`. Can be set per-module
+     * with {@linkcode Deno.test.sanitizer}.
+     *
+     * @default {false} */
     sanitizeResources?: boolean;
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to {@linkcode Deno.exit}.
@@ -852,6 +932,31 @@ declare namespace Deno {
      *
      * @default {"inherit"} */
     permissions?: PermissionOptions;
+    /** Maximum duration in milliseconds that the test is allowed to run
+     * before being marked as a failed test. Both asynchronous hangs and
+     * synchronous hot loops are caught.
+     *
+     * If unset or `0`, the test runs without a deadline.
+     */
+    timeout?: number;
+    /** Number of times to re-run the test if it fails. The test is considered
+     * to have passed if any attempt passes. Useful for tolerating flaky tests.
+     *
+     * When set, this takes precedence over the `--retry` flag, including an
+     * explicit `0` which opts the test out of a flag-provided default.
+     *
+     * @default {0} */
+    retry?: number;
+    /** Number of additional times to run the test. Every repetition must pass
+     * for the test to pass. Useful for surfacing flaky tests. When combined
+     * with {@linkcode TestDefinition.retry}, each repetition may itself be
+     * retried.
+     *
+     * When set, this takes precedence over the `--repeats` flag, including an
+     * explicit `0` which opts the test out of a flag-provided default.
+     *
+     * @default {0} */
+    repeats?: number;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -1080,97 +1185,48 @@ declare namespace Deno {
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
 
-    /** Shorthand property for ignoring a particular test case.
+    /** Register a parameterized group of tests, one per case in `cases`.
+     *
+     * Returns a function that takes a name template and a test function. For
+     * each case the name template is interpolated and the test function is
+     * called with the case's value(s) followed by the {@linkcode TestContext}.
+     *
+     * Array cases are spread as positional arguments; object (or primitive)
+     * cases are passed as a single argument.
+     *
+     * The name template supports `printf`-style tokens that consume the case's
+     * values in order (`%s`, `%d`/`%i`, `%f`, `%j`, `%o`/`%O`), `%#` for the
+     * zero-based case index, and `%%` for a literal `%`. For object cases,
+     * `$key` (and `$key.nested`) interpolates the corresponding property.
+     *
+     * ```ts
+     * import { assertEquals } from "jsr:@std/assert";
+     *
+     * Deno.test.each([
+     *   [1, 1, 2],
+     *   [1, 2, 3],
+     *   [2, 1, 3],
+     * ])("add(%i, %i) = %i", (a, b, expected) => {
+     *   assertEquals(a + b, expected);
+     * });
+     *
+     * Deno.test.each([
+     *   { a: 1, b: 1, sum: 2 },
+     *   { a: 1, b: 2, sum: 3 },
+     * ])("$a + $b = $sum", ({ a, b, sum }) => {
+     *   assertEquals(a + b, sum);
+     * });
+     * ```
      *
      * @category Testing
      */
-    ignore(t: Omit<TestDefinition, "ignore">): void;
+    each: TestEach;
 
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(name: string, fn: (t: TestContext) => void | Promise<void>): void;
+    /** Shorthand property for ignoring a particular test case. */
+    ignore: TestIgnore;
 
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(fn: (t: TestContext) => void | Promise<void>): void;
-
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(
-      name: string,
-      options: Omit<TestDefinition, "fn" | "name" | "ignore">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(
-      options: Omit<TestDefinition, "fn" | "name" | "ignore">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for ignoring a particular test case.
-     *
-     * @category Testing
-     */
-    ignore(
-      options: Omit<TestDefinition, "fn" | "ignore">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(t: Omit<TestDefinition, "only">): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(name: string, fn: (t: TestContext) => void | Promise<void>): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(fn: (t: TestContext) => void | Promise<void>): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(
-      name: string,
-      options: Omit<TestDefinition, "fn" | "name" | "only">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(
-      options: Omit<TestDefinition, "fn" | "name" | "only">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
-
-    /** Shorthand property for focusing a particular test case.
-     *
-     * @category Testing
-     */
-    only(
-      options: Omit<TestDefinition, "fn" | "only">,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
+    /** Shorthand property for focusing a particular test case. */
+    only: TestOnly;
 
     /** Register a function to be called before all tests in the current scope.
      *
@@ -1243,6 +1299,136 @@ declare namespace Deno {
      * @category Testing
      */
     afterAll(fn: () => void | Promise<void>): void;
+
+    /** Configure sanitizers at the module level. This overrides CLI flags and
+     * config file settings, but can still be overridden per-test via
+     * `sanitizeOps` / `sanitizeResources` in test options.
+     *
+     * Should be called at the top of the module, before any `Deno.test()`
+     * registrations — each call sets the defaults that subsequently registered
+     * tests inherit, so tests registered before the call use the previous
+     * defaults.
+     *
+     * ```ts
+     * // Enable both sanitizers for all tests in this file
+     * Deno.test.sanitizer({ ops: true, resources: true });
+     *
+     * Deno.test("my test", () => {
+     *   // This test will have ops and resources sanitizers enabled
+     * });
+     *
+     * Deno.test({
+     *   name: "override per-test",
+     *   sanitizeOps: false,
+     *   fn() {
+     *     // This test opts out of ops sanitizer
+     *   },
+     * });
+     * ```
+     *
+     * @category Testing
+     */
+    sanitizer(options: {
+      /** Enable or disable the ops sanitizer for all tests in this module. */
+      ops?: boolean;
+      /** Enable or disable the resources sanitizer for all tests in this module. */
+      resources?: boolean;
+    }): void;
+  }
+
+  /** Register a parameterized group of tests. See {@linkcode DenoTest.each}.
+   *
+   * The first overload handles array cases (their values are spread as
+   * positional arguments); the second handles object or primitive cases (each
+   * passed as a single argument followed by the {@linkcode TestContext}).
+   *
+   * The {@linkcode TestContext} is also passed as the final argument to array
+   * case functions at runtime, but is not reflected in their parameter types so
+   * that the case values stay correctly typed.
+   *
+   * @category Testing
+   */
+  export interface TestEach {
+    <const T extends readonly unknown[]>(
+      cases: readonly T[],
+    ): {
+      (
+        name: string,
+        fn: (...args: [...T]) => void | Promise<void>,
+      ): void;
+      (
+        name: string,
+        options: Omit<TestDefinition, "fn" | "name">,
+        fn: (...args: [...T]) => void | Promise<void>,
+      ): void;
+    };
+    <const T>(
+      cases: readonly T[],
+    ): {
+      (
+        name: string,
+        fn: (value: T, t: TestContext) => void | Promise<void>,
+      ): void;
+      (
+        name: string,
+        options: Omit<TestDefinition, "fn" | "name">,
+        fn: (value: T, t: TestContext) => void | Promise<void>,
+      ): void;
+    };
+  }
+
+  /** Shorthand property for ignoring a particular test case. See
+   * {@linkcode DenoTest.ignore}.
+   *
+   * @category Testing
+   */
+  export interface TestIgnore {
+    (t: Omit<TestDefinition, "ignore">): void;
+    (name: string, fn: (t: TestContext) => void | Promise<void>): void;
+    (fn: (t: TestContext) => void | Promise<void>): void;
+    (
+      name: string,
+      options: Omit<TestDefinition, "fn" | "name" | "ignore">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    (
+      options: Omit<TestDefinition, "fn" | "name" | "ignore">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    (
+      options: Omit<TestDefinition, "fn" | "ignore">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    /** Register a parameterized group of ignored tests. See
+     * {@linkcode DenoTest.each}. */
+    each: TestEach;
+  }
+
+  /** Shorthand property for focusing a particular test case. See
+   * {@linkcode DenoTest.only}.
+   *
+   * @category Testing
+   */
+  export interface TestOnly {
+    (t: Omit<TestDefinition, "only">): void;
+    (name: string, fn: (t: TestContext) => void | Promise<void>): void;
+    (fn: (t: TestContext) => void | Promise<void>): void;
+    (
+      name: string,
+      options: Omit<TestDefinition, "fn" | "name" | "only">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    (
+      options: Omit<TestDefinition, "fn" | "name" | "only">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    (
+      options: Omit<TestDefinition, "fn" | "only">,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): void;
+    /** Register a parameterized group of focused tests. See
+     * {@linkcode DenoTest.each}. */
+    each: TestEach;
   }
 
   /**
@@ -1349,6 +1535,14 @@ declare namespace Deno {
   /**
    * Register a benchmark test which will be run when `deno bench` is used on
    * the command line and the containing module looks like a bench module.
+   *
+   * A module "looks like a bench module" when `deno bench` selects it for
+   * execution. When you pass explicit file paths to `deno bench`, those files
+   * are always run. When you run `deno bench` without paths, it walks the
+   * directory looking for files whose name (ignoring the extension) ends with
+   * `_bench` or `.bench`, or is exactly `bench`. Examples are `foo_bench.ts`,
+   * `foo.bench.js`, or `bench.ts`. Supported extensions are the same as for
+   * tests (`.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.mts`, `.cjs`, `.cts`).
    *
    * If the test function (`fn`) returns a promise or is async, the test runner
    * will await resolution to consider the test complete.
@@ -1547,7 +1741,8 @@ declare namespace Deno {
    *
    * If no exit code is supplied then Deno will exit with return code of `0`.
    *
-   * In worker contexts this is an alias to `self.close();`.
+   * In worker contexts this closes the current worker using Deno's internal
+   * worker close operation. It does not call the current `self.close` property.
    *
    * ```ts
    * Deno.exit(5);
@@ -1883,6 +2078,11 @@ declare namespace Deno {
      *   console.log(decoder.decode(chunk));
      * }
      * ```
+     *
+     * Note that the readable stream *takes ownership of the file*: reading the
+     * stream to completion (or cancelling it) closes the file automatically, so
+     * you should not close the file yourself while the stream is still being
+     * consumed.
      */
     readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
     /** A {@linkcode WritableStream} instance to write the contents of the
@@ -1898,6 +2098,10 @@ declare namespace Deno {
      *   await writer.write(encoder.encode(item));
      * }
      * ```
+     *
+     * Note that the writable stream *takes ownership of the file*: closing or
+     * aborting the stream closes the file automatically, so you should not
+     * close the file yourself while the stream is still in use.
      */
     readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
     /** Write the contents of the array buffer (`p`) to the file.
@@ -2293,6 +2497,10 @@ declare namespace Deno {
    * This returns the size of the console window as reported by the operating
    * system. It's not a reflection of how many characters will fit within the
    * console window, but can be used as part of that calculation.
+   *
+   * Throws if none of stdin, stdout, or stderr is connected to a terminal
+   * (e.g. all are piped or redirected). Use {@linkcode Deno.stdout.isTerminal}
+   * to check before calling.
    *
    * @category I/O
    */
@@ -2988,12 +3196,18 @@ declare namespace Deno {
   ): Promise<void>;
 
   /** Asynchronously reads and returns the entire contents of a file as an UTF-8
-   *  decoded string. Reading a directory throws an error.
+   *  decoded string.
    *
    * ```ts
    * const data = await Deno.readTextFile("hello.txt");
    * console.log(data);
    * ```
+   *
+   * The returned promise rejects if the operation fails, for example with
+   * {@linkcode Deno.errors.NotFound} if the file does not exist,
+   * {@linkcode Deno.errors.IsADirectory} if `path` refers to a directory, or
+   * {@linkcode Deno.errors.PermissionDenied} if the required permission has not
+   * been granted.
    *
    * Requires `allow-read` permission.
    *
@@ -3006,12 +3220,18 @@ declare namespace Deno {
   ): Promise<string>;
 
   /** Synchronously reads and returns the entire contents of a file as an UTF-8
-   *  decoded string. Reading a directory throws an error.
+   *  decoded string.
    *
    * ```ts
    * const data = Deno.readTextFileSync("hello.txt");
    * console.log(data);
    * ```
+   *
+   * Throws if the operation fails, for example with
+   * {@linkcode Deno.errors.NotFound} if the file does not exist,
+   * {@linkcode Deno.errors.IsADirectory} if `path` refers to a directory, or
+   * {@linkcode Deno.errors.PermissionDenied} if the required permission has not
+   * been granted.
    *
    * Requires `allow-read` permission.
    *
@@ -3463,6 +3683,13 @@ declare namespace Deno {
    * await Deno.writeTextFile("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
    * ```
    *
+   * The data is written to the file and the file is closed, but this does not
+   * guarantee that the contents have been flushed from the operating system's
+   * buffers to the physical storage device. If you need such a durability
+   * guarantee (for example before signalling that a write has been committed),
+   * open the file with {@linkcode Deno.open} and call
+   * {@linkcode Deno.FsFile.sync} before closing it.
+   *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is
    * `false`.
    *
@@ -3481,6 +3708,12 @@ declare namespace Deno {
    * ```ts
    * Deno.writeTextFileSync("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
    * ```
+   *
+   * As with {@linkcode Deno.writeTextFile}, the data is written and the file is
+   * closed, but this does not guarantee the contents have been flushed from the
+   * operating system's buffers to the physical storage device. If you need such
+   * a durability guarantee, open the file with {@linkcode Deno.openSync} and
+   * call {@linkcode Deno.FsFile.syncSync} before closing it.
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is
    * `false`.
@@ -3619,6 +3852,17 @@ declare namespace Deno {
    * }
    * ```
    *
+   * The `ignore` option can be used to filter out events for one or more paths.
+   * A path matches when it is, or is contained within, an ignored path, so
+   * ignoring a directory ignores everything beneath it. Relative paths are
+   * resolved against the current working directory. Ignored paths still
+   * require `allow-read` permission, the same as the watched paths.
+   *
+   * ```ts
+   * // Watch the project but skip the `.git` directory and `build` output.
+   * const watcher = Deno.watchFs(".", { ignore: [".git", "build"] });
+   * ```
+   *
    * Call `watcher.close()` to stop watching.
    *
    * ```ts
@@ -3640,7 +3884,7 @@ declare namespace Deno {
    */
   export function watchFs(
     paths: string | string[],
-    options?: { recursive: boolean },
+    options?: { recursive?: boolean; ignore?: string | string[] },
   ): FsWatcher;
 
   /** Operating signals which can be listened for or sent to sub-processes. What
@@ -3830,7 +4074,11 @@ declare namespace Deno {
     get stdout(): SubprocessReadableStream;
     get stderr(): SubprocessReadableStream;
     readonly pid: number;
-    /** Get the status of the child. */
+    /** A promise that resolves once the child process has exited, with its
+     * exit code and terminating signal (if any). The promise never rejects; if
+     * the process is still running the promise is pending. Accessing this
+     * property does not, on its own, prevent the Deno process from exiting -
+     * see {@linkcode ChildProcess.ref}. */
     readonly status: Promise<CommandStatus>;
 
     /** Waits for the child to exit completely, returning all its output and
@@ -4761,7 +5009,12 @@ declare namespace Deno {
    * await Deno.symlink("old/name", "new/name");
    * ```
    *
-   * Requires full `allow-read` and `allow-write` permissions.
+   * Requires `allow-read` and `allow-write` permissions granted *without* a
+   * path scope (i.e. `--allow-read --allow-write`, not
+   * `--allow-read=./dir --allow-write=./dir`). A symlink's target may be a
+   * relative, absolute, or not-yet-existing path that is only resolved when the
+   * link is later traversed, so it cannot be checked against a path-scoped
+   * allow-list at creation time. Path-scoped grants are therefore rejected.
    *
    * @tags allow-read, allow-write
    * @category File System
@@ -4782,7 +5035,12 @@ declare namespace Deno {
    * Deno.symlinkSync("old/name", "new/name");
    * ```
    *
-   * Requires full `allow-read` and `allow-write` permissions.
+   * Requires `allow-read` and `allow-write` permissions granted *without* a
+   * path scope (i.e. `--allow-read --allow-write`, not
+   * `--allow-read=./dir --allow-write=./dir`). A symlink's target may be a
+   * relative, absolute, or not-yet-existing path that is only resolved when the
+   * link is later traversed, so it cannot be checked against a path-scoped
+   * allow-list at creation time. Path-scoped grants are therefore rejected.
    *
    * @tags allow-read, allow-write
    * @category File System
@@ -4883,6 +5141,33 @@ declare namespace Deno {
      * The unit is seconds, with a default of 30.
      * Set to `0` to disable timeouts. */
     idleTimeout?: number;
+    /** A `node:net` `Socket` from a `node:http` server's `"upgrade"` event.
+     * When provided, the WebSocket upgrade is performed over this existing
+     * TCP connection instead of through `Deno.serve`'s built-in upgrade
+     * mechanism. The 101 Switching Protocols response is written
+     * automatically.
+     *
+     * ```ts ignore
+     * import http from "node:http";
+     *
+     * const server = http.createServer();
+     * server.on("upgrade", (req, socket, head) => {
+     *   const { socket: ws } = Deno.upgradeWebSocket(
+     *     new Request(`http://${req.headers.host}/`, {
+     *       headers: req.headers as HeadersInit,
+     *     }),
+     *     { socket: socket as import("node:net").Socket, head },
+     *   );
+     *   ws.onmessage = (e) => ws.send(e.data);
+     * });
+     * ```
+     */
+    socket?: import("node:net").Socket;
+    /** Extra bytes already buffered by the HTTP parser that arrived with
+     * the upgrade request headers. This is the `head` `Buffer` from the
+     * `node:http` server's `"upgrade"` event and must be forwarded so
+     * those bytes are not lost. */
+    head?: Uint8Array;
   }
 
   /**
@@ -5080,12 +5365,17 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
+   * The `"A"`, `"AAAA"`, `"ANAME"`, `"CNAME"`, `"NS"` and `"PTR"` record types
+   * resolve to an array of strings.
+   *
    * ```ts
    * const a = await Deno.resolveDns("example.com", "A");
+   * // ["93.184.215.14"]
    *
    * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
    *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
    * });
+   * // ["2606:2800:21f:cb07:6820:80da:af6b:8b2c"]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5110,12 +5400,12 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * The `"CAA"` record type resolves to an array of
+   * {@linkcode Deno.CaaRecord} objects.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
-   * });
+   * ```ts
+   * const caa = await Deno.resolveDns("example.com", "CAA");
+   * // [{ critical: false, tag: "issue", value: "letsencrypt.org" }]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5140,12 +5430,12 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * The `"MX"` record type resolves to an array of
+   * {@linkcode Deno.MxRecord} objects.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
-   * });
+   * ```ts
+   * const mx = await Deno.resolveDns("example.com", "MX");
+   * // [{ preference: 10, exchange: "mail.example.com" }]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5170,12 +5460,19 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * The `"NAPTR"` record type resolves to an array of
+   * {@linkcode Deno.NaptrRecord} objects.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
-   * });
+   * ```ts
+   * const naptr = await Deno.resolveDns("example.com", "NAPTR");
+   * // [{
+   * //   order: 100,
+   * //   preference: 10,
+   * //   flags: "S",
+   * //   services: "SIP+D2U",
+   * //   regexp: "",
+   * //   replacement: "_sip._udp.example.com",
+   * // }]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5200,12 +5497,20 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * The `"SOA"` record type resolves to an array of
+   * {@linkcode Deno.SoaRecord} objects.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
-   * });
+   * ```ts
+   * const soa = await Deno.resolveDns("example.com", "SOA");
+   * // [{
+   * //   mname: "ns.example.com",
+   * //   rname: "hostmaster.example.com",
+   * //   serial: 2024010101,
+   * //   refresh: 7200,
+   * //   retry: 3600,
+   * //   expire: 1209600,
+   * //   minimum: 3600,
+   * // }]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5230,12 +5535,12 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * The `"SRV"` record type resolves to an array of
+   * {@linkcode Deno.SrvRecord} objects.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
-   * });
+   * ```ts
+   * const srv = await Deno.resolveDns("_sip._tcp.example.com", "SRV");
+   * // [{ priority: 10, weight: 5, port: 5060, target: "sip.example.com" }]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5260,12 +5565,12 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * The `"TXT"` record type resolves to an array of string arrays, since a
+   * single TXT record can be split into multiple character strings.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
-   * });
+   * ```ts
+   * const txt = await Deno.resolveDns("example.com", "TXT");
+   * // [["v=spf1 include:_spf.example.com ~all"]]
    * ```
    *
    * Requires `allow-net` permission.
@@ -5290,10 +5595,14 @@ declare namespace Deno {
    *   beyond the range of 16-bit unsigned integer.
    * - the request timed out.
    *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
+   * This overload is selected when the record type is only known at runtime. The
+   * shape of each resolved record depends on the {@linkcode Deno.RecordType}
+   * that was requested - see the more specific overloads above for the exact
+   * return type of each record type.
    *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   * ```ts
+   * const recordType: Deno.RecordType = "A";
+   * const records = await Deno.resolveDns("example.com", recordType, {
    *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
    * });
    * ```
@@ -5322,14 +5631,14 @@ declare namespace Deno {
    *
    * @category Runtime
    */
-  export function refTimer(id: number): void;
+  export function refTimer(id: number | NodeJS.Timeout): void;
 
   /**
    * Make the timer of the given `id` not block the event loop from finishing.
    *
    * @category Runtime
    */
-  export function unrefTimer(id: number): void;
+  export function unrefTimer(id: number | NodeJS.Timeout): void;
 
   /**
    * Returns the user id of the process on POSIX platforms. Returns null on Windows.
@@ -5371,6 +5680,12 @@ declare namespace Deno {
   }
 
   /** A handler for HTTP requests. Consumes a request and returns a response.
+   *
+   * The `request` argument is a standard Web platform {@linkcode Request}, and
+   * the handler must return a standard Web platform {@linkcode Response} (or a
+   * promise resolving to one). These are the same `Request` and `Response`
+   * classes available as globals in Deno and in browsers, so the body, headers,
+   * URL, and method can all be read from the incoming `Request`.
    *
    * If a handler throws, the server calling the handler will assume the impact
    * of the error is isolated to the individual request. It will catch the error
@@ -5429,6 +5744,14 @@ declare namespace Deno {
 
     /** The callback which is called when the server starts listening. */
     onListen?: (localAddr: Addr) => void;
+
+    /**
+     * Whether to automatically compress response bodies when the client accepts
+     * a supported encoding and the response is compressible.
+     *
+     * @default {false}
+     */
+    automaticCompression?: boolean;
   }
 
   /**
@@ -5936,7 +6259,7 @@ declare namespace Deno {
    * @category FFI
    */
   export type ToNativeType<T extends NativeType = NativeType> = T extends
-    NativeStructType ? BufferSource
+    NativeStructType ? AllowSharedBufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
       : T extends NativeU16Enum<infer U> ? U
@@ -5952,7 +6275,7 @@ declare namespace Deno {
     : T extends NativeFunctionType
       ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
       : PointerValue
-    : T extends NativeBufferType ? BufferSource | null
+    : T extends NativeBufferType ? AllowSharedBufferSource | null
     : never;
 
   /** Type conversion for unsafe callback return types.
@@ -5961,7 +6284,7 @@ declare namespace Deno {
    */
   export type ToNativeResultType<
     T extends NativeResultType = NativeResultType,
-  > = T extends NativeStructType ? BufferSource
+  > = T extends NativeStructType ? AllowSharedBufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
       : T extends NativeU16Enum<infer U> ? U
@@ -5977,7 +6300,7 @@ declare namespace Deno {
     : T extends NativeFunctionType
       ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
       : PointerValue
-    : T extends NativeBufferType ? BufferSource | null
+    : T extends NativeBufferType ? AllowSharedBufferSource | null
     : T extends NativeVoidType ? void
     : never;
 
@@ -6182,7 +6505,7 @@ declare namespace Deno {
     static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
     static of<T = unknown>(
-      value: Deno.UnsafeCallback | BufferSource,
+      value: Deno.UnsafeCallback | AllowSharedBufferSource,
     ): PointerValue<T>;
     /** Return a new pointer offset from the original by `offset` bytes. */
     static offset<T = unknown>(
@@ -6266,7 +6589,7 @@ declare namespace Deno {
      * Length is determined from the typed array's `byteLength`.
      *
      * Also takes optional byte offset from the pointer. */
-    copyInto(destination: BufferSource, offset?: number): void;
+    copyInto(destination: AllowSharedBufferSource, offset?: number): void;
     /** Copies the memory of the specified pointer into a typed array.
      *
      * Length is determined from the typed array's `byteLength`.
@@ -6274,7 +6597,7 @@ declare namespace Deno {
      * Also takes optional byte offset from the pointer. */
     static copyInto(
       pointer: PointerObject,
-      destination: BufferSource,
+      destination: AllowSharedBufferSource,
       offset?: number,
     ): void;
   }

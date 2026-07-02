@@ -40,6 +40,7 @@ import {
   op_create_gpu,
   op_webgpu_device_start_capture,
   op_webgpu_device_stop_capture,
+  WGSLLanguageFeatures,
 } from "ext:core/ops";
 const {
   ObjectDefineProperty,
@@ -50,14 +51,16 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import {
+const {
   defineEventHandler,
   Event,
   EventTargetPrototype,
   setEventTargetData,
-} from "ext:deno_web/02_event.js";
+} = core.loadExtScript("ext:deno_web/02_event.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 
 const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
 const _message = Symbol("[[message]]");
@@ -238,6 +241,21 @@ ObjectDefineProperty(GPUSupportedFeaturesPrototype, privateCustomInspect, {
   },
 });
 
+const WGSLLanguageFeaturesPrototype = WGSLLanguageFeatures.prototype;
+webidl.setlikeObjectWrap(WGSLLanguageFeaturesPrototype, true);
+ObjectDefineProperty(WGSLLanguageFeaturesPrototype, privateCustomInspect, {
+  __proto__: null,
+  value(inspect, inspectOptions) {
+    if (ObjectPrototypeIsPrototypeOf(WGSLLanguageFeaturesPrototype, this)) {
+      return `${this.constructor.name} ${
+        // deno-lint-ignore prefer-primordials
+        inspect([...this], inspectOptions)}`;
+    } else {
+      return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+    }
+  },
+});
+
 const GPUSupportedLimitsPrototype = GPUSupportedLimits.prototype;
 ObjectDefineProperty(GPUSupportedLimitsPrototype, privateCustomInspect, {
   __proto__: null,
@@ -273,8 +291,7 @@ ObjectDefineProperty(GPUSupportedLimitsPrototype, privateCustomInspect, {
           "maxBufferSize",
           "maxVertexAttributes",
           "maxVertexBufferArrayStride",
-          // TODO(@crowlKats): support max_inter_stage_shader_variables
-          // "maxInterStageShaderVariables",
+          "maxInterStageShaderVariables",
           "maxColorAttachments",
           "maxColorAttachmentBytesPerSample",
           "maxComputeWorkgroupStorageSize",
@@ -841,6 +858,14 @@ ObjectDefineProperty(GPUQuerySetPrototype, privateCustomInspect, {
 
 // Converters
 
+webidl.converters["GPUPipelineErrorReason"] = webidl.createEnumConverter(
+  "GPUPipelineErrorReason",
+  [
+    "validation",
+    "internal",
+  ],
+);
+
 webidl.converters["GPUPipelineErrorInit"] = webidl.createDictionaryConverter(
   "GPUPipelineErrorInit",
   [
@@ -849,14 +874,6 @@ webidl.converters["GPUPipelineErrorInit"] = webidl.createDictionaryConverter(
       converter: webidl.converters.GPUPipelineErrorReason,
       required: true,
     },
-  ],
-);
-
-webidl.converters["GPUPipelineErrorReason"] = webidl.createEnumConverter(
-  "GPUPipelineErrorReason",
-  [
-    "validation",
-    "internal",
   ],
 );
 
@@ -892,6 +909,7 @@ function initGPU() {
       webidl.brand,
       setEventTargetData,
       GPUUncapturedErrorEvent,
+      GPUPipelineError,
     );
   }
 }
@@ -921,6 +939,7 @@ export {
   GPUInternalError,
   GPUMapMode,
   GPUOutOfMemoryError,
+  GPUPipelineError,
   GPUPipelineLayout,
   GPUQuerySet,
   GPUQueue,
@@ -939,4 +958,5 @@ export {
   GPUUncapturedErrorEvent,
   GPUValidationError,
   initGPU,
+  WGSLLanguageFeatures,
 };

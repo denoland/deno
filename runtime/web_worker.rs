@@ -18,6 +18,7 @@ use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
 use deno_core::Extension;
+use deno_core::FromV8;
 use deno_core::JsRuntime;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -26,6 +27,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::ToV8;
 use deno_core::error::CoreError;
 use deno_core::error::CoreErrorKind;
 use deno_core::futures::channel::mpsc;
@@ -50,7 +52,8 @@ use deno_process::NpmProcessStateProviderRc;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
-use deno_web::BlobStore;
+use deno_web::Blob;
+use deno_web::BlobStoreTrait;
 use deno_web::InMemoryBroadcastChannel;
 use deno_web::JsMessageData;
 use deno_web::MessagePort;
@@ -76,6 +79,7 @@ use crate::worker::MEMORY_TRIM_HANDLER_ENABLED;
 use crate::worker::SIGUSR2_RX;
 use crate::worker::create_op_metrics;
 use crate::worker::create_validate_import_attributes_callback;
+use crate::worker::request_builder_hook;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -84,7 +88,7 @@ pub struct WorkerMetadata {
 
 static WORKER_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, FromV8, ToV8)]
 pub struct WorkerId(u32);
 impl WorkerId {
   pub fn new() -> WorkerId {
@@ -103,7 +107,7 @@ impl Default for WorkerId {
   }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToV8, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WorkerThreadType {
   // Used only for testing
@@ -115,22 +119,6 @@ pub enum WorkerThreadType {
   Node,
 }
 
-impl<'s> WorkerThreadType {
-  pub fn to_v8(
-    &self,
-    scope: &mut v8::PinScope<'s, '_>,
-  ) -> v8::Local<'s, v8::String> {
-    v8::String::new(
-      scope,
-      match self {
-        WorkerThreadType::Classic => "classic",
-        WorkerThreadType::Module => "module",
-        WorkerThreadType::Node => "node",
-      },
-    )
-    .unwrap()
-  }
-}
 /// Events that are sent to host from child
 /// worker.
 pub enum WorkerControlEvent {
@@ -203,6 +191,7 @@ pub struct WebWorkerInternalHandle {
   isolate_handle: v8::IsolateHandle,
   pub name: String,
   pub worker_type: WorkerThreadType,
+  pub maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 }
 
 impl WebWorkerInternalHandle {
@@ -329,6 +318,7 @@ fn create_handles(
   isolate_handle: v8::IsolateHandle,
   name: String,
   worker_type: WorkerThreadType,
+  maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 ) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
   let (ctrl_tx, ctrl_rx) = mpsc::channel::<WorkerControlEvent>(1);
@@ -345,6 +335,7 @@ fn create_handles(
     cancel: CancelHandle::new_rc(),
     sender: ctrl_tx,
     worker_type,
+    maybe_main_module_blob,
   };
   let external_handle = SendableWebWorkerHandle {
     receiver: ctrl_rx,
@@ -360,7 +351,7 @@ pub struct WebWorkerServiceOptions<
   TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
   TExtNodeSys: ExtNodeSys + 'static,
 > {
-  pub blob_store: Arc<BlobStore>,
+  pub blob_store: Arc<dyn BlobStoreTrait>,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -389,6 +380,12 @@ pub struct WebWorkerOptions {
   pub bootstrap: BootstrapOptions,
   pub extensions: Vec<Extension>,
   pub startup_snapshot: Option<&'static [u8]>,
+  /// `(specifier, source)` pairs for `lazy_loaded_js` files not consumed
+  /// during snapshot creation; emitted by the snapshot build script.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  /// `(specifier, source)` pairs for `lazy_loaded_esm` files not consumed
+  /// during snapshot creation; emitted by the snapshot build script.
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   /// Optional isolate creation parameters, such as heap limits.
   pub create_params: Option<v8::CreateParams>,
@@ -401,10 +398,15 @@ pub struct WebWorkerOptions {
   pub trace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  /// Captured root blob for `main_module`; paired with `main_module` when
+  /// constructing the worker's internal handle.
+  pub maybe_main_module_blob: Option<Arc<Blob>>,
   pub maybe_coverage_dir: Option<PathBuf>,
   pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub enable_raw_imports: bool,
   pub enable_stack_trace_arg_in_ops: bool,
+  pub wait_for_debugger_on_start: bool,
+  pub wait_for_page_wait_for_debugger: bool,
 }
 
 /// This struct is an implementation of `Worker` Web API
@@ -431,6 +433,8 @@ pub struct WebWorker {
   /// Set to `true` by the near-heap-limit callback when resource limits
   /// are exceeded, so the error handler can emit `ERR_WORKER_OUT_OF_MEMORY`.
   pub oom_triggered: Arc<AtomicBool>,
+  wait_for_debugger_on_start: bool,
+  wait_for_page_wait_for_debugger: bool,
 }
 
 impl Drop for WebWorker {
@@ -538,6 +542,7 @@ impl WebWorker {
           .unsafely_ignore_certificate_errors
           .clone(),
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+        request_builder_hook: Some(request_builder_hook),
         ..Default::default()
       }),
       deno_cache::deno_cache::init(create_cache),
@@ -551,7 +556,7 @@ impl WebWorker {
       ),
       deno_tls::deno_tls::init(),
       deno_kv::deno_kv::init(
-        MultiBackendDbHandler::remote_or_sqlite(
+        Box::new(MultiBackendDbHandler::remote_or_sqlite(
           None,
           options.seed,
           deno_kv::remote::HttpOptions {
@@ -563,10 +568,10 @@ impl WebWorker {
             client_cert_chain_and_key: TlsKeys::Null,
             proxy: None,
           },
-        ),
+        )),
         deno_kv::KvConfig::builder().build(),
       ),
-      deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
+      deno_cron::deno_cron::init(Box::new(CronHandlerImpl::create_from_env())),
       deno_napi::deno_napi::init(services.deno_rt_native_addon_loader.clone()),
       deno_http::deno_http::init(deno_http::Options {
         no_legacy_abort: options.bootstrap.no_legacy_abort,
@@ -594,6 +599,7 @@ impl WebWorker {
       ops::tty::deno_tty::init(),
       ops::http::deno_http_runtime::init(),
       deno_bundle_runtime::deno_bundle_runtime::init(services.bundle_provider),
+      ops::desktop::deno_desktop::init(),
       ops::bootstrap::deno_bootstrap::init(
         options.startup_snapshot.and_then(|_| Default::default()),
         false,
@@ -601,14 +607,6 @@ impl WebWorker {
       runtime::init(),
       ops::web_worker::deno_web_worker::init(),
     ];
-
-    #[cfg(feature = "hmr")]
-    const {
-      assert!(
-        cfg!(not(feature = "only_snapshotted_js_sources")),
-        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-      );
-    }
 
     for extension in &mut extensions {
       if options.startup_snapshot.is_some() {
@@ -620,15 +618,14 @@ impl WebWorker {
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
-    #[cfg(feature = "only_snapshotted_js_sources")]
-    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
-
     // Get our op metrics
     let op_metrics_factory_fn = create_op_metrics(options.trace_ops);
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(services.module_loader),
       startup_snapshot: options.startup_snapshot,
+      residual_lazy_js_sources: options.residual_lazy_js_sources,
+      residual_lazy_esm_sources: options.residual_lazy_esm_sources,
       create_params: options.create_params,
       shared_array_buffer_store: services.shared_array_buffer_store,
       compiled_wasm_module_store: services.compiled_wasm_module_store,
@@ -655,7 +652,9 @@ impl WebWorker {
       is_main: false,
       worker_id: Some(options.worker_id.0),
       wait_for_inspector_disconnect_callback: None,
-      custom_module_evaluation_cb: None,
+      custom_module_evaluation_cb: Some(
+        crate::worker::create_custom_module_evaluation_callback(),
+      ),
       eval_context_code_cache_cbs: None,
     });
 
@@ -698,11 +697,21 @@ impl WebWorker {
 
     let (internal_handle, external_handle) = {
       let handle = js_runtime.v8_isolate().thread_safe_handle();
-      let (internal_handle, external_handle) =
-        create_handles(handle, options.name.clone(), options.worker_type);
+      let (internal_handle, external_handle) = create_handles(
+        handle,
+        options.name.clone(),
+        options.worker_type,
+        options
+          .maybe_main_module_blob
+          .clone()
+          .map(|blob| (options.main_module.clone(), blob)),
+      );
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       op_state.put(internal_handle.clone());
+      op_state.put(crate::ops::web_worker::WaitForWorkerDebuggerOnMessage(
+        options.wait_for_page_wait_for_debugger,
+      ));
       (internal_handle, external_handle)
     };
 
@@ -746,6 +755,9 @@ impl WebWorker {
         maybe_cpu_prof_config: options.maybe_cpu_prof_config,
         bootstrap_error: None,
         oom_triggered: Arc::new(AtomicBool::new(false)),
+        wait_for_debugger_on_start: options.wait_for_debugger_on_start,
+        wait_for_page_wait_for_debugger: options
+          .wait_for_page_wait_for_debugger,
       },
       external_handle,
       options.bootstrap,
@@ -786,7 +798,7 @@ impl WebWorker {
       let id: v8::Local<v8::Value> =
         v8::Integer::new(scope, self.id.0 as i32).into();
       let worker_type: v8::Local<v8::Value> =
-        self.worker_type.to_v8(scope).into();
+        self.worker_type.to_v8(scope).unwrap();
       let result = bootstrap_fn.call(
         scope,
         undefined.into(),
@@ -1118,6 +1130,18 @@ pub async fn run_web_worker(
       .post_event(WorkerControlEvent::TerminalError(error, 1))
       .expect("Failed to post message to host");
     return Ok(());
+  }
+
+  if worker.wait_for_debugger_on_start {
+    worker
+      .js_runtime
+      .inspector()
+      .wait_for_runtime_run_if_waiting_for_debugger();
+  } else if worker.wait_for_page_wait_for_debugger {
+    worker
+      .js_runtime
+      .inspector()
+      .wait_for_page_wait_for_debugger();
   }
 
   // Execute provided source code immediately via V8 script evaluation

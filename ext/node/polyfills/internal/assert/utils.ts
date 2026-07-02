@@ -1,13 +1,19 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
-// deno-lint-ignore-file prefer-primordials ban-types
-
-import { primordials } from "ext:core/mod.js";
-import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js";
-import { isError } from "ext:deno_node/internal/util.mjs";
-import { isErrorStackTraceLimitWritable } from "ext:deno_node/internal/errors.ts";
-import { getErrorSourceExpression } from "ext:deno_node/internal/errors/error_source.ts";
+// deno-lint-ignore-file ban-types
+(function () {
+const { core, primordials } = __bootstrap;
+const { AssertionError } = core.loadExtScript(
+  "ext:deno_node/internal/assert/assertion_error.js",
+);
+const { isError } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { isErrorStackTraceLimitWritable } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const { getErrorSourceExpression } = core.loadExtScript(
+  "ext:deno_node/internal/errors/error_source.ts",
+);
 
 const {
   Error,
@@ -59,15 +65,18 @@ const meta = [
 const escapeFn = (str: string) => meta[StringPrototypeCharCodeAt(str, 0)];
 
 function getErrMessage(fn: Function) {
+  // deno-lint-ignore prefer-primordials
   const tmpLimit = Error.stackTraceLimit;
   const errorStackTraceLimitIsWritable = isErrorStackTraceLimitWritable();
   // Make sure the limit is set to 1. Otherwise it could fail (<= 0) or it
   // does too much work.
+  // deno-lint-ignore prefer-primordials
   if (errorStackTraceLimitIsWritable) Error.stackTraceLimit = 1;
   // We only need the stack trace. To minimize the overhead use an object
   // instead of an error.
   const err = {};
   ErrorCaptureStackTrace(err, fn);
+  // deno-lint-ignore prefer-primordials
   if (errorStackTraceLimitIsWritable) Error.stackTraceLimit = tmpLimit;
 
   let source = getErrorSourceExpression(err as Error);
@@ -108,4 +117,7 @@ function innerOk(
   }
 }
 
-export { innerOk };
+return {
+  innerOk,
+};
+})();

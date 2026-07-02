@@ -23,9 +23,25 @@
       // Note: successful exit asserts that the test passed
       "exitCode": 0
     },
+    "message_port_dedupe": {
+      // Test for https://github.com/denoland/deno/issues/33373
+      "args": "run message_port_dedupe.mjs",
+      "output": "message_port_dedupe.out",
+      "exitCode": 0
+    },
     "message_port_unref": {
       "args": "run --allow-env --allow-read message_port_unref.mjs",
       "output": "message_port_unref.out",
+      "exitCode": 0
+    },
+    "broadcast_channel": {
+      "args": "run --quiet --allow-read --unstable-broadcast-channel broadcast_channel.mjs",
+      "output": "hello from worker\n",
+      "exitCode": 0
+    },
+    "broadcast_channel_sab": {
+      "args": "run --quiet --allow-read --unstable-broadcast-channel broadcast_channel_sab.mjs",
+      "output": "broadcast_channel_sab.out",
       "exitCode": 0
     },
     "parent_port_unref": {
@@ -34,6 +50,22 @@
         "PARENT_PORT": "1"
       },
       "output": "message_port_unref.out",
+      "exitCode": 0
+    },
+    "refed_messageport_idle": {
+      // Test for https://github.com/denoland/deno/issues/23169
+      // A worker holding a refed transferable MessagePort must not be
+      // terminated on idle.
+      "args": "run --allow-read refed_messageport_idle.mjs",
+      "output": "refed_messageport_idle.out",
+      "exitCode": 0
+    },
+    "refed_messageport_holder": {
+      // Test for https://github.com/denoland/deno/issues/23169
+      // A worker kept alive purely by a refed MessagePort (no message
+      // listener) must not be terminated on idle.
+      "args": "run --allow-read refed_messageport_holder.mjs",
+      "output": "refed_messageport_holder.out",
       "exitCode": 0
     },
     "eval_cjs_require": {
@@ -54,6 +86,14 @@
       // Test for https://github.com/denoland/deno/issues/17171
       "args": "run --quiet --allow-read parent_port_isolation.mjs",
       "output": "postMessage isolation: post_message_ok\nno double delivery: count:1\n",
+      "exitCode": 0
+    },
+    "worker_message_source": {
+      // Test for https://github.com/denoland/deno/issues/35369
+      // `process.on('workerMessage', (value, source))` must receive the
+      // sender's thread id as `source`.
+      "args": "run --quiet --allow-read worker_message_source.mjs",
+      "output": "worker_message_source.out",
       "exitCode": 0
     }
   }

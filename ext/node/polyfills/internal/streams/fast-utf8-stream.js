@@ -4,26 +4,31 @@
 // MIT License
 // Copyright (c) 2017 Matteo Collina
 
-import { primordials } from "ext:core/mod.js";
-import { Buffer } from "node:buffer";
-import EventEmitter from "node:events";
-import * as fs from "node:fs";
+import { core, primordials } from "ext:core/mod.js";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+// Lazy node:fs import: this module is loaded via the fs.Utf8Stream getter,
+// which runs during node:fs's own body evaluation. A static `import * as fs
+// from "node:fs"` here re-enters the still-loading node:fs namespace, whose
+// `export const Utf8Stream = mod.Utf8Stream` line then re-triggers the
+// getter while `lazyUtf8Stream().default` is in TDZ. Defer until first use.
+const lazyFs = core.createLazyLoader("node:fs");
 import * as path from "node:path";
 import process from "node:process";
 import { setInterval, setTimeout } from "node:timers";
-import {
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_STATE,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   validateBoolean,
   validateFunction,
   validateObject,
   validateOneOf,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const {
   ArrayPrototypePush,
@@ -119,7 +124,7 @@ class Utf8Stream extends EventEmitter {
     fd ??= dest;
 
     validateObject(overrideFs, "options.fs");
-    this.#fs = ObjectAssign({}, fs, overrideFs);
+    this.#fs = ObjectAssign({}, lazyFs(), overrideFs);
     validateFunction(this.#fs.write, "options.fs.write");
     validateFunction(this.#fs.writeSync, "options.fs.writeSync");
     validateFunction(this.#fs.fsync, "options.fs.fsync");

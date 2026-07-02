@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+pub mod happy_eyeballs;
 pub mod io;
 pub mod ops;
 pub mod ops_tls;
@@ -137,8 +138,8 @@ deno_core::extension!(deno_net,
     quic::webtransport::op_webtransport_accept,
     quic::webtransport::op_webtransport_connect,
   ],
-  esm = [ "01_net.js", "02_tls.js" ],
   lazy_loaded_esm = [ "03_quic.js" ],
+  lazy_loaded_js = [ "01_net.js", "02_tls.js" ],
   options = {
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,

@@ -157,11 +157,11 @@ fn guess_handle_type(fd: i32) -> HandleType {
 
 #[cfg(windows)]
 fn guess_handle_type(fd: i32) -> HandleType {
-  use winapi::um::consoleapi::GetConsoleMode;
-  use winapi::um::fileapi::GetFileType;
-  use winapi::um::winbase::FILE_TYPE_CHAR;
-  use winapi::um::winbase::FILE_TYPE_DISK;
-  use winapi::um::winbase::FILE_TYPE_PIPE;
+  use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_CHAR;
+  use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_DISK;
+  use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE;
+  use windows_sys::Win32::Storage::FileSystem::GetFileType;
+  use windows_sys::Win32::System::Console::GetConsoleMode;
 
   if fd < 0 {
     return HandleType::Unknown;
@@ -172,7 +172,7 @@ fn guess_handle_type(fd: i32) -> HandleType {
   if handle == -1 {
     return HandleType::Unknown;
   }
-  let handle = handle as winapi::shared::ntdef::HANDLE;
+  let handle = handle as windows_sys::Win32::Foundation::HANDLE;
   // SAFETY: handle is a valid OS handle from get_osfhandle.
   match unsafe { GetFileType(handle) } {
     FILE_TYPE_DISK => HandleType::File,

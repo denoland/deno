@@ -12,13 +12,15 @@ use deno_core::OpState;
 use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
+use serde::Deserialize as _;
+use serde::de::IntoDeserializer;
 pub use wgpu_core;
 pub use wgpu_types;
 use wgpu_types::PowerPreference;
 
 use crate::error::GPUGenericError;
 
-mod adapter;
+pub mod adapter;
 mod bind_group;
 mod bind_group_layout;
 pub mod buffer;
@@ -42,10 +44,12 @@ mod webidl;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "webgpu";
 
-#[allow(clippy::print_stdout, reason = "cargo build script output")]
+pub const DX12_COMPILER_ENV_VAR: &str = "DENO_WEBGPU_DX12_COMPILER";
+
+#[allow(clippy::print_stdout, reason = "prints linker flags for build scripts")]
 pub fn print_linker_flags(name: &str) {
   if cfg!(windows) {
-    // these dlls load slowly, so delay loading them
+    // these dls load slowly, so delay loading them
     let dlls = [
       // webgpu
       "d3dcompiler_47",
@@ -56,6 +60,8 @@ pub fn print_linker_flags(name: &str) {
       "combase",
       // network related functions
       "iphlpapi",
+      // restart manager (only needed on the `deno clean` locked-file path)
+      "rstrtmgr",
       // timer functions
       "winmm",
       // debugging/diagnostics (only needed on panic/crash)
@@ -82,6 +88,7 @@ deno_core::extension!(
   ],
   objects = [
     GPU,
+    WGSLLanguageFeatures,
     adapter::GPUAdapter,
     adapter::GPUAdapterInfo,
     bind_group::GPUBindGroup,
@@ -111,8 +118,8 @@ deno_core::extension!(
     texture::GPUExternalTexture,
     canvas::GPUCanvasContext,
   ],
-  esm = ["00_init.js"],
   lazy_loaded_esm = ["01_webgpu.js"],
+  lazy_loaded_js = ["00_init.js"],
 );
 
 #[op2]
@@ -122,14 +129,24 @@ pub fn op_create_gpu(
   scope: &mut v8::PinScope<'_, '_>,
   webidl_brand: v8::Local<v8::Value>,
   set_event_target_data: v8::Local<v8::Value>,
-  error_event_class: v8::Local<v8::Value>,
+  uncaptured_error_event_class: v8::Local<v8::Value>,
+  pipeline_error_class: v8::Local<v8::Value>,
 ) -> GPU {
   state.put(EventTargetSetup {
     brand: v8::Global::new(scope, webidl_brand),
     set_event_target_data: v8::Global::new(scope, set_event_target_data),
   });
-  state.put(ErrorEventClass(v8::Global::new(scope, error_event_class)));
-  GPU
+  state.put(ErrorEventClass(v8::Global::new(
+    scope,
+    uncaptured_error_event_class,
+  )));
+  state.put(PipelineErrorClass(v8::Global::new(
+    scope,
+    pipeline_error_class,
+  )));
+  GPU {
+    wgsl_language_features: SameObject::new(),
+  }
 }
 
 struct EventTargetSetup {
@@ -137,8 +154,11 @@ struct EventTargetSetup {
   set_event_target_data: v8::Global<v8::Value>,
 }
 struct ErrorEventClass(v8::Global<v8::Value>);
+struct PipelineErrorClass(v8::Global<v8::Value>);
 
-pub struct GPU;
+pub struct GPU {
+  pub wgsl_language_features: SameObject<WGSLLanguageFeatures>,
+}
 
 // SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPU {
@@ -165,7 +185,7 @@ impl GPU {
   ) -> Option<adapter::GPUAdapter> {
     let mut state = state.borrow_mut();
 
-    let (backends, instance) = get_or_init_instance(&mut state);
+    let (backends, instance) = get_or_init_instance(&mut state, &options)?;
 
     let descriptor = wgpu_core::instance::RequestAdapterOptions {
       power_preference: options
@@ -200,6 +220,54 @@ impl GPU {
       texture::GPUTextureFormat::Bgra8unorm.as_str()
     }
   }
+
+  #[getter]
+  fn wgslLanguageFeatures(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+  ) -> v8::Global<v8::Object> {
+    self
+      .wgsl_language_features
+      .get(scope, WGSLLanguageFeatures::new)
+  }
+}
+
+pub struct WGSLLanguageFeatures(v8::Global<v8::Value>);
+
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for WGSLLanguageFeatures {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"WGSLLanguageFeatures"
+  }
+}
+
+impl WGSLLanguageFeatures {
+  pub fn new(scope: &mut v8::PinScope<'_, '_>) -> Self {
+    use wgpu_core::naga::front::wgsl::ImplementedLanguageExtension;
+
+    let set = v8::Set::new(scope);
+    for ext in ImplementedLanguageExtension::all() {
+      let key = v8::String::new(scope, ext.to_ident()).unwrap();
+      set.add(scope, key.into());
+    }
+    Self(v8::Global::new(scope, <v8::Local<v8::Value>>::from(set)))
+  }
+}
+
+#[op2]
+impl WGSLLanguageFeatures {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<WGSLLanguageFeatures, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
+  #[symbol("setlike_set")]
+  fn set(&self) -> v8::Global<v8::Value> {
+    self.0.clone()
+  }
 }
 
 fn transform_label<'a>(label: String) -> Option<std::borrow::Cow<'a, str>> {
@@ -212,7 +280,11 @@ fn transform_label<'a>(label: String) -> Option<std::borrow::Cow<'a, str>> {
 
 pub fn get_or_init_instance(
   state: &mut OpState,
-) -> (wgpu_types::Backends, Instance) {
+  options: &adapter::GPURequestAdapterOptions,
+) -> Option<(wgpu_types::Backends, Instance)> {
+  let dx12_compiler = std::env::var(DX12_COMPILER_ENV_VAR)
+    .ok()
+    .and_then(|s| s.parse().ok());
   let backends = std::env::var("DENO_WEBGPU_BACKEND").map_or_else(
     |_| wgpu_types::Backends::all(),
     |s| wgpu_types::Backends::from_comma_list(&s),
@@ -223,7 +295,7 @@ pub fn get_or_init_instance(
   } else {
     state.put(Arc::new(wgpu_core::global::Global::new(
       "webgpu",
-      &wgpu_types::InstanceDescriptor {
+      wgpu_types::InstanceDescriptor {
         backends,
         flags: wgpu_types::InstanceFlags::from_build_config(),
         memory_budget_thresholds: wgpu_types::MemoryBudgetThresholds {
@@ -232,17 +304,29 @@ pub fn get_or_init_instance(
         },
         backend_options: wgpu_types::BackendOptions {
           dx12: wgpu_types::Dx12BackendOptions {
-            shader_compiler: wgpu_types::Dx12Compiler::Fxc,
+            shader_compiler: dx12_compiler
+              .unwrap_or(wgpu_types::Dx12Compiler::Fxc),
             ..Default::default()
           },
           gl: wgpu_types::GlBackendOptions::default(),
           noop: wgpu_types::NoopBackendOptions::default(),
         },
+        display: None,
       },
       None,
     )));
     state.borrow::<Instance>().clone()
   };
 
-  (backends, instance)
+  // Check that the feature level string is valid.
+  // `wgpu` does not support compatibility-level adapters. As permitted
+  // by the spec, we always return a core-level adapter.
+  wgpu_types::FeatureLevel::deserialize(IntoDeserializer::<
+    serde::de::value::Error,
+  >::into_deserializer(
+    options.feature_level.as_str()
+  ))
+  .ok()?;
+
+  Some((backends, instance))
 }

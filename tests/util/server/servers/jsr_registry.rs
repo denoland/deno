@@ -13,6 +13,7 @@ use bytes::Bytes;
 use http_body_util::Empty;
 use http_body_util::Full;
 use http_body_util::combinators::UnsyncBoxBody;
+use hyper::Method;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
@@ -120,13 +121,55 @@ async fn registry_server_handler(
     let body = serde_json::to_string_pretty(&json!({})).unwrap();
     let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
     return Ok(res);
+  } else if req.method() == Method::GET
+    && let Some(rest) = path.strip_prefix("/api/scopes/")
+    && let [scope, "packages", package, "versions", version] =
+      rest.split('/').collect::<Vec<_>>().as_slice()
+  {
+    // `deno publish` probes this endpoint up front to skip already-published
+    // versions. Report "not published" (404) by default; the reserved
+    // `already-published` scope lets tests simulate an existing version.
+    if *scope == "already-published" {
+      let body = serde_json::to_string_pretty(&json!({
+        "scope": scope,
+        "package": package,
+        "version": version,
+      }))
+      .unwrap();
+      let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
+      return Ok(res);
+    }
+    let res = Response::builder()
+      .status(StatusCode::NOT_FOUND)
+      .body(UnsyncBoxBody::new(Empty::new()))?;
+    return Ok(res);
   } else if path.starts_with("/api/scopes/") {
-    let body = serde_json::to_string_pretty(&json!({
-      "id": "sdfwqer-sffg-qwerasdf",
-      "status": "success",
-      "error": null
-    }))
-    .unwrap();
+    // Allow tests to simulate a publish failure for an individual package by
+    // naming the package "publish-fails" (or "publish-fails<n>"), used to
+    // exercise that publishing a workspace keeps going after a package fails.
+    //
+    // Consumers of this simulation (rename these fixtures and this match
+    // together):
+    //   - tests/specs/publish/workspace_continue_on_error
+    //   - tests/specs/publish/workspace_continue_blocked_dependent
+    let body = if path.contains("/packages/publish-fails") {
+      serde_json::to_string_pretty(&json!({
+        "id": "sdfwqer-sffg-qwerasdf",
+        "status": "failure",
+        "error": {
+          "code": "internalServerError",
+          "message": "Simulated publish failure"
+        }
+      }))
+      .unwrap()
+    } else {
+      serde_json::to_string_pretty(&json!({
+        "id": "sdfwqer-sffg-qwerasdf",
+        "status": "success",
+        "error": null
+      }))
+      .unwrap()
+    };
     let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
     return Ok(res);
   } else if path.starts_with("/api/publish_status/") {

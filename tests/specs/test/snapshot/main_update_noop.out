@@ -1,0 +1,10 @@
+running 4 tests from ./main_test.ts
+basic object ... ok ([WILDLINE])
+multiple snapshots ... ok ([WILDLINE])
+steps ...
+  child ... ok ([WILDLINE])
+steps ... ok ([WILDLINE])
+custom name and serializer ... ok ([WILDLINE])
+
+ok | 4 passed (1 step) | 0 failed ([WILDLINE])
+

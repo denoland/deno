@@ -6,7 +6,8 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   isArrayBuffer,
 } = core;
@@ -143,4 +144,5 @@ function structuredClone(value) {
   }
 }
 
-export { structuredClone };
+return { structuredClone };
+})();
