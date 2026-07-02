@@ -143,7 +143,8 @@ pub static COMPILE_ARGS: &[ArgDef] = &[
     .long("no-check")
     .action(ArgAction::Set)
     .num_args(NumArgs::Optional)
-    .require_equals(),
+    .require_equals()
+    .conflicts_with(&["check"]),
   ArgDef::new("import-map")
     .long("import-map")
     .action(ArgAction::Set)
@@ -165,7 +166,10 @@ pub static COMPILE_ARGS: &[ArgDef] = &[
     .long("config")
     .action(ArgAction::Set)
     .num_args(NumArgs::Exact(1)),
-  ArgDef::new("no-config").long("no-config").set_true(),
+  ArgDef::new("no-config")
+    .long("no-config")
+    .set_true()
+    .conflicts_with(&["config"]),
   ArgDef::new("reload")
     .short('r')
     .long("reload")
@@ -864,12 +868,14 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .long("changed")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .require_equals(),
+      .require_equals()
+      .conflicts_with(&["watch"]),
     ArgDef::new("related")
       .long("related")
       .action(ArgAction::Append)
       .num_args(NumArgs::Exact(1))
-      .require_equals(),
+      .require_equals()
+      .conflicts_with(&["watch"]),
     ArgDef::new("coverage-raw-data-only")
       .long("coverage-raw-data-only")
       .set_true(),
@@ -922,7 +928,8 @@ pub static UPGRADE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("release-candidate")
       .long("release-candidate")
       .long_aliases(&["rc"])
-      .set_true(),
+      .set_true()
+      .conflicts_with(&["canary", "version"]),
     ArgDef::new("version")
       .long("version")
       .action(ArgAction::Set)
