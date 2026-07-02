@@ -578,13 +578,26 @@ Deno.test(async function decompressionStreamInvalidGzipStillReported() {
   );
 });
 
-Deno.test(function readableStreamFromWithStringThrows() {
-  assertThrows(
-    // @ts-expect-error: primitives are not acceptable
-    () => ReadableStream.from("string"),
-    TypeError,
-    "Failed to execute 'ReadableStream.from': Argument 1 can not be converted to async iterable.",
-  );
+Deno.test(async function readableStreamFromString() {
+  // A string is a sync iterable; ReadableStream.from() should yield its
+  // characters one at a time (matches the WHATWG streams spec and Node).
+  // @ts-expect-error: TS lib types exclude primitives, but they work at runtime
+  const stream: ReadableStream<string> = ReadableStream.from("hi");
+  const reader = stream.getReader();
+  assertEquals(await reader.read(), { value: "h", done: false });
+  assertEquals(await reader.read(), { value: "i", done: false });
+  assertEquals(await reader.read(), { value: undefined, done: true });
+});
+
+Deno.test(function readableStreamFromNonIterableThrows() {
+  for (const value of [null, undefined, 42, true]) {
+    assertThrows(
+      // @ts-expect-error: non-iterable values are not acceptable
+      () => ReadableStream.from(value),
+      TypeError,
+      "Failed to execute 'ReadableStream.from': Argument 1 can not be converted to async iterable.",
+    );
+  }
 });
 
 Deno.test(async function readableStreamFromWithStringThrows() {

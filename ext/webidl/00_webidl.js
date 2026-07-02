@@ -998,7 +998,13 @@ function createAsyncIterableConverter(converter) {
     context = undefined,
     opts = EMPTY_OPTS,
   ) {
-    if (type(V) !== "Object") {
+    // The spec obtains the iterator via GetIterator(), which performs the
+    // property lookups through ToObject() and therefore accepts iterable
+    // primitives such as strings (e.g. `ReadableStream.from("hi")`). Allow
+    // strings here; other primitives (and null/undefined) have no iterator
+    // method and fall through to the "is not iterable" error below.
+    const valueType = type(V);
+    if (valueType !== "Object" && valueType !== "String") {
       throw makeException(
         TypeError,
         "can not be converted to async iterable.",
