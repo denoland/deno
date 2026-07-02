@@ -767,7 +767,10 @@ struct RawResponseParts {
 
 enum RawResponseBody {
   Flat(FlatResponseBody),
-  Stream(ResponseBytesInner),
+  Stream {
+    body: ResponseBytesInner,
+    content_length: Option<u64>,
+  },
 }
 
 fn preferred_supported_compression(
@@ -1318,24 +1321,34 @@ impl RawHttpRecord {
     inner.response_body = Some(RawResponseBody::Flat(body));
   }
 
-  fn set_stream_response_body(&self, body: ResponseBytesInner) {
+  fn set_stream_response_body(
+    &self,
+    body: ResponseBytesInner,
+    content_length: Option<u64>,
+  ) {
     let mut inner = self.0.borrow_mut();
     debug_assert!(inner.response_body.is_none());
-    inner.response_body = Some(RawResponseBody::Stream(body));
+    inner.response_body = Some(RawResponseBody::Stream {
+      body,
+      content_length,
+    });
   }
 
   fn set_stream_response_body_resource(
     &self,
-    length: Option<usize>,
+    content_length: Option<u64>,
+    length_for_compression: Option<usize>,
     resource: Rc<dyn Resource>,
     auto_close: bool,
   ) {
-    let compression = self.prepare_stream_compression(length);
-    self.set_stream_response_body(ResponseBytesInner::from_resource(
-      compression,
-      resource,
-      auto_close,
-    ));
+    let compression = self.prepare_stream_compression(length_for_compression);
+    let content_length = (compression == Compression::None)
+      .then_some(content_length)
+      .flatten();
+    self.set_stream_response_body(
+      ResponseBytesInner::from_resource(compression, resource, auto_close),
+      content_length,
+    );
   }
 
   fn set_status(&self, status: u16) {
@@ -2846,10 +2859,10 @@ fn set_static_response_vec(
             bytes,
           )));
         } else {
-          record.set_stream_response_body(ResponseBytesInner::from_vec(
-            compression,
-            bytes,
-          ));
+          record.set_stream_response_body(
+            ResponseBytesInner::from_vec(compression, bytes),
+            None,
+          );
         }
       }
     }
@@ -2906,10 +2919,10 @@ fn set_static_response_bufview_inner(
         if compression == Compression::None {
           http.set_flat_response_body(FlatResponseBody::Bytes(buffer));
         } else {
-          record.set_stream_response_body(ResponseBytesInner::from_bufview(
-            compression,
-            buffer,
-          ));
+          record.set_stream_response_body(
+            ResponseBytesInner::from_bufview(compression, buffer),
+            None,
+          );
         }
       }
     }
@@ -3182,8 +3195,11 @@ pub async fn op_http_set_response_body_resource(
       }
     };
     record.set_status(status);
+    let (lower, upper) = resource.size_hint();
+    let exact_length = upper.filter(|upper| *upper == lower);
     record.set_stream_response_body_resource(
-      resource.size_hint().1.map(|s| s as usize),
+      exact_length,
+      exact_length.and_then(|length| usize::try_from(length).ok()),
       resource,
       auto_close,
     );
@@ -4019,6 +4035,7 @@ async fn write_h1_stream_response<I>(
   context: RawH1ResponseContext,
   parts: RawResponseParts,
   mut body: ResponseBytesInner,
+  body_content_length: Option<u64>,
   record: Rc<RawHttpRecord>,
 ) -> Result<(), HttpNextError>
 where
@@ -4030,7 +4047,7 @@ where
   let trailers = raw_response_trailers(&parts);
   let content_length = (!raw_response_body_is_compressed(&body)
     && !raw_response_has_transfer_encoding(&parts))
-  .then(|| raw_response_content_length(&parts))
+  .then(|| raw_response_content_length(&parts).or(body_content_length))
   .flatten();
   if context.head {
     conn
@@ -4159,6 +4176,7 @@ async fn write_h1_stream_response_shared<I>(
   context: RawH1ResponseContext,
   parts: RawResponseParts,
   mut body: ResponseBytesInner,
+  body_content_length: Option<u64>,
   record: Rc<RawHttpRecord>,
 ) -> Result<(), HttpNextError>
 where
@@ -4170,7 +4188,7 @@ where
   let trailers = raw_response_trailers(&parts);
   let content_length = (!raw_response_body_is_compressed(&body)
     && !raw_response_has_transfer_encoding(&parts))
-  .then(|| raw_response_content_length(&parts))
+  .then(|| raw_response_content_length(&parts).or(body_content_length))
   .flatten();
   if context.head {
     let mut writer = h1::SharedResponseWriter::new(h1::Response {
@@ -4463,7 +4481,7 @@ async fn serve_http11_raw(
       if wait_raw_response_ready_or_closed(&record, &mut conn, &mut scratch)
         .await?
       {
-        if let Some((_, RawResponseBody::Stream(mut body))) =
+        if let Some((_, RawResponseBody::Stream { mut body, .. })) =
           record.clone().into_flat_response()
         {
           abort_raw_response_body(&mut body);
@@ -4489,13 +4507,17 @@ async fn serve_http11_raw(
           )
           .await?;
         }
-        RawResponseBody::Stream(body) => {
+        RawResponseBody::Stream {
+          body,
+          content_length,
+        } => {
           write_h1_stream_response(
             &mut conn,
             &mut scratch,
             response_context,
             response_parts,
             body,
+            content_length,
             record.clone(),
           )
           .await?;
@@ -4639,13 +4661,17 @@ async fn serve_http11_raw(
               )
               .await?;
             }
-            RawResponseBody::Stream(body) => {
+            RawResponseBody::Stream {
+              body,
+              content_length,
+            } => {
               write_h1_stream_response(
                 &mut local_conn,
                 &mut local_scratch,
                 response_context,
                 response_parts,
                 body,
+                content_length,
                 record.clone(),
               )
               .await?;
@@ -4678,7 +4704,10 @@ async fn serve_http11_raw(
           )
           .await?;
         }
-        RawResponseBody::Stream(body) => {
+        RawResponseBody::Stream {
+          body,
+          content_length,
+        } => {
           let response_context = RawH1ResponseContext {
             version: response_context.version,
             keep_alive: response_context.keep_alive && !parsed.has_body,
@@ -4689,6 +4718,7 @@ async fn serve_http11_raw(
             response_context,
             response_parts,
             body,
+            content_length,
             record.clone(),
           )
           .await?;
@@ -4780,7 +4810,7 @@ async fn serve_http11_raw(
     if wait_raw_response_ready_or_closed(&record, &mut conn, &mut scratch)
       .await?
     {
-      if let Some((_, RawResponseBody::Stream(mut body))) =
+      if let Some((_, RawResponseBody::Stream { mut body, .. })) =
         record.clone().into_flat_response()
       {
         abort_raw_response_body(&mut body);
@@ -4805,13 +4835,17 @@ async fn serve_http11_raw(
         )
         .await?;
       }
-      RawResponseBody::Stream(body) => {
+      RawResponseBody::Stream {
+        body,
+        content_length,
+      } => {
         write_h1_stream_response(
           &mut conn,
           &mut scratch,
           response_context,
           response_parts,
           body,
+          content_length,
           record.clone(),
         )
         .await?;

@@ -500,6 +500,21 @@ impl deno_core::Resource for FileResource {
     self.file.clone().backing_fd()
   }
 
+  fn size_hint(&self) -> (u64, Option<u64>) {
+    let file = self.file.clone();
+    let Ok(stat) = file.clone().stat_sync() else {
+      return (0, None);
+    };
+    if !stat.is_file {
+      return (0, None);
+    }
+    let Ok(position) = file.seek_sync(io::SeekFrom::Current(0)) else {
+      return (0, None);
+    };
+    let remaining = stat.size.saturating_sub(position);
+    (remaining, Some(remaining))
+  }
+
   fn close(self: Rc<Self>) {
     // Cancel any pending read operations. Reads on pipes / FIFOs can
     // block indefinitely; without this, a `ReadableStream` backed by
