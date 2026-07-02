@@ -847,6 +847,29 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("hide-stacktraces")
       .long("hide-stacktraces")
       .set_true(),
+    ArgDef::new("retry")
+      .long("retry")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("repeats")
+      .long("repeats")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("shard")
+      .long("shard")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .require_equals(),
+    ArgDef::new("changed")
+      .long("changed")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+    ArgDef::new("related")
+      .long("related")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Exact(1))
+      .require_equals(),
     ArgDef::new("coverage-raw-data-only")
       .long("coverage-raw-data-only")
       .set_true(),
@@ -1882,6 +1905,11 @@ pub static AUDIT_SUBCOMMAND: CommandDef = CommandDef {
       .long("ignore-registry-errors")
       .set_true(),
     ArgDef::new("socket").long("socket").set_true(),
+    ArgDef::new("fix").long("fix").set_true(),
+    ArgDef::new("action")
+      .positional()
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional),
     ArgDef::new("ignore")
       .long("ignore")
       .action(ArgAction::Append)

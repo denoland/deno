@@ -142,7 +142,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("deploy") => deploy_parse(&result, &mut flags, false),
     Some("sandbox") => deploy_parse(&result, &mut flags, true),
     Some("bundle") => bundle_parse(&result, &mut flags),
-    Some("audit") => audit_parse(&result, &mut flags),
+    Some("audit") => audit_parse(&result, &mut flags)?,
     Some("why") => why_parse(&result, &mut flags),
     Some("transpile") => transpile_parse(&result, &mut flags),
     Some("bump-version") => bump_version_parse(&result, &mut flags)?,
@@ -2667,8 +2667,21 @@ fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
   });
 }
 
-fn audit_parse(result: &ParseResult, flags: &mut Flags) {
+fn audit_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
   lock_args_parse(result, flags);
+
+  // The only accepted positional is the literal `fix`.
+  if let Some(action) = result.get_one("action")
+    && action != "fix"
+  {
+    return Err(CliError::new(
+      CliErrorKind::UnexpectedPositional,
+      format!("unexpected argument '{action}' found"),
+    ));
+  }
 
   let severity = result.get_one("level").unwrap_or("low").to_string();
   let ignore_unfixable = result.get_bool("ignore-unfixable");
@@ -2688,8 +2701,9 @@ fn audit_parse(result: &ParseResult, flags: &mut Flags) {
     ignore_unfixable,
     ignore,
     socket,
-    fix: result.get_bool("fix"),
+    fix: result.get_bool("fix") || result.get_one("action") == Some("fix"),
   });
+  Ok(())
 }
 
 fn x_parse(result: &ParseResult, flags: &mut Flags) {
