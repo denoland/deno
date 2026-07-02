@@ -41,7 +41,7 @@ type KeyUsage =
   | "verify"
   | "wrapKey";
 /** @category Crypto */
-type KeyFormat = "jwk" | "pkcs8" | "raw" | "spki";
+type KeyFormat = "jwk" | "pkcs8" | "raw" | "spki" | "raw-secret";
 /** @category Crypto */
 type NamedCurve = string;
 /** @category Crypto */
