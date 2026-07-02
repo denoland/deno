@@ -255,7 +255,11 @@ impl LintReporter for JsonLintReporter {
     sort_diagnostics(&mut self.diagnostics);
     self.checked_files.sort();
     let json = serde_json::to_string_pretty(&self);
-    #[allow(clippy::print_stdout, reason = "reporter")]
+    #[allow(
+      clippy::print_stdout,
+      clippy::disallowed_macros,
+      reason = "reporter"
+    )]
     {
       println!("{}", json.unwrap());
     }

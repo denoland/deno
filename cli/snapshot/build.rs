@@ -1,12 +1,21 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![allow(
+  clippy::disallowed_macros,
+  reason = "build script directives must go to stdout"
+)]
+
 #[cfg(not(feature = "disable"))]
 mod shared;
 
 fn main() {
   // Trigger a snapshot rebuild whenever the import-graph instrumentation is
   // toggled (see libs/core/modules/import_graph.rs).
-  #[allow(clippy::print_stdout, reason = "build script output")]
+  #[allow(
+    clippy::print_stdout,
+    clippy::disallowed_macros,
+    reason = "build script output"
+  )]
   {
     println!("cargo:rerun-if-env-changed=DENO_SNAPSHOT_IMPORT_GRAPH");
     println!("cargo:rerun-if-env-changed=DENO_SNAPSHOT_MINIFY_SOURCES");
@@ -64,7 +73,11 @@ fn create_cli_snapshot(
       continue;
     }
     // Make sure we rebuild when residual sources change.
-    #[allow(clippy::print_stdout, reason = "build script output")]
+    #[allow(
+      clippy::print_stdout,
+      clippy::disallowed_macros,
+      reason = "build script output"
+    )]
     {
       println!("cargo:rerun-if-changed={}", file.path.display());
     }

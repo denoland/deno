@@ -279,7 +279,11 @@ impl ReplSessionState {
     Self::extract_result(value)
   }
 
-  #[allow(clippy::print_stderr, reason = "diagnostic for flaky CDP responses")]
+  #[allow(
+    clippy::print_stderr,
+    clippy::disallowed_macros,
+    reason = "diagnostic for flaky CDP responses"
+  )]
   fn extract_result(mut value: serde_json::Value) -> serde_json::Value {
     let result = value["result"].take();
     if result.is_null() {

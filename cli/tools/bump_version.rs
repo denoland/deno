@@ -219,7 +219,11 @@ fn load_single_config(
   bail!("No deno.json or package.json found in the current directory")
 }
 
-#[allow(clippy::print_stdout, reason = "user-facing output")]
+#[allow(
+  clippy::print_stdout,
+  clippy::disallowed_macros,
+  reason = "user-facing output"
+)]
 pub fn bump_version_command(
   flags: Arc<Flags>,
   version_flags: VersionFlags,
@@ -249,7 +253,11 @@ pub fn bump_version_command(
   }
 }
 
-#[allow(clippy::print_stdout, reason = "user-facing output")]
+#[allow(
+  clippy::print_stdout,
+  clippy::disallowed_macros,
+  reason = "user-facing output"
+)]
 fn bump_single(
   cli_options: &CliOptions,
   version_flags: &VersionFlags,
@@ -350,7 +358,11 @@ struct WorkspacePackage {
   config_path_relative: String,
 }
 
-#[allow(clippy::print_stdout, reason = "user-facing output")]
+#[allow(
+  clippy::print_stdout,
+  clippy::disallowed_macros,
+  reason = "user-facing output"
+)]
 fn bump_workspace(
   cli_options: &CliOptions,
   version_flags: &VersionFlags,
@@ -409,7 +421,11 @@ fn collect_workspace_packages(
   Ok(out)
 }
 
-#[allow(clippy::print_stdout, reason = "user-facing output")]
+#[allow(
+  clippy::print_stdout,
+  clippy::disallowed_macros,
+  reason = "user-facing output"
+)]
 fn bump_workspace_explicit(
   cli_options: &CliOptions,
   version_flags: &VersionFlags,
@@ -446,7 +462,11 @@ fn bump_workspace_explicit(
   Ok(())
 }
 
-#[allow(clippy::print_stdout, reason = "user-facing output")]
+#[allow(
+  clippy::print_stdout,
+  clippy::disallowed_macros,
+  reason = "user-facing output"
+)]
 fn bump_workspace_conventional(
   cli_options: &CliOptions,
   version_flags: &VersionFlags,
@@ -633,7 +653,11 @@ fn bump_workspace_conventional(
   Ok(())
 }
 
-#[allow(clippy::print_stdout, reason = "user-facing output")]
+#[allow(
+  clippy::print_stdout,
+  clippy::disallowed_macros,
+  reason = "user-facing output"
+)]
 fn print_update_table(updates: &[(String, Version, Version, PathBuf)]) {
   if updates.is_empty() {
     return;
@@ -673,7 +697,11 @@ fn print_update_table(updates: &[(String, Version, Version, PathBuf)]) {
   }
 }
 
-#[allow(clippy::print_stdout, reason = "user-facing output")]
+#[allow(
+  clippy::print_stdout,
+  clippy::disallowed_macros,
+  reason = "user-facing output"
+)]
 fn print_update_table_with_diff(
   updates: &[(String, Version, Version, PathBuf)],
   diffs: &BTreeMap<String, AppliedDiff>,

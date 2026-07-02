@@ -179,7 +179,11 @@ impl Root {
 // Flat output (default, --depth 0)
 // ---------------------------------------------------------------------------
 
-#[allow(clippy::print_stdout, reason = "list output")]
+#[allow(
+  clippy::print_stdout,
+  clippy::disallowed_macros,
+  reason = "list output"
+)]
 fn print_flat_table(roots: &[Root]) {
   const HEADINGS: &[&str] = &["Package", "Required", "Resolved"];
 
@@ -224,7 +228,11 @@ fn print_flat_table(roots: &[Root]) {
 // Tree output (--depth >= 1)
 // ---------------------------------------------------------------------------
 
-#[allow(clippy::print_stdout, reason = "list output")]
+#[allow(
+  clippy::print_stdout,
+  clippy::disallowed_macros,
+  reason = "list output"
+)]
 fn print_tree(roots: &[Root], graph: &DepGraph, max_depth: u16) {
   fn walk(
     id: &PkgId,

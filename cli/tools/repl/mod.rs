@@ -42,7 +42,7 @@ struct Repl {
   message_handler: RustylineSyncMessageHandler,
 }
 
-#[allow(clippy::print_stdout, reason = "repl")]
+#[allow(clippy::print_stdout, clippy::disallowed_macros, reason = "repl")]
 impl Repl {
   async fn run(&mut self) -> Result<(), AnyError> {
     loop {
@@ -92,7 +92,7 @@ impl Repl {
   }
 }
 
-#[allow(clippy::print_stdout, reason = "repl")]
+#[allow(clippy::print_stdout, clippy::disallowed_macros, reason = "repl")]
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
   message_handler: &mut RustylineSyncMessageHandler,
@@ -151,7 +151,7 @@ async fn read_eval_file(
   Ok(TextDecodedFile::decode(file)?.source)
 }
 
-#[allow(clippy::print_stdout, reason = "repl")]
+#[allow(clippy::print_stdout, clippy::disallowed_macros, reason = "repl")]
 pub async fn run(
   flags: Arc<Flags>,
   repl_flags: ReplFlags,

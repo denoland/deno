@@ -1077,7 +1077,11 @@ fn get_dylib_path() -> Option<PathBuf> {
 // Only invoked from the unix `laufey::main!` startup path; gated to match its
 // sole call site so it isn't flagged as dead code on other platforms.
 #[cfg(unix)]
-#[allow(clippy::print_stderr, reason = "runs before logging is initialized")]
+#[allow(
+  clippy::print_stderr,
+  clippy::disallowed_macros,
+  reason = "runs before logging is initialized"
+)]
 fn apply_pending_update(dylib_path: &Path) -> bool {
   let ext = dylib_path.extension().unwrap_or_default().to_string_lossy();
   let update_path = dylib_path.with_extension(format!("{}.update", ext));
@@ -1148,7 +1152,11 @@ fn apply_pending_update(dylib_path: &Path) -> bool {
 laufey::main!(|| {
   // Apply any pending update before anything else.
   #[cfg(unix)]
-  #[allow(clippy::print_stderr, reason = "runs before logging is initialized")]
+  #[allow(
+    clippy::print_stderr,
+    clippy::disallowed_macros,
+    reason = "runs before logging is initialized"
+  )]
   let update_rolled_back = {
     match std::panic::catch_unwind(|| {
       if let Some(ref dylib_path) = get_dylib_path() {
@@ -1209,7 +1217,11 @@ laufey::main!(|| {
   // so the hook reads from a global that gets set later.
   {
     let orig_hook = std::panic::take_hook();
-    #[allow(clippy::print_stderr, reason = "panic hook")]
+    #[allow(
+      clippy::print_stderr,
+      clippy::disallowed_macros,
+      reason = "panic hook"
+    )]
     std::panic::set_hook(Box::new(move |panic_info| {
       use deno_runtime::ops::desktop::error_report_config;
       use deno_runtime::ops::desktop::send_error_report;

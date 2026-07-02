@@ -128,7 +128,7 @@ pub trait CoverageReporter {
 
 pub struct SummaryCoverageReporter {}
 
-#[allow(clippy::print_stdout, reason = "reporter")]
+#[allow(clippy::print_stdout, clippy::disallowed_macros, reason = "reporter")]
 impl SummaryCoverageReporter {
   pub fn new() -> SummaryCoverageReporter {
     SummaryCoverageReporter {}
@@ -203,7 +203,7 @@ impl SummaryCoverageReporter {
   }
 }
 
-#[allow(clippy::print_stdout, reason = "reporter")]
+#[allow(clippy::print_stdout, clippy::disallowed_macros, reason = "reporter")]
 impl CoverageReporter for SummaryCoverageReporter {
   fn done(
     &self,
@@ -395,7 +395,7 @@ impl CoverageReporter for DetailedCoverageReporter {
   }
 }
 
-#[allow(clippy::print_stdout, reason = "reporter")]
+#[allow(clippy::print_stdout, clippy::disallowed_macros, reason = "reporter")]
 impl DetailedCoverageReporter {
   pub fn new() -> DetailedCoverageReporter {
     DetailedCoverageReporter {}
