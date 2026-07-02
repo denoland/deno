@@ -29,6 +29,15 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFsResolver<TSys> {
     }
   }
 
+  pub fn global_virtual_store_path(&self) -> Option<&Path> {
+    match self {
+      NpmPackageFsResolver::Local(resolver) => {
+        resolver.global_virtual_store_path()
+      }
+      NpmPackageFsResolver::Global(_) => None,
+    }
+  }
+
   pub fn maybe_package_folder(
     &self,
     package_id: &NpmPackageId,

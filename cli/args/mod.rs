@@ -1585,6 +1585,11 @@ impl CliOptions {
       || self.workspace().has_unstable("npm-lazy-caching")
   }
 
+  pub fn unstable_npm_global_virtual_store(&self) -> bool {
+    self.flags.unstable_config.npm_global_virtual_store
+      || self.workspace().has_unstable("npm-global-virtual-store")
+  }
+
   pub fn default_npm_caching_strategy(&self) -> NpmCachingStrategy {
     if matches!(
       self.sub_command(),

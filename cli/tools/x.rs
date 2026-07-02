@@ -144,6 +144,7 @@ pub(crate) fn get_npm_process_state(
         deno_npm_installer::process_state::NpmProcessState::new_managed(
           managed.resolution().serialized_valid_snapshot(),
           managed.root_node_modules_path(),
+          managed.global_virtual_store_path(),
           linker_mode,
         )
         .as_serialized(),

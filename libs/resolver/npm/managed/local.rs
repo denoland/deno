@@ -8,9 +8,11 @@ use std::path::PathBuf;
 
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
+use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::url_from_directory_path;
 use deno_semver::Version;
+use deno_semver::package::PackageNv;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPathRef;
 use node_resolver::cache::NodeResolutionSys;
@@ -23,6 +25,8 @@ use sys_traits::FsMetadata;
 use url::Url;
 
 use super::super::join_package_name_to_path;
+use super::super::local::GlobalVirtualStoreLifecycleScripts;
+use super::super::local::GlobalVirtualStorePackageFolderNames;
 use super::resolution::NpmResolutionCellRc;
 use crate::npm::local::get_package_folder_id_folder_name_from_parts;
 use crate::npm::local::get_package_folder_id_from_folder_name;
@@ -35,6 +39,13 @@ pub struct LocalNpmPackageResolver<TSys: FsCanonicalize + FsMetadata> {
   sys: NodeResolutionSys<TSys>,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
+  package_store_path: PathBuf,
+  package_store_url: Url,
+  maybe_global_virtual_store_path: Option<PathBuf>,
+  npm_system_info: NpmSystemInfo,
+  global_virtual_store_lifecycle_scripts: GlobalVirtualStoreLifecycleScripts,
+  global_virtual_store_patch_hashes:
+    std::collections::HashMap<PackageNv, String>,
 }
 
 impl<TSys: FsCanonicalize + FsMetadata> LocalNpmPackageResolver<TSys> {
@@ -42,18 +53,38 @@ impl<TSys: FsCanonicalize + FsMetadata> LocalNpmPackageResolver<TSys> {
     resolution: NpmResolutionCellRc,
     sys: NodeResolutionSys<TSys>,
     node_modules_folder: PathBuf,
+    maybe_global_virtual_store_path: Option<PathBuf>,
+    npm_system_info: NpmSystemInfo,
+    global_virtual_store_lifecycle_scripts: GlobalVirtualStoreLifecycleScripts,
+    global_virtual_store_patch_hashes: std::collections::HashMap<
+      PackageNv,
+      String,
+    >,
   ) -> Self {
+    let package_store_path = maybe_global_virtual_store_path
+      .clone()
+      .unwrap_or_else(|| node_modules_folder.join(".deno"));
     Self {
       resolution,
       sys,
       root_node_modules_url: url_from_directory_path(&node_modules_folder)
         .unwrap(),
       root_node_modules_path: node_modules_folder,
+      package_store_url: url_from_directory_path(&package_store_path).unwrap(),
+      package_store_path,
+      maybe_global_virtual_store_path,
+      npm_system_info,
+      global_virtual_store_lifecycle_scripts,
+      global_virtual_store_patch_hashes,
     }
   }
 
   pub fn node_modules_path(&self) -> Option<&Path> {
     Some(self.root_node_modules_path.as_ref())
+  }
+
+  pub fn global_virtual_store_path(&self) -> Option<&Path> {
+    self.maybe_global_virtual_store_path.as_deref()
   }
 
   pub fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
@@ -62,14 +93,17 @@ impl<TSys: FsCanonicalize + FsMetadata> LocalNpmPackageResolver<TSys> {
       .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
     // package is stored at:
     // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
+    let folder_name = if self.maybe_global_virtual_store_path.is_some() {
+      self
+        .global_virtual_store_package_folder_names()
+        .get(id, &self.npm_system_info)
+    } else {
+      get_package_folder_id_folder_name_from_parts(&id.nv, folder_copy_index)
+    };
     Some(
       self
-        .root_node_modules_path
-        .join(".deno")
-        .join(get_package_folder_id_folder_name_from_parts(
-          &id.nv,
-          folder_copy_index,
-        ))
+        .package_store_path
+        .join(folder_name)
         .join("node_modules")
         .join(&id.nv.name),
     )
@@ -96,9 +130,34 @@ impl<TSys: FsCanonicalize + FsMetadata> LocalNpmPackageResolver<TSys> {
     else {
       return Ok(None);
     };
-    Ok(get_package_folder_id_from_folder_name(
-      &folder_name.to_string_lossy(),
-    ))
+    let folder_name = folder_name.to_string_lossy();
+    if self.maybe_global_virtual_store_path.is_some() {
+      let snapshot = self.resolution.snapshot();
+      let package_folder_names =
+        self.global_virtual_store_package_folder_names();
+      Ok(
+        snapshot
+          .all_packages_for_every_system()
+          .find_map(|package| {
+            (package_folder_names.get(&package.id, &self.npm_system_info)
+              == folder_name)
+              .then(|| package.get_package_cache_folder_id())
+          }),
+      )
+    } else {
+      Ok(get_package_folder_id_from_folder_name(&folder_name))
+    }
+  }
+
+  fn global_virtual_store_package_folder_names(
+    &self,
+  ) -> GlobalVirtualStorePackageFolderNames {
+    GlobalVirtualStorePackageFolderNames::new(
+      &self.resolution.snapshot(),
+      &self.npm_system_info,
+      &self.global_virtual_store_lifecycle_scripts,
+      &self.global_virtual_store_patch_hashes,
+    )
   }
 
   fn resolve_package_root(&self, path: &Path) -> PathBuf {
@@ -120,7 +179,17 @@ impl<TSys: FsCanonicalize + FsMetadata> LocalNpmPackageResolver<TSys> {
     let Some(relative_url) =
       self.root_node_modules_url.make_relative(specifier)
     else {
-      return Ok(None);
+      let Some(relative_url) = self.package_store_url.make_relative(specifier)
+      else {
+        return Ok(None);
+      };
+      if relative_url.starts_with("../") {
+        return Ok(None);
+      }
+      let Some(path) = deno_path_util::url_to_file_path(specifier).ok() else {
+        return Ok(None);
+      };
+      return canonicalize_path_maybe_not_exists(&self.sys, &path).map(Some);
     };
     if relative_url.starts_with("../") {
       return Ok(None);
@@ -189,7 +258,9 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
         })?);
       }
 
-      if current_folder == self.root_node_modules_path {
+      if current_folder == self.root_node_modules_path
+        || current_folder == self.package_store_path
+      {
         break;
       }
     }

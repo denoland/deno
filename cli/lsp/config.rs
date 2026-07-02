@@ -1303,6 +1303,9 @@ impl WorkspaceConfigData {
         lock_arg: None,
         lockfile_skip_write: true,
         node_modules_dir: Some(resolve_node_modules_dir_mode(workspace, byonm)),
+        npm_global_virtual_store: false,
+        npm_lifecycle_scripts:
+          deno_resolver::npm::GlobalVirtualStoreLifecycleScripts::None,
         node_modules_linker: None,
         no_lock: false,
         no_npm: false,
@@ -1354,6 +1357,7 @@ impl WorkspaceConfigData {
       NpmInstallerFactoryOptions {
         clean_on_install: false,
         dedup_lockfile_peer_variants: false,
+        use_global_virtual_store: false,
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,
         lifecycle_scripts_config: LifecycleScriptsConfig::default(),

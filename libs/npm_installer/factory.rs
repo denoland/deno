@@ -58,6 +58,7 @@ pub struct NpmInstallerFactoryOptions {
   /// canonical entry. Should be true only on install paths — `deno run`
   /// must not silently rewrite the user's lockfile.
   pub dedup_lockfile_peer_variants: bool,
+  pub use_global_virtual_store: bool,
   pub lifecycle_scripts_config: LifecycleScriptsConfig,
   /// Only install production dependencies (excludes devDependencies).
   pub production: bool,
@@ -372,6 +373,15 @@ impl<
           let registry_info_provider = self.registry_info_provider()?;
           let workspace_npm_link_packages =
             workspace_factory.workspace_npm_link_packages()?;
+          let lifecycle_scripts = self.lifecycle_scripts_config()?.clone();
+          let maybe_global_virtual_store_path =
+            if self.options.use_global_virtual_store {
+              workspace_factory
+                .npm_global_virtual_store_dir_path()?
+                .map(|p| p.to_path_buf())
+            } else {
+              None
+            };
           Ok(Arc::new(NpmInstaller::new(
             self.install_reporter.clone(),
             self.lifecycle_scripts_executor.clone(),
@@ -394,8 +404,9 @@ impl<
               maybe_node_modules_path: workspace_factory
                 .node_modules_dir_path()?
                 .map(|p| p.to_path_buf()),
+              maybe_global_virtual_store_path,
               linker_mode: workspace_factory.node_modules_linker_mode()?,
-              lifecycle_scripts: self.lifecycle_scripts_config()?.clone(),
+              lifecycle_scripts,
               system_info: self.resolver_factory.npm_system_info().clone(),
               workspace_link_packages: workspace_npm_link_packages.clone(),
               jsr_deps_in_node_modules: workspace_factory

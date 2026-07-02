@@ -1377,6 +1377,7 @@ pub async fn run_with_options(
           ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: npm_cache_dir.root_dir_url(),
             maybe_node_modules_path: maybe_node_modules_path.as_deref(),
+            maybe_global_virtual_store_path: None,
           },
         ));
       let npm_resolution =
@@ -1387,7 +1388,10 @@ pub async fn run_with_options(
           npm_cache_dir,
           sys: node_resolution_sys.clone(),
           maybe_node_modules_path,
+          maybe_global_virtual_store_path: None,
           npm_system_info: Default::default(),
+          global_virtual_store_lifecycle_scripts: Default::default(),
+          global_virtual_store_patch_hashes: Default::default(),
           npmrc,
           linker_mode: deno_config::deno_json::NodeModulesLinkerMode::default(),
         }),
@@ -1425,6 +1429,7 @@ pub async fn run_with_options(
           ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: npm_cache_dir.root_dir_url(),
             maybe_node_modules_path: None,
+            maybe_global_virtual_store_path: None,
           },
         ));
       let npm_resolution = Arc::new(NpmResolutionCell::default());
@@ -1434,7 +1439,10 @@ pub async fn run_with_options(
           sys: node_resolution_sys.clone(),
           npm_cache_dir,
           maybe_node_modules_path: None,
+          maybe_global_virtual_store_path: None,
           npm_system_info: Default::default(),
+          global_virtual_store_lifecycle_scripts: Default::default(),
+          global_virtual_store_patch_hashes: Default::default(),
           npmrc: create_default_npmrc(),
           linker_mode: deno_config::deno_json::NodeModulesLinkerMode::default(),
         }),

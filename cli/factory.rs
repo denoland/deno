@@ -29,6 +29,7 @@ use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_npm_cache::NpmCacheSetting;
 use deno_npm_installer::NpmInstallerFactoryOptions;
+use deno_npm_installer::PackagesAllowedScripts;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::process_state::NpmProcessStateKind;
@@ -44,6 +45,7 @@ use deno_resolver::factory::SpecifiedImportMapProvider;
 use deno_resolver::import_map::WorkspaceExternalImportMapLoader;
 use deno_resolver::loader::MemoryFiles;
 use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::npm::GlobalVirtualStoreLifecycleScripts;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::CpuProfilerConfig;
 use deno_runtime::FeatureChecker;
@@ -588,6 +590,9 @@ impl CliFactory {
           .ok()
           .and_then(|c| c.age.as_ref().and_then(|d| d.into_option()))
           .is_some();
+      let lifecycle_scripts_config = cli_options.lifecycle_scripts_config();
+      let use_global_virtual_store =
+        cli_options.unstable_npm_global_virtual_store();
       Ok(CliNpmInstallerFactory::new(
         resolver_factory.clone(),
         Arc::new(CliNpmCacheHttpClient::new(
@@ -691,7 +696,8 @@ impl CliFactory {
             &cli_options.cache_setting(),
           ),
           caching_strategy: cli_options.default_npm_caching_strategy(),
-          lifecycle_scripts_config: cli_options.lifecycle_scripts_config(),
+          use_global_virtual_store,
+          lifecycle_scripts_config,
           production: match cli_options.sub_command() {
             DenoSubcommand::Install(InstallFlags::Local(flags, _)) => {
               match flags {
@@ -1535,6 +1541,14 @@ fn new_workspace_factory_options(
     lockfile_skip_write: flags.internal.lockfile_skip_write,
     no_npm: flags.no_npm,
     node_modules_dir: flags.node_modules_dir,
+    npm_global_virtual_store: flags.unstable_config.npm_global_virtual_store,
+    npm_lifecycle_scripts: match &flags.allow_scripts {
+      PackagesAllowedScripts::All => GlobalVirtualStoreLifecycleScripts::All,
+      PackagesAllowedScripts::Some(package_reqs) => {
+        GlobalVirtualStoreLifecycleScripts::Some(package_reqs.clone())
+      }
+      PackagesAllowedScripts::None => GlobalVirtualStoreLifecycleScripts::None,
+    },
     node_modules_linker: flags.node_modules_linker,
     npm_process_state: npm_process_state(&CliSys::default()).as_ref().map(
       |s| {
@@ -1542,6 +1556,10 @@ fn new_workspace_factory_options(
         NpmProcessStateOptions {
           node_modules_dir: s
             .local_node_modules_path
+            .as_ref()
+            .map(|s| Cow::Borrowed(s.as_str())),
+          global_virtual_store_dir: s
+            .global_virtual_store_path
             .as_ref()
             .map(|s| Cow::Borrowed(s.as_str())),
           is_byonm: matches!(s.kind, NpmProcessStateKind::Byonm),

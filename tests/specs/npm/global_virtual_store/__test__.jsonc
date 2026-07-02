@@ -1,0 +1,66 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run --allow-read --allow-write setup.ts",
+      "output": ""
+    },
+    {
+      "cwd": "a",
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "cwd": "b",
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "cwd": "c",
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run --allow-read --allow-write delete_lifecycle_package.ts",
+      "output": ""
+    },
+    {
+      "cwd": "d",
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "cwd": "e",
+      "args": "install --unstable-npm-global-virtual-store",
+      "output": "[WILDCARD]"
+    },
+    {
+      "cwd": "h",
+      "args": "install --unstable-npm-global-virtual-store",
+      "output": "[WILDCARD]"
+    },
+    {
+      "cwd": "f",
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run --allow-write change_patch_target.ts",
+      "output": ""
+    },
+    {
+      "cwd": "g",
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run --allow-read check.ts",
+      "output": "shared\nscripts shared\nhardlist fallback\npeer ignored\npatch content keyed\n"
+    },
+    {
+      "cwd": "a",
+      "args": "run --quiet main.ts",
+      "output": "launched\n"
+    }
+  ]
+}

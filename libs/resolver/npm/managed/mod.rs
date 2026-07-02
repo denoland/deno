@@ -6,6 +6,7 @@ mod local;
 mod resolution;
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -18,6 +19,7 @@ use deno_npm::resolution::PackageNvNotFoundError;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_semver::Version;
+use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
@@ -32,6 +34,7 @@ use self::local::LocalNpmPackageResolver;
 pub use self::resolution::NpmResolutionCell;
 pub use self::resolution::NpmResolutionCellRc;
 use crate::NpmCacheDirRc;
+use crate::npm::GlobalVirtualStoreLifecycleScripts;
 use crate::npmrc::ResolvedNpmRcRc;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -93,7 +96,11 @@ pub struct ManagedNpmResolverCreateOptions<TSys: ManagedNpmResolverSys> {
   pub npm_cache_dir: NpmCacheDirRc,
   pub sys: NodeResolutionSys<TSys>,
   pub maybe_node_modules_path: Option<PathBuf>,
+  pub maybe_global_virtual_store_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
+  pub global_virtual_store_lifecycle_scripts:
+    GlobalVirtualStoreLifecycleScripts,
+  pub global_virtual_store_patch_hashes: HashMap<PackageNv, String>,
   pub npmrc: ResolvedNpmRcRc,
   pub npm_resolution: NpmResolutionCellRc,
   pub linker_mode: NodeModulesLinkerMode,
@@ -125,6 +132,10 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
           options.npm_resolution.clone(),
           options.sys.clone(),
           node_modules_folder,
+          options.maybe_global_virtual_store_path.clone(),
+          options.npm_system_info.clone(),
+          options.global_virtual_store_lifecycle_scripts.clone(),
+          options.global_virtual_store_patch_hashes.clone(),
         ))
       }
       None => NpmPackageFsResolver::Global(GlobalNpmPackageResolver::new(
@@ -147,6 +158,10 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
   #[inline]
   pub fn root_node_modules_path(&self) -> Option<&Path> {
     self.fs_resolver.node_modules_path()
+  }
+
+  pub fn global_virtual_store_path(&self) -> Option<&Path> {
+    self.fs_resolver.global_virtual_store_path()
   }
 
   pub fn linker_mode(&self) -> NodeModulesLinkerMode {
@@ -286,12 +301,15 @@ impl<TSys: ManagedNpmResolverSys> NpmPackageFolderResolver
 
 #[derive(Debug, Clone)]
 pub struct ManagedInNpmPackageChecker {
-  root_dir: Url,
+  root_dirs: Vec<Url>,
 }
 
 impl InNpmPackageChecker for ManagedInNpmPackageChecker {
   fn in_npm_package(&self, specifier: &Url) -> bool {
-    specifier.as_ref().starts_with(self.root_dir.as_str())
+    self
+      .root_dirs
+      .iter()
+      .any(|root_dir| specifier.as_ref().starts_with(root_dir.as_str()))
   }
 }
 
@@ -299,11 +317,13 @@ impl InNpmPackageChecker for ManagedInNpmPackageChecker {
 pub struct ManagedInNpmPkgCheckerCreateOptions<'a> {
   pub root_cache_dir_url: &'a Url,
   pub maybe_node_modules_path: Option<&'a Path>,
+  pub maybe_global_virtual_store_path: Option<&'a Path>,
 }
 
 pub fn create_managed_in_npm_pkg_checker(
   options: ManagedInNpmPkgCheckerCreateOptions,
 ) -> ManagedInNpmPackageChecker {
+  let mut root_dirs = Vec::with_capacity(2);
   let root_dir = match options.maybe_node_modules_path {
     Some(node_modules_folder) => {
       deno_path_util::url_from_directory_path(node_modules_folder).unwrap()
@@ -311,5 +331,15 @@ pub fn create_managed_in_npm_pkg_checker(
     None => options.root_cache_dir_url.clone(),
   };
   debug_assert!(root_dir.as_str().ends_with('/'));
-  ManagedInNpmPackageChecker { root_dir }
+  root_dirs.push(root_dir);
+  if let Some(global_virtual_store_path) =
+    options.maybe_global_virtual_store_path
+  {
+    let root_dir =
+      deno_path_util::url_from_directory_path(global_virtual_store_path)
+        .unwrap();
+    debug_assert!(root_dir.as_str().ends_with('/'));
+    root_dirs.push(root_dir);
+  }
+  ManagedInNpmPackageChecker { root_dirs }
 }

@@ -278,6 +278,7 @@ pub struct UnstableConfig {
   pub lazy_dynamic_imports: bool,
   pub raw_imports: bool,
   pub sloppy_imports: bool,
+  pub npm_global_virtual_store: bool,
   pub npm_lazy_caching: bool,
   pub tsgo: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
@@ -295,6 +296,11 @@ impl UnstableConfig {
       sys,
       &mut self.lazy_dynamic_imports,
       UNSTABLE_ENV_VAR_NAMES.lazy_dynamic_imports,
+    );
+    maybe_set(
+      sys,
+      &mut self.npm_global_virtual_store,
+      UNSTABLE_ENV_VAR_NAMES.npm_global_virtual_store,
     );
     maybe_set(
       sys,
