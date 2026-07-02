@@ -1259,6 +1259,7 @@ impl CliFactory {
   ) -> Result<LibMainWorkerOptions, AnyError> {
     let cli_options = self.cli_options()?;
     let workspace_factory = self.workspace_factory()?;
+    let binary_npm_command_name = cli_options.take_binary_npm_command_name();
     Ok(LibMainWorkerOptions {
       argv: cli_options.argv().clone(),
       // This optimization is only available for "run" subcommand
@@ -1279,9 +1280,7 @@ impl CliFactory {
       location: cli_options.location_flag().clone(),
       // if the user ran a binary command, we'll need to set process.argv[0]
       // to be the name of the binary command instead of deno
-      argv0: cli_options
-        .take_binary_npm_command_name()
-        .or(std::env::args().next()),
+      argv0: binary_npm_command_name.or(std::env::args().next()),
       node_debug: std::env::var("NODE_DEBUG").ok(),
       node_cluster_unique_id: std::env::var("NODE_UNIQUE_ID").ok(),
       node_cluster_sched_policy: std::env::var("NODE_CLUSTER_SCHED_POLICY")

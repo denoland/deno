@@ -1756,6 +1756,16 @@ Module._resolveFilename = function (
     return request;
   }
 
+  if (StringPrototypeStartsWith(request, "file://")) {
+    const filename = op_require_as_file_path(request);
+    if (filename) {
+      const resolved = tryFile(filename, isMain);
+      if (resolved) {
+        return resolved;
+      }
+    }
+  }
+
   if (StringPrototypeStartsWith(request, "node:")) {
     const id = StringPrototypeSlice(request, 5);
     if (id in nativeModuleExports) {
