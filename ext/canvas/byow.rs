@@ -20,6 +20,8 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_webgpu::canvas::ContextData;
 use deno_webgpu::canvas::SurfaceData;
+use deno_webgpu::wgpu_core;
+use deno_webgpu::wgpu_types;
 
 use crate::canvas::Context;
 use crate::canvas::CreateCanvasContext;
@@ -85,10 +87,27 @@ pub enum ByowError {
   NoWgpuInstance,
 }
 
+/// GPU state for presenting a Canvas2D context to this window surface.
+/// Created lazily on the first `getContext("2d")` call.
+struct Canvas2DPresentState {
+  queue_id: wgpu_core::id::QueueId,
+  format: wgpu_types::TextureFormat,
+}
+
 pub struct UnsafeWindowSurface {
   pub data: Rc<RefCell<SurfaceData>>,
-
   pub active_context: OnceCell<(String, v8::Global<v8::Value>)>,
+  canvas2d_present: RefCell<Option<Canvas2DPresentState>>,
+}
+
+impl UnsafeWindowSurface {
+  pub fn from_surface_data(data: Rc<RefCell<SurfaceData>>) -> Self {
+    Self {
+      data,
+      active_context: Default::default(),
+      canvas2d_present: RefCell::new(None),
+    }
+  }
 }
 
 // SAFETY: we're sure this can be GCed
@@ -113,13 +132,13 @@ impl UnsafeWindowSurface {
     scope: &mut v8::PinScope<'_, '_>,
     value: u32,
   ) -> Result<(), JsErrorBox> {
-    let mut data = self.data.borrow_mut();
-    data.width = value;
+    self.data.borrow_mut().width = value;
 
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
       match get_context(id, scope, active_context) {
         Context::Bitmap(context) => context.resize()?,
+        Context::Canvas2D(context) => context.resize(),
         Context::WebGPU(context) => context.resize(scope),
       }
     }
@@ -138,13 +157,13 @@ impl UnsafeWindowSurface {
     scope: &mut v8::PinScope<'_, '_>,
     value: u32,
   ) -> Result<(), JsErrorBox> {
-    let mut data = self.data.borrow_mut();
-    data.height = value;
+    self.data.borrow_mut().height = value;
 
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
       match get_context(id, scope, active_context) {
         Context::Bitmap(context) => context.resize()?,
+        Context::Canvas2D(context) => context.resize(),
         Context::WebGPU(context) => context.resize(scope),
       }
     }
@@ -206,38 +225,73 @@ impl UnsafeWindowSurface {
         instance,
       })),
       active_context: Default::default(),
+      canvas2d_present: RefCell::new(None),
     })
   }
 
   fn get_context<'s>(
     &self,
-    state: &mut OpState,
+    state: Rc<RefCell<OpState>>,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope<'s, '_>,
     #[webidl] context_id: String,
     #[webidl] options: v8::Local<'s, v8::Value>,
   ) -> Result<Option<v8::Global<v8::Value>>, JsErrorBox> {
     if self.active_context.get().is_none() {
-      let create_context: CreateCanvasContext = match context_id.as_str() {
-        super::bitmaprenderer::CONTEXT_ID => super::bitmaprenderer::create as _,
-        deno_webgpu::canvas::CONTEXT_ID => deno_webgpu::canvas::create as _,
-        _ => return Ok(None),
-      };
-
       let instance = state
+        .borrow()
         .try_borrow::<deno_webgpu::Instance>()
         .expect("accessed in constructor")
         .clone();
 
-      let context = create_context(
-        Some(instance),
-        this,
-        ContextData::Surface(self.data.clone()),
-        scope,
-        options,
-        "Failed to execute 'getContext' on 'OffscreenCanvas'",
-        "Argument 2",
-      )?;
+      let context = match context_id.as_str() {
+        deno_web::canvas2d::CONTEXT_ID => {
+          let ctx = deno_web::canvas2d::create_context(
+            state.clone(),
+            Some(instance.clone()),
+            this,
+            ContextData::Surface(self.data.clone()),
+            scope,
+            options,
+            "Failed to execute 'getContext' on 'UnsafeWindowSurface'",
+            "Argument 2",
+          )?;
+          // Initialize the wgpu_core device for Canvas2D surface presentation.
+          let (width, height) = {
+            let d = self.data.borrow();
+            (d.width, d.height)
+          };
+          let ps = init_canvas2d_present_state(
+            &instance,
+            self.data.borrow().id,
+            width,
+            height,
+            wgpu_types::Backends::all(),
+          )?;
+          *self.canvas2d_present.borrow_mut() = Some(ps);
+          ctx
+        }
+        _ => {
+          let create_context: CreateCanvasContext = match context_id.as_str() {
+            super::bitmaprenderer::CONTEXT_ID => {
+              super::bitmaprenderer::create as _
+            }
+            deno_webgpu::canvas::CONTEXT_ID => deno_webgpu::canvas::create as _,
+            _ => return Ok(None),
+          };
+          create_context(
+            state,
+            Some(instance),
+            this,
+            ContextData::Surface(self.data.clone()),
+            scope,
+            options,
+            "Failed to execute 'getContext' on 'UnsafeWindowSurface'",
+            "Argument 2",
+          )?
+        }
+      };
+
       let _ = self.active_context.set((context_id.clone(), context));
     }
 
@@ -292,6 +346,82 @@ impl UnsafeWindowSurface {
         // next `get_current_texture` call would get a new texture
         *context.current_texture.borrow_mut() = None;
       }
+      Context::Canvas2D(context) => {
+        let present_state = self.canvas2d_present.borrow();
+        let Some(ps) = present_state.as_ref() else {
+          return Err(JsErrorBox::type_error(
+            "Canvas2D surface not initialized for presentation",
+          ));
+        };
+        // Render the accumulated scene to raw RGBA8 bytes.
+        let mut bytes = context
+          .render_to_bytes()
+          .map_err(|e| JsErrorBox::generic(format!("canvas2d render: {e}")))?;
+
+        // Convert RGBA8 to BGRA8 if the surface format requires it.
+        if ps.format == wgpu_types::TextureFormat::Bgra8Unorm
+          || ps.format == wgpu_types::TextureFormat::Bgra8UnormSrgb
+        {
+          for chunk in bytes.chunks_exact_mut(4) {
+            chunk.swap(0, 2); // R ↔ B
+          }
+        }
+
+        let data = self.data.borrow();
+
+        // Acquire the current surface texture.
+        let surface_output = data
+          .instance
+          .surface_get_current_texture(data.id, None)
+          .map_err(|e| {
+            JsErrorBox::generic(format!("canvas2d surface texture: {e}"))
+          })?;
+        let texture_id = surface_output.texture.ok_or_else(|| {
+          JsErrorBox::generic("canvas2d: no surface texture available")
+        })?;
+
+        // Upload rendered bytes directly to the surface texture.
+        data
+          .instance
+          .queue_write_texture(
+            ps.queue_id,
+            &wgpu_types::TexelCopyTextureInfo {
+              texture: texture_id,
+              mip_level: 0,
+              origin: wgpu_types::Origin3d::ZERO,
+              aspect: wgpu_types::TextureAspect::All,
+            },
+            &bytes,
+            &wgpu_types::TexelCopyBufferLayout {
+              offset: 0,
+              bytes_per_row: Some(data.width * 4),
+              rows_per_image: None,
+            },
+            &wgpu_types::Extent3d {
+              width: data.width,
+              height: data.height,
+              depth_or_array_layers: 1,
+            },
+          )
+          .map_err(|e| {
+            JsErrorBox::generic(format!("canvas2d write texture: {e}"))
+          })?;
+
+        // Submit an empty command list to flush the write before present.
+        let no_commands: &[wgpu_core::id::CommandBufferId] = &[];
+        if let Err((_, e)) =
+          data.instance.queue_submit(ps.queue_id, no_commands)
+        {
+          return Err(JsErrorBox::generic(format!(
+            "canvas2d queue submit: {e:?}"
+          )));
+        }
+
+        data
+          .instance
+          .surface_present(data.id)
+          .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+      }
     }
 
     Ok(())
@@ -299,6 +429,72 @@ impl UnsafeWindowSurface {
 }
 
 impl UnsafeWindowSurface {}
+
+/// Initializes a wgpu_core device/queue for presenting Canvas2D to a window surface.
+///
+/// Requests an adapter compatible with the surface, creates a device, and
+/// configures the surface with `COPY_DST` usage so that rendered bytes can
+/// be uploaded directly via `queue_write_texture`.
+fn init_canvas2d_present_state(
+  instance: &deno_webgpu::Instance,
+  surface_id: wgpu_core::id::SurfaceId,
+  width: u32,
+  height: u32,
+  backends: wgpu_types::Backends,
+) -> Result<Canvas2DPresentState, JsErrorBox> {
+  // Request an adapter that is compatible with the window surface.
+  let adapter_id = instance
+    .request_adapter(
+      &wgpu_types::RequestAdapterOptions {
+        compatible_surface: Some(surface_id),
+        power_preference: wgpu_types::PowerPreference::None,
+        force_fallback_adapter: false,
+      },
+      backends,
+      None,
+    )
+    .map_err(|e| {
+      JsErrorBox::generic(format!("canvas2d: no compatible adapter: {e}"))
+    })?;
+
+  // Create device and queue on the chosen adapter.
+  let (device_id, queue_id) = instance
+    .adapter_request_device(
+      adapter_id,
+      &wgpu_types::DeviceDescriptor::default(),
+      None,
+      None,
+    )
+    .map_err(|e| {
+      JsErrorBox::generic(format!("canvas2d: device creation failed: {e}"))
+    })?;
+
+  // Choose Rgba8Unorm as the surface format (most portable for byte uploads).
+  // The present arm converts to Bgra8 if the surface requires it.
+  let format = wgpu_types::TextureFormat::Rgba8Unorm;
+
+  // Configure the surface with COPY_DST so queue_write_texture can target it.
+  if let Some(err) = instance.surface_configure(
+    surface_id,
+    device_id,
+    &wgpu_types::SurfaceConfiguration {
+      usage: wgpu_types::TextureUsages::COPY_DST,
+      format,
+      width,
+      height,
+      present_mode: wgpu_types::PresentMode::Fifo,
+      view_formats: vec![],
+      desired_maximum_frame_latency: 2,
+      alpha_mode: wgpu_types::CompositeAlphaMode::Opaque,
+    },
+  ) {
+    return Err(JsErrorBox::generic(format!(
+      "canvas2d: surface configure failed: {err}"
+    )));
+  }
+
+  Ok(Canvas2DPresentState { queue_id, format })
+}
 
 struct UnsafeWindowSurfaceOptions {
   system: UnsafeWindowSurfaceSystem,

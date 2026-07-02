@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
+import { unstableIds } from "ext:deno_features/flags.js";
 import {
   op_bootstrap_language,
   op_bootstrap_numcpus,
@@ -26,6 +27,11 @@ import {
   NavigatorUAData,
   navigatorUAData,
 } from "ext:runtime/97_navigator_user_agent_data.js";
+let _canvas2dMod;
+function lazyCanvas2d() {
+  return _canvas2dMod ??
+    (_canvas2dMod = core.loadExtScript("ext:deno_web/18_canvas2d.js"));
+}
 
 /**
  * @param {string} arch
@@ -198,4 +204,16 @@ const workerRuntimeGlobalProperties = {
   self: core.propGetterOnly(() => globalThis),
 };
 
-export { workerRuntimeGlobalProperties };
+const unstableForWorkerGlobalScope = { __proto__: null };
+unstableForWorkerGlobalScope[unstableIds.canvas2d] = {
+  FontData: core.propNonEnumerableLazyLoaded(
+    (c) => c.FontData,
+    lazyCanvas2d,
+  ),
+  queryLocalFonts: core.propWritableLazyLoaded(
+    (c) => c.queryLocalFonts,
+    lazyCanvas2d,
+  ),
+};
+
+export { unstableForWorkerGlobalScope, workerRuntimeGlobalProperties };

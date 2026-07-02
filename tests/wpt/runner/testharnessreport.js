@@ -1,5 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+// There is no DOM to render test results into.
+window.setup({ output: false });
+
 window.add_result_callback(({ message, name, stack, status }) => {
   const data = new TextEncoder().encode(
     `${JSON.stringify({ name, status, message, stack })}\n`,

@@ -2,6 +2,7 @@
 use std::cell::OnceCell;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
@@ -11,6 +12,7 @@ use deno_core::v8;
 use deno_core::v8::cppgc::Visitor;
 use deno_core::webidl::UnrestrictedDouble;
 use deno_error::JsErrorBox;
+use deno_features::FeatureChecker;
 use deno_image::bitmap::ImageBitmap;
 use deno_image::image;
 use deno_image::image::ColorType;
@@ -22,6 +24,7 @@ pub struct BlobHandle(pub v8::Global<v8::Function>);
 
 pub type CreateCanvasContext =
   for<'s> fn(
+    state: Rc<RefCell<OpState>>,
     instance: Option<deno_webgpu::Instance>,
     canvas: v8::Global<v8::Object>,
     data: ContextData,
@@ -68,6 +71,7 @@ impl OffscreenCanvas {
       let active_context = v8::Local::new(scope, active_context);
       match get_context(id, scope, active_context) {
         Context::Bitmap(_) => {}
+        Context::Canvas2D(context) => context.resize(),
         Context::WebGPU(context) => context.resize(scope),
       }
     }
@@ -93,6 +97,7 @@ impl OffscreenCanvas {
       let active_context = v8::Local::new(scope, active_context);
       match get_context(id, scope, active_context) {
         Context::Bitmap(_) => {}
+        Context::Canvas2D(context) => context.resize(),
         Context::WebGPU(context) => context.resize(scope),
       }
     }
@@ -118,12 +123,23 @@ impl OffscreenCanvas {
   fn get_context<'s>(
     &self,
     #[this] this: v8::Global<v8::Object>,
+    state: Rc<RefCell<OpState>>,
     scope: &mut v8::PinScope<'s, '_>,
     #[webidl] context_id: String,
     #[webidl] options: v8::Local<'s, v8::Value>,
   ) -> Result<Option<v8::Global<v8::Value>>, JsErrorBox> {
     if self.active_context.get().is_none() {
       let create_context: CreateCanvasContext = match context_id.as_str() {
+        deno_web::canvas2d::CONTEXT_ID => {
+          if !state
+            .borrow()
+            .borrow::<Arc<FeatureChecker>>()
+            .check(deno_web::canvas2d::UNSTABLE_FEATURE_NAME)
+          {
+            return Ok(None);
+          }
+          deno_web::canvas2d::create_context as _
+        }
         super::bitmaprenderer::CONTEXT_ID => super::bitmaprenderer::create as _,
         deno_webgpu::canvas::CONTEXT_ID => deno_webgpu::canvas::create as _,
         // https://html.spec.whatwg.org/multipage/canvas.html#dom-offscreencanvas-getcontext
@@ -133,6 +149,7 @@ impl OffscreenCanvas {
       };
 
       let context = create_context(
+        state,
         None,
         this,
         ContextData::Canvas(self.data.clone()),
@@ -169,6 +186,15 @@ impl OffscreenCanvas {
     let context = get_context(&active_context.0, scope, active_context_local);
     match &context {
       Context::Bitmap(_) => {}
+      Context::Canvas2D(context) => {
+        if context.has_open_layers() {
+          return Err(JsErrorBox::new(
+            "DOMExceptionInvalidStateError",
+            "transferToImageBitmap called while layers are open",
+          ));
+        }
+        context.flush_to_image(&mut self.data.borrow_mut())
+      }
       Context::WebGPU(context) => context.bitmap_read_hook(scope)?,
     }
 
@@ -179,6 +205,7 @@ impl OffscreenCanvas {
 
     match &context {
       Context::Bitmap(_) => {}
+      Context::Canvas2D(_) => {}
       Context::WebGPU(context) => {
         context.post_transfer_to_image_bitmap_hook(scope)
       }
@@ -231,6 +258,15 @@ impl OffscreenCanvas {
     let active_context_local = v8::Local::new(scope, &active_context.1);
     match get_context(&active_context.0, scope, active_context_local) {
       Context::Bitmap(_) => {}
+      Context::Canvas2D(context) => {
+        if context.has_open_layers() {
+          return Err(JsErrorBox::new(
+            "DOMExceptionInvalidStateError",
+            "convertToBlob called while layers are open",
+          ));
+        }
+        context.flush_to_image(&mut self.data.borrow_mut())
+      }
       Context::WebGPU(context) => context.bitmap_read_hook(scope)?,
     }
 
@@ -303,6 +339,43 @@ impl OffscreenCanvas {
 
     Ok(blob)
   }
+
+  /// Flushes the active context and returns RGBA8 pixels for Canvas 2D createPattern().
+  fn sync_pixels_for_pattern<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, 'a>,
+  ) -> Result<(u32, u32, Vec<u8>), JsErrorBox> {
+    if let Some((id, active_context)) = self.active_context.get() {
+      let active_context_local = v8::Local::new(scope, active_context);
+      let context = get_context(id, scope, active_context_local);
+      match &context {
+        Context::Bitmap(_) => {}
+        Context::Canvas2D(ctx) => {
+          if ctx.has_open_layers() {
+            return Err(JsErrorBox::new(
+              "DOMExceptionInvalidStateError",
+              "Canvas source has open layers",
+            ));
+          }
+          ctx.flush_to_image(&mut self.data.borrow_mut());
+        }
+        Context::WebGPU(ctx) => {
+          ctx.bitmap_read_hook(scope)?;
+        }
+      }
+    }
+
+    let data = self.data.borrow();
+    let (width, height) = data.dimensions();
+    if width == 0 || height == 0 {
+      return Err(JsErrorBox::new(
+        "DOMExceptionInvalidStateError",
+        "The image argument is a canvas element with a width or height of zero.",
+      ));
+    }
+
+    Ok((width, height, data.as_bytes().to_vec()))
+  }
 }
 
 pub enum Context {
@@ -312,6 +385,11 @@ pub enum Context {
   )]
   Bitmap(
     deno_core::cppgc::Ref<crate::bitmaprenderer::ImageBitmapRenderingContext>,
+  ),
+  Canvas2D(
+    deno_core::cppgc::Ref<
+      deno_web::canvas2d::OffscreenCanvasRenderingContext2D,
+    >,
   ),
   WebGPU(deno_core::cppgc::Ref<deno_webgpu::canvas::GPUCanvasContext>),
 }
@@ -329,6 +407,13 @@ pub fn get_context<'t>(
       .unwrap();
       Context::Bitmap(ptr)
     }
+    deno_web::canvas2d::CONTEXT_ID => {
+      let ptr = deno_core::cppgc::try_unwrap_cppgc_persistent_object::<
+        deno_web::canvas2d::OffscreenCanvasRenderingContext2D,
+      >(scope, local)
+      .unwrap();
+      Context::Canvas2D(ptr)
+    }
     deno_webgpu::canvas::CONTEXT_ID => {
       let ptr = deno_core::cppgc::try_unwrap_cppgc_persistent_object::<
         deno_webgpu::canvas::GPUCanvasContext,
@@ -338,6 +423,21 @@ pub fn get_context<'t>(
     }
     _ => panic!(),
   }
+}
+
+pub(crate) fn sync_offscreen_canvas_pixels_for_pattern<'a>(
+  scope: &mut v8::PinScope<'a, 'a>,
+  image: v8::Local<'a, v8::Value>,
+) -> Result<(u32, u32, Vec<u8>), JsErrorBox> {
+  let Some(canvas) =
+    deno_core::cppgc::try_unwrap_cppgc_object::<OffscreenCanvas>(scope, image)
+  else {
+    return Err(JsErrorBox::new(
+      "TypeError",
+      "Failed to execute 'createPattern' on 'OffscreenCanvasRenderingContext2D': parameter 1 is not of type 'CanvasImageSource'.",
+    ));
+  };
+  canvas.sync_pixels_for_pattern(scope)
 }
 
 #[derive(WebIDL)]

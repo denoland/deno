@@ -194,9 +194,12 @@ declare var ImageBitmap: {
 };
 
 /** @category Canvas */
-type OffscreenRenderingContextId = "bitmaprenderer" | "webgpu";
+type OffscreenRenderingContextId = "2d" | "bitmaprenderer" | "webgpu";
 /** @category Canvas */
-type OffscreenRenderingContext = ImageBitmapRenderingContext | GPUCanvasContext;
+type OffscreenRenderingContext =
+  | OffscreenCanvasRenderingContext2D
+  | ImageBitmapRenderingContext
+  | GPUCanvasContext;
 
 /** @category Canvas */
 interface ImageEncodeOptions {
@@ -299,6 +302,10 @@ interface OffscreenCanvas extends EventTarget {
    * If this was previously called, it will return the same context.
    */
   getContext(
+    contextId: "2d",
+    options?: CanvasRenderingContext2DSettings,
+  ): OffscreenCanvasRenderingContext2D | null;
+  getContext(
     contextId: "bitmaprenderer",
     options?: any,
   ): ImageBitmapRenderingContext | null;
@@ -307,12 +314,9 @@ interface OffscreenCanvas extends EventTarget {
     contextId: OffscreenRenderingContextId,
     options?: any,
   ): OffscreenRenderingContext | null;
-  // Spec also defines "2d", "webgl", and "webgl2" context ids; Deno does
-  // not implement those and getContext returns null for them.
-  getContext(
-    contextId: "2d" | "webgl" | "webgl2",
-    options?: any,
-  ): null;
+  // Spec also defines "webgl" and "webgl2" context ids; Deno does not
+  // implement those and getContext returns null for them.
+  getContext(contextId: "webgl" | "webgl2", options?: any): null;
 
   /**
    * Create an ImageBitmap object representing the image contained in the canvas.

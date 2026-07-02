@@ -106,6 +106,10 @@ let _geometryMod;
 const loadGeometry = () =>
   _geometryMod ??
     (_geometryMod = core.loadExtScript("ext:deno_web/17_geometry.js"));
+let _canvas2dMod;
+const loadCanvas2d = () =>
+  _canvas2dMod ??
+    (_canvas2dMod = core.loadExtScript("ext:deno_web/18_canvas2d.js"));
 const loadWebSocket = core.createLazyLoader(
   "ext:deno_websocket/01_websocket.js",
 );
@@ -562,6 +566,36 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
 };
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
+unstableForWindowOrWorkerGlobalScope[unstableIds.canvas2d] = {
+  OffscreenCanvasRenderingContext2D: core.propNonEnumerableLazyLoaded(
+    (c) => c.OffscreenCanvasRenderingContext2D,
+    loadCanvas2d,
+  ),
+  TextMetrics: core.propNonEnumerableLazyLoaded(
+    (c) => c.TextMetrics,
+    loadCanvas2d,
+  ),
+  Path2D: core.propNonEnumerableLazyLoaded(
+    (c) => c.Path2D,
+    loadCanvas2d,
+  ),
+  CanvasGradient: core.propNonEnumerableLazyLoaded(
+    (c) => c.CanvasGradient,
+    loadCanvas2d,
+  ),
+  CanvasPattern: core.propNonEnumerableLazyLoaded(
+    (c) => c.CanvasPattern,
+    loadCanvas2d,
+  ),
+  FontData: core.propNonEnumerableLazyLoaded(
+    (c) => c.FontData,
+    loadCanvas2d,
+  ),
+  queryLocalFonts: core.propWritableLazyLoaded(
+    (c) => c.queryLocalFonts,
+    loadCanvas2d,
+  ),
+};
 
 let _cssStyleSheetMod;
 const loadCssStyleSheet = () =>
