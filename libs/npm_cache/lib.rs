@@ -51,6 +51,22 @@ pub use tarball::TarballCacheReporter;
 
 use self::rt::spawn_blocking;
 
+/// Computes a lower-case hex-encoded SHA-512 digest of `data`.
+///
+/// Shares the same SHA-512 primitive used for tarball integrity verification.
+/// Useful for building content-addressed cache keys such as the npm build
+/// side-effects cache.
+pub fn sha512_hex(data: &[u8]) -> String {
+  use std::fmt::Write;
+  let digest = tarball_extract::hashing::sha512(data);
+  let digest = digest.as_ref();
+  let mut out = String::with_capacity(digest.len() * 2);
+  for byte in digest {
+    let _ = write!(out, "{byte:02x}");
+  }
+  out
+}
+
 #[derive(Debug, deno_error::JsError)]
 #[class(generic)]
 pub struct DownloadError {
@@ -275,6 +291,24 @@ impl<TSys: NpmCacheSys> NpmCache<TSys> {
       &id.nv.name,
       &id.nv.version.to_string(),
       id.copy_index,
+      registry_url,
+    )
+  }
+
+  /// The global-cache folder for a *built* variant of a package (the snapshot
+  /// of a package directory after its build scripts ran), keyed by
+  /// `input_hash`. See [`NpmCacheDir::package_folder_for_id_built`].
+  pub fn built_package_folder_for_id(
+    &self,
+    id: &NpmPackageCacheFolderId,
+    input_hash: &str,
+  ) -> PathBuf {
+    let registry_url = self.npmrc.get_registry_url(&id.nv.name);
+    self.cache_dir.package_folder_for_id_built(
+      &id.nv.name,
+      &id.nv.version.to_string(),
+      id.copy_index,
+      input_hash,
       registry_url,
     )
   }

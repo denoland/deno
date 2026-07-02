@@ -1,0 +1,6 @@
+[UNORDERED_START]
+Initialize @denotest/lifecycle-scripts-with-dep@1.0.0
+Initialize @denotest/add@1.0.0
+[UNORDERED_END]
+Reusing cached build output for npm:@denotest/lifecycle-scripts-with-dep@1.0.0
+postinstall works with dep add(1, 2) = 3

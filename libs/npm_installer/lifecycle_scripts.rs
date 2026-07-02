@@ -162,6 +162,99 @@ pub fn member_dep_init_cwds(
     .collect()
 }
 
+/// The lifecycle scripts that produce build output we may want to cache.
+const BUILD_SCRIPT_NAMES: [&str; 3] = ["preinstall", "install", "postinstall"];
+
+/// Number of leading hex characters of the SHA-512 input digest used to key a
+/// built variant in the global cache. 32 hex chars (128 bits) is far beyond
+/// what's needed to avoid collisions while keeping the directory name short.
+const SIDE_EFFECTS_CACHE_HASH_LEN: usize = 32;
+
+/// Computes the input hash that keys a package's *built* output in the global
+/// side-effects cache. Two installs whose package produces the same hash can
+/// safely reuse the same built output (e.g. a compiled native addon) instead of
+/// re-running the build script.
+///
+/// Keyed **generously** on purpose: under-keying would let build output produced
+/// in one environment be reused in an incompatible one (e.g. a native binary
+/// built for the wrong platform/arch or Node ABI). The hash covers:
+/// - the package name + version,
+/// - the package's own lifecycle build script command strings
+///   (preinstall/install/postinstall),
+/// - the resolved `name@version` of every dependency in the package's full
+///   transitive dependency closure (not just its direct dependencies),
+/// - the target platform (`OS` + `ARCH`),
+/// - the Node ABI version Deno emulates (native addons are ABI-specific).
+///
+/// The transitive closure — not just the direct dependencies — is included
+/// because a build script can execute code from a direct dependency whose
+/// behavior depends on ITS own (transitively) resolved dependencies. If only
+/// direct deps were keyed, changing a transitive resolution (e.g. a different
+/// native variant pulled in deeper in the graph) would not change the key, and
+/// Deno could wrongly reuse a built variant produced against a different
+/// dependency graph.
+///
+/// Lives here (rather than in a linker-specific module) so the isolated and
+/// hoisted installers can share it.
+pub fn side_effects_cache_input_hash(
+  package: &NpmResolutionPackage,
+  scripts: &HashMap<SmallStackString, String>,
+  snapshot: &NpmResolutionSnapshot,
+  node_version: &str,
+) -> String {
+  use std::fmt::Write;
+
+  let mut input = String::new();
+  let _ = writeln!(input, "name:{}", package.id.nv.name);
+  let _ = writeln!(input, "version:{}", package.id.nv.version);
+
+  // build script command strings, in a fixed order for determinism
+  for name in BUILD_SCRIPT_NAMES {
+    if let Some(script) = scripts.get(name) {
+      let _ = writeln!(input, "script:{name}={script}");
+    }
+  }
+
+  // Resolved `name@version` of every dependency in the package's full
+  // transitive closure, deduped and sorted for determinism. We walk the
+  // resolution snapshot starting from the package's direct dependencies and
+  // follow every edge, so a change anywhere in the reachable graph (at any
+  // depth) changes the key and forces a rebuild, while a change to an unrelated
+  // package that the build can't reach does not.
+  let mut closure: Vec<String> = Vec::new();
+  {
+    let mut seen: HashSet<&NpmPackageId> = HashSet::new();
+    let mut queue: VecDeque<&NpmPackageId> =
+      package.dependencies.values().collect();
+    while let Some(id) = queue.pop_front() {
+      if !seen.insert(id) {
+        continue;
+      }
+      closure.push(format!("{}@{}", id.nv.name, id.nv.version));
+      if let Some(dep_pkg) = snapshot.package_from_id(id) {
+        for dep_id in dep_pkg.dependencies.values() {
+          if !seen.contains(dep_id) {
+            queue.push_back(dep_id);
+          }
+        }
+      }
+    }
+  }
+  closure.sort();
+  closure.dedup();
+  for dep in closure {
+    let _ = writeln!(input, "dep:{dep}");
+  }
+
+  let _ = writeln!(input, "os:{}", std::env::consts::OS);
+  let _ = writeln!(input, "arch:{}", std::env::consts::ARCH);
+  let _ = writeln!(input, "node:{node_version}");
+
+  let mut hash = deno_npm_cache::sha512_hex(input.as_bytes());
+  hash.truncate(SIDE_EFFECTS_CACHE_HASH_LEN);
+  hash
+}
+
 pub fn has_lifecycle_scripts(
   sys: &impl FsMetadata,
   extra: &NpmPackageExtraInfo,
@@ -303,6 +396,16 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
 
   pub fn packages_with_scripts(&self) -> &[PackageWithScript<'a>] {
     &self.packages_with_scripts
+  }
+
+  /// Drops the packages for which `keep` returns false from the set that will
+  /// have its lifecycle scripts run. Used by the side-effects cache to remove
+  /// packages whose build output was restored from the global cache.
+  pub fn retain_packages_with_scripts(
+    &mut self,
+    mut keep: impl FnMut(&PackageWithScript<'a>) -> bool,
+  ) {
+    self.packages_with_scripts.retain(|pkg| keep(pkg));
   }
 }
 
@@ -664,5 +767,65 @@ mod tests {
     let layers = compute_lifecycle_script_layers(&pkgs, &snapshot, &[]);
     assert_eq!(layers.len(), 1);
     assert!(layers[0].is_empty());
+  }
+
+  fn input_hash_for(id: &str, snapshot: &NpmResolutionSnapshot) -> String {
+    let package = snapshot.package_from_id(&pkg_id(id)).unwrap();
+    let scripts =
+      HashMap::from([("postinstall".into(), "node build.js".to_string())]);
+    super::side_effects_cache_input_hash(package, &scripts, snapshot, "20.0.0")
+  }
+
+  #[test]
+  fn input_hash_keys_transitive_closure() {
+    // a (has the build script) -> b -> c, plus an unrelated top-level package d
+    // that a cannot reach. The build of `a` can run code from b which can run
+    // code from c, so c is part of a's build inputs even though it's not a
+    // direct dependency of a.
+    let baseline = make_snapshot(
+      &[("a@1", "a@1.0.0"), ("d@1", "d@1.0.0")],
+      vec![
+        pkg("a@1.0.0", &[("b", "b@1.0.0")]),
+        pkg("b@1.0.0", &[("c", "c@1.0.0")]),
+        pkg("c@1.0.0", &[]),
+        pkg("d@1.0.0", &[]),
+      ],
+    );
+    let baseline_hash = input_hash_for("a@1.0.0", &baseline);
+
+    // Changing the resolved version of the TRANSITIVE dependency `c` must
+    // invalidate `a`'s cached build (the key changes), even though `c` is not a
+    // direct dependency of `a`.
+    let changed_transitive = make_snapshot(
+      &[("a@1", "a@1.0.0"), ("d@1", "d@1.0.0")],
+      vec![
+        pkg("a@1.0.0", &[("b", "b@1.0.0")]),
+        pkg("b@1.0.0", &[("c", "c@2.0.0")]),
+        pkg("c@2.0.0", &[]),
+        pkg("d@1.0.0", &[]),
+      ],
+    );
+    assert_ne!(
+      baseline_hash,
+      input_hash_for("a@1.0.0", &changed_transitive),
+      "changing a transitive dependency version should invalidate the cache"
+    );
+
+    // Changing an UNRELATED package (`d`) that is not in `a`'s dependency
+    // closure must NOT invalidate `a`'s cached build.
+    let changed_unrelated = make_snapshot(
+      &[("a@1", "a@1.0.0"), ("d@2", "d@2.0.0")],
+      vec![
+        pkg("a@1.0.0", &[("b", "b@1.0.0")]),
+        pkg("b@1.0.0", &[("c", "c@1.0.0")]),
+        pkg("c@1.0.0", &[]),
+        pkg("d@2.0.0", &[]),
+      ],
+    );
+    assert_eq!(
+      baseline_hash,
+      input_hash_for("a@1.0.0", &changed_unrelated),
+      "changing a package outside the dependency closure should not invalidate the cache"
+    );
   }
 }
