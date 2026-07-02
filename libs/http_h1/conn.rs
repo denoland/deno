@@ -372,6 +372,10 @@ impl<I> SharedConn<I> {
     self.io
   }
 
+  pub fn get_ref(&self) -> &I {
+    &self.io
+  }
+
   pub fn into_upgrade_parts(self) -> (I, Vec<u8>) {
     (self.io, self.buffered)
   }

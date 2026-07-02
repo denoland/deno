@@ -3799,36 +3799,60 @@ thread_local! {
   static RAW_RECLAIM_DONE: Cell<bool> = const { Cell::new(false) };
 }
 
+/// Whether `reclaim_stream_into_raw_fd` can succeed for this stream type.
+/// Checked via a borrow BEFORE the reclaim consumes the external and the
+/// connection: a destructive failure would leave JS holding a freed external
+/// while still driving the native response ops on it (use-after-free panic).
+fn reclaimable_stream_type(
+  stream_type: deno_net::raw::NetworkStreamType,
+) -> bool {
+  match stream_type {
+    deno_net::raw::NetworkStreamType::Tcp => true,
+    #[cfg(unix)]
+    deno_net::raw::NetworkStreamType::Unix => true,
+    _ => false,
+  }
+}
+
 #[cfg(unix)]
-fn reclaim_stream_into_raw_fd(stream: NetworkStream) -> i32 {
+fn reclaim_stream_into_raw_fd(stream: NetworkStream) -> Option<i32> {
   use std::os::fd::IntoRawFd;
   // Transfer fd ownership to JS without closing it (into_raw_fd consumes the
   // stream but does NOT drop the fd). Tokio's into_std deregisters the fd from
   // the reactor; libuv re-registers it when JS adopts it via uv_tcp_open.
   match stream {
-    NetworkStream::Tcp(tcp) => match tcp.into_std() {
-      Ok(std) => std.into_raw_fd(),
-      Err(_) => -1,
-    },
-    NetworkStream::Unix(unix) => match unix.into_std() {
-      Ok(std) => std.into_raw_fd(),
-      Err(_) => -1,
-    },
-    _ => -1,
+    NetworkStream::Tcp(tcp) => tcp.into_std().ok().map(IntoRawFd::into_raw_fd),
+    NetworkStream::Unix(unix) => {
+      unix.into_std().ok().map(IntoRawFd::into_raw_fd)
+    }
+    _ => None,
   }
 }
 
-#[cfg(not(unix))]
-fn reclaim_stream_into_raw_fd(_stream: NetworkStream) -> i32 {
-  -1
+#[cfg(windows)]
+fn reclaim_stream_into_raw_fd(stream: NetworkStream) -> Option<i32> {
+  use std::os::windows::io::IntoRawSocket;
+  // Same ownership transfer as unix; libuv adopts the SOCKET via uv_tcp_open.
+  // Windows kernel handles always fit in 32 bits (they are 32-bit even in
+  // 64-bit processes, per the handle interoperability guarantee), matching the
+  // i32 SOCKET the tcp_wrap `open` op takes on the JS side.
+  match stream {
+    NetworkStream::Tcp(tcp) => tcp
+      .into_std()
+      .ok()
+      .map(|std| std.into_raw_socket())
+      .and_then(|socket| i32::try_from(socket).ok()),
+    _ => None,
+  }
 }
 
 /// node:http native fast path: hand the live H1 connection's OS file descriptor
 /// to JS so a handler can expose `req.socket`/`res.socket` as a real socket
 /// (e.g. `child.send(msg, res.socket)` to pass it to a child process). Returns
-/// the fd, or -1 if reclaim isn't available: not the request currently being
-/// dispatched (only valid synchronously inside the handler, on the bodiless
-/// path), already reclaimed, a non-TCP/Unix stream, or Windows. On success the
+/// the fd (a SOCKET on Windows), or -1 if reclaim isn't available: not the
+/// request currently being dispatched (only valid synchronously inside the
+/// handler, on the bodiless path), already reclaimed, or a stream type without
+/// reclaim support (TLS, tunnel; unix sockets on Windows). On success the
 /// serve loop relinquishes the connection -- the handler (or whoever it hands
 /// the socket to) is responsible for the response.
 #[op2(fast)]
@@ -3849,6 +3873,17 @@ pub fn op_http_reclaim_socket(external: *const c_void) -> i32 {
   if !std::ptr::eq(record_ptr, slot.record) {
     return -1;
   }
+  // Reclaim support depends on the stream type and platform; decide via a
+  // borrow BEFORE consuming anything, so an unsupported stream reports -1
+  // with the external and connection fully intact.
+  {
+    // SAFETY: the serve future is suspended inside the synchronous dispatch
+    // running this op, so the conn pointer is live; this is a read-only peek.
+    let conn_ref = unsafe { &*slot.conn };
+    if !reclaimable_stream_type(conn_ref.get_ref().get_ref().stream()) {
+      return -1;
+    }
+  }
   // The native response is abandoned in favor of the reclaimed socket: consume
   // the external so it's freed and JS stops driving the response ops on it.
   // SAFETY: verified above that this external is the active raw record.
@@ -3861,7 +3896,10 @@ pub fn op_http_reclaim_socket(external: *const c_void) -> i32 {
   RAW_RECLAIM_DONE.with(|d| d.set(true));
   let (io, _h1_bytes) = conn.into_upgrade_parts();
   let (stream, _prefix) = io.into_inner();
-  reclaim_stream_into_raw_fd(stream)
+  // Past this point the external and connection are consumed. A conversion
+  // failure (`into_std` erroring; exceptional) is reported as -2 so JS still
+  // drops its external references instead of driving a freed record.
+  reclaim_stream_into_raw_fd(stream).unwrap_or(-2)
 }
 
 const RAW_H1_DATE_LEN: usize = 29;

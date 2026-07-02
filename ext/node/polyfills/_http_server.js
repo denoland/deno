@@ -1855,15 +1855,17 @@ class NativeFakeSocket extends Duplex {
       return -1;
     }
     const fd = op_http_reclaim_socket(external);
-    if (fd < 0) {
+    if (fd === -1) {
+      // Reclaim unavailable; the external and connection are untouched.
       return -1;
     }
-    // The external was consumed by the op; stop driving the native response.
+    // The external was consumed by the op -- including the exceptional
+    // consumed-but-failed case (-2) -- so stop driving the native response.
     res[kNativeExternal] = null;
     if (res.req != null && res.req[kNativeExternal] !== undefined) {
       res.req[kNativeExternal] = null;
     }
-    return fd;
+    return fd < 0 ? -1 : fd;
   }
 }
 
