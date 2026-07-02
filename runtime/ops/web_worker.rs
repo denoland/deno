@@ -17,7 +17,6 @@ pub use sync_fetch::SyncFetchError;
 
 use self::sync_fetch::op_worker_sync_fetch;
 use crate::web_worker::WebWorkerInternalHandle;
-use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerThreadType;
 
 deno_core::extension!(
@@ -105,16 +104,14 @@ fn op_worker_maybe_wait_for_debugger(state: &mut OpState) {
 
 #[op2(fast)]
 fn op_worker_close(state: &mut OpState) {
-  // Notify parent that we're finished
+  // The close event is sent after worker shutdown work finishes.
   let exit_code = state
     .try_borrow::<deno_os::ExitCode>()
     .map(|e| e.get())
     .unwrap_or(0);
   let mut handle = state.borrow_mut::<WebWorkerInternalHandle>().clone();
 
-  // Send the exit code to the parent before terminating
-  let _ = handle.post_event(WorkerControlEvent::Close(exit_code));
-  handle.terminate();
+  handle.close(exit_code);
 }
 
 #[op2]
