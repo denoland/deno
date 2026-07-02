@@ -5502,6 +5502,8 @@ fn runtime_misc_args(app: Command) -> Command {
     .arg(eszip_arg())
     .arg(preload_arg())
     .arg(require_arg())
+    .arg(max_memory_arg())
+    .arg(max_cpu_time_arg())
 }
 
 fn eszip_arg() -> Arg {
@@ -5850,6 +5852,59 @@ fn seed_arg() -> Arg {
     .long("seed")
     .value_name("NUMBER")
     .help("Set the random number generator seed")
+    .value_parser(value_parser!(u64))
+}
+
+/// Parses a memory size for `--max-memory` into megabytes. A plain number
+/// is interpreted as megabytes (matching V8's `--max-old-space-size`);
+/// `k`/`kb`, `m`/`mb` and `g`/`gb` suffixes are accepted.
+fn parse_memory_size_mb(s: &str) -> Result<u64, String> {
+  let lower = s.trim().to_ascii_lowercase();
+  let (num, to_mb): (&str, fn(u64) -> u64) = if let Some(v) =
+    lower.strip_suffix("gb").or_else(|| lower.strip_suffix('g'))
+  {
+    (v, |n| n * 1024)
+  } else if let Some(v) =
+    lower.strip_suffix("mb").or_else(|| lower.strip_suffix('m'))
+  {
+    (v, |n| n)
+  } else if let Some(v) =
+    lower.strip_suffix("kb").or_else(|| lower.strip_suffix('k'))
+  {
+    (v, |n| (n / 1024).max(1))
+  } else {
+    (lower.as_str(), |n| n)
+  };
+  let n = num
+    .trim()
+    .parse::<u64>()
+    .map_err(|_| format!("invalid memory size '{s}'"))?;
+  if n == 0 {
+    return Err("memory size must be greater than 0".to_string());
+  }
+  Ok(to_mb(n))
+}
+
+fn max_memory_arg() -> Arg {
+  Arg::new("max-memory")
+    .long("max-memory")
+    .value_name("SIZE")
+    .help(cstr!(
+      "Limit the memory (V8 heap) available to JavaScript, e.g. <p(245)>--max-memory=512m</>
+  <p(245)>A plain number is interpreted as megabytes; k/m/g suffixes are supported.
+  When the limit is exceeded the program is terminated with an error.</>"
+    ))
+    .value_parser(parse_memory_size_mb)
+}
+
+fn max_cpu_time_arg() -> Arg {
+  Arg::new("max-cpu-time")
+    .long("max-cpu-time")
+    .value_name("SECONDS")
+    .help(cstr!(
+      "Limit the total CPU time available to the program, in seconds, e.g. <p(245)>--max-cpu-time=30</>
+  <p(245)>When the budget is exhausted the program is terminated with an error.</>"
+    ))
     .value_parser(value_parser!(u64))
 }
 
@@ -8633,6 +8688,8 @@ fn runtime_args_parse(
   location_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
+  max_memory_arg_parse(flags, matches);
+  max_cpu_time_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
   trace_ops_parse(flags, matches);
@@ -8748,6 +8805,14 @@ fn seed_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
     flags.v8_flags.push(format!("--random-seed={seed}"));
   }
+}
+
+fn max_memory_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.max_memory = matches.remove_one::<u64>("max-memory");
+}
+
+fn max_cpu_time_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.max_cpu_time = matches.remove_one::<u64>("max-cpu-time");
 }
 
 fn no_check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {

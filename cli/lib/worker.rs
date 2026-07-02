@@ -4,6 +4,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use boxed_error::Boxed;
 use deno_bundle_runtime::BundleProvider;
@@ -178,6 +181,46 @@ pub fn create_isolate_create_params<TSys: DenoLibSys>(
   }
 }
 
+/// Set when the main isolate hit the `--max-memory` heap limit and was
+/// terminated. Checked on exit to report a clear error instead of the
+/// generic "execution terminated".
+pub static MEMORY_LIMIT_EXCEEDED: AtomicBool = AtomicBool::new(false);
+
+/// Set when the process exhausted the `--max-cpu-time` budget and the
+/// main isolate was terminated. Checked on exit to report a clear error.
+pub static CPU_TIME_LIMIT_EXCEEDED: AtomicBool = AtomicBool::new(false);
+
+/// Spawns a thread that samples the process CPU time and terminates the
+/// main isolate once `limit_secs` of CPU time (user + system) has been
+/// consumed. Termination only surfaces while JS is executing; if the
+/// budget was burned outside of JS (native ops, workers) the process is
+/// force-exited after a short grace period instead.
+fn start_cpu_time_watchdog(
+  limit_secs: u64,
+  isolate_handle: v8::IsolateHandle,
+) {
+  let limit = Duration::from_secs(limit_secs);
+  std::thread::Builder::new()
+    .name("deno-cpu-time-watchdog".to_string())
+    .spawn(move || {
+      loop {
+        std::thread::sleep(Duration::from_millis(100));
+        let (sys, user) = deno_runtime::deno_os::get_cpu_usage();
+        if sys + user >= limit {
+          CPU_TIME_LIMIT_EXCEEDED.store(true, Ordering::SeqCst);
+          isolate_handle.terminate_execution();
+          std::thread::sleep(Duration::from_secs(2));
+          log::error!(
+            "{}: CPU time limit exceeded (--max-cpu-time={limit_secs})",
+            colors::red_bold("error"),
+          );
+          deno_runtime::exit(1);
+        }
+      }
+    })
+    .expect("failed to spawn CPU time watchdog thread");
+}
+
 #[cfg(any(target_os = "android", target_os = "linux"))]
 mod linux {
   use deno_runtime::deno_node::ops::process::cgroup::CgroupVersion;
@@ -295,6 +338,11 @@ pub struct LibMainWorkerOptions {
   pub maybe_initial_cwd: Option<Url>,
   /// When true, the `OffscreenCanvas` global is removed at bootstrap.
   pub disable_offscreen_canvas: bool,
+  /// Maximum V8 heap size for the main isolate, in megabytes
+  /// (`--max-memory`).
+  pub max_memory_mb: Option<u64>,
+  /// Maximum process CPU time budget, in seconds (`--max-cpu-time`).
+  pub max_cpu_time_secs: Option<u64>,
 }
 
 #[derive(Default, Clone)]
@@ -749,7 +797,15 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       startup_snapshot: shared.options.startup_snapshot,
       residual_lazy_js_sources: shared.options.residual_lazy_js_sources,
       residual_lazy_esm_sources: shared.options.residual_lazy_esm_sources,
-      create_params: create_isolate_create_params(&shared.sys),
+      create_params: {
+        let mut create_params = create_isolate_create_params(&shared.sys);
+        if let Some(mb) = shared.options.max_memory_mb {
+          let max_bytes = (mb as usize) * 1024 * 1024;
+          create_params =
+            Some(create_params.unwrap_or_default().heap_limits(0, max_bytes));
+        }
+        create_params
+      },
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -774,6 +830,28 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let mut worker =
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
+
+    // When `--max-memory` is set, terminate the isolate gracefully with a
+    // clear error instead of crashing the process with a V8 fatal OOM.
+    if shared.options.max_memory_mb.is_some() {
+      let handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+      worker.js_runtime.add_near_heap_limit_callback(
+        move |current_limit, _initial_limit| {
+          MEMORY_LIMIT_EXCEEDED.store(true, Ordering::SeqCst);
+          handle.terminate_execution();
+          // Raise the limit so V8 can unwind instead of aborting while
+          // the termination propagates.
+          current_limit * 2
+        },
+      );
+    }
+
+    if let Some(limit_secs) = shared.options.max_cpu_time_secs {
+      static CPU_WATCHDOG_STARTED: std::sync::Once = std::sync::Once::new();
+      let handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+      CPU_WATCHDOG_STARTED
+        .call_once(move || start_cpu_time_watchdog(limit_secs, handle));
+    }
 
     // Wire module hook registry into OpState so JS ops share it with the loader
     if let Some(registry) = hook_registry {

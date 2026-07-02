@@ -713,6 +713,19 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 }
 
 fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
+  // When a resource limit watchdog terminated the isolate, the surfaced
+  // error is a generic "execution terminated" — report the real cause.
+  if deno_lib::worker::MEMORY_LIMIT_EXCEEDED
+    .load(std::sync::atomic::Ordering::SeqCst)
+  {
+    exit_with_message("Memory limit exceeded (--max-memory)", 1);
+  }
+  if deno_lib::worker::CPU_TIME_LIMIT_EXCEEDED
+    .load(std::sync::atomic::Ordering::SeqCst)
+  {
+    exit_with_message("CPU time limit exceeded (--max-cpu-time)", 1);
+  }
+
   let mut error_string = match js_error_downcast_ref(&error) {
     Some(e) => {
       let initial_cwd = initial_cwd
