@@ -1045,6 +1045,22 @@ pub struct PermissionFlags {
 }
 
 impl PermissionFlags {
+  /// Whether any explicit allow-side permission was configured on the command
+  /// line. Unlike `has_permission`, this ignores `--deny-*`/`--ignore-*` flags
+  /// so that a deny flag on its own does not count as "the user configured
+  /// permissions". Used to decide whether an implicit default profile applies.
+  pub fn has_allow_permission(&self) -> bool {
+    self.allow_all
+      || self.allow_env.is_some()
+      || self.allow_ffi.is_some()
+      || self.allow_net.is_some()
+      || self.allow_read.is_some()
+      || self.allow_run.is_some()
+      || self.allow_sys.is_some()
+      || self.allow_write.is_some()
+      || self.allow_import.is_some()
+  }
+
   pub fn has_permission(&self) -> bool {
     self.allow_all
       || self.allow_env.is_some()
