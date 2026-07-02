@@ -62,6 +62,11 @@ struct WefDesktopApi {
   /// Singleton for the unified-mux DevTools window. Without this, every
   /// `openDevtools()` call would spawn another DevTools window.
   devtools_window: Mutex<Option<u32>>,
+  /// Shared id of the initial window, also read by `navigate_fut` / HMR. When
+  /// the first `BrowserWindow` adopts the initial window but needs creation-time
+  /// flags (frameless, etc.), `reinit_initial_window` recreates it and stores
+  /// the new id here so navigation / HMR retarget the replacement.
+  initial_window_id: Arc<AtomicU32>,
 }
 
 impl WefDesktopApi {
@@ -230,6 +235,34 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     let window = self.setup_window_events(window);
     let id = window.id();
     self.open_windows.lock().unwrap().insert(id);
+    id
+  }
+
+  fn reinit_initial_window(
+    &self,
+    initial_window_id: u32,
+    width: i32,
+    height: i32,
+    frameless: bool,
+    no_activate: bool,
+    transparent_titlebar: bool,
+  ) -> u32 {
+    // Nothing to change: keep the eagerly-created initial window as-is.
+    if !frameless && !no_activate && !transparent_titlebar {
+      return initial_window_id;
+    }
+    // The initial window was created with default (framed / activating) flags,
+    // and these are creation-time-only, so recreate it with the requested
+    // flags and retarget navigation / HMR at the replacement.
+    self.close_window(initial_window_id);
+    let id = self.create_window(
+      width,
+      height,
+      frameless,
+      no_activate,
+      transparent_titlebar,
+    );
+    self.initial_window_id.store(id, Ordering::Release);
     id
   }
 
@@ -1687,6 +1720,7 @@ async fn run_desktop(
         trays: Arc::new(Mutex::new(HashMap::new())),
         notifications: Arc::new(Mutex::new(HashMap::new())),
         devtools_window: Mutex::new(None),
+        initial_window_id: initial_window_id.clone(),
       };
 
       // Forward macOS dock-reopen callbacks (clicking the dock icon while
