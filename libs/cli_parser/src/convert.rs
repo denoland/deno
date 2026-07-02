@@ -123,7 +123,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("task") => task_parse(&result, &mut flags),
     Some("bench") => bench_parse(&result, &mut flags),
     Some("compile") => compile_parse(&result, &mut flags),
-    Some("coverage") => coverage_parse(&result, &mut flags),
+    Some("coverage") => coverage_parse(&result, &mut flags)?,
     Some("repl") => repl_parse(&result, &mut flags, false),
     Some("install" | "i") => install_parse(&result, &mut flags)?,
     Some("uninstall") => uninstall_parse(&result, &mut flags),
@@ -1902,7 +1902,22 @@ fn compile_parse(result: &ParseResult, flags: &mut Flags) {
   });
 }
 
-fn coverage_parse(result: &ParseResult, flags: &mut Flags) {
+fn coverage_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
+  let threshold = match result.get_one("threshold") {
+    Some(s) => match s.parse::<u32>() {
+      Ok(v) if v <= 100 => Some(v),
+      _ => {
+        return Err(CliError::new(
+          CliErrorKind::InvalidValue,
+          format!("invalid value '{s}' for '--threshold': expected 0-100"),
+        ));
+      }
+    },
+    None => None,
+  };
   let files = result
     .get_many("files")
     .map(|v| v.iter().map(|s| s.to_string()).collect())
@@ -1941,8 +1956,9 @@ fn coverage_parse(result: &ParseResult, flags: &mut Flags) {
     include,
     exclude,
     r#type,
-    threshold: result.get_one("threshold").and_then(|s| s.parse().ok()),
+    threshold,
   });
+  Ok(())
 }
 
 fn repl_parse(result: &ParseResult, flags: &mut Flags, is_default: bool) {

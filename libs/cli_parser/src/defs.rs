@@ -1335,6 +1335,11 @@ pub static COVERAGE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("lcov").long("lcov").set_true(),
     ArgDef::new("html").long("html").set_true(),
     ArgDef::new("detailed").long("detailed").set_true(),
+    ArgDef::new("threshold")
+      .long("threshold")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .require_equals(),
     ArgDef::new("output")
       .long("output")
       .action(ArgAction::Set)
@@ -1960,6 +1965,12 @@ pub static X_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::ZeroOrMore)
       .trailing(),
     ArgDef::new("yes").short('y').long("yes").set_true(),
+    ArgDef::new("ignore-scripts")
+      .long("ignore-scripts")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .conflicts_with(&["allow-scripts"]),
     ArgDef::new("install-alias")
       .long("install-alias")
       .action(ArgAction::Set)
@@ -1977,6 +1988,7 @@ pub static X_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals(),
   ],
   arg_groups: &[
+    ALLOW_SCRIPTS_ARG,
     UNSTABLE_ARGS,
     COMPILE_ARGS,
     PERMISSION_ARGS,
