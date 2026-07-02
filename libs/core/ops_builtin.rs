@@ -485,6 +485,13 @@ async fn op_write_all(
 /// `ext/web/06_streams.js`). It avoids copying every chunk into and back out of
 /// JavaScript. Close / abort / cancel semantics are handled by the JS caller.
 ///
+/// Chunks are read with `read()`, which hands back the resource's own buffer
+/// (zero-copy for sources that buffer internally, like fetch response bodies
+/// and wrapped `ReadableStream`s), and passed to the sink as-is; `write_all`
+/// takes the same `BufView`, so the pump itself adds no copy. Sources that
+/// only buffer externally (files, sockets) allocate per chunk in their `read()`
+/// impl, exactly as a `read_byob` into a fresh buffer would.
+///
 /// When `cancel_rid` names a [`CancelHandle`] resource, each read and write is
 /// raced against it, so cancelling the handle (the JS caller closes it from an
 /// `AbortSignal` handler) aborts the pump promptly. The handle is consumed
@@ -515,19 +522,16 @@ async fn op_pipe(
 
   let result = async {
     loop {
-      let buf = BufMutView::new(buffer_strategy.buffer_size());
-      let read = src.clone().read_byob(buf);
-      let (n, mut buf) = match &cancel_handle {
+      let read = src.clone().read(buffer_strategy.buffer_size());
+      let buf = match &cancel_handle {
         Some(handle) => read.try_or_cancel(handle).await?,
         None => read.await?,
       };
-      if n == 0 {
+      if buf.is_empty() {
         break; // source reached EOF
       }
-      buffer_strategy.notify_read(n);
-      // Keep only the bytes that were read, then hand ownership to the sink.
-      buf.truncate(n);
-      let write = dst.clone().write_all(buf.into_view());
+      buffer_strategy.notify_read(buf.len());
+      let write = dst.clone().write_all(buf);
       match &cancel_handle {
         Some(handle) => write.try_or_cancel(handle).await?,
         None => write.await?,
