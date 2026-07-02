@@ -3521,6 +3521,13 @@ const compressionTestCases = [
     expect: "gzip",
   },
   {
+    name: "CompressibleNdjson",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip" },
+    out: { "Content-Type": "application/x-ndjson" },
+    expect: "gzip",
+  },
+  {
     name: "CompressibleType2",
     length: 1024,
     in: { "Accept-Encoding": "gzip, deflate, br" },
