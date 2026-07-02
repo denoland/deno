@@ -60,7 +60,8 @@ pub fn op_node_watchdog_has_pending_sigint() -> bool {
 
 // === setTraceSigInt ===
 // When enabled, SIGINT triggers a V8 interrupt that captures the current
-// JavaScript stack trace, prints it to stderr, and exits with code 130.
+// JavaScript stack trace, prints it to stderr, then re-raises SIGINT so the
+// process terminates by the signal — matching Node's `--trace-sigint`.
 
 static SIGINT_TRACE_HANDLER_ID: Mutex<Option<u32>> = Mutex::new(None);
 
@@ -110,19 +111,48 @@ unsafe extern "C" fn sigint_trace_interrupt_callback(
     unsafe { v8::Isolate::ref_from_raw_isolate_ptr_mut(&mut raw_ptr) };
   // SAFETY: data points to a leaked Box<v8::Global<v8::Context>> that we
   // allocated in op_node_set_trace_sigint. We intentionally don't free it
-  // since we exit immediately after.
+  // since the process is torn down by the signal immediately after.
   let context_global = unsafe { &*(data as *const v8::Global<v8::Context>) };
 
-  v8::scope!(scope, isolate);
-  let context = v8::Local::new(scope, context_global);
-  let scope = &mut v8::ContextScope::new(scope, context);
+  {
+    v8::scope!(scope, isolate);
+    let context = v8::Local::new(scope, context_global);
+    let scope = &mut v8::ContextScope::new(scope, context);
 
-  let msg = v8::String::new(scope, "SIGINT").unwrap();
-  let exception = v8::Exception::error(scope, msg);
+    let msg = v8::String::new(scope, "SIGINT").unwrap();
+    let exception = v8::Exception::error(scope, msg);
+    let js_error = JsError::from_v8_exception(scope, exception);
 
-  let js_error = JsError::from_v8_exception(scope, exception);
-  eprintln!("{js_error}");
-  std::process::exit(130);
+    // Match Node's `--trace-sigint` output: a fixed banner followed by the
+    // current JS stack trace.
+    eprintln!(
+      "KEYBOARD_INTERRUPT: Script execution was interrupted by `SIGINT`"
+    );
+    if let Some(stack) = &js_error.stack {
+      // `stack` begins with the synthetic "Error: SIGINT" header line; drop it
+      // and print only the frames, as Node does.
+      if let Some((_, frames)) = stack.split_once('\n') {
+        eprintln!("{frames}");
+      }
+    }
+  }
+
+  // Restore default SIGINT handling and re-raise so the process is terminated
+  // *by the signal* (WIFSIGNALED, code 130) exactly like Node's `raise(SIGINT)`
+  // — not via a normal `exit(130)`, which callers observe as a clean exit.
+  if let Some(id) = SIGINT_TRACE_HANDLER_ID.lock().unwrap().take() {
+    deno_signals::unregister(libc::SIGINT, id);
+  }
+  // SAFETY: re-raising SIGINT after removing our handler; the signal-handling
+  // thread now applies the default action and tears the process down.
+  unsafe {
+    libc::raise(libc::SIGINT);
+  }
+  // The signal is delivered asynchronously by the signal thread; park here so
+  // we never resume executing JS before it terminates us.
+  loop {
+    std::thread::sleep(std::time::Duration::from_secs(3600));
+  }
 }
 
 #[repr(u32)]
