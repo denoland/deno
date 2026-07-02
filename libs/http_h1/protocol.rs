@@ -8,7 +8,6 @@ use crate::ParseError;
 use crate::RequestHead;
 use crate::Version;
 use crate::parse_request_head;
-use crate::parse_request_head_uninit;
 use crate::parse_request_head_uninit_all_with_options;
 use crate::parse_request_head_uninit_with_options;
 
@@ -55,13 +54,18 @@ pub enum BodyStatus<'a> {
   Partial { consumed: usize },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Protocol {
   request_body: BodyKind,
   chunk_remaining: usize,
   chunk_needs_crlf: bool,
   chunk_waiting_trailers: bool,
   allow_missing_host: bool,
+  allow_multiple_host: bool,
+  reject_bare_lf: bool,
+  // Trailers parsed from the chunked request body (after the terminating
+  // 0-size chunk). node:http exposes them as req.rawTrailers / req.trailers.
+  request_trailers: Vec<(Vec<u8>, Vec<u8>)>,
 }
 
 impl Default for Protocol {
@@ -78,11 +82,27 @@ impl Protocol {
       chunk_needs_crlf: false,
       chunk_waiting_trailers: false,
       allow_missing_host: false,
+      allow_multiple_host: false,
+      reject_bare_lf: false,
+      request_trailers: Vec::new(),
     }
+  }
+
+  // Takes the trailers parsed from the most recent chunked request body.
+  pub fn take_request_trailers(&mut self) -> Vec<(Vec<u8>, Vec<u8>)> {
+    core::mem::take(&mut self.request_trailers)
   }
 
   pub fn set_allow_missing_host(&mut self, allow: bool) {
     self.allow_missing_host = allow;
+  }
+
+  pub fn set_allow_multiple_host(&mut self, allow: bool) {
+    self.allow_multiple_host = allow;
+  }
+
+  pub fn set_reject_bare_lf(&mut self, reject: bool) {
+    self.reject_bare_lf = reject;
   }
 
   pub fn next_request<'a>(
@@ -111,16 +131,14 @@ impl Protocol {
     headers: &'a mut [Header<'a>],
     parse_headers: &mut [MaybeUninit<httparse::Header<'a>>],
   ) -> Result<RequestStatus<'a>, ProtocolError> {
-    let Some(head) = if self.allow_missing_host {
-      parse_request_head_uninit_with_options(
-        input,
-        headers,
-        parse_headers,
-        true,
-      )
-    } else {
-      parse_request_head_uninit(input, headers, parse_headers)
-    }
+    let Some(head) = parse_request_head_uninit_with_options(
+      input,
+      headers,
+      parse_headers,
+      self.allow_missing_host,
+      self.allow_multiple_host,
+      self.reject_bare_lf,
+    )
     .map_err(ProtocolError::Parse)?
     else {
       return Ok(RequestStatus::Partial);
@@ -146,6 +164,8 @@ impl Protocol {
       headers,
       parse_headers,
       self.allow_missing_host,
+      self.allow_multiple_host,
+      self.reject_bare_lf,
     )
     .map_err(ProtocolError::Parse)?
     else {
@@ -190,13 +210,21 @@ impl Protocol {
         })
       }
       BodyKind::Chunked => self.chunked_body_chunk(input),
+      BodyKind::Indeterminate => {
+        // The body framing is unknown (unrecognized Transfer-Encoding); reading
+        // it is a parse error, which the serve loop turns into a 400.
+        Err(ProtocolError::Parse(ParseError::Invalid))
+      }
     }
   }
 
   pub fn content_length_remaining(&self) -> Option<u64> {
     match self.request_body {
       BodyKind::ContentLength(remaining) => Some(remaining),
-      BodyKind::Empty | BodyKind::Chunked | BodyKind::Upgrade => None,
+      BodyKind::Empty
+      | BodyKind::Chunked
+      | BodyKind::Upgrade
+      | BodyKind::Indeterminate => None,
     }
   }
 
@@ -212,15 +240,18 @@ impl Protocol {
     input: &'a [u8],
   ) -> Result<BodyStatus<'a>, ProtocolError> {
     if self.chunk_waiting_trailers {
-      let trailers = match parse_trailers(input)? {
-        TrailerStatus::Complete { consumed } => consumed,
+      let consumed = match parse_trailers(input)? {
+        TrailerStatus::Complete { consumed, trailers } => {
+          self.request_trailers = trailers;
+          consumed
+        }
         TrailerStatus::Partial => {
           return Ok(BodyStatus::Partial { consumed: 0 });
         }
       };
       self.chunk_waiting_trailers = false;
       self.request_body = BodyKind::Empty;
-      return Ok(BodyStatus::Complete { consumed: trailers });
+      return Ok(BodyStatus::Complete { consumed });
     }
 
     let mut cursor = 0usize;
@@ -250,14 +281,17 @@ impl Protocol {
         .map_err(ProtocolError::Parse)?;
       cursor = line_end + 2;
       if size == 0 {
-        let trailers = match parse_trailers(&input[cursor..])? {
-          TrailerStatus::Complete { consumed } => consumed,
+        let trailer_bytes = match parse_trailers(&input[cursor..])? {
+          TrailerStatus::Complete { consumed, trailers } => {
+            self.request_trailers = trailers;
+            consumed
+          }
           TrailerStatus::Partial => {
             self.chunk_waiting_trailers = true;
             return Ok(BodyStatus::Partial { consumed: cursor });
           }
         };
-        let consumed = cursor + trailers;
+        let consumed = cursor + trailer_bytes;
         self.request_body = BodyKind::Empty;
         return Ok(BodyStatus::Complete { consumed });
       }
@@ -338,12 +372,16 @@ fn parse_chunk_size(line: &[u8]) -> Result<usize, ParseError> {
 }
 
 enum TrailerStatus {
-  Complete { consumed: usize },
+  Complete {
+    consumed: usize,
+    trailers: Vec<(Vec<u8>, Vec<u8>)>,
+  },
   Partial,
 }
 
 fn parse_trailers(input: &[u8]) -> Result<TrailerStatus, ProtocolError> {
   let mut cursor = 0usize;
+  let mut trailers = Vec::new();
   loop {
     let Some(line_end) = find_crlf(&input[cursor..]) else {
       if input.len().saturating_sub(cursor) > MAX_TRAILER_BYTES {
@@ -355,25 +393,38 @@ fn parse_trailers(input: &[u8]) -> Result<TrailerStatus, ProtocolError> {
     if line_end == cursor {
       return Ok(TrailerStatus::Complete {
         consumed: cursor + 2,
+        trailers,
       });
     }
     if line_end + 2 > MAX_TRAILER_BYTES {
       return Err(ProtocolError::HeadTooLarge);
     }
-    validate_trailer_line(&input[cursor..line_end])?;
+    let (name, value) = parse_trailer_line(&input[cursor..line_end])?;
+    trailers.push((name.to_vec(), value.to_vec()));
     cursor = line_end + 2;
   }
 }
 
-fn validate_trailer_line(line: &[u8]) -> Result<(), ProtocolError> {
+// Returns the (name, OWS-trimmed value) of a single trailer line, validating
+// both. node:http exposes these via req.rawTrailers/req.trailers.
+fn parse_trailer_line(line: &[u8]) -> Result<(&[u8], &[u8]), ProtocolError> {
   let Some(colon) = line.iter().position(|byte| *byte == b':') else {
     return Err(ProtocolError::Parse(ParseError::Invalid));
   };
-  if !valid_field_name(&line[..colon]) || !valid_field_value(&line[colon + 1..])
-  {
+  let name = &line[..colon];
+  let value = &line[colon + 1..];
+  if !valid_field_name(name) || !valid_field_value(value) {
     return Err(ProtocolError::Parse(ParseError::Invalid));
   }
-  Ok(())
+  let start = value
+    .iter()
+    .position(|byte| *byte != b' ' && *byte != b'\t')
+    .unwrap_or(value.len());
+  let end = value
+    .iter()
+    .rposition(|byte| *byte != b' ' && *byte != b'\t')
+    .map_or(start, |index| index + 1);
+  Ok((name, &value[start..end]))
 }
 
 fn valid_field_name(name: &[u8]) -> bool {
