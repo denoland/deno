@@ -107,6 +107,7 @@ type GlobalCompositeOperation =
   | "color"
   | "color-burn"
   | "color-dodge"
+  | "clear"
   | "copy"
   | "darken"
   | "destination-atop"
@@ -300,6 +301,7 @@ declare var Path2D: {
 
 /**
  * Compositing properties shared by the canvas rendering contexts.
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/globalAlpha)
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
@@ -315,6 +317,7 @@ interface CanvasCompositing {
 
 /**
  * Image drawing methods shared by the canvas rendering contexts.
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/drawImage)
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
@@ -344,6 +347,7 @@ interface CanvasDrawImage {
 
 /**
  * Path drawing methods shared by the canvas rendering contexts.
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/beginPath)
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
@@ -387,6 +391,7 @@ interface CanvasDrawPath {
 
 /**
  * Fill and stroke style properties shared by the canvas rendering contexts.
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fillStyle)
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
@@ -427,6 +432,7 @@ interface CanvasFillStrokeStyles {
 
 /**
  * Filter property shared by the canvas rendering contexts.
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/filter)
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
@@ -475,6 +481,7 @@ interface CanvasImageData {
 
 /**
  * Image smoothing properties shared by the canvas rendering contexts.
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/imageSmoothingEnabled)
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
@@ -492,6 +499,7 @@ interface CanvasImageSmoothing {
 
 /**
  * Path building methods shared by the canvas rendering contexts and `Path2D`.
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/beginPath)
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
@@ -570,6 +578,7 @@ interface CanvasPath {
 
 /**
  * Path drawing style properties shared by the canvas rendering contexts.
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/lineCap)
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
@@ -607,6 +616,7 @@ interface CanvasPathDrawingStyles {
 
 /**
  * Rectangle drawing methods shared by the canvas rendering contexts.
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/clearRect)
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
@@ -649,6 +659,7 @@ interface CanvasShadowStyles {
 
 /**
  * State management methods shared by the canvas rendering contexts.
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/beginLayer)
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
@@ -692,6 +703,7 @@ interface BeginLayerOptions {
 
 /**
  * Text drawing methods shared by the canvas rendering contexts.
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fillText)
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
@@ -707,6 +719,7 @@ interface CanvasText {
 
 /**
  * Text drawing style properties shared by the canvas rendering contexts.
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/font)
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D
@@ -736,6 +749,7 @@ interface CanvasTextDrawingStyles {
 
 /**
  * Transformation methods shared by the canvas rendering contexts.
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/getTransform)
  *
  * @experimental **UNSTABLE**: New API, yet to be vetted.
  * @category Canvas 2D

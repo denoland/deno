@@ -1,16 +1,20 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::WebIDL;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::cppgc::Visitor;
+use deno_core::webidl::ContextFn;
 use deno_core::webidl::UnrestrictedDouble;
 use deno_core::webidl::WebIdlConverter;
+use deno_core::webidl::WebIdlError;
 use deno_error::JsErrorBox;
 use deno_image::image::DynamicImage;
 use deno_image::image::GenericImageView;
@@ -73,6 +77,48 @@ use crate::text_metrics::TextMetrics;
 
 pub const CONTEXT_ID: &str = "2d";
 pub const UNSTABLE_FEATURE_NAME: &str = "canvas2d";
+
+struct BeginLayerOptions {
+  filter: Option<BeginLayerOptionsFilter>,
+}
+
+#[derive(WebIDL)]
+#[webidl(dictionary)]
+struct BeginLayerOptionsFilter {
+  name: Option<String>,
+  values: Option<Vec<f64>>,
+}
+
+impl<'a> WebIdlConverter<'a> for BeginLayerOptions {
+  type Options = ();
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: v8::Local<'a, v8::Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    _: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    if !value.is_object() {
+      return Ok(Self { filter: None });
+    }
+
+    let obj: v8::Local<'_, v8::Object> = if let Ok(obj) = value.try_into() {
+      obj
+    } else {
+      return Ok(Self { filter: None });
+    };
+
+    let filter_key = v8::String::new(scope, "filter").unwrap();
+    let filter = match obj.get(scope, filter_key.into()) {
+      Some(value) if value.is_object() && !value.is_array() => Some(
+        BeginLayerOptionsFilter::convert(scope, value, prefix, context, &())?,
+      ),
+      _ => None,
+    };
+    Ok(Self { filter })
+  }
+}
 
 pub struct OffscreenCanvasRenderingContext2D {
   canvas: v8::Global<v8::Object>,
@@ -151,8 +197,7 @@ impl OffscreenCanvasRenderingContext2D {
     } else {
       None
     };
-    let (brush, brush_transform) =
-      self.resolve_brush(scope, style, 1.0, state.transform);
+    let (brush, brush_transform) = self.resolve_brush(scope, style, 1.0);
     let text_align = state.text_align;
     let text_baseline = state.text_baseline;
     let transform = state.transform;
@@ -205,9 +250,9 @@ impl OffscreenCanvasRenderingContext2D {
       canvas_w,
       canvas_h,
     );
-    match &mut *drawing {
-      DrawingBackend::Vello(scene) => {
-        if let (Some(sb), Some(st)) = (&shadow_brush, &shadow_xform) {
+    if let (Some(sb), Some(st)) = (&shadow_brush, &shadow_xform) {
+      match &mut *drawing {
+        DrawingBackend::Vello(scene) => {
           for line in layout.lines() {
             for item in line.items() {
               let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
@@ -230,6 +275,45 @@ impl OffscreenCanvasRenderingContext2D {
             }
           }
         }
+        DrawingBackend::VelloCpu(ctx, resources) => {
+          for line in layout.lines() {
+            for item in line.items() {
+              let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+                continue;
+              };
+              let font = peniko::FontData::clone(glyph_run.run().font());
+              let font_size = glyph_run.run().font_size();
+              Self::apply_cpu_paint(ctx, sb.clone(), None);
+              ctx.set_transform(*st);
+              ctx
+                .glyph_run(resources, &font)
+                .font_size(font_size)
+                .fill_glyphs(glyph_run.positioned_glyphs().map(|g| {
+                  vello_cpu::Glyph {
+                    id: g.id,
+                    x: draw_x + g.x * x_scale,
+                    y: baseline_y as f32 + g.y - layout_baseline,
+                  }
+                }));
+            }
+          }
+        }
+      }
+      // Per spec, the shadow is composited first, then the source text is
+      // composited on top as a separate step.
+      if has_layer {
+        Self::pop_compositing_layer(&mut drawing);
+        Self::push_compositing_layer(
+          &mut drawing,
+          op,
+          global_alpha,
+          canvas_w,
+          canvas_h,
+        );
+      }
+    }
+    match &mut *drawing {
+      DrawingBackend::Vello(scene) => {
         for line in layout.lines() {
           for item in line.items() {
             let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
@@ -257,29 +341,6 @@ impl OffscreenCanvasRenderingContext2D {
         }
       }
       DrawingBackend::VelloCpu(ctx, resources) => {
-        if let (Some(sb), Some(st)) = (&shadow_brush, &shadow_xform) {
-          for line in layout.lines() {
-            for item in line.items() {
-              let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
-                continue;
-              };
-              let font = peniko::FontData::clone(glyph_run.run().font());
-              let font_size = glyph_run.run().font_size();
-              Self::apply_cpu_paint(ctx, sb.clone(), None);
-              ctx.set_transform(*st);
-              ctx
-                .glyph_run(resources, &font)
-                .font_size(font_size)
-                .fill_glyphs(glyph_run.positioned_glyphs().map(|g| {
-                  vello_cpu::Glyph {
-                    id: g.id,
-                    x: draw_x + g.x * x_scale,
-                    y: baseline_y as f32 + g.y - layout_baseline,
-                  }
-                }));
-            }
-          }
-        }
         for line in layout.lines() {
           for item in line.items() {
             let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
@@ -439,6 +500,18 @@ impl OffscreenCanvasRenderingContext2D {
               log::warn!("canvas2d: render error: {e}");
             })
             .ok()
+            .map(|mut buf| {
+              // render_scene returns premultiplied alpha; DynamicImage expects
+              // straight alpha, same as the VelloCpu branch below.
+              if self.settings.alpha {
+                unpremultiply_rgba(&mut buf);
+              } else {
+                for pixel in buf.chunks_exact_mut(4) {
+                  pixel[3] = 255;
+                }
+              }
+              buf
+            })
         } else {
           None
         }
@@ -458,15 +531,7 @@ impl OffscreenCanvasRenderingContext2D {
             pixel[3] = 255;
           }
         } else {
-          for pixel in buf.chunks_exact_mut(4) {
-            let a = pixel[3];
-            if a != 0 && a != 255 {
-              let inv = 255.0 / a as f32;
-              pixel[0] = (pixel[0] as f32 * inv).min(255.0) as u8;
-              pixel[1] = (pixel[1] as f32 * inv).min(255.0) as u8;
-              pixel[2] = (pixel[2] as f32 * inv).min(255.0) as u8;
-            }
-          }
+          unpremultiply_rgba(&mut buf);
         }
         Some(buf)
       }
@@ -498,8 +563,6 @@ impl OffscreenCanvasRenderingContext2D {
       });
     *image = DynamicImage::ImageRgba8(rgba);
   }
-
-  // --- Internal helpers for Phase 2 paths ---
 
   fn resolve_optional_path(
     &self,
@@ -562,7 +625,7 @@ impl OffscreenCanvasRenderingContext2D {
       None
     };
     let (brush, brush_transform) =
-      self.resolve_brush(scope, &state.fill_style, 1.0, state.transform);
+      self.resolve_brush(scope, &state.fill_style, 1.0);
     let transform = state.transform;
     let fill = if rule == "evenodd" {
       peniko::Fill::EvenOdd
@@ -577,6 +640,12 @@ impl OffscreenCanvasRenderingContext2D {
       Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
     if let (Some(sb), Some(st)) = (shadow_brush, shadow_xform) {
       Self::fill_on(&mut drawing, &path, fill, st, sb, None);
+      // Per spec, the shadow is composited first, then the source shape is
+      // composited on top as a separate step.
+      if has_layer {
+        Self::pop_compositing_layer(&mut drawing);
+        Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
+      }
     }
     Self::fill_on(&mut drawing, &path, fill, transform, brush, brush_transform);
     if has_layer {
@@ -607,7 +676,7 @@ impl OffscreenCanvasRenderingContext2D {
       None
     };
     let (brush, brush_transform) =
-      self.resolve_brush(scope, &state.stroke_style, 1.0, state.transform);
+      self.resolve_brush(scope, &state.stroke_style, 1.0);
     let transform = state.transform;
 
     let mut stroke =
@@ -649,6 +718,12 @@ impl OffscreenCanvasRenderingContext2D {
       Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
     if let (Some(sb), Some(st)) = (shadow_brush, shadow_xform) {
       Self::stroke_on(&mut drawing, &path, &stroke, st, sb, None);
+      // Per spec, the shadow is composited first, then the source shape is
+      // composited on top as a separate step.
+      if has_layer {
+        Self::pop_compositing_layer(&mut drawing);
+        Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
+      }
     }
     Self::stroke_on(
       &mut drawing,
@@ -719,12 +794,16 @@ impl OffscreenCanvasRenderingContext2D {
     None
   }
 
+  // Note: vello (GPU and CPU) applies brush transforms relative to the shape
+  // transform (the encoded transform is `shape_transform * brush_transform`),
+  // so gradients use IDENTITY and patterns pass only their own transform to
+  // end up in user space as the spec requires. The canvas CTM does not need
+  // to be threaded into the brush transform separately.
   fn resolve_brush(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
     style: &FillStrokeStyle,
     global_alpha: f32,
-    _ctm: kurbo::Affine,
   ) -> (peniko::Brush, Option<kurbo::Affine>) {
     match style {
       FillStrokeStyle::Color(c) => {
@@ -1446,7 +1525,7 @@ impl OffscreenCanvasRenderingContext2D {
       None
     };
     let (brush, brush_transform) =
-      self.resolve_brush(scope, &state.fill_style, 1.0, state.transform);
+      self.resolve_brush(scope, &state.fill_style, 1.0);
     let transform = state.transform;
     drop(state);
     let rect = kurbo::Rect::new(*x, *y, *x + *w, *y + *h);
@@ -1456,6 +1535,12 @@ impl OffscreenCanvasRenderingContext2D {
       Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
     if let (Some(sb), Some(st)) = (shadow_brush, shadow_xform) {
       Self::fill_on(&mut drawing, &rect, peniko::Fill::NonZero, st, sb, None);
+      // Per spec, the shadow is composited first, then the source shape is
+      // composited on top as a separate step.
+      if has_layer {
+        Self::pop_compositing_layer(&mut drawing);
+        Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
+      }
     }
     Self::fill_on(
       &mut drawing,
@@ -1473,26 +1558,39 @@ impl OffscreenCanvasRenderingContext2D {
   #[fast]
   #[undefined]
   fn clear_rect(&self, x: f64, y: f64, w: f64, h: f64) {
-    if w == 0.0 || h == 0.0 {
+    if !x.is_finite()
+      || !y.is_finite()
+      || !w.is_finite()
+      || !h.is_finite()
+      || w == 0.0
+      || h == 0.0
+    {
       return;
     }
-    // When alpha=false, clearing restores to the opaque black background.
-    let clear_color = if self.settings.alpha {
-      peniko::Color::TRANSPARENT
-    } else {
-      peniko::Color::from_rgb8(0, 0, 0)
-    };
     let transform = self.state.borrow().transform;
     let rect = kurbo::Rect::new(x, y, x + w, y + h);
-    match &mut *self.drawing.borrow_mut() {
-      DrawingBackend::Vello(scene) => {
-        scene.fill(peniko::Fill::NonZero, transform, clear_color, None, &rect);
-      }
-      DrawingBackend::VelloCpu(ctx, _) => {
-        ctx.set_paint(clear_color);
-        ctx.fill_rect(&rect);
-      }
-    }
+    let (width, height) = self.data.dimensions();
+    let mut drawing = self.drawing.borrow_mut();
+    // Erase the rect to transparent black regardless of the current
+    // globalCompositeOperation/globalAlpha, by punching it out with an
+    // opaque brush under a canvas-wide "destination-out" layer. A plain
+    // source-over fill with a transparent color would be a no-op instead.
+    Self::push_compositing_layer(
+      &mut drawing,
+      GlobalCompositeOperation::DestinationOut,
+      1.0,
+      width,
+      height,
+    );
+    Self::fill_on(
+      &mut drawing,
+      &rect,
+      peniko::Fill::NonZero,
+      transform,
+      peniko::Brush::Solid(peniko::Color::BLACK),
+      None,
+    );
+    Self::pop_compositing_layer(&mut drawing);
   }
 
   /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-filltext>
@@ -1544,6 +1642,7 @@ impl OffscreenCanvasRenderingContext2D {
   #[setter]
   fn global_composite_operation(&self, #[webidl] value: String) {
     let op = match value.as_str() {
+      "clear" => GlobalCompositeOperation::Clear,
       "source-over" => GlobalCompositeOperation::SourceOver,
       "source-in" => GlobalCompositeOperation::SourceIn,
       "source-out" => GlobalCompositeOperation::SourceOut,
@@ -1779,24 +1878,21 @@ impl OffscreenCanvasRenderingContext2D {
     self.drawing.borrow_mut().reset(width, height);
   }
 
-  #[fast]
   #[undefined]
   fn begin_layer(
     &self,
-    options: Option<v8::Local<'_, v8::Value>>,
+    #[webidl] options: Option<BeginLayerOptions>,
   ) -> Result<(), Canvas2DError> {
-    if let Some(opts) = options
-      && !opts.is_undefined()
-      && !opts.is_null()
-      && !opts.is_object()
+    if let Some(options) = options
+      && let Some(filter) = options.filter
+      && filter.name.as_deref() == Some("colorMatrix")
     {
-      return Err(Canvas2DError::WebIdl(deno_core::webidl::WebIdlError {
-        prefix: "beginLayer".into(),
-        context: "Argument 1".into(),
-        kind: deno_core::webidl::WebIdlErrorKind::ConvertToConverterType(
-          "BeginLayerOptions",
-        ),
-      }));
+      let Some(values) = filter.values else {
+        return Err(Canvas2DError::InvalidBeginLayerFilter);
+      };
+      if values.len() != 20 {
+        return Err(Canvas2DError::InvalidBeginLayerFilter);
+      }
     }
 
     let current_state = self.state.borrow().clone();
@@ -2594,6 +2690,12 @@ impl OffscreenCanvasRenderingContext2D {
       Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
     if let (Some(sb), Some(st)) = (shadow_brush, shadow_xform) {
       Self::fill_on(&mut drawing, &rect, peniko::Fill::NonZero, st, sb, None);
+      // Per spec, the shadow is composited first, then the source image is
+      // composited on top as a separate step.
+      if has_layer {
+        Self::pop_compositing_layer(&mut drawing);
+        Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
+      }
     }
     Self::fill_on(
       &mut drawing,
