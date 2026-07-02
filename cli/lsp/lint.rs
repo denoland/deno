@@ -154,6 +154,8 @@ impl LspLinterResolver {
           fix: false,
           deno_lint_config,
           maybe_plugin_runner: plugin_runner,
+          // Type-aware (tsgolint) linting is not wired into the LSP yet.
+          maybe_tsgolint: None,
         });
         Arc::new(LspLinter { inner, lint_config })
       })

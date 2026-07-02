@@ -61,6 +61,7 @@ mod linter;
 mod plugins;
 mod reporters;
 mod rules;
+mod tsgolint;
 
 // TODO(bartlomieju): remove once we wire plugins through the CLI linter
 pub use ast_buffer::serialize_ast_to_buffer;
@@ -295,6 +296,10 @@ impl WorkspaceLinter {
 
     let exclude = lint_options.rules.exclude.clone();
 
+    // Capture the rules config before it's moved so we can derive which
+    // type-aware (tsgolint) rules to run.
+    let rules_config = lint_options.rules.clone();
+
     let plugin_specifiers = lint_options.plugins.clone();
     let lint_rules = self
       .lint_rule_provider
@@ -304,7 +309,14 @@ impl WorkspaceLinter {
 
     // TODO(bartlomieju): for now we don't support incremental caching if plugins are being used.
     // https://github.com/denoland/deno/issues/28025
-    if lint_rules.supports_incremental_cache() && plugin_specifiers.is_empty() {
+    //
+    // Likewise, skip the incremental cache when type-aware (tsgolint) linting is
+    // enabled: its diagnostics aren't reflected in the cache hash, so a file
+    // cached as "clean" would wrongly be skipped.
+    if lint_rules.supports_incremental_cache()
+      && plugin_specifiers.is_empty()
+      && !tsgolint::is_enabled()
+    {
       let mut hasher = FastInsecureHasher::new_deno_versioned();
       hasher.write_hashable(lint_rules.incremental_cache_state());
       if !plugin_specifiers.is_empty() {
@@ -343,6 +355,21 @@ impl WorkspaceLinter {
       bail!("No rules have been configured")
     }
 
+    // Type-aware linting (unstable): run tsgolint once over the whole batch
+    // up front; the per-file external_linter callback looks up the results.
+    let maybe_tsgolint = if tsgolint::is_enabled() {
+      let rules = tsgolint::resolve_rules(&rules_config);
+      match tsgolint::run(&member_dir, &paths, rules) {
+        Ok(results) => Some(Arc::new(results)),
+        Err(err) => {
+          log::warn!("Failed to run type-aware lint (tsgolint): {err:#}");
+          None
+        }
+      }
+    } else {
+      None
+    };
+
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rules,
       fix: lint_options.fix,
@@ -351,6 +378,7 @@ impl WorkspaceLinter {
         member_dir.dir_url(),
       )?,
       maybe_plugin_runner: plugin_runner,
+      maybe_tsgolint,
     }));
 
     let has_error = self.has_error.clone();
@@ -613,6 +641,7 @@ fn lint_stdin(
     configured_rules,
     deno_lint_config,
     maybe_plugin_runner: None,
+    maybe_tsgolint: None,
   });
 
   let r = linter.lint_file(&file_path, deno_ast::strip_bom(source_code), None);
