@@ -1739,7 +1739,7 @@ function registerDeclarativeServer(exports) {
           );
         }
       },
-      onError: exports.onError,
+      onError: exports.onError ? (error) => exports.onError(error) : undefined,
       handler: (req, connInfo) => {
         return exports.fetch(req, connInfo);
       },
