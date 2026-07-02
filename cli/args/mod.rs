@@ -1381,6 +1381,16 @@ impl CliOptions {
     self.flags.seed
   }
 
+  /// Maximum V8 heap size in megabytes (`--max-memory`).
+  pub fn max_memory(&self) -> Option<u64> {
+    self.flags.max_memory
+  }
+
+  /// Maximum process CPU time budget in seconds (`--max-cpu-time`).
+  pub fn max_cpu_time(&self) -> Option<u64> {
+    self.flags.max_cpu_time
+  }
+
   pub fn sub_command(&self) -> &DenoSubcommand {
     &self.flags.subcommand
   }

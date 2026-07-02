@@ -536,8 +536,9 @@ fn op_runtime_cpu_usage(#[buffer] out: &mut [f64]) {
   out[1] = user.as_micros() as f64;
 }
 
+/// Returns the process-wide `(system, user)` CPU time consumed so far.
 #[cfg(unix)]
-fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
+pub fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   let mut rusage = std::mem::MaybeUninit::uninit();
 
   // Uses POSIX getrusage from libc
@@ -559,8 +560,9 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   (sys, user)
 }
 
+/// Returns the process-wide `(system, user)` CPU time consumed so far.
 #[cfg(windows)]
-fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
+pub fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   use windows_sys::Win32::Foundation::FALSE;
   use windows_sys::Win32::Foundation::FILETIME;
   use windows_sys::Win32::Foundation::SYSTEMTIME;
@@ -629,8 +631,9 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   }
 }
 
+/// Returns the process-wide `(system, user)` CPU time consumed so far.
 #[cfg(not(any(windows, unix)))]
-fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
+pub fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   Default::default()
 }
 
