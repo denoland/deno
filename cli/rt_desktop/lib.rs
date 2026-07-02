@@ -1332,28 +1332,49 @@ laufey::main!(|| {
     match run_desktop(update_rolled_back, desktop_serve_port, data).await {
       Ok(()) => log::debug!("[desktop] run_desktop completed OK"),
       Err(error) => {
-        let is_js_error = js_error_downcast_ref(&error).is_some();
-        let error_string = match js_error_downcast_ref(&error) {
-          Some(js_error) => format_js_error(js_error, None),
-          None => format!("{:?}", error),
+        // A failure raised while the app's main module was still loading or
+        // first evaluating is tagged `DesktopStartupError` (see
+        // `denort::run`). It carries its own pre-formatted message.
+        let startup = error.downcast_ref::<denort::run::DesktopStartupError>();
+        let error_string = match startup {
+          Some(startup) => startup.message.clone(),
+          None => match js_error_downcast_ref(&error) {
+            Some(js_error) => format_js_error(js_error, None),
+            None => format!("{:?}", error),
+          },
         };
-        log::error!(
-          "{}: {}",
-          colors::red_bold("error"),
-          error_string.trim_start_matches("error: ")
-        );
-        // Only show native alert for non-JS errors (startup crashes).
-        // JS errors are already handled by the error reporting JS listener.
-        if !is_js_error {
-          laufey::alert(
-            "Application Error",
-            error_string.trim_start_matches("error: "),
-          );
+        let message = error_string.trim_start_matches("error: ");
+        log::error!("{}: {}", colors::red_bold("error"), message);
+        let is_startup = startup.is_some();
+        // A `DesktopStartupError` wraps the formatted message rather than the
+        // original `JsError`, so only consult `js_error_downcast_ref` for the
+        // untagged (post-load) case.
+        let is_js_error =
+          !is_startup && js_error_downcast_ref(&error).is_some();
+        if should_show_native_error_dialog(is_startup, is_js_error) {
+          laufey::alert("Application Error", message);
         }
       }
     }
   });
 });
+
+/// Decide whether the desktop shell should pop a native error dialog for a
+/// failure that propagated out of the runtime.
+///
+/// - Startup failures (the app's main module failed to load or first
+///   evaluate) are surfaced here because the app's own `error` /
+///   `unhandledrejection` listeners never ran — without a dialog a
+///   GUI-launched app just blinks a window and exits (deno#35544).
+/// - Non-JS crashes are surfaced too.
+/// - A post-load JS error is left to the app's own listeners, which already
+///   show a dialog; alerting again here would just duplicate it.
+fn should_show_native_error_dialog(
+  is_startup: bool,
+  is_js_error: bool,
+) -> bool {
+  is_startup || !is_js_error
+}
 
 /// Run as a headless worker (no Laufey window). Used when a framework dev
 /// server forks child processes that re-execute this dylib.
@@ -1933,6 +1954,37 @@ mod tests {
   use super::laufey_value_to_desktop_value;
   use super::laufey_value_to_json;
   use super::map_permission_status;
+  use super::should_show_native_error_dialog;
+
+  // --- should_show_native_error_dialog ---
+  //
+  // The desktop shell must not let a startup failure (e.g. a failed import)
+  // vanish: a GUI-launched app has no visible stderr, so an unsurfaced error
+  // presents as a window that blinks open and immediately closes
+  // (deno#35544). But it also must not double up with the app's own
+  // error/unhandledrejection listeners for post-load JS errors.
+
+  #[test]
+  fn startup_js_error_is_surfaced() {
+    // A failed import / link error / top-level throw during the load phase
+    // is tagged as a startup error and never reaches the app's listeners,
+    // so the shell must show the dialog itself.
+    assert!(should_show_native_error_dialog(true, false));
+  }
+
+  #[test]
+  fn post_load_js_error_is_left_to_the_app() {
+    // An uncaught error after the app loaded is reported by the app's own
+    // error/unhandledrejection listeners — a second dialog here would just
+    // duplicate it.
+    assert!(!should_show_native_error_dialog(false, true));
+  }
+
+  #[test]
+  fn non_js_crash_is_surfaced() {
+    // A non-JS runtime crash has no JS listener to report it.
+    assert!(should_show_native_error_dialog(false, false));
+  }
 
   // --- extract_fork_script_path ---
   //
