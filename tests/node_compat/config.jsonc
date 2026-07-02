@@ -2492,6 +2492,7 @@
     "parallel/test-microtask-queue-run.js": {},
     "parallel/test-mime-api.js": {},
     "parallel/test-mime-whatwg.js": {},
+    "parallel/test-mock-timers-abortsignal-timeout.js": {},
     "parallel/test-module-cache.js": {
       "flaky": true
     },
@@ -3181,6 +3182,7 @@
     // "parallel/test-runner-coverage-thresholds.js": {},
     "parallel/test-runner-enable-source-maps-issue.js": {},
     "parallel/test-runner-filter-warning.js": {},
+    "parallel/test-runner-mock-timers-with-timeout.js": {},
     "parallel/test-runner-root-after-with-refed-handles.js": {},
     "parallel/test-runner-snapshot-file-tests.js": {
       "ignore": true,
@@ -4530,8 +4532,6 @@
     "test-runner/test-run-watch-no-emit-restarted-disabled.mjs": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-watch-mode-inspect.mjs": {},
-    // TODO(bartlomieju): this test is very flaky on CI, especially on Windows ARM
-    // "sequential/test-worker-fshandles-open-close-on-termination.js": {},
     "wasm-allocation/test-wasm-allocation.js": {
       "ignore": true,
       "reason": "Relies on an RLIMIT_AS virtual-memory ulimit (declared in the test header) to force WebAssembly.Memory allocation failures; Deno's node_compat runner does not apply that rlimit"
@@ -5208,7 +5208,11 @@
       "darwin": false,
       "reason": "process.execve is not a function"
     },
+    "parallel/test-process-getactiveresources-track-active-handles.js": {},
+    "parallel/test-process-getactiveresources-track-active-requests.js": {},
     "parallel/test-process-getactiveresources-track-interval-lifetime.js": {},
+    "parallel/test-process-getactiveresources-track-multiple-timers.js": {},
+    "parallel/test-process-getactiveresources-track-timer-lifetime.js": {},
     "parallel/test-process-initgroups.js": {
       "linux": false,
       "darwin": false,
@@ -5244,6 +5248,7 @@
       "darwin": false,
       "reason": "error: Uncaught AssertionError: ifError got unwanted exception: ifError got unwa"
     },
+    "parallel/test-runner-get-test-context.js": {},
     "parallel/test-runner-global-setup-watch-mode.mjs": {
       "linux": false,
       "darwin": false,
@@ -5515,7 +5520,11 @@
     "sequential/test-timers-block-eventloop.js": {},
     "sequential/test-timers-set-interval-excludes-callback-duration.js": {},
     "sequential/test-tls-connect.js": {},
-    "sequential/test-worker-fshandles-open-close-on-termination.js": {},
+    "sequential/test-worker-fshandles-open-close-on-termination.js": {
+      "flaky": true,
+      "windows": false,
+      "reason": "times out on Windows; flaky on other platforms"
+    },
     "sequential/test-zlib-crc32-fast-api.js": {},
     "test-runner/test-output-default-output.mjs": {
       "linux": false,

@@ -178,6 +178,13 @@
                   "description": "Icon path for Linux (.png)."
                 }
               }
+            },
+            "deepLinks": {
+              "type": "array",
+              "description": "Custom URL schemes (deep links) the app registers with the OS, e.g. [\"acme\"] to handle acme://... links. Each entry is a bare scheme with no \"://\".",
+              "items": {
+                "type": "string"
+              }
             }
           }
         },
@@ -201,7 +208,7 @@
             },
             "linux": {
               "type": "string",
-              "description": "Output path for Linux (e.g. MyApp.AppImage, MyApp.deb)."
+              "description": "Output path for Linux (e.g. MyApp.AppImage, MyApp.deb, MyApp.rpm)."
             }
           }
         },
@@ -855,7 +862,7 @@
           "default": "nextLine",
           "enum": ["maintain", "sameLine", "nextLine"]
         },
-        "jsx.forceNewLineSurroundingContent": {
+        "jsx.forceNewLinesSurroundingContent": {
           "description": "Forces newlines surrounding the content of JSX elements.",
           "default": false,
           "type": "boolean"
@@ -887,6 +894,21 @@
         },
         "angularNextControlFlowSameLine": {
           "description": "Whether Angular next control-flow clauses stay on the same line.",
+          "default": true,
+          "type": "boolean"
+        },
+        "sortNamedImports": {
+          "description": "How to sort named imports within an import statement. \"caseInsensitive\" (the default) sorts ignoring case, \"caseSensitive\" sorts with uppercase before lowercase, and \"maintain\" preserves the source order.",
+          "default": "caseInsensitive",
+          "enum": ["maintain", "caseSensitive", "caseInsensitive"]
+        },
+        "sortNamedExports": {
+          "description": "How to sort named exports within an export statement. \"caseInsensitive\" (the default) sorts ignoring case, \"caseSensitive\" sorts with uppercase before lowercase, and \"maintain\" preserves the source order.",
+          "default": "caseInsensitive",
+          "enum": ["maintain", "caseSensitive", "caseInsensitive"]
+        },
+        "useEditorConfig": {
+          "description": "Whether `deno fmt` reads `.editorconfig` files to fill in formatting options that are not otherwise set. Defaults to true.",
           "default": true,
           "type": "boolean"
         },
@@ -965,6 +987,14 @@
       "description": "Enables or disables the use of a local vendor folder as a local cache for remote modules and node_modules folder for npm packages. Alternatively, use the `--vendor` flag or override the config via `--vendor=false`. Requires Deno 1.36.1 or later.",
       "type": "boolean"
     },
+    "jsrDepsInNodeModules": {
+      "description": "Installs `jsr:` dependencies into the `node_modules` directory via JSR's npm compatibility registry (`@jsr/<scope>__<name>`), the same way pnpm and npm handle JSR packages. When enabled Deno also writes a `@jsr:registry` entry to a `.npmrc` file in your project directory so external tooling can resolve these packages; this file is created on install and you may want to commit it (or add it to `.gitignore`). Has no effect unless a `node_modules` directory is in use.",
+      "type": "boolean"
+    },
+    "preferPackageJson": {
+      "description": "When enabled, `deno add`, `deno install` and `deno remove` manage dependencies in package.json instead of deno.json, creating a package.json if one does not exist. Equivalent to passing `--package-json` to those commands.",
+      "type": "boolean"
+    },
     "tasks": {
       "description": "Configuration for deno task",
       "type": "object",
@@ -993,6 +1023,27 @@
                     "type": "string"
                   },
                   "description": "Tasks that should be executed before this task"
+                },
+                "files": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Globs identifying input files. When set, the task participates in input-based caching and is skipped on subsequent runs if none of the inputs (or the listed `env` values, the command itself, or the fingerprints of the task's dependencies) have changed."
+                },
+                "output": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Globs identifying output artifacts produced by the task. Captured into the cache after a successful run and restored on a cache hit, so deleting them and re-running regenerates them instead of leaving them missing."
+                },
+                "env": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Names of environment variables whose values should be folded into the task fingerprint. Capture is explicit: variables not listed here are not part of the cache key, even if the command reads them."
                 }
               }
             }

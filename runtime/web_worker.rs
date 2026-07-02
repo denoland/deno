@@ -52,6 +52,7 @@ use deno_process::NpmProcessStateProviderRc;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
+use deno_web::Blob;
 use deno_web::BlobStoreTrait;
 use deno_web::InMemoryBroadcastChannel;
 use deno_web::JsMessageData;
@@ -190,6 +191,7 @@ pub struct WebWorkerInternalHandle {
   isolate_handle: v8::IsolateHandle,
   pub name: String,
   pub worker_type: WorkerThreadType,
+  pub maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 }
 
 impl WebWorkerInternalHandle {
@@ -316,6 +318,7 @@ fn create_handles(
   isolate_handle: v8::IsolateHandle,
   name: String,
   worker_type: WorkerThreadType,
+  maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 ) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
   let (ctrl_tx, ctrl_rx) = mpsc::channel::<WorkerControlEvent>(1);
@@ -332,6 +335,7 @@ fn create_handles(
     cancel: CancelHandle::new_rc(),
     sender: ctrl_tx,
     worker_type,
+    maybe_main_module_blob,
   };
   let external_handle = SendableWebWorkerHandle {
     receiver: ctrl_rx,
@@ -394,10 +398,15 @@ pub struct WebWorkerOptions {
   pub trace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  /// Captured root blob for `main_module`; paired with `main_module` when
+  /// constructing the worker's internal handle.
+  pub maybe_main_module_blob: Option<Arc<Blob>>,
   pub maybe_coverage_dir: Option<PathBuf>,
   pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub enable_raw_imports: bool,
   pub enable_stack_trace_arg_in_ops: bool,
+  pub wait_for_debugger_on_start: bool,
+  pub wait_for_page_wait_for_debugger: bool,
 }
 
 /// This struct is an implementation of `Worker` Web API
@@ -424,6 +433,8 @@ pub struct WebWorker {
   /// Set to `true` by the near-heap-limit callback when resource limits
   /// are exceeded, so the error handler can emit `ERR_WORKER_OUT_OF_MEMORY`.
   pub oom_triggered: Arc<AtomicBool>,
+  wait_for_debugger_on_start: bool,
+  wait_for_page_wait_for_debugger: bool,
 }
 
 impl Drop for WebWorker {
@@ -686,11 +697,21 @@ impl WebWorker {
 
     let (internal_handle, external_handle) = {
       let handle = js_runtime.v8_isolate().thread_safe_handle();
-      let (internal_handle, external_handle) =
-        create_handles(handle, options.name.clone(), options.worker_type);
+      let (internal_handle, external_handle) = create_handles(
+        handle,
+        options.name.clone(),
+        options.worker_type,
+        options
+          .maybe_main_module_blob
+          .clone()
+          .map(|blob| (options.main_module.clone(), blob)),
+      );
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       op_state.put(internal_handle.clone());
+      op_state.put(crate::ops::web_worker::WaitForWorkerDebuggerOnMessage(
+        options.wait_for_page_wait_for_debugger,
+      ));
       (internal_handle, external_handle)
     };
 
@@ -734,6 +755,9 @@ impl WebWorker {
         maybe_cpu_prof_config: options.maybe_cpu_prof_config,
         bootstrap_error: None,
         oom_triggered: Arc::new(AtomicBool::new(false)),
+        wait_for_debugger_on_start: options.wait_for_debugger_on_start,
+        wait_for_page_wait_for_debugger: options
+          .wait_for_page_wait_for_debugger,
       },
       external_handle,
       options.bootstrap,
@@ -1106,6 +1130,18 @@ pub async fn run_web_worker(
       .post_event(WorkerControlEvent::TerminalError(error, 1))
       .expect("Failed to post message to host");
     return Ok(());
+  }
+
+  if worker.wait_for_debugger_on_start {
+    worker
+      .js_runtime
+      .inspector()
+      .wait_for_runtime_run_if_waiting_for_debugger();
+  } else if worker.wait_for_page_wait_for_debugger {
+    worker
+      .js_runtime
+      .inspector()
+      .wait_for_page_wait_for_debugger();
   }
 
   // Execute provided source code immediately via V8 script evaluation

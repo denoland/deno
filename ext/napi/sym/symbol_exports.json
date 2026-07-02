@@ -205,6 +205,12 @@
     "uv_sem_destroy",
     "uv_sem_post",
     "uv_sem_wait",
-    "uv_sem_trywait"
+    "uv_sem_trywait",
+    "uv_cond_init",
+    "uv_cond_destroy",
+    "uv_cond_signal",
+    "uv_cond_broadcast",
+    "uv_cond_wait",
+    "uv_cond_timedwait"
   ]
 }

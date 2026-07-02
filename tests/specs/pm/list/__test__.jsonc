@@ -1,0 +1,50 @@
+{
+  "tempDir": true,
+  "tests": {
+    "flat": {
+      "steps": [
+        { "args": "install", "output": "[WILDCARD]" },
+        { "args": "list", "output": "flat.out" }
+      ]
+    },
+    "prod": {
+      "steps": [
+        { "args": "install", "output": "[WILDCARD]" },
+        { "args": "list --prod", "output": "prod.out" }
+      ]
+    },
+    "dev": {
+      "steps": [
+        { "args": "install", "output": "[WILDCARD]" },
+        { "args": "list --dev", "output": "dev.out" }
+      ]
+    },
+    "filter": {
+      "steps": [
+        { "args": "install", "output": "[WILDCARD]" },
+        { "args": "list *esm-basic", "output": "filter.out" }
+      ]
+    },
+    "jsr": {
+      "steps": [
+        { "args": "install", "output": "[WILDCARD]" },
+        { "args": "list @denotest/add", "output": "jsr.out" }
+      ]
+    },
+    "depth": {
+      "steps": [
+        { "args": "install", "output": "[WILDCARD]" },
+        { "args": "list --depth 2", "output": "depth.out" }
+      ]
+    },
+    "no_match": {
+      "steps": [
+        { "args": "install", "output": "[WILDCARD]" },
+        {
+          "args": "list nonexistent-package",
+          "output": "No matching dependencies.\n"
+        }
+      ]
+    }
+  }
+}

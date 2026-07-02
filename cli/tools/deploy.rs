@@ -51,10 +51,7 @@ pub async fn deploy(
         )
         .await?;
       let info = serde_json::from_slice::<JsrPackageInfo>(&file.source)?;
-      let latest_version = info
-        .versions
-        .keys()
-        .max()
+      let latest_version = resolve_deploy_cli_version(&info)
         .expect("expected @deno/deploy to be published");
       Url::parse(&format!("jsr:@deno/deploy@{latest_version}"))
         .map_err(ResolveUrlOrPathError::UrlParse)?
@@ -81,6 +78,34 @@ pub async fn deploy(
   Ok(worker.run().await?)
 }
 
+fn resolve_deploy_cli_version(
+  info: &JsrPackageInfo,
+) -> Option<&deno_semver::Version> {
+  info.latest.as_ref().or_else(|| info.versions.keys().max())
+}
+
 pub fn get_token_entry() -> Result<keyring::Entry, keyring::Error> {
   keyring::Entry::new("Deno Deploy Token", "Deno Deploy")
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn resolve_deploy_cli_version_uses_jsr_latest() {
+    let info = serde_json::from_value::<JsrPackageInfo>(serde_json::json!({
+      "latest": "1.0.0",
+      "versions": {
+        "1.0.0": {},
+        "2.0.0": {}
+      }
+    }))
+    .unwrap();
+
+    assert_eq!(
+      resolve_deploy_cli_version(&info).unwrap().to_string(),
+      "1.0.0"
+    );
+  }
 }

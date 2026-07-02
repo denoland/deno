@@ -24,6 +24,7 @@ import {
   op_snapshot_options,
   op_worker_close,
   op_worker_get_type,
+  op_worker_maybe_wait_for_debugger,
   op_worker_post_message,
   op_worker_post_message_raw,
   op_worker_recv_message,
@@ -47,8 +48,10 @@ const {
   ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  Promise,
   PromisePrototypeThen,
   PromiseResolve,
+  queueMicrotask,
   ReflectApply,
   StringPrototypePadEnd,
   Symbol,
@@ -292,7 +295,11 @@ function dispatchWorkerMessage(data) {
   const msgEvent = new event.MessageEvent("message", {
     cancelable: false,
     data: message,
-    ports: ArrayPrototypeFilter(
+    // Skip the transferables filter for the common no-transferables case.
+    // Passing `undefined` lets the MessageEvent constructor take its cheap
+    // `ports == null` branch (a single frozen empty array, no iterator
+    // validation) instead of allocating a filtered array per message.
+    ports: transferables.length === 0 ? undefined : ArrayPrototypeFilter(
       transferables,
       (t) => ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
     ),
@@ -336,14 +343,25 @@ async function pollForMessages() {
     }
     const data = await recvMessage;
     if (data === null) break;
+    op_worker_maybe_wait_for_debugger();
     dispatchWorkerMessage(data);
-    // Sync drain: process a limited batch of already-queued messages
-    // without going through the async op machinery. The batch limit
-    // prevents starvation of the event loop when message handlers
-    // synchronously post new messages (e.g. ping-pong patterns).
+    // Drain messages already queued on the host side instead of taking the
+    // async op + Promise path for each. The whole burst is processed within
+    // this event-loop turn; the batch limit prevents starving the event loop
+    // under a sustained flood.
     for (let i = 0; i < 1000 && !isClosing; i++) {
       const syncData = op_worker_recv_message_sync();
       if (syncData === null) break;
+      // Each message dispatch is its own task. Yield a microtask before
+      // delivering this already-dequeued message so a handler that re-armed
+      // itself in a microtask after the previous dispatch (e.g. reassigning
+      // `onmessage` inside a `.then`) is installed first -- otherwise the
+      // message reaches the stale handler and is lost. A synchronous
+      // checkpoint can't help: V8 won't run microtasks reentrantly while we
+      // are already inside one.
+      await new Promise((resolve) => queueMicrotask(() => resolve()));
+      if (isClosing) break;
+      op_worker_maybe_wait_for_debugger();
       dispatchWorkerMessage(syncData);
     }
   }
@@ -667,6 +685,10 @@ const NOT_IMPORTED_OPS = [
   "op_test_event_exit",
   "op_test_isolate_exit",
   "op_pledge_test_permissions",
+  "op_test_snapshot_in_update_mode",
+  "op_test_snapshot_read",
+  "op_test_snapshot_write",
+  "op_test_event_snapshot_summary",
 
   // TODO(bartlomieju): used in various integration tests - figure out a way
   // to not depend on them.
@@ -712,6 +734,21 @@ function removeImportedOps() {
 // methods should be left there.
 ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
+// `Deno.test` and its sub-methods are no-ops outside of `deno test`, kept for
+// compatibility so they don't error under `deno run`. Mirrors the surface of
+// the real `Deno.test` defined in cli/js/40_test.js.
+function noopTest() {}
+noopTest.ignore = () => {};
+noopTest.only = () => {};
+noopTest.beforeAll = () => {};
+noopTest.beforeEach = () => {};
+noopTest.afterEach = () => {};
+noopTest.afterAll = () => {};
+noopTest.sanitizer = () => {};
+const noopTestEach = () => () => {};
+noopTest.each = noopTestEach;
+noopTest.only.each = noopTestEach;
+noopTest.ignore.each = noopTestEach;
 // Build finalDenoNs without spreading denoNs: spread invokes every getter,
 // including the lazy ones (Deno.serve / Deno.run / etc.) that intentionally
 // avoid loading 06_streams / 22_body / 40_process at snapshot time. Use
@@ -724,7 +761,7 @@ const finalDenoNs = ObjectDefineProperties(
     // Deno.test, Deno.bench, Deno.lint are noops here, but kept for
     // compatibility; so that they don't cause errors when used outside of
     // `deno test`/`deno bench`/`deno lint` contexts.
-    test: () => {},
+    test: noopTest,
     bench: () => {},
     lint: {
       runPlugin: () => {

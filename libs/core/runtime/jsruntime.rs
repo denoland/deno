@@ -135,6 +135,21 @@ use crate::stats::RuntimeActivityType;
 use crate::uv_compat;
 
 pub type WaitForInspectorDisconnectCallback = Box<dyn Fn()>;
+
+/// A per-isolate hook invoked when V8's host-initialize-import-meta callback
+/// fires for a module that is not registered in deno_core's module map (e.g.
+/// a `node:vm` `SourceTextModule`). The embedder is expected to populate the
+/// `meta` object as needed and return; the hook is not allowed to throw.
+///
+/// Each argument carries its own lifetime parameter (rather than being tied
+/// to the scope's `'s`) so the unbound `Local`s V8 passes into the
+/// extern "C" callback can be forwarded without re-creating handles.
+pub type ExternalModuleImportMetaCb = for<'s, 'i, 'm, 'o> fn(
+  scope: &mut v8::PinScope<'s, 'i>,
+  module: v8::Local<'m, v8::Module>,
+  meta: v8::Local<'o, v8::Object>,
+);
+
 const STATE_DATA_OFFSET: u32 = 0;
 
 pub type ExtensionTranspiler =
@@ -505,6 +520,15 @@ pub struct JsRuntimeState {
   pub(crate) vm_dynamic_import_callbacks:
     RefCell<HashMap<u32, v8::Global<v8::Function>>>,
   pub(crate) next_vm_dynamic_import_callback_id: Cell<u32>,
+  /// Hook invoked by `host_initialize_import_meta_object_callback` when V8
+  /// asks to initialize `import.meta` for a module that is *not* tracked by
+  /// the module map. This is the path `node:vm` `SourceTextModule` takes:
+  /// the v8::Module is created directly by the `node:vm` op and is never
+  /// registered in the deno_core module map, but V8 still invokes the
+  /// per-isolate import-meta callback for it. Without this hook the
+  /// callback used to `panic!("Module not found")`.
+  pub(crate) external_module_import_meta_cb:
+    Cell<Option<ExternalModuleImportMetaCb>>,
   pub(crate) eval_context_get_code_cache_cb:
     RefCell<Option<EvalContextGetCodeCacheCb>>,
   pub(crate) eval_context_code_cache_ready_cb:
@@ -858,6 +882,7 @@ impl JsRuntime {
       custom_module_evaluation_cb: options.custom_module_evaluation_cb,
       vm_dynamic_import_callbacks: Default::default(),
       next_vm_dynamic_import_callback_id: Cell::new(1),
+      external_module_import_meta_cb: Cell::new(None),
       eval_context_get_code_cache_cb: RefCell::new(
         eval_context_get_code_cache_cb,
       ),
@@ -967,15 +992,12 @@ impl JsRuntime {
     // threads can queue foreground tasks. The task queue Arc is already shared
     // with JsRuntimeState (created above) so the event loop can drain it
     // without touching the global map.
-    // Not all contexts have a tokio runtime (e.g. snapshot creation, unit tests).
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-      setup::register_isolate(
-        setup::isolate_ptr_to_key(isolate_ptr),
-        waker.clone(),
-        handle,
-        state_rc.foreground_tasks.clone(),
-      );
-    }
+    setup::register_isolate(
+      setup::isolate_ptr_to_key(isolate_ptr),
+      waker.clone(),
+      tokio::runtime::Handle::try_current().ok(),
+      state_rc.foreground_tasks.clone(),
+    );
 
     // ...isolate is fully set up, we can forward its pointer to the ops to finish
     // their' setup...
@@ -1671,12 +1693,14 @@ impl JsRuntime {
   fn store_js_callbacks(&mut self, realm: &JsRealm, will_snapshot: bool) {
     let (
       event_loop_tick_cb,
+      process_timers_cb,
       drain_next_tick_and_macrotasks_cb,
       handle_rejections_cb,
       build_custom_error_cb,
       error_constructors,
       run_immediate_callbacks_cb,
       wasm_instance_fn,
+      wasm_instances_map,
     ) = {
       scope!(scope, self);
       let context = realm.context();
@@ -1692,6 +1716,12 @@ impl JsRuntime {
         core_obj,
         EVENT_LOOP_TICK,
         "Deno.core.__eventLoopTick",
+      );
+      let process_timers_cb: v8::Local<v8::Function> = bindings::get(
+        scope,
+        core_obj,
+        PROCESS_TIMERS,
+        "Deno.core.__processTimers",
       );
       let drain_next_tick_and_macrotasks_cb: v8::Local<v8::Function> =
         bindings::get(
@@ -1725,6 +1755,7 @@ impl JsRuntime {
         "Deno.core.runImmediateCallbacks",
       );
       let mut wasm_instance_fn = None;
+      let mut wasm_instances_map = None;
       if !will_snapshot {
         let key = WEBASSEMBLY.v8_string(scope).unwrap();
         if let Some(web_assembly_obj_value) = global.get(scope, key.into()) {
@@ -1737,6 +1768,13 @@ impl JsRuntime {
               INSTANCE,
               "WebAssembly.Instance",
             ));
+            // Registry mapping a Wasm module's namespace to its instance
+            // exports, shared by all synthetic `.wasm` modules in this realm
+            // via `import.meta.wasmInstances`. See `ContextState` for details.
+            let weak_map_fn = bindings::get::<v8::Local<v8::Function>>(
+              scope, global, WEAK_MAP, "WeakMap",
+            );
+            wasm_instances_map = weak_map_fn.new_instance(scope, &[]);
           }
         }
       }
@@ -1845,51 +1883,16 @@ impl JsRuntime {
         core_obj.delete(scope, key.into());
       }
 
-      // Create a shared Float64Array backed by ContextState::timer_expiry
-      // and pass it to JS via __setTimerExpiry so JS can write the next
-      // timer expiry without a return value or op call.
-      {
-        let state_rc = realm.0.state();
-        let timer_expiry_ptr =
-          state_rc.timer_expiry.as_ptr() as *mut std::ffi::c_void;
-        let timer_expiry_byte_len = std::mem::size_of::<f64>();
-        let backing_store = unsafe {
-          v8::ArrayBuffer::new_backing_store_from_ptr(
-            timer_expiry_ptr,
-            timer_expiry_byte_len,
-            _no_op_deleter,
-            std::ptr::null_mut(),
-          )
-        };
-        let backing_store_shared = backing_store.make_shared();
-        let ab =
-          v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-        let timer_expiry_array =
-          v8::Float64Array::new(scope, ab, 0, 1).unwrap();
-        let set_timer_expiry_fn: v8::Local<v8::Function> = bindings::get(
-          scope,
-          core_obj,
-          SET_TIMER_EXPIRY,
-          "Deno.core.__setTimerExpiry",
-        );
-        let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
-        set_timer_expiry_fn.call(
-          scope,
-          undefined,
-          &[timer_expiry_array.into()],
-        );
-        let key = SET_TIMER_EXPIRY.v8_string(scope).unwrap();
-        core_obj.delete(scope, key.into());
-      }
-
       (
         v8::Global::new(scope, event_loop_tick_cb),
+        v8::Global::new(scope, process_timers_cb),
         v8::Global::new(scope, drain_next_tick_and_macrotasks_cb),
         v8::Global::new(scope, handle_rejections_cb),
         v8::Global::new(scope, build_custom_error_cb),
         v8::Global::new(scope, error_constructors),
         v8::Global::new(scope, run_immediate_callbacks_cb),
         wasm_instance_fn.map(|f| v8::Global::new(scope, f)),
+        wasm_instances_map.map(|m| v8::Global::new(scope, m)),
       )
     };
 
@@ -1899,6 +1902,10 @@ impl JsRuntime {
       .js_event_loop_tick_cb
       .borrow_mut()
       .replace(event_loop_tick_cb);
+    state_rc
+      .js_process_timers_cb
+      .borrow_mut()
+      .replace(process_timers_cb);
     state_rc
       .js_drain_next_tick_and_macrotasks_cb
       .borrow_mut()
@@ -1926,6 +1933,12 @@ impl JsRuntime {
         .wasm_instance_fn
         .borrow_mut()
         .replace(wasm_instance_fn);
+    }
+    if let Some(wasm_instances_map) = wasm_instances_map {
+      state_rc
+        .wasm_instances_map
+        .borrow_mut()
+        .replace(wasm_instances_map);
     }
   }
 
@@ -2473,19 +2486,13 @@ impl JsRuntime {
     // 2a. V8 task spawner tasks
     dispatched_ops |= Self::dispatch_task_spawner(cx, scope, context_state);
 
-    // 2b. Process timers + resolve ops in a single Rust-to-JS call via
-    // __eventLoopTick(timerNow, ops...). Does NOT drain ticks -- that
-    // happens in 2d below, matching the original ordering where Rust
-    // controls the microtask checkpoint between op resolution and tick
-    // draining to preserve the nextTick-before-then invariant.
-    let timer_ready = context_state.user_timer.poll_ready(cx).is_ready();
+    // 2b. Process expired JS timers first and immediately commit the
+    // returned next-expiry state. Completed ops are resolved afterwards so
+    // promise hooks that arm timers cannot be overwritten by an older timer
+    // snapshot.
+    let timer_ready = Self::dispatch_user_timers(cx, scope, context_state)?;
     did_work |= timer_ready;
-    dispatched_ops |=
-      Self::dispatch_event_loop_tick(cx, scope, context_state, timer_ready)?;
-    // After the JS call, read timer_expiry shared buffer and schedule.
-    if timer_ready {
-      Self::process_timer_expiry(context_state);
-    }
+    dispatched_ops |= Self::dispatch_event_loop_tick(cx, scope, context_state)?;
     // Microtask checkpoint after timer/op processing, but only when
     // no ticks are scheduled (matching original guard after timers).
     if !context_state.has_tick_scheduled() {
@@ -3380,16 +3387,14 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Read the timer_expiry shared buffer after __eventLoopTick returns
-  /// and schedule the next timer wake-up accordingly.
+  /// Schedule the next timer wake-up from the value returned by JS
+  /// `__processTimers(now)`.
   ///
-  /// The JS side writes the next expiry to timer_expiry[0]:
+  /// The JS side returns:
   ///   - positive: next expiry time (has refed timers)
   ///   - negative: next expiry time negated (only unrefed timers)
   ///   - 0.0: no timers remain
-  fn process_timer_expiry(context_state: &ContextState) {
-    let expiry_ms = context_state.timer_expiry[0];
-
+  fn schedule_timer_expiry(context_state: &ContextState, expiry_ms: f64) {
     if expiry_ms != 0.0 {
       let next_expiry = expiry_ms.abs();
       let current_now = context_state.user_timer.now();
@@ -3415,6 +3420,50 @@ impl JsRuntime {
       context_state.user_timer.clear();
       context_state.user_timer.unref_timer();
     }
+  }
+
+  /// Phase 2b: Poll the user timer and call JS `__processTimers(now)`.
+  /// The returned value is committed before async op resolution runs.
+  fn dispatch_user_timers<'s, 'i>(
+    cx: &mut Context,
+    scope: &mut v8::PinScope<'s, 'i>,
+    context_state: &ContextState,
+  ) -> Result<bool, Box<JsError>> {
+    if context_state.user_timer.poll_ready(cx).is_pending() {
+      return Ok(false);
+    }
+
+    // `now` is passed to JS raw, with no clamp. The old single-function
+    // `__eventLoopTick(timerNow, ...)` protocol clamped `now <= 0.0` to
+    // `f64::EPSILON` so the timer argument could never collide with the
+    // negative "skip timers" sentinel it shared with op resolution. This
+    // protocol has no such sentinel: `__processTimers(now)` is a dedicated
+    // call made only when the timer is ready, and `processTimers` only
+    // compares `list.expiry > now` (every real timer's expiry exceeds a 0.0
+    // startup `now`), so a raw 0.0 cannot mis-fire a timer.
+    let now = context_state.user_timer.now();
+    v8::tc_scope!(let tc_scope, scope);
+
+    let process_timers_cb = context_state.js_process_timers_cb.borrow();
+    let process_timers_fn = process_timers_cb.as_ref().unwrap().open(tc_scope);
+    let now_val = v8::Number::new(tc_scope, now);
+    let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
+
+    let result = process_timers_fn.call(tc_scope, undefined, &[now_val.into()]);
+
+    if let Some(exception) = tc_scope.exception() {
+      return exception_to_err_result(tc_scope, exception, false, true);
+    }
+    if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+      return Ok(false);
+    }
+
+    if let Some(result) = result {
+      let expiry_ms = result.number_value(tc_scope).unwrap_or(0.0);
+      Self::schedule_timer_expiry(context_state, expiry_ms);
+    }
+
+    Ok(true)
   }
 
   /// Phase 2a: Poll and dispatch V8 task spawner tasks.
@@ -3445,39 +3494,22 @@ impl JsRuntime {
     dispatched
   }
 
-  /// Phase 2c: Combined event loop tick - process timers and resolve ops
-  /// in a single Rust-to-JS call via
-  /// `__eventLoopTick(timerNow, promiseId, isOk, res, ...)`.
+  /// Phase 2c: Resolve completed async ops in a single Rust-to-JS call via
+  /// `__eventLoopTick(promiseId, isOk, res, ...)`.
   ///
-  /// When `timer_ready` is true, the first arg is the current time for
-  /// timer processing. When false, it is 0 (skip timers). Remaining args
-  /// are completed async op results in (promiseId, isOk, res) triplets.
-  ///
-  /// If neither timers nor ops are ready, returns Ok(false) and the
+  /// If no ops are ready, returns Ok(false) and the
   /// caller should use drain_next_tick_and_macrotasks for any pending ticks.
   fn dispatch_event_loop_tick<'s, 'i>(
     cx: &mut Context,
     scope: &mut v8::PinScope<'s, 'i>,
     context_state: &ContextState,
-    timer_ready: bool,
   ) -> Result<bool, Box<JsError>> {
     const MAX_VEC_SIZE_FOR_OPS: usize = 1024;
 
     let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
       SmallVec::with_capacity(32);
 
-    // First arg: timer now (positive = process timers, -1 = skip)
-    let timer_now = if timer_ready {
-      let now = context_state.user_timer.now();
-      // Ensure JS always sees a positive value when timers are ready,
-      // even if elapsed time is exactly 0.0 at startup.
-      if now <= 0.0 { f64::EPSILON } else { now }
-    } else {
-      -1.0
-    };
-    args.push(v8::Number::new(scope, timer_now).into());
-
-    // Remaining args: completed async ops as (promiseId, isOk, res) triplets
+    // Completed async ops as (promiseId, isOk, res) triplets.
     loop {
       // Ensure there is room for the next (promiseId, isOk, res) triplet
       if args.len() + 3 > MAX_VEC_SIZE_FOR_OPS {
@@ -3513,9 +3545,9 @@ impl JsRuntime {
       args.push(res.unwrap_or_else(std::convert::identity));
     }
 
-    // Skip the call if no timers fired and no ops completed
-    let has_ops = args.len() > 1;
-    if !timer_ready && !has_ops {
+    // Skip the call if no ops completed.
+    let has_ops = !args.is_empty();
+    if !has_ops {
       return Ok(false);
     }
 

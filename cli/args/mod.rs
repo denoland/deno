@@ -192,6 +192,13 @@ fn resolve_fmt_options(
     options.semi_colons = Some(!no_semis);
   }
 
+  // `--no-editorconfig` takes precedence over the deno.json
+  // `useEditorConfig` field. When the flag is absent the config value
+  // (or its `None` default of "on") is left untouched.
+  if fmt_flags.no_editorconfig {
+    options.use_editor_config = Some(false);
+  }
+
   options
 }
 
@@ -213,6 +220,7 @@ pub struct WorkspaceTestOptions {
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
+  pub update_snapshots: bool,
 }
 
 impl WorkspaceTestOptions {
@@ -254,6 +262,7 @@ impl WorkspaceTestOptions {
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path.clone(),
       hide_stacktraces: test_flags.hide_stacktraces,
+      update_snapshots: test_flags.update_snapshots,
     }
   }
 }
@@ -1588,6 +1597,7 @@ impl CliOptions {
           }),
         _,
       )) | DenoSubcommand::Add(_)
+        | DenoSubcommand::List(_)
         | DenoSubcommand::Outdated(_)
     ) {
       NpmCachingStrategy::Manual
