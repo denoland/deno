@@ -835,7 +835,7 @@ static ENV_VARS: &[EnvVar] = &[
     name: "DENO_SERVE_ADDRESS",
     description: "Override address for Deno.serve",
     example: Some(
-      r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678")"#,
+      r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", "vsock:1234:5678", or "memory:my-app")"#,
     ),
   },
   EnvVar {
