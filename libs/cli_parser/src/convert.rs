@@ -1377,6 +1377,7 @@ fn fmt_parse(result: &ParseResult, flags: &mut Flags) {
     single_quote,
     prose_wrap,
     no_semicolons,
+    no_editorconfig: result.get_bool("no-editorconfig"),
     watch: watch_arg_parse(result),
     unstable_component,
     unstable_sql,
@@ -1529,6 +1530,16 @@ fn test_parse(result: &ParseResult, flags: &mut Flags) {
     reporter,
     junit_path,
     hide_stacktraces,
+    changed: if result.contains("changed") {
+      Some(result.get_one("changed").map(|s| s.to_string()))
+    } else {
+      None
+    },
+    related: result
+      .get_many("related")
+      .map(|v| v.iter().map(|s| s.to_string()).collect())
+      .unwrap_or_default(),
+    update_snapshots: result.get_bool("update-snapshots"),
   });
 }
 
@@ -1770,6 +1781,7 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) {
     filter,
     eval,
     no_prefix: result.get_bool("no-prefix"),
+    concurrency: result.get_one("jobs").and_then(|s| s.parse().ok()),
     if_present: result.get_bool("if-present"),
   });
 }
@@ -1847,6 +1859,7 @@ fn compile_parse(result: &ParseResult, flags: &mut Flags) {
     eszip,
     self_extracting,
     bundle: result.get_bool("bundle"),
+    app_name: result.get_one("app-name").map(|s| s.to_string()),
     minify: result.get_bool("minify"),
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),
   });
@@ -2072,8 +2085,7 @@ fn uninstall_parse(result: &ParseResult, flags: &mut Flags) {
 
   let kind = if global {
     let root = result.get_one("root").map(|s| s.to_string());
-    let name = packages.into_iter().next().unwrap_or_default();
-    UninstallKind::Global(UninstallFlagsGlobal { name, root })
+    UninstallKind::Global(UninstallFlagsGlobal { packages, root })
   } else {
     UninstallKind::Local(RemoveFlags {
       packages,
