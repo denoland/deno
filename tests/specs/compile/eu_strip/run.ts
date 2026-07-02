@@ -41,7 +41,9 @@ if (!res.success) {
 
 const out = new TextDecoder().decode(res.stdout).trim();
 if (out !== "hello from compiled binary") {
-  console.error(`unexpected output from stripped binary: ${JSON.stringify(out)}`);
+  console.error(
+    `unexpected output from stripped binary: ${JSON.stringify(out)}`,
+  );
   Deno.exit(1);
 }
 
