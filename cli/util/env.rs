@@ -184,6 +184,7 @@ impl WatchEnvTracker {
               if inner.original_env.contains_key(&key_os) {
                 #[allow(
                   clippy::print_stderr,
+                  clippy::disallowed_macros,
                   reason = "can't use log crate yet"
                 )]
                 if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
@@ -202,6 +203,7 @@ impl WatchEnvTracker {
                 // Variable already exists from a previous file, skip it
                 #[allow(
                   clippy::print_stderr,
+                  clippy::disallowed_macros,
                   reason = "can't use log crate yet"
                 )]
                 if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
