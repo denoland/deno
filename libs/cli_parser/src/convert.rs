@@ -2637,6 +2637,42 @@ fn apply_node_options(flags: &mut Flags) {
       }
     }
   }
+
+  // Parse --inspect / --inspect-brk / --inspect-wait from NODE_OPTIONS. These
+  // are mutually exclusive, so only apply them if no inspector flag was passed
+  // on the CLI.
+  if flags.inspect.is_none()
+    && flags.inspect_brk.is_none()
+    && flags.inspect_wait.is_none()
+  {
+    for word in &args {
+      if let Some(addr) = node_inspect_addr(word, "--inspect") {
+        flags.inspect = Some(addr);
+        break;
+      } else if let Some(addr) = node_inspect_addr(word, "--inspect-brk") {
+        flags.inspect_brk = Some(addr);
+        break;
+      } else if let Some(addr) = node_inspect_addr(word, "--inspect-wait") {
+        flags.inspect_wait = Some(addr);
+        break;
+      }
+    }
+  }
+}
+
+/// Parse a NODE_OPTIONS inspector flag (`--inspect`, `--inspect-brk`,
+/// `--inspect-wait`) into its listen address. A bare flag uses the default
+/// `127.0.0.1:9229`; `--flag=host:port` parses the attached address.
+fn node_inspect_addr(word: &str, flag: &str) -> Option<SocketAddr> {
+  if word == flag {
+    Some(SocketAddr::from(([127, 0, 0, 1], 9229)))
+  } else if let Some(rest) = word.strip_prefix(flag)
+    && let Some(value) = rest.strip_prefix('=')
+  {
+    value.parse().ok()
+  } else {
+    None
+  }
 }
 
 fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
