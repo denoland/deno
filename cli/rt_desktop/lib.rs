@@ -1844,7 +1844,8 @@ async fn run_desktop(
       let mut server_ready = false;
       for i in 0..60 {
         if let Ok(mut stream) =
-          tokio::net::TcpStream::connect(("127.0.0.1", desktop_serve_port)).await
+          tokio::net::TcpStream::connect(("127.0.0.1", desktop_serve_port))
+            .await
         {
           let req = format!(
             "GET / HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",

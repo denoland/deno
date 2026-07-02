@@ -1171,10 +1171,9 @@ async fn spawn_framework_dev_server(
       format!("failed to spawn HMR dev server: {:?}", cmd_args)
     })?;
 
-  let stdout = child
-    .stdout
-    .take()
-    .ok_or_else(|| deno_core::anyhow::anyhow!("failed to capture HMR dev server stdout"))?;
+  let stdout = child.stdout.take().ok_or_else(|| {
+    deno_core::anyhow::anyhow!("failed to capture HMR dev server stdout")
+  })?;
   let mut lines = BufReader::new(stdout).lines();
 
   let url = async {
@@ -1187,9 +1186,9 @@ async fn spawn_framework_dev_server(
   }
   .await?;
 
-  tokio::spawn(async move {
-    while let Ok(Some(_)) = lines.next_line().await {}
-  });
+  tokio::spawn(
+    async move { while let Ok(Some(_)) = lines.next_line().await {} },
+  );
 
   Ok((url, child))
 }
@@ -1439,7 +1438,8 @@ const APP_DIR_MARKER: &str = ".deno-desktop-app";
 
 /// Used for `deno desktop --hmr` when a framework runs its own HMR server.
 /// The compiled app has nothing to serve in this case.
-const NOOP_ENTRYPOINT: &str = "// @ts-nocheck\nawait new Promise<void>(() => {});\n";
+const NOOP_ENTRYPOINT: &str =
+  "// @ts-nocheck\nawait new Promise<void>(() => {});\n";
 
 /// Prepare `app_dir` to receive a freshly built bundle.
 ///
