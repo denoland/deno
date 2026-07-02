@@ -288,21 +288,28 @@ mod impl_ {
       queue_ok.set_index(scope, 0, v);
     }
     let raw_fd = raw_fd_to_option(raw_fd);
-    // Fast path: when nothing else is queued ahead of us, attempt a
-    // non-blocking write directly to the kernel pipe. This ensures the
-    // message is in the OS buffer before the op returns, so a subsequent
-    // `process.exit()` doesn't drop it.
-    if raw_fd.is_none() && old == 0 && stream.try_write_msg_bytes(&serialized) {
-      stream
-        .queued_bytes
-        .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
-      return Ok(future::Either::Left(async { Ok(()) }));
-    }
+    // Fast path: when nothing else is queued ahead of us, try to push the
+    // message straight into the kernel buffer synchronously so that a
+    // subsequent `process.exit()` doesn't drop it. Any bytes the kernel
+    // couldn't accept immediately are drained by the async path below;
+    // since it only writes `serialized[written..]`, no bytes are duplicated.
+    let written = if raw_fd.is_none() && old == 0 {
+      let n = stream.try_write_msg_bytes(&serialized);
+      if n == serialized.len() {
+        stream
+          .queued_bytes
+          .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+        return Ok(future::Either::Left(async { Ok(()) }));
+      }
+      n
+    } else {
+      0
+    };
     Ok(future::Either::Right(async move {
       let cancel = stream.cancel.clone();
       let result = stream
         .clone()
-        .write_msg_bytes(&serialized, raw_fd)
+        .write_msg_bytes(&serialized[written..], raw_fd)
         .or_cancel(cancel)
         .await;
       // adjust count even on error
@@ -504,17 +511,23 @@ mod impl_ {
     let raw_fd = raw_fd_to_option(raw_fd);
     // See `op_node_ipc_write_json` for why we attempt a non-blocking write
     // here when the queue is empty.
-    if raw_fd.is_none() && old == 0 && stream.try_write_msg_bytes(&serialized) {
-      stream
-        .queued_bytes
-        .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
-      return Ok(future::Either::Left(async { Ok(()) }));
-    }
+    let written = if raw_fd.is_none() && old == 0 {
+      let n = stream.try_write_msg_bytes(&serialized);
+      if n == serialized.len() {
+        stream
+          .queued_bytes
+          .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+        return Ok(future::Either::Left(async { Ok(()) }));
+      }
+      n
+    } else {
+      0
+    };
     Ok(future::Either::Right(async move {
       let cancel = stream.cancel.clone();
       let result = stream
         .clone()
-        .write_msg_bytes(&serialized, raw_fd)
+        .write_msg_bytes(&serialized[written..], raw_fd)
         .or_cancel(cancel)
         .await;
       // adjust count even on error
