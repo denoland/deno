@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import CP from "node:child_process";
+import process from "node:process";
 import { Buffer } from "node:buffer";
 import {
   assert,
@@ -1436,6 +1437,62 @@ Deno.test({
       assertEquals(content, "hello from child\n");
     } finally {
       Deno.removeSync(tmpFile);
+    }
+  },
+});
+
+// Regression: yarn 1's npm-lifecycle bridge writes a `node` shell wrapper
+// (`#!/bin/sh\nexec "<deno>" "$@"`) and prepends its directory to PATH so
+// child scripts find it as `node`. Before the wrapper-detection logic in
+// `buildCommand`/`transformDenoShellCommand`, both spawn shapes invoked
+// `deno postinstall.js` with default (no) permissions, breaking any
+// lifecycle script that touched sys/read APIs (e.g. `process.report` in
+// `napi-postinstall`).
+Deno.test({
+  name: "spawnDenoExecWrapperInheritsNodeCompat",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    const dir = Deno.makeTempDirSync();
+    const wrapper = `${dir}/node`;
+    Deno.writeTextFileSync(
+      wrapper,
+      `#!/bin/sh\nexec "${Deno.execPath()}" "$@"\n`,
+    );
+    Deno.chmodSync(wrapper, 0o755);
+
+    const script = `${dir}/probe.js`;
+    Deno.writeTextFileSync(
+      script,
+      "const os=require('os');console.log('cpus:'+os.cpus().length);",
+    );
+
+    try {
+      // Case (a): spawn the wrapper directly by absolute path.
+      const direct = spawnSync(wrapper, [script], { encoding: "utf8" });
+      assertEquals(
+        direct.status,
+        0,
+        `direct wrapper spawn exited ${direct.status}: ${direct.stderr}`,
+      );
+      assertStringIncludes(direct.stdout as string, "cpus:");
+
+      // Case (b): shell -c with PATH lookup (mirrors yarn's lifecycle exec).
+      const viaPath = spawnSync(
+        "/bin/sh",
+        ["-c", `node ${script}`],
+        {
+          encoding: "utf8",
+          env: { ...process.env, PATH: `${dir}:${process.env.PATH}` },
+        },
+      );
+      assertEquals(
+        viaPath.status,
+        0,
+        `sh -c wrapper spawn exited ${viaPath.status}: ${viaPath.stderr}`,
+      );
+      assertStringIncludes(viaPath.stdout as string, "cpus:");
+    } finally {
+      Deno.removeSync(dir, { recursive: true });
     }
   },
 });
