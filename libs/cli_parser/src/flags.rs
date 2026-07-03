@@ -145,7 +145,6 @@ pub struct BenchFlags {
   pub json: bool,
   pub no_run: bool,
   pub permit_no_files: bool,
-  pub watch: Option<WatchFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -159,7 +158,6 @@ pub struct CheckFlags {
   pub doc: bool,
   pub doc_only: bool,
   pub check_js: bool,
-  pub watch: Option<WatchFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -168,7 +166,6 @@ pub struct CompileFlags {
   pub output: Option<String>,
   pub args: Vec<String>,
   pub target: Option<String>,
-  pub watch: Option<WatchFlags>,
   pub no_terminal: bool,
   pub icon: Option<String>,
   pub include: Vec<String>,
@@ -359,7 +356,6 @@ pub struct FmtFlags {
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
   pub no_editorconfig: bool,
-  pub watch: Option<WatchFlags>,
   pub unstable_component: bool,
   pub unstable_sql: bool,
 }
@@ -491,7 +487,6 @@ pub struct LintFlags {
   pub permit_no_files: bool,
   pub json: bool,
   pub compact: bool,
-  pub watch: Option<WatchFlags>,
 }
 
 impl LintFlags {
@@ -512,7 +507,6 @@ pub struct ReplFlags {
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct RunFlags {
   pub script: String,
-  pub watch: Option<WatchFlagsWithPaths>,
   pub bare: bool,
   pub coverage_dir: Option<String>,
   pub print_task_list: bool,
@@ -522,7 +516,6 @@ impl RunFlags {
   pub fn new_default(script: String) -> Self {
     Self {
       script,
-      watch: None,
       bare: false,
       coverage_dir: None,
       print_task_list: false,
@@ -579,7 +572,6 @@ pub struct XFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServeFlags {
   pub script: String,
-  pub watch: Option<WatchFlagsWithPaths>,
   pub port: u16,
   pub host: String,
   pub parallel: bool,
@@ -590,25 +582,12 @@ impl ServeFlags {
   pub fn new_default(script: String, port: u16, host: &str) -> Self {
     Self {
       script,
-      watch: None,
       port,
       host: host.to_owned(),
       parallel: false,
       open_site: false,
     }
   }
-}
-
-pub enum WatchFlagsRef<'a> {
-  Watch(&'a WatchFlags),
-  WithPaths(&'a WatchFlagsWithPaths),
-}
-
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
-pub struct WatchFlags {
-  pub hmr: bool,
-  pub no_clear_screen: bool,
-  pub exclude: Vec<String>,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -669,7 +648,6 @@ pub struct TestFlags {
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
-  pub watch: Option<WatchFlagsWithPaths>,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
@@ -834,38 +812,6 @@ pub enum DenoSubcommand {
   X(XFlags),
 }
 
-impl DenoSubcommand {
-  pub fn watch_flags(&self) -> Option<WatchFlagsRef<'_>> {
-    match self {
-      Self::Run(RunFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Serve(ServeFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Test(TestFlags {
-        watch: Some(flags), ..
-      }) => Some(WatchFlagsRef::WithPaths(flags)),
-      Self::Bench(BenchFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Check(CheckFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Lint(LintFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Fmt(FmtFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Compile(CompileFlags {
-        watch: Some(flags), ..
-      }) => Some(WatchFlagsRef::Watch(flags)),
-      _ => None,
-    }
-  }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutdatedKind {
   Update {
@@ -1026,6 +972,9 @@ pub struct Flags {
   pub require: Vec<String>,
   pub tunnel: bool,
   pub cpu_prof: Option<CpuProfFlags>,
+  /// Watch configuration for subcommands that support `--watch`. `paths` is
+  /// only populated for subcommands whose `--watch` accepts values.
+  pub watch: Option<WatchFlagsWithPaths>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]

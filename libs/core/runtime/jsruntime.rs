@@ -1290,18 +1290,10 @@ impl JsRuntime {
       // them and `core.loadExtScript()` / lazy ESM imports need to find them
       // here. (When there is no snapshot, the same sources are loaded from
       // disk through `Extension.lazy_loaded_*_files` instead.)
-      for (specifier, code) in options.residual_lazy_js_sources {
-        module_map.add_lazy_loaded_script_source(
-          crate::ModuleName::from_static(specifier),
-          crate::ModuleCodeString::from_static(code),
-        );
-      }
-      for (specifier, code) in options.residual_lazy_esm_sources {
-        module_map.add_lazy_loaded_esm_source(
-          crate::ModuleName::from_static(specifier),
-          crate::ModuleCodeString::from_static(code),
-        );
-      }
+      module_map.add_residual_lazy_loaded_sources(
+        options.residual_lazy_js_sources,
+        options.residual_lazy_esm_sources,
+      );
 
       let _phase = startup_phase_begin();
       js_runtime.init_extension_js(

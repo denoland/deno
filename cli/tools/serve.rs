@@ -31,7 +31,7 @@ pub async fn serve(
 ) -> Result<i32, AnyError> {
   check_permission_before_script(&flags);
 
-  if let Some(watch_flags) = serve_flags.watch {
+  if let Some(watch_flags) = flags.watch.clone() {
     return serve_with_watch(
       flags,
       watch_flags,
@@ -73,10 +73,7 @@ pub async fn serve(
     let _ = open::that_detached(url);
   }
 
-  let hmr = serve_flags
-    .watch
-    .map(|watch_flags| watch_flags.hmr)
-    .unwrap_or(false);
+  let hmr = cli_options.has_hmr();
   do_serve(
     worker_factory,
     main_module.clone(),
