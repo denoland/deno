@@ -1,8 +1,8 @@
 disallowed-macros = [
-  { path = "std::print", reason = "the std print macros panic when stdout is a closed pipe (ex. `deno test | head`); use the deno_print macros for command output or the log crate for diagnostics" },
-  { path = "std::println", reason = "the std print macros panic when stdout is a closed pipe (ex. `deno test | head`); use the deno_print macros for command output or the log crate for diagnostics" },
-  { path = "std::eprint", reason = "the std print macros panic when stderr is a closed pipe; use the deno_print macros for command output or the log crate for diagnostics" },
-  { path = "std::eprintln", reason = "the std print macros panic when stderr is a closed pipe; use the deno_print macros for command output or the log crate for diagnostics" },
+  { path = "std::print", reason = "the std print macros panic when stdout is a closed pipe (ex. `deno test | head`); use deno_print's drop_println! macros for command output or the log crate for diagnostics" },
+  { path = "std::println", reason = "the std print macros panic when stdout is a closed pipe (ex. `deno test | head`); use deno_print's drop_println! macros for command output or the log crate for diagnostics" },
+  { path = "std::eprint", reason = "the std print macros panic when stderr is a closed pipe; use deno_print's drop_eprintln! macros for command output or the log crate for diagnostics" },
+  { path = "std::eprintln", reason = "the std print macros panic when stderr is a closed pipe; use deno_print's drop_eprintln! macros for command output or the log crate for diagnostics" },
 ]
 disallowed-methods = [
   { path = "reqwest::Client::new", reason = "create an HttpClient via an HttpClientProvider instead" },

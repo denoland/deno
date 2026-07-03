@@ -1,20 +1,19 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-//! Drop-in replacements for the std `print!`, `println!`, `eprint!` and
-//! `eprintln!` macros that ignore write errors instead of panicking.
+//! Replacements for the std `print!`, `println!`, `eprint!` and `eprintln!`
+//! macros that drop write errors instead of panicking, named after Cargo's
+//! macros with the same semantics.
 //!
 //! The Rust runtime ignores `SIGPIPE`, so when the other end of a pipe is
 //! closed (ex. `deno test | head`) writes to stdout surface as `EPIPE`
 //! errors, which make the std print macros panic. The macros in this crate
-//! swallow write errors instead, matching how Node.js treats `EPIPE` on
-//! stdout and how `env_logger` treats write errors.
-//!
-//! Import the macros to shadow the std prelude ones:
+//! drop write errors instead, matching how Node.js treats `EPIPE` on stdout
+//! and how `env_logger` treats write errors.
 //!
 //! ```
-//! use deno_print::println;
+//! use deno_print::drop_println;
 //!
-//! println!("hello there");
+//! drop_println!("hello there");
 //! ```
 //!
 //! Use these macros for output that is the program's deliverable and must
@@ -24,18 +23,18 @@
 //!
 //! See https://github.com/denoland/deno/issues/15767
 
-/// Like `std::print!`, but ignores write errors instead of panicking.
+/// Like `std::print!`, but drops write errors instead of panicking.
 #[macro_export]
-macro_rules! print {
+macro_rules! drop_print {
   ($($arg:tt)+) => {{
     use ::std::io::Write as _;
     let _ = ::std::write!(::std::io::stdout(), $($arg)+);
   }};
 }
 
-/// Like `std::println!`, but ignores write errors instead of panicking.
+/// Like `std::println!`, but drops write errors instead of panicking.
 #[macro_export]
-macro_rules! println {
+macro_rules! drop_println {
   () => {{
     use ::std::io::Write as _;
     let _ = ::std::writeln!(::std::io::stdout());
@@ -46,18 +45,18 @@ macro_rules! println {
   }};
 }
 
-/// Like `std::eprint!`, but ignores write errors instead of panicking.
+/// Like `std::eprint!`, but drops write errors instead of panicking.
 #[macro_export]
-macro_rules! eprint {
+macro_rules! drop_eprint {
   ($($arg:tt)+) => {{
     use ::std::io::Write as _;
     let _ = ::std::write!(::std::io::stderr(), $($arg)+);
   }};
 }
 
-/// Like `std::eprintln!`, but ignores write errors instead of panicking.
+/// Like `std::eprintln!`, but drops write errors instead of panicking.
 #[macro_export]
-macro_rules! eprintln {
+macro_rules! drop_eprintln {
   () => {{
     use ::std::io::Write as _;
     let _ = ::std::writeln!(::std::io::stderr());
@@ -70,20 +69,16 @@ macro_rules! eprintln {
 
 #[cfg(test)]
 mod tests {
-  // within the defining crate the macros are already in textual scope, so
-  // no `use` is needed here; consumer-style prelude shadowing via
-  // `use deno_print::println;` is exercised by the doc test above
-
   #[test]
   fn all_macro_forms_expand() {
     let value = 42;
-    print!("positional {} and named {value}", "arg");
-    println!();
-    println!("positional {} and named {value}", "arg");
-    println!("trailing comma {},", value,);
-    eprint!("positional {} and named {value}", "arg");
-    eprintln!();
-    eprintln!("positional {} and named {value}", "arg");
+    drop_print!("positional {} and named {value}", "arg");
+    drop_println!();
+    drop_println!("positional {} and named {value}", "arg");
+    drop_println!("trailing comma {},", value,);
+    drop_eprint!("positional {} and named {value}", "arg");
+    drop_eprintln!();
+    drop_eprintln!("positional {} and named {value}", "arg");
   }
 
   #[test]
@@ -96,7 +91,7 @@ mod tests {
       // more than any pipe buffer holds, so writes keep happening after
       // the parent closes the read end
       for i in 0..1_000_000 {
-        println!("line {}", i);
+        drop_println!("line {}", i);
       }
       // exit before the libtest harness prints its summary with the std
       // macros, which would panic on the closed stdout

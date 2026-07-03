@@ -334,8 +334,8 @@ async function clippy() {
     "--deny",
     "clippy::unused_async",
     // the std print macros panic on broken pipes (ex. `deno test | head`);
-    // prefer the `log` crate for diagnostics and the `deno_print` macros
-    // for stdout output, or ignore these print_* rules if necessary
+    // prefer the `log` crate for diagnostics and deno_print's drop_println!
+    // macros for stdout output, or ignore these print_* rules if necessary
     "--deny",
     "clippy::print_stderr",
     "--deny",
