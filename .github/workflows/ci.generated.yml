@@ -612,7 +612,15 @@ jobs:
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
-        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+        run: |-
+          if [[ -n "$(git status --porcelain)" ]]; then
+          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo ""
+          echo "📋 Status:"
+          git status
+          echo ""
+          exit 1
+          fi
       - name: Upload test results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
@@ -1128,7 +1136,15 @@ jobs:
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
-        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+        run: |-
+          if [[ -n "$(git status --porcelain)" ]]; then
+          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo ""
+          echo "📋 Status:"
+          git status
+          echo ""
+          exit 1
+          fi
       - name: Upload test results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
@@ -1496,7 +1512,15 @@ jobs:
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
-        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+        run: |-
+          if [[ -n "$(git status --porcelain)" ]]; then
+          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo ""
+          echo "📋 Status:"
+          git status
+          echo ""
+          exit 1
+          fi
       - name: Upload test results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
@@ -2173,7 +2197,15 @@ jobs:
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
-        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+        run: |-
+          if [[ -n "$(git status --porcelain)" ]]; then
+          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo ""
+          echo "📋 Status:"
+          git status
+          echo ""
+          exit 1
+          fi
       - name: Upload test results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
@@ -2501,7 +2533,15 @@ jobs:
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
-        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+        run: |-
+          if [[ -n "$(git status --porcelain)" ]]; then
+          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo ""
+          echo "📋 Status:"
+          git status
+          echo ""
+          exit 1
+          fi
       - name: Upload test results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
@@ -3140,7 +3180,15 @@ jobs:
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
-        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+        run: |-
+          if [[ -n "$(git status --porcelain)" ]]; then
+          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo ""
+          echo "📋 Status:"
+          git status
+          echo ""
+          exit 1
+          fi
       - name: Upload test results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
@@ -3468,7 +3516,15 @@ jobs:
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
-        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+        run: |-
+          if [[ -n "$(git status --porcelain)" ]]; then
+          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo ""
+          echo "📋 Status:"
+          git status
+          echo ""
+          exit 1
+          fi
       - name: Upload test results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
@@ -3988,7 +4044,15 @@ jobs:
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
-        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+        run: |-
+          if [[ -n "$(git status --porcelain)" ]]; then
+          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo ""
+          echo "📋 Status:"
+          git status
+          echo ""
+          exit 1
+          fi
       - name: Upload test results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
@@ -4681,7 +4745,15 @@ jobs:
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
-        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+        run: |-
+          if [[ -n "$(git status --porcelain)" ]]; then
+          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo ""
+          echo "📋 Status:"
+          git status
+          echo ""
+          exit 1
+          fi
       - name: Upload test results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
@@ -5341,7 +5413,15 @@ jobs:
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
-        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+        run: |-
+          if [[ -n "$(git status --porcelain)" ]]; then
+          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo ""
+          echo "📋 Status:"
+          git status
+          echo ""
+          exit 1
+          fi
       - name: Upload test results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
@@ -5820,7 +5900,15 @@ jobs:
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
-        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+        run: |-
+          if [[ -n "$(git status --porcelain)" ]]; then
+          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo ""
+          echo "📋 Status:"
+          git status
+          echo ""
+          exit 1
+          fi
       - name: Upload test results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
@@ -6653,7 +6741,15 @@ jobs:
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
-        run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+        run: |-
+          if [[ -n "$(git status --porcelain)" ]]; then
+          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo ""
+          echo "📋 Status:"
+          git status
+          echo ""
+          exit 1
+          fi
       - name: Upload test results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
