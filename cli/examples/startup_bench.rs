@@ -118,11 +118,7 @@ fn summarize(label: &str, samples: &mut [Duration]) {
   let max = samples[n - 1];
   let sum: Duration = samples.iter().sum();
   let mean = sum / n as u32;
-  #[allow(
-    clippy::print_stdout,
-    clippy::disallowed_macros,
-    reason = "example output"
-  )]
+  #[allow(clippy::print_stdout, reason = "example output")]
   {
     println!(
       "{label:>10}  n={n:<3}  min={:>7.2?}  p50={:>7.2?}  mean={:>7.2?}  p95={:>7.2?}  max={:>7.2?}",
@@ -148,11 +144,7 @@ fn main() {
   // First iteration pays V8 platform init + lazy globals. Run it but report
   // it separately so it doesn't skew the steady-state numbers.
   let warmup = one_iter();
-  #[allow(
-    clippy::print_stdout,
-    clippy::disallowed_macros,
-    reason = "example output"
-  )]
+  #[allow(clippy::print_stdout, reason = "example output")]
   {
     println!(
       "    warmup  n=1    {warmup:?}  (V8 platform init + first bootstrap)"

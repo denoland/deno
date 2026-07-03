@@ -47,11 +47,7 @@ struct OutdatedPackage {
   name: StackString,
 }
 
-#[allow(
-  clippy::print_stdout,
-  clippy::disallowed_macros,
-  reason = "print method"
-)]
+#[allow(clippy::print_stdout, reason = "print method")]
 fn print_outdated_table(packages: &[OutdatedPackage]) {
   const HEADINGS: &[&str] = &["Package", "Current", "Update", "Latest"];
 

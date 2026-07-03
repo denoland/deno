@@ -108,11 +108,7 @@ pub fn maybe_rewrite_node_arg0(args: Vec<OsString>) -> Vec<OsString> {
     Ok(parsed) => parsed,
     Err(errors) => {
       // This runs before logging is initialized; mirror the standalone shim.
-      #[allow(
-        clippy::print_stderr,
-        clippy::disallowed_macros,
-        reason = "node shim arg parse error"
-      )]
+      #[allow(clippy::print_stderr, reason = "node shim arg parse error")]
       {
         if errors.len() == 1 {
           eprintln!("Error: {}", errors[0]);

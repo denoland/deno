@@ -549,7 +549,7 @@ impl RequestBuilder {
   }
 }
 
-#[allow(clippy::print_stdout, clippy::disallowed_macros, reason = "test code")]
+#[allow(clippy::print_stdout, reason = "test code")]
 #[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod test {

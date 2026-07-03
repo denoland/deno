@@ -126,7 +126,7 @@ impl ExternalsMatcher {
   }
 }
 
-#[allow(clippy::print_stderr, clippy::disallowed_macros, reason = "test code")]
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::path::Path;

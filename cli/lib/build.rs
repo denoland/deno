@@ -1,10 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(
-  clippy::disallowed_macros,
-  reason = "build script directives must go to stdout"
-)]
-
 fn main() {
   // todo(dsherret): remove this after Deno 242.0 is published and then
   // align the version of this crate with Deno then. We need to wait because

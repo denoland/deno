@@ -1,10 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(
-  clippy::disallowed_macros,
-  reason = "build script directives must go to stdout"
-)]
-
 use std::env;
 use std::io::Write;
 use std::path::Path;

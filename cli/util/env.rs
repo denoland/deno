@@ -46,11 +46,7 @@ pub fn handle_denied_env_file_key(
   file_path: &Path,
   log_level: Option<log::Level>,
 ) {
-  #[allow(
-    clippy::print_stderr,
-    clippy::disallowed_macros,
-    reason = "can't use log crate yet"
-  )]
+  #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
   if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
     eprintln!(
       "{} Ignoring '{}' from environment file '{}': this variable controls Deno's own runtime behavior and cannot be set from an env file.",
@@ -184,7 +180,6 @@ impl WatchEnvTracker {
               if inner.original_env.contains_key(&key_os) {
                 #[allow(
                   clippy::print_stderr,
-                  clippy::disallowed_macros,
                   reason = "can't use log crate yet"
                 )]
                 if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
@@ -203,7 +198,6 @@ impl WatchEnvTracker {
                 // Variable already exists from a previous file, skip it
                 #[allow(
                   clippy::print_stderr,
-                  clippy::disallowed_macros,
                   reason = "can't use log crate yet"
                 )]
                 if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
@@ -263,11 +257,7 @@ impl WatchEnvTracker {
           env::remove_var(var_name);
         }
 
-        #[allow(
-          clippy::print_stderr,
-          clippy::disallowed_macros,
-          reason = "can't use log crate yet"
-        )]
+        #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
         if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
           eprintln!(
             "{} Variable '{}' removed from environment as it's no longer present in any loaded file",
@@ -282,11 +272,7 @@ impl WatchEnvTracker {
           env::set_var(var_name, original_value);
         }
 
-        #[allow(
-          clippy::print_stderr,
-          clippy::disallowed_macros,
-          reason = "can't use log crate yet"
-        )]
+        #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
         if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
           eprintln!(
             "{} Variable '{}' restored to original value as it's no longer present in any loaded file",
@@ -387,11 +373,7 @@ pub fn handle_dotenv_error(
   file_path: &Path,
   log_level: Option<log::Level>,
 ) {
-  #[allow(
-    clippy::print_stderr,
-    clippy::disallowed_macros,
-    reason = "can't use log crate yet"
-  )]
+  #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
   if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
     eprintln!(
       "{} Failed parsing value '{}' at index {} within the specified environment file.\n    at {}",
@@ -407,11 +389,7 @@ pub fn handle_dotenv_io_error(
   error: &deno_dotenv::FindPathAndContentError,
   log_level: Option<log::Level>,
 ) {
-  #[allow(
-    clippy::print_stderr,
-    clippy::disallowed_macros,
-    reason = "can't use log crate yet"
-  )]
+  #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
   if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
     eprintln!(
       "{} Error reading from environment file: {}\n    at {}",
@@ -423,11 +401,7 @@ pub fn handle_dotenv_io_error(
 }
 
 pub fn handle_dotenv_not_found(specifier: &str, log_level: Option<log::Level>) {
-  #[allow(
-    clippy::print_stderr,
-    clippy::disallowed_macros,
-    reason = "can't use log crate yet"
-  )]
+  #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
   if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
     eprintln!(
       "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",

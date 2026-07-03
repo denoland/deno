@@ -222,11 +222,7 @@ pub async fn info(
   Ok(())
 }
 
-#[allow(
-  clippy::print_stdout,
-  clippy::disallowed_macros,
-  reason = "print method"
-)]
+#[allow(clippy::print_stdout, reason = "print method")]
 fn print_cache_info(
   factory: &CliFactory,
   json: bool,

@@ -571,7 +571,7 @@ fn should_fallback_on_run_error(script_err: &str) -> bool {
   re.is_match(script_err)
 }
 
-#[allow(clippy::print_stderr, clippy::disallowed_macros, reason = "panic hook")]
+#[allow(clippy::print_stderr, reason = "panic hook")]
 fn setup_panic_hook() {
   // This function does two things inside of the panic hook:
   // - Tokio does not exit the process when a task panics, so we define a custom
@@ -771,11 +771,7 @@ pub(crate) fn boot_phase(label: &str) {
   let enabled =
     *ENABLED.get_or_init(|| std::env::var_os("DENO_STARTUP_PHASES").is_some());
   if enabled {
-    #[allow(
-      clippy::print_stderr,
-      clippy::disallowed_macros,
-      reason = "diagnostic"
-    )]
+    #[allow(clippy::print_stderr, reason = "diagnostic")]
     {
       eprintln!("[boot] {label:>28}  {:?}", start.elapsed());
     }
@@ -1380,11 +1376,7 @@ async fn initialize_tunnel(
 
         // We explicitly use eprintln instead of log here since
         // there is a circular dep between tunnel and telemetry
-        #[allow(
-          clippy::print_stderr,
-          clippy::disallowed_macros,
-          reason = "can't use log crate yet"
-        )]
+        #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
         {
           eprintln!(
             "{}",
@@ -1400,11 +1392,7 @@ async fn initialize_tunnel(
         };
         // We explicitly use eprintln instead of log here since
         // there is a circular dep between tunnel and telemetry
-        #[allow(
-          clippy::print_stderr,
-          clippy::disallowed_macros,
-          reason = "can't use log crate yet"
-        )]
+        #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
         {
           eprintln!(
             "{}",
