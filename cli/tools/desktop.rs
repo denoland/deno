@@ -1148,6 +1148,7 @@ fn resolve_hmr_icon_path(
 
 /// Spawns a framework HMR dev server
 async fn spawn_framework_dev_server(
+  name: &str,
   cmd_args: &[String],
   cwd: &Path,
 ) -> Result<(String, tokio::process::Child), AnyError> {
@@ -1186,7 +1187,7 @@ async fn spawn_framework_dev_server(
   .await
   .map_err(|_| {
     deno_core::anyhow::anyhow!(
-      "HMR dev server did not start within 15s"
+      "{name} dev server with HMR did not start within 15s"
     )
   })??;
 
@@ -1265,8 +1266,9 @@ async fn run_desktop_hmr(
 
   if desktop_flags.hmr {
     log::info!(
-      "{} desktop app with HMR (watching {})",
+      "{} {}desktop app with HMR (watching {})",
       colors::green("Running"),
+      framework.map(|f| format!("{} ", f.name)).unwrap_or_default(),
       source_abs.display(),
     );
   } else {
@@ -1299,10 +1301,10 @@ async fn run_desktop_hmr(
     && let Some(dev_cmd) = &fw.hmr_command
   {
     let (dev_url, child) =
-      spawn_framework_dev_server(dev_cmd, &source_abs).await?;
+      spawn_framework_dev_server(fw.name, dev_cmd, &source_abs).await?;
     log::info!(
       "{} {} HMR dev server at {}",
-      colors::green("Dev server"),
+      colors::green("Running"),
       fw.name,
       dev_url,
     );
