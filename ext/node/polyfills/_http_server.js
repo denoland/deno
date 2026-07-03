@@ -115,6 +115,7 @@ const { enqueueNodePerformanceEntry, hasNodeObserverForType } = core
 import {
   applyAddressOverride,
   notifyAddressOverrideServing,
+  SERVER_KIND_NODE_HTTP2,
   startOverrideListener,
 } from "ext:deno_node/internal/http/address_override.js";
 const {
@@ -412,6 +413,42 @@ ServerResponse.prototype.writeContinue = function writeContinue(cb) {
 
 ServerResponse.prototype.writeProcessing = function writeProcessing(cb) {
   this._writeRaw("HTTP/1.1 102 Processing\r\n\r\n", "ascii", cb);
+};
+
+ServerResponse.prototype.writeInformation = function writeInformation(
+  statusCode,
+  headers,
+  cb,
+) {
+  if (this._header) {
+    throw new ERR_HTTP_HEADERS_SENT("write");
+  }
+
+  if (typeof headers === "function") {
+    cb = headers;
+    headers = undefined;
+  }
+
+  validateInteger(statusCode, "statusCode", 100, 199);
+
+  let head = `HTTP/1.1 ${statusCode} ${
+    STATUS_CODES[statusCode] || "unknown"
+  }\r\n`;
+
+  if (headers !== null && headers !== undefined) {
+    const keys = ObjectKeys(headers);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      validateHeaderName(key);
+      const value = headers[key];
+      validateHeaderValue(key, value);
+      head += key + ": " + value + "\r\n";
+    }
+  }
+
+  head += "\r\n";
+
+  this._writeRaw(head, "ascii", cb);
 };
 
 ServerResponse.prototype.writeEarlyHints = function writeEarlyHints(
@@ -1604,6 +1641,7 @@ export {
   kServerResponse,
   notifyAddressOverrideServing,
   Server,
+  SERVER_KIND_NODE_HTTP2,
   ServerResponse,
   setupConnectionsTracking,
   startOverrideListener,

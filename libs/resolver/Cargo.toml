@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_resolver"
-version = "0.82.0"
+version = "0.84.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -66,6 +66,7 @@ sys_traits.workspace = true
 thiserror.workspace = true
 twox-hash.workspace = true
 url.workspace = true
+yaml_parser.workspace = true
 
 [dev-dependencies]
 node_resolver.workspace = true

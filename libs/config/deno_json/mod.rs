@@ -389,6 +389,14 @@ pub enum VueComponentCase {
   KebabCase,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub enum SortOrder {
+  Maintain,
+  CaseSensitive,
+  CaseInsensitive,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
@@ -415,6 +423,11 @@ pub struct FmtOptionsConfig {
   pub space_surrounding_properties: Option<bool>,
   pub vue_component_case: Option<VueComponentCase>,
   pub angular_next_control_flow_same_line: Option<bool>,
+  pub sort_named_imports: Option<SortOrder>,
+  pub sort_named_exports: Option<SortOrder>,
+  /// Whether `deno fmt` should read `.editorconfig` files to fill in
+  /// options that are not otherwise set. Defaults to `true` when unset.
+  pub use_editor_config: Option<bool>,
 }
 
 impl FmtOptionsConfig {
@@ -442,6 +455,9 @@ impl FmtOptionsConfig {
       && self.space_surrounding_properties.is_none()
       && self.vue_component_case.is_none()
       && self.angular_next_control_flow_same_line.is_none()
+      && self.sort_named_imports.is_none()
+      && self.sort_named_exports.is_none()
+      && self.use_editor_config.is_none()
   }
 }
 
@@ -519,6 +535,9 @@ struct SerializedFmtConfig {
   pub space_surrounding_properties: Option<bool>,
   pub vue_component_case: Option<VueComponentCase>,
   pub angular_next_control_flow_same_line: Option<bool>,
+  pub sort_named_imports: Option<SortOrder>,
+  pub sort_named_exports: Option<SortOrder>,
+  pub use_editor_config: Option<bool>,
   #[serde(rename = "options")]
   pub deprecated_options: FmtOptionsConfig,
   pub include: Option<Vec<String>>,
@@ -560,6 +579,9 @@ impl SerializedFmtConfig {
       vue_component_case: self.vue_component_case,
       angular_next_control_flow_same_line: self
         .angular_next_control_flow_same_line,
+      sort_named_imports: self.sort_named_imports,
+      sort_named_exports: self.sort_named_exports,
+      use_editor_config: self.use_editor_config,
     };
     if !self.deprecated_files.is_null() {
       log::warn!(
@@ -894,6 +916,13 @@ struct SerializedDesktopAppConfig {
   /// AppUserModelID. Optional; when omitted a synthetic
   /// `com.deno.desktop.<slug>` is generated from the app name.
   pub identifier: Option<String>,
+  /// Custom URL schemes (deep links) the app registers with the OS, e.g.
+  /// `["acme"]` to handle `acme://...` links. Each entry is a bare scheme
+  /// (no `://`). Registered as `CFBundleURLTypes` (macOS), an
+  /// `x-scheme-handler/<scheme>` MIME type (Linux `.desktop`), and an
+  /// `HKCU\Software\Classes\<scheme>` protocol handler (Windows).
+  #[serde(rename = "deepLinks")]
+  pub deep_links: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -946,6 +975,7 @@ impl SerializedDesktopConfig {
       app: self.app.map(|a| DesktopAppConfig {
         name: a.name,
         identifier: a.identifier,
+        deep_links: a.deep_links,
         icons: a.icons.map(|i| {
           fn resolve_icon_value(
             v: SerializedDesktopIconValue,
@@ -1019,6 +1049,7 @@ pub struct DesktopAppConfig {
   pub name: Option<String>,
   pub identifier: Option<String>,
   pub icons: Option<DesktopIconsConfig>,
+  pub deep_links: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -1099,6 +1130,22 @@ pub struct TaskDefinition {
   pub dependencies: Vec<String>,
   #[serde(default)]
   pub description: Option<String>,
+  /// Globs identifying input files. When set, the task participates in
+  /// input-based caching and is skipped on subsequent runs if none of the
+  /// inputs (or the listed `env` values, the command itself, or the
+  /// fingerprints of the task's dependencies) have changed.
+  #[serde(default)]
+  pub files: Vec<String>,
+  /// Globs identifying output artifacts produced by the task. Captured into
+  /// the cache after a successful run and restored on a cache hit, so deleting
+  /// them and re-running regenerates them instead of leaving them missing.
+  #[serde(default)]
+  pub output: Vec<String>,
+  /// Names of environment variables whose values should be folded into the
+  /// task fingerprint. Capture is explicit — variables not listed here are
+  /// not part of the cache key, even if the command reads them.
+  #[serde(default)]
+  pub env: Vec<String>,
 }
 
 #[cfg(test)]
@@ -1108,6 +1155,9 @@ impl From<&str> for TaskDefinition {
       command: Some(value.to_string()),
       dependencies: vec![],
       description: None,
+      files: Vec::new(),
+      output: Vec::new(),
+      env: Vec::new(),
     }
   }
 }
@@ -1147,6 +1197,9 @@ impl TaskDefinition {
               command: Some(command),
               dependencies: Vec::new(),
               description: None,
+              files: Vec::new(),
+              output: Vec::new(),
+              env: Vec::new(),
             },
             serde_json::Value::Object(_) => {
               serde_json::from_value(value).map_err(serde::de::Error::custom)?
@@ -1463,6 +1516,8 @@ pub struct ConfigFileJson {
   pub minimum_dependency_age: Option<Value>,
   pub node_modules_dir: Option<Value>,
   pub node_modules_linker: Option<Value>,
+  pub jsr_deps_in_node_modules: Option<bool>,
+  pub prefer_package_json: Option<bool>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,
   pub permissions: Option<Value>,
@@ -1829,6 +1884,17 @@ impl ConfigFile {
 
   pub fn vendor(&self) -> Option<bool> {
     self.json.vendor
+  }
+
+  /// Whether `jsr:` dependencies should be installed into `node_modules` via
+  /// JSR's npm compatibility registry. See the `jsrDepsInNodeModules` config
+  /// option.
+  pub fn jsr_deps_in_node_modules(&self) -> Option<bool> {
+    self.json.jsr_deps_in_node_modules
+  }
+
+  pub fn prefer_package_json(&self) -> Option<bool> {
+    self.json.prefer_package_json
   }
 
   /// Resolves the import map potentially resolving the file specified
@@ -2589,9 +2655,15 @@ impl ConfigFile {
     {
       match value {
         serde_json::Value::Null => Ok(None),
-        serde_json::Value::Number(minutes) => Ok(Some(
-          NewestDependencyDate::Enabled(parse_number(minutes, sys)?),
-        )),
+        serde_json::Value::Number(minutes) => {
+          if minutes.as_i64() == Some(0) {
+            Ok(Some(NewestDependencyDate::Disabled))
+          } else {
+            Ok(Some(NewestDependencyDate::Enabled(parse_number(
+              minutes, sys,
+            )?)))
+          }
+        }
         serde_json::Value::String(value) => Ok(Some(
           crate::util::parse_minutes_duration_or_date(sys, value)?,
         )),
@@ -2857,7 +2929,10 @@ mod tests {
         "spaceAround": true,
         "spaceSurroundingProperties": true,
         "vueComponentCase": "pascal-case",
-        "angularNextControlFlowSameLine": false
+        "angularNextControlFlowSameLine": false,
+        "sortNamedImports": "maintain",
+        "sortNamedExports": "caseSensitive",
+        "useEditorConfig": false
       },
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
@@ -2934,6 +3009,9 @@ mod tests {
           space_surrounding_properties: Some(true),
           vue_component_case: Some(VueComponentCase::PascalCase),
           angular_next_control_flow_same_line: Some(false),
+          sort_named_imports: Some(SortOrder::Maintain),
+          sort_named_exports: Some(SortOrder::CaseSensitive),
+          use_editor_config: Some(false),
         },
       }
     );
@@ -2952,7 +3030,10 @@ mod tests {
       TaskDefinition {
         description: Some("Build client project".to_string()),
         command: Some("deno run -A client.js".to_string()),
-        dependencies: vec!["build".to_string()]
+        dependencies: vec!["build".to_string()],
+        files: Vec::new(),
+        output: Vec::new(),
+        env: Vec::new(),
       }
     );
 
@@ -3200,6 +3281,19 @@ mod tests {
     // Bare value still works.
     let config = parse(r#"{ "minimumDependencyAge": 120 }"#);
     assert!(config.age.is_some());
+    assert!(config.exclude.is_empty());
+
+    // Numeric 0 disables the filter.
+    let config = parse(r#"{ "minimumDependencyAge": 0 }"#);
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
+    assert!(config.exclude.is_empty());
+
+    let config = parse(r#"{ "minimumDependencyAge": "0" }"#);
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
+    assert!(config.exclude.is_empty());
+
+    let config = parse(r#"{ "minimumDependencyAge": false }"#);
+    assert_eq!(config.age, Some(NewestDependencyDate::Disabled));
     assert!(config.exclude.is_empty());
 
     // Unknown field still errors.

@@ -304,7 +304,7 @@ Deno.test({
     assertThrows(
       () =>
         crypto.createCipheriv("foo", new Uint8Array(16), new Uint8Array(16)),
-      TypeError,
+      Error,
       "Unknown cipher",
     );
   },
@@ -359,7 +359,7 @@ Deno.test({
     assertThrows(
       () =>
         crypto.createDecipheriv("foo", new Uint8Array(16), new Uint8Array(16)),
-      TypeError,
+      Error,
       "Unknown cipher",
     );
   },
@@ -418,7 +418,11 @@ Deno.test({
       return zeros(+cipher.match(/\d+/)![0] / 8);
     };
     const getZeroIv = (cipher: string) => {
-      if (cipher.includes("gcm") || cipher.includes("ecb")) {
+      // ECB mode takes no IV; a non-empty IV is now rejected.
+      if (cipher.includes("ecb")) {
+        return zeros(0);
+      }
+      if (cipher.includes("gcm")) {
         return zeros(12);
       }
       if (cipher === "chacha20-poly1305") return zeros(12);

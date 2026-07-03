@@ -189,6 +189,9 @@ pub enum FetchError {
   #[error("NetworkError when attempting to fetch resource")]
   NetworkError,
   #[class(type)]
+  #[error("Error fetching file '{0}': {1}")]
+  FileFetch(String, deno_fs::FsError),
+  #[class(type)]
   #[error("Fetching files only supports the GET method: received {0}")]
   FsNotGet(Method),
   #[class(inherit)]

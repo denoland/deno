@@ -13,6 +13,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
@@ -193,6 +194,9 @@ pub struct Options {
 
   /// If `false`, the server will abort the request when the response is dropped.
   pub no_legacy_abort: bool,
+
+  /// If `true`, responses may be compressed based on request and response headers.
+  pub automatic_compression: bool,
 }
 
 #[cfg(not(feature = "default_property_extractor"))]
@@ -204,6 +208,7 @@ deno_core::extension!(
     op_http_accept,
     op_http_headers,
     op_http_serve_address_override,
+    op_http_serve_default_compression,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -269,6 +274,7 @@ deno_core::extension!(
     op_http_accept,
     op_http_headers,
     op_http_serve_address_override,
+    op_http_serve_default_compression,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -1841,6 +1847,14 @@ pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
   (0, String::new(), 0, false)
 }
 
+#[op2(fast)]
+pub fn op_http_serve_default_compression() -> bool {
+  match std::env::var("DENO_SERVE_AUTOMATIC_COMPRESSION") {
+    Ok(value) => !matches!(value.to_ascii_lowercase().as_str(), "0" | "false"),
+    Err(_) => false,
+  }
+}
+
 fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
   let (input, duplicate) = match input.strip_prefix("duplicate,") {
     Some(input) => (input, true),
@@ -1908,14 +1922,32 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
 
 pub static SERVE_NOTIFIER: Notify = Notify::const_new();
 
+/// Kind of server that fired the first "serving" notification, as reported
+/// by `op_http_notify_serving`. Zero until the notification fires.
+static SERVE_KIND: AtomicU32 = AtomicU32::new(0);
+
+/// Returns the kind of server that triggered [`SERVE_NOTIFIER`]:
+/// `"deno-serve"` for `Deno.serve`, `"node-http"` for a `node:http` or
+/// `node:https` server, `"node-http2"` for a `node:http2` server, or
+/// `None` when unknown.
+pub fn serving_server_kind() -> Option<&'static str> {
+  match SERVE_KIND.load(Ordering::Acquire) {
+    1 => Some("deno-serve"),
+    2 => Some("node-http"),
+    3 => Some("node-http2"),
+    _ => None,
+  }
+}
+
 #[op2(fast)]
-fn op_http_notify_serving() {
+fn op_http_notify_serving(#[smi] kind: u32) {
   static ONCE: AtomicBool = AtomicBool::new(false);
 
   if ONCE
     .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
     .is_ok()
   {
+    SERVE_KIND.store(kind, Ordering::Release);
     SERVE_NOTIFIER.notify_one();
   }
 }

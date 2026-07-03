@@ -276,9 +276,20 @@ pub fn serialize_transferables(
   js_transferables
 }
 
-#[derive(Deserialize, Serialize)]
+// `JsMessageData` is returned from the message-receive ops once per delivered
+// message, on the hottest worker path. Deriving `ToV8` builds the result object
+// directly (interned `data`/`transferables` keys + a single
+// `Object::with_prototype_and_properties` call) instead of routing the whole
+// struct through serde_v8's `Serializer`, which rebuilt an object per message.
+// The `data` buffer and the (usually empty) transferables list still use the
+// magic serde_v8 conversion via `#[to_v8(serde)]`. `Deserialize` is kept for the
+// post-message ops (which take `JsMessageData` as an input argument) and
+// `Serialize` for the one-shot worker-metadata bootstrap in `web_worker.rs`.
+#[derive(Deserialize, Serialize, deno_core::ToV8)]
 pub struct JsMessageData {
+  #[to_v8(serde)]
   pub data: DetachedBuffer,
+  #[to_v8(serde)]
   pub transferables: Vec<JsTransferable>,
 }
 
@@ -304,7 +315,6 @@ pub fn op_message_port_post_message(
 }
 
 #[op2]
-#[serde]
 pub async fn op_message_port_recv_message(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -321,7 +331,6 @@ pub async fn op_message_port_recv_message(
 }
 
 #[op2]
-#[serde]
 pub fn op_message_port_recv_message_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,

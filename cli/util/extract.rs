@@ -318,9 +318,6 @@ fn extract_files_from_regex_blocks(
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
-      let is_markdown_blockquote = block
-        .name("blockquote")
-        .is_some_and(|blockquote| !blockquote.as_str().is_empty());
       block.name("attributes")?;
 
       let maybe_attributes: Option<Vec<_>> = block
@@ -340,6 +337,22 @@ fn extract_files_from_regex_blocks(
         .count();
 
       let line_count = block.get(0).unwrap().as_str().split('\n').count();
+
+      // Detect whether this code block is nested inside a blockquote. A
+      // blockquoted fence opens with something like `* > ```ts`: the comment
+      // `*` marker and surrounding whitespace come before the blockquote `>`
+      // markers. Strip those off the fence line, then a remaining leading `>`
+      // means the body lines need their blockquote markers removed. A plain
+      // `* ```ts` fence has no markers, so non-blockquote blocks are left
+      // untouched (preserving a literal `>` in, say, a template literal).
+      let fence_start = block.get(0).unwrap().start();
+      let before_fence = &source[..fence_start];
+      let fence_line_prefix = before_fence
+        .rfind('\n')
+        .map_or(before_fence, |i| &before_fence[i + 1..]);
+      let is_markdown_blockquote = fence_line_prefix
+        .trim_start_matches([' ', '\t', '*'])
+        .starts_with('>');
 
       let body = block.name("body").unwrap();
       extract_file_from_block(
@@ -419,15 +432,32 @@ fn extract_file_from_block(
   let mut shebang = None;
   let mut is_first_line = true;
   for line in text.lines() {
-    let line = if is_markdown_blockquote {
-      strip_markdown_blockquote_marker(line)
-    } else {
-      line
-    };
-    let Some(line) = lines_regex.captures(line) else {
+    let Some(captures) = lines_regex.captures(line) else {
       continue;
     };
-    let text = line.get(1).or_else(|| line.get(3)).unwrap().as_str();
+    let captured = captures
+      .get(1)
+      .or_else(|| captures.get(3))
+      .unwrap()
+      .as_str();
+    // The comment/markdown line prefix is removed by `lines_regex` above. For a
+    // blockquoted block, strip any remaining `> ` markers here, looping so that
+    // nested quotes (`> > `) are fully removed. Non-blockquote blocks are left
+    // untouched so a literal `>` in the code (e.g. in a template literal) is
+    // preserved.
+    let text = if is_markdown_blockquote {
+      let mut text = captured;
+      loop {
+        let stripped = strip_markdown_blockquote_marker(text);
+        if stripped.len() == text.len() {
+          break;
+        }
+        text = stripped;
+      }
+      text
+    } else {
+      captured
+    };
     // Strip shebang from the very first line to forward it to `Deno.test`.
     if is_first_line && text.starts_with("#!") {
       shebang = Some(parse_shebang(text));
@@ -638,6 +668,9 @@ impl ExportCollector {
       if symbols_to_exclude.contains(named_export) {
         continue;
       }
+      if !is_importable_binding_identifier(named_export) {
+        continue;
+      }
 
       import_specifiers.push(ast::ImportSpecifier::Named(
         ast::ImportNamedSpecifier {
@@ -656,6 +689,10 @@ impl ExportCollector {
 
     import_specifiers
   }
+}
+
+fn is_importable_binding_identifier(name: &Atom) -> bool {
+  swc_utils::is_valid_ident(name.as_ref())
 }
 
 impl Visit for ExportCollector {
@@ -2171,6 +2208,57 @@ Deno.test("file:///main.ts#3-6.ts", async ()=>{
           media_type: MediaType::TypeScript,
         }],
       },
+      // Regression test for https://github.com/denoland/deno/issues/35177
+      // Export names can be reserved words or string-literal names that cannot
+      // be used as local import bindings in the generated doc-test module.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * useFoo();
+ * ```
+ */
+export function useFoo() {}
+const null_ = null;
+const dashed = 1;
+export { null_ as null, dashed as "key-with-hyphens" };
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { useFoo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
+    useFoo();
+});
+"#,
+          specifier: "file:///main.ts#3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * useFoo();
+ * ```
+ */
+export function useFoo() {}
+export { nullValue as null, dashed as "key-with-hyphens" } from "./deps.ts";
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { useFoo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
+    useFoo();
+});
+"#,
+          specifier: "file:///main.ts#3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
       // A name that is both a value export and a type export via declaration
       // merging (here `const Foo` + `interface Foo`) must be injected as a
       // value import, otherwise the value binding is dropped under
@@ -2197,6 +2285,100 @@ Deno.test("file:///main.ts#3-6.ts", async ()=>{
 });
 "#,
           specifier: "file:///main.ts#3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // https://github.com/denoland/deno/issues/25980
+      // Code blocks nested inside blockquotes in JSDoc comments should have
+      // the blockquote `> ` prefix stripped so the extracted source is valid.
+      Test {
+        input: Input {
+          source: r#"/**
+ * ```ts
+ * console.log("outside");
+ * ```
+ *
+ * > [!NOTE]
+ * > This is a note.
+ * >
+ * > ```ts
+ * > console.log("inside blockquote");
+ * > ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![
+          Expected {
+            source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#2-5.ts", async ()=>{
+    console.log("outside");
+});
+"#,
+            specifier: "file:///main.ts#2-5.ts",
+            media_type: MediaType::TypeScript,
+          },
+          Expected {
+            source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#9-12.ts", async ()=>{
+    console.log("inside blockquote");
+});
+"#,
+            specifier: "file:///main.ts#9-12.ts",
+            media_type: MediaType::TypeScript,
+          },
+        ],
+      },
+      // A code block nested two blockquote levels deep (`> > `) must have both
+      // levels of `> ` stripped so the extracted source is valid.
+      Test {
+        input: Input {
+          source: r#"/**
+ * > > ```ts
+ * > > console.log("nested");
+ * > > ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#2-5.ts", async ()=>{
+    console.log("nested");
+});
+"#,
+          specifier: "file:///main.ts#2-5.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Regression: a code block NOT inside a blockquote that contains a line
+      // starting with `> ` (e.g. inside a template literal) must preserve it.
+      Test {
+        input: Input {
+          source: r#"/**
+ * ```ts
+ * const s = `
+ * > real content
+ * `;
+ * console.log(s);
+ * ```
+ */
+export function bar() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { bar } from "file:///main.ts";
+Deno.test("file:///main.ts#2-8.ts", async ()=>{
+    const s = `
+> real content
+`;
+    console.log(s);
+});
+"#,
+          specifier: "file:///main.ts#2-8.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -2467,6 +2649,21 @@ add('1', '2');
   }
 
   #[test]
+  fn test_is_importable_binding_identifier() {
+    assert!(is_importable_binding_identifier(&"foo".into()));
+    assert!(is_importable_binding_identifier(&"$foo".into()));
+    assert!(is_importable_binding_identifier(&"_foo".into()));
+    assert!(is_importable_binding_identifier(&"async".into()));
+    assert!(!is_importable_binding_identifier(&"null".into()));
+    assert!(!is_importable_binding_identifier(&"default".into()));
+    assert!(!is_importable_binding_identifier(
+      &"key-with-hyphens".into()
+    ));
+    assert!(!is_importable_binding_identifier(&"with spaces".into()));
+    assert!(!is_importable_binding_identifier(&"".into()));
+  }
+
+  #[test]
   fn test_export_collector() {
     fn helper(input: &'static str) -> ExportCollector {
       let mut collector = ExportCollector::default();
@@ -2610,6 +2807,11 @@ add('1', '2');
       Test {
         input: r#"export { foo, bar as barAlias };"#,
         named_expected: atom_set!("foo", "barAlias"),
+        default_expected: None,
+      },
+      Test {
+        input: r#"export { foo as null, bar as "key-with-hyphens" };"#,
+        named_expected: atom_set!("null", "key-with-hyphens"),
         default_expected: None,
       },
       Test {

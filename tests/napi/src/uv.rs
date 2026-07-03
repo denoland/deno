@@ -5,6 +5,7 @@ use std::ptr;
 use std::ptr::addr_of_mut;
 use std::ptr::null_mut;
 use std::time::Duration;
+use std::time::Instant;
 
 use libuv_sys_lite::uv_async_init;
 use libuv_sys_lite::uv_async_t;
@@ -715,6 +716,223 @@ extern "C" fn test_uv_threads(
   undefined
 }
 
+// Exercises the libuv condition-variable polyfills (uv_cond_*) added to the
+// host binary in ext/napi/uv.rs, resolved from the host `deno` process at
+// runtime like the other uv_* symbols here. The main thread waits on a
+// condition variable until a worker sets a predicate (guarded by the mutex)
+// and signals it; uv_cond_timedwait is then checked to report UV_ETIMEDOUT
+// when nobody signals.
+struct CondArg {
+  mutex: *mut libuv_sys_lite::uv_mutex_t,
+  cond: *mut libuv_sys_lite::uv_cond_t,
+  ready: *mut bool,
+}
+
+unsafe extern "C" fn uv_cond_entry(arg: *mut std::ffi::c_void) {
+  unsafe {
+    let a = arg as *mut CondArg;
+    libuv_sys_lite::uv_mutex_lock((*a).mutex);
+    *(*a).ready = true;
+    libuv_sys_lite::uv_cond_signal((*a).cond);
+    libuv_sys_lite::uv_mutex_unlock((*a).mutex);
+  }
+}
+
+extern "C" fn test_uv_cond(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  use libuv_sys_lite::uv_cond_destroy;
+  use libuv_sys_lite::uv_cond_init;
+  use libuv_sys_lite::uv_cond_t;
+  use libuv_sys_lite::uv_cond_timedwait;
+  use libuv_sys_lite::uv_cond_wait;
+  use libuv_sys_lite::uv_mutex_destroy;
+  use libuv_sys_lite::uv_mutex_init;
+  use libuv_sys_lite::uv_mutex_lock;
+  use libuv_sys_lite::uv_mutex_t;
+  use libuv_sys_lite::uv_mutex_unlock;
+  use libuv_sys_lite::uv_thread_create;
+  use libuv_sys_lite::uv_thread_join;
+  use libuv_sys_lite::uv_thread_t;
+
+  unsafe {
+    let mut mutex = MaybeUninit::<uv_mutex_t>::zeroed();
+    let mutex_ptr = mutex.as_mut_ptr();
+    assert_eq!(uv_mutex_init(mutex_ptr), 0);
+    let mut cond = MaybeUninit::<uv_cond_t>::zeroed();
+    let cond_ptr = cond.as_mut_ptr();
+    assert_eq!(uv_cond_init(cond_ptr), 0);
+
+    let mut ready = false;
+    let mut arg = CondArg {
+      mutex: mutex_ptr,
+      cond: cond_ptr,
+      ready: &mut ready,
+    };
+    let arg_ptr: *mut CondArg = &mut arg;
+
+    // Hold the mutex, then spawn the worker — it blocks on the mutex until
+    // uv_cond_wait below releases it.
+    uv_mutex_lock(mutex_ptr);
+    let mut tid = MaybeUninit::<uv_thread_t>::zeroed();
+    let tid_ptr = tid.as_mut_ptr();
+    assert_eq!(
+      uv_thread_create(tid_ptr, Some(uv_cond_entry), arg_ptr.cast()),
+      0
+    );
+    while !ready {
+      uv_cond_wait(cond_ptr, mutex_ptr);
+    }
+    uv_mutex_unlock(mutex_ptr);
+    assert_eq!(uv_thread_join(tid_ptr), 0);
+    assert!(ready);
+
+    // With nobody signaling, uv_cond_timedwait must report the platform's
+    // UV_ETIMEDOUT (the value the addon itself is compiled against), not just a
+    // non-zero code. Loop to tolerate spurious (rc == 0) wakeups.
+    let uv_etimedout = libuv_sys_lite::uv_errno_t::UV_ETIMEDOUT.0;
+    let start = Instant::now();
+    let rc = loop {
+      uv_mutex_lock(mutex_ptr);
+      let rc = uv_cond_timedwait(cond_ptr, mutex_ptr, 5_000_000);
+      uv_mutex_unlock(mutex_ptr);
+      if rc != 0 {
+        break rc;
+      }
+      assert!(start.elapsed() < Duration::from_secs(5));
+    };
+    assert_eq!(rc, uv_etimedout);
+
+    uv_cond_destroy(cond_ptr);
+    uv_mutex_destroy(mutex_ptr);
+  }
+
+  let mut undefined: napi_value = ptr::null_mut();
+  unsafe {
+    assert_napi_ok!(napi_get_undefined(env, &mut undefined));
+  }
+  undefined
+}
+
+// Exercises uv_cond_broadcast against multiple parked waiters (the
+// single-waiter/uv_cond_signal path is covered by test_uv_cond above). Several
+// worker threads each block in uv_cond_wait on the same condition variable;
+// once all of them are parked the main thread flips the predicate and wakes
+// every one of them with a single uv_cond_broadcast.
+struct BroadcastArg {
+  mutex: *mut libuv_sys_lite::uv_mutex_t,
+  cond: *mut libuv_sys_lite::uv_cond_t,
+  go: *mut bool,
+  waiting: *mut i32,
+  woken: *mut i32,
+}
+
+unsafe extern "C" fn uv_cond_broadcast_entry(arg: *mut std::ffi::c_void) {
+  unsafe {
+    let a = arg as *mut BroadcastArg;
+    libuv_sys_lite::uv_mutex_lock((*a).mutex);
+    // Announce we're about to park, then wait for the predicate. The
+    // increment happens under the mutex, so once main observes `waiting == N`
+    // every worker has released the mutex inside uv_cond_wait and is parked.
+    *(*a).waiting += 1;
+    while !*(*a).go {
+      libuv_sys_lite::uv_cond_wait((*a).cond, (*a).mutex);
+    }
+    *(*a).woken += 1;
+    libuv_sys_lite::uv_mutex_unlock((*a).mutex);
+  }
+}
+
+extern "C" fn test_uv_cond_broadcast(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  use libuv_sys_lite::uv_cond_broadcast;
+  use libuv_sys_lite::uv_cond_destroy;
+  use libuv_sys_lite::uv_cond_init;
+  use libuv_sys_lite::uv_cond_t;
+  use libuv_sys_lite::uv_mutex_destroy;
+  use libuv_sys_lite::uv_mutex_init;
+  use libuv_sys_lite::uv_mutex_lock;
+  use libuv_sys_lite::uv_mutex_t;
+  use libuv_sys_lite::uv_mutex_unlock;
+  use libuv_sys_lite::uv_thread_create;
+  use libuv_sys_lite::uv_thread_join;
+  use libuv_sys_lite::uv_thread_t;
+
+  const N: i32 = 4;
+
+  unsafe {
+    let mut mutex = MaybeUninit::<uv_mutex_t>::zeroed();
+    let mutex_ptr = mutex.as_mut_ptr();
+    assert_eq!(uv_mutex_init(mutex_ptr), 0);
+    let mut cond = MaybeUninit::<uv_cond_t>::zeroed();
+    let cond_ptr = cond.as_mut_ptr();
+    assert_eq!(uv_cond_init(cond_ptr), 0);
+
+    let mut go = false;
+    let mut waiting = 0;
+    let mut woken = 0;
+    let mut arg = BroadcastArg {
+      mutex: mutex_ptr,
+      cond: cond_ptr,
+      go: &mut go,
+      waiting: &mut waiting,
+      woken: &mut woken,
+    };
+    let arg_ptr: *mut BroadcastArg = &mut arg;
+
+    let mut tids = [MaybeUninit::<uv_thread_t>::zeroed(); N as usize];
+    for tid in &mut tids {
+      assert_eq!(
+        uv_thread_create(
+          tid.as_mut_ptr(),
+          Some(uv_cond_broadcast_entry),
+          arg_ptr.cast(),
+        ),
+        0
+      );
+    }
+
+    // Wait until every worker is parked in uv_cond_wait before broadcasting, so
+    // the single broadcast below is what releases all of them.
+    let start = Instant::now();
+    loop {
+      uv_mutex_lock(mutex_ptr);
+      let parked = waiting;
+      uv_mutex_unlock(mutex_ptr);
+      if parked == N {
+        break;
+      }
+      assert!(start.elapsed() < Duration::from_secs(5));
+      std::thread::sleep(Duration::from_millis(1));
+    }
+
+    // One broadcast wakes all parked waiters. Set the predicate through the
+    // shared pointer (same memory as `go`) under the mutex, mirroring how the
+    // workers observe it.
+    uv_mutex_lock(mutex_ptr);
+    *arg.go = true;
+    uv_cond_broadcast(cond_ptr);
+    uv_mutex_unlock(mutex_ptr);
+
+    for tid in &mut tids {
+      assert_eq!(uv_thread_join(tid.as_mut_ptr()), 0);
+    }
+    assert_eq!(woken, N);
+
+    uv_cond_destroy(cond_ptr);
+    uv_mutex_destroy(mutex_ptr);
+  }
+
+  let mut undefined: napi_value = ptr::null_mut();
+  unsafe {
+    assert_napi_ok!(napi_get_undefined(env, &mut undefined));
+  }
+  undefined
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_uv_async", test_uv_async),
@@ -723,6 +941,8 @@ pub fn init(env: napi_env, exports: napi_value) {
     napi_new_property!(env, "test_uv_timer_fires", test_uv_timer_fires),
     napi_new_property!(env, "test_uv_loop_helpers", test_uv_loop_helpers),
     napi_new_property!(env, "test_uv_threads", test_uv_threads),
+    napi_new_property!(env, "test_uv_cond", test_uv_cond),
+    napi_new_property!(env, "test_uv_cond_broadcast", test_uv_cond_broadcast),
   ];
 
   assert_napi_ok!(napi_define_properties(

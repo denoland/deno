@@ -595,6 +595,14 @@ class Http2ServerResponse extends lazyStream().default {
     return this[kStream].writableLength;
   }
 
+  get writableObjectMode() {
+    return this[kStream].writableObjectMode;
+  }
+
+  get writableNeedDrain() {
+    return this[kStream].writableNeedDrain;
+  }
+
   set statusCode(code) {
     code |= 0;
     if (code >= 100 && code < 200) {

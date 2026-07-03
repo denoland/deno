@@ -377,6 +377,7 @@ impl PublishPreparer {
         packages: package_configs,
         build_fast_check_graph,
         validate_graph: true,
+        skip_unanalyzable_exports: false,
       })
       .await?;
 
@@ -913,6 +914,10 @@ async fn perform_publish(
   assert_eq!(prepared_package_by_name.len(), authorizations.len());
   let mut futures: FuturesUnordered<LocalBoxFuture<Result<String, AnyError>>> =
     Default::default();
+  // Collect the errors of any packages that failed to publish so that we can
+  // keep publishing the remaining (independent) packages instead of aborting on
+  // the first failure, then report all of them at the end.
+  let mut errors: Vec<AnyError> = Vec::new();
   loop {
     let next_batch = publish_order_graph.next();
 
@@ -958,16 +963,68 @@ async fn perform_publish(
     }
 
     let Some(result) = futures.next().await else {
-      // done, ensure no circular dependency
+      // Done. This `?` is reached with packages still pending only when a
+      // package failed above and its dependents stayed blocked (we don't
+      // `finish_package` a failure). That's safe and won't swallow the
+      // collected errors: `ensure_no_pending` runs the cycle check on the
+      // static package graph, so blocked-but-acyclic dependents return `Ok` and
+      // a genuine circular dependency still surfaces here.
       publish_order_graph.ensure_no_pending()?;
       break;
     };
 
-    let package_name = result?;
-    publish_order_graph.finish_package(&package_name);
+    match result {
+      Ok(package_name) => publish_order_graph.finish_package(&package_name),
+      // Record the failure (preserving its context chain) and keep going so
+      // that the other in-flight and queued packages are still published. We
+      // intentionally don't call `finish_package` here: packages that depend on
+      // the one that failed must not be published against a missing version.
+      Err(err) => errors.push(err),
+    }
   }
 
-  Ok(())
+  if errors.is_empty() {
+    Ok(())
+  } else {
+    // Any packages still left in `prepared_package_by_name` were never
+    // attempted because they depended (directly or transitively) on a package
+    // that failed to publish, so their dependency version never became
+    // available. Surface them so the skip isn't silent.
+    if !prepared_package_by_name.is_empty() {
+      let mut skipped = prepared_package_by_name
+        .values()
+        .map(|p| p.display_name())
+        .collect::<Vec<_>>();
+      skipped.sort();
+      log::warn!(
+        "{} Skipped publishing {} package(s) that depended on a package that failed to publish:\n{}",
+        colors::yellow("Warning"),
+        skipped.len(),
+        skipped
+          .iter()
+          .map(|name| format!("  {}", name))
+          .collect::<Vec<_>>()
+          .join("\n"),
+      );
+    }
+    Err(combine_publish_errors(errors))
+  }
+}
+
+/// Combines the errors collected while publishing multiple packages into a
+/// single error, preserving each error's context chain.
+fn combine_publish_errors(mut errors: Vec<AnyError>) -> AnyError {
+  if errors.len() == 1 {
+    return errors.remove(0);
+  }
+
+  let mut message = format!("Failed to publish {} packages:", errors.len());
+  for err in &errors {
+    // `{:#}` renders the full anyhow context chain (e.g.
+    // "Failed to publish @scope/name: <cause>").
+    message.push_str(&format!("\n\n* {:#}", err));
+  }
+  deno_core::anyhow::anyhow!(message)
 }
 
 async fn publish_package(
@@ -1036,14 +1093,9 @@ async fn publish_package(
       );
       task
     }
-    Err(err) => {
-      return Err(err).with_context(|| {
-        format!(
-          "Failed to publish @{}/{} at {}",
-          package.scope, package.package, package.version
-        )
-      });
-    }
+    // The caller wraps every failure with a "Failed to publish <name>@<version>"
+    // context, so inner messages here avoid repeating that prefix.
+    Err(err) => return Err(err.into()),
   };
 
   let interval = std::time::Duration::from_secs(2);
@@ -1070,14 +1122,9 @@ async fn publish_package(
   }
 
   if let Some(error) = task.error {
-    bail!(
-      "{} @{}/{} at {}: {}",
-      colors::red("Failed to publish"),
-      package.scope,
-      package.package,
-      package.version,
-      error.message
-    );
+    // The caller adds the "Failed to publish <name>@<version>" context, so only
+    // surface the registry's error message here to avoid a doubled prefix.
+    bail!("{}", error.message);
   }
 
   let enable_provenance = std::env::var("DISABLE_JSR_PROVENANCE").is_err()

@@ -16,6 +16,7 @@ use deno_core::CancelHandle;
 use deno_core::DetachedBuffer;
 use deno_core::FromV8;
 use deno_core::JsBuffer;
+use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -24,6 +25,8 @@ use deno_core::ResourceId;
 use deno_core::op2;
 use deno_permissions::ChildPermissionsArg;
 use deno_permissions::PermissionsContainer;
+use deno_web::Blob;
+use deno_web::BlobStoreTrait;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
 use deno_web::Transferable;
@@ -66,7 +69,13 @@ pub struct CreateWebWorkerArgs {
   pub worker_type: WorkerThreadType,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  /// Captured root blob for `main_module`; paired with `main_module` by the
+  /// worker's loader/handle. Blob dependencies are intentionally resolved
+  /// normally by their own URLs.
+  pub maybe_main_module_blob: Option<Arc<Blob>>,
   pub resource_limits: Option<ResourceLimits>,
+  pub wait_for_debugger_on_start: bool,
+  pub wait_for_page_wait_for_debugger: bool,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -273,9 +282,29 @@ fn op_create_worker(
   let parent_permissions = parent_permissions.clone();
   let create_web_worker_cb = state.borrow::<CreateWebWorkerCbHolder>().clone();
   let format_js_error_fn = state.borrow::<FormatJsErrorFnHolder>().clone();
+  let wait_for_debugger_on_start = state
+    .try_borrow::<Rc<JsRuntimeInspector>>()
+    .map(|inspector| inspector.should_wait_for_debugger_on_worker_start())
+    .unwrap_or(false);
+  let wait_for_page_wait_for_debugger = state
+    .try_borrow::<Rc<JsRuntimeInspector>>()
+    .map(|inspector| {
+      inspector.should_wait_for_page_wait_for_debugger_on_worker_start()
+    })
+    .unwrap_or(false);
   let worker_id = WorkerId::new();
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
+  // Synchronously capture the root blob so a racing `URL.revokeObjectURL`
+  // after `new Worker(blobUrl)` can't make the worker load fail (see #26142).
+  // This anchors only the worker root; blob URL dependencies still resolve
+  // through the normal blob store at load time.
+  let maybe_main_module_blob = if module_specifier.scheme() == "blob" {
+    let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
+    blob_store.get_object_url(module_specifier.clone())
+  } else {
+    None
+  };
   let worker_name = args_name.unwrap_or_default();
 
   let (handle_sender, handle_receiver) =
@@ -324,7 +353,10 @@ fn op_create_worker(
           worker_type,
           close_on_idle: args.close_on_idle,
           maybe_worker_metadata,
+          maybe_main_module_blob,
           resource_limits: args.resource_limits,
+          wait_for_debugger_on_start,
+          wait_for_page_wait_for_debugger,
         });
 
       // Send thread safe handle from newly created worker to host thread
@@ -489,7 +521,6 @@ async fn op_host_recv_ctrl(
 }
 
 #[op2]
-#[serde]
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
   #[scoped] id: WorkerId,
@@ -527,7 +558,6 @@ async fn op_host_recv_message(
 }
 
 #[op2]
-#[serde]
 fn op_host_recv_message_sync(
   state: &mut OpState,
   #[scoped] id: WorkerId,
@@ -659,7 +689,6 @@ fn op_node_worker_thread_post_message(
 /// Resolves to `None` when the channel is closed (i.e. the thread is
 /// being torn down), at which point the JS-side poll loop terminates.
 #[op2]
-#[serde]
 async fn op_node_worker_thread_recv_message(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
