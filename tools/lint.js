@@ -346,6 +346,36 @@ async function clippy() {
     "clippy::allow_attributes_without_reason",
   ];
 
+  // clippy's print_stdout/print_stderr messages are not configurable, so
+  // watch for them in the output and point at the replacement ourselves
+  async function runClippy(args, errorMessage) {
+    const cargoCmd = new Deno.Command("cargo", {
+      cwd: ROOT_PATH,
+      args,
+      stdout: "inherit",
+      stderr: "piped",
+    });
+    const child = cargoCmd.spawn();
+    const decoder = new TextDecoder();
+    let stderrText = "";
+    for await (const chunk of child.stderr) {
+      stderrText += decoder.decode(chunk, { stream: true });
+      await Deno.stderr.write(chunk);
+    }
+    const { code } = await child.status;
+    if (/clippy::print[-_]std(out|err)/.test(stderrText)) {
+      console.error(
+        "\nhint: the std print macros panic when the output pipe is closed (ex. `deno test | head`).",
+      );
+      console.error(
+        "      use deno_print's drop_println!/drop_eprintln! macros for command output or the `log` crate for diagnostics.",
+      );
+    }
+    if (code > 0) {
+      throw new Error(errorMessage);
+    }
+  }
+
   // Run clippy for the whole workspace except deno_core with --all-features.
   // deno_core is excluded because --all-features enables
   // v8_enable_pointer_compression which is not available on all platforms.
@@ -364,17 +394,7 @@ async function clippy() {
       cmd.push("--release");
     }
 
-    const cargoCmd = new Deno.Command("cargo", {
-      cwd: ROOT_PATH,
-      args: [...cmd, ...clippyDenyFlags],
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    const { code } = await cargoCmd.output();
-
-    if (code > 0) {
-      throw new Error("clippy failed");
-    }
+    await runClippy([...cmd, ...clippyDenyFlags], "clippy failed");
   }
 
   // Run clippy for deno_core with specific features, matching the invocation
@@ -400,17 +420,10 @@ async function clippy() {
       cmd.push("--release");
     }
 
-    const cargoCmd = new Deno.Command("cargo", {
-      cwd: ROOT_PATH,
-      args: [...cmd, ...clippyDenyFlags],
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    const { code } = await cargoCmd.output();
-
-    if (code > 0) {
-      throw new Error("clippy failed for deno_core");
-    }
+    await runClippy(
+      [...cmd, ...clippyDenyFlags],
+      "clippy failed for deno_core",
+    );
   }
 }
 
