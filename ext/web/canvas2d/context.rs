@@ -522,14 +522,7 @@ impl OffscreenCanvasRenderingContext2D {
       } else {
         peniko::Fill::NonZero
       };
-      match &mut *drawing {
-        DrawingBackend::Vello(scene) => {
-          scene.push_clip_layer(fill, clip.transform, &clip.path);
-        }
-        DrawingBackend::VelloCpu(ctx, _) => {
-          ctx.push_clip_layer(&clip.path);
-        }
-      }
+      Self::push_clip(&mut drawing, fill, clip.transform, &clip.path);
     }
     result
   }
@@ -631,14 +624,7 @@ impl OffscreenCanvasRenderingContext2D {
       } else {
         peniko::Fill::NonZero
       };
-      match &mut *drawing {
-        DrawingBackend::Vello(scene) => {
-          scene.push_clip_layer(fill, clip.transform, &clip.path);
-        }
-        DrawingBackend::VelloCpu(ctx, _) => {
-          ctx.push_clip_layer(&clip.path);
-        }
-      }
+      Self::push_clip(&mut drawing, fill, clip.transform, &clip.path);
     }
     let rgba = buf
       .and_then(|b| RgbaImage::from_raw(width, height, b))
@@ -767,37 +753,7 @@ impl OffscreenCanvasRenderingContext2D {
     };
     let (brush, brush_transform) =
       self.resolve_brush(scope, &state.stroke_style, 1.0);
-    let mut stroke =
-      kurbo::Stroke::new(state.line_width).with_miter_limit(state.miter_limit);
-    match state.line_join {
-      LineJoin::Round => {
-        stroke.join = kurbo::Join::Round;
-      }
-      LineJoin::Bevel => {
-        stroke.join = kurbo::Join::Bevel;
-      }
-      LineJoin::Miter => {
-        stroke.join = kurbo::Join::Miter;
-      }
-    }
-    match state.line_cap {
-      LineCap::Butt => {
-        stroke.start_cap = kurbo::Cap::Butt;
-        stroke.end_cap = kurbo::Cap::Butt;
-      }
-      LineCap::Round => {
-        stroke.start_cap = kurbo::Cap::Round;
-        stroke.end_cap = kurbo::Cap::Round;
-      }
-      LineCap::Square => {
-        stroke.start_cap = kurbo::Cap::Square;
-        stroke.end_cap = kurbo::Cap::Square;
-      }
-    }
-    if !state.line_dash.is_empty() {
-      stroke = stroke
-        .with_dashes(state.line_dash_offset, state.line_dash.iter().copied());
-    }
+    let stroke = Self::build_stroke(&state);
     drop(state);
 
     let path = if is_path2d {
@@ -1008,6 +964,72 @@ impl OffscreenCanvasRenderingContext2D {
     }
   }
 
+  /// Pushes a single clip layer with the given fill rule and transform. The
+  /// CPU backend's `push_clip_layer` has no fill-rule/transform parameters
+  /// of its own -- it uses whatever was last set via `set_fill_rule()` /
+  /// `set_transform()` -- so those must be applied first to keep it in sync
+  /// with the GPU backend.
+  fn push_clip(
+    drawing: &mut DrawingBackend,
+    fill: peniko::Fill,
+    transform: kurbo::Affine,
+    path: &kurbo::BezPath,
+  ) {
+    match drawing {
+      DrawingBackend::Vello(scene) => {
+        scene.push_clip_layer(fill, transform, path);
+      }
+      DrawingBackend::VelloCpu(ctx, _) => {
+        ctx.set_fill_rule(if fill == peniko::Fill::EvenOdd {
+          vello_cpu::peniko::Fill::EvenOdd
+        } else {
+          vello_cpu::peniko::Fill::NonZero
+        });
+        ctx.set_transform(transform);
+        ctx.push_clip_layer(path);
+      }
+    }
+  }
+
+  /// Builds a kurbo::Stroke reflecting the current line style state
+  /// (width, cap, join, miter limit, dash pattern). Shared by actual
+  /// stroke rendering and isPointInStroke() hit-testing so the two stay in
+  /// sync.
+  fn build_stroke(state: &DrawingState) -> kurbo::Stroke {
+    let mut stroke =
+      kurbo::Stroke::new(state.line_width).with_miter_limit(state.miter_limit);
+    match state.line_join {
+      LineJoin::Round => {
+        stroke.join = kurbo::Join::Round;
+      }
+      LineJoin::Bevel => {
+        stroke.join = kurbo::Join::Bevel;
+      }
+      LineJoin::Miter => {
+        stroke.join = kurbo::Join::Miter;
+      }
+    }
+    match state.line_cap {
+      LineCap::Butt => {
+        stroke.start_cap = kurbo::Cap::Butt;
+        stroke.end_cap = kurbo::Cap::Butt;
+      }
+      LineCap::Round => {
+        stroke.start_cap = kurbo::Cap::Round;
+        stroke.end_cap = kurbo::Cap::Round;
+      }
+      LineCap::Square => {
+        stroke.start_cap = kurbo::Cap::Square;
+        stroke.end_cap = kurbo::Cap::Square;
+      }
+    }
+    if !state.line_dash.is_empty() {
+      stroke = stroke
+        .with_dashes(state.line_dash_offset, state.line_dash.iter().copied());
+    }
+    stroke
+  }
+
   fn has_shadow(state: &DrawingState) -> bool {
     !is_color_transparent(state.shadow_color_rgba)
       && (state.shadow_blur > 0.0
@@ -1115,22 +1137,24 @@ impl OffscreenCanvasRenderingContext2D {
     rule: String,
     transform: kurbo::Affine,
   ) {
-    if path.is_empty() {
-      return;
-    }
+    // Per spec, clipping with an empty path shrinks the clip region to
+    // nothing (rather than leaving it unchanged), so subsequent drawing is
+    // fully clipped out. Use a zero-area shape with the identity transform
+    // to represent that.
+    let (path, transform) = if path.is_empty() {
+      (
+        kurbo::Shape::to_path(&kurbo::Rect::ZERO, 0.1),
+        kurbo::Affine::IDENTITY,
+      )
+    } else {
+      (path, transform)
+    };
     let fill = if rule == "evenodd" {
       peniko::Fill::EvenOdd
     } else {
       peniko::Fill::NonZero
     };
-    match &mut *self.drawing.borrow_mut() {
-      DrawingBackend::Vello(scene) => {
-        scene.push_clip_layer(fill, transform, &path);
-      }
-      DrawingBackend::VelloCpu(ctx, _) => {
-        ctx.push_clip_layer(&path);
-      }
-    }
+    Self::push_clip(&mut self.drawing.borrow_mut(), fill, transform, &path);
     let mut state = self.state.borrow_mut();
     self.clip_stack.borrow_mut().truncate(state.clip_depth);
     self.clip_stack.borrow_mut().push(ClipEntry {
@@ -1170,7 +1194,7 @@ impl OffscreenCanvasRenderingContext2D {
     a: Option<v8::Local<'_, v8::Value>>,
     b: Option<v8::Local<'_, v8::Value>>,
     c: Option<v8::Local<'_, v8::Value>>,
-    d: Option<String>,
+    d: Option<v8::Local<'_, v8::Value>>,
   ) -> Result<(kurbo::BezPath, f64, f64, String, bool), Canvas2DError> {
     const PREFIX: &str = "Failed to execute 'isPointInPath' on 'OffscreenCanvasRenderingContext2D'";
 
@@ -1223,7 +1247,13 @@ impl OffscreenCanvasRenderingContext2D {
       // isPointInPath(path, x, y [, fillRule])
       let x = b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
       let y = c.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
-      let rule = d.unwrap_or_else(|| "nonzero".into());
+      // CanvasFillRule is a non-nullable DOMString enum, so an explicit
+      // `null` must be stringified to "null" (an invalid enum value)
+      // rather than falling back to the "nonzero" default like an omitted
+      // argument would.
+      let rule = d
+        .map(|v| v.to_rust_string_lossy(scope))
+        .unwrap_or_else(|| "nonzero".into());
       validate_fill_rule("parameter 4", &rule)?;
       return Ok((p.path.borrow().clone(), x, y, rule, true));
     }
@@ -1283,6 +1313,43 @@ impl OffscreenCanvasRenderingContext2D {
     Err(Self::type_error_not_path2d(PREFIX, "parameter 1"))
   }
 
+  /// Returns a copy of `path` with every subpath explicitly closed. Per
+  /// spec, isPointInPath()/isPointInStroke() (and fill()/clip()) treat each
+  /// subpath as though it had been closed, regardless of whether
+  /// closePath() was actually called.
+  fn close_all_subpaths(path: &kurbo::BezPath) -> kurbo::BezPath {
+    let mut closed = kurbo::BezPath::new();
+    let mut subpath_open = false;
+    for el in path.iter() {
+      match el {
+        PathEl::MoveTo(_) => {
+          if subpath_open {
+            closed.push(PathEl::ClosePath);
+          }
+          subpath_open = true;
+        }
+        PathEl::ClosePath => subpath_open = false,
+        _ => {}
+      }
+      closed.push(el);
+    }
+    if subpath_open {
+      closed.push(PathEl::ClosePath);
+    }
+    closed
+  }
+
+  /// Returns whether `pt` lies on (within floating-point tolerance of) any
+  /// segment of `path`. Per spec, points exactly on the path's boundary
+  /// count as inside for isPointInPath().
+  fn point_on_path_boundary(path: &kurbo::BezPath, pt: kurbo::Point) -> bool {
+    use kurbo::ParamCurveNearest;
+    const EPSILON_SQ: f64 = 1e-9;
+    path
+      .segments()
+      .any(|seg| seg.nearest(pt, 1e-6).distance_sq <= EPSILON_SQ)
+  }
+
   #[inline]
   fn test_point_in_path(
     &self,
@@ -1292,7 +1359,11 @@ impl OffscreenCanvasRenderingContext2D {
     rule: String,
   ) -> bool {
     use kurbo::Shape;
+    let path = Self::close_all_subpaths(&path);
     let pt = kurbo::Point::new(x, y);
+    if Self::point_on_path_boundary(&path, pt) {
+      return true;
+    }
     let w = path.winding(pt);
     match rule.as_str() {
       "evenodd" => w % 2 != 0,
@@ -1301,19 +1372,34 @@ impl OffscreenCanvasRenderingContext2D {
   }
 
   #[inline]
-  fn test_point_in_stroke(&self, path: kurbo::BezPath, x: f64, y: f64) -> bool {
+  fn test_point_in_stroke(
+    &self,
+    path: kurbo::BezPath,
+    x: f64,
+    y: f64,
+    transform: kurbo::Affine,
+    is_path2d: bool,
+  ) -> bool {
     if path.is_empty() {
       return false;
     }
-    // Approximate: stroke the path and test contains on outline.
+    // lineWidth/lineDash are specified in user-space units, so the stroke
+    // outline must be built in user space. The default path is stored in
+    // canvas space (see append_transformed_path), so map it back; Path2D
+    // coordinates are already in user space.
+    let path = if is_path2d {
+      path
+    } else {
+      Self::transform_path(&path, transform.inverse())
+    };
     let state = self.state.borrow();
-    let stroke = kurbo::Stroke::new(state.line_width.max(1.0));
+    let stroke = Self::build_stroke(&state);
     drop(state);
     let outline = kurbo::stroke(
-      path.path_elements(0.1),
+      path.path_elements(0.01),
       &stroke,
       &kurbo::StrokeOpts::default(),
-      0.1,
+      0.01,
     );
     outline.contains(kurbo::Point::new(x, y))
   }
@@ -2197,9 +2283,8 @@ impl OffscreenCanvasRenderingContext2D {
     counterclockwise: Option<bool>,
   ) -> Result<(), Canvas2DError> {
     let counterclockwise = counterclockwise.unwrap_or(false);
-    if *radius < 0.0 {
-      return Err(Canvas2DError::NegativeRadius(*radius));
-    }
+    // Per spec, non-finite arguments are silently ignored; only a finite
+    // negative radius throws IndexSizeError.
     if !x.is_finite()
       || !y.is_finite()
       || !radius.is_finite()
@@ -2207,6 +2292,9 @@ impl OffscreenCanvasRenderingContext2D {
       || !end_angle.is_finite()
     {
       return Ok(());
+    }
+    if *radius < 0.0 {
+      return Err(Canvas2DError::NegativeRadius(*radius));
     }
 
     let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
@@ -2244,9 +2332,8 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] y2: UnrestrictedDouble,
     #[webidl] radius: UnrestrictedDouble,
   ) -> Result<(), Canvas2DError> {
-    if *radius < 0.0 {
-      return Err(Canvas2DError::NegativeRadius(*radius));
-    }
+    // Per spec, non-finite arguments are silently ignored; only a finite
+    // negative radius throws IndexSizeError.
     if !x1.is_finite()
       || !y1.is_finite()
       || !x2.is_finite()
@@ -2254,6 +2341,9 @@ impl OffscreenCanvasRenderingContext2D {
       || !radius.is_finite()
     {
       return Ok(());
+    }
+    if *radius < 0.0 {
+      return Err(Canvas2DError::NegativeRadius(*radius));
     }
     let transform = self.state.borrow().transform;
     // Per spec, arcTo() behaves like moveTo(x1, y1) when there is no
@@ -2295,12 +2385,8 @@ impl OffscreenCanvasRenderingContext2D {
     counterclockwise: Option<bool>,
   ) -> Result<(), Canvas2DError> {
     let counterclockwise = counterclockwise.unwrap_or(false);
-    if *radius_x < 0.0 {
-      return Err(Canvas2DError::NegativeRadius(*radius_x));
-    }
-    if *radius_y < 0.0 {
-      return Err(Canvas2DError::NegativeRadius(*radius_y));
-    }
+    // Per spec, non-finite arguments are silently ignored; only a finite
+    // negative radius throws IndexSizeError.
     if !x.is_finite()
       || !y.is_finite()
       || !radius_x.is_finite()
@@ -2310,6 +2396,12 @@ impl OffscreenCanvasRenderingContext2D {
       || !end_angle.is_finite()
     {
       return Ok(());
+    }
+    if *radius_x < 0.0 {
+      return Err(Canvas2DError::NegativeRadius(*radius_x));
+    }
+    if *radius_y < 0.0 {
+      return Err(Canvas2DError::NegativeRadius(*radius_y));
     }
 
     let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
@@ -2378,7 +2470,13 @@ impl OffscreenCanvasRenderingContext2D {
       return Ok(());
     }
     let radii_val = radii.unwrap_or_else(|| v8::undefined(scope).into());
-    let corner_radii = parse_round_rect_radii(scope, radii_val)?;
+    // Per spec, a non-finite radius (unlike a negative one) is silently
+    // ignored rather than throwing, matching the x/y/w/h check above.
+    let corner_radii = match parse_round_rect_radii(scope, radii_val) {
+      Ok(radii) => radii,
+      Err(Canvas2DError::NonFinite) => return Ok(()),
+      Err(e) => return Err(e),
+    };
     let transform = self.state.borrow().transform;
     let mut path = kurbo::BezPath::new();
     build_round_rect_path(&mut path, *x, *y, *w, *h, &corner_radii);
@@ -2453,9 +2551,10 @@ impl OffscreenCanvasRenderingContext2D {
   ) {
     let (path, rule, is_path2d) =
       self.resolve_path_and_fill_rule(scope, first, second);
-    if path.is_empty() {
-      return;
-    }
+    // Note: unlike fill()/stroke(), an empty path must not be a no-op here
+    // -- per spec, clipping to an empty path shrinks the clip region to
+    // nothing -- so apply_clip() is still called (it handles the empty
+    // case itself).
     let transform = if is_path2d {
       self.state.borrow().transform
     } else {
@@ -2464,21 +2563,27 @@ impl OffscreenCanvasRenderingContext2D {
     self.apply_clip(path, rule, transform);
   }
 
+  #[fast]
   fn is_point_in_path(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
     a: Option<v8::Local<'_, v8::Value>>,
     b: Option<v8::Local<'_, v8::Value>>,
     c: Option<v8::Local<'_, v8::Value>>,
-    #[string] d: Option<String>,
+    d: Option<v8::Local<'_, v8::Value>>,
   ) -> Result<bool, Canvas2DError> {
     let (path, x, y, rule, is_path2d) =
       self.resolve_point_in_path_args(scope, a, b, c, d)?;
     if !x.is_finite() || !y.is_finite() {
       return Ok(false);
     }
+    // Per spec, isPointInPath() returns false outright when the current
+    // transformation matrix has no inverse.
+    let transform = self.state.borrow().transform;
+    if transform.determinant() == 0.0 {
+      return Ok(false);
+    }
     let p = if is_path2d {
-      let transform = self.state.borrow().transform;
       transform.inverse() * kurbo::Point::new(x, y)
     } else {
       kurbo::Point::new(x, y)
@@ -2499,13 +2604,18 @@ impl OffscreenCanvasRenderingContext2D {
     if !x.is_finite() || !y.is_finite() {
       return Ok(false);
     }
-    let p = if is_path2d {
-      let transform = self.state.borrow().transform;
-      transform.inverse() * kurbo::Point::new(x, y)
-    } else {
-      kurbo::Point::new(x, y)
-    };
-    Ok(self.test_point_in_stroke(path, p.x, p.y))
+    // Per spec, isPointInStroke() returns false outright when the current
+    // transformation matrix has no inverse.
+    let transform = self.state.borrow().transform;
+    if transform.determinant() == 0.0 {
+      return Ok(false);
+    }
+    // The stroke outline is always built in user space (see
+    // test_point_in_stroke), so the query point must land there too,
+    // regardless of whether it is being tested against the default path or
+    // an explicit Path2D.
+    let p = transform.inverse() * kurbo::Point::new(x, y);
+    Ok(self.test_point_in_stroke(path, p.x, p.y, transform, is_path2d))
   }
 
   fn get_transform<'a>(
@@ -3116,14 +3226,7 @@ impl OffscreenCanvasRenderingContext2D {
       } else {
         peniko::Fill::NonZero
       };
-      match &mut *drawing {
-        DrawingBackend::Vello(scene) => {
-          scene.push_clip_layer(fill, clip.transform, &clip.path);
-        }
-        DrawingBackend::VelloCpu(ctx, _) => {
-          ctx.push_clip_layer(&clip.path);
-        }
-      }
+      Self::push_clip(&mut drawing, fill, clip.transform, &clip.path);
     }
     Ok(())
   }

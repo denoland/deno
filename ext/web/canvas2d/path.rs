@@ -143,9 +143,8 @@ impl Path2D {
     counterclockwise: Option<bool>,
   ) -> Result<(), Canvas2DError> {
     let counterclockwise = counterclockwise.unwrap_or(false);
-    if *radius < 0.0 {
-      return Err(Canvas2DError::NegativeRadius(*radius));
-    }
+    // Per spec, non-finite arguments are silently ignored; only a finite
+    // negative radius throws IndexSizeError.
     if !x.is_finite()
       || !y.is_finite()
       || !radius.is_finite()
@@ -153,6 +152,9 @@ impl Path2D {
       || !end_angle.is_finite()
     {
       return Ok(());
+    }
+    if *radius < 0.0 {
+      return Err(Canvas2DError::NegativeRadius(*radius));
     }
     let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
     let mut path = self.path.borrow_mut();
@@ -188,9 +190,8 @@ impl Path2D {
     #[webidl] y2: UnrestrictedDouble,
     #[webidl] radius: UnrestrictedDouble,
   ) -> Result<(), Canvas2DError> {
-    if *radius < 0.0 {
-      return Err(Canvas2DError::NegativeRadius(*radius));
-    }
+    // Per spec, non-finite arguments are silently ignored; only a finite
+    // negative radius throws IndexSizeError.
     if !x1.is_finite()
       || !y1.is_finite()
       || !x2.is_finite()
@@ -198,6 +199,9 @@ impl Path2D {
       || !radius.is_finite()
     {
       return Ok(());
+    }
+    if *radius < 0.0 {
+      return Err(Canvas2DError::NegativeRadius(*radius));
     }
     let mut path = self.path.borrow_mut();
     if path.is_empty() {
@@ -221,12 +225,8 @@ impl Path2D {
     counterclockwise: Option<bool>,
   ) -> Result<(), Canvas2DError> {
     let counterclockwise = counterclockwise.unwrap_or(false);
-    if *radius_x < 0.0 {
-      return Err(Canvas2DError::NegativeRadius(*radius_x));
-    }
-    if *radius_y < 0.0 {
-      return Err(Canvas2DError::NegativeRadius(*radius_y));
-    }
+    // Per spec, non-finite arguments are silently ignored; only a finite
+    // negative radius throws IndexSizeError.
     if !x.is_finite()
       || !y.is_finite()
       || !radius_x.is_finite()
@@ -236,6 +236,12 @@ impl Path2D {
       || !end_angle.is_finite()
     {
       return Ok(());
+    }
+    if *radius_x < 0.0 {
+      return Err(Canvas2DError::NegativeRadius(*radius_x));
+    }
+    if *radius_y < 0.0 {
+      return Err(Canvas2DError::NegativeRadius(*radius_y));
     }
     let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
     let mut path = self.path.borrow_mut();
@@ -333,6 +339,13 @@ pub(super) fn compute_arc_sweep(
   // (-2*PI, 0]). Either way, a request for a full lap in the sweep
   // direction (or more) is clamped to exactly one full turn, and
   // startAngle == endAngle always yields a zero-length sweep.
+  //
+  // A subtlety: if endAngle is congruent to startAngle mod 2*PI but was not
+  // literally equal to it (e.g. startAngle=0, endAngle=2*PI), the
+  // normalization loop below lands exactly on startAngle after wrapping by
+  // one full turn, which must be treated as a full-circle sweep rather
+  // than a zero-length one -- only a *literal* startAngle == endAngle (no
+  // wrapping needed) is a zero-length sweep.
   let two_pi = 2.0 * std::f64::consts::PI;
 
   if !counterclockwise {
@@ -340,19 +353,33 @@ pub(super) fn compute_arc_sweep(
       return two_pi;
     }
     let mut end = end_angle;
+    let mut wrapped = false;
     while end < start_angle {
       end += two_pi;
+      wrapped = true;
     }
-    end - start_angle
+    let sweep = end - start_angle;
+    if wrapped && sweep == 0.0 {
+      two_pi
+    } else {
+      sweep
+    }
   } else {
     if start_angle - end_angle >= two_pi {
       return -two_pi;
     }
     let mut end = end_angle;
+    let mut wrapped = false;
     while end > start_angle {
       end -= two_pi;
+      wrapped = true;
     }
-    end - start_angle
+    let sweep = end - start_angle;
+    if wrapped && sweep == 0.0 {
+      -two_pi
+    } else {
+      sweep
+    }
   }
 }
 
