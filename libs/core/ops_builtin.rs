@@ -23,9 +23,11 @@ use crate::error::ResourceError;
 use crate::error::exception_to_err;
 use crate::error::exception_to_err_result;
 use crate::io::AdaptiveBufferStrategy;
+use crate::io::AsyncResult;
 use crate::io::BufMutView;
 use crate::io::BufView;
 use crate::io::ResourceId;
+use crate::io::WriteOutcome;
 use crate::modules::ModuleMap;
 use crate::modules::recursive_load::RecursiveModuleLoad;
 use crate::op2;
@@ -50,7 +52,6 @@ builtin_ops! {
   op_resources,
   op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
-  op_wasm_streaming_stream_feed,
   op_void_sync,
   op_error_async,
   op_error_async_deferred,
@@ -263,6 +264,22 @@ pub fn op_print(
 pub struct WasmStreamingResource(pub(crate) RefCell<v8::WasmStreaming<false>>);
 
 impl Resource for WasmStreamingResource {
+  // Implementing the write side makes the resource a valid sink for `op_pipe`,
+  // which is how `WebAssembly.instantiateStreaming` pumps a response body
+  // straight into V8's streaming compiler without a JS round-trip per chunk
+  // (see `handleWasmStreaming` in ext/fetch/26_fetch.js). `on_bytes_received`
+  // is synchronous, infallible, and always consumes the whole chunk.
+  fn write(self: Rc<Self>, buf: BufView) -> AsyncResult<WriteOutcome> {
+    let nwritten = buf.len();
+    self.0.borrow_mut().on_bytes_received(&buf);
+    Box::pin(std::future::ready(Ok(WriteOutcome::Full { nwritten })))
+  }
+
+  fn write_all(self: Rc<Self>, view: BufView) -> AsyncResult<()> {
+    self.0.borrow_mut().on_bytes_received(&view);
+    Box::pin(std::future::ready(Ok(())))
+  }
+
   fn close(self: Rc<Self>) {
     // At this point there are no clones of Rc<WasmStreamingResource> on the
     // resource table, and no one should own a reference outside of the stack.
@@ -305,46 +322,6 @@ pub fn op_wasm_streaming_set_url(
     state.resource_table.get::<WasmStreamingResource>(rid)?;
 
   wasm_streaming.0.borrow_mut().set_url(url);
-
-  Ok(())
-}
-
-#[op2]
-async fn op_wasm_streaming_stream_feed(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-  #[smi] stream_rid: ResourceId,
-  auto_close: bool,
-) -> Result<(), JsErrorBox> {
-  let wasm_streaming = state
-    .borrow_mut()
-    .resource_table
-    .get::<WasmStreamingResource>(rid)
-    .map_err(|_| JsErrorBox::type_error("stream not found"))?;
-
-  loop {
-    let resource = state
-      .borrow()
-      .resource_table
-      .get_any(stream_rid)
-      .map_err(|_| JsErrorBox::type_error("stream not found"))?;
-    let view = deno_core::BufMutView::new(65536);
-    let (bytes, view) = resource.read_byob(view).await?;
-
-    /* EOF */
-    if bytes == 0 {
-      break;
-    }
-
-    wasm_streaming
-      .0
-      .borrow_mut()
-      .on_bytes_received(&view[..bytes]);
-  }
-
-  if auto_close {
-    let _ = state.borrow_mut().resource_table.take_any(stream_rid);
-  }
 
   Ok(())
 }
