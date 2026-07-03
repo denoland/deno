@@ -233,9 +233,11 @@ function postMessage(message, transferOrOptions = { __proto__: null }) {
     transferOrOptions === null ||
     (arguments.length <= 1)
   ) {
-    op_worker_post_message_raw(core.serialize(message, undefined, (err) => {
-      throw new DOMException(err, "DataCloneError");
-    }));
+    op_worker_post_message_raw(
+      messagePort.serializeMessageData(message, (err) => {
+        throw new DOMException(err, "DataCloneError");
+      }),
+    );
     return;
   }
   message = webidl.converters.any(message);

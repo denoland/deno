@@ -11,6 +11,7 @@ use deno_error::JsErrorBox;
 use serde_v8::ByteString;
 
 use crate::CancelHandle;
+use crate::CancelTryFuture;
 use crate::JsBuffer;
 use crate::ModuleId;
 use crate::OpDecl;
@@ -63,6 +64,7 @@ builtin_ops! {
   op_read_sync,
   op_write_sync,
   op_write_all,
+  op_pipe,
   op_write_type_error,
   op_shutdown,
   op_str_byte_length,
@@ -476,6 +478,82 @@ async fn op_write_all(
   let view = BufView::from(buf);
   resource.write_all(view).await?;
   Ok(())
+}
+
+/// Pipe all data from a source resource to a sink resource, entirely in Rust.
+///
+/// This is the fast path for `ReadableStream#pipeTo` when both the source and
+/// the sink are backed by a `deno_core::Resource` (see
+/// `getReadableStreamResourceBacking` / `getWritableStreamResourceBacking` in
+/// `ext/web/06_streams.js`). It avoids copying every chunk into and back out of
+/// JavaScript. Close / abort / cancel semantics are handled by the JS caller.
+///
+/// Chunks are read with `read()`, which hands back the resource's own buffer
+/// (zero-copy for sources that buffer internally, like fetch response bodies
+/// and wrapped `ReadableStream`s), and passed to the sink as-is; `write_all`
+/// takes the same `BufView`, so the pump itself adds no copy. Sources that
+/// only buffer externally (files, sockets) allocate per chunk in their `read()`
+/// impl, exactly as a `read_byob` into a fresh buffer would.
+///
+/// When `cancel_rid` names a [`CancelHandle`] resource, each read and write is
+/// raced against it, so cancelling the handle (the JS caller closes it from an
+/// `AbortSignal` handler) aborts the pump promptly. The handle is consumed
+/// before returning, mirroring `op_net_connect_tcp`.
+#[op2(promise_id)]
+async fn op_pipe(
+  state: Rc<RefCell<OpState>>,
+  #[smi] promise_id: i32,
+  #[smi] src_rid: ResourceId,
+  #[smi] dst_rid: ResourceId,
+  #[smi] cancel_rid: Option<ResourceId>,
+) -> Result<(), JsErrorBox> {
+  // Unref bookkeeping is keyed off the source, since that is what we await on.
+  let src = get_resource(state.clone(), src_rid, promise_id)?;
+  let dst = state
+    .borrow()
+    .resource_table
+    .get_any(dst_rid)
+    .map_err(JsErrorBox::from_err)?;
+  let cancel_handle = cancel_rid.and_then(|rid| {
+    state.borrow().resource_table.get::<CancelHandle>(rid).ok()
+  });
+
+  // Reuse the same adaptive sizing strategy as `op_read_all`.
+  let (min, maybe_max) = src.size_hint();
+  let mut buffer_strategy =
+    AdaptiveBufferStrategy::new_from_hint_u64(min, maybe_max);
+
+  let result = async {
+    loop {
+      let read = src.clone().read(buffer_strategy.buffer_size());
+      let buf = match &cancel_handle {
+        Some(handle) => read.try_or_cancel(handle).await?,
+        None => read.await?,
+      };
+      if buf.is_empty() {
+        break; // source reached EOF
+      }
+      buffer_strategy.notify_read(buf.len());
+      let write = dst.clone().write_all(buf);
+      match &cancel_handle {
+        Some(handle) => write.try_or_cancel(handle).await?,
+        None => write.await?,
+      }
+    }
+    Ok::<(), JsErrorBox>(())
+  }
+  .await;
+
+  // Consume the cancel handle regardless of outcome so it doesn't linger in the
+  // resource table (the JS caller may also close it from its abort handler; both
+  // paths are idempotent).
+  if let Some(rid) = cancel_rid
+    && let Ok(handle) = state.borrow_mut().resource_table.take_any(rid)
+  {
+    handle.close();
+  }
+
+  result
 }
 
 #[op2]
