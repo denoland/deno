@@ -16369,7 +16369,7 @@ mod tests {
       NpmSystemInfo {
         os: "linux".into(),
         cpu: "arm64".into(),
-        libc: "".into(),
+        libc: "glibc".into(),
       }
     );
   }
