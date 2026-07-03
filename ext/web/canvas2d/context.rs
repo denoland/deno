@@ -1134,40 +1134,6 @@ impl OffscreenCanvasRenderingContext2D {
       * transform
   }
 
-  fn extract_sub_image(
-    pixels: &[u8],
-    img_w: u32,
-    img_h: u32,
-    sx: f64,
-    sy: f64,
-    sw: f64,
-    sh: f64,
-  ) -> (Vec<u8>, u32, u32) {
-    let (sx, sw) = if sw < 0.0 { (sx + sw, -sw) } else { (sx, sw) };
-    let (sy, sh) = if sh < 0.0 { (sy + sh, -sh) } else { (sy, sh) };
-
-    let x0 = (sx.max(0.0) as u32).min(img_w);
-    let y0 = (sy.max(0.0) as u32).min(img_h);
-    let x1 = ((sx + sw) as u32).min(img_w);
-    let y1 = ((sy + sh) as u32).min(img_h);
-    let out_w = x1.saturating_sub(x0);
-    let out_h = y1.saturating_sub(y0);
-
-    if out_w == 0 || out_h == 0 {
-      return (vec![], 0, 0);
-    }
-
-    let mut sub = vec![0u8; out_w as usize * out_h as usize * 4];
-    for row in 0..out_h {
-      let src_offset = ((y0 + row) as usize * img_w as usize + x0 as usize) * 4;
-      let dst_offset = row as usize * out_w as usize * 4;
-      let len = out_w as usize * 4;
-      sub[dst_offset..dst_offset + len]
-        .copy_from_slice(&pixels[src_offset..src_offset + len]);
-    }
-    (sub, out_w, out_h)
-  }
-
   fn fill_on(
     drawing: &mut DrawingBackend,
     shape: &impl kurbo::Shape,
@@ -3014,24 +2980,21 @@ impl OffscreenCanvasRenderingContext2D {
       (0.0, 0.0, iw, ih, dx, dy, iw, ih)
     };
 
-    if dw == 0.0 || dh == 0.0 {
+    if sw == 0.0 || sh == 0.0 || dw == 0.0 || dh == 0.0 {
       return Ok(());
     }
 
-    let (src_pixels, src_w, src_h) = Self::extract_sub_image(
-      &resolved.pixels,
-      resolved.width,
-      resolved.height,
-      sx,
-      sy,
-      sw,
-      sh,
-    );
-    if src_w == 0 || src_h == 0 {
-      return Ok(());
-    }
+    // Normalize both rectangles' negative width/height by flipping the
+    // origin and taking the absolute size -- per spec this only changes
+    // *which* pixels are selected/where they land, it must not mirror the
+    // rendered image (unlike a negative scale would).
+    let (sx, sw) = if sw < 0.0 { (sx + sw, -sw) } else { (sx, sw) };
+    let (sy, sh) = if sh < 0.0 { (sy + sh, -sh) } else { (sy, sh) };
+    let (dx, dw) = if dw < 0.0 { (dx + dw, -dw) } else { (dx, dw) };
+    let (dy, dh) = if dh < 0.0 { (dy + dh, -dh) } else { (dy, dh) };
 
-    let img = image_data_from_pixels(src_pixels, src_w, src_h);
+    let img =
+      image_data_from_pixels(resolved.pixels, resolved.width, resolved.height);
 
     let ds = self.state.borrow();
     let quality = if ds.image_smoothing_enabled {
@@ -3047,11 +3010,17 @@ impl OffscreenCanvasRenderingContext2D {
     let image_brush = peniko::ImageBrush::new(img).with_quality(quality);
     let brush = peniko::Brush::Image(image_brush);
 
-    let scale_x = dw / src_w as f64;
-    let scale_y = dh / src_h as f64;
+    // The shape is the (possibly fractional) source rect in the image's own
+    // pixel space; the transform maps that rect onto the destination rect,
+    // so the image is sampled at full precision without an intermediate
+    // pixel-copy/crop step (which previously truncated fractional source
+    // coordinates to integers).
+    let scale_x = dw / sw;
+    let scale_y = dh / sh;
     let image_transform = ds.transform
       * kurbo::Affine::translate((dx, dy))
-      * kurbo::Affine::scale_non_uniform(scale_x, scale_y);
+      * kurbo::Affine::scale_non_uniform(scale_x, scale_y)
+      * kurbo::Affine::translate((-sx, -sy));
 
     let op = ds.global_composite_operation;
     let alpha = ds.global_alpha;
@@ -3064,7 +3033,7 @@ impl OffscreenCanvasRenderingContext2D {
     };
     drop(ds);
 
-    let rect = kurbo::Rect::new(0.0, 0.0, src_w as f64, src_h as f64);
+    let rect = kurbo::Rect::new(sx, sy, sx + sw, sy + sh);
     let (width, height) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
     let has_layer =
