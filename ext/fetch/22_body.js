@@ -134,12 +134,26 @@ class InnerBody {
           noop,
           (controller) => {
             const chunk = chunkToU8(body);
-            // A byte stream controller rejects zero-length views, so guard
-            // against enqueuing an empty chunk (e.g. `new Response("")`).
+            // A byte stream controller rejects zero-length views, so only
+            // enqueue a non-empty chunk (e.g. `new Response("")` has none).
             if (TypedArrayPrototypeGetByteLength(chunk) > 0) {
-              controller.enqueue(chunk);
+              // `enqueue` transfers (detaches) the chunk's ArrayBuffer. When
+              // `body` is a Uint8Array it's the retained static source, shared
+              // with any clones made via `clone()`, so enqueue a copy to leave
+              // it intact for the other body. A string is freshly encoded by
+              // `chunkToU8`, so it can be enqueued as-is.
+              controller.enqueue(
+                typeof body === "string"
+                  ? chunk
+                  : TypedArrayPrototypeSlice(chunk),
+              );
             }
             controller.close();
+            // With a high water mark of 0 this pull runs while a BYOB read is
+            // already pending; `close()` alone does not settle that read, so
+            // respond(0) to signal EOF (matches `Blob.stream()`). It's a no-op
+            // when the read was already satisfied by the `enqueue` above.
+            controller.byobRequest?.respond(0);
             return PromiseResolve(undefined);
           },
           noopAsync,

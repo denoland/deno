@@ -142,4 +142,11 @@ Deno.test(async function responseBodyByobReader() {
     ),
     new TextEncoder().encode("bar"),
   );
+
+  // A cloned body shares the static source with the original. Reading one as a
+  // byte stream must not detach the buffer out from under the other.
+  const original = new Response(new Uint8Array([4, 5, 6]));
+  const cloned = original.clone();
+  assertEquals(await readByob(original.body!), new Uint8Array([4, 5, 6]));
+  assertEquals(await readByob(cloned.body!), new Uint8Array([4, 5, 6]));
 });
