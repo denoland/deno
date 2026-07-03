@@ -239,9 +239,7 @@ async fn run_subcommand(
     }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
-        display::write_to_stdout_ignore_sigpipe(
-          &deno_core::serde_json::to_vec_pretty(&json_reference.json).unwrap(),
-        )
+        display::write_json_to_stdout(&json_reference.json)
       })
     }
     DenoSubcommand::Jupyter(jupyter_flags) => spawn_subcommand(async {
@@ -477,8 +475,8 @@ async fn run_subcommand(
       spawn_subcommand(async move {
         match completions_flags {
           CompletionsFlags::Static(buf) => {
-            display::write_to_stdout_ignore_sigpipe(&buf)
-              .map_err(AnyError::from)
+            deno_print::drop_write_stdout(&buf);
+            Ok::<_, AnyError>(())
           }
           CompletionsFlags::Dynamic(f) => {
             f()?;
@@ -489,7 +487,8 @@ async fn run_subcommand(
     }
     DenoSubcommand::Types => spawn_subcommand(async move {
       let types = tsc::get_types_declaration_file_text();
-      display::write_to_stdout_ignore_sigpipe(types.as_bytes())
+      deno_print::drop_write_stdout(types.as_bytes());
+      Ok::<_, AnyError>(())
     }),
     #[cfg(feature = "upgrade")]
     DenoSubcommand::Upgrade(upgrade_flags) => spawn_subcommand(async {

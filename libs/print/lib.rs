@@ -23,6 +23,15 @@
 //!
 //! See https://github.com/denoland/deno/issues/15767
 
+/// Writes pre-encoded bytes to stdout, dropping write errors instead of
+/// surfacing them. The byte-slice sibling of [`drop_print!`] for output
+/// that is not produced via format args (ex. serialized JSON, bundle
+/// contents).
+pub fn drop_write_stdout(bytes: &[u8]) {
+  use std::io::Write as _;
+  let _ = std::io::stdout().write_all(bytes);
+}
+
 /// Like `std::print!`, but drops write errors instead of panicking.
 #[macro_export]
 macro_rules! drop_print {
