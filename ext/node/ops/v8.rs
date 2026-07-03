@@ -135,25 +135,20 @@ pub fn op_v8_take_heap_snapshot(scope: &mut v8::PinScope<'_, '_>) -> Vec<u8> {
 // `limit` times) right before the process would OOM, mirroring Node's
 // `Environment::NearHeapLimitCallback` (src/heap_utils.cc).
 
-// State for the near-heap-limit snapshot callback. It is leaked (never freed)
-// because it must outlive the isolate: the callback stays installed for the
-// isolate/process lifetime and Node's API is one-shot, so leaking a single
-// small allocation is acceptable.
+// State for the near-heap-limit snapshot callback. Leaked (never freed) so it
+// outlives the isolate, which keeps the callback installed for the
+// isolate/process lifetime.
 struct HeapSnapshotNearHeapLimitState {
   // Raw isolate pointer captured at op-call time, used to take the snapshot
   // from within the extern "C" callback (which is not handed an isolate).
   isolate: v8::UnsafeRawIsolatePtr,
-  // Max number of snapshots to write.
   limit: u32,
-  // Snapshots written so far.
   taken: u32,
   // Reentrancy guard: taking a snapshot can trigger GC and re-enter the
   // callback; we must not recurse into another snapshot.
   processing: bool,
-  // Directory to write snapshots into (cwd at op-call time).
   dir: PathBuf,
   pid: u32,
-  // Filename sequence counter.
   seq: u32,
 }
 
@@ -175,7 +170,14 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 }
 
 // Builds a filename matching Deno/Node's `writeHeapSnapshot` naming scheme:
-// `Heap.<YYYYMMDD>.<HHMMSS>.<pid>.<thread=0>.<seq(3 digits)>.heapsnapshot`.
+// `Heap.<YYYYMMDD>.<HHMMSS>.<pid>.<threadId>.<seq(3 digits)>.heapsnapshot`.
+//
+// The thread id is hardcoded to 0, matching `writeHeapSnapshot` in v8.ts. In
+// Node this slot is the worker's `threadId`, which isn't readily available to
+// this native callback. As a result, two worker threads that OOM within the
+// same second (each with its own `seq` starting at 0) can produce identical
+// filenames and overwrite each other's snapshot. Plumbing the real `threadId`
+// through would disambiguate them.
 fn heap_snapshot_filename(pid: u32, seq: u32) -> String {
   let secs = SystemTime::now()
     .duration_since(UNIX_EPOCH)
