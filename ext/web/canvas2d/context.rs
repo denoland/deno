@@ -786,16 +786,6 @@ impl OffscreenCanvasRenderingContext2D {
     }
   }
 
-  fn stroke_shape(
-    &self,
-    scope: &mut v8::PinScope<'_, '_>,
-    shape: &impl kurbo::Shape,
-  ) {
-    let path: kurbo::BezPath = shape.path_elements(0.1).collect();
-    let transform = self.state.borrow().transform;
-    self.draw_path_stroke(scope, path, transform, true);
-  }
-
   fn require_finite(
     values: &[UnrestrictedDouble],
   ) -> Result<(), Canvas2DError> {
@@ -2549,17 +2539,25 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] w: UnrestrictedDouble,
     #[webidl] h: UnrestrictedDouble,
   ) {
-    if !x.is_finite()
-      || !y.is_finite()
-      || !w.is_finite()
-      || !h.is_finite()
-      || *w == 0.0
-      || *h == 0.0
-    {
+    if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
       return;
     }
-    let rect = kurbo::Rect::new(*x, *y, *x + *w, *y + *h);
-    self.stroke_shape(scope, &rect);
+    if *w == 0.0 && *h == 0.0 {
+      return;
+    }
+    // Per spec this is equivalent to stroking a rect() path, even when one
+    // dimension is zero: kurbo::Rect's own path conversion may collapse a
+    // zero-height/width rect to nothing, but an explicit closed 4-segment
+    // path still traces out and back along the non-zero dimension, so
+    // caps/joins render a degenerate "doubled-over line" as required.
+    let mut path = kurbo::BezPath::new();
+    path.move_to((*x, *y));
+    path.line_to((*x + *w, *y));
+    path.line_to((*x + *w, *y + *h));
+    path.line_to((*x, *y + *h));
+    path.close_path();
+    let transform = self.state.borrow().transform;
+    self.draw_path_stroke(scope, path, transform, true);
   }
 
   #[undefined]
