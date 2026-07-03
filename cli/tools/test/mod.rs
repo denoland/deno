@@ -2534,16 +2534,14 @@ pub async fn run_tests_with_watch(
     }
   });
 
+  let clear_screen = flags
+    .watch
+    .as_ref()
+    .map(|w| !w.no_clear_screen)
+    .unwrap_or(true);
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig::new(
-      "Test",
-      test_flags
-        .watch
-        .as_ref()
-        .map(|w| !w.no_clear_screen)
-        .unwrap_or(true),
-    ),
+    file_watcher::PrintConfig::new("Test", clear_screen),
     move |flags, watcher_communicator, changed_paths| {
       let test_flags = test_flags.clone();
       watcher_communicator.show_path_changed(changed_paths.clone());
