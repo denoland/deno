@@ -1971,6 +1971,7 @@ dependencies = [
  "deno_package_json",
  "deno_panic",
  "deno_path_util",
+ "deno_print",
  "deno_resolver",
  "deno_runtime",
  "deno_semver",
@@ -3241,6 +3242,10 @@ dependencies = [
  "which 8.0.0",
  "windows-sys 0.59.0",
 ]
+
+[[package]]
+name = "deno_print"
+version = "0.1.0"
 
 [[package]]
 name = "deno_process"

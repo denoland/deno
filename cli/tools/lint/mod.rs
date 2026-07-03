@@ -30,6 +30,7 @@ use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_print::drop_println;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use log::debug;
 use reporters::LintReporter;
@@ -516,7 +517,6 @@ fn collect_lint_files(
   .collect_file_patterns(&CliSys::default(), &files)
 }
 
-#[allow(clippy::print_stdout, reason = "print method")]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   let rule_provider = LintRuleProvider::new(None);
   let mut all_rules = rule_provider.all_rules();
@@ -548,8 +548,8 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
     display::write_json_to_stdout(&json_output).unwrap();
   } else {
     // The rules should still be printed even if `--quiet` option is enabled,
-    // so use `println!` here instead of `info!`.
-    println!("Available rules:");
+    // so use `drop_println!` here instead of `info!`.
+    drop_println!("Available rules:");
     for rule in all_rules.iter() {
       // TODO(bartlomieju): this is O(n) search, fix before landing
       let enabled = if configured_rules.rules.contains(rule) {
@@ -557,15 +557,15 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
       } else {
         ""
       };
-      println!("- {} {}", rule.code(), colors::green(enabled),);
-      println!(
+      drop_println!("- {} {}", rule.code(), colors::green(enabled),);
+      drop_println!(
         "{}",
         colors::gray(format!("  help: {}", rule.help_docs_url()))
       );
       if rule.tags().is_empty() {
-        println!("  {}", colors::gray("tags:"));
+        drop_println!("  {}", colors::gray("tags:"));
       } else {
-        println!(
+        drop_println!(
           "  {}",
           colors::gray(format!(
             "tags: {}",
@@ -578,7 +578,7 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
           ))
         );
       }
-      println!();
+      drop_println!();
     }
   }
 }
