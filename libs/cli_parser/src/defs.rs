@@ -992,6 +992,21 @@ pub static CHECK_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("doc").long("doc").set_true(),
     ArgDef::new("doc-only").long("doc-only").set_true(),
     ArgDef::new("check-js").long("check-js").set_true().hidden(),
+    ArgDef::new("watch")
+      .long("watch")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("watch-exclude")
+      .long("watch-exclude")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("no-clear-screen")
+      .long("no-clear-screen")
+      .set_true(),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -1248,6 +1263,21 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
       .require_equals(),
+    ArgDef::new("watch")
+      .long("watch")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("watch-exclude")
+      .long("watch-exclude")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("no-clear-screen")
+      .long("no-clear-screen")
+      .set_true(),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
