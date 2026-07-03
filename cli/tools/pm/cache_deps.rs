@@ -124,9 +124,9 @@ pub async fn cache_top_level_deps(
             // tagged reqs away from VersionReq::matches below, which
             // panics on tags.
             log::warn!(
-              "{} Ignoring \"{}\". Version tags are not supported in jsr specifiers.",
+              "{} Ignoring \"jsr:{}\". Version tags are not supported in jsr specifiers.",
               deno_terminal::colors::yellow("Warning"),
-              specifier_str,
+              req_ref.req(),
             );
             continue;
           }
