@@ -1718,12 +1718,12 @@
         "2d.strokeRect.zero.1.worker.html": true,
         "2d.strokeRect.zero.2.html": true,
         "2d.strokeRect.zero.2.worker.html": true,
-        "2d.strokeRect.zero.3.html": false,
-        "2d.strokeRect.zero.3.worker.html": false,
+        "2d.strokeRect.zero.3.html": true,
+        "2d.strokeRect.zero.3.worker.html": true,
         "2d.strokeRect.zero.4.html": true,
         "2d.strokeRect.zero.4.worker.html": true,
-        "2d.strokeRect.zero.5.html": false,
-        "2d.strokeRect.zero.5.worker.html": false
+        "2d.strokeRect.zero.5.html": true,
+        "2d.strokeRect.zero.5.worker.html": true
       },
       "fill-and-stroke-styles": {
         "2d.fillStyle.CSSHSL.html": false,
