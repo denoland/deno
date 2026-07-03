@@ -2361,3 +2361,52 @@ Deno.test("inspector_no_pause_on_handled_stream_rejection", async () => {
     await tester.waitForExit();
   }
 });
+
+Deno.test({
+  name: "inspector_starts_on_sigusr1",
+  ignore: Deno.build.os === "windows",
+  permissions: { run: true, read: true, net: true },
+  async fn() {
+    const script = testdataPath + "sigusr1.js";
+    const child = new Deno.Command(Deno.execPath(), {
+      args: ["run", script],
+      stdout: "piped",
+      stderr: "piped",
+    }).spawn();
+    const stdoutReader = child.stdout
+      .pipeThrough(new TextDecoderStream())
+      .getReader();
+    const stderrReader = child.stderr
+      .pipeThrough(new TextDecoderStream())
+      .getReader();
+    try {
+      // Wait until the SIGUSR1 listener's grace period has passed.
+      let stdoutBuffer = "";
+      while (!stdoutBuffer.includes("ready")) {
+        const { value, done } = await stdoutReader.read();
+        if (done) throw new Error("child exited before printing ready");
+        stdoutBuffer += value;
+      }
+
+      child.kill("SIGUSR1");
+      const wsUrl = await extractWsUrl(stderrReader);
+      assertStringIncludes(wsUrl, "ws://127.0.0.1:9229/");
+
+      // The /json endpoint should list the main module as a target.
+      const response = await fetch("http://127.0.0.1:9229/json");
+      const targets = await response.json();
+      assertEquals(targets.length, 1);
+      assertStringIncludes(targets[0].url, "sigusr1.js");
+
+      // A second SIGUSR1 must be a no-op, not crash the process.
+      child.kill("SIGUSR1");
+      const secondResponse = await fetch("http://127.0.0.1:9229/json");
+      assertEquals((await secondResponse.json()).length, 1);
+    } finally {
+      child.kill("SIGKILL");
+      await child.status;
+      await stdoutReader.cancel().catch(() => {});
+      await stderrReader.cancel().catch(() => {});
+    }
+  },
+});
