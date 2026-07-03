@@ -2433,17 +2433,7 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .requires("bundle")
           .help_heading(COMPILE_HEADING),
       )
-      .arg(
-        Arg::new("exclude-unused-npm")
-          .long("exclude-unused-npm")
-          .help(cstr!("Embed only the npm packages reachable from the module graph (managed npm; no <c>node_modules</> directory).
-  <p(245)>Without this flag the full managed npm snapshot from the lockfile / package.json is embedded.
-  Reduces binary size when the lockfile contains packages the entrypoint does not import.
-  Skips packages that are only reached through non-statically-analyzable dynamic imports;
-  pass those with <c>--include npm:<<pkg></> if needed.</>"))
-          .action(ArgAction::SetTrue)
-          .help_heading(COMPILE_HEADING),
-      )
+      .arg(exclude_unused_npm_arg().help_heading(COMPILE_HEADING))
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
@@ -2515,17 +2505,7 @@ supported framework (Next.js, Astro, etc.) in the current directory.
           .value_hint(ValueHint::FilePath)
           .help_heading(DESKTOP_HEADING),
       )
-      .arg(
-        Arg::new("exclude-unused-npm")
-          .long("exclude-unused-npm")
-          .help(cstr!("Embed only the npm packages reachable from the module graph (managed npm; no <c>node_modules</> directory).
-  <p(245)>Without this flag the full managed npm snapshot from the lockfile / package.json is embedded.
-  Reduces app size when the lockfile contains packages the entrypoint does not import.
-  Skips packages that are only reached through non-statically-analyzable dynamic imports;
-  pass those with <c>--include npm:<<pkg></> if needed.</>"))
-          .action(ArgAction::SetTrue)
-          .help_heading(DESKTOP_HEADING),
-      )
+      .arg(exclude_unused_npm_arg().help_heading(DESKTOP_HEADING))
       .arg(
         Arg::new("output")
           .long("output")
@@ -5800,6 +5780,17 @@ fn executable_ext_arg() -> Arg {
     .long("ext")
     .help("Set content type of the supplied file")
     .value_parser(["ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs"])
+}
+
+fn exclude_unused_npm_arg() -> Arg {
+  Arg::new("exclude-unused-npm")
+    .long("exclude-unused-npm")
+    .help(cstr!("Embed only the npm packages reachable from the module graph (managed npm; no <c>node_modules</> directory).
+  <p(245)>Without this flag the full managed npm snapshot from the lockfile / package.json is embedded.
+  Reduces binary size when the lockfile contains packages the entrypoint does not import.
+  Skips packages that are only reached through non-statically-analyzable dynamic imports;
+  pass those with <c>--include npm:<<pkg></> if needed.</>"))
+    .action(ArgAction::SetTrue)
 }
 
 fn location_arg() -> Arg {
