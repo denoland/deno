@@ -6,8 +6,8 @@ const {
   op_fetch,
   op_fetch_promise_is_settled,
   op_fetch_send,
+  op_pipe,
   op_wasm_streaming_set_url,
-  op_wasm_streaming_stream_feed,
 } = core.ops;
 const {
   ArrayPrototypePush,
@@ -1063,8 +1063,10 @@ function handleWasmStreaming(source, rid) {
       // Rather than consuming the body as an ArrayBuffer, this feeds each chunk
       // to the streaming compiler as soon as it's available. Instead of reading
       // the body chunk-by-chunk in JS and calling `op_wasm_streaming_feed` once
-      // per chunk, hand the underlying stream resource to Rust and let a single
-      // async op pump the bytes straight into V8's streaming compiler.
+      // per chunk, hand the underlying stream resource to `op_pipe` with the
+      // wasm streaming resource as the sink (`WasmStreamingResource` implements
+      // `Resource::write`), so a single async op pumps the bytes straight into
+      // V8's streaming compiler.
       const stream = res.body;
       const resourceBacking = getReadableStreamResourceBacking(stream);
       let streamRid, closeStreamRid;
@@ -1094,7 +1096,7 @@ function handleWasmStreaming(source, rid) {
       PromisePrototypeThen((async () => {
         let feedError;
         try {
-          await op_wasm_streaming_stream_feed(rid, streamRid);
+          await op_pipe(streamRid, rid, undefined);
         } catch (err) {
           feedError = err;
         }
