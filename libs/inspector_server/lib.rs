@@ -341,7 +341,7 @@ fn handle_ws_request(
   // spawn a task that will wait for websocket connection and then pump messages between
   // the socket and inspector proxy
   spawn(async move {
-    let websocket = match upgrade_fut.await {
+    let mut websocket = match upgrade_fut.await {
       Ok(w) => w,
       Err(err) => {
         log::error!(
@@ -367,8 +367,20 @@ fn handle_ws_request(
       },
     };
 
+    if new_session_tx
+      .unbounded_send(inspector_session_proxy)
+      .is_err()
+    {
+      // The inspector was deregistered between the map lookup and now (e.g.
+      // the runtime is being torn down for a watcher restart). Close the
+      // socket instead of leaving the client attached to a session that will
+      // never respond.
+      let _ = websocket
+        .write_frame(Frame::close(1001, b"runtime restarted"))
+        .await;
+      return;
+    }
     log::info!("Debugger session started.");
-    let _ = new_session_tx.unbounded_send(inspector_session_proxy);
     pump_websocket_messages(websocket, inbound_tx, outbound_rx).await;
   });
 
@@ -715,9 +727,26 @@ async fn pump_websocket_messages(
 ) {
   'pump: loop {
     tokio::select! {
-        Some(msg) = outbound_rx.next() => {
-            let msg = Frame::text(msg.content.into_bytes().into());
-            let _ = websocket.write_frame(msg).await;
+        maybe_msg = outbound_rx.next() => {
+            match maybe_msg {
+                Some(msg) => {
+                    let msg = Frame::text(msg.content.into_bytes().into());
+                    let _ = websocket.write_frame(msg).await;
+                }
+                None => {
+                    // The isolate-side session was dropped without the client
+                    // disconnecting first, e.g. the file watcher tore down the
+                    // runtime while this server (a process-wide singleton)
+                    // lives on. Close the socket so the client can detect the
+                    // restart and reconnect to the new session; otherwise the
+                    // connection stays open but silently ignores all messages.
+                    let _ = websocket
+                        .write_frame(Frame::close(1001, b"runtime restarted"))
+                        .await;
+                    log::info!("Debugger session ended (runtime was torn down)");
+                    break 'pump;
+                }
+            }
         }
         result = websocket.read_frame() => {
             match result {
@@ -743,9 +772,6 @@ async fn pump_websocket_messages(
                     break 'pump;
                 }
             }
-        }
-        else => {
-          break 'pump;
         }
     }
   }
