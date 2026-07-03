@@ -190,7 +190,11 @@ impl CliMainWorker {
     const GRACE_PERIOD: std::time::Duration =
       std::time::Duration::from_millis(500);
 
-    let inspector = self.worker.js_runtime().inspector();
+    // Hold only a `Weak` reference to the inspector: the runtime asserts on
+    // teardown that it is the sole owner, so this long-lived task must not keep
+    // it alive. We upgrade to a strong reference only while handling a signal.
+    let inspector =
+      std::rc::Rc::downgrade(&self.worker.js_runtime().inspector());
     let op_state = self.worker.js_runtime().op_state();
     let main_module = self.worker.main_module().to_string();
 
@@ -200,6 +204,10 @@ impl CliMainWorker {
         return;
       };
       while sigusr1.recv().await.is_some() {
+        // The runtime is gone (the program finished); stop listening.
+        let Some(inspector) = inspector.upgrade() else {
+          return;
+        };
         // No-op when the inspector server is already running (an
         // `--inspect*` flag, `node:inspector`'s `open()`, or a previous
         // SIGUSR1).
@@ -213,11 +221,8 @@ impl CliMainWorker {
           InspectPublishUid::default(),
         ) {
           Ok(server) => {
-            let url = server.register_inspector(
-              main_module.clone(),
-              inspector.clone(),
-              false,
-            );
+            let url =
+              server.register_inspector(main_module.clone(), inspector, false);
             op_state.borrow_mut().put(url);
           }
           Err(err) => {
