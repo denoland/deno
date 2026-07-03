@@ -488,10 +488,8 @@ unsafe fn do_emit_read(
       // Single memcpy into a fresh backing store; ArrayBuffer::new would
       // zero-initialize first and the old byte-wise Cell writes made this
       // hot path two passes over every decrypted chunk.
-      let store = v8::ArrayBuffer::new_backing_store_from_bytes(
-        bytes.to_vec().into_boxed_slice(),
-      )
-      .make_shared();
+      let store = v8::ArrayBuffer::new_backing_store_from_vec(bytes.to_vec())
+        .make_shared();
       let ab: v8::Local<v8::Value> =
         v8::ArrayBuffer::with_backing_store(scope, &store).into();
       onread_fn.call(scope, recv.into(), &[ab]);
@@ -4657,7 +4655,6 @@ mod tests {
       uv_req: uv_compat::new_write(),
       _data: b"tls alert".to_vec(),
       tls_wrap_inner: &mut *inner as *mut TLSWrapInner,
-      has_write_callback: false,
       alive: inner.alive.clone(),
     });
 
@@ -4744,6 +4741,13 @@ mod tests {
     // Bypass the handshake gate; rustls buffers pre-handshake plaintext
     // writes internally, which is all this test needs.
     inner.established = true;
+    // Lift rustls' default 64 KB plaintext buffer limit so consumption
+    // cannot stall mid-payload (the handshake never completes here) and
+    // the release path below is exercised deterministically.
+    let Some(TlsConnection::Client(conn)) = &mut inner.tls_conn else {
+      unreachable!("test_client_inner builds a client connection");
+    };
+    conn.set_buffer_limit(None);
 
     let payload: Vec<u8> = (0..200 * 1024).map(|i| (i % 251) as u8).collect();
     inner.pending_cleartext = payload.clone();
@@ -4772,20 +4776,18 @@ mod tests {
       if inner.pending_cleartext.is_empty() {
         break;
       }
-      assert!(offset >= prev_offset, "offset must be monotonic");
-      // At most one MAX_CLEAR_IN chunk per call.
+      // With the buffer limit lifted every call must make progress,
+      // consuming at most one MAX_CLEAR_IN chunk.
+      assert!(offset > prev_offset, "clear_in made no progress");
       assert!(offset - prev_offset <= MAX_CLEAR_IN);
-      if offset == prev_offset {
-        // rustls' internal plaintext buffer is full (the handshake never
-        // completes in this isolated test) — no further progress possible.
-        break;
-      }
       prev_offset = offset;
     }
 
     // Once fully consumed, the buffer must be released and offset reset.
-    if inner.pending_cleartext.is_empty() {
-      assert_eq!(inner.pending_cleartext_offset, 0);
-    }
+    assert!(
+      inner.pending_cleartext.is_empty(),
+      "payload was not fully consumed"
+    );
+    assert_eq!(inner.pending_cleartext_offset, 0);
   }
 }
