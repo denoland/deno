@@ -374,7 +374,12 @@ impl OffscreenCanvas {
       ));
     }
 
-    Ok((width, height, data.as_bytes().to_vec()))
+    // `DynamicImage::as_bytes()` returns whatever the underlying color type
+    // happens to be (e.g. 3 bytes/pixel for an opaque RGB8 buffer), so the
+    // buffer must be normalized to RGBA8 before callers assume a 4-byte
+    // stride (see the equivalent fix for ImageBitmap in
+    // ext/web/canvas2d/image.rs).
+    Ok((width, height, data.to_rgba8().into_raw()))
   }
 }
 

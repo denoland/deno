@@ -37,6 +37,9 @@ pub enum Canvas2DError {
   #[class(type)]
   #[error("The argument is not of type 'CanvasImageSource'")]
   NotCanvasImageSource,
+  #[class(inherit)]
+  #[error(transparent)]
+  SyncFailed(#[from] JsErrorBox),
   #[class(type)]
   #[error("The argument is not of type 'ImageData'")]
   NotImageData,

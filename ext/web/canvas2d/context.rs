@@ -43,6 +43,7 @@ use crate::canvas2d::path::build_round_rect_path;
 use crate::canvas2d::path::compute_arc_sweep;
 use crate::canvas2d::path::parse_round_rect_radii;
 use crate::canvas2d::pattern::CanvasPattern;
+use crate::canvas2d::pattern::pad_pattern_image;
 use crate::canvas2d::pattern::parse_repetition;
 use crate::canvas2d::renderer::DenoCanvasBackend;
 use crate::canvas2d::renderer::SharedRenderer;
@@ -867,7 +868,34 @@ impl OffscreenCanvasRenderingContext2D {
           CanvasGradient,
         >(scope, local.into())
         .expect("fillStyle gradient reference must be valid");
-        let g = gradient.gradient.borrow().clone();
+        let mut g = gradient.gradient.borrow().clone();
+        // Stops are pushed in addColorStop() call order, not offset order;
+        // sort (stably, so same-offset stops keep their relative order) so
+        // the ramp is built correctly.
+        g.stops.sort_by(|a, b| {
+          a.offset
+            .partial_cmp(&b.offset)
+            .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        // Degenerate gradients (per spec) paint nothing: a linear gradient
+        // whose two points coincide, or a radial gradient whose two circles
+        // are identical. A solid transparent brush is used to represent
+        // "nothing" so this can be returned like any other brush.
+        let degenerate = match g.kind {
+          peniko::GradientKind::Linear(pos) => pos.start == pos.end,
+          peniko::GradientKind::Radial(pos) => {
+            pos.start_center == pos.end_center
+              && pos.start_radius == pos.end_radius
+          }
+          peniko::GradientKind::Sweep(_) => false,
+        };
+        if degenerate || g.stops.is_empty() {
+          return (peniko::Brush::Solid(peniko::Color::TRANSPARENT), None);
+        }
+        if g.stops.len() == 1 {
+          let color = g.stops[0].color.to_alpha_color::<peniko::color::Srgb>();
+          return (peniko::Brush::Solid(color), None);
+        }
         (peniko::Brush::Gradient(g), Some(kurbo::Affine::IDENTITY))
       }
       FillStrokeStyle::Pattern(obj) => {
@@ -884,7 +912,11 @@ impl OffscreenCanvasRenderingContext2D {
         if global_alpha != 1.0 {
           image_brush = image_brush.multiply_alpha(global_alpha);
         }
-        let pattern_transform = *pattern.transform.borrow();
+        // Compensate for the transparent border pad_pattern_image() may
+        // have added: shift brush-local space so the real image content
+        // still lands where an unpadded image's content would have.
+        let pattern_transform = *pattern.transform.borrow()
+          * kurbo::Affine::translate(-pattern.content_offset);
         (peniko::Brush::Image(image_brush), Some(pattern_transform))
       }
     }
@@ -2836,6 +2868,12 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] r1: UnrestrictedDouble,
   ) -> Result<CanvasGradient, Canvas2DError> {
     Self::require_finite(&[x0, y0, r0, x1, y1, r1])?;
+    if *r0 < 0.0 {
+      return Err(Canvas2DError::NegativeRadius(*r0));
+    }
+    if *r1 < 0.0 {
+      return Err(Canvas2DError::NegativeRadius(*r1));
+    }
     let gradient = build_radial_gradient(*x0, *y0, *r0, *x1, *y1, *r1);
     Ok(CanvasGradient {
       gradient: RefCell::new(gradient),
@@ -2882,14 +2920,23 @@ impl OffscreenCanvasRenderingContext2D {
 
     let resolved = resolve_canvas_image_source(state, scope, image)?;
 
-    let image_data =
-      image_data_from_pixels(resolved.pixels, resolved.width, resolved.height);
+    let pad_x = repetition.x_extend == peniko::Extend::Pad;
+    let pad_y = repetition.y_extend == peniko::Extend::Pad;
+    let (pixels, width, height, content_offset) = pad_pattern_image(
+      &resolved.pixels,
+      resolved.width,
+      resolved.height,
+      pad_x,
+      pad_y,
+    );
+    let image_data = image_data_from_pixels(pixels, width, height);
 
     Ok(CanvasPattern {
       image: image_data,
       x_extend: repetition.x_extend,
       y_extend: repetition.y_extend,
       transform: RefCell::new(kurbo::Affine::IDENTITY),
+      content_offset,
     })
   }
 
