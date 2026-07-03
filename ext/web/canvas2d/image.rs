@@ -40,8 +40,10 @@ fn resolve_offscreen_canvas_image<'a>(
   let sync = state
     .try_borrow::<OffscreenCanvasPixelSync>()
     .ok_or(Canvas2DError::NotCanvasImageSource)?;
-  let (width, height, pixels) = sync.0(scope, image)
-    .map_err(|e| Canvas2DError::InvalidState(e.to_string()))?;
+  // Preserve the callback's own error class (e.g. a plain TypeError for
+  // "not a CanvasImageSource", or DOMExceptionInvalidStateError for open
+  // layers) instead of forcing everything to InvalidState.
+  let (width, height, pixels) = sync.0(scope, image)?;
   Ok(ResolvedCanvasImage {
     width,
     height,
