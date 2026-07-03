@@ -3,7 +3,11 @@
 [package]
 name = "fast-registry-json"
 version = "0.1.0"
-edition = "2024"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SIMD-accelerated JSON scanner for indexing npm registry packuments"
 
 [dependencies]
 arrayref = "0.3.9"
