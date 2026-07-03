@@ -256,6 +256,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     frameless: bool,
     no_activate: bool,
     transparent_titlebar: bool,
+    transparent: bool,
   ) -> u32 {
     let window = laufey::Window::new_with_options(
       width,
@@ -265,7 +266,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         no_activate,
         transparent_titlebar,
         hidden: false,
-        transparent: false,
+        transparent,
       },
     );
     let window = self.setup_window_events(window);
@@ -318,6 +319,14 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
 
   fn set_always_on_top(&self, window_id: u32, always_on_top: bool) {
     laufey::Window::from_id(window_id).set_always_on_top(always_on_top);
+  }
+
+  fn get_window_opacity(&self, window_id: u32) -> f64 {
+    laufey::Window::from_id(window_id).get_opacity()
+  }
+
+  fn set_window_opacity(&self, window_id: u32, opacity: f64) {
+    laufey::Window::from_id(window_id).set_opacity(opacity);
   }
 
   fn is_visible(&self, window_id: u32) -> bool {

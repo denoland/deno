@@ -1159,21 +1159,7 @@ impl CliOptions {
   }
 
   pub fn has_hmr(&self) -> bool {
-    if let DenoSubcommand::Run(RunFlags {
-      watch: Some(WatchFlagsWithPaths { hmr, .. }),
-      ..
-    }) = &self.flags.subcommand
-    {
-      *hmr
-    } else if let DenoSubcommand::Serve(ServeFlags {
-      watch: Some(WatchFlagsWithPaths { hmr, .. }),
-      ..
-    }) = &self.flags.subcommand
-    {
-      *hmr
-    } else {
-      false
-    }
+    self.flags.watch.as_ref().is_some_and(|watch| watch.hmr)
   }
 
   /// If the --inspect or --inspect-brk flags are used.
@@ -1518,19 +1504,7 @@ impl CliOptions {
 
   pub fn watch_paths(&self) -> Vec<PathBuf> {
     let mut full_paths = Vec::new();
-    if let DenoSubcommand::Run(RunFlags {
-      watch: Some(WatchFlagsWithPaths { paths, .. }),
-      ..
-    })
-    | DenoSubcommand::Serve(ServeFlags {
-      watch: Some(WatchFlagsWithPaths { paths, .. }),
-      ..
-    })
-    | DenoSubcommand::Test(TestFlags {
-      watch: Some(WatchFlagsWithPaths { paths, .. }),
-      ..
-    }) = &self.flags.subcommand
-    {
+    if let Some(WatchFlagsWithPaths { paths, .. }) = &self.flags.watch {
       full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
     }
 
