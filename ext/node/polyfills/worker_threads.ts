@@ -752,7 +752,13 @@ class NodeWorker extends EventEmitter {
       if (this.#status === "TERMINATED" || data === null) {
         return;
       }
+      let messageListenersBefore = this.listenerCount("message");
       if (!this.#dispatchWorkerThreadMessage(data)) return;
+      // A one-shot listener (`.once` / `events.once`) removes itself
+      // synchronously while the message is being emitted, so a drop in the
+      // "message" listener count is the signal that a handler may re-arm
+      // itself in a microtask before the next message should be delivered.
+      let reArmPending = this.listenerCount("message") < messageListenersBefore;
       // Drain messages already queued on the host side instead of taking the
       // async op + Promise path for each. The whole burst is processed within
       // this event-loop turn; the batch limit prevents starving the event loop
@@ -760,16 +766,22 @@ class NodeWorker extends EventEmitter {
       for (let i = 0; i < 1000 && this.#status !== "TERMINATED"; i++) {
         const syncData = op_host_recv_message_sync(this.#id);
         if (syncData === null) break;
-        // Each message dispatch is its own task. Yield a microtask before
-        // delivering this already-dequeued message so a handler that re-armed
-        // itself in a microtask after the previous dispatch (e.g. an
-        // `events.once` listener that re-attaches in a `.then`) is installed
-        // first -- otherwise the message reaches the stale handler and is
+        // Only yield a microtask when the previous dispatch removed a
+        // "message" listener: that handler may re-attach itself in a
+        // microtask (e.g. an `events.once` listener that re-arms in a
+        // `.then`), which must run before this already-dequeued message is
+        // delivered -- otherwise the message reaches the stale handler and is
         // lost. A synchronous checkpoint can't help: V8 won't run microtasks
-        // reentrantly while we are already inside one.
-        await new Promise((resolve) => queueMicrotask(() => resolve()));
-        if (this.#status === "TERMINATED") return;
+        // reentrantly while we are already inside one. A persistent
+        // `.on("message")` listener leaves the count unchanged, so the common
+        // bulk-receive path skips the per-message Promise + microtask entirely.
+        if (reArmPending) {
+          await new Promise((resolve) => queueMicrotask(() => resolve()));
+          if (this.#status === "TERMINATED") return;
+        }
+        messageListenersBefore = this.listenerCount("message");
         if (!this.#dispatchWorkerThreadMessage(syncData)) return;
+        reArmPending = this.listenerCount("message") < messageListenersBefore;
       }
     }
   };
