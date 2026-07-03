@@ -2933,14 +2933,27 @@ async function fastPipeTo(
     }
   }
 
-  // The source reached EOF and every chunk has been flushed to the sink.
+  // The source reached EOF and every chunk has been flushed to the sink. Close
+  // the sink (unless preventClose); if that rejects (e.g. the sink errors
+  // during its flush/close) we must still release both ends and cancel the
+  // source so its underlying resource is not leaked, matching the generic
+  // algorithm's `finalize`, which always releases both ends. The close error is
+  // rethrown after cleanup.
+  let closeError;
   if (preventClose === false) {
-    await writableStreamDefaultWriterClose(writer);
+    try {
+      await writableStreamDefaultWriterClose(writer);
+    } catch (e) {
+      closeError = e;
+    }
   }
   writableStreamDefaultWriterRelease(writer);
   // Close the source, releasing its underlying resource (honors autoClose).
   await readableStreamCancel(source, undefined);
   readableStreamDefaultReaderRelease(reader);
+  if (closeError !== undefined) {
+    throw closeError;
+  }
 }
 
 /**
