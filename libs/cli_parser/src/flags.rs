@@ -580,6 +580,7 @@ pub struct ServeFlags {
   pub host: String,
   pub parallel: bool,
   pub open_site: bool,
+  pub unix_socket: Option<String>,
 }
 
 impl ServeFlags {
@@ -591,6 +592,7 @@ impl ServeFlags {
       host: host.to_owned(),
       parallel: false,
       open_site: false,
+      unix_socket: None,
     }
   }
 }

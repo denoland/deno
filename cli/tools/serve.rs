@@ -31,6 +31,14 @@ pub async fn serve(
 ) -> Result<i32, AnyError> {
   check_permission_before_script(&flags);
 
+  #[cfg(not(windows))]
+  if let Some(ref socket_path) = serve_flags.unix_socket {
+    // SAFETY: tokio current-thread runtime; set before worker/factory init.
+    unsafe {
+      std::env::set_var("DENO_SERVE_ADDRESS", format!("unix:{socket_path}"))
+    };
+  }
+
   if let Some(watch_flags) = serve_flags.watch {
     return serve_with_watch(
       flags,
