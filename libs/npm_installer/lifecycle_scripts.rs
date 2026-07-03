@@ -37,6 +37,12 @@ pub struct PackageWithScript<'a> {
   pub init_cwds: Vec<PathBuf>,
 }
 
+/// Resolves the on-disk folder of a package for the node_modules layout
+/// being installed. Returning `None` for a package means it has no folder
+/// in the layout (e.g. an optional dependency for another platform).
+pub type ResolvePkgFolderFn<'a> =
+  &'a (dyn Fn(&NpmPackageId) -> Option<PathBuf> + 'a);
+
 pub struct LifecycleScriptsExecutorOptions<'a> {
   pub init_cwd: &'a Path,
   pub process_state: &'a str,
@@ -46,10 +52,8 @@ pub struct LifecycleScriptsExecutorOptions<'a> {
   /// lifecycle scripts invoke. When `None`, the executor falls back to its
   /// own npm resolver, which assumes the isolated (`.deno`) layout — the
   /// hoisted installer must provide this to map packages to their hoisted
-  /// locations. Returning `None` for a package means it has no folder in
-  /// the layout (e.g. an optional dependency for another platform).
-  pub resolve_pkg_folder:
-    Option<&'a (dyn Fn(&NpmPackageId) -> Option<PathBuf> + 'a)>,
+  /// locations.
+  pub resolve_pkg_folder: Option<ResolvePkgFolderFn<'a>>,
   pub on_ran_pkg_scripts:
     &'a dyn Fn(&NpmResolutionPackage) -> Result<(), JsErrorBox>,
   pub snapshot: &'a NpmResolutionSnapshot,

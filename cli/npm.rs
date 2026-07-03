@@ -17,7 +17,6 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
-use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmPackageVersionInfosIterator;
@@ -32,6 +31,7 @@ use deno_npm_installer::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use deno_npm_installer::lifecycle_scripts::PackageWithScript;
+use deno_npm_installer::lifecycle_scripts::ResolvePkgFolderFn;
 use deno_npm_installer::lifecycle_scripts::compute_lifecycle_script_layers;
 use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
 use deno_npmrc::RegistryConfig;
@@ -732,7 +732,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     bin_entries: &mut BinEntries<'a, CliSys>,
     snapshot: &'a NpmResolutionSnapshot,
     packages: &'a [NpmResolutionPackage],
-    resolve_pkg_folder: Option<&dyn Fn(&NpmPackageId) -> Option<PathBuf>>,
+    resolve_pkg_folder: Option<ResolvePkgFolderFn<'_>>,
   ) -> crate::task_runner::TaskCustomCommands {
     let mut custom_commands = crate::task_runner::TaskCustomCommands::new();
     custom_commands
@@ -778,7 +778,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     mut commands: crate::task_runner::TaskCustomCommands,
     snapshot: &'a NpmResolutionSnapshot,
     packages: P,
-    resolve_pkg_folder: Option<&dyn Fn(&NpmPackageId) -> Option<PathBuf>>,
+    resolve_pkg_folder: Option<ResolvePkgFolderFn<'_>>,
   ) -> crate::task_runner::TaskCustomCommands {
     for package in packages {
       // prefer the installer-provided resolver, which knows the layout
@@ -841,7 +841,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     package: &NpmResolutionPackage,
     snapshot: &NpmResolutionSnapshot,
     additional_packages: &[&NpmResolutionPackage],
-    resolve_pkg_folder: Option<&dyn Fn(&NpmPackageId) -> Option<PathBuf>>,
+    resolve_pkg_folder: Option<ResolvePkgFolderFn<'_>>,
   ) -> crate::task_runner::TaskCustomCommands {
     let sys = CliSys::default();
     let mut bin_entries = BinEntries::new(sys.with_paths_in_errors());
