@@ -59,8 +59,18 @@ pub async fn deploy(
     let registry_url = crate::args::jsr_url();
     let file = factory
       .file_fetcher()?
-      .fetch_bypass_permissions(
+      .fetch_with_options(
         &registry_url.join("@deno/deploy/meta.json").unwrap(),
+        deno_resolver::file_fetcher::FetchPermissionsOptionRef::AllowAll,
+        deno_resolver::file_fetcher::FetchOptions {
+          // jsr.io serves meta.json with `cache-control: max-age=60`, so
+          // respect those headers rather than pinning the first cached copy
+          // forever (see denoland/deno#35736).
+          maybe_cache_setting: Some(
+            &deno_cache_dir::file_fetcher::CacheSetting::RespectHeaders,
+          ),
+          ..Default::default()
+        },
       )
       .await?;
     let info = serde_json::from_slice::<JsrPackageInfo>(&file.source)?;
