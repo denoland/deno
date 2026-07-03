@@ -17,6 +17,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmPackageVersionInfosIterator;
@@ -490,6 +491,7 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
         &mut bin_entries,
         options.snapshot,
         options.system_packages,
+        options.resolve_pkg_folder,
       )
       .await;
 
@@ -644,6 +646,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
         package,
         options.snapshot,
         options.additional_packages,
+        options.resolve_pkg_folder,
       )
       .await;
 
@@ -729,6 +732,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     bin_entries: &mut BinEntries<'a, CliSys>,
     snapshot: &'a NpmResolutionSnapshot,
     packages: &'a [NpmResolutionPackage],
+    resolve_pkg_folder: Option<&dyn Fn(&NpmPackageId) -> Option<PathBuf>>,
   ) -> crate::task_runner::TaskCustomCommands {
     let mut custom_commands = crate::task_runner::TaskCustomCommands::new();
     custom_commands
@@ -756,6 +760,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
         custom_commands,
         snapshot,
         packages,
+        resolve_pkg_folder,
       )
       .await
   }
@@ -773,13 +778,24 @@ impl DenoTaskLifeCycleScriptsExecutor {
     mut commands: crate::task_runner::TaskCustomCommands,
     snapshot: &'a NpmResolutionSnapshot,
     packages: P,
+    resolve_pkg_folder: Option<&dyn Fn(&NpmPackageId) -> Option<PathBuf>>,
   ) -> crate::task_runner::TaskCustomCommands {
     for package in packages {
-      let Ok(package_path) = self
-        .npm_resolver
-        .resolve_pkg_folder_from_pkg_id(&package.id)
-      else {
-        continue;
+      // prefer the installer-provided resolver, which knows the layout
+      // being installed (e.g. hoisted); the npm resolver assumes the
+      // isolated `.deno` layout
+      let package_path = match resolve_pkg_folder {
+        Some(resolve_pkg_folder) => match resolve_pkg_folder(&package.id) {
+          Some(path) => path,
+          None => continue,
+        },
+        None => match self
+          .npm_resolver
+          .resolve_pkg_folder_from_pkg_id(&package.id)
+        {
+          Ok(path) => path,
+          Err(_) => continue,
+        },
       };
       let extra = if let Some(extra) = &package.extra {
         Cow::Borrowed(extra)
@@ -825,6 +841,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     package: &NpmResolutionPackage,
     snapshot: &NpmResolutionSnapshot,
     additional_packages: &[&NpmResolutionPackage],
+    resolve_pkg_folder: Option<&dyn Fn(&NpmPackageId) -> Option<PathBuf>>,
   ) -> crate::task_runner::TaskCustomCommands {
     let sys = CliSys::default();
     let mut bin_entries = BinEntries::new(sys.with_paths_in_errors());
@@ -849,6 +866,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
           }
           Some(dep)
         }),
+        resolve_pkg_folder,
       )
       .await
   }
