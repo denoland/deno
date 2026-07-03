@@ -43,7 +43,7 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  if let Some(watch_flags) = &compile_flags.watch {
+  if let Some(watch_flags) = &flags.watch {
     let no_clear_screen = watch_flags.no_clear_screen;
     file_watcher::watch_func(
       Arc::new(flags),
@@ -1387,7 +1387,6 @@ mod test {
         output: None,
         args: Vec::new(),
         target: None,
-        watch: None,
         no_terminal: false,
         icon: Some("favicon.ico".to_string()),
         include: Default::default(),
@@ -1418,7 +1417,6 @@ mod test {
         output: Some(String::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-unknown-linux-gnu".to_string()),
-        watch: None,
         no_terminal: false,
         icon: None,
         include: Default::default(),
@@ -1456,7 +1454,6 @@ mod test {
         output: Some(String::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-pc-windows-msvc".to_string()),
-        watch: None,
         include: Default::default(),
         exclude: Default::default(),
         icon: None,
