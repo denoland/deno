@@ -45,6 +45,7 @@ members = [
   "libs/dcore",
   "libs/dotenv",
   "libs/eszip",
+  "libs/fast-registry-json",
   "libs/http_h1",
   "libs/inspector_server",
   "libs/lockfile",
@@ -215,6 +216,7 @@ data-encoding = "2.3.3"
 data-url = "=0.3.1"
 encoding_rs = "=0.8.35"
 error_reporter = "1"
+fast-registry-json = { path = "./libs/fast-registry-json" }
 fast-socks5 = "0.9.6"
 faster-hex = "0.10.0"
 fastrand = "2"
@@ -302,7 +304,7 @@ scopeguard = "1.2.0"
 semver = "=1.0.25"
 serde = { version = "1.0.149", features = ["derive"] }
 serde_bytes = "0.11"
-serde_json = "1.0.85"
+serde_json = { version = "1.0.85", features = ["raw_value"] }
 serde_repr = "=0.1.19"
 shlex = "1.3.0"
 signal-hook = "0.3"
@@ -492,6 +494,9 @@ split-debuginfo = "packed"
 debug = "line-tables-only"
 panic = "abort"
 
+[profile.bench.package.fast-registry-json]
+opt-level = 3
+
 # Build release with debug symbols: cargo build --profile=release-with-debug
 [profile.release-with-debug]
 inherits = "release-lite"
@@ -505,6 +510,9 @@ inherits = "release"
 incremental = true
 codegen-units = 128
 lto = "thin"
+
+[profile.release-lite.package.fast-registry-json]
+opt-level = 3
 
 # Key generation is too slow on `debug`
 [profile.dev.package.num-bigint-dig]
@@ -562,6 +570,8 @@ opt-level = 3
 [profile.release.package.deno_websocket]
 opt-level = 3
 [profile.release.package.fastwebsockets]
+opt-level = 3
+[profile.release.package.fast-registry-json]
 opt-level = 3
 [profile.release.package.flate2]
 opt-level = 3
