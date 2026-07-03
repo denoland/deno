@@ -136,6 +136,9 @@ pub struct NewestDependencyDateOptions {
   /// Prevents installing packages newer than the specified date.
   pub date: Option<NewestDependencyDate>,
   pub exclude: BTreeSet<PackageName>,
+  /// Package name prefixes to exclude (e.g. `@scope/` from a
+  /// `@scope/*` wildcard entry).
+  pub exclude_prefixes: Vec<PackageName>,
 }
 
 impl NewestDependencyDateOptions {
@@ -143,6 +146,7 @@ impl NewestDependencyDateOptions {
     Self {
       date: Some(NewestDependencyDate(date)),
       exclude: Default::default(),
+      exclude_prefixes: Default::default(),
     }
   }
 
@@ -151,7 +155,12 @@ impl NewestDependencyDateOptions {
     package_name: &PackageName,
   ) -> Option<NewestDependencyDate> {
     let date = self.date?;
-    if self.exclude.contains(package_name) {
+    if self.exclude.contains(package_name)
+      || self
+        .exclude_prefixes
+        .iter()
+        .any(|prefix| package_name.starts_with(prefix.as_str()))
+    {
       None
     } else {
       Some(date)
@@ -985,6 +994,26 @@ mod test {
       resolve(&other_excluded).unwrap_err(),
       NpmPackageVersionResolutionError::TrustPolicyDowngrade { .. }
     ));
+  }
+
+  #[test]
+  fn test_newest_dependency_date_exclude() {
+    let options = NewestDependencyDateOptions {
+      date: Some(NewestDependencyDate(
+        "2025-01-01T00:00:00.000Z".parse().unwrap(),
+      )),
+      exclude: BTreeSet::from(["@denotest/exact".into()]),
+      exclude_prefixes: vec!["@scope/".into()],
+    };
+    // exact match
+    assert!(options.get_for_package(&"@denotest/exact".into()).is_none());
+    // prefix match (from a `@scope/*` wildcard entry)
+    assert!(options.get_for_package(&"@scope/foo".into()).is_none());
+    assert!(options.get_for_package(&"@scope/bar".into()).is_none());
+    // no match
+    assert!(options.get_for_package(&"@denotest/other".into()).is_some());
+    assert!(options.get_for_package(&"@scoped/foo".into()).is_some());
+    assert!(options.get_for_package(&"@scope".into()).is_some());
   }
 
   #[test]

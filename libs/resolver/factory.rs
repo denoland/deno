@@ -991,10 +991,14 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
               .as_ref()
               .and_then(|d| d.into_option())
               .map(deno_graph::packages::NewestDependencyDate),
+            // TODO(#35743): pass wildcard entries as prefixes once
+            // deno_graph supports excluding by prefix
+            // (denoland/deno_graph#657)
             exclude_jsr_pkgs: minimum_dependency_age_config
               .exclude
               .iter()
               .filter_map(|v| v.strip_prefix("jsr:"))
+              .filter(|v| !v.ends_with('*'))
               .map(|v| v.into())
               .collect(),
           },
@@ -1190,6 +1194,21 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         ),
       };
 
+      let mut exclude = std::collections::BTreeSet::new();
+      let mut exclude_prefixes = Vec::new();
+      for entry in minimum_dependency_age_config
+        .exclude
+        .iter()
+        .filter_map(|v| v.strip_prefix("npm:"))
+      {
+        match entry.strip_suffix('*') {
+          Some(prefix) => exclude_prefixes.push(prefix.into()),
+          None => {
+            exclude.insert(entry.into());
+          }
+        }
+      }
+
       Ok(new_rc(NpmVersionResolver {
         newest_dependency_date_options:
           deno_npm::resolution::NewestDependencyDateOptions {
@@ -1198,12 +1217,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
               .as_ref()
               .and_then(|d| d.into_option())
               .map(deno_npm::resolution::NewestDependencyDate),
-            exclude: minimum_dependency_age_config
-              .exclude
-              .iter()
-              .filter_map(|v| v.strip_prefix("npm:"))
-              .map(|v| v.into())
-              .collect(),
+            exclude,
+            exclude_prefixes,
           },
         link_packages: self
           .workspace_factory
