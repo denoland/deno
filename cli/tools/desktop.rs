@@ -1175,15 +1175,20 @@ async fn spawn_framework_dev_server(
   })?;
   let mut lines = BufReader::new(stdout).lines();
 
-  let url = async {
+  let url = tokio::time::timeout(std::time::Duration::from_secs(15), async {
     while let Ok(Some(line)) = lines.next_line().await {
       if let Some(m) = url_re.captures(&line).and_then(|c| c.get(1)) {
         return Ok(m.as_str().to_owned());
       }
     }
     deno_core::anyhow::bail!("dev server exited without printing a URL")
-  }
-  .await?;
+  })
+  .await
+  .map_err(|_| {
+    deno_core::anyhow::anyhow!(
+      "HMR dev server did not start within 15s"
+    )
+  })??;
 
   tokio::spawn(
     async move { while let Ok(Some(_)) = lines.next_line().await {} },
