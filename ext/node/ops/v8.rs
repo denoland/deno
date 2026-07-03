@@ -261,7 +261,7 @@ extern "C" fn near_heap_limit_snapshot_callback(
 
   match std::fs::File::create(&path) {
     Ok(file) => {
-      eprintln!("Writing heap snapshot to {}", path.display());
+      log::info!("Writing heap snapshot to {}", path.display());
       let mut writer = std::io::BufWriter::new(file);
       let mut write_ok = true;
       // Stream chunks straight to disk instead of buffering the whole snapshot
@@ -274,11 +274,11 @@ extern "C" fn near_heap_limit_snapshot_callback(
         true
       });
       if !write_ok || writer.flush().is_err() {
-        eprintln!("Failed to write heap snapshot to {}", path.display());
+        log::error!("Failed to write heap snapshot to {}", path.display());
       }
     }
     Err(e) => {
-      eprintln!(
+      log::error!(
         "Failed to create heap snapshot file {}: {e}",
         path.display()
       );
