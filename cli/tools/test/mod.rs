@@ -1002,6 +1002,12 @@ async fn test_specifier_inner(
     .dispatch_unload_event()
     .map_err(|e| CoreErrorKind::Js(e).into_box())?;
 
+  // Run any pending Node-API finalizers before the worker is torn down. This
+  // matches the `deno run`/`deno bench` paths and Node.js, where finalizers
+  // registered via `napi_wrap`/`napi_add_finalizer` are invoked at teardown
+  // even if the wrapped value was never garbage collected during the run.
+  worker.run_napi_ref_finalizers();
+
   // Ensure all output has been flushed
   _ = worker
     .js_runtime
@@ -2528,16 +2534,14 @@ pub async fn run_tests_with_watch(
     }
   });
 
+  let clear_screen = flags
+    .watch
+    .as_ref()
+    .map(|w| !w.no_clear_screen)
+    .unwrap_or(true);
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig::new(
-      "Test",
-      test_flags
-        .watch
-        .as_ref()
-        .map(|w| !w.no_clear_screen)
-        .unwrap_or(true),
-    ),
+    file_watcher::PrintConfig::new("Test", clear_screen),
     move |flags, watcher_communicator, changed_paths| {
       let test_flags = test_flags.clone();
       watcher_communicator.show_path_changed(changed_paths.clone());

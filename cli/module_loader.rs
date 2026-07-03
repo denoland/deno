@@ -492,9 +492,23 @@ impl CliModuleLoaderFactory {
         maybe_main_module_blob,
       })));
     {
-      let inner = module_loader.0.clone();
+      // Capture a weak reference: the module loader stores `hook_registry`,
+      // and the registry stores this `default_resolve` callback, so capturing
+      // a strong `Rc` to the loader here would form a reference cycle
+      // (loader inner -> hook_registry -> default_resolve -> loader inner)
+      // that leaks the whole module loader — and the module graph, npm
+      // installer and registry cache it transitively owns — on every
+      // `--watch` reload (see denoland/deno#35664). The callback is only
+      // invoked while the loader is alive, so the upgrade always succeeds in
+      // practice.
+      let inner = Rc::downgrade(&module_loader.0);
       hook_registry.set_default_resolve(Rc::new(
         move |specifier: &str, referrer: &str| {
+          let Some(inner) = inner.upgrade() else {
+            return Err(JsErrorBox::generic(
+              "module loader was dropped before its resolve hook was called",
+            ));
+          };
           inner
             .inner_resolve(
               specifier,
