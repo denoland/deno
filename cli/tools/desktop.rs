@@ -1268,7 +1268,9 @@ async fn run_desktop_hmr(
     log::info!(
       "{} {}desktop app with HMR (watching {})",
       colors::green("Running"),
-      framework.map(|f| format!("{} ", f.name)).unwrap_or_default(),
+      framework
+        .map(|f| format!("{} ", f.name))
+        .unwrap_or_default(),
       source_abs.display(),
     );
   } else {
