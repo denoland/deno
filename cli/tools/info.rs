@@ -25,6 +25,7 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npmrc::ResolvedNpmRc;
+use deno_print::drop_println;
 use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::display::DisplayTreeNode;
 use deno_semver::npm::NpmPackageReqReference;
@@ -222,7 +223,6 @@ pub async fn info(
   Ok(())
 }
 
-#[allow(clippy::print_stdout, reason = "print method")]
 fn print_cache_info(
   factory: &CliFactory,
   json: bool,
@@ -264,40 +264,40 @@ fn print_cache_info(
 
     display::write_json_to_stdout(&json_output)
   } else {
-    println!("{} {}", colors::bold("Deno version:"), deno_version);
-    println!("{} {}", colors::bold("DENO_DIR location:"), deno_dir);
-    println!(
+    drop_println!("{} {}", colors::bold("Deno version:"), deno_version);
+    drop_println!("{} {}", colors::bold("DENO_DIR location:"), deno_dir);
+    drop_println!(
       "{} {}",
       colors::bold("Remote modules cache:"),
       modules_cache.display()
     );
-    println!(
+    drop_println!(
       "{} {}",
       colors::bold("npm modules cache:"),
       npm_cache.display()
     );
-    println!(
+    drop_println!(
       "{} {}",
       colors::bold("Emitted modules cache:"),
       typescript_cache.display()
     );
-    println!(
+    drop_println!(
       "{} {}",
       colors::bold("Language server registries cache:"),
       registry_cache.display(),
     );
-    println!(
+    drop_println!(
       "{} {}",
       colors::bold("Origin storage:"),
       origin_dir.display()
     );
-    println!(
+    drop_println!(
       "{} {}",
       colors::bold("Web cache storage:"),
       web_cache_dir.display()
     );
     if location.is_some() {
-      println!(
+      drop_println!(
         "{} {}",
         colors::bold("Local Storage:"),
         local_storage_dir.display(),
