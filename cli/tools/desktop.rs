@@ -484,7 +484,6 @@ async fn compile_desktop(
     app_name: None,
     args: desktop_flags.args.clone(),
     target: desktop_flags.target.clone(),
-    watch: None,
     no_terminal: false,
     icon: match &desktop_flags.icon {
       Some(crate::args::IconConfig::Single(s)) => Some(s.clone()),
