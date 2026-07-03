@@ -148,7 +148,7 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       let flags = Arc::new(flags);
-      if bench_flags.watch.is_some() {
+      if flags.watch.is_some() {
         tools::bench::run_benchmarks_with_watch(flags, bench_flags)
           .boxed_local()
           .await
@@ -327,7 +327,7 @@ async fn run_subcommand(
         let result = tools::run::run_script(
           WorkerExecutionMode::Run,
           flags.clone(),
-          run_flags.watch,
+          flags.watch.clone(),
           unconfigured_runtime,
           roots.clone(),
         )
@@ -347,10 +347,7 @@ async fn run_subcommand(
               && flags.node_modules_dir.is_none()
             {
               let mut flags = flags.deref().clone();
-              let watch = match &flags.subcommand {
-                DenoSubcommand::Run(run_flags) => run_flags.watch.clone(),
-                _ => unreachable!(),
-              };
+              let watch = flags.watch.clone();
               flags.node_modules_dir =
                 Some(deno_config::deno_json::NodeModulesDirMode::None);
               // use the current lockfile, but don't write it out
@@ -464,7 +461,7 @@ async fn run_subcommand(
           };
         }
 
-        if test_flags.watch.is_some() {
+        if flags.watch.is_some() {
           tools::test::run_tests_with_watch(Arc::new(flags), test_flags).await
         } else {
           tools::test::run_tests(Arc::new(flags), test_flags).await
@@ -911,7 +908,7 @@ async fn resolve_flags_and_init(
       Err(err) => exit_for_error(AnyError::from(err), initial_cwd.as_deref()),
     };
   // preserve already loaded env variables
-  if flags.subcommand.watch_flags().is_some() {
+  if flags.watch.is_some() {
     WatchEnvTracker::snapshot();
   }
 
