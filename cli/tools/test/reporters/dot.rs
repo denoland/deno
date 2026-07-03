@@ -1,5 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use deno_print::drop_print;
+use deno_print::drop_println;
+
 use super::common;
 use super::fmt::to_relative_path_or_remote_url;
 use super::*;
@@ -8,11 +11,12 @@ pub struct DotTestReporter {
   n: usize,
   width: usize,
   cwd: Url,
+  retried_tests: HashSet<usize>,
+  pending_step_tally: common::PendingStepTally,
   summary: TestSummary,
   failure_format_options: TestFailureFormatOptions,
 }
 
-#[allow(clippy::print_stdout, reason = "test reporter")]
 impl DotTestReporter {
   pub fn new(
     cwd: Url,
@@ -29,6 +33,8 @@ impl DotTestReporter {
       n: 0,
       width: console_width,
       cwd,
+      retried_tests: Default::default(),
+      pending_step_tally: Default::default(),
       summary: TestSummary::new(),
       failure_format_options,
     }
@@ -37,16 +43,16 @@ impl DotTestReporter {
   fn print_status(&mut self, status: String) {
     // Non-TTY console prints every result on a separate line.
     if self.width == 0 {
-      println!("{}", status);
+      drop_println!("{}", status);
       return;
     }
 
     if self.n != 0 && self.n.is_multiple_of(self.width) {
-      println!();
+      drop_println!();
     }
     self.n += 1;
 
-    print!("{}", status);
+    drop_print!("{}", status);
   }
 
   fn print_test_step_result(&mut self, result: &TestStepResult) {
@@ -86,7 +92,6 @@ fn fmt_cancelled() -> String {
   colors::gray("!").to_string()
 }
 
-#[allow(clippy::print_stdout, reason = "test reporter")]
 impl TestReporter for DotTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 
@@ -100,18 +105,32 @@ impl TestReporter for DotTestReporter {
     std::io::stdout().flush().ok();
   }
 
-  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
+  fn report_slow(
+    &mut self,
+    _description: &TestDescription,
+    _elapsed: Duration,
+  ) {
+  }
   fn report_output(&mut self, _output: &[u8]) {}
 
   fn report_result(
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    _elapsed: u64,
+    _elapsed: Duration,
   ) {
+    common::commit_step_results(
+      &mut self.pending_step_tally,
+      &mut self.summary,
+      description.id,
+    );
+
     match &result {
       TestResult::Ok => {
         self.summary.passed += 1;
+        if self.retried_tests.contains(&description.id) {
+          self.summary.flaky += 1;
+        }
       }
       TestResult::Ignored => {
         self.summary.ignored += 1;
@@ -131,6 +150,22 @@ impl TestReporter for DotTestReporter {
     self.print_test_result(result);
   }
 
+  fn report_retry(
+    &mut self,
+    description: &TestDescription,
+    _attempt: u32,
+    _failure: &TestFailure,
+  ) {
+    self.retried_tests.insert(description.id);
+    common::discard_step_results(&mut self.pending_step_tally, description.id);
+  }
+
+  fn report_repeat(&mut self, description: &TestDescription, _repetition: u32) {
+    // Drop the previous repetition's step results so each step is counted once,
+    // not once per repetition.
+    common::discard_step_results(&mut self.pending_step_tally, description.id);
+  }
+
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>) {
     self.summary.failed += 1;
     self
@@ -138,7 +173,7 @@ impl TestReporter for DotTestReporter {
       .uncaught_errors
       .push((origin.to_string(), error));
 
-    println!(
+    drop_println!(
       "Uncaught error from {} {}",
       to_relative_path_or_remote_url(&self.cwd, origin),
       colors::red("FAILED")
@@ -156,32 +191,27 @@ impl TestReporter for DotTestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    _elapsed: u64,
+    _elapsed: Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    match &result {
-      TestStepResult::Ok => {
-        self.summary.passed_steps += 1;
-      }
-      TestStepResult::Ignored => {
-        self.summary.ignored_steps += 1;
-      }
-      TestStepResult::Failed(failure) => {
-        self.summary.failed_steps += 1;
-        self.summary.failures.push((
-          TestFailureDescription {
-            id: desc.id,
-            name: common::format_test_step_ancestry(desc, tests, test_steps),
-            origin: desc.origin.clone(),
-            location: desc.location.clone(),
-          },
-          failure.clone(),
-        ))
-      }
-    }
+    common::record_step_result(
+      &mut self.pending_step_tally,
+      desc,
+      result,
+      tests,
+      test_steps,
+    );
 
     self.print_test_step_result(result);
+  }
+
+  fn report_snapshot_summary(&mut self, summary: &TestSnapshotSummary) {
+    self.summary.snapshots_updated += summary.updated;
+    self
+      .summary
+      .snapshots_removed
+      .extend(summary.removed.iter().cloned());
   }
 
   fn report_summary(
@@ -197,7 +227,7 @@ impl TestReporter for DotTestReporter {
       elapsed,
       &self.failure_format_options,
     );
-    println!();
+    drop_println!();
   }
 
   fn report_sigint(

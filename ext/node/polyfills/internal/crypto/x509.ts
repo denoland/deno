@@ -1,11 +1,18 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials no-explicit-any
+// deno-lint-ignore-file no-explicit-any
 
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  ArrayPrototypePush,
+  Date,
+  ObjectAssign,
+  ObjectFreeze,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeIncludes,
+} = primordials;
 const {
   op_node_x509_ca,
   op_node_x509_check_email,
@@ -59,7 +66,7 @@ const { customInspectSymbol: kInspect } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
 
-const kEmptyObject = Object.freeze({ __proto__: null } as any);
+const kEmptyObject = ObjectFreeze({ __proto__: null } as any);
 
 function getFlags(options = kEmptyObject): number {
   validateObject(options, "options");
@@ -158,7 +165,7 @@ class X509Certificate {
     options?: any,
   ): string | undefined {
     validateString(email, "email");
-    if (email.includes("\0")) {
+    if (StringPrototypeIncludes(email, "\0")) {
       throw new ERR_INVALID_ARG_VALUE("email", email);
     }
     getFlags(options);
@@ -169,7 +176,7 @@ class X509Certificate {
 
   checkHost(name: string, options?: any): string | undefined {
     validateString(name, "name");
-    if (name.includes("\0")) {
+    if (StringPrototypeIncludes(name, "\0")) {
       throw new ERR_INVALID_ARG_VALUE("name", name);
     }
     getFlags(options);
@@ -185,7 +192,7 @@ class X509Certificate {
   }
 
   checkIssued(otherCert: X509Certificate): boolean {
-    if (!(otherCert instanceof X509Certificate)) {
+    if (!ObjectPrototypeIsPrototypeOf(X509Certificate.prototype, otherCert)) {
       throw new ERR_INVALID_ARG_TYPE(
         "otherCert",
         "X509Certificate",
@@ -196,7 +203,7 @@ class X509Certificate {
   }
 
   checkPrivateKey(privateKey: KeyObject): boolean {
-    if (!(privateKey instanceof KeyObject)) {
+    if (!ObjectPrototypeIsPrototypeOf(KeyObject.prototype, privateKey)) {
       throw new ERR_INVALID_ARG_TYPE(
         "privateKey",
         "KeyObject",
@@ -240,15 +247,15 @@ class X509Certificate {
     const flags = op_node_x509_key_usage(this.#handle);
     if (flags === 0) return undefined;
     const result: string[] = [];
-    if (flags & 0x01) result.push("DigitalSignature");
-    if (flags >> 1 & 0x01) result.push("NonRepudiation");
-    if (flags >> 2 & 0x01) result.push("KeyEncipherment");
-    if (flags >> 3 & 0x01) result.push("DataEncipherment");
-    if (flags >> 4 & 0x01) result.push("KeyAgreement");
-    if (flags >> 5 & 0x01) result.push("KeyCertSign");
-    if (flags >> 6 & 0x01) result.push("CRLSign");
-    if (flags >> 7 & 0x01) result.push("EncipherOnly");
-    if (flags >> 8 & 0x01) result.push("DecipherOnly");
+    if (flags & 0x01) ArrayPrototypePush(result, "DigitalSignature");
+    if (flags >> 1 & 0x01) ArrayPrototypePush(result, "NonRepudiation");
+    if (flags >> 2 & 0x01) ArrayPrototypePush(result, "KeyEncipherment");
+    if (flags >> 3 & 0x01) ArrayPrototypePush(result, "DataEncipherment");
+    if (flags >> 4 & 0x01) ArrayPrototypePush(result, "KeyAgreement");
+    if (flags >> 5 & 0x01) ArrayPrototypePush(result, "KeyCertSign");
+    if (flags >> 6 & 0x01) ArrayPrototypePush(result, "CRLSign");
+    if (flags >> 7 & 0x01) ArrayPrototypePush(result, "EncipherOnly");
+    if (flags >> 8 & 0x01) ArrayPrototypePush(result, "DecipherOnly");
     return result;
   }
 
@@ -266,7 +273,8 @@ class X509Certificate {
   }
 
   get signatureAlgorithm(): string | undefined {
-    return op_node_x509_get_signature_algorithm_name(this.#handle) ?? undefined;
+    return op_node_x509_get_signature_algorithm_name(this.#handle) ??
+      undefined;
   }
 
   get signatureAlgorithmOid(): string {
@@ -282,6 +290,7 @@ class X509Certificate {
   }
 
   toJSON(): string {
+    // deno-lint-ignore prefer-primordials
     return this.toString();
   }
 
@@ -291,13 +300,13 @@ class X509Certificate {
       obj.raw = Buffer.from(obj.raw);
     }
     if (obj.subject) {
-      obj.subject = Object.assign({ __proto__: null }, obj.subject);
+      obj.subject = ObjectAssign({ __proto__: null }, obj.subject);
     }
     if (obj.issuer) {
-      obj.issuer = Object.assign({ __proto__: null }, obj.issuer);
+      obj.issuer = ObjectAssign({ __proto__: null }, obj.issuer);
     }
     if (obj.infoAccess) {
-      obj.infoAccess = Object.assign({ __proto__: null }, obj.infoAccess);
+      obj.infoAccess = ObjectAssign({ __proto__: null }, obj.infoAccess);
     }
     return obj;
   }
@@ -323,7 +332,7 @@ class X509Certificate {
   }
 
   verify(publicKey: KeyObject): boolean {
-    if (!(publicKey instanceof KeyObject)) {
+    if (!ObjectPrototypeIsPrototypeOf(KeyObject.prototype, publicKey)) {
       throw new ERR_INVALID_ARG_TYPE(
         "publicKey",
         "KeyObject",
@@ -341,16 +350,18 @@ class X509Certificate {
 }
 
 function isX509Certificate(value: unknown): value is X509Certificate {
-  return value instanceof X509Certificate;
+  return ObjectPrototypeIsPrototypeOf(X509Certificate.prototype, value);
 }
 
-core.registerCloneableResource(
-  "X509Certificate",
-  (data: { data: ArrayBuffer }) => new X509Certificate(Buffer.from(data.data)),
-);
+// Registered eagerly from `02_register_cloneable.js` so workers can resurrect a
+// transferred X509Certificate before this module is loaded.
+function deserializeX509Certificate(data: { data: ArrayBuffer }) {
+  return new X509Certificate(Buffer.from(data.data));
+}
 
 return {
   X509Certificate,
+  deserializeX509Certificate,
   isX509Certificate,
   default: {
     X509Certificate,

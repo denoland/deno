@@ -1379,6 +1379,23 @@ Deno.test(function consoleCssToAnsi() {
     cssToAnsiEsc({ ...DEFAULT_CSS, color: [203, 204, 205] }),
     "_[38;2;203;204;205m",
   );
+  // Regression test for https://github.com/denoland/deno/issues/21605: two hex
+  // colors sharing the same red component must not be treated as equal, so the
+  // new background color is still emitted.
+  assertEquals(
+    cssToAnsiEsc(
+      { ...DEFAULT_CSS, backgroundColor: "#FFAFC8" },
+      { ...DEFAULT_CSS, backgroundColor: "#FFFFFF" },
+    ),
+    "_[48;2;255;175;200m",
+  );
+  assertEquals(
+    cssToAnsiEsc(
+      { ...DEFAULT_CSS, color: "#FFAFC8" },
+      { ...DEFAULT_CSS, color: "#FFFFFF" },
+    ),
+    "_[38;2;255;175;200m",
+  );
   assertEquals(cssToAnsiEsc({ ...DEFAULT_CSS, fontWeight: "bold" }), "_[1m");
   assertEquals(cssToAnsiEsc({ ...DEFAULT_CSS, fontStyle: "italic" }), "_[3m");
   assertEquals(

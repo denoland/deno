@@ -107,13 +107,21 @@ Deno.test(async function responseBodyUsed() {
 Deno.test(async function responseBodyByobReader() {
   async function readByob(stream: ReadableStream<Uint8Array>) {
     const reader = stream.getReader({ mode: "byob" });
-    const chunks: number[] = [];
+    const chunks: Uint8Array[] = [];
+    let total = 0;
     while (true) {
       const { value, done } = await reader.read(new Uint8Array(16));
       if (done) break;
-      chunks.push(...value);
+      chunks.push(value);
+      total += value.byteLength;
     }
-    return new Uint8Array(chunks);
+    const result = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return result;
   }
 
   assertEquals(

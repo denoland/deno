@@ -389,6 +389,23 @@ fn permissions_prompt_allow_all_lowercase_a() {
     });
 }
 
+// Regression test for https://github.com/denoland/deno/issues/34399
+// When stdin has been put into raw mode by user code (e.g. ts-node calling
+// `process.stdin.setRawMode(true)`), the prompt's line-buffered `read_line`
+// would hang because Enter delivers `\r` and ECHO is off. Verify we bail
+// out with a clear message and deny the permission instead.
+#[test(flaky)]
+fn permissions_prompt_raw_stdin() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/permissions_prompt_raw_stdin.ts"])
+    .with_pty(|mut console| {
+      console.expect("stdin is in raw mode");
+      console.expect("Run again with --allow-env");
+      console.expect("STATUS: denied");
+    });
+}
+
 #[test(flaky)]
 fn permission_request_long() {
   TestContext::default()
@@ -1645,6 +1662,42 @@ mod permissions {
           .expect("PermissionStatus { state: \"granted\", onchange: null }");
         console
           .expect("PermissionStatus { state: \"granted\", onchange: null }");
+      });
+  }
+
+  #[test(flaky)]
+  fn prompt_esc_cancel_pty() {
+    TestContext::default()
+      .new_command()
+      .args_vec(["run", "--quiet", "run/prompt_esc_cancel.ts"])
+      .with_pty(|mut console| {
+        console.expect("Cancel me default");
+        console.write_raw("\x1b"); // Esc
+        console.expect("answer=null");
+        console.expect("after prompt");
+      });
+  }
+
+  #[test(flaky)]
+  fn prompt_esc_cancel_eval_pty() {
+    TestContext::default()
+      .new_command()
+      .args_vec([
+        "eval",
+        r#"try {
+          const answer = prompt();
+          console.log(answer === null ? "answer=null" : answer);
+          console.log("asdf");
+        } catch (error) {
+          console.error(error);
+          Deno.exit(1);
+        }"#,
+      ])
+      .with_pty(|mut console| {
+        console.expect("Prompt");
+        console.write_raw("\x1b"); // Esc
+        console.expect("answer=null");
+        console.expect("asdf");
       });
   }
 
@@ -3266,10 +3319,12 @@ fn code_cache_npm_cjs_wrapper_module_many_exports() {
     output.skip_stdout_check();
 
     // should have two occurrences of this (one for entrypoint and one for wrapper module)
+    // note: residual lazy ext-scripts now also hit the ES module code cache, so we
+    // only count hits for user file modules here.
     assert_eq!(
       output
         .stderr()
-        .split("V8 code cache hit for ES module")
+        .split("V8 code cache hit for ES module: file:///")
         .count(),
       3
     );
@@ -3313,6 +3368,17 @@ fn node_process_stdin_unref_with_pty() {
     .with_pty(|mut console| {
       // if process.stdin.unref is called, the program immediately ends by skipping reading from stdin.
       console.expect("START\r\nEND\r\n");
+    });
+}
+
+#[test]
+fn stdin_readable_cancel_with_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/stdin_readable_cancel.ts"])
+    .with_pty(|mut console| {
+      console.expect("CANCELLED");
+      console.expect("DONE");
     });
 }
 
@@ -3600,6 +3666,27 @@ fn readline_multi_prompt_pty() {
       console.expect("Q2?");
       console.write_line("world");
       console.expect("A2: world");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/17047.
+// Verifies that permission prompts wait for an active user-space stdin prompt
+// instead of racing it and consuming the user's answer.
+#[test]
+fn readline_permission_prompt_interleaving_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_permission_prompt_interleaving.ts"])
+    .with_pty(|mut console| {
+      console.expect("Project?");
+      console.write_line("demo");
+      console.expect("ANSWER:demo");
+      console.expect("Deno requests read access to");
+      console.expect("Allow?");
+      console.human_delay();
+      console.write_line_raw("n");
+      console.expect("Denied read access to");
+      console.expect("READ_ERROR:NotCapable");
     });
 }
 

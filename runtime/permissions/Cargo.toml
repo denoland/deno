@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_permissions"
-version = "0.108.0"
+version = "0.112.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -37,8 +37,8 @@ which.workspace = true
 unicode-normalization = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2", "processenv", "wincon", "wincontypes"] }
-windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }
+dunce.workspace = true
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_UI_Input_KeyboardAndMouse"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true, features = ["fs"] }

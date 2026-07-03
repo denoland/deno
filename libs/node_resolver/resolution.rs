@@ -913,9 +913,13 @@ impl<
           && (resolution_mode == ResolutionMode::Require || self.bundle_mode())
           && e.kind() == std::io::ErrorKind::NotFound
         {
-          let file_with_ext = with_known_extension(&path, "js");
-          if self.sys.is_file(Cow::Borrowed(&file_with_ext)) {
-            return Ok(UrlOrPath::Path(file_with_ext));
+          // Match Node's `require()` resolution order: try .js, then .node
+          // for native addons (`require('./build/Release/foo')`).
+          for ext in ["js", "node"] {
+            let file_with_ext = with_known_extension(&path, ext);
+            if self.sys.is_file(Cow::Borrowed(&file_with_ext)) {
+              return Ok(UrlOrPath::Path(file_with_ext));
+            }
           }
         }
 
@@ -1018,7 +1022,7 @@ impl<
     // todo(dsherret): don't allocate a string here (maybe use an
     // enum that says the subpath is not prefixed with a ./)
     let package_subpath = package_subpath
-      .map(|s| Cow::Owned(format!("./{s}")))
+      .map(|s| Cow::Owned(format!("./{}", decode_package_subpath(s))))
       .unwrap_or_else(|| Cow::Borrowed("."));
     let maybe_referrer = maybe_referrer.map(UrlOrPathRef::from_url);
     let conditions = self.condition_resolver.resolve(resolution_mode);
@@ -2762,6 +2766,29 @@ fn with_known_extension(path: &Path, ext: &str) -> PathBuf {
     None => &file_name,
   };
   path.with_file_name(format!("{file_name}.{ext}"))
+}
+
+/// The subpath of a URL specifier (e.g. an `npm:` specifier) is percent
+/// encoded, so a file name containing non-ASCII characters arrives here in
+/// encoded form (for example a file whose name contains a single non-ASCII
+/// byte pair shows up as `...%C3%A6...`). Decode it so that it can be matched
+/// against package.json "exports" entries and joined onto a filesystem path
+/// without being double encoded when later converted back to a URL.
+///
+/// Encoded path separators (`/` and `\`) are intentionally left untouched so
+/// that `finalize_resolution` still rejects them rather than allowing path
+/// traversal.
+fn decode_package_subpath(sub_path: &str) -> Cow<'_, str> {
+  if !sub_path.contains('%') {
+    return Cow::Borrowed(sub_path);
+  }
+  if lazy_regex::regex!(r"(?i)%2f|%5c").is_match(sub_path) {
+    return Cow::Borrowed(sub_path);
+  }
+  match percent_encoding::percent_decode_str(sub_path).decode_utf8() {
+    Ok(decoded) => decoded,
+    Err(_) => Cow::Borrowed(sub_path),
+  }
 }
 
 fn to_specifier_display_string(url: &UrlOrPathRef) -> String {

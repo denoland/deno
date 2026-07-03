@@ -35,11 +35,42 @@ use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::binary::is_standalone_binary;
+use crate::util::file_watcher;
+use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::temp::create_temp_node_modules_dir;
 
 pub async fn compile(
+  flags: Flags,
+  compile_flags: CompileFlags,
+) -> Result<(), AnyError> {
+  if let Some(watch_flags) = &flags.watch {
+    let no_clear_screen = watch_flags.no_clear_screen;
+    file_watcher::watch_func(
+      Arc::new(flags),
+      file_watcher::PrintConfig::new("Compile", !no_clear_screen),
+      move |flags, watcher_communicator, changed_paths| {
+        let compile_flags = compile_flags.clone();
+        watcher_communicator.show_path_changed(changed_paths);
+        Ok(async move {
+          compile_inner(
+            Arc::unwrap_or_clone(flags),
+            compile_flags,
+            Some(watcher_communicator),
+          )
+          .await
+        })
+      },
+    )
+    .await
+  } else {
+    compile_inner(flags, compile_flags, None).await
+  }
+}
+
+async fn compile_inner(
   mut flags: Flags,
   mut compile_flags: CompileFlags,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
 ) -> Result<(), AnyError> {
   // Framework detection: when the source is a directory, detect the
   // framework and generate an entrypoint automatically.
@@ -66,28 +97,9 @@ pub async fn compile(
   let _framework_entrypoint_file = if let Some(dir) = source_dir {
     if let Some(detection) = super::framework::detect_framework(&dir)? {
       log::info!("Detected {} framework", detection.name);
-      // Run the framework's build step if needed.
-      if let Some(build_cmd) = &detection.build_command {
-        log::info!(
-          "{} {} project...",
-          colors::green("Building"),
-          detection.name,
-        );
-        let status = std::process::Command::new(&build_cmd[0])
-          .args(&build_cmd[1..])
-          .current_dir(&dir)
-          .status()
-          .with_context(|| {
-            format!("Failed to run build command: {}", build_cmd.join(" "))
-          })?;
-        if !status.success() {
-          bail!(
-            "{} build failed (exit code: {})",
-            detection.name,
-            status.code().unwrap_or(-1)
-          );
-        }
-      }
+      // Run the framework's build step (if any) before bundling its build
+      // output via `include_paths`.
+      super::framework::run_build_command(&detection, &dir)?;
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
       // These frameworks emit a pre-built/bundled server entrypoint that is
@@ -129,7 +141,7 @@ pub async fn compile(
     } else {
       bail!(
         "Could not detect a supported framework in '{}'.\n\
-         Supported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite SSR\n\
+         Supported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\n\
          Provide an explicit entrypoint instead of a directory.",
         dir.display()
       );
@@ -179,6 +191,23 @@ pub async fn compile(
       "{} deno compile --bundle is experimental and may change.",
       colors::yellow("Warning")
     );
+    // Auto-include the closest `package.json` to the entrypoint, if any.
+    // Lots of packages read their own `package.json` for version info
+    // (pi's `getPackageJsonPath()` walks up from `import.meta.url`),
+    // and after bundling the bundle's URL doesn't sit next to one. We
+    // ship it alongside the bundle so the walk-up succeeds without the
+    // user having to thread `--include` themselves.
+    let initial_cwd_for_pkg = flags.initial_cwd.clone().unwrap_or_else(|| {
+      crate::util::env::resolve_cwd(None).unwrap().to_path_buf()
+    });
+    if let Some(pkg_json_path) =
+      closest_package_json(&initial_cwd_for_pkg, &compile_flags.source_file)
+    {
+      let display = pkg_json_path.display().to_string();
+      if !compile_flags.include.contains(&display) {
+        compile_flags.include.push(display);
+      }
+    }
     let BundleForCompileResult {
       path: bundle_path,
       needs_npm_embed,
@@ -225,10 +254,16 @@ pub async fn compile(
   let flags = Arc::new(flags);
   // boxed_local() is to avoid large futures
   if compile_flags.eszip {
-    compile_eszip(flags, compile_flags).boxed_local().await
+    compile_eszip(flags, compile_flags, watcher_communicator)
+      .boxed_local()
+      .await?;
   } else {
-    compile_binary(flags, compile_flags).boxed_local().await
+    compile_binary(flags, compile_flags, false, watcher_communicator)
+      .boxed_local()
+      .await?;
   }
+
+  Ok(())
 }
 
 struct BundleForCompileResult {
@@ -258,6 +293,7 @@ async fn run_bundle_for_compile(
   let main_bytes = bundle_one_for_compile(
     bundle_flags.clone(),
     compile_flags.source_file.clone(),
+    compile_flags.minify,
   )
   .await?;
   let main_rewrite = rewrite_absolute_bundle_paths(&main_bytes, &initial_cwd)?;
@@ -265,35 +301,24 @@ async fn run_bundle_for_compile(
   let mut all_referenced_paths: Vec<PathBuf> =
     main_rewrite.referenced_abs_paths.clone();
 
-  // Scan the main bundle for `new Worker(new URL("X", import.meta.url))`
-  // patterns. For each unique X, bundle the target as a separate entry,
-  // write it next to the main bundle, and rewrite the URL string in the
-  // main bundle to point at the worker bundle's file name. The worker
-  // bundles are then reachable through `new URL(..., import.meta.url)`
-  // at runtime, just like the main bundle.
+  // Scan the main bundle for `new URL("X.{ts,js,…}", import.meta.url)`
+  // patterns. Each resolvable target is a potential worker entrypoint —
+  // including ones the user code stashes in a variable before passing
+  // to `new Worker(...)`, which the previous inline-only regex missed.
+  // For each unique target we bundle it separately, write it next to
+  // the main bundle, and rewrite the URL string in the main bundle to
+  // point at the worker bundle's file name.
   let main_src = std::str::from_utf8(&main_rewrite.bytes)
     .context("Bundle output is not valid UTF-8")?;
-  let worker_urls = discover_worker_urls(main_src);
+  let worker_urls = discover_worker_urls(main_src, &initial_cwd);
 
   let mut url_replacements: Vec<(String, String)> = Vec::new();
   let mut extra_cleanup: Vec<PathBuf> = Vec::new();
-  for worker_url in &worker_urls {
-    let worker_abs = if Path::new(worker_url).is_absolute() {
-      PathBuf::from(worker_url)
-    } else {
-      initial_cwd.join(worker_url)
-    };
-    if !worker_abs.exists() {
-      log::warn!(
-        "{} Worker entrypoint '{}' was not found on disk; leaving it as-is. The compiled binary will fail to start this worker unless the file is provided via --include.",
-        colors::yellow("Warning"),
-        worker_url,
-      );
-      continue;
-    }
+  for (worker_url, worker_abs) in &worker_urls {
     let worker_bytes = bundle_one_for_compile(
       bundle_flags.clone(),
       worker_abs.display().to_string(),
+      compile_flags.minify,
     )
     .await?;
     let worker_rewrite =
@@ -347,52 +372,159 @@ async fn run_bundle_for_compile(
 async fn bundle_one_for_compile(
   flags: Arc<Flags>,
   entrypoint: String,
+  minify: bool,
 ) -> Result<Vec<u8>, AnyError> {
   // Always leave `.node` files external. esbuild has no loader for them
   // and would error if it tried to inline a native binary; with this
   // pattern the require() calls are emitted verbatim and resolved at
   // runtime against the embedded VFS by the native addon loader.
   let external = vec!["*.node".to_string()];
-  super::bundle::bundle_for_compile(flags, entrypoint, external)
+  super::bundle::bundle_for_compile(flags, entrypoint, external, minify)
     .boxed_local()
     .await
 }
 
-/// Pull the relative path argument out of every
-/// `new Worker(new URL("X", import.meta.url), …)` in the bundle source.
-/// Returns unique paths in source order.
-fn discover_worker_urls(bundle_src: &str) -> Vec<String> {
-  let pattern = lazy_regex::regex!(
-    r#"new\s+Worker\s*\(\s*new\s+URL\s*\(\s*"([^"]+)"\s*,\s*import\.meta\.url"#
+/// Find every `new URL("X.{ts,js,…}", import.meta.url)` in the bundle whose
+/// `X` we can resolve to a source file on disk. Each match is a potential
+/// worker entrypoint: even when the URL is stashed in a variable and only
+/// later passed to `new Worker(...)` we still want to bundle it.
+///
+/// Resolution tries the URL as a relative path from `initial_cwd` first
+/// (covers the common case where source and bundle share a directory),
+/// then falls back to a basename search across the workspace — pi's
+/// `dist/utils/image-resize.js` does
+/// `new URL("./image-resize-worker.js", import.meta.url)` and the bundle
+/// lives at `dist/.deno_compile_bundle_*.mjs`, so basename matching is
+/// what locks it onto `dist/utils/image-resize-worker.js`.
+///
+/// Returns `(original_url_string, resolved_source_path)` pairs in source
+/// order, deduped on the URL string.
+fn discover_worker_urls(
+  bundle_src: &str,
+  initial_cwd: &Path,
+) -> Vec<(String, PathBuf)> {
+  // Match `new URL(<first-arg>, import.meta.url)` with `<first-arg>`
+  // captured non-greedily so we handle non-literal forms like the
+  // ternary pi uses:
+  //   new URL(isTs ? "./worker.ts" : "./worker.js", import.meta.url)
+  let call_pattern = lazy_regex::regex!(
+    r#"new\s+URL\s*\(\s*(.+?)\s*,\s*import\.meta\.url\s*\)"#
   );
+  let url_string_pattern =
+    lazy_regex::regex!(r#""([^"\n]+\.(?:ts|tsx|js|jsx|mjs|cjs))""#);
   let mut seen = std::collections::HashSet::new();
   let mut out = Vec::new();
-  for caps in pattern.captures_iter(bundle_src) {
-    let url = caps.get(1).unwrap().as_str().to_string();
-    if seen.insert(url.clone()) {
-      out.push(url);
+  for call_caps in call_pattern.captures_iter(bundle_src) {
+    let first_arg = call_caps.get(1).unwrap().as_str();
+    for url_caps in url_string_pattern.captures_iter(first_arg) {
+      let url = url_caps.get(1).unwrap().as_str().to_string();
+      if !seen.insert(url.clone()) {
+        continue;
+      }
+      if let Some(path) = resolve_worker_url_target(&url, initial_cwd) {
+        out.push((url, path));
+      }
     }
   }
   out
+}
+
+fn resolve_worker_url_target(url: &str, initial_cwd: &Path) -> Option<PathBuf> {
+  // Try as a literal relative path from the bundle's directory first.
+  let candidate = if Path::new(url).is_absolute() {
+    PathBuf::from(url)
+  } else {
+    initial_cwd.join(url)
+  };
+  if candidate.is_file() {
+    return Some(candidate);
+  }
+  // Fall back to searching by basename across the workspace. This handles
+  // bundles whose runtime location doesn't match the original source's
+  // location: the URL string is preserved by esbuild but
+  // `import.meta.url` now points at the bundle's directory.
+  let basename = Path::new(url).file_name()?;
+  find_file_by_name(initial_cwd, basename)
+}
+
+fn find_file_by_name(root: &Path, name: &std::ffi::OsStr) -> Option<PathBuf> {
+  let mut pending = std::collections::VecDeque::from([root.to_path_buf()]);
+  while let Some(dir) = pending.pop_front() {
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+      continue;
+    };
+    for entry in entries.flatten() {
+      let path = entry.path();
+      let file_name = path.file_name();
+      if path.is_dir() {
+        if matches!(
+          file_name,
+          Some(n) if n == std::ffi::OsStr::new("node_modules")
+            || n == std::ffi::OsStr::new(".git")
+            || n == std::ffi::OsStr::new("target")
+        ) {
+          continue;
+        }
+        pending.push_back(path);
+      } else if file_name == Some(name) {
+        return Some(path);
+      }
+    }
+  }
+  None
+}
+
+/// Find the closest `package.json` above the entrypoint. Walks up from
+/// the entrypoint's directory toward `initial_cwd` and returns the first
+/// `package.json` it sees. Used to auto-include the file in the VFS so
+/// `getPackageDir`-style walks at runtime succeed without the user
+/// having to add a `--include` flag.
+fn closest_package_json(
+  initial_cwd: &Path,
+  source_file: &str,
+) -> Option<PathBuf> {
+  let source_path = if Path::new(source_file).is_absolute() {
+    PathBuf::from(source_file)
+  } else {
+    initial_cwd.join(source_file)
+  };
+  let mut dir = source_path.parent()?.to_path_buf();
+  loop {
+    let candidate = dir.join("package.json");
+    if candidate.is_file() {
+      return Some(candidate);
+    }
+    if !dir.pop() {
+      return None;
+    }
+  }
 }
 
 fn rewrite_worker_urls(
   bundle_src: &str,
   replacements: &[(String, String)],
 ) -> String {
+  // Rewrite happens inside `new URL(<arg>, import.meta.url)` only, so
+  // user code that happens to contain a string matching a worker path
+  // somewhere else (a log message, a regex, etc.) is left alone. Within
+  // each call's `<arg>` we do a literal string-substring substitution
+  // so ternaries like
+  //   new URL(isTs ? "./worker.ts" : "./worker.js", import.meta.url)
+  // get all of their string-literal branches rewritten.
   let pattern = lazy_regex::regex!(
-    r#"(new\s+Worker\s*\(\s*new\s+URL\s*\(\s*")([^"]+)("\s*,\s*import\.meta\.url)"#
+    r#"(new\s+URL\s*\(\s*)(.+?)(\s*,\s*import\.meta\.url\s*\))"#
   );
   pattern
     .replace_all(bundle_src, |caps: &regex::Captures<'_>| {
-      let original = caps.get(2).unwrap().as_str();
-      if let Some((_, replacement)) =
-        replacements.iter().find(|(orig, _)| orig == original)
-      {
-        format!("{}{}{}", &caps[1], replacement, &caps[3])
-      } else {
-        caps[0].to_string()
+      let prefix = &caps[1];
+      let mut arg = caps[2].to_string();
+      let suffix = &caps[3];
+      for (orig, replacement) in replacements {
+        let needle = format!("\"{orig}\"");
+        let with = format!("\"{replacement}\"");
+        arg = arg.replace(&needle, &with);
       }
+      format!("{prefix}{arg}{suffix}")
     })
     .into_owned()
 }
@@ -501,20 +633,28 @@ function __internalResolveBundlePath(rel) {
   }
 }
 
-async fn compile_binary(
+pub async fn compile_binary(
   flags: Arc<Flags>,
   compile_flags: CompileFlags,
-) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags);
+  is_desktop: bool,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
+) -> Result<PathBuf, AnyError> {
+  let factory = if let Some(watcher_communicator) = watcher_communicator.clone()
+  {
+    CliFactory::from_flags_for_watcher(flags, watcher_communicator)
+  } else {
+    CliFactory::from_flags(flags)
+  };
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
-  let binary_writer = factory.create_compile_binary_writer().await?;
+  let binary_writer = factory.create_compile_binary_writer(is_desktop).await?;
   let entrypoint = cli_options.resolve_main_module()?;
   let bin_name_resolver = factory.bin_name_resolver()?;
   let output_path = resolve_compile_executable_output_path(
     &bin_name_resolver,
     &compile_flags,
     cli_options.initial_cwd(),
+    is_desktop,
   )
   .await?;
   let compile_config = cli_options.start_dir.to_compile_config()?;
@@ -536,6 +676,12 @@ async fn compile_binary(
     &effective_exclude,
     cli_options,
   )?;
+  watch_compile_paths(
+    watcher_communicator.as_ref(),
+    &roots,
+    &compile_flags,
+    cli_options.initial_cwd(),
+  );
 
   let graph =
     build_compile_graph(module_graph_creator, cli_options, &roots).await?;
@@ -563,6 +709,20 @@ async fn compile_binary(
     }
   );
   validate_output_path(&output_path)?;
+
+  // Clean up stale temp files from previous interrupted compilations.
+  if let Some(parent) = output_path.parent()
+    && let Some(stem) = output_path.file_name()
+  {
+    let prefix = format!("{}.tmp-", stem.to_string_lossy());
+    if let Ok(entries) = std::fs::read_dir(parent) {
+      for entry in entries.flatten() {
+        if entry.file_name().to_string_lossy().starts_with(&prefix) {
+          let _ = std::fs::remove_file(entry.path());
+        }
+      }
+    }
+  }
 
   let mut temp_filename = output_path.file_name().unwrap().to_owned();
   temp_filename.push(format!(
@@ -636,14 +796,121 @@ async fn compile_binary(
     return Err(err);
   }
 
+  Ok(output_path)
+}
+
+/// Convert a PNG image to macOS .icns format using `sips` and `iconutil`.
+pub fn convert_png_to_icns(
+  png_path: &Path,
+  icns_path: &Path,
+) -> Result<(), AnyError> {
+  let iconset_dir = icns_path.with_extension("iconset");
+  std::fs::create_dir_all(&iconset_dir)?;
+
+  let sizes: &[(u32, &str)] = &[
+    (16, "icon_16x16.png"),
+    (32, "icon_16x16@2x.png"),
+    (32, "icon_32x32.png"),
+    (64, "icon_32x32@2x.png"),
+    (128, "icon_128x128.png"),
+    (256, "icon_128x128@2x.png"),
+    (256, "icon_256x256.png"),
+    (512, "icon_256x256@2x.png"),
+    (512, "icon_512x512.png"),
+    (1024, "icon_512x512@2x.png"),
+  ];
+
+  for (size, name) in sizes {
+    let dest = iconset_dir.join(name);
+    let status = std::process::Command::new("sips")
+      .args([
+        "-z",
+        &size.to_string(),
+        &size.to_string(),
+        &png_path.display().to_string(),
+        "--out",
+        &dest.display().to_string(),
+      ])
+      .stdout(std::process::Stdio::null())
+      .stderr(std::process::Stdio::null())
+      .status();
+    if status.map_or(true, |s| !s.success()) {
+      std::fs::copy(png_path, &dest)?;
+    }
+  }
+
+  let status = std::process::Command::new("iconutil")
+    .args([
+      "-c",
+      "icns",
+      &iconset_dir.display().to_string(),
+      "-o",
+      &icns_path.display().to_string(),
+    ])
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null())
+    .status()?;
+
+  let _ = std::fs::remove_dir_all(&iconset_dir);
+
+  if !status.success() {
+    bail!(
+      "Failed to convert PNG to ICNS. Provide an .icns file directly or ensure iconutil is available."
+    );
+  }
+
+  Ok(())
+}
+
+pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), AnyError> {
+  std::fs::create_dir_all(dst)?;
+  for entry in std::fs::read_dir(src)
+    .with_context(|| format!("Reading directory '{}'", src.display()))?
+  {
+    let entry = entry?;
+    let ty = entry.file_type()?;
+    let dest = dst.join(entry.file_name());
+    if ty.is_dir() {
+      copy_dir_all(&entry.path(), &dest)?;
+    } else if ty.is_symlink() {
+      let target = std::fs::read_link(entry.path())?;
+      #[cfg(unix)]
+      std::os::unix::fs::symlink(&target, &dest)?;
+      #[cfg(windows)]
+      {
+        if target.is_dir() {
+          std::os::windows::fs::symlink_dir(&target, &dest)?;
+        } else {
+          std::os::windows::fs::symlink_file(&target, &dest)?;
+        }
+      }
+    } else {
+      std::fs::copy(entry.path(), &dest)?;
+      // Ensure the copied file is writable (nix store files are read-only).
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::PermissionsExt;
+        let meta = std::fs::metadata(&dest)?;
+        let mut perms = meta.permissions();
+        perms.set_mode(perms.mode() | 0o200);
+        std::fs::set_permissions(&dest, perms)?;
+      }
+    }
+  }
   Ok(())
 }
 
 async fn compile_eszip(
   flags: Arc<Flags>,
   compile_flags: CompileFlags,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags);
+  let factory = if let Some(watcher_communicator) = watcher_communicator.clone()
+  {
+    CliFactory::from_flags_for_watcher(flags, watcher_communicator)
+  } else {
+    CliFactory::from_flags(flags)
+  };
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
   let parsed_source_cache = factory.parsed_source_cache()?;
@@ -654,6 +921,7 @@ async fn compile_eszip(
     &bin_name_resolver,
     &compile_flags,
     cli_options.initial_cwd(),
+    false,
   )
   .await?;
   output_path.set_extension("eszip");
@@ -679,6 +947,12 @@ async fn compile_eszip(
     &effective_exclude,
     cli_options,
   )?;
+  watch_compile_paths(
+    watcher_communicator.as_ref(),
+    &roots,
+    &compile_flags,
+    cli_options.initial_cwd(),
+  );
 
   let graph =
     build_compile_graph(module_graph_creator, cli_options, &roots).await?;
@@ -846,6 +1120,44 @@ async fn build_compile_graph(
   }
 }
 
+fn watch_compile_paths(
+  watcher_communicator: Option<&Arc<WatcherCommunicator>>,
+  roots: &CompileModuleRoots,
+  compile_flags: &CompileFlags,
+  initial_cwd: &Path,
+) {
+  let Some(watcher_communicator) = watcher_communicator else {
+    return;
+  };
+
+  let paths = compile_watch_paths(roots, compile_flags, initial_cwd);
+
+  if !paths.is_empty() {
+    let _ = watcher_communicator.watch_paths(paths);
+  }
+}
+
+fn compile_watch_paths(
+  roots: &CompileModuleRoots,
+  compile_flags: &CompileFlags,
+  initial_cwd: &Path,
+) -> Vec<PathBuf> {
+  let mut paths = roots
+    .include_paths
+    .iter()
+    .filter_map(|specifier| url_to_file_path(specifier).ok())
+    .collect::<Vec<_>>();
+
+  if let Some(icon) = compile_flags.icon.as_ref()
+    && let Ok(specifier) = resolve_url_or_path(icon, initial_cwd)
+    && let Ok(path) = url_to_file_path(&specifier)
+  {
+    paths.push(path);
+  }
+
+  paths
+}
+
 fn get_module_roots_and_include_paths(
   entrypoint: &ModuleSpecifier,
   include: &[String],
@@ -967,6 +1279,7 @@ async fn resolve_compile_executable_output_path(
   bin_name_resolver: &BinNameResolver<'_>,
   compile_flags: &CompileFlags,
   current_dir: &Path,
+  is_desktop: bool,
 ) -> Result<PathBuf, AnyError> {
   let module_specifier =
     resolve_url_or_path(&compile_flags.source_file, current_dir)?;
@@ -1000,8 +1313,33 @@ async fn resolve_compile_executable_output_path(
   output_path.ok_or_else(|| anyhow!(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
   )).map(|output_path| {
-    get_os_specific_filepath(output_path, &compile_flags.target)
+    if is_desktop {
+      get_desktop_specific_filepath(output_path, &compile_flags.target)
+    } else {
+      get_os_specific_filepath(output_path, &compile_flags.target)
+    }
   })
+}
+
+fn get_desktop_specific_filepath(
+  output: PathBuf,
+  target: &Option<String>,
+) -> PathBuf {
+  let is_windows = match target {
+    Some(target) => target.contains("windows"),
+    None => cfg!(windows),
+  };
+  let is_darwin = match target {
+    Some(target) => target.contains("darwin"),
+    None => cfg!(target_os = "macos"),
+  };
+  if is_windows {
+    output.with_extension("dll")
+  } else if is_darwin {
+    output.with_extension("dylib")
+  } else {
+    output.with_extension("so")
+  }
 }
 
 fn get_os_specific_filepath(
@@ -1033,6 +1371,38 @@ mod test {
   use crate::http_util::HttpClientProvider;
   use crate::util::env::resolve_cwd;
 
+  #[test]
+  fn compile_watch_paths_include_includes_and_icon() {
+    let initial_cwd = resolve_cwd(None).unwrap();
+    let included_path = initial_cwd.join("data.txt");
+    let roots = CompileModuleRoots {
+      strict: vec![],
+      include: vec![],
+      include_paths: vec![url_from_file_path(&included_path).unwrap()],
+    };
+    let paths = compile_watch_paths(
+      &roots,
+      &CompileFlags {
+        source_file: "mod.ts".to_string(),
+        output: None,
+        args: Vec::new(),
+        target: None,
+        no_terminal: false,
+        icon: Some("favicon.ico".to_string()),
+        include: Default::default(),
+        exclude: Default::default(),
+        eszip: false,
+        self_extracting: false,
+        bundle: false,
+        app_name: None,
+        minify: false,
+        exclude_unused_npm: false,
+      },
+      &initial_cwd,
+    );
+    assert_eq!(paths, vec![included_path, initial_cwd.join("favicon.ico")]);
+  }
+
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_linux() {
     let http_client = HttpClientProvider::new(None, None);
@@ -1054,8 +1424,12 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        app_name: None,
+        minify: false,
+        exclude_unused_npm: false,
       },
       &resolve_cwd(None).unwrap(),
+      false,
     )
     .await
     .unwrap();
@@ -1087,8 +1461,12 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        app_name: None,
+        minify: false,
+        exclude_unused_npm: false,
       },
       &resolve_cwd(None).unwrap(),
+      false,
     )
     .await
     .unwrap();

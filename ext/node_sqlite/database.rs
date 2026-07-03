@@ -581,6 +581,10 @@ pub struct DatabaseSync {
   // Non-zero while a user-defined callback is on the stack; close() refuses
   // to free the connection in that state to avoid a SQLite VDBE use-after-free.
   callback_depth: Rc<Cell<usize>>,
+  // Whether ATTACH DATABASE is held disabled because the process lacks full
+  // permissions for the database path. Used to stop the `limits.attach` setter
+  // from raising the cap and bypassing the boundary.
+  disable_attach: Rc<Cell<bool>>,
 }
 
 struct CallbackDepthGuard {
@@ -668,20 +672,37 @@ fn coerce_limit_value(
 fn apply_initial_limits(
   conn: &rusqlite::Connection,
   options: &DatabaseSyncOptions,
+  disable_attach: bool,
 ) -> Result<(), SqliteError> {
   for (idx, &(_js_name, limit)) in LIMIT_MAPPING.iter().enumerate() {
     if let Some(value) = options.initial_limits[idx] {
+      // When the process lacks full permissions for the database path, the
+      // attach limit is a security cap held at 0: ATTACH DATABASE can reach
+      // files outside the database path, so it must not be raised through the
+      // user-controlled `limits.attach` option. Reject raising it above 0,
+      // mirroring the `db.limits.attach` setter. A value of 0 (keeping it
+      // disabled) is still accepted.
+      if disable_attach
+        && matches!(limit, Limit::SQLITE_LIMIT_ATTACHED)
+        && value > 0
+      {
+        return Err(SqliteError::AttachLimitDenied);
+      }
       conn.set_limit(limit, value)?;
     }
   }
   Ok(())
 }
 
+// Returns the open connection together with `disable_attach`: whether the
+// process lacks full permissions for the database path and so ATTACH DATABASE
+// is held disabled. Callers store this so the `limits.attach` setter cannot
+// later raise the cap and bypass the boundary.
 fn open_db(
   state: &mut OpState,
   location: &str,
   options: &DatabaseSyncOptions,
-) -> Result<rusqlite::Connection, SqliteError> {
+) -> Result<(rusqlite::Connection, bool), SqliteError> {
   let perms = state.borrow::<PermissionsContainer>();
   let disable_attach = perms
     .check_has_all_permissions(Path::new(location))
@@ -714,9 +735,9 @@ fn open_db(
       options.is_defensive_mode,
     ));
 
-    apply_initial_limits(&conn, options)?;
+    apply_initial_limits(&conn, options, disable_attach)?;
 
-    return Ok(conn);
+    return Ok((conn, disable_attach));
   }
 
   let location = perms
@@ -760,9 +781,9 @@ fn open_db(
       options.is_defensive_mode,
     ));
 
-    apply_initial_limits(&conn, options)?;
+    apply_initial_limits(&conn, options, disable_attach)?;
 
-    return Ok(conn);
+    return Ok((conn, disable_attach));
   }
 
   let conn = rusqlite::Connection::open(location)?;
@@ -788,9 +809,9 @@ fn open_db(
     options.is_defensive_mode,
   ));
 
-  apply_initial_limits(&conn, options)?;
+  apply_initial_limits(&conn, options, disable_attach)?;
 
-  Ok(conn)
+  Ok((conn, disable_attach))
 }
 
 fn is_open(
@@ -825,8 +846,10 @@ impl DatabaseSync {
     #[string] location: String,
     #[scoped] options: DatabaseSyncOptions,
   ) -> Result<DatabaseSync, SqliteError> {
+    let mut disable_attach = false;
     let db = if options.open {
-      let db = open_db(state, &location, &options)?;
+      let (db, da) = open_db(state, &location, &options)?;
+      disable_attach = da;
 
       if options.enable_foreign_key_constraints {
         db.execute("PRAGMA foreign_keys = ON", [])?;
@@ -857,6 +880,7 @@ impl DatabaseSync {
       ignore_next_sqlite_error: Rc::new(Cell::new(false)),
       authorizer_data: Rc::new(RefCell::new(None)),
       callback_depth: Rc::new(Cell::new(0)),
+      disable_attach: Rc::new(Cell::new(disable_attach)),
     })
   }
 
@@ -872,7 +896,7 @@ impl DatabaseSync {
       return Err(SqliteError::AlreadyOpen);
     }
 
-    let db = open_db(state, &self.location, &self.options)?;
+    let (db, disable_attach) = open_db(state, &self.location, &self.options)?;
     if self.options.enable_foreign_key_constraints {
       db.execute("PRAGMA foreign_keys = ON", [])?;
     } else {
@@ -891,6 +915,7 @@ impl DatabaseSync {
     );
 
     *self.conn.borrow_mut() = Some(db);
+    self.disable_attach.set(disable_attach);
 
     Ok(())
   }
@@ -929,7 +954,7 @@ impl DatabaseSync {
       if let Some(data_ptr) = authorizer_data.take() {
         // SAFETY: data_ptr was allocated in authorizer setup.
         unsafe {
-          free_authorizer_data(data_ptr);
+          release_authorizer_data(data_ptr);
         }
       }
     }
@@ -944,6 +969,7 @@ impl DatabaseSync {
   //
   // This method is a wrapper around sqlite3_exec().
   #[fast]
+  #[reentrant]
   #[validate(is_open)]
   #[undefined]
   fn exec(
@@ -968,6 +994,7 @@ impl DatabaseSync {
   // Compiles an SQL statement into a prepared statement.
   //
   // This method is a wrapper around `sqlite3_prepare_v2()`.
+  #[reentrant]
   #[validate(is_open)]
   #[cppgc]
   fn prepare(
@@ -1652,16 +1679,6 @@ impl DatabaseSync {
     // SAFETY: lifetime of the connection is guaranteed by reference counting.
     let raw_handle = unsafe { conn.handle() };
 
-    {
-      let mut authorizer_data = self.authorizer_data.borrow_mut();
-      if let Some(old_data_ptr) = authorizer_data.take() {
-        // SAFETY: data_ptr was allocated in authorizer setup.
-        unsafe {
-          free_authorizer_data(old_data_ptr);
-        }
-      }
-    }
-
     if callback.is_null() {
       // SAFETY: `raw_handle` is a valid database handle.
       let result = unsafe {
@@ -1672,6 +1689,14 @@ impl DatabaseSync {
         )
       };
       check_error_code(result, raw_handle)?;
+
+      let mut authorizer_data = self.authorizer_data.borrow_mut();
+      if let Some(old_data_ptr) = authorizer_data.take() {
+        // SAFETY: data_ptr was allocated in authorizer setup.
+        unsafe {
+          release_authorizer_data(old_data_ptr);
+        }
+      }
       return Ok(());
     }
 
@@ -1693,6 +1718,8 @@ impl DatabaseSync {
       context: context_global,
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
       callback_depth: Rc::clone(&self.callback_depth),
+      active_callbacks: Cell::new(0),
+      free_after_callback: Cell::new(false),
     });
     let data_ptr = Box::into_raw(data);
 
@@ -1715,7 +1742,13 @@ impl DatabaseSync {
       check_error_code(result, raw_handle)?;
     }
 
-    *self.authorizer_data.borrow_mut() = Some(data_ptr);
+    let mut authorizer_data = self.authorizer_data.borrow_mut();
+    if let Some(old_data_ptr) = authorizer_data.replace(data_ptr) {
+      // SAFETY: data_ptr was allocated in authorizer setup.
+      unsafe {
+        release_authorizer_data(old_data_ptr);
+      }
+    }
 
     Ok(())
   }
@@ -1741,7 +1774,10 @@ impl DatabaseSync {
     if self.conn.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
-    Ok(DatabaseSyncLimits::create(Rc::clone(&self.conn)))
+    Ok(DatabaseSyncLimits::create(
+      Rc::clone(&self.conn),
+      self.disable_attach.get(),
+    ))
   }
 
   #[fast]
@@ -2454,6 +2490,50 @@ struct AuthorizerData {
   context: NonNull<v8::Context>,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
   callback_depth: Rc<Cell<usize>>,
+  // authorizer_callback holds shared references across reentrant JS calls.
+  // Mutable callback-lifetime state must use interior mutability so reentrant
+  // release/drop paths never create an aliasing &mut AuthorizerData.
+  active_callbacks: Cell<usize>,
+  free_after_callback: Cell<bool>,
+}
+
+struct AuthorizerCallbackGuard {
+  data_ptr: *mut AuthorizerData,
+  callback_depth: Rc<Cell<usize>>,
+}
+
+impl AuthorizerCallbackGuard {
+  unsafe fn new(data_ptr: *mut AuthorizerData) -> Self {
+    // SAFETY: caller guarantees `data_ptr` points to valid AuthorizerData.
+    let data = unsafe { &*data_ptr };
+    data
+      .active_callbacks
+      .set(data.active_callbacks.get().saturating_add(1));
+    data
+      .callback_depth
+      .set(data.callback_depth.get().saturating_add(1));
+    Self {
+      data_ptr,
+      callback_depth: Rc::clone(&data.callback_depth),
+    }
+  }
+}
+
+impl Drop for AuthorizerCallbackGuard {
+  fn drop(&mut self) {
+    // SAFETY: AuthorizerData cannot be freed while active_callbacks is non-zero.
+    unsafe {
+      let data = &*self.data_ptr;
+      let active_callbacks = data.active_callbacks.get().saturating_sub(1);
+      data.active_callbacks.set(active_callbacks);
+      self
+        .callback_depth
+        .set(self.callback_depth.get().saturating_sub(1));
+      if active_callbacks == 0 && data.free_after_callback.get() {
+        free_authorizer_data(self.data_ptr);
+      }
+    }
+  }
 }
 
 unsafe extern "C" fn custom_function_handler(
@@ -2728,9 +2808,8 @@ unsafe extern "C" fn authorizer_callback(
       return libsqlite3_sys::SQLITE_DENY;
     }
 
+    let _callback_guard = AuthorizerCallbackGuard::new(data_ptr);
     let data = &*data_ptr;
-    // Block close() from freeing the in-flight statement under the VDBE.
-    let _depth_guard = CallbackDepthGuard::new(&data.callback_depth);
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
 
@@ -2826,6 +2905,22 @@ unsafe fn free_authorizer_data(data_ptr: *mut AuthorizerData) {
   }
 }
 
+unsafe fn release_authorizer_data(data_ptr: *mut AuthorizerData) {
+  if data_ptr.is_null() {
+    return;
+  }
+
+  // SAFETY: `data_ptr` is a valid pointer to AuthorizerData.
+  unsafe {
+    let data = &*data_ptr;
+    if data.active_callbacks.get() > 0 {
+      data.free_after_callback.set(true);
+    } else {
+      free_authorizer_data(data_ptr);
+    }
+  }
+}
+
 fn throw_range_error(scope: &mut v8::PinScope<'_, '_>, message: &str) {
   let msg = v8::String::new(scope, message).unwrap();
   let error = v8::Exception::range_error(scope, msg);
@@ -2860,10 +2955,35 @@ fn throw_type_error_with_code(
   scope.throw_exception(error);
 }
 
+// Throws a plain `Error` carrying `code`. Used for conditions that are not
+// `TypeError`s or `RangeError`s, such as the ATTACH_DATABASE access boundary.
+fn throw_error_with_code(
+  scope: &mut v8::PinScope<'_, '_>,
+  message: &str,
+  code: &str,
+) {
+  let msg = v8::String::new(scope, message).unwrap();
+  let error = v8::Exception::error(scope, msg);
+
+  v8_static_strings!(CODE = "code");
+  let code_key = CODE.v8_string(scope).unwrap();
+  let code_value = v8::String::new(scope, code).unwrap();
+  let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
+  error_obj
+    .set(scope, code_key.into(), code_value.into())
+    .unwrap();
+
+  scope.throw_exception(error);
+}
+
 /// Object representing SQLite database limits.
 /// This is returned by DatabaseSync.limits getter.
 pub struct DatabaseSyncLimits {
   conn: Rc<RefCell<Option<rusqlite::Connection>>>,
+  // When true, ATTACH DATABASE is held disabled for this connection because the
+  // process lacks full permissions for the database path. The `attach` setter
+  // refuses to raise the cap above 0 in that state.
+  disable_attach: bool,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -2876,8 +2996,14 @@ unsafe impl GarbageCollected for DatabaseSyncLimits {
 }
 
 impl DatabaseSyncLimits {
-  fn create(conn: Rc<RefCell<Option<rusqlite::Connection>>>) -> Self {
-    Self { conn }
+  fn create(
+    conn: Rc<RefCell<Option<rusqlite::Connection>>>,
+    disable_attach: bool,
+  ) -> Self {
+    Self {
+      conn,
+      disable_attach,
+    }
   }
 
   fn get_limit(&self, limit: Limit) -> Result<i32, SqliteError> {
@@ -3047,6 +3173,23 @@ impl DatabaseSyncLimits {
     scope: &mut v8::PinScope<'_, '_>,
     value: v8::Local<v8::Value>,
   ) -> Result<(), SqliteError> {
+    // ATTACH DATABASE is held disabled for processes without full permissions
+    // for the database path. Refuse to raise the cap above 0 so the limit
+    // setter cannot re-enable attach and bypass that boundary. A value of 0
+    // (keeping it disabled) is allowed and falls through to the normal setter.
+    // Malformed values also fall through so set_limit_value reports the right
+    // ERR_INVALID_ARG_* error.
+    if self.disable_attach
+      && matches!(coerce_limit_value(scope, value), Ok(v) if v > 0)
+    {
+      throw_error_with_code(
+        scope,
+        "Cannot raise the \"attach\" limit: ATTACH DATABASE is disabled \
+         without full permissions for the database path.",
+        "ERR_ACCESS_DENIED",
+      );
+      return Ok(());
+    }
     self.set_limit_value(scope, Limit::SQLITE_LIMIT_ATTACHED, value)
   }
 

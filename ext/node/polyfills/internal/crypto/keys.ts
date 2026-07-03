@@ -1,16 +1,27 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials no-explicit-any
+// deno-lint-ignore-file no-explicit-any
 
 (function () {
 const { core, primordials } = __bootstrap;
 
 const {
   ArrayPrototypeIncludes,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSome,
+  DataViewPrototype,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
   ObjectDefineProperties,
+  ObjectHasOwn,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeStartsWith,
   SymbolToStringTag,
+  TypeError,
+  TypedArrayPrototypeGetByteLength,
+  Uint8Array,
 } = primordials;
 
 const {
@@ -106,11 +117,11 @@ const getArrayBufferOrView = hideStackFrames(
       }
       return Buffer.from(buffer, encoding);
     }
-    if (buffer instanceof DataView) {
+    if (ObjectPrototypeIsPrototypeOf(DataViewPrototype, buffer)) {
       return new Uint8Array(
-        buffer.buffer,
-        buffer.byteOffset,
-        buffer.byteLength,
+        DataViewPrototypeGetBuffer(buffer),
+        DataViewPrototypeGetByteOffset(buffer),
+        DataViewPrototypeGetByteLength(buffer),
       );
     }
     if (!isArrayBufferView(buffer)) {
@@ -260,17 +271,17 @@ function getKeyObjectHandleFromJwk(key, ctx) {
     switch (key.crv) {
       case "Ed25519":
       case "X25519":
-        if (keyData.byteLength !== 32) {
+        if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
           throw new ERR_CRYPTO_INVALID_JWK();
         }
         break;
       case "Ed448":
-        if (keyData.byteLength !== 57) {
+        if (TypedArrayPrototypeGetByteLength(keyData) !== 57) {
           throw new ERR_CRYPTO_INVALID_JWK();
         }
         break;
       case "X448":
-        if (keyData.byteLength !== 56) {
+        if (TypedArrayPrototypeGetByteLength(keyData) !== 56) {
           throw new ERR_CRYPTO_INVALID_JWK();
         }
         break;
@@ -572,7 +583,10 @@ function decorateOsslDecoderError(err: unknown): unknown {
   const e = err as any;
   if (
     e && typeof e.message === "string" &&
-    e.message.startsWith("error:1E08010C:DECODER routines::unsupported")
+    StringPrototypeStartsWith(
+      e.message,
+      "error:1E08010C:DECODER routines::unsupported",
+    )
   ) {
     if (e.library === undefined) e.library = "DECODER routines";
   }
@@ -583,7 +597,7 @@ function createPrivateKey(
   key: any,
 ): PrivateKeyObject {
   const res = prepareAsymmetricKey(key, kCreatePrivate);
-  if ("handle" in res) {
+  if (ObjectHasOwn(res, "handle")) {
     const type = op_node_key_type(res.handle);
     if (type === "private") {
       return new PrivateKeyObject(res.handle);
@@ -613,7 +627,7 @@ function createPublicKey(
     key,
     kCreatePublic,
   );
-  if ("handle" in res) {
+  if (ObjectHasOwn(res, "handle")) {
     const type = op_node_key_type(res.handle);
     if (type === "private") {
       const handle = op_node_derive_public_key_from_private_key(res.handle);
@@ -650,9 +664,9 @@ function getKeyTypes(allowKeyObject: boolean, bufferOnly = false) {
     "CryptoKey",
   ];
   if (bufferOnly) {
-    return types.slice(0, 4);
+    return ArrayPrototypeSlice(types, 0, 4);
   } else if (!allowKeyObject) {
-    return types.slice(0, 5);
+    return ArrayPrototypeSlice(types, 0, 5);
   }
   return types;
 }
@@ -722,7 +736,7 @@ class SecretKeyObject extends KeyObject {
 
     const rawData = new Uint8Array(op_node_export_secret_key(this[kHandle]));
 
-    if (rawData.byteLength === 0) {
+    if (TypedArrayPrototypeGetByteLength(rawData) === 0) {
       throw new DOMException(
         "Zero-length key is not supported",
         "DataError",
@@ -738,8 +752,10 @@ class SecretKeyObject extends KeyObject {
       }
       if (
         usages.length > 0 &&
-        usages.some((u: string) =>
-          !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u)
+        ArrayPrototypeSome(
+          usages,
+          (u: string) =>
+            !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
         )
       ) {
         throw new DOMException(
@@ -756,8 +772,10 @@ class SecretKeyObject extends KeyObject {
       }
       if (
         usages.length > 0 &&
-        usages.some((u: string) =>
-          !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u)
+        ArrayPrototypeSome(
+          usages,
+          (u: string) =>
+            !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
         )
       ) {
         throw new DOMException(
@@ -802,7 +820,13 @@ class SecretKeyObject extends KeyObject {
       }
     }
 
-    return importCryptoKeySync("raw", rawData, algorithm, extractable, usages);
+    return importCryptoKeySync(
+      "raw",
+      rawData,
+      algorithm,
+      extractable,
+      usages,
+    );
   }
 
   export(options?: { format?: "buffer" | "jwk" }): Buffer | JsonWebKey {
@@ -915,6 +939,7 @@ class PrivateKeyObject extends AsymmetricKeyObject {
         this[kHandle],
         type,
         cipher ?? null,
+        // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString has no primordial
         passphrase != null ? passphrase.toString() : null,
       );
     } else {
@@ -923,6 +948,7 @@ class PrivateKeyObject extends AsymmetricKeyObject {
           this[kHandle],
           type,
           cipher ?? null,
+          // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString has no primordial
           passphrase != null ? passphrase.toString() : null,
         ),
       );
@@ -1054,7 +1080,10 @@ function createSecretKey(
   }
 }
 
-core.registerCloneableResource("NodeCryptoKeyObject", (data) => {
+// Deserializer for KeyObjects transferred via structured clone. Registered
+// eagerly (so workers can resurrect a KeyObject before this module loads) from
+// `02_register_cloneable.js`; the impl stays lazy here.
+function deserializeNodeCryptoKeyObject(data) {
   switch (data.keyType) {
     case "secret": {
       const handle = op_node_create_secret_key(data.keyData);
@@ -1083,10 +1112,11 @@ core.registerCloneableResource("NodeCryptoKeyObject", (data) => {
         `Unsupported KeyObject type for structured clone: ${data.keyType}`,
       );
   }
-});
+}
 
 return {
   getArrayBufferOrView,
+  deserializeNodeCryptoKeyObject,
   KeyObject,
   kConsumePublic,
   kConsumePrivate,

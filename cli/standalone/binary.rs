@@ -65,6 +65,7 @@ use node_resolver::analyze::ResolvedCjsAnalysis;
 use super::virtual_fs::output_vfs;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
+use crate::args::CompileFlagsExt;
 use crate::args::get_default_v8_flags;
 use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;
@@ -207,6 +208,79 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
     || libsui::utils::is_macho(&data)
 }
 
+/// Validate a user-provided `--app-name`. The name becomes a single directory
+/// component under the platform's app data directory at runtime. Because a
+/// binary can be cross-compiled, validate against the union of what every
+/// target OS allows so the baked identity resolves to one unambiguous
+/// directory component everywhere, rather than escaping the directory or
+/// failing on the target's filesystem. Done here so the user gets a clear
+/// compile-time error instead of a surprising (or unusable) store location.
+fn validate_app_name(app_name: &str) -> Result<(), AnyError> {
+  const RESERVED_NAMES: [&str; 22] = [
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6",
+    "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6",
+    "lpt7", "lpt8", "lpt9",
+  ];
+
+  // Windows reserved device names match case-insensitively against the portion
+  // before the first `.` (so `nul`, `NUL`, and `nul.txt` all match).
+  let stem = app_name.split('.').next().unwrap_or(app_name);
+  let is_reserved_name =
+    RESERVED_NAMES.iter().any(|n| stem.eq_ignore_ascii_case(n));
+
+  let reason = if app_name.is_empty() {
+    Some("must not be empty")
+  } else if app_name == "." || app_name == ".." {
+    Some("must not be `.` or `..`")
+  } else if app_name
+    // `/` and `\` are path separators; `<>:"|?*` are reserved on Windows;
+    // control characters are rejected by the filesystem.
+    .contains(|c: char| {
+      matches!(c, '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*')
+        || c.is_control()
+    })
+  {
+    Some("must not contain path separators or any of `<>:\"|?*`")
+  } else if app_name.ends_with('.')
+    || app_name.ends_with(' ')
+    || app_name.starts_with(' ')
+  {
+    // Windows silently strips trailing dots and spaces, which would change the
+    // identity out from under the user; a leading space is an error-prone
+    // directory name everywhere, so reject it too.
+    Some("must not start or end with a space, or end with a `.`")
+  } else if is_reserved_name {
+    Some("must not be a reserved device name (e.g. `CON`, `NUL`, `COM1`)")
+  } else {
+    None
+  };
+
+  if let Some(reason) = reason {
+    bail!("Invalid `--app-name` value {:?}: {}.", app_name, reason);
+  }
+  Ok(())
+}
+
+/// Resolve the stable app identity baked into a compiled binary: an explicit
+/// `--app-name`, otherwise the output file name (minus any `.exe` extension).
+/// The derived default is held to the same rules as an explicit flag, since it
+/// becomes a single directory component at runtime (possibly on a different
+/// target OS when cross-compiling); otherwise an output name like `aux` or one
+/// with a trailing dot would silently break persistent storage on the target.
+fn resolve_app_name(
+  compile_flags: &CompileFlags,
+  display_output_filename: &str,
+) -> Result<String, AnyError> {
+  let app_name = compile_flags.app_name.clone().unwrap_or_else(|| {
+    display_output_filename
+      .strip_suffix(".exe")
+      .unwrap_or(display_output_filename)
+      .to_string()
+  });
+  validate_app_name(&app_name)?;
+  Ok(app_name)
+}
+
 pub struct WriteBinOptions<'a> {
   pub writer: File,
   pub display_output_filename: &'a str,
@@ -228,6 +302,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   npm_resolver: &'a CliNpmResolver,
   workspace_resolver: &'a WorkspaceResolver<CliSys>,
   npm_system_info: NpmSystemInfo,
+  is_desktop: bool,
 }
 
 impl<'a> DenoCompileBinaryWriter<'a> {
@@ -243,6 +318,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     npm_resolver: &'a CliNpmResolver,
     workspace_resolver: &'a WorkspaceResolver<CliSys>,
     npm_system_info: NpmSystemInfo,
+    is_desktop: bool,
   ) -> Self {
     Self {
       cjs_module_export_analyzer,
@@ -255,6 +331,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       npm_resolver,
       workspace_resolver,
       npm_system_info,
+      is_desktop,
     }
   }
 
@@ -279,13 +356,20 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
     if options.compile_flags.icon.is_some() {
       let target = options.compile_flags.resolve_target();
-      if !target.contains("windows") {
+      // Desktop builds handle icons during app bundle packaging.
+      if !target.contains("windows") && !self.is_desktop {
         bail!(
           "The `--icon` flag is only available when targeting Windows (current: {})",
           target,
         );
       }
     }
+    // Validate the resolved app name (explicit `--app-name` or the default
+    // derived from the output file name) up front, so an invalid name fails
+    // before we do any work to write the binary. The returned name is discarded
+    // here; the value actually baked into the metadata is resolved again at the
+    // write site below.
+    resolve_app_name(options.compile_flags, options.display_output_filename)?;
     self.write_standalone_binary(options, original_binary).await
   }
 
@@ -293,6 +377,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     compile_flags: &CompileFlags,
   ) -> Result<Vec<u8>, AnyError> {
+    if self.is_desktop {
+      return self.get_desktop_base_binary(compile_flags).await;
+    }
+
     // Used for testing.
     //
     // Phase 2 of the 'min sized' deno compile RFC talks
@@ -333,14 +421,81 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     };
     let temp_dir = tempfile::TempDir::new()?;
     let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
-      exe_name: "denort",
+      exe_name: if target.contains("windows") {
+        "denort.exe"
+      } else {
+        "denort"
+      },
       archive_name: &binary_name,
       archive_data: &archive_data,
-      is_windows: target.contains("windows"),
       dest_path: temp_dir.path(),
     })?;
     let base_binary = read_file(&base_binary_path)?;
     drop(temp_dir); // delete the temp dir
+    Ok(base_binary)
+  }
+
+  async fn get_desktop_base_binary(
+    &self,
+    compile_flags: &CompileFlags,
+  ) -> Result<Vec<u8>, AnyError> {
+    // For development: check DENORT_DESKTOP_BIN env var or look
+    // for libdenort next to the deno executable.
+    if let Some(path) = get_dev_desktop_binary_path() {
+      log::debug!("Resolved libdenort: {}", path.to_string_lossy());
+      return std::fs::read(&path).with_context(|| {
+        format!("Could not find libdenort at '{}'", path.to_string_lossy())
+      });
+    }
+
+    let target = compile_flags.resolve_target();
+    let lib_ext = if target.contains("darwin") {
+      "dylib"
+    } else if target.contains("windows") {
+      "dll"
+    } else {
+      "so"
+    };
+    let lib_name = if target.contains("windows") {
+      format!("denort.{lib_ext}")
+    } else {
+      format!("libdenort.{lib_ext}")
+    };
+    let binary_name = format!("libdenort-{target}.zip");
+
+    let binary_path_suffix = match DENO_VERSION_INFO.release_channel {
+      ReleaseChannel::Canary => {
+        format!("canary/{}/{}", DENO_VERSION_INFO.git_hash, binary_name)
+      }
+      _ => {
+        format!("release/v{}/{}", DENO_VERSION_INFO.deno, binary_name)
+      }
+    };
+
+    let download_directory = self.deno_dir.dl_folder_path();
+    let binary_path = download_directory.join(&binary_path_suffix);
+    log::debug!("Resolved libdenort: {}", binary_path.display());
+
+    let read_file = |path: &Path| -> Result<Vec<u8>, AnyError> {
+      std::fs::read(path).with_context(|| format!("Reading {}", path.display()))
+    };
+    let archive_data = if binary_path.exists() {
+      read_file(&binary_path)?
+    } else {
+      self
+        .download_base_binary(&binary_path, &binary_path_suffix)
+        .await
+        .context("Setting up desktop base binary.")?
+    };
+    let temp_dir = tempfile::TempDir::new()?;
+    let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
+      exe_name: &lib_name,
+      archive_name: &binary_name,
+      archive_data: &archive_data,
+      dest_path: temp_dir.path(),
+    })?;
+    let base_binary = read_file(&base_binary_path)?;
+    drop(temp_dir);
     Ok(base_binary)
   }
 
@@ -434,7 +589,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         CliNpmResolver::Managed(managed) => {
           if graph.modules().any(|m| m.npm().is_some()) {
             let snapshot = managed.resolution().snapshot();
-            let snapshot = if self.cli_options.unstable_npm_lazy_caching() {
+            // When the user opts in (or via the existing unstable lazy-caching
+            // path), prune the resolution snapshot to packages reachable from
+            // npm specifiers in the graph. Otherwise embed the full snapshot
+            // so non-statically-analyzable dynamic imports keep working.
+            let snapshot = if compile_flags.exclude_unused_npm
+              || self.cli_options.unstable_npm_lazy_caching()
+            {
               let reqs = graph
                 .specifiers()
                 .filter_map(|(s, _)| {
@@ -674,13 +835,42 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       let specifier = deno_path_util::url_from_file_path(&file_path)?;
       let media_type = MediaType::from_specifier(&specifier);
+      // Only script-flavored files can carry CJS exports. Extensions answer
+      // this for everything except extensionless files (`MediaType::Unknown`),
+      // which may be real modules (an npm `"main"` with no extension — see
+      // test-module-main-extension-lookup); those are disambiguated by content
+      // below rather than skipped outright.
+      if !matches!(
+        media_type,
+        MediaType::JavaScript
+          | MediaType::Mjs
+          | MediaType::Cjs
+          | MediaType::Jsx
+          | MediaType::TypeScript
+          | MediaType::Mts
+          | MediaType::Cts
+          | MediaType::Tsx
+          | MediaType::Dts
+          | MediaType::Dmts
+          | MediaType::Dcts
+          | MediaType::Unknown
+      ) {
+        continue;
+      }
       if self.cjs_tracker.is_maybe_cjs(&specifier, media_type)? {
-        let maybe_source = vfs
-          .file_bytes(file.offset)
-          .map(|text| String::from_utf8_lossy(text));
+        // Strict UTF-8 (not `from_utf8_lossy`): binary assets (images,
+        // fonts, …) that resolve to `Unknown` are skipped rather than
+        // mangled into garbage that panics swc. Extensionless *text*
+        // modules still flow through.
+        let Some(bytes) = vfs.file_bytes(file.offset) else {
+          continue;
+        };
+        let Ok(source) = std::str::from_utf8(bytes) else {
+          continue;
+        };
         let cjs_analysis_result = self
           .cjs_module_export_analyzer
-          .analyze_all_exports(&specifier, maybe_source)
+          .analyze_all_exports(&specifier, Some(source.into()))
           .await;
         let analysis = match cjs_analysis_result {
           Ok(ResolvedCjsAnalysis::Esm(_)) => CjsExportAnalysisEntry::Esm,
@@ -878,7 +1068,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       node_modules,
       unstable_config: UnstableConfig {
         legacy_flag_enabled: false,
-        bare_node_builtins: self.cli_options.unstable_bare_node_builtins(),
         detect_cjs: self.cli_options.unstable_detect_cjs(),
         features: self
           .cli_options
@@ -904,6 +1093,30 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       } else {
         None
       },
+      // Bake in a stable app identity so origin-bound storage (default
+      // `Deno.openKv()`, `localStorage`, `caches`) persists to a per-app
+      // directory at runtime. Prefer an explicit `--app-name`, otherwise derive
+      // it from the output file name (minus any `.exe` extension). Resolving
+      // here keeps the identity stable even if the binary is later renamed. The
+      // name is already validated in `write_bin` (via `resolve_app_name`).
+      app_name: Some(resolve_app_name(compile_flags, display_output_filename)?),
+      app_version: self
+        .cli_options
+        .workspace()
+        .root_deno_json()
+        .and_then(|c| c.json.version.clone()),
+      error_reporting_url: self
+        .cli_options
+        .start_dir
+        .to_desktop_config()
+        .ok()
+        .and_then(|c| c.error_reporting.as_ref()?.url.clone()),
+      release_base_url: self
+        .cli_options
+        .start_dir
+        .to_desktop_config()
+        .ok()
+        .and_then(|c| c.release.as_ref()?.base_url.clone()),
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(
@@ -1460,6 +1673,39 @@ fn get_dev_binary_path() -> Option<OsString> {
         .any(|component| component == Component::Normal("target".as_ref()))
       {
         get_denort_path(exec_path)
+      } else {
+        None
+      }
+    })
+  })
+}
+
+fn get_libdenort_path(deno_exe: PathBuf) -> Option<OsString> {
+  let mut libdenort = deno_exe;
+  if cfg!(target_os = "macos") {
+    libdenort.set_file_name("libdenort.dylib");
+  } else if cfg!(windows) {
+    libdenort.set_file_name("denort.dll");
+  } else {
+    libdenort.set_file_name("libdenort.so");
+  }
+  libdenort.exists().then(|| libdenort.into_os_string())
+}
+
+fn get_dev_desktop_binary_path() -> Option<OsString> {
+  env::var_os("DENORT_DESKTOP_BIN").or_else(|| {
+    env::current_exe().ok().and_then(|exec_path| {
+      if exec_path
+        .components()
+        .any(|component| component == Component::Normal("target".as_ref()))
+      {
+        // Prefer release libdenort (optimized) over debug.
+        let target_dir = exec_path.parent().and_then(|p| p.parent());
+        target_dir
+          .and_then(|d| {
+            get_libdenort_path(d.join("release").join("libdenort.dylib"))
+          })
+          .or_else(|| get_libdenort_path(exec_path.clone()))
       } else {
         None
       }

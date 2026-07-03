@@ -1,0 +1,31 @@
+{
+  "tasks": {
+    "build": {
+      "command": "deno run src/in.ts",
+      "files": ["src/**/*.ts"]
+    },
+    "with_env": {
+      "command": "deno run src/in.ts",
+      "files": ["src/**/*.ts"],
+      "env": ["MY_VAR"]
+    },
+    "no_inputs": {
+      "command": "deno run src/in.ts",
+      "files": ["does-not-exist/**/*.ts"]
+    },
+    "build_out": {
+      "command": "deno run -A src/gen.ts",
+      "files": ["src/gen.ts"],
+      "output": ["dist/**"]
+    },
+    "dep": {
+      "command": "deno run src/dep_in.ts",
+      "files": ["src/dep_in.ts"]
+    },
+    "downstream": {
+      "command": "deno run src/down_in.ts",
+      "files": ["src/down_in.ts"],
+      "dependencies": ["dep"]
+    }
+  }
+}

@@ -1,11 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  ArrayPrototypeSlice,
+  MapPrototypeGet,
+  MapPrototypeSet,
+  SafeArrayIterator,
+  SafeMap,
+} = primordials;
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
@@ -252,18 +256,30 @@ const cipherInfoTable: CipherInfoResult[] = [
   },
 ];
 
-const cipherInfoByName = new Map<string, CipherInfoResult>();
-const cipherInfoByNid = new Map<number, CipherInfoResult>();
+const cipherInfoByName = new SafeMap<string, CipherInfoResult>();
+const cipherInfoByNid = new SafeMap<number, CipherInfoResult>();
 
-for (const info of cipherInfoTable) {
-  cipherInfoByName.set(info.name, info);
-  cipherInfoByNid.set(info.nid, info);
+for (const info of new SafeArrayIterator(cipherInfoTable)) {
+  MapPrototypeSet(cipherInfoByName, info.name, info);
+  MapPrototypeSet(cipherInfoByNid, info.nid, info);
 }
 
 // Aliases
-cipherInfoByName.set("aes128", cipherInfoByName.get("aes-128-cbc")!);
-cipherInfoByName.set("aes192", cipherInfoByName.get("aes-192-cbc")!);
-cipherInfoByName.set("aes256", cipherInfoByName.get("aes-256-cbc")!);
+MapPrototypeSet(
+  cipherInfoByName,
+  "aes128",
+  MapPrototypeGet(cipherInfoByName, "aes-128-cbc")!,
+);
+MapPrototypeSet(
+  cipherInfoByName,
+  "aes192",
+  MapPrototypeGet(cipherInfoByName, "aes-192-cbc")!,
+);
+MapPrototypeSet(
+  cipherInfoByName,
+  "aes256",
+  MapPrototypeGet(cipherInfoByName, "aes-256-cbc")!,
+);
 
 // Ciphers actually supported by the runtime (subset of cipherInfoTable).
 // Must be kept in sorted (lexicographic) order - Node.js validates this.
@@ -291,7 +307,7 @@ const supportedCiphers = [
 ];
 
 function getCiphers(): string[] {
-  return supportedCiphers.slice();
+  return ArrayPrototypeSlice(supportedCiphers);
 }
 
 const hashBlockSizes: Record<string, number> = {
@@ -354,8 +370,8 @@ function getCipherInfo(
   }
 
   const info = typeof nameOrNid === "number"
-    ? cipherInfoByNid.get(nameOrNid)
-    : cipherInfoByName.get(nameOrNid);
+    ? MapPrototypeGet(cipherInfoByNid, nameOrNid)
+    : MapPrototypeGet(cipherInfoByName, nameOrNid);
 
   if (info === undefined) {
     return undefined;
@@ -424,7 +440,7 @@ const curveNames: readonly string[] = [
   "secp521r1",
 ];
 function getCurves(): string[] {
-  return curveNames.slice();
+  return ArrayPrototypeSlice(curveNames);
 }
 
 interface SecureHeapUsage {

@@ -19,7 +19,11 @@ use std::sync::Arc;
 use anyhow::Error as AnyError;
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
+use deno_npm::NpmPackageExtraInfo;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmPackageIdPeerDependencies;
 use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmResolutionPackageSystemInfo;
 use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_cache::NpmCache;
@@ -44,6 +48,7 @@ use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
 use sys_traits::FsWrite;
 use sys_traits::PathsInErrorsExt;
+use sys_traits::SysWithPathsInErrors;
 
 use crate::BinEntries;
 use crate::CachedNpmPackageExtraInfoProvider;
@@ -66,6 +71,7 @@ use crate::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use crate::lifecycle_scripts::LifecycleScriptsStrategy;
 use crate::lifecycle_scripts::has_lifecycle_scripts;
 use crate::lifecycle_scripts::is_running_lifecycle_script;
+use crate::package_json::InstallWorkspacePkgDep;
 use crate::package_json::NpmInstallDepsProvider;
 use crate::process_state::NpmProcessState;
 
@@ -89,6 +95,11 @@ pub struct LocalNpmPackageInstallerOptions {
   pub node_modules_folder: PathBuf,
   pub reporter: Option<Arc<dyn crate::InstallReporter>>,
   pub system_info: NpmSystemInfo,
+  /// Whether `jsr:` dependencies are being installed into `node_modules` via
+  /// JSR's npm compatibility registry (the `jsrDepsInNodeModules` config
+  /// option). Gates the `@scope/name` alias symlinks and the `.npmrc` write
+  /// for `@jsr/*` packages.
+  pub jsr_deps_in_node_modules: bool,
 }
 
 /// Resolver that creates a local node_modules directory
@@ -111,6 +122,7 @@ pub struct LocalNpmPackageInstaller<
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
   install_reporter: Option<Arc<dyn crate::InstallReporter>>,
+  jsr_deps_in_node_modules: bool,
 }
 
 impl<
@@ -178,6 +190,7 @@ impl<
       root_node_modules_path: options.node_modules_folder,
       install_reporter: options.reporter,
       system_info: options.system_info,
+      jsr_deps_in_node_modules: options.jsr_deps_in_node_modules,
     }
   }
 
@@ -186,7 +199,12 @@ impl<
     snapshot: &NpmResolutionSnapshot,
   ) -> Result<(), SyncResolutionWithFsError> {
     let has_no_packages = snapshot.is_empty()
-      && self.npm_install_deps_provider.local_pkgs().is_empty();
+      && self.npm_install_deps_provider.local_pkgs().is_empty()
+      && !self
+        .npm_install_deps_provider
+        .workspace_pkgs()
+        .iter()
+        .any(|pkg| !pkg.scripts.is_empty());
     let deno_local_registry_dir = self.root_node_modules_path.join(".deno");
     if has_no_packages
       && (!self.clean_on_install
@@ -226,13 +244,17 @@ impl<
 
     // 1. Check if packages changed and clean up if needed
     if self.clean_on_install {
-      let packages_hash = calculate_packages_hash(&package_partitions);
+      let root_folder_names =
+        root_package_folder_names(snapshot, &self.npm_install_deps_provider);
+      let packages_hash =
+        calculate_packages_hash(&package_partitions, &root_folder_names);
       if setup_cache.packages_changed(packages_hash) {
         cleanup_unused_packages(
           sys.as_ref(),
           &self.root_node_modules_path,
           &deno_local_registry_dir,
           &package_partitions,
+          &root_folder_names,
           &mut setup_cache,
         );
       }
@@ -243,6 +265,8 @@ impl<
     //
     // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
     // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name>
+    let workspace_lifecycle_packages =
+      self.resolve_workspace_lifecycle_packages(snapshot)?;
     let mut cache_futures = FuturesUnordered::new();
     let mut newest_packages_by_name: HashMap<
       &StackString,
@@ -270,6 +294,17 @@ impl<
     let extra_info_provider = Arc::new(CachedNpmPackageExtraInfoProvider::new(
       self.npm_package_extra_info_provider.clone(),
     ));
+
+    // Map a package to the workspace member directory that declares it as a
+    // direct dependency, so its lifecycle scripts run with `INIT_CWD` pointing
+    // at that member rather than the workspace root.
+    let lifecycle_script_init_cwds: Rc<HashMap<NpmPackageId, Vec<PathBuf>>> =
+      Rc::new(crate::lifecycle_scripts::member_dep_init_cwds(
+        &self.npm_install_deps_provider,
+        snapshot,
+        self.root_node_modules_path.parent(),
+      ));
+
     for package in &package_partitions.packages {
       if let Some(current_pkg) =
         newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -342,6 +377,7 @@ impl<
           let lifecycle_scripts = lifecycle_scripts.clone();
           let bin_entries_to_setup = bin_entries.clone();
           let install_reporter = self.install_reporter.clone();
+          let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
 
           cache_futures.push(
             async move {
@@ -431,10 +467,15 @@ impl<
               }
 
               if package.has_scripts {
+                let init_cwds = lifecycle_script_init_cwds
+                  .get(&package.id)
+                  .cloned()
+                  .unwrap_or_default();
                 lifecycle_scripts.borrow_mut().add(
                   package,
                   &extra,
                   package_path.into(),
+                  init_cwds,
                 );
               }
 
@@ -462,6 +503,7 @@ impl<
           let bin_entries_to_setup = bin_entries.clone();
           let lifecycle_scripts = lifecycle_scripts.clone();
           let extra_info_provider = extra_info_provider.clone();
+          let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
           let sub_node_modules = folder_path.join("node_modules");
           let package_path = join_package_name(
             Cow::Owned(sub_node_modules),
@@ -487,10 +529,15 @@ impl<
               }
 
               if package.has_scripts {
+                let init_cwds = lifecycle_script_init_cwds
+                  .get(&package.id)
+                  .cloned()
+                  .unwrap_or_default();
                 lifecycle_scripts.borrow_mut().add(
                   package,
                   &extra,
                   package_path.into(),
+                  init_cwds,
                 );
               }
 
@@ -598,6 +645,7 @@ impl<
     while let Some(result) = cache_futures.next().await {
       result?; // surface the first error
     }
+    drop(cache_futures);
 
     // 5. Symlink all the dependencies into the .deno directory.
     //
@@ -761,7 +809,7 @@ impl<
         let local_registry_package_path = join_package_name(
           Cow::Owned(
             deno_local_registry_dir
-              .join(target_folder_name)
+              .join(&target_folder_name)
               .join("node_modules"),
           ),
           &id.nv.name,
@@ -776,6 +824,54 @@ impl<
           ),
         )?;
       }
+
+      // Additionally expose JSR npm-compat packages (`@jsr/scope__name`) under
+      // their original `@scope/name` so external tooling resolves them like a
+      // regular npm install (mirrors pnpm's `jsr:` alias symlink). This only
+      // covers top-level packages; transitive `jsr:` deps resolve through their
+      // `@jsr/...` name and don't need a root alias. The alias is skipped when a
+      // real package already claims that root name, so we don't clobber it.
+      // Only done when `jsrDepsInNodeModules` is enabled so projects that depend
+      // on `npm:@jsr/...` packages directly are left untouched.
+      if self.jsr_deps_in_node_modules
+        && let Some(alias) = jsr_npm_name_to_original(&id.nv.name)
+        && !newest_packages_by_name
+          .contains_key(&StackString::from(alias.as_str()))
+        && setup_cache.insert_root_symlink(&alias, &target_folder_name)
+      {
+        let local_registry_package_path = join_package_name(
+          Cow::Owned(
+            deno_local_registry_dir
+              .join(&target_folder_name)
+              .join("node_modules"),
+          ),
+          &id.nv.name,
+        );
+        symlink_package_dir(
+          sys.as_ref(),
+          &local_registry_package_path,
+          &join_package_name(
+            Cow::Borrowed(&self.root_node_modules_path),
+            &alias,
+          ),
+        )?;
+      }
+    }
+
+    // When `jsrDepsInNodeModules` is enabled and JSR packages were materialized
+    // into `node_modules` (under their `@jsr/scope__name` npm-compat name), make
+    // sure a `.npmrc` next to `node_modules` points the `@jsr` scope at JSR's
+    // npm registry so external tooling (npm, pnpm, yarn) can resolve them too.
+    // Gated on the config so we don't write into the project directory of users
+    // that merely depend on `npm:@jsr/...` packages directly.
+    if self.jsr_deps_in_node_modules
+      && let Some(project_dir) = self.root_node_modules_path.parent()
+      && package_partitions
+        .packages
+        .iter()
+        .any(|package| package.id.nv.name.starts_with("@jsr/"))
+    {
+      ensure_jsr_npmrc(sys.as_ref(), project_dir)?;
     }
 
     // 8. Create a node_modules/.deno/node_modules/<package-name> directory with
@@ -863,6 +959,133 @@ impl<
       }
     }
 
+    // 11. Create a `node_modules` directory inside each workspace member and
+    // symlink that member's direct dependencies into it. This mirrors how npm
+    // and pnpm lay out workspaces so that native Node.js tooling (for example
+    // `svelte-check`, `astro`, or `eslint` plugins) run from within a member
+    // resolves the member's dependencies and sibling workspace members the same
+    // way it would in a Node.js project. Without this, members share only the
+    // workspace root's `node_modules`, which both hides missing dependencies
+    // (shadow dependencies) and breaks tools that expect a local `node_modules`.
+    {
+      let workspace_member_dirs: HashMap<&PackageNv, &Path> = self
+        .npm_install_deps_provider
+        .workspace_pkgs()
+        .iter()
+        .map(|pkg| (&pkg.nv, pkg.target_dir.as_path()))
+        .collect();
+      for workspace_pkg in self.npm_install_deps_provider.workspace_pkgs() {
+        // The workspace root's `node_modules` is already fully set up above.
+        // (Comparing paths here is unreliable: `root_node_modules_path` is
+        // canonicalized while `target_dir` is not, so on Windows they can
+        // differ by 8.3 short names or casing for the same directory.)
+        if workspace_pkg.is_root {
+          continue;
+        }
+        let member_node_modules = workspace_pkg.target_dir.join("node_modules");
+        // Remove links to dependencies the member no longer declares (or to
+        // sibling members that were removed) so they stop being resolvable,
+        // mirroring how the root `node_modules` prunes stale links above. This
+        // also covers a member that dropped all of its dependencies, which is
+        // why it runs before the `deps.is_empty()` short-circuit.
+        let keep_aliases: HashSet<&str> = workspace_pkg
+          .deps
+          .iter()
+          .map(|dep| dep.alias().as_str())
+          .collect();
+        remove_stale_member_symlinks(
+          sys.as_ref(),
+          &member_node_modules,
+          &keep_aliases,
+        );
+        // The member's direct npm dependencies that ship executables, gathered
+        // while linking so their bins can be set up in the member's `.bin` once
+        // every alias link exists.
+        let mut bin_deps: Vec<MemberBinDep> = Vec::new();
+        if !workspace_pkg.deps.is_empty() {
+          let member_key = workspace_pkg.target_dir.to_string_lossy();
+          let mut dep_cache = setup_cache.with_dep(&member_key);
+          let mut created_dir = false;
+          for dep in &workspace_pkg.deps {
+            let (alias, target_path, cache_target) = match dep {
+              InstallWorkspacePkgDep::Remote { alias, req } => {
+                let Some(id) = resolve_remote_pkg_id(snapshot, req) else {
+                  continue;
+                };
+                let package = snapshot.package_from_id(&id).unwrap();
+                let target_folder_name = get_package_folder_id_folder_name(
+                  &package.get_package_cache_folder_id(),
+                );
+                let local_registry_package_path = join_package_name(
+                  Cow::Owned(
+                    deno_local_registry_dir
+                      .join(&target_folder_name)
+                      .join("node_modules"),
+                  ),
+                  &package.id.nv.name,
+                );
+                if package.has_bin {
+                  // Collected before the dep-cache short-circuit below so a
+                  // dependency whose link is already current still contributes
+                  // its bins (the alias link exists either way).
+                  bin_deps.push(MemberBinDep {
+                    package,
+                    read_path: local_registry_package_path.clone(),
+                    link_path: member_node_modules.join(alias.as_str()),
+                  });
+                }
+                (alias, local_registry_package_path, target_folder_name)
+              }
+              InstallWorkspacePkgDep::Workspace { alias, nv } => {
+                let Some(target_dir) = workspace_member_dirs.get(nv) else {
+                  continue;
+                };
+                (alias, target_dir.to_path_buf(), nv.to_string())
+              }
+            };
+            if !dep_cache.insert(alias, &cache_target) {
+              continue;
+            }
+            if !created_dir {
+              sys.fs_create_dir_all(&member_node_modules)?;
+              created_dir = true;
+            }
+            symlink_package_dir(
+              sys.as_ref(),
+              &target_path,
+              &member_node_modules.join(alias.as_str()),
+            )?;
+          }
+        }
+        // Populate (and prune) the member's `node_modules/.bin`. Runs even when
+        // the member has no dependencies so a dropped last bin is cleaned up.
+        setup_member_bin_entries(
+          sys,
+          snapshot,
+          &extra_info_provider,
+          &member_node_modules,
+          &bin_deps,
+        )
+        .await?;
+      }
+    }
+
+    for package in &workspace_lifecycle_packages {
+      sys.fs_create_dir_all(local_node_modules_package_folder(
+        &deno_local_registry_dir,
+        &package.package,
+      ))?;
+      lifecycle_scripts.borrow_mut().add(
+        &package.package,
+        &NpmPackageExtraInfo {
+          scripts: package.scripts.clone(),
+          ..Default::default()
+        },
+        Cow::Borrowed(&package.package_path),
+        Vec::new(),
+      );
+    }
+
     {
       let packages_with_deprecation_warnings =
         packages_with_deprecation_warnings.lock();
@@ -898,7 +1121,7 @@ impl<
       }
     }
 
-    let lifecycle_scripts = std::mem::replace(
+    let lifecycle_scripts_to_run = std::mem::replace(
       &mut *lifecycle_scripts.borrow_mut(),
       LifecycleScripts::new(
         sys.as_ref(),
@@ -910,10 +1133,16 @@ impl<
         },
       ),
     );
-    lifecycle_scripts.warn_not_run_scripts()?;
+    drop(lifecycle_scripts);
+    lifecycle_scripts_to_run.warn_not_run_scripts()?;
 
-    let packages_with_scripts = lifecycle_scripts.packages_with_scripts();
+    let packages_with_scripts =
+      lifecycle_scripts_to_run.packages_with_scripts();
     if !packages_with_scripts.is_empty() {
+      let additional_packages = workspace_lifecycle_packages
+        .iter()
+        .map(|package| &package.package)
+        .collect::<Vec<_>>();
       let process_state = NpmProcessState::new_local(
         snapshot.as_valid_serialized(),
         &self.root_node_modules_path,
@@ -936,6 +1165,7 @@ impl<
           },
           snapshot,
           system_packages: &package_partitions.packages,
+          additional_packages: &additional_packages,
           packages_with_scripts,
           extra_info_provider: &extra_info_provider,
         })
@@ -948,6 +1178,85 @@ impl<
     drop(pb_clear_guard);
 
     Ok(())
+  }
+
+  fn resolve_workspace_lifecycle_packages(
+    &self,
+    snapshot: &NpmResolutionSnapshot,
+  ) -> Result<Vec<WorkspaceLifecyclePackage>, JsErrorBox> {
+    let workspace_pkgs = self.npm_install_deps_provider.workspace_pkgs();
+    let workspace_pkg_ids = workspace_pkgs
+      .iter()
+      .map(|pkg| {
+        (
+          pkg.nv.clone(),
+          NpmPackageId {
+            nv: pkg.nv.clone(),
+            peer_dependencies: NpmPackageIdPeerDependencies::from([]),
+          },
+        )
+      })
+      .collect::<HashMap<_, _>>();
+    let mut packages = Vec::with_capacity(workspace_pkgs.len());
+    for workspace_pkg in workspace_pkgs {
+      let mut dependencies = HashMap::with_capacity(workspace_pkg.deps.len());
+      for dep in &workspace_pkg.deps {
+        match dep {
+          InstallWorkspacePkgDep::Remote { alias, req } => {
+            if let Some(id) = resolve_remote_pkg_id(snapshot, req) {
+              dependencies.insert(alias.clone(), id);
+            }
+          }
+          InstallWorkspacePkgDep::Workspace { alias, nv } => {
+            if let Some(id) = workspace_pkg_ids.get(nv) {
+              dependencies.insert(alias.clone(), id.clone());
+            }
+          }
+        }
+      }
+      let id = workspace_pkg_ids
+        .get(&workspace_pkg.nv)
+        .expect("workspace package id should exist")
+        .clone();
+      packages.push(WorkspaceLifecyclePackage {
+        package: NpmResolutionPackage {
+          id,
+          copy_index: 0,
+          system: NpmResolutionPackageSystemInfo::default(),
+          dist: None,
+          dependencies,
+          optional_dependencies: Default::default(),
+          optional_peer_dependencies: Default::default(),
+          extra: Some(NpmPackageExtraInfo {
+            scripts: workspace_pkg.scripts.clone(),
+            ..Default::default()
+          }),
+          is_deprecated: false,
+          has_bin: false,
+          has_scripts: !workspace_pkg.scripts.is_empty(),
+        },
+        package_path: workspace_pkg.target_dir.clone(),
+        scripts: workspace_pkg.scripts.clone(),
+      });
+    }
+    Ok(packages)
+  }
+}
+
+struct WorkspaceLifecyclePackage {
+  package: NpmResolutionPackage,
+  package_path: PathBuf,
+  scripts: HashMap<deno_semver::SmallStackString, String>,
+}
+
+fn resolve_remote_pkg_id(
+  snapshot: &NpmResolutionSnapshot,
+  req: &deno_semver::package::PackageReq,
+) -> Option<NpmPackageId> {
+  match snapshot.resolve_pkg_from_pkg_req(req) {
+    Ok(pkg) => Some(pkg.id.clone()),
+    Err(_) if req.version_req.tag().is_some() => None,
+    Err(_) => snapshot.resolve_best_package_id(&req.name, &req.version_req),
   }
 }
 
@@ -1011,11 +1320,77 @@ pub(crate) fn clone_dir_recursive_except_node_modules_child(
         &new_to,
       )?;
     } else if file_type.is_file() {
-      hard_link_file(sys.as_ref(), &new_from, &new_to)
-        .or_else(|_| sys.fs_copy(&new_from, &new_to).map(|_| ()))?;
+      hard_link_file(sys.as_ref(), &new_from, &new_to).or_else(|_| {
+        sys
+          .fs_copy(&new_from, &new_to)
+          .or_else(|err| {
+            if deno_npm_cache::is_etxtbsy(&err) {
+              // The destination is a hardlink to a currently-executing
+              // binary (ETXTBSY). Remove it to break the hardlink, then
+              // retry the copy.
+              let _ = sys.fs_remove_file(&new_to);
+              sys.fs_copy(&new_from, &new_to)
+            } else {
+              Err(err)
+            }
+          })
+          .map(|_| ())
+      })?;
     }
   }
   Ok(())
+}
+
+/// Reverse of JSR's npm-compatibility naming: `@jsr/scope__name` -> the
+/// original JSR specifier name `@scope/name`. Returns `None` when `name` is not
+/// a `@jsr/`-scoped package. Used to expose JSR packages installed via the npm
+/// registry under their original names so external tooling (type checkers,
+/// bundlers) can resolve them like pnpm/npm do.
+fn jsr_npm_name_to_original(name: &str) -> Option<String> {
+  let rest = name.strip_prefix("@jsr/")?;
+  let (scope, pkg) = rest.split_once("__")?;
+  Some(format!("@{scope}/{pkg}"))
+}
+
+/// Ensures the `.npmrc` next to the `node_modules` directory declares JSR's npm
+/// compatibility registry (`@jsr:registry=https://npm.jsr.io`). This lets
+/// external tooling (npm, pnpm, yarn) resolve the `@jsr/*` packages Deno
+/// materialized into `node_modules`. A pre-existing `@jsr:registry` entry is
+/// respected (left untouched); otherwise the line is appended to an existing
+/// `.npmrc` or a new one is created.
+fn ensure_jsr_npmrc<TSys: NpmCacheSys>(
+  sys: &TSys,
+  project_dir: &Path,
+) -> Result<(), std::io::Error> {
+  const JSR_REGISTRY_LINE: &str = "@jsr:registry=https://npm.jsr.io";
+  const NPMRC_PERM: u32 = 0o644;
+
+  let npmrc_path = project_dir.join(".npmrc");
+  let existing = match sys.fs_read_to_string(&npmrc_path) {
+    Ok(contents) => Some(contents.into_owned()),
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+    Err(err) => return Err(err),
+  };
+  if let Some(existing) = &existing
+    && existing
+      .lines()
+      .any(|line| line.trim_start().starts_with("@jsr:registry"))
+  {
+    // Respect an existing `@jsr` registry configuration.
+    return Ok(());
+  }
+  let mut contents = existing.unwrap_or_default();
+  if !contents.is_empty() && !contents.ends_with('\n') {
+    contents.push('\n');
+  }
+  contents.push_str(JSR_REGISTRY_LINE);
+  contents.push('\n');
+  atomic_write_file_with_retries(
+    sys,
+    &npmrc_path,
+    contents.as_bytes(),
+    NPMRC_PERM,
+  )
 }
 
 /// `node_modules/.deno/<package>/`
@@ -1308,6 +1683,8 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
 pub(crate) fn symlink_package_dir(
   sys: &(
      impl sys_traits::FsSymlinkDir
+     + sys_traits::FsRemoveDir
+     + sys_traits::FsRemoveFile
      + sys_traits::FsRemoveDirAll
      + sys_traits::FsCreateDirAll
      + sys_traits::FsCreateJunction
@@ -1323,7 +1700,7 @@ pub(crate) fn symlink_package_dir(
   }
 
   // need to delete the previous symlink before creating a new one
-  let _ignore = sys.fs_remove_dir_all(new_path);
+  let _ignore = remove_existing_entry(sys.as_ref(), new_path);
 
   let old_path_relative = relative_path(new_parent, old_path)
     .unwrap_or_else(|| old_path.to_path_buf());
@@ -1344,8 +1721,232 @@ fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
   pathdiff::diff_paths(to, from)
 }
 
+/// Removes whatever currently exists at `path` (file, directory, symlink, or
+/// junction) so a fresh symlink/junction can be created in its place. A stale
+/// entry can be left behind when a `node_modules` directory is reused across
+/// runs, for example when it's restored from a CI cache.
+fn remove_existing_entry(
+  sys: &(
+     impl sys_traits::FsRemoveDir
+     + sys_traits::FsRemoveFile
+     + sys_traits::FsRemoveDirAll
+   ),
+  path: &Path,
+) -> Result<(), std::io::Error> {
+  let is_not_found =
+    |err: &std::io::Error| err.kind() == std::io::ErrorKind::NotFound;
+  // First try the syscall appropriate for the entry's actual type. Its error
+  // is discarded: if it fails we fall through to the recursive removal below
+  // and surface that error instead, since it's the last and most complete
+  // attempt.
+  if sys_traits::impls::is_windows() {
+    // On Windows a directory symlink or junction must be removed with
+    // RemoveDirectory rather than DeleteFile, and `remove_dir_all` may fail on
+    // a dangling directory symlink, so remove the link itself first.
+    match sys.fs_remove_dir(path) {
+      Ok(()) => return Ok(()),
+      Err(err) if is_not_found(&err) => return Ok(()),
+      Err(_) => {}
+    }
+    // It may instead be a file symlink, which needs DeleteFile.
+    match sys.fs_remove_file(path) {
+      Ok(()) => return Ok(()),
+      Err(err) if is_not_found(&err) => return Ok(()),
+      Err(_) => {}
+    }
+  } else {
+    // On Unix unlinking a symlink does not follow it.
+    match sys.fs_remove_file(path) {
+      Ok(()) => return Ok(()),
+      Err(err) if is_not_found(&err) => return Ok(()),
+      Err(_) => {}
+    }
+  }
+  // Fall back to removing a real (possibly non-empty) directory, surfacing
+  // this error if even the recursive removal fails.
+  match sys.fs_remove_dir_all(path) {
+    Ok(()) => Ok(()),
+    Err(err) if is_not_found(&err) => Ok(()),
+    Err(err) => Err(err),
+  }
+}
+
+/// Removes managed dependency links from a workspace member's `node_modules`
+/// whose alias is no longer one of the member's current direct dependencies
+/// (`keep_aliases`). Without this a dependency dropped from the member's
+/// `package.json`, or a sibling workspace member that was removed, would leave a
+/// stale link behind and stay resolvable from the member, recreating exactly the
+/// shadow-dependency problem the per-member layout is meant to prevent. This is
+/// the per-member counterpart to the root `node_modules` pruning done by
+/// [`remove_unused_node_modules_symlinks`].
+///
+/// Only symlinks and junctions are touched; real files or directories a user
+/// placed in the member's `node_modules` are left untouched.
+pub(crate) fn remove_stale_member_symlinks<TSys: LocalNpmInstallSys>(
+  sys: &TSys,
+  member_node_modules: &Path,
+  keep_aliases: &HashSet<&str>,
+) {
+  let paths_sys = sys.with_paths_in_errors();
+  let entries = match paths_sys.fs_read_dir(member_node_modules) {
+    Ok(entries) => entries,
+    // The directory may not exist yet (first install) or be unreadable; either
+    // way there is nothing to prune.
+    Err(_) => return,
+  };
+  for entry in entries.flatten() {
+    let file_name = entry.file_name();
+    let Some(name) = file_name.to_str() else {
+      continue;
+    };
+    // Leave `.bin`, `.deno`, and any other dot-entries alone: they are not the
+    // per-dependency alias links this loop manages.
+    if name.starts_with('.') {
+      continue;
+    }
+    let entry_path = member_node_modules.join(&file_name);
+    if name.starts_with('@') {
+      // Scoped packages are linked one level deeper as `@scope/<pkg>`, so the
+      // alias to match against is the full `@scope/<pkg>` path.
+      if let Ok(children) = paths_sys.fs_read_dir(&entry_path) {
+        for child in children.flatten() {
+          let child_file_name = child.file_name();
+          let Some(child_name) = child_file_name.to_str() else {
+            continue;
+          };
+          let child_path = entry_path.join(&child_file_name);
+          let alias = format!("{name}/{child_name}");
+          if paths_sys.fs_read_link(&child_path).is_ok()
+            && !keep_aliases.contains(alias.as_str())
+          {
+            let _ignore = remove_existing_entry(sys, &child_path);
+          }
+        }
+      }
+      // Drop the scope directory if pruning emptied it.
+      if paths_sys
+        .fs_read_dir(&entry_path)
+        .map(|mut entries| entries.next().is_none())
+        .unwrap_or(false)
+      {
+        let _ignore = paths_sys.fs_remove_dir(&entry_path);
+      }
+    } else if paths_sys.fs_read_link(&entry_path).is_ok()
+      && !keep_aliases.contains(name)
+    {
+      let _ignore = remove_existing_entry(sys, &entry_path);
+    }
+  }
+}
+
+/// A workspace member's direct dependency that may contribute executables to
+/// the member's `node_modules/.bin`.
+pub(crate) struct MemberBinDep<'a> {
+  /// The resolved npm package, used for its `bin` metadata.
+  pub package: &'a NpmResolutionPackage,
+  /// Where the package's `package.json` is read from: its real location in the
+  /// layout (the `.deno` store path for the isolated linker, or the hoisted
+  /// package directory for the hoisted linker).
+  pub read_path: PathBuf,
+  /// The member's own link to the package
+  /// (`<member>/node_modules/<alias>`). The generated shim points here so a
+  /// tool invoked as `node_modules/.bin/<tool>` from within the member resolves
+  /// the member's copy.
+  pub link_path: PathBuf,
+}
+
+/// Sets up (and prunes) a workspace member's `node_modules/.bin`, mirroring how
+/// npm and pnpm populate each member's local `.bin` so tools invoked as
+/// `node_modules/.bin/<tool>` from within the member (for example `eslint`,
+/// `svelte-check`, or `astro`) resolve the member's own dependencies.
+///
+/// Any pre-existing entries are cleared first so an executable from a
+/// dependency the member dropped stops resolving. This mirrors how the root
+/// `.bin` is rebuilt, and it is the per-member counterpart that the
+/// symlink-only [`remove_stale_member_symlinks`] cannot provide: on Windows the
+/// shims are plain files (`<tool>`, `<tool>.cmd`, `<tool>.ps1`) rather than
+/// symlinks.
+///
+/// Sibling workspace members are not npm packages and so are not included in
+/// `bin_deps`; their executables are not linked into a member's `.bin` yet.
+pub(crate) async fn setup_member_bin_entries<'a, TSys: LocalNpmInstallSys>(
+  sys: SysWithPathsInErrors<'a, TSys>,
+  snapshot: &'a NpmResolutionSnapshot,
+  extra_info_provider: &CachedNpmPackageExtraInfoProvider,
+  member_node_modules: &Path,
+  bin_deps: &[MemberBinDep<'a>],
+) -> Result<(), SyncResolutionWithFsError> {
+  let member_bin_dir = member_node_modules.join(".bin");
+  // Clear any existing `.bin` entries before re-creating them so executables
+  // from dropped dependencies don't linger. Runs unconditionally (even with no
+  // bins to add) so a member that dropped its last bin dependency is cleaned up
+  // too. A member's `.bin` is small, so rebuilding it each install is cheap.
+  if let Ok(entries) = sys.fs_read_dir(&member_bin_dir) {
+    for entry in entries.flatten() {
+      let Ok(file_type) = entry.file_type() else {
+        continue;
+      };
+      if file_type.is_file() {
+        let _ignore = sys.fs_remove_file(entry.path());
+      } else {
+        let _ignore = sys.fs_remove_dir_all(entry.path());
+      }
+    }
+  }
+
+  let mut bin_entries = BinEntries::new(sys);
+  for dep in bin_deps {
+    if !dep.package.has_bin {
+      continue;
+    }
+    // Cached from the root setup that ran earlier, so this is a map lookup
+    // rather than a disk read in the common case.
+    let extra = extra_info_provider
+      .get_package_extra_info(
+        &dep.package.id.nv,
+        &dep.read_path,
+        ExpectedExtraInfo::from_package(dep.package),
+      )
+      .await
+      .map_err(SyncResolutionWithFsError::Other)?;
+    bin_entries.add(dep.package, &extra, dep.link_path.clone());
+  }
+  // Ignore setup failures here: every package linked into a member is also
+  // linked at the root, whose `.bin` setup already reports a missing entrypoint
+  // or a not-yet-run lifecycle script. Warning again per member would be noise.
+  bin_entries.finish(snapshot, &member_bin_dir, |_outcome| {})?;
+  Ok(())
+}
+
+/// Runs `create`, and if it fails because something already exists at `path`,
+/// removes that entry and tries once more. This makes creating a symlink or
+/// junction resilient to a stale entry left over from a previous run.
+fn create_retry_if_exists(
+  sys: &(
+     impl sys_traits::FsRemoveDir
+     + sys_traits::FsRemoveFile
+     + sys_traits::FsRemoveDirAll
+   ),
+  path: &Path,
+  mut create: impl FnMut() -> Result<(), std::io::Error>,
+) -> Result<(), std::io::Error> {
+  match create() {
+    Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+      remove_existing_entry(sys, path)?;
+      create()
+    }
+    result => result,
+  }
+}
+
 fn junction_or_symlink_dir(
-  sys: &(impl sys_traits::FsSymlinkDir + sys_traits::FsCreateJunction),
+  sys: &(
+     impl sys_traits::FsSymlinkDir
+     + sys_traits::FsCreateJunction
+     + sys_traits::FsRemoveDir
+     + sys_traits::FsRemoveFile
+     + sys_traits::FsRemoveDirAll
+   ),
   old_path_relative: &Path,
   old_path: &Path,
   new_path: &Path,
@@ -1355,21 +1956,29 @@ fn junction_or_symlink_dir(
 
   let sys = sys.with_paths_in_errors();
 
+  // Use junctions because they're supported on ntfs file systems without
+  // needing to elevate privileges on Windows.
+  // Note: junctions don't support relative paths, so we need to use the
+  // absolute path here.
+  let create_junction = || {
+    create_retry_if_exists(sys.as_ref(), new_path, || {
+      sys.fs_create_junction(old_path, new_path)
+    })
+  };
+
   if USE_JUNCTIONS.load(std::sync::atomic::Ordering::Relaxed) {
-    // Use junctions because they're supported on ntfs file systems without
-    // needing to elevate privileges on Windows.
-    // Note: junctions don't support relative paths, so we need to use the
-    // absolute path here.
-    return sys.fs_create_junction(old_path, new_path);
+    return create_junction();
   }
 
-  match symlink_dir(sys.as_ref(), old_path_relative, new_path) {
+  match create_retry_if_exists(sys.as_ref(), new_path, || {
+    symlink_dir(sys.as_ref(), old_path_relative, new_path)
+  }) {
     Ok(()) => Ok(()),
     Err(symlink_err)
       if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
     {
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      sys.fs_create_junction(old_path, new_path)
+      create_junction()
     }
     Err(symlink_err) => {
       log::warn!(
@@ -1377,7 +1986,7 @@ fn junction_or_symlink_dir(
         colors::yellow("Warning")
       );
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      sys.fs_create_junction(old_path, new_path)
+      create_junction()
     }
   }
 }
@@ -1426,6 +2035,7 @@ pub(crate) fn join_package_name(
 /// This allows us to detect when npm packages have been added, removed, or changed.
 fn calculate_packages_hash(
   package_partitions: &deno_npm::resolution::NpmPackagesPartitioned,
+  root_folder_names: &BTreeSet<String>,
 ) -> u64 {
   use std::hash::Hash;
   use std::hash::Hasher;
@@ -1437,7 +2047,54 @@ fn calculate_packages_hash(
     package.id.hash(&mut hasher);
   }
 
+  // also hash the packages expected at the root of node_modules so that
+  // cleanup runs when a direct dependency is removed but stays in the
+  // resolution as a transitive dependency
+  for folder_name in root_folder_names {
+    folder_name.hash(&mut hasher);
+  }
+
   hasher.finish()
+}
+
+/// Calculates the set of package folder names that are expected to have a
+/// symlink at the root of the node_modules directory (resolved package.json
+/// and import map dependencies plus the snapshot's top level packages).
+fn root_package_folder_names(
+  snapshot: &NpmResolutionSnapshot,
+  npm_install_deps_provider: &NpmInstallDepsProvider,
+) -> BTreeSet<String> {
+  let mut folder_names = BTreeSet::new();
+  for id in snapshot.top_level_packages() {
+    if let Some(package) = snapshot.package_from_id(id) {
+      folder_names.insert(get_package_folder_id_folder_name(
+        &package.get_package_cache_folder_id(),
+      ));
+    }
+  }
+  // resolve the same way as when creating the root symlinks for
+  // package.json dependencies
+  for remote in npm_install_deps_provider.remote_pkgs() {
+    let package = match snapshot.resolve_pkg_from_pkg_req(&remote.req) {
+      Ok(package) => package,
+      _ => {
+        if remote.req.version_req.tag().is_some() {
+          continue;
+        }
+        match snapshot
+          .resolve_best_package_id(&remote.req.name, &remote.req.version_req)
+          .and_then(|id| snapshot.package_from_id(&id))
+        {
+          Some(package) => package,
+          None => continue,
+        }
+      }
+    };
+    folder_names.insert(get_package_folder_id_folder_name(
+      &package.get_package_cache_folder_id(),
+    ));
+  }
+  folder_names
 }
 
 /// Cleans up unused packages from the node_modules/.deno directory.
@@ -1447,6 +2104,7 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
   root_node_modules_dir: &Path,
   deno_local_registry_dir: &Path,
   package_partitions: &deno_npm::resolution::NpmPackagesPartitioned,
+  root_folder_names: &BTreeSet<String>,
   setup_cache: &mut LocalSetupCache<TSys>,
 ) {
   // Collect all package folder names that should exist in .deno/
@@ -1483,17 +2141,6 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
     })
     .collect::<HashSet<_>>();
 
-  // Helper closure for removing symlinks cross-platform
-  let remove_symlink = |path: &Path| -> std::io::Result<()> {
-    if sys_traits::impls::is_windows() {
-      sys
-        .fs_remove_dir(path)
-        .or_else(|_| sys.fs_remove_file(path))
-    } else {
-      sys.fs_remove_file(path)
-    }
-  };
-
   // Clean up .deno/node_modules/* symlinks for packages no longer needed
   let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
   let _ignore = remove_unused_node_modules_symlinks(
@@ -1502,18 +2149,23 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
     &keep_names,
     &mut |name, path| {
       setup_cache.remove_deno_symlink(name);
-      remove_symlink(path)
+      remove_existing_entry(sys, path)
     },
   );
 
-  // Clean up root node_modules/* symlinks for packages no longer needed
+  // Clean up root node_modules/* symlinks for packages that should no longer
+  // be linked at the root. Only direct dependencies and top level packages
+  // get a root symlink, so a package that remains in the resolution solely as
+  // a transitive dependency must not stay linked at the root (#35083).
+  let root_keep_names =
+    root_folder_names.iter().cloned().collect::<HashSet<_>>();
   let _ignore = remove_unused_node_modules_symlinks(
     sys,
     root_node_modules_dir,
-    &keep_names,
+    &root_keep_names,
     &mut |name, path| {
       setup_cache.remove_root_symlink(name);
-      remove_symlink(path)
+      remove_existing_entry(sys, path)
     },
   );
 
@@ -1601,6 +2253,10 @@ pub fn remove_unused_node_modules_symlinks<TSys: LocalNpmInstallSys>(
 
 #[cfg(test)]
 mod test {
+  use sys_traits::FsCreateDirAll;
+  use sys_traits::FsMetadata;
+  use sys_traits::FsRead;
+  use sys_traits::FsWrite;
   use test_util::TempDir;
 
   use super::*;
@@ -1642,6 +2298,79 @@ mod test {
   }
 
   #[test]
+  fn test_symlink_package_dir_replaces_existing_link() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let root = temp_dir.path().to_path_buf();
+
+    let target_a = root.join("target_a");
+    let target_b = root.join("target_b");
+    sys.fs_create_dir_all(&target_a).unwrap();
+    sys.fs_create_dir_all(&target_b).unwrap();
+    sys.fs_write(target_a.join("marker.txt"), "a").unwrap();
+    sys.fs_write(target_b.join("marker.txt"), "b").unwrap();
+
+    let node_modules = root.join("node_modules");
+    sys.fs_create_dir_all(&node_modules).unwrap();
+    let link = node_modules.join("pkg");
+
+    // First the link points at target_a.
+    symlink_package_dir(&sys, &target_a, &link).unwrap();
+    assert_eq!(sys.fs_read_to_string(link.join("marker.txt")).unwrap(), "a");
+
+    // Re-creating over the pre-existing link must succeed (this is what
+    // regressed on Windows: a stale directory symlink/junction has to be
+    // removed before the new one can be created) and now resolve to target_b.
+    symlink_package_dir(&sys, &target_b, &link).unwrap();
+    assert_eq!(sys.fs_read_to_string(link.join("marker.txt")).unwrap(), "b");
+  }
+
+  #[test]
+  fn test_create_retry_if_exists_clears_stale_entry() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let path = temp_dir.path().join("entry").to_path_buf();
+
+    // A stale entry is sitting where we want to create something new.
+    sys.fs_create_dir_all(&path).unwrap();
+
+    let mut attempts = 0;
+    let result = create_retry_if_exists(&sys, &path, || {
+      attempts += 1;
+      if attempts == 1 {
+        // Simulate creation failing because the stale entry is in the way.
+        Err(std::io::Error::new(
+          std::io::ErrorKind::AlreadyExists,
+          "already exists",
+        ))
+      } else {
+        Ok(())
+      }
+    });
+
+    assert!(result.is_ok());
+    assert_eq!(attempts, 2);
+    // The stale entry must have been removed before the retry.
+    assert!(!sys.fs_exists(&path).unwrap());
+  }
+
+  #[test]
+  fn test_create_retry_if_exists_passes_through_success() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let path = temp_dir.path().join("entry").to_path_buf();
+
+    let mut attempts = 0;
+    let result = create_retry_if_exists(&sys, &path, || {
+      attempts += 1;
+      Ok(())
+    });
+
+    assert!(result.is_ok());
+    assert_eq!(attempts, 1);
+  }
+
+  #[test]
   fn test_node_modules_package_actual_dir_to_name() {
     assert_eq!(
       node_modules_package_actual_dir_to_name(Path::new(
@@ -1656,6 +2385,66 @@ mod test {
       ))
       .as_deref(),
       Some("@denotest+add@1.0.0")
+    );
+  }
+
+  #[test]
+  fn test_jsr_npm_name_to_original() {
+    assert_eq!(
+      jsr_npm_name_to_original("@jsr/std__bytes").as_deref(),
+      Some("@std/bytes")
+    );
+    assert_eq!(
+      jsr_npm_name_to_original("@jsr/david__dax").as_deref(),
+      Some("@david/dax")
+    );
+    // not a `@jsr/` package
+    assert_eq!(jsr_npm_name_to_original("chalk"), None);
+    assert_eq!(jsr_npm_name_to_original("@std/bytes"), None);
+    // missing the `__` separator
+    assert_eq!(jsr_npm_name_to_original("@jsr/std"), None);
+  }
+
+  #[test]
+  fn test_ensure_jsr_npmrc() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let dir = temp_dir.path().to_path_buf();
+    let npmrc_path = dir.join(".npmrc");
+
+    // 1. No existing `.npmrc`: it gets created with the JSR registry line.
+    ensure_jsr_npmrc(&sys, &dir).unwrap();
+    assert_eq!(
+      sys.fs_read_to_string(&npmrc_path).unwrap(),
+      "@jsr:registry=https://npm.jsr.io\n"
+    );
+
+    // 2. Running again is idempotent (the entry already exists).
+    ensure_jsr_npmrc(&sys, &dir).unwrap();
+    assert_eq!(
+      sys.fs_read_to_string(&npmrc_path).unwrap(),
+      "@jsr:registry=https://npm.jsr.io\n"
+    );
+
+    // 3. An existing `.npmrc` without the entry gets it appended (preserving the
+    // existing contents and adding a separating newline).
+    sys
+      .fs_write(&npmrc_path, "registry=https://example.com")
+      .unwrap();
+    ensure_jsr_npmrc(&sys, &dir).unwrap();
+    assert_eq!(
+      sys.fs_read_to_string(&npmrc_path).unwrap(),
+      "registry=https://example.com\n@jsr:registry=https://npm.jsr.io\n"
+    );
+
+    // 4. A pre-existing `@jsr` registry configuration is left untouched.
+    sys
+      .fs_write(&npmrc_path, "@jsr:registry=https://example.com/jsr\n")
+      .unwrap();
+    ensure_jsr_npmrc(&sys, &dir).unwrap();
+    assert_eq!(
+      sys.fs_read_to_string(&npmrc_path).unwrap(),
+      "@jsr:registry=https://example.com/jsr\n"
     );
   }
 }

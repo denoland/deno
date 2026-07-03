@@ -20,7 +20,12 @@ const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const globalInterfaces = core.loadExtScript(
   "ext:deno_web/04_global_interfaces.js",
 );
+const loadLocks = core.createLazyLoader("ext:deno_web/locks.js");
 const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
+import {
+  NavigatorUAData,
+  navigatorUAData,
+} from "ext:runtime/97_navigator_user_agent_data.js";
 
 /**
  * @param {string} arch
@@ -93,6 +98,7 @@ class WorkerNavigator {
           "language",
           "languages",
           "platform",
+          "userAgentData",
         ],
       }),
       inspectOptions,
@@ -150,6 +156,15 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
       return [language()];
     },
   },
+  locks: {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, WorkerNavigatorPrototype);
+      return loadLocks().locks;
+    },
+  },
   platform: {
     __proto__: null,
     configurable: true,
@@ -157,6 +172,15 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
       return platform();
+    },
+  },
+  userAgentData: {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, WorkerNavigatorPrototype);
+      return navigatorUAData;
     },
   },
 });
@@ -170,6 +194,7 @@ const workerRuntimeGlobalProperties = {
     globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
   WorkerNavigator: core.propNonEnumerable(WorkerNavigator),
   navigator: core.propGetterOnly(() => workerNavigator),
+  NavigatorUAData: core.propNonEnumerable(NavigatorUAData),
   self: core.propGetterOnly(() => globalThis),
 };
 

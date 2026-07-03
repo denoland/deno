@@ -14,6 +14,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
+use deno_resolver::emit::patch_public_decorator_access_has;
 use deno_terminal::colors;
 use sys_traits::PathsInErrorsExt;
 
@@ -21,7 +22,6 @@ use crate::args::Flags;
 use crate::args::SourceMapMode;
 use crate::args::TranspileFlags;
 use crate::factory::CliFactory;
-use crate::util::display;
 
 pub async fn transpile(
   flags: Arc<Flags>,
@@ -173,7 +173,8 @@ pub async fn transpile(
       &emit_options,
     )?;
 
-    let emitted = transpile_result.into_source();
+    let mut emitted = transpile_result.into_source();
+    patch_public_decorator_access_has(&mut emitted.text);
     // Skip the newline restoration pass when source maps are requested,
     // since inserting newlines would shift line numbers in the generated
     // output without a corresponding adjustment to the mappings.
@@ -189,7 +190,7 @@ pub async fn transpile(
     // Determine output path
     if is_stdout_mode {
       // Single file, no output specified: print to stdout
-      display::write_to_stdout_ignore_sigpipe(js_text.as_bytes())?;
+      deno_print::drop_write_stdout(js_text.as_bytes());
     } else {
       let output_path = maybe_output_path.unwrap();
 

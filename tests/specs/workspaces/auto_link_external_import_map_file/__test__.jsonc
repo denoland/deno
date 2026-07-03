@@ -1,0 +1,19 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/26764, variant
+  // where the root project points at an external "importMap" file rather than
+  // an inline `imports` map. The path entry there (`../repo1/bmod/mod.ts`)
+  // resolves relative to the import map file, and auto-discovery must still pick
+  // up repo1's deno.json so bmod's bare `@scope/amod` specifier resolves.
+  "tempDir": true,
+  "cwd": "./repo2",
+  "tests": {
+    "run": {
+      "args": "run main.ts",
+      "output": "42\n"
+    },
+    "check": {
+      "args": "check main.ts",
+      "output": "check.out"
+    }
+  }
+}

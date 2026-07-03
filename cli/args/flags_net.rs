@@ -29,6 +29,14 @@ impl FromStr for BarePort {
 }
 
 pub fn validator(host_and_port: &str) -> Result<String, String> {
+  // Unix and vsock socket descriptors have their own validation with specific
+  // error messages (e.g. a unix path must be absolute). Surface those errors
+  // directly instead of masking them with the generic "Bad host:port pair".
+  if host_and_port.starts_with("unix:") || host_and_port.starts_with("vsock:") {
+    return NetDescriptor::parse_for_list(host_and_port)
+      .map(|_| host_and_port.to_string())
+      .map_err(|e| e.to_string());
+  }
   if Url::parse(&format!("internal://{host_and_port}")).is_ok()
     || host_and_port.parse::<IpAddr>().is_ok()
     || host_and_port.parse::<BarePort>().is_ok()

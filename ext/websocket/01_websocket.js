@@ -31,6 +31,7 @@ const {
   ArrayPrototypeShift,
   ArrayPrototypeSome,
   DateNow,
+  decodeURIComponent,
   Error,
   ErrorPrototypeToString,
   ObjectDefineProperties,
@@ -55,9 +56,10 @@ const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
 );
-const { HTTP_TOKEN_CODE_POINT_RE, byteLowerCase } = core.loadExtScript(
-  "ext:deno_web/00_infra.js",
-);
+const { HTTP_TOKEN_CODE_POINT_RE, byteLowerCase, forgivingBase64Encode } = core
+  .loadExtScript(
+    "ext:deno_web/00_infra.js",
+  );
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 const {
   CloseEvent,
@@ -301,6 +303,22 @@ class WebSocket extends EventTarget {
       );
     }
 
+    // WHATWG WebSocket: credentials in the URL userinfo are sent as an
+    // `Authorization: Basic` header during the handshake and then stripped
+    // from the URL exposed via `url`. This matches browser behavior.
+    let urlCredentials = null;
+    if (wsURL.username !== "" || wsURL.password !== "") {
+      urlCredentials = forgivingBase64Encode(
+        core.encode(
+          `${decodeURIComponent(wsURL.username)}:${
+            decodeURIComponent(wsURL.password)
+          }`,
+        ),
+      );
+      wsURL.username = "";
+      wsURL.password = "";
+    }
+
     this[_url] = wsURL.href;
     this[_role] = CLIENT;
 
@@ -357,6 +375,17 @@ class WebSocket extends EventTarget {
           unsafelyIgnoreCertificateErrors =
             dispatcherOptions.unsafelyIgnoreCertificateErrors === true;
         }
+      }
+    }
+
+    // Apply URL-derived Basic credentials. An explicit `Authorization` header
+    // in `init.headers` takes precedence over the URL userinfo.
+    if (urlCredentials !== null) {
+      if (headers === null) {
+        headers = headersFromHeaderList([], "request");
+      }
+      if (headers.get("Authorization") === null) {
+        headers.set("Authorization", `Basic ${urlCredentials}`);
       }
     }
 

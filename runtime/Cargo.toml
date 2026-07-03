@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.257.0"
+version = "0.261.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -29,6 +29,8 @@ name = "deno_runtime"
 path = "lib.rs"
 
 [dependencies]
+async-trait.workspace = true
+base64.workspace = true
 boxed_error.workspace = true
 color-print.workspace = true
 deno_ast = { workspace = true, optional = true }
@@ -67,7 +69,10 @@ deno_webgpu.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
+ed25519-dalek.workspace = true
 encoding_rs.workspace = true
+faster-hex.workspace = true
+fastwebsockets.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
@@ -76,9 +81,13 @@ log.workspace = true
 node_resolver = { workspace = true, features = ["sync"] }
 notify.workspace = true
 once_cell.workspace = true
+qbsdiff.workspace = true
+raw-window-handle.workspace = true
+regex.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 same-file.workspace = true
 serde.workspace = true
+sha2.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -90,8 +99,7 @@ uuid.workspace = true
 unicode-normalization.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["commapi", "handleapi", "knownfolders", "mswsock", "objbase", "processthreadsapi", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winnt", "winuser", "winsock2"] }
-windows-sys.workspace = true
+windows-sys = { workspace = true, features = ["Win32_System_Console", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_Input_KeyboardAndMouse"] }
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
