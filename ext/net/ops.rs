@@ -1540,15 +1540,42 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_keepalive() {
     let set_keepalive = Box::new(|state: &mut OpState, rid| {
-      // time/interval are milliseconds, retries a count. socket2 0.5.x has no
-      // getters for the timing values, so the assertions below only verify
-      // SO_KEEPALIVE was enabled; a non-zero `set_tcp_keepalive` failure would
-      // surface here via `unwrap`.
+      // time/interval are milliseconds, retries a count.
       op_set_keepalive_inner(state, rid, true, 10_000, 5_000, 3).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(!socket.nodelay().unwrap());
       assert!(socket.keepalive().unwrap());
+      #[cfg(not(any(
+        windows,
+        target_os = "haiku",
+        target_os = "openbsd",
+        target_os = "vita"
+      )))]
+      assert_eq!(
+        socket.keepalive_time().unwrap(),
+        std::time::Duration::from_secs(10)
+      );
+      #[cfg(any(
+        target_os = "android",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "fuchsia",
+        target_os = "illumos",
+        target_os = "ios",
+        target_os = "linux",
+        target_os = "macos",
+        target_os = "netbsd",
+        target_os = "tvos",
+        target_os = "watchos",
+      ))]
+      {
+        assert_eq!(
+          socket.keepalive_interval().unwrap(),
+          std::time::Duration::from_secs(5)
+        );
+        assert_eq!(socket.keepalive_retries().unwrap(), 3);
+      }
     });
     check_sockopt(String::from("127.0.0.1:4146"), set_keepalive, test_fn).await;
   }
