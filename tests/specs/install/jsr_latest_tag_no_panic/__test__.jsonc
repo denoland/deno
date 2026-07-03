@@ -1,13 +1,14 @@
 {
   // Regression test for https://github.com/denoland/deno/issues/35084
   // A jsr specifier pinned to a tag (e.g. `@latest`) used to panic in
-  // VersionReq::matches. JSR has no dist-tags, so the dep is treated as
-  // unresolvable (like any other unknown jsr dep) instead of crashing.
+  // VersionReq::matches. JSR has no dist-tags, so the dep is skipped with
+  // a warning (and otherwise treated as unresolvable, like any other
+  // unknown jsr dep) instead of crashing.
   "tempDir": true,
   "steps": [
     {
       "args": "install",
-      "output": "[WILDCARD]",
+      "output": "[WILDCARD]Warning Ignoring \"jsr:@denotest/add@latest\". Version tags are not supported in jsr specifiers.\n[WILDCARD]",
       "exitCode": 0
     }
   ]
