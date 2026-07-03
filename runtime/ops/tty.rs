@@ -5,8 +5,9 @@ use std::cell::RefCell;
 #[cfg(unix)]
 use std::collections::HashMap;
 use std::io::Error;
-#[cfg(windows)]
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::Relaxed;
 
 use deno_core::OpState;
 #[cfg(unix)]
@@ -22,10 +23,15 @@ use deno_io::WinTtyState;
 #[cfg(unix)]
 use nix::sys::termios;
 use rustyline::Cmd;
+use rustyline::ConditionalEventHandler;
 use rustyline::Editor;
+use rustyline::Event;
+use rustyline::EventContext;
+use rustyline::EventHandler;
 use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
+use rustyline::RepeatCount;
 use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
 
@@ -467,6 +473,23 @@ deno_error::js_error_wrapper!(ReadlineError, JsReadlineError, |err| {
   }
 });
 
+struct PromptEscEventHandler {
+  interrupted_by_esc: Arc<AtomicBool>,
+}
+
+impl ConditionalEventHandler for PromptEscEventHandler {
+  fn handle(
+    &self,
+    _: &Event,
+    _: RepeatCount,
+    _: bool,
+    _: &EventContext,
+  ) -> Option<Cmd> {
+    self.interrupted_by_esc.store(true, Relaxed);
+    Some(Cmd::Interrupt)
+  }
+}
+
 #[op2]
 #[string]
 pub fn op_read_line_prompt(
@@ -478,14 +501,23 @@ pub fn op_read_line_prompt(
     .expect("Failed to create editor.");
 
   editor.set_keyseq_timeout(Some(1));
-  editor
-    .bind_sequence(KeyEvent(KeyCode::Esc, Modifiers::empty()), Cmd::Interrupt);
+  let interrupted_by_esc = Arc::new(AtomicBool::new(false));
+  editor.bind_sequence(
+    KeyEvent(KeyCode::Esc, Modifiers::empty()),
+    EventHandler::Conditional(Box::new(PromptEscEventHandler {
+      interrupted_by_esc: interrupted_by_esc.clone(),
+    })),
+  );
 
   let read_result =
     editor.readline_with_initial(prompt_text, (default_value, ""));
   match read_result {
     Ok(line) => Ok(Some(line)),
     Err(ReadlineError::Interrupted) => {
+      if interrupted_by_esc.load(Relaxed) {
+        return Ok(None);
+      }
+
       // SAFETY: Disable raw mode and raise SIGINT.
       unsafe {
         libc::raise(libc::SIGINT);

@@ -13,6 +13,7 @@ pub const fn op_async_opstate() -> ::deno_core::_ops::OpDecl {
             false,
             2usize as u8,
             false,
+            false,
             Self::v8_fn_ptr as _,
             Self::slow_function_impl,
             ::deno_core::AccessorType::None,

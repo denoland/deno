@@ -44,6 +44,19 @@ fn pty_multiline() {
 }
 
 #[test(flaky)]
+fn pty_multiline_dot_chain() {
+  // Breaking a method chain right after a `.` should continue reading input
+  // instead of throwing a parse error.
+  // https://github.com/denoland/deno/issues/16335
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("[1, 2, 3].\nmap(x => x * 2)");
+    console.expect("[ 2, 4, 6 ]");
+    console.write_line("(await Promise.resolve([4, 5, 6])).\nmap(x => x + 1)");
+    console.expect("[ 5, 6, 7 ]");
+  });
+}
+
+#[test(flaky)]
 fn pty_null() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("null");
@@ -134,6 +147,17 @@ fn pty_complete_expression() {
     console.expect("Display all");
     console.write_raw("y");
     console.expect_all(&["symlink", "args", "permissions", "exit"]);
+  });
+}
+
+#[test(flaky)]
+fn pty_complete_lazy_loaded_getter() {
+  // `navigator.gpu` is exposed through a lazily-loaded getter that triggers a
+  // side effect on first access. Completion must still surface its properties.
+  // https://github.com/denoland/deno/issues/24917
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line_raw("navigator.gpu.getPreferredCanvasForma\t");
+    console.expect("navigator.gpu.getPreferredCanvasFormat");
   });
 }
 
@@ -1210,4 +1234,20 @@ server.on("exit", () => process.exit(0));
       console.expect("EVALED__side_effect=0");
       console.write_raw(".exit\r");
     });
+}
+
+#[test(flaky)]
+fn pty_lint_run_plugin_disabled() {
+  // Regression test for https://github.com/denoland/deno/issues/28264
+  // `Deno.lint.runPlugin` is not available outside of `deno test`, so calling
+  // it in the REPL should throw a helpful error instead of a cryptic
+  // "op_lint_create_serialized_ast is not a function".
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      "Deno.lint.runPlugin({ name: \"x\", rules: {} }, \"x.ts\", \"\");",
+    );
+    console.expect(
+      "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
+    );
+  });
 }

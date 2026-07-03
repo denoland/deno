@@ -17,6 +17,7 @@ const {
 const {
   // TODO(mmastrac): use readAll
   op_read_all,
+  op_pipe,
   op_readable_stream_resource_allocate,
   op_readable_stream_resource_allocate_sized,
   op_readable_stream_resource_await_close,
@@ -900,8 +901,9 @@ async function readableStreamWriteChunkFn(reader, sink, chunk) {
 /**
  * @param {ReadableStreamDefaultReader<Uint8Array>} reader
  * @param {any} sink
+ * @param {((error: unknown) => void) | undefined} onError
  */
-async function readableStreamReadFn(reader, sink) {
+async function readableStreamReadFn(reader, sink, onError) {
   let loop = true;
 
   while (loop) {
@@ -929,6 +931,16 @@ async function readableStreamReadFn(reader, sink) {
         promise.resolve(false);
       },
       errorSteps(error) {
+        // Surface the original error (with its stack) to the owner of the
+        // resource before we flatten it to a string for the Rust side. Without
+        // this hook the error is otherwise swallowed: it is converted to a
+        // plain message, pushed into the channel and used only to abort the
+        // underlying transport, so e.g. a throwing `TransformStream` feeding a
+        // `Deno.serve` response body would fail with nothing implicating the
+        // faulty callback. See https://github.com/denoland/deno/issues/19867.
+        if (onError !== undefined) {
+          onError(error);
+        }
         const success = op_readable_stream_resource_write_error(
           sink.external,
           extractStringErrorFromError(error),
@@ -969,9 +981,13 @@ async function readableStreamReadFn(reader, sink) {
  * ReadableStream source.
  * @param {ReadableStream<Uint8Array>} stream
  * @param {number | undefined} length
+ * @param {((error: unknown) => void) | undefined} onError Invoked with the
+ *   original error (including its stack) if the stream errors while being
+ *   drained into the resource. Lets the owner report an otherwise swallowed
+ *   error before it is flattened to a string for the transport.
  * @returns {number}
  */
-function resourceForReadableStream(stream, length) {
+function resourceForReadableStream(stream, length, onError) {
   const reader = acquireReadableStreamDefaultReader(stream);
 
   // Allocate the resource
@@ -996,7 +1012,7 @@ function resourceForReadableStream(stream, length) {
   );
 
   // Trigger the first read
-  PromisePrototypeCatch(readableStreamReadFn(reader, sink), (err) => {
+  PromisePrototypeCatch(readableStreamReadFn(reader, sink, onError), (err) => {
     PromisePrototypeCatch(reader.cancel(err), () => {});
   });
 
@@ -1378,6 +1394,15 @@ function readableStreamThrowIfErrored(stream) {
   if (stream[_state] === "errored") {
     throw stream[_storedError];
   }
+}
+
+/**
+ * Returns the stream's stored error if it is errored, otherwise `undefined`.
+ * @param {ReadableStream} stream
+ * @returns {any}
+ */
+function getReadableStreamStoredError(stream) {
+  return stream[_state] === "errored" ? stream[_storedError] : undefined;
 }
 
 /**
@@ -2839,6 +2864,108 @@ function readableStreamHasDefaultReader(stream) {
 }
 
 /**
+ * Fast path for `readableStreamPipeTo` when both the source and the sink are
+ * backed by a `deno_core::Resource`. The entire byte pump happens in Rust via
+ * `op_pipe`, avoiding a copy of every chunk into and back out of JavaScript.
+ * Close / abort / cancel semantics are handled here to match the generic
+ * algorithm.
+ *
+ * When a `signal` is supplied it is wired to a `deno_core` cancel handle so an
+ * abort mid-pump unblocks `op_pipe` promptly; the aborted transfer then tears
+ * down both ends with `signal.reason`, honoring the prevent* flags.
+ *
+ * @param {ReadableStream} source
+ * @param {WritableStream} dest
+ * @param {{ rid: number }} srcBacking
+ * @param {{ rid: number }} dstBacking
+ * @param {boolean} preventClose
+ * @param {boolean} preventAbort
+ * @param {boolean} preventCancel
+ * @param {AbortSignal=} signal
+ */
+async function fastPipeTo(
+  source,
+  dest,
+  srcBacking,
+  dstBacking,
+  preventClose,
+  preventAbort,
+  preventCancel,
+  signal,
+) {
+  // Lock both streams for the duration of the transfer, matching the
+  // preconditions of the generic algorithm. We never issue reads/writes
+  // through these handles; the byte pump happens entirely in `op_pipe`.
+  const reader = acquireReadableStreamDefaultReader(source);
+  const writer = acquireWritableStreamDefaultWriter(dest);
+  source[_disturbed] = true;
+
+  // Wire the abort signal (if any) to a cancel handle that `op_pipe` races its
+  // reads/writes against. The caller guarantees `signal` is not already aborted.
+  let cancelRid;
+  let abortHandler;
+  if (signal !== undefined) {
+    cancelRid = core.createCancelHandle();
+    abortHandler = () => core.tryClose(cancelRid);
+    signal[add](abortHandler);
+  }
+
+  try {
+    await op_pipe(srcBacking.rid, dstBacking.rid, cancelRid);
+  } catch (e) {
+    // On abort, propagate the signal's reason (matching the generic algorithm);
+    // otherwise surface the underlying resource error. We can't tell from here
+    // whether the read (source) or write (sink) side failed, so we tear down
+    // both ends, subject to the prevent* flags.
+    const error = signal !== undefined && signal.aborted
+      ? signal.reason
+      : annotateResourceStreamError(e);
+    if (preventAbort === false) {
+      try {
+        await writableStreamDefaultWriterAbort(writer, error);
+      } catch { /* keep the original error */ }
+    }
+    if (preventCancel === false) {
+      try {
+        await readableStreamCancel(source, error);
+      } catch { /* keep the original error */ }
+    }
+    writableStreamDefaultWriterRelease(writer);
+    readableStreamDefaultReaderRelease(reader);
+    throw error;
+  } finally {
+    if (signal !== undefined) {
+      signal[remove](abortHandler);
+      // `op_pipe` consumes the handle, but close defensively in case it errored
+      // out before reaching that point. `tryClose` is a no-op if already gone.
+      core.tryClose(cancelRid);
+    }
+  }
+
+  // The source reached EOF and every chunk has been flushed to the sink. Close
+  // the sink (unless preventClose); if that rejects (e.g. the sink errors
+  // during its flush/close) we must still release both ends and cancel the
+  // source so its underlying resource is not leaked, matching the generic
+  // algorithm's `finalize`, which always releases both ends. The close error is
+  // rethrown after cleanup.
+  let closeError;
+  if (preventClose === false) {
+    try {
+      await writableStreamDefaultWriterClose(writer);
+    } catch (e) {
+      closeError = e;
+    }
+  }
+  writableStreamDefaultWriterRelease(writer);
+  // Close the source, releasing its underlying resource (honors autoClose).
+  await readableStreamCancel(source, undefined);
+  readableStreamDefaultReaderRelease(reader);
+  if (closeError !== undefined) {
+    throw closeError;
+  }
+}
+
+/**
  * @template T
  * @param {ReadableStream<T>} source
  * @param {WritableStream<T>} dest
@@ -2868,6 +2995,33 @@ function readableStreamPipeTo(
   );
   assert(!isReadableStreamLocked(source));
   assert(!isWritableStreamLocked(dest));
+
+  // Fast path: when both ends are resource-backed, offload the whole streaming
+  // operation to Rust. An `AbortSignal` is supported via a cancel handle, but
+  // an already-aborted one is left to the slow path so its synchronous teardown
+  // matches the spec exactly. Both streams must also be in their active state:
+  // an already closed or errored stream carries spec-mandated behavior (a
+  // specific stored error, or closing the destination when the source is
+  // already closed) that only the slow path below implements.
+  const srcBacking = getReadableStreamResourceBacking(source);
+  const dstBacking = getWritableStreamResourceBacking(dest);
+  if (
+    srcBacking && dstBacking &&
+    (signal === undefined || !signal.aborted) &&
+    source[_state] === "readable" && dest[_state] === "writable"
+  ) {
+    return fastPipeTo(
+      source,
+      dest,
+      srcBacking,
+      dstBacking,
+      preventClose,
+      preventAbort,
+      preventCancel,
+      signal,
+    );
+  }
+
   // We use acquireReadableStreamDefaultReader even in case of ReadableByteStreamController
   // as the spec allows us, and the only reason to use BYOBReader is to do some smart things
   // with it, but the spec does not specify what things, so to simplify we stick to DefaultReader.
@@ -3167,21 +3321,18 @@ function readableStreamReaderGenericRelease(reader) {
   const stream = reader[_stream];
   assert(stream !== undefined);
   assert(stream[_reader] === reader);
-  if (stream[_state] === "readable") {
-    reader[_closedPromise].reject(
-      new TypeError(
-        "Reader was released and can no longer be used to monitor the stream's closedness.",
-      ),
-    );
-  } else {
+  if (stream[_state] !== "readable") {
     reader[_closedPromise] = new Deferred();
-    reader[_closedPromise].reject(
-      new TypeError(
-        "Reader was released and can no longer be used to monitor the stream's closedness.",
-      ),
-    );
   }
+  // Mark the promise as handled before rejecting it. Otherwise the rejection is
+  // momentarily observable as unhandled, which trips a debugger configured to
+  // "pause on uncaught exceptions". See https://github.com/denoland/deno/issues/18513
   setPromiseIsHandledToTrue(reader[_closedPromise].promise);
+  reader[_closedPromise].reject(
+    new TypeError(
+      "Reader was released and can no longer be used to monitor the stream's closedness.",
+    ),
+  );
   stream[_controller][_releaseSteps]();
   stream[_reader] = undefined;
   reader[_stream] = undefined;
@@ -4789,13 +4940,14 @@ function writableStreamDefaultWriterEnsureClosedPromiseRejected(
   writer,
   error,
 ) {
-  if (writer[_closedPromise].state === "pending") {
-    writer[_closedPromise].reject(error);
-  } else {
+  if (writer[_closedPromise].state !== "pending") {
     writer[_closedPromise] = new Deferred();
-    writer[_closedPromise].reject(error);
   }
+  // Mark the promise as handled before rejecting it. Otherwise the rejection is
+  // momentarily observable as unhandled, which trips a debugger configured to
+  // "pause on uncaught exceptions". See https://github.com/denoland/deno/issues/18513
   setPromiseIsHandledToTrue(writer[_closedPromise].promise);
+  writer[_closedPromise].reject(error);
 }
 
 /**
@@ -4806,13 +4958,14 @@ function writableStreamDefaultWriterEnsureReadyPromiseRejected(
   writer,
   error,
 ) {
-  if (writer[_readyPromise].state === "pending") {
-    writer[_readyPromise].reject(error);
-  } else {
+  if (writer[_readyPromise].state !== "pending") {
     writer[_readyPromise] = new Deferred();
-    writer[_readyPromise].reject(error);
   }
+  // Mark the promise as handled before rejecting it. Otherwise the rejection is
+  // momentarily observable as unhandled, which trips a debugger configured to
+  // "pause on uncaught exceptions". See https://github.com/denoland/deno/issues/18513
   setPromiseIsHandledToTrue(writer[_readyPromise].promise);
+  writer[_readyPromise].reject(error);
 }
 
 /**
@@ -7700,6 +7853,7 @@ return {
   kNodeWebStreamsType,
   kNodeMessagingTransfer,
   // Exposed in global runtime scope
+  acquireReadableStreamDefaultReader,
   ByteLengthQueuingStrategy,
   CountQueuingStrategy,
   createProxy,
@@ -7708,6 +7862,7 @@ return {
   Deferred,
   errorReadableStream,
   getReadableStreamResourceBacking,
+  getReadableStreamStoredError,
   getWritableStreamResourceBacking,
   isReadableByteStreamController,
   isReadableStream,
@@ -7759,6 +7914,7 @@ return {
   readableStreamDefaultControllerShouldCallPull,
   ReadableStreamDefaultReader,
   readableStreamDisturb,
+  readableStreamError,
   readableStreamForRid,
   readableStreamForRidUnrefable,
   readableStreamForRidUnrefableRef,

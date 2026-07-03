@@ -873,6 +873,176 @@ async fn serve_watch_with_import_map() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/26052
+// On a watcher restart, `deno serve --parallel` used to leave the previous
+// generation of workers running (the worker threads were never signalled and
+// the main worker task was detached), so requests kept being served by the old
+// code and the process would eventually panic with an isolate mismatch.
+#[test(flaky)]
+async fn serve_watch_parallel_stops_old_workers() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("server_file_to_watch.js");
+  file_to_watch.write(
+    "export default {
+      fetch(_request) {
+        return new Response(\"v1\");
+      },
+    };",
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg("--parallel")
+    .arg("--watch")
+    .arg("--port")
+    .arg("0")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .env("DENO_JOBS", "4")
+    .piped_output()
+    .spawn()
+    .unwrap();
+
+  // If anything in the test body panics (a timeout, a failed assertion), the
+  // child must still be killed before unwinding: a leaked `deno serve --watch`
+  // child never exits on its own, and on Windows tokio reads child pipes with
+  // blocking threads, so dropping the test runtime during the unwind waits
+  // forever on a stderr read that never completes. This wedged CI for the
+  // full job timeout instead of reporting the failure.
+  let result = futures::FutureExt::catch_unwind(std::panic::AssertUnwindSafe(
+    serve_watch_parallel_stops_old_workers_inner(&t, &mut child),
+  ))
+  .await;
+  if let Err(panic) = result {
+    let _ = child.kill();
+    std::panic::resume_unwind(panic);
+  }
+
+  check_alive_then_kill(child);
+}
+
+async fn serve_watch_parallel_stops_old_workers_inner(
+  t: &TempDir,
+  child: &mut DenoChild,
+) {
+  let file_to_watch = t.path().join("server_file_to_watch.js");
+  let (_stdout_lines, mut stderr_lines) = child_lines(child);
+
+  let port_regex =
+    regex::Regex::new(r"Listening on https?:[^:]+:(\d+)/").unwrap();
+
+  let line = wait_contains("Listening on", &mut stderr_lines).await;
+  let old_port = port_regex.captures(&line).unwrap()[1].to_string();
+
+  let client = reqwest::Client::builder()
+    // disable connection pooling so we create a new connection per request
+    // which allows us to distribute requests across workers
+    .pool_max_idle_per_host(0)
+    // bound every request; reqwest has no default timeout, so without this a
+    // request to a socket that connects but never responds (e.g. a dying old
+    // worker generation's listener backlog) hangs the test forever
+    .connect_timeout(std::time::Duration::from_secs(5))
+    .timeout(std::time::Duration::from_secs(10))
+    .build()
+    .unwrap();
+
+  let body = client
+    .get(format!("http://127.0.0.1:{old_port}/"))
+    .send()
+    .await
+    .unwrap()
+    .text()
+    .await
+    .unwrap();
+  assert_eq!(body, "v1");
+
+  file_to_watch.write(
+    "export default {
+      fetch(_request) {
+        return new Response(\"v2\");
+      },
+    };",
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  let line = wait_contains("Listening on", &mut stderr_lines).await;
+  let new_port = port_regex.captures(&line).unwrap()[1].to_string();
+
+  // The old generation may keep serving the old code briefly while winding
+  // down, and with `--parallel` both generations can even share the same port
+  // (SO_REUSEPORT), so responses can interleave right after the restart.
+  // Eventually only the new code must be served; before the fix the old
+  // workers kept serving "v1" forever.
+  let start = std::time::Instant::now();
+  let mut consecutive_v2 = 0;
+  while consecutive_v2 < 20 {
+    match client
+      .get(format!("http://127.0.0.1:{new_port}/"))
+      .send()
+      .await
+    {
+      Ok(response) => {
+        match response.text().await {
+          Ok(body) if body == "v2" => consecutive_v2 += 1,
+          // Only the old or the new code may respond, nothing else.
+          Ok(body) => {
+            assert_eq!(body, "v1");
+            consecutive_v2 = 0;
+          }
+          // The connection can die mid-response during the restart.
+          Err(_) => consecutive_v2 = 0,
+        }
+      }
+      // Transient connection errors can happen mid-restart.
+      Err(_) => {
+        consecutive_v2 = 0;
+      }
+    }
+    if start.elapsed() > std::time::Duration::from_secs(30) {
+      panic!("old workers are still serving 30s after the restart");
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+  }
+
+  // If the new generation got a different port, the old generation must shut
+  // down and release the old port.
+  if new_port != old_port {
+    let start = std::time::Instant::now();
+    loop {
+      match client
+        .get(format!("http://127.0.0.1:{old_port}/"))
+        .send()
+        .await
+      {
+        // Connection error or timeout: the old workers no longer serve.
+        Err(_) => break,
+        Ok(response) => {
+          match response.text().await {
+            // Old workers may still serve the old code while winding down.
+            Ok(body) if body == "v1" => {}
+            // Seeing the new code here is fine too: on platforms without
+            // SO_REUSEPORT load balancing (e.g. Windows) every worker binds
+            // its own ephemeral port, and the OS can hand the just-released
+            // old port to a worker of the new generation. Either way the old
+            // listener is gone.
+            Ok(body) if body == "v2" => break,
+            // Only the old or the new code may respond, nothing else.
+            Ok(body) => panic!("unexpected response body: {body}"),
+            // The connection can die mid-response while the old generation
+            // winds down.
+            Err(_) => {}
+          }
+        }
+      }
+      if start.elapsed() > std::time::Duration::from_secs(30) {
+        panic!("old workers are still serving 30s after the restart");
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+  }
+}
+
 // Regression test for https://github.com/denoland/deno/issues/30046
 // `deno serve` used to ignore `--watch-exclude` entirely, so writing to an
 // excluded file that's part of the module graph would trigger a restart.
@@ -1470,7 +1640,7 @@ async fn test_watch_doc() {
   "#,
   );
 
-  let file_regex = lazy_regex::lazy_regex!(r"Check [^\n]*foo\.ts\$3-6\.ts");
+  let file_regex = lazy_regex::lazy_regex!(r"Check [^\n]*foo\.ts#3-6\.ts");
   assert!(file_regex.is_match(&skip_restarting_line(&mut stderr_lines).await),);
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
@@ -1483,7 +1653,7 @@ async fn test_watch_doc() {
   assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "          ~~~");
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    format!("    at {foo_file_url}$3-6.ts:3:11")
+    format!("    at {foo_file_url}#3-6.ts:3:11")
   );
   wait_contains("Test failed", &mut stderr_lines).await;
 
@@ -1506,7 +1676,7 @@ async fn test_watch_doc() {
   wait_contains("running 1 test from", &mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
-    &format!("{foo_file_url}$3-8.ts ... FAILED")
+    &format!("{foo_file_url}#3-8.ts ... FAILED")
   );
   wait_contains("ERRORS", &mut stdout_lines).await;
   wait_contains(
@@ -1539,7 +1709,7 @@ async fn test_watch_doc() {
 
   wait_contains("running 1 test from", &mut stdout_lines).await;
 
-  let file_regex = lazy_regex::lazy_regex!(r"[^\n]*foo\.ts\$3-8\.ts");
+  let file_regex = lazy_regex::lazy_regex!(r"[^\n]*foo\.ts#3-8\.ts");
   assert!(file_regex.is_match(&next_line(&mut stdout_lines).await.unwrap()));
   wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
 
@@ -1907,6 +2077,188 @@ async fn run_watch_process_exit_on_restart() {
   check_alive_then_kill(child);
 }
 
+/// Wait, in either order, for the watcher to both report the requested exit
+/// code and start watching `file_name`.
+///
+/// The "Process finished with exit code N" line (printed by the watcher when
+/// the run ends) and the "Watching paths" line (emitted asynchronously by the
+/// watcher thread) race on stderr, so a fixed-order wait is flaky. Waiting for
+/// both before touching files ensures the exit code was surfaced and the
+/// watcher is ready, so a subsequent edit is not missed.
+async fn wait_for_exit_code_and_watcher<R>(
+  exit_code: i32,
+  file_name: &str,
+  stderr_lines: &mut LoggingLines<R>,
+) where
+  R: tokio::io::AsyncBufRead + Unpin,
+{
+  let finished = format!("Process finished with exit code {exit_code}");
+  let saw_finished = std::cell::Cell::new(false);
+  let saw_watching = std::cell::Cell::new(false);
+  let result = tokio::time::timeout(
+    tokio::time::Duration::from_secs(60),
+    wait_for(
+      |line| {
+        if line.contains(finished.as_str()) {
+          saw_finished.set(true);
+        }
+        if line.contains("Watching paths") && line.contains(file_name) {
+          saw_watching.set(true);
+        }
+        saw_finished.get() && saw_watching.get()
+      },
+      stderr_lines,
+    ),
+  )
+  .await;
+  match result {
+    Ok(Some(_)) => {}
+    Ok(None) => panic!(
+      "output ended before the watcher reported exit code {exit_code} and started watching \"{file_name}\""
+    ),
+    Err(_) => panic!(
+      "watcher did not report exit code {exit_code} and start watching \"{file_name}\" within 60 seconds"
+    ),
+  }
+}
+
+/// Shared body for the `Deno.exit()` / `process.exit()` under-watch tests: the
+/// exit call ends the current run with the requested code, the `unload` event
+/// still fires, code after the exit call does not run, and the watcher stays
+/// alive and restarts on the next file change.
+/// See https://github.com/denoland/deno/issues/7590.
+async fn run_watch_exit_keeps_watcher_alive(watch_flag: &str, exit_call: &str) {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(format!(
+    r#"
+      import process from "node:process";
+      globalThis.addEventListener("unload", () => {{
+        console.log("unload event fired");
+      }});
+      console.log("started");
+      {exit_call};
+      console.log("not reached");
+    "#
+  ));
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg(watch_flag)
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("started", &mut stdout_lines).await;
+  // The exit call still dispatches the `unload` event, and code after it does
+  // not run.
+  wait_contains("unload event fired", &mut stdout_lines).await;
+  // The watcher must survive the exit instead of terminating the process, and
+  // the requested exit code is surfaced in the finished message.
+  wait_for_exit_code_and_watcher(42, "file_to_watch.js", &mut stderr_lines)
+    .await;
+
+  // Editing the file restarts the run, proving the watcher is still alive.
+  file_to_watch.write("console.log('restarted');");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("restarted", &mut stdout_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Test that a script calling `Deno.exit()` under `--watch` ends the current
+/// run without killing the watcher, which keeps watching and restarts the
+/// script on the next file change. See https://github.com/denoland/deno/issues/7590.
+#[test(flaky)]
+async fn run_watch_deno_exit() {
+  run_watch_exit_keeps_watcher_alive("--watch", "Deno.exit(42)").await;
+}
+
+/// Like [`run_watch_deno_exit`], but using `process.exit()` from `node:process`,
+/// which routes through the same `op_exit` chokepoint.
+#[test(flaky)]
+async fn run_watch_process_exit() {
+  run_watch_exit_keeps_watcher_alive("--watch", "process.exit(42)").await;
+}
+
+/// Like [`run_watch_deno_exit`], but for HMR mode (`--watch-hmr`), which runs
+/// through `worker.run()` rather than `run_for_watcher`. A script calling
+/// `Deno.exit()` must still keep the watcher alive. See
+/// https://github.com/denoland/deno/issues/7590.
+#[test(flaky)]
+async fn run_watch_hmr_deno_exit() {
+  run_watch_exit_keeps_watcher_alive("--watch-hmr", "Deno.exit(42)").await;
+}
+
+/// Test that a served module calling `Deno.exit()` under `deno serve --watch`
+/// ends the current run without killing the watcher, which keeps watching and
+/// restarts on the next file change. `deno serve --watch` shares the same exit
+/// handling as `deno run --watch`. See https://github.com/denoland/deno/issues/7590.
+#[test(flaky)]
+async fn serve_watch_deno_exit() {
+  let t = TempDir::new();
+  let main_file_to_watch = t.path().join("main_file_to_watch.js");
+  main_file_to_watch.write(
+    r#"
+      console.log("started");
+      Deno.exit(42);
+      export default {
+        fetch(_request) {
+          return new Response("not reached");
+        },
+      };
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg(&main_file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("started", &mut stdout_lines).await;
+  // The watcher must survive `Deno.exit()` instead of terminating the process,
+  // and the requested exit code is surfaced in the finished message.
+  wait_for_exit_code_and_watcher(
+    42,
+    "main_file_to_watch.js",
+    &mut stderr_lines,
+  )
+  .await;
+
+  // Editing the file restarts the run with a working server, proving the
+  // watcher is still alive.
+  main_file_to_watch.write(
+    r#"
+      export default {
+        fetch(_request) {
+          return new Response("ok");
+        },
+      };
+    "#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
 /// Test that SIGTERM is dispatched to JS signal handlers on watch restart,
 /// giving the process a chance to clean up before restarting.
 #[test(flaky)]
@@ -2227,6 +2579,7 @@ async fn test_watch_serve_unix_socket() {
     .arg("--watch")
     .arg("--allow-read")
     .arg("--allow-write")
+    .arg("--allow-net")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)

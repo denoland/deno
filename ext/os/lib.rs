@@ -70,6 +70,20 @@ impl OpExitCallbacks {
   }
 }
 
+/// Holds the main isolate's handle so that `op_exit` (i.e. `Deno.exit()`) can
+/// terminate the current isolate instead of the whole process. Installed by
+/// `deno run --watch` / `deno serve --watch` so a script calling `Deno.exit()`
+/// ends the current run without killing the file watcher. See issue #7590.
+pub struct WatcherExitHandle(pub v8::IsolateHandle);
+
+/// Marker set by `op_exit` when a [`WatcherExitHandle`] is present, recording
+/// that the script called `Deno.exit()`. The watcher reads this after the run
+/// to confirm the V8 termination it observes was caused by `Deno.exit()` rather
+/// than another error; the requested exit code is read separately from the
+/// worker's `ExitCode` (set by `Deno.exit()` before `op_exit` runs).
+#[derive(Clone, Copy, Debug)]
+pub struct WatcherExited;
+
 deno_core::extension!(
   deno_os,
   ops = [
@@ -352,6 +366,23 @@ fn op_get_exit_code(state: &mut OpState) -> i32 {
 
 #[op2(fast)]
 fn op_exit(state: &mut OpState) {
+  // Under `deno run --watch`, terminate the current V8 isolate instead of
+  // exiting the process so the file watcher survives and can restart the
+  // script on the next file change. See issue #7590.
+  //
+  // We intentionally return before running `OpExitCallbacks` here: those flush
+  // coverage/profiler data and notify the inspector as the process is about to
+  // disappear. Under a watcher the process keeps running, so that teardown is
+  // not wanted; the watcher run paths stop the coverage collector and profiler
+  // themselves after the run completes.
+  if let Some(handle) =
+    state.try_borrow::<WatcherExitHandle>().map(|h| h.0.clone())
+  {
+    state.put(WatcherExited);
+    handle.terminate_execution();
+    return;
+  }
+
   if let Some(cbs) = state.try_borrow_mut::<OpExitCallbacks>() {
     cbs.run();
   }

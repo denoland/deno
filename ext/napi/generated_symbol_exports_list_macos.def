@@ -120,6 +120,7 @@ _napi_remove_wrap
 _napi_delete_property
 _napi_instanceof
 _napi_create_buffer_copy
+_node_api_create_buffer_from_arraybuffer
 _napi_delete_element
 _napi_object_seal
 _napi_queue_async_work
@@ -203,3 +204,9 @@ _uv_sem_destroy
 _uv_sem_post
 _uv_sem_wait
 _uv_sem_trywait
+_uv_cond_init
+_uv_cond_destroy
+_uv_cond_signal
+_uv_cond_broadcast
+_uv_cond_wait
+_uv_cond_timedwait

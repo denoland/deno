@@ -134,6 +134,9 @@ declare interface WorkerNavigator {
 
   /** Returns an array of strings representing the languages known to the user. */
   readonly languages: string[];
+
+  /** Returns a {@linkcode NavigatorUAData} object with information about the runtime's user agent. */
+  readonly userAgentData: NavigatorUAData;
 }
 
 /**

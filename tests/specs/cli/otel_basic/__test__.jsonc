@@ -31,6 +31,13 @@
       "args": "run -A main.ts metric.ts",
       "output": "metric.out"
     },
+    "metric_zero_interval": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "0"
+      },
+      "args": "run -A main.ts metric_zero_interval.ts",
+      "output": "metric_zero_interval.out"
+    },
     "fetch": {
       "args": "run -A main.ts fetch.ts",
       "output": "fetch.out"

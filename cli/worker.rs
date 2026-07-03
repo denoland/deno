@@ -24,6 +24,8 @@ use deno_runtime::coverage::CoverageCollector;
 use deno_runtime::cpu_prof_filename;
 use deno_runtime::cpu_profiler::CpuProfiler;
 use deno_runtime::deno_os::OpExitCallbacks;
+use deno_runtime::deno_os::WatcherExitHandle;
+use deno_runtime::deno_os::WatcherExited;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
@@ -133,6 +135,97 @@ impl CliMainWorker {
     // WARNING: Remember to update cli/lib/worker.rs to align with
     // changes made here so that they affect deno_compile as well.
 
+    // Under `deno run --watch-hmr` / `deno serve --watch`, install the isolate
+    // handle so a script calling `Deno.exit()` terminates this isolate instead
+    // of the whole process, allowing the file watcher to survive and restart on
+    // the next change. The regular `--watch` path uses `run_for_watcher`, which
+    // installs it separately. See issue #7590.
+    let under_watcher = self.shared.maybe_file_watcher_communicator.is_some();
+    if under_watcher {
+      self.install_watcher_exit_handle();
+    }
+
+    // Like Node.js, allow activating the inspector on an already running
+    // process by sending it SIGUSR1.
+    #[cfg(unix)]
+    self.spawn_sigusr1_inspector_listener();
+
+    let mut result = self
+      .run_to_completion(&mut maybe_hmr_runner, has_coverage)
+      .await;
+
+    // If the script called `Deno.exit()` under a watcher, `op_exit` terminated
+    // the isolate instead of the process. Treat it as a normal end of run:
+    // clear V8's termination flag so the worker can be dropped cleanly. The
+    // exit code recorded by `Deno.exit()` is reported below. See issue #7590.
+    if result.is_err() && under_watcher && self.exited_via_watcher() {
+      self.cancel_terminate_execution();
+      result = Ok(());
+    }
+
+    if let Some(mut coverage_collector) = coverage_cell.borrow_mut().take() {
+      coverage_collector.stop_collecting()?;
+    }
+    if let Some(mut cpu_profiler) = profiler_cell.borrow_mut().take() {
+      cpu_profiler.stop_profiling()?;
+    }
+    if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
+      hmr_runner.stop();
+    }
+
+    result?;
+    Ok(self.worker.exit_code())
+  }
+
+  /// Starts listening for SIGUSR1 and activates the inspector server when
+  /// the signal is received, mirroring Node.js behavior. Listening starts
+  /// after a short grace period so that short-lived programs don't pay the
+  /// cost of installing a process-wide signal handler.
+  #[cfg(unix)]
+  fn spawn_sigusr1_inspector_listener(&mut self) {
+    use deno_runtime::deno_inspector_server::activate_default_inspector_server;
+
+    const GRACE_PERIOD: std::time::Duration =
+      std::time::Duration::from_millis(500);
+
+    // Hold only a `Weak` reference to the inspector: the runtime asserts on
+    // teardown that it is the sole owner, so this long-lived task must not keep
+    // it alive. We upgrade to a strong reference only while handling a signal.
+    let inspector =
+      std::rc::Rc::downgrade(&self.worker.js_runtime().inspector());
+    let op_state = self.worker.js_runtime().op_state();
+    let main_module = self.worker.main_module().to_string();
+
+    deno_core::unsync::spawn(async move {
+      tokio::time::sleep(GRACE_PERIOD).await;
+      let Ok(mut sigusr1) = deno_signals::signal_stream(libc::SIGUSR1) else {
+        return;
+      };
+      while sigusr1.recv().await.is_some() {
+        // The runtime is gone (the program finished); stop listening.
+        let Some(inspector) = inspector.upgrade() else {
+          return;
+        };
+        if let Some(url) = activate_default_inspector_server(
+          deno_lib::version::DENO_VERSION_INFO.user_agent,
+          main_module.clone(),
+          inspector,
+          false,
+        ) {
+          op_state.borrow_mut().put(url);
+        }
+      }
+    });
+  }
+
+  /// Runs the main module to completion: preload + main module, lifecycle
+  /// events, and the event loop (including the HMR loop when `maybe_hmr_runner`
+  /// is set).
+  async fn run_to_completion(
+    &mut self,
+    maybe_hmr_runner: &mut Option<HmrRunner>,
+    has_coverage: bool,
+  ) -> Result<(), CoreError> {
     log::debug!("main_module {}", self.worker.main_module());
 
     // Run preload modules first if they were defined
@@ -181,20 +274,15 @@ impl CliMainWorker {
     self.worker.dispatch_process_exit_event()?;
     self.worker.run_napi_ref_finalizers();
 
-    if let Some(mut coverage_collector) = coverage_cell.borrow_mut().take() {
-      coverage_collector.stop_collecting()?;
-    }
-    if let Some(mut cpu_profiler) = profiler_cell.borrow_mut().take() {
-      cpu_profiler.stop_profiling()?;
-    }
-    if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
-      hmr_runner.stop();
-    }
-
-    Ok(self.worker.exit_code())
+    Ok(())
   }
 
-  pub async fn run_for_watcher(self) -> Result<(), CoreError> {
+  pub async fn run_for_watcher(mut self) -> Result<i32, CoreError> {
+    // Install the isolate handle so that a script calling `Deno.exit()`
+    // terminates this isolate instead of the whole process, allowing the file
+    // watcher to survive and restart on the next change. See issue #7590.
+    self.install_watcher_exit_handle();
+
     /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
     /// state of any pending events and emitting accordingly on drop in the case of a future
     /// cancellation.
@@ -261,7 +349,20 @@ impl CliMainWorker {
     }
 
     let mut executor = FileWatcherModuleExecutor::new(self);
-    executor.execute().await
+    let result = executor.execute().await;
+
+    // If the script called `Deno.exit()`, `op_exit` terminated the isolate
+    // instead of the process. Treat it as a normal end of run: clear V8's
+    // termination flag so the worker can be dropped cleanly, and report the
+    // requested exit code rather than propagating the termination as an error.
+    // The watcher then waits for the next file change. See issue #7590.
+    if executor.inner.exited_via_watcher() {
+      executor.inner.cancel_terminate_execution();
+      return Ok(executor.inner.worker.exit_code());
+    }
+
+    result?;
+    Ok(executor.inner.worker.exit_code())
   }
 
   #[inline]
@@ -299,6 +400,26 @@ impl CliMainWorker {
       .js_runtime()
       .v8_isolate()
       .cancel_terminate_execution();
+  }
+
+  /// Install the isolate handle so that a script calling `Deno.exit()`
+  /// terminates this isolate instead of the whole process. Used by the file
+  /// watcher paths (`deno run --watch[-hmr]`, `deno serve --watch`) so a script
+  /// calling `Deno.exit()` ends the current run without killing the watcher.
+  /// See issue #7590.
+  fn install_watcher_exit_handle(&mut self) {
+    let isolate_handle = self.v8_isolate_handle();
+    self
+      .op_state()
+      .borrow_mut()
+      .put(WatcherExitHandle(isolate_handle));
+  }
+
+  /// Whether the current run ended because the script called `Deno.exit()` while
+  /// a [`WatcherExitHandle`] was installed, i.e. `op_exit` terminated the
+  /// isolate instead of the process. See [`install_watcher_exit_handle`].
+  fn exited_via_watcher(&mut self) -> bool {
+    self.op_state().borrow().has::<WatcherExited>()
   }
 
   pub fn maybe_setup_hmr_runner(&mut self) -> Option<HmrRunner> {
@@ -559,6 +680,7 @@ impl CliMainWorkerFactory {
       }
       test_file!(
         "40_test_common.js",
+        "40_test_snapshot.js",
         "40_test.js",
         "40_bench.js",
         "40_jupyter.js",
@@ -624,7 +746,8 @@ mod tests {
           permission_desc_parser,
           Permissions::none_without_prompt(),
         ),
-        blob_store: Default::default(),
+        blob_store: Arc::new(deno_runtime::deno_web::BlobStore::default())
+          as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
         broadcast_channel: Default::default(),
         feature_checker: Default::default(),
         node_services: Default::default(),

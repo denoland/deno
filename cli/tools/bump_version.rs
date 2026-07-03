@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Arc;
 
 use deno_config::workspace::JsrPackageConfig;
@@ -24,6 +23,7 @@ use crate::args::Flags;
 use crate::args::VersionFlags;
 use crate::args::VersionIncrement;
 use crate::factory::CliFactory;
+use crate::util::git::run_git;
 
 struct ConfigUpdater {
   cst: CstRootNode,
@@ -947,22 +947,6 @@ fn apply_conventional_bump(
 // ---------------------------------------------------------------------------
 // Git
 // ---------------------------------------------------------------------------
-
-fn run_git(cwd: &Path, args: &[&str]) -> Result<String, AnyError> {
-  let output = Command::new("git").current_dir(cwd).args(args).output();
-  let output = match output {
-    Ok(o) => o,
-    Err(e) => bail!("Failed to run git {:?}: {}", args, e),
-  };
-  if !output.status.success() {
-    bail!(
-      "git {:?} failed: {}",
-      args,
-      String::from_utf8_lossy(&output.stderr)
-    );
-  }
-  Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
 
 /// Read the `"version"` field from a deno.json at a given git ref.
 /// Returns `None` if the file doesn't exist at that ref or has no version.

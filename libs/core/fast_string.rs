@@ -47,6 +47,29 @@ impl FastStaticString {
     v8::String::create_external_onebyte_const(s)
   }
 
+  /// Create an external one-byte string resource for runtime setup sources.
+  ///
+  /// # Safety
+  ///
+  /// In release builds, `s` must contain only ASCII data and must not exceed
+  /// `v8::String::kMaxLength`.
+  #[doc(hidden)]
+  #[inline(always)]
+  pub unsafe fn create_external_onebyte_const_unchecked_in_release(
+    s: &'static [u8],
+  ) -> v8::OneByteConst {
+    #[cfg(debug_assertions)]
+    {
+      v8::String::create_external_onebyte_const(s)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+      // SAFETY: The caller guarantees that `s` is valid ASCII and within V8's
+      // maximum string length. Debug builds use the checked constructor above.
+      unsafe { v8::String::create_external_onebyte_const_unchecked(s) }
+    }
+  }
+
   pub fn v8_string<'s, 'i>(
     &self,
     scope: &mut v8::PinScope<'s, 'i>,
