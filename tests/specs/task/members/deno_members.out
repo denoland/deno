@@ -1,0 +1,6 @@
+[UNORDERED_START]
+Task dev (@scope/bar) echo '@scope/bar'
+Task dev (@scope/foo) echo '@scope/foo'
+[@scope/bar#dev] @scope/bar
+[@scope/foo#dev] @scope/foo
+[UNORDERED_END]
