@@ -183,9 +183,7 @@ impl CliMainWorker {
   /// cost of installing a process-wide signal handler.
   #[cfg(unix)]
   fn spawn_sigusr1_inspector_listener(&mut self) {
-    use deno_runtime::deno_inspector_server::InspectPublishUid;
-    use deno_runtime::deno_inspector_server::create_inspector_server;
-    use deno_runtime::deno_inspector_server::get_inspector_server;
+    use deno_runtime::deno_inspector_server::activate_default_inspector_server;
 
     const GRACE_PERIOD: std::time::Duration =
       std::time::Duration::from_millis(500);
@@ -208,26 +206,13 @@ impl CliMainWorker {
         let Some(inspector) = inspector.upgrade() else {
           return;
         };
-        // No-op when the inspector server is already running (an
-        // `--inspect*` flag, `node:inspector`'s `open()`, or a previous
-        // SIGUSR1).
-        if get_inspector_server().is_some() {
-          continue;
-        }
-        let host = std::net::SocketAddr::from(([127, 0, 0, 1], 9229));
-        match create_inspector_server(
-          host,
+        if let Some(url) = activate_default_inspector_server(
           deno_lib::version::DENO_VERSION_INFO.user_agent,
-          InspectPublishUid::default(),
+          main_module.clone(),
+          inspector,
+          false,
         ) {
-          Ok(server) => {
-            let url =
-              server.register_inspector(main_module.clone(), inspector, false);
-            op_state.borrow_mut().put(url);
-          }
-          Err(err) => {
-            log::error!("Failed to start inspector server: {}", err);
-          }
+          op_state.borrow_mut().put(url);
         }
       }
     });
