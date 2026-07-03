@@ -1158,7 +1158,7 @@ async fn spawn_framework_dev_server(
   // "Local:   http://localhost:5173/"
   // The regex captures it.
   let url_re =
-    regex::Regex::new(r"Local:\s+(https?://[^\s/]+)").expect("valid regex");
+    regex::Regex::new(r"Local:\s+(https?://\S+)").expect("valid regex");
 
   let mut child = tokio::process::Command::new(&cmd_args[0])
     .args(&cmd_args[1..])
