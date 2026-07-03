@@ -275,11 +275,7 @@ impl OffscreenCanvasRenderingContext2D {
     let op = state.global_composite_operation;
     let global_alpha = state.global_alpha;
     let shadow = Self::has_shadow(&state);
-    let shadow_brush = if shadow {
-      Some(Self::shadow_brush(&state))
-    } else {
-      None
-    };
+    let shadow_color = state.shadow_color_rgba;
     let shadow_xform = if shadow {
       Some(Self::shadow_transform(&state, state.transform))
     } else {
@@ -338,55 +334,60 @@ impl OffscreenCanvasRenderingContext2D {
       canvas_w,
       canvas_h,
     );
-    if let (Some(sb), Some(st)) = (&shadow_brush, &shadow_xform) {
-      match &mut *drawing {
-        DrawingBackend::Vello(scene) => {
-          for line in layout.lines() {
-            for item in line.items() {
-              let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
-                continue;
-              };
-              let font = peniko::FontData::clone(glyph_run.run().font());
-              let font_size = glyph_run.run().font_size();
-              let glyphs =
-                glyph_run.positioned_glyphs().map(|g| vello::Glyph {
-                  id: g.id,
-                  x: draw_x + g.x * x_scale,
-                  y: baseline_y as f32 + g.y - layout_baseline,
-                });
-              scene
-                .draw_glyphs(&font)
-                .font_size(font_size)
-                .transform(*st)
-                .brush(sb)
-                .draw(peniko::Fill::NonZero, glyphs);
-            }
-          }
-        }
-        DrawingBackend::VelloCpu(ctx, resources) => {
-          for line in layout.lines() {
-            for item in line.items() {
-              let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
-                continue;
-              };
-              let font = peniko::FontData::clone(glyph_run.run().font());
-              let font_size = glyph_run.run().font_size();
-              Self::apply_cpu_paint(ctx, sb.clone(), None);
-              ctx.set_transform(*st);
-              ctx
-                .glyph_run(resources, &font)
-                .font_size(font_size)
-                .fill_glyphs(glyph_run.positioned_glyphs().map(|g| {
-                  vello_cpu::Glyph {
+    if let Some(st) = shadow_xform {
+      Self::draw_shadow(&mut drawing, canvas_w, canvas_h, shadow_color, |d| {
+        match d {
+          DrawingBackend::Vello(scene) => {
+            for line in layout.lines() {
+              for item in line.items() {
+                let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+                  continue;
+                };
+                let font = peniko::FontData::clone(glyph_run.run().font());
+                let font_size = glyph_run.run().font_size();
+                let glyphs =
+                  glyph_run.positioned_glyphs().map(|g| vello::Glyph {
                     id: g.id,
                     x: draw_x + g.x * x_scale,
                     y: baseline_y as f32 + g.y - layout_baseline,
-                  }
-                }));
+                  });
+                let mut glyph_draw = scene
+                  .draw_glyphs(&font)
+                  .font_size(font_size)
+                  .transform(st)
+                  .brush(&brush);
+                if let Some(bt) = brush_transform {
+                  glyph_draw = glyph_draw.brush_transform(Some(bt));
+                }
+                glyph_draw.draw(peniko::Fill::NonZero, glyphs);
+              }
+            }
+          }
+          DrawingBackend::VelloCpu(ctx, resources) => {
+            for line in layout.lines() {
+              for item in line.items() {
+                let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+                  continue;
+                };
+                let font = peniko::FontData::clone(glyph_run.run().font());
+                let font_size = glyph_run.run().font_size();
+                Self::apply_cpu_paint(ctx, brush.clone(), brush_transform);
+                ctx.set_transform(st);
+                ctx
+                  .glyph_run(resources, &font)
+                  .font_size(font_size)
+                  .fill_glyphs(glyph_run.positioned_glyphs().map(|g| {
+                    vello_cpu::Glyph {
+                      id: g.id,
+                      x: draw_x + g.x * x_scale,
+                      y: baseline_y as f32 + g.y - layout_baseline,
+                    }
+                  }));
+              }
             }
           }
         }
-      }
+      });
       // Per spec, the shadow is composited first, then the source text is
       // composited on top as a separate step.
       if has_layer {
@@ -689,11 +690,7 @@ impl OffscreenCanvasRenderingContext2D {
     let op = state.global_composite_operation;
     let alpha = state.global_alpha;
     let shadow = Self::has_shadow(&state);
-    let shadow_brush = if shadow {
-      Some(Self::shadow_brush(&state))
-    } else {
-      None
-    };
+    let shadow_color = state.shadow_color_rgba;
     let shadow_xform = if shadow {
       Some(Self::shadow_transform(&state, transform))
     } else {
@@ -712,8 +709,10 @@ impl OffscreenCanvasRenderingContext2D {
     let mut drawing = self.drawing.borrow_mut();
     let has_layer =
       Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
-    if let (Some(sb), Some(st)) = (shadow_brush, shadow_xform) {
-      Self::fill_on(&mut drawing, &path, fill, st, sb, None);
+    if let Some(st) = shadow_xform {
+      Self::draw_shadow(&mut drawing, width, height, shadow_color, |d| {
+        Self::fill_on(d, &path, fill, st, brush.clone(), brush_transform);
+      });
       // Per spec, the shadow is composited first, then the source shape is
       // composited on top as a separate step.
       if has_layer {
@@ -741,11 +740,7 @@ impl OffscreenCanvasRenderingContext2D {
     let op = state.global_composite_operation;
     let alpha = state.global_alpha;
     let shadow = Self::has_shadow(&state);
-    let shadow_brush = if shadow {
-      Some(Self::shadow_brush(&state))
-    } else {
-      None
-    };
+    let shadow_color = state.shadow_color_rgba;
     let shadow_xform = if shadow {
       Some(Self::shadow_transform(&state, transform))
     } else {
@@ -766,8 +761,10 @@ impl OffscreenCanvasRenderingContext2D {
     let mut drawing = self.drawing.borrow_mut();
     let has_layer =
       Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
-    if let (Some(sb), Some(st)) = (shadow_brush, shadow_xform) {
-      Self::stroke_on(&mut drawing, &path, &stroke, st, sb, None);
+    if let Some(st) = shadow_xform {
+      Self::draw_shadow(&mut drawing, width, height, shadow_color, |d| {
+        Self::stroke_on(d, &path, &stroke, st, brush.clone(), brush_transform);
+      });
       // Per spec, the shadow is composited first, then the source shape is
       // composited on top as a separate step.
       if has_layer {
@@ -938,7 +935,26 @@ impl OffscreenCanvasRenderingContext2D {
     if op == GlobalCompositeOperation::SourceOver && alpha == 1.0 {
       return false;
     }
-    let blend = op.to_blend_mode();
+    Self::push_full_canvas_layer(
+      drawing,
+      op.to_blend_mode(),
+      alpha,
+      width,
+      height,
+    );
+    true
+  }
+
+  /// Unconditionally pushes a full-canvas-rect compositing layer with the
+  /// given blend mode/alpha (unlike push_compositing_layer, which skips
+  /// pushing anything for the common source-over/alpha=1 case).
+  fn push_full_canvas_layer(
+    drawing: &mut DrawingBackend,
+    blend: peniko::BlendMode,
+    alpha: f32,
+    width: u32,
+    height: u32,
+  ) {
     match drawing {
       DrawingBackend::Vello(scene) => {
         let clip = kurbo::Rect::new(0.0, 0.0, width as f64, height as f64);
@@ -954,7 +970,6 @@ impl OffscreenCanvasRenderingContext2D {
         ctx.push_layer(None, Some(blend), Some(alpha), None, None);
       }
     }
-    true
   }
 
   fn pop_compositing_layer(drawing: &mut DrawingBackend) {
@@ -962,6 +977,47 @@ impl OffscreenCanvasRenderingContext2D {
       DrawingBackend::Vello(scene) => scene.pop_layer(),
       DrawingBackend::VelloCpu(ctx, _) => ctx.pop_layer(),
     }
+  }
+
+  /// Draws a shadow whose alpha follows the source content's own per-pixel
+  /// alpha, per spec (shadow alpha = source alpha * shadowColor alpha),
+  /// rather than a solid silhouette of the shape. `draw_source` renders the
+  /// real content (with its real brush/image) offset by the shadow
+  /// transform; the result is then tinted with the solid shadow color via
+  /// a SrcIn layer.
+  fn draw_shadow(
+    drawing: &mut DrawingBackend,
+    width: u32,
+    height: u32,
+    shadow_color: peniko::Color,
+    draw_source: impl FnOnce(&mut DrawingBackend),
+  ) {
+    Self::push_full_canvas_layer(
+      drawing,
+      peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcOver),
+      1.0,
+      width,
+      height,
+    );
+    draw_source(drawing);
+    Self::push_full_canvas_layer(
+      drawing,
+      peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
+      1.0,
+      width,
+      height,
+    );
+    let canvas_rect = kurbo::Rect::new(0.0, 0.0, width as f64, height as f64);
+    Self::fill_on(
+      drawing,
+      &canvas_rect,
+      peniko::Fill::NonZero,
+      kurbo::Affine::IDENTITY,
+      peniko::Brush::Solid(shadow_color),
+      None,
+    );
+    Self::pop_compositing_layer(drawing); // pop the SrcIn tint layer
+    Self::pop_compositing_layer(drawing); // pop the SrcOver isolation layer
   }
 
   /// Pushes a single clip layer with the given fill rule and transform. The
@@ -1035,10 +1091,6 @@ impl OffscreenCanvasRenderingContext2D {
       && (state.shadow_blur > 0.0
         || state.shadow_offset_x != 0.0
         || state.shadow_offset_y != 0.0)
-  }
-
-  fn shadow_brush(state: &DrawingState) -> peniko::Brush {
-    peniko::Brush::Solid(state.shadow_color_rgba)
   }
 
   fn shadow_transform(
@@ -1710,11 +1762,7 @@ impl OffscreenCanvasRenderingContext2D {
     let op = state.global_composite_operation;
     let alpha = state.global_alpha;
     let shadow = Self::has_shadow(&state);
-    let shadow_brush = if shadow {
-      Some(Self::shadow_brush(&state))
-    } else {
-      None
-    };
+    let shadow_color = state.shadow_color_rgba;
     let shadow_xform = if shadow {
       Some(Self::shadow_transform(&state, state.transform))
     } else {
@@ -1729,8 +1777,17 @@ impl OffscreenCanvasRenderingContext2D {
     let mut drawing = self.drawing.borrow_mut();
     let has_layer =
       Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
-    if let (Some(sb), Some(st)) = (shadow_brush, shadow_xform) {
-      Self::fill_on(&mut drawing, &rect, peniko::Fill::NonZero, st, sb, None);
+    if let Some(st) = shadow_xform {
+      Self::draw_shadow(&mut drawing, width, height, shadow_color, |d| {
+        Self::fill_on(
+          d,
+          &rect,
+          peniko::Fill::NonZero,
+          st,
+          brush.clone(),
+          brush_transform,
+        );
+      });
       // Per spec, the shadow is composited first, then the source shape is
       // composited on top as a separate step.
       if has_layer {
@@ -2952,11 +3009,7 @@ impl OffscreenCanvasRenderingContext2D {
     let op = ds.global_composite_operation;
     let alpha = ds.global_alpha;
     let shadow = Self::has_shadow(&ds);
-    let shadow_brush = if shadow {
-      Some(Self::shadow_brush(&ds))
-    } else {
-      None
-    };
+    let shadow_color = ds.shadow_color_rgba;
     let shadow_xform = if shadow {
       Some(Self::shadow_transform(&ds, image_transform))
     } else {
@@ -2969,8 +3022,10 @@ impl OffscreenCanvasRenderingContext2D {
     let mut drawing = self.drawing.borrow_mut();
     let has_layer =
       Self::push_compositing_layer(&mut drawing, op, alpha, width, height);
-    if let (Some(sb), Some(st)) = (shadow_brush, shadow_xform) {
-      Self::fill_on(&mut drawing, &rect, peniko::Fill::NonZero, st, sb, None);
+    if let Some(st) = shadow_xform {
+      Self::draw_shadow(&mut drawing, width, height, shadow_color, |d| {
+        Self::fill_on(d, &rect, peniko::Fill::NonZero, st, brush.clone(), None);
+      });
       // Per spec, the shadow is composited first, then the source image is
       // composited on top as a separate step.
       if has_layer {
