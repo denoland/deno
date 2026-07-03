@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "source_text_module_import_meta": {
+      "args": "run main.mjs",
+      "output": "ok initializeImportMeta\nok import.meta empty\nok no callback\nok original repro\n"
+    }
+  }
+}

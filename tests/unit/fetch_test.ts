@@ -1792,11 +1792,13 @@ Deno.test(
 Deno.test(
   { permissions: { read: true } },
   async function fetchFileDoesNotExist() {
+    const url = import.meta.resolve("./bad.json");
     await assertRejects(
       async () => {
-        await fetch(import.meta.resolve("./bad.json"));
+        await fetch(url);
       },
       TypeError,
+      `Error fetching file '${url}'`,
     );
   },
 );

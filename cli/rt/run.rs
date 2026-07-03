@@ -1360,6 +1360,9 @@ pub async fn run_with_options(
         scopes: Default::default(),
         registry_configs: Default::default(),
         min_release_age_days: None,
+        trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       });
       let npm_cache_dir = Arc::new(NpmCacheDir::new(
         &sys,
@@ -1610,6 +1613,15 @@ pub async fn run_with_options(
       // `metadata` is valid for the whole lifetime of the program, so we
       // can leak the string here.
       checker.enable_feature(feature.leak());
+    }
+    // Mirror cli/factory.rs: force-enable the unstable KV feature when
+    // DENO_KV_REQUIRES_DISTRIBUTED_DATABASE=error so Deno.openKv() is exposed
+    // and surfaces a clear "no database attached" error.
+    if std::env::var("DENO_KV_REQUIRES_DISTRIBUTED_DATABASE").as_deref()
+      == Ok("error")
+      && !checker.check("kv")
+    {
+      checker.enable_feature("kv");
     }
     checker
   });
@@ -1951,6 +1963,9 @@ fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
     scopes: Default::default(),
     registry_configs: Default::default(),
     min_release_age_days: None,
+    trust_policy: Default::default(),
+    trust_policy_ignore_after_minutes: None,
+    trust_policy_exclude: Vec::new(),
   })
 }
 

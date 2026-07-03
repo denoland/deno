@@ -643,12 +643,23 @@ impl FlagsExt for Flags {
       | Compile(CompileFlags {
         source_file: script,
         ..
-      })
-      | Desktop(DesktopFlags {
-        source_file: script,
-        ..
       }) => resolve_single_folder_path(script, current_dir, |mut p| {
         if p.pop() { Some(p) } else { None }
+      })
+      .map(|p| vec![p]),
+      Desktop(DesktopFlags {
+        source_file: script,
+        ..
+      }) => resolve_single_folder_path(script, current_dir, |p| {
+        // The desktop entrypoint is commonly a directory (e.g. `deno desktop
+        // .` for framework detection), in which case the config lives in that
+        // directory itself — don't pop up to its parent. Only pop when the
+        // entrypoint is a file.
+        if p.is_dir() {
+          Some(p)
+        } else {
+          p.parent().map(|parent| parent.to_path_buf())
+        }
       })
       .map(|p| vec![p]),
       Task(TaskFlags {
@@ -788,6 +799,11 @@ static ENV_VARS: &[EnvVar] = &[
   EnvVar {
     name: "DENO_KV_PATH_PREFIX",
     description: "Set a prefix to be added to all Deno.openKv() paths.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_KV_REQUIRES_DISTRIBUTED_DATABASE",
+    description: "Require Deno.openKv() to resolve to a distributed (remote) database.\nWhen set to \"error\", Deno.openKv() is always exposed and rejects with a\nclear message unless the resolved path is remote. When set to \"warn\", a\nlocal/in-memory fallback is allowed but logs a warning. Used by Deno\nDeploy to surface a clear error when no KV database is attached.",
     example: None,
   },
   EnvVar {
@@ -2273,6 +2289,13 @@ Unless --reload is specified, this command will not re-download already cached d
             .action(ArgAction::SetTrue)
         )
         .arg(
+          Arg::new("desktop")
+            .long("desktop")
+            .help("Type-check using the type definitions for `deno desktop`")
+            .action(ArgAction::SetTrue)
+            .help_heading(DESKTOP_HEADING)
+        )
+        .arg(
           Arg::new("file")
             .num_args(1..)
             .value_hint(ValueHint::FilePath),
@@ -3675,12 +3698,12 @@ packages a project declares as dependencies, similar to <p(245)>npm ls</> / <p(2
 fn uninstall_subcommand() -> Command {
   command(
     "uninstall",
-    cstr!("Uninstalls a dependency or an executable script in the installation root's bin directory.
+    cstr!("Uninstalls dependencies or an executable script in the installation root's bin directory.
   <p(245)>deno uninstall @std/dotenv chalk</>
   <p(245)>deno uninstall --global file_server</>
 
 To change the installation root, use <c>--root</> flag:
-  <p(245)>deno uninstall --global --root /usr/local serve</>
+  <p(245)>deno uninstall --global --root /usr/local cowsay serve</>
 
 The installation root is determined, in order of precedence:
   - <p(245)>--root</> option
@@ -3702,13 +3725,12 @@ The installation root is determined, in order of precedence:
         Arg::new("global")
           .long("global")
           .short('g')
-          .help("Remove globally installed package or module")
+          .help("Remove globally installed packages or modules")
           .action(ArgAction::SetTrue),
       )
       .arg(
         Arg::new("additional-packages")
           .help("List of additional packages to remove")
-          .conflicts_with("global")
           .num_args(1..)
           .action(ArgAction::Append)
       )
@@ -6518,25 +6540,19 @@ fn remove_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   lock_args_parse(flags, matches);
-  let mut packages = matches.remove_many::<String>("packages").unwrap();
+  let packages = matches.remove_many::<String>("packages").unwrap();
 
-  // `deno remove --global <name>` is an alias for `deno uninstall --global
-  // <name>`: it removes a globally installed executable rather than a
-  // dependency from the configuration file, so route it through the same
+  // `deno remove --global <name>...` is an alias for `deno uninstall --global
+  // <name>...`: it removes globally installed executables rather than
+  // dependencies from the configuration file, so route it through the same
   // subcommand the uninstaller uses.
   if matches.get_flag("global") {
-    let name = packages.next().unwrap();
-    // A global removal targets a single executable, matching
-    // `deno uninstall --global`, so reject any extra names.
-    if packages.next().is_some() {
-      return Err(clap::Error::raw(
-        clap::error::ErrorKind::ArgumentConflict,
-        "--global only removes a single executable, but multiple packages were provided\n",
-      ));
-    }
     let root = matches.remove_one::<String>("root");
     flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags {
-      kind: UninstallKind::Global(UninstallFlagsGlobal { name, root }),
+      kind: UninstallKind::Global(UninstallFlagsGlobal {
+        packages: packages.collect(),
+        root,
+      }),
     });
     return Ok(());
   }
@@ -6778,6 +6794,9 @@ fn check_parse(
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
+  if matches.get_flag("desktop") {
+    flags.internal.is_desktop = true;
+  }
   flags.subcommand = DenoSubcommand::Check(CheckFlags {
     files,
     doc: matches.get_flag("doc"),
@@ -6936,6 +6955,7 @@ fn desktop_parse(
     backend,
     all_targets,
     identifier: None,
+    deep_links: Vec::new(),
     codesign_identity: None,
     inspect_renderer,
     compress,
@@ -7612,19 +7632,19 @@ fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   lock_args_parse(flags, matches);
   let name = matches.remove_one::<String>("name-or-package").unwrap();
+  let packages: Vec<_> = vec![name]
+    .into_iter()
+    .chain(
+      matches
+        .remove_many::<String>("additional-packages")
+        .unwrap_or_default(),
+    )
+    .collect();
 
   let kind = if matches.get_flag("global") {
     let root = matches.remove_one::<String>("root");
-    UninstallKind::Global(UninstallFlagsGlobal { name, root })
+    UninstallKind::Global(UninstallFlagsGlobal { packages, root })
   } else {
-    let packages: Vec<_> = vec![name]
-      .into_iter()
-      .chain(
-        matches
-          .remove_many::<String>("additional-packages")
-          .unwrap_or_default(),
-      )
-      .collect();
     UninstallKind::Local(RemoveFlags {
       packages,
       lockfile_only: matches.get_flag("lockfile-only"),
@@ -10670,6 +10690,27 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "check", "--desktop", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.ts"],
+          doc: false,
+          doc_only: false,
+          check_js: false,
+          watch: None,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        internal: InternalFlags {
+          is_desktop: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
@@ -12111,7 +12152,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
           kind: UninstallKind::Global(UninstallFlagsGlobal {
-            name: "file_server".to_string(),
+            packages: svec!["file_server"],
             root: None,
           }),
         }),
@@ -12132,7 +12173,29 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
           kind: UninstallKind::Global(UninstallFlagsGlobal {
-            name: "file_server".to_string(),
+            packages: svec!["file_server"],
+            root: Some("/user/foo/bar".to_string()),
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "uninstall",
+      "-g",
+      "--root",
+      "/user/foo/bar",
+      "cowsay",
+      "file_server"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Uninstall(UninstallFlags {
+          kind: UninstallKind::Global(UninstallFlagsGlobal {
+            packages: svec!["cowsay", "file_server"],
             root: Some("/user/foo/bar".to_string()),
           }),
         }),
@@ -14312,6 +14375,20 @@ mod tests {
         cwd.join("dir/b.js")
       ])
     );
+
+    // `deno desktop .` (and bare `deno desktop`) runs framework detection on
+    // the current directory, so config discovery must start in that directory
+    // rather than its parent. See issue #35653.
+    let flags = flags_from_vec(svec!["deno", "desktop", "."]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
+    let flags = flags_from_vec(svec!["deno", "desktop"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
+    // An explicit file entrypoint resolves to its containing directory.
+    let flags =
+      flags_from_vec(svec!["deno", "desktop", "sub/main.ts"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.join("sub")]));
   }
 
   #[test]
@@ -15799,7 +15876,7 @@ mod tests {
         Flags {
           subcommand: DenoSubcommand::Uninstall(UninstallFlags {
             kind: UninstallKind::Global(UninstallFlagsGlobal {
-              name: "file_server".to_string(),
+              packages: svec!["file_server"],
               root: None,
             }),
           }),
@@ -15822,7 +15899,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
           kind: UninstallKind::Global(UninstallFlagsGlobal {
-            name: "file_server".to_string(),
+            packages: svec!["file_server"],
             root: Some("/user/foo/bar".to_string()),
           }),
         }),
@@ -15830,10 +15907,22 @@ mod tests {
       }
     );
 
-    // A global removal targets a single executable; extra names are rejected.
+    // A global removal accepts multiple executables, like `deno uninstall
+    // --global`.
     let r =
       flags_from_vec(svec!["deno", "remove", "-g", "file_server", "chalk"]);
-    assert!(r.is_err());
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Uninstall(UninstallFlags {
+          kind: UninstallKind::Global(UninstallFlagsGlobal {
+            packages: svec!["file_server", "chalk"],
+            root: None,
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
 
     // `--root` requires `--global`.
     let r =
@@ -16087,6 +16176,36 @@ mod tests {
         .to_string()
         .contains("Usage: deno [OPTIONS] [COMMAND] [SCRIPT_ARG]...")
     );
+  }
+
+  #[test]
+  fn subcommands_recognized_by_node_shim() {
+    // When `deno <subcommand>` is spawned via `node:child_process`, the args
+    // are passed through unchanged only if node_shim recognizes the
+    // subcommand. Otherwise it is misinterpreted as a script for `deno run`
+    // (see #35591). This test fails if a subcommand is added to the CLI
+    // without also adding it to `DENO_SUBCOMMANDS` in `libs/node_shim/lib.rs`.
+    //
+    // Most subcommands are registered lazily via clap's `.defer(...)`, so the
+    // command must be built before they show up in `get_subcommands()`.
+    let mut root = clap_root();
+    root.build();
+    for command in root.get_subcommands() {
+      let name = command.get_name();
+      assert!(
+        node_shim::is_deno_subcommand(name),
+        "subcommand `{name}` is missing from node_shim's DENO_SUBCOMMANDS list; \
+         add it to `libs/node_shim/lib.rs` so it is passed through when spawned \
+         via node:child_process",
+      );
+      for alias in command.get_visible_aliases() {
+        assert!(
+          node_shim::is_deno_subcommand(alias),
+          "visible alias `{alias}` of subcommand `{name}` is missing from \
+           node_shim's DENO_SUBCOMMANDS list; add it to `libs/node_shim/lib.rs`",
+        );
+      }
+    }
   }
 
   #[test]

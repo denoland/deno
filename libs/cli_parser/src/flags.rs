@@ -222,6 +222,10 @@ pub struct DesktopFlags {
   /// identifier, and (eventually) the Windows AppUserModelID. When unset
   /// a synthetic `com.deno.desktop.<app-slug>` is generated.
   pub identifier: Option<String>,
+  /// Custom URL schemes (deep links) to register with the OS, e.g. `["acme"]`
+  /// for `acme://...` links. Sourced from `desktop.app.deepLinks` in
+  /// `deno.json`. Each entry is a bare scheme with no `://`.
+  pub deep_links: Vec<String>,
   /// macOS codesigning identity (e.g. `Developer ID Application: Acme,
   /// Inc. (TEAMID)`, or `-` for ad-hoc). When unset the bundle is left
   /// unsigned; the system will quarantine it on download.
@@ -457,7 +461,7 @@ pub struct JupyterFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UninstallFlagsGlobal {
-  pub name: String,
+  pub packages: Vec<String>,
   pub root: Option<String>,
 }
 

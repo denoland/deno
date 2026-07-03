@@ -24,6 +24,7 @@ import {
   op_snapshot_options,
   op_worker_close,
   op_worker_get_type,
+  op_worker_maybe_wait_for_debugger,
   op_worker_post_message,
   op_worker_post_message_raw,
   op_worker_recv_message,
@@ -342,6 +343,7 @@ async function pollForMessages() {
     }
     const data = await recvMessage;
     if (data === null) break;
+    op_worker_maybe_wait_for_debugger();
     dispatchWorkerMessage(data);
     // Drain messages already queued on the host side instead of taking the
     // async op + Promise path for each. The whole burst is processed within
@@ -359,6 +361,7 @@ async function pollForMessages() {
       // are already inside one.
       await new Promise((resolve) => queueMicrotask(() => resolve()));
       if (isClosing) break;
+      op_worker_maybe_wait_for_debugger();
       dispatchWorkerMessage(syncData);
     }
   }

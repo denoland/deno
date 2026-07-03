@@ -208,6 +208,10 @@ pub enum DesktopEvent {
   DockMenuClick { id: String },
   #[serde(rename_all = "camelCase")]
   DockReopen { has_visible_windows: bool },
+  /// A deep link (`<scheme>://...`) was opened and routed to this app, either
+  /// at launch (cold start) or while already running. Carries the full URL.
+  #[serde(rename_all = "camelCase")]
+  OpenUrl { url: String },
   #[serde(rename_all = "camelCase")]
   TrayClick { tray_id: u32 },
   #[serde(rename_all = "camelCase")]
@@ -313,7 +317,9 @@ pub trait DesktopApi: Send + Sync + 'static {
   /// `frameless` drops the title bar and standard window chrome.
   /// `no_activate` makes the window a floating, non-activating utility panel
   /// (used for tray / menu-bar popovers): it floats above normal windows and
-  /// does not steal key focus from the foreground app when shown. Both are
+  /// does not steal key focus from the foreground app when shown.
+  /// `transparent` gives the window a transparent background so the page's own
+  /// alpha composites against whatever is behind the window. These are all
   /// creation-time properties and cannot be changed afterwards.
   fn create_window(
     &self,
@@ -322,18 +328,20 @@ pub trait DesktopApi: Send + Sync + 'static {
     frameless: bool,
     no_activate: bool,
     transparent_titlebar: bool,
+    transparent: bool,
   ) -> u32;
   /// Apply creation-time flags to the pre-created initial window when it is
   /// adopted by the first `BrowserWindow`.
   ///
-  /// `frameless` / `no_activate` / `transparent_titlebar` can only be set at
-  /// OS-window construction, but the initial window is created eagerly at
-  /// startup (before user JS runs) so framework apps that never construct a
-  /// `BrowserWindow` still get a window. When the first `BrowserWindow`
-  /// requests any of these flags, the backend recreates the initial window
-  /// with them and returns the new window id (which the runtime uses for
-  /// navigation / HMR). The default implementation is a no-op returning the
-  /// original id, so backends without an eager initial window are unaffected.
+  /// `frameless` / `no_activate` / `transparent_titlebar` / `transparent` can
+  /// only be set at OS-window construction, but the initial window is created
+  /// eagerly at startup (before user JS runs) so framework apps that never
+  /// construct a `BrowserWindow` still get a window. When the first
+  /// `BrowserWindow` requests any of these flags, the backend recreates the
+  /// initial window with them and returns the new window id (which the runtime
+  /// uses for navigation / HMR). The default implementation is a no-op
+  /// returning the original id, so backends without an eager initial window are
+  /// unaffected.
   fn reinit_initial_window(
     &self,
     initial_window_id: u32,
@@ -342,6 +350,7 @@ pub trait DesktopApi: Send + Sync + 'static {
     _frameless: bool,
     _no_activate: bool,
     _transparent_titlebar: bool,
+    _transparent: bool,
   ) -> u32 {
     initial_window_id
   }
@@ -364,6 +373,13 @@ pub trait DesktopApi: Send + Sync + 'static {
 
   fn is_always_on_top(&self, window_id: u32) -> bool;
   fn set_always_on_top(&self, window_id: u32, always_on_top: bool);
+
+  /// Overall window opacity in `0.0..=1.0` (1.0 == fully opaque). Fades the
+  /// whole window uniformly (chrome included), unlike the `transparent`
+  /// creation flag which honors the page's per-pixel alpha.
+  fn get_window_opacity(&self, window_id: u32) -> f64;
+  fn set_window_opacity(&self, window_id: u32, opacity: f64);
+
   fn is_visible(&self, window_id: u32) -> bool;
   fn show(&self, window_id: u32);
   fn hide(&self, window_id: u32);
@@ -510,6 +526,12 @@ pub enum PermissionState {
 /// window; subsequent constructors create new windows.
 pub struct InitialWindowId(pub std::sync::Mutex<Option<u32>>);
 
+/// The compiled app's name (from deno.json `desktop.app.name`, falling back to
+/// the output file name). Used as the default window title so a window the app
+/// doesn't explicitly title shows the app name instead of the backend's
+/// internal default (`laufey_webview`).
+pub struct DesktopAppName(pub String);
+
 struct BrowserWindow {
   api: Arc<dyn DesktopApi>,
   window_id: u32,
@@ -567,6 +589,8 @@ impl BrowserWindow {
       .as_ref()
       .and_then(|o| o.transparent_titlebar)
       .unwrap_or(false);
+    let transparent =
+      options.as_ref().and_then(|o| o.transparent).unwrap_or(false);
 
     // Use the initial window if this is the first BrowserWindow, otherwise
     // create a new one. The initial window is created eagerly at startup with
@@ -578,7 +602,7 @@ impl BrowserWindow {
       .and_then(|iw| iw.0.lock().unwrap().take())
     {
       Some(initial_window_id)
-        if frameless || no_activate || transparent_titlebar =>
+        if frameless || no_activate || transparent_titlebar || transparent =>
       {
         api.reinit_initial_window(
           initial_window_id,
@@ -587,6 +611,7 @@ impl BrowserWindow {
           frameless,
           no_activate,
           transparent_titlebar,
+          transparent,
         )
       }
       Some(initial_window_id) => initial_window_id,
@@ -596,8 +621,20 @@ impl BrowserWindow {
         frameless,
         no_activate,
         transparent_titlebar,
+        transparent,
       ),
     };
+
+    // Default the window title to the app name when the app doesn't set one,
+    // so the window shows e.g. "MyApp" instead of the backend's internal
+    // default (`laufey_webview`). An explicit `title` option below overrides
+    // this, and a page that sets `document.title` overrides it at the OS level.
+    if options.as_ref().and_then(|o| o.title.as_ref()).is_none()
+      && let Some(name) = state.try_borrow::<DesktopAppName>()
+      && !name.0.is_empty()
+    {
+      api.set_title(window_id, &name.0);
+    }
 
     if let Some(options) = &options {
       if let Some(title) = &options.title {
@@ -616,6 +653,9 @@ impl BrowserWindow {
       }
       if let Some(always_on_top) = options.always_on_top {
         api.set_always_on_top(window_id, always_on_top);
+      }
+      if let Some(opacity) = options.opacity {
+        api.set_window_opacity(window_id, opacity);
       }
     }
 
@@ -695,6 +735,16 @@ impl BrowserWindow {
   #[fast]
   fn set_always_on_top(&self, always_on_top: bool) {
     self.api.set_always_on_top(self.window_id, always_on_top);
+  }
+
+  #[fast]
+  fn get_opacity(&self) -> f64 {
+    self.api.get_window_opacity(self.window_id)
+  }
+
+  #[fast]
+  fn set_opacity(&self, opacity: f64) {
+    self.api.set_window_opacity(self.window_id, opacity);
   }
 
   #[fast]
@@ -864,9 +914,11 @@ struct BrowserWindowOptions {
   y: Option<i32>,
   resizable: Option<bool>,
   always_on_top: Option<bool>,
+  opacity: Option<f64>,
   frameless: Option<bool>,
   no_activate: Option<bool>,
   transparent_titlebar: Option<bool>,
+  transparent: Option<bool>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
