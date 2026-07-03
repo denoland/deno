@@ -342,6 +342,7 @@ pub trait DesktopApi: Send + Sync + 'static {
   /// uses for navigation / HMR). The default implementation is a no-op
   /// returning the original id, so backends without an eager initial window are
   /// unaffected.
+  #[allow(clippy::too_many_arguments)]
   fn reinit_initial_window(
     &self,
     initial_window_id: u32,
@@ -589,8 +590,10 @@ impl BrowserWindow {
       .as_ref()
       .and_then(|o| o.transparent_titlebar)
       .unwrap_or(false);
-    let transparent =
-      options.as_ref().and_then(|o| o.transparent).unwrap_or(false);
+    let transparent = options
+      .as_ref()
+      .and_then(|o| o.transparent)
+      .unwrap_or(false);
 
     // Use the initial window if this is the first BrowserWindow, otherwise
     // create a new one. The initial window is created eagerly at startup with
