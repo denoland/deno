@@ -3444,7 +3444,6 @@
           "offscreencanvas.constructor.worker.html": true,
           "offscreencanvas.getcontext.html": {
             "expectedFailures": [
-              "Test that getContext with un-supported string throws a TypeError.",
               "Test that getContext with supported string returns correct results",
               "Test that getContext twice with different context type returns null the second time",
               "Test that webglcontext.canvas should return the original OffscreenCanvas"
@@ -3452,7 +3451,6 @@
           },
           "offscreencanvas.getcontext.worker.html": {
             "expectedFailures": [
-              "Test that getContext with un-supported string throws a TypeError.",
               "Test that getContext with supported string returns correct results",
               "Test that getContext twice with different context type returns null the second time",
               "Test that webglcontext.canvas should return the original OffscreenCanvas"
