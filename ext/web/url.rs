@@ -127,7 +127,11 @@ fn normalize_special_scheme_relative_url<'a>(
     return Cow::Borrowed(href);
   }
 
-  Cow::Owned(format!("//{}", href.trim_start_matches('/')))
+  Cow::Owned(format!(
+    "{}://{}",
+    base_url.scheme(),
+    href.trim_start_matches('/')
+  ))
 }
 
 // Keep in sync with parseSimpleSpecialUrl() in ext/web/00_url.js.
