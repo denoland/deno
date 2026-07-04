@@ -168,6 +168,17 @@ function resolvePromiseWith(value) {
   return new Promise((resolve) => resolve(value));
 }
 
+/** @type {Promise<undefined> | undefined} */
+let _resolvedPromise;
+/**
+ * Shared resolved promise for hot paths that only need a base to hang a
+ * `.then()` off of. Created lazily so it isn't baked into the snapshot.
+ * @returns {Promise<undefined>}
+ */
+function resolvedPromise() {
+  return _resolvedPromise ??= PromiseResolve(undefined);
+}
+
 /** @param {any} e */
 function rethrowAssertionErrorRejection(e) {
   if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
@@ -478,6 +489,7 @@ const _strategyHWM = Symbol("[[strategyHWM]]");
 const _strategySizeAlgorithm = Symbol("[[strategySizeAlgorithm]]");
 const _stream = Symbol("[[stream]]");
 const _transformAlgorithm = Symbol("[[transformAlgorithm]]");
+const _isIdentityTransform = Symbol("[[isIdentityTransform]]");
 const _view = Symbol("[[view]]");
 const _writable = Symbol("[[writable]]");
 const _writeAlgorithm = Symbol("[[writeAlgorithm]]");
@@ -4113,6 +4125,7 @@ function setUpTransformStreamDefaultController(
   transformAlgorithm,
   flushAlgorithm,
   cancelAlgorithm,
+  isIdentityTransform = false,
 ) {
   assert(ObjectPrototypeIsPrototypeOf(TransformStreamPrototype, stream));
   assert(stream[_controller] === undefined);
@@ -4121,6 +4134,7 @@ function setUpTransformStreamDefaultController(
   controller[_transformAlgorithm] = transformAlgorithm;
   controller[_flushAlgorithm] = flushAlgorithm;
   controller[_cancelAlgorithm] = cancelAlgorithm;
+  controller[_isIdentityTransform] = isIdentityTransform;
 }
 
 /**
@@ -4188,6 +4202,7 @@ function setUpTransformStreamDefaultControllerFromTransformer(
     transformAlgorithm,
     flushAlgorithm,
     cancelAlgorithm,
+    transformerDict.transform === undefined,
   );
 }
 
@@ -4424,6 +4439,21 @@ function transformStreamDefaultControllerPerformTransform(controller, chunk) {
   if (transformAlgorithm === undefined) {
     // Algorithms were cleared by a concurrent cancel/abort/close.
     return PromiseResolve(undefined);
+  }
+  if (controller[_isIdentityTransform] === true) {
+    // The default transformer forwards the chunk to the readable side
+    // unchanged. Enqueue directly, skipping the transformAlgorithm closure,
+    // its per-chunk resolved promise, and the rejection-wrapper promise (and
+    // with it one microtask hop on the per-chunk critical path).
+    try {
+      transformStreamDefaultControllerEnqueue(controller, chunk);
+    } catch (e) {
+      return transformPromiseWith(PromiseReject(e), undefined, (r) => {
+        transformStreamError(controller[_stream], r);
+        throw r;
+      });
+    }
+    return resolvedPromise();
   }
   const transformPromise = transformAlgorithm(chunk, controller);
   return transformPromiseWith(transformPromise, undefined, (r) => {
