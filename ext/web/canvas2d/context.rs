@@ -2106,16 +2106,25 @@ impl OffscreenCanvasRenderingContext2D {
 
   #[fast]
   #[undefined]
-  fn restore(&self) {
+  fn restore(&self) -> Result<(), Canvas2DError> {
     let mut stack = self.state_stack.borrow_mut();
-    if let Some(StateStackEntry::Save(_)) = stack.last() {
-      let current_clip_depth = self.state.borrow().clip_depth;
-      if let Some(StateStackEntry::Save(saved)) = stack.pop() {
-        let saved_clip_depth = saved.clip_depth;
-        *self.state.borrow_mut() = saved;
-        for _ in saved_clip_depth..current_clip_depth {
-          Self::pop_compositing_layer(&mut self.drawing.borrow_mut());
+    match stack.last() {
+      None => Ok(()),
+      // A beginLayer() with no matching endLayer() sits on top of the
+      // stack: restore() must not reach past it to an earlier save().
+      Some(StateStackEntry::Layer(..)) => Err(Canvas2DError::InvalidState(
+        "restore called with an unclosed layer on top of the stack".into(),
+      )),
+      Some(StateStackEntry::Save(_)) => {
+        let current_clip_depth = self.state.borrow().clip_depth;
+        if let Some(StateStackEntry::Save(saved)) = stack.pop() {
+          let saved_clip_depth = saved.clip_depth;
+          *self.state.borrow_mut() = saved;
+          for _ in saved_clip_depth..current_clip_depth {
+            Self::pop_compositing_layer(&mut self.drawing.borrow_mut());
+          }
         }
+        Ok(())
       }
     }
   }
@@ -2192,26 +2201,25 @@ impl OffscreenCanvasRenderingContext2D {
     }
 
     let mut stack = self.state_stack.borrow_mut();
-    loop {
-      match stack.pop() {
-        Some(StateStackEntry::Layer(saved_state, pushed)) => {
-          *self.state.borrow_mut() = saved_state;
-          self.layer_depth.set(depth - 1);
-          if pushed {
-            Self::pop_compositing_layer(&mut self.drawing.borrow_mut());
-          }
-          return Ok(());
-        }
-        Some(StateStackEntry::Save(_)) => {
-          continue;
-        }
-        None => {
-          return Err(Canvas2DError::InvalidState(
-            "endLayer called without matching beginLayer".into(),
-          ));
-        }
+    // A save() with no matching restore() sits on top of the stack:
+    // endLayer() must not reach past it to an earlier beginLayer().
+    match stack.last() {
+      Some(StateStackEntry::Layer(..)) => {}
+      _ => {
+        return Err(Canvas2DError::InvalidState(
+          "endLayer called without matching beginLayer".into(),
+        ));
       }
     }
+    let Some(StateStackEntry::Layer(saved_state, pushed)) = stack.pop() else {
+      unreachable!("just matched Layer above");
+    };
+    *self.state.borrow_mut() = saved_state;
+    self.layer_depth.set(depth - 1);
+    if pushed {
+      Self::pop_compositing_layer(&mut self.drawing.borrow_mut());
+    }
+    Ok(())
   }
 
   #[fast]
