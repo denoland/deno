@@ -1146,6 +1146,16 @@ fn resolve_hmr_icon_path(
   Ok(crate::util::fs::canonicalize_path(&icon_path).unwrap_or(icon_path))
 }
 
+/// Extract the local URL from a line of dev server output.
+fn parse_dev_server_url(line: &str) -> Option<String> {
+  // Vite prints `  ➜  Local:   http://localhost:5173/`
+  regex::Regex::new(r"Local:\s+(https?://\S+)")
+    .expect("regex to parse local url failed")
+    .captures(line)
+    .and_then(|c| c.get(1))
+    .map(|m| m.as_str().to_owned())
+}
+
 /// Spawns a framework HMR dev server
 async fn spawn_framework_dev_server(
   name: &str,
@@ -1154,12 +1164,6 @@ async fn spawn_framework_dev_server(
 ) -> Result<(String, tokio::process::Child), AnyError> {
   use tokio::io::AsyncBufReadExt;
   use tokio::io::BufReader;
-
-  // All supported HMR frameworks use Vite, which prints the dev server URL as:
-  // "Local:   http://localhost:5173/"
-  // The regex captures it.
-  let url_re =
-    regex::Regex::new(r"Local:\s+(https?://\S+)").expect("valid regex");
 
   let mut child = tokio::process::Command::new(&cmd_args[0])
     .args(&cmd_args[1..])
@@ -1178,8 +1182,8 @@ async fn spawn_framework_dev_server(
 
   let url = tokio::time::timeout(std::time::Duration::from_secs(15), async {
     while let Ok(Some(line)) = lines.next_line().await {
-      if let Some(m) = url_re.captures(&line).and_then(|c| c.get(1)) {
-        return Ok(m.as_str().to_owned());
+      if let Some(url) = parse_dev_server_url(&line) {
+        return Ok(url);
       }
     }
     deno_core::anyhow::bail!("dev server exited without printing a URL")
@@ -5559,6 +5563,46 @@ def456  other.zip
     assert_eq!(
       parse_sha256sum(contents, "other.zip").as_deref(),
       Some("def456")
+    );
+  }
+
+  // --- parse_dev_server_url ---
+
+  #[test]
+  fn dev_server_url_matches() {
+    assert_eq!(
+      parse_dev_server_url("  ➜  Local:   http://localhost:5173/").as_deref(),
+      Some("http://localhost:5173/")
+    );
+    assert_eq!(
+      parse_dev_server_url("  Local:   https://localhost:5173/").as_deref(),
+      Some("https://localhost:5173/")
+    );
+  }
+
+  #[test]
+  fn dev_server_url_matches_with_subpath() {
+    assert_eq!(
+      parse_dev_server_url("  Local:   http://localhost:5173/app").as_deref(),
+      Some("http://localhost:5173/app")
+    );
+    assert_eq!(
+      parse_dev_server_url("  Local:   http://192.168.1.1:5173").as_deref(),
+      Some("http://192.168.1.1:5173")
+    );
+    assert_eq!(
+      parse_dev_server_url("  Local:   https://localhost:5173/app").as_deref(),
+      Some("https://localhost:5173/app")
+    );
+  }
+
+  #[test]
+  fn dev_server_url_no_match() {
+    assert_eq!(parse_dev_server_url("Watching for file changes..."), None);
+    assert_eq!(parse_dev_server_url(""), None);
+    assert_eq!(
+      parse_dev_server_url("  Network:  http://192.168.1.1:5173/"),
+      None
     );
   }
 
