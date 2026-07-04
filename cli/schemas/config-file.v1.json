@@ -178,6 +178,13 @@
                   "description": "Icon path for Linux (.png)."
                 }
               }
+            },
+            "deepLinks": {
+              "type": "array",
+              "description": "Custom URL schemes (deep links) the app registers with the OS, e.g. [\"acme\"] to handle acme://... links. Each entry is a bare scheme with no \"://\".",
+              "items": {
+                "type": "string"
+              }
             }
           }
         },
@@ -855,7 +862,7 @@
           "default": "nextLine",
           "enum": ["maintain", "sameLine", "nextLine"]
         },
-        "jsx.forceNewLineSurroundingContent": {
+        "jsx.forceNewLinesSurroundingContent": {
           "description": "Forces newlines surrounding the content of JSX elements.",
           "default": false,
           "type": "boolean"

@@ -17,6 +17,7 @@ import process, {
   getuid,
   pid as importedPid,
   platform as importedPlatform,
+  report as importedReport,
   setegid,
   seteuid,
   setgid,
@@ -942,6 +943,71 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "process.getActiveResourcesInfo reports net handles with Node wrap names",
+  async fn() {
+    const countOf = (type: string) =>
+      process.getActiveResourcesInfo().filter((t) => t === type).length;
+
+    const beforeServer = countOf("TCPServerWrap");
+    const beforeSocket = countOf("TCPSocketWrap");
+
+    let acceptedSocket: net.Socket | undefined;
+    const server = net.createServer((socket) => {
+      acceptedSocket = socket;
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    const serverConnection = once(server, "connection");
+    const clientSocket = net.connect(
+      (server.address() as net.AddressInfo).port,
+    );
+    try {
+      await Promise.all([once(clientSocket, "connect"), serverConnection]);
+
+      assertEquals(countOf("TCPServerWrap"), beforeServer + 1);
+      // The client socket plus the server-accepted socket.
+      assertEquals(countOf("TCPSocketWrap"), beforeSocket + 2);
+    } finally {
+      clientSocket.destroy();
+      acceptedSocket?.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+});
+
+Deno.test({
+  name: "process.getActiveResourcesInfo reports fs requests as FSReqCallback",
+  async fn() {
+    const tempFile = Deno.makeTempFileSync();
+    const countOf = () =>
+      process.getActiveResourcesInfo().filter((t) => t === "FSReqCallback")
+        .length;
+    try {
+      const before = countOf();
+      const promises = Array.from(
+        { length: 5 },
+        () =>
+          new Promise<number>((resolve, reject) => {
+            fs.open(tempFile, "r", (err, fd) => {
+              if (err) reject(err);
+              else resolve(fd);
+            });
+          }),
+      );
+
+      assertEquals(countOf(), before + 5);
+
+      const fds = await Promise.all(promises);
+      for (const fd of fds) fs.closeSync(fd);
+      assertEquals(countOf(), before);
+    } finally {
+      Deno.removeSync(tempFile);
+    }
+  },
+});
+
+Deno.test({
   name: "process.hrtime",
   // TODO(kt3k): Enable this test
   ignore: true,
@@ -1389,6 +1455,21 @@ Deno.test({
       userLimits: undefined,
       sharedObjects: undefined,
     });
+  },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/35072
+Deno.test({
+  name: "named export { report } from node:process",
+  fn() {
+    // `import { report } from 'node:process'` must work as a named export
+    assert(importedReport !== undefined);
+    // The named export must be the same object reference as process.report
+    assert(importedReport === process.report);
+    assert(typeof importedReport.getReport === "function");
+    assert(typeof importedReport.writeReport === "function");
+    assert(typeof importedReport.directory === "string");
+    assert(typeof importedReport.filename === "string");
   },
 });
 

@@ -3225,34 +3225,64 @@ pub fn wrap_eval_code(source_code: &str) -> String {
   )
 }
 
-/// Deno subcommands - if the first arg is one of these, pass through unchanged
+/// Deno subcommands - if the first arg is one of these, pass through unchanged.
+/// This must be kept in sync with the subcommands registered in
+/// `cli/args/flags.rs` so that spawning e.g. `deno bundle ...` via
+/// `node:child_process` is passed through instead of being treated as a script
+/// to `deno run`. The `subcommands_recognized_by_node_shim` test in
+/// `cli/args/flags.rs` enforces this. See #35591.
 const DENO_SUBCOMMANDS: &[&str] = &[
   "add",
+  "approve-scripts",
+  "audit",
   "bench",
+  "bump-version",
+  "bundle",
   "cache",
   "check",
+  "ci",
+  "clean",
   "compile",
   "completions",
   "coverage",
+  "create",
+  "deploy",
+  "desktop",
   "doc",
   "eval",
   "fmt",
   "help",
+  "i",
   "info",
   "init",
   "install",
+  "json_reference",
+  "jupyter",
+  "link",
   "lint",
+  "list",
   "lsp",
+  "outdated",
+  "pack",
   "publish",
+  "remove",
   "repl",
   "run",
+  "sandbox",
+  "serve",
   "task",
   "tasks",
   "test",
+  "transpile",
   "types",
   "uninstall",
+  "unlink",
+  "update",
   "upgrade",
   "vendor",
+  "watch",
+  "why",
+  "x",
 ];
 
 /// Check if a string is a Deno subcommand

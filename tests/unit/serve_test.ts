@@ -3054,10 +3054,21 @@ function createServerLengthTest(name: string, testCase: TestCase) {
   });
 }
 
-// Quick and dirty way to make a readable stream from a string. Alternatively,
-// `readableStreamFromReader(file)` could be used.
+// Make a genuinely-opaque readable stream from a string, i.e. one whose total
+// length is not known ahead of time. Note: `new Response(s).body` can no longer
+// be used here -- a body stream materialized from a static string is now
+// recovered and served with a Content-Length (see `recoveredStaticStreamBody`
+// below), so it would no longer exercise the chunked path these tests target.
 function stream(s: string): ReadableStream<Uint8Array> {
-  return new Response(s).body!;
+  const bytes = new TextEncoder().encode(s);
+  return new ReadableStream({
+    pull(controller) {
+      if (bytes.byteLength > 0) {
+        controller.enqueue(bytes);
+      }
+      controller.close();
+    },
+  });
 }
 
 createServerLengthTest("fixedResponseKnown", {
@@ -3124,6 +3135,16 @@ createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
   body: stream(""),
   expectsChunked: true,
   expectsConnLen: false,
+});
+
+// A body stream that was materialized from a static string and not read (the
+// common `new Response(oldResponse.body, oldResponse)` framework pattern, e.g.
+// Hono header middleware) is recovered to its static body and served on the
+// fast path with a Content-Length, rather than being downgraded to chunked.
+createServerLengthTest("recoveredStaticStreamBody", {
+  body: new Response("foo bar baz").body!,
+  expectsChunked: false,
+  expectsConnLen: true,
 });
 
 Deno.test(

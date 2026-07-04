@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -17,6 +18,7 @@ use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::package::PackageNv;
 use parking_lot::Mutex;
+use serde_json::value::RawValue;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsHardLink;
@@ -323,6 +325,7 @@ impl<TSys: NpmCacheSys> NpmCache<TSys> {
   pub async fn load_package_info(
     &self,
     name: &str,
+    _packument_format: NpmPackumentFormat,
   ) -> Result<Option<SerializedCachedPackageInfo>, serde_json::Error> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
 
@@ -332,9 +335,16 @@ impl<TSys: NpmCacheSys> NpmCache<TSys> {
       Err(err) => return Err(serde_json::Error::io(err)),
     };
 
-    spawn_blocking(move || serde_json::from_slice(&file_bytes))
-      .await
-      .unwrap()
+    spawn_blocking(move || {
+      let (info, etag) =
+        deno_npm::registry::NpmPackageInfo::from_packument_bytes_with_etag(
+          file_bytes.into_owned(),
+        )
+        .map_err(|err| serde_json::Error::io(std::io::Error::other(err)))?;
+      Ok(Some(SerializedCachedPackageInfo { info, etag }))
+    })
+    .await
+    .unwrap()
   }
 
   pub fn save_package_info(
@@ -355,10 +365,279 @@ impl<TSys: NpmCacheSys> NpmCache<TSys> {
     Ok(())
   }
 
+  pub fn build_package_info_cache_bytes(
+    &self,
+    package_info_bytes: &[u8],
+    etag: Option<&str>,
+  ) -> Result<Vec<u8>, JsErrorBox> {
+    slim_package_info_bytes(package_info_bytes, etag)
+  }
+
+  pub fn save_package_info_bytes(
+    &self,
+    name: &str,
+    package_info_bytes: &[u8],
+  ) -> Result<(), JsErrorBox> {
+    let file_cache_path = self.get_registry_package_info_file_cache_path(name);
+    atomic_write_file_with_retries(
+      &self.sys,
+      &file_cache_path,
+      package_info_bytes,
+      0o644,
+    )
+    .map_err(JsErrorBox::from_err)?;
+    Ok(())
+  }
+
   fn get_registry_package_info_file_cache_path(&self, name: &str) -> PathBuf {
     let name_folder_path = self.package_name_folder(name);
     name_folder_path.join("registry.json")
   }
+}
+
+fn slim_package_info_bytes(
+  package_info_bytes: &[u8],
+  etag: Option<&str>,
+) -> Result<Vec<u8>, JsErrorBox> {
+  let text = std::str::from_utf8(package_info_bytes)
+    .map_err(|err| JsErrorBox::generic(err.to_string()))?;
+  let index = fast_registry_json::pluck_packument_index(text)
+    .map_err(|err| JsErrorBox::generic(format!("{err:?}")))?;
+
+  let mut output =
+    Vec::with_capacity(package_info_bytes.len().min(1024 * 1024));
+  output.push(b'{');
+  let mut first = true;
+
+  if let Some(name) = index.name {
+    write_json_property_name(&mut output, &mut first, "name")
+      .map_err(JsErrorBox::from_err)?;
+    serde_json::to_writer(&mut output, name).map_err(JsErrorBox::from_err)?;
+  }
+
+  write_json_property_name(&mut output, &mut first, "dist-tags")
+    .map_err(JsErrorBox::from_err)?;
+  write_string_map(&mut output, index.dist_tags.iter())
+    .map_err(JsErrorBox::from_err)?;
+
+  write_json_property_name(&mut output, &mut first, "versions")
+    .map_err(JsErrorBox::from_err)?;
+  output.push(b'{');
+  let mut first_version = true;
+  for (version, (start, end)) in
+    index.versions.iter().zip(index.version_ranges.iter())
+  {
+    write_json_property_name(&mut output, &mut first_version, version)
+      .map_err(JsErrorBox::from_err)?;
+    let evidence = index.trust_evidence.get(version).copied();
+    write_slim_version(
+      &mut output,
+      version,
+      &text[*start as usize..*end as usize],
+      evidence,
+    )?;
+  }
+  output.push(b'}');
+
+  write_json_property_name(&mut output, &mut first, "time")
+    .map_err(JsErrorBox::from_err)?;
+  write_string_map(&mut output, index.time.iter())
+    .map_err(JsErrorBox::from_err)?;
+
+  if let Some(etag) = etag {
+    write_json_property_name(&mut output, &mut first, "_deno.etag")
+      .map_err(JsErrorBox::from_err)?;
+    serde_json::to_writer(&mut output, etag).map_err(JsErrorBox::from_err)?;
+  }
+
+  output.push(b'}');
+  Ok(output)
+}
+
+fn write_slim_version(
+  output: &mut Vec<u8>,
+  version: &str,
+  version_json: &str,
+  evidence: Option<fast_registry_json::TrustEvidence>,
+) -> Result<(), JsErrorBox> {
+  let raw_fields =
+    serde_json::from_str::<BTreeMap<String, &RawValue>>(version_json)
+      .map_err(JsErrorBox::from_err)?;
+
+  output.push(b'{');
+  let mut first = true;
+  let mut wrote_version = false;
+  for key in [
+    "version",
+    "bin",
+    "dependencies",
+    "bundleDependencies",
+    "bundledDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+    "peerDependenciesMeta",
+    "os",
+    "cpu",
+    "deprecated",
+  ] {
+    if let Some(value) = raw_fields.get(key) {
+      if key == "version" {
+        wrote_version = true;
+      }
+      write_raw_property(output, &mut first, key, value.get())
+        .map_err(JsErrorBox::from_err)?;
+    }
+  }
+
+  if !wrote_version {
+    write_json_property_name(output, &mut first, "version")
+      .map_err(JsErrorBox::from_err)?;
+    serde_json::to_writer(&mut *output, version)
+      .map_err(JsErrorBox::from_err)?;
+  }
+
+  if has_install_script(&raw_fields)? {
+    output.extend_from_slice(if first {
+      first = false;
+      br#""hasInstallScript":true"#
+    } else {
+      br#","hasInstallScript":true"#
+    });
+  }
+
+  if let Some(dist) = raw_fields.get("dist")
+    && should_write_slim_dist(dist.get(), evidence)
+  {
+    write_json_property_name(output, &mut first, "dist")
+      .map_err(JsErrorBox::from_err)?;
+    write_slim_dist(output, dist.get(), evidence)?;
+  }
+
+  match evidence {
+    Some(fast_registry_json::TrustEvidence::TrustedPublisher) => {
+      output.extend_from_slice(if first {
+        br#""_npmUser":{"trustedPublisher":true}"#
+      } else {
+        br#","_npmUser":{"trustedPublisher":true}"#
+      });
+    }
+    Some(fast_registry_json::TrustEvidence::StagedPublish) => {
+      output.extend_from_slice(if first {
+        br#""_npmUser":{"approver":true}"#
+      } else {
+        br#","_npmUser":{"approver":true}"#
+      });
+    }
+    Some(fast_registry_json::TrustEvidence::Provenance) | None => {}
+  }
+
+  output.push(b'}');
+  Ok(())
+}
+
+fn has_install_script(
+  raw_fields: &BTreeMap<String, &RawValue>,
+) -> Result<bool, JsErrorBox> {
+  if raw_fields
+    .get("hasInstallScript")
+    .is_some_and(|value| value.get() == "true")
+  {
+    return Ok(true);
+  }
+  let Some(scripts) = raw_fields.get("scripts") else {
+    return Ok(false);
+  };
+  let scripts =
+    serde_json::from_str::<BTreeMap<String, &RawValue>>(scripts.get())
+      .map_err(JsErrorBox::from_err)?;
+  Ok(
+    scripts.contains_key("preinstall")
+      || scripts.contains_key("install")
+      || scripts.contains_key("postinstall"),
+  )
+}
+
+fn should_write_slim_dist(
+  dist_json: &str,
+  evidence: Option<fast_registry_json::TrustEvidence>,
+) -> bool {
+  evidence
+    .is_some_and(|e| e <= fast_registry_json::TrustEvidence::TrustedPublisher)
+    || dist_json.contains(r#""tarball""#)
+    || dist_json.contains(r#""shasum""#)
+    || dist_json.contains(r#""integrity""#)
+}
+
+fn write_slim_dist(
+  output: &mut Vec<u8>,
+  dist_json: &str,
+  evidence: Option<fast_registry_json::TrustEvidence>,
+) -> Result<(), JsErrorBox> {
+  let raw_fields =
+    serde_json::from_str::<BTreeMap<String, &RawValue>>(dist_json)
+      .map_err(JsErrorBox::from_err)?;
+  output.push(b'{');
+  let mut first = true;
+  for key in ["tarball", "shasum", "integrity"] {
+    if let Some(value) = raw_fields.get(key) {
+      write_raw_property(output, &mut first, key, value.get())
+        .map_err(JsErrorBox::from_err)?;
+    }
+  }
+  if evidence
+    .is_some_and(|e| e <= fast_registry_json::TrustEvidence::TrustedPublisher)
+  {
+    // `TrustedPublisher` already means the source had provenance too. The slim
+    // cache keeps only presence markers because the resolver only ranks signal
+    // presence, not the full registry attestation payload.
+    output.extend_from_slice(if first {
+      br#""attestations":{"provenance":true}"#
+    } else {
+      br#","attestations":{"provenance":true}"#
+    });
+  }
+  output.push(b'}');
+  Ok(())
+}
+
+fn write_string_map<'a>(
+  output: &mut Vec<u8>,
+  entries: impl Iterator<Item = (&'a &'a str, &'a &'a str)>,
+) -> Result<(), serde_json::Error> {
+  output.push(b'{');
+  let mut first = true;
+  for (key, value) in entries {
+    write_json_property_name(output, &mut first, key)?;
+    serde_json::to_writer(&mut *output, value)?;
+  }
+  output.push(b'}');
+  Ok(())
+}
+
+fn write_raw_property(
+  output: &mut Vec<u8>,
+  first: &mut bool,
+  key: &str,
+  value: &str,
+) -> Result<(), serde_json::Error> {
+  write_json_property_name(output, first, key)?;
+  output.extend_from_slice(value.as_bytes());
+  Ok(())
+}
+
+fn write_json_property_name(
+  output: &mut Vec<u8>,
+  first: &mut bool,
+  key: &str,
+) -> Result<(), serde_json::Error> {
+  if *first {
+    *first = false;
+  } else {
+    output.push(b',');
+  }
+  serde_json::to_writer(&mut *output, key)?;
+  output.push(b':');
+  Ok(())
 }
 
 const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
@@ -458,5 +737,73 @@ fn with_folder_sync_lock(
       }
       Err(err)
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn slim_package_info_bytes_round_trips_version_info_fields() {
+    let input = br#"{
+      "name":"pkg",
+      "readme":"large",
+      "dist-tags":{"latest":"1.0.0"},
+      "versions":{
+        "1.0.0":{
+          "version":"1.0.0",
+          "exports":{"./x":"./x.js"},
+          "scripts":{"postinstall":"node postinstall.js","test":"node test.js"},
+          "bin":{"pkg":"./bin.js"},
+          "dependencies":{"dep":"^1.0.0"},
+          "bundleDependencies":["bundled-dep"],
+          "bundledDependencies":["bundled-alias-dep"],
+          "optionalDependencies":{"optional-dep":"^2.0.0"},
+          "peerDependencies":{"peer-dep":"^3.0.0"},
+          "peerDependenciesMeta":{"peer-dep":{"optional":true}},
+          "os":["darwin"],
+          "cpu":["arm64"],
+          "deprecated":"use something else",
+          "dist":{
+            "tarball":"https://example.com/pkg.tgz",
+            "shasum":"abc123",
+            "integrity":"sha512-test",
+            "fileCount":100,
+            "attestations":{"provenance":{"large":true}}
+          },
+          "_npmUser":{"trustedPublisher":{"large":true},"name":"ignored"}
+        }
+      },
+      "time":{"1.0.0":"2026-01-01T00:00:00.000Z"}
+    }"#;
+
+    let original =
+      deno_npm::registry::NpmPackageInfo::from_packument_slice(input).unwrap();
+    let output = slim_package_info_bytes(input, Some("etag")).unwrap();
+    let reparsed =
+      deno_npm::registry::NpmPackageInfo::from_packument_slice(&output)
+        .unwrap();
+    let version = Version::parse_from_npm("1.0.0").unwrap();
+    let mut expected = original.versions.get(&version).unwrap().clone();
+    expected.scripts.clear();
+    expected.has_install_script = Some(true);
+
+    assert_eq!(reparsed.name, original.name);
+    assert_eq!(reparsed.dist_tags, original.dist_tags);
+    assert_eq!(reparsed.time, original.time);
+    assert_eq!(reparsed.versions.get(&version), Some(&expected));
+
+    let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let version_json = &value["versions"]["1.0.0"];
+
+    assert_eq!(value["name"], "pkg");
+    assert_eq!(value["_deno.etag"], "etag");
+    assert_eq!(version_json["hasInstallScript"], true);
+    assert_eq!(version_json["_npmUser"]["trustedPublisher"], true);
+    assert!(version_json.get("exports").is_none());
+    assert!(version_json.get("scripts").is_none());
+    assert!(version_json["dist"].get("fileCount").is_none());
+    assert!(value.get("readme").is_none());
   }
 }

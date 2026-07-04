@@ -28,13 +28,13 @@ impl fmt::Debug for TracingGuard {
 
 #[cfg(feature = "lsp-tracing")]
 mod real_tracing {
+  use std::sync::Mutex;
+
   use deno_core::anyhow;
   pub use opentelemetry::Context;
-  use opentelemetry::KeyValue;
   use opentelemetry::trace::TracerProvider;
   use opentelemetry_otlp::WithExportConfig;
   use opentelemetry_sdk::Resource;
-  use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
   pub use tracing::Span;
   use tracing::level_filters::LevelFilter;
   pub use tracing::span::EnteredSpan;
@@ -47,6 +47,13 @@ mod real_tracing {
   use super::TracingConfig;
   use super::TracingGuard;
 
+  // opentelemetry 0.32 removed `opentelemetry::global::shutdown_tracer_provider`;
+  // shutdown is now performed on the provider itself, so keep a handle to flush
+  // it when the tracing guard is dropped.
+  pub(super) static TRACER_PROVIDER: Mutex<
+    Option<opentelemetry_sdk::trace::SdkTracerProvider>,
+  > = Mutex::new(None);
+
   pub(crate) fn make_tracer(
     endpoint: Option<&str>,
   ) -> Result<opentelemetry_sdk::trace::Tracer, anyhow::Error> {
@@ -55,14 +62,16 @@ mod real_tracing {
       .with_tonic()
       .with_endpoint(endpoint)
       .build()?;
-    let provider = opentelemetry_sdk::trace::Builder::default()
-      .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
-      .with_resource(Resource::new(vec![KeyValue::new(
-        SERVICE_NAME,
-        "deno-lsp",
-      )]))
+    let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+      .with_batch_exporter(exporter)
+      .with_resource(
+        Resource::builder_empty()
+          .with_service_name("deno-lsp")
+          .build(),
+      )
       .build();
     opentelemetry::global::set_tracer_provider(provider.clone());
+    *TRACER_PROVIDER.lock().unwrap() = Some(provider.clone());
     Ok(provider.tracer("deno-lsp-tracer"))
   }
 
@@ -115,9 +124,11 @@ mod real_tracing {
     fn drop(&mut self) {
       if !self.defused {
         crate::lsp::logging::lsp_debug!("Shutting down tracing");
-        tokio::task::spawn_blocking(|| {
-          opentelemetry::global::shutdown_tracer_provider()
-        });
+        if let Some(provider) = TRACER_PROVIDER.lock().unwrap().take() {
+          tokio::task::spawn_blocking(move || {
+            let _ = provider.shutdown();
+          });
+        }
       }
     }
   }

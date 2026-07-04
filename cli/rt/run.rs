@@ -1614,6 +1614,15 @@ pub async fn run_with_options(
       // can leak the string here.
       checker.enable_feature(feature.leak());
     }
+    // Mirror cli/factory.rs: force-enable the unstable KV feature when
+    // DENO_KV_REQUIRES_DISTRIBUTED_DATABASE=error so Deno.openKv() is exposed
+    // and surfaces a clear "no database attached" error.
+    if std::env::var("DENO_KV_REQUIRES_DISTRIBUTED_DATABASE").as_deref()
+      == Ok("error")
+      && !checker.check("kv")
+    {
+      checker.enable_feature("kv");
+    }
     checker
   });
   // Resolve a persistent, per-app data directory so origin-bound storage such

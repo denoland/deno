@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_cli_parser"
-version = "0.2.0"
+version = "0.3.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,6 +22,7 @@ deno_runtime.workspace = true
 deno_semver.workspace = true
 log.workspace = true
 serde = { workspace = true, features = ["derive"] }
+sys_traits = { workspace = true, features = ["real"] }
 
 [dev-dependencies]
 pretty_assertions.workspace = true
