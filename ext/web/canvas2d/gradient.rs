@@ -107,6 +107,7 @@ impl CanvasGradient {
     Err(Canvas2DError::IllegalConstructor)
   }
 
+  #[required(2)]
   #[undefined]
   fn add_color_stop(
     &self,

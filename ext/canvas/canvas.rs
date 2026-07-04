@@ -34,6 +34,27 @@ pub type CreateCanvasContext =
     context: &'static str,
   ) -> Result<v8::Global<v8::Value>, JsErrorBox>;
 
+/// The full set of context ids `OffscreenCanvas.getContext()` recognizes
+/// per spec (some of which -- webgl/webgl2 -- aren't actually supported by
+/// this implementation and fall through to returning null). Passing a
+/// string outside this set is a WebIDL enum conversion failure and must
+/// throw a TypeError, distinct from passing a recognized-but-unsupported
+/// value (which returns null).
+#[derive(deno_core::WebIDL)]
+#[webidl(enum)]
+enum OffscreenRenderingContextId {
+  #[webidl(rename = "2d")]
+  TwoD,
+  #[webidl(rename = "bitmaprenderer")]
+  BitmapRenderer,
+  #[webidl(rename = "webgl")]
+  WebGl,
+  #[webidl(rename = "webgl2")]
+  WebGl2,
+  #[webidl(rename = "webgpu")]
+  WebGpu,
+}
+
 pub struct OffscreenCanvas {
   data: Rc<RefCell<DynamicImage>>,
 
@@ -120,14 +141,16 @@ impl OffscreenCanvas {
     }
   }
 
+  #[required(1)]
   fn get_context<'s>(
     &self,
     #[this] this: v8::Global<v8::Object>,
     state: Rc<RefCell<OpState>>,
     scope: &mut v8::PinScope<'s, '_>,
-    #[webidl] context_id: String,
+    #[webidl] context_id: OffscreenRenderingContextId,
     #[webidl] options: v8::Local<'s, v8::Value>,
   ) -> Result<Option<v8::Global<v8::Value>>, JsErrorBox> {
+    let context_id = context_id.as_str().to_string();
     if self.active_context.get().is_none() {
       let create_context: CreateCanvasContext = match context_id.as_str() {
         deno_web::canvas2d::CONTEXT_ID => {

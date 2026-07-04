@@ -1286,20 +1286,20 @@
   "canvas": {
     "offscreen": {
       "canvas-context": {
-        "2d.canvas.context.arguments.missing.html": false,
-        "2d.canvas.context.arguments.missing.worker.html": false,
-        "2d.canvas.context.casesensitive.html": false,
-        "2d.canvas.context.casesensitive.worker.html": false,
-        "2d.canvas.context.emptystring.html": false,
-        "2d.canvas.context.emptystring.worker.html": false,
+        "2d.canvas.context.arguments.missing.html": true,
+        "2d.canvas.context.arguments.missing.worker.html": true,
+        "2d.canvas.context.casesensitive.html": true,
+        "2d.canvas.context.casesensitive.worker.html": true,
+        "2d.canvas.context.emptystring.html": true,
+        "2d.canvas.context.emptystring.worker.html": true,
         "2d.canvas.context.exists.html": true,
         "2d.canvas.context.exists.worker.html": true,
         "2d.canvas.context.extraargs.cache.html": true,
         "2d.canvas.context.extraargs.cache.worker.html": true,
-        "2d.canvas.context.extraargs.create.html": false,
-        "2d.canvas.context.extraargs.create.worker.html": false,
-        "2d.canvas.context.invalid.args.html": false,
-        "2d.canvas.context.invalid.args.worker.html": false,
+        "2d.canvas.context.extraargs.create.html": true,
+        "2d.canvas.context.extraargs.create.worker.html": true,
+        "2d.canvas.context.invalid.args.html": true,
+        "2d.canvas.context.invalid.args.worker.html": true,
         "2d.canvas.context.prototype.html": true,
         "2d.canvas.context.prototype.worker.html": true,
         "2d.canvas.context.shared.html": true,
@@ -1600,8 +1600,8 @@
       "conformance-requirements": {
         "2d.conformance.requirements.basics.html": true,
         "2d.conformance.requirements.basics.worker.html": true,
-        "2d.conformance.requirements.missingargs.html": false,
-        "2d.conformance.requirements.missingargs.worker.html": false
+        "2d.conformance.requirements.missingargs.html": true,
+        "2d.conformance.requirements.missingargs.worker.html": true
       },
       "drawing-images-to-the-canvas": {
         "2d.drawImage.3arg.html": true,
@@ -3391,8 +3391,8 @@
       },
       "2d.conformance.requirements.basics.html": true,
       "2d.conformance.requirements.basics.worker.html": true,
-      "2d.conformance.requirements.missingargs.html": false,
-      "2d.conformance.requirements.missingargs.worker.html": false,
+      "2d.conformance.requirements.missingargs.html": true,
+      "2d.conformance.requirements.missingargs.worker.html": true,
       "OffscreenCanvas-ctx-font-sibling-index-invalid.tentative.html": true,
       "manual": {
         "context-attributes": {
