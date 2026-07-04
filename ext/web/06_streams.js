@@ -531,6 +531,8 @@ const _strategySizeAlgorithm = Symbol("[[strategySizeAlgorithm]]");
 const _stream = Symbol("[[stream]]");
 const _transformAlgorithm = Symbol("[[transformAlgorithm]]");
 const _isIdentityTransform = Symbol("[[isIdentityTransform]]");
+const _onSinkWriteFulfilled = Symbol("[[onSinkWriteFulfilled]]");
+const _onSinkWriteRejected = Symbol("[[onSinkWriteRejected]]");
 const _view = Symbol("[[view]]");
 const _writable = Symbol("[[writable]]");
 const _writeAlgorithm = Symbol("[[writeAlgorithm]]");
@@ -4941,27 +4943,47 @@ function writableStreamDefaultControllerProcessWrite(controller, chunk) {
   const stream = controller[_stream];
   writableStreamMarkFirstWriteRequestInFlight(stream);
   const sinkWritePromise = controller[_writeAlgorithm](chunk, controller);
-  uponPromise(sinkWritePromise, () => {
-    writableStreamFinishInFlightWrite(stream);
-    const state = stream[_state];
-    assert(state === "writable" || state === "erroring");
-    dequeueValue(controller);
-    if (
-      writableStreamCloseQueuedOrInFlight(stream) === false &&
-      state === "writable"
-    ) {
-      const backpressure = writableStreamDefaultControllerGetBackpressure(
-        controller,
-      );
-      writableStreamUpdateBackpressure(stream, backpressure);
-    }
-    writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
-  }, (reason) => {
-    if (stream[_state] === "writable") {
-      writableStreamDefaultControllerClearAlgorithms(controller);
-    }
-    writableStreamFinishInFlightWriteWithError(stream, reason);
-  });
+  // The reaction handlers are created once per controller (lazily, so
+  // never-written streams don't pay for them) instead of per chunk. They
+  // include the assertion-rethrow wrapping that uponPromise() would
+  // otherwise re-create on every call.
+  if (controller[_onSinkWriteFulfilled] === undefined) {
+    controller[_onSinkWriteFulfilled] = () => {
+      try {
+        writableStreamFinishInFlightWrite(stream);
+        const state = stream[_state];
+        assert(state === "writable" || state === "erroring");
+        dequeueValue(controller);
+        if (
+          writableStreamCloseQueuedOrInFlight(stream) === false &&
+          state === "writable"
+        ) {
+          const backpressure = writableStreamDefaultControllerGetBackpressure(
+            controller,
+          );
+          writableStreamUpdateBackpressure(stream, backpressure);
+        }
+        writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
+      } catch (e) {
+        rethrowAssertionErrorRejection(e);
+      }
+    };
+    controller[_onSinkWriteRejected] = (reason) => {
+      try {
+        if (stream[_state] === "writable") {
+          writableStreamDefaultControllerClearAlgorithms(controller);
+        }
+        writableStreamFinishInFlightWriteWithError(stream, reason);
+      } catch (e) {
+        rethrowAssertionErrorRejection(e);
+      }
+    };
+  }
+  PromisePrototypeThen(
+    sinkWritePromise,
+    controller[_onSinkWriteFulfilled],
+    controller[_onSinkWriteRejected],
+  );
 }
 
 /**
@@ -7134,6 +7156,10 @@ class WritableStreamDefaultController {
   [_writeAlgorithm];
   /** @type {AbortSignal} */
   [_signal];
+  /** @type {(() => void) | undefined} */
+  [_onSinkWriteFulfilled];
+  /** @type {((reason: any) => void) | undefined} */
+  [_onSinkWriteRejected];
 
   get signal() {
     webidl.assertBranded(this, WritableStreamDefaultControllerPrototype);
