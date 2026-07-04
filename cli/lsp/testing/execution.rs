@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -40,6 +41,7 @@ use crate::lsp::logging::lsp_log;
 use crate::lsp::urls::uri_parse_unencoded;
 use crate::lsp::urls::uri_to_url;
 use crate::lsp::urls::url_to_uri;
+use crate::tools::coverage::collect_coverage_reports;
 use crate::tools::test;
 use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestFailure;
@@ -237,7 +239,12 @@ impl TestRun {
     client: &Client,
     maybe_root_uri: Option<&ModuleSpecifier>,
   ) -> Result<(), AnyError> {
-    let args = self.get_args();
+    let coverage_dir = if self.kind == lsp_custom::TestRunKind::Coverage {
+      Some(tempfile::tempdir()?)
+    } else {
+      None
+    };
+    let args = self.get_args(coverage_dir.as_ref().map(|dir| dir.path()));
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
     let flags = Arc::new(flags_from_vec(
       args.into_iter().map(|s| From::from(s.as_ref())).collect(),
@@ -520,12 +527,59 @@ impl TestRun {
       join_result??;
     }
 
-    result??;
+    let result = result?;
+    if let Some(coverage_dir) = coverage_dir.as_ref()
+      && let Err(err) = self.report_coverage(client, coverage_dir.path()).await
+    {
+      lsp_log!("Failed reporting test coverage: {err:#}");
+    }
+
+    result?;
 
     Ok(())
   }
 
-  fn get_args(&self) -> Vec<Cow<'_, str>> {
+  async fn report_coverage(
+    &self,
+    client: &Client,
+    coverage_dir: &Path,
+  ) -> Result<(), AnyError> {
+    let args = self.get_args(Some(coverage_dir));
+    let flags = Arc::new(flags_from_vec(
+      args.into_iter().map(|s| From::from(s.as_ref())).collect(),
+    )?);
+    let (_, reports) = collect_coverage_reports(
+      flags,
+      vec![coverage_dir.to_string_lossy().into_owned()],
+      vec![],
+      vec![],
+      vec![],
+      None,
+    )?;
+    let files = reports
+      .into_iter()
+      .filter_map(|(report, _)| {
+        let uri = url_to_uri(report.url()).ok()?;
+        Some(lsp_custom::TestCoverageFile {
+          text_document: lsp::TextDocumentIdentifier { uri },
+          lines: report
+            .found_lines()
+            .iter()
+            .map(|(line, count)| lsp_custom::TestCoverageLine {
+              line: *line as u32,
+              count: *count,
+            })
+            .collect(),
+        })
+      })
+      .collect();
+    client.send_test_notification(TestingNotification::Coverage(
+      lsp_custom::TestCoverageNotificationParams { id: self.id, files },
+    ));
+    Ok(())
+  }
+
+  fn get_args(&self, coverage_dir: Option<&Path>) -> Vec<Cow<'_, str>> {
     let mut args = vec![Cow::Borrowed("deno"), Cow::Borrowed("test")];
     args.extend(
       self
@@ -560,6 +614,19 @@ impl TestRun {
       && !args.contains(&Cow::Borrowed("--inspect-brk"))
     {
       args.push(Cow::Borrowed("--inspect"));
+    }
+    if let Some(coverage_dir) = coverage_dir {
+      args.retain(|a| {
+        let a = a.as_ref();
+        a != "--coverage" && !a.starts_with("--coverage=")
+      });
+      args.push(Cow::Owned(format!(
+        "--coverage={}",
+        coverage_dir.to_string_lossy()
+      )));
+      if !args.contains(&Cow::Borrowed("--coverage-raw-data-only")) {
+        args.push(Cow::Borrowed("--coverage-raw-data-only"));
+      }
     }
     // Inherit `--env-file` paths from the `test` task in deno.json when the
     // user hasn't already supplied one via `deno.testing.args`. Without this,

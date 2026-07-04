@@ -16532,6 +16532,105 @@ fn lsp_testing_api_empty_test_name() {
   client.shutdown();
 }
 
+#[test(timeout = 300)]
+fn lsp_testing_api_coverage() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("./deno.json", json!({}).to_string());
+  let module = temp_dir.source_file(
+    "mod.ts",
+    r#"
+export function classify(value: boolean): string {
+  if (value) {
+    return "covered";
+  }
+  return "uncovered";
+}
+"#,
+  );
+  let test_file = temp_dir.source_file(
+    "test.ts",
+    r#"
+import { classify } from "./mod.ts";
+
+Deno.test("classifies true", () => {
+  if (classify(true) !== "covered") {
+    throw new Error("unexpected result");
+  }
+});
+"#,
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&test_file);
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.tests.len(), 1);
+
+  client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "coverage",
+    }),
+  );
+
+  loop {
+    let notification = client
+      .read_notification_with_method::<Value>("deno/testRunProgress")
+      .unwrap();
+    let message = notification
+      .as_object()
+      .unwrap()
+      .get("message")
+      .unwrap()
+      .as_object()
+      .unwrap();
+    if message.get("type").and_then(|v| v.as_str()) == Some("end") {
+      break;
+    }
+  }
+
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testCoverage")
+    .unwrap();
+  assert_eq!(notification.get("id"), Some(&json!(1)));
+  let files = notification
+    .get("files")
+    .and_then(|value| value.as_array())
+    .unwrap();
+  let module_coverage = files
+    .iter()
+    .find(|file| {
+      file
+        .pointer("/textDocument/uri")
+        .and_then(|value| value.as_str())
+        == Some(module.uri().as_str())
+    })
+    .expect("expected coverage for imported module");
+  let lines = module_coverage
+    .get("lines")
+    .and_then(|value| value.as_array())
+    .unwrap();
+  assert!(
+    lines
+      .iter()
+      .any(|line| line.get("count").and_then(|value| value.as_i64()) == Some(0)),
+    "expected uncovered lines in coverage notification",
+  );
+  assert!(
+    lines.iter().any(|line| line
+      .get("count")
+      .and_then(|value| value.as_i64())
+      .is_some_and(|count| count > 0)),
+    "expected covered lines in coverage notification",
+  );
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/28797.
 // When deno.json declares a `test` task with `--env-file=...`, the LSP test
 // runner should load that env file too — otherwise tests that read env vars at

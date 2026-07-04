@@ -84,7 +84,6 @@ pub enum TestRunKind {
   // The tests should be run and debugged, currently not implemented
   Debug,
   // The tests should be run, collecting and reporting coverage information,
-  // currently not implemented
   Coverage,
 }
 
@@ -185,4 +184,34 @@ impl lsp::notification::Notification for TestRunProgressNotification {
   type Params = TestRunProgressParams;
 
   const METHOD: &'static str = "deno/testRunProgress";
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestCoverageLine {
+  /// The zero-based line index in the text document.
+  pub line: u32,
+  pub count: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestCoverageFile {
+  pub text_document: lsp::TextDocumentIdentifier,
+  pub lines: Vec<TestCoverageLine>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestCoverageNotificationParams {
+  pub id: u32,
+  pub files: Vec<TestCoverageFile>,
+}
+
+pub enum TestCoverageNotification {}
+
+impl lsp::notification::Notification for TestCoverageNotification {
+  type Params = TestCoverageNotificationParams;
+
+  const METHOD: &'static str = "deno/testCoverage";
 }
