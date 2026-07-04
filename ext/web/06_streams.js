@@ -593,7 +593,7 @@ function createReadableStream(
   pullAlgorithm,
   cancelAlgorithm,
   highWaterMark = 1,
-  sizeAlgorithm = () => 1,
+  sizeAlgorithm = defaultSizeAlgorithm,
 ) {
   assert(isNonNegativeNumber(highWaterMark));
   /** @type {ReadableStream} */
@@ -703,13 +703,22 @@ function extractHighWaterMark(strategy, defaultHWM) {
 }
 
 /**
+ * Shared size algorithm for the default queuing strategy. Hot paths compare
+ * against it by identity to skip the per-chunk call (and its try/catch).
+ * @returns {number}
+ */
+function defaultSizeAlgorithm() {
+  return 1;
+}
+
+/**
  * @template T
  * @param {QueuingStrategy<T>} strategy
  * @return {(chunk: T) => number}
  */
 function extractSizeAlgorithm(strategy) {
   if (strategy.size === undefined) {
-    return () => 1;
+    return defaultSizeAlgorithm;
   }
   return (chunk) =>
     webidl.invokeCallbackFunction(
@@ -2047,11 +2056,15 @@ function readableStreamDefaultControllerEnqueue(controller, chunk) {
     readableStreamFulfillReadRequest(stream, chunk, false);
   } else {
     let chunkSize;
-    try {
-      chunkSize = controller[_strategySizeAlgorithm](chunk);
-    } catch (e) {
-      readableStreamDefaultControllerError(controller, e);
-      throw e;
+    if (controller[_strategySizeAlgorithm] === defaultSizeAlgorithm) {
+      chunkSize = 1;
+    } else {
+      try {
+        chunkSize = controller[_strategySizeAlgorithm](chunk);
+      } catch (e) {
+        readableStreamDefaultControllerError(controller, e);
+        throw e;
+      }
     }
 
     try {
@@ -4883,6 +4896,9 @@ function writableStreamDefaultControllerGetBackpressure(controller) {
  * @returns {number}
  */
 function writableStreamDefaultControllerGetChunkSize(controller, chunk) {
+  if (controller[_strategySizeAlgorithm] === defaultSizeAlgorithm) {
+    return 1;
+  }
   let value;
   try {
     value = controller[_strategySizeAlgorithm](chunk);
