@@ -521,6 +521,25 @@ impl LibUvStreamWrap {
 const POOLED_BUF_SIZE: usize = 65536;
 const POOLED_BUF_MAX: usize = 128;
 
+/// Reads at or below this size are copied into an exact-size backing
+/// store and the 64KB slab is returned to the pool immediately, instead
+/// of transferring slab ownership to the ArrayBuffer handed to JS.
+///
+/// Transferring the slab pins the full 64KB allocation for as long as
+/// the JS `Buffer` view lives — a client that retains 1400-byte chunks
+/// (protocol reassembly à la tedious/TDS) resident-pins ~16KB per chunk
+/// (page-rounded), measured at 14x RSS amplification vs ~2x on Node,
+/// which right-sizes via `BackingStore::Reallocate` in
+/// `EmitToJSStreamListener::OnStreamRead`. Handing off also churns the
+/// slab pool through GC: in steady state more than `POOLED_BUF_MAX`
+/// slabs are in flight, so reads fall back to the system allocator
+/// (mach_vm reclaim traps, ~6% CPU in the pre-pool profile).
+///
+/// The copy costs a memcpy of at most 32KB (~1µs) against a read path
+/// that costs ~10µs+; reads above the threshold (bulk transfers filling
+/// most of the slab) keep the zero-copy handoff.
+const READ_COPY_THRESHOLD: usize = POOLED_BUF_SIZE / 2;
+
 thread_local! {
   static READ_BUF_POOL: std::cell::RefCell<Vec<*mut u8>> =
     const { std::cell::RefCell::new(Vec::new()) };
@@ -761,18 +780,34 @@ unsafe extern "C" fn on_uv_read(
     } else {
       // SAFETY: buf is a valid uv_buf_t allocated by on_uv_alloc per the uv_read_cb contract.
       let buf_ref = unsafe { &*buf };
-      // Create a backing store from the allocated memory.
-      // The deleter will free the alloc when the ArrayBuffer is GC'd.
-      // SAFETY: buf_ref.base points to memory allocated by on_uv_alloc with size buf_ref.len; ownership transfers to the backing store.
-      let backing_store = unsafe {
-        v8::ArrayBuffer::new_backing_store_from_ptr(
-          buf_ref.base as *mut std::ffi::c_void,
-          nread_usize,
-          backing_store_deleter,
-          buf_ref.len as *mut std::ffi::c_void,
-        )
+      let ab = if nread_usize <= READ_COPY_THRESHOLD {
+        // Small read: copy into an exact-size backing store and recycle
+        // the slab now (see READ_COPY_THRESHOLD). Mirrors Node's
+        // BackingStore::Reallocate-to-nread in EmitToJSStreamListener.
+        // SAFETY: buf_ref.base holds at least nread_usize readable bytes
+        // per the uv_read_cb contract.
+        let data = unsafe {
+          std::slice::from_raw_parts(buf_ref.base as *const u8, nread_usize)
+        }
+        .to_vec();
+        free_uv_buf(buf);
+        let backing_store =
+          v8::ArrayBuffer::new_backing_store_from_vec(data).make_shared();
+        v8::ArrayBuffer::with_backing_store(tc, &backing_store)
+      } else {
+        // Large read: transfer slab ownership to the ArrayBuffer.
+        // The deleter will free the alloc when the ArrayBuffer is GC'd.
+        // SAFETY: buf_ref.base points to memory allocated by on_uv_alloc with size buf_ref.len; ownership transfers to the backing store.
+        let backing_store = unsafe {
+          v8::ArrayBuffer::new_backing_store_from_ptr(
+            buf_ref.base as *mut std::ffi::c_void,
+            nread_usize,
+            backing_store_deleter,
+            buf_ref.len as *mut std::ffi::c_void,
+          )
+        };
+        v8::ArrayBuffer::with_backing_store(tc, &backing_store.into())
       };
-      let ab = v8::ArrayBuffer::with_backing_store(tc, &backing_store.into());
       ab.into()
     };
     let result = onread.call(tc, recv.into(), &[arg]);
