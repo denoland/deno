@@ -1273,20 +1273,26 @@ impl OffscreenCanvasRenderingContext2D {
           false,
         ));
       }
-      return Ok((
-        self.current_path.borrow().clone(),
-        f64::NAN,
-        f64::NAN,
-        "nonzero".into(),
-        false,
-      ));
+      // Zero arguments: neither the (x, y [, fillRule]) nor the
+      // (path, x, y [, fillRule]) overload has enough arguments.
+      return Err(Canvas2DError::MissingArgument {
+        required: 2,
+        provided: 0,
+      });
     };
     if let Some(p) =
       deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, a)
     {
       // isPointInPath(path, x, y [, fillRule])
-      let x = b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
-      let y = c.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+      let provided = 1 + b.is_some() as u32 + c.is_some() as u32;
+      let (Some(b), Some(c)) = (b, c) else {
+        return Err(Canvas2DError::MissingArgument {
+          required: 3,
+          provided,
+        });
+      };
+      let x = Self::v8_to_f64(scope, b);
+      let y = Self::v8_to_f64(scope, c);
       // CanvasFillRule is a non-nullable DOMString enum, so an explicit
       // `null` must be stringified to "null" (an invalid enum value)
       // rather than falling back to the "nonzero" default like an omitted
@@ -1299,8 +1305,14 @@ impl OffscreenCanvasRenderingContext2D {
     }
     if a.is_number() {
       // isPointInPath(x, y [, fillRule])
+      let Some(b) = b else {
+        return Err(Canvas2DError::MissingArgument {
+          required: 2,
+          provided: 1,
+        });
+      };
       let x = Self::v8_to_f64(scope, a);
-      let y = b.map(|v| Self::v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+      let y = Self::v8_to_f64(scope, b);
       let rule = c
         .map(|v| v.to_rust_string_lossy(scope))
         .unwrap_or_else(|| "nonzero".into());
@@ -1863,6 +1875,7 @@ impl OffscreenCanvasRenderingContext2D {
   }
 
   /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-measuretext>
+  #[required(1)]
   #[cppgc]
   fn measure_text(&self, #[string] text: &str) -> TextMetrics {
     compute_text_metrics(
@@ -3354,6 +3367,14 @@ pub fn create_context<'s>(
     (renderer, font_ctx, layout_ctx)
   };
 
+  // Per spec, a non-object `options` value (e.g. a number, string, or
+  // symbol) is not a WebIDL dictionary conversion failure here -- it is
+  // simply ignored, as though no options were passed at all.
+  let options = if options.is_object() || options.is_null_or_undefined() {
+    options
+  } else {
+    v8::undefined(scope).into()
+  };
   let settings = Canvas2DSettings::convert(
     scope,
     options,
