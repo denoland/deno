@@ -1580,12 +1580,24 @@ impl JsRuntime {
       Rc::new(ExtModuleLoader::new(sources, ext_code_cache.clone()));
     *module_map.loader.borrow_mut() = ext_loader.clone();
 
+    // v82jsc JSC "snapshot": when V82JSC_BOOT_BUNDLE points at a pre-bundled
+    // Program (all boot ext: ESM flattened into one script by esbuild — see
+    // tools/snapshot/build_boot_bundle.sh), evaluate that instead of loading +
+    // evaluating each ext module through the module loader. Lets the system-JSC
+    // build boot with NO ESM module loader (no string rewriter). The js IIFEs
+    // below still run; only the ESM load loop + entry-point eval are replaced.
+    let boot_bundle = std::env::var("V82JSC_BOOT_BUNDLE").ok();
+
     // Next, load the extension modules as side modules (but do not execute them)
-    for module in modules {
-      // eprintln!("loading module: {module}");
-      realm
-        .load_side_es_module_from_code(self.v8_isolate(), module.into(), None)
-        .await?;
+    if boot_bundle.is_none() {
+      for module in modules {
+        // eprintln!("loading module: {module}");
+        realm
+          .load_side_es_module_from_code(self.v8_isolate(), module.into(), None)
+          .await?;
+      }
+    } else {
+      drop(modules);
     }
 
     // Execute extension scripts
@@ -1616,34 +1628,54 @@ impl JsRuntime {
       }
     }
 
-    // ...then execute all entry points
-    for specifier in loaded_sources.esm_entry_points {
-      let Some(mod_id) =
-        module_map.get_id(&specifier, RequestedModuleType::None)
-      else {
-        return Err(
-          CoreErrorKind::MissingFromModuleMap(specifier.to_string()).into_box(),
-        );
-      };
+    if let Some(path) = &boot_bundle {
+      // JSC snapshot: one Program eval replaces loading + evaluating every boot
+      // ext module. It runs each module body in order (incl. 99_main, which sets
+      // globalThis.bootstrap that the worker calls afterwards) using the same
+      // globalThis.__bootstrap + ops the per-module path uses.
+      let code: crate::ModuleCodeString = std::fs::read_to_string(path)
+        .map_err(|e| CoreErrorKind::Io(e).into_box())?
+        .into();
+      realm.execute_script(
+        self.v8_isolate(),
+        "ext:v82jsc_boot_bundle.js",
+        code,
+      )?;
+    } else {
+      // ...then execute all entry points
+      for specifier in loaded_sources.esm_entry_points {
+        let Some(mod_id) =
+          module_map.get_id(&specifier, RequestedModuleType::None)
+        else {
+          return Err(
+            CoreErrorKind::MissingFromModuleMap(specifier.to_string())
+              .into_box(),
+          );
+        };
 
-      let isolate = self.v8_isolate();
-      jsrealm::context_scope!(scope, realm, isolate);
-      module_map.mod_evaluate_sync(scope, mod_id)?;
-      let mut cx = Context::from_waker(Waker::noop());
-      // poll once so code cache is populated. the `ExtCodeCache` trait is sync, so
-      // the `CodeCacheReady` futures will always finish on the first poll.
-      let _ = module_map.poll_progress(&mut cx, scope);
+        let isolate = self.v8_isolate();
+        jsrealm::context_scope!(scope, realm, isolate);
+        module_map.mod_evaluate_sync(scope, mod_id)?;
+        let mut cx = Context::from_waker(Waker::noop());
+        // poll once so code cache is populated. the `ExtCodeCache` trait is sync, so
+        // the `CodeCacheReady` futures will always finish on the first poll.
+        let _ = module_map.poll_progress(&mut cx, scope);
+      }
     }
 
     #[cfg(debug_assertions)]
-    {
+    if boot_bundle.is_none() {
       jsrealm::context_scope!(scope, realm, self.v8_isolate());
       module_map.check_all_modules_evaluated(scope)?;
     }
 
     let module_map = realm.0.module_map();
     *module_map.loader.borrow_mut() = loader;
-    ext_loader.finalize()?;
+    // The boot bundle path never loads the ext modules through the loader, so
+    // finalize() (which errors on "unused" registered modules) must be skipped.
+    if boot_bundle.is_none() {
+      ext_loader.finalize()?;
+    }
 
     Ok(())
   }

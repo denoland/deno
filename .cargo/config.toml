@@ -39,7 +39,7 @@ rustflags = [
   "-C",
   # --icf=safe folds identical (address-insignificant) functions; ~6MB (~10%) idle RSS win, measured on release.
   # -fixup_chains: see [env] note above (chained fixups -> faster pre-main launch).
-  "link-args=-fuse-ld=lld -Wl,--icf=safe -Wl,-fixup_chains -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+  "link-args=-fuse-ld=lld -L /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -Wl,--icf=safe -Wl,-fixup_chains -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
 ]
 
 [target.'cfg(all())']
