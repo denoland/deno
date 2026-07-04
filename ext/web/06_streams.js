@@ -261,7 +261,13 @@ class Queue {
   #size = 0;
 
   enqueue(value) {
-    const node = { value, next: null };
+    return this.enqueueWithSize(value, 1);
+  }
+
+  // Stores the chunk size inline in the list node instead of a separate
+  // { value, size } wrapper, so a sized enqueue costs a single allocation.
+  enqueueWithSize(value, size) {
+    const node = { value, size, next: null };
     if (this.#head === null) {
       this.#head = node;
       this.#tail = node;
@@ -273,6 +279,13 @@ class Queue {
   }
 
   dequeue() {
+    const node = this.dequeueNode();
+    return node === null ? null : node.value;
+  }
+
+  // Returns the internal { value, size, next } node. Only for use by
+  // dequeueValue(), which needs both the value and its size.
+  dequeueNode() {
     const node = this.#head;
     if (node === null) {
       return null;
@@ -283,7 +296,7 @@ class Queue {
     }
     this.#head = this.#head.next;
     this.#size--;
-    return node.value;
+    return node;
   }
 
   peek() {
@@ -589,12 +602,12 @@ function createWritableStream(
 function dequeueValue(container) {
   assert(container[_queue] && typeof container[_queueTotalSize] === "number");
   assert(container[_queue].size);
-  const valueWithSize = container[_queue].dequeue();
-  container[_queueTotalSize] -= valueWithSize.size;
+  const node = container[_queue].dequeueNode();
+  container[_queueTotalSize] -= node.size;
   if (container[_queueTotalSize] < 0) {
     container[_queueTotalSize] = 0;
   }
-  return valueWithSize.value;
+  return node.value;
 }
 /**
  * @template T
@@ -615,7 +628,7 @@ function enqueueValueWithSize(container, value, size) {
       "Cannot enqueue value with size: chunk size is invalid",
     );
   }
-  container[_queue].enqueue({ value, size });
+  container[_queue].enqueueWithSize(value, size);
   container[_queueTotalSize] += size;
 }
 
@@ -1435,8 +1448,7 @@ function peekQueueValue(container) {
       typeof container[_queueTotalSize] === "number",
   );
   assert(container[_queue].size);
-  const valueWithSize = container[_queue].peek();
-  return valueWithSize.value;
+  return container[_queue].peek();
 }
 
 /**
