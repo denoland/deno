@@ -168,6 +168,47 @@ function resolvePromiseWith(value) {
   return new Promise((resolve) => resolve(value));
 }
 
+/**
+ * Like Deferred, but only materializes its Promise when someone actually
+ * reads it. Used for TransformStream's [[backpressureChangePromise]], which
+ * is re-created on every backpressure flip (per chunk in steady state) but
+ * often never observed. Resolve-only: no reject support.
+ * @template T
+ */
+class LazyDeferred {
+  /** @type {Promise<T> | null} */
+  #promise = null;
+  /** @type {((value: T) => void) | null} */
+  #resolve = null;
+  #settled = false;
+
+  /** @returns {Promise<T>} */
+  get promise() {
+    if (this.#promise === null) {
+      if (this.#settled) {
+        this.#promise = PromiseResolve(undefined);
+      } else {
+        this.#promise = new Promise((resolve) => {
+          this.#resolve = resolve;
+        });
+      }
+    }
+    return this.#promise;
+  }
+
+  /** @param {T} value */
+  resolve(value) {
+    if (this.#settled) {
+      return;
+    }
+    this.#settled = true;
+    if (this.#resolve !== null) {
+      this.#resolve(value);
+      this.#resolve = null;
+    }
+  }
+}
+
 /** @type {Promise<undefined> | undefined} */
 let _resolvedPromise;
 /**
@@ -4643,7 +4684,7 @@ function transformStreamSetBackpressure(stream, backpressure) {
   if (stream[_backpressureChangePromise] !== undefined) {
     stream[_backpressureChangePromise].resolve(undefined);
   }
-  stream[_backpressureChangePromise] = new Deferred();
+  stream[_backpressureChangePromise] = new LazyDeferred();
   stream[_backpressure] = backpressure;
 }
 
