@@ -302,6 +302,8 @@ impl CliMainWorker {
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
       pub async fn execute(&mut self) -> Result<(), CoreError> {
+        // Run preload modules first if they were defined
+        self.inner.execute_preload_modules().await?;
         // Set pending_unload before module execution so that if the future
         // is cancelled during a top-level await, Drop will still dispatch
         // the unload event for any handlers registered during partial
