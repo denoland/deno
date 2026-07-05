@@ -2003,7 +2003,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
           .action(ArgAction::SetTrue),
       )
       .arg(permit_no_files_arg())
-      .arg(watch_arg(true))
+      .arg(watch_arg())
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
       .arg(script_arg().last(true))
@@ -2299,7 +2299,7 @@ Unless --reload is specified, this command will not re-download already cached d
         .arg(deny_import_arg())
         .arg(v8_flags_arg())
         .arg(env_file_arg())
-        .arg(watch_arg(false))
+        .arg(watch_arg())
         .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
       }
@@ -2439,7 +2439,7 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .action(ArgAction::SetTrue)
           .help_heading(COMPILE_HEADING),
       )
-      .arg(watch_arg(false))
+      .arg(watch_arg())
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
       .arg(executable_ext_arg())
@@ -2978,7 +2978,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .value_hint(ValueHint::AnyPath),
       )
       .arg(permit_no_files_arg())
-      .arg(watch_arg(true))
+      .arg(watch_arg())
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
       .arg(
@@ -3916,7 +3916,7 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
           .value_hint(ValueHint::AnyPath),
       )
       .arg(permit_no_files_arg())
-      .arg(watch_arg(true))
+      .arg(watch_arg())
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
       .arg(allow_import_arg())
@@ -3972,7 +3972,7 @@ fn run_args(command: Command, top_level: bool) -> Command {
   cpu_prof_args(
     runtime_args(command, true, true, true)
       .arg(check_arg(false))
-      .arg(watch_arg(true))
+      .arg(watch_arg())
       .arg(hmr_arg(true))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
@@ -4158,7 +4158,7 @@ Start a server defined in server.ts, watching for changes and running on port 50
       parallel_arg("multiple server workers")
     )
     .arg(check_arg(false))
-    .arg(watch_arg(true))
+    .arg(watch_arg())
     .arg(hmr_arg(true))
     .arg(watch_exclude_arg())
     .arg(no_clear_screen_arg())
@@ -4530,7 +4530,7 @@ or <c>**/__tests__/**</>:
           .help_heading(TEST_HEADING),
       )
       .arg(
-        watch_arg(true)
+        watch_arg()
           .conflicts_with("no-run")
           .conflicts_with("coverage"),
       )
@@ -5878,30 +5878,21 @@ fn hmr_arg(takes_files: bool) -> Arg {
   }
 }
 
-fn watch_arg(takes_files: bool) -> Arg {
-  let arg = Arg::new("watch")
+fn watch_arg() -> Arg {
+  Arg::new("watch")
     .long("watch")
-    .help_heading(FILE_WATCHING_HEADING);
-
-  if takes_files {
-    arg
-      .value_name("FILES")
-      .num_args(0..)
-      .action(ArgAction::Append)
-      .require_equals(true)
-      .help(
-        cstr!(
-        "Watch for file changes and restart process automatically.
+    .help_heading(FILE_WATCHING_HEADING)
+    .value_name("FILES")
+    .num_args(0..)
+    .action(ArgAction::Append)
+    .require_equals(true)
+    .help(
+      cstr!(
+      "Watch for file changes and restart process automatically.
   <p(245)>Local files from entry point module graph are watched by default.
   Additional paths might be watched by passing them as arguments to this flag.</>"),
-      )
-      .value_hint(ValueHint::AnyPath)
-  } else {
-    arg.action(ArgAction::SetTrue).help(cstr!(
-      "Watch for file changes and restart process automatically.
-  <p(245)>Only local files from entry point module graph are watched.</>"
-    ))
-  }
+    )
+    .value_hint(ValueHint::AnyPath)
 }
 
 fn no_clear_screen_arg() -> Arg {
@@ -6792,7 +6783,7 @@ fn check_parse(
   if matches.get_flag("desktop") {
     flags.internal.is_desktop = true;
   }
-  flags.watch = watch_arg_parse(matches)?;
+  flags.watch = watch_arg_parse_with_paths(matches)?;
   flags.subcommand = DenoSubcommand::Check(CheckFlags {
     files,
     doc: matches.get_flag("doc"),
@@ -6846,7 +6837,7 @@ fn compile_parse(
   let args = script.collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
-  flags.watch = watch_arg_parse(matches)?;
+  flags.watch = watch_arg_parse_with_paths(matches)?;
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
   let eszip = matches.get_flag("eszip-internal-do-not-use");
@@ -8841,28 +8832,6 @@ fn reload_arg_validate(urlstr: String) -> Result<String, clap::Error> {
 
 fn permit_no_files_parse(matches: &mut ArgMatches) -> bool {
   matches.get_flag("permit-no-files")
-}
-
-fn watch_arg_parse(
-  matches: &mut ArgMatches,
-) -> clap::error::Result<Option<WatchFlagsWithPaths>> {
-  if matches.get_flag("watch") {
-    Ok(Some(WatchFlagsWithPaths {
-      hmr: false,
-      paths: vec![],
-      no_clear_screen: matches.get_flag("no-clear-screen"),
-      exclude: matches
-        .remove_many::<String>("watch-exclude")
-        .map(|f| {
-          f.flat_map(flat_escape_split_commas)
-            .collect::<Result<_, _>>()
-        })
-        .transpose()?
-        .unwrap_or_default(),
-    }))
-  } else {
-    Ok(None)
-  }
 }
 
 fn watch_arg_parse_with_paths(

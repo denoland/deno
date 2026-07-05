@@ -954,24 +954,7 @@ fn allow_and_deny_import_parse(result: &ParseResult, flags: &mut Flags) {
 // Watch helpers
 // ============================================================
 
-/// Parse watch flags without paths (for check, compile).
-fn watch_arg_parse(result: &ParseResult) -> Option<WatchFlagsWithPaths> {
-  if result.contains("watch") {
-    Some(WatchFlagsWithPaths {
-      hmr: false,
-      paths: vec![],
-      no_clear_screen: result.get_bool("no-clear-screen"),
-      exclude: result
-        .get_many("watch-exclude")
-        .map(|v| v.iter().map(|s| s.to_string()).collect())
-        .unwrap_or_default(),
-    })
-  } else {
-    None
-  }
-}
-
-/// Parse watch flags with paths (for run, serve, test).
+/// Parse watch flags with paths.
 fn watch_arg_parse_with_paths(
   result: &ParseResult,
 ) -> Option<WatchFlagsWithPaths> {
@@ -1656,7 +1639,7 @@ fn check_parse(result: &ParseResult, flags: &mut Flags) {
     flags.type_check_mode = TypeCheckMode::All;
   }
 
-  flags.watch = watch_arg_parse(result);
+  flags.watch = watch_arg_parse_with_paths(result);
   flags.subcommand = DenoSubcommand::Check(CheckFlags {
     files,
     doc: result.get_bool("doc"),
@@ -1845,7 +1828,7 @@ fn compile_parse(result: &ParseResult, flags: &mut Flags) {
   // Trailing args are the compile args
   let args = result.trailing.clone();
 
-  flags.watch = watch_arg_parse(result);
+  flags.watch = watch_arg_parse_with_paths(result);
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
     source_file,
     output,
