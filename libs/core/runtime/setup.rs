@@ -235,6 +235,11 @@ pub fn create_isolate(
   external_refs: Cow<'static, [v8::ExternalReference]>,
 ) -> v8::OwnedIsolate {
   let mut params = maybe_create_params.unwrap_or_default();
+  if !params.has_set_array_buffer_allocator() {
+    if let Some(allocator) = super::buffer_pool::array_buffer_allocator() {
+      params = params.array_buffer_allocator(allocator);
+    }
+  }
   let mut isolate = if will_snapshot {
     snapshot::create_snapshot_creator(
       external_refs,
