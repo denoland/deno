@@ -106,6 +106,7 @@ const {
   MapPrototypeForEach,
   PromisePrototype,
   PromisePrototypeThen,
+  PromiseResolve,
   SafeMap,
   SafeSet,
   SafeSetIterator,
@@ -150,7 +151,7 @@ function getDirentSync(path) {
   }
 }
 
-async function getFollowDirent(path) {
+function getFollowDirent(path) {
   try {
     const result = op_require_stat(path);
     if (result === -1) return null;
@@ -170,7 +171,7 @@ function getFollowDirentSync(path) {
   }
 }
 
-async function getRealpathString(path) {
+function getRealpathString(path) {
   try {
     return op_require_real_path(path);
   } catch {
@@ -259,11 +260,7 @@ class Cache {
     if (cached) {
       return cached;
     }
-    const promise = PromisePrototypeThen(
-      getFollowDirent(path),
-      null,
-      () => null,
-    );
+    const promise = PromiseResolve(getFollowDirent(path));
     this.#followStatsCache.set(path, promise);
     return promise;
   }
@@ -281,7 +278,7 @@ class Cache {
     if (cached) {
       return cached;
     }
-    const promise = getRealpathString(path);
+    const promise = PromiseResolve(getRealpathString(path));
     this.#realpathCache.set(path, promise);
     return promise;
   }
