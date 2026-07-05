@@ -159,7 +159,11 @@ fn v8_init(
     " --js-float16array",
     " --js-explicit-resource-management",
     " --js-source-phase-imports",
-    " --js-defer-import-eval"
+    " --js-defer-import-eval",
+    // Installs a native `queueMicrotask` on the global object, letting us
+    // enqueue microtasks from JS without crossing the op boundary. See
+    // `queueMicrotask` in `01_core.js`.
+    " --enable-queue-microtask"
   );
   let snapshot_flags = "--predictable --random-seed=42";
   let expose_natives_flags = "--expose_gc --allow_natives_syntax";
