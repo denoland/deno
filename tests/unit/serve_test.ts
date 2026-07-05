@@ -1553,6 +1553,65 @@ Deno.test(
   },
 );
 
+// https://github.com/denoland/deno/issues/27223
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerNonUint8ArrayResponseStreamDoesNotHang() {
+    const ac = new AbortController();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const errorDeferred = Promise.withResolvers<unknown>();
+    await using server = Deno.serve({
+      handler: () => {
+        const body = new ReadableStream({
+          start(controller) {
+            // @ts-ignore we're testing that input is invalid
+            controller.enqueue("wat");
+            controller.close();
+          },
+        });
+        return new Response(body);
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: (err) => {
+        errorDeferred.resolve(err);
+        return new Response("Internal server error", { status: 500 });
+      },
+    });
+
+    await listeningDeferred.promise;
+    const clientAc = new AbortController();
+    const timeoutId = setTimeout(() => clientAc.abort(), 1000);
+    let serverErrorTimeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+        signal: clientAc.signal,
+      });
+      assertEquals(resp.status, 200);
+
+      await assertRejects(() => resp.text(), TypeError);
+
+      const serverError = await Promise.race([
+        errorDeferred.promise,
+        new Promise<"timeout">((resolve) => {
+          serverErrorTimeoutId = setTimeout(() => resolve("timeout"), 1000);
+        }),
+      ]);
+      assertIsError(serverError, TypeError);
+      assertStringIncludes(
+        serverError.message,
+        "expected typed ArrayBufferView",
+      );
+    } finally {
+      clearTimeout(timeoutId);
+      clearTimeout(serverErrorTimeoutId);
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpServerCorrectLengthForUnicodeString() {

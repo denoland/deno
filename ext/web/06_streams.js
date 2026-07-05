@@ -1013,7 +1013,17 @@ function resourceForReadableStream(stream, length, onError) {
 
   // Trigger the first read
   PromisePrototypeCatch(readableStreamReadFn(reader, sink, onError), (err) => {
+    if (sink.external !== undefined) {
+      op_readable_stream_resource_write_error(
+        sink.external,
+        extractStringErrorFromError(err),
+      );
+      sink.close();
+    }
     PromisePrototypeCatch(reader.cancel(err), () => {});
+    if (onError !== undefined) {
+      onError(err);
+    }
   });
 
   return rid;
