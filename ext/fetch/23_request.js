@@ -573,20 +573,6 @@ class Request {
       }
     }
 
-    // If the init body is a stream (its source is null), `duplex: "half"` must
-    // be specified. https://fetch.spec.whatwg.org/#dom-request (note: a
-    // `duplex` value other than "half" already threw in the RequestInit
-    // converter above, since RequestDuplex only has "half".)
-    if (
-      initBody !== null &&
-      initBody.source === null &&
-      init.duplex === undefined
-    ) {
-      throw new TypeError(
-        "The `duplex` member must be specified for a request with a streaming body",
-      );
-    }
-
     // 38.
     const inputOrInitBody = initBody ?? inputBody;
 

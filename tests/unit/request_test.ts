@@ -192,17 +192,9 @@ Deno.test(function requestCloneCopiesAllProperties() {
 });
 
 Deno.test(function requestDuplexOption() {
-  // A streaming body requires `duplex: "half"`.
-  assertThrows(
-    () =>
-      new Request("http://foo/", {
-        method: "POST",
-        body: new ReadableStream(),
-      }),
-    TypeError,
-    "duplex",
-  );
-  // With `duplex: "half"` a stream body is accepted.
+  // `duplex: "half"` is accepted (with or without a streaming body). Note:
+  // unlike the spec, Deno does not require `duplex` for a stream body, since
+  // it intentionally allows forwarding `Request.body`/streams to `fetch()`.
   const req = new Request("http://foo/", {
     method: "POST",
     body: new ReadableStream(),
@@ -210,8 +202,7 @@ Deno.test(function requestDuplexOption() {
   });
   assertEquals(req.method, "POST");
 
-  // Non-stream bodies don't require duplex.
-  new Request("http://foo/", { method: "POST", body: "hello" });
+  new Request("http://foo/", { method: "POST", body: "hello", duplex: "half" });
 
   // "full" is not a valid RequestDuplex value.
   assertThrows(
