@@ -1,28 +1,37 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-//! Pooled ArrayBuffer backing-store allocator.
+//! Pooled ArrayBuffer backing-store allocator with background pre-zeroing.
 //!
 //! V8's default ArrayBuffer allocator malloc+zeroes every backing store and
 //! frees it back to the system allocator when the buffer dies. For the
 //! mid-size buffers that dominate streaming workloads (fetch body chunks,
 //! file reads, encoder output; typically 16 KiB - 2 MiB), that cycle is
-//! expensive on macOS and Linux alike: the allocator's medium-size magazines
-//! madvise pages away on free, so the next allocation page-faults the memory
-//! back in just to zero it again. A `new Uint8Array(64 * 1024)` costs ~5.5us
-//! on an M1 Max; the equivalent allocation in JavaScriptCore (which hands out
-//! lazily-zeroed pages) is under 1us.
+//! expensive: the allocator's medium-size magazines madvise pages away on
+//! free, so the next allocation page-faults the memory back in just to zero
+//! it again. A `new Uint8Array(64 * 1024)` costs ~5.5us on an M1 Max; the
+//! equivalent allocation in JavaScriptCore (which hands out lazily-zeroed
+//! pages) is under 1us.
 //!
 //! This allocator keeps freed backing stores of pooled size classes on
-//! freelists instead of returning them to the system. A pooled allocation
-//! pops a warm block and zeroes only the requested length: the pages are
-//! still resident, so the zeroing runs at memset speed instead of
-//! page-fault speed, and the malloc magazine churn disappears entirely.
+//! per-class freelists instead of returning them to the system, split into
+//! two tiers:
+//!
+//! - `clean`: fully zeroed blocks. `allocate` pops one and returns it with
+//!   no zeroing at all on the hot path.
+//! - `dirty`: blocks as freed by V8. A lazily spawned background thread
+//!   drains the dirty tier, zeroing whole blocks and promoting them to
+//!   `clean`. If `allocate` finds no clean block it falls back to zeroing a
+//!   dirty block inline (still resident pages, memset speed), and finally
+//!   to `alloc_zeroed` (which obtains pre-zeroed pages from the OS for
+//!   these sizes). `allocate_uninitialized` prefers dirty blocks so clean
+//!   ones are saved for zeroed allocations.
 //!
 //! Size classes are powers of two from MIN_POOLED (16 KiB) to MAX_POOLED
 //! (4 MiB). Requests outside that range, including all small allocations
 //! (cheap already) and giant buffers (retention risk), fall through to the
-//! plain global allocator. Each class retains at most CLASS_CAP_BYTES; blocks
-//! freed beyond the cap go straight back to the system.
+//! plain global allocator. Each class retains at most CLASS_CAP_BYTES
+//! across both tiers; blocks freed beyond the cap go straight back to the
+//! system.
 //!
 //! The pool is process-global and shared by all isolates: allocator
 //! callbacks can fire on GC and background threads, and buffers regularly
@@ -39,7 +48,9 @@ use std::alloc::dealloc;
 use std::ffi::c_void;
 use std::ptr;
 use std::sync::Arc;
+use std::sync::Condvar;
 use std::sync::Mutex;
+use std::sync::Once;
 use std::sync::OnceLock;
 
 /// Backing stores are at most 8-byte aligned as far as V8 is concerned, but
@@ -52,23 +63,34 @@ const MIN_POOLED_SHIFT: u32 = 14;
 const MAX_POOLED_SHIFT: u32 = 22;
 const NUM_CLASSES: usize = (MAX_POOLED_SHIFT - MIN_POOLED_SHIFT + 1) as usize;
 
-/// Maximum bytes retained per size class (not per allocation site). With 9
-/// classes this bounds total retention at 9 * 8 MiB = 72 MiB, reached only
-/// by a workload that actively cycles buffers of every class.
+/// Maximum bytes retained per size class across both tiers. With 9 classes
+/// this bounds total retention at 9 * 8 MiB = 72 MiB, reached only by a
+/// workload that actively cycles buffers of every class.
 const CLASS_CAP_BYTES: usize = 8 * 1024 * 1024;
 
-struct SizeClass {
-  blocks: Mutex<Vec<*mut u8>>,
-}
+/// Raw block pointers stored in the freelists.
+struct Blocks(Vec<*mut u8>);
 
 // SAFETY: the raw pointers are owned, unaliased heap blocks; the Mutex
-// serializes access.
-unsafe impl Send for SizeClass {}
-unsafe impl Sync for SizeClass {}
+// around each tier serializes access.
+unsafe impl Send for Blocks {}
+
+struct SizeClass {
+  clean: Mutex<Blocks>,
+  dirty: Mutex<Blocks>,
+}
 
 pub(crate) struct BufferPool {
   classes: [SizeClass; NUM_CLASSES],
+  /// Signals the zeroer thread that dirty blocks are waiting.
+  zeroer_wakeup: Condvar,
+  zeroer_mutex: Mutex<bool>,
+  zeroer_spawn: Once,
 }
+
+// SAFETY: all interior state is behind Mutexes/Condvar.
+unsafe impl Send for BufferPool {}
+unsafe impl Sync for BufferPool {}
 
 /// Returns the class index for a pooled length, or None for the fall-through
 /// path.
@@ -77,13 +99,13 @@ fn class_for(len: usize) -> Option<usize> {
   if len == 0 || len > (1 << MAX_POOLED_SHIFT) {
     return None;
   }
-  let shift = usize::BITS - (len - 1).leading_zeros();
-  let shift = shift.max(MIN_POOLED_SHIFT);
   // Small allocations are cheap through the system allocator and pooling
   // them would waste most of a 16 KiB block.
   if len <= (1 << MIN_POOLED_SHIFT) / 2 {
     return None;
   }
+  let shift = usize::BITS - (len - 1).leading_zeros();
+  let shift = shift.max(MIN_POOLED_SHIFT);
   Some((shift - MIN_POOLED_SHIFT) as usize)
 }
 
@@ -109,69 +131,133 @@ impl BufferPool {
   fn new() -> Self {
     Self {
       classes: std::array::from_fn(|_| SizeClass {
-        blocks: Mutex::new(Vec::new()),
+        clean: Mutex::new(Blocks(Vec::new())),
+        dirty: Mutex::new(Blocks(Vec::new())),
       }),
+      zeroer_wakeup: Condvar::new(),
+      zeroer_mutex: Mutex::new(false),
+      zeroer_spawn: Once::new(),
     }
   }
 
-  /// Pop a warm block or allocate a fresh one. Returns an uninitialized
-  /// block of at least `len` bytes.
+  /// Pop a fully-zeroed block, if one is available.
   #[inline]
-  fn acquire(&self, class: usize) -> *mut u8 {
-    let popped = self.classes[class].blocks.lock().unwrap().pop();
-    match popped {
-      Some(ptr) => ptr,
-      // SAFETY: class_layout is a valid non-zero layout.
-      None => unsafe { alloc(class_layout(class)) },
-    }
+  fn pop_clean(&self, class: usize) -> Option<*mut u8> {
+    self.classes[class].clean.lock().unwrap().0.pop()
   }
 
+  /// Pop a freed, not-yet-zeroed block, if one is available.
   #[inline]
-  fn release(&self, class: usize, ptr: *mut u8) {
-    let mut blocks = self.classes[class].blocks.lock().unwrap();
-    if (blocks.len() + 1) * class_size(class) <= CLASS_CAP_BYTES {
-      blocks.push(ptr);
-    } else {
-      drop(blocks);
+  fn pop_dirty(&self, class: usize) -> Option<*mut u8> {
+    self.classes[class].dirty.lock().unwrap().0.pop()
+  }
+
+  fn retained_bytes(&self, class: usize) -> usize {
+    let clean = self.classes[class].clean.lock().unwrap().0.len();
+    let dirty = self.classes[class].dirty.lock().unwrap().0.len();
+    (clean + dirty) * class_size(class)
+  }
+
+  fn release(self: &Arc<Self>, class: usize, ptr: *mut u8) {
+    if self.retained_bytes(class) + class_size(class) > CLASS_CAP_BYTES {
       // SAFETY: ptr was allocated with class_layout(class).
       unsafe { dealloc(ptr, class_layout(class)) };
+      return;
     }
+    self.classes[class].dirty.lock().unwrap().0.push(ptr);
+    self.ensure_zeroer();
+    let mut pending = self.zeroer_mutex.lock().unwrap();
+    *pending = true;
+    drop(pending);
+    self.zeroer_wakeup.notify_one();
+  }
+
+  /// Spawns the background zeroing thread on first use. The thread parks on
+  /// the condvar and wakes when blocks land in a dirty tier; it zeroes whole
+  /// blocks outside any lock and promotes them to the clean tier.
+  fn ensure_zeroer(self: &Arc<Self>) {
+    if self.zeroer_spawn.is_completed() {
+      return;
+    }
+    let pool = self.clone();
+    self.zeroer_spawn.call_once(move || {
+      std::thread::Builder::new()
+        .name("deno-buffer-zeroer".into())
+        .spawn(move || {
+          loop {
+            {
+              let mut pending = pool.zeroer_mutex.lock().unwrap();
+              while !*pending {
+                pending = pool.zeroer_wakeup.wait(pending).unwrap();
+              }
+              *pending = false;
+            }
+            // Drain all dirty tiers. New blocks freed while we work set
+            // `pending` again, so nothing is lost between passes.
+            for class in 0..NUM_CLASSES {
+              loop {
+                let Some(ptr) = pool.pop_dirty(class) else { break };
+                // SAFETY: ptr is a valid block of class_size(class) bytes.
+                unsafe { ptr::write_bytes(ptr, 0, class_size(class)) };
+                pool.classes[class].clean.lock().unwrap().0.push(ptr);
+              }
+            }
+          }
+        })
+        .ok();
+    });
   }
 }
 
-unsafe extern "C" fn pool_allocate(pool: &BufferPool, len: usize) -> *mut c_void {
+unsafe extern "C" fn pool_allocate(
+  pool: &Arc<BufferPool>,
+  len: usize,
+) -> *mut c_void {
   match class_for(len) {
     Some(class) => {
-      let ptr = pool.acquire(class);
-      if !ptr.is_null() {
-        // Zero only the requested length: V8 never exposes the block's
-        // tail. The pages are resident for pooled hits, so this runs at
-        // memset speed.
+      // Fast path: a pre-zeroed block, no zeroing at all.
+      if let Some(ptr) = pool.pop_clean(class) {
+        return ptr as *mut c_void;
+      }
+      // Warm fallback: zero a resident dirty block at memset speed.
+      if let Some(ptr) = pool.pop_dirty(class) {
         // SAFETY: ptr is valid for class_size(class) >= len bytes.
         unsafe { ptr::write_bytes(ptr, 0, len) };
+        return ptr as *mut c_void;
       }
-      ptr as *mut c_void
+      // Miss: alloc_zeroed obtains pre-zeroed pages from the OS for these
+      // sizes (calloc), avoiding an explicit memset of cold pages.
+      // SAFETY: class_layout is a valid non-zero layout.
+      unsafe { alloc_zeroed(class_layout(class)) as *mut c_void }
     }
-    // SAFETY: raw_layout is a valid non-zero layout. alloc_zeroed uses
-    // calloc under the hood, which gets pre-zeroed pages from the OS for
-    // large requests.
+    // SAFETY: raw_layout is a valid non-zero layout.
     None => unsafe { alloc_zeroed(raw_layout(len)) as *mut c_void },
   }
 }
 
 unsafe extern "C" fn pool_allocate_uninitialized(
-  pool: &BufferPool,
+  pool: &Arc<BufferPool>,
   len: usize,
 ) -> *mut c_void {
   match class_for(len) {
-    Some(class) => pool.acquire(class) as *mut c_void,
+    Some(class) => {
+      // Prefer dirty blocks so clean ones are saved for zeroed allocations.
+      if let Some(ptr) = pool.pop_dirty(class) {
+        return ptr as *mut c_void;
+      }
+      if let Some(ptr) = pool.pop_clean(class) {
+        return ptr as *mut c_void;
+      }
+      // SAFETY: class_layout is a valid non-zero layout.
+      unsafe { alloc(class_layout(class)) as *mut c_void }
+    }
     // SAFETY: raw_layout is a valid non-zero layout.
     None => unsafe { alloc(raw_layout(len)) as *mut c_void },
   }
 }
 
 unsafe extern "C" fn pool_free(
-  pool: &BufferPool,
+  pool: &Arc<BufferPool>,
   data: *mut c_void,
   len: usize,
 ) {
@@ -186,12 +272,13 @@ unsafe extern "C" fn pool_free(
   }
 }
 
-unsafe extern "C" fn pool_drop(pool: *const BufferPool) {
-  // SAFETY: the handle was created with Arc::into_raw in allocator().
-  drop(unsafe { Arc::from_raw(pool) });
+unsafe extern "C" fn pool_drop(pool: *const Arc<BufferPool>) {
+  // SAFETY: the handle was created with Box::into_raw in
+  // array_buffer_allocator().
+  drop(unsafe { Box::from_raw(pool as *mut Arc<BufferPool>) });
 }
 
-static VTABLE: v8::RustAllocatorVtable<BufferPool> =
+static VTABLE: v8::RustAllocatorVtable<Arc<BufferPool>> =
   v8::RustAllocatorVtable {
     allocate: pool_allocate,
     allocate_uninitialized: pool_allocate_uninitialized,
@@ -214,9 +301,10 @@ pub(crate) fn array_buffer_allocator()
     }
   });
   let pool = pool.as_ref()?;
-  // SAFETY: the handle is a strong Arc reference released in pool_drop, and
-  // VTABLE matches the BufferPool handle type.
-  Some(unsafe { v8::new_rust_allocator(Arc::into_raw(pool.clone()), &VTABLE) })
+  let handle = Box::into_raw(Box::new(pool.clone()));
+  // SAFETY: the handle is a heap-allocated strong Arc reference released in
+  // pool_drop, and VTABLE matches the Arc<BufferPool> handle type.
+  Some(unsafe { v8::new_rust_allocator(handle, &VTABLE) })
 }
 
 #[cfg(test)]
@@ -237,14 +325,39 @@ mod tests {
   }
 
   #[test]
-  fn acquire_release_roundtrip() {
-    let pool = BufferPool::new();
-    let class = class_for(64 * 1024).unwrap();
-    let a = pool.acquire(class);
-    assert!(!a.is_null());
-    pool.release(class, a);
-    let b = pool.acquire(class);
-    assert_eq!(a, b, "released block is reused");
-    pool.release(class, b);
+  fn allocate_free_roundtrip_reuses_block() {
+    let pool = Arc::new(BufferPool::new());
+    let len = 64 * 1024;
+    // SAFETY: exercising the allocator callbacks directly.
+    unsafe {
+      let a = pool_allocate(&pool, len);
+      assert!(!a.is_null());
+      // Returned memory must be zeroed.
+      assert_eq!(*(a as *const u8), 0);
+      ptr::write_bytes(a as *mut u8, 0xab, len);
+      pool_free(&pool, a, len);
+      // The block sits in the dirty tier (or clean, if the zeroer ran);
+      // either way the next allocation must observe zeroed memory again.
+      let b = pool_allocate(&pool, len);
+      assert!(!b.is_null());
+      let bytes = std::slice::from_raw_parts(b as *const u8, len);
+      assert!(bytes.iter().all(|&x| x == 0));
+      pool_free(&pool, b, len);
+    }
+  }
+
+  #[test]
+  fn uninitialized_prefers_dirty() {
+    let pool = Arc::new(BufferPool::new());
+    let len = 32 * 1024;
+    // SAFETY: exercising the allocator callbacks directly.
+    unsafe {
+      let a = pool_allocate_uninitialized(&pool, len);
+      assert!(!a.is_null());
+      pool_free(&pool, a, len);
+      let b = pool_allocate_uninitialized(&pool, len);
+      assert!(!b.is_null());
+      pool_free(&pool, b, len);
+    }
   }
 }
