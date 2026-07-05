@@ -59,14 +59,22 @@ const ALIGN: usize = 16;
 
 /// Smallest pooled block: 16 KiB. log2 = 14.
 const MIN_POOLED_SHIFT: u32 = 14;
-/// Largest pooled block: 4 MiB. log2 = 22.
-const MAX_POOLED_SHIFT: u32 = 22;
+/// Largest pooled block: 16 MiB. log2 = 24. Covers whole-body assembly
+/// buffers (Body consumers collect into one allocation), which benefit
+/// from pooled, pre-zeroed blocks just like streaming chunks do.
+const MAX_POOLED_SHIFT: u32 = 24;
 const NUM_CLASSES: usize = (MAX_POOLED_SHIFT - MIN_POOLED_SHIFT + 1) as usize;
 
-/// Maximum bytes retained per size class across both tiers. With 9 classes
-/// this bounds total retention at 9 * 8 MiB = 72 MiB, reached only by a
-/// workload that actively cycles buffers of every class.
+/// Maximum bytes retained per size class across both tiers; classes at
+/// least this big retain a single block. Bounds total retention at
+/// 9 * 8 MiB + 8 MiB + 16 MiB = 96 MiB, reached only by a workload that
+/// actively cycles buffers of every class.
 const CLASS_CAP_BYTES: usize = 8 * 1024 * 1024;
+
+#[inline]
+fn class_cap_bytes(class: usize) -> usize {
+  CLASS_CAP_BYTES.max(class_size(class))
+}
 
 /// Raw block pointers stored in the freelists.
 struct Blocks(Vec<*mut u8>);
@@ -159,7 +167,8 @@ impl BufferPool {
   }
 
   fn release(self: &Arc<Self>, class: usize, ptr: *mut u8) {
-    if self.retained_bytes(class) + class_size(class) > CLASS_CAP_BYTES {
+    if self.retained_bytes(class) + class_size(class) > class_cap_bytes(class)
+    {
       // SAFETY: ptr was allocated with class_layout(class).
       unsafe { dealloc(ptr, class_layout(class)) };
       return;
@@ -321,7 +330,9 @@ mod tests {
     assert_eq!(class_for(16 * 1024 + 1), Some(1));
     assert_eq!(class_for(64 * 1024), Some(2));
     assert_eq!(class_for(4 * 1024 * 1024), Some(8));
-    assert_eq!(class_for(4 * 1024 * 1024 + 1), None);
+    assert_eq!(class_for(4 * 1024 * 1024 + 1), Some(9));
+    assert_eq!(class_for(16 * 1024 * 1024), Some(10));
+    assert_eq!(class_for(16 * 1024 * 1024 + 1), None);
   }
 
   #[test]
