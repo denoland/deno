@@ -100,3 +100,53 @@ Deno.test(async function responseBodyUsed() {
   response.body;
   assert(response.bodyUsed);
 });
+
+// A body extracted from a BodyInit (string, typed array, ...) must be exposed
+// as a readable byte stream, so a BYOB reader can be acquired from it.
+// https://github.com/denoland/deno/issues/17386
+Deno.test(async function responseBodyByobReader() {
+  async function readByob(stream: ReadableStream<Uint8Array>) {
+    const reader = stream.getReader({ mode: "byob" });
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const { value, done } = await reader.read(new Uint8Array(16));
+      if (done) break;
+      chunks.push(value);
+      total += value.byteLength;
+    }
+    const result = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return result;
+  }
+
+  assertEquals(
+    await readByob(new Response(new Uint8Array([1, 2, 3])).body!),
+    new Uint8Array([1, 2, 3]),
+  );
+  assertEquals(
+    await readByob(new Response("foo").body!),
+    new TextEncoder().encode("foo"),
+  );
+  assertEquals(
+    await readByob(new Response(new Uint8Array()).body!),
+    new Uint8Array(),
+  );
+  assertEquals(
+    await readByob(
+      new Request("http://localhost/", { method: "POST", body: "bar" }).body!,
+    ),
+    new TextEncoder().encode("bar"),
+  );
+
+  // A cloned body shares the static source with the original. Reading one as a
+  // byte stream must not detach the buffer out from under the other.
+  const original = new Response(new Uint8Array([4, 5, 6]));
+  const cloned = original.clone();
+  assertEquals(await readByob(original.body!), new Uint8Array([4, 5, 6]));
+  assertEquals(await readByob(cloned.body!), new Uint8Array([4, 5, 6]));
+});

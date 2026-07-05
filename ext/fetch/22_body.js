@@ -46,7 +46,7 @@ const mimesniff = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
 const {
   createProxy,
-  createReadableStream,
+  createReadableByteStream,
   errorReadableStream,
   isReadableStreamDisturbed,
   readableStreamClose,
@@ -110,32 +110,53 @@ class InnerBody {
     ) {
       const { body, consumed } = this.streamOrStatic;
       if (consumed) {
-        this.streamOrStatic = new ReadableStream();
+        this.streamOrStatic = new ReadableStream({ type: "bytes" });
         this.streamOrStatic.getReader();
         readableStreamDisturb(this.streamOrStatic);
         readableStreamClose(this.streamOrStatic);
       } else {
         const length = this.length;
-        // Materialize the static body into a stream lazily. With a high water
-        // mark of 0 the body is only encoded/enqueued once the stream is
-        // actually read. The very common pattern of round-tripping a body
-        // through a new Response/Request just to mutate headers recovers the
-        // static body in `extractBody` (below) and never reads this stream, so
-        // the encode is skipped entirely. `createReadableStream` also avoids
-        // the webidl UnderlyingSource conversion `new ReadableStream({...})`
-        // performs.
+        // Materialize the static body into a byte stream lazily. The Fetch
+        // Standard extracts bodies from a `BodyInit` as readable *byte* streams
+        // (whatwg/fetch#1593), so a BYOB reader can be acquired from them.
+        // `createReadableByteStream` uses a high water mark of 0, so the body is
+        // only encoded/enqueued once the stream is actually read. The very
+        // common pattern of round-tripping a body through a new Response/Request
+        // just to mutate headers recovers the static body in `extractBody`
+        // (below) and never reads this stream, so the encode is skipped
+        // entirely. It also avoids the webidl UnderlyingSource conversion
+        // `new ReadableStream({...})` performs.
         // The pull and cancel algorithms must return promises (see
-        // `createReadableStream`): `readableStreamCancel` and the controller's
-        // pull machinery call `.then` on the returned value directly.
-        const stream = createReadableStream(
+        // `createReadableByteStream`): `readableStreamCancel` and the
+        // controller's pull machinery call `.then` on the returned value
+        // directly.
+        const stream = createReadableByteStream(
           noop,
           (controller) => {
-            controller.enqueue(chunkToU8(body));
+            const chunk = chunkToU8(body);
+            // A byte stream controller rejects zero-length views, so only
+            // enqueue a non-empty chunk (e.g. `new Response("")` has none).
+            if (TypedArrayPrototypeGetByteLength(chunk) > 0) {
+              // `enqueue` transfers (detaches) the chunk's ArrayBuffer. When
+              // `body` is a Uint8Array it's the retained static source, shared
+              // with any clones made via `clone()`, so enqueue a copy to leave
+              // it intact for the other body. A string is freshly encoded by
+              // `chunkToU8`, so it can be enqueued as-is.
+              controller.enqueue(
+                typeof body === "string"
+                  ? chunk
+                  : TypedArrayPrototypeSlice(chunk),
+              );
+            }
             controller.close();
+            // With a high water mark of 0 this pull runs while a BYOB read is
+            // already pending; `close()` alone does not settle that read, so
+            // respond(0) to signal EOF (matches `Blob.stream()`). It's a no-op
+            // when the read was already satisfied by the `enqueue` above.
+            controller.byobRequest?.respond(0);
             return PromiseResolve(undefined);
           },
           noopAsync,
-          0,
         );
         if (length !== null) {
           WeakMapPrototypeSet(staticBodyLength, stream, length);
