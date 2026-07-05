@@ -3399,84 +3399,95 @@ function readableStreamDefaultTee(stream, cloneForBranch2) {
   /** @type {Deferred<void>} */
   const cancelPromise = new Deferred();
 
+  // The read request, its microtask callback, and the pending chunk slot are
+  // allocated once per tee() rather than once per chunk: the `reading` flag
+  // guarantees at most one read is in flight at a time.
+  /** @type {R | undefined} */
+  let pendingChunk;
+
+  function chunkStepsMicrotask() {
+    readAgain = false;
+    const value1 = pendingChunk;
+    let value2 = pendingChunk;
+    pendingChunk = undefined;
+
+    if (canceled2 === false && cloneForBranch2 === true) {
+      try {
+        value2 = structuredClone(value2);
+      } catch (cloneError) {
+        readableStreamDefaultControllerError(
+          branch1[_controller],
+          cloneError,
+        );
+        readableStreamDefaultControllerError(
+          branch2[_controller],
+          cloneError,
+        );
+        cancelPromise.resolve(readableStreamCancel(stream, cloneError));
+        return;
+      }
+    }
+
+    if (canceled1 === false) {
+      readableStreamDefaultControllerEnqueue(
+        /** @type {ReadableStreamDefaultController<any>} */ branch1[
+          _controller
+        ],
+        value1,
+      );
+    }
+    if (canceled2 === false) {
+      readableStreamDefaultControllerEnqueue(
+        /** @type {ReadableStreamDefaultController<any>} */ branch2[
+          _controller
+        ],
+        value2,
+      );
+    }
+
+    reading = false;
+    if (readAgain === true) {
+      pullAlgorithm();
+    }
+  }
+
+  /** @type {ReadRequest<R>} */
+  const readRequest = {
+    chunkSteps(value) {
+      pendingChunk = value;
+      queueMicrotask(chunkStepsMicrotask);
+    },
+    closeSteps() {
+      reading = false;
+      if (canceled1 === false) {
+        readableStreamDefaultControllerClose(
+          /** @type {ReadableStreamDefaultController<any>} */ branch1[
+            _controller
+          ],
+        );
+      }
+      if (canceled2 === false) {
+        readableStreamDefaultControllerClose(
+          /** @type {ReadableStreamDefaultController<any>} */ branch2[
+            _controller
+          ],
+        );
+      }
+      if (canceled1 === false || canceled2 === false) {
+        cancelPromise.resolve(undefined);
+      }
+    },
+    errorSteps() {
+      reading = false;
+    },
+  };
+
   function pullAlgorithm() {
     if (reading === true) {
       readAgain = true;
       return PromiseResolve(undefined);
     }
     reading = true;
-    /** @type {ReadRequest<R>} */
-    const readRequest = {
-      chunkSteps(value) {
-        queueMicrotask(() => {
-          readAgain = false;
-          const value1 = value;
-          let value2 = value;
-
-          if (canceled2 === false && cloneForBranch2 === true) {
-            try {
-              value2 = structuredClone(value2);
-            } catch (cloneError) {
-              readableStreamDefaultControllerError(
-                branch1[_controller],
-                cloneError,
-              );
-              readableStreamDefaultControllerError(
-                branch2[_controller],
-                cloneError,
-              );
-              cancelPromise.resolve(readableStreamCancel(stream, cloneError));
-              return;
-            }
-          }
-
-          if (canceled1 === false) {
-            readableStreamDefaultControllerEnqueue(
-              /** @type {ReadableStreamDefaultController<any>} */ branch1[
-                _controller
-              ],
-              value1,
-            );
-          }
-          if (canceled2 === false) {
-            readableStreamDefaultControllerEnqueue(
-              /** @type {ReadableStreamDefaultController<any>} */ branch2[
-                _controller
-              ],
-              value2,
-            );
-          }
-
-          reading = false;
-          if (readAgain === true) {
-            pullAlgorithm();
-          }
-        });
-      },
-      closeSteps() {
-        reading = false;
-        if (canceled1 === false) {
-          readableStreamDefaultControllerClose(
-            /** @type {ReadableStreamDefaultController<any>} */ branch1[
-              _controller
-            ],
-          );
-        }
-        if (canceled2 === false) {
-          readableStreamDefaultControllerClose(
-            /** @type {ReadableStreamDefaultController<any>} */ branch2[
-              _controller
-            ],
-          );
-        }
-        if (canceled1 === false || canceled2 === false) {
-          cancelPromise.resolve(undefined);
-        }
-      },
-      errorSteps() {
-        reading = false;
-      },
-    };
     readableStreamDefaultReaderRead(reader, readRequest);
     return PromiseResolve(undefined);
   }
@@ -3587,6 +3598,72 @@ function readableByteStreamTee(stream) {
     });
   }
 
+  // The read requests, their microtask callbacks, and the pending chunk and
+  // branch slots are allocated once per tee() rather than once per chunk: the
+  // `reading` flag guarantees at most one read is in flight at a time.
+  /** @type {ArrayBufferView | undefined} */
+  let pendingChunk;
+
+  function defaultReaderChunkStepsMicrotask() {
+    const chunk = pendingChunk;
+    pendingChunk = undefined;
+    readAgainForBranch1 = false;
+    readAgainForBranch2 = false;
+    const chunk1 = chunk;
+    let chunk2 = chunk;
+    if (!canceled1 && !canceled2) {
+      try {
+        chunk2 = cloneAsUint8Array(chunk);
+      } catch (e) {
+        readableByteStreamControllerError(branch1[_controller], e);
+        readableByteStreamControllerError(branch2[_controller], e);
+        cancelPromise.resolve(readableStreamCancel(stream, e));
+        return;
+      }
+    }
+    if (!canceled1) {
+      readableByteStreamControllerEnqueue(branch1[_controller], chunk1);
+    }
+    if (!canceled2) {
+      readableByteStreamControllerEnqueue(branch2[_controller], chunk2);
+    }
+    reading = false;
+    if (readAgainForBranch1) {
+      pull1Algorithm();
+    } else if (readAgainForBranch2) {
+      pull2Algorithm();
+    }
+  }
+
+  /** @type {ReadRequest} */
+  const readRequest = {
+    chunkSteps(chunk) {
+      pendingChunk = chunk;
+      queueMicrotask(defaultReaderChunkStepsMicrotask);
+    },
+    closeSteps() {
+      reading = false;
+      if (!canceled1) {
+        readableByteStreamControllerClose(branch1[_controller]);
+      }
+      if (!canceled2) {
+        readableByteStreamControllerClose(branch2[_controller]);
+      }
+      if (branch1[_controller][_pendingPullIntos].size !== 0) {
+        readableByteStreamControllerRespond(branch1[_controller], 0);
+      }
+      if (branch2[_controller][_pendingPullIntos].size !== 0) {
+        readableByteStreamControllerRespond(branch2[_controller], 0);
+      }
+      if (!canceled1 || !canceled2) {
+        cancelPromise.resolve(undefined);
+      }
+    },
+    errorSteps() {
+      reading = false;
+    },
+  };
+
   function pullWithDefaultReader() {
     if (isReadableStreamBYOBReader(reader)) {
       assert(reader[_readIntoRequests].size === 0);
@@ -3594,63 +3671,109 @@ function readableByteStreamTee(stream) {
       reader = acquireReadableStreamDefaultReader(stream);
       forwardReaderError(reader);
     }
-
-    /** @type {ReadRequest} */
-    const readRequest = {
-      chunkSteps(chunk) {
-        queueMicrotask(() => {
-          readAgainForBranch1 = false;
-          readAgainForBranch2 = false;
-          const chunk1 = chunk;
-          let chunk2 = chunk;
-          if (!canceled1 && !canceled2) {
-            try {
-              chunk2 = cloneAsUint8Array(chunk);
-            } catch (e) {
-              readableByteStreamControllerError(branch1[_controller], e);
-              readableByteStreamControllerError(branch2[_controller], e);
-              cancelPromise.resolve(readableStreamCancel(stream, e));
-              return;
-            }
-          }
-          if (!canceled1) {
-            readableByteStreamControllerEnqueue(branch1[_controller], chunk1);
-          }
-          if (!canceled2) {
-            readableByteStreamControllerEnqueue(branch2[_controller], chunk2);
-          }
-          reading = false;
-          if (readAgainForBranch1) {
-            pull1Algorithm();
-          } else if (readAgainForBranch2) {
-            pull2Algorithm();
-          }
-        });
-      },
-      closeSteps() {
-        reading = false;
-        if (!canceled1) {
-          readableByteStreamControllerClose(branch1[_controller]);
-        }
-        if (!canceled2) {
-          readableByteStreamControllerClose(branch2[_controller]);
-        }
-        if (branch1[_controller][_pendingPullIntos].size !== 0) {
-          readableByteStreamControllerRespond(branch1[_controller], 0);
-        }
-        if (branch2[_controller][_pendingPullIntos].size !== 0) {
-          readableByteStreamControllerRespond(branch2[_controller], 0);
-        }
-        if (!canceled1 || !canceled2) {
-          cancelPromise.resolve(undefined);
-        }
-      },
-      errorSteps() {
-        reading = false;
-      },
-    };
     readableStreamDefaultReaderRead(reader, readRequest);
   }
+
+  // Which branch the in-flight BYOB read is for; set before each BYOB read
+  // and consumed by the shared readIntoRequest below.
+  let byobForBranch2 = false;
+
+  function byobReaderChunkStepsMicrotask() {
+    const chunk = pendingChunk;
+    pendingChunk = undefined;
+    const forBranch2 = byobForBranch2;
+    const byobBranch = forBranch2 ? branch2 : branch1;
+    const otherBranch = forBranch2 ? branch1 : branch2;
+    readAgainForBranch1 = false;
+    readAgainForBranch2 = false;
+    const byobCanceled = forBranch2 ? canceled2 : canceled1;
+    const otherCanceled = forBranch2 ? canceled1 : canceled2;
+    if (!otherCanceled) {
+      let clonedChunk;
+      try {
+        clonedChunk = cloneAsUint8Array(chunk);
+      } catch (e) {
+        readableByteStreamControllerError(byobBranch[_controller], e);
+        readableByteStreamControllerError(otherBranch[_controller], e);
+        cancelPromise.resolve(readableStreamCancel(stream, e));
+        return;
+      }
+      if (!byobCanceled) {
+        readableByteStreamControllerRespondWithNewView(
+          byobBranch[_controller],
+          chunk,
+        );
+      }
+      readableByteStreamControllerEnqueue(
+        otherBranch[_controller],
+        clonedChunk,
+      );
+    } else if (!byobCanceled) {
+      readableByteStreamControllerRespondWithNewView(
+        byobBranch[_controller],
+        chunk,
+      );
+    }
+    reading = false;
+    if (readAgainForBranch1) {
+      pull1Algorithm();
+    } else if (readAgainForBranch2) {
+      pull2Algorithm();
+    }
+  }
+
+  /** @type {ReadIntoRequest} */
+  const readIntoRequest = {
+    chunkSteps(chunk) {
+      pendingChunk = chunk;
+      queueMicrotask(byobReaderChunkStepsMicrotask);
+    },
+    closeSteps(chunk) {
+      reading = false;
+      const forBranch2 = byobForBranch2;
+      const byobBranch = forBranch2 ? branch2 : branch1;
+      const otherBranch = forBranch2 ? branch1 : branch2;
+      const byobCanceled = forBranch2 ? canceled2 : canceled1;
+      const otherCanceled = forBranch2 ? canceled1 : canceled2;
+      if (!byobCanceled) {
+        readableByteStreamControllerClose(byobBranch[_controller]);
+      }
+      if (!otherCanceled) {
+        readableByteStreamControllerClose(otherBranch[_controller]);
+      }
+      if (chunk !== undefined) {
+        let byteLength;
+        if (isTypedArray(chunk)) {
+          byteLength = TypedArrayPrototypeGetByteLength(
+            /** @type {Uint8Array} */ (chunk),
+          );
+        } else {
+          byteLength = DataViewPrototypeGetByteLength(
+            /** @type {DataView} */ (chunk),
+          );
+        }
+        assert(byteLength === 0);
+        if (!byobCanceled) {
+          readableByteStreamControllerRespondWithNewView(
+            byobBranch[_controller],
+            chunk,
+          );
+        }
+        if (
+          !otherCanceled &&
+          otherBranch[_controller][_pendingPullIntos].size !== 0
+        ) {
+          readableByteStreamControllerRespond(otherBranch[_controller], 0);
+        }
+      }
+      if (!byobCanceled || !otherCanceled) {
+        cancelPromise.resolve(undefined);
+      }
+    },
+    errorSteps() {
+      reading = false;
+    },
+  };
 
   function pullWithBYOBReader(view, forBranch2) {
     if (isReadableStreamDefaultReader(reader)) {
@@ -3659,94 +3782,7 @@ function readableByteStreamTee(stream) {
       reader = acquireReadableStreamBYOBReader(stream);
       forwardReaderError(reader);
     }
-    const byobBranch = forBranch2 ? branch2 : branch1;
-    const otherBranch = forBranch2 ? branch1 : branch2;
-
-    /** @type {ReadIntoRequest} */
-    const readIntoRequest = {
-      chunkSteps(chunk) {
-        queueMicrotask(() => {
-          readAgainForBranch1 = false;
-          readAgainForBranch2 = false;
-          const byobCanceled = forBranch2 ? canceled2 : canceled1;
-          const otherCanceled = forBranch2 ? canceled1 : canceled2;
-          if (!otherCanceled) {
-            let clonedChunk;
-            try {
-              clonedChunk = cloneAsUint8Array(chunk);
-            } catch (e) {
-              readableByteStreamControllerError(byobBranch[_controller], e);
-              readableByteStreamControllerError(otherBranch[_controller], e);
-              cancelPromise.resolve(readableStreamCancel(stream, e));
-              return;
-            }
-            if (!byobCanceled) {
-              readableByteStreamControllerRespondWithNewView(
-                byobBranch[_controller],
-                chunk,
-              );
-            }
-            readableByteStreamControllerEnqueue(
-              otherBranch[_controller],
-              clonedChunk,
-            );
-          } else if (!byobCanceled) {
-            readableByteStreamControllerRespondWithNewView(
-              byobBranch[_controller],
-              chunk,
-            );
-          }
-          reading = false;
-          if (readAgainForBranch1) {
-            pull1Algorithm();
-          } else if (readAgainForBranch2) {
-            pull2Algorithm();
-          }
-        });
-      },
-      closeSteps(chunk) {
-        reading = false;
-        const byobCanceled = forBranch2 ? canceled2 : canceled1;
-        const otherCanceled = forBranch2 ? canceled1 : canceled2;
-        if (!byobCanceled) {
-          readableByteStreamControllerClose(byobBranch[_controller]);
-        }
-        if (!otherCanceled) {
-          readableByteStreamControllerClose(otherBranch[_controller]);
-        }
-        if (chunk !== undefined) {
-          let byteLength;
-          if (isTypedArray(chunk)) {
-            byteLength = TypedArrayPrototypeGetByteLength(
-              /** @type {Uint8Array} */ (chunk),
-            );
-          } else {
-            byteLength = DataViewPrototypeGetByteLength(
-              /** @type {DataView} */ (chunk),
-            );
-          }
-          assert(byteLength === 0);
-          if (!byobCanceled) {
-            readableByteStreamControllerRespondWithNewView(
-              byobBranch[_controller],
-              chunk,
-            );
-          }
-          if (
-            !otherCanceled &&
-            otherBranch[_controller][_pendingPullIntos].size !== 0
-          ) {
-            readableByteStreamControllerRespond(otherBranch[_controller], 0);
-          }
-        }
-        if (!byobCanceled || !otherCanceled) {
-          cancelPromise.resolve(undefined);
-        }
-      },
-      errorSteps() {
-        reading = false;
-      },
-    };
+    byobForBranch2 = forBranch2;
     readableStreamBYOBReaderRead(reader, view, 1, readIntoRequest);
   }
 
@@ -5781,6 +5817,31 @@ function errorReadableStream(stream, e) {
   readableStreamDefaultControllerError(stream[_controller], e);
 }
 
+// A ReadRequest backed by a class instead of an object literal with closure
+// methods: one allocation per read() rather than four.
+/** @template R */
+class ReadableStreamDefaultReadRequest {
+  /** @type {Deferred<ReadableStreamReadResult<R>>} */
+  #promise;
+
+  /** @param {Deferred<ReadableStreamReadResult<R>>} promise */
+  constructor(promise) {
+    this.#promise = promise;
+  }
+
+  chunkSteps(chunk) {
+    this.#promise.resolve({ value: chunk, done: false });
+  }
+
+  closeSteps() {
+    this.#promise.resolve({ value: undefined, done: true });
+  }
+
+  errorSteps(e) {
+    this.#promise.reject(e);
+  }
+}
+
 /** @template R */
 class ReadableStreamDefaultReader {
   /** @type {Deferred<void>} */
@@ -5839,19 +5900,10 @@ class ReadableStreamDefaultReader {
     }
     /** @type {Deferred<ReadableStreamReadResult<R>>} */
     const promise = new Deferred();
-    /** @type {ReadRequest<R>} */
-    const readRequest = {
-      chunkSteps(chunk) {
-        promise.resolve({ value: chunk, done: false });
-      },
-      closeSteps() {
-        promise.resolve({ value: undefined, done: true });
-      },
-      errorSteps(e) {
-        promise.reject(e);
-      },
-    };
-    readableStreamDefaultReaderRead(this, readRequest);
+    readableStreamDefaultReaderRead(
+      this,
+      new ReadableStreamDefaultReadRequest(promise),
+    );
     return promise.promise;
   }
 
@@ -5913,6 +5965,30 @@ class ReadableStreamDefaultReader {
 webidl.configureInterface(ReadableStreamDefaultReader);
 const ReadableStreamDefaultReaderPrototype =
   ReadableStreamDefaultReader.prototype;
+
+// See ReadableStreamDefaultReadRequest: one allocation per read(view)
+// rather than four.
+class ReadableStreamBYOBReadIntoRequest {
+  /** @type {Deferred<ReadableStreamBYOBReadResult>} */
+  #promise;
+
+  /** @param {Deferred<ReadableStreamBYOBReadResult>} promise */
+  constructor(promise) {
+    this.#promise = promise;
+  }
+
+  chunkSteps(chunk) {
+    this.#promise.resolve({ value: chunk, done: false });
+  }
+
+  closeSteps(chunk) {
+    this.#promise.resolve({ value: chunk, done: true });
+  }
+
+  errorSteps(e) {
+    this.#promise.reject(e);
+  }
+}
 
 /** @template R */
 class ReadableStreamBYOBReader {
@@ -6009,19 +6085,12 @@ class ReadableStreamBYOBReader {
     }
     /** @type {Deferred<ReadableStreamBYOBReadResult>} */
     const promise = new Deferred();
-    /** @type {ReadIntoRequest} */
-    const readIntoRequest = {
-      chunkSteps(chunk) {
-        promise.resolve({ value: chunk, done: false });
-      },
-      closeSteps(chunk) {
-        promise.resolve({ value: chunk, done: true });
-      },
-      errorSteps(e) {
-        promise.reject(e);
-      },
-    };
-    readableStreamBYOBReaderRead(this, view, options.min, readIntoRequest);
+    readableStreamBYOBReaderRead(
+      this,
+      view,
+      options.min,
+      new ReadableStreamBYOBReadIntoRequest(promise),
+    );
     return promise.promise;
   }
 
