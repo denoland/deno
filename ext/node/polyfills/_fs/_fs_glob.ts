@@ -2,6 +2,7 @@
 // translated primarily from: https://github.com/nodejs/node/blob/2acc8bc6a9a830b38d101ac70390b8c5c9a14bf3/lib/internal/fs/glob.js#L258
 // with glob() and globSync() from: https://github.com/nodejs/node/blob/2acc8bc6a9a830b38d101ac70390b8c5c9a14bf3/lib/fs.js#L3167
 import { core, primordials } from "ext:core/mod.js";
+import { op_require_real_path, op_require_stat } from "ext:core/ops";
 
 const {
   validateBoolean,
@@ -151,8 +152,9 @@ function getDirentSync(path) {
 
 async function getFollowDirent(path) {
   try {
-    const info = await Deno.stat(path);
-    return { isDirectory: () => info.isDirectory };
+    const result = op_require_stat(path);
+    if (result === -1) return null;
+    return { isDirectory: () => result === 1 };
   } catch {
     return null;
   }
@@ -160,8 +162,9 @@ async function getFollowDirent(path) {
 
 function getFollowDirentSync(path) {
   try {
-    const info = Deno.statSync(path);
-    return { isDirectory: () => info.isDirectory };
+    const result = op_require_stat(path);
+    if (result === -1) return null;
+    return { isDirectory: () => result === 1 };
   } catch {
     return null;
   }
@@ -169,7 +172,7 @@ function getFollowDirentSync(path) {
 
 async function getRealpathString(path) {
   try {
-    return await Deno.realPath(path);
+    return op_require_real_path(path);
   } catch {
     return null;
   }
@@ -177,7 +180,7 @@ async function getRealpathString(path) {
 
 function getRealpathStringSync(path) {
   try {
-    return Deno.realPathSync(path);
+    return op_require_real_path(path);
   } catch {
     return null;
   }
