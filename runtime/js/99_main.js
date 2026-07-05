@@ -881,7 +881,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       0: denoVersion,
       1: location_,
       2: unstableFeatures,
-      3: inspectFlag,
       5: hasNodeModulesDir,
       6: argv0,
       7: nodeDebug,
@@ -1025,9 +1024,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     bootstrapOtel(otelConfig);
 
-    if (inspectFlag) {
-      core.wrapConsole(globalThis.console, core.v8Console);
-    }
+    // Wrap the console unconditionally (like the worker bootstrap does)
+    // rather than only under --inspect*: the inspector can also be
+    // activated later at runtime (node:inspector open(), SIGUSR1), and
+    // without the wrap those sessions never receive
+    // Runtime.consoleAPICalled events.
+    core.wrapConsole(globalThis.console, core.v8Console);
 
     event.defineEventHandler(globalThis, "error");
     event.defineEventHandler(globalThis, "load");
