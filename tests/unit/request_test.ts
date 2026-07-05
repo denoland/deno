@@ -210,7 +210,7 @@ Deno.test(function requestDuplexOption() {
       new Request("http://foo/", {
         method: "POST",
         body: "hello",
-        duplex: "full",
+        duplex: "full" as RequestDuplex,
       }),
     TypeError,
     "RequestDuplex",
