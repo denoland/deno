@@ -5412,7 +5412,10 @@
     "pummel/test-fs-watch-file-slow.js": {},
     "pummel/test-fs-watch-non-recursive.js": {},
     "pummel/test-heapsnapshot-near-heap-limit-bounded.js": {},
-    "pummel/test-http-many-keep-alive-connections.js": {},
+    "pummel/test-http-many-keep-alive-connections.js": {
+      "darwin": false,
+      "reason": "Flaky timeout under load on macOS x86_64 CI runners; retries do not help. https://github.com/denoland/deno/issues/35452"
+    },
     "pummel/test-http-upload-timeout.js": {},
     "pummel/test-https-large-response.js": {},
     "pummel/test-https-no-reader.js": {
