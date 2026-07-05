@@ -445,6 +445,8 @@ const _inFlightWriteRequest = Symbol("[[inFlightWriteRequest]]");
 const _pendingAbortRequest = Symbol("[pendingAbortRequest]");
 const _pendingPullIntos = Symbol("[[pendingPullIntos]]");
 const _preventCancel = Symbol("[[preventCancel]]");
+const _onPullFulfilled = Symbol("[[onPullFulfilled]]");
+const _onPullRejected = Symbol("[[onPullRejected]]");
 const _pullAgain = Symbol("[[pullAgain]]");
 const _pullAlgorithm = Symbol("[[pullAlgorithm]]");
 const _pulling = Symbol("[[pulling]]");
@@ -1456,18 +1458,32 @@ function readableByteStreamControllerCallPullIfNeeded(controller) {
   controller[_pulling] = true;
   /** @type {Promise<void>} */
   const pullPromise = controller[_pullAlgorithm](controller);
-  uponPromise(
-    pullPromise,
-    () => {
-      controller[_pulling] = false;
-      if (controller[_pullAgain]) {
-        controller[_pullAgain] = false;
-        readableByteStreamControllerCallPullIfNeeded(controller);
+  // See readableStreamDefaultControllerCallPullIfNeeded: reaction handlers
+  // are created once per controller instead of per pull.
+  if (controller[_onPullFulfilled] === undefined) {
+    controller[_onPullFulfilled] = () => {
+      try {
+        controller[_pulling] = false;
+        if (controller[_pullAgain]) {
+          controller[_pullAgain] = false;
+          readableByteStreamControllerCallPullIfNeeded(controller);
+        }
+      } catch (e) {
+        rethrowAssertionErrorRejection(e);
       }
-    },
-    (e) => {
-      readableByteStreamControllerError(controller, e);
-    },
+    };
+    controller[_onPullRejected] = (e) => {
+      try {
+        readableByteStreamControllerError(controller, e);
+      } catch (err) {
+        rethrowAssertionErrorRejection(err);
+      }
+    };
+  }
+  PromisePrototypeThen(
+    pullPromise,
+    controller[_onPullFulfilled],
+    controller[_onPullRejected],
   );
 }
 
@@ -1916,18 +1932,34 @@ function readableStreamDefaultControllerCallPullIfNeeded(controller) {
   assert(controller[_pullAgain] === false);
   controller[_pulling] = true;
   const pullPromise = controller[_pullAlgorithm](controller);
-  uponPromise(
-    pullPromise,
-    () => {
-      controller[_pulling] = false;
-      if (controller[_pullAgain] === true) {
-        controller[_pullAgain] = false;
-        readableStreamDefaultControllerCallPullIfNeeded(controller);
+  // The reaction handlers are created once per controller (lazily, so
+  // never-pulled streams don't pay for them) instead of per pull. They
+  // include the assertion-rethrow wrapping that uponPromise() would
+  // otherwise re-create on every call.
+  if (controller[_onPullFulfilled] === undefined) {
+    controller[_onPullFulfilled] = () => {
+      try {
+        controller[_pulling] = false;
+        if (controller[_pullAgain] === true) {
+          controller[_pullAgain] = false;
+          readableStreamDefaultControllerCallPullIfNeeded(controller);
+        }
+      } catch (e) {
+        rethrowAssertionErrorRejection(e);
       }
-    },
-    (e) => {
-      readableStreamDefaultControllerError(controller, e);
-    },
+    };
+    controller[_onPullRejected] = (e) => {
+      try {
+        readableStreamDefaultControllerError(controller, e);
+      } catch (err) {
+        rethrowAssertionErrorRejection(err);
+      }
+    };
+  }
+  PromisePrototypeThen(
+    pullPromise,
+    controller[_onPullFulfilled],
+    controller[_onPullRejected],
   );
 }
 
@@ -6244,6 +6276,10 @@ class ReadableByteStreamController {
   [_cancelAlgorithm];
   /** @type {boolean} */
   [_closeRequested];
+  /** @type {(() => void) | undefined} */
+  [_onPullFulfilled];
+  /** @type {((e: any) => void) | undefined} */
+  [_onPullRejected];
   /** @type {boolean} */
   [_pullAgain];
   /** @type {(controller: this) => Promise<void>} */
@@ -6448,6 +6484,10 @@ class ReadableStreamDefaultController {
   [_cancelAlgorithm];
   /** @type {boolean} */
   [_closeRequested];
+  /** @type {(() => void) | undefined} */
+  [_onPullFulfilled];
+  /** @type {((e: any) => void) | undefined} */
+  [_onPullRejected];
   /** @type {boolean} */
   [_pullAgain];
   /** @type {(controller: this) => Promise<void>} */
