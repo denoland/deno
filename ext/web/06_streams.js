@@ -168,6 +168,17 @@ function resolvePromiseWith(value) {
   return new Promise((resolve) => resolve(value));
 }
 
+/** @type {Promise<undefined> | undefined} */
+let _resolvedPromise;
+/**
+ * Shared resolved promise for hot paths that only need a base to hang a
+ * `.then()` off of. Created lazily so it isn't baked into the snapshot.
+ * @returns {Promise<undefined>}
+ */
+function resolvedPromise() {
+  return _resolvedPromise ??= PromiseResolve(undefined);
+}
+
 /** @param {any} e */
 function rethrowAssertionErrorRejection(e) {
   if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
@@ -480,7 +491,13 @@ const _defaultStartAlgorithm = noop;
 const _defaultWriteAlgorithm = noopAsync;
 const _defaultCloseAlgorithm = noopAsync;
 const _defaultAbortAlgorithm = noopAsync;
-const _defaultPullAlgorithm = noopAsync;
+// Pull algorithms may return undefined instead of a promise to signal
+// synchronous completion; callPullIfNeeded then subscribes its fulfilled
+// handler to the shared resolvedPromise() instead of allocating a fresh
+// one per pull. (Not queueMicrotask: its dispatch measures ~15ns/tick
+// slower than a reaction on a resolved promise, more than the saved
+// allocation buys back.)
+const _defaultPullAlgorithm = noop;
 const _defaultFlushAlgorithm = noopAsync;
 const _defaultCancelAlgorithm = noopAsync;
 
@@ -516,9 +533,12 @@ function acquireWritableStreamDefaultWriter(stream) {
 }
 
 /**
+ * The pull algorithm may return undefined instead of a promise to signal
+ * synchronous completion (see callPullIfNeeded); the cancel algorithm must
+ * return a promise.
  * @template R
  * @param {() => void} startAlgorithm
- * @param {() => Promise<void>} pullAlgorithm
+ * @param {() => Promise<void> | undefined} pullAlgorithm
  * @param {(reason: any) => Promise<void>} cancelAlgorithm
  * @param {number=} highWaterMark
  * @param {((chunk: R) => number)=} sizeAlgorithm
@@ -1480,6 +1500,13 @@ function readableByteStreamControllerCallPullIfNeeded(controller) {
       }
     };
   }
+  if (pullPromise === undefined) {
+    // See readableStreamDefaultControllerCallPullIfNeeded: synchronous
+    // internal pull algorithms return undefined; subscribe the handler
+    // to the shared pre-resolved promise instead.
+    PromisePrototypeThen(resolvedPromise(), controller[_onPullFulfilled]);
+    return;
+  }
   PromisePrototypeThen(
     pullPromise,
     controller[_onPullFulfilled],
@@ -1955,6 +1982,15 @@ function readableStreamDefaultControllerCallPullIfNeeded(controller) {
         rethrowAssertionErrorRejection(err);
       }
     };
+  }
+  if (pullPromise === undefined) {
+    // The pull algorithm completed synchronously (internal algorithms
+    // signal this by returning undefined instead of a resolved promise).
+    // Subscribing the handler to the shared pre-resolved promise enqueues
+    // the reaction at the same microtask position a fresh resolved
+    // promise would, minus the allocation.
+    PromisePrototypeThen(resolvedPromise(), controller[_onPullFulfilled]);
+    return;
   }
   PromisePrototypeThen(
     pullPromise,
@@ -3514,14 +3550,16 @@ function readableStreamDefaultTee(stream, cloneForBranch2) {
     },
   };
 
+  // Returns undefined (synchronous completion sentinel understood by
+  // readableStreamDefaultControllerCallPullIfNeeded) instead of a
+  // resolved promise.
   function pullAlgorithm() {
     if (reading === true) {
       readAgain = true;
-      return PromiseResolve(undefined);
+      return;
     }
     reading = true;
     readableStreamDefaultReaderRead(reader, readRequest);
-    return PromiseResolve(undefined);
   }
 
   /**
@@ -3818,10 +3856,13 @@ function readableByteStreamTee(stream) {
     readableStreamBYOBReaderRead(reader, view, 1, readIntoRequest);
   }
 
+  // pull1Algorithm/pull2Algorithm return undefined (synchronous completion
+  // sentinel understood by readableByteStreamControllerCallPullIfNeeded)
+  // instead of a resolved promise.
   function pull1Algorithm() {
     if (reading) {
       readAgainForBranch1 = true;
-      return PromiseResolve(undefined);
+      return;
     }
     reading = true;
     const byobRequest = readableByteStreamControllerGetBYOBRequest(
@@ -3832,13 +3873,12 @@ function readableByteStreamTee(stream) {
     } else {
       pullWithBYOBReader(byobRequest[_view], false);
     }
-    return PromiseResolve(undefined);
   }
 
   function pull2Algorithm() {
     if (reading) {
       readAgainForBranch2 = true;
-      return PromiseResolve(undefined);
+      return;
     }
     reading = true;
     const byobRequest = readableByteStreamControllerGetBYOBRequest(
@@ -3849,7 +3889,6 @@ function readableByteStreamTee(stream) {
     } else {
       pullWithBYOBReader(byobRequest[_view], true);
     }
-    return PromiseResolve(undefined);
   }
 
   function cancel1Algorithm(reason) {
@@ -6282,7 +6321,7 @@ class ReadableByteStreamController {
   [_onPullRejected];
   /** @type {boolean} */
   [_pullAgain];
-  /** @type {(controller: this) => Promise<void>} */
+  /** @type {(controller: this) => Promise<void> | undefined} */
   [_pullAlgorithm];
   /** @type {boolean} */
   [_pulling];
@@ -6490,7 +6529,7 @@ class ReadableStreamDefaultController {
   [_onPullRejected];
   /** @type {boolean} */
   [_pullAgain];
-  /** @type {(controller: this) => Promise<void>} */
+  /** @type {(controller: this) => Promise<void> | undefined} */
   [_pullAlgorithm];
   /** @type {boolean} */
   [_pulling];
