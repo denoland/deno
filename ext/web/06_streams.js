@@ -168,17 +168,6 @@ function resolvePromiseWith(value) {
   return new Promise((resolve) => resolve(value));
 }
 
-/** @type {Promise<undefined> | undefined} */
-let _resolvedPromise;
-/**
- * Shared resolved promise for hot paths that only need a base to hang a
- * `.then()` off of. Created lazily so it isn't baked into the snapshot.
- * @returns {Promise<undefined>}
- */
-function resolvedPromise() {
-  return _resolvedPromise ??= PromiseResolve(undefined);
-}
-
 /** @param {any} e */
 function rethrowAssertionErrorRejection(e) {
   if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
@@ -492,11 +481,8 @@ const _defaultWriteAlgorithm = noopAsync;
 const _defaultCloseAlgorithm = noopAsync;
 const _defaultAbortAlgorithm = noopAsync;
 // Pull algorithms may return undefined instead of a promise to signal
-// synchronous completion; callPullIfNeeded then subscribes its fulfilled
-// handler to the shared resolvedPromise() instead of allocating a fresh
-// one per pull. (Not queueMicrotask: its dispatch measures ~15ns/tick
-// slower than a reaction on a resolved promise, more than the saved
-// allocation buys back.)
+// synchronous completion; callPullIfNeeded then runs its "upon
+// fulfillment" steps synchronously with no promise or microtask hop.
 const _defaultPullAlgorithm = noop;
 const _defaultFlushAlgorithm = noopAsync;
 const _defaultCancelAlgorithm = noopAsync;
@@ -1478,6 +1464,17 @@ function readableByteStreamControllerCallPullIfNeeded(controller) {
   controller[_pulling] = true;
   /** @type {Promise<void>} */
   const pullPromise = controller[_pullAlgorithm](controller);
+  if (pullPromise === undefined) {
+    // See readableStreamDefaultControllerCallPullIfNeeded: synchronous
+    // internal pull algorithms return undefined and run the "upon
+    // fulfillment" steps synchronously.
+    controller[_pulling] = false;
+    if (controller[_pullAgain]) {
+      controller[_pullAgain] = false;
+      readableByteStreamControllerCallPullIfNeeded(controller);
+    }
+    return;
+  }
   // See readableStreamDefaultControllerCallPullIfNeeded: reaction handlers
   // are created once per controller instead of per pull.
   if (controller[_onPullFulfilled] === undefined) {
@@ -1499,13 +1496,6 @@ function readableByteStreamControllerCallPullIfNeeded(controller) {
         rethrowAssertionErrorRejection(err);
       }
     };
-  }
-  if (pullPromise === undefined) {
-    // See readableStreamDefaultControllerCallPullIfNeeded: synchronous
-    // internal pull algorithms return undefined; subscribe the handler
-    // to the shared pre-resolved promise instead.
-    PromisePrototypeThen(resolvedPromise(), controller[_onPullFulfilled]);
-    return;
   }
   PromisePrototypeThen(
     pullPromise,
@@ -1959,6 +1949,21 @@ function readableStreamDefaultControllerCallPullIfNeeded(controller) {
   assert(controller[_pullAgain] === false);
   controller[_pulling] = true;
   const pullPromise = controller[_pullAlgorithm](controller);
+  if (pullPromise === undefined) {
+    // The pull algorithm completed synchronously (internal algorithms
+    // signal this by returning undefined instead of a resolved promise),
+    // so the "upon fulfillment" steps run synchronously too: no promise,
+    // no reaction, no microtask hop. The recursive call re-checks
+    // shouldCallPull exactly like the async reaction would; termination
+    // is guaranteed because each internal algorithm guards re-entry (the
+    // tee reading flag, closeRequested for one-shot sources).
+    controller[_pulling] = false;
+    if (controller[_pullAgain] === true) {
+      controller[_pullAgain] = false;
+      readableStreamDefaultControllerCallPullIfNeeded(controller);
+    }
+    return;
+  }
   // The reaction handlers are created once per controller (lazily, so
   // never-pulled streams don't pay for them) instead of per pull. They
   // include the assertion-rethrow wrapping that uponPromise() would
@@ -1982,15 +1987,6 @@ function readableStreamDefaultControllerCallPullIfNeeded(controller) {
         rethrowAssertionErrorRejection(err);
       }
     };
-  }
-  if (pullPromise === undefined) {
-    // The pull algorithm completed synchronously (internal algorithms
-    // signal this by returning undefined instead of a resolved promise).
-    // Subscribing the handler to the shared pre-resolved promise enqueues
-    // the reaction at the same microtask position a fresh resolved
-    // promise would, minus the allocation.
-    PromisePrototypeThen(resolvedPromise(), controller[_onPullFulfilled]);
-    return;
   }
   PromisePrototypeThen(
     pullPromise,
