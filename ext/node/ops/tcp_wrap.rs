@@ -383,24 +383,14 @@ impl TCPWrap {
     if fd < 0 {
       return uv_compat::UV_EBADF;
     }
-    // Refuse to adopt a descriptor Deno already tracks. Stdio (0-2) is
-    // pre-registered and may be re-opened. Inherited extra stdio fds are
-    // also allowed, because the inherited descriptor may be a TCP socket
-    // that child process code adopts through net.Socket({ fd }) or
-    // server.listen({ fd }); their entry is consumed below only once
-    // uv_tcp_open actually claims the fd, so a failed open leaves the fd
-    // usable by node:fs. Any other fd already in the FdTable is rejected,
-    // matching `PipeWrap::open`.
-    let is_inherited_extra_stdio = {
-      let fd_table = state.borrow::<deno_io::FdTable>();
-      if fd_table.is_inherited_extra_stdio(fd) {
-        true
-      } else {
-        if fd_table.contains(fd) && !(0..=2).contains(&fd) {
-          return -libc::EEXIST;
-        }
-        false
-      }
+    // See `FdTable::begin_uv_adopt` for the duplicate-fd policy (stdio and
+    // inherited extra stdio fds may be adopted — the latter covers an
+    // inherited TCP socket claimed via net.Socket({ fd }) or
+    // server.listen({ fd }); other tracked fds are rejected).
+    let Some(was_inherited) =
+      state.borrow::<deno_io::FdTable>().begin_uv_adopt(fd)
+    else {
+      return -libc::EEXIST;
     };
     let tcp = self.tcp_ptr();
     if tcp.is_null() {
@@ -438,13 +428,9 @@ impl TCPWrap {
     // Track the adopted fd so it can't be re-adopted by another wrap and is
     // dropped from the FdTable on close.
     if ret == 0 {
-      let fd_table = state.borrow_mut::<deno_io::FdTable>();
-      // libuv now owns the original fd, so drop the inherited dup (only the
-      // dup is closed; the original numeric fd stays open under uv).
-      if is_inherited_extra_stdio {
-        fd_table.remove(fd);
-      }
-      fd_table.register_uv_owned(fd);
+      state
+        .borrow_mut::<deno_io::FdTable>()
+        .finish_uv_adopt(fd, was_inherited);
       self.base.set_fd(fd);
     }
     ret

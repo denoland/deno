@@ -758,6 +758,56 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "[node/child_process spawn] Deno child adopts a listening TCP fd passed as extra stdio",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const cmdFinished = Promise.withResolvers<void>();
+    const received = Promise.withResolvers<string>();
+    let stderr = "";
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_extra_stdio_fd3_tcp_listen.js",
+    );
+    // Create a listening socket, then hand a raw dup of it to the child and
+    // close our copy; the kernel keeps the socket listening through the dup
+    // (which is intentionally left open in this process).
+    const bootstrap = net.createServer();
+    bootstrap.listen(0, "127.0.0.1", () => {
+      const address = bootstrap.address() as net.AddressInfo;
+      // deno-lint-ignore no-explicit-any
+      const rawFd = (bootstrap as any)._handle.fdForIpc();
+      assert(rawFd >= 0);
+      bootstrap.close(() => {
+        const cp = spawn(Deno.execPath(), ["run", "-A", script], {
+          stdio: ["ignore", "ignore", "pipe", rawFd],
+        });
+        cp.stderr?.on("data", (data) => {
+          stderr += data;
+        });
+        cp.on("close", (code) => {
+          assertEquals(code, 0, stderr);
+          assertEquals(stderr, "");
+          cmdFinished.resolve();
+        });
+        // The kernel queues this connection on the still-listening socket
+        // until the child adopts fd 3 and accepts it.
+        const client = net.connect(address.port, "127.0.0.1");
+        let data = "";
+        client.on("data", (chunk) => {
+          data += chunk;
+        });
+        client.on("end", () => received.resolve(data));
+        client.on("error", (err) => received.reject(err));
+      });
+    });
+    await cmdFinished.promise;
+    assertEquals(await received.promise, "hello from fd 3 listener");
+  },
+});
+
+Deno.test({
   name: "[node/child_process spawn] supports SIGIOT signal",
   ignore: Deno.build.os === "windows",
   async fn() {

@@ -312,23 +312,13 @@ impl PipeWrap {
 
   #[fast]
   fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
-    // Check FdTable for duplicate fds. Stdio fds (0-2) are pre-registered
-    // as TableOwned; for those, open is allowed (no-op check). Inherited
-    // extra stdio fds are also allowed, because child process code may open
-    // them through net.Socket({ fd }); their entry is consumed below only
-    // once uv_pipe_open actually claims the fd, so a failed open leaves the
-    // fd usable by node:fs. Other non-stdio fds already in FdTable are
-    // rejected (EEXIST).
-    let is_inherited_extra_stdio = {
-      let fd_table = state.borrow::<deno_io::FdTable>();
-      if fd_table.is_inherited_extra_stdio(fd) {
-        true
-      } else {
-        if fd_table.contains(fd) && !(0..=2).contains(&fd) {
-          return -libc::EEXIST;
-        }
-        false
-      }
+    // See `FdTable::begin_uv_adopt` for the duplicate-fd policy (stdio and
+    // inherited extra stdio fds may be adopted; other tracked fds are
+    // rejected).
+    let Some(was_inherited) =
+      state.borrow::<deno_io::FdTable>().begin_uv_adopt(fd)
+    else {
+      return -libc::EEXIST;
     };
     let pipe = self.pipe_ptr();
     if pipe.is_null() {
@@ -347,14 +337,9 @@ impl PipeWrap {
       unsafe { uv_compat::uv_pipe_open(pipe, fd) }
     };
     if ret == 0 {
-      let fd_table = state.borrow_mut::<deno_io::FdTable>();
-      // libuv now owns the original fd, so drop the inherited dup (only the
-      // dup is closed; the original numeric fd stays open under uv).
-      if is_inherited_extra_stdio {
-        fd_table.remove(fd);
-      }
-      // Register as UvOwned - the native handle owns the fd.
-      fd_table.register_uv_owned(fd);
+      state
+        .borrow_mut::<deno_io::FdTable>()
+        .finish_uv_adopt(fd, was_inherited);
       self.base.set_fd(fd);
     }
     ret
