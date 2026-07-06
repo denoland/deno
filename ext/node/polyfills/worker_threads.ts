@@ -83,6 +83,7 @@ const lazyModule = core.createLazyLoader("node:module");
 // loaders.
 
 const {
+  ArrayBufferIsView,
   ArrayIsArray,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
@@ -1806,7 +1807,13 @@ function moveMessagePortToContext(
         // surface as `messageerror` per Node semantics.
         let message;
         try {
-          message = deserializeMessageData(data.data, false);
+          // `data` is either the raw serialized buffer (no transferables) or a
+          // `{ data, transferables }` object. Deserialize without the
+          // host-object deserializers registry either way.
+          message = deserializeMessageData(
+            ArrayBufferIsView(data) ? data : data.data,
+            false,
+          );
         } catch {
           const err = new Error(
             "Message could not be deserialized in the target context",

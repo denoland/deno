@@ -1,0 +1,29 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Lifecycle scripts that invoke bins from the package's dependencies
+    // (e.g. prebuild-install, node-gyp) must resolve those bins to the
+    // hoisted locations, not the isolated `.deno` layout.
+    // https://github.com/denoland/deno/issues/35742
+    "install_with_dep_bins": {
+      "steps": [
+        {
+          "args": "install --allow-scripts",
+          "output": "install.out"
+        },
+        {
+          // the `install` script chains a dependency bin (`cli-esm` from
+          // @denotest/bin) with `node install.js`, which writes this file —
+          // so its presence proves the dependency bin resolved and ran
+          "args": "eval console.log(Deno.readTextFileSync('install.txt'))",
+          "output": "Installed by @denotest/node-lifecycle-scripts!\n"
+        },
+        {
+          // sanity check the layout is actually hoisted
+          "args": "eval console.log(Deno.statSync('node_modules/@denotest/bin').isDirectory)",
+          "output": "true\n"
+        }
+      ]
+    }
+  }
+}
