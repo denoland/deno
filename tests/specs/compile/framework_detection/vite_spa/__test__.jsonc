@@ -4,19 +4,35 @@
     // A plain Vite SPA (vite.config.ts, no server.{js,ts,mjs}) has no server
     // entrypoint, so framework detection generates a static-file-server
     // entrypoint that imports `@std/http` and serves the built `dist/`. This
-    // guards that the whole SPA path — detect Vite, run the build task, resolve
-    // the generated entrypoint's `@std/http` import, include `dist/`, bundle —
-    // compiles into a binary. The `@std/http` import is remapped to a local
-    // stub in `deno.json` so the test stays hermetic.
+    // guards the whole SPA path: detect Vite, run the build task, resolve the
+    // generated entrypoint's `@std/http` import, include `dist/`, bundle, and
+    // compile into a binary — then boot that binary. The `@std/http` import is
+    // remapped to a local stub in `deno.json` so the test stays hermetic. The
+    // run step sets `EXIT_ON_LOAD` so the stub (which the entrypoint imports
+    // before its blocking `Deno.serve`) prints a marker and exits, proving the
+    // compiled binary starts and resolves the remapped import from the VFS
+    // without hanging the harness on a live server.
     "vite_spa": {
       "steps": [{
         "if": "unix",
         "args": "compile -A --output main .",
         "output": "compile.out"
       }, {
+        "if": "unix",
+        "commandName": "./main",
+        "args": [],
+        "envs": { "EXIT_ON_LOAD": "1" },
+        "output": "main.out"
+      }, {
         "if": "windows",
         "args": "compile -A --output main.exe .",
         "output": "compile.out"
+      }, {
+        "if": "windows",
+        "commandName": "./main.exe",
+        "args": [],
+        "envs": { "EXIT_ON_LOAD": "1" },
+        "output": "main.out"
       }]
     }
   }
