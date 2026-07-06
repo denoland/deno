@@ -458,6 +458,7 @@ napi_sys = { version = "0.1.0", path = "./libs/napi_sys" }
 color = "0.3.3"
 cssparser = "0.36.0"
 fontdb = "0.23.0"
+fontique = { version = "0.11.0", features = ["fontconfig-dlopen"] }
 parley = "0.11.0"
 ttf-parser = "0.25.1"
 vello = { version = "0.9.0", default-features = false, features = ["wgpu"] }
