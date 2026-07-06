@@ -1,0 +1,5 @@
+[WILDCARD]
+yaml.name: deno
+json5.a: 1
+[WILDCARD]
+toml.server.port: 8080

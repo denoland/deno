@@ -1,0 +1,8 @@
+{
+  "scope": "std",
+  "name": "jsonc",
+  "latest": "1.0.2",
+  "versions": {
+    "1.0.2": {}
+  }
+}

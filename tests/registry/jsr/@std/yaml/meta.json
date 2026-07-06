@@ -1,0 +1,8 @@
+{
+  "scope": "std",
+  "name": "yaml",
+  "latest": "1.1.1",
+  "versions": {
+    "1.1.1": {}
+  }
+}
