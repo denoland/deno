@@ -5020,7 +5020,9 @@ Deno.test(
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(clientError.message.includes("client error"));
+      assert(clientError.message === "fetch failed");
+      assert(clientError.cause instanceof Error);
+      assert(clientError.cause.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;
@@ -5068,7 +5070,9 @@ Deno.test({
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(clientError.message.includes("client error"));
+      assert(clientError.message === "fetch failed");
+      assert(clientError.cause instanceof Error);
+      assert(clientError.cause.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;

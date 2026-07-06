@@ -6,6 +6,72 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.9.1 / 2026.07.01
+
+- feat(check): add `--desktop` flag to type-check for deno desktop (#35644)
+- feat(desktop): register deep-link URL schemes at bundle time (#35466)
+- feat: update laufey to 0.5.0 (#35663)
+- fix(bundle): emit CSSStyleSheet for CSS raw imports (#35598)
+- fix(cache): skip checksums for cached 404 entries (#35526)
+- fix(config): don't strip workspace-member includes from deploy config (#34788)
+- fix(core): apply deferred fast-call op upgrade to the captured bootstrap clone
+  (#35630)
+- fix(core): prevent shared-buffer timer expiry race from losing timers (#35312)
+- fix(desktop): default window title to app name instead of laufey_webview
+  (#35541)
+- fix(desktop): detect SvelteKit adapter-node and error on unsupported adapters
+  (#35533)
+- fix(desktop): discover deno.json in the project dir for `deno desktop .`
+  (#35660)
+- fix(desktop): don't delete user directories that collide with app name
+  (#35513)
+- fix(desktop): repair webview and raw backends on Windows (laufey v0.4.1)
+  (#35566)
+- fix(desktop): resolve launcher symlink so .deb/.rpm apps find the backend
+  (#35632)
+- fix(desktop): set LAUFEY_RUNTIME_PATH in Linux app launcher (#35580)
+- fix(desktop): show macOS tray icon in bundled .app launched via Finder
+  (#35626)
+- fix(desktop): use zstd for appimage squashfs (#35506)
+- fix(doc): strip blockquote > prefixes from JSDoc code blocks (#34866)
+- fix(ext/fetch): include path and reason when fetching a file:// URL fails
+  (#35606)
+- fix(ext/node): check permissions when binding node:net unix sockets (#35564)
+- fix(ext/node): export report as named export from node:process (#35400)
+- fix(ext/node): mock.reset() should also reset MockTimers (#35588)
+- fix(ext/node): pass Deno subcommands through child_process spawn (#35599)
+- fix(ext/node): send TLS close_notify on JS stream-backed socket shutdown
+  (#35582)
+- fix(ext/node_sqlite): keep attach limit capped under scoped permissions
+  (#35232)
+- fix(ext/web): make URL and URLSearchParams non-serializable (#35423)
+- fix(fmt): stable formatting of multi-line html/svg tagged templates (#35540)
+- fix(inspector): support Chrome worker debugging (#35629)
+- fix(install): pin pre-release npm versions added via dist-tag (#35586)
+- fix(jupyter): register stdin peer only after ZMTP handshake completes (#35585)
+- fix(lib): add PerformanceObserver and PerformanceObserverEntryList types
+  (#35640)
+- fix(libs/http): add missing `write_flushed` in
+  `poll_start_fixed_response_with` (#35649)
+- fix(lsp): watch .wasm files for changes (#35560)
+- fix(node): load graph-backed TypeScript modules synchronously (#35527)
+- fix(npm): decode percent-encoded subpath of npm specifiers (#35505)
+- fix(npm): fall back for age-filtered npm dist-tags (#35561)
+- fix(npm): normalize bin names with path separators (#35555)
+- fix(npm): realpath npm bin main module (#35554)
+- fix(npm): show scoped-registry auth hint on tarball 404 (#35514)
+- fix(npm): use case-insensitive match for trust-policy-exclude (#35520)
+- fix(rt_desktop): reveal initial window on first paint (startup black flash)
+  (#35620)
+- fix: correct property name for JSX new line configuration in schema file
+  (#35565)
+- fix: resolve LAUFEY_VERSION from crate-local Cargo.lock during publish
+  (#35507)
+- fix: show clear error when V8 fails to create worker threads (#32856)
+- perf(core/webidl): check `next` method outside of iterator loop (#35480)
+- perf(ext/fetch): fast-path Response reconstruction (#35495)
+- perf(ext/http): coalesce chunked response writes into a single write (#35523)
+
 ### 2.9.0 / 2026.06.25
 
 Read more: http://deno.com/blog/v2.9
