@@ -167,8 +167,7 @@ impl BufferPool {
   }
 
   fn release(self: &Arc<Self>, class: usize, ptr: *mut u8) {
-    if self.retained_bytes(class) + class_size(class) > class_cap_bytes(class)
-    {
+    if self.retained_bytes(class) + class_size(class) > class_cap_bytes(class) {
       // SAFETY: ptr was allocated with class_layout(class).
       unsafe { dealloc(ptr, class_layout(class)) };
       return;
@@ -204,8 +203,7 @@ impl BufferPool {
             // Drain all dirty tiers. New blocks freed while we work set
             // `pending` again, so nothing is lost between passes.
             for class in 0..NUM_CLASSES {
-              loop {
-                let Some(ptr) = pool.pop_dirty(class) else { break };
+              while let Some(ptr) = pool.pop_dirty(class) {
                 // SAFETY: ptr is a valid block of class_size(class) bytes.
                 unsafe { ptr::write_bytes(ptr, 0, class_size(class)) };
                 pool.classes[class].clean.lock().unwrap().0.push(ptr);
@@ -300,10 +298,17 @@ static POOL: OnceLock<Option<Arc<BufferPool>>> = OnceLock::new();
 /// Returns a pooled ArrayBuffer allocator, or None when disabled via
 /// DENO_DISABLE_BUFFER_POOL (callers then fall back to V8's default
 /// allocator).
-pub(crate) fn array_buffer_allocator()
--> Option<v8::UniqueRef<v8::Allocator>> {
+pub(crate) fn array_buffer_allocator() -> Option<v8::UniqueRef<v8::Allocator>> {
   let pool = POOL.get_or_init(|| {
-    if std::env::var_os("DENO_DISABLE_BUFFER_POOL").is_some() {
+    // The pool is a process-global allocator installed on the V8 CreateParams
+    // before any `sys_traits` environment is available, so read the opt-out
+    // escape hatch directly here.
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "process-global allocator init runs before sys_traits is set up"
+    )]
+    let disabled = std::env::var_os("DENO_DISABLE_BUFFER_POOL").is_some();
+    if disabled {
       None
     } else {
       Some(Arc::new(BufferPool::new()))
