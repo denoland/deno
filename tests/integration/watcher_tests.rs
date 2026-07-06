@@ -752,6 +752,50 @@ async fn run_watch_no_dynamic() {
   check_alive_then_kill(child);
 }
 
+// Regression test: modules given via --preload (or --require / NODE_OPTIONS)
+// must execute under --watch, both on the initial run and again after every
+// watcher restart. They were silently skipped because the watch path never
+// called execute_preload_modules().
+#[test(flaky)]
+async fn run_watch_preload_reruns() {
+  let t = TempDir::new();
+  let preload_file = t.path().join("preload.js");
+  preload_file.write("console.log('preload ran');");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write("console.log('main ran');");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--preload")
+    .arg(&preload_file)
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // Lines are consumed in order, so this also asserts that the preload
+  // module executes before the main module.
+  wait_contains("preload ran", &mut stdout_lines).await;
+  wait_contains("main ran", &mut stdout_lines).await;
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Change content of the file and assert that the preload runs again
+  // before the restarted main module.
+  file_to_watch.write("console.log('main ran again');");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("preload ran", &mut stdout_lines).await;
+  wait_contains("main ran again", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn serve_watch_all() {
   let t = TempDir::new();
