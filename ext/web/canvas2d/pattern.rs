@@ -7,7 +7,8 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::cppgc::Visitor;
 use deno_core::webidl::WebIdlConverter;
-use vello::kurbo;
+use vello::kurbo::Affine;
+use vello::kurbo::Vec2;
 use vello::peniko;
 
 use crate::canvas2d::error::Canvas2DError;
@@ -49,7 +50,7 @@ pub struct CanvasPattern {
   pub(super) image: peniko::ImageData,
   pub(super) x_extend: peniko::Extend,
   pub(super) y_extend: peniko::Extend,
-  pub(super) transform: RefCell<kurbo::Affine>,
+  pub(super) transform: RefCell<Affine>,
   /// Offset (in image pixels) of the original image content within `image`.
   /// Non-zero on axes using `Extend::Pad` (i.e. a non-repeating direction),
   /// since those get a 1px transparent border baked in so the pad extend
@@ -57,7 +58,7 @@ pub struct CanvasPattern {
   /// image's edge pixels outward (see `pad_pattern_image`). Must be
   /// subtracted from the brush transform at draw time to keep the pattern
   /// positioned as if the border weren't there.
-  pub(super) content_offset: kurbo::Vec2,
+  pub(super) content_offset: Vec2,
 }
 
 /// Per spec, no-repeat/repeat-x/repeat-y must show the pattern's tile only
@@ -73,9 +74,9 @@ pub fn pad_pattern_image(
   height: u32,
   pad_x: bool,
   pad_y: bool,
-) -> (Vec<u8>, u32, u32, kurbo::Vec2) {
+) -> (Vec<u8>, u32, u32, Vec2) {
   if !pad_x && !pad_y {
-    return (pixels.to_vec(), width, height, kurbo::Vec2::ZERO);
+    return (pixels.to_vec(), width, height, Vec2::ZERO);
   }
   let ox = if pad_x { 1 } else { 0 };
   let oy = if pad_y { 1 } else { 0 };
@@ -88,12 +89,7 @@ pub fn pad_pattern_image(
     let dst_start = (((y + oy) * new_width + ox) * 4) as usize;
     buf[dst_start..dst_start + (width * 4) as usize].copy_from_slice(src_row);
   }
-  (
-    buf,
-    new_width,
-    new_height,
-    kurbo::Vec2::new(ox as f64, oy as f64),
-  )
+  (buf, new_width, new_height, Vec2::new(ox as f64, oy as f64))
 }
 
 // SAFETY: CanvasPattern is only accessed from the JS thread.
@@ -134,7 +130,7 @@ impl CanvasPattern {
       &Default::default(),
     )?;
     let (a, b, c, d, e, f) = init.to_affine()?;
-    *self.transform.borrow_mut() = kurbo::Affine::new([a, b, c, d, e, f]);
+    *self.transform.borrow_mut() = Affine::new([a, b, c, d, e, f]);
     Ok(())
   }
 }

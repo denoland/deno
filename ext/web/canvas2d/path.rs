@@ -1,19 +1,26 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
+use std::f64::consts::PI;
+use std::f64::consts::TAU;
 
 use deno_core::GarbageCollected;
+use deno_core::cppgc;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::cppgc::Visitor;
 use deno_core::webidl::UnrestrictedDouble;
-use vello::kurbo;
+use vello::kurbo::Arc;
+use vello::kurbo::BezPath;
+use vello::kurbo::PathEl;
+use vello::kurbo::Point;
+use vello::kurbo::Vec2;
 
 use crate::canvas2d::error::Canvas2DError;
 use crate::canvas2d::filter::to_number_guarded;
 
 pub struct Path2D {
-  pub(super) path: RefCell<kurbo::BezPath>,
+  pub(super) path: RefCell<BezPath>,
 }
 
 // SAFETY: Path2D is only accessed from the JS thread (same as context).
@@ -36,18 +43,16 @@ impl Path2D {
     let bez = match path {
       Some(v) if v.is_string() => {
         let s = v.to_rust_string_lossy(scope);
-        kurbo::BezPath::from_svg(&s).unwrap_or_else(|_| kurbo::BezPath::new())
+        BezPath::from_svg(&s).unwrap_or_else(|_| BezPath::new())
       }
       Some(v) => {
-        if let Some(p) =
-          deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, v)
-        {
+        if let Some(p) = cppgc::try_unwrap_cppgc_object::<Path2D>(scope, v) {
           p.path.borrow().clone()
         } else {
-          kurbo::BezPath::new()
+          BezPath::new()
         }
       }
-      None => kurbo::BezPath::new(),
+      None => BezPath::new(),
     };
     Ok(Path2D {
       path: RefCell::new(bez),
@@ -159,18 +164,15 @@ impl Path2D {
     }
     let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
     let mut path = self.path.borrow_mut();
-    let arc = kurbo::Arc {
-      center: kurbo::Point::new(*x, *y),
-      radii: kurbo::Vec2::new(*radius, *radius),
+    let arc = Arc {
+      center: Point::new(*x, *y),
+      radii: Vec2::new(*radius, *radius),
       start_angle: *start_angle,
       sweep_angle: delta,
       x_rotation: 0.0,
     };
-    let start_pt = arc.center
-      + kurbo::Vec2::new(
-        *radius * start_angle.cos(),
-        *radius * start_angle.sin(),
-      );
+    let (sin_a, cos_a) = start_angle.sin_cos();
+    let start_pt = arc.center + Vec2::new(*radius * cos_a, *radius * sin_a);
     if path.is_empty() {
       path.move_to(start_pt);
     } else {
@@ -246,21 +248,19 @@ impl Path2D {
     }
     let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
     let mut path = self.path.borrow_mut();
-    let arc = kurbo::Arc {
-      center: kurbo::Point::new(*x, *y),
-      radii: kurbo::Vec2::new(*radius_x, *radius_y),
+    let arc = Arc {
+      center: Point::new(*x, *y),
+      radii: Vec2::new(*radius_x, *radius_y),
       start_angle: *start_angle,
       sweep_angle: delta,
       x_rotation: *rotation,
     };
-    let dx = *radius_x * start_angle.cos();
-    let dy = *radius_y * start_angle.sin();
-    let cos_r = rotation.cos();
-    let sin_r = rotation.sin();
-    let start_pt = kurbo::Point::new(
-      *x + dx * cos_r - dy * sin_r,
-      *y + dx * sin_r + dy * cos_r,
-    );
+    let (sin_a, cos_a) = start_angle.sin_cos();
+    let dx = *radius_x * cos_a;
+    let dy = *radius_y * sin_a;
+    let (sin_r, cos_r) = rotation.sin_cos();
+    let start_pt =
+      Point::new(*x + dx * cos_r - dy * sin_r, *y + dx * sin_r + dy * cos_r);
     if path.is_empty() {
       path.move_to(start_pt);
     } else {
@@ -319,9 +319,7 @@ impl Path2D {
     scope: &mut v8::PinScope<'_, '_>,
     other: v8::Local<'_, v8::Value>,
   ) {
-    if let Some(p) =
-      deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, other)
-    {
+    if let Some(p) = cppgc::try_unwrap_cppgc_object::<Path2D>(scope, other) {
       let other_path = p.path.borrow();
       self.path.borrow_mut().extend(other_path.iter());
     }
@@ -342,50 +340,31 @@ pub(super) fn compute_arc_sweep(
   // startAngle == endAngle always yields a zero-length sweep.
   //
   // A subtlety: if endAngle is congruent to startAngle mod 2*PI but was not
-  // literally equal to it (e.g. startAngle=0, endAngle=2*PI), the
-  // normalization loop below lands exactly on startAngle after wrapping by
-  // one full turn, which must be treated as a full-circle sweep rather
-  // than a zero-length one -- only a *literal* startAngle == endAngle (no
-  // wrapping needed) is a zero-length sweep.
-  let two_pi = 2.0 * std::f64::consts::PI;
-
+  // literally equal to it (e.g. startAngle=0, endAngle=2*PI), `rem_euclid`
+  // normalizes the difference to exactly 0, which must be treated as a
+  // full-circle sweep rather than a zero-length one -- only a *literal*
+  // startAngle == endAngle (no wrapping needed) is a zero-length sweep.
+  let diff = end_angle - start_angle;
+  if diff == 0.0 {
+    return 0.0;
+  }
   if !counterclockwise {
-    if end_angle - start_angle >= two_pi {
-      return two_pi;
+    if diff >= TAU {
+      return TAU;
     }
-    let mut end = end_angle;
-    let mut wrapped = false;
-    while end < start_angle {
-      end += two_pi;
-      wrapped = true;
-    }
-    let sweep = end - start_angle;
-    if wrapped && sweep == 0.0 {
-      two_pi
-    } else {
-      sweep
-    }
+    let sweep = diff.rem_euclid(TAU);
+    if sweep == 0.0 { TAU } else { sweep }
   } else {
-    if start_angle - end_angle >= two_pi {
-      return -two_pi;
+    if -diff >= TAU {
+      return -TAU;
     }
-    let mut end = end_angle;
-    let mut wrapped = false;
-    while end > start_angle {
-      end -= two_pi;
-      wrapped = true;
-    }
-    let sweep = end - start_angle;
-    if wrapped && sweep == 0.0 {
-      -two_pi
-    } else {
-      sweep
-    }
+    let sweep = -(-diff).rem_euclid(TAU);
+    if sweep == 0.0 { -TAU } else { sweep }
   }
 }
 
 pub(super) fn arc_to_impl(
-  path: &mut kurbo::BezPath,
+  path: &mut BezPath,
   x1: f64,
   y1: f64,
   x2: f64,
@@ -393,17 +372,17 @@ pub(super) fn arc_to_impl(
   radius: f64,
 ) {
   let current = match path.elements().last() {
-    Some(kurbo::PathEl::MoveTo(p)) => *p,
-    Some(kurbo::PathEl::LineTo(p)) => *p,
-    Some(kurbo::PathEl::QuadTo(_, p)) => *p,
-    Some(kurbo::PathEl::CurveTo(_, _, p)) => *p,
-    Some(kurbo::PathEl::ClosePath) => return,
+    Some(PathEl::MoveTo(p)) => *p,
+    Some(PathEl::LineTo(p)) => *p,
+    Some(PathEl::QuadTo(_, p)) => *p,
+    Some(PathEl::CurveTo(_, _, p)) => *p,
+    Some(PathEl::ClosePath) => return,
     None => return,
   };
 
   let p0 = current;
-  let p1 = kurbo::Point::new(x1, y1);
-  let p2 = kurbo::Point::new(x2, y2);
+  let p1 = Point::new(x1, y1);
+  let p2 = Point::new(x2, y2);
 
   if p0 == p1 || p1 == p2 || radius == 0.0 {
     path.line_to(p1);
@@ -421,8 +400,8 @@ pub(super) fn arc_to_impl(
 
   let d0 = v0.hypot();
   let d1 = v1.hypot();
-  let u0 = kurbo::Vec2::new(v0.x / d0, v0.y / d0);
-  let u1 = kurbo::Vec2::new(v1.x / d1, v1.y / d1);
+  let u0 = Vec2::new(v0.x / d0, v0.y / d0);
+  let u1 = Vec2::new(v1.x / d1, v1.y / d1);
 
   let cos_half = ((1.0 + u0.dot(u1)) / 2.0).sqrt();
   if cos_half == 0.0 {
@@ -431,17 +410,17 @@ pub(super) fn arc_to_impl(
   }
   let d = radius / ((1.0 - cos_half * cos_half).sqrt() / cos_half);
 
-  let t0 = kurbo::Point::new(p1.x + u0.x * d, p1.y + u0.y * d);
-  let t1 = kurbo::Point::new(p1.x + u1.x * d, p1.y + u1.y * d);
+  let t0 = Point::new(p1.x + u0.x * d, p1.y + u0.y * d);
+  let t1 = Point::new(p1.x + u1.x * d, p1.y + u1.y * d);
 
-  let cx_dir = kurbo::Vec2::new(u0.x + u1.x, u0.y + u1.y);
+  let cx_dir = Vec2::new(u0.x + u1.x, u0.y + u1.y);
   let cx_len = cx_dir.hypot();
   if cx_len == 0.0 {
     path.line_to(p1);
     return;
   }
 
-  let center = kurbo::Point::new(
+  let center = Point::new(
     p1.x + cx_dir.x / cx_len * (d * d + radius * radius).sqrt(),
     p1.y + cx_dir.y / cx_len * (d * d + radius * radius).sqrt(),
   );
@@ -456,19 +435,18 @@ pub(super) fn arc_to_impl(
   // start_angle to end_angle, normalized to (-PI, PI] -- no need for
   // compute_arc_sweep's full-turn/direction-clamping semantics, which are
   // specific to the public arc()/ellipse() `counterclockwise` argument.
-  let two_pi = 2.0 * std::f64::consts::PI;
   let mut sweep = end_angle - start_angle;
-  while sweep <= -std::f64::consts::PI {
-    sweep += two_pi;
+  while sweep <= -PI {
+    sweep += TAU;
   }
-  while sweep > std::f64::consts::PI {
-    sweep -= two_pi;
+  while sweep > PI {
+    sweep -= TAU;
   }
 
   path.line_to(t0);
-  let arc = kurbo::Arc {
+  let arc = Arc {
     center,
-    radii: kurbo::Vec2::new(radius, radius),
+    radii: Vec2::new(radius, radius),
     start_angle,
     sweep_angle: sweep,
     x_rotation: 0.0,
@@ -604,7 +582,7 @@ pub(super) fn parse_round_rect_radii(
 /// Build a roundRect path per the spec algorithm.
 /// https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-roundrect
 pub(super) fn build_round_rect_path(
-  path: &mut kurbo::BezPath,
+  path: &mut BezPath,
   x: f64,
   y: f64,
   w: f64,
@@ -734,7 +712,7 @@ pub(super) fn build_round_rect_path(
 
 /// Add an elliptical arc from start_quarter to end_quarter (in quarter-turns from 3 o'clock).
 fn add_elliptical_arc(
-  path: &mut kurbo::BezPath,
+  path: &mut BezPath,
   cx: f64,
   cy: f64,
   rx: f64,
@@ -744,9 +722,9 @@ fn add_elliptical_arc(
 ) {
   let start_angle = start_quarter * std::f64::consts::FRAC_PI_2;
   let sweep = (end_quarter - start_quarter) * std::f64::consts::FRAC_PI_2;
-  let arc = kurbo::Arc {
-    center: kurbo::Point::new(cx, cy),
-    radii: kurbo::Vec2::new(rx, ry),
+  let arc = Arc {
+    center: Point::new(cx, cy),
+    radii: Vec2::new(rx, ry),
     start_angle,
     sweep_angle: sweep,
     x_rotation: 0.0,
