@@ -87,15 +87,26 @@ fn queue_task(key: usize, task: v8::Task) {
 
 /// Spawn a delayed V8 foreground task on the isolate's tokio runtime.
 /// After the delay, the task is queued for synchronous draining (not
-/// run directly on the tokio worker thread). Falls back to immediate
-/// queuing when no tokio handle is available.
+/// run directly on the tokio worker thread).
+///
+/// Aborts the process when the isolate was registered without a tokio
+/// handle: the delay cannot be honored, queuing the task immediately
+/// would busy-loop the event loop on any self-rescheduling V8 task
+/// (e.g. GC memory reducer tasks), and dropping it would lose foreground
+/// work. Note that a regular `panic!` cannot be used here — this is
+/// called by V8 from C++ frames that Rust cannot unwind through, which
+/// would abort anyway but with the panic message swallowed.
 fn spawn_delayed_task(key: usize, task: v8::Task, delay_in_seconds: f64) {
   let map = ISOLATE_ENTRIES.lock().unwrap();
   let Some(entry) = map.get(&key) else { return };
   let Some(handle) = entry.handle.as_ref() else {
-    entry.tasks.lock().unwrap().push(task);
-    entry.waker.wake();
-    return;
+    #[allow(clippy::print_stderr, reason = "printed before aborting")]
+    {
+      eprintln!(
+        "V8 posted a delayed task, but this isolate was created outside of a tokio runtime context and the delay cannot be honored. Enter a tokio runtime (e.g. via `tokio::runtime::Runtime::enter()`) before creating the `JsRuntime`."
+      );
+    }
+    std::process::abort();
   };
   let tasks = entry.tasks.clone();
   let waker = entry.waker.clone();
