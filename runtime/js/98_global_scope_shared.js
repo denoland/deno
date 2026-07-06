@@ -579,6 +579,10 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.canvas2d] = {
     (c) => c.Path2D,
     loadCanvas2d,
   ),
+  CanvasFilter: core.propNonEnumerableLazyLoaded(
+    (c) => c.CanvasFilter,
+    loadCanvas2d,
+  ),
   CanvasGradient: core.propNonEnumerableLazyLoaded(
     (c) => c.CanvasGradient,
     loadCanvas2d,
