@@ -531,6 +531,10 @@ const _strategySizeAlgorithm = Symbol("[[strategySizeAlgorithm]]");
 const _stream = Symbol("[[stream]]");
 const _transformAlgorithm = Symbol("[[transformAlgorithm]]");
 const _isIdentityTransform = Symbol("[[isIdentityTransform]]");
+// Set on the writable side of an identity TransformStream, pointing back at
+// the TransformStream; lets pipeTo route chunks straight into the
+// transform's readable controller (see readableStreamPipeTo).
+const _identityBypassTS = Symbol("[[identityBypassTS]]");
 const _onSinkWriteFulfilled = Symbol("[[onSinkWriteFulfilled]]");
 const _onSinkWriteRejected = Symbol("[[onSinkWriteRejected]]");
 const _view = Symbol("[[view]]");
@@ -3110,6 +3114,24 @@ function readableStreamPipeTo(
   source[_disturbed] = true;
   let shuttingDown = false;
   let currentWrite = PromiseResolve(undefined);
+
+  // Identity-transform writable bypass: when the destination is the
+  // writable side of an identity TransformStream (what
+  // `pipeThrough(new TransformStream())` produces), the writer acquired
+  // above is pipe-internal and unobservable (the stream is locked), so the
+  // per-chunk writable-side write ceremony (write request, queue node,
+  // ready promise churn, sink dispatch and reaction) is dead weight.
+  // Chunks are enqueued straight into the transform's readable controller
+  // via transformStreamDefaultControllerEnqueue, which keeps the
+  // transform's own backpressure and error bookkeeping; pacing comes from
+  // the transform's backpressure signal instead of the writer ready
+  // promise. Any state change (close/abort/error on either side)
+  // permanently disables the route and falls back to the generic writer
+  // path, which surfaces the proper rejection.
+  const bypassTS = dest[_identityBypassTS];
+  let bypassActive = bypassTS !== undefined &&
+    dest[_state] === "writable" &&
+    bypassTS[_readable][_state] === "readable";
   /** @type {Deferred<void>} */
   const promise = new Deferred();
   /** @type {() => void} */
@@ -3169,6 +3191,63 @@ function readableStreamPipeTo(
   function pipeStep() {
     if (shuttingDown === true) {
       return PromiseResolve(true);
+    }
+
+    if (bypassActive) {
+      const readableController = bypassTS[_readable][_controller];
+      if (
+        dest[_state] === "writable" &&
+        writableStreamCloseQueuedOrInFlight(dest) === false &&
+        readableStreamDefaultControllerCanCloseOrEnqueue(readableController)
+      ) {
+        if (bypassTS[_backpressure] === true) {
+          // Pace on the transform's own backpressure flag, exactly like
+          // the generic sink write algorithm does: it is set by the
+          // enqueue below when the readable's desired size is exhausted
+          // and cleared (resolving this promise) by the next
+          // readable-side pull.
+          return transformPromiseWith(
+            bypassTS[_backpressureChangePromise].promise,
+            pipeStep,
+          );
+        }
+        return new Promise((resolveRead, rejectRead) => {
+          readableStreamDefaultReaderRead(
+            reader,
+            {
+              chunkSteps(chunk) {
+                if (bypassActive) {
+                  try {
+                    transformStreamDefaultControllerEnqueue(
+                      bypassTS[_controller],
+                      chunk,
+                    );
+                    resolveRead(false);
+                    return;
+                  } catch {
+                    // The transform errored or its readable side can no
+                    // longer accept chunks; the generic write below
+                    // observes the same condition through the writable's
+                    // state and shuts the pipe down with the right error.
+                    bypassActive = false;
+                  }
+                }
+                currentWrite = transformPromiseWith(
+                  writableStreamDefaultWriterWrite(writer, chunk),
+                  undefined,
+                  () => {},
+                );
+                resolveRead(false);
+              },
+              closeSteps() {
+                resolveRead(true);
+              },
+              errorSteps: rejectRead,
+            },
+          );
+        });
+      }
+      bypassActive = false;
     }
 
     return transformPromiseWith(writer[_readyPromise].promise, () => {
@@ -4260,6 +4339,9 @@ function setUpTransformStreamDefaultControllerFromTransformer(
     cancelAlgorithm,
     transformerDict.transform === undefined,
   );
+  if (transformerDict.transform === undefined) {
+    stream[_writable][_identityBypassTS] = stream;
+  }
 }
 
 /**
