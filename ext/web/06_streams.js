@@ -168,6 +168,58 @@ function resolvePromiseWith(value) {
   return new Promise((resolve) => resolve(value));
 }
 
+/**
+ * Like Deferred, but only materializes its Promise when someone actually
+ * reads it. Used for TransformStream's [[backpressureChangePromise]], which
+ * is re-created on every backpressure flip (per chunk in steady state) but
+ * often never observed. Resolve-only: no reject support.
+ * @template T
+ */
+class LazyDeferred {
+  /** @type {Promise<T> | null} */
+  #promise = null;
+  /** @type {((value: T) => void) | null} */
+  #resolve = null;
+  #settled = false;
+
+  /** @returns {Promise<T>} */
+  get promise() {
+    if (this.#promise === null) {
+      if (this.#settled) {
+        this.#promise = PromiseResolve(undefined);
+      } else {
+        this.#promise = new Promise((resolve) => {
+          this.#resolve = resolve;
+        });
+      }
+    }
+    return this.#promise;
+  }
+
+  /** @param {T} value */
+  resolve(value) {
+    if (this.#settled) {
+      return;
+    }
+    this.#settled = true;
+    if (this.#resolve !== null) {
+      this.#resolve(value);
+      this.#resolve = null;
+    }
+  }
+}
+
+/** @type {Promise<undefined> | undefined} */
+let _resolvedPromise;
+/**
+ * Shared resolved promise for hot paths that only need a base to hang a
+ * `.then()` off of. Created lazily so it isn't baked into the snapshot.
+ * @returns {Promise<undefined>}
+ */
+function resolvedPromise() {
+  return _resolvedPromise ??= PromiseResolve(undefined);
+}
+
 /** @param {any} e */
 function rethrowAssertionErrorRejection(e) {
   if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
@@ -261,7 +313,13 @@ class Queue {
   #size = 0;
 
   enqueue(value) {
-    const node = { value, next: null };
+    return this.enqueueWithSize(value, 1);
+  }
+
+  // Stores the chunk size inline in the list node instead of a separate
+  // { value, size } wrapper, so a sized enqueue costs a single allocation.
+  enqueueWithSize(value, size) {
+    const node = { value, size, next: null };
     if (this.#head === null) {
       this.#head = node;
       this.#tail = node;
@@ -273,6 +331,13 @@ class Queue {
   }
 
   dequeue() {
+    const node = this.dequeueNode();
+    return node === null ? null : node.value;
+  }
+
+  // Returns the internal { value, size, next } node. Only for use by
+  // dequeueValue(), which needs both the value and its size.
+  dequeueNode() {
     const node = this.#head;
     if (node === null) {
       return null;
@@ -283,7 +348,7 @@ class Queue {
     }
     this.#head = this.#head.next;
     this.#size--;
-    return node.value;
+    return node;
   }
 
   peek() {
@@ -468,6 +533,20 @@ const _strategyHWM = Symbol("[[strategyHWM]]");
 const _strategySizeAlgorithm = Symbol("[[strategySizeAlgorithm]]");
 const _stream = Symbol("[[stream]]");
 const _transformAlgorithm = Symbol("[[transformAlgorithm]]");
+const _isIdentityTransform = Symbol("[[isIdentityTransform]]");
+// Set on the writable side of an identity TransformStream, pointing back at
+// the TransformStream; lets pipeTo route chunks straight into the
+// transform's readable controller (see readableStreamPipeTo). An
+// implementation slot, not a spec slot: single-bracket convention.
+const _identityBypassTS = Symbol("[identityBypassTS]");
+const _onSinkWriteFulfilled = Symbol("[[onSinkWriteFulfilled]]");
+const _onSinkWriteRejected = Symbol("[[onSinkWriteRejected]]");
+// Implementation slots (not spec slots): the user's underlying source and
+// its converted dictionary, read by the shared underlying-source
+// algorithms below so stream construction stores two references instead
+// of allocating up to three wrapper closures per stream.
+const _underlyingSource = Symbol("[underlyingSource]");
+const _underlyingSourceDict = Symbol("[underlyingSourceDict]");
 const _view = Symbol("[[view]]");
 const _writable = Symbol("[[writable]]");
 const _writeAlgorithm = Symbol("[[writeAlgorithm]]");
@@ -536,7 +615,7 @@ function createReadableStream(
   pullAlgorithm,
   cancelAlgorithm,
   highWaterMark = 1,
-  sizeAlgorithm = () => 1,
+  sizeAlgorithm = defaultSizeAlgorithm,
 ) {
   assert(isNonNegativeNumber(highWaterMark));
   /** @type {ReadableStream} */
@@ -598,12 +677,12 @@ function createWritableStream(
 function dequeueValue(container) {
   assert(container[_queue] && typeof container[_queueTotalSize] === "number");
   assert(container[_queue].size);
-  const valueWithSize = container[_queue].dequeue();
-  container[_queueTotalSize] -= valueWithSize.size;
+  const node = container[_queue].dequeueNode();
+  container[_queueTotalSize] -= node.size;
   if (container[_queueTotalSize] < 0) {
     container[_queueTotalSize] = 0;
   }
-  return valueWithSize.value;
+  return node.value;
 }
 /**
  * @template T
@@ -624,7 +703,7 @@ function enqueueValueWithSize(container, value, size) {
       "Cannot enqueue value with size: chunk size is invalid",
     );
   }
-  container[_queue].enqueue({ value, size });
+  container[_queue].enqueueWithSize(value, size);
   container[_queueTotalSize] += size;
 }
 
@@ -646,13 +725,22 @@ function extractHighWaterMark(strategy, defaultHWM) {
 }
 
 /**
+ * Shared size algorithm for the default queuing strategy. Hot paths compare
+ * against it by identity to skip the per-chunk call (and its try/catch).
+ * @returns {number}
+ */
+function defaultSizeAlgorithm() {
+  return 1;
+}
+
+/**
  * @template T
  * @param {QueuingStrategy<T>} strategy
  * @return {(chunk: T) => number}
  */
 function extractSizeAlgorithm(strategy) {
   if (strategy.size === undefined) {
-    return () => 1;
+    return defaultSizeAlgorithm;
   }
   return (chunk) =>
     webidl.invokeCallbackFunction(
@@ -918,68 +1006,83 @@ async function readableStreamWriteChunkFn(reader, sink, chunk) {
 async function readableStreamReadFn(reader, sink, onError) {
   let loop = true;
 
+  // The read request, its handlers, and the write continuation are hoisted
+  // out of the loop and allocated once per stream instead of once per
+  // chunk; the per-iteration state travels through the `reentrant`,
+  // `gotChunk`, and `promise` slots, which is safe because exactly one
+  // read is in flight per iteration.
+  let reentrant = true;
+  let gotChunk = undefined;
+  /** @type {Deferred<boolean>} */
+  let promise;
+
+  const onWriteFulfilled = (loop) => promise.resolve(loop);
+  const onWriteRejected = (e) => promise.reject(e);
+
+  const readRequest = {
+    chunkSteps(chunk) {
+      // If the chunk has non-zero length, write it
+      if (reentrant) {
+        gotChunk = chunk;
+      } else {
+        PromisePrototypeThen(
+          readableStreamWriteChunkFn(reader, sink, chunk),
+          onWriteFulfilled,
+          onWriteRejected,
+        );
+      }
+    },
+    closeSteps() {
+      sink.close();
+      promise.resolve(false);
+    },
+    errorSteps(error) {
+      // Surface the original error (with its stack) to the owner of the
+      // resource before we flatten it to a string for the Rust side. Without
+      // this hook the error is otherwise swallowed: it is converted to a
+      // plain message, pushed into the channel and used only to abort the
+      // underlying transport, so e.g. a throwing `TransformStream` feeding a
+      // `Deno.serve` response body would fail with nothing implicating the
+      // faulty callback. See https://github.com/denoland/deno/issues/19867.
+      if (onError !== undefined) {
+        onError(error);
+      }
+      const success = op_readable_stream_resource_write_error(
+        sink.external,
+        extractStringErrorFromError(error),
+      );
+      // We don't cancel the reader if there was an error reading. We'll let the downstream
+      // consumer close the resource after it receives the error.
+      if (!success) {
+        PromisePrototypeThen(
+          reader.cancel("resource closed"),
+          () => {
+            sink.close();
+            promise.resolve(false);
+          },
+          onWriteRejected,
+        );
+      } else {
+        sink.close();
+        promise.resolve(false);
+      }
+    },
+  };
+
   while (loop) {
     // The ops here look like op_write_all/op_close, but we're not actually writing to a
     // real resource.
-    let reentrant = true;
-    let gotChunk = undefined;
-    const promise = new Deferred();
+    reentrant = true;
+    gotChunk = undefined;
+    promise = new Deferred();
 
-    readableStreamDefaultReaderRead(reader, {
-      chunkSteps(chunk) {
-        // If the chunk has non-zero length, write it
-        if (reentrant) {
-          gotChunk = chunk;
-        } else {
-          PromisePrototypeThen(
-            readableStreamWriteChunkFn(reader, sink, chunk),
-            (loop) => promise.resolve(loop),
-            (e) => promise.reject(e),
-          );
-        }
-      },
-      closeSteps() {
-        sink.close();
-        promise.resolve(false);
-      },
-      errorSteps(error) {
-        // Surface the original error (with its stack) to the owner of the
-        // resource before we flatten it to a string for the Rust side. Without
-        // this hook the error is otherwise swallowed: it is converted to a
-        // plain message, pushed into the channel and used only to abort the
-        // underlying transport, so e.g. a throwing `TransformStream` feeding a
-        // `Deno.serve` response body would fail with nothing implicating the
-        // faulty callback. See https://github.com/denoland/deno/issues/19867.
-        if (onError !== undefined) {
-          onError(error);
-        }
-        const success = op_readable_stream_resource_write_error(
-          sink.external,
-          extractStringErrorFromError(error),
-        );
-        // We don't cancel the reader if there was an error reading. We'll let the downstream
-        // consumer close the resource after it receives the error.
-        if (!success) {
-          PromisePrototypeThen(
-            reader.cancel("resource closed"),
-            () => {
-              sink.close();
-              promise.resolve(false);
-            },
-            (e) => promise.reject(e),
-          );
-        } else {
-          sink.close();
-          promise.resolve(false);
-        }
-      },
-    });
+    readableStreamDefaultReaderRead(reader, readRequest);
     reentrant = false;
     if (gotChunk) {
       PromisePrototypeThen(
         readableStreamWriteChunkFn(reader, sink, gotChunk),
-        (loop) => promise.resolve(loop),
-        (e) => promise.reject(e),
+        onWriteFulfilled,
+        onWriteRejected,
       );
     }
 
@@ -1265,20 +1368,54 @@ async function readableStreamCollectIntoUint8Array(stream) {
     stream[_original][_controller][_readAll] = true;
   }
 
-  while (true) {
-    const { value: chunk, done } = await reader.read();
+  // Pump the stream with a single persistent read request instead of a
+  // reader.read() loop: no Deferred, no {value, done} result object, and
+  // no await hop per chunk. When a chunk is already queued,
+  // readableStreamDefaultReaderRead invokes chunkSteps synchronously and
+  // the do/while below re-arms without growing the stack; asynchronous
+  // deliveries re-enter pump() from chunkSteps.
+  /** @type {Deferred<void>} */
+  const donePromise = new Deferred();
+  let pumping = false;
+  let syncChunk = false;
+  /** @type {ReadRequest<Uint8Array>} */
+  const readRequest = {
+    chunkSteps(chunk) {
+      if (TypedArrayPrototypeGetSymbolToStringTag(chunk) !== "Uint8Array") {
+        donePromise.reject(
+          new TypeError(
+            "Cannot convert value to Uint8Array while consuming the stream",
+          ),
+        );
+        return;
+      }
+      ArrayPrototypePush(chunks, chunk);
+      totalLength += TypedArrayPrototypeGetByteLength(chunk);
+      if (pumping) {
+        syncChunk = true;
+      } else {
+        pump();
+      }
+    },
+    closeSteps() {
+      donePromise.resolve(undefined);
+    },
+    errorSteps(e) {
+      donePromise.reject(e);
+    },
+  };
 
-    if (done) break;
-
-    if (TypedArrayPrototypeGetSymbolToStringTag(chunk) !== "Uint8Array") {
-      throw new TypeError(
-        "Cannot convert value to Uint8Array while consuming the stream",
-      );
-    }
-
-    ArrayPrototypePush(chunks, chunk);
-    totalLength += TypedArrayPrototypeGetByteLength(chunk);
+  function pump() {
+    pumping = true;
+    do {
+      syncChunk = false;
+      readableStreamDefaultReaderRead(reader, readRequest);
+    } while (syncChunk);
+    pumping = false;
   }
+
+  pump();
+  await donePromise.promise;
 
   const finalBuffer = new Uint8Array(totalLength);
   let offset = 0;
@@ -1447,8 +1584,7 @@ function peekQueueValue(container) {
       typeof container[_queueTotalSize] === "number",
   );
   assert(container[_queue].size);
-  const valueWithSize = container[_queue].peek();
-  return valueWithSize.value;
+  return container[_queue].peek();
 }
 
 /**
@@ -1515,6 +1651,8 @@ function readableByteStreamControllerCallPullIfNeeded(controller) {
 function readableByteStreamControllerClearAlgorithms(controller) {
   controller[_pullAlgorithm] = undefined;
   controller[_cancelAlgorithm] = undefined;
+  controller[_underlyingSource] = undefined;
+  controller[_underlyingSourceDict] = undefined;
 }
 
 /**
@@ -2013,6 +2151,8 @@ function readableStreamDefaultControllerClearAlgorithms(controller) {
   controller[_pullAlgorithm] = undefined;
   controller[_cancelAlgorithm] = undefined;
   controller[_strategySizeAlgorithm] = undefined;
+  controller[_underlyingSource] = undefined;
+  controller[_underlyingSourceDict] = undefined;
 }
 
 /** @param {ReadableStreamDefaultController<any>} controller */
@@ -2050,11 +2190,15 @@ function readableStreamDefaultControllerEnqueue(controller, chunk) {
     readableStreamFulfillReadRequest(stream, chunk, false);
   } else {
     let chunkSize;
-    try {
-      chunkSize = controller[_strategySizeAlgorithm](chunk);
-    } catch (e) {
-      readableStreamDefaultControllerError(controller, e);
-      throw e;
+    if (controller[_strategySizeAlgorithm] === defaultSizeAlgorithm) {
+      chunkSize = 1;
+    } else {
+      try {
+        chunkSize = controller[_strategySizeAlgorithm](chunk);
+      } catch (e) {
+        readableStreamDefaultControllerError(controller, e);
+        throw e;
+      }
     }
 
     try {
@@ -3098,6 +3242,24 @@ function readableStreamPipeTo(
   source[_disturbed] = true;
   let shuttingDown = false;
   let currentWrite = PromiseResolve(undefined);
+
+  // Identity-transform writable bypass: when the destination is the
+  // writable side of an identity TransformStream (what
+  // `pipeThrough(new TransformStream())` produces), the writer acquired
+  // above is pipe-internal and unobservable (the stream is locked), so the
+  // per-chunk writable-side write ceremony (write request, queue node,
+  // ready promise churn, sink dispatch and reaction) is dead weight.
+  // Chunks are enqueued straight into the transform's readable controller
+  // via transformStreamDefaultControllerEnqueue, which keeps the
+  // transform's own backpressure and error bookkeeping; pacing comes from
+  // the transform's backpressure signal instead of the writer ready
+  // promise. Any state change (close/abort/error on either side)
+  // permanently disables the route and falls back to the generic writer
+  // path, which surfaces the proper rejection.
+  const bypassTS = dest[_identityBypassTS];
+  let bypassActive = bypassTS !== undefined &&
+    dest[_state] === "writable" &&
+    bypassTS[_readable][_state] === "readable";
   /** @type {Deferred<void>} */
   const promise = new Deferred();
   /** @type {() => void} */
@@ -3157,6 +3319,63 @@ function readableStreamPipeTo(
   function pipeStep() {
     if (shuttingDown === true) {
       return PromiseResolve(true);
+    }
+
+    if (bypassActive) {
+      const readableController = bypassTS[_readable][_controller];
+      if (
+        dest[_state] === "writable" &&
+        writableStreamCloseQueuedOrInFlight(dest) === false &&
+        readableStreamDefaultControllerCanCloseOrEnqueue(readableController)
+      ) {
+        if (bypassTS[_backpressure] === true) {
+          // Pace on the transform's own backpressure flag, exactly like
+          // the generic sink write algorithm does: it is set by the
+          // enqueue below when the readable's desired size is exhausted
+          // and cleared (resolving this promise) by the next
+          // readable-side pull.
+          return transformPromiseWith(
+            bypassTS[_backpressureChangePromise].promise,
+            pipeStep,
+          );
+        }
+        return new Promise((resolveRead, rejectRead) => {
+          readableStreamDefaultReaderRead(
+            reader,
+            {
+              chunkSteps(chunk) {
+                if (bypassActive) {
+                  try {
+                    transformStreamDefaultControllerEnqueue(
+                      bypassTS[_controller],
+                      chunk,
+                    );
+                    resolveRead(false);
+                    return;
+                  } catch {
+                    // The transform errored or its readable side can no
+                    // longer accept chunks; the generic write below
+                    // observes the same condition through the writable's
+                    // state and shuts the pipe down with the right error.
+                    bypassActive = false;
+                  }
+                }
+                currentWrite = transformPromiseWith(
+                  writableStreamDefaultWriterWrite(writer, chunk),
+                  undefined,
+                  () => {},
+                );
+                resolveRead(false);
+              },
+              closeSteps() {
+                resolveRead(true);
+              },
+              errorSteps: rejectRead,
+            },
+          );
+        });
+      }
+      bypassActive = false;
     }
 
     return transformPromiseWith(writer[_readyPromise].promise, () => {
@@ -3969,7 +4188,7 @@ function setUpReadableByteStreamController(
   controller[_autoAllocateChunkSize] = autoAllocateChunkSize;
   controller[_pendingPullIntos] = new Queue();
   stream[_controller] = controller;
-  const startResult = startAlgorithm();
+  const startResult = startAlgorithm(controller);
   const startPromise = PromiseResolve(startResult);
   uponPromise(
     startPromise,
@@ -3991,6 +4210,77 @@ function setUpReadableByteStreamController(
  * @param {UnderlyingSource<ArrayBuffer>} underlyingSourceDict
  * @param {number} highWaterMark
  */
+// Shared underlying-source algorithms. The controller carries the user's
+// underlying source and its converted dict in slots (see
+// _underlyingSourceDict); these module-level functions replace the
+// per-stream wrapper closures the FromUnderlyingSource setup functions
+// used to allocate. Start and pull receive the controller from their call
+// sites; cancel receives it as a second argument (internal cancel
+// algorithms ignore it).
+function underlyingSourceStartDefault(controller) {
+  return webidl.invokeCallbackFunction(
+    controller[_underlyingSourceDict].start,
+    [controller],
+    controller[_underlyingSource],
+    webidl.converters.any,
+    "Failed to execute 'startAlgorithm' on 'ReadableStreamDefaultController'",
+  );
+}
+
+function underlyingSourcePullDefault(controller) {
+  return webidl.invokeCallbackFunction(
+    controller[_underlyingSourceDict].pull,
+    [controller],
+    controller[_underlyingSource],
+    webidl.converters["Promise<undefined>"],
+    "Failed to execute 'pullAlgorithm' on 'ReadableStreamDefaultController'",
+    true,
+  );
+}
+
+function underlyingSourceCancelDefault(reason, controller) {
+  return webidl.invokeCallbackFunction(
+    controller[_underlyingSourceDict].cancel,
+    [reason],
+    controller[_underlyingSource],
+    webidl.converters["Promise<undefined>"],
+    "Failed to execute 'cancelAlgorithm' on 'ReadableStreamDefaultController'",
+    true,
+  );
+}
+
+function underlyingSourceStartByte(controller) {
+  return webidl.invokeCallbackFunction(
+    controller[_underlyingSourceDict].start,
+    [controller],
+    controller[_underlyingSource],
+    webidl.converters.any,
+    "Failed to execute 'startAlgorithm' on 'ReadableByteStreamController'",
+  );
+}
+
+function underlyingSourcePullByte(controller) {
+  return webidl.invokeCallbackFunction(
+    controller[_underlyingSourceDict].pull,
+    [controller],
+    controller[_underlyingSource],
+    webidl.converters["Promise<undefined>"],
+    "Failed to execute 'pullAlgorithm' on 'ReadableByteStreamController'",
+    true,
+  );
+}
+
+function underlyingSourceCancelByte(reason, controller) {
+  return webidl.invokeCallbackFunction(
+    controller[_underlyingSourceDict].cancel,
+    [reason],
+    controller[_underlyingSource],
+    webidl.converters["Promise<undefined>"],
+    "Failed to execute 'cancelAlgorithm' on 'ReadableByteStreamController'",
+    true,
+  );
+}
+
 function setUpReadableByteStreamControllerFromUnderlyingSource(
   stream,
   underlyingSource,
@@ -4004,37 +4294,16 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
   let pullAlgorithm = _defaultPullAlgorithm;
   /** @type {(reason: any) => Promise<void>} */
   let cancelAlgorithm = _defaultCancelAlgorithm;
+  controller[_underlyingSource] = underlyingSource;
+  controller[_underlyingSourceDict] = underlyingSourceDict;
   if (underlyingSourceDict.start !== undefined) {
-    startAlgorithm = () =>
-      webidl.invokeCallbackFunction(
-        underlyingSourceDict.start,
-        [controller],
-        underlyingSource,
-        webidl.converters.any,
-        "Failed to execute 'startAlgorithm' on 'ReadableByteStreamController'",
-      );
+    startAlgorithm = underlyingSourceStartByte;
   }
   if (underlyingSourceDict.pull !== undefined) {
-    pullAlgorithm = () =>
-      webidl.invokeCallbackFunction(
-        underlyingSourceDict.pull,
-        [controller],
-        underlyingSource,
-        webidl.converters["Promise<undefined>"],
-        "Failed to execute 'pullAlgorithm' on 'ReadableByteStreamController'",
-        true,
-      );
+    pullAlgorithm = underlyingSourcePullByte;
   }
   if (underlyingSourceDict.cancel !== undefined) {
-    cancelAlgorithm = (reason) =>
-      webidl.invokeCallbackFunction(
-        underlyingSourceDict.cancel,
-        [reason],
-        underlyingSource,
-        webidl.converters["Promise<undefined>"],
-        "Failed to execute 'cancelAlgorithm' on 'ReadableByteStreamController'",
-        true,
-      );
+    cancelAlgorithm = underlyingSourceCancelByte;
   }
   const autoAllocateChunkSize = underlyingSourceDict["autoAllocateChunkSize"];
   if (autoAllocateChunkSize === 0) {
@@ -4117,37 +4386,16 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
   let pullAlgorithm = _defaultPullAlgorithm;
   /** @type {(reason?: any) => Promise<void>} */
   let cancelAlgorithm = _defaultCancelAlgorithm;
+  controller[_underlyingSource] = underlyingSource;
+  controller[_underlyingSourceDict] = underlyingSourceDict;
   if (underlyingSourceDict.start !== undefined) {
-    startAlgorithm = () =>
-      webidl.invokeCallbackFunction(
-        underlyingSourceDict.start,
-        [controller],
-        underlyingSource,
-        webidl.converters.any,
-        "Failed to execute 'startAlgorithm' on 'ReadableStreamDefaultController'",
-      );
+    startAlgorithm = underlyingSourceStartDefault;
   }
   if (underlyingSourceDict.pull !== undefined) {
-    pullAlgorithm = () =>
-      webidl.invokeCallbackFunction(
-        underlyingSourceDict.pull,
-        [controller],
-        underlyingSource,
-        webidl.converters["Promise<undefined>"],
-        "Failed to execute 'pullAlgorithm' on 'ReadableStreamDefaultController'",
-        true,
-      );
+    pullAlgorithm = underlyingSourcePullDefault;
   }
   if (underlyingSourceDict.cancel !== undefined) {
-    cancelAlgorithm = (reason) =>
-      webidl.invokeCallbackFunction(
-        underlyingSourceDict.cancel,
-        [reason],
-        underlyingSource,
-        webidl.converters["Promise<undefined>"],
-        "Failed to execute 'cancelAlgorithm' on 'ReadableStreamDefaultController'",
-        true,
-      );
+    cancelAlgorithm = underlyingSourceCancelDefault;
   }
   setUpReadableStreamDefaultController(
     stream,
@@ -4208,6 +4456,7 @@ function setUpTransformStreamDefaultController(
   transformAlgorithm,
   flushAlgorithm,
   cancelAlgorithm,
+  isIdentityTransform = false,
 ) {
   assert(ObjectPrototypeIsPrototypeOf(TransformStreamPrototype, stream));
   assert(stream[_controller] === undefined);
@@ -4216,6 +4465,7 @@ function setUpTransformStreamDefaultController(
   controller[_transformAlgorithm] = transformAlgorithm;
   controller[_flushAlgorithm] = flushAlgorithm;
   controller[_cancelAlgorithm] = cancelAlgorithm;
+  controller[_isIdentityTransform] = isIdentityTransform;
 }
 
 /**
@@ -4283,7 +4533,11 @@ function setUpTransformStreamDefaultControllerFromTransformer(
     transformAlgorithm,
     flushAlgorithm,
     cancelAlgorithm,
+    transformerDict.transform === undefined,
   );
+  if (transformerDict.transform === undefined) {
+    stream[_writable][_identityBypassTS] = stream;
+  }
 }
 
 /**
@@ -4520,6 +4774,21 @@ function transformStreamDefaultControllerPerformTransform(controller, chunk) {
     // Algorithms were cleared by a concurrent cancel/abort/close.
     return PromiseResolve(undefined);
   }
+  if (controller[_isIdentityTransform] === true) {
+    // The default transformer forwards the chunk to the readable side
+    // unchanged. Enqueue directly, skipping the transformAlgorithm closure,
+    // its per-chunk resolved promise, and the rejection-wrapper promise (and
+    // with it one microtask hop on the per-chunk critical path).
+    try {
+      transformStreamDefaultControllerEnqueue(controller, chunk);
+    } catch (e) {
+      return transformPromiseWith(PromiseReject(e), undefined, (r) => {
+        transformStreamError(controller[_stream], r);
+        throw r;
+      });
+    }
+    return resolvedPromise();
+  }
   const transformPromise = transformAlgorithm(chunk, controller);
   return transformPromiseWith(transformPromise, undefined, (r) => {
     transformStreamError(controller[_stream], r);
@@ -4708,7 +4977,7 @@ function transformStreamSetBackpressure(stream, backpressure) {
   if (stream[_backpressureChangePromise] !== undefined) {
     stream[_backpressureChangePromise].resolve(undefined);
   }
-  stream[_backpressureChangePromise] = new Deferred();
+  stream[_backpressureChangePromise] = new LazyDeferred();
   stream[_backpressure] = backpressure;
 }
 
@@ -4907,6 +5176,9 @@ function writableStreamDefaultControllerGetBackpressure(controller) {
  * @returns {number}
  */
 function writableStreamDefaultControllerGetChunkSize(controller, chunk) {
+  if (controller[_strategySizeAlgorithm] === defaultSizeAlgorithm) {
+    return 1;
+  }
   let value;
   try {
     value = controller[_strategySizeAlgorithm](chunk);
@@ -4949,27 +5221,47 @@ function writableStreamDefaultControllerProcessWrite(controller, chunk) {
   const stream = controller[_stream];
   writableStreamMarkFirstWriteRequestInFlight(stream);
   const sinkWritePromise = controller[_writeAlgorithm](chunk, controller);
-  uponPromise(sinkWritePromise, () => {
-    writableStreamFinishInFlightWrite(stream);
-    const state = stream[_state];
-    assert(state === "writable" || state === "erroring");
-    dequeueValue(controller);
-    if (
-      writableStreamCloseQueuedOrInFlight(stream) === false &&
-      state === "writable"
-    ) {
-      const backpressure = writableStreamDefaultControllerGetBackpressure(
-        controller,
-      );
-      writableStreamUpdateBackpressure(stream, backpressure);
-    }
-    writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
-  }, (reason) => {
-    if (stream[_state] === "writable") {
-      writableStreamDefaultControllerClearAlgorithms(controller);
-    }
-    writableStreamFinishInFlightWriteWithError(stream, reason);
-  });
+  // The reaction handlers are created once per controller (lazily, so
+  // never-written streams don't pay for them) instead of per chunk. They
+  // include the assertion-rethrow wrapping that uponPromise() would
+  // otherwise re-create on every call.
+  if (controller[_onSinkWriteFulfilled] === undefined) {
+    controller[_onSinkWriteFulfilled] = () => {
+      try {
+        writableStreamFinishInFlightWrite(stream);
+        const state = stream[_state];
+        assert(state === "writable" || state === "erroring");
+        dequeueValue(controller);
+        if (
+          writableStreamCloseQueuedOrInFlight(stream) === false &&
+          state === "writable"
+        ) {
+          const backpressure = writableStreamDefaultControllerGetBackpressure(
+            controller,
+          );
+          writableStreamUpdateBackpressure(stream, backpressure);
+        }
+        writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
+      } catch (e) {
+        rethrowAssertionErrorRejection(e);
+      }
+    };
+    controller[_onSinkWriteRejected] = (reason) => {
+      try {
+        if (stream[_state] === "writable") {
+          writableStreamDefaultControllerClearAlgorithms(controller);
+        }
+        writableStreamFinishInFlightWriteWithError(stream, reason);
+      } catch (e) {
+        rethrowAssertionErrorRejection(e);
+      }
+    };
+  }
+  PromisePrototypeThen(
+    sinkWritePromise,
+    controller[_onSinkWriteFulfilled],
+    controller[_onSinkWriteRejected],
+  );
 }
 
 /**
@@ -6327,6 +6619,10 @@ class ReadableByteStreamController {
   [_pulling];
   /** @type {PullIntoDescriptor[]} */
   [_pendingPullIntos];
+  /** @type {UnderlyingSource<ArrayBuffer> | undefined} */
+  [_underlyingSource];
+  /** @type {UnderlyingSource<ArrayBuffer> | undefined} */
+  [_underlyingSourceDict];
   /** @type {ReadableByteStreamQueueEntry[]} */
   [_queue];
   /** @type {number} */
@@ -6456,7 +6752,7 @@ class ReadableByteStreamController {
   [_cancelSteps](reason) {
     readableByteStreamControllerClearPendingPullIntos(this);
     resetQueue(this);
-    const result = this[_cancelAlgorithm](reason);
+    const result = this[_cancelAlgorithm](reason, this);
     readableByteStreamControllerClearAlgorithms(this);
     return result;
   }
@@ -6535,6 +6831,10 @@ class ReadableStreamDefaultController {
   [_pulling];
   /** @type {Array<ValueWithSize<R>>} */
   [_queue];
+  /** @type {UnderlyingSource<R> | undefined} */
+  [_underlyingSource];
+  /** @type {UnderlyingSource<R> | undefined} */
+  [_underlyingSourceDict];
   /** @type {number} */
   [_queueTotalSize];
   /** @type {boolean} */
@@ -6615,7 +6915,7 @@ class ReadableStreamDefaultController {
    */
   [_cancelSteps](reason) {
     resetQueue(this);
-    const result = this[_cancelAlgorithm](reason);
+    const result = this[_cancelAlgorithm](reason, this);
     readableStreamDefaultControllerClearAlgorithms(this);
     return result;
   }
@@ -7183,6 +7483,10 @@ class WritableStreamDefaultController {
   [_writeAlgorithm];
   /** @type {AbortSignal} */
   [_signal];
+  /** @type {(() => void) | undefined} */
+  [_onSinkWriteFulfilled];
+  /** @type {((reason: any) => void) | undefined} */
+  [_onSinkWriteRejected];
 
   get signal() {
     webidl.assertBranded(this, WritableStreamDefaultControllerPrototype);
