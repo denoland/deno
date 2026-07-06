@@ -727,6 +727,7 @@ class SourceTextModule extends Module {
       lineOffset = 0,
       columnOffset = 0,
       importModuleDynamically,
+      initializeImportMeta,
     } = options;
     if (context !== undefined) {
       validateContext(context);
@@ -734,6 +735,16 @@ class SourceTextModule extends Module {
     validateString(identifier, "options.identifier");
     validateInt32(lineOffset, "options.lineOffset");
     validateInt32(columnOffset, "options.columnOffset");
+    if (
+      initializeImportMeta !== undefined &&
+      typeof initializeImportMeta !== "function"
+    ) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "options.initializeImportMeta",
+        "function",
+        initializeImportMeta,
+      );
+    }
 
     const referrer = { value: undefined };
     const effectiveImportModuleDynamically =
@@ -754,6 +765,7 @@ class SourceTextModule extends Module {
       columnOffset,
       context,
       importModuleDynamicallyId,
+      initializeImportMeta,
     );
     referrer.value = this;
     this[kModuleRequests] = buildModuleRequests(this[kWrap]);

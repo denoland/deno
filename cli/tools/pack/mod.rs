@@ -1,10 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
+use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_ast::diagnostics::Diagnostic;
+use deno_config::glob::FileCollector;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
@@ -13,11 +17,14 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_terminal::colors;
 
+use crate::args::CliOptions;
 use crate::args::FileFlagsExt;
 use crate::args::Flags;
 use crate::args::PackFlags;
 use crate::factory::CliFactory;
 use crate::graph_util::CreatePublishGraphOptions;
+use crate::sys::CliSys;
+use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::util::display::human_size;
 
 mod extensions;
@@ -28,6 +35,7 @@ mod unfurl;
 use extensions::compute_output_path;
 use extensions::media_type_extension;
 use npm_tarball::create_npm_tarball;
+use npm_tarball::default_tarball_filename;
 use package_json::generate_package_json;
 use unfurl::unfurl_specifiers;
 
@@ -162,6 +170,21 @@ pub async fn pack(
       format!("Failed to process modules for package '{}'", package.name)
     })?;
 
+    // Collect non-module assets matched by the package's publish config
+    // (e.g. `publish.include` entries like `assets/icon.svg`). Source
+    // modules are transpiled above, so the raw source paths, the config
+    // file and README/LICENSE are excluded here to avoid duplicates.
+    let asset_files = collect_asset_files(
+      &package,
+      cli_options,
+      &pack_flags,
+      &version,
+      &collected_paths,
+      &readme_license_files,
+    )?;
+
+    log::info!("  {} assets collected", asset_files.len());
+
     // Generate package.json
     let package_json =
       generate_package_json(&package.config_file, &version, &processed_files)?;
@@ -173,6 +196,7 @@ pub async fn pack(
       &processed_files,
       &package_json,
       &readme_license_files,
+      &asset_files,
       pack_flags.output.as_deref(),
       pack_flags.dry_run,
     )?;
@@ -188,6 +212,23 @@ pub async fn pack(
         human_size(metadata.len() as f64)
       );
     }
+  }
+
+  Ok(())
+}
+
+fn warn_for_slow_type_diagnostics(
+  graph: &ModuleGraph,
+  package: &JsrPackageConfig,
+  pack_flags: &PackFlags,
+) -> Result<(), AnyError> {
+  if pack_flags.allow_slow_types {
+    return Ok(());
+  }
+
+  let export_urls = package.config_file.resolve_export_value_urls()?;
+  for diagnostic in collect_no_slow_type_diagnostics(graph, &export_urls) {
+    log::warn!("{}", diagnostic.display());
   }
 
   Ok(())
@@ -209,8 +250,10 @@ async fn create_graph(
       packages: std::slice::from_ref(package),
       build_fast_check_graph: !pack_flags.allow_slow_types,
       validate_graph: true,
+      skip_unanalyzable_exports: false,
     })
     .await?;
+  warn_for_slow_type_diagnostics(&graph, package, pack_flags)?;
 
   // If fast check is enabled, rebuild with DTS generation
   if !pack_flags.allow_slow_types {
@@ -377,6 +420,149 @@ fn collect_readme_license_files(
   }
 
   Ok(files)
+}
+
+/// A non-module file (e.g. an asset listed in `publish.include`) that is
+/// packed verbatim into the tarball without going through the transpile
+/// pipeline.
+pub struct AssetFile {
+  /// Relative path in the package (e.g. "assets/icon.svg").
+  pub relative_path: String,
+  /// Raw file contents.
+  pub content: Vec<u8>,
+}
+
+/// Walk the filesystem for non-module assets matched by the package's
+/// publish config (`publish.include`/`exclude`) and read their raw bytes.
+///
+/// `deno publish` collects every file via the publish `FilePatterns`, but
+/// `deno pack` only walks the module graph, so static assets were never
+/// included. This mirrors `publish`'s `collect_paths` (ignore .git,
+/// node_modules and the vendor dir, honour .gitignore, skip non-regular
+/// files / `.DS_Store` / `.gitignore`) and then drops anything already
+/// emitted by another part of the tarball:
+///   - source modules (they are transpiled into the tarball separately),
+///   - the generated `package.json`'s source `deno.json`/`deno.jsonc`,
+///   - the auto-included README/LICENSE files.
+fn collect_asset_files(
+  package: &JsrPackageConfig,
+  cli_options: &CliOptions,
+  pack_flags: &PackFlags,
+  version: &str,
+  collected_paths: &[CollectedPath],
+  readme_license_files: &[ReadmeOrLicense],
+) -> Result<Vec<AssetFile>, AnyError> {
+  let package_dir = package.config_file.dir_path();
+  let file_patterns = package.member_dir.to_publish_config()?.files;
+  // Whether the package explicitly configured `publish.include`. When it
+  // did, we ship exactly what it lists; when it didn't (the default of
+  // "everything"), we additionally drop root-level `.tgz` files as likely
+  // leftover pack artifacts (see the loop below).
+  let has_explicit_include = file_patterns.include.is_some();
+  // The `--ignore`/`--exclude` CLI flags filter graph modules in
+  // `collect_graph_modules`; apply the same patterns to assets so e.g.
+  // `pack --ignore=tests/**` also drops asset files under `tests/`.
+  let cli_patterns = pack_flags.files.as_file_patterns(&package_dir)?;
+
+  // Absolute paths that are already represented elsewhere in the tarball
+  // and must not be packed again as raw assets.
+  let mut excluded = HashSet::new();
+  // Source modules are transpiled — exclude the ORIGINAL source path
+  // (not the emitted output path).
+  for path in collected_paths {
+    if let Ok(p) = path.specifier.to_file_path() {
+      excluded.insert(p);
+    }
+  }
+  // The source config file is replaced by the generated package.json.
+  if let Ok(p) = package.config_file.specifier.to_file_path() {
+    excluded.insert(p);
+  }
+  // README/LICENSE are added by `collect_readme_license_files`.
+  for file in readme_license_files {
+    excluded.insert(package_dir.join(&file.relative_path));
+  }
+  // The tarball we are about to write must never be packed into itself.
+  // Resolve its exact path (relative to the cwd, like `create_npm_tarball`)
+  // and exclude it. With `--output` this covers a tarball that lands inside
+  // an included dir, e.g. `pack --output ./assets/foo.tgz`; otherwise we
+  // exclude the default-named tarball pack writes into the cwd, so
+  // re-running pack doesn't embed a prior run's artifact and break the
+  // reproducibility guarantee.
+  let output_tarball = match pack_flags.output.as_deref() {
+    Some(output) => PathBuf::from(output),
+    None => default_tarball_filename(&package.config_file, version)?,
+  };
+  excluded.insert(cli_options.initial_cwd().join(output_tarball));
+
+  let collected = FileCollector::new(|e| {
+    if !e.metadata.file_type().is_file() {
+      // Mirror `deno publish`, which surfaces a diagnostic for non-regular
+      // files matched by the publish config. `pack` can't include them, so
+      // warn rather than silently dropping (e.g. a symlinked asset) to
+      // avoid a confusing "why is my file missing?" report.
+      if e.metadata.file_type().is_symlink() {
+        log::warn!(
+          "{} Skipping symlink '{}' matched by the package's publish config; symlinks can't be packed.",
+          colors::yellow("Warning"),
+          e.path.display()
+        );
+      }
+      return false;
+    }
+    e.path
+      .file_name()
+      .map(|s| s != ".DS_Store" && s != ".gitignore")
+      .unwrap_or(true)
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .use_gitignore()
+  .collect_file_patterns(&CliSys::default(), &file_patterns);
+
+  let mut assets = Vec::new();
+  for path in collected {
+    if excluded.contains(&path)
+      || is_excluded_path(&path, &package_dir)
+      || !cli_patterns.matches_path(&path, deno_config::glob::PathKind::File)
+    {
+      continue;
+    }
+    let Ok(relative) = path.strip_prefix(&package_dir) else {
+      continue;
+    };
+    // Unless the package explicitly lists what to publish, treat a
+    // root-level `.tgz` as a pack artifact (e.g. a tarball left over from a
+    // previous `pack --output other.tgz` run, or `npm pack` output) rather
+    // than a source asset, and drop it. Without this, re-running `pack` in a
+    // directory that already contains a tarball would embed that tarball and
+    // break the reproducibility guarantee. The exact tarball being written
+    // is always excluded above; this only covers *other* root-level
+    // tarballs. A package that opts in via `publish.include` keeps full
+    // control and is never second-guessed here.
+    if !has_explicit_include
+      && relative
+        .parent()
+        .map(|p| p.as_os_str().is_empty())
+        .unwrap_or(true)
+      && relative.extension().map(|e| e == "tgz").unwrap_or(false)
+    {
+      continue;
+    }
+    let content = std::fs::read(&path)
+      .with_context(|| format!("failed reading '{}'.", path.display()))?;
+    assets.push(AssetFile {
+      relative_path: relative.to_string_lossy().to_string(),
+      content,
+    });
+  }
+
+  // Sort for deterministic tarball output (consistent with
+  // `collect_graph_modules`).
+  assets.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+
+  Ok(assets)
 }
 
 pub struct ProcessedFile {

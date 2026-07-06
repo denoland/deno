@@ -1,0 +1,44 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "commandName": "git",
+      "args": "init",
+      "output": "[WILDCARD]"
+    },
+    {
+      "commandName": "git",
+      "args": "config user.email test@example.com",
+      "output": "[WILDCARD]"
+    },
+    {
+      "commandName": "git",
+      "args": "config user.name test",
+      "output": "[WILDCARD]"
+    },
+    {
+      "commandName": "git",
+      "args": "config commit.gpgsign false",
+      "output": "[WILDCARD]"
+    },
+    {
+      "commandName": "git",
+      "args": "add .",
+      "output": "[WILDCARD]"
+    },
+    {
+      "commandName": "git",
+      "args": "commit -m init",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run --allow-read --allow-write touch.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "test --no-check --changed",
+      "output": "changed.out",
+      "exitCode": 0
+    }
+  ]
+}

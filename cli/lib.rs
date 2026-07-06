@@ -148,7 +148,7 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       let flags = Arc::new(flags);
-      if bench_flags.watch.is_some() {
+      if flags.watch.is_some() {
         tools::bench::run_benchmarks_with_watch(flags, bench_flags)
           .boxed_local()
           .await
@@ -228,6 +228,9 @@ async fn run_subcommand(
     DenoSubcommand::Info(info_flags) => spawn_subcommand(async {
       tools::info::info(Arc::new(flags), info_flags).await
     }),
+    DenoSubcommand::List(list_flags) => spawn_subcommand(async {
+      tools::pm::list(Arc::new(flags), list_flags).await
+    }),
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(Arc::new(flags), install_flags).await
     }),
@@ -236,9 +239,7 @@ async fn run_subcommand(
     }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
-        display::write_to_stdout_ignore_sigpipe(
-          &deno_core::serde_json::to_vec_pretty(&json_reference.json).unwrap(),
-        )
+        display::write_json_to_stdout(&json_reference.json)
       })
     }
     DenoSubcommand::Jupyter(jupyter_flags) => spawn_subcommand(async {
@@ -292,6 +293,7 @@ async fn run_subcommand(
           filter: None,
           eval: false,
           no_prefix: false,
+          concurrency: None,
           if_present: false,
         };
         let mut flags = flags;
@@ -325,7 +327,7 @@ async fn run_subcommand(
         let result = tools::run::run_script(
           WorkerExecutionMode::Run,
           flags.clone(),
-          run_flags.watch,
+          flags.watch.clone(),
           unconfigured_runtime,
           roots.clone(),
         )
@@ -345,10 +347,7 @@ async fn run_subcommand(
               && flags.node_modules_dir.is_none()
             {
               let mut flags = flags.deref().clone();
-              let watch = match &flags.subcommand {
-                DenoSubcommand::Run(run_flags) => run_flags.watch.clone(),
-                _ => unreachable!(),
-              };
+              let watch = flags.watch.clone();
               flags.node_modules_dir =
                 Some(deno_config::deno_json::NodeModulesDirMode::None);
               // use the current lockfile, but don't write it out
@@ -405,6 +404,7 @@ async fn run_subcommand(
                   filter: None,
                   eval: false,
                   no_prefix: false,
+                  concurrency: None,
                   if_present: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
@@ -461,7 +461,7 @@ async fn run_subcommand(
           };
         }
 
-        if test_flags.watch.is_some() {
+        if flags.watch.is_some() {
           tools::test::run_tests_with_watch(Arc::new(flags), test_flags).await
         } else {
           tools::test::run_tests(Arc::new(flags), test_flags).await
@@ -472,8 +472,8 @@ async fn run_subcommand(
       spawn_subcommand(async move {
         match completions_flags {
           CompletionsFlags::Static(buf) => {
-            display::write_to_stdout_ignore_sigpipe(&buf)
-              .map_err(AnyError::from)
+            deno_print::drop_write_stdout(&buf);
+            Ok::<_, AnyError>(())
           }
           CompletionsFlags::Dynamic(f) => {
             f()?;
@@ -484,7 +484,8 @@ async fn run_subcommand(
     }
     DenoSubcommand::Types => spawn_subcommand(async move {
       let types = tsc::get_types_declaration_file_text();
-      display::write_to_stdout_ignore_sigpipe(types.as_bytes())
+      deno_print::drop_write_stdout(types.as_bytes());
+      Ok::<_, AnyError>(())
     }),
     #[cfg(feature = "upgrade")]
     DenoSubcommand::Upgrade(upgrade_flags) => spawn_subcommand(async {
@@ -584,6 +585,37 @@ fn setup_panic_hook() {
       deno_runtime::exit(1);
     }
 
+    // Worker thread creation failures are not bugs in Deno — they typically
+    // happen when running in a container with a low PID limit (e.g. Docker
+    // `--pids-limit`). Show a targeted message instead of the bug-report
+    // banner. The matched strings come from V8 (via the `error_handler`
+    // below) and `deno_unsync`, so they may need updating if those change.
+    // https://github.com/denoland/deno/issues/31300
+    let panic_str = panic_info
+      .payload()
+      .downcast_ref::<String>()
+      .map(|s| s.as_str())
+      .or_else(|| panic_info.payload().downcast_ref::<&str>().copied())
+      .unwrap_or("");
+    let is_resource_limit = panic_str.contains("worker thread")
+      || panic_str.contains("Resource temporarily unavailable")
+      || panic_str.contains("could not start worker threads");
+    if is_resource_limit {
+      eprintln!(
+        "\n============================================================"
+      );
+      eprintln!("Deno could not start: unable to create worker threads.");
+      eprintln!();
+      eprintln!("This usually happens when running in a container with a low");
+      eprintln!("PID limit. Try increasing the limit (e.g. --pids-limit=40).");
+      eprintln!();
+      eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
+      eprintln!("Version: {}", deno_lib::version::DENO_VERSION_INFO.deno);
+      eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
+      eprintln!();
+      deno_runtime::exit(1);
+    }
+
     eprintln!("\n============================================================");
     eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
     eprintln!("at https://github.com/denoland/deno/issues/new.");
@@ -622,6 +654,17 @@ fn setup_panic_hook() {
   }));
 
   fn error_handler(file: &str, line: i32, message: &str) {
+    // Provide a clearer message for thread creation failures, which
+    // typically happen when running in containers with low PID limits
+    // (e.g. Docker --pids-limit). V8's default error is just
+    // "Check failed: Start()" which is unhelpful.
+    if message.contains("Check failed: Start()") {
+      panic!(
+        "Failed to initialize V8 platform (could not start worker threads). \
+        If running in a container, ensure the PID limit is high enough \
+        (try --pids-limit=40 or higher)."
+      );
+    }
     // Override C++ abort with a rust panic, so we
     // get our message above and a nice backtrace.
     panic!("Fatal error in {file}:{line}: {message}");
@@ -666,7 +709,7 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 }
 
 fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
-  let error_string = match js_error_downcast_ref(&error) {
+  let mut error_string = match js_error_downcast_ref(&error) {
     Some(e) => {
       let initial_cwd = initial_cwd
         .and_then(|cwd| deno_path_util::url_from_directory_path(cwd).ok());
@@ -674,6 +717,17 @@ fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
     }
     None => format!("{error:?}"),
   };
+
+  // If this looks like a workspace/npm resolution failure and a
+  // pnpm-workspace.yaml is nearby, convert it into the equivalent deno.json
+  // fields and tell the user to run the command again, rather than leaving them
+  // with the misleading "run deno install" hint baked into the error.
+  if let Some(hint) = util::pnpm_workspace::maybe_auto_migrate_pnpm_workspace(
+    &error_string,
+    initial_cwd,
+  ) {
+    error_string.push_str(&hint);
+  }
 
   exit_with_message(&error_string, 1);
 }
@@ -854,7 +908,7 @@ async fn resolve_flags_and_init(
       Err(err) => exit_for_error(AnyError::from(err), initial_cwd.as_deref()),
     };
   // preserve already loaded env variables
-  if flags.subcommand.watch_flags().is_some() {
+  if flags.watch.is_some() {
     WatchEnvTracker::snapshot();
   }
 
@@ -1134,10 +1188,16 @@ fn wait_for_start(
 
       #[derive(deno_core::serde::Serialize)]
       enum Event {
-        Serving,
+        Serving {
+          #[serde(skip_serializing_if = "Option::is_none")]
+          kind: Option<&'static str>,
+        },
       }
 
-      let mut buf = deno_core::serde_json::to_vec(&Event::Serving).unwrap();
+      let mut buf = deno_core::serde_json::to_vec(&Event::Serving {
+        kind: deno_runtime::deno_http::serving_server_kind(),
+      })
+      .unwrap();
       buf.push(b'\n');
       let _ = tx.write_all(&buf).await;
     });

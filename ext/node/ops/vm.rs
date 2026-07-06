@@ -1669,6 +1669,12 @@ pub struct ContextifyModule {
   /// `SYNTHETIC_CALLBACKS`. Stored separately so `Drop` can clean up the
   /// registry entry without needing a v8 scope.
   synthetic_identity_hash: Option<NonZeroI32>,
+  /// V8 identity hash used as the key in `IMPORT_META_CALLBACKS`. Stored so
+  /// `Drop` can clean up the registry entry without needing a v8 scope.
+  /// `None` unless this module was created with an `initializeImportMeta`
+  /// callback (synthetic modules and modules without the callback have no
+  /// entry to clean up).
+  import_meta_identity_hash: Option<NonZeroI32>,
 }
 
 // SAFETY: all v8 references are visited during cppgc trace.
@@ -1693,6 +1699,11 @@ impl Drop for ContextifyModule {
         m.borrow_mut().remove(&hash);
       });
     }
+    if let Some(hash) = self.import_meta_identity_hash {
+      IMPORT_META_CALLBACKS.with(|m| {
+        m.borrow_mut().remove(&hash);
+      });
+    }
   }
 }
 
@@ -1709,6 +1720,56 @@ thread_local! {
   /// looks up the user callback here using the Module passed by V8.
   static SYNTHETIC_CALLBACKS: RefCell<HashMap<NonZeroI32, SyntheticCallbackEntry>> =
     RefCell::new(HashMap::new());
+
+  /// Map from V8 Module identity hash -> the user's `initializeImportMeta`
+  /// callback for vm modules that supplied one. Populated by
+  /// `op_vm_module_create_source_text_module` and consumed by
+  /// `external_import_meta_hook` when V8 fires the host-initialize-import-meta
+  /// callback. Cleaned up in `ContextifyModule::drop`. Modules created
+  /// without an `initializeImportMeta` callback have no entry here.
+  static IMPORT_META_CALLBACKS: RefCell<HashMap<NonZeroI32, v8::Global<v8::Function>>> =
+    RefCell::new(HashMap::new());
+}
+
+/// Hook registered with deno_core so V8's host-initialize-import-meta
+/// callback can drive `import.meta` for `node:vm` modules. Like Node's
+/// `vm.SourceTextModule`, `import.meta` is left entirely under the user's
+/// control: this only invokes the user's `initializeImportMeta(meta)`
+/// callback (if one was provided) and otherwise leaves `meta` empty. In
+/// particular `meta.url` is *not* auto-populated, matching Node.
+fn external_import_meta_hook<'s, 'i, 'm, 'o>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  module: v8::Local<'m, v8::Module>,
+  meta: v8::Local<'o, v8::Object>,
+) {
+  let hash = module.get_identity_hash();
+  let callback_global =
+    IMPORT_META_CALLBACKS.with(|m| m.borrow().get(&hash).cloned());
+  let Some(cb_global) = callback_global else {
+    return;
+  };
+
+  let callback = v8::Local::new(scope, &cb_global);
+  v8::tc_scope!(tc_scope, scope);
+  let recv: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
+  let _ = callback.call(tc_scope, recv, &[meta.into()]);
+  if tc_scope.has_caught() && !tc_scope.has_terminated() {
+    tc_scope.rethrow();
+  }
+}
+
+/// Register the import-meta hook with deno_core. Called on each vm module
+/// creation so it's wired up by the time V8 fires the
+/// host-initialize-import-meta callback. The per-isolate callback slot is a
+/// `Cell<Option<fn>>`, so re-registering just stores the same fn pointer
+/// again — cheap and idempotent.
+fn ensure_external_import_meta_hook_registered(
+  scope: &mut v8::PinScope<'_, '_>,
+) {
+  deno_core::register_external_module_import_meta_cb(
+    scope,
+    external_import_meta_hook,
+  );
 }
 
 #[op2]
@@ -1721,9 +1782,15 @@ pub fn op_vm_module_create_source_text_module<'a>(
   column_offset: i32,
   context_object: Option<v8::Local<'a, v8::Object>>,
   import_module_dynamically_id: i32,
+  initialize_import_meta: Option<v8::Local<'a, v8::Function>>,
 ) -> Option<ContextifyModule> {
+  ensure_external_import_meta_hook_registered(scope);
+
   let (context, microtask_queue) =
     resolve_module_context(scope, context_object)?;
+
+  let import_meta_callback =
+    initialize_import_meta.map(|f| v8::Global::new(scope, f));
 
   let scope = &mut v8::ContextScope::new(scope, context);
   let host_defined_options =
@@ -1754,6 +1821,17 @@ pub fn op_vm_module_create_source_text_module<'a>(
   }
   let module = module?;
 
+  // Only track an import-meta entry when the user supplied an
+  // `initializeImportMeta` callback. Without one there's nothing to do —
+  // `import.meta` is left empty, matching Node's `vm.SourceTextModule`.
+  let identity_hash = module.get_identity_hash();
+  let import_meta_identity_hash = import_meta_callback.map(|cb| {
+    IMPORT_META_CALLBACKS.with(|m| {
+      m.borrow_mut().insert(identity_hash, cb);
+    });
+    identity_hash
+  });
+
   Some(ContextifyModule {
     module: v8::TracedReference::new(scope, module),
     context: v8::TracedReference::new(scope, context),
@@ -1762,6 +1840,7 @@ pub fn op_vm_module_create_source_text_module<'a>(
     resolutions: RefCell::new(HashMap::new()),
     is_linked: Cell::new(false),
     synthetic_identity_hash: None,
+    import_meta_identity_hash,
   })
 }
 
@@ -1834,6 +1913,11 @@ pub fn op_vm_module_create_synthetic_module<'a>(
     // from creation so `op_vm_module_instantiate` doesn't reject them.
     is_linked: Cell::new(true),
     synthetic_identity_hash: Some(hash),
+    // Synthetic modules don't have a body so `import.meta` never runs,
+    // but V8 may still hit the host-initialize-import-meta callback (the
+    // module map lookup would then fall through to the external hook).
+    // Skip registering an import-meta entry — there's nothing to do.
+    import_meta_identity_hash: None,
   })
 }
 

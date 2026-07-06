@@ -106,6 +106,8 @@ use crate::util::path::relative_specifier;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::v8::convert;
 
+const QUICK_INFO_MAX_LENGTH: u32 = 1_000_000;
+
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
 static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}"m);
@@ -723,6 +725,7 @@ impl TsJsServer {
         .specifier_map
         .denormalize(&module.specifier, module.media_type),
       position,
+      QUICK_INFO_MAX_LENGTH,
     ));
     self
       .request(
@@ -2091,18 +2094,29 @@ fn display_parts_to_string<'a>(
 }
 
 impl QuickInfo {
+  pub fn display_string(
+    &self,
+    module: &DocumentModule,
+    snapshot: &StateSnapshot,
+  ) -> Option<String> {
+    self
+      .display_parts
+      .as_ref()
+      .map(|p| display_parts_to_string(p, module, snapshot))
+      .filter(|s| !s.is_empty())
+  }
+
+  pub fn to_range(&self, module: &DocumentModule) -> lsp::Range {
+    self.text_span.to_range(&module.line_index)
+  }
+
   pub fn to_hover(
     &self,
     module: &DocumentModule,
     snapshot: &StateSnapshot,
   ) -> lsp::Hover {
     let mut value = String::new();
-    if let Some(display_string) = self
-      .display_parts
-      .clone()
-      .map(|p| display_parts_to_string(&p, module, snapshot))
-      && !display_string.is_empty()
-    {
+    if let Some(display_string) = self.display_string(module, snapshot) {
       value.push_str("```tsx\n");
       value.push_str(&display_string);
       value.push_str("\n```\n");
@@ -5428,7 +5442,7 @@ fn span_with_context(
     use tracing_opentelemetry::OpenTelemetrySpanExt;
 
     if let Some(context) = &_state.context {
-      span.set_parent(context.clone());
+      let _ = span.set_parent(context.clone());
     }
     span.entered()
   }
@@ -5871,6 +5885,8 @@ fn run_tsc_thread(
   enable_tracing: Arc<AtomicBool>,
 ) {
   let has_inspector_server = maybe_inspector_server.is_some();
+  let runtime = create_basic_runtime();
+  let _guard = runtime.enter();
   // Shared with the isolate's near-heap-limit callback. `op_poll_requests`
   // keeps this updated with the in-flight request's cancellation token.
   let request_cancellation: Arc<Mutex<CancellationToken>> = Default::default();
@@ -5991,7 +6007,6 @@ fn run_tsc_thread(
   }
   .boxed_local();
 
-  let runtime = create_basic_runtime();
   runtime.block_on(tsc_future)
 }
 
@@ -6418,7 +6433,7 @@ enum TscRequest {
   GetNavigationTree((String,)),
   GetSupportedCodeFixes,
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6214
-  GetQuickInfoAtPosition((String, u32)),
+  GetQuickInfoAtPosition((String, u32, u32)),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6257
   GetCodeFixesAtPosition(
     Box<(
@@ -6552,9 +6567,15 @@ impl TscRequest {
         ("getNavigationTree", Some(args.to_v8(scope)?))
       }
       TscRequest::GetSupportedCodeFixes => ("$getSupportedCodeFixes", None),
-      TscRequest::GetQuickInfoAtPosition((specifier, position)) => (
+      TscRequest::GetQuickInfoAtPosition((
+        specifier,
+        position,
+        maximum_length,
+      )) => (
         "getQuickInfoAtPosition",
-        Some((specifier, Number(position)).to_v8(scope)?),
+        Some(
+          (specifier, Number(position), Number(maximum_length)).to_v8(scope)?,
+        ),
       ),
       TscRequest::GetCodeFixesAtPosition(args) => (
         "getCodeFixesAtPosition",

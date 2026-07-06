@@ -2102,13 +2102,13 @@ create_struct_writer! {
     size: u64,
     // In milliseconds, like JavaScript. Available on both Unix or Windows.
     mtime_set: bool,
-    mtime: u64,
+    mtime: i64,
     atime_set: bool,
-    atime: u64,
+    atime: i64,
     birthtime_set: bool,
-    birthtime: u64,
+    birthtime: i64,
     ctime_set: bool,
-    ctime: u64,
+    ctime: i64,
     // Stats below are platform dependent.
     // On Unix, they are always available.
     // On Windows, the `*_set` fields are used

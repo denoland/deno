@@ -145,7 +145,6 @@ pub struct BenchFlags {
   pub json: bool,
   pub no_run: bool,
   pub permit_no_files: bool,
-  pub watch: Option<WatchFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -159,7 +158,6 @@ pub struct CheckFlags {
   pub doc: bool,
   pub doc_only: bool,
   pub check_js: bool,
-  pub watch: Option<WatchFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -168,7 +166,6 @@ pub struct CompileFlags {
   pub output: Option<String>,
   pub args: Vec<String>,
   pub target: Option<String>,
-  pub watch: Option<WatchFlags>,
   pub no_terminal: bool,
   pub icon: Option<String>,
   pub include: Vec<String>,
@@ -178,6 +175,10 @@ pub struct CompileFlags {
   /// Bundle the entrypoint with esbuild before embedding it, instead of
   /// shipping the entire node_modules tree. Experimental.
   pub bundle: bool,
+  /// Stable identity for the compiled app. Determines where origin-bound
+  /// storage (default `Deno.openKv()`, `localStorage`, `caches`) is persisted.
+  /// Defaults to the output file name when not set.
+  pub app_name: Option<String>,
   /// Minify the bundle. Only meaningful with `bundle: true`.
   pub minify: bool,
   /// Prune the embedded managed npm snapshot to only those packages reachable
@@ -218,6 +219,10 @@ pub struct DesktopFlags {
   /// identifier, and (eventually) the Windows AppUserModelID. When unset
   /// a synthetic `com.deno.desktop.<app-slug>` is generated.
   pub identifier: Option<String>,
+  /// Custom URL schemes (deep links) to register with the OS, e.g. `["acme"]`
+  /// for `acme://...` links. Sourced from `desktop.app.deepLinks` in
+  /// `deno.json`. Each entry is a bare scheme with no `://`.
+  pub deep_links: Vec<String>,
   /// macOS codesigning identity (e.g. `Developer ID Application: Acme,
   /// Inc. (TEAMID)`, or `-` for ad-hoc). When unset the bundle is left
   /// unsigned; the system will quarantine it on download.
@@ -226,6 +231,16 @@ pub struct DesktopFlags {
   /// port is allocated. The user-visible inspector port (from `--inspect`) is
   /// separate and is carried on `Flags::inspect`.
   pub inspect_renderer: Option<SocketAddr>,
+  /// When set, emit a compressed distribution archive of the packaged app
+  /// next to it (`<output>.tar.xz` or `<output>.tar.zst`). The installed
+  /// `.app`/app dir is left untouched (and still code-signed); the archive is
+  /// just a small download artifact. Value is the compressor: `"xz"` (LZMA)
+  /// or `"zstd"`.
+  pub compress: Option<String>,
+  /// Embed only the npm packages reachable from the module graph instead of
+  /// the full managed snapshot. Same opt-in semantics as
+  /// `deno compile --exclude-unused-npm`.
+  pub exclude_unused_npm: bool,
 }
 
 #[derive(Clone)]
@@ -340,7 +355,7 @@ pub struct FmtFlags {
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
-  pub watch: Option<WatchFlags>,
+  pub no_editorconfig: bool,
   pub unstable_component: bool,
   pub unstable_sql: bool,
 }
@@ -367,6 +382,15 @@ pub struct InitFlags {
 pub struct InfoFlags {
   pub json: bool,
   pub file: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ListFlags {
+  pub recursive: bool,
+  pub depth: u16,
+  pub prod: bool,
+  pub dev: bool,
+  pub filters: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -437,7 +461,7 @@ pub struct JupyterFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UninstallFlagsGlobal {
-  pub name: String,
+  pub packages: Vec<String>,
   pub root: Option<String>,
 }
 
@@ -463,7 +487,6 @@ pub struct LintFlags {
   pub permit_no_files: bool,
   pub json: bool,
   pub compact: bool,
-  pub watch: Option<WatchFlags>,
 }
 
 impl LintFlags {
@@ -484,7 +507,6 @@ pub struct ReplFlags {
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct RunFlags {
   pub script: String,
-  pub watch: Option<WatchFlagsWithPaths>,
   pub bare: bool,
   pub coverage_dir: Option<String>,
   pub print_task_list: bool,
@@ -494,7 +516,6 @@ impl RunFlags {
   pub fn new_default(script: String) -> Self {
     Self {
       script,
-      watch: None,
       bare: false,
       coverage_dir: None,
       print_task_list: false,
@@ -551,7 +572,6 @@ pub struct XFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServeFlags {
   pub script: String,
-  pub watch: Option<WatchFlagsWithPaths>,
   pub port: u16,
   pub host: String,
   pub parallel: bool,
@@ -562,25 +582,12 @@ impl ServeFlags {
   pub fn new_default(script: String, port: u16, host: &str) -> Self {
     Self {
       script,
-      watch: None,
       port,
       host: host.to_owned(),
       parallel: false,
       open_site: false,
     }
   }
-}
-
-pub enum WatchFlagsRef<'a> {
-  Watch(&'a WatchFlags),
-  WithPaths(&'a WatchFlagsWithPaths),
-}
-
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
-pub struct WatchFlags {
-  pub hmr: bool,
-  pub no_clear_screen: bool,
-  pub exclude: Vec<String>,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -600,6 +607,10 @@ pub struct TaskFlags {
   pub filter: Option<String>,
   pub eval: bool,
   pub no_prefix: bool,
+  /// Maximum number of workspace tasks to run concurrently. Overrides the
+  /// `DENO_JOBS` env var and the `available_parallelism()` default. Only
+  /// meaningful for multi-task (`-r`/`--filter`) runs.
+  pub concurrency: Option<NonZeroUsize>,
   /// Exit with code 0 instead of an error when the named task is not found.
   pub if_present: bool,
 }
@@ -637,10 +648,16 @@ pub struct TestFlags {
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
-  pub watch: Option<WatchFlagsWithPaths>,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
+  /// Run only test modules affected by files changed in git.
+  /// `None` when `--changed` is absent, `Some(None)` for `--changed` with no
+  /// value (uncommitted changes), `Some(Some(ref))` for `--changed=<ref>`.
+  pub changed: Option<Option<String>>,
+  /// Run only test modules that depend on the given source files (`--related`).
+  pub related: Vec<String>,
+  pub update_snapshots: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -768,6 +785,7 @@ pub enum DenoSubcommand {
   Fmt(FmtFlags),
   Init(InitFlags),
   Info(InfoFlags),
+  List(ListFlags),
   Install(InstallFlags),
   JSONReference(JSONReferenceFlags),
   Jupyter(JupyterFlags),
@@ -792,38 +810,6 @@ pub enum DenoSubcommand {
   Pack(PackFlags),
   Help(HelpFlags),
   X(XFlags),
-}
-
-impl DenoSubcommand {
-  pub fn watch_flags(&self) -> Option<WatchFlagsRef<'_>> {
-    match self {
-      Self::Run(RunFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Serve(ServeFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Test(TestFlags {
-        watch: Some(flags), ..
-      }) => Some(WatchFlagsRef::WithPaths(flags)),
-      Self::Bench(BenchFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Check(CheckFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Lint(LintFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Fmt(FmtFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Compile(CompileFlags {
-        watch: Some(flags), ..
-      }) => Some(WatchFlagsRef::Watch(flags)),
-      _ => None,
-    }
-  }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -986,6 +972,9 @@ pub struct Flags {
   pub require: Vec<String>,
   pub tunnel: bool,
   pub cpu_prof: Option<CpuProfFlags>,
+  /// Watch configuration for subcommands that support `--watch`. `paths` is
+  /// only populated for subcommands whose `--watch` accepts values.
+  pub watch: Option<WatchFlagsWithPaths>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]

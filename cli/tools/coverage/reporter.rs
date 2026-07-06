@@ -12,6 +12,8 @@ use std::path::PathBuf;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_print::drop_print;
+use deno_print::drop_println;
 
 use super::CoverageReport;
 use super::util;
@@ -128,7 +130,6 @@ pub trait CoverageReporter {
 
 pub struct SummaryCoverageReporter {}
 
-#[allow(clippy::print_stdout, reason = "reporter")]
 impl SummaryCoverageReporter {
   pub fn new() -> SummaryCoverageReporter {
     SummaryCoverageReporter {}
@@ -193,7 +194,7 @@ impl SummaryCoverageReporter {
       format!("{}", colors::red(&format!("{:>6.1}", line_percent)))
     };
 
-    println!(
+    drop_println!(
       "| {file_name} | {branch_percent} | {fn_percent} | {line_percent} |",
       file_name = file_name,
       branch_percent = branch_percent,
@@ -203,7 +204,6 @@ impl SummaryCoverageReporter {
   }
 }
 
-#[allow(clippy::print_stdout, reason = "reporter")]
 impl CoverageReporter for SummaryCoverageReporter {
   fn done(
     &self,
@@ -249,8 +249,8 @@ impl CoverageReporter for SummaryCoverageReporter {
       "-".repeat(10),
       "-".repeat(6)
     );
-    println!("{}", header);
-    println!("{}", separator);
+    drop_println!("{}", header);
+    drop_println!("{}", separator);
     entries.iter().for_each(|(node, stats)| {
       self.print_coverage_line(node, node_max, stats);
     });
@@ -395,7 +395,6 @@ impl CoverageReporter for DetailedCoverageReporter {
   }
 }
 
-#[allow(clippy::print_stdout, reason = "reporter")]
 impl DetailedCoverageReporter {
   pub fn new() -> DetailedCoverageReporter {
     DetailedCoverageReporter {}
@@ -407,7 +406,7 @@ impl DetailedCoverageReporter {
     file_text: &str,
   ) -> Result<(), AnyError> {
     let lines = file_text.split('\n').collect::<Vec<_>>();
-    print!("cover {} ... ", coverage_report.url);
+    drop_print!("cover {} ... ", coverage_report.url);
 
     let hit_lines = coverage_report
       .found_lines
@@ -429,11 +428,11 @@ impl DetailedCoverageReporter {
       format!("{:.3}% ({}/{})", line_ratio * 100.0, lines_hit, lines_found);
 
     if line_ratio >= 0.9 {
-      println!("{}", colors::green(&line_coverage));
+      drop_println!("{}", colors::green(&line_coverage));
     } else if line_ratio >= 0.75 {
-      println!("{}", colors::yellow(&line_coverage));
+      drop_println!("{}", colors::yellow(&line_coverage));
     } else {
-      println!("{}", colors::red(&line_coverage));
+      drop_println!("{}", colors::red(&line_coverage));
     }
 
     let mut last_line = None;
@@ -446,10 +445,10 @@ impl DetailedCoverageReporter {
         && last_line + 1 != line_index
       {
         let dash = colors::gray("-".repeat(WIDTH + 1));
-        println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
+        drop_println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
       }
 
-      println!(
+      drop_println!(
         "{:width$} {} {}",
         line_index + 1,
         colors::gray(SEPARATOR),

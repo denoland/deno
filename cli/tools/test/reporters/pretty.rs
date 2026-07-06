@@ -475,6 +475,14 @@ impl TestReporter for PrettyTestReporter {
     }
   }
 
+  fn report_snapshot_summary(&mut self, summary: &TestSnapshotSummary) {
+    self.summary.snapshots_updated += summary.updated;
+    self
+      .summary
+      .snapshots_removed
+      .extend(summary.removed.iter().cloned());
+  }
+
   fn report_summary(
     &mut self,
     elapsed: &Duration,

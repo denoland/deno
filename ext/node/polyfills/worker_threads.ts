@@ -25,6 +25,8 @@ const {
 } = core.ops;
 const {
   deserializeJsMessageData,
+  deserializeMessageData,
+  isUncloneable,
   markAsUncloneable: webMarkAsUncloneable,
   MessageChannel,
   MessagePort,
@@ -34,6 +36,7 @@ const {
   nodeWorkerThreadCloseCb,
   refMessagePort,
   serializeJsMessageData,
+  serializeMessageData,
   unrefParentPort,
 } = core.loadExtScript("ext:deno_web/13_message_port.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
@@ -80,6 +83,7 @@ const lazyModule = core.createLazyLoader("node:module");
 // loaders.
 
 const {
+  ArrayBufferIsView,
   ArrayIsArray,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
@@ -286,6 +290,15 @@ class NodeWorker extends EventEmitter {
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
+
+    // Ensure the creating thread is wired up to send/receive cross-thread
+    // `postMessageToThread` messages. On the main thread under the deferred
+    // node bootstrap `__initWorkerThreads` (which normally does this) never
+    // runs, so without this the main thread can neither be addressed by
+    // `postMessageToThread(0, ...)` nor have its `workerMessage` listeners
+    // counted. Idempotent, so the eager paths that already ran it are a
+    // no-op here.
+    setupCrossThreadMessaging();
 
     if (options?.execArgv) {
       validateArray(options.execArgv, "options.execArgv");
@@ -741,13 +754,22 @@ class NodeWorker extends EventEmitter {
         return;
       }
       if (!this.#dispatchWorkerThreadMessage(data)) return;
-      // Sync drain: process a limited batch of already-queued messages
-      // without going through the async op machinery. The batch limit
-      // prevents starvation of the event loop when message handlers
-      // synchronously post new messages (e.g. ping-pong patterns).
+      // Drain messages already queued on the host side instead of taking the
+      // async op + Promise path for each. The whole burst is processed within
+      // this event-loop turn; the batch limit prevents starving the event loop
+      // under a sustained flood.
       for (let i = 0; i < 1000 && this.#status !== "TERMINATED"; i++) {
         const syncData = op_host_recv_message_sync(this.#id);
         if (syncData === null) break;
+        // Each message dispatch is its own task. Yield a microtask before
+        // delivering this already-dequeued message so a handler that re-armed
+        // itself in a microtask after the previous dispatch (e.g. an
+        // `events.once` listener that re-attaches in a `.then`) is installed
+        // first -- otherwise the message reaches the stale handler and is
+        // lost. A synchronous checkpoint can't help: V8 won't run microtasks
+        // reentrantly while we are already inside one.
+        await new Promise((resolve) => queueMicrotask(() => resolve()));
+        if (this.#status === "TERMINATED") return;
         if (!this.#dispatchWorkerThreadMessage(syncData)) return;
       }
     }
@@ -763,9 +785,18 @@ class NodeWorker extends EventEmitter {
       transferOrOptions === null ||
       (arguments.length <= 1)
     ) {
+      // Reject non-serializable values (e.g. URL) and per-instance
+      // markAsUncloneable values before V8's serializer silently turns them
+      // into `{}`, matching the web MessagePort path and Node's behavior.
+      if (isUncloneable(message)) {
+        throw new DOMException(
+          "Cannot clone object of unsupported type.",
+          "DataCloneError",
+        );
+      }
       op_host_post_message_raw(
         this.#id,
-        core.serialize(message),
+        serializeMessageData(message),
       );
       return;
     }
@@ -1402,6 +1433,7 @@ let threadMessageRid: number | undefined;
 let workerMessageListenerCount = 0;
 let nextThreadMessageId = 1;
 let crossThreadSetUp = false;
+let crossThreadMessagingSetUp = false;
 const pendingThreadMessages = new SafeMap<
   number,
   {
@@ -1490,7 +1522,11 @@ async function pollCrossThreadMessages() {
     // on `process`, then ack with whatever the listeners produced.
     let status = kAckStatusOk;
     try {
-      lazyProcess().default.emit("workerMessage", envelope.payload);
+      lazyProcess().default.emit(
+        "workerMessage",
+        envelope.payload,
+        envelope.sender,
+      );
     } catch {
       status = kAckStatusError;
     }
@@ -1504,6 +1540,13 @@ async function pollCrossThreadMessages() {
 // touch `postMessageToThread` don't carry an extra entry in
 // `core.resources()` (which several finalization tests assert on).
 function setupCrossThreadMessaging() {
+  // Idempotent: under the deferred node bootstrap this is invoked lazily
+  // from the `Worker` constructor on the main thread (where `initialize()`
+  // -- and thus `__initWorkerThreads` -- never auto-runs), as well as
+  // eagerly from `__initWorkerThreads` on workers and the eager main path.
+  // Installing the `newListener` hook twice would double-count listeners.
+  if (crossThreadMessagingSetUp) return;
+  crossThreadMessagingSetUp = true;
   workerMessageListenerCount =
     lazyProcess().default.listenerCount?.("workerMessage") ?? 0;
   if (workerMessageListenerCount > 0) {
@@ -1764,7 +1807,13 @@ function moveMessagePortToContext(
         // surface as `messageerror` per Node semantics.
         let message;
         try {
-          message = core.deserialize(data.data);
+          // `data` is either the raw serialized buffer (no transferables) or a
+          // `{ data, transferables }` object. Deserialize without the
+          // host-object deserializers registry either way.
+          message = deserializeMessageData(
+            ArrayBufferIsView(data) ? data : data.data,
+            false,
+          );
         } catch {
           const err = new Error(
             "Message could not be deserialized in the target context",
@@ -1791,7 +1840,7 @@ function moveMessagePortToContext(
 
   wrapper.postMessage = (msg: unknown) => {
     if (closed) return;
-    op_message_port_post_message_raw(portId, core.serialize(msg));
+    op_message_port_post_message_raw(portId, serializeMessageData(msg));
   };
 
   return wrapper;

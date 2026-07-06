@@ -1318,6 +1318,80 @@ fn diagnose_resolution(
   (diagnostics, deferred_diagnostics)
 }
 
+/// Surface an unresolved import of a `.d.ts` entrypoint as a resolution error.
+///
+/// A `.d.ts` document is itself an entrypoint in the editor, so its own
+/// unresolved imports should be reported (e.g. `TS2307` from `deno check`).
+/// However deno_graph records a bare specifier in a `.d.ts` as
+/// `Resolution::None` (a `.ts` file records `Resolution::Err`), which
+/// `diagnose_resolution()` ignores, and tsc skips them under `skipLibCheck`. So
+/// handle them explicitly here, mirroring `cli/type_checker.rs`.
+fn diagnose_dts_entrypoint_unresolved_import(
+  diagnostics: &mut Vec<lsp::Diagnostic>,
+  snapshot: &language_server::StateSnapshot,
+  referrer_module: &DocumentModule,
+  dependency: &deno_graph::Dependency,
+) {
+  // Only handle imports deno_graph left fully unresolved; a bare specifier in a
+  // `.d.ts` lands here as `None`/`None`. Resolved (`Ok`) and errored (`Err`)
+  // deps are already surfaced by `diagnose_resolution()`, so handling them here
+  // too would double report.
+  if !matches!(dependency.maybe_code, Resolution::None)
+    || !matches!(dependency.maybe_type, Resolution::None)
+  {
+    return;
+  }
+  // Names of packages importable by bare specifier (workspace members and
+  // packages linked via the "links" field) in the referrer's scope, used to
+  // enhance the error with a better hint.
+  let bare_importable_pkg_names = snapshot
+    .config
+    .tree
+    .data_for_specifier(&referrer_module.specifier)
+    .map(|d| {
+      d.member_dir
+        .workspace
+        .resolver_jsr_pkgs()
+        .map(|pkg| pkg.name)
+        .collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
+  for import in &dependency.imports {
+    // Only surface real `import`/`export`/`import =` statements. Triple slash
+    // `/// <reference />` directives, JSDoc and `@jsxImportSource` imports are
+    // intentionally left to tsc's `skipLibCheck` handling.
+    if !matches!(
+      import.kind,
+      deno_graph::ImportKind::Es
+        | deno_graph::ImportKind::TsType
+        | deno_graph::ImportKind::Require
+    ) {
+      continue;
+    }
+    // A bare specifier in a `.d.ts` lands here as fully unresolved, so building
+    // the resolution error reuses the same message and quick fixes as a `.ts`
+    // file's `Resolution::Err`.
+    if let Err(error) = deno_path_util::resolve_import(
+      &import.specifier,
+      &referrer_module.specifier,
+    ) {
+      let resolution_error = ResolutionError::InvalidSpecifier {
+        error,
+        range: import.specifier_range.clone(),
+      };
+      diagnostics.push(
+        DenoDiagnostic::ResolutionError(
+          resolution_error,
+          bare_importable_pkg_names.clone(),
+        )
+        .to_lsp_diagnostic(&language_server::to_lsp_range(
+          &import.specifier_range,
+        )),
+      );
+    }
+  }
+}
+
 /// Generate diagnostics related to a dependency. The dependency is analyzed to
 /// determine if it can be remapped to the active import map as well as surface
 /// any diagnostics related to the resolved code or type dependency.
@@ -1337,6 +1411,17 @@ fn diagnose_dependency(
   }
 
   if referrer_module.media_type.is_declaration() {
+    // A `.d.ts` document opened in the editor is itself an entrypoint, so its
+    // own unresolved imports should be surfaced (matching `deno check`, which
+    // reports `TS2307` for them). This must happen regardless of `skipLibCheck`
+    // and before the early return below, mirroring `cli/type_checker.rs`.
+    diagnose_dts_entrypoint_unresolved_import(
+      diagnostics,
+      snapshot,
+      referrer_module,
+      dependency,
+    );
+
     let compiler_options_data = snapshot
       .compiler_options_resolver
       .for_key(&referrer_module.compiler_options_key);
@@ -1966,6 +2051,7 @@ fn collect_scope_no_slow_types_diagnostics(
           packages: &packages,
           build_fast_check_graph: true,
           validate_graph: false,
+          skip_unanalyzable_exports: true,
         })
         .await?;
       let mut diagnostics_by_specifier: HashMap<
