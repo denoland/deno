@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import CP from "node:child_process";
+import net from "node:net";
 import { Buffer } from "node:buffer";
 import {
   assert,
@@ -700,6 +701,59 @@ Deno.test({
       cmdFinished.resolve();
     });
     await cmdFinished.promise;
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process spawn] Deno child adopts a TCP fd passed as extra stdio",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const cmdFinished = Promise.withResolvers<void>();
+    const received = Promise.withResolvers<string>();
+    const serverClosed = Promise.withResolvers<void>();
+    let stderr = "";
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_extra_stdio_fd3_tcp.js",
+    );
+    const server = net.createServer((conn) => {
+      let data = "";
+      conn.on("data", (chunk) => {
+        data += chunk;
+      });
+      conn.on("end", () => received.resolve(data));
+    });
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address() as net.AddressInfo;
+      const client = net.connect(address.port, "127.0.0.1", () => {
+        client.pause();
+        // Grab a raw duplicate of the connected TCP fd to pass through the
+        // child's stdio slot 3. The dup is intentionally left open here; only
+        // the child writes to the connection, and its shutdown() delivers the
+        // FIN to the server regardless of this process's remaining handles.
+        // deno-lint-ignore no-explicit-any
+        const rawFd = (client as any)._handle.fdForIpc();
+        assert(rawFd >= 0);
+        const cp = spawn(Deno.execPath(), ["run", "-A", script], {
+          stdio: ["ignore", "ignore", "pipe", rawFd],
+        });
+        cp.stderr?.on("data", (data) => {
+          stderr += data;
+        });
+        cp.on("close", (code) => {
+          client.destroy();
+          server.close(() => serverClosed.resolve());
+          assertEquals(code, 0, stderr);
+          assertEquals(stderr, "");
+          cmdFinished.resolve();
+        });
+      });
+    });
+    await cmdFinished.promise;
+    assertEquals(await received.promise, "hello from fd 3 tcp");
+    await serverClosed.promise;
   },
 });
 
