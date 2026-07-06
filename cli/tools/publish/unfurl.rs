@@ -334,7 +334,6 @@ pub struct SpecifierUnfurler<TSys: SpecifierUnfurlerSys = CliSys> {
   pkg_json_resolver: Arc<CliPackageJsonResolver<TSys>>,
   workspace_dir: Arc<WorkspaceDirectory>,
   workspace_resolver: Arc<WorkspaceResolver<TSys>>,
-  bare_node_builtins: bool,
 }
 
 impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
@@ -344,7 +343,6 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     pkg_json_resolver: Arc<CliPackageJsonResolver<TSys>>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_resolver: Arc<WorkspaceResolver<TSys>>,
-    bare_node_builtins: bool,
   ) -> Self {
     debug_assert_eq!(
       workspace_resolver.pkg_json_dep_resolution(),
@@ -356,7 +354,6 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
       pkg_json_resolver,
       workspace_dir,
       workspace_resolver,
-      bare_node_builtins,
     }
   }
 
@@ -614,7 +611,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     };
     let resolved = match resolved {
       Some(resolved) => resolved,
-      None if self.bare_node_builtins && is_builtin_node_module(specifier) => {
+      None if is_builtin_node_module(specifier) => {
         format!("node:{specifier}").parse().unwrap()
       }
       None => match ModuleSpecifier::options()
@@ -726,7 +723,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     ];
     for deno_json in deno_jsons.iter().flatten() {
       let deps = deno_json
-        .dependencies()
+        .dependencies(self.workspace_dir.workspace.catalogs())
         .into_iter()
         .collect::<BTreeSet<_>>();
       for dep in deps {
@@ -1738,7 +1735,6 @@ export * from "jsr:@std/semver@1";
         .unwrap()
         .clone(),
       resolver_factory.workspace_resolver().await.unwrap().clone(),
-      true,
     )
   }
 

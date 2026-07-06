@@ -1669,6 +1669,27 @@ impl TLSWrapInner {
     // when the uv_write completes asynchronously.
   }
 
+  /// Finalizer-safe cleanup that does NOT invoke JS callbacks.
+  /// Called from `TLSWrap::destroy_ssl` and from cppgc `Drop`.
+  fn teardown(&mut self) {
+    // Mark as dead so in-flight enc_write_cb callbacks won't dereference
+    // the TLSWrapInner pointer after it is freed. This must happen even
+    // when no TLS connection was ever created: encrypted writes can be
+    // in flight without one (e.g. the finish_accept error path flushes
+    // a TLS alert via enc_out_uv before tls_conn is set).
+    self.alive.set(false);
+
+    if self.tls_conn.is_none() {
+      return;
+    }
+
+    self.tls_conn = None;
+    self.js_handle = None;
+    self.onread = None;
+    self.stream_base_state = None;
+    self.current_write_obj = None;
+  }
+
   // NOTE: The JS callback methods (emit_read, emit_error, emit_handshake_done,
   // invoke_queued, enc_out_js) are implemented as free functions above
   // (do_emit_read, do_emit_error, do_emit_handshake_done, do_invoke_queued,
@@ -1847,19 +1868,7 @@ impl TLSWrap {
   /// Safe to call from cppgc Drop.
   fn teardown(&self) {
     let inner = unsafe { self.inner.as_mut() };
-    if inner.tls_conn.is_none() {
-      return;
-    }
-
-    // Mark as dead so in-flight enc_write_cb callbacks won't dereference
-    // the TLSWrapInner pointer after it is freed.
-    inner.alive.set(false);
-
-    inner.tls_conn = None;
-    inner.js_handle = None;
-    inner.onread = None;
-    inner.stream_base_state = None;
-    inner.current_write_obj = None;
+    inner.teardown();
   }
 
   fn write_data(
@@ -4605,6 +4614,68 @@ mod tests {
     let alive_clone = inner.alive.clone();
     inner.alive.set(false);
     assert!(!alive_clone.get());
+  }
+
+  /// teardown() must mark the wrap dead even when no TLS connection was
+  /// ever created. Encrypted writes can be in flight without a connection:
+  /// the finish_accept error path (e.g. no ALPN overlap) flushes a TLS
+  /// alert via enc_out_uv() while tls_conn is still None. If teardown
+  /// returns early without setting alive=false, the completing
+  /// enc_write_cb dereferences the freed TLSWrapInner (use-after-free).
+  #[test]
+  fn teardown_marks_dead_even_without_tls_conn() {
+    let mut inner = TLSWrapInner::new(Kind::Server);
+    assert!(inner.tls_conn.is_none());
+    // The clone held by an in-flight EncryptedWriteReq.
+    let write_req_alive = inner.alive.clone();
+
+    inner.teardown();
+
+    assert!(
+      !write_req_alive.get(),
+      "teardown must set alive=false even when tls_conn is None"
+    );
+  }
+
+  /// End-to-end check of the guard in enc_write_cb: when the owning
+  /// TLSWrapInner was torn down (alive=false) before the uv write
+  /// completed, the callback must not touch the TLSWrapInner. Mirrors the
+  /// finish_accept error path where the TLS alert write is still in flight
+  /// while JS destroys the socket. The allocation is kept alive here so a
+  /// regression fails the assertion below instead of being a
+  /// use-after-free.
+  #[test]
+  fn enc_write_cb_ignores_torn_down_wrap() {
+    let mut inner = Box::new(TLSWrapInner::new(Kind::Server));
+    // Simulate finish_accept's alert flush: one encrypted write in flight,
+    // no TLS connection.
+    inner.enc_writes_in_flight = 1;
+    assert!(inner.tls_conn.is_none());
+
+    // Built exactly like enc_out_uv builds it.
+    let req = Box::new(EncryptedWriteReq {
+      uv_req: uv_compat::new_write(),
+      _data: b"tls alert".to_vec(),
+      tls_wrap_inner: &mut *inner as *mut TLSWrapInner,
+      has_write_callback: false,
+      alive: inner.alive.clone(),
+    });
+
+    // JS destroys the socket before the write completes.
+    inner.teardown();
+
+    // The uv write completes now. enc_write_cb must observe alive=false
+    // and leave the TLSWrapInner untouched.
+    let req_ptr = Box::into_raw(req) as *mut uv_write_t;
+    // SAFETY: req_ptr was produced by Box::into_raw of a valid
+    // EncryptedWriteReq (uv_req is its first field, repr(C)); enc_write_cb
+    // reclaims and frees it.
+    unsafe { enc_write_cb(req_ptr, 0) };
+
+    assert_eq!(
+      inner.enc_writes_in_flight, 1,
+      "enc_write_cb must not dereference a torn-down TLSWrapInner"
+    );
   }
 
   /// Verify that the cycle guard prevents re-entrant cycling.

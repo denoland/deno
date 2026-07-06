@@ -95,11 +95,3 @@ pub fn hard_link_file<TSys: HardLinkFileSys>(
   }
   Ok(())
 }
-
-/// Returns true if the error is ETXTBSY ("text file busy"), which occurs
-/// on Linux when trying to write to or modify a file that is currently
-/// being executed.
-pub fn is_etxtbsy(err: &std::io::Error) -> bool {
-  // ETXTBSY is raw OS error 26 on Linux
-  cfg!(target_os = "linux") && err.raw_os_error() == Some(26)
-}

@@ -4,6 +4,7 @@
 
 use std::time::SystemTime;
 
+use deno_cache_dir::Checksum;
 use deno_cache_dir::file_fetcher::AuthTokens;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::file_fetcher::CachedOrRedirect;
@@ -310,4 +311,158 @@ async fn test_fetch_query_redirect_to_dts_is_cached() {
     2,
     "ensure_cached_no_follow must not issue HTTP requests for cached entries"
   );
+}
+
+// Regression test for https://github.com/denoland/deno/issues/25404.
+// A URL responding with 404 must be negatively cached so it's not
+// re-requested on every process start, until the entry expires or
+// the cache is reloaded.
+#[tokio::test]
+async fn test_fetch_not_found_is_negatively_cached() {
+  use std::sync::atomic::AtomicBool;
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
+  use std::time::Duration;
+  use std::time::UNIX_EPOCH;
+
+  use deno_cache_dir::memory::MemoryHttpCache;
+
+  #[derive(Debug, Clone, Default)]
+  struct TestHttpClient {
+    #[allow(clippy::disallowed_types, reason = "arc wrapper type")]
+    request_count: deno_maybe_sync::MaybeArc<AtomicUsize>,
+    #[allow(clippy::disallowed_types, reason = "arc wrapper type")]
+    respond_success: deno_maybe_sync::MaybeArc<AtomicBool>,
+  }
+
+  #[async_trait::async_trait(?Send)]
+  impl HttpClient for TestHttpClient {
+    async fn send_no_follow(
+      &self,
+      _url: &Url,
+      _headers: HeaderMap,
+    ) -> Result<SendResponse, SendError> {
+      self.request_count.fetch_add(1, Ordering::SeqCst);
+      if self.respond_success.load(Ordering::SeqCst) {
+        let mut header_map = HeaderMap::new();
+        header_map
+          .insert("content-type", "application/typescript".parse().unwrap());
+        Ok(SendResponse::Success(header_map, b"export {};\n".to_vec()))
+      } else {
+        Err(SendError::NotFound)
+      }
+    }
+  }
+
+  fn assert_not_found(
+    result: Result<
+      FileOrRedirect,
+      deno_cache_dir::file_fetcher::FetchNoFollowError,
+    >,
+  ) {
+    match result.unwrap_err().into_kind() {
+      FetchNoFollowErrorKind::NotFound(_) => {}
+      err => unreachable!("{err:?}"),
+    }
+  }
+
+  let sys = InMemorySys::default();
+  sys.set_time(Some(UNIX_EPOCH));
+  let client = TestHttpClient::default();
+  let request_count = client.request_count.clone();
+  let respond_success = client.respond_success.clone();
+  let file_fetcher = FileFetcher::new(
+    NullBlobStore,
+    sys.clone(),
+    // share the clock between the cache and the file fetcher
+    new_rc(MemoryHttpCache::new(sys.clone())),
+    client,
+    new_rc(NullMemoryFiles),
+    FileFetcherOptions {
+      allow_remote: true,
+      cache_setting: CacheSetting::Use,
+      auth_tokens: AuthTokens::new(None),
+    },
+  );
+  let url = Url::parse("https://localhost/not_found.ts").unwrap();
+
+  // first fetch issues a request and caches the 404
+  assert_not_found(
+    file_fetcher
+      .fetch_no_follow(&url, FetchNoFollowOptions::default())
+      .await,
+  );
+  assert_eq!(request_count.load(Ordering::SeqCst), 1);
+
+  // subsequent fetches are served from the negative cache
+  assert_not_found(
+    file_fetcher
+      .fetch_no_follow(&url, FetchNoFollowOptions::default())
+      .await,
+  );
+  assert_not_found(
+    file_fetcher
+      .fetch_no_follow(
+        &url,
+        FetchNoFollowOptions {
+          maybe_checksum: Some(Checksum::new("not matching")),
+          ..Default::default()
+        },
+      )
+      .await,
+  );
+  match file_fetcher
+    .ensure_cached_no_follow(&url, FetchNoFollowOptions::default())
+    .await
+    .unwrap_err()
+    .into_kind()
+  {
+    FetchNoFollowErrorKind::NotFound(_) => {}
+    err => unreachable!("{err:?}"),
+  }
+  assert_eq!(
+    request_count.load(Ordering::SeqCst),
+    1,
+    "a cached 404 should not issue any HTTP requests"
+  );
+
+  // fetch_cached reports a cached 404 as not having a usable cached file
+  assert_eq!(file_fetcher.fetch_cached(&url, 10).unwrap(), None);
+
+  // reloading bypasses the negative cache
+  assert_not_found(
+    file_fetcher
+      .fetch_no_follow(
+        &url,
+        FetchNoFollowOptions {
+          maybe_cache_setting: Some(&CacheSetting::ReloadAll),
+          ..Default::default()
+        },
+      )
+      .await,
+  );
+  assert_eq!(request_count.load(Ordering::SeqCst), 2);
+
+  // the URL now exists on the server, but the cached 404 is still fresh
+  respond_success.store(true, Ordering::SeqCst);
+  assert_not_found(
+    file_fetcher
+      .fetch_no_follow(&url, FetchNoFollowOptions::default())
+      .await,
+  );
+  assert_eq!(request_count.load(Ordering::SeqCst), 2);
+
+  // after the negative cache entry expires, the URL is re-requested
+  sys.set_time(Some(UNIX_EPOCH + Duration::from_secs(16 * 60)));
+  match file_fetcher
+    .fetch_no_follow(&url, FetchNoFollowOptions::default())
+    .await
+    .unwrap()
+  {
+    FileOrRedirect::File(file) => {
+      assert_eq!(&*file.source, b"export {};\n");
+    }
+    FileOrRedirect::Redirect(_) => unreachable!(),
+  }
+  assert_eq!(request_count.load(Ordering::SeqCst), 3);
 }

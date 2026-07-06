@@ -1,6 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
@@ -20,6 +22,8 @@ use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use regex::Regex;
 
+use crate::args::PermissionFlags;
+use crate::args::flags_from_vec;
 use crate::file_fetcher::TextDecodedFile;
 use crate::util::path::mapped_specifier_for_tsc;
 
@@ -51,6 +55,7 @@ enum WrapKind {
 struct TestOrSnippet {
   file: File,
   has_deno_test: bool,
+  shebang: Option<Shebang>,
 }
 
 fn extract_inner(
@@ -98,7 +103,13 @@ fn extract_inner(
       } else {
         wrap_kind
       };
-      generate_pseudo_file(extracted.file, &file.specifier, &exports, wrap_kind)
+      generate_pseudo_file(
+        extracted.file,
+        &file.specifier,
+        &exports,
+        wrap_kind,
+        extracted.shebang.as_ref(),
+      )
     })
     .collect::<Result<_, _>>()
 }
@@ -108,23 +119,147 @@ fn extract_files_from_fenced_blocks(
   source: &str,
   media_type: MediaType,
 ) -> Result<Vec<TestOrSnippet>, AnyError> {
-  // The pattern matches code blocks as well as anything in HTML comment syntax,
-  // but it stores the latter without any capturing groups. This way, a simple
-  // check can be done to see if a block is inside a comment (and skip typechecking)
-  // or not by checking for the presence of capturing groups in the matches.
-  let blocks_regex = lazy_regex::regex!(
-    r"(?m)<!--[\S\s]*?-->|^[ \t]*(?P<blockquote>(?:>[ \t]?)*)```(?P<attributes>[^\r\n]*)\r?\n(?P<body>[\S\s]*?)^[ \t]*(?:>[ \t]?)*```"
-  );
   let lines_regex = lazy_regex::regex!(r"(((#!+).*)|(?:# ?)?(.*))");
 
-  extract_files_from_regex_blocks(
-    specifier,
-    source,
-    media_type,
-    /* file line index */ 0,
-    blocks_regex,
-    lines_regex,
+  Ok(
+    extract_markdown_fenced_blocks(source)
+      .into_iter()
+      .filter_map(|block| {
+        let file_media_type =
+          media_type_from_fence_attributes(block.attributes, media_type)?;
+        extract_file_from_block(
+          specifier,
+          file_media_type,
+          /* file line index */ 0,
+          block.line_offset,
+          block.line_count,
+          block.body,
+          block.is_markdown_blockquote,
+          lines_regex,
+        )
+      })
+      .collect(),
   )
+}
+
+struct MarkdownFence<'a> {
+  attributes: &'a str,
+  body: &'a str,
+  line_offset: usize,
+  line_count: usize,
+  is_markdown_blockquote: bool,
+}
+
+fn extract_markdown_fenced_blocks(source: &str) -> Vec<MarkdownFence<'_>> {
+  let mut lines = Vec::new();
+  let mut offset = 0;
+  for line in source.split_inclusive('\n') {
+    let line_start = offset;
+    offset += line.len();
+    let line = line.strip_suffix('\n').unwrap_or(line);
+    let line = line.strip_suffix('\r').unwrap_or(line);
+    lines.push((line_start, line));
+  }
+  if offset < source.len() {
+    lines.push((offset, &source[offset..]));
+  }
+
+  let mut blocks = Vec::new();
+  let mut line_index = 0;
+  let mut in_html_comment = false;
+  while line_index < lines.len() {
+    if in_html_comment {
+      if lines[line_index].1.contains("-->") {
+        in_html_comment = false;
+      }
+      line_index += 1;
+      continue;
+    }
+    let line = lines[line_index].1.trim_start_matches([' ', '\t']);
+    if line.starts_with("<!--") {
+      if !line.contains("-->") {
+        in_html_comment = true;
+      }
+      line_index += 1;
+      continue;
+    }
+
+    let Some(opening) = parse_markdown_fence_opening(lines[line_index].1)
+    else {
+      line_index += 1;
+      continue;
+    };
+
+    let mut closing_line_index = line_index + 1;
+    while closing_line_index < lines.len() {
+      if is_markdown_fence_closing(
+        lines[closing_line_index].1,
+        opening.tick_count,
+      ) {
+        let body_start = lines
+          .get(line_index + 1)
+          .map(|(offset, _)| *offset)
+          .unwrap_or(source.len());
+        let body_end = lines[closing_line_index].0;
+        blocks.push(MarkdownFence {
+          attributes: opening.attributes,
+          body: &source[body_start..body_end],
+          line_offset: line_index,
+          line_count: closing_line_index - line_index + 1,
+          is_markdown_blockquote: opening.is_markdown_blockquote,
+        });
+        line_index = closing_line_index + 1;
+        break;
+      }
+      closing_line_index += 1;
+    }
+
+    if closing_line_index == lines.len() {
+      line_index += 1;
+    }
+  }
+
+  blocks
+}
+
+struct MarkdownFenceOpening<'a> {
+  attributes: &'a str,
+  tick_count: usize,
+  is_markdown_blockquote: bool,
+}
+
+fn parse_markdown_fence_opening(
+  line: &str,
+) -> Option<MarkdownFenceOpening<'_>> {
+  let (line, is_markdown_blockquote) = strip_markdown_fence_prefix(line);
+  let tick_count = line.bytes().take_while(|b| *b == b'`').count();
+  if tick_count < 3 {
+    return None;
+  }
+  Some(MarkdownFenceOpening {
+    attributes: &line[tick_count..],
+    tick_count,
+    is_markdown_blockquote,
+  })
+}
+
+fn is_markdown_fence_closing(line: &str, opening_tick_count: usize) -> bool {
+  let (line, _) = strip_markdown_fence_prefix(line);
+  let tick_count = line.bytes().take_while(|b| *b == b'`').count();
+  tick_count >= opening_tick_count
+    && line[tick_count..].bytes().all(|b| b == b' ' || b == b'\t')
+}
+
+fn strip_markdown_fence_prefix(line: &str) -> (&str, bool) {
+  let mut line = line.trim_start_matches([' ', '\t']);
+  let mut is_markdown_blockquote = false;
+  while let Some(after_marker) = line.strip_prefix('>') {
+    is_markdown_blockquote = true;
+    line = after_marker
+      .strip_prefix([' ', '\t'])
+      .unwrap_or(after_marker);
+  }
+  (line, is_markdown_blockquote)
 }
 
 fn extract_files_from_source_comments(
@@ -180,41 +315,17 @@ fn extract_files_from_regex_blocks(
   blocks_regex: &Regex,
   lines_regex: &Regex,
 ) -> Result<Vec<TestOrSnippet>, AnyError> {
-  let tests_regex = lazy_regex::regex!(r"(?m)^\s*Deno\.test\(");
-
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
-      let is_markdown_blockquote = block
-        .name("blockquote")
-        .is_some_and(|blockquote| !blockquote.as_str().is_empty());
       block.name("attributes")?;
 
       let maybe_attributes: Option<Vec<_>> = block
         .name("attributes")
         .map(|attributes| attributes.as_str().split(' ').collect());
 
-      let file_media_type = if let Some(attributes) = maybe_attributes {
-        if attributes.contains(&"ignore") {
-          return None;
-        }
-
-        match attributes.first() {
-          Some(&"js") => MediaType::JavaScript,
-          Some(&"javascript") => MediaType::JavaScript,
-          Some(&"mjs") => MediaType::Mjs,
-          Some(&"cjs") => MediaType::Cjs,
-          Some(&"jsx") => MediaType::Jsx,
-          Some(&"ts") => MediaType::TypeScript,
-          Some(&"typescript") => MediaType::TypeScript,
-          Some(&"mts") => MediaType::Mts,
-          Some(&"cts") => MediaType::Cts,
-          Some(&"tsx") => MediaType::Tsx,
-          _ => MediaType::Unknown,
-        }
-      } else {
-        media_type
-      };
+      let file_media_type =
+        media_type_from_attributes(maybe_attributes, media_type)?;
 
       if file_media_type == MediaType::Unknown {
         return None;
@@ -227,51 +338,173 @@ fn extract_files_from_regex_blocks(
 
       let line_count = block.get(0).unwrap().as_str().split('\n').count();
 
+      // Detect whether this code block is nested inside a blockquote. A
+      // blockquoted fence opens with something like `* > ```ts`: the comment
+      // `*` marker and surrounding whitespace come before the blockquote `>`
+      // markers. Strip those off the fence line, then a remaining leading `>`
+      // means the body lines need their blockquote markers removed. A plain
+      // `* ```ts` fence has no markers, so non-blockquote blocks are left
+      // untouched (preserving a literal `>` in, say, a template literal).
+      let fence_start = block.get(0).unwrap().start();
+      let before_fence = &source[..fence_start];
+      let fence_line_prefix = before_fence
+        .rfind('\n')
+        .map_or(before_fence, |i| &before_fence[i + 1..]);
+      let is_markdown_blockquote = fence_line_prefix
+        .trim_start_matches([' ', '\t', '*'])
+        .starts_with('>');
+
       let body = block.name("body").unwrap();
-      let text = body.as_str();
-
-      // TODO(caspervonb) generate an inline source map
-      let mut file_source = String::new();
-      for line in text.lines() {
-        let line = if is_markdown_blockquote {
-          strip_markdown_blockquote_marker(line)
-        } else {
-          line
-        };
-        let Some(line) = lines_regex.captures(line) else {
-          continue;
-        };
-        let text = line.get(1).or_else(|| line.get(3)).unwrap();
-        writeln!(file_source, "{}", text.as_str()).unwrap();
-      }
-
-      let file_specifier = ModuleSpecifier::parse(&format!(
-        "{}${}-{}",
+      extract_file_from_block(
         specifier,
-        file_line_index + line_offset + 1,
-        file_line_index + line_offset + line_count + 1,
-      ))
-      .unwrap();
-      let file_specifier =
-        mapped_specifier_for_tsc(&file_specifier, file_media_type)
-          .map(|s| ModuleSpecifier::parse(&s).unwrap())
-          .unwrap_or(file_specifier);
-      let has_deno_test = tests_regex.is_match(&file_source);
-      let file = File {
-        url: file_specifier,
-        mtime: None,
-        maybe_headers: None,
-        source: file_source.into_bytes().into(),
-        loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
-      };
-      Some(TestOrSnippet {
-        file,
-        has_deno_test,
-      })
+        file_media_type,
+        file_line_index,
+        line_offset,
+        line_count,
+        body.as_str(),
+        is_markdown_blockquote,
+        lines_regex,
+      )
     })
     .collect();
 
   Ok(files)
+}
+
+fn media_type_from_fence_attributes(
+  attributes: &str,
+  fallback_media_type: MediaType,
+) -> Option<MediaType> {
+  media_type_from_attributes(
+    Some(attributes.split(' ').collect()),
+    fallback_media_type,
+  )
+}
+
+fn media_type_from_attributes(
+  maybe_attributes: Option<Vec<&str>>,
+  fallback_media_type: MediaType,
+) -> Option<MediaType> {
+  let Some(attributes) = maybe_attributes else {
+    return Some(fallback_media_type);
+  };
+  if attributes.contains(&"ignore") {
+    return None;
+  }
+
+  Some(match attributes.first() {
+    Some(&"js") => MediaType::JavaScript,
+    Some(&"javascript") => MediaType::JavaScript,
+    Some(&"mjs") => MediaType::Mjs,
+    Some(&"cjs") => MediaType::Cjs,
+    Some(&"jsx") => MediaType::Jsx,
+    Some(&"ts") => MediaType::TypeScript,
+    Some(&"typescript") => MediaType::TypeScript,
+    Some(&"mts") => MediaType::Mts,
+    Some(&"cts") => MediaType::Cts,
+    Some(&"tsx") => MediaType::Tsx,
+    _ => MediaType::Unknown,
+  })
+}
+
+#[allow(
+  clippy::too_many_arguments,
+  reason = "Keeps source location metadata explicit for both markdown and JSDoc extraction callers."
+)]
+fn extract_file_from_block(
+  specifier: &ModuleSpecifier,
+  file_media_type: MediaType,
+  file_line_index: usize,
+  line_offset: usize,
+  line_count: usize,
+  text: &str,
+  is_markdown_blockquote: bool,
+  lines_regex: &Regex,
+) -> Option<TestOrSnippet> {
+  let tests_regex = lazy_regex::regex!(r"(?m)^\s*Deno\.test\(");
+
+  if file_media_type == MediaType::Unknown {
+    return None;
+  }
+
+  // TODO(caspervonb) generate an inline source map
+  let mut file_source = String::new();
+  let mut shebang = None;
+  let mut is_first_line = true;
+  for line in text.lines() {
+    let Some(captures) = lines_regex.captures(line) else {
+      continue;
+    };
+    let captured = captures
+      .get(1)
+      .or_else(|| captures.get(3))
+      .unwrap()
+      .as_str();
+    // The comment/markdown line prefix is removed by `lines_regex` above. For a
+    // blockquoted block, strip any remaining `> ` markers here, looping so that
+    // nested quotes (`> > `) are fully removed. Non-blockquote blocks are left
+    // untouched so a literal `>` in the code (e.g. in a template literal) is
+    // preserved.
+    let text = if is_markdown_blockquote {
+      let mut text = captured;
+      loop {
+        let stripped = strip_markdown_blockquote_marker(text);
+        if stripped.len() == text.len() {
+          break;
+        }
+        text = stripped;
+      }
+      text
+    } else {
+      captured
+    };
+    // Strip shebang from the very first line to forward it to `Deno.test`.
+    if is_first_line && text.starts_with("#!") {
+      shebang = Some(parse_shebang(text));
+      is_first_line = false;
+      continue;
+    }
+    is_first_line = false;
+    writeln!(file_source, "{}", text).unwrap();
+  }
+
+  let file_specifier = ModuleSpecifier::parse(&format!(
+    "{}#{}-{}",
+    specifier,
+    file_line_index + line_offset + 1,
+    file_line_index + line_offset + line_count + 1,
+  ))
+  .unwrap();
+  let file_specifier =
+    mapped_specifier_for_tsc(&file_specifier, file_media_type)
+      .map(|s| ModuleSpecifier::parse(&s).unwrap())
+      .unwrap_or_else(|| {
+        // The tsc mapping only appends an extension when the path's media
+        // type differs; do it here too so every virtual file keeps one.
+        ModuleSpecifier::parse(&format!(
+          "{}{}",
+          file_specifier,
+          file_media_type.as_ts_extension()
+        ))
+        .unwrap()
+      });
+  let has_deno_test = tests_regex.is_match(&file_source);
+  let file = File {
+    url: file_specifier,
+    mtime: None,
+    // The fragment (line range + extension) is ignored when inferring the
+    // media type from the path, so carry it via a content-type header.
+    maybe_headers: file_media_type.as_content_type().map(|content_type| {
+      HashMap::from([("content-type".to_string(), content_type.to_string())])
+    }),
+    source: file_source.into_bytes().into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
+  };
+  Some(TestOrSnippet {
+    file,
+    has_deno_test,
+    shebang,
+  })
 }
 
 fn strip_markdown_blockquote_marker(line: &str) -> &str {
@@ -293,6 +526,82 @@ fn strip_markdown_blockquote_marker(line: &str) -> &str {
   }
 
   line
+}
+
+enum Shebang {
+  Permissions(Box<PermissionFlags>),
+  /// Message describing why the shebang could not be parsed as a `deno`
+  /// command. The generated test is made to throw with this message.
+  Invalid(String),
+}
+
+/// Parses a shebang line like `#!/usr/bin/env -S deno run --allow-read`.
+///
+/// The flags are parsed using deno's own CLI argument parser and the resulting
+/// permissions are forwarded to `Deno.test`.
+///
+/// Known limitations:
+/// - The `deno` executable is matched by file name, so custom-named binaries
+///   (e.g. `deno-canary`) are not recognized and yield an invalid shebang.
+/// - A scoped `--deny-*=<path>` cannot be represented in the `Deno.test`
+///   permissions object yet and yields an invalid shebang to force failure
+/// - A `--ignore-*` cannnot be represented in the `Deno.test` permissions
+///   object either yet, so they are currently ignored
+fn parse_shebang(shebang: &str) -> Shebang {
+  let invalid = |reason: &str| {
+    Shebang::Invalid(format!(
+      "invalid doc test hashbang: {} ({reason})",
+      shebang.trim()
+    ))
+  };
+  let Some(line) = shebang.trim_start().strip_prefix("#!") else {
+    return invalid("invalid hashbang");
+  };
+  let Some(tokens) = shlex::split(line) else {
+    return invalid("tokenization failed, possibly due to unterminated quotes");
+  };
+  // Find the `deno` executable in the shebang (e.g. `deno`, `/usr/bin/deno`).
+  let Some(deno_index) = tokens.iter().position(|token| {
+    std::path::Path::new(token)
+      .file_stem()
+      .and_then(|stem| stem.to_str())
+      == Some("deno")
+  }) else {
+    return invalid("binary basename needs to be 'deno'");
+  };
+  let mut args = vec![OsString::from("deno")];
+  args.extend(tokens[deno_index + 1..].iter().cloned().map(OsString::from));
+  args.push(OsString::from("./__doctest_shebang__.ts"));
+  match flags_from_vec(args) {
+    Ok(flags) if has_scoped_deny(&flags.permissions) => invalid(
+      "scoped --deny-* flags aren't supported yet, either remove them or ignore the test",
+    ),
+    Ok(flags) => Shebang::Permissions(Box::new(flags.permissions)),
+    Err(err) => match err.get(clap::error::ContextKind::InvalidArg) {
+      Some(clap::error::ContextValue::String(arg)) => {
+        invalid(&format!("could not parse flag {arg}"))
+      }
+      Some(clap::error::ContextValue::Strings(args)) => {
+        invalid(&format!("could not parse flags {}", args.join(", ")))
+      }
+      _ => invalid("could not parse flags"),
+    },
+  }
+}
+
+fn has_scoped_deny(permissions: &PermissionFlags) -> bool {
+  [
+    &permissions.deny_env,
+    &permissions.deny_ffi,
+    &permissions.deny_import,
+    &permissions.deny_net,
+    &permissions.deny_read,
+    &permissions.deny_run,
+    &permissions.deny_sys,
+    &permissions.deny_write,
+  ]
+  .into_iter()
+  .any(|deny| matches!(deny, Some(list) if !list.is_empty()))
 }
 
 #[derive(Default)]
@@ -359,6 +668,9 @@ impl ExportCollector {
       if symbols_to_exclude.contains(named_export) {
         continue;
       }
+      if !is_importable_binding_identifier(named_export) {
+        continue;
+      }
 
       import_specifiers.push(ast::ImportSpecifier::Named(
         ast::ImportNamedSpecifier {
@@ -377,6 +689,10 @@ impl ExportCollector {
 
     import_specifiers
   }
+}
+
+fn is_importable_binding_identifier(name: &Atom) -> bool {
+  swc_utils::is_valid_ident(name.as_ref())
 }
 
 impl Visit for ExportCollector {
@@ -573,7 +889,7 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
 /// import { assertEquals } from "@std/assert/equals";
 /// import { increment, SOME_CONST } from "./base.ts";
 ///
-/// Deno.test("./base.ts$1-3.ts", async () => {
+/// Deno.test("./base.ts#1-3.ts", async () => {
 ///   assertEquals(increment(1), 2);
 /// });
 /// ```
@@ -593,7 +909,7 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
 /// import { assertEquals } from "@std/assert/equals";
 /// import { doSomething } from "./some_external_module.ts";
 ///
-/// Deno.test("./base.ts$1-3.ts", async () => {
+/// Deno.test("./base.ts#1-3.ts", async () => {
 ///   assertEquals(doSomething(1), 2);
 /// });
 /// ```
@@ -617,7 +933,7 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
 /// file would look like:
 ///
 /// ```ts
-/// Deno.test("./base.ts$1-7.ts", async () => {
+/// Deno.test("./base.ts#1-7.ts", async () => {
 ///   const logger = createLogger("my-awesome-module");
 ///
 ///   export function sum(a: number, b: number): number {
@@ -634,7 +950,7 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
 /// stay in the `Deno.test` block's scope:
 ///
 /// ```ts
-/// Deno.test("./base.ts$1-7.ts", async () => {
+/// Deno.test("./base.ts#1-7.ts", async () => {
 ///   const logger = createLogger("my-awesome-module");
 ///
 ///   function sum(a: number, b: number): number {
@@ -648,6 +964,7 @@ fn generate_pseudo_file(
   base_file_specifier: &ModuleSpecifier,
   exports: &ExportCollector,
   wrap_kind: WrapKind,
+  shebang: Option<&Shebang>,
 ) -> Result<File, AnyError> {
   let file = TextDecodedFile::decode(file)?;
 
@@ -675,6 +992,7 @@ fn generate_pseudo_file(
         exports_from_base: exports,
         atoms_to_be_excluded_from_import: top_level_atoms,
         wrap_kind,
+        shebang,
       }));
 
   let source = deno_ast::swc::codegen::to_code_with_comments(
@@ -687,7 +1005,11 @@ fn generate_pseudo_file(
   Ok(File {
     url: file.specifier,
     mtime: None,
-    maybe_headers: None,
+    // The fragment (line range + extension) is ignored when inferring the
+    // media type from the path, so carry it via a content-type header.
+    maybe_headers: file.media_type.as_content_type().map(|content_type| {
+      HashMap::from([("content-type".to_string(), content_type.to_string())])
+    }),
     source: source.into_bytes().into(),
     loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
   })
@@ -699,6 +1021,7 @@ struct Transform<'a> {
   exports_from_base: &'a ExportCollector,
   atoms_to_be_excluded_from_import: rustc_hash::FxHashSet<Atom>,
   wrap_kind: WrapKind,
+  shebang: Option<&'a Shebang>,
 }
 
 impl VisitMut for Transform<'_> {
@@ -788,6 +1111,7 @@ impl VisitMut for Transform<'_> {
             transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
               stmts,
               self.specifier.to_string().into(),
+              self.shebang,
             )));
           }
           WrapKind::NoWrap => {
@@ -826,6 +1150,7 @@ impl VisitMut for Transform<'_> {
             transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
               script.body.clone(),
               self.specifier.to_string().into(),
+              self.shebang,
             )));
           }
           WrapKind::NoWrap => {
@@ -847,7 +1172,42 @@ impl VisitMut for Transform<'_> {
   }
 }
 
-fn wrap_in_deno_test(stmts: Vec<ast::Stmt>, test_name: Atom) -> ast::Stmt {
+fn wrap_in_deno_test(
+  mut stmts: Vec<ast::Stmt>,
+  test_name: Atom,
+  shebang: Option<&Shebang>,
+) -> ast::Stmt {
+  // Forward permissions declared by a shebang (if present).
+  // Mark the test as invalid if specified command is unparseable.
+  let options = match shebang {
+    Some(Shebang::Permissions(permissions)) => {
+      Some(permissions_options_object(permissions))
+    }
+    Some(Shebang::Invalid(message)) => {
+      stmts.insert(
+        0,
+        ast::Stmt::Throw(ast::ThrowStmt {
+          span: DUMMY_SP,
+          arg: Box::new(ast::Expr::New(ast::NewExpr {
+            callee: Box::new(ast::Expr::Ident(ast::Ident {
+              span: DUMMY_SP,
+              sym: "Error".into(),
+              optional: false,
+              ..Default::default()
+            })),
+            args: Some(vec![ast::ExprOrSpread {
+              spread: None,
+              expr: Box::new(string_lit(message)),
+            }]),
+            ..Default::default()
+          })),
+        }),
+      );
+      None
+    }
+    None => None,
+  };
+
   ast::Stmt::Expr(ast::ExprStmt {
     span: DUMMY_SP,
     expr: Box::new(ast::Expr::Call(ast::CallExpr {
@@ -865,36 +1225,140 @@ fn wrap_in_deno_test(stmts: Vec<ast::Stmt>, test_name: Atom) -> ast::Stmt {
           sym: "test".into(),
         }),
       }))),
-      args: vec![
-        ast::ExprOrSpread {
-          spread: None,
-          expr: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
+      args: [
+        Some(string_lit(test_name.as_str())),
+        options,
+        Some(ast::Expr::Arrow(ast::ArrowExpr {
+          span: DUMMY_SP,
+          params: vec![],
+          body: Box::new(ast::BlockStmtOrExpr::BlockStmt(ast::BlockStmt {
             span: DUMMY_SP,
-            value: test_name.into(),
-            raw: None,
-          }))),
-        },
-        ast::ExprOrSpread {
-          spread: None,
-          expr: Box::new(ast::Expr::Arrow(ast::ArrowExpr {
-            span: DUMMY_SP,
-            params: vec![],
-            body: Box::new(ast::BlockStmtOrExpr::BlockStmt(ast::BlockStmt {
-              span: DUMMY_SP,
-              stmts,
-              ..Default::default()
-            })),
-            is_async: true,
-            is_generator: false,
-            type_params: None,
-            return_type: None,
+            stmts,
             ..Default::default()
           })),
-        },
-      ],
+          is_async: true,
+          is_generator: false,
+          type_params: None,
+          return_type: None,
+          ..Default::default()
+        })),
+      ]
+      .into_iter()
+      .flatten()
+      .map(|expr| ast::ExprOrSpread {
+        spread: None,
+        expr: Box::new(expr),
+      })
+      .collect(),
       type_args: None,
       ..Default::default()
     })),
+  })
+}
+
+fn string_lit(value: &str) -> ast::Expr {
+  ast::Expr::Lit(ast::Lit::Str(ast::Str {
+    span: DUMMY_SP,
+    value: value.into(),
+    raw: None,
+  }))
+}
+
+/// Builds the `{ permissions: ... }` options object passed to `Deno.test` for a
+/// snippet that declared a shebang.
+///
+/// - `--allow-all` becomes `{ permissions: "inherit" }`.
+/// - `--allow-*` becomes `{ [*]: "inherit" }`.
+/// - `--allow-*=...` becomes ` { [*]: [...] }`.
+/// - `--deny-*` becomes `{ [*]: false }`.
+/// - `--deny-*=...` is currently unsupported
+/// - `--permission-set` is currently unsupported
+/// - `--ignore-*` is currently unsupported
+/// - No permissions flags becomes `{ permissions: "none" }`
+///
+/// The currently unsupported flags are due to the current
+/// `Deno.PermissionOptionsObject` not being able to properly model them.
+fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
+  let prop = |name: &str, value: ast::Expr| {
+    ast::PropOrSpread::Prop(Box::new(ast::Prop::KeyValue(ast::KeyValueProp {
+      key: ast::PropName::Ident(ast::IdentName {
+        span: DUMMY_SP,
+        sym: name.into(),
+      }),
+      value: Box::new(value),
+    })))
+  };
+  let bool_lit = |value: bool| {
+    ast::Expr::Lit(ast::Lit::Bool(ast::Bool {
+      span: DUMMY_SP,
+      value,
+    }))
+  };
+
+  let perms = [
+    ("env", &permissions.allow_env, &permissions.deny_env),
+    ("ffi", &permissions.allow_ffi, &permissions.deny_ffi),
+    (
+      "import",
+      &permissions.allow_import,
+      &permissions.deny_import,
+    ),
+    ("net", &permissions.allow_net, &permissions.deny_net),
+    ("read", &permissions.allow_read, &permissions.deny_read),
+    ("run", &permissions.allow_run, &permissions.deny_run),
+    ("sys", &permissions.allow_sys, &permissions.deny_sys),
+    ("write", &permissions.allow_write, &permissions.deny_write),
+  ];
+
+  let value = if permissions.allow_all
+    && perms.iter().all(|(_, _, deny)| deny.is_none())
+  {
+    string_lit("inherit")
+  } else {
+    let props = perms
+      .into_iter()
+      .filter_map(|(name, allow, deny)| {
+        let value = if deny.is_some() {
+          bool_lit(false)
+        } else if permissions.allow_all {
+          string_lit("inherit")
+        } else if let Some(allowlist) = allow {
+          if allowlist.is_empty() {
+            string_lit("inherit")
+          } else {
+            ast::Expr::Array(ast::ArrayLit {
+              span: DUMMY_SP,
+              elems: allowlist
+                .iter()
+                .map(|entry| {
+                  Some(ast::ExprOrSpread {
+                    spread: None,
+                    expr: Box::new(string_lit(entry)),
+                  })
+                })
+                .collect(),
+            })
+          }
+        } else {
+          return None;
+        };
+        Some(prop(name, value))
+      })
+      .collect::<Vec<_>>();
+
+    if props.is_empty() {
+      string_lit("none")
+    } else {
+      ast::Expr::Object(ast::ObjectLit {
+        span: DUMMY_SP,
+        props,
+      })
+    }
+  };
+
+  ast::Expr::Object(ast::ObjectLit {
+    span: DUMMY_SP,
+    props: vec![prop("permissions", value)],
   })
 }
 
@@ -949,11 +1413,11 @@ export function add(a: number, b: number): number {
         expected: vec![Expected {
           source: r#"import { assertEquals } from "@std/assert/equal";
 import { add } from "file:///main.ts";
-Deno.test("file:///main.ts$3-8.ts", async ()=>{
+Deno.test("file:///main.ts#3-8.ts", async ()=>{
     assertEquals(add(1, 2), 3);
 });
 "#,
-          specifier: "file:///main.ts$3-8.ts",
+          specifier: "file:///main.ts#3-8.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -973,11 +1437,11 @@ export default class Bar {}
         },
         expected: vec![Expected {
           source: r#"import Bar, { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-6.ts", async ()=>{
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts#3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -998,14 +1462,14 @@ export type Args = { a: number };
         },
         expected: vec![Expected {
           source: r#"import { type Args, foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", async ()=>{
+Deno.test("file:///main.ts#3-7.ts", async ()=>{
     const input = {
         a: 42
     } satisfies Args;
     foo(input);
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1029,11 +1493,15 @@ export function foo(s: string) {
         },
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$6-10.ts", async ()=>{
+Deno.test("file:///main.ts#6-10.ts", {
+    permissions: {
+        read: "inherit"
+    }
+}, async ()=>{
     foo("bar");
 });
 "#,
-          specifier: "file:///main.ts$6-10.ts",
+          specifier: "file:///main.ts#6-10.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1053,11 +1521,11 @@ Deno.test("file:///main.ts$6-10.ts", async ()=>{
           specifier: "file:///main.ts",
         },
         expected: vec![Expected {
-          source: r#"Deno.test("file:///main.ts$5-8.ts", async ()=>{
+          source: r#"Deno.test("file:///main.ts#5-8.ts", async ()=>{
     foo();
 });
 "#,
-          specifier: "file:///main.ts$5-8.ts",
+          specifier: "file:///main.ts#5-8.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1090,20 +1558,20 @@ export * from "./other.ts";
         expected: vec![
           Expected {
             source: r#"import MyClass, { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$5-8.js", async ()=>{
+Deno.test("file:///main.ts#5-8.js", async ()=>{
     const cls = new MyClass();
 });
 "#,
-            specifier: "file:///main.ts$5-8.js",
+            specifier: "file:///main.ts#5-8.js",
             media_type: MediaType::JavaScript,
           },
           Expected {
             source: r#"import MyClass, { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$13-16.ts", async ()=>{
+Deno.test("file:///main.ts#13-16.ts", async ()=>{
     foo();
 });
 "#,
-            specifier: "file:///main.ts$13-16.ts",
+            specifier: "file:///main.ts#13-16.ts",
             media_type: MediaType::TypeScript,
           },
         ],
@@ -1126,11 +1594,11 @@ export default TWO;
         },
         expected: vec![Expected {
           source: r#"import TWO, { ONE, foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-6.ts", async ()=>{
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts#3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1162,11 +1630,11 @@ export { DUPLICATE3 };
 import * as DUPLICATE2 from "./other2.js";
 import { foo as DUPLICATE3 } from "./other3.tsx";
 import { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-10.ts", async ()=>{
+Deno.test("file:///main.ts#3-10.ts", async ()=>{
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-10.ts",
+          specifier: "file:///main.ts#3-10.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1190,12 +1658,12 @@ export const foo = () => "foo";
         },
         expected: vec![Expected {
           source: r#"import { createFoo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", async ()=>{
+Deno.test("file:///main.ts#3-7.ts", async ()=>{
     const foo = createFoo();
     foo();
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1228,14 +1696,14 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
         },
         expected: vec![Expected {
           source: r#"import { getLogger } from "@std/log";
-Deno.test("file:///main.ts$3-12.ts", async ()=>{
+Deno.test("file:///main.ts#3-12.ts", async ()=>{
     const logger = getLogger("my-awesome-module");
     function foo() {
         logger.debug("hello");
     }
 });
 "#,
-          specifier: "file:///main.ts$3-12.ts",
+          specifier: "file:///main.ts#3-12.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1258,12 +1726,50 @@ assertEquals(add(1, 2), 3);
         expected: vec![Expected {
           source: r#"import { assertEquals } from "@std/assert/equal";
 import { add } from "jsr:@deno/non-existent";
-Deno.test("file:///README.md$6-12.js", async ()=>{
+Deno.test("file:///README.md#6-12.js", async ()=>{
     assertEquals(add(1, 2), 3);
 });
 "#,
-          specifier: "file:///README.md$6-12.js",
+          specifier: "file:///README.md#6-12.js",
           media_type: MediaType::JavaScript,
+        }],
+      },
+      // https://github.com/denoland/deno/issues/11640
+      Test {
+        input: Input {
+          source: r#"
+````
+```ts
+````
+
+
+````
+```ts
+##
+````
+"#,
+          specifier: "file:///README.md",
+        },
+        expected: vec![],
+      },
+      Test {
+        input: Input {
+          source: r#"
+# Header
+
+````ts
+console.log("ts");
+````
+"#,
+          specifier: "file:///README.md",
+        },
+        expected: vec![Expected {
+          source: r#"Deno.test("file:///README.md#4-7.ts", async ()=>{
+    console.log("ts");
+});
+"#,
+          specifier: "file:///README.md#4-7.ts",
+          media_type: MediaType::TypeScript,
         }],
       },
       // https://github.com/denoland/deno/issues/24164
@@ -1282,11 +1788,11 @@ Deno.test("file:///README.md$6-12.js", async ()=>{
         },
         expected: vec![Expected {
           source: r#"import { assertEquals } from "@std/assert/equals";
-Deno.test("file:///README.md$4-9.ts", async ()=>{
+Deno.test("file:///README.md#4-9.ts", async ()=>{
     assertEquals(1 + 2, 3);
 });
 "#,
-          specifier: "file:///README.md$4-9.ts",
+          specifier: "file:///README.md#4-9.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1306,11 +1812,11 @@ export default Foo
         },
         expected: vec![Expected {
           source: r#"import { Foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-6.ts", async ()=>{
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
     console.log(Foo);
 });
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts#3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1332,12 +1838,12 @@ export function add(first: number, second: number) {
         },
         expected: vec![Expected {
           source: r#"import { add } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", async ()=>{
+Deno.test("file:///main.ts#3-7.ts", async ()=>{
     // @ts-expect-error: can only add numbers
     add('1', '2');
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1363,7 +1869,7 @@ Deno.test("add", ()=>{
     assertEquals(1 + 2, 3);
 });
 "#,
-          specifier: "file:///main.md$4-11.ts",
+          specifier: "file:///main.md#4-11.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1392,7 +1898,7 @@ Deno.test("add", ()=>{
     assertEquals(add(1, 2), 3);
 });
 "#,
-          specifier: "file:///main.ts$3-10.ts",
+          specifier: "file:///main.ts#3-10.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1416,12 +1922,261 @@ export function add(a: number, b: number): number {
         expected: vec![Expected {
           source: r#"import { assertEquals } from "@std/assert/equals";
 import { add } from "file:///main.ts";
-Deno.test("file:///main.ts$3-8.ts", async ()=>{
+Deno.test("file:///main.ts#3-8.ts", async ()=>{
     // Deno.test("add", () => {});
     assertEquals(add(1, 2), 3);
 });
 "#,
-          specifier: "file:///main.ts$3-8.ts",
+          specifier: "file:///main.ts#3-8.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Shebang with `--allow-all` inherits everything.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run -A
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-7.ts", {
+    permissions: "inherit"
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts#3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Shebang without any permission flag runs with no permissions.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-7.ts", {
+    permissions: "none"
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts#3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Shebang with bare permissions flags inherits.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-7.ts", {
+    permissions: {
+        read: "inherit"
+    }
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts#3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Shebang with scoped permissions flag forwards the allow-list.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read=/tmp,/var
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-7.ts", {
+    permissions: {
+        read: [
+            "/tmp",
+            "/var"
+        ]
+    }
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts#3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Unparseable shebang fails the test, naming the reason.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/bin/sh
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-7.ts", async ()=>{
+    throw new Error("invalid doc test hashbang: #!/bin/sh (binary basename needs to be 'deno')");
+    foo();
+});
+"#,
+          specifier: "file:///main.ts#3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // A scoped `--deny-*` can't be modelled, so the test is made to fail
+      // rather than run with broader permissions than the shebang declares.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read --deny-read=/etc
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-7.ts", async ()=>{
+    throw new Error("invalid doc test hashbang: #!/usr/bin/env -S deno run --allow-read --deny-read=/etc (scoped --deny-* flags aren't supported yet, either remove them or ignore the test)");
+    foo();
+});
+"#,
+          specifier: "file:///main.ts#3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // A bare `--deny-*` becomes `false`; only the flags present in the
+      // shebang end up in the permissions object.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read --deny-env
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-7.ts", {
+    permissions: {
+        env: false,
+        read: "inherit"
+    }
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts#3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // A quoted allow-list path (with a space) is tokenized by `shlex`.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read="/tmp/with space"
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-7.ts", {
+    permissions: {
+        read: [
+            "/tmp/with space"
+        ]
+    }
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts#3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // A markdown code block (not a JSDoc comment) also supports shebangs.
+      Test {
+        input: Input {
+          source: r#"# Title
+
+```ts
+#!/usr/bin/env -S deno run --allow-net=example.com
+foo();
+```
+"#,
+          specifier: "file:///README.md",
+        },
+        expected: vec![Expected {
+          source: r#"Deno.test("file:///README.md#3-7.ts", {
+    permissions: {
+        net: [
+            "example.com"
+        ]
+    }
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///README.md#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1445,11 +2200,62 @@ export class Quux {}
         },
         expected: vec![Expected {
           source: r#"import { type Bar, type Foo, Quux, useFoo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-6.ts", async ()=>{
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
     useFoo();
 });
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts#3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Regression test for https://github.com/denoland/deno/issues/35177
+      // Export names can be reserved words or string-literal names that cannot
+      // be used as local import bindings in the generated doc-test module.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * useFoo();
+ * ```
+ */
+export function useFoo() {}
+const null_ = null;
+const dashed = 1;
+export { null_ as null, dashed as "key-with-hyphens" };
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { useFoo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
+    useFoo();
+});
+"#,
+          specifier: "file:///main.ts#3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * useFoo();
+ * ```
+ */
+export function useFoo() {}
+export { nullValue as null, dashed as "key-with-hyphens" } from "./deps.ts";
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { useFoo } from "file:///main.ts";
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
+    useFoo();
+});
+"#,
+          specifier: "file:///main.ts#3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1474,11 +2280,105 @@ export const Foo = 1;
         },
         expected: vec![Expected {
           source: r#"import { Foo, doSomething } from "file:///main.ts";
-Deno.test("file:///main.ts$3-6.ts", async ()=>{
+Deno.test("file:///main.ts#3-6.ts", async ()=>{
     doSomething();
 });
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts#3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // https://github.com/denoland/deno/issues/25980
+      // Code blocks nested inside blockquotes in JSDoc comments should have
+      // the blockquote `> ` prefix stripped so the extracted source is valid.
+      Test {
+        input: Input {
+          source: r#"/**
+ * ```ts
+ * console.log("outside");
+ * ```
+ *
+ * > [!NOTE]
+ * > This is a note.
+ * >
+ * > ```ts
+ * > console.log("inside blockquote");
+ * > ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![
+          Expected {
+            source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#2-5.ts", async ()=>{
+    console.log("outside");
+});
+"#,
+            specifier: "file:///main.ts#2-5.ts",
+            media_type: MediaType::TypeScript,
+          },
+          Expected {
+            source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#9-12.ts", async ()=>{
+    console.log("inside blockquote");
+});
+"#,
+            specifier: "file:///main.ts#9-12.ts",
+            media_type: MediaType::TypeScript,
+          },
+        ],
+      },
+      // A code block nested two blockquote levels deep (`> > `) must have both
+      // levels of `> ` stripped so the extracted source is valid.
+      Test {
+        input: Input {
+          source: r#"/**
+ * > > ```ts
+ * > > console.log("nested");
+ * > > ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts#2-5.ts", async ()=>{
+    console.log("nested");
+});
+"#,
+          specifier: "file:///main.ts#2-5.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Regression: a code block NOT inside a blockquote that contains a line
+      // starting with `> ` (e.g. inside a template literal) must preserve it.
+      Test {
+        input: Input {
+          source: r#"/**
+ * ```ts
+ * const s = `
+ * > real content
+ * `;
+ * console.log(s);
+ * ```
+ */
+export function bar() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { bar } from "file:///main.ts";
+Deno.test("file:///main.ts#2-8.ts", async ()=>{
+    const s = `
+> real content
+`;
+    console.log(s);
+});
+"#,
+          specifier: "file:///main.ts#2-8.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1555,7 +2455,7 @@ export function add(a: number, b: number): number {
 import { add } from "file:///main.ts";
 assertEquals(add(1, 2), 3);
 "#,
-          specifier: "file:///main.ts$3-8.ts",
+          specifier: "file:///main.ts#3-8.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1584,7 +2484,7 @@ import { DUPLICATE } from "./other.ts";
 import { add } from "file:///main.ts";
 assertEquals(add(1, 2), 3);
 "#,
-          specifier: "file:///main.ts$3-9.ts",
+          specifier: "file:///main.ts#3-9.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1612,7 +2512,7 @@ export const foo = () => "foo";
 const foo = createFoo();
 foo();
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1644,7 +2544,7 @@ export function foo() {
 }
 const logger = getLogger("my-awesome-module");
 "#,
-          specifier: "file:///main.ts$3-12.ts",
+          specifier: "file:///main.ts#3-12.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1669,7 +2569,7 @@ assertEquals(add(1, 2), 3);
 import { add } from "jsr:@deno/non-existent";
 assertEquals(add(1, 2), 3);
 "#,
-          specifier: "file:///README.md$6-12.js",
+          specifier: "file:///README.md#6-12.js",
           media_type: MediaType::JavaScript,
         }],
       },
@@ -1691,7 +2591,7 @@ export default Foo
           source: r#"import { Foo } from "file:///main.ts";
 console.log(Foo);
 "#,
-          specifier: "file:///main.ts$3-6.ts",
+          specifier: "file:///main.ts#3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1716,7 +2616,7 @@ export function add(first: number, second: number) {
 // @ts-expect-error: can only add numbers
 add('1', '2');
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts#3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1746,6 +2646,21 @@ add('1', '2');
         .collect::<Vec<_>>();
       assert_eq!(got_decoded, expected);
     }
+  }
+
+  #[test]
+  fn test_is_importable_binding_identifier() {
+    assert!(is_importable_binding_identifier(&"foo".into()));
+    assert!(is_importable_binding_identifier(&"$foo".into()));
+    assert!(is_importable_binding_identifier(&"_foo".into()));
+    assert!(is_importable_binding_identifier(&"async".into()));
+    assert!(!is_importable_binding_identifier(&"null".into()));
+    assert!(!is_importable_binding_identifier(&"default".into()));
+    assert!(!is_importable_binding_identifier(
+      &"key-with-hyphens".into()
+    ));
+    assert!(!is_importable_binding_identifier(&"with spaces".into()));
+    assert!(!is_importable_binding_identifier(&"".into()));
   }
 
   #[test]
@@ -1892,6 +2807,11 @@ add('1', '2');
       Test {
         input: r#"export { foo, bar as barAlias };"#,
         named_expected: atom_set!("foo", "barAlias"),
+        default_expected: None,
+      },
+      Test {
+        input: r#"export { foo as null, bar as "key-with-hyphens" };"#,
+        named_expected: atom_set!("null", "key-with-hyphens"),
         default_expected: None,
       },
       Test {

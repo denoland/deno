@@ -9,22 +9,22 @@
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
-    "args": "compile --no-config --output a_bin a/main.ts",
+    "args": "compile --no-config --app-name app --output a_bin a/main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "windows",
-    "args": "compile --no-config --output a.exe a/main.ts",
+    "args": "compile --no-config --app-name app --output a.exe a/main.ts",
     "output": "[WILDCARD]"
   }, {
     "args": ["eval", "Deno.renameSync('a', 'b')"],
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
-    "args": "compile --no-config --output b_bin b/main.ts",
+    "args": "compile --no-config --app-name app --output b_bin b/main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "windows",
-    "args": "compile --no-config --output b.exe b/main.ts",
+    "args": "compile --no-config --app-name app --output b.exe b/main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "unix",

@@ -117,6 +117,43 @@ pub fn create_inspector_server(
   Ok(server)
 }
 
+/// The default address the inspector server listens on, matching Node.js.
+pub fn default_inspector_host() -> SocketAddr {
+  SocketAddr::from(([127, 0, 0, 1], 9229))
+}
+
+/// Activates the global inspector server on the [`default_inspector_host`] and
+/// registers `inspector`, mirroring Node.js' behavior when a process is sent
+/// SIGUSR1.
+///
+/// This is a no-op returning `None` when a server is already running (an
+/// `--inspect*` flag, `node:inspector`'s `open()`, or a previous activation).
+/// On success the inspector's WebSocket URL is returned; if the server fails to
+/// bind, the error is logged and `None` is returned.
+pub fn activate_default_inspector_server(
+  name: &'static str,
+  module_url: String,
+  inspector: Rc<JsRuntimeInspector>,
+  wait_for_session: bool,
+) -> Option<InspectorServerUrl> {
+  if get_inspector_server().is_some() {
+    return None;
+  }
+  match create_inspector_server(
+    default_inspector_host(),
+    name,
+    InspectPublishUid::default(),
+  ) {
+    Ok(server) => {
+      Some(server.register_inspector(module_url, inspector, wait_for_session))
+    }
+    Err(err) => {
+      log::error!("Failed to start inspector server: {}", err);
+      None
+    }
+  }
+}
+
 static RESTART_NOTIFIER: OnceLock<broadcast::Sender<()>> = OnceLock::new();
 
 fn get_restart_notifier() -> broadcast::Sender<()> {

@@ -25,6 +25,7 @@
 // deno-lint-ignore-file no-this-alias no-inner-declarations
 
 import { core, internals, primordials } from "ext:core/mod.js";
+import { op_node_http_check_proxy_net } from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeIndexOf,
@@ -35,6 +36,7 @@ const {
   ErrorPrototype,
   FunctionPrototypeCall,
   NumberIsFinite,
+  NumberParseInt,
   ObjectAssign,
   ObjectDefineProperty,
   ObjectKeys,
@@ -62,6 +64,7 @@ const { kEmptyObject, once } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
 import {
+  _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,
   freeParser,
   HTTPParser,
@@ -273,6 +276,12 @@ function parseContentTypeFromRawHeaders(rawHeaders) {
 }
 
 function buildInspectorRequestUrl(protocol, host, port, path) {
+  if (
+    path && (StringPrototypeStartsWith(path, "http://") ||
+      StringPrototypeStartsWith(path, "https://"))
+  ) {
+    return path;
+  }
   let hostPart = host || "localhost";
   if (
     StringPrototypeIndexOf(hostPart, ":") !== -1 &&
@@ -507,6 +516,17 @@ function ClientRequest(input, options, cb) {
 
   const optsWithoutSignal = { __proto__: null, ...options };
 
+  // The `_proxy*` fields are internal transport details set only by the proxy
+  // selection below. A caller must not be able to supply them directly: doing
+  // so would route the request through an arbitrary proxy while bypassing the
+  // target permission check that the proxy branch performs. Strip any that came
+  // in via `options` so only the values computed here are honored.
+  delete optsWithoutSignal._proxy;
+  delete optsWithoutSignal._proxyTargetHost;
+  delete optsWithoutSignal._proxyTargetPort;
+  delete optsWithoutSignal._proxyProtocol;
+  delete optsWithoutSignal._proxyUseProxyConnection;
+
   const port = optsWithoutSignal.port = options.port || defaultPort || 80;
   const host = optsWithoutSignal.host =
     validateHost(options.hostname, "hostname") ||
@@ -526,6 +546,29 @@ function ClientRequest(input, options, cb) {
     port,
   );
   if (proxyEntry) {
+    // A proxied request connects only to the proxy, so the target host would
+    // otherwise never be permission-checked. Enforce --allow-net for the
+    // target here, matching fetch(), before routing through the proxy.
+    //
+    // A host or port carrying invalid header characters (e.g. CR/LF) is not a
+    // reachable target: node:http rejects it with ERR_INVALID_CHAR while
+    // building the request. Skip the permission check for those so the op does
+    // not pre-empt that error with a parse/permission failure. Every other
+    // target is permission-checked and a denial fails closed, like fetch().
+    if (
+      !checkInvalidHeaderChar(host) && !checkInvalidHeaderChar(String(port))
+    ) {
+      // `port` may be a numeric string; coerce and clamp to the op's u16 range
+      // so the argument conversion never throws.
+      const targetPort = NumberParseInt(port, 10);
+      op_node_http_check_proxy_net(
+        host,
+        NumberIsFinite(targetPort) && targetPort >= 0 && targetPort <= 65535
+          ? targetPort
+          : 0,
+        protocol === "https:" ? "node:https.request()" : "node:http.request()",
+      );
+    }
     this[kProxy] = proxyEntry;
     this[kProxyTargetHost] = host;
     this[kProxyTargetPort] = port;

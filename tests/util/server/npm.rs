@@ -287,6 +287,16 @@ fn create_package_version_info(
   let package_json_text = String::from_utf8_lossy(&package_json_bytes);
   let mut version_info: serde_json::Map<String, serde_json::Value> =
     serde_json::from_str(&package_json_text)?;
+  // preserve `dist.attestations` from the fixture's package.json (used to test
+  // the publishing-trust signals) since the rest of `dist` is synthesized here
+  if let Some(attestations) = version_info
+    .get("dist")
+    .and_then(|d| d.as_object())
+    .and_then(|d| d.get("attestations"))
+    .cloned()
+  {
+    dist.insert("attestations".to_string(), attestations);
+  }
   version_info.insert("dist".to_string(), dist.into());
 
   // add a bin entry for a directories.bin package.json entry as this
@@ -485,6 +495,10 @@ fn get_npm_package(
   let registry_hostname = if package_name == "@denotest/tarballs-privateserver2"
   {
     "http://localhost:4262"
+  } else if package_name == "@denotest/tarballs-privateserver404" {
+    // Tarball served from a registry that 404s the unauthenticated request
+    // (and has no fixture there), to exercise the 404 auth-hint path.
+    "http://localhost:4263"
   } else {
     registry_hostname
   };

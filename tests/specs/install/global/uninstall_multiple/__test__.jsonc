@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install --global --root ./bins --name first ./main.js",
+      "output": "install_first.out"
+    },
+    {
+      "args": "install --global --root ./bins --name second ./main.js",
+      "output": "install_second.out"
+    },
+    {
+      "args": "uninstall --global --root ./bins first second",
+      "output": "uninstall.out"
+    },
+    {
+      "args": "run -A assert_removed.js",
+      "output": ""
+    }
+  ]
+}

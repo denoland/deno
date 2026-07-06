@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "tests": {
+    // The workspace members live in pnpm-workspace.yaml, which Deno does not
+    // read. The first run fails to resolve the member, auto-migrates the
+    // configuration into package.json (Deno reads `workspaces` from it
+    // natively, and a pnpm project already keeps its config there), and tells
+    // the user to run again. The second run succeeds and does not migrate again.
+    "auto_migrate_on_resolution_failure": {
+      "steps": [
+        {
+          "args": "run --node-modules-dir=none main.ts",
+          "output": "migrated.out",
+          "exitCode": 1
+        },
+        {
+          "args": "run --node-modules-dir=none main.ts",
+          "output": "success.out"
+        }
+      ]
+    }
+  }
+}

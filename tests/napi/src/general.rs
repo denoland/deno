@@ -65,11 +65,17 @@ extern "C" fn test_get_node_version(
 
   assert!(!node_version.is_null());
   let ver = unsafe { &*node_version };
-  // Major version should be reasonable (>= 1)
-  assert!(ver.major >= 1);
 
+  // Return "major.minor.patch" so the test can assert it matches the emulated
+  // Node version reported through process.versions.node.
+  let version = format!("{}.{}.{}", ver.major, ver.minor, ver.patch);
   let mut result: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_create_uint32(env, ver.major, &mut result));
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    version.as_ptr() as *const std::os::raw::c_char,
+    version.len(),
+    &mut result
+  ));
   result
 }
 

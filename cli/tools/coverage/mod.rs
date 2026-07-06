@@ -25,11 +25,13 @@ use regex::Regex;
 use reporter::CoverageReporter;
 use text_lines::TextLines;
 
+use self::ignore_directives::CoverageComment;
 use self::ignore_directives::has_file_ignore_directive;
 use self::ignore_directives::lex_comments;
 use self::ignore_directives::parse_next_ignore_directives;
 use self::ignore_directives::parse_range_ignore_directives;
 use crate::args::CliOptions;
+use crate::args::CoverageThresholds;
 use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::cdp;
@@ -80,6 +82,45 @@ struct GenerateCoverageReportOptions<'a> {
   script_runtime_source: String,
   maybe_source_map: &'a Option<Vec<u8>>,
   output: &'a Option<PathBuf>,
+}
+
+/// The byte offset of the end of the code on the line
+/// `line_start_byte_offset..line_end_byte_offset`, with a trailing comment and
+/// the whitespace before it removed. A comment does not execute, so it must not
+/// decide whether a zero-count range reaches the line's end edge when line hit
+/// counts are projected from V8's block ranges. Without this, the same statement
+/// is credited to its un-taken branch (0 hits) when nothing follows it and to
+/// the covered trailing comment (1 hit) when one does. A line with no trailing
+/// comment keeps its raw end, so its attribution is unchanged.
+fn line_content_end_byte_offset(
+  source: &str,
+  line_start_byte_offset: usize,
+  line_end_byte_offset: usize,
+  comments: &[CoverageComment],
+) -> usize {
+  let mut end = line_end_byte_offset;
+  let mut stripped_comment = false;
+  loop {
+    let trimmed_end = line_start_byte_offset
+      + source[line_start_byte_offset..end].trim_end().len();
+    let trailing_comment = comments.iter().find(|comment| {
+      comment.range.start >= line_start_byte_offset
+        && comment.range.start < trimmed_end
+        && comment.range.end >= trimmed_end
+    });
+    match trailing_comment {
+      Some(comment) => {
+        stripped_comment = true;
+        end = comment.range.start;
+      }
+      None => {
+        if stripped_comment {
+          end = trimmed_end;
+        }
+        return end;
+      }
+    }
+  }
 }
 
 fn generate_coverage_report(
@@ -208,6 +249,20 @@ fn generate_coverage_report(
       Vec<(usize, &cdp::CoverageRange)>,
     > = std::collections::BTreeMap::new();
     for (idx, range) in function.ranges[1..].iter().enumerate() {
+      // Skip whitespace-only "gap" ranges V8 emits between blocks (e.g. the
+      // sliver between a catch's `return` and `finally`). They aren't real
+      // branch arms, so counting them yields phantom branches (#35765).
+      let start_byte_offset =
+        runtime_text_lines.byte_index_from_char_index(range.start_char_offset);
+      let end_byte_offset =
+        runtime_text_lines.byte_index_from_char_index(range.end_char_offset);
+      if options.script_runtime_source[start_byte_offset..end_byte_offset]
+        .trim()
+        .is_empty()
+      {
+        continue;
+      }
+
       // Same rationale as above: drop sub-ranges with no source mapping —
       // they belong to transformer-injected helper code, not the user's
       // source.
@@ -316,6 +371,17 @@ fn generate_coverage_report(
       runtime_text_lines.char_index(line_start_byte_offset);
     let line_end_char_offset =
       runtime_text_lines.char_index(line_end_byte_offset);
+    // The line's end edge for the reset pass below is the end of its code,
+    // excluding a trailing comment so a comment cannot change what the line is
+    // credited with.
+    let content_end_byte_offset = line_content_end_byte_offset(
+      &options.script_runtime_source,
+      line_start_byte_offset,
+      line_end_byte_offset,
+      &runtime_comments.comments,
+    );
+    let line_content_end_char_offset =
+      runtime_text_lines.char_index(content_end_byte_offset);
     let ignore = runtime_comments.comments.iter().any(|comment| {
       comment.range.start <= line_start_byte_offset
         && comment.range.end >= line_end_byte_offset
@@ -361,7 +427,7 @@ fn generate_coverage_report(
           let overlaps = range.start_char_offset < line_end_char_offset
             && range.end_char_offset > line_start_char_offset;
           let reaches_edge = range.start_char_offset <= line_start_char_offset
-            || range.end_char_offset >= line_end_char_offset;
+            || range.end_char_offset >= line_content_end_char_offset;
           if overlaps && reaches_edge {
             count = 0;
           }
@@ -554,9 +620,9 @@ fn filter_coverages(
     exclude.iter().map(|e| Regex::new(e).unwrap()).collect();
 
   // Matches virtual file paths for doc testing
-  // e.g. file:///path/to/mod.ts$23-29.ts
+  // e.g. file:///path/to/mod.ts#23-29.ts
   let doc_test_re =
-    Regex::new(r"\$\d+-\d+\.(js|mjs|cjs|jsx|ts|mts|cts|tsx)$").unwrap();
+    Regex::new(r"#\d+-\d+\.(js|mjs|cjs|jsx|ts|mts|cts|tsx)$").unwrap();
 
   coverages
     .into_iter()
@@ -588,6 +654,7 @@ fn filter_coverages(
     .collect::<Vec<cdp::ScriptCoverage>>()
 }
 
+#[allow(clippy::too_many_arguments, reason = "coverage entry point")]
 pub fn cover_files(
   flags: Arc<Flags>,
   files_include: Vec<String>,
@@ -595,6 +662,7 @@ pub fn cover_files(
   include: Vec<String>,
   exclude: Vec<String>,
   output: Option<String>,
+  cli_threshold: Option<f64>,
   reporters: &[&dyn CoverageReporter],
 ) -> Result<(), AnyError> {
   if files_include.is_empty() {
@@ -640,7 +708,28 @@ pub fn cover_files(
 
   let proc_coverages: Vec<_> = script_coverages
     .into_iter()
-    .map(|cov| ProcessCoverage { result: vec![cov] })
+    .map(|mut cov| {
+      // Merge the same module loaded under different specifiers. Fragments
+      // never affect the source, so strip them for any file/http(s) URL.
+      // Query strings are only stripped for `file:` (same file on disk);
+      // http(s) servers can return different bytes per query and the cache
+      // keys on the full URL, so keep it there.
+      if let Ok(mut url) = Url::parse(&cov.url) {
+        let strip_fragment = matches!(url.scheme(), "file" | "http" | "https")
+          && url.fragment().is_some();
+        let strip_query = url.scheme() == "file" && url.query().is_some();
+        if strip_fragment {
+          url.set_fragment(None);
+        }
+        if strip_query {
+          url.set_query(None);
+        }
+        if strip_fragment || strip_query {
+          cov.url = url.to_string();
+        }
+      }
+      ProcessCoverage { result: vec![cov] }
+    })
     .collect();
 
   let script_coverages = if let Some(c) = merge::merge_processes(proc_coverages)
@@ -770,5 +859,156 @@ pub fn cover_files(
     reporter.done(&coverage_root, &file_reports);
   }
 
+  // Layer the `--threshold` CLI flag over per-metric thresholds from deno.json
+  // (the flag wins) and fail the command if any configured threshold is unmet.
+  let config_thresholds = cli_options.resolve_coverage_thresholds()?;
+  let thresholds = CoverageThresholds {
+    lines: cli_threshold.or(config_thresholds.lines),
+    branches: cli_threshold.or(config_thresholds.branches),
+    functions: cli_threshold.or(config_thresholds.functions),
+  };
+  check_coverage_thresholds(&file_reports, thresholds)?;
+
   Ok(())
+}
+
+/// Computes the aggregate line, branch, and function coverage percentages
+/// across all reported files. A metric with no measurable items counts as 100%
+/// (e.g. a `branches` threshold passes vacuously for files that have no
+/// branches). Reuses the same accumulation and percentage helpers as the
+/// summary reporter so the checked numbers match the printed ones.
+fn aggregate_coverage_percentages(
+  file_reports: &[(CoverageReport, String)],
+) -> (f64, f64, f64) {
+  let mut stats = reporter::CoverageStats::default();
+  for (report, _) in file_reports {
+    stats.add_report(report);
+  }
+  let percent = |hit: usize, miss: usize| -> f64 {
+    util::calc_coverage_display_info(hit, miss).1 as f64
+  };
+  (
+    percent(stats.line_hit, stats.line_miss),
+    percent(stats.branch_hit, stats.branch_miss),
+    percent(stats.fn_hit, stats.fn_miss),
+  )
+}
+
+fn check_coverage_thresholds(
+  file_reports: &[(CoverageReport, String)],
+  thresholds: CoverageThresholds,
+) -> Result<(), AnyError> {
+  if thresholds.lines.is_none()
+    && thresholds.branches.is_none()
+    && thresholds.functions.is_none()
+  {
+    return Ok(());
+  }
+
+  let (line_percent, branch_percent, fn_percent) =
+    aggregate_coverage_percentages(file_reports);
+
+  let mut failures = Vec::new();
+  let mut check = |name: &str, actual: f64, threshold: Option<f64>| {
+    if let Some(threshold) = threshold
+      && actual < threshold
+    {
+      // Floor the displayed value to two decimals so a near-miss like 89.999%
+      // doesn't render as "90.00% is below the threshold of 90.00%".
+      let actual = (actual * 100.0).floor() / 100.0;
+      failures.push(format!(
+        "  - {name} coverage {actual:.2}% is below the threshold of {threshold:.2}%"
+      ));
+    }
+  };
+  check("Line", line_percent, thresholds.lines);
+  check("Branch", branch_percent, thresholds.branches);
+  check("Function", fn_percent, thresholds.functions);
+
+  if failures.is_empty() {
+    Ok(())
+  } else {
+    Err(
+      CoverageThresholdError(format!(
+        "Coverage threshold not met:\n{}",
+        failures.join("\n")
+      ))
+      .into(),
+    )
+  }
+}
+
+/// Returned when a configured coverage threshold is not met. A distinct type so
+/// `deno test --coverage` can treat it as fatal while still tolerating benign
+/// report-generation errors.
+#[derive(Debug)]
+pub struct CoverageThresholdError(pub String);
+
+impl std::fmt::Display for CoverageThresholdError {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(f, "{}", self.0)
+  }
+}
+
+impl std::error::Error for CoverageThresholdError {}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// The source substring credited as code on `line_index`: the line with any
+  /// trailing comment and the whitespace before it removed from its end.
+  /// Exercises `line_content_end_byte_offset` with real lexer comment ranges.
+  fn code_on_line(source: &str, line_index: usize) -> &str {
+    let comments = lex_comments(source, MediaType::JavaScript).comments;
+    let text_lines = TextLines::new(source);
+    let (start, end) = text_lines.line_range(line_index);
+    let content_end =
+      line_content_end_byte_offset(source, start, end, &comments);
+    &source[start..content_end]
+  }
+
+  #[test]
+  fn no_trailing_comment_keeps_whole_line() {
+    assert_eq!(
+      code_on_line("if (!x) throw new Error(\"e\");", 0),
+      "if (!x) throw new Error(\"e\");",
+    );
+  }
+
+  #[test]
+  fn strips_trailing_line_comment() {
+    assert_eq!(
+      code_on_line("if (!x) throw new Error(\"e\"); // never taken", 0),
+      "if (!x) throw new Error(\"e\");",
+    );
+  }
+
+  #[test]
+  fn strips_trailing_block_comment() {
+    assert_eq!(code_on_line("foo(); /* done */", 0), "foo();");
+  }
+
+  #[test]
+  fn strips_multiple_stacked_trailing_comments() {
+    assert_eq!(code_on_line("foo(); /* a */ // b", 0), "foo();");
+  }
+
+  #[test]
+  fn keeps_interior_comment_when_code_follows() {
+    assert_eq!(
+      code_on_line("foo(/* inline */ x);", 0),
+      "foo(/* inline */ x);"
+    );
+  }
+
+  #[test]
+  fn keeps_leading_indentation() {
+    assert_eq!(code_on_line("  return 1; // done", 0), "  return 1;");
+  }
+
+  #[test]
+  fn comment_only_line_has_no_code() {
+    assert_eq!(code_on_line("  // just a comment", 0), "");
+  }
 }

@@ -448,6 +448,84 @@ declare function dispatchEvent(event: Event): boolean;
  */
 declare var console: Console;
 
+/**
+ * A brand and version pair describing a user agent, as returned by
+ * {@linkcode NavigatorUAData}.
+ *
+ * @category Platform
+ */
+interface NavigatorUABrandVersion {
+  readonly brand: string;
+  readonly version: string;
+}
+
+/**
+ * The values returned by {@linkcode NavigatorUAData.getHighEntropyValues}.
+ *
+ * @category Platform
+ */
+interface UADataValues {
+  readonly brands?: NavigatorUABrandVersion[];
+  readonly mobile?: boolean;
+  readonly platform?: string;
+  readonly architecture?: string;
+  readonly bitness?: string;
+  readonly formFactors?: string[];
+  readonly fullVersionList?: NavigatorUABrandVersion[];
+  readonly model?: string;
+  readonly platformVersion?: string;
+  readonly uaFullVersion?: string;
+  readonly wow64?: boolean;
+}
+
+/**
+ * The low-entropy values returned by {@linkcode NavigatorUAData.toJSON}.
+ *
+ * @category Platform
+ */
+interface UALowEntropyJSON {
+  readonly brands: NavigatorUABrandVersion[];
+  readonly mobile: boolean;
+  readonly platform: string;
+}
+
+/**
+ * Gives access to information about the runtime's user agent, exposed via
+ * {@linkcode Navigator.userAgentData}. This is the
+ * [User-Agent Client Hints API](https://developer.mozilla.org/en-US/docs/Web/API/NavigatorUAData).
+ *
+ * @category Platform
+ */
+interface NavigatorUAData {
+  /** A list of the runtime's brand and major version. */
+  readonly brands: NavigatorUABrandVersion[];
+  /** Whether the runtime reports itself as a mobile device. Always `false` in Deno. */
+  readonly mobile: boolean;
+  /** The platform the runtime is running on (e.g. `"Linux"`, `"macOS"`, `"Windows"`). */
+  readonly platform: string;
+  /**
+   * Resolves with the requested high-entropy values. Unrecognized hints are
+   * ignored. The low-entropy values (`brands`, `mobile`, `platform`) are always
+   * included.
+   */
+  getHighEntropyValues(hints: string[]): Promise<UADataValues>;
+  /** Returns a JSON representation of the low-entropy values. */
+  toJSON(): UALowEntropyJSON;
+}
+
+/**
+ * Constructor for {@linkcode NavigatorUAData} objects.
+ *
+ * Note: This constructor cannot be used to create new `NavigatorUAData`
+ * instances in Deno.
+ *
+ * @category Platform
+ */
+declare var NavigatorUAData: {
+  readonly prototype: NavigatorUAData;
+  new (): never;
+};
+
 /** @category Platform */
 interface DOMStringList {
   /** Returns the number of strings in strings. */
@@ -905,6 +983,71 @@ interface PerformanceMeasure extends PerformanceEntry {
 declare var PerformanceMeasure: {
   readonly prototype: PerformanceMeasure;
   new (): never;
+};
+
+/** A list of {@linkcode PerformanceEntry} objects passed to a
+ * {@linkcode PerformanceObserver} callback via its `observe()` method.
+ *
+ * @category Performance
+ */
+interface PerformanceObserverEntryList {
+  /** Returns all explicitly observed performance entries. */
+  getEntries(): PerformanceEntry[];
+  /** Returns the observed performance entries with the given name. */
+  getEntriesByName(name: string, type?: string): PerformanceEntry[];
+  /** Returns the observed performance entries with the given entry type. */
+  getEntriesByType(type: string): PerformanceEntry[];
+}
+
+/** A list of {@linkcode PerformanceEntry} objects passed to a
+ * {@linkcode PerformanceObserver} callback via its `observe()` method.
+ *
+ * @category Performance
+ */
+declare var PerformanceObserverEntryList: {
+  readonly prototype: PerformanceObserverEntryList;
+  new (): never;
+};
+
+/** The callback invoked when the observed set of performance entries grows.
+ *
+ * @category Performance
+ */
+interface PerformanceObserverCallback {
+  (list: PerformanceObserverEntryList, observer: PerformanceObserver): void;
+}
+
+/** Observes performance measurement events and is notified of new
+ * {@linkcode PerformanceEntry} objects as they are recorded in the performance
+ * timeline.
+ *
+ * @category Performance
+ */
+interface PerformanceObserver {
+  /** Stops the observer from receiving any further performance entries. */
+  disconnect(): void;
+  /** Specifies the set of performance entry types to observe. */
+  observe(
+    options?: {
+      entryTypes?: string[];
+      type?: string;
+      buffered?: boolean;
+    },
+  ): void;
+  /** Returns the current list of buffered performance entries, emptying it. */
+  takeRecords(): PerformanceEntry[];
+}
+
+/** Observes performance measurement events and is notified of new
+ * {@linkcode PerformanceEntry} objects as they are recorded in the performance
+ * timeline.
+ *
+ * @category Performance
+ */
+declare var PerformanceObserver: {
+  readonly prototype: PerformanceObserver;
+  readonly supportedEntryTypes: readonly string[];
+  new (callback: PerformanceObserverCallback): PerformanceObserver;
 };
 
 /** @category Events */
