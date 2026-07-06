@@ -468,6 +468,12 @@ const _strategyHWM = Symbol("[[strategyHWM]]");
 const _strategySizeAlgorithm = Symbol("[[strategySizeAlgorithm]]");
 const _stream = Symbol("[[stream]]");
 const _transformAlgorithm = Symbol("[[transformAlgorithm]]");
+// Implementation slots (not spec slots): the user's underlying source and
+// its converted dictionary, read by the shared underlying-source
+// algorithms below so stream construction stores two references instead
+// of allocating up to three wrapper closures per stream.
+const _underlyingSource = Symbol("[underlyingSource]");
+const _underlyingSourceDict = Symbol("[underlyingSourceDict]");
 const _view = Symbol("[[view]]");
 const _writable = Symbol("[[writable]]");
 const _writeAlgorithm = Symbol("[[writeAlgorithm]]");
@@ -918,68 +924,83 @@ async function readableStreamWriteChunkFn(reader, sink, chunk) {
 async function readableStreamReadFn(reader, sink, onError) {
   let loop = true;
 
+  // The read request, its handlers, and the write continuation are hoisted
+  // out of the loop and allocated once per stream instead of once per
+  // chunk; the per-iteration state travels through the `reentrant`,
+  // `gotChunk`, and `promise` slots, which is safe because exactly one
+  // read is in flight per iteration.
+  let reentrant = true;
+  let gotChunk = undefined;
+  /** @type {Deferred<boolean>} */
+  let promise;
+
+  const onWriteFulfilled = (loop) => promise.resolve(loop);
+  const onWriteRejected = (e) => promise.reject(e);
+
+  const readRequest = {
+    chunkSteps(chunk) {
+      // If the chunk has non-zero length, write it
+      if (reentrant) {
+        gotChunk = chunk;
+      } else {
+        PromisePrototypeThen(
+          readableStreamWriteChunkFn(reader, sink, chunk),
+          onWriteFulfilled,
+          onWriteRejected,
+        );
+      }
+    },
+    closeSteps() {
+      sink.close();
+      promise.resolve(false);
+    },
+    errorSteps(error) {
+      // Surface the original error (with its stack) to the owner of the
+      // resource before we flatten it to a string for the Rust side. Without
+      // this hook the error is otherwise swallowed: it is converted to a
+      // plain message, pushed into the channel and used only to abort the
+      // underlying transport, so e.g. a throwing `TransformStream` feeding a
+      // `Deno.serve` response body would fail with nothing implicating the
+      // faulty callback. See https://github.com/denoland/deno/issues/19867.
+      if (onError !== undefined) {
+        onError(error);
+      }
+      const success = op_readable_stream_resource_write_error(
+        sink.external,
+        extractStringErrorFromError(error),
+      );
+      // We don't cancel the reader if there was an error reading. We'll let the downstream
+      // consumer close the resource after it receives the error.
+      if (!success) {
+        PromisePrototypeThen(
+          reader.cancel("resource closed"),
+          () => {
+            sink.close();
+            promise.resolve(false);
+          },
+          onWriteRejected,
+        );
+      } else {
+        sink.close();
+        promise.resolve(false);
+      }
+    },
+  };
+
   while (loop) {
     // The ops here look like op_write_all/op_close, but we're not actually writing to a
     // real resource.
-    let reentrant = true;
-    let gotChunk = undefined;
-    const promise = new Deferred();
+    reentrant = true;
+    gotChunk = undefined;
+    promise = new Deferred();
 
-    readableStreamDefaultReaderRead(reader, {
-      chunkSteps(chunk) {
-        // If the chunk has non-zero length, write it
-        if (reentrant) {
-          gotChunk = chunk;
-        } else {
-          PromisePrototypeThen(
-            readableStreamWriteChunkFn(reader, sink, chunk),
-            (loop) => promise.resolve(loop),
-            (e) => promise.reject(e),
-          );
-        }
-      },
-      closeSteps() {
-        sink.close();
-        promise.resolve(false);
-      },
-      errorSteps(error) {
-        // Surface the original error (with its stack) to the owner of the
-        // resource before we flatten it to a string for the Rust side. Without
-        // this hook the error is otherwise swallowed: it is converted to a
-        // plain message, pushed into the channel and used only to abort the
-        // underlying transport, so e.g. a throwing `TransformStream` feeding a
-        // `Deno.serve` response body would fail with nothing implicating the
-        // faulty callback. See https://github.com/denoland/deno/issues/19867.
-        if (onError !== undefined) {
-          onError(error);
-        }
-        const success = op_readable_stream_resource_write_error(
-          sink.external,
-          extractStringErrorFromError(error),
-        );
-        // We don't cancel the reader if there was an error reading. We'll let the downstream
-        // consumer close the resource after it receives the error.
-        if (!success) {
-          PromisePrototypeThen(
-            reader.cancel("resource closed"),
-            () => {
-              sink.close();
-              promise.resolve(false);
-            },
-            (e) => promise.reject(e),
-          );
-        } else {
-          sink.close();
-          promise.resolve(false);
-        }
-      },
-    });
+    readableStreamDefaultReaderRead(reader, readRequest);
     reentrant = false;
     if (gotChunk) {
       PromisePrototypeThen(
         readableStreamWriteChunkFn(reader, sink, gotChunk),
-        (loop) => promise.resolve(loop),
-        (e) => promise.reject(e),
+        onWriteFulfilled,
+        onWriteRejected,
       );
     }
 
@@ -1549,6 +1570,8 @@ function readableByteStreamControllerCallPullIfNeeded(controller) {
 function readableByteStreamControllerClearAlgorithms(controller) {
   controller[_pullAlgorithm] = undefined;
   controller[_cancelAlgorithm] = undefined;
+  controller[_underlyingSource] = undefined;
+  controller[_underlyingSourceDict] = undefined;
 }
 
 /**
@@ -2047,6 +2070,8 @@ function readableStreamDefaultControllerClearAlgorithms(controller) {
   controller[_pullAlgorithm] = undefined;
   controller[_cancelAlgorithm] = undefined;
   controller[_strategySizeAlgorithm] = undefined;
+  controller[_underlyingSource] = undefined;
+  controller[_underlyingSourceDict] = undefined;
 }
 
 /** @param {ReadableStreamDefaultController<any>} controller */
@@ -4003,7 +4028,7 @@ function setUpReadableByteStreamController(
   controller[_autoAllocateChunkSize] = autoAllocateChunkSize;
   controller[_pendingPullIntos] = new Queue();
   stream[_controller] = controller;
-  const startResult = startAlgorithm();
+  const startResult = startAlgorithm(controller);
   const startPromise = PromiseResolve(startResult);
   uponPromise(
     startPromise,
@@ -4025,6 +4050,77 @@ function setUpReadableByteStreamController(
  * @param {UnderlyingSource<ArrayBuffer>} underlyingSourceDict
  * @param {number} highWaterMark
  */
+// Shared underlying-source algorithms. The controller carries the user's
+// underlying source and its converted dict in slots (see
+// _underlyingSourceDict); these module-level functions replace the
+// per-stream wrapper closures the FromUnderlyingSource setup functions
+// used to allocate. Start and pull receive the controller from their call
+// sites; cancel receives it as a second argument (internal cancel
+// algorithms ignore it).
+function underlyingSourceStartDefault(controller) {
+  return webidl.invokeCallbackFunction(
+    controller[_underlyingSourceDict].start,
+    [controller],
+    controller[_underlyingSource],
+    webidl.converters.any,
+    "Failed to execute 'startAlgorithm' on 'ReadableStreamDefaultController'",
+  );
+}
+
+function underlyingSourcePullDefault(controller) {
+  return webidl.invokeCallbackFunction(
+    controller[_underlyingSourceDict].pull,
+    [controller],
+    controller[_underlyingSource],
+    webidl.converters["Promise<undefined>"],
+    "Failed to execute 'pullAlgorithm' on 'ReadableStreamDefaultController'",
+    true,
+  );
+}
+
+function underlyingSourceCancelDefault(reason, controller) {
+  return webidl.invokeCallbackFunction(
+    controller[_underlyingSourceDict].cancel,
+    [reason],
+    controller[_underlyingSource],
+    webidl.converters["Promise<undefined>"],
+    "Failed to execute 'cancelAlgorithm' on 'ReadableStreamDefaultController'",
+    true,
+  );
+}
+
+function underlyingSourceStartByte(controller) {
+  return webidl.invokeCallbackFunction(
+    controller[_underlyingSourceDict].start,
+    [controller],
+    controller[_underlyingSource],
+    webidl.converters.any,
+    "Failed to execute 'startAlgorithm' on 'ReadableByteStreamController'",
+  );
+}
+
+function underlyingSourcePullByte(controller) {
+  return webidl.invokeCallbackFunction(
+    controller[_underlyingSourceDict].pull,
+    [controller],
+    controller[_underlyingSource],
+    webidl.converters["Promise<undefined>"],
+    "Failed to execute 'pullAlgorithm' on 'ReadableByteStreamController'",
+    true,
+  );
+}
+
+function underlyingSourceCancelByte(reason, controller) {
+  return webidl.invokeCallbackFunction(
+    controller[_underlyingSourceDict].cancel,
+    [reason],
+    controller[_underlyingSource],
+    webidl.converters["Promise<undefined>"],
+    "Failed to execute 'cancelAlgorithm' on 'ReadableByteStreamController'",
+    true,
+  );
+}
+
 function setUpReadableByteStreamControllerFromUnderlyingSource(
   stream,
   underlyingSource,
@@ -4038,37 +4134,16 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
   let pullAlgorithm = _defaultPullAlgorithm;
   /** @type {(reason: any) => Promise<void>} */
   let cancelAlgorithm = _defaultCancelAlgorithm;
+  controller[_underlyingSource] = underlyingSource;
+  controller[_underlyingSourceDict] = underlyingSourceDict;
   if (underlyingSourceDict.start !== undefined) {
-    startAlgorithm = () =>
-      webidl.invokeCallbackFunction(
-        underlyingSourceDict.start,
-        [controller],
-        underlyingSource,
-        webidl.converters.any,
-        "Failed to execute 'startAlgorithm' on 'ReadableByteStreamController'",
-      );
+    startAlgorithm = underlyingSourceStartByte;
   }
   if (underlyingSourceDict.pull !== undefined) {
-    pullAlgorithm = () =>
-      webidl.invokeCallbackFunction(
-        underlyingSourceDict.pull,
-        [controller],
-        underlyingSource,
-        webidl.converters["Promise<undefined>"],
-        "Failed to execute 'pullAlgorithm' on 'ReadableByteStreamController'",
-        true,
-      );
+    pullAlgorithm = underlyingSourcePullByte;
   }
   if (underlyingSourceDict.cancel !== undefined) {
-    cancelAlgorithm = (reason) =>
-      webidl.invokeCallbackFunction(
-        underlyingSourceDict.cancel,
-        [reason],
-        underlyingSource,
-        webidl.converters["Promise<undefined>"],
-        "Failed to execute 'cancelAlgorithm' on 'ReadableByteStreamController'",
-        true,
-      );
+    cancelAlgorithm = underlyingSourceCancelByte;
   }
   const autoAllocateChunkSize = underlyingSourceDict["autoAllocateChunkSize"];
   if (autoAllocateChunkSize === 0) {
@@ -4151,37 +4226,16 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
   let pullAlgorithm = _defaultPullAlgorithm;
   /** @type {(reason?: any) => Promise<void>} */
   let cancelAlgorithm = _defaultCancelAlgorithm;
+  controller[_underlyingSource] = underlyingSource;
+  controller[_underlyingSourceDict] = underlyingSourceDict;
   if (underlyingSourceDict.start !== undefined) {
-    startAlgorithm = () =>
-      webidl.invokeCallbackFunction(
-        underlyingSourceDict.start,
-        [controller],
-        underlyingSource,
-        webidl.converters.any,
-        "Failed to execute 'startAlgorithm' on 'ReadableStreamDefaultController'",
-      );
+    startAlgorithm = underlyingSourceStartDefault;
   }
   if (underlyingSourceDict.pull !== undefined) {
-    pullAlgorithm = () =>
-      webidl.invokeCallbackFunction(
-        underlyingSourceDict.pull,
-        [controller],
-        underlyingSource,
-        webidl.converters["Promise<undefined>"],
-        "Failed to execute 'pullAlgorithm' on 'ReadableStreamDefaultController'",
-        true,
-      );
+    pullAlgorithm = underlyingSourcePullDefault;
   }
   if (underlyingSourceDict.cancel !== undefined) {
-    cancelAlgorithm = (reason) =>
-      webidl.invokeCallbackFunction(
-        underlyingSourceDict.cancel,
-        [reason],
-        underlyingSource,
-        webidl.converters["Promise<undefined>"],
-        "Failed to execute 'cancelAlgorithm' on 'ReadableStreamDefaultController'",
-        true,
-      );
+    cancelAlgorithm = underlyingSourceCancelDefault;
   }
   setUpReadableStreamDefaultController(
     stream,
@@ -6361,6 +6415,10 @@ class ReadableByteStreamController {
   [_pulling];
   /** @type {PullIntoDescriptor[]} */
   [_pendingPullIntos];
+  /** @type {UnderlyingSource<ArrayBuffer> | undefined} */
+  [_underlyingSource];
+  /** @type {UnderlyingSource<ArrayBuffer> | undefined} */
+  [_underlyingSourceDict];
   /** @type {ReadableByteStreamQueueEntry[]} */
   [_queue];
   /** @type {number} */
@@ -6490,7 +6548,7 @@ class ReadableByteStreamController {
   [_cancelSteps](reason) {
     readableByteStreamControllerClearPendingPullIntos(this);
     resetQueue(this);
-    const result = this[_cancelAlgorithm](reason);
+    const result = this[_cancelAlgorithm](reason, this);
     readableByteStreamControllerClearAlgorithms(this);
     return result;
   }
@@ -6569,6 +6627,10 @@ class ReadableStreamDefaultController {
   [_pulling];
   /** @type {Array<ValueWithSize<R>>} */
   [_queue];
+  /** @type {UnderlyingSource<R> | undefined} */
+  [_underlyingSource];
+  /** @type {UnderlyingSource<R> | undefined} */
+  [_underlyingSourceDict];
   /** @type {number} */
   [_queueTotalSize];
   /** @type {boolean} */
@@ -6649,7 +6711,7 @@ class ReadableStreamDefaultController {
    */
   [_cancelSteps](reason) {
     resetQueue(this);
-    const result = this[_cancelAlgorithm](reason);
+    const result = this[_cancelAlgorithm](reason, this);
     readableStreamDefaultControllerClearAlgorithms(this);
     return result;
   }
