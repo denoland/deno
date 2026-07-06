@@ -29,6 +29,7 @@ use deno_web::Blob;
 use deno_web::BlobStoreTrait;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
+use deno_web::RecvMessageData;
 use deno_web::Transferable;
 use deno_web::deserialize_js_transferables;
 use deno_web::serialize_transferables;
@@ -524,7 +525,7 @@ async fn op_host_recv_ctrl(
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
   #[scoped] id: WorkerId,
-) -> Result<Option<JsMessageData>, MessagePortError> {
+) -> Result<Option<RecvMessageData>, MessagePortError> {
   let (worker_handle, cancel_handle) = {
     let s = state.borrow();
     let workers_table = s.borrow::<WorkersTable>();
