@@ -311,17 +311,19 @@ function uponPromise(promise, onFulfilled, onRejected) {
 
 // Number of (value, size) entries in a freshly allocated ring.
 const QUEUE_INITIAL_CAPACITY = 8;
-// Rings larger than this are dropped (not retained) when the queue
-// empties, so a burst does not pin a large backing array forever.
-const QUEUE_RETAIN_CAPACITY = 512;
+// Rings holding more than this many entries are dropped (not retained) when
+// the queue empties, so a burst does not pin a large backing array forever.
+// Values cribbed from nodejs/node#64312 (initial 8, retain 1024 entries),
+// which uses the same ring for the same spec structure.
+const QUEUE_RETAIN_CAPACITY = 1024;
 
 // A power-of-two ring buffer holding (value, size) pairs in two
 // consecutive slots. Compared to the previous linked list this allocates
 // nothing per enqueued chunk in steady state (the ring is reused), keeps
 // entries cache-adjacent, and defers all storage allocation until a chunk
 // is actually buffered (`#ring` starts null), which keeps stream
-// construction allocation-free on this axis. Layout mirrors what other
-// engines use for the same spec structure.
+// construction allocation-free on this axis. Layout mirrors the ring
+// nodejs/node#64312 uses for the same spec structure.
 class Queue {
   /** @type {any[] | null} */
   #ring = null;
