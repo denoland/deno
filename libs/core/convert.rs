@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::convert::Infallible;
+use std::ffi::c_void;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -484,6 +485,88 @@ impl<'s> ToV8<'s> for Arc<str> {
     scope: &mut v8::PinScope<'s, 'i>,
   ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
     Ok(v8::String::new(scope, &self).unwrap().into()) // TODO
+  }
+}
+
+/// A wrapper around a raw `*mut c_void` pointer for conversion to/from V8.
+///
+/// A null pointer maps to JS `null`; a non-null pointer maps to a
+/// [`v8::External`].  Round-trips correctly through both [`ToV8`] and
+/// [`FromV8`].
+///
+/// # Safety
+/// The caller is responsible for ensuring the pointer is valid for the
+/// lifetime of any V8 External that wraps it.
+#[repr(transparent)]
+pub struct ExternalPointer(pub *mut c_void);
+
+// SAFETY: Pointer safety is the caller's responsibility.
+unsafe impl Send for ExternalPointer {}
+// SAFETY: Pointer safety is the caller's responsibility.
+unsafe impl Sync for ExternalPointer {}
+
+impl<'a> ToV8<'a> for ExternalPointer {
+  type Error = Infallible;
+
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'a, 'i>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+    Ok(if self.0.is_null() {
+      v8::null(scope).into()
+    } else {
+      v8::External::new(scope, self.0).into()
+    })
+  }
+}
+
+impl<'a> FromV8<'a> for ExternalPointer {
+  type Error = DataError;
+
+  fn from_v8<'i>(
+    _scope: &mut v8::PinScope<'a, 'i>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<Self, Self::Error> {
+    <Self as FromV8Scopeless>::from_v8(value)
+  }
+}
+
+impl<'a> FromV8Scopeless<'a> for ExternalPointer {
+  fn from_v8(value: v8::Local<'a, v8::Value>) -> Result<Self, Self::Error> {
+    if value.is_null() {
+      Ok(ExternalPointer(std::ptr::null_mut()))
+    } else if let Ok(ext) = v8::Local::<v8::External>::try_from(value) {
+      Ok(ExternalPointer(ext.value()))
+    } else {
+      Err(DataError(v8::DataError::BadType {
+        actual: value.type_repr(),
+        expected: "External",
+      }))
+    }
+  }
+}
+
+impl From<*mut c_void> for ExternalPointer {
+  fn from(p: *mut c_void) -> Self {
+    Self(p)
+  }
+}
+
+impl From<*const c_void> for ExternalPointer {
+  fn from(p: *const c_void) -> Self {
+    Self(p as *mut c_void)
+  }
+}
+
+impl From<ExternalPointer> for *mut c_void {
+  fn from(ep: ExternalPointer) -> Self {
+    ep.0
+  }
+}
+
+impl From<ExternalPointer> for *const c_void {
+  fn from(ep: ExternalPointer) -> Self {
+    ep.0
   }
 }
 
