@@ -27,6 +27,7 @@ deno_webgpu.workspace = true
 encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 fontdb.workspace = true
+fontique.workspace = true
 futures.workspace = true
 half = "2.7"
 log.workspace = true

@@ -3622,6 +3622,7 @@ dependencies = [
  "encoding_rs",
  "flate2",
  "fontdb",
+ "fontique",
  "futures",
  "half",
  "log",

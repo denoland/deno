@@ -116,7 +116,7 @@ const { binCrates, libCrates } = resolveWorkspaceCrates(
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
 const llvmVersion = 22;
 const installPkgsCommand =
-  `sudo apt-get install -y --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion} libfontconfig-dev`;
+  `sudo apt-get install -y --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootConfig = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Setting up sysroot
@@ -292,12 +292,6 @@ const installDenoStep = step({
   uses: "denoland/setup-deno@v2",
   with: { "deno-version": "v2.x" },
 });
-const installFontconfigStep = (ifCondition: Condition | ExpressionValue) =>
-  step({
-    name: "Install fontconfig",
-    if: ifCondition,
-    run: "sudo apt-get install -y --no-install-recommends libfontconfig-dev",
-  });
 const installNodeStep = step({
   name: "Install Node",
   uses: "actions/setup-node@v6",
@@ -1001,7 +995,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             restoreCacheStep,
             installRustStep,
             sysRootStep,
-            installFontconfigStep(isLinux),
           )
           .comesAfter(tarSourcePublishStep)(
             {
@@ -1359,7 +1352,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         installRustStep,
         installLldStep,
         sysRootStep,
-        installFontconfigStep(isLinux),
         denoArtifact.download(),
         testServerArtifact.download(),
         {
@@ -1393,7 +1385,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         cloneRepoStep,
         installRustStep,
         restoreCacheStep,
-        installFontconfigStep(isLinux),
         installWasmStep,
         // we want these crates to be Wasm compatible
         {
@@ -1655,7 +1646,6 @@ const lintJob = job("lint", {
       restoreCacheStep,
       installRustStep,
       installDenoStep,
-      installFontconfigStep(lintMatrix.os.equals("linux")),
       step.if(lintMatrix.os.equals("linux"))(
         {
           name: "test_format.js",
