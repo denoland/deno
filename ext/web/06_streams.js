@@ -445,8 +445,9 @@ const _inFlightWriteRequest = Symbol("[[inFlightWriteRequest]]");
 const _pendingAbortRequest = Symbol("[pendingAbortRequest]");
 const _pendingPullIntos = Symbol("[[pendingPullIntos]]");
 const _preventCancel = Symbol("[[preventCancel]]");
-const _onPullFulfilled = Symbol("[[onPullFulfilled]]");
-const _onPullRejected = Symbol("[[onPullRejected]]");
+// Implementation slots (not spec slots): single-bracket convention.
+const _onPullFulfilled = Symbol("[onPullFulfilled]");
+const _onPullRejected = Symbol("[onPullRejected]");
 const _pullAgain = Symbol("[[pullAgain]]");
 const _pullAlgorithm = Symbol("[[pullAlgorithm]]");
 const _pulling = Symbol("[[pulling]]");
@@ -664,8 +665,11 @@ function extractSizeAlgorithm(strategy) {
 }
 
 /**
+ * The pull algorithm may return undefined instead of a promise to signal
+ * synchronous completion (see callPullIfNeeded); the cancel algorithm must
+ * return a promise.
  * @param {() => void} startAlgorithm
- * @param {() => Promise<void>} pullAlgorithm
+ * @param {() => Promise<void> | undefined} pullAlgorithm
  * @param {(reason: any) => Promise<void>} cancelAlgorithm
  * @returns {ReadableStream}
  */
@@ -3935,7 +3939,7 @@ function readableByteStreamTee(stream) {
  * @param {ReadableStream<ArrayBuffer>} stream
  * @param {ReadableByteStreamController} controller
  * @param {() => void} startAlgorithm
- * @param {() => Promise<void>} pullAlgorithm
+ * @param {() => Promise<void> | undefined} pullAlgorithm
  * @param {(reason: any) => Promise<void>} cancelAlgorithm
  * @param {number} highWaterMark
  * @param {number | undefined} autoAllocateChunkSize
@@ -4052,7 +4056,7 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
  * @param {ReadableStream<R>} stream
  * @param {ReadableStreamDefaultController<R>} controller
  * @param {(controller: ReadableStreamDefaultController<R>) => void | Promise<void>} startAlgorithm
- * @param {(controller: ReadableStreamDefaultController<R>) => Promise<void>} pullAlgorithm
+ * @param {(controller: ReadableStreamDefaultController<R>) => Promise<void> | undefined} pullAlgorithm
  * @param {(reason: any) => Promise<void>} cancelAlgorithm
  * @param {number} highWaterMark
  * @param {(chunk: R) => number} sizeAlgorithm
