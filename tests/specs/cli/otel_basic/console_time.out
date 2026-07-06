@@ -20,7 +20,8 @@
       "droppedAttributesCount": 0,
       "flags": 0,
       "traceId": "",
-      "spanId": ""
+      "spanId": "",
+      "eventName": ""
     },
     {
       "timeUnixNano": "[WILDLINE]",
@@ -41,7 +42,8 @@
       "droppedAttributesCount": 0,
       "flags": 0,
       "traceId": "",
-      "spanId": ""
+      "spanId": "",
+      "eventName": ""
     },
     {
       "timeUnixNano": "[WILDLINE]",
@@ -62,7 +64,8 @@
       "droppedAttributesCount": 0,
       "flags": 0,
       "traceId": "",
-      "spanId": ""
+      "spanId": "",
+      "eventName": ""
     }
   ],
   "metrics": []

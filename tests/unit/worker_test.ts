@@ -855,6 +855,67 @@ Deno.test({
 });
 
 Deno.test({
+  name: "worker main-thread receives a burst of messages (sync drain)",
+  fn: async function () {
+    // Regression test for the Web `Worker` main-side receive loop's bounded
+    // sync-drain: a worker that synchronously posts many messages in one turn
+    // must have all of them delivered to the host, in order, with no drops.
+    const worker = new Worker(
+      resolveWorker("message_burst.ts"),
+      { type: "module" },
+    );
+    const count = 500;
+    const received: number[] = [];
+    const { promise, resolve } = Promise.withResolvers<void>();
+    worker.onmessage = (e) => {
+      received.push(e.data);
+      // No transferables, so `ports` must be the cheap empty frozen array.
+      assertEquals(e.ports.length, 0);
+      if (received.length === count) resolve();
+    };
+    worker.postMessage(count);
+    await promise;
+    assertEquals(received.length, count);
+    for (let i = 0; i < count; i++) {
+      assertEquals(received[i], i);
+    }
+    worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "worker onmessage re-armed between two queued messages (sync drain)",
+  fn: async function () {
+    // Regression test (mirrors WPT workers/Worker-structure-message.html): the
+    // worker replies with two messages in one turn and the host re-arms
+    // `onmessage` between them via a `.then`. The main-side sync drain must run
+    // a microtask checkpoint between the two queued messages so the second one
+    // reaches the re-armed handler instead of being delivered to the stale one.
+    const worker = new Worker(
+      resolveWorker("structure_message.ts"),
+      { type: "module" },
+    );
+    const first = await new Promise<MessageEvent>((resolve) => {
+      worker.onmessage = resolve;
+      worker.postMessage({
+        operation: "find-edges",
+        input: new ArrayBuffer(20),
+        threshold: 0.6,
+      });
+    });
+    assertEquals(first.data, "PASS");
+    const second = await new Promise<MessageEvent>((resolve) => {
+      worker.onmessage = resolve;
+    });
+    assertEquals(second.data.operation, "find-edges");
+    assert(second.data.input instanceof ArrayBuffer);
+    assertEquals(second.data.input.byteLength, 20);
+    assertEquals(second.data.threshold, 0.6);
+    worker.terminate();
+  },
+});
+
+Deno.test({
   name: "worker Deno.memoryUsage",
   fn: async function () {
     const w = new Worker(

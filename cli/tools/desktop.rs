@@ -106,6 +106,12 @@ pub async fn desktop(
     {
       desktop_flags.identifier = Some(identifier);
     }
+
+    if let Some(deep_links) = app_config.deep_links
+      && desktop_flags.deep_links.is_empty()
+    {
+      desktop_flags.deep_links = deep_links;
+    }
   }
 
   if let Some(backend) = desktop_config.backend
@@ -308,6 +314,11 @@ async fn compile_desktop(
       let entrypoint_code = detection.entrypoint_code.clone();
       let includes = detection.include_paths.clone();
       log::info!("Detected {} framework", detection.name);
+      // Run the framework's build step (e.g. `deno task build`) before its
+      // build output (`dist`, `.next`, etc.) is added to the compile includes
+      // below; otherwise the include points at a directory that doesn't exist
+      // yet and the compile fails (#35535). Mirrors `deno compile .`.
+      super::framework::run_build_command(detection, cwd)?;
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
       if detection.name == "Next.js"
@@ -368,7 +379,7 @@ async fn compile_desktop(
       Some(entrypoint_temp)
     } else {
       bail!(
-        "Could not detect a supported framework in the current directory.\nSupported frameworks: Next.js, Astro\nProvide an explicit entrypoint instead."
+        "Could not detect a supported framework in the current directory.\nSupported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\nProvide an explicit entrypoint instead."
       );
     }
   } else {
@@ -461,9 +472,9 @@ async fn compile_desktop(
     output: hmr_output_override
       .clone()
       .or_else(|| desktop_flags.output.clone()),
+    app_name: None,
     args: desktop_flags.args.clone(),
     target: desktop_flags.target.clone(),
-    watch: None,
     no_terminal: false,
     icon: match &desktop_flags.icon {
       Some(crate::args::IconConfig::Single(s)) => Some(s.clone()),
@@ -475,7 +486,7 @@ async fn compile_desktop(
     self_extracting,
     bundle: false,
     minify: false,
-    exclude_unused_npm: false,
+    exclude_unused_npm: desktop_flags.exclude_unused_npm,
   };
 
   let mut temp_flags = flags.clone();
@@ -625,6 +636,222 @@ fn make_self_extracting(
     "windows" => make_self_extracting_dir(bundle_path, format, true),
     _ => make_self_extracting_dir(bundle_path, format, false),
   }
+}
+
+/// Validate a deep-link URL scheme. Follows the RFC 3986 `scheme` grammar:
+/// `ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`. We additionally reject the
+/// common reserved schemes (`http`, `https`, `file`, `ftp`, `ws`, `wss`) since
+/// registering those as app handlers is almost never intended and would hijack
+/// normal browsing.
+fn validate_url_scheme(scheme: &str) -> Result<(), AnyError> {
+  let reserved = ["http", "https", "file", "ftp", "ws", "wss"];
+  let bail = |reason: &str| {
+    Err(deno_core::anyhow::anyhow!(
+      "Invalid deep-link scheme {scheme:?}: {reason}."
+    ))
+  };
+  match scheme.chars().next() {
+    None => return bail("scheme is empty"),
+    Some(c) if !c.is_ascii_alphabetic() => {
+      return bail("scheme must start with an ASCII letter");
+    }
+    _ => {}
+  }
+  if !scheme
+    .chars()
+    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+  {
+    return bail("scheme may only contain letters, digits, '+', '-', and '.'");
+  }
+  if reserved.contains(&scheme) {
+    return bail("scheme is reserved and cannot be used as a deep link");
+  }
+  Ok(())
+}
+
+/// Register the configured deep-link URL schemes with the OS-specific app
+/// metadata so the system routes `<scheme>://...` links to this app.
+///
+/// First pass: this writes the declarative registration into the bundle
+/// (macOS `CFBundleURLTypes`, Linux `.desktop` `MimeType` + `Exec %u`,
+/// Windows `.reg`/`.bat` helper). Delivering the opened URL into the running
+/// app (single-instance forwarding, the macOS `openURLs` Apple Event, and the
+/// `open-url` JS event) is tracked separately in the issue.
+fn register_deep_links(
+  bundle_path: &Path,
+  desktop_flags: &DesktopFlags,
+) -> Result<(), AnyError> {
+  let schemes: Vec<String> = desktop_flags
+    .deep_links
+    .iter()
+    .map(|s| s.trim().to_ascii_lowercase())
+    .filter(|s| !s.is_empty())
+    .collect();
+  if schemes.is_empty() {
+    return Ok(());
+  }
+  for scheme in &schemes {
+    validate_url_scheme(scheme)?;
+  }
+
+  let target_os = match desktop_flags.target.as_deref() {
+    Some(t) if t.contains("apple-darwin") => "macos",
+    Some(t) if t.contains("windows") => "windows",
+    Some(_) => "linux",
+    None => {
+      if cfg!(target_os = "macos") {
+        "macos"
+      } else if cfg!(target_os = "windows") {
+        "windows"
+      } else {
+        "linux"
+      }
+    }
+  };
+  match target_os {
+    "macos" => register_deep_links_macos(bundle_path, &schemes)?,
+    "windows" => register_deep_links_windows(bundle_path, &schemes)?,
+    _ => register_deep_links_linux(bundle_path, &schemes)?,
+  }
+
+  log::info!(
+    "{} {}",
+    colors::green("Deep links"),
+    schemes
+      .iter()
+      .map(|s| format!("{s}://"))
+      .collect::<Vec<_>>()
+      .join(", "),
+  );
+  Ok(())
+}
+
+/// macOS: add a single `CFBundleURLTypes` entry carrying every scheme to the
+/// bundle `Info.plist`.
+fn register_deep_links_macos(
+  bundle_path: &Path,
+  schemes: &[String],
+) -> Result<(), AnyError> {
+  let plist_path = bundle_path.join("Contents").join("Info.plist");
+  let mut dict: plist::Dictionary = plist::from_file(&plist_path)
+    .with_context(|| format!("failed to parse {}", plist_path.display()))?;
+
+  let url_name = dict
+    .get("CFBundleIdentifier")
+    .and_then(|v| v.as_string())
+    .unwrap_or("")
+    .to_string();
+
+  let mut url_type = plist::Dictionary::new();
+  url_type.insert(
+    "CFBundleURLName".to_string(),
+    plist::Value::String(url_name),
+  );
+  url_type.insert(
+    "CFBundleTypeRole".to_string(),
+    plist::Value::String("Viewer".to_string()),
+  );
+  url_type.insert(
+    "CFBundleURLSchemes".to_string(),
+    plist::Value::Array(
+      schemes.iter().cloned().map(plist::Value::String).collect(),
+    ),
+  );
+  dict.insert(
+    "CFBundleURLTypes".to_string(),
+    plist::Value::Array(vec![plist::Value::Dictionary(url_type)]),
+  );
+
+  plist::to_file_xml(&plist_path, &dict)
+    .with_context(|| format!("failed to write {}", plist_path.display()))?;
+  Ok(())
+}
+
+/// Linux: add `x-scheme-handler/<scheme>` MIME types to the `.desktop` entry
+/// and make sure `Exec=` forwards the opened URL via the `%u` field code.
+fn register_deep_links_linux(
+  bundle_path: &Path,
+  schemes: &[String],
+) -> Result<(), AnyError> {
+  let desktop_file = std::fs::read_dir(bundle_path)?
+    .filter_map(|e| e.ok().map(|e| e.path()))
+    .find(|p| p.extension().is_some_and(|e| e == "desktop"))
+    .ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "no .desktop file found in {}",
+        bundle_path.display()
+      )
+    })?;
+
+  let contents = std::fs::read_to_string(&desktop_file)?;
+  let mime = schemes
+    .iter()
+    .map(|s| format!("x-scheme-handler/{s};"))
+    .collect::<String>();
+
+  let mut out = String::with_capacity(contents.len() + mime.len() + 16);
+  let mut wrote_mime = false;
+  for line in contents.lines() {
+    if let Some(rest) = line.strip_prefix("Exec=") {
+      // The launcher must receive the URL as an argument, so ensure a `%u`
+      // field code is present exactly once.
+      if rest.contains("%u") || rest.contains("%U") {
+        out.push_str(line);
+      } else {
+        out.push_str(&format!("Exec={} %u", rest.trim_end()));
+      }
+      out.push('\n');
+    } else if let Some(rest) = line.strip_prefix("MimeType=") {
+      // Merge into the existing MimeType list.
+      out.push_str("MimeType=");
+      out.push_str(rest.trim_end());
+      if !rest.trim_end().ends_with(';') && !rest.trim_end().is_empty() {
+        out.push(';');
+      }
+      out.push_str(&mime);
+      out.push('\n');
+      wrote_mime = true;
+    } else {
+      out.push_str(line);
+      out.push('\n');
+    }
+  }
+  if !wrote_mime {
+    out.push_str(&format!("MimeType={mime}\n"));
+  }
+
+  std::fs::write(&desktop_file, out)?;
+  Ok(())
+}
+
+/// Windows: there is no in-bundle declarative registration for protocol
+/// handlers, so drop a `register-deep-links.bat` next to the launcher that
+/// writes the `HKCU\Software\Classes\<scheme>` keys. An installer (or the
+/// user) runs it once after install; the keys point back at the launcher in
+/// its install location (`%~dp0`).
+fn register_deep_links_windows(
+  bundle_path: &Path,
+  schemes: &[String],
+) -> Result<(), AnyError> {
+  // The launcher written by the Windows packaging step is `<app>.exe` (the
+  // backend binary renamed to the bundle/app name).
+  let launcher = bundle_path
+    .file_name()
+    .map(|n| format!("{}.exe", n.to_string_lossy()))
+    .unwrap_or_else(|| "launcher.exe".to_string());
+
+  let mut script = String::from("@echo off\r\nsetlocal\r\n");
+  for scheme in schemes {
+    script.push_str(&format!(
+      "reg add \"HKCU\\Software\\Classes\\{scheme}\" /ve /d \"URL:{scheme}\" /f\r\n\
+       reg add \"HKCU\\Software\\Classes\\{scheme}\" /v \"URL Protocol\" /d \"\" /f\r\n\
+       reg add \"HKCU\\Software\\Classes\\{scheme}\\shell\\open\\command\" /ve /d \"\\\"%~dp0{launcher}\\\" \\\"%%1\\\"\" /f\r\n",
+    ));
+  }
+  script.push_str("endlocal\r\n");
+
+  std::fs::write(bundle_path.join("register-deep-links.bat"), script)?;
+  Ok(())
 }
 
 /// Tar `parent/entry_name` (preserving symlinks and modes) into `dest_file`,
@@ -823,11 +1050,11 @@ fn make_self_extracting_dir(
        setlocal\r\n\
        set \"DIR=%~dp0\"\r\n\
        set \"DEST=%LOCALAPPDATA%\\{id}\\{hash}\"\r\n\
-       if not exist \"%DEST%\\{app_name}\\{app_name}.bat\" (\r\n\
+       if not exist \"%DEST%\\{app_name}\\{app_name}.exe\" (\r\n\
        \u{20} mkdir \"%DEST%\" 2>nul\r\n\
        \u{20} tar -xf \"%DIR%{payload_name}\" -C \"%DEST%\"\r\n\
        )\r\n\
-       call \"%DEST%\\{app_name}\\{app_name}.bat\" %*\r\n",
+       \"%DEST%\\{app_name}\\{app_name}.exe\" %*\r\n",
     );
     std::fs::write(bundle_path.join(format!("{app_name}.bat")), launcher)?;
   } else {
@@ -1130,6 +1357,64 @@ async fn run_desktop_hmr(
   Ok(())
 }
 
+/// Marker file written into every generated desktop app directory/bundle so a
+/// later build can recognize its own previous output and clear it, while never
+/// touching unrelated user data that happens to share the inferred app name.
+const APP_DIR_MARKER: &str = ".deno-desktop-app";
+
+/// Prepare `app_dir` to receive a freshly built bundle.
+///
+/// The app name is inferred from the entrypoint (or, for generic names like
+/// `main.ts`, the project directory), so the output path can collide with an
+/// existing user directory of the same name (e.g. `helloworld/helloworld`).
+/// Blindly `remove_dir_all`-ing that path silently destroys the user's data
+/// (issue #35510). Instead, only remove a directory we previously created —
+/// identified by `APP_DIR_MARKER` — or one that is empty. Anything else is
+/// treated as user data and we bail with instructions rather than delete it.
+fn reserve_app_dir(app_dir: &Path) -> Result<(), AnyError> {
+  let meta = match std::fs::symlink_metadata(app_dir) {
+    // Nothing there yet (or unreadable) — let the build create it.
+    Err(_) => return Ok(()),
+    Ok(meta) => meta,
+  };
+
+  if !meta.is_dir() {
+    bail!(
+      "Refusing to overwrite '{}': a file with that name already exists. \
+       Pass --output to choose a different name.",
+      app_dir.display()
+    );
+  }
+
+  // A bundle we generated carries the marker (at the directory root for
+  // Linux/Windows, or under `Contents/Resources` for a macOS `.app`).
+  let is_ours = app_dir.join(APP_DIR_MARKER).exists()
+    || app_dir
+      .join("Contents")
+      .join("Resources")
+      .join(APP_DIR_MARKER)
+      .exists();
+  let is_empty = std::fs::read_dir(app_dir)
+    .map(|mut entries| entries.next().is_none())
+    .unwrap_or(false);
+
+  if !is_ours && !is_empty {
+    bail!(
+      "Refusing to delete existing directory '{}': it was not created by \
+       `deno desktop`. The app name was inferred from the entrypoint or the \
+       project directory and collided with this directory. Pass --output to \
+       choose a different name, or remove the directory yourself if it is a \
+       leftover from an older build.",
+      app_dir.display()
+    );
+  }
+
+  std::fs::remove_dir_all(app_dir).with_context(|| {
+    format!("failed to clear app directory {}", app_dir.display())
+  })?;
+  Ok(())
+}
+
 /// Package a compiled desktop dylib into a platform-specific app bundle.
 async fn package_desktop_app(
   dylib_path: &Path,
@@ -1179,12 +1464,14 @@ async fn package_desktop_app(
 /// Directory structure:
 /// ```text
 /// AppName/
-///   AppName.bat         (launcher)
-///   laufey.exe             (LAUFEY backend binary)
+///   AppName.exe         (LAUFEY backend binary, renamed to the app name)
 ///   libcef.dll, ...     (CEF support files, if any)
-///   denort.dll          (compiled Deno runtime + user code)
+///   AppName.dll         (compiled Deno runtime + user code)
 ///   AppIcon.ico         (optional)
 /// ```
+///
+/// The backend binary is renamed to `AppName.exe` so it auto-loads the
+/// co-located `AppName.dll` runtime — no `.bat` launcher is needed.
 async fn package_windows_app_dir(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
@@ -1205,12 +1492,11 @@ async fn package_windows_app_dir(
     .to_string_lossy()
     .to_string();
 
-  if app_dir.exists() {
-    std::fs::remove_dir_all(&app_dir)?;
-  }
+  reserve_app_dir(&app_dir)?;
 
   // Copy LAUFEY backend directory (binary + CEF support files) as the shell.
   crate::tools::compile::copy_dir_all(&laufey_dir, &app_dir)?;
+  std::fs::write(app_dir.join(APP_DIR_MARKER), b"")?;
 
   // Drop any self-extracting runtime cache dir that tagged along.
   let laufey_exe_stem = Path::new(&laufey_binary_name)
@@ -1231,33 +1517,22 @@ async fn package_windows_app_dir(
   let dest_dylib = app_dir.join(dylib_filename);
   std::fs::copy(dylib_path, &dest_dylib)?;
 
-  // Create a .bat launcher that invokes the backend with --runtime.
-  // Validate every name we interpolate: cmd.exe expands `%VAR%` and
-  // treats `^` `&` etc. as command separators even inside `"..."`.
-  let dylib_filename_str = dylib_filename.to_string_lossy();
+  // Rename the LAUFEY backend binary to the app name (`<app>.exe`) so it sits
+  // next to `<app>.dll` and auto-loads it: laufey's LaufeyFindColocatedRuntime
+  // resolves a runtime library whose base name matches the executable's, in the
+  // executable's own directory. A bare double-click of `<app>.exe` therefore
+  // "just works" with no `.bat` wrapper and no `--runtime` argument.
+  //
+  // This also fixes runtime loading from paths containing a space (e.g. the
+  // default MSI target `C:\Program Files\`): laufey resolves the co-located
+  // runtime from its own module path rather than a `--runtime` string, avoiding
+  // the historical `ERROR_MOD_NOT_FOUND` (126) failure on such paths.
   validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
-  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
-  let launcher_path = app_dir.join(format!("{}.bat", app_name));
-  // Pass the runtime dylib to laufey by its bare filename, not a full path. The
-  // laufey backend mishandles a `--runtime` path that contains a space (it fails
-  // to load the dylib with error 126, ERROR_MOD_NOT_FOUND, when it re-launches),
-  // which broke every install location with a space in it — most importantly the
-  // default MSI target `C:\Program Files\`. laufey resolves a bare dylib name
-  // against its own executable's directory (where the dylib is co-located), so a
-  // plain filename loads correctly regardless of the install path or the current
-  // working directory. The laufey binary itself is launched by cmd with normal
-  // quoting, which handles spaces fine.
-  std::fs::write(
-    &launcher_path,
-    format!(
-      "@echo off\r\n\
-       set DIR=%~dp0\r\n\
-       \"%DIR%{laufey_binary}\" --runtime \"{dylib}\" %*\r\n",
-      laufey_binary = laufey_binary_name,
-      dylib = dylib_filename_str,
-    ),
-  )?;
+  let launcher_path = app_dir.join(format!("{}.exe", app_name));
+  let staged_backend = app_dir.join(&laufey_binary_name);
+  if staged_backend != launcher_path {
+    std::fs::rename(&staged_backend, &launcher_path)?;
+  }
 
   // Handle icon — drop an .ico next to the launcher. Embedding the icon
   // into the .exe itself requires rcedit or equivalent and is out of scope.
@@ -1288,6 +1563,9 @@ async fn package_windows_app_dir(
     }
   }
 
+  // Drop the deep-link registration script next to the launcher.
+  register_deep_links(&app_dir, desktop_flags)?;
+
   // Remove the standalone dylib (it's now inside the app dir).
   let _ = std::fs::remove_file(dylib_path);
 
@@ -1299,12 +1577,14 @@ async fn package_windows_app_dir(
 /// Directory structure:
 /// ```text
 /// AppName/
-///   AppName             (launcher shell script)
-///   laufey                 (LAUFEY backend binary)
+///   AppName             (LAUFEY backend binary, renamed to the app name)
 ///   libcef.so, ...      (CEF support files, if any)
-///   libdenort.so        (compiled Deno runtime + user code)
+///   AppName.so          (compiled Deno runtime + user code)
 ///   AppIcon.png         (optional)
 /// ```
+///
+/// The backend binary is renamed to `AppName` so it auto-loads the co-located
+/// `AppName.so` runtime — no launcher shell script is needed.
 async fn package_linux_app_dir(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
@@ -1331,12 +1611,11 @@ async fn package_linux_app_dir(
     .to_string_lossy()
     .to_string();
 
-  if app_dir.exists() {
-    std::fs::remove_dir_all(&app_dir)?;
-  }
+  reserve_app_dir(&app_dir)?;
 
   // Copy LAUFEY backend directory (binary + CEF support files) as the shell.
   crate::tools::compile::copy_dir_all(&laufey_dir, &app_dir)?;
+  std::fs::write(app_dir.join(APP_DIR_MARKER), b"")?;
 
   // Drop any self-extracting runtime cache dir that tagged along.
   let laufey_exe_stem = Path::new(&laufey_binary_name)
@@ -1352,35 +1631,22 @@ async fn package_linux_app_dir(
     let _ = std::fs::remove_file(&cache_file);
   }
 
-  // Copy the compiled dylib alongside the backend binary.
-  let dylib_filename = parts.file_name;
-  let dest_dylib = app_dir.join(dylib_filename);
+  // Copy the compiled dylib as `<app>.so` so the renamed backend binary
+  // auto-loads it: laufey's LaufeyFindColocatedRuntime resolves `<exe-base>.so`
+  // next to the binary. It reads the real path via `/proc/self/exe`, which
+  // follows the `/usr/bin/<pkg>` -> `/usr/lib/<pkg>/<app>` symlink that
+  // `.deb`/`.rpm` install (issue #35623), so no wrapper script is needed.
+  validate_launcher_name(&app_name, "app name")?;
+  let dest_dylib = app_dir.join(format!("{}.so", app_name));
   std::fs::copy(dylib_path, &dest_dylib)?;
 
-  // Create a shell launcher that invokes the backend with --runtime.
-  // --ozone-platform=x11 forces CEF to create X11 windows (via XWayland on
-  // Wayland sessions). The Linux LAUFEY mouse/focus/resize event monitor uses
-  // XI2 on X11 and does not support Wayland.
-  // GDK_BACKEND=x11 aligns GDK with Ozone so GDK_IS_X11_DISPLAY is true.
-  //
-  // Validate every name we interpolate: bash expands `$VAR`, backticks,
-  // and `$(...)` even inside `"..."`.
-  let dylib_filename_str = dylib_filename.to_string_lossy();
-  validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
-  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
+  // Rename the LAUFEY backend binary to the app name so `<app>` is the launcher
+  // the user runs directly — no `--runtime` argument and no shell wrapper.
   let launcher_path = app_dir.join(&app_name);
-  std::fs::write(
-    &launcher_path,
-    format!(
-      "#!/bin/sh\n\
-       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
-       export GDK_BACKEND=x11\n\
-       exec \"$DIR/{laufey_binary}\" --ozone-platform=x11 --runtime \"$DIR/{dylib}\" \"$@\"\n",
-      laufey_binary = laufey_binary_name,
-      dylib = dylib_filename_str,
-    ),
-  )?;
+  let staged_backend = app_dir.join(&laufey_binary_name);
+  if staged_backend != launcher_path {
+    std::fs::rename(&staged_backend, &launcher_path)?;
+  }
   #[cfg(unix)]
   {
     use std::os::unix::fs::PermissionsExt;
@@ -1455,6 +1721,9 @@ async fn package_linux_app_dir(
       desktop_entry,
     )?;
   }
+
+  // Merge any deep-link schemes into the `.desktop` entry written above.
+  register_deep_links(&app_dir, desktop_flags)?;
 
   // Remove the standalone dylib (it's now inside the app dir).
   let _ = std::fs::remove_file(dylib_path);
@@ -1949,18 +2218,24 @@ fn laufey_dev_dir() -> Option<PathBuf> {
 /// Find a built backend binary inside a laufey checkout. Mirrors the well-known
 /// build-tree paths produced by laufey's Makefile + Nix flakes.
 fn locate_dev_backend_binary(laufey: &Path, backend: &str) -> Option<PathBuf> {
+  // The bare build-tree binaries carry the host executable suffix — `.exe` on
+  // Windows, empty elsewhere — so e.g. `cargo build` on Windows emits
+  // `laufey_winit.exe`. The macOS `.app` bundle paths never apply on Windows,
+  // so leaving them unsuffixed is fine.
+  let exe =
+    |rel: &str| laufey.join(format!("{rel}{}", std::env::consts::EXE_SUFFIX));
   let candidates: Vec<PathBuf> = match backend {
     "cef" => vec![
       laufey.join("result-cef/Applications/laufey.app/Contents/MacOS/laufey"),
       laufey.join("result/Applications/laufey.app/Contents/MacOS/laufey"),
       laufey.join("cef/build/Release/laufey.app/Contents/MacOS/laufey"),
       laufey.join("cef/build/laufey.app/Contents/MacOS/laufey"),
-      laufey.join("cef/build/Release/laufey"),
-      laufey.join("cef/build/laufey"),
+      exe("cef/build/Release/laufey"),
+      exe("cef/build/laufey"),
     ],
     "raw" => vec![
-      laufey.join("target/release/laufey_winit"),
-      laufey.join("target/debug/laufey_winit"),
+      exe("target/release/laufey_winit"),
+      exe("target/debug/laufey_winit"),
     ],
     _ => vec![
       laufey.join(
@@ -1969,7 +2244,7 @@ fn locate_dev_backend_binary(laufey: &Path, backend: &str) -> Option<PathBuf> {
       laufey
         .join("result/Applications/laufey_webview.app/Contents/MacOS/laufey_webview"),
       laufey.join("webview/build/laufey_webview.app/Contents/MacOS/laufey_webview"),
-      laufey.join("webview/build/laufey_webview"),
+      exe("webview/build/laufey_webview"),
     ],
   };
   candidates.into_iter().find(|p| p.exists())
@@ -2587,19 +2862,34 @@ fn dylib_parts(dylib_path: &Path) -> Result<DylibParts<'_>, AnyError> {
   })
 }
 
+/// The runtime dylib filename each macOS LAUFEY backend resolves when the
+/// backend binary is the bundle's CFBundleExecutable (i.e. no `--runtime`
+/// argument is passed). The two macOS backends use different conventions:
+/// - `webview` searches a hardcoded `libruntime.dylib` via [NSBundle mainBundle]
+///   (laufey `webview/src/main_mac.mm`).
+/// - `cef` derives `<backend-executable-basename>.dylib` next to the binary
+///   (laufey `LaufeyFindColocatedRuntime`, `cef/src/runtime_loader.cc`).
+fn macos_runtime_dylib_name(backend: &str, laufey_exe_stem: &str) -> String {
+  if backend == "cef" {
+    format!("{laufey_exe_stem}.dylib")
+  } else {
+    "libruntime.dylib".to_string()
+  }
+}
+
 /// Create a macOS .app bundle from the compiled desktop dylib.
 ///
 /// Bundle structure:
 /// ```text
 /// AppName.app/
 ///   Contents/
-///     Info.plist
+///     Info.plist          (CFBundleExecutable = the LAUFEY backend binary)
 ///     MacOS/
-///       AppName          (launcher script)
-///       laufey_webview      (LAUFEY backend binary)
-///       libapp.dylib     (compiled Deno runtime + user code)
+///       laufey_webview    (LAUFEY backend binary; the bundle executable)
+///       libruntime.dylib  (compiled Deno runtime + user code; the `cef`
+///                          backend uses `<backend-executable>.dylib` instead)
 ///     Resources/
-///       AppIcon.icns     (optional)
+///       AppIcon.icns      (optional)
 /// ```
 async fn package_macos_app_bundle(
   dylib_path: &Path,
@@ -2609,6 +2899,11 @@ async fn package_macos_app_bundle(
 ) -> Result<PathBuf, AnyError> {
   let parts = dylib_parts(dylib_path)?;
   let app_name = parts.app_name.clone();
+  // app_name (from the --output stem) flows unescaped into the Info.plist XML
+  // and the synthesized bundle id, so reject anything outside the safe charset
+  // (the same guard the removed shell launcher applied) instead of emitting a
+  // malformed plist that silently fails to launch.
+  validate_launcher_name(&app_name, "app name")?;
   let app_bundle = parts.parent.join(format!("{}.app", app_name));
 
   // Find the LAUFEY backend .app and its main executable.
@@ -2630,10 +2925,9 @@ async fn package_macos_app_bundle(
     );
   }
 
-  // Remove existing bundle.
-  if app_bundle.exists() {
-    std::fs::remove_dir_all(&app_bundle)?;
-  }
+  // Remove an existing bundle we previously built; never delete unrelated
+  // user data that collided with the inferred `<name>.app` (issue #35510).
+  reserve_app_dir(&app_bundle)?;
 
   // Copy the entire LAUFEY .app as the shell (CEF needs Frameworks/, Resources/, etc.).
   crate::tools::compile::copy_dir_all(&laufey_app, &app_bundle)?;
@@ -2642,6 +2936,9 @@ async fn package_macos_app_bundle(
   let macos_dir = contents_dir.join("MacOS");
   let resources_dir = contents_dir.join("Resources");
   std::fs::create_dir_all(&resources_dir)?;
+  // Marker lives under Resources/ (not the bundle root) so it is sealed as a
+  // normal resource when the bundle is codesigned below.
+  std::fs::write(resources_dir.join(APP_DIR_MARKER), b"")?;
 
   // The backend binary extracts its self-extracting VFS to a sibling
   // `.<exe>` dir on first run. If the source laufey.app was ever run, that dir
@@ -2662,40 +2959,17 @@ async fn package_macos_app_bundle(
   // Strip unnecessary bulk from the CEF framework.
   strip_cef_bloat(&contents_dir);
 
-  // Copy the compiled dylib.
-  let dylib_filename = parts.file_name;
-  let dest_dylib = macos_dir.join(dylib_filename);
+  // Copy the compiled dylib under the name the active backend resolves without
+  // a `--runtime` argument (see `macos_runtime_dylib_name`). We deliberately do
+  // NOT write a shell-script launcher that execs the backend with `--runtime`:
+  // under LaunchServices (open / Finder / double-click) that `exec` breaks the
+  // app's foreground-GUI registration, so an `NSStatusItem` (Deno.Tray) is
+  // created but never attaches to the menu bar. Instead the backend binary is
+  // the bundle's CFBundleExecutable directly (see Info.plist below), so the
+  // process LaunchServices launches IS the GUI process. See denoland/deno#35619.
+  let dest_dylib =
+    macos_dir.join(macos_runtime_dylib_name(backend, &laufey_exe_stem));
   std::fs::copy(dylib_path, &dest_dylib)?;
-
-  // Create launcher script as the main executable. Validate every name
-  // we interpolate: bash expands `$VAR`, backticks, and `$(...)` even
-  // inside `"..."`.
-  let dylib_filename_str = dylib_filename.to_string_lossy();
-  validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(
-    &laufey_executable_name,
-    "LAUFEY backend executable name",
-  )?;
-  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
-  let launcher_path = macos_dir.join(&app_name);
-  std::fs::write(
-    &launcher_path,
-    format!(
-      "#!/bin/sh\n\
-       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
-       exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
-      laufey_binary = laufey_executable_name,
-      dylib = dylib_filename_str,
-    ),
-  )?;
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(
-      &launcher_path,
-      std::fs::Permissions::from_mode(0o755),
-    )?;
-  }
 
   // Resolve the bundle identifier. The user-configured `identifier` is
   // preferred; otherwise we synthesize one from the app name. The
@@ -2715,48 +2989,14 @@ async fn package_macos_app_bundle(
     }
   };
 
-  // Generate Info.plist.
-  let has_icon = desktop_flags.icon.is_some();
-  let info_plist = format!(
-    r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDevelopmentRegion</key>
-  <string>en</string>
-  <key>CFBundleExecutable</key>
-  <string>{app_name}</string>
-  <key>CFBundleIconFile</key>
-  <string>{icon_file}</string>
-  <key>CFBundleIdentifier</key>
-  <string>{bundle_id}</string>
-  <key>CFBundleInfoDictionaryVersion</key>
-  <string>6.0</string>
-  <key>CFBundleName</key>
-  <string>{app_name}</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>1.0</string>
-  <key>CFBundleVersion</key>
-  <string>1.0.0</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>10.15</string>
-  <key>NSHighResolutionCapable</key>
-  <true/>
-  <key>NSSupportsAutomaticGraphicsSwitching</key>
-  <true/>
-  <key>NSAppTransportSecurity</key>
-  <dict>
-    <key>NSAllowsLocalNetworking</key>
-    <true/>
-  </dict>
-</dict>
-</plist>
-"#,
-    app_name = app_name,
-    bundle_id = bundle_id,
-    icon_file = if has_icon { "AppIcon" } else { "" },
+  // Generate Info.plist. The backend binary is the CFBundleExecutable so
+  // there is no shell-script `exec` between LaunchServices and the GUI
+  // process (which would break tray registration — see above).
+  let info_plist = render_macos_info_plist(
+    &app_name,
+    &bundle_id,
+    &laufey_executable_name,
+    desktop_flags.icon.is_some(),
   );
   std::fs::write(contents_dir.join("Info.plist"), info_plist)?;
 
@@ -2786,6 +3026,12 @@ async fn package_macos_app_bundle(
   //     persistent identity rather than re-prompting on every rebuild.
   // We skip on non-macOS hosts (cross-build) since `codesign(1)` only
   // exists on macOS.
+  //
+  // Register any deep-link URL schemes before signing: codesign seals the
+  // bundle contents, so mutating `Info.plist` afterwards would invalidate
+  // the signature and the app would be rejected on launch.
+  register_deep_links(&app_bundle, desktop_flags)?;
+
   let codesign_identity = desktop_flags.codesign_identity.as_deref().or(
     if cfg!(target_os = "macos") {
       Some("-")
@@ -2832,6 +3078,71 @@ async fn package_macos_app_bundle(
   let _ = std::fs::remove_file(dylib_path);
 
   Ok(app_bundle)
+}
+
+// Keep the generated bundle metadata aligned with laufey's macOS app plist,
+// while carrying the TCC usage-description keys desktop apps need for
+// microphone/camera/audio-capture prompts.
+fn render_macos_info_plist(
+  app_name: &str,
+  bundle_id: &str,
+  executable_name: &str,
+  has_icon: bool,
+) -> String {
+  format!(
+    r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>{executable_name}</string>
+  <key>CFBundleIconFile</key>
+  <string>{icon_file}</string>
+  <key>CFBundleIdentifier</key>
+  <string>{bundle_id}</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>{app_name}</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1.0.0</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>10.15</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSPrincipalClass</key>
+  <string>LaufeyApplication</string>
+  <key>NSSupportsAutomaticGraphicsSwitching</key>
+  <true/>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>{app_name} requires access to the microphone</string>
+  <key>NSCameraUsageDescription</key>
+  <string>{app_name} requires access to the camera</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>{app_name} requires access to audio capture</string>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>{app_name} requires access to Bluetooth</string>
+  <key>NSBluetoothPeripheralUsageDescription</key>
+  <string>{app_name} requires access to Bluetooth</string>
+</dict>
+</plist>
+"#,
+    app_name = app_name,
+    bundle_id = bundle_id,
+    executable_name = executable_name,
+    icon_file = if has_icon { "AppIcon" } else { "" },
+  )
 }
 
 /// Wrap a macOS `.app` bundle in a drag-to-Applications `.dmg` installer.
@@ -3025,6 +3336,12 @@ fn create_linux_appimage(
   let runtime_elf = appimage_runtime_for_target(target)?;
 
   let mut writer = backhand::FilesystemWriter::default();
+  let compressor = backhand::FilesystemCompressor::new(
+    backhand::compression::Compressor::Zstd,
+    None,
+  )
+  .context("Failed to configure zstd SquashFS compressor")?;
+  writer.set_compressor(compressor);
 
   // Pack everything from the staged app dir into the SquashFS root.
   push_dir_contents_to_squashfs(&mut writer, app_dir)?;
@@ -3925,23 +4242,21 @@ fn create_windows_msi(
 
   // Locate the laufey launcher in the install root so we can author a Start Menu
   // shortcut to it (otherwise the installed app is not discoverable — there is no
-  // icon anywhere, only files under Program Files). The shortcut targets the
-  // laufey exe directly with `--runtime <dylib>` so launching it opens the app's
-  // window with no console, mirroring the `.bat` launcher. laufey resolves the
-  // bare dylib name against its own directory, so no path (and no space) is
-  // needed in the arguments.
+  // icon anywhere, only files under Program Files). The launcher is the backend
+  // binary renamed to `<app>.exe`; it auto-loads the co-located `<app>.dll`
+  // runtime, so the shortcut targets it directly with no arguments.
+  let launcher_exe = format!("{app_name}.exe").to_ascii_lowercase();
   let shortcut_target = rel_files
     .iter()
     .zip(files.iter())
     .find(|((rel, _), _)| {
       rel.parent() == Some(Path::new(""))
-        && rel.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-          let n = n.to_ascii_lowercase();
-          n.starts_with("laufey") && n.ends_with(".exe")
-        })
+        && rel
+          .file_name()
+          .and_then(|n| n.to_str())
+          .is_some_and(|n| n.to_ascii_lowercase() == launcher_exe)
     })
     .map(|(_, f)| (f.key.clone(), f.component.clone()));
-  let dylib_name = format!("{app_name}.dll");
 
   // The all-users Start Menu folder that hosts the app shortcut. Only added when
   // we found a launcher to point at.
@@ -4214,12 +4529,12 @@ fn create_windows_msi(
       Value::Str(launcher_comp.clone()),
       // Non-advertised shortcut: `[#key]` resolves to the installed exe's path.
       Value::Str(format!("[#{launcher_key}]")),
-      Value::Str(format!("--runtime \"{dylib_name}\"")),
-      Value::Null,                          // Description
-      Value::Null,                          // Hotkey
-      Value::Null,                          // Icon_
-      Value::Null,                          // IconIndex
-      Value::Null,                          // ShowCmd
+      Value::Null, // Arguments (co-located auto-load)
+      Value::Null, // Description
+      Value::Null, // Hotkey
+      Value::Null, // Icon_
+      Value::Null, // IconIndex
+      Value::Null, // ShowCmd
       Value::Str("INSTALLDIR".to_string()), // WkDir
     ]))?;
   }
@@ -5022,6 +5337,56 @@ mod disclaim_spawn {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  // --- macOS Info.plist ---
+
+  #[test]
+  fn macos_info_plist_includes_principal_class_and_tcc_usage_strings() {
+    let plist = render_macos_info_plist(
+      "Deno Demo",
+      "com.deno.demo",
+      "laufey_webview",
+      true,
+    );
+    assert!(plist.contains("<string>LaufeyApplication</string>"));
+    // The backend binary must be the CFBundleExecutable (not a shell-script
+    // launcher named after the app) so LaunchServices launches the GUI
+    // process directly — otherwise the tray icon never attaches. #35619.
+    assert!(plist.contains(
+      "<key>CFBundleExecutable</key>\n  <string>laufey_webview</string>"
+    ));
+    assert!(
+      plist.contains("<key>NSMicrophoneUsageDescription</key>")
+        && plist.contains("Deno Demo requires access to the microphone")
+    );
+    assert!(
+      plist.contains("<key>NSCameraUsageDescription</key>")
+        && plist.contains("Deno Demo requires access to the camera")
+    );
+    assert!(
+      plist.contains("<key>NSAudioCaptureUsageDescription</key>")
+        && plist.contains("Deno Demo requires access to audio capture")
+    );
+    assert!(
+      plist.contains("<key>NSBluetoothAlwaysUsageDescription</key>")
+        && plist.contains("Deno Demo requires access to Bluetooth")
+    );
+    assert!(plist.contains("<string>AppIcon</string>"));
+  }
+
+  #[test]
+  fn macos_runtime_dylib_name_is_backend_specific() {
+    // webview resolves a hardcoded libruntime.dylib via [NSBundle mainBundle];
+    // cef resolves <executable-basename>.dylib next to the backend binary.
+    assert_eq!(
+      macos_runtime_dylib_name("webview", "laufey_webview"),
+      "libruntime.dylib"
+    );
+    assert_eq!(
+      macos_runtime_dylib_name("cef", "laufey_cef"),
+      "laufey_cef.dylib"
+    );
+  }
 
   // --- laufey_archive_name / laufey_release_url ---
 
@@ -5927,10 +6292,15 @@ def456  other.zip
   #[test]
   fn locate_dev_backend_winit_target_paths() {
     let tmp = tempfile::tempdir().unwrap();
-    let p = tmp.path().join("target/release/laufey_winit");
+    // `raw` is the public backend name; the dev binary is `laufey_winit`,
+    // carrying the host executable suffix (`.exe` on Windows) — without it
+    // LAUFEY_DEV_DIR could never resolve a backend on Windows.
+    let p = tmp.path().join(format!(
+      "target/release/laufey_winit{}",
+      std::env::consts::EXE_SUFFIX
+    ));
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(&p, b"binary").unwrap();
-    // `raw` is the public backend name; the binary file is `laufey_winit`.
     let found = locate_dev_backend_binary(tmp.path(), "raw");
     assert_eq!(found.as_deref(), Some(p.as_path()));
   }
@@ -6142,7 +6512,7 @@ def456  other.zip
     assert!(err.to_string().contains("CFBundleIdentifier"));
   }
 
-  // --- Linux .deb / .rpm packaging ---
+  // --- Linux packaging ---
 
   #[test]
   fn debian_package_name_sanitizes() {
@@ -6183,9 +6553,11 @@ def456  other.zip
   fn fake_linux_app_dir(parent: &Path, app_name: &str) -> PathBuf {
     let app_dir = parent.join(app_name);
     std::fs::create_dir_all(&app_dir).unwrap();
-    std::fs::write(app_dir.join(app_name), "#!/bin/sh\nexec ./laufey\n")
+    // The backend binary is renamed to `<app>` and auto-loads the co-located
+    // `<app>.so`; there is no launcher shell script.
+    std::fs::write(app_dir.join(app_name), b"\x7fELFfake-bin").unwrap();
+    std::fs::write(app_dir.join(format!("{app_name}.so")), b"\x7fELFfake")
       .unwrap();
-    std::fs::write(app_dir.join("libdenort.so"), b"\x7fELFfake").unwrap();
     std::fs::write(app_dir.join("AppIcon.png"), STUB_ICON_PNG).unwrap();
     app_dir
   }
@@ -6203,9 +6575,11 @@ def456  other.zip
       backend: None,
       all_targets: false,
       identifier: None,
+      deep_links: Vec::new(),
       codesign_identity: None,
       inspect_renderer: None,
       compress: None,
+      exclude_unused_npm: false,
     }
   }
 
@@ -6215,6 +6589,29 @@ def456  other.zip
     let mut out = Vec::new();
     dec.read_to_end(&mut out).unwrap();
     out
+  }
+
+  #[test]
+  fn appimage_uses_runtime_supported_zstd_squashfs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
+    let appimage_path = tmp.path().join("MyApp.AppImage");
+    let target = Some("x86_64-unknown-linux-gnu");
+    create_linux_appimage(&app_dir, &appimage_path, target).unwrap();
+
+    let runtime_offset =
+      appimage_runtime_for_target(target).unwrap().len() as u64;
+    let appimage =
+      std::io::BufReader::new(std::fs::File::open(&appimage_path).unwrap());
+    let filesystem = backhand::FilesystemReader::from_reader_with_offset(
+      appimage,
+      runtime_offset,
+    )
+    .unwrap();
+    assert_eq!(
+      filesystem.compressor,
+      backhand::compression::Compressor::Zstd
+    );
   }
 
   #[test]
@@ -6288,7 +6685,7 @@ def456  other.zip
       paths.push(p);
     }
     assert!(paths.iter().any(|p| p == "usr/lib/myapp/MyApp"));
-    assert!(paths.iter().any(|p| p == "usr/lib/myapp/libdenort.so"));
+    assert!(paths.iter().any(|p| p == "usr/lib/myapp/MyApp.so"));
     assert!(
       paths
         .iter()
@@ -6400,13 +6797,12 @@ def456  other.zip
   fn fake_windows_app_dir(parent: &Path, app_name: &str) -> PathBuf {
     let app_dir = parent.join(app_name);
     std::fs::create_dir_all(&app_dir).unwrap();
-    std::fs::write(
-      app_dir.join(format!("{app_name}.bat")),
-      "@echo off\r\nlaufey.exe --runtime denort.dll %*\r\n",
-    )
-    .unwrap();
-    std::fs::write(app_dir.join("laufey.exe"), b"MZfake-exe").unwrap();
-    std::fs::write(app_dir.join("denort.dll"), b"MZfake-dll").unwrap();
+    // The backend binary is renamed to `<app>.exe` and auto-loads the
+    // co-located `<app>.dll`; there is no `.bat` wrapper.
+    std::fs::write(app_dir.join(format!("{app_name}.exe")), b"MZfake-exe")
+      .unwrap();
+    std::fs::write(app_dir.join(format!("{app_name}.dll")), b"MZfake-dll")
+      .unwrap();
     let locales = app_dir.join("locales");
     std::fs::create_dir_all(&locales).unwrap();
     std::fs::write(locales.join("en-US.pak"), b"pakdata").unwrap();
@@ -6482,17 +6878,16 @@ def456  other.zip
       })
       .collect();
     files.sort_by_key(|f| f.2);
-    assert_eq!(files.len(), 4, "4 files staged: {files:?}");
+    assert_eq!(files.len(), 3, "3 files staged: {files:?}");
     let long_names: Vec<&str> = files
       .iter()
       .map(|(_, name, _)| name.rsplit('|').next().unwrap())
       .collect();
-    assert!(long_names.contains(&"MyApp.bat"));
-    assert!(long_names.contains(&"laufey.exe"));
-    assert!(long_names.contains(&"denort.dll"));
+    assert!(long_names.contains(&"MyApp.exe"));
+    assert!(long_names.contains(&"MyApp.dll"));
     assert!(long_names.contains(&"en-US.pak"));
     let seqs: Vec<i32> = files.iter().map(|f| f.2).collect();
-    assert_eq!(seqs, vec![1, 2, 3, 4], "sequence must be contiguous 1..N");
+    assert_eq!(seqs, vec![1, 2, 3], "sequence must be contiguous 1..N");
 
     // Two components: one for the root dir, one for locales/.
     let comps: Vec<String> = package
@@ -6515,7 +6910,7 @@ def456  other.zip
     // member name is the MSI File key.
     let key_for_dll = files
       .iter()
-      .find(|(_, name, _)| name.ends_with("denort.dll"))
+      .find(|(_, name, _)| name.ends_with("MyApp.dll"))
       .map(|(key, _, _)| key.clone())
       .unwrap();
     let mut cab_bytes = Vec::new();
@@ -6600,8 +6995,8 @@ def456  other.zip
   #[test]
   fn msi_authors_start_menu_shortcut() {
     let tmp = tempfile::tempdir().unwrap();
-    // fake_windows_app_dir stages a `laufey.exe`, which is detected as the
-    // launcher the shortcut points at.
+    // fake_windows_app_dir stages `MyApp.exe`, the renamed backend binary the
+    // shortcut points at.
     let app_dir = fake_windows_app_dir(tmp.path(), "MyApp");
     let msi_path = tmp.path().join("MyApp.msi");
     create_windows_msi(
@@ -6621,9 +7016,9 @@ def456  other.zip
       .collect();
     assert!(dirs.iter().any(|d| d == "ProgramMenuFolder"));
 
-    // Exactly one shortcut, targeting the laufey launcher (`[#fkey]`) with
-    // `--runtime "<app>.dll"` and running from INSTALLDIR — no console window and
-    // no spaced path handed to laufey.
+    // Exactly one shortcut, targeting `<app>.exe` (`[#fkey]`) with no arguments
+    // (it auto-loads the co-located `<app>.dll`) and running from INSTALLDIR —
+    // no console window.
     let shortcuts: Vec<_> = package
       .select_rows(msi::Select::table("Shortcut"))
       .unwrap()
@@ -6631,7 +7026,7 @@ def456  other.zip
     assert_eq!(shortcuts.len(), 1);
     let s = &shortcuts[0];
     assert_eq!(s["Directory_"].as_str(), Some("ProgramMenuFolder"));
-    assert_eq!(s["Arguments"].as_str(), Some("--runtime \"MyApp.dll\""));
+    assert_eq!(s["Arguments"].as_str(), None);
     assert_eq!(s["WkDir"].as_str(), Some("INSTALLDIR"));
     assert!(s["Target"].as_str().unwrap().starts_with("[#"));
 
@@ -6643,5 +7038,303 @@ def456  other.zip
       .collect();
     assert!(actions.iter().any(|a| a == "CreateShortcuts"));
     assert!(actions.iter().any(|a| a == "RemoveShortcuts"));
+  }
+
+  // --- deep links ---
+
+  #[test]
+  fn validate_url_scheme_accepts_canonical() {
+    for ok in &["acme", "my-app", "x", "com.acme.app", "a1+2.3-4", "App"] {
+      assert!(validate_url_scheme(ok).is_ok(), "{ok:?} should be accepted");
+    }
+  }
+
+  #[test]
+  fn validate_url_scheme_rejects_bad_shapes() {
+    let cases = &[
+      ("", "empty"),
+      ("1acme", "leading digit"),
+      ("-acme", "leading hyphen"),
+      (".acme", "leading dot"),
+      ("acme app", "space"),
+      ("acme/app", "slash"),
+      ("acme://", "colon and slashes"),
+      ("acme_app", "underscore"),
+      ("acmé", "non-ascii"),
+    ];
+    for (bad, why) in cases {
+      assert!(
+        validate_url_scheme(bad).is_err(),
+        "{bad:?} should be rejected ({why})"
+      );
+    }
+  }
+
+  #[test]
+  fn validate_url_scheme_rejects_reserved() {
+    // Registering these as app handlers would hijack normal browsing.
+    for reserved in &["http", "https", "file", "ftp", "ws", "wss"] {
+      assert!(
+        validate_url_scheme(reserved).is_err(),
+        "{reserved:?} must be rejected as reserved"
+      );
+    }
+  }
+
+  /// Build a minimal macOS `.app` skeleton with an `Info.plist` carrying the
+  /// given bundle id, returning the bundle root.
+  fn fake_macos_bundle(
+    parent: &std::path::Path,
+    bundle_id: &str,
+  ) -> std::path::PathBuf {
+    let bundle = parent.join("MyApp.app");
+    let contents = bundle.join("Contents");
+    std::fs::create_dir_all(&contents).unwrap();
+    write_helper_plist(&contents.join("Info.plist"), bundle_id);
+    bundle
+  }
+
+  #[test]
+  fn deep_links_macos_writes_cfbundleurltypes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let bundle = fake_macos_bundle(tmp.path(), "com.acme.myapp");
+    register_deep_links_macos(
+      &bundle,
+      &["acme".to_string(), "acme-beta".to_string()],
+    )
+    .unwrap();
+
+    let dict: plist::Dictionary =
+      plist::from_file(bundle.join("Contents/Info.plist")).unwrap();
+    let url_types = dict
+      .get("CFBundleURLTypes")
+      .and_then(|v| v.as_array())
+      .expect("CFBundleURLTypes array");
+    assert_eq!(url_types.len(), 1);
+    let url_type = url_types[0].as_dictionary().unwrap();
+    // The URL name is keyed off the bundle id so multiple apps don't collide.
+    assert_eq!(
+      url_type.get("CFBundleURLName").and_then(|v| v.as_string()),
+      Some("com.acme.myapp")
+    );
+    assert_eq!(
+      url_type.get("CFBundleTypeRole").and_then(|v| v.as_string()),
+      Some("Viewer")
+    );
+    let schemes: Vec<&str> = url_type
+      .get("CFBundleURLSchemes")
+      .and_then(|v| v.as_array())
+      .unwrap()
+      .iter()
+      .map(|v| v.as_string().unwrap())
+      .collect();
+    assert_eq!(schemes, ["acme", "acme-beta"]);
+  }
+
+  /// Write a minimal Linux `.desktop` entry into `dir` and return its path.
+  fn fake_desktop_file(
+    dir: &std::path::Path,
+    body: &str,
+  ) -> std::path::PathBuf {
+    let path = dir.join("myapp.desktop");
+    std::fs::write(&path, body).unwrap();
+    path
+  }
+
+  #[test]
+  fn deep_links_linux_adds_mimetype_and_url_field_code() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = fake_desktop_file(
+      tmp.path(),
+      "[Desktop Entry]\nName=MyApp\nExec=/opt/myapp/myapp\nType=Application\n",
+    );
+    register_deep_links_linux(
+      tmp.path(),
+      &["acme".to_string(), "acme-beta".to_string()],
+    )
+    .unwrap();
+
+    let out = std::fs::read_to_string(&path).unwrap();
+    // The launcher must receive the URL, so `%u` is appended exactly once.
+    assert!(
+      out.contains("Exec=/opt/myapp/myapp %u"),
+      "Exec should gain a %u field code; got:\n{out}"
+    );
+    assert!(
+      out
+        .contains("MimeType=x-scheme-handler/acme;x-scheme-handler/acme-beta;"),
+      "MimeType should list every scheme handler; got:\n{out}"
+    );
+  }
+
+  #[test]
+  fn deep_links_linux_does_not_duplicate_field_code() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = fake_desktop_file(
+      tmp.path(),
+      "[Desktop Entry]\nExec=/opt/myapp/myapp %U\nType=Application\n",
+    );
+    register_deep_links_linux(tmp.path(), &["acme".to_string()]).unwrap();
+
+    let out = std::fs::read_to_string(&path).unwrap();
+    // An existing `%U` (or `%u`) already forwards the URL — don't add another.
+    assert!(
+      out.contains("Exec=/opt/myapp/myapp %U\n"),
+      "existing field code should be left untouched; got:\n{out}"
+    );
+    assert!(!out.contains("%U %u") && !out.contains("%u %U"));
+  }
+
+  #[test]
+  fn deep_links_linux_merges_into_existing_mimetype() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = fake_desktop_file(
+      tmp.path(),
+      "[Desktop Entry]\nExec=/opt/myapp/myapp\nMimeType=text/html\n",
+    );
+    register_deep_links_linux(tmp.path(), &["acme".to_string()]).unwrap();
+
+    let out = std::fs::read_to_string(&path).unwrap();
+    assert!(
+      out.contains("MimeType=text/html;x-scheme-handler/acme;"),
+      "existing MimeType entries should be preserved; got:\n{out}"
+    );
+  }
+
+  #[test]
+  fn deep_links_windows_writes_registry_script() {
+    let tmp = tempfile::tempdir().unwrap();
+    // The launcher is `<bundle-dir-name>.exe`, so the bundle dir must be named
+    // after the app.
+    let bundle = tmp.path().join("MyApp");
+    std::fs::create_dir_all(&bundle).unwrap();
+    register_deep_links_windows(
+      &bundle,
+      &["acme".to_string(), "acme-beta".to_string()],
+    )
+    .unwrap();
+
+    let script =
+      std::fs::read_to_string(bundle.join("register-deep-links.bat")).unwrap();
+    for scheme in &["acme", "acme-beta"] {
+      assert!(
+        script
+          .contains(&format!("reg add \"HKCU\\Software\\Classes\\{scheme}\"")),
+        "script should register {scheme}; got:\n{script}"
+      );
+    }
+    // The protocol handler must point back at the renamed launcher exe.
+    assert!(
+      script.contains("MyApp.exe"),
+      "handler should invoke the launcher; got:\n{script}"
+    );
+  }
+
+  #[test]
+  fn register_deep_links_lowercases_and_dispatches_by_target() {
+    // Drives the top-level entry point with an explicit target so the test
+    // exercises the macOS path on any host. Mixed-case input must be
+    // normalized to lowercase before it reaches the plist.
+    let tmp = tempfile::tempdir().unwrap();
+    let bundle = fake_macos_bundle(tmp.path(), "com.acme.myapp");
+    let mut flags = empty_desktop_flags();
+    flags.target = Some("aarch64-apple-darwin".to_string());
+    flags.deep_links = vec!["  ACME  ".to_string(), "".to_string()];
+    register_deep_links(&bundle, &flags).unwrap();
+
+    let dict: plist::Dictionary =
+      plist::from_file(bundle.join("Contents/Info.plist")).unwrap();
+    let schemes: Vec<&str> = dict
+      .get("CFBundleURLTypes")
+      .and_then(|v| v.as_array())
+      .unwrap()[0]
+      .as_dictionary()
+      .unwrap()
+      .get("CFBundleURLSchemes")
+      .and_then(|v| v.as_array())
+      .unwrap()
+      .iter()
+      .map(|v| v.as_string().unwrap())
+      .collect();
+    assert_eq!(schemes, ["acme"]);
+  }
+
+  #[test]
+  fn register_deep_links_rejects_reserved_scheme() {
+    let tmp = tempfile::tempdir().unwrap();
+    let bundle = fake_macos_bundle(tmp.path(), "com.acme.myapp");
+    let mut flags = empty_desktop_flags();
+    flags.target = Some("aarch64-apple-darwin".to_string());
+    flags.deep_links = vec!["https".to_string()];
+    assert!(register_deep_links(&bundle, &flags).is_err());
+  }
+
+  #[test]
+  fn reserve_app_dir_ok_when_missing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("app");
+    reserve_app_dir(&app_dir).unwrap();
+    assert!(!app_dir.exists());
+  }
+
+  #[test]
+  fn reserve_app_dir_clears_empty_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("app");
+    std::fs::create_dir(&app_dir).unwrap();
+    reserve_app_dir(&app_dir).unwrap();
+    assert!(!app_dir.exists());
+  }
+
+  #[test]
+  fn reserve_app_dir_clears_previous_build() {
+    // A directory carrying our marker is a prior `deno desktop` output and
+    // may be replaced.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("app");
+    std::fs::create_dir(&app_dir).unwrap();
+    std::fs::write(app_dir.join("laufey"), b"binary").unwrap();
+    std::fs::write(app_dir.join(APP_DIR_MARKER), b"").unwrap();
+    reserve_app_dir(&app_dir).unwrap();
+    assert!(!app_dir.exists());
+  }
+
+  #[test]
+  fn reserve_app_dir_clears_previous_macos_bundle() {
+    // A `.app` bundle's marker lives under Contents/Resources/.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("App.app");
+    let resources = app_dir.join("Contents").join("Resources");
+    std::fs::create_dir_all(&resources).unwrap();
+    std::fs::write(resources.join(APP_DIR_MARKER), b"").unwrap();
+    reserve_app_dir(&app_dir).unwrap();
+    assert!(!app_dir.exists());
+  }
+
+  #[test]
+  fn reserve_app_dir_refuses_user_data() {
+    // The crux of issue #35510: an inferred app name collides with an
+    // existing user directory. We must error, not delete it.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = tmp.path().join("helloworld");
+    std::fs::create_dir(&app_dir).unwrap();
+    let precious = app_dir.join("precious.txt");
+    std::fs::write(&precious, b"do not delete").unwrap();
+
+    let err = reserve_app_dir(&app_dir).unwrap_err();
+    assert!(err.to_string().contains("not created by"));
+    // The user's data survives untouched.
+    assert!(precious.exists());
+    assert_eq!(std::fs::read(&precious).unwrap(), b"do not delete");
+  }
+
+  #[test]
+  fn reserve_app_dir_refuses_existing_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("app");
+    std::fs::write(&path, b"i am a file").unwrap();
+    let err = reserve_app_dir(&path).unwrap_err();
+    assert!(err.to_string().contains("a file with that name"));
+    assert!(path.exists());
   }
 }

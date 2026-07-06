@@ -146,6 +146,23 @@ function wrap(
       });
     };
 
+    // For JS-backed streams the native `shutdown` op buffers the TLS
+    // close_notify into `pending_enc_out` but never flushes it (the uv path
+    // relies on `uv_shutdown`, a no-op here), so the peer hangs waiting for an
+    // EOF. Wrap `shutdown` to drain the close_notify through the pump; the
+    // peer's TLS layer turns that into an EOF. We deliberately do NOT end the
+    // underlying stream: a half-open peer (e.g. `tls.connect({ socket })` that
+    // calls `.end()` but is still reading the reply) must keep its read side
+    // open, and ending its transport here would race that read.
+    const origShutdown = res.shutdown;
+    if (typeof origShutdown === "function") {
+      res.shutdown = function (...args: any[]) {
+        const ret = origShutdown.apply(res, args);
+        flushEncOut();
+        return ret;
+      };
+    }
+
     // Wire up readBuffer/emitEOF: JSStreamSocket calls these when the
     // underlying Duplex stream produces data or ends.
     // After each call, schedule a drain of encrypted output.

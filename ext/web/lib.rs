@@ -52,6 +52,7 @@ use crate::blob::op_blob_slice_part;
 pub use crate::broadcast_channel::InMemoryBroadcastChannel;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
+pub use crate::message_port::RecvMessageData;
 pub use crate::message_port::Transferable;
 pub use crate::message_port::create_entangled_message_port;
 pub use crate::message_port::deserialize_js_transferables;
@@ -65,6 +66,7 @@ pub use crate::timers::StartTime;
 use crate::timers::op_defer;
 use crate::timers::op_now;
 use crate::timers::op_time_origin;
+mod locks;
 
 deno_core::extension!(deno_web,
   deps = [ deno_webidl ],
@@ -113,6 +115,12 @@ deno_core::extension!(deno_web,
     stream_resource::op_readable_stream_resource_write_sync,
     stream_resource::op_readable_stream_resource_close,
     stream_resource::op_readable_stream_resource_await_close,
+    locks::op_lock_manager_request,
+    locks::op_lock_manager_await_lock,
+    locks::op_lock_manager_await_steal,
+    locks::op_lock_manager_cancel,
+    locks::op_lock_manager_release,
+    locks::op_lock_manager_query,
     url::op_url_reparse,
     url::op_url_parse,
     url::op_url_get_serialization,
@@ -153,6 +161,7 @@ deno_core::extension!(deno_web,
     console::Console,
   ],
   lazy_loaded_esm = [
+    "locks.js",
     "webtransport.js",
   ],
   lazy_loaded_js = [
