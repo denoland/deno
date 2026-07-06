@@ -16,10 +16,20 @@
       "droppedEventsCount": 0,
       "links": [
         {
-[WILDCARD]
+          "traceId": "00000000000000000000000000000001",
+          "spanId": "0000000000000001",
+          "traceState": "",
+          "attributes": [],
+          "droppedAttributesCount": 0,
+          "flags": 1
         },
         {
-[WILDCARD]
+          "traceId": "00000000000000000000000000000002",
+          "spanId": "0000000000000002",
+          "traceState": "",
+          "attributes": [],
+          "droppedAttributesCount": 0,
+          "flags": 1
         }
       ],
       "droppedLinksCount": 2,

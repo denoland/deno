@@ -20,7 +20,9 @@ tracer.startActiveSpan("span", (span) => {
   // recorded; the rest are dropped and counted in droppedLinksCount.
   span.addLink(link(1));
   span.addLink(link(2));
-  span.addLink(link(3));
-  span.addLink(link(4));
+  // These links are dropped. Their attributes must not leak onto the last
+  // recorded link (link 2).
+  span.addLink({ ...link(3), attributes: { dropped: true } });
+  span.addLink({ ...link(4), attributes: { dropped: true } });
   span.end();
 });
