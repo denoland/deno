@@ -865,8 +865,11 @@ class ResourceStreamResourceSink {
  * @param {Uint8Array} chunk
  */
 async function readableStreamWriteChunkFn(reader, sink, chunk) {
-  // Empty chunk. Re-read.
-  if (chunk.length == 0) {
+  // Empty Uint8Array chunk. Re-read.
+  if (
+    TypedArrayPrototypeGetSymbolToStringTag(chunk) === "Uint8Array" &&
+    TypedArrayPrototypeGetByteLength(chunk) == 0
+  ) {
     return true;
   }
 
@@ -910,13 +913,16 @@ async function readableStreamReadFn(reader, sink, onError) {
     // The ops here look like op_write_all/op_close, but we're not actually writing to a
     // real resource.
     let reentrant = true;
+    let hasChunk = false;
     let gotChunk = undefined;
     const promise = new Deferred();
 
     readableStreamDefaultReaderRead(reader, {
       chunkSteps(chunk) {
-        // If the chunk has non-zero length, write it
+        // If the read completed synchronously, write the chunk after
+        // reentrancy ends.
         if (reentrant) {
+          hasChunk = true;
           gotChunk = chunk;
         } else {
           PromisePrototypeThen(
@@ -963,7 +969,7 @@ async function readableStreamReadFn(reader, sink, onError) {
       },
     });
     reentrant = false;
-    if (gotChunk) {
+    if (hasChunk) {
       PromisePrototypeThen(
         readableStreamWriteChunkFn(reader, sink, gotChunk),
         (loop) => promise.resolve(loop),
