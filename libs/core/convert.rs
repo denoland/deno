@@ -955,13 +955,19 @@ where
     self,
     scope: &mut v8::PinScope<'a, 'i>,
   ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
-    let obj = v8::Object::new(scope);
+    let len = self.len();
+    let mut keys: Vec<v8::Local<v8::Name>> = Vec::with_capacity(len);
+    let mut values: Vec<v8::Local<v8::Value>> = Vec::with_capacity(len);
     for (k, v) in self {
       let key = v8::String::new(scope, k.as_ref())
         .ok_or_else(|| JsErrorBox::type_error("Failed to create string key"))?;
       let val = v.to_v8(scope).map_err(JsErrorBox::from_err)?;
-      obj.set(scope, key.into(), val);
+      keys.push(key.into());
+      values.push(val);
     }
+    let null = v8::null(scope).into();
+    let obj =
+      v8::Object::with_prototype_and_properties(scope, null, &keys, &values);
     Ok(obj.into())
   }
 }
