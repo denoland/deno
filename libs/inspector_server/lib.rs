@@ -712,7 +712,9 @@ async fn listen_for_new_inspectors(
 async fn close_going_away(
   websocket: &mut WebSocket<TokioIo<hyper::upgrade::Upgraded>>,
 ) {
-  let _ = websocket.write_frame(Frame::close(1001, b"going away")).await;
+  let _ = websocket
+    .write_frame(Frame::close(1001, b"going away"))
+    .await;
 }
 
 /// The pump future takes care of forwarding messages between the websocket
