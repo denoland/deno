@@ -3569,38 +3569,24 @@ impl JsRuntime {
     scope: &mut v8::PinScope<'s, 'i>,
     exception_state: &ExceptionState,
   ) {
-    loop {
-      let Some((promise, result)) = exception_state
-        .pending_handled_promise_rejections
-        .borrow_mut()
-        .pop_front()
-      else {
-        break;
-      };
-      // Clone the handler out so we don't hold the borrow across the call back
-      // into JS (which may itself touch the exception state).
-      let Some(handler) = exception_state
+    let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+    while let Some((promise, result)) = exception_state
+      .pending_handled_promise_rejections
+      .borrow_mut()
+      .pop_front()
+    {
+      if let Some(handler) = exception_state
         .js_handled_promise_rejection_cb
         .borrow()
-        .clone()
-      else {
-        continue;
-      };
-      // Run the handler under a `TryCatch`. A "rejectionhandled" event only
-      // notifies that an earlier rejection has since been handled, so a
-      // throwing handler must not halt the event loop - and, more importantly,
-      // it must not leak a pending exception into the surrounding tick, where
-      // it would poison the next microtask checkpoint or be surfaced as an
-      // uncaught error by the isolate message listener. This mirrors the
-      // `TryCatch` used by `dispatch_rejections`.
-      v8::tc_scope!(let tc_scope, scope);
-      let function = handler.open(tc_scope);
-      let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
-      let args = [
-        v8::Local::new(tc_scope, promise).into(),
-        v8::Local::new(tc_scope, result),
-      ];
-      function.call(tc_scope, undefined, &args);
+        .as_ref()
+      {
+        let function = handler.open(scope);
+        let args = [
+          v8::Local::new(scope, promise).into(),
+          v8::Local::new(scope, result),
+        ];
+        function.call(scope, undefined, &args);
+      }
     }
   }
 
