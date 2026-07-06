@@ -1142,3 +1142,46 @@ Deno.test({
     assertEquals(dec.toString("utf8"), "ok");
   },
 });
+
+Deno.test({
+  name:
+    "Cipheriv/Decipheriv final(encoding) flushes StringDecoder for stream ciphers",
+  fn() {
+    // Regression test for https://github.com/denoland/deno/issues/35797:
+    // stream-mode ciphers (GCM/CTR/ChaCha20) took early-return paths in
+    // final() that returned "" without flushing the StringDecoder used by
+    // update(). A base64 decoder withholds up to 2 trailing bytes until
+    // end(), so any plaintext whose byte length was not a multiple of 3 was
+    // silently truncated with no error.
+    const key = Buffer.alloc(32, 1);
+    const plaintext = "hello"; // 5 bytes, 5 % 3 !== 0
+
+    for (
+      const [algo, iv, isAead] of [
+        ["aes-256-gcm", Buffer.alloc(12, 2), true],
+        ["aes-256-ctr", Buffer.alloc(16, 2), false],
+        ["chacha20-poly1305", Buffer.alloc(12, 2), true],
+      ] as const
+    ) {
+      const cipher = crypto.createCipheriv(algo, key, iv);
+      const enc = cipher.update(plaintext, "utf8", "base64") +
+        cipher.final("base64");
+      // The full ciphertext must survive base64 round-tripping.
+      assertEquals(
+        Buffer.from(enc, "base64").length,
+        plaintext.length,
+        `${algo}: encrypted length`,
+      );
+
+      const decipher = crypto.createDecipheriv(algo, key, iv);
+      if (isAead) {
+        (decipher as crypto.DecipherGCM).setAuthTag(
+          (cipher as crypto.CipherGCM).getAuthTag(),
+        );
+      }
+      const dec = decipher.update(enc, "base64", "utf8") +
+        decipher.final("utf8");
+      assertEquals(dec, plaintext, `${algo}: round-trip`);
+    }
+  },
+});
