@@ -1385,3 +1385,108 @@ Deno.test(function canvas2dDrawImageNonFiniteSilent() {
   ctx.drawImage(bitmap, NaN, 0);
   ctx.drawImage(bitmap, 0, Infinity);
 });
+
+Deno.test(function canvasFilterConstructorValidates() {
+  new CanvasFilter({ name: "gaussianBlur", stdDeviation: 5 });
+  new CanvasFilter({ name: "gaussianBlur", stdDeviation: [1, 2] });
+  new CanvasFilter([
+    { name: "gaussianBlur", stdDeviation: 5 },
+    { name: "dropShadow", dx: 10, dy: 10 },
+  ]);
+  new CanvasFilter({ name: "convolveMatrix", kernelMatrix: [[1]] });
+  new CanvasFilter({ name: "dropShadow", floodColor: "canvas" });
+  new CanvasFilter({ name: "turbulence", stitchTiles: "stitch" });
+  // Unknown filter names are tolerated.
+  new CanvasFilter({ name: "unknownFilter" });
+
+  assertThrows(() => new CanvasFilter({ name: "gaussianBlur" }), TypeError);
+  assertThrows(
+    () => new CanvasFilter({ name: "gaussianBlur", stdDeviation: [1, 2, 3] }),
+    TypeError,
+  );
+  assertThrows(
+    () => new CanvasFilter({ name: "colorMatrix", values: [1, 2, 3] }),
+    TypeError,
+  );
+  assertThrows(
+    () => new CanvasFilter({ name: "convolveMatrix", kernelMatrix: [[], []] }),
+    TypeError,
+  );
+  assertThrows(
+    () => new CanvasFilter({ name: "dropShadow", dx: NaN }),
+    TypeError,
+  );
+  assertThrows(
+    () => new CanvasFilter({ name: "dropShadow", floodColor: "not-a-color" }),
+    TypeError,
+  );
+  assertThrows(
+    () => new CanvasFilter({ name: "turbulence", stitchTiles: "yes" }),
+    TypeError,
+  );
+});
+
+Deno.test(function canvasFilterPropertyUnion() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  assertStrictEquals(ctx.filter, "none");
+
+  ctx.filter = "blur(5px)";
+  assertStrictEquals(ctx.filter, "blur(5px)");
+
+  const filter = new CanvasFilter({ name: "gaussianBlur", stdDeviation: 5 });
+  ctx.filter = filter;
+  assertStrictEquals(ctx.filter, filter);
+  assertStrictEquals(
+    Object.prototype.toString.call(ctx.filter),
+    "[object CanvasFilter]",
+  );
+
+  // An invalid filter string leaves the current (object) value in place.
+  ctx.filter = "this string is not a filter";
+  assertStrictEquals(ctx.filter, filter);
+
+  ctx.filter = "none";
+  assertStrictEquals(ctx.filter, "none");
+});
+
+Deno.test(function canvas2dBeginLayerOptionsValidated() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.beginLayer();
+  ctx.endLayer();
+  ctx.beginLayer(null);
+  ctx.endLayer();
+  ctx.beginLayer({ filter: { name: "unknownFilter" } });
+  ctx.endLayer();
+  ctx.beginLayer({ filter: "invalid filter strings are tolerated" });
+  ctx.endLayer();
+
+  // deno-lint-ignore no-explicit-any
+  assertThrows(() => ctx.beginLayer("" as any), TypeError);
+  assertThrows(
+    () => ctx.beginLayer({ filter: { name: "gaussianBlur" } }),
+    TypeError,
+  );
+});
+
+Deno.test(function canvas2dGetImageDataTooLargeThrows() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  assertThrows(() => ctx.getImageData(0, 0, 2147483647, 10), TypeError);
+  assertThrows(() => ctx.createImageData(2147483647, 10), TypeError);
+});
+
+Deno.test(function canvas2dRoundRectRadiusUnionSemantics() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  // DOMPointInit branch: missing/undefined members default to 0.
+  ctx.roundRect(0, 0, 10, 10, [{ foo: "bar" }] as unknown as number[]);
+  ctx.roundRect(0, 0, 10, 10, [[]] as unknown as number[]);
+  ctx.roundRect(0, 0, 10, 10, [undefined] as unknown as number[]);
+  // BigInt cannot be converted to a number.
+  assertThrows(
+    () => ctx.roundRect(0, 0, 10, 10, [0n] as unknown as number[]),
+    TypeError,
+  );
+  assertThrows(
+    () => ctx.roundRect(0, 0, 10, 10, [{ x: 0n }] as unknown as number[]),
+    TypeError,
+  );
+});
