@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "tests": {
+    // A direct dependency on a libc-mismatched package (musl while the target
+    // defaults to glibc) must not be materialized: no `.deno` folder and no
+    // dangling root `node_modules/<name>` symlink from steps 6/7 of the local
+    // node_modules build.
+    "direct_musl_dep_not_linked": {
+      "steps": [{
+        "args": "install --os linux --arch x64",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run -A verify.ts",
+        "output": "deno dir: NOT FOUND\nroot symlink: NOT FOUND\n"
+      }]
+    }
+  }
+}

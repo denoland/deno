@@ -3,14 +3,15 @@
   "tests": {
     // Cross-installing for linux defaults the target libc to glibc, so only
     // the glibc variant should be linked into node_modules (not musl), even
-    // though both declare os "linux" / cpu "x64". Regression test for #35038.
+    // though both declare os "linux" / cpu "x64". The `!musl` negation variant
+    // matches glibc and is linked too. Regression test for #35038.
     "linux_defaults_to_glibc": {
       "steps": [{
         "args": "install --os linux --arch x64",
         "output": "[WILDCARD]"
       }, {
         "args": "run -A verify.ts",
-        "output": "glibc: FOUND\nmusl: NOT FOUND\n"
+        "output": "glibc: FOUND\nmusl: NOT FOUND\nnot-musl: FOUND\n"
       }]
     }
   }

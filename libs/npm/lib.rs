@@ -443,16 +443,35 @@ impl NpmSystemInfo {
 }
 
 /// The `libc` of the host the current binary is running on, as a Node.js-style
-/// value. Determined at compile time from the binary's own libc, which in
-/// practice matches the host. Empty on non-Linux platforms.
+/// value. Empty on non-Linux platforms.
 pub fn host_libc() -> &'static str {
   #[cfg(all(target_os = "linux", target_env = "musl"))]
   {
+    // Built against musl, so the host is definitely musl.
     "musl"
   }
   #[cfg(all(target_os = "linux", not(target_env = "musl")))]
   {
-    "glibc"
+    // Built against glibc, but the host may still be musl: a glibc-built deno
+    // can run on Alpine via gcompat, where native packages probe for the musl
+    // variant at runtime. So detect the host libc at runtime rather than
+    // trusting the compile-time libc. Mirrors Node's detect-libc: a musl system
+    // ships its dynamic loader as `/lib/ld-musl-<arch>.so.1`.
+    use std::sync::OnceLock;
+    static LIBC: OnceLock<&'static str> = OnceLock::new();
+    *LIBC.get_or_init(|| {
+      let is_musl = std::fs::read_dir("/lib").is_ok_and(|mut entries| {
+        entries.any(|entry| {
+          entry.is_ok_and(|entry| {
+            entry
+              .file_name()
+              .to_str()
+              .is_some_and(|name| name.starts_with("ld-musl-"))
+          })
+        })
+      });
+      if is_musl { "musl" } else { "glibc" }
+    })
   }
   #[cfg(not(target_os = "linux"))]
   {

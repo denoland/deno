@@ -14,3 +14,7 @@ console.log(
   "musl:",
   present("@denotest+libc-package-musl") ? "FOUND" : "NOT FOUND",
 );
+console.log(
+  "not-musl:",
+  present("@denotest+libc-package-not-musl") ? "FOUND" : "NOT FOUND",
+);

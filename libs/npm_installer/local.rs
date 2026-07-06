@@ -762,6 +762,9 @@ impl<
             }
           }
         };
+        if excluded_by_libc.contains(&remote_pkg.id) {
+          continue; // excluded above by libc mismatch; never materialized
+        }
         let Some(remote_alias) = &remote.alias else {
           continue;
         };
@@ -836,6 +839,9 @@ impl<
       .collect::<Vec<_>>();
     ids.sort_by(|a, b| b.cmp(a)); // create determinism and only include the latest version
     for id in ids {
+      if excluded_by_libc.contains(id) {
+        continue; // excluded above by libc mismatch; never materialized
+      }
       match found_names.entry(&id.nv.name) {
         Entry::Occupied(_) => {
           continue; // skip, already handled
