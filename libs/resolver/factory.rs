@@ -1202,7 +1202,12 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         .filter_map(|v| v.strip_prefix("npm:"))
       {
         match entry.strip_suffix('*') {
-          Some(prefix) => exclude_prefixes.push(prefix.into()),
+          // an empty prefix (from an invalid `npm:*` entry that a config
+          // diagnostic warns about) would exclude every package
+          Some(prefix) if !prefix.is_empty() => {
+            exclude_prefixes.push(prefix.into())
+          }
+          Some(_) => {}
           None => {
             exclude.insert(entry.into());
           }

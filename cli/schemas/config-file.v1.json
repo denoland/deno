@@ -960,7 +960,7 @@
           "age": { "$ref": "#/$defs/minimumDependencyAgeDate" },
           "exclude": {
             "type": "array",
-            "description": "List of jsr or npm packages to exclude from requiring a minimum dependency age. Entries may end with a '*' wildcard to exclude by prefix (e.g. 'npm:@scope/*').",
+            "description": "List of jsr or npm packages to exclude from requiring a minimum dependency age. Entries may end with a '*' wildcard to exclude by prefix (e.g. 'npm:@scope/*'). Wildcards are currently only supported for npm packages.",
             "items": {
               "type": "string",
               "pattern": "^(?:npm:|jsr:).+"
