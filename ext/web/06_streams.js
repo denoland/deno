@@ -1265,20 +1265,54 @@ async function readableStreamCollectIntoUint8Array(stream) {
     stream[_original][_controller][_readAll] = true;
   }
 
-  while (true) {
-    const { value: chunk, done } = await reader.read();
+  // Pump the stream with a single persistent read request instead of a
+  // reader.read() loop: no Deferred, no {value, done} result object, and
+  // no await hop per chunk. When a chunk is already queued,
+  // readableStreamDefaultReaderRead invokes chunkSteps synchronously and
+  // the do/while below re-arms without growing the stack; asynchronous
+  // deliveries re-enter pump() from chunkSteps.
+  /** @type {Deferred<void>} */
+  const donePromise = new Deferred();
+  let pumping = false;
+  let syncChunk = false;
+  /** @type {ReadRequest<Uint8Array>} */
+  const readRequest = {
+    chunkSteps(chunk) {
+      if (TypedArrayPrototypeGetSymbolToStringTag(chunk) !== "Uint8Array") {
+        donePromise.reject(
+          new TypeError(
+            "Cannot convert value to Uint8Array while consuming the stream",
+          ),
+        );
+        return;
+      }
+      ArrayPrototypePush(chunks, chunk);
+      totalLength += TypedArrayPrototypeGetByteLength(chunk);
+      if (pumping) {
+        syncChunk = true;
+      } else {
+        pump();
+      }
+    },
+    closeSteps() {
+      donePromise.resolve(undefined);
+    },
+    errorSteps(e) {
+      donePromise.reject(e);
+    },
+  };
 
-    if (done) break;
-
-    if (TypedArrayPrototypeGetSymbolToStringTag(chunk) !== "Uint8Array") {
-      throw new TypeError(
-        "Cannot convert value to Uint8Array while consuming the stream",
-      );
-    }
-
-    ArrayPrototypePush(chunks, chunk);
-    totalLength += TypedArrayPrototypeGetByteLength(chunk);
+  function pump() {
+    pumping = true;
+    do {
+      syncChunk = false;
+      readableStreamDefaultReaderRead(reader, readRequest);
+    } while (syncChunk);
+    pumping = false;
   }
+
+  pump();
+  await donePromise.promise;
 
   const finalBuffer = new Uint8Array(totalLength);
   let offset = 0;
