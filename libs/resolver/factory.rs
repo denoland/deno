@@ -983,6 +983,27 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     self.jsr_version_resolver.get_or_try_init(|| {
       let minimum_dependency_age_config =
         self.minimum_dependency_age_config()?;
+
+      let mut exclude_jsr_pkgs = std::collections::BTreeSet::new();
+      let mut exclude_jsr_pkg_prefixes = Vec::new();
+      for entry in minimum_dependency_age_config
+        .exclude
+        .iter()
+        .filter_map(|v| v.strip_prefix("jsr:"))
+      {
+        match entry.strip_suffix('*') {
+          // an empty prefix (from an invalid `jsr:*` entry that a config
+          // diagnostic warns about) would exclude every package
+          Some(prefix) if !prefix.is_empty() => {
+            exclude_jsr_pkg_prefixes.push(prefix.into())
+          }
+          Some(_) => {}
+          None => {
+            exclude_jsr_pkgs.insert(entry.into());
+          }
+        }
+      }
+
       Ok(new_rc(deno_graph::packages::JsrVersionResolver {
         newest_dependency_date_options:
           deno_graph::packages::NewestDependencyDateOptions {
@@ -991,16 +1012,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
               .as_ref()
               .and_then(|d| d.into_option())
               .map(deno_graph::packages::NewestDependencyDate),
-            // TODO(#35743): pass wildcard entries as prefixes once
-            // deno_graph supports excluding by prefix
-            // (denoland/deno_graph#657)
-            exclude_jsr_pkgs: minimum_dependency_age_config
-              .exclude
-              .iter()
-              .filter_map(|v| v.strip_prefix("jsr:"))
-              .filter(|v| !v.ends_with('*'))
-              .map(|v| v.into())
-              .collect(),
+            exclude_jsr_pkgs,
+            exclude_jsr_pkg_prefixes,
           },
       }))
     })

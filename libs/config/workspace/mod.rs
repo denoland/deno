@@ -257,10 +257,6 @@ pub enum WorkspaceDiagnosticKind {
   )]
   MinimumDependencyAgeExcludeInvalidWildcard { entry: String },
   #[error(
-    "\"minimumDependencyAge.exclude\" entry \"{entry}\" is not supported yet. Wildcards are currently only supported for npm packages."
-  )]
-  MinimumDependencyAgeExcludeJsrWildcardUnsupported { entry: String },
-  #[error(
     "Invalid version requirement '{version_req}' for catalog entry '{name}'."
   )]
   InvalidCatalogVersionReq { name: String, version_req: String },
@@ -1393,24 +1389,15 @@ impl Workspace {
             } else {
               // both "jsr:" and "npm:" are 4 bytes long
               let package_pattern = &value[4..];
-              if let Some(index) = package_pattern.find('*') {
-                if index != package_pattern.len() - 1 || index == 0 {
-                  diagnostics.push(WorkspaceDiagnostic {
-                    config_url: config.specifier.clone(),
-                    kind: WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeInvalidWildcard {
-                      entry: value.to_string()
-                    },
-                  });
-                } else if value.starts_with("jsr:") {
-                  // TODO(#35743): remove once deno_graph supports excluding
-                  // by prefix (denoland/deno_graph#657)
-                  diagnostics.push(WorkspaceDiagnostic {
-                    config_url: config.specifier.clone(),
-                    kind: WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeJsrWildcardUnsupported {
-                      entry: value.to_string()
-                    },
-                  });
-                }
+              if let Some(index) = package_pattern.find('*')
+                && (index != package_pattern.len() - 1 || index == 0)
+              {
+                diagnostics.push(WorkspaceDiagnostic {
+                  config_url: config.specifier.clone(),
+                  kind: WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeInvalidWildcard {
+                    entry: value.to_string()
+                  },
+                });
               }
             }
           }
@@ -4963,9 +4950,6 @@ pub mod test {
         },
       }),
       vec![
-        WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeJsrWildcardUnsupported {
-          entry: "jsr:@scope/*".to_string(),
-        },
         WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeInvalidWildcard {
           entry: "npm:@scope/*/name".to_string(),
         },

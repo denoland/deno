@@ -879,6 +879,7 @@ impl ModuleGraphBuilder {
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
           unstable_text_imports: true,
           unstable_css_imports: self.cli_options.unstable_raw_imports(),
+          unstable_config_imports: false,
         }
       };
     }
