@@ -228,12 +228,12 @@ Cipheriv.prototype.final = function (
     throw new ERR_CRYPTO_INVALID_STATE("final");
   }
 
+  _lazyInitCipherDecoder(this, encoding);
+
   if (this._isAesWrap) {
     this._finalized = true;
-    return encoding === "buffer" ? Buffer.from([]) : "";
+    return encoding === "buffer" ? Buffer.from([]) : this._decoder!.end();
   }
-
-  _lazyInitCipherDecoder(this, encoding);
 
   const bs = this._blockSize;
   const buf = new FastBuffer(bs);
@@ -245,7 +245,7 @@ Cipheriv.prototype.final = function (
     const maybeTag = op_node_cipheriv_take(this._context);
     if (maybeTag) this._authTag = Buffer.from(maybeTag);
     this._finalized = true;
-    return encoding === "buffer" ? Buffer.from([]) : "";
+    return encoding === "buffer" ? Buffer.from([]) : this._decoder!.end();
   }
 
   if (
@@ -266,7 +266,7 @@ Cipheriv.prototype.final = function (
   if (maybeTag) {
     this._authTag = Buffer.from(maybeTag);
     this._finalized = true;
-    return encoding === "buffer" ? Buffer.from([]) : "";
+    return encoding === "buffer" ? Buffer.from([]) : this._decoder!.end();
   }
 
   this._finalized = true;
@@ -530,12 +530,12 @@ Decipheriv.prototype.final = function (
     throw new ERR_CRYPTO_INVALID_STATE("final");
   }
 
+  _lazyInitDecipherDecoder(this, encoding);
+
   if (this._isAesWrap) {
     this._finalized = true;
-    return encoding === "buffer" ? Buffer.from([]) : "";
+    return encoding === "buffer" ? Buffer.from([]) : this._decoder!.end();
   }
-
-  _lazyInitDecipherDecoder(this, encoding);
 
   const bs = this._blockSize;
   let buf = new FastBuffer(bs);
@@ -552,7 +552,7 @@ Decipheriv.prototype.final = function (
     TypedArrayPrototypeGetByteLength(this._cache.cache) === 0
   ) {
     this._finalized = true;
-    return encoding === "buffer" ? Buffer.from([]) : "";
+    return encoding === "buffer" ? Buffer.from([]) : this._decoder!.end();
   }
   if (TypedArrayPrototypeGetByteLength(this._cache.cache) != bs) {
     throw opensslError(

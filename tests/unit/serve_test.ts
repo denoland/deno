@@ -3429,6 +3429,51 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServerHeadResponseRespectsExplicitContentLength() {
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      handler: () => new Response(null, { headers: { "content-length": "5" } }),
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+    const conn = await Deno.connect({ port: servePort });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    const request =
+      `HEAD / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(request));
+    assertEquals(request.length, writeResult);
+
+    let msg = "";
+    while (true) {
+      const buf = new Uint8Array(1024);
+      const readResult = await conn.read(buf);
+      if (!readResult) {
+        break;
+      }
+      msg += decoder.decode(buf.subarray(0, readResult));
+    }
+
+    assertStringIncludes(msg, "content-length: 5");
+    // A HEAD response must not carry a body, even with content-length > 0.
+    assertEquals(msg.indexOf("\r\n\r\n"), msg.length - 4);
+
+    conn.close();
+
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServerUpgradeWithContentLengthRejected() {
     const ac = new AbortController();
     const listeningDeferred = Promise.withResolvers<void>();
@@ -5020,7 +5065,9 @@ Deno.test(
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(clientError.message.includes("client error"));
+      assert(clientError.message === "fetch failed");
+      assert(clientError.cause instanceof Error);
+      assert(clientError.cause.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;
@@ -5068,7 +5115,9 @@ Deno.test({
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(clientError.message.includes("client error"));
+      assert(clientError.message === "fetch failed");
+      assert(clientError.cause instanceof Error);
+      assert(clientError.cause.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;
