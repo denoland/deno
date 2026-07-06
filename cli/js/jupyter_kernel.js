@@ -410,10 +410,21 @@ class RouterSocket {
   _handlePeer(conn) {
     const peerId = crypto.getRandomValues(new Uint8Array(5));
     const peerKey = Array.from(peerId).join(",");
-    this.peers.set(peerKey, conn);
     (async () => {
       try {
+        // Only expose the peer for sending *after* its ZMTP handshake has
+        // completed. The stdin channel sends proactively (`input_request` for
+        // `prompt()`/`confirm()`), unlike shell/control which only ever reply
+        // to a message they already received. If we registered the peer before
+        // the handshake, a prompt firing during the connection's setup window
+        // (e.g. a frontend that runs the first cell as soon as it connects)
+        // would write message frames into the middle of the greeting exchange,
+        // corrupting the stream so the frontend drops the kernel ("kernel
+        // died" / "Socket is closed"). Registering post-handshake makes
+        // `requestInput`'s `peers.size === 0` wait until stdin is actually
+        // ready.
         await zmtpHandshake(conn, "ROUTER");
+        this.peers.set(peerKey, conn);
         while (true) {
           const frames = await recvMultipart(conn);
           this.incoming.push({ peerId, peerKey, frames });

@@ -762,6 +762,10 @@ impl DepManager {
             ModuleSpecifier::parse(&format!("npm:/{}/", dep.req)).unwrap(),
           ),
           DepKind::Jsr => {
+            // Note: a tagged req (e.g. `@latest`) never appears in the graph
+            // mappings because the graph build rejects jsr version tags, so
+            // the VersionReq::matches call below (which panics on tags)
+            // cannot be reached with one.
             let resolved_nv = graph.packages.mappings().get(&dep.req);
             let resolved_nv = resolved_nv
               .and_then(|nv| {
@@ -830,6 +834,7 @@ impl DepManager {
           allow_unknown_media_types: true,
           skip_graph_roots_validation: false,
           file_content_overrides: Default::default(),
+          file_header_overrides: Default::default(),
         },
       )
       .await?;

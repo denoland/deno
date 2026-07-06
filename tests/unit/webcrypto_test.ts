@@ -1005,6 +1005,55 @@ Deno.test(async function testUnwrapKey() {
   assertEquals(unwrappedKey.usages, ["encrypt", "decrypt"]);
 });
 
+// Regression for https://github.com/denoland/deno/issues/35416 — wrapping a
+// JWK with AES-KW used to throw `TypeError: Data must be multiple of 8 bytes`
+// because the UTF-8 JSON serialization of the JWK is generally not a multiple
+// of 8 bytes. Browsers and Node.js pad the JSON with ASCII spaces before
+// running AES-KW; we now do the same.
+Deno.test(async function testWrapUnwrapJwkAesKw() {
+  const subtle = crypto.subtle;
+  for (const hash of ["SHA-1", "SHA-256", "SHA-384", "SHA-512"] as const) {
+    const key = await subtle.generateKey(
+      { name: "HMAC", hash },
+      true,
+      ["sign", "verify"],
+    );
+    const wrappingKey = await subtle.generateKey(
+      { name: "AES-KW", length: 256 },
+      true,
+      ["wrapKey", "unwrapKey"],
+    );
+
+    const wrapped = await subtle.wrapKey(
+      "jwk",
+      key,
+      wrappingKey,
+      "AES-KW",
+    );
+    assert(wrapped instanceof ArrayBuffer);
+    assertEquals(wrapped.byteLength % 8, 0);
+
+    const unwrapped = await subtle.unwrapKey(
+      "jwk",
+      wrapped,
+      wrappingKey,
+      "AES-KW",
+      { name: "HMAC", hash },
+      true,
+      ["sign", "verify"],
+    );
+    assert(unwrapped instanceof CryptoKey);
+    assertEquals(unwrapped.type, "secret");
+    assertEquals(unwrapped.usages, ["sign", "verify"]);
+
+    // Round-trip: the unwrapped key must produce the same MAC as the original.
+    const data = new TextEncoder().encode("hello, wrap-key");
+    const sig1 = new Uint8Array(await subtle.sign("HMAC", key, data));
+    const sig2 = new Uint8Array(await subtle.sign("HMAC", unwrapped, data));
+    assertEquals(sig1, sig2);
+  }
+});
+
 Deno.test(async function testDecryptWithInvalidIntializationVector() {
   // deno-fmt-ignore
   const data = new Uint8Array([42,42,42,42,42,42,42,42,42,42,42,42,42,42,42]);

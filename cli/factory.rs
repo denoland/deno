@@ -574,11 +574,20 @@ impl CliFactory {
     self.services.npm_installer_factory.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
       let resolver_factory = self.resolver_factory()?;
-      let needs_full_packument = resolver_factory
-        .minimum_dependency_age_config()
+      // the `no-downgrade` trust policy reads `_npmUser`/`attestations`, which
+      // are only present in the full packument
+      let needs_full_packument_for_trust = resolver_factory
+        .workspace_factory()
+        .npmrc()
         .ok()
-        .and_then(|c| c.age.as_ref().and_then(|d| d.into_option()))
-        .is_some();
+        .map(|rc| rc.trust_policy != deno_npmrc::TrustPolicyConfig::Off)
+        .unwrap_or(false);
+      let needs_full_packument = needs_full_packument_for_trust
+        || resolver_factory
+          .minimum_dependency_age_config()
+          .ok()
+          .and_then(|c| c.age.as_ref().and_then(|d| d.into_option()))
+          .is_some();
       Ok(CliNpmInstallerFactory::new(
         resolver_factory.clone(),
         Arc::new(CliNpmCacheHttpClient::new(
@@ -1047,6 +1056,17 @@ impl CliFactory {
         if unstable_features.contains(&feature.name) {
           checker.enable_feature(feature.name);
         }
+      }
+
+      // Deno Deploy: when DENO_KV_REQUIRES_DISTRIBUTED_DATABASE=error, force the
+      // unstable KV feature on so `Deno.openKv()` is always exposed. The open
+      // path then rejects with a clear "no database attached" error instead of
+      // the runtime hiding the API and reporting "Deno.openKv is not a function".
+      if std::env::var("DENO_KV_REQUIRES_DISTRIBUTED_DATABASE").as_deref()
+        == Ok("error")
+        && !checker.check("kv")
+      {
+        checker.enable_feature("kv");
       }
 
       Ok(Arc::new(checker))
