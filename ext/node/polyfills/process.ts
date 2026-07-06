@@ -676,6 +676,21 @@ if (!isWindows) {
       if (!ArrayIsArray(groups)) {
         throw new ERR_INVALID_ARG_TYPE("groups", "Array", groups);
       }
+      // Validate elements here, not in the op, so errors match Node: an
+      // out-of-range number must throw ERR_OUT_OF_RANGE instead of wrapping
+      // to a garbage gid.
+      for (let i = 0; i < groups.length; i++) {
+        const id = groups[i];
+        if (typeof id === "number") {
+          validateUint32(id, `groups[${i}]`);
+        } else if (typeof id !== "string") {
+          throw new ERR_INVALID_ARG_TYPE(
+            `groups[${i}]`,
+            ["number", "string"],
+            id,
+          );
+        }
+      }
       try {
         op_node_process_setgroups(groups);
       } catch (err) {
