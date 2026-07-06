@@ -4985,10 +4985,7 @@
       "windows": false,
       "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep"
     },
-    "parallel/test-fs-stat-date.mjs": {
-      "ignore": true,
-      "reason": "Deno's FsStat represents file timestamps as unsigned milliseconds, so pre-1970 (negative) atime/mtime values lose their sign when read back via stat"
-    },
+    "parallel/test-fs-stat-date.mjs": {},
     "parallel/test-fs-watch-close-when-destroyed.js": {
       "windows": false,
       "reason": "times out"
