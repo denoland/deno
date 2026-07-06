@@ -938,19 +938,6 @@ pub fn op_net_listen_tunnel(
 }
 
 #[op2]
-pub fn op_net_listen_memory(
-  state: &mut OpState,
-  #[string] name: String,
-) -> Result<(ResourceId, String, u32), NetError> {
-  let listener = crate::memory::listen_memory(&name)?;
-  let local_addr = listener.local_addr()?;
-  let rid = state
-    .resource_table
-    .add(crate::raw::NetworkListenerResource::new(listener));
-  Ok((rid, local_addr.name, local_addr.id))
-}
-
-#[op2]
 pub async fn op_net_accept_tunnel(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

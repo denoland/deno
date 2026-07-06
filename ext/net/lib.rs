@@ -2,7 +2,6 @@
 
 pub mod happy_eyeballs;
 pub mod io;
-pub mod memory;
 pub mod ops;
 pub mod ops_tls;
 #[cfg(unix)]
@@ -82,7 +81,6 @@ deno_core::extension!(deno_net,
     ops::op_net_connect_vsock,
     ops::op_net_listen_tunnel,
     ops::op_net_accept_tunnel,
-    ops::op_net_listen_memory,
 
     ops_tls::op_tls_key_null,
     ops_tls::op_tls_key_static,

@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "node_pipe_wrap_no_perms": {
+      "if": "unix",
+      "args": "run main.ts",
+      "output": "main.out"
+    }
+  }
+}
