@@ -963,6 +963,7 @@ pub struct OtelGlobals {
   pub builtin_instrumentation_scope: InstrumentationScope,
   pub span_event_count_limit: usize,
   pub span_attribute_count_limit: usize,
+  pub span_link_count_limit: usize,
   pub sampler: Sampler,
   pub config: OtelConfig,
 }
@@ -1161,6 +1162,31 @@ impl Sampler {
   }
 }
 
+/// Default maximum number of links per span, per the OpenTelemetry SDK spec
+/// for `OTEL_SPAN_LINK_COUNT_LIMIT`.
+const DEFAULT_SPAN_LINK_COUNT_LIMIT: usize = 128;
+
+/// Resolve the span link count limit from `OTEL_SPAN_LINK_COUNT_LIMIT`,
+/// falling back to the spec default of 128.
+///
+/// See <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#span-limits>
+fn span_link_count_limit_from_env(sys: &impl TelemetrySys) -> usize {
+  sys
+    .env_var("OTEL_SPAN_LINK_COUNT_LIMIT")
+    .ok()
+    .and_then(|v| v.trim().parse::<usize>().ok())
+    .unwrap_or(DEFAULT_SPAN_LINK_COUNT_LIMIT)
+}
+
+/// The effective span link count limit from the initialized globals, falling
+/// back to the spec default if telemetry is not yet initialized.
+fn span_link_count_limit() -> usize {
+  OTEL_GLOBALS
+    .get()
+    .map(|g| g.span_link_count_limit)
+    .unwrap_or(DEFAULT_SPAN_LINK_COUNT_LIMIT)
+}
+
 pub static OTEL_GLOBALS: OnceCell<OtelGlobals> = OnceCell::new();
 
 #[sys_traits::auto_impl]
@@ -1347,6 +1373,7 @@ pub fn init(
 
   let span_event_count_limit = span_event_count_limit_from_env(sys);
   let span_attribute_count_limit = span_attribute_count_limit_from_env(sys);
+  let span_link_count_limit = span_link_count_limit_from_env(sys);
   let sampler = Sampler::from_env(sys)?;
 
   OTEL_GLOBALS
@@ -1358,6 +1385,7 @@ pub fn init(
       builtin_instrumentation_scope,
       span_event_count_limit,
       span_attribute_count_limit,
+      span_link_count_limit,
       sampler,
       config,
     })
@@ -2428,8 +2456,17 @@ fn op_otel_span_add_link<'s>(
   else {
     return true;
   };
+  let limit = span_link_count_limit();
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
+    // Enforce OTEL_SPAN_LINK_COUNT_LIMIT: once the limit is reached, drop
+    // further links and count them in droppedLinksCount. Returning false
+    // tells the JS side not to attach attributes to a link that was not
+    // recorded.
+    if span.links.links.len() >= limit {
+      span.links.dropped_count += 1;
+      return false;
+    }
     span.links.links.push(Link::new(
       span_context,
       vec![],
