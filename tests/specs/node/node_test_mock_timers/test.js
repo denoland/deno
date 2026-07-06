@@ -382,3 +382,15 @@ test("throws on invalid api name", () => {
     code: "ERR_INVALID_ARG_VALUE",
   });
 });
+
+test("mock.reset() resets timers - first call", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  mock.reset();
+});
+
+test("mock.reset() resets timers - second call", () => {
+  // This fails before the fix because the first test's mock.reset()
+  // left MockTimers in an enabled state.
+  mock.timers.enable({ apis: ["setTimeout"] });
+  mock.reset();
+});

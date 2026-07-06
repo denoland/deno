@@ -1146,3 +1146,36 @@ Deno.test({
     assertEquals(typeof (locks as { query: unknown }).query, "function");
   },
 });
+
+// Placed last: creating a Worker bumps the process-global threadId counter,
+// which the "Worker threadId" test above asserts absolute values for.
+Deno.test("[node/worker_threads] postMessage of non-serializable value throws", async () => {
+  // URL is not [Serializable] per the WHATWG/HTML spec; posting it must throw
+  // a DataCloneError instead of silently delivering `{}`. Regression test for
+  // denoland/deno#35401.
+  const { port1, port2 } = new workerThreads.MessageChannel();
+  try {
+    assertThrows(
+      () => port2.postMessage(new URL("https://example.org/")),
+      DOMException,
+      "Cannot clone object of unsupported type.",
+    );
+  } finally {
+    port1.close();
+    port2.close();
+  }
+
+  // Same must hold for the Worker.postMessage (main thread -> worker) path.
+  const worker = new workerThreads.Worker(
+    new URL("./testdata/worker_threads.mjs", import.meta.url),
+  );
+  try {
+    assertThrows(
+      () => worker.postMessage(new URL("https://example.org/")),
+      DOMException,
+      "Cannot clone object of unsupported type.",
+    );
+  } finally {
+    await worker.terminate();
+  }
+});

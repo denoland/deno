@@ -209,6 +209,20 @@ fn generate_coverage_report(
       Vec<(usize, &cdp::CoverageRange)>,
     > = std::collections::BTreeMap::new();
     for (idx, range) in function.ranges[1..].iter().enumerate() {
+      // Skip whitespace-only "gap" ranges V8 emits between blocks (e.g. the
+      // sliver between a catch's `return` and `finally`). They aren't real
+      // branch arms, so counting them yields phantom branches (#35765).
+      let start_byte_offset =
+        runtime_text_lines.byte_index_from_char_index(range.start_char_offset);
+      let end_byte_offset =
+        runtime_text_lines.byte_index_from_char_index(range.end_char_offset);
+      if options.script_runtime_source[start_byte_offset..end_byte_offset]
+        .trim()
+        .is_empty()
+      {
+        continue;
+      }
+
       // Same rationale as above: drop sub-ranges with no source mapping —
       // they belong to transformer-injected helper code, not the user's
       // source.

@@ -1,0 +1,8 @@
+{
+  "name": "@project/slow",
+  "version": "1.0.0",
+  "exports": {
+    "./main.ts": "./main.ts",
+    "./globals.css": "./globals.css"
+  }
+}

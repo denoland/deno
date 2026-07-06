@@ -226,7 +226,7 @@ class InnerRequest {
         legacyAbortWarned = true;
         // deno-lint-ignore no-console
         console.warn(
-          "Deno.serve: request.signal aborts on successful responses (legacy behavior, see https://github.com/denoland/deno/issues/29111). Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/runtime/reference/migrate-deprecations/",
+          "Deno.serve: request.signal aborts on successful responses (legacy behavior). To detect when a request has been fully delivered use the `completed` promise on the handler's info argument. Move cleanup to the handler's return path, or opt in to the new behavior with --unstable-no-legacy-abort. See https://docs.deno.com/go/unstable-no-legacy-abort",
         );
       }
       abortRequest(this.request);
@@ -1620,7 +1620,8 @@ function serveHttpOn(context, addr) {
     }
   })();
 
-  op_http_notify_serving();
+  // 1 = "deno-serve"; must match `serving_server_kind()` in lib.rs.
+  op_http_notify_serving(1);
 
   return {
     addr,

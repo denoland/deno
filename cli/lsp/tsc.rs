@@ -5442,7 +5442,7 @@ fn span_with_context(
     use tracing_opentelemetry::OpenTelemetrySpanExt;
 
     if let Some(context) = &_state.context {
-      span.set_parent(context.clone());
+      let _ = span.set_parent(context.clone());
     }
     span.entered()
   }

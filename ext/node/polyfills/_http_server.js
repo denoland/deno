@@ -115,6 +115,7 @@ const { enqueueNodePerformanceEntry, hasNodeObserverForType } = core
 import {
   applyAddressOverride,
   notifyAddressOverrideServing,
+  SERVER_KIND_NODE_HTTP2,
   startOverrideListener,
 } from "ext:deno_node/internal/http/address_override.js";
 const {
@@ -1640,6 +1641,7 @@ export {
   kServerResponse,
   notifyAddressOverrideServing,
   Server,
+  SERVER_KIND_NODE_HTTP2,
   ServerResponse,
   setupConnectionsTracking,
   startOverrideListener,

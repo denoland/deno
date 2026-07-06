@@ -1,17 +1,10 @@
 {
   "historical.any.html": {
     "expectedFailures": [
-      "<a> and <area>.searchParams should be undefined",
-      "URL: no structured serialize/deserialize support",
-      "URLSearchParams: no structured serialize/deserialize support"
+      "<a> and <area>.searchParams should be undefined"
     ]
   },
-  "historical.any.worker.html": {
-    "expectedFailures": [
-      "URL: no structured serialize/deserialize support",
-      "URLSearchParams: no structured serialize/deserialize support"
-    ]
-  },
+  "historical.any.worker.html": true,
   "idlharness.any.html": true,
   "idlharness.any.worker.html": true,
   "toascii.window.html": {

@@ -91,18 +91,15 @@ pub fn copy_dir_recursive<TSys: CopyDirRecursiveSys>(
 
     if file_type.is_dir() {
       copy_dir_recursive(sys.as_ref(), &new_from, &new_to)?;
-    } else if file_type.is_file()
-      && let Err(err) = sys.fs_copy(&new_from, &new_to)
-    {
-      if deno_npm_cache::is_etxtbsy(&err) {
-        // The destination file is a hardlink to a currently-executing
-        // binary (ETXTBSY). Remove it first to break the hardlink,
-        // then retry the copy which will create a new inode.
-        let _ = sys.fs_remove_file(&new_to);
-        sys.fs_copy(&new_from, &new_to)?;
-      } else {
-        return Err(err);
-      }
+    } else if file_type.is_file() {
+      // Remove any existing file first so the copy writes a new inode.
+      // The destination may be a hardlink to another path (for example,
+      // esbuild's install script hardlinks its platform package's binary
+      // over its own JS shim) and copying in place would write through
+      // the link, corrupting the file at its other paths. Removing first
+      // also breaks hardlinks to currently-executing binaries (ETXTBSY).
+      let _ = sys.fs_remove_file(&new_to);
+      sys.fs_copy(&new_from, &new_to)?;
     }
   }
 
@@ -138,4 +135,43 @@ pub fn symlink_dir<TSys: sys_traits::BaseFsSymlinkDir>(
     }
     err_mapper(err, None)
   })
+}
+
+#[cfg(test)]
+mod test {
+  use sys_traits::FsCreateDirAll;
+  use sys_traits::FsHardLink;
+  use sys_traits::FsRead;
+  use sys_traits::FsWrite;
+  use test_util::TempDir;
+
+  use super::*;
+
+  #[test]
+  fn copy_dir_recursive_replaces_hardlinked_files() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let root = temp_dir.path().to_path_buf();
+    let from = root.join("from");
+    let to = root.join("to");
+    sys.fs_create_dir_all(&from).unwrap();
+    sys.fs_create_dir_all(&to).unwrap();
+    sys.fs_write(from.join("file"), "from contents").unwrap();
+    // simulate what a lifecycle script like esbuild's install script does:
+    // hardlink another file (e.g. a platform package's binary) over a file
+    // that a future re-install will copy over again
+    let binary = root.join("binary");
+    sys.fs_write(&binary, "binary contents").unwrap();
+    sys.fs_hard_link(&binary, to.join("file")).unwrap();
+
+    copy_dir_recursive(&sys, &from, &to).unwrap();
+
+    // the destination now has the copied contents on a new inode
+    assert_eq!(
+      sys.fs_read_to_string(to.join("file")).unwrap(),
+      "from contents"
+    );
+    // and the other end of the hardlink was not written through
+    assert_eq!(sys.fs_read_to_string(&binary).unwrap(), "binary contents");
+  }
 }
