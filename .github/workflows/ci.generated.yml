@@ -6868,6 +6868,9 @@ jobs:
         uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282
         with:
           deno-version: v2.x
+      - name: Install fontconfig
+        if: matrix.os == 'linux'
+        run: sudo apt-get install -y --no-install-recommends libfontconfig-dev
       - name: test_format.js
         if: matrix.os == 'linux'
         run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
