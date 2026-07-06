@@ -1156,6 +1156,7 @@ impl<
           init_cwd: &self.lifecycle_scripts_config.initial_cwd,
           process_state: process_state.as_str(),
           root_node_modules_dir_path: &self.root_node_modules_path,
+          resolve_pkg_folder: None,
           on_ran_pkg_scripts: &|pkg| {
             create_initialized_file(
               sys.as_ref(),
