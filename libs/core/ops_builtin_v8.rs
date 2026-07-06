@@ -229,16 +229,6 @@ pub fn op_set_captured_bootstrap(
 
 // We run in a `nofast` op here so we don't get put into a `DisallowJavascriptExecutionScope` and we're
 // allowed to touch JS heap.
-#[op2(nofast)]
-pub fn op_queue_microtask(
-  isolate: &mut v8::Isolate,
-  cb: v8::Local<v8::Function>,
-) {
-  isolate.enqueue_microtask(cb);
-}
-
-// We run in a `nofast` op here so we don't get put into a `DisallowJavascriptExecutionScope` and we're
-// allowed to touch JS heap.
 #[op2(nofast, reentrant)]
 pub fn op_run_microtasks(isolate: &mut v8::Isolate) {
   isolate.perform_microtask_checkpoint()
