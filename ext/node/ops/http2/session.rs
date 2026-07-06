@@ -51,38 +51,12 @@ thread_local! {
     const { UnsafeCell::new([0; SETTINGS_LEN]) };
 }
 
+#[derive(ToV8)]
 pub struct JSHttp2State<'a> {
   session_state: v8::Local<'a, v8::Value>,
   stream_state: v8::Local<'a, v8::Value>,
   options_buffer: v8::Local<'a, v8::Value>,
   settings_buffer: v8::Local<'a, v8::Value>,
-}
-
-impl<'a> deno_core::convert::ToV8<'a> for JSHttp2State<'a> {
-  type Error = deno_error::JsErrorBox;
-
-  fn to_v8<'i>(
-    self,
-    scope: &mut v8::PinScope<'a, 'i>,
-  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
-    let null = v8::null(scope).into();
-    let keys: &[v8::Local<v8::Name>] = &[
-      v8::String::new(scope, "sessionState").unwrap().into(),
-      v8::String::new(scope, "streamState").unwrap().into(),
-      v8::String::new(scope, "optionsBuffer").unwrap().into(),
-      v8::String::new(scope, "settingsBuffer").unwrap().into(),
-    ];
-    let values = &[
-      self.session_state,
-      self.stream_state,
-      self.options_buffer,
-      self.settings_buffer,
-    ];
-    Ok(
-      v8::Object::with_prototype_and_properties(scope, null, keys, values)
-        .into(),
-    )
-  }
 }
 
 impl<'a> JSHttp2State<'a> {
