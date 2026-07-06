@@ -10,8 +10,9 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use deno_core::JsBuffer;
+use deno_core::ToV8;
+use deno_core::convert::FromV8 as ConvertFromV8;
 use deno_core::op2;
-use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
 
@@ -51,6 +52,12 @@ pub fn op_vm_dynamic_import_callback_register(
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");
 
+// Private symbol used to anchor the `ContextifyContext` wrapper on the
+// v8::Context's global object so that the context keeps the wrapper alive for
+// its entire lifetime. See `keep_wrapper_alive` for why this is necessary.
+const CONTEXTIFY_WRAPPER_SYMBOL_NAME: v8::OneByteConst =
+  v8::String::create_external_onebyte_const(b"node:contextify:wrapper");
+
 /// An unbounded script that can be run in a context.
 pub struct ContextifyScript {
   script: v8::TracedReference<v8::UnboundScript>,
@@ -79,7 +86,7 @@ impl ContextifyScript {
     produce_cached_data: bool,
     parsing_context: Option<v8::Local<'s, v8::Object>>,
     import_module_dynamically_id: i32,
-  ) -> Option<CompileResult<'s>> {
+  ) -> Option<CompileResult> {
     let context = if let Some(parsing_context) = parsing_context {
       let Some(context) =
         ContextifyContext::from_sandbox_obj(scope, parsing_context)
@@ -156,14 +163,17 @@ impl ContextifyScript {
     let this = deno_core::cppgc::make_cppgc_object(scope, Self { script });
 
     Some(CompileResult {
-      value: serde_v8::Value {
-        v8_value: this.into(),
-      },
+      value: v8::Global::new(scope, v8::Local::<v8::Value>::from(this)),
       cached_data: cached_data.as_ref().map(|c| {
         let backing_store =
           v8::ArrayBuffer::new_backing_store_from_vec(c.to_vec());
-        v8::ArrayBuffer::with_backing_store(scope, &backing_store.make_shared())
-          .into()
+        v8::Global::new(
+          scope,
+          v8::Local::<v8::Value>::from(v8::ArrayBuffer::with_backing_store(
+            scope,
+            &backing_store.make_shared(),
+          )),
+        )
       }),
       cached_data_rejected: source
         .get_cached_data()
@@ -415,10 +425,40 @@ extern "C" fn allow_wasm_code_gen(
   }
   // SAFETY: The tag match guarantees this slot was populated by
   // `attach`/`attach_vanilla`, so it points at a valid ContextifyContext.
-  // The ContextifyContext outlives the v8::Context because it owns a
-  // TracedReference to it.
+  // The ContextifyContext is anchored on this context's global object (see
+  // `keep_wrapper_alive`), so it stays alive for at least as long as the
+  // v8::Context we just read it from.
   let ctx = unsafe { &*(context_ptr as *const ContextifyContext) };
   ctx.allow_code_gen_wasm
+}
+
+// Keep the `ContextifyContext` wrapper alive for as long as the v8::Context
+// itself is alive.
+//
+// The context stores a raw pointer to the wrapper in its embedder data
+// (`CONTEXTIFY_CTX_SLOT`), but a raw pointer is not a GC root. For a
+// contextified sandbox the only strong reference to the wrapper is a private
+// symbol on the sandbox object. If user code drops the sandbox while keeping
+// the context alive (for example via a function extracted from the context),
+// the wrapper would be garbage collected and that raw pointer would dangle,
+// causing a use-after-free the next time an interceptor (or the wasm code-gen
+// callback) dereferences it.
+//
+// Anchoring the wrapper in a private symbol on the context's global object
+// makes the context a strong root for the wrapper: while the context is alive
+// its global is alive, which keeps the wrapper alive, which in turn traces the
+// sandbox `TracedReference`, keeping the sandbox alive too. When the context
+// finally becomes unreachable the whole cycle is collected together.
+fn keep_wrapper_alive(
+  scope: &mut v8::PinScope<'_, '_>,
+  context: v8::Local<v8::Context>,
+  wrapper: v8::Local<v8::Object>,
+) {
+  let global = context.global(scope);
+  let symbol_str =
+    v8::String::new_from_onebyte_const(scope, &CONTEXTIFY_WRAPPER_SYMBOL_NAME);
+  let symbol = v8::Private::for_api(scope, symbol_str);
+  global.set_private(scope, symbol, wrapper.into());
 }
 
 impl ContextifyContext {
@@ -486,11 +526,12 @@ impl ContextifyContext {
     let ptr =
       deno_core::cppgc::try_unwrap_cppgc_object::<Self>(scope, wrapper.into());
 
-    // SAFETY: We are storing a pointer to the ContextifyContext
-    // in the embedder data of the v8::Context. The contextified wrapper
-    // lives longer than the execution context, so this should be safe.
-    // The tag slot is set to a static sentinel so `allow_wasm_code_gen` —
-    // which runs for every context — can distinguish contextified contexts
+    // SAFETY: We are storing a pointer to the ContextifyContext in the
+    // embedder data of the v8::Context. `keep_wrapper_alive` (called below)
+    // anchors the wrapper on the context's global object, so the wrapper
+    // outlives the context and this pointer never dangles.
+    // The tag slot is set to a static sentinel so `allow_wasm_code_gen`,
+    // which runs for every context, can distinguish contextified contexts
     // from non-contextified ones.
     unsafe {
       context.set_aligned_pointer_in_embedder_data(
@@ -502,6 +543,8 @@ impl ContextifyContext {
         &raw const CONTEXTIFY_TAG as *mut _,
       );
     }
+
+    keep_wrapper_alive(scope, context, wrapper);
 
     // Drop the v8::Context annex (created by `set_aligned_pointer_in_embedder_data`).
     // The annex holds a `Weak<Context>` with a guaranteed finalizer. If left in
@@ -597,9 +640,10 @@ impl ContextifyContext {
     let ptr =
       deno_core::cppgc::try_unwrap_cppgc_object::<Self>(scope, wrapper.into());
 
-    // SAFETY: We are storing a pointer to the ContextifyContext
-    // in the embedder data of the v8::Context. The contextified wrapper
-    // lives longer than the execution context, so this should be safe.
+    // SAFETY: We are storing a pointer to the ContextifyContext in the
+    // embedder data of the v8::Context. `keep_wrapper_alive` (called below)
+    // anchors the wrapper on the context's global object, so the wrapper
+    // outlives the context and this pointer never dangles.
     // See `attach` for the tag slot.
     unsafe {
       context.set_aligned_pointer_in_embedder_data(
@@ -611,6 +655,8 @@ impl ContextifyContext {
         &raw const CONTEXTIFY_TAG as *mut _,
       );
     }
+
+    keep_wrapper_alive(scope, context, wrapper);
 
     // See `attach` for why we clear the annex here.
     context.clear_all_slots();
@@ -691,8 +737,10 @@ impl ContextifyContext {
     if context_ptr.is_null() {
       return None;
     }
-    // SAFETY: We are storing a pointer to the ContextifyContext
-    // in the embedder data of the v8::Context during creation.
+    // SAFETY: We store a pointer to the ContextifyContext in the embedder data
+    // of the v8::Context during creation, and anchor the wrapper on the
+    // context's global object (see `keep_wrapper_alive`) so it remains valid
+    // for as long as the context is alive.
     Some(unsafe { &*(context_ptr as *const ContextifyContext) })
   }
 }
@@ -1228,15 +1276,18 @@ fn indexed_property_enumerator<'s>(
   };
 
   let Ok(properties_vec) =
-    serde_v8::from_v8::<Vec<serde_v8::Value>>(scope, properties.into())
+    <Vec<v8::Local<v8::Value>> as ConvertFromV8>::from_v8(
+      scope,
+      properties.into(),
+    )
   else {
     return;
   };
 
   let mut indices = vec![];
   for prop in properties_vec {
-    if prop.v8_value.is_number() {
-      indices.push(prop.v8_value);
+    if prop.is_number() {
+      indices.push(prop);
     }
   }
 
@@ -1332,7 +1383,6 @@ fn indexed_property_deleter<'s>(
 
 #[allow(clippy::too_many_arguments, reason = "op")]
 #[op2]
-#[serde]
 pub fn op_vm_create_script<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   source: v8::Local<'a, v8::String>,
@@ -1343,7 +1393,7 @@ pub fn op_vm_create_script<'a>(
   produce_cached_data: bool,
   parsing_context: Option<v8::Local<'a, v8::Object>>,
   import_module_dynamically_id: i32,
-) -> Option<CompileResult<'a>> {
+) -> Option<CompileResult> {
   ContextifyScript::create(
     scope,
     source,
@@ -1362,7 +1412,7 @@ pub fn op_vm_script_run_in_context<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   #[cppgc] script: &ContextifyScript,
   sandbox: Option<v8::Local<'a, v8::Object>>,
-  #[serde] timeout: i64,
+  #[number] timeout: i64,
   display_errors: bool,
   break_on_sigint: bool,
 ) -> Option<v8::Local<'a, v8::Value>> {
@@ -1431,17 +1481,16 @@ pub fn op_vm_is_context(
     .unwrap_or(false)
 }
 
-#[derive(serde::Serialize)]
-struct CompileResult<'s> {
-  value: serde_v8::Value<'s>,
-  cached_data: Option<serde_v8::Value<'s>>,
+#[derive(ToV8)]
+struct CompileResult {
+  value: v8::Global<v8::Value>,
+  cached_data: Option<v8::Global<v8::Value>>,
   cached_data_rejected: bool,
   cached_data_produced: bool,
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
 #[op2]
-#[serde]
 pub fn op_vm_compile_function<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   source: v8::Local<'s, v8::String>,
@@ -1454,7 +1503,7 @@ pub fn op_vm_compile_function<'s>(
   context_extensions: Option<v8::Local<'s, v8::Array>>,
   params: Option<v8::Local<'s, v8::Array>>,
   import_module_dynamically_id: i32,
-) -> Option<CompileResult<'s>> {
+) -> Option<CompileResult> {
   let context = if let Some(parsing_context) = parsing_context {
     let Some(context) =
       ContextifyContext::from_sandbox_obj(scope, parsing_context)
@@ -1548,14 +1597,17 @@ pub fn op_vm_compile_function<'s>(
   };
 
   Some(CompileResult {
-    value: serde_v8::Value {
-      v8_value: function.into(),
-    },
+    value: v8::Global::new(scope, v8::Local::<v8::Value>::from(function)),
     cached_data: cached_data.as_ref().map(|c| {
       let backing_store =
         v8::ArrayBuffer::new_backing_store_from_vec(c.to_vec());
-      v8::ArrayBuffer::with_backing_store(scope, &backing_store.make_shared())
-        .into()
+      v8::Global::new(
+        scope,
+        v8::Local::<v8::Value>::from(v8::ArrayBuffer::with_backing_store(
+          scope,
+          &backing_store.make_shared(),
+        )),
+      )
     }),
     cached_data_rejected: source
       .get_cached_data()
@@ -1617,6 +1669,12 @@ pub struct ContextifyModule {
   /// `SYNTHETIC_CALLBACKS`. Stored separately so `Drop` can clean up the
   /// registry entry without needing a v8 scope.
   synthetic_identity_hash: Option<NonZeroI32>,
+  /// V8 identity hash used as the key in `IMPORT_META_CALLBACKS`. Stored so
+  /// `Drop` can clean up the registry entry without needing a v8 scope.
+  /// `None` unless this module was created with an `initializeImportMeta`
+  /// callback (synthetic modules and modules without the callback have no
+  /// entry to clean up).
+  import_meta_identity_hash: Option<NonZeroI32>,
 }
 
 // SAFETY: all v8 references are visited during cppgc trace.
@@ -1641,6 +1699,11 @@ impl Drop for ContextifyModule {
         m.borrow_mut().remove(&hash);
       });
     }
+    if let Some(hash) = self.import_meta_identity_hash {
+      IMPORT_META_CALLBACKS.with(|m| {
+        m.borrow_mut().remove(&hash);
+      });
+    }
   }
 }
 
@@ -1657,6 +1720,56 @@ thread_local! {
   /// looks up the user callback here using the Module passed by V8.
   static SYNTHETIC_CALLBACKS: RefCell<HashMap<NonZeroI32, SyntheticCallbackEntry>> =
     RefCell::new(HashMap::new());
+
+  /// Map from V8 Module identity hash -> the user's `initializeImportMeta`
+  /// callback for vm modules that supplied one. Populated by
+  /// `op_vm_module_create_source_text_module` and consumed by
+  /// `external_import_meta_hook` when V8 fires the host-initialize-import-meta
+  /// callback. Cleaned up in `ContextifyModule::drop`. Modules created
+  /// without an `initializeImportMeta` callback have no entry here.
+  static IMPORT_META_CALLBACKS: RefCell<HashMap<NonZeroI32, v8::Global<v8::Function>>> =
+    RefCell::new(HashMap::new());
+}
+
+/// Hook registered with deno_core so V8's host-initialize-import-meta
+/// callback can drive `import.meta` for `node:vm` modules. Like Node's
+/// `vm.SourceTextModule`, `import.meta` is left entirely under the user's
+/// control: this only invokes the user's `initializeImportMeta(meta)`
+/// callback (if one was provided) and otherwise leaves `meta` empty. In
+/// particular `meta.url` is *not* auto-populated, matching Node.
+fn external_import_meta_hook<'s, 'i, 'm, 'o>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  module: v8::Local<'m, v8::Module>,
+  meta: v8::Local<'o, v8::Object>,
+) {
+  let hash = module.get_identity_hash();
+  let callback_global =
+    IMPORT_META_CALLBACKS.with(|m| m.borrow().get(&hash).cloned());
+  let Some(cb_global) = callback_global else {
+    return;
+  };
+
+  let callback = v8::Local::new(scope, &cb_global);
+  v8::tc_scope!(tc_scope, scope);
+  let recv: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
+  let _ = callback.call(tc_scope, recv, &[meta.into()]);
+  if tc_scope.has_caught() && !tc_scope.has_terminated() {
+    tc_scope.rethrow();
+  }
+}
+
+/// Register the import-meta hook with deno_core. Called on each vm module
+/// creation so it's wired up by the time V8 fires the
+/// host-initialize-import-meta callback. The per-isolate callback slot is a
+/// `Cell<Option<fn>>`, so re-registering just stores the same fn pointer
+/// again — cheap and idempotent.
+fn ensure_external_import_meta_hook_registered(
+  scope: &mut v8::PinScope<'_, '_>,
+) {
+  deno_core::register_external_module_import_meta_cb(
+    scope,
+    external_import_meta_hook,
+  );
 }
 
 #[op2]
@@ -1669,9 +1782,15 @@ pub fn op_vm_module_create_source_text_module<'a>(
   column_offset: i32,
   context_object: Option<v8::Local<'a, v8::Object>>,
   import_module_dynamically_id: i32,
+  initialize_import_meta: Option<v8::Local<'a, v8::Function>>,
 ) -> Option<ContextifyModule> {
+  ensure_external_import_meta_hook_registered(scope);
+
   let (context, microtask_queue) =
     resolve_module_context(scope, context_object)?;
+
+  let import_meta_callback =
+    initialize_import_meta.map(|f| v8::Global::new(scope, f));
 
   let scope = &mut v8::ContextScope::new(scope, context);
   let host_defined_options =
@@ -1702,6 +1821,17 @@ pub fn op_vm_module_create_source_text_module<'a>(
   }
   let module = module?;
 
+  // Only track an import-meta entry when the user supplied an
+  // `initializeImportMeta` callback. Without one there's nothing to do —
+  // `import.meta` is left empty, matching Node's `vm.SourceTextModule`.
+  let identity_hash = module.get_identity_hash();
+  let import_meta_identity_hash = import_meta_callback.map(|cb| {
+    IMPORT_META_CALLBACKS.with(|m| {
+      m.borrow_mut().insert(identity_hash, cb);
+    });
+    identity_hash
+  });
+
   Some(ContextifyModule {
     module: v8::TracedReference::new(scope, module),
     context: v8::TracedReference::new(scope, context),
@@ -1710,6 +1840,7 @@ pub fn op_vm_module_create_source_text_module<'a>(
     resolutions: RefCell::new(HashMap::new()),
     is_linked: Cell::new(false),
     synthetic_identity_hash: None,
+    import_meta_identity_hash,
   })
 }
 
@@ -1782,6 +1913,11 @@ pub fn op_vm_module_create_synthetic_module<'a>(
     // from creation so `op_vm_module_instantiate` doesn't reject them.
     is_linked: Cell::new(true),
     synthetic_identity_hash: Some(hash),
+    // Synthetic modules don't have a body so `import.meta` never runs,
+    // but V8 may still hit the host-initialize-import-meta callback (the
+    // module map lookup would then fall through to the external hook).
+    // Skip registering an import-meta entry — there's nothing to do.
+    import_meta_identity_hash: None,
   })
 }
 
@@ -2179,7 +2315,7 @@ pub fn op_vm_module_get_exception<'a>(
   module.get_exception()
 }
 
-#[derive(serde::Serialize)]
+#[derive(ToV8)]
 pub struct ModuleRequestInfo {
   pub specifier: String,
   pub attributes: HashMap<String, String>,
@@ -2187,7 +2323,6 @@ pub struct ModuleRequestInfo {
 }
 
 #[op2]
-#[serde]
 pub fn op_vm_module_get_module_requests(
   scope: &mut v8::PinScope<'_, '_>,
   #[cppgc] this: &ContextifyModule,

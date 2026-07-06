@@ -588,14 +588,19 @@ mod impl_ {
           };
 
           let array_buffer = v8::ArrayBuffer::new(scope, byte_length as usize);
-          // SAFETY: array_buffer is valid as v8 is keeping it alive, and is byte_length bytes
-          // buf is also byte_length bytes long
-          unsafe {
-            std::ptr::copy(
-              buf.as_ptr(),
-              array_buffer.data().unwrap().as_ptr().cast::<u8>(),
-              byte_length as usize,
-            );
+          // A zero-length ArrayBuffer has a null backing store, so `data()`
+          // returns `None`. Skip the copy in that case to avoid panicking on
+          // empty typed arrays / buffers (e.g. `Buffer.alloc(0)`).
+          if byte_length > 0 {
+            // SAFETY: array_buffer is valid as v8 is keeping it alive, and is byte_length bytes
+            // buf is also byte_length bytes long
+            unsafe {
+              std::ptr::copy(
+                buf.as_ptr(),
+                array_buffer.data().unwrap().as_ptr().cast::<u8>(),
+                byte_length as usize,
+              );
+            }
           }
 
           let value = match index {

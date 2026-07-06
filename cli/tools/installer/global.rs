@@ -35,6 +35,7 @@ use crate::args::CompileFlags;
 use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::FlagsExt;
 use crate::args::InstallEntrypointsFlags;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsGlobal;
@@ -169,6 +170,12 @@ pub async fn install_global(
       npmrc: npmrc.clone(),
       npm_package_info_provider,
     };
+    // Flatten dependencies from the entrypoint's closest package.json into the
+    // copied config's import map. Entries from an explicit `--config` import
+    // map and from workspace members take precedence.
+    let mut extra_imports = workspace_member_imports.clone();
+    extra_imports
+      .extend(package_json_dep_import_entries(&name_and_url.module_url));
     setup_config_dir(
       &name_and_url,
       &flags,
@@ -176,7 +183,7 @@ pub async fn install_global(
       &installation_dir,
       Some(&jsr_lockfile_fetcher),
       install_flags_global.force,
-      &workspace_member_imports,
+      &extra_imports,
     )
     .await?;
 
@@ -250,70 +257,70 @@ pub async fn uninstall(
     return Err(anyhow!("Installation path is not a directory"));
   }
 
-  let file_path = installation_dir.join(&uninstall_flags.name);
+  for name in &uninstall_flags.packages {
+    let file_path = installation_dir.join(name);
 
-  let mut removed = remove_file_if_exists(&file_path)?;
+    let mut removed = remove_file_if_exists(&file_path)?;
 
-  if cfg!(windows) {
-    removed |= remove_file_if_exists(&file_path.with_extension("cmd"))?;
-    removed |= remove_file_if_exists(&file_path.with_extension("exe"))?;
-  }
+    if cfg!(windows) {
+      removed |= remove_file_if_exists(&file_path.with_extension("cmd"))?;
+      removed |= remove_file_if_exists(&file_path.with_extension("exe"))?;
+    }
 
-  if !removed {
-    return Err(anyhow!(
-      "No installation found for {}",
-      uninstall_flags.name
-    ));
-  }
+    if !removed {
+      return Err(anyhow!("No installation found for {}", name));
+    }
 
-  // There might be some extra files to delete
-  // Note: tsconfig.json is legacy. We renamed it to deno.json in January 2023.
-  // Note: deno.json and lock.json files were removed Feb 2026 in favor of a sub directory
-  // Use the base file path (without extension) to compute related files
-  let base_file = installation_dir.join(&uninstall_flags.name);
-  for ext in ["tsconfig.json", "deno.json", "lock.json"] {
-    // remove the plain extension files (e.g., name.deno.json, name.lock.json)
-    let file_path_ext = base_file.with_extension(ext);
-    remove_file_if_exists(&file_path_ext)?;
+    // There might be some extra files to delete
+    // Note: tsconfig.json is legacy. We renamed it to deno.json in January 2023.
+    // Note: deno.json and lock.json files were removed Feb 2026 in favor of a sub directory
+    // Use the base file path (without extension) to compute related files
+    let base_file = installation_dir.join(name);
+    for ext in ["tsconfig.json", "deno.json", "lock.json"] {
+      // remove the plain extension files (e.g., name.deno.json, name.lock.json)
+      let file_path_ext = base_file.with_extension(ext);
+      remove_file_if_exists(&file_path_ext)?;
 
-    // also remove the hidden per-command copies created at install time
-    // (e.g., .name.deno.json)
-    let hidden_file = get_hidden_file_with_ext(&base_file, ext);
-    remove_file_if_exists(&hidden_file)?;
+      // also remove the hidden per-command copies created at install time
+      // (e.g., .name.deno.json)
+      let hidden_file = get_hidden_file_with_ext(&base_file, ext);
+      remove_file_if_exists(&hidden_file)?;
 
-    // On Windows, installs use a shim with a .cmd extension, which means the
-    // hidden files might be named like `.name.cmd.deno.json`. Attempt to remove
-    // those as well to be thorough.
-    #[cfg(windows)]
+      // On Windows, installs use a shim with a .cmd extension, which means the
+      // hidden files might be named like `.name.cmd.deno.json`. Attempt to remove
+      // those as well to be thorough.
+      #[cfg(windows)]
+      {
+        let base_with_cmd = base_file.with_extension("cmd");
+        let hidden_cmd_file = get_hidden_file_with_ext(&base_with_cmd, ext);
+        remove_file_if_exists(&hidden_cmd_file)?;
+      }
+    }
+
+    // remove the .<name>/ config directory if it exists
+    let config_dir = installation_dir.join(format!(".{}", name));
+
+    // check for extra bin entries stored during install and remove their shims
+    let extra_bins_file = config_dir.join("extra_bin_entries.json");
+    if extra_bins_file.is_file()
+      && let Ok(content) = fs::read_to_string(&extra_bins_file)
+      && let Ok(extra_names) = serde_json::from_str::<Vec<String>>(&content)
     {
-      let base_with_cmd = base_file.with_extension("cmd");
-      let hidden_cmd_file = get_hidden_file_with_ext(&base_with_cmd, ext);
-      remove_file_if_exists(&hidden_cmd_file)?;
+      for extra_name in &extra_names {
+        remove_shim_files(&installation_dir, extra_name)?;
+      }
     }
-  }
 
-  // remove the .<name>/ config directory if it exists
-  let config_dir = installation_dir.join(format!(".{}", uninstall_flags.name));
-
-  // check for extra bin entries stored during install and remove their shims
-  let extra_bins_file = config_dir.join("extra_bin_entries.json");
-  if extra_bins_file.is_file()
-    && let Ok(content) = fs::read_to_string(&extra_bins_file)
-    && let Ok(extra_names) = serde_json::from_str::<Vec<String>>(&content)
-  {
-    for extra_name in &extra_names {
-      remove_shim_files(&installation_dir, extra_name)?;
+    if config_dir.is_dir() {
+      fs::remove_dir_all(&config_dir).with_context(|| {
+        format!("Failed removing directory: {}", config_dir.display())
+      })?;
+      log::info!("deleted {}", config_dir.display());
     }
+
+    log::info!("✅ Successfully uninstalled {}", name);
   }
 
-  if config_dir.is_dir() {
-    fs::remove_dir_all(&config_dir).with_context(|| {
-      format!("Failed removing directory: {}", config_dir.display())
-    })?;
-    log::info!("deleted {}", config_dir.display());
-  }
-
-  log::info!("✅ Successfully uninstalled {}", uninstall_flags.name);
   Ok(())
 }
 
@@ -380,7 +387,6 @@ async fn install_global_compiled(
     output: Some(output.clone()),
     args: install_flags_global.args,
     target: None,
-    watch: None,
     no_terminal: false,
     icon: None,
     include: vec![],
@@ -388,6 +394,7 @@ async fn install_global_compiled(
     eszip: false,
     self_extracting: false,
     bundle: false,
+    app_name: None,
     minify: false,
     exclude_unused_npm: false,
   };
@@ -419,7 +426,7 @@ async fn setup_config_dir(
   installation_dir: &Path,
   jsr_lockfile_fetcher: Option<&JsrLockfileFetcher<'_>>,
   force: bool,
-  workspace_member_imports: &[(String, String)],
+  extra_imports: &[(String, String)],
 ) -> Result<(), AnyError> {
   fn resolve_implicit_node_modules_dir(
     flags: &Flags,
@@ -495,14 +502,15 @@ async fn setup_config_dir(
   if let Some(original_config_url) = &original_config_url {
     rewrite_relative_import_map_paths(&config_obj, original_config_url);
   }
-  // Flatten workspace members into the import map. The `workspace` field is
-  // stripped below to stop discovery, which would otherwise break resolution of
-  // bare specifiers that point at member packages. Existing import map entries
-  // win, matching the runtime precedence of the import map over workspace
-  // members.
-  if !workspace_member_imports.is_empty() {
+  // Flatten workspace members and package.json dependencies into the import
+  // map. The `workspace` field is stripped below to stop discovery and the
+  // entrypoint's package.json isn't visible from the config dir, which would
+  // otherwise break resolution of bare specifiers that point at member
+  // packages or package.json dependencies. Existing import map entries win,
+  // matching the runtime precedence of the import map.
+  if !extra_imports.is_empty() {
     let imports = config_obj.object_value_or_set("imports");
-    for (specifier, target) in workspace_member_imports {
+    for (specifier, target) in extra_imports {
       if imports.get(specifier).is_none() {
         imports.append(specifier, CstInputValue::String(target.clone()));
       }
@@ -613,6 +621,85 @@ fn workspace_member_import_entries(
     }
   }
   entries
+}
+
+/// Builds import map entries for the dependencies declared in the closest
+/// package.json to a local file entrypoint.
+///
+/// `deno install -g` copies the supplied config (or an empty one) into a
+/// per-binary directory and the installed command runs with that config, so
+/// dependencies declared in the project's package.json are not visible to it.
+/// Flatten them into the copied config's import map (e.g. `"@std/log":
+/// "npm:@jsr/std__log@^0.224.9"`, plus a trailing-slash entry for subpath
+/// imports) so bare specifiers keep resolving the same way they do when
+/// running the entrypoint directly. See
+/// https://github.com/denoland/deno/issues/26412.
+fn package_json_dep_import_entries(module_url: &Url) -> Vec<(String, String)> {
+  use deno_package_json::PackageJsonDepValue;
+
+  let Ok(file_path) = deno_path_util::url_to_file_path(module_url) else {
+    return Vec::new();
+  };
+  let sys = crate::sys::CliSys::default();
+  let mut maybe_dir = file_path.parent();
+  while let Some(dir) = maybe_dir {
+    let pkg_json = match deno_package_json::PackageJson::load_from_path(
+      &sys,
+      None,
+      &dir.join("package.json"),
+    ) {
+      Ok(Some(pkg_json)) => pkg_json,
+      Ok(None) => {
+        maybe_dir = dir.parent();
+        continue;
+      }
+      Err(err) => {
+        log::warn!(
+          "{} Ignoring package.json for the installed command: {:#}",
+          crate::colors::yellow("Warning"),
+          err
+        );
+        return Vec::new();
+      }
+    };
+    let deps = pkg_json.resolve_local_package_json_deps();
+    let mut entries = Vec::new();
+    // Only runtime `dependencies` are flattened. `devDependencies` aren't
+    // needed by the installed global command and would otherwise emit a
+    // spurious warning for any dev-only file:/workspace:/catalog: entry.
+    for (alias, dep) in deps.dependencies.iter() {
+      match dep {
+        Ok(PackageJsonDepValue::Req(req)) => {
+          // The trailing-slash entry uses the `npm:/pkg@req/` form because
+          // `npm:pkg@req/` is an opaque-path URL that subpaths cannot be
+          // URL-joined onto.
+          entries.push((
+            format!("{}/", alias),
+            format!("npm:/{}@{}/", req.name, req.version_req.version_text()),
+          ));
+          entries.push((
+            alias.to_string(),
+            format!("npm:{}@{}", req.name, req.version_req.version_text()),
+          ));
+        }
+        Ok(
+          PackageJsonDepValue::File(_)
+          | PackageJsonDepValue::Workspace { .. }
+          | PackageJsonDepValue::Catalog(_),
+        )
+        | Err(_) => {
+          log::warn!(
+            "{} Ignoring \"{}\" from '{}' because only npm and jsr dependencies are supported by the installed command.",
+            crate::colors::yellow("Warning"),
+            alias,
+            pkg_json.path.display(),
+          );
+        }
+      }
+    }
+    return entries;
+  }
+  Vec::new()
 }
 
 /// Rewrites `./` and `../` paths inside `imports` and `scopes` to absolute
@@ -2271,46 +2358,60 @@ mod tests {
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
-    let mut file_path = bin_dir.join("echo_test");
-    File::create(&file_path).unwrap();
-    if cfg!(windows) {
-      file_path = file_path.with_extension("cmd");
+    // create a shim plus its extra and hidden per-command files, mirroring
+    // what install produces
+    let create_shim = |name: &str| {
+      let mut file_path = bin_dir.join(name);
       File::create(&file_path).unwrap();
-    }
-    let shim_path = file_path.clone();
+      if cfg!(windows) {
+        file_path = file_path.with_extension("cmd");
+        File::create(&file_path).unwrap();
+      }
+      let shim_path = file_path.clone();
 
-    // create extra files
-    {
-      let file_path = file_path.with_extension("deno.json");
-      File::create(file_path).unwrap();
-    }
-    {
-      // legacy tsconfig.json, make sure it's cleaned up for now
-      let file_path = file_path.with_extension("tsconfig.json");
-      File::create(file_path).unwrap();
-    }
-    {
-      let file_path = file_path.with_extension("lock.json");
-      File::create(file_path).unwrap();
-    }
+      // create extra files
+      {
+        let file_path = file_path.with_extension("deno.json");
+        File::create(file_path).unwrap();
+      }
+      {
+        // legacy tsconfig.json, make sure it's cleaned up for now
+        let file_path = file_path.with_extension("tsconfig.json");
+        File::create(file_path).unwrap();
+      }
+      {
+        let file_path = file_path.with_extension("lock.json");
+        File::create(file_path).unwrap();
+      }
 
-    // create hidden per-command copies as produced by install
-    {
-      let hidden_file =
-        get_hidden_file_with_ext(shim_path.as_path(), "deno.json");
-      File::create(hidden_file).unwrap();
-    }
-    {
-      let hidden_file =
-        get_hidden_file_with_ext(shim_path.as_path(), "lock.json");
-      File::create(hidden_file).unwrap();
-    }
+      // create hidden per-command copies as produced by install
+      {
+        let hidden_file =
+          get_hidden_file_with_ext(shim_path.as_path(), "deno.json");
+        File::create(hidden_file).unwrap();
+      }
+      {
+        let hidden_file =
+          get_hidden_file_with_ext(shim_path.as_path(), "lock.json");
+        File::create(hidden_file).unwrap();
+      }
 
+      (file_path, shim_path)
+    };
+
+    let (mut file_path, shim_path) = create_shim("echo_test");
+    let (mut second_file_path, second_shim_path) =
+      create_shim("second_echo_test");
+
+    // uninstall removes multiple packages at once
     uninstall(
       Default::default(),
       UninstallFlags {
         kind: UninstallKind::Global(UninstallFlagsGlobal {
-          name: "echo_test".to_string(),
+          packages: vec![
+            "echo_test".to_string(),
+            "second_echo_test".to_string(),
+          ],
           root: Some(temp_dir.path().to_string()),
         }),
       },
@@ -2318,22 +2419,30 @@ mod tests {
     .await
     .unwrap();
 
-    assert!(!file_path.exists());
-    assert!(!file_path.with_extension("tsconfig.json").exists());
-    assert!(!file_path.with_extension("deno.json").exists());
-    assert!(!file_path.with_extension("lock.json").exists());
+    for (file_path, shim_path) in [
+      (&file_path, &shim_path),
+      (&second_file_path, &second_shim_path),
+    ] {
+      assert!(!file_path.exists());
+      assert!(!file_path.with_extension("tsconfig.json").exists());
+      assert!(!file_path.with_extension("deno.json").exists());
+      assert!(!file_path.with_extension("lock.json").exists());
 
-    // hidden per-command files should also be removed
-    assert!(
-      !get_hidden_file_with_ext(shim_path.as_path(), "deno.json").exists()
-    );
-    assert!(
-      !get_hidden_file_with_ext(shim_path.as_path(), "lock.json").exists()
-    );
+      // hidden per-command files should also be removed
+      assert!(
+        !get_hidden_file_with_ext(shim_path.as_path(), "deno.json").exists()
+      );
+      assert!(
+        !get_hidden_file_with_ext(shim_path.as_path(), "lock.json").exists()
+      );
+    }
 
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");
       assert!(!file_path.exists());
+
+      second_file_path = second_file_path.with_extension("cmd");
+      assert!(!second_file_path.exists());
     }
   }
 
@@ -2363,6 +2472,9 @@ mod tests {
       scopes,
       registry_configs: Default::default(),
       min_release_age_days: None,
+      trust_policy: Default::default(),
+      trust_policy_ignore_after_minutes: None,
+      trust_policy_exclude: Vec::new(),
     })
   }
 

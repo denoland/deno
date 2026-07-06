@@ -12,6 +12,8 @@ use std::path::PathBuf;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_print::drop_print;
+use deno_print::drop_println;
 
 use super::CoverageReport;
 use super::util;
@@ -30,6 +32,36 @@ pub struct CoverageStats<'a> {
   pub parent: Option<String>,
   pub file_text: Option<String>,
   pub report: Option<&'a CoverageReport>,
+}
+
+impl CoverageStats<'_> {
+  /// Adds the line, branch, and function hit/miss counts of a single report.
+  /// Shared by the summary reporter and the threshold check so both derive
+  /// percentages from the same definition of a covered line/branch/function.
+  pub fn add_report(&mut self, report: &CoverageReport) {
+    self.line_hit += report
+      .found_lines
+      .iter()
+      .filter(|(_, count)| *count > 0)
+      .count();
+    self.line_miss += report
+      .found_lines
+      .iter()
+      .filter(|(_, count)| *count == 0)
+      .count();
+    self.branch_hit += report.branches.iter().filter(|b| b.is_hit).count();
+    self.branch_miss += report.branches.iter().filter(|b| !b.is_hit).count();
+    self.fn_hit += report
+      .named_functions
+      .iter()
+      .filter(|f| f.execution_count > 0)
+      .count();
+    self.fn_miss += report
+      .named_functions
+      .iter()
+      .filter(|f| f.execution_count == 0)
+      .count();
+  }
 }
 
 type CoverageSummary<'a> = HashMap<String, CoverageStats<'a>>;
@@ -86,29 +118,7 @@ pub trait CoverageReporter {
           ..CoverageStats::default()
         });
 
-        stats.line_hit += report
-          .found_lines
-          .iter()
-          .filter(|(_, count)| *count > 0)
-          .count();
-        stats.line_miss += report
-          .found_lines
-          .iter()
-          .filter(|(_, count)| *count == 0)
-          .count();
-        stats.branch_hit += report.branches.iter().filter(|b| b.is_hit).count();
-        stats.branch_miss +=
-          report.branches.iter().filter(|b| !b.is_hit).count();
-        stats.fn_hit += report
-          .named_functions
-          .iter()
-          .filter(|f| f.execution_count > 0)
-          .count();
-        stats.fn_miss += report
-          .named_functions
-          .iter()
-          .filter(|f| f.execution_count == 0)
-          .count();
+        stats.add_report(report);
 
         file_text = None;
         summary_path = path.parent();
@@ -120,7 +130,6 @@ pub trait CoverageReporter {
 
 pub struct SummaryCoverageReporter {}
 
-#[allow(clippy::print_stdout, reason = "reporter")]
 impl SummaryCoverageReporter {
   pub fn new() -> SummaryCoverageReporter {
     SummaryCoverageReporter {}
@@ -185,7 +194,7 @@ impl SummaryCoverageReporter {
       format!("{}", colors::red(&format!("{:>6.1}", line_percent)))
     };
 
-    println!(
+    drop_println!(
       "| {file_name} | {branch_percent} | {fn_percent} | {line_percent} |",
       file_name = file_name,
       branch_percent = branch_percent,
@@ -195,7 +204,6 @@ impl SummaryCoverageReporter {
   }
 }
 
-#[allow(clippy::print_stdout, reason = "reporter")]
 impl CoverageReporter for SummaryCoverageReporter {
   fn done(
     &self,
@@ -203,18 +211,31 @@ impl CoverageReporter for SummaryCoverageReporter {
     file_reports: &[(CoverageReport, String)],
   ) {
     let summary = self.collect_summary(file_reports);
-    let root_stats = summary.get("").unwrap();
+    // When the reports can't be reduced to a common file-system root (e.g. on
+    // Windows when coverage spans multiple drive letters), `collect_summary`
+    // returns an empty map without the "" root entry. There is nothing to
+    // print in that case, so warn and bail out instead of panicking.
+    let Some(root_stats) = summary.get("") else {
+      log::warn!(
+        "Skipping coverage summary: reports span multiple file-system roots"
+      );
+      return;
+    };
 
     let mut entries = summary
       .iter()
       .filter(|(_, stats)| stats.file_text.is_some())
       .collect::<Vec<_>>();
     entries.sort_by_key(|(node, _)| node.to_owned());
+    // `entries` is always non-empty here: reaching this point means the summary
+    // has a "" root, which only happens when `collect_summary` resolved a common
+    // root from non-empty `file_reports`, and each report inserts a leaf entry
+    // with `file_text: Some(..)`. `unwrap_or(0)` is just defense-in-depth.
     let node_max = entries
       .iter()
       .map(|(node, _)| node.len())
       .max()
-      .unwrap()
+      .unwrap_or(0)
       .max("All files".len());
 
     let header = format!(
@@ -228,8 +249,8 @@ impl CoverageReporter for SummaryCoverageReporter {
       "-".repeat(10),
       "-".repeat(6)
     );
-    println!("{}", header);
-    println!("{}", separator);
+    drop_println!("{}", header);
+    drop_println!("{}", separator);
     entries.iter().for_each(|(node, stats)| {
       self.print_coverage_line(node, node_max, stats);
     });
@@ -374,7 +395,6 @@ impl CoverageReporter for DetailedCoverageReporter {
   }
 }
 
-#[allow(clippy::print_stdout, reason = "reporter")]
 impl DetailedCoverageReporter {
   pub fn new() -> DetailedCoverageReporter {
     DetailedCoverageReporter {}
@@ -386,7 +406,7 @@ impl DetailedCoverageReporter {
     file_text: &str,
   ) -> Result<(), AnyError> {
     let lines = file_text.split('\n').collect::<Vec<_>>();
-    print!("cover {} ... ", coverage_report.url);
+    drop_print!("cover {} ... ", coverage_report.url);
 
     let hit_lines = coverage_report
       .found_lines
@@ -408,11 +428,11 @@ impl DetailedCoverageReporter {
       format!("{:.3}% ({}/{})", line_ratio * 100.0, lines_hit, lines_found);
 
     if line_ratio >= 0.9 {
-      println!("{}", colors::green(&line_coverage));
+      drop_println!("{}", colors::green(&line_coverage));
     } else if line_ratio >= 0.75 {
-      println!("{}", colors::yellow(&line_coverage));
+      drop_println!("{}", colors::yellow(&line_coverage));
     } else {
-      println!("{}", colors::red(&line_coverage));
+      drop_println!("{}", colors::red(&line_coverage));
     }
 
     let mut last_line = None;
@@ -425,10 +445,10 @@ impl DetailedCoverageReporter {
         && last_line + 1 != line_index
       {
         let dash = colors::gray("-".repeat(WIDTH + 1));
-        println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
+        drop_println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
       }
 
-      println!(
+      drop_println!(
         "{:width$} {} {}",
         line_index + 1,
         colors::gray(SEPARATOR),
@@ -804,5 +824,35 @@ impl HtmlCoverageReporter {
     }
 
     breadcrumbs_html.into_iter().collect::<Vec<_>>().join(" / ")
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // Regression test for https://github.com/denoland/deno/issues/30924.
+  //
+  // When the reports cannot be reduced to a common file-system root (e.g. on
+  // Windows when coverage spans multiple drive letters), `collect_summary`
+  // returns an empty map without the "" root entry. The summary reporter used
+  // to `unwrap()` that entry and panic. It should instead skip the summary
+  // gracefully.
+  #[test]
+  fn summary_reporter_does_not_panic_without_common_root() {
+    let report = CoverageReport {
+      // A non-`file:` URL has no file-system path, so `find_root` cannot
+      // produce a usable root and `collect_summary` returns an empty map.
+      url: Url::parse("https://example.com/main.ts").unwrap(),
+      named_functions: Vec::new(),
+      branches: Vec::new(),
+      found_lines: vec![(0, 1)],
+      output: None,
+    };
+    let file_reports = vec![(report, "console.log(1);".to_string())];
+
+    let reporter = SummaryCoverageReporter::new();
+    // Must not panic.
+    reporter.done(Path::new("coverage"), &file_reports);
   }
 }

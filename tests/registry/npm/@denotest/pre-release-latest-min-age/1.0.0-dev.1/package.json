@@ -1,0 +1,6 @@
+{
+  "name": "@denotest/pre-release-latest-min-age",
+  "version": "1.0.0-dev.1",
+  "main": "index.js",
+  "publishDate": "2000-01-01T00:00:00.000Z"
+}

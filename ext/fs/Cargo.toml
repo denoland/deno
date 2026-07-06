@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fs"
-version = "0.160.0"
+version = "0.163.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -32,6 +32,7 @@ rayon.workspace = true
 same-file.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true, features = ["fs", "user"] }

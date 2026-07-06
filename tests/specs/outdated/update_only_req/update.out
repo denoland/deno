@@ -1,2 +1,4 @@
+Download http://localhost:4260/@denotest%2fupdate-latest-semver
+Download http://localhost:4260/@denotest/update-latest-semver/1.0.1.tgz
 Updated 1 dependency:
  - npm:@denotest/update-latest-semver ^1.0.0 -> ^1.0.1

@@ -45,6 +45,7 @@ const {
   op_fs_open_async,
   op_fs_open_sync,
   op_fs_read_dir_async,
+  op_fs_read_dir_async_next,
   op_fs_read_dir_sync,
   op_fs_read_file_async,
   op_fs_read_file_sync,
@@ -79,6 +80,7 @@ const {
   DatePrototypeGetTime,
   Error,
   Function,
+  MathFloor,
   MathTrunc,
   Number,
   ObjectEntries,
@@ -220,15 +222,52 @@ function readDirSync(path) {
 }
 
 function readDir(path) {
-  const array = op_fs_read_dir_async(
-    pathFromURL(path),
-  );
+  const pathString = pathFromURL(path);
   return {
-    async *[SymbolAsyncIterator]() {
-      const dir = await array;
-      for (let i = 0; i < dir.length; ++i) {
-        yield dir[i];
+    [SymbolAsyncIterator]() {
+      let rid;
+      let ridPromise;
+      let finished = false;
+      async function getRid() {
+        if (ridPromise === undefined) {
+          ridPromise = op_fs_read_dir_async(pathString);
+        }
+        rid = await ridPromise;
+        return rid;
       }
+      return {
+        async next() {
+          if (finished) {
+            return { value: undefined, done: true };
+          }
+          if (rid === undefined) {
+            await getRid();
+          }
+          const value = await op_fs_read_dir_async_next(rid);
+          if (value === null) {
+            finished = true;
+            core.close(rid);
+            return { value: undefined, done: true };
+          }
+          return { value, done: false };
+        },
+        async return(value) {
+          if (finished) {
+            return { value, done: true };
+          }
+          finished = true;
+          if (ridPromise !== undefined) {
+            if (rid === undefined) {
+              await getRid();
+            }
+            core.close(rid);
+          }
+          return { value, done: true };
+        },
+        [SymbolAsyncIterator]() {
+          return this;
+        },
+      };
     },
   };
 }
@@ -315,7 +354,10 @@ function createByteStruct(types) {
   // types can be "date", "bool" or "u64".
   let offset = 0;
   let str =
-    'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux" || Deno.build.os === "android" || Deno.build.os === "openbsd" || Deno.build.os === "freebsd"; return {';
+    'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux" || Deno.build.os === "android" || Deno.build.os === "openbsd" || Deno.build.os === "freebsd";' +
+    // Two's-complement inversion avoids float64 precision loss near 2^64.
+    " const readI64Ms = (lo, hi) => hi < 2147483648 ? lo + hi * 4294967296 : -((~hi >>> 0) * 4294967296 + (~lo >>> 0) + 1);" +
+    " return {";
   const typeEntries = ObjectEntries(types);
   for (let i = 0; i < typeEntries.length; ++i) {
     let { 0: name, 1: type } = typeEntries[i];
@@ -340,9 +382,9 @@ function createByteStruct(types) {
         offset += 2;
       }
     } else if (type == "date") {
-      str += `${name}: view[${offset}] === 0 ? null : new Date(view[${
+      str += `${name}: view[${offset}] === 0 ? null : new Date(readI64Ms(view[${
         offset + 2
-      }] + view[${offset + 3}] * 2**32),`;
+      }], view[${offset + 3}])),`;
       offset += 2;
     } else {
       if (!optionalLoose) {
@@ -467,9 +509,13 @@ async function link(oldpath, newpath) {
 }
 
 function toUnixTimeFromEpoch(value) {
+  // Use floor (not trunc) when splitting into seconds + nanoseconds so the
+  // nanosecond remainder is always non-negative, even for timestamps before
+  // the Unix epoch. The op receives nanoseconds as a u32, so a negative
+  // remainder would wrap around and corrupt the stored time.
   if (isDate(value)) {
     const time = DatePrototypeGetTime(value);
-    const seconds = MathTrunc(time / 1e3);
+    const seconds = MathFloor(time / 1e3);
     const nanoseconds = MathTrunc(time - (seconds * 1e3)) * 1e6;
 
     return [
@@ -478,7 +524,7 @@ function toUnixTimeFromEpoch(value) {
     ];
   }
 
-  const seconds = MathTrunc(value);
+  const seconds = MathFloor(value);
   const nanoseconds = MathTrunc((value * 1e3) - (seconds * 1e3)) * 1e6;
 
   return [

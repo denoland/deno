@@ -31,10 +31,13 @@ use deno_npm_installer::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use deno_npm_installer::lifecycle_scripts::PackageWithScript;
+use deno_npm_installer::lifecycle_scripts::ResolvePkgFolderFn;
 use deno_npm_installer::lifecycle_scripts::compute_lifecycle_script_layers;
 use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
 use deno_npmrc::RegistryConfig;
 use deno_npmrc::ResolvedNpmRc;
+use deno_resolver::file_fetcher::FetchOptions;
+use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
@@ -72,6 +75,13 @@ pub type CliNpmGraphResolver = deno_npm_installer::graph::NpmDenoGraphResolver<
 >;
 
 pub use deno_npm_cache::NpmPackumentFormat;
+
+/// `Accept` header sent when fetching npm package metadata. Mirrors the npm
+/// install path (`CliNpmCacheHttpClient`) so registries that content-negotiate
+/// (or redirect non-npm-client requests elsewhere) behave the same for metadata
+/// lookups done by `deno outdated`, `deno add`, etc.
+const NPM_PACKAGE_INFO_ACCEPT: &str =
+  "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*";
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
@@ -259,6 +269,7 @@ pub struct NpmFetchResolver {
   file_fetcher: Arc<CliFileFetcher>,
   npmrc: Arc<ResolvedNpmRc>,
   version_resolver: Arc<NpmVersionResolver>,
+  deserialize_export_keys: bool,
 }
 
 impl NpmFetchResolver {
@@ -273,7 +284,17 @@ impl NpmFetchResolver {
       file_fetcher,
       npmrc,
       version_resolver,
+      deserialize_export_keys: false,
     }
+  }
+
+  /// Fill in the `exports` subpath keys of each package version when parsing
+  /// registry metadata. Only the LSP needs them (for npm import-specifier
+  /// completion); every other consumer leaves them off so nothing is retained.
+  /// See [`deno_npm::registry::NpmPackageInfo::fill_export_keys`].
+  pub fn with_export_keys(mut self) -> Self {
+    self.deserialize_export_keys = true;
+    self
   }
 
   pub async fn req_to_nv(
@@ -352,13 +373,53 @@ impl NpmFetchResolver {
           None => Ok(None),
         })
         .map_err(|e| format!("{e:#}"))?;
+    // Identify as an npm client. Some registries (e.g. self-hosted GitLab) only
+    // serve package metadata to requests that send the npm `Accept` header and
+    // otherwise redirect to registry.npmjs.org, which drops the auth header on
+    // the cross-origin redirect and 404s for private packages. The npm install
+    // path sends this same header, so matching it keeps `deno outdated`/`deno
+    // add` working wherever `deno install` does.
+    // See https://github.com/denoland/deno/issues/31924
+    //
+    // Mirror the install path's tradeoff: this header requests the abbreviated
+    // packument, which omits the `time` field that `minimumDependencyAge` relies
+    // on for date filtering (`matches_newest_dependency_date`). When a date is
+    // configured we must request the full packument instead, so we don't send
+    // the header (matching `CliNpmCacheHttpClient`'s `Full` packument format).
+    let maybe_accept = if self
+      .version_resolver
+      .newest_dependency_date_options
+      .date
+      .is_none()
+    {
+      Some(NPM_PACKAGE_INFO_ACCEPT)
+    } else {
+      None
+    };
     let file = self
       .file_fetcher
-      .fetch_bypass_permissions_with_maybe_auth(&info_url, maybe_auth_header)
+      .fetch_with_options(
+        &info_url,
+        FetchPermissionsOptionRef::AllowAll,
+        FetchOptions {
+          maybe_auth: maybe_auth_header,
+          maybe_accept,
+          ..Default::default()
+        },
+      )
       .await
       .map_err(|e| format!("{e:#}"))?;
-    serde_json::from_slice::<NpmPackageInfo>(&file.source)
-      .map_err(|e| format!("failed to parse package metadata: {e}"))
+    let mut info = serde_json::from_slice::<NpmPackageInfo>(&file.source)
+      .map_err(|e| format!("failed to parse package metadata: {e}"))?;
+    if self.deserialize_export_keys {
+      // `exports` subpath keys are skipped by the shared parse; the LSP is the
+      // only consumer, so fill them in here rather than making every command
+      // retain them (see denoland/deno#35664).
+      info
+        .fill_export_keys(&file.source)
+        .map_err(|e| format!("failed to parse package metadata: {e}"))?;
+    }
+    Ok(info)
   }
 
   pub fn applicable_version_infos<'a>(
@@ -430,6 +491,7 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
         &mut bin_entries,
         options.snapshot,
         options.system_packages,
+        options.resolve_pkg_folder,
       )
       .await;
 
@@ -584,6 +646,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
         package,
         options.snapshot,
         options.additional_packages,
+        options.resolve_pkg_folder,
       )
       .await;
 
@@ -669,6 +732,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     bin_entries: &mut BinEntries<'a, CliSys>,
     snapshot: &'a NpmResolutionSnapshot,
     packages: &'a [NpmResolutionPackage],
+    resolve_pkg_folder: Option<ResolvePkgFolderFn<'_>>,
   ) -> crate::task_runner::TaskCustomCommands {
     let mut custom_commands = crate::task_runner::TaskCustomCommands::new();
     custom_commands
@@ -696,6 +760,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
         custom_commands,
         snapshot,
         packages,
+        resolve_pkg_folder,
       )
       .await
   }
@@ -713,13 +778,24 @@ impl DenoTaskLifeCycleScriptsExecutor {
     mut commands: crate::task_runner::TaskCustomCommands,
     snapshot: &'a NpmResolutionSnapshot,
     packages: P,
+    resolve_pkg_folder: Option<ResolvePkgFolderFn<'_>>,
   ) -> crate::task_runner::TaskCustomCommands {
     for package in packages {
-      let Ok(package_path) = self
-        .npm_resolver
-        .resolve_pkg_folder_from_pkg_id(&package.id)
-      else {
-        continue;
+      // prefer the installer-provided resolver, which knows the layout
+      // being installed (e.g. hoisted); the npm resolver assumes the
+      // isolated `.deno` layout
+      let package_path = match resolve_pkg_folder {
+        Some(resolve_pkg_folder) => match resolve_pkg_folder(&package.id) {
+          Some(path) => path,
+          None => continue,
+        },
+        None => match self
+          .npm_resolver
+          .resolve_pkg_folder_from_pkg_id(&package.id)
+        {
+          Ok(path) => path,
+          Err(_) => continue,
+        },
       };
       let extra = if let Some(extra) = &package.extra {
         Cow::Borrowed(extra)
@@ -765,6 +841,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     package: &NpmResolutionPackage,
     snapshot: &NpmResolutionSnapshot,
     additional_packages: &[&NpmResolutionPackage],
+    resolve_pkg_folder: Option<ResolvePkgFolderFn<'_>>,
   ) -> crate::task_runner::TaskCustomCommands {
     let sys = CliSys::default();
     let mut bin_entries = BinEntries::new(sys.with_paths_in_errors());
@@ -789,6 +866,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
           }
           Some(dep)
         }),
+        resolve_pkg_folder,
       )
       .await
   }

@@ -239,10 +239,18 @@ impl TypeChecker {
     graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<Arc<ModuleGraph>, CheckError> {
-    let mut diagnostics = self.check_diagnostics(graph, options)?;
+    let mut diagnostics_iter = self.check_diagnostics(graph, options)?;
+    // Drain the iterator first so that all the "Check ..." lines (which are
+    // printed while type checking each folder) are emitted before any
+    // diagnostics. Otherwise, in a workspace with multiple folders, errors
+    // from one folder would be printed in the middle of the "Check ..." lines
+    // of the following folders.
+    let mut all_diagnostics = Vec::with_capacity(diagnostics_iter.remaining());
+    for result in diagnostics_iter.by_ref() {
+      all_diagnostics.push(result?);
+    }
     let mut failed = false;
-    for result in diagnostics.by_ref() {
-      let mut diagnostics = result?;
+    for mut diagnostics in all_diagnostics {
       diagnostics.emit_warnings();
       if diagnostics.has_diagnostic() {
         failed = true;
@@ -260,7 +268,7 @@ impl TypeChecker {
         .into(),
       )
     } else {
-      Ok(diagnostics.into_graph())
+      Ok(diagnostics_iter.into_graph())
     }
   }
 
@@ -350,6 +358,12 @@ impl TypeChecker {
           self.cli_options.initial_cwd(),
         )
         .map_err(|e| CheckErrorKind::Other(JsErrorBox::from_err(e)))?,
+        bare_importable_pkg_names: self
+          .cli_options
+          .workspace()
+          .resolver_jsr_pkgs()
+          .map(|pkg| pkg.name)
+          .collect(),
       }),
     ))
   }
@@ -433,6 +447,17 @@ pub struct DiagnosticsByFolderIterator<'a>(
 );
 
 impl DiagnosticsByFolderIterator<'_> {
+  /// Number of folders remaining to be checked, i.e. the exact number of items
+  /// this iterator will still yield.
+  pub fn remaining(&self) -> usize {
+    match &self.0 {
+      DiagnosticsByFolderIteratorInner::Empty(_) => 0,
+      DiagnosticsByFolderIteratorInner::Real(r) => {
+        r.groups.len().saturating_sub(r.current_group_index)
+      }
+    }
+  }
+
   pub fn into_graph(self) -> Arc<ModuleGraph> {
     match self.0 {
       DiagnosticsByFolderIteratorInner::Empty(module_graph) => module_graph,
@@ -480,6 +505,9 @@ struct DiagnosticsByFolderRealIterator<'a> {
   code_cache: Option<Arc<crate::cache::CodeCache>>,
   initial_cwd: PathBuf,
   current_dir: Url,
+  /// Names of packages importable by bare specifier (workspace members and
+  /// packages linked via the "links" field), used to enhance import errors.
+  bare_importable_pkg_names: Vec<String>,
 }
 
 impl Iterator for DiagnosticsByFolderRealIterator<'_> {
@@ -554,6 +582,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
       self.node_resolver,
       self.npm_resolver,
       self.compiler_options_resolver,
+      &self.bare_importable_pkg_names,
       self.npm_check_state_hash,
       check_group.compiler_options,
       self.options.type_check_mode,
@@ -847,6 +876,9 @@ struct GraphWalker<'a> {
   node_resolver: &'a CliNodeResolver,
   npm_resolver: &'a CliNpmResolver,
   compiler_options_resolver: &'a CompilerOptionsResolver,
+  /// Names of packages importable by bare specifier (workspace members and
+  /// packages linked via the "links" field), used to enhance import errors.
+  bare_importable_pkg_names: &'a [String],
   maybe_hasher: Option<FastInsecureHasher>,
   seen: HashSet<&'a Url>,
   pending: VecDeque<PendingGraphWalkSpecifier<'a>>,
@@ -870,6 +902,7 @@ impl<'a> GraphWalker<'a> {
     node_resolver: &'a CliNodeResolver,
     npm_resolver: &'a CliNpmResolver,
     compiler_options_resolver: &'a CompilerOptionsResolver,
+    bare_importable_pkg_names: &'a [String],
     npm_cache_state_hash: Option<u64>,
     compiler_options: &CompilerOptions,
     type_check_mode: TypeCheckMode,
@@ -892,6 +925,7 @@ impl<'a> GraphWalker<'a> {
       node_resolver,
       npm_resolver,
       compiler_options_resolver,
+      bare_importable_pkg_names,
       maybe_hasher,
       seen: HashSet::with_capacity(
         graph.imports.len() + graph.specifiers_count(),
@@ -1137,7 +1171,10 @@ impl<'a> GraphWalker<'a> {
                 )
               }))
             && let Some(diagnostic) =
-              tsc::Diagnostic::maybe_from_resolution_error(resolution_error)
+              tsc::Diagnostic::maybe_from_resolution_error(
+                resolution_error,
+                self.bare_importable_pkg_names,
+              )
           {
             self.push_missing_diagnostic(
               diagnostic,
@@ -1325,7 +1362,10 @@ impl<'a> GraphWalker<'a> {
             let resolution_error =
               ResolutionError::InvalidSpecifier { error, range };
             if let Some(diagnostic) =
-              tsc::Diagnostic::maybe_from_resolution_error(&resolution_error)
+              tsc::Diagnostic::maybe_from_resolution_error(
+                &resolution_error,
+                self.bare_importable_pkg_names,
+              )
             {
               self.missing_diagnostics.push(diagnostic);
             }

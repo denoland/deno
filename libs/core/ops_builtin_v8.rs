@@ -185,6 +185,9 @@ pub fn op_lazy_load_esm(
   scope: &mut v8::PinScope,
   #[string] module_specifier: String,
 ) -> Result<v8::Global<v8::Value>, CoreError> {
+  // First residual ESM load: run the deferred fast-call op upgrade so this
+  // module's body captures the fast op overloads. No-op after the first call.
+  crate::runtime::bindings::ensure_fast_ops_upgraded(scope);
   let module_map_rc = JsRealm::module_map_from(scope);
   // `synthetic_esm` registrations don't live in `lazy_esm_sources`, so
   // route them through their own sync-load path. `createLazyLoader` calls
@@ -202,6 +205,9 @@ pub fn op_load_ext_script(
   scope: &mut v8::PinScope,
   #[string] specifier: String,
 ) -> Result<v8::Global<v8::Value>, CoreError> {
+  // First residual ext-script load: run the deferred fast-call op upgrade so
+  // this script captures the fast op overloads. No-op after the first call.
+  crate::runtime::bindings::ensure_fast_ops_upgraded(scope);
   let module_map_rc = JsRealm::module_map_from(scope);
   module_map_rc.load_ext_script(scope, &specifier)
 }
@@ -219,16 +225,6 @@ pub fn op_set_captured_bootstrap(
   let module_map_rc = JsRealm::module_map_from(scope);
   let global = v8::Global::new(scope, value);
   module_map_rc.set_captured_bootstrap(global);
-}
-
-// We run in a `nofast` op here so we don't get put into a `DisallowJavascriptExecutionScope` and we're
-// allowed to touch JS heap.
-#[op2(nofast)]
-pub fn op_queue_microtask(
-  isolate: &mut v8::Isolate,
-  cb: v8::Local<v8::Function>,
-) {
-  isolate.enqueue_microtask(cb);
 }
 
 // We run in a `nofast` op here so we don't get put into a `DisallowJavascriptExecutionScope` and we're

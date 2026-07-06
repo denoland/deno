@@ -14,6 +14,9 @@ import {
   // for `import.meta.filename` and `import.meta.dirname` that Deno
   // provides.
   register,
+  // @ts-ignore Our internal @types/node is at v18.16.19 which predates
+  // this change.
+  runMain,
   SourceMap,
   stripTypeScriptTypes,
   syncBuiltinESMExports,
@@ -105,6 +108,12 @@ Deno.test("[node/module isBuiltin] recognizes node builtins", () => {
 // https://github.com/denoland/deno/issues/22731
 Deno.test("[node/module builtinModules] has 'module' in builtins", () => {
   assert(builtinModules.includes("module"));
+});
+
+// https://github.com/denoland/deno/issues/34812
+Deno.test("[node/module runMain] is exposed as a named export", () => {
+  assertEquals(typeof runMain, "function");
+  assertEquals(runMain, Module.runMain);
 });
 
 // https://github.com/denoland/deno/issues/18666
@@ -351,6 +360,44 @@ Deno.test("[node/module require] throws ERR_INVALID_ARG_VALUE for empty string i
     (err as TypeError & { code?: string }).code,
     "ERR_INVALID_ARG_VALUE",
   );
+});
+
+Deno.test("[node/module require] loads .node files through CJS addon path", async () => {
+  const tempDir = await Deno.makeTempDir();
+  try {
+    const addonPath = path.join(tempDir, "addon.node");
+    await Deno.writeFile(addonPath, new Uint8Array());
+
+    const require = createRequire(import.meta.url);
+    const err = assertThrows(() => require(addonPath));
+    assert(err instanceof Error);
+    assert(!err.message.includes("Cannot import native Node.js addon"));
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
+Deno.test("[node/module require] loads more than 128 local TypeScript modules", async () => {
+  const tempDir = await Deno.makeTempDir();
+  try {
+    await Promise.all(
+      Array.from({ length: 200 }, (_, i) =>
+        Deno.writeTextFile(
+          path.join(tempDir, `mod_${i}.ts`),
+          `export const value = ${i};\n`,
+        )),
+    );
+
+    const require = createRequire(import.meta.url);
+    for (let i = 0; i < 200; i++) {
+      const mod = require(path.join(tempDir, `mod_${i}.ts`)) as {
+        value: number;
+      };
+      assertEquals(mod.value, i);
+    }
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
+  }
 });
 
 Deno.test("[node/module Module._stat] default returns 0/1/<0 for file/dir/missing", async () => {
