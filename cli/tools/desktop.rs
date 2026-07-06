@@ -54,7 +54,7 @@ pub async fn desktop(
   let config_flags = flags.clone();
   let factory = CliFactory::from_flags(Arc::new(config_flags));
   let cli_options = factory.cli_options()?;
-  let desktop_config = cli_options.start_dir.to_desktop_config()?;
+  let desktop_config = cli_options.start_dir.to_desktop_config()?.clone();
   let laufey_resolver = Arc::new(LaufeyBackendResolver::new(&factory)?);
   let deno_dir_root = factory.deno_dir()?.root.clone();
 
