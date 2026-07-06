@@ -375,9 +375,7 @@ fn handle_ws_request(
       // the runtime is being torn down for a watcher restart). Close the
       // socket instead of leaving the client attached to a session that will
       // never respond.
-      let _ = websocket
-        .write_frame(Frame::close(1001, b"runtime restarted"))
-        .await;
+      close_going_away(&mut websocket).await;
       return;
     }
     log::info!("Debugger session started.");
@@ -708,6 +706,15 @@ async fn listen_for_new_inspectors(
   }
 }
 
+/// Closes the websocket with code 1001 ("going away"), telling the client
+/// that the server-side session is gone, e.g. because the runtime was torn
+/// down for a watcher restart or the process is exiting.
+async fn close_going_away(
+  websocket: &mut WebSocket<TokioIo<hyper::upgrade::Upgraded>>,
+) {
+  let _ = websocket.write_frame(Frame::close(1001, b"going away")).await;
+}
+
 /// The pump future takes care of forwarding messages between the websocket
 /// and channels. It resolves when either side disconnects, ignoring any
 /// errors.
@@ -740,9 +747,7 @@ async fn pump_websocket_messages(
                     // lives on. Close the socket so the client can detect the
                     // restart and reconnect to the new session; otherwise the
                     // connection stays open but silently ignores all messages.
-                    let _ = websocket
-                        .write_frame(Frame::close(1001, b"runtime restarted"))
-                        .await;
+                    close_going_away(&mut websocket).await;
                     log::info!("Debugger session ended (runtime was torn down)");
                     break 'pump;
                 }

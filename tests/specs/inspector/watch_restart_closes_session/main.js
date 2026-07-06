@@ -9,6 +9,7 @@ Deno.writeTextFileSync(watched, "setInterval(() => {}, 1000);\n");
 
 const deadline = setTimeout(() => {
   console.error("test timed out waiting for the inspector to close the socket");
+  child.kill();
   Deno.exit(1);
 }, 60_000);
 Deno.unrefTimer(deadline);
@@ -92,6 +93,7 @@ for (let attempt = 0; attempt < 10 && !reconnected; attempt++) {
 }
 if (!reconnected) {
   console.error("failed to reconnect to the restarted runtime");
+  child.kill();
   Deno.exit(1);
 }
 console.log("reconnected to new session");
