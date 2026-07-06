@@ -1673,6 +1673,16 @@ pub fn get_default_v8_flags() -> Vec<String> {
     "--stack-size=1024".to_string(),
     "--inspector-live-edit".to_string(),
     "--external-memory-max-reasonable-size=0".to_string(),
+    // V8 only grows the external-memory GC limit by
+    // `external-memory-max-growing-factor` (default 1.1) per GC, so a workload
+    // cycling large ArrayBuffer backing stores (streaming fetch/file/encoder
+    // bodies) keeps the limit pinned near current usage and drives continuous
+    // concurrent marking/sweeping. Raising the factor lets the limit jump well
+    // above churn so far fewer majors fire; combined with the pooled backing
+    // store allocator (block reuse bounds retention), this trades a modest
+    // memory headroom increase for a large GC-time reduction under buffer
+    // churn. See denoland/deno#35808.
+    "--external-memory-max-growing-factor=8".to_string(),
   ]
 }
 
