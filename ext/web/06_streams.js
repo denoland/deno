@@ -168,6 +168,58 @@ function resolvePromiseWith(value) {
   return new Promise((resolve) => resolve(value));
 }
 
+/**
+ * Like Deferred, but only materializes its Promise when someone actually
+ * reads it. Used for TransformStream's [[backpressureChangePromise]], which
+ * is re-created on every backpressure flip (per chunk in steady state) but
+ * often never observed. Resolve-only: no reject support.
+ * @template T
+ */
+class LazyDeferred {
+  /** @type {Promise<T> | null} */
+  #promise = null;
+  /** @type {((value: T) => void) | null} */
+  #resolve = null;
+  #settled = false;
+
+  /** @returns {Promise<T>} */
+  get promise() {
+    if (this.#promise === null) {
+      if (this.#settled) {
+        this.#promise = PromiseResolve(undefined);
+      } else {
+        this.#promise = new Promise((resolve) => {
+          this.#resolve = resolve;
+        });
+      }
+    }
+    return this.#promise;
+  }
+
+  /** @param {T} value */
+  resolve(value) {
+    if (this.#settled) {
+      return;
+    }
+    this.#settled = true;
+    if (this.#resolve !== null) {
+      this.#resolve(value);
+      this.#resolve = null;
+    }
+  }
+}
+
+/** @type {Promise<undefined> | undefined} */
+let _resolvedPromise;
+/**
+ * Shared resolved promise for hot paths that only need a base to hang a
+ * `.then()` off of. Created lazily so it isn't baked into the snapshot.
+ * @returns {Promise<undefined>}
+ */
+function resolvedPromise() {
+  return _resolvedPromise ??= PromiseResolve(undefined);
+}
+
 /** @param {any} e */
 function rethrowAssertionErrorRejection(e) {
   if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
@@ -261,7 +313,13 @@ class Queue {
   #size = 0;
 
   enqueue(value) {
-    const node = { value, next: null };
+    return this.enqueueWithSize(value, 1);
+  }
+
+  // Stores the chunk size inline in the list node instead of a separate
+  // { value, size } wrapper, so a sized enqueue costs a single allocation.
+  enqueueWithSize(value, size) {
+    const node = { value, size, next: null };
     if (this.#head === null) {
       this.#head = node;
       this.#tail = node;
@@ -273,6 +331,13 @@ class Queue {
   }
 
   dequeue() {
+    const node = this.dequeueNode();
+    return node === null ? null : node.value;
+  }
+
+  // Returns the internal { value, size, next } node. Only for use by
+  // dequeueValue(), which needs both the value and its size.
+  dequeueNode() {
     const node = this.#head;
     if (node === null) {
       return null;
@@ -283,7 +348,7 @@ class Queue {
     }
     this.#head = this.#head.next;
     this.#size--;
-    return node.value;
+    return node;
   }
 
   peek() {
@@ -468,6 +533,9 @@ const _strategyHWM = Symbol("[[strategyHWM]]");
 const _strategySizeAlgorithm = Symbol("[[strategySizeAlgorithm]]");
 const _stream = Symbol("[[stream]]");
 const _transformAlgorithm = Symbol("[[transformAlgorithm]]");
+const _isIdentityTransform = Symbol("[[isIdentityTransform]]");
+const _onSinkWriteFulfilled = Symbol("[[onSinkWriteFulfilled]]");
+const _onSinkWriteRejected = Symbol("[[onSinkWriteRejected]]");
 const _view = Symbol("[[view]]");
 const _writable = Symbol("[[writable]]");
 const _writeAlgorithm = Symbol("[[writeAlgorithm]]");
@@ -536,7 +604,7 @@ function createReadableStream(
   pullAlgorithm,
   cancelAlgorithm,
   highWaterMark = 1,
-  sizeAlgorithm = () => 1,
+  sizeAlgorithm = defaultSizeAlgorithm,
 ) {
   assert(isNonNegativeNumber(highWaterMark));
   /** @type {ReadableStream} */
@@ -598,12 +666,12 @@ function createWritableStream(
 function dequeueValue(container) {
   assert(container[_queue] && typeof container[_queueTotalSize] === "number");
   assert(container[_queue].size);
-  const valueWithSize = container[_queue].dequeue();
-  container[_queueTotalSize] -= valueWithSize.size;
+  const node = container[_queue].dequeueNode();
+  container[_queueTotalSize] -= node.size;
   if (container[_queueTotalSize] < 0) {
     container[_queueTotalSize] = 0;
   }
-  return valueWithSize.value;
+  return node.value;
 }
 /**
  * @template T
@@ -624,7 +692,7 @@ function enqueueValueWithSize(container, value, size) {
       "Cannot enqueue value with size: chunk size is invalid",
     );
   }
-  container[_queue].enqueue({ value, size });
+  container[_queue].enqueueWithSize(value, size);
   container[_queueTotalSize] += size;
 }
 
@@ -646,13 +714,22 @@ function extractHighWaterMark(strategy, defaultHWM) {
 }
 
 /**
+ * Shared size algorithm for the default queuing strategy. Hot paths compare
+ * against it by identity to skip the per-chunk call (and its try/catch).
+ * @returns {number}
+ */
+function defaultSizeAlgorithm() {
+  return 1;
+}
+
+/**
  * @template T
  * @param {QueuingStrategy<T>} strategy
  * @return {(chunk: T) => number}
  */
 function extractSizeAlgorithm(strategy) {
   if (strategy.size === undefined) {
-    return () => 1;
+    return defaultSizeAlgorithm;
   }
   return (chunk) =>
     webidl.invokeCallbackFunction(
@@ -1481,8 +1558,7 @@ function peekQueueValue(container) {
       typeof container[_queueTotalSize] === "number",
   );
   assert(container[_queue].size);
-  const valueWithSize = container[_queue].peek();
-  return valueWithSize.value;
+  return container[_queue].peek();
 }
 
 /**
@@ -2084,11 +2160,15 @@ function readableStreamDefaultControllerEnqueue(controller, chunk) {
     readableStreamFulfillReadRequest(stream, chunk, false);
   } else {
     let chunkSize;
-    try {
-      chunkSize = controller[_strategySizeAlgorithm](chunk);
-    } catch (e) {
-      readableStreamDefaultControllerError(controller, e);
-      throw e;
+    if (controller[_strategySizeAlgorithm] === defaultSizeAlgorithm) {
+      chunkSize = 1;
+    } else {
+      try {
+        chunkSize = controller[_strategySizeAlgorithm](chunk);
+      } catch (e) {
+        readableStreamDefaultControllerError(controller, e);
+        throw e;
+      }
     }
 
     try {
@@ -4242,6 +4322,7 @@ function setUpTransformStreamDefaultController(
   transformAlgorithm,
   flushAlgorithm,
   cancelAlgorithm,
+  isIdentityTransform = false,
 ) {
   assert(ObjectPrototypeIsPrototypeOf(TransformStreamPrototype, stream));
   assert(stream[_controller] === undefined);
@@ -4250,6 +4331,7 @@ function setUpTransformStreamDefaultController(
   controller[_transformAlgorithm] = transformAlgorithm;
   controller[_flushAlgorithm] = flushAlgorithm;
   controller[_cancelAlgorithm] = cancelAlgorithm;
+  controller[_isIdentityTransform] = isIdentityTransform;
 }
 
 /**
@@ -4317,6 +4399,7 @@ function setUpTransformStreamDefaultControllerFromTransformer(
     transformAlgorithm,
     flushAlgorithm,
     cancelAlgorithm,
+    transformerDict.transform === undefined,
   );
 }
 
@@ -4554,6 +4637,21 @@ function transformStreamDefaultControllerPerformTransform(controller, chunk) {
     // Algorithms were cleared by a concurrent cancel/abort/close.
     return PromiseResolve(undefined);
   }
+  if (controller[_isIdentityTransform] === true) {
+    // The default transformer forwards the chunk to the readable side
+    // unchanged. Enqueue directly, skipping the transformAlgorithm closure,
+    // its per-chunk resolved promise, and the rejection-wrapper promise (and
+    // with it one microtask hop on the per-chunk critical path).
+    try {
+      transformStreamDefaultControllerEnqueue(controller, chunk);
+    } catch (e) {
+      return transformPromiseWith(PromiseReject(e), undefined, (r) => {
+        transformStreamError(controller[_stream], r);
+        throw r;
+      });
+    }
+    return resolvedPromise();
+  }
   const transformPromise = transformAlgorithm(chunk, controller);
   return transformPromiseWith(transformPromise, undefined, (r) => {
     transformStreamError(controller[_stream], r);
@@ -4742,7 +4840,7 @@ function transformStreamSetBackpressure(stream, backpressure) {
   if (stream[_backpressureChangePromise] !== undefined) {
     stream[_backpressureChangePromise].resolve(undefined);
   }
-  stream[_backpressureChangePromise] = new Deferred();
+  stream[_backpressureChangePromise] = new LazyDeferred();
   stream[_backpressure] = backpressure;
 }
 
@@ -4941,6 +5039,9 @@ function writableStreamDefaultControllerGetBackpressure(controller) {
  * @returns {number}
  */
 function writableStreamDefaultControllerGetChunkSize(controller, chunk) {
+  if (controller[_strategySizeAlgorithm] === defaultSizeAlgorithm) {
+    return 1;
+  }
   let value;
   try {
     value = controller[_strategySizeAlgorithm](chunk);
@@ -4983,27 +5084,47 @@ function writableStreamDefaultControllerProcessWrite(controller, chunk) {
   const stream = controller[_stream];
   writableStreamMarkFirstWriteRequestInFlight(stream);
   const sinkWritePromise = controller[_writeAlgorithm](chunk, controller);
-  uponPromise(sinkWritePromise, () => {
-    writableStreamFinishInFlightWrite(stream);
-    const state = stream[_state];
-    assert(state === "writable" || state === "erroring");
-    dequeueValue(controller);
-    if (
-      writableStreamCloseQueuedOrInFlight(stream) === false &&
-      state === "writable"
-    ) {
-      const backpressure = writableStreamDefaultControllerGetBackpressure(
-        controller,
-      );
-      writableStreamUpdateBackpressure(stream, backpressure);
-    }
-    writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
-  }, (reason) => {
-    if (stream[_state] === "writable") {
-      writableStreamDefaultControllerClearAlgorithms(controller);
-    }
-    writableStreamFinishInFlightWriteWithError(stream, reason);
-  });
+  // The reaction handlers are created once per controller (lazily, so
+  // never-written streams don't pay for them) instead of per chunk. They
+  // include the assertion-rethrow wrapping that uponPromise() would
+  // otherwise re-create on every call.
+  if (controller[_onSinkWriteFulfilled] === undefined) {
+    controller[_onSinkWriteFulfilled] = () => {
+      try {
+        writableStreamFinishInFlightWrite(stream);
+        const state = stream[_state];
+        assert(state === "writable" || state === "erroring");
+        dequeueValue(controller);
+        if (
+          writableStreamCloseQueuedOrInFlight(stream) === false &&
+          state === "writable"
+        ) {
+          const backpressure = writableStreamDefaultControllerGetBackpressure(
+            controller,
+          );
+          writableStreamUpdateBackpressure(stream, backpressure);
+        }
+        writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
+      } catch (e) {
+        rethrowAssertionErrorRejection(e);
+      }
+    };
+    controller[_onSinkWriteRejected] = (reason) => {
+      try {
+        if (stream[_state] === "writable") {
+          writableStreamDefaultControllerClearAlgorithms(controller);
+        }
+        writableStreamFinishInFlightWriteWithError(stream, reason);
+      } catch (e) {
+        rethrowAssertionErrorRejection(e);
+      }
+    };
+  }
+  PromisePrototypeThen(
+    sinkWritePromise,
+    controller[_onSinkWriteFulfilled],
+    controller[_onSinkWriteRejected],
+  );
 }
 
 /**
@@ -7217,6 +7338,10 @@ class WritableStreamDefaultController {
   [_writeAlgorithm];
   /** @type {AbortSignal} */
   [_signal];
+  /** @type {(() => void) | undefined} */
+  [_onSinkWriteFulfilled];
+  /** @type {((reason: any) => void) | undefined} */
+  [_onSinkWriteRejected];
 
   get signal() {
     webidl.assertBranded(this, WritableStreamDefaultControllerPrototype);
