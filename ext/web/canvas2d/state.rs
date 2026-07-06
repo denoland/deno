@@ -191,6 +191,14 @@ pub(super) enum FillStrokeStyle {
   Pattern(v8::Global<v8::Object>),
 }
 
+/// Value most recently assigned to `ctx.filter`: either a CSS filter string
+/// or a `CanvasFilter` object (whose getter must return the same object).
+#[derive(Clone)]
+pub(super) enum FilterStyle {
+  Css(String),
+  Object(v8::Global<v8::Object>),
+}
+
 // `DrawingBackend` abstracts over two unrelated vello renderer families that do
 // not share a scene type today:
 //
@@ -242,7 +250,7 @@ pub(super) struct DrawingState {
   pub(super) text_baseline: TextBaseline,
   pub(super) lang: String,
   pub(super) global_composite_operation: GlobalCompositeOperation,
-  pub(super) filter_string: String,
+  pub(super) filter_style: FilterStyle,
   pub(super) filter: Vec<CssFilterFunction>,
   pub(super) image_smoothing_enabled: bool,
   pub(super) image_smoothing_quality: ImageSmoothingQuality,
@@ -272,7 +280,7 @@ impl Default for DrawingState {
       text_baseline: TextBaseline::default(),
       lang: String::from("inherit"),
       global_composite_operation: GlobalCompositeOperation::default(),
-      filter_string: String::from("none"),
+      filter_style: FilterStyle::Css(String::from("none")),
       filter: Vec::new(),
       image_smoothing_enabled: true,
       image_smoothing_quality: ImageSmoothingQuality::default(),

@@ -1,20 +1,16 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
-use deno_core::WebIDL;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::cppgc::Visitor;
-use deno_core::webidl::ContextFn;
 use deno_core::webidl::UnrestrictedDouble;
 use deno_core::webidl::WebIdlConverter;
-use deno_core::webidl::WebIdlError;
 use deno_error::JsErrorBox;
 use deno_image::image::DynamicImage;
 use deno_image::image::GenericImageView;
@@ -29,6 +25,8 @@ use vello::kurbo::Shape;
 use vello::peniko;
 
 use crate::canvas2d::error::Canvas2DError;
+use crate::canvas2d::filter::CanvasFilter;
+use crate::canvas2d::filter::validate_filter_input;
 use crate::canvas2d::gradient::CanvasGradient;
 use crate::canvas2d::gradient::build_conic_gradient;
 use crate::canvas2d::gradient::build_linear_gradient;
@@ -54,6 +52,7 @@ use crate::canvas2d::state::ClipEntry;
 use crate::canvas2d::state::DrawingBackend;
 use crate::canvas2d::state::DrawingState;
 use crate::canvas2d::state::FillStrokeStyle;
+use crate::canvas2d::state::FilterStyle;
 use crate::canvas2d::state::GlobalCompositeOperation;
 use crate::canvas2d::state::ImageSmoothingQuality;
 use crate::canvas2d::state::LineCap;
@@ -80,46 +79,48 @@ use crate::text_metrics::TextMetrics;
 pub const CONTEXT_ID: &str = "2d";
 pub const UNSTABLE_FEATURE_NAME: &str = "canvas2d";
 
-struct BeginLayerOptions {
-  filter: Option<BeginLayerOptionsFilter>,
-}
-
-#[derive(WebIDL)]
-#[webidl(dictionary)]
-struct BeginLayerOptionsFilter {
-  name: Option<String>,
-  values: Option<Vec<f64>>,
-}
-
-impl<'a> WebIdlConverter<'a> for BeginLayerOptions {
-  type Options = ();
-
-  fn convert<'b, 'i>(
-    scope: &mut v8::PinScope<'a, 'i>,
-    value: v8::Local<'a, v8::Value>,
-    prefix: Cow<'static, str>,
-    context: ContextFn<'b>,
-    _: &Self::Options,
-  ) -> Result<Self, WebIdlError> {
-    if !value.is_object() {
-      return Ok(Self { filter: None });
-    }
-
-    let obj: v8::Local<'_, v8::Object> = if let Ok(obj) = value.try_into() {
-      obj
-    } else {
-      return Ok(Self { filter: None });
-    };
-
-    let filter_key = v8::String::new(scope, "filter").unwrap();
-    let filter = match obj.get(scope, filter_key.into()) {
-      Some(value) if value.is_object() && !value.is_array() => Some(
-        BeginLayerOptionsFilter::convert(scope, value, prefix, context, &())?,
-      ),
-      _ => None,
-    };
-    Ok(Self { filter })
+/// Rejects `ImageData` allocations whose backing buffer would exceed what a
+/// JS typed array can address, so absurd `getImageData()`/`createImageData()`
+/// requests throw instead of aborting on an out-of-memory allocation.
+fn check_image_data_size(w: u32, h: u32) -> Result<(), Canvas2DError> {
+  const MAX_IMAGE_DATA_BYTES: u64 = i32::MAX as u64;
+  if (w as u64) * (h as u64) * 4 > MAX_IMAGE_DATA_BYTES {
+    return Err(Canvas2DError::ImageDataTooLarge);
   }
+  Ok(())
+}
+
+/// Validates the `CanvasLayerOptions` argument of `beginLayer()`. The layer
+/// `filter` is only validated, not rendered (see `CanvasFilter`).
+fn validate_begin_layer_options(
+  scope: &mut v8::PinScope<'_, '_>,
+  options: v8::Local<'_, v8::Value>,
+) -> Result<(), Canvas2DError> {
+  if options.is_null_or_undefined() {
+    return Ok(());
+  }
+  if !options.is_object() {
+    return Err(Canvas2DError::InvalidBeginLayerOptions);
+  }
+  let obj = options.cast::<v8::Object>();
+  let filter_key = v8::String::new(scope, "filter").unwrap();
+  let Some(filter) = obj.get(scope, filter_key.into()) else {
+    return Err(Canvas2DError::InvalidBeginLayerOptions);
+  };
+  if filter.is_null_or_undefined() {
+    return Ok(());
+  }
+  if !filter.is_object() {
+    // The DOMString branch of the filter union: any string (or stringifiable
+    // primitive) is accepted, even when it is not a parsable CSS filter.
+    return Ok(());
+  }
+  if deno_core::cppgc::try_unwrap_cppgc_object::<CanvasFilter>(scope, filter)
+    .is_some()
+  {
+    return Ok(());
+  }
+  validate_filter_input(scope, filter)
 }
 
 pub struct OffscreenCanvasRenderingContext2D {
@@ -810,10 +811,6 @@ impl OffscreenCanvasRenderingContext2D {
     scope: &mut v8::PinScope<'_, '_>,
     value: v8::Local<'_, v8::Value>,
   ) -> Option<FillStrokeStyle> {
-    if value.is_string() {
-      let s = value.to_rust_string_lossy(scope);
-      return parse_css_color(&s).ok().map(FillStrokeStyle::Color);
-    }
     if deno_core::cppgc::try_unwrap_cppgc_object::<CanvasGradient>(scope, value)
       .is_some()
     {
@@ -830,7 +827,12 @@ impl OffscreenCanvasRenderingContext2D {
         value.cast::<v8::Object>(),
       )));
     }
-    None
+    // The DOMString branch of the union: ToString may invoke a user-supplied
+    // toString() (whose thrown exception is left pending to propagate); an
+    // invalid color string leaves the style unchanged.
+    let s = value.to_string(scope)?;
+    let s = s.to_rust_string_lossy(scope);
+    parse_css_color(&s).ok().map(FillStrokeStyle::Color)
   }
 
   // Note: vello (GPU and CPU) applies brush transforms relative to the shape
@@ -1486,6 +1488,7 @@ impl OffscreenCanvasRenderingContext2D {
     }
   }
 
+  #[reentrant]
   #[setter]
   fn fill_style<'a>(
     &self,
@@ -1513,6 +1516,7 @@ impl OffscreenCanvasRenderingContext2D {
     }
   }
 
+  #[reentrant]
   #[setter]
   fn stroke_style<'a>(
     &self,
@@ -1930,13 +1934,39 @@ impl OffscreenCanvasRenderingContext2D {
 
   // TODO(petamoriken): apply CSS filters once Vello GPU supports filter effects
   #[getter]
-  #[string]
-  fn filter(&self) -> String {
-    self.state.borrow().filter_string.clone()
+  fn filter<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+  ) -> v8::Local<'a, v8::Value> {
+    match &self.state.borrow().filter_style {
+      FilterStyle::Css(value) => v8::String::new(scope, value).unwrap().into(),
+      FilterStyle::Object(object) => v8::Local::new(scope, object).into(),
+    }
   }
 
+  #[reentrant]
   #[setter]
-  fn filter(&self, #[webidl] value: String) {
+  fn filter(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<'_, v8::Value>,
+  ) {
+    if deno_core::cppgc::try_unwrap_cppgc_object::<CanvasFilter>(scope, value)
+      .is_some()
+    {
+      let mut state = self.state.borrow_mut();
+      state.filter_style =
+        FilterStyle::Object(v8::Global::new(scope, value.cast::<v8::Object>()));
+      // Object-form filters carry no CSS filter function list.
+      state.filter = Vec::new();
+      return;
+    }
+    // The DOMString branch of the union: a failed ToString leaves the pending
+    // exception to propagate, and an invalid filter string is ignored.
+    let Some(value) = value.to_string(scope) else {
+      return;
+    };
+    let value = value.to_rust_string_lossy(scope);
     let functions = {
       let mut parser_input = FilterParserInput::new(&value);
       let result: Result<Vec<_>, _> =
@@ -1945,7 +1975,7 @@ impl OffscreenCanvasRenderingContext2D {
     };
     if let Some(functions) = functions {
       let mut state = self.state.borrow_mut();
-      state.filter_string = value;
+      state.filter_style = FilterStyle::Css(value);
       state.filter = functions;
     }
   }
@@ -2066,7 +2096,8 @@ impl OffscreenCanvasRenderingContext2D {
   fn shadow_color(&self, #[webidl] value: String) {
     if let Ok(rgba) = parse_css_color(&value) {
       let mut state = self.state.borrow_mut();
-      state.shadow_color = value;
+      // The getter must return the serialized form, not the raw input.
+      state.shadow_color = color_to_css_string(rgba);
       state.shadow_color_rgba = rgba;
     }
   }
@@ -2141,22 +2172,15 @@ impl OffscreenCanvasRenderingContext2D {
     self.drawing.borrow_mut().reset(width, height);
   }
 
+  #[fast]
+  #[reentrant]
   #[undefined]
   fn begin_layer(
     &self,
-    #[webidl] options: Option<BeginLayerOptions>,
+    scope: &mut v8::PinScope<'_, '_>,
+    options: v8::Local<'_, v8::Value>,
   ) -> Result<(), Canvas2DError> {
-    if let Some(options) = options
-      && let Some(filter) = options.filter
-      && filter.name.as_deref() == Some("colorMatrix")
-    {
-      let Some(values) = filter.values else {
-        return Err(Canvas2DError::InvalidBeginLayerFilter);
-      };
-      if values.len() != 20 {
-        return Err(Canvas2DError::InvalidBeginLayerFilter);
-      }
-    }
+    validate_begin_layer_options(scope, options)?;
 
     let current_state = self.state.borrow().clone();
     let op = current_state.global_composite_operation;
@@ -2173,7 +2197,7 @@ impl OffscreenCanvasRenderingContext2D {
       state.shadow_offset_x = 0.0;
       state.shadow_offset_y = 0.0;
       state.shadow_blur = 0.0;
-      state.filter_string = String::from("none");
+      state.filter_style = FilterStyle::Css(String::from("none"));
       state.filter = Vec::new();
     }
 
@@ -2643,9 +2667,16 @@ impl OffscreenCanvasRenderingContext2D {
     scope: &mut v8::PinScope<'_, '_>,
     a: Option<v8::Local<'_, v8::Value>>,
     b: Option<v8::Local<'_, v8::Value>>,
-    c: Option<v8::Local<'_, v8::Value>>,
-    d: Option<v8::Local<'_, v8::Value>>,
+    c: v8::Local<'_, v8::Value>,
+    d: v8::Local<'_, v8::Value>,
   ) -> Result<bool, Canvas2DError> {
+    // The op2 `Option` conversion folds an explicit `null` into `None`, but
+    // the slots that can carry a CanvasFillRule (a non-nullable enum) must
+    // distinguish them: `null` stringifies to "null" (an invalid variant)
+    // while an omitted argument (padded to `undefined` by V8) falls back to
+    // "nonzero".
+    let c = (!c.is_undefined()).then_some(c);
+    let d = (!d.is_undefined()).then_some(d);
     let (path, x, y, rule, is_path2d) =
       self.resolve_point_in_path_args(scope, a, b, c, d)?;
     if !x.is_finite() || !y.is_finite() {
@@ -3115,6 +3146,7 @@ impl OffscreenCanvasRenderingContext2D {
     if w == 0 || h == 0 {
       return Err(Canvas2DError::ZeroSourceSize);
     }
+    check_image_data_size(w, h)?;
 
     let pixels = vec![0u8; w as usize * h as usize * 4];
     Ok(ImageData::new_rgba_unorm8(scope, w, h, &pixels)?)
@@ -3149,6 +3181,7 @@ impl OffscreenCanvasRenderingContext2D {
     let (sy, sh) = if sh < 0 { (sy + sh, -sh) } else { (sy, sh) };
     let out_w = sw as u32;
     let out_h = sh as u32;
+    check_image_data_size(out_w, out_h)?;
 
     let mut sub = vec![0u8; (out_w as usize) * (out_h as usize) * 4];
     for row in 0..out_h {

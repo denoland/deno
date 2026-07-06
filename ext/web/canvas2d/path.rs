@@ -10,6 +10,7 @@ use deno_core::webidl::UnrestrictedDouble;
 use vello::kurbo;
 
 use crate::canvas2d::error::Canvas2DError;
+use crate::canvas2d::filter::to_number_guarded;
 
 pub struct Path2D {
   pub(super) path: RefCell<kurbo::BezPath>,
@@ -489,19 +490,15 @@ fn parse_single_radius(
   scope: &mut v8::PinScope<'_, '_>,
   val: v8::Local<'_, v8::Value>,
 ) -> Result<(f64, f64), Canvas2DError> {
+  // WebIDL `(unrestricted double or DOMPointInit)`: `undefined` selects the
+  // dictionary branch with all-default members.
+  if val.is_undefined() {
+    return Ok((0.0, 0.0));
+  }
   if val.is_object() {
-    let obj: v8::Local<'_, v8::Object> =
-      val.try_into().map_err(|_| Canvas2DError::NonFinite)?;
-    let x_key = v8::String::new(scope, "x").unwrap();
-    let y_key = v8::String::new(scope, "y").unwrap();
-    let rx = obj
-      .get(scope, x_key.into())
-      .and_then(|v| v.number_value(scope))
-      .unwrap_or(0.0);
-    let ry = obj
-      .get(scope, y_key.into())
-      .and_then(|v| v.number_value(scope))
-      .unwrap_or(0.0);
+    let obj = val.cast::<v8::Object>();
+    let rx = dom_point_init_member(scope, obj, "x")?;
+    let ry = dom_point_init_member(scope, obj, "y")?;
     if !rx.is_finite() || !ry.is_finite() {
       return Err(Canvas2DError::NonFinite);
     }
@@ -509,7 +506,9 @@ fn parse_single_radius(
       return Err(Canvas2DError::NegativeRoundRectRadius);
     }
     Ok((rx, ry))
-  } else if let Some(n) = val.number_value(scope) {
+  } else {
+    let n = to_number_guarded(scope, val)
+      .ok_or(Canvas2DError::CannotConvertToNumber)?;
     if !n.is_finite() {
       return Err(Canvas2DError::NonFinite);
     }
@@ -517,9 +516,27 @@ fn parse_single_radius(
       return Err(Canvas2DError::NegativeRoundRectRadius);
     }
     Ok((n, n))
-  } else {
-    Err(Canvas2DError::NonFinite)
   }
+}
+
+/// Reads a `DOMPointInit` member: a missing or `undefined` member falls back
+/// to its default (0), while a value that cannot be converted to a number
+/// (e.g. a BigInt) throws a TypeError. Note this is distinct from
+/// `Canvas2DError::NonFinite`, which per spec is silently ignored by
+/// `roundRect()` rather than thrown.
+fn dom_point_init_member(
+  scope: &mut v8::PinScope<'_, '_>,
+  obj: v8::Local<'_, v8::Object>,
+  key: &str,
+) -> Result<f64, Canvas2DError> {
+  let key = v8::String::new(scope, key).unwrap();
+  let value = obj
+    .get(scope, key.into())
+    .ok_or(Canvas2DError::CannotConvertToNumber)?;
+  if value.is_undefined() {
+    return Ok(0.0);
+  }
+  to_number_guarded(scope, value).ok_or(Canvas2DError::CannotConvertToNumber)
 }
 
 pub(super) fn parse_round_rect_radii(
@@ -651,34 +668,66 @@ pub(super) fn build_round_rect_path(
   let cw = abs_w;
   let ch = abs_h;
 
-  // Clockwise path. Each corner sweeps a full quarter-turn (90 degrees):
-  // top-right from 270deg to 360deg, bottom-right from 0deg to 90deg,
-  // bottom-left from 90deg to 180deg, top-left from 180deg to 270deg
-  // (angles measured with 0deg = +x axis, increasing towards +y).
-  path.move_to((cx + tl.0, cy));
-  path.line_to((cx + cw - tr.0, cy));
-  if tr.0 > 0.0 || tr.1 > 0.0 {
-    add_elliptical_arc(path, cx + cw - tr.0, cy + tr.1, tr.0, tr.1, 3.0, 4.0);
-  }
-  path.line_to((cx + cw, cy + ch - br.1));
-  if br.0 > 0.0 || br.1 > 0.0 {
-    add_elliptical_arc(
-      path,
-      cx + cw - br.0,
-      cy + ch - br.1,
-      br.0,
-      br.1,
-      0.0,
-      1.0,
-    );
-  }
-  path.line_to((cx + bl.0, cy + ch));
-  if bl.0 > 0.0 || bl.1 > 0.0 {
-    add_elliptical_arc(path, cx + bl.0, cy + ch - bl.1, bl.0, bl.1, 1.0, 2.0);
-  }
-  path.line_to((cx, cy + tl.1));
-  if tl.0 > 0.0 || tl.1 > 0.0 {
-    add_elliptical_arc(path, cx + tl.0, cy + tl.1, tl.0, tl.1, 2.0, 3.0);
+  // Per spec, the path winds clockwise when the signs of `w` and `h` agree
+  // and counterclockwise when exactly one of them is negative, so that
+  // opposite windings cancel out under the nonzero fill rule. Each corner
+  // sweeps a full quarter-turn (90 degrees): angles are measured in
+  // quarter-turns with 0 = +x axis, increasing towards +y.
+  if (w < 0.0) == (h < 0.0) {
+    // Clockwise: top-right from 270deg to 360deg, bottom-right from 0deg to
+    // 90deg, bottom-left from 90deg to 180deg, top-left from 180deg to 270deg.
+    path.move_to((cx + tl.0, cy));
+    path.line_to((cx + cw - tr.0, cy));
+    if tr.0 > 0.0 || tr.1 > 0.0 {
+      add_elliptical_arc(path, cx + cw - tr.0, cy + tr.1, tr.0, tr.1, 3.0, 4.0);
+    }
+    path.line_to((cx + cw, cy + ch - br.1));
+    if br.0 > 0.0 || br.1 > 0.0 {
+      add_elliptical_arc(
+        path,
+        cx + cw - br.0,
+        cy + ch - br.1,
+        br.0,
+        br.1,
+        0.0,
+        1.0,
+      );
+    }
+    path.line_to((cx + bl.0, cy + ch));
+    if bl.0 > 0.0 || bl.1 > 0.0 {
+      add_elliptical_arc(path, cx + bl.0, cy + ch - bl.1, bl.0, bl.1, 1.0, 2.0);
+    }
+    path.line_to((cx, cy + tl.1));
+    if tl.0 > 0.0 || tl.1 > 0.0 {
+      add_elliptical_arc(path, cx + tl.0, cy + tl.1, tl.0, tl.1, 2.0, 3.0);
+    }
+  } else {
+    // Counterclockwise: the same corners traversed in the opposite order,
+    // each arc swept backwards.
+    path.move_to((cx + tl.0, cy));
+    if tl.0 > 0.0 || tl.1 > 0.0 {
+      add_elliptical_arc(path, cx + tl.0, cy + tl.1, tl.0, tl.1, 3.0, 2.0);
+    }
+    path.line_to((cx, cy + ch - bl.1));
+    if bl.0 > 0.0 || bl.1 > 0.0 {
+      add_elliptical_arc(path, cx + bl.0, cy + ch - bl.1, bl.0, bl.1, 2.0, 1.0);
+    }
+    path.line_to((cx + cw - br.0, cy + ch));
+    if br.0 > 0.0 || br.1 > 0.0 {
+      add_elliptical_arc(
+        path,
+        cx + cw - br.0,
+        cy + ch - br.1,
+        br.0,
+        br.1,
+        1.0,
+        0.0,
+      );
+    }
+    path.line_to((cx + cw, cy + tr.1));
+    if tr.0 > 0.0 || tr.1 > 0.0 {
+      add_elliptical_arc(path, cx + cw - tr.0, cy + tr.1, tr.0, tr.1, 4.0, 3.0);
+    }
   }
   path.close_path();
 }

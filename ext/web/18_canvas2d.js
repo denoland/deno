@@ -6,6 +6,7 @@ const {
   op_fontdb_load_local_fonts,
   op_fontdb_local_font_data,
   op_fontdb_query_local_fonts,
+  CanvasFilter,
   CanvasGradient,
   CanvasPattern,
   OffscreenCanvasRenderingContext2D,
@@ -34,6 +35,7 @@ const { markNotSerializable } = core.loadExtScript(
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
 webidl.configureInterface(TextMetrics);
+webidl.configureInterface(CanvasFilter);
 webidl.configureInterface(CanvasGradient);
 webidl.configureInterface(CanvasPattern);
 webidl.configureInterface(OffscreenCanvasRenderingContext2D);
@@ -228,6 +230,7 @@ async function queryLocalFonts(options = { __proto__: null }) {
 }
 
 return {
+  CanvasFilter,
   CanvasGradient,
   CanvasPattern,
   FontData,

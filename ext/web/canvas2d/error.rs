@@ -29,11 +29,20 @@ pub enum Canvas2DError {
   #[error("{0}")]
   InvalidState(String),
   #[class(type)]
-  #[error("Invalid beginLayer filter option")]
-  InvalidBeginLayerFilter,
+  #[error("Invalid beginLayer options")]
+  InvalidBeginLayerOptions,
+  #[class(type)]
+  #[error("Invalid filter primitive: {0}")]
+  InvalidFilterPrimitive(&'static str),
+  #[class(type)]
+  #[error("The requested image data size exceeds the supported limit")]
+  ImageDataTooLarge,
   #[class(type)]
   #[error("The provided value is non-finite")]
   NonFinite,
+  #[class(type)]
+  #[error("The provided value cannot be converted to a number")]
+  CannotConvertToNumber,
   #[class(type)]
   #[error("The argument is not of type 'CanvasImageSource'")]
   NotCanvasImageSource,
