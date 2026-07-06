@@ -35,6 +35,8 @@ const {
   ArrayBufferPrototypeSlice,
   ArrayBufferPrototypeTransferToFixedLength,
   ArrayPrototypeMap,
+  Array,
+  ArrayPrototypeFill,
   ArrayPrototypePush,
   AsyncGeneratorPrototype,
   BigInt64Array,
@@ -307,56 +309,93 @@ function uponPromise(promise, onFulfilled, onRejected) {
   );
 }
 
+// Number of (value, size) entries in a freshly allocated ring.
+const QUEUE_INITIAL_CAPACITY = 8;
+// Rings larger than this are dropped (not retained) when the queue
+// empties, so a burst does not pin a large backing array forever.
+const QUEUE_RETAIN_CAPACITY = 512;
+
+// A power-of-two ring buffer holding (value, size) pairs in two
+// consecutive slots. Compared to the previous linked list this allocates
+// nothing per enqueued chunk in steady state (the ring is reused), keeps
+// entries cache-adjacent, and defers all storage allocation until a chunk
+// is actually buffered (`#ring` starts null), which keeps stream
+// construction allocation-free on this axis. Layout mirrors what other
+// engines use for the same spec structure.
 class Queue {
-  #head = null;
-  #tail = null;
+  /** @type {any[] | null} */
+  #ring = null;
+  /** Entry index of the head; always in [0, capacity). */
+  #head = 0;
   #size = 0;
 
   enqueue(value) {
     return this.enqueueWithSize(value, 1);
   }
 
-  // Stores the chunk size inline in the list node instead of a separate
-  // { value, size } wrapper, so a sized enqueue costs a single allocation.
   enqueueWithSize(value, size) {
-    const node = { value, size, next: null };
-    if (this.#head === null) {
-      this.#head = node;
-      this.#tail = node;
-    } else {
-      this.#tail.next = node;
-      this.#tail = node;
+    let ring = this.#ring;
+    if (ring === null) {
+      ring = this.#ring = ArrayPrototypeFill(
+        new Array(QUEUE_INITIAL_CAPACITY * 2),
+        undefined,
+      );
+    } else if (this.#size === ring.length >> 1) {
+      ring = this.#grow();
     }
+    const mask = (ring.length >> 1) - 1;
+    const slot = ((this.#head + this.#size) & mask) << 1;
+    ring[slot] = value;
+    ring[slot + 1] = size;
     return ++this.#size;
   }
 
-  dequeue() {
-    const node = this.dequeueNode();
-    return node === null ? null : node.value;
+  #grow() {
+    const old = this.#ring;
+    const oldMask = (old.length >> 1) - 1;
+    const ring = ArrayPrototypeFill(new Array(old.length * 2), undefined);
+    for (let i = 0; i < this.#size; i++) {
+      const from = ((this.#head + i) & oldMask) << 1;
+      ring[i << 1] = old[from];
+      ring[(i << 1) + 1] = old[from + 1];
+    }
+    this.#head = 0;
+    this.#ring = ring;
+    return ring;
   }
 
-  // Returns the internal { value, size, next } node. Only for use by
-  // dequeueValue(), which needs both the value and its size.
-  dequeueNode() {
-    const node = this.#head;
-    if (node === null) {
+  dequeue() {
+    if (this.#size === 0) {
       return null;
     }
-
-    if (this.#head === this.#tail) {
-      this.#tail = null;
+    const ring = this.#ring;
+    const mask = (ring.length >> 1) - 1;
+    const slot = this.#head << 1;
+    const value = ring[slot];
+    ring[slot] = undefined;
+    ring[slot + 1] = undefined;
+    this.#head = (this.#head + 1) & mask;
+    if (--this.#size === 0) {
+      this.#head = 0;
+      if (ring.length >> 1 > QUEUE_RETAIN_CAPACITY) {
+        this.#ring = null;
+      }
     }
-    this.#head = this.#head.next;
-    this.#size--;
-    return node;
+    return value;
   }
 
   peek() {
-    if (this.#head === null) {
+    if (this.#size === 0) {
       return null;
     }
+    return this.#ring[this.#head << 1];
+  }
 
-    return this.#head.value;
+  // The size stored alongside the head entry. Only meaningful when
+  // size > 0; used by dequeueValue(), which needs the entry's size
+  // before dequeuing it.
+  peekSize() {
+    return this.#ring[(this.#head << 1) + 1];
   }
 
   get size() {
@@ -677,12 +716,14 @@ function createWritableStream(
 function dequeueValue(container) {
   assert(container[_queue] && typeof container[_queueTotalSize] === "number");
   assert(container[_queue].size);
-  const node = container[_queue].dequeueNode();
-  container[_queueTotalSize] -= node.size;
+  const queue = container[_queue];
+  const size = queue.peekSize();
+  const value = queue.dequeue();
+  container[_queueTotalSize] -= size;
   if (container[_queueTotalSize] < 0) {
     container[_queueTotalSize] = 0;
   }
-  return node.value;
+  return value;
 }
 /**
  * @template T
