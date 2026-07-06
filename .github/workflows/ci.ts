@@ -292,6 +292,12 @@ const installDenoStep = step({
   uses: "denoland/setup-deno@v2",
   with: { "deno-version": "v2.x" },
 });
+const installFontconfigStep = (ifCondition: Condition | ExpressionValue) =>
+  step({
+    name: "Install fontconfig",
+    if: ifCondition,
+    run: "sudo apt-get install -y --no-install-recommends libfontconfig-dev",
+  });
 const installNodeStep = step({
   name: "Install Node",
   uses: "actions/setup-node@v6",
@@ -692,11 +698,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const sysRootStep = step({
     if: buildItem.use_sysroot,
     ...sysRootConfig,
-  });
-  const installFontconfigStep = step({
-    name: "Install fontconfig",
-    if: isLinux,
-    run: "sudo apt-get install -y --no-install-recommends libfontconfig-dev",
   });
   const buildJob = job(
     jobIdForJob("build"),
@@ -1169,7 +1170,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             restoreCacheStep,
             installRustStep,
             sysRootStep,
-            installFontconfigStep,
+            installFontconfigStep(isLinux),
           )
           .comesAfter(tarSourcePublishStep)(
             {
@@ -1580,7 +1581,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         installRustStep,
         installLldStep,
         sysRootStep,
-        installFontconfigStep,
+        installFontconfigStep(isLinux),
         denoArtifact.download(),
         testServerArtifact.download(),
         {
@@ -1614,7 +1615,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         cloneRepoStep,
         installRustStep,
         restoreCacheStep,
-        installFontconfigStep,
+        installFontconfigStep(isLinux),
         installWasmStep,
         // we want these crates to be Wasm compatible
         {
@@ -1876,6 +1877,7 @@ const lintJob = job("lint", {
       restoreCacheStep,
       installRustStep,
       installDenoStep,
+      installFontconfigStep(lintMatrix.os.equals("linux")),
       step.if(lintMatrix.os.equals("linux"))(
         {
           name: "test_format.js",
