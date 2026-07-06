@@ -511,31 +511,71 @@ fn mkdir(path: &Path, recursive: bool, mode: Option<u32>) -> FsResult<()> {
   builder.create(path).map_err(Into::into)
 }
 
-// Open the terminal path no-follow so a metadata operation cannot reach the
-// target of a terminal symlink. The permission check for these ops is performed
-// no-follow (against the named path, without canonicalization), so following a
-// terminal symlink here would let a writable symlink inside an allowed scope be
-// used to modify a file it points to outside that scope. O_NOFOLLOW makes the
-// open fail with ELOOP when the final component is a symlink; intermediate
-// symlinks are still resolved, matching the existing path model and the
-// truncate fix in #35239. O_NONBLOCK avoids blocking when the path is a FIFO or
-// other special file.
+// The permission check for the no-follow metadata ops (chmod, chown, utime) is
+// performed against the named path without canonicalization, so they must not
+// reach the target of a *terminal* symlink: a writable symlink inside an allowed
+// scope could otherwise be used to modify a file it points to outside that
+// scope. Intermediate symlinks are still resolved, matching the existing path
+// model and the truncate fix in #35239.
+//
+// A terminal symlink is rejected up-front with ELOOP (FilesystemLoop). The
+// mutation that follows is still performed no-follow (lchmod/lchown/lutimes, or
+// on Linux via a /proc/self/fd path pinned to a non-symlink inode), so that even
+// if the path is swapped for a symlink after the check, the symlink's own
+// metadata is changed rather than its target's. Unlike opening the path
+// O_NOFOLLOW, this only requires ownership of the file (as chmod(2)/chown(2)/
+// utimes do), not read access.
 #[cfg(unix)]
-fn open_no_follow_for_metadata(path: &Path) -> FsResult<fs::File> {
-  use std::os::unix::fs::OpenOptionsExt;
-  let mut open_options = fs::OpenOptions::new();
-  open_options.read(true);
-  open_options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
-  Ok(open_options.open(path)?)
+fn reject_terminal_symlink(path: &Path) -> FsResult<()> {
+  if fs::symlink_metadata(path)?.file_type().is_symlink() {
+    return Err(io::Error::from_raw_os_error(libc::ELOOP).into());
+  }
+  Ok(())
 }
 
-#[cfg(unix)]
+// On Linux, fchmodat(2) does not support AT_SYMLINK_NOFOLLOW, so open the file
+// with O_PATH|O_NOFOLLOW (no read access required, a terminal symlink is not
+// followed) and chmod it through /proc/self/fd/<n>, which resolves to the exact
+// inode the fd pins. This is the technique glibc uses to emulate a no-follow
+// chmod.
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn chmod(path: &Path, mode: u32) -> FsResult<()> {
+  use std::os::unix::fs::OpenOptionsExt;
   use std::os::unix::fs::PermissionsExt;
-  let file = open_no_follow_for_metadata(path)?;
-  // Uses fchmod(2) on the opened fd rather than a path-based chmod(2), so a
-  // terminal symlink is refused (ELOOP) instead of having its target modified.
-  file.set_permissions(fs::Permissions::from_mode(mode))?;
+  use std::os::unix::io::AsRawFd;
+  let file = fs::OpenOptions::new()
+    .read(true) // access mode is ignored under O_PATH
+    .custom_flags(libc::O_PATH | libc::O_NOFOLLOW)
+    .open(path)?;
+  if file.metadata()?.file_type().is_symlink() {
+    return Err(io::Error::from_raw_os_error(libc::ELOOP).into());
+  }
+  let proc_path = format!("/proc/self/fd/{}", file.as_raw_fd());
+  fs::set_permissions(proc_path, fs::Permissions::from_mode(mode))?;
+  Ok(())
+}
+
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
+fn chmod(path: &Path, mode: u32) -> FsResult<()> {
+  use std::os::unix::ffi::OsStrExt;
+  reject_terminal_symlink(path)?;
+  let c_path = std::ffi::CString::new(path.as_os_str().as_bytes())
+    .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+  // fchmodat with AT_SYMLINK_NOFOLLOW does not follow a terminal symlink, so a
+  // symlink swapped in after the check above has its own mode changed rather
+  // than its target's.
+  // SAFETY: `c_path` is a valid NUL-terminated C string that outlives the call.
+  let result = unsafe {
+    libc::fchmodat(
+      libc::AT_FDCWD,
+      c_path.as_ptr(),
+      mode as libc::mode_t,
+      libc::AT_SYMLINK_NOFOLLOW,
+    )
+  };
+  if result != 0 {
+    return Err(io::Error::last_os_error().into());
+  }
   Ok(())
 }
 
@@ -563,8 +603,10 @@ fn chmod(path: &Path, mode: i32) -> FsResult<()> {
 
 #[cfg(unix)]
 fn chown(path: &Path, uid: Option<u32>, gid: Option<u32>) -> FsResult<()> {
-  use std::os::unix::io::AsRawFd;
-  let file = open_no_follow_for_metadata(path)?;
+  use std::os::unix::ffi::OsStrExt;
+  reject_terminal_symlink(path)?;
+  let c_path = std::ffi::CString::new(path.as_os_str().as_bytes())
+    .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
   // -1 = leave unchanged
   let uid = uid
     .map(|uid| uid as libc::uid_t)
@@ -572,10 +614,10 @@ fn chown(path: &Path, uid: Option<u32>, gid: Option<u32>) -> FsResult<()> {
   let gid = gid
     .map(|gid| gid as libc::gid_t)
     .unwrap_or(-1i32 as libc::gid_t);
-  // Uses fchown(2) on the opened fd rather than a path-based chown(2), so a
-  // terminal symlink is refused (ELOOP) instead of having its target modified.
-  // SAFETY: `file` owns a valid fd that lives throughout this call.
-  let result = unsafe { libc::fchown(file.as_raw_fd(), uid, gid) };
+  // lchown(2) does not follow a terminal symlink, so a symlink swapped in after
+  // the check above has its own ownership changed rather than its target's.
+  // SAFETY: `c_path` is a valid NUL-terminated C string that outlives the call.
+  let result = unsafe { libc::lchown(c_path.as_ptr(), uid, gid) };
   if result != 0 {
     return Err(io::Error::last_os_error().into());
   }
@@ -1298,11 +1340,12 @@ fn utime(
   atime: filetime::FileTime,
   mtime: filetime::FileTime,
 ) -> FsResult<()> {
-  // Open no-follow and update times on the fd so a terminal symlink is refused
-  // (ELOOP) rather than having its target's timestamps changed. The permission
-  // check is performed no-follow, mirroring the truncate fix in #35239.
-  let file = open_no_follow_for_metadata(path)?;
-  filetime::set_file_handle_times(&file, Some(atime), Some(mtime))?;
+  reject_terminal_symlink(path)?;
+  // set_symlink_file_times updates the times no-follow (lutimes / utimensat with
+  // AT_SYMLINK_NOFOLLOW), so a symlink swapped in after the check above has its
+  // own timestamps changed rather than its target's. On a regular file this is
+  // equivalent to a plain utimes.
+  filetime::set_symlink_file_times(path, atime, mtime)?;
   Ok(())
 }
 
