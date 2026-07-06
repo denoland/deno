@@ -10,8 +10,9 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use deno_core::JsBuffer;
+use deno_core::ToV8;
+use deno_core::convert::FromV8 as ConvertFromV8;
 use deno_core::op2;
-use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
 
@@ -85,7 +86,7 @@ impl ContextifyScript {
     produce_cached_data: bool,
     parsing_context: Option<v8::Local<'s, v8::Object>>,
     import_module_dynamically_id: i32,
-  ) -> Option<CompileResult<'s>> {
+  ) -> Option<CompileResult> {
     let context = if let Some(parsing_context) = parsing_context {
       let Some(context) =
         ContextifyContext::from_sandbox_obj(scope, parsing_context)
@@ -162,14 +163,17 @@ impl ContextifyScript {
     let this = deno_core::cppgc::make_cppgc_object(scope, Self { script });
 
     Some(CompileResult {
-      value: serde_v8::Value {
-        v8_value: this.into(),
-      },
+      value: v8::Global::new(scope, v8::Local::<v8::Value>::from(this)),
       cached_data: cached_data.as_ref().map(|c| {
         let backing_store =
           v8::ArrayBuffer::new_backing_store_from_vec(c.to_vec());
-        v8::ArrayBuffer::with_backing_store(scope, &backing_store.make_shared())
-          .into()
+        v8::Global::new(
+          scope,
+          v8::Local::<v8::Value>::from(v8::ArrayBuffer::with_backing_store(
+            scope,
+            &backing_store.make_shared(),
+          )),
+        )
       }),
       cached_data_rejected: source
         .get_cached_data()
@@ -1272,15 +1276,18 @@ fn indexed_property_enumerator<'s>(
   };
 
   let Ok(properties_vec) =
-    serde_v8::from_v8::<Vec<serde_v8::Value>>(scope, properties.into())
+    <Vec<v8::Local<v8::Value>> as ConvertFromV8>::from_v8(
+      scope,
+      properties.into(),
+    )
   else {
     return;
   };
 
   let mut indices = vec![];
   for prop in properties_vec {
-    if prop.v8_value.is_number() {
-      indices.push(prop.v8_value);
+    if prop.is_number() {
+      indices.push(prop);
     }
   }
 
@@ -1376,7 +1383,6 @@ fn indexed_property_deleter<'s>(
 
 #[allow(clippy::too_many_arguments, reason = "op")]
 #[op2]
-#[serde]
 pub fn op_vm_create_script<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   source: v8::Local<'a, v8::String>,
@@ -1387,7 +1393,7 @@ pub fn op_vm_create_script<'a>(
   produce_cached_data: bool,
   parsing_context: Option<v8::Local<'a, v8::Object>>,
   import_module_dynamically_id: i32,
-) -> Option<CompileResult<'a>> {
+) -> Option<CompileResult> {
   ContextifyScript::create(
     scope,
     source,
@@ -1406,7 +1412,7 @@ pub fn op_vm_script_run_in_context<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   #[cppgc] script: &ContextifyScript,
   sandbox: Option<v8::Local<'a, v8::Object>>,
-  #[serde] timeout: i64,
+  #[number] timeout: i64,
   display_errors: bool,
   break_on_sigint: bool,
 ) -> Option<v8::Local<'a, v8::Value>> {
@@ -1475,17 +1481,16 @@ pub fn op_vm_is_context(
     .unwrap_or(false)
 }
 
-#[derive(serde::Serialize)]
-struct CompileResult<'s> {
-  value: serde_v8::Value<'s>,
-  cached_data: Option<serde_v8::Value<'s>>,
+#[derive(ToV8)]
+struct CompileResult {
+  value: v8::Global<v8::Value>,
+  cached_data: Option<v8::Global<v8::Value>>,
   cached_data_rejected: bool,
   cached_data_produced: bool,
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
 #[op2]
-#[serde]
 pub fn op_vm_compile_function<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   source: v8::Local<'s, v8::String>,
@@ -1498,7 +1503,7 @@ pub fn op_vm_compile_function<'s>(
   context_extensions: Option<v8::Local<'s, v8::Array>>,
   params: Option<v8::Local<'s, v8::Array>>,
   import_module_dynamically_id: i32,
-) -> Option<CompileResult<'s>> {
+) -> Option<CompileResult> {
   let context = if let Some(parsing_context) = parsing_context {
     let Some(context) =
       ContextifyContext::from_sandbox_obj(scope, parsing_context)
@@ -1592,14 +1597,17 @@ pub fn op_vm_compile_function<'s>(
   };
 
   Some(CompileResult {
-    value: serde_v8::Value {
-      v8_value: function.into(),
-    },
+    value: v8::Global::new(scope, v8::Local::<v8::Value>::from(function)),
     cached_data: cached_data.as_ref().map(|c| {
       let backing_store =
         v8::ArrayBuffer::new_backing_store_from_vec(c.to_vec());
-      v8::ArrayBuffer::with_backing_store(scope, &backing_store.make_shared())
-        .into()
+      v8::Global::new(
+        scope,
+        v8::Local::<v8::Value>::from(v8::ArrayBuffer::with_backing_store(
+          scope,
+          &backing_store.make_shared(),
+        )),
+      )
     }),
     cached_data_rejected: source
       .get_cached_data()
@@ -2307,7 +2315,7 @@ pub fn op_vm_module_get_exception<'a>(
   module.get_exception()
 }
 
-#[derive(serde::Serialize)]
+#[derive(ToV8)]
 pub struct ModuleRequestInfo {
   pub specifier: String,
   pub attributes: HashMap<String, String>,
@@ -2315,7 +2323,6 @@ pub struct ModuleRequestInfo {
 }
 
 #[op2]
-#[serde]
 pub fn op_vm_module_get_module_requests(
   scope: &mut v8::PinScope<'_, '_>,
   #[cppgc] this: &ContextifyModule,

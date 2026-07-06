@@ -17,6 +17,7 @@ const {
 } = core.ops;
 const {
   Array,
+  ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
@@ -566,6 +567,13 @@ function resolveTransferableResource(type) {
 }
 
 function deserializeJsMessageData(messageData) {
+  // Raw fast path: the receive op handed us the serialized buffer directly
+  // (a typed array) instead of a `{ data, transferables }` object, because the
+  // message carried no transferables. This is the hot path and avoids a
+  // per-message object + empty-array allocation on the Rust side.
+  if (ArrayBufferIsView(messageData)) {
+    return [deserializeMessageData(messageData), emptyTransferables];
+  }
   // Fast path: no transferables (most common case)
   if (messageData.transferables.length === 0) {
     return [deserializeMessageData(messageData.data), emptyTransferables];
