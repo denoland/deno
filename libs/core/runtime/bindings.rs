@@ -1688,6 +1688,41 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   }
 }
 
+/// Isolate message listener. V8 invokes this for uncaught errors it reports
+/// outside of an embedder `TryCatch` - in practice, exceptions thrown from
+/// `queueMicrotask()` callbacks (V8's native `queueMicrotask` and
+/// `Isolate::EnqueueMicrotask` report a throwing microtask here rather than
+/// letting it bubble). Registering a listener also suppresses V8's default
+/// stderr reporting.
+///
+/// We route the exception to the realm's JS "report the exception" callback
+/// (e.g. dispatching an `error` event), falling back to `dispatch_exception`
+/// when none is set. This runs synchronously, right after the throwing
+/// microtask and before the next one, so ordering and async context match a
+/// plain `try/catch` around the callback.
+pub extern "C" fn message_callback(
+  message: v8::Local<v8::Message>,
+  exception: v8::Local<v8::Value>,
+) {
+  // SAFETY: `CallbackScope` can be safely constructed from a `Local<Message>`.
+  v8::callback_scope!(unsafe scope, message);
+
+  let exception_state = JsRealm::exception_state_from_scope(scope);
+  // Clone the callback out so we don't hold the borrow across the call back
+  // into JS (which may itself touch the exception state).
+  let report_cb = exception_state.js_report_exception_cb.borrow().clone();
+  match report_cb {
+    Some(report_cb) => {
+      let report_cb = report_cb.open(scope);
+      let this = v8::undefined(scope).into();
+      report_cb.call(scope, this, &[exception]);
+    }
+    // No JS callback registered (e.g. bare `deno_core`): mirror the default JS
+    // `reportExceptionCallback`, which calls `op_dispatch_exception(err, false)`.
+    None => crate::error::dispatch_exception(scope, exception, false),
+  }
+}
+
 /// This binding should be used if there's a custom console implementation
 /// available. Using it will make sure that proper stack frames are displayed
 /// in the inspector console.

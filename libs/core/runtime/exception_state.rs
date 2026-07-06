@@ -33,6 +33,11 @@ pub(crate) struct ExceptionState {
   pub(crate) js_handled_promise_rejection_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_format_exception_cb: RefCell<Option<v8::Global<v8::Function>>>,
+  /// The JS "report the exception" callback (e.g. dispatching an `error`
+  /// event). Invoked from the isolate message listener when a `queueMicrotask`
+  /// callback throws. `None` falls back to `dispatch_exception`, mirroring the
+  /// default JS callback. See [`crate::runtime::bindings::message_callback`].
+  pub(crate) js_report_exception_cb: RefCell<Option<v8::Global<v8::Function>>>,
 }
 
 impl ExceptionState {
@@ -47,6 +52,7 @@ impl ExceptionState {
     self.js_error_constructors.borrow_mut().take();
     self.js_handled_promise_rejection_cb.borrow_mut().take();
     self.js_format_exception_cb.borrow_mut().take();
+    self.js_report_exception_cb.borrow_mut().take();
     self.pending_promise_rejections.borrow_mut().clear();
     self.dispatched_exception.set(None);
   }

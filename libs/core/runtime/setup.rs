@@ -273,6 +273,14 @@ pub fn create_isolate(
   isolate.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
   isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
   isolate.set_promise_reject_callback(bindings::promise_reject_callback);
+  // Handles uncaught exceptions from `queueMicrotask()` callbacks, which V8
+  // reports here instead of bubbling them to an embedder `TryCatch`. Unlike the
+  // other isolate callbacks, `add_message_listener` records the pointer in the
+  // serialized heap, so we skip it while snapshotting (there are no external
+  // references for it) and register it on the runtime isolate instead.
+  if !will_snapshot {
+    isolate.add_message_listener(bindings::message_callback);
+  }
   isolate.set_prepare_stack_trace_callback(
     crate::error::prepare_stack_trace_callback,
   );

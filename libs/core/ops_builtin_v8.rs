@@ -1552,6 +1552,23 @@ pub fn op_set_format_exception_callback<'s, 'i>(
   old.map(|func| func.into())
 }
 
+/// Set the JS "report the exception" callback used by the isolate message
+/// listener to handle uncaught exceptions thrown from `queueMicrotask()`
+/// callbacks. Passing `null`/`undefined` clears it, so the listener falls back
+/// to `dispatch_exception` (matching the default JS callback).
+#[op2(fast)]
+pub fn op_set_report_exception_callback(
+  scope: &mut v8::PinScope,
+  cb: Option<v8::Local<v8::Function>>,
+) {
+  let cb = cb.map(|cb| v8::Global::new(scope, cb));
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  *context_state_rc
+    .exception_state
+    .js_report_exception_cb
+    .borrow_mut() = cb;
+}
+
 #[op2(fast)]
 pub fn op_event_loop_has_more_work(scope: &mut v8::PinScope<'_, '_>) -> bool {
   JsRuntime::has_more_work(scope)

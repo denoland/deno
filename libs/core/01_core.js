@@ -50,6 +50,7 @@
     op_deserialize,
     op_destructure_error,
     op_dispatch_exception,
+    op_set_report_exception_callback,
     op_encode,
     op_encode_binary_string,
     op_eval_context,
@@ -547,19 +548,29 @@
       reportExceptionCallback = (error) => {
         op_dispatch_exception(error, false);
       };
+      // `null` tells the native message listener to fall back to
+      // `op_dispatch_exception`, matching the default callback above.
+      op_set_report_exception_callback(null);
     } else {
       if (typeof cb != "function") {
         throw new TypeError("expected a function");
       }
       reportExceptionCallback = cb;
+      // Keep the native message listener that handles uncaught
+      // `queueMicrotask()` exceptions in sync with the JS callback.
+      op_set_report_exception_callback(cb);
     }
   }
 
   // V8 installs a native `queueMicrotask` on the global object (enabled via the
-  // `--enable-queue-microtask` flag). We wrap it below to route uncaught
-  // exceptions through `reportExceptionCallback`, so we grab a reference to the
-  // native implementation here - it lets us enqueue microtasks without crossing
-  // the op boundary.
+  // `--enable-queue-microtask` flag) that enqueues microtasks without crossing
+  // the op boundary. We forward to it here rather than exposing it directly
+  // because internal modules capture `queueMicrotask` from the primordials at
+  // snapshot time, and this wrapper is a stable reference for them.
+  //
+  // Uncaught exceptions from the callback are handled by the native isolate
+  // message listener (see `message_callback` in `bindings.rs`), not here, so we
+  // pass `cb` straight through without an error-handling closure.
   //
   // V8 skips experimental globals while snapshotting, so the native function is
   // only installed at runtime. In a from-scratch runtime it's already on the
@@ -582,13 +593,7 @@
       throw new TypeError("expected a function");
     }
     const enqueue = nativeQueueMicrotask ?? captureNativeQueueMicrotask();
-    return enqueue(() => {
-      try {
-        cb();
-      } catch (error) {
-        reportExceptionCallback(error);
-      }
-    });
+    return enqueue(cb);
   }
 
   // Some "extensions" rely on "BadResource", "Interrupted", "NotCapable"
