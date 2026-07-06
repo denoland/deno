@@ -1185,3 +1185,65 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "Decipheriv final(utf8) flushes a truncated multibyte tail as U+FFFD",
+  fn() {
+    // Exercises the Decipheriv-side final() flush directly: the plaintext
+    // ends with a lone UTF-8 lead byte, so the utf8 StringDecoder buffers
+    // that byte during update() and only end() (invoked by final()) emits
+    // the U+FFFD replacement char. Before the fix, final() returned "" and
+    // dropped it. Matches Node, which returns "a�".
+    const key = Buffer.alloc(32, 1);
+    const iv = Buffer.alloc(16, 2);
+    const raw = Buffer.from([0x61, 0xc3]); // "a" + incomplete 2-byte lead
+
+    const cipher = crypto.createCipheriv("aes-256-ctr", key, iv);
+    const enc = Buffer.concat([cipher.update(raw), cipher.final()]);
+
+    const decipher = crypto.createDecipheriv("aes-256-ctr", key, iv);
+    const dec = decipher.update(enc, undefined, "utf8") +
+      decipher.final("utf8");
+    assertEquals(dec, "a�");
+  },
+});
+
+Deno.test({
+  name: "Cipheriv/Decipheriv AES key wrap flushes StringDecoder in final()",
+  fn() {
+    // The AES key-wrap path computes its whole output in update() and takes
+    // an early return in final(). With a base64 output encoding the decoder
+    // buffers the trailing bytes, so final() must flush them too.
+    const kek = Buffer.alloc(32, 7);
+    // 24-byte key -> 32-byte wrapped output -> 32 % 3 === 2 buffered bytes.
+    const keyToWrap = Buffer.alloc(24, 9);
+    const iv = Buffer.alloc(8, 0xa6);
+
+    const cipher = crypto.createCipheriv("aes256-wrap", kek, iv);
+    const wrapped = cipher.update(keyToWrap, undefined, "base64") +
+      cipher.final("base64");
+    assertEquals(
+      Buffer.from(wrapped, "base64").length,
+      keyToWrap.length + 8,
+      "wrapped length",
+    );
+
+    const decipher = crypto.createDecipheriv("aes256-wrap", kek, iv);
+    const unwrapped = Buffer.concat([
+      decipher.update(wrapped, "base64"),
+      decipher.final(),
+    ]);
+    assertEquals(unwrapped, keyToWrap, "unwrap round-trip");
+
+    // final() with an unknown output encoding now throws ERR_UNKNOWN_ENCODING
+    // on the wrap path instead of silently returning "" (matches Node).
+    const bad = crypto.createCipheriv("aes256-wrap", kek, iv);
+    bad.update(keyToWrap);
+    assertThrows(
+      // deno-lint-ignore no-explicit-any
+      () => bad.final("not-an-encoding" as any),
+      Error,
+      "Unknown encoding",
+    );
+  },
+});
