@@ -747,8 +747,6 @@
       "mode-no-cors.sub.any.worker.html": {
         "ignore": true
       },
-      "request-private-network-headers.tentative.any.html": false,
-      "request-private-network-headers.tentative.any.worker.html": false,
       "response-null-body.any.html": {
         "ignore": true
       },
