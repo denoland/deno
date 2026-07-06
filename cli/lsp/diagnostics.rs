@@ -2051,6 +2051,7 @@ fn collect_scope_no_slow_types_diagnostics(
           packages: &packages,
           build_fast_check_graph: true,
           validate_graph: false,
+          skip_unanalyzable_exports: true,
         })
         .await?;
       let mut diagnostics_by_specifier: HashMap<

@@ -127,6 +127,7 @@ const { buildAllowedFlags } = core.loadExtScript(
 const {
   getActiveHandles,
   getActiveRequests,
+  getActiveResourceNames,
 } = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
 const {
   getActiveResourcesInfo: getTimerActiveResourcesInfo,
@@ -149,6 +150,7 @@ const {
   ArrayIsArray,
   ArrayPrototypeConcat,
   ArrayPrototypeFind,
+  ArrayPrototypePush,
   BigInt,
   Error,
   ErrorCaptureStackTrace,
@@ -490,8 +492,37 @@ memoryUsage.rss = function (): number {
   return memoryUsage().rss;
 };
 
+// stdin/stdout/stderr are reported as "TTYWrap" when connected to a terminal,
+// matching Node, where the TTY handles keep the event loop alive. When they're
+// redirected to a pipe or file Node uses synchronous I/O without a libuv
+// handle, so nothing is reported.
+function getStdioActiveResources(): string[] {
+  const result: string[] = [];
+  const streams = [io.stdin, io.stdout, io.stderr];
+  for (const stream of new SafeArrayIterator(streams)) {
+    try {
+      if (stream && stream.isTerminal()) {
+        ArrayPrototypePush(result, "TTYWrap");
+      }
+    } catch {
+      // Stream may be closed or unavailable (e.g. in a worker); ignore.
+    }
+  }
+  return result;
+}
+
 export function getActiveResourcesInfo(): string[] {
-  return getTimerActiveResourcesInfo();
+  const result: string[] = [];
+  for (const name of new SafeArrayIterator(getStdioActiveResources())) {
+    ArrayPrototypePush(result, name);
+  }
+  for (const name of new SafeArrayIterator(getActiveResourceNames())) {
+    ArrayPrototypePush(result, name);
+  }
+  for (const name of new SafeArrayIterator(getTimerActiveResourcesInfo())) {
+    ArrayPrototypePush(result, name);
+  }
+  return result;
 }
 
 export function availableMemory(): number {
@@ -633,7 +664,17 @@ if (!isWindows) {
   }
 }
 
-export { getegid, geteuid, getgid, getuid, setegid, seteuid, setgid, setuid };
+export {
+  getegid,
+  geteuid,
+  getgid,
+  getuid,
+  report,
+  setegid,
+  seteuid,
+  setgid,
+  setuid,
+};
 
 const ALLOWED_FLAGS = buildAllowedFlags();
 
@@ -1763,6 +1804,27 @@ function synchronizeListeners() {
 internals.dispatchProcessBeforeExitEvent = dispatchProcessBeforeExitEvent;
 internals.dispatchProcessExitEvent = dispatchProcessExitEvent;
 
+// Resolves the value for `process.argv[1]` from `Deno.mainModule`. Converting a
+// `file:` URL to a path can throw (e.g. `URIError: URI malformed` when the path
+// contains invalid percent-encoding), and this runs during bootstrap where an
+// uncaught throw aborts the runtime with a panic. Fall back to the raw
+// specifier so a non-decodable main module can't crash the process.
+function mainModuleArgv(
+  mainModule: string | undefined = Deno.mainModule,
+): string {
+  if (Deno.build.standalone) {
+    return Deno.execPath();
+  }
+  if (mainModule?.startsWith("file:")) {
+    try {
+      return pathFromURL(new URL(mainModule));
+    } catch {
+      return mainModule;
+    }
+  }
+  return join(Deno.cwd(), "$deno$node.mjs");
+}
+
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
@@ -1794,11 +1856,7 @@ internals.__bootstrapNodeProcess = function (
     op_stream_base_register_state(streamBaseState);
     argv0 = argv0Val || "";
     argv[0] = Deno.execPath();
-    argv[1] = Deno.build.standalone
-      ? Deno.execPath()
-      : Deno.mainModule?.startsWith("file:")
-      ? pathFromURL(new URL(Deno.mainModule))
-      : join(Deno.cwd(), "$deno$node.mjs");
+    argv[1] = mainModuleArgv();
     // Manually concatenate these arrays to avoid triggering the getter
     for (let i = 0; i < args.length; i++) {
       argv[i + 2] = args[i];

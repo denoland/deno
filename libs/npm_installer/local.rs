@@ -1156,6 +1156,7 @@ impl<
           init_cwd: &self.lifecycle_scripts_config.initial_cwd,
           process_state: process_state.as_str(),
           root_node_modules_dir_path: &self.root_node_modules_path,
+          resolve_pkg_folder: None,
           on_ran_pkg_scripts: &|pkg| {
             create_initialized_file(
               sys.as_ref(),
@@ -1321,20 +1322,12 @@ pub(crate) fn clone_dir_recursive_except_node_modules_child(
       )?;
     } else if file_type.is_file() {
       hard_link_file(sys.as_ref(), &new_from, &new_to).or_else(|_| {
-        sys
-          .fs_copy(&new_from, &new_to)
-          .or_else(|err| {
-            if deno_npm_cache::is_etxtbsy(&err) {
-              // The destination is a hardlink to a currently-executing
-              // binary (ETXTBSY). Remove it to break the hardlink, then
-              // retry the copy.
-              let _ = sys.fs_remove_file(&new_to);
-              sys.fs_copy(&new_from, &new_to)
-            } else {
-              Err(err)
-            }
-          })
-          .map(|_| ())
+        // Remove any existing file first so the copy writes a new inode
+        // rather than writing through a hardlinked destination, which
+        // would corrupt the file at its other paths. Removing first also
+        // breaks hardlinks to currently-executing binaries (ETXTBSY).
+        let _ = sys.fs_remove_file(&new_to);
+        sys.fs_copy(&new_from, &new_to).map(|_| ())
       })?;
     }
   }

@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "tests": {
+    "stdin": {
+      "args": "fmt -",
+      "input": "html`\n  ${\"Hello\"}\n`;\n",
+      "output": "html`\n  ${\"Hello\"}\n`;\n"
+    }
+  }
+}
