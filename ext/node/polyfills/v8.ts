@@ -60,6 +60,7 @@ const {
   op_v8_read_value,
   op_v8_release_buffer,
   op_v8_set_flags_from_string,
+  op_v8_set_heap_snapshot_near_heap_limit,
   op_v8_set_treat_array_buffer_views_as_host_objects,
   op_v8_query_objects_count,
   op_v8_take_heap_snapshot,
@@ -104,7 +105,13 @@ function getViewByteLength(view: ArrayBufferView): number {
 const lazyFsUtils = core.createLazyLoader(
   "ext:deno_node/internal/fs/utils.mjs",
 );
-const { validateFunction, validateObject, validateOneOf, validateString } = core
+const {
+  validateFunction,
+  validateObject,
+  validateOneOf,
+  validateString,
+  validateUint32,
+} = core
   .loadExtScript(
     "ext:deno_node/internal/validators.mjs",
   );
@@ -241,6 +248,21 @@ function writeHeapSnapshot(
   const data = op_v8_take_heap_snapshot();
   lazyFs().writeFileSync(filename, data);
   return filename;
+}
+
+let heapSnapshotNearHeapLimitSet = false;
+
+// https://nodejs.org/api/v8.html#v8setheapsnapshotnearheaplimitlimit
+//
+// Installs a V8 near-heap-limit callback that writes a `.heapsnapshot` file to
+// disk (up to `limit` times) right before the process would run out of memory.
+function setHeapSnapshotNearHeapLimit(limit: number) {
+  validateUint32(limit, "limit", true);
+  if (heapSnapshotNearHeapLimitSet) {
+    return;
+  }
+  op_v8_set_heap_snapshot_near_heap_limit(limit);
+  heapSnapshotNearHeapLimitSet = true;
 }
 
 // https://nodejs.org/api/v8.html#v8queryobjectsctor-options
@@ -636,6 +658,7 @@ return {
   getHeapStatistics,
   queryObjects,
   setFlagsFromString,
+  setHeapSnapshotNearHeapLimit,
   startupSnapshot,
   stopCoverage,
   takeCoverage,
