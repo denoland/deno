@@ -7454,6 +7454,29 @@ mod test {
               "2021-11-07T00:00:00.000Z".parse().unwrap(),
             )),
             exclude: BTreeSet::from(["b".into()]),
+            exclude_prefixes: Default::default(),
+          },
+          ..Default::default()
+        },
+      )
+      .await;
+      assert_eq!(packages.len(), 2);
+      assert_eq!(packages[0].pkg_id, "a@1.0.1");
+      assert_eq!(packages[1].pkg_id, "b@1.0.1");
+    }
+
+    {
+      // excluding by prefix (e.g. from a wildcard entry like `b*`)
+      let (packages, _package_reqs) = run_resolver_with_options_and_get_output(
+        api.clone(),
+        RunResolverOptions {
+          reqs: vec!["a@1", "b@1"],
+          newest_dependency_date: NewestDependencyDateOptions {
+            date: Some(NewestDependencyDate(
+              "2021-11-07T00:00:00.000Z".parse().unwrap(),
+            )),
+            exclude: Default::default(),
+            exclude_prefixes: vec!["b".into()],
           },
           ..Default::default()
         },
