@@ -724,6 +724,13 @@ pub struct CleanFlags {
   pub dry_run: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct DoctorFlags {
+  pub check: bool,
+  pub fix: bool,
+  pub json: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleFlags {
   pub entrypoints: Vec<String>,
@@ -781,6 +788,7 @@ pub enum DenoSubcommand {
   Coverage(CoverageFlags),
   Deploy(DeployFlags),
   Doc(DocFlags),
+  Doctor(DoctorFlags),
   Eval(EvalFlags),
   Fmt(FmtFlags),
   Init(InitFlags),

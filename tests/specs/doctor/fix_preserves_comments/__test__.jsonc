@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "doctor --fix",
+      "output": "fix.out"
+    },
+    {
+      // comments and formatting outside the edited keys are preserved
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('deno.jsonc').trim())"
+      ],
+      "output": "deno.jsonc.out"
+    }
+  ]
+}

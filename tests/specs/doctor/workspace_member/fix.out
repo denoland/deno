@@ -1,0 +1,10 @@
+Warning "unstable" field can only be specified in the workspace root deno.json file.
+    at file://[WILDLINE]/member[WILDCHAR]deno.json
+member[WILDCHAR]deno.json
+  - remove "long-gone-feature" from "unstable" (the entry is inert in the current version of Deno)
+
+Deno 3 heads-up (report only, no fixes available yet):
+  - Deno 3 changes some permission prompting defaults. There is no configuration to pin the current behavior yet; check the migration guide once available (https://docs.deno.com/runtime/help/deno-3).
+  - Deno 3 changes how package-lock.json files are taken into account in npm-compatible projects. There is no configuration to pin the current behavior yet; check the migration guide once available (https://docs.deno.com/runtime/help/deno-3).
+
+Applied 1 fix to 1 file.

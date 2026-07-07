@@ -11,6 +11,7 @@ pub mod deploy;
 pub mod desktop;
 pub mod desktop_devtools;
 pub mod doc;
+pub mod doctor;
 pub mod fmt;
 pub mod fmt_editorconfig;
 pub mod framework;

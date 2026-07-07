@@ -1,0 +1,6 @@
+{
+  "name": "@test/member",
+  "version": "1.0.0",
+  "exports": "./mod.ts",
+  "unstable": ["long-gone-feature"]
+}

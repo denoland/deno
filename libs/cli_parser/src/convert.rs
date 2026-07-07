@@ -133,6 +133,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("outdated") => outdated_parse(&result, &mut flags, false),
     Some("update") => outdated_parse(&result, &mut flags, true),
     Some("clean") => clean_parse(&result, &mut flags),
+    Some("doctor") => doctor_parse(&result, &mut flags),
     Some("approve-scripts" | "approve-builds") => {
       approve_scripts_parse(&result, &mut flags)
     }
@@ -221,6 +222,7 @@ fn default_parse(
       "outdated",
       "update",
       "clean",
+      "doctor",
       "approve-scripts",
       "types",
       "lsp",
@@ -2318,6 +2320,15 @@ fn clean_parse(result: &ParseResult, flags: &mut Flags) {
   flags.subcommand = DenoSubcommand::Clean(CleanFlags {
     except_paths,
     dry_run,
+  });
+}
+
+fn doctor_parse(result: &ParseResult, flags: &mut Flags) {
+  config_args_parse(result, flags);
+  flags.subcommand = DenoSubcommand::Doctor(DoctorFlags {
+    check: result.get_bool("check"),
+    fix: result.get_bool("fix"),
+    json: result.get_bool("json"),
   });
 }
 

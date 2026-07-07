@@ -1,0 +1,7 @@
+{
+  // project tasks
+  "tasks": {
+    /* start the dev server */
+    "dev": "deno run --watch main.ts" // watches
+  }
+}

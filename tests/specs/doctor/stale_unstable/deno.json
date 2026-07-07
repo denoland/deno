@@ -1,0 +1,8 @@
+{
+  "nodeModulesDir": "none",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitOverride": true
+  },
+  "unstable": ["sloppy-imports", "long-gone-feature"]
+}

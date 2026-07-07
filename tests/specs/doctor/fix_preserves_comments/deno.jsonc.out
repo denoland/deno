@@ -1,0 +1,12 @@
+{
+  // project tasks
+  "tasks": {
+    /* start the dev server */
+    "dev": "deno run --watch main.ts" // watches
+  },
+  "nodeModulesDir": "none",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitOverride": true
+  }
+}
