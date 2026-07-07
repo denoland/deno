@@ -522,22 +522,10 @@ const POOLED_BUF_SIZE: usize = 65536;
 const POOLED_BUF_MAX: usize = 128;
 
 /// Reads at or below this size are copied into an exact-size backing
-/// store and the 64KB slab is returned to the pool immediately, instead
-/// of transferring slab ownership to the ArrayBuffer handed to JS.
-///
-/// Transferring the slab pins the full 64KB allocation for as long as
-/// the JS `Buffer` view lives — a client that retains 1400-byte chunks
-/// (protocol reassembly à la tedious/TDS) resident-pins ~16KB per chunk
-/// (page-rounded), measured at 14x RSS amplification vs ~2x on Node,
-/// which right-sizes via `BackingStore::Reallocate` in
-/// `EmitToJSStreamListener::OnStreamRead`. Handing off also churns the
-/// slab pool through GC: in steady state more than `POOLED_BUF_MAX`
-/// slabs are in flight, so reads fall back to the system allocator
-/// (mach_vm reclaim traps, ~6% CPU in the pre-pool profile).
-///
-/// The copy costs a memcpy of at most 32KB (~1µs) against a read path
-/// that costs ~10µs+; reads above the threshold (bulk transfers filling
-/// most of the slab) keep the zero-copy handoff.
+/// store so the slab returns to the pool immediately and the JS
+/// `Buffer` doesn't pin the full 64KB allocation. Larger reads keep
+/// the zero-copy slab handoff. Mirrors Node's right-sizing via
+/// `BackingStore::Reallocate` in `EmitToJSStreamListener::OnStreamRead`.
 const READ_COPY_THRESHOLD: usize = POOLED_BUF_SIZE / 2;
 
 thread_local! {
@@ -1434,12 +1422,12 @@ impl LibUvStreamWrap {
     let req_ptr = Box::into_raw(req);
 
     // `get_contents` copies on-heap typed arrays (<= 64 bytes) into the
-    // stack `buf`, which won't outlive this op — those need an owned
+    // stack `buf`, which won't outlive this op - those need an owned
     // copy. Off-heap stores are stable while JS retains the chunk via
     // `req.buffer = data` (handleWriteReq), the same retention contract
     // as the writev path, so queue a zero-copy iovec pointing at the
     // backing store instead of memcpy'ing the tail into an owned Vec
-    // (the old `uv_write` path copied via collect_bufs — up to the
+    // (the old `uv_write` path copied via collect_bufs - up to the
     // full payload per queued write under backpressure).
     let on_stack = std::ptr::eq(data.as_ptr(), stack_base);
     let err = if on_stack {
