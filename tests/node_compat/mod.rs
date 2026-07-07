@@ -44,7 +44,6 @@ const TEST_ARGS: &[&str] = &[
   "--unstable-unsafe-proto",
   "--unstable-bare-node-builtins",
   "--no-check",
-  "--unstable-detect-cjs",
 ];
 
 /// Per-platform value: either a boolean (true = enabled, false = disabled)
