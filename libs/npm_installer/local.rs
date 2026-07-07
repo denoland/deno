@@ -2035,9 +2035,15 @@ fn calculate_packages_hash(
 
   let mut hasher = twox_hash::XxHash64::default();
 
-  // Hash all package IDs (iter_all is deterministic)
-  for package in package_partitions.iter_all() {
-    package.id.hash(&mut hasher);
+  // the order of the packages is non-deterministic (hash map iteration
+  // during resolution traversal), so sort the ids before hashing
+  let mut package_ids = package_partitions
+    .iter_all()
+    .map(|package| &package.id)
+    .collect::<Vec<_>>();
+  package_ids.sort_unstable();
+  for package_id in package_ids {
+    package_id.hash(&mut hasher);
   }
 
   // also hash the packages expected at the root of node_modules so that
@@ -2288,6 +2294,51 @@ mod test {
         .with_dep("package-a")
         .insert("package-b", "package-b@1.0.0")
     );
+  }
+
+  #[test]
+  fn test_calculate_packages_hash_order_independent() {
+    fn pkg(id: &str) -> NpmResolutionPackage {
+      NpmResolutionPackage {
+        id: NpmPackageId::from_serialized(id).unwrap(),
+        copy_index: 0,
+        system: Default::default(),
+        dist: None,
+        dependencies: Default::default(),
+        optional_dependencies: Default::default(),
+        optional_peer_dependencies: Default::default(),
+        extra: None,
+        is_deprecated: false,
+        has_bin: false,
+        has_scripts: false,
+      }
+    }
+
+    let packages = vec![
+      pkg("package-a@1.0.0"),
+      pkg("package-b@2.0.0"),
+      pkg("package-c@3.0.0"),
+    ];
+    let mut reversed_packages = packages.clone();
+    reversed_packages.reverse();
+    let root_folder_names =
+      BTreeSet::from(["package-a".to_string(), "package-b".to_string()]);
+
+    let hash = calculate_packages_hash(
+      &deno_npm::resolution::NpmPackagesPartitioned {
+        packages,
+        copy_packages: Vec::new(),
+      },
+      &root_folder_names,
+    );
+    let reversed_hash = calculate_packages_hash(
+      &deno_npm::resolution::NpmPackagesPartitioned {
+        packages: reversed_packages,
+        copy_packages: Vec::new(),
+      },
+      &root_folder_names,
+    );
+    assert_eq!(hash, reversed_hash);
   }
 
   #[test]
