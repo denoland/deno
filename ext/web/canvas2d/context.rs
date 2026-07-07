@@ -2722,9 +2722,9 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] c: Option<UnrestrictedDouble>,
     #[webidl] d: Option<UnrestrictedDouble>,
     #[webidl] e: Option<UnrestrictedDouble>,
-    #[webidl] f_val: Option<UnrestrictedDouble>,
+    #[webidl] f: Option<UnrestrictedDouble>,
   ) -> Result<(), Canvas2DError> {
-    let (a, b, c, d, e, f) = match a_or_init {
+    let transform = match a_or_init {
       Some(v) if v.is_number() => {
         let a = v.number_value(scope).unwrap_or(f64::NAN);
         let provided = 1
@@ -2732,16 +2732,15 @@ impl OffscreenCanvasRenderingContext2D {
           + c.is_some() as u32
           + d.is_some() as u32
           + e.is_some() as u32
-          + f_val.is_some() as u32;
-        let (Some(b), Some(c), Some(d), Some(e), Some(f_val)) =
-          (b, c, d, e, f_val)
+          + f.is_some() as u32;
+        let (Some(b), Some(c), Some(d), Some(e), Some(f)) = (b, c, d, e, f)
         else {
           return Err(Canvas2DError::MissingArgument {
             required: 6,
             provided,
           });
         };
-        (a, *b, *c, *d, *e, *f_val)
+        [a, *b, *c, *d, *e, *f]
       }
       arg => {
         let v = arg.unwrap_or_else(|| v8::undefined(scope).into());
@@ -2755,10 +2754,10 @@ impl OffscreenCanvasRenderingContext2D {
         init.to_affine()?
       }
     };
-    if [a, b, c, d, e, f].iter().any(|v| !v.is_finite()) {
+    if transform.iter().any(|v| !v.is_finite()) {
       return Ok(());
     }
-    self.state.borrow_mut().transform = Affine::new([a, b, c, d, e, f]);
+    self.state.borrow_mut().transform = Affine::new(transform);
     Ok(())
   }
 
