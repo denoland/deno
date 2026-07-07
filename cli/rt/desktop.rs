@@ -14,8 +14,46 @@ pub use deno_runtime::ops::desktop::AutoUpdateState;
 pub use deno_runtime::ops::desktop::DesktopApi;
 pub use deno_runtime::ops::desktop::MenuItem;
 
+/// The `resolveBindCallback` routing helper, defined as a macro that expands
+/// to a string literal so it can be spliced into `DESKTOP_JS` via `concat!`
+/// while also being executed verbatim by `resolve_bind_callback_behaves`. The
+/// test therefore runs the exact bytes we ship — no source scraping.
+macro_rules! resolve_bind_callback_js {
+  () => {
+    r#"
+  // Resolve the callback for an incoming bindCall.
+  //
+  // The backend may report a window id for the calling renderer that doesn't
+  // line up with the id the binding was registered under (observed on the
+  // CEF/Windows backend when an entrypoint with extra modules — e.g. a `jsr:`
+  // import — delays startup; see denoland/deno#35647). A *known* window keeps
+  // strict per-window matching: per-window bindings are a security boundary,
+  // so a window must never reach a callback it did not itself register, even
+  // when the name is globally unique. Only an *unknown* window id — the drift
+  // case, where the call arrived under an id that registered nothing — falls
+  // back to a name match, and only when exactly one window registered that
+  // name. Ambiguous names return null so the caller still rejects.
+  function resolveBindCallback(registry, windowId, name) {
+    const callbacks = registry.get(windowId);
+    if (callbacks) return callbacks.get(name) ?? null;
+    let match = null;
+    let count = 0;
+    for (const map of registry.values()) {
+      const candidate = map.get(name);
+      if (candidate) {
+        match = candidate;
+        if (++count > 1) return null;
+      }
+    }
+    return count === 1 ? match : null;
+  }
+"#
+  };
+}
+
 /// JS code that exposes desktop APIs via `Deno.BrowserWindow` and `Deno.desktop`.
-pub const DESKTOP_JS: &str = r#"
+pub const DESKTOP_JS: &str = concat!(
+  r#"
 (() => {
   const internals = Deno[Deno.internal];
   const {
@@ -205,39 +243,9 @@ pub const DESKTOP_JS: &str = r#"
 
   // Per-window bind callback registry: windowId -> Map<name, fn>
   const windowBindCallbacks = new Map();
-
-  // Resolve the callback for an incoming bindCall. Kept as a standalone,
-  // closure-free function (the registry is passed in) so it can be executed
-  // directly in a unit test — see `resolve_bind_callback_*` in this file.
-  //
-  // The backend may report a window id for the calling renderer that doesn't
-  // line up with the id the binding was registered under (observed on the
-  // CEF/Windows backend when an entrypoint with extra modules — e.g. a `jsr:`
-  // import — delays startup; see denoland/deno#35647). `windowBindCallbacks`
-  // and the native binding registry are both keyed by the same window id, so a
-  // window-scoped miss means the call arrived under a different id than
-  // `bind()` saw. When exactly one window registered a callback for this name
-  // the target is unambiguous, so route to it rather than dropping the call.
-  // Per-window same-named bindings keep strict matching: ambiguous names
-  // return null so the caller still rejects.
-  // TEST-EXTRACT:resolveBindCallback:START
-  function resolveBindCallback(registry, windowId, name) {
-    const callbacks = registry.get(windowId);
-    const scoped = callbacks?.get(name);
-    if (scoped) return scoped;
-    let match = null;
-    let count = 0;
-    for (const map of registry.values()) {
-      const candidate = map.get(name);
-      if (candidate) {
-        match = candidate;
-        if (++count > 1) return null;
-      }
-    }
-    return count === 1 ? match : null;
-  }
-  // TEST-EXTRACT:resolveBindCallback:END
-
+"#,
+  resolve_bind_callback_js!(),
+  r#"
   // Binding-call correlation: when --inspect is active, both the Deno
   // and renderer consoles emit matching console.debug messages so the
   // developer can trace a binding call across isolates.
@@ -973,7 +981,8 @@ pub const DESKTOP_JS: &str = r#"
     }
   })();
 })();
-"#;
+"#
+);
 
 /// JS code that initializes auto-update APIs. Executed separately so
 /// version and rollback state can be baked in as literals.
@@ -1315,13 +1324,16 @@ mod tests {
     assert!(DESKTOP_JS.contains("PermissionStatus"));
   }
 
+  // The exact `resolveBindCallback` bytes baked into DESKTOP_JS, referenced
+  // directly by the regression test below — no source scraping.
+  const RESOLVE_BIND_CALLBACK_JS: &str = resolve_bind_callback_js!();
+
   #[test]
   fn resolve_bind_callback_behaves() {
     // Regression test for denoland/deno#35647. Runs the *actual*
-    // `resolveBindCallback` shipped in DESKTOP_JS (extracted between its
-    // TEST-EXTRACT markers) in a real V8 isolate and asserts its routing
-    // behaviour, rather than grepping the source for substrings.
-    let resolver = extract_marked(DESKTOP_JS, "resolveBindCallback");
+    // `resolveBindCallback` shipped in DESKTOP_JS in a real V8 isolate and
+    // asserts its routing behaviour, rather than grepping for substrings.
+    let resolver = RESOLVE_BIND_CALLBACK_JS;
     let harness = format!(
       r#"
 {resolver}
@@ -1360,6 +1372,12 @@ check(resolveBindCallback(reg2, 1, "ping")(), "a", "ambiguous exact w1");
 check(resolveBindCallback(reg2, 2, "ping")(), "b", "ambiguous exact w2");
 check(resolveBindCallback(reg2, 999, "ping"), null, "ambiguous fallback");
 
+// 5) Security boundary: a *known* window that never bound this name must not
+//    reach another window's uniquely-named callback via the fallback. Window
+//    3 exists (it bound "other") so asking it for "ping" resolves strictly and
+//    returns null, even though window 7's "ping" is globally unique.
+check(resolveBindCallback(reg, 3, "ping"), null, "known window no cross-reach");
+
 "ok"
 "#
     );
@@ -1369,17 +1387,6 @@ check(resolveBindCallback(reg2, 999, "ping"), null, "ambiguous fallback");
     runtime
       .execute_script("[resolve_bind_callback_test]", harness)
       .expect("resolveBindCallback assertions failed");
-  }
-
-  /// Pull the text between `// TEST-EXTRACT:<name>:START` and `:END` out of
-  /// `hay`. Lets a test run a self-contained slice of DESKTOP_JS (the real
-  /// shipped bytes) instead of asserting on substrings.
-  fn extract_marked(hay: &str, name: &str) -> String {
-    let start = format!("// TEST-EXTRACT:{name}:START");
-    let end = format!("// TEST-EXTRACT:{name}:END");
-    let from = hay.find(&start).expect("start marker present") + start.len();
-    let to = hay[from..].find(&end).expect("end marker present") + from;
-    hay[from..to].to_string()
   }
 
   #[test]
