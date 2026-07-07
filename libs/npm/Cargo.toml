@@ -32,6 +32,10 @@ serde = { workspace = true, features = ["derive", "rc"] }
 serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror.workspace = true
 
+# Only used for runtime host libc detection, which is gated to Linux.
+[target.'cfg(target_os = "linux")'.dependencies]
+sys_traits = { workspace = true, features = ["real"] }
+
 [dev-dependencies]
 divan = "0.1.17"
 hex = "0.4.3"
