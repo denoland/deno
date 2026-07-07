@@ -7,7 +7,7 @@ import {
   toFileUrl,
 } from "../../../tools/util.js";
 import { assert, denoBinary, ManifestTestOptions, runPy } from "./utils.ts";
-import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
+import { DOMParser } from "jsr:@b-fuze/deno-dom@0.1.56/wasm";
 
 export async function runWithTestUtil<T>(
   verbose: boolean,

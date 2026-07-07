@@ -1,0 +1,9 @@
+running 1 test from ./retry_steps.ts
+steps with retry ...
+  first ... ok ([WILDCARD])
+  second ... FAILED ([WILDCARD])
+steps with retry ... retrying (attempt 1 failed) (1 test step failed)
+steps with retry ... ok ([WILDCARD])
+
+ok | 1 passed (2 steps) | 0 failed | 1 flaky ([WILDCARD])
+

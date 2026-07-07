@@ -1,0 +1,14 @@
+running 10 tests from ./test.js
+default JSON serializer matches stored snapshot ... ok ([WILDLINE])
+mismatch throws an AssertionError ... ok ([WILDLINE])
+missing file surfaces --test-update-snapshots hint ... ok ([WILDLINE])
+custom serializer pipeline is applied left-to-right ... ok ([WILDLINE])
+validates `path` argument ... ok ([WILDLINE])
+validates `options` argument ... ok ([WILDLINE])
+validates `options.serializers` must be an array ... ok ([WILDLINE])
+validates each serializer is a function ... ok ([WILDLINE])
+rejects non-string serializer output ... ok ([WILDLINE])
+counts against t.plan ... ok ([WILDLINE])
+
+ok | 10 passed | 0 failed ([WILDLINE])
+

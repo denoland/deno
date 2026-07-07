@@ -62,6 +62,9 @@ async function dlint() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
+    ":!:cli/bench/testdata/npm/**",
+    ":!:cli/bench/testdata/express-router.js",
+    ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tools/coverage/script.js",
     ":!:runtime/cpu_profiler/flamegraph.js",
@@ -330,8 +333,9 @@ async function clippy() {
     "warnings",
     "--deny",
     "clippy::unused_async",
-    // generally prefer the `log` crate, but ignore
-    // these print_* rules if necessary
+    // the std print macros panic on broken pipes (ex. `deno test | head`);
+    // prefer the `log` crate for diagnostics and deno_print's drop_println!
+    // macros for stdout output, or ignore these print_* rules if necessary
     "--deny",
     "clippy::print_stderr",
     "--deny",
@@ -341,6 +345,36 @@ async function clippy() {
     "--deny",
     "clippy::allow_attributes_without_reason",
   ];
+
+  // clippy's print_stdout/print_stderr messages are not configurable, so
+  // watch for them in the output and point at the replacement ourselves
+  async function runClippy(args, errorMessage) {
+    const cargoCmd = new Deno.Command("cargo", {
+      cwd: ROOT_PATH,
+      args,
+      stdout: "inherit",
+      stderr: "piped",
+    });
+    const child = cargoCmd.spawn();
+    const decoder = new TextDecoder();
+    let stderrText = "";
+    for await (const chunk of child.stderr) {
+      stderrText += decoder.decode(chunk, { stream: true });
+      await Deno.stderr.write(chunk);
+    }
+    const { code } = await child.status;
+    if (/clippy::print[-_]std(out|err)/.test(stderrText)) {
+      console.error(
+        "\nhint: the std print macros panic when the output pipe is closed (ex. `deno test | head`).",
+      );
+      console.error(
+        "      use deno_print's drop_println!/drop_eprintln! macros for command output or the `log` crate for diagnostics.",
+      );
+    }
+    if (code > 0) {
+      throw new Error(errorMessage);
+    }
+  }
 
   // Run clippy for the whole workspace except deno_core with --all-features.
   // deno_core is excluded because --all-features enables
@@ -360,17 +394,7 @@ async function clippy() {
       cmd.push("--release");
     }
 
-    const cargoCmd = new Deno.Command("cargo", {
-      cwd: ROOT_PATH,
-      args: [...cmd, ...clippyDenyFlags],
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    const { code } = await cargoCmd.output();
-
-    if (code > 0) {
-      throw new Error("clippy failed");
-    }
+    await runClippy([...cmd, ...clippyDenyFlags], "clippy failed");
   }
 
   // Run clippy for deno_core with specific features, matching the invocation
@@ -396,17 +420,10 @@ async function clippy() {
       cmd.push("--release");
     }
 
-    const cargoCmd = new Deno.Command("cargo", {
-      cwd: ROOT_PATH,
-      args: [...cmd, ...clippyDenyFlags],
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    const { code } = await cargoCmd.output();
-
-    if (code > 0) {
-      throw new Error("clippy failed for deno_core");
-    }
+    await runClippy(
+      [...cmd, ...clippyDenyFlags],
+      "clippy failed for deno_core",
+    );
   }
 }
 
@@ -425,10 +442,10 @@ async function ensureWorkflowYmlsUpToDate() {
     ".github/workflows/version_bump.ts",
   ];
 
-  const pending = generators.map(async (gen) => {
+  for (const gen of generators) {
     const cmd = new Deno.Command("deno", {
       cwd: ROOT_PATH,
-      args: ["run", "--allow-read=.", gen, "--lint"],
+      args: ["run", "--allow-read=.", "--allow-net=jsr.io", gen, "--lint"],
       stderr: "piped",
       stdout: "piped",
     });
@@ -440,9 +457,7 @@ async function ensureWorkflowYmlsUpToDate() {
         `${ymlFile} is out of date. Run: ${gen}\n${decoder.decode(stderr)}`,
       );
     }
-  });
-
-  await Promise.all(pending);
+  }
 }
 
 /**
@@ -706,6 +721,7 @@ async function ensureNoNewTopLevelEntries() {
     ".github",
     "x",
     "cli",
+    "doc",
     "ext",
     "libs",
     "runtime",

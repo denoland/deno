@@ -22,6 +22,7 @@ use jsonc_parser::json;
 
 use super::CacheTopLevelDepsOptions;
 use crate::args::ApproveScriptsFlags;
+use crate::args::DenoSubcommandExt;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;

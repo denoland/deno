@@ -1,10 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
 use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::NodeModulesDirMode;
@@ -31,6 +33,7 @@ use deno_graph::source::Loader;
 use deno_graph::source::ResolveError;
 use deno_lib::util::result::downcast_ref_deno_resolve_error;
 use deno_npm_installer::PackageCaching;
+use deno_npm_installer::format_unmet_peer_dep_warning;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cache::ParsedSourceCache;
@@ -48,6 +51,7 @@ use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::SmallStackString;
 use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMapErrorKind;
 use node_resolver::errors::NodeJsErrorCode;
 use sys_traits::FsMetadata;
@@ -55,6 +59,7 @@ use sys_traits::FsMetadata;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
+use crate::args::TypeCheckModeExt;
 use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
 use crate::cache;
@@ -87,6 +92,11 @@ pub struct GraphValidOptions<'a> {
   pub exit_integrity_errors: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
+  /// Lazily collects the names of packages importable by bare specifier
+  /// (workspace members and packages linked via the "links" field), used to
+  /// enhance import errors. Only called when a resolution error is actually
+  /// encountered, so the happy path pays nothing.
+  pub collect_bare_importable_pkg_names: &'a dyn Fn() -> Vec<String>,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -116,6 +126,8 @@ pub fn graph_valid(
       will_type_check: options.will_type_check,
       allow_unknown_media_types: options.allow_unknown_media_types,
       allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
+      collect_bare_importable_pkg_names: options
+        .collect_bare_importable_pkg_names,
     },
   );
   match errors.next() {
@@ -140,6 +152,11 @@ pub struct GraphWalkErrorsOptions<'a> {
   pub will_type_check: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
+  /// Lazily collects the names of packages importable by bare specifier
+  /// (workspace members and packages linked via the "links" field), used to
+  /// enhance import errors. Only called when a resolution error is actually
+  /// encountered, so the happy path pays nothing.
+  pub collect_bare_importable_pkg_names: &'a dyn Fn() -> Vec<String>,
 }
 
 /// Walks the errors found in the module graph that should be surfaced to users
@@ -168,6 +185,12 @@ pub fn graph_walk_errors<'a>(
     // surface these as typescript diagnostics instead
     will_type_check && has_module_graph_error_for_tsc_diagnostic(sys, error)
   }
+
+  let collect_bare_importable_pkg_names =
+    options.collect_bare_importable_pkg_names;
+  // Built lazily on the first error that needs enhancing, then reused for the
+  // rest of the walk.
+  let mut bare_importable_pkg_names: Option<Vec<String>> = None;
 
   graph
     .walk(
@@ -218,6 +241,8 @@ pub fn graph_walk_errors<'a>(
         } else {
           EnhanceGraphErrorMode::ShowRange
         },
+        bare_importable_pkg_names
+          .get_or_insert_with(&collect_bare_importable_pkg_names),
       );
 
       Some(enhanced)
@@ -394,6 +419,38 @@ pub struct CreatePublishGraphOptions<'a> {
   pub packages: &'a [JsrPackageConfig],
   pub build_fast_check_graph: bool,
   pub validate_graph: bool,
+  /// Whether to skip exports that can't be analyzed as modules
+  /// (ex. CSS files) instead of surfacing diagnostics for them.
+  /// This is used when linting because validating the exports is
+  /// the responsibility of `deno publish`.
+  /// See https://github.com/denoland/deno/issues/26308
+  pub skip_unanalyzable_exports: bool,
+}
+
+fn is_analyzable_export(url: &ModuleSpecifier) -> bool {
+  match MediaType::from_specifier(url) {
+    MediaType::JavaScript
+    | MediaType::Jsx
+    | MediaType::Mjs
+    | MediaType::Cjs
+    | MediaType::TypeScript
+    | MediaType::Mts
+    | MediaType::Cts
+    | MediaType::Dts
+    | MediaType::Dmts
+    | MediaType::Dcts
+    | MediaType::Tsx
+    | MediaType::Json
+    | MediaType::Wasm => true,
+    MediaType::Css
+    | MediaType::Jsonc
+    | MediaType::Json5
+    | MediaType::Html
+    | MediaType::Markdown
+    | MediaType::Sql
+    | MediaType::SourceMap
+    | MediaType::Unknown => false,
+  }
 }
 
 pub struct ModuleGraphCreator {
@@ -503,7 +560,13 @@ impl ModuleGraphCreator {
 
     let mut roots = Vec::new();
     for package_config in options.packages {
-      roots.extend(package_config.config_file.resolve_export_value_urls()?);
+      let export_urls =
+        package_config.config_file.resolve_export_value_urls()?;
+      if options.skip_unanalyzable_exports {
+        roots.extend(export_urls.into_iter().filter(is_analyzable_export));
+      } else {
+        roots.extend(export_urls);
+      }
     }
 
     let loader = self
@@ -554,11 +617,22 @@ impl ModuleGraphCreator {
     }
 
     if options.build_fast_check_graph {
-      let fast_check_workspace_members = options
+      let mut fast_check_workspace_members = options
         .packages
         .iter()
         .map(|p| config_to_deno_graph_workspace_member(&p.config_file))
         .collect::<Result<Vec<_>, _>>()?;
+      if options.skip_unanalyzable_exports {
+        for member in &mut fast_check_workspace_members {
+          let base = member.base.clone();
+          member.exports.retain(|_, value| {
+            base
+              .join(value)
+              .map(|url| is_analyzable_export(&url))
+              .unwrap_or(true)
+          });
+        }
+      }
       self.module_graph_builder.build_fast_check_graph(
         &mut graph,
         BuildFastCheckGraphOptions {
@@ -854,6 +928,7 @@ impl ModuleGraphBuilder {
           locker: locker.as_mut().map(|l| l as _),
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
           unstable_text_imports: true,
+          unstable_css_imports: self.cli_options.unstable_raw_imports(),
         }
       };
     }
@@ -988,7 +1063,69 @@ impl ModuleGraphBuilder {
       }
     }
 
+    // Report any unmet peer dependency issues found during npm resolution. This
+    // is done here, after the graph is built, so the warning can point at the
+    // user modules that import the offending packages.
+    if let Some(npm_installer) = &self.npm_installer {
+      let diagnostics = npm_installer.take_unmet_peer_diagnostics();
+      if !diagnostics.is_empty() && log::log_enabled!(log::Level::Warn) {
+        // Only the top-level package of each diagnostic (its outermost
+        // ancestor) is annotated, so restrict the graph walk to those.
+        let wanted: HashSet<String> = diagnostics
+          .iter()
+          .filter_map(|d| d.ancestors.last().map(|nv| nv.to_string()))
+          .collect();
+        let importers = self.npm_peer_dep_importers(graph, &wanted);
+        log::warn!(
+          "{}",
+          format_unmet_peer_dep_warning(&diagnostics, &importers)
+        );
+      }
+    }
+
     Ok(())
+  }
+
+  /// Builds a map from a top-level npm package (`name@version`) to the user
+  /// modules that import it, used to annotate peer dependency warnings with the
+  /// source of a transitively introduced package. Only packages in `wanted`
+  /// are resolved, to avoid a full sweep of the graph.
+  fn npm_peer_dep_importers(
+    &self,
+    graph: &ModuleGraph,
+    wanted: &HashSet<String>,
+  ) -> HashMap<String, Vec<String>> {
+    let Some(managed) = self.npm_resolver.as_managed() else {
+      return HashMap::new();
+    };
+    let mut importers: HashMap<String, Vec<String>> = HashMap::new();
+    for module in graph.modules() {
+      let referrer = module.specifier();
+      for dep in module.dependencies().values() {
+        for specifier in [dep.get_code(), dep.get_type()].into_iter().flatten()
+        {
+          let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier)
+          else {
+            continue;
+          };
+          let Ok(id) =
+            managed.resolve_pkg_id_from_deno_module_req(npm_ref.req())
+          else {
+            continue;
+          };
+          let nv = id.nv.to_string();
+          if !wanted.contains(&nv) {
+            continue;
+          }
+          let entry = importers.entry(nv).or_default();
+          let referrer = referrer.to_string();
+          if !entry.contains(&referrer) {
+            entry.push(referrer);
+          }
+        }
+      }
+    }
+    importers
   }
 
   pub fn build_fast_check_graph(
@@ -1086,6 +1223,14 @@ impl ModuleGraphBuilder {
     allow_unknown_jsr_exports: bool,
   ) -> Result<(), JsErrorBox> {
     let will_type_check = self.cli_options.type_check_mode().is_true();
+    let collect_bare_importable_pkg_names = || {
+      self
+        .cli_options
+        .workspace()
+        .resolver_jsr_pkgs()
+        .map(|pkg| pkg.name)
+        .collect::<Vec<_>>()
+    };
     graph_valid(
       graph,
       &self.sys,
@@ -1103,6 +1248,7 @@ impl ModuleGraphBuilder {
         exit_integrity_errors: true,
         allow_unknown_media_types,
         allow_unknown_jsr_exports,
+        collect_bare_importable_pkg_names: &collect_bare_importable_pkg_names,
       },
     )
   }

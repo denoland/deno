@@ -37,6 +37,7 @@ use tokio::sync::mpsc::unbounded_channel;
 use crate::args::BenchFlags;
 use crate::args::CliOptions;
 use crate::args::Flags;
+use crate::args::TypeCheckModeExt;
 use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
@@ -533,16 +534,14 @@ pub async fn run_benchmarks_with_watch(
   flags: Arc<Flags>,
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
+  let clear_screen = flags
+    .watch
+    .as_ref()
+    .map(|w| !w.no_clear_screen)
+    .unwrap_or(true);
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig::new(
-      "Bench",
-      bench_flags
-        .watch
-        .as_ref()
-        .map(|w| !w.no_clear_screen)
-        .unwrap_or(true),
-    ),
+    file_watcher::PrintConfig::new("Bench", clear_screen),
     move |flags, watcher_communicator, changed_paths| {
       let bench_flags = bench_flags.clone();
       watcher_communicator.show_path_changed(changed_paths.clone());

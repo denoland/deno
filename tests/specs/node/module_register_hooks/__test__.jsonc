@@ -19,6 +19,10 @@
     "builtin_override": {
       "args": "run -A main_builtin_override.cjs",
       "output": "main_builtin_override.out"
+    },
+    "no_hooks": {
+      "args": "run -A main_no_hooks.cjs",
+      "output": "main_no_hooks.out"
     }
   }
 }
