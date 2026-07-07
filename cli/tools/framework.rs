@@ -394,6 +394,7 @@ Deno.serve(async (req) => {
       .into(),
       include_paths: vec!["build/client".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for React Router
     }
   } else {
     // SSR: serve immutable client assets from `build/client`, then hand all
@@ -425,6 +426,7 @@ Deno.serve(async (req) => {
       .into(),
       include_paths: vec!["build".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for React Router
     }
   }
 }
