@@ -84,6 +84,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageJsonLoadError;
+use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 use sys_traits::FsRead;
@@ -491,9 +492,23 @@ impl CliModuleLoaderFactory {
         maybe_main_module_blob,
       })));
     {
-      let inner = module_loader.0.clone();
+      // Capture a weak reference: the module loader stores `hook_registry`,
+      // and the registry stores this `default_resolve` callback, so capturing
+      // a strong `Rc` to the loader here would form a reference cycle
+      // (loader inner -> hook_registry -> default_resolve -> loader inner)
+      // that leaks the whole module loader — and the module graph, npm
+      // installer and registry cache it transitively owns — on every
+      // `--watch` reload (see denoland/deno#35664). The callback is only
+      // invoked while the loader is alive, so the upgrade always succeeds in
+      // practice.
+      let inner = Rc::downgrade(&module_loader.0);
       hook_registry.set_default_resolve(Rc::new(
         move |specifier: &str, referrer: &str| {
+          let Some(inner) = inner.upgrade() else {
+            return Err(JsErrorBox::generic(
+              "module loader was dropped before its resolve hook was called",
+            ));
+          };
           inner
             .inner_resolve(
               specifier,
@@ -1147,15 +1162,20 @@ impl<TGraphContainer: ModuleGraphContainer>
     // `file:///<project>/` mapping whose prefix match rewrites any file URL
     // outside the project root (such as the npm cache) to live underneath the
     // project directory, breaking the load. Such a package-internal main
-    // module is not a user source file and must not be remapped, so load it
-    // verbatim. A user-provided path entry (e.g. `deno run ./thing.ts`) is
+    // module is not a user source file and must not be remapped, so bypass the
+    // import map. A user-provided path entry (e.g. `deno run ./thing.ts`) is
     // intentionally left to the import map.
     if matches!(kind, deno_core::ResolutionKind::MainModule)
       && let Ok(url) = ModuleSpecifier::parse(raw_specifier)
       && url.scheme() == "file"
       && self.shared.in_npm_pkg_checker.in_npm_package(&url)
     {
-      return Ok(url);
+      let canonicalized_url = deno_path_util::url_to_file_path(&url)
+        .ok()
+        .and_then(|path| self.shared.sys.fs_canonicalize(&path).ok())
+        .and_then(|path| deno_path_util::url_from_file_path(&path).ok())
+        .unwrap_or(url);
+      return Ok(canonicalized_url);
     }
 
     let referrer = self

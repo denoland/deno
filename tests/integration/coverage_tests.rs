@@ -42,6 +42,11 @@ fn ignore_range_directive() {
 }
 
 #[test]
+fn try_catch_finally_returns() {
+  run_coverage_text("try_catch_finally_returns", "ts");
+}
+
+#[test]
 fn no_snaps() {
   no_snaps_included("no_snaps_included", "ts");
 }

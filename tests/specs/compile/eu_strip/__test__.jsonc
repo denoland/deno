@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  "if": "linux",
+  "steps": [{
+    "args": "compile --output main main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run --allow-run --allow-read run.ts",
+    "output": "[WILDCARD]OK[WILDLINE]\n"
+  }]
+}

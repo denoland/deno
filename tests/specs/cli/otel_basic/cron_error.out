@@ -6,7 +6,7 @@
       "spanId": "0000000000000001",
       "traceState": "",
       "parentSpanId": "",
-      "flags": 1,
+      "flags": 257,
       "name": "deno.cron",
       "kind": 1,
       "startTimeUnixNano": "[WILDCARD]",
@@ -73,7 +73,8 @@
       "droppedAttributesCount": 0,
       "flags": 0,
       "traceId": "",
-      "spanId": ""
+      "spanId": "",
+      "eventName": ""
     }
   ],
   "metrics": []

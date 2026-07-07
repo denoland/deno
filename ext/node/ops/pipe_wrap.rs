@@ -312,15 +312,14 @@ impl PipeWrap {
 
   #[fast]
   fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
-    // Check FdTable for duplicate fds. Stdio fds (0-2) are pre-registered
-    // as TableOwned; for those, open is allowed (no-op check). Non-stdio
-    // fds already in FdTable are rejected (EEXIST).
-    {
-      let fd_table = state.borrow::<deno_io::FdTable>();
-      if fd_table.contains(fd) && !(0..=2).contains(&fd) {
-        return -libc::EEXIST;
-      }
-    }
+    // See `FdTable::begin_uv_adopt` for the duplicate-fd policy (stdio and
+    // inherited extra stdio fds may be adopted; other tracked fds are
+    // rejected).
+    let Some(was_inherited) =
+      state.borrow::<deno_io::FdTable>().begin_uv_adopt(fd)
+    else {
+      return -libc::EEXIST;
+    };
     let pipe = self.pipe_ptr();
     if pipe.is_null() {
       return uv_compat::UV_EBADF;
@@ -338,21 +337,38 @@ impl PipeWrap {
       unsafe { uv_compat::uv_pipe_open(pipe, fd) }
     };
     if ret == 0 {
-      // Register as UvOwned - the native handle owns the fd.
-      state.borrow_mut::<deno_io::FdTable>().register_uv_owned(fd);
+      state
+        .borrow_mut::<deno_io::FdTable>()
+        .finish_uv_adopt(fd, was_inherited);
       self.base.set_fd(fd);
     }
     ret
   }
 
-  #[fast]
-  fn bind(&self, #[string] path: &str) -> i32 {
+  #[nofast]
+  fn bind(
+    &self,
+    state: &mut OpState,
+    #[string] path: &str,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    // Binding a unix-domain socket creates a socket inode on disk (and arms
+    // the fchmod/unlink-on-close that operate on the bound path), so it
+    // requires filesystem read+write permission for the path -- matching
+    // `connect()` above and `Deno.listen({ transport: "unix" })`. Checking
+    // here (rather than only in `listen()`) ensures the path is never bound,
+    // chmod'd, or unlinked by permission-less code.
+    state.borrow_mut::<PermissionsContainer>().check_open(
+      std::borrow::Cow::Borrowed(std::path::Path::new(path)),
+      deno_permissions::OpenAccessKind::ReadWriteNoFollow,
+      Some("node:net.Server.listen()"),
+    )?;
+
     let pipe = self.pipe_ptr();
     if pipe.is_null() {
-      return uv_compat::UV_EBADF;
+      return Ok(uv_compat::UV_EBADF);
     }
     // SAFETY: pipe is valid (null-checked above).
-    unsafe { uv_compat::uv_pipe_bind(pipe, path) }
+    Ok(unsafe { uv_compat::uv_pipe_bind(pipe, path) })
   }
 
   #[nofast]
