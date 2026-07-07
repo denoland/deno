@@ -2815,6 +2815,7 @@ function processRespondWithFD(
 
   const ownsFd = self.ownsFd;
   let stopped = false;
+  let reading = false;
   let fdClosed = false;
 
   function closeOwnedFd() {
@@ -2824,10 +2825,11 @@ function processRespondWithFD(
   }
 
   function stopReading() {
-    if (stopped) return;
     stopped = true;
     self.removeListener("close", stopReading);
-    closeOwnedFd();
+    if (!reading) {
+      closeOwnedFd();
+    }
   }
 
   self.once("close", stopReading);
@@ -2842,8 +2844,9 @@ function processRespondWithFD(
       finish();
       return;
     }
+    reading = true;
     fs.read(fd, buf, 0, readLen, seekable ? pos : null, (err, bytesRead) => {
-      if (stopped) return;
+      reading = false;
       if (err) {
         stopReading();
         // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
@@ -2855,7 +2858,7 @@ function processRespondWithFD(
         self.destroy();
         return;
       }
-      if (self.destroyed || self.closed) {
+      if (stopped || self.destroyed || self.closed) {
         stopReading();
         return;
       }
@@ -2871,11 +2874,10 @@ function processRespondWithFD(
   }
 
   function finish() {
-    if (stopped) return;
-    stopped = true;
-    self.removeListener("close", stopReading);
-    closeOwnedFd();
-    self.end();
+    stopReading();
+    if (!self.destroyed && !self.closed) {
+      self.end();
+    }
   }
 
   const ret = ReflectApply(
