@@ -21,7 +21,7 @@ use deno_core::uv_compat::UvConnect;
 use deno_core::uv_compat::UvLoop;
 use deno_core::uv_compat::UvStream;
 use deno_core::v8;
-use deno_net::ops_unix::check_unix_socket_path;
+use deno_net::check_unix_socket_path;
 use deno_permissions::PermissionsContainer;
 
 use crate::ops::handle_wrap::AsyncWrap;
