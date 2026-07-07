@@ -63,6 +63,7 @@ const {
   PromiseResolve,
   PromiseWithResolvers,
   RangeError,
+  ReflectApply,
   ReflectHas,
   SafeFinalizationRegistry,
   SafePromiseAll,
@@ -4275,14 +4276,29 @@ function underlyingSourceStartDefault(controller) {
 }
 
 function underlyingSourcePullDefault(controller) {
-  return webidl.invokeCallbackFunction(
-    controller[_underlyingSourceDict].pull,
-    [controller],
-    controller[_underlyingSource],
-    webidl.converters["Promise<undefined>"],
-    "Failed to execute 'pullAlgorithm' on 'ReadableStreamDefaultController'",
-    true,
-  );
+  // Synchronous-pull fast path: the overwhelmingly common case is a pull() that
+  // enqueues and returns undefined. Invoke it directly and return undefined
+  // (the synchronous-completion sentinel) on any non-thenable result so
+  // readableStreamDefaultControllerCallPullIfNeeded runs its "upon fulfillment"
+  // steps synchronously -- no wrapper promise from the Promise<undefined>
+  // converter and no microtask hop per chunk, which is pure per-chunk overhead
+  // on the read/pull hot loop. A synchronous throw becomes a rejected promise so
+  // the controller errors exactly as before; a thenable return keeps the full
+  // async path (matching webidl.invokeCallbackFunction with returnsPromise).
+  let rv;
+  try {
+    rv = ReflectApply(
+      controller[_underlyingSourceDict].pull,
+      controller[_underlyingSource],
+      [controller],
+    );
+  } catch (err) {
+    return PromiseReject(err);
+  }
+  if (rv === undefined || typeof rv?.then !== "function") {
+    return undefined;
+  }
+  return PromiseResolve(rv);
 }
 
 function underlyingSourceCancelDefault(reason, controller) {
