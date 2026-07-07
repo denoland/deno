@@ -1740,18 +1740,9 @@ async fn package_linux_app_dir(
   // `desktop_id`, making the window's app_id match this `StartupWMClass`
   // (laufey would otherwise default the app_id to the `<app>` binary name).
   if let Some(desktop_id) = desktop_id.as_deref() {
-    let desktop_entry = format!(
-      "[Desktop Entry]\n\
-       Type=Application\n\
-       Name={app_name}\n\
-       Exec=env LAUFEY_APP_ID={desktop_id} {app_name}\n\
-       Icon=AppIcon\n\
-       StartupWMClass={desktop_id}\n\
-       Categories=Utility;\n",
-    );
     std::fs::write(
       app_dir.join(format!("{desktop_id}.desktop")),
-      desktop_entry,
+      app_dir_desktop_entry(&app_name, desktop_id),
     )?;
   }
 
@@ -2405,6 +2396,29 @@ fn resolve_linux_app_id(
     },
     None => derived_desktop_id(app_name),
   }
+}
+
+/// In-app-dir `.desktop` entry written next to the `<app>` launcher.
+///
+/// `Exec` launches the backend through `env` so it sets `LAUFEY_APP_ID` to the
+/// same reverse-DNS `desktop_id` as `StartupWMClass`; without it laufey defaults
+/// the window app_id to the `<app>` binary name, which wouldn't match and the
+/// Wayland icon would fall back to a generic placeholder (issue #35500).
+///
+/// `app_name` is quoted because `validate_launcher_name` permits spaces (real
+/// macOS bundles have them); an unquoted `My Cool App` would exec `My` with
+/// args `Cool App`. The name charset is `[A-Za-z0-9 ._-]`, so there's nothing to
+/// escape inside the quotes.
+fn app_dir_desktop_entry(app_name: &str, desktop_id: &str) -> String {
+  format!(
+    "[Desktop Entry]\n\
+     Type=Application\n\
+     Name={app_name}\n\
+     Exec=env LAUFEY_APP_ID={desktop_id} \"{app_name}\"\n\
+     Icon=AppIcon\n\
+     StartupWMClass={desktop_id}\n\
+     Categories=Utility;\n",
+  )
 }
 
 /// Walk every `.app` under `Contents/Frameworks/` and rewrite its
@@ -5683,6 +5697,35 @@ def456  other.zip
       "unexpected Exec line:\n{entry}"
     );
     assert!(entry.contains("StartupWMClass=com.deno.desktop.myapp\n"));
+  }
+
+  #[test]
+  fn app_dir_desktop_entry_sets_app_id_via_exec() {
+    let entry = app_dir_desktop_entry("MyApp", "com.deno.desktop.myapp");
+    // Exec launches through `env` so the window's app_id matches
+    // StartupWMClass (the reverse-DNS id), letting the compositor resolve
+    // the configured icon.
+    assert!(
+      entry
+        .contains("Exec=env LAUFEY_APP_ID=com.deno.desktop.myapp \"MyApp\"\n"),
+      "unexpected Exec line:\n{entry}"
+    );
+    assert!(entry.contains("StartupWMClass=com.deno.desktop.myapp\n"));
+  }
+
+  #[test]
+  fn app_dir_desktop_entry_quotes_spaced_app_name() {
+    // `validate_launcher_name` permits spaces (macOS bundles have them), so
+    // the binary name must be quoted or `env` would exec `My` with args
+    // `Cool App` instead of the `My Cool App` launcher.
+    let entry =
+      app_dir_desktop_entry("My Cool App", "com.deno.desktop.my-cool-app");
+    assert!(
+      entry.contains(
+        "Exec=env LAUFEY_APP_ID=com.deno.desktop.my-cool-app \"My Cool App\"\n"
+      ),
+      "spaced app name must stay quoted as one argument:\n{entry}"
+    );
   }
 
   // --- validate_launcher_name ---
