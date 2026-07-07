@@ -368,15 +368,19 @@ impl PipeWrap {
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
     // Binding a unix-domain socket creates a socket inode on disk (and arms
     // the fchmod/unlink-on-close that operate on the bound path), so it
-    // requires filesystem read+write permission for the path -- matching
-    // `connect()` above and `Deno.listen({ transport: "unix" })`. Checking
-    // here (rather than only in `listen()`) ensures the path is never bound,
-    // chmod'd, or unlinked by permission-less code.
-    state.borrow_mut::<PermissionsContainer>().check_open(
+    // requires filesystem read+write permission for the path AND an
+    // `--allow-net=unix:<path>` grant -- matching `connect()` above and
+    // `Deno.listen({ transport: "unix" })`. Checking here (rather than only in
+    // `listen()`) ensures the path is never bound, chmod'd, or unlinked by
+    // permission-less code.
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    let checked = permissions.check_open(
       std::borrow::Cow::Borrowed(std::path::Path::new(path)),
       deno_permissions::OpenAccessKind::ReadWriteNoFollow,
       Some("node:net.Server.listen()"),
     )?;
+    permissions
+      .check_net_unix_socket(&checked, Some("node:net.Server.listen()"))?;
 
     let pipe = self.pipe_ptr();
     if pipe.is_null() {
@@ -396,14 +400,20 @@ impl PipeWrap {
     if pipe.is_null() {
       return Ok(uv_compat::UV_EBADF);
     }
-    // Permission check: verify the bind path is allowed.
+    // Permission check: verify the bind path is allowed. A listening unix
+    // socket needs both filesystem read+write access to the path and an
+    // `--allow-net=unix:<path>` grant, mirroring `bind()` and the native
+    // `Deno.listen({ transport: "unix" })` path.
     // SAFETY: pipe is valid (null-checked above).
     if let Some(path) = unsafe { &*pipe }.bind_path() {
-      state.borrow_mut::<PermissionsContainer>().check_open(
+      let permissions = state.borrow_mut::<PermissionsContainer>();
+      let checked = permissions.check_open(
         std::borrow::Cow::Borrowed(std::path::Path::new(path)),
         deno_permissions::OpenAccessKind::ReadWriteNoFollow,
         Some("node:net.Server.listen()"),
       )?;
+      permissions
+        .check_net_unix_socket(&checked, Some("node:net.Server.listen()"))?;
     }
     // SAFETY: pipe is valid (null-checked above).
     Ok(unsafe {
@@ -432,11 +442,21 @@ impl PipeWrap {
     #[string] path: &str,
     scope: &mut v8::PinScope,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
-    state.borrow_mut::<PermissionsContainer>().check_open(
+    // A Unix-domain socket is both a filesystem entry and an outbound network
+    // primitive, so connecting requires filesystem read+write permission for
+    // the path AND an `--allow-net=unix:<path>` grant -- matching the native
+    // `Deno.connect({ transport: "unix" })` path in `ext/net/ops_unix.rs`.
+    // Without the network check, `--allow-read`/`--allow-write` on a socket
+    // path alone could reach local IPC services (Docker, dbus, podman, etc.)
+    // under `--deny-net`.
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    let checked = permissions.check_open(
       std::borrow::Cow::Borrowed(std::path::Path::new(path)),
       deno_permissions::OpenAccessKind::ReadWriteNoFollow,
       Some("node:net.createConnection()"),
     )?;
+    permissions
+      .check_net_unix_socket(&checked, Some("node:net.createConnection()"))?;
 
     let pipe = self.pipe_ptr();
     if pipe.is_null() {
