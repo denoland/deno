@@ -1844,10 +1844,7 @@ pub async fn run_with_options(
     // This ensures scriptParsed notifications are emitted during module load.
     worker.run_event_loop(false).await?;
 
-    // Run preload modules first
-    worker.execute_preload_modules().await?;
-    worker.execute_main_module().await?;
-    worker.dispatch_load_event()?;
+    worker.execute_load_phase().await?;
 
     loop {
       let hmr_fut = hmr_runner.run();
@@ -1877,40 +1874,18 @@ pub async fn run_with_options(
     worker.dispatch_process_exit_event()?;
     Ok(worker.exit_code())
   } else if has_desktop {
-    // Mirror `LibMainWorker::run()`, but tag any failure that happens while
-    // the app's main module is still loading or first evaluating as a
+    // Same as `LibMainWorker::run()`, but tag any failure from the load phase
+    // (main module still loading or first evaluating) as a
     // `DesktopStartupError` (see its docs for why these otherwise vanish). The
     // tag lets the desktop shell surface them in a native dialog. Errors raised
     // later, during the steady-state event loop, are left untagged: those are
     // already reported by the app's JS listeners, and tagging them would
     // produce a duplicate dialog.
     worker
-      .execute_preload_modules()
+      .execute_load_phase()
       .await
       .map_err(desktop_startup_error)?;
-    worker
-      .execute_main_module()
-      .await
-      .map_err(desktop_startup_error)?;
-    worker
-      .dispatch_load_event()
-      .map_err(desktop_startup_error)?;
-
-    loop {
-      worker.run_event_loop(false).await?;
-      let web_continue = worker.dispatch_beforeunload_event()?;
-      if !web_continue {
-        let node_continue = worker.dispatch_process_beforeexit_event()?;
-        if !node_continue {
-          break;
-        }
-      }
-    }
-
-    worker.dispatch_unload_event()?;
-    worker.dispatch_process_exit_event()?;
-    worker.run_napi_ref_finalizers();
-    Ok(worker.exit_code())
+    Ok(worker.run_event_loop_to_completion().await?)
   } else {
     let exit_code = worker.run().await?;
     Ok(exit_code)

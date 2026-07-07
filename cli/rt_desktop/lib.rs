@@ -1309,10 +1309,9 @@ laufey::main!(|| {
 /// Decide whether the desktop shell should pop a native error dialog for a
 /// failure that propagated out of the runtime.
 ///
-/// - Startup failures (the app's main module failed to load or first
-///   evaluate) are surfaced here because the app's own `error` /
-///   `unhandledrejection` listeners never ran: without a dialog a
-///   GUI-launched app just blinks a window and exits (deno#35544).
+/// - Startup failures (tagged `DesktopStartupError`; see its docs) are
+///   surfaced here because the app's own `error` / `unhandledrejection`
+///   listeners never ran to report them.
 /// - Non-JS crashes are surfaced too.
 /// - A post-load JS error is left to the app's own listeners, which already
 ///   show a dialog; alerting again here would just duplicate it.
@@ -1877,11 +1876,10 @@ mod tests {
 
   // --- should_show_native_error_dialog ---
   //
-  // The desktop shell must not let a startup failure (e.g. a failed import)
-  // vanish: a GUI-launched app has no visible stderr, so an unsurfaced error
-  // presents as a window that blinks open and immediately closes
-  // (deno#35544). But it also must not double up with the app's own
-  // error/unhandledrejection listeners for post-load JS errors.
+  // See `should_show_native_error_dialog` / `DesktopStartupError` for the
+  // rationale. In short: startup failures must be surfaced (the app never got
+  // to report them), while post-load JS errors are left to the app's own
+  // listeners so we don't show a duplicate dialog.
 
   #[test]
   fn startup_js_error_is_surfaced() {
