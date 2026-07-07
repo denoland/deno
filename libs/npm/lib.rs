@@ -459,7 +459,12 @@ pub fn host_libc() -> &'static str {
     // ships its dynamic loader as `/lib/ld-musl-<arch>.so.1`.
     use std::sync::OnceLock;
     static LIBC: OnceLock<&'static str> = OnceLock::new();
-    *LIBC.get_or_init(|| {
+    LIBC.get_or_init(|| {
+      // This is a host-only probe gated to Linux, so it never compiles for
+      // Wasm and there is no `sys_traits` context in scope here (both `Default`
+      // and `from_rust` reach this without a `sys`). Reading the host's `/lib`
+      // directly is intentional.
+      #[allow(clippy::disallowed_methods)]
       let is_musl = std::fs::read_dir("/lib").is_ok_and(|mut entries| {
         entries.any(|entry| {
           entry.is_ok_and(|entry| {
