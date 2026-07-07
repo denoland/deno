@@ -891,6 +891,7 @@ Deno.test({
       `
       const { parentPort } = require("node:worker_threads");
       parentPort.postMessage("ok");
+      setInterval(() => {}, 1000);
       `,
       {
         eval: true,
@@ -1355,6 +1356,43 @@ Deno.test({
     assertEquals(recv.length, 1);
   },
   sanitizeResources: false,
+});
+
+Deno.test({
+  name: "[node/worker_threads] terminate interrupts busy loop",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      parentPort.postMessage("looping");
+      while (true) {
+        Date.now();
+      }
+      `,
+      { eval: true },
+    );
+
+    assertEquals((await once(worker, "message"))[0], "looping");
+    assertEquals(await worker.terminate(), 1);
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] terminate wakes Atomics.wait",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      const waiters = new Int32Array(new SharedArrayBuffer(4));
+      parentPort.postMessage("waiting");
+      Atomics.wait(waiters, 0, 0);
+      `,
+      { eval: true },
+    );
+
+    assertEquals((await once(worker, "message"))[0], "waiting");
+    assertEquals(await worker.terminate(), 1);
+  },
 });
 
 Deno.test({

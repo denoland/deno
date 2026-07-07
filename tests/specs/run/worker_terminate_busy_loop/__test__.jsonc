@@ -1,0 +1,5 @@
+{
+  "args": "run -A --quiet main.js",
+  "output": "main.out",
+  "timeout": 10
+}
