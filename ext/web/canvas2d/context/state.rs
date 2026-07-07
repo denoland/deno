@@ -5,7 +5,7 @@ use deno_core::v8;
 use vello::kurbo;
 use vello::peniko;
 
-use crate::canvas2d::renderer::DenoCanvasBackend;
+use super::renderer::DenoCanvasBackend;
 use crate::css::color::Color;
 use crate::css::filter::CssFilterFunction;
 use crate::css::font::FontState;

@@ -7,14 +7,12 @@ pub mod gradient;
 mod image;
 mod path;
 pub mod pattern;
-pub(crate) mod renderer;
-mod state;
-mod text;
 
 pub use context::CONTEXT_ID;
 pub use context::OffscreenCanvasRenderingContext2D;
 pub use context::UNSTABLE_FEATURE_NAME;
 pub use context::create_context;
+pub(crate) use context::init_canvas_renderer;
 pub use context::op_canvas2d_init;
 pub use error::Canvas2DError;
 pub use filter::CanvasFilter;

@@ -13,8 +13,8 @@ use parley::style::FontFeatures;
 use parley::style::FontWeight;
 use parley::style::GenericFamily;
 
-use crate::canvas2d::state::TextAlign;
-use crate::canvas2d::state::TextBaseline;
+use super::state::TextAlign;
+use super::state::TextBaseline;
 use crate::css::font::FontKerning;
 use crate::css::font::FontState;
 use crate::css::font::TextDirection;
