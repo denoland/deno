@@ -71,8 +71,12 @@ fn create_runtime() -> JsRuntime {
 /// Run a integration test within the `checkin` runtime. This executes a single file, imports and all,
 /// and compares its output with the `.out` file in the same directory.
 pub fn run_integration_test(test: &str) {
-  let runtime = create_runtime();
-  run_async(run_integration_test_task(runtime, test.to_owned()));
+  let tokio = super::create_tokio_runtime();
+  let runtime = {
+    let _guard = tokio.enter();
+    create_runtime()
+  };
+  run_async(tokio, run_integration_test_task(runtime, test.to_owned()));
 }
 
 async fn run_integration_test_task(
@@ -123,8 +127,12 @@ async fn run_integration_test_task(
 /// Run a unit test within the `checkin` runtime. This loads a file which registers a number of tests,
 /// then each test is run individually and failures are printed.
 pub fn run_unit_test(test: &str) {
-  let runtime = create_runtime();
-  run_async(run_unit_test_task(runtime, test.to_owned()));
+  let tokio = super::create_tokio_runtime();
+  let runtime = {
+    let _guard = tokio.enter();
+    create_runtime()
+  };
+  run_async(tokio, run_unit_test_task(runtime, test.to_owned()));
 }
 
 async fn run_unit_test_task(

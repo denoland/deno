@@ -647,6 +647,14 @@ fn get_message_suggestions(e: &JsError) -> Vec<FixSuggestion<'_>> {
     }
   }
 
+  // The actionable detail may live on the cause chain rather than the
+  // top-level message — e.g. transport-level fetch failures are surfaced as
+  // `TypeError: fetch failed` with the underlying error (such as a TLS
+  // certificate failure) in `.cause`.
+  if let Some(cause) = &e.cause {
+    return get_message_suggestions(cause);
+  }
+
   vec![]
 }
 

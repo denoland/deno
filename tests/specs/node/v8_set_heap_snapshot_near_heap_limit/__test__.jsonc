@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run -A deny_write.ts",
+      "output": "[WILDCARD]deny-write-blocked\n"
+    },
+    {
+      "args": "run zero.mjs",
+      "output": "zero-limit-rejected\n"
+    },
+    {
+      "args": "run -A runner.ts",
+      "output": "[WILDCARD]oom-child-terminated\n"
+    },
+    {
+      "args": "run --allow-read check.ts",
+      "output": "ok\n"
+    }
+  ]
+}

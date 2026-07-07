@@ -1156,6 +1156,7 @@ impl<
           init_cwd: &self.lifecycle_scripts_config.initial_cwd,
           process_state: process_state.as_str(),
           root_node_modules_dir_path: &self.root_node_modules_path,
+          resolve_pkg_folder: None,
           on_ran_pkg_scripts: &|pkg| {
             create_initialized_file(
               sys.as_ref(),
@@ -1321,20 +1322,12 @@ pub(crate) fn clone_dir_recursive_except_node_modules_child(
       )?;
     } else if file_type.is_file() {
       hard_link_file(sys.as_ref(), &new_from, &new_to).or_else(|_| {
-        sys
-          .fs_copy(&new_from, &new_to)
-          .or_else(|err| {
-            if deno_npm_cache::is_etxtbsy(&err) {
-              // The destination is a hardlink to a currently-executing
-              // binary (ETXTBSY). Remove it to break the hardlink, then
-              // retry the copy.
-              let _ = sys.fs_remove_file(&new_to);
-              sys.fs_copy(&new_from, &new_to)
-            } else {
-              Err(err)
-            }
-          })
-          .map(|_| ())
+        // Remove any existing file first so the copy writes a new inode
+        // rather than writing through a hardlinked destination, which
+        // would corrupt the file at its other paths. Removing first also
+        // breaks hardlinks to currently-executing binaries (ETXTBSY).
+        let _ = sys.fs_remove_file(&new_to);
+        sys.fs_copy(&new_from, &new_to).map(|_| ())
       })?;
     }
   }
@@ -2042,9 +2035,15 @@ fn calculate_packages_hash(
 
   let mut hasher = twox_hash::XxHash64::default();
 
-  // Hash all package IDs (iter_all is deterministic)
-  for package in package_partitions.iter_all() {
-    package.id.hash(&mut hasher);
+  // the order of the packages is non-deterministic (hash map iteration
+  // during resolution traversal), so sort the ids before hashing
+  let mut package_ids = package_partitions
+    .iter_all()
+    .map(|package| &package.id)
+    .collect::<Vec<_>>();
+  package_ids.sort_unstable();
+  for package_id in package_ids {
+    package_id.hash(&mut hasher);
   }
 
   // also hash the packages expected at the root of node_modules so that
@@ -2295,6 +2294,51 @@ mod test {
         .with_dep("package-a")
         .insert("package-b", "package-b@1.0.0")
     );
+  }
+
+  #[test]
+  fn test_calculate_packages_hash_order_independent() {
+    fn pkg(id: &str) -> NpmResolutionPackage {
+      NpmResolutionPackage {
+        id: NpmPackageId::from_serialized(id).unwrap(),
+        copy_index: 0,
+        system: Default::default(),
+        dist: None,
+        dependencies: Default::default(),
+        optional_dependencies: Default::default(),
+        optional_peer_dependencies: Default::default(),
+        extra: None,
+        is_deprecated: false,
+        has_bin: false,
+        has_scripts: false,
+      }
+    }
+
+    let packages = vec![
+      pkg("package-a@1.0.0"),
+      pkg("package-b@2.0.0"),
+      pkg("package-c@3.0.0"),
+    ];
+    let mut reversed_packages = packages.clone();
+    reversed_packages.reverse();
+    let root_folder_names =
+      BTreeSet::from(["package-a".to_string(), "package-b".to_string()]);
+
+    let hash = calculate_packages_hash(
+      &deno_npm::resolution::NpmPackagesPartitioned {
+        packages,
+        copy_packages: Vec::new(),
+      },
+      &root_folder_names,
+    );
+    let reversed_hash = calculate_packages_hash(
+      &deno_npm::resolution::NpmPackagesPartitioned {
+        packages: reversed_packages,
+        copy_packages: Vec::new(),
+      },
+      &root_folder_names,
+    );
+    assert_eq!(hash, reversed_hash);
   }
 
   #[test]
