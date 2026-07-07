@@ -111,6 +111,7 @@ const {
 } = core.loadExtScript("ext:deno_web/06_streams.js");
 const {
   listen,
+  listenMemory,
   listenOptionApiName,
   UpgradedConn,
 } = core.loadExtScript("ext:deno_net/01_net.js");
@@ -1155,6 +1156,11 @@ type RawServeOptions = {
 
 const kLoadBalanced = Symbol("kLoadBalanced");
 
+// Module-private marker for the internal in-process `memory:` serve transport.
+// Only the `DENO_SERVE_ADDRESS=memory:<name>` env path sets it; it is not a
+// user-reachable `Deno.serve` option (the symbol can't be forged by callers).
+const kMemoryServe = Symbol("kMemoryServe");
+
 function formatHostName(hostname: string): string {
   // If the hostname is "0.0.0.0", we display "localhost" in console
   // because browsers in Windows don't resolve "0.0.0.0".
@@ -1268,6 +1274,20 @@ function serve(arg1, arg2) {
         delete envOptions.cid;
         delete envOptions.port;
         delete envOptions.path;
+        break;
+      }
+      case 5: {
+        // Memory (in-process byte channel). Internal-only: keyed by a private
+        // symbol, not a public `memory` option.
+        envOptions = {
+          ...envOptions,
+          [kMemoryServe]: overrideHost,
+        };
+        delete envOptions.hostname;
+        delete envOptions.cid;
+        delete envOptions.port;
+        delete envOptions.path;
+        break;
       }
     }
 
@@ -1312,6 +1332,7 @@ function serveInner(options, handler) {
   const wantsUnix = ObjectHasOwn(options, "path");
   const wantsVsock = ObjectHasOwn(options, "cid");
   const wantsTunnel = options.tunnel === true;
+  const wantsMemory = options[kMemoryServe] !== undefined;
   const automaticCompression = options.automaticCompression ??
     op_http_serve_default_compression();
   const signal = options.signal;
@@ -1362,6 +1383,25 @@ function serveInner(options, handler) {
           options.onListen(listener.addr);
         } else {
           internals.log("info", `Listening on vsock:${cid}:${port}`);
+        }
+      },
+      automaticCompression,
+    );
+  }
+
+  if (wantsMemory) {
+    const listener = listenMemory(options[kMemoryServe]);
+    const name = listener.addr.name;
+    return serveHttpOnListener(
+      listener,
+      signal,
+      handler,
+      onError,
+      () => {
+        if (options.onListen) {
+          options.onListen(listener.addr);
+        } else {
+          internals.log("info", `Listening on memory:${name}`);
         }
       },
       automaticCompression,
