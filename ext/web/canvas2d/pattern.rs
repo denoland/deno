@@ -125,12 +125,11 @@ impl CanvasPattern {
     let init = crate::geometry::DOMMatrix2DInit::convert(
       scope,
       v,
-      Default::default(),
-      (|| "".into()).into(),
+      "Failed to execute 'setTransform' on 'CanvasPattern'".into(),
+      (|| "Argument 1".into()).into(),
       &Default::default(),
     )?;
-    let (a, b, c, d, e, f) = init.to_affine()?;
-    *self.transform.borrow_mut() = Affine::new([a, b, c, d, e, f]);
+    *self.transform.borrow_mut() = Affine::new(init.to_affine()?);
     Ok(())
   }
 }
