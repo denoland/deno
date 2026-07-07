@@ -116,6 +116,7 @@ pub use crate::inspector::InspectorSessionKind;
 pub use crate::inspector::InspectorSessionProxy;
 pub use crate::inspector::InspectorSessionSend;
 pub use crate::inspector::JsRuntimeInspector;
+pub use crate::inspector::JsRuntimeInspectorHandle;
 pub use crate::inspector::LocalInspectorSession;
 pub use crate::inspector::SessionContainer;
 pub use crate::inspector::create_worker_inspector_session_pair;
