@@ -2832,7 +2832,7 @@ pub fn process_result(
       .unwrap_or_else(|| Cow::Borrowed(file.contents.as_ref()));
 
     if file.path.ends_with("<stdout>") {
-      crate::display::write_to_stdout_ignore_sigpipe(bytes.as_ref())?;
+      deno_print::drop_write_stdout(bytes.as_ref());
       continue;
     }
 

@@ -3635,10 +3635,14 @@ where
 
   let headers = raw_response_headers(&parts, &date);
   let response_body = match &body {
-    _ if head => h1::ResponseBody::Head(Some(match &body {
-      FlatResponseBody::Empty => 0,
-      FlatResponseBody::Bytes(body) => body.len() as u64,
-    })),
+    // HEAD sends no body, so an explicit content-length from the handler
+    // (e.g. when proxying) takes precedence (RFC 9110 §9.3.2).
+    _ if head => h1::ResponseBody::Head(Some(
+      raw_response_content_length(&parts).unwrap_or(match &body {
+        FlatResponseBody::Empty => 0,
+        FlatResponseBody::Bytes(body) => body.len() as u64,
+      }),
+    )),
     FlatResponseBody::Empty => h1::ResponseBody::Empty,
     FlatResponseBody::Bytes(body) => h1::ResponseBody::Bytes(body.as_ref()),
   };
@@ -3844,10 +3848,14 @@ where
   }
   let headers = raw_response_headers(&parts, &date);
   let response_body = match &body {
-    _ if head => h1::ResponseBody::Head(Some(match &body {
-      FlatResponseBody::Empty => 0,
-      FlatResponseBody::Bytes(body) => body.len() as u64,
-    })),
+    // HEAD sends no body, so an explicit content-length from the handler
+    // (e.g. when proxying) takes precedence (RFC 9110 §9.3.2).
+    _ if head => h1::ResponseBody::Head(Some(
+      raw_response_content_length(&parts).unwrap_or(match &body {
+        FlatResponseBody::Empty => 0,
+        FlatResponseBody::Bytes(body) => body.len() as u64,
+      }),
+    )),
     FlatResponseBody::Empty => h1::ResponseBody::Empty,
     FlatResponseBody::Bytes(body) => h1::ResponseBody::Bytes(body.as_ref()),
   };

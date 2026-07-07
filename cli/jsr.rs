@@ -57,6 +57,13 @@ impl JsrFetchResolver {
     &self,
     req: &PackageReq,
   ) -> Result<Option<PackageNv>, JsrPackageReqNotFoundError> {
+    // JSR has no dist-tags, so a tag can never resolve to a name and version.
+    // Bail out before reaching deno_graph's version resolver, which panics in
+    // VersionReq::matches when given a tag. Callers that want to support a
+    // convention like "@latest" resolve it separately via latest_version.
+    if req.version_req.tag().is_some() {
+      return Ok(None);
+    }
     if let Some(nv) = self.nv_by_req.get(req) {
       return Ok(nv.value().clone());
     }

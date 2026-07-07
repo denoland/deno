@@ -5,6 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_config::deno_json::DesktopConfig;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -57,6 +58,50 @@ pub async fn desktop(
   let laufey_resolver = Arc::new(LaufeyBackendResolver::new(&factory)?);
   let deno_dir_root = factory.deno_dir()?.root.clone();
 
+  apply_desktop_config_to_flags(&mut desktop_flags, desktop_config);
+
+  if all_targets {
+    let targets = [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc",
+    ];
+    for target in targets {
+      log::info!("Building for target: {}", target);
+      let mut desktop_flags = desktop_flags.clone();
+      desktop_flags.target = Some(target.to_string());
+      Box::pin(compile_desktop(
+        flags.clone(),
+        desktop_flags,
+        cli_options,
+        &laufey_resolver,
+        &deno_dir_root,
+      ))
+      .await?;
+    }
+    Ok(())
+  } else {
+    Box::pin(compile_desktop(
+      flags,
+      desktop_flags,
+      cli_options,
+      &laufey_resolver,
+      &deno_dir_root,
+    ))
+    .await
+  }
+}
+
+/// Applies `deno.json`'s `desktop` config to the CLI flags. A `deno.json` field
+/// only fills in a flag that was left unset — CLI flags always win. The webview
+/// backend remains the final fallback via the `unwrap_or("webview")` call sites
+/// that consume `desktop_flags.backend`.
+fn apply_desktop_config_to_flags(
+  desktop_flags: &mut DesktopFlags,
+  desktop_config: DesktopConfig,
+) {
   if let Some(output) = desktop_config.output
     && desktop_flags.output.is_none()
   {
@@ -125,39 +170,6 @@ pub async fn desktop(
     && desktop_flags.codesign_identity.is_none()
   {
     desktop_flags.codesign_identity = Some(identity);
-  }
-
-  if all_targets {
-    let targets = [
-      "x86_64-apple-darwin",
-      "aarch64-apple-darwin",
-      "x86_64-unknown-linux-gnu",
-      "aarch64-unknown-linux-gnu",
-      "x86_64-pc-windows-msvc",
-    ];
-    for target in targets {
-      log::info!("Building for target: {}", target);
-      let mut desktop_flags = desktop_flags.clone();
-      desktop_flags.target = Some(target.to_string());
-      Box::pin(compile_desktop(
-        flags.clone(),
-        desktop_flags,
-        cli_options,
-        &laufey_resolver,
-        &deno_dir_root,
-      ))
-      .await?;
-    }
-    Ok(())
-  } else {
-    Box::pin(compile_desktop(
-      flags,
-      desktop_flags,
-      cli_options,
-      &laufey_resolver,
-      &deno_dir_root,
-    ))
-    .await
   }
 }
 
@@ -379,7 +391,7 @@ async fn compile_desktop(
       Some(entrypoint_temp)
     } else {
       bail!(
-        "Could not detect a supported framework in the current directory.\nSupported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\nProvide an explicit entrypoint instead."
+        "Could not detect a supported framework in the current directory.\nSupported frameworks: Next.js, Astro, Fresh, Remix, React Router, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\nProvide an explicit entrypoint instead."
       );
     }
   } else {
@@ -475,7 +487,6 @@ async fn compile_desktop(
     app_name: None,
     args: desktop_flags.args.clone(),
     target: desktop_flags.target.clone(),
-    watch: None,
     no_terminal: false,
     icon: match &desktop_flags.icon {
       Some(crate::args::IconConfig::Single(s)) => Some(s.clone()),
@@ -487,7 +498,7 @@ async fn compile_desktop(
     self_extracting,
     bundle: false,
     minify: false,
-    exclude_unused_npm: false,
+    exclude_unused_npm: desktop_flags.exclude_unused_npm,
   };
 
   let mut temp_flags = flags.clone();
@@ -6580,6 +6591,7 @@ def456  other.zip
       codesign_identity: None,
       inspect_renderer: None,
       compress: None,
+      exclude_unused_npm: false,
     }
   }
 
@@ -7336,5 +7348,50 @@ def456  other.zip
     let err = reserve_app_dir(&path).unwrap_err();
     assert!(err.to_string().contains("a file with that name"));
     assert!(path.exists());
+  }
+
+  // --- desktop.backend config merge (CLI flag > deno.json > webview) ---
+
+  #[test]
+  fn backend_from_deno_json_when_flag_absent() {
+    let mut flags = DesktopFlags {
+      source_file: "main.ts".to_string(),
+      backend: None,
+      ..Default::default()
+    };
+    let config = DesktopConfig {
+      backend: Some("cef".to_string()),
+      ..Default::default()
+    };
+    apply_desktop_config_to_flags(&mut flags, config);
+    assert_eq!(flags.backend.as_deref(), Some("cef"));
+  }
+
+  #[test]
+  fn cli_flag_overrides_deno_json_backend() {
+    let mut flags = DesktopFlags {
+      source_file: "main.ts".to_string(),
+      backend: Some("webview".to_string()),
+      ..Default::default()
+    };
+    let config = DesktopConfig {
+      backend: Some("cef".to_string()),
+      ..Default::default()
+    };
+    apply_desktop_config_to_flags(&mut flags, config);
+    assert_eq!(flags.backend.as_deref(), Some("webview"));
+  }
+
+  #[test]
+  fn backend_defaults_to_none_when_unset() {
+    let mut flags = DesktopFlags {
+      source_file: "main.ts".to_string(),
+      backend: None,
+      ..Default::default()
+    };
+    let config = DesktopConfig::default();
+    apply_desktop_config_to_flags(&mut flags, config);
+    // Left unset; callers fall back to "webview" via unwrap_or("webview").
+    assert_eq!(flags.backend.as_deref(), None);
   }
 }

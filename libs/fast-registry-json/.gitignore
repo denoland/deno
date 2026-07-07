@@ -1,0 +1,6 @@
+/target
+.vscode
+/fuzz/artifacts
+/fuzz/corpus
+/fuzz/smoke
+/fuzz/target
