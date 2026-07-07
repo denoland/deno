@@ -615,6 +615,7 @@ impl FlagsExt for Flags {
       if let Ok(module_specifier) = resolve_url_or_path(arg, current_dir) {
         if module_specifier.scheme() == "file"
           || module_specifier.scheme() == "npm"
+          || module_specifier.scheme() == "jsr"
         {
           if let Ok(p) = url_to_file_path(&module_specifier) {
             maybe_resolve_directory(p)
@@ -622,8 +623,9 @@ impl FlagsExt for Flags {
             Some(current_dir.to_path_buf())
           }
         } else {
-          // When the entrypoint doesn't have file: scheme (it's the remote
-          // script), then we don't auto discover the config file.
+          // When the entrypoint is a remote script (e.g. https:), then we
+          // don't auto discover the config file. Package entrypoints (npm:,
+          // jsr:) resolve within the project context, so they do.
           None
         }
       } else {
@@ -14384,6 +14386,12 @@ mod tests {
     let flags =
       flags_from_vec(svec!["deno", "https://example.com/foo.js"]).unwrap();
     assert_eq!(flags.config_path_args(&cwd), None);
+
+    let flags = flags_from_vec(svec!["deno", "run", "jsr:@scope/foo"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
+    let flags = flags_from_vec(svec!["deno", "run", "npm:@scope/foo"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
 
     let flags =
       flags_from_vec(svec!["deno", "lint", "dir/a/a.js", "dir/b/b.js"])
