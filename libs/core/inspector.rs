@@ -13,6 +13,8 @@ use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 use std::thread;
@@ -421,6 +423,19 @@ pub struct JsRuntimeInspector {
   state: Rc<JsRuntimeInspectorState>,
 }
 
+#[derive(Clone)]
+pub struct JsRuntimeInspectorHandle {
+  termination_requested: Arc<AtomicBool>,
+  waker: Arc<InspectorWaker>,
+}
+
+impl JsRuntimeInspectorHandle {
+  pub fn terminate_waits(&self) {
+    self.termination_requested.store(true, Ordering::SeqCst);
+    task::ArcWake::wake_by_ref(&self.waker);
+  }
+}
+
 impl Drop for JsRuntimeInspector {
   fn drop(&mut self) {
     // Since the waker is cloneable, it might outlive the inspector itself.
@@ -461,6 +476,7 @@ struct JsRuntimeInspectorState {
   auto_attach_enabled: Rc<Cell<bool>>,
   auto_attach_wait_for_debugger_on_start: Rc<Cell<bool>>,
   discover_targets_enabled: Rc<Cell<bool>>,
+  termination_requested: Arc<AtomicBool>,
   /// Shared buffer of captured Network.* request/response bodies, populated
   /// from `op_inspector_emit_protocol_event` and read by the dispatcher
   /// when handling `Network.getResponseBody`/`getRequestPostData`/
@@ -518,6 +534,20 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspectorClient {
 }
 
 impl JsRuntimeInspectorState {
+  fn stop_waiting_if_termination_requested(&self) -> bool {
+    if !self.termination_requested.load(Ordering::SeqCst) {
+      return false;
+    }
+
+    let mut flags = self.flags.borrow_mut();
+    flags.on_pause = false;
+    flags.paused_on_start = false;
+    flags.waiting_for_session = false;
+    flags.page_wait_for_debugger_received = false;
+    flags.resumed_by_session_id = None;
+    true
+  }
+
   #[allow(clippy::result_unit_err, reason = "error details not needed")]
   pub fn poll_sessions(
     &self,
@@ -805,6 +835,8 @@ impl JsRuntimeInspectorState {
         };
       }
 
+      self.stop_waiting_if_termination_requested();
+
       let should_block = {
         let flags = self.flags.borrow();
         flags.on_pause || flags.waiting_for_session
@@ -902,6 +934,7 @@ impl JsRuntimeInspector {
       auto_attach_enabled: Rc::new(Cell::new(false)),
       auto_attach_wait_for_debugger_on_start: Rc::new(Cell::new(false)),
       discover_targets_enabled: Rc::new(Cell::new(false)),
+      termination_requested: Arc::new(AtomicBool::new(false)),
       network_data: Rc::new(RefCell::new(NetworkDataBuffer::default())),
     });
     let client = Box::new(JsRuntimeInspectorClient(state.clone()));
@@ -1050,6 +1083,9 @@ impl JsRuntimeInspector {
   /// runs during process exit.
   pub fn wait_for_sessions_disconnect(&self) {
     loop {
+      if self.state.stop_waiting_if_termination_requested() {
+        break;
+      }
       {
         let sessions = self.state.sessions.borrow();
         if sessions.local.is_empty() && sessions.established.is_empty() {
@@ -1072,6 +1108,9 @@ impl JsRuntimeInspector {
   /// established a websocket connection.
   pub fn wait_for_session(&self) {
     loop {
+      if self.state.stop_waiting_if_termination_requested() {
+        break;
+      }
       if let Some(_session) =
         self.state.sessions.borrow_mut().local.values().next()
       {
@@ -1104,11 +1143,17 @@ impl JsRuntimeInspector {
     // messages before returning, paused_on_start will be false when
     // poll_sessions returns (if the message was received).
     loop {
+      if self.state.stop_waiting_if_termination_requested() {
+        break;
+      }
       if !self.state.flags.borrow().paused_on_start {
         break;
       }
       self.state.flags.borrow_mut().waiting_for_session = true;
       let _ = self.state.poll_sessions(None).unwrap();
+    }
+    if self.state.termination_requested.load(Ordering::SeqCst) {
+      return;
     }
     // Schedule a V8 debugger break on the next statement. By this point
     // the frontend has sent Debugger.enable (enabling the debugger agent)
@@ -1136,6 +1181,9 @@ impl JsRuntimeInspector {
   pub fn wait_for_runtime_run_if_waiting_for_debugger(&self) {
     self.state.flags.borrow_mut().paused_on_start = true;
     loop {
+      if self.state.stop_waiting_if_termination_requested() {
+        break;
+      }
       if !self.state.flags.borrow().paused_on_start {
         break;
       }
@@ -1179,6 +1227,9 @@ impl JsRuntimeInspector {
 
     if self.state.flags.borrow().paused_on_start {
       loop {
+        if self.state.stop_waiting_if_termination_requested() {
+          break;
+        }
         if !self.state.flags.borrow().paused_on_start {
           break;
         }
@@ -1210,6 +1261,9 @@ impl JsRuntimeInspector {
     let deadline =
       std::time::Instant::now() + WORKER_MESSAGE_DEBUGGER_GRACE_PERIOD;
     loop {
+      if self.state.stop_waiting_if_termination_requested() {
+        break;
+      }
       if self.state.flags.borrow().debugger_enabled_session_count > 0 {
         break;
       }
@@ -1224,6 +1278,13 @@ impl JsRuntimeInspector {
   /// Obtain a sender for proxy channels.
   pub fn get_session_sender(&self) -> UnboundedSender<InspectorSessionProxy> {
     self.new_session_tx.clone()
+  }
+
+  pub fn thread_safe_handle(&self) -> JsRuntimeInspectorHandle {
+    JsRuntimeInspectorHandle {
+      termination_requested: self.state.termination_requested.clone(),
+      waker: self.state.waker.clone(),
+    }
   }
 
   /// Create a channel that notifies the frontend when inspector is dropped.
