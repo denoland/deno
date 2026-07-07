@@ -118,7 +118,6 @@ builtin_ops! {
   ops_builtin_v8::op_drain_pending_rejections,
   ops_builtin_v8::op_compile_function,
   ops_builtin_v8::op_eval_context,
-  ops_builtin_v8::op_queue_microtask,
   ops_builtin_v8::op_encode,
   ops_builtin_v8::op_decode,
   ops_builtin_v8::op_serialize,

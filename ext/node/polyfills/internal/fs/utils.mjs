@@ -541,6 +541,8 @@ const lazyDateFields = {
         __proto__: null,
         value,
         writable: true,
+        enumerable: true,
+        configurable: true,
       });
     },
   },
@@ -556,6 +558,8 @@ const lazyDateFields = {
         __proto__: null,
         value,
         writable: true,
+        enumerable: true,
+        configurable: true,
       });
     },
   },
@@ -571,6 +575,8 @@ const lazyDateFields = {
         __proto__: null,
         value,
         writable: true,
+        enumerable: true,
+        configurable: true,
       });
     },
   },
@@ -586,6 +592,8 @@ const lazyDateFields = {
         __proto__: null,
         value,
         writable: true,
+        enumerable: true,
+        configurable: true,
       });
     },
   },
