@@ -387,7 +387,6 @@ async fn install_global_compiled(
     output: Some(output.clone()),
     args: install_flags_global.args,
     target: None,
-    watch: None,
     no_terminal: false,
     icon: None,
     include: vec![],
