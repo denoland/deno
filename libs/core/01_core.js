@@ -1082,6 +1082,9 @@
     clearImmediate,
     runImmediates,
     immediateQueue,
+    getActiveImmediateCount() {
+      return immediateInfo[kImmRefCount];
+    },
     kRefed,
     runMicrotasks: () => op_run_microtasks(),
     hasTickScheduled,

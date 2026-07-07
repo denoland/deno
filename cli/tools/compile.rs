@@ -97,28 +97,9 @@ async fn compile_inner(
   let _framework_entrypoint_file = if let Some(dir) = source_dir {
     if let Some(detection) = super::framework::detect_framework(&dir)? {
       log::info!("Detected {} framework", detection.name);
-      // Run the framework's build step if needed.
-      if let Some(build_cmd) = &detection.build_command {
-        log::info!(
-          "{} {} project...",
-          colors::green("Building"),
-          detection.name,
-        );
-        let status = std::process::Command::new(&build_cmd[0])
-          .args(&build_cmd[1..])
-          .current_dir(&dir)
-          .status()
-          .with_context(|| {
-            format!("Failed to run build command: {}", build_cmd.join(" "))
-          })?;
-        if !status.success() {
-          bail!(
-            "{} build failed (exit code: {})",
-            detection.name,
-            status.code().unwrap_or(-1)
-          );
-        }
-      }
+      // Run the framework's build step (if any) before bundling its build
+      // output via `include_paths`.
+      super::framework::run_build_command(&detection, &dir)?;
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
       // These frameworks emit a pre-built/bundled server entrypoint that is

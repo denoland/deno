@@ -1192,10 +1192,16 @@ fn wait_for_start(
 
       #[derive(deno_core::serde::Serialize)]
       enum Event {
-        Serving,
+        Serving {
+          #[serde(skip_serializing_if = "Option::is_none")]
+          kind: Option<&'static str>,
+        },
       }
 
-      let mut buf = deno_core::serde_json::to_vec(&Event::Serving).unwrap();
+      let mut buf = deno_core::serde_json::to_vec(&Event::Serving {
+        kind: deno_runtime::deno_http::serving_server_kind(),
+      })
+      .unwrap();
       buf.push(b'\n');
       let _ = tx.write_all(&buf).await;
     });

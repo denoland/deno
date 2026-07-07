@@ -41,10 +41,7 @@ once_cell.workspace = true
 parking_lot.workspace = true
 percent-encoding.workspace = true
 pretty_assertions.workspace = true
-# denokv_proto 0.14 uses prost 0.14, newer than the workspace prost (0.13)
-# still used by ext/telemetry, so depend on 0.14 directly here so the
-# `prost::Message` bound matches denokv's generated proto types.
-prost = "0.14"
+prost.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
 rustls-pemfile.workspace = true

@@ -5208,7 +5208,11 @@
       "darwin": false,
       "reason": "process.execve is not a function"
     },
+    "parallel/test-process-getactiveresources-track-active-handles.js": {},
+    "parallel/test-process-getactiveresources-track-active-requests.js": {},
     "parallel/test-process-getactiveresources-track-interval-lifetime.js": {},
+    "parallel/test-process-getactiveresources-track-multiple-timers.js": {},
+    "parallel/test-process-getactiveresources-track-timer-lifetime.js": {},
     "parallel/test-process-initgroups.js": {
       "linux": false,
       "darwin": false,
@@ -5244,6 +5248,7 @@
       "darwin": false,
       "reason": "error: Uncaught AssertionError: ifError got unwanted exception: ifError got unwa"
     },
+    "parallel/test-runner-get-test-context.js": {},
     "parallel/test-runner-global-setup-watch-mode.mjs": {
       "linux": false,
       "darwin": false,

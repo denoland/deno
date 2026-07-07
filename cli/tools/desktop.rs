@@ -314,6 +314,11 @@ async fn compile_desktop(
       let entrypoint_code = detection.entrypoint_code.clone();
       let includes = detection.include_paths.clone();
       log::info!("Detected {} framework", detection.name);
+      // Run the framework's build step (e.g. `deno task build`) before its
+      // build output (`dist`, `.next`, etc.) is added to the compile includes
+      // below; otherwise the include points at a directory that doesn't exist
+      // yet and the compile fails (#35535). Mirrors `deno compile .`.
+      super::framework::run_build_command(detection, cwd)?;
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
       if detection.name == "Next.js"
@@ -829,12 +834,12 @@ fn register_deep_links_windows(
   bundle_path: &Path,
   schemes: &[String],
 ) -> Result<(), AnyError> {
-  // The launcher written by the Windows packaging step is `<app>.bat`.
-  let launcher = std::fs::read_dir(bundle_path)?
-    .filter_map(|e| e.ok().map(|e| e.path()))
-    .find(|p| p.extension().is_some_and(|e| e == "bat"))
-    .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-    .unwrap_or_else(|| "launcher.bat".to_string());
+  // The launcher written by the Windows packaging step is `<app>.exe` (the
+  // backend binary renamed to the bundle/app name).
+  let launcher = bundle_path
+    .file_name()
+    .map(|n| format!("{}.exe", n.to_string_lossy()))
+    .unwrap_or_else(|| "launcher.exe".to_string());
 
   let mut script = String::from("@echo off\r\nsetlocal\r\n");
   for scheme in schemes {
@@ -1046,11 +1051,11 @@ fn make_self_extracting_dir(
        setlocal\r\n\
        set \"DIR=%~dp0\"\r\n\
        set \"DEST=%LOCALAPPDATA%\\{id}\\{hash}\"\r\n\
-       if not exist \"%DEST%\\{app_name}\\{app_name}.bat\" (\r\n\
+       if not exist \"%DEST%\\{app_name}\\{app_name}.exe\" (\r\n\
        \u{20} mkdir \"%DEST%\" 2>nul\r\n\
        \u{20} tar -xf \"%DIR%{payload_name}\" -C \"%DEST%\"\r\n\
        )\r\n\
-       call \"%DEST%\\{app_name}\\{app_name}.bat\" %*\r\n",
+       \"%DEST%\\{app_name}\\{app_name}.exe\" %*\r\n",
     );
     std::fs::write(bundle_path.join(format!("{app_name}.bat")), launcher)?;
   } else {
@@ -1130,6 +1135,16 @@ fn resolve_hmr_icon_path(
       "icon '{}' must be .icns or .png",
       icon_path.display()
     ),
+  }
+  // Linux loads the icon with gdk-pixbuf, which has no `.icns` decoder, so an
+  // `.icns` here silently produces no window icon. Surface it at launch rather
+  // than leaving the user to wonder why the icon is missing.
+  #[cfg(target_os = "linux")]
+  if icon_path.extension().and_then(|e| e.to_str()) == Some("icns") {
+    log::warn!(
+      "icon '{}' is .icns, which does not render on Linux — use a .png",
+      icon_path.display()
+    );
   }
   Ok(crate::util::fs::canonicalize_path(&icon_path).unwrap_or(icon_path))
 }
@@ -1224,28 +1239,18 @@ async fn run_desktop_hmr(
     cmd.env("LAUFEY_APP_NAME", name);
   }
   // App id for the window manager's icon/taskbar attribution (see the
-  // `LAUFEY_APP_ID` handling in the packaged launcher). Mirror the packaged
-  // build's id so a dev run matches the same installed `.desktop` file when one
-  // exists. On X11 the icon shows from `LAUFEY_APP_ICON` regardless; on Wayland
-  // the compositor still needs an installed desktop file to resolve the icon.
-  // `app_id` is a Wayland/X11 concept, so this is Linux-only — there's nothing
-  // to attribute on macOS or Windows.
+  // `LAUFEY_APP_ID` handling in the packaged `.desktop` `Exec` line). Mirror the
+  // packaged build's id so a dev run matches the same installed `.desktop` file
+  // when one exists. On X11 the icon shows from `LAUFEY_APP_ICON` regardless; on
+  // Wayland the compositor still needs an installed desktop file to resolve the
+  // icon. `app_id` is a Wayland/X11 concept, so this is Linux-only — there's
+  // nothing to attribute on macOS or Windows.
   #[cfg(target_os = "linux")]
-  if let Some(id) = desktop_flags.identifier.clone().or_else(|| {
-    app_name
-      .as_deref()
-      .map(|name| format!("com.deno.desktop.{}", name.to_lowercase()))
-  }) {
-    // Match the packaged path: warn (rather than silently drop) when an
-    // explicit `--identifier` fails the reverse-DNS check, so a typo surfaces.
-    match validate_bundle_identifier(&id) {
-      Ok(()) => {
-        cmd.env("LAUFEY_APP_ID", &id);
-      }
-      Err(e) => log::warn!(
-        "skipping LAUFEY_APP_ID: {e} (app IDs follow the same reverse-DNS rules as macOS bundle IDs)"
-      ),
-    }
+  if let Some(id) = resolve_linux_app_id(
+    desktop_flags.identifier.as_deref(),
+    app_name.as_deref().unwrap_or(""),
+  ) {
+    cmd.env("LAUFEY_APP_ID", &id);
   }
   // Only enable the file watcher + setScriptSource pipeline when the user
   // actually asked for HMR. `deno desktop --inspect` alone used to spin up
@@ -1485,12 +1490,14 @@ async fn package_desktop_app(
 /// Directory structure:
 /// ```text
 /// AppName/
-///   AppName.bat         (launcher)
-///   laufey.exe             (LAUFEY backend binary)
+///   AppName.exe         (LAUFEY backend binary, renamed to the app name)
 ///   libcef.dll, ...     (CEF support files, if any)
-///   denort.dll          (compiled Deno runtime + user code)
+///   AppName.dll         (compiled Deno runtime + user code)
 ///   AppIcon.ico         (optional)
 /// ```
+///
+/// The backend binary is renamed to `AppName.exe` so it auto-loads the
+/// co-located `AppName.dll` runtime — no `.bat` launcher is needed.
 async fn package_windows_app_dir(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
@@ -1536,33 +1543,22 @@ async fn package_windows_app_dir(
   let dest_dylib = app_dir.join(dylib_filename);
   std::fs::copy(dylib_path, &dest_dylib)?;
 
-  // Create a .bat launcher that invokes the backend with --runtime.
-  // Validate every name we interpolate: cmd.exe expands `%VAR%` and
-  // treats `^` `&` etc. as command separators even inside `"..."`.
-  let dylib_filename_str = dylib_filename.to_string_lossy();
+  // Rename the LAUFEY backend binary to the app name (`<app>.exe`) so it sits
+  // next to `<app>.dll` and auto-loads it: laufey's LaufeyFindColocatedRuntime
+  // resolves a runtime library whose base name matches the executable's, in the
+  // executable's own directory. A bare double-click of `<app>.exe` therefore
+  // "just works" with no `.bat` wrapper and no `--runtime` argument.
+  //
+  // This also fixes runtime loading from paths containing a space (e.g. the
+  // default MSI target `C:\Program Files\`): laufey resolves the co-located
+  // runtime from its own module path rather than a `--runtime` string, avoiding
+  // the historical `ERROR_MOD_NOT_FOUND` (126) failure on such paths.
   validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
-  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
-  let launcher_path = app_dir.join(format!("{}.bat", app_name));
-  // Pass the runtime dylib to laufey by its bare filename, not a full path. The
-  // laufey backend mishandles a `--runtime` path that contains a space (it fails
-  // to load the dylib with error 126, ERROR_MOD_NOT_FOUND, when it re-launches),
-  // which broke every install location with a space in it — most importantly the
-  // default MSI target `C:\Program Files\`. laufey resolves a bare dylib name
-  // against its own executable's directory (where the dylib is co-located), so a
-  // plain filename loads correctly regardless of the install path or the current
-  // working directory. The laufey binary itself is launched by cmd with normal
-  // quoting, which handles spaces fine.
-  std::fs::write(
-    &launcher_path,
-    format!(
-      "@echo off\r\n\
-       set DIR=%~dp0\r\n\
-       \"%DIR%{laufey_binary}\" --runtime \"{dylib}\" %*\r\n",
-      laufey_binary = laufey_binary_name,
-      dylib = dylib_filename_str,
-    ),
-  )?;
+  let launcher_path = app_dir.join(format!("{}.exe", app_name));
+  let staged_backend = app_dir.join(&laufey_binary_name);
+  if staged_backend != launcher_path {
+    std::fs::rename(&staged_backend, &launcher_path)?;
+  }
 
   // Handle icon — drop an .ico next to the launcher. Embedding the icon
   // into the .exe itself requires rcedit or equivalent and is out of scope.
@@ -1602,48 +1598,19 @@ async fn package_windows_app_dir(
   Ok(app_dir)
 }
 
-/// Build the `/bin/sh` launcher that a packaged Linux app ships as its entry
-/// point. When `app_id` is `Some`, it exports `LAUFEY_APP_ID` so the backend's
-/// window app_id / WM_CLASS matches the installed `.desktop` file's
-/// `StartupWMClass` (issue #35500).
-///
-/// `app_id` is expected to have already passed `validate_bundle_identifier`,
-/// which restricts it to reverse-DNS characters (alphanumerics, `.`, `-`), so
-/// interpolating it into the shell script needs no further quoting.
-fn linux_launcher_script(
-  laufey_binary: &str,
-  dylib: &str,
-  app_id: Option<&str>,
-) -> String {
-  let app_id_export = match app_id {
-    Some(id) => format!("export LAUFEY_APP_ID=\"{id}\"\n"),
-    None => String::new(),
-  };
-  format!(
-    // Resolve `$0` through symlinks before deriving DIR: `.deb`/`.rpm`
-    // install the real launcher under `/usr/lib/<pkg>/` and expose it via a
-    // `/usr/bin/<pkg>` symlink, so a bare `$0` would resolve DIR to
-    // `/usr/bin` and look for the backend binary there (issue #35623).
-    // `readlink -f` is fine here: this launcher only ships on Linux.
-    "#!/bin/sh\n\
-     DIR=\"$(cd \"$(dirname \"$(readlink -f \"$0\")\")\" && pwd)\"\n\
-     export LAUFEY_RUNTIME_PATH=\"$DIR/{dylib}\"\n\
-     {app_id_export}\
-     exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
-  )
-}
-
 /// Create a Linux app directory from the compiled desktop dylib.
 ///
 /// Directory structure:
 /// ```text
 /// AppName/
-///   AppName             (launcher shell script)
-///   laufey                 (LAUFEY backend binary)
+///   AppName             (LAUFEY backend binary, renamed to the app name)
 ///   libcef.so, ...      (CEF support files, if any)
-///   libdenort.so        (compiled Deno runtime + user code)
+///   AppName.so          (compiled Deno runtime + user code)
 ///   AppIcon.png         (optional)
 /// ```
+///
+/// The backend binary is renamed to `AppName` so it auto-loads the co-located
+/// `AppName.so` runtime — no launcher shell script is needed.
 async fn package_linux_app_dir(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
@@ -1690,50 +1657,34 @@ async fn package_linux_app_dir(
     let _ = std::fs::remove_file(&cache_file);
   }
 
-  // Copy the compiled dylib alongside the backend binary.
-  let dylib_filename = parts.file_name;
-  let dest_dylib = app_dir.join(dylib_filename);
+  // Copy the compiled dylib as `<app>.so` so the renamed backend binary
+  // auto-loads it: laufey's LaufeyFindColocatedRuntime resolves `<exe-base>.so`
+  // next to the binary. It reads the real path via `/proc/self/exe`, which
+  // follows the `/usr/bin/<pkg>` -> `/usr/lib/<pkg>/<app>` symlink that
+  // `.deb`/`.rpm` install (issue #35623), so no wrapper script is needed.
+  validate_launcher_name(&app_name, "app name")?;
+  let dest_dylib = app_dir.join(format!("{}.so", app_name));
   std::fs::copy(dylib_path, &dest_dylib)?;
 
-  // Create a shell launcher that invokes the backend with --runtime.
-  // laufey auto-detects Wayland vs X11 at runtime.
-  //
-  // Validate every name we interpolate: bash expands `$VAR`, backticks,
-  // and `$(...)` even inside `"..."`.
-  let dylib_filename_str = dylib_filename.to_string_lossy();
-  validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
-  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
+  // Rename the LAUFEY backend binary to the app name so `<app>` is the launcher
+  // the user runs directly — no `--runtime` argument and no shell wrapper.
+  let launcher_path = app_dir.join(&app_name);
+  let staged_backend = app_dir.join(&laufey_binary_name);
+  if staged_backend != launcher_path {
+    std::fs::rename(&staged_backend, &launcher_path)?;
+  }
 
   // Reverse-DNS id shared by the `.desktop` filename, its `StartupWMClass`, and
-  // the `LAUFEY_APP_ID` we hand the backend below. The compositor maps a window
-  // to its desktop file (and thus its icon) by matching the window's Wayland
-  // app_id / X11 WM_CLASS against `StartupWMClass`; laufey defaults that to the
-  // backend binary name, so without passing the id the icon falls back to a
-  // generic placeholder on Wayland (issue #35500). `None` when the id fails the
-  // reverse-DNS check — we then skip both the export and the `.desktop` file.
-  let desktop_id = desktop_flags
-    .identifier
-    .clone()
-    .unwrap_or_else(|| format!("com.deno.desktop.{}", app_name.to_lowercase()));
-  let desktop_id = match validate_bundle_identifier(&desktop_id) {
-    Ok(()) => Some(desktop_id),
-    Err(e) => {
-      log::warn!(
-        "skipping .desktop file: {e} (desktop file IDs follow the same reverse-DNS rules as macOS bundle IDs)"
-      );
-      None
-    }
-  };
-  let launcher_path = app_dir.join(&app_name);
-  std::fs::write(
-    &launcher_path,
-    linux_launcher_script(
-      &laufey_binary_name,
-      &dylib_filename_str,
-      desktop_id.as_deref(),
-    ),
-  )?;
+  // the `LAUFEY_APP_ID` the `.desktop` `Exec` line hands the backend. The
+  // compositor maps a window to its desktop file (and thus its icon) by matching
+  // the window's Wayland app_id / X11 WM_CLASS against `StartupWMClass`; laufey
+  // defaults that to the backend binary name (now `<app>`), which does not match
+  // the reverse-DNS id, so the `.desktop` `Exec` line passes the id explicitly as
+  // `LAUFEY_APP_ID` (issue #35500). `None` when an explicit `--identifier` fails
+  // the reverse-DNS check or the derived id is unusable — we then skip the
+  // `.desktop` file entirely.
+  let desktop_id =
+    resolve_linux_app_id(desktop_flags.identifier.as_deref(), &app_name);
   #[cfg(unix)]
   {
     use std::os::unix::fs::PermissionsExt;
@@ -1784,15 +1735,16 @@ async fn package_linux_app_dir(
   // name/icon attribution on notifications and in the taskbar. laufey
   // doesn't read this file — only the OS does — but libnotify and
   // GNOME Shell key notification attribution (and the Wayland window icon)
-  // on the desktop file's `StartupWMClass` and `Icon` fields. The launcher
-  // above hands the backend the same `desktop_id` as `LAUFEY_APP_ID` so the
-  // window's app_id matches this `StartupWMClass`.
+  // on the desktop file's `StartupWMClass` and `Icon` fields. The `Exec` line
+  // launches the backend through `env` so it sets `LAUFEY_APP_ID` to the same
+  // `desktop_id`, making the window's app_id match this `StartupWMClass`
+  // (laufey would otherwise default the app_id to the `<app>` binary name).
   if let Some(desktop_id) = desktop_id.as_deref() {
     let desktop_entry = format!(
       "[Desktop Entry]\n\
        Type=Application\n\
        Name={app_name}\n\
-       Exec={app_name}\n\
+       Exec=env LAUFEY_APP_ID={desktop_id} {app_name}\n\
        Icon=AppIcon\n\
        StartupWMClass={desktop_id}\n\
        Categories=Utility;\n",
@@ -2399,6 +2351,62 @@ fn validate_bundle_identifier(id: &str) -> Result<(), AnyError> {
   Ok(())
 }
 
+/// Derive a reverse-DNS `com.deno.desktop.<label>` id from an app name, for use
+/// as the Linux window `LAUFEY_APP_ID` / `.desktop` `StartupWMClass` when no
+/// explicit `--identifier` was given.
+///
+/// App names routinely contain characters that aren't valid in a bundle id —
+/// underscores and spaces especially (a project directory `my_app` is very
+/// common) — so the trailing label is sanitized to `[a-z0-9-]` (lowercasing,
+/// mapping every other run of characters to a single `-`, trimming leading and
+/// trailing `-`) rather than being fed to `validate_bundle_identifier` verbatim,
+/// which would reject it and warn on every run for an otherwise-unconfigured
+/// project. Returns `None` when nothing usable remains.
+fn derived_desktop_id(app_name: &str) -> Option<String> {
+  let mut label = String::with_capacity(app_name.len());
+  let mut pending_dash = false;
+  for c in app_name.chars() {
+    if c.is_ascii_alphanumeric() {
+      if pending_dash && !label.is_empty() {
+        label.push('-');
+      }
+      pending_dash = false;
+      label.push(c.to_ascii_lowercase());
+    } else {
+      pending_dash = true;
+    }
+  }
+  if label.is_empty() {
+    return None;
+  }
+  Some(format!("com.deno.desktop.{label}"))
+}
+
+/// Resolve the reverse-DNS id handed to the Linux backend as `LAUFEY_APP_ID`
+/// (and used for the `.desktop` filename / `StartupWMClass`).
+///
+/// An explicit `--identifier` is validated and, on failure, dropped with a
+/// warning so a typo surfaces. Otherwise it's derived from the app name via
+/// [`derived_desktop_id`], which sanitizes it — so ordinary names like `my_app`
+/// don't spuriously warn on every run.
+fn resolve_linux_app_id(
+  explicit: Option<&str>,
+  app_name: &str,
+) -> Option<String> {
+  match explicit {
+    Some(id) => match validate_bundle_identifier(id) {
+      Ok(()) => Some(id.to_string()),
+      Err(e) => {
+        log::warn!(
+          "skipping LAUFEY_APP_ID: {e} (app IDs follow the same reverse-DNS rules as macOS bundle IDs)"
+        );
+        None
+      }
+    },
+    None => derived_desktop_id(app_name),
+  }
+}
+
 /// Walk every `.app` under `Contents/Frameworks/` and rewrite its
 /// `CFBundleIdentifier` so it's a strict suffix of `main_bundle_id`.
 ///
@@ -2943,19 +2951,34 @@ fn dylib_parts(dylib_path: &Path) -> Result<DylibParts<'_>, AnyError> {
   })
 }
 
+/// The runtime dylib filename each macOS LAUFEY backend resolves when the
+/// backend binary is the bundle's CFBundleExecutable (i.e. no `--runtime`
+/// argument is passed). The two macOS backends use different conventions:
+/// - `webview` searches a hardcoded `libruntime.dylib` via [NSBundle mainBundle]
+///   (laufey `webview/src/main_mac.mm`).
+/// - `cef` derives `<backend-executable-basename>.dylib` next to the binary
+///   (laufey `LaufeyFindColocatedRuntime`, `cef/src/runtime_loader.cc`).
+fn macos_runtime_dylib_name(backend: &str, laufey_exe_stem: &str) -> String {
+  if backend == "cef" {
+    format!("{laufey_exe_stem}.dylib")
+  } else {
+    "libruntime.dylib".to_string()
+  }
+}
+
 /// Create a macOS .app bundle from the compiled desktop dylib.
 ///
 /// Bundle structure:
 /// ```text
 /// AppName.app/
 ///   Contents/
-///     Info.plist
+///     Info.plist          (CFBundleExecutable = the LAUFEY backend binary)
 ///     MacOS/
-///       AppName          (launcher script)
-///       laufey_webview      (LAUFEY backend binary)
-///       libapp.dylib     (compiled Deno runtime + user code)
+///       laufey_webview    (LAUFEY backend binary; the bundle executable)
+///       libruntime.dylib  (compiled Deno runtime + user code; the `cef`
+///                          backend uses `<backend-executable>.dylib` instead)
 ///     Resources/
-///       AppIcon.icns     (optional)
+///       AppIcon.icns      (optional)
 /// ```
 async fn package_macos_app_bundle(
   dylib_path: &Path,
@@ -2965,6 +2988,11 @@ async fn package_macos_app_bundle(
 ) -> Result<PathBuf, AnyError> {
   let parts = dylib_parts(dylib_path)?;
   let app_name = parts.app_name.clone();
+  // app_name (from the --output stem) flows unescaped into the Info.plist XML
+  // and the synthesized bundle id, so reject anything outside the safe charset
+  // (the same guard the removed shell launcher applied) instead of emitting a
+  // malformed plist that silently fails to launch.
+  validate_launcher_name(&app_name, "app name")?;
   let app_bundle = parts.parent.join(format!("{}.app", app_name));
 
   // Find the LAUFEY backend .app and its main executable.
@@ -3020,40 +3048,17 @@ async fn package_macos_app_bundle(
   // Strip unnecessary bulk from the CEF framework.
   strip_cef_bloat(&contents_dir);
 
-  // Copy the compiled dylib.
-  let dylib_filename = parts.file_name;
-  let dest_dylib = macos_dir.join(dylib_filename);
+  // Copy the compiled dylib under the name the active backend resolves without
+  // a `--runtime` argument (see `macos_runtime_dylib_name`). We deliberately do
+  // NOT write a shell-script launcher that execs the backend with `--runtime`:
+  // under LaunchServices (open / Finder / double-click) that `exec` breaks the
+  // app's foreground-GUI registration, so an `NSStatusItem` (Deno.Tray) is
+  // created but never attaches to the menu bar. Instead the backend binary is
+  // the bundle's CFBundleExecutable directly (see Info.plist below), so the
+  // process LaunchServices launches IS the GUI process. See denoland/deno#35619.
+  let dest_dylib =
+    macos_dir.join(macos_runtime_dylib_name(backend, &laufey_exe_stem));
   std::fs::copy(dylib_path, &dest_dylib)?;
-
-  // Create launcher script as the main executable. Validate every name
-  // we interpolate: bash expands `$VAR`, backticks, and `$(...)` even
-  // inside `"..."`.
-  let dylib_filename_str = dylib_filename.to_string_lossy();
-  validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(
-    &laufey_executable_name,
-    "LAUFEY backend executable name",
-  )?;
-  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
-  let launcher_path = macos_dir.join(&app_name);
-  std::fs::write(
-    &launcher_path,
-    format!(
-      "#!/bin/sh\n\
-       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
-       exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
-      laufey_binary = laufey_executable_name,
-      dylib = dylib_filename_str,
-    ),
-  )?;
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(
-      &launcher_path,
-      std::fs::Permissions::from_mode(0o755),
-    )?;
-  }
 
   // Resolve the bundle identifier. The user-configured `identifier` is
   // preferred; otherwise we synthesize one from the app name. The
@@ -3073,10 +3078,13 @@ async fn package_macos_app_bundle(
     }
   };
 
-  // Generate Info.plist.
+  // Generate Info.plist. The backend binary is the CFBundleExecutable so
+  // there is no shell-script `exec` between LaunchServices and the GUI
+  // process (which would break tray registration — see above).
   let info_plist = render_macos_info_plist(
     &app_name,
     &bundle_id,
+    &laufey_executable_name,
     desktop_flags.icon.is_some(),
   );
   std::fs::write(contents_dir.join("Info.plist"), info_plist)?;
@@ -3167,6 +3175,7 @@ async fn package_macos_app_bundle(
 fn render_macos_info_plist(
   app_name: &str,
   bundle_id: &str,
+  executable_name: &str,
   has_icon: bool,
 ) -> String {
   format!(
@@ -3177,7 +3186,7 @@ fn render_macos_info_plist(
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleExecutable</key>
-  <string>{app_name}</string>
+  <string>{executable_name}</string>
   <key>CFBundleIconFile</key>
   <string>{icon_file}</string>
   <key>CFBundleIdentifier</key>
@@ -3220,6 +3229,7 @@ fn render_macos_info_plist(
 "#,
     app_name = app_name,
     bundle_id = bundle_id,
+    executable_name = executable_name,
     icon_file = if has_icon { "AppIcon" } else { "" },
   )
 }
@@ -3636,12 +3646,18 @@ fn rpm_arch_for_target(target: Option<&str>) -> Result<&'static str, AnyError> {
 /// Unlike the in-app-dir `.desktop` (whose `Exec`/`Icon` are relative), this
 /// one points `Exec` at the package name (resolved via PATH from the
 /// `/usr/bin/<pkg>` symlink) and `Icon` at the installed hicolor icon name.
+///
+/// `Exec` launches through `env` so the backend gets `LAUFEY_APP_ID` set to the
+/// same reverse-DNS `identifier` as `StartupWMClass`; without it laufey defaults
+/// the window app_id to the binary name (reached through the `/usr/bin/<pkg>`
+/// symlink), which wouldn't match and the Wayland icon would fall back to a
+/// generic placeholder (issue #35500).
 fn system_desktop_entry(meta: &LinuxPackageMeta) -> String {
   format!(
     "[Desktop Entry]\n\
      Type=Application\n\
      Name={app_name}\n\
-     Exec={package}\n\
+     Exec=env LAUFEY_APP_ID={identifier} {package}\n\
      Icon={package}\n\
      StartupWMClass={identifier}\n\
      Categories=Utility;\n",
@@ -4321,23 +4337,21 @@ fn create_windows_msi(
 
   // Locate the laufey launcher in the install root so we can author a Start Menu
   // shortcut to it (otherwise the installed app is not discoverable — there is no
-  // icon anywhere, only files under Program Files). The shortcut targets the
-  // laufey exe directly with `--runtime <dylib>` so launching it opens the app's
-  // window with no console, mirroring the `.bat` launcher. laufey resolves the
-  // bare dylib name against its own directory, so no path (and no space) is
-  // needed in the arguments.
+  // icon anywhere, only files under Program Files). The launcher is the backend
+  // binary renamed to `<app>.exe`; it auto-loads the co-located `<app>.dll`
+  // runtime, so the shortcut targets it directly with no arguments.
+  let launcher_exe = format!("{app_name}.exe").to_ascii_lowercase();
   let shortcut_target = rel_files
     .iter()
     .zip(files.iter())
     .find(|((rel, _), _)| {
       rel.parent() == Some(Path::new(""))
-        && rel.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-          let n = n.to_ascii_lowercase();
-          n.starts_with("laufey") && n.ends_with(".exe")
-        })
+        && rel
+          .file_name()
+          .and_then(|n| n.to_str())
+          .is_some_and(|n| n.to_ascii_lowercase() == launcher_exe)
     })
     .map(|(_, f)| (f.key.clone(), f.component.clone()));
-  let dylib_name = format!("{app_name}.dll");
 
   // The all-users Start Menu folder that hosts the app shortcut. Only added when
   // we found a launcher to point at.
@@ -4610,12 +4624,12 @@ fn create_windows_msi(
       Value::Str(launcher_comp.clone()),
       // Non-advertised shortcut: `[#key]` resolves to the installed exe's path.
       Value::Str(format!("[#{launcher_key}]")),
-      Value::Str(format!("--runtime \"{dylib_name}\"")),
-      Value::Null,                          // Description
-      Value::Null,                          // Hotkey
-      Value::Null,                          // Icon_
-      Value::Null,                          // IconIndex
-      Value::Null,                          // ShowCmd
+      Value::Null, // Arguments (co-located auto-load)
+      Value::Null, // Description
+      Value::Null, // Hotkey
+      Value::Null, // Icon_
+      Value::Null, // IconIndex
+      Value::Null, // ShowCmd
       Value::Str("INSTALLDIR".to_string()), // WkDir
     ]))?;
   }
@@ -5423,8 +5437,19 @@ mod tests {
 
   #[test]
   fn macos_info_plist_includes_principal_class_and_tcc_usage_strings() {
-    let plist = render_macos_info_plist("Deno Demo", "com.deno.demo", true);
+    let plist = render_macos_info_plist(
+      "Deno Demo",
+      "com.deno.demo",
+      "laufey_webview",
+      true,
+    );
     assert!(plist.contains("<string>LaufeyApplication</string>"));
+    // The backend binary must be the CFBundleExecutable (not a shell-script
+    // launcher named after the app) so LaunchServices launches the GUI
+    // process directly — otherwise the tray icon never attaches. #35619.
+    assert!(plist.contains(
+      "<key>CFBundleExecutable</key>\n  <string>laufey_webview</string>"
+    ));
     assert!(
       plist.contains("<key>NSMicrophoneUsageDescription</key>")
         && plist.contains("Deno Demo requires access to the microphone")
@@ -5442,6 +5467,20 @@ mod tests {
         && plist.contains("Deno Demo requires access to Bluetooth")
     );
     assert!(plist.contains("<string>AppIcon</string>"));
+  }
+
+  #[test]
+  fn macos_runtime_dylib_name_is_backend_specific() {
+    // webview resolves a hardcoded libruntime.dylib via [NSBundle mainBundle];
+    // cef resolves <executable-basename>.dylib next to the backend binary.
+    assert_eq!(
+      macos_runtime_dylib_name("webview", "laufey_webview"),
+      "libruntime.dylib"
+    );
+    assert_eq!(
+      macos_runtime_dylib_name("cef", "laufey_cef"),
+      "laufey_cef.dylib"
+    );
   }
 
   // --- laufey_archive_name / laufey_release_url ---
@@ -5583,42 +5622,67 @@ def456  other.zip
     );
   }
 
-  // --- linux_launcher_script ---
+  // --- derived_desktop_id / resolve_linux_app_id ---
 
   #[test]
-  fn launcher_script_exports_app_id_when_present() {
-    let script = linux_launcher_script(
-      "laufey",
-      "libapp.so",
-      Some("com.deno.desktop.my-app"),
+  fn derived_desktop_id_sanitizes_name() {
+    // Underscores and spaces (common in project dir names) become `-` rather
+    // than tripping the reverse-DNS validator.
+    assert_eq!(
+      derived_desktop_id("my_app").as_deref(),
+      Some("com.deno.desktop.my-app")
     );
-    assert!(
-      script.contains("export LAUFEY_APP_ID=\"com.deno.desktop.my-app\"\n"),
-      "launcher should export the app id:\n{script}"
+    assert_eq!(
+      derived_desktop_id("My Cool App").as_deref(),
+      Some("com.deno.desktop.my-cool-app")
     );
-    // The export must precede `exec` so the backend inherits it.
-    let app_id_at = script.find("LAUFEY_APP_ID").unwrap();
-    let exec_at = script.find("exec ").unwrap();
-    assert!(app_id_at < exec_at);
-    // Runtime path and backend invocation are still wired up.
-    assert!(script.contains("export LAUFEY_RUNTIME_PATH=\"$DIR/libapp.so\"\n"));
-    assert!(
-      script
-        .contains("exec \"$DIR/laufey\" --runtime \"$DIR/libapp.so\" \"$@\"\n")
+    // Runs of invalid characters collapse and leading/trailing dashes are
+    // trimmed, so the derived id always validates.
+    let id = derived_desktop_id("__weird--name!!").unwrap();
+    assert_eq!(id, "com.deno.desktop.weird-name");
+    assert!(validate_bundle_identifier(&id).is_ok());
+    // Nothing usable -> None (skip rather than emit an invalid id).
+    assert_eq!(derived_desktop_id(""), None);
+    assert_eq!(derived_desktop_id("___"), None);
+  }
+
+  #[test]
+  fn resolve_linux_app_id_prefers_valid_explicit() {
+    // A valid explicit identifier is used verbatim.
+    assert_eq!(
+      resolve_linux_app_id(Some("com.example.app"), "ignored").as_deref(),
+      Some("com.example.app")
+    );
+    // An invalid explicit identifier is dropped (a warning surfaces the typo).
+    assert_eq!(
+      resolve_linux_app_id(Some("not reverse dns"), "fallback"),
+      None
+    );
+    // No explicit identifier -> derive from the (sanitized) app name.
+    assert_eq!(
+      resolve_linux_app_id(None, "my_app").as_deref(),
+      Some("com.deno.desktop.my-app")
     );
   }
 
   #[test]
-  fn launcher_script_omits_app_id_when_absent() {
-    let script = linux_launcher_script("laufey", "libapp.so", None);
+  fn system_desktop_entry_sets_app_id_via_exec() {
+    let meta = LinuxPackageMeta {
+      package: "myapp".to_string(),
+      app_name: "MyApp".to_string(),
+      version: "1.0.0".to_string(),
+      maintainer: "MyApp <noreply@deno.com>".to_string(),
+      summary: "MyApp desktop application".to_string(),
+      identifier: "com.deno.desktop.myapp".to_string(),
+    };
+    let entry = system_desktop_entry(&meta);
+    // Exec launches through `env` so the backend's app_id matches
+    // StartupWMClass (both the reverse-DNS identifier).
     assert!(
-      !script.contains("LAUFEY_APP_ID"),
-      "launcher should not export an app id when none is given:\n{script}"
+      entry.contains("Exec=env LAUFEY_APP_ID=com.deno.desktop.myapp myapp\n"),
+      "unexpected Exec line:\n{entry}"
     );
-    assert!(
-      script
-        .contains("exec \"$DIR/laufey\" --runtime \"$DIR/libapp.so\" \"$@\"\n")
-    );
+    assert!(entry.contains("StartupWMClass=com.deno.desktop.myapp\n"));
   }
 
   // --- validate_launcher_name ---
@@ -6647,9 +6711,11 @@ def456  other.zip
   fn fake_linux_app_dir(parent: &Path, app_name: &str) -> PathBuf {
     let app_dir = parent.join(app_name);
     std::fs::create_dir_all(&app_dir).unwrap();
-    std::fs::write(app_dir.join(app_name), "#!/bin/sh\nexec ./laufey\n")
+    // The backend binary is renamed to `<app>` and auto-loads the co-located
+    // `<app>.so`; there is no launcher shell script.
+    std::fs::write(app_dir.join(app_name), b"\x7fELFfake-bin").unwrap();
+    std::fs::write(app_dir.join(format!("{app_name}.so")), b"\x7fELFfake")
       .unwrap();
-    std::fs::write(app_dir.join("libdenort.so"), b"\x7fELFfake").unwrap();
     std::fs::write(app_dir.join("AppIcon.png"), STUB_ICON_PNG).unwrap();
     app_dir
   }
@@ -6776,7 +6842,7 @@ def456  other.zip
       paths.push(p);
     }
     assert!(paths.iter().any(|p| p == "usr/lib/myapp/MyApp"));
-    assert!(paths.iter().any(|p| p == "usr/lib/myapp/libdenort.so"));
+    assert!(paths.iter().any(|p| p == "usr/lib/myapp/MyApp.so"));
     assert!(
       paths
         .iter()
@@ -6888,13 +6954,12 @@ def456  other.zip
   fn fake_windows_app_dir(parent: &Path, app_name: &str) -> PathBuf {
     let app_dir = parent.join(app_name);
     std::fs::create_dir_all(&app_dir).unwrap();
-    std::fs::write(
-      app_dir.join(format!("{app_name}.bat")),
-      "@echo off\r\nlaufey.exe --runtime denort.dll %*\r\n",
-    )
-    .unwrap();
-    std::fs::write(app_dir.join("laufey.exe"), b"MZfake-exe").unwrap();
-    std::fs::write(app_dir.join("denort.dll"), b"MZfake-dll").unwrap();
+    // The backend binary is renamed to `<app>.exe` and auto-loads the
+    // co-located `<app>.dll`; there is no `.bat` wrapper.
+    std::fs::write(app_dir.join(format!("{app_name}.exe")), b"MZfake-exe")
+      .unwrap();
+    std::fs::write(app_dir.join(format!("{app_name}.dll")), b"MZfake-dll")
+      .unwrap();
     let locales = app_dir.join("locales");
     std::fs::create_dir_all(&locales).unwrap();
     std::fs::write(locales.join("en-US.pak"), b"pakdata").unwrap();
@@ -6970,17 +7035,16 @@ def456  other.zip
       })
       .collect();
     files.sort_by_key(|f| f.2);
-    assert_eq!(files.len(), 4, "4 files staged: {files:?}");
+    assert_eq!(files.len(), 3, "3 files staged: {files:?}");
     let long_names: Vec<&str> = files
       .iter()
       .map(|(_, name, _)| name.rsplit('|').next().unwrap())
       .collect();
-    assert!(long_names.contains(&"MyApp.bat"));
-    assert!(long_names.contains(&"laufey.exe"));
-    assert!(long_names.contains(&"denort.dll"));
+    assert!(long_names.contains(&"MyApp.exe"));
+    assert!(long_names.contains(&"MyApp.dll"));
     assert!(long_names.contains(&"en-US.pak"));
     let seqs: Vec<i32> = files.iter().map(|f| f.2).collect();
-    assert_eq!(seqs, vec![1, 2, 3, 4], "sequence must be contiguous 1..N");
+    assert_eq!(seqs, vec![1, 2, 3], "sequence must be contiguous 1..N");
 
     // Two components: one for the root dir, one for locales/.
     let comps: Vec<String> = package
@@ -7003,7 +7067,7 @@ def456  other.zip
     // member name is the MSI File key.
     let key_for_dll = files
       .iter()
-      .find(|(_, name, _)| name.ends_with("denort.dll"))
+      .find(|(_, name, _)| name.ends_with("MyApp.dll"))
       .map(|(key, _, _)| key.clone())
       .unwrap();
     let mut cab_bytes = Vec::new();
@@ -7088,8 +7152,8 @@ def456  other.zip
   #[test]
   fn msi_authors_start_menu_shortcut() {
     let tmp = tempfile::tempdir().unwrap();
-    // fake_windows_app_dir stages a `laufey.exe`, which is detected as the
-    // launcher the shortcut points at.
+    // fake_windows_app_dir stages `MyApp.exe`, the renamed backend binary the
+    // shortcut points at.
     let app_dir = fake_windows_app_dir(tmp.path(), "MyApp");
     let msi_path = tmp.path().join("MyApp.msi");
     create_windows_msi(
@@ -7109,9 +7173,9 @@ def456  other.zip
       .collect();
     assert!(dirs.iter().any(|d| d == "ProgramMenuFolder"));
 
-    // Exactly one shortcut, targeting the laufey launcher (`[#fkey]`) with
-    // `--runtime "<app>.dll"` and running from INSTALLDIR — no console window and
-    // no spaced path handed to laufey.
+    // Exactly one shortcut, targeting `<app>.exe` (`[#fkey]`) with no arguments
+    // (it auto-loads the co-located `<app>.dll`) and running from INSTALLDIR —
+    // no console window.
     let shortcuts: Vec<_> = package
       .select_rows(msi::Select::table("Shortcut"))
       .unwrap()
@@ -7119,7 +7183,7 @@ def456  other.zip
     assert_eq!(shortcuts.len(), 1);
     let s = &shortcuts[0];
     assert_eq!(s["Directory_"].as_str(), Some("ProgramMenuFolder"));
-    assert_eq!(s["Arguments"].as_str(), Some("--runtime \"MyApp.dll\""));
+    assert_eq!(s["Arguments"].as_str(), None);
     assert_eq!(s["WkDir"].as_str(), Some("INSTALLDIR"));
     assert!(s["Target"].as_str().unwrap().starts_with("[#"));
 
@@ -7297,16 +7361,18 @@ def456  other.zip
   #[test]
   fn deep_links_windows_writes_registry_script() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("MyApp.bat"), "@echo off\r\n").unwrap();
+    // The launcher is `<bundle-dir-name>.exe`, so the bundle dir must be named
+    // after the app.
+    let bundle = tmp.path().join("MyApp");
+    std::fs::create_dir_all(&bundle).unwrap();
     register_deep_links_windows(
-      tmp.path(),
+      &bundle,
       &["acme".to_string(), "acme-beta".to_string()],
     )
     .unwrap();
 
     let script =
-      std::fs::read_to_string(tmp.path().join("register-deep-links.bat"))
-        .unwrap();
+      std::fs::read_to_string(bundle.join("register-deep-links.bat")).unwrap();
     for scheme in &["acme", "acme-beta"] {
       assert!(
         script
@@ -7314,9 +7380,9 @@ def456  other.zip
         "script should register {scheme}; got:\n{script}"
       );
     }
-    // The protocol handler must point back at the packaged launcher.
+    // The protocol handler must point back at the renamed launcher exe.
     assert!(
-      script.contains("MyApp.bat"),
+      script.contains("MyApp.exe"),
       "handler should invoke the launcher; got:\n{script}"
     );
   }

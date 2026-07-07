@@ -35,7 +35,6 @@ use deno_core::futures::StreamExt;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::future::BoxFuture;
-use deno_core::futures::stream;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::DataError;
@@ -74,22 +73,22 @@ use opentelemetry_otlp::Protocol;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_otlp::WithHttpConfig;
 use opentelemetry_sdk::Resource;
-use opentelemetry_sdk::export::trace::SpanData;
-use opentelemetry_sdk::logs::BatchLogProcessor;
+use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::logs::LogProcessor;
-pub use opentelemetry_sdk::logs::LogRecord;
+pub use opentelemetry_sdk::logs::SdkLogRecord as LogRecord;
+use opentelemetry_sdk::logs::log_processor_with_async_runtime::BatchLogProcessor;
 use opentelemetry_sdk::metrics::ManualReader;
-use opentelemetry_sdk::metrics::MetricResult;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::metrics::Temporality;
 use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
 use opentelemetry_sdk::metrics::reader::MetricReader;
-use opentelemetry_sdk::trace::BatchSpanProcessor;
 use opentelemetry_sdk::trace::IdGenerator;
 use opentelemetry_sdk::trace::RandomIdGenerator;
+use opentelemetry_sdk::trace::SpanData;
 use opentelemetry_sdk::trace::SpanEvents;
 use opentelemetry_sdk::trace::SpanLinks;
 use opentelemetry_sdk::trace::SpanProcessor as _;
+use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_NAME;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_VERSION;
 use opentelemetry_semantic_conventions::resource::TELEMETRY_SDK_LANGUAGE;
@@ -240,24 +239,39 @@ impl hyper::rt::Executor<BoxFuture<'static, ()>> for OtelSharedRuntime {
 }
 
 impl opentelemetry_sdk::runtime::Runtime for OtelSharedRuntime {
-  type Interval = Pin<Box<dyn Stream<Item = ()> + Send + 'static>>;
-  type Delay = Pin<Box<tokio::time::Sleep>>;
-
-  fn interval(&self, period: Duration) -> Self::Interval {
-    stream::repeat(())
-      .then(move |_| tokio::time::sleep(period))
-      .boxed()
-  }
-
-  fn spawn(&self, future: BoxFuture<'static, ()>) {
+  fn spawn<F>(&self, future: F)
+  where
+    F: std::future::Future<Output = ()> + Send + 'static,
+  {
     (*OTEL_SHARED_RUNTIME_SPAWN_TASK_TX)
-      .unbounded_send(future)
+      .unbounded_send(future.boxed())
       .expect("failed to send task to shared OpenTelemetry runtime");
   }
 
-  fn delay(&self, duration: Duration) -> Self::Delay {
-    Box::pin(tokio::time::sleep(duration))
+  fn delay(
+    &self,
+    duration: Duration,
+  ) -> impl std::future::Future<Output = ()> + Send + 'static {
+    tokio::time::sleep(duration)
   }
+}
+
+/// Mint a blank [`LogRecord`]. In opentelemetry 0.32 `SdkLogRecord` no longer
+/// has a public constructor; records are created through a logger. We keep a
+/// process-wide factory logger purely to produce empty records, which are then
+/// populated and emitted with an explicit instrumentation scope via the log
+/// processor.
+fn new_log_record() -> LogRecord {
+  use opentelemetry::logs::Logger as _;
+  use opentelemetry::logs::LoggerProvider as _;
+
+  static LOG_RECORD_FACTORY: Lazy<opentelemetry_sdk::logs::SdkLogger> =
+    Lazy::new(|| {
+      opentelemetry_sdk::logs::SdkLoggerProvider::builder()
+        .build()
+        .logger("deno")
+    });
+  LOG_RECORD_FACTORY.create_log_record()
 }
 
 impl opentelemetry_sdk::runtime::RuntimeChannel for OtelSharedRuntime {
@@ -332,8 +346,8 @@ impl<T> Stream for BatchMessageChannelReceiver<T> {
 enum DenoPeriodicReaderMessage {
   Register(std::sync::Weak<opentelemetry_sdk::metrics::Pipeline>),
   Export,
-  ForceFlush(oneshot::Sender<MetricResult<()>>),
-  Shutdown(oneshot::Sender<MetricResult<()>>),
+  ForceFlush(oneshot::Sender<OTelSdkResult>),
+  Shutdown(oneshot::Sender<OTelSdkResult>),
 }
 
 #[derive(Debug)]
@@ -355,18 +369,18 @@ impl MetricReader for DenoPeriodicReader {
   fn collect(
     &self,
     _rm: &mut opentelemetry_sdk::metrics::data::ResourceMetrics,
-  ) -> opentelemetry_sdk::metrics::MetricResult<()> {
+  ) -> OTelSdkResult {
     unreachable!("collect should not be called on DenoPeriodicReader");
   }
 
-  fn force_flush(&self) -> opentelemetry_sdk::metrics::MetricResult<()> {
+  fn force_flush(&self) -> OTelSdkResult {
     let (tx, rx) = oneshot::channel();
     let _ = self.tx.try_send(DenoPeriodicReaderMessage::ForceFlush(tx));
     deno_core::futures::executor::block_on(rx).unwrap()?;
     Ok(())
   }
 
-  fn shutdown(&self) -> opentelemetry_sdk::metrics::MetricResult<()> {
+  fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
     let (tx, rx) = oneshot::channel();
     let _ = self.tx.try_send(DenoPeriodicReaderMessage::Shutdown(tx));
     deno_core::futures::executor::block_on(rx).unwrap()?;
@@ -414,10 +428,7 @@ impl DenoPeriodicReader {
         let exporter = &exporter;
         async move {
           let mut resource_metrics =
-            opentelemetry_sdk::metrics::data::ResourceMetrics {
-              resource: Default::default(),
-              scope_metrics: Default::default(),
-            };
+            opentelemetry_sdk::metrics::data::ResourceMetrics::default();
           if collect_observed {
             let callbacks = {
               let mut callbacks = OTEL_PRE_COLLECT_CALLBACKS.lock().unwrap();
@@ -433,10 +444,10 @@ impl DenoPeriodicReader {
             while futures.join_next().await.is_some() {}
           }
           inner.collect(&mut resource_metrics)?;
-          if resource_metrics.scope_metrics.is_empty() {
+          if resource_metrics.scope_metrics().next().is_none() {
             return Ok(());
           }
-          exporter.export(&mut resource_metrics).await?;
+          exporter.export(&resource_metrics).await?;
           Ok(())
         }
       };
@@ -916,12 +927,12 @@ mod hyper_client {
 
   #[async_trait::async_trait]
   impl opentelemetry_http::HttpClient for HyperClient {
-    async fn send(
+    async fn send_bytes(
       &self,
-      request: Request<Vec<u8>>,
+      request: Request<Bytes>,
     ) -> Result<Response<Bytes>, HttpError> {
       let (parts, body) = request.into_parts();
-      let request = Request::from_parts(parts, Full::from(body));
+      let request = Request::from_parts(parts, Full::new(body));
       let response = tokio::time::timeout(self.timeout, async {
         let response = self.inner.request(request).await?;
         let (parts, body) = response.into_parts();
@@ -1169,14 +1180,20 @@ pub fn init(
 
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
+  // `opentelemetry_otlp::Protocol::Grpc` is feature-gated behind the
+  // (tonic-based) `grpc-tonic` feature, which we don't enable because we ship
+  // our own gRPC framing. Track the gRPC choice with a separate flag so the
+  // `protocol` value is only ever the HTTP variant passed to the OTLP HTTP
+  // exporter builder.
   let protocol_var = sys.env_var("OTEL_EXPORTER_OTLP_PROTOCOL");
-  let (use_console_exporter, protocol) = match protocol_var.as_deref() {
-    Ok("console") => (true, Protocol::HttpBinary),
+  let (use_console_exporter, use_grpc, protocol) = match protocol_var.as_deref()
+  {
+    Ok("console") => (true, false, Protocol::HttpBinary),
     Ok("http/protobuf") | Ok("") | Err(std::env::VarError::NotPresent) => {
-      (false, Protocol::HttpBinary)
+      (false, false, Protocol::HttpBinary)
     }
-    Ok("http/json") => (false, Protocol::HttpJson),
-    Ok("grpc") => (false, Protocol::Grpc),
+    Ok("http/json") => (false, false, Protocol::HttpJson),
+    Ok("grpc") => (false, true, Protocol::HttpBinary),
     Ok(protocol) => {
       return Err(deno_core::anyhow::anyhow!(
         "Env var OTEL_EXPORTER_OTLP_PROTOCOL specifies an unsupported protocol: {}",
@@ -1197,36 +1214,30 @@ pub fn init(
   //   * Additional attributes from the `OTEL_RESOURCE_ATTRIBUTES` env var.
   //   * Default attribute values defined here.
   // TODO(piscisaureus): add more default attributes (e.g. script path).
-  let mut resource = Resource::default();
+  // The base resource picks up `service.name`, the `telemetry.sdk.*`
+  // attributes and any `OTEL_RESOURCE_ATTRIBUTES`/`OTEL_SERVICE_NAME` values.
+  let base_resource = Resource::builder().build();
+  let sdk_language = base_resource
+    .get(&Key::new(TELEMETRY_SDK_LANGUAGE))
+    .unwrap();
+  let sdk_name = base_resource.get(&Key::new(TELEMETRY_SDK_NAME)).unwrap();
+  let sdk_version =
+    base_resource.get(&Key::new(TELEMETRY_SDK_VERSION)).unwrap();
 
   // Add the runtime name and version to the resource attributes. Also override
   // the `telemetry.sdk` attributes to include the Deno runtime.
-  resource = resource.merge(&Resource::new(vec![
-    KeyValue::new(PROCESS_RUNTIME_NAME, rt_config.runtime_name),
-    KeyValue::new(PROCESS_RUNTIME_VERSION, rt_config.runtime_version.clone()),
-    KeyValue::new(
-      TELEMETRY_SDK_LANGUAGE,
-      format!(
-        "deno-{}",
-        resource.get(Key::new(TELEMETRY_SDK_LANGUAGE)).unwrap()
+  let resource = Resource::builder()
+    .with_attributes([
+      KeyValue::new(PROCESS_RUNTIME_NAME, rt_config.runtime_name),
+      KeyValue::new(PROCESS_RUNTIME_VERSION, rt_config.runtime_version.clone()),
+      KeyValue::new(TELEMETRY_SDK_LANGUAGE, format!("deno-{sdk_language}")),
+      KeyValue::new(TELEMETRY_SDK_NAME, format!("deno-{sdk_name}")),
+      KeyValue::new(
+        TELEMETRY_SDK_VERSION,
+        format!("{}-{}", rt_config.runtime_version, sdk_version),
       ),
-    ),
-    KeyValue::new(
-      TELEMETRY_SDK_NAME,
-      format!(
-        "deno-{}",
-        resource.get(Key::new(TELEMETRY_SDK_NAME)).unwrap()
-      ),
-    ),
-    KeyValue::new(
-      TELEMETRY_SDK_VERSION,
-      format!(
-        "{}-{}",
-        rt_config.runtime_version,
-        resource.get(Key::new(TELEMETRY_SDK_VERSION)).unwrap()
-      ),
-    ),
-  ]));
+    ])
+    .build();
 
   // The OTLP endpoint is automatically picked up from the
   // `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. Additional headers can
@@ -1264,12 +1275,12 @@ pub fn init(
       .build();
 
     let log_exporter = console_exporter::ConsoleLogExporter::new();
-    let log_processor =
+    let mut log_processor =
       BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
     log_processor.set_resource(&resource);
 
     (span_processor, meter_provider, log_processor)
-  } else if protocol == Protocol::Grpc {
+  } else if use_grpc {
     let client = hyper_client::HyperClient::new_h2(sys)?;
 
     let span_exporter = grpc_exporter::GrpcSpanExporter::new(client.clone());
@@ -1286,7 +1297,7 @@ pub fn init(
       .build();
 
     let log_exporter = grpc_exporter::GrpcLogExporter::new(client);
-    let log_processor =
+    let mut log_processor =
       BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
     log_processor.set_resource(&resource);
 
@@ -1316,7 +1327,7 @@ pub fn init(
       .with_http_client(client)
       .with_protocol(protocol)
       .build_log_exporter()?;
-    let log_processor =
+    let mut log_processor =
       BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
     log_processor.set_resource(&resource);
 
@@ -1395,7 +1406,7 @@ pub fn handle_log(record: &log::Record) {
     return;
   };
 
-  let mut log_record = LogRecord::default();
+  let mut log_record = new_log_record();
 
   let now = SystemTime::now();
   log_record.set_timestamp(now);
@@ -1701,7 +1712,7 @@ fn op_otel_log<'s>(
 
   let severity = severity_from_level(level);
 
-  let mut log_record = LogRecord::default();
+  let mut log_record = new_log_record();
   let now = SystemTime::now();
   log_record.set_timestamp(now);
   log_record.set_observed_timestamp(now);
@@ -1805,7 +1816,7 @@ fn op_otel_log_foreign(
   let trace_id = parse_trace_id(scope, trace_id);
   let span_id = parse_span_id(scope, span_id);
 
-  let mut log_record = LogRecord::default();
+  let mut log_record = new_log_record();
 
   let now = SystemTime::now();
   log_record.set_timestamp(now);
@@ -1849,7 +1860,7 @@ pub fn report_event(name: &'static str, data: impl std::fmt::Display) {
     return;
   };
 
-  let mut log_record = LogRecord::default();
+  let mut log_record = new_log_record();
 
   log_record.set_observed_timestamp(SystemTime::now());
   log_record.set_event_name(name);
@@ -1999,6 +2010,7 @@ impl OtelTracer {
     let span_data = SpanData {
       span_context,
       parent_span_id,
+      parent_span_is_remote: false,
       span_kind,
       name: Cow::Owned(name),
       start_time,
@@ -2092,6 +2104,7 @@ impl OtelTracer {
     let span_data = SpanData {
       span_context,
       parent_span_id,
+      parent_span_is_remote: false,
       span_kind,
       name: Cow::Owned(name),
       start_time,
