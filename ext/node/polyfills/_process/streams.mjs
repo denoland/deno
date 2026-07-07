@@ -349,18 +349,12 @@ export const initStdin = (warmup = false) => {
   // so that the process can close down.
   stdin.on("pause", () => nextTick(onpause));
 
-  // Allow users to overwrite isTTY for test isolation and terminal mocking.
-  // This mirrors the stdout/stderr behavior added in #26130.
-  let getStdinIsTTY = () => io.stdin?.isTerminal();
   ObjectDefineProperty(stdin, "isTTY", {
     __proto__: null,
     enumerable: true,
     configurable: true,
     get() {
-      return getStdinIsTTY();
-    },
-    set(value) {
-      getStdinIsTTY = () => value;
+      return io.stdin.isTerminal();
     },
   });
   stdin._isRawMode = false;
