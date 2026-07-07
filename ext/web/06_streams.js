@@ -3317,104 +3317,106 @@ function readableStreamPipeTo(
     signal[add](abortAlgorithm);
   }
 
-  function pipeLoop() {
-    return new Promise((resolveLoop, rejectLoop) => {
-      /** @param {boolean} done */
-      function next(done) {
-        if (done) {
-          resolveLoop();
-        } else {
-          uponPromise(pipeStep(), next, rejectLoop);
-        }
+  // Persistent pump. Instead of allocating a `new Promise`, a read-request
+  // object with three closures, and an `uponPromise` chain per chunk, a single
+  // hoisted read request is re-armed in a constant-depth loop: a synchronously
+  // delivered chunk sets `syncAdvance` and the `do/while` re-arms without
+  // growing the stack (like `readableStreamCollectIntoUint8Array`), while an
+  // asynchronous delivery re-enters `pump` from `chunkSteps`. The writer-ready
+  // microtask hop is skipped whenever the writable has no backpressure (checked
+  // synchronously via `dest[_backpressure]`), so a fast sink drains at close to
+  // the raw `reader.read()` loop's rate. The identity-transform bypass from
+  // #35799 is preserved as a per-chunk branch the pump composes with.
+  const noopHandler = () => {};
+  let pumping = false;
+  let syncAdvance = false;
+
+  /** @param {any} chunk */
+  function writeChunk(chunk) {
+    if (bypassActive) {
+      try {
+        transformStreamDefaultControllerEnqueue(bypassTS[_controller], chunk);
+        return;
+      } catch {
+        // The transform errored or its readable side can no longer accept
+        // chunks; the generic write below observes the same condition through
+        // the writable's state and shuts the pipe down with the right error.
+        bypassActive = false;
       }
-      next(false);
-    });
+    }
+    // Track only the last write. A single shared rejection handler
+    // (setPromiseIsHandledToTrue) keeps the write promise from surfacing as
+    // unhandled without a per-chunk closure; the pipe surfaces write errors
+    // through the writer's closed promise, and shutdown awaits the last write
+    // via waitForWritesToFinish.
+    currentWrite = writableStreamDefaultWriterWrite(writer, chunk);
+    setPromiseIsHandledToTrue(currentWrite);
   }
 
-  /** @returns {Promise<boolean>} */
-  function pipeStep() {
-    if (shuttingDown === true) {
-      return PromiseResolve(true);
-    }
-
-    if (bypassActive) {
-      const readableController = bypassTS[_readable][_controller];
-      if (
-        dest[_state] === "writable" &&
-        writableStreamCloseQueuedOrInFlight(dest) === false &&
-        readableStreamDefaultControllerCanCloseOrEnqueue(readableController)
-      ) {
-        if (bypassTS[_backpressure] === true) {
-          // Pace on the transform's own backpressure flag, exactly like
-          // the generic sink write algorithm does: it is set by the
-          // enqueue below when the readable's desired size is exhausted
-          // and cleared (resolving this promise) by the next
-          // readable-side pull.
-          return transformPromiseWith(
-            bypassTS[_backpressureChangePromise].promise,
-            pipeStep,
-          );
-        }
-        return new Promise((resolveRead, rejectRead) => {
-          readableStreamDefaultReaderRead(
-            reader,
-            {
-              chunkSteps(chunk) {
-                if (bypassActive) {
-                  try {
-                    transformStreamDefaultControllerEnqueue(
-                      bypassTS[_controller],
-                      chunk,
-                    );
-                    resolveRead(false);
-                    return;
-                  } catch {
-                    // The transform errored or its readable side can no
-                    // longer accept chunks; the generic write below
-                    // observes the same condition through the writable's
-                    // state and shuts the pipe down with the right error.
-                    bypassActive = false;
-                  }
-                }
-                currentWrite = transformPromiseWith(
-                  writableStreamDefaultWriterWrite(writer, chunk),
-                  undefined,
-                  () => {},
-                );
-                resolveRead(false);
-              },
-              closeSteps() {
-                resolveRead(true);
-              },
-              errorSteps: rejectRead,
-            },
-          );
-        });
+  /** @type {ReadRequest} */
+  const readRequest = {
+    chunkSteps(chunk) {
+      writeChunk(chunk);
+      if (pumping) {
+        syncAdvance = true;
+      } else {
+        pump();
       }
-      bypassActive = false;
-    }
+    },
+    // Source close/error is finalized by the isOrBecomes{Closed,Errored}
+    // handlers installed below; the pump simply stops re-arming.
+    closeSteps: noopHandler,
+    errorSteps: noopHandler,
+  };
 
-    return transformPromiseWith(writer[_readyPromise].promise, () => {
-      return new Promise((resolveRead, rejectRead) => {
-        readableStreamDefaultReaderRead(
-          reader,
-          {
-            chunkSteps(chunk) {
-              currentWrite = transformPromiseWith(
-                writableStreamDefaultWriterWrite(writer, chunk),
-                undefined,
-                () => {},
-              );
-              resolveRead(false);
-            },
-            closeSteps() {
-              resolveRead(true);
-            },
-            errorSteps: rejectRead,
-          },
-        );
-      });
-    });
+  function pump() {
+    pumping = true;
+    do {
+      syncAdvance = false;
+      if (shuttingDown === true) {
+        break;
+      }
+
+      // Recompute identity-bypass eligibility each iteration; any state change
+      // on either side permanently disables the route (a later chunk then
+      // takes the generic writer path, surfacing the proper rejection).
+      if (bypassActive) {
+        const readableController = bypassTS[_readable][_controller];
+        if (
+          dest[_state] === "writable" &&
+          writableStreamCloseQueuedOrInFlight(dest) === false &&
+          readableStreamDefaultControllerCanCloseOrEnqueue(readableController)
+        ) {
+          if (bypassTS[_backpressure] === true) {
+            // Pace on the transform's own backpressure flag; resume when the
+            // next readable-side pull clears it. Rejection (transform errored)
+            // is left to the shutdown handlers.
+            uponPromise(
+              bypassTS[_backpressureChangePromise].promise,
+              pump,
+              noopHandler,
+            );
+            break;
+          }
+        } else {
+          bypassActive = false;
+        }
+      }
+
+      if (bypassActive === false && dest[_backpressure] === true) {
+        // Writable backpressure: wait for the writer-ready promise, then
+        // resume. Rejection (dest errored) is left to the shutdown handlers.
+        uponPromise(writer[_readyPromise].promise, pump, noopHandler);
+        break;
+      }
+
+      // No backpressure on the active path: read one chunk. A queued chunk is
+      // delivered synchronously (chunkSteps sets syncAdvance and the loop
+      // re-arms at constant stack depth); an empty queue delivers
+      // asynchronously and re-enters pump from chunkSteps.
+      readableStreamDefaultReaderRead(reader, readRequest);
+    } while (syncAdvance);
+    pumping = false;
   }
 
   isOrBecomesErrored(
@@ -3473,18 +3475,19 @@ function readableStreamPipeTo(
     }
   }
 
-  setPromiseIsHandledToTrue(pipeLoop());
+  pump();
 
   return promise.promise;
 
   /** @returns {Promise<void>} */
   function waitForWritesToFinish() {
     const oldCurrentWrite = currentWrite;
-    return transformPromiseWith(
-      currentWrite,
-      () =>
-        oldCurrentWrite !== currentWrite ? waitForWritesToFinish() : undefined,
-    );
+    // `currentWrite` is now the raw write promise (see writeChunk), which may
+    // reject; settle either way, since write errors are surfaced through the
+    // writer's closed promise rather than the individual write.
+    const onSettled = () =>
+      oldCurrentWrite !== currentWrite ? waitForWritesToFinish() : undefined;
+    return transformPromiseWith(currentWrite, onSettled, onSettled);
   }
 
   /**
