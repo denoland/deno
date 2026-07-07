@@ -421,7 +421,14 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
           let call_id =
             deno_runtime::ops::desktop::register_bind_call(&responses, resp_tx);
           let event = deno_runtime::ops::desktop::DesktopEvent::BindCall {
-            window_id: js_call.window_id,
+            // Attribute the call to the window the binding was registered on,
+            // not to `js_call.window_id`. The backend's per-call renderer id
+            // can drift from the id `bind()` recorded the callback under (seen
+            // on CEF/Windows when a larger module graph delays startup; see
+            // denoland/deno#35647), which would make the runtime-side lookup
+            // in `windowBindCallbacks` miss and reject an otherwise-registered
+            // call. The registration id always matches that map's key.
+            window_id,
             name,
             args: serde_json::Value::Array(args),
             call_id,
