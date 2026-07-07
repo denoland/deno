@@ -2324,6 +2324,7 @@ Deno.test("inspector_console_api_late_open", async () => {
     .getReader();
   const stdoutReader = child.stdout.pipeThrough(new TextDecoderStream())
     .getReader();
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
 
   try {
     const wsUrl = await extractWsUrl(stderrReader);
@@ -2347,10 +2348,27 @@ Deno.test("inspector_console_api_late_open", async () => {
 
     socket.send(JSON.stringify({ id: 1, method: "Runtime.enable" }));
 
-    await consoleApiCalled;
+    // Without the console bridged, no consoleAPICalled ever arrives; bound
+    // the wait so a regression fails with a diagnostic instead of hanging
+    // (the child logs every 100ms, so 10s leaves ample slack for slow CI).
+    await Promise.race([
+      consoleApiCalled,
+      new Promise<never>((_, reject) => {
+        deadlineTimer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                "timed out waiting for Runtime.consoleAPICalled for console.log",
+              ),
+            ),
+          10_000,
+        );
+      }),
+    ]);
 
     socket.close();
   } finally {
+    clearTimeout(deadlineTimer);
     await child.stdin.close();
     await stderrReader.cancel();
     await stdoutReader.cancel();
