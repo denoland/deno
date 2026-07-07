@@ -487,10 +487,10 @@ pub fn bi_pipe_pair_raw()
     // SockFlag is broken on macOS
     // https://github.com/nix-rust/nix/issues/861
     let mut fds = [-1, -1];
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     let flags = libc::SOCK_CLOEXEC;
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     let flags = 0;
 
     // SAFETY: libc call, fds are correct size+align
@@ -506,7 +506,7 @@ pub fn bi_pipe_pair_raw()
       return Err(std::io::Error::last_os_error());
     }
 
-    if cfg!(target_os = "macos") {
+    if cfg!(any(target_os = "macos", target_os = "ios")) {
       let fcntl = |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
         // SAFETY: libc call, fd is valid
         let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };

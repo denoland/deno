@@ -14,6 +14,7 @@ fn main() {
   // which only applies to binary targets, so we emit cdylib-specific
   // linker args here instead.
   print_cdylib_napi_linker_flags();
+
 }
 
 fn print_cdylib_napi_linker_flags() {

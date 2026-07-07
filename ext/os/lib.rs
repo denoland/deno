@@ -708,7 +708,7 @@ fn rss() -> u64 {
   total_rss_pages * page_size as u64
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 fn rss() -> u64 {
   // Inspired by https://github.com/Arc-blroth/memory-stats/blob/5364d0d09143de2a470d33161b2330914228fde9/src/darwin.rs
 

@@ -53,6 +53,10 @@ impl Default for SnapshotOptions {
     let platform = std::env::consts::OS;
     let target = match platform {
       "macos" => format!("{}-apple-darwin", arch),
+      // A proper triple so `Deno.build.os` parses as "ios" (the target is
+      // split on '-' into arch-vendor-os); a bare "{arch}-ios" would leave
+      // os undefined.
+      "ios" => format!("{}-apple-ios", arch),
       "linux" => format!("{}-unknown-linux-gnu", arch),
       "windows" => format!("{}-pc-windows-msvc", arch),
       rest => format!("{}-{}", arch, rest),

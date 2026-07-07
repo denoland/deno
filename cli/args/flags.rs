@@ -2314,6 +2314,18 @@ const SUPPORTED_OS: [&str; 5] = [
   "aarch64-apple-darwin",
 ];
 
+// `deno desktop` additionally targets iOS (simulator + device), which the
+// generic `deno compile` path does not support.
+const DESKTOP_SUPPORTED_OS: [&str; 7] = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+  "aarch64-apple-ios",
+  "aarch64-apple-ios-sim",
+];
+
 fn compile_subcommand() -> Command {
   command(
     "compile",
@@ -2514,7 +2526,28 @@ supported framework (Next.js, Astro, etc.) in the current directory.
         Arg::new("target")
           .long("target")
           .help("Target OS architecture")
-          .value_parser(SUPPORTED_OS)
+          .value_parser(DESKTOP_SUPPORTED_OS)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("codesign-identity")
+          .long("codesign-identity")
+          .help("Code-signing identity (macOS Developer ID / iOS Apple Development or Distribution; '-' for ad-hoc)")
+          .value_parser(value_parser!(String))
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("ios-provisioning-profile")
+          .long("ios-provisioning-profile")
+          .help("Path to an iOS provisioning profile (.mobileprovision) to embed in the app")
+          .value_parser(value_parser!(String))
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("ios-entitlements")
+          .long("ios-entitlements")
+          .help("Path to an iOS entitlements plist used when signing a device build")
+          .value_parser(value_parser!(String))
           .help_heading(DESKTOP_HEADING),
       )
       .arg(no_code_cache_arg())
@@ -6954,7 +6987,10 @@ fn desktop_parse(
     all_targets,
     identifier: None,
     deep_links: Vec::new(),
-    codesign_identity: None,
+    codesign_identity: matches.remove_one::<String>("codesign-identity"),
+    ios_provisioning_profile: matches
+      .remove_one::<String>("ios-provisioning-profile"),
+    ios_entitlements: matches.remove_one::<String>("ios-entitlements"),
     inspect_renderer,
     compress,
     exclude_unused_npm,

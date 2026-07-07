@@ -242,7 +242,7 @@ fn common_unix_fs_constants() -> FsConstants {
   }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 #[op2]
 #[serde]
 pub fn op_node_fs_constants() -> FsConstants {

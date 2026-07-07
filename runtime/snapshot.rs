@@ -53,6 +53,13 @@ pub fn create_runtime_snapshot(
   // NOTE: For embedders that wish to add additional extensions to the snapshot
   custom_extensions: Vec<Extension>,
 ) -> CreateRuntimeSnapshotOutput {
+  // NOTE: the iOS snapshot must be byte-compatible with the iOS V8's external
+  // reference table. The iOS-simulator V8 keeps the JIT but is built with
+  // `v8_enable_webassembly=false`, which changes ExternalReferenceTable::kSize
+  // (and thus SerializedData::kMagicNumber). This snapshot generator therefore
+  // has to link a host V8 built the same way — driven at the V8 build level
+  // via `GN_ARGS="v8_enable_webassembly=false"`, not by any runtime flag here.
+
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
   // and `runtime/snapshot.rs`!

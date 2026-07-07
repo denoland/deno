@@ -1,0 +1,15 @@
+[package]
+name = "deno_ios_app"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "deno_ios_app"
+path = "main.rs"
+
+[dependencies]
+denort_desktop = { path = "../rt_desktop" }
+
+[build-dependencies]
+cc = "1"
