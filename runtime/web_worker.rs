@@ -1248,6 +1248,9 @@ pub async fn run_web_worker(
     match worker.preload_main_module(&specifier).await {
       Ok(id) => {
         worker.start_polling_for_messages();
+        if worker.worker_type == WorkerThreadType::Node {
+          worker.internal_handle.allow_isolate_interrupt();
+        }
         worker.execute_main_module(id).await
       }
       Err(e) => Err(e),
