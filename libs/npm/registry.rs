@@ -42,6 +42,18 @@ pub struct NpmPackageInfo {
   pub time: HashMap<Version, chrono::DateTime<chrono::Utc>>,
 }
 
+/// Custom `_deno.*` properties stored alongside a cached packument.
+#[derive(Debug, Default, Clone)]
+pub struct NpmPackageInfoCacheMetadata {
+  /// The `_deno.etag` property.
+  pub etag: Option<String>,
+  /// Whether the `_deno.packumentFormat` property records that this cache
+  /// entry was created from a full packument response. When set, an empty
+  /// `time` map means the registry provides no publish dates rather than
+  /// that the abbreviated install manifest omitted them.
+  pub full_packument: bool,
+}
+
 impl NpmPackageInfo {
   /// Fill in each version's `exports` subpath keys from the raw packument JSON
   /// this info was parsed from.
@@ -90,19 +102,27 @@ impl NpmPackageInfo {
     bytes: &[u8],
   ) -> Result<(Self, Option<String>), String> {
     let text = std::str::from_utf8(bytes).map_err(|err| err.to_string())?;
-    Self::from_packument_source_with_etag(Arc::new(text.to_owned()))
+    Self::from_packument_source_with_cache_info(Arc::new(text.to_owned()))
+      .map(|(info, cache_info)| (info, cache_info.etag))
   }
 
   pub fn from_packument_bytes_with_etag(
     bytes: Vec<u8>,
   ) -> Result<(Self, Option<String>), String> {
-    let text = String::from_utf8(bytes).map_err(|err| err.to_string())?;
-    Self::from_packument_source_with_etag(Arc::new(text))
+    Self::from_packument_bytes_with_cache_info(bytes)
+      .map(|(info, cache_info)| (info, cache_info.etag))
   }
 
-  fn from_packument_source_with_etag(
+  pub fn from_packument_bytes_with_cache_info(
+    bytes: Vec<u8>,
+  ) -> Result<(Self, NpmPackageInfoCacheMetadata), String> {
+    let text = String::from_utf8(bytes).map_err(|err| err.to_string())?;
+    Self::from_packument_source_with_cache_info(Arc::new(text))
+  }
+
+  fn from_packument_source_with_cache_info(
     source: Arc<String>,
-  ) -> Result<(Self, Option<String>), String> {
+  ) -> Result<(Self, NpmPackageInfoCacheMetadata), String> {
     let text = source.as_str();
     let index = fast_registry_json::pluck_packument_index(text)
       .map_err(|err| format!("error indexing npm packument: {err:?}"))?;
@@ -175,6 +195,8 @@ impl NpmPackageInfo {
       );
     }
 
+    let full_packument = index.deno_packument_format == Some("full");
+
     Ok((
       Self {
         name,
@@ -186,7 +208,10 @@ impl NpmPackageInfo {
         dist_tags,
         time,
       },
-      deno_etag,
+      NpmPackageInfoCacheMetadata {
+        etag: deno_etag,
+        full_packument,
+      },
     ))
   }
 
