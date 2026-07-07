@@ -63,6 +63,7 @@ const {
   PromiseResolve,
   PromiseWithResolvers,
   RangeError,
+  ReflectApply,
   ReflectHas,
   SafeFinalizationRegistry,
   SafePromiseAll,
@@ -4542,15 +4543,27 @@ function setUpTransformStreamDefaultControllerFromTransformer(
   let flushAlgorithm = _defaultFlushAlgorithm;
   let cancelAlgorithm = _defaultCancelAlgorithm;
   if (transformerDict.transform !== undefined) {
-    transformAlgorithm = (chunk, controller) =>
-      webidl.invokeCallbackFunction(
-        transformerDict.transform,
-        [chunk, controller],
-        transformer,
-        webidl.converters["Promise<undefined>"],
-        "Failed to execute 'transformAlgorithm' on 'TransformStreamDefaultController'",
-        true,
-      );
+    const transformCallback = transformerDict.transform;
+    // Synchronous-transform fast path: a transform() that enqueues and returns
+    // undefined (or any non-thenable) completes without a wrapper promise from
+    // the Promise<undefined> converter. Returning undefined signals synchronous
+    // completion to transformStreamDefaultControllerPerformTransform, which then
+    // skips that promise and the transformPromiseWith() microtask hop -- pure
+    // per-chunk overhead on the transform hot loop. A synchronous throw becomes
+    // a rejected promise so the stream errors as before; a thenable return keeps
+    // the full async path (matching webidl.invokeCallbackFunction).
+    transformAlgorithm = (chunk, controller) => {
+      let rv;
+      try {
+        rv = ReflectApply(transformCallback, transformer, [chunk, controller]);
+      } catch (err) {
+        return PromiseReject(err);
+      }
+      if (rv === undefined || typeof rv?.then !== "function") {
+        return undefined;
+      }
+      return PromiseResolve(rv);
+    };
   }
   if (transformerDict.flush !== undefined) {
     flushAlgorithm = (controller) =>
@@ -4837,6 +4850,13 @@ function transformStreamDefaultControllerPerformTransform(controller, chunk) {
     return resolvedPromise();
   }
   const transformPromise = transformAlgorithm(chunk, controller);
+  if (transformPromise === undefined) {
+    // The transform completed synchronously (see the transformAlgorithm set up
+    // in setUpTransformStreamDefaultControllerFromTransformer): the chunk was
+    // already enqueued, so resolve the write without a per-chunk promise or a
+    // microtask hop, exactly like the identity-transform fast path above.
+    return resolvedPromise();
+  }
   return transformPromiseWith(transformPromise, undefined, (r) => {
     transformStreamError(controller[_stream], r);
     throw r;
