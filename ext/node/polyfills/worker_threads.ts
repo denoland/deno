@@ -631,7 +631,7 @@ class NodeWorker extends EventEmitter {
   }
 
   #pollControl = async () => {
-    while (this.#status === "RUNNING") {
+    while (this.#status !== "CLOSED") {
       this.#controlPromise = op_host_recv_ctrl(this.#id);
       if (!this.#refed) {
         core.unrefOpPromise(this.#controlPromise);
