@@ -2079,8 +2079,10 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("backend")
       .long("backend")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1))
-      .default_value("webview"),
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("exclude-unused-npm")
+      .long("exclude-unused-npm")
+      .set_true(),
   ],
   arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],

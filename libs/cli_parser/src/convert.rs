@@ -2349,7 +2349,8 @@ fn desktop_parse(result: &ParseResult, flags: &mut Flags) {
   flags.subcommand = DenoSubcommand::Desktop(DesktopFlags {
     source_file,
     args,
-    backend: Some(result.get_one("backend").unwrap_or("webview").to_string()),
+    backend: result.get_one("backend").map(|s| s.to_string()),
+    exclude_unused_npm: result.get_bool("exclude-unused-npm"),
     ..Default::default()
   });
 }
