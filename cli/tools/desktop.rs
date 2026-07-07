@@ -1185,7 +1185,7 @@ async fn spawn_framework_dev_server(
       let url = parse_dev_server_url(&line);
       // Echo the dev server's own startup output (banner, URL, warnings) so
       // it isn't swallowed while we scan for the URL.
-      println!("{line}");
+      log::info!("{line}");
       if let Some(url) = url {
         return Ok(url);
       }
@@ -1204,7 +1204,7 @@ async fn spawn_framework_dev_server(
   // on its own once the child is killed (on drop) and the pipe closes.
   tokio::spawn(async move {
     while let Ok(Some(line)) = lines.next_line().await {
-      println!("{line}");
+      log::info!("{line}");
     }
   });
 
