@@ -475,7 +475,6 @@ async fn compile_desktop(
     app_name: None,
     args: desktop_flags.args.clone(),
     target: desktop_flags.target.clone(),
-    watch: None,
     no_terminal: false,
     icon: match &desktop_flags.icon {
       Some(crate::args::IconConfig::Single(s)) => Some(s.clone()),
@@ -487,7 +486,7 @@ async fn compile_desktop(
     self_extracting,
     bundle: false,
     minify: false,
-    exclude_unused_npm: false,
+    exclude_unused_npm: desktop_flags.exclude_unused_npm,
   };
 
   let mut temp_flags = flags.clone();
@@ -6580,6 +6579,7 @@ def456  other.zip
       codesign_identity: None,
       inspect_renderer: None,
       compress: None,
+      exclude_unused_npm: false,
     }
   }
 
