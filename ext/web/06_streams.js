@@ -3891,16 +3891,44 @@ function readableByteStreamTee(stream) {
    * @param {ReadableStreamBYOBReader} thisReader
    */
   function forwardReaderError(thisReader) {
-    PromisePrototypeCatch(thisReader[_closedPromise].promise, (e) => {
-      if (thisReader !== reader) {
-        return;
-      }
-      readableByteStreamControllerError(branch1[_controller], e);
-      readableByteStreamControllerError(branch2[_controller], e);
-      if (!canceled1 || !canceled2) {
-        cancelPromise.resolve(undefined);
-      }
-    });
+    PromisePrototypeThen(
+      thisReader[_closedPromise].promise,
+      () => {
+        // The source closed. If the in-flight source read was a BYOB read, its
+        // read-into request was orphaned: readableStreamClose() only runs the
+        // close steps of a default reader's read requests, not a BYOB reader's
+        // read-into requests, so the readIntoRequest close steps that propagate
+        // the close to the branches never ran and `reading` is still set. (When
+        // the close instead arrives on a default source read, readRequest's
+        // close steps already cleared `reading` and settled both branches, so
+        // this is a no-op.) Commit the source's still-pending zero-filled
+        // pull-into to run those close steps, which return the lent buffer to
+        // the BYOB branch and settle both branches with `{ done: true }`.
+        if (
+          thisReader !== reader ||
+          !reading ||
+          !isReadableStreamBYOBReader(reader) ||
+          stream[_controller][_pendingPullIntos].size === 0
+        ) {
+          return;
+        }
+        const firstDescriptor = stream[_controller][_pendingPullIntos].peek();
+        readableByteStreamControllerRespondInClosedState(
+          stream[_controller],
+          firstDescriptor,
+        );
+      },
+      (e) => {
+        if (thisReader !== reader) {
+          return;
+        }
+        readableByteStreamControllerError(branch1[_controller], e);
+        readableByteStreamControllerError(branch2[_controller], e);
+        if (!canceled1 || !canceled2) {
+          cancelPromise.resolve(undefined);
+        }
+      },
+    );
   }
 
   // The read requests, their microtask callbacks, and the pending chunk and
