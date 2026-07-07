@@ -23,6 +23,6 @@ export const unstableIds = {
   temporal: 21,
   unsafeProto: 23,
   vsock: 24,
-  webgpu: 25,
-  workerOptions: 26,
+  webgpu: 26,
+  workerOptions: 27,
 };
