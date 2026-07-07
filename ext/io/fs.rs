@@ -520,3 +520,26 @@ impl deno_core::Resource for FileResource {
     FileResource::cancel_read_ops(&self);
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::rc::Rc;
+
+  #[test]
+  fn test_file_resource_drop_cancels_ops() {
+    // Open a dummy file to wrap
+    let file = std::fs::File::open("Cargo.toml").unwrap();
+    let file_inner = crate::StdFileResourceInner::file(file, None);
+    let resource = FileResource::new(Rc::new(file_inner), "Cargo.toml".to_string());
+    
+    let cancel_handle = resource.cancel_handle();
+    assert!(!cancel_handle.is_canceled(), "Cancel handle should not be canceled initially.");
+    
+    // Drop the resource, simulating ResourceTable unwinding during a panic
+    drop(resource);
+    
+    // Assert the cancellation token was explicitly fired by the Drop implementation
+    assert!(cancel_handle.is_canceled(), "Cancel handle was not explicitly canceled on drop! Pending I/O will leak.");
+  }
+}
