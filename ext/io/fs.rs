@@ -420,6 +420,12 @@ impl FileResource {
   }
 }
 
+impl Drop for FileResource {
+  fn drop(&mut self) {
+    self.cancel_read_ops();
+  }
+}
+
 impl deno_core::Resource for FileResource {
   fn name(&self) -> Cow<'_, str> {
     Cow::Borrowed(&self.name)
