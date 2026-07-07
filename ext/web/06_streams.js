@@ -965,8 +965,11 @@ class ResourceStreamResourceSink {
  * @param {Uint8Array} chunk
  */
 async function readableStreamWriteChunkFn(reader, sink, chunk) {
-  // Empty chunk. Re-read.
-  if (chunk.length == 0) {
+  // Empty Uint8Array chunk. Re-read.
+  if (
+    TypedArrayPrototypeGetSymbolToStringTag(chunk) === "Uint8Array" &&
+    TypedArrayPrototypeGetByteLength(chunk) == 0
+  ) {
     return true;
   }
 
@@ -1009,9 +1012,10 @@ async function readableStreamReadFn(reader, sink, onError) {
   // The read request, its handlers, and the write continuation are hoisted
   // out of the loop and allocated once per stream instead of once per
   // chunk; the per-iteration state travels through the `reentrant`,
-  // `gotChunk`, and `promise` slots, which is safe because exactly one
-  // read is in flight per iteration.
+  // `hasChunk`, `gotChunk`, and `promise` slots, which is safe because
+  // exactly one read is in flight per iteration.
   let reentrant = true;
+  let hasChunk = false;
   let gotChunk = undefined;
   /** @type {Deferred<boolean>} */
   let promise;
@@ -1021,8 +1025,10 @@ async function readableStreamReadFn(reader, sink, onError) {
 
   const readRequest = {
     chunkSteps(chunk) {
-      // If the chunk has non-zero length, write it
+      // If the read completed synchronously, write the chunk after
+      // reentrancy ends.
       if (reentrant) {
+        hasChunk = true;
         gotChunk = chunk;
       } else {
         PromisePrototypeThen(
@@ -1073,12 +1079,12 @@ async function readableStreamReadFn(reader, sink, onError) {
     // The ops here look like op_write_all/op_close, but we're not actually writing to a
     // real resource.
     reentrant = true;
+    hasChunk = false;
     gotChunk = undefined;
     promise = new Deferred();
-
     readableStreamDefaultReaderRead(reader, readRequest);
     reentrant = false;
-    if (gotChunk) {
+    if (hasChunk) {
       PromisePrototypeThen(
         readableStreamWriteChunkFn(reader, sink, gotChunk),
         onWriteFulfilled,
@@ -1128,7 +1134,17 @@ function resourceForReadableStream(stream, length, onError) {
 
   // Trigger the first read
   PromisePrototypeCatch(readableStreamReadFn(reader, sink, onError), (err) => {
+    if (sink.external !== undefined) {
+      op_readable_stream_resource_write_error(
+        sink.external,
+        extractStringErrorFromError(err),
+      );
+      sink.close();
+    }
     PromisePrototypeCatch(reader.cancel(err), () => {});
+    if (onError !== undefined) {
+      onError(err);
+    }
   });
 
   return rid;
