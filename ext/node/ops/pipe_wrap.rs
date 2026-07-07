@@ -21,6 +21,7 @@ use deno_core::uv_compat::UvConnect;
 use deno_core::uv_compat::UvLoop;
 use deno_core::uv_compat::UvStream;
 use deno_core::v8;
+use deno_net::ops_unix::check_unix_socket_path;
 use deno_permissions::PermissionsContainer;
 
 use crate::ops::handle_wrap::AsyncWrap;
@@ -373,14 +374,12 @@ impl PipeWrap {
     // `Deno.listen({ transport: "unix" })`. Checking here (rather than only in
     // `listen()`) ensures the path is never bound, chmod'd, or unlinked by
     // permission-less code.
-    let permissions = state.borrow_mut::<PermissionsContainer>();
-    let checked = permissions.check_open(
+    check_unix_socket_path(
+      state.borrow_mut::<PermissionsContainer>(),
       std::borrow::Cow::Borrowed(std::path::Path::new(path)),
       deno_permissions::OpenAccessKind::ReadWriteNoFollow,
       Some("node:net.Server.listen()"),
     )?;
-    permissions
-      .check_net_unix_socket(&checked, Some("node:net.Server.listen()"))?;
 
     let pipe = self.pipe_ptr();
     if pipe.is_null() {
@@ -406,14 +405,12 @@ impl PipeWrap {
     // `Deno.listen({ transport: "unix" })` path.
     // SAFETY: pipe is valid (null-checked above).
     if let Some(path) = unsafe { &*pipe }.bind_path() {
-      let permissions = state.borrow_mut::<PermissionsContainer>();
-      let checked = permissions.check_open(
+      check_unix_socket_path(
+        state.borrow_mut::<PermissionsContainer>(),
         std::borrow::Cow::Borrowed(std::path::Path::new(path)),
         deno_permissions::OpenAccessKind::ReadWriteNoFollow,
         Some("node:net.Server.listen()"),
       )?;
-      permissions
-        .check_net_unix_socket(&checked, Some("node:net.Server.listen()"))?;
     }
     // SAFETY: pipe is valid (null-checked above).
     Ok(unsafe {
@@ -448,15 +445,14 @@ impl PipeWrap {
     // `Deno.connect({ transport: "unix" })` path in `ext/net/ops_unix.rs`.
     // Without the network check, `--allow-read`/`--allow-write` on a socket
     // path alone could reach local IPC services (Docker, dbus, podman, etc.)
-    // under `--deny-net`.
-    let permissions = state.borrow_mut::<PermissionsContainer>();
-    let checked = permissions.check_open(
+    // under `--deny-net`. Abstract socket paths (Linux, leading NUL) have no
+    // filesystem entry and are covered by the network check alone.
+    check_unix_socket_path(
+      state.borrow_mut::<PermissionsContainer>(),
       std::borrow::Cow::Borrowed(std::path::Path::new(path)),
       deno_permissions::OpenAccessKind::ReadWriteNoFollow,
       Some("node:net.createConnection()"),
     )?;
-    permissions
-      .check_net_unix_socket(&checked, Some("node:net.createConnection()"))?;
 
     let pipe = self.pipe_ptr();
     if pipe.is_null() {

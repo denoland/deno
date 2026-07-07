@@ -49,3 +49,16 @@ console.log(
     ? "PASS"
     : "FAIL",
 );
+
+// Abstract sockets (Linux, leading NUL) have no filesystem entry, but they
+// are still an outbound network primitive and must be denied under
+// --deny-net. On platforms without an abstract namespace the same path is
+// treated as a regular filesystem path; either way the net check denies it.
+console.log(
+  "connect abstract:",
+  classify(() => {
+      new Pipe(constants.SOCKET).connect({}, "\0deno-pipewrap-net-perm");
+    }) === "denied"
+    ? "PASS"
+    : "FAIL",
+);

@@ -354,27 +354,28 @@ async fn send_to_unix_datagram(
   Ok(socket.send_to(buf, address_path).await?)
 }
 
-fn check_unix_socket_path<'a>(
+/// Permission check for opening a unix-domain socket path, shared with the
+/// node-compat `PipeWrap` path in `ext/node`.
+///
+/// Abstract socket paths (Linux, leading NUL) have no filesystem entry, so
+/// they skip the filesystem check and rely on the network check alone.
+pub fn check_unix_socket_path<'a>(
   permissions: &mut PermissionsContainer,
   path: Cow<'a, Path>,
   access_kind: OpenAccessKind,
   api_name: Option<&str>,
-) -> Result<CheckedPath<'a>, NetError> {
+) -> Result<CheckedPath<'a>, deno_permissions::PermissionCheckError> {
   let checked = if is_unix_socket_abstract_path(path.as_ref()) {
     CheckedPath::unsafe_new(path)
   } else {
-    permissions
-      .check_open(path, access_kind, api_name)
-      .map_err(NetError::Permission)?
+    permissions.check_open(path, access_kind, api_name)?
   };
   // Unix sockets are an outbound network primitive, so require an
   // `--allow-net=unix:<path>` rule in addition to filesystem access on the
   // socket path. Without this, a script with only
   // `--allow-read=/var/run/docker.sock` could connect to local IPC services
   // (Docker, dbus, podman, etc.) with no `--allow-net` grant.
-  permissions
-    .check_net_unix_socket(&checked, api_name)
-    .map_err(NetError::Permission)?;
+  permissions.check_net_unix_socket(&checked, api_name)?;
   Ok(checked)
 }
 
