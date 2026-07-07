@@ -2202,6 +2202,106 @@ Deno.test("inspector_wait", async () => {
   }
 });
 
+Deno.test("inspector_node_wait_for_debugger_no_pause", async () => {
+  // Regression test: node:inspector waitForDebugger() must block until a
+  // session sends Runtime.runIfWaitingForDebugger and then resume WITHOUT
+  // scheduling a pause on the next statement. It used the --inspect-brk
+  // primitive, so clients received an unexpected Debugger.paused right
+  // after attaching (VS Code stopped inside js-debug's bootloader).
+  const preload = `${testdataPath}/wait_for_debugger_preload.cjs`;
+  const script = `${testdataPath}/wait_for_debugger_program.js`;
+  const tempDir = await Deno.makeTempDir();
+  const helloPath = `${tempDir}/hello.txt`;
+
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["run", "-A", "--require", preload, script],
+    stdin: "piped",
+    stdout: "piped",
+    stderr: "piped",
+    cwd: tempDir,
+  });
+
+  const child = command.spawn();
+  const stderrReader = child.stderr.pipeThrough(new TextDecoderStream())
+    .getReader();
+  const stdoutReader = child.stdout.pipeThrough(new TextDecoderStream())
+    .getReader();
+
+  try {
+    const wsUrl = await extractWsUrl(stderrReader);
+    const socket = new WebSocket(wsUrl);
+    await new Promise<void>((resolve, reject) => {
+      socket.onopen = () => resolve();
+      socket.onerror = (e) => reject(e);
+    });
+
+    let msgId = 1;
+    const send = (msg: Record<string, unknown>) => {
+      socket.send(JSON.stringify(msg));
+    };
+    let paused = false;
+    socket.onmessage = (e) => {
+      const message = JSON.parse(e.data);
+      if (message.method === "Debugger.paused") {
+        paused = true;
+        send({ id: msgId++, method: "Debugger.resume" });
+      }
+    };
+
+    send({ id: msgId++, method: "Runtime.enable" });
+    send({ id: msgId++, method: "Debugger.enable" });
+
+    // Give the child a moment: the program must NOT run before the
+    // session sends Runtime.runIfWaitingForDebugger.
+    await new Promise((r) => setTimeout(r, 500));
+
+    let fileExists = false;
+    try {
+      await Deno.stat(helloPath);
+      fileExists = true;
+    } catch {
+      // Expected - file shouldn't exist yet
+    }
+    assert(
+      !fileExists,
+      "waitForDebugger() did not block until the debugger resumed",
+    );
+
+    send({ id: msgId++, method: "Runtime.runIfWaitingForDebugger" });
+
+    // If a pause was (incorrectly) scheduled, the program stops before its
+    // first statement; the Debugger.paused handler above resumes it, so
+    // "did run" still arrives and `paused` records the regression.
+    let stderrContent = "";
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const { value, done } = await stderrReader.read();
+      if (done || !value) break;
+      stderrContent += value;
+      if (stderrContent.includes("did run")) break;
+    }
+    assert(
+      stderrContent.includes("did run"),
+      `Expected 'did run' in stderr: ${stderrContent}`,
+    );
+
+    assert(!paused, "received an unexpected Debugger.paused after resuming");
+
+    socket.close();
+  } finally {
+    await child.stdin.close();
+    await stderrReader.cancel();
+    await stdoutReader.cancel();
+    child.kill();
+    await child.status;
+    try {
+      await Deno.remove(tempDir, { recursive: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+});
+
 Deno.test("inspector_node_runtime_api_url", async () => {
   const script = `${testdataPath}/node/url.js`;
 
