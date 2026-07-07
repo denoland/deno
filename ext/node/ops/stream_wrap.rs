@@ -521,13 +521,6 @@ impl LibUvStreamWrap {
 const POOLED_BUF_SIZE: usize = 65536;
 const POOLED_BUF_MAX: usize = 128;
 
-/// Reads at or below this size are copied into an exact-size backing
-/// store so the slab returns to the pool immediately and the JS
-/// `Buffer` doesn't pin the full 64KB allocation. Larger reads keep
-/// the zero-copy slab handoff. Mirrors Node's right-sizing via
-/// `BackingStore::Reallocate` in `EmitToJSStreamListener::OnStreamRead`.
-const READ_COPY_THRESHOLD: usize = POOLED_BUF_SIZE / 2;
-
 thread_local! {
   static READ_BUF_POOL: std::cell::RefCell<Vec<*mut u8>> =
     const { std::cell::RefCell::new(Vec::new()) };
@@ -768,10 +761,12 @@ unsafe extern "C" fn on_uv_read(
     } else {
       // SAFETY: buf is a valid uv_buf_t allocated by on_uv_alloc per the uv_read_cb contract.
       let buf_ref = unsafe { &*buf };
-      let ab = if nread_usize <= READ_COPY_THRESHOLD {
-        // Small read: copy into an exact-size backing store and recycle
-        // the slab now (see READ_COPY_THRESHOLD). Mirrors Node's
-        // BackingStore::Reallocate-to-nread in EmitToJSStreamListener.
+      let ab = if nread_usize < buf_ref.len {
+        // Partial read: copy into an exact-size backing store so the
+        // slab returns to the pool immediately and the JS `Buffer`
+        // doesn't pin the full 64KB allocation. Mirrors Node's
+        // right-sizing of any partial read in
+        // `EmitToJSStreamListener::OnStreamRead` (src/stream_base.cc).
         // SAFETY: buf_ref.base holds at least nread_usize readable bytes
         // per the uv_read_cb contract.
         let data = unsafe {
@@ -783,7 +778,7 @@ unsafe extern "C" fn on_uv_read(
           v8::ArrayBuffer::new_backing_store_from_vec(data).make_shared();
         v8::ArrayBuffer::with_backing_store(tc, &backing_store)
       } else {
-        // Large read: transfer slab ownership to the ArrayBuffer.
+        // Full read: transfer slab ownership to the ArrayBuffer.
         // The deleter will free the alloc when the ArrayBuffer is GC'd.
         // SAFETY: buf_ref.base points to memory allocated by on_uv_alloc with size buf_ref.len; ownership transfers to the backing store.
         let backing_store = unsafe {
