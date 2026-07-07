@@ -2536,7 +2536,7 @@ supported framework (Next.js, Astro, etc.) in the current directory.
         Arg::new("backend")
           .long("backend")
           .help(
-            "Backend to use for the desktop app (overrides desktop.backend in deno.json; defaults to webview)",
+            "Backend to use for the desktop app",
           )
           .value_parser(["webview", "cef", "raw"])
           .help_heading(DESKTOP_HEADING),
