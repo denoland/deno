@@ -13,9 +13,12 @@ description = "Provides libdenort shared library for laufey desktop apps"
 [lib]
 name = "denort"
 path = "lib.rs"
-crate-type = ["cdylib"]
+# cdylib: the loadable `libdenort` used by the desktop backends (dlopen).
+# lib: lets `deno_ios_app` link the runtime statically (iOS forbids dlopen).
+crate-type = ["cdylib", "lib"]
 
 [build-dependencies]
+cc = "1"
 deno_runtime.workspace = true
 deno_core.workspace = true
 
@@ -23,7 +26,10 @@ deno_core.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
 deno_lib.workspace = true
-deno_runtime.workspace = true
+# `transpile` enables the runtime extension transpiler (deno_ast). Needed on
+# iOS, which boots cold from source (no snapshot) and so must transpile the
+# TypeScript extension modules at startup instead of at snapshot-build time.
+deno_runtime = { workspace = true, features = ["transpile"] }
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
 denort = { path = "../rt" }

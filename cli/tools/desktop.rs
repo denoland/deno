@@ -310,6 +310,41 @@ async fn compile_desktop(
     });
   }
 
+  // Same for an iOS `.ipa` — strip the extension for the intermediate
+  // compile/bundle step (which stages an `App.app`), then wrap that bundle in
+  // an `.ipa` (a zip with a `Payload/` dir) at the end. An `.ipa` requires an
+  // iOS target; the app bundle itself is assembled in pure Rust so it
+  // cross-compiles from any host (only the injected base binary is iOS).
+  let ipa_output = desktop_flags
+    .output
+    .as_ref()
+    .filter(|o| o.to_lowercase().ends_with(".ipa"))
+    .cloned();
+  if let Some(ref ipa) = ipa_output {
+    let targets_ios = match desktop_flags.target.as_deref() {
+      Some(t) => t.contains("apple-ios"),
+      None => false,
+    };
+    if !targets_ios {
+      bail!(
+        "Building an .ipa requires an iOS target. Requested output: {ipa}. \
+         Pass --target aarch64-apple-ios-sim (simulator) or \
+         aarch64-apple-ios (device).",
+      );
+    }
+    let stem = Path::new(ipa)
+      .file_stem()
+      .map(|s| s.to_string_lossy().into_owned())
+      .unwrap_or_else(|| "App".to_string());
+    let parent = Path::new(ipa)
+      .parent()
+      .filter(|p| !p.as_os_str().is_empty());
+    desktop_flags.output = Some(match parent {
+      Some(p) => p.join(&stem).to_string_lossy().into_owned(),
+      None => stem,
+    });
+  }
+
   // Desktop framework detection: when --desktop is used and the source is
   // "." (a directory), detect the framework and generate the entrypoint.
   // The cwd resolved from CliOptions is reused for the HMR launch below so
@@ -593,6 +628,10 @@ async fn compile_desktop(
         desktop_flags.target.as_deref(),
       )?;
       msi_abs
+    } else if let Some(ipa) = ipa_output.as_deref() {
+      let ipa_abs = cli_options.initial_cwd().join(ipa);
+      create_ipa(&bundle_path, &ipa_abs)?;
+      ipa_abs
     } else {
       bundle_path
     };
@@ -1435,7 +1474,10 @@ async fn package_desktop_app(
   laufey_resolver: &LaufeyBackendResolver,
 ) -> Result<PathBuf, AnyError> {
   let target = desktop_flags.target.as_deref();
+  let is_ios = matches!(target, Some(t) if t.contains("apple-ios"));
   let is_darwin = match target {
+    // `apple-ios` also contains "apple" but not "darwin"; iOS is handled
+    // first, so this only matches macOS.
     Some(target) => target.contains("darwin"),
     None => cfg!(target_os = "macos"),
   };
@@ -1444,7 +1486,9 @@ async fn package_desktop_app(
     None => cfg!(target_os = "windows"),
   };
 
-  if is_darwin {
+  if is_ios {
+    package_ios_app_bundle(dylib_path, desktop_flags, cli_options).await
+  } else if is_darwin {
     package_macos_app_bundle(
       dylib_path,
       desktop_flags,
@@ -2887,6 +2931,393 @@ fn macos_runtime_dylib_name(backend: &str, laufey_exe_stem: &str) -> String {
   } else {
     "libruntime.dylib".to_string()
   }
+}
+
+/// Create an iOS `.app` bundle from the compiled iOS binary.
+///
+/// Unlike macOS (which nests everything under `Contents/`), an iOS `.app` is a
+/// flat bundle: the executable and `Info.plist` sit at the top level. The
+/// native UI backend (WKWebView) and V8 are already statically linked into the
+/// executable — the only thing injected downstream is the user program (as a
+/// Mach-O section), so there is no separate runtime dylib or shell binary to
+/// copy in.
+///
+/// Bundle structure:
+/// ```text
+/// AppName.app/
+///   AppName          (static executable + injected user code)
+///   Info.plist
+/// ```
+async fn package_ios_app_bundle(
+  bin_path: &Path,
+  desktop_flags: &DesktopFlags,
+  cli_options: &CliOptions,
+) -> Result<PathBuf, AnyError> {
+  let parts = dylib_parts(bin_path)?;
+  let app_name = parts.app_name;
+  let app_bundle = parts.parent.join(format!("{app_name}.app"));
+
+  // The simulator and a real device want different platform metadata.
+  let is_sim = matches!(
+    desktop_flags.target.as_deref(),
+    Some(t) if t.contains("apple-ios-sim")
+  );
+  let (supported_platform, dt_platform) = if is_sim {
+    ("iPhoneSimulator", "iphonesimulator")
+  } else {
+    ("iPhoneOS", "iphoneos")
+  };
+
+  if app_bundle.exists() {
+    std::fs::remove_dir_all(&app_bundle)?;
+  }
+  std::fs::create_dir_all(&app_bundle)?;
+
+  // Copy the injected executable to the bundle root as CFBundleExecutable.
+  let exe_dest = app_bundle.join(&app_name);
+  std::fs::copy(bin_path, &exe_dest)?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(&exe_dest)?.permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&exe_dest, perms)?;
+  }
+
+  // Resolve the bundle identifier (see the macOS bundler for the rationale on
+  // preferring a stable, user-supplied reverse-DNS identifier).
+  // DENO_IOS_BUNDLE_ID lets a device build match the app-id of an existing
+  // provisioning profile without a config file.
+  let bundle_id = match std::env::var("DENO_IOS_BUNDLE_ID")
+    .ok()
+    .filter(|s| !s.is_empty())
+    .or_else(|| desktop_flags.identifier.clone())
+  {
+    Some(id) => {
+      validate_bundle_identifier(&id)?;
+      id
+    }
+    None => {
+      let slug = app_name.to_lowercase().replace(' ', "-");
+      format!("com.deno.desktop.{slug}")
+    }
+  };
+
+  // Generate Info.plist with the UIKit / iOS keys. `UILaunchScreen` is
+  // required for the app to render at native resolution (without it iOS runs
+  // the app letterboxed in a compatibility mode).
+  let info_plist = format!(
+    r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>{app_name}</string>
+  <key>CFBundleIdentifier</key>
+  <string>{bundle_id}</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>{app_name}</string>
+  <key>CFBundleDisplayName</key>
+  <string>{app_name}</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1.0.0</string>
+  <key>CFBundleSupportedPlatforms</key>
+  <array>
+    <string>{supported_platform}</string>
+  </array>
+  <key>DTPlatformName</key>
+  <string>{dt_platform}</string>
+  <key>LSRequiresIPhoneOS</key>
+  <true/>
+  <key>MinimumOSVersion</key>
+  <string>15.0</string>
+  <key>UIDeviceFamily</key>
+  <array>
+    <integer>1</integer>
+    <integer>2</integer>
+  </array>
+  <key>UILaunchScreen</key>
+  <dict/>
+  <key>UISupportedInterfaceOrientations</key>
+  <array>
+    <string>UIInterfaceOrientationPortrait</string>
+    <string>UIInterfaceOrientationLandscapeLeft</string>
+    <string>UIInterfaceOrientationLandscapeRight</string>
+  </array>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+</dict>
+</plist>
+"#,
+    app_name = app_name,
+    bundle_id = bundle_id,
+    supported_platform = supported_platform,
+    dt_platform = dt_platform,
+  );
+  std::fs::write(app_bundle.join("Info.plist"), info_plist)?;
+
+  // App icon: compile the source image into an asset catalog (Assets.car) with
+  // `actool` and merge its icon keys into Info.plist. Best-effort — a failure
+  // (e.g. no icon configured, or actool unavailable) leaves the app with the
+  // default placeholder icon rather than failing the build.
+  if let Some(crate::args::IconConfig::Single(icon)) = &desktop_flags.icon {
+    let icon_path = cli_options.initial_cwd().join(icon);
+    if let Err(e) = add_ios_app_icon(&app_bundle, &icon_path, is_sim) {
+      log::warn!("Could not build iOS app icon from {icon}: {e}");
+    }
+  }
+
+  // Ad-hoc sign on a macOS host. The simulator does not enforce signatures,
+  // but a valid ad-hoc signature keeps the bundle installable across tooling
+  // (and matches what Xcode produces for simulator builds). A real device
+  // needs a Developer identity + provisioning profile — pass one via
+  // `--codesign-identity`.
+  // A device build must carry a provisioning profile and be signed with a real
+  // Apple identity + entitlements; the simulator enforces neither and an ad-hoc
+  // signature is enough. Signing material comes from the flags
+  // (`--ios-provisioning-profile` / `--ios-entitlements` / `--codesign-identity`)
+  // or the matching `DENO_IOS_*` env vars, so it stays out of the build inputs.
+  let provisioning_profile = desktop_flags
+    .ios_provisioning_profile
+    .clone()
+    .map(std::path::PathBuf::from)
+    .or_else(|| {
+      std::env::var_os("DENO_IOS_PROVISIONING_PROFILE").map(Into::into)
+    });
+  if !is_sim {
+    if let Some(profile) = &provisioning_profile {
+      // The profile must live inside the bundle as `embedded.mobileprovision`.
+      std::fs::copy(profile, app_bundle.join("embedded.mobileprovision"))
+        .with_context(|| {
+          format!("copying provisioning profile {}", profile.display())
+        })?;
+    } else {
+      log::warn!(
+        "Building a device .ipa without --ios-provisioning-profile; the app \
+         will not install on a physical device. Pass a `.mobileprovision`, or \
+         target aarch64-apple-ios-sim for the simulator."
+      );
+    }
+  }
+
+  let entitlements = desktop_flags
+    .ios_entitlements
+    .clone()
+    .map(std::path::PathBuf::from)
+    .or_else(|| {
+      std::env::var_os("DENO_IOS_ENTITLEMENTS").map(std::path::PathBuf::from)
+    })
+    .filter(|p| p.exists());
+  // Simulator: ad-hoc sign on a macOS host (installable, unenforced). Device:
+  // require an explicit identity (--codesign-identity or DENO_IOS_CODESIGN_IDENTITY).
+  let env_identity = std::env::var("DENO_IOS_CODESIGN_IDENTITY")
+    .ok()
+    .filter(|s| !s.is_empty());
+  let codesign_identity = desktop_flags
+    .codesign_identity
+    .as_deref()
+    .or(env_identity.as_deref())
+    .or(if is_sim && cfg!(target_os = "macos") {
+      Some("-")
+    } else {
+      None
+    });
+  if let Some(identity) = codesign_identity {
+    codesign_ios_bundle(&app_bundle, identity, entitlements.as_deref())?;
+  } else if !is_sim {
+    log::warn!(
+      "No --codesign-identity given for a device build; the .ipa is unsigned \
+       and will not install on a device."
+    );
+  }
+
+  Ok(app_bundle)
+}
+
+/// Ad-hoc / identity codesign an iOS `.app` bundle. Signs the executable and
+/// then the bundle. Unlike the macOS bundler there are no nested helper apps
+/// or frameworks to sign first (everything is statically linked). `entitlements`
+/// is required for a device build (it carries the app-id / capabilities that
+/// must match the provisioning profile); the simulator ignores it.
+fn codesign_ios_bundle(
+  app_bundle: &Path,
+  identity: &str,
+  entitlements: Option<&Path>,
+) -> Result<(), AnyError> {
+  if !cfg!(target_os = "macos") {
+    // codesign(1) only exists on macOS; skip on cross-build hosts.
+    return Ok(());
+  }
+  let mut cmd = std::process::Command::new("codesign");
+  cmd
+    .arg("--force")
+    .arg("--sign")
+    .arg(identity)
+    .arg("--timestamp=none");
+  if let Some(ent) = entitlements {
+    cmd.arg("--entitlements").arg(ent);
+  }
+  let status = cmd
+    .arg(app_bundle)
+    .status()
+    .context("running codesign for iOS bundle")?;
+  if !status.success() {
+    bail!("codesign failed for {}", app_bundle.display());
+  }
+  Ok(())
+}
+
+/// Build an iOS app icon from a source image and install it into the bundle.
+/// Uses `sips` to normalize the source to a 1024×1024 PNG and `actool` to
+/// compile an asset catalog (`Assets.car`) plus the icon-name Info.plist keys,
+/// which are merged into the bundle's Info.plist. macOS host only.
+fn add_ios_app_icon(
+  app_bundle: &Path,
+  icon_src: &Path,
+  is_sim: bool,
+) -> Result<(), AnyError> {
+  if !cfg!(target_os = "macos") {
+    bail!("iOS app icons require a macOS build host (sips/actool)");
+  }
+  if !icon_src.exists() {
+    bail!("icon not found: {}", icon_src.display());
+  }
+  let tmp = tempfile::TempDir::new()?;
+  let iconset = tmp
+    .path()
+    .join("AppIcon.xcassets")
+    .join("AppIcon.appiconset");
+  std::fs::create_dir_all(&iconset)?;
+
+  // Normalize the source to a 1024x1024 PNG (a single "universal" iOS icon;
+  // actool derives every required size from it).
+  let icon_png = iconset.join("icon.png");
+  let status = std::process::Command::new("sips")
+    .args(["-s", "format", "png", "-z", "1024", "1024"])
+    .arg(icon_src)
+    .arg("--out")
+    .arg(&icon_png)
+    .status()
+    .context("running sips to build the app icon")?;
+  if !status.success() {
+    bail!("sips failed to convert {}", icon_src.display());
+  }
+  std::fs::write(
+    iconset.join("Contents.json"),
+    r#"{"images":[{"filename":"icon.png","idiom":"universal","platform":"ios","size":"1024x1024"}],"info":{"author":"xcode","version":1}}"#,
+  )?;
+
+  // Compile the catalog. `actool` emits Assets.car + the required icon PNGs and
+  // a partial Info.plist carrying CFBundleIcons / CFBundleIconName.
+  let out = tmp.path().join("out");
+  std::fs::create_dir_all(&out)?;
+  let partial = tmp.path().join("partial.plist");
+  let platform = if is_sim {
+    "iphonesimulator"
+  } else {
+    "iphoneos"
+  };
+  let status = std::process::Command::new("xcrun")
+    .arg("actool")
+    .arg(tmp.path().join("AppIcon.xcassets"))
+    .args(["--compile"])
+    .arg(&out)
+    .args(["--app-icon", "AppIcon"])
+    .arg("--output-partial-info-plist")
+    .arg(&partial)
+    .args(["--platform", platform])
+    .args(["--minimum-deployment-target", "15.0"])
+    .args(["--target-device", "iphone", "--target-device", "ipad"])
+    .stdout(std::process::Stdio::null())
+    .status()
+    .context("running actool to compile the app icon")?;
+  if !status.success() {
+    bail!("actool failed to compile the app icon");
+  }
+
+  // Copy the compiled catalog + icon files into the bundle.
+  for entry in std::fs::read_dir(&out)? {
+    let entry = entry?;
+    std::fs::copy(entry.path(), app_bundle.join(entry.file_name()))?;
+  }
+  // Merge the icon keys actool produced into the bundle Info.plist.
+  if partial.exists() {
+    let status = std::process::Command::new("/usr/libexec/PlistBuddy")
+      .arg("-c")
+      .arg(format!("Merge {}", partial.display()))
+      .arg(app_bundle.join("Info.plist"))
+      .status()
+      .context("merging the app-icon Info.plist keys")?;
+    if !status.success() {
+      bail!("PlistBuddy failed to merge icon keys into Info.plist");
+    }
+  }
+  Ok(())
+}
+
+/// Wrap a staged iOS `.app` bundle into an `.ipa` — a zip archive whose sole
+/// top-level entry is `Payload/<AppName>.app/`.
+fn create_ipa(app_bundle: &Path, ipa_path: &Path) -> Result<(), AnyError> {
+  use std::io::Write;
+  use zip::write::SimpleFileOptions;
+
+  let app_dir_name = app_bundle
+    .file_name()
+    .ok_or_else(|| {
+      deno_core::anyhow::anyhow!("app bundle path has no file name")
+    })?
+    .to_string_lossy()
+    .into_owned();
+
+  if let Some(parent) = ipa_path.parent() {
+    std::fs::create_dir_all(parent)?;
+  }
+  let file = std::fs::File::create(ipa_path)
+    .with_context(|| format!("creating {}", ipa_path.display()))?;
+  let mut zip = zip::ZipWriter::new(file);
+
+  // Walk the bundle, writing every entry under `Payload/<AppName>.app/`.
+  // Preserve unix permissions so the executable stays executable.
+  let mut stack = vec![app_bundle.to_path_buf()];
+  while let Some(dir) = stack.pop() {
+    for entry in std::fs::read_dir(&dir)? {
+      let entry = entry?;
+      let path = entry.path();
+      let rel = path.strip_prefix(app_bundle)?;
+      let zip_path =
+        format!("Payload/{app_dir_name}/{}", rel.to_string_lossy());
+      let file_type = entry.file_type()?;
+      if file_type.is_dir() {
+        zip.add_directory(&zip_path, SimpleFileOptions::default())?;
+        stack.push(path);
+      } else {
+        let mut options = SimpleFileOptions::default()
+          .compression_method(zip::CompressionMethod::Deflated);
+        #[cfg(unix)]
+        {
+          use std::os::unix::fs::PermissionsExt;
+          let mode = std::fs::metadata(&path)?.permissions().mode();
+          options = options.unix_permissions(mode);
+        }
+        zip.start_file(&zip_path, options)?;
+        let data = std::fs::read(&path)?;
+        zip.write_all(&data)?;
+      }
+    }
+  }
+  zip.finish()?;
+  Ok(())
 }
 
 /// Create a macOS .app bundle from the compiled desktop dylib.
@@ -6589,6 +7020,8 @@ def456  other.zip
       identifier: None,
       deep_links: Vec::new(),
       codesign_identity: None,
+      ios_provisioning_profile: None,
+      ios_entitlements: None,
       inspect_renderer: None,
       compress: None,
       exclude_unused_npm: false,
@@ -7393,5 +7826,58 @@ def456  other.zip
     apply_desktop_config_to_flags(&mut flags, config);
     // Left unset; callers fall back to "webview" via unwrap_or("webview").
     assert_eq!(flags.backend.as_deref(), None);
+  }
+
+  // --- create_ipa ---
+
+  #[test]
+  fn create_ipa_produces_payload_layout() {
+    use std::io::Read;
+    let tmp = tempfile::tempdir().unwrap();
+    // Stage a minimal iOS .app bundle: an executable + Info.plist.
+    let app = tmp.path().join("MyApp.app");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::write(app.join("MyApp"), b"\xca\xfe\xba\xbeMACHO").unwrap();
+    std::fs::write(app.join("Info.plist"), b"<plist/>").unwrap();
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      std::fs::set_permissions(
+        app.join("MyApp"),
+        std::fs::Permissions::from_mode(0o755),
+      )
+      .unwrap();
+    }
+
+    let ipa = tmp.path().join("out/MyApp.ipa");
+    create_ipa(&app, &ipa).expect("create_ipa");
+    assert!(ipa.exists(), "ipa file must be created");
+
+    let mut archive =
+      zip::ZipArchive::new(std::fs::File::open(&ipa).unwrap()).unwrap();
+    let names: Vec<String> = (0..archive.len())
+      .map(|i| archive.by_index(i).unwrap().name().to_string())
+      .collect();
+    // Every entry must live under Payload/MyApp.app/.
+    assert!(
+      names.iter().all(|n| n.starts_with("Payload/MyApp.app/")),
+      "all entries under Payload/<App>.app/; got {names:?}"
+    );
+    assert!(names.iter().any(|n| n == "Payload/MyApp.app/MyApp"));
+    assert!(names.iter().any(|n| n == "Payload/MyApp.app/Info.plist"));
+
+    // Executable bytes must round-trip, and (on unix) stay executable.
+    let mut exe = archive.by_name("Payload/MyApp.app/MyApp").unwrap();
+    let mut buf = Vec::new();
+    exe.read_to_end(&mut buf).unwrap();
+    assert_eq!(buf, b"\xca\xfe\xba\xbeMACHO");
+    #[cfg(unix)]
+    {
+      let mode = exe.unix_mode().expect("mode preserved");
+      assert!(
+        mode & 0o111 != 0,
+        "executable bit must be set; mode={mode:o}"
+      );
+    }
   }
 }

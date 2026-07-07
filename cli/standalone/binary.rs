@@ -439,6 +439,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     compile_flags: &CompileFlags,
   ) -> Result<Vec<u8>, AnyError> {
+    // iOS forbids dlopen, so the base binary is a fully static-linked
+    // `deno_ios_app` executable (V8 + runtime + native UI backend baked in)
+    // rather than a `libdenort` dylib. The eszip is still sui-injected into
+    // it exactly as for macOS (both are Mach-O).
+    if compile_flags.resolve_target().contains("apple-ios") {
+      return self.get_ios_base_binary(compile_flags).await;
+    }
+
     // For development: check DENORT_DESKTOP_BIN env var or look
     // for libdenort next to the deno executable.
     if let Some(path) = get_dev_desktop_binary_path() {
@@ -490,6 +498,67 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let temp_dir = tempfile::TempDir::new()?;
     let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
       exe_name: &lib_name,
+      archive_name: &binary_name,
+      archive_data: &archive_data,
+      dest_path: temp_dir.path(),
+    })?;
+    let base_binary = read_file(&base_binary_path)?;
+    drop(temp_dir);
+    Ok(base_binary)
+  }
+
+  /// Resolve the static `deno_ios_app` base executable for an iOS target.
+  /// Mirrors `get_desktop_base_binary`, but the artifact is a fully
+  /// static-linked Mach-O executable (not a dylib): iOS cannot `dlopen`, so
+  /// V8, the runtime, and the native UI backend are all linked in ahead of
+  /// time. The user program is sui-injected into it downstream.
+  async fn get_ios_base_binary(
+    &self,
+    compile_flags: &CompileFlags,
+  ) -> Result<Vec<u8>, AnyError> {
+    // For development: check DENO_IOS_APP_BIN env var or look for
+    // `deno_ios_app` next to the deno executable (in a cargo target dir).
+    if let Some(path) = get_dev_ios_binary_path() {
+      log::debug!("Resolved deno_ios_app: {}", path.to_string_lossy());
+      return std::fs::read(&path).with_context(|| {
+        format!(
+          "Could not find deno_ios_app at '{}'",
+          path.to_string_lossy()
+        )
+      });
+    }
+
+    let target = compile_flags.resolve_target();
+    let exe_name = "deno_ios_app";
+    let binary_name = format!("deno_ios_app-{target}.zip");
+
+    let binary_path_suffix = match DENO_VERSION_INFO.release_channel {
+      ReleaseChannel::Canary => {
+        format!("canary/{}/{}", DENO_VERSION_INFO.git_hash, binary_name)
+      }
+      _ => {
+        format!("release/v{}/{}", DENO_VERSION_INFO.deno, binary_name)
+      }
+    };
+
+    let download_directory = self.deno_dir.dl_folder_path();
+    let binary_path = download_directory.join(&binary_path_suffix);
+    log::debug!("Resolved deno_ios_app: {}", binary_path.display());
+
+    let read_file = |path: &Path| -> Result<Vec<u8>, AnyError> {
+      std::fs::read(path).with_context(|| format!("Reading {}", path.display()))
+    };
+    let archive_data = if binary_path.exists() {
+      read_file(&binary_path)?
+    } else {
+      self
+        .download_base_binary(&binary_path, &binary_path_suffix)
+        .await
+        .context("Setting up iOS base binary.")?
+    };
+    let temp_dir = tempfile::TempDir::new()?;
+    let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
+      exe_name,
       archive_name: &binary_name,
       archive_data: &archive_data,
       dest_path: temp_dir.path(),
@@ -1518,10 +1587,13 @@ fn write_binary_bytes(
 
     pe.write_resource("d3n0l4nd", data_section_bytes)?
       .build(&mut file_writer)?;
-  } else if target.contains("darwin") {
+  } else if target.contains("darwin") || target.contains("apple-ios") {
+    // iOS binaries are Mach-O too — inject the section the same way as macOS.
     libsui::Macho::from(original_bin)?
       .write_section("d3n0l4nd", data_section_bytes)?
       .build_and_sign(&mut file_writer)?;
+  } else {
+    bail!("unsupported target for compile output: {target}");
   }
   Ok(())
 }
@@ -1711,6 +1783,39 @@ fn get_dev_desktop_binary_path() -> Option<OsString> {
       }
     })
   })
+}
+
+/// Development override for the static `deno_ios_app` base executable:
+/// `DENO_IOS_APP_BIN`, else a `deno_ios_app` built in this repo's cargo
+/// target dir (e.g. `target/aarch64-apple-ios-sim/release/deno_ios_app`).
+fn get_dev_ios_binary_path() -> Option<OsString> {
+  env::var_os("DENO_IOS_APP_BIN")
+    .filter(|s| !s.is_empty())
+    .or_else(|| {
+      env::current_exe().ok().and_then(|exec_path| {
+        if !exec_path
+          .components()
+          .any(|component| component == Component::Normal("target".as_ref()))
+        {
+          return None;
+        }
+        // deno lives at target/<profile>/deno; the iOS binary is built for a
+        // separate target triple, so search sibling target-triple dirs under
+        // target/ for `<triple>/{release,debug}/deno_ios_app`.
+        let profile_dir = exec_path.parent()?;
+        let target_root = profile_dir.parent()?;
+        for triple in ["aarch64-apple-ios-sim", "aarch64-apple-ios"] {
+          for profile in ["release", "debug"] {
+            let candidate =
+              target_root.join(triple).join(profile).join("deno_ios_app");
+            if candidate.exists() {
+              return Some(candidate.into_os_string());
+            }
+          }
+        }
+        None
+      })
+    })
 }
 
 /// This function returns the environment variables specified

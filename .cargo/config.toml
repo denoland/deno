@@ -27,6 +27,9 @@ rustflags = [
 # ld64.lld bumped to LLD 20 (LLD 17 segfaults on -fixup_chains; see tools/util.js).
 [env]
 MACOSX_DEPLOYMENT_TARGET = "12.0"
+# Read only by the Apple toolchain when targeting iOS; ignored for macOS/Linux/
+# Windows builds, so it is safe to declare globally alongside MACOSX_*.
+IPHONEOS_DEPLOYMENT_TARGET = "15.0"
 
 [target.x86_64-apple-darwin]
 rustflags = [
@@ -55,3 +58,9 @@ rustflags = [
   "--cfg",
   "tokio_unstable",
 ]
+
+# iOS simulator cross-build (used to produce the `deno_ios_app` base binary) is
+# configured entirely via environment — no machine-specific Xcode SDK path is
+# checked in. Set, with an un-wrapped Xcode clang and the current SDK:
+#   CARGO_TARGET_AARCH64_APPLE_IOS_SIM_LINKER=<xctoolchain>/usr/bin/clang
+#   CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUSTFLAGS="-C link-arg=-isysroot -C link-arg=$(xcrun --sdk iphonesimulator --show-sdk-path)"

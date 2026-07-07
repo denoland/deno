@@ -1287,6 +1287,21 @@ laufey::main!(|| {
     );
   }
 
+  // On iOS `HOME` (NSHomeDirectory) is the app's Data container, whose *root*
+  // is not writable — only Documents/, Library/ and tmp/ are. Apps that write
+  // to `$HOME/<something>` (a normal desktop convention) fail with EPERM.
+  // Point `HOME` at the writable Documents/ dir so those apps work unmodified.
+  #[cfg(target_os = "ios")]
+  if let Some(home) = std::env::var_os("HOME") {
+    let documents = std::path::Path::new(&home).join("Documents");
+    if std::fs::create_dir_all(&documents).is_ok() {
+      // SAFETY: still single-threaded here (see the block comment above).
+      unsafe {
+        std::env::set_var("HOME", &documents);
+      }
+    }
+  }
+
   // Read the embedded standalone section, extract the VFS, and chdir
   // into the extraction dir — all BEFORE the tokio runtime starts.
   // chdir is process-wide; doing it after the runtime build (and any
@@ -1332,24 +1347,19 @@ laufey::main!(|| {
     match run_desktop(update_rolled_back, desktop_serve_port, data).await {
       Ok(()) => log::debug!("[desktop] run_desktop completed OK"),
       Err(error) => {
-        let is_js_error = js_error_downcast_ref(&error).is_some();
         let error_string = match js_error_downcast_ref(&error) {
           Some(js_error) => format_js_error(js_error, None),
           None => format!("{:?}", error),
         };
-        log::error!(
-          "{}: {}",
-          colors::red_bold("error"),
-          error_string.trim_start_matches("error: ")
-        );
-        // Only show native alert for non-JS errors (startup crashes).
-        // JS errors are already handled by the error reporting JS listener.
-        if !is_js_error {
-          laufey::alert(
-            "Application Error",
-            error_string.trim_start_matches("error: "),
-          );
-        }
+        let error_string = error_string.trim_start_matches("error: ");
+        log::error!("{}: {}", colors::red_bold("error"), error_string);
+        // A top-level error here is fatal — the program exited, so no window /
+        // in-page error listener is guaranteed to be live (a startup error can
+        // throw before any page loads, leaving the webview blank). Always
+        // surface it natively so the user sees the failure instead of a blank
+        // window. (Non-fatal, in-page JS errors are caught by window.onerror
+        // and never reach this handler.)
+        laufey::alert("Application Error", error_string);
       }
     }
   });

@@ -227,6 +227,12 @@ pub struct DesktopFlags {
   /// Inc. (TEAMID)`, or `-` for ad-hoc). When unset the bundle is left
   /// unsigned; the system will quarantine it on download.
   pub codesign_identity: Option<String>,
+  /// Path to an iOS provisioning profile (`.mobileprovision`). Embedded in the
+  /// `.app` as `embedded.mobileprovision`; required to install a device build.
+  pub ios_provisioning_profile: Option<String>,
+  /// Path to an iOS entitlements plist used when code-signing a device build
+  /// (its `application-identifier` must match the provisioning profile).
+  pub ios_entitlements: Option<String>,
   /// Optional override for the CEF renderer debugger port. When unset, a free
   /// port is allocated. The user-visible inspector port (from `--inspect`) is
   /// separate and is carried on `Flags::inspect`.

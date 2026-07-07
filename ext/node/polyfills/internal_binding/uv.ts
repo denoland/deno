@@ -508,7 +508,7 @@ const unreachable = () => {
 const errorMap = new Map<number, [string, string]>(
   osType === "windows"
     ? codeToErrorWindows
-    : osType === "darwin"
+    : osType === "darwin" || osType === "ios"
     ? codeToErrorDarwin
     : osType === "linux"
     ? codeToErrorLinux
@@ -527,7 +527,7 @@ const errorMap = new Map<number, [string, string]>(
 const codeMap = new Map<string, number>(
   osType === "windows"
     ? errorToCodeWindows
-    : osType === "darwin"
+    : osType === "darwin" || osType === "ios"
     ? errorToCodeDarwin
     : osType === "linux"
     ? errorToCodeLinux
