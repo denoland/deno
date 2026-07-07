@@ -195,6 +195,7 @@ pub struct WebWorkerInternalHandle {
   close_requested: Arc<AtomicBool>,
   close_code: Arc<AtomicI32>,
   terminate_waker: Arc<AtomicWaker>,
+  can_interrupt_isolate: Arc<AtomicBool>,
   isolate_handle: v8::IsolateHandle,
   pub name: String,
   pub worker_type: WorkerThreadType,
@@ -254,6 +255,13 @@ impl WebWorkerInternalHandle {
     }
   }
 
+  pub fn allow_isolate_interrupt(&mut self) {
+    self.can_interrupt_isolate.store(true, Ordering::SeqCst);
+    if self.termination_signal.load(Ordering::SeqCst) {
+      self.terminate_execution();
+    }
+  }
+
   pub fn close(&mut self, exit_code: i32) {
     self.close_code.store(exit_code, Ordering::SeqCst);
     self.close_requested.store(true, Ordering::SeqCst);
@@ -280,6 +288,7 @@ pub struct SendableWebWorkerHandle {
   receiver: mpsc::Receiver<WorkerControlEvent>,
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
+  can_interrupt_isolate: Arc<AtomicBool>,
   isolate_handle: v8::IsolateHandle,
 }
 
@@ -290,6 +299,7 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
       port: Rc::new(handle.port),
       termination_signal: handle.termination_signal,
       terminate_waker: handle.terminate_waker,
+      can_interrupt_isolate: handle.can_interrupt_isolate,
       isolate_handle: handle.isolate_handle,
     }
   }
@@ -308,6 +318,7 @@ pub struct WebWorkerHandle {
   receiver: Rc<RefCell<mpsc::Receiver<WorkerControlEvent>>>,
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
+  can_interrupt_isolate: Arc<AtomicBool>,
   isolate_handle: v8::IsolateHandle,
 }
 
@@ -343,7 +354,9 @@ impl WebWorkerHandle {
     self.port.disentangle();
 
     if schedule_termination {
-      self.isolate_handle.terminate_execution();
+      if self.can_interrupt_isolate.load(Ordering::SeqCst) {
+        self.isolate_handle.terminate_execution();
+      }
       // Wake up the worker's event loop so it can terminate.
       self.terminate_waker.wake();
     }
@@ -363,6 +376,7 @@ fn create_handles(
   let close_requested = Arc::new(AtomicBool::new(false));
   let close_code = Arc::new(AtomicI32::new(0));
   let terminate_waker = Arc::new(AtomicWaker::new());
+  let can_interrupt_isolate = Arc::new(AtomicBool::new(false));
   let internal_handle = WebWorkerInternalHandle {
     name,
     port: Rc::new(parent_port),
@@ -371,6 +385,7 @@ fn create_handles(
     close_requested,
     close_code,
     terminate_waker: terminate_waker.clone(),
+    can_interrupt_isolate: can_interrupt_isolate.clone(),
     isolate_handle: isolate_handle.clone(),
     cancel: CancelHandle::new_rc(),
     sender: ctrl_tx,
@@ -382,6 +397,7 @@ fn create_handles(
     port: worker_port,
     termination_signal,
     terminate_waker,
+    can_interrupt_isolate,
     isolate_handle,
   };
   (internal_handle, external_handle)
@@ -1222,6 +1238,7 @@ pub async fn run_web_worker(
   // Node.js behavior where such eval workers run as CJS (sloppy mode).
   // See: https://github.com/denoland/deno/issues/26739
   let result = if let Some(source_code) = maybe_source_code.take() {
+    worker.internal_handle.allow_isolate_interrupt();
     let r = worker.execute_script(located_script_name!(), source_code.into());
     worker.start_polling_for_messages();
     r
@@ -1248,6 +1265,7 @@ pub async fn run_web_worker(
   }
 
   let result = if result.is_ok() {
+    worker.internal_handle.allow_isolate_interrupt();
     worker
       .run_event_loop(PollEventLoopOptions {
         wait_for_inspector: true,
