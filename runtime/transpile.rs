@@ -23,16 +23,14 @@ deno_error::js_error_wrapper!(
   "Error"
 );
 
-// ---------------------------------------------------------------------------
 // Transpile cache (v82jsc startup acceleration).
 //
-// Without a V8 startup snapshot (the JSC/QuickJS backends run `--features hmr`),
+// Without a V8 startup snapshot (the quickjs backend boots via InitMode::New),
 // deno transpiles every TypeScript extension source with swc on *every* boot —
 // ~140 ms, the dominant startup cost. Transpilation is deterministic, so we
 // persist the emitted JS keyed by a content hash and reuse it on later boots,
 // turning that ~140 ms into a handful of file reads. Disable with
 // `V82JSC_NO_TRANSPILE_CACHE=1`.
-// ---------------------------------------------------------------------------
 const TRANSPILE_CACHE_VERSION: u32 = 1;
 
 fn transpile_cache_dir() -> Option<&'static std::path::PathBuf> {

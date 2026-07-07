@@ -644,4 +644,4 @@ opt-level = 3
 
 # v82jsc: replace the real v8 crate with the JavaScriptCore-backed surface.
 [patch.crates-io]
-v8 = { path = "/Users/divy/gh/v82jsc", default-features = false, features = ["simdutf", "quickjs"] }
+v8 = { path = "../v82jsc", default-features = false, features = ["simdutf", "quickjs"] }
