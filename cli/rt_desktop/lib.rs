@@ -1311,7 +1311,7 @@ laufey::main!(|| {
 ///
 /// - Startup failures (the app's main module failed to load or first
 ///   evaluate) are surfaced here because the app's own `error` /
-///   `unhandledrejection` listeners never ran — without a dialog a
+///   `unhandledrejection` listeners never ran: without a dialog a
 ///   GUI-launched app just blinks a window and exits (deno#35544).
 /// - Non-JS crashes are surfaced too.
 /// - A post-load JS error is left to the app's own listeners, which already
@@ -1894,7 +1894,7 @@ mod tests {
   #[test]
   fn post_load_js_error_is_left_to_the_app() {
     // An uncaught error after the app loaded is reported by the app's own
-    // error/unhandledrejection listeners — a second dialog here would just
+    // error/unhandledrejection listeners: a second dialog here would just
     // duplicate it.
     assert!(!should_show_native_error_dialog(false, true));
   }

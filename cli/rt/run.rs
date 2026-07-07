@@ -1221,15 +1221,21 @@ pub type OpStateInitFn = Box<dyn FnOnce(&mut deno_core::OpState) + Send>;
 /// throw/await rejection during evaluation).
 ///
 /// Such failures happen before the app's own `error` / `unhandledrejection`
-/// listeners can observe them, so the desktop shell can't rely on the app to
-/// report them. It carries a pre-formatted, user-facing message so the shell
-/// can surface it in a native dialog — a GUI-launched app (Finder/Dock) has no
-/// visible stderr, so an unsurfaced startup error otherwise presents as a
-/// window that blinks open and immediately closes (deno#35544).
+/// listeners can observe them (the event loop hasn't started yet), so the
+/// desktop shell can't rely on the app to report them. It carries a
+/// pre-formatted, user-facing message so the shell can surface it in a native
+/// dialog: a GUI-launched app (Finder/Dock) has no visible stderr, so an
+/// unsurfaced startup error otherwise presents as a window that blinks open and
+/// immediately closes (deno#35544).
+///
+/// The original error is retained as the [`std::error::Error::source`] so the
+/// `{:?}` debug logs in the desktop shell still print the full cause chain.
 #[derive(Debug)]
 pub struct DesktopStartupError {
   /// Pre-formatted, user-facing error message.
   pub message: String,
+  /// The original error, kept so the cause chain survives in debug logs.
+  source: AnyError,
 }
 
 impl std::fmt::Display for DesktopStartupError {
@@ -1238,17 +1244,25 @@ impl std::fmt::Display for DesktopStartupError {
   }
 }
 
-impl std::error::Error for DesktopStartupError {}
+impl std::error::Error for DesktopStartupError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    Some(self.source.as_ref())
+  }
+}
 
-/// Wrap a desktop main-module load/evaluation failure as a [`DesktopStartupError`],
-/// formatting JS errors the same way the runtime would print them to stderr.
+/// Wrap a desktop main-module load/evaluation failure as a
+/// [`DesktopStartupError`], formatting JS errors the same way the runtime would
+/// print them to stderr while retaining the original error as the source.
 fn desktop_startup_error<E: Into<AnyError>>(err: E) -> AnyError {
   let err: AnyError = err.into();
   let message = match deno_lib::util::result::js_error_downcast_ref(&err) {
     Some(js_error) => deno_runtime::fmt_errors::format_js_error(js_error, None),
     None => format!("{err:?}"),
   };
-  AnyError::new(DesktopStartupError { message })
+  AnyError::new(DesktopStartupError {
+    message,
+    source: err,
+  })
 }
 
 /// Options to override default standalone runtime behavior.
@@ -1864,15 +1878,12 @@ pub async fn run_with_options(
     Ok(worker.exit_code())
   } else if has_desktop {
     // Mirror `LibMainWorker::run()`, but tag any failure that happens while
-    // the app's main module is still loading or first evaluating. Those
-    // errors are never seen by the app's own `error` / `unhandledrejection`
-    // listeners (the event loop hasn't started yet), so without a tag the
-    // desktop shell would log them only to a stderr that a GUI-launched app
-    // can't see and then exit silently — the "window blinks open then
-    // closes, no logs" report in deno#35544. The tag lets the shell surface
-    // them in a native dialog. Errors raised later, during the steady-state
-    // event loop, are left untagged: those are already reported by the JS
-    // listeners, and tagging them would produce a duplicate dialog.
+    // the app's main module is still loading or first evaluating as a
+    // `DesktopStartupError` (see its docs for why these otherwise vanish). The
+    // tag lets the desktop shell surface them in a native dialog. Errors raised
+    // later, during the steady-state event loop, are left untagged: those are
+    // already reported by the app's JS listeners, and tagging them would
+    // produce a duplicate dialog.
     worker
       .execute_preload_modules()
       .await
@@ -2139,6 +2150,15 @@ mod tests {
     assert!(startup.message.contains("could not load workspace member"));
     // Display delegates to the carried message.
     assert_eq!(startup.to_string(), startup.message);
+    // The original error is retained as the source so `{:?}` debug logs keep
+    // the full cause chain.
+    let source =
+      std::error::Error::source(startup).expect("source must be retained");
+    assert!(
+      source
+        .to_string()
+        .contains("could not load workspace member")
+    );
   }
 
   #[test]
