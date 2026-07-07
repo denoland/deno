@@ -1182,7 +1182,11 @@ async fn spawn_framework_dev_server(
 
   let url = tokio::time::timeout(std::time::Duration::from_secs(15), async {
     while let Ok(Some(line)) = lines.next_line().await {
-      if let Some(url) = parse_dev_server_url(&line) {
+      let url = parse_dev_server_url(&line);
+      // Echo the dev server's own startup output (banner, URL, warnings) so
+      // it isn't swallowed while we scan for the URL.
+      println!("{line}");
+      if let Some(url) = url {
         return Ok(url);
       }
     }
@@ -1195,9 +1199,14 @@ async fn spawn_framework_dev_server(
     )
   })??;
 
-  tokio::spawn(
-    async move { while let Ok(Some(_)) = lines.next_line().await {} },
-  );
+  // Keep forwarding the dev server's stdout so its HMR/compile logs stay
+  // visible after startup instead of being silently swallowed. The task ends
+  // on its own once the child is killed (on drop) and the pipe closes.
+  tokio::spawn(async move {
+    while let Ok(Some(line)) = lines.next_line().await {
+      println!("{line}");
+    }
+  });
 
   Ok((url, child))
 }
