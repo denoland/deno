@@ -14,46 +14,8 @@ pub use deno_runtime::ops::desktop::AutoUpdateState;
 pub use deno_runtime::ops::desktop::DesktopApi;
 pub use deno_runtime::ops::desktop::MenuItem;
 
-/// The `resolveBindCallback` routing helper, defined as a macro that expands
-/// to a string literal so it can be spliced into `DESKTOP_JS` via `concat!`
-/// while also being executed verbatim by `resolve_bind_callback_behaves`. The
-/// test therefore runs the exact bytes we ship — no source scraping.
-macro_rules! resolve_bind_callback_js {
-  () => {
-    r#"
-  // Resolve the callback for an incoming bindCall.
-  //
-  // The backend may report a window id for the calling renderer that doesn't
-  // line up with the id the binding was registered under (observed on the
-  // CEF/Windows backend when an entrypoint with extra modules — e.g. a `jsr:`
-  // import — delays startup; see denoland/deno#35647). A *known* window keeps
-  // strict per-window matching: per-window bindings are a security boundary,
-  // so a window must never reach a callback it did not itself register, even
-  // when the name is globally unique. Only an *unknown* window id — the drift
-  // case, where the call arrived under an id that registered nothing — falls
-  // back to a name match, and only when exactly one window registered that
-  // name. Ambiguous names return null so the caller still rejects.
-  function resolveBindCallback(registry, windowId, name) {
-    const callbacks = registry.get(windowId);
-    if (callbacks) return callbacks.get(name) ?? null;
-    let match = null;
-    let count = 0;
-    for (const map of registry.values()) {
-      const candidate = map.get(name);
-      if (candidate) {
-        match = candidate;
-        if (++count > 1) return null;
-      }
-    }
-    return count === 1 ? match : null;
-  }
-"#
-  };
-}
-
 /// JS code that exposes desktop APIs via `Deno.BrowserWindow` and `Deno.desktop`.
-pub const DESKTOP_JS: &str = concat!(
-  r#"
+pub const DESKTOP_JS: &str = r#"
 (() => {
   const internals = Deno[Deno.internal];
   const {
@@ -243,9 +205,7 @@ pub const DESKTOP_JS: &str = concat!(
 
   // Per-window bind callback registry: windowId -> Map<name, fn>
   const windowBindCallbacks = new Map();
-"#,
-  resolve_bind_callback_js!(),
-  r#"
+
   // Binding-call correlation: when --inspect is active, both the Deno
   // and renderer consoles emit matching console.debug messages so the
   // developer can trace a binding call across isolates.
@@ -774,11 +734,8 @@ pub const DESKTOP_JS: &str = concat!(
             break;
           }
           case "bindCall": {
-            const fn_ = resolveBindCallback(
-              windowBindCallbacks,
-              ev.windowId,
-              ev.name,
-            );
+            const callbacks = windowBindCallbacks.get(ev.windowId);
+            const fn_ = callbacks?.get(ev.name);
             if (!fn_) {
               op_desktop_reject_bind_call(ev.callId, "No callback bound for: " + ev.name);
               break;
@@ -981,8 +938,7 @@ pub const DESKTOP_JS: &str = concat!(
     }
   })();
 })();
-"#
-);
+"#;
 
 /// JS code that initializes auto-update APIs. Executed separately so
 /// version and rollback state can be baked in as literals.
@@ -1322,71 +1278,6 @@ mod tests {
     assert!(DESKTOP_JS.contains("navigator"));
     assert!(DESKTOP_JS.contains("permissions"));
     assert!(DESKTOP_JS.contains("PermissionStatus"));
-  }
-
-  // The exact `resolveBindCallback` bytes baked into DESKTOP_JS, referenced
-  // directly by the regression test below — no source scraping.
-  const RESOLVE_BIND_CALLBACK_JS: &str = resolve_bind_callback_js!();
-
-  #[test]
-  fn resolve_bind_callback_behaves() {
-    // Regression test for denoland/deno#35647. Runs the *actual*
-    // `resolveBindCallback` shipped in DESKTOP_JS in a real V8 isolate and
-    // asserts its routing behaviour, rather than grepping for substrings.
-    let resolver = RESOLVE_BIND_CALLBACK_JS;
-    let harness = format!(
-      r#"
-{resolver}
-
-// Tag each callback with the value it returns so we can assert identity.
-const tag = (v) => () => v;
-
-// Registry: window 7 bound "ping"; window 3 bound "other".
-const reg = new Map([
-  [7, new Map([["ping", tag("win7")]])],
-  [3, new Map([["other", tag("win3")]])],
-]);
-
-const check = (got, want, msg) => {{
-  if (got !== want) throw new Error(msg + ": got " + JSON.stringify(got));
-}};
-
-// 1) Exact window match resolves that window's callback.
-check(resolveBindCallback(reg, 7, "ping")(), "win7", "exact match");
-
-// 2) The #35647 case: the call arrives under a window id that never bound
-//    anything, but exactly one window bound "ping" -> route to it.
-check(resolveBindCallback(reg, 999, "ping")(), "win7", "unique fallback");
-
-// 3) Unknown binding name never resolves.
-check(resolveBindCallback(reg, 999, "missing"), null, "unknown name");
-check(resolveBindCallback(reg, 7, "missing"), null, "unknown name on real window");
-
-// 4) Ambiguous: two windows bound the same name. Exact id still matches its
-//    own callback, but a mismatched id must NOT guess between them.
-const reg2 = new Map([
-  [1, new Map([["ping", tag("a")]])],
-  [2, new Map([["ping", tag("b")]])],
-]);
-check(resolveBindCallback(reg2, 1, "ping")(), "a", "ambiguous exact w1");
-check(resolveBindCallback(reg2, 2, "ping")(), "b", "ambiguous exact w2");
-check(resolveBindCallback(reg2, 999, "ping"), null, "ambiguous fallback");
-
-// 5) Security boundary: a *known* window that never bound this name must not
-//    reach another window's uniquely-named callback via the fallback. Window
-//    3 exists (it bound "other") so asking it for "ping" resolves strictly and
-//    returns null, even though window 7's "ping" is globally unique.
-check(resolveBindCallback(reg, 3, "ping"), null, "known window no cross-reach");
-
-"ok"
-"#
-    );
-
-    let mut runtime =
-      deno_core::JsRuntime::new(deno_core::RuntimeOptions::default());
-    runtime
-      .execute_script("[resolve_bind_callback_test]", harness)
-      .expect("resolveBindCallback assertions failed");
   }
 
   #[test]
