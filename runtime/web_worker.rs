@@ -21,6 +21,7 @@ use deno_core::DetachedBuffer;
 use deno_core::Extension;
 use deno_core::FromV8;
 use deno_core::JsRuntime;
+use deno_core::JsRuntimeInspectorHandle;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
@@ -289,6 +290,7 @@ pub struct SendableWebWorkerHandle {
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
   can_interrupt_isolate: Arc<AtomicBool>,
+  inspector_handle: JsRuntimeInspectorHandle,
   isolate_handle: v8::IsolateHandle,
 }
 
@@ -300,6 +302,7 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
       termination_signal: handle.termination_signal,
       terminate_waker: handle.terminate_waker,
       can_interrupt_isolate: handle.can_interrupt_isolate,
+      inspector_handle: handle.inspector_handle,
       isolate_handle: handle.isolate_handle,
     }
   }
@@ -319,6 +322,7 @@ pub struct WebWorkerHandle {
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
   can_interrupt_isolate: Arc<AtomicBool>,
+  inspector_handle: JsRuntimeInspectorHandle,
   isolate_handle: v8::IsolateHandle,
 }
 
@@ -354,6 +358,7 @@ impl WebWorkerHandle {
     self.port.disentangle();
 
     if schedule_termination {
+      self.inspector_handle.terminate_waits();
       if self.can_interrupt_isolate.load(Ordering::SeqCst) {
         self.isolate_handle.terminate_execution();
       }
@@ -365,6 +370,7 @@ impl WebWorkerHandle {
 
 fn create_handles(
   isolate_handle: v8::IsolateHandle,
+  inspector_handle: JsRuntimeInspectorHandle,
   name: String,
   worker_type: WorkerThreadType,
   maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
@@ -398,6 +404,7 @@ fn create_handles(
     termination_signal,
     terminate_waker,
     can_interrupt_isolate,
+    inspector_handle,
     isolate_handle,
   };
   (internal_handle, external_handle)
@@ -754,8 +761,10 @@ impl WebWorker {
 
     let (internal_handle, external_handle) = {
       let handle = js_runtime.v8_isolate().thread_safe_handle();
+      let inspector_handle = js_runtime.inspector().thread_safe_handle();
       let (internal_handle, external_handle) = create_handles(
         handle,
+        inspector_handle,
         options.name.clone(),
         options.worker_type,
         options
@@ -1230,6 +1239,13 @@ pub async fn run_web_worker(
       .js_runtime
       .inspector()
       .wait_for_page_wait_for_debugger();
+  }
+
+  if internal_handle.terminate_if_needed() {
+    let cleanup_result = stop_activity();
+    internal_handle.post_close_event_if_requested();
+    cleanup_result?;
+    return Ok(());
   }
 
   // Execute provided source code immediately via V8 script evaluation
