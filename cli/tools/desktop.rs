@@ -549,10 +549,12 @@ async fn compile_desktop(
       dmg_abs
     } else if let Some(appimage) = appimage_output.as_deref() {
       let appimage_abs = cli_options.initial_cwd().join(appimage);
+      let desktop_id = bundle_linux_app_id(&bundle_path, &desktop_flags);
       create_linux_appimage(
         &bundle_path,
         &appimage_abs,
         desktop_flags.target.as_deref(),
+        desktop_id.as_deref(),
       )?;
       appimage_abs
     } else if let Some(deb) = deb_output.as_deref() {
@@ -634,8 +636,21 @@ fn make_self_extracting(
   };
   match target_os {
     "macos" => make_self_extracting_macos(bundle_path, format, desktop_flags),
-    "windows" => make_self_extracting_dir(bundle_path, format, true),
-    _ => make_self_extracting_dir(bundle_path, format, false),
+    "windows" => make_self_extracting_dir(bundle_path, format, true, None),
+    _ => {
+      // Export the same reverse-DNS app id the packaged formats use so a launch
+      // through the self-extract script gets the intended window app_id rather
+      // than the binary name (issue #35500). Self-extract installs no `.desktop`
+      // file itself, so this mainly keeps X11 `WM_CLASS` / attribution consistent
+      // and lets any separately-installed matching desktop file resolve.
+      let desktop_id = bundle_linux_app_id(bundle_path, desktop_flags);
+      make_self_extracting_dir(
+        bundle_path,
+        format,
+        false,
+        desktop_id.as_deref(),
+      )
+    }
   }
 }
 
@@ -1023,6 +1038,7 @@ fn make_self_extracting_dir(
   bundle_path: &Path,
   format: &str,
   windows: bool,
+  desktop_id: Option<&str>,
 ) -> Result<(), AnyError> {
   let app_name = bundle_path
     .file_name()
@@ -1059,6 +1075,12 @@ fn make_self_extracting_dir(
     );
     std::fs::write(bundle_path.join(format!("{app_name}.bat")), launcher)?;
   } else {
+    // Export the reverse-DNS window app_id (safe unquoted: `[A-Za-z0-9.-]`) so
+    // the extracted app presents the intended app_id, not the binary name.
+    let app_id_export = match desktop_id {
+      Some(id) => format!("export LAUFEY_APP_ID={id}\n"),
+      None => String::new(),
+    };
     let launcher = format!(
       "#!/bin/sh\n\
        set -e\n\
@@ -1069,7 +1091,7 @@ fn make_self_extracting_dir(
        \u{20} mkdir -p \"$DEST\"\n\
        \u{20} tar -xf \"$DIR/{payload_name}\" -C \"$DEST\"\n\
        fi\n\
-       exec \"$APP/{app_name}\" \"$@\"\n",
+       {app_id_export}exec \"$APP/{app_name}\" \"$@\"\n",
     );
     let launcher_path = bundle_path.join(&app_name);
     std::fs::write(&launcher_path, launcher)?;
@@ -1239,16 +1261,22 @@ async fn run_desktop_hmr(
     cmd.env("LAUFEY_APP_NAME", name);
   }
   // App id for the window manager's icon/taskbar attribution (see the
-  // `LAUFEY_APP_ID` handling in the packaged `.desktop` `Exec` line). Mirror the
-  // packaged build's id so a dev run matches the same installed `.desktop` file
-  // when one exists. On X11 the icon shows from `LAUFEY_APP_ICON` regardless; on
-  // Wayland the compositor still needs an installed desktop file to resolve the
-  // icon. `app_id` is a Wayland/X11 concept, so this is Linux-only — there's
-  // nothing to attribute on macOS or Windows.
+  // `LAUFEY_APP_ID` handling in the packaged `.desktop` `Exec` line). Best-effort
+  // match to the packaged build's id so a dev run lines up with an installed
+  // `.desktop` file when one exists — we strip a leading `lib` as the packaged
+  // path does (its id derives from the `lib<app>.so` dylib). It can still differ
+  // when the packaged name comes from a source URL and no `--output` is given.
+  // On X11 the icon shows from `LAUFEY_APP_ICON` regardless; on Wayland the
+  // compositor still needs an installed desktop file to resolve the icon.
+  // `app_id` is a Wayland/X11 concept, so this is Linux-only — there's nothing
+  // to attribute on macOS or Windows.
   #[cfg(target_os = "linux")]
   if let Some(id) = resolve_linux_app_id(
     desktop_flags.identifier.as_deref(),
-    app_name.as_deref().unwrap_or(""),
+    app_name
+      .as_deref()
+      .map(|n| n.strip_prefix("lib").unwrap_or(n))
+      .unwrap_or(""),
   ) {
     cmd.env("LAUFEY_APP_ID", &id);
   }
@@ -1744,6 +1772,15 @@ async fn package_linux_app_dir(
       app_dir.join(format!("{desktop_id}.desktop")),
       app_dir_desktop_entry(&app_name, desktop_id),
     )?;
+  } else {
+    // No usable id (an invalid explicit `--identifier`, already warned about by
+    // `resolve_linux_app_id`, or a name that derives to nothing) — name the real
+    // consequence, since without a `.desktop` file the icon won't resolve and a
+    // deep-link registration below would otherwise fail with a bare "no
+    // .desktop file found".
+    log::warn!(
+      "skipping the app's .desktop file: no usable app id for {app_name:?}"
+    );
   }
 
   // Merge any deep-link schemes into the `.desktop` entry written above.
@@ -2370,6 +2407,21 @@ fn derived_desktop_id(app_name: &str) -> Option<String> {
   if label.is_empty() {
     return None;
   }
+  // Cap the label so the full id stays within `validate_bundle_identifier`'s
+  // 155-char limit — otherwise a very long name would derive an id that the
+  // same value would be rejected for if passed as `--identifier`. The prefix
+  // `com.deno.desktop.` is 17 chars; the label is ASCII `[a-z0-9-]`, so a byte
+  // truncation is a char truncation. Trim any dash the cut left dangling.
+  const MAX_LABEL: usize = 155 - "com.deno.desktop.".len();
+  if label.len() > MAX_LABEL {
+    label.truncate(MAX_LABEL);
+    while label.ends_with('-') {
+      label.pop();
+    }
+  }
+  if label.is_empty() {
+    return None;
+  }
   Some(format!("com.deno.desktop.{label}"))
 }
 
@@ -2396,6 +2448,19 @@ fn resolve_linux_app_id(
     },
     None => derived_desktop_id(app_name),
   }
+}
+
+/// Reverse-DNS app id for a staged Linux app dir, mirroring the id
+/// `package_linux_app_dir` bakes into the app-dir `.desktop`. Reused by the
+/// AppImage and self-extract paths so a launch through any format sets the same
+/// window `LAUFEY_APP_ID` (issue #35500). The dir is already named after the
+/// final app (lib prefix stripped upstream), so its file name is the app name.
+fn bundle_linux_app_id(
+  bundle_path: &Path,
+  desktop_flags: &DesktopFlags,
+) -> Option<String> {
+  let app_name = bundle_path.file_name()?.to_string_lossy().into_owned();
+  resolve_linux_app_id(desktop_flags.identifier.as_deref(), &app_name)
 }
 
 /// In-app-dir `.desktop` entry written next to the `<app>` launcher.
@@ -3417,6 +3482,42 @@ fn push_dir_contents_to_squashfs(
   Ok(())
 }
 
+/// AppImage `AppRun` shim: sets `$DIR`, exports the window app_id, then execs
+/// the `<app>` launcher. Exporting `LAUFEY_APP_ID` makes the window's app_id
+/// match the root `.desktop`'s `StartupWMClass` (laufey would otherwise default
+/// it to the `<app>` binary name), letting an integrated AppImage resolve the
+/// configured icon on Wayland (issue #35500). The id is `[A-Za-z0-9.-]`
+/// (`validate_bundle_identifier` / `derived_desktop_id`), so it's safe unquoted.
+fn appimage_apprun(app_name: &str, desktop_id: Option<&str>) -> String {
+  let export = match desktop_id {
+    Some(id) => format!("export LAUFEY_APP_ID={id}\n"),
+    None => String::new(),
+  };
+  format!(
+    "#!/bin/sh\n\
+     DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
+     {export}\
+     exec \"$DIR/{app_name}\" \"$@\"\n",
+  )
+}
+
+/// AppImage root `.desktop` entry. `StartupWMClass` must equal the window app_id
+/// (set via `LAUFEY_APP_ID` in [`appimage_apprun`]) so an integrated AppImage's
+/// icon resolves; without an id we fall back to the `<app>` binary name laufey
+/// uses by default.
+fn appimage_desktop_entry(app_name: &str, desktop_id: Option<&str>) -> String {
+  let startup_wm_class = desktop_id.unwrap_or(app_name);
+  format!(
+    "[Desktop Entry]\n\
+     Type=Application\n\
+     Name={app_name}\n\
+     Exec={app_name}\n\
+     Icon={app_name}\n\
+     StartupWMClass={startup_wm_class}\n\
+     Categories=Utility;\n",
+  )
+}
+
 /// Wrap a Linux app directory in an `.AppImage` single-file executable.
 ///
 /// Packs the app dir into a SquashFS image via the `backhand` crate, adds the
@@ -3427,6 +3528,7 @@ fn create_linux_appimage(
   app_dir: &Path,
   appimage_path: &Path,
   target: Option<&str>,
+  desktop_id: Option<&str>,
 ) -> Result<(), AnyError> {
   use std::io::Cursor;
   use std::io::Write as _;
@@ -3451,12 +3553,8 @@ fn create_linux_appimage(
 
   // AppRun is what the AppImage invokes on launch. Thin shell shim that
   // delegates to the existing launcher (which already sets $DIR and execs
-  // the backend with the right args).
-  let apprun = format!(
-    "#!/bin/sh\n\
-     DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
-     exec \"$DIR/{app_name}\" \"$@\"\n",
-  );
+  // the backend with the right args) after exporting the window app_id.
+  let apprun = appimage_apprun(&app_name, desktop_id);
   writer.push_file(
     Cursor::new(apprun.into_bytes()),
     "/AppRun",
@@ -3464,14 +3562,7 @@ fn create_linux_appimage(
   )?;
 
   // .desktop entry at the AppDir root.
-  let desktop_entry = format!(
-    "[Desktop Entry]\n\
-     Type=Application\n\
-     Name={app_name}\n\
-     Exec={app_name}\n\
-     Icon={app_name}\n\
-     Categories=Utility;\n",
-  );
+  let desktop_entry = appimage_desktop_entry(&app_name, desktop_id);
   writer.push_file(
     Cursor::new(desktop_entry.into_bytes()),
     format!("/{app_name}.desktop"),
@@ -3608,10 +3699,15 @@ fn linux_package_meta(
     .map(|s| s.to_string_lossy().into_owned())
     .unwrap_or_else(|| "App".to_string());
   let package = debian_package_name(&app_name);
-  let identifier = desktop_flags
-    .identifier
-    .clone()
-    .unwrap_or_else(|| format!("com.deno.desktop.{package}"));
+  // Route the identifier through the same validation/derivation as the app-dir
+  // entry so the deb/rpm `StartupWMClass`/`Exec` match it, and — critically —
+  // an invalid explicit `--identifier` (or a `deno.json` value with a space,
+  // `%`, quote, or newline) can't reach the `Exec` line raw and break the
+  // menu launch or inject extra desktop-entry keys. Falls back to the
+  // package-derived id when the explicit id is rejected or nothing derives.
+  let identifier =
+    resolve_linux_app_id(desktop_flags.identifier.as_deref(), &app_name)
+      .unwrap_or_else(|| format!("com.deno.desktop.{package}"));
   LinuxPackageMeta {
     summary: format!("{app_name} desktop application"),
     maintainer: format!("{app_name} <noreply@deno.com>"),
@@ -5680,6 +5776,98 @@ def456  other.zip
   }
 
   #[test]
+  fn derived_desktop_id_caps_length() {
+    // A very long name must still derive an id within the 155-char limit, so
+    // the derived id validates just like a hand-passed `--identifier` would.
+    let long = "a".repeat(300);
+    let id = derived_desktop_id(&long).unwrap();
+    assert!(id.len() <= 155, "derived id too long: {} chars", id.len());
+    assert!(
+      validate_bundle_identifier(&id).is_ok(),
+      "derived id must validate: {id}"
+    );
+  }
+
+  #[test]
+  fn linux_package_meta_rejects_unsafe_identifier() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
+
+    // An explicit identifier with a space (or `%`, quote, newline) must never
+    // reach the deb/rpm `Exec` line raw — it would break the menu launch or
+    // inject desktop-entry keys. It's rejected and the package-derived id used.
+    let mut flags = empty_desktop_flags();
+    flags.identifier = Some("com.example my app".to_string());
+    let meta = linux_package_meta(&app_dir, &flags);
+    assert_eq!(meta.identifier, "com.deno.desktop.myapp");
+    let entry = system_desktop_entry(&meta);
+    assert!(
+      entry.contains("Exec=env LAUFEY_APP_ID=com.deno.desktop.myapp myapp\n"),
+      "unsafe identifier leaked into Exec:\n{entry}"
+    );
+
+    // A newline can't inject an extra key either.
+    flags.identifier = Some("com.evil\nX-Foo=bar".to_string());
+    let meta = linux_package_meta(&app_dir, &flags);
+    assert!(!meta.identifier.contains('\n'));
+
+    // A valid explicit identifier is still honored verbatim.
+    flags.identifier = Some("com.acme.tool".to_string());
+    assert_eq!(
+      linux_package_meta(&app_dir, &flags).identifier,
+      "com.acme.tool"
+    );
+  }
+
+  #[test]
+  fn appimage_apprun_exports_app_id() {
+    // With an id, AppRun exports it before exec so the window app_id matches
+    // StartupWMClass; without one it falls back to the default (no export).
+    let with = appimage_apprun("MyApp", Some("com.deno.desktop.myapp"));
+    assert!(
+      with.contains("export LAUFEY_APP_ID=com.deno.desktop.myapp\n"),
+      "AppRun should export the app id:\n{with}"
+    );
+    assert!(with.contains("exec \"$DIR/MyApp\" \"$@\"\n"));
+    let without = appimage_apprun("MyApp", None);
+    assert!(!without.contains("LAUFEY_APP_ID"));
+    assert!(without.contains("exec \"$DIR/MyApp\" \"$@\"\n"));
+  }
+
+  #[test]
+  fn appimage_desktop_entry_sets_startup_wm_class() {
+    // StartupWMClass mirrors the exported app id so an integrated AppImage's
+    // icon resolves; without an id it falls back to the binary name.
+    let with = appimage_desktop_entry("MyApp", Some("com.deno.desktop.myapp"));
+    assert!(with.contains("StartupWMClass=com.deno.desktop.myapp\n"));
+    let without = appimage_desktop_entry("MyApp", None);
+    assert!(without.contains("StartupWMClass=MyApp\n"));
+  }
+
+  #[test]
+  fn self_extract_launcher_exports_app_id() {
+    let tmp = tempfile::tempdir().unwrap();
+    let bundle = fake_linux_app_dir(tmp.path(), "MyApp");
+    make_self_extracting_dir(
+      &bundle,
+      "zstd",
+      false,
+      Some("com.deno.desktop.myapp"),
+    )
+    .unwrap();
+    // The generated launcher is the `<app>` script in the bundle dir.
+    let script = std::fs::read_to_string(bundle.join("MyApp")).unwrap();
+    assert!(
+      script.contains("export LAUFEY_APP_ID=com.deno.desktop.myapp\n"),
+      "self-extract launcher should export the app id:\n{script}"
+    );
+    // The export lands right before the final exec, not after it.
+    let export_at = script.find("export LAUFEY_APP_ID").unwrap();
+    let exec_at = script.find("exec \"$APP/MyApp\"").unwrap();
+    assert!(export_at < exec_at, "export must precede exec:\n{script}");
+  }
+
+  #[test]
   fn system_desktop_entry_sets_app_id_via_exec() {
     let meta = LinuxPackageMeta {
       package: "myapp".to_string(),
@@ -6797,7 +6985,7 @@ def456  other.zip
     let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
     let appimage_path = tmp.path().join("MyApp.AppImage");
     let target = Some("x86_64-unknown-linux-gnu");
-    create_linux_appimage(&app_dir, &appimage_path, target).unwrap();
+    create_linux_appimage(&app_dir, &appimage_path, target, None).unwrap();
 
     let runtime_offset =
       appimage_runtime_for_target(target).unwrap().len() as u64;
