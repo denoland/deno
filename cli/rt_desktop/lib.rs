@@ -212,12 +212,13 @@ impl WefDesktopApi {
   /// JS via `BrowserWindow`, this one is created *hidden* and revealed only once
   /// its first navigation has finished loading (wired here via `on_page_load`).
   ///
-  /// The runtime navigates this window to `app://` only after the in-process
-  /// server is listening, so creating it visible up front would leave the user
-  /// staring at an empty webview — which paints solid black on Wayland, where
-  /// the compositor presents the pre-load frame verbatim. Deferring the reveal
-  /// to load-finished means the window's first visible frame already has
-  /// content. See https://github.com/denoland/deno/issues/35530.
+  /// The runtime navigates this window to the app's `http://127.0.0.1:PORT`
+  /// URL only after the loopback server is listening, so creating it visible
+  /// up front would leave the user staring at an empty webview — which paints
+  /// solid black on Wayland, where the compositor presents the pre-load frame
+  /// verbatim. Deferring the reveal to load-finished means the window's first
+  /// visible frame already has content. See
+  /// https://github.com/denoland/deno/issues/35530.
   fn create_initial_window(&self, width: i32, height: i32) -> u32 {
     let window = laufey::Window::new_with_options(
       width,
